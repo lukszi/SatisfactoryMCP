@@ -80,6 +80,7 @@ export interface PageState {
 }
 
 var FRAGMENT_KEYS = ["world", "save", "floor", "mode", "pickups", "dash", "show", "z", "c"];
+var OPEN_GRACE_MS = 2000;
 
 /* The selection lives in the URL fragment so a reload, a bookmark or a pasted link lands on the
  * same world, save, layers and viewport. Read before `state` is built, because the boot values
@@ -116,16 +117,16 @@ export var state: PageState = {
  * the page opened on, and fragment.ts re-reads it whenever the address bar changes under an open
  * tab. One parser, so a hand-typed fragment is read exactly the way a bookmarked one is. */
 export function parseHash(hash: string, garbled?: string[]): Record<string, string> {
-  var out: Record<string, string> = {};
+  const out: Record<string, string> = {};
   hash
     .replace(/^#/, "")
     .split("&")
     .forEach(function (piece) {
-      var eq = piece.indexOf("=");
+      const eq = piece.indexOf("=");
       if (eq <= 0) return;
-      var key = piece.slice(0, eq);
-      var raw = piece.slice(eq + 1);
-      var value: string;
+      const key = piece.slice(0, eq);
+      const raw = piece.slice(eq + 1);
+      let value: string;
       try {
         value = decodeURIComponent(raw);
       } catch (ignored) {
@@ -155,7 +156,7 @@ export function garbledNote(keys: string[]): string {
 
 export function dashFromFragment(asked: Record<string, string>): string {
   if (asked.dash) return asked.dash;
-  var mapped = ["z", "c", "floor", "mode", "pickups"].some(function (key) {
+  const mapped = ["z", "c", "floor", "mode", "pickups"].some(function (key) {
     return key in asked;
   });
   return mapped ? "" : "overview";
@@ -172,8 +173,13 @@ export function parseList(raw: string | undefined): string[] {
     .sort();
 }
 
+/** Whether a server timestamp, in seconds, is from after this page opened, within the grace. */
+export function isSincePageOpened(ts: number): boolean {
+  return ts * 1000 >= state.openedAtMs - OPEN_GRACE_MS;
+}
+
 export function currentWorld(): WorldRow | null {
-  var found: WorldRow | null = null;
+  let found: WorldRow | null = null;
   state.worlds.forEach(function (w) {
     if (w.world_id === state.world) found = w;
   });
@@ -185,8 +191,8 @@ export function currentWorld(): WorldRow | null {
  * type) while `state.save` is its PATH (unambiguous when two worlds hold a "save 1.sav").
  * Whoever writes the fragment converts one way and whoever reads one converts back. */
 export function pinnedFilename(): string {
-  var name = "";
-  var w = currentWorld();
+  let name = "";
+  const w = currentWorld();
   if (!state.save || !w) return name;
   w.saves.forEach(function (s) {
     if ((s.path || s.filename) === state.save) name = s.filename;
@@ -197,7 +203,7 @@ export function pinnedFilename(): string {
 /** A filename out of the fragment, as the pin `state.save` holds; "" if this world has no
  *  such save, which is how both callers say "follow the newest" without a second flag. */
 export function pinnedPath(filename: string, w: WorldRow | null): string {
-  var found = "";
+  let found = "";
   if (!filename || !w) return found;
   w.saves.forEach(function (s) {
     if (s.filename === filename) found = s.path || s.filename;

@@ -29,7 +29,7 @@ import { noteRegionChoice, updateRegionBlend } from "./map/regions";
 import { restyleRoutesForZoom, ROUTE_LAYERS, sinkRoutes } from "./map/drawn/route-passes";
 import { wireSearch } from "./app/search";
 import { syncSharedSettings } from "./app/shared-settings";
-import { listen } from "./app/sse";
+import { connectLiveEvents } from "./app/sse";
 import { BOOT, BOOT_GARBLED, garbledNote, state } from "./app/state";
 import { wireStatus } from "./app/status";
 import { loadBaseMap } from "./map/tiles";
@@ -172,5 +172,5 @@ loadWorlds().then(function () {
     applyFloorFragment(BOOT.floor);
     if (BOOT.show) showSelector(BOOT.show);
   } else renderPanel();
-  listen();
+  connectLiveEvents();
 });

@@ -18,10 +18,10 @@ import { fail, friendlyError, notify } from "../kit/toast";
 import type { WorldRow, WorldsResponse } from "../api/shapes";
 
 function worldOption(w: WorldRow, dupes: Record<string, number>): HTMLOptionElement {
-  var option = document.createElement("option");
+  const option = document.createElement("option");
   option.value = w.world_id;
-  var hours = Math.round((w.play_duration_s || 0) / 3600);
-  var label = w.session_name + " (" + w.saves.length + " saves, " + hours + " h)";
+  const hours = Math.round((w.play_duration_s || 0) / 3600);
+  let label = w.session_name + " (" + w.saves.length + " saves, " + hours + " h)";
   // Two worlds can share a session name -- one id-keyed, one a legacy grouping of saves
   // too old to carry a world id. A save count alone cannot tell them apart.
   if ((dupes[w.session_name] ?? 0) > 1 && w.world_id.indexOf("session:") === 0) {
@@ -33,8 +33,8 @@ function worldOption(w: WorldRow, dupes: Record<string, number>): HTMLOptionElem
 }
 
 function fillWorldPicker(preserve: boolean): void {
-  var picker = el<HTMLSelectElement>("world");
-  var dupes: Record<string, number> = {};
+  const picker = el<HTMLSelectElement>("world");
+  const dupes: Record<string, number> = {};
   state.worlds.forEach(function (w) {
     dupes[w.session_name] = (dupes[w.session_name] || 0) + 1;
   });
@@ -47,19 +47,19 @@ function fillWorldPicker(preserve: boolean): void {
 }
 
 function fillSavePicker(): void {
-  var picker = el<HTMLSelectElement>("save");
-  var w = currentWorld();
+  const picker = el<HTMLSelectElement>("save");
+  const w = currentWorld();
   picker.innerHTML = "";
-  var newest = document.createElement("option");
+  const newest = document.createElement("option");
   newest.value = "";
   newest.textContent = "newest save";
   newest.title = "follow the newest save, refetching as the game writes new ones";
   picker.appendChild(newest);
-  var saves = ((w && w.saves) || []).slice().sort(function (a, b) {
+  const saves = ((w && w.saves) || []).slice().sort(function (a, b) {
     return (b.mtime_ns || 0) - (a.mtime_ns || 0);
   });
   saves.forEach(function (s) {
-    var option = document.createElement("option");
+    const option = document.createElement("option");
     option.value = s.path || s.filename;
     option.textContent = s.filename;
     picker.appendChild(option);
@@ -69,7 +69,7 @@ function fillSavePicker(): void {
     if (picker.value !== state.save) {
       // The pinned save is no longer in the listing (deleted, or the world changed
       // under it). Keep the pin visible rather than silently unpinning.
-      var pinned = document.createElement("option");
+      const pinned = document.createElement("option");
       pinned.value = state.save;
       pinned.textContent = "(pinned save no longer listed)";
       picker.appendChild(pinned);
@@ -81,7 +81,7 @@ function fillSavePicker(): void {
   picker.disabled = !saves.length;
   picker.onchange = function () {
     state.save = picker.value;
-    var chosen = picker.selectedOptions[0];
+    const chosen = picker.selectedOptions[0];
     reload(state.save ? "opening " + (chosen ? chosen.textContent : "save") + "…" : "back to the newest save…");
   };
 }
@@ -97,72 +97,86 @@ export function syncPickers(): void {
   fillSavePicker();
 }
 
-function substituted(world: boolean, save: boolean): void {
-  if (!world && !save) return;
-  var shown = currentWorld();
-  var name = shown ? "“" + shown.session_name + "”" : "another world";
-  if (world) notify("the linked world is not in the save folder; showing " + name + (BOOT.save ? " and its newest save" : ""));
+function noteSubstitutedLink(missing: { worldMissing: boolean; saveMissing: boolean }): void {
+  if (!missing.worldMissing && !missing.saveMissing) return;
+  const shown = currentWorld();
+  const name = shown ? "“" + shown.session_name + "”" : "another world";
+  if (missing.worldMissing) notify("the linked world is not in the save folder; showing " + name + (BOOT.save ? " and its newest save" : ""));
   else notify("the linked save “" + BOOT.save + "” is not in this world; showing the newest save");
 }
 
-export function loadWorlds(): Promise<void> {
-  return fetch("/api/worlds")
-    .then(function (r) {
-      return r.json() as Promise<WorldsResponse>;
+/* Plain fetch rather than get(): get() adds the selected world and save, and this read is
+ * what offers them. */
+function fetchWorldList(): Promise<WorldsResponse> {
+  return fetch("/api/worlds").then(function (r) {
+    return r.json() as Promise<WorldsResponse>;
+  });
+}
+
+function wireWorldPicker(): void {
+  const picker = el<HTMLSelectElement>("world");
+  fillWorldPicker(false);
+  picker.onchange = function () {
+    state.world = picker.value;
+    state.save = "";
+    fillSavePicker();
+    const chosen = picker.selectedOptions[0];
+    reload("switching to " + (chosen ? chosen.textContent : "world") + "…");
+  };
+}
+
+/* The one state that must NOT end as a healthy-looking blank page: no world at all. The
+ * server may still know exactly why each file was rejected, and that diagnosis belongs on
+ * screen, permanently -- not in a toast that self-erases. */
+function showNoSaves(unsupported: WorldsResponse["unsupported"]): void {
+  const reasons = unsupported
+    .map(function (u) {
+      return u.filename + ": " + u.reason;
     })
+    .join(" · ");
+  const text = "no readable saves found" + (reasons ? ": " + reasons : "") + " (set SATISFACTORY_SAVES if they live elsewhere)";
+  el("summary").textContent = WORDS.noSaves;
+  el("summary").title = text;
+  state.noSaves = true;
+  requestRender();
+  // Geography needs no save, so the node table still draws -- the same table the
+  // right-click inspector reads, so the two surfaces agree even with no world.
+  //
+  // Through the registry and not a fetch of its own, for the epoch guard: "no readable
+  // saves" is the state a player fixes while the tab is open, `refreshWorlds` then
+  // adopts the world and reloads, and this fetch outlives that switch. An unguarded late
+  // reply would land on the new world's table with every dot's occupancy back to "no
+  // extractor known here".
+  loadOne("/api/nodes");
+}
+
+/* The world and save the link named, or the first world and its newest save when the link
+ * names what this folder does not hold. */
+function resolveBootSelection(): void {
+  const known = !!BOOT.world && state.worlds.some(function (w) { return w.world_id === BOOT.world; });
+  state.world = known ? BOOT.world! : state.worlds[0]!.world_id;
+  el<HTMLSelectElement>("world").value = state.world;
+  // The fragment names a save by FILENAME; the pin is a path. Same conversion the
+  // hashchange path makes, which is why it is one function in state.ts.
+  state.save = known || !BOOT.world ? pinnedPath(BOOT.save || "", currentWorld()) : "";
+  fillSavePicker();
+  noteSubstitutedLink({ worldMissing: !!BOOT.world && !known, saveMissing: !!BOOT.save && !state.save });
+  writeHash();
+}
+
+export function loadWorlds(): Promise<void> {
+  return fetchWorldList()
     .then(function (body) {
       if (body.error) throw new Error(body.error);
       // No `|| []`: the endpoint sends `worlds` and `unsupported` together or sends `error`
       // instead, and the line above is what tells the two apart.
       state.worlds = body.worlds;
-      var picker = el<HTMLSelectElement>("world");
-      fillWorldPicker(false);
-      picker.onchange = function () {
-        state.world = picker.value;
-        state.save = "";
-        fillSavePicker();
-        var chosen = picker.selectedOptions[0];
-        reload("switching to " + (chosen ? chosen.textContent : "world") + "…");
-      };
-
+      wireWorldPicker();
       if (!state.worlds.length) {
-        // The one state that must NOT end as a healthy-looking blank page: no world at
-        // all. The server may still know exactly why each file was rejected, and that
-        // diagnosis belongs on screen, permanently -- not in a toast that self-erases.
-        var reasons = body.unsupported
-          .map(function (u) {
-            return u.filename + ": " + u.reason;
-          })
-          .join(" · ");
-        var text =
-          "no readable saves found" +
-          (reasons ? ": " + reasons : "") +
-          " (set SATISFACTORY_SAVES if they live elsewhere)";
-        el("summary").textContent = WORDS.noSaves;
-        el("summary").title = text;
-        state.noSaves = true;
-        requestRender();
-        // Geography needs no save, so the node table still draws -- the same table the
-        // right-click inspector reads, so the two surfaces agree even with no world.
-        //
-        // Through the registry and not a fetch of its own, for the epoch guard: "no readable
-        // saves" is the state a player fixes while the tab is open, `refreshWorlds` then
-        // adopts the world and reloads, and this fetch outlives that switch. An unguarded late
-        // reply would land on the new world's table with every dot's occupancy back to "no
-        // extractor known here".
-        loadOne("/api/nodes");
+        showNoSaves(body.unsupported);
         return;
       }
-
-      var known = !!BOOT.world && state.worlds.some(function (w) { return w.world_id === BOOT.world; });
-      state.world = known ? BOOT.world! : state.worlds[0]!.world_id;
-      picker.value = state.world;
-      // The fragment names a save by FILENAME; the pin is a path. Same conversion the
-      // hashchange path makes, which is why it is one function in state.ts.
-      state.save = known || !BOOT.world ? pinnedPath(BOOT.save || "", currentWorld()) : "";
-      fillSavePicker();
-      substituted(!!BOOT.world && !known, !!BOOT.save && !state.save);
-      writeHash();
+      resolveBootSelection();
     })
     .catch(function (e) {
       el("summary").textContent = "the world list could not be loaded";
@@ -174,10 +188,7 @@ export function loadWorlds(): Promise<void> {
  * open updates the counts and can add a world. Selection and pin are preserved; a scan
  * hiccup (transient error, empty answer) must never wipe a working picker mid-session. */
 export function refreshWorlds(): void {
-  fetch("/api/worlds")
-    .then(function (r) {
-      return r.json() as Promise<WorldsResponse>;
-    })
+  fetchWorldList()
     .then(function (body) {
       // An empty list is the scan hiccup this function exists to survive. What is guarded is
       // the CONTENT: the endpoint either sends the list or sends `error`.

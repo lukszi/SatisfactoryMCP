@@ -4,22 +4,24 @@
 import { send } from "../../api/client";
 import { button, fieldError, selectBox } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
+import { nodeLayers } from "../../map/drawn/markers";
 import { goToMapThen } from "../../app/nav";
 import { showBox } from "../../map/map-highlight";
 import { vitals } from "../../app/vitals";
-import { bench, changed, gesture, pickTab } from "./planner-core";
+import { pickTab } from "./planner-reads";
+import { bench, changed } from "./planner-state";
+import { applyOps } from "./planner-writes";
 import { factoryNameProblem, labelRefusal, labelsVersionToSend, recordLabelsVersion, refetchLabelledViews } from "../factories/rename";
 import { setSetting, settingChoice } from "../../app/settings";
 import { fail, friendlyError, notify } from "../../kit/toast";
 import { WORDS } from "../../kit/words";
 
 import type { NamedResponse, TrackBuiltAt, TrackBuiltCandidate } from "../../api/shapes";
+import type { BboxM } from "../../map/geometry";
 
-type Box = [number, number, number, number];
-
-var WORLD = "/world";
-var NONE = "/none";
-var CLUSTER = "cluster:";
+var SCOPE_WORLD = "/world";
+var SCOPE_NONE = "/none";
+var CLUSTER_PREFIX = "cluster:";
 
 var naming = { key: "", proposal: -1, name: "", problem: "", busy: false };
 var picking = { key: "", open: false };
@@ -35,8 +37,8 @@ interface Figures {
 export function progressText(f: Figures): string {
   if (f.built === null) return f.figure || "–";
   if (settingChoice("progress") === "percent" && f.percent !== null) {
-    var lo = Math.round(f.percent);
-    var hi = f.percent_max === null ? lo : Math.round(f.percent_max);
+    const lo = Math.round(f.percent);
+    const hi = f.percent_max === null ? lo : Math.round(f.percent_max);
     return (hi !== lo ? lo + "–" + hi : String(lo)) + "%";
   }
   return f.figure + " machines";
@@ -47,11 +49,11 @@ export function toggleProgress(): void {
   changed();
 }
 
-function setFactory(value: string): void {
-  var plan = bench.plan;
+function setBuiltScope(value: string): void {
+  const plan = bench.plan;
   if (!plan || bench.gone || plan.factory === value) return;
   picking.open = false;
-  gesture([{ op: "set", field: "factory", value: value }]);
+  applyOps([{ op: "set", field: "factory", value: value }]);
 }
 
 function startNaming(c: TrackBuiltCandidate): void {
@@ -61,8 +63,8 @@ function startNaming(c: TrackBuiltCandidate): void {
 }
 
 function saveName(b: TrackBuiltAt, field: HTMLInputElement): void {
-  var name = field.value.trim();
-  var problem = factoryNameProblem(name);
+  const name = field.value.trim();
+  const problem = factoryNameProblem(name);
   if (problem) {
     naming.problem = problem;
     naming.name = field.value;
@@ -83,10 +85,10 @@ function saveName(b: TrackBuiltAt, field: HTMLInputElement): void {
       naming = { key: "", proposal: -1, name: "", problem: "", busy: false };
       notify("named “" + reply.name + "”; the plan now counts it as built");
       refetchLabelledViews();
-      setFactory(reply.name);
+      setBuiltScope(reply.name);
     })
     .catch(function (failure) {
-      var why = labelRefusal(failure);
+      const why = labelRefusal(failure);
       naming.busy = false;
       if (why === "name_taken") naming.problem = "“" + name + "” is already a factory name";
       else if (why === "bad") naming.problem = friendlyError(failure);
@@ -99,8 +101,8 @@ function saveName(b: TrackBuiltAt, field: HTMLInputElement): void {
 }
 
 function nameBar(parent: HTMLElement, b: TrackBuiltAt): void {
-  var bar = make("div", "plan-line built-name");
-  var field = make("input", "dash-name plan-text");
+  const bar = make("div", "plan-line built-name");
+  const field = make("input", "dash-name plan-text");
   field.value = naming.name;
   field.setAttribute("data-ctl", "built-name");
   field.setAttribute("aria-label", "name for this " + WORDS.unnamedCluster);
@@ -132,8 +134,8 @@ function nameBar(parent: HTMLElement, b: TrackBuiltAt): void {
 }
 
 function factoryNames(current: string): string[] {
-  var health = vitals().health;
-  var names = health
+  const health = vitals().health;
+  const names = health
     ? health.factories.map(function (f) {
         return f.name;
       })
@@ -144,54 +146,54 @@ function factoryNames(current: string): string[] {
   });
 }
 
-function picker(parent: HTMLElement, b: TrackBuiltAt): void {
-  var plan = bench.plan!;
-  var clusters = b.candidates.filter(function (c) {
+function scopePicker(parent: HTMLElement, b: TrackBuiltAt): void {
+  const plan = bench.plan!;
+  const clusters = b.candidates.filter(function (c) {
     return c.kind === "cluster" && c.proposal !== null;
   });
-  var options: [string, string][] = [["", WORDS.foundAutomatically]];
+  const options: [string, string][] = [["", WORDS.foundAutomatically]];
   clusters.forEach(function (c) {
-    options.push([CLUSTER + c.proposal, c.name + " (" + WORDS.unnamedCluster + ": names it)"]);
+    options.push([CLUSTER_PREFIX + c.proposal, c.name + " (" + WORDS.unnamedCluster + ": names it)"]);
   });
   factoryNames(plan.factory).forEach(function (name) {
     options.push([name, name]);
   });
-  options.push([WORLD, WORDS.wholeWorld], [NONE, WORDS.nothingBuiltYet]);
-  var pick = selectBox(
+  options.push([SCOPE_WORLD, WORDS.wholeWorld], [SCOPE_NONE, WORDS.nothingBuiltYet]);
+  const pick = selectBox(
     options,
     plan.factory,
     function (value) {
-      if (value.indexOf(CLUSTER) === 0) {
-        var n = Number(value.slice(CLUSTER.length));
-        var c = clusters.filter(function (x) {
+      if (value.indexOf(CLUSTER_PREFIX) === 0) {
+        const n = Number(value.slice(CLUSTER_PREFIX.length));
+        const c = clusters.filter(function (x) {
           return x.proposal === n;
         })[0];
         if (c) startNaming(c);
         return;
       }
-      setFactory(value);
+      setBuiltScope(value);
     },
     { label: WORDS.countAsBuilt, disabled: bench.gone }
   );
   pick.setAttribute("data-ctl", "track-scope");
-  var row = make("div", "plan-line");
+  const row = make("div", "plan-line");
   row.appendChild(make("span", "plan-sub", WORDS.countAsBuilt));
   row.appendChild(pick);
   parent.appendChild(row);
 }
 
-function mapButton(c: TrackBuiltCandidate | undefined): HTMLButtonElement | null {
-  var at = c && c.bbox_m && c.bbox_m.length === 4 ? (c.bbox_m as Box) : null;
-  if (!at) return null;
-  var target = at;
+/** A [map] button that outlines a bounding box with the machines and these nodes' layers shown. */
+export function boxMapButton(bbox: number[] | null | undefined, what: string, nodeNames: string[]): HTMLButtonElement | null {
+  if (!bbox || bbox.length !== 4) return null;
+  const target = bbox as BboxM;
   return button(
     "map",
     function () {
       goToMapThen(function () {
-        showBox(target, { layers: ["machines"] });
+        showBox(target, { layers: ["machines"].concat(nodeLayers(nodeNames)) });
       });
     },
-    { map: true, title: "fly the map to what counts as built and outline it", label: "show what counts as built on the map" }
+    { map: true, title: "fly the map to " + what + " and outline it", label: "show " + what + " on the map" }
   );
 }
 
@@ -205,28 +207,28 @@ function placeButton(): HTMLButtonElement {
   );
 }
 
-function actions(b: TrackBuiltAt): HTMLElement[] {
-  var out: HTMLElement[] = [];
+function builtLineActions(b: TrackBuiltAt): HTMLElement[] {
+  const out: HTMLElement[] = [];
   if (bench.gone) return out;
-  var top = b.candidates[0];
-  var change = button(picking.open ? "close" : "change", function () {
+  const top = b.candidates[0];
+  const change = button(picking.open ? "close" : "change", function () {
     picking = { key: bench.key, open: !picking.open };
     changed();
   }, { title: "pick what counts as built for this plan" });
   change.setAttribute("aria-expanded", String(picking.open));
   if (b.mode !== "auto") {
     out.push(button("auto", function () {
-      setFactory("");
+      setBuiltScope("");
     }, { title: "find what is built at the plan's site again" }));
   } else if (b.confidence === "unsure") {
     b.candidates.forEach(function (c) {
       out.push(button(c.name, function () {
-        if (c.kind === "factory") setFactory(c.name);
+        if (c.kind === "factory") setBuiltScope(c.name);
         else startNaming(c);
       }, { title: c.kind === "factory" ? "count “" + c.name + "” as built" : "name this " + WORDS.unnamedCluster + " and count it" }));
     });
     out.push(button(WORDS.nothingBuiltYet, function () {
-      setFactory(NONE);
+      setBuiltScope(SCOPE_NONE);
     }));
   } else if (b.confidence === "likely" && top) {
     if (top.kind === "cluster") {
@@ -235,12 +237,12 @@ function actions(b: TrackBuiltAt): HTMLElement[] {
       }, { title: "name this " + WORDS.unnamedCluster + " and keep it as the plan's factory" }));
     }
     out.push(button("not this", function () {
-      setFactory(NONE);
+      setBuiltScope(SCOPE_NONE);
     }, { title: "count nothing as built until you pick a factory" }));
   } else if (b.confidence === "no site") {
     out.push(placeButton());
   }
-  var there = b.mode === "world" || b.confidence === "no site" ? null : mapButton(top);
+  const there = b.mode === "world" || b.confidence === "no site" ? null : boxMapButton(top ? top.bbox_m : null, "what counts as built", []);
   if (there) out.push(there);
   out.push(change);
   return out;
@@ -248,16 +250,16 @@ function actions(b: TrackBuiltAt): HTMLElement[] {
 
 function hintLine(parent: HTMLElement, b: TrackBuiltAt): void {
   if (!b.hint) return;
-  var line = make("div", "plan-line built-hint");
+  const line = make("div", "plan-line built-hint");
   line.appendChild(make("span", "dash-note", b.hint));
-  var top = b.candidates[0];
+  const top = b.candidates[0];
   if (!bench.gone && b.mode === "none") {
     line.appendChild(button("count them", function () {
-      setFactory("");
+      setBuiltScope("");
     }));
   } else if (!bench.gone && top) {
     line.appendChild(button("use it", function () {
-      if (top!.kind === "factory") setFactory(top!.name);
+      if (top!.kind === "factory") setBuiltScope(top!.name);
       else startNaming(top!);
     }));
   }
@@ -268,9 +270,9 @@ function hintLine(parent: HTMLElement, b: TrackBuiltAt): void {
 export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
   if (picking.key !== bench.key) picking = { key: bench.key, open: false };
   if (naming.key && naming.key !== bench.key) naming.key = "";
-  var line = make("div", "plan-line built-line");
+  const line = make("div", "plan-line built-line");
   line.setAttribute("data-ctl", "built-line");
-  var figure = make("button", "built-figure", progressText(b));
+  const figure = make("button", "built-figure", progressText(b));
   figure.type = "button";
   figure.title = b.built === null ? "not placed, so no progress" : settingChoice("progress") === "percent" ? "show machines instead" : "show percent of the planned rate instead";
   figure.disabled = b.built === null;
@@ -280,19 +282,19 @@ export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
   };
   line.appendChild(figure);
   if (b.text) line.appendChild(make("span", "built-where", b.text));
-  actions(b).forEach(function (el) {
+  builtLineActions(b).forEach(function (el) {
     line.appendChild(el);
   });
   parent.appendChild(line);
   if (b.fallback) parent.appendChild(make("p", "dash-note", b.fallback));
   hintLine(parent, b);
-  var more = b.missing.length ? ["missing: " + b.missing.join(", ")] : [];
+  let more = b.missing.length ? ["missing: " + b.missing.join(", ")] : [];
   if (b.also_here.length) more.push("also here: " + b.also_here.join(", "));
   more = more.concat(b.foreign);
   if (b.node_owner && b.confidence !== "nothing") more.push(b.node_owner);
   if (more.length) parent.appendChild(make("p", "dash-note", more.join(" · ")));
   if (naming.key === bench.key) nameBar(parent, b);
-  if (picking.open && !bench.gone) picker(parent, b);
+  if (picking.open && !bench.gone) scopePicker(parent, b);
 }
 
 /** The built column's title: "anywhere" when the plan has no site, so the count is not progress. */

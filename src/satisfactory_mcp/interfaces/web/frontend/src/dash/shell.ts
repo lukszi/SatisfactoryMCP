@@ -8,9 +8,10 @@ import { keepFocus } from "../kit/focus";
 import { renderInventory } from "./inventory";
 import { hashFor } from "../map/map";
 import { onVitals, vitals } from "../app/vitals";
-import { renderPlanner, viewFocus } from "./planner/planner";
-import { bench, onBench } from "./planner/planner-core";
-import { planTitle } from "./planner/planner-list";
+import { renderPlanner } from "./planner/planner";
+import { viewFocus } from "./planner/planner-focus";
+import { bench, onBench } from "./planner/planner-state";
+import { planTitle } from "./planner/planner-plan-index";
 import { onProgress } from "./progress/feeds";
 import { renderProgress } from "./progress/progress";
 import { renderRecipes } from "./recipes/recipes";
@@ -25,7 +26,7 @@ import { renderOverview } from "./overview";
 import { renderCircuit, renderPower } from "./power-tab";
 import { circuitName } from "./power-ledger";
 import { renderSettingsTab } from "./settings-tab";
-import { onMaps } from "../app/map-types";
+import { onMapRegistry } from "../app/map-types";
 import { dashParts } from "../app/nav";
 import { drawRail } from "../app/rail";
 import { select } from "../app/selection";
@@ -262,7 +263,7 @@ function wire(): void {
   onSetting(function () {
     if (state.dash && address().tab === "settings") render();
   });
-  onMaps(function (listed) {
+  onMapRegistry(function (listed) {
     if (listed && state.dash && address().tab === "settings") render();
   });
   wireDetect();

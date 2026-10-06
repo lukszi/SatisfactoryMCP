@@ -1,6 +1,8 @@
 /* The one selected thing the map, the side panel, the dashboard and the status strip share,
  * shared across tabs too. See docs/frontend_vision.md §2.3 and §16. */
 
+import { createListeners } from "./listeners";
+
 export type SelectionKind = "factory" | "circuit" | "machine" | "point" | "node" | "field" | "conduit" | "pickup";
 
 export interface Selection {
@@ -18,9 +20,9 @@ var STORE_KEY = "selection";
 
 function parse(text: string | null): Selection | null {
   try {
-    var s = JSON.parse(text || "null");
+    const s = JSON.parse(text || "null");
     if (!s || KINDS.indexOf(s.kind) < 0 || typeof s.key !== "string" || typeof s.label !== "string") return null;
-    var out: Selection = { kind: s.kind, key: s.key, label: s.label };
+    const out: Selection = { kind: s.kind, key: s.key, label: s.label };
     if (typeof s.x_m === "number" && typeof s.y_m === "number") {
       out.x_m = s.x_m;
       out.y_m = s.y_m;
@@ -51,7 +53,7 @@ function remember(s: Selection | null): void {
 
 var current: Selection | null = recall();
 
-var listeners: Array<() => void> = [];
+var selectListeners = createListeners();
 
 function same(a: Selection | null, b: Selection | null): boolean {
   if (!a || !b) return a === b;
@@ -60,9 +62,7 @@ function same(a: Selection | null, b: Selection | null): boolean {
 
 function settle(next: Selection | null): void {
   current = next;
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  selectListeners.emit();
 }
 
 export function selected(): Selection | null {
@@ -79,7 +79,7 @@ export function machineLeaf(instance: string): string {
 }
 
 export function machineSelection(instance: string, name: string, x_m: number, y_m: number): Selection {
-  var leaf = machineLeaf(instance);
+  const leaf = machineLeaf(instance);
   return { kind: "machine", key: leaf, label: name, x_m: x_m, y_m: y_m, ref: "machine:" + leaf };
 }
 
@@ -98,11 +98,11 @@ export function select(next: Selection | null): void {
 }
 
 export function onSelect(listener: () => void): void {
-  listeners.push(listener);
+  selectListeners.on(listener);
 }
 
 window.addEventListener("storage", function (event) {
   if (event.key !== STORE_KEY && event.key !== null) return;
-  var next = event.key === null ? null : parse(event.newValue);
+  const next = event.key === null ? null : parse(event.newValue);
   if (!same(current, next)) settle(next);
 });

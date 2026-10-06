@@ -36,13 +36,13 @@ import { syncPickers } from "./world-picker";
  * only `z` would make every pan look like a switch.
  */
 function applySubject(asked: Record<string, string>): boolean {
-  var world = asked.world;
-  var known = !!world && state.worlds.some(function (w) { return w.world_id === world; });
-  var nextWorld = known ? world! : state.world;
+  const world = asked.world;
+  const known = !!world && state.worlds.some(function (w) { return w.world_id === world; });
+  const nextWorld = known ? world! : state.world;
   // Resolved against the world being switched TO, not the one on screen: the two have
   // different save lists, and a filename is only meaningful inside one of them.
-  var target = state.worlds.filter(function (w) { return w.world_id === nextWorld; })[0] || null;
-  var nextSave = pinnedPath(asked.save || "", target);
+  const target = state.worlds.filter(function (w) { return w.world_id === nextWorld; })[0] || null;
+  const nextSave = pinnedPath(asked.save || "", target);
   if (nextWorld === state.world && nextSave === state.save) return false;
   state.world = nextWorld;
   state.save = nextSave;
@@ -53,12 +53,12 @@ function applySubject(asked: Record<string, string>): boolean {
 /** The viewport half. Both numbers or neither: a fragment with a `z` and no `c` moves the
  *  zoom and leaves the centre, which is what `map.setView` would do anyway. */
 function applyView(asked: Record<string, string>): void {
-  var zoom = isFinite(+asked.z!) ? +asked.z! : map.getZoom();
-  var centre = map.getCenter();
-  var lat = centre.lat;
-  var lng = centre.lng;
+  const zoom = isFinite(+asked.z!) ? +asked.z! : map.getZoom();
+  const centre = map.getCenter();
+  let lat = centre.lat;
+  let lng = centre.lng;
   if (asked.c) {
-    var raw = asked.c.split(",");
+    const raw = asked.c.split(",");
     if (raw.length === 2 && isFinite(+raw[0]!) && isFinite(+raw[1]!)) {
       lng = +raw[0]!;
       lat = -+raw[1]!; // the page's one coordinate rule, inverted; see map.ts
@@ -79,18 +79,18 @@ function applyView(asked: Record<string, string>): void {
  */
 function apply(hash: string): void {
   if (hash === writtenHash()) return; // the page's own handwriting; see writtenHash
-  var garbled: string[] = [];
-  var asked = parseHash(hash, garbled);
+  const garbled: string[] = [];
+  const asked = parseHash(hash, garbled);
   if (garbled.length) fail(garbledNote(garbled));
-  var moved = applySubject(asked);
+  const moved = applySubject(asked);
   // How much of the subject, before the picture and before the viewport: entering floor mode
   // flies the map, so a `#floor=…&z=…&c=…` that applied the viewport first would have its own
   // viewport thrown away by the flight. Same reasoning, one level down, as the world switch
   // coming before the flight.
-  var floored = applyFloorFragment(asked.floor);
+  const floored = applyFloorFragment(asked.floor);
   // Checked against the registry; a name it does not have is ignored rather than resolved
   // to plain: `mode=terrian` is a typo, and switching the base map off is a strange answer.
-  var mode = servableMode(asked.mode);
+  const mode = servableMode(asked.mode);
   // `false` because the write it would do here is the write two lines down, and one
   // normalising write beats two.
   if (mode && mode !== state.mode) requestBaseMode(mode, false);

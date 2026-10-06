@@ -9,7 +9,7 @@ import { send } from "../../api/client";
 import { button, chip, error, loading, selectBox } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { bytes } from "../../kit/format";
-import { fetchMaps, mapState, onMaps } from "../../app/map-types";
+import { fetchMapRegistry, mapRegistry, onMapRegistry } from "../../app/map-types";
 import { refused, submit, write } from "./maps-actions";
 import { renderForm } from "./maps-form";
 import { drawJobs } from "./maps-jobs";
@@ -34,10 +34,10 @@ export function mapPickerRow(): HTMLElement {
   words.appendChild(make("span", "dash-setting-k", "default base map"));
   words.appendChild(make("span", "dash-setting-hint", "what a fresh page opens on, in every browser here; the map's own switcher still changes the view"));
   row.appendChild(words);
-  const body = mapState.body;
+  const body = mapRegistry.body;
   if (!body) {
-    row.appendChild(make("span", "dash-muted", mapState.failed ? "map list unreadable" : "loading…"));
-    if (!mapState.failed) fetchMaps();
+    row.appendChild(make("span", "dash-muted", mapRegistry.failed ? "map list unreadable" : "loading…"));
+    if (!mapRegistry.failed) fetchMapRegistry();
     return row;
   }
   const options: [string, string][] = body.types
@@ -109,7 +109,7 @@ function renderStatus(parent: HTMLElement, body: MapsResponse): void {
       button("clear cache", function () {
         send("DELETE", "/api/maps/cache")
           .then(function () {
-            fetchMaps();
+            fetchMapRegistry();
           })
           .catch(refused("the cache was not cleared"));
       }, { title: "delete the rasters kept for fast re-renders" })
@@ -142,14 +142,14 @@ function renderStatus(parent: HTMLElement, body: MapsResponse): void {
 
 export function renderMaps(body: HTMLElement): void {
   tabBody = body;
-  const data = mapState.body;
+  const data = mapRegistry.body;
   if (!data) {
-    if (mapState.failed) error(body, "the map list", mapState.failed, function () {
-      fetchMaps();
+    if (mapRegistry.failed) error(body, "the map list", mapRegistry.failed, function () {
+      fetchMapRegistry();
     });
     else {
       loading(body, "the map list");
-      fetchMaps();
+      fetchMapRegistry();
     }
     return;
   }
@@ -164,7 +164,7 @@ export function renderMaps(body: HTMLElement): void {
   renderInputs(body, data);
 }
 
-onMaps(function (listed) {
+onMapRegistry(function (listed) {
   if (listed || !jobHost || !jobHost.isConnected || !tabBody || !tabBody.isConnected) return;
   drawJobs(jobHost);
 });

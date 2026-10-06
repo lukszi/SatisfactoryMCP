@@ -6,7 +6,7 @@ import { appendNote, button, checkbox, fieldError, selectBox, slider } from "../
 import { make } from "../../kit/dom";
 import { bytes, duration } from "../../kit/format";
 import { friendlyError } from "../../kit/toast";
-import { mapState } from "../../app/map-types";
+import { mapRegistry } from "../../app/map-types";
 import { redraw, submit } from "./maps-actions";
 
 import type { MapEstimateResponse, MapsResponse } from "../../api/shapes";
@@ -41,7 +41,7 @@ let estimateSerial = 0;
 /* Palette-only needs a kept raster cache at this size, drawn with the current recipe. */
 function formOptions(): Record<string, unknown> {
   if (form.preset === "render") {
-    const body = mapState.body;
+    const body = mapRegistry.body;
     const restyle = form.restyle && !!body && body.cached_sizes.indexOf(form.size) >= 0 && form.recipe === "current";
     return {
       layers: (body ? body.styles : [])
@@ -60,7 +60,7 @@ function formOptions(): Record<string, unknown> {
       light: form.light,
     };
   }
-  if (form.preset === "artwork") return { enhance: form.enhance && !!mapState.body && mapState.body.can_generate.vulkan };
+  if (form.preset === "artwork") return { enhance: form.enhance && !!mapRegistry.body && mapRegistry.body.can_generate.vulkan };
   return {};
 }
 

@@ -21,21 +21,22 @@ import { WORDS } from "../kit/words";
 
 import type { SummaryResponse } from "../api/shapes";
 
-function drawHeader(s: SummaryResponse): void {
-  holdToken(s.save_token);
-  drawPlayer(s.player);
-  var r = ratedSummary(s);
-  var measured = readMeasuredDraw(r);
-  var generation = readGeneration(r);
-  var parts = [s.header.session_name];
-  var phase = phaseText(s.progression.game_phase);
+function drawHeader(summary: SummaryResponse): void {
+  holdToken(summary.save_token);
+  drawPlayer(summary.player);
+  const rated = ratedSummary(summary);
+  const measured = readMeasuredDraw(rated);
+  const generation = readGeneration(rated);
+  const parts = [summary.header.session_name];
+  const phase = phaseText(summary.progression.game_phase);
   if (phase) parts.push(phase);
   parts.push(measured.value + " " + WORDS.measuredDraw + " / " + generation.value + " " + WORDS.generation);
-  var span = el("summary");
+  const span = el("summary");
   span.textContent = parts.join(" · ");
-  var power = [measured.why || measured.value + " " + WORDS.measuredDraw, mw(s.power.draw_mw) + " " + WORDS.nameplateDraw, generation.value + " " + WORDS.generation];
-  if (biomassLine(s.power)) power.push(biomassLine(s.power));
-  span.title = parts.join(" · ") + "\n" + s.age_note + "\npower: " + power.join("; ");
+  const power = [measured.why || measured.value + " " + WORDS.measuredDraw, mw(summary.power.draw_mw) + " " + WORDS.nameplateDraw, generation.value + " " + WORDS.generation];
+  const biomass = biomassLine(summary.power);
+  if (biomass) power.push(biomass);
+  span.title = parts.join(" · ") + "\n" + summary.age_note + "\npower: " + power.join("; ");
 }
 
 function wireSearchToggle(): void {

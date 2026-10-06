@@ -4,43 +4,67 @@
 import { button, chip, empty, error, loading, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, mw, perMin, signed } from "../../kit/format";
-import { bench, gesture, loadAlternates, pushing } from "./planner-core";
+import { dashParts, go } from "../../app/nav";
+import { loadAlternates, showAlternates } from "./planner-reads";
+import { bench } from "./planner-state";
+import { applyOps, hasPushInFlight } from "./planner-writes";
 import { counted, WORDS } from "../../kit/words";
 
 import type { Column } from "../../kit/dashkit";
 import type { DeltaRow, PlanOpBody, SwapOption } from "../../api/shapes";
-import type { Op } from "./planner-core";
+import type { Op } from "./planner-state";
 
 var NONE = "–";
 
-function ops(list: PlanOpBody[]): Op[] {
+/** The [recipes] button that opens the drawer for `item`; `where` tells its openers apart. */
+export function recipesButton(item: string, name: string, where: string): HTMLButtonElement {
+  const ctl = "alt:" + where + ":" + item;
+  const open = !!bench.alternates && bench.alternates.item === item;
+  const opener = button(
+    WORDS.recipes,
+    function () {
+      const switching = dashParts().rest[1] === "alt";
+      showAlternates(item, ctl);
+      if (!switching) bench.alternatesCloseGoesBack = true;
+      go("planner/" + bench.key + "/alt/" + item, switching);
+    },
+    { title: "every recipe for " + name + " and what requiring each would change", label: "recipes for " + name }
+  );
+  opener.setAttribute("data-ctl", ctl);
+  opener.setAttribute("aria-expanded", String(open));
+  return opener;
+}
+
+/** An option's ops that carry an op name, typed as the ops a gesture pushes. */
+function namedOps(list: PlanOpBody[]): Op[] {
   return list.filter(function (o): o is Op {
     return typeof o.op === "string";
   });
 }
 
-function shown(o: SwapOption): boolean {
-  return o.solved && !!o.delta && o.delta.comparable;
+function hasComparableDelta(option: SwapOption): boolean {
+  return option.solved && !!option.delta && option.delta.comparable;
 }
 
-function machines(o: SwapOption): string {
-  if (!o.solved || !o.delta) return NONE;
-  if (!o.delta.comparable) return o.delta.text;
-  return signed(o.delta.machines, count);
+function machinesDelta(option: SwapOption): string {
+  if (!option.solved || !option.delta) return NONE;
+  if (!option.delta.comparable) return option.delta.text;
+  return signed(option.delta.machines, count);
 }
 
-function power(o: SwapOption, field: "mw_draw" | "mw_net"): string {
-  if (!shown(o)) return NONE;
-  return mw(o.delta![field], { signed: true });
+function powerDelta(option: SwapOption, field: "mw_draw" | "mw_net"): string {
+  if (!hasComparableDelta(option)) return NONE;
+  return mw(option.delta![field], { signed: true });
 }
 
-function raw(o: SwapOption): string | HTMLElement {
-  if (!shown(o)) return NONE;
-  var moved = o.delta!.inputs.filter(function (r: DeltaRow) {
+/** The two largest raw input changes, with the full list in the title. */
+function rawInputDeltaCell(option: SwapOption): string | HTMLElement {
+  if (!hasComparableDelta(option)) return NONE;
+  const moved = option.delta!.inputs.filter(function (r: DeltaRow) {
     return Math.abs(r.delta) >= 0.05;
   });
   if (!moved.length) return "0";
-  var cell = make("span", "");
+  const cell = make("span", "");
   cell.title = moved
     .map(function (r: DeltaRow) {
       return signed(r.delta, perMin) + " " + r.name;
@@ -53,50 +77,52 @@ function raw(o: SwapOption): string | HTMLElement {
   return cell;
 }
 
-function recipeCell(o: SwapOption): HTMLElement {
-  var cell = make("span", "", o.name);
-  if (o.status === "locked" && o.granted_by.length) cell.appendChild(make("span", "dash-sub", "granted by " + o.granted_by.join(", ")));
+function recipeCell(option: SwapOption): HTMLElement {
+  const cell = make("span", "", option.name);
+  if (option.status === "locked" && option.granted_by.length) cell.appendChild(make("span", "dash-sub", "granted by " + option.granted_by.join(", ")));
   return cell;
 }
 
-function settled(): boolean {
-  var alt = bench.alt;
-  return !!alt && !!alt.data && !alt.asked && !pushing() && !!bench.plan && alt.data.rev === bench.plan.rev;
+/** The drawer has re-solved the current head and no push is on its way. */
+function alternatesCurrent(): boolean {
+  const drawer = bench.alternates;
+  return !!drawer && !!drawer.data && !drawer.asked && !hasPushInFlight() && !!bench.plan && drawer.data.rev === bench.plan.rev;
 }
 
-function act(list: Op[], requires?: boolean): void {
-  if (settled()) gesture(list, requires && bench.alt && bench.alt.data ? bench.alt.data.item : undefined);
+/* A burst of clicks lands one version: an option acts only once the drawer is current again. */
+function applyIfCurrent(list: Op[], requires?: boolean): void {
+  if (alternatesCurrent()) applyOps(list, requires && bench.alternates && bench.alternates.data ? bench.alternates.data.item : undefined);
 }
 
-function acts(o: SwapOption): HTMLElement {
-  var box = make("span", "dash-acts");
-  if (o.status === "locked") return box;
-  if (o.banned_by && !o.solved) {
-    box.appendChild(make("span", "dash-sub", "banned by “" + o.banned_by + "”: edit the banned list to change it"));
+function optionActions(option: SwapOption): HTMLElement {
+  const box = make("span", "dash-acts");
+  if (option.status === "locked") return box;
+  if (option.banned_by && !option.solved) {
+    box.appendChild(make("span", "dash-sub", "banned by “" + option.banned_by + "”: edit the banned list to change it"));
     return box;
   }
-  var require = ops(o.require_ops);
-  var ban = ops(o.ban_ops);
-  var free = ops(o.free_ops);
-  if (!o.required && require.length) {
+  const require = namedOps(option.require_ops);
+  const ban = namedOps(option.ban_ops);
+  const free = namedOps(option.free_ops);
+  if (!option.required && require.length) {
     box.appendChild(
       button(
         "require",
         function () {
-          act(require, true);
+          applyIfCurrent(require, true);
         },
-        { title: "make every " + (bench.alt && bench.alt.data ? bench.alt.data.name : "unit") + " in this plan with " + o.name, label: "require " + o.name }
+        { title: "make every " + (bench.alternates && bench.alternates.data ? bench.alternates.data.name : "unit") + " in this plan with " + option.name, label: "require " + option.name }
       )
     );
   }
-  if (!o.banned && ban.length) {
+  if (!option.banned && ban.length) {
     box.appendChild(
       button(
         "ban",
         function () {
-          act(ban);
+          applyIfCurrent(ban);
         },
-        { title: "keep " + o.name + " out of this plan", label: "ban " + o.name }
+        { title: "keep " + option.name + " out of this plan", label: "ban " + option.name }
       )
     );
   }
@@ -105,22 +131,22 @@ function acts(o: SwapOption): HTMLElement {
       button(
         WORDS.letSolverChoose,
         function () {
-          act(free);
+          applyIfCurrent(free);
         },
-        { title: "drop " + o.name + " from the required and banned lists", label: WORDS.letSolverChoose + " for " + o.name }
+        { title: "drop " + option.name + " from the required and banned lists", label: WORDS.letSolverChoose + " for " + option.name }
       )
     );
   }
-  var live = settled();
+  const live = alternatesCurrent();
   box.querySelectorAll("button").forEach(function (b) {
     if (!live) b.setAttribute("aria-disabled", "true");
-    b.setAttribute("data-ctl", "alt:" + o.recipe_id);
+    b.setAttribute("data-ctl", "alt:" + option.recipe_id);
   });
   return box;
 }
 
 function optionTable(options: SwapOption[]): HTMLElement {
-  var columns: Column<SwapOption>[] = [
+  const columns: Column<SwapOption>[] = [
     { key: "recipe", label: "recipe", render: recipeCell },
     {
       key: "status",
@@ -141,14 +167,14 @@ function optionTable(options: SwapOption[]): HTMLElement {
       label: "Δ machines",
       align: "right",
       title: "machines in the whole plan with this recipe required, against now",
-      render: machines,
+      render: machinesDelta,
     },
     {
       key: "draw",
       label: "Δ MW draw",
       align: "right",
       render: function (o) {
-        return power(o, "mw_draw");
+        return powerDelta(o, "mw_draw");
       },
     },
     {
@@ -156,7 +182,7 @@ function optionTable(options: SwapOption[]): HTMLElement {
       label: "Δ MW net",
       align: "right",
       render: function (o) {
-        return power(o, "mw_net");
+        return powerDelta(o, "mw_net");
       },
     },
     {
@@ -164,9 +190,9 @@ function optionTable(options: SwapOption[]): HTMLElement {
       label: "Δ raw",
       align: "right",
       title: "change in raw inputs per minute, the two largest first",
-      render: raw,
+      render: rawInputDeltaCell,
     },
-    { key: "acts", label: "", render: acts },
+    { key: "acts", label: "", render: optionActions },
   ];
   return table(columns, options, {
     rowClass: function (o) {
@@ -177,31 +203,31 @@ function optionTable(options: SwapOption[]): HTMLElement {
 }
 
 export function renderAlternates(parent: HTMLElement, close: () => void): void {
-  var alt = bench.alt;
-  if (!alt) return;
-  var data = alt.data;
-  var name = data ? data.name : "";
-  var heading = name ? "recipes for " + name : "recipes";
-  var drawer = make("aside", "dash-card plan-drawer");
-  drawer.setAttribute("aria-label", heading);
-  var head = make("div", "dash-title");
+  const drawer = bench.alternates;
+  if (!drawer) return;
+  const data = drawer.data;
+  const name = data ? data.name : "";
+  const heading = name ? "recipes for " + name : "recipes";
+  const aside = make("aside", "dash-card plan-drawer");
+  aside.setAttribute("aria-label", heading);
+  const head = make("div", "dash-title");
   head.appendChild(make("h2", "dash-h", heading + (data ? " · v" + data.rev : "")));
-  if (alt.asked) head.appendChild(make("span", "plan-status", "solving v" + alt.asked + "…"));
-  var shut = button("×", close, { title: "close the recipes (Escape)", label: "close the " + heading });
+  if (drawer.asked) head.appendChild(make("span", "plan-status", "solving v" + drawer.asked + "…"));
+  const shut = button("×", close, { title: "close the recipes (Escape)", label: "close the " + heading });
   shut.setAttribute("data-ctl", "alt-close");
   head.appendChild(shut);
-  drawer.appendChild(head);
-  if (alt.error) {
-    error(drawer, "the recipes", alt.error, loadAlternates);
+  aside.appendChild(head);
+  if (drawer.error) {
+    error(aside, "the recipes", drawer.error, loadAlternates);
   } else if (!data) {
-    loading(drawer, "the recipes");
+    loading(aside, "the recipes");
   } else {
-    var body = make("div", settled() ? "" : "plan-stale");
+    const body = make("div", alternatesCurrent() ? "" : "plan-stale");
     if (!data.head_feasible) body.appendChild(make("p", "plan-warning", "v" + data.rev + " is not solvable"));
     if (!data.options.length) empty(body, "no recipe makes " + name);
     else body.appendChild(optionTable(data.options));
     if (data.hidden) body.appendChild(make("p", "dash-note", WORDS.lockedHidden(data.hidden) + " (Settings, spoilers)"));
-    drawer.appendChild(body);
+    aside.appendChild(body);
   }
-  parent.appendChild(drawer);
+  parent.appendChild(aside);
 }

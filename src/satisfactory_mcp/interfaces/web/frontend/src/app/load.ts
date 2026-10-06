@@ -16,6 +16,7 @@ import { inFloorMode, leaveFloors, refilterFloors } from "../map/floors/floors";
 import { clearPrefixed } from "../map/layers";
 import { L } from "../map/leaflet";
 import { map, writeHash } from "../map/map";
+import { createListeners } from "./listeners";
 import { fetcherFor, fetchersOf } from "./registry";
 import { drawRegions } from "../map/regions";
 import { state } from "./state";
@@ -49,22 +50,22 @@ export function loadRegions() {
  *
  * `after` runs inside the same guarded block as the draw rather than in a `.then` of its own,
  * which would be a microtask later and would need a guard of its own. */
-function run(fetcher: Registered): void {
-  var epoch = state.epoch;
-  var live = function () {
+function runFetch(fetcher: Registered): void {
+  const epoch = state.epoch;
+  const live = function () {
     return epoch === state.epoch;
   };
   get<ApiError>(fetcher.query ? (`${fetcher.path}?${fetcher.query()}` as ApiUrl) : fetcher.path)
     .then(function (body) {
       if (!live()) return;
-      if (fetcher.settles) busy(false);
+      if (fetcher.settles) markSwitching(false);
       fetcher.draw(body);
       if (fetcher.refilters) refilterFloors();
       if (fetcher.after) fetcher.after();
     })
     .catch(function (e) {
       if (!live()) return;
-      if (fetcher.settles) busy(false);
+      if (fetcher.settles) markSwitching(false);
       clearPrefixed(fetcher.clears);
       if (fetcher.failed) fetcher.failed();
       fail(fetcher.label + ": " + friendlyError(e));
@@ -72,35 +73,35 @@ function run(fetcher: Registered): void {
 }
 
 export function loadStatic(): void {
-  fetchersOf("static").forEach(run);
+  fetchersOf("static").forEach(runFetch);
 }
 
 export function loadLive(): void {
   dropToken();
-  fetchersOf("live").forEach(run);
+  fetchersOf("live").forEach(runFetch);
 }
 
 /** One registered fetch on its own, guarded and cleared exactly as its wave would have done
  *  it, for the caller that wants a single layer outside both waves. Nothing happens if no
  *  feature claimed this path -- which is what main.ts's FEATURES block prevents. */
 export function loadOne(path: ApiUrl): void {
-  var fetcher = fetcherFor(path);
-  if (fetcher) run(fetcher);
+  const fetcher = fetcherFor(path);
+  if (fetcher) runFetch(fetcher);
 }
 
 /* A switch in progress is marked on screen -- header says so, map dims -- because the old
  * world's layers stay visible until the new responses land, and an unmarked blend of two
  * worlds reads as data. Cleared when this epoch's settling fetch lands, either way. */
-function busy(on: boolean): void {
-  var container = el("map");
+function markSwitching(on: boolean): void {
+  const container = el("map");
   if (on) L.DomUtil.addClass(container, "busy");
   else L.DomUtil.removeClass(container, "busy");
 }
 
-var reloaded: Array<() => void> = [];
+var reloadListeners = createListeners();
 
 export function onReload(listener: () => void): void {
-  reloaded.push(listener);
+  reloadListeners.on(listener);
 }
 
 export function reload(note?: string): void {
@@ -112,14 +113,12 @@ export function reload(note?: string): void {
   if (inFloorMode()) leaveFloors();
   // The header's tooltip is a claim about the previous world too, and it outlives the switch
   // by the whole length of a 3 s parse if it is not replaced here alongside the text.
-  var loading = note || "loading…";
+  const loading = note || "loading…";
   el("summary").textContent = loading;
   el("summary").title = loading;
-  busy(true);
+  markSwitching(true);
   writeHash();
   loadStatic();
   loadLive();
-  reloaded.forEach(function (listener) {
-    listener();
-  });
+  reloadListeners.emit();
 }

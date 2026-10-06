@@ -12,43 +12,43 @@ import type { AskRow } from "../api/shapes";
 
 var order: SortState = { key: "ask", desc: true };
 
-function stateChip(a: AskRow): HTMLElement {
-  if (a.state === "answered" && a.answered !== null) {
-    return chip(ASK_STATE.answered + " " + timeOfDay(a.answered), "muted", a.answered_by ? "marked answered by " + a.answered_by : "");
+function stateChip(ask: AskRow): HTMLElement {
+  if (ask.state === "answered" && ask.answered !== null) {
+    return chip(ASK_STATE.answered + " " + timeOfDay(ask.answered), "muted", ask.answered_by ? "marked answered by " + ask.answered_by : "");
   }
-  if (a.state === "seen" && a.seen !== null) {
-    return chip(ASK_STATE.seen + " " + timeOfDay(a.seen), "muted", a.seen_by ? "read by " + a.seen_by : "");
+  if (ask.state === "seen" && ask.seen !== null) {
+    return chip(ASK_STATE.seen + " " + timeOfDay(ask.seen), "muted", ask.seen_by ? "read by " + ask.seen_by : "");
   }
-  return chip(ASK_STATE.open || a.state, "muted", "queued " + timeOfDay(a.created) + "; paste " + a.id + " into chat");
+  return chip(ASK_STATE.open || ask.state, "muted", "queued " + timeOfDay(ask.created) + "; paste " + ask.id + " into chat");
 }
 
-function questionCell(a: AskRow): HTMLElement {
-  var cell = make("span", "", a.text);
-  if (!a.answer) return cell;
-  var said = make("span", "ask-answer", "answer: " + a.answer);
-  said.title = a.answer;
+function questionCell(ask: AskRow): HTMLElement {
+  const cell = make("span", "", ask.text);
+  if (!ask.answer) return cell;
+  const said = make("span", "ask-answer", "answer: " + ask.answer);
+  said.title = ask.answer;
   cell.appendChild(said);
   return cell;
 }
 
-function aboutCell(a: AskRow, planKey: string): HTMLElement {
-  var plan = a.about.plan;
-  if (a.about.kind === "plan" && plan && a.plan_name && plan !== planKey) {
-    var named = make("span", "ask-about", "plan ");
-    named.appendChild(link("planner/" + plan, "“" + a.plan_name + "”"));
+function aboutCell(ask: AskRow, planKey: string): HTMLElement {
+  const plan = ask.about.plan;
+  if (ask.about.kind === "plan" && plan && ask.plan_name && plan !== planKey) {
+    const named = make("span", "ask-about", "plan ");
+    named.appendChild(link("planner/" + plan, "“" + ask.plan_name + "”"));
     return named;
   }
-  var cell = make("span", "ask-about", askLabel(a.about));
-  if (!plan || plan === planKey || a.about.kind === "plan") return cell;
+  const cell = make("span", "ask-about", askLabel(ask.about));
+  if (!plan || plan === planKey || ask.about.kind === "plan") return cell;
   cell.appendChild(document.createTextNode(" in "));
-  if (a.plan_name) cell.appendChild(link("planner/" + plan, "“" + a.plan_name + "”"));
+  if (ask.plan_name) cell.appendChild(link("planner/" + plan, "“" + ask.plan_name + "”"));
   else cell.appendChild(make("span", "dash-muted", "a forgotten plan"));
   return cell;
 }
 
-function actions(a: AskRow): HTMLElement {
-  var box = make("span", "dash-acts");
-  box.appendChild(copyButton(a.copy, "copy", { title: "copy " + a.id + " and its question for chat", label: "copy " + a.id }));
+function actions(ask: AskRow): HTMLElement {
+  const box = make("span", "dash-acts");
+  box.appendChild(copyButton(ask.copy, "copy", { title: "copy " + ask.id + " and its question for chat", label: "copy " + ask.id }));
   box.appendChild(
     button(
       "delete",
@@ -56,9 +56,9 @@ function actions(a: AskRow): HTMLElement {
         box.querySelectorAll("button").forEach(function (b) {
           b.disabled = true;
         });
-        dropAsk(a);
+        dropAsk(ask);
       },
-      { title: "delete " + a.id + "; its number is not reused", label: "delete " + a.id }
+      { title: "delete " + ask.id + "; its number is not reused", label: "delete " + ask.id }
     )
   );
   return box;
@@ -66,23 +66,23 @@ function actions(a: AskRow): HTMLElement {
 
 export function renderAsks(parent: HTMLElement, redraw: () => void, planKey?: string): void {
   loadAsks();
-  var got = askStore();
-  var rows = planKey ? asksFor(planKey) : liveAsks();
-  var card = make("section", "dash-card");
+  const got = askStore();
+  const rows = planKey ? asksFor(planKey) : liveAsks();
+  const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", got.data && rows.length ? "asks · " + counted(rows.length, "ask") : "asks"));
   if (got.error && !got.data) error(card, "the asks", got.error, refetchAsks);
   else if (!got.data) loading(card, "asks");
   else if (!rows.length) empty(card, planKey ? "no asks about this plan yet" : "no asks yet: ask chat from any row of a plan");
   else {
-    var columns: Column<AskRow>[] = [
+    const columns: Column<AskRow>[] = [
       {
         key: "ask",
         label: "ask",
-        sort: function (a) {
-          return a.n;
+        sort: function (ask) {
+          return ask.n;
         },
-        render: function (a) {
-          return a.id;
+        render: function (ask) {
+          return ask.id;
         },
       },
       {
@@ -94,18 +94,18 @@ export function renderAsks(parent: HTMLElement, redraw: () => void, planKey?: st
       {
         key: "about",
         label: "about",
-        sort: function (a) {
-          return askLabel(a.about);
+        sort: function (ask) {
+          return askLabel(ask.about);
         },
-        render: function (a) {
-          return aboutCell(a, planKey || "");
+        render: function (ask) {
+          return aboutCell(ask, planKey || "");
         },
       },
       {
         key: "state",
         label: "state",
-        sort: function (a) {
-          return a.state;
+        sort: function (ask) {
+          return ask.state;
         },
         render: stateChip,
       },

@@ -2,7 +2,7 @@
 
 import { button, subTabs } from "../../kit/dashkit";
 import { hashFor } from "../../map/map";
-import { pinThis } from "../../chat/pins";
+import { createPin } from "../../chat/pins";
 import { pushDash } from "../../app/nav";
 import { WORDS } from "../../kit/words";
 import { requestRender } from "../actions";
@@ -50,7 +50,7 @@ export function factoryPinButton(name: string): HTMLButtonElement {
   return button(
     WORDS.pin,
     function () {
-      pinThis("factory", { factory: name });
+      createPin("factory", { factory: name });
     },
     { title: "pin this factory and copy its pin:N for chat", label: "pin " + name }
   );

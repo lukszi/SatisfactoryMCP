@@ -4,7 +4,7 @@
 import { button, checkbox, chip, empty, idChip } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { bytes, isoDate } from "../../kit/format";
-import { mapDetails, mapState, staleWhy, staleWord } from "../../app/map-types";
+import { mapTypeAxes, mapRegistry, staleReasons, staleLabel } from "../../app/map-types";
 import { requestBaseMode } from "../../map/tiles";
 import { leaveDashThen } from "../actions";
 import { confirmingOn, inlineConfirm, openConfirm, redraw, refused, submit, write } from "./maps-actions";
@@ -20,7 +20,7 @@ function rerender(row: MapTypeBody): void {
   const pending = row.freshness.rerender;
   let chain: Promise<void> = Promise.resolve();
   if (pending && pending.needs.indexOf("heightfield") >= 0) chain = submit("heightmap", {}, "", null);
-  const body = mapState.body;
+  const body = mapRegistry.body;
   const size = row.size_px || 32768;
   const options =
     row.kind === "artwork"
@@ -72,21 +72,21 @@ function nameCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
   if (row.default) title.appendChild(chip("default", "ok"));
   if (row.status !== "ready") title.appendChild(chip(row.status, row.status === "failed" ? "bad" : "muted"));
   cell.appendChild(title);
-  cell.appendChild(make("div", "dash-sub", mapDetails(row) + " · data/local/" + row.dir.replace(/^\.$/, "")));
+  cell.appendChild(make("div", "dash-sub", mapTypeAxes(row) + " · data/local/" + row.dir.replace(/^\.$/, "")));
   return cell;
 }
 
 function freshnessCell(row: MapTypeBody): HTMLElement {
   const cell = make("div", "maps-fresh");
-  const stale = staleWord(row);
+  const stale = staleLabel(row);
   if (stale) {
-    const amber = chip(stale, "muted", staleWhy(row));
+    const amber = chip(stale, "muted", staleReasons(row));
     amber.classList.add("maps-stale");
     cell.appendChild(amber);
   }
   if (row.freshness.rerender) cell.appendChild(chip("re-render available", "muted", row.freshness.rerender.text));
   if (row.freshness.restyle) cell.appendChild(chip("newer palette", "muted"));
-  if (stale) cell.appendChild(make("div", "dash-sub", staleWhy(row)));
+  if (stale) cell.appendChild(make("div", "dash-sub", staleReasons(row)));
   if (row.freshness.incomplete) cell.title = "provenance incomplete: this map was drawn before its sidecar recorded every input";
   return cell;
 }

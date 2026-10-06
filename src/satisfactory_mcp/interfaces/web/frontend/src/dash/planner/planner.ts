@@ -1,8 +1,8 @@
-/* The Planner tab: mounting, following chat, and the focus heartbeat. See
+/* The Planner tab: mounting, redrawing without stepping on an edit, and following chat. See
  * docs/planner_slice_contract.md §12. */
 
-import { get, onToken, send } from "../../api/client";
-import { askOpen, closeBar, onAsks, renderAskBar, settleAskFocus } from "../../chat/asks";
+import { get } from "../../api/client";
+import { isAskBarOpen, closeBar, onAsks, renderAskBar, settleAskFocus } from "../../chat/asks";
 import { loading } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { keepFocus } from "../../kit/focus";
@@ -10,92 +10,59 @@ import { onReload } from "../../app/load";
 import { dashParts, go } from "../../app/nav";
 import { onVitals } from "../../app/vitals";
 import { renderBench } from "./planner-bench";
-import {
-  actorWord,
-  bench,
-  changed,
-  dropFeeders,
-  followHead,
-  forgetSolves,
-  hideAlternates,
-  inbox,
-  loadAlternates,
-  loadItems,
-  loadTrack,
-  onBench,
-  openPlan,
-  pendingFocus,
-  redoLast,
-  reset,
-  resyncHead,
-  sav,
-  showAlternates,
-  stageHeadroom,
-  trackDash,
-  undoLast,
-  viewRev,
-} from "./planner-core";
+import { altDash, openPlanKey, parsePlannerAddress, trackDash } from "./planner-address";
+import { dropFeeders, forgetSolves, hideAlternates, loadAlternates, loadTrack, openRevision, showAlternates, stageHeadroom } from "./planner-reads";
+import { actorWord, bench, changed, inbox, loadItems, onBench, pendingFocus, resetBench } from "./planner-state";
+import { followHead, openPlan, redoLast, resyncHead, undoLast } from "./planner-writes";
+import { scheduleFocus, wireFocusReports } from "./planner-focus";
 import { loadActivity } from "./planner-history";
-import { loadList, planTitle, renderList } from "./planner-list";
+import { renderList } from "./planner-list";
+import { loadList, planTitle } from "./planner-plan-index";
 import { onPins } from "../../chat/pins";
 import { clearPick } from "./planner-result";
 import { showGhost } from "./planner-site";
 import { focusStartup, revealStage, settleTrackFocus } from "./planner-track";
 import { onBiomass } from "../power-ledger";
-import { onSelect, selected, selectionRef } from "../../app/selection";
 import { onSetting, settingChoice, settingNumber, settingOn } from "../../app/settings";
-import { state } from "../../app/state";
+import { isSincePageOpened, state } from "../../app/state";
 import { notify, offer } from "../../kit/toast";
 import { objectiveText } from "../../kit/words";
 
-import type { ActivityResponse, FocusResponse, PlansResponse } from "../../api/shapes";
-import type { ActivityEvent, PlansEvent, Selection } from "./planner-core";
+import type { ActivityResponse, FocusSelection, PlansResponse } from "../../api/shapes";
+import type { PlannerAddress } from "./planner-address";
+import type { ActivityEvent, PlansEvent } from "./planner-state";
 
-var FOCUS_DEBOUNCE_MS = 1000;
-var HEARTBEAT_MS = 15000;
+var FORM_FIELD = /^(INPUT|TEXTAREA|SELECT)$/;
 
 var root = make("div", "plan-root");
-var mounted: string | null = null;
-var held: Array<() => void> = [];
-var heldDraw = false;
-var seen: Record<string, boolean> = {};
-var heard = 0;
-var focusTimer = 0;
+var mountedKey: string | null = null;
+var heldActions: Array<() => void> = [];
+var drawPending = false;
+var seenActivityIds: Record<string, boolean> = {};
+var lastActivityTs = 0;
 var drawTimer = 0;
-var pressed = false;
-var refocus = "";
-var focusSig = "";
-var viewSent: string | null = null;
-var startupFocus = false;
-var stageReveal = 0;
+var pointerDown = false;
+var refocusCtl = "";
+var lastFocusSignature = "";
+var focusStartupPending = false;
+var stageToReveal = 0;
 
-interface Address {
-  key: string;
-  view: number;
-  alt: string;
-  track: boolean;
-  site: boolean;
-  stage: number;
+/** One chat activity the page may follow, and whether the follow setting only offers it. */
+interface Followed {
+  entry: ActivityEvent;
+  who: string;
+  args: Record<string, unknown>;
+  toastsOnly: boolean;
 }
 
 function powerDefaults(): string {
   return settingNumber("paybackHours") + "|" + String(settingOn("overclockLast"));
 }
 
-function parts(at: string): Address {
-  var rest = dashParts("planner/" + at).rest;
-  var key = rest[0] || "";
-  var m = /^v(\d+)$/.exec(rest[1] || "");
-  var alt = rest[1] === "alt" && rest[2] ? rest.slice(2).join("/") : "";
-  var track = rest[1] === "track";
-  var stage = track && /^\d+$/.test(rest[2] || "") ? Number(rest[2]) : 0;
-  return { key: key, view: m ? Number(m[1]) : 0, alt: alt, track: track, site: rest[1] === "site", stage: stage };
-}
-
-function syncTab(wanted: Address): void {
-  if (wanted.alt) return;
+function syncTab(wanted: PlannerAddress): void {
+  if (wanted.alternatesItem) return;
   if (wanted.track) {
-    var entering = bench.tab !== "track";
+    const entering = bench.tab !== "track";
     bench.tab = "track";
     bench.track.stage = wanted.stage;
     if (entering) loadTrack();
@@ -104,126 +71,135 @@ function syncTab(wanted: Address): void {
 }
 
 function trackShowing(): boolean {
-  return !!subject() && bench.tab === "track" && !!bench.plan && !bench.view;
+  return !!openPlanKey() && bench.tab === "track" && !!bench.plan && !bench.viewedRev;
 }
 
-function subject(): string | null {
-  var at = dashParts();
-  if (at.tab !== "planner") return null;
-  return parts(at.subject).key;
-}
-
-function altDash(key: string, item: string): string {
-  return "planner/" + key + "/alt/" + item;
-}
-
-function goAlt(plan: string, at: string): void {
-  var switching = subject() === plan && dashParts().rest[1] === "alt";
-  if (!switching) bench.altBack = false;
+function goToAlternates(plan: string, at: string): void {
+  const switching = openPlanKey() === plan && dashParts().rest[1] === "alt";
+  if (!switching) bench.alternatesCloseGoesBack = false;
   go(at, switching);
 }
 
 function closeAlternates(): void {
-  var back = bench.altBack && dashParts().rest[1] === "alt";
-  refocus = hideAlternates();
+  const back = bench.alternatesCloseGoesBack && dashParts().rest[1] === "alt";
+  refocusCtl = hideAlternates();
   if (back) history.back();
   else go(bench.tab === "track" ? trackDash(bench.key, bench.track.stage) : "planner/" + bench.key, true);
   changed();
 }
 
+function isFormField(el: Element | null): boolean {
+  return !!el && (FORM_FIELD.test(el.tagName) || (el as HTMLElement).isContentEditable);
+}
+
+/** An edit is open: a field elsewhere has focus, or a planner field holds an unsaved value. */
 function typing(): boolean {
-  var active = document.activeElement as HTMLInputElement | null;
-  if (!active || !/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return false;
+  const active = document.activeElement as HTMLInputElement | null;
+  if (!active || !FORM_FIELD.test(active.tagName)) return false;
   if (!root.contains(active)) return true;
   return active.tagName !== "SELECT" && active.value !== active.defaultValue;
 }
 
 function inField(): boolean {
-  var active = document.activeElement;
-  return !!active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+  return isFormField(document.activeElement);
 }
 
-function hint(): void {
-  var line = root.querySelector(".plan-held");
-  if (line) line.textContent = held.length || heldDraw ? "an update is waiting: finish the edit to see it" : "";
+function showHeldHint(): void {
+  const line = root.querySelector(".plan-held");
+  if (line) line.textContent = heldActions.length || drawPending ? "an update is waiting: finish the edit to see it" : "";
 }
 
 function whenIdle(action: () => void): void {
   if (typing()) {
-    held.push(action);
-    hint();
+    heldActions.push(action);
+    showHeldHint();
   } else action();
 }
 
-function flush(): void {
+function runHeldActions(): void {
   if (typing()) return;
-  var actions = held;
-  held = [];
+  const actions = heldActions;
+  heldActions = [];
   actions.forEach(function (action) {
     action();
   });
-  if (heldDraw) draw();
+  if (drawPending) draw();
 }
 
-function select(s: Selection): void {
-  bench.selection = s;
+function selectInPlan(selection: FocusSelection): void {
+  bench.selection = selection;
   changed();
   scheduleFocus();
 }
 
-function later(): void {
+function scheduleDraw(): void {
   clearTimeout(drawTimer);
   drawTimer = window.setTimeout(draw, 0);
 }
 
-function draw(): void {
-  if (!root.isConnected) return;
-  if (pressed || (typing() && root.contains(document.activeElement))) {
-    heldDraw = true;
-    if (!pressed) hint();
-    return;
-  }
-  heldDraw = false;
-  keepFocus(root, function () {
-    root.textContent = "";
-    renderAskBar(root);
-    if (mounted) renderBench(root, select, closeAlternates);
-    else renderList(root);
-  });
-  settleAskFocus(root);
-  if (startupFocus && trackShowing() && focusStartup(root)) startupFocus = false;
+function revealTrackTargets(): void {
+  if (focusStartupPending && trackShowing() && focusStartup(root)) focusStartupPending = false;
   settleTrackFocus(root);
-  if (stageReveal && trackShowing() && bench.track.data && !bench.track.asked) {
-    if (!inField() && bench.track.stage === stageReveal) revealStage(root, stageReveal);
-    stageReveal = 0;
+  if (stageToReveal && trackShowing() && bench.track.data && !bench.track.asked) {
+    if (!inField() && bench.track.stage === stageToReveal) revealStage(root, stageToReveal);
+    stageToReveal = 0;
   }
-  var alt = bench.alt;
-  var shut = alt && alt.enter && parts(dashParts().subject).alt === alt.item ? root.querySelector<HTMLElement>('[data-ctl="alt-close"]') : null;
-  if (alt && shut) {
-    alt.enter = false;
+}
+
+function focusCtl(ctl: string): HTMLElement | null {
+  return root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(ctl) + '"]');
+}
+
+function restoreFocus(): void {
+  const drawer = bench.alternates;
+  const shut = drawer && drawer.enter && parsePlannerAddress(dashParts().subject).alternatesItem === drawer.item ? root.querySelector<HTMLElement>('[data-ctl="alt-close"]') : null;
+  if (drawer && shut) {
+    drawer.enter = false;
     shut.focus();
   }
-  var target = pendingFocus.ctl ? root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(pendingFocus.ctl) + '"]') : null;
+  const target = pendingFocus.ctl ? focusCtl(pendingFocus.ctl) : null;
   if (target || Date.now() > pendingFocus.until) pendingFocus.ctl = "";
   if (target) target.focus({ preventScroll: true });
-  if (refocus) {
-    var back = root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(refocus) + '"]');
+  if (refocusCtl) {
+    const back = focusCtl(refocusCtl);
     if (back) {
-      refocus = "";
+      refocusCtl = "";
       back.focus({ preventScroll: true });
     }
   }
-  var sig = JSON.stringify([bench.tab, bench.alt ? bench.alt.item : "", bench.selection, bench.plan ? bench.plan.rev : null]);
-  if (sig !== focusSig) {
-    focusSig = sig;
-    scheduleFocus();
+}
+
+function reportFocusIfChanged(): void {
+  const signature = JSON.stringify([bench.tab, bench.alternates ? bench.alternates.item : "", bench.selection, bench.plan ? bench.plan.rev : null]);
+  if (signature === lastFocusSignature) return;
+  lastFocusSignature = signature;
+  scheduleFocus();
+}
+
+function draw(): void {
+  if (!root.isConnected) return;
+  if (pointerDown || (typing() && root.contains(document.activeElement))) {
+    drawPending = true;
+    if (!pointerDown) showHeldHint();
+    return;
   }
-  if (held.length && !typing()) flush();
+  drawPending = false;
+  keepFocus(root, function () {
+    root.textContent = "";
+    renderAskBar(root);
+    if (mountedKey) renderBench(root, selectInPlan, closeAlternates);
+    else renderList(root);
+  });
+  settleAskFocus(root);
+  revealTrackTargets();
+  restoreFocus();
+  reportFocusIfChanged();
+  if (heldActions.length && !typing()) runHeldActions();
 }
 
 export function renderPlanner(body: HTMLElement, at: string): void {
-  var wanted = parts(at);
-  var key = wanted.key;
+  const wanted = parsePlannerAddress(at);
+  const key = wanted.key;
   if (!state.world) {
     body.textContent = "";
     loading(body, "the world");
@@ -232,82 +208,36 @@ export function renderPlanner(body: HTMLElement, at: string): void {
   if (root.parentNode !== body) {
     body.textContent = "";
     body.appendChild(root);
-    mounted = null;
+    mountedKey = null;
   }
   loadItems();
   if (bench.world !== state.world) {
-    reset(bench.key);
-    mounted = null;
+    resetBench(bench.key);
+    mountedKey = null;
   }
-  if (key !== mounted) {
-    mounted = key;
+  if (key !== mountedKey) {
+    mountedKey = key;
     if (key) openPlan(key);
     else {
-      reset("");
+      resetBench("");
       loadList();
       loadActivity();
     }
     scheduleFocus();
   }
   if (key) syncTab(wanted);
-  if (key && bench.view !== wanted.view) viewRev(wanted.view);
-  if (key && wanted.alt) showAlternates(wanted.alt);
-  else if (bench.alt) refocus = hideAlternates();
+  if (key && bench.viewedRev !== wanted.viewedRev) openRevision(wanted.viewedRev);
+  if (key && wanted.alternatesItem) showAlternates(wanted.alternatesItem);
+  else if (bench.alternates) refocusCtl = hideAlternates();
   draw();
 }
 
-function shared(): Selection | null {
-  var s = selected();
-  return s ? { kind: s.kind, label: s.label, ref: selectionRef(s) } : null;
-}
-
-function altSelection(): Selection | null {
-  var alt = bench.alt;
-  if (!alt) return null;
-  return { kind: "item", label: alt.data ? alt.data.name : alt.item, ref: alt.item };
-}
-
-function focusBody(): Record<string, unknown> {
-  var at = subject();
-  var planner = at !== null;
-  var cut = state.dash.indexOf("/");
-  return {
-    view: state.dash === "" ? "map" : planner ? "planner" : "dashboard",
-    dash: state.dash,
-    plan: planner && at && bench.key === at ? at : null,
-    rev: planner && at && bench.plan ? bench.plan.rev : null,
-    tab: planner ? (at ? (bench.tab === "graph" || bench.tab === "track" || bench.tab === "site" ? bench.tab : "workbench") : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
-    selection: planner && at ? altSelection() || bench.selection : shared(),
-    follow: settingChoice("follow"),
-    sav: state.saveToken || sav(),
-  };
-}
-
-function sendFocus(): void {
-  if (!state.world) return;
-  send<FocusResponse>("PUT", "/api/ui/focus", focusBody()).catch(function () {});
-}
-
-export function viewFocus(): void {
-  if (!state.world || state.dash === viewSent) return;
-  viewSent = state.dash;
-  clearTimeout(focusTimer);
-  sendFocus();
-}
-
-function scheduleFocus(): void {
-  clearTimeout(focusTimer);
-  focusTimer = window.setTimeout(sendFocus, FOCUS_DEBOUNCE_MS);
-}
-
-function news(ts: number): boolean {
-  return ts * 1000 >= state.openedAtMs - 2000;
-}
+/* ------------------------------------------------------------- following chat */
 
 export function onPlansEvent(event: PlansEvent): void {
   if (event.world !== state.world) return;
   whenIdle(function () {
-    if (subject() === "") {
+    if (openPlanKey() === "") {
       loadList();
       loadActivity();
     }
@@ -318,20 +248,19 @@ export function onPlansEvent(event: PlansEvent): void {
 function openFromChat(entry: ActivityEvent): void {
   inbox.card = entry;
   if (entry.plan && !planTitle(entry.plan)) loadList();
-  var at = subject();
-  if (at) changed();
+  if (openPlanKey()) changed();
   else go("planner");
 }
 
-function named(key: string, given: string | null | undefined, then: (name: string) => void): void {
-  var known = given || (bench.key === key && bench.plan ? bench.plan.name : "") || planTitle(key);
+function withPlanName(key: string, given: string | null | undefined, then: (name: string) => void): void {
+  const known = given || (bench.key === key && bench.plan ? bench.plan.name : "") || planTitle(key);
   if (known) {
     then(known);
     return;
   }
   get<PlansResponse>("/api/plans").then(
     function (data) {
-      var row = data.index.filter(function (r) {
+      const row = data.index.filter(function (r) {
         return r.key === key;
       })[0];
       then(row ? row.name : "a plan");
@@ -342,105 +271,117 @@ function named(key: string, given: string | null | undefined, then: (name: strin
   );
 }
 
-export function onActivityEvent(entry: ActivityEvent): void {
-  if (entry.world !== state.world || entry.actor.kind === "page" || seen[entry.id]) return;
-  seen[entry.id] = true;
-  if (subject() === "") loadActivity();
-  heard = Math.max(heard, entry.ts);
-  if (!news(entry.ts)) return;
-  var mode = settingChoice("follow");
-  if (mode === "off") return;
-  var who = actorWord(entry.actor);
-  var args = entry.args || {};
-  if (entry.kind === "plan.view" && entry.plan && args.view === "track") {
-    var tracked = entry.plan;
-    var stage = typeof args.stage === "number" && args.stage >= 1 ? Math.floor(args.stage) : 0;
-    var there = trackDash(tracked, stage);
-    var startup = args.section === "startup";
-    var open = function () {
-      startupFocus = startup;
-      stageReveal = startup ? 0 : stage;
-      if (state.dash === there) changed();
-      else go(there);
-    };
-    if (mode === "toasts") {
-      named(tracked, entry.name, function (called) {
-        offer(who + " looked at the track of “" + called + "”", "open", open);
-      });
-    } else {
-      whenIdle(function () {
-        var moving = state.dash !== there;
-        open();
-        if (moving) {
-          named(tracked, entry.name, function (called) {
-            notify(who + " opened the track of “" + called + "” (Settings, follow chat)");
-          });
-        }
-      });
-    }
+function followTrackView(plan: string, followed: Followed): void {
+  const args = followed.args;
+  const stage = typeof args.stage === "number" && args.stage >= 1 ? Math.floor(args.stage) : 0;
+  const there = trackDash(plan, stage);
+  const startup = args.section === "startup";
+  const open = function () {
+    focusStartupPending = startup;
+    stageToReveal = startup ? 0 : stage;
+    if (state.dash === there) changed();
+    else go(there);
+  };
+  if (followed.toastsOnly) {
+    withPlanName(plan, followed.entry.name, function (called) {
+      offer(followed.who + " looked at the track of “" + called + "”", "open", open);
+    });
     return;
   }
-  if (entry.kind === "plan.view" && entry.plan && args.view === "site") {
-    var sited = entry.plan;
-    var spot = "planner/" + sited + "/site";
-    var look = function () {
-      showGhost(sited, args, who);
-      if (state.dash !== spot) go(spot);
-    };
-    if (mode === "toasts") {
-      named(sited, entry.name, function (called) {
-        offer(who + " looked at a spot for “" + called + "”", "open", look);
-      });
-    } else whenIdle(look);
-    return;
-  }
-  if (entry.kind === "plan.view" && entry.plan && args.view === "alternates" && typeof args.item === "string") {
-    var plan = entry.plan;
-    var at = altDash(plan, args.item);
-    if (mode === "toasts") {
-      offer(who + " " + entry.text, "open", function () {
-        goAlt(plan, at);
-      });
-    } else if (state.dash !== at) {
-      whenIdle(function () {
-        goAlt(plan, at);
-      });
-    }
-    return;
-  }
-  if (entry.kind === "plan.solve") {
-    if (mode === "toasts") {
-      offer(who + " " + objectiveText(entry.text), "open", function () {
-        openFromChat(entry);
-      });
-    } else {
-      whenIdle(function () {
-        openFromChat(entry);
-      });
-    }
-  } else if (entry.kind === "plan.view" && entry.plan) {
-    var key = entry.plan;
-    if (mode === "toasts") {
-      offer(who + ": " + entry.text, "open", function () {
-        go("planner/" + key);
-      });
-    } else if (subject() !== key) {
-      whenIdle(function () {
-        notify(who + " opened “" + (entry.name || planTitle(key) || "a plan") + "” (Settings, follow chat)");
-        go("planner/" + key);
-      });
-    }
+  whenIdle(function () {
+    const moving = state.dash !== there;
+    open();
+    if (!moving) return;
+    withPlanName(plan, followed.entry.name, function (called) {
+      notify(followed.who + " opened the track of “" + called + "” (Settings, follow chat)");
+    });
+  });
+}
+
+function followSiteView(plan: string, followed: Followed): void {
+  const spot = "planner/" + plan + "/site";
+  const look = function () {
+    showGhost(plan, followed.args, followed.who);
+    if (state.dash !== spot) go(spot);
+  };
+  if (followed.toastsOnly) {
+    withPlanName(plan, followed.entry.name, function (called) {
+      offer(followed.who + " looked at a spot for “" + called + "”", "open", look);
+    });
+  } else whenIdle(look);
+}
+
+function followAlternatesView(plan: string, item: string, followed: Followed): void {
+  const at = altDash(plan, item);
+  if (followed.toastsOnly) {
+    offer(followed.who + " " + followed.entry.text, "open", function () {
+      goToAlternates(plan, at);
+    });
+  } else if (state.dash !== at) {
+    whenIdle(function () {
+      goToAlternates(plan, at);
+    });
   }
 }
 
+function followSolve(followed: Followed): void {
+  const entry = followed.entry;
+  if (followed.toastsOnly) {
+    offer(followed.who + " " + objectiveText(entry.text), "open", function () {
+      openFromChat(entry);
+    });
+  } else {
+    whenIdle(function () {
+      openFromChat(entry);
+    });
+  }
+}
+
+function followPlanView(plan: string, followed: Followed): void {
+  const entry = followed.entry;
+  if (followed.toastsOnly) {
+    offer(followed.who + ": " + entry.text, "open", function () {
+      go("planner/" + plan);
+    });
+  } else if (openPlanKey() !== plan) {
+    whenIdle(function () {
+      notify(followed.who + " opened “" + (entry.name || planTitle(plan) || "a plan") + "” (Settings, follow chat)");
+      go("planner/" + plan);
+    });
+  }
+}
+
+export function onActivityEvent(entry: ActivityEvent): void {
+  if (entry.world !== state.world || entry.actor.kind === "page" || seenActivityIds[entry.id]) return;
+  seenActivityIds[entry.id] = true;
+  if (openPlanKey() === "") loadActivity();
+  lastActivityTs = Math.max(lastActivityTs, entry.ts);
+  if (!isSincePageOpened(entry.ts)) return;
+  const mode = settingChoice("follow");
+  if (mode === "off") return;
+  const followed: Followed = { entry: entry, who: actorWord(entry.actor), args: entry.args || {}, toastsOnly: mode === "toasts" };
+  if (entry.kind === "plan.solve") {
+    followSolve(followed);
+    return;
+  }
+  const plan = entry.plan;
+  if (entry.kind !== "plan.view" || !plan) return;
+  const view = followed.args.view;
+  const item = followed.args.item;
+  if (view === "track") followTrackView(plan, followed);
+  else if (view === "site") followSiteView(plan, followed);
+  else if (view === "alternates" && typeof item === "string") followAlternatesView(plan, item, followed);
+  else followPlanView(plan, followed);
+}
+
 export function resyncPlanner(replay: (entries: ActivityEvent[]) => void): void {
-  if (subject() === "") {
+  if (openPlanKey() === "") {
     loadList();
     loadActivity();
   }
   resyncHead();
   if (trackShowing()) loadTrack();
-  var since = Math.max(heard, state.openedAtMs / 1000);
+  const since = Math.max(lastActivityTs, state.openedAtMs / 1000);
   get<ActivityResponse>(`/api/activity?since=${since}`)
     .then(function (body) {
       replay(
@@ -458,7 +399,7 @@ export function resyncPlanner(replay: (entries: ActivityEvent[]) => void): void 
 
 export function onSaveEvent(): void {
   if (bench.plan) forgetSolves();
-  if (bench.alt) loadAlternates();
+  if (bench.alternates) loadAlternates();
   dropFeeders();
   if (trackShowing()) loadTrack();
 }
@@ -474,80 +415,72 @@ export function onNotesEvent(): void {
   if (trackShowing() && bench.plan && bench.plan.factory) loadTrack();
 }
 
-function escape(event: KeyboardEvent): void {
-  if (event.key !== "Escape" || !root.isConnected || subject() === null) return;
-  if (askOpen()) {
+/* ------------------------------------------------------------------- keys */
+
+function onEscape(event: KeyboardEvent): void {
+  if (event.key !== "Escape" || !root.isConnected || openPlanKey() === null) return;
+  if (isAskBarOpen()) {
     event.preventDefault();
     closeBar();
     return;
   }
-  if (!subject()) return;
-  if (bench.alt) {
+  if (!openPlanKey()) return;
+  if (bench.alternates) {
     event.preventDefault();
     closeAlternates();
   } else if (clearPick()) event.preventDefault();
 }
 
-function keys(event: KeyboardEvent): void {
-  var active = document.activeElement as HTMLElement | null;
-  if (active && (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable)) return;
+function onPlannerKeydown(event: KeyboardEvent): void {
+  if (isFormField(document.activeElement)) return;
   if (event.key === "Escape") {
-    escape(event);
+    onEscape(event);
     return;
   }
   if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
-  if (!subject() || !bench.plan) return;
+  if (!openPlanKey() || !bench.plan) return;
   event.preventDefault();
   if (event.shiftKey) redoLast();
   else undoLast();
 }
 
 function wire(): void {
-  onBench(later);
-  onPins(later);
-  onAsks(later);
+  onBench(scheduleDraw);
+  onPins(scheduleDraw);
+  onAsks(scheduleDraw);
   onBiomass(function () {
     dropFeeders();
     if (trackShowing()) loadTrack();
   });
-  var powerWas = powerDefaults();
+  let powerWas = powerDefaults();
   onSetting(function () {
     if (powerDefaults() === powerWas) return;
     powerWas = powerDefaults();
     if (bench.plan) forgetSolves();
   });
-  var headroomWas = stageHeadroom();
+  let headroomWas = stageHeadroom();
   onSetting(function () {
     if (stageHeadroom() === headroomWas) return;
     headroomWas = stageHeadroom();
     if (trackShowing()) loadTrack();
   });
   onVitals(function () {
-    if (mounted) later();
+    if (mountedKey) scheduleDraw();
   });
   document.addEventListener("pointerdown", function () {
-    pressed = true;
+    pointerDown = true;
   });
   document.addEventListener("pointerup", function () {
     setTimeout(function () {
-      pressed = false;
-      if (heldDraw) draw();
+      pointerDown = false;
+      if (drawPending) draw();
     }, 0);
   });
-  onToken(scheduleFocus);
-  onSetting(scheduleFocus);
-  onSelect(scheduleFocus);
-  document.addEventListener("keydown", keys);
+  wireFocusReports();
+  document.addEventListener("keydown", onPlannerKeydown);
   document.addEventListener("focusout", function () {
-    setTimeout(flush, 0);
+    setTimeout(runHeldActions, 0);
   });
-  window.addEventListener("hashchange", scheduleFocus);
-  document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "visible") scheduleFocus();
-  });
-  setInterval(function () {
-    if (document.visibilityState === "visible") sendFocus();
-  }, HEARTBEAT_MS);
 }
 
 wire();

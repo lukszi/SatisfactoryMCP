@@ -5,7 +5,7 @@ import { get, send } from "../../api/client";
 import { button, chip } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { bytes, duration, timeOfDay } from "../../kit/format";
-import { fetchMaps, mapState } from "../../app/map-types";
+import { fetchMapRegistry, mapRegistry } from "../../app/map-types";
 import { confirmingOn, inlineConfirm, openConfirm, refused, write } from "./maps-actions";
 
 import type { MapJobBody, MapJobDetailResponse, MapJobResponse } from "../../api/shapes";
@@ -49,7 +49,7 @@ function progressBar(fraction: number | null): HTMLElement {
 function cancelJob(job: MapJobBody): void {
   send<MapJobResponse>("DELETE", "/api/maps/jobs/{job}", undefined, job.id)
     .then(function () {
-      fetchMaps();
+      fetchMapRegistry();
     })
     .catch(refused("the job was not cancelled"));
 }
@@ -130,7 +130,7 @@ function queuedJob(job: MapJobBody, card: HTMLElement): void {
 
 /* A finished job that replaces another type offers to make it the default and drop the old. */
 function replaceOffer(job: MapJobBody, card: HTMLElement): void {
-  const body = mapState.body;
+  const body = mapRegistry.body;
   const made = job.produces[0];
   const old = body && body.types.filter(function (type) {
     return type.id === made;
@@ -181,7 +181,7 @@ function finishedJob(job: MapJobBody, card: HTMLElement): void {
 
 export function drawJobs(card: HTMLElement): void {
   card.textContent = "";
-  const body = mapState.body;
+  const body = mapRegistry.body;
   if (!body) return;
   const active = body.jobs.filter(function (job) {
     return job.status === "running" || job.status === "queued";

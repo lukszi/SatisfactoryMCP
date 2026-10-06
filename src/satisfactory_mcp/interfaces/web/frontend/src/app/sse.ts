@@ -6,35 +6,42 @@
 
 import { el } from "../kit/dom";
 import { loadLive, loadOne } from "./load";
-import { onActivity as onAdviceActivity, refetchAdvice } from "../chat/advice";
-import { onActivity as onAskActivity, refetchAsks } from "../chat/asks";
-import { onActivity as onPinActivity, onPlanChange, refetchPins } from "../chat/pins";
+import { refetchAdvice } from "../chat/advice";
+import { refetchAsks } from "../chat/asks";
+import { onPlanChange, refetchPins } from "../chat/pins";
 import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "../dash/planner/planner";
 import { onRenameActivity } from "../dash/factories/rename";
-import { fetchMaps, onMapsEvent } from "./map-types";
+import { fetchMapRegistry, onMapsEvent } from "./map-types";
 import { onSettingsEvent, refetchSharedSettings } from "./shared-settings";
-import { state } from "./state";
+import { isSincePageOpened, state } from "./state";
 import { fail } from "../kit/toast";
 import { onFindActivity } from "../dash/world/world";
 import { refreshWorlds } from "./world-picker";
 
 import type { SettingsResponse } from "../api/shapes";
 import type { MapsEvent } from "./map-types";
-import type { ActivityEvent, PlansEvent } from "../dash/planner/planner-core";
+import type { ActivityEvent, PlansEvent } from "../dash/planner/planner-state";
+
+/* Activity kinds that change a list the page and chat share, and the refetch each one owes. */
+var REFETCH_BY_KIND: [string, () => void][] = [
+  ["pin.", refetchPins],
+  ["ask.", refetchAsks],
+  ["advice.", refetchAdvice],
+];
 
 /* The stream replays the newest event of every kind to each new subscriber, so the first one
  * usually describes a write that happened BEFORE this page opened: not news, and refetching
  * on it would double-load what boot has just loaded. Shared by both listeners, because the
  * replay is a property of the stream rather than of what any one event means. */
 function isNews(event: MessageEvent): boolean {
-  var payload = null;
+  let payload = null;
   try {
     payload = JSON.parse(event.data);
   } catch (ignored) {
     /* a malformed event is treated as news, the safe direction */
   }
-  var at = payload && (payload.mtime || payload.ts);
-  return !(at && at * 1000 < state.openedAtMs - 2000);
+  const at = payload && (payload.mtime || payload.ts);
+  return !at || isSincePageOpened(at);
 }
 
 function parsed<T>(event: MessageEvent): T | null {
@@ -50,18 +57,18 @@ function parsed<T>(event: MessageEvent): T | null {
 var dispatched: Record<string, boolean> = {};
 
 function dispatchActivity(entries: ActivityEvent[]): void {
-  var fresh = entries.filter(function (entry) {
+  const fresh = entries.filter(function (entry) {
     return !dispatched[entry.id];
   });
-  var lastFind = -1;
+  let lastFind = -1;
   fresh.forEach(function (entry, i) {
     if (entry.kind === "world.find" && entry.actor.kind !== "page") lastFind = i;
   });
   fresh.forEach(function (entry, i) {
     dispatched[entry.id] = true;
-    onPinActivity(entry);
-    onAskActivity(entry);
-    onAdviceActivity(entry);
+    REFETCH_BY_KIND.forEach(function (rule) {
+      if (entry.world === state.world && entry.kind.indexOf(rule[0]) === 0) rule[1]();
+    });
     if (entry.kind !== "world.find" || i === lastFind) onFindActivity(entry);
     onRenameActivity(entry);
     onActivityEvent(entry);
@@ -69,22 +76,55 @@ function dispatchActivity(entries: ActivityEvent[]): void {
 }
 
 function showLive(kind: string, text: string, title: string): void {
-  var live = el("live");
+  const live = el("live");
   live.className = "live" + (kind ? " " + kind : "");
   live.title = title;
-  var words = live.querySelector(".live-text");
+  const words = live.querySelector(".live-text");
   if (!words) return;
   if (words.textContent !== text) words.textContent = text;
   words.classList.toggle("dk-hidden", kind === "on");
 }
 
+function blinkLiveDot(): void {
+  const live = el("live");
+  live.classList.add("hit");
+  setTimeout(function () {
+    live.classList.remove("hit");
+  }, 800);
+}
+
+/* The reads that name factories, which a label write renames. */
+function refetchLabelledViews(): void {
+  loadOne("/api/factories");
+  loadOne("/api/factories/health");
+  loadOne("/api/power/circuits");
+}
+
+/* After a gap in the stream nothing it would have said can be assumed, so everything it could
+ * have changed is read again. */
+function resyncAfterGap(): void {
+  refreshWorlds();
+  if (!state.save) {
+    loadLive();
+    onSaveEvent();
+  }
+  refetchLabelledViews();
+  loadOne("/api/plans");
+  refetchPins();
+  refetchAsks();
+  refetchAdvice();
+  refetchSharedSettings();
+  fetchMapRegistry();
+  resyncPlanner(dispatchActivity);
+}
+
 /* One EventSource for the process; a write is an edge trigger and the response is a refetch
  * of what that kind of write can change. The grey dot means connecting, retrying or dead, so
  * its text says which, and losing an ESTABLISHED connection also says so in a toast. */
-export function listen() {
-  var source: EventSource | null = null;
-  var wasOpen = false;
-  var missed = false;
+export function connectLiveEvents() {
+  let source: EventSource | null = null;
+  let wasOpen = false;
+  let missed = false;
   window.addEventListener("pagehide", function () {
     if (!source) return;
     source.close();
@@ -106,46 +146,22 @@ export function listen() {
 
   function wire(es: EventSource) {
     es.onopen = function () {
-      if (missed) resync();
+      if (missed) resyncAfterGap();
       missed = false;
       wasOpen = true;
       showLive("on", "live", "live: watching for save writes");
     };
     es.onerror = function () {
-      var dropped = wasOpen;
+      const dropped = wasOpen;
       missed = missed || dropped;
       wasOpen = false;
       if (missed) showLive("lost", "offline", "live connection lost; retrying (is the server still running?)");
       else showLive("", "connecting…", "connecting to the save watcher…");
       if (dropped) fail("live updates lost; what is on screen may be stale");
     };
-    var resync = function () {
-      refreshWorlds();
-      if (!state.save) {
-        loadLive();
-        onSaveEvent();
-      }
-      loadOne("/api/factories");
-      loadOne("/api/factories/health");
-      loadOne("/api/power/circuits");
-      loadOne("/api/plans");
-      refetchPins();
-      refetchAsks();
-      refetchAdvice();
-      refetchSharedSettings();
-      fetchMaps();
-      resyncPlanner(dispatchActivity);
-    };
-    var blink = function () {
-      var live = el("live");
-      live.classList.add("hit");
-      setTimeout(function () {
-        live.classList.remove("hit");
-      }, 800);
-    };
     es.addEventListener("save", function (event) {
       if (!isNews(event)) return;
-      blink();
+      blinkLiveDot();
       refreshWorlds();
       // A pinned save is pinned: the point of the picker is to hold a view while the game
       // autosaves over the newest. The dot still blinks so the write is not invisible.
@@ -160,36 +176,34 @@ export function listen() {
      * a siting belong to the world rather than to one file in it. */
     es.addEventListener("notes", function (event) {
       if (!isNews(event)) return;
-      blink();
-      loadOne("/api/factories");
-      loadOne("/api/factories/health");
-      loadOne("/api/power/circuits");
+      blinkLiveDot();
+      refetchLabelledViews();
       loadOne("/api/plans");
       refetchPins();
       refetchAdvice();
       onNotesEvent();
     });
     es.addEventListener("plans", function (event) {
-      var data = parsed<PlansEvent>(event);
+      const data = parsed<PlansEvent>(event);
       if (!data || !isNews(event)) return;
-      blink();
+      blinkLiveDot();
       loadOne("/api/plans");
       refetchAdvice();
       onPlanChange(data);
       onPlansEvent(data);
     });
     es.addEventListener("activity", function (event) {
-      var data = parsed<ActivityEvent>(event);
+      const data = parsed<ActivityEvent>(event);
       if (!data || !isNews(event)) return;
       dispatchActivity([data]);
     });
     es.addEventListener("settings", function (event) {
-      var data = parsed<SettingsResponse>(event);
+      const data = parsed<SettingsResponse>(event);
       if (data) onSettingsEvent(data);
     });
     /* State rather than news: the replay of the newest one is how a reload sees a running job. */
     es.addEventListener("maps", function (event) {
-      var data = parsed<MapsEvent>(event);
+      const data = parsed<MapsEvent>(event);
       if (data) onMapsEvent(data);
     });
   }

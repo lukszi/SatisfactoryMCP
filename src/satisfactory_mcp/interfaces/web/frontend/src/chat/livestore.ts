@@ -2,6 +2,7 @@
  * refusal and the one-delete-at-a-time guard. See docs/planner-p4_contract.md §4. */
 
 import { get } from "../api/client";
+import { createListeners } from "../app/listeners";
 import { state } from "../app/state";
 import { friendlyError } from "../kit/toast";
 
@@ -19,23 +20,23 @@ export interface LiveStore<T extends ApiError, R extends Numbered> {
   refetch: () => void;
   load: () => void;
   replace: (row: R) => void;
-  refused: (reason: unknown) => R | null;
-  once: (n: number, run: () => Promise<unknown>) => void;
+  recoverFromConflict: (reason: unknown) => R | null;
+  deleteOnce: (n: number, run: () => Promise<unknown>) => void;
 }
 
-export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath, rows: (data: T) => R[], field: string, fill?: (data: T) => void): LiveStore<T, R> {
-  var data: T | null = null;
-  var error = "";
-  var world = "";
-  var listeners: Array<() => void> = [];
-  var inflight = false;
-  var again = false;
-  var dropping: Record<number, boolean> = {};
+/** `conflictRowField` names the row a 409 answers with; `acceptOverride` takes each fetched
+ *  list instead of `accept`, for a store that draws before it accepts. */
+export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath, rows: (data: T) => R[], conflictRowField: string, acceptOverride?: (data: T) => void): LiveStore<T, R> {
+  let data: T | null = null;
+  let error = "";
+  let world = "";
+  const listeners = createListeners();
+  let inflight = false;
+  let refetchQueued = false;
+  const deletesInFlight: Record<number, boolean> = {};
 
   function notify(): void {
-    listeners.forEach(function (listener) {
-      listener();
-    });
+    listeners.emit();
   }
 
   function accept(next: T): void {
@@ -47,25 +48,25 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
 
   function refetch(): void {
     if (inflight) {
-      again = true;
+      refetchQueued = true;
       return;
     }
     inflight = true;
-    var epoch = state.epoch;
-    var asked = state.world;
-    var done = function () {
+    const epoch = state.epoch;
+    const asked = state.world;
+    const done = function () {
       inflight = false;
-      if (again) {
-        again = false;
+      if (refetchQueued) {
+        refetchQueued = false;
         refetch();
       }
     };
-    var current = function () {
-      return epoch === state.epoch && asked === state.world && !again;
+    const current = function () {
+      return epoch === state.epoch && asked === state.world && !refetchQueued;
     };
     get<T>(path)
       .then(function (got) {
-        if (current()) (fill || accept)(got);
+        if (current()) (acceptOverride || accept)(got);
       })
       .catch(function (reason) {
         if (!current()) return;
@@ -78,8 +79,8 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
 
   function replace(row: R): void {
     if (!data || world !== state.world) return;
-    var list = rows(data);
-    for (var i = 0; i < list.length; i++) if (list[i]!.n === row.n) list[i] = row;
+    const list = rows(data);
+    for (let i = 0; i < list.length; i++) if (list[i]!.n === row.n) list[i] = row;
     notify();
   }
 
@@ -87,9 +88,7 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
     read: function () {
       return world === state.world ? { data: data, error: error } : { data: null, error: "" };
     },
-    on: function (listener) {
-      listeners.push(listener);
-    },
+    on: listeners.on,
     notify: notify,
     accept: accept,
     refetch: refetch,
@@ -97,10 +96,10 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
       if (world !== state.world && !inflight) refetch();
     },
     replace: replace,
-    refused: function (reason) {
-      var err = reason as StatusError;
-      var body = err && (err.body as Record<string, unknown> | undefined);
-      var row = err && err.status === 409 && body ? (body[field] as R | undefined) : undefined;
+    recoverFromConflict: function (reason) {
+      const err = reason as StatusError;
+      const body = err && (err.body as Record<string, unknown> | undefined);
+      const row = err && err.status === 409 && body ? (body[conflictRowField] as R | undefined) : undefined;
       if (row) {
         replace(row);
         return row;
@@ -108,11 +107,11 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
       refetch();
       return null;
     },
-    once: function (n, run) {
-      if (dropping[n]) return;
-      dropping[n] = true;
-      var done = function () {
-        delete dropping[n];
+    deleteOnce: function (n, run) {
+      if (deletesInFlight[n]) return;
+      deletesInFlight[n] = true;
+      const done = function () {
+        delete deletesInFlight[n];
         notify();
       };
       run().then(done, done);

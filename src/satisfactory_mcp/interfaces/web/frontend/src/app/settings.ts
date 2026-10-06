@@ -3,6 +3,7 @@
  * docs/frontend_vision.md §8.6. A `shared` one lives on the server (shared-settings.ts). */
 
 import { WORDS } from "../kit/words";
+import { createListeners } from "./listeners";
 
 interface Base {
   key: string;
@@ -198,7 +199,7 @@ var NOTICE_KEY = "spoilers-off-notice";
 
 var values: Record<string, boolean | string | number> = {};
 
-var listeners: Array<() => void> = [];
+var settingListeners = createListeners();
 
 type Changes = Record<string, boolean | string | number | null>;
 
@@ -216,7 +217,7 @@ function valid(s: Setting, value: unknown): boolean {
 
 function recall(): void {
   try {
-    var saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
     SETTINGS.forEach(function (s) {
       if (valid(s, saved[s.key])) values[s.key] = saved[s.key];
     });
@@ -241,7 +242,7 @@ function find(key: string): Setting | undefined {
 
 function read(key: string): boolean | string | number | undefined {
   if (key in values) return values[key];
-  var found = find(key);
+  const found = find(key);
   return found ? found.fallback : undefined;
 }
 
@@ -258,40 +259,37 @@ export function spoilerQuery(): string {
 }
 
 export function settingChoice(key: string): string {
-  var value = read(key);
+  const value = read(key);
   return typeof value === "string" ? value : "";
 }
 
 export function settingNumber(key: string): number {
-  var value = read(key);
+  const value = read(key);
   return typeof value === "number" ? value : 0;
 }
 
 export function setSetting(key: string, value: boolean | string | number): void {
-  var found = find(key);
+  const found = find(key);
   if (!found || !valid(found, value)) return;
   values[key] = value;
   remember();
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  settingListeners.emit();
   if (found.shared && sharedWriter) sharedWriter({ [found.shared]: value });
 }
 
 export function resetSettings(): void {
-  var cleared: Changes = {};
+  const cleared: Changes = {};
   SETTINGS.forEach(function (s) {
     if (s.shared) cleared[s.shared] = null;
   });
   if (sharedWriter) sharedWriter(cleared);
   values = {};
   remember();
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  settingListeners.emit();
 }
 
-export function spoilerNotice(): boolean {
+/** True once per browser while spoilers were never set: the first visit owes a notice. */
+export function claimSpoilerNotice(): boolean {
   if ("spoilers" in values) return false;
   try {
     if (localStorage.getItem(NOTICE_KEY)) return false;
@@ -303,7 +301,7 @@ export function spoilerNotice(): boolean {
 }
 
 export function onSetting(listener: () => void): void {
-  listeners.push(listener);
+  settingListeners.on(listener);
 }
 
 export function writeSharedWith(writer: (changes: Changes) => void): void {
@@ -312,7 +310,7 @@ export function writeSharedWith(writer: (changes: Changes) => void): void {
 
 /* The shared settings this browser set itself, by server name. */
 export function sharedLocal(): Changes {
-  var out: Changes = {};
+  const out: Changes = {};
   SETTINGS.forEach(function (s) {
     if (s.shared && s.key in values) out[s.shared] = values[s.key]!;
   });
@@ -321,18 +319,15 @@ export function sharedLocal(): Changes {
 
 /* The server's values replace this browser's; listeners hear it only when one moved. */
 export function adoptShared(server: Record<string, unknown>): void {
-  var moved = false;
+  let moved = false;
   SETTINGS.forEach(function (s) {
     if (!s.shared || !valid(s, server[s.shared])) return;
-    var value = server[s.shared] as boolean | string | number;
+    const value = server[s.shared] as boolean | string | number;
     if (read(s.key) !== value) moved = true;
     values[s.key] = value;
   });
   remember();
-  if (moved)
-    listeners.forEach(function (listener) {
-      listener();
-    });
+  if (moved) settingListeners.emit();
 }
 
 recall();

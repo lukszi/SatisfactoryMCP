@@ -22,21 +22,21 @@ var DEBOUNCE_MS = 150;
 
 var timer = 0;
 var hits: Hit[] = [];
-var active = -1;
-var answered = "";
-var opening = "";
+var activeIndex = -1;
+var answeredQuery = "";
+var openFirstHitFor = "";
 
 function input(): HTMLInputElement {
   return el<HTMLInputElement>("search-q");
 }
 
 function recipeSub(r: SearchResponse["recipes"][number]): string {
-  var what = (r.kind === "part" && r.machine) || RECIPE_KIND[r.kind] || r.kind;
+  const what = (r.kind === "part" && r.machine) || RECIPE_KIND[r.kind] || r.kind;
   return what + (r.unlocked === false ? " · locked" : "");
 }
 
 function flatten(data: SearchResponse): Hit[] {
-  var rows: Hit[] = [];
+  const rows: Hit[] = [];
   data.factories.forEach(function (f) {
     rows.push({ group: "factories", text: f.name, sub: counted(f.machines, "machine"), dash: "factories/" + f.name });
   });
@@ -49,8 +49,8 @@ function flatten(data: SearchResponse): Hit[] {
   return rows;
 }
 
-function more(data: SearchResponse): string {
-  var extra: string[] = [];
+function truncationNote(data: SearchResponse): string {
+  const extra: string[] = [];
   if (data.factories_total > data.factories.length) extra.push(count(data.factories_total) + " factories");
   if (data.items_total > data.items.length) extra.push(count(data.items_total) + " items");
   if (data.recipes_total > data.recipes.length) extra.push(count(data.recipes_total) + " recipes");
@@ -67,15 +67,15 @@ function close(): void {
   el("search-hits").hidden = true;
   input().setAttribute("aria-expanded", "false");
   input().removeAttribute("aria-activedescendant");
-  active = -1;
+  activeIndex = -1;
 }
 
-function mark(): void {
-  var rows = el("search-hits").querySelectorAll<HTMLElement>(".search-hit");
+function highlightActiveHit(): void {
+  const rows = el("search-hits").querySelectorAll<HTMLElement>(".search-hit");
   Array.prototype.forEach.call(rows, function (row: HTMLElement, i: number) {
-    row.classList.toggle("on", i === active);
-    row.setAttribute("aria-selected", String(i === active));
-    if (i === active) {
+    row.classList.toggle("on", i === activeIndex);
+    row.setAttribute("aria-selected", String(i === activeIndex));
+    if (i === activeIndex) {
       row.scrollIntoView({ block: "nearest" });
       input().setAttribute("aria-activedescendant", row.id);
     }
@@ -88,19 +88,19 @@ function show(box: HTMLElement): void {
 }
 
 function draw(data: SearchResponse): void {
-  var box = el("search-hits");
+  const box = el("search-hits");
   box.textContent = "";
   hits = flatten(data);
-  active = hits.length ? 0 : -1;
-  var group = "";
+  activeIndex = hits.length ? 0 : -1;
+  let group = "";
   hits.forEach(function (hit, i) {
     if (hit.group !== group) {
       group = hit.group;
-      var label = make("div", "search-group", group);
+      const label = make("div", "search-group", group);
       label.setAttribute("role", "presentation");
       box.appendChild(label);
     }
-    var row = make("div", "search-hit");
+    const row = make("div", "search-hit");
     row.id = "search-hit-" + i;
     row.setAttribute("role", "option");
     row.appendChild(make("span", "search-text", hit.text));
@@ -111,23 +111,23 @@ function draw(data: SearchResponse): void {
     };
     box.appendChild(row);
   });
-  var notes = [hits.length ? "" : "nothing matches", more(data), data.save_note ? friendlyError(data.save_note) : ""];
+  const notes = [hits.length ? "" : "nothing matches", truncationNote(data), data.save_note ? friendlyError(data.save_note) : ""];
   notes.forEach(function (text) {
     if (!text) return;
-    var line = make("div", "search-note", text);
+    const line = make("div", "search-note", text);
     line.setAttribute("role", "presentation");
     box.appendChild(line);
   });
   show(box);
-  mark();
+  highlightActiveHit();
 }
 
-function run(openFirst: boolean): void {
-  var text = input().value.trim();
-  var ticket = latest("search");
-  opening = openFirst ? text : "";
+function runSearch(openFirst: boolean): void {
+  const text = input().value.trim();
+  const ticket = latest("search");
+  openFirstHitFor = openFirst ? text : "";
   if (!text) {
-    answered = "";
+    answeredQuery = "";
     hits = [];
     close();
     return;
@@ -135,35 +135,35 @@ function run(openFirst: boolean): void {
   get<SearchResponse>(`/api/search?q=${encodeURIComponent(text)}&${spoilerQuery()}`)
     .then(function (data) {
       if (!ticket.fresh()) return;
-      answered = text;
+      answeredQuery = text;
       draw(data);
-      if (opening === text && hits.length) open(hits[0]!);
-      opening = "";
+      if (openFirstHitFor === text && hits.length) open(hits[0]!);
+      openFirstHitFor = "";
     })
     .catch(function (error: unknown) {
       if (!ticket.fresh()) return;
-      answered = "";
+      answeredQuery = "";
       hits = [];
-      var box = el("search-hits");
+      const box = el("search-hits");
       box.textContent = "";
       box.appendChild(make("div", "search-note", "search failed: " + friendlyError(error)));
       show(box);
     });
 }
 
-function key(event: KeyboardEvent): void {
-  var box = el("search-hits");
+function onSearchKeydown(event: KeyboardEvent): void {
+  const box = el("search-hits");
   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     if (!hits.length || box.hidden) return;
     event.preventDefault();
-    active = (active + (event.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length;
-    mark();
+    activeIndex = (activeIndex + (event.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length;
+    highlightActiveHit();
   } else if (event.key === "Enter") {
     event.preventDefault();
     window.clearTimeout(timer);
-    var text = input().value.trim();
-    if (text && text === answered && !box.hidden && hits[active]) open(hits[active]!);
-    else if (text) run(true);
+    const text = input().value.trim();
+    if (text && text === answeredQuery && !box.hidden && hits[activeIndex]) open(hits[activeIndex]!);
+    else if (text) runSearch(true);
   } else if (event.key === "Escape") {
     if (!box.hidden) {
       event.preventDefault();
@@ -173,7 +173,7 @@ function key(event: KeyboardEvent): void {
 }
 
 export function wireSearch(): void {
-  var box = input();
+  const box = input();
   box.setAttribute("role", "combobox");
   box.setAttribute("aria-autocomplete", "list");
   box.setAttribute("aria-controls", "search-hits");
@@ -181,17 +181,17 @@ export function wireSearch(): void {
   box.oninput = function () {
     window.clearTimeout(timer);
     timer = window.setTimeout(function () {
-      run(false);
+      runSearch(false);
     }, DEBOUNCE_MS);
   };
-  box.onkeydown = key;
+  box.onkeydown = onSearchKeydown;
   box.onblur = close;
   box.onfocus = function () {
-    if (box.value.trim()) run(false);
+    if (box.value.trim()) runSearch(false);
   };
   document.addEventListener("keydown", function (event) {
-    var target = event.target as HTMLElement | null;
-    var typing = target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA");
+    const target = event.target as HTMLElement | null;
+    const typing = target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA");
     if (event.key === "/" && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       box.focus();

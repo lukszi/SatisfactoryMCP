@@ -4,7 +4,7 @@
 import { send } from "../../api/client";
 import { button } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { adoptMaps, fetchMaps } from "../../app/map-types";
+import { adoptMapRegistry, fetchMapRegistry } from "../../app/map-types";
 import { fail, friendlyError } from "../../kit/toast";
 import { requestRender } from "../actions";
 
@@ -31,14 +31,14 @@ export function openConfirm(key: string): void {
 export function refused(what: string): (reason: unknown) => void {
   return function (reason: unknown) {
     const status = (reason as StatusError).status;
-    if (status === 409 && ((reason as StatusError).body as { stale?: boolean } | undefined)?.stale) fetchMaps();
+    if (status === 409 && ((reason as StatusError).body as { stale?: boolean } | undefined)?.stale) fetchMapRegistry();
     fail(what + ": " + friendlyError(reason));
   };
 }
 
 export function write(method: "PUT" | "PATCH" | "DELETE" | "POST", path: ApiPath, body?: object, subject?: string, query?: string): Promise<MapsResponse> {
   return send<MapsResponse>(method, path, body, subject, query).then(function (reply) {
-    adoptMaps(reply);
+    adoptMapRegistry(reply);
     return reply;
   });
 }
@@ -46,7 +46,7 @@ export function write(method: "PUT" | "PATCH" | "DELETE" | "POST", path: ApiPath
 export function submit(preset: string, options: Record<string, unknown>, label: string, replaces: string | null): Promise<void> {
   return send<MapJobResponse>("POST", "/api/maps/jobs", { preset: preset, options: options, label: label || null, replaces: replaces })
     .then(function () {
-      fetchMaps();
+      fetchMapRegistry();
     })
     .catch(function (reason) {
       fail("the job was not queued: " + friendlyError(reason));

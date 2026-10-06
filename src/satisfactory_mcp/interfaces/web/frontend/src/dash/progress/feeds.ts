@@ -5,7 +5,7 @@ import { pendingNotice } from "../../kit/dashkit";
 import { createListeners } from "../../app/listeners";
 import { loadOne } from "../../app/load";
 import { registerFetch } from "../../app/registry";
-import { onSetting, setSetting, settingOn, spoilerNotice } from "../../app/settings";
+import { onSetting, setSetting, settingOn, claimSpoilerNotice } from "../../app/settings";
 import { offer } from "../../kit/toast";
 
 import type { ApiError, ApiUrl } from "../../api/client";
@@ -77,7 +77,7 @@ registerFetch(fetcher(sloops, 65));
 
 onSetting(changed);
 
-if (spoilerNotice()) {
+if (claimSpoilerNotice()) {
   offer("upcoming milestones, research and locked recipes are now hidden until the save reaches them", "show them", function () {
     setSetting("spoilers", true);
   });
