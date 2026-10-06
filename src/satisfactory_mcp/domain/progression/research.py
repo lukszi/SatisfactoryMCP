@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
+from ...core.gamedata.constants import CAPABILITY_SCHEMATICS
 from ...core.gamedata.model import GameData
 
 if TYPE_CHECKING:
@@ -30,14 +31,8 @@ class ResearchGates:
         "production_boost": "mIsBuildingProductionBoostUnlocked",
     }
 
-    #: MAM tree -> the class-id prefixes its nodes carry. The trees themselves are not in
-    #: Docs.json (the BPD_ResearchTree_* assets do not ship) and the save names only which
-    #: trees are open, so membership is read off the schematic's class id. Nine trees pair
-    #: 1:1 with a prefix of their own name; [UNVERIFIED] the four alien-organism prefixes
-    #: are grouped by elimination -- they are the MAM nodes left once the other nine trees
-    #: have theirs, and no other tree remains for them.
-    #: BPD_ResearchTree_HardDrive_C is deliberately absent: its nodes are EST_Alternate
-    #: schematics won from drives, not EST_MAM rows, and no MAM view lists them.
+    #: MAM tree -> the class-id prefixes its nodes carry, read off the class id because the
+    #: trees do not ship; the alien-organism group is by elimination (save-projection §6.9).
     TREE_PREFIXES: ClassVar[dict[str, tuple[str, ...]]] = {
         "BPD_ResearchTree_AlienOrganisms_C": (
             "Research_ACarapace_",
@@ -123,17 +118,9 @@ class ResearchGates:
         return rung.status
 
     def has_capability(self, name: str) -> bool:
-        """Whether a MAM-gated capability is researched.
-
-        The unlock flag wins when the projection carries one, because it is what the game
-        itself checks. The purchased-schematic set is the fallback, and it is not merely
-        belt-and-braces: the flag is absent from a save taken before the research AND from
-        any projection written before schema 10 extracted it, and those two look identical
-        from here. Falling back keeps an older projection answering correctly instead of
-        reporting every capability locked.
-        """
-        from ...core.gamedata.constants import CAPABILITY_SCHEMATICS
-
+        """Whether a MAM-gated capability is researched: the unlock flag where the projection
+        carries one, else the purchased schematics, since a pre-schema-10 projection lacks
+        the flag exactly as an unresearched save does (save-projection.md §6.9)."""
         flag = self.CAPABILITY_FLAGS.get(name)
         if flag and flag in self._unlock_flags:
             return bool(self._unlock_flags[flag])
@@ -146,8 +133,6 @@ class ResearchGates:
         ``None`` when the capability is already researched, so a caller can treat a
         truthy result as "here is what is still in the way".
         """
-        from ...core.gamedata.constants import CAPABILITY_SCHEMATICS
-
         gate = CAPABILITY_SCHEMATICS.get(name)
         schematic = self.game.schematics.get(gate or "")
         if schematic is None or self.has_capability(name):

@@ -716,6 +716,15 @@ the same reasoning that makes `must build first:` a note and not an error. It fi
 when `sloops > 0`, since a plan spending none is buildable today and a standing warning
 would be noise.
 
+**Which MAM tree a node is in is read off its class id.** The trees themselves are not in
+Docs.json (the `BPD_ResearchTree_*` assets do not ship) and the save names only which trees
+are open, so `ResearchGates.TREE_PREFIXES` maps each tree to the class-id prefixes its nodes
+carry. Nine trees pair 1:1 with a prefix of their own name; the four alien-organism prefixes
+are grouped by elimination — they are the MAM nodes left once the other nine trees have
+theirs — and are `[UNVERIFIED]`. `BPD_ResearchTree_HardDrive_C` is deliberately absent: its
+nodes are `EST_Alternate` schematics won from drives, not `EST_MAM` rows, and no MAM view
+lists them. A node no prefix claims is never reported as locked.
+
 `mam_research` exposes the whole tree: status (DONE / READY / short / BLOCKED), cost,
 what you are short of, prerequisites, and a `LOCKS <capability>` marker on the rows that
 gate a feature rather than merely adding a recipe. Costs are checked against spendable
