@@ -267,8 +267,9 @@ export function renderForm(parent: HTMLElement, body: MapsResponse): void {
   const estimate = make("p", "dash-note maps-estimate", "");
   const go = button(running ? "queue" : "generate", function () {
     go.disabled = true;
-    submit(presetName(), formOptions(), form.label, null).then(function () {
-      form.label = "";
+    submit(presetName(), formOptions(), form.label, null).then(function (ok) {
+      if (ok) form.label = "";
+      else redraw();
     });
   });
   const refresh = function () {
