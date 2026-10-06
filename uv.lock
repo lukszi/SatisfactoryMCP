@@ -1218,6 +1218,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -1253,6 +1254,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "texture2ddecoder", marker = "extra == 'gen'", specifier = "==1.0.6" },
+    { name = "typing-extensions", specifier = ">=4.6" },
     { name = "uvicorn", marker = "extra == 'web'", specifier = ">=0.30" },
     { name = "zstandard", marker = "extra == 'gen'", specifier = "==0.25.0" },
 ]

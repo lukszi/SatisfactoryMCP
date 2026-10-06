@@ -16,6 +16,8 @@ dependencies = [
     "platformdirs>=4.0",
     "scipy>=1.11",
     "numpy>=1.26",
+    # TypeAliasType for core.jsontypes; typing has it only from Python 3.12.
+    "typing-extensions>=4.6",
 ]
 
 [project.scripts]
