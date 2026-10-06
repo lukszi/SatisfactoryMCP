@@ -19,13 +19,7 @@ from typing import NamedTuple
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
 from ...core.saveio import rows as saverows
-from ...core.saveio.schema import (
-    BuildableRecord,
-    PipeNetwork,
-    Projection,
-    SplineSpan,
-    StorageRecord,
-)
+from ...core.saveio.schema import BuildableRecord, PipeNetwork, Projection, StorageRecord
 from ..spatial import geo
 from .flow import BASIS_NONE, PipeFlow
 
@@ -201,9 +195,7 @@ def _arc_cm(p0: list[float], p1: list[float], m0: list[float], m1: list[float]) 
     return total
 
 
-def _tangents(
-    spans: Sequence[SplineSpan] | None, index: int
-) -> tuple[list[float], list[float]] | None:
+def _tangents(spans: object, index: int) -> tuple[list[float], list[float]] | None:
     """One span's ``[leave, arrive]`` pair, or ``None`` where it is straight.
 
     Read guarded on the same terms as the points beside it -- schema 15 emits the column
@@ -222,7 +214,7 @@ def _tangents(
     return vals[:3], vals[3:]
 
 
-def _length_m(line: list[list[float]], spans: Sequence[SplineSpan] | None = None) -> float:
+def _length_m(line: list[list[float]], spans: object = None) -> float:
     """3D drawn length in metres, a riser's vertical leg included: a span with recorded
     tangents is integrated along its spline, one without is its chord."""
     total = 0.0

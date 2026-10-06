@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from typing import TypeAlias, cast
 
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
@@ -120,6 +120,11 @@ def _named_side(roles: list[str]) -> str | None:
     return next((ports.port_direction(r) for r in roles if ports.port_direction(r)), None)
 
 
+def _run_root(joins: UnionFind, piece: int) -> int:
+    """The root piece of ``piece``'s run: ``joins`` holds actor indices only."""
+    return cast(int, joins.find(piece))
+
+
 def _contract_conduits(
     projection: Projection, actors: list[str], roles: list[str]
 ) -> tuple[dict[int, list[int]], Boundary]:
@@ -157,13 +162,13 @@ def _contract_conduits(
     runs: dict[int, list[int]] = defaultdict(list)
     for i, conduit in enumerate(is_conduit):
         if conduit:
-            runs[joins.find(i)].append(i)
+            runs[_run_root(joins, i)].append(i)
     boundary: Boundary = defaultdict(lambda: defaultdict(list))
     for a, b, role_a, role_b in edges:
         if is_conduit[a] and not is_conduit[b]:
-            boundary[joins.find(a)][b].append(role_b)
+            boundary[_run_root(joins, a)][b].append(role_b)
         elif is_conduit[b] and not is_conduit[a]:
-            boundary[joins.find(b)][a].append(role_a)
+            boundary[_run_root(joins, b)][a].append(role_a)
     return runs, boundary
 
 
