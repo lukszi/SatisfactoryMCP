@@ -6,7 +6,8 @@ import statistics
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
-from ...spatial import caves, heightfield
+from ...spatial import heightfield
+from ...spatial.heightfield import cave_masks
 from .record import Siting, footprint_box_cm, ground_provider
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
@@ -68,7 +69,7 @@ def terrain_z(
             return {
                 **out,
                 "z_m": None,
-                "cave": caves.INSIDE,
+                "cave": cave_masks.INSIDE,
                 "reason": reading.cave_note,
             }
         return {
@@ -109,8 +110,8 @@ def terrain_z(
         return {
             **out,
             "z_m": None,
-            "cave": caves.INSIDE,
-            "reason": caves.note(caves.INSIDE, surface_m),
+            "cave": cave_masks.INSIDE,
+            "reason": cave_masks.note(cave_masks.INSIDE, surface_m),
         }
     dominant = max(ground.provenance_pct.items(), key=lambda kv: kv[1])[0]
     terrain_area = areas.get("terrain")
@@ -145,11 +146,11 @@ def _pad_in_cave(
     areas: dict[str, heightfield.Area],
 ) -> bool:
     """Whether the hint puts the pad inside a cave: in a sound volume at its centre, or
-    deeper than ``caves.INSIDE_DEPTH_M`` under every surface median over flagged ground."""
+    deeper than ``cave_masks.INSIDE_DEPTH_M`` under every surface median over flagged ground."""
     lowest = min((a.z_median_m for a in areas.values() if a.z_median_m is not None), default=None)
-    if field.cave_at(x_m * 100, y_m * 100, hint_m * 100, lowest) == caves.INSIDE:
+    if field.cave_at(x_m * 100, y_m * 100, hint_m * 100, lowest) == cave_masks.INSIDE:
         return True
-    return bool(cave_pct) and lowest is not None and hint_m < lowest - caves.INSIDE_DEPTH_M
+    return bool(cave_pct) and lowest is not None and hint_m < lowest - cave_masks.INSIDE_DEPTH_M
 
 
 def _silence(field: heightfield.Field, x_m: float, y_m: float) -> str:

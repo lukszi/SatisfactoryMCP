@@ -18,7 +18,7 @@ import pytest
 from mapgen.gamedata.meshes import winding_sign
 from mapgen.gamedata.rocks.collision_pack import _element_points, build_rock_pack
 from satisfactory_mcp.domain.planning import siting
-from satisfactory_mcp.domain.spatial import caves, rocks
+from satisfactory_mcp.domain.spatial.heightfield import cave_masks, collision_pack
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.caves import HULL, fixture_mask, write_caves
 from tests.support.heightfields import build_layered_field
@@ -104,20 +104,20 @@ def write_pack(directory: Path, build: str = BUILD) -> None:
     meta["sources"] = {"game": {"game_version_pinned": BUILD}}
     meta_path.write_text(json.dumps(meta), encoding="utf-8")
     arrays, counts = pack_arrays()
-    np.savez_compressed(directory / rocks.DATA_NAME, **arrays)
+    np.savez_compressed(directory / collision_pack.DATA_NAME, **arrays)
     meta = {
-        "rocks_version": rocks.ROCKS_VERSION,
+        "rocks_version": collision_pack.ROCKS_VERSION,
         "counts": counts,
         "sources": {"game": {"game_version_pinned": build}},
     }
-    (directory / rocks.META_NAME).write_text(json.dumps(meta), encoding="utf-8")
+    (directory / collision_pack.META_NAME).write_text(json.dumps(meta), encoding="utf-8")
 
 
 @pytest.fixture
 def field(tmp_path):
     directory = build_layered_field(tmp_path)
     write_pack(directory)
-    write_caves(tmp_path / caves.DIR_NAME, fixture_mask(), [HULL])
+    write_caves(tmp_path / cave_masks.DIR_NAME, fixture_mask(), [HULL])
     return hf.load_field(directory)
 
 
@@ -137,7 +137,7 @@ def test_a_vertical_line_crosses_every_surface_highest_first(field):
     hits = field.rocks().hits(300.0, 200.0)
     assert hits.z_m == pytest.approx((52.0, 50.0, 32.0, 30.0, 12.0, 10.0))
     assert hits.standing() == pytest.approx([52.0, 32.0, 12.0])
-    assert hits.standing(rocks.GROUND_KINDS) == pytest.approx([32.0, 12.0])
+    assert hits.standing(collision_pack.GROUND_KINDS) == pytest.approx([32.0, 12.0])
 
 
 def test_without_a_hint_the_ground_is_the_highest_rock_and_stays_ambiguous(field):
@@ -172,7 +172,7 @@ def test_a_mesh_with_only_simple_collision_falls_back_to_its_hull(field):
     on_pile = field.z(500.0, 100.0, hint_z_cm=850.0)
     assert (on_pile.surface, on_pile.z_m) == ("top", pytest.approx(8.0))
     assert field.z(500.0, 100.0).z_m == pytest.approx(5.0), "not in the ground set"
-    assert field.rocks().hits(500.0, 100.0).kind[0] == rocks.KIND_ROCK_SIMPLE
+    assert field.rocks().hits(500.0, 100.0).kind[0] == collision_pack.KIND_ROCK_SIMPLE
 
 
 def test_the_simple_elements_become_closed_outward_hulls():
@@ -201,7 +201,7 @@ def test_the_simple_elements_become_closed_outward_hulls():
 
 
 def test_the_cache_evicts_the_least_recent_tile_and_rebuilds_it(field):
-    index = rocks.load_rocks(field.directory)
+    index = collision_pack.load_rocks(field.directory)
     index.cache_bytes = 1
     first = index.hits(300.0, 200.0)
     index.hits(-1000.0, 200.0)
@@ -212,7 +212,7 @@ def test_the_cache_evicts_the_least_recent_tile_and_rebuilds_it(field):
 
 def test_in_a_cave_a_hint_just_above_a_collision_floor_gets_that_floor(field):
     reading = field.z(500.0, 300.0, hint_z_cm=-400.0)
-    assert reading.cave == caves.INSIDE and reading.cave_floor and reading.height_known
+    assert reading.cave == cave_masks.INSIDE and reading.cave_floor and reading.height_known
     assert reading.z_m == pytest.approx(-5.0)
     assert (
         reading.cave_note
@@ -225,9 +225,9 @@ def test_in_a_cave_a_hint_just_above_a_collision_floor_gets_that_floor(field):
 
 def test_in_a_cave_with_no_floor_near_the_hint_the_height_stays_unknown(field):
     reading = field.z(500.0, 300.0, hint_z_cm=-850.0)
-    assert reading.cave == caves.INSIDE and not reading.cave_floor and not reading.height_known
+    assert reading.cave == cave_masks.INSIDE and not reading.cave_floor and not reading.height_known
     assert reading.cave_note.startswith("in a cave: ground height unknown here")
-    assert field.z(500.0, 300.0).cave == caves.BELOW, "no hint never finds a cave floor"
+    assert field.z(500.0, 300.0).cave == cave_masks.BELOW, "no hint never finds a cave floor"
 
 
 def test_a_pack_from_another_build_is_not_read(tmp_path):

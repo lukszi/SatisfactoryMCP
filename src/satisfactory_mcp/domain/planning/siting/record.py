@@ -34,7 +34,8 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from ...spatial import caves, geo
+from ...spatial import geo
+from ...spatial.heightfield import cave_masks
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ..stored.store import Plan
@@ -364,8 +365,8 @@ class Siting:
             )
         if t.get("cave_floor"):
             parts.append("in a cave: z is the rock collision just under the hint")
-        elif t.get("cave") == caves.BELOW:
-            parts.append(caves.note(caves.BELOW, None) or "")
+        elif t.get("cave") == cave_masks.BELOW:
+            parts.append(cave_masks.note(cave_masks.BELOW, None) or "")
         elif cave_pct:
             parts.append(f"a cave lies under {cave_pct:g}% of the pad: z is the surface above it")
         if t.get("coarse"):

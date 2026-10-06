@@ -286,7 +286,7 @@ def build_rock_pack(sweep: dict, collision: dict, floors: dict) -> tuple[dict, d
     The cliff pass's placement set and culls, with arches, foliage boulders, simple-collision
     rocks and cave floors kept under their own kind instead of dropped.
     """
-    from satisfactory_mcp.domain.spatial import rocks
+    from satisfactory_mcp.domain.spatial.heightfield import collision_pack as rocks
 
     meshes, owners, placements = sweep["meshes"], sweep["owners"], sweep["placements"]
     have = collision["meshes"]
@@ -387,7 +387,7 @@ def build_rock_pack(sweep: dict, collision: dict, floors: dict) -> tuple[dict, d
 
 def rock_pack(store, scripts, index, classes, sweep: dict, build_pin: str, build_raw) -> dict:
     """``rocks.npz`` and ``rocks.json`` as bytes, ready for the field's directory."""
-    from satisfactory_mcp.domain.spatial import rocks
+    from satisfactory_mcp.domain.spatial.heightfield import collision_pack as rocks
 
     started = time.time()
     wanted = sorted({m for m in sweep["meshes"] if is_pack_mesh(m)} | set(sweep["foliage"]))

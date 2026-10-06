@@ -7,7 +7,8 @@ from typing import Annotated
 from mcp.server.fastmcp import Context
 from pydantic import Field
 
-from .....domain.spatial import caves, geo, heightfield, surroundings
+from .....domain.spatial import geo, heightfield, surroundings
+from .....domain.spatial.heightfield import cave_masks
 from .....domain.spatial import nodes as nodes_mod
 from .....domain.spatial import regions as regions_mod
 from .....domain.spatial.nodes import search as node_search
@@ -79,7 +80,7 @@ def _terrain_fields(reading, field) -> tuple[list[tuple[str, str]], list[str]]:
     elif reading is not None:
         accuracy = "" if reading.accuracy_m is None else f", +-{reading.accuracy_m:g}m"
         fields.append(("terrain_m", f"{reading.z_m:.1f} ({reading.source}{accuracy})"))
-        if reading.cave != caves.NONE:
+        if reading.cave != cave_masks.NONE:
             fields.append(("cave", reading.cave_note))
         if reading.ambiguous:
             bare = reading.terrain_z_m

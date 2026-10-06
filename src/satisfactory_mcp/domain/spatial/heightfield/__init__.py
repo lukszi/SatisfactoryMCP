@@ -19,7 +19,7 @@ import zlib
 from pathlib import Path
 
 from .... import config
-from .. import caves as cave_masks
+from . import cave_masks
 from .codec import (
     ZLIB_LEVEL,
     decode_i16,

@@ -24,7 +24,7 @@ from satisfactory_mcp.core.gameassets.packages import (
     root_component,
     world_transform,
 )
-from satisfactory_mcp.domain.spatial import caves
+from satisfactory_mcp.domain.spatial.heightfield import cave_masks as caves
 
 __all__ = [
     "CAVE_BUFFER_CELLS",

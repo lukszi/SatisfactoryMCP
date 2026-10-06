@@ -7,8 +7,7 @@ from typing import Literal
 
 import numpy as np
 
-from .. import caves as cave_masks
-from .. import rocks as rock_pack
+from . import cave_masks, collision_pack
 from .planes import PROV_FILL, PROV_NAMES, WATER_DRY, WATER_MEASURED
 
 __all__ = ["AMBIGUOUS_M", "SURFACES", "Area", "NearWater", "Reading", "Surface", "Surfaces"]
@@ -78,7 +77,7 @@ class Reading:
     def cave_note(self) -> str | None:
         """The one cave line for this reading, or ``None`` where no cave is known."""
         if self.cave_floor:
-            return rock_pack.floor_note(self.z_m)
+            return collision_pack.floor_note(self.z_m)
         return cave_masks.note(self.cave, self.z_m)
 
     @property

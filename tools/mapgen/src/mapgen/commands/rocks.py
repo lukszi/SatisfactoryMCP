@@ -19,7 +19,7 @@ __all__ = [
 
 def write_rocks(args, build_pin: str, build_raw) -> int:
     """``--rocks``: add the collision pack to the field at ``--field``, beside its planes."""
-    from satisfactory_mcp.domain.spatial import rocks
+    from satisfactory_mcp.domain.spatial.heightfield import collision_pack as rocks
 
     field_dir: Path = args.field
     field = hf.load_field(field_dir, cache=False)

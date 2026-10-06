@@ -11,8 +11,7 @@ from typing import Any
 
 import numpy as np
 
-from .. import caves as cave_masks
-from .. import rocks as rock_pack
+from . import cave_masks, collision_pack
 from .areas import FieldAreas
 from .codec import DECODERS, sha256_of
 from .planes import (
@@ -74,7 +73,7 @@ class Field(FieldAreas):
         self.caves_dir = caves_dir
         self._caves: tuple[int, cave_masks.Caves | None] | None = None
         self._caves_checked = 0.0
-        self._rocks: tuple[int, rock_pack.RockIndex | None] | None = None
+        self._rocks: tuple[int, collision_pack.RockIndex | None] | None = None
         self._rocks_checked = 0.0
         grid = meta["grid"]
         self.width = int(grid["width"])
@@ -238,19 +237,19 @@ class Field(FieldAreas):
             self._caves = (stamp, cave_masks.load_caves(self.caves_dir))
         return self._caves[1]
 
-    def rocks(self) -> rock_pack.RockIndex | None:
+    def rocks(self) -> collision_pack.RockIndex | None:
         """The collision pack beside the planes, loaded on first use and again when rewritten."""
         now = time.monotonic()
         if self._rocks is not None and now - self._rocks_checked < CAVES_RECHECK_S:
             return self._rocks[1]
         self._rocks_checked = now
         try:
-            stamp = (self.directory / rock_pack.META_NAME).stat().st_mtime_ns
+            stamp = (self.directory / collision_pack.META_NAME).stat().st_mtime_ns
         except OSError:
             self._rocks = (0, None)
             return None
         if self._rocks is None or self._rocks[0] != stamp:
-            self._rocks = (stamp, rock_pack.load_rocks(self.directory, self.build))
+            self._rocks = (stamp, collision_pack.load_rocks(self.directory, self.build))
         return self._rocks[1]
 
     def near_rock(self, x_cm: float, y_cm: float) -> bool:
@@ -272,7 +271,7 @@ class Field(FieldAreas):
             return None
         hits = index.hits(float(x_cm), float(y_cm))
         base = [] if found.terrain_m is None else [found.terrain_m]
-        ground_hits = hits.standing(rock_pack.GROUND_KINDS)
+        ground_hits = hits.standing(collision_pack.GROUND_KINDS)
         every = hits.standing()
         if not base and not every:
             return None

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from satisfactory_mcp.domain.spatial import caves
+from satisfactory_mcp.domain.spatial.heightfield import cave_masks
 
 CELL_CM = 200.0
 #: x0, y0, z0, x1, y1, z1 in cm: 2..9 m under a ramp standing 4..6 m high.
@@ -37,7 +37,7 @@ def write_caves(directory: Path, mask: np.ndarray, hulls: list[tuple[float, ...]
     directory.mkdir(parents=True, exist_ok=True)
     planes = [box_planes(h) for h in hulls]
     np.savez_compressed(
-        directory / caves.DATA_NAME,
+        directory / cave_masks.DATA_NAME,
         mask=mask.astype(np.uint8),
         planes=np.concatenate(planes) if planes else np.zeros((0, 4)),
         starts=np.arange(len(hulls) + 1, dtype=np.int64) * 6,
@@ -45,12 +45,12 @@ def write_caves(directory: Path, mask: np.ndarray, hulls: list[tuple[float, ...]
     )
     h, w = mask.shape
     meta = {"grid": {"width": w, "height": h, "cell_cm": CELL_CM, "x0_cm": 0.0, "y0_cm": 0.0}}
-    (directory / caves.META_NAME).write_text(json.dumps(meta), encoding="utf-8")
+    (directory / cave_masks.META_NAME).write_text(json.dumps(meta), encoding="utf-8")
     return directory
 
 
 def fixture_mask() -> np.ndarray:
     mask = np.zeros((3, 4), np.uint8)
-    mask[0, 0] = caves.BIT_MARKERS
-    mask[1:3, 2:4] |= caves.BIT_HULL
+    mask[0, 0] = cave_masks.BIT_MARKERS
+    mask[1:3, 2:4] |= cave_masks.BIT_HULL
     return mask
