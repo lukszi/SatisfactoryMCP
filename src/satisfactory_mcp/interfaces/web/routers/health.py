@@ -4,7 +4,7 @@ The same ``assess`` and ``build_view`` calls the MCP tool makes per label; nothi
 classifies a machine. The panel it feeds: docs/spatial-and-map.md §21. Wire rules:
 docs/web-wire.md.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+Handler names are operation_ids (wire rule 1).
 """
 
 from __future__ import annotations

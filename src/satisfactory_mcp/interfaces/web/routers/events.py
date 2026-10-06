@@ -5,9 +5,7 @@ it never reads a world, only that world's header. It subscribes to the ``SaveWat
 app's lifespan starts, through ``request.app.state`` rather than through ``Depends`` -- a
 dependency would put a parameter into ``/openapi.json`` for a stream that has no schema.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

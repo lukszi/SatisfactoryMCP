@@ -38,25 +38,16 @@ MACHINE_KINDS = ("machines", "extractors", "generators")
 class PlacementRow(TypedDict):
     """A machine, an extractor or a generator: one row shape, three layers.
 
-    ``cls`` and ``name`` are not nullable: these are actor records, on the line the module
-    docstring draws.
+    ``cls`` and ``name`` are never null: these are actor records. The coordinates are null
+    where the transform did not decode, and ``yaw`` where the projection predates schema 12,
+    which is not a facing of zero. ``clock`` is null with no overclock property (250% is
+    ``2.5``) and ``recipe_name`` with no recipe. ``w_m``/``l_m``/``h_m`` go null together
+    for a building with no clearance box (belts, pipes, rails, poles) or no dump entry.
 
-    ``x_m``/``y_m``/``z_m`` are nullable because an actor whose transform did not decode has
-    no ``pos``. ``yaw`` null means the projection predates schema 12 and the facing was never
-    recorded, which is a different claim from a facing of zero. ``clock`` is null for a
-    machine with no overclock property, and a float because 250% is ``2.5``.
-    ``recipe_name`` is null wherever there is no recipe.
-
-    ``w_m``/``l_m``/``h_m`` go null TOGETHER -- one clearance box, read whole or not at all
-    -- for the buildings whose ``mClearanceData`` yields no box (belts, pipes, rails, poles)
-    and for any class the docs dump does not carry.
-
-    ``state`` is one of ``health.STATES`` and never null; ``paused`` is the save's own field
-    beside it, where ``state`` is a reading of the buffers. ``uptime`` is the fraction of the
-    machine's own ~300 s window it spent producing, null for a building carrying no monitor
-    at all -- a different claim from zero. ``actionable`` is ``state in health.ACTIONABLE``,
-    sent so the map cannot keep its own list. ``factory`` is the named factory whose
-    label anchors this machine, null for one no label holds.
+    ``state`` is one of ``health.STATES``; ``paused`` is the save's own field beside it.
+    ``uptime`` is the share of the machine's ~300 s window it spent producing, null with no
+    monitor at all, which is not zero. ``actionable`` is ``state in health.ACTIONABLE``, so
+    the map keeps no list of its own; ``factory`` is the label anchoring the machine, if any.
     """
 
     instance_leaf: str
@@ -90,14 +81,9 @@ class MachinesResponse(TypedDict):
 class StructureRow(TypedDict):
     """One lightweight buildable: a foundation, a ramp, a wall, a catwalk.
 
-    ``cls`` is nullable here and not on ``PlacementRow``: this is the interned table, on the
-    line the module docstring draws.
-
-    The three coordinates are NOT nullable, which is ``iter_structures``' refusal rather than
-    this layer's -- a row whose x, y or z will not read as a number is dropped there.
-
-    ``yaw`` is the one that survives being unreadable: ``null`` for a schema-11 row with no
-    fifth column at all, and for the schema-16 rotation that will not decode.
+    ``cls`` is null for a row whose class index is past the legend's end. The coordinates
+    never are: a row that will not read as three numbers is dropped. ``yaw`` is null for a
+    schema-11 row, which has no fifth column, and for a rotation that will not decode.
     """
 
     cls: str | None
@@ -146,14 +132,8 @@ def _record_row(
 
 @router.get("/machines", response_model=MachinesResponse)
 def machines(request: Request, save: str | None = None, world: str | None = None) -> Any:
-    """Every placed actor, with the reason it is or is not running.
-
-    ``health.assess`` is asked once for the whole world rather than per row. Over the
-    reference projection's 570 actors: 1.3 ms to build these rows without it, 2.5 ms with.
-
-    195 of those 570 are ``blocked``: a full output box, and ``actionable`` like the other
-    states in ``health.ACTIONABLE``. How the map marks it: docs/save-projection.md §6.2d.
-    """
+    """Every placed machine, extractor and generator, with the reason it is or is not
+    running."""
     st = require_world(request, save, world)
     projection = st.projection
     leaves = [
@@ -176,40 +156,8 @@ def machines(request: Request, save: str | None = None, world: str | None = None
 
 @router.get("/structures", response_model=StructuresResponse)
 def structures(request: Request, save: str | None = None, world: str | None = None) -> Any:
-    """Every lightweight buildable the player placed: foundations, ramps, walls, catwalks.
-
-    These are the only record of what was physically BUILT -- they appear in no actor
-    header, which is why the projection interns them separately as
-    ``{"classes": [...], "instances": [[class_index, x, y, z, yaw], ...]}`` in centimetres.
-    Decoded by ``core.saveio.rows``, which is where the guard lives for all ten readers
-    of these interned tables: a malformed row costs one piece, not the endpoint.
-
-    **Rotation is carried, as of schema 12**, and this docstring used to say the opposite
-    -- the instance transform's quaternion was dropped at extraction and a client could
-    only draw these axis-aligned, which is why an angled slab came out of the map as a
-    staircase of squares. ``yaw`` is now the fifth column of a row and comes out as a
-    ``yaw`` field: degrees about world Z, positive turning +X towards +Y. ``null`` for a
-    projection cut before 12, which a client must keep drawing axis-aligned rather than
-    reading as zero.
-
-    One thing the projection still does not carry, and it is not invented here:
-
-    * **Per-class size.** None of these classes has clearance data, so ``footprint`` is
-      ``None`` for all eighteen of them. They are all built on the same grid instead,
-      whose edge ``tile_m`` reports from ``FOUNDATION_M`` so the page does not hardcode 8.
-
-    Positions are piece centres: on the reference save consecutive foundations of one
-    slab sit exactly ``tile_m`` apart.
-
-    A world with nothing built answers ``{"structures": [], "count": 0}`` -- an empty
-    list is a real answer here, unlike a save that could not be read at all.
-
-    Sent one row per piece, ungrouped. Measured on the reference world -- 8,347 pieces,
-    708 KB (610 KB of it before the yaw column) -- which is the same order as
-    ``/api/collectibles`` already ships (3,455 rows, 547 KB). Grouping into grid cells would halve a
-    payload that is not the bottleneck and would cost the per-piece class the popup and
-    the point inspector read.
-    """
+    """Every lightweight buildable the player placed: foundations, ramps, walls, catwalks,
+    one row per piece at its centre, with the grid edge they are built on."""
     st = require_world(request, save, world)
 
     out = [
@@ -218,9 +166,6 @@ def structures(request: Request, save: str | None = None, world: str | None = No
             "x_m": cm_to_m(piece.x),
             "y_m": cm_to_m(piece.y),
             "z_m": cm_to_m(piece.z),
-            # Optional on purpose: a row from a schema-11 projection is four columns long
-            # and is still a real piece at a real place, it just has no facing. ``None``
-            # covers the schema-16 unreadable rotation too -- see ``saveio.rows``.
             "yaw": yaw_deg(piece.yaw),
         }
         for piece in saverows.iter_structures(st.projection)

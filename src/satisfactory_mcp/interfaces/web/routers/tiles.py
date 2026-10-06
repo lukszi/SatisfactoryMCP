@@ -12,10 +12,8 @@ Every one is cut on the same frame at the same tile size into the same ``{z}/{x}
 so switching layers is switching a directory. The layout is ``core.gameassets.pyramid``'s;
 what this side owns is the bounds check, because only a server has requests to refuse.
 
-WARNING: the function names are the operation_ids -- renaming one churns the committed
-schema. These three routes carry EXPLICIT ids; see ``OPERATION_MAPIMAGE``.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md. Three routes carry explicit
+ids; see ``OPERATION_MAPIMAGE``.
 """
 
 from __future__ import annotations

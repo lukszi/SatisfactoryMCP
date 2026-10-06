@@ -8,9 +8,7 @@ exactly four, so pydantic emits ``prefixItems`` and typegen turns them into
 ``[number, number]`` and ``[number, number, number, number]``, which the page indexes
 without a length guard. Declared ``list[float]`` they would arrive as ``number[]``.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

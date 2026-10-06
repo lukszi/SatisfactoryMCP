@@ -4,9 +4,7 @@
 injected loader -- it scans the save directory itself, because the picker's job is to say
 what is there before anything has been chosen.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

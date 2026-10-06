@@ -5,9 +5,7 @@ through the request as ``events.py`` reaches the watcher. Every write passes the
 every change reaches every page as the ``maps`` event. docs/maps_contract.md is the
 specification.
 
-WARNING: the function names are the operation_ids -- renaming one churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations
@@ -422,7 +420,7 @@ async def clear_map_cache(request: Request) -> Any:
     responses={409: {"model": MapsStaleResponse}},
 )
 async def start_map_job(request: Request, body: Annotated[MapJobRequest, Body()]) -> Any:
-    """Queue a generation job. 409 when four are queued already, 507 when the disk is short."""
+    """Queue a generation job. 409 when the queue is full, 507 when the disk is short."""
     runner = request.app.state.mapjobs
     try:
         job = runner.submit(

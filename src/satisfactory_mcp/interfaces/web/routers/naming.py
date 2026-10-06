@@ -7,7 +7,7 @@ guard (``guard.py``), and carries the label-store version it was read at. A name
 of the path (``{name:path}``), so a name holding a ``/`` from before that was refused can
 still be renamed or forgotten. A refused write says why in flags, not only in words.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+Handler names are operation_ids (wire rule 1).
 """
 
 from __future__ import annotations

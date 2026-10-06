@@ -5,10 +5,8 @@ of it, and every answer here is either the file the reader generated or the name
 that would write it. That is why the 404s are long -- they are the whole of the
 documentation a reader gets at the moment they need it.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-This route carries an EXPLICIT id; see ``OPERATION_ICON``.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md. This route carries an
+explicit id; see ``OPERATION_ICON``.
 """
 
 from __future__ import annotations

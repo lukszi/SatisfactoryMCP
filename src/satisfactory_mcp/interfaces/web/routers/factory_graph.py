@@ -4,7 +4,7 @@ Both answer for a named factory or for a detected candidate (its ``proposal:N`` 
 the ``token`` it was detected at): the graph as recipe groups and terminals, the machines as
 spots on the map. Naming, renaming and amending are ``naming.py``.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+Handler names are operation_ids (wire rule 1).
 """
 
 from __future__ import annotations

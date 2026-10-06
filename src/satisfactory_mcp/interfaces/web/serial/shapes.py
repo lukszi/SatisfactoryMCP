@@ -53,13 +53,11 @@ Biomass = Literal["exclude", "include"]
 
 
 class Region(TypedDict):
-    """What ``_label_json`` sends: a region lookup that never arrives without its doubt.
+    """A region lookup that never arrives without its doubt; one schema for every route.
 
-    Declared here rather than in a router because ``_label_json`` builds it for two of them,
-    ``/api/nodes`` and ``/api/inspect``, which must publish one schema and not two.
-
-    ``name`` is not nullable and the field is not optional: the whole dict is ``None`` for
-    ocean and off-map, which is ``_label_json``'s refusal and this layer must not soften it.
+    ``name`` is not nullable: the whole region is null for ocean and off-map instead. The
+    confidence travels with the name because the raster is coarse, so "boundary" and
+    "interior" are different claims; ``certain`` is the domain's reading of that word.
     """
 
     name: str

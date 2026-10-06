@@ -3,7 +3,7 @@
 Called per keystroke (debounced), so it reads the cached state and scans in memory only.
 docs/frontend_vision.md §10. Wire rules: docs/web-wire.md.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+Handler names are operation_ids (wire rule 1).
 """
 
 from __future__ import annotations

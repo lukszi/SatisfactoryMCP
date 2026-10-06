@@ -3,9 +3,7 @@
 The rows are ``domain/advice``; every write passes the guard, carries the ``rev`` it read and
 appends one journal entry. docs/advisors_contract.md §5 is the specification.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

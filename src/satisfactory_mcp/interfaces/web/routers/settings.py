@@ -2,9 +2,7 @@
 
 The store is ``domain/settings.py``; docs/shared-settings.md is the specification.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

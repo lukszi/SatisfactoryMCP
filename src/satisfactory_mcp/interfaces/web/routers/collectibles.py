@@ -3,9 +3,7 @@
 Every refusal this endpoint makes is ``collect_view``'s, so that the map and the MCP tool
 cannot hold two opinions about one question.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

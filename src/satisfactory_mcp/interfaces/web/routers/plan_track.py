@@ -4,9 +4,7 @@ Track is one plan version's diff and startup stages against this save, from one 
 Feeders is the built extractors whose output reaches a running generator.
 docs/planner-p4_contract.md §5 is the specification.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

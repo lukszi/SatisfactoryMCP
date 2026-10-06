@@ -4,9 +4,7 @@ The store is ``domain/planning/pins.py``; every write passes the guard, carries 
 read, and appends one journal entry. docs/planner-p3_contract.md §4, §5 and §8 are the
 specification.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

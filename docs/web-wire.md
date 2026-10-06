@@ -104,6 +104,24 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
   newest, before it applies `limit`. Every row carries `count`: the entries it stands for,
   1 unless collapsed. A collapsed `plan.view` run counts the same way.
 
+## Nodes
+
+`/api/nodes` (`routers/nodes.py`) is the static node table joined to what the save built on it.
+
+- The join is partial and says so: `occupancy` resolves only the extractors whose target is a
+  node key, so `occupied` false means "no extractor known here", never "free". The node id
+  doubles as a `node:` selector for the MCP tools.
+- The region is joined on this side because the raster is: sending 608 rows and the grid for
+  the page to index would put the orientation trap (row 0 is the north edge) in two places.
+- **A free node is not always a usable one.** `reachable` is the test the text surface marks
+  `LOCKED` and leaves out of free capacity: a resource well satellite with no Pressurizer
+  researched is not somewhere a plan can go. The domain reads a missing unlock set as "assume
+  yes", right for a capacity sum and wrong for a dot somebody plans around, so the route sends
+  null instead.
+- **A failed save is not a failed answer.** The table needs no `.sav`, so a world whose save
+  will not load still gets its geography; it loses the occupancy join and the unlock set, and
+  `save_error` says so with `occupied` and every `reachable` null beside it.
+
 ## Placements
 
 `/api/machines` and `/api/structures` (`routers/placements.py`) answer one question in two
@@ -129,12 +147,195 @@ resolutions, and the line between them decides every nullable field on the place
   vanishes.
 - `/api/machines` asks `health.assess` once for the whole world rather than per row (on the
   reference projection's 570 actors, 1.3 ms without it and 2.5 ms with) and keys the verdicts
-  on the instance leaf that `/api/floors` and the page's floor ids join on.
+  on the instance leaf that `/api/floors` and the page's floor ids join on. 195 of those 570
+  are `blocked` (a full output box) and `actionable` like the other states in
+  `health.ACTIONABLE`; how the map marks them is [save-projection.md](save-projection.md)
+  §6.2d.
+- `/api/structures` rows are the only record of what was physically built: lightweight
+  buildables appear in no actor header. Positions are piece centres, so consecutive foundations
+  of one slab sit exactly `tile_m` apart. `yaw` is the table's fifth column, degrees about world
+  Z with positive turning +X towards +Y, and null for a projection cut before schema 12, which a
+  client keeps drawing axis-aligned rather than reading as zero. A world with nothing built
+  answers an empty list with `count: 0`, a real answer unlike a save that will not load.
 - `/api/structures` sends the reference world's 8,347 pieces one row each, ungrouped: 708 KB,
   the same order as `/api/collectibles`. Grouping into grid cells would halve a payload that is
   not the bottleneck and lose the per-piece class the popup and the inspector read. None of
   these classes has clearance data, so they share one grid whose edge `tile_m` reports from
-  `FOUNDATION_M`.
+  `FOUNDATION_M`, and the page hardcodes no 8.
+- `core.saveio.rows` decodes every interned table for every reader, so a malformed row costs one
+  piece, segment or pole rather than the endpoint.
+
+## Belts and pipes
+
+`/api/belts` and `/api/pipes` (`routers/routes_layer.py`) send every conveyor piece and fluid
+pipe as the polyline it was built along, one row per piece and ungrouped, because the per-piece
+class is what a popup reads. Pieces are interned rows (see Placements); splitters and mergers
+are actors.
+
+- `points_m` are `[x, y, z]` metre triples, declared as tuples so typegen emits
+  `[number, number, number]`, and never null in any position: `rows._points` drops a point that
+  will not read.
+- **Belt points are in travel order, input to output.** The save stores them output-first and
+  the projection reverses them, so direction along a run needs no outside knowledge. `chain` is
+  the belt chain a piece belongs to, so "the whole run" is a group-by.
+- **`curve_m` is what makes a curved belt or an elbow curved.** `points_m` are the spline's
+  control points, not the spline: a bend drawn from them alone is the chords between its
+  corners, out by up to 16.4 m of arc on one belt piece, and an elbow drawn from its six points
+  is the polygon cutting the corner it was built to round. Each entry is one span's
+  `[leave, arrive]` tangents in metres, the pair a cubic Hermite between the span's two points
+  takes; they are displacements in the points' own space, so the map's y-flip applies to them
+  unchanged. A null slot is a straight span, and a null field means no bend anywhere or a
+  projection older than the column, which a client draws the same way. A span that will not
+  decode becomes straight rather than costing the route.
+- **A lift is a belt whose top-down polyline is a single point**: every lift on the reference
+  save has zero horizontal extent, so the client owes it a glyph. `lift` comes from the dump's
+  native class `FGBuildableConveyorLift`, never from `Lift` in a class id, and is null, not
+  false, for a class the dump does not carry. `items_per_min` is the tier's throughput (60 to
+  780), so the page parses no "Mk3" out of a name.
+- `attachments` (splitters and mergers) ride with the belts, not the machines: a splitter runs
+  no recipe, draws no power and means nothing without the runs either side, and being in no
+  other payload keeps it from being drawn twice. Their `w_m`/`l_m` are the dump's 4 x 4 m soft
+  clearance box.
+- **Each pipe says which fluid it carries**, taken from the `FGPipeNetwork` that claims it: the
+  world's own answer, not an inference from what the pipe is plugged into. `network` is that
+  network's game id, not an index into the reply, and null for a pipe no network claims.
+  `fluid_name` is resolved against the dump; `flow_m3_min` is the tier's throughput (300 on Mk1,
+  600 on Mk2).
+- `row` is the pipe's position in the raw segments table, the key `/api/floors` uses, sent
+  rather than counted so a torn row leaves a gap instead of renumbering everything after it.
+- **`direction` is inferred, and `basis` says from what** (`domain/world/flow.py`, which declines
+  wherever more than one answer is consistent): `machine port` (the pipe ends at a port the save
+  types as input or output), `pump` (a pump or valve at one end), `propagated` (only the wider
+  network settles it), or `unresolved` with `direction` `unknown` (a loop, or a trunk with
+  producers and consumers on both sides). A client may draw an arrow on the first three and
+  must not on the fourth. A projection too old to carry the join reads as all `unknown`.
+- Pumps, junctions, valves and fluid buffers carry no spline, only a header position, so they
+  are not pipe rows.
+
+## Power lines
+
+`/api/power` (`routers/power.py`) sends every pole, wall outlet and tower platform and the span
+of every wire. The geometry sits beside `graph["power"]`, which says who is joined to whom; the
+join is positional (`wires[i]` is the span of `graph["power"][i]`) and this route is the one
+place the two are put back together.
+
+- A pole is an interned row: `cls`/`name` may be null, the coordinates never are, since
+  `iter_power_poles` drops a row whose class index or position will not read. `connections` is
+  never null: an unwired pole reports 0, which is a measurement.
+- A wire's `a_m`/`b_m` are **connector** positions, not building origins. A connector sits at a
+  fixed offset on its owner (7 m above a Mk1 pole; 2.1 m forward and 4.7 m to one side of a
+  constructor's centre), so origin-to-origin lines would run through every machine and a
+  client filing wires on storeys by height would put them a storey high. `a_pole`/`b_pole` are
+  the index into the reply's `poles` of the pole an end serves (an index because a pole row has
+  no instance id), null for an end on anything else.
+- `from`/`to` name each end in the edge's order, which the projection measured (the save's own
+  endpoint order agrees only about half the time). They are null where no record names the
+  actor, such as a hypertube entrance, a drop pod or the AWESOME Sink, rather than a guess.
+- `span_m` is the 3-D chord: the save carries no sag, and a tower span's 24 m climb is real
+  cable.
+- `edge_count` counts power edges and `wire_count` those that published a span: a save too old
+  for the geometry answers a non-zero `edge_count` with no wires, which tells "nothing to draw"
+  from "nothing here".
+
+## Storage
+
+`/api/storage` (`routers/storage.py`) answers "where did I put the steel" rather than "how much
+have I got": every Storage Container and Industrial one, Personal Storage Box, Dimensional
+Depot uploader, the HUB's built-in container, the Blueprint Designer's, and every fluid buffer,
+in one ungrouped payload.
+
+- **Not the splitters and mergers.** Each owns a component literally named `StorageInventory`
+  holding the one to three items in transit, so matching that name would report hundreds of
+  phantom containers, draw them again over the belt layer and count transit as stock. Machine
+  buffers are left out on the same principle and sit on their machine's row.
+- **Two row models, told apart by `kind`.** A solid row carries `items` (biggest first, named,
+  the whole box), `more`, `item_kinds`, `total` and `slots` (null rather than 0 where the
+  projection wrote none). A fluid row carries `fluid`, `fluid_name`, `stored_m3`,
+  `capacity_m3` and `fill`. The other kind's fields are absent rather than null, because a
+  container has no fluid level. Each variant is declared whole: one model with optional tails
+  would re-key a solid row into the fluid tail's gaps, since pydantic emits declaration order
+  and drops absent keys.
+- `more` is always 0 from this server, which sends every box whole; it stays as the row's own
+  statement that nothing was left off, so a client's "+N more" survives a server that caps.
+- `w_m`/`l_m` are null for the HUB's and the Blueprint Designer's containers, which the dump
+  gives no clearance; a size invented here would arrive looking measured.
+- **The fluid comes off the plumbing, not the buffer**: the `FGPipeNetwork` that claims it, the
+  join `/api/pipes` uses, and null for an unclaimed buffer. `capacity_m3` is the dump's
+  `mStorageCapacity`, and `fill` is stored over capacity, null rather than a division by a
+  missing one, so the three are nullable independently.
+- `filled` and `items_total` count the solid rows only.
+
+## Floors
+
+`/api/floors` (`routers/floors.py`) is what is built, one storey at a time. Nothing in the save
+says "floor": `domain.factories.floors` recovers them from the geometry, 4-connected platforms
+of 8 m foundation cells and then a per-platform cluster of deck heights, and the route parses
+the query, calls it once and rounds.
+
+- **It ships ids, not geometry.** The page already has every machine, splitter, belt and pipe;
+  what it cannot derive is which floor each is on. A band lists `machines` and `attachments` as
+  instance leaves, and a run is keyed by its belt `chain` or its pipe `row`, the joins those
+  payloads carry.
+- `deck_rows` lists a deck's pieces by their position in `/api/structures`, the only name a
+  lightweight buildable has, since both sides walk `saveio.rows` in one order; re-deriving a
+  deck from heights goes wrong at exactly this world's 1 m and 2 m half-steps. `deck_rows` is
+  the pieces at the band's own level and `pieces` the cluster it was found in; a client drawing
+  a deck wants `deck_rows`.
+- `span_m` is how spread the band's own level is, not the storey height: the floor above is the
+  next band's `top_m`. `share` is against the platform's own largest band. `clean` is, per
+  platform, the share of its foundation pieces within epsilon of one of its bands. `label` and
+  `slab` only name a platform and took no part in finding its floors.
+- **Runs are grouped by what they do to a floor**: `same-deck` (both ends over one band, the set
+  a floor filter draws), `connector` (ends on two bands, where the lifts and risers are),
+  `terrain` (neither end over a deck) and `mixed`. `ends` is always two entries, head then tail,
+  either null over no deck. `riser` means tall enough to be only a floor connector, a different
+  claim from `lift`: a quarter of lift chains are belt-height jogs on one deck. `violations`
+  lists risers with both ends on one band, which cannot happen, so one is drift made visible.
+- **`placements` is only what did not land on a floor**, since what did is listed by id inside
+  its band: `exempt` (a miner on a node, a water extractor on water, by native class),
+  `terrain` (measured against the heightfield) and `off-deck`.
+- **`terrain_measured` says whether the ground was consulted at all.** Most machines have no 1 m
+  heightfield, and then an empty `terrain` group would otherwise read as nothing on the ground.
+- `?factory=` takes a factory label or any MCP selector, `?platform=` the stable index this route
+  hands out; either narrows placements and runs to that footprint, including what is under it.
+  A selection that matches nothing is a 404.
+- A save too old to carry `FGLightweightBuildableSubsystem` is a 200 with a `note`, not an
+  error and not an empty list: the world has floors this file cannot show.
+- Every metre field is `float | None` even where the reference world never sends a null,
+  because a response model is a validator: a null in a field declared `float` is a 500.
+
+## Inspect
+
+`/api/inspect` (`routers/inspect.py`) answers what is at a map coordinate. Every answer comes
+out of `place.describe`, the function `describe_location` calls; the route converts metres to
+centimetres and rounds. `radius_m` is the elevation reach (default 200 m, the tool's own);
+conduits count within 250 m, fields and pickups look 500 m out, and five nearest nodes are
+sent.
+
+- **A failed save is not a failed answer.** The node table is static and covers the map, so a
+  world whose save will not load still gets its region, ground elevation and nearest nodes;
+  what it loses is the built population and the occupancy join, and `save_error` says so
+  rather than letting "no extractor here" mean "no save here".
+- **Four sources, each labelled.** `terrain_m` is the extracted 1 m heightfield read bilinearly
+  at the exact coordinate, preferred wherever a field exists; `terrain_source` names the layer
+  that answered and `terrain_accuracy_m` what the generator measured for it (a 0.2 m landscape
+  texel and a 3.9 m fill texel are not the same claim). `terrain_ambiguous` says it may be a rock
+  top or roof, with `terrain_bare_m` the landscape under it. Ground and built are populations of
+  things standing nearby and stay apart: a node rests on terrain, a foundation is wherever the
+  player put it, and one median over them would describe none.
+- `fill_m` is null more often than not, and `fill_note` names which of its two causes applied,
+  too few nearby nodes or nothing built nearby; it is never 0, which is a different
+  measurement. `terrain_note` does the same for the field: no field on this machine, or a point
+  the field has no data for.
+- `terrain_water_m` is the water surface's own height, known to centimetres from a cooked water
+  volume's bounding box. `terrain_water_depth_m` is that minus the ground, sent only where the
+  ground under the water was measured at 1 m: over the fill layer, which is most of the ocean,
+  the difference is a number nobody measured, so it is null with `terrain_water_note` saying
+  why, never 0.0.
+- `region` is null for ocean and off-map rather than a nearest-land guess. A node's
+  `resource_name` comes from the same helper `/api/nodes` uses, so one fact has one word.
+- Not cached: the probe is a few milliseconds over the reference world, so a per-save cache
+  would only buy an invalidation bug. The heightfield is cached by its own loader.
 
 ## Terrain
 

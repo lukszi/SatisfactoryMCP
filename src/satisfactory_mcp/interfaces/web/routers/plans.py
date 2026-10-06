@@ -4,9 +4,7 @@
 the Planner's list (docs/planner_slice_contract.md §11.1). A plan's contents are a request,
 never a solve; ``/api/plan/solve`` re-solves one.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations
@@ -33,9 +31,8 @@ router = APIRouter(prefix="/api")
 class PlanSiting(TypedDict):
     """One stored plan's pad: centre, facing and extent, all in metres on save axes.
 
-    NOT centimetres, and this is the one payload on this surface where that is not a bug.
-    ``Siting`` records metres because a player typed them, so ``serial._m`` has nothing to
-    do here -- see ``domain/planning/siting.py``.
+    Metres as a player typed them, so no centimetre conversion applies here
+    (``domain/planning/siting.py``).
 
     ``z_m`` is null wherever the origin was named by something with no height (a factory
     centroid, a bare ``x,y``); the pad is still a rectangle on the ground. ``source`` is

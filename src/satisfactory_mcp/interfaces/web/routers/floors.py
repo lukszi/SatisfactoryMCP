@@ -1,14 +1,9 @@
 """``/api/floors``: the floor decomposition of a world, one storey at a time.
 
-**Nullability is not decoration.** ``_m``, ``_xyz`` and ``_yaw`` all return ``float |
-None``, so every field they produce is declared that way even where the reference world has
-never produced a null: a response_model is a validator as well as a schema, and a field
-declared ``float`` that arrives null is a 500 rather than a null.
-
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-``floors_view``, not ``floors``, for exactly that reason.
-
-Wire rules: docs/web-wire.md.
+What the reply carries and why it ships ids rather than geometry: docs/web-wire.md
+"Floors". Every metre field is ``float | None``, as ``cm_to_m`` is: a response_model that
+met a null in a field declared ``float`` would fail the whole reply. The handler is
+``floors_view``, its operation_id, so it stays that name.
 """
 
 from __future__ import annotations
@@ -28,9 +23,6 @@ __all__ = ["router"]
 router = APIRouter(prefix="/api")
 
 
-# --------------------------------------------------------------------- floors
-
-
 class FloorDeck(TypedDict):
     """One band, identified. What a run's ``ends`` are made of."""
 
@@ -40,7 +32,7 @@ class FloorDeck(TypedDict):
 
 
 class FloorBand(TypedDict):
-    """One floor of one platform. See ``_band_json`` for what each field means."""
+    """One floor of one platform; docs/web-wire.md "Floors" says what each field means."""
 
     ordinal: int
     top_m: float | None
@@ -78,9 +70,8 @@ class FloorPlatform(TypedDict):
 class FloorRun(TypedDict):
     """One belt chain or one pipe, keyed by the join the belt and pipe payloads carry.
 
-    ``ends`` is always two entries, head then tail, either of which may be ``null`` where
-    that end is over no deck. A pair rather than a list is what it means, and JSON has no
-    pair -- so the length is a promise the prose makes and the schema cannot.
+    ``ends`` is always two entries, head then tail, either null where that end is over no
+    deck.
     """
 
     kind: str
@@ -112,9 +103,8 @@ class FloorCounts(TypedDict):
     bands: int
     runs: int
     violations: int
-    #: Keyed by ``ffloors.GROUPS`` and ``ffloors.MEMBERSHIPS``. Left as open maps rather
-    #: than spelled out as four fields each: the two vocabularies are the domain's, they
-    #: are exported from there, and restating them here would be a second place to update.
+    #: Keyed by ``ffloors.GROUPS`` and ``ffloors.MEMBERSHIPS``: open maps, so the domain's
+    #: two vocabularies are not restated here.
     placements: dict[str, int]
     membership: dict[str, int]
 
@@ -140,8 +130,7 @@ class FloorsResponse(TypedDict):
     terrain_measured: bool
     counts: FloorCounts
     platforms: list[FloorPlatform]
-    #: Keyed by ``ffloors.MEMBERSHIPS``, and ``placements`` by ``ffloors.GROUPS`` less
-    #: ``band`` -- what landed on a floor is listed inside its own band, by id.
+    #: Keyed by ``ffloors.MEMBERSHIPS``; ``placements`` by ``ffloors.GROUPS`` less ``band``.
     runs: dict[str, list[FloorRun]]
     placements: dict[str, list[FloorPlacement]]
     violations: list[FloorRun]
@@ -149,22 +138,7 @@ class FloorsResponse(TypedDict):
 
 
 def _band_json(band: ffloors.Band) -> FloorBand:
-    """One floor: where its deck is, how big it is, and what stands on it -- by id.
-
-    ``machines`` and ``attachments`` are instance ids. ``deck_rows`` is the same idea for
-    the concrete, by the only name a lightweight buildable has: the subsystem stores no
-    instance ids at all, so a deck is listed by its pieces' POSITIONS in ``/api/structures``,
-    which both sides derive from one ``saveio.rows`` walk in one order. Without it a client
-    can only re-derive a deck from heights, and this world's 1 m and 2 m half-steps are
-    exactly where that goes wrong.
-
-    ``deck_rows`` is the pieces at the band's own LEVEL and ``pieces`` is the size of the
-    cluster it was found in. Both are reported rather than reconciled, and a client that
-    draws a deck wants ``deck_rows``.
-
-    ``span_m`` is how much the band's own level is spread, and it is not the storey height:
-    the distance to the floor above is the next band's ``top_m``.
-    """
+    """One floor: where its deck is, how big it is, and what stands on it, by id."""
     return {
         "ordinal": band.ordinal,
         "top_m": cm_to_m(band.top_cm),
@@ -174,8 +148,6 @@ def _band_json(band: ffloors.Band) -> FloorBand:
         "pieces": band.pieces,
         "cells": band.cells,
         "area_m2": round(band.area_m2, 1),
-        # Against the platform's own largest band, so it is a statement about this platform
-        # rather than about the world.
         "share": round(band.share, 3),
         "minor": band.minor,
         "machines": band.machines,
@@ -196,10 +168,7 @@ def _platform_json(platform: ffloors.Platform) -> FloorPlatform:
         "area_m2": round(platform.area_m2, 1),
         "centre_m": point_m(platform.centre_cm),
         "extent_m": point_m(platform.extent_cm),
-        # The premise, per platform rather than averaged: the share of this platform's
-        # foundation pieces that landed within epsilon of one of its own bands.
         "clean": round(platform.clean, 4),
-        # Naming only. Neither took any part in deciding where the floors are.
         "label": platform.label,
         "slab": platform.slab,
         "bands": [_band_json(b) for b in platform.bands],
@@ -213,20 +182,13 @@ def _deck_json(deck: ffloors.Deck | None) -> FloorDeck | None:
 
 
 def _run_json(run: ffloors.Run) -> FloorRun:
-    """One belt chain or one pipe, keyed by the join a client already has.
-
-    For a belt that is ``chain``, the field ``/api/belts`` puts on every piece. For a pipe
-    it is the row's position in ``/api/pipes``, which is the same positional key
-    ``domain.world.flow`` uses to attach a direction. Neither carries the polyline again.
-    """
+    """One belt chain or one pipe, keyed by the join a client already has."""
     return {
         "kind": run.kind,
         "key": run.key,
         "pieces": run.pieces,
         "lift": run.lift,
         "rise_m": cm_to_m(run.rise_cm),
-        # Tall enough that it can only be a floor connector, which is a different claim
-        # from being a lift: a quarter of lift chains are belt-height jogs on one deck.
         "riser": run.riser,
         "ends": [_deck_json(d) for d in run.ends],
     }
@@ -254,45 +216,8 @@ def floors_view(
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
-    """What is built, one storey at a time: the floor decomposition of a world.
-
-    Nothing in the save says "floor". ``domain.factories.floors`` recovers them from the
-    geometry -- 4-connected platforms of 8 m foundation cells, then a per-platform cluster
-    of deck heights -- and this endpoint parses the query, calls it once, and rounds.
-
-    **It ships ids, not geometry.** A client already has every machine, splitter, belt and
-    pipe from ``/api/machines``, ``/api/structures``, ``/api/belts`` and ``/api/pipes``; the
-    one thing it cannot derive is which floor each of them is on. So a band lists
-    ``machines`` and ``attachments`` as instance leaves, and a run is keyed by its belt
-    ``chain`` or its pipe row position -- the joins those payloads already carry.
-
-    **The runs are grouped by what they do to a floor**, not listed flat:
-
-    * ``same-deck`` -- both ends over one band, and the set a floor filter draws.
-    * ``connector`` -- the ends are on two different bands. This is how you leave a floor,
-      and it is where the lifts and risers are.
-    * ``terrain`` -- neither end is over a deck.
-    * ``mixed`` -- one end on a deck, one on the ground.
-
-    **``placements`` is only what did NOT land on a floor**, since what did is listed by id
-    inside its own band. The three ways of not being on one: ``exempt`` (a miner stands on a
-    resource node and a water extractor on water -- by native class, not by a substring),
-    ``terrain`` (measured against the heightfield) and ``off-deck``.
-
-    **``terrain_measured`` says whether the ground was consulted at all.** The 1 m
-    heightfield is derived from the reader's own game install and most machines have none,
-    in which case nothing can be in the ``terrain`` group and an empty one would otherwise
-    read as "nothing is on the ground here".
-
-    ``?factory=`` takes a label the player gave a factory, or any selector the MCP tools
-    take; ``?platform=`` takes the index this endpoint hands out, which is stable across
-    calls. Either narrows placements and runs to that footprint, including the ones
-    underneath it, since "what is under this deck" is part of the question.
-
-    A save too old to carry ``FGLightweightBuildableSubsystem`` is a **200 with a
-    ``note``**, not an error and not an empty list: the world has floors, this file cannot
-    show them, and those are different sentences.
-    """
+    """What is built, one storey at a time: platforms, their floors, the runs between them
+    and what stands on no floor, narrowed by ``?factory=`` or ``?platform=``."""
     st = require_world(request, save, world)
 
     try:
@@ -322,8 +247,7 @@ def floors_view(
             for group in ffloors.GROUPS
             if group != "band"
         },
-        # A riser that lands both ends on one band cannot happen, so one here is a symptom
-        # of the decomposition drifting and is reported rather than swallowed.
+        # A riser with both ends on one band cannot happen: one here is drift, so it is sent.
         "violations": [_run_json(r) for r in report.violations],
         "rules": {
             "tile_m": cm_to_m(ffloors.CELL_CM),

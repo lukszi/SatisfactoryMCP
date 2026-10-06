@@ -4,7 +4,7 @@ The walk is ``domain.factories.trace``; the seed grammar is ``resolve_seeds``, t
 the MCP tool takes. Rates are ``flowgraph.build`` over the seeds and everything reached, and
 states are ``health.assess``. docs/frontend_vision.md §10. Wire rules: docs/web-wire.md.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+Handler names are operation_ids (wire rule 1).
 """
 
 from __future__ import annotations

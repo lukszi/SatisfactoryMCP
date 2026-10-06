@@ -4,7 +4,7 @@ A circuit is a connected component of the save's power edges; each one's figures
 ``PowerLedger`` run over only the records standing on it. The limits of that reading are in
 docs/spatial-and-map.md §21; wire rules in docs/web-wire.md.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+Handler names are operation_ids (wire rule 1).
 """
 
 from __future__ import annotations

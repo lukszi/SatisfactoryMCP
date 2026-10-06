@@ -171,7 +171,7 @@ def test_the_lightweight_piece_count_four_modules_cite(proj):
     assert len(rows) == 8_347, (
         "core/saveio/extract.py:287,814,1071, core/saveio/rows.py:4, "
         "domain/spatial/elevation.py:27,193 and "
-        "interfaces/web/routers/placements.py:134 quote this"
+        "docs/web-wire.md (Placements) quote this"
     )
     assert sum(1 for r in rows if r[4] % 90) == 4_631, "core/saveio/extract.py:1071 quotes this"
 

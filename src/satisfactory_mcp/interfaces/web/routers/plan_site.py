@@ -3,9 +3,7 @@
 docs/planner-p5_contract.md §4 is the specification. Read only: the drop is an ordinary
 ``site`` op on ``/api/plans/{key}/ops``.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

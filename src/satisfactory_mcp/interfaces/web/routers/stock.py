@@ -4,7 +4,7 @@ Per-item piles come from ``Inventory.breakdown`` and per-place rows from
 ``Inventory.holdings``, the calls the three MCP tools make. The dashboard's Inventory section
 reads it: docs/frontend_vision.md §10. Wire rules: docs/web-wire.md.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+Handler names are operation_ids (wire rule 1).
 """
 
 from __future__ import annotations

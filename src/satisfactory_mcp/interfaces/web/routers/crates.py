@@ -4,9 +4,7 @@ A crate is an event rather than a place: it exists only from the moment somebody
 dismantled with a full inventory until the moment it is emptied, which is why these rows
 are not among the containers ``/api/storage`` lists.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

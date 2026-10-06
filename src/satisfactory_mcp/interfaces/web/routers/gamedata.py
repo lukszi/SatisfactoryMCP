@@ -2,7 +2,7 @@
 what this save has unlocked. docs/frontend_vision.md §10. Wire rules: docs/web-wire.md.
 A recipe the save has not unlocked is a spoiler (``spoiler``, ``?spoilers=``): §12.3 there.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+Handler names are operation_ids (wire rule 1).
 """
 
 from __future__ import annotations

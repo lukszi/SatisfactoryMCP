@@ -4,7 +4,7 @@
 since the view computes them together. ``sites`` is ``factory_sites``, with each site's
 share of one factory when ``?factory=`` names one. Wire rules: docs/web-wire.md.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+Handler names are operation_ids (wire rule 1).
 """
 
 from __future__ import annotations

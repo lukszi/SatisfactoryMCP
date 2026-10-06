@@ -3,9 +3,7 @@
 The raster is re-derived from the game's own ``FGMapAreaTexture`` whenever the map changes,
 and every re-derivation moves the numbers ``RegionMap.label_anchor`` is written against.
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations

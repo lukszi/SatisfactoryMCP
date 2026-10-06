@@ -6,9 +6,7 @@ body says what changed since, so the page can put a chip on the control that col
 docs/planner_slice_contract.md §11 is the specification; ``pin:`` members are rewritten to
 what they stand for before the store (docs/planner-p3_contract.md §7.2).
 
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Handler names are operation_ids; wire rules: docs/web-wire.md.
 """
 
 from __future__ import annotations
