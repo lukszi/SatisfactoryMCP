@@ -19,7 +19,7 @@ from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain.session import journal
 from .....domain.session import pins as pin_store
-from .....domain.session.views import PinRef, PinRow
+from .....domain.session.views import PinRecord, PinRef, PinRow
 from ...serial import (
     Dropped,
     RevBody,
@@ -82,11 +82,11 @@ def _refused(st, exc: Exception) -> JSONResponse:
 _ERRORS = (pin_store.PinError, LockTimeout, NewerSchema)
 
 
-def _plan_of(pin: dict) -> str | None:
+def _plan_of(pin: PinRow | PinRecord) -> str | None:
     return (pin.get("ref") or {}).get("plan") if pin["kind"] in ("plan", "process") else None
 
 
-def _journal(st, kind: str, pin: dict, args: dict, text: str) -> None:
+def _journal(st, kind: str, pin: PinRow | PinRecord, args: dict, text: str) -> None:
     journal.append(st.world_id, kind, actor=page_actor(), plan=_plan_of(pin), args=args, text=text)
 
 

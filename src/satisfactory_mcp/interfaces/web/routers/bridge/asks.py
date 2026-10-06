@@ -62,7 +62,11 @@ def _refused(world_id: str, exc: Exception) -> JSONResponse:
     if isinstance(exc, LockTimeout):
         return busy_response("asks", exc)
     if isinstance(exc, ask_store.AskStale):
-        names = {r["about"]["plan"]: r["plan_name"] for r in ask_store.live(world_id)}
+        names = {
+            plan: name
+            for r in ask_store.live(world_id)
+            if (plan := r["about"].get("plan")) and (name := r["plan_name"]) is not None
+        }
         body = {"error": str(exc), "stale": True, "ask": ask_store.row(exc.ask, names)}
         return JSONResponse(body, status_code=409)
     if isinstance(exc, ask_store.AskMissing | ask_store.AboutMissing):
@@ -73,7 +77,7 @@ def _refused(world_id: str, exc: Exception) -> JSONResponse:
 _ERRORS = (ask_store.AskError, LockTimeout, NewerSchema)
 
 
-def _journal(world_id: str, kind: str, ask: dict, text: str) -> None:
+def _journal(world_id: str, kind: str, ask: AskRow, text: str) -> None:
     about = ask["about"]
     journal.append(
         world_id,

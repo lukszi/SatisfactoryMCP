@@ -53,7 +53,7 @@ def _maps_line() -> str:
     return "# base maps (show_on_map mode=): " + ", ".join(shown)
 
 
-def _render(view: dict, head: str) -> str:
+def _render(view: store.SettingsView, head: str) -> str:
     rows = [
         (
             key,

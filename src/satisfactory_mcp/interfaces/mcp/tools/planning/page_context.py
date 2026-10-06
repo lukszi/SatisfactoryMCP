@@ -18,6 +18,7 @@ from .....domain.advice import store as advice_store
 from .....domain.planning.stored.plan_args import PlanLogError
 from .....domain.planning.stored.planlog import Actor, Commit, PlanLog
 from .....domain.session import asks, focus, journal, pins
+from .....domain.session.views import AskRow, PinRow
 from .....presenters.text import advice as advice_text
 from .....presenters.text import primitives as render
 from ... import app
@@ -73,7 +74,7 @@ def _head_line(st, page: dict | None, is_open: bool) -> str:
     return head
 
 
-def _pin_text(pin: dict) -> str:
+def _pin_text(pin: PinRow) -> str:
     text = f"{pin['id']} {pin['text']}"
     if pin["label"]:
         text += f" “{pin['label']}”"
@@ -82,7 +83,7 @@ def _pin_text(pin: dict) -> str:
     return render.cut(text, CONTEXT_PIN_WIDTH)
 
 
-def _pins_line(rows: list[dict]) -> str:
+def _pins_line(rows: list[PinRow]) -> str:
     if not rows:
         return "pins: none"
     shown = sorted(rows, key=lambda p: p["n"])[-CONTEXT_PINS:]
@@ -92,7 +93,7 @@ def _pins_line(rows: list[dict]) -> str:
     return line
 
 
-def _selected_pin(page: dict, rows: list[dict]) -> str:
+def _selected_pin(page: dict, rows: list[PinRow]) -> str:
     """`` (pin:N)`` when the page's selection is a pinned thing, else ''."""
     picked = page.get("selection")
     if not isinstance(picked, dict) or not picked.get("kind") or not picked.get("label"):
@@ -167,15 +168,15 @@ def _quoted(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _ask_text(row: dict, adv_ids: dict[str, str] | None = None) -> str:
+def _ask_text(row: AskRow, adv_ids: dict[str, str] | None = None) -> str:
     about = row["about"]
     text = f"{row['id']} {_quoted(row['text'])} about {about['kind']} {_quoted(about['label'])}"
     if about["kind"] == "advice" and (adv_ids or {}).get(about["ref"]):
         text += f" ({adv_ids[about['ref']]})"
     if row["plan_name"] and about["kind"] != "plan":
         text += f" in {_quoted(row['plan_name'])}"
-    if about.get("rev"):
-        text += f" v{about['rev']}"
+    if rev := about.get("rev"):
+        text += f" v{rev}"
     if row["state"] == "seen":
         text += " (seen)"
     return render.cut(text, CONTEXT_ASK_WIDTH)
