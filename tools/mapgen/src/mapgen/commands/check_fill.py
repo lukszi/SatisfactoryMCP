@@ -2,7 +2,7 @@
 
     uv run --extra gen python tools/check_map_fill.py
 
-Every number comes from ``mapgen.terrain`` and ``mapgen.pipeline`` as the render
+Every number comes from ``mapgen.terrain`` and ``mapgen.commands.renders`` as the render
 calls them; only the baselines are emulated here. Four checks, defined in
 docs/spatial-and-map.md section 26:
 

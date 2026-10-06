@@ -20,8 +20,9 @@ VERSIONS_PY = REPO / "src" / "satisfactory_mcp" / "core" / "gameassets" / "versi
 AXES_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "axes.py"
 PRESETS_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "presets.py"
 
-#: Who may import whom inside ``mapgen``. A unit is a subpackage or a top-level module.
-#: gamedata <- terrain <- lighting <- palette <- tiles <- pipeline <- cli, with ``common``,
+#: Who may import whom inside ``mapgen``. A unit is a subpackage or a top-level module, and
+#: each command module is a unit of its own (``commands.renders``).
+#: gamedata <- terrain <- lighting <- palette <- tiles <- commands <- cli, with ``common``,
 #: ``bandstore`` and ``cache`` as leaves under all of them, and ``pools`` (free memory, a
 #: worker's BLAS threads) under the units that start pools. ``cli`` reaches its commands
 #: through ``importlib`` by name, so it statically imports nothing here.
@@ -30,7 +31,6 @@ ALLOWED: dict[str, frozenset[str]] = {
     "bandstore": frozenset(),
     "pools": frozenset(),
     "cache": frozenset({"common", "bandstore"}),
-    "compress_cache": frozenset({"common", "bandstore", "cache"}),
     "gamedata": frozenset({"common", "gamedata"}),
     "terrain": frozenset({"common", "cache", "gamedata", "terrain"}),
     "lighting": frozenset({"common", "pools", "gamedata", "terrain", "lighting"}),
@@ -40,13 +40,19 @@ ALLOWED: dict[str, frozenset[str]] = {
     "tiles": frozenset(
         {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}
     ),
-    "heightmap": frozenset({"common", "gamedata", "terrain"}),
     "enhance": frozenset({"common", "gamedata", "tiles", "enhance"}),
-    "artwork": frozenset({"common", "gamedata", "tiles", "enhance"}),
-    "check_fill": frozenset({"common", "cache", "gamedata", "terrain"}),
-    "pipeline": frozenset(
+    "commands.renders": frozenset(
         {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}
     ),
+    "commands.heightmap": frozenset(
+        {"common", "gamedata", "terrain", "commands.caves", "commands.rocks"}
+    ),
+    "commands.caves": frozenset({"common", "gamedata"}),
+    "commands.rocks": frozenset({"common", "gamedata"}),
+    "commands.paint": frozenset({"common", "gamedata"}),
+    "commands.artwork": frozenset({"common", "gamedata", "tiles", "enhance"}),
+    "commands.check_fill": frozenset({"common", "cache", "gamedata", "terrain"}),
+    "commands.compress_cache": frozenset({"common", "bandstore", "cache"}),
     "cli": frozenset(),
     "__main__": frozenset({"cli"}),
 }
@@ -60,10 +66,10 @@ MODULE_MAX_LINES = 800
 #: ``CEILING_SLACK`` above the file is stale. Measured after the move.
 MODULE_CEILINGS: dict[str, int] = {
     "gamedata/mesh.py": 825,
-    "pipeline.py": 1013,
-    "heightmap.py": 310,
+    "commands/renders.py": 1013,
+    "commands/heightmap.py": 310,
     # A thin command, held at its size so the stages stay in their modules.
-    "artwork.py": 298,
+    "commands/artwork.py": 298,
 }
 CEILING_SLACK = 25
 
@@ -71,9 +77,9 @@ CEILING_SLACK = 25
 #: 2d7eaa9 (a pure move keeps every body's length). Shrink-only, same slack.
 FUNCTION_MAX_LINES = 150
 FUNCTION_CEILINGS: dict[str, int] = {
-    "pipeline.py::main": 812,
+    "commands/renders.py::main": 812,
     "terrain/sidecar.py::build_meta": 156,
-    "artwork.py::main": 119,
+    "commands/artwork.py::main": 119,
     "enhance/levels.py::enhance_levels": 249,
 }
 
@@ -165,9 +171,11 @@ def _imports(node: ast.AST, deferred: bool = False):
 
 
 def _unit(module: str) -> str | None:
-    """``mapgen.terrain.fill`` -> ``terrain``; bare ``mapgen`` -> None."""
+    """``mapgen.terrain.fill`` -> ``terrain``; a command is its own unit, ``commands.paint``."""
     parts = module.split(".")
-    return parts[1] if parts[0] == "mapgen" and len(parts) > 1 else None
+    if parts[0] != "mapgen" or len(parts) < 2:
+        return None
+    return ".".join(parts[1:3]) if parts[1] == "commands" and len(parts) > 2 else parts[1]
 
 
 def _mapgen_edges() -> set[tuple[str, str]]:
@@ -225,7 +233,7 @@ def _first_doc_line(path: Path) -> str | None:
 
 
 def test_mapgen_imports_point_down():
-    """gamedata <- terrain <- lighting <- palette <- tiles <- pipeline <- cli."""
+    """gamedata <- terrain <- lighting <- palette <- tiles <- commands <- cli."""
     bad = []
     for importer, target in sorted(_mapgen_edges()):
         source, dest = _unit(importer), _unit(target)
@@ -444,7 +452,7 @@ def test_the_style_tables_agree_with_versions_styles():
     layers = [row["layer"] for row in rendered.values()]
 
     assert _literal(PKG / "palette" / "styles.py", "LAYER_STYLES") == layer_styles
-    assert list(_literal(PKG / "pipeline.py", "LAYERS")) == layers
+    assert list(_literal(PKG / "commands" / "renders.py", "LAYERS")) == layers
     assert list(_literal(PRESETS_PY, "RENDER_LAYERS")) == layers
     assert _literal(AXES_PY, "LAYER_STYLE") == {row["layer"]: sid for sid, row in styles.items()}
 

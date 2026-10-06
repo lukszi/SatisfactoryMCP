@@ -35,7 +35,7 @@ from mapgen.cache import (
     mesh_stamp,
     missing_caches,
 )
-from mapgen.compress_cache import Refused, compress
+from mapgen.commands.compress_cache import Refused, compress
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.terrain import rasters
 from mapgen.terrain.rasters import (

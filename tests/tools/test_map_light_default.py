@@ -17,7 +17,7 @@ from tests.support.map_jobs import Passed, keep_cache, run_renders
 
 
 def parsed(monkeypatch, *argv: str) -> argparse.Namespace:
-    """What ``pipeline.main`` parsed from ``argv`` before it stopped at ``require_gen``."""
+    """What ``renders.main`` parsed from ``argv`` before it stopped at ``require_gen``."""
     seen: list[argparse.Namespace] = []
     real = argparse.ArgumentParser.parse_args
     monkeypatch.setattr(

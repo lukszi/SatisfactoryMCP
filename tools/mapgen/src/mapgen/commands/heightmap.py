@@ -45,10 +45,11 @@ import json
 import time
 from pathlib import Path
 
+from mapgen.commands.caves import write_caves
+from mapgen.commands.rocks import write_rocks
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
-from mapgen.gamedata.caves import write_caves
 from mapgen.gamedata.mesh import MeshBounds, rasterise_cliffs, rasterise_top, read_mesh_geometry
-from mapgen.gamedata.rocks import rock_pack, write_rocks
+from mapgen.gamedata.rocks import rock_pack
 from mapgen.gamedata.sweep import drop_offsets, landscape_frame, read_baseline, sweep_levels
 from mapgen.gamedata.water import artwork_water_mask, water_surface
 from mapgen.terrain.field import (

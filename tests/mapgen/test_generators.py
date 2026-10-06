@@ -31,6 +31,7 @@ from mapgen.cache import (
     cached_direct,
     direct_cache_stamp,
 )
+from mapgen.commands.renders import LAYERS
 from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME
 from mapgen.enhance.pixels import (
     COLOUR_FIX_SIGMA,
@@ -80,7 +81,6 @@ from mapgen.palette.water import (
     water_over,
     water_planes,
 )
-from mapgen.pipeline import LAYERS
 from mapgen.terrain.fill import (
     SOURCE_HOLE,
     SOURCE_NONE,

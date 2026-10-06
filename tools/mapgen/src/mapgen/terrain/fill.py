@@ -1,6 +1,6 @@
 """The render's base heights, rebuilt where the field is coarse or empty.
 
-Imported by ``mapgen.pipeline`` and ``mapgen.check_fill``; nothing here reads
+Imported by ``mapgen.commands.renders`` and ``mapgen.commands.check_fill``; nothing here reads
 the game or writes a file. Three steps on the 1 m lattice the kernel samples:
 
 1. the fill province is re-read from the float16 interface raster: Gaussian, then cubic,

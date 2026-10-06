@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from mapgen.commands.renders import LAYERS
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.paint import (
     component_origin,
@@ -45,7 +46,6 @@ from mapgen.palette.styles import (
     load_palette,
 )
 from mapgen.palette.water import WATER_DEPTH_FULL_M, water_over
-from mapgen.pipeline import LAYERS
 from mapgen.terrain.rasters import (
     MESH_CORAL,
     MESH_ROCK,

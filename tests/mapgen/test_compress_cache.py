@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mapgen import cli, compress_cache
+from mapgen import cli
 from mapgen.bandstore import BandArray
 from mapgen.cache import (
     BANDS_SUFFIX,
@@ -31,7 +31,8 @@ from mapgen.cache import (
     cached_direct,
     direct_cache_stamp,
 )
-from mapgen.compress_cache import Refused, compress
+from mapgen.commands import compress_cache
+from mapgen.commands.compress_cache import Refused, compress
 
 pytest.importorskip("zstandard")
 

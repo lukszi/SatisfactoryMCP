@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import mapgen.heightmap
+import mapgen.commands.heightmap
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM, sample_grid
 from mapgen.gamedata.mesh import MaxZRaster
 from mapgen.gamedata.sweep import (
@@ -166,7 +166,9 @@ def test_the_generator_and_the_loader_agree_on_the_file_names_and_the_grid():
     origin_x, origin_y = ORIGIN_X_CM, ORIGIN_Y_CM
     assert grid_px == 7500
     assert (origin_x, origin_y, SPACING_CM) == (-324700.0, -375000.0, 100.0)
-    assert mapgen.heightmap.hf is hf, "the generator must use the shipped codec, not a copy"
+    assert mapgen.commands.heightmap.hf is hf, (
+        "the generator must use the shipped codec, not a copy"
+    )
 
     # The sampler the run validates on has to be the sampler the server reads with, or the
     # validation measures something nobody ships.

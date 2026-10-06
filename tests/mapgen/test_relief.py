@@ -20,6 +20,7 @@ from mapgen.cache import (
     mesh_stamp,
     missing_caches,
 )
+from mapgen.commands.renders import BIOME_LAYERS, LAYERS
 from mapgen.palette.painted import oklab, srgb_to_linear
 from mapgen.palette.relief import (
     LUT_STEPS,
@@ -29,7 +30,6 @@ from mapgen.palette.relief import (
     water_tint_plane,
 )
 from mapgen.palette.styles import LAYER_STYLES, RELIEF_PALETTES, SHORE_OPTICS
-from mapgen.pipeline import BIOME_LAYERS, LAYERS
 from satisfactory_mcp.core.gameassets import versions
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.map_scenes import relief_ground, stub_field
