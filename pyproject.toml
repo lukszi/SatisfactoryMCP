@@ -25,7 +25,18 @@ satisfactory-mcp = "satisfactory_mcp.server:main"
 satisfactory-mcp-web = "satisfactory_mcp.interfaces.web.__main__:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov", "pytest-xdist>=3.6,<4", "ruff"]
+# pyright and the stubs are exact pins: tests/architecture/test_typing.py holds per-package error
+# counts, and a new checker or stub release moves them (docs/DEVELOPING.md, "Types").
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "pytest-xdist>=3.6,<4",
+    "ruff",
+    "pyright[nodejs]==1.1.414",
+    # scipy 1.18 and its stubs need Python 3.12; the lock gives 3.11 scipy 1.17.
+    "scipy-stubs==1.18.1.1; python_version >= '3.12'",
+    "scipy-stubs==1.17.1.5; python_version < '3.12'",
+]
 # The web interface is optional on purpose: the MCP server is the product, and a
 # stdio server has no business pulling in an ASGI stack. interfaces/web is the only
 # place allowed to import these, which tests/architecture/test_import_direction.py enforces.
@@ -77,6 +88,28 @@ markers = [
 # "Test suite".
 addopts = ["-m", "not integration", "-n", "8", "--import-mode=importlib"]
 
+[tool.pyright]
+# The gate and its ratchet: docs/DEVELOPING.md, "Types".
+include = ["src", "tools"]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "src/satisfactory_mcp/interfaces/web/frontend",
+    "tools/mapgen/tests",
+]
+# Required: the venv's editable install points at the main checkout, so without "src" first a
+# worktree checks the main checkout's code.
+extraPaths = ["src", "tools/mapgen/src", "."]
+stubPath = "typings"
+pythonVersion = "3.11"
+# Fixed rather than the host's, so the gate's counts are the same on every machine.
+pythonPlatform = "Windows"
+typeCheckingMode = "standard"
+# A package or module joins this list when it reaches zero strict errors.
+strict = ["src/satisfactory_mcp/core/arrays.py", "src/satisfactory_mcp/core/jsontypes.py"]
+reportUnnecessaryTypeIgnoreComment = "error"
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -103,7 +136,9 @@ target-version = "py311"
 # `importorskip` line -- test_web_api.py's 12 became one file per router, so the number
 # grew with the number of web test modules while the exempt pattern stayed two globs and a
 # name. Nothing outside those two cases has ever been exempted.
-extend-select = ["E402"]
+#
+# TID251 bans `typing.Any` in src and tools: docs/DEVELOPING.md, "Types".
+extend-select = ["E402", "TID251"]
 ignore = [
     # Broad excepts are deliberate at the save boundary: autosaves are rewritten in
     # place every ~5 minutes, so a parse can tear mid-write, and the vendored parser
@@ -135,6 +170,64 @@ ignore = [
 "tools/*.py" = ["E402"]
 "tests/web/**/*.py" = ["E402"]
 "tests/mapgen/test_generators.py" = ["E402"]
+# Tests are outside the typing rules.
+"tests/**/*.py" = ["TID251"]
+# The modules that still import typing.Any. The list only shrinks, and a line no longer needed
+# fails tests/architecture/test_typing.py.
+"src/satisfactory_mcp/core/saveio/rows.py" = ["TID251"]
+"src/satisfactory_mcp/core/singleflight.py" = ["TID251"]
+"src/satisfactory_mcp/core/solverlane.py" = ["TID251"]
+"src/satisfactory_mcp/domain/planning/siting/ground.py" = ["TID251"]
+"src/satisfactory_mcp/domain/planning/siting/resolve.py" = ["TID251"]
+"src/satisfactory_mcp/domain/spatial/caves.py" = ["TID251"]
+"src/satisfactory_mcp/domain/spatial/heightfield/field.py" = ["TID251"]
+"src/satisfactory_mcp/domain/spatial/rocks.py" = ["TID251"]
+"src/satisfactory_mcp/domain/world/state.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/assets/icons.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/assets/maps.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/assets/tiles.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/bridge/asks.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/bridge/pins.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/bridge/settings.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/codex/gamedata.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/codex/search.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/dashboard/advice.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/dashboard/power_circuits.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/dashboard/progress_boosts.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/dashboard/progress_unlocks.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/dashboard/stock.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/factories/factory_detail.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/factories/factory_graph.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/factories/factory_health.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/factories/factory_labels.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/factories/factory_list.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/factories/trace.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/layers/belts_pipes.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/layers/crates.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/layers/floors.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/layers/placements.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/layers/power_lines.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/layers/storage.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/plans/activity.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/plans/plan_index.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/plans/plan_site.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/plans/plan_solve.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/plans/plan_track.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/plans/planlog.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/world/collectibles.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/world/inspect.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/world/nodes.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/world/regions.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/world/world_conduits.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/world/world_finders.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/routers/world/worlds.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/serial/responses.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/serial/shapes.py" = ["TID251"]
+"src/satisfactory_mcp/interfaces/web/serial/units.py" = ["TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.Any".msg = "JsonValue or JsonObject from satisfactory_mcp.core.jsontypes at a boundary, a real type elsewhere"
+"typing_extensions.Any".msg = "JsonValue or JsonObject from satisfactory_mcp.core.jsontypes at a boundary, a real type elsewhere"
 
 [tool.ruff.lint.isort]
 # Stated rather than inferred. isort decides first-party by resolving the dotted name on
