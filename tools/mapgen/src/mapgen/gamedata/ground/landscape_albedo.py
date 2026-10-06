@@ -14,7 +14,7 @@ from mapgen.gamedata.materials import material_parameters
 from mapgen.gamedata.rocks.families import FAMILIES, family_sources
 from satisfactory_mcp.core.arrays import F64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.packages import PackageView, class_name_of
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
     "CANOPY_TEXTURE",
@@ -183,17 +183,19 @@ def rock_family_colours(game: GameReader, decoder: ModuleType) -> dict[str, Json
     out: dict[str, JsonObject] = {}
     sources = family_sources(game.store, game.scripts, game.index)
     for family, source in sources.items():
+        material: str = source["material"]
         top: str | None = source["top_texture"]
-        mean: list[float] | None = None
+        mean: list[JsonValue] | None = None
         if top:
             asset = top.split("/Game/FactoryGame/", 1)[-1]
             linear = srgb_to_linear(decode_texture(game, decoder, asset, 512))
             mean = [round(float(v), 5) for v in linear.reshape(-1, 3).mean(0)]
         tint: Sequence[float] | None = source["tint"]
+        tint_rounded: list[JsonValue] | None = [round(v, 5) for v in tint] if tint else None
         out[family] = {
             "code": FAMILIES.index(family),
-            "material": source["material"],
-            "tint": [round(v, 5) for v in tint] if tint else None,
+            "material": material,
+            "tint": tint_rounded,
             "top_texture": top,
             "top": mean,
         }
