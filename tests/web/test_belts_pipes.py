@@ -18,7 +18,7 @@ import math
 
 import pytest
 
-from tests.support.web import client_over, failing_state_loader
+from tests.support.web import client_over
 
 fastapi = pytest.importorskip("fastapi")
 
@@ -179,13 +179,6 @@ def test_a_world_that_split_no_belt_answers_with_no_attachments(game):
         with client_over(WorldState(projection=projection, game=game), game) as c:
             body = c.get("/api/belts").json()
         assert (body["attachments"], body["attachment_count"]) == ([], 0)
-
-
-def test_a_save_that_cannot_be_read_has_no_belt_network_either(game):
-    with client_over(failing_state_loader, game) as c:
-        r = c.get("/api/belts")
-    assert r.status_code == 404
-    assert "sidecar produced no output" in r.json()["error"]
 
 
 def test_pipes_are_the_plumbing_as_it_was_actually_routed(client, state):
@@ -362,13 +355,6 @@ def test_a_malformed_pipe_segment_costs_one_piece_not_the_plumbing(game):
     assert unnamed["fluid"] == "Desc_Water_C"
     assert body["pipes"][4]["points_m"] == [[1.0, 2.0, 3.0]]
     assert body["networks"] == 1
-
-
-def test_a_save_that_cannot_be_read_has_no_plumbing_either(game):
-    with client_over(failing_state_loader, game) as c:
-        r = c.get("/api/pipes")
-    assert r.status_code == 404
-    assert "sidecar produced no output" in r.json()["error"]
 
 
 # ------------------------------------------------------------------ route curvature

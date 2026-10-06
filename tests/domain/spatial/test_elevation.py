@@ -17,8 +17,7 @@ from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.spatial import elevation, heightfield
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.world.state import WorldState
-
-pytestmark = pytest.mark.integration
+from tests.support.heightfields import FAKE_SPACING, FAKE_X0, FAKE_Y0, build_field
 
 #: On the main platform, dense with foundations. Chosen because it is the case where the
 #: built population swamps the ground population.
@@ -48,6 +47,7 @@ def _counts(points) -> dict[str, int]:
     return out
 
 
+@pytest.mark.integration
 def test_an_old_projection_loses_a_source_rather_than_failing(game, state):
     """A projection written before `structures` existed carries no foundations. That must
     cost one source and nothing else -- the same tolerance `sloop_budget` and
@@ -69,6 +69,7 @@ def test_an_old_projection_loses_a_source_rather_than_failing(game, state):
     assert counts["building"] > 400
 
 
+@pytest.mark.integration
 def test_foundations_are_the_dense_source_on_a_current_save(game, live):
     """8,347 of them against 566 buildings on the live save. They are what gives a
     developed site any evidence about itself at all -- one building per machine is sparse,
@@ -78,6 +79,7 @@ def test_foundations_are_the_dense_source_on_a_current_save(game, live):
     assert counts["structure"] > counts["building"] * 10
 
 
+@pytest.mark.integration
 def test_it_works_with_no_save_at_all(game):
     """The node table is static and map-wide, so an unexplored coordinate still gets an
     answer. Requiring a save would make this useless for exactly the ground a player is
@@ -87,6 +89,7 @@ def test_it_works_with_no_save_at_all(game):
     assert {s.source for s in only_nodes} == {"node"}
 
 
+@pytest.mark.integration
 def test_a_probe_only_returns_what_is_inside_the_radius(points):
     near = elevation.probe(IN_THE_FIELD[0] * 100, IN_THE_FIELD[1] * 100, points, radius_m=400)
     assert near.samples
@@ -94,6 +97,7 @@ def test_a_probe_only_returns_what_is_inside_the_radius(points):
     assert [s.dist_m for s in near.samples] == sorted(s.dist_m for s in near.samples)
 
 
+@pytest.mark.integration
 def test_a_wider_radius_never_loses_a_sample(points):
     small = elevation.probe(ON_PLATFORM[0] * 100, ON_PLATFORM[1] * 100, points, radius_m=100)
     big = elevation.probe(ON_PLATFORM[0] * 100, ON_PLATFORM[1] * 100, points, radius_m=300)
@@ -103,6 +107,7 @@ def test_a_wider_radius_never_loses_a_sample(points):
 # ------------------------------------------------- ground and built stay apart
 
 
+@pytest.mark.integration
 def test_ground_and_built_are_separate_populations(points):
     """A node is on terrain; a foundation is wherever the player put it, often levelled
     across a slope. Averaged together on a developed site the structures outnumber the
@@ -116,6 +121,7 @@ def test_ground_and_built_are_separate_populations(points):
     assert "building" not in elevation.GROUND_SOURCES
 
 
+@pytest.mark.integration
 def test_fill_depth_needs_more_than_one_ground_sample(points):
     """The measured trap: 805 structures against 1 node on the main platform. One node is
     a point, and a point is not a ground level, so no fill depth is quoted from it."""
@@ -124,6 +130,7 @@ def test_fill_depth_needs_more_than_one_ground_sample(points):
     assert near.fill_m is None
 
 
+@pytest.mark.integration
 def test_fill_depth_is_a_difference_of_medians_when_both_sides_are_real():
     made = [
         elevation.Sample("node", 0, 0, 1000.0),
@@ -136,6 +143,7 @@ def test_fill_depth_is_a_difference_of_medians_when_both_sides_are_real():
     assert near.fill_m == pytest.approx(20.0)
 
 
+@pytest.mark.integration
 def test_one_sided_evidence_yields_no_fill(points):
     """In the crude field there are nodes and nothing built. A fill depth is a difference
     and one side alone cannot produce it."""
@@ -144,6 +152,7 @@ def test_one_sided_evidence_yields_no_fill(points):
     assert near.fill_m is None
 
 
+@pytest.mark.integration
 def test_the_median_resists_a_spire(points):
     """One Spire Coast node sits 220 m above its neighbours. A mean would drag the field's
     reported height up by tens of metres; the median does not move."""
@@ -156,6 +165,7 @@ def test_the_median_resists_a_spire(points):
 # ------------------------------------------------------------- the tool
 
 
+@pytest.mark.integration
 def test_an_even_count_takes_the_mean_of_the_middle_two():
     assert elevation.Elevation.middle([127.0, 137.0]) == pytest.approx(132.0)
     assert elevation.Elevation.middle([1.0, 2.0, 9.0]) == 2.0
@@ -163,6 +173,7 @@ def test_an_even_count_takes_the_mean_of_the_middle_two():
 
 
 @pytest.mark.parametrize("radius", [50, 200, 400, 800])
+@pytest.mark.integration
 def test_the_tool_quotes_the_median_the_inspector_sends(game, points, radius):
     near = elevation.probe(IN_THE_FIELD[0] * 100, IN_THE_FIELD[1] * 100, points, radius_m=radius)
     out = srv.describe_location(_at(IN_THE_FIELD), radius_m=radius)
@@ -172,6 +183,7 @@ def test_the_tool_quotes_the_median_the_inspector_sends(game, points, radius):
     assert f"ground_elevation_m={near.median('node'):.0f} (median of {len(near.ground)}," in out
 
 
+@pytest.mark.integration
 def test_describe_location_reports_elevation(game):
     out = srv.describe_location(_at(ON_PLATFORM))
     assert "built_elevation_m=" in out
@@ -194,6 +206,7 @@ class _OneTexel:
         return self._reading
 
 
+@pytest.mark.integration
 def test_the_measured_terrain_is_reported_where_the_field_reaches(game, monkeypatch):
     """``/api/inspect`` has printed this texel all along while this tool asserted there was
     no terrain data in anything it reads. The seam was already built -- ``probe`` takes the
@@ -209,6 +222,7 @@ def test_the_measured_terrain_is_reported_where_the_field_reaches(game, monkeypa
     assert "terrain_m=118.3 (landscape, +-0.2m)" in out
 
 
+@pytest.mark.integration
 def test_water_depth_is_quoted_only_where_the_bed_was_measured(game, monkeypatch):
     """The field's own refusal, carried out to the text surface: over the fill layer the
     ground is a 3.9 m raster, so subtracting it from a sea surface invents a depth."""
@@ -247,6 +261,7 @@ def test_water_depth_is_quoted_only_where_the_bed_was_measured(game, monkeypatch
 
 
 @pytest.mark.parametrize("cave", ["below", "inside"])
+@pytest.mark.integration
 def test_a_cave_point_says_so_and_inside_withholds_the_surface(game, monkeypatch, cave):
     reading = heightfield.Reading(
         z_m=233.4, provenance=heightfield.PROV_LANDSCAPE, accuracy_m=0.2, cave=cave
@@ -263,6 +278,7 @@ def test_a_cave_point_says_so_and_inside_withholds_the_surface(game, monkeypatch
     assert ("cave=in a cave" in whereami) == (cave == "inside")
 
 
+@pytest.mark.integration
 def test_without_a_field_it_names_the_gap_rather_than_denying_terrain_exists(game, monkeypatch):
     """The standing rule: name what the data cannot do. What it must NOT do any more is
     state that no terrain data exists -- it exists, this machine has not extracted it."""
@@ -272,6 +288,7 @@ def test_without_a_field_it_names_the_gap_rather_than_denying_terrain_exists(gam
     assert "SAMPLED from things standing nearby" in out
 
 
+@pytest.mark.integration
 def test_unsurveyed_ground_says_unknown_rather_than_guessing(game):
     """The nearest-land guess is exactly the failure describe_location already refuses for
     region naming. Elevation gets the same treatment."""
@@ -281,6 +298,7 @@ def test_unsurveyed_ground_says_unknown_rather_than_guessing(game):
     assert "off-map or ocean" in out
 
 
+@pytest.mark.integration
 def test_the_radius_is_the_callers_to_widen(game):
     tight = srv.describe_location(_at(IN_THE_FIELD), radius_m=50)
     wide = srv.describe_location(_at(IN_THE_FIELD), radius_m=800)
@@ -288,6 +306,7 @@ def test_the_radius_is_the_callers_to_widen(game):
     assert "ground_elevation_m=" in wide
 
 
+@pytest.mark.integration
 def test_a_place_is_the_only_way_to_say_where(game):
     """Every other tool on this surface takes a place; this one also declared two floats,
     so a client reading the schema met two ways to say one thing. The floats are gone, and
@@ -298,6 +317,7 @@ def test_a_place_is_the_only_way_to_say_where(game):
     assert srv.describe_location().startswith("! describe_location needs at=")
 
 
+@pytest.mark.integration
 def test_a_bare_platform_is_a_place_this_tool_accepts(game, live):
     """The dead end item 13 names: factory_map lists bare platforms by an index no tool
     would take, so the table added to retire the nine-probe workflow led straight back
@@ -307,6 +327,7 @@ def test_a_bare_platform_is_a_place_this_tool_accepts(game, live):
     assert "! slab:99999 out of range" in srv.describe_location(at="slab:99999")
 
 
+@pytest.mark.integration
 def test_region_naming_still_works_exactly_as_before(game):
     """Elevation is an addition. The region answer that callers already depend on must be
     untouched, including its confidence word."""
@@ -314,3 +335,73 @@ def test_region_naming_still_works_exactly_as_before(game):
     assert "region=Spire Coast" in out
     assert "confidence=interior" in out
     assert "grid=X5Y5" in out
+
+
+# ------------------------------------------- the terrain field beside the populations
+
+
+def _samples() -> list[elevation.Sample]:
+    """Three nodes and a foundation, all within the probe radius of the field's origin."""
+    return [
+        elevation.Sample("node", FAKE_X0, FAKE_Y0, 1000.0),
+        elevation.Sample("node", FAKE_X0 + 100.0, FAKE_Y0, 1200.0),
+        elevation.Sample("node", FAKE_X0, FAKE_Y0 + 100.0, 1400.0),
+        elevation.Sample("structure", FAKE_X0, FAKE_Y0, 3000.0),
+    ]
+
+
+def test_a_probe_without_a_field_is_the_probe_it_always_was(tmp_path):
+    """The default, and the case on almost every machine. Nothing may change for it."""
+    near = elevation.probe(FAKE_X0, FAKE_Y0, _samples(), radius_m=200.0)
+    assert near.terrain is None and near.terrain_m is None
+    assert near.ground == [10.0, 12.0, 14.0]
+    assert near.built == [30.0]
+    assert near.fill_m == 18.0
+
+
+def test_the_field_is_a_fourth_answer_and_does_not_touch_the_sampled_populations(tmp_path):
+    """The whole design in one assertion: a texel read is reported, never averaged in.
+
+    The field says 12.3 m at this coordinate and the three nodes nearby median to 12.0 m.
+    Folding the reading into ``ground`` would move that median, put a 0.2 m measurement in
+    with points up to 200 m away, and cost the caller the ability to tell them apart. So
+    ``ground``, ``built`` and ``fill_m`` come out bit for bit what they were without a
+    field, and the reading arrives beside them with its own provenance.
+    """
+    field = heightfield.load_field(build_field(tmp_path))
+    without = elevation.probe(FAKE_X0, FAKE_Y0, _samples(), radius_m=200.0)
+    near = elevation.probe(FAKE_X0, FAKE_Y0, _samples(), radius_m=200.0, terrain_field=field)
+
+    assert near.terrain_m == 12.3
+    assert near.terrain.source == "landscape"
+    assert near.terrain.accuracy_m == 0.205
+    assert (near.ground, near.built, near.fill_m) == (without.ground, without.built, without.fill_m)
+    assert near.counts == without.counts == {"node": 3, "structure": 1}
+
+
+def test_a_field_that_knows_nothing_here_leaves_the_probe_saying_nothing(tmp_path):
+    """No-data must not become a number, and it must not disturb the samples either."""
+    field = heightfield.load_field(build_field(tmp_path))
+    near = elevation.probe(
+        FAKE_X0, FAKE_Y0 + 3 * FAKE_SPACING, _samples(), radius_m=500.0, terrain_field=field
+    )
+    assert near.terrain is None and near.terrain_m is None
+    assert near.ground == [10.0, 12.0, 14.0]
+
+
+def test_the_field_does_not_lower_the_refusal_to_invent_a_ground_level(tmp_path):
+    """``MIN_GROUND_SAMPLES`` survives the heightmap arriving, and that is deliberate.
+
+    A terrain reading is not a ground sample. One node plus a field is still one node, and
+    a fill depth quoted from it would be the invented number this module exists to refuse
+    -- so ``fill_m`` stays ``None`` however good the terrain is.
+    """
+    field = heightfield.load_field(build_field(tmp_path))
+    thin = [
+        elevation.Sample("node", FAKE_X0, FAKE_Y0, 1000.0),
+        elevation.Sample("structure", FAKE_X0, FAKE_Y0, 3000.0),
+    ]
+    near = elevation.probe(FAKE_X0, FAKE_Y0, thin, radius_m=200.0, terrain_field=field)
+    assert near.terrain_m == 12.3, "the field answered"
+    assert len(near.ground) < elevation.MIN_GROUND_SAMPLES
+    assert near.fill_m is None, "one node became a ground level because a field turned up"

@@ -1,122 +1,12 @@
-"""Save-state derivation and response formatting.
+"""What ``WorldState`` derives from a save: unlocks, offers, stock, power, building counts.
 
-State tests run off the committed projection fixture, so they need no .sav and no
-parser -- only the Docs join needs the game install.
+These run off the committed projection fixture, so they need no .sav and no parser --
+only the Docs join needs the game install.
 """
 
 from __future__ import annotations
 
 import pytest
-
-from satisfactory_mcp.domain.spatial import geo
-from satisfactory_mcp.presenters.text import primitives as render
-
-# ------------------------------------------------------------------ geometry
-
-
-def test_north_is_negative_y():
-    assert geo.bearing_deg(0, -1000) == pytest.approx(0.0)
-    assert geo.bearing_deg(1000, 0) == pytest.approx(90.0)
-    assert geo.bearing_deg(0, 1000) == pytest.approx(180.0)
-    assert geo.bearing_deg(-1000, 0) == pytest.approx(270.0)
-    assert geo.direction_of(0, -1000) == "north"
-
-
-def test_grid_cell_is_exact():
-    # 1.024 km cells numbered from the south-west corner.
-    assert geo.grid_cell(geo.GRID_X0 + 1, geo.GRID_Y0_SOUTH - 1) == "X0Y0"
-    assert geo.grid_cell(geo.GRID_X0 + geo.GRID_CELL + 1, geo.GRID_Y0_SOUTH - 1) == "X1Y0"
-
-
-def test_cluster_diameter_is_pairwise_not_radius():
-    nodes = [
-        {"x": 0, "y": 0, "z": 0, "kind": "node", "purity": "normal"},
-        {"x": 10000, "y": 0, "z": 0, "kind": "node", "purity": "pure"},
-    ]
-    (c,) = geo.cluster(nodes, link_m=200.0)
-    assert c.size == 2
-    assert c.diameter_m == pytest.approx(100.0)
-    assert c.purities() == {"normal": 1, "pure": 1}
-
-
-def test_cluster_splits_beyond_link_distance():
-    nodes = [
-        {"x": 0, "y": 0, "z": 0, "kind": "node", "purity": "normal"},
-        {"x": 100000, "y": 0, "z": 0, "kind": "node", "purity": "normal"},
-    ]
-    assert len(geo.cluster(nodes, link_m=200.0)) == 2
-
-
-def test_cluster_kinds_reports_every_member():
-    """Kind must never be inferred from one member: a real 200 m cluster merges 6
-    well satellites with a plain node 85 m away."""
-    nodes = [{"x": 0, "y": 0, "z": 0, "kind": "well_sat", "purity": "normal"}] * 6 + [
-        {"x": 8500, "y": 0, "z": 0, "kind": "node", "purity": "normal"}
-    ]
-    (c,) = geo.cluster([dict(n) for n in nodes], link_m=200.0)
-    assert c.kinds() == {"well_sat": 6, "node": 1}
-
-
-# -------------------------------------------------------------------- render
-
-
-def test_truncation_counts_data_rows_only():
-    """Reporting 'showing 7' for 5 data rows tells the model something false."""
-    out = render.table(("a", "b"), [(1, 2), (3, 4)], total=10, offset=0)
-    assert "showing 2 from offset 0" in out
-    assert "8 more" in out
-    assert "offset=2" in out
-
-
-def test_no_envelope_when_nothing_truncated():
-    out = render.table(("a",), [(1,)], total=1)
-    assert "match(es)" not in out
-
-
-def test_only_a_paging_caller_is_told_to_page():
-    """Passing ``offset`` is the caller's declaration that it HAS an offset parameter.
-    Without it the envelope offered a next page from fifteen tools whose schemas reject
-    the argument, which is an instruction that fails every time it is followed."""
-    pages = render.table(("a",), [(1,), (2,)], total=10, offset=0)
-    assert "call again with offset=2" in pages
-
-    cannot = render.table(("a",), [(1,), (2,)], total=10)
-    assert "offset=" not in cannot
-    assert render.NARROW_HINT in cannot
-
-    told = render.table(("a",), [(1,), (2,)], total=10, hint="narrow with sources=")
-    assert "8 more: narrow with sources=" in told
-
-
-def test_the_row_cap_argument_is_not_decorative():
-    """``limit`` was accepted and ignored, so a caller that passed it and forgot to slice
-    printed every row under a header claiming a cap."""
-    out = render.table(("a",), [(i,) for i in range(10)], total=10, limit=3)
-    assert out.splitlines()[:4] == ["a", "0", "1", "2"]
-    assert "showing 3 from offset 0" in out
-
-
-def test_limit_is_clamped():
-    assert render.clamp(1000) == render.MAX_ROWS
-    assert render.clamp(0) == 1
-    assert render.clamp(None, default=10) == 10
-
-
-def test_num_is_compact():
-    assert render.num(5.0) == "5"
-    assert render.num(2.5) == "2.5"
-    assert render.num(1200.0) == "1200"
-    assert render.num(None) == "-"
-
-
-def test_envelope_puts_warnings_before_rows():
-    out = render.envelope("SUMMARY", "rows", ["careful"])
-    assert out.index("careful") < out.index("rows")
-
-
-# --------------------------------------------------------------------- state
-
-pytestmark_integration = pytest.mark.integration
 
 
 @pytest.mark.integration

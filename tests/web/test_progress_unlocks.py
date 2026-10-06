@@ -1,4 +1,7 @@
-"""``/api/progress/*``: the dashboard's Progress section."""
+"""``/api/progress/*``: the dashboard's Progress section -- milestones, MAM, phases, drives.
+
+The boost budgets (shards, sloops) are in ``test_progress_boosts.py``.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +10,8 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp.domain.progression.ladder import SchematicLadder
-from tests.support.web import client_over, failing_state_loader
+from tests.support.research import alien_tree_shut_client
+from tests.support.web import failing_state_loader
 
 
 def _ladder(state):
@@ -96,24 +100,6 @@ def test_the_phase_view_joins_the_target_row_to_stock(client, state):
         assert body["deliverable"] == all(i["short"] <= 0 for i in p["outstanding"])
 
 
-def test_shards_are_the_budget_the_tool_reads(client, state):
-    body = client.get("/api/progress/shards").json()
-    budget = state.shard_budget()
-    for key in ("free", "craftable", "potential", "committed", "owned"):
-        assert body[key] == budget[key]
-    assert [h["instance"] for h in body["holders"]] == [h["instance"] for h in budget["holders"]]
-    assert body["idle"] == sum(h["idle"] for h in budget["holders"])
-
-
-def test_sloops_are_the_budget_the_tool_reads(client, state):
-    body = client.get("/api/progress/sloops").json()
-    budget = state.sloop_budget()
-    for key in ("free", "committed", "owned", "mercer_spheres"):
-        assert body[key] == budget[key]
-    assert sum(h["sloops"] for h in body["holders"]) == budget["committed"]
-    assert body["amplifier_researched"] == (state.research_gate("production_boost") is None)
-
-
 def test_every_pending_drive_is_listed_with_both_options(client, state):
     body = client.get("/api/progress/harddrives").json()
     offers = state.hard_drive_offers
@@ -139,23 +125,11 @@ def test_capabilities_say_when_their_tree_is_still_shut(client, state, projectio
     assert all(not c["tree_shut"] for c in body["capabilities"])
     assert client.get("/api/progress/sloops").json()["amplifier_tree_shut"] is False
 
-    with _closed_trees(projection, game) as c:
+    with alien_tree_shut_client(projection, game) as c:
         caps = c.get("/api/progress/mam").json()["capabilities"]
         sloops = c.get("/api/progress/sloops").json()
     assert caps and all(cap["tree_shut"] for cap in caps)
     assert sloops["amplifier_tree_shut"] is True
-
-
-def _closed_trees(projection, game):
-    """A client over the fixture world with the alien-tech research tree still shut."""
-    import copy
-
-    from satisfactory_mcp.domain.world.state import WorldState
-
-    shut = copy.deepcopy(projection)
-    trees = shut["research"]["unlocked_trees"]
-    shut["research"]["unlocked_trees"] = [t for t in trees if t != "BPD_ResearchTree_AlienTech_C"]
-    return client_over(WorldState(projection=shut, game=game), game)
 
 
 def _phase(state, monkeypatch, phase):
@@ -184,7 +158,7 @@ def test_milestones_past_the_reached_tier_are_spoilers_and_spoilers_0_drops_them
 def test_mam_nodes_and_capabilities_in_a_shut_tree_are_spoilers(client, projection, game):
     opened = client.get("/api/progress/mam").json()
     assert not any(r["spoiler"] for r in opened["research"])
-    with _closed_trees(projection, game) as c:
+    with alien_tree_shut_client(projection, game) as c:
         full = c.get("/api/progress/mam").json()
         hidden = c.get("/api/progress/mam", params={"spoilers": 0}).json()
         sloops = c.get("/api/progress/sloops").json()
@@ -197,20 +171,6 @@ def test_mam_nodes_and_capabilities_in_a_shut_tree_are_spoilers(client, projecti
     assert hidden["capabilities"] == [x for x in full["capabilities"] if not x["spoiler"]]
     assert sloops["amplifier_tree_shut"] is True
     assert sloops["amplifier_spoiler"] == (not sloops["amplifier_researched"])
-
-
-def test_an_unresearched_amplifier_in_a_shut_tree_loses_its_name_with_spoilers_0(
-    projection, game, monkeypatch
-):
-    with _closed_trees(projection, game) as c:
-        closed = c.app.state.load_state()
-        gate = {"schematic_name": "Production Amplifier", "cost": []}
-        monkeypatch.setattr(closed, "research_gate", lambda name: gate)
-        full = c.get("/api/progress/sloops").json()
-        quiet = c.get("/api/progress/sloops", params={"spoilers": 0}).json()
-    assert full["amplifier_spoiler"] is True
-    assert full["amplifier_research"] == "Production Amplifier"
-    assert quiet["amplifier_research"] is None and quiet["amplifier_cost"] == []
 
 
 def test_phases_past_the_target_are_spoilers(client, state, monkeypatch):

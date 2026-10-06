@@ -137,7 +137,7 @@ def _salted(blob, *extra: list) -> list:
     The records go into the *blob*, not into the projection's output, so ``_structures`` is the
     thing deciding what to emit. Appending them to the output instead would make the slab tests
     below pass whatever ``_placed`` does -- they would be testing ``build_structures``, which
-    ``tests/domain/factories/test_select.py`` already covers.
+    ``tests/domain/factories/test_structure.py`` already covers.
     """
     return [
         blob[0],

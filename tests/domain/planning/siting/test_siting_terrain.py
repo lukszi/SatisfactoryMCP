@@ -1,7 +1,7 @@
 """A site's z from the heightfield: the terrain fills a missing height and never overrides one.
 
-Runs on the small layered fixture tile from ``tests/domain/spatial/test_heightfield_loading`` -- a 7x6 m ramp with one rock
-texel and a bare-terrain plane under it -- so no real field is needed.
+Runs on ``build_layered_field``'s small tile -- a 7x6 m ramp with one rock texel and a
+bare-terrain plane under it -- so no real field is needed.
 """
 
 from __future__ import annotations

@@ -1,12 +1,9 @@
-"""Centroid and spread — one implementation, previously four.
+"""Map geometry: centroid, extent and spread, distances, bearings, grid cells and clusters.
 
-`graph/identity.py` and `graph/query.py` each carried the same four lines; `diff` had a
-named `_centroid`; `app`, `select` and `trunks` inlined theirs again. `geo.Cluster` had
-had both all along, just shaped for node dicts rather than for (x, y) tuples, which is
-how the copies got started.
-
-The two behaviours worth pinning are the ones the copies disagreed about: what an empty
-set answers, and whether spread double-counts.
+Centroid and spread have one implementation, previously four: the factory graph modules
+each carried the same four lines, `diff` had a named `_centroid`, and the app, `select`
+and `trunks` inlined theirs again. The two behaviours worth pinning are the ones the
+copies disagreed about: what an empty set answers, and whether spread double-counts.
 """
 
 from __future__ import annotations
@@ -149,3 +146,49 @@ def test_only_the_centimetre_module_still_calls_math_dist_directly():
         if "math.dist" in path.read_text(encoding="utf-8"):
             offenders.append(path.name)
     assert offenders == [], offenders
+
+
+# ------------------------------------------------------------- bearings and clusters
+
+
+def test_north_is_negative_y():
+    assert geo.bearing_deg(0, -1000) == pytest.approx(0.0)
+    assert geo.bearing_deg(1000, 0) == pytest.approx(90.0)
+    assert geo.bearing_deg(0, 1000) == pytest.approx(180.0)
+    assert geo.bearing_deg(-1000, 0) == pytest.approx(270.0)
+    assert geo.direction_of(0, -1000) == "north"
+
+
+def test_grid_cell_is_exact():
+    # 1.024 km cells numbered from the south-west corner.
+    assert geo.grid_cell(geo.GRID_X0 + 1, geo.GRID_Y0_SOUTH - 1) == "X0Y0"
+    assert geo.grid_cell(geo.GRID_X0 + geo.GRID_CELL + 1, geo.GRID_Y0_SOUTH - 1) == "X1Y0"
+
+
+def test_cluster_diameter_is_pairwise_not_radius():
+    nodes = [
+        {"x": 0, "y": 0, "z": 0, "kind": "node", "purity": "normal"},
+        {"x": 10000, "y": 0, "z": 0, "kind": "node", "purity": "pure"},
+    ]
+    (c,) = geo.cluster(nodes, link_m=200.0)
+    assert c.size == 2
+    assert c.diameter_m == pytest.approx(100.0)
+    assert c.purities() == {"normal": 1, "pure": 1}
+
+
+def test_cluster_splits_beyond_link_distance():
+    nodes = [
+        {"x": 0, "y": 0, "z": 0, "kind": "node", "purity": "normal"},
+        {"x": 100000, "y": 0, "z": 0, "kind": "node", "purity": "normal"},
+    ]
+    assert len(geo.cluster(nodes, link_m=200.0)) == 2
+
+
+def test_cluster_kinds_reports_every_member():
+    """Kind must never be inferred from one member: a real 200 m cluster merges 6
+    well satellites with a plain node 85 m away."""
+    nodes = [{"x": 0, "y": 0, "z": 0, "kind": "well_sat", "purity": "normal"}] * 6 + [
+        {"x": 8500, "y": 0, "z": 0, "kind": "node", "purity": "normal"}
+    ]
+    (c,) = geo.cluster([dict(n) for n in nodes], link_m=200.0)
+    assert c.kinds() == {"well_sat": 6, "node": 1}

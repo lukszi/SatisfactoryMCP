@@ -3,10 +3,7 @@
 ``importorskip`` at module scope, not a marker: ``fastapi`` lives in the optional
 ``web`` extra, so an install without it must skip this file rather than fail collection.
 
-Every test here injects both loaders -- through the ``client`` fixture in ``conftest.py``
-or by building its own app -- so nothing in this file spawns the sidecar or reads a
-``.sav``. The terrain-field half of this endpoint is exercised in ``tests/domain/spatial/test_heightfield_loading.py``,
-which owns the synthetic field.
+The terrain-field half of this endpoint is in ``test_inspect_terrain.py``.
 """
 
 from __future__ import annotations

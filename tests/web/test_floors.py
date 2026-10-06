@@ -14,7 +14,7 @@ import types
 
 import pytest
 
-from tests.support.web import client_over, failing_state_loader
+from tests.support.web import client_over
 
 fastapi = pytest.importorskip("fastapi")
 
@@ -279,10 +279,3 @@ def test_a_save_too_old_for_floors_says_so_with_a_200(game):
         assert body["platforms"] == []
         assert body["counts"]["bands"] == 0
         assert all(rows == [] for rows in body["runs"].values())
-
-
-def test_a_save_that_cannot_be_read_has_no_floors_either(game):
-    with client_over(failing_state_loader, game) as c:
-        r = c.get("/api/floors")
-    assert r.status_code == 404
-    assert "sidecar produced no output" in r.json()["error"]

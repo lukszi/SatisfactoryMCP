@@ -6,8 +6,8 @@ itself. It still is an assumption, because submerged area is not an extractor co
 tests here pin both halves: the plan now SAYS what it assumed and whether that assumption is
 binding, and where it is sited it says what the terrain actually measures instead.
 
-The field is synthetic, in ``tmp_path``, for the same reason ``tests/domain/spatial/test_heightfield_loading`` builds one:
-the real 18 MB raster is gitignored and no test may need one.
+The field is synthetic, in ``tmp_path``: the real raster is gitignored and no test may
+need one.
 """
 
 from __future__ import annotations

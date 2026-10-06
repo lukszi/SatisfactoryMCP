@@ -1,6 +1,6 @@
 """The collision pack and the RockIndex over it, on a few synthetic boxes beside the layered field.
 
-The field is ``test_heightfield_loading``'s 7x6 m ramp (z = col metres, a cliff texel at row 2, col 3).
+The field is ``build_layered_field``'s 7x6 m ramp (z = col metres, a cliff texel at row 2, col 3).
 Over that cliff texel stand two 2 m rock slabs (tops 12 m and 32 m, the upper one rolled 180
 degrees and the lower one mirrored) and an arch (top 52 m). A simple-collision box sits on the
 ramp at (5, 1) m, and a flat cave-floor sheet lies at -5 m under the cave fixture's sound volume.

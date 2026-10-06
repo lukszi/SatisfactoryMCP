@@ -12,7 +12,7 @@ fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp.core.gamedata.footprint import FOUNDATION_M
 from satisfactory_mcp.domain.world.state import WorldState
-from tests.support.web import client_over, failing_state_loader
+from tests.support.web import client_over
 
 
 def test_machines_split_by_kind_and_name_their_buildings(client, state):
@@ -276,13 +276,6 @@ def test_a_malformed_structure_row_costs_one_piece_not_the_endpoint(game):
         "z_m": 9.0,
         "yaw": None,
     }
-
-
-def test_a_save_that_cannot_be_read_has_no_floor_plan_either(game):
-    with client_over(failing_state_loader, game) as c:
-        r = c.get("/api/structures")
-    assert r.status_code == 404
-    assert "sidecar produced no output" in r.json()["error"]
 
 
 def test_placements_carry_the_yaw_the_map_has_to_draw_them_at(client, state):

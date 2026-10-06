@@ -34,7 +34,9 @@ def tool(state, monkeypatch):
     is looked up where it is used, so patching `app._state` would leave this module holding
     the original.
     """
-    monkeypatch.setattr(progression_tools, "_state", lambda save=None, world=None, as_of=None: state)
+    monkeypatch.setattr(
+        progression_tools, "_state", lambda save=None, world=None, as_of=None: state
+    )
     return progression_tools.milestones
 
 
