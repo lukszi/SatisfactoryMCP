@@ -45,7 +45,7 @@ ROUTER_EXTRA_EDGES: frozenset[tuple[str, str]] = frozenset(
     {
         (
             "satisfactory_mcp.interfaces.web.routers.bridge.events",
-            "satisfactory_mcp.interfaces.web.watch_events",
+            "satisfactory_mcp.interfaces.web.watch.events",
         )
     }
 )

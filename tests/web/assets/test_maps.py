@@ -13,7 +13,7 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp.domain.maps import presets, registry
-from satisfactory_mcp.interfaces.web.watch_events import KIND_MAPS, KINDS
+from satisfactory_mcp.interfaces.web.watch.events import KIND_MAPS, KINDS
 from tests.support.map_jobs import install_fake
 from tests.support.web import PAGE_ORIGIN
 

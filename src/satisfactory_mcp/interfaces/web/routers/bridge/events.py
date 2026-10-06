@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 
 from .....core.saveio import projection as proj
 from .....domain.world import pin
-from ...watch_events import KIND_ACTIVITY, KIND_PLANS, KIND_SAVE, KINDS, WatchEvent
+from ...watch.events import KIND_ACTIVITY, KIND_PLANS, KIND_SAVE, KINDS, WatchEvent
 
 __all__ = ["PING_SECONDS", "router"]
 

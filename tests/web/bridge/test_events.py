@@ -1,7 +1,7 @@
 """``/api/events``: the SSE stream, driven through the handler rather than the client.
 
 Each app's watcher reads an empty save root, so only what a test writes produces an event.
-``test_watch.py`` covers the machinery underneath; this file covers what reaches the wire.
+``watch/test_watcher.py`` covers the machinery underneath; this file covers what reaches the wire.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.routers.bridge import events as web_events
-from satisfactory_mcp.interfaces.web.watch_events import WatchEvent
+from satisfactory_mcp.interfaces.web.watch.events import WatchEvent
 
 # --------------------------------------------------------------------- events
 

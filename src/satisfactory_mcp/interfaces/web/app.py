@@ -37,7 +37,7 @@ from .mapjobs import MapJobRunner
 from .pinning import pinning
 from .routers import ALL_ROUTERS
 from .serial import RequestRefused, newer_schema_response
-from .watch import SaveWatcher
+from .watch.watcher import SaveWatcher
 
 __all__ = ["STATIC_DIR", "app", "create_app"]
 

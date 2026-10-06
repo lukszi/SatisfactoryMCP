@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ... import config
-from ...domain import settings
-from ...domain.planning.stored.planlog import Commit, PlanLog, PlanLogError
-from ...domain.session import journal
-from .serial import actor_json, settings_json
-from .watch_events import KIND_ACTIVITY, KIND_PLANS, KIND_SETTINGS, WatchEvent
+from .... import config
+from ....domain import settings
+from ....domain.planning.stored.planlog import Commit, PlanLog, PlanLogError
+from ....domain.session import journal
+from ..serial import actor_json, settings_json
+from .events import KIND_ACTIVITY, KIND_PLANS, KIND_SETTINGS, WatchEvent
 
 __all__ = ["LogTail"]
 

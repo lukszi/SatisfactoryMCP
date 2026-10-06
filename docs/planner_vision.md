@@ -83,7 +83,7 @@ Section numbers like §8.4 refer to [planning.md](planning.md).
 | The MCP server is **stdio**, one process per client session | `server.py` `mcp.run()` (stdio default). Claude Desktop config and `~/.claude.json` both launch `uv run … satisfactory-mcp` as `type: stdio` |
 | **Several MCP processes run at once** | 3 × `satisfactory-mcp` and 1 × `satisfactory-mcp-web` running when this was written |
 | The web server is a **separate process** (FastAPI, 127.0.0.1:8712) | `satisfactory-mcp-web` script |
-| They share nothing in memory. They **share the plan and label files** | `config.plans_dir()`, `labels_dir()`. Each process parses the save itself (~4 s, per `watch.py`) |
+| They share nothing in memory. They **share the plan and label files** | `config.plans_dir()`, `labels_dir()`. Each process parses the save itself (~4 s, per `watch/watcher.py`) |
 | Cross-process signalling today = **the web server polls file mtimes every 3 s** | `SaveWatcher`: `save` for `*.sav`, `notes` for labels/plans `*.json`. The payload is `{filename, mtime}`, and both trees use `<world>.json`, so the page **cannot tell a plan write from a label write** |
 | So chat → page **already half-works** for *saved* things | `plan_factory save_as`, `site_plan` and `name_factory` write a file → within 3 s `notes` fires → `sse.ts` refetches `/api/factories`, `/api/factories/health`, `/api/plans` → the pad outline and labels redraw |
 | Nothing travels page → chat | The MCP tools read the save and the stores; no page state is written anywhere |
@@ -444,7 +444,7 @@ Warm process, live save, 490 in-scope nodes, 126 unlocked part recipes, **172 LP
 | `bom` / `byproducts.analyse` / `compare_routes` | 12.5 / 13.3 / 29.6 ms | – |
 | `sweep_unlocks` (79 locked alternates) | **317 ms** HMF · **621 ms** stored plan | 80 solves |
 | `load_state` / `proposals` facet | 109 ms / 424 ms | cached per save |
-| Save parse after a new save | ~4 s | **documented** in `watch.py`, not measured here; pre-warmed |
+| Save parse after a new save | ~4 s | **documented** in `watch/watcher.py`, not measured here; pre-warmed |
 
 **Consequences:**
 

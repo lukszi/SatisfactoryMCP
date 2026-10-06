@@ -11,8 +11,8 @@ fastapi = pytest.importorskip("fastapi")
 from satisfactory_mcp import config
 from satisfactory_mcp.domain import settings
 from satisfactory_mcp.domain.planning.stored.planlog import Actor
-from satisfactory_mcp.interfaces.web.watch import SaveWatcher
-from satisfactory_mcp.interfaces.web.watch_events import KIND_SETTINGS, KINDS
+from satisfactory_mcp.interfaces.web.watch.events import KIND_SETTINGS, KINDS
+from satisfactory_mcp.interfaces.web.watch.watcher import SaveWatcher
 from tests.support.web import PAGE_ORIGIN
 
 EVIL = {"origin": "http://evil.example"}

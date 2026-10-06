@@ -12,7 +12,7 @@ browser to read an event is the only one that sees it. The queues are bounded an
 rather than block: a browser that has stopped reading has gone away, and these are edge
 triggers.
 
-The plan logs, the activity journal and the settings file are tailed by ``watch_tail.LogTail``
+The plan logs, the activity journal and the settings file are tailed by ``tail.LogTail``
 on a faster tick of their own.
 """
 
@@ -24,10 +24,10 @@ import threading
 from collections.abc import Iterable
 from pathlib import Path
 
-from ... import config
-from ...core.saveio.projection import load_projection
-from .watch_events import KIND_NOTES, KIND_SAVE, WatchEvent
-from .watch_tail import LogTail
+from .... import config
+from ....core.saveio.projection import load_projection
+from .events import KIND_NOTES, KIND_SAVE, WatchEvent
+from .tail import LogTail
 
 __all__ = ["POLL_SECONDS", "QUEUE_MAX", "TAIL_SECONDS", "SaveWatcher"]
 

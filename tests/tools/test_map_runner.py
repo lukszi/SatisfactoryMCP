@@ -21,8 +21,8 @@ from satisfactory_mcp.domain.maps import jobs as store
 from satisfactory_mcp.domain.maps import presets, registry
 from satisfactory_mcp.interfaces.web import childproc
 from satisfactory_mcp.interfaces.web.mapjobs import MapJobRunner
-from satisfactory_mcp.interfaces.web.watch import SaveWatcher
-from satisfactory_mcp.interfaces.web.watch_events import KIND_MAPS
+from satisfactory_mcp.interfaces.web.watch.events import KIND_MAPS
+from satisfactory_mcp.interfaces.web.watch.watcher import SaveWatcher
 from tests.support.map_jobs import install_fake
 from tests.support.paths import FIXTURES
 

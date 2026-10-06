@@ -108,7 +108,7 @@ untested. No.
 Half of this already exists and always has: that is the 205 ms in §23.2. Two pieces are missing, and
 both are small.
 
-**Pre-warming.** `interfaces/web/watch.py` already polls the save tree every 3 s and already knows the
+**Pre-warming.** `interfaces/web/watch/watcher.py` already polls the save tree every 3 s and already knows the
 moment the newest mtime moves. Calling `load_projection()` from a thread on that edge moves the 4 s off
 the request path: the browser's refetch, which the same event triggers, arrives to a warm cache instead
 of starting the parse. With the flight in place a pre-warm and a request that arrives mid-parse
@@ -129,7 +129,7 @@ Neither adds a process, a port, or a fallback path. Both keep every answer namin
 
 | | what | where | worth |
 |---|---|---|---|
-| 1 | Pre-warm on the watcher's edge: parse in a thread when the newest mtime moves. | `interfaces/web/watch.py` `poll_once` | **built** — see §23.6 |
+| 1 | Pre-warm on the watcher's edge: parse in a thread when the newest mtime moves. | `interfaces/web/watch/watcher.py` `poll_once` | **built** — see §23.6 |
 | 2 | Fingerprint the save tree with one `os.scandir` and skip the `--list` sidecar when it is unchanged. | `core/saveio/projection.py` `scan_saves` | **built** — see §23.6 |
 | 3 | A cross-process lock file per cache key, `O_CREAT|O_EXCL`, with an mtime-based break for a stale one. | beside the pickle in `config.cache_dir()` | one duplicate 4 s parse per autosave, when both processes miss together |
 

@@ -33,14 +33,14 @@ import pytest
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.session import journal
-from satisfactory_mcp.interfaces.web.watch import QUEUE_MAX, SaveWatcher
-from satisfactory_mcp.interfaces.web.watch_events import (
+from satisfactory_mcp.interfaces.web.watch.events import (
     KIND_ACTIVITY,
     KIND_NOTES,
     KIND_PLANS,
     KIND_SAVE,
     WatchEvent,
 )
+from satisfactory_mcp.interfaces.web.watch.watcher import QUEUE_MAX, SaveWatcher
 
 
 def _event(n: int) -> WatchEvent:

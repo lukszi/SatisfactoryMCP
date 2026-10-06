@@ -257,7 +257,7 @@ SatisfactoryMcp/
                        # spatial/ and planning/ packages
       web/             # optional [web] extra: app.py (create_app)  serial/  terrain.py
                        # routers/ (one module per concern, ALL_ROUTERS is the mount order)
-                       # __main__.py (the console script)  watch.py (save-file SSE)
+                       # __main__.py (the console script)  watch/ (save-file SSE)
         frontend/      # BUILD-TIME ONLY: the page's TypeScript, built by Vite into
                        # static/ and excluded from the wheel
         static/        # UNTRACKED: the bundle the build writes; gitignored — no game
