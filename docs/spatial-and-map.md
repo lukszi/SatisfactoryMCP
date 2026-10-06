@@ -1479,7 +1479,14 @@ What `palette/water.py` and `palette/styles.py` draw now:
 - **Rocks in the void.** The void's cover is still kept off a rock standing in it, but only
   where the rock stands above the sea's level. A cliff mesh 250 m down at the bottom of the
   south-west notch drew as a dark green blob before, and as deep water once the sea ran on
-  under the void. Now it is the void's, as the artwork draws it.
+  under the void. Now it is the void's, as the artwork draws it. Such a rock is also taken out
+  of the height before the water and colours are drawn (`compose._rock_kept`): kept, it still
+  counted as land, and the lighting stage shaded the void over rock 250 to 700 m down into
+  near-black silhouettes: x 1,500 to 1,760, y -3,750 to -3,150 on the north edge, and beside
+  the 638 m fall at (-1,480, 3,000). On no data it is dropped, so the pixel stays the void's;
+  where the sea runs on under the void it keeps only the share the void's cover leaves, so
+  the sea fades into the void without a break. About 6,800 pixels of the 2048 preview, 970
+  of them dark strips in pits, the abyss pits among them.
 
 Measured on the 2048 preview against the same run before the change, 3.5 to 4.2% of the
 sheet's pixels changed per style, all of them in the sea, the void or at their edges. The open

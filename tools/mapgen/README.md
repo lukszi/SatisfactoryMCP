@@ -333,7 +333,8 @@ shade for any sun.
   within the shore rule's `OCEAN_REACH_M`, which that rule draws as sea. Low ground further
   inland is not counted: the southern lowlands lie under the sea's level. A rock standing in
   the void keeps the void off only above the sea's level; deeper, it is the void's, or the
-  sea run on under the void would draw it as water. A floor the fill emptied beside the void
+  sea run on under the void would draw it as water. It is taken out of the height too, before
+  anything is drawn, or the lighting stage would shade the void over it as land. A floor the fill emptied beside the void
   past the edge is part of that void. Drawn as a pit, the north-east corner's floor was a black
   rectangle on the page's navy.
 - **Perched water**: a sloped river's box top is its upstream end, and one body's box can

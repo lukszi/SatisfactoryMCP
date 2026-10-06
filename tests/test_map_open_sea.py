@@ -27,7 +27,7 @@ from mapgen.palette.water import (  # noqa: E402
 )
 from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, pits, relax  # noqa: E402
 from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK, MESH_SHELL  # noqa: E402
-from mapgen.tiles.compose import composite_top, render_layer  # noqa: E402
+from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, composite_top, render_layer  # noqa: E402
 from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
 
 OCEAN_DM = round(OCEAN_LEVEL_M * hf.DM_PER_M)
@@ -390,3 +390,59 @@ def test_a_layer_draws_the_artwork_s_sea_and_the_void_past_the_data():
     assert not navy[4:28, 45:].any(), "the artwork's sea is drawn as sea"
     assert navy[36:, 45:].all(), "and the rest stays the void"
     assert not navy[:, :38].any()
+
+
+class _Surface:
+    """What ``render_layer`` hands the lighting stage: the drawn heights and land weight."""
+
+    def __init__(self, n):
+        self.z, self.land = np.zeros((n, n), np.float32), np.zeros((n, n), np.float32)
+
+    def put(self, row, z_m, land, columns=slice(None)):
+        self.z[row : row + len(z_m), columns] = z_m
+        self.land[row : row + len(z_m), columns] = land
+
+
+def test_a_rock_under_the_sea_s_level_is_the_void_s_where_the_sea_fades_into_it():
+    """A rock strip from the open sea into the void: drawn under the sea, gone under the void."""
+    n, step_cm = 750, 1000.0  # 10 m texels, one per output pixel
+    height = np.full((n, n), -1000, np.int16)  # a measured sea 83 m deep
+    height[:, :100] = 300
+    height[:, 300:] = hf.NODATA
+    water = np.where(height == -1000, OCEAN_DM, hf.NODATA).astype(np.int16)
+    grades = np.where(height == -1000, hf.WATER_MEASURED, hf.WATER_DRY).astype(np.uint8)
+    field = _field(height, water, grades, step_cm)
+    field.x0_cm += step_cm / 2  # texel centres on pixel centres
+    field.y0_cm += step_cm / 2
+    art = np.zeros((n, n), bool)
+    art[:300, 300:] = True  # the artwork's sea north of the void
+    heights = height.astype(np.float32)
+    ground = heights.copy()
+    sea = open_sea(field, (heights, ground), None, art, OCEAN_LEVEL_M)
+    borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
+    biome = {"width": 1, "area": np.zeros((1, 1), np.uint8)}
+
+    def draw(top_m):
+        rock = np.zeros((n, n), np.uint8)
+        rock[480:530, 200:] = top_m is not None
+        direct = (np.full((n, n), (top_m or 0) * 100.0, np.float32), rock, ground, 1)
+        surface = _Surface(n)
+        rgb = render_layer("terrain", field, None, biome, borrow, n, False, heights,
+                           direct=direct, sea=sea, surface=surface)  # fmt: skip
+        return rgb[490:520].astype(np.int16), surface.z[490:520], surface.land[490:520]
+
+    (rgb, z, _land), (rgb_deep, z_deep, land_deep), (rgb_high, _z, land_high) = (
+        draw(top) for top in (None, -60.0, 5.0)
+    )
+    cover = sea.void.cover[490:520].astype(np.float32) / 255
+    void = heights[490:520] == hf.NODATA
+    fade = ~void & (cover > 0.02) & (cover < 0.98)
+    assert void[:, 400:].all() and fade[:, 300:].any()
+    assert np.abs(z_deep[:, 250] - (-60.0)).max() < 0.2, "under the open sea it is drawn"
+    lift = np.maximum(-60.0 - z, 0.0) + DIRECT_LIFT_KNEE_M
+    assert np.all((z_deep - z)[fade] <= ((1 - cover) * lift)[fade] + 1e-3), "it fades with it"
+    covered = void | (cover >= 0.5)
+    assert np.abs(rgb_deep - rgb).max(axis=-1)[covered].max() <= 1, "drawn as if it were not"
+    assert np.array_equal(z_deep[void], z[void]) and not land_deep[void].any(), "no land to light"
+    assert (land_high[void] > 0.99).all(), "a rock out of the sea still stands in the void"
+    assert (np.abs(rgb_high - rgb).max(axis=-1)[void] > 20).all()

@@ -102,7 +102,7 @@ def composite_top(z_m, top_z_cm, top_coverage, subsamples: int = 1) -> np.ndarra
     return (z_m + w * 0.5 * (delta + np.sqrt(delta * delta + knee * knee))).astype(np.float32)
 
 
-def blend_regimes(base_m, missing, direct, linear, subsamples):
+def blend_regimes(base_m, missing, direct, linear, subsamples, keep=None):
     """The two-regime height and what it was made of: ``(z_m, missing, w, switched)``.
 
     This is the field's **own composition rule**, performed at the render's spacing instead
@@ -121,10 +121,13 @@ def blend_regimes(base_m, missing, direct, linear, subsamples):
 
     Where the lattice knows nothing -- inside a formation big enough that no landscape texel
     survives under it -- the caller passes the whole field's own fold as ``base_m``. There
-    the coverage is 1 and the rock is the answer either way.
+    the coverage is 1 and the rock is the answer either way. ``keep`` scales the coverage:
+    the share the void leaves a rock under the sea's level (``_rock_kept``).
     """
     z_cm, coverage = direct
     fraction = pixel_coverage(coverage, subsamples)
+    if keep is not None:
+        fraction = fraction * keep
     w = np.clip(fraction, 0.0, 1.0).astype(np.float32)
     z_direct_m = z_cm / np.float32(100.0)
     delta = z_direct_m - base_m
@@ -206,6 +209,22 @@ def _band_water(z_m, planes, smooth, linear):
         land = 1.0 - sample_plain(sea.void.cover, linear) / np.float32(255.0)
         wet = np.clip(wet / np.maximum(land, np.float32(1e-3)), 0.0, 1.0)
     return water_m, level_m, wet, np.clip(measured, 0.0, 1.0)
+
+
+def _rock_kept(z_rock_cm, missing, planes, linear):
+    """The share of its coverage a rock keeps under the void; None without the open sea.
+
+    ``planes`` is ``(wet plane, OpenSea or None)``. Out of the sea a rock keeps all of it.
+    Under the sea's level it keeps none on no data, and where the open sea runs on under the
+    void only what the void's cover leaves, so the sea fades into the void with no rock in it.
+    """
+    wet_plane, sea = planes
+    if sea is None:
+        return None
+    above = np.clip(z_rock_cm / np.float32(100.0) - np.float32(OCEAN_LEVEL_M) + 0.5, 0.0, 1.0)
+    cover = np.clip(sample_plain(sea.void.cover, linear) / np.float32(255.0), 0.0, 1.0)
+    under = np.where(missing, np.float32(1.0), cover * sample_coverage(wet_plane, linear))
+    return (1.0 - (1.0 - above) * under).astype(np.float32)
 
 
 def _void(rgb, missing, sea, linear, rock, z_m):
@@ -313,12 +332,10 @@ def render_layer(
             # the fold stands in, which is inside a formation the rock covers anyway.
             ground_dm, ground_missing = sample_surface(ground, smooth, linear, hf.NODATA)
             base_m = np.where(ground_missing, z_m, ground_dm / np.float32(hf.DM_PER_M))
+            rock = (np.asarray(direct_z[band], np.float32), np.asarray(direct_coverage[band]))
+            kept = _rock_kept(rock[0], missing, (wet_plane, sea), linear)
             z_m, missing, weight, switched = blend_regimes(
-                base_m,
-                missing,
-                (np.asarray(direct_z[band], np.float32), np.asarray(direct_coverage[band])),
-                linear,
-                subsamples,
+                base_m, missing, rock, linear, subsamples, kept
             )
             rock_lift = np.clip((z_m - base_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
             rock_seen = np.where(ground_missing, weight, np.minimum(weight, rock_lift))
@@ -329,7 +346,7 @@ def render_layer(
                     switched[keep],
                     weight[keep],
                     spacing_m,
-                    (np.asarray(direct_z[band], np.float32) / 100.0 - base_m)[keep],
+                    (rock[0] / 100.0 - base_m)[keep],
                 )
             if regimes is not None:
                 prov_rows = np.clip(
