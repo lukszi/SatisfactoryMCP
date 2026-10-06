@@ -68,6 +68,10 @@ Planned as 0.2.0.
   `ObjectReference`. Import each from `pioneersav` itself or from its defining module
   (`references`, `objects`, `errors`, `reader`, `versions`, `properties.tags`,
   `properties.payload`).
+- Map generator: drawing a layer skips arithmetic whose answer it already had. Planes are
+  sampled without the weight sums nothing read, and the void and the water are blended only
+  on the pixels they cover. A full-size render draws about 12% faster, 10 to 15 minutes of
+  one core over the five layers; the tiles are the same bytes.
 
 ### Deprecated
 

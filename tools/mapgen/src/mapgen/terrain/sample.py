@@ -19,6 +19,7 @@ __all__ = [
     "grid_position",
     "pchip_1d",
     "pchip_slope",
+    "reads_nothing",
     "resample",
     "resample_pchip",
     "sample_coverage",
@@ -315,6 +316,12 @@ def sample_surface(raster: np.ndarray, smooth_taps, linear, nodata: int):
     return np.where(whole, smooth, near), missing
 
 
+def reads_nothing(raster: np.ndarray, taps) -> bool:
+    """True when every texel under these taps' rows is zero, so any sample of it is 0.0."""
+    (row_index, _weight), _cols = taps
+    return not raster[int(row_index.min()) : int(row_index.max()) + 1].any()
+
+
 def sample_plain(raster: np.ndarray, taps) -> np.ndarray:
     """A raster with no holes in it, interpolated onto the output grid. Nothing clipped.
 
@@ -322,8 +329,22 @@ def sample_plain(raster: np.ndarray, taps) -> np.ndarray:
     so the weighted sum IS the answer. For the two rasters this file makes itself: the
     artwork's signed high pass and the feathered province mask, neither of which is a
     coverage and neither of which may be clipped into [0, 1] on the way through.
+
+    ``resample``'s sum alone, in its order, so the same bits without the weight planes.
     """
-    return resample(raster, *taps, None)[0]
+    (row_index, row_weight), (col_index, col_weight) = taps
+    shape = (row_index.shape[1], col_index.shape[1])
+    if reads_nothing(raster, taps):
+        return np.zeros(shape, np.float32)
+    low = int(row_index.min())
+    values = raster[low : int(row_index.max()) + 1].astype(np.float32)
+    across = np.zeros((values.shape[0], shape[1]), np.float32)
+    for tap in range(col_index.shape[0]):
+        across += col_weight[tap] * values[:, col_index[tap]]
+    total = np.zeros(shape, np.float32)
+    for tap in range(row_index.shape[0]):
+        total += row_weight[tap][:, None] * across[row_index[tap] - low]
+    return total
 
 
 def sample_coverage(plane: np.ndarray, taps) -> np.ndarray:

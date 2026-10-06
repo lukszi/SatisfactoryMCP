@@ -16,6 +16,7 @@ from mapgen.palette.painted import (
     linear_to_srgb,
     ramp_position,
 )
+from mapgen.palette.shore import wet_mix
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = ["LUT_STEPS", "ReliefGround", "lch", "ramp_lut", "relief_colours", "water_tint_plane"]
@@ -193,5 +194,4 @@ def _water(land, scene: dict, ground: ReliefGround, sample, lit) -> np.ndarray:
     edge = (np.clip(4.0 * cover * (1.0 - cover), 0.0, 1.0) ** 1.5) * np.float32(w["stroke"])
     colour = colour * (1.0 - edge[..., None]) + ground.stroke * edge[..., None]
     under = land * (1.0 - opacity) + colour * opacity
-    weight = np.clip(cover + 0.5 * edge, 0.0, 1.0)[..., None]
-    return land * (1.0 - weight) + under * weight
+    return wet_mix(land, under, np.clip(cover + 0.5 * edge, 0.0, 1.0)[..., None])

@@ -57,7 +57,7 @@ from mapgen.palette.optics import (
     water_table,
 )
 from mapgen.palette.optics import paint_plane as _plane
-from mapgen.palette.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M, add_foam, wet_band
+from mapgen.palette.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M, add_foam, wet_band, wet_mix
 from mapgen.palette.surfaces import (
     canopy_over_rock,
     family_cells,
@@ -748,8 +748,7 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     trees = band_crowns(scene, ground, sample_rock, exposure)
     lit = wet_band(lit, water, p["shore"].get("wet_band"))
     under = underwater(g, scene, ground, sample, sample_rock, exposure, trees)
-    cover = water["cover"][..., None]
-    out = lit * (1.0 - cover) + under * cover
+    out = wet_mix(lit, under, water["cover"][..., None])
     stroke = np.float32(p["shore"]["stroke"])
     if stroke:
         out = out * (1.0 - stroke * water["edge"][..., None])
