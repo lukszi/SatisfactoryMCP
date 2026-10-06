@@ -192,7 +192,7 @@ class FoundNode(TypedDict):           # finders.py
 
 class FoundField(TypedDict):
     key: str                          # "field:<smallest member leaf>", stable across saves
-    selector: str                     # sites.selector(centroid, diameter): near:x,y@r
+    selector: str                     # sites.near_selector(centroid, diameter): near:x,y@r
     members: list[str]                # member leaves
     region: str | None; grid: str; direction: str
     x_m: float; y_m: float            # centroid

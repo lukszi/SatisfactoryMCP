@@ -11,7 +11,7 @@ from functools import cached_property
 
 from ....core.gamedata.constants import WATER_PUMP
 from ....core.text import num
-from ...world.sites import selector as site_selector
+from ...world.sites import near_selector
 from .. import geo, heightfield, ranking
 from .. import regions as regions_mod
 from ..places import resolve_place
@@ -78,7 +78,7 @@ class FieldView:
 
     @property
     def selector(self) -> str:
-        return site_selector(self.centroid, self.diameter_m)
+        return near_selector(self.centroid, self.diameter_m)
 
     @property
     def bbox(self) -> tuple[float, float, float, float]:
@@ -386,7 +386,7 @@ def site_view(sc: ranking.SiteScore, rm=None) -> dict:
         "grid": geo.grid_cell(cx, cy),
         "x": cx,
         "y": cy,
-        "selector": site_selector(sc.centroid, sc.cluster.diameter_m),
+        "selector": near_selector(sc.centroid, sc.cluster.diameter_m),
         "nodes": raw["nodes"],
         "untapped": raw["untapped_rate"],
         "spread_m": raw["spread_m"],

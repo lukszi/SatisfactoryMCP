@@ -47,23 +47,21 @@ def row_key(header: dict) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-#: Inventory buckets summed into the row. Machine buffers are excluded: they are the same
-#: parts counted where they cannot be spent, and a growth curve built on them tracks how
-#: backed-up the belts are rather than how much stock exists.
+#: How many of the largest spendable stocks a row keeps.
 _STOCK_ITEMS = 30
 
 
 def build_row(state) -> dict:
     """The index row for one ``WorldState``. Costs ~40 ms once the save is parsed."""
     header = state.projection.get("header") or {}
-    d = state.projection
+    projection = state.projection
     power = state.power_report(biomass=True)
-    prog = state.progression()
+    progress = state.progression()
     stock = state.stock()
     return {
         "key": row_key(header),
         "index_schema": INDEX_SCHEMA,
-        "projection_schema": d.get("schema_version"),
+        "projection_schema": projection.get("schema_version"),
         "world_id": state.world_id,
         "filename": header.get("filename"),
         "play_duration_s": header.get("play_duration_s"),
@@ -73,12 +71,12 @@ def build_row(state) -> dict:
         # boundary can move for reasons no player caused, and only this field says where.
         "build_version": header.get("build_version"),
         "counts": {
-            "machines": len(d.get("machines") or ()),
-            "extractors": len(d.get("extractors") or ()),
-            "generators": len(d.get("generators") or ()),
-            "attachments": len(d.get("attachments") or ()),
-            "storage": len(d.get("storage") or ()),
-            "crates": len(d.get("crates") or ()),
+            "machines": len(projection.get("machines") or ()),
+            "extractors": len(projection.get("extractors") or ()),
+            "generators": len(projection.get("generators") or ()),
+            "attachments": len(projection.get("attachments") or ()),
+            "storage": len(projection.get("storage") or ()),
+            "crates": len(projection.get("crates") or ()),
         },
         "power": {
             "installed_mw": round(power.get("generation_mw") or 0.0, 1),
@@ -86,9 +84,9 @@ def build_row(state) -> dict:
             "measured_mw": round(power.get("measured_draw_mw") or 0.0, 1),
         },
         "phase": {
-            "game_phase": prog.get("game_phase"),
-            "highest_complete_tier": prog.get("highest_complete_tier"),
-            "purchased_schematics": prog.get("purchased_schematics"),
+            "game_phase": progress.get("game_phase"),
+            "highest_complete_tier": progress.get("highest_complete_tier"),
+            "purchased_schematics": progress.get("purchased_schematics"),
         },
         "stock": {
             k: round(v, 1) for k, v in sorted(stock.items(), key=lambda kv: -kv[1])[:_STOCK_ITEMS]
@@ -98,10 +96,10 @@ def build_row(state) -> dict:
 
 
 def _index_path(world_id: str) -> Path:
-    d = config.cache_dir() / "timeline"
-    d.mkdir(parents=True, exist_ok=True)
+    directory = config.cache_dir() / "timeline"
+    directory.mkdir(parents=True, exist_ok=True)
     stem = hashlib.sha256(world_id.encode("utf-8")).hexdigest()[:16]
-    return d / f"timeline-{stem}.json"
+    return directory / f"timeline-{stem}.json"
 
 
 @dataclass
@@ -182,13 +180,13 @@ class Timeline:
 
 def load_timeline(world_id: str) -> Timeline:
     """Rows cached for this world. Rows keyed by a stale schema are dropped on read."""
-    p = _index_path(world_id)
+    index_path = _index_path(world_id)
     rows: list[dict] = []
-    if p.is_file():
+    if index_path.is_file():
         try:
             rows = [
                 r
-                for r in json.loads(p.read_text(encoding="utf-8"))
+                for r in json.loads(index_path.read_text(encoding="utf-8"))
                 if r.get("index_schema") == INDEX_SCHEMA
                 and r.get("projection_schema") == proj.SCHEMA_VERSION
             ]

@@ -790,7 +790,7 @@ def factory_health(
     )
     from ....domain.factories.select import SelectorError
     from ....domain.world.headlift import head_lift
-    from ....domain.world.plumbing import dark_pumps, throttled_buffers
+    from ....domain.world.plumbing import throttled_buffers, unwired_pumps
 
     try:
         st = _state(save, world, as_of)
@@ -971,7 +971,7 @@ def factory_health(
                 + ", ".join(named[:UNWIRED_NAMED])
                 + (f", and {rest} more" if rest > 0 else "")
             )
-        dark, unseen = dark_pumps(st.projection, st.graph)
+        dark, unseen = unwired_pumps(st.projection, st.graph)
         if dark:
             rest = len(dark) - UNWIRED_NAMED
             notes.append(

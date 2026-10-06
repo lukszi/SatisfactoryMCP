@@ -1,12 +1,8 @@
-"""The factory graph: one structure, three kinds of edge, built once from a save
-projection and shared by identity, health, layout and diff.
+"""The factory graph: one structure, three kinds of edge, built once from a save projection.
 
-The layers stay separate because no one of them identifies a factory. **material** is
-what feeds what, orientable from the connector role, and it over-fragments a mature base
-because a grown-together base is one belt web. **power** distinguishes poles from towers:
-tower wires are a pure transmission backbone, so dropping them separates outposts without
-subdividing the base. **transport** (trains, drones, trucks) is a deliberate connection
-BETWEEN factories, and so belongs on a boundary rather than inside one.
+The layers stay separate because no one of them identifies a factory: **material** is what
+feeds what, **power** separates outposts once tower wires are dropped, and **transport** is a
+deliberate connection BETWEEN factories. docs/save-projection.md §6.1 has the measurements.
 """
 
 from __future__ import annotations
@@ -75,9 +71,8 @@ class FactoryGraph:
     material: list[Edge] = field(default_factory=list)
     power: list[Edge] = field(default_factory=list)
     transport: list[Edge] = field(default_factory=list)
-    #: Hypertubes: a pedestrian network the save writes into the same edge list as the
-    #: belts. Kept rather than dropped so "is there a tube from here to there" stays
-    #: answerable; separate so no material question can traverse one.
+    #: Hypertubes, written into the belts' edge list: kept so a tube stays findable, apart so
+    #: no material question can traverse one.
     hyper: list[Edge] = field(default_factory=list)
 
     _adj: dict[str, dict[str, list[Edge]]] = field(default_factory=dict, repr=False)
