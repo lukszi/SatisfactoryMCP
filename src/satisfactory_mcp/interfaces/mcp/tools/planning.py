@@ -57,8 +57,8 @@ from ....domain.planning.stored.planlog import (
 from ....domain.planning.stored.recall import (
     PLAN_DEFAULTS,
     UNSAVED_OVERRIDE,
+    expand_plan_pin,
     overrides_of,
-    plan_ref,
     with_overrides,
 )
 from ....domain.planning.stored.recall import recall_plan as _plan_kwargs
@@ -735,7 +735,7 @@ def _refusal(exc: Exception) -> str:
 
 def _plan_pin(st, plan: str | None) -> tuple[str | None, list[str]]:
     """``plan`` with a plan pin swapped for its key, and the echo. Raises ``KeyError``."""
-    found, echo = plan_ref(st, plan)
+    found, echo = expand_plan_pin(st, plan)
     return found, [echo] if echo else []
 
 
@@ -1208,12 +1208,12 @@ def plan_factory(
 
     try:
         plan, pin_notes = _plan_pin(st, plan)
-        sources, said = pins.canonical(st, "sources", sources) if sources else (sources, [])
+        sources, said = pins.expand(st, "sources", sources) if sources else (sources, [])
         pin_notes += said
-        required, said = pins.canonical(st, "required", required) if required else (required, [])
+        required, said = pins.expand(st, "required", required) if required else (required, [])
         pin_notes += said
         if exclude_recipes:
-            exclude_recipes, said = pins.canonical(st, "exclude_recipes", exclude_recipes)
+            exclude_recipes, said = pins.expand(st, "exclude_recipes", exclude_recipes)
             pin_notes += said
     except (KeyError, pins.PinError) as exc:
         return f"! {_refusal(exc)}; nothing solved"

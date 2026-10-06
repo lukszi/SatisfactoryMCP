@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ... import config
 from ...core import atomic, filelock, schema
+from ...core.saveio.records import instance_leaf
 from ..planning.stored.planlog import PlanLog, PlanLogError
 from ..spatial import geo
 from ..spatial import nodes as nodes_mod
@@ -27,21 +28,21 @@ __all__ = [
     "PinError",
     "PinMissing",
     "PinStale",
-    "canonical",
-    "canonical_args",
-    "canonical_ops",
     "create",
     "drop",
+    "expand",
+    "expand_args",
+    "expand_ops",
     "get",
     "live",
     "match",
     "parse",
     "path_for",
-    "place",
+    "position",
     "read",
     "rename",
     "row",
-    "terms",
+    "selector_terms",
 ]
 
 SCHEMA = 1
@@ -50,7 +51,6 @@ LABEL_MAX = 80
 KINDS = ("plan", "process", "machine", "factory", "field", "node", "point")
 LOCATED = ("point", "node", "field", "machine", "factory", "plan")
 FIELD_LINK_M = 200.0
-MAP_SQUARE_M = geo.MAP_SQUARE_M
 GRAMMARS = {
     "nodes": ("node", "field"),
     "machines": ("machine", "factory"),
@@ -98,8 +98,7 @@ class PinStale(PinError):
 
 
 def path_for(world_id: str) -> Path:
-    safe = "".join(c for c in world_id if c.isalnum() or c in "-_") or "world"
-    return config.pins_dir() / f"{safe}.json"
+    return config.pins_dir() / f"{config.world_file_stem(world_id)}.json"
 
 
 def _empty() -> dict:
@@ -123,7 +122,7 @@ def read(world_id: str) -> dict:
     return out
 
 
-def _write(world_id: str, change):
+def _locked_update(world_id: str, change):
     path = path_for(world_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     with filelock.held(path):
@@ -133,6 +132,16 @@ def _write(world_id: str, change):
             data["version"] += 1
             atomic.write_text(path, json.dumps(data, ensure_ascii=False))
     return result
+
+
+def _live_pin(data: dict, n: int) -> dict:
+    """Pin ``n`` from a read pin file; ``PinMissing`` when it never existed or was deleted."""
+    pin = next((p for p in data["pins"] if p["n"] == n), None)
+    if pin is None:
+        raise PinMissing(n, top=data["next"] - 1)
+    if pin.get("deleted"):
+        raise PinMissing(n, deleted=True)
+    return pin
 
 
 def parse(text) -> int | None:
@@ -151,10 +160,6 @@ def _label(value) -> str:
     if len(text) > LABEL_MAX:
         raise PinError(f"a pin label is at most {LABEL_MAX} characters, not {len(text)}")
     return text
-
-
-def _short(instance: str) -> str:
-    return str(instance).strip().rsplit(".", 1)[-1]
 
 
 def _text_ref(ref: dict, name: str) -> str:
@@ -198,24 +203,19 @@ class _World:
 
     def machines(self) -> dict:
         if self._machines is None:
-            out = {}
-            projection = getattr(self.st, "projection", None) or {}
-            for group in ("machines", "extractors", "generators"):
-                for record in projection.get(group, ()):
-                    out[_short(record.get("instance", ""))] = record
-            self._machines = out
+            records = self.st.all_records() if getattr(self.st, "projection", None) else ()
+            self._machines = {instance_leaf(r.get("instance")): r for r in records}
         return self._machines
 
     def nodes(self) -> dict:
         if self._nodes is None:
-            out = {}
-            for node in nodes_mod.load_nodes().nodes:
-                out[_short(node["instance"])] = node
-            self._nodes = out
+            self._nodes = {
+                instance_leaf(node["instance"]): node for node in nodes_mod.load_nodes().nodes
+            }
         return self._nodes
 
     def node(self, text: str) -> dict | None:
-        return self.nodes().get(_short(text.removeprefix("node:")))
+        return self.nodes().get(instance_leaf(text.removeprefix("node:").strip()))
 
     def label(self, name: str):
         store = getattr(self.st, "labels", None)
@@ -254,74 +254,103 @@ def _field(world: _World, node: dict) -> tuple[list[str], tuple[float, float]]:
     for group in geo.cluster(same, link_m=FIELD_LINK_M):
         if any(m["instance"] == node["instance"] for m in group.members):
             cx, cy, _ = group.centroid
-            return sorted(_short(m["instance"]) for m in group.members), (cx, cy)
-    return [_short(node["instance"])], (node["x"], node["y"])
+            return sorted(instance_leaf(m["instance"]) for m in group.members), (cx, cy)
+    return [instance_leaf(node["instance"])], (node["x"], node["y"])
 
 
-def _in_plan(st, state, rid: str) -> bool:
-    if rid in state.args.required:
+def _in_plan(st, stored, rid: str) -> bool:
+    if rid in stored.args.required:
         return True
     from ..planning.readout import summary
 
     try:
-        solved = summary.solve_summary(st.game, st, state.kwargs())
+        solved = summary.solve_summary(st.game, st, stored.kwargs())
     except Exception:
         return False
     return any(r.get("recipe_id") == rid for r in solved.get("rows") or ())
 
 
-def _normalise(world: _World, kind: str, ref: dict) -> tuple[dict, tuple[float, float] | None]:
-    if not isinstance(ref, dict):
-        raise PinError(f"ref must be an object, not {ref!r}")
-    if kind in ("plan", "process"):
-        wanted = _text_ref(ref, "plan")
-        state = world.plan(wanted.lower())
-        if state is None:
-            try:
-                state = PlanLog(world.st.world_id).find(wanted)
-            except PlanLogError:
-                state = None
-        if state is None or state.forgotten:
-            raise ObjectMissing(f"no plan “{wanted}” in this world")
-        if kind == "plan":
-            return {"plan": state.key}, None
-        rid = _text_ref(ref, "recipe")
-        if world.game is None or rid not in world.game.recipes:
-            raise ObjectMissing(f"no recipe “{rid}”")
-        if not _in_plan(world.st, state, rid):
-            name = world.game.recipes[rid].name
-            raise ObjectMissing(f"“{name}” is not in plan “{state.name}”")
-        return {"plan": state.key, "recipe": rid}, None
-    if kind == "factory":
-        name = _text_ref(ref, "factory")
-        label = world.label(name)
-        if label is None:
-            raise ObjectMissing(f"no factory named “{name}” in this save")
-        from ..spatial import places as origin_mod
+# ----------------------------------------------- a new pin's ref, checked per kind
 
-        centre = origin_mod.label_centre(world.st, label)
-        return {"factory": label.name}, _metres(centre) if centre is not None else None
-    if kind == "machine":
-        inst = _short(_text_ref(ref, "machine"))
-        record = world.machines().get(inst)
-        if record is None or not record.get("pos"):
-            raise ObjectMissing(f"no machine “{inst}” in this save")
-        return {"machine": inst}, _metres(record["pos"])
-    if kind in ("node", "field"):
-        wanted = _text_ref(ref, "node")
-        node = world.node(wanted)
-        if node is None:
-            raise ObjectMissing(f"no resource node “{_short(wanted)}”")
-        short = _short(node["instance"])
-        if kind == "node":
-            return {"node": short}, _metres((node["x"], node["y"]))
-        members, centre = _field(world, node)
-        return {"node": short, "resource": node["resource"], "nodes": members}, _metres(centre)
+#: A checked ref and where the pin stands, in metres, when it stands anywhere.
+_Normalised = tuple[dict, tuple[float, float] | None]
+
+
+def _normalise_plan_or_process(world: _World, kind: str, ref: dict) -> _Normalised:
+    wanted = _text_ref(ref, "plan")
+    state = world.plan(wanted.lower())
+    if state is None:
+        try:
+            state = PlanLog(world.st.world_id).find(wanted)
+        except PlanLogError:
+            state = None
+    if state is None or state.forgotten:
+        raise ObjectMissing(f"no plan “{wanted}” in this world")
+    if kind == "plan":
+        return {"plan": state.key}, None
+    rid = _text_ref(ref, "recipe")
+    if world.game is None or rid not in world.game.recipes:
+        raise ObjectMissing(f"no recipe “{rid}”")
+    if not _in_plan(world.st, state, rid):
+        name = world.game.recipes[rid].name
+        raise ObjectMissing(f"“{name}” is not in plan “{state.name}”")
+    return {"plan": state.key, "recipe": rid}, None
+
+
+def _normalise_factory(world: _World, kind: str, ref: dict) -> _Normalised:
+    name = _text_ref(ref, "factory")
+    label = world.label(name)
+    if label is None:
+        raise ObjectMissing(f"no factory named “{name}” in this save")
+    from ..spatial import places as origin_mod
+
+    centre = origin_mod.label_centre(world.st, label)
+    return {"factory": label.name}, _metres(centre) if centre is not None else None
+
+
+def _normalise_machine(world: _World, kind: str, ref: dict) -> _Normalised:
+    inst = instance_leaf(_text_ref(ref, "machine"))
+    record = world.machines().get(inst)
+    if record is None or not record.get("pos"):
+        raise ObjectMissing(f"no machine “{inst}” in this save")
+    return {"machine": inst}, _metres(record["pos"])
+
+
+def _normalise_node_or_field(world: _World, kind: str, ref: dict) -> _Normalised:
+    wanted = _text_ref(ref, "node")
+    node = world.node(wanted)
+    if node is None:
+        raise ObjectMissing(f"no resource node “{instance_leaf(wanted)}”")
+    short = instance_leaf(node["instance"])
+    if kind == "node":
+        return {"node": short}, _metres((node["x"], node["y"]))
+    members, centre = _field(world, node)
+    return {"node": short, "resource": node["resource"], "nodes": members}, _metres(centre)
+
+
+def _normalise_point(world: _World, kind: str, ref: dict) -> _Normalised:
     x_m, y_m = _number(ref, "x_m"), _number(ref, "y_m")
-    x0, y0, x1, y1 = MAP_SQUARE_M
+    x0, y0, x1, y1 = geo.MAP_SQUARE_M
     if not (x0 <= x_m <= x1 and y0 <= y_m <= y1):
         raise ObjectMissing(f"{x_m:g},{y_m:g} is outside the map")
     return {"x_m": round(x_m, 1), "y_m": round(y_m, 1)}, (round(x_m, 1), round(y_m, 1))
+
+
+_NORMALISERS = {
+    "plan": _normalise_plan_or_process,
+    "process": _normalise_plan_or_process,
+    "factory": _normalise_factory,
+    "machine": _normalise_machine,
+    "node": _normalise_node_or_field,
+    "field": _normalise_node_or_field,
+    "point": _normalise_point,
+}
+
+
+def _normalise(world: _World, kind: str, ref: dict) -> _Normalised:
+    if not isinstance(ref, dict):
+        raise PinError(f"ref must be an object, not {ref!r}")
+    return _NORMALISERS[kind](world, kind, ref)
 
 
 def _identity(kind: str, ref: dict) -> tuple:
@@ -371,24 +400,20 @@ def create(st, kind: str, ref: dict, label: str = "") -> tuple[dict, bool]:
         data["pins"].append(pin)
         return (pin, False), True
 
-    pin, existing = _write(st.world_id, change)
+    pin, existing = _locked_update(st.world_id, change)
     return row(st, pin, world), existing
 
 
 def _edit(world_id: str, n: int, rev: int, apply) -> dict:
     def change(data: dict):
-        pin = next((p for p in data["pins"] if p["n"] == n), None)
-        if pin is None:
-            raise PinMissing(n, top=data["next"] - 1)
-        if pin.get("deleted"):
-            raise PinMissing(n, deleted=True)
+        pin = _live_pin(data, n)
         if isinstance(rev, bool) or rev != pin.get("rev"):
             raise PinStale(dict(pin))
         apply(pin)
         pin["rev"] = int(pin.get("rev") or 1) + 1
         return dict(pin), True
 
-    return _write(world_id, change)
+    return _locked_update(world_id, change)
 
 
 def rename(world_id: str, n: int, rev: int, label: str) -> dict:
@@ -407,65 +432,10 @@ def drop(world_id: str, n: int, rev: int) -> dict:
     return _edit(world_id, n, rev, apply)
 
 
-def _describe(world: _World, pin: dict) -> dict:
-    kind, ref = pin["kind"], pin.get("ref") or {}
-    x_m, y_m = pin.get("x_m"), pin.get("y_m")
-    gone_why, selector, text, what = "", "", kind, kind
-    if kind in ("plan", "process"):
-        state = world.plan(ref.get("plan", ""))
-        name = state.name if state is not None else ref.get("plan", "")
-        if state is None or state.forgotten:
-            gone_why = "plan forgotten"
-        if kind == "plan":
-            selector, text, what = name, f"plan “{name}”", f"plan “{name}”"
-            origin = (state.siting or {}).get("origin_m") if state is not None else None
-            x_m, y_m = (None, None)
-            if origin and len(origin) >= 2 and not gone_why:
-                x_m, y_m = round(float(origin[0]), 1), round(float(origin[1]), 1)
-        else:
-            rname, building = world.recipe(ref.get("recipe", ""))
-            shown = f"{building} · {rname}" if building else rname
-            selector = ref.get("recipe", "")
-            text = f"process {shown} in “{name}”"
-            what = text
-    elif kind == "factory":
-        name = ref.get("factory", "")
-        label = world.label(name)
-        selector, text, what = f"label:{name}", f"factory “{name}”", f"factory “{name}”"
-        if label is None:
-            gone_why = f"no factory named “{name}” in this save"
-        else:
-            from ..spatial import places as origin_mod
+# ----------------------------------------------- a stored pin in words, per kind
 
-            x_m = y_m = None
-            centre = origin_mod.label_centre(world.st, label)
-            if centre is not None:
-                x_m, y_m = _metres(centre)
-    elif kind == "machine":
-        inst = ref.get("machine", "")
-        record = world.machines().get(inst)
-        selector = f"machine:{inst}"
-        building = world.building(record["cls"]) if record and record.get("cls") else "machine"
-        text, what = f"machine {building}", building
-        if record is None:
-            gone_why = "machine not in this save"
-            text = f"machine {inst}"
-    elif kind == "node":
-        node = world.node(ref.get("node", ""))
-        selector = f"node:{ref.get('node', '')}"
-        if node is not None:
-            what = f"{world.item(node['resource'])}, {node['purity']}"
-        text = f"node {what}"
-    elif kind == "field":
-        members = list(ref.get("nodes") or ())
-        selector = ",".join(f"node:{m}" for m in members)
-        resource = world.item(ref.get("resource", ""))
-        text = f"field {resource} · {len(members)} node{'s' if len(members) != 1 else ''}"
-        what = f"{resource} field · {len(members)} node{'s' if len(members) != 1 else ''}"
-    else:
-        selector = f"{x_m:g},{y_m:g}" if x_m is not None else ""
-        text = f"point x {x_m:,.0f}, y {y_m:,.0f} m" if x_m is not None else "point"
-        what = "point"
+
+def _described(selector: str, text: str, what: str, x_m, y_m, gone_why: str = "") -> dict:
     return {
         "selector": selector,
         "text": text,
@@ -474,6 +444,95 @@ def _describe(world: _World, pin: dict) -> dict:
         "y_m": y_m,
         "gone_why": gone_why,
     }
+
+
+def _describe_plan_or_process(world: _World, pin: dict, ref: dict) -> dict:
+    state = world.plan(ref.get("plan", ""))
+    name = state.name if state is not None else ref.get("plan", "")
+    gone_why = "plan forgotten" if state is None or state.forgotten else ""
+    if pin["kind"] == "plan":
+        origin = (state.siting or {}).get("origin_m") if state is not None else None
+        x_m = y_m = None
+        if origin and len(origin) >= 2 and not gone_why:
+            x_m, y_m = round(float(origin[0]), 1), round(float(origin[1]), 1)
+        return _described(name, f"plan “{name}”", f"plan “{name}”", x_m, y_m, gone_why)
+    recipe_name, building = world.recipe(ref.get("recipe", ""))
+    shown = f"{building} · {recipe_name}" if building else recipe_name
+    text = f"process {shown} in “{name}”"
+    return _described(ref.get("recipe", ""), text, text, pin.get("x_m"), pin.get("y_m"), gone_why)
+
+
+def _describe_factory(world: _World, pin: dict, ref: dict) -> dict:
+    name = ref.get("factory", "")
+    label = world.label(name)
+    selector, text = f"label:{name}", f"factory “{name}”"
+    if label is None:
+        gone_why = f"no factory named “{name}” in this save"
+        return _described(selector, text, text, pin.get("x_m"), pin.get("y_m"), gone_why)
+    from ..spatial import places as origin_mod
+
+    x_m = y_m = None
+    centre = origin_mod.label_centre(world.st, label)
+    if centre is not None:
+        x_m, y_m = _metres(centre)
+    return _described(selector, text, text, x_m, y_m)
+
+
+def _describe_machine(world: _World, pin: dict, ref: dict) -> dict:
+    inst = ref.get("machine", "")
+    record = world.machines().get(inst)
+    building = world.building(record["cls"]) if record and record.get("cls") else "machine"
+    if record is None:
+        text, gone_why = f"machine {inst}", "machine not in this save"
+    else:
+        text, gone_why = f"machine {building}", ""
+    return _described(f"machine:{inst}", text, building, pin.get("x_m"), pin.get("y_m"), gone_why)
+
+
+def _describe_node(world: _World, pin: dict, ref: dict) -> dict:
+    node = world.node(ref.get("node", ""))
+    what = pin["kind"]
+    if node is not None:
+        what = f"{world.item(node['resource'])}, {node['purity']}"
+    selector = f"node:{ref.get('node', '')}"
+    return _described(selector, f"node {what}", what, pin.get("x_m"), pin.get("y_m"))
+
+
+def _describe_field(world: _World, pin: dict, ref: dict) -> dict:
+    members = list(ref.get("nodes") or ())
+    resource = world.item(ref.get("resource", ""))
+    count = f"{len(members)} node{'s' if len(members) != 1 else ''}"
+    return _described(
+        ",".join(f"node:{m}" for m in members),
+        f"field {resource} · {count}",
+        f"{resource} field · {count}",
+        pin.get("x_m"),
+        pin.get("y_m"),
+    )
+
+
+def _describe_point(world: _World, pin: dict, ref: dict) -> dict:
+    x_m, y_m = pin.get("x_m"), pin.get("y_m")
+    selector = f"{x_m:g},{y_m:g}" if x_m is not None else ""
+    text = f"point x {x_m:,.0f}, y {y_m:,.0f} m" if x_m is not None else "point"
+    return _described(selector, text, "point", x_m, y_m)
+
+
+_DESCRIBERS = {
+    "plan": _describe_plan_or_process,
+    "process": _describe_plan_or_process,
+    "factory": _describe_factory,
+    "machine": _describe_machine,
+    "node": _describe_node,
+    "field": _describe_field,
+    "point": _describe_point,
+}
+
+
+def _describe(world: _World, pin: dict) -> dict:
+    """Selector, words, position and why it is gone, if it is; an unknown kind reads as a point."""
+    describe = _DESCRIBERS.get(pin["kind"], _describe_point)
+    return describe(world, pin, pin.get("ref") or {})
 
 
 def row(st, pin: dict, world: _World | None = None) -> dict:
@@ -503,13 +562,7 @@ def live(st) -> list[dict]:
 
 
 def get(st, n: int) -> dict:
-    data = read(st.world_id)
-    pin = next((p for p in data["pins"] if p["n"] == n), None)
-    if pin is None:
-        raise PinMissing(n, top=data["next"] - 1)
-    if pin.get("deleted"):
-        raise PinMissing(n, deleted=True)
-    return row(st, pin)
+    return row(st, _live_pin(read(st.world_id), n))
 
 
 def _echo(n: int, info: dict, label: str) -> str:
@@ -520,19 +573,15 @@ def _echo(n: int, info: dict, label: str) -> str:
 def _usable(st, n: int) -> tuple[dict, dict]:
     if st is None or not getattr(st, "world_id", None):
         raise PinError(f"pin:{n} needs a readable save to resolve")
-    data = read(st.world_id)
-    pin = next((p for p in data["pins"] if p["n"] == n), None)
-    if pin is None:
-        raise PinMissing(n, top=data["next"] - 1)
-    if pin.get("deleted"):
-        raise PinMissing(n, deleted=True)
+    pin = _live_pin(read(st.world_id), n)
     info = _describe(_World(st), pin)
     if info["gone_why"]:
         raise PinError(f"pin:{n} is gone: {info['gone_why']}")
     return pin, info
 
 
-def place(st, n: int) -> tuple[tuple[float, float], str]:
+def position(st, n: int) -> tuple[tuple[float, float], str]:
+    """Where pin ``n`` stands, in save centimetres, and its echo; ``PinError`` when nowhere."""
     pin, info = _usable(st, n)
     kind = pin["kind"]
     if kind not in LOCATED:
@@ -544,7 +593,8 @@ def place(st, n: int) -> tuple[tuple[float, float], str]:
     return (info["x_m"] * 100.0, info["y_m"] * 100.0), _echo(n, info, pin.get("label", ""))
 
 
-def terms(st, n: int, grammar: str) -> tuple[list[str], str]:
+def selector_terms(st, n: int, grammar: str) -> tuple[list[str], str]:
+    """The selector terms pin ``n`` stands for in ``grammar``, and its echo (contract §7)."""
     pin, info = _usable(st, n)
     kind, ref = pin["kind"], pin.get("ref") or {}
     if kind not in GRAMMARS[grammar]:
@@ -574,18 +624,20 @@ def _near(st, member: str) -> tuple[str, str] | None:
     n = parse(place_text)
     if n is None:
         return None
-    (x, y), echo = place(st, n)
+    (x, y), echo = position(st, n)
     return f"near:{x / 100.0:g},{y / 100.0:g}@{radius.strip()}", echo
 
 
-def canonical(st, field: str, members: list) -> tuple[list, list[str]]:
+def expand(st, field: str, members: list) -> tuple[list, list[str]]:
+    """``members`` of a stored field with every pin swapped for what it stands for, and the
+    echoes; a stored plan never holds a ``pin:`` (contract §7.2)."""
     out: list = []
     echoes: list[str] = []
     for member in members or ():
         n = parse(member)
         if field == "sources":
             if n is not None:
-                found, echo = terms(st, n, "nodes")
+                found, echo = selector_terms(st, n, "nodes")
                 out += found
                 echoes.append(echo)
                 continue
@@ -595,7 +647,7 @@ def canonical(st, field: str, members: list) -> tuple[list, list[str]]:
                 echoes.append(near[1])
                 continue
         elif field in _RECIPE_FIELDS and n is not None:
-            found, echo = terms(st, n, "recipes")
+            found, echo = selector_terms(st, n, "recipes")
             out += found
             echoes.append(echo)
             continue
@@ -603,24 +655,26 @@ def canonical(st, field: str, members: list) -> tuple[list, list[str]]:
     return out, echoes
 
 
-def canonical_args(st, args: dict) -> tuple[dict, list[str]]:
+def expand_args(st, args: dict) -> tuple[dict, list[str]]:
+    """``expand`` over every pin-taking field of a plan's arguments."""
     out = dict(args or {})
     echoes: list[str] = []
     for name in ("sources", *_RECIPE_FIELDS):
         value = out.get(name)
         if isinstance(value, list | tuple) and value:
-            out[name], said = canonical(st, name, list(value))
+            out[name], said = expand(st, name, list(value))
             echoes += said
     return out, echoes
 
 
-def canonical_ops(st, ops: list) -> tuple[list, list[str]]:
+def expand_ops(st, ops: list) -> tuple[list, list[str]]:
+    """``expand`` over the members ``add`` ops bring into a pin-taking field."""
     out: list = []
     echoes: list[str] = []
     for op in ops or ():
         name = op.get("field") if isinstance(op, dict) else None
         if isinstance(op, dict) and op.get("op") == "add" and name in ("sources", *_RECIPE_FIELDS):
-            members, said = canonical(st, name, [op.get("member")])
+            members, said = expand(st, name, [op.get("member")])
             out += [{**op, "member": m} for m in members]
             echoes += said
             continue
@@ -645,6 +699,6 @@ def match(rows: list[dict], kind: str, ref: str, plan: str | None = None) -> dic
         elif kind == "factory":
             if str(stored.get("factory", "")).casefold() == str(ref).casefold():
                 return pin
-        elif kind in ("machine", "node") and stored.get(kind) == _short(str(ref)):
+        elif kind in ("machine", "node") and stored.get(kind) == instance_leaf(str(ref).strip()):
             return pin
     return None

@@ -83,7 +83,7 @@ def overrides_of(supplied: dict) -> dict:
     return {k: v for k, v in supplied.items() if k in PLAN_DEFAULTS and v != PLAN_DEFAULTS[k]}
 
 
-def plan_ref(st, plan: str | None) -> tuple[str | None, str]:
+def expand_plan_pin(st, plan: str | None) -> tuple[str | None, str]:
     """``plan`` with a ``pin:N`` swapped for the plan key it pins, and the echo; else as given.
 
     Raises ``KeyError`` with the refusal, as an unknown plan name does.
@@ -94,7 +94,7 @@ def plan_ref(st, plan: str | None) -> tuple[str | None, str]:
     if n is None:
         return plan, ""
     try:
-        found, echo = pins.terms(st, n, "plan")
+        found, echo = pins.selector_terms(st, n, "plan")
     except pins.PinError as exc:
         raise KeyError(str(exc)) from None
     return found[0], echo
@@ -110,7 +110,7 @@ def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[s
         clean["row_overclock"] = merge_rows(None, clean["row_overclock"])
     if not plan:
         return clean, "", []
-    plan, echo = plan_ref(st, plan)
+    plan, echo = expand_plan_pin(st, plan)
     stored = st.plans.find(plan)
     if stored is None:
         known = ", ".join(x.name for x in st.plans.plans) or "(none saved yet)"

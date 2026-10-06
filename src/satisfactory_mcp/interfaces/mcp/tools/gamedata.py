@@ -14,7 +14,7 @@ from ....core.gamedata import search
 from ....core.gamedata.unlocks import granted_by_label
 from ....domain.planning.analysis import swaps
 from ....domain.planning.stored.planlog import PlanLog
-from ....domain.planning.stored.recall import plan_ref
+from ....domain.planning.stored.recall import expand_plan_pin
 from ....domain.session import journal
 from ....domain.world import pin as save_pin
 from ....presenters.text import primitives as render
@@ -112,7 +112,7 @@ def _delta_cells(option: dict) -> list[str]:
 def _in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -> str:
     """The alternates table against a stored plan: status and deltas per recipe."""
     try:
-        key, echo = plan_ref(st, plan)
+        key, echo = expand_plan_pin(st, plan)
     except KeyError as exc:
         return f"! {exc.args[0]}"
     stored = st.plans.find(key)

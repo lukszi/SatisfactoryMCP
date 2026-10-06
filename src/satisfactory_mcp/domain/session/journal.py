@@ -35,7 +35,7 @@ MAX_TEXT = 200
 
 _lock = threading.Lock()
 _writer = ""
-_seq: dict[str, int] = {}
+_seq: dict[Path, int] = {}
 
 
 def set_writer(kind: str) -> None:
@@ -49,12 +49,8 @@ def writer_name() -> str:
     return _writer
 
 
-def _safe(world_id: str) -> str:
-    return "".join(c for c in world_id if c.isalnum() or c in "-_") or "world"
-
-
 def _dir(world_id: str) -> Path:
-    return config.activity_dir() / _safe(world_id)
+    return config.activity_dir() / config.world_file_stem(world_id)
 
 
 def files(world_id: str) -> list[Path]:
@@ -82,7 +78,8 @@ def _last_seq(path: Path) -> int:
     return max((int(e.get("seq") or 0) for e in entries), default=0)
 
 
-def _write(path: Path, line: bytes) -> None:
+def _drop_torn_tail(path: Path) -> None:
+    """Cut a last line with no newline: a crashed writer can leave half a line."""
     if path.is_file() and path.stat().st_size:
         with open(path, "r+b") as handle:
             handle.seek(-1, os.SEEK_END)
@@ -91,6 +88,10 @@ def _write(path: Path, line: bytes) -> None:
                 data = handle.read()
                 handle.seek(data.rfind(b"\n") + 1)
                 handle.truncate()
+
+
+def _append_line(path: Path, line: bytes) -> None:
+    _drop_torn_tail(path)
     with open(path, "ab") as handle:
         handle.write(line)
         handle.flush()
@@ -140,7 +141,7 @@ def append(
                 entry["args"] = None
                 line = _line(entry)
             path.parent.mkdir(parents=True, exist_ok=True)
-            _write(path, line)
+            _append_line(path, line)
             _seq[path] = seq
             return entry
     except OSError:

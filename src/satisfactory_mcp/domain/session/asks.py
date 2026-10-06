@@ -82,8 +82,7 @@ class AskStale(AskError):
 
 
 def path_for(world_id: str) -> Path:
-    safe = "".join(c for c in world_id if c.isalnum() or c in "-_") or "world"
-    return config.asks_dir() / f"{safe}.json"
+    return config.asks_dir() / f"{config.world_file_stem(world_id)}.json"
 
 
 def _empty() -> dict:
@@ -107,7 +106,8 @@ def read(world_id: str) -> dict:
     return out
 
 
-def _write(world_id: str, change):
+def _locked_update(world_id: str, change):
+    """Run ``change(data) -> (result, dirty)`` under the file lock; write when dirty."""
     path = path_for(world_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     with filelock.held(path):
@@ -140,13 +140,17 @@ def parse_answer(text) -> tuple[int, str] | None:
     return int(hit.group(1)), line
 
 
+def _bump_rev(ask: dict) -> None:
+    ask["rev"] = int(ask.get("rev") or 1) + 1
+
+
 def state_of(ask: dict) -> str:
     if ask.get("answered"):
         return "answered"
     return "seen" if ask.get("seen") else "open"
 
 
-def _text(value) -> str:
+def _question_text(value) -> str:
     if not isinstance(value, str) or not value.strip():
         raise AskError("an ask needs a question")
     text = value.strip()
@@ -155,7 +159,7 @@ def _text(value) -> str:
     return text
 
 
-def _short(name: str, value, limit: int, required: bool) -> str:
+def _about_field(name: str, value, limit: int, required: bool) -> str:
     if value is None and not required:
         return ""
     if not isinstance(value, str):
@@ -168,7 +172,7 @@ def _short(name: str, value, limit: int, required: bool) -> str:
     return text
 
 
-def _about(world_id: str, about) -> dict:
+def _validated_about(world_id: str, about) -> dict:
     if not isinstance(about, dict):
         raise AskError(f"about must be an object, not {about!r}")
     kind = about.get("kind")
@@ -176,8 +180,8 @@ def _about(world_id: str, about) -> dict:
         raise AskError(f"about.kind is one of {', '.join(ABOUT_KINDS)}, not {kind!r}")
     out = {
         "kind": kind,
-        "label": _short("label", about.get("label"), LABEL_MAX, True),
-        "ref": _short("ref", about.get("ref"), REF_MAX, False),
+        "label": _about_field("label", about.get("label"), LABEL_MAX, True),
+        "ref": _about_field("ref", about.get("ref"), REF_MAX, False),
         "plan": None,
         "rev": None,
     }
@@ -200,7 +204,7 @@ def _about(world_id: str, about) -> dict:
     return out
 
 
-def _names(world_id: str) -> dict[str, str]:
+def _plan_names(world_id: str) -> dict[str, str]:
     try:
         return {s.key: s.name for s in PlanLog(world_id).heads(include_forgotten=True)}
     except (PlanLogError, OSError):
@@ -236,13 +240,13 @@ def row(ask: dict, names: dict[str, str]) -> dict:
 
 def live(world_id: str) -> list[dict]:
     data = read(world_id)
-    names = _names(world_id)
+    names = _plan_names(world_id)
     return [row(a, names) for a in data["asks"] if not a.get("deleted")]
 
 
 def create(world_id: str, text: str, about: dict) -> dict:
-    question = _text(text)
-    subject = _about(world_id, about)
+    question = _question_text(text)
+    subject = _validated_about(world_id, about)
 
     def change(data: dict):
         if sum(1 for a in data["asks"] if not a.get("deleted")) >= MAX_LIVE:
@@ -263,7 +267,7 @@ def create(world_id: str, text: str, about: dict) -> dict:
         data["asks"].append(ask)
         return ask, True
 
-    return row(_write(world_id, change), _names(world_id))
+    return row(_locked_update(world_id, change), _plan_names(world_id))
 
 
 def _find(data: dict, n: int) -> dict:
@@ -281,10 +285,10 @@ def drop(world_id: str, n: int, rev: int) -> dict:
         if isinstance(rev, bool) or rev != ask.get("rev"):
             raise AskStale(dict(ask))
         ask["deleted"] = True
-        ask["rev"] = int(ask.get("rev") or 1) + 1
+        _bump_rev(ask)
         return dict(ask), True
 
-    return row(_write(world_id, change), _names(world_id))
+    return row(_locked_update(world_id, change), _plan_names(world_id))
 
 
 def mark_seen(world_id: str, ns: list[int], who: str) -> list[int]:
@@ -298,11 +302,11 @@ def mark_seen(world_id: str, ns: list[int], who: str) -> list[int]:
         for ask in data["asks"]:
             if ask["n"] in wanted and not ask.get("deleted") and state_of(ask) == "open":
                 ask["seen"], ask["seen_by"] = now, who
-                ask["rev"] = int(ask.get("rev") or 1) + 1
+                _bump_rev(ask)
                 fresh.append(ask["n"])
         return fresh, bool(fresh)
 
-    return _write(world_id, change)
+    return _locked_update(world_id, change)
 
 
 def mark_answered(
@@ -325,8 +329,8 @@ def mark_answered(
                 ask["answered"], ask["answered_by"] = now, who
             if line:
                 ask["answer"] = line
-            ask["rev"] = int(ask.get("rev") or 1) + 1
+            _bump_rev(ask)
             fresh.append(ask["n"])
         return fresh, bool(fresh)
 
-    return _write(world_id, change)
+    return _locked_update(world_id, change)

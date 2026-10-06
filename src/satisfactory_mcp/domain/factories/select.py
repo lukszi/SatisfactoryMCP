@@ -254,7 +254,7 @@ def _pin_terms(term: str, st) -> tuple[list[str], str]:
     if n is None:
         raise SelectorError(f"{term!r} is not a pin: write pin:<n>. Use one of: {SELECTOR_HELP}")
     try:
-        return pins.terms(st, n, "machines")
+        return pins.selector_terms(st, n, "machines")
     except pins.PinError as exc:
         raise SelectorError(str(exc)) from None
 
