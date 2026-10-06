@@ -644,7 +644,7 @@ def site_plan(
         "map: "
         + maplink.local_map_url(sit.x_m, sit.y_m, world=st.plans.world_id)
         + "\n"
-        + maplink.map_url(sit.x_m * 100, sit.y_m * 100),
+        + maplink.calculator_map_url(sit.x_m * 100, sit.y_m * 100),
         [
             (
                 f"diff_vs_save plan={stored.name!r} now reports what stands inside this "

@@ -189,7 +189,7 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
     ocean, subtracting a 3.9 m-quantised raster from a sea surface produces a number nobody
     measured, so it is ``null`` with ``terrain_water_note`` saying why, and never 0.0.
     """
-    ground, built = near.ground, near.built
+    ground, built = near.ground_m, near.built_m
     # Derived from the samples actually present rather than from a hardcoded list, so a
     # new non-ground source in the domain module arrives here without an edit.
     built_sources = tuple(s for s in near.counts if s not in spatial_elevation.GROUND_SOURCES)

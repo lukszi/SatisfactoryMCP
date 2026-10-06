@@ -59,7 +59,7 @@ def _map_links(st, view: CollectiblesView) -> tuple[str, list[str]]:
         centre[0] / 100, centre[1] / 100, zoom=zoom, world=st.world_id, pickups=cats
     )
     tokens = maplink.collectible_layers(cats)
-    body = f"local map: {local}\npublic map: {maplink.map_url(*centre, tokens)}"
+    body = f"local map: {local}\npublic map: {maplink.calculator_map_url(*centre, tokens)}"
     if tokens:
         body += "\n# public layers: " + ", ".join(tokens)
 

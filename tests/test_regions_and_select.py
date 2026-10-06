@@ -238,7 +238,7 @@ def test_land_is_still_labelled(rm):
 
 
 def test_void_cells_exist_but_are_a_minority(rm):
-    total = rm.nx * rm.ny
+    total = rm.column_count * rm.row_count
     void = sum(row.count(".") for row in rm.grid)
     assert 0 < void < total * 0.5
 
@@ -253,12 +253,12 @@ def test_every_raster_cell_lies_inside_its_regions_bbox(rm):
     for name, info in rm.regions.items():
         x1, y1, x2, y2 = info["bbox"]
         letter = info["letter"]
-        for j in range(rm.ny):
-            for i in range(rm.nx):
+        for j in range(rm.row_count):
+            for i in range(rm.column_count):
                 if rm.grid[j][i] != letter:
                     continue
-                cx = rm.x0 + (i + 0.5) * rm.cell
-                cy = rm.y0 + (j + 0.5) * rm.cell
+                cx = rm.x0_cm + (i + 0.5) * rm.cell_cm
+                cy = rm.y0_cm + (j + 0.5) * rm.cell_cm
                 assert x1 <= cx <= x2 and y1 <= cy <= y2, f"{name} cell ({i},{j})"
 
 
@@ -334,7 +334,7 @@ def test_the_wiki_only_region_names_are_gone(rm):
     """
     for name in ("Western Beaches", "Snaketree Forest", "Eastern Dune Forest"):
         assert rm.resolve(name) is None, name
-        assert rm.filter_nodes([], name) == []
+        assert rm.nodes_in_region([], name) == []
 
 
 def test_oil_bearing_regions(rm, table):
@@ -349,10 +349,10 @@ def test_oil_bearing_regions(rm, table):
     named = {rm.label_for_node(n).name for n in oil}
     named.discard(None)
     assert "Spire Coast" in named
-    assert len(rm.filter_nodes(oil, "Spire Coast")) == 6
+    assert len(rm.nodes_in_region(oil, "Spire Coast")) == 6
     # And the crude that left it is accounted for rather than merely absent.
-    assert len(rm.filter_nodes(oil, "Rocky Desert")) == 12
-    assert len(rm.filter_nodes(oil, "Desert Canyons")) == 1
+    assert len(rm.nodes_in_region(oil, "Rocky Desert")) == 12
+    assert len(rm.nodes_in_region(oil, "Desert Canyons")) == 1
 
 
 # --------------------------------------------------------- name resolution

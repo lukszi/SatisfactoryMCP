@@ -86,9 +86,9 @@ def regions() -> Any:
     payload = {
         "grid": list(rmap.grid),
         "legend": dict(rmap.legend),
-        "cell_m": _m(rmap.cell),
-        "x0_m": _m(rmap.x0),
-        "y0_m": _m(rmap.y0),
+        "cell_m": _m(rmap.cell_cm),
+        "x0_m": _m(rmap.x0_cm),
+        "y0_m": _m(rmap.y0_cm),
         "regions": {
             name: {
                 "centroid_m": [_m(entry["centroid"][0]), _m(entry["centroid"][1])],

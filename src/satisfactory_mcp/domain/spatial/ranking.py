@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from ...core.gamedata.constants import PURITY_MULT
 from . import geo
 from .heightfield import Field
+from .nodes.extraction import untapped_rate
 
 __all__ = ["SITE_PAD_M", "WEIGHTS", "SiteScore", "rank_sites"]
 
@@ -78,14 +79,6 @@ def _purity_quality(cluster: geo.Cluster) -> float:
     return (total / len(members)) / 2.0
 
 
-def _untapped_rate(cluster: geo.Cluster) -> float:
-    return sum(
-        m.get("rate", 0.0)
-        for m in cluster.members
-        if not m.get("tapped") and m.get("reachable", True)
-    )
-
-
 def _distance_to_infra_m(cluster: geo.Cluster, infra: list[tuple[float, float]]) -> float | None:
     if not infra:
         return None
@@ -138,6 +131,21 @@ def _pad_raw(area) -> dict[str, float | None]:
     }
 
 
+def _fill_unknown_distances(distances: list[float | None]) -> list[float]:
+    """A missing distance (no infrastructure known) scores as the farthest known, never 0 km."""
+    known = [d for d in distances if d is not None]
+    fallback = max(known) if known else 0.0
+    return [fallback if d is None else d for d in distances]
+
+
+def _fill_unknown_roughness(roughness: list[float | None]) -> list[float]:
+    """An unseen pad scores as the MEDIAN of the seen ones: no-data is ignorance, and 0 or
+    the worst would turn it into a claim. With no field at all the term is a flat 0.5."""
+    seen = sorted(r for r in roughness if r is not None)
+    median_m = seen[len(seen) // 2] if seen else 0.0
+    return [median_m if r is None else r for r in roughness]
+
+
 def rank_sites(
     clusters: list[geo.Cluster],
     infra: list[tuple[float, float]] | None = None,
@@ -147,50 +155,38 @@ def rank_sites(
     terrain: Field | None = None,
 ) -> list[SiteScore]:
     """Rank candidate fields, best first."""
-    w = {**WEIGHTS, **(weights or {})}
+    weights = {**WEIGHTS, **(weights or {})}
     infra = infra or []
 
     pool = list(clusters)
     if require_untapped:
-        pool = [c for c in pool if _untapped_rate(c) > 0]
+        pool = [c for c in pool if untapped_rate(c.members) > 0]
     if not pool:
         return []
 
-    throughput = [_untapped_rate(c) for c in pool]
+    throughput = [untapped_rate(c.members) for c in pool]
     spread = [c.diameter_m for c in pool]
     distance = [_distance_to_infra_m(c, infra) for c in pool]
     purity = [_purity_quality(c) for c in pool]
     pads = [_pad(c, terrain) for c in pool]
+    roughness = [None if p is None else p.roughness_m for p in pads]
 
-    # A missing distance (no infrastructure known) must not silently score as 0 km.
-    known = [d for d in distance if d is not None]
-    fallback = max(known) if known else 0.0
-    distance_filled = [fallback if d is None else d for d in distance]
-
-    # A pad the field cannot see scores as the MEDIAN of the ones it can, not as 0 and not
-    # as the worst: no-data is ignorance, and both extremes turn it into a claim. With no
-    # field at all every pad is unknown, min-max collapses, and the term is a flat 0.5 that
-    # shifts every score alike and so cannot reorder anything.
-    rough = [None if p is None else p.roughness_m for p in pads]
-    seen = sorted(r for r in rough if r is not None)
-    middle = seen[len(seen) // 2] if seen else 0.0
-    n_rough = _normalise([middle if r is None else r for r in rough])
-
-    n_through = _normalise(throughput)
-    n_spread = _normalise(spread)
-    n_distance = _normalise(distance_filled)
-    n_purity = _normalise(purity)
+    normalised_throughput = _normalise(throughput)
+    normalised_spread = _normalise(spread)
+    normalised_distance = _normalise(_fill_unknown_distances(distance))
+    normalised_purity = _normalise(purity)
+    normalised_roughness = _normalise(_fill_unknown_roughness(roughness))
 
     out: list[SiteScore] = []
     for i, cluster in enumerate(pool):
         normalised = {
-            "throughput": n_through[i],
-            "spread": n_spread[i],
-            "distance": n_distance[i],
-            "purity": n_purity[i],
-            "roughness": n_rough[i],
+            "throughput": normalised_throughput[i],
+            "spread": normalised_spread[i],
+            "distance": normalised_distance[i],
+            "purity": normalised_purity[i],
+            "roughness": normalised_roughness[i],
         }
-        score = sum(w[k] * normalised[k] for k in normalised)
+        score = sum(weights[k] * normalised[k] for k in normalised)
         out.append(
             SiteScore(
                 cluster=cluster,

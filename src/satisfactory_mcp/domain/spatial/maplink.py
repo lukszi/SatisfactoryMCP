@@ -16,21 +16,22 @@ from __future__ import annotations
 from urllib.parse import quote
 
 from ... import config
+from ...core.saveio.records import instance_leaf
 
 __all__ = [
-    "BASE",
+    "CALCULATOR_MAP_URL",
+    "CALCULATOR_RESOURCE_LAYERS",
     "COLLECTIBLES",
-    "LAYERS",
     "LOCAL_WORLD_ZOOM",
+    "calculator_map_url",
     "collectible_layers",
     "layers_for",
     "local_base",
     "local_map_url",
-    "map_url",
     "show_ref",
 ]
 
-BASE = "https://satisfactory-calculator.com/en/interactive-map"
+CALCULATOR_MAP_URL = "https://satisfactory-calculator.com/en/interactive-map"
 
 
 def local_base() -> str:
@@ -47,7 +48,7 @@ GROUP = "gameLayer"
 
 #: Resource class -> the site's token, read from the interactive map page itself. Wells
 #: carry their own stems: oil is ``oilWell*`` but nitrogen is ``nitrogenGasWell*``.
-LAYERS: dict[str, str] = {
+CALCULATOR_RESOURCE_LAYERS: dict[str, str] = {
     "Desc_LiquidOil_C": "oil",
     "Desc_OreIron_C": "iron",
     "Desc_OreCopper_C": "copper",
@@ -98,7 +99,7 @@ def layers_for(resources: list[str], kinds: list[str] | None = None) -> list[str
     wanted = set(kinds or ("node", "well"))
     out: list[str] = []
     for cls in resources:
-        stem = LAYERS.get(cls)
+        stem = CALCULATOR_RESOURCE_LAYERS.get(cls)
         if not stem:
             continue
         for purity in _PURITIES:
@@ -115,7 +116,7 @@ def collectible_layers(categories: list[str]) -> list[str]:
     return list(dict.fromkeys(tok for cat in categories if (tok := COLLECTIBLES.get(cat))))
 
 
-def map_url(
+def calculator_map_url(
     x_cm: float,
     y_cm: float,
     layers: list[str] | None = None,
@@ -129,14 +130,14 @@ def map_url(
     if layers:
         fragment += "|" + ";".join(layers)
     # The fragment's own semicolons and pipes are delimiters and must survive escaping.
-    return f"{BASE}#{quote(fragment, safe=';|.-')}"
+    return f"{CALCULATOR_MAP_URL}#{quote(fragment, safe=';|.-')}"
 
 
 def show_ref(node: str | None = None, run: str | None = None, label: str | None = None) -> str:
     """The ``show=`` value for one place: ``node:<leaf>``, ``chain:<n>``/``pipe:<n>`` or
     ``label:<name>``, the first one given; ``""`` for none."""
     if node:
-        return "node:" + str(node).rsplit(".", 1)[-1]
+        return "node:" + instance_leaf(node)
     if run:
         head, _sep, tail = run.strip().partition(":")
         return f"{head.strip().casefold()}:{tail.strip()}"
@@ -156,20 +157,10 @@ def local_map_url(
 ) -> str:
     """A deep link into this project's own web map, centred on a coordinate in METRES.
 
-    The fragment matches the frontend's own writer (``writeHash`` in ``map.ts``):
-    ``#world=…&pickups=…&z=…&c=x,y``, with ``c`` in metres on save axes, rounded to one
-    decimal. ``save`` is omitted, so an absent save means "follow the newest" -- which is what
-    a link pasted later should do.
-
-    ``pickups`` names collectible categories, which the page turns on as its own
-    ``pickup: <category>`` rows. Those rows are off by default, so a link about a collectible
-    that omits this opens the map with nothing of what it is about drawn on it.
-
-    ``show`` is a selector the page opens once it has loaded -- ``label:<name>`` selects that
-    factory in the side panel, outlines it and turns its layers on; ``node:``, ``chain:`` and
-    ``pipe:`` ring that node or run in the finder pane (``show_ref`` spells all four).
-
-    ``mode`` is a base map type id (``/api/maps``); absent, the page opens on the shared default.
+    The fragment ``map.ts``'s ``writeHash`` writes, with no ``save`` so a pasted link follows
+    the newest (docs/spatial-and-map.md §18). ``pickups`` turns on collectible rows that are
+    off by default, ``show`` is the place the page opens (docs/selectors.md), and ``mode`` a
+    base map type id.
     """
     parts = []
     if world:

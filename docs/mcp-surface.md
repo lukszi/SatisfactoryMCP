@@ -349,7 +349,7 @@ length is filtering and table-building against a domain call that already exists
 no second copy to drift from. The rule applied was: extract where logic is *duplicated* or
 *unreachable without the MCP layer*, not wherever a function is long. `search_resource_nodes`
 met the second half of that rule once the World page needed the same answer: its selection,
-status, totals and fields are `domain/spatial/nodes/search.py` now, beside `rank`, `surroundings.player_surroundings`,
+status, totals and fields are `domain/spatial/nodes/search.py` now, beside `rank_build_sites`, `surroundings.player_surroundings`,
 `surroundings.describe_point`, `conduit_search.search` and `regions.region_rows`, and each spatial tool is that
 call plus its text (frontend_vision.md §18).
 

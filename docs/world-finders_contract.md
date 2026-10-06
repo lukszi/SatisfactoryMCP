@@ -313,7 +313,7 @@ domain function. `tests/test_world_parity.py` pins that both answer alike.
 
 | New or changed domain function | Taken from | Used by |
 |---|---|---|
-| `domain/spatial/nodes/search.py`: `find_nodes(st, game, *, sources, resource, purity, kind, status, view, near) -> NodeFind` | `search_resource_nodes` body (selection, annotate, status filter, distance, clusters, totals, notes, water block) | tool, `/api/world/nodes`, `surroundings.player_surroundings`, `surroundings.describe_point` |
+| `domain/spatial/nodes/search.py`: `find_nodes(st, game, *, sources, resource, purity, kind, status, view, near) -> NodeSearchResult` | `search_resource_nodes` body (selection, annotate, status filter, distance, clusters, totals, notes, water block) | tool, `/api/world/nodes`, `surroundings.player_surroundings`, `surroundings.describe_point` |
 | `search.fields(rows) -> list[FieldView]`, `search.rank(st, game, resource, sources) -> SiteRank` | tool bodies of fields view and `rank_build_sites` | tool, `/api/world/nodes?view=fields`, `/api/world/sites` |
 | `domain/spatial/surroundings.py`: `here(st, game, radius_m) -> Here`, `describe(st, game, x, y, radius_m) -> Description` | `whereami`, `describe_location`, `routers/inspect.py` assembly | tools, `/api/world/here`, `/api/inspect` |
 | `domain/world/conduit_search.py`: `search(st, near, radius_m, to, to_radius_m, kind, network, run) -> ConduitSearch`, `networks(st, origin) -> list[NetworkView]` | `search_conduits` body and `_networks_view` | tool, `/api/world/conduits` |

@@ -44,6 +44,30 @@ class PlayerSurroundings:
     notes: list[str] = field(default_factory=list)
 
 
+def _with_distances(rows: list[dict], x: float, y: float, *, direction: bool = False) -> list[dict]:
+    """``rows`` each stamped with ``distance_m`` from the point, and its compass word."""
+    for row in rows:
+        row["distance_m"] = geo.distance_m((row["x"], row["y"]), (x, y))
+        if direction:
+            row["direction"] = geo.direction_of(row["x"], row["y"], x, y)
+    return rows
+
+
+def _nearest_building(st, game, x: float, y: float) -> tuple[str, float] | None:
+    """The closest placed record's building name and distance, or ``None`` for none."""
+    builds = [r for r in st.all_records() if r.get("pos")]
+    closest = min(
+        builds,
+        key=lambda r: geo.distance_m((r["pos"][0], r["pos"][1]), (x, y)),
+        default=None,
+    )
+    if closest is None:
+        return None
+    cls = closest["cls"]
+    name = game.buildings[cls].name if cls in game.buildings else cls
+    return name, geo.distance_m((closest["pos"][0], closest["pos"][1]), (x, y))
+
+
 def player_surroundings(st, game, radius_m: float = 500.0) -> PlayerSurroundings:
     """The player's position and the nodes within ``radius_m`` of it, nearest first."""
     pos = st.player_position()
@@ -53,33 +77,11 @@ def player_surroundings(st, game, radius_m: float = 500.0) -> PlayerSurroundings
     x, y, _z = pos
     out.label = regions_mod.load_regions().label_for(x, y)
     table = nodes_mod.load_nodes()
-    near = nodes_mod.annotate(
-        table.filter(center=(x, y), radius_m=radius_m),
-        game,
-        st.projection,
-        st.unlocked_building_ids,
-    )
-    for n in near:
-        n["distance_m"] = geo.distance_m((n["x"], n["y"]), (x, y))
-        n["direction"] = geo.direction_of(n["x"], n["y"], x, y)
+    near = nodes_mod.annotate_for_save(table.within((x, y), radius_m), game, st)
+    _with_distances(near, x, y, direction=True)
     near.sort(key=lambda n: n["distance_m"])
     out.nodes = near
-    builds = [r for r in st.all_records() if r.get("pos")]
-    closest = min(
-        builds,
-        key=lambda r: geo.distance_m((r["pos"][0], r["pos"][1]), (x, y)),
-        default=None,
-    )
-    if closest is not None:
-        name = (
-            game.buildings[closest["cls"]].name
-            if closest["cls"] in game.buildings
-            else closest["cls"]
-        )
-        out.nearest_building = (
-            name,
-            geo.distance_m((closest["pos"][0], closest["pos"][1]), (x, y)),
-        )
+    out.nearest_building = _nearest_building(st, game, x, y)
     out.skew = nodes_mod.skew_for_save(st.header, table)
     out.notes = nodes_mod.skew_notes(out.skew, [n["instance"] for n in near])
     return out
@@ -89,15 +91,7 @@ def nearest_nodes(st, game, x: float, y: float, limit: int = NEAREST) -> list[di
     """The ``limit`` nodes closest to a point, annotated, each with ``distance_m``."""
     table = nodes_mod.load_nodes()
     ranked = sorted(table.nodes, key=lambda n: geo.distance_m((x, y), (n["x"], n["y"])))[:limit]
-    rows = nodes_mod.annotate(
-        ranked,
-        game,
-        st.projection if st else None,
-        st.unlocked_building_ids if st else None,
-    )
-    for r in rows:
-        r["distance_m"] = geo.distance_m((x, y), (r["x"], r["y"]))
-    return rows
+    return _with_distances(nodes_mod.annotate_for_save(ranked, game, st), x, y)
 
 
 def _fields_near(st, game, x: float, y: float) -> list[node_search.FieldView]:
@@ -108,14 +102,11 @@ def _fields_near(st, game, x: float, y: float) -> list[node_search.FieldView]:
         if geo.distance_m((x, y), (n["x"], n["y"])) <= FIELD_REACH_M
     }
     out: list[node_search.FieldView] = []
-    for rid in sorted(close):
-        rows = nodes_mod.annotate(
-            table.by_resource(rid),
-            game,
-            st.projection if st else None,
-            st.unlocked_building_ids if st else None,
-        )
-        out += [f for f in node_search.fields(rows, (x, y)) if f.distance_m <= FIELD_REACH_M]
+    for resource_id in sorted(close):
+        rows = nodes_mod.annotate_for_save(table.by_resource(resource_id), game, st)
+        out += [
+            f for f in node_search.group_into_fields(rows, (x, y)) if f.distance_m <= FIELD_REACH_M
+        ]
     out.sort(key=lambda f: f.distance_m)
     return out
 
@@ -215,6 +206,6 @@ def describe_point(
         pickups_spoilers=sum(1 for p in pickups if p["spoiler"]),
         skew=skew,
         notes=nodes_mod.position_notes(
-            skew, [n["instance"] for n in table.filter(center=(x, y), radius_m=radius_m)]
+            skew, [n["instance"] for n in table.within((x, y), radius_m)]
         ),
     )

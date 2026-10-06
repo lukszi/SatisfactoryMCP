@@ -30,7 +30,7 @@ def test_a_resource_filter_keeps_only_that_resource_and_totals_add_up(state, gam
     found = _find(state, game, resource="Iron Ore", view="nodes")
     assert found.rows and {r["resource"] for r in found.rows} == {IRON}
     assert found.total == pytest.approx(sum(r["rate"] for r in found.rows))
-    assert found.free == pytest.approx(nodes_mod.capacity(found.rows, only_free=True))
+    assert found.free == pytest.approx(nodes_mod.untapped_rate(found.rows))
     assert found.unit == "/min"
     assert [(-r["rate"], r["instance"]) for r in found.rows] == sorted(
         (-r["rate"], r["instance"]) for r in found.rows
@@ -124,7 +124,7 @@ def test_fields_cluster_members_within_the_link_distance(state, game):
         assert f.selector.startswith("near:")
         x0, y0, x1, y1 = f.bbox
         assert all(x0 <= m["x"] <= x1 and y0 <= m["y"] <= y1 for m in f.members)
-        assert f.free <= f.total
+        assert f.free_rate <= f.total_rate
         assert f.spoiler == (not any(m["reachable"] for m in f.members))
 
 
@@ -141,16 +141,16 @@ def test_a_field_distance_is_to_its_nearest_member(state, game):
 
 
 def test_rank_orders_untapped_reachable_fields_best_first(state, game):
-    ranked = node_search.rank(state, game, IRON, None)
+    ranked = node_search.rank_build_sites(state, game, IRON, None)
     assert ranked.scored
     scores = [s.score for s in ranked.scored]
     assert scores == sorted(scores, reverse=True)
-    view = node_search.site_view(ranked.scored[0])
+    view = node_search.site_row(ranked.scored[0])
     assert view["selector"].startswith("near:") and view["untapped"] > 0
 
 
 def test_rank_with_a_failed_selector_selects_nothing(state, game):
-    assert node_search.rank(state, game, IRON, ["region:Nowhere"]).unselected
+    assert node_search.rank_build_sites(state, game, IRON, ["region:Nowhere"]).unselected
 
 
 # ----------------------------------------------------------------------- place
@@ -304,7 +304,9 @@ def test_table_age_is_silent_on_a_current_table_and_scoped_on_a_stale_one():
     assert age["moved"] == 1 and age["unjoinable"] == 0
     assert age["notes"] and "NodeA" in age["notes"][0]
     assert nodes_mod.table_age({"save_version": 8}, table, ["L:P.Other"])["moved"] == 0
-    assert nodes_mod.drifted(nodes_mod.skew_from_meta(table.meta, {"save_version": 8}), None) == {
+    assert nodes_mod.drifted_leaf_names(
+        nodes_mod.skew_from_meta(table.meta, {"save_version": 8}), None
+    ) == {
         "NodeA",
         "NodeB",
     }
@@ -363,7 +365,7 @@ def test_show_ref_spells_each_place_kind():
 
 
 def test_choices_cover_the_whole_table(game):
-    got = node_search.choices(game)
+    got = node_search.filter_choices(game)
     table = nodes_mod.load_nodes()
     assert sum(r["nodes"] for r in got["resources"]) == len(table)
     assert set(got["kinds"]) == {n["kind"] for n in table.nodes}

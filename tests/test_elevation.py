@@ -90,8 +90,8 @@ def test_it_works_with_no_save_at_all(game):
 def test_a_probe_only_returns_what_is_inside_the_radius(points):
     near = elevation.probe(IN_THE_FIELD[0] * 100, IN_THE_FIELD[1] * 100, points, radius_m=400)
     assert near.samples
-    assert all(s.dist_m <= 400 + 1e-6 for s in near.samples)
-    assert [s.dist_m for s in near.samples] == sorted(s.dist_m for s in near.samples)
+    assert all(s.distance_m <= 400 + 1e-6 for s in near.samples)
+    assert [s.distance_m for s in near.samples] == sorted(s.distance_m for s in near.samples)
 
 
 def test_a_wider_radius_never_loses_a_sample(points):
@@ -109,9 +109,9 @@ def test_ground_and_built_are_separate_populations(points):
     nodes hundreds to one, so the result would silently BE the platform height while
     still being labelled ground."""
     near = elevation.probe(ON_PLATFORM[0] * 100, ON_PLATFORM[1] * 100, points, radius_m=200)
-    assert near.ground and near.built
-    assert set(near.ground).isdisjoint(set(near.built)) or True  # values may coincide
-    assert len(near.ground) + len(near.built) == len(near.samples)
+    assert near.ground_m and near.built_m
+    assert set(near.ground_m).isdisjoint(set(near.built_m)) or True  # values may coincide
+    assert len(near.ground_m) + len(near.built_m) == len(near.samples)
     assert "structure" not in elevation.GROUND_SOURCES
     assert "building" not in elevation.GROUND_SOURCES
 
@@ -120,7 +120,7 @@ def test_fill_depth_needs_more_than_one_ground_sample(points):
     """The measured trap: 805 structures against 1 node on the main platform. One node is
     a point, and a point is not a ground level, so no fill depth is quoted from it."""
     near = elevation.probe(ON_PLATFORM[0] * 100, ON_PLATFORM[1] * 100, points, radius_m=200)
-    assert len(near.ground) < elevation.MIN_GROUND_SAMPLES
+    assert len(near.ground_m) < elevation.MIN_GROUND_SAMPLES
     assert near.fill_m is None
 
 
@@ -140,7 +140,7 @@ def test_one_sided_evidence_yields_no_fill(points):
     """In the crude field there are nodes and nothing built. A fill depth is a difference
     and one side alone cannot produce it."""
     near = elevation.probe(IN_THE_FIELD[0] * 100, IN_THE_FIELD[1] * 100, points, radius_m=400)
-    assert near.ground and not near.built
+    assert near.ground_m and not near.built_m
     assert near.fill_m is None
 
 
@@ -148,7 +148,7 @@ def test_the_median_resists_a_spire(points):
     """One Spire Coast node sits 220 m above its neighbours. A mean would drag the field's
     reported height up by tens of metres; the median does not move."""
     near = elevation.probe(IN_THE_FIELD[0] * 100, IN_THE_FIELD[1] * 100, points, radius_m=400)
-    values = near.ground
+    values = near.ground_m
     assert max(values) - min(values) > 200
     assert near.median("node") < 50
 
@@ -157,19 +157,19 @@ def test_the_median_resists_a_spire(points):
 
 
 def test_an_even_count_takes_the_mean_of_the_middle_two():
-    assert elevation.Elevation.middle([127.0, 137.0]) == pytest.approx(132.0)
-    assert elevation.Elevation.middle([1.0, 2.0, 9.0]) == 2.0
-    assert elevation.Elevation.middle([]) is None
+    assert elevation.Elevation.median_of([127.0, 137.0]) == pytest.approx(132.0)
+    assert elevation.Elevation.median_of([1.0, 2.0, 9.0]) == 2.0
+    assert elevation.Elevation.median_of([]) is None
 
 
 @pytest.mark.parametrize("radius", [50, 200, 400, 800])
 def test_the_tool_quotes_the_median_the_inspector_sends(game, points, radius):
     near = elevation.probe(IN_THE_FIELD[0] * 100, IN_THE_FIELD[1] * 100, points, radius_m=radius)
     out = srv.describe_location(_at(IN_THE_FIELD), radius_m=radius)
-    if not near.ground:
+    if not near.ground_m:
         assert "ground_elevation_m=" not in out
         return
-    assert f"ground_elevation_m={near.median('node'):.0f} (median of {len(near.ground)}," in out
+    assert f"ground_elevation_m={near.median('node'):.0f} (median of {len(near.ground_m)}," in out
 
 
 def test_describe_location_reports_elevation(game):

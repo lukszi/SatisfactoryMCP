@@ -2,16 +2,18 @@
 
 from .extraction import (
     annotate,
+    annotate_for_save,
     blocking_buildings,
-    capacity,
+    can_extract,
     node_rate,
-    occupancy,
+    occupancy_by_node,
     reachable,
     unresolved_extractors,
+    untapped_rate,
 )
 from .skew import (
     TableSkew,
-    drifted,
+    drifted_leaf_names,
     identity_notes,
     position_notes,
     skew_for_save,
@@ -20,27 +22,28 @@ from .skew import (
     table_age,
 )
 from .table import (
-    EXTRA_FOR_KIND,
     EXTRACTOR_FOR_KIND,
     GEYSER_CONSUMER,
+    SUPPORT_BUILDINGS_FOR_KIND,
     NodeTable,
     load_nodes,
 )
 
 __all__ = [
     "EXTRACTOR_FOR_KIND",
-    "EXTRA_FOR_KIND",
     "GEYSER_CONSUMER",
+    "SUPPORT_BUILDINGS_FOR_KIND",
     "NodeTable",
     "TableSkew",
     "annotate",
+    "annotate_for_save",
     "blocking_buildings",
-    "capacity",
-    "drifted",
+    "can_extract",
+    "drifted_leaf_names",
     "identity_notes",
     "load_nodes",
     "node_rate",
-    "occupancy",
+    "occupancy_by_node",
     "position_notes",
     "reachable",
     "skew_for_save",
@@ -48,4 +51,5 @@ __all__ = [
     "skew_notes",
     "table_age",
     "unresolved_extractors",
+    "untapped_rate",
 ]

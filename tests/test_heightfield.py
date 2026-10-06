@@ -659,8 +659,8 @@ def test_a_probe_without_a_field_is_the_probe_it_always_was(tmp_path):
     """The default, and the case on almost every machine. Nothing may change for it."""
     near = elevation.probe(FAKE_X0, FAKE_Y0, _samples(), radius_m=200.0)
     assert near.terrain is None and near.terrain_m is None
-    assert near.ground == [10.0, 12.0, 14.0]
-    assert near.built == [30.0]
+    assert near.ground_m == [10.0, 12.0, 14.0]
+    assert near.built_m == [30.0]
     assert near.fill_m == 18.0
 
 
@@ -680,7 +680,11 @@ def test_the_field_is_a_fourth_answer_and_does_not_touch_the_sampled_populations
     assert near.terrain_m == 12.3
     assert near.terrain.source == "landscape"
     assert near.terrain.accuracy_m == 0.205
-    assert (near.ground, near.built, near.fill_m) == (without.ground, without.built, without.fill_m)
+    assert (near.ground_m, near.built_m, near.fill_m) == (
+        without.ground_m,
+        without.built_m,
+        without.fill_m,
+    )
     assert near.counts == without.counts == {"node": 3, "structure": 1}
 
 
@@ -691,7 +695,7 @@ def test_a_field_that_knows_nothing_here_leaves_the_probe_saying_nothing(tmp_pat
         FAKE_X0, FAKE_Y0 + 3 * FAKE_SPACING, _samples(), radius_m=500.0, terrain_field=field
     )
     assert near.terrain is None and near.terrain_m is None
-    assert near.ground == [10.0, 12.0, 14.0]
+    assert near.ground_m == [10.0, 12.0, 14.0]
 
 
 def test_the_field_does_not_lower_the_refusal_to_invent_a_ground_level(tmp_path):
@@ -708,7 +712,7 @@ def test_the_field_does_not_lower_the_refusal_to_invent_a_ground_level(tmp_path)
     ]
     near = elevation.probe(FAKE_X0, FAKE_Y0, thin, radius_m=200.0, terrain_field=field)
     assert near.terrain_m == 12.3, "the field answered"
-    assert len(near.ground) < elevation.MIN_GROUND_SAMPLES
+    assert len(near.ground_m) < elevation.MIN_GROUND_SAMPLES
     assert near.fill_m is None, "one node became a ground level because a field turned up"
 
 

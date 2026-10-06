@@ -1,23 +1,41 @@
-"""What a node yields and who taps it: rates, occupancy, reachability and capacity."""
+"""What a node yields and who taps it: rates, occupancy, reachability and free capacity."""
 
 from __future__ import annotations
 
 from ....core.gamedata.model import GameData
+from ....core.saveio.records import instance_leaf
 from .. import geo
 from . import skew as node_skew
 from . import table as node_table
-from .skew import _short
-from .table import EXTRA_FOR_KIND, EXTRACTOR_FOR_KIND, GEYSER_CONSUMER
+from .table import EXTRACTOR_FOR_KIND, GEYSER_CONSUMER, SUPPORT_BUILDINGS_FOR_KIND
 
 __all__ = [
     "annotate",
+    "annotate_for_save",
     "blocking_buildings",
-    "capacity",
+    "can_extract",
     "node_rate",
-    "occupancy",
+    "occupancy_by_node",
     "reachable",
     "unresolved_extractors",
+    "untapped_rate",
 ]
+
+
+def can_extract(building, resource_id: str, game: GameData) -> bool:
+    """Whether this extractor could tap this resource, unlocks aside.
+
+    ``mAllowedResources`` decides where it is populated, else ``mAllowedResourceForms``
+    (RF_SOLID on miners, RF_LIQUID on pumps); a building stating neither takes solids only.
+    """
+    if building is None or not building.base_extract_rate:
+        return False
+    if building.allowed_resources:
+        return resource_id in building.allowed_resources
+    item = game.items.get(resource_id)
+    if building.allowed_forms:
+        return item is not None and item.form in building.allowed_forms
+    return item is not None and not item.is_fluid
 
 
 def node_rate(node: dict, game: GameData, extractor_cls: str | None = None) -> float:
@@ -32,24 +50,13 @@ def node_rate(node: dict, game: GameData, extractor_cls: str | None = None) -> f
     candidates = (extractor_cls,) if extractor_cls else EXTRACTOR_FOR_KIND.get(kind, ())
     best = 0.0
     for cls in candidates:
-        b = game.buildings.get(cls)
-        if b is None or not b.base_extract_rate:
-            continue
-        # FORM first, and never mAllowedResources alone: that field is only populated when
-        # mOnlyAllowCertainResources is True, which is False on every miner, so filtering on
-        # it leaves miners unrestricted and a Miner Mk.3 (base 240) out-bids the Oil
-        # Extractor (base 120) on crude -- every oil node at double its real rate.
-        # mAllowedResourceForms is what encodes it: RF_SOLID on miners, RF_LIQUID on pumps.
-        item = game.items.get(node["resource"])
-        if b.allowed_forms and item is not None and item.form not in b.allowed_forms:
-            continue
-        if b.allowed_resources and node["resource"] not in b.allowed_resources:
-            continue
-        best = max(best, b.extract_rate(node["purity"]))
+        building = game.buildings.get(cls)
+        if can_extract(building, node["resource"], game):
+            best = max(best, building.extract_rate(node["purity"]))
     return best
 
 
-def occupancy(projection: dict) -> dict[str, dict]:
+def occupancy_by_node(projection: dict) -> dict[str, dict]:
     """node instanceName -> the extractor sitting on it.
 
     Resolution is PARTIAL: water pumps point at FGWaterVolume objects, which are not node
@@ -57,16 +64,16 @@ def occupancy(projection: dict) -> dict[str, dict]:
     reference save's 66 extractors resolve. An absent link is UNKNOWN, never free.
     """
     out: dict[str, dict] = {}
-    for e in projection.get("extractors", ()):
-        node = e.get("node")
+    for extractor in projection.get("extractors", ()):
+        node = extractor.get("node")
         if not node:
             continue
         out[node] = {
-            "extractor": e["cls"],
-            "instance": e.get("instance"),
-            "clock": e.get("clock", 1.0),
-            "paused": e.get("paused", False),
-            "pos": e.get("pos"),
+            "extractor": extractor["cls"],
+            "instance": extractor.get("instance"),
+            "clock": extractor.get("clock", 1.0),
+            "paused": extractor.get("paused", False),
+            "pos": extractor.get("pos"),
         }
     return out
 
@@ -77,22 +84,22 @@ def unresolved_extractors(projection: dict) -> list[dict]:
     # A node the newer build renamed lands here too, and "target not a node" is the wrong
     # diagnosis: the target IS a node, it is this table that is behind.
     skew = node_skew.skew_for_save(projection.get("header"))
-    was = {_short(new): old for old, new in (skew.renamed_to.items() if skew else ())}
+    was = {instance_leaf(new): old for old, new in (skew.renamed_to.items() if skew else ())}
     out = []
-    for e in projection.get("extractors", ()):
-        node = e.get("node")
+    for extractor in projection.get("extractors", ()):
+        node = extractor.get("node")
         if node is None:
-            out.append({**e, "reason": "no mExtractableResource property"})
+            out.append({**extractor, "reason": "no mExtractableResource property"})
         elif node not in table:
-            leaf = _short(node)
+            leaf = instance_leaf(node)
             old = was.get(leaf)
             reason = (
                 f"node renamed by a game update after this table was cut "
-                f"(this table calls it {_short(old)})"
+                f"(this table calls it {instance_leaf(old)})"
                 if old
                 else f"target not a node ({leaf})"
             )
-            out.append({**e, "reason": reason})
+            out.append({**extractor, "reason": reason})
     return out
 
 
@@ -107,24 +114,9 @@ def reachable(node: dict, unlocked_buildings: set[str] | None) -> bool:
     kind = node["kind"]
     if kind == "geyser":
         return GEYSER_CONSUMER in unlocked_buildings
-    if not set(EXTRA_FOR_KIND.get(kind, ())) <= unlocked_buildings:
+    if not set(SUPPORT_BUILDINGS_FOR_KIND.get(kind, ())) <= unlocked_buildings:
         return False
     return any(cls in unlocked_buildings for cls in EXTRACTOR_FOR_KIND.get(kind, ()))
-
-
-def _can_tap(building, resource: str, game: GameData) -> bool:
-    """Whether this extractor could tap this resource, unlocks aside.
-
-    Mirrors the rule build_scenario applies when it turns nodes into extractor
-    columns, and must keep mirroring it: a building with no `mAllowedResourceForms`
-    of its own is a solid miner, so a fluid node is not its to take.
-    """
-    if building is None or not building.base_extract_rate:
-        return False
-    if building.allowed_resources:
-        return resource in building.allowed_resources
-    item = game.items.get(resource)
-    return item is not None and not item.is_fluid
 
 
 def blocking_buildings(
@@ -144,11 +136,13 @@ def blocking_buildings(
     options = tuple(
         cls
         for cls in EXTRACTOR_FOR_KIND.get(kind, ())
-        if _can_tap(game.buildings.get(cls), node["resource"], game)
+        if can_extract(game.buildings.get(cls), node["resource"], game)
     )
     missing = () if any(cls in unlocked_buildings for cls in options) else options
-    extra = tuple(c for c in EXTRA_FOR_KIND.get(kind, ()) if c not in unlocked_buildings)
-    return missing + extra
+    support = tuple(
+        c for c in SUPPORT_BUILDINGS_FOR_KIND.get(kind, ()) if c not in unlocked_buildings
+    )
+    return missing + support
 
 
 def annotate(
@@ -161,39 +155,42 @@ def annotate(
 
     The whole occupancy record travels, not a boolean: which extractor stands there, at
     what clock, whether it is switched off and where it is are what "is this node worth
-    reclaiming" is answered from, and ``occupancy`` computes all of it anyway.
+    reclaiming" is answered from, and ``occupancy_by_node`` computes all of it anyway.
     """
-    occ = occupancy(projection) if projection else {}
+    occupied = occupancy_by_node(projection) if projection else {}
     out = []
-    for n in nodes:
-        taken = occ.get(n["instance"]) or {}
+    for node in nodes:
+        taken = occupied.get(node["instance"]) or {}
         out.append(
             {
-                **n,
-                "rate": node_rate(n, game),
-                "grid": geo.grid_cell(n["x"], n["y"]),
+                **node,
+                "rate": node_rate(node, game),
+                "grid": geo.grid_cell(node["x"], node["y"]),
                 "tapped": bool(taken),
                 "tapped_by": taken.get("extractor"),
                 "tapped_clock": taken.get("clock"),
                 "tapped_paused": taken.get("paused"),
                 "tapped_instance": taken.get("instance"),
                 "tapped_pos": taken.get("pos"),
-                "reachable": reachable(n, unlocked_buildings),
+                "reachable": reachable(node, unlocked_buildings),
             }
         )
     return out
 
 
-def capacity(rows: list[dict], only_free: bool = False, only_reachable: bool = True) -> float:
-    """Total rate across rows.
+def annotate_for_save(nodes: list[dict], game: GameData, st) -> list[dict]:
+    """``annotate`` against a world state, or as all free and reachable with ``st`` None."""
+    return annotate(
+        nodes,
+        game,
+        st.projection if st else None,
+        st.unlocked_building_ids if st else None,
+    )
 
-    Defaults to reachable nodes only, because unreachable capacity is not a plan.
-    """
-    total = 0.0
-    for r in rows:
-        if only_free and r.get("tapped"):
-            continue
-        if only_reachable and not r.get("reachable", True):
-            continue
-        total += r["rate"]
-    return total
+
+def untapped_rate(rows) -> float:
+    """Total rate of the rows no extractor stands on and the player can reach: unreachable
+    capacity is not a plan."""
+    return sum(
+        row.get("rate", 0.0) for row in rows if not row.get("tapped") and row.get("reachable", True)
+    )

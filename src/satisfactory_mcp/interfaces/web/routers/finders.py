@@ -1,7 +1,7 @@
 """``/api/world/*``: the World finders -- where I am, nodes, fields, sites, conduits, regions.
 
 Each route calls the domain function its MCP tool calls (``surroundings.player_surroundings``,
-``node_search.find_nodes``, ``node_search.rank``, ``conduit_search.search``/``networks``,
+``node_search.find_nodes``, ``node_search.rank_build_sites``, ``conduit_search.search``/``networks``,
 ``regions.region_rows``), so the page and the chat answer one question one way.
 
 WARNING: the function names are operation_ids -- renaming one churns the committed schema.
@@ -359,7 +359,7 @@ def world_nodes(
         return _fail("no selector resolved: " + "; ".join(found.errors))
 
     rm = spatial_regions.load_regions()
-    drifted = found.drifted
+    drifted = found.drifted_leaf_names
     water = found.water
     return {
         "view": view,
@@ -378,7 +378,7 @@ def world_nodes(
         "water": None
         if water is None
         else {k: water[k] for k in ("bodies", "pumps", "per_pump_m3_min", "sea_level_m")},
-        "choices": node_search.choices(game),
+        "choices": node_search.filter_choices(game),
         "notes": node_search.page_notes(found, st),
         "stale": spatial_nodes.table_age(
             st.header if st else None, None, [r["instance"] for r in found.rows]
@@ -405,13 +405,13 @@ def world_sites(
         st = _state(request, save, world)
     except Exception as exc:
         return _fail(f"could not read save: {exc}", 404)
-    ranked = node_search.rank(st, game, rid, source, resolve_resource=_resolver(game))
+    ranked = node_search.rank_build_sites(st, game, rid, source, resolve_resource=_resolver(game))
     if ranked.unselected:
         return _fail("no selector resolved: " + "; ".join(ranked.selection.errors))
     rm = spatial_regions.load_regions()
     sites = []
     for i, sc in enumerate(ranked.scored[:limit], 1):
-        v = node_search.site_view(sc, rm)
+        v = node_search.site_row(sc, rm)
         sites.append(
             {
                 "rank": i,
@@ -598,7 +598,7 @@ def world_here(
     found = surroundings.player_surroundings(st, game, radius_m)
     rows = found.nodes
     instances = [r["instance"] for r in rows]
-    drifted = spatial_nodes.drifted(found.skew, instances)
+    drifted = spatial_nodes.drifted_leaf_names(found.skew, instances)
     rm = spatial_regions.load_regions()
     stale = [
         age

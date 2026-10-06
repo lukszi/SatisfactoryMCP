@@ -16,11 +16,12 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
+from ....core.saveio.records import instance_leaf
 from . import table as node_table
 
 __all__ = [
     "TableSkew",
-    "drifted",
+    "drifted_leaf_names",
     "identity_notes",
     "position_notes",
     "skew_for_save",
@@ -28,11 +29,6 @@ __all__ = [
     "skew_notes",
     "table_age",
 ]
-
-
-def _short(instance: str) -> str:
-    return str(instance).rsplit(".", 1)[-1]
-
 
 #: The version markers the artifact writes into a comparison block's human-readable
 #: ``build`` string, paired with the save-header field of the same name. The block records
@@ -112,12 +108,12 @@ class TableSkew:
         """
         if instances is None:
             return self
-        wanted = {_short(i) for i in instances}
-        moved = {k: v for k, v in self.moved_cm.items() if _short(k) in wanted}
+        wanted = {instance_leaf(i) for i in instances}
+        moved = {k: v for k, v in self.moved_cm.items() if instance_leaf(k) in wanted}
         unjoinable = tuple(
             k
             for k in self.unjoinable
-            if _short(k) in wanted or _short(self.renamed_to.get(k, "\0")) in wanted
+            if instance_leaf(k) in wanted or instance_leaf(self.renamed_to.get(k, "\0")) in wanted
         )
         return replace(
             self,
@@ -154,6 +150,55 @@ def _pin_and_drift(positions: dict) -> tuple[dict | None, dict | None]:
     return pin, drift
 
 
+def _save_versions(header: dict | None) -> dict[str, int]:
+    """The version markers a save header states, by header field."""
+    return {
+        field: header[field]
+        for _marker, field in _VERSION_MARKERS
+        if isinstance((header or {}).get(field), int)
+    }
+
+
+def _save_is_affected(save: dict[str, int], pin: dict[str, int], against: dict[str, int]) -> bool:
+    """Whether a save is past the table's pin, or on exactly the build the drift was
+    measured against, which affects it whether or not the pin states a comparable marker."""
+    newer = any(save[f] > v for f, v in pin.items() if f in save)
+    older = any(save[f] < v for f, v in pin.items() if f in save)
+    at_drift_build = bool(against) and any(save.get(f) == v for f, v in against.items())
+    if older and not newer:
+        return False
+    return newer or at_drift_build
+
+
+def _forced_rename(drift: dict, unjoinable: tuple[str, ...]) -> dict[str, str]:
+    """Table name -> the newer build's name, only where the pairing is forced.
+
+    Two lists of names are not a mapping: with one name on each side and a recorded
+    distance between them the pairing is forced, and with more it would be invented.
+    """
+    only_in_build = [
+        name
+        for key in drift
+        if key.startswith("rows_only_in") and key != "rows_only_in_this_table"
+        for name in (drift.get(key) or ())
+    ]
+    if (
+        len(unjoinable) == 1
+        and len(only_in_build) == 1
+        and drift.get("renamed_row_moved_cm") is not None
+    ):
+        return {unjoinable[0]: only_in_build[0]}
+    return {}
+
+
+def _moves_are_vertical(rows: list[dict], moved_cm: dict, dz_cm: dict, floor: float) -> bool:
+    """Whether every recorded move is z alone: a delta the row's own dz cannot account for
+    is horizontal, and then x,y no longer lands on the right node."""
+    return bool(rows) and all(
+        abs(dz_cm.get(r["instance"], 0.0)) >= moved_cm[r["instance"]] - floor for r in rows
+    )
+
+
 def skew_from_meta(meta: dict, header: dict | None) -> TableSkew | None:
     """The recorded skew, but only when ``header`` names a build past the table's pin.
 
@@ -168,43 +213,16 @@ def skew_from_meta(meta: dict, header: dict | None) -> TableSkew | None:
 
     pin = _versions_in((pin_block or {}).get("build"))
     against = _versions_in(drift.get("build"))
-    save = {
-        field: header[field]
-        for _marker, field in _VERSION_MARKERS
-        if isinstance((header or {}).get(field), int)
-    }
-    if not save:
-        return None
-
-    newer = any(save[f] > v for f, v in pin.items() if f in save)
-    older = any(save[f] < v for f, v in pin.items() if f in save)
-    # A save on exactly the build the drift was measured against is affected by all of
-    # it, whether or not the pin block happens to state a comparable marker.
-    at_drift_build = bool(against) and any(save.get(f) == v for f, v in against.items())
-    if older and not newer:
-        return None
-    if not (newer or at_drift_build):
+    save = _save_versions(header)
+    if not save or not _save_is_affected(save, pin, against):
         return None
 
     rows = [r for r in (drift.get("rows_past_the_rounding_floor") or ()) if r.get("instance")]
     floor = float(drift.get("rounding_floor_cm") or 0.0)
     moved_cm = {r["instance"]: float(r["delta_cm"]) for r in rows if r.get("delta_cm") is not None}
     dz_cm = {r["instance"]: float(r["dz_cm"]) for r in rows if r.get("dz_cm") is not None}
-
     unjoinable = tuple(drift.get("rows_only_in_this_table") or ())
-    only_in_build = [
-        name
-        for key in drift
-        if key.startswith("rows_only_in") and key != "rows_only_in_this_table"
-        for name in (drift.get(key) or ())
-    ]
-    # Two lists of names are not a mapping. With one name on each side and a recorded
-    # distance between them the pairing is forced; with more it would be invented, so
-    # extra rows are reported as unjoinable without naming a replacement.
     renamed_moved_cm = drift.get("renamed_row_moved_cm")
-    renamed_to: dict[str, str] = {}
-    if len(unjoinable) == 1 and len(only_in_build) == 1 and renamed_moved_cm is not None:
-        renamed_to = {unjoinable[0]: only_in_build[0]}
 
     skew = TableSkew(
         pin=pin,
@@ -213,14 +231,9 @@ def skew_from_meta(meta: dict, header: dict | None) -> TableSkew | None:
         moved_cm=moved_cm,
         dz_cm=dz_cm,
         unjoinable=unjoinable,
-        renamed_to=renamed_to,
+        renamed_to=_forced_rename(drift, unjoinable),
         renamed_moved_cm=float(renamed_moved_cm) if renamed_moved_cm is not None else None,
-        # Only claim "the x,y still lands on the right node" when the recorded deltas
-        # actually say so: a delta the row's own dz cannot account for is horizontal.
-        vertical_only=bool(rows)
-        and all(
-            abs(dz_cm.get(r["instance"], 0.0)) >= moved_cm[r["instance"]] - floor for r in rows
-        ),
+        vertical_only=_moves_are_vertical(rows, moved_cm, dz_cm, floor),
         resource_and_purity_verified=drift.get("purity_mismatches") == []
         and drift.get("resource_mismatches") == [],
     )
@@ -247,35 +260,37 @@ def position_notes(
     """
     if skew is None:
         return []
-    s = skew.scope(instances)
-    if not s.moved_cm:
+    scoped = skew.scope(instances)
+    if not scoped.moved_cm:
         return []
-    ranked = sorted(s.moved_cm.items(), key=lambda kv: -kv[1])
+    ranked = sorted(scoped.moved_cm.items(), key=lambda kv: -kv[1])
     shown = ranked[:name_limit]
     # A direction is only quoted where the artifact recorded one. Deriving a sign from the
     # magnitude would be an invented number, and "the node is 80 cm LOWER than shown" is
     # the half of this a planner acts on.
-    signed = all(i in s.dz_cm for i, _ in shown)
+    signed = all(i in scoped.dz_cm for i, _ in shown)
     named = ", ".join(
-        f"{_short(i)} {s.dz_cm[i]:+.0f}cm" if i in s.dz_cm else f"{_short(i)} {d:.0f}cm"
+        f"{instance_leaf(i)} {scoped.dz_cm[i]:+.0f}cm"
+        if i in scoped.dz_cm
+        else f"{instance_leaf(i)} {d:.0f}cm"
         for i, d in shown
     )
     if len(ranked) > name_limit:
         named += f", +{len(ranked) - name_limit} more"
-    axis = "z" if s.vertical_only else "position"
+    axis = "z" if scoped.vertical_only else "position"
     convention = (
         "; a negative sign means the game sits that much lower than the z shown"
-        if signed and s.vertical_only
+        if signed and scoped.vertical_only
         else ""
     )
     unaffected = (
         " x,y, resource and purity still match the newer build."
-        if s.vertical_only and s.resource_and_purity_verified
+        if scoped.vertical_only and scoped.resource_and_purity_verified
         else ""
     )
     note = (
         f"{len(ranked)} node(s) here moved in a game update after this node table was cut "
-        f"({s.gap}): {axis} is up to {s.max_moved_cm:.0f}cm stale -- {named}{convention}."
+        f"({scoped.gap}): {axis} is up to {scoped.max_moved_cm:.0f}cm stale -- {named}{convention}."
         f"{unaffected}"
     )
     return [note]
@@ -296,13 +311,13 @@ def identity_notes(skew: TableSkew | None, instances: Iterable[str] | None = Non
         new = skew.renamed_to.get(inst)
         moved = skew.renamed_moved_cm
         if new:
-            how = f"renamed it to {_short(new)}"
+            how = f"renamed it to {instance_leaf(new)}"
             if moved:
                 how += f", {moved:.0f}cm away"
         else:
             how = "dropped that name"
         out.append(
-            f"{_short(inst)} is not in this save under that name: a game update after this "
+            f"{instance_leaf(inst)} is not in this save under that name: a game update after this "
             f"node table was cut ({skew.gap}) {how}. Nothing joins across that gap, so this "
             "node reads as free whether or not an extractor sits on it, and an extractor on "
             "it reads as having no resource or purity. It is listed rather than dropped -- it "
@@ -322,12 +337,14 @@ def skew_notes(
     return position_notes(skew, instances, name_limit=name_limit) + identity_notes(skew, instances)
 
 
-def drifted(skew: TableSkew | None, instances: Iterable[str] | None = None) -> set[str]:
+def drifted_leaf_names(skew: TableSkew | None, instances: Iterable[str] | None = None) -> set[str]:
     """Leaf names of the rows in ``instances`` whose position or name the newer build moved."""
     if skew is None:
         return set()
-    s = skew.scope(instances)
-    return {_short(i) for i in s.moved_cm} | {_short(i) for i in s.unjoinable}
+    scoped = skew.scope(instances)
+    return {instance_leaf(i) for i in scoped.moved_cm} | {
+        instance_leaf(i) for i in scoped.unjoinable
+    }
 
 
 def table_age(
@@ -339,13 +356,13 @@ def table_age(
     skew = skew_for_save(header, table)
     if skew is None:
         return None
-    s = skew.scope(instances)
+    scoped = skew.scope(instances)
     return {
         "table": "nodes",
         "behind": True,
         "gap": skew.gap,
-        "moved": len(s.moved_cm),
-        "unjoinable": len(s.unjoinable),
+        "moved": len(scoped.moved_cm),
+        "unjoinable": len(scoped.unjoinable),
         "observed_from": None,
         "observed_matches": None,
         "notes": skew_notes(skew, instances),
