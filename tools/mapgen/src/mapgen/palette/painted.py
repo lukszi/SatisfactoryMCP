@@ -64,7 +64,15 @@ from mapgen.palette.surfaces import (
     rock_surface,
     sunk_specks,
 )
-from mapgen.palette.trees import IDENTITY_OP, crown_ops, over_crowns, sample_titan, titan_over
+from mapgen.palette.trees import (
+    CANOPY_GREY,
+    IDENTITY_OP,
+    TARGET_GREY,
+    crown_ops,
+    over_crowns,
+    sample_titan,
+    titan_over,
+)
 from mapgen.terrain.crowns import load_crowns
 from mapgen.terrain.rasters import MESH_CORAL, MESH_SHELL, MESH_TERRACE, TITAN_LEAVES, TITAN_TRUNK
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
@@ -385,9 +393,9 @@ class PaintedGround:
             for e in scoped
             if "water" in e
         ]
-        self.crown_op, self.crown_measured = None, {}
+        self.crown_ops, self.crown_measured = [], {}
         if self.crowns is not None:
-            self.crown_op = self._crown_op(targets)
+            self.crown_ops = self._crown_ops(targets)
         self.carpet = load_carpet(paint_dir, meta, palette)
         water = palette["water"]
         self.seabed_coral = colours["coral_seabed"] / np.float32(water["bed_wet"])
@@ -457,11 +465,13 @@ class PaintedGround:
             }  # fmt: skip
         return {**self.source, "crowns": crowns}
 
-    def _crown_op(self, targets: dict):
-        """The crowns' colour transfer onto the canopy targets: one op, or seven coarse planes.
+    def _crown_ops(self, targets: dict) -> list:
+        """The crowns' ``(op, grey)`` transfers: the canopy targets' (one op, or seven coarse
+        planes), then one map-wide op per named crown target.
 
         Each area entry's trees move by their own median's step to its canopy target, the
-        rest by theirs to the global target, as the layers do.
+        rest by theirs to the global target, as the layers do. A named target takes the
+        crowns of its own hue wherever they grow.
         """
         style = self.palette["crowns"]
         records = self.crowns.records
@@ -479,7 +489,16 @@ class PaintedGround:
         )
         default = ops[-1] if "canopy" in targets and ops[-1] is not None else IDENTITY_OP
         scoped = [(w, op) for (w, _t), op in zip(scopes, ops, strict=True) if w is not None]
-        return scoped_planes(default, [(w, op) for w, op in scoped if op is not None])
+        out = [(scoped_planes(default, [(w, op) for w, op in scoped if op is not None]),
+                CANOPY_GREY)]  # fmt: skip
+        for name, hex_colour in targets.get("crowns", {}).items():
+            target = display_to_crown(self.palette, hex_colour)
+            (op,), measured = crown_ops(self.crowns, style, (rows, cols), [(None, target)],
+                                        targets["min_texels"], TARGET_GREY)  # fmt: skip
+            if op is not None:
+                out.append((op, TARGET_GREY))
+                self.crown_measured[f"crowns@{name}"] = measured["crowns@0"]
+        return out
 
     def _bake(self, paint_dir, albedo, have):
         """The bake where it exists, feathered over ``have_blur_m`` into the paint mix.
@@ -720,9 +739,9 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
         out = out * (1.0 - stroke * water["edge"][..., None])
     out = add_foam(out, water, p["shore"].get("foam"), np.float32(1.0))
     if crowns is not None:
-        op = getattr(ground, "crown_op", None)
-        op = None if op is None else sampled_rgb(op, sample_rock)
-        out = over_crowns(out, crowns, scene, p, np.float32(p["ambient"]), exposure, op)
+        taken = getattr(ground, "crown_ops", ())
+        ops = [(sampled_rgb(op, sample_rock), grey) for op, grey in taken]
+        out = over_crowns(out, crowns, scene, p, np.float32(p["ambient"]), exposure, ops)
     out = titan_over(out, scene, ground)
 
     y = np.maximum(out @ LUMA, 1e-7)

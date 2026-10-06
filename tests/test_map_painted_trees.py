@@ -1,6 +1,6 @@
-"""The painted layer's colour fixes: crowns on the canopy targets, the opaque water gated by
-its class, rock families relative to their common tint, the render-only meshes, and the
-ground the bake hides.
+"""The painted layer's colour fixes: crowns on the canopy targets and the blue palms on their
+own, the opaque water gated by its class, rock families relative to their common tint, the
+render-only meshes, and the ground the bake hides.
 
 docs/spatial-and-map.md sections 30 to 32, 36 and 37. Synthetic fixtures: no install.
 """
@@ -21,11 +21,13 @@ from mapgen.gamedata.waterbodies import CLASSES, OCEAN  # noqa: E402
 from mapgen.palette.calibration import (  # noqa: E402
     display_to_crown,
     display_to_ground,
+    display_to_linear,
     scoped_planes,
     weighted_median,
 )
+from mapgen.palette.colour import linear_to_srgb, oklab  # noqa: E402
 from mapgen.palette.optics import class_optics, opaque_share, underwater, water_table  # noqa: E402
-from mapgen.palette.painted import hidden_ground, painted_colours  # noqa: E402
+from mapgen.palette.painted import PaintedGround, hidden_ground, painted_colours  # noqa: E402
 from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
 from mapgen.palette.surfaces import (  # noqa: E402
     family_tables,
@@ -34,7 +36,9 @@ from mapgen.palette.surfaces import (  # noqa: E402
     sunk_specks,
 )
 from mapgen.palette.trees import (  # noqa: E402
+    CANOPY_GREY,
     IDENTITY_OP,
+    TARGET_GREY,
     crown_lab,
     crown_ops,
     hue_gate,
@@ -46,6 +50,8 @@ from mapgen.terrain.sample import taps_linear  # noqa: E402
 SWAMP = CLASSES.index("swamp")
 STYLE = PAINTED_PALETTE["crowns"]
 GREEN, RED = (0.06, 0.12, 0.035), (0.22, 0.04, 0.04)
+#: The blue palms' leaf and the balloon tree's: one hue, the second a near-grey.
+PALM, BALLOON = (0.26585, 0.39797, 0.46165), (0.29132, 0.3309, 0.37206)
 
 
 # ----------------------------------------------------------------------- crowns
@@ -112,12 +118,62 @@ def test_the_identity_op_draws_crowns_as_before():
     scene = {"z_m": np.zeros(shape, np.float32), "ndl_flat": np.float32(0.7),
              "water": {"cover": np.zeros(shape, np.float32)}}  # fmt: skip
     plain = over_crowns(ground, terms, scene, PAINTED_PALETTE, 0.4, 1.0)
-    same = over_crowns(ground, terms, scene, PAINTED_PALETTE, 0.4, 1.0, IDENTITY_OP)
+    ops = [(IDENTITY_OP, CANOPY_GREY)]
+    same = over_crowns(ground, terms, scene, PAINTED_PALETTE, 0.4, 1.0, ops)
     np.testing.assert_allclose(same, plain, atol=1e-6)
     green = crown_lab(np.array(GREEN, np.float32), STYLE)[1:]
     lift = np.array([0.1, 0, 0, 0, 0, *(green / np.hypot(*green))], np.float32)
-    lifted = over_crowns(ground, terms, scene, PAINTED_PALETTE, 0.4, 1.0, IDENTITY_OP + lift)
+    lifted = over_crowns(
+        ground, terms, scene, PAINTED_PALETTE, 0.4, 1.0, [(IDENTITY_OP + lift, CANOPY_GREY)]
+    )
     assert (lifted.sum(-1) > plain.sum(-1)).all()
+
+
+def _crown_ground(crowns):
+    """A PaintedGround with only what ``_crown_ops`` reads, no area holding a canopy target."""
+    ground = object.__new__(PaintedGround)
+    cal = {**PAINTED_PALETTE["calibration"], "min_texels": 5}
+    ground.palette = {**PAINTED_PALETTE, "calibration": cal}
+    ground.crowns, ground.crown_measured = crowns, {}
+    ground.area_names, ground.area_assets = ["Area_Elsewhere"], []
+    ground.coarse_index = np.zeros((4, 4), np.uint8)
+    return ground
+
+
+def test_blue_palms_take_their_own_target_and_keep_their_saturation():
+    pink, neutral = (0.44, 0.08, 0.11), (0.2, 0.2, 0.2)
+    colours = [GREEN, pink, PALM, BALLOON, neutral]
+    crowns = _crowns(colours, np.repeat(np.arange(5), 10), [0.0] * 50)
+    ground = _crown_ground(crowns)
+    ops = ground._crown_ops(ground.palette["calibration"])
+    assert [grey for _op, grey in ops] == [CANOPY_GREY, TARGET_GREY]
+    assert ground.crown_measured["crowns@blue_palm"]["trees"] == 10, "the palms alone"
+    shape = (1, len(colours))
+    terms = {"cover": np.ones(shape, np.float32), "top_cm": np.full(shape, 1500.0, np.float32),
+             "rgb": np.array([colours], np.float32), "ndl": np.full(shape, 0.7, np.float32)}  # fmt: skip
+    scene = {"z_m": np.zeros(shape, np.float32), "ndl_flat": np.float32(0.7),
+             "water": {"cover": np.zeros(shape, np.float32)}}  # fmt: skip
+    p = ground.palette
+    exposure = np.float32(p["exposure"] * p["tone"]["gain"])
+    under = np.zeros((*shape, 3), np.float32)
+
+    def draw(taken):
+        return over_crowns(under, terms, scene, p, np.float32(p["ambient"]), exposure, taken)
+
+    canopy_only, both = draw(ops[:1]), draw(ops)
+    for k in (0, 1, 3, 4):
+        np.testing.assert_array_equal(both[0, k], canopy_only[0, k], err_msg=f"crown {k}")
+    target = p["calibration"]["crowns"]["blue_palm"]
+    want = display_to_linear(p, target)
+    np.testing.assert_allclose(both[0, 2], want, rtol=2e-3, err_msg="the palm on its target")
+    before, after = oklab(canopy_only[0, 2]), oklab(both[0, 2])
+    saturation = [np.hypot(*lab[1:]) / lab[0] for lab in (before, after)]
+    assert saturation[1] > 2.0 * saturation[0], "saturated, not powder blue"
+    assert after[0] < before[0] - 0.15, "mid blue, not near-white"
+    assert linear_to_srgb(both[0, 2]).max() < 160
+    balloon = crown_lab(np.array(BALLOON, np.float32), STYLE)
+    assert hue_gate(balloon, ops[1][0][5:7], CANOPY_GREY) > 0.5, "the palms' hue"
+    assert hue_gate(balloon, ops[1][0][5:7], TARGET_GREY) == 0.0, "but a near-grey"
 
 
 def test_scoped_planes_and_the_weighted_median_take_any_width():
@@ -272,7 +328,7 @@ def test_the_painted_band_draws_with_the_whole_chain():
         palette=p, albedo=[np.full(shape, 0.2, np.float32)] * 3, canopy=np.zeros(shape),
         canopy_rgb=np.zeros(3, np.float32), rock=[np.full(shape, 0.2, np.float32)] * 3,
         rock_family=None, crown=None, titan=None, carpet=None, mesh_rgb={},
-        seabed_coral=np.zeros(3, np.float32), opaque_water=[], crown_op=None,
+        seabed_coral=np.zeros(3, np.float32), opaque_water=[], crown_ops=[],
         ramp=(0.0, 1.0, np.linspace(0, 1, 5)),
         water={"k": np.asarray(w["k_per_m"], np.float32), "body": lin(w["body"]),
                "sky": np.zeros(3, np.float32), "deep": lin(w["deep"]),
