@@ -19,6 +19,7 @@ from mapgen.gamedata.mesh import is_water_class, water_actor_box
 from satisfactory_mcp.core.gameassets.packages import class_name_of, root_component
 
 __all__ = [
+    "ACTOR_CLASS",
     "BIOME_CLASS",
     "BODY_STEP_M",
     "BOX_Z_TOLERANCE_M",
@@ -56,6 +57,7 @@ CLASSES = (
     "cave",
     "sulfur",
     "hot_spring",
+    "translucent",
 )
 DRY, OCEAN, RIVER = 0, 1, 2
 _ID = {name: i for i, name in enumerate(CLASSES)}
@@ -72,6 +74,9 @@ MATERIAL_CLASS = {
     "SulfurPond_Inst": "sulfur",
     "MM_OceanMaster": "ocean",
 }
+
+#: An actor that names no known material, by its class.
+ACTOR_CLASS = {"BP_TranslucentWater_C": "translucent"}
 
 #: Inland water no material reaches, by biome; anything else is a lake.
 BIOME_CLASS = {"Area_Swamp": "swamp"}
@@ -151,8 +156,10 @@ def harvest(view, classes, meshes, out: dict) -> None:
 
 
 def body_class(name: str, materials, box, hot_springs: np.ndarray) -> str | None:
-    """One actor's class: its material's, a lake holding a terrace becomes a hot spring."""
+    """One actor's class: its material's, else its actor class's; a lake holding a terrace
+    becomes a hot spring."""
     found = next((MATERIAL_CLASS[m] for m in materials if m in MATERIAL_CLASS), None)
+    found = found or ACTOR_CLASS.get(name)
     if found != "lake" or not len(hot_springs):
         return found
     x0, y0, z0, x1, y1, z1 = box

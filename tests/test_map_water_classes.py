@@ -15,6 +15,7 @@ pytest.importorskip("scipy")
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM  # noqa: E402
 from mapgen.gamedata.waterbodies import (  # noqa: E402
+    ACTOR_CLASS,
     BODY_STEP_M,
     CLASSES,
     HOT_SPRING_BOX_MAX_M,
@@ -60,6 +61,28 @@ def test_the_material_names_the_class():
     assert body_class("BP_Water_C", ["MI_Lake_Turquoise_01"], box, NO_SPRINGS) == "lake"
     assert body_class("FGWaterVolume", [], box, NO_SPRINGS) is None
     assert set(MATERIAL_CLASS.values()) <= set(CLASSES)
+
+
+def test_translucent_water_is_its_own_class_and_a_known_material_still_wins():
+    """The Blue Crater is a ``BP_TranslucentWater_C``, which names no material; the sulfur
+    ponds are ``BP_Water_C`` with ``SulfurPond_Inst`` and keep their row."""
+    box = _box(0, 0, 10, 10, 100.0)
+    assert body_class("BP_TranslucentWater_C", [], box, NO_SPRINGS) == "translucent"
+    assert body_class("BP_TranslucentWater_C", ["SulfurPond_Inst"], box, NO_SPRINGS) == "sulfur"
+    assert body_class("BP_Water_C", ["SulfurPond_Inst"], box, NO_SPRINGS) == "sulfur"
+    assert set(ACTOR_CLASS.values()) <= set(CLASSES)
+    spring = np.array([[box[0] + 500, box[1] + 500, 100 * 100.0]])
+    assert body_class("BP_TranslucentWater_C", [], box, spring) == "translucent"
+
+
+def test_a_translucent_box_claims_its_water_instead_of_the_lake_fallback():
+    level, wet, bodies, biome = _world()
+    translucent = ["BP_TranslucentWater_C", _box(18, 38, 27, 47, 80.0), []]
+    plane, counts = classify(level, wet, {**bodies, "actors": [*bodies["actors"], translucent]},
+                             biome, OCEAN_LEVEL_M)  # fmt: skip
+    assert (plane[40:45, 20:25] == ID["translucent"]).all()
+    assert (plane[40:45, 40:45] == ID["swamp"]).all(), "water outside the box keeps its fallback"
+    assert counts["bodies_claimed"] == 3 and counts["classes"]["translucent"] == 25
 
 
 def test_a_small_lake_holding_a_terrace_is_a_hot_spring_and_a_big_one_is_not():
