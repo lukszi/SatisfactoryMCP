@@ -290,7 +290,7 @@ class GameData:
     buildings: dict[str, Building]
     schematics: dict[str, Schematic]
     docs_sha256: str
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list[str])
     _events: frozenset[str] | None = field(default=None, init=False, repr=False, compare=False)
 
     # ---- lookups -------------------------------------------------------

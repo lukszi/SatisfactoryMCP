@@ -29,12 +29,12 @@ PYRIGHT_THREADS = 8
 #: it. A number only goes down: lower it when the count falls, and fix new errors instead of
 #: raising it.
 BUDGETS: dict[str, int] = {
-    "src/pioneersav": 2,
+    "src/pioneersav": 0,
     "src/satisfactory_mcp": 0,
     "src/satisfactory_mcp/core": 0,
     "src/satisfactory_mcp/core/gameassets": 8,
-    "src/satisfactory_mcp/core/gamedata": 7,
-    "src/satisfactory_mcp/core/saveio": 5,
+    "src/satisfactory_mcp/core/gamedata": 0,
+    "src/satisfactory_mcp/core/saveio": 3,
     "src/satisfactory_mcp/domain": 0,
     "src/satisfactory_mcp/domain/advice": 5,
     "src/satisfactory_mcp/domain/collectibles": 0,

@@ -2,7 +2,10 @@
 
 This is the ONLY module that knows a save parser exists. Everything downstream
 consumes the plain-dict projection, which is why the whole test suite can run from a
-committed JSON fixture with no game install.
+committed JSON fixture with no game install. The sidecar is this package's own extractor, so
+what it prints is typed by ``schema`` with one ``cast`` per command it runs. ``resolve_save``
+and ``load_projection`` hand their answer on as JSON until their callers read the schema's
+types (docs/DEVELOPING.md, "Types").
 """
 
 from __future__ import annotations
@@ -16,11 +19,14 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from ... import config
 from .. import atomic
+from ..jsontypes import JsonArray, JsonObject, JsonValue
 from ..singleflight import Singleflight
 from ..text import ago, format_local_time
+from .schema import HeaderOnly, Projection, SaveHeader, SaveScan, UnsupportedSave
 
 #: The projection's shape, stamped by the extractor and part of the disk cache key, so a pickle
 #: from an older schema misses. Each bump is in ``docs/save-projection.md``, "Schema history".
@@ -29,12 +35,12 @@ SCHEMA_VERSION = 22
 #: The in-process projection memo, and the single-flight around its misses. An autosave is a
 #: new cache key for a file every reader resolves to at once, so without the flight the map
 #: page's eleven layers spawn eleven parser sidecars for the same bytes.
-_PROJECTION_MEMO = Singleflight(maxsize=3)
+_PROJECTION_MEMO: Singleflight[str, Projection] = Singleflight(maxsize=3)
 
 #: Directory scans, keyed on a fingerprint of the tree they describe. See ``scan_saves``.
 #: Small because one save root is the whole workload: the spare entries are there so that a
 #: rewrite does not immediately drop the scan a reader is still resolving names against.
-_SCAN_MEMO = Singleflight(maxsize=4)
+_SCAN_MEMO: Singleflight[tuple[str, _Fingerprint], SaveScan] = Singleflight(maxsize=4)
 
 #: .NET ticks at the Unix epoch, for converting saveDateTimeInTicks.
 _TICKS_AT_EPOCH = 621_355_968_000_000_000
@@ -51,17 +57,17 @@ class World:
 
     world_id: str
     session_name: str
-    saves: list[dict] = field(default_factory=list)
+    saves: list[SaveHeader] = field(default_factory=list[SaveHeader])
 
     @property
-    def newest(self) -> dict:
+    def newest(self) -> SaveHeader:
         return max(self.saves, key=lambda save: save["mtime_ns"])
 
     @property
     def max_play_duration_s(self) -> int:
         return max((save.get("play_duration_s") or 0) for save in self.saves)
 
-    def manual_saves(self) -> list[dict]:
+    def manual_saves(self) -> list[SaveHeader]:
         return [save for save in self.saves if "autosave" not in save["filename"].lower()]
 
 
@@ -102,7 +108,16 @@ def _stderr_clause(tail: str) -> str:
     return f" -- sidecar stderr: {tail}" if tail else ""
 
 
-def _run_sidecar(args: list[str], timeout: float = 180.0) -> dict:
+def _warnings_of(payload: JsonObject) -> JsonArray:
+    """The payload's ``warnings`` list, started when absent; ``AttributeError`` on a list
+    that is something else, as ``.append`` on it would raise."""
+    notes = payload.setdefault("warnings", [])
+    if isinstance(notes, list):
+        return notes
+    raise AttributeError(f"'{type(notes).__name__}' object has no attribute 'append'")
+
+
+def _run_sidecar(args: list[str], timeout: float = 180.0) -> JsonValue:
     """Run the extractor in a child process and return its payload, or raise ``SaveError``.
 
     Both of the child's channels are evidence: stdout is the payload, and stderr is the parser
@@ -144,7 +159,7 @@ def _run_sidecar(args: list[str], timeout: float = 180.0) -> dict:
             f"sidecar produced no output (exit {proc.returncode}){_stderr_clause(tail)}"
         )
     try:
-        payload = json.loads(out)
+        payload: JsonValue = json.loads(out)
     except json.JSONDecodeError as exc:
         raise SaveError(f"sidecar emitted invalid JSON: {out[:200]}{_stderr_clause(tail)}") from exc
 
@@ -172,14 +187,18 @@ def _run_sidecar(args: list[str], timeout: float = 180.0) -> dict:
     # line is very likely half a line, and splitting it would publish a fragment as though it
     # were a note somebody wrote.
     if tail and isinstance(payload, dict):
-        payload.setdefault("warnings", []).append(
+        _warnings_of(payload).append(
             f"the sidecar wrote to stderr and the parse still succeeded; "
             f"last {STDERR_TAIL_CHARS} characters: {tail}"
         )
     return payload
 
 
-def _tree_fingerprint(root: Path) -> tuple:
+#: Every ``.sav`` under a root as ``(path, mtime_ns, size)``, sorted.
+_Fingerprint = tuple[tuple[str, int, int], ...]
+
+
+def _tree_fingerprint(root: Path) -> _Fingerprint:
     """Every ``.sav`` under ``root`` with its size and modification time, from one walk.
 
     ``DirEntry.stat`` rather than ``os.stat``: the values come from the directory
@@ -192,7 +211,7 @@ def _tree_fingerprint(root: Path) -> tuple:
     Unreadable entries are skipped rather than raising: a scan is how the save tree is
     discovered, so it has to survive one folder it cannot open.
     """
-    found: list[tuple] = []
+    found: list[tuple[str, int, int]] = []
     stack = [str(root)]
     while stack:
         try:
@@ -222,7 +241,7 @@ def _tree_fingerprint(root: Path) -> tuple:
 _SETTLE_NS = 1_000_000_000
 
 
-def _unsettled(fingerprint: tuple) -> bool:
+def _unsettled(fingerprint: _Fingerprint) -> bool:
     """Whether any file in the tree was stamped too recently to be told apart from its own
     next rewrite. Absolute difference, so a save dated in the future -- copied off another
     machine, or written across a clock adjustment -- settles instead of never being cached."""
@@ -230,7 +249,7 @@ def _unsettled(fingerprint: tuple) -> bool:
     return any(abs(now - mtime_ns) < _SETTLE_NS for _path, mtime_ns, _size in fingerprint)
 
 
-def scan_saves(root: str | Path | None = None) -> dict:
+def scan_saves(root: str | Path | None = None) -> SaveScan:
     """Header-only scan of the save tree: one subprocess, ~90 ms, when the tree has moved.
 
     This is what notices the save the player wrote a moment ago, so it is memoised on a
@@ -246,15 +265,15 @@ def scan_saves(root: str | Path | None = None) -> dict:
     fingerprint = _tree_fingerprint(save_root)
     key = (str(save_root), fingerprint)
 
-    def build() -> dict:
-        return _run_sidecar(["--list", str(save_root)])
+    def build() -> SaveScan:
+        return cast("SaveScan", _run_sidecar(["--list", str(save_root)]))
 
     if _unsettled(fingerprint):
         return _SCAN_MEMO.call(key, build)
     return _SCAN_MEMO.get(key, build)
 
 
-def list_worlds(root: str | Path | None = None) -> tuple[list[World], list[dict]]:
+def list_worlds(root: str | Path | None = None) -> tuple[list[World], list[UnsupportedSave]]:
     """Group saves into worlds by ``save_identifier``.
 
     Verified stable across all 28 parseable saves in the reference directory.
@@ -274,7 +293,7 @@ def list_worlds(root: str | Path | None = None) -> tuple[list[World], list[dict]
     return ordered, list(scan.get("unsupported", ()))
 
 
-def _resolve_filename(save_path: Path) -> dict:
+def _resolve_filename(save_path: Path) -> SaveHeader:
     """A save named the way this server itself names saves: by FILENAME, not by path.
 
     Every presenter prints ``header["filename"]`` -- the basename -- and the server's working
@@ -323,12 +342,16 @@ def resolve_save(
     path: str | Path | None = None,
     world: str | None = None,
     prefer_manual: bool = False,
-) -> dict:
+) -> JsonObject:
     """Pick a save header: explicit path or filename, else newest in the named/only world."""
+    return cast("JsonObject", _pick_save(path, world, prefer_manual))
+
+
+def _pick_save(path: str | Path | None, world: str | None, prefer_manual: bool) -> SaveHeader:
     if path:
         save_path = Path(path)
         if save_path.is_file():
-            return _run_sidecar([str(save_path), "--header-only"])["header"]
+            return cast("HeaderOnly", _run_sidecar([str(save_path), "--header-only"]))["header"]
         return _resolve_filename(save_path)
 
     worlds, _ = list_worlds()
@@ -337,7 +360,7 @@ def resolve_save(
             f"no readable saves under {config.saves_root()} "
             "(set SATISFACTORY_SAVES if they live elsewhere)"
         )
-    chosen = None
+    chosen: World | None = None
     if world:
         needle = world.casefold()
         # The id first, because it is unique by construction (worlds are grouped by
@@ -361,7 +384,7 @@ def resolve_save(
     return max(pool, key=lambda save: save["mtime_ns"])
 
 
-def _cache_key(header: dict) -> str:
+def _cache_key(header: SaveHeader) -> str:
     """Identity of a parsed save.
 
     mtime_ns and size are essential: autosaves are rewritten IN PLACE under the same
@@ -378,12 +401,12 @@ def _cache_key(header: dict) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def _read_disk_cache(key: str) -> dict | None:
+def _read_disk_cache(key: str) -> Projection | None:
     disk = config.cache_dir() / f"save-{key}.pkl"
     if not disk.is_file():
         return None
     try:
-        payload = pickle.loads(disk.read_bytes())
+        payload: Projection = pickle.loads(disk.read_bytes())
     except Exception:
         # Corrupt, or a stale pickle format, or a file another process's `prune_cache`
         # deleted between the `is_file` above and the read. The unlink is best-effort
@@ -406,8 +429,8 @@ def _read_disk_cache(key: str) -> dict | None:
     return payload
 
 
-def _parse_and_cache(header: dict, key: str) -> dict:
-    payload = _run_sidecar([header["path"]])
+def _parse_and_cache(header: SaveHeader, key: str) -> Projection:
+    payload = cast("Projection", _run_sidecar([header["path"]]))
     if payload.get("schema_version") != SCHEMA_VERSION:
         payload.setdefault("warnings", []).append(
             f"sidecar schema {payload.get('schema_version')} != expected {SCHEMA_VERSION}"
@@ -431,24 +454,24 @@ def load_projection(
     world: str | None = None,
     prefer_manual: bool = False,
     refresh: bool = False,
-) -> dict:
+) -> JsonObject:
     """Return the projection for a save, using the two-tier cache.
 
     Parsing costs ~4 s, reading the pickle another process wrote ~15 ms, and a memo hit
     ~1 ms. The ``resolve_save`` above it costs one directory walk while the save tree is
     still, and a sidecar of its own the first time it moves.
     """
-    header = resolve_save(path, world, prefer_manual)
+    header = cast("SaveHeader", resolve_save(path, world, prefer_manual))
     key = _cache_key(header)
 
-    def build() -> dict:
+    def build() -> Projection:
         if not refresh:
             cached = _read_disk_cache(key)
             if cached is not None:
                 return cached
         return _parse_and_cache(header, key)
 
-    return _PROJECTION_MEMO.get(key, build, refresh=refresh)
+    return cast("JsonObject", _PROJECTION_MEMO.get(key, build, refresh=refresh))
 
 
 def prune_cache(keep: int = 12) -> int:

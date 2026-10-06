@@ -58,6 +58,7 @@ def read_closing_destroyed_table(
     Parsed rather than skipped because landing exactly on the last byte is what proves every
     count and size before it was right.
     """
+    refs: list[tuple[str, str]]
     if save_version < FIRST_MODERN_BODY:
         refs = read_destroyed_refs(r, "the closing destroyed-actor list", len(r.data))
         if r.remaining:

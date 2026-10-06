@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from importlib import metadata
 from pathlib import Path
+from typing import cast
 
 __all__ = ["NewerSchema", "check", "writer_version"]
 
@@ -26,7 +27,7 @@ def check(raw: object, known: int, path: Path | str) -> None:
     """Raise ``NewerSchema`` when ``raw["schema"]`` is above ``known``; absent means old."""
     if not isinstance(raw, dict):
         return
-    found = raw.get("schema")
+    found = cast("dict[object, object]", raw).get("schema")
     if isinstance(found, bool) or not isinstance(found, int):
         return
     if found > known:

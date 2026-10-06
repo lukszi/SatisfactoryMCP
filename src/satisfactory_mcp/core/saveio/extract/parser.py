@@ -6,10 +6,22 @@ from __future__ import annotations
 import os
 
 import pioneersav
+from pioneersav import ActorHeader, ComponentHeader, ParsedObject, ParsedSave, SaveValue
 
+from ..schema import SaveHeader
 from .readers import truthy
 
-__all__ = ["PARSE_ERROR", "header_info", "read_full_save", "read_save_info"]
+__all__ = [
+    "PARSE_ERROR",
+    "ActorHeader",
+    "ComponentHeader",
+    "ParsedObject",
+    "ParsedSave",
+    "SaveValue",
+    "header_info",
+    "read_full_save",
+    "read_save_info",
+]
 
 read_save_info = pioneersav.read_info
 read_full_save = pioneersav.read_full_save
@@ -18,7 +30,7 @@ read_full_save = pioneersav.read_full_save
 PARSE_ERROR: tuple[type[BaseException], ...] = (pioneersav.ParseError,)
 
 
-def header_info(path: str) -> dict:
+def header_info(path: str) -> SaveHeader:
     """The projection's ``header`` block: the save header plus the file's own identity."""
     info = read_save_info(path)
     file_stat = os.stat(path)

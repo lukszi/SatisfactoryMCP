@@ -10,7 +10,7 @@ __all__ = ["MACHINE_GROUPS", "actor_class", "instance_leaf", "iter_machine_recor
 MACHINE_GROUPS = ("machines", "extractors", "generators")
 
 
-def instance_leaf(instance) -> str:
+def instance_leaf(instance: object) -> str:
     """The short actor name at the end of an instance path; ``""`` for none."""
     return str(instance or "").rsplit(".", 1)[-1]
 

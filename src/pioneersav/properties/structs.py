@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from ..errors import expect
@@ -9,6 +10,7 @@ from ..references import read_reference
 from ..versions import FIRST_MODERN_BODY
 
 if TYPE_CHECKING:
+    from ..values import SaveValue
     from .decoder import PropertyDecoder
 
 __all__ = [
@@ -45,7 +47,7 @@ def read_quat(decoder: PropertyDecoder) -> list[float]:
     return [r.f64(), r.f64(), r.f64(), r.f64()]
 
 
-def read_box(decoder: PropertyDecoder) -> list:
+def read_box(decoder: PropertyDecoder) -> list[float | bool]:
     """FBox: min, max and a validity byte, seven entries at ``read_vector``'s width."""
     return [*read_vector(decoder), *read_vector(decoder), decoder.r.i8() != 0]
 
@@ -73,21 +75,21 @@ def read_fluid_box(decoder: PropertyDecoder) -> float:
     return decoder.r.f32()
 
 
-def read_client_identity_info(decoder: PropertyDecoder) -> list:
+def read_client_identity_info(decoder: PropertyDecoder) -> list[SaveValue]:
     """``[offlineId, [[platform, idBytes], ...]]``: who owns a player state, one length-prefixed
     account id per linked platform, left as bytes because nothing reads it."""
     r = decoder.r
     offline_id = r.string()
     count = r.i32()
     expect(0 <= count <= 64, r.pos - 4, f"a client identity claims {count} platforms")
-    platforms = []
+    platforms: list[SaveValue] = []
     for _ in range(count):
         platform = r.i8()
         platforms.append([platform, r.bytes(r.i32())])
     return [offline_id, platforms]
 
 
-def read_inventory_item_modern(decoder: PropertyDecoder) -> list:
+def read_inventory_item_modern(decoder: PropertyDecoder) -> list[SaveValue]:
     """``FInventoryItem`` as an object reference, a has-state int32, and the state if there is one.
 
     State is the state class plus a sized, nested property list (a weapon's ammo counter), so
@@ -110,7 +112,7 @@ def read_inventory_item_modern(decoder: PropertyDecoder) -> list:
     return [item_class.path_name, [state_class.path_name, values, types]]
 
 
-def read_inventory_item_legacy(decoder: PropertyDecoder) -> list:
+def read_inventory_item_legacy(decoder: PropertyDecoder) -> list[SaveValue]:
     """``FInventoryItem`` as two bare object references: the descriptor, then the ``Equip_*_C``
     actor this item instance is, or two empty strings."""
     r = decoder.r
@@ -118,7 +120,7 @@ def read_inventory_item_legacy(decoder: PropertyDecoder) -> list:
     return [item_class.path_name, read_reference(r).path_name or None]
 
 
-def read_inventory_item(decoder: PropertyDecoder) -> list:
+def read_inventory_item(decoder: PropertyDecoder) -> list[SaveValue]:
     """``FInventoryItem`` where no declared size can referee the layout, so the version guesses.
 
     Only a bare container element lands here; ``read_struct`` lets the declared size choose
@@ -136,7 +138,7 @@ OPAQUE_STRUCTS = frozenset({"PlayerInfoHandle", "UniqueNetIdRepl"})
 #: Structs whose payload is raw numbers rather than a nested property list: the only authority
 #: on how a struct serialises itself. Add nothing on the strength of its name --
 #: ``Vector_NetQuantize`` is a tagged property list.
-NATIVE_STRUCTS = {
+NATIVE_STRUCTS: dict[str, Callable[[PropertyDecoder], SaveValue]] = {
     "Vector": read_vector,
     "Quat": read_quat,
     "Box": read_box,

@@ -11,6 +11,8 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from .jsontypes import JsonObject
+
 __all__ = ["PlanEvent", "StageEvent", "decode", "encode_plan", "encode_stage"]
 
 PLAN_PREFIX = "::plan "
@@ -28,7 +30,7 @@ class PlanEvent:
     steps: tuple[tuple[str, float], ...]
 
 
-def _dumps(body: dict) -> str:
+def _dumps(body: JsonObject) -> str:
     return json.dumps(body, separators=(",", ":"))
 
 
