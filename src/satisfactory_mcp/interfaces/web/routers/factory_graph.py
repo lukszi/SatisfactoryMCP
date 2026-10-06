@@ -9,7 +9,7 @@ WARNING: the function name is the operation_id -- renaming it churns the committ
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any, NamedTuple, TypedDict
 
 from fastapi import APIRouter, Request
 
@@ -19,11 +19,12 @@ from ....domain.factories.query import build_view
 from ....domain.factories.select import SelectorError, select_machines
 from ....domain.spatial import geo
 from ....domain.world import pin
+from ....domain.world.state import WorldState
 from ..serial import (
     Flow,
     MachineSpot,
+    RequestRefused,
     cm_to_m,
-    error_response,
     flow_json,
     machine_spots,
     require_world,
@@ -95,35 +96,42 @@ def _bare(key: str, kind: str, label: str, detail: str) -> dict:
     }
 
 
-def _subject(
+class PickedMachines(NamedTuple):
+    state: WorldState
+    machines: list[str]
+    title: str
+
+
+def _picked_machines(
     request: Request,
     factory: str | None,
     candidate: str | None,
     token: str | None,
     save: str | None,
     world: str | None,
-) -> Any:
-    """The standing machines of a named factory, or of a candidate detected at ``token``:
-    ``(state, machines, title)``, or the refusal to send."""
+) -> PickedMachines:
+    """The standing machines of a named factory, or of a candidate detected at ``token``."""
     if bool(factory) == bool(candidate):
-        return error_response("pass exactly one of factory= or candidate=", 400)
+        raise RequestRefused("pass exactly one of factory= or candidate=", 400)
     st = require_world(request, save, world)
     if factory:
         label = next((x for x in st.labels.labels if x.name == factory), None)
         if label is None:
-            return error_response(f"no factory named “{factory}” in this world", 404)
+            raise RequestRefused(f"no factory named “{factory}” in this world", 404)
         alive = set(st.graph.machines())
-        return st, [m for m in label.anchors if m in alive], label.name
+        return PickedMachines(st, [m for m in label.anchors if m in alive], label.name)
     if not token:
-        return error_response("candidate= needs the token= it was detected at", 400)
+        raise RequestRefused("candidate= needs the token= it was detected at", 400)
     try:
         pin.check(st.header, token)
-    except pin.PinRefused:
-        return error_response("a newer save was written since this was detected; detect again", 409)
+    except pin.PinRefused as exc:
+        raise RequestRefused(
+            "a newer save was written since this was detected; detect again", 409
+        ) from exc
     try:
-        return st, select_machines([candidate], st), candidate
+        return PickedMachines(st, select_machines([candidate], st), candidate)
     except SelectorError as exc:
-        return error_response(str(exc), 404)
+        raise RequestRefused(str(exc), 404) from exc
 
 
 @router.get("/factories/graph", response_model=FactoryGraphResponse)
@@ -140,10 +148,7 @@ def factory_graph(
     A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
     written since then is refused (409), since the index may now name another cluster.
     """
-    picked = _subject(request, factory, candidate, token, save, world)
-    if not isinstance(picked, tuple):
-        return picked
-    st, machines, title = picked
+    st, machines, title = _picked_machines(request, factory, candidate, token, save, world)
     fg = flowgraph.build(st, st.game, build_view(title, machines, st.graph, st.game, st.projection))
     whole = "factory" if factory else "cluster"
     placed = fidentity.positions(st.projection)
@@ -204,10 +209,7 @@ def factory_machines(
     world: str | None = None,
 ) -> Any:
     """Where each standing machine of a named factory, or of a detected candidate, stands."""
-    picked = _subject(request, factory, candidate, token, save, world)
-    if not isinstance(picked, tuple):
-        return picked
-    st, machines, title = picked
+    st, machines, title = _picked_machines(request, factory, candidate, token, save, world)
     return {
         "title": title,
         "token": pin.check(st.header, None),
