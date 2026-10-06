@@ -14,11 +14,12 @@ from __future__ import annotations
 import json
 import struct
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
+from typing import cast
 
 import numpy as np
 
@@ -229,7 +230,9 @@ def crown_payload(
         built.records, built.sprites, GRID, ORIGIN_X_CM - half, ORIGIN_Y_CM - half, SPACING_CM
     )
     top_dm = np.where(np.isfinite(top_cm), np.round(top_cm / 10.0), hf.NODATA).astype(np.int16)
-    record_fields: list[JsonValue] = [list(f) for f in crown_sprites.CROWN_RECORD.descr]
+    record_fields: list[JsonValue] = [
+        [str(part) for part in field] for field in crown_sprites.CROWN_RECORD.descr
+    ]
     files: dict[str, tuple[bytes, JsonObject]] = {
         crown_sprites.CROWNS_NAME: (
             crown_sprites.encode_records(built.records),
@@ -246,7 +249,8 @@ def crown_payload(
         entry["sprite"] = sprite
     radii = {e["mesh"]: e["radius_m"] for e in built.species}
     meta: JsonObject = {
-        "species": [dict(entry) for entry in built.species],
+        # A CrownSpecies holds JSON values only.
+        "species": cast(list[JsonValue], built.species),
         "skipped": dict(built.skipped),
         "instances": built.stats["instances"],
         "tilt_max_deg": built.stats["tilt_max_deg"],
@@ -309,15 +313,25 @@ def _albedo_block(
 ) -> JsonObject:
     """The linear albedo of every layer, as named and as refitted, the overlays, rock, canopy."""
     means = textures.means
-    rock: list[float] = np.mean([means[t] for t in ROCK_TEXTURES], axis=0).round(5).tolist()
+    rock: list[JsonValue] = np.mean([means[t] for t in ROCK_TEXTURES], axis=0).round(5).tolist()
+    canopy: list[JsonValue] = [round(v, 5) for v in means[CANOPY_TEXTURE]]
     overlays = layer_albedo(OVERLAYS, means, textures.vectors)
     return {
-        "layers": dict(layers),
-        "layers_bake_fit": dict(satellite.layers_bake_fit),
-        "overlays": dict(overlays),
-        "rock": list(rock),
-        "canopy": [round(v, 5) for v in means[CANOPY_TEXTURE]],
+        "layers": _json_rows(layers),
+        "layers_bake_fit": _json_rows(satellite.layers_bake_fit),
+        "overlays": _json_rows(overlays),
+        "rock": rock,
+        "canopy": canopy,
     }
+
+
+def _json_rows(table: Mapping[str, Sequence[float]]) -> JsonObject:
+    """A ``{name: albedo}`` table as JSON values."""
+    rows: JsonObject = {}
+    for name, row in table.items():
+        values: list[JsonValue] = list(row)
+        rows[name] = values
+    return rows
 
 
 @dataclass(frozen=True)

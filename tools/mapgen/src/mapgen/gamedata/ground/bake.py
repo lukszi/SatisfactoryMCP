@@ -21,7 +21,7 @@ from mapgen.gamedata.install import GameReader
 from mapgen.gamedata.level.landscape import LANDSCAPE_SECTION_ORIGIN
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.packages import PackageView, class_name_of, property_tags
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
     "BAKE_CELL_M",
@@ -238,8 +238,5 @@ def fit_layer_table(
         pure[name] = int(((dominant == j) & (strength > 0.9)).sum())
         value = fitted[j] if pure[name] >= FIT_MIN_PURE else np.asarray(table[name])
         out[name] = [round(float(v), 5) for v in value]
-    return out, {
-        "samples": len(pick),
-        "pure_texels": dict(pure),
-        "kept": sorted(n for n in names if pure[n] < FIT_MIN_PURE),
-    }
+    kept: list[JsonValue] = [n for n in sorted(names) if pure[n] < FIT_MIN_PURE]
+    return out, {"samples": len(pick), "pure_texels": dict(pure), "kept": kept}
