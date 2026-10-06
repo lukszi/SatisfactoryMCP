@@ -13,9 +13,9 @@ what the backend and the page do, where they depart, and what was measured.
 | Alternates | `domain/planning/swaps.py` `swap_deltas` | One option per recipe whose first product is the item (every maker when none has it first). `require_ops`, `ban_ops`, `free_ops` per contract §5.3; the delta is `result_delta(head, head + require_ops)`. Ordered by status (in use, required, available, banned, locked), standard before alternates, then name; never by delta. A pattern ban and a locked recipe are not solved |
 | Pins store | `domain/planning/pins.py` | `config.pins_dir()/<world>.json`, written under `filelock.held` with `atomic.write_text`; `version`, per-pin `rev`, numbers never reused, 500 live pins, labels ≤ 80. Field = 200 m single-link cluster of the node's resource, frozen at pin time. Resolution reads the plan heads, the projection and the node table once per call |
 | `pin:` grammar | `origin.resolve_origin` (prefix `pin`), `spatial/select.py`, `factories/select.py`, `recall.plan_ref`, `pins.canonical` | See [selectors.md](selectors.md) "Pins". All of them call `pins.terms` / `pins.place` |
-| Routes | `routers/planner.py` `plan_alternates`; `routers/pins.py`; `routers/planlog.py` | `POST /api/plan/alternates`; `GET/POST /api/pins`, `PATCH/DELETE /api/pins/{n}`; `create_plan`, `push_args`, `push_ops` store canonical members and answer 400 for a pin that cannot stand there |
+| Routes | `routers/plans/plan_solve.py` `plan_alternates`; `routers/bridge/pins.py`; `routers/plans/planlog.py` | `POST /api/plan/alternates`; `GET/POST /api/pins`, `PATCH/DELETE /api/pins/{n}`; `create_plan`, `push_args`, `push_ops` store canonical members and answer 400 for a pin that cannot stand there |
 | Tools | `tools/planning.py`, `tools/gamedata.py`, `tools/factories.py` | `plan_factory` rewrites `sources`, `required`, `exclude_recipes` pins before solving and saving; every `plan=` (and `site_plan`) takes a plan pin, and so does `name=` on `list_plans`, `rename_plan`, `forget_plan` and `plan_log`; a siting made at a pin stores the place it resolved to, never `pin:N`; `alternates_for_item(plan=)`; `ui_context` `pins:` line and `(pin:N)`; machine-select tools echo their pins |
-| Journal | `routers/pins.py`, `tools/gamedata.py` | `pin.add` (not for an existing hit), `pin.edit`, `pin.drop` from the web; `plan.view` with `args.view = "alternates"` from the tool. No new SSE event name |
+| Journal | `routers/bridge/pins.py`, `tools/gamedata.py` | `pin.add` (not for an existing hit), `pin.edit`, `pin.drop` from the web; `plan.view` with `args.view = "alternates"` from the tool. No new SSE event name |
 
 ## Page
 
@@ -35,8 +35,8 @@ what the backend and the page do, where they depart, and what was measured.
 |---|---|---|---|
 | P1 | Drawer beside the result from 900 px | Beside only on the graph tab and from 1280 px; above the result otherwise | Now contract §9.2 and §14 P3-8 |
 | P2 | Factory position resolved at read time only | Also stored at create; a live label's centroid still wins, a gone factory keeps the stored place | Now contract §4.1 and §14 P3-9 |
-| B1 | `AlternatesResponse` in `planner.py` | `PlanAlternatesResponse` | `routers/gamedata.py` already publishes `AlternatesResponse`; a second model of that name would rename both in the generated schema |
-| B2 | `PlanOpBody` in `planlog.py` | moved to `serial.py`, same name and docstring | Routers may not import each other and two now publish it |
+| B1 | `AlternatesResponse` in `planner.py` | `PlanAlternatesResponse` | `routers/codex/gamedata.py` already publishes `AlternatesResponse`; a second model of that name would rename both in the generated schema |
+| B2 | `PlanOpBody` in `planlog.py` | moved to `serial/`, same name and docstring | Routers may not import each other and two now publish it |
 | B3 | Handler/`PinError` set in §4.1 | adds `ObjectMissing(PinError)`, `pins.row`, `pins.match`, `canonical_args`, `canonical_ops`, `recall.plan_ref`, `factories.select.pin_notes`, `origin.label_centre` | 404 needs a type of its own; the rest are the shared helpers the routes and tools call |
 | B5 | Row ids unique within a solve | a repeated `recipe_id` (two clock modes of one recipe) gets `#2`, `#3` | Uniqueness had to be guaranteed, and the solver can emit one recipe twice |
 

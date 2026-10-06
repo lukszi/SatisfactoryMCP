@@ -35,7 +35,7 @@ def blind_floors(client, monkeypatch):
     The one case that needs a field builds its own.
 
     Patched on ``interfaces.web.terrain`` -- the MODULE -- because that is the seam:
-    ``routers/floors.py`` calls ``terrain.field()`` through the module rather than binding
+    ``routers/layers/floors.py`` calls ``terrain.field()`` through the module rather than binding
     the function at import time, so a ``setattr`` here is what the endpoint sees.
     """
     monkeypatch.setattr(web_terrain, "field", lambda: None)

@@ -35,6 +35,9 @@ FINAL = ("done", "failed", "cancelled", "interrupted")
 LOG_TAIL_LINES = 200
 RECENT_KEEP = 10
 
+#: How many jobs may wait behind the running one.
+QUEUE_MAX = 4
+
 #: An ETA is shown only past this fraction, so the first minute does not read "4 h left".
 ETA_FROM = 0.03
 

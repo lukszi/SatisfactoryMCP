@@ -1487,3 +1487,29 @@ this is a measured opportunity rather than a guess.
 End to end, including interpreter start, over the 31 readable saves: **vendor 75.7 s, own
 59.2 s.**
 
+## 13c. Save facts the web placement layers rest on
+
+What the save itself records, as the placement payloads in [web-wire.md](web-wire.md) read it.
+The payload rules live there; these are the facts about the file that those rules depend on.
+
+- **Lightweight buildables are in no actor header.** Foundations, ramps, walls and catwalks live
+  only in `FGLightweightBuildableSubsystem`, which is why the projection interns them as a
+  positional table and a save too old to carry the subsystem has no floors to show.
+- **A belt chain is stored output-first**, and its trailer stores two tangents beside each
+  control point; the projection reverses the points into travel order and keeps the tangents
+  as the per-span curve column.
+- **The game keeps one `FGPipeNetwork` per connected plumbing system**, with the fluid on it
+  and its members listed. Nothing on a pipe records which way the fluid goes, but every fluid
+  coupling is serialised and a machine's ports are named `PipeInputFactory` or
+  `PipeOutputFactory`, which is what `domain/world/flow.py` infers a direction from.
+- **A fluid buffer stores a bare `mFluidBox` float** of cubic metres and never names its
+  contents; the network that claims it does.
+- **Every splitter and merger owns a component named `StorageInventory`** holding the one to
+  three items physically inside the junction, so storage found by that name alone is mostly
+  items in transit.
+- **A power wire's ends are connector positions**, each at a fixed offset on its owner (7 m
+  above a Mk1 pole; 2.1 m forward and 4.7 m to one side of a constructor's centre), and
+  `mCachedLength` is the straight chord between them: the save carries no sag. The save's own
+  endpoint order agrees with the power edge's only about half the time.
+- **`graph["actors"]` holds an identity per actor**, the class with a serial glued on
+  (`Build_SmelterMk1_C_2147380350`), which the record lists join back to a class and a name.

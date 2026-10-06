@@ -21,7 +21,8 @@ from satisfactory_mcp.domain.maps import jobs as store
 from satisfactory_mcp.domain.maps import presets, registry
 from satisfactory_mcp.interfaces.web import childproc
 from satisfactory_mcp.interfaces.web.mapjobs import MapJobRunner
-from satisfactory_mcp.interfaces.web.watch import KIND_MAPS, SaveWatcher
+from satisfactory_mcp.interfaces.web.watch import SaveWatcher
+from satisfactory_mcp.interfaces.web.watch_events import KIND_MAPS
 
 FAKE = r"""
 import argparse, json, os, sys, time
@@ -169,7 +170,7 @@ def test_one_runs_at_a_time_and_the_queue_holds_four(env, monkeypatch):
         await _until(lambda: first["status"] == "cancelled")
         for job in queued[:-1]:
             await runner.cancel(job["id"])
-        await _until(lambda: runner.run is None)
+        await _until(lambda: runner.active_run is None)
         await runner.stop()
         return first
 
@@ -223,7 +224,7 @@ def test_a_restarted_server_re_adopts_a_running_child_and_interrupts_a_dead_one(
         watcher = SaveWatcher(root=env, notes=())
         runner = MapJobRunner(watcher, recover=True)
         await runner.start()
-        assert runner.run is not None and runner.run.job["id"] == "j-old"
+        assert runner.active_run is not None and runner.active_run.job["id"] == "j-old"
         assert watcher.latest[KIND_MAPS].data["job"]["id"] == "j-old"
         await _until(lambda: runner.jobs["j-old"]["status"] == "done")
         await runner.stop()

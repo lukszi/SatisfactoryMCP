@@ -26,7 +26,7 @@ Backend paths are relative to `src/satisfactory_mcp/`; frontend paths to
 | `domain/advice/rules.py` | The pass: `compute(st, biomass=, headroom=, box_fed=, spoilers=)` returns every firing row, ranked; `with_ids`, `key_for`, `ids_for`, `capped` |
 | `domain/advice/store.py` | Dismissed and snoozed rows, one file per world: `read`, `hide`, `restore`, `split`, `worse` |
 | `domain/advice/__init__.py` | `current(st, …)`: the shared settings read, the rows cached, the store applied. The page and chat both read through it |
-| `interfaces/web/routers/advice.py` | `GET /api/advice`, `POST /api/advice/hidden`, `DELETE /api/advice/hidden/{adv_id}` |
+| `interfaces/web/routers/dashboard/advice.py` | `GET /api/advice`, `POST /api/advice/hidden`, `DELETE /api/advice/hidden/{adv_id}` |
 | `presenters/text/advice.py` | The `ui_context` line, the `world_summary` block, the `dismissed=` grammar |
 | `advice.ts` | The store, the card (`adviceCard(parent, {factory}?)`), the snooze split button, restore, the `new` marks |
 

@@ -25,8 +25,8 @@ from fastapi import Request
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.interfaces.web.app import create_app
-from satisfactory_mcp.interfaces.web.routers import events as web_events
-from satisfactory_mcp.interfaces.web.watch import WatchEvent
+from satisfactory_mcp.interfaces.web.routers.bridge import events as web_events
+from satisfactory_mcp.interfaces.web.watch_events import WatchEvent
 
 # --------------------------------------------------------------------- events
 
@@ -167,7 +167,7 @@ def test_a_stream_whose_queue_overflowed_drains_and_then_ends(game, tmp_path, mo
 
     chunks = asyncio.run(asyncio.wait_for(pull(), timeout=3.0))
     assert [c.startswith(b"event: notes") for c in chunks] == [True, True]
-    assert watcher.cut(queue) is False, "the closed stream did not unsubscribe"
+    assert watcher.was_dropped(queue) is False, "the closed stream did not unsubscribe"
 
 
 def test_a_plan_commit_becomes_a_plans_event_carrying_its_summary(game, tmp_path, monkeypatch):

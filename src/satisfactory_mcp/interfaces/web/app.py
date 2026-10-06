@@ -34,6 +34,7 @@ from .guard import guard
 from .mapjobs import MapJobRunner
 from .pinning import pinning
 from .routers import ALL_ROUTERS
+from .serial import RequestRefused, newer_schema_response
 from .watch import SaveWatcher
 
 __all__ = ["STATIC_DIR", "app", "create_app"]
@@ -52,17 +53,17 @@ _NOT_BUILT = (
 )
 
 
-def _newer(request: Request, exc: NewerSchema) -> JSONResponse:
+def _newer_schema(request: Request, exc: NewerSchema) -> JSONResponse:
     """A 503 naming what cannot be read, never the file's path: nothing is written."""
     what = "the factory names" if exc.path.parent == config.labels_dir() else "the plans"
-    text = (
-        f"{what} were saved by a newer version of satisfactory-mcp (schema {exc.found}; this "
-        f"one reads up to {exc.known}). Upgrade to read them; nothing was changed"
-    )
-    return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
+    return newer_schema_response(exc, what)
 
 
-async def _http(request: Request, exc: HTTPException):
+async def _request_refused(request: Request, exc: RequestRefused) -> JSONResponse:
+    return JSONResponse({"error": exc.message}, status_code=exc.status)
+
+
+async def _api_http_error(request: Request, exc: HTTPException):
     """The API's ``{"error"}`` body for a path or method no route serves; the page keeps its own."""
     if not request.url.path.startswith("/api/"):
         return await http_exception_handler(request, exc)
@@ -71,7 +72,7 @@ async def _http(request: Request, exc: HTTPException):
 
 
 @lru_cache(maxsize=1)
-def _game() -> GameData:
+def _load_game_data() -> GameData:
     """Normalized game data. ~90 ms cold, so built once in-process, no disk cache."""
     return normalize(load_docs(config.docs_path()))
 
@@ -88,23 +89,25 @@ def create_app(
     state_loader: Callable[..., WorldState] | None = None,
     game_loader: Callable[[], GameData] | None = None,
     prewarm: bool = False,
-    tail: bool = False,
+    served: bool = False,
 ) -> FastAPI:
     """Build the ASGI app.
 
     ``state_loader(save, world)`` returns the world a request asked for; ``game_loader()``
     returns the normalized docs. Both default to the real thing and are replaced wholesale
-    in tests, never half-injected. ``prewarm`` and ``tail`` are off by default because only
+    in tests, never half-injected. ``prewarm`` and ``served`` are off by default because only
     the served instance below is pointed at a real save and plan directory -- see
-    ``SaveWatcher``. ``tail`` also names this process the ``web`` journal writer, which is
+    ``SaveWatcher``. ``served`` also names this process the ``web`` journal writer, which is
     process-wide and so must not leak out of a test into the tool tests that follow it.
     """
-    load_game = game_loader or _game
-    load = state_loader or (lambda save=None, world=None: load_state(load_game(), save, world))
+    load_game = game_loader or _load_game_data
+    load_world_state = state_loader or (
+        lambda save=None, world=None: load_state(load_game(), save, world)
+    )
 
     @asynccontextmanager
     async def lifespan(instance: FastAPI):
-        if tail:
+        if served:
             journal.set_writer("web")
             planlog.use_recipe_names(_recipe_names(load_game))
             siting.set_ground_z(siting.terrain_provider(terrain.field))
@@ -117,7 +120,7 @@ def create_app(
         finally:
             await instance.state.mapjobs.stop()
             await instance.state.watcher.stop()
-            if tail:
+            if served:
                 planlog.use_recipe_names(None)
                 siting.set_ground_z(None)
 
@@ -126,19 +129,20 @@ def create_app(
         summary="A JSON and map view of the same world the MCP tools plan against.",
         lifespan=lifespan,
     )
-    instance.state.load_state = load
+    instance.state.load_state = load_world_state
     instance.state.game = load_game
-    instance.state.watcher = SaveWatcher(prewarm=prewarm, tail=tail)
+    instance.state.watcher = SaveWatcher(prewarm=prewarm, tail=served)
     # Only the served instance reads and re-adopts the jobs on disk; test apps start empty.
-    instance.state.mapjobs = MapJobRunner(instance.state.watcher, recover=tail)
+    instance.state.mapjobs = MapJobRunner(instance.state.watcher, recover=served)
     instance.middleware("http")(pinning)
     instance.middleware("http")(guard)
-    instance.add_exception_handler(NewerSchema, _newer)
-    instance.add_exception_handler(HTTPException, _http)
+    instance.add_exception_handler(NewerSchema, _newer_schema)
+    instance.add_exception_handler(RequestRefused, _request_refused)
+    instance.add_exception_handler(HTTPException, _api_http_error)
     # The whole JSON surface, in one loop over one tuple: there is no second include, so
     # ``ALL_ROUTERS`` alone decides registration order. See its declaration.
-    for extracted in ALL_ROUTERS:
-        instance.include_router(extracted)
+    for router in ALL_ROUTERS:
+        instance.include_router(router)
 
     # Mounted at the root and therefore LAST: a mount at "/" swallows every path that did
     # not already match, so the API routers have to be registered above it. The gate is on
@@ -158,4 +162,4 @@ def create_app(
 
 #: The instance ``uvicorn`` is pointed at. Built on import; nothing here reads a save until
 #: a request arrives or the watcher sees the game write one.
-app = create_app(prewarm=True, tail=True)
+app = create_app(prewarm=True, served=True)

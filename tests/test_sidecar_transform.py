@@ -201,7 +201,7 @@ def test_a_rotation_that_is_not_one_costs_a_yaw_and_not_the_projection():
     And the answer is None, not 0.0. Schema 16: zero is a real bearing that most of this
     world genuinely has, so returning it for a quaternion that would not read published a
     measurement nobody made, mixed in with 17,500 that were made and indistinguishable from
-    them after the fact. Null is the claim ``serial._yaw`` and the map already handle -- drawn
+    them after the fact. Null is the claim ``serial.yaw_deg`` and the map already handle -- drawn
     axis-aligned, labelled "facing: unknown" -- and it is the difference between the two.
     """
     assert yaw_of(None) is None

@@ -252,7 +252,7 @@ SatisfactoryMcp/
         tools/         # one module per concern; importing it registers everything
           gamedata.py  world.py  progression.py  factories.py
           spatial.py   planning.py  harddrives.py  resources.py  prompts.py
-      web/             # optional [web] extra: app.py (create_app)  serial.py  terrain.py
+      web/             # optional [web] extra: app.py (create_app)  serial/  terrain.py
                        # routers/ (one module per concern, ALL_ROUTERS is the mount order)
                        # __main__.py (the console script)  watch.py (save-file SSE)
         frontend/      # BUILD-TIME ONLY: the page's TypeScript, built by Vite into

@@ -359,7 +359,7 @@ WEB_APP_PY = WEB / "app.py"
 #:
 #: ``fastapi``/``starlette`` because it is one; ``config``/``core``/``domain`` because that
 #: is the whole point of the layer -- parse a query, call a domain service, serialise; and
-#: the web package's own two shared modules, ``serial`` (the metre/error vocabulary) and
+#: the web package's own two shared homes, ``serial`` (the metre/error vocabulary) and
 #: ``terrain`` (the heightfield seam), which exist precisely so that routers need nothing
 #: else from each other.
 ROUTER_ALLOWED_ROOTS = frozenset({"fastapi", "starlette"})
@@ -384,16 +384,15 @@ ROUTER_ALLOWED_PREFIXES: tuple[str, ...] = (
 
 #: The one measured exception, and it is one module reaching one module.
 #:
-#: ``routers/events.py`` streams what ``watch.SaveWatcher`` publishes. It reads the watcher
-#: off ``request.app.state`` and needs no import at all today; the entry is here so that a
-#: type annotation on it stays legal without widening the rule for everybody. Named as a
-#: pair rather than as a prefix: any OTHER router importing ``watch`` is the failure this
-#: is shaped to still catch.
+#: ``routers/bridge/events.py`` streams what ``watch.SaveWatcher`` publishes. It reads the
+#: watcher off ``request.app.state`` and imports only the event names and record, which live
+#: in ``watch_events``. Named as a pair rather than as a prefix: any OTHER router importing
+#: the watcher's modules is the failure this is shaped to still catch.
 ROUTER_EXTRA_EDGES: frozenset[tuple[str, str]] = frozenset(
     {
         (
-            "satisfactory_mcp.interfaces.web.routers.events",
-            "satisfactory_mcp.interfaces.web.watch",
+            "satisfactory_mcp.interfaces.web.routers.bridge.events",
+            "satisfactory_mcp.interfaces.web.watch_events",
         )
     }
 )
@@ -401,20 +400,10 @@ ROUTER_EXTRA_EDGES: frozenset[tuple[str, str]] = frozenset(
 #: The hard cap, in lines, on any one router module.
 #:
 #: Not a style preference: it is the number that makes "one module per concern" checkable.
-#: The budgets the split was planned against are well under it -- tiles 650, floors 450,
-#: routes_layer 400, everything else 300 -- and the cap is set above all of them so that a
-#: file has room to explain itself before it has to be split. What it stops is the drift
-#: back: a second concern lands in a router, then a third, and nothing says so until the
-#: file is api.py again under a different name.
-#:
-#: Measured at the end of W4 (the numbers below), so a breach is a real change and not a
-#: pre-existing condition:
-#:
-#:     tiles.py 492   floors.py 395   routes_layer.py 325   inspect.py 221
-#:     storage.py 176   power.py 176   placements.py 158   regions.py 114
-#:     factories.py 95   nodes.py 94   events.py 75   collectibles.py 74
-#:     __init__.py 72   world.py 68
-ROUTER_MAX_LINES = 700
+#: What it stops is the drift back: a second concern lands in a router, then a third, and
+#: nothing says so until the file is api.py again under a different name. The largest router
+#: measured 624 lines (plans/planlog.py) when the cap was set, so a breach is a real change.
+ROUTER_MAX_LINES = 650
 
 #: The classes FastAPI treats as "this handler answers for itself".
 #:
@@ -1363,7 +1352,8 @@ def test_a_router_sees_the_domain_and_its_own_two_helpers_and_nothing_else():
     assert not stray, (
         "a router may import the standard library, fastapi/starlette, config/core/domain "
         "and the web package's own serial and terrain -- never another router, never app, "
-        "never a presenter. Whatever is shared belongs in serial.py:\n" + "\n".join(sorted(stray))
+        "never a presenter. Whatever is shared belongs in the serial package:\n"
+        + "\n".join(sorted(stray))
     )
 
 

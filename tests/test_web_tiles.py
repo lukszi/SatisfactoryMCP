@@ -25,8 +25,13 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp import config
+from satisfactory_mcp.core.gameassets.pyramid import (
+    PYRAMID_TILE_PX,
+    TILES_2X_DIR_NAME,
+    TILES_DIR_NAME,
+)
 from satisfactory_mcp.domain.maps import registry
-from satisfactory_mcp.interfaces.web.routers import tiles as web_tiles
+from satisfactory_mcp.interfaces.web.routers.assets import tiles as web_tiles
 
 #: The three ids the page used before the registry, which it still answers unregistered.
 LEGACY_LAYERS = tuple(registry.LEGACY)
@@ -91,12 +96,10 @@ def _fake_pyramid(local: Path, max_z: int = 2, payload: bytes = _PNG) -> int:
     """
     count = 0
     for z in range(max_z + 1):
-        (local / web_tiles.MAP_TILES_DIR_NAME / str(z)).mkdir(parents=True)
+        (local / TILES_DIR_NAME / str(z)).mkdir(parents=True)
         for x in range(1 << z):
             for y in range(1 << z):
-                (local / web_tiles.MAP_TILES_DIR_NAME / str(z) / f"{x}_{y}.png").write_bytes(
-                    payload
-                )
+                (local / TILES_DIR_NAME / str(z) / f"{x}_{y}.png").write_bytes(payload)
                 count += 1
     return count
 
@@ -153,7 +156,7 @@ def test_the_tile_pyramid_is_a_loader_too_and_names_the_tool_that_writes_it(
     head = client.head("/api/maptiles/0/0/0")
     assert head.status_code == 200
     assert head.headers["x-map-bounds-m"] == "-3247.0,-3750.0,4253.0,3750.0"
-    assert head.headers["x-map-tile-px"] == str(web_tiles.MAP_TILE_PX)
+    assert head.headers["x-map-tile-px"] == str(PYRAMID_TILE_PX)
     assert head.headers["x-map-tile-max-z"] == str(web_tiles.MAP_TILE_MAX_Z)
     # ``immutable`` is earned by the ``?v=`` build tag alone. The probe carries no tag, and
     # caching IT hard is the measured failure: a regenerated pyramid stayed invisible in
@@ -221,7 +224,7 @@ def test_a_named_layer_is_served_from_its_own_tree_and_the_bare_route_is_still_m
     the base map through the bare route, and this branch must not be able to break it.
     """
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    local = tmp_path / web_tiles.LOCAL_DIR_NAME
+    local = tmp_path / registry.local_dir().name
     local.mkdir()
     _fake_pyramid(local)
     _fake_layer(local, "terrain", payload=_PNG_TERRAIN)
@@ -255,16 +258,9 @@ def test_a_named_layer_is_served_from_its_own_tree_and_the_bare_route_is_still_m
         assert bare.headers[header] == named.headers[header], header
 
     # And the two routes cannot collide: three segments has no layer to name.
-    assert (
-        web_tiles.map_tile_path(2, 3, 1) == local / web_tiles.MAP_TILES_DIR_NAME / "2" / "3_1.png"
-    )
+    assert web_tiles.map_tile_path(2, 3, 1) == local / TILES_DIR_NAME / "2" / "3_1.png"
     assert web_tiles.map_tile_path(2, 3, 1, layer="terrain") == (
-        local
-        / web_tiles.MAP_RENDERS_DIR_NAME
-        / "terrain"
-        / web_tiles.MAP_TILES_DIR_NAME
-        / "2"
-        / "3_1.png"
+        local / web_tiles.MAP_RENDERS_DIR_NAME / "terrain" / TILES_DIR_NAME / "2" / "3_1.png"
     )
 
 
@@ -326,7 +322,7 @@ def test_every_layer_answers_with_its_own_depth_build_and_corners(client, tmp_pa
     each other's ``immutable`` tiles.
     """
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    local = tmp_path / web_tiles.LOCAL_DIR_NAME
+    local = tmp_path / registry.local_dir().name
     local.mkdir()
     _fake_pyramid(local, max_z=1)
     (local / web_tiles.MAP_BOUNDS_NAME).write_text(
@@ -412,7 +408,7 @@ def test_a_hi_dpi_client_asks_for_the_same_tile_and_gets_twice_the_pixels(
     directory on somebody's disk from an older run.
     """
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    local = tmp_path / web_tiles.LOCAL_DIR_NAME
+    local = tmp_path / registry.local_dir().name
     local.mkdir()
     _fake_pyramid(local, max_z=2)  # an artwork pyramid with no @2x tree beside it
     directory = local / web_tiles.MAP_RENDERS_DIR_NAME / "terrain"
@@ -431,7 +427,7 @@ def test_a_hi_dpi_client_asks_for_the_same_tile_and_gets_twice_the_pixels(
     for z in range(2):
         for x in range(1 << z):
             for y in range(1 << z):
-                path = directory / web_tiles.MAP_TILES_2X_DIR_NAME / str(z) / f"{x}_{y}.png"
+                path = directory / TILES_2X_DIR_NAME / str(z) / f"{x}_{y}.png"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(_PNG_DENSE)
 

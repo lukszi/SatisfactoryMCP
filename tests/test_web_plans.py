@@ -211,7 +211,7 @@ def test_a_hand_edited_siting_that_will_not_parse_costs_one_row(plans_dir, proje
 
 
 def test_progress_is_one_row_per_live_plan_and_cached_per_version(planned):
-    from satisfactory_mcp.interfaces.web.routers import plans as plans_router
+    from satisfactory_mcp.interfaces.web.routers.plans import plan_index as plans_router
 
     reply = planned.get("/api/plan/built")
     assert reply.status_code == 200, reply.text

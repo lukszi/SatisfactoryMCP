@@ -17,7 +17,8 @@ import pytest
 
 from satisfactory_mcp.core.saveio import projection as proj
 from satisfactory_mcp.interfaces.web import watch as watch_mod
-from satisfactory_mcp.interfaces.web.watch import KIND_SAVE, SaveWatcher
+from satisfactory_mcp.interfaces.web.watch import SaveWatcher
+from satisfactory_mcp.interfaces.web.watch_events import KIND_SAVE
 
 
 async def _until(predicate, timeout: float = 5.0) -> bool:

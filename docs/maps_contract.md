@@ -355,7 +355,7 @@ On start the served instance reads every job file. A job that says `running` is 
 its pid is alive and its process creation time is the one recorded (a reused pid cannot match):
 the log is re-read from the start and watched to the end, the exit code read through a held
 process handle. Otherwise it is `interrupted`. Queued jobs carry on. Test apps
-(`create_app(tail=False)`) neither read nor re-adopt.
+(`create_app(served=False)`) neither read nor re-adopt.
 
 ### 5.5 The `maps` event
 

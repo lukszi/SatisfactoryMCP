@@ -8,7 +8,7 @@ spawns the sidecar or reads a ``.sav``. ``/api/worlds`` is the one route that sc
 save directory on its own, and its one test stubs the scanner.
 
 The surface-wide "could not read save" refusal is pinned here too, on ``/api/summary``:
-every handler makes it the same way through ``serial._state``, and this is the endpoint
+every handler makes it the same way through ``serial.require_world``, and this is the endpoint
 the page opens with.
 """
 
@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 
 from satisfactory_mcp.core.saveio.projection import World
 from satisfactory_mcp.interfaces.web.app import create_app
-from satisfactory_mcp.interfaces.web.routers import world as web_world
+from satisfactory_mcp.interfaces.web.routers.world import worlds as web_world
 
 
 #: A save header exactly as the sidecar's ``header_info`` builds one -- all thirteen keys,
@@ -93,8 +93,21 @@ def test_worlds_lists_the_save_picker_rows(client, monkeypatch):
     ]
     assert body["unsupported"] == [{"filename": "old.sav", "reason": "saveHeaderType 8 is pre-1.0"}]
     row = body["worlds"][0]
-    assert list(row) == ["world_id", "session_name", "saves", "mtime", "newest_filename", "play_duration_s"]
-    assert list(row["saves"][0]) == ["path", "filename", "session_name", "play_duration_s", "mtime_ns"]
+    assert list(row) == [
+        "world_id",
+        "session_name",
+        "saves",
+        "mtime",
+        "newest_filename",
+        "play_duration_s",
+    ]
+    assert list(row["saves"][0]) == [
+        "path",
+        "filename",
+        "session_name",
+        "play_duration_s",
+        "mtime_ns",
+    ]
 
 
 def test_summary_carries_the_same_save_token_the_tools_print(client, state):
@@ -122,9 +135,9 @@ def test_summary_reports_the_header_power_and_progression(client, state):
 
 
 def test_a_save_that_cannot_be_read_is_a_404_with_a_reason(game):
-    """The refusal ``_state`` makes, on the endpoint the page opens with.
+    """The refusal ``require_world`` makes, on the endpoint the page opens with.
 
-    Every handler on this surface spends ``?save=``/``?world=`` through ``serial._state``
+    Every handler on this surface spends ``?save=``/``?world=`` through ``serial.require_world``
     and turns a loader failure into the same 404, so the shape is pinned once here rather
     than in a file per router -- and it is pinned on ``/api/summary`` because that is the
     first request the page makes, and the one whose failure the header has to explain.

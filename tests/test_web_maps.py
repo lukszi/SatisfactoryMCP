@@ -18,7 +18,7 @@ from test_map_runner import install_fake
 
 from satisfactory_mcp.domain.maps import presets, registry
 from satisfactory_mcp.interfaces.web.app import create_app
-from satisfactory_mcp.interfaces.web.watch import KIND_MAPS, KINDS
+from satisfactory_mcp.interfaces.web.watch_events import KIND_MAPS, KINDS
 
 ORIGIN = {"origin": "http://testserver"}
 

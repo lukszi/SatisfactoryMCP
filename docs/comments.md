@@ -28,7 +28,7 @@ primary documentation; a comment exists only for what none of those can carry.
 9. **Budget, enforced as a ratchet.** `tests/test_comment_budget.py` fails when any file's
    prose:code ratio exceeds its layer's cap. The caps are the 2026-08 sweep's measured
    result plus a working margin — they stop regrowth rather than assert an ideal. The
-   density to aim at when writing is `interfaces/web/routers/crates.py`, the reviewed
+   density to aim at when writing is `interfaces/web/routers/layers/crates.py`, the reviewed
    example. Lowering a cap means sweeping the files it would fail, in that same commit.
 
 Prose that survives the test is written in full sentences that say true things — the budget

@@ -90,24 +90,8 @@ export interface paths {
         };
         /**
          * Nodes
-         * @description The resource node table, joined to what this save has built on it.
-         *
-         *     The join is partial and says so: ``occupancy`` resolves only the extractors whose target
-         *     is a node key, so ``occupied`` false means "no extractor known here", never "free". The
-         *     popup carries the node id, which doubles as a ``node:`` selector for the MCP tools.
-         *
-         *     The region name is joined on this side because the raster is: sending 608 rows and then
-         *     the grid for the page to index into would put the orientation trap (row 0 is the north
-         *     edge) in two places. It is ``null`` for a node the raster calls void.
-         *
-         *     **A free node is not always a usable one.** ``reachable`` is the same test the text
-         *     surface marks ``LOCKED`` and leaves out of free capacity -- a resource well satellite
-         *     with no Pressurizer researched is not somewhere a plan can go.
-         *
-         *     **A failed save is not a failed answer.** The node table is static and needs no ``.sav``,
-         *     so a world whose save will not load still gets its geography; what it loses is the
-         *     occupancy join and the unlock set, and ``save_error`` says so with ``occupied`` and every
-         *     row's ``reachable`` null beside it.
+         * @description The resource node table, joined to what this save has built on it; a save that will
+         *     not load still gets the table, with ``save_error`` saying what the join lost.
          */
         get: operations["nodes_api_nodes_get"];
         put?: never;
@@ -129,24 +113,7 @@ export interface paths {
          * Inspect
          * @description What is at a coordinate: region, measured ground, nodes, fields, conduits, pickups.
          *
-         *     Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
-         *     this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
-         *     elevation reach; conduits count within 250 m, fields and pickups look 500 m out.
-         *
-         *     **A failed save is not a failed answer.** The node table is static, covers the whole map
-         *     and needs no ``.sav`` at all, so a world whose save will not load still gets its region,
-         *     its ground elevation and its nearest nodes; what it loses is the built population and
-         *     the occupancy join, and ``save_error`` says so rather than letting "no extractor here"
-         *     quietly mean "no save here".
-         *
-         *     **It prefers the extracted terrain where there is any.** On a machine that has run
-         *     ``tools/gen_world_heightmap.py``, the 1 m field answers "how high is it here" with one
-         *     number at the coordinate asked about instead of a population of things standing near it.
-         *     Where there is no field, or the field has no data there, the population answers.
-         *
-         *     Not cached: the probe is a few milliseconds over the whole reference world, so a
-         *     per-(world, save) cache would buy an invalidation bug. The heightfield itself is cached
-         *     by its loader, keyed on its own sidecar's mtime, so this endpoint stays a caller.
+         *     ``radius_m`` is the elevation reach; a save that will not load still gets an answer.
          */
         get: operations["inspect_api_inspect_get"];
         put?: never;
@@ -311,13 +278,8 @@ export interface paths {
         };
         /**
          * Machines
-         * @description Every placed actor, with the reason it is or is not running.
-         *
-         *     ``health.assess`` is asked once for the whole world rather than per row. Over the
-         *     reference projection's 570 actors: 1.3 ms to build these rows without it, 2.5 ms with.
-         *
-         *     195 of those 570 are ``blocked``: a full output box, and ``actionable`` like the other
-         *     states in ``health.ACTIONABLE``. How the map marks it: docs/save-projection.md §6.2d.
+         * @description Every placed machine, extractor and generator, with the reason it is or is not
+         *     running.
          */
         get: operations["machines_api_machines_get"];
         put?: never;
@@ -337,39 +299,8 @@ export interface paths {
         };
         /**
          * Structures
-         * @description Every lightweight buildable the player placed: foundations, ramps, walls, catwalks.
-         *
-         *     These are the only record of what was physically BUILT -- they appear in no actor
-         *     header, which is why the projection interns them separately as
-         *     ``{"classes": [...], "instances": [[class_index, x, y, z, yaw], ...]}`` in centimetres.
-         *     Decoded by ``core.saveio.rows``, which is where the guard lives for all ten readers
-         *     of these interned tables: a malformed row costs one piece, not the endpoint.
-         *
-         *     **Rotation is carried, as of schema 12**, and this docstring used to say the opposite
-         *     -- the instance transform's quaternion was dropped at extraction and a client could
-         *     only draw these axis-aligned, which is why an angled slab came out of the map as a
-         *     staircase of squares. ``yaw`` is now the fifth column of a row and comes out as a
-         *     ``yaw`` field: degrees about world Z, positive turning +X towards +Y. ``null`` for a
-         *     projection cut before 12, which a client must keep drawing axis-aligned rather than
-         *     reading as zero.
-         *
-         *     One thing the projection still does not carry, and it is not invented here:
-         *
-         *     * **Per-class size.** None of these classes has clearance data, so ``footprint`` is
-         *       ``None`` for all eighteen of them. They are all built on the same grid instead,
-         *       whose edge ``tile_m`` reports from ``FOUNDATION_M`` so the page does not hardcode 8.
-         *
-         *     Positions are piece centres: on the reference save consecutive foundations of one
-         *     slab sit exactly ``tile_m`` apart.
-         *
-         *     A world with nothing built answers ``{"structures": [], "count": 0}`` -- an empty
-         *     list is a real answer here, unlike a save that could not be read at all.
-         *
-         *     Sent one row per piece, ungrouped. Measured on the reference world -- 8,347 pieces,
-         *     708 KB (610 KB of it before the yaw column) -- which is the same order as
-         *     ``/api/collectibles`` already ships (3,455 rows, 547 KB). Grouping into grid cells would halve a
-         *     payload that is not the bottleneck and would cost the per-piece class the popup and
-         *     the point inspector read.
+         * @description Every lightweight buildable the player placed: foundations, ramps, walls, catwalks,
+         *     one row per piece at its centre, with the grid edge they are built on.
          */
         get: operations["structures_api_structures_get"];
         put?: never;
@@ -389,33 +320,8 @@ export interface paths {
         };
         /**
          * Belts
-         * @description Every conveyor belt and lift, as the polyline it was actually built along.
-         *
-         *     The pieces arrive interned the way the structures next door are, in world centimetres;
-         *     the legend is resolved here so the page does not have to carry it, and the row is decoded
-         *     by ``core.saveio.rows`` so a malformed segment costs that segment rather than the network.
-         *
-         *     **Points are in travel order, input to output.** The save stores them output-first and
-         *     the projection reverses them, so a client can draw direction along a run without knowing
-         *     that. ``chain`` is the belt chain a piece belongs to, so "the whole run" is a group-by
-         *     rather than a geometry problem.
-         *
-         *     **``curve_m`` is what makes a curved belt curved.** ``points_m`` are the spline's control
-         *     points and were never the whole spline -- the chain trailer stores two tangents beside
-         *     each one -- so a bend drawn from the points alone is the chords between its corners, out
-         *     by up to 16.4 m of arc on a single piece.
-         *
-         *     **A lift is a belt whose top-down polyline is a single point.** Every lift on the
-         *     reference save has exactly zero horizontal extent, so a map that draws them as lines
-         *     draws nothing at all where they are and the client owes them a glyph instead.
-         *
-         *     **``attachments`` rides along rather than travelling with the machines**, because a
-         *     splitter runs no recipe, draws no power and is meaningless without the runs either side
-         *     of it. That is also what keeps it from being drawn twice: it is in no other payload, so a
-         *     map with the machines layer on and the belts layer off shows no splitters at all.
-         *
-         *     Sent one row per piece, ungrouped, the same posture ``/api/structures`` takes: the
-         *     per-piece class is what a popup reads.
+         * @description Every conveyor belt and lift, as the polyline it was actually built along, in travel
+         *     order, with the splitters and mergers on them.
          */
         get: operations["belts_api_belts_get"];
         put?: never;
@@ -435,38 +341,8 @@ export interface paths {
         };
         /**
          * Pipes
-         * @description Every fluid pipe, as the polyline it was actually built along, and what it carries.
-         *
-         *     The belts' other half, and the same shape one layer down.
-         *
-         *     **Each pipe says which fluid it carries**, which is the thing a belt cannot say: the game
-         *     keeps an ``FGPipeNetwork`` per connected plumbing system with the fluid on it and its
-         *     members listed, so ``fluid`` is the world's own answer rather than an inference from what
-         *     the pipe is plugged into.
-         *
-         *     **``direction`` is INFERRED, and ``basis`` says from what.** Nothing on a pipe records
-         *     which way the fluid goes, and the points are in the order the file stores them. But the
-         *     plumbing AROUND it records a great deal: the save serialises every fluid coupling and
-         *     names a machine's port ``PipeInputFactory`` or ``PipeOutputFactory``.
-         *     ``domain/world/flow.py`` reads that graph and declines wherever more than one answer is
-         *     consistent. So ``direction`` is ``forward`` along ``points_m``, ``reverse`` against it,
-         *     or ``unknown``, and ``basis`` is one of:
-         *
-         *     * ``machine port`` -- this very pipe ends at a port the save TYPES. Barely an inference.
-         *     * ``pump`` -- a pump or valve at one end, one-way by construction.
-         *     * ``propagated`` -- only the shape of the wider network settles it.
-         *     * ``unresolved`` -- and then ``direction`` is ``unknown``. A pipe in a loop, or a trunk
-         *       with producers and consumers on both sides, genuinely has no fixed direction.
-         *
-         *     A client may draw an arrow on the first three and must not on the fourth.
-         *
-         *     **``curve_m`` rides here too, on exactly the belts' terms.** Pipes are straight runs and
-         *     elbows, and the six points of an elbow are its corners rather than its curve: an elbow
-         *     drawn from the points alone is the polygon cutting the corner it was built to round.
-         *
-         *     Not in here: pumps, junctions, valves and fluid buffers. They carry no spline at all,
-         *     only a header position, so they are a different row shape -- the same question the belts
-         *     key leaves open about splitters and mergers.
+         * @description Every fluid pipe, as the polyline it was actually built along, the fluid it carries
+         *     and which way it flows where the plumbing around it settles that.
          */
         get: operations["pipes_api_pipes_get"];
         put?: never;
@@ -486,28 +362,8 @@ export interface paths {
         };
         /**
          * Storage
-         * @description Every storage container and fluid buffer, and what is inside each one.
-         *
-         *     The containers the player built: Storage Containers and Industrial ones, Personal Storage
-         *     Boxes, Dimensional Depot uploaders, the HUB's built-in container and the Blueprint
-         *     Designer's, and the fluid buffers. **NOT the splitters and mergers** -- every one of them
-         *     owns a component literally named ``StorageInventory``, holding the one to three items
-         *     physically inside the junction, so a payload built by matching that name would report
-         *     hundreds of phantom containers, draw them a second time over the belt layer that already
-         *     has them, and count items in transit as stock. Machine input and output buffers are
-         *     excluded on the same principle, and are on their own machine's row under ``buffers``,
-         *     where they mean "this smelter is starved" rather than "the player owns this".
-         *
-         *     **Two record shapes, told apart by ``kind``.** A solid container reports ``items``
-         *     (biggest first, resolved to display names, and the whole box), ``slots`` and ``total``; a
-         *     fluid buffer reports ``fluid``, ``stored_m3``, ``capacity_m3`` and ``fill``.
-         *
-         *     **The fluid's identity comes off the plumbing, not off the buffer.** A buffer stores a
-         *     bare ``mFluidBox`` float and never names its contents, so the name is taken from the
-         *     ``FGPipeNetwork`` that claims it -- the same join ``/api/pipes`` uses -- and is ``null``
-         *     for a buffer no network claims.
-         *
-         *     Sent in one payload, ungrouped, the posture every placement endpoint here takes.
+         * @description Every storage container and fluid buffer the player built, and what is inside each
+         *     one; never the splitters and mergers, whose few items are in transit.
          */
         get: operations["storage_api_storage_get"];
         put?: never;
@@ -527,26 +383,8 @@ export interface paths {
         };
         /**
          * Power
-         * @description Every power pole and tower, and the span of every wire between them.
-         *
-         *     The geometry beside ``graph["power"]``, which says who is joined to whom and nothing
-         *     about where. The two are joined by position -- ``wires[i]`` is the span of
-         *     ``graph["power"][i]`` -- and this is the one place they are put back together.
-         *
-         *     **A wire's ends are CONNECTOR positions, not building origins.** A connector sits at a
-         *     fixed offset on its owner -- 7 m above a Mk1 pole, 2.1 m forward and 4.7 m to one side of
-         *     a constructor's centre -- so origin-to-origin would draw every wire through the middle of
-         *     the machine it feeds, and a client that files a wire on a storey by endpoint height puts
-         *     it a storey high wherever the storeys are shorter than that offset. ``a_pole``/``b_pole``
-         *     are there for exactly that: the pole a wire actually serves, at the height it stands.
-         *
-         *     **``span_m`` is the CHORD.** A wire hangs as a catenary and this is the straight line
-         *     between its ends, which is shorter -- and the save carries no sag either, since
-         *     ``mCachedLength`` is the same chord. Three-dimensional, because a tower span climbs 24 m
-         *     and that is real cable.
-         *
-         *     ``from`` and ``to`` are in the EDGE's order, which the projection measured: the save's
-         *     own endpoint order agrees with it only about half the time.
+         * @description Every power pole and tower, and the span of every wire between them, each end
+         *     placed at its connector and named where the save names it.
          */
         get: operations["power_api_power_get"];
         put?: never;
@@ -595,44 +433,8 @@ export interface paths {
         };
         /**
          * Floors View
-         * @description What is built, one storey at a time: the floor decomposition of a world.
-         *
-         *     Nothing in the save says "floor". ``domain.factories.floors`` recovers them from the
-         *     geometry -- 4-connected platforms of 8 m foundation cells, then a per-platform cluster
-         *     of deck heights -- and this endpoint parses the query, calls it once, and rounds.
-         *
-         *     **It ships ids, not geometry.** A client already has every machine, splitter, belt and
-         *     pipe from ``/api/machines``, ``/api/structures``, ``/api/belts`` and ``/api/pipes``; the
-         *     one thing it cannot derive is which floor each of them is on. So a band lists
-         *     ``machines`` and ``attachments`` as instance leaves, and a run is keyed by its belt
-         *     ``chain`` or its pipe row position -- the joins those payloads already carry.
-         *
-         *     **The runs are grouped by what they do to a floor**, not listed flat:
-         *
-         *     * ``same-deck`` -- both ends over one band, and the set a floor filter draws.
-         *     * ``connector`` -- the ends are on two different bands. This is how you leave a floor,
-         *       and it is where the lifts and risers are.
-         *     * ``terrain`` -- neither end is over a deck.
-         *     * ``mixed`` -- one end on a deck, one on the ground.
-         *
-         *     **``placements`` is only what did NOT land on a floor**, since what did is listed by id
-         *     inside its own band. The three ways of not being on one: ``exempt`` (a miner stands on a
-         *     resource node and a water extractor on water -- by native class, not by a substring),
-         *     ``terrain`` (measured against the heightfield) and ``off-deck``.
-         *
-         *     **``terrain_measured`` says whether the ground was consulted at all.** The 1 m
-         *     heightfield is derived from the reader's own game install and most machines have none,
-         *     in which case nothing can be in the ``terrain`` group and an empty one would otherwise
-         *     read as "nothing is on the ground here".
-         *
-         *     ``?factory=`` takes a label the player gave a factory, or any selector the MCP tools
-         *     take; ``?platform=`` takes the index this endpoint hands out, which is stable across
-         *     calls. Either narrows placements and runs to that footprint, including the ones
-         *     underneath it, since "what is under this deck" is part of the question.
-         *
-         *     A save too old to carry ``FGLightweightBuildableSubsystem`` is a **200 with a
-         *     ``note``**, not an error and not an empty list: the world has floors, this file cannot
-         *     show them, and those are different sentences.
+         * @description What is built, one storey at a time: platforms, their floors, the runs between them
+         *     and what stands on no floor, narrowed by ``?factory=`` or ``?platform=``.
          */
         get: operations["floors_view_api_floors_get"];
         put?: never;
@@ -942,6 +744,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/progress/harddrives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Harddrives
+         * @description ``list_pending_hard_drive_choices``: each unclaimed drive's two options and rerolls.
+         */
+        get: operations["progress_harddrives_api_progress_harddrives_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/progress/shards": {
         parameters: {
             query?: never;
@@ -976,26 +798,6 @@ export interface paths {
          *     With ``spoilers=0`` a spoiler amplifier research loses its name and bill.
          */
         get: operations["progress_sloops_api_progress_sloops_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/progress/harddrives": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Progress Harddrives
-         * @description ``list_pending_hard_drive_choices``: each unclaimed drive's two options and rerolls.
-         */
-        get: operations["progress_harddrives_api_progress_harddrives_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1111,46 +913,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/ui/focus": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Put Focus
-         * @description Record what the page has open, stamped with a heartbeat. The page's only focus write.
-         */
-        put: operations["put_focus_api_ui_focus_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Activity
-         * @description Plan commits and journal entries after ``since``, oldest first, the newest ``limit``.
-         */
-        get: operations["activity_api_activity_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/plan/delta": {
         parameters: {
             query?: never;
@@ -1185,6 +947,46 @@ export interface paths {
          * @description Every recipe making ``item``, each with what requiring it would change in the plan.
          */
         post: operations["plan_alternates_api_plan_alternates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/focus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Focus
+         * @description Record what the page has open, stamped with a heartbeat. The page's only focus write.
+         */
+        put: operations["put_focus_api_ui_focus_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity
+         * @description Plan commits and journal entries after ``since``, oldest first, the newest ``limit``.
+         */
+        get: operations["activity_api_activity_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1595,29 +1397,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/world/conduits": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * World Conduits
-         * @description Belt and pipe runs near a place (and ``to`` a second one), or every fluid network.
-         *
-         *     The runs are ``search_conduits``'s, longest first. ``network`` lists every pipe of one
-         *     fluid network and ``run`` one run by id; both ignore the radii.
-         */
-        get: operations["world_conduits_api_world_conduits_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/world/here": {
         parameters: {
             query?: never;
@@ -1650,6 +1429,29 @@ export interface paths {
          * @description Named regions with their node counts, as ``list_regions`` lists them.
          */
         get: operations["world_regions_api_world_regions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/world/conduits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Conduits
+         * @description Belt and pipe runs near a place (and ``to`` a second one), or every fluid network.
+         *
+         *     The runs are ``search_conduits``'s, longest first. ``network`` lists every pipe of one
+         *     fluid network and ``run`` one run by id; both ignore the radii.
+         */
+        get: operations["world_conduits_api_world_conduits_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2051,7 +1853,7 @@ export interface paths {
         put?: never;
         /**
          * Start Map Job
-         * @description Queue a generation job. 409 when four are queued already, 507 when the disk is short.
+         * @description Queue a generation job. 409 when the queue is full, 507 when the disk is short.
          */
         post: operations["start_map_job_api_maps_jobs_post"];
         delete?: never;
@@ -2577,11 +2379,9 @@ export interface components {
          * AttachmentRow
          * @description A splitter or a merger: a piece of the belt network, drawn by the belt layer.
          *
-         *     ``cls`` and ``name`` are NOT nullable, unlike the belt row above: an attachment is an
-         *     actor record. The coordinates ARE, because an actor whose transform did not decode has
-         *     no ``pos``, and ``yaw`` is null where the projection predates schema 12.
-         *     ``w_m``/``l_m`` are the dump's own soft clearance box, 4 x 4 m on all four of these
-         *     classes and null for a class the dump has no entry for.
+         *     ``cls`` and ``name`` are not nullable: an attachment is an actor record. The coordinates
+         *     are null where the transform did not decode, ``yaw`` where the projection predates schema
+         *     12, and ``w_m``/``l_m`` for a class the dump has no entry for.
          */
         AttachmentRow: {
             /** Instance Leaf */
@@ -2607,13 +2407,9 @@ export interface components {
          * BeltRow
          * @description One conveyor piece, as the polyline it was actually built along.
          *
-         *     ``BeltClass``'s four fields are restated here rather than inherited, because inheritance
-         *     would put them at the front and the handler spreads them into the MIDDLE.
-         *
-         *     ``cls`` and ``name`` are nullable on the interned-table terms the module docstring gives.
-         *     ``lift`` is nullable and the third answer is not a false one: a class the dump has no
-         *     entry for gets ``null``, because "not a lift" would be a guess and the map draws a lift
-         *     and a belt as different things. ``items_per_min`` is ``null`` where the dump is silent.
+         *     ``cls`` and ``name`` are null for a piece whose class index is past the legend's end.
+         *     ``lift`` is null, never false, for a class the dump has no entry for, and
+         *     ``items_per_min`` is null where the dump is silent.
          */
         BeltRow: {
             /** Chain */
@@ -3220,14 +3016,10 @@ export interface components {
         };
         /**
          * Elevation
-         * @description One probe as JSON. The nullables here are the point of the endpoint, not slack in it.
+         * @description One probe: four labelled answers, and the reason for every number it declines to give.
          *
-         *     Named for the payload rather than for ``spatial_elevation.Elevation``, the domain object
-         *     this is built FROM: that one holds populations, this one holds the four labelled answers
-         *     plus the reason for every number it declines to give -- see ``_elevation_json``.
-         *
-         *     ``radius_m``, ``ground_count`` and ``built_count`` are the three that cannot be null;
-         *     everything else goes through ``_round``, which is ``None`` in, ``None`` out.
+         *     ``radius_m``, ``ground_count`` and ``built_count`` are never null; every other figure is
+         *     null where nothing measured it, which is never the same as 0.
          */
         Elevation: {
             /** Radius M */
@@ -3479,7 +3271,7 @@ export interface components {
         };
         /**
          * FloorBand
-         * @description One floor of one platform. See ``_band_json`` for what each field means.
+         * @description One floor of one platform; docs/web-wire.md "Floors" says what each field means.
          */
         FloorBand: {
             /** Ordinal */
@@ -3623,9 +3415,8 @@ export interface components {
          * FloorRun
          * @description One belt chain or one pipe, keyed by the join the belt and pipe payloads carry.
          *
-         *     ``ends`` is always two entries, head then tail, either of which may be ``null`` where
-         *     that end is over no deck. A pair rather than a list is what it means, and JSON has no
-         *     pair -- so the length is a promise the prose makes and the schema cannot.
+         *     ``ends`` is always two entries, head then tail, either null where that end is over no
+         *     deck.
          */
         FloorRun: {
             /** Kind */
@@ -3973,9 +3764,6 @@ export interface components {
         /**
          * InspectAt
          * @description The coordinate that was asked about, rounded to the decimetre it was answered at.
-         *
-         *     Neither field is nullable: both are required query parameters, so a request that carries
-         *     no coordinate is a 422 before the handler runs and never reaches this shape.
          */
         InspectAt: {
             /** X M */
@@ -3987,9 +3775,8 @@ export interface components {
          * InspectResponse
          * @description What ``/api/inspect`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
          *
-         *     ``region`` is ``null`` for ocean and off-map -- ``_label_json``'s refusal, which this
-         *     layer must not undo. ``save_error`` is non-null exactly when the save would not load,
-         *     and the answer is still a real answer: the node table is static and needs no ``.sav``.
+         *     ``region`` is null for ocean and off-map. ``save_error`` is set exactly when the save
+         *     would not load, and the rest is still a real answer from the static tables.
          */
         InspectResponse: {
             at: components["schemas"]["InspectAt"];
@@ -4696,13 +4483,9 @@ export interface components {
          * NearestNode
          * @description One of the five nodes nearest a right-clicked point.
          *
-         *     The coordinates are the static node table's own three floats and are not nullable.
-         *     ``occupant_cls`` is null wherever the occupancy join found nothing, and null for ALL
-         *     five whenever the save could not be read, which ``save_error`` says out loud.
-         *
-         *     ``resource`` is the class id and ``resource_name`` the word a reader reads, from the same
-         *     helper ``/api/nodes`` uses -- the inspector and the node dot must not name one fact two
-         *     ways.
+         *     The coordinates are the static node table's and never null. ``occupant_cls`` is null
+         *     where the occupancy join found nothing, and for all five when the save could not be read.
+         *     ``resource_name`` is the same word ``/api/nodes`` uses.
          */
         NearestNode: {
             /** Id */
@@ -4809,24 +4592,14 @@ export interface components {
          * NodeRow
          * @description One resource node, joined to whatever this save has built on it.
          *
-         *     ``x_m``/``y_m``/``z_m`` are not nullable even though ``_xyz`` can answer nulls: that
-         *     helper also serves placements, whose transforms can fail to decode, and a node has no
-         *     transform to fail -- the triple comes from the static table, three floats per node.
+         *     The coordinates come from the static table and are never null. ``occupant_cls`` and
+         *     ``occupant_name`` are null where the occupancy join found no extractor, ``region`` for a
+         *     node the raster calls void. ``resource`` is the class id the layer is keyed by and
+         *     ``resource_name`` the word the MCP tools use.
          *
-         *     ``occupant_cls`` and ``occupant_name`` are nullable because the occupancy join resolves
-         *     only the extractors whose target is a node key. ``region`` is null for the handful of
-         *     nodes the raster calls void.
-         *
-         *     ``resource`` is the class id, which is what the layer keys and the colour table are keyed
-         *     by; ``resource_name`` is the word a reader reads, and is the same word the MCP tools use.
-         *
-         *     ``reachable`` is false for a node no unlocked extractor can work -- the state the text
-         *     surface prints as ``LOCKED`` and excludes from free capacity. It is null, never true, when
-         *     the save could not be read: reachability is a fact about what this world has researched,
-         *     and with no world there is nothing to have researched it.
-         *
-         *     ``spoiler`` is an unoccupied node with ``reachable`` false, the rows the text surface
-         *     marks ``LOCKED``: the page draws those dots faded.
+         *     ``reachable`` is false for a node no unlocked extractor can work (the text surface's
+         *     ``LOCKED``), and null, never true, when the save could not be read. ``spoiler`` is an
+         *     unoccupied node with ``reachable`` false, which the page draws faded.
          */
         NodeRow: {
             /** Id */
@@ -4863,9 +4636,8 @@ export interface components {
          * NodesResponse
          * @description What ``/api/nodes`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
          *
-         *     ``resource`` echoes the query parameter and is ``null`` when none was given. ``occupied``
-         *     is ``null`` rather than 0 whenever ``save_error`` is set: "0 of them occupied" would be a
-         *     claim nobody measured, so the two fields are one statement and are typed as one.
+         *     ``resource`` echoes the query parameter. ``occupied`` is null rather than 0 whenever
+         *     ``save_error`` is set: "0 of them occupied" would be a claim nobody measured.
          */
         NodesResponse: {
             /** Nodes */
@@ -5203,17 +4975,9 @@ export interface components {
          * PipeRow
          * @description One fluid pipe, as the polyline it was built along, and what it carries.
          *
-         *     The class fields sit in the MIDDLE, after the network join and before the geometry,
-         *     because that is where ``**resolved[seg.class_index]`` lands in the handler.
-         *     ``cls``/``name`` are nullable on the interned-table terms the module docstring gives, and
-         *     ``flow_m3_min`` is null where the dump is silent.
-         *
-         *     ``row`` is this pipe's position in the RAW segments table -- the join ``/api/floors``
-         *     keys a pipe run by, sent rather than counted so that a torn row leaves a gap here instead
-         *     of silently renumbering everything after it.
-         *
-         *     ``network`` is the game's own ``FGPipeNetwork`` id forwarded whole, not the index into
-         *     this payload's own list, and is null for a pipe no network claims.
+         *     ``cls``/``name`` are null past the legend's end and ``flow_m3_min`` where the dump is
+         *     silent. ``row`` is the pipe's position in the raw segments table, the key ``/api/floors``
+         *     uses. ``network`` is the game's own ``FGPipeNetwork`` id, null for an unclaimed pipe.
          */
         PipeRow: {
             /** Row */
@@ -5297,25 +5061,16 @@ export interface components {
          * PlacementRow
          * @description A machine, an extractor or a generator: one row shape, three layers.
          *
-         *     ``cls`` and ``name`` are not nullable: these are actor records, on the line the module
-         *     docstring draws.
+         *     ``cls`` and ``name`` are never null: these are actor records. The coordinates are null
+         *     where the transform did not decode, and ``yaw`` where the projection predates schema 12,
+         *     which is not a facing of zero. ``clock`` is null with no overclock property (250% is
+         *     ``2.5``) and ``recipe_name`` with no recipe. ``w_m``/``l_m``/``h_m`` go null together
+         *     for a building with no clearance box (belts, pipes, rails, poles) or no dump entry.
          *
-         *     ``x_m``/``y_m``/``z_m`` are nullable because an actor whose transform did not decode has
-         *     no ``pos``. ``yaw`` null means the projection predates schema 12 and the facing was never
-         *     recorded, which is a different claim from a facing of zero. ``clock`` is null for a
-         *     machine with no overclock property, and a float because 250% is ``2.5``.
-         *     ``recipe_name`` is null wherever there is no recipe.
-         *
-         *     ``w_m``/``l_m``/``h_m`` go null TOGETHER -- one clearance box, read whole or not at all
-         *     -- for the buildings whose ``mClearanceData`` yields no box (belts, pipes, rails, poles)
-         *     and for any class the docs dump does not carry.
-         *
-         *     ``state`` is one of ``health.STATES`` and never null; ``paused`` is the save's own field
-         *     beside it, where ``state`` is a reading of the buffers. ``uptime`` is the fraction of the
-         *     machine's own ~300 s window it spent producing, null for a building carrying no monitor
-         *     at all -- a different claim from zero. ``actionable`` is ``state in health.ACTIONABLE``,
-         *     sent so the map cannot keep its own list. ``factory`` is the named factory whose
-         *     label anchors this machine, null for one no label holds.
+         *     ``state`` is one of ``health.STATES``; ``paused`` is the save's own field beside it.
+         *     ``uptime`` is the share of the machine's ~300 s window it spent producing, null with no
+         *     monitor at all, which is not zero. ``actionable`` is ``state in health.ACTIONABLE``, so
+         *     the map keeps no list of its own; ``factory`` is the label anchoring the machine, if any.
          */
         PlacementRow: {
             /** Instance Leaf */
@@ -5596,9 +5351,8 @@ export interface components {
          * PlanSiting
          * @description One stored plan's pad: centre, facing and extent, all in metres on save axes.
          *
-         *     NOT centimetres, and this is the one payload on this surface where that is not a bug.
-         *     ``Siting`` records metres because a player typed them, so ``serial._m`` has nothing to
-         *     do here -- see ``domain/planning/siting.py``.
+         *     Metres as a player typed them, so no centimetre conversion applies here
+         *     (``domain/planning/siting.py``).
          *
          *     ``z_m`` is null wherever the origin was named by something with no height (a factory
          *     centroid, a bare ``x,y``); the pad is still a rectangle on the ground. ``source`` is
@@ -5712,11 +5466,8 @@ export interface components {
          * PoleRow
          * @description A power pole, wall outlet or tower platform: where it stands and how busy it is.
          *
-         *     ``cls`` and ``name`` are nullable on the interned-table terms above; the coordinates are
-         *     not, because the iterator drops a row that has none.
-         *
-         *     ``connections`` is never null: a pole nothing is wired to reports 0, which is a
-         *     measurement rather than a missing value -- it is in the geometry table and in no edge.
+         *     ``cls`` and ``name`` are null for a row whose class index is past the legend's end; the
+         *     coordinates never are. ``connections`` is 0, never null, for a pole nothing is wired to.
          */
         PoleRow: {
             /** Cls */
@@ -5738,10 +5489,9 @@ export interface components {
          * PowerResponse
          * @description The two lists and the three counts.
          *
-         *     ``edge_count`` is the one number here that is not the length of a list beside it: it is
-         *     how many power EDGES the projection holds, and ``wire_count`` how many of those published
-         *     a span. A save too old to carry the geometry answers a non-zero ``edge_count`` with a
-         *     ``wire_count`` of 0, which is what tells "nothing to draw" from "nothing here".
+         *     ``edge_count`` is how many power edges the projection holds and ``wire_count`` how many
+         *     of those published a span: a non-zero ``edge_count`` with no wires is a save too old to
+         *     carry the geometry, not a world with nothing wired.
          */
         PowerResponse: {
             /** Poles */
@@ -6088,13 +5838,11 @@ export interface components {
         };
         /**
          * Region
-         * @description What ``_label_json`` sends: a region lookup that never arrives without its doubt.
+         * @description A region lookup that never arrives without its doubt; one schema for every route.
          *
-         *     Declared here rather than in a router because ``_label_json`` builds it for two of them,
-         *     ``/api/nodes`` and ``/api/inspect``, which must publish one schema and not two.
-         *
-         *     ``name`` is not nullable and the field is not optional: the whole dict is ``None`` for
-         *     ocean and off-map, which is ``_label_json``'s refusal and this layer must not soften it.
+         *     ``name`` is not nullable: the whole region is null for ocean and off-map instead. The
+         *     confidence travels with the name because the raster is coarse, so "boundary" and
+         *     "interior" are different claims; ``certain`` is the domain's reading of that word.
          */
         Region: {
             /** Name */
@@ -7067,15 +6815,9 @@ export interface components {
          * StorageFluid
          * @description A fluid buffer: what is in it, how much it holds, and the fraction those two make.
          *
-         *     The same nine-field prefix as ``StorageSolid`` and then the fluid tail, declared whole
-         *     for the reason the module docstring gives.
-         *
-         *     ``fluid`` comes off the ``FGPipeNetwork`` that claims the buffer rather than off the
-         *     buffer itself, so it is null for a buffer no network claims and ``fluid_name`` with it.
-         *     ``stored_m3`` is null where the ``mFluidBox`` float would not read; ``capacity_m3`` is
-         *     the docs dump's ``mStorageCapacity`` and null for a class the dump does not carry; and
-         *     ``fill`` is the two divided, REFUSING rather than dividing by a missing one of them --
-         *     which is why all three are nullable independently.
+         *     ``fluid`` and ``fluid_name`` are null for a buffer no pipe network claims, ``stored_m3``
+         *     where the save's float would not read, ``capacity_m3`` for a class the dump does not
+         *     carry, and ``fill`` whenever either of those two is missing.
          */
         StorageFluid: {
             /** Instance Leaf */
@@ -7116,8 +6858,7 @@ export interface components {
          * StorageResponse
          * @description What ``/api/storage`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
          *
-         *     ``filled`` and ``items_total`` are about the SOLID rows only: a fluid buffer has no item
-         *     count to add.
+         *     ``filled`` and ``items_total`` count the solid rows only.
          */
         StorageResponse: {
             /** Storage */
@@ -7133,22 +6874,10 @@ export interface components {
          * StorageSolid
          * @description A storage container: what is in it, and how much of the box that is.
          *
-         *     The nine fields above ``kind`` are the prefix ``_storage_row`` builds first; the five
-         *     below are its solid tail. Both halves are spelled out here rather than inherited from a
-         *     shared base with ``StorageFluid``, because inheritance decides field order somewhere
-         *     other than where the emission is.
-         *
-         *     ``cls`` and ``name`` are not nullable: a container is an ACTOR record and its class is
-         *     written out. The coordinates ARE nullable, because an actor whose transform did not
-         *     decode has no ``pos``. ``w_m``/``l_m`` are null for the classes the docs dump carries no
-         *     clearance for -- the HUB's built-in container and the Blueprint Designer's -- because a
-         *     size invented here would arrive looking measured.
-         *
-         *     ``slots`` is the inventory component's own slot count forwarded whole, and null rather
-         *     than 0 for a row the projection wrote none for. ``more`` is always 0 from this server,
-         *     which sends every box whole; the field stays because it is the row's own statement that
-         *     nothing was left off, and because a client's "+N more" tile must keep working against a
-         *     server that truncates.
+         *     The coordinates are null where the transform did not decode, ``w_m``/``l_m`` for the
+         *     HUB's and the Blueprint Designer's containers, which the dump gives no clearance, and
+         *     ``slots`` where the projection wrote none. ``more`` is always 0 from this server, which
+         *     sends every box whole.
          */
         StorageSolid: {
             /** Instance Leaf */
@@ -7201,14 +6930,9 @@ export interface components {
          * StructureRow
          * @description One lightweight buildable: a foundation, a ramp, a wall, a catwalk.
          *
-         *     ``cls`` is nullable here and not on ``PlacementRow``: this is the interned table, on the
-         *     line the module docstring draws.
-         *
-         *     The three coordinates are NOT nullable, which is ``iter_structures``' refusal rather than
-         *     this layer's -- a row whose x, y or z will not read as a number is dropped there.
-         *
-         *     ``yaw`` is the one that survives being unreadable: ``null`` for a schema-11 row with no
-         *     fifth column at all, and for the schema-16 rotation that will not decode.
+         *     ``cls`` is null for a row whose class index is past the legend's end. The coordinates
+         *     never are: a row that will not read as three numbers is dropped. ``yaw`` is null for a
+         *     schema-11 row, which has no fifth column, and for a rotation that will not decode.
          */
         StructureRow: {
             /** Cls */
@@ -9047,6 +8771,38 @@ export interface operations {
             };
         };
     };
+    progress_harddrives_api_progress_harddrives_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HardDrivesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     progress_shards_api_progress_shards_get: {
         parameters: {
             query?: {
@@ -9099,38 +8855,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SloopsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    progress_harddrives_api_progress_harddrives_get: {
-        parameters: {
-            query?: {
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HardDrivesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9468,76 +9192,6 @@ export interface operations {
             };
         };
     };
-    put_focus_api_ui_focus_put: {
-        parameters: {
-            query?: {
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FocusBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FocusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    activity_api_activity_get: {
-        parameters: {
-            query?: {
-                since?: number;
-                limit?: number;
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivityResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     plan_delta_api_plan_delta_get: {
         parameters: {
             query: {
@@ -9597,6 +9251,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanAlternatesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_focus_api_ui_focus_put: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FocusBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FocusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_api_activity_get: {
+        parameters: {
+            query?: {
+                since?: number;
+                limit?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10363,48 +10087,6 @@ export interface operations {
             };
         };
     };
-    world_conduits_api_world_conduits_get: {
-        parameters: {
-            query?: {
-                near?: string;
-                radius_m?: number;
-                to?: string | null;
-                to_radius_m?: number | null;
-                conduit_kind?: string;
-                view?: string;
-                network?: number | null;
-                run?: string | null;
-                offset?: number;
-                limit?: number;
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConduitsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     world_here_api_world_here_get: {
         parameters: {
             query?: {
@@ -10458,6 +10140,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RegionTableResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_conduits_api_world_conduits_get: {
+        parameters: {
+            query?: {
+                near?: string;
+                radius_m?: number;
+                to?: string | null;
+                to_radius_m?: number | null;
+                conduit_kind?: string;
+                view?: string;
+                network?: number | null;
+                run?: string | null;
+                offset?: number;
+                limit?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConduitsResponse"];
                 };
             };
             /** @description Validation Error */
