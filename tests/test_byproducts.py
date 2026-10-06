@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from satisfactory_mcp.domain.planning import byproducts
+from satisfactory_mcp.domain.planning.analysis import byproducts
 from satisfactory_mcp.presenters.text import byproducts as byproducts_text
 
 pytestmark = pytest.mark.integration

@@ -170,3 +170,15 @@ WATER_EXTRACTOR_CAP_ASSUMED: int = 200
 #: quote what the platform costs. Not a danger threshold -- platforming for hundreds is
 #: ordinary play -- just where the concrete stops being a rounding error.
 WATER_EXTRACTOR_WARN_AT: int = 30
+
+#: Water and the building that pumps it. Water has no nodes, only water volumes, so several
+#: places special-case it by these ids.
+WATER: str = "Desc_Water_C"
+WATER_PUMP: str = "Build_WaterPump_C"
+
+#: The extractor key every Water Extractor is counted under: water has no purity, so all of
+#: them are "normal".
+WATER_EXTRACTOR_KEY: tuple[str, str, str] = (WATER_PUMP, WATER, "normal")
+
+#: Stand-in for an unlimited raw-input rate: a cap the LP can price without being unbounded.
+UNLIMITED_RATE: float = 1e7

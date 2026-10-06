@@ -128,7 +128,7 @@ def test_the_census_numbers_match_collected_from_world(tools, client, state):
 
 @pytest.fixture
 def followed(tools, tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import journal
+    from satisfactory_mcp.domain.session import journal
 
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path)
     monkeypatch.setattr(journal, "_seq", {})

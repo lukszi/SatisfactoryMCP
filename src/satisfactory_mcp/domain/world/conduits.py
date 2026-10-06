@@ -47,7 +47,7 @@ from dataclasses import dataclass, field
 from ...core.saveio import ports
 from ...core.saveio import rows as saverows
 from ..spatial import geo
-from ..spatial.origin import resolve_origin
+from ..spatial.places import resolve_place
 from .flow import BASIS_NONE
 
 __all__ = [
@@ -579,9 +579,9 @@ def search(
     """
     out = ConduitSearch(radius_m=radius_m, kind=kind, network=network, run=run)
     try:
-        out.origin, out.where = resolve_origin(st, near)
+        out.origin, out.where = resolve_place(st, near)
         if to is not None:
-            out.second, out.where_to = resolve_origin(st, to)
+            out.second, out.where_to = resolve_place(st, to)
     except ValueError as exc:
         out.error = f"! {exc}"
         return out

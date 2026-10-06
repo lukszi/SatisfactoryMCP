@@ -216,7 +216,7 @@ class WorldState:
     @cached_property
     def plans(self):
         """Live plans saved for this world, read-only; ``planlog.PlanLog`` writes them."""
-        from ..planning.planlog import PlanLog
+        from ..planning.stored.planlog import PlanLog
 
         return PlanLog(self.world_id, self.header.get("session_name") or "").view()
 
@@ -292,7 +292,7 @@ class WorldState:
     def overclocked(self) -> list[dict]:
         return self.census.overclocked
 
-    def _all_records(self) -> list[dict]:
+    def all_records(self) -> list[dict]:
         return self.census.all_records()
 
     # ---- power ---------------------------------------------------------
@@ -430,13 +430,13 @@ class WorldState:
     # ---- sites ---------------------------------------------------------
 
     def infra_points(self) -> list[tuple[float, float]]:
-        return world_sites.infra_points(self._all_records())
+        return world_sites.infra_points(self.all_records())
 
     def consumer_z(self, building_ids: tuple[str, ...] = ("Build_OilRefinery_C",)) -> float | None:
-        return world_sites.consumer_z(self._all_records(), building_ids)
+        return world_sites.consumer_z(self.all_records(), building_ids)
 
     def sites(self, link_m: float = 300.0) -> list[dict]:
-        return world_sites.sites(self._all_records(), link_m)
+        return world_sites.sites(self.all_records(), link_m)
 
 
 def load_state(

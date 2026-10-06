@@ -157,7 +157,7 @@ def test_an_edited_label_round_trips_through_the_file(store):
 def live(tmp_path, monkeypatch):
     """One label over real machines, in a scratch labels dir, through the state loader."""
     from satisfactory_mcp.domain.factories import labels as labels_mod
-    from satisfactory_mcp.domain.planning import store as plans_mod
+    from satisfactory_mcp.domain.planning.stored import store as plans_mod
 
     monkeypatch.setattr(labels_mod.config, "labels_dir", lambda: tmp_path / "labels")
     monkeypatch.setattr(plans_mod.config, "plans_dir", lambda: tmp_path / "plans")
@@ -207,7 +207,7 @@ def test_a_stored_plan_scoped_to_the_factory_follows_the_rename(live):
     """``Plan.factory`` is resolved by name every time a diff or a layout scopes itself to
     one, so a rename that left it behind would point both at nothing."""
     st, _picked = live
-    from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+    from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 
     log = PlanLog(st.plans.world_id)
     log.create("steel expansion", {}, plan_id="x", factory="north steel", actor=Actor("chat"))

@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from fastapi import APIRouter, Query, Request
 
-from .....domain.spatial import caves, geo, place
+from .....domain.spatial import caves, geo, surroundings
 from .....domain.spatial import elevation as spatial_elevation
 from .....domain.spatial import nodes as spatial_nodes
 from .....domain.spatial import regions as spatial_regions
@@ -251,7 +251,7 @@ def inspect(
 
     game = request.app.state.game()
     x, y = x_m * 100.0, y_m * 100.0
-    found = place.describe(st, game, x, y, radius_m, terrain_field=terrain.field())
+    found = surroundings.describe_point(st, game, x, y, radius_m, terrain_field=terrain.field())
     nearest = found.nearest
     stale = []
     if st is not None:

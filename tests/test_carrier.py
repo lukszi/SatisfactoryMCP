@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from conftest import REFERENCE_FIELD
 
-from satisfactory_mcp.domain.planning.carrier import Carrier, carrier_for
+from satisfactory_mcp.domain.planning.solver.carrier import Carrier, carrier_for
 
 pytestmark = pytest.mark.integration
 
@@ -85,8 +85,8 @@ def test_a_zero_capacity_carrier_answers_one_rather_than_none():
 def test_the_optimizer_and_the_layout_report_the_same_lines(game, state):
     """They are the two places that had their own copy. Same plan, same items, so any
     disagreement is the duplication having grown back."""
-    from satisfactory_mcp.domain.planning.layout import build_layout
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.layout.schematic import build_layout
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     prepared = prepare(
         game,

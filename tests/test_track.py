@@ -10,11 +10,11 @@ import json
 import pytest
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import track as track_mod
-from satisfactory_mcp.domain.planning.commission import partition_id
-from satisfactory_mcp.domain.planning.commission_service import build_commission_report
-from satisfactory_mcp.domain.planning.diff_service import build_diff_report
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.progress import track as track_mod
+from satisfactory_mcp.domain.planning.progress.commission_service import build_commission_report
+from satisfactory_mcp.domain.planning.progress.diff_service import build_diff_report
+from satisfactory_mcp.domain.planning.progress.stages import partition_id
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.world.state import WorldState
 
 RIP = "Reinforced Iron Plate"
@@ -159,7 +159,10 @@ def test_a_factory_with_no_machines_falls_back_to_detection(world):
     assert out["scope"] == "nowhere at all" and out["scope_error"] == ""
     built = out["built_at"]
     assert built["mode"] == "auto" and built["confidence"] == "no site"
-    assert built["fallback"] == "“nowhere at all” has no machines left: showing what stands at the site"
+    assert (
+        built["fallback"]
+        == "“nowhere at all” has no machines left: showing what stands at the site"
+    )
     assert out["rows"] and built["built"] is None and built["figure"] == "–"
 
 
@@ -210,12 +213,24 @@ def test_the_page_reads_no_ids_codes_or_property_names(world):
     out = track_mod.track_view(world.game, world, _plan(world, headroom_mw=100000))
     assert out["stages"]
     for text in _page_strings(out):
-        for banned in ("sav:", "OQ", "mHas", " -- ", "plan_id", "BUILD", "saveVersion", "%-", "km out", "..", "wave"):
+        for banned in (
+            "sav:",
+            "OQ",
+            "mHas",
+            " -- ",
+            "plan_id",
+            "BUILD",
+            "saveVersion",
+            "%-",
+            "km out",
+            "..",
+            "wave",
+        ):
             assert banned not in text, (banned, text)
 
 
 def test_page_text_rewrites_the_tool_caveats():
-    from satisfactory_mcp.domain.planning.commission import (
+    from satisfactory_mcp.domain.planning.progress.stages import (
         ENERGISED_CAVEAT,
         NO_MONITOR,
         RANGE_CAVEAT,

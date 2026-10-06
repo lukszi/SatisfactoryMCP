@@ -36,11 +36,18 @@ node selectors spell it. The whole grammar is written out in `docs/selectors.md`
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
-from ..spatial import geo, origin
-from .identity import bases, cluster_machines
+from ..spatial import geo, places
+from .candidates import bases, cluster_machines
 from .model import FactoryGraph
 
-__all__ = ["INDEX_WARNING", "SELECTOR_HELP", "SelectorError", "pin_notes", "select_machines"]
+__all__ = [
+    "INDEX_WARNING",
+    "SELECTOR_HELP",
+    "SelectorError",
+    "pin_notes",
+    "resolve_factory",
+    "select_machines",
+]
 
 #: ``base:``, ``line:``, ``slab:`` and ``proposal:`` are POSITIONS in lists that are
 #: recomputed from the save every call, and every one of those lists is ordered by size.
@@ -137,8 +144,8 @@ def _by_building(graph: FactoryGraph, game: GameData, spec: str) -> set[str]:
 def _by_near(st, graph: FactoryGraph, projection: dict, spec: str) -> set[str]:
     """A circle around any place, resolved by the one place resolver every tool uses."""
     try:
-        body, radius_m = origin.parse_near(spec)
-        centre, _where = origin.resolve_origin(st, body)
+        body, radius_m = places.parse_near(spec)
+        centre, _where = places.resolve_place(st, body)
     except ValueError as exc:
         raise SelectorError(str(exc)) from exc
     pos = _positions(projection)
@@ -241,7 +248,7 @@ def _resolve(term: str, st, graph: FactoryGraph, game: GameData, projection: dic
 
 
 def _pin_terms(term: str, st) -> tuple[list[str], str]:
-    from ..planning import pins
+    from ..session import pins
 
     n = pins.parse(term)
     if n is None:
@@ -339,3 +346,21 @@ def select_machines(
         if groups:
             result = set(groups[0])
     return sorted(result)
+
+
+def resolve_factory(st, factory: str):
+    """A label name, a selector, or a proposal index -- in that order.
+
+    Label first because that is what a player types. Falling through to the selector
+    grammar means ``factory_query("proposal:3", ...)`` works before anything is named.
+    """
+    label = st.labels.find(factory)
+    if label is not None:
+        alive = set(st.graph.machines())
+        return label.name, [m for m in label.anchors if m in alive]
+    try:
+        picked = select_machines([factory], st)
+    except SelectorError as exc:
+        known = ", ".join(x.name for x in st.labels.labels) or "(none named yet)"
+        raise SelectorError(f"{exc}. Named factories: {known}") from exc
+    return factory, picked

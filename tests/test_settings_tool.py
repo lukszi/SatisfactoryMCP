@@ -7,7 +7,7 @@ import pytest
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain import settings
-from satisfactory_mcp.domain.planning.planlog import Actor
+from satisfactory_mcp.domain.planning.stored.planlog import Actor
 from satisfactory_mcp.interfaces.mcp.tools import planning, world
 
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 from .... import config
 from ....core.saveio import projection as proj
 from ....core.schema import NewerSchema
-from ....core.text import ago, stamp
+from ....core.text import ago, format_local_time
 from ....domain import advice
 from ....domain.power.report import biomass_note, starved_cause
 from ....presenters.text import advice as advice_text
@@ -48,7 +48,7 @@ def list_worlds() -> str:
                 len(w.saves),
                 f"{w.max_play_duration_s / 3600:.0f}h",
                 newest["filename"],
-                f"{stamp(newest.get('mtime_ns'))} ({ago(newest.get('mtime_ns'))})",
+                f"{format_local_time(newest.get('mtime_ns'))} ({ago(newest.get('mtime_ns'))})",
                 newest["save_version"],
                 w.world_id,
             )

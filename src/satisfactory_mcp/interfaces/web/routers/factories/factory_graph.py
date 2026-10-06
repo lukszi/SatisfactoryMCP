@@ -13,8 +13,7 @@ from typing import Any, NamedTuple, TypedDict
 
 from fastapi import APIRouter, Request
 
-from .....domain.factories import flowgraph
-from .....domain.factories import identity as fidentity
+from .....domain.factories import candidates, flowgraph
 from .....domain.factories.query import build_view
 from .....domain.factories.select import SelectorError, select_machines
 from .....domain.world import pin
@@ -170,7 +169,7 @@ def factory_graph(
     view = build_view(title, machines, st.graph, st.game, st.projection)
     flow_graph = flowgraph.build(st, st.game, view)
     whole = "factory" if factory else "cluster"
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     nodes = [_group_node(flow_graph, group, placed) for group in flow_graph.groups.values()]
     used = {e.source for e in flow_graph.edges} | {e.target for e in flow_graph.edges}
     for key in sorted(k for k in used if k.startswith("in:")):

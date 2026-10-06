@@ -17,7 +17,7 @@ import json
 import numpy as np
 import pytest
 
-from satisfactory_mcp.domain.planning.report import build_plan_report
+from satisfactory_mcp.domain.planning.readout.report import build_plan_report
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from satisfactory_mcp.presenters.text.plan_factory import render_plan_factory
 

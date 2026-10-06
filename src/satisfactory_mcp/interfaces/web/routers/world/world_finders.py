@@ -1,9 +1,9 @@
 """``/api/world/*``: the World finders -- where I am, nodes, fields, sites, regions.
 
-Each route calls the domain function its MCP tool calls (``place.here``,
-``finder.find_nodes``, ``finder.rank``, ``regions.region_rows``), so the page and the chat
-answer one question one way. Conduits are ``world_conduits.py``. Handler names are
-operation_ids (wire rule 1 of docs/web-wire.md).
+Each route calls the domain function its MCP tool calls
+(``surroundings.player_surroundings``, ``node_search.find_nodes``, ``node_search.rank``,
+``regions.region_rows``), so the page and the chat answer one question one way. Conduits are
+``world_conduits.py``. Handler names are operation_ids (wire rule 1 of docs/web-wire.md).
 """
 
 from __future__ import annotations
@@ -12,11 +12,13 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from fastapi import APIRouter, Query, Request
 
+from .....core.gamedata.search import resolve_item
 from .....core.text import ago
-from .....domain.planning.scenario import resolve_item
-from .....domain.spatial import finder, geo, place, ranking
+from .....domain.spatial import geo, ranking, surroundings
 from .....domain.spatial import nodes as spatial_nodes
 from .....domain.spatial import regions as spatial_regions
+from .....domain.spatial.nodes import search as node_search
+from .....domain.spatial.nodes import table as node_table
 from ...serial import (
     FoundField,
     Region,
@@ -186,7 +188,7 @@ class RegionTableResponse(TypedDict):
 
 
 def _found_node(node: dict, game, region_map, drifted: set[str]) -> FoundNode:
-    status = finder.status_of(node)
+    status = node_search.status_of(node)
     cls = node.get("tapped_by")
     occupant = None
     if cls:
@@ -262,9 +264,9 @@ def world_nodes(
     status = status.strip().casefold()
     refusal = (
         choice_refusal(view, PAGE_VIEWS, "view")
-        or choice_refusal(status, finder.STATUSES, "status")
-        or choice_refusal(purity, (*finder.PURITIES, "all"), "purity")
-        or choice_refusal(kind, (*finder.KINDS, "all"), "kind")
+        or choice_refusal(status, node_search.STATUSES, "status")
+        or choice_refusal(purity, (*node_table.PURITIES, "all"), "purity")
+        or choice_refusal(kind, (*node_table.KINDS, "all"), "kind")
     )
     if refusal:
         return error_response(refusal)
@@ -285,7 +287,7 @@ def world_nodes(
     except Exception as exc:
         save_error = f"could not read save: {exc}"
 
-    found = finder.find_nodes(
+    found = node_search.find_nodes(
         st,
         game,
         sources=source,
@@ -324,8 +326,8 @@ def world_nodes(
         "water": None
         if water is None
         else {k: water[k] for k in ("bodies", "pumps", "per_pump_m3_min", "sea_level_m")},
-        "choices": finder.choices(game),
-        "notes": finder.page_notes(found, st),
+        "choices": node_search.choices(game),
+        "notes": node_search.page_notes(found, st),
         "stale": spatial_nodes.table_age(
             st.header if st else None, None, [node["instance"] for node in found.rows]
         ),
@@ -348,12 +350,12 @@ def world_sites(
     if resource_id is None:
         return error_response(f"unknown resource {resource!r}")
     st = require_world(request, save, world)
-    ranked = finder.rank(st, game, resource_id, source, resolve_resource=_resolver(game))
+    ranked = node_search.rank(st, game, resource_id, source, resolve_resource=_resolver(game))
     if ranked.unselected:
         return error_response("no selector resolved: " + "; ".join(ranked.selection.errors))
     region_map = spatial_regions.load_regions()
     sites = [
-        _ranked_site_json(rank, finder.site_view(scored, region_map))
+        _ranked_site_json(rank, node_search.site_view(scored, region_map))
         for rank, scored in enumerate(ranked.scored[:limit], 1)
     ]
     return {
@@ -380,7 +382,7 @@ def world_here(
     """Where the player stands and the nodes around them, as ``whereami`` answers it."""
     st = require_world(request, save, world)
     game = request.app.state.game()
-    found = place.here(st, game, radius_m)
+    found = surroundings.player_surroundings(st, game, radius_m)
     rows = found.nodes
     instances = [node["instance"] for node in rows]
     drifted = spatial_nodes.drifted(found.skew, instances)

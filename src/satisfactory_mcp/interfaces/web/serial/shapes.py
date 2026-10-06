@@ -7,8 +7,8 @@ from typing import Any, Literal, TypedDict
 
 from ....core.gamedata.model import GameData, pretty_class
 from ....domain.collectibles import service as collectibles_service
-from ....domain.factories import identity as fidentity
-from ....domain.planning.planlog import Actor
+from ....domain.factories import candidates
+from ....domain.planning.stored.planlog import Actor
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world.state import WorldState
@@ -339,7 +339,7 @@ class MachineSpot(TypedDict):
 
 
 def machine_spots(st: WorldState, machines) -> list[dict]:
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     spots = []
     for machine in sorted(machines):
         if machine not in placed:

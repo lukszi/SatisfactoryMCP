@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from satisfactory_mcp.domain.planning import journal
-from satisfactory_mcp.domain.planning.summary import solve_summary
+from satisfactory_mcp.domain.planning.readout.summary import solve_summary
+from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import planning
 
@@ -20,7 +20,7 @@ KW = dict(
 
 @pytest.fixture
 def tool(state, tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")

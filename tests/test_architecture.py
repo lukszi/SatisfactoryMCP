@@ -220,8 +220,7 @@ FORBIDDEN_PATHS: dict[str, str] = {
 #: Cheap, and it catches the one failure mode the edge walker cannot: a package
 #: renamed or folded away leaves no violating edge behind, it just leaves the
 #: architecture undescribed. ``core.text`` is a module rather than a package on
-#: purpose -- it holds ``num`` and ``plural`` and nothing else, because those two
-#: are the only formatting helpers the domain layer is allowed to reach.
+#: purpose -- it holds the few formatting helpers the domain layer is allowed to reach.
 LAYERED_HOMES: tuple[str, ...] = (
     "satisfactory_mcp.core.gamedata",
     "satisfactory_mcp.core.gameassets",
@@ -234,6 +233,7 @@ LAYERED_HOMES: tuple[str, ...] = (
     "satisfactory_mcp.domain.spatial",
     "satisfactory_mcp.domain.collectibles",
     "satisfactory_mcp.domain.planning",
+    "satisfactory_mcp.domain.session",
     "satisfactory_mcp.domain.advice",
     "satisfactory_mcp.presenters.text",
     "satisfactory_mcp.interfaces.mcp",

@@ -7,8 +7,8 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp.core.gamedata import search
+from satisfactory_mcp.core.gamedata.search import find_recipe
 from satisfactory_mcp.core.gamedata.unlocks import granted_by
-from satisfactory_mcp.domain.planning.scenario import find_recipe
 
 
 def _boom(save=None, world=None):

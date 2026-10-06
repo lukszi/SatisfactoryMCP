@@ -14,7 +14,7 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import asks, journal
+from satisfactory_mcp.domain.session import asks, journal
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.web.app import create_app
 

@@ -13,8 +13,8 @@ import time
 import pytest
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning import asks, journal
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.session import asks, journal
 from satisfactory_mcp.interfaces.mcp.tools import planning
 
 PAGE = Actor("page", "", 4242)
@@ -37,7 +37,7 @@ class _World:
 
 @pytest.fixture
 def ctx(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
@@ -223,7 +223,7 @@ def test_a_busy_world_stays_inside_the_budget(ctx):
 
 
 def test_the_real_focus_file_is_read_when_the_web_module_exists(ctx, monkeypatch):
-    focus = pytest.importorskip("satisfactory_mcp.domain.planning.focus")
+    focus = pytest.importorskip("satisfactory_mcp.domain.session.focus")
     monkeypatch.undo()
     monkeypatch.setattr(focus.config, "ui_dir", lambda: ctx / "ui")
     (ctx / "ui").mkdir()
@@ -311,7 +311,7 @@ def test_a_machine_selection_prints_its_selector(ctx, monkeypatch):
     ],
 )
 def test_a_selector_ref_from_the_page_finds_its_pin(kind, stored, ref):
-    from satisfactory_mcp.domain.planning import pins
+    from satisfactory_mcp.domain.session import pins
 
     rows = [{"n": 1, "id": "pin:1", "kind": kind, "ref": stored}]
     assert pins.match(rows, kind, ref) is rows[0]

@@ -104,7 +104,7 @@ def check_geometry(world: list[dict]) -> dict:
 def check_projection(nodes: list[dict], world: list[dict], world_meta: dict) -> dict:
     """Every emitted row against the source file: the projection cannot drift silently.
 
-    The returned block is shaped the way ``domain/spatial/nodes.py`` reads a positions
+    The returned block is shaped the way ``domain/spatial/nodes/`` reads a positions
     comparison, so renaming a key here silences that skew gate.
     """
     by_id = {e["id"]: e for e in world if e["class"] not in _EXCLUDED}

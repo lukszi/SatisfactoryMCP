@@ -13,8 +13,10 @@ import pytest
 from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp.core.gamedata.footprint import FOUNDATION_M, extract_footprint
-from satisfactory_mcp.domain.planning.layout import LOGISTICS_FLOOR_M, build_layout
-from satisfactory_mcp.domain.planning.optimize import MW, Scenario, solve
+from satisfactory_mcp.domain.planning.layout.model import LOGISTICS_FLOOR_M
+from satisfactory_mcp.domain.planning.layout.schematic import build_layout
+from satisfactory_mcp.domain.planning.solver.model import MW, Scenario
+from satisfactory_mcp.domain.planning.solver.optimize import solve
 
 pytestmark = pytest.mark.integration
 
@@ -269,9 +271,10 @@ def test_fluid_head_names_what_the_floor_order_costs(game, state):
     """Floors follow chain depth, which is a correctness property, not a physics one.
     On a measured oil plan it made every fluid climb -- water four floors at 11,500
     m3/min. The model has no terrain, so the cost is reported rather than optimised."""
-    from satisfactory_mcp.domain.planning.layout import build_layout, fluid_head
-    from satisfactory_mcp.domain.planning.optimize import solve
-    from satisfactory_mcp.domain.planning.scenario import build_scenario
+    from satisfactory_mcp.domain.planning.layout.head import fluid_head
+    from satisfactory_mcp.domain.planning.layout.schematic import build_layout
+    from satisfactory_mcp.domain.planning.solver.optimize import solve
+    from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
     req = build_scenario(
         game,
@@ -296,9 +299,9 @@ def test_the_three_planning_tools_share_one_pipeline(game, state):
     re-solved at defaults. One implementation cannot drift from itself."""
     import inspect
 
-    from satisfactory_mcp.domain.planning import diff_service as diff_mod
-    from satisfactory_mcp.domain.planning import layout_service as layout_mod
-    from satisfactory_mcp.domain.planning import report as report_mod
+    from satisfactory_mcp.domain.planning.layout import service as layout_mod
+    from satisfactory_mcp.domain.planning.progress import diff_service as diff_mod
+    from satisfactory_mcp.domain.planning.readout import report as report_mod
     from satisfactory_mcp.interfaces.mcp.tools import planning
 
     # All three reach the pipeline through a domain service -- prepare plus the world
@@ -327,7 +330,7 @@ def test_prepare_renders_nothing(game, state):
     as a headline plus notes and the TOOL decides how to show it."""
     import inspect
 
-    from satisfactory_mcp.domain.planning import prepare as prepare_mod
+    from satisfactory_mcp.domain.planning.solver import prepare as prepare_mod
 
     src = inspect.getsource(prepare_mod)
     assert "render." not in src
@@ -353,7 +356,7 @@ def test_every_planning_tool_reports_a_bad_request_the_same_way(game, state, kwa
 def test_prepare_is_usable_without_the_mcp_layer(game, state):
     """The point of the extraction: a script or a batch planner can solve without going
     through a tool, and gets the same guards."""
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     good = prepare(
         game, state, {"objective": "max_mw", "sources": list(REFERENCE_FIELD), "exports": ["MW"]}
@@ -372,7 +375,7 @@ def test_prepare_is_usable_without_the_mcp_layer(game, state):
 
 @pytest.fixture(scope="module")
 def oil_solution(game, state):
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     return prepare(
         game,
@@ -393,7 +396,7 @@ def test_no_deck_exceeds_the_foundation_cap(game, oil_solution, cap):
     """The inverse of the default question. Uncapped, layout answers "how big a site
     does this need" -- 496x496 m. A player with a finished platform is asking the
     reverse: I have 30x30 foundations, how many decks?"""
-    from satisfactory_mcp.domain.planning.layout import build_layout
+    from satisfactory_mcp.domain.planning.layout.schematic import build_layout
 
     lay = build_layout(game, oil_solution, max_floor_foundations=cap)
     production = [f for f in lay.floors if f.kind == "production"]
@@ -404,7 +407,7 @@ def test_no_deck_exceeds_the_foundation_cap(game, oil_solution, cap):
 def test_capping_adds_decks_without_changing_the_work(game, oil_solution):
     """Total foundations are conserved: the same machines, stacked differently. If the
     total moved, the cap would be silently dropping or duplicating blocks."""
-    from satisfactory_mcp.domain.planning.layout import build_layout
+    from satisfactory_mcp.domain.planning.layout.schematic import build_layout
 
     def totals(cap):
         lay = build_layout(game, oil_solution, max_floor_foundations=cap)
@@ -422,7 +425,7 @@ def test_capping_adds_decks_without_changing_the_work(game, oil_solution):
 def test_a_block_larger_than_the_cap_gets_its_own_deck(game):
     """It must not vanish, and it must not be split -- a block is one manifold. The
     honest answer is a deck of its own that exceeds the cap."""
-    from satisfactory_mcp.domain.planning.layout import _decks_for
+    from satisfactory_mcp.domain.planning.layout.schematic import _decks_for
 
     class B:
         def __init__(self, f):
@@ -435,7 +438,7 @@ def test_a_block_larger_than_the_cap_gets_its_own_deck(game):
 
 
 def test_a_zero_cap_means_no_cap(game, oil_solution):
-    from satisfactory_mcp.domain.planning.layout import build_layout
+    from satisfactory_mcp.domain.planning.layout.schematic import build_layout
 
     assert [f.index for f in build_layout(game, oil_solution, max_floor_foundations=0).floors] == [
         f.index for f in build_layout(game, oil_solution).floors
@@ -450,7 +453,7 @@ def test_a_block_is_packed_not_multiplied(game, state):
     edges, so `n x found` is an upper bound. plan_layout used to charge exactly that, and
     the water-siting note had independently grown its own copy of the same arithmetic --
     two places to be wrong instead of one."""
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     prepared = prepare(
         game,
@@ -478,7 +481,7 @@ def test_a_block_is_packed_not_multiplied(game, state):
 def test_packing_shrank_the_site_rather_than_the_machine_count(game, state):
     """The correction must move floor area only. A foundation change that also moved
     machines would mean it had eaten part of the plan."""
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     prepared = prepare(
         game,
@@ -504,7 +507,7 @@ def test_a_building_with_no_clearance_data_is_not_free(game, state):
     """packed is None only when the dump has no clearance boxes at all. Reporting 0
     foundations there is honest; silently sizing it as a point would not be, so
     build_layout names those buildings in its warnings."""
-    from satisfactory_mcp.domain.planning.layout import Block
+    from satisfactory_mcp.domain.planning.layout.model import Block
 
     bare = Block(
         key="k",

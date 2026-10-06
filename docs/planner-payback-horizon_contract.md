@@ -39,18 +39,18 @@ average too.
 ## 2. Semantics
 
 - `payback_hours` is a float **0–100**. The page's stops are **0, 1, 2, 5, 10, 20, 50, 100 h**
-  (`optimize.PAYBACK_STOPS`); a stored value between stops is kept as it is.
+  (`model.PAYBACK_STOPS`); a stored value between stops is kept as it is.
 - **0 h is today's build, exactly.** No column is rewritten and phase 2 is unchanged, so the
   LP is byte-for-byte the one before this feature, and so are the counts and the `plan_id`.
 - **Inside the LP (D5a).** At `H > 0` each recipe column at the 100% mode is offered at its
-  building's `c*` instead (`optimize.best_clock`). There is still one column per recipe and
+  building's `c*` instead (`overclock.best_clock`). There is still one column per recipe and
   its pid does not change, so solve time is unchanged. Phase 2 stops minimising the machine
   count and minimises `Σ (K_b + H · r · draw) · v` in points. For `max_item`, `min_raw` and
   `min_machines`, phase 1 (the goal) is untouched, so recipe choice moves only among routes
   that tie on the goal.
 - **Power goals (F1a, 3b).** `max_mw` and `min_power` already trade machines against MW in
-  phase 1. From **5 h** (`optimize.POWER_GOAL_BUILD_COST_FROM_H`) each column's machine price
-  there is its building's `K_b / (H · r)` MW (`optimize.machine_mw`) instead of the flat
+  phase 1. From **5 h** (`overclock.POWER_GOAL_BUILD_COST_FROM_H`) each column's machine price
+  there is its building's `K_b / (H · r)` MW (`overclock.machine_mw`) instead of the flat
   `machine_cost_mw`. Below 5 h, at 0 h, or with no running price, the flat 5 MW stays; the
   horizon still sets column clocks and phase 2. At 0 h the LP is the one from before F1a.
   Why a threshold (ruling 3b): a short horizon on a power plan means a temporary build, and a
@@ -90,7 +90,7 @@ average too.
 
 ## 3. Prices
 
-All derived per save in `planning/prices.py` and cached per projection
+All derived per save in `planning/solver/prices.py` and cached per projection
 (`prices.prices_for`). Nothing here is stored in the plan log; only the last scarcity tiers
 are stored, beside it (§3.1).
 

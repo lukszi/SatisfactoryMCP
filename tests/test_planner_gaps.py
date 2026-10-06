@@ -10,8 +10,9 @@ from __future__ import annotations
 import pytest
 from conftest import REFERENCE_FIELD
 
-from satisfactory_mcp.domain.planning.optimize import build_processes, solve
-from satisfactory_mcp.domain.planning.scenario import build_scenario
+from satisfactory_mcp.domain.planning.solver.optimize import solve
+from satisfactory_mcp.domain.planning.solver.processes import build_processes
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
 pytestmark = pytest.mark.integration
 
@@ -218,7 +219,7 @@ def test_a_negligible_process_is_unlisted_but_still_counted(game, state):
     0.0017/min -- one item every ten hours. Unlike a clock-mode split there is nothing to
     fold it into. Dropping the ROW is right; dropping the MACHINE is not, and doing both
     silently turned a measured "9 buildings" into 8 in compare_recipe_options."""
-    from satisfactory_mcp.domain.planning import optimize as opt
+    from satisfactory_mcp.domain.planning.solver.model import NEGLIGIBLE_IPM
 
     req = build_scenario(
         game,
@@ -236,7 +237,7 @@ def test_a_negligible_process_is_unlisted_but_still_counted(game, state):
     listed = sum(p["machines"] for p in sol.processes)
     assert listed < sol.machines_total, "the omitted machine is still in the total"
     assert any("contribute under" in w for w in sol.warnings), sol.warnings
-    assert all(p["clock"] >= opt.NEGLIGIBLE_IPM / 1000 for p in sol.processes), (
+    assert all(p["clock"] >= NEGLIGIBLE_IPM / 1000 for p in sol.processes), (
         "no vanishing rows survive in the table"
     )
 
@@ -390,7 +391,7 @@ def test_a_recycled_fluid_balances_without_being_asked_for(game, state):
     """Aluminium is the canonical loop: Alumina Solution drinks water and Aluminum Scrap
     gives some back. Nothing recycles it explicitly -- water is ONE balance row and the
     equality does the work, which is why a byproduct cannot pile up here."""
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     plan = prepare(
         game,
@@ -421,7 +422,7 @@ def test_zero_water_extractors_means_zero(game, state):
     """`int(x) if x else DEFAULT` turned an explicit 0 into the 200-pump assumption, so a
     plan told it had no water came back making 480 Aluminium Ingots on 480 m3/min of it.
     Zero is a meaningful answer -- it is what you ask of an inland site."""
-    from satisfactory_mcp.domain.planning.scenario import build_scenario
+    from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
     key = ("Build_WaterPump_C", "Desc_Water_C", "normal")
     kw = dict(objective="max_item", target_item="Aluminum Ingot", exports=["Aluminum Ingot"])
@@ -444,7 +445,7 @@ def test_an_empty_plan_says_why_it_is_empty(game, state):
     """An all-zero solve is OPTIMAL and reads as success: "buildings=0, exports:" with no
     complaint. Every recipe is present and unlocked, so `unmakeable` finds nothing to
     report -- the supply probe has to run for the same reason it runs on INFEASIBLE."""
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     plan = prepare(
         game,

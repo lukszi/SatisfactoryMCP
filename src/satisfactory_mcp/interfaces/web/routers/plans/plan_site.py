@@ -14,7 +14,8 @@ from typing import Any, Literal, TypedDict
 
 from fastapi import APIRouter, Request
 
-from .....domain.planning import site_preview, siting
+from .....domain.planning import siting
+from .....domain.planning.siting import preview as site_preview
 from .....domain.world import pin
 from ... import terrain
 from ...serial import Biomass, check_plan_key, plan_log, require_plan, require_world

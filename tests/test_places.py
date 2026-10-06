@@ -3,7 +3,7 @@
 The two selector languages used to take disjoint sets of places behind identical
 syntax -- a coordinate or ``me`` for nodes, a coordinate or a factory name for machines
 -- so a term copied from one failed in the other for no reason a reader could see. Both
-now resolve through ``spatial.origin.resolve_origin``, and this file is what keeps the
+now resolve through ``spatial.places.resolve_place``, and this file is what keeps the
 two sides from drifting apart again: every kind is exercised against both.
 """
 
@@ -13,11 +13,11 @@ import pytest
 
 from satisfactory_mcp.domain.factories.labels import LabelStore
 from satisfactory_mcp.domain.factories.select import SelectorError, select_machines
-from satisfactory_mcp.domain.planning.store import Plan, PlanStore
+from satisfactory_mcp.domain.planning.stored.store import Plan, PlanStore
 from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
-from satisfactory_mcp.domain.spatial.origin import resolve_origin
-from satisfactory_mcp.domain.spatial.select import select_nodes
+from satisfactory_mcp.domain.spatial.nodes.selectors import select_nodes
+from satisfactory_mcp.domain.spatial.places import resolve_place
 from satisfactory_mcp.domain.world.state import WorldState
 
 pytestmark = pytest.mark.integration
@@ -99,14 +99,14 @@ def places(world, a_node_id) -> list[str]:
 def test_every_place_kind_resolves_to_a_point(world, places):
     """The list below IS the vocabulary; a kind that stopped resolving fails here first."""
     for place in places:
-        point, where = resolve_origin(world, place)
+        point, where = resolve_place(world, place)
         assert len(point) == 2 and where, place
 
 
 def test_a_node_selector_takes_every_place(world, places):
     table = nodes_mod.load_nodes()
     for place in places:
-        centre, _ = resolve_origin(world, place)
+        centre, _ = resolve_place(world, place)
         sel = select_nodes([f"near:{place}@{RADIUS_M:g}"], table.nodes, st=world)
         assert not sel.errors, (place, sel.errors)
         assert {n["instance"] for n in sel.nodes} == {
@@ -119,7 +119,7 @@ def test_a_node_selector_takes_every_place(world, places):
 def test_a_machine_selector_takes_every_place(world, places):
     pos = _machine_positions(world.projection)
     for place in places:
-        centre, _ = resolve_origin(world, place)
+        centre, _ = resolve_place(world, place)
         picked = select_machines([f"near:{place}@{RADIUS_M:g}"], world)
         assert set(picked) == {
             m
@@ -167,16 +167,16 @@ def test_the_place_kinds_that_need_no_save_still_resolve_without_one():
 
 def test_a_machine_place_centres_on_that_machine(world):
     leaf, at = min(_machine_positions(world.projection).items())
-    assert resolve_origin(world, f"machine:{leaf}") == (at, f"machine:{leaf}")
+    assert resolve_place(world, f"machine:{leaf}") == (at, f"machine:{leaf}")
     with pytest.raises(ValueError, match="no machine"):
-        resolve_origin(world, "machine:Build_Nothing_C_0")
+        resolve_place(world, "machine:Build_Nothing_C_0")
 
 
 def test_a_node_place_and_the_node_selector_name_the_same_node(world, a_node_id):
     """``node:`` means one node on both sides -- picked OUT of a field by the node
     selector, and centred ON by the place resolver."""
     table = nodes_mod.load_nodes()
-    centre, _ = resolve_origin(world, f"node:{a_node_id}")
+    centre, _ = resolve_place(world, f"node:{a_node_id}")
     picked = select_nodes([f"node:{a_node_id}"], table.nodes)
     assert len(picked.nodes) == 1
     assert (picked.nodes[0]["x"], picked.nodes[0]["y"]) == centre

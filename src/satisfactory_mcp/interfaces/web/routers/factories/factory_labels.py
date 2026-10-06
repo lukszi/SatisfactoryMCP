@@ -18,8 +18,7 @@ from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
 
 from .....core.filelock import LockTimeout
-from .....domain.factories import edits, fed, flowgraph, naming
-from .....domain.factories import identity as fidentity
+from .....domain.factories import candidates, edits, fed, flowgraph, naming
 from .....domain.factories.labels import (
     BadName,
     LabelError,
@@ -30,7 +29,7 @@ from .....domain.factories.labels import (
 )
 from .....domain.factories.query import build_view
 from .....domain.factories.select import SelectorError, select_machines
-from .....domain.planning import journal
+from .....domain.session import journal
 from .....domain.spatial import geo
 from .....domain.world import pin
 from ...serial import (
@@ -189,7 +188,7 @@ def _candidate_row(
     st, index: int, proposal, verdict: str, suggested: str, region_map, placed: dict
 ) -> dict:
     """One unnamed proposal: what it makes and takes, where it is, and the name it would get."""
-    cand = fidentity.describe(proposal.machines, st.graph, st.game, st.projection, "proposal")
+    cand = candidates.describe(proposal.machines, st.graph, st.game, st.projection, "proposal")
     view, flow_graph = _cluster(st, proposal.machines, "proposal")
     extracted = {row[1] for row in view.nodes}
     _item, confident = naming.lead(flow_graph, cand, st.game, extracted)
@@ -235,7 +234,7 @@ def factory_candidates(
     st = require_world(request, save, world)
     region_map = regions_or_none()
 
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     names = naming.proposal_names(st, st.proposals, style, region_map)
     hidden = {"small": 0, "not_fed": 0}
     rows = []
@@ -285,7 +284,7 @@ def name_candidate(
         return error_response(str(exc), 404)
     if not picked:
         return error_response("that unnamed cluster matched no machines; detect again", 404)
-    cand = fidentity.describe(picked, st.graph, st.game, st.projection, "label")
+    cand = candidates.describe(picked, st.graph, st.game, st.projection, "label")
     overlaps = st.labels.overlaps(picked, name)
     try:
         label, _held, written = edits.name(
@@ -429,7 +428,7 @@ def amend_label(
     if label is None:
         return error_response(f"no factory named “{name}” in this world", 404)
     alive = set(st.graph.machines())
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     polygons = [[(x * geo.CM_PER_M, y * geo.CM_PER_M) for x, y in a] for a in areas]
     within = sorted(
         m
@@ -455,7 +454,7 @@ def amend_label(
     }
     if dry_run or not (plan.added or plan.dropped):
         return reply
-    cand = fidentity.describe(plan.standing, st.graph, st.game, st.projection, "label")
+    cand = candidates.describe(plan.standing, st.graph, st.game, st.projection, "label")
     try:
         _label, written = edits.amend(
             st.world_id,

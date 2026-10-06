@@ -7,15 +7,17 @@ import json
 import pytest
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import payback, prices
-from satisfactory_mcp.domain.planning.optimize import (
-    PAYBACK_STOPS,
+from satisfactory_mcp.domain.planning.readout import payback
+from satisfactory_mcp.domain.planning.solver import prices
+from satisfactory_mcp.domain.planning.solver.model import PAYBACK_STOPS, Scenario
+from satisfactory_mcp.domain.planning.solver.optimize import solve
+from satisfactory_mcp.domain.planning.solver.overclock import (
     POWER_GOAL_BUILD_COST_FROM_H,
-    Scenario,
     machine_mw,
-    solve,
 )
-from satisfactory_mcp.domain.planning.planlog import (
+from satisfactory_mcp.domain.planning.solver.prices import tiers_path as real_tiers_path
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario, shard_stock
+from satisfactory_mcp.domain.planning.stored.planlog import (
     PAYBACK_MAX_H,
     Actor,
     InvalidOp,
@@ -25,8 +27,6 @@ from satisfactory_mcp.domain.planning.planlog import (
     inverse,
     use_recipe_names,
 )
-from satisfactory_mcp.domain.planning.prices import tiers_path as real_tiers_path
-from satisfactory_mcp.domain.planning.scenario import build_scenario, shard_stock
 from satisfactory_mcp.domain.world.state import WorldState
 
 CONSTRUCTOR = "Build_ConstructorMk1_C"

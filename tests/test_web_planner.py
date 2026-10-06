@@ -16,8 +16,8 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import focus, journal
-from satisfactory_mcp.domain.planning.planlog import KINDS, Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.planlog import KINDS, Actor, PlanLog
+from satisfactory_mcp.domain.session import focus, journal
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.web.app import create_app
 
@@ -600,7 +600,7 @@ def test_track_refuses_unknown_plans_and_revs(client):
 
 
 def test_track_is_a_400_when_the_solve_refuses(client, monkeypatch):
-    from satisfactory_mcp.domain.planning import track
+    from satisfactory_mcp.domain.planning.progress import track
 
     key = _create(client)["key"]
 

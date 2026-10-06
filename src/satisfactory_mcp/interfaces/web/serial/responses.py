@@ -12,7 +12,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from ....core.schema import NewerSchema
-from ....domain.planning.planlog import Actor, InvalidOp, PlanLog, PlanState, UnknownPlan
+from ....domain.planning.stored.planlog import Actor, InvalidOp, PlanLog, PlanState, UnknownPlan
 from ....domain.world.state import WorldState
 
 __all__ = [

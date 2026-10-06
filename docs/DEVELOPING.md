@@ -27,8 +27,10 @@ module to prove imports run one way — `core` knows nothing, `domain` knows `co
 
 ```
 src/satisfactory_mcp/
-  core/       Docs.json loading, the save seam, num/plural
+  core/       Docs.json loading, the save seam, plain-text helpers
   domain/     world state, progression, power, factories, spatial, the LP planner
+              (planning/: solver, readout, analysis, layout, siting, progress, stored),
+              and session/ (asks, focus, journal, pins shared by chat and the page)
   presenters/ all response formatting
   interfaces/ mcp/ (the FastMCP surface) and web/ (FastAPI + Leaflet map)
   server.py   the console entry point; no logic

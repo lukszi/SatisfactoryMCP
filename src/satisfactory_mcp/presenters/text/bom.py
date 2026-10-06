@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ...domain.planning.bom import BOM
+from ...domain.planning.analysis.bom import BOM
 from . import primitives as render
 
 __all__ = ["render_bom"]

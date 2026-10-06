@@ -10,7 +10,7 @@ import json
 import pytest
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import focus
+from satisfactory_mcp.domain.session import focus
 
 
 @pytest.fixture

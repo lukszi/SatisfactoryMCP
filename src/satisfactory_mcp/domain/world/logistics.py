@@ -47,7 +47,7 @@ class Link:
     source_role: str = ""
     target_role: str = ""
     #: A ``chain:<n>`` or ``pipe:<row>`` on the run, which ``search_conduits`` prints and
-    #: ``resolve_origin`` takes. Both join by ACTOR INDEX, so the id names a piece this very
+    #: ``resolve_place`` takes. Both join by ACTOR INDEX, so the id names a piece this very
     #: run contracted rather than the nearest one -- §6.15, ``docs/save-projection.md``.
     #: Empty only where no piece of the run is in ``graph["actors"]`` at all.
     ident: str = ""

@@ -13,7 +13,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from .....domain.factories import identity as fidentity
+from .....domain.factories import candidates
 from .....domain.factories.health import ACTIONABLE, OK, STATES
 from .....domain.factories.sweep import sweep
 from .....domain.world.state import WorldState
@@ -129,7 +129,7 @@ def factory_health(request: Request, save: str | None = None, world: str | None 
     st = require_world(request, save, world)
 
     alive_set = set(st.graph.machines())
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     review = {row["name"]: row["status"] for row in st.labels.review(alive_set)}
     rows = [_factory_row(st, swept, placed, review) for swept in sweep(st)]
     return {

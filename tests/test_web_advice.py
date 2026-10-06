@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.advice import rules
-from satisfactory_mcp.domain.planning import journal
+from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.interfaces.web.app import create_app
 
 ORIGIN = {"origin": "http://testserver"}

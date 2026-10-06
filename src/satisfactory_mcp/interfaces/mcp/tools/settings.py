@@ -12,7 +12,7 @@ from ....core.schema import NewerSchema
 from ....core.text import ago
 from ....domain import settings as store
 from ....domain.maps import registry as maps
-from ....domain.planning.planlog import Actor
+from ....domain.planning.stored.planlog import Actor
 from ....presenters.text import primitives as render
 from ..app import actor, mcp
 

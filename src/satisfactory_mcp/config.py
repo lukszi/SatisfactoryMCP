@@ -185,3 +185,8 @@ def advice_dir() -> Path:
 def settings_path() -> Path:
     """Settings the page and chat share, one file for every world (docs/shared-settings.md)."""
     return user_dir() / "settings.json"
+
+
+def world_file_stem(world_id: str) -> str:
+    """``world_id`` cut to the characters safe in a file name; ``"world"`` when none are."""
+    return "".join(c for c in world_id if c.isalnum() or c in "-_") or "world"

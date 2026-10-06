@@ -13,10 +13,10 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from .....domain.planning import manage
 from .....domain.planning import siting as planning_siting
-from .....domain.planning.diff_service import plan_progress
-from .....domain.planning.planlog import PlanLog
+from .....domain.planning.progress.diff_service import plan_progress
+from .....domain.planning.stored import manage
+from .....domain.planning.stored.planlog import PlanLog
 from .....domain.world import pin
 from ...serial import ActorBody, actor_json, plan_log, require_world
 
@@ -32,7 +32,7 @@ class PlanSiting(TypedDict):
     """One stored plan's pad: centre, facing and extent, all in metres on save axes.
 
     Metres as a player typed them, so no centimetre conversion applies here
-    (``domain/planning/siting.py``).
+    (``domain/planning/siting/``).
 
     ``z_m`` is null wherever the origin was named by something with no height (a factory
     centroid, a bare ``x,y``); the pad is still a rectangle on the ground. ``source`` is

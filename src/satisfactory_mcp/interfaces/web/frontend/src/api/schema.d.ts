@@ -5352,7 +5352,7 @@ export interface components {
          * @description One stored plan's pad: centre, facing and extent, all in metres on save axes.
          *
          *     Metres as a player typed them, so no centimetre conversion applies here
-         *     (``domain/planning/siting.py``).
+         *     (``domain/planning/siting/``).
          *
          *     ``z_m`` is null wherever the origin was named by something with no height (a factory
          *     centroid, a bare ``x,y``); the pad is still a rectangle on the ground. ``source`` is

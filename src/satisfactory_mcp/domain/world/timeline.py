@@ -16,7 +16,7 @@ from pathlib import Path
 from ... import config
 from ...core import atomic
 from ...core.saveio import projection as proj
-from ...core.text import played as hm
+from ...core.text import format_playtime
 
 __all__ = ["INDEX_SCHEMA", "Timeline", "build_row", "load_timeline", "row_key", "save_row"]
 
@@ -128,8 +128,8 @@ class Timeline:
         builds = sorted({r["build_version"] for r in self.rows if r.get("build_version")})
         note = (
             f"window: {len(self.rows)} save(s) still on disk, playtime "
-            f"{hm(first['play_duration_s'])} to {hm(last['play_duration_s'])} "
-            f"({hm(played)} of play). History is lossy -- deleted and rotated saves "
+            f"{format_playtime(first['play_duration_s'])} to {format_playtime(last['play_duration_s'])} "
+            f"({format_playtime(played)} of play). History is lossy -- deleted and rotated saves "
             f"leave gaps this index cannot see."
         )
         if len(builds) > 1:

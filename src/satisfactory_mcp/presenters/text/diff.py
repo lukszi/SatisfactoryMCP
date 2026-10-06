@@ -9,9 +9,9 @@ will otherwise get wrong: the save separates built from energised in one directi
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
-from ...domain.planning.commission import ENERGISED_CAVEAT, RANGE_CAVEAT, Tracking
-from ...domain.planning.diff import NEIGHBOUR_RADIUS_M as DIFF_NEIGHBOUR_M
-from ...domain.planning.diff_service import DiffVsSaveReport
+from ...domain.planning.progress.diff import NEIGHBOUR_RADIUS_M as DIFF_NEIGHBOUR_M
+from ...domain.planning.progress.diff_service import DiffVsSaveReport
+from ...domain.planning.progress.stages import ENERGISED_CAVEAT, RANGE_CAVEAT, Tracking
 from ...domain.power.report import biomass_note
 from ...domain.world.state import WorldState
 from . import primitives as render

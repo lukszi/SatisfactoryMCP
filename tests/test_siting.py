@@ -19,17 +19,17 @@ import json
 import pytest
 
 from satisfactory_mcp.domain.planning import siting as siting_mod
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
-from satisfactory_mcp.domain.planning.recall import PLAN_DEFAULTS, recall_plan
 from satisfactory_mcp.domain.planning.siting import Siting
-from satisfactory_mcp.domain.planning.store import Plan, PlanStore
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.recall import PLAN_DEFAULTS, recall_plan
+from satisfactory_mcp.domain.planning.stored.store import Plan, PlanStore
 
 ACTOR = Actor("chat")
 
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     return PlanLog("TESTWORLD")
@@ -199,7 +199,7 @@ def test_a_recalled_sited_plan_is_measured_at_its_own_site():
 def test_survey_counts_what_stands_inside_the_footprint(game, state):
     """Centre a pad on a real machine from the fixture save: it must be counted, and a
     pad in open ocean must count nothing."""
-    record = next(r for r in state._all_records() if r.get("pos"))
+    record = next(r for r in state.all_records() if r.get("pos"))
     x_cm, y_cm = record["pos"][0], record["pos"][1]
     sit = Siting(x_m=x_cm / 100, y_m=y_cm / 100, width_m=20.0, depth_m=20.0)
 
@@ -217,7 +217,7 @@ def test_survey_counts_what_stands_inside_the_footprint(game, state):
 
 @pytest.mark.integration
 def test_survey_reports_planned_against_standing_per_class(game, state):
-    record = next(r for r in state._all_records() if r.get("pos"))
+    record = next(r for r in state.all_records() if r.get("pos"))
     x_cm, y_cm = record["pos"][0], record["pos"][1]
     sit = Siting(x_m=x_cm / 100, y_m=y_cm / 100, width_m=20.0, depth_m=20.0)
     processes = [

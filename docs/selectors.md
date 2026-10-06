@@ -7,8 +7,8 @@ must not have is three ways to spell the *same* thing, and this page is where th
 settled: the shared rules first, then each vocabulary in full, then the differences that
 remain and are deliberate.
 
-Implemented in `domain/spatial/select.py` (nodes), `domain/factories/select.py` (machines)
-and `domain/spatial/origin.py` (places). Both selector modules are handed the world state
+Implemented in `domain/spatial/nodes/selectors.py` (nodes), `domain/factories/select.py` (machines)
+and `domain/spatial/places.py` (places). Both selector modules are handed the world state
 and call `origin.py` for the one construct all three share -- a circle around a place --
 so the place table below is the whole of "where" for the entire surface.
 
@@ -38,7 +38,7 @@ near:steel factory@150. The radius follows '@', never a comma
 ## Places — `at=`, `near=`, `site_at=`
 
 A **place** is a single point, and there is exactly one vocabulary for one. Resolved by
-`resolve_origin`, and taken by every tool that asks where: `describe_location(at=)`,
+`resolve_place`, and taken by every tool that asks where: `describe_location(at=)`,
 `show_on_map(at=)`, `site_plan(at=)`, `plan_factory(site_at=)`, `search_conduits(near=,
 to=)`, `search_resource_nodes(near=)`, `storage(near=)` and `collected_from_world(near=)`
 -- **and by the `near:` term of both selector languages below**, which is what makes the
@@ -68,7 +68,7 @@ produced it, because `at=` can land somewhere the caller never typed.
 `show_on_map(at=)` takes one kind **more**: `resource:Crude Oil` centres on the centroid
 of every node of that resource and switches its overlays on. That is a viewport rather
 than a place -- it names a *set*, and the centroid of a scattered set can be open water,
-which the answer says -- so it is not in `resolve_origin` and no other tool accepts it.
+which the answer says -- so it is not in `resolve_place` and no other tool accepts it.
 Spelled with the `:` of rule 4 like everything else; the bare resource name it replaces
 is retired, and unprefixed text is a factory label here as it is everywhere.
 
@@ -149,11 +149,11 @@ ids.
 
 A pin is a numbered handle the page places on a plan, a process, a machine, a factory, a
 field, a node or a point (docs/planner-p3_contract.md §4). `pin:<n>` is accepted wherever the
-thing it pins could stand, and `domain/planning/pins.py` is the only code that parses it:
+thing it pins could stand, and `domain/session/pins.py` is the only code that parses it:
 
 | grammar | resolver | kinds accepted | becomes |
 |---|---|---|---|
-| place (`at=`, `near=`, `to=`, `site_at=`, `near:pin:<n>@r`) | `resolve_origin` | point, node, field, machine, factory, sited plan | the pin's position |
+| place (`at=`, `near=`, `to=`, `site_at=`, `near:pin:<n>@r`) | `resolve_place` | point, node, field, machine, factory, sited plan | the pin's position |
 | node sources | `select_nodes` | node, field | `node:<id>` per node |
 | machine select, `factory=` | `select_machines` (also `-pin:<n>`) | machine, factory | `machine:<instance>` / `label:<name>` |
 | `plan=` | `recall.plan_ref` | plan | the plan key |
@@ -175,7 +175,7 @@ reads the same after its pin is deleted.
 Named here so that the next reader knows it is a known state and not an oversight.
 
 - **`near:` no longer differs.** Both selector modules hand the whole world state to
-  `resolve_origin` and take the same nine places, so a `near:` term copied from one
+  `resolve_place` and take the same nine places, so a `near:` term copied from one
   works in the other. Neither module resolves a place itself; a second resolver is what
   the divergence was made of.
 - **Indices are machine-side only.** `base:`, `line:`, `slab:` and `proposal:` have no

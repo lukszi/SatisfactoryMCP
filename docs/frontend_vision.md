@@ -152,7 +152,7 @@ tool table.
 | `factory_sites` | Factory detail > Sites (world list: open) | none | cluster list; map clusters | **built** `/api/factories/sites` (§17) |
 | `whereami` | World > Here (§18) | radius | position, region, grid, save age, nodes within the radius | **built** `/api/world/here` (§18) |
 | `list_regions` | World > Regions; region picker in every sources form | resource filter | list; region layer highlights | **built** `/api/world/regions` (§18); `/api/regions` stays the painted grid |
-| `describe_location` | Map click inspector | click point, radius | popup: region, elevation, grid, nearest node, fields, conduits, pickups | **built** `/api/inspect` (`place.describe`, §18) |
+| `describe_location` | Map click inspector | click point, radius | popup: region, elevation, grid, nearest node, fields, conduits, pickups | **built** `/api/inspect` (`surroundings.describe_point`, §18) |
 | `search_conduits` | World > Conduits; inspector "conduits here" | near, radius, to, belt/pipe, runs/networks, network | run list; runs drawn in the finder pane | **built** `/api/world/conduits` (§18) |
 | `search_resource_nodes` | World > Nodes and Fields | sources, resource, purity, kind, status free/tapped/all, view fields/nodes/nearest, near | field clusters or node rows; finder pane | **built** `/api/world/nodes` (§18); `/api/nodes` stays the layer |
 | `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick; `show=node:`/`chain:`/`pipe:` ring the place | exists (fragment); the tool's local link follows the configured port (§13) and carries `show=` (§18) |
@@ -281,7 +281,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
   Where logic sits in a tool body, move it to the domain first. MCP §10.1e names the cases
   (`search_resource_nodes`, `factory_query` table-building); both tools and routes then share it.
 - Typed `response_model` per route; regenerate `api/schema.d.ts` (docs/web-wire.md).
-- Solves go through `planning/prepare.py`, the one sequence all planning tools share.
+- Solves go through `planning/solver/prepare.py`, the one sequence all planning tools share.
 - Save reads through the injected loader and the single-flight cache, as today.
 - Every route accepts `as_of=`. Refuse on mismatch with the same four messages as MCP.
 
@@ -296,15 +296,15 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | `/api/stock` | GET | `domain/world/inventory.py` | four piles and every place; **built** (§10) |
 | `/api/progress/{milestones,mam,phase}` | GET | `domain/progression/ladder.py`, `phases.py` | **built**; one ladder, three views |
 | `/api/progress/harddrives` | GET | `domain/progression/harddrives.py` | **built**, under `/api/progress/` |
-| `/api/harddrives/{id}/advice` | POST | `domain/planning/advisor.py` | slow |
+| `/api/harddrives/{id}/advice` | POST | `domain/planning/analysis/advisor.py` | slow |
 | `/api/progress/shards`, `/api/progress/sloops` | GET | `domain/progression/shards.py` | **built**, under `/api/progress/` |
 | `/api/gamedata/{items,recipes,recipe,alternates,unlocked}`, `/api/search` | GET | `core/gamedata` | **built** (§12); no save needed except HAVE/LOCKED; `buildings` still open |
-| `/api/nodes/fields`, `/api/sites/rank` | GET | `domain/spatial/select.py`, `ranking.py` | |
+| `/api/nodes/fields`, `/api/sites/rank` | GET | `domain/spatial/nodes/selectors.py`, `ranking.py` | |
 | `/api/conduits` | GET | `domain/world/conduits.py` | |
 | `/api/select/nodes`, `/api/select/machines` | GET | the two selector modules | live preview counts |
 | `/api/plan/solve`, `/bom`, `/compare`, `/byproducts` | POST | `prepare.py`, `bom.py`, `compare.py`, `byproducts.py` | body = plan kwargs |
-| `/api/plan/layout`, `/diff`, `/commission`, `/unlocks` | POST | `layout_service`, `diff_service`, `commission_service`, `sensitivity` | `/unlocks` slow |
-| `/api/plans` (CRUD) + `/api/plans/{n}/site` | POST/PATCH/DELETE | `domain/planning/store.py`, `siting.py` | W; watcher already publishes store events |
+| `/api/plan/layout`, `/diff`, `/commission`, `/unlocks` | POST | `layout.service`, `diff_service`, `commission_service`, `sensitivity` | `/unlocks` slow |
+| `/api/plans` (CRUD) + `/api/plans/{n}/site` | POST/PATCH/DELETE | `domain/planning/stored/store.py`, `siting/` | W; watcher already publishes store events |
 | `/api/labels` (CRUD) | POST/PATCH/DELETE | `domain/factories/labels.py` | W; POST, PATCH and DELETE **built** (§9) |
 
 Before any W route: the Host/Origin allowlist (roadmap §4.5). Local writes from a hostile
@@ -1069,7 +1069,7 @@ Phase 5 of §6. It is a read-only surface over the game data, marked against the
 ### 12.1 What was built
 
 - **Routes.** Each calls the function its MCP tool calls. `find_items` and `makers_of` in
-  `core/gamedata/search.py` and `find_recipe` in `domain/planning/scenario.py` moved out of
+  `core/gamedata/search.py` and `find_recipe` moved out of
   the tool bodies so both surfaces share them.
 
   | Route | Tool | Needs a save |
@@ -1454,11 +1454,11 @@ section records what the backend built and what it decided on the way.
 
 ### 18.1 What was built
 
-- **One domain function per question** (§5.1). `domain/spatial/finder.py` holds the node
+- **One domain function per question** (§5.1). `domain/spatial/nodes/search.py` holds the node
   search (`find_nodes`: selection, status, distance, totals, notes, water block), the fields
-  (`fields`) and the site ranking (`rank`, `site_view`). `domain/spatial/place.py` holds
+  (`fields`) and the site ranking (`rank`, `site_view`). `domain/spatial/surroundings.py` holds
   `here` and `describe`. `domain/world/conduits.py` gained `search` and `networks`,
-  `domain/spatial/regions.py` `region_rows`, `domain/spatial/nodes.py` `table_age` and
+  `domain/spatial/regions.py` `region_rows`, `domain/spatial/nodes/` `table_age` and
   `drifted`, and `domain/collectibles/service.py` `census_rows`, `found`, `is_spoiler`,
   `label`/`LABELS` and `table_age`. Each tool body is now that call plus its text; the tool
   text is byte-identical to before on the fixture world except where the contract adds a

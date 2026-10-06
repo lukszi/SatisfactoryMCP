@@ -5,8 +5,10 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import manage, summary, swaps
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanArgs, PlanLog
+from satisfactory_mcp.domain.planning.analysis import swaps
+from satisfactory_mcp.domain.planning.readout import summary
+from satisfactory_mcp.domain.planning.stored import manage
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanArgs, PlanLog
 
 WORLD = "X2faPVKjX06VaRzClNv5KQ"
 CHAT = Actor("chat", "claude-code", 4242)

@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain import settings
-from satisfactory_mcp.domain.planning.planlog import Actor
+from satisfactory_mcp.domain.planning.stored.planlog import Actor
 from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.watch import SaveWatcher
 from satisfactory_mcp.interfaces.web.watch_events import KIND_SETTINGS, KINDS

@@ -14,12 +14,12 @@ from dataclasses import dataclass, replace
 from ...core.singleflight import Singleflight
 from ...core.text import plural
 from ..factories import health
-from ..planning import manage
-from ..planning.diff_service import match_scope
-from ..planning.planlog import PlanLog, PlanLogError
-from ..planning.prepare import prepare
+from ..planning.progress.diff_service import match_scope
+from ..planning.solver.prepare import prepare
+from ..planning.stored import manage
+from ..planning.stored.planlog import PlanLog, PlanLogError
 from ..spatial import nodes as nodes_mod
-from ..spatial import place, regions
+from ..spatial import regions, surroundings
 from ..world.headlift import head_lift
 
 __all__ = [
@@ -724,7 +724,7 @@ def _pickups(st, spoilers: bool) -> list[Advisory]:
         return []
     near = [
         r
-        for r in place._pickups_near(st, me[0], me[1])
+        for r in surroundings._pickups_near(st, me[0], me[1])
         if r["category"] not in NO_PICKUP and (spoilers or not r["spoiler"])
     ]
     if not near:
@@ -736,7 +736,7 @@ def _pickups(st, spoilers: bool) -> list[Advisory]:
             pick = rare[0]
             break
     n = len(near)
-    reach = f"{place.PICKUP_REACH_M:.0f} m"
+    reach = f"{surroundings.PICKUP_REACH_M:.0f} m"
     lead = f"{n} {plural('pickup', n)} within {reach} of where you saved"
     text = f"{lead} · {_singular(pick['label'])} {pick['distance_m']:.0f} m"
     kinds = Counter(_singular(r["label"]) for r in near)
@@ -762,7 +762,7 @@ def _pickups(st, spoilers: bool) -> list[Advisory]:
             spots=spots,
             next_call="collected_from_world show=nearest near=me",
             reveal=tuple(sorted({f"pickup: {r['category']}" for r in near})),
-            source="place._pickups_near",
+            source="surroundings._pickups_near",
         )
     ]
 

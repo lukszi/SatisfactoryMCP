@@ -9,8 +9,9 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import journal, manage
-from satisfactory_mcp.domain.planning.planlog import Actor, NameTaken, PlanLog
+from satisfactory_mcp.domain.planning.stored import manage
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, NameTaken, PlanLog
+from satisfactory_mcp.domain.session import journal
 
 PAGE = Actor("page", "", 1)
 CHAT = Actor("chat", "claude-code", 4242)

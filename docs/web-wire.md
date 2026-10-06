@@ -373,7 +373,7 @@ because `routers/factories/factory_labels.py` (candidates, amend) and `routers/f
 ## Track and asks
 
 `GET /api/plan/track?key=&rev=&biomass=&headroom=` (`routers/plans/plan_track.py`) builds its whole reply from one
-solve (`domain/planning/track.py`). Not feasible, empty, and a count-as-built factory with no
+solve (`domain/planning/progress/track.py`). Not feasible, empty, and a count-as-built factory with no
 machines left are all 200s that say so (`feasible`, `empty`, `scope_error`) with empty lists;
 a 400 is only a solve that refuses its arguments. `biomass` is `include` or `exclude`, the
 spelling every power route uses. `headroom` is `measured` (the default) or `nameplate`: the

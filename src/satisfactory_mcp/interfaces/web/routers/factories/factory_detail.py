@@ -13,7 +13,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from .....domain.factories import identity as fidentity
+from .....domain.factories import candidates
 from .....domain.factories.query import build_view
 from .....domain.spatial import nodes as nodes_mod
 from ...serial import (
@@ -156,7 +156,7 @@ def factory_aspects(
     name, machines = found
     game = st.game
     view = build_view(name, machines, st.graph, game, st.projection, st.labels)
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     places = _node_places() if view.nodes else {}
 
     def building_name(cls: str) -> str:

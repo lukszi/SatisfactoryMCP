@@ -13,7 +13,7 @@ from typing import Any, Literal, TypedDict
 
 from fastapi import APIRouter, Request
 
-from .....domain.planning import track
+from .....domain.planning.progress import track
 from .....domain.world import pin
 from ...serial import Biomass, check_plan_key, error_response, plan_log, require_plan, require_world
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from satisfactory_mcp.domain.factories.structure import build_structures
-from satisfactory_mcp.domain.planning.fit import assess_fit
+from satisfactory_mcp.domain.planning.layout.fit import assess_fit
 
 pytestmark = pytest.mark.integration
 

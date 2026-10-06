@@ -31,8 +31,8 @@ import time
 import pytest
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import journal
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.interfaces.web.watch import QUEUE_MAX, SaveWatcher
 from satisfactory_mcp.interfaces.web.watch_events import (
     KIND_ACTIVITY,

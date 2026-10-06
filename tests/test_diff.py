@@ -18,14 +18,14 @@ import pytest
 from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning.diff import (
+from satisfactory_mcp.domain.planning.progress.diff import (
     NEIGHBOUR_RADIUS_M,
     RECLOCK_TOLERANCE,
     _reclock_note,
     build_diff,
 )
-from satisfactory_mcp.domain.planning.optimize import solve
-from satisfactory_mcp.domain.planning.scenario import build_scenario
+from satisfactory_mcp.domain.planning.solver.optimize import solve
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.presenters.text import primitives as render
 
@@ -234,7 +234,7 @@ def test_an_action_names_the_machines_it_applies_to(spire, state):
     to three pumps that are already running. SETRECIPE is worse: the idle machines it
     takes are not in the matched set at all."""
     _req, _sol, rep = spire
-    paused = {r["instance"].rsplit(".", 1)[-1] for r in state._all_records() if r.get("paused")}
+    paused = {r["instance"].rsplit(".", 1)[-1] for r in state.all_records() if r.get("paused")}
 
     water = _row(rep, "normal Water")
     assert len(water.act_instances) == water.count == 3
@@ -253,7 +253,7 @@ def test_the_ids_of_an_action_reach_the_reader(game, state):
     """The same reusable-footer pattern the build targets already use, per row: an id in
     a row would crowd every other column off it, and a pooled list would lose which verb
     it belongs to."""
-    from satisfactory_mcp.domain.planning.diff_service import build_diff_report
+    from satisfactory_mcp.domain.planning.progress.diff_service import build_diff_report
     from satisfactory_mcp.presenters.text.diff import render_diff
 
     report = build_diff_report(game, state, dict(SPIRE), objective="max_mw")
@@ -420,8 +420,8 @@ def test_the_cost_table_says_when_it_hid_rows(game, state):
     the list is ranked by shortfall, so the gate on the build is at its head -- but the
     reader has to be able to tell that a sixth shortfall exists. The fixture world has
     only three, so the rows are fabricated: this pins the envelope, not the bill."""
-    from satisfactory_mcp.domain.planning.diff import CostLine
-    from satisfactory_mcp.domain.planning.diff_service import build_diff_report
+    from satisfactory_mcp.domain.planning.progress.diff import CostLine
+    from satisfactory_mcp.domain.planning.progress.diff_service import build_diff_report
     from satisfactory_mcp.presenters.text.diff import COST_ROWS, render_diff
 
     report = build_diff_report(game, state, dict(SPIRE), objective="max_mw")

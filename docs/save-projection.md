@@ -936,7 +936,7 @@ with the number, as every correcting bump's must.
 `domain.world.logistics` contracts the 3,597 conduit actors of `graph["material"]` into 2,198
 node-to-node runs in ~15 ms, by actor identity rather than by geometry. `domain.world.conduits`
 builds a parallel set of runs from the *drawn line* — `chain:<n>` per belt chain, `pipe:<row>`
-per pipeline piece — and those are the ids `search_conduits` prints and `resolve_origin`
+per pipeline piece — and those are the ids `search_conduits` prints and `resolve_place`
 accepts. Two views of the same conduit, and **schema 20 is the column that joins them.**
 
 **Pipes joined from the start.** `pipes["segments"]` carries `actorIndex` (schema 14), a

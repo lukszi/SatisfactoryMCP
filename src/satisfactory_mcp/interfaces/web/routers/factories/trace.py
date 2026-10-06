@@ -15,8 +15,7 @@ from fastapi import APIRouter, Request
 
 from .....core.saveio import ports
 from .....core.saveio import rows as saverows
-from .....domain.factories import flowgraph, health
-from .....domain.factories import identity as fidentity
+from .....domain.factories import candidates, flowgraph, health
 from .....domain.factories.query import build_view
 from .....domain.factories.select import SelectorError
 from .....domain.factories.trace import resolve_seeds, trace
@@ -229,7 +228,7 @@ def trace_path(
         m.instance: m
         for m in health.assess(subject, members, st.game, st.projection, st.graph).machines
     }
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     seed_set = set(seeds)
     return {
         "seed": seed,

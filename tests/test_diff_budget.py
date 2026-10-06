@@ -6,13 +6,13 @@ default suite next to the integration-marked test_diff.py.
 
 from __future__ import annotations
 
-from satisfactory_mcp.domain.planning.diff import (
+from satisfactory_mcp.domain.planning.progress.diff import (
     RECLOCK_TOLERANCE,
     _reclock_note,
     _row_for,
     _SaveIndex,
 )
-from satisfactory_mcp.domain.planning.track import page_text
+from satisfactory_mcp.domain.planning.progress.track import page_text
 
 PUMP = "Build_WaterPump_C"
 

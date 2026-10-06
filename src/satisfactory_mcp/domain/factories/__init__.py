@@ -6,8 +6,8 @@ layout and diff all want it, and each was re-deriving fragments of it.
 """
 
 from .build import build_graph
+from .candidates import Candidate, bases, describe, lines_within, product_clusters
 from .cohere import Proposal, propose
-from .identity import Candidate, bases, describe, lines_within, product_clusters
 from .labels import Label, LabelStore
 from .model import Edge, FactoryGraph, kind_of
 from .select import SelectorError, select_machines

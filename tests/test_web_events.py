@@ -23,7 +23,7 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi import Request
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.routers.bridge import events as web_events
 from satisfactory_mcp.interfaces.web.watch_events import WatchEvent

@@ -7,8 +7,9 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from satisfactory_mcp.domain.planning.commission import Energised, Wave, track
-from satisfactory_mcp.domain.planning.diff import DiffRow, build_diff, rate_units
+from satisfactory_mcp.domain.planning.progress.diff import DiffRow, build_diff, rate_units
+from satisfactory_mcp.domain.planning.progress.stages import track
+from satisfactory_mcp.domain.planning.progress.startup import Energised, Wave
 from satisfactory_mcp.domain.world.state import WorldState
 
 

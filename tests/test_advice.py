@@ -10,9 +10,9 @@ import pytest
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.advice import rules
 from satisfactory_mcp.domain.factories import health
-from satisfactory_mcp.domain.planning import manage
-from satisfactory_mcp.domain.planning.manage import PlanStatus
-from satisfactory_mcp.domain.spatial import place
+from satisfactory_mcp.domain.planning.stored import manage
+from satisfactory_mcp.domain.planning.stored.manage import PlanStatus
+from satisfactory_mcp.domain.spatial import surroundings
 
 
 @pytest.fixture
@@ -192,7 +192,7 @@ def test_k9_honours_spoilers_and_never_counts_hard_drives(world, monkeypatch):
         _pickup("hard_drive", False, 50.0),
         _pickup("crashed_drop_pod", False, 60.0),
     ]
-    monkeypatch.setattr(place, "_pickups_near", lambda st, x, y: [dict(p) for p in near])
+    monkeypatch.setattr(surroundings, "_pickups_near", lambda st, x, y: [dict(p) for p in near])
     [quiet] = rules._pickups(world, spoilers=False)
     assert quiet.weight == 1 and quiet.text.endswith("power slug blue 100 m")
     [told] = rules._pickups(world, spoilers=True)

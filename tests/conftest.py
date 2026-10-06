@@ -10,7 +10,7 @@ from satisfactory_mcp import config
 from satisfactory_mcp.core.gamedata.loader import load_docs
 from satisfactory_mcp.core.gamedata.normalize import normalize
 from satisfactory_mcp.core.saveio.projection import SaveError
-from satisfactory_mcp.domain.planning import journal
+from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.domain.world.state import WorldState
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -144,7 +144,7 @@ def _own_shared_settings(monkeypatch, tmp_path):
 def _own_scarcity_tiers(tmp_path_factory):
     """Pricing writes the last scarcity tiers per world; never into the reader's plans.
     Session-wide, because module fixtures price the save before any function fixture runs."""
-    from satisfactory_mcp.domain.planning import prices
+    from satisfactory_mcp.domain.planning.solver import prices
 
     root = tmp_path_factory.mktemp("tiers")
     with pytest.MonkeyPatch.context() as patch:
@@ -272,7 +272,7 @@ def planned(monkeypatch, tmp_path, projection, game) -> WorldState:
     The planning tools read it too, through a new state per call as the server builds one,
     so a plan one call saves is seen by the next.
     """
-    from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+    from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
     from satisfactory_mcp.interfaces.mcp.tools import planning
 
     monkeypatch.setattr(config, "plans_dir", lambda: tmp_path)

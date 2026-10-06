@@ -38,8 +38,8 @@ All steps below are **done**; kept as a record of dependency order.
 3. **`render.py` + game-data tools** — compact TSV, schema-capped limits, honest truncation.
 4. **Save-state tools** — unlocks, power, progression, sites.
 5. **`spatial/`** — exact geometry, generated node table, region-name layer, selector language.
-6. **`planning/optimize.py`** — equality balance, both guards, two-phase solve, grid-import model.
-7. **`planning/advisor.py`** — hard-drive counterfactuals incl. an own-output objective.
+6. **`planning/solver/optimize.py`** — equality balance, both guards, two-phase solve, grid-import model.
+7. **`planning/analysis/advisor.py`** — hard-drive counterfactuals incl. an own-output objective.
 
 Everything in the spec is now built, including §10.3's resources and prompts and
 `rank_build_sites`.
@@ -74,7 +74,7 @@ caches keyed on `build_version`.
 **Two silent failure modes, which is why the gate machinery stays.** A join by instance name simply
 *misses* after a rename — and a per-kind count check cannot see it, because 459 == 459 across a
 rename. And a position can be a metre out while the answer stays confident. The **node-table skew
-gate** — `domain/spatial/nodes.py`, pinned by `tests/test_node_table_skew.py` — reads whatever
+gate** — `domain/spatial/nodes/`, pinned by `tests/test_node_table_skew.py` — reads whatever
 drift the artifact records; today's table matches the installed build so it records none and the
 gate is silent, and the synthetic tests keep the firing half honest for the next update.
 
@@ -1049,7 +1049,7 @@ A full projection per save would be far too expensive to do eagerly, so the shap
 INDEX: one small row per save (playtime, mtime, machine count, power drawn and installed, phase,
 a few inventory totals, per-factory machine counts), computed once and cached beside the
 projection cache, with deep pairwise diffs only on demand between two chosen saves — sharing
-`domain/planning/diff.py`'s machinery rather than growing a second one. Measured on the reference
+`domain/planning/progress/diff.py`'s machinery rather than growing a second one. Measured on the reference
 install: **112 s to index 50 saves cold** — one parse each, and only ever once — for **101 kB**
 of index. Every later question is answered from the rows.
 

@@ -17,8 +17,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from .....domain.factories import identity as fidentity
-from .....domain.factories import naming
+from .....domain.factories import candidates, naming
 from ...serial import bbox_m, error_response, point_m, regions_or_none, require_world
 
 __all__ = ["router"]
@@ -91,7 +90,7 @@ def factories(
     if style not in naming.STYLES:
         return error_response(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
     names = naming.proposal_names(st, st.proposals, style, regions_or_none())
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     named = [
         {
             "name": label.name,
@@ -107,7 +106,7 @@ def factories(
     for index, proposal in enumerate(st.proposals):
         if st.labels.covers(proposal.machines):
             continue  # already named by the player; the label speaks for it
-        cand = fidentity.describe(proposal.machines, st.graph, st.game, st.projection, "proposal")
+        cand = candidates.describe(proposal.machines, st.graph, st.game, st.projection, "proposal")
         proposals.append(
             {
                 "index": index,

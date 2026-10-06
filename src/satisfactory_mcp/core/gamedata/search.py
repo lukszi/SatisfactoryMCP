@@ -18,7 +18,17 @@ from dataclasses import dataclass, field
 
 from .model import GameData, Item, Recipe
 
-__all__ = ["KINDS", "Census", "Hit", "find_items", "makers_of", "search"]
+__all__ = [
+    "KINDS",
+    "Census",
+    "Hit",
+    "find_items",
+    "find_recipe",
+    "makers_of",
+    "match_recipes",
+    "resolve_item",
+    "search",
+]
 
 #: Report order. Part recipes first because they are what a factory runs.
 KINDS = ("part", "building", "manual")
@@ -159,3 +169,41 @@ def makers_of(game: GameData, item: str) -> list[Recipe]:
     return sorted(
         game.producers_of(item, "part"), key=lambda r: (not r.is_alternate, r.name.casefold())
     )
+
+
+def resolve_item(game: GameData, query: str) -> str | None:
+    """Resolve a display name or class id to an item id."""
+    if query in game.items:
+        return query
+    q = query.casefold()
+    exact = [c for c, i in game.items.items() if i.name.casefold() == q]
+    if exact:
+        return exact[0]
+    partial = [c for c, i in game.items.items() if q in i.name.casefold()]
+    return partial[0] if partial else None
+
+
+def match_recipes(game: GameData, pattern: str, pool: list[str]) -> list[str]:
+    """Resolve one recipe pattern against a pool of recipe ids.
+
+    Widening, in this order: exact class id, exact display name, then case-insensitive
+    substring returning EVERY match. That is what makes "Recycled" drop both Recycled
+    Plastic and Recycled Rubber in one go -- banning half a loop leaves the loop intact.
+    """
+    if pattern in pool:
+        return [pattern]
+    q = pattern.strip().casefold()
+    exact = [rid for rid in pool if game.recipes[rid].name.casefold() == q]
+    if exact:
+        return exact
+    return [rid for rid in pool if q in game.recipes[rid].name.casefold()]
+
+
+def find_recipe(game: GameData, text: str) -> tuple[Recipe | None, list[str]]:
+    """One recipe by class id or display name, and every id the text matched.
+
+    The recipe is ``None`` when the text matched nothing or more than one recipe."""
+    if text in game.recipes:
+        return game.recipes[text], [text]
+    hits = match_recipes(game, text, list(game.recipes))
+    return (game.recipes[hits[0]] if len(hits) == 1 else None), hits

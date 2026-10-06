@@ -14,7 +14,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from .....domain.factories import identity as fidentity
+from .....domain.factories import candidates
 from .....domain.factories.health import assess
 from .....domain.power.report import PowerLedger, starved_cause
 from .....domain.spatial import geo
@@ -277,7 +277,7 @@ def power_circuits(
     st = require_world(request, save, world)
 
     counted = biomass == "include"
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     label_of = {anchor: label.name for label in st.labels.labels for anchor in label.anchors}
     pairs = _circuit_rows(st, placed, label_of, counted)
     circuit_of = _circuit_index(pairs)

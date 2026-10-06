@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from fastapi import APIRouter, Query, Request
 
-from .....domain.spatial.origin import resolve_origin
+from .....domain.spatial.places import resolve_place
 from .....domain.world import conduits as conduits_mod
 from ...serial import choice_refusal, cm_to_m, error_response, require_world, resource_name
 
@@ -210,7 +210,7 @@ def world_conduits(
     page = slice(offset, offset + limit)
     if view == "networks":
         try:
-            origin, where = resolve_origin(st, near)
+            origin, where = resolve_place(st, near)
         except ValueError as exc:
             return error_response(f"! {exc}")
         return _networks_reply(conduits_mod.networks(st, origin), where, game, base, page)

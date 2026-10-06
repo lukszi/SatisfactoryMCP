@@ -17,7 +17,7 @@ from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain import advice
 from .....domain.advice import store as hidden_store
-from .....domain.planning import journal
+from .....domain.session import journal
 from .....domain.world import pin
 from ...serial import (
     busy_response,

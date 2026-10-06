@@ -23,16 +23,22 @@ from ....core.schema import NewerSchema
 from ....domain import advice
 from ....domain.advice import store as advice_store
 from ....domain.factories.select import SelectorError
-from ....domain.planning import asks, compare, journal, manage, payback, pins, summary
-from ....domain.planning import bom as bom_mod
-from ....domain.planning import provenance as prov
 from ....domain.planning import siting as siting_mod
-from ....domain.planning.carrier import resolve_tiers
-from ....domain.planning.commission import partition_id
-from ....domain.planning.commission_service import build_commission_report
-from ....domain.planning.diff_service import build_diff_report, plan_progress
-from ....domain.planning.layout_service import LayoutReport, build_layout_report
-from ....domain.planning.planlog import (
+from ....domain.planning.analysis import bom as bom_mod
+from ....domain.planning.analysis import recipe_routes
+from ....domain.planning.analysis.sensitivity import sweep_unlocks
+from ....domain.planning.layout.service import LayoutReport, build_layout_report
+from ....domain.planning.progress.commission_service import build_commission_report
+from ....domain.planning.progress.diff_service import build_diff_report, plan_progress
+from ....domain.planning.progress.stages import partition_id
+from ....domain.planning.readout import payback, summary
+from ....domain.planning.readout.report import build_plan_report
+from ....domain.planning.solver.carrier import resolve_tiers
+from ....domain.planning.solver.prepare import prepare
+from ....domain.planning.solver.scenario import build_scenario
+from ....domain.planning.stored import manage
+from ....domain.planning.stored import provenance as prov
+from ....domain.planning.stored.planlog import (
     Actor,
     AlreadyUndone,
     BaseRevRequired,
@@ -48,19 +54,16 @@ from ....domain.planning.planlog import (
     describe_op,
     factory_words,
 )
-from ....domain.planning.prepare import prepare
-from ....domain.planning.recall import (
+from ....domain.planning.stored.recall import (
     PLAN_DEFAULTS,
     UNSAVED_OVERRIDE,
     overrides_of,
     plan_ref,
     with_overrides,
 )
-from ....domain.planning.recall import recall_plan as _plan_kwargs
-from ....domain.planning.report import build_plan_report
-from ....domain.planning.scenario import build_scenario
-from ....domain.planning.sensitivity import sweep_unlocks
-from ....domain.planning.store import PLAN_ARGS
+from ....domain.planning.stored.recall import recall_plan as _plan_kwargs
+from ....domain.planning.stored.store import PLAN_ARGS
+from ....domain.session import asks, journal, pins
 from ....domain.world import pin
 from ....presenters.text import advice as advice_text
 from ....presenters.text import byproducts as byproducts_text
@@ -664,7 +667,7 @@ def _snapped(sit: siting_mod.Siting) -> siting_mod.Siting:
 
 def _site_preview(g, st, stored, existing, at: str, yaw_deg, footprint: str, ctx) -> str:
     """``site_plan(preview=True)``: the page's preview in words, and a ghost pad there."""
-    from ....domain.planning import site_preview
+    from ....domain.planning.siting import preview as site_preview
     from ....domain.spatial import heightfield
 
     state = _log(st).state(stored.key)
@@ -1805,7 +1808,7 @@ def compare_recipe_options(
     iid = _item_id(item)
     if iid is None:
         return f"no item matching {item!r}"
-    result = compare.compare_routes(
+    result = recipe_routes.compare_routes(
         g,
         st,
         iid,
@@ -2258,7 +2261,7 @@ _cursor: dict[str, tuple[float, dict[str, int]]] = {}
 
 def _page_focus(world_id: str) -> tuple[dict | None, bool]:
     """What the page last said it had open, and whether its heartbeat is fresh."""
-    from ....domain.planning import focus
+    from ....domain.session import focus
 
     found = focus.read(world_id)
     return found, focus.is_open(found)

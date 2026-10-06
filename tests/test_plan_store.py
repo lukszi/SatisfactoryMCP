@@ -11,8 +11,8 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
-from satisfactory_mcp.domain.planning.store import PLAN_ARGS, Plan, PlanStore
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.store import PLAN_ARGS, Plan, PlanStore
 
 pytestmark = pytest.mark.integration
 
@@ -21,7 +21,7 @@ CHAT = Actor("chat")
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     return PlanLog("TESTWORLD")
@@ -104,7 +104,7 @@ def test_a_file_written_before_siting_and_provenance_still_loads(tmp_path, monke
     failure that loses something the player typed."""
     import json
 
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     (tmp_path / "OLDWORLD.json").write_text(
@@ -143,7 +143,7 @@ def live_plans(tmp_path, monkeypatch):
     Written through the store rather than through plan_factory: a rename must not need a
     solve, so the test that proves it must not pay for one either.
     """
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     st = srv._state()
@@ -288,7 +288,7 @@ def test_kwargs_filters_out_anything_no_longer_accepted():
 
 
 def _diff_index(state, request, scope=None):
-    from satisfactory_mcp.domain.planning.diff import _index
+    from satisfactory_mcp.domain.planning.progress.diff import _index
 
     return _index(state, request, scope)
 
@@ -297,7 +297,7 @@ def test_scoping_limits_what_counts_as_already_built(game, state):
     """Unscoped, "you already have 12 of these" counts machines on the far side of the
     map that are busy doing something else -- the wrong answer to "how far along is the
     aluminium setup"."""
-    from satisfactory_mcp.domain.planning.scenario import build_scenario
+    from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
     request = build_scenario(game, state, objective="max_mw", exports=["MW"])
     everything = _diff_index(state, request)
@@ -310,7 +310,7 @@ def test_scoping_limits_what_counts_as_already_built(game, state):
 
 
 def test_an_empty_scope_means_nothing_is_already_built(game, state):
-    from satisfactory_mcp.domain.planning.scenario import build_scenario
+    from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
     request = build_scenario(game, state, objective="max_mw", exports=["MW"])
     index = _diff_index(state, request, set())
@@ -323,7 +323,7 @@ def test_an_empty_scope_means_nothing_is_already_built(game, state):
 def test_a_node_tapped_by_another_factory_is_neither_reusable_nor_free(game, state):
     """It must drop out of BOTH. Left in `tapped` it would read as already built for
     this plan; moved to `free` it would plan a second miner onto an occupied node."""
-    from satisfactory_mcp.domain.planning.scenario import build_scenario
+    from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
     request = build_scenario(game, state, objective="max_mw", exports=["MW"])
     unscoped = _diff_index(state, request)

@@ -46,7 +46,7 @@ def test_every_ambiguous_machine_connector_sits_on_an_extractor_or_generator(liv
     produces and a generator only consumes, so its own nature orients the edge."""
     graph = live.projection["graph"]
     roles, actors = graph["roles"], graph["actors"]
-    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in live._all_records()}
+    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in live.all_records()}
     for edge in graph["material"]:
         for side in (0, 1):
             if not roles[edge[2 + side]].startswith("FGPipeConnectionFactory"):

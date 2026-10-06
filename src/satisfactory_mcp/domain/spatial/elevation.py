@@ -128,7 +128,7 @@ def sample_points(node_table=None, state=None) -> list[Sample]:
     if state is None:
         return out
 
-    for record in state._all_records():
+    for record in state.all_records():
         pos = record.get("pos")
         if pos and len(pos) >= 3:
             out.append(Sample("building", float(pos[0]), float(pos[1]), float(pos[2])))

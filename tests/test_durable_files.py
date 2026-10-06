@@ -33,9 +33,10 @@ from satisfactory_mcp.core import atomic
 from satisfactory_mcp.core.saveio import projection as projection_mod
 from satisfactory_mcp.domain.collectibles import table as collectibles_table
 from satisfactory_mcp.domain.factories.labels import LabelStore
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial import regions as regions_mod
+from satisfactory_mcp.domain.spatial.nodes import table as node_table
 
 # ------------------------------------------------------------------ atomic write
 
@@ -294,7 +295,7 @@ _COLLECTIBLES_A = {
 def test_a_regenerated_node_table_is_picked_up_without_a_restart(tmp_path, monkeypatch):
     """The failure this replaces: the generator prints new counts, the server quotes old ones."""
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    nodes_mod._TABLE.clear()
+    node_table._TABLE.clear()
     path = tmp_path / "resource_nodes.json"
 
     _write(path, _NODES_A, 1_000_000_000)
@@ -308,7 +309,7 @@ def test_a_regenerated_node_table_is_picked_up_without_a_restart(tmp_path, monke
     assert len(second) == 2
     assert second.meta == {"v": 2}
     # One entry, like the maxsize=1 it replaces: the old table is dead, not retained.
-    assert len(nodes_mod._TABLE) == 1
+    assert len(node_table._TABLE) == 1
 
 
 def test_a_regenerated_region_map_is_picked_up_without_a_restart(tmp_path, monkeypatch):
@@ -358,7 +359,7 @@ def test_the_miss_behaviour_of_all_three_loaders_is_unchanged(tmp_path, monkeypa
     fresh clone and every caller degrades to the save-only census.
     """
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path / "empty")
-    nodes_mod._TABLE.clear()
+    node_table._TABLE.clear()
     regions_mod._MAP.clear()
     collectibles_table._TABLE.clear()
 

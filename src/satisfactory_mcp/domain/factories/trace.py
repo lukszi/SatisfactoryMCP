@@ -39,8 +39,9 @@ from dataclasses import dataclass, field
 
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
+from .select import SelectorError, resolve_factory
 
-__all__ = ["Reached", "Trace", "orient", "resolve_seeds", "trace"]
+__all__ = ["Reached", "Trace", "feeder_records", "live_feeders", "orient", "resolve_seeds", "trace"]
 
 #: Hard stop on the walk. The reference save's deepest chain is 72 hops of mostly belt,
 #: so this is far above anything real -- it exists so a malformed graph cannot spin.
@@ -112,7 +113,7 @@ def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, se
     """
     graph = state.projection.get("graph") or {}
     roles, actors = graph.get("roles") or [], graph.get("actors") or []
-    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in state._all_records()}
+    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in state.all_records()}
 
     up: dict[str, set[str]] = {}
     down: dict[str, set[str]] = {}
@@ -158,10 +159,7 @@ def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
 
     Raises ``SelectorError`` when the text is none of the three.
     """
-    from .resolve import resolve_factory
-    from .select import SelectorError
-
-    records = {r["instance"].rsplit(".", 1)[-1]: r for r in state._all_records()}
+    records = {r["instance"].rsplit(".", 1)[-1]: r for r in state.all_records()}
     what = seed.strip()
     if what.casefold().startswith("label:"):
         wanted = what[len("label:") :].strip()
@@ -198,7 +196,7 @@ def trace(state, game: GameData, seeds: list[str], direction: str = "up") -> Tra
     adjacency = up if direction == "up" else down
     out = Trace(direction=direction, seeds=list(seeds), ambiguous=ambiguous)
 
-    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in state._all_records()}
+    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in state.all_records()}
     start = [s for s in seeds if s in cls_of or s in adjacency]
     seen: dict[str, int] = {s: 0 for s in start}
     queue: deque[str] = deque(start)
@@ -257,7 +255,7 @@ def power_at_risk(state, game: GameData, machines: list[str]) -> tuple[float, in
     downstream = trace(state, game, machines, direction="down")
     mw = 0.0
     total = running = 0
-    by_instance = {r["instance"].rsplit(".", 1)[-1]: r for r in state._all_records()}
+    by_instance = {r["instance"].rsplit(".", 1)[-1]: r for r in state.all_records()}
     for row in downstream.reached:
         if row.kind != "generator":
             continue
@@ -271,3 +269,30 @@ def power_at_risk(state, game: GameData, machines: list[str]) -> tuple[float, in
         if building:
             mw += building.power_production_mw * (record.get("clock") or 1.0)
     return mw, total, running
+
+
+def live_feeders(g, st, floor_mw: float = 1.0) -> list[tuple[str, float]]:
+    """Built extractors whose output currently reaches a running generator.
+
+    Which of the machines already on the ground are load-bearing right now, which a startup
+    order cannot answer on its own. The distribution is lopsided in practice -- one of
+    sixteen Oil Extractors carrying all the running fuel generation -- so "repipe the
+    extractors" is usually many safe moves and one that browns out the base.
+    """
+    return [
+        (f"{name} {record['instance'].rsplit('.', 1)[-1][-10:]}", mw)
+        for record, name, mw in feeder_records(g, st, floor_mw)
+    ]
+
+
+def feeder_records(g, st, floor_mw: float = 1.0) -> list[tuple[dict, str, float]]:
+    """``live_feeders`` as (extractor record, building name, MW), largest first."""
+    out: list[tuple[dict, str, float]] = []
+    for record in st.projection.get("extractors", ()):
+        instance = record["instance"].rsplit(".", 1)[-1]
+        mw, _, running = power_at_risk(st, g, [instance])
+        if running and mw >= floor_mw:
+            building = g.buildings.get(record.get("cls", ""))
+            out.append((record, building.name if building else str(record.get("cls")), mw))
+    out.sort(key=lambda row: -row[2])
+    return out

@@ -9,8 +9,8 @@ from collections.abc import Iterable
 
 from ...core.gamedata.model import GameData
 from . import flowgraph
+from .candidates import Candidate, describe
 from .flowgraph import FlowGraph
-from .identity import Candidate, describe
 from .labels import slugify
 from .query import build_view
 

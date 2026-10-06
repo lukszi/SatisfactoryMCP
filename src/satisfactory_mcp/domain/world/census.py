@@ -82,7 +82,3 @@ class BuildCensus:
     def all_records(self) -> list[dict]:
         p = self.projection
         return [*p.get("machines", ()), *p.get("extractors", ()), *p.get("generators", ())]
-
-    #: The name this was born with, kept because callers outside this package still
-    #: spell it that way.
-    _all_records = all_records

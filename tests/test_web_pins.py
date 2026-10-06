@@ -14,8 +14,8 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import journal, pins
-from satisfactory_mcp.domain.planning.planlog import PlanLog
+from satisfactory_mcp.domain.planning.stored.planlog import PlanLog
+from satisfactory_mcp.domain.session import journal, pins
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.web.app import create_app
 
@@ -71,7 +71,9 @@ def test_create_is_201_then_200_for_the_same_object(client):
     assert again.json()["n"] == 1
     [entry] = _journal()
     assert entry["kind"] == "pin.add" and entry["args"] == {"n": 1, "kind": "point"}
-    assert entry["text"] == "pinned pin:1 point x 100, y -200 m" and entry["actor"]["kind"] == "page"
+    assert (
+        entry["text"] == "pinned pin:1 point x 100, y -200 m" and entry["actor"]["kind"] == "page"
+    )
 
 
 def test_the_list_is_every_live_pin_with_the_version(client):

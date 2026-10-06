@@ -19,6 +19,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from ...core.saveio import rows as saverows
+from .select import resolve_factory
 
 __all__ = [
     "BAND_EPS_CM",
@@ -744,8 +745,6 @@ def _narrow(report: FloorReport, st, platform: int | None, label: str | None) ->
         wanted.add(platform)
         selection.append(f"platform {platform}")
     if label is not None:
-        from .resolve import resolve_factory
-
         name, machines = resolve_factory(st, label)
         selection.append(f"factory {name!r}")
         chosen = set(machines)

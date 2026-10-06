@@ -11,8 +11,8 @@ from pathlib import Path
 
 from ... import config
 from ...domain import settings
-from ...domain.planning import journal
-from ...domain.planning.planlog import Commit, PlanLog, PlanLogError
+from ...domain.planning.stored.planlog import Commit, PlanLog, PlanLogError
+from ...domain.session import journal
 from .serial import actor_json, settings_json
 from .watch_events import KIND_ACTIVITY, KIND_PLANS, KIND_SETTINGS, WatchEvent
 
