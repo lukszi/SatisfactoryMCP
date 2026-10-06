@@ -11,12 +11,19 @@ import logging
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ....core import atomic, filelock, schema
 from ....core.gamedata.model import GameData
+from ....core.jsontypes import JsonObject, JsonValue
 from ....core.saveio.records import instance_leaf
+from ....core.saveio.schema import GeneratorRecord, Projection
 from ...power.report import BIOMASS_BURNERS, generator_building
 from ..stored.store import PlanStore
+from .views import PowerSource
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ...world.state import WorldState
 
 __all__ = [
     "AREA_POINTS_M2",
@@ -46,16 +53,30 @@ def tiers_path(world: str) -> Path:
     return PlanStore.path_for(world).with_suffix("") / "tiers.json"
 
 
+def _object(value: JsonValue) -> JsonObject:
+    if not isinstance(value, dict):
+        raise TypeError(f"expected an object, not {type(value).__name__}")
+    return value
+
+
+def _number(value: JsonValue) -> float:
+    """``float(value)``, refusing what ``float`` refuses with the same ``TypeError``."""
+    if not isinstance(value, str | int | float):
+        raise TypeError(f"expected a number, not {type(value).__name__}")
+    return float(value)
+
+
 def _read_tiers(path: Path) -> dict[tuple[str, str], float]:
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(path.read_text(encoding="utf-8"))
         schema.check(raw, TIER_SCHEMA, path)
-        lines = raw.get("tiers") or {}
-        return {
-            tuple(key.split("|", 1)): float(tier)
-            for key, tier in lines.items()
-            if "|" in key and float(tier) in TIERS
-        }
+        lines = _object(raw).get("tiers") or {}
+        tiers: dict[tuple[str, str], float] = {}
+        for key, tier in _object(lines).items():
+            if "|" in key and _number(tier) in TIERS:
+                building, item = key.split("|", 1)
+                tiers[(building, item)] = _number(tier)
+        return tiers
     except FileNotFoundError:
         return {}
     except (OSError, ValueError, TypeError, AttributeError):
@@ -75,11 +96,11 @@ def _write_tiers(path: Path, tiers: dict[tuple[str, str], float]) -> None:
 class Prices:
     """One save's prices: build points per building, scarcity tiers, and the grid's price."""
 
-    build_points: dict[str, float] = field(default_factory=dict)
-    tiers: dict[tuple[str, str], float] = field(default_factory=dict)
+    build_points: dict[str, float] = field(default_factory=dict[str, float])
+    tiers: dict[tuple[str, str], float] = field(default_factory=dict[tuple[str, str], float])
     #: Points per MWh, MW-weighted over the grid's running generators.
     power_price: float = 0.0
-    grid_mix: list[dict] = field(default_factory=list)
+    grid_mix: list[PowerSource] = field(default_factory=list[PowerSource])
 
 
 def _sink(g: GameData, item: str) -> float:
@@ -87,7 +108,7 @@ def _sink(g: GameData, item: str) -> float:
     return float(it.sink_points) if it is not None else 0.0
 
 
-def nameplate_surplus(g: GameData, projection: dict) -> dict[str, float]:
+def nameplate_surplus(g: GameData, projection: Projection) -> dict[str, float]:
     """Per-minute production minus consumption of every running machine at its clock."""
     net: dict[str, float] = {}
     for rec in projection.get("machines", ()):
@@ -146,7 +167,10 @@ def material_tiers(
 
 
 def _all_tiers(
-    g: GameData, stock: dict[str, float], surplus: dict[str, float], before: dict
+    g: GameData,
+    stock: dict[str, float],
+    surplus: dict[str, float],
+    before: dict[tuple[str, str], float],
 ) -> dict[tuple[str, str], float]:
     out: dict[tuple[str, str], float] = {}
     for cls, b in g.buildings.items():
@@ -178,10 +202,10 @@ def fuel_price(g: GameData, cls: str, fuel: str | None) -> float:
     if b is None or item is None or not b.power_production_mw:
         return 0.0
     per_hour = b.fuel_rate_per_min(item) * 60
-    return per_hour * _sink(g, fuel) / b.power_production_mw
+    return per_hour * float(item.sink_points) / b.power_production_mw
 
 
-def _generator_source(g: GameData, rec: dict) -> tuple[str, float, float] | None:
+def _generator_source(g: GameData, rec: GeneratorRecord) -> tuple[str, float, float] | None:
     """``(source name, MW, points per MWh)`` for one generator record, None if not one."""
     b = generator_building(g, rec.get("cls", ""))
     if b is None:
@@ -196,9 +220,11 @@ def _generator_source(g: GameData, rec: dict) -> tuple[str, float, float] | None
     return g.item_name(fuel), mw, fuel_price(g, b.cls, fuel)
 
 
-def grid_mix(g: GameData, projection: dict, wired, biomass: bool) -> tuple[float, list[dict]]:
+def grid_mix(
+    g: GameData, projection: Projection, wired: frozenset[str] | None, biomass: bool
+) -> tuple[float, list[PowerSource]]:
     """The MW-weighted running price of the grid, and its sources, largest first."""
-    rows: dict[str, dict] = {}
+    rows: dict[str, PowerSource] = {}
     for rec in projection.get("generators", ()):
         if rec.get("paused") or (not biomass and rec.get("cls") in BIOMASS_BURNERS):
             continue
@@ -220,7 +246,7 @@ def grid_mix(g: GameData, projection: dict, wired, biomass: bool) -> tuple[float
     return round(price, 1), mix
 
 
-def prices_for(state, biomass: bool) -> Prices:
+def prices_for(state: WorldState, biomass: bool) -> Prices:
     """Every building's points and the grid's price for ``state``, cached per projection."""
 
     def build() -> Prices:

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-__all__ = ["OverclockOption", "OverclockRow", "PowerSource", "RowName"]
+__all__ = ["OverclockOption", "OverclockPick", "OverclockRow", "PowerSource", "RowName"]
 
 
 class OverclockOption(TypedDict):
@@ -43,6 +43,20 @@ class OverclockRow(TypedDict):
 class RowName(TypedDict):
     label: str
     building: str
+
+
+class OverclockPick(TypedDict):
+    """The overclock-last pick at one solve's horizon; ``OverclockView`` adds the save's stock."""
+
+    on: bool
+    rows: list[OverclockRow]
+    shards: int
+    machines_saved: int
+    extra_mw: float
+    without: list[RowName]
+    unused: list[RowName]
+    pinned_last: int
+    pinned_spread: int
 
 
 class PowerSource(TypedDict):
