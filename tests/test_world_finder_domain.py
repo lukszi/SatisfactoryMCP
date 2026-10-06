@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
+from satisfactory_mcp.core.gamedata.search import resolve_item
 from satisfactory_mcp.domain.collectibles import service
-from satisfactory_mcp.domain.planning.solver.scenario import resolve_item
 from satisfactory_mcp.domain.spatial import geo, maplink, regions, surroundings
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.nodes import search as node_search

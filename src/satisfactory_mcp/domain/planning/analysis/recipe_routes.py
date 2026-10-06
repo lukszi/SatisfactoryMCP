@@ -72,10 +72,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 from ....core.gamedata.model import GameData
+from ....core.gamedata.search import resolve_item
 from ...world.state import WorldState
 from ..solver.model import Scenario, Solution
 from ..solver.optimize import solve
-from ..solver.scenario import build_scenario, resolve_item
+from ..solver.scenario import build_scenario
 
 __all__ = [
     "PROBE_RATE",

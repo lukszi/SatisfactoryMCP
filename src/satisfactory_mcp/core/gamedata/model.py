@@ -126,6 +126,11 @@ class Recipe:
     def is_event(self) -> bool:
         return bool(self.events)
 
+    @property
+    def main_product(self) -> str | None:
+        """The item the recipe is named for: its first product, or None with no products."""
+        return self.products[0].item if self.products else None
+
     def rate_of(self, item: str) -> float:
         """Net per-minute rate of ``item`` for one machine at 100% clock."""
         out = sum(f.per_min for f in self.products if f.item == item)

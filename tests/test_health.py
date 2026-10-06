@@ -13,7 +13,8 @@ from collections import Counter
 import pytest
 
 from satisfactory_mcp.core.saveio import ports
-from satisfactory_mcp.domain.factories.build import build_graph, class_of
+from satisfactory_mcp.core.saveio.records import actor_class
+from satisfactory_mcp.domain.factories.build import build_graph
 from satisfactory_mcp.domain.factories.health import (
     ACTIONABLE,
     CONNECTION,
@@ -449,7 +450,7 @@ def _grid(*wires):
     """A real ``FactoryGraph`` carrying the given power edges and nothing else."""
     graph = FactoryGraph(cls={})
     for a, b in wires:
-        graph.cls[a], graph.cls[b] = class_of(a), class_of(b)
+        graph.cls[a], graph.cls[b] = actor_class(a), actor_class(b)
         graph.power.append(Edge(a=a, b=b))
     return graph
 

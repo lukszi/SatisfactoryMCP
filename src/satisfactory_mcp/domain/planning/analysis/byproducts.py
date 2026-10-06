@@ -42,12 +42,13 @@ from scipy.optimize import linprog
 from ....core import solverlane
 from ....core.gamedata.constants import AWESOME_SINK_MW
 from ....core.gamedata.model import GameData
+from ....core.gamedata.search import resolve_item
 from ....core.gamedata.unlocks import granted_by_label
 from ...world.state import WorldState
 from ..solver.model import MW, Process, Scenario, Solution
 from ..solver.optimize import solve
 from ..solver.processes import build_processes
-from ..solver.scenario import build_scenario, resolve_item
+from ..solver.scenario import build_scenario
 
 __all__ = ["Blocker", "Fix", "Loop", "Outlet", "Report", "analyse"]
 

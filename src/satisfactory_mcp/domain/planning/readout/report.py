@@ -10,11 +10,11 @@ from dataclasses import dataclass, field
 
 from ....core.gamedata.constants import WATER_EXTRACTOR_WARN_AT
 from ....core.gamedata.model import GameData
+from ....core.gamedata.search import resolve_item
 from ...world.state import WorldState
 from ..solver.model import MW
 from ..solver.prepare import PreparedPlan, prepare
 from ..solver.processes import build_processes
-from ..solver.scenario import resolve_item
 from .slice import PlanSlice, slice_of
 
 __all__ = ["PlanFactoryReport", "build_plan_report"]

@@ -18,8 +18,9 @@ from itertools import pairwise
 
 import pytest
 
+from satisfactory_mcp.core.saveio.records import actor_class
 from satisfactory_mcp.domain.factories import candidates
-from satisfactory_mcp.domain.factories.build import build_graph, class_of
+from satisfactory_mcp.domain.factories.build import build_graph
 from satisfactory_mcp.domain.factories.labels import Label, LabelStore
 from satisfactory_mcp.domain.factories.select import SelectorError, select_machines
 
@@ -88,10 +89,10 @@ def graph(projection):
 # ---------------------------------------------------------------- model
 
 
-def test_class_of_strips_the_instance_id_but_not_the_class_suffix():
-    assert class_of("Build_ConstructorMk1_C_2147441119") == "Build_ConstructorMk1_C"
+def test_actor_class_strips_the_instance_id_but_not_the_class_suffix():
+    assert actor_class("Build_ConstructorMk1_C_2147441119") == "Build_ConstructorMk1_C"
     # No trailing number: leave it alone rather than eating "_C".
-    assert class_of("Build_ConstructorMk1_C") == "Build_ConstructorMk1_C"
+    assert actor_class("Build_ConstructorMk1_C") == "Build_ConstructorMk1_C"
 
 
 def test_a_machine_wired_to_nothing_is_still_a_node(graph):

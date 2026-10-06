@@ -16,7 +16,8 @@ from dataclasses import replace as replace_scenario
 from typing import TYPE_CHECKING
 
 from ....core.gamedata.constants import WATER_EXTRACTOR_CAP_ASSUMED
-from ....core.gamedata.model import GameData, Recipe
+from ....core.gamedata.model import GameData
+from ....core.gamedata.search import match_recipes, resolve_item
 from ...spatial import nodes as nodes_mod
 from ...spatial.nodes.selectors import Selection, select_nodes
 from .. import siting as siting_mod
@@ -31,9 +32,6 @@ __all__ = [
     "EXPORT_HELP",
     "PlanRequest",
     "build_scenario",
-    "find_recipe",
-    "match_recipes",
-    "resolve_item",
     "select_for",
     "shard_stock",
 ]
@@ -54,18 +52,6 @@ _EXTRACTOR_PREFERENCE = (
 )
 
 
-def resolve_item(game: GameData, query: str) -> str | None:
-    """Resolve a display name or class id to an item id."""
-    if query in game.items:
-        return query
-    q = query.casefold()
-    exact = [c for c, i in game.items.items() if i.name.casefold() == q]
-    if exact:
-        return exact[0]
-    partial = [c for c, i in game.items.items() if q in i.name.casefold()]
-    return partial[0] if partial else None
-
-
 def _export_token(game: GameData, name: str) -> tuple[str | None, str | None]:
     """Resolve one export token to an item id, or say why it cannot be.
 
@@ -80,32 +66,6 @@ def _export_token(game: GameData, name: str) -> tuple[str | None, str | None]:
     if resolved is None:
         return None, f"no item matches {name!r}"
     return resolved, None
-
-
-def match_recipes(game: GameData, pattern: str, pool: list[str]) -> list[str]:
-    """Resolve one recipe pattern against a pool of recipe ids.
-
-    Widening, in this order: exact class id, exact display name, then case-insensitive
-    substring returning EVERY match. That is what makes "Recycled" drop both Recycled
-    Plastic and Recycled Rubber in one go -- banning half a loop leaves the loop intact.
-    """
-    if pattern in pool:
-        return [pattern]
-    q = pattern.strip().casefold()
-    exact = [rid for rid in pool if game.recipes[rid].name.casefold() == q]
-    if exact:
-        return exact
-    return [rid for rid in pool if q in game.recipes[rid].name.casefold()]
-
-
-def find_recipe(game: GameData, text: str) -> tuple[Recipe | None, list[str]]:
-    """One recipe by class id or display name, and every id the text matched.
-
-    The recipe is ``None`` when the text matched nothing or more than one recipe."""
-    if text in game.recipes:
-        return game.recipes[text], [text]
-    hits = match_recipes(game, text, list(game.recipes))
-    return (game.recipes[hits[0]] if len(hits) == 1 else None), hits
 
 
 def select_for(game: GameData, state: WorldState, sources: list[str] | None) -> Selection:

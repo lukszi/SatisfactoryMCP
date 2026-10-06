@@ -15,9 +15,9 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from fastapi import APIRouter, Query, Request
 
+from ....core.gamedata.search import resolve_item
 from ....core.text import ago
 from ....domain.collectibles import service as collectibles_service
-from ....domain.planning.solver.scenario import resolve_item
 from ....domain.spatial import geo, ranking, surroundings
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions

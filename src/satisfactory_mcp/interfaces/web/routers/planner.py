@@ -20,9 +20,9 @@ from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
 
+from ....core.gamedata.search import resolve_item
 from ....domain.planning.analysis import swaps
 from ....domain.planning.readout import summary
-from ....domain.planning.solver.scenario import resolve_item
 from ....domain.planning.stored import manage
 from ....domain.planning.stored.planlog import InvalidOp, PlanArgs, PlanLog, UnknownPlan
 from ....domain.session import focus, journal

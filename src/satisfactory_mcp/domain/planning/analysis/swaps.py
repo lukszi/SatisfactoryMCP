@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from ....core.gamedata import search
 from ....core.gamedata.model import GameData, Recipe
+from ....core.gamedata.search import match_recipes
 from ....core.gamedata.unlocks import granted_by
 from ...world.state import WorldState
 from ..readout import summary
-from ..solver.scenario import match_recipes
 from ..stored import manage
 from ..stored.planlog import PlanArgs, PlanState
 

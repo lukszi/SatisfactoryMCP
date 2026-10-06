@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import cached_property
 
+from ....core.gamedata.constants import WATER_PUMP
 from ....core.text import num
 from ...world.sites import selector as site_selector
 from .. import geo, heightfield, ranking
@@ -39,7 +40,6 @@ STATUSES = ("all", "free", "tapped")
 FIELD_LINK_M = 200.0
 
 WATER = "Desc_Water_C"
-WATER_PUMP = "Build_WaterPump_C"
 
 
 def status_of(row: dict) -> str:

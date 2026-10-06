@@ -64,7 +64,7 @@ def recipe_detail(recipe_id: str) -> str:
     that buys nothing -- `match_recipes` already does exactly this resolution for
     `exclude_recipes`.
     """
-    from ....domain.planning.solver.scenario import find_recipe
+    from ....core.gamedata.search import find_recipe
 
     g = game()
     r, hits = find_recipe(g, recipe_id)

@@ -22,10 +22,10 @@ from ...core.gameassets import provenance
 from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
+from ...core.gamedata.search import resolve_item
 from ...core.schema import NewerSchema
 from ...domain import settings
 from ...domain.factories.select import resolve_factory as _resolve_factory
-from ...domain.planning.solver.scenario import resolve_item
 from ...domain.planning.stored.planlog import Actor
 from ...domain.session import journal
 from ...domain.spatial.places import player_xy as _player_xy

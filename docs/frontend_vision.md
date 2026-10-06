@@ -1068,7 +1068,7 @@ Phase 5 of §6. It is a read-only surface over the game data, marked against the
 ### 12.1 What was built
 
 - **Routes.** Each calls the function its MCP tool calls. `find_items` and `makers_of` in
-  `core/gamedata/search.py` and `find_recipe` in `domain/planning/solver/scenario.py` moved out of
+  `core/gamedata/search.py` and `find_recipe` moved out of
   the tool bodies so both surfaces share them.
 
   | Route | Tool | Needs a save |
