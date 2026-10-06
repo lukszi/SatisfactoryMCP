@@ -7,8 +7,8 @@ import { button, fieldError } from "../kit/dashkit";
 import { make } from "../kit/dom";
 import { liveStore } from "./livestore";
 import { state } from "../app/state";
-import { fail, friendly, note } from "../kit/toast";
-import { ASK_KIND, W } from "../kit/words";
+import { fail, friendlyError, notify } from "../kit/toast";
+import { ASK_KIND, WORDS } from "../kit/words";
 
 import type { ApiError, ApiPath, StatusError } from "../api/client";
 import type { AskAbout, AskDropped, AskRow, AsksResponse, AskStaleResponse } from "../api/shapes";
@@ -30,7 +30,7 @@ export var onAsks = store.on;
 export var askStore = store.read;
 export var refetchAsks = store.refetch;
 export var loadAsks = store.load;
-var notify = store.notify;
+var notifyAskListeners = store.notify;
 
 export function liveAsks(): AskRow[] {
   var data = askStore().data;
@@ -84,7 +84,7 @@ function openBar(about: AskAbout, opener: string): void {
   bar.problem = "";
   bar.enter = true;
   bar.back = "";
-  notify();
+  notifyAskListeners();
 }
 
 export function askOpen(): boolean {
@@ -103,7 +103,7 @@ export function closeBar(): void {
   bar.text = "";
   bar.problem = "";
   bar.busy = false;
-  notify();
+  notifyAskListeners();
 }
 
 function queue(box: HTMLInputElement): void {
@@ -126,17 +126,17 @@ function queue(box: HTMLInputElement): void {
       refetchAsks();
       copyText(row.copy).then(
         function () {
-          note("queued as " + row.id + " · copied: paste it into chat");
+          notify("queued as " + row.id + " · copied: paste it into chat");
         },
         function () {
-          note("queued as " + row.id + " · not copied: the browser refused; copy it from the asks card");
+          notify("queued as " + row.id + " · not copied: the browser refused; copy it from the asks card");
         }
       );
     })
     .catch(function (reason) {
       bar.busy = false;
-      fail("the ask was not queued: " + friendly(reason));
-      notify();
+      fail("the ask was not queued: " + friendlyError(reason));
+      notifyAskListeners();
     });
 }
 
@@ -145,8 +145,8 @@ export function renderAskBar(parent: HTMLElement): void {
   if (!about) return;
   var box = make("section", "ask-bar");
   box.setAttribute("role", "region");
-  box.setAttribute("aria-label", W.askChat);
-  var what = make("span", "ask-what", W.askChat + " about ");
+  box.setAttribute("aria-label", WORDS.askChat);
+  var what = make("span", "ask-what", WORDS.askChat + " about ");
   what.appendChild(make("b", "", askLabel(about)));
   box.appendChild(what);
   var line = make("div", "ask-line");
@@ -217,7 +217,7 @@ export function dropAsk(row: AskRow): void {
   store.once(row.n, function () {
     return send<AskDropped>("DELETE", ASK_ONE, { rev: row.rev }, String(row.n))
       .then(function () {
-        note("deleted " + row.id);
+        notify("deleted " + row.id);
         refetchAsks();
       })
       .catch(function (reason) {
@@ -225,7 +225,7 @@ export function dropAsk(row: AskRow): void {
         if (current) {
           var body = (reason as StatusError).body as AskStaleResponse;
           fail(body.error || row.id + " changed since you read it");
-        } else fail("could not delete " + row.id + ": " + friendly(reason));
+        } else fail("could not delete " + row.id + ": " + friendlyError(reason));
       });
   });
 }

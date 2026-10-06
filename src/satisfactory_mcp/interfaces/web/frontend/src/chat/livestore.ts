@@ -3,7 +3,7 @@
 
 import { get } from "../api/client";
 import { state } from "../app/state";
-import { friendly } from "../kit/toast";
+import { friendlyError } from "../kit/toast";
 
 import type { ApiError, ApiPath, StatusError } from "../api/client";
 
@@ -69,7 +69,7 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
       })
       .catch(function (reason) {
         if (!current()) return;
-        error = friendly(reason);
+        error = friendlyError(reason);
         world = asked;
         notify();
       })

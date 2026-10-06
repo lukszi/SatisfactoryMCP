@@ -1,12 +1,12 @@
 /* World > nodes and fields: the node finder as tables.
  * See docs/world-finders_contract.md §2.1 and §2.2. */
 
-import { button, chip, empty, note, statusChip, table } from "../../kit/dashkit";
-import { mapButton, render, toMap } from "../shell";
+import { appendNote, button, chip, empty, statusChip, table } from "../../kit/dashkit";
+import { leaveDashThen, mapButton, render } from "../shell";
 import { make } from "../../kit/dom";
 import { showRows } from "../../map/tools/finder";
 import { fieldLabel, fieldSelection, nodeLabel, nodeRate, nodeSelection, resourceOptions, worldUrl } from "./world-finds";
-import { count, metres, num, perMin } from "../../kit/format";
+import { count, formatNumber, metres, perMin } from "../../kit/format";
 import { isSelected, select } from "../../app/selection";
 import { state } from "../../app/state";
 import {
@@ -25,7 +25,7 @@ import {
   waiting,
   want,
 } from "./world";
-import { counted, NODE_KIND, W } from "../../kit/words";
+import { counted, NODE_KIND, WORDS } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
 import type { FoundField, FoundNode, NodeFindResponse, TableAge } from "../../api/shapes";
@@ -49,8 +49,8 @@ var PURITIES: [string, string][] = [
 
 var STATUSES: [string, string][] = [
   ["", "free or tapped"],
-  ["free", W.free],
-  ["tapped", W.tapped],
+  ["free", WORDS.free],
+  ["tapped", WORDS.tapped],
 ];
 
 function kinds(): [string, string][] {
@@ -63,7 +63,7 @@ function kinds(): [string, string][] {
 
 function rate(value: number, unit: string): string {
   if (unit === "/min") return perMin(value);
-  if (unit === "m3/min") return num(value, 1) + " m³/min";
+  if (unit === "m3/min") return formatNumber(value, 1) + " m³/min";
   return perMin(value) + "*";
 }
 
@@ -76,7 +76,7 @@ function byDistance<R extends { distance_m: number | null }>(rows: R[], near: bo
 
 function openRows(set: Shown, title: string, seed?: number): void {
   var dash = state.dash;
-  toMap(function () {
+  leaveDashThen(function () {
     showRows(set, title, dash, seed);
   });
 }
@@ -92,7 +92,7 @@ export function nodeTable(rows: FoundNode[], near: boolean, stale?: TableAge | n
   var columns: Column<FoundNode>[] = [
     {
       key: "node",
-      label: W.node,
+      label: WORDS.node,
       sort: function (n) {
         return n.resource_name + " " + n.purity;
       },
@@ -177,7 +177,7 @@ function fieldTable(rows: FoundField[], near: boolean): HTMLElement {
   var columns: Column<FoundField>[] = [
     {
       key: "field",
-      label: W.field,
+      label: WORDS.field,
       sort: function (f) {
         return fieldLabel(f);
       },
@@ -208,7 +208,7 @@ function fieldTable(rows: FoundField[], near: boolean): HTMLElement {
     },
     {
       key: "free",
-      label: W.free,
+      label: WORDS.free,
       align: "right",
       title: "per min on nodes with no extractor that this world can tap",
       sort: function (f) { return f.free; },
@@ -229,7 +229,7 @@ function fieldTable(rows: FoundField[], near: boolean): HTMLElement {
       render: function (f) {
         var cell = make("span", "", f.region || "off the map");
         cell.appendChild(make("span", "dash-sub", [f.grid, f.direction].filter(Boolean).join(" · ")));
-        if (f.locked) cell.appendChild(chip(W.locked, "muted", "some of its nodes need an extractor not unlocked yet"));
+        if (f.locked) cell.appendChild(chip(WORDS.locked, "muted", "some of its nodes need an extractor not unlocked yet"));
         return cell;
       },
     },
@@ -279,14 +279,14 @@ function filters(card: HTMLElement, params: Record<string, string>): void {
 
 function headline(card: HTMLElement, d: NodeFindResponse, view: string): void {
   var line = make("div", "world-census");
-  var n = view === "fields" ? counted(d.fields.length, W.field) : counted(d.count, W.node);
+  var n = view === "fields" ? counted(d.fields.length, WORDS.field) : counted(d.count, WORDS.node);
   var rows = view === "fields" ? d.fields.length : d.nodes.length;
   line.appendChild(make("span", "", rows ? n + " · " + rate(d.total, d.unit) + " · " + rate(d.free, d.unit) + " free and reachable" : n));
   if (rows) {
     line.appendChild(
       button("show all on map", function () {
         var set: Shown = view === "fields" ? { kind: "fields", rows: byDistance(d.fields, !!d.where) } : { kind: "nodes", rows: byDistance(d.nodes, !!d.where) };
-        openRows(set, (view === "fields" ? W.field + "s" : W.node + "s") + (d.where ? " near " + d.where : " · " + d.description));
+        openRows(set, (view === "fields" ? WORDS.field + "s" : WORDS.node + "s") + (d.where ? " near " + d.where : " · " + d.description));
       }, { map: true, title: "ring every row on the map and list them beside it" })
     );
   }
@@ -302,18 +302,18 @@ function headline(card: HTMLElement, d: NodeFindResponse, view: string): void {
     });
     if (d.where) sel.appendChild(document.createTextNode("· near " + d.where));
     card.appendChild(sel);
-  } else if (d.where) note(card, "near " + d.where);
-  if (d.elevation) caveats.push("between " + num(d.elevation[0], 0) + " and " + num(d.elevation[1], 0) + " m up");
+  } else if (d.where) appendNote(card, "near " + d.where);
+  if (d.elevation) caveats.push("between " + formatNumber(d.elevation[0], 0) + " and " + formatNumber(d.elevation[1], 0) + " m up");
   if (d.water && d.water.pumps) {
     caveats.push(
       counted(d.water.pumps, "water pump spot") +
-        (d.water.per_pump_m3_min === null ? "" : " · " + num(d.water.per_pump_m3_min, 1) + " m³/min each") +
-        (d.water.sea_level_m === null ? "" : " · sea level " + num(d.water.sea_level_m, 0) + " m")
+        (d.water.per_pump_m3_min === null ? "" : " · " + formatNumber(d.water.per_pump_m3_min, 1) + " m³/min each") +
+        (d.water.sea_level_m === null ? "" : " · sea level " + formatNumber(d.water.sea_level_m, 0) + " m")
     );
   }
   caveats = caveats.concat(d.notes);
   if (d.save_error) caveats.push(d.save_error + "; occupancy unknown");
-  if (caveats.length) note(card, caveats.join(" · "));
+  if (caveats.length) appendNote(card, caveats.join(" · "));
   staleLine(card, d.stale);
 }
 
@@ -344,7 +344,7 @@ export function renderNodes(body: HTMLElement, view: "nodes" | "fields", params:
     }
     var fields = fieldTable(d.fields, near);
     card.appendChild(fields);
-    capped(card, fields, d.fields.length, "fields", W.field);
+    capped(card, fields, d.fields.length, "fields", WORDS.field);
     return;
   }
   if (!d.nodes.length) {
@@ -353,5 +353,5 @@ export function renderNodes(body: HTMLElement, view: "nodes" | "fields", params:
   }
   var grid = nodeTable(d.nodes, near, d.stale);
   card.appendChild(grid);
-  capped(card, grid, d.nodes.length, "nodes", W.node);
+  capped(card, grid, d.nodes.length, "nodes", WORDS.node);
 }

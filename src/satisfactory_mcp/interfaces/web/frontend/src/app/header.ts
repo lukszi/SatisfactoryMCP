@@ -17,7 +17,7 @@ import { loadOne } from "./load";
 import { drawPlayer } from "../map/drawn/markers";
 import { biomassLine, biomassQuery, onBiomass, ratedSummary, readGeneration, readMeasured } from "../dash/power-ledger";
 import { registerFetch } from "./registry";
-import { W } from "../kit/words";
+import { WORDS } from "../kit/words";
 
 import type { SummaryResponse } from "../api/shapes";
 
@@ -30,10 +30,10 @@ function drawHeader(s: SummaryResponse): void {
   var parts = [s.header.session_name];
   var phase = phaseText(s.progression.game_phase);
   if (phase) parts.push(phase);
-  parts.push(measured.value + " " + W.measuredDraw + " / " + generation.value + " " + W.generation);
+  parts.push(measured.value + " " + WORDS.measuredDraw + " / " + generation.value + " " + WORDS.generation);
   var span = el("summary");
   span.textContent = parts.join(" · ");
-  var power = [measured.why || measured.value + " " + W.measuredDraw, mw(s.power.draw_mw) + " " + W.nameplateDraw, generation.value + " " + W.generation];
+  var power = [measured.why || measured.value + " " + WORDS.measuredDraw, mw(s.power.draw_mw) + " " + WORDS.nameplateDraw, generation.value + " " + WORDS.generation];
   if (biomassLine(s.power)) power.push(biomassLine(s.power));
   span.title = parts.join(" · ") + "\n" + s.age_note + "\npower: " + power.join("; ");
 }

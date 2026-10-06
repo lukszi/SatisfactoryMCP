@@ -18,7 +18,7 @@ import { reload } from "./load";
 import { map, writeHash, writtenHash } from "../map/map";
 import { applyPickupFragment } from "../map/drawn/markers";
 import { showSelector } from "../map/panel";
-import { dashOf, garbledNote, parseHash, pinnedPath, state } from "./state";
+import { dashFromFragment, garbledNote, parseHash, pinnedPath, state } from "./state";
 import { askMode, knownMode } from "../map/tiles";
 import { fail } from "../kit/toast";
 import { syncPickers } from "./world-picker";
@@ -95,7 +95,7 @@ function apply(hash: string): void {
   // normalising write beats two.
   if (mode && mode !== state.mode) askMode(mode, false);
   applyPickupFragment(asked.pickups);
-  applyDash(dashOf(asked));
+  applyDash(dashFromFragment(asked));
   // Not while the floor half is still moving: `enterFloors` is a fetch and a flight, and it
   // writes the fragment itself when it lands. Applying a stale `z` and `c` over it would
   // undo the flight the same request just asked for.

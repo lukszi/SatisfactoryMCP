@@ -43,9 +43,9 @@ import { showGhost } from "./planner-site";
 import { focusStartup, revealStage, settleTrackFocus } from "./planner-track";
 import { onBiomass } from "../power-ledger";
 import { onSelect, selected, selectionRef } from "../../app/selection";
-import { amount, choice, onSetting, setting } from "../../app/settings";
+import { onSetting, settingChoice, settingNumber, settingOn } from "../../app/settings";
 import { state } from "../../app/state";
-import { note, offer } from "../../kit/toast";
+import { notify, offer } from "../../kit/toast";
 import { objectiveText } from "../../kit/words";
 
 import type { ActivityResponse, FocusResponse, PlansResponse } from "../../api/shapes";
@@ -79,7 +79,7 @@ interface Address {
 }
 
 function powerDefaults(): string {
-  return amount("paybackHours") + "|" + String(setting("overclockLast"));
+  return settingNumber("paybackHours") + "|" + String(settingOn("overclockLast"));
 }
 
 function parts(at: string): Address {
@@ -278,8 +278,8 @@ function focusBody(): Record<string, unknown> {
     rev: planner && at && bench.plan ? bench.plan.rev : null,
     tab: planner ? (at ? (bench.tab === "graph" || bench.tab === "track" || bench.tab === "site" ? bench.tab : "workbench") : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
     selection: planner && at ? altSelection() || bench.selection : shared(),
-    follow: choice("follow"),
-    sav: state.token || sav(),
+    follow: settingChoice("follow"),
+    sav: state.saveToken || sav(),
   };
 }
 
@@ -301,7 +301,7 @@ function scheduleFocus(): void {
 }
 
 function news(ts: number): boolean {
-  return ts * 1000 >= state.opened - 2000;
+  return ts * 1000 >= state.openedAtMs - 2000;
 }
 
 export function onPlansEvent(event: PlansEvent): void {
@@ -348,7 +348,7 @@ export function onActivityEvent(entry: ActivityEvent): void {
   if (subject() === "") loadActivity();
   heard = Math.max(heard, entry.ts);
   if (!news(entry.ts)) return;
-  var mode = choice("follow");
+  var mode = settingChoice("follow");
   if (mode === "off") return;
   var who = actorWord(entry.actor);
   var args = entry.args || {};
@@ -373,7 +373,7 @@ export function onActivityEvent(entry: ActivityEvent): void {
         open();
         if (moving) {
           named(tracked, entry.name, function (called) {
-            note(who + " opened the track of “" + called + "” (Settings, follow chat)");
+            notify(who + " opened the track of “" + called + "” (Settings, follow chat)");
           });
         }
       });
@@ -426,7 +426,7 @@ export function onActivityEvent(entry: ActivityEvent): void {
       });
     } else if (subject() !== key) {
       whenIdle(function () {
-        note(who + " opened “" + (entry.name || planTitle(key) || "a plan") + "” (Settings, follow chat)");
+        notify(who + " opened “" + (entry.name || planTitle(key) || "a plan") + "” (Settings, follow chat)");
         go("planner/" + key);
       });
     }
@@ -440,7 +440,7 @@ export function resyncPlanner(replay: (entries: ActivityEvent[]) => void): void 
   }
   resyncHead();
   if (trackShowing()) loadTrack();
-  var since = Math.max(heard, state.opened / 1000);
+  var since = Math.max(heard, state.openedAtMs / 1000);
   get<ActivityResponse>(`/api/activity?since=${since}`)
     .then(function (body) {
       replay(

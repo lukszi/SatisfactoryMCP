@@ -3,8 +3,8 @@
 import "./dashkit.css";
 import { COPY_ATTR, COPY_CLASS, make } from "./dom";
 import { hashFor } from "../map/map";
-import { friendly } from "./toast";
-import { W } from "./words";
+import { friendlyError } from "./toast";
+import { WORDS } from "./words";
 
 export function link(dash: string, text: string, className?: string): HTMLAnchorElement {
   var a = make("a", className, text);
@@ -16,7 +16,7 @@ export function link(dash: string, text: string, className?: string): HTMLAnchor
   return a;
 }
 
-export function note(parent: HTMLElement, text: string): HTMLElement {
+export function appendNote(parent: HTMLElement, text: string): HTMLElement {
   var line = make("p", "dash-note", text);
   parent.appendChild(line);
   return line;
@@ -42,25 +42,6 @@ export function cell(tr: HTMLElement, content: string | number | HTMLElement, cl
   if (content instanceof HTMLElement) td.appendChild(content);
   else td.textContent = String(content);
   tr.appendChild(td);
-}
-
-export function grid(headers: [string, boolean][]): HTMLTableElement {
-  var t = make("table", "dash-table");
-  var head = make("thead");
-  var tr = make("tr");
-  headers.forEach(function (h) {
-    tr.appendChild(make("th", h[1] ? "num" : "", h[0]));
-  });
-  head.appendChild(tr);
-  t.appendChild(head);
-  t.appendChild(make("tbody"));
-  return t;
-}
-
-export function scroll(parent: HTMLElement, table: HTMLTableElement): void {
-  var wrap = make("div", "dash-scroll");
-  wrap.appendChild(table);
-  parent.appendChild(wrap);
 }
 
 export function checkbox(label: string, checked: boolean, change: (on: boolean) => void): HTMLLabelElement {
@@ -127,7 +108,7 @@ export interface ChoiceOptions {
   disabled?: boolean;
 }
 
-export function choice(options: [string, string][], value: string, change: (value: string) => void, o?: ChoiceOptions): HTMLSelectElement {
+export function selectBox(options: [string, string][], value: string, change: (value: string) => void, o?: ChoiceOptions): HTMLSelectElement {
   var opts = o || {};
   var pick = make("select", "dash-select");
   if (opts.candidate) pick.setAttribute("data-candidate", opts.candidate);
@@ -173,10 +154,10 @@ export interface TableOptions<R> {
   caption?: string;
 }
 
-var refocus: { sort: SortState; key: string } | null = null;
-var landed: HTMLElement | null = null;
+var pendingSortFocus: { sort: SortState; key: string } | null = null;
+var refocusTarget: HTMLElement | null = null;
 
-function aligned(align: Align | undefined, className?: string): string {
+function alignClass(align: Align | undefined, className?: string): string {
   var names: string[] = [];
   if (align && align !== "left") names.push(align);
   if (className) names.push(className);
@@ -199,7 +180,7 @@ function sorted<R>(columns: Column<R>[], rows: R[], sort?: SortState): R[] {
   });
 }
 
-function body<R>(tbody: HTMLElement, columns: Column<R>[], rows: R[], options: TableOptions<R>): void {
+function fillTableBody<R>(tbody: HTMLElement, columns: Column<R>[], rows: R[], options: TableOptions<R>): void {
   tbody.textContent = "";
   sorted(columns, rows, options.sort).forEach(function (row) {
     var tr = make("tr");
@@ -221,14 +202,14 @@ function body<R>(tbody: HTMLElement, columns: Column<R>[], rows: R[], options: T
     }
     columns.forEach(function (c, i) {
       var extras = [i === 0 ? "dk-lead" : "", c.className || "", c.tone ? c.tone(row) : ""].filter(Boolean).join(" ");
-      cell(tr, c.render(row), aligned(c.align, extras));
+      cell(tr, c.render(row), alignClass(c.align, extras));
     });
     if (options.onRow && !tr.querySelector("a[href]")) tr.tabIndex = 0;
     tbody.appendChild(tr);
   });
 }
 
-function marks<R>(ths: HTMLElement[], columns: Column<R>[], sort: SortState): void {
+function markSortHeaders<R>(ths: HTMLElement[], columns: Column<R>[], sort: SortState): void {
   columns.forEach(function (c, i) {
     var th = ths[i];
     if (!th || !c.sort) return;
@@ -249,7 +230,7 @@ export function table<R>(columns: Column<R>[], rows: R[], options?: TableOptions
   var tbody = make("tbody");
   var ths: HTMLElement[] = [];
   columns.forEach(function (c) {
-    var th = make("th", aligned(c.align));
+    var th = make("th", alignClass(c.align));
     th.scope = "col";
     if (c.title) th.title = c.title;
     ths.push(th);
@@ -271,22 +252,22 @@ export function table<R>(columns: Column<R>[], rows: R[], options?: TableOptions
       th.appendChild(document.createTextNode(c.label));
       th.appendChild(arrow);
     }
-    if (refocus && refocus.sort === state && refocus.key === c.key) landed = th;
+    if (pendingSortFocus && pendingSortFocus.sort === state && pendingSortFocus.key === c.key) refocusTarget = th;
     var pick = function () {
       if (state.key === c.key) state.desc = !state.desc;
       else {
         state.key = c.key;
         state.desc = c.align === "right";
       }
-      marks(ths, columns, state);
-      body(tbody, columns, rows, o);
+      markSortHeaders(ths, columns, state);
+      fillTableBody(tbody, columns, rows, o);
       if (!o.onSort) return;
-      refocus = { sort: state, key: c.key };
-      landed = null;
+      pendingSortFocus = { sort: state, key: c.key };
+      refocusTarget = null;
       o.onSort();
-      var again = landed as HTMLElement | null;
-      refocus = null;
-      landed = null;
+      var again = refocusTarget as HTMLElement | null;
+      pendingSortFocus = null;
+      refocusTarget = null;
       if (again && again.isConnected) again.focus();
       else if (th.isConnected) th.focus();
     };
@@ -298,10 +279,10 @@ export function table<R>(columns: Column<R>[], rows: R[], options?: TableOptions
       }
     };
   });
-  if (o.sort) marks(ths, columns, o.sort);
+  if (o.sort) markSortHeaders(ths, columns, o.sort);
   head.appendChild(tr);
   t.appendChild(head);
-  body(tbody, columns, rows, o);
+  fillTableBody(tbody, columns, rows, o);
   t.appendChild(tbody);
   wrap.appendChild(t);
   return wrap;
@@ -337,30 +318,30 @@ export function copyButton(value: string, text: string, options: ButtonOptions):
   return b;
 }
 
-export function pressed(text: string, on: boolean, action: () => void, options?: ButtonOptions): HTMLButtonElement {
+export function toggleButton(text: string, on: boolean, action: () => void, options?: ButtonOptions): HTMLButtonElement {
   var b = button(text, action, options);
   b.setAttribute("aria-pressed", String(on));
   return b;
 }
 
-export interface Tab2 {
+export interface SubTab {
   id: string;
   label: string;
   href?: string;
 }
 
-export function tabs2(items: Tab2[], current: string, onPick?: (id: string) => void, label?: string): HTMLElement {
-  var nav = make("nav", "tabs2");
+export function subTabs(items: SubTab[], current: string, onPick?: (id: string) => void, label?: string): HTMLElement {
+  var nav = make("nav", "subtabs");
   if (label) nav.setAttribute("aria-label", label);
   items.forEach(function (item) {
     var on = item.id === current;
     var node: HTMLElement;
     if (item.href) {
-      node = make("a", "tabs2-item", item.label);
+      node = make("a", "subtabs-item", item.label);
       node.setAttribute("href", item.href);
       if (on) node.setAttribute("aria-current", "page");
     } else {
-      var b = make("button", "tabs2-item", item.label);
+      var b = make("button", "subtabs-item", item.label);
       b.type = "button";
       b.setAttribute("aria-pressed", String(on));
       node = b;
@@ -400,7 +381,7 @@ export function empty(parent: HTMLElement, what: string, how?: string | HTMLElem
 }
 
 export function error(parent: HTMLElement, thing: string, reason: unknown, retry?: () => void): void {
-  var why = reason === undefined || reason === null || reason === "" ? "" : friendly(reason);
+  var why = reason === undefined || reason === null || reason === "" ? "" : friendlyError(reason);
   var box = stateBox("error", thing + " could not be read" + (why ? ": " + why : ""));
   if (retry) {
     var again = retry;
@@ -415,10 +396,10 @@ export function error(parent: HTMLElement, thing: string, reason: unknown, retry
 }
 
 export function statusChip(status: "free" | "tapped" | "locked"): HTMLElement {
-  return chip(W[status], status === "free" ? "ok" : "muted");
+  return chip(WORDS[status], status === "free" ? "ok" : "muted");
 }
 
-export function showAll(card: HTMLElement, grid: HTMLElement, rows: number, shown: 25 | 50, label: string, open: boolean, onOpen: () => void): void {
+export function capRows(card: HTMLElement, grid: HTMLElement, rows: number, shown: 25 | 50, label: string, open: boolean, onOpen: () => void): void {
   if (rows <= shown || open) return;
   var cls = "dk-capped-" + shown;
   grid.classList.add(cls);

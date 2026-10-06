@@ -1,8 +1,7 @@
-/* Three ways of saying what the data means, in words rather than in identifiers.
+/* Numbers, places, times and names as the page prints them.
  *
- * Pure, and shared: the node dot's popup and the right-click inspector both name a resource
- * and a region, and disagreeing about how would be the page contradicting itself about the
- * same fact at two different clicks.
+ * Pure and shared, so two views showing one fact cannot word it two ways. Imports nothing at
+ * runtime, which lets tests/test_web_format.py run it under node.
  */
 
 import type { Region } from "../api/shapes";
@@ -41,16 +40,17 @@ export function phaseText(raw: string | null | undefined): string | null {
   return raw;
 }
 
-export function measured(value: number | null | undefined, dp: number, unit: string): string {
-  return value === null || value === undefined ? "–" : num(value, dp) + unit;
+export function withUnit(value: number | null | undefined, decimals: number, unit: string): string {
+  return value === null || value === undefined ? "–" : formatNumber(value, decimals) + unit;
 }
 
-export function metres(value: number | null | undefined, dp?: number): string {
-  return measured(value, dp || 0, " m");
+export function metres(value: number | null | undefined, decimals?: number): string {
+  return withUnit(value, decimals || 0, " m");
 }
 
-export function rounded(value: number, dp?: number): number {
-  var places = dp || 0;
+/* Half to even on the exact decimal expansion, matching Python's round() on the server. */
+export function roundHalfEven(value: number, decimals?: number): number {
+  var places = decimals || 0;
   if (!isFinite(value) || Math.abs(value) >= 1e15) return Math.round(value);
   var exact = Math.abs(value).toFixed(100);
   var point = exact.indexOf(".");
@@ -63,7 +63,7 @@ export function rounded(value: number, dp?: number): number {
 }
 
 export function coords(x: number, y: number): string {
-  return "x " + num(x, 0) + ", y " + num(y, 0) + " m";
+  return "x " + formatNumber(x, 0) + ", y " + formatNumber(y, 0) + " m";
 }
 
 export function signed(value: number, say: (magnitude: number) => string): string {
@@ -80,33 +80,33 @@ export function mw(value: number, options?: { signed?: boolean }): string {
   return options && options.signed ? text : text.replace(/^\+/, "");
 }
 
-export function num(value: number, dp?: number): string {
-  return count(rounded(value, dp === undefined ? 1 : dp));
+export function formatNumber(value: number, decimals?: number): string {
+  return count(roundHalfEven(value, decimals === undefined ? 1 : decimals));
 }
 
-export function range(lo: number, hi: number | null | undefined): string {
+export function countRange(lo: number, hi: number | null | undefined): string {
   if (hi === null || hi === undefined || hi === lo) return count(lo);
   return count(lo) + "–" + count(hi);
 }
 
 export function amount(value: number, fluid?: boolean): string {
-  return fluid ? num(value, 1) + " m³" : num(value, 0);
+  return fluid ? formatNumber(value, 1) + " m³" : formatNumber(value, 0);
 }
 
 export function perMin(value: number, unit?: boolean): string {
-  return num(value, 1) + (unit === false ? "" : "/min");
+  return formatNumber(value, 1) + (unit === false ? "" : "/min");
 }
 
-export function flow(item: string, value: number, dp?: number): string {
-  return num(value, dp) + " " + item + "/min";
+export function flow(item: string, value: number, decimals?: number): string {
+  return formatNumber(value, decimals) + " " + item + "/min";
 }
 
-export function pct(value: number | null | undefined, dp?: number): string {
+export function pct(value: number | null | undefined, decimals?: number): string {
   if (value === null || value === undefined) return "–";
-  return (dp ? num(value * 100, dp) : String(Math.round(value * 100))) + "%";
+  return (decimals ? formatNumber(value * 100, decimals) : String(Math.round(value * 100))) + "%";
 }
 
-export function clock(ts: number): string {
+export function timeOfDay(ts: number): string {
   return new Date(ts * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
@@ -146,7 +146,7 @@ export function isoDate(ts: number | null | undefined): string {
   return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 }
 
-export function spoken(names: string[], last: string): string {
+export function joinWithConjunction(names: string[], last: string): string {
   if (names.length < 2) return names.join("");
   return names.slice(0, -1).join(", ") + " " + last + " " + names[names.length - 1];
 }

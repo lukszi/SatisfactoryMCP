@@ -4,7 +4,7 @@
  * `gameSun` is the arithmetic of mapgen's lighting/sun.py; both put game noon at 225° / 62.25°.
  * docs/spatial-and-map.md §29. */
 
-import { choice, onSetting, setting } from "../app/settings";
+import { onSetting, settingChoice, settingOn } from "../app/settings";
 
 export interface Sun {
   az: number;
@@ -95,8 +95,8 @@ var override: Place | null = null;
 var listeners: Array<(sun: Sun) => void> = [];
 
 export function currentSun(): Sun {
-  var at = override || presetPlace(choice("sunTime") || "noon");
-  return { az: at.az, el: at.el, hour: at.hour, shadows: setting("sunShadows"), sky: setting("sunSky") };
+  var at = override || presetPlace(settingChoice("sunTime") || "noon");
+  return { az: at.az, el: at.el, hour: at.hour, shadows: settingOn("sunShadows"), sky: settingOn("sunSky") };
 }
 
 /** Whether the map control has moved the sun away from the Settings default. */

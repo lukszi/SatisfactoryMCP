@@ -2,21 +2,21 @@
  * and whether only pure nodes count; those become `near:<place>@<m>` and `purity:pure`
  * sources. See docs/world-finders_contract.md §2.2. */
 
-import { mapButton, render, toMap } from "../shell";
-import { button, empty, note, pressed, table } from "../../kit/dashkit";
+import { leaveDashThen, mapButton, render } from "../shell";
+import { appendNote, button, empty, table, toggleButton } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { showRows } from "../../map/tools/finder";
 import { resourceOptions, siteSelection, worldUrl } from "./world-finds";
-import { coords, count, measured, metres, num, perMin, rounded, signed } from "../../kit/format";
+import { coords, count, formatNumber, metres, perMin, roundHalfEven, signed, withUnit } from "../../kit/format";
 import { map } from "../../map/map";
-import { dashParts, go, onMap, subjectQuery } from "../../app/nav";
+import { dashParts, go, goToMapThen, subjectQuery } from "../../app/nav";
 import { onVitals, vitals } from "../../app/vitals";
 import { livePins, onPins, pinName } from "../../chat/pins";
 import { isSelected, select, selected } from "../../app/selection";
 import { state } from "../../app/state";
-import { note as toast } from "../../kit/toast";
+import { notify } from "../../kit/toast";
 import { changed, copyCell, edit, filterBar, loaded, rangeField, selectField, staleLine, viewDash, waiting, want } from "./world";
-import { counted, W } from "../../kit/words";
+import { counted, WORDS } from "../../kit/words";
 
 import type * as L from "leaflet";
 import type { Column, SortState } from "../../kit/dashkit";
@@ -69,7 +69,7 @@ export function rankSources(params: Record<string, string>): string[] {
 }
 
 function km(m: number): string {
-  return num(m / 1000, 1) + " km";
+  return formatNumber(m / 1000, 1) + " km";
 }
 
 function pins(): [string, string][] {
@@ -101,10 +101,10 @@ function selectedPoint(): string {
 
 function pick(params: Record<string, string>): void {
   var mine = ++picking;
-  onMap(function () {
+  goToMapThen(function () {
     var box = map.getContainer();
     box.classList.add("map-picking");
-    toast("click the map where the ranking should look; Esc cancels");
+    notify("click the map where the ranking should look; Esc cancels");
     function done(): void {
       map.off("click", clicked);
       document.removeEventListener("keydown", key, true);
@@ -191,12 +191,12 @@ function rankPane(card: HTMLElement, params: Record<string, string>): void {
     }, { disabled: !anchor, title: anchor ? "how far from " + where(params, anchor) + " a node may be" : "choose a place to rank near" })
   );
   bar.appendChild(
-    pressed("pure only", params.pure === "1", function () {
+    toggleButton("pure only", params.pure === "1", function () {
       set({ pure: params.pure === "1" ? "" : "1" });
     }, { title: "rank fields made only of pure nodes" })
   );
   var kind = (params.pure === "1" ? "pure-node " : "") + "field";
-  note(card, "ranks " + (anchor ? kind + "s with a node within " + km(within) + " of " + where(params, anchor) : "every " + kind + " on the map"));
+  appendNote(card, "ranks " + (anchor ? kind + "s with a node within " + km(within) + " of " + where(params, anchor) : "every " + kind + " on the map"));
 }
 
 export function fromFieldsRank(params: Record<string, string>): Record<string, string> {
@@ -234,16 +234,16 @@ function siteTable(rows: RankedSite[]): HTMLElement {
         return cell;
       },
     },
-    n("score", "score", function (s) { return s.score; }, function (s) { return num(s.score, 2); }),
+    n("score", "score", function (s) { return s.score; }, function (s) { return formatNumber(s.score, 2); }),
     n("nodes", "nodes", function (s) { return s.nodes; }, function (s) { return count(s.nodes); }),
     n("untapped", "untapped", function (s) { return s.untapped; }, function (s) { return perMin(s.untapped, false); }, "per min on nodes with no extractor"),
     n("spread", "spread", function (s) { return s.spread_m; }, function (s) { return metres(s.spread_m); }),
     n("infra", "to built", function (s) { return s.to_infra_m; }, function (s) { return metres(s.to_infra_m); }, "to the nearest thing already built"),
-    n("purity", "purity", function (s) { return s.purity; }, function (s) { return num(s.purity, 2); }),
+    n("purity", "purity", function (s) { return s.purity; }, function (s) { return formatNumber(s.purity, 2); }),
     n("alt", "above refineries", function (s) { return s.alt_m; }, function (s) { return s.alt_m === null ? "–" : signed(s.alt_m, function (v) { return metres(v); }); }, "height above your refineries: positive means fluid flows downhill to them"),
-    n("rough", "rough", function (s) { return s.rough_m; }, function (s) { return s.rough_m === null ? "–" : rounded(s.rough_m, 1).toFixed(1) + " m"; }, "how uneven the ground is"),
-    n("slope", "slope", function (s) { return s.slope_deg; }, function (s) { return measured(s.slope_deg, 0, "°"); }),
-    n("wet", "water", function (s) { return s.wet_pct; }, function (s) { return measured(s.wet_pct, 0, "%"); }, "share of the site under water"),
+    n("rough", "rough", function (s) { return s.rough_m; }, function (s) { return s.rough_m === null ? "–" : roundHalfEven(s.rough_m, 1).toFixed(1) + " m"; }, "how uneven the ground is"),
+    n("slope", "slope", function (s) { return s.slope_deg; }, function (s) { return withUnit(s.slope_deg, 0, "°"); }),
+    n("wet", "water", function (s) { return s.wet_pct; }, function (s) { return withUnit(s.wet_pct, 0, "%"); }, "share of the site under water"),
     { key: "selector", label: "id", render: function (s) { return copyCell(s.selector, "copy"); } },
     {
       key: "map",
@@ -278,13 +278,13 @@ function renderSites(card: HTMLElement, params: Record<string, string>): void {
   if (waiting(card, sitesBox, "ranked sites")) return;
   var d = sitesBox.data!;
   var line = make("div", "world-census");
-  var top = d.sites.length < d.count ? "top " + count(d.sites.length) + " of " + count(d.count) + " candidate " + W.field + "s" : counted(d.sites.length, "candidate " + W.field);
+  var top = d.sites.length < d.count ? "top " + count(d.sites.length) + " of " + count(d.count) + " candidate " + WORDS.field + "s" : counted(d.sites.length, "candidate " + WORDS.field);
   line.appendChild(make("span", "", top + " for " + d.resource_name));
   if (d.sites.length) {
     line.appendChild(
       button("show all on map", function () {
         var dash = state.dash;
-        toMap(function () {
+        leaveDashThen(function () {
           showRows({ kind: "sites", rows: d.sites }, d.resource_name + " sites", dash);
         });
       }, { map: true, title: "ring every site on the map and list them beside it" })
@@ -293,18 +293,18 @@ function renderSites(card: HTMLElement, params: Record<string, string>): void {
   card.appendChild(line);
   var weights = Object.keys(d.weights || {});
   if (weights.length) {
-    note(
+    appendNote(
       card,
       "score weights: " +
         weights
           .map(function (k) {
-            return k.replace(/_/g, " ") + " " + num(d.weights[k]!, 2);
+            return k.replace(/_/g, " ") + " " + formatNumber(d.weights[k]!, 2);
           })
           .join(" · ")
     );
   }
   d.notes.forEach(function (t) {
-    note(card, t);
+    appendNote(card, t);
   });
   staleLine(card, d.stale);
   if (!d.sites.length) {

@@ -2,16 +2,16 @@
  * machines or percent, and the one-line answers. See docs/planner-p4_contract.md §5.2. */
 
 import { send } from "../../api/client";
-import { button, choice, fieldError } from "../../kit/dashkit";
+import { button, fieldError, selectBox } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { onMap } from "../../app/nav";
+import { goToMapThen } from "../../app/nav";
 import { showBox } from "../../map/map-highlight";
 import { vitals } from "../../app/vitals";
 import { bench, changed, gesture, pickTab } from "./planner-core";
 import { blankOrLong, newest, refreshLabels, refusal, wrote } from "../factories/rename";
-import { choice as setting, setSetting } from "../../app/settings";
-import { fail, friendly, note } from "../../kit/toast";
-import { W } from "../../kit/words";
+import { setSetting, settingChoice } from "../../app/settings";
+import { fail, friendlyError, notify } from "../../kit/toast";
+import { WORDS } from "../../kit/words";
 
 import type { NamedResponse, TrackBuiltAt, TrackBuiltCandidate } from "../../api/shapes";
 
@@ -34,7 +34,7 @@ interface Figures {
 /** "12 / 16 machines" or "75%", as the progress setting says; "–" when not placed. */
 export function progressText(f: Figures): string {
   if (f.built === null) return f.figure || "–";
-  if (setting("progress") === "percent" && f.percent !== null) {
+  if (settingChoice("progress") === "percent" && f.percent !== null) {
     var lo = Math.round(f.percent);
     var hi = f.percent_max === null ? lo : Math.round(f.percent_max);
     return (hi !== lo ? lo + "–" + hi : String(lo)) + "%";
@@ -43,7 +43,7 @@ export function progressText(f: Figures): string {
 }
 
 export function toggleProgress(): void {
-  setSetting("progress", setting("progress") === "percent" ? "machines" : "percent");
+  setSetting("progress", settingChoice("progress") === "percent" ? "machines" : "percent");
   changed();
 }
 
@@ -81,7 +81,7 @@ function saveName(b: TrackBuiltAt, field: HTMLInputElement): void {
     .then(function (reply) {
       wrote(reply.version);
       naming = { key: "", proposal: -1, name: "", problem: "", busy: false };
-      note("named “" + reply.name + "”; the plan now counts it as built");
+      notify("named “" + reply.name + "”; the plan now counts it as built");
       refreshLabels();
       setFactory(reply.name);
     })
@@ -89,11 +89,11 @@ function saveName(b: TrackBuiltAt, field: HTMLInputElement): void {
       var why = refusal(failure);
       naming.busy = false;
       if (why === "name_taken") naming.problem = "“" + name + "” is already a factory name";
-      else if (why === "bad") naming.problem = friendly(failure);
+      else if (why === "bad") naming.problem = friendlyError(failure);
       else if (why === "stale" || why === "pin") {
         naming.key = "";
         fail("the save or the factory names moved, so “" + name + "” was not written; look again");
-      } else fail("naming “" + name + "”: " + friendly(failure));
+      } else fail("naming “" + name + "”: " + friendlyError(failure));
       changed();
     });
 }
@@ -103,7 +103,7 @@ function nameBar(parent: HTMLElement, b: TrackBuiltAt): void {
   var field = make("input", "dash-name plan-text");
   field.value = naming.name;
   field.setAttribute("data-ctl", "built-name");
-  field.setAttribute("aria-label", "name for this " + W.unnamedCluster);
+  field.setAttribute("aria-label", "name for this " + WORDS.unnamedCluster);
   field.disabled = naming.busy;
   field.onkeydown = function (event) {
     if (event.key === "Enter") {
@@ -119,7 +119,7 @@ function nameBar(parent: HTMLElement, b: TrackBuiltAt): void {
   bar.appendChild(
     button(naming.busy ? "naming…" : "name", function () {
       saveName(b, field);
-    }, { disabled: naming.busy, title: "name this " + W.unnamedCluster + " and count it as this plan's" })
+    }, { disabled: naming.busy, title: "name this " + WORDS.unnamedCluster + " and count it as this plan's" })
   );
   bar.appendChild(
     button("cancel", function () {
@@ -149,15 +149,15 @@ function picker(parent: HTMLElement, b: TrackBuiltAt): void {
   var clusters = b.candidates.filter(function (c) {
     return c.kind === "cluster" && c.proposal !== null;
   });
-  var options: [string, string][] = [["", W.foundAutomatically]];
+  var options: [string, string][] = [["", WORDS.foundAutomatically]];
   clusters.forEach(function (c) {
-    options.push([CLUSTER + c.proposal, c.name + " (" + W.unnamedCluster + ": names it)"]);
+    options.push([CLUSTER + c.proposal, c.name + " (" + WORDS.unnamedCluster + ": names it)"]);
   });
   factoryNames(plan.factory).forEach(function (name) {
     options.push([name, name]);
   });
-  options.push([WORLD, W.wholeWorld], [NONE, W.nothingBuiltYet]);
-  var pick = choice(
+  options.push([WORLD, WORDS.wholeWorld], [NONE, WORDS.nothingBuiltYet]);
+  var pick = selectBox(
     options,
     plan.factory,
     function (value) {
@@ -171,11 +171,11 @@ function picker(parent: HTMLElement, b: TrackBuiltAt): void {
       }
       setFactory(value);
     },
-    { label: W.countAsBuilt, disabled: bench.gone }
+    { label: WORDS.countAsBuilt, disabled: bench.gone }
   );
   pick.setAttribute("data-ctl", "track-scope");
   var row = make("div", "plan-line");
-  row.appendChild(make("span", "plan-sub", W.countAsBuilt));
+  row.appendChild(make("span", "plan-sub", WORDS.countAsBuilt));
   row.appendChild(pick);
   parent.appendChild(row);
 }
@@ -187,7 +187,7 @@ function mapButton(c: TrackBuiltCandidate | undefined): HTMLButtonElement | null
   return button(
     "map",
     function () {
-      onMap(function () {
+      goToMapThen(function () {
         showBox(target, { layers: ["machines"] });
       });
     },
@@ -223,16 +223,16 @@ function actions(b: TrackBuiltAt): HTMLElement[] {
       out.push(button(c.name, function () {
         if (c.kind === "factory") setFactory(c.name);
         else startNaming(c);
-      }, { title: c.kind === "factory" ? "count “" + c.name + "” as built" : "name this " + W.unnamedCluster + " and count it" }));
+      }, { title: c.kind === "factory" ? "count “" + c.name + "” as built" : "name this " + WORDS.unnamedCluster + " and count it" }));
     });
-    out.push(button(W.nothingBuiltYet, function () {
+    out.push(button(WORDS.nothingBuiltYet, function () {
       setFactory(NONE);
     }));
   } else if (b.confidence === "likely" && top) {
     if (top.kind === "cluster") {
       out.push(button("name it", function () {
         startNaming(top!);
-      }, { title: "name this " + W.unnamedCluster + " and keep it as the plan's factory" }));
+      }, { title: "name this " + WORDS.unnamedCluster + " and keep it as the plan's factory" }));
     }
     out.push(button("not this", function () {
       setFactory(NONE);
@@ -272,7 +272,7 @@ export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
   line.setAttribute("data-ctl", "built-line");
   var figure = make("button", "built-figure", progressText(b));
   figure.type = "button";
-  figure.title = b.built === null ? "not placed, so no progress" : setting("progress") === "percent" ? "show machines instead" : "show percent of the planned rate instead";
+  figure.title = b.built === null ? "not placed, so no progress" : settingChoice("progress") === "percent" ? "show machines instead" : "show percent of the planned rate instead";
   figure.disabled = b.built === null;
   figure.onclick = function (event) {
     event.stopPropagation();
@@ -297,5 +297,5 @@ export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
 
 /** The built column's title: "anywhere" when the plan has no site, so the count is not progress. */
 export function builtColumn(b: TrackBuiltAt): string {
-  return b.confidence === "no site" ? W.anywhere : "built";
+  return b.confidence === "no site" ? WORDS.anywhere : "built";
 }

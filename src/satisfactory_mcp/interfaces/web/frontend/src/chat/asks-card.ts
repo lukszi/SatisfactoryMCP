@@ -4,7 +4,7 @@
 import { askLabel, askStore, asksFor, dropAsk, liveAsks, loadAsks, refetchAsks } from "./asks";
 import { button, chip, copyButton, empty, error, link, loading, table } from "../kit/dashkit";
 import { make } from "../kit/dom";
-import { clock } from "../kit/format";
+import { timeOfDay } from "../kit/format";
 import { ASK_STATE, counted } from "../kit/words";
 
 import type { Column, SortState } from "../kit/dashkit";
@@ -14,12 +14,12 @@ var order: SortState = { key: "ask", desc: true };
 
 function stateChip(a: AskRow): HTMLElement {
   if (a.state === "answered" && a.answered !== null) {
-    return chip(ASK_STATE.answered + " " + clock(a.answered), "muted", a.answered_by ? "marked answered by " + a.answered_by : "");
+    return chip(ASK_STATE.answered + " " + timeOfDay(a.answered), "muted", a.answered_by ? "marked answered by " + a.answered_by : "");
   }
   if (a.state === "seen" && a.seen !== null) {
-    return chip(ASK_STATE.seen + " " + clock(a.seen), "muted", a.seen_by ? "read by " + a.seen_by : "");
+    return chip(ASK_STATE.seen + " " + timeOfDay(a.seen), "muted", a.seen_by ? "read by " + a.seen_by : "");
   }
-  return chip(ASK_STATE.open || a.state, "muted", "queued " + clock(a.created) + "; paste " + a.id + " into chat");
+  return chip(ASK_STATE.open || a.state, "muted", "queued " + timeOfDay(a.created) + "; paste " + a.id + " into chat");
 }
 
 function questionCell(a: AskRow): HTMLElement {

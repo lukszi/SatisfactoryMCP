@@ -35,7 +35,7 @@ import { flyPadded, map, writeHash } from "../map";
 // route layers, and rebuilding a group is exactly what disturbs it.
 import { sinkRoutes } from "../drawn/routes";
 import { state } from "../../app/state";
-import { friendly, note } from "../../kit/toast";
+import { friendlyError, notify } from "../../kit/toast";
 
 import type { FloorBand, FloorDeck, FloorPlatform, FloorRun, FloorsResponse } from "../../api/shapes";
 import type { Point3M } from "../geometry";
@@ -905,7 +905,7 @@ export function enterFloors(query: string, title: string, band?: string): void {
       if (!ticket.fresh()) return;
       // `get` throws with the server's own `error` string, which for a selection that matched
       // nothing is "no platform matches factory 'x'" -- the sentence to show, not to hide.
-      open(query, { platforms: [], note: friendly(error) } as unknown as FloorsResponse, title, band);
+      open(query, { platforms: [], note: friendlyError(error) } as unknown as FloorsResponse, title, band);
     });
 }
 
@@ -1052,7 +1052,7 @@ export function escapeLeavesFloorMode(event: KeyboardEvent): void {
     return;
   }
   leaveFloors();
-  note("left floor mode: the whole world again");
+  notify("left floor mode: the whole world again");
 }
 
 onFloorPick(pickBand);

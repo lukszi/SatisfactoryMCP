@@ -2,7 +2,7 @@
  * as a query. The page works without storage: a setting then lasts until reload. See
  * docs/frontend_vision.md §8.6. A `shared` one lives on the server (shared-settings.ts). */
 
-import { W } from "../kit/words";
+import { WORDS } from "../kit/words";
 
 interface Base {
   key: string;
@@ -57,7 +57,7 @@ export var SETTINGS: Setting[] = [
     kind: "switch",
     key: "fedOnly",
     group: "detect factories",
-    label: "only fed " + W.unnamedClusters,
+    label: "only fed " + WORDS.unnamedClusters,
     hint: "a belt or pipe reaches a miner, extractor or outside machine",
     fallback: true,
   },
@@ -66,7 +66,7 @@ export var SETTINGS: Setting[] = [
     key: "minMachines",
     group: "detect factories",
     label: "minimum machines",
-    hint: "smaller " + W.unnamedClusters + " stay hidden",
+    hint: "smaller " + WORDS.unnamedClusters + " stay hidden",
     min: 1,
     max: 500,
     fallback: 2,
@@ -245,24 +245,24 @@ function read(key: string): boolean | string | number | undefined {
   return found ? found.fallback : undefined;
 }
 
-export function setting(key: string): boolean {
+export function settingOn(key: string): boolean {
   return read(key) === true;
 }
 
 export function spoilerFlag(): string {
-  return setting("spoilers") ? "1" : "0";
+  return settingOn("spoilers") ? "1" : "0";
 }
 
 export function spoilerQuery(): string {
   return "spoilers=" + spoilerFlag();
 }
 
-export function choice(key: string): string {
+export function settingChoice(key: string): string {
   var value = read(key);
   return typeof value === "string" ? value : "";
 }
 
-export function amount(key: string): number {
+export function settingNumber(key: string): number {
   var value = read(key);
   return typeof value === "number" ? value : 0;
 }

@@ -533,7 +533,7 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   chat computes with (stage headroom, biomass) live on the server instead, through
   `/api/settings` ([shared-settings.md](shared-settings.md)).
 - **The page lands on the dashboard.** A fragment with no `dash=` and none of the map's keys
-  (`z`, `c`, `floor`, `mode`, `pickups`) opens the Overview (`dashOf` in `app/state.ts`, used at
+  (`z`, `c`, `floor`, `mode`, `pickups`) opens the Overview (`dashFromFragment` in `app/state.ts`, used at
   boot and by `app/fragment.ts`). A map deep link still opens the map, because the page writes `z`
   and `c` into every fragment it makes while the map is showing. Back and Forward are
   unchanged.
@@ -995,7 +995,7 @@ Roadmap phase 3: the `stock`, `storage` and `crates` tools as one dashboard sect
 - **Spoilers:** the section lists only what the save holds, so the spoiler setting has
   nothing to hide here.
 - **Code:** `frontend/src/dash/inventory.ts`. `dash/shell.ts` only registers the tab and routes to
-  `renderInventory`, passing its `toMap` and `render`.
+  `renderInventory`, passing its `leaveDashThen` and `render`.
 - **Not yet:** a "storage near here" point filter, `as_of=`, and turning the storage layer
   on when a container row flies to the map (the ring marks the spot, but the box itself is
   hidden while that layer is off).
@@ -1018,7 +1018,7 @@ advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
 - **Page.** `frontend/src/dash/progress/progress.ts` holds the section. It was moved out of
   `dash/shell.ts` with the milestone view unchanged. The shared building blocks (tile,
   note, link, table cell) now sit in `frontend/src/kit/dashkit.ts`, which both modules import.
-- **Layout.** A segmented control (`dashkit.tabs2`) reaches one page per tool. The
+- **Layout.** A segmented control (`dashkit.subTabs`) reaches one page per tool. The
   Milestones landing opens with a one-line "next up" strip (T4): parts short for the
   elevator, affordable MAM nodes, pending drives, free shards and free somersloops, each a
   link to its page. Statuses read in lowercase words: done, affordable, short, blocked by…,
@@ -1276,7 +1276,7 @@ States and actions follow two rules:
   missing and what to do instead; an ambiguous recipe name does the same over its candidates.
   `dashkit.error()` with a retry is only for a read that failed. The server answers every
   missing subject with 404 and `{"error"}`, and so does any `/api/` path or method no route
-  serves; `api.missing()` is the one test the page makes.
+  serves; `isNotFound()` in `api/client.ts` is the one test the page makes.
 - **Actions are buttons, navigation is a link.** `dashkit.button()` does something here
   (rename, trace, detect, show all); a text link goes somewhere else ("open in dashboard",
   the Settings filters). A link never sits in a row of buttons as their peer: it gets its own
@@ -1407,7 +1407,7 @@ Phase 2 of §6. The factory page gains level-2 tabs past its overview.
 
 ### 17.1 What was built
 
-- **Address.** `factories/<name>/<aspect>`, one `dashkit.tabs2` strip under the title:
+- **Address.** `factories/<name>/<aspect>`, one `dashkit.subTabs` strip under the title:
   overview, flows, machines, power, nodes, links, floors, sites. A name may itself hold a
   `/`, so the last segment counts as an aspect only when it is one of those ids and the whole
   subject is not a factory name (`factoryAddress` in `dash/factories/factory-detail.ts`). Renaming keeps the

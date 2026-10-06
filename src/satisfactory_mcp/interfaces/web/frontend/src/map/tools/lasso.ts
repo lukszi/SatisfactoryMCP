@@ -2,7 +2,7 @@
  * drawing around machines. See docs/frontend_vision.md §9.9. */
 
 import { get, latest, send } from "../../api/client";
-import { button, chip, pressed } from "../../kit/dashkit";
+import { button, chip, toggleButton } from "../../kit/dashkit";
 import { LASSO_ATTR, make } from "../../kit/dom";
 import { L } from "../leaflet";
 import { flyPadded, map } from "../map";
@@ -11,8 +11,8 @@ import { makeRoom } from "../panel";
 import { onVitals } from "../../app/vitals";
 import { newest, refreshLabels, refusal, wrote } from "../../dash/factories/rename";
 import { state } from "../../app/state";
-import { fail, friendly, note as said } from "../../kit/toast";
-import { counted, W } from "../../kit/words";
+import { fail, friendlyError, notify } from "../../kit/toast";
+import { counted, WORDS } from "../../kit/words";
 
 import type { AmendedResponse, FactoryMachinesResponse, MachineSpot } from "../../api/shapes";
 
@@ -109,7 +109,7 @@ function buildings(spots: MachineSpot[]): string {
 }
 
 function toggle(text: string, title: string, mode: Mode): HTMLButtonElement {
-  return pressed(
+  return toggleButton(
     text,
     view.mode === mode,
     function () {
@@ -155,7 +155,7 @@ function previewBlock(box: HTMLElement, p: AmendedResponse): void {
   acts.appendChild(button(view.busy ? "applying…" : "apply", apply, { title: "write this change to the factory", disabled: view.busy || !changes }));
   acts.appendChild(button("discard", discard, { title: "clear every area and draw again" }));
   acts.appendChild(
-    pressed(
+    toggleButton(
       "+ area",
       view.more,
       function () {
@@ -198,7 +198,7 @@ function render(): void {
   if (!view.factory) return;
   if (view.preview) previewBlock(box, view.preview);
   else if (view.busy) cardLine(box, "checking what that area holds…");
-  else cardLine(box, "drag around machines on the map to " + (view.mode === "add" ? "add them to" : "remove them from") + " this " + W.factory);
+  else cardLine(box, "drag around machines on the map to " + (view.mode === "add" ? "add them to" : "remove them from") + " this " + WORDS.factory);
 }
 
 var candidate = "";
@@ -225,7 +225,7 @@ function fetchMembers(flyAfter: boolean): void {
     .catch(function (err) {
       if (!ticket.fresh()) return;
       view.members = null;
-      view.error = friendly(err);
+      view.error = friendlyError(err);
       rings.clearLayers();
       render();
     });
@@ -260,7 +260,7 @@ export function startLasso(name: string): void {
 }
 
 export function ringCandidate(selector: string, token: string, title: string): void {
-  begin(title, W.unnamedCluster, "");
+  begin(title, WORDS.unnamedCluster, "");
   candidate = selector;
   view.token = token;
   fetchMembers(false);
@@ -301,7 +301,7 @@ function refused(err: unknown, what: string): void {
     refreshLabels();
     discard();
     fetchMembers(false);
-  } else fail(friendly(err));
+  } else fail(friendlyError(err));
 }
 
 function check(): void {
@@ -336,7 +336,7 @@ function apply(): void {
       if (!ticket.fresh()) return;
       view.busy = false;
       wrote(reply.version);
-      said("“" + name + "” now holds " + counted(reply.after, "machine") + " (+" + reply.added.length + " −" + reply.dropped.length + ")");
+      notify("“" + name + "” now holds " + counted(reply.after, "machine") + " (+" + reply.added.length + " −" + reply.dropped.length + ")");
       refreshLabels();
       discard();
       fetchMembers(false);

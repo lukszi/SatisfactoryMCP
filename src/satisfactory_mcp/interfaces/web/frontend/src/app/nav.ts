@@ -26,7 +26,7 @@ export function go(dash: string, replace?: boolean): void {
   else location.hash = hashFor(dash);
 }
 
-export function onMap(action: () => void): void {
+export function goToMapThen(action: () => void): void {
   var run = function () {
     map.invalidateSize();
     action();
@@ -50,7 +50,7 @@ export interface SubjectQuery {
   params: Record<string, string>;
 }
 
-export function decoded(text: string): string {
+export function decodeOrKeep(text: string): string {
   try {
     return decodeURIComponent(text);
   } catch (_e) {
@@ -64,7 +64,7 @@ export function subjectQuery(subject: string): SubjectQuery {
   (cut < 0 ? "" : subject.slice(cut + 1)).split("&").forEach(function (pair) {
     if (!pair) return;
     var eq = pair.indexOf("=");
-    params[eq < 0 ? pair : pair.slice(0, eq)] = eq < 0 ? "" : decoded(pair.slice(eq + 1));
+    params[eq < 0 ? pair : pair.slice(0, eq)] = eq < 0 ? "" : decodeOrKeep(pair.slice(eq + 1));
   });
   return { head: cut < 0 ? subject : subject.slice(0, cut), params: params };
 }

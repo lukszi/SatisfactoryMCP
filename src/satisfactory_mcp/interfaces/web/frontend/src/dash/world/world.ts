@@ -2,26 +2,26 @@
  * conduits, pickups and regions. See docs/world-finders_contract.md §2 and §7. */
 
 import { get, latest } from "../../api/client";
-import { choice, empty, error, heading, link, loading, note, showAll, table, tabs2 } from "../../kit/dashkit";
+import { appendNote, capRows, empty, error, heading, link, loading, selectBox, subTabs, table } from "../../kit/dashkit";
 import { mapButton, render } from "../shell";
 import { code, make } from "../../kit/dom";
 import { isRebuilding } from "../../kit/focus";
 import { resourceOptions, worldUrl } from "./world-finds";
-import { coords, count, metres, num, regionLine, rounded } from "../../kit/format";
+import { coords, count, formatNumber, metres, regionLine, roundHalfEven } from "../../kit/format";
 import { loadOne } from "../../app/load";
 import { hashFor, writeHash } from "../../map/map";
 import { dashParts, go, subjectQuery, withQuery } from "../../app/nav";
 import { showPoint } from "../../map/map-highlight";
 import { registerFetch } from "../../app/registry";
 import { actorWord } from "../planner/planner-core";
-import { choice as followMode, onSetting } from "../../app/settings";
+import { onSetting, settingChoice } from "../../app/settings";
 import { state } from "../../app/state";
-import { note as toast, offer } from "../../kit/toast";
+import { notify, offer } from "../../kit/toast";
 import { renderConduits } from "./world-conduits";
 import { nodeTable, renderNodes } from "./world-nodes";
 import { renderPickups } from "./world-pickups";
 import { fromFieldsRank, renderRank } from "./world-rank";
-import { counted, gapText, W } from "../../kit/words";
+import { counted, gapText, WORDS } from "../../kit/words";
 
 import type { ApiError, ApiPath, ApiUrl } from "../../api/client";
 import type { Column, SortState } from "../../kit/dashkit";
@@ -129,7 +129,7 @@ export function loaded<T>(): Loaded<T> {
 
 export function want<T extends ApiError>(slot: string, box: Loaded<T>, url: ApiUrl): void {
   var scope = JSON.stringify([state.epoch, state.world, state.save]);
-  var key = JSON.stringify([scope, state.token || "wave " + herePart.wave, url]);
+  var key = JSON.stringify([scope, state.saveToken || "wave " + herePart.wave, url]);
   if (box.key === key) return;
   if (box.scope !== scope) box.data = null;
   box.key = key;
@@ -203,7 +203,7 @@ export function selectField(
   o?: FieldOptions
 ): HTMLElement {
   var opts = o || {};
-  return labelled(label, choice(options, value, change, { candidate: candidate, disabled: opts.disabled, title: opts.title }));
+  return labelled(label, selectBox(options, value, change, { candidate: candidate, disabled: opts.disabled, title: opts.title }));
 }
 
 export function textField(
@@ -282,32 +282,32 @@ export function rangeField(
 }
 
 export function capped(card: HTMLElement, grid: HTMLElement, rows: number, key: string, noun: string): void {
-  showAll(card, grid, rows, SHOWN, "show all " + counted(rows, noun), !!uncapped[key], function () {
+  capRows(card, grid, rows, SHOWN, "show all " + counted(rows, noun), !!uncapped[key], function () {
     uncapped[key] = true;
   });
 }
 
 export function staleText(t: TableAge): string {
   if (t.notes.length) return t.notes.join(" ");
-  return W.mapDataBehind + (t.gap ? " (" + gapText(t.gap) + ")" : "");
+  return WORDS.mapDataBehind + (t.gap ? " (" + gapText(t.gap) + ")" : "");
 }
 
 export function staleLine(parent: HTMLElement, t: TableAge | null): void {
   if (!t || (!t.behind && !t.moved && !t.unjoinable)) return;
-  note(parent, staleText(t));
+  appendNote(parent, staleText(t));
 }
 
 export function hiddenLine(parent: HTMLElement, n: number, one: string, many?: string): void {
   if (!n) return;
   var line = make("p", "dash-note");
-  line.appendChild(document.createTextNode(counted(n, one, many) + " " + W.hiddenBySpoilers + " · "));
+  line.appendChild(document.createTextNode(counted(n, one, many) + " " + WORDS.hiddenBySpoilers + " · "));
   line.appendChild(link("settings", "Settings"));
   parent.appendChild(line);
 }
 
 export function regionCell(region: Region | null, full?: boolean): HTMLElement {
   var cell = make("span", "", region ? (full ? regionLine(region) : region.name) : "off the map");
-  if (region) cell.title = regionLine(region) + ", good to about " + num(region.accuracy_m, 0) + " m";
+  if (region) cell.title = regionLine(region) + ", good to about " + formatNumber(region.accuracy_m, 0) + " m";
   return cell;
 }
 
@@ -340,7 +340,7 @@ function renderHere(body: HTMLElement): void {
     else loading(card, "the player's position");
     return;
   }
-  note(card, data.written_ago ? "as of the save written " + data.written_ago : "as of the save shown in the header").title = data.age_note;
+  appendNote(card, data.written_ago ? "as of the save written " + data.written_ago : "as of the save shown in the header").title = data.age_note;
   var player = data.player;
   if (!player) {
     empty(card, "no player position in this save", "a dedicated-server save holds no pawn; nodes, fields, conduits, pickups and regions still work");
@@ -348,11 +348,11 @@ function renderHere(body: HTMLElement): void {
   }
   var at = player;
   var facts: [string, string | HTMLElement][] = [
-    ["position", coords(at.x_m, at.y_m) + ", " + num(at.z_m, 0) + " m up"],
+    ["position", coords(at.x_m, at.y_m) + ", " + formatNumber(at.z_m, 0) + " m up"],
     ["region", regionCell(data.region, true)],
     ["grid", data.grid ? data.grid + (data.direction ? " · " + data.direction : "") : "–"],
     ["nearest building", data.nearest_building ? data.nearest_building.name + ", " + metres(data.nearest_building.distance_m) : "none"],
-    ["id", copyCell(rounded(at.x_m) + "," + rounded(at.y_m), "copy")],
+    ["id", copyCell(roundHalfEven(at.x_m) + "," + roundHalfEven(at.y_m), "copy")],
   ];
   if (data.pawns > 1) facts.push(["players", count(data.pawns) + " in this save; the position is the host's"]);
   var list = make("dl", "world-facts");
@@ -382,10 +382,10 @@ function renderHere(body: HTMLElement): void {
     if (t.table === "nodes") staleLine(card, t);
   });
   var near = make("section", "dash-card");
-  heading(near, counted(data.nodes_total, "node") + " within " + num(data.radius_m, 0), "m");
+  heading(near, counted(data.nodes_total, "node") + " within " + formatNumber(data.radius_m, 0), "m");
   body.appendChild(near);
   if (!data.nodes.length) {
-    empty(near, "no resource node within " + num(data.radius_m, 0) + " m");
+    empty(near, "no resource node within " + formatNumber(data.radius_m, 0) + " m");
     return;
   }
   var grid = nodeTable(data.nodes, true, null);
@@ -409,7 +409,7 @@ function renderRegions(body: HTMLElement, params: Record<string, string>): void 
   want("world-regions", regionsBox, worldUrl("/api/world/regions", { resource: params.resource || "" }));
   if (waiting(card, regionsBox, "regions")) return;
   var data = regionsBox.data!;
-  note(card, "region names are good to about " + num(data.accuracy_m, 0) + " m" + (data.resource_name ? " · nodes counted: " + data.resource_name : ""));
+  appendNote(card, "region names are good to about " + formatNumber(data.accuracy_m, 0) + " m" + (data.resource_name ? " · nodes counted: " + data.resource_name : ""));
   if (!data.rows.length) {
     empty(card, "no region holds a matching node");
     return;
@@ -423,7 +423,7 @@ function renderRegions(body: HTMLElement, params: Record<string, string>): void 
       label: "area",
       align: "right",
       sort: function (r) { return r.area_km2; },
-      render: function (r) { return num(r.area_km2, 2) + " km²"; },
+      render: function (r) { return formatNumber(r.area_km2, 2) + " km²"; },
     },
     { key: "nodes", label: "nodes", align: "right", sort: function (r) { return r.nodes; }, render: function (r) { return count(r.nodes); } },
     { key: "selector", label: "selector", render: function (r) { return copyCell("region:" + r.name); } },
@@ -458,7 +458,7 @@ export function renderWorld(body: HTMLElement): void {
     writeHash();
   }
   body.appendChild(
-    tabs2(
+    subTabs(
       VIEWS.map(function (v) {
         return { id: v[0], label: v[1], href: hashFor(viewDash(v[0], carried(v[0], at.params))) };
       }),
@@ -516,7 +516,7 @@ function busy(): boolean {
 
 export function onFindActivity(entry: ActivityEvent): void {
   if (entry.kind !== "world.find" || entry.world !== state.world || entry.actor.kind === "page") return;
-  var mode = followMode("follow");
+  var mode = settingChoice("follow");
   var args = (entry.args || {}) as { view?: string; params?: Record<string, string> };
   if (mode === "off" || typeof args.view !== "string") return;
   var there = viewDash(args.view, args.params || {});
@@ -528,6 +528,6 @@ export function onFindActivity(entry: ActivityEvent): void {
     });
     return;
   }
-  toast(who + " " + entry.text + " (Settings, follow chat)");
+  notify(who + " " + entry.text + " (Settings, follow chat)");
   go(there);
 }

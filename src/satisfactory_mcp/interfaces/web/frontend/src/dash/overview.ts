@@ -2,7 +2,7 @@
  * power problems and power per circuit, addressed as `dash=overview`. */
 
 import { adviceCard } from "../chat/advice";
-import { empty, error, heading, link, loading, note, table, tile } from "../kit/dashkit";
+import { appendNote, empty, error, heading, link, loading, table, tile } from "../kit/dashkit";
 import { make } from "../kit/dom";
 import { count, pct } from "../kit/format";
 import { loadOne } from "../app/load";
@@ -11,7 +11,8 @@ import { vitals } from "../app/vitals";
 import { milestoneTile } from "./progress/progress";
 import { actionTone, statesOf } from "./machine-states";
 import { issueCount, issueGroups, issueTable, mixBar, mixLegend, mixOf } from "./machine-health";
-import { factoryMapButton, go, pointButton } from "./shell";
+import { factoryMapButton, pointButton } from "./shell";
+import { go } from "../app/nav";
 import {
   circuitTable,
   faultCount,
@@ -23,7 +24,7 @@ import {
   retryCircuits,
 } from "./power-tab";
 import { bar as powerBar, ratedWorld } from "./power-ledger";
-import { counted, W } from "../kit/words";
+import { counted, WORDS } from "../kit/words";
 
 import type { FactoryHealthRow } from "../api/shapes";
 
@@ -39,9 +40,9 @@ function detectLink(): HTMLElement {
 
 function actionTile(rows: FactoryHealthRow[]): HTMLElement {
   var v = vitals();
-  if (!v.health) return tile(W.needAction, "–", v.healthError ? "factory health could not be read" : "loading…");
+  if (!v.health) return tile(WORDS.needAction, "–", v.healthError ? "factory health could not be read" : "loading…");
   if (!rows.length) {
-    var none = tile(W.needAction, "–", "no factories named yet", false);
+    var none = tile(WORDS.needAction, "–", "no factories named yet", false);
     none.appendChild(detectLink());
     return none;
   }
@@ -50,7 +51,7 @@ function actionTile(rows: FactoryHealthRow[]): HTMLElement {
     return r.actionable > 0;
   }).length;
   var box = tile(
-    W.needAction,
+    WORDS.needAction,
     count(mix.bad + mix.blocked),
     "machines, in " + count(todo) + " of " + counted(rows.length, "named factory", "named factories"),
     false,
@@ -81,11 +82,11 @@ function tiles(body: HTMLElement): void {
       row.appendChild(t);
     });
     var faults = faultsOf(v.circuits);
-    row.appendChild(tile(W.powerProblems, count(faultCount(faults)), faultWords(faults), faultCount(faults) > 0, power));
+    row.appendChild(tile(WORDS.powerProblems, count(faultCount(faults)), faultWords(faults), faultCount(faults) > 0, power));
   } else {
     var why = v.circuitsError ? "power circuits could not be read" : "loading…";
-    row.appendChild(tile(W.generation, "–", why));
-    row.appendChild(tile(W.powerProblems, "–", why));
+    row.appendChild(tile(WORDS.generation, "–", why));
+    row.appendChild(tile(WORDS.powerProblems, "–", why));
   }
   row.appendChild(milestoneTile());
   body.appendChild(row);
@@ -101,7 +102,7 @@ function healthMissing(parent: HTMLElement): boolean {
 
 function factoriesCard(parent: HTMLElement): void {
   var card = make("section", "dash-card");
-  heading(card, "factories that " + W.needAction);
+  heading(card, "factories that " + WORDS.needAction);
   parent.appendChild(card);
   if (healthMissing(card)) return;
   var rows = vitals().health!.factories;
@@ -113,7 +114,7 @@ function factoriesCard(parent: HTMLElement): void {
     return r.actionable > 0;
   });
   if (!worst.length) {
-    empty(card, "none " + W.needAction);
+    empty(card, "none " + WORDS.needAction);
     return;
   }
   card.appendChild(
@@ -121,7 +122,7 @@ function factoriesCard(parent: HTMLElement): void {
       [
         {
           key: "name",
-          label: W.factory,
+          label: WORDS.factory,
           render: function (r) {
             var a = link("factories/" + r.name, r.name, "dash-trunc");
             a.title = r.name;
@@ -130,7 +131,7 @@ function factoriesCard(parent: HTMLElement): void {
         },
         {
           key: "actionable",
-          label: W.needAction,
+          label: WORDS.needAction,
           align: "right",
           tone: function (r) {
             return actionTone(r.states);
@@ -154,7 +155,7 @@ function factoriesCard(parent: HTMLElement): void {
         onRow: function (r) {
           go("factories/" + r.name);
         },
-        caption: "factories that " + W.needAction,
+        caption: "factories that " + WORDS.needAction,
       }
     )
   );
@@ -162,13 +163,13 @@ function factoriesCard(parent: HTMLElement): void {
 
 function machinesCard(parent: HTMLElement): void {
   var card = make("section", "dash-card");
-  heading(card, "machines that " + W.needAction);
+  heading(card, "machines that " + WORDS.needAction);
   parent.appendChild(card);
   if (healthMissing(card)) return;
   var factories = vitals().health!.factories;
   var found = issueGroups(factories);
   if (!found.length) {
-    empty(card, "none " + W.needAction);
+    empty(card, "none " + WORDS.needAction);
     return;
   }
   var total = 0;
@@ -186,13 +187,13 @@ function machinesCard(parent: HTMLElement): void {
     )
   );
   var listed = issueCount(shown);
-  if (listed < total) note(card, "showing " + count(listed) + " of " + count(total) + "; Factories lists all");
+  if (listed < total) appendNote(card, "showing " + count(listed) + " of " + count(total) + "; Factories lists all");
 }
 
 function problemsCard(parent: HTMLElement): void {
   var v = vitals();
   var card = make("section", "dash-card");
-  heading(card, W.powerProblems);
+  heading(card, WORDS.powerProblems);
   parent.appendChild(card);
   if (!v.circuits) {
     if (v.circuitsError) error(card, "power circuits", "", retryCircuits);
@@ -201,7 +202,7 @@ function problemsCard(parent: HTMLElement): void {
   }
   var faults = faultsOf(v.circuits);
   if (!faultCount(faults)) {
-    empty(card, "no " + W.powerProblems);
+    empty(card, "no " + WORDS.powerProblems);
     return;
   }
   problemTable(card, faults, ROWS_SHOWN);

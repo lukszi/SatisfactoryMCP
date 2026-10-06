@@ -2,15 +2,15 @@
  * links, floors and sites. The address is `factories/<name>/<aspect>`. */
 
 import { get, latest } from "../../api/client";
-import { button, chip, empty, error, heading, link, loading, note, table, tabs2, tile } from "../../kit/dashkit";
+import { appendNote, button, chip, empty, error, heading, link, loading, subTabs, table, tile } from "../../kit/dashkit";
 import { code, make } from "../../kit/dom";
-import { count, mw, num, pct, perMin, signed } from "../../kit/format";
+import { count, formatNumber, mw, pct, perMin, signed } from "../../kit/format";
 import { enterFloors } from "../../map/floors/floors";
 import { hashFor } from "../../map/map";
 import { showBox } from "../../map/map-highlight";
 import { pinThis } from "../../chat/pins";
 import { state } from "../../app/state";
-import { counted, W } from "../../kit/words";
+import { counted, WORDS } from "../../kit/words";
 import { mapButton, pointButton, render } from "../shell";
 
 import type { SortState } from "../../kit/dashkit";
@@ -68,7 +68,7 @@ export function factoryDash(name: string, aspect: string): string {
 
 export function factoryPinButton(name: string): HTMLButtonElement {
   return button(
-    W.pin,
+    WORDS.pin,
     function () {
       pinThis("factory", { factory: name });
     },
@@ -77,7 +77,7 @@ export function factoryPinButton(name: string): HTMLButtonElement {
 }
 
 export function aspectTabs(name: string, aspect: string): HTMLElement {
-  return tabs2(
+  return subTabs(
     ASPECTS.map(function (a) {
       return { id: a[0], label: a[1], href: hashFor(factoryDash(name, a[0])) };
     }),
@@ -295,7 +295,7 @@ function renderFlows(body: HTMLElement, data: FactoryAspectsResponse): void {
       { sort: flowSort, caption: "balance per item" }
     )
   );
-  note(
+  appendNote(
     section,
     count(data.producing_now) + " of " + count(data.producers) + " producing machines were mid-cycle when the save was written" +
       (data.unmonitored_producers ? " · " + counted(data.unmonitored_producers, "machine") + (data.unmonitored_producers === 1 ? " keeps" : " keep") + " no monitor, so measured is a floor" : "")
@@ -391,7 +391,7 @@ function renderMachines(body: HTMLElement, data: FactoryAspectsResponse): void {
           key: "state",
           label: "",
           render: function (r) {
-            return r.paused ? chip(W.paused, "mid") : "";
+            return r.paused ? chip(WORDS.paused, "mid") : "";
           },
         },
         {
@@ -411,14 +411,14 @@ function renderMachines(body: HTMLElement, data: FactoryAspectsResponse): void {
 function renderPowerAspect(body: HTMLElement, data: FactoryAspectsResponse): void {
   var p = data.power;
   var tiles = make("div", "dash-tiles");
-  tiles.appendChild(tile(W.measuredDraw, mw(p.measured_draw_mw), mw(p.draw_mw) + " nameplate"));
-  tiles.appendChild(tile(W.nameplateDraw, mw(p.draw_mw), "every machine at its saved clock"));
-  tiles.appendChild(tile(W.generation, mw(p.generation_mw), p.generation_mw ? "generators in this factory" : "no generators here"));
+  tiles.appendChild(tile(WORDS.measuredDraw, mw(p.measured_draw_mw), mw(p.draw_mw) + " nameplate"));
+  tiles.appendChild(tile(WORDS.nameplateDraw, mw(p.draw_mw), "every machine at its saved clock"));
+  tiles.appendChild(tile(WORDS.generation, mw(p.generation_mw), p.generation_mw ? "generators in this factory" : "no generators here"));
   var net = p.generation_mw - p.measured_draw_mw;
   tiles.appendChild(tile("net, measured", mw(net, { signed: true }), mw(p.generation_mw - p.draw_mw, { signed: true }) + " at nameplate", net < 0 && p.generation_mw > 0));
   body.appendChild(tiles);
-  if (p.unmonitored) note(body, counted(p.unmonitored, "machine") + (p.unmonitored === 1 ? " keeps no monitor and is" : " keep no monitor and are") + " charged in full in measured draw");
-  note(body, "a factory drawing from a shared grid reads negative here by design; the grid's headroom is on the Power tab");
+  if (p.unmonitored) appendNote(body, counted(p.unmonitored, "machine") + (p.unmonitored === 1 ? " keeps no monitor and is" : " keep no monitor and are") + " charged in full in measured draw");
+  appendNote(body, "a factory drawing from a shared grid reads negative here by design; the grid's headroom is on the Power tab");
 }
 
 function renderNodes(body: HTMLElement, data: FactoryAspectsResponse): void {
@@ -465,7 +465,7 @@ function renderNodes(body: HTMLElement, data: FactoryAspectsResponse): void {
           align: "right",
           title: "what the save says is left in the node; – for an infinite one",
           render: function (r) {
-            return r.left === null ? "–" : num(r.left, 0);
+            return r.left === null ? "–" : formatNumber(r.left, 0);
           },
         },
         {
@@ -511,7 +511,7 @@ function renderLinks(body: HTMLElement, data: FactoryAspectsResponse): void {
       { caption: "material links" }
     )
   );
-  note(section, "machines reached on the far side through belts and pipes, not a count of belts; the two directions can differ");
+  appendNote(section, "machines reached on the far side through belts and pipes, not a count of belts; the two directions can differ");
 }
 
 function bandsTable(platform: FloorPlatform, name: string): HTMLElement {
@@ -530,7 +530,7 @@ function bandsTable(platform: FloorPlatform, name: string): HTMLElement {
         label: "deck height",
         align: "right",
         render: function (b) {
-          return b.top_m === null ? "–" : num(b.top_m, 1) + " m";
+          return b.top_m === null ? "–" : formatNumber(b.top_m, 1) + " m";
         },
       },
       {
@@ -538,7 +538,7 @@ function bandsTable(platform: FloorPlatform, name: string): HTMLElement {
         label: "area",
         align: "right",
         render: function (b) {
-          return num(b.area_m2, 0) + " m²";
+          return formatNumber(b.area_m2, 0) + " m²";
         },
       },
       {
@@ -586,10 +586,10 @@ function renderFloors(body: HTMLElement, data: FloorsResponse, name: string): vo
   var section = body;
   platforms.forEach(function (p) {
     section = card(body, "platform " + p.index + (p.label && p.label !== name ? " · " + p.label : ""));
-    note(section, counted(p.bands.length, "floor") + " · " + num(p.area_m2, 0) + " m² over " + counted(p.cells, "tile"));
+    appendNote(section, counted(p.bands.length, "floor") + " · " + formatNumber(p.area_m2, 0) + " m² over " + counted(p.cells, "tile"));
     section.appendChild(bandsTable(p, name));
   });
-  note(section, "floors are recovered from foundation heights; a platform is poured foundation, and two factories on one slab share it");
+  appendNote(section, "floors are recovered from foundation heights; a platform is poured foundation, and two factories on one slab share it");
 }
 
 function siteBox(s: SiteRow): [number, number, number, number] | null {
@@ -637,7 +637,7 @@ function renderSites(body: HTMLElement, data: SitesResponse): void {
           label: "spread",
           align: "right",
           render: function (s) {
-            return num(s.diameter_m, 0) + " m";
+            return formatNumber(s.diameter_m, 0) + " m";
           },
         },
         {
@@ -676,7 +676,7 @@ function renderSites(body: HTMLElement, data: SitesResponse): void {
   var shared = data.sites.some(function (s) {
     return s.count > s.mine;
   });
-  note(
+  appendNote(
     section,
     "a site is every production building within 300 m of another, named or not" +
       (shared ? "; a site bigger than this factory means it has grown together with its neighbours" : "") +

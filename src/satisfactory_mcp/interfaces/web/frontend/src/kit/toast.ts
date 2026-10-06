@@ -17,7 +17,7 @@ var NOTE_MS = 6000;
 
 var MAX_ROWS = 4;
 
-export function toast(message: string, kind: "fail" | "note", ms: number): void {
+function toast(message: string, kind: "fail" | "note", ms: number): void {
   var box = el("err");
   var rows: Element[] = Array.prototype.slice.call(box.children);
   rows.forEach(function (row) {
@@ -60,13 +60,13 @@ export function fail(message: string): void {
   toast(scrubbed(message) || message, "fail", FAIL_MS);
 }
 
-export function note(message: string): void {
+export function notify(message: string): void {
   toast(message, "note", NOTE_MS);
 }
 
 /* Browser-internal error phrases, translated to what they mean HERE. "Failed to fetch"
  * is Chrome for "the server you started is gone", and that is the actionable sentence. */
-export function friendly(error: unknown): string {
+export function friendlyError(error: unknown): string {
   // Read structurally rather than with `instanceof Error`: a rejected fetch that arrives as a
   // DOMException still carries a `message`, and asking about the constructor would start
   // printing "[object DOMException]" instead.
@@ -80,14 +80,14 @@ export function friendly(error: unknown): string {
   }
   if (/^422 \/api\//.test(text)) return "a value in the address is out of range";
   if (/^\d{3} \/api\//.test(text)) return "the server hit an error";
-  return untooled(scrubbed(text)) || "the server hit an error";
+  return withoutToolHints(scrubbed(text)) || "the server hit an error";
 }
 
 var TOOL = /\b(?:search|trace|list|describe|rank|collected|show|plan|factory|name|amend)_[a-z_]+\b/;
 
 var NOT_A_PLACE = /^(['"])(.*)\1 does not name a place\b/;
 
-export function untooled(text: string): string {
+export function withoutToolHints(text: string): string {
   var line = text.replace(/^!\s*/, "");
   var place = NOT_A_PLACE.exec(line);
   if (place) return "“" + place[2] + "” is not a place: try me, x,y, a factory name or node:…";

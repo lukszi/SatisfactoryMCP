@@ -2,13 +2,13 @@
  * somersloops, facts only. See docs/frontend_vision.md, "Phase 4: Progress". */
 
 import { make } from "../../kit/dom";
-import { checkbox, error, heading, link, loading, note, table, tabs2, tile } from "../../kit/dashkit";
-import { flow, num, pct, phaseText } from "../../kit/format";
+import { appendNote, checkbox, error, heading, link, loading, subTabs, table, tile } from "../../kit/dashkit";
+import { flow, formatNumber, pct, phaseText } from "../../kit/format";
 import { loadOne } from "../../app/load";
 import { hashFor } from "../../map/map";
 import { go } from "../../app/nav";
 import { registerFetch } from "../../app/registry";
-import { onSetting, setSetting, setting, spoilerNotice } from "../../app/settings";
+import { onSetting, setSetting, settingOn, spoilerNotice } from "../../app/settings";
 import { offer } from "../../kit/toast";
 
 import type { ApiError, ApiUrl } from "../../api/client";
@@ -134,7 +134,7 @@ function waiting<T>(body: HTMLElement, held: Slot<T>): void {
 }
 
 function visible<T extends { spoiler: boolean }>(rows: T[]): T[] {
-  if (setting("spoilers")) return rows;
+  if (settingOn("spoilers")) return rows;
   return rows.filter(function (r) {
     return !r.spoiler;
   });
@@ -144,7 +144,7 @@ function amounts(rows: { name: string; amount: number }[]): string {
   return (
     rows
       .map(function (r) {
-        return num(r.amount) + " " + r.name;
+        return formatNumber(r.amount) + " " + r.name;
       })
       .join(", ") || "–"
   );
@@ -153,7 +153,7 @@ function amounts(rows: { name: string; amount: number }[]): string {
 function placed(rows: { name: string; amount: number }[]): string {
   return rows
     .map(function (r) {
-      return num(r.amount) + " " + (PLACES[r.name] || r.name);
+      return formatNumber(r.amount) + " " + (PLACES[r.name] || r.name);
     })
     .join(", ");
 }
@@ -284,9 +284,9 @@ function renderMilestones(body: HTMLElement): void {
       phaseText(full.game_phase) || "no phase in this save"
     )
   );
-  tiles.appendChild(tile("affordable now", num(counts.affordable!), "bill covered by spendable stock"));
-  tiles.appendChild(tile("short", num(counts.short!), counts.locked ? counts.locked + " more locked behind a phase" : "stock does not cover the bill"));
-  tiles.appendChild(tile("done", num(counts.done!), "of " + rows.length + " milestones"));
+  tiles.appendChild(tile("affordable now", formatNumber(counts.affordable!), "bill covered by spendable stock"));
+  tiles.appendChild(tile("short", formatNumber(counts.short!), counts.locked ? counts.locked + " more locked behind a phase" : "stock does not cover the bill"));
+  tiles.appendChild(tile("done", formatNumber(counts.done!), "of " + rows.length + " milestones"));
   body.appendChild(tiles);
 
   var strip = make("div", "dash-tiers");
@@ -309,7 +309,7 @@ function renderMilestones(body: HTMLElement): void {
   var listed = rows.filter(function (m) {
     return showDone || m.status !== "DONE";
   });
-  if (!listed.length) note(card, "every milestone shown here is done");
+  if (!listed.length) appendNote(card, "every milestone shown here is done");
   else card.appendChild(table(MILESTONE_COLUMNS, listed, { sort: milestoneSort, caption: "milestones" }));
   body.appendChild(card);
 }
@@ -417,7 +417,7 @@ function renderMam(body: HTMLElement): void {
   var hidden = data.research.length - rows.length;
   var caps = visible(data.capabilities);
   if (caps.length) {
-    note(
+    appendNote(
       body,
       caps
         .map(function (c) {
@@ -441,7 +441,7 @@ function renderMam(body: HTMLElement): void {
     });
   body.appendChild(strip);
   if (hidden) spoilerNote(body, hidden + " research nodes in trees not opened yet are hidden");
-  if (!data.knows_trees) note(body, "this save predates the list of opened trees, so a node in an unopened tree reads as available");
+  if (!data.knows_trees) appendNote(body, "this save predates the list of opened trees, so a node in an unopened tree reads as available");
 
   var card = make("section", "dash-card");
   var bar = make("div", "dash-title");
@@ -456,7 +456,7 @@ function renderMam(body: HTMLElement): void {
   var listed = rows.filter(function (r) {
     return showMamDone || r.status !== "DONE";
   });
-  if (!listed.length) note(card, "every research node shown here is done");
+  if (!listed.length) appendNote(card, "every research node shown here is done");
   else card.appendChild(table(MAM_COLUMNS, listed, { sort: mamSort, caption: "MAM research" }));
   body.appendChild(card);
 }
@@ -505,7 +505,7 @@ var PART_COLUMNS: Column<Part>[] = [
     label: "needed",
     align: "right",
     render: function (i) {
-      return num(i.amount);
+      return formatNumber(i.amount);
     },
   },
   {
@@ -514,7 +514,7 @@ var PART_COLUMNS: Column<Part>[] = [
     align: "right",
     title: "spendable stock: carried, storage containers and the Dimensional Depot; parts in machines and on belts are not counted",
     render: function (i) {
-      return num(i.have);
+      return formatNumber(i.have);
     },
   },
   {
@@ -522,7 +522,7 @@ var PART_COLUMNS: Column<Part>[] = [
     label: "short by",
     align: "right",
     render: function (i) {
-      return i.short > 0 ? num(i.short) : "";
+      return i.short > 0 ? formatNumber(i.short) : "";
     },
     tone: function (i) {
       return i.short > 0 ? "bad" : "";
@@ -553,11 +553,11 @@ function renderElevator(body: HTMLElement): void {
   if (data.target_phase) {
     var card = make("section", "dash-card");
     heading(card, "target: " + phaseText(data.target_phase));
-    if (!target) note(card, "the save has no per-phase record for the target phase");
-    else if (!target.outstanding.length) note(card, "nothing outstanding on the target phase");
+    if (!target) appendNote(card, "the save has no per-phase record for the target phase");
+    else if (!target.outstanding.length) appendNote(card, "nothing outstanding on the target phase");
     else card.appendChild(table(PART_COLUMNS, target.outstanding, { caption: "parts owed to the target phase" }));
     var paid = "delivered so far: " + (data.delivered.length ? amounts(data.delivered) : "nothing");
-    note(card, target && target.trust === "derived" ? paid + "; the amounts owed are a lower bound" : paid);
+    appendNote(card, target && target.trust === "derived" ? paid + "; the amounts owed are a lower bound" : paid);
     body.appendChild(card);
   }
 
@@ -601,7 +601,7 @@ function renderElevator(body: HTMLElement): void {
         { caption: "Space Elevator phases" }
       )
     );
-  } else if (rows.length === named.length) note(all, "this save records no Space Elevator phase");
+  } else if (rows.length === named.length) appendNote(all, "this save records no Space Elevator phase");
   var hidden = named.length - rows.length;
   if (hidden) spoilerNote(all, data.target_phase ? hidden + " phases past the target are hidden" : "the save names no target phase, so its " + hidden + " phase records are hidden");
   body.appendChild(all);
@@ -676,15 +676,15 @@ function renderDrives(body: HTMLElement): void {
     rerolls += d.rerolls_left;
   });
   var tiles = make("div", "dash-tiles");
-  tiles.appendChild(tile("pending choices", num(data.drives.length), "analysed drives waiting for a pick"));
-  tiles.appendChild(tile("rerolls left", num(rerolls), "across the pending drives"));
-  tiles.appendChild(tile("unanalysed", num(data.spare), "hard drives on hand"));
+  tiles.appendChild(tile("pending choices", formatNumber(data.drives.length), "analysed drives waiting for a pick"));
+  tiles.appendChild(tile("rerolls left", formatNumber(rerolls), "across the pending drives"));
+  tiles.appendChild(tile("unanalysed", formatNumber(data.spare), "hard drives on hand"));
   if (data.last_used !== null) tiles.appendChild(tile("last drive analysed", "drive " + data.last_used, "the newest drive the MAM has analysed"));
   body.appendChild(tiles);
 
   var card = make("section", "dash-card");
   heading(card, "pending hard drives");
-  if (!data.drives.length) note(card, "no hard drive is waiting for a pick");
+  if (!data.drives.length) appendNote(card, "no hard drive is waiting for a pick");
   else {
     var rows: OptionRow[] = [];
     data.drives.forEach(function (d) {
@@ -700,7 +700,7 @@ function renderDrives(body: HTMLElement): void {
         },
       })
     );
-    note(card, "the option not picked returns to the pool; only the drive is spent");
+    appendNote(card, "the option not picked returns to the pool; only the drive is spent");
   }
   body.appendChild(card);
 }
@@ -727,7 +727,7 @@ function shardColumns(point: PointButton): Column<Holder>[] {
         return h.clock;
       },
       render: function (h) {
-        return num(h.clock * 100) + "%";
+        return formatNumber(h.clock * 100) + "%";
       },
     },
     {
@@ -784,12 +784,12 @@ function renderShards(body: HTMLElement, point: PointButton): void {
     return;
   }
   var tiles = make("div", "dash-tiles");
-  tiles.appendChild(tile("free", num(data.free), "crafted shards in stock"));
-  tiles.appendChild(tile("craftable", num(data.craftable), "from slugs on hand, once crafted"));
-  tiles.appendChild(tile("slotted", data.measured ? num(data.committed) : "–", data.measured ? data.idle + " of them above what the clock needs" : "this save does not record slots"));
-  tiles.appendChild(tile("owned", num(data.owned), "free plus slotted"));
+  tiles.appendChild(tile("free", formatNumber(data.free), "crafted shards in stock"));
+  tiles.appendChild(tile("craftable", formatNumber(data.craftable), "from slugs on hand, once crafted"));
+  tiles.appendChild(tile("slotted", data.measured ? formatNumber(data.committed) : "–", data.measured ? data.idle + " of them above what the clock needs" : "this save does not record slots"));
+  tiles.appendChild(tile("owned", formatNumber(data.owned), "free plus slotted"));
   body.appendChild(tiles);
-  note(
+  appendNote(
     body,
     "a shard adds " +
       pct(data.per_shard) +
@@ -799,7 +799,7 @@ function renderShards(body: HTMLElement, point: PointButton): void {
       pct(data.max_clock)
   );
   data.by_place.forEach(function (p) {
-    note(body, (PLACES[p.place] || p.place) + ": " + amounts(p.items));
+    appendNote(body, (PLACES[p.place] || p.place) + ": " + amounts(p.items));
   });
 
   if (data.slugs.length) {
@@ -820,7 +820,7 @@ function renderShards(body: HTMLElement, point: PointButton): void {
             label: "held",
             align: "right",
             render: function (s: ShardsResponse["slugs"][number]) {
-              return num(s.held);
+              return formatNumber(s.held);
             },
           },
           {
@@ -828,7 +828,7 @@ function renderShards(body: HTMLElement, point: PointButton): void {
             label: "shards each",
             align: "right",
             render: function (s: ShardsResponse["slugs"][number]) {
-              return num(s.each);
+              return formatNumber(s.each);
             },
           },
           {
@@ -837,7 +837,7 @@ function renderShards(body: HTMLElement, point: PointButton): void {
             align: "right",
             title: "craftable is potential, not free: crafting is a manual step",
             render: function (s: ShardsResponse["slugs"][number]) {
-              return num(s.shards);
+              return formatNumber(s.shards);
             },
           },
         ],
@@ -849,7 +849,7 @@ function renderShards(body: HTMLElement, point: PointButton): void {
   }
   var card = make("section", "dash-card");
   heading(card, "overclocked buildings (" + data.holders.length + ")");
-  if (!data.holders.length) note(card, "no building holds a shard or runs above 100%");
+  if (!data.holders.length) appendNote(card, "no building holds a shard or runs above 100%");
   else card.appendChild(table(shardColumns(point), data.holders, { sort: shardSort, caption: "overclocked buildings" }));
   body.appendChild(card);
 }
@@ -867,15 +867,15 @@ function renderSloops(body: HTMLElement, point: PointButton): void {
     return;
   }
   var tiles = make("div", "dash-tiles");
-  tiles.appendChild(tile("free", num(data.free), data.by_place.length ? placed(data.by_place) : "none in stock"));
-  tiles.appendChild(tile("slotted", data.measured ? num(data.committed) : "–", data.measured ? "in production machines" : "this save does not record slots"));
-  tiles.appendChild(tile("owned", num(data.owned), "free plus slotted"));
-  if (data.mercer_spheres || setting("spoilers")) tiles.appendChild(tile("mercer spheres", num(data.mercer_spheres), "counted apart, never added in"));
+  tiles.appendChild(tile("free", formatNumber(data.free), data.by_place.length ? placed(data.by_place) : "none in stock"));
+  tiles.appendChild(tile("slotted", data.measured ? formatNumber(data.committed) : "–", data.measured ? "in production machines" : "this save does not record slots"));
+  tiles.appendChild(tile("owned", formatNumber(data.owned), "free plus slotted"));
+  if (data.mercer_spheres || settingOn("spoilers")) tiles.appendChild(tile("mercer spheres", formatNumber(data.mercer_spheres), "counted apart, never added in"));
   body.appendChild(tiles);
-  if (!data.amplifier_researched && data.amplifier_spoiler && !setting("spoilers")) {
-    note(body, "no somersloop can go into a machine yet: the research for it is still locked");
+  if (!data.amplifier_researched && data.amplifier_spoiler && !settingOn("spoilers")) {
+    appendNote(body, "no somersloop can go into a machine yet: the research for it is still locked");
   } else if (!data.amplifier_researched) {
-    note(
+    appendNote(
       body,
       (data.amplifier_research || "Production Amplifier") +
         " is not researched, so no somersloop can go into a machine yet. MAM cost: " +
@@ -884,7 +884,7 @@ function renderSloops(body: HTMLElement, point: PointButton): void {
   }
   var card = make("section", "dash-card");
   heading(card, "amplified machines (" + data.holders.length + ")");
-  if (!data.holders.length) note(card, "no machine holds a somersloop");
+  if (!data.holders.length) appendNote(card, "no machine holds a somersloop");
   else {
     card.appendChild(
       table(
@@ -901,7 +901,7 @@ function renderSloops(body: HTMLElement, point: PointButton): void {
             label: "somersloops",
             align: "right",
             render: function (h: Amplified) {
-              return num(h.sloops);
+              return formatNumber(h.sloops);
             },
           },
           {
@@ -910,7 +910,7 @@ function renderSloops(body: HTMLElement, point: PointButton): void {
             align: "right",
             title: "what the plan model says the slots are worth",
             render: function (h: Amplified) {
-              return h.boost === null ? "–" : num(h.boost, 2) + "×";
+              return h.boost === null ? "–" : formatNumber(h.boost, 2) + "×";
             },
           },
           {
@@ -919,7 +919,7 @@ function renderSloops(body: HTMLElement, point: PointButton): void {
             align: "right",
             title: "the multiplier the save carries",
             render: function (h: Amplified) {
-              return h.boost_in_save === null ? "–" : num(h.boost_in_save, 2) + "×";
+              return h.boost_in_save === null ? "–" : formatNumber(h.boost_in_save, 2) + "×";
             },
             tone: function (h: Amplified) {
               return disagrees(h) ? "bad" : "";
@@ -939,7 +939,7 @@ function renderSloops(body: HTMLElement, point: PointButton): void {
       )
     );
     var off = data.holders.filter(disagrees).length;
-    if (off) note(card, "boost and boost in save disagree on " + off + " machines");
+    if (off) appendNote(card, "boost and boost in save disagree on " + off + " machines");
   }
   body.appendChild(card);
 }
@@ -970,9 +970,9 @@ function nextUp(body: HTMLElement): void {
   var d = drives.data;
   add("progress/drives", "hard drives", d ? d.drives.length + " pending" : null);
   var s = shards.data;
-  add("progress/shards", "power shards", s ? num(s.free) + " free" : null);
+  add("progress/shards", "power shards", s ? formatNumber(s.free) + " free" : null);
   var l = sloops.data;
-  add("progress/sloops", "somersloops", l ? num(l.free) + " free" : null);
+  add("progress/sloops", "somersloops", l ? formatNumber(l.free) + " free" : null);
   if (!parts.length) return;
   parts.forEach(function (part, i) {
     if (i) line.appendChild(document.createTextNode(" · "));
@@ -988,7 +988,7 @@ export function renderProgress(body: HTMLElement, subject: string, point: PointB
     ? subject
     : "";
   body.appendChild(
-    tabs2(
+    subTabs(
       SUBS.map(function (s) {
         return { id: s[0], label: s[1], href: hashFor(s[0] ? "progress/" + s[0] : "progress") };
       }),

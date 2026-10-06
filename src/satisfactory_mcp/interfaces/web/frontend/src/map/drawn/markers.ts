@@ -16,7 +16,7 @@ import { map, xy } from "../map";
 import { declareColours } from "../palette";
 import { pinButtons } from "../../chat/pins";
 import { registerFetch } from "../../app/registry";
-import { onSetting, setting } from "../../app/settings";
+import { onSetting, settingOn } from "../../app/settings";
 import { parseList, state } from "../../app/state";
 import { fail } from "../../kit/toast";
 import { onTone, toned } from "../map-tone";
@@ -391,7 +391,7 @@ export function drawCollectibles(data: CollectiblesResponse): void {
 }
 
 function paintPickups(data: CollectiblesResponse): void {
-  var spoilers = setting("spoilers");
+  var spoilers = settingOn("spoilers");
   hiddenKinds = [];
   data.census.forEach(function (c) {
     labels[c.category] = c.label;

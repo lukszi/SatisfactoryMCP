@@ -1,10 +1,10 @@
 /* What the World finders' rows are called, where they ask, and what selecting one selects:
  * shared by the World tabs and the finder card on the map. */
 
-import { num, perMin, rounded } from "../../kit/format";
+import { formatNumber, perMin, roundHalfEven } from "../../kit/format";
 import { knownNodes, pickupName } from "../../map/drawn/markers";
 import { withQuery } from "../../app/nav";
-import { W } from "../../kit/words";
+import { WORDS } from "../../kit/words";
 
 import type { ApiPath, ApiUrl } from "../../api/client";
 import type { CollectibleRow, FoundField, FoundNode, RankedSite, RunRow } from "../../api/shapes";
@@ -36,7 +36,7 @@ export function nodeLabel(n: { resource_name: string; purity: string }): string 
 }
 
 export function fieldLabel(f: FoundField): string {
-  return f.resources.join(" + ") + " " + W.field + " · " + (f.region || f.grid);
+  return f.resources.join(" + ") + " " + WORDS.field + " · " + (f.region || f.grid);
 }
 
 export function nodeRate(n: FoundNode): string {
@@ -47,7 +47,7 @@ export function carriesText(r: RunRow): string {
   var parts: string[] = [];
   if (r.carries) parts.push(r.carries);
   else if (r.kind === "pipe") parts.push("nothing known");
-  if (r.rate !== null) parts.push((r.kind === "pipe" ? num(r.rate, 0) + " m³/min" : perMin(r.rate)) + " max");
+  if (r.rate !== null) parts.push((r.kind === "pipe" ? formatNumber(r.rate, 0) + " m³/min" : perMin(r.rate)) + " max");
   return parts.length ? parts.join(" · ") : "–";
 }
 
@@ -72,7 +72,7 @@ export function runSelection(r: RunRow): Selection {
 }
 
 export function pickupPlace(p: { x_m: number; y_m: number }): string {
-  return rounded(p.x_m) + "," + rounded(p.y_m);
+  return roundHalfEven(p.x_m) + "," + roundHalfEven(p.y_m);
 }
 
 export function pickupSelection(p: CollectibleRow): Selection {

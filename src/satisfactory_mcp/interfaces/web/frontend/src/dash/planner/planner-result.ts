@@ -1,7 +1,7 @@
 /* The result panel: what the head solves to, as a build list or a graph, redrawn after every
  * new version. See docs/planner-p3_contract.md §9. */
 
-import { button, chip, copyButton, error, idChip, loading, table, tabs2 } from "../../kit/dashkit";
+import { button, chip, copyButton, error, idChip, loading, subTabs, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, flow, mw, pct } from "../../kit/format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "../graph";
@@ -15,7 +15,7 @@ import { renderSite } from "./planner-site";
 import { renderTrack } from "./planner-track";
 import { pinsFor, pinThis } from "../../chat/pins";
 import { headroom, LEDGER } from "../power-ledger";
-import { W } from "../../kit/words";
+import { WORDS } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
 import type { GraphNodeShape } from "../graph";
@@ -44,8 +44,8 @@ var WIDE = window.matchMedia("(min-width: 1280px)");
 var TABS: { id: ResultTab; label: string }[] = [
   { id: "build list", label: "build list" },
   { id: "graph", label: "graph" },
-  { id: "track", label: W.track },
-  { id: "site", label: W.site },
+  { id: "track", label: WORDS.track },
+  { id: "site", label: WORDS.site },
 ];
 
 function clockText(row: { machines: number; clock: number; last_clock?: number | null }): string {
@@ -212,7 +212,7 @@ export function recipesButton(item: string, name: string, where: string): HTMLBu
   var ctl = "alt:" + where + ":" + item;
   var open = !!bench.alt && bench.alt.item === item;
   var b = button(
-    W.recipes,
+    WORDS.recipes,
     function () {
       var switching = dashParts().rest[1] === "alt";
       showAlternates(item, ctl);
@@ -243,7 +243,7 @@ function pinButton(row: SolveRow): HTMLButtonElement | null {
   var id = row.recipe_id;
   if (!id) return null;
   return button(
-    W.pin,
+    WORDS.pin,
     function () {
       pinThis("process", { plan: bench.key, recipe: id! });
     },
@@ -275,7 +275,7 @@ function recipeCell(row: SolveRow, live: boolean): HTMLElement {
   var cell = make("span", "plan-recipe", row.recipe);
   if (row.required) cell.appendChild(chip("required", "muted"));
   if (!live) return cell;
-  if (bench.chatRows[row.id]) cell.appendChild(chip(W.actorChat, "muted", "chat changed this process since you opened the plan"));
+  if (bench.chatRows[row.id]) cell.appendChild(chip(WORDS.actorChat, "muted", "chat changed this process since you opened the plan"));
   var pinned = row.recipe_id ? pinsFor(bench.key)[row.recipe_id] : undefined;
   if (pinned) cell.appendChild(idChip(pinned.id, pinned.text));
   askMarks(bench.key, "process", row.recipe_id || row.recipe).forEach(function (a) {
@@ -405,7 +405,7 @@ function planNodes(data: SolveResponse): PlanNode[] {
   return data.graph.nodes.map(function (n: PlanGraphNode): PlanNode {
     var row = n.row ? byId[n.row] : undefined;
     var badges: string[] = [];
-    if (row && bench.chatRows[row.id]) badges.push(W.actorChat);
+    if (row && bench.chatRows[row.id]) badges.push(WORDS.actorChat);
     if (row && row.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
     var tip = row
       ? row.building + " · " + row.recipe + "\nin: " + rates(items(row.inputs)) + "\nout: " + rates(items(row.outputs))
@@ -567,7 +567,7 @@ export function clearPick(): boolean {
 
 function resultTabs(parent: HTMLElement): void {
   parent.appendChild(
-    tabs2(
+    subTabs(
       TABS,
       bench.tab,
       function (id) {

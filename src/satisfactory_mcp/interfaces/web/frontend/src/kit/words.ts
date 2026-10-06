@@ -3,7 +3,7 @@
 
 import { count } from "./format";
 
-export var W = {
+export var WORDS = {
   needAction: "need action",
   notRunning: "not running",
   powerProblems: "power problems",
@@ -64,13 +64,13 @@ export var W = {
     return "fit pad to “" + name + "”";
   },
   stage: function (n: number, of: number): string {
-    return W.stageUnit + " " + count(n) + " of " + count(of);
+    return WORDS.stageUnit + " " + count(n) + " of " + count(of);
   },
 } as const;
 
 export var NODE_KIND: Record<string, string> = { node: "node", well_sat: "well satellite", geyser: "geyser" };
 
-export var VERB: Record<string, string> = {
+export var TRACK_VERB: Record<string, string> = {
   ok: "–",
   unpause: "unpause",
   setrecipe: "set recipe",

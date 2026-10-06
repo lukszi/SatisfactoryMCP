@@ -8,10 +8,10 @@ import { L } from "../map/leaflet";
 import { BAND, layer } from "../map/layers";
 import { liveStore } from "./livestore";
 import { flyToPoint, map, xy } from "../map/map";
-import { onMap } from "../app/nav";
+import { goToMapThen } from "../app/nav";
 import { registerFetch } from "../app/registry";
 import { state } from "../app/state";
-import { fail, friendly, note } from "../kit/toast";
+import { fail, friendlyError, notify } from "../kit/toast";
 import { PIN_KIND } from "../kit/words";
 
 import type { ApiError, ApiPath, StatusError } from "../api/client";
@@ -122,23 +122,23 @@ export function pinThis(kind: string, ref: PinRef): void {
       var said = (pin.existing ? "already " : "pinned as ") + pin.id;
       copyText(pin.id).then(
         function () {
-          note(said + " · copied");
+          notify(said + " · copied");
         },
         function () {
-          note(said + " · not copied: the browser refused");
+          notify(said + " · not copied: the browser refused");
         }
       );
       refetchPins();
     })
     .catch(function (reason) {
-      fail("could not pin this: " + friendly(reason));
+      fail("could not pin this: " + friendlyError(reason));
     });
 }
 
 function refused(reason: unknown): void {
   var current = store.refused(reason);
   var body = current ? ((reason as StatusError).body as PinStaleResponse) : null;
-  fail(body ? body.error + "; this is the current one" : friendly(reason));
+  fail(body ? body.error + "; this is the current one" : friendlyError(reason));
 }
 
 export function renamePin(pin: PinRow, label: string): Promise<boolean> {
@@ -157,7 +157,7 @@ export function dropPin(pin: PinRow): void {
   store.once(pin.n, function () {
     return send<PinDropped>("DELETE", PIN_ONE, { rev: pin.rev }, String(pin.n))
       .then(function () {
-        note("deleted " + pin.id);
+        notify("deleted " + pin.id);
         refetchPins();
       })
       .catch(refused);
@@ -167,7 +167,7 @@ export function dropPin(pin: PinRow): void {
 export function showPin(pin: PinRow): void {
   if (pin.x_m === null || pin.y_m === null) return;
   var at = xy({ x_m: pin.x_m, y_m: pin.y_m });
-  onMap(function () {
+  goToMapThen(function () {
     var group = state.layers["pins"];
     if (group && !map.hasLayer(group)) group.addTo(map);
     map.once("moveend", function () {

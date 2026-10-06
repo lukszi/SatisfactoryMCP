@@ -2,7 +2,7 @@
  * tab modules share. See docs/frontend_vision.md §8. */
 
 import { onAdvice } from "../chat/advice";
-import { button, choice as choiceBox, empty, fieldError, link, note, tabs2 } from "../kit/dashkit";
+import { appendNote, button, empty, fieldError, link, selectBox, subTabs } from "../kit/dashkit";
 import { el, make } from "../kit/dom";
 import { keepFocus } from "../kit/focus";
 import { renderInventory } from "./inventory";
@@ -16,7 +16,7 @@ import { planTitle } from "./planner/planner-list";
 import { onProgress, renderProgress } from "./progress/progress";
 import { renderRecipes } from "./recipes/recipes";
 import { cancelRename, editName, renamingIn } from "./factories/rename";
-import { amount, choice, onSetting, resetSettings, setSetting, setting, SETTINGS } from "../app/settings";
+import { onSetting, resetSettings, setSetting, settingChoice, settingNumber, settingOn, SETTINGS } from "../app/settings";
 import type { Setting } from "../app/settings";
 import { state } from "../app/state";
 import { renderFactories, renderFactory, wireDetect } from "./factories/factories";
@@ -30,7 +30,7 @@ import { dashParts, go } from "../app/nav";
 import { drawRail } from "../app/rail";
 import { select } from "../app/selection";
 import { renderWorld, worldTitle } from "./world/world";
-import { W } from "../kit/words";
+import { WORDS } from "../kit/words";
 
 import type { FactoryHealthRow } from "../api/shapes";
 
@@ -76,9 +76,7 @@ function address(): { tab: Tab; subject: string } {
   return { tab: tab, subject: parts.subject };
 }
 
-export { go } from "../app/nav";
-
-export function toMap(action: () => void): void {
+export function leaveDashThen(action: () => void): void {
   var from = document.activeElement;
   var keyed = !!from && el("dash").contains(from);
   state.dash = "";
@@ -94,7 +92,7 @@ export function mapButton(title: string, action: () => void, label?: string): HT
   return button(
     "map",
     function () {
-      toMap(action);
+      leaveDashThen(action);
     },
     { title: title, map: true, label: label }
   );
@@ -159,16 +157,16 @@ function settingRow(s: Setting): HTMLElement {
   if (s.kind === "switch") {
     var box = make("input");
     box.type = "checkbox";
-    box.checked = setting(s.key);
+    box.checked = settingOn(s.key);
     box.onchange = function () {
       setSetting(s.key, box.checked);
     };
     row.appendChild(box);
   } else if (s.kind === "choice") {
     row.appendChild(
-      choiceBox(
+      selectBox(
         s.options,
-        choice(s.key),
+        settingChoice(s.key),
         function (value) {
           setSetting(s.key, value);
         },
@@ -183,7 +181,7 @@ function settingRow(s: Setting): HTMLElement {
     num.min = String(least);
     num.max = String(most);
     num.step = "1";
-    num.value = String(amount(s.key));
+    num.value = String(settingNumber(s.key));
     num.onchange = function () {
       var n = Number(num.value);
       if (Number.isInteger(n) && n >= least && n <= most) {
@@ -206,7 +204,7 @@ var SETTINGS_SUBS: [string, string][] = [
 function renderSettings(body: HTMLElement, subject: string): void {
   var sub = subject === "maps" ? "maps" : "";
   body.appendChild(
-    tabs2(
+    subTabs(
       SETTINGS_SUBS.map(function (s) {
         return { id: s[0], label: s[1], href: hashFor(s[0] ? "settings/" + s[0] : "settings") };
       }),
@@ -218,7 +216,7 @@ function renderSettings(body: HTMLElement, subject: string): void {
     )
   );
   if (sub === "maps") {
-    renderMaps(body, { toMap: toMap, render: render });
+    renderMaps(body, { leaveDashThen: leaveDashThen, render: render });
     return;
   }
   var card = make("section", "dash-card");
@@ -229,7 +227,7 @@ function renderSettings(body: HTMLElement, subject: string): void {
     render();
   }, { title: "put every setting back to its default" }));
   card.appendChild(bar);
-  note(card, "kept in this browser, except those chat uses too: those every tab and chat share");
+  appendNote(card, "kept in this browser, except those chat uses too: those every tab and chat share");
   var group = "";
   SETTINGS.forEach(function (s) {
     if (s.group !== group) {
@@ -336,7 +334,7 @@ export function render(): void {
   var body = el("dash-body");
   if (state.noSaves && SAVELESS.indexOf(at.tab) < 0) {
     body.textContent = "";
-    empty(body, W.noSaves, "save a game, or set SATISFACTORY_SAVES if the saves live elsewhere; Recipes and Settings still work");
+    empty(body, WORDS.noSaves, "save a game, or set SATISFACTORY_SAVES if the saves live elsewhere; Recipes and Settings still work");
     return;
   }
   if (at.tab === "planner") {
@@ -354,7 +352,7 @@ export function render(): void {
       if (at.subject) renderCircuit(body, at.subject);
       else renderPower(body);
     } else if (at.tab === "progress") renderProgress(body, at.subject, pointButton);
-    else if (at.tab === "inventory") renderInventory(body, { toMap: toMap, render: render });
+    else if (at.tab === "inventory") renderInventory(body, { leaveDashThen: leaveDashThen, render: render });
     else if (at.tab === "world") renderWorld(body);
     else if (at.tab === "recipes") renderRecipes(body, at.subject, render);
     else renderSettings(body, at.subject);
@@ -414,7 +412,7 @@ function wire(): void {
         return;
       }
       event.preventDefault();
-      if (state.dash) toMap(function () {});
+      if (state.dash) leaveDashThen(function () {});
     };
   });
   new MutationObserver(mirrorBusy).observe(el("map"), { attributes: true, attributeFilter: ["class"] });

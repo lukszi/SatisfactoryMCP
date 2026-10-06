@@ -5,7 +5,7 @@ import { button, chip, empty, error, loading, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, mw, perMin, signed } from "../../kit/format";
 import { bench, gesture, loadAlternates, pushing } from "./planner-core";
-import { counted, W } from "../../kit/words";
+import { counted, WORDS } from "../../kit/words";
 
 import type { Column } from "../../kit/dashkit";
 import type { DeltaRow, PlanOpBody, SwapOption } from "../../api/shapes";
@@ -103,11 +103,11 @@ function acts(o: SwapOption): HTMLElement {
   if (free.length) {
     box.appendChild(
       button(
-        W.letSolverChoose,
+        WORDS.letSolverChoose,
         function () {
           act(free);
         },
-        { title: "drop " + o.name + " from the required and banned lists", label: W.letSolverChoose + " for " + o.name }
+        { title: "drop " + o.name + " from the required and banned lists", label: WORDS.letSolverChoose + " for " + o.name }
       )
     );
   }
@@ -200,7 +200,7 @@ export function renderAlternates(parent: HTMLElement, close: () => void): void {
     if (!data.head_feasible) body.appendChild(make("p", "plan-warning", "v" + data.rev + " is not solvable"));
     if (!data.options.length) empty(body, "no recipe makes " + name);
     else body.appendChild(optionTable(data.options));
-    if (data.hidden) body.appendChild(make("p", "dash-note", W.lockedHidden(data.hidden) + " (Settings, spoilers)"));
+    if (data.hidden) body.appendChild(make("p", "dash-note", WORDS.lockedHidden(data.hidden) + " (Settings, spoilers)"));
     drawer.appendChild(body);
   }
   parent.appendChild(drawer);

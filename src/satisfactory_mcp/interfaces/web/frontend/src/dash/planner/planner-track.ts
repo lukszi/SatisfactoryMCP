@@ -4,19 +4,19 @@
 import { askButton, askMarks } from "../../chat/asks";
 import { renderAsks } from "../../chat/asks-card";
 import { copyText } from "../../kit/copy";
-import { button, chip, empty, error, fieldError, idChip, loading, pressed, table } from "../../kit/dashkit";
+import { button, chip, empty, error, fieldError, idChip, loading, table, toggleButton } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { count, mw, num, range, signed } from "../../kit/format";
+import { count, countRange, formatNumber, mw, signed } from "../../kit/format";
 import { nodeLayers } from "../../map/drawn/markers";
-import { onMap } from "../../app/nav";
+import { goToMapThen } from "../../app/nav";
 import { showBox, showMachine } from "../../map/map-highlight";
 import { builtColumn, builtLine } from "./planner-built";
 import { bench, changed, gesture, loadFeeders, loadTrack, pickStage, stageHeadroom } from "./planner-core";
 import { recipesButton } from "./planner-result";
 import { headroom } from "../power-ledger";
 import { actionTone, tone } from "../machine-states";
-import { fail, note } from "../../kit/toast";
-import { counted, VERB, W } from "../../kit/words";
+import { fail, notify } from "../../kit/toast";
+import { counted, TRACK_VERB, WORDS } from "../../kit/words";
 
 import type { Column } from "../../kit/dashkit";
 import type { AskAbout, TrackCost, TrackResponse, TrackRow, TrackSiteRow, TrackStage, TrackState, Feeder } from "../../api/shapes";
@@ -27,7 +27,7 @@ type Box = [number, number, number, number];
 var HEADROOM_MAX = 1000000;
 var NARROW = window.matchMedia("(max-width: 899px)");
 var STARTUP_CTL = "track-startup";
-var FEEDS = "what the " + W.stages + " stand on";
+var FEEDS = "what the " + WORDS.stages + " stand on";
 
 var headroomProblem = { key: "", text: "", raw: "" };
 var backTo = "";
@@ -51,7 +51,7 @@ function mapButton(bbox: number[] | null, what: string, nodes: string[]): HTMLBu
   return button(
     "map",
     function () {
-      onMap(function () {
+      goToMapThen(function () {
         showBox(target, { layers: ["machines"].concat(nodeLayers(nodes)) });
       });
     },
@@ -71,7 +71,7 @@ function copyIds(row: TrackRow): HTMLButtonElement | null {
     function () {
       copyText(ids.join(",")).then(
         function () {
-          note("copied " + counted(ids.length, "id"));
+          notify("copied " + counted(ids.length, "id"));
         },
         function () {
           fail("could not copy the ids: the browser refused");
@@ -103,31 +103,31 @@ function stateChips(parent: HTMLElement, states: TrackState[]): void {
 }
 
 function verb(row: TrackRow): string {
-  var build = VERB.build + " " + range(row.build, row.build_max);
+  var build = TRACK_VERB.build + " " + countRange(row.build, row.build_max);
   var then = row.build > 0 || (row.build_max || 0) > 0 ? ", then " + build : "";
-  if (row.verb === "unpause") return VERB.unpause + " " + count(row.count) + then;
-  if (row.verb === "setrecipe") return VERB.setrecipe + " " + count(row.count) + then;
+  if (row.verb === "unpause") return TRACK_VERB.unpause + " " + count(row.count) + then;
+  if (row.verb === "setrecipe") return TRACK_VERB.setrecipe + " " + count(row.count) + then;
   if (row.verb === "build") return build;
-  return VERB.ok || "–";
+  return TRACK_VERB.ok || "–";
 }
 
 function stagesWord(stages: number[]): string {
   if (!stages.length) return "–";
-  return (stages.length === 1 ? W.stageUnit + " " : W.stages + " ") + stages.join(", ");
+  return (stages.length === 1 ? WORDS.stageUnit + " " : WORDS.stages + " ") + stages.join(", ");
 }
 
 function nextLine(d: TrackResponse): string {
   var parts: string[] = [];
-  if (d.unpause) parts.push(VERB.unpause + " " + count(d.unpause));
-  if (d.setrecipe) parts.push(VERB.setrecipe + " " + count(d.setrecipe));
-  if (d.to_build || d.to_build_max) parts.push(VERB.build + " " + range(d.to_build, d.to_build_max));
+  if (d.unpause) parts.push(TRACK_VERB.unpause + " " + count(d.unpause));
+  if (d.setrecipe) parts.push(TRACK_VERB.setrecipe + " " + count(d.setrecipe));
+  if (d.to_build || d.to_build_max) parts.push(TRACK_VERB.build + " " + countRange(d.to_build, d.to_build_max));
   return parts.length ? parts.join(" · ") : "nothing to do: every job of the plan stands";
 }
 
 function headline(parent: HTMLElement, d: TrackResponse, asked: number): void {
   var card = make("section", "dash-card");
   var title = make("div", "dash-title");
-  title.appendChild(make("h2", "dash-h", W.track + " · v" + d.rev));
+  title.appendChild(make("h2", "dash-h", WORDS.track + " · v" + d.rev));
   if (asked) title.appendChild(make("span", "plan-status", "tracking v" + asked + "…"));
   card.appendChild(title);
   var text = d.scope_error ? "" : d.stage_text || (d.count ? "" : "no startup order fits " + mw(d.startup.headroom_mw) + " of headroom");
@@ -210,7 +210,7 @@ function headroomButton(parent: HTMLElement, which: string, value: number, store
       ? "store the " + which + " headroom, " + mw(kept)
       : "the " + which + " headroom is not above 0 MW in this save";
   parent.appendChild(
-    pressed(
+    toggleButton(
       which + " " + mw(value),
       stored === null ? fallback : stored === kept,
       function () {
@@ -226,7 +226,7 @@ function controls(parent: HTMLElement, d: TrackResponse): void {
   var stored = plan.headroom_mw === undefined ? d.headroom_mw : plan.headroom_mw;
   var card = make("section", "dash-card plan-bench track-controls");
   var row = make("div", "plan-row");
-  row.appendChild(make("span", "plan-label", W.startupHeadroom));
+  row.appendChild(make("span", "plan-label", WORDS.startupHeadroom));
   var body = make("div", "plan-controls");
   var measured = d.power.measured_headroom_mw;
   var plate = d.power.headroom_mw;
@@ -261,14 +261,14 @@ function notice(parent: HTMLElement): void {
 function stateCell(s: TrackStage): HTMLElement {
   var cell = make("span", "track-state", s.state);
   var t = actionTone(s.states);
-  if (t) cell.appendChild(chip(W.needAction, t));
+  if (t) cell.appendChild(chip(WORDS.needAction, t));
   stateChips(cell, s.states);
   return cell;
 }
 
 function stageActions(s: TrackStage, total: number): HTMLElement {
   var acts = make("span", "dash-acts");
-  var label = W.stage(s.index, total);
+  var label = WORDS.stage(s.index, total);
   var there = mapButton(s.bbox_m, label, []);
   if (there) acts.appendChild(there);
   if (!bench.gone) acts.appendChild(askButton(about("stage", label, String(s.index)), "stage:" + s.index));
@@ -276,17 +276,17 @@ function stageActions(s: TrackStage, total: number): HTMLElement {
 }
 
 function stageLead(s: TrackStage): HTMLElement {
-  var cell = make("span", "", W.stageUnit + " " + s.index);
+  var cell = make("span", "", WORDS.stageUnit + " " + s.index);
   marks(cell, "stage", String(s.index));
   return cell;
 }
 
 function stages(parent: HTMLElement, d: TrackResponse): void {
   var card = make("section", "dash-card");
-  card.appendChild(make("h2", "dash-h", d.count ? W.stages + " · " + counted(d.count, W.stageUnit) : W.stages));
+  card.appendChild(make("h2", "dash-h", d.count ? WORDS.stages + " · " + counted(d.count, WORDS.stageUnit) : WORDS.stages));
   notice(card);
   if (!d.stages.length) {
-    empty(card, "no " + W.stages + ": see the headline above", "pick another headroom or give one above");
+    empty(card, "no " + WORDS.stages + ": see the headline above", "pick another headroom or give one above");
     parent.appendChild(card);
     return;
   }
@@ -297,9 +297,9 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
     label: builtColumn(d.built_at),
     align: "right",
     className: "dash-nowrap",
-    title: "machines of this " + W.stageUnit + " standing in the save; a range where the save cannot tell them apart",
+    title: "machines of this " + WORDS.stageUnit + " standing in the save; a range where the save cannot tell them apart",
     render: function (s) {
-      return range(s.built, s.built_max);
+      return countRange(s.built, s.built_max);
     },
   };
   var state: Column<TrackStage> = { key: "state", label: "state", render: stateCell };
@@ -308,7 +308,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
       key: "on",
       label: "on",
       align: "right",
-      title: "machines this " + W.stageUnit + " switches on",
+      title: "machines this " + WORDS.stageUnit + " switches on",
       render: function (s) {
         return count(s.machines);
       },
@@ -317,7 +317,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
       key: "running",
       label: "running",
       align: "right",
-      title: "machines of this " + W.stageUnit + " a productivity monitor proves running; – where none is monitored",
+      title: "machines of this " + WORDS.stageUnit + " a productivity monitor proves running; – where none is monitored",
       render: function (s) {
         return s.running === null ? "–" : count(s.running);
       },
@@ -334,7 +334,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
       key: "free",
       label: "free after",
       align: "right",
-      title: "headroom left once this " + W.stageUnit + " runs",
+      title: "headroom left once this " + WORDS.stageUnit + " runs",
       render: function (s) {
         return headroom(s.available_after);
       },
@@ -362,7 +362,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
     if (!s) return;
     tr.setAttribute("data-ctl", stageCtl(s.index));
     tr.setAttribute("aria-selected", String(s.index === picked));
-    tr.setAttribute("aria-label", W.stage(s.index, d.count) + ": " + s.state);
+    tr.setAttribute("aria-label", WORDS.stage(s.index, d.count) + ": " + s.state);
   });
   card.appendChild(frame);
   parent.appendChild(card);
@@ -390,7 +390,7 @@ function processCell(row: TrackRow): HTMLElement {
 
 function stageFilter(parent: HTMLElement, n: number, total: number): void {
   var line = make("div", "plan-line");
-  var c = make("span", "plan-chip", "only " + W.stage(n, total));
+  var c = make("span", "plan-chip", "only " + WORDS.stage(n, total));
   var x = make("button", "plan-chip-x", "×");
   x.type = "button";
   x.title = "show the jobs of every stage";
@@ -430,7 +430,7 @@ function jobs(parent: HTMLElement, d: TrackResponse, select: (s: Selection) => v
       className: "dash-nowrap",
       title: "matching machines in the save; a range where the save cannot tell them apart",
       render: function (r) {
-        return r.have_min === null ? count(r.have) : range(r.have_min, r.have);
+        return r.have_min === null ? count(r.have) : countRange(r.have_min, r.have);
       },
     };
     var action: Column<TrackRow> = { key: "action", label: "action", className: "dash-nowrap", render: verb };
@@ -535,7 +535,7 @@ function short(parent: HTMLElement, cost: TrackCost[]): void {
       label: "need",
       align: "right",
       render: function (c) {
-        return num(c.need, 0);
+        return formatNumber(c.need, 0);
       },
     },
     {
@@ -543,7 +543,7 @@ function short(parent: HTMLElement, cost: TrackCost[]): void {
       label: "stock",
       align: "right",
       render: function (c) {
-        return num(c.stock, 0);
+        return formatNumber(c.stock, 0);
       },
     },
     {
@@ -627,7 +627,7 @@ function feederActions(r: Feeder): HTMLElement {
       button(
         "map",
         function () {
-          onMap(function () {
+          goToMapThen(function () {
             showMachine(r.instance, r.name, x as number, y as number, { layers: ["machines"] });
           });
         },
@@ -641,7 +641,7 @@ function feederActions(r: Feeder): HTMLElement {
       function () {
         copyText("machine:" + r.instance).then(
           function () {
-            note("copied the id of this " + r.name);
+            notify("copied the id of this " + r.name);
           },
           function () {
             fail("could not copy the id: the browser refused");
@@ -710,7 +710,7 @@ function startup(parent: HTMLElement, d: TrackResponse): void {
     make(
       "p",
       "plan-facts",
-      "plant draw " + mw(s.plant_draw_mw) + " · generation " + mw(s.plant_generation_mw) + " · smallest " + W.stageUnit + " " + mw(s.minimum_slice_mw)
+      "plant draw " + mw(s.plant_draw_mw) + " · generation " + mw(s.plant_generation_mw) + " · smallest " + WORDS.stageUnit + " " + mw(s.minimum_slice_mw)
     )
   );
   s.warnings.forEach(function (w) {
@@ -718,7 +718,7 @@ function startup(parent: HTMLElement, d: TrackResponse): void {
   });
   d.stages.forEach(function (st) {
     if (!st.waits_for_fill) return;
-    card.appendChild(make("p", "dash-note", W.stageUnit + " " + st.index + ": ≥ " + num(st.fill_s, 0) + " s before its generators produce"));
+    card.appendChild(make("p", "dash-note", WORDS.stageUnit + " " + st.index + ": ≥ " + formatNumber(st.fill_s, 0) + " s before its generators produce"));
   });
   feeders(card);
   parent.appendChild(card);

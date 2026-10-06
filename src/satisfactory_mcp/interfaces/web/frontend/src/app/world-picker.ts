@@ -11,9 +11,9 @@ import { render } from "../dash/shell";
 import { el } from "../kit/dom";
 import { loadOne, reload } from "./load";
 import { writeHash } from "../map/map";
-import { W } from "../kit/words";
+import { WORDS } from "../kit/words";
 import { BOOT, currentWorld, pinnedPath, state } from "./state";
-import { fail, friendly, note } from "../kit/toast";
+import { fail, friendlyError, notify } from "../kit/toast";
 
 import type { WorldRow, WorldsResponse } from "../api/shapes";
 
@@ -101,8 +101,8 @@ function substituted(world: boolean, save: boolean): void {
   if (!world && !save) return;
   var shown = currentWorld();
   var name = shown ? "“" + shown.session_name + "”" : "another world";
-  if (world) note("the linked world is not in the save folder; showing " + name + (BOOT.save ? " and its newest save" : ""));
-  else note("the linked save “" + BOOT.save + "” is not in this world; showing the newest save");
+  if (world) notify("the linked world is not in the save folder; showing " + name + (BOOT.save ? " and its newest save" : ""));
+  else notify("the linked save “" + BOOT.save + "” is not in this world; showing the newest save");
 }
 
 export function loadWorlds(): Promise<void> {
@@ -138,7 +138,7 @@ export function loadWorlds(): Promise<void> {
           "no readable saves found" +
           (reasons ? ": " + reasons : "") +
           " (set SATISFACTORY_SAVES if they live elsewhere)";
-        el("summary").textContent = W.noSaves;
+        el("summary").textContent = WORDS.noSaves;
         el("summary").title = text;
         state.noSaves = true;
         render();
@@ -166,7 +166,7 @@ export function loadWorlds(): Promise<void> {
     })
     .catch(function (e) {
       el("summary").textContent = "the world list could not be loaded";
-      fail("worlds: " + friendly(e));
+      fail("worlds: " + friendlyError(e));
     });
 }
 

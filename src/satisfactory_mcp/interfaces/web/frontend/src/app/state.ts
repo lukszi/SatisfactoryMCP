@@ -53,7 +53,8 @@ export interface PageState {
   map: L.Map | null;
   /** Bumped on every world/save switch; a reply from an older epoch is dropped. */
   epoch: number;
-  opened: number;
+  /** When the page loaded, `Date.now()` milliseconds. */
+  openedAtMs: number;
   panel: PanelState;
   /** The base-map mode; "" until the probes have said which ones exist. See tiles.ts. */
   mode: BaseMode | "";
@@ -72,8 +73,10 @@ export interface PageState {
   /** The dashboard address, `tab` or `tab/subject`; "" while the map is the view. */
   dash: string;
   noSaves: boolean;
-  token: string;
-  stale: boolean;
+  /** The save the page last read, sent back as `?as_of=` so every read sees the same save. */
+  saveToken: string;
+  /** The server answered 409: the game wrote a newer save than `saveToken`. */
+  saveMovedOn: boolean;
 }
 
 var FRAGMENT_KEYS = ["world", "save", "floor", "mode", "pickups", "dash", "show", "z", "c"];
@@ -93,7 +96,7 @@ export var state: PageState = {
   control: null,
   map: null,
   epoch: 0,
-  opened: Date.now(),
+  openedAtMs: Date.now(),
   // A placeholder so the field is never undefined, not a second declaration of the defaults:
   // layercontrol/control.ts replaces it wholesale as it builds the control.
   panel: { open: true, sections: {} },
@@ -103,10 +106,10 @@ export var state: PageState = {
   imagery: false,
   floor: null,
   pickups: parseList(BOOT.pickups),
-  dash: dashOf(BOOT),
+  dash: dashFromFragment(BOOT),
   noSaves: false,
-  token: "",
-  stale: false,
+  saveToken: "",
+  saveMovedOn: false,
 };
 
 /* A function and not just `BOOT`, because the fragment is read more than once: `BOOT` is the one
@@ -126,7 +129,7 @@ export function parseHash(hash: string, garbled?: string[]): Record<string, stri
       try {
         value = decodeURIComponent(raw);
       } catch (ignored) {
-        value = lenient(raw);
+        value = decodeLeniently(raw);
         if (garbled) garbled.push(key);
       }
       if (FRAGMENT_KEYS.indexOf(key) < 0 && out.dash && out.dash.indexOf("?") >= 0) {
@@ -138,7 +141,7 @@ export function parseHash(hash: string, garbled?: string[]): Record<string, stri
   return out;
 }
 
-function lenient(raw: string): string {
+function decodeLeniently(raw: string): string {
   try {
     return decodeURIComponent(raw.replace(/%(?![0-9a-fA-F]{2})/g, "%25"));
   } catch (ignored) {
@@ -150,7 +153,7 @@ export function garbledNote(keys: string[]): string {
   return "the link has a broken % escape in “" + keys.join("”, “") + "”; it was read as best it could be";
 }
 
-export function dashOf(asked: Record<string, string>): string {
+export function dashFromFragment(asked: Record<string, string>): string {
   if (asked.dash) return asked.dash;
   var mapped = ["z", "c", "floor", "mode", "pickups"].some(function (key) {
     return key in asked;

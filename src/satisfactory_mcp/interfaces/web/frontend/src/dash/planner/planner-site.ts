@@ -9,11 +9,11 @@ import { L } from "../../map/leaflet";
 import { map } from "../../map/map";
 import { bench, changed, gesture, stageHeadroom } from "./planner-core";
 import { biomassQuery } from "../power-ledger";
-import { choice, onSetting } from "../../app/settings";
+import { onSetting, settingChoice } from "../../app/settings";
 import { busy, corners, crossCancel, crossDrop, crossing, crossOn, crossTurn, edit, ghost, nodes, outsideMap, same, setPad, stop, useSnap, yawStep } from "./pad-drag";
 import { state } from "../../app/state";
-import { friendly } from "../../kit/toast";
-import { counted, W } from "../../kit/words";
+import { friendlyError } from "../../kit/toast";
+import { counted, WORDS } from "../../kit/words";
 
 import type { ApiUrl } from "../../api/client";
 import type { SitePreviewResponse } from "../../api/shapes";
@@ -62,12 +62,12 @@ var rtt = 40;
 var pumpTimer = 0;
 
 useSnap(function () {
-  return choice("siteSnap") || "fine";
+  return settingChoice("siteSnap") || "fine";
 });
-var snapWas = choice("siteSnap");
+var snapWas = settingChoice("siteSnap");
 onSetting(function () {
-  if (choice("siteSnap") === snapWas) return;
-  snapWas = choice("siteSnap");
+  if (settingChoice("siteSnap") === snapWas) return;
+  snapWas = settingChoice("siteSnap");
   if (showing()) paint();
 });
 
@@ -119,7 +119,7 @@ function pump(): void {
       }
     })
     .catch(function (reason) {
-      if (key === site.key) site.error = friendly(reason);
+      if (key === site.key) site.error = friendlyError(reason);
     })
     .then(function () {
       inflight = false;
@@ -193,7 +193,7 @@ function commit(p: Pad, how: string): void {
       push(p);
     })
     .catch(function (reason) {
-      site.error = friendly(reason);
+      site.error = friendlyError(reason);
       paint();
     });
 }
@@ -257,7 +257,7 @@ function start(): void {
     })
     .catch(function (reason) {
       if (key !== site.key) return;
-      site.error = friendly(reason);
+      site.error = friendlyError(reason);
       paint();
     });
 }
@@ -416,19 +416,19 @@ function actions(parent: HTMLElement): void {
     var deg = yawStep() + "°";
     row.appendChild(button("⟲ " + deg, function () { crossTurn(-1); }, { label: "turn the pad " + deg + " anticlockwise" }));
     row.appendChild(button("⟳ " + deg, function () { crossTurn(1); }, { label: "turn the pad " + deg + " clockwise" }));
-    var drop = button(W.dropHere, function () { crossDrop(); paint(); });
+    var drop = button(WORDS.dropHere, function () { crossDrop(); paint(); });
     drop.classList.add("site-drop");
     drop.setAttribute("data-ctl", "site-drop");
     row.appendChild(drop);
     row.appendChild(button("cancel", function () { crossCancel(); paint(); }));
   } else {
-    var move = button(COARSE.matches ? "move" : W.moveByPanning, function () { crossOn(); paint(); }, { title: "pan the map under a fixed pad, then drop it" });
+    var move = button(COARSE.matches ? "move" : WORDS.moveByPanning, function () { crossOn(); paint(); }, { title: "pan the map under a fixed pad, then drop it" });
     move.setAttribute("data-ctl", "site-cross");
     move.disabled = bench.gone || !site.pad;
     row.appendChild(move);
     var fits = site.last && site.last.fits ? site.last.fits : [];
     fits.forEach(function (f) {
-      row.appendChild(button(W.fitPad(f.name), function () {
+      row.appendChild(button(WORDS.fitPad(f.name), function () {
         var p = padOf(f.value)!;
         site.label = f.value.origin_label;
         site.sized = true;
@@ -486,7 +486,7 @@ function paintHead(): void {
 function paint(): void {
   card.textContent = "";
   var head = make("div", "dash-title");
-  head.appendChild(make("h2", "dash-h", W.site));
+  head.appendChild(make("h2", "dash-h", WORDS.site));
   paintHead();
   head.appendChild(headline);
   card.appendChild(head);
@@ -500,8 +500,8 @@ function paint(): void {
   card.appendChild(feedback);
   paintLines();
   var deg = yawStep() + "°";
-  var hint = COARSE.matches ? "move, pan the map under the pad, then " + W.dropHere : "drag the square to move, the circle to turn; Shift moves freely; arrows nudge 8 m, Shift+arrows 1 m, [ and ] turn " + deg + ", Shift+[ and ] 15° freely; Esc puts it back";
-  card.appendChild(make("p", "dash-note", hint + " · snap: " + (choice("siteSnap") === "grid8" ? "8 m world grid and " + deg : "1 m and " + deg) + " (Settings)"));
+  var hint = COARSE.matches ? "move, pan the map under the pad, then " + WORDS.dropHere : "drag the square to move, the circle to turn; Shift moves freely; arrows nudge 8 m, Shift+arrows 1 m, [ and ] turn " + deg + ", Shift+[ and ] 15° freely; Esc puts it back";
+  card.appendChild(make("p", "dash-note", hint + " · snap: " + (settingChoice("siteSnap") === "grid8" ? "8 m world grid and " + deg : "1 m and " + deg) + " (Settings)"));
 }
 
 /* ---------------------------------------------------------------- the split */

@@ -1,13 +1,13 @@
 /* The open plan as the page knows it, and every write it makes. See docs/planner_slice_contract.md §12. */
 
-import { get, latest, missing, push, send } from "../../api/client";
+import { get, isNotFound, latest, postWithConflict, send } from "../../api/client";
 import { go } from "../../app/nav";
 import { nowSeconds } from "../../kit/format";
 import { biomassQuery } from "../power-ledger";
-import { choice, spoilerQuery } from "../../app/settings";
+import { settingChoice, spoilerQuery } from "../../app/settings";
 import { state } from "../../app/state";
-import { fail, friendly, note } from "../../kit/toast";
-import { W } from "../../kit/words";
+import { fail, friendlyError, notify } from "../../kit/toast";
+import { WORDS } from "../../kit/words";
 
 import type { ApiError, ApiPath, ApiUrl, StatusError } from "../../api/client";
 import type {
@@ -180,13 +180,13 @@ export function changed(): void {
 
 function queue(task: () => Promise<void> | void): void {
   chain = chain.then(task).catch(function (error) {
-    fail(friendly(error));
+    fail(friendlyError(error));
   });
 }
 
 export function actorWord(actor: ActorBody): string {
-  if (actor.kind === "page") return W.actorYou;
-  if (actor.kind === "chat") return W.actorChat;
+  if (actor.kind === "page") return WORDS.actorYou;
+  if (actor.kind === "chat") return WORDS.actorChat;
   return actor.display;
 }
 
@@ -289,8 +289,8 @@ export function openPlan(key: string): void {
       })
       .catch(function (error) {
         if (bench.key !== key) return;
-        bench.error = friendly(error);
-        bench.missing = missing(error);
+        bench.error = friendlyError(error);
+        bench.missing = isNotFound(error);
         changed();
       });
   });
@@ -354,19 +354,19 @@ function partition(data: TrackResponse): Partition {
 function wasWords(p: Partition): string {
   if (!p.count) return "no startup order fitted";
   if (!p.current) return "every stage of " + p.count + " was built";
-  return "you were in " + W.stage(p.current, p.count);
+  return "you were in " + WORDS.stage(p.current, p.count);
 }
 
 function nowWords(p: Partition): string {
   if (!p.count) return "now no startup order fits the headroom";
   if (!p.current) return "now every stage of " + p.count + " is built";
-  return "now " + W.stage(p.current, p.count);
+  return "now " + WORDS.stage(p.current, p.count);
 }
 
 function stillWords(p: Partition): string {
   if (!p.count) return "still no startup order fits the headroom";
   if (!p.current) return "every stage of " + p.count + " is still built";
-  return "you are still in " + W.stage(p.current, p.count);
+  return "you are still in " + WORDS.stage(p.current, p.count);
 }
 
 function renumber(data: TrackResponse): void {
@@ -385,7 +385,7 @@ function renumber(data: TrackResponse): void {
 }
 
 export function stageHeadroom(): string {
-  return choice("stageHeadroom") || "measured";
+  return settingChoice("stageHeadroom") || "measured";
 }
 
 export function loadTrack(): void {
@@ -411,7 +411,7 @@ export function loadTrack(): void {
     })
     .catch(function (reason) {
       if (!ticket.fresh() || bench.key !== key || bench.track !== view) return;
-      view.error = friendly(reason);
+      view.error = friendlyError(reason);
       view.asked = 0;
       changed();
     });
@@ -437,7 +437,7 @@ export function loadFeeders(): void {
     })
     .catch(function (reason) {
       if (!ticket.fresh() || bench.key !== key || view.feeders !== feeders) return;
-      feeders.error = friendly(reason);
+      feeders.error = friendlyError(reason);
       feeders.busy = false;
       changed();
     });
@@ -447,7 +447,7 @@ export function pickStage(n: number): void {
   var view = bench.track;
   var total = view.data ? view.data.count : 0;
   view.stage = view.stage === n ? 0 : n;
-  bench.selection = view.stage ? { kind: "stage", label: W.stage(view.stage, total), ref: String(view.stage) } : null;
+  bench.selection = view.stage ? { kind: "stage", label: WORDS.stage(view.stage, total), ref: String(view.stage) } : null;
   go(trackDash(bench.key, view.stage), true);
   changed();
 }
@@ -503,7 +503,7 @@ export function loadAlternates(): void {
     .catch(function (reason) {
       var now = bench.alt;
       if (!now || !ticket.fresh() || bench.key !== key) return;
-      now.error = friendly(reason);
+      now.error = friendlyError(reason);
       now.asked = 0;
       changed();
     });
@@ -512,7 +512,7 @@ export function loadAlternates(): void {
 function chatTouched(d: DeltaResponse): Record<string, true> {
   var out: Record<string, true> = {};
   var fromChat = bench.strip.some(function (row) {
-    return row.who === W.actorChat;
+    return row.who === WORDS.actorChat;
   });
   if (!fromChat) return out;
   (d.rows || []).forEach(function (r) {
@@ -583,7 +583,7 @@ export function loadVersions(): void {
     })
     .catch(function (reason) {
       if (bench.key !== key) return;
-      bench.versionsError = friendly(reason);
+      bench.versionsError = friendlyError(reason);
       changed();
     });
 }
@@ -635,7 +635,7 @@ export function viewRev(rev: number): void {
     })
     .catch(function (reason) {
       if (bench.key !== key || bench.view !== rev) return;
-      bench.viewError = friendly(reason);
+      bench.viewError = friendlyError(reason);
       changed();
     });
   deltaForView();
@@ -685,7 +685,7 @@ export function solveHead(): void {
     .catch(function (error) {
       if (seq !== solveSeq) return;
       bench.solving = 0;
-      bench.solveError = friendly(error);
+      bench.solveError = friendlyError(error);
       changed();
     });
 }
@@ -700,7 +700,7 @@ function refused(error: StatusError): void {
     bench.gone = true;
     fail("this plan was forgotten; nothing was written");
   } else {
-    fail(friendly(error));
+    fail(friendlyError(error));
   }
 }
 
@@ -708,7 +708,7 @@ function landed(reply: PushedResponse, record: "done" | "none"): number {
   if (!reply.noop) {
     bench.own[reply.rev] = true;
     if (record === "done") bench.done.push(reply.rev);
-    bench.last = { who: W.actorYou, ts: nowSeconds() };
+    bench.last = { who: WORDS.actorYou, ts: nowSeconds() };
   }
   reply.others.forEach(strip);
   adopt(reply.state);
@@ -790,7 +790,7 @@ function write(
     Object.keys(extra).forEach(function (k) {
       body[k] = extra[k];
     });
-    return push<PushedResponse, Refusal>(path, body, key).then(function (answer) {
+    return postWithConflict<PushedResponse, Refusal>(path, body, key).then(function (answer) {
       if (bench.key !== key) {
         if (answer.conflict) lost(answer.body.error || "the server refused it");
         return;
@@ -817,7 +817,7 @@ function write(
     return attempt(start)
       .catch(function (error) {
         if (bench.key === key) refused(error);
-        else lost(friendly(error));
+        else lost(friendlyError(error));
       })
       .then(done, done);
   });
@@ -852,7 +852,7 @@ export function applyArgs(args: Record<string, unknown>, fromEntry: string, base
     { args: args, from_entry: fromEntry },
     function (reply) {
       landed(reply, "done");
-      if (reply.noop) note("nothing changed: the plan already matches chat's request");
+      if (reply.noop) notify("nothing changed: the plan already matches chat's request");
     },
     function (body) {
       outdated(body, again);
@@ -900,7 +900,7 @@ function without<T>(list: T[], item: T): void {
 export function undoLast(): void {
   var target = bench.done[bench.done.length - 1];
   if (target === undefined) {
-    note("nothing of yours to undo on this plan");
+    notify("nothing of yours to undo on this plan");
     return;
   }
   var take = function () {
@@ -923,7 +923,7 @@ export function undoLast(): void {
 export function redoLast(): void {
   var entry = bench.redo[bench.redo.length - 1];
   if (!entry) {
-    note("nothing to redo");
+    notify("nothing to redo");
     return;
   }
   var take = function () {
@@ -958,7 +958,7 @@ export function undoRev(rev: number): void {
     },
     function () {
       markUndone(rev);
-      note("v" + rev + " is already undone");
+      notify("v" + rev + " is already undone");
       changed();
     },
     function () {}
@@ -998,7 +998,7 @@ export function restoreRev(rev: number, done?: () => void): void {
     { rev: rev },
     function (reply) {
       landed(reply, "done");
-      if (reply.noop) note("nothing changed: the plan already equals v" + rev);
+      if (reply.noop) notify("nothing changed: the plan already equals v" + rev);
       if (done) done();
     },
     function (body) {
@@ -1017,7 +1017,7 @@ export function restoreRev(rev: number, done?: () => void): void {
 export function duplicatePlan(rev?: number): Promise<string> {
   var body: Record<string, unknown> = {};
   if (rev) body.rev = rev;
-  return push<PushedResponse, Refusal & ApiError>("/api/plans/{key}/duplicate", body, bench.key).then(function (answer) {
+  return postWithConflict<PushedResponse, Refusal & ApiError>("/api/plans/{key}/duplicate", body, bench.key).then(function (answer) {
     if (answer.conflict) throw new Error(answer.body.error || "the copy could not be named");
     return answer.body.key;
   });
@@ -1025,7 +1025,7 @@ export function duplicatePlan(rev?: number): Promise<string> {
 
 export function undoIn(key: string, rev: number): Promise<string> {
   return get<PlanStateBody>("/api/plans/{key}", key).then(function (head) {
-    return push<PushedResponse, Refusal & ApiError>("/api/plans/{key}/undo", { base_rev: head.rev, rev: rev }, key).then(function (answer) {
+    return postWithConflict<PushedResponse, Refusal & ApiError>("/api/plans/{key}/undo", { base_rev: head.rev, rev: rev }, key).then(function (answer) {
       if (!answer.conflict) return answer.body.noop ? "nothing to undo in v" + rev : "undid v" + rev + " of “" + head.name + "”";
       if (answer.body.already_undone) return "v" + rev + " is already undone";
       var why = (answer.body.conflicts || [])
@@ -1053,7 +1053,7 @@ export function restorePlan(): void {
 export function createPlan(base: string, args: Record<string, unknown>, fromEntry: string, n?: number): Promise<string> {
   var tries = n || 1;
   var name = tries === 1 ? base : base + " (" + tries + ")";
-  return push<PushedResponse, Refusal & ApiError>("/api/plans", { name: name, args: args, from_entry: fromEntry }).then(function (answer) {
+  return postWithConflict<PushedResponse, Refusal & ApiError>("/api/plans", { name: name, args: args, from_entry: fromEntry }).then(function (answer) {
     if (!answer.conflict) return answer.body.key;
     if (answer.body.name_taken && tries < 20) return createPlan(base, args, fromEntry, tries + 1);
     throw new Error(answer.body.error || "a plan named “" + name + "” already exists");

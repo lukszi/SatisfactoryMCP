@@ -1,15 +1,15 @@
 /* The Recipes codex: the dashboard's `dash=recipes…` section. See docs/frontend_vision.md §10. */
 
-import { get, latest, missing } from "../../api/client";
-import { choice, empty, error, link, loading, note, table, tabs2 } from "../../kit/dashkit";
+import { get, isNotFound, latest } from "../../api/client";
+import { appendNote, empty, error, link, loading, selectBox, subTabs, table } from "../../kit/dashkit";
 import { el, make } from "../../kit/dom";
-import { count, num, perMin } from "../../kit/format";
+import { count, formatNumber, perMin } from "../../kit/format";
 import { hashFor, writeHash } from "../../map/map";
-import { decoded, go, subjectQuery, withQuery } from "../../app/nav";
+import { decodeOrKeep, go, subjectQuery, withQuery } from "../../app/nav";
 import { registerFetch } from "../../app/registry";
-import { setting } from "../../app/settings";
+import { settingOn } from "../../app/settings";
 import { state } from "../../app/state";
-import { friendly } from "../../kit/toast";
+import { friendlyError } from "../../kit/toast";
 import { counted, RECIPE_KIND as KIND_WORD } from "../../kit/words";
 
 import type { ApiError, ApiUrl, StatusError } from "../../api/client";
@@ -120,7 +120,7 @@ function browseDash(b: Browse): string {
 }
 
 function hidesLocked(): boolean {
-  return !setting("spoilers");
+  return !settingOn("spoilers");
 }
 
 function spoilers(): string {
@@ -255,7 +255,7 @@ function flows(rates: Rate[]): HTMLElement {
   var span = make("span", "rx-flows");
   rates.forEach(function (r, i) {
     if (i) span.appendChild(document.createTextNode(", "));
-    span.appendChild(document.createTextNode(num(r.per_min) + " "));
+    span.appendChild(document.createTextNode(formatNumber(r.per_min) + " "));
     span.appendChild(itemLink(r.item, r.name));
   });
   return span;
@@ -279,7 +279,7 @@ function countLine(parent: HTMLElement, text: string, readable: boolean): void {
 }
 
 function saveNote(parent: HTMLElement, text: string | null): void {
-  if (text) note(parent, friendly(text));
+  if (text) appendNote(parent, friendlyError(text));
 }
 
 function sortFor(name: string): SortState {
@@ -288,7 +288,7 @@ function sortFor(name: string): SortState {
 }
 
 function amount(r: RecipeRow): string {
-  return r.kind === "part" ? perMin(r.qty) : num(r.qty) + (PER[r.kind] || "");
+  return r.kind === "part" ? perMin(r.qty) : formatNumber(r.qty) + (PER[r.kind] || "");
 }
 
 function recipeTable(parent: HTMLElement, rows: RecipeRow[], options: { kinds: boolean; qty: string; sort: string }): void {
@@ -378,7 +378,7 @@ function modeBar(card: HTMLElement, b: Browse): void {
     var to: Browse = { mode: m[0], q: b.q, kind: b.kind, alt: b.alt, all: b.all };
     return { id: m[0], label: m[1], href: hashFor(browseDash(to)) };
   });
-  card.appendChild(tabs2(items, b.mode, undefined, "recipe book view"));
+  card.appendChild(subTabs(items, b.mode, undefined, "recipe book view"));
 }
 
 function checkbox(label: string, on: boolean, candidate: string, change: (on: boolean) => void): HTMLElement {
@@ -425,7 +425,7 @@ function itemColumns(): Column<ItemRow>[] {
         return i.energy_mj;
       },
       render: function (i) {
-        return i.energy_mj ? num(i.energy_mj) : "–";
+        return i.energy_mj ? formatNumber(i.energy_mj) : "–";
       },
     },
     {
@@ -450,7 +450,7 @@ function renderItems(card: HTMLElement, b: Browse): boolean {
     empty(card, b.q ? "no item matches “" + b.q + "”" : "no items", b.q ? "clear the filter to see every item" : undefined);
     return true;
   }
-  note(card, counted(data.total, "item") + (data.items.length < data.total ? ", the first " + count(data.items.length) + " shown" : ""));
+  appendNote(card, counted(data.total, "item") + (data.items.length < data.total ? ", the first " + count(data.items.length) + " shown" : ""));
   card.appendChild(table(itemColumns(), data.items, { sort: sorts.items, onSort: redraw, caption: "items" }));
   return true;
 }
@@ -458,7 +458,7 @@ function renderItems(card: HTMLElement, b: Browse): boolean {
 function renderRecipeSearch(card: HTMLElement, b: Browse): boolean {
   var controls = make("div", "rx-controls");
   controls.appendChild(
-    choice(
+    selectBox(
       KINDS,
       b.kind,
       function (value) {
@@ -503,7 +503,7 @@ function renderUnlocked(card: HTMLElement, b: Browse): boolean {
   if (waiting(card, got, "the unlocked recipes")) return false;
   var data = got.data!;
   var alternates = count(data.alternates_unlocked) + (hidesLocked() ? "" : " of " + count(data.alternates_total)) + " alternates unlocked";
-  note(card, [alternates, counted(data.automatable_total, "automatable recipe") + " in all", savedFrom(data)].join(" · "));
+  appendNote(card, [alternates, counted(data.automatable_total, "automatable recipe") + " in all", savedFrom(data)].join(" · "));
   var q = b.q.toLowerCase();
   var rows = data.recipes.filter(function (r) {
     return !q || r.name.toLowerCase().indexOf(q) >= 0;
@@ -590,7 +590,7 @@ function title(body: HTMLElement, back: Mode, text: string, cls: string, tag: st
 function unread<T>(body: HTMLElement, got: Got<T>, back: Mode, thing: string, how: string): void {
   body.appendChild(link(backTo(back), "‹ all " + back, "dash-back"));
   if (!got.failure) loading(body, thing);
-  else if (missing(got.failure) || ambiguous(got.failure)) empty(body, friendly(got.failure), how);
+  else if (isNotFound(got.failure) || ambiguous(got.failure)) empty(body, friendlyError(got.failure), how);
   else error(body, thing, got.failure, got.retry);
 }
 
@@ -620,7 +620,7 @@ function makerTable(card: HTMLElement, rows: MakerRow[]): void {
       key: "machine",
       label: "machine",
       render: function (r) {
-        return r.machine ? r.machine + " · " + num(r.power_mw) + " MW" : "–";
+        return r.machine ? r.machine + " · " + formatNumber(r.power_mw) + " MW" : "–";
       },
     },
     {
@@ -664,8 +664,8 @@ function renderItem(body: HTMLElement, cls: string): void {
     return;
   }
   title(body, "items", data.name, data.item, data.fluid ? "fluid" : "solid");
-  var facts = [data.energy_mj ? num(data.energy_mj) + " MJ" + (data.fluid ? " per m³" : " each") : "", data.sink_points ? count(data.sink_points) + " sink points" : ""].filter(Boolean);
-  if (facts.length) note(body, facts.join(" · "));
+  var facts = [data.energy_mj ? formatNumber(data.energy_mj) + " MJ" + (data.fluid ? " per m³" : " each") : "", data.sink_points ? count(data.sink_points) + " sink points" : ""].filter(Boolean);
+  if (facts.length) appendNote(body, facts.join(" · "));
   saveNote(body, data.save_note);
   countLine(body, "", data.save_note === null);
 
@@ -682,7 +682,7 @@ function renderItem(body: HTMLElement, cls: string): void {
     var rows = uses.data!.recipes;
     if (!rows.length) empty(used, hidesLocked() ? "no unlocked recipe uses this" : "no recipe uses this");
     else {
-      note(used, censusLine(uses.data!, "all"));
+      appendNote(used, censusLine(uses.data!, "all"));
       recipeTable(used, rows, { kinds: true, qty: "uses", sort: "used" });
     }
   }
@@ -703,7 +703,7 @@ function rateTable(box: HTMLElement, rates: Rate[], part: boolean, linked: boole
       label: part ? "per min" : "amount",
       align: "right",
       render: function (x) {
-        return part ? perMin(x.per_min, false) : num(x.amount);
+        return part ? perMin(x.per_min, false) : formatNumber(x.amount);
       },
     },
   ];
@@ -714,7 +714,7 @@ function renderRecipe(body: HTMLElement, cls: string): void {
   var got = load<RecipeDetail>("recipes", `/api/gamedata/recipe?recipe=${encodeURIComponent(cls)}${spoilers()}`);
   if (!got.data) {
     unread(body, got, "recipes", "the recipe", ambiguous(got.failure) ? "pick one below" : "search for it by name in the header");
-    if (got.failure) candidates(body, decoded(cls));
+    if (got.failure) candidates(body, decodeOrKeep(cls));
     return;
   }
   var r = got.data;
@@ -736,8 +736,8 @@ function renderRecipe(body: HTMLElement, cls: string): void {
   var facts: [string, string][] = part
     ? [
         ["machine", r.machine || "–"],
-        ["cycle", num(r.duration_s, 2) + " s"],
-        ["power", r.power_range_mw ? num(r.power_range_mw[0]) + "–" + num(r.power_range_mw[1]) + " MW, " + num(r.power_mw) + " MW average" : num(r.power_mw) + " MW"],
+        ["cycle", formatNumber(r.duration_s, 2) + " s"],
+        ["power", r.power_range_mw ? formatNumber(r.power_range_mw[0]) + "–" + formatNumber(r.power_range_mw[1]) + " MW, " + formatNumber(r.power_mw) + " MW average" : formatNumber(r.power_mw) + " MW"],
       ]
     : [];
   facts.push(["granted by", r.granted_by.join("; ") || "no known unlock"]);

@@ -12,7 +12,7 @@ import { actorWord, changed, commitWords, createPlan, itemList, knownItem, loadI
 import { renderActivity } from "./planner-history";
 import { renderPins } from "../../chat/pins-card";
 import { state } from "../../app/state";
-import { friendly } from "../../kit/toast";
+import { friendlyError } from "../../kit/toast";
 import { OBJECTIVES } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
@@ -45,7 +45,7 @@ export function loadList(): void {
     })
     .catch(function (reason) {
       if (mine !== seq) return;
-      list.error = friendly(reason);
+      list.error = friendlyError(reason);
       changed();
     });
 }
@@ -243,7 +243,7 @@ function form(parent: HTMLElement): void {
         go("planner/" + key);
       })
       .catch(function (reason) {
-        list.problem = friendly(reason);
+        list.problem = friendlyError(reason);
       })
       .then(function () {
         list.creating = false;

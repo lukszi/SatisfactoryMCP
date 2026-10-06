@@ -1,9 +1,9 @@
 /* The workbench's power row: the per-plan payback horizon and the overclock-last switch, and
  * each build-list row's own overclock choice. See docs/planner-payback-horizon_contract.md §7. */
 
-import { button, checkbox, choice, slider } from "../../kit/dashkit";
+import { button, checkbox, selectBox, slider } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { count, mw, num, pct } from "../../kit/format";
+import { count, formatNumber, mw, pct } from "../../kit/format";
 import { bench, gesture } from "./planner-core";
 
 import type { SolveResponse, SolveRow } from "../../api/shapes";
@@ -20,7 +20,7 @@ var HOURS = [0, 1, 2, 5, 10, 20, 50, 100];
 var STOPS = HOURS.map(hours);
 
 export function hours(h: number): string {
-  return num(h, 1) + " h";
+  return formatNumber(h, 1) + " h";
 }
 
 function nearest(h: number): number {
@@ -54,15 +54,15 @@ export function stopWords(view: Payback | null, h: number): string {
 
 function priceWords(view: Payback | null): string {
   if (!view) return "";
-  if (view.price_source === "plan") return " at " + num(view.price, 0) + " pts/MWh set on this plan";
+  if (view.price_source === "plan") return " at " + formatNumber(view.price, 0) + " pts/MWh set on this plan";
   if (!view.price) return "; this grid burns no fuel, so power costs nothing to run";
-  return " at the grid mix, " + num(view.price, 0) + " pts/MWh";
+  return " at the grid mix, " + formatNumber(view.price, 0) + " pts/MWh";
 }
 
 type OverclockRow = Payback["overclock"]["rows"][number];
 
 function shardWords(oc: Payback["overclock"], shards: number): string {
-  var hand = oc.shards_free === null ? "" : num(oc.shards_free, 0) + " in hand + " + num(oc.shards_craftable || 0, 0) + " craftable";
+  var hand = oc.shards_free === null ? "" : formatNumber(oc.shards_free, 0) + " in hand + " + formatNumber(oc.shards_craftable || 0, 0) + " craftable";
   return count(shards) + (shards === 1 ? " shard" : " shards") + (hand ? " (" + hand + ")" : "");
 }
 
@@ -187,7 +187,7 @@ export function rowOverclock(row: SolveRow): HTMLElement | null {
   var follows = o.pinned === null;
   var plan = o.applied && follows ? "plan: overclock last" : "plan: one more machine";
   if (follows && o.without) plan = "plan: no shards left";
-  var pick = choice(
+  var pick = selectBox(
     [
       ["", plan],
       ["last", "overclock last"],

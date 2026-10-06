@@ -2,9 +2,9 @@
  * addressed as `dash=inventory[/<item>]`. See docs/frontend_vision.md §10. */
 
 import { crateLabel } from "../map/drawn/crates";
-import { button, checkbox, choice, empty, error, heading, link, loading, note, showAll, table, tile } from "../kit/dashkit";
+import { appendNote, button, capRows, checkbox, empty, error, heading, link, loading, selectBox, table, tile } from "../kit/dashkit";
 import { make } from "../kit/dom";
-import { amount, count, num, pct, regionLine } from "../kit/format";
+import { amount, count, formatNumber, pct, regionLine } from "../kit/format";
 import { loadOne } from "../app/load";
 import { writeHash } from "../map/map";
 import { dashParts, go } from "../app/nav";
@@ -17,7 +17,7 @@ import type { Column, SortState } from "../kit/dashkit";
 import type { StockPile, StockPlace, StockResponse } from "../api/shapes";
 
 export interface InventoryHost {
-  toMap: (action: () => void) => void;
+  leaveDashThen: (action: () => void) => void;
   render: () => void;
 }
 
@@ -121,7 +121,7 @@ function fly(place: StockPlace): void {
   if (place.x_m === null || place.y_m === null || !host) return;
   var at = { x: place.x_m, y: place.y_m };
   var shown = { label: place.name, layers: place.source === "storage" ? ["storage"] : undefined };
-  host.toMap(function () {
+  host.leaveDashThen(function () {
     showPoint(at.x, at.y, shown);
   });
 }
@@ -360,14 +360,14 @@ function renderStock(parent: HTMLElement, data: StockResponse, rows: StockPile[]
     },
   });
   card.appendChild(grid);
-  showAll(card, grid, rows.length, STOCK_SHOWN, "show all " + counted(rows.length, "item"), view.allStock, function () {
+  capRows(card, grid, rows.length, STOCK_SHOWN, "show all " + counted(rows.length, "item"), view.allStock, function () {
     view.allStock = true;
   });
   parent.appendChild(card);
 }
 
 function kindPicker(): HTMLElement {
-  var kind = choice(
+  var kind = selectBox(
     [
       ["all", "solid and fluid"],
       ["solid", "solid only"],
@@ -458,7 +458,7 @@ function renderContainers(parent: HTMLElement, data: StockResponse, m: Matcher):
     },
   ];
   card.appendChild(table(columns, rows, { sort: sorts.containers, caption: "containers", onRow: fly }));
-  if (rows.length < all.length) note(card, count(rows.length) + " of " + count(all.length) + " shown");
+  if (rows.length < all.length) appendNote(card, count(rows.length) + " of " + count(all.length) + " shown");
   parent.appendChild(card);
 }
 
@@ -493,7 +493,7 @@ function renderCrates(parent: HTMLElement, data: StockResponse, m: Matcher): voi
         return p.distance_m === null ? Infinity : p.distance_m;
       },
       render: function (p) {
-        return p.distance_m === null ? "–" : num(p.distance_m, 0) + " m";
+        return p.distance_m === null ? "–" : formatNumber(p.distance_m, 0) + " m";
       },
     },
     {

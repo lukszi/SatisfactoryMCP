@@ -33,7 +33,7 @@ import { editName, renamingIn } from "../dash/factories/rename";
 import { state } from "../app/state";
 import { notifyVitals, vitals } from "../app/vitals";
 import { actionTone, learnStates, statesOf, tone } from "../dash/machine-states";
-import { counted, W } from "../kit/words";
+import { counted, WORDS } from "../kit/words";
 
 import type { IssueGroup } from "../dash/machine-health";
 import type { CircuitRow, CircuitsResponse, FactoryHealthResponse, FactoryHealthRow, MachineRef, StarvedGenerator } from "../api/shapes";
@@ -185,8 +185,8 @@ function stateChips(row: FactoryHealthRow): HTMLElement {
     if (t === "ok") return;
     chips.appendChild(chip(s.count + " " + s.state, t));
   });
-  if (row.unwired) chips.appendChild(chip(row.unwired + " " + W.noWire, "bad", W.powerProblems));
-  if (row.no_generator) chips.appendChild(chip(row.no_generator + " " + W.noGenerator, "bad", W.powerProblems));
+  if (row.unwired) chips.appendChild(chip(row.unwired + " " + WORDS.noWire, "bad", WORDS.powerProblems));
+  if (row.no_generator) chips.appendChild(chip(row.no_generator + " " + WORDS.noGenerator, "bad", WORDS.powerProblems));
   if (row.review) chips.appendChild(chip("label " + row.review, "muted"));
   return chips;
 }
@@ -281,7 +281,7 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
       list.appendChild(issueRow(group));
     });
     var rest = row.actionable - issueCount(groups);
-    if (rest > 0) list.appendChild(make("li", "panel-more", counted(rest, "more machine", "more machines") + " " + W.needAction));
+    if (rest > 0) list.appendChild(make("li", "panel-more", counted(rest, "more machine", "more machines") + " " + WORDS.needAction));
     item.appendChild(list);
   }
   item.onclick = function () {
@@ -292,7 +292,7 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
 
 function unavailable(body: HTMLElement, thing: string, failed: string, path: "/api/factories/health" | "/api/power/circuits"): boolean {
   if (state.noSaves) {
-    empty(body, W.noSaves, "save a game, or set SATISFACTORY_SAVES if the saves live elsewhere");
+    empty(body, WORDS.noSaves, "save a game, or set SATISFACTORY_SAVES if the saves live elsewhere");
     return true;
   }
   if (failed) {
@@ -312,15 +312,15 @@ function renderFactories(body: HTMLElement): void {
   }
   var rows = readings.health.factories;
   if (!rows.length) {
-    empty(body, "no " + W.factories + " named yet", link("factories", "find and name them on the Factories tab"));
+    empty(body, "no " + WORDS.factories + " named yet", link("factories", "find and name them on the Factories tab"));
     return;
   }
   var todo = rows.filter(function (r) {
     return r.actionable > 0;
   }).length;
-  var line = make("p", "panel-note", counted(rows.length, W.factory, W.factories) + " · ");
+  var line = make("p", "panel-note", counted(rows.length, WORDS.factory, WORDS.factories) + " · ");
   line.appendChild(make("span", actionTone(statesOf(rows)), count(todo)));
-  line.appendChild(document.createTextNode(" " + W.needAction));
+  line.appendChild(document.createTextNode(" " + WORDS.needAction));
   body.appendChild(line);
   var list = make("ul", "panel-list");
   rows.forEach(function (row) {
@@ -427,7 +427,7 @@ function circuitRow(row: CircuitRow): HTMLElement {
         )
       );
     }
-    if (row.starved.length) item.appendChild(refList(W.starvedGenerator + "s", row.starved, STARVED_HINT));
+    if (row.starved.length) item.appendChild(refList(WORDS.starvedGenerator + "s", row.starved, STARVED_HINT));
   }
   item.onclick = function (event) {
     if ((event.target as HTMLElement).closest("details, a, button")) return;
@@ -456,10 +456,10 @@ function renderPower(body: HTMLElement): void {
     say(body, "not in game data, left out: " + data.unmodellable.join(", "));
   }
   if (data.unwired_generators.length) body.appendChild(refList("generators on no wire", data.unwired_generators, "generation no circuit can use"));
-  if (data.starved.length || data.unwired.length || data.no_generator.length) body.appendChild(make("h3", "panel-h", W.powerProblems));
-  if (data.starved.length) body.appendChild(refList(W.starvedGenerator + "s", data.starved, STARVED_HINT));
-  if (data.unwired.length) body.appendChild(refList(W.noWire, data.unwired, "machines on no power line"));
-  if (data.no_generator.length) body.appendChild(refList(W.noGenerator, data.no_generator, "wired to a circuit no generator stands on"));
+  if (data.starved.length || data.unwired.length || data.no_generator.length) body.appendChild(make("h3", "panel-h", WORDS.powerProblems));
+  if (data.starved.length) body.appendChild(refList(WORDS.starvedGenerator + "s", data.starved, STARVED_HINT));
+  if (data.unwired.length) body.appendChild(refList(WORDS.noWire, data.unwired, "machines on no power line"));
+  if (data.no_generator.length) body.appendChild(refList(WORDS.noGenerator, data.no_generator, "wired to a circuit no generator stands on"));
   body.appendChild(make("h3", "panel-h", counted(data.circuits.length, "circuit")));
   var list = make("ul", "panel-list");
   data.circuits.forEach(function (row) {

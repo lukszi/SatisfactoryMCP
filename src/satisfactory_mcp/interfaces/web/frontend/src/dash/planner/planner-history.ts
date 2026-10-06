@@ -2,7 +2,7 @@
  * See docs/plan_management.md. */
 
 import { get } from "../../api/client";
-import { button, empty, error, link, loading, table, tabs2 } from "../../kit/dashkit";
+import { button, empty, error, link, loading, subTabs, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { ageShort } from "../../kit/format";
 import { go, withQuery } from "../../app/nav";
@@ -10,8 +10,8 @@ import { argsWords } from "./planner-bench";
 import { actorWord, bench, changed, commitWords, duplicatePlan, inbox, restoreRev, undoIn } from "./planner-core";
 import { renderVersionResult } from "./planner-result";
 import { state } from "../../app/state";
-import { fail, friendly, note } from "../../kit/toast";
-import { counted, objectiveText, W } from "../../kit/words";
+import { fail, friendlyError, notify } from "../../kit/toast";
+import { counted, objectiveText, WORDS } from "../../kit/words";
 
 import type { Column } from "../../kit/dashkit";
 import type { ActivityResponse, ActivityRow, VersionRow } from "../../api/shapes";
@@ -34,11 +34,11 @@ export function planDash(key: string, rev?: number): string {
 function copyTo(rev?: number): void {
   duplicatePlan(rev)
     .then(function (key) {
-      note("copied to a new plan");
+      notify("copied to a new plan");
       go(planDash(key));
     })
     .catch(function (reason) {
-      fail(friendly(reason));
+      fail(friendlyError(reason));
     });
 }
 
@@ -207,7 +207,7 @@ export function loadActivity(): void {
     .catch(function (reason) {
       if (mine !== activitySeq) return;
       activity.world = world;
-      activity.error = friendly(reason);
+      activity.error = friendlyError(reason);
       changed();
     });
 }
@@ -262,11 +262,11 @@ function activityActs(row: ActivityRow): HTMLElement {
         function () {
           undoIn(key, rev)
             .then(function (text) {
-              note(text);
+              notify(text);
               loadActivity();
             })
             .catch(function (reason) {
-              fail(friendly(reason));
+              fail(friendlyError(reason));
             });
         },
         { title: "undo v" + rev + " as a new version", label: "undo v" + rev + " of " + (row.name || "the plan") }
@@ -299,11 +299,11 @@ export function renderActivity(parent: HTMLElement): void {
   var title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", "activity"));
   title.appendChild(
-    tabs2(
+    subTabs(
       [
         { id: "all", label: "all" },
-        { id: "you", label: W.actorYou },
-        { id: "chat", label: W.actorChat },
+        { id: "you", label: WORDS.actorYou },
+        { id: "chat", label: WORDS.actorChat },
       ],
       activity.filter,
       function (id) {

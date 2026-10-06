@@ -19,7 +19,7 @@ import { map, writeHash } from "../map/map";
 import { fetcherFor, fetchersOf } from "./registry";
 import { drawRegions } from "../map/regions";
 import { state } from "./state";
-import { fail, friendly } from "../kit/toast";
+import { fail, friendlyError } from "../kit/toast";
 
 import type { ApiError, ApiUrl } from "../api/client";
 import type { Registered } from "./registry";
@@ -35,7 +35,7 @@ export function loadRegions() {
     })
     .then(drawRegions)
     .catch(function (e) {
-      fail("regions: " + friendly(e));
+      fail("regions: " + friendlyError(e));
     });
 }
 
@@ -67,7 +67,7 @@ function run(fetcher: Registered): void {
       if (fetcher.settles) busy(false);
       clearPrefixed(fetcher.clears);
       if (fetcher.failed) fetcher.failed();
-      fail(fetcher.label + ": " + friendly(e));
+      fail(fetcher.label + ": " + friendlyError(e));
     });
 }
 

@@ -10,14 +10,14 @@
 import { get } from "../api/client";
 import { code, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from "../kit/dom";
 import { pickupPlace } from "../dash/world/world-finds";
-import { coords, count, metres, num, perMin, regionLine } from "../kit/format";
+import { coords, count, formatNumber, metres, perMin, regionLine } from "../kit/format";
 import { L } from "./leaflet";
 import { hashFor, map, MAP_SQUARE_M, NARROW } from "./map";
 import { withQuery } from "../app/nav";
 import { pinButtons } from "../chat/pins";
-import { setting } from "../app/settings";
-import { friendly } from "../kit/toast";
-import { counted, gapText, W } from "../kit/words";
+import { settingOn } from "../app/settings";
+import { friendlyError } from "../kit/toast";
+import { counted, gapText, WORDS } from "../kit/words";
 
 import type { ConduitCount, Elevation, FoundField, InspectResponse, NearPickup } from "../api/shapes";
 import type { PinTarget } from "../chat/pins";
@@ -92,7 +92,7 @@ function elevationLine(e: Elevation): string {
 }
 
 function nearestText(n: InspectResponse["nearest"][number]): string {
-  return n.resource_name + " " + n.purity + " · " + metres(n.distance_m) + (n.occupied ? " (occupied)" : n.spoiler ? " (" + W.locked + ")" : "");
+  return n.resource_name + " " + n.purity + " · " + metres(n.distance_m) + (n.occupied ? " (occupied)" : n.spoiler ? " (" + WORDS.locked + ")" : "");
 }
 
 var PICKUPS_NEAR_M = 500;
@@ -102,7 +102,7 @@ function onSquare(x: number, y: number): boolean {
 }
 
 function shown<T extends { spoiler: boolean }>(rows: T[]): T[] {
-  var all = setting("spoilers");
+  var all = settingOn("spoilers");
   return rows.filter(function (r) {
     return all || !r.spoiler;
   });
@@ -138,21 +138,21 @@ function actions(x: number, y: number): string {
 }
 
 function conduitLine(c: ConduitCount): string {
-  return counted(c.belt, "belt") + ", " + counted(c.pipe, "pipe") + " within " + num(c.radius_m, 0) + " m";
+  return counted(c.belt, "belt") + ", " + counted(c.pipe, "pipe") + " within " + formatNumber(c.radius_m, 0) + " m";
 }
 
 function fieldText(f: FoundField): string {
-  return f.resources.join(" + ") + " " + W.field + " · " + counted(f.size, "node") + " · " + perMin(f.free) + " " + W.free;
+  return f.resources.join(" + ") + " " + WORDS.field + " · " + counted(f.size, "node") + " · " + perMin(f.free) + " " + WORDS.free;
 }
 
 function pickupText(p: NearPickup): string {
-  return p.label + (p.distance_m === null ? "" : " · " + num(p.distance_m, 0) + " m");
+  return p.label + (p.distance_m === null ? "" : " · " + formatNumber(p.distance_m, 0) + " m");
 }
 
 function pickupsWithin(d: InspectResponse): string | null {
   if (d.pickups_within === null) return null;
-  var n = d.pickups_within - (setting("spoilers") ? 0 : d.pickups_within_spoilers);
-  return count(n) + " " + W.remaining + " within " + PICKUPS_NEAR_M + " m";
+  var n = d.pickups_within - (settingOn("spoilers") ? 0 : d.pickups_within_spoilers);
+  return count(n) + " " + WORDS.remaining + " within " + PICKUPS_NEAR_M + " m";
 }
 
 function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string }): string {
@@ -181,7 +181,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   // selector for an MCP tool call.
   rows.push(["at", html(code(d.at.x_m + "," + d.at.y_m, coords(d.at.x_m, d.at.y_m)).html)]);
   rows.push(["", html('<span class="popup-acts">' + actions(d.at.x_m, d.at.y_m) + "</span>")]);
-  rows.push([W.pin, pinButtons(targets)]);
+  rows.push([WORDS.pin, pinButtons(targets)]);
   var more: Row[] = elevationRows(d.elevation);
   /* Each nearest node carries the same `node:` selector its own dot's popup prints, because
    * the answer's next step is an MCP tool call naming one of these nodes and a resource plus
@@ -197,7 +197,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   });
   d.stale.forEach(function (t) {
     if (!t.behind && !t.moved && !t.unjoinable) return;
-    more.push(["map data", t.notes.length ? t.notes.join(" ") : W.mapDataBehind + (t.gap ? " (" + gapText(t.gap) + ")" : "")]);
+    more.push(["map data", t.notes.length ? t.notes.join(" ") : WORDS.mapDataBehind + (t.gap ? " (" + gapText(t.gap) + ")" : "")]);
   });
   // Said out loud rather than left to be inferred: with no save there is no built
   // population and no occupancy, so every node above reads as free whether it is or not.
@@ -249,6 +249,6 @@ export function inspect(e: L.LeafletMouseEvent): void {
       card.setContent(body);
     })
     .catch(function (err) {
-      if (map.hasLayer(card)) card.setContent(popup([["inspect failed", friendly(err)]]));
+      if (map.hasLayer(card)) card.setContent(popup([["inspect failed", friendlyError(err)]]));
     });
 }

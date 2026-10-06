@@ -6,7 +6,7 @@ import { fieldError } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { loadOne } from "../../app/load";
 import { state } from "../../app/state";
-import { fail, friendly, note } from "../../kit/toast";
+import { fail, friendlyError, notify } from "../../kit/toast";
 
 import type { StatusError } from "../../api/client";
 import type { LabelRefused, RenamedResponse } from "../../api/shapes";
@@ -154,7 +154,7 @@ export function editName(
       .then(function (reply) {
         wrote(reply.version);
         formerly[reply.was] = reply.name;
-        note(
+        notify(
           "renamed “" + reply.was + "” to “" + reply.name + "”" +
             (reply.plans.length ? "; " + reply.plans.length + " stored plan(s) followed it" : "")
         );
@@ -172,14 +172,14 @@ export function editName(
           fieldError(input, "“" + to + "” is already a factory name");
           input.focus();
         } else if (why === "bad") {
-          fieldError(input, friendly(error));
+          fieldError(input, friendlyError(error));
           input.focus();
         } else if (why === "stale") {
           fail("factory names changed elsewhere, so “" + name + "” was not renamed; they are reloaded now, try again");
           refreshLabels();
           finish(null);
         } else {
-          fail("renaming “" + name + "”: " + friendly(error));
+          fail("renaming “" + name + "”: " + friendlyError(error));
           input.focus();
         }
       });

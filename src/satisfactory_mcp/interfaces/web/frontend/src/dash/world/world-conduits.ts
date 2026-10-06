@@ -1,19 +1,19 @@
 /* World > conduits: belt and pipe runs near a place, and the fluid networks they belong to.
  * See docs/world-finders_contract.md §2.3. */
 
-import { button, empty, note, table, tabs2 } from "../../kit/dashkit";
-import { mapButton, render, toMap } from "../shell";
+import { appendNote, button, empty, subTabs, table } from "../../kit/dashkit";
+import { leaveDashThen, mapButton, render } from "../shell";
 import { make } from "../../kit/dom";
 import { CONDUIT_RADIUS_M, showRows } from "../../map/tools/finder";
 import { carriesText, runLabel, runSelection, worldUrl } from "./world-finds";
-import { coords, count, metres, num, rounded } from "../../kit/format";
+import { coords, count, formatNumber, metres, roundHalfEven } from "../../kit/format";
 import { hashFor } from "../../map/map";
 import { go } from "../../app/nav";
 import { isSelected, select } from "../../app/selection";
 import { state } from "../../app/state";
 import { capped, changed, copyCell, distanceColumn, edit, filterBar, loaded, selectField, textField, viewDash, waiting, want } from "./world";
-import { untooled } from "../../kit/toast";
-import { counted, W } from "../../kit/words";
+import { withoutToolHints } from "../../kit/toast";
+import { counted, WORDS } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
 import type { ConduitsResponse, NetworkRow, RunEnd, RunRow } from "../../api/shapes";
@@ -54,7 +54,7 @@ function endText(e: RunEnd): string {
 }
 
 function zSpan(lo: number, hi: number): string {
-  return rounded(lo) === rounded(hi) ? num(lo, 0) + " m" : num(lo, 0) + " to " + num(hi, 0) + " m";
+  return roundHalfEven(lo) === roundHalfEven(hi) ? formatNumber(lo, 0) + " m" : formatNumber(lo, 0) + " to " + formatNumber(hi, 0) + " m";
 }
 
 function recentre(params: Record<string, string>, to: string): void {
@@ -85,7 +85,7 @@ function runTable(rows: RunRow[], params: Record<string, string>): HTMLElement {
   var columns: Column<RunRow>[] = [
     {
       key: "run",
-      label: W.run,
+      label: WORDS.run,
       sort: function (r) {
         return r.id;
       },
@@ -189,7 +189,7 @@ function networkTable(rows: NetworkRow[], params: Record<string, string>): HTMLE
   var columns: Column<NetworkRow>[] = [
     {
       key: "network",
-      label: W.network,
+      label: WORDS.network,
       sort: function (n) {
         return n.network === null ? Infinity : n.network;
       },
@@ -259,7 +259,7 @@ function census(card: HTMLElement, d: ConduitsResponse, params: Record<string, s
     line.appendChild(
       button("show all on map", function () {
         var dash = state.dash;
-        toMap(function () {
+        leaveDashThen(function () {
           showRows({ kind: "runs", rows: d.runs }, "runs near " + (d.where || "here"), dash);
         });
       }, { map: true, title: "draw every run on the map and list them beside it" })
@@ -268,14 +268,14 @@ function census(card: HTMLElement, d: ConduitsResponse, params: Record<string, s
   card.appendChild(line);
   var where = "near " + (d.where || "–") + " within " + metres(d.radius_m);
   if (d.where_to) where += " · to " + d.where_to + (d.to_radius_m === null ? "" : " within " + metres(d.to_radius_m));
-  if (params.network) where = W.network + " #" + params.network;
-  else if (params.view === "networks") where = "every fluid " + W.network + ", distance from " + (d.where || "you");
-  note(card, where);
+  if (params.network) where = WORDS.network + " #" + params.network;
+  else if (params.view === "networks") where = "every fluid " + WORDS.network + ", distance from " + (d.where || "you");
+  appendNote(card, where);
   d.bridged.forEach(function (t) {
-    note(card, untooled(t));
+    appendNote(card, withoutToolHints(t));
   });
   d.notes.forEach(function (t) {
-    note(card, t);
+    appendNote(card, t);
   });
 }
 
@@ -307,7 +307,7 @@ export function renderConduits(body: HTMLElement, params: Record<string, string>
   filters(card, params);
   var view = params.view === "networks" ? "networks" : "runs";
   card.appendChild(
-    tabs2(
+    subTabs(
       [
         { id: "runs", label: "runs" },
         { id: "networks", label: "networks" },
@@ -345,7 +345,7 @@ export function renderConduits(body: HTMLElement, params: Record<string, string>
     }
     var nets = networkTable(d.networks, params);
     card.appendChild(nets);
-    capped(card, nets, d.networks.length, "networks", W.network);
+    capped(card, nets, d.networks.length, "networks", WORDS.network);
     return;
   }
   if (!d.runs.length) {
@@ -354,6 +354,6 @@ export function renderConduits(body: HTMLElement, params: Record<string, string>
   }
   var runs = runTable(d.runs, params);
   card.appendChild(runs);
-  capped(card, runs, d.runs.length, "runs", W.run);
+  capped(card, runs, d.runs.length, "runs", WORDS.run);
   pager(card, d, params);
 }

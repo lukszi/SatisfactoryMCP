@@ -1,13 +1,14 @@
 /* The dashboard's Power tab: the world ledger, every circuit and the machines without power,
  * addressed as `dash=power[/<circuit>]`. */
 
-import { empty, error, heading, link, loading, note, table, tile } from "../kit/dashkit";
+import { appendNote, empty, error, heading, link, loading, table, tile } from "../kit/dashkit";
 import { make } from "../kit/dom";
 import { count, mw } from "../kit/format";
 import { loadOne } from "../app/load";
 import { showCircuit } from "../map/panel";
 import { vitals } from "../app/vitals";
-import { go, mapButton, pointButton } from "./shell";
+import { mapButton, pointButton } from "./shell";
+import { go } from "../app/nav";
 import {
   bar,
   biomassLine,
@@ -25,7 +26,7 @@ import {
   unratedTitle,
   whereOf,
 } from "./power-ledger";
-import { counted, W } from "../kit/words";
+import { counted, WORDS } from "../kit/words";
 
 import type { CircuitRow, CircuitsResponse, Ledger, MachineRef, StarvedGenerator } from "../api/shapes";
 import type { Rated } from "./power-ledger";
@@ -81,7 +82,7 @@ function ledgerTiles(r: Rated, led: Ledger, sub: string): HTMLElement {
 }
 
 function consumers(row: CircuitRow): string {
-  return counted(row.consumers, "consumer") + (row.ledger.paused ? ", " + count(row.ledger.paused) + " " + W.paused : "");
+  return counted(row.consumers, "consumer") + (row.ledger.paused ? ", " + count(row.ledger.paused) + " " + WORDS.paused : "");
 }
 
 function toned(bad: (r: CircuitRow) => boolean): (r: CircuitRow) => string {
@@ -232,24 +233,24 @@ export function faultCount(f: Faults): number {
 
 export function faultWords(f: Faults): string {
   return [
-    count(f.unwired.length) + " " + W.noWire,
-    count(f.noGenerator.length) + " " + W.noGenerator,
-    counted(f.starved.length, W.starvedGenerator),
+    count(f.unwired.length) + " " + WORDS.noWire,
+    count(f.noGenerator.length) + " " + WORDS.noGenerator,
+    counted(f.starved.length, WORDS.starvedGenerator),
   ].join(" · ");
 }
 
 function problems(f: Faults): Problem[] {
   var found: Problem[] = [];
   f.starved.forEach(function (g) {
-    grouped(found, W.starvedGenerator, g.name, "", "", g.cause, g);
+    grouped(found, WORDS.starvedGenerator, g.name, "", "", g.cause, g);
   });
   f.unwired.forEach(function (m) {
     var at = whereOf(m);
-    grouped(found, W.noWire, m.name, at.where, at.dash, "", m);
+    grouped(found, WORDS.noWire, m.name, at.where, at.dash, "", m);
   });
   f.noGenerator.forEach(function (m) {
     var at = whereOf(m);
-    grouped(found, W.noGenerator, m.name, at.where, at.dash, "", m);
+    grouped(found, WORDS.noGenerator, m.name, at.where, at.dash, "", m);
   });
   return found;
 }
@@ -309,11 +310,11 @@ export function problemTable(parent: HTMLElement, f: Faults, shown?: number): vo
             })
             .join(", ");
         },
-        caption: W.powerProblems,
+        caption: WORDS.powerProblems,
       }
     )
   );
-  if (cut.length < rows.length) note(parent, "showing " + cut.length + " of " + rows.length + " rows; Power lists all");
+  if (cut.length < rows.length) appendNote(parent, "showing " + cut.length + " of " + rows.length + " rows; Power lists all");
 }
 
 function generatorLine(groups: GeneratorGroup[]): string {
@@ -330,7 +331,7 @@ function unratedLine(classes: string[]): string {
 
 function offGrid(data: CircuitsResponse): string {
   var off = data.off_grid;
-  var parts = [counted(off.consumers, "machine") + (off.paused ? " (" + count(off.paused) + " " + W.paused + ")" : "") + " rated " + mw(off.draw_mw)];
+  var parts = [counted(off.consumers, "machine") + (off.paused ? " (" + count(off.paused) + " " + WORDS.paused + ")" : "") + " rated " + mw(off.draw_mw)];
   if (off.generators) parts.push(counted(off.generators, "generator") + " rated " + mw(off.generation_mw));
   return "on no wire, so in no figure above: " + parts.join(" · ");
 }
@@ -398,7 +399,7 @@ function problemCard(parent: HTMLElement, f: Faults): void {
   var n = faultCount(f);
   if (!n) return;
   var card = make("section", "dash-card");
-  heading(card, W.powerProblems + " (" + count(n) + ")");
+  heading(card, WORDS.powerProblems + " (" + count(n) + ")");
   problemTable(card, f);
   parent.appendChild(card);
 }
@@ -425,13 +426,13 @@ export function renderPower(body: HTMLElement): void {
   if (data.off_grid.consumers || data.off_grid.generators) facts.push(offGrid(data));
   if (data.unmodellable.length) facts.push(unratedLine(data.unmodellable));
   facts.forEach(function (f) {
-    note(whole, f);
+    appendNote(whole, f);
   });
   body.appendChild(whole);
   var card = make("section", "dash-card");
   heading(card, counted(data.circuits.length, "circuit"));
   circuitTable(card, data.circuits);
-  note(card, "a circuit is what the wires join; switches read as closed, batteries are not counted");
+  appendNote(card, "a circuit is what the wires join; switches read as closed, batteries are not counted");
   body.appendChild(card);
   problemCard(body, faultsOf(data));
   refTable(body, "generators on no wire", data.unwired_generators);
@@ -464,15 +465,15 @@ export function renderCircuit(body: HTMLElement, subject: string): void {
     );
   }
   body.appendChild(head);
-  note(body, consumers(row) + " · " + counted(row.poles, "pole or tower", LEDGER.poles));
+  appendNote(body, consumers(row) + " · " + counted(row.poles, "pole or tower", LEDGER.poles));
   var r = rated(row);
   var stranded = data.no_generator.filter(function (m) {
     return m.circuit === index;
   });
   body.appendChild(ledgerTiles(r, row.ledger, r.dark ? counted(stranded.length, "machine") + " wired here draw from nothing" : starvedSub(row.ledger)));
   body.appendChild(bar(row.ledger));
-  if (row.generators.length) note(body, generatorLine(row.generators));
-  if (row.unmodellable.length) note(body, unratedLine(row.unmodellable));
+  if (row.generators.length) appendNote(body, generatorLine(row.generators));
+  if (row.unmodellable.length) appendNote(body, unratedLine(row.unmodellable));
   problemCard(body, { unwired: [], noGenerator: stranded, starved: row.starved });
-  note(body, "circuit numbers follow size and can change with the next save");
+  appendNote(body, "circuit numbers follow size and can change with the next save");
 }

@@ -6,12 +6,12 @@
  * docs/maps_contract.md §6. */
 
 import { get, send } from "../../api/client";
-import { button, checkbox, chip, choice, empty, error, fieldError, idChip, loading, note, slider } from "../../kit/dashkit";
+import { appendNote, button, checkbox, chip, empty, error, fieldError, idChip, loading, selectBox, slider } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { bytes, duration, isoDate } from "../../kit/format";
 import { adoptMaps, fetchMaps, mapDetails, mapState, onMaps, staleWhy, staleWord } from "../../app/map-types";
 import { askMode } from "../../map/tiles";
-import { fail, friendly } from "../../kit/toast";
+import { fail, friendlyError } from "../../kit/toast";
 
 import type { ApiPath, StatusError } from "../../api/client";
 import type {
@@ -25,7 +25,7 @@ import type {
 } from "../../api/shapes";
 
 export interface MapsHost {
-  toMap: (action: () => void) => void;
+  leaveDashThen: (action: () => void) => void;
   render: () => void;
 }
 
@@ -73,7 +73,7 @@ function refused(what: string): (reason: unknown) => void {
   return function (reason: unknown) {
     var status = (reason as StatusError).status;
     if (status === 409 && ((reason as StatusError).body as { stale?: boolean } | undefined)?.stale) fetchMaps();
-    fail(what + ": " + friendly(reason));
+    fail(what + ": " + friendlyError(reason));
   };
 }
 
@@ -110,7 +110,7 @@ export function mapPickerRow(): HTMLElement {
   var value = body.default || "plain";
   var version = body.version;
   row.appendChild(
-    choice(
+    selectBox(
       options,
       value,
       function (id) {
@@ -392,7 +392,7 @@ function updateEstimate(line: HTMLElement, go: HTMLButtonElement, body: MapsResp
       }
     })
     .catch(function (reason) {
-      if (serial === estimateSerial) line.textContent = "no estimate: " + friendly(reason);
+      if (serial === estimateSerial) line.textContent = "no estimate: " + friendlyError(reason);
     });
 }
 
@@ -402,7 +402,7 @@ function submit(preset: string, options: Record<string, unknown>, label: string,
       fetchMaps();
     })
     .catch(function (reason) {
-      fail("the job was not queued: " + friendly(reason));
+      fail("the job was not queued: " + friendlyError(reason));
     });
 }
 
@@ -429,7 +429,7 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
   var what = make("label", "maps-inline");
   what.appendChild(make("span", "", "what "));
   what.appendChild(
-    choice(
+    selectBox(
       [
         ["render", "render: a drawn style"],
         ["artwork", "artwork from the game"],
@@ -497,7 +497,7 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
     var recipe = make("label", "maps-inline");
     recipe.appendChild(make("span", "", "recipe "));
     recipe.appendChild(
-      choice(
+      selectBox(
         [
           ["current", "current (PCHIP)"],
           ["kernel-only", "kernel only (fast, no rocks)"],
@@ -533,11 +533,11 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
           refresh();
         })
       );
-      note(opts, "downloads a 45 MB upscaler once into the user cache folder");
-    } else note(opts, "no Vulkan GPU was found when the server started, so the upscaler is not offered");
+      appendNote(opts, "downloads a 45 MB upscaler once into the user cache folder");
+    } else appendNote(opts, "no Vulkan GPU was found when the server started, so the upscaler is not offered");
   } else {
     opts.appendChild(
-      choice(
+      selectBox(
         [
           ["heightmap", "heightfield (replaces data/local/heightmap)"],
           ["caves", "cave masks"],
@@ -552,7 +552,7 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
         { label: "which input" }
       )
     );
-    note(opts, "replaces the input in place once the new one is whole; maps drawn from the old one turn amber");
+    appendNote(opts, "replaces the input in place once the new one is whole; maps drawn from the old one turn amber");
   }
   fold.appendChild(opts);
   if (form.preset !== "inputs") {
@@ -699,7 +699,7 @@ function thumb(row: MapTypeBody): HTMLElement {
     img.src = "/api/maptiles/" + encodeURIComponent(row.id) + "/0/0/0";
     link.appendChild(img);
     link.onclick = function () {
-      if (host) host.toMap(function () {
+      if (host) host.leaveDashThen(function () {
         askMode(row.id, true);
       });
     };

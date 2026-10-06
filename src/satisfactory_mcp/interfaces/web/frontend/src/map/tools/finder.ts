@@ -2,10 +2,10 @@
  * and listed in the one map card. See docs/world-finders_contract.md §2.5 and §8. */
 
 import { get, latest } from "../../api/client";
-import { button, choice, link, pressed, statusChip, table, tabs2 } from "../../kit/dashkit";
+import { button, link, selectBox, statusChip, subTabs, table, toggleButton } from "../../kit/dashkit";
 import { FIND_AT_ATTR, FIND_ATTR } from "../../kit/dom";
 import { keepFocus } from "../../kit/focus";
-import { coords, count, metres, num, perMin } from "../../kit/format";
+import { coords, count, formatNumber, metres, perMin } from "../../kit/format";
 import { reveal } from "../labels";
 import { L } from "../leaflet";
 import { FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, xy } from "../map";
@@ -30,10 +30,10 @@ import { makeRoom } from "../panel";
 import { HIGHLIGHT, showPoint } from "../map-highlight";
 import { onVitals } from "../../app/vitals";
 import { select } from "../../app/selection";
-import { onSetting, setting, spoilerFlag } from "../../app/settings";
+import { onSetting, settingOn, spoilerFlag } from "../../app/settings";
 import { state } from "../../app/state";
-import { friendly } from "../../kit/toast";
-import { W } from "../../kit/words";
+import { friendlyError } from "../../kit/toast";
+import { WORDS } from "../../kit/words";
 
 import type { ApiUrl } from "../../api/client";
 import type { Column } from "../../kit/dashkit";
@@ -247,7 +247,7 @@ function columns(set: Shown): Column<Listed>[] {
   if (set.kind === "nodes") {
     var nodes = set.rows;
     return [
-      column("node", W.node, function (i) {
+      column("node", WORDS.node, function (i) {
         return nodeLabel(nodes[i]!);
       }),
       column("status", "status", function (i) {
@@ -264,10 +264,10 @@ function columns(set: Shown): Column<Listed>[] {
   if (set.kind === "fields") {
     var fields = set.rows;
     return [
-      column("field", W.field, function (i) {
+      column("field", WORDS.field, function (i) {
         return fieldLabel(fields[i]!);
       }),
-      column("free", W.free, function (i) {
+      column("free", WORDS.free, function (i) {
         return perMin(fields[i]!.free, false);
       }, true),
       column("distance", "away", function (i) {
@@ -285,14 +285,14 @@ function columns(set: Shown): Column<Listed>[] {
         return sites[i]!.region || "–";
       }),
       column("score", "score", function (i) {
-        return num(sites[i]!.score, 2);
+        return formatNumber(sites[i]!.score, 2);
       }, true),
     ];
   }
   if (set.kind === "runs") {
     var runs = set.rows;
     return [
-      column("run", W.run, function (i) {
+      column("run", WORDS.run, function (i) {
         return runLabel(runs[i]!);
       }),
       column("carries", "carries", function (i) {
@@ -323,7 +323,7 @@ function columns(set: Shown): Column<Listed>[] {
 function listed(box: HTMLElement, set: Shown): void {
   var total = set.rows.length;
   if (!total) {
-    cardLine(box, view.at && set.kind === "nodes" ? "no " + W.node + " within " + count(NEAR_M) + " m" : "nothing found here");
+    cardLine(box, view.at && set.kind === "nodes" ? "no " + WORDS.node + " within " + count(NEAR_M) + " m" : "nothing found here");
     return;
   }
   var rows: Listed[] = [];
@@ -360,7 +360,7 @@ function filterRow(box: HTMLElement): void {
       })
     );
     row.appendChild(
-      pressed(W.free, f.free, function () {
+      toggleButton(WORDS.free, f.free, function () {
         f.free = !f.free;
         fetchPoint(true);
       }, { title: "only nodes with no extractor on them" })
@@ -397,7 +397,7 @@ function filterRow(box: HTMLElement): void {
 }
 
 function choose(label: string, candidate: string, value: string, options: [string, string][], change: (v: string) => void): HTMLSelectElement {
-  return choice(options, value, function (v) {
+  return selectBox(options, value, function (v) {
     change(v);
     fetchPoint(true);
   }, { label: label, candidate: candidate });
@@ -410,7 +410,7 @@ function render(): void {
   });
   if (view.open && view.focus) {
     view.focus = false;
-    var first = el.querySelector<HTMLElement>(".tabs2-item.on") || el.querySelector<HTMLElement>("tbody tr.on[tabindex]") || el.querySelector<HTMLElement>("tbody tr[tabindex]") || el.querySelector<HTMLElement>(".mapcard-head button");
+    var first = el.querySelector<HTMLElement>(".subtabs-item.on") || el.querySelector<HTMLElement>("tbody tr.on[tabindex]") || el.querySelector<HTMLElement>("tbody tr[tabindex]") || el.querySelector<HTMLElement>(".mapcard-head button");
     if (first) first.focus({ preventScroll: true });
   }
 }
@@ -429,7 +429,7 @@ function fill(el: HTMLElement): void {
   cardSubject(el, view.title);
   if (view.at) {
     el.appendChild(
-      tabs2(
+      subTabs(
         [
           { id: "nodes", label: "nodes" },
           { id: "conduits", label: "conduits" },
@@ -537,7 +537,7 @@ function landed(kind: FindKind, data: NodeFindResponse | ConduitsResponse | Coll
   var pickups = data as CollectiblesResponse;
   view.groups = pickups.census
     .filter(function (c) {
-      return setting("spoilers") || !c.spoiler;
+      return settingOn("spoilers") || !c.spoiler;
     })
     .map(function (c) {
       return c.category;
@@ -568,7 +568,7 @@ function fetchPoint(fit: boolean): void {
       if (!ticket.fresh()) return;
       view.busy = false;
       view.set = null;
-      view.error = friendly(err);
+      view.error = friendlyError(err);
       group.clearLayers();
       render();
     });
@@ -628,7 +628,7 @@ function fetchRef(ref: string): void {
     .catch(function (err) {
       if (!ticket.fresh()) return;
       view.busy = false;
-      view.error = friendly(err);
+      view.error = friendlyError(err);
       render();
     });
 }
@@ -636,7 +636,7 @@ function fetchRef(ref: string): void {
 export function showRef(ref: string, spot?: { x_m?: number; y_m?: number; label: string }): void {
   var point = parsePoint(ref);
   if (/^(node|chain|pipe):/.test(ref)) {
-    begin(ref.indexOf("node:") === 0 ? W.node : W.run, "");
+    begin(ref.indexOf("node:") === 0 ? WORDS.node : WORDS.run, "");
     view.at = null;
     view.set = null;
     view.ref = ref;
@@ -674,7 +674,7 @@ function refresh(): void {
 }
 
 function hideSpoilers(): void {
-  if (!view.open || !view.set || view.set.kind !== "pickups" || setting("spoilers")) return;
+  if (!view.open || !view.set || view.set.kind !== "pickups" || settingOn("spoilers")) return;
   var rows = view.set.rows as { spoiler?: boolean }[];
   if (!rows.some(function (r) { return r.spoiler; })) return;
   if (view.at || view.ref) {

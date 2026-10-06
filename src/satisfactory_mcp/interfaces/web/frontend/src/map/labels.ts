@@ -18,8 +18,8 @@ import { flyPadded, map } from "./map";
 import { regionLabels } from "./regions";
 import { registerFetch } from "../app/registry";
 import { state } from "../app/state";
-import { note } from "../kit/toast";
-import { W } from "../kit/words";
+import { notify } from "../kit/toast";
+import { WORDS } from "../kit/words";
 
 import type { FactoriesResponse, FactoryRow, ProposalRow } from "../api/shapes";
 import type { BboxM, PointM } from "./geometry";
@@ -47,7 +47,7 @@ export function reveal(names: string[]): void {
     });
   });
   if (!turned.length) return;
-  note(
+  notify(
     // "a and b" for two, "a, b and c" for three -- an Oxford-less list rather than
     // "a and b and c", which is what a plain join gives once there are three of these.
     (turned.length > 1
@@ -196,7 +196,7 @@ export function drawFactories(data: FactoriesResponse): void {
   });
   // Directly under the labels it is the machine-made version of, and last of the chrome:
   // a proposal names a place nobody has named yet, which is the weakest claim in the band.
-  var proposed = layer("proposals", false, undefined, [BAND.chrome, 40, "proposals"], W.unnamedClusters);
+  var proposed = layer("proposals", false, undefined, [BAND.chrome, 40, "proposals"], WORDS.unnamedClusters);
   data.proposals.forEach(function (p) {
     // No cohesion row: the clusterer does not compute the score yet (every proposal
     // reports 0.0), and a constant 0 reads as "this cluster scored zero".
@@ -205,7 +205,7 @@ export function drawFactories(data: FactoriesResponse): void {
       p.label + " (" + p.machines + ")",
       "factory-label proposal",
       [
-        [W.unnamedCluster, p.label],
+        [WORDS.unnamedCluster, p.label],
         ["machines", p.machines],
         ["spread", p.spread_m + " m"],
         ["selector", code("proposal:" + p.index)],

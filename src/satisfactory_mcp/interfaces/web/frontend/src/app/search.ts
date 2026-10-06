@@ -6,7 +6,7 @@ import { el, make } from "../kit/dom";
 import { count } from "../kit/format";
 import { go } from "./nav";
 import { spoilerQuery } from "./settings";
-import { friendly } from "../kit/toast";
+import { friendlyError } from "../kit/toast";
 import { counted, RECIPE_KIND } from "../kit/words";
 
 import type { SearchResponse } from "../api/shapes";
@@ -111,7 +111,7 @@ function draw(data: SearchResponse): void {
     };
     box.appendChild(row);
   });
-  var notes = [hits.length ? "" : "nothing matches", more(data), data.save_note ? friendly(data.save_note) : ""];
+  var notes = [hits.length ? "" : "nothing matches", more(data), data.save_note ? friendlyError(data.save_note) : ""];
   notes.forEach(function (text) {
     if (!text) return;
     var line = make("div", "search-note", text);
@@ -146,7 +146,7 @@ function run(openFirst: boolean): void {
       hits = [];
       var box = el("search-hits");
       box.textContent = "";
-      box.appendChild(make("div", "search-note", "search failed: " + friendly(error)));
+      box.appendChild(make("div", "search-note", "search failed: " + friendlyError(error)));
       show(box);
     });
 }

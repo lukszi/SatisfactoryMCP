@@ -3,18 +3,18 @@
 
 import { make } from "../kit/dom";
 import { mw, regionLine } from "../kit/format";
-import { onSetting, setting } from "../app/settings";
-import { W } from "../kit/words";
+import { onSetting, settingOn } from "../app/settings";
+import { WORDS } from "../kit/words";
 
 import type { CircuitRow, CircuitsResponse, Ledger, MachineRef, SummaryResponse } from "../api/shapes";
 
 export var LEDGER = {
-  generation: W.generation,
-  measuredDraw: W.measuredDraw,
-  nameplateDraw: W.nameplateDraw,
-  headroomNow: W.headroomNow,
-  headroomFull: W.headroomFull,
-  poles: W.polesAndTowers,
+  generation: WORDS.generation,
+  measuredDraw: WORDS.measuredDraw,
+  nameplateDraw: WORDS.nameplateDraw,
+  headroomNow: WORDS.headroomNow,
+  headroomFull: WORDS.headroomFull,
+  poles: WORDS.polesAndTowers,
 };
 
 export var NONE = "–";
@@ -41,7 +41,7 @@ export interface Reading {
 }
 
 export function biomassQuery(): string {
-  return "biomass=" + (setting("biomass") ? "include" : "exclude");
+  return "biomass=" + (settingOn("biomass") ? "include" : "exclude");
 }
 
 export function onBiomass(listener: () => void): void {
@@ -88,7 +88,7 @@ export function headroom(value: number): string {
 
 export function readGeneration(r: Rated): Reading {
   if (unrated(r)) return { value: NONE, bad: false, why: UNRATED };
-  if (r.dark) return { value: W.noGenerator, bad: true, why: "" };
+  if (r.dark) return { value: WORDS.noGenerator, bad: true, why: "" };
   return { value: mw(r.ledger.generation_mw), bad: false, why: "" };
 }
 
@@ -109,7 +109,7 @@ export function readFull(r: Rated): Reading {
 }
 
 export function biomassLine(ledger: Figures): string {
-  return ledger.biomass_generators && ledger.biomass_mw > 0 ? mw(ledger.biomass_mw, { signed: true }) + " " + W.biomassNotCounted : "";
+  return ledger.biomass_generators && ledger.biomass_mw > 0 ? mw(ledger.biomass_mw, { signed: true }) + " " + WORDS.biomassNotCounted : "";
 }
 
 export interface Where {

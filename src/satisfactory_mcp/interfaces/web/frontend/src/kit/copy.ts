@@ -11,7 +11,7 @@
  */
 
 import { COPY_ATTR, COPY_CLASS } from "./dom";
-import { fail, note } from "./toast";
+import { fail, notify } from "./toast";
 
 export function copyText(text: string): Promise<void> {
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -47,7 +47,7 @@ function copyFrom(event: Event): void {
   // because the reader pastes whatever was in the clipboard before.
   copyText(text).then(
     function () {
-      note("copied " + text);
+      notify("copied " + text);
     },
     function (error) {
       fail("could not copy " + text + ": " + String((error && error.message) || error));

@@ -52,7 +52,7 @@ export function tilePath(
  * compile-time check on every registered path is lost. See registry.ts. */
 export type ApiUrl = ApiPath | `${ApiPath}?${string}`;
 
-function pinned(path: string): string {
+function withSelection(path: string): string {
   var q = "";
   var sep = path.indexOf("?") < 0 ? "?" : "&";
   if (state.world) {
@@ -65,19 +65,19 @@ function pinned(path: string): string {
   return path + q;
 }
 
-var UNPINNED = ["/api/summary", "/api/worlds"];
+var TOKENLESS_PATHS = ["/api/summary", "/api/worlds"];
 
 var staleListeners: Array<() => void> = [];
 
-function tokened(url: string): string {
+function withSaveToken(url: string): string {
   var bare = url.split("?")[0]!;
-  if (!state.token || UNPINNED.indexOf(bare) >= 0) return url;
-  return url + (url.indexOf("?") < 0 ? "?" : "&") + "as_of=" + encodeURIComponent(state.token);
+  if (!state.saveToken || TOKENLESS_PATHS.indexOf(bare) >= 0) return url;
+  return url + (url.indexOf("?") < 0 ? "?" : "&") + "as_of=" + encodeURIComponent(state.saveToken);
 }
 
-function stale(on: boolean): void {
-  if (state.stale === on) return;
-  state.stale = on;
+function setStale(on: boolean): void {
+  if (state.saveMovedOn === on) return;
+  state.saveMovedOn = on;
   staleListeners.forEach(function (listener) {
     listener();
   });
@@ -94,9 +94,9 @@ export function onToken(listener: () => void): void {
 }
 
 export function holdToken(token: string): void {
-  var moved = state.token !== token;
-  state.token = token;
-  stale(false);
+  var moved = state.saveToken !== token;
+  state.saveToken = token;
+  setStale(false);
   if (moved)
     tokenListeners.forEach(function (listener) {
       listener();
@@ -104,28 +104,23 @@ export function holdToken(token: string): void {
 }
 
 export function dropToken(): void {
-  state.token = "";
-  stale(false);
+  state.saveToken = "";
+  setStale(false);
 }
 
-function answer<T extends ApiError>(path: string, r: Response, sent?: string): Promise<T> {
+function readReply<T extends ApiError>(path: string, r: Response, sent?: string): Promise<T> {
   return r.json().then(function (body: T & { stale?: boolean }) {
-    if (r.status === 409 && body.stale && sent && sent === state.token) stale(true);
-    if (!r.ok || body.error) {
-      var error: StatusError = new Error(body.error || r.status + " " + path);
-      error.status = r.status;
-      error.body = body;
-      throw error;
-    }
+    if (r.status === 409 && body.stale && sent && sent === state.saveToken) setStale(true);
+    if (!r.ok || body.error) throw statusError(r.status, body.error || r.status + " " + path, body);
     return body;
   });
 }
 
-function filled(path: string, subject?: string): string {
+function fillPathParam(path: string, subject?: string): string {
   return subject === undefined ? path : path.replace(/\{[^}]+\}/, encodeURIComponent(subject));
 }
 
-function request(method: string, body?: object): RequestInit {
+function requestInit(method: string, body?: object): RequestInit {
   var init: RequestInit = { method: method };
   if (body) {
     init.headers = { "Content-Type": "application/json" };
@@ -135,10 +130,10 @@ function request(method: string, body?: object): RequestInit {
 }
 
 export function get<T extends ApiError>(path: ApiUrl, subject?: string): Promise<T> {
-  var url = filled(path, subject);
-  var sent = state.token;
-  return fetch(tokened(pinned(url))).then(function (r) {
-    return answer<T>(url, r, sent);
+  var url = fillPathParam(path, subject);
+  var sent = state.saveToken;
+  return fetch(withSaveToken(withSelection(url))).then(function (r) {
+    return readReply<T>(url, r, sent);
   });
 }
 
@@ -149,10 +144,10 @@ export function send<T extends ApiError>(
   subject?: string,
   query?: string
 ): Promise<T> {
-  var url = filled(path, subject);
+  var url = fillPathParam(path, subject);
   if (query) url += "?" + query;
-  return fetch(pinned(url), request(method, body)).then(function (r) {
-    return answer<T>(url, r);
+  return fetch(withSelection(url), requestInit(method, body)).then(function (r) {
+    return readReply<T>(url, r);
   });
 }
 
@@ -178,15 +173,22 @@ export interface StatusError extends Error {
   body?: ApiError;
 }
 
-export function missing(reason: unknown): boolean {
+function statusError(status: number, message: string, body?: ApiError): StatusError {
+  var error: StatusError = new Error(message);
+  error.status = status;
+  if (body !== undefined) error.body = body;
+  return error;
+}
+
+export function isNotFound(reason: unknown): boolean {
   return (reason as StatusError | null | undefined)?.status === 404;
 }
 
 export type Pushed<T, C> = { conflict: false; body: T } | { conflict: true; body: C };
 
-export function push<T extends ApiError, C extends ApiError>(path: ApiPath, body: object, subject?: string): Promise<Pushed<T, C>> {
-  var url = filled(path, subject);
-  return fetch(pinned(url), request("POST", body)).then(function (r) {
+export function postWithConflict<T extends ApiError, C extends ApiError>(path: ApiPath, body: object, subject?: string): Promise<Pushed<T, C>> {
+  var url = fillPathParam(path, subject);
+  return fetch(withSelection(url), requestInit("POST", body)).then(function (r) {
     return r
       .json()
       .catch(function () {
@@ -194,11 +196,7 @@ export function push<T extends ApiError, C extends ApiError>(path: ApiPath, body
       })
       .then(function (payload: ApiError): Pushed<T, C> {
         if (r.status === 409) return { conflict: true, body: payload as C };
-        if (!r.ok || payload.error) {
-          var error: StatusError = new Error(payload.error || r.status + " " + url);
-          error.status = r.status;
-          throw error;
-        }
+        if (!r.ok || payload.error) throw statusError(r.status, payload.error || r.status + " " + url);
         return { conflict: false, body: payload as T };
       });
   });

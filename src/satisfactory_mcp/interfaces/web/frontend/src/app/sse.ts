@@ -34,7 +34,7 @@ function isNews(event: MessageEvent): boolean {
     /* a malformed event is treated as news, the safe direction */
   }
   var at = payload && (payload.mtime || payload.ts);
-  return !(at && at * 1000 < state.opened - 2000);
+  return !(at && at * 1000 < state.openedAtMs - 2000);
 }
 
 function parsed<T>(event: MessageEvent): T | null {
@@ -100,7 +100,7 @@ export function listen() {
 
   function connect() {
     showLive("", "connecting…", "connecting to the save watcher…");
-    source = new EventSource(`/api/events?since=${state.opened / 1000}`);
+    source = new EventSource(`/api/events?since=${state.openedAtMs / 1000}`);
     wire(source);
   }
 

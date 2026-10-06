@@ -1,8 +1,8 @@
 /* World > pickups: the census per kind, and what is left, what was taken, and what is nearest.
  * See docs/world-finders_contract.md §2.4. */
 
-import { button, empty, heading, note, table, tabs2 } from "../../kit/dashkit";
-import { mapButton, render, toMap } from "../shell";
+import { appendNote, button, empty, heading, subTabs, table } from "../../kit/dashkit";
+import { leaveDashThen, mapButton, render } from "../shell";
 import { make } from "../../kit/dom";
 import { showRows } from "../../map/tools/finder";
 import { pickupPlace, pickupSelection, worldUrl } from "./world-finds";
@@ -27,7 +27,7 @@ import {
   waiting,
   want,
 } from "./world";
-import { counted, W } from "../../kit/words";
+import { counted, WORDS } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
 import type { CensusRow, CollectibleRow, CollectiblesResponse } from "../../api/shapes";
@@ -42,8 +42,8 @@ var sorts: Record<string, SortState> = {
 };
 
 var LISTS: [string, string][] = [
-  ["remaining", W.remaining],
-  ["collected", W.collected],
+  ["remaining", WORDS.remaining],
+  ["collected", WORDS.collected],
   ["nearest", "nearest"],
 ];
 
@@ -86,10 +86,10 @@ function censusTable(d: CollectiblesResponse): HTMLElement {
       },
     },
     n("placed", "placed", function (c) { return c.placed; }),
-    n("collected", W.collected, function (c) { return c.collected; }),
-    n("remaining", W.remaining, function (c) { return c.remaining; }),
+    n("collected", WORDS.collected, function (c) { return c.collected; }),
+    n("remaining", WORDS.remaining, function (c) { return c.remaining; }),
     n("standing", "standing", function (c) { return c.standing; }, "seen still standing in a save that had them loaded"),
-    n("streamed", W.neverStreamed, function (c) { return c.never_streamed; }, streamedTitle),
+    n("streamed", WORDS.neverStreamed, function (c) { return c.never_streamed; }, streamedTitle),
   ];
   return table(columns, d.census, { sort: sorts.census, caption: "pickups per kind" });
 }
@@ -101,11 +101,11 @@ function totals(d: CollectiblesResponse): string {
     placed += c.placed;
     collected += c.collected;
   });
-  return count(collected) + " " + W.collected + " of " + count(placed) + " placed";
+  return count(collected) + " " + WORDS.collected + " of " + count(placed) + " placed";
 }
 
 function stateText(r: CollectibleRow): string {
-  if (r.collected) return W.collected;
+  if (r.collected) return WORDS.collected;
   return r.observed ? r.observed.replace(/_/g, " ") : "unknown";
 }
 
@@ -190,7 +190,7 @@ export function renderPickups(body: HTMLElement, params: Record<string, string>)
   var card = make("section", "dash-card");
   body.appendChild(card);
   card.appendChild(
-    tabs2(
+    subTabs(
       LISTS.map(function (l) {
         return { id: l[0], label: l[1], href: hashFor(viewDash("pickups", changed(params, { view: l[0] === "remaining" ? "" : l[0] }))) };
       }),
@@ -230,14 +230,14 @@ export function renderPickups(body: HTMLElement, params: Record<string, string>)
   line.appendChild(
     button("show all on map", function () {
       var dash = state.dash;
-      toMap(function () {
+      leaveDashThen(function () {
         showRows({ kind: "pickups", rows: rows }, list + " pickups", dash);
       });
     }, { map: true, title: "ring every row on the map and list them beside it" })
   );
   card.appendChild(line);
   if (paired.length) {
-    note(
+    appendNote(
       card,
       paired
         .map(function (c) {

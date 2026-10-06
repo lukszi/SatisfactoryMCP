@@ -3,7 +3,7 @@
 
 import { onStale } from "../api/client";
 import { button, link } from "../kit/dashkit";
-import { toMap } from "../dash/shell";
+import { leaveDashThen } from "../dash/shell";
 import { el, make } from "../kit/dom";
 import { keepFocus } from "../kit/focus";
 import { count } from "../kit/format";
@@ -19,23 +19,23 @@ import { state } from "./state";
 import { onVitals, vitals } from "./vitals";
 import { startTrace } from "../map/tools/trace";
 import { actionTone, statesOf } from "../dash/machine-states";
-import { counted, W } from "../kit/words";
+import { counted, WORDS } from "../kit/words";
 
 import type { Selection } from "./selection";
 
 var KIND_WORD = {
-  factory: W.factory,
+  factory: WORDS.factory,
   circuit: "circuit",
   machine: "machine",
   point: "point",
-  node: W.node,
-  field: W.field,
-  conduit: W.run,
+  node: WORDS.node,
+  field: WORDS.field,
+  conduit: WORDS.run,
   pickup: "pickup",
 };
 
 function onMapView(go: () => void): void {
-  if (state.dash) toMap(go);
+  if (state.dash) leaveDashThen(go);
   else go();
   renderStatus();
 }
@@ -77,13 +77,13 @@ function vitalsPart(parent: HTMLElement): void {
     rows.forEach(function (r) {
       todo += r.actionable;
     });
-    item(parent, "factories", count(todo) + " " + W.needAction, todo ? actionTone(statesOf(rows)) : "");
+    item(parent, "factories", count(todo) + " " + WORDS.needAction, todo ? actionTone(statesOf(rows)) : "");
   }
   if (v.circuits) {
     var faults = faultCount(faultsOf(v.circuits));
-    item(parent, "power", count(faults) + " " + W.powerProblems, faults ? "bad" : "");
+    item(parent, "power", count(faults) + " " + WORDS.powerProblems, faults ? "bad" : "");
     var now = readNow(ratedWorld(v.circuits));
-    item(parent, "power", W.headroomNow + " " + now.value, now.bad ? "bad" : "");
+    item(parent, "power", WORDS.headroomNow + " " + now.value, now.bad ? "bad" : "");
   }
   var ready = readyMilestones();
   if (ready !== null) item(parent, "progress", counted(ready, "milestone", "milestones") + " affordable");
@@ -93,7 +93,7 @@ export function renderStatus(): void {
   var strip = el("status");
   keepFocus(strip, function () {
     strip.textContent = "";
-    if (state.stale) {
+    if (state.saveMovedOn) {
       var changed = make("span", "status-stale");
       changed.appendChild(make("span", "bad", "save changed"));
       changed.appendChild(button("refresh", function () { reload("reading the new save…"); }, { title: "read the save on disk now" }));
@@ -102,7 +102,7 @@ export function renderStatus(): void {
     var s = selected();
     if (s) strip.appendChild(selectionPart(s));
     if (state.noSaves) {
-      strip.appendChild(make("span", "status-item", W.noSaves));
+      strip.appendChild(make("span", "status-item", WORDS.noSaves));
       return;
     }
     vitalsPart(strip);

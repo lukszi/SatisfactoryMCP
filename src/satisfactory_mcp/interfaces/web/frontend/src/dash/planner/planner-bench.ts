@@ -1,7 +1,7 @@
 /* The workbench: one plan at its head, every control a versioned gesture. */
 
 import { askButton } from "../../chat/asks";
-import { button, chip, choice, copyButton, empty, error, link, loading, pressed } from "../../kit/dashkit";
+import { button, chip, copyButton, empty, error, link, loading, selectBox, toggleButton } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { ageShort, perMin } from "../../kit/format";
 import { go } from "../../app/nav";
@@ -33,8 +33,8 @@ import { loadList, planTitle } from "./planner-list";
 import { hours, powerRow } from "./planner-power";
 import { banOps, recipeName, renderResult } from "./planner-result";
 import { pinFor, pinThis } from "../../chat/pins";
-import { fail, friendly } from "../../kit/toast";
-import { counted, OBJECTIVES, objectiveText, W } from "../../kit/words";
+import { fail, friendlyError } from "../../kit/toast";
+import { counted, OBJECTIVES, objectiveText, WORDS } from "../../kit/words";
 
 import type { Op, Selection } from "./planner-core";
 
@@ -186,7 +186,7 @@ function goal(parent: HTMLElement): void {
   var goals = Object.keys(OBJECTIVES).map(function (key): [string, string] {
     return [key, OBJECTIVES[key]!];
   });
-  var pick = choice(
+  var pick = selectBox(
     goals,
     args.objective,
     function (value) {
@@ -269,7 +269,7 @@ function exportsRow(parent: HTMLElement): void {
   if (!args.exports.length) tail.appendChild(make("span", "dash-muted", "power only (the default)"));
   else {
     var power = args.exports.indexOf("MW") >= 0;
-    var toggle = pressed(
+    var toggle = toggleButton(
       "export MW",
       power,
       function () {
@@ -348,7 +348,7 @@ function clocks(body: HTMLElement): void {
     var ops: Op[] = [];
     if (!chosen.length && !picked) ops.push({ op: "add", field: "extractor_clocks", member: 1 });
     ops.push({ op: picked ? "remove" : "add", field: "extractor_clocks", member: c });
-    var b = pressed(
+    var b = toggleButton(
       c * 100 + "%",
       picked,
       function () {
@@ -561,7 +561,7 @@ export function renderCard(parent: HTMLElement): void {
               go("planner/" + key);
             })
             .catch(function (reason) {
-              fail(friendly(reason));
+              fail(friendlyError(reason));
             });
         },
         { title: "save chat's request as a new plan and open it" }
@@ -653,7 +653,7 @@ function header(parent: HTMLElement): void {
     )
   );
   if (!bench.gone) acts.appendChild(button("forget", forgetPlan, { title: "hide this plan from the list; its history is kept and restore brings it back" }));
-  acts.appendChild(pressed("versions", bench.versionsOpen, toggleVersions, { title: "every version of this plan: view one, or restore it as a new version" }));
+  acts.appendChild(toggleButton("versions", bench.versionsOpen, toggleVersions, { title: "every version of this plan: view one, or restore it as a new version" }));
   acts.appendChild(duplicateButton());
   var key = bench.key;
   var pinned = pinFor("plan", function (ref) {
@@ -661,7 +661,7 @@ function header(parent: HTMLElement): void {
   });
   acts.appendChild(
     button(
-      pinned ? "copy " + pinned.id : W.pin,
+      pinned ? "copy " + pinned.id : WORDS.pin,
       function () {
         pinThis("plan", { plan: key });
       },
@@ -670,7 +670,7 @@ function header(parent: HTMLElement): void {
   );
   var call = "plan_factory(plan=" + JSON.stringify(plan.name) + ")  # base_rev=" + plan.rev;
   acts.appendChild(copyButton(call, "copy as tool call", { title: call }));
-  if (!bench.gone) acts.appendChild(askButton({ kind: "plan", label: plan.name, ref: key, plan: key, rev: plan.rev }, "plan", W.askChat));
+  if (!bench.gone) acts.appendChild(askButton({ kind: "plan", label: plan.name, ref: key, plan: key, rev: plan.rev }, "plan", WORDS.askChat));
   parent.appendChild(acts);
 }
 

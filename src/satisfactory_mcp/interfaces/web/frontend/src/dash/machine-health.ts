@@ -3,10 +3,10 @@
 
 import { link, table } from "../kit/dashkit";
 import { make } from "../kit/dom";
-import { count, spoken } from "../kit/format";
+import { count, joinWithConjunction } from "../kit/format";
 import { vitals } from "../app/vitals";
 import { isFine, needsAction, stateSets, tone } from "./machine-states";
-import { W } from "../kit/words";
+import { WORDS } from "../kit/words";
 
 import type { Column } from "../kit/dashkit";
 import type { FactoryHealthRow, MachineIssue } from "../api/shapes";
@@ -22,7 +22,7 @@ export interface IssueGroup {
 function issueCauseText(issue: MachineIssue): string {
   if (!issue.cause.length) return "";
   var items = issue.cause.join(", ");
-  if (issue.state === W.blocked) return "can't output " + items;
+  if (issue.state === WORDS.blocked) return "can't output " + items;
   if (issue.state === "starved") return "short of " + items;
   return items;
 }
@@ -90,7 +90,7 @@ export function issueTable(
   if (withFactory) {
     columns.push({
       key: "factory",
-      label: W.factory,
+      label: WORDS.factory,
       render: function (g) {
         var a = link("factories/" + g.factory, g.factory, "dash-trunc");
         a.title = g.factory;
@@ -107,7 +107,7 @@ export function issueTable(
         })
         .join(", ");
     },
-    caption: "machines that " + W.needAction,
+    caption: "machines that " + WORDS.needAction,
   });
 }
 
@@ -143,15 +143,15 @@ function mixWords(): [keyof Mix, string][] {
   return [
     [
       "bad",
-      spoken(
+      joinWithConjunction(
         actionable().filter(function (s) {
-          return s !== W.blocked;
+          return s !== WORDS.blocked;
         }),
         "or"
       ),
     ],
-    ["blocked", W.blocked],
-    ["mid", spoken(middling(), "or")],
+    ["blocked", WORDS.blocked],
+    ["mid", joinWithConjunction(middling(), "or")],
     ["ok", "running or unmonitored"],
   ];
 }

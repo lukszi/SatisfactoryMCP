@@ -2,7 +2,7 @@
  * See docs/frontend_vision.md §10. */
 
 import { get, latest } from "../../api/client";
-import { button, chip, pressed, table } from "../../kit/dashkit";
+import { button, chip, table, toggleButton } from "../../kit/dashkit";
 import { code, esc, make, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "../../kit/dom";
 import { count, perMin } from "../../kit/format";
 import { L } from "../leaflet";
@@ -14,8 +14,8 @@ import { onVitals } from "../../app/vitals";
 import { BLOCKED_COLOUR, STOPPED_COLOUR } from "../drawn/placements";
 import { state } from "../../app/state";
 import { tone } from "../../dash/machine-states";
-import { fail, friendly } from "../../kit/toast";
-import { counted, W } from "../../kit/words";
+import { fail, friendlyError } from "../../kit/toast";
+import { counted, WORDS } from "../../kit/words";
 
 import type { Row } from "../../kit/dom";
 import type { TraceMachine, TraceResponse } from "../../api/shapes";
@@ -71,7 +71,7 @@ function machinePopup(m: TraceMachine): string {
     ["recipe", m.recipe],
     ["makes", m.makes.length ? rateText(m.makes) : null],
     ["uses", m.uses.length ? rateText(m.uses) : null],
-    ["state", m.state + (m.actionable ? " · " + W.needAction : "")],
+    ["state", m.state + (m.actionable ? " · " + WORDS.needAction : "")],
     ["on path", m.seed ? "traced from here" : counted(m.hops, "hop") + " away"],
     ["id", code(m.instance)],
     ["trace", traceButtons(m.instance)],
@@ -200,12 +200,12 @@ function render(): void {
   box.hidden = false;
   var head = cardHead(view.direction === "up" ? "Supply" : "Output");
   head.appendChild(
-    pressed("↑ supply", view.direction === "up", function () {
+    toggleButton("↑ supply", view.direction === "up", function () {
       startTrace(view.seed, "up");
     }, { title: "what feeds it" })
   );
   head.appendChild(
-    pressed("↓ output", view.direction === "down", function () {
+    toggleButton("↓ output", view.direction === "down", function () {
       startTrace(view.seed, "down");
     }, { title: "what it feeds" })
   );
@@ -235,8 +235,8 @@ function render(): void {
   var states = stateCounts(data);
   var chips = make("div", "panel-chips");
   chips.appendChild(chip(counted(others, "machine") + " " + (view.direction === "up" ? "upstream" : "downstream"), "muted"));
-  if (states.stopped) chips.appendChild(chip(states.stopped + " " + W.needAction, "bad"));
-  if (states.blocked) chips.appendChild(chip(states.blocked + " " + W.blocked, "blocked"));
+  if (states.stopped) chips.appendChild(chip(states.stopped + " " + WORDS.needAction, "bad"));
+  if (states.blocked) chips.appendChild(chip(states.blocked + " " + WORDS.blocked, "blocked"));
   chips.appendChild(chip(counted(data.runs.length, "run") + " · depth " + data.deepest, "muted"));
   box.appendChild(chips);
   if (!others) {
@@ -300,7 +300,7 @@ function fetchTrace(flyAfter: boolean): void {
       if (!ticket.fresh()) return;
       view.busy = false;
       view.data = null;
-      view.error = friendly(err);
+      view.error = friendlyError(err);
       group.clearLayers();
       render();
       fail("trace: " + view.error);

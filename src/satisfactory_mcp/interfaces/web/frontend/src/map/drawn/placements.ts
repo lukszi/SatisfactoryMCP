@@ -22,7 +22,7 @@ import { showMachine } from "../map-highlight";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
 import { BLOCKED } from "../../dash/machine-states";
-import { W } from "../../kit/words";
+import { WORDS } from "../../kit/words";
 
 import type { InspectedEvent } from "../leaflet-private";
 import type {
@@ -168,10 +168,10 @@ export function drawMachines(data: MachinesResponse): void {
           // is standing still.
           [
             "state",
-            (blocked ? "blocked: output full" : m.state) + (m.actionable ? " · " + W.needAction : ""),
+            (blocked ? "blocked: output full" : m.state) + (m.actionable ? " · " + WORDS.needAction : ""),
           ],
           [
-            W.factory,
+            WORDS.factory,
             m.factory
               ? html('<a href="' + esc(hashFor("factories/" + m.factory)) + '">' + esc(m.factory) + "</a>")
               : null,

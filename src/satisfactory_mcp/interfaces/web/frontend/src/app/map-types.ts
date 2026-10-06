@@ -3,7 +3,7 @@
  * both read it here, so neither imports the other. docs/maps_contract.md §6. */
 
 import { get } from "../api/client";
-import { friendly } from "../kit/toast";
+import { friendlyError } from "../kit/toast";
 
 import type { MapJobBody, MapsResponse, MapTypeBody } from "../api/shapes";
 
@@ -40,7 +40,7 @@ export function fetchMaps(): Promise<MapsResponse | null> {
       return body;
     })
     .catch(function (reason) {
-      mapState.failed = friendly(reason);
+      mapState.failed = friendlyError(reason);
       return null;
     })
     .then(function (body) {
