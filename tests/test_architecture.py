@@ -397,20 +397,10 @@ ROUTER_EXTRA_EDGES: frozenset[tuple[str, str]] = frozenset(
 #: The hard cap, in lines, on any one router module.
 #:
 #: Not a style preference: it is the number that makes "one module per concern" checkable.
-#: The budgets the split was planned against are well under it -- tiles 650, floors 450,
-#: routes_layer 400, everything else 300 -- and the cap is set above all of them so that a
-#: file has room to explain itself before it has to be split. What it stops is the drift
-#: back: a second concern lands in a router, then a third, and nothing says so until the
-#: file is api.py again under a different name.
-#:
-#: Measured at the end of W4 (the numbers below), so a breach is a real change and not a
-#: pre-existing condition:
-#:
-#:     tiles.py 492   floors.py 395   routes_layer.py 325   inspect.py 221
-#:     storage.py 176   power.py 176   placements.py 158   regions.py 114
-#:     factories.py 95   nodes.py 94   events.py 75   collectibles.py 74
-#:     __init__.py 72   world.py 68
-ROUTER_MAX_LINES = 700
+#: What it stops is the drift back: a second concern lands in a router, then a third, and
+#: nothing says so until the file is api.py again under a different name. The largest router
+#: measured 624 lines (planlog.py) when the cap was set, so a breach is a real change.
+ROUTER_MAX_LINES = 650
 
 #: The classes FastAPI treats as "this handler answers for itself".
 #:
