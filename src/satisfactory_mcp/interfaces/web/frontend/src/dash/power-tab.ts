@@ -7,214 +7,285 @@ import { count, mw } from "../kit/format";
 import { loadOne } from "../app/load";
 import { showCircuit } from "../map/panel";
 import { vitals } from "../app/vitals";
-import { mapButton, pointButton } from "./shell";
 import { go } from "../app/nav";
+import { counted, WORDS } from "../kit/words";
+import { mapButton, pointButton } from "./actions";
 import {
-  bar,
   biomassLine,
   circuitDark,
   circuitName,
-  LEDGER,
+  ledgerBar,
   NONE,
-  ratedCircuit as rated,
+  ratedCircuit,
   ratedWorld,
-  readFull,
   readGeneration,
-  readMeasured,
-  readNow,
+  readHeadroomFull,
+  readHeadroomNow,
+  readMeasuredDraw,
   unrated,
   unratedTitle,
   whereOf,
 } from "./power-ledger";
-import { counted, WORDS } from "../kit/words";
 
+import type { Column } from "../kit/dashkit";
 import type { CircuitRow, CircuitsResponse, Ledger, MachineRef, StarvedGenerator } from "../api/shapes";
-import type { Rated } from "./power-ledger";
+import type { Rated, Where } from "./power-ledger";
 
 type GeneratorGroup = CircuitsResponse["generators"][number];
+
+type MachinePlace = { instance: string; x_m: number | null; y_m: number | null };
+
+/* Machines of one kind with one fault at one place, listed as one row. */
+interface MachineGroup {
+  label: string;
+  what: string;
+  where: Where;
+  cause: string;
+  refs: MachinePlace[];
+}
+
+interface MachineEntry {
+  label: string;
+  what: string;
+  where: Where;
+  cause: string;
+  ref: MachinePlace;
+}
+
+const NOWHERE: Where = { where: "", dash: "" };
 
 export function retryCircuits(): void {
   loadOne("/api/power/circuits");
 }
 
-export function headroomTiles(r: Rated, href?: string, counts?: boolean): HTMLElement[] {
-  var led = r.ledger;
-  var n = readNow(r);
-  var f = readFull(r);
-  var now = tile(
-    LEDGER.headroomNow,
-    n.value,
-    n.why || mw(led.measured_draw_mw) + " " + LEDGER.measuredDraw + (counts ? " · " + counted(led.monitored, "machine") + " measured" : ""),
-    n.bad,
-    href
+/* `withCounts` adds how many machines the measured figure stands on. */
+export function headroomTiles(rated: Rated, options?: { href?: string; withCounts?: boolean }): HTMLElement[] {
+  const opts = options || {};
+  const ledger = rated.ledger;
+  const nowReading = readHeadroomNow(rated);
+  const fullReading = readHeadroomFull(rated);
+  const now = tile(
+    WORDS.headroomNow,
+    nowReading.value,
+    nowReading.why || mw(ledger.measured_draw_mw) + " " + WORDS.measuredDraw + (opts.withCounts ? " · " + counted(ledger.monitored, "machine") + " measured" : ""),
+    nowReading.bad,
+    opts.href
   );
-  var full = tile(
-    LEDGER.headroomFull,
-    f.value,
-    f.why || mw(led.draw_mw) + " " + LEDGER.nameplateDraw + (counts && led.unmonitored ? " · " + count(led.unmonitored) + " unmeasured, charged in full" : ""),
-    f.bad,
-    href
+  const full = tile(
+    WORDS.headroomFull,
+    fullReading.value,
+    fullReading.why ||
+      mw(ledger.draw_mw) + " " + WORDS.nameplateDraw + (opts.withCounts && ledger.unmonitored ? " · " + count(ledger.unmonitored) + " unmeasured, charged in full" : ""),
+    fullReading.bad,
+    opts.href
   );
-  if (unrated(r)) now.title = full.title = unratedTitle(r);
+  if (unrated(rated)) now.title = full.title = unratedTitle(rated);
   return [now, full];
 }
 
-export function generationTile(r: Rated, sub: string, starved: boolean, href?: string): HTMLElement {
-  var g = readGeneration(r);
-  var extra = g.why ? "" : biomassLine(r.ledger);
-  var box = tile(LEDGER.generation, g.value, g.why || (extra ? sub + " · " + extra : sub), g.bad || (!g.why && starved), href);
-  if (unrated(r)) box.title = unratedTitle(r);
-  else if (extra) box.title = extra + ": " + counted(r.ledger.biomass_generators, "burner") + ", hand-fed; Settings can count them";
+export function generationTile(rated: Rated, sub: string, starved: boolean, href?: string): HTMLElement {
+  const reading = readGeneration(rated);
+  const extra = reading.why ? "" : biomassLine(rated.ledger);
+  const box = tile(WORDS.generation, reading.value, reading.why || (extra ? sub + " · " + extra : sub), reading.bad || (!reading.why && starved), href);
+  if (unrated(rated)) box.title = unratedTitle(rated);
+  else if (extra) box.title = extra + ": " + counted(rated.ledger.biomass_generators, "burner") + ", hand-fed; Settings can count them";
   return box;
 }
 
-function starvedSub(led: Ledger): string {
-  return led.starved_generation_mw ? mw(led.starved_generation_mw) + " of it starved" : "none of it starved";
+function starvedSub(ledger: Ledger): string {
+  return ledger.starved_generation_mw ? mw(ledger.starved_generation_mw) + " of it starved" : "none of it starved";
 }
 
-function ledgerTiles(r: Rated, led: Ledger, sub: string): HTMLElement {
-  var tiles = make("div", "dash-tiles");
-  tiles.appendChild(generationTile(r, sub, led.starved_generation_mw > 0));
-  headroomTiles(r, undefined, true).forEach(function (t) {
-    tiles.appendChild(t);
+function ledgerTiles(rated: Rated, ledger: Ledger, sub: string): HTMLElement {
+  const tiles = make("div", "dash-tiles");
+  tiles.appendChild(generationTile(rated, sub, ledger.starved_generation_mw > 0));
+  headroomTiles(rated, { withCounts: true }).forEach(function (headroomTile) {
+    tiles.appendChild(headroomTile);
   });
   return tiles;
 }
 
-function consumers(row: CircuitRow): string {
+function consumerText(row: CircuitRow): string {
   return counted(row.consumers, "consumer") + (row.ledger.paused ? ", " + count(row.ledger.paused) + " " + WORDS.paused : "");
 }
 
-function toned(bad: (r: CircuitRow) => boolean): (r: CircuitRow) => string {
-  return function (r) {
-    return bad(r) ? "bad" : "";
+function badWhen(bad: (row: CircuitRow) => boolean): (row: CircuitRow) => string {
+  return function (row) {
+    return bad(row) ? "bad" : "";
   };
+}
+
+function circuitMapButton(index: number): HTMLElement {
+  return mapButton(
+    "fly the map to this circuit",
+    function () {
+      showCircuit(index);
+    },
+    "show circuit " + (index + 1) + " on the map"
+  );
+}
+
+function circuitColumns(): Column<CircuitRow>[] {
+  return [
+    {
+      key: "circuit",
+      label: "circuit",
+      render: function (row) {
+        const anchor = link("power/" + (row.index + 1), circuitName(row), "dash-trunc");
+        anchor.title = circuitName(row);
+        return anchor;
+      },
+    },
+    {
+      key: "generation",
+      label: WORDS.generation,
+      align: "right",
+      tone: badWhen(circuitDark),
+      render: function (row) {
+        return readGeneration(ratedCircuit(row)).value;
+      },
+    },
+    {
+      key: "draw",
+      label: WORDS.measuredDraw,
+      align: "right",
+      render: function (row) {
+        return readMeasuredDraw(ratedCircuit(row)).value;
+      },
+    },
+    {
+      key: "now",
+      label: WORDS.headroomNow,
+      align: "right",
+      tone: badWhen(function (row) {
+        return readHeadroomNow(ratedCircuit(row)).bad;
+      }),
+      render: function (row) {
+        return readHeadroomNow(ratedCircuit(row)).value;
+      },
+    },
+    {
+      key: "full",
+      label: WORDS.headroomFull,
+      align: "right",
+      tone: badWhen(function (row) {
+        return readHeadroomFull(ratedCircuit(row)).bad;
+      }),
+      render: function (row) {
+        return readHeadroomFull(ratedCircuit(row)).value;
+      },
+    },
+    {
+      key: "consumers",
+      label: "consumers",
+      align: "right",
+      title: "every machine on the circuit, paused ones too",
+      render: function (row) {
+        return count(row.consumers);
+      },
+    },
+    {
+      key: "bar",
+      label: "",
+      className: "bar",
+      render: function (row) {
+        return ledgerBar(row.ledger);
+      },
+    },
+    {
+      key: "map",
+      label: "",
+      align: "right",
+      render: function (row) {
+        return row.bbox_m ? circuitMapButton(row.index) : make("span", "dash-muted", NONE);
+      },
+    },
+  ];
+}
+
+function circuitRowTitle(row: CircuitRow): string {
+  const rated = ratedCircuit(row);
+  if (unrated(rated)) return unratedTitle(rated);
+  const why = readMeasuredDraw(rated).why;
+  return [why ? why + " on this circuit" : "", row.ledger.paused ? consumerText(row) : "", biomassLine(row.ledger)].filter(Boolean).join(" · ");
 }
 
 export function circuitTable(parent: HTMLElement, rows: CircuitRow[]): void {
   parent.appendChild(
-    table<CircuitRow>(
-      [
-        {
-          key: "circuit",
-          label: "circuit",
-          render: function (r) {
-            var a = link("power/" + (r.index + 1), circuitName(r), "dash-trunc");
-            a.title = circuitName(r);
-            return a;
-          },
-        },
-        {
-          key: "generation",
-          label: LEDGER.generation,
-          align: "right",
-          tone: toned(circuitDark),
-          render: function (r) {
-            return readGeneration(rated(r)).value;
-          },
-        },
-        {
-          key: "draw",
-          label: LEDGER.measuredDraw,
-          align: "right",
-          render: function (r) {
-            return readMeasured(rated(r)).value;
-          },
-        },
-        {
-          key: "now",
-          label: LEDGER.headroomNow,
-          align: "right",
-          tone: toned(function (r) {
-            return readNow(rated(r)).bad;
-          }),
-          render: function (r) {
-            return readNow(rated(r)).value;
-          },
-        },
-        {
-          key: "full",
-          label: LEDGER.headroomFull,
-          align: "right",
-          tone: toned(function (r) {
-            return readFull(rated(r)).bad;
-          }),
-          render: function (r) {
-            return readFull(rated(r)).value;
-          },
-        },
-        {
-          key: "consumers",
-          label: "consumers",
-          align: "right",
-          title: "every machine on the circuit, paused ones too",
-          render: function (r) {
-            return count(r.consumers);
-          },
-        },
-        {
-          key: "bar",
-          label: "",
-          className: "bar",
-          render: function (r) {
-            return bar(r.ledger);
-          },
-        },
-        {
-          key: "map",
-          label: "",
-          align: "right",
-          render: function (r) {
-            return r.bbox_m
-              ? mapButton(
-                  "fly the map to this circuit",
-                  function () {
-                    showCircuit(r.index);
-                  },
-                  "show circuit " + (r.index + 1) + " on the map"
-                )
-              : make("span", "dash-muted", NONE);
-          },
-        },
-      ],
-      rows,
-      {
-        onRow: function (r) {
-          go("power/" + (r.index + 1));
-        },
-        rowTitle: function (r) {
-          if (unrated(rated(r))) return unratedTitle(rated(r));
-          var why = readMeasured(rated(r)).why;
-          return [why ? why + " on this circuit" : "", r.ledger.paused ? consumers(r) : "", biomassLine(r.ledger)]
-            .filter(Boolean)
-            .join(" · ");
-        },
-        caption: "power per circuit",
-      }
-    )
+    table<CircuitRow>(circuitColumns(), rows, {
+      onRow: function (row) {
+        go("power/" + (row.index + 1));
+      },
+      rowTitle: circuitRowTitle,
+      caption: "power per circuit",
+    })
   );
 }
 
-interface Problem {
-  problem: string;
-  what: string;
-  where: string;
-  whereDash: string;
-  cause: string;
-  refs: { instance: string; x_m: number | null; y_m: number | null }[];
+function whereCell(where: Where): string | HTMLElement {
+  if (where.dash) return link(where.dash, where.where);
+  return where.where || make("span", "dash-muted", NONE);
 }
 
-function whereCell(p: { where: string; whereDash: string }): string | HTMLElement {
-  if (p.whereDash) return link(p.whereDash, p.where);
-  return p.where || make("span", "dash-muted", NONE);
+function groupMachines(entries: MachineEntry[]): MachineGroup[] {
+  const groups: MachineGroup[] = [];
+  entries.forEach(function (entry) {
+    const same = groups.filter(function (group) {
+      return group.label === entry.label && group.what === entry.what && group.where.where === entry.where.where && group.cause === entry.cause;
+    })[0];
+    if (same) same.refs.push(entry.ref);
+    else groups.push({ label: entry.label, what: entry.what, where: entry.where, cause: entry.cause, refs: [entry.ref] });
+  });
+  return groups;
 }
 
-function grouped(found: Problem[], problem: string, what: string, where: string, whereDash: string, cause: string, ref: Problem["refs"][number]): void {
-  var same = found.filter(function (p) {
-    return p.problem === problem && p.what === what && p.where === where && p.cause === cause;
-  })[0];
-  if (same) same.refs.push(ref);
-  else found.push({ problem: problem, what: what, where: where, whereDash: whereDash, cause: cause, refs: [ref] });
+function instancesTitle(group: MachineGroup): string {
+  return group.refs
+    .map(function (ref) {
+      return ref.instance;
+    })
+    .join(", ");
+}
+
+function machineGroupColumns(
+  countLabel: string,
+  whatLabel: string,
+  mapTitle: (group: MachineGroup) => string,
+  whatClassName?: string
+): Column<MachineGroup>[] {
+  return [
+    {
+      key: "n",
+      label: countLabel,
+      align: "right",
+      render: function (group) {
+        return count(group.refs.length);
+      },
+    },
+    {
+      key: "what",
+      label: whatLabel,
+      className: whatClassName,
+      render: function (group) {
+        return group.what;
+      },
+    },
+    {
+      key: "where",
+      label: "where",
+      render: function (group) {
+        return group.cause || whereCell(group.where);
+      },
+    },
+    {
+      key: "map",
+      label: "",
+      align: "right",
+      render: function (group) {
+        return pointButton(group.refs[0]!, mapTitle(group));
+      },
+    },
+  ];
 }
 
 export interface Faults {
@@ -227,100 +298,65 @@ export function faultsOf(data: CircuitsResponse): Faults {
   return { unwired: data.unwired, noGenerator: data.no_generator, starved: data.starved };
 }
 
-export function faultCount(f: Faults): number {
-  return f.unwired.length + f.noGenerator.length + f.starved.length;
+export function faultCount(faults: Faults): number {
+  return faults.unwired.length + faults.noGenerator.length + faults.starved.length;
 }
 
-export function faultWords(f: Faults): string {
+export function faultWords(faults: Faults): string {
   return [
-    count(f.unwired.length) + " " + WORDS.noWire,
-    count(f.noGenerator.length) + " " + WORDS.noGenerator,
-    counted(f.starved.length, WORDS.starvedGenerator),
+    count(faults.unwired.length) + " " + WORDS.noWire,
+    count(faults.noGenerator.length) + " " + WORDS.noGenerator,
+    counted(faults.starved.length, WORDS.starvedGenerator),
   ].join(" · ");
 }
 
-function problems(f: Faults): Problem[] {
-  var found: Problem[] = [];
-  f.starved.forEach(function (g) {
-    grouped(found, WORDS.starvedGenerator, g.name, "", "", g.cause, g);
-  });
-  f.unwired.forEach(function (m) {
-    var at = whereOf(m);
-    grouped(found, WORDS.noWire, m.name, at.where, at.dash, "", m);
-  });
-  f.noGenerator.forEach(function (m) {
-    var at = whereOf(m);
-    grouped(found, WORDS.noGenerator, m.name, at.where, at.dash, "", m);
-  });
-  return found;
+function machineEntry(label: string, machine: MachineRef): MachineEntry {
+  return { label: label, what: machine.name, where: whereOf(machine), cause: "", ref: machine };
 }
 
-export function problemTable(parent: HTMLElement, f: Faults, shown?: number): void {
-  var rows = problems(f);
-  var cut = shown === undefined ? rows : rows.slice(0, shown);
-  parent.appendChild(
-    table<Problem>(
-      [
-        {
-          key: "problem",
-          label: "problem",
-          className: "bad dash-nowrap",
-          render: function (p) {
-            return p.problem;
-          },
-        },
-        {
-          key: "n",
-          label: "machines",
-          align: "right",
-          render: function (p) {
-            return count(p.refs.length);
-          },
-        },
-        {
-          key: "what",
-          label: "machine",
-          className: "dash-nowrap",
-          render: function (p) {
-            return p.what;
-          },
-        },
-        {
-          key: "where",
-          label: "where",
-          render: function (p) {
-            return p.cause || whereCell(p);
-          },
-        },
-        {
-          key: "map",
-          label: "",
-          align: "right",
-          render: function (p) {
-            return pointButton(p.refs[0]!, "show " + p.what + " (" + p.problem + ") on the map");
-          },
-        },
-      ],
-      cut,
-      {
-        rowTitle: function (p) {
-          return p.refs
-            .map(function (r) {
-              return r.instance;
-            })
-            .join(", ");
-        },
-        caption: WORDS.powerProblems,
-      }
+function faultGroups(faults: Faults): MachineGroup[] {
+  const entries: MachineEntry[] = [];
+  faults.starved.forEach(function (generator) {
+    entries.push({ label: WORDS.starvedGenerator, what: generator.name, where: NOWHERE, cause: generator.cause, ref: generator });
+  });
+  faults.unwired.forEach(function (machine) {
+    entries.push(machineEntry(WORDS.noWire, machine));
+  });
+  faults.noGenerator.forEach(function (machine) {
+    entries.push(machineEntry(WORDS.noGenerator, machine));
+  });
+  return groupMachines(entries);
+}
+
+export function problemTable(parent: HTMLElement, faults: Faults, shown?: number): void {
+  const rows = faultGroups(faults);
+  const cut = shown === undefined ? rows : rows.slice(0, shown);
+  const problemColumn: Column<MachineGroup> = {
+    key: "problem",
+    label: "problem",
+    className: "bad dash-nowrap",
+    render: function (group) {
+      return group.label;
+    },
+  };
+  const columns = [problemColumn].concat(
+    machineGroupColumns(
+      "machines",
+      "machine",
+      function (group) {
+        return "show " + group.what + " (" + group.label + ") on the map";
+      },
+      "dash-nowrap"
     )
   );
+  parent.appendChild(table<MachineGroup>(columns, cut, { rowTitle: instancesTitle, caption: WORDS.powerProblems }));
   if (cut.length < rows.length) appendNote(parent, "showing " + cut.length + " of " + rows.length + " rows; Power lists all");
 }
 
 function generatorLine(groups: GeneratorGroup[]): string {
   return groups
-    .map(function (g) {
-      return g.count + "× " + g.name + " " + mw(g.mw);
+    .map(function (group) {
+      return group.count + "× " + group.name + " " + mw(group.mw);
     })
     .join(" · ");
 }
@@ -330,148 +366,95 @@ function unratedLine(classes: string[]): string {
 }
 
 function offGrid(data: CircuitsResponse): string {
-  var off = data.off_grid;
-  var parts = [counted(off.consumers, "machine") + (off.paused ? " (" + count(off.paused) + " " + WORDS.paused + ")" : "") + " rated " + mw(off.draw_mw)];
+  const off = data.off_grid;
+  const parts = [counted(off.consumers, "machine") + (off.paused ? " (" + count(off.paused) + " " + WORDS.paused + ")" : "") + " rated " + mw(off.draw_mw)];
   if (off.generators) parts.push(counted(off.generators, "generator") + " rated " + mw(off.generation_mw));
   return "on no wire, so in no figure above: " + parts.join(" · ");
 }
 
-function refTable(parent: HTMLElement, title: string, rows: MachineRef[]): void {
+function unwiredGeneratorTable(parent: HTMLElement, title: string, rows: MachineRef[]): void {
   if (!rows.length) return;
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   heading(card, title + " (" + rows.length + ")");
-  var found: Problem[] = [];
-  rows.forEach(function (m) {
-    var at = whereOf(m);
-    grouped(found, "", m.name, at.where, at.dash, "", m);
-  });
-  card.appendChild(
-    table<Problem>(
-      [
-        {
-          key: "n",
-          label: "count",
-          align: "right",
-          render: function (p) {
-            return count(p.refs.length);
-          },
-        },
-        {
-          key: "what",
-          label: "generator",
-          render: function (p) {
-            return p.what;
-          },
-        },
-        {
-          key: "where",
-          label: "where",
-          render: function (p) {
-            return whereCell(p);
-          },
-        },
-        {
-          key: "map",
-          label: "",
-          align: "right",
-          render: function (p) {
-            return pointButton(p.refs[0]!, "show " + p.what + " on the map");
-          },
-        },
-      ],
-      found,
-      {
-        rowTitle: function (p) {
-          return p.refs
-            .map(function (r) {
-              return r.instance;
-            })
-            .join(", ");
-        },
-        caption: title,
-      }
-    )
+  const groups = groupMachines(
+    rows.map(function (machine) {
+      return machineEntry("", machine);
+    })
   );
+  const columns = machineGroupColumns("count", "generator", function (group) {
+    return "show " + group.what + " on the map";
+  });
+  card.appendChild(table<MachineGroup>(columns, groups, { rowTitle: instancesTitle, caption: title }));
   parent.appendChild(card);
 }
 
-function problemCard(parent: HTMLElement, f: Faults): void {
-  var n = faultCount(f);
-  if (!n) return;
-  var card = make("section", "dash-card");
-  heading(card, WORDS.powerProblems + " (" + count(n) + ")");
-  problemTable(card, f);
+function problemCard(parent: HTMLElement, faults: Faults): void {
+  const total = faultCount(faults);
+  if (!total) return;
+  const card = make("section", "dash-card");
+  heading(card, WORDS.powerProblems + " (" + count(total) + ")");
+  problemTable(card, faults);
   parent.appendChild(card);
 }
 
 function circuitsMissing(body: HTMLElement): void {
-  var v = vitals();
+  const v = vitals();
   if (v.circuitsError) error(body, "power circuits", "", retryCircuits);
   else loading(body, "power circuits");
 }
 
 export function renderPower(body: HTMLElement): void {
-  var data = vitals().circuits;
+  const data = vitals().circuits;
   if (!data) {
     circuitsMissing(body);
     return;
   }
   body.appendChild(ledgerTiles(ratedWorld(data), data.world, starvedSub(data.world)));
-  var whole = make("section", "dash-card");
+  const whole = make("section", "dash-card");
   heading(whole, "whole world");
-  whole.appendChild(bar(data.world, true));
-  var facts: string[] = [];
+  whole.appendChild(ledgerBar(data.world, true));
+  const facts: string[] = [];
   if (data.generators.length) facts.push(generatorLine(data.generators));
   if (data.paused) facts.push(counted(data.paused, "paused building") + ", left out of both sides");
   if (data.off_grid.consumers || data.off_grid.generators) facts.push(offGrid(data));
   if (data.unmodellable.length) facts.push(unratedLine(data.unmodellable));
-  facts.forEach(function (f) {
-    appendNote(whole, f);
+  facts.forEach(function (fact) {
+    appendNote(whole, fact);
   });
   body.appendChild(whole);
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   heading(card, counted(data.circuits.length, "circuit"));
   circuitTable(card, data.circuits);
   appendNote(card, "a circuit is what the wires join; switches read as closed, batteries are not counted");
   body.appendChild(card);
   problemCard(body, faultsOf(data));
-  refTable(body, "generators on no wire", data.unwired_generators);
+  unwiredGeneratorTable(body, "generators on no wire", data.unwired_generators);
 }
 
 export function renderCircuit(body: HTMLElement, subject: string): void {
   body.appendChild(link("power", "‹ all circuits", "dash-back"));
-  var data = vitals().circuits;
+  const data = vitals().circuits;
   if (!data) {
     circuitsMissing(body);
     return;
   }
-  var row = data.circuits[+subject - 1];
+  const row = data.circuits[+subject - 1];
   if (!row) {
     empty(body, "no circuit " + subject + " in this world", "circuit numbers can change between saves; pick one from the list");
     return;
   }
-  var index = row.index;
-  var head = make("div", "dash-title");
+  const index = row.index;
+  const head = make("div", "dash-title");
   head.appendChild(make("h1", "", circuitName(row)));
-  if (row.bbox_m) {
-    head.appendChild(
-      mapButton(
-        "fly the map to this circuit",
-        function () {
-          showCircuit(index);
-        },
-        "show circuit " + (index + 1) + " on the map"
-      )
-    );
-  }
+  if (row.bbox_m) head.appendChild(circuitMapButton(index));
   body.appendChild(head);
-  appendNote(body, consumers(row) + " · " + counted(row.poles, "pole or tower", LEDGER.poles));
-  var r = rated(row);
-  var stranded = data.no_generator.filter(function (m) {
-    return m.circuit === index;
+  appendNote(body, consumerText(row) + " · " + counted(row.poles, "pole or tower", WORDS.polesAndTowers));
+  const rated = ratedCircuit(row);
+  const stranded = data.no_generator.filter(function (machine) {
+    return machine.circuit === index;
   });
-  body.appendChild(ledgerTiles(r, row.ledger, r.dark ? counted(stranded.length, "machine") + " wired here draw from nothing" : starvedSub(row.ledger)));
-  body.appendChild(bar(row.ledger));
+  body.appendChild(ledgerTiles(rated, row.ledger, rated.dark ? counted(stranded.length, "machine") + " wired here draw from nothing" : starvedSub(row.ledger)));
+  body.appendChild(ledgerBar(row.ledger));
   if (row.generators.length) appendNote(body, generatorLine(row.generators));
   if (row.unmodellable.length) appendNote(body, unratedLine(row.unmodellable));
   problemCard(body, { unwired: [], noGenerator: stranded, starved: row.starved });

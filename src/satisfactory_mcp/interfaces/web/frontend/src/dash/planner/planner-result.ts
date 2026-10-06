@@ -4,7 +4,7 @@
 import { button, chip, copyButton, error, idChip, loading, subTabs, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, flow, mw, pct } from "../../kit/format";
-import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "../graph";
+import { drawGraph, graphCardFrame, GRAPH_HINT, setPicked } from "../graph";
 import { dashParts, go } from "../../app/nav";
 import { vitals } from "../../app/vitals";
 import { renderAlternates } from "./planner-alternates";
@@ -14,7 +14,7 @@ import { rowOverclock } from "./planner-power";
 import { renderSite } from "./planner-site";
 import { renderTrack } from "./planner-track";
 import { pinsFor, pinThis } from "../../chat/pins";
-import { headroom, LEDGER } from "../power-ledger";
+import { headroom } from "../power-ledger";
 import { WORDS } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
@@ -116,8 +116,8 @@ function budget(parent: HTMLElement, data: SolveResponse): void {
   }
   var net = data.mw_net;
   var rows: BudgetRow[] = [
-    { label: LEDGER.headroomNow, now: ledger.measured_headroom_mw, after: net === null ? null : ledger.measured_headroom_mw + net },
-    { label: LEDGER.headroomFull, now: ledger.headroom_mw, after: net === null ? null : ledger.headroom_mw + net },
+    { label: WORDS.headroomNow, now: ledger.measured_headroom_mw, after: net === null ? null : ledger.measured_headroom_mw + net },
+    { label: WORDS.headroomFull, now: ledger.headroom_mw, after: net === null ? null : ledger.headroom_mw + net },
   ];
   var columns: Column<BudgetRow>[] = [
     {
@@ -540,7 +540,7 @@ function nodeCard(parent: HTMLElement, data: SolveResponse): void {
 }
 
 function graphTab(parent: HTMLElement, data: SolveResponse, select: (s: Selection) => void): HTMLElement | null {
-  var card = graphFrame("production graph", true);
+  var card = graphCardFrame("production graph", true);
   parent.appendChild(card);
   if (!data.graph.nodes.length) {
     card.appendChild(make("p", "dash-note", "nothing to draw"));

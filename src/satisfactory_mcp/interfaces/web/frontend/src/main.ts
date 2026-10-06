@@ -54,7 +54,9 @@ import { loadWorlds } from "./app/world-picker";
  * is a rule nobody can check at a glance. */
 import "./chat/advice";
 import "./map/drawn/belts";
+import "./dash/recipes/cache";
 import "./map/drawn/crates";
+import "./dash/progress/feeds";
 import "./app/header";
 import "./dash/inventory";
 import "./map/labels";
@@ -66,9 +68,7 @@ import "./map/drawn/pipes";
 import "./map/drawn/placements";
 import "./map/drawn/plan-sitings";
 import "./map/drawn/power-wires";
-import "./dash/progress/progress";
-import "./dash/recipes/recipes";
-import "./dash/world/world";
+import "./dash/world/world-here";
 
 /* ------------------------------------------------------------------- wiring */
 

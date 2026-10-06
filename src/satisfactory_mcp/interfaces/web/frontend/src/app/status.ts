@@ -3,7 +3,7 @@
 
 import { onStale } from "../api/client";
 import { button, link } from "../kit/dashkit";
-import { leaveDashThen } from "../dash/shell";
+import { leaveDashThen } from "../dash/actions";
 import { el, make } from "../kit/dom";
 import { keepFocus } from "../kit/focus";
 import { count } from "../kit/format";
@@ -11,8 +11,9 @@ import { reload } from "./load";
 import { showCircuit, showFactory } from "../map/panel";
 import { showMachine, showPoint } from "../map/map-highlight";
 import { faultCount, faultsOf } from "../dash/power-tab";
-import { ratedWorld, readNow } from "../dash/power-ledger";
-import { onProgress, readyMilestones } from "../dash/progress/progress";
+import { ratedWorld, readHeadroomNow } from "../dash/power-ledger";
+import { onProgress } from "../dash/progress/feeds";
+import { readyMilestones } from "../dash/progress/milestones";
 import { showRef } from "../map/tools/finder";
 import { onSelect, select, selected, selectionRef } from "./selection";
 import { state } from "./state";
@@ -82,7 +83,7 @@ function vitalsPart(parent: HTMLElement): void {
   if (v.circuits) {
     var faults = faultCount(faultsOf(v.circuits));
     item(parent, "power", count(faults) + " " + WORDS.powerProblems, faults ? "bad" : "");
-    var now = readNow(ratedWorld(v.circuits));
+    var now = readHeadroomNow(ratedWorld(v.circuits));
     item(parent, "power", WORDS.headroomNow + " " + now.value, now.bad ? "bad" : "");
   }
   var ready = readyMilestones();

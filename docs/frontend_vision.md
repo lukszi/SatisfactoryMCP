@@ -907,7 +907,7 @@ me that graph for a detected factory".
     more is off-screen. The frame is as tall as the graph, up to 80% of the window.
     Ctrl+wheel zooms (a plain wheel scrolls the page), dragging pans and a double-click
     fits again.
-  - One card for both callers: `graphCard(heading, shown, toggle)` in `dash/graph.ts`, with one
+  - One card for both callers: `graphCardFrame(heading, shown, toggle)` in `dash/graph.ts`, with one
     **hide graph** toggle per view. The planner draws its plan with the same component
     (planner_vision.md §4.2); power is not an item there. A process's node shows its MW,
     and exported power is a **power** terminal fed by the generators, labelled in MW.
@@ -1016,7 +1016,8 @@ advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
   elevator, `OverclockBudget` for shards and sloops, and `HardDriveDesk` for the drives.
   The tool bodies are unchanged. Every route declares a response model and follows the
   `?save=`/`?world=` convention.
-- **Page.** `frontend/src/dash/progress/progress.ts` holds the section. It was moved out of
+- **Page.** `frontend/src/dash/progress/` holds the section, one module per page and
+  `feeds.ts` for the six reads. It was moved out of
   `dash/shell.ts` with the milestone view unchanged. The shared building blocks (tile,
   note, link, table cell) now sit in `frontend/src/kit/dashkit.ts`, which both modules import.
 - **Layout.** A segmented control (`dashkit.subTabs`) reaches one page per tool. The
@@ -1104,7 +1105,7 @@ Phase 5 of §6. It is a read-only surface over the game data, marked against the
   lands waits for the reply to the text typed, not the previous one. The first Escape closes
   the list and keeps the text. A factory opens its dashboard detail, and an item or recipe
   opens its card. The box is an ARIA combobox over the `listbox` of hits.
-- **Freshness.** `dash/recipes/recipes.ts` registers `/api/gamedata/unlocked` in the live wave. Each save
+- **Freshness.** `dash/recipes/cache.ts` registers `/api/gamedata/unlocked` in the live wave. Each save
   event bumps a generation that empties the codex cache, so have and locked follow the game.
   The first reply after a load or a switch only primes the cache, so a cold load fetches
   once.
@@ -1411,7 +1412,7 @@ Phase 2 of §6. The factory page gains level-2 tabs past its overview.
 - **Address.** `factories/<name>/<aspect>`, one `dashkit.subTabs` strip under the title:
   overview, flows, machines, power, nodes, links, floors, sites. A name may itself hold a
   `/`, so the last segment counts as an aspect only when it is one of those ids and the whole
-  subject is not a factory name (`factoryAddress` in `dash/factories/factory-detail.ts`). Renaming keeps the
+  subject is not a factory name (`factoryAddress` in `dash/factories/address.ts`). Renaming keeps the
   open tab.
 - **`GET /api/factories/aspects?factory=`** (`routers/factories/factory_detail.py`). One
   `query.build_view` pass, the one `factory_query` makes, sent as rows: summary numbers,

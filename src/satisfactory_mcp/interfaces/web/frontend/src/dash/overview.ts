@@ -8,10 +8,10 @@ import { count, pct } from "../kit/format";
 import { loadOne } from "../app/load";
 import { hashFor } from "../map/map";
 import { vitals } from "../app/vitals";
-import { milestoneTile } from "./progress/progress";
+import { milestoneTile } from "./progress/milestones";
 import { actionTone, statesOf } from "./machine-states";
 import { issueCount, issueGroups, issueTable, mixBar, mixLegend, mixOf } from "./machine-health";
-import { factoryMapButton, pointButton } from "./shell";
+import { factoryMapButton, pointButton } from "./actions";
 import { go } from "../app/nav";
 import {
   circuitTable,
@@ -23,12 +23,12 @@ import {
   problemTable,
   retryCircuits,
 } from "./power-tab";
-import { bar as powerBar, ratedWorld } from "./power-ledger";
+import { ledgerBar, ratedWorld } from "./power-ledger";
 import { counted, WORDS } from "../kit/words";
 
 import type { FactoryHealthRow } from "../api/shapes";
 
-var ROWS_SHOWN = 12;
+const ROWS_SHOWN = 12;
 
 function retryHealth(): void {
   loadOne("/api/factories/health");
@@ -39,52 +39,52 @@ function detectLink(): HTMLElement {
 }
 
 function actionTile(rows: FactoryHealthRow[]): HTMLElement {
-  var v = vitals();
+  const v = vitals();
   if (!v.health) return tile(WORDS.needAction, "–", v.healthError ? "factory health could not be read" : "loading…");
   if (!rows.length) {
-    var none = tile(WORDS.needAction, "–", "no factories named yet", false);
+    const none = tile(WORDS.needAction, "–", "no factories named yet", false);
     none.appendChild(detectLink());
     return none;
   }
-  var mix = mixOf(rows);
-  var todo = rows.filter(function (r) {
-    return r.actionable > 0;
+  const mix = mixOf(rows);
+  const needing = rows.filter(function (row) {
+    return row.actionable > 0;
   }).length;
-  var box = tile(
+  const box = tile(
     WORDS.needAction,
     count(mix.bad + mix.blocked),
-    "machines, in " + count(todo) + " of " + counted(rows.length, "named factory", "named factories"),
+    "machines, in " + count(needing) + " of " + counted(rows.length, "named factory", "named factories"),
     false,
     hashFor("factories")
   );
-  var shade = actionTone(statesOf(rows));
-  if (shade) box.classList.add(shade);
+  const tone = actionTone(statesOf(rows));
+  if (tone) box.classList.add(tone);
   box.appendChild(mixBar(mix));
   box.appendChild(mixLegend(mix));
   return box;
 }
 
-function tiles(body: HTMLElement): void {
-  var v = vitals();
-  var row = make("div", "dash-tiles");
-  var rows = v.health ? v.health.factories : [];
+function headlineTiles(body: HTMLElement): void {
+  const v = vitals();
+  const row = make("div", "dash-tiles");
+  const rows = v.health ? v.health.factories : [];
   row.appendChild(actionTile(rows));
-  var power = hashFor("power");
+  const power = hashFor("power");
   if (v.circuits) {
-    var gens = 0;
-    v.circuits.generators.forEach(function (g) {
-      gens += g.count;
+    let generators = 0;
+    v.circuits.generators.forEach(function (group) {
+      generators += group.count;
     });
-    var gen = generationTile(ratedWorld(v.circuits), counted(gens, "generator"), v.circuits.world.starved_generation_mw > 0, power);
-    gen.appendChild(powerBar(v.circuits.world));
-    row.appendChild(gen);
-    headroomTiles(ratedWorld(v.circuits), power).forEach(function (t) {
-      row.appendChild(t);
+    const generation = generationTile(ratedWorld(v.circuits), counted(generators, "generator"), v.circuits.world.starved_generation_mw > 0, power);
+    generation.appendChild(ledgerBar(v.circuits.world));
+    row.appendChild(generation);
+    headroomTiles(ratedWorld(v.circuits), { href: power }).forEach(function (headroomTile) {
+      row.appendChild(headroomTile);
     });
-    var faults = faultsOf(v.circuits);
+    const faults = faultsOf(v.circuits);
     row.appendChild(tile(WORDS.powerProblems, count(faultCount(faults)), faultWords(faults), faultCount(faults) > 0, power));
   } else {
-    var why = v.circuitsError ? "power circuits could not be read" : "loading…";
+    const why = v.circuitsError ? "power circuits could not be read" : "loading…";
     row.appendChild(tile(WORDS.generation, "–", why));
     row.appendChild(tile(WORDS.powerProblems, "–", why));
   }
@@ -92,8 +92,9 @@ function tiles(body: HTMLElement): void {
   body.appendChild(row);
 }
 
+/* True when health is not read yet; the loading or error line is drawn instead. */
 function healthMissing(parent: HTMLElement): boolean {
-  var v = vitals();
+  const v = vitals();
   if (v.health) return false;
   if (v.healthError) error(parent, "factory health", "", retryHealth);
   else loading(parent, "factory health");
@@ -101,17 +102,17 @@ function healthMissing(parent: HTMLElement): boolean {
 }
 
 function factoriesCard(parent: HTMLElement): void {
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   heading(card, "factories that " + WORDS.needAction);
   parent.appendChild(card);
   if (healthMissing(card)) return;
-  var rows = vitals().health!.factories;
+  const rows = vitals().health!.factories;
   if (!rows.length) {
     empty(card, "no factories named yet", detectLink());
     return;
   }
-  var worst = rows.filter(function (r) {
-    return r.actionable > 0;
+  const worst = rows.filter(function (row) {
+    return row.actionable > 0;
   });
   if (!worst.length) {
     empty(card, "none " + WORDS.needAction);
@@ -123,37 +124,37 @@ function factoriesCard(parent: HTMLElement): void {
         {
           key: "name",
           label: WORDS.factory,
-          render: function (r) {
-            var a = link("factories/" + r.name, r.name, "dash-trunc");
-            a.title = r.name;
-            return a;
+          render: function (row) {
+            const anchor = link("factories/" + row.name, row.name, "dash-trunc");
+            anchor.title = row.name;
+            return anchor;
           },
         },
         {
           key: "actionable",
           label: WORDS.needAction,
           align: "right",
-          tone: function (r) {
-            return actionTone(r.states);
+          tone: function (row) {
+            return actionTone(row.states);
           },
-          render: function (r) {
-            return count(r.actionable);
+          render: function (row) {
+            return count(row.actionable);
           },
         },
         {
           key: "uptime",
           label: "uptime",
           align: "right",
-          render: function (r) {
-            return pct(r.uptime);
+          render: function (row) {
+            return pct(row.uptime);
           },
         },
         { key: "map", label: "", align: "right", render: factoryMapButton },
       ],
       worst,
       {
-        onRow: function (r) {
-          go("factories/" + r.name);
+        onRow: function (row) {
+          go("factories/" + row.name);
         },
         caption: "factories that " + WORDS.needAction,
       }
@@ -162,37 +163,37 @@ function factoriesCard(parent: HTMLElement): void {
 }
 
 function machinesCard(parent: HTMLElement): void {
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   heading(card, "machines that " + WORDS.needAction);
   parent.appendChild(card);
   if (healthMissing(card)) return;
-  var factories = vitals().health!.factories;
-  var found = issueGroups(factories);
+  const factories = vitals().health!.factories;
+  const found = issueGroups(factories);
   if (!found.length) {
     empty(card, "none " + WORDS.needAction);
     return;
   }
-  var total = 0;
-  factories.forEach(function (r) {
-    total += r.actionable;
+  let total = 0;
+  factories.forEach(function (row) {
+    total += row.actionable;
   });
-  var shown = found.slice(0, ROWS_SHOWN);
+  const shown = found.slice(0, ROWS_SHOWN);
   card.appendChild(
     issueTable(
       shown,
-      function (g) {
-        return pointButton(g.issues[0]!, "show " + g.what + " in " + g.factory + " on the map");
+      function (group) {
+        return pointButton(group.issues[0]!, "show " + group.what + " in " + group.factory + " on the map");
       },
       true
     )
   );
-  var listed = issueCount(shown);
+  const listed = issueCount(shown);
   if (listed < total) appendNote(card, "showing " + count(listed) + " of " + count(total) + "; Factories lists all");
 }
 
 function problemsCard(parent: HTMLElement): void {
-  var v = vitals();
-  var card = make("section", "dash-card");
+  const v = vitals();
+  const card = make("section", "dash-card");
   heading(card, WORDS.powerProblems);
   parent.appendChild(card);
   if (!v.circuits) {
@@ -200,7 +201,7 @@ function problemsCard(parent: HTMLElement): void {
     else loading(card, "power circuits");
     return;
   }
-  var faults = faultsOf(v.circuits);
+  const faults = faultsOf(v.circuits);
   if (!faultCount(faults)) {
     empty(card, "no " + WORDS.powerProblems);
     return;
@@ -209,8 +210,8 @@ function problemsCard(parent: HTMLElement): void {
 }
 
 function circuitsCard(parent: HTMLElement): void {
-  var v = vitals();
-  var card = make("section", "dash-card");
+  const v = vitals();
+  const card = make("section", "dash-card");
   heading(card, "power per circuit");
   parent.appendChild(card);
   if (v.circuits) circuitTable(card, v.circuits.circuits);
@@ -219,12 +220,12 @@ function circuitsCard(parent: HTMLElement): void {
 }
 
 export function renderOverview(body: HTMLElement): void {
-  tiles(body);
+  headlineTiles(body);
   adviceCard(body);
-  var split = make("div", "dash-split");
-  var h = vitals().health;
+  const split = make("div", "dash-split");
+  const health = vitals().health;
   factoriesCard(split);
-  if (!h || h.factories.length) machinesCard(split);
+  if (!health || health.factories.length) machinesCard(split);
   body.appendChild(split);
   problemsCard(body);
   circuitsCard(body);

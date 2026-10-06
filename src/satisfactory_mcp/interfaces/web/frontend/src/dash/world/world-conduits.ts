@@ -2,44 +2,61 @@
  * See docs/world-finders_contract.md §2.3. */
 
 import { appendNote, button, empty, subTabs, table } from "../../kit/dashkit";
-import { leaveDashThen, mapButton, render } from "../shell";
 import { make } from "../../kit/dom";
 import { CONDUIT_RADIUS_M, showRows } from "../../map/tools/finder";
 import { carriesText, runLabel, runSelection, worldUrl } from "./world-finds";
 import { coords, count, formatNumber, metres, roundHalfEven } from "../../kit/format";
 import { hashFor } from "../../map/map";
 import { go } from "../../app/nav";
-import { isSelected, select } from "../../app/selection";
+import { isSelected } from "../../app/selection";
 import { state } from "../../app/state";
-import { capped, changed, copyCell, distanceColumn, edit, filterBar, loaded, selectField, textField, viewDash, waiting, want } from "./world";
 import { withoutToolHints } from "../../kit/toast";
 import { counted, WORDS } from "../../kit/words";
+import { mapButton } from "../actions";
+import {
+  copyCell,
+  distanceColumn,
+  filterBar,
+  goToWorldParams,
+  loaded,
+  numericColumn,
+  openRowsOnMap,
+  paramSetter,
+  selectAndRender,
+  selectField,
+  showAllToggle,
+  textField,
+  viewDash,
+  waiting,
+  want,
+  withParams,
+} from "./world-kit";
 
 import type { Column, SortState } from "../../kit/dashkit";
 import type { ConduitsResponse, NetworkRow, RunEnd, RunRow } from "../../api/shapes";
 
-var PAGE = 200;
+const PAGE_SIZE = 200;
 
-var box = loaded<ConduitsResponse>();
+const box = loaded<ConduitsResponse>();
 
-var sorts: Record<string, SortState> = {
+const sorts: Record<string, SortState> = {
   runs: { key: "length", desc: true },
   networks: { key: "length", desc: true },
 };
 
-var RADII: [string, string][] = ["100", CONDUIT_RADIUS_M, "500", "1000", "2000"].map(function (r): [string, string] {
-  return [r, r + " m"];
+const RADII: [string, string][] = ["100", CONDUIT_RADIUS_M, "500", "1000", "2000"].map(function (radius): [string, string] {
+  return [radius, radius + " m"];
 });
 
-var KINDS: [string, string][] = [
+const KINDS: [string, string][] = [
   ["", "belts and pipes"],
   ["belt", "belts"],
   ["pipe", "pipes"],
 ];
 
-var KIND_WORD: Record<string, string> = { belt: "belt", lift: "lift", pipe: "pipe" };
+const KIND_WORD: Record<string, string> = { belt: "belt", lift: "lift", pipe: "pipe" };
 
-var BASIS: Record<string, string> = {
+const BASIS: Record<string, string> = {
   "machine port": "a machine port",
   pump: "a pump or valve",
   propagated: "its network",
@@ -49,51 +66,56 @@ var BASIS: Record<string, string> = {
   unknown: "not known",
 };
 
-function endText(e: RunEnd): string {
-  return coords(e.x_m, e.y_m);
+function endText(end: RunEnd): string {
+  return coords(end.x_m, end.y_m);
 }
 
-function zSpan(lo: number, hi: number): string {
-  return roundHalfEven(lo) === roundHalfEven(hi) ? formatNumber(lo, 0) + " m" : formatNumber(lo, 0) + " to " + formatNumber(hi, 0) + " m";
+function zSpan(low: number, high: number): string {
+  return roundHalfEven(low) === roundHalfEven(high) ? formatNumber(low, 0) + " m" : formatNumber(low, 0) + " to " + formatNumber(high, 0) + " m";
 }
 
 function recentre(params: Record<string, string>, to: string): void {
-  edit(changed(params, { near: to, offset: "", network: "" }));
+  goToWorldParams(withParams(params, { near: to, offset: "", network: "" }));
 }
 
-function plug(cell: HTMLElement, v: string | null, params: Record<string, string>): void {
-  if (v && /^(chain|pipe):/.test(v)) {
+/* A run's end plugged into another run or pipe is a button that searches again from there. */
+function plug(cell: HTMLElement, plugged: string | null, params: Record<string, string>): void {
+  if (plugged && /^(chain|pipe):/.test(plugged)) {
     cell.appendChild(
-      button(v.replace(":", " "), function () {
-        recentre(params, v);
-      }, { title: "search again near " + v })
+      button(plugged.replace(":", " "), function () {
+        recentre(params, plugged);
+      }, { title: "search again near " + plugged })
     );
-  } else cell.appendChild(make("span", "", v || "–"));
+  } else cell.appendChild(make("span", "", plugged || "–"));
 }
 
-function connects(r: RunRow, params: Record<string, string>): HTMLElement {
-  var cell = make("span", "world-via");
-  plug(cell, r.a.plugs, params);
-  cell.appendChild(make("span", "", r.directed ? " → " : " · "));
-  plug(cell, r.b.plugs, params);
-  if (r.via.length) cell.appendChild(make("span", "dash-sub", "via " + r.via.join(", ")));
+function connects(run: RunRow, params: Record<string, string>): HTMLElement {
+  const cell = make("span", "world-via");
+  plug(cell, run.a.plugs, params);
+  cell.appendChild(make("span", "", run.directed ? " → " : " · "));
+  plug(cell, run.b.plugs, params);
+  if (run.via.length) cell.appendChild(make("span", "dash-sub", "via " + run.via.join(", ")));
   return cell;
 }
 
+function kindWord(kind: string): string {
+  return KIND_WORD[kind] || kind;
+}
+
 function runTable(rows: RunRow[], params: Record<string, string>): HTMLElement {
-  var from = state.dash;
-  var columns: Column<RunRow>[] = [
+  const from = state.dash;
+  const columns: Column<RunRow>[] = [
     {
       key: "run",
       label: WORDS.run,
-      sort: function (r) {
-        return r.id;
+      sort: function (run) {
+        return run.id;
       },
-      render: function (r) {
-        var named = r.label && r.label !== r.id ? r.label : (KIND_WORD[r.kind] || r.kind) + " · " + metres(r.length_m);
-        var cell = make("span", "", named);
-        var sub = make("span", "dash-sub");
-        sub.appendChild(copyCell(r.id, r.id.replace(":", " ")));
+      render: function (run) {
+        const named = run.label && run.label !== run.id ? run.label : kindWord(run.kind) + " · " + metres(run.length_m);
+        const cell = make("span", "", named);
+        const sub = make("span", "dash-sub");
+        sub.appendChild(copyCell(run.id, run.id.replace(":", " ")));
         cell.appendChild(sub);
         return cell;
       },
@@ -101,45 +123,47 @@ function runTable(rows: RunRow[], params: Record<string, string>): HTMLElement {
     {
       key: "kind",
       label: "kind",
-      sort: function (r) {
-        return r.kind;
+      sort: function (run) {
+        return run.kind;
       },
-      render: function (r) {
-        return (KIND_WORD[r.kind] || r.kind) + (r.directed ? "" : ", no direction");
-      },
-    },
-    {
-      key: "length",
-      label: "length",
-      align: "right",
-      sort: function (r) {
-        return r.length_m;
-      },
-      render: function (r) {
-        return metres(r.length_m);
+      render: function (run) {
+        return kindWord(run.kind) + (run.directed ? "" : ", no direction");
       },
     },
+    numericColumn<RunRow>(
+      "length",
+      "length",
+      function (run) {
+        return run.length_m;
+      },
+      {
+        render: function (run) {
+          return metres(run.length_m);
+        },
+      }
+    ),
     {
       key: "ends",
       label: "ends",
       className: "dash-nowrap",
-      render: function (r) {
-        var cell = make("span", "", endText(r.a));
-        cell.appendChild(make("span", "dash-sub", endText(r.b)));
+      render: function (run) {
+        const cell = make("span", "", endText(run.a));
+        cell.appendChild(make("span", "dash-sub", endText(run.b)));
         return cell;
       },
     },
-    {
-      key: "z",
-      label: "height",
-      align: "right",
-      sort: function (r) {
-        return r.z_min_m;
+    numericColumn<RunRow>(
+      "z",
+      "height",
+      function (run) {
+        return run.z_min_m;
       },
-      render: function (r) {
-        return zSpan(r.z_min_m, r.z_max_m);
-      },
-    },
+      {
+        render: function (run) {
+          return zSpan(run.z_min_m, run.z_max_m);
+        },
+      }
+    ),
     {
       key: "carries",
       label: "carries",
@@ -149,15 +173,15 @@ function runTable(rows: RunRow[], params: Record<string, string>): HTMLElement {
       key: "basis",
       label: "direction from",
       title: "how the flow direction was worked out",
-      render: function (r) {
-        return r.basis ? BASIS[r.basis] || r.basis : "–";
+      render: function (run) {
+        return run.basis ? BASIS[run.basis] || run.basis : "–";
       },
     },
     {
       key: "via",
       label: "connects",
-      render: function (r) {
-        return connects(r, params);
+      render: function (run) {
+        return connects(run, params);
       },
     },
     distanceColumn<RunRow>(),
@@ -165,56 +189,66 @@ function runTable(rows: RunRow[], params: Record<string, string>): HTMLElement {
       key: "map",
       label: "",
       align: "right",
-      render: function (r) {
+      render: function (run) {
         return mapButton("fly the map to it and draw it", function () {
-          showRows({ kind: "runs", rows: [r] }, runLabel(r), from, 0);
-        }, "show " + runLabel(r) + " on the map");
+          showRows({ kind: "runs", rows: [run] }, runLabel(run), from, 0);
+        }, "show " + runLabel(run) + " on the map");
       },
     },
   ];
   return table(columns, rows, {
     sort: sorts.runs,
     caption: "belt and pipe runs",
-    onRow: function (r) {
-      select(runSelection(r));
-      render();
-    },
-    rowClass: function (r) {
-      return isSelected("conduit", r.id) ? "on" : "";
+    onRow: selectAndRender(runSelection),
+    rowClass: function (run) {
+      return isSelected("conduit", run.id) ? "on" : "";
     },
   });
 }
 
 function networkTable(rows: NetworkRow[], params: Record<string, string>): HTMLElement {
-  var columns: Column<NetworkRow>[] = [
+  const columns: Column<NetworkRow>[] = [
     {
       key: "network",
       label: WORDS.network,
-      sort: function (n) {
-        return n.network === null ? Infinity : n.network;
+      sort: function (network) {
+        return network.network === null ? Infinity : network.network;
       },
-      render: function (n) {
-        return n.network === null ? "–" : "#" + n.network;
+      render: function (network) {
+        return network.network === null ? "–" : "#" + network.network;
       },
     },
     {
       key: "carries",
       label: "carries",
-      sort: function (n) {
-        return n.carries || "";
+      sort: function (network) {
+        return network.carries || "";
       },
-      render: function (n) {
-        return n.carries || "nothing known";
+      render: function (network) {
+        return network.carries || "nothing known";
       },
     },
-    { key: "pieces", label: "pieces", align: "right", sort: function (n) { return n.pieces; }, render: function (n) { return count(n.pieces); } },
-    { key: "length", label: "length", align: "right", sort: function (n) { return n.length_m; }, render: function (n) { return metres(n.length_m); } },
-    { key: "z", label: "height", align: "right", render: function (n) { return zSpan(n.z_min_m, n.z_max_m); } },
+    numericColumn<NetworkRow>("pieces", "pieces", function (network) {
+      return network.pieces;
+    }),
+    numericColumn<NetworkRow>(
+      "length",
+      "length",
+      function (network) {
+        return network.length_m;
+      },
+      {
+        render: function (network) {
+          return metres(network.length_m);
+        },
+      }
+    ),
+    { key: "z", label: "height", align: "right", render: function (network) { return zSpan(network.z_min_m, network.z_max_m); } },
     {
       key: "touches",
       label: "touches",
-      render: function (n) {
-        return n.touches.length ? n.touches.join(", ") : "–";
+      render: function (network) {
+        return network.touches.length ? network.touches.join(", ") : "–";
       },
     },
     distanceColumn<NetworkRow>(),
@@ -222,11 +256,11 @@ function networkTable(rows: NetworkRow[], params: Record<string, string>): HTMLE
       key: "runs",
       label: "",
       align: "right",
-      render: function (n) {
-        if (n.network === null) return make("span", "dash-muted", "–");
-        var id = String(n.network);
+      render: function (network) {
+        if (network.network === null) return make("span", "dash-muted", "–");
+        const id = String(network.network);
         return button("runs", function () {
-          go(viewDash("conduits", changed(params, { view: "", network: id, offset: "" })));
+          go(viewDash("conduits", withParams(params, { view: "", network: id, offset: "" })));
         }, { title: "list the runs of this network", label: "list the runs of network " + id });
       },
     },
@@ -235,14 +269,8 @@ function networkTable(rows: NetworkRow[], params: Record<string, string>): HTMLE
 }
 
 function filters(card: HTMLElement, params: Record<string, string>): void {
-  var bar = filterBar(card);
-  function set(key: string, soon?: boolean): (v: string) => void {
-    return function (v) {
-      var patch: Record<string, string> = { offset: "" };
-      patch[key] = v;
-      edit(changed(params, patch), soon);
-    };
-  }
+  const bar = filterBar(card);
+  const set = paramSetter(params, { offset: "" });
   bar.appendChild(textField("near", "world-conduits-near", params.near || "", "me, x,y, a factory, chain:7", set("near", true)));
   bar.appendChild(selectField("within", "world-conduits-radius", params.radius_m || CONDUIT_RADIUS_M, RADII, set("radius_m")));
   bar.appendChild(textField("to", "world-conduits-to", params.to || "", "optional second place", set("to", true)));
@@ -250,51 +278,48 @@ function filters(card: HTMLElement, params: Record<string, string>): void {
   bar.appendChild(selectField("kind", "world-conduits-kind", params.conduit_kind || "", KINDS, set("conduit_kind")));
 }
 
-function census(card: HTMLElement, d: ConduitsResponse, params: Record<string, string>): void {
-  var line = make("div", "world-census");
-  var parts = [counted(d.belts, "belt run") + " · " + metres(d.belt_m), counted(d.pipes, "pipe run") + " · " + metres(d.pipe_m)];
-  if (d.fluids.length) parts.push("carrying " + d.fluids.join(", "));
+function census(card: HTMLElement, conduits: ConduitsResponse, params: Record<string, string>): void {
+  const line = make("div", "world-census");
+  const parts = [counted(conduits.belts, "belt run") + " · " + metres(conduits.belt_m), counted(conduits.pipes, "pipe run") + " · " + metres(conduits.pipe_m)];
+  if (conduits.fluids.length) parts.push("carrying " + conduits.fluids.join(", "));
   line.appendChild(make("span", "", parts.join(" · ")));
-  if (d.runs.length) {
+  if (conduits.runs.length) {
     line.appendChild(
       button("show all on map", function () {
-        var dash = state.dash;
-        leaveDashThen(function () {
-          showRows({ kind: "runs", rows: d.runs }, "runs near " + (d.where || "here"), dash);
-        });
+        openRowsOnMap({ kind: "runs", rows: conduits.runs }, "runs near " + (conduits.where || "here"));
       }, { map: true, title: "draw every run on the map and list them beside it" })
     );
   }
   card.appendChild(line);
-  var where = "near " + (d.where || "–") + " within " + metres(d.radius_m);
-  if (d.where_to) where += " · to " + d.where_to + (d.to_radius_m === null ? "" : " within " + metres(d.to_radius_m));
-  if (params.network) where = WORDS.network + " #" + params.network;
-  else if (params.view === "networks") where = "every fluid " + WORDS.network + ", distance from " + (d.where || "you");
-  appendNote(card, where);
-  d.bridged.forEach(function (t) {
-    appendNote(card, withoutToolHints(t));
+  let scope = "near " + (conduits.where || "–") + " within " + metres(conduits.radius_m);
+  if (conduits.where_to) scope += " · to " + conduits.where_to + (conduits.to_radius_m === null ? "" : " within " + metres(conduits.to_radius_m));
+  if (params.network) scope = WORDS.network + " #" + params.network;
+  else if (params.view === "networks") scope = "every fluid " + WORDS.network + ", distance from " + (conduits.where || "you");
+  appendNote(card, scope);
+  conduits.bridged.forEach(function (text) {
+    appendNote(card, withoutToolHints(text));
   });
-  d.notes.forEach(function (t) {
-    appendNote(card, t);
+  conduits.notes.forEach(function (text) {
+    appendNote(card, text);
   });
 }
 
-function pager(card: HTMLElement, d: ConduitsResponse, params: Record<string, string>): void {
-  var end = d.offset + d.runs.length;
-  if (d.offset === 0 && end >= d.total) return;
-  var row = make("div", "world-more");
-  row.appendChild(make("span", "dash-note", count(d.offset + 1) + " to " + count(end) + " of " + count(d.total)));
-  if (d.offset > 0) {
+function pager(card: HTMLElement, conduits: ConduitsResponse, params: Record<string, string>): void {
+  const end = conduits.offset + conduits.runs.length;
+  if (conduits.offset === 0 && end >= conduits.total) return;
+  const row = make("div", "world-more");
+  row.appendChild(make("span", "dash-note", count(conduits.offset + 1) + " to " + count(end) + " of " + count(conduits.total)));
+  if (conduits.offset > 0) {
     row.appendChild(
-      button("previous " + PAGE, function () {
-        edit(changed(params, { offset: d.offset > PAGE ? String(d.offset - PAGE) : "" }));
+      button("previous " + PAGE_SIZE, function () {
+        goToWorldParams(withParams(params, { offset: conduits.offset > PAGE_SIZE ? String(conduits.offset - PAGE_SIZE) : "" }));
       })
     );
   }
-  if (end < d.total) {
+  if (end < conduits.total) {
     row.appendChild(
-      button("next " + PAGE, function () {
-        edit(changed(params, { offset: String(end) }));
+      button("next " + PAGE_SIZE, function () {
+        goToWorldParams(withParams(params, { offset: String(end) }));
       })
     );
   }
@@ -302,18 +327,18 @@ function pager(card: HTMLElement, d: ConduitsResponse, params: Record<string, st
 }
 
 export function renderConduits(body: HTMLElement, params: Record<string, string>): void {
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   body.appendChild(card);
   filters(card, params);
-  var view = params.view === "networks" ? "networks" : "runs";
+  const view = params.view === "networks" ? "networks" : "runs";
   card.appendChild(
     subTabs(
       [
         { id: "runs", label: "runs" },
         { id: "networks", label: "networks" },
-      ].map(function (t) {
-        var patch: Record<string, string> = t.id === "runs" ? { view: "", offset: "" } : { view: t.id, offset: "", network: "" };
-        return { id: t.id, label: t.label, href: hashFor(viewDash("conduits", changed(params, patch))) };
+      ].map(function (tab) {
+        const patch: Record<string, string> = tab.id === "runs" ? { view: "", offset: "" } : { view: tab.id, offset: "", network: "" };
+        return { id: tab.id, label: tab.label, href: hashFor(viewDash("conduits", withParams(params, patch))) };
       }),
       view,
       undefined,
@@ -332,28 +357,28 @@ export function renderConduits(body: HTMLElement, params: Record<string, string>
       view: view === "networks" ? "networks" : "",
       network: params.network || "",
       offset: params.offset || "",
-      limit: String(PAGE),
+      limit: String(PAGE_SIZE),
     })
   );
   if (waiting(card, box, view === "networks" ? "fluid networks" : "belt and pipe runs")) return;
-  var d = box.data!;
-  census(card, d, params);
+  const conduits = box.data!;
+  census(card, conduits, params);
   if (view === "networks") {
-    if (!d.networks.length) {
+    if (!conduits.networks.length) {
       empty(card, "no fluid network here");
       return;
     }
-    var nets = networkTable(d.networks, params);
-    card.appendChild(nets);
-    capped(card, nets, d.networks.length, "networks", WORDS.network);
+    const networks = networkTable(conduits.networks, params);
+    card.appendChild(networks);
+    showAllToggle(card, networks, conduits.networks.length, "networks", WORDS.network);
     return;
   }
-  if (!d.runs.length) {
+  if (!conduits.runs.length) {
     empty(card, "no belt or pipe run here", "widen the radius or search near another place");
     return;
   }
-  var runs = runTable(d.runs, params);
+  const runs = runTable(conduits.runs, params);
   card.appendChild(runs);
-  capped(card, runs, d.runs.length, "runs", WORDS.run);
-  pager(card, d, params);
+  showAllToggle(card, runs, conduits.runs.length, "runs", WORDS.run);
+  pager(card, conduits, params);
 }

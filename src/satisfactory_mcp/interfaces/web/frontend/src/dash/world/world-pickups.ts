@@ -2,46 +2,49 @@
  * See docs/world-finders_contract.md §2.4. */
 
 import { appendNote, button, empty, heading, subTabs, table } from "../../kit/dashkit";
-import { leaveDashThen, mapButton, render } from "../shell";
 import { make } from "../../kit/dom";
 import { showRows } from "../../map/tools/finder";
 import { pickupPlace, pickupSelection, worldUrl } from "./world-finds";
 import { count } from "../../kit/format";
 import { hashFor } from "../../map/map";
 import { lootLine, pickupName } from "../../map/drawn/pickups";
-import { isSelected, select } from "../../app/selection";
+import { isSelected } from "../../app/selection";
 import { spoilerFlag } from "../../app/settings";
 import { state } from "../../app/state";
+import { counted, WORDS } from "../../kit/words";
+import { mapButton } from "../actions";
 import {
-  capped,
-  changed,
   copyCell,
   distanceColumn,
-  edit,
   filterBar,
+  goToWorldParams,
   hiddenLine,
   loaded,
+  numericColumn,
+  openRowsOnMap,
+  selectAndRender,
   selectField,
+  showAllToggle,
   staleLine,
   viewDash,
   waiting,
   want,
-} from "./world";
-import { counted, WORDS } from "../../kit/words";
+  withParams,
+} from "./world-kit";
 
 import type { Column, SortState } from "../../kit/dashkit";
 import type { CensusRow, CollectibleRow, CollectiblesResponse } from "../../api/shapes";
 
-var box = loaded<CollectiblesResponse>();
+const box = loaded<CollectiblesResponse>();
 
-var sorts: Record<string, SortState> = {
+const sorts: Record<string, SortState> = {
   census: { key: "remaining", desc: true },
   remaining: { key: "kind", desc: false },
   collected: { key: "kind", desc: false },
   nearest: { key: "distance", desc: false },
 };
 
-var LISTS: [string, string][] = [
+const LISTS: [string, string][] = [
   ["remaining", WORDS.remaining],
   ["collected", WORDS.collected],
   ["nearest", "nearest"],
@@ -51,83 +54,72 @@ function listOf(params: Record<string, string>): string {
   return params.view === "collected" || params.view === "nearest" ? params.view : "remaining";
 }
 
-function censusTable(d: CollectiblesResponse): HTMLElement {
-  var stale = d.stale;
-  var foreign = !!stale && stale.observed_matches === false;
-  function n(key: string, label: string, pick: (c: CensusRow) => number | null, title?: string): Column<CensusRow> {
-    return {
-      key: key,
-      label: label,
-      align: "right",
-      title: title,
-      sort: function (c) {
-        var v = pick(c);
-        return v === null ? -1 : v;
-      },
-      render: function (c) {
-        var v = pick(c);
-        return v === null ? "–" : count(v);
-      },
-    };
-  }
-  var streamedTitle =
+/* An unknown count reads "–" and sorts below zero. */
+function censusCount(key: string, label: string, pick: (row: CensusRow) => number | null, title?: string): Column<CensusRow> {
+  return numericColumn<CensusRow>(key, label, pick, { title: title, nullsFirst: true });
+}
+
+function censusTable(pickups: CollectiblesResponse): HTMLElement {
+  const stale = pickups.stale;
+  const foreign = !!stale && stale.observed_matches === false;
+  const streamedTitle =
     "placed where no save has had them loaded" +
     (stale && stale.observed_from ? "; read from the saves of " + stale.observed_from : "") +
     (foreign ? ", another world, so left out" : "");
-  var columns: Column<CensusRow>[] = [
+  const columns: Column<CensusRow>[] = [
     {
       key: "kind",
       label: "kind",
-      sort: function (c) {
-        return c.label;
+      sort: function (row) {
+        return row.label;
       },
-      render: function (c) {
-        return c.label;
+      render: function (row) {
+        return row.label;
       },
     },
-    n("placed", "placed", function (c) { return c.placed; }),
-    n("collected", WORDS.collected, function (c) { return c.collected; }),
-    n("remaining", WORDS.remaining, function (c) { return c.remaining; }),
-    n("standing", "standing", function (c) { return c.standing; }, "seen still standing in a save that had them loaded"),
-    n("streamed", WORDS.neverStreamed, function (c) { return c.never_streamed; }, streamedTitle),
+    censusCount("placed", "placed", function (row) { return row.placed; }),
+    censusCount("collected", WORDS.collected, function (row) { return row.collected; }),
+    censusCount("remaining", WORDS.remaining, function (row) { return row.remaining; }),
+    censusCount("standing", "standing", function (row) { return row.standing; }, "seen still standing in a save that had them loaded"),
+    censusCount("streamed", WORDS.neverStreamed, function (row) { return row.never_streamed; }, streamedTitle),
   ];
-  return table(columns, d.census, { sort: sorts.census, caption: "pickups per kind" });
+  return table(columns, pickups.census, { sort: sorts.census, caption: "pickups per kind" });
 }
 
-function totals(d: CollectiblesResponse): string {
-  var placed = 0;
-  var collected = 0;
-  d.census.forEach(function (c) {
-    placed += c.placed;
-    collected += c.collected;
+function totals(pickups: CollectiblesResponse): string {
+  let placed = 0;
+  let collected = 0;
+  pickups.census.forEach(function (row) {
+    placed += row.placed;
+    collected += row.collected;
   });
   return count(collected) + " " + WORDS.collected + " of " + count(placed) + " placed";
 }
 
-function stateText(r: CollectibleRow): string {
-  if (r.collected) return WORDS.collected;
-  return r.observed ? r.observed.replace(/_/g, " ") : "unknown";
+function stateText(pickup: CollectibleRow): string {
+  if (pickup.collected) return WORDS.collected;
+  return pickup.observed ? pickup.observed.replace(/_/g, " ") : "unknown";
 }
 
 function listTable(rows: CollectibleRow[], list: string): HTMLElement {
-  var from = state.dash;
-  var columns: Column<CollectibleRow>[] = [
+  const from = state.dash;
+  const columns: Column<CollectibleRow>[] = [
     {
       key: "kind",
       label: "kind",
-      sort: function (r) {
-        return pickupName(r.category);
+      sort: function (pickup) {
+        return pickupName(pickup.category);
       },
-      render: function (r) {
-        return pickupName(r.category);
+      render: function (pickup) {
+        return pickupName(pickup.category);
       },
     },
     {
       key: "state",
       label: "state",
-      render: function (r) {
-        var loot = lootLine(r);
-        var cell = make("span", "", stateText(r));
+      render: function (pickup) {
+        const loot = lootLine(pickup);
+        const cell = make("span", "", stateText(pickup));
         if (loot) cell.appendChild(make("span", "dash-sub", loot));
         return cell;
       },
@@ -139,36 +131,41 @@ function listTable(rows: CollectibleRow[], list: string): HTMLElement {
     label: "selector",
     className: "dash-nowrap",
     title: "the place, as every near= takes it",
-    render: function (r) {
-      return copyCell(pickupPlace(r));
+    render: function (pickup) {
+      return copyCell(pickupPlace(pickup));
     },
   });
   columns.push({
     key: "map",
     label: "",
     align: "right",
-    render: function (r) {
+    render: function (pickup) {
       return mapButton("fly the map to it, ring it and show its layer", function () {
-        showRows({ kind: "pickups", rows: [r] }, pickupName(r.category), from, 0);
-      }, "show this " + pickupName(r.category) + " pickup on the map");
+        showRows({ kind: "pickups", rows: [pickup] }, pickupName(pickup.category), from, 0);
+      }, "show this " + pickupName(pickup.category) + " pickup on the map");
     },
   });
   return table(columns, rows, {
     sort: sorts[list],
     caption: list + " pickups",
-    onRow: function (r) {
-      select(pickupSelection(r));
-      render();
-    },
-    rowClass: function (r) {
-      return isSelected("pickup", r.name) ? "on" : "";
+    onRow: selectAndRender(pickupSelection),
+    rowClass: function (pickup) {
+      return isSelected("pickup", pickup.name) ? "on" : "";
     },
   });
 }
 
+function groupOptions(pickups: CollectiblesResponse): [string, string][] {
+  return [["", "every kind"] as [string, string]].concat(
+    pickups.census.map(function (row): [string, string] {
+      return [row.category, row.label];
+    })
+  );
+}
+
 export function renderPickups(body: HTMLElement, params: Record<string, string>): void {
-  var list = listOf(params);
-  var top = make("section", "dash-card");
+  const list = listOf(params);
+  const top = make("section", "dash-card");
   body.appendChild(top);
   heading(top, "pickups per kind");
   want(
@@ -182,57 +179,44 @@ export function renderPickups(body: HTMLElement, params: Record<string, string>)
     })
   );
   if (waiting(top, box, "pickups")) return;
-  var d = box.data!;
-  top.appendChild(make("div", "world-census", totals(d)));
-  hiddenLine(top, d.hidden_spoilers, "kind not found yet", "kinds not found yet");
-  if (d.census.length) top.appendChild(censusTable(d));
-  staleLine(top, d.stale);
-  var card = make("section", "dash-card");
+  const pickups = box.data!;
+  top.appendChild(make("div", "world-census", totals(pickups)));
+  hiddenLine(top, pickups.hidden_spoilers, "kind not found yet", "kinds not found yet");
+  if (pickups.census.length) top.appendChild(censusTable(pickups));
+  staleLine(top, pickups.stale);
+  const card = make("section", "dash-card");
   body.appendChild(card);
   card.appendChild(
     subTabs(
-      LISTS.map(function (l) {
-        return { id: l[0], label: l[1], href: hashFor(viewDash("pickups", changed(params, { view: l[0] === "remaining" ? "" : l[0] }))) };
+      LISTS.map(function (entry) {
+        return { id: entry[0], label: entry[1], href: hashFor(viewDash("pickups", withParams(params, { view: entry[0] === "remaining" ? "" : entry[0] }))) };
       }),
       list,
       undefined,
       "which pickups to list"
     )
   );
-  var bar = filterBar(card);
+  const bar = filterBar(card);
   bar.appendChild(
-    selectField(
-      "kind",
-      "world-pickups-group",
-      params.group || "",
-      [["", "every kind"] as [string, string]].concat(
-        d.census.map(function (c): [string, string] {
-          return [c.category, c.label];
-        })
-      ),
-      function (v) {
-        edit(changed(params, { group: v }));
-      }
-    )
+    selectField("kind", "world-pickups-group", params.group || "", groupOptions(pickups), function (value) {
+      goToWorldParams(withParams(params, { group: value }));
+    })
   );
-  var rows = d.rows;
+  const rows = pickups.rows;
   if (!rows.length) {
     empty(card, list === "collected" ? "nothing collected yet" : "no pickup left" + (params.group ? " of this kind" : ""));
     return;
   }
-  var line = make("div", "world-census");
-  line.appendChild(make("span", "", counted(rows.length, "pickup") + (d.where ? " · nearest to " + d.where : "")));
-  var paired = params.group
+  const line = make("div", "world-census");
+  line.appendChild(make("span", "", counted(rows.length, "pickup") + (pickups.where ? " · nearest to " + pickups.where : "")));
+  const paired = params.group
     ? []
-    : d.census.filter(function (c) {
-        return !!c.pedestal_of;
+    : pickups.census.filter(function (row) {
+        return !!row.pedestal_of;
       });
   line.appendChild(
     button("show all on map", function () {
-      var dash = state.dash;
-      leaveDashThen(function () {
-        showRows({ kind: "pickups", rows: rows }, list + " pickups", dash);
-      });
+      openRowsOnMap({ kind: "pickups", rows: rows }, list + " pickups");
     }, { map: true, title: "ring every row on the map and list them beside it" })
   );
   card.appendChild(line);
@@ -240,13 +224,13 @@ export function renderPickups(body: HTMLElement, params: Record<string, string>)
     appendNote(
       card,
       paired
-        .map(function (c) {
-          return c.label;
+        .map(function (row) {
+          return row.label;
         })
         .join(", ") + " are listed with what stands on them, so this list is shorter than the kinds table adds up to"
     );
   }
-  var grid = listTable(rows, list);
+  const grid = listTable(rows, list);
   card.appendChild(grid);
-  capped(card, grid, rows.length, "pickups-" + list, "pickup");
+  showAllToggle(card, grid, rows.length, "pickups-" + list, "pickup");
 }

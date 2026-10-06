@@ -7,7 +7,7 @@
  * selected.
  */
 
-import { render } from "../dash/shell";
+import { requestRender } from "../dash/actions";
 import { el } from "../kit/dom";
 import { loadOne, reload } from "./load";
 import { writeHash } from "../map/map";
@@ -141,7 +141,7 @@ export function loadWorlds(): Promise<void> {
         el("summary").textContent = WORDS.noSaves;
         el("summary").title = text;
         state.noSaves = true;
-        render();
+        requestRender();
         // Geography needs no save, so the node table still draws -- the same table the
         // right-click inspector reads, so the two surfaces agree even with no world.
         //

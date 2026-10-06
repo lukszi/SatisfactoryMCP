@@ -10,7 +10,7 @@ import { flyPadded, gameXY, latLngOf, map } from "../map";
 import { cardLine, cardSubject, cardTitleBar, cardToolbar, closeOtherCards, mapCard } from "../mapcard";
 import { makeRoom } from "../panel";
 import { onVitals } from "../../app/vitals";
-import { newest, refreshLabels, refusal, wrote } from "../../dash/factories/rename";
+import { labelRefusal, labelsVersionToSend, recordLabelsVersion, refetchLabelledViews, staleWriteReason } from "../../dash/factories/rename";
 import { state } from "../../app/state";
 import { fail, friendlyError, notify } from "../../kit/toast";
 import { counted, WORDS } from "../../kit/words";
@@ -289,17 +289,17 @@ function amendRequest(dryRun: boolean): object {
     extra_areas: view.areas.slice(1),
     mode: view.mode,
     as_of: view.preview && !dryRun ? view.preview.token : view.token,
-    version: newest(view.preview ? view.preview.version : 0),
+    version: labelsVersionToSend(view.preview ? view.preview.version : 0),
     dry_run: dryRun,
   };
 }
 
 /** A refused amend: a stale view starts over, anything else is said as it came. */
 function reportAmendRefusal(err: unknown, what: string): void {
-  const why = refusal(err);
+  const why = labelRefusal(err);
   if (why === "stale" || why === "pin") {
-    fail((why === "pin" ? "a newer save was written" : "factory names changed elsewhere") + ", so nothing was " + what + "; draw the area again");
-    refreshLabels();
+    fail(staleWriteReason(why) + ", so nothing was " + what + "; draw the area again");
+    refetchLabelledViews();
     discardAreas();
     fetchMembers(false);
   } else fail(friendlyError(err));
@@ -336,9 +336,9 @@ function applyAmendment(): void {
     .then(function (reply) {
       if (!ticket.fresh()) return;
       view.busy = false;
-      wrote(reply.version);
+      recordLabelsVersion(reply.version);
       notify("“" + name + "” now holds " + counted(reply.after, "machine") + " (+" + reply.added.length + " −" + reply.dropped.length + ")");
-      refreshLabels();
+      refetchLabelledViews();
       discardAreas();
       fetchMembers(false);
     })

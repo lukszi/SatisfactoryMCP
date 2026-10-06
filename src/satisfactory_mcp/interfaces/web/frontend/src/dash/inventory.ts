@@ -2,7 +2,7 @@
  * addressed as `dash=inventory[/<item>]`. See docs/frontend_vision.md §10. */
 
 import { crateLabel } from "../map/drawn/crates";
-import { appendNote, button, capRows, checkbox, empty, error, heading, link, loading, selectBox, table, tile } from "../kit/dashkit";
+import { appendNote, button, capRows, checkbox, empty, heading, link, pendingNotice, selectBox, table, tile } from "../kit/dashkit";
 import { make } from "../kit/dom";
 import { amount, count, formatNumber, pct, regionLine } from "../kit/format";
 import { loadOne } from "../app/load";
@@ -12,46 +12,40 @@ import { showPoint } from "../map/map-highlight";
 import { registerFetch } from "../app/registry";
 import { state } from "../app/state";
 import { counted } from "../kit/words";
+import { leaveDashThen, requestRender } from "./actions";
 
 import type { Column, SortState } from "../kit/dashkit";
 import type { StockPile, StockPlace, StockResponse } from "../api/shapes";
 
-export interface InventoryHost {
-  leaveDashThen: (action: () => void) => void;
-  render: () => void;
-}
-
-var stock = {
+const stock = {
   data: null as StockResponse | null,
   failed: false,
 };
 
-var host: InventoryHost | null = null;
+let results: HTMLElement | null = null;
 
-var results: HTMLElement | null = null;
+let alsoLine: HTMLElement | null = null;
 
-var alsoLine: HTMLElement | null = null;
-
-var sorts: Record<string, SortState> = {
+const sorts: Record<string, SortState> = {
   stock: { key: "spendable", desc: true },
   containers: { key: "held", desc: true },
   crates: { key: "distance", desc: false },
 };
 
-var view = { empty: false, kind: "all", allStock: false };
+const view = { showEmpty: false, kind: "all", allStock: false };
 
-var CONTENTS_SHOWN = 3;
+const CONTENTS_SHOWN = 3;
 
-var STOCK_SHOWN: 25 = 25;
+const STOCK_SHOWN: 25 = 25;
 
-var UPLOADER = "Build_CentralStorage_C";
+const UPLOADER = "Build_CentralStorage_C";
 
-function query(): string {
+function filterText(): string {
   return dashParts().subject;
 }
 
-function address(q: string): string {
-  return "inventory" + (q ? "/" + q : "");
+function inventoryDash(filter: string): string {
+  return "inventory" + (filter ? "/" + filter : "");
 }
 
 interface Matcher {
@@ -61,9 +55,11 @@ interface Matcher {
   test: (name: string) => boolean;
 }
 
-function matcher(data: StockResponse): Matcher {
-  var q = query().trim().toLowerCase();
-  if (!q) {
+/* An exact item name matches only itself, and the names that merely contain it are offered
+ * beside it; anything else matches every name containing it. */
+function buildMatcher(data: StockResponse): Matcher {
+  const filter = filterText().trim().toLowerCase();
+  if (!filter) {
     return {
       active: false,
       exact: "",
@@ -73,22 +69,22 @@ function matcher(data: StockResponse): Matcher {
       },
     };
   }
-  var names: Record<string, string> = {};
+  const names: Record<string, string> = {};
   data.items.forEach(function (row) {
     names[row.name.toLowerCase()] = row.name;
   });
-  data.places.forEach(function (p) {
-    p.items.forEach(function (i) {
-      names[i.name.toLowerCase()] = i.name;
+  data.places.forEach(function (place) {
+    place.items.forEach(function (item) {
+      names[item.name.toLowerCase()] = item.name;
     });
   });
-  var exact = names[q] || "";
-  var also = Object.keys(names)
-    .filter(function (n) {
-      return n !== q && n.indexOf(q) >= 0;
+  const exact = names[filter] || "";
+  const also = Object.keys(names)
+    .filter(function (name) {
+      return name !== filter && name.indexOf(filter) >= 0;
     })
-    .map(function (n) {
-      return names[n]!;
+    .map(function (name) {
+      return names[name]!;
     })
     .sort();
   return {
@@ -96,71 +92,71 @@ function matcher(data: StockResponse): Matcher {
     exact: exact,
     also: exact ? also : [],
     test: function (name) {
-      var n = name.toLowerCase();
-      return exact ? n === q : n.indexOf(q) >= 0;
+      const lower = name.toLowerCase();
+      return exact ? lower === filter : lower.indexOf(filter) >= 0;
     },
   };
 }
 
-function pile(value: number, fluid: boolean): string {
+function amountOrBlank(value: number, fluid: boolean): string {
   return value ? amount(value, fluid) : "";
 }
 
-function mapButton(place: StockPlace): HTMLElement {
+function placeMapButton(place: StockPlace): HTMLElement {
   if (place.x_m === null || place.y_m === null) return make("span", "dash-muted", "–");
   return button(
     "map",
     function () {
-      fly(place);
+      flyToPlace(place);
     },
     { title: "fly the map to it", map: true }
   );
 }
 
-function fly(place: StockPlace): void {
-  if (place.x_m === null || place.y_m === null || !host) return;
-  var at = { x: place.x_m, y: place.y_m };
-  var shown = { label: place.name, layers: place.source === "storage" ? ["storage"] : undefined };
-  host.leaveDashThen(function () {
+function flyToPlace(place: StockPlace): void {
+  if (place.x_m === null || place.y_m === null) return;
+  const at = { x: place.x_m, y: place.y_m };
+  const shown = { label: place.name, layers: place.source === "storage" ? ["storage"] : undefined };
+  leaveDashThen(function () {
     showPoint(at.x, at.y, shown);
   });
 }
 
-function held(place: StockPlace, m: Matcher): number {
-  if (!m.active) return place.total;
-  var sum = 0;
-  place.items.forEach(function (i) {
-    if (m.test(i.name)) sum += i.amount;
+function matchingAmount(place: StockPlace, matcher: Matcher): number {
+  if (!matcher.active) return place.total;
+  let sum = 0;
+  place.items.forEach(function (item) {
+    if (matcher.test(item.name)) sum += item.amount;
   });
   return sum;
 }
 
-function contents(place: StockPlace, m: Matcher): string {
-  var fluid = place.kind === "fluid";
+function contentsText(place: StockPlace, matcher: Matcher): string {
+  const fluid = place.kind === "fluid";
   if (!place.items.length) return fluid && place.total ? amount(place.total, true) + " unnamed fluid" : "empty";
-  var shown = place.items.filter(function (i) {
-    return m.test(i.name);
+  const shown = place.items.filter(function (item) {
+    return matcher.test(item.name);
   });
-  var head = m.active ? shown : shown.slice(0, CONTENTS_SHOWN);
-  var words = head.map(function (i) {
-    return amount(i.amount, fluid) + " " + i.name;
+  const head = matcher.active ? shown : shown.slice(0, CONTENTS_SHOWN);
+  const words = head.map(function (item) {
+    return amount(item.amount, fluid) + " " + item.name;
   });
-  var rest = place.items.length - head.length;
-  if (rest > 0) words.push("+" + rest + (m.active ? " other" : " more"));
+  const rest = place.items.length - head.length;
+  if (rest > 0) words.push("+" + rest + (matcher.active ? " other" : " more"));
   return words.join(", ");
 }
 
-function where(place: StockPlace): string {
+function placeLine(place: StockPlace): string {
   if (place.region) return regionLine(place.region);
   return place.x_m === null ? "" : "off the map";
 }
 
-function size(place: StockPlace): string {
+function capacityText(place: StockPlace): string {
   if (place.kind === "fluid") return place.capacity_m3 === null ? "" : amount(place.capacity_m3, true);
   return place.slots ? counted(place.slots, "slot") : "";
 }
 
-function used(place: StockPlace): string {
+function usageText(place: StockPlace): string {
   if (place.kind === "fluid") {
     return amount(place.total, true) + " of " + (place.capacity_m3 === null ? "?" : amount(place.capacity_m3, true));
   }
@@ -169,7 +165,7 @@ function used(place: StockPlace): string {
 }
 
 function stacked(lead: string, lines: string[]): HTMLElement {
-  var box = make("span", "dash-makes");
+  const box = make("span", "dash-makes");
   box.appendChild(make("span", "", lead));
   lines.forEach(function (line) {
     if (line) box.appendChild(make("span", "dash-sub", line));
@@ -179,25 +175,25 @@ function stacked(lead: string, lines: string[]): HTMLElement {
 
 function fillCell(place: StockPlace): HTMLElement {
   if (place.fill === null) return make("span", "dash-muted", "–");
-  var wrap = make("div", "inv-fill");
-  var bar = make("div", "dash-hbar");
-  var part = make("span", "dash-mix-mid");
+  const wrap = make("div", "inv-fill");
+  const bar = make("div", "dash-hbar");
+  const part = make("span", "dash-mix-mid");
   part.style.width = Math.min(100, place.fill * 100) + "%";
   bar.appendChild(part);
   wrap.appendChild(bar);
   wrap.appendChild(make("span", "inv-pct", pct(place.fill)));
-  wrap.title = used(place);
+  wrap.title = usageText(place);
   return wrap;
 }
 
-function also(parent: HTMLElement, m: Matcher): void {
-  if (!m.active) return;
-  var line = make("p", "dash-note inv-also");
-  if (m.exact && m.also.length) {
-    line.appendChild(document.createTextNode("exactly " + m.exact + " · also containing “" + query() + "”: "));
-    m.also.forEach(function (name, i) {
+function renderAlsoMatches(parent: HTMLElement, matcher: Matcher): void {
+  if (!matcher.active) return;
+  const line = make("p", "dash-note inv-also");
+  if (matcher.exact && matcher.also.length) {
+    line.appendChild(document.createTextNode("exactly " + matcher.exact + " · also containing “" + filterText() + "”: "));
+    matcher.also.forEach(function (name, i) {
       if (i) line.appendChild(document.createTextNode(", "));
-      line.appendChild(link(address(name), name));
+      line.appendChild(link(inventoryDash(name), name));
     });
     line.appendChild(document.createTextNode(" · "));
   }
@@ -205,101 +201,95 @@ function also(parent: HTMLElement, m: Matcher): void {
   parent.appendChild(line);
 }
 
-function search(parent: HTMLElement): void {
-  var card = make("section", "dash-card");
-  var row = make("div", "inv-search");
-  var input = make("input", "dash-name");
+/* The box writes the address as it is typed and redraws only the results under it. */
+function renderFilterBox(parent: HTMLElement): void {
+  const card = make("section", "dash-card");
+  const row = make("div", "inv-search");
+  const input = make("input", "dash-name");
   input.type = "search";
   input.placeholder = "filter by item, e.g. Quartz";
   input.setAttribute("aria-label", "filter by item");
   input.setAttribute("data-candidate", "inventory-search");
   input.setAttribute("list", "inv-items");
-  input.value = query();
+  input.value = filterText();
   input.oninput = function () {
-    state.dash = address(input.value);
+    state.dash = inventoryDash(input.value);
     writeHash();
     redraw();
   };
   input.onfocus = function () {
-    var end = input.value.length;
+    const end = input.value.length;
     input.setSelectionRange(end, end);
   };
   row.appendChild(input);
   card.appendChild(row);
   if (stock.data) {
-    var list = make("datalist");
+    const list = make("datalist");
     list.id = "inv-items";
-    stock.data.items.forEach(function (r) {
-      var option = make("option");
-      option.value = r.name;
+    stock.data.items.forEach(function (pile) {
+      const option = make("option");
+      option.value = pile.name;
       list.appendChild(option);
     });
     card.appendChild(list);
   }
-  var line = make("div");
+  const line = make("div");
   card.appendChild(line);
   alsoLine = line;
   parent.appendChild(card);
 }
 
 function renderTiles(parent: HTMLElement, data: StockResponse): void {
-  var c = data.census;
-  var spendable = data.items.filter(function (r) {
-    return r.spendable > 0;
+  const census = data.census;
+  const spendable = data.items.filter(function (pile) {
+    return pile.spendable > 0;
   }).length;
-  var crateItems = 0;
-  var uploaders = 0;
-  var boxes = 0;
-  var filled = 0;
-  data.places.forEach(function (p) {
-    if (p.source === "crate") crateItems += p.total;
-    else if (p.cls === UPLOADER) uploaders += 1;
-    else if (p.kind === "solid") {
+  let crateItems = 0;
+  let uploaders = 0;
+  let boxes = 0;
+  let filled = 0;
+  data.places.forEach(function (place) {
+    if (place.source === "crate") crateItems += place.total;
+    else if (place.cls === UPLOADER) uploaders += 1;
+    else if (place.kind === "solid") {
       boxes += 1;
-      if (p.total) filled += 1;
+      if (place.total) filled += 1;
     }
   });
-  var tiles = make("div", "dash-tiles");
+  const tiles = make("div", "dash-tiles");
   tiles.appendChild(tile("item kinds held", count(data.items.length), count(spendable) + " spendable"));
-  var rest = [count(filled) + " hold something", counted(c.fluid, "fluid buffer")];
+  const rest = [count(filled) + " hold something", counted(census.fluid, "fluid buffer")];
   if (uploaders) rest.push(counted(uploaders, "depot uploader"));
   tiles.appendChild(tile("containers", count(boxes), rest.join(" · ")));
   tiles.appendChild(
-    tile("crates on the ground", count(c.crates), counted(c.deaths, "death crate") + " · " + counted(crateItems, "item"))
+    tile("crates on the ground", count(census.crates), counted(census.deaths, "death crate") + " · " + counted(crateItems, "item"))
   );
   parent.appendChild(tiles);
 }
 
-function renderStock(parent: HTMLElement, data: StockResponse, rows: StockPile[]): void {
-  var card = make("section", "dash-card");
-  heading(card, "stock");
-  var places: Record<string, number> = {};
-  data.places.forEach(function (p) {
-    p.items.forEach(function (i) {
-      places[i.item] = (places[i.item] || 0) + 1;
-    });
-  });
-  function piled(key: string, label: string, pick: (r: StockPile) => number, title?: string): Column<StockPile> {
-    return {
-      key: key,
-      label: label,
-      align: "right",
-      title: title,
-      sort: pick,
-      render: function (r) {
-        return pile(pick(r), r.fluid);
-      },
-    };
-  }
-  var columns: Column<StockPile>[] = [
+function pileColumn(key: string, label: string, pick: (pile: StockPile) => number, title?: string): Column<StockPile> {
+  return {
+    key: key,
+    label: label,
+    align: "right",
+    title: title,
+    sort: pick,
+    render: function (pile) {
+      return amountOrBlank(pick(pile), pile.fluid);
+    },
+  };
+}
+
+function stockColumns(placesHolding: Record<string, number>): Column<StockPile>[] {
+  return [
     {
       key: "name",
       label: "item",
-      sort: function (r) {
-        return r.name;
+      sort: function (pile) {
+        return pile.name;
       },
-      render: function (r) {
-        return link(address(r.name), r.name);
+      render: function (pile) {
+        return link(inventoryDash(pile.name), pile.name);
       },
     },
     {
@@ -307,35 +297,35 @@ function renderStock(parent: HTMLElement, data: StockResponse, rows: StockPile[]
       label: "spendable",
       align: "right",
       title: "carried + storage + depot: what an affordability check spends; fluids in m³",
-      sort: function (r) {
-        return r.spendable;
+      sort: function (pile) {
+        return pile.spendable;
       },
-      render: function (r) {
-        return amount(r.spendable, r.fluid);
+      render: function (pile) {
+        return amount(pile.spendable, pile.fluid);
       },
     },
-    piled("carried", "carried", function (r) {
-      return r.carried;
+    pileColumn("carried", "carried", function (pile) {
+      return pile.carried;
     }),
-    piled("storage", "storage", function (r) {
-      return r.storage;
+    pileColumn("storage", "storage", function (pile) {
+      return pile.storage;
     }),
-    piled("depot", "depot", function (r) {
-      return r.depot;
+    pileColumn("depot", "depot", function (pile) {
+      return pile.depot;
     }),
-    piled(
+    pileColumn(
       "buffers",
       "in machines",
-      function (r) {
-        return r.buffers;
+      function (pile) {
+        return pile.buffers;
       },
       "machine buffers: listed, never spendable"
     ),
-    piled(
+    pileColumn(
       "crates",
       "in crates",
-      function (r) {
-        return r.crates;
+      function (pile) {
+        return pile.crates;
       },
       "crates on the ground: recoverable, never spendable"
     ),
@@ -344,19 +334,30 @@ function renderStock(parent: HTMLElement, data: StockResponse, rows: StockPile[]
       label: "held in",
       align: "right",
       title: "how many containers, fluid buffers and crates hold it",
-      sort: function (r) {
-        return places[r.item] || 0;
+      sort: function (pile) {
+        return placesHolding[pile.item] || 0;
       },
-      render: function (r) {
-        return places[r.item] ? count(places[r.item]!) : "";
+      render: function (pile) {
+        return placesHolding[pile.item] ? count(placesHolding[pile.item]!) : "";
       },
     },
   ];
-  var grid = table(columns, rows, {
+}
+
+function renderStock(parent: HTMLElement, data: StockResponse, rows: StockPile[]): void {
+  const card = make("section", "dash-card");
+  heading(card, "stock");
+  const placesHolding: Record<string, number> = {};
+  data.places.forEach(function (place) {
+    place.items.forEach(function (item) {
+      placesHolding[item.item] = (placesHolding[item.item] || 0) + 1;
+    });
+  });
+  const grid = table(stockColumns(placesHolding), rows, {
     sort: sorts.stock,
     caption: "stock per item",
-    onRow: function (r) {
-      go(address(r.name));
+    onRow: function (pile) {
+      go(inventoryDash(pile.name));
     },
   });
   card.appendChild(grid);
@@ -367,7 +368,7 @@ function renderStock(parent: HTMLElement, data: StockResponse, rows: StockPile[]
 }
 
 function kindPicker(): HTMLElement {
-  var kind = selectBox(
+  const kind = selectBox(
     [
       ["all", "solid and fluid"],
       ["solid", "solid only"],
@@ -384,12 +385,12 @@ function kindPicker(): HTMLElement {
   return kind;
 }
 
-function emptyToggle(m: Matcher): HTMLElement {
-  var toggle = checkbox("show empty", view.empty, function (on) {
-    view.empty = on;
+function emptyToggle(matcher: Matcher): HTMLElement {
+  const toggle = checkbox("show empty", view.showEmpty, function (on) {
+    view.showEmpty = on;
     redraw();
   });
-  if (m.active) {
+  if (matcher.active) {
     toggle.querySelector("input")!.disabled = true;
     toggle.classList.add("off");
     toggle.title = "a filter shows only containers holding a match";
@@ -397,46 +398,27 @@ function emptyToggle(m: Matcher): HTMLElement {
   return toggle;
 }
 
-function renderContainers(parent: HTMLElement, data: StockResponse, m: Matcher): void {
-  var card = make("section", "dash-card");
-  var bar = make("div", "dash-title");
-  heading(bar, "containers");
-  bar.appendChild(kindPicker());
-  bar.appendChild(emptyToggle(m));
-  card.appendChild(bar);
-  var all = data.places.filter(function (p) {
-    return p.source === "storage";
-  });
-  var rows = all.filter(function (p) {
-    if (view.kind !== "all" && p.kind !== view.kind) return false;
-    if (m.active) return held(p, m) > 0;
-    return view.empty || p.total > 0;
-  });
-  if (!rows.length) {
-    empty(card, m.active ? "no container holds a matching item" : "no container matches these filters");
-    parent.appendChild(card);
-    return;
-  }
-  var columns: Column<StockPlace>[] = [
+function containerColumns(matcher: Matcher): Column<StockPlace>[] {
+  return [
     {
       key: "name",
       label: "container",
-      sort: function (p) {
-        return p.name;
+      sort: function (place) {
+        return place.name;
       },
-      render: function (p) {
-        return stacked(p.name, [[where(p), size(p)].filter(Boolean).join(" · ")]);
+      render: function (place) {
+        return stacked(place.name, [[placeLine(place), capacityText(place)].filter(Boolean).join(" · ")]);
       },
     },
     {
       key: "held",
-      label: m.active ? "matching" : "holds",
+      label: matcher.active ? "matching" : "holds",
       title: "solids and fluids sort apart",
-      sort: function (p) {
-        return (p.kind === "fluid" ? 0 : 1e9) + held(p, m);
+      sort: function (place) {
+        return (place.kind === "fluid" ? 0 : 1e9) + matchingAmount(place, matcher);
       },
-      render: function (p) {
-        return contents(p, m);
+      render: function (place) {
+        return contentsText(place, matcher);
       },
       className: "inv-contents",
     },
@@ -444,8 +426,8 @@ function renderContainers(parent: HTMLElement, data: StockResponse, m: Matcher):
       key: "fill",
       label: "fill",
       title: "used slots over slots for a container, m³ over capacity for a fluid buffer",
-      sort: function (p) {
-        return p.fill === null ? -1 : p.fill;
+      sort: function (place) {
+        return place.fill === null ? -1 : place.fill;
       },
       render: fillCell,
       className: "bar",
@@ -454,64 +436,79 @@ function renderContainers(parent: HTMLElement, data: StockResponse, m: Matcher):
       key: "map",
       label: "",
       align: "right",
-      render: mapButton,
+      render: placeMapButton,
     },
   ];
-  card.appendChild(table(columns, rows, { sort: sorts.containers, caption: "containers", onRow: fly }));
+}
+
+function renderContainers(parent: HTMLElement, data: StockResponse, matcher: Matcher): void {
+  const card = make("section", "dash-card");
+  const bar = make("div", "dash-title");
+  heading(bar, "containers");
+  bar.appendChild(kindPicker());
+  bar.appendChild(emptyToggle(matcher));
+  card.appendChild(bar);
+  const all = data.places.filter(function (place) {
+    return place.source === "storage";
+  });
+  const rows = all.filter(function (place) {
+    if (view.kind !== "all" && place.kind !== view.kind) return false;
+    if (matcher.active) return matchingAmount(place, matcher) > 0;
+    return view.showEmpty || place.total > 0;
+  });
+  if (!rows.length) {
+    empty(card, matcher.active ? "no container holds a matching item" : "no container matches these filters");
+    parent.appendChild(card);
+    return;
+  }
+  card.appendChild(table(containerColumns(matcher), rows, { sort: sorts.containers, caption: "containers", onRow: flyToPlace }));
   if (rows.length < all.length) appendNote(card, count(rows.length) + " of " + count(all.length) + " shown");
   parent.appendChild(card);
 }
 
-function renderCrates(parent: HTMLElement, data: StockResponse, m: Matcher): void {
-  var rows = data.places.filter(function (p) {
-    return p.source === "crate" && (!m.active || held(p, m) > 0);
-  });
-  if (!rows.length) return;
-  var card = make("section", "dash-card inv-crates");
-  heading(card, "crates");
-  var me = data.player.x_m !== null;
-  var columns: Column<StockPlace>[] = [
+function crateColumns(matcher: Matcher, playerKnown: boolean): Column<StockPlace>[] {
+  return [
     {
       key: "kind",
       label: "crate",
       title: "a crate deletes itself once emptied; the save records no owner and no time",
-      sort: function (p) {
-        return crateLabel(p.crate_kind || "");
+      sort: function (place) {
+        return crateLabel(place.crate_kind || "");
       },
-      render: function (p) {
-        var box = stacked(crateLabel(p.crate_kind || ""), [p.crate_kind_text || "", where(p)]);
-        box.appendChild(make("span", "inv-narrow", contents(p, m)));
+      render: function (place) {
+        const box = stacked(crateLabel(place.crate_kind || ""), [place.crate_kind_text || "", placeLine(place)]);
+        box.appendChild(make("span", "inv-narrow", contentsText(place, matcher)));
         return box;
       },
     },
     {
       key: "distance",
-      label: me ? "from the player" : "distance",
+      label: playerKnown ? "from the player" : "distance",
       align: "right",
       title: "straight line from where the player last stood",
-      sort: function (p) {
-        return p.distance_m === null ? Infinity : p.distance_m;
+      sort: function (place) {
+        return place.distance_m === null ? Infinity : place.distance_m;
       },
-      render: function (p) {
-        return p.distance_m === null ? "–" : formatNumber(p.distance_m, 0) + " m";
+      render: function (place) {
+        return place.distance_m === null ? "–" : formatNumber(place.distance_m, 0) + " m";
       },
     },
     {
       key: "held",
-      label: m.active ? "matching" : "items",
+      label: matcher.active ? "matching" : "items",
       align: "right",
-      sort: function (p) {
-        return held(p, m);
+      sort: function (place) {
+        return matchingAmount(place, matcher);
       },
-      render: function (p) {
-        return count(held(p, m));
+      render: function (place) {
+        return count(matchingAmount(place, matcher));
       },
     },
     {
       key: "contents",
       label: "contents",
-      render: function (p) {
-        return contents(p, m);
+      render: function (place) {
+        return contentsText(place, matcher);
       },
       className: "inv-contents",
     },
@@ -519,10 +516,20 @@ function renderCrates(parent: HTMLElement, data: StockResponse, m: Matcher): voi
       key: "map",
       label: "",
       align: "right",
-      render: mapButton,
+      render: placeMapButton,
     },
   ];
-  card.appendChild(table(columns, rows, { sort: sorts.crates, caption: "crates", onRow: fly }));
+}
+
+function renderCrates(parent: HTMLElement, data: StockResponse, matcher: Matcher): void {
+  const rows = data.places.filter(function (place) {
+    return place.source === "crate" && (!matcher.active || matchingAmount(place, matcher) > 0);
+  });
+  if (!rows.length) return;
+  const card = make("section", "dash-card inv-crates");
+  heading(card, "crates");
+  const playerKnown = data.player.x_m !== null;
+  card.appendChild(table(crateColumns(matcher, playerKnown), rows, { sort: sorts.crates, caption: "crates", onRow: flyToPlace }));
   parent.appendChild(card);
 }
 
@@ -532,28 +539,27 @@ function retry(): void {
 
 function renderResults(parent: HTMLElement): void {
   if (alsoLine) alsoLine.textContent = "";
-  var data = stock.data;
+  const data = stock.data;
   if (!data) {
-    if (stock.failed) error(parent, "stock", null, retry);
-    else loading(parent, "stock");
+    pendingNotice(parent, "stock", null, stock.failed, retry);
     return;
   }
-  var m = matcher(data);
-  if (alsoLine) also(alsoLine, m);
+  const matcher = buildMatcher(data);
+  if (alsoLine) renderAlsoMatches(alsoLine, matcher);
   renderTiles(parent, data);
-  var piles = data.items.filter(function (r) {
-    return m.test(r.name);
+  const piles = data.items.filter(function (pile) {
+    return matcher.test(pile.name);
   });
-  var anywhere = data.places.some(function (p) {
-    return held(p, m) > 0;
+  const anywhere = data.places.some(function (place) {
+    return matchingAmount(place, matcher) > 0;
   });
-  if (m.active && !piles.length && !anywhere) {
-    empty(parent, "nothing held matches “" + query() + "”", "not carried, stored, in the depot, in a machine or in a crate");
+  if (matcher.active && !piles.length && !anywhere) {
+    empty(parent, "nothing held matches “" + filterText() + "”", "not carried, stored, in the depot, in a machine or in a crate");
     return;
   }
-  renderCrates(parent, data, m);
+  renderCrates(parent, data, matcher);
   if (piles.length) renderStock(parent, data, piles);
-  renderContainers(parent, data, m);
+  renderContainers(parent, data, matcher);
 }
 
 function redraw(): void {
@@ -562,15 +568,14 @@ function redraw(): void {
   renderResults(results);
 }
 
-export function renderInventory(body: HTMLElement, into: InventoryHost): void {
-  host = into;
-  search(body);
+export function renderInventory(body: HTMLElement): void {
+  renderFilterBox(body);
   results = make("div", "inv-results");
   body.appendChild(results);
   renderResults(results);
 }
 
-function shown(): boolean {
+function inventoryTabOpen(): boolean {
   return dashParts().tab === "inventory";
 }
 
@@ -584,11 +589,11 @@ registerFetch<StockResponse>({
   draw: function (data) {
     stock.data = data;
     stock.failed = false;
-    if (host && shown()) host.render();
+    if (inventoryTabOpen()) requestRender();
   },
   failed: function () {
     stock.data = null;
     stock.failed = true;
-    if (host && shown()) host.render();
+    if (inventoryTabOpen()) requestRender();
   },
 });

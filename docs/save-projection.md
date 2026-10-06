@@ -446,7 +446,7 @@ and appends "need action" for every actionable state. The marker key lists both 
 
 The side panel and the dashboard use the same yellow for anything that names `blocked`: the
 state chips, the machine-row labels, the per-state table cell and its bar. The CSS twin of the
-declared colour is `--blocked` in the `:root` of style.css, and `dash/machine-states.ts` `tone()` picks the
+declared colour is `--blocked` in the `:root` of style.css, and `dash/machine-states.ts` `stateTone()` picks the
 class, so all three surfaces read one token. The other actionable states stay red. On the
 panel background (`#1f2228`) the yellow has a contrast ratio of about 11:1.
 

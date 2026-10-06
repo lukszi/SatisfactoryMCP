@@ -15,7 +15,7 @@ import { el } from "../kit/dom";
 import { mw, phaseText } from "../kit/format";
 import { loadOne } from "./load";
 import { drawPlayer } from "../map/drawn/markers";
-import { biomassLine, biomassQuery, onBiomass, ratedSummary, readGeneration, readMeasured } from "../dash/power-ledger";
+import { biomassLine, biomassQuery, onBiomass, ratedSummary, readGeneration, readMeasuredDraw } from "../dash/power-ledger";
 import { registerFetch } from "./registry";
 import { WORDS } from "../kit/words";
 
@@ -25,7 +25,7 @@ function drawHeader(s: SummaryResponse): void {
   holdToken(s.save_token);
   drawPlayer(s.player);
   var r = ratedSummary(s);
-  var measured = readMeasured(r);
+  var measured = readMeasuredDraw(r);
   var generation = readGeneration(r);
   var parts = [s.header.session_name];
   var phase = phaseText(s.progression.game_phase);

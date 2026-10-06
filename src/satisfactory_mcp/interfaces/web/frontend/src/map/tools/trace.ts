@@ -13,7 +13,7 @@ import { HIGHLIGHT } from "../map-highlight";
 import { onVitals } from "../../app/vitals";
 import { BLOCKED_COLOUR, STOPPED_COLOUR } from "../drawn/placements";
 import { state } from "../../app/state";
-import { tone } from "../../dash/machine-states";
+import { stateTone } from "../../dash/machine-states";
 import { fail, friendlyError } from "../../kit/toast";
 import { counted, WORDS } from "../../kit/words";
 
@@ -54,7 +54,7 @@ function traceCard(): HTMLElement {
 }
 
 function machineRingColour(m: TraceMachine): string {
-  const t = tone(m.state, m.actionable);
+  const t = stateTone(m.state, m.actionable);
   return t === "blocked" ? BLOCKED_COLOUR : t === "bad" ? STOPPED_COLOUR : HIGHLIGHT;
 }
 
@@ -121,7 +121,7 @@ function stateCounts(data: TraceResponse): { stopped: number; blocked: number } 
   const out = { stopped: 0, blocked: 0 };
   data.machines.forEach(function (m) {
     if (m.seed) return;
-    const t = tone(m.state, m.actionable);
+    const t = stateTone(m.state, m.actionable);
     if (t === "blocked") out.blocked += 1;
     else if (t === "bad") out.stopped += 1;
   });
