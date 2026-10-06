@@ -4,15 +4,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from typing_extensions import TypedDict
+
 from ...core.gamedata.constants import BUILDING_CLASS_ALIASES
 from ...core.gamedata.model import Building, GameData
 from ...core.saveio.records import instance_leaf
-from ...core.saveio.schema import BuildableRecord, Projection
+from ...core.saveio.schema import (
+    BuildableRecord,
+    ExtractorRecord,
+    GeneratorRecord,
+    MachineRecord,
+    Projection,
+)
 from .views import GeneratorTotal, PowerReport, StarvedEntry
 
 __all__ = [
     "BIOMASS_BURNERS",
     "NO_FUEL",
+    "MachineGroups",
     "PowerLedger",
     "biomass_note",
     "dry_input_classes",
@@ -179,6 +188,14 @@ class _DrawTally:
             self.measured_mw += rated * share
 
 
+class MachineGroups(TypedDict):
+    """The record lists a ledger reads: a whole projection, or one circuit's share of it."""
+
+    machines: list[MachineRecord]
+    extractors: list[ExtractorRecord]
+    generators: list[GeneratorRecord]
+
+
 @dataclass
 class PowerLedger:
     """Generation and draw over one save.
@@ -187,7 +204,7 @@ class PowerLedger:
     the total to report it.
     """
 
-    projection: Projection
+    projection: MachineGroups
     game: GameData
     paused_count: int = 0
     wired: frozenset[str] | None = None
