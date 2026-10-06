@@ -17,7 +17,12 @@ from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM  # noqa: E402
 from mapgen.gamedata.paint import RADIUS_BINS_M, canopy_cover  # noqa: E402
 from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
 from mapgen.palette.trees import crown_layer, over_crowns  # noqa: E402
-from mapgen.terrain.crowns import crown_band, load_crowns, sprite_levels  # noqa: E402
+from mapgen.terrain.crowns import (  # noqa: E402
+    crown_band,
+    load_crowns,
+    meshed_species,
+    sprite_levels,
+)
 
 LEAF = (0.1, 0.3, 0.05)
 
@@ -202,6 +207,31 @@ def test_a_band_with_no_tree_is_empty(tmp_path):
     crowns = _store(tmp_path, [_l_sprite()], records, [{"linear": list(LEAF)}])
     band = _band(crowns)
     assert not band["cover"].any() and np.isnan(band["top_cm"]).all()
+
+
+def test_a_coral_tree_is_left_to_its_mesh_and_not_drawn_as_a_crown(tmp_path):
+    coral = "/Game/FactoryGame/World/Environment/Foliage/Coral/CoralTree/SM_CoralTreeSmall_01"
+    tree = "/Game/FactoryGame/World/Environment/Foliage/Trees/GreenTree/SM_GreenTree_01"
+    verts, tris = _card(-300, -300, 300, 300, 1000)
+    sprite = data.rasterise_sprite(verts, tris, np.zeros(2, np.int64), _tau(0.95))
+    records, _ = data.crown_records(
+        {coral: np.array([_matrix(0, 0, 0)]), tree: np.array([_matrix(5000, 5000, 0)])},
+        ["SM_CoralTreeSmall_01", "SM_GreenTree_01"],
+    )
+    blob, index = data.encode_sprites([sprite, sprite])
+    (tmp_path / data.SPRITES_NAME).write_bytes(blob)
+    (tmp_path / data.CROWNS_NAME).write_bytes(data.encode_records(records))
+    species = [
+        {"name": mesh.rsplit("/", 1)[-1], "mesh": mesh, "sprite": entry,
+         "materials": [{"linear": list(LEAF)}]}
+        for mesh, entry in zip((coral, tree), index, strict=True)
+    ]  # fmt: skip
+    assert meshed_species(species).tolist() == [True, False]
+    meta = {"crowns": {"species": species}, "files": {data.CROWNS_NAME: {}}}
+    crowns = load_crowns(tmp_path, meta)
+    assert crowns.records["species"].tolist() == [1], "the render-only mesh pass draws coral"
+    assert not _band(crowns)["cover"].any(), "no dome stands over the coral's own top"
+    assert _band(crowns, x0=4100.0, y0=4100.0)["cover"].max() > 0.9, "the tree is drawn"
 
 
 # ----------------------------------------------------------------------- colour
