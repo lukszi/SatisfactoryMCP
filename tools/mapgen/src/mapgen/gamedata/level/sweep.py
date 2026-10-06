@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import struct
 import time
-from typing import TypedDict
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
+from typing import NotRequired, TypedDict
 
 import numpy as np
 
 from mapgen.gamedata.level.landscape import grass_data_heights
+from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.water.actors import is_water_class, water_actor_box
 from mapgen.gamedata.water.rivers import RIVER_CLASS, river_actor
-from satisfactory_mcp.core.arrays import F64Grid, I32Grid
+from satisfactory_mcp.core.arrays import F64Grid, I32Grid, U16Grid
+from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels
 from satisfactory_mcp.core.gameassets.packages import (
+    ClassFacts,
+    PackageView,
+    ScriptObjects,
     class_name_of,
     property_tags,
     quat_rotate,
@@ -28,23 +35,37 @@ __all__ = [
     "LEVEL_SUFFIX",
     "TOP_FOLIAGE_MESHES",
     "Sweep",
+    "Transform",
     "first_override",
     "flagged_tags",
     "foliage_instances",
     "instance_matrices",
+    "instances_to_world",
     "is_top_foliage",
+    "quat_axes",
     "sweep_levels",
+    "world_level_paths",
+    "world_levels",
 ]
 
+#: A component's world ``(location cm, rotation quaternion xyzw, scale)``.
+Transform = tuple[
+    tuple[float, float, float], tuple[float, float, float, float], tuple[float, float, float]
+]
+#: A landscape proxy's ``(origin x, origin y, z offset, scale x, scale y, scale z)``.
+Proxy = tuple[float, float, float, float, float, float]
+#: ``read_actor(view, slot, class path, classes)``: a level actor's record, or ``None``.
+ActorReader = Callable[[PackageView, int, "str | None", ClassFacts], object]
 
-class Sweep(TypedDict, total=False):
+
+class Sweep(TypedDict):
     """``sweep_levels``' one walk of the world; ``terrain.rasters.sweep_world`` adds ``trees``."""
 
     packages: int
     unreadable: int
     malformed_components: int
-    components: list[tuple[float, float, np.ndarray]]
-    proxies: list[tuple[float, float, float, float, float, float]]
+    components: list[tuple[int, int, U16Grid]]
+    proxies: list[Proxy]
     placements: F64Grid
     meshes: list[str]
     owners: list[str]
@@ -55,11 +76,11 @@ class Sweep(TypedDict, total=False):
     water_boxless: list[tuple[str, str, str]]
     water_box_sources: dict[str, int]
     rivers: list[dict[str, object]]
-    foliage: dict[str, np.ndarray]
-    extra_foliage: dict[str, np.ndarray]
+    foliage: dict[str, F64Grid]
+    extra_foliage: dict[str, F64Grid]
     actors: list[object]
     seconds: float
-    trees: dict[str, np.ndarray]
+    trees: NotRequired[dict[str, F64Grid]]
 
 
 #: Which packages are swept. Everything terrain lives under one world.
@@ -82,9 +103,40 @@ TOP_FOLIAGE_MESHES = frozenset(
 FOLIAGE_CLASSES = frozenset({"FoliageInstancedStaticMeshComponent", "FGFoliageInstancedSMC"})
 
 
-# --------------------------------------------------------------------------------------
-# Stages 1 and 2: one sweep of the world's packages, two harvests out of it.
-# --------------------------------------------------------------------------------------
+def world_level_paths(store: IoStore) -> list[str]:
+    """Every level package of the world, in the order every sweep walks them."""
+    return level_paths(store, contains=LEVEL_DIR, suffix=LEVEL_SUFFIX)
+
+
+def world_levels(
+    store: IoStore,
+    scripts: ScriptObjects,
+    on_unreadable: Callable[[str, Exception], None] | None = None,
+) -> Iterator[tuple[int, int, str, PackageView]]:
+    """``(index, total, path, view)`` for every readable level package of the world."""
+    return walk_levels(store, scripts, paths=world_level_paths(store), on_unreadable=on_unreadable)
+
+
+def quat_axes(quat: tuple[float, float, float, float]) -> F64Grid:
+    """A rotation quaternion as a matrix whose rows are the rotated local X, Y and Z axes."""
+    return np.stack([np.array(quat_rotate(quat, tuple(axis))) for axis in np.eye(3)])
+
+
+def instances_to_world(
+    mats: F64Grid, transform: Transform, local_offset: F64Grid | None = None
+) -> F64Grid:
+    """Instance matrices (rows: scaled axes, then origin) carried through a parent transform.
+
+    ``local_offset`` moves every origin in the parent's space first: a component's own
+    ``RelativeLocation``.
+    """
+    location, quat, scale = transform
+    rotation, size = quat_axes(quat), np.array(scale)
+    origins = mats[:, 3, :3] if local_offset is None else mats[:, 3, :3] + local_offset
+    world = mats.copy()
+    world[:, :3, :3] = (mats[:, :3, :3] * size[None, None, :]) @ rotation
+    world[:, 3, :3] = (origins * size) @ rotation + np.array(location)
+    return world
 
 
 def flagged_tags(body: bytes, names: list[str], pos: int = 1) -> tuple[dict[str, bytes], int]:
@@ -137,7 +189,7 @@ def flagged_tags(body: bytes, names: list[str], pos: int = 1) -> tuple[dict[str,
     return out, pos
 
 
-def instance_matrices(tail: bytes, expect: int | None) -> np.ndarray | None:
+def instance_matrices(tail: bytes, expect: int | None) -> F64Grid | None:
     """``PerInstanceSMData`` as (n, 4, 4) float64 world-relative matrices, or ``None``.
 
     Bulk-serialised as an element size of 128 (one FMatrix of doubles) and a count, found by
@@ -155,7 +207,7 @@ def instance_matrices(tail: bytes, expect: int | None) -> np.ndarray | None:
     return None
 
 
-def first_override(view, payload: bytes | None) -> str | None:
+def first_override(view: PackageView, payload: bytes | None) -> str | None:
     """The first non-empty entry of a component's ``OverrideMaterials``, as a package path."""
     if not payload or len(payload) < 4:
         return None
@@ -172,8 +224,11 @@ def is_top_foliage(mesh: str) -> bool:
 
 
 def foliage_instances(
-    view, slot: int, classes, wanted=is_top_foliage
-) -> tuple[str, np.ndarray] | None:
+    view: PackageView,
+    slot: int,
+    classes: ClassFacts,
+    wanted: Callable[[str], bool] = is_top_foliage,
+) -> tuple[str, F64Grid] | None:
     """One foliage component's mesh and world matrices, for meshes ``wanted`` accepts."""
     body = view.pkg.body(view.exports[slot])
     props, end = flagged_tags(body, view.pkg.names)
@@ -186,26 +241,16 @@ def foliage_instances(
     mats = instance_matrices(body[end:], expect)
     if mats is None:
         return None
-
-    def triple(key: str, default: tuple[float, float, float]) -> np.ndarray:
-        raw = props.get(key, b"")
-        return np.array(struct.unpack("<3d", raw) if len(raw) == 24 else default)
-
-    own = triple("RelativeLocation", (0.0, 0.0, 0.0))
+    raw = props.get("RelativeLocation", b"")
+    own = np.array(struct.unpack("<3d", raw) if len(raw) == 24 else (0.0, 0.0, 0.0))
     parent = view.export_ref(props["AttachParent"]) if "AttachParent" in props else None
     transform = world_transform(view, parent, classes)[0] if parent is not None else None
     if transform is None:
         transform = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 1.0, 1.0))
-    location, quat, scale = transform
-    rotation = np.stack([np.array(quat_rotate(quat, tuple(axis))) for axis in np.eye(3)])
-    size = np.array(scale)
-    world = mats.copy()
-    world[:, :3, :3] = (mats[:, :3, :3] * size[None, None, :]) @ rotation
-    world[:, 3, :3] = ((mats[:, 3, :3] + own) * size) @ rotation + np.array(location)
-    return mesh, world
+    return mesh, instances_to_world(mats, transform, own)
 
 
-def _placement(view, slot) -> tuple | None:
+def _placement(view: PackageView, slot: int) -> tuple[str, *tuple[float, ...]] | None:
     """``(mesh path, x, y, z, pitch, yaw, roll, sx, sy, sz)`` of a root mesh component."""
     props = view.props(slot)
     reference = props.get("StaticMesh")
@@ -222,147 +267,207 @@ def _placement(view, slot) -> tuple | None:
     return (mesh, *struct.unpack("<3d", location), *turn, *size)
 
 
+def _proxy(view: PackageView, slot: int) -> Proxy | None:
+    """A ``LandscapeStreamingProxy``'s origin in landscape quads, its Z offset and scale."""
+    props = view.props(slot)
+    offset = props.get("LandscapeSectionOffset")
+    root = view.export_ref(props.get("RootComponent", b""))
+    if not offset or len(offset) != 8 or root is None:
+        return None
+    section_x, section_y = struct.unpack("<2i", offset)
+    location = view.props(root).get("RelativeLocation")
+    scale = view.props(root).get("RelativeScale3D")
+    if not location or len(location) != 24 or not scale or len(scale) != 24:
+        return None
+    lx, ly, lz = struct.unpack("<3d", location)
+    sx, sy, sz = struct.unpack("<3d", scale)
+    return (section_x - lx / sx, section_y - ly / sy, lz, sx, sy, sz)
+
+
+def _component(view: PackageView, slot: int) -> tuple[int, int, U16Grid] | None:
+    """A ``LandscapeComponent``'s section base and height samples; ``None`` if malformed."""
+    props = view.props(slot)
+    base_x = read_int32(props.get("SectionBaseX", b"\0\0\0\0"))
+    base_y = read_int32(props.get("SectionBaseY", b"\0\0\0\0"))
+    body = view.pkg.body(view.exports[slot])
+    _tags, end = property_tags(body, view.pkg.names)
+    heights = grass_data_heights(body[end:])
+    if base_x is None or base_y is None or heights is None:
+        return None
+    return base_x, base_y, heights
+
+
+def _root_owners(view: PackageView) -> dict[int, str]:
+    """Each actor's root component slot, mapped to the actor's class name.
+
+    A ``StaticMeshComponent`` that is no actor's root is a decoration hanging off something
+    else, its transform relative to a parent the sweep does not walk.
+    """
+    owners: dict[int, str] = {}
+    for slot, class_path in view.class_of.items():
+        root = root_component(view, slot)
+        if root is not None:
+            owners[root] = class_name_of(class_path)
+    return owners
+
+
+@dataclass
+class _Harvest:
+    """What one walk of the levels gathers, before it is packed into the sweep."""
+
+    meshes: MeshBounds
+    classes: ClassFacts
+    extra_foliage: Callable[[str], bool] | None
+    components: list[tuple[int, int, U16Grid]] = field(default_factory=list)
+    proxies: list[Proxy] = field(default_factory=list)
+    #: (mesh id, owner id, x, y, z, pitch, yaw, roll, sx, sy, sz)
+    placements: list[tuple[float, ...]] = field(default_factory=list)
+    mesh_ids: dict[str, int] = field(default_factory=dict)
+    owner_ids: dict[str, int] = field(default_factory=dict)
+    #: Each placement's first override material, an index into ``material_ids``; -1 for none.
+    chosen: list[int] = field(default_factory=list)
+    material_ids: dict[str, int] = field(default_factory=dict)
+    #: (class name, (x0, y0, z0, x1, y1, z1)) in world centimetres, for the water stage.
+    water: list[tuple[str, tuple[float, ...]]] = field(default_factory=list)
+    water_actors: dict[str, int] = field(default_factory=dict)
+    water_boxless: list[tuple[str, str, str]] = field(default_factory=list)
+    box_sources: dict[str, int] = field(default_factory=dict)
+    rivers: list[dict[str, object]] = field(default_factory=list)
+    foliage: dict[str, list[F64Grid]] = field(default_factory=dict)
+    extra: dict[str, list[F64Grid]] = field(default_factory=dict)
+    actors: list[object] = field(default_factory=list)
+    malformed: int = 0
+
+    def add(
+        self, view: PackageView, slot: int, name: str, root_owner: str | None, path: str
+    ) -> None:
+        """One export of class ``name``, kept where it is something the sweep collects."""
+        if name == "LandscapeStreamingProxy":
+            proxy = _proxy(view, slot)
+            if proxy is not None:
+                self.proxies.append(proxy)
+        elif name == "LandscapeComponent":
+            component = _component(view, slot)
+            if component is None:
+                self.malformed += 1
+            else:
+                self.components.append(component)
+        elif name == "StaticMeshComponent":
+            if root_owner is not None:
+                self._placement(view, slot, root_owner)
+        elif name in FOLIAGE_CLASSES:
+            self._foliage(view, slot)
+        elif is_water_class(name):
+            self._water_actor(view, slot, name, path)
+
+    def _placement(self, view: PackageView, slot: int, owner: str) -> None:
+        placed = _placement(view, slot)
+        if placed is None:
+            return
+        mesh, *transform = placed
+        mesh_id = self.mesh_ids.setdefault(mesh, len(self.mesh_ids))
+        owner_id = self.owner_ids.setdefault(owner, len(self.owner_ids))
+        self.placements.append((mesh_id, owner_id, *transform))
+        material = first_override(view, view.props(slot).get("OverrideMaterials"))
+        self.chosen.append(
+            self.material_ids.setdefault(material, len(self.material_ids)) if material else -1
+        )
+
+    def _foliage(self, view: PackageView, slot: int) -> None:
+        extra = self.extra_foliage
+
+        def wanted(mesh: str) -> bool:
+            return is_top_foliage(mesh) or bool(extra and extra(mesh))
+
+        found = foliage_instances(view, slot, self.classes, wanted=wanted)
+        if found is not None:
+            harvest = self.foliage if is_top_foliage(found[0]) else self.extra
+            harvest.setdefault(found[0], []).append(found[1])
+
+    def _water_actor(self, view: PackageView, slot: int, name: str, path: str) -> None:
+        self.water_actors[name] = self.water_actors.get(name, 0) + 1
+        box, sources = water_actor_box(view, slot, self.classes, self.meshes)
+        for source in sources:
+            self.box_sources[source] = self.box_sources.get(source, 0) + 1
+        if box is None:
+            self.water_boxless.append((name, view.exports[slot]["name"], path.rsplit("/", 1)[-1]))
+        else:
+            self.water.append((name, box))
+        if name == RIVER_CLASS:
+            self.rivers.append(river_actor(view, slot, self.classes, self.meshes))
+
+    def packed(self, packages: int, unreadable: int, seconds: float) -> dict:
+        """The sweep's record, keys in the order ``Sweep`` lists them."""
+
+        def by_id(ids: dict[str, int]) -> list[str]:
+            return [name for name, _ in sorted(ids.items(), key=lambda kv: kv[1])]
+
+        return {
+            "packages": packages,
+            "unreadable": unreadable,
+            "malformed_components": self.malformed,
+            "components": self.components,
+            "proxies": self.proxies,
+            "placements": (
+                np.array(self.placements, dtype=np.float64)
+                if self.placements
+                else np.zeros((0, 11))
+            ),
+            "meshes": by_id(self.mesh_ids),
+            "owners": by_id(self.owner_ids),
+            "placement_materials": np.array(self.chosen, dtype=np.int32),
+            "materials": by_id(self.material_ids),
+            "water": self.water,
+            "water_actors": self.water_actors,
+            "water_boxless": self.water_boxless,
+            "water_box_sources": self.box_sources,
+            "rivers": self.rivers,
+            "foliage": {mesh: np.concatenate(parts) for mesh, parts in self.foliage.items()},
+            "extra_foliage": {mesh: np.concatenate(parts) for mesh, parts in self.extra.items()},
+            "actors": self.actors,
+            "seconds": seconds,
+        }
+
+
 def sweep_levels(
-    store, scripts, classes, meshes, progress: bool = True, extra_foliage=None, read_actor=None
+    store: IoStore,
+    scripts: ScriptObjects,
+    classes: ClassFacts,
+    meshes: MeshBounds,
+    progress: bool = True,
+    extra_foliage: Callable[[str], bool] | None = None,
+    read_actor: ActorReader | None = None,
 ) -> dict:
     """One pass over every ``*.umap`` of the world: landscape, placements, water actors.
 
     All three harvests need the same ``PackageView`` of the same 4,521 packages, and
     building that view is the whole cost of the pass, so they share it. Returns raw material
-    and nothing interpreted. Foliage ``extra_foliage`` accepts lands in ``extra_foliage``;
-    whatever ``read_actor(view, slot, class path, classes)`` returns for a level actor, in
-    ``actors``.
+    and nothing interpreted, in ``Sweep``'s shape. Foliage ``extra_foliage`` accepts lands in
+    ``extra_foliage``; whatever ``read_actor`` returns for a level actor, in ``actors``.
     """
-    components: list[tuple[int, int, np.ndarray]] = []
-    proxies: list[tuple[float, float, float, float, float, float]] = []
-    #: (mesh id, owner id, x, y, z, pitch, yaw, roll, sx, sy, sz)
-    placements: list[tuple[float, ...]] = []
-    #: (class name, (x0, y0, z0, x1, y1, z1)) in world centimetres, for the water stage.
-    water: list[tuple[str, tuple[float, ...]]] = []
-    water_actors: dict[str, int] = {}
-    water_boxless: list[tuple[str, str, str]] = []
-    rivers: list[dict] = []
-    box_sources: dict[str, int] = {}
-    mesh_ids: dict[str, int] = {}
-    owner_ids: dict[str, int] = {}
-    #: Each placement's first override material, as an index into ``materials``; -1 for none.
-    material_ids: dict[str, int] = {}
-    chosen: list[int] = []
-    foliage: dict[str, list[np.ndarray]] = {}
-    extra: dict[str, list[np.ndarray]] = {}
-    actors: list = []
+    harvest = _Harvest(meshes, classes, extra_foliage)
     unreadable = 0
-    malformed = 0
     started = time.time()
 
     def count_unreadable(_path: str, _exc: Exception) -> None:
         nonlocal unreadable
         unreadable += 1
 
-    paths = level_paths(store, contains=LEVEL_DIR, suffix=LEVEL_SUFFIX)
+    paths = world_level_paths(store)
     for index, total, path, view in walk_levels(
         store, scripts, paths=paths, on_unreadable=count_unreadable
     ):
-        # An actor names its own root; a StaticMeshComponent that is not one is a
-        # decoration hanging off something else, and its transform is relative to a parent
-        # this sweep does not walk. Built first so the placement loop can just look up.
-        root_owner: dict[int, str] = {}
-        for slot, class_path in view.class_of.items():
-            root = root_component(view, slot)
-            if root is not None:
-                root_owner[root] = class_name_of(class_path)
-
+        root_owner = _root_owners(view)
         for slot, class_path in view.class_of.items():
             if read_actor is not None and view.outer_of.get(slot) in view.level_slots:
                 found = read_actor(view, slot, class_path, classes)
                 if found is not None:
-                    actors.append(found)
-            name = class_name_of(class_path)
-            if name == "LandscapeStreamingProxy":
-                props = view.props(slot)
-                offset = props.get("LandscapeSectionOffset")
-                root = view.export_ref(props.get("RootComponent", b""))
-                if not offset or len(offset) != 8 or root is None:
-                    continue
-                section_x, section_y = struct.unpack("<2i", offset)
-                location = view.props(root).get("RelativeLocation")
-                scale = view.props(root).get("RelativeScale3D")
-                if not location or len(location) != 24 or not scale or len(scale) != 24:
-                    continue
-                lx, ly, lz = struct.unpack("<3d", location)
-                sx, sy, sz = struct.unpack("<3d", scale)
-                proxies.append((section_x - lx / sx, section_y - ly / sy, lz, sx, sy, sz))
-            elif name == "LandscapeComponent":
-                props = view.props(slot)
-                base_x = read_int32(props.get("SectionBaseX", b"\0\0\0\0"))
-                base_y = read_int32(props.get("SectionBaseY", b"\0\0\0\0"))
-                body = view.pkg.body(view.exports[slot])
-                _tags, end = property_tags(body, view.pkg.names)
-                heights = grass_data_heights(body[end:])
-                if heights is None:
-                    malformed += 1
-                    continue
-                components.append((base_x, base_y, heights))
-            elif name == "StaticMeshComponent":
-                placed = _placement(view, slot) if slot in root_owner else None
-                if placed is None:
-                    continue
-                mesh_id = mesh_ids.setdefault(placed[0], len(mesh_ids))
-                owner_id = owner_ids.setdefault(root_owner[slot], len(owner_ids))
-                placements.append((mesh_id, owner_id, *placed[1:]))
-                material = first_override(view, view.props(slot).get("OverrideMaterials"))
-                chosen.append(
-                    material_ids.setdefault(material, len(material_ids)) if material else -1
-                )
-            elif name in FOLIAGE_CLASSES:
-                found = foliage_instances(
-                    view,
-                    slot,
-                    classes,
-                    wanted=lambda m: is_top_foliage(m) or bool(extra_foliage and extra_foliage(m)),
-                )
-                if found is not None:
-                    harvest = foliage if is_top_foliage(found[0]) else extra
-                    harvest.setdefault(found[0], []).append(found[1])
-            elif is_water_class(name):
-                water_actors[name] = water_actors.get(name, 0) + 1
-                box, sources = water_actor_box(view, slot, classes, meshes)
-                for source in sources:
-                    box_sources[source] = box_sources.get(source, 0) + 1
-                if box is None:
-                    water_boxless.append(
-                        (name, view.exports[slot]["name"], path.rsplit("/", 1)[-1])
-                    )
-                else:
-                    water.append((name, box))
-                if name == RIVER_CLASS:
-                    rivers.append(river_actor(view, slot, classes, meshes))
-
+                    harvest.actors.append(found)
+            harvest.add(view, slot, class_name_of(class_path), root_owner.get(slot), path)
         if progress and index % 500 == 0:
             print(
-                f"  {index}/{total} packages, {len(components)} landscape components, "
-                f"{len(placements)} placements, {time.time() - started:.0f}s",
+                f"  {index}/{total} packages, {len(harvest.components)} landscape components, "
+                f"{len(harvest.placements)} placements, {time.time() - started:.0f}s",
                 flush=True,
             )
-
-    return {
-        "packages": len(paths),
-        "unreadable": unreadable,
-        "malformed_components": malformed,
-        "components": components,
-        "proxies": proxies,
-        "placements": np.array(placements, dtype=np.float64) if placements else np.zeros((0, 11)),
-        "meshes": [m for m, _ in sorted(mesh_ids.items(), key=lambda kv: kv[1])],
-        "owners": [o for o, _ in sorted(owner_ids.items(), key=lambda kv: kv[1])],
-        "placement_materials": np.array(chosen, dtype=np.int32),
-        "materials": [m for m, _ in sorted(material_ids.items(), key=lambda kv: kv[1])],
-        "water": water,
-        "water_actors": water_actors,
-        "water_boxless": water_boxless,
-        "water_box_sources": box_sources,
-        "rivers": rivers,
-        "foliage": {mesh: np.concatenate(parts) for mesh, parts in foliage.items()},
-        "extra_foliage": {mesh: np.concatenate(parts) for mesh, parts in extra.items()},
-        "actors": actors,
-        "seconds": time.time() - started,
-    }
+    return harvest.packed(len(paths), unreadable, time.time() - started)
