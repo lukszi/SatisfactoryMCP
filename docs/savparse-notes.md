@@ -510,8 +510,9 @@ of the format details above, including the two below.
 
 **Two things that cost real objects to find.** The version-60 terminator is a *bare name*
 with no type tree after it; reading the tree first turned the 4 trailing bytes into a string
-length and broke 16,445 objects. And `InventoryItem` writes one extra int32 on version **36**
-only, not on 52 — the single place those two versions disagree, worth 87 pickups.
+length and broke 16,445 objects. And `InventoryItem` has two layouts that no version number in
+the file tells apart, worth 87 pickups when first misread; the declared size now decides, see
+*Struct layouts the bytes do not name* below.
 
 **Struct bodies.** Decided by NAME (`_NATIVE_STRUCTS`), not by the flag, because the flag is
 not reliably per-element: the foliage subsystem's `mSaveData` is one MapProperty with `0x08`
@@ -521,6 +522,22 @@ the width follows the writer), `Quat`, `Box` (6 doubles + a validity byte), `Lin
 (four floats), `Guid`, `IntVector`, `FluidBox` (one float of pipe contents),
 `ClientIdentityInfo`, `InventoryItem`. `PlayerInfoHandle` and `UniqueNetIdRepl` are kept as
 raw bytes on purpose. Everything else — 37 more struct names — is a nested property list.
+Add nothing to the native table on the strength of a name: `Vector_NetQuantize` looks like it
+belongs and does not — the map markers' `Location` is 135 bytes of tagged `X`/`Y`/`Z`
+DoubleProperties. UE4's tag layout has no native-serialise bit at all, and synthesising one for
+version 36/52 would skip plain property lists such as a creature spawner's `SpawnData`.
+
+**Value shapes.** The values keep the shapes the projection was written against, quirks
+included, so changing one is a silent behaviour change downstream:
+
+* `BoolProperty` yields the raw byte — 16, 1 or 0 — rather than a `bool`, because
+  `extract.truthy` reads it;
+* `ByteProperty` yields `[enumName or None, value]`: `mLastAutoSaveId` is `[None, 2]`,
+  `mGamePhaseCosts[].gamePhase` is `['EGamePhase', 'EGP_MidGame']`, and readers take `[-1]`;
+* a struct serialised as a nested property list yields `[values, types]`;
+* `InventoryItem` yields `[itemClassPath, state]` with the class as a bare path string, because
+  `_accumulate_inventory`'s `ref_class` resolves a path string and not a reference object;
+* `Int8Property` yields raw `bytes`; nothing in the projection reads one.
 
 **Census on the reference save** — 44,634 objects and **82,660 top-level properties**, which
 between them declare **208,548 property tags at every depth**, because a struct's fields and a
@@ -603,6 +620,16 @@ and keeping the result only when it lands exactly on the declared end recovers
 **three warnings per saveVersion 52 save and zero on a saveVersion 60 one**, in data nothing
 above reads.
 
+Those three have since been recovered. Before falling back to a property list, the parser offers
+candidate struct types and keeps the first that lands exactly on the declared end: `IntVector`
+for a map key (the foliage subsystem's `mSaveData` keys its per-cell records by world-partition
+cell coordinate), then `Guid` and `Vector` for a set element (the scanner's `mDestroyedPickups`
+and `mLootedDropPods`, and `FGFoliageRemoval.mRemovalLocations`). Each candidate is the type
+saveVersion 60 writes out in full for the same field, so the newer format is the authority
+rather than the guess. Only the key is substituted: an unnamed map *value* is always a property
+list. A set is offered unframed readings first, because it writes its elements end to end,
+without the struct-array header a version-36/52 array opens with.
+
 #### Adversarial pass over the containers and the escape hatches
 
 The module was then attacked deliberately: hand-built property blocks for the cases no save
@@ -672,6 +699,32 @@ large by four bytes fails on that property with its offset, in both directions. 
 inside arrays inside maps, and arrays inside structs inside arrays, read correctly. A struct
 array element whose property list has no terminator fails loudly instead of eating the next
 element.
+
+**Struct layouts the bytes do not name.** A standalone `StructProperty` declares its own size,
+which makes that size a referee the decoder passes down as `exact`; an element inside a
+container has only the container's end, and never gets it. Two cases use it:
+
+* **`InventoryItem` follows no version number in the file.** An object stamped version 46 in an
+  autosave written at build 416835 uses two bare references — 16 declared bytes, four empty
+  strings. An object stamped version 46 in Episode 107, build 463028, uses the modern layout —
+  99 declared bytes, a reference and a has-state int32, where two references cannot fit. Same
+  object version, same `saveVersion` 52: somewhere between those builds the game began writing
+  these records the modern way without restamping them. So where the declared size is known it
+  chooses between the two readings outright — they can never land on the same byte, since the
+  modern one is a reference plus 4 and the legacy one a reference plus another reference, 8
+  bytes at its shortest. Only a bare container element, with no size of its own, still guesses
+  from the object's version.
+* **An unknown struct that is not a property list costs one property, not the save.** That
+  combination is not a base-game shape; it is what mods write. `FicsItCam`'s `FICFrameRange` is
+  two int64s under a cleared self-serialising flag, and reading it as a tagged property list
+  takes a frame number for a string length and walks off the end of a 164 MB body. With
+  `exact`, the property-list reading is refereed by the declared end and a failure becomes a
+  skip plus a warning.
+
+The skip deliberately does **not** cover the native-struct table, `InventoryItem` included:
+there the declared size *chooses* between readings the parser knows, and only a record that is
+neither degrades to a skip. A struct the parser claims to know and then quietly drops would hide
+exactly the kind of bug the `InventoryItem` gate was.
 
 **Two messages fixed by the truncation sweep, both in the commonest failure there is.**
 Cutting two real saves at fourteen fractions of their length each put **all 28** failures on
@@ -1138,23 +1191,19 @@ shows 29 chains apparently moving one way and 16 the other.
   the length prefix (which leaves every declared size correct), give byte-identical results
   from both parsers. That is as close to data as it gets until somebody plays with an umlaut
   in their session name.
-* **An unrecognised struct name loses the whole save on a version-36/52 object, and only the
-  property on a version-60 one.** Version 60's flags byte has `0x08` for "this struct
-  serialises itself", so an unknown native struct there becomes `struct 'X' serialises itself,
-  kept as bytes` — measured by renaming `FluidBox` to `MyModBox` in a v60 save's body:
-  44,634 objects still read, 798 warnings, and the vendored parser refuses the file outright.
-  UE4's tag has no such bit, so `native_hint` is always false and an unknown struct is read as
-  a property list with nothing to referee it; the same rename on a v52 save is a `ParseError`.
-  **25 of the 31 readable saves are v52**, so this is the version it matters on. Nothing on
-  disk hits it — every struct name in every save is either in `_NATIVE_STRUCTS` or genuinely a
-  property list — and the vendored parser is worse here, refusing all of these. The fix is
-  known and was left undone on purpose: a top-level `StructProperty` declares its size, so
-  routing an *unknown-named* struct on an old-version object through `attempt()` would turn
-  the loss into a skip plus a warning. It must apply **only** where `end` is the struct's own
-  end. Called from `struct_array` or `element`, `end` is the *container's* end, so `attempt`
-  would reject every element but the last and skip real `SplinePointData` arrays that parse
-  correctly today. That needs a flag threaded through `struct()`, which is more than a
-  one-liner in the module the size check protects.
+* **An unrecognised struct name inside a version-36/52 container can still lose the whole
+  save.** Version 60's flags byte has `0x08` for "this struct serialises itself", so an unknown
+  native struct there becomes `struct 'X' serialises itself, kept as bytes` — measured by
+  renaming `FluidBox` to `MyModBox` in a v60 save's body: 44,634 objects still read, 798
+  warnings, and the vendored parser refuses the file outright. UE4's tag has no such bit. A
+  top-level `StructProperty` declares its own size, and that size now referees the
+  property-list reading (the `exact` path under *Struct layouts the bytes do not name*), so
+  there an unknown struct costs one property and a warning. An element of an array or a map
+  has only the container's end, and refereeing by it would reject every element but the last
+  and skip real `SplinePointData` arrays that parse correctly; there an unknown struct is still
+  read as a property list with nothing to referee it. **25 of the 31 readable saves are v52**,
+  so this is the version it matters on. Nothing on disk hits it — every struct name in every
+  save is either in the native table or genuinely a property list.
 * Version-60 tag bits **above `0x10` are ignored, while `0x04` refuses the save**. That is
   inconsistent, and deliberately left as it is: no bit above `0x10` is set on any of the
   2,269,824 properties, and inventing a meaning for one — or refusing a save because of one —
