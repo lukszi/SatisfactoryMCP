@@ -55,6 +55,7 @@ from mapgen.terrain.sample import (
     sample_noise,
     sample_plain,
     sample_surface,
+    taps_footprint,
     taps_linear,
     taps_pchip,
 )
@@ -311,6 +312,8 @@ def render_layer(
         rock_step = field.spacing_cm * ROCK_GRID_M
         rock_h, rock_w = painted.rock[0].shape
         rock_cols = taps_linear(grid_position(x_cm, field.x0_cm, rock_step, rock_w), rock_w)
+        footprint = spacing_m * 100.0 / field.spacing_cm
+        paint_cols = taps_footprint(field_x, footprint, field.width)
 
     started = time.time()
     for top in range(r0, r1, BAND_ROWS):
@@ -421,10 +424,11 @@ def render_layer(
                 water_optics=painted.water_optics(linear, water_terms.get("river")),
                 grid=(band, lo, hi, c0, c1, spacing_m),
             )
+            paint = (taps_footprint(field_y, footprint, field.height), paint_cols)
             rgb = painted_colours(
                 scene,
                 painted,
-                lambda plane, taps=linear: sample_plain(plane, taps),
+                lambda plane, taps=paint: sample_plain(plane, taps),
                 lambda plane, taps=(rock_rows, rock_cols): sample_plain(plane, taps),
             )
         elif relief is not None:
