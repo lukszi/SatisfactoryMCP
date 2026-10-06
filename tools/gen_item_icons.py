@@ -4,17 +4,8 @@
 
 An icon is Coffee Stain's artwork, so this is a loader like ``tools/gen_map_image.py``: it
 reads the reader's own install into gitignored ``data/local/`` and commits none of it.
-
-``Docs/en-US.json`` gives every item descriptor an ``mSmallIcon`` naming a ``Texture2D``
-package in ``FactoryGame-Windows.utoc``, looked up case-insensitively because five items
-spell a directory differently from the container -- ``Mam``, ``Medkit``, ``Cyberwagon``
-and ``Golfcart`` twice. Two pixel formats are in play, ``PF_DXT5`` on 634 of the 747 and
-``PF_B8G8R8A8`` on 113, with no BC7 anywhere; both decoders hand back BGRA, which read as
-``"RGBA"`` turns a copper ingot cyan instead of raising.
-
-Measured on build 495413: of 750 classes carrying ``mForm``, 747 name an icon and all 747
-decode, 41.1 MB of PNG in 12 s. The three with no picture name no texture in the dump at
-all, so the frontend's text tile is their correct rendering rather than a fallback.
+``Docs/en-US.json`` names each item's ``Texture2D``; the formats and the measured coverage are
+in docs/DEVELOPING.md.
 """
 
 from __future__ import annotations
@@ -23,13 +14,17 @@ import json
 import re
 import sys
 import time
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "src"))
+for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
+from mapgen.common import LOCAL_DIR, base_parser, require_gen
+from satisfactory_mcp.core.gameassets.container import CONTAINER, paks_dir
 from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
 from satisfactory_mcp.core.gameassets.provenance import (
     InstallNotFound,
@@ -48,13 +43,11 @@ from satisfactory_mcp.core.gameassets.textures import (
     raw_mip_sizes,
 )
 from satisfactory_mcp.core.gamedata.loader import load_docs
-from tools._common import base_parser, require_gen
 
 #: Derived from ``--game``: the icons and the class names that point at them must come
 #: from ONE install, and a ``SATISFACTORY_DOCS`` pointing elsewhere would mix two builds.
 DOCS_SUFFIX = Path("CommunityResources") / "Docs" / "en-US.json"
 
-CONTAINER = "FactoryGame-Windows"
 MOUNT = "../../../FactoryGame/Content/"
 
 #: ``Texture2D /Game/Foo/Bar/Icon_256.Icon_256`` -> ``/Game/Foo/Bar/Icon_256``: what
@@ -70,9 +63,9 @@ ICON_FIELD = "mSmallIcon"
 #: restricting to ``FGItemDescriptor`` would miss the biomass and the nuclear fuel rods.
 FORM_FIELD = "mForm"
 
-#: Measured over all 742 resolvable icons on build 495413: there is no third format, and
-#: in particular no BC7.
-PIXEL_FORMATS = ("PF_DXT5", "PF_B8G8R8A8")
+#: BC3 blocks; the other format is raw BGRA texels. Measured: there is no third, and no BC7.
+BC3_FORMAT = "PF_DXT5"
+PIXEL_FORMATS = (BC3_FORMAT, "PF_B8G8R8A8")
 
 #: Where the bulk chain stops. A cooked ``Texture2D`` keeps its smallest levels inline and
 #: streams the rest; stated as the tail because the mip count differs per size.
@@ -93,7 +86,6 @@ KIND_NO_ICON = "no-icon-in-docs"
 KIND_NOT_IN_CONTAINER = "asset-not-in-container"
 KIND_UNDECODED = "undecoded"
 
-LOCAL_DIR = ROOT / "data" / "local"
 ICONS_DIR_NAME = "icons"
 MANIFEST_NAME = "manifest.json"
 
@@ -102,14 +94,13 @@ MANIFEST_NAME = "manifest.json"
 BUILD_PIN_PATH = ("_meta", "source", "game_version_pinned")
 
 
-def chain_length(px: int, block: bool) -> int:
-    """Total bytes of the ``.ubulk`` chain for one square side, in one of the two formats.
+def chain_length(px: int, is_bc3: bool) -> int:
+    """Total bytes of the ``.ubulk`` chain for one square side, in BC3 or in raw BGRA.
 
-    ``block`` picks BC3's 4x4 blocks over raw BGRA's texels; both chains run from ``px``
-    down to :data:`MIP_TAIL_PX` inclusive.
+    Both chains run from ``px`` down to :data:`MIP_TAIL_PX` inclusive.
     """
     count = max(px, MIP_TAIL_PX).bit_length() - MIP_TAIL_PX.bit_length() + 1
-    sizes = bc3_mip_sizes(px, count) if block else raw_mip_sizes(px, count, 4)
+    sizes = bc3_mip_sizes(px, count) if is_bc3 else raw_mip_sizes(px, count, 4)
     return sum(size for _side, size in sizes)
 
 
@@ -121,7 +112,7 @@ def bulk_layouts() -> dict[tuple[str, int], int]:
     file cannot read, so that icon is skipped and counted rather than decoded on a guess.
     """
     return {
-        (fmt, chain_length(px, fmt == "PF_DXT5")): px
+        (fmt, chain_length(px, fmt == BC3_FORMAT)): px
         for fmt in PIXEL_FORMATS
         for px in CANDIDATE_PX
     }
@@ -140,12 +131,9 @@ def container_stem(icon: str) -> str | None:
     return MOUNT + match.group(1).replace("/Game/", "", 1)
 
 
-def icon_classes(docs_path: Path) -> list[tuple[str, str]]:
-    """``[(class name, icon asset path), ...]``, sorted so a manifest diff is readable.
-
-    Classes with no icon at all keep an empty path here and are counted by the caller.
-    """
-    dump = load_docs(docs_path)
+def icon_classes(dump) -> list[tuple[str, str]]:
+    """``[(class name, icon asset path), ...]`` from a loaded docs dump, sorted so a manifest
+    diff is readable. Classes with no icon keep an empty path and are counted by the caller."""
     out = []
     for classes in dump.by_native.values():
         for entry in classes:
@@ -175,7 +163,14 @@ def pixel_format(package_names) -> str | None:
     return found[0] if len(found) == 1 else None
 
 
-def decode_icon(package_mod, decoder, image_mod, blob: bytes, bulk: bytes, layouts: dict):
+def _decode_mip0(decoder, image_mod, raw: bytes, px: int, is_bc3: bool):
+    """Mip 0's bytes as an RGBA image, through the decoder for its format."""
+    if is_bc3:
+        return decode_bc3_rgba(decoder, image_mod, raw, px)
+    return decode_bgra8_rgba(image_mod, raw, px)
+
+
+def decode_bulk_icon(package_mod, decoder, image_mod, blob: bytes, bulk: bytes, layouts: dict):
     """``((image, source side, pixel format), None)`` for one icon, or ``(None, reason)``.
 
     The three refusals are counted and named in the manifest rather than raised, because
@@ -187,21 +182,15 @@ def decode_icon(package_mod, decoder, image_mod, blob: bytes, bulk: bytes, layou
     px = layouts.get((fmt, len(bulk)))
     if px is None:
         return None, f"{fmt} .ubulk is {len(bulk)} B, which is no chain from {CANDIDATE_PX}"
-    block = fmt == "PF_DXT5"
-    mip0 = (bc3_mip_sizes(px, 1) if block else raw_mip_sizes(px, 1, 4))[0][1]
+    is_bc3 = fmt == BC3_FORMAT
+    mip0 = (bc3_mip_sizes(px, 1) if is_bc3 else raw_mip_sizes(px, 1, 4))[0][1]
     if len(bulk) < mip0:
         return None, f"{fmt} .ubulk is shorter than its own mip 0"
-    raw = bulk[:mip0]
-    image = (
-        decode_bc3_rgba(decoder, image_mod, raw, px)
-        if block
-        else decode_bgra8_rgba(image_mod, raw, px)
-    )
-    return (image, px, fmt), None
+    return (_decode_mip0(decoder, image_mod, bulk[:mip0], px, is_bc3), px, fmt), None
 
 
 def decode_inline_icon(package_mod, decoder, image_mod, blob: bytes):
-    """The same contract as :func:`decode_icon`, for a texture with no ``.ubulk`` at all.
+    """The same contract as :func:`decode_bulk_icon`, for a texture with no ``.ubulk`` at all.
 
     Three of the 747 icons cook their whole mip chain inline in the ``.uasset``. The Zen
     header's ``BulkDataMap`` names every level's offset and length, one entry per mip, with
@@ -226,21 +215,16 @@ def decode_inline_icon(package_mod, decoder, image_mod, blob: bytes):
         return None, "no .ubulk and an empty bulk data map: nowhere the mips could be"
     if not all(entry["flags"] & INLINE_BULK_FLAG for entry in entries):
         return None, "no .ubulk in the container, yet not every bulk entry is inline"
-    block = fmt == "PF_DXT5"
+    is_bc3 = fmt == BC3_FORMAT
     sizes = [entry["size"] for entry in entries]
-    px = inline_chain_side(sizes, BC3_BLOCK_BYTES if block else None)
+    px = inline_chain_side(sizes, BC3_BLOCK_BYTES if is_bc3 else None)
     if px is None:
         return None, f"{fmt} inline entries of {sizes} B are no mip chain this reader knows"
     first = entries[0]
     raw = blob[pkg.header_size + first["offset"] :][: first["size"]]
     if len(raw) != first["size"]:
         return None, "inline mip 0 runs off the end of the package"
-    image = (
-        decode_bc3_rgba(decoder, image_mod, raw, px)
-        if block
-        else decode_bgra8_rgba(image_mod, raw, px)
-    )
-    return (image, px, fmt), None
+    return (_decode_mip0(decoder, image_mod, raw, px, is_bc3), px, fmt), None
 
 
 def to_png(image_mod, image, px: int, want: int) -> bytes:
@@ -316,6 +300,85 @@ def build_manifest(*, pin: str, branch: str | None, docs, entries: dict, unresol
     }
 
 
+@dataclass
+class IconCut:
+    """What one pass over the item classes produced: files, manifest entries, refusals."""
+
+    payload: dict[str, bytes] = field(default_factory=dict)
+    entries: dict[str, dict] = field(default_factory=dict)
+    unresolved: dict[str, dict] = field(default_factory=dict)
+    #: Source side in px -> how many icons came from a texture that size.
+    sides: dict[int, int] = field(default_factory=dict)
+
+
+def cut_icons(
+    store: IoStore,
+    classes: list[tuple[str, str]],
+    want_px: int,
+    *,
+    package_mod,
+    decoder,
+    image_mod,
+    quiet: bool,
+    started: float,
+) -> IconCut:
+    """Every class's icon as PNG bytes at ``want_px``; what cannot be cut is named, not raised."""
+    by_lower = path_index(store)
+    layouts = bulk_layouts()
+    print(
+        f"{len(classes)} item classes carry {FORM_FIELD}; container holds "
+        f"{len(store.paths)} paths, {len(layouts)} .ubulk layouts derived"
+    )
+    cut = IconCut()
+    for name, icon in classes:
+        stem = container_stem(icon)
+        if stem is None:
+            cut.unresolved[name] = {
+                "kind": KIND_NO_ICON,
+                "detail": f"the dump names no icon ({icon or 'empty'}); "
+                "the frontend's text tile is this class's correct rendering",
+            }
+            continue
+        asset = by_lower.get((stem + ".uasset").lower())
+        bulk_path = by_lower.get((stem + ".ubulk").lower())
+        if asset is None:
+            cut.unresolved[name] = {
+                "kind": KIND_NOT_IN_CONTAINER,
+                "detail": f"{stem}.uasset is not in the container",
+            }
+            continue
+        if bulk_path is not None:
+            decoded, why = decode_bulk_icon(
+                package_mod,
+                decoder,
+                image_mod,
+                store.read_path(asset),
+                store.read_path(bulk_path),
+                layouts,
+            )
+        else:
+            # No .ubulk is not a missing picture: three of the 747 cook the chain inline.
+            decoded, why = decode_inline_icon(
+                package_mod, decoder, image_mod, store.read_path(asset)
+            )
+        if decoded is None:
+            cut.unresolved[name] = {"kind": KIND_UNDECODED, "detail": f"{stem}: {why}"}
+            continue
+        image, px, fmt = decoded
+        blob = to_png(image_mod, image, px, want_px)
+        cut.payload[f"{name}.png"] = blob
+        cut.entries[name] = {
+            "file": f"{name}.png",
+            "source_px": px,
+            "source_format": fmt,
+            "bytes": len(blob),
+        }
+        cut.sides[px] = cut.sides.get(px, 0) + 1
+        if not quiet and len(cut.entries) % 100 == 0:
+            print(f"  {len(cut.entries)} decoded ({time.time() - started:.0f}s)")
+    return cut
+
+
 def main() -> int:
     parser = base_parser("Cut one PNG per item out of the installed game into data/local/icons/.")
     parser.add_argument(
@@ -378,100 +441,61 @@ def main() -> int:
     if not docs_path.is_file():
         print(f"no docs dump at {docs_path}; the icons are named by the classes in it")
         return 1
-    paks = args.game / "FactoryGame" / "Content" / "Paks"
+    paks = paks_dir(args.game)
     if not (paks / f"{CONTAINER}.utoc").exists():
         print(f"no {CONTAINER}.utoc under {paks}")
         return 1
 
-    classes = icon_classes(docs_path)
     docs = load_docs(docs_path)
+    classes = icon_classes(docs)
     store = IoStore(paks, CONTAINER, oodle_decompress)
-    by_lower = path_index(store)
-    layouts = bulk_layouts()
-    print(
-        f"{len(classes)} item classes carry {FORM_FIELD}; container holds "
-        f"{len(store.paths)} paths, {len(layouts)} .ubulk layouts derived"
+    cut = cut_icons(
+        store,
+        classes,
+        args.px,
+        package_mod=package_mod,
+        decoder=decoder,
+        image_mod=image_mod,
+        quiet=args.quiet,
+        started=started,
     )
-
-    payload: dict[str, bytes] = {}
-    entries: dict[str, dict] = {}
-    unresolved: dict[str, dict] = {}
-    sides: dict[int, int] = {}
-    for name, icon in classes:
-        stem = container_stem(icon)
-        if stem is None:
-            unresolved[name] = {
-                "kind": KIND_NO_ICON,
-                "detail": f"the dump names no icon ({icon or 'empty'}); "
-                "the frontend's text tile is this class's correct rendering",
-            }
-            continue
-        asset = by_lower.get((stem + ".uasset").lower())
-        bulk_path = by_lower.get((stem + ".ubulk").lower())
-        if asset is None:
-            unresolved[name] = {
-                "kind": KIND_NOT_IN_CONTAINER,
-                "detail": f"{stem}.uasset is not in the container",
-            }
-            continue
-        if bulk_path is not None:
-            decoded, why = decode_icon(
-                package_mod,
-                decoder,
-                image_mod,
-                store.read_path(asset),
-                store.read_path(bulk_path),
-                layouts,
-            )
-        else:
-            # No .ubulk is not a missing picture: three of the 747 cook the chain inline.
-            decoded, why = decode_inline_icon(
-                package_mod, decoder, image_mod, store.read_path(asset)
-            )
-        if decoded is None:
-            unresolved[name] = {"kind": KIND_UNDECODED, "detail": f"{stem}: {why}"}
-            continue
-        image, px, fmt = decoded
-        blob = to_png(image_mod, image, px, args.px)
-        payload[f"{name}.png"] = blob
-        entries[name] = {
-            "file": f"{name}.png",
-            "source_px": px,
-            "source_format": fmt,
-            "bytes": len(blob),
-        }
-        sides[px] = sides.get(px, 0) + 1
-        if not args.quiet and len(entries) % 100 == 0:
-            print(f"  {len(entries)} decoded ({time.time() - started:.0f}s)")
-
     stats = {
         "item_classes": len(classes),
-        "icons_written": len(entries),
-        "unresolved": len(unresolved),
-        "bytes": sum(e["bytes"] for e in entries.values()),
+        "icons_written": len(cut.entries),
+        "unresolved": len(cut.unresolved),
+        "bytes": sum(e["bytes"] for e in cut.entries.values()),
         "written_px": args.px,
-        "source_px": {str(px): count for px, count in sorted(sides.items())},
+        "source_px": {str(px): count for px, count in sorted(cut.sides.items())},
         "seconds": round(time.time() - started, 1),
         "decoders": {name: version for name, version in sorted(versions.items())},
     }
     manifest = build_manifest(
-        pin=pin, branch=branch, docs=docs, entries=entries, unresolved=unresolved, stats=stats
+        pin=pin,
+        branch=branch,
+        docs=docs,
+        entries=cut.entries,
+        unresolved=cut.unresolved,
+        stats=stats,
     )
-    payload[MANIFEST_NAME] = json.dumps(manifest, indent=1).encode("utf-8")
-    install_directory(out_dir, payload)
+    cut.payload[MANIFEST_NAME] = json.dumps(manifest, indent=1).encode("utf-8")
+    install_directory(out_dir, cut.payload)
+    print_summary(out_dir, cut, stats)
+    return 0
 
+
+def print_summary(out_dir: Path, cut: IconCut, stats: dict) -> None:
+    px = stats["written_px"]
     print(
-        f"wrote {out_dir}  {len(entries)} icons at {args.px}x{args.px} "
+        f"wrote {out_dir}  {len(cut.entries)} icons at {px}x{px} "
         f"({stats['bytes'] / 1e6:.1f} MB) from "
-        + ", ".join(f"{count}x{px}px" for px, count in sorted(sides.items()))
+        + ", ".join(f"{count}x{side}px" for side, count in sorted(cut.sides.items()))
         + f"  ({stats['seconds']:.0f}s)"
     )
-    if unresolved:
-        print(f"  {len(unresolved)} class(es) got no picture; manifest.json names each one:")
-        for name, entry in sorted(unresolved.items())[:8]:
+    if cut.unresolved:
+        print(f"  {len(cut.unresolved)} class(es) got no picture; manifest.json names each one:")
+        for name, entry in sorted(cut.unresolved.items())[:8]:
             print(f"    {name}: [{entry['kind']}] {entry['detail']}")
     print("none of it is committed: data/local/ is gitignored and stays that way.")
-    return 0
 
 
 if __name__ == "__main__":
