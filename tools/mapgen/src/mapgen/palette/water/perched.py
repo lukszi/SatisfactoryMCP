@@ -78,6 +78,30 @@ HOLE_BRIDGE_M = 12.0
 #: not a lake middle too dark for the artwork's blue test.
 HOLE_DEPTH_MAX_M = 15.0
 
+#: The sidecar's statements of the two rules, in the names of the values recorded beside them.
+_PERCHED_RULE = (
+    "a measured body is perched when its box level stands more than excess_m above "
+    "a neighbour (dry ground at its height, other water at its level) and more than "
+    "spill_share of the ring spill_ring_m around it stands that far below too. Its "
+    "surface is then the harmonic membrane spanning its shoreline, each shoreline "
+    "texel at the highest level its neighbours allow; a texel keeps the box level "
+    "within excess_m of that surface, takes the surface at twice excess_m, and is "
+    "handed over linearly between. A body is cut where its ground falls more than "
+    "lip_drop_m between neighbours; a part below such a cut and more than lip_drop_m "
+    "under the level all over is judged first, perched when its own ring or the "
+    "body's spills. Its membrane spans only the shoreline beside the water it joins "
+    "more than excess_m below the level, or failing that the shoreline that far below "
+    "and within lip_drop_m of its ground, never the drop or the cliffs. Re-levelled, "
+    "it leaves the body and bounds the rest at its new level. The ocean level is exempt"
+)
+_HOLES_RULE = (
+    "dry ground inside the shape the measured water at a body's level closes over "
+    "gaps up to twice bridge_m, standing below the surface, farther than bridge_m "
+    "from dry ground outside that shape standing excess_m below and running on past "
+    "bridge_m, in a part reaching the body, deeper than excess_m somewhere and "
+    "nowhere deeper than depth_max_m"
+)
+
 _FOUR = ((0, 1), (0, -1), (1, 0), (-1, 0))
 _EIGHT = np.ones((3, 3), bool)
 
@@ -340,6 +364,24 @@ def _place(field: hf.Field, window: Window, sub: Window, body: BoolMask, step_m:
     return {"x_m": round(float(x_m), 1), "y_m": round(float(y_m), 1)}
 
 
+def _perched_body(
+    place: Place, value: int, judged: PerchedShore, levels: I16Grid, below: bool
+) -> PerchedBody:
+    """One re-levelled body as the sidecar lists it; ``levels`` are its changed texels' new
+    levels in decimetres."""
+    return {
+        "texels": int(levels.size),
+        **place,
+        "box_level_m": value / hf.DM_PER_M,
+        "spill_share": round(judged.spill_share, 3),
+        "below_a_drop": below,
+        "surface_m": [
+            round(float(levels.min()) / hf.DM_PER_M, 1),
+            round(float(levels.max()) / hf.DM_PER_M, 1),
+        ],
+    }
+
+
 def perched_levels(
     field: hf.Field, planes: WaterPlanes | None = None
 ) -> tuple[I16Grid | None, PerchedMeta | NoWaterPlanes]:
@@ -399,36 +441,11 @@ def perched_levels(
             if below:
                 work[sub][body] = np.minimum(new, value)
                 rest[sub][body] &= ~changed
-            found.append(
-                {
-                    "texels": int(changed.sum()),
-                    **_place(field, window, sub, body, step_m),
-                    "box_level_m": value / hf.DM_PER_M,
-                    "spill_share": round(judged.spill_share, 3),
-                    "below_a_drop": below,
-                    "surface_m": [
-                        round(float(new[changed].min()) / hf.DM_PER_M, 1),
-                        round(float(new[changed].max()) / hf.DM_PER_M, 1),
-                    ],
-                }
-            )
+            place = _place(field, window, sub, body, step_m)
+            found.append(_perched_body(place, value, judged, new[changed], below))
     found.sort(key=lambda body: -body["texels"])
     return out, {
-        "rule": (
-            "a measured body is perched when its box level stands more than excess_m above "
-            "a neighbour (dry ground at its height, other water at its level) and more than "
-            "spill_share of the ring spill_ring_m around it stands that far below too. Its "
-            "surface is then the harmonic membrane spanning its shoreline, each shoreline "
-            "texel at the highest level its neighbours allow; a texel keeps the box level "
-            "within excess_m of that surface, takes the surface at twice excess_m, and is "
-            "handed over linearly between. A body is cut where its ground falls more than "
-            "lip_drop_m between neighbours; a part below such a cut and more than lip_drop_m "
-            "under the level all over is judged first, perched when its own ring or the "
-            "body's spills. Its membrane spans only the shoreline beside the water it joins "
-            "more than excess_m below the level, or failing that the shoreline that far below "
-            "and within lip_drop_m of its ground, never the drop or the cliffs. Re-levelled, "
-            "it leaves the body and bounds the rest at its new level. The ocean level is exempt"
-        ),
+        "rule": _PERCHED_RULE,
         "excess_m": PERCHED_EXCESS_M,
         "spill_ring_m": list(SPILL_RING_M),
         "spill_share": SPILL_SHARE,
@@ -529,13 +546,7 @@ def wet_holes(
         )
     places.sort(key=lambda place: -place["texels"])
     meta: HolesMeta = {
-        "rule": (
-            "dry ground inside the shape the measured water at a body's level closes over "
-            "gaps up to twice bridge_m, standing below the surface, farther than bridge_m "
-            "from dry ground outside that shape standing excess_m below and running on past "
-            "bridge_m, in a part reaching the body, deeper than excess_m somewhere and "
-            "nowhere deeper than depth_max_m"
-        ),
+        "rule": _HOLES_RULE,
         "bridge_m": HOLE_BRIDGE_M,
         "depth_max_m": HOLE_DEPTH_MAX_M,
         "excess_m": PERCHED_EXCESS_M,

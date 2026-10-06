@@ -93,6 +93,25 @@ VOID_RIM = 0.85
 #: void past the world's edge is sea.
 VOID_STRIP_M = 8.0
 
+#: The sidecar's statement of the rule, in the names of the values recorded beside it.
+_OPEN_SEA_RULE = (
+    "no-data texels the artwork draws as water are the open sea at level_m, the "
+    "rest the void. Under the open sea and level-only water at the ocean's level "
+    "(within band_m) a bed is drawn, a screened Poisson membrane on a cell_m grid: "
+    "fixed on the measured bed past blend_m and at a dry coast (stored ground "
+    "coast_above_m over the band's top; dry ground at or under it joins the sea, and "
+    "so does such ground in a gap at most strip_m wide between the sea and the void "
+    "past the world's edge), "
+    "held to the measured bed over blend_pull_m within blend_m, drawn to the depth of "
+    "the artwork's water tone (tone_depth_m) over tone_pull_m, settling to deep_m "
+    "over about settle_m; the measured bed is laid back over it across blend_m, so "
+    "the bed is continuous in value and slope. The water's depth is read off it. "
+    "The void is a pit where its no data does not reach the field's edge, else the "
+    "void past the world's edge; beside the open sea the sea fades into it over "
+    "falloff_m, elsewhere its edge is lit, rimmed and darkens over falloff_m. Drawing "
+    "support, not a measurement"
+)
+
 
 class VoidPlanes(NamedTuple):
     """The void as drawn, each 0..255 on the field's grid. ``cover`` is how much of a texel the
@@ -152,13 +171,7 @@ def open_sea(
     level_m = level / np.float32(hf.DM_PER_M)
     ocean = (level != hf.NODATA) & (np.abs(level_m - ocean_level_m) <= OCEAN_BAND_M)
     unknown = (ocean & (grades == hf.WATER_LEVEL_ONLY)) | (sea & (grades == hf.WATER_DRY))
-    # Read against the field's own heights: the rebuilt fill stands a metre above them.
-    top = (ocean_level_m + OCEAN_BAND_M) * hf.DM_PER_M
-    stored = np.asarray(field_heights(field))
-    beside = (grades == hf.WATER_DRY) & ~nodata & ndimage.binary_dilation(unknown, iterations=3)
-    coast = beside & (stored >= top + COAST_ABOVE_M * hf.DM_PER_M)
-    sunken = (grades == hf.WATER_DRY) & ~nodata & (stored <= top) & (stored != hf.NODATA)
-    low = beside & sunken
+    coast, sunken, low = _dry_beside(field, grades, nodata, unknown, ocean_level_m)
     added = low | (sea & (grades == hf.WATER_DRY))
     unknown |= added
     measured = ocean & (grades == hf.WATER_MEASURED) & ~nodata
@@ -173,36 +186,16 @@ def open_sea(
     unknown |= fringe | strip
     level = np.where(added, np.int16(round(ocean_level_m * hf.DM_PER_M)), level).astype(np.int16)
     level_m = np.where(added, np.float32(ocean_level_m), level_m)
-    seeds = measured | coast
-    surface = np.where(coast, np.float32(ocean_level_m), level_m)
-    depth = np.where(seeds, surface - heights_dm / np.float32(hf.DM_PER_M), 0.0)
     tone = np.where(unknown, tones, 0).astype(np.uint8)
-    depth, blended = _settled(depth.astype(np.float32), (seeds, measured, unknown), tone, step_m)
-    drawn = unknown | blended
-    bed = (level_m[drawn] - depth[drawn]) * np.float32(hf.DM_PER_M)
-    del level_m, surface, depth
+    masks = (coast, measured, unknown)
+    drawn, bed, blended = _bed(heights_dm, level_m, masks, tone, step_m, ocean_level_m)
+    del level_m
     for plane in (heights_dm, ground_dm):
         if plane is not None:
             plane[drawn] = bed
     grades = np.where(unknown, np.uint8(hf.WATER_MEASURED), grades).astype(np.uint8)
     meta: JsonObject = {
-        "rule": (
-            "no-data texels the artwork draws as water are the open sea at level_m, the "
-            "rest the void. Under the open sea and level-only water at the ocean's level "
-            "(within band_m) a bed is drawn, a screened Poisson membrane on a cell_m grid: "
-            "fixed on the measured bed past blend_m and at a dry coast (stored ground "
-            "coast_above_m over the band's top; dry ground at or under it joins the sea, and "
-            "so does such ground in a gap at most strip_m wide between the sea and the void "
-            "past the world's edge), "
-            "held to the measured bed over blend_pull_m within blend_m, drawn to the depth of "
-            "the artwork's water tone (tone_depth_m) over tone_pull_m, settling to deep_m "
-            "over about settle_m; the measured bed is laid back over it across blend_m, so "
-            "the bed is continuous in value and slope. The water's depth is read off it. "
-            "The void is a pit where its no data does not reach the field's edge, else the "
-            "void past the world's edge; beside the open sea the sea fades into it over "
-            "falloff_m, elsewhere its edge is lit, rimmed and darkens over falloff_m. Drawing "
-            "support, not a measurement"
-        ),
+        "rule": _OPEN_SEA_RULE,
         "level_m": ocean_level_m,
         "band_m": OCEAN_BAND_M,
         "deep_m": OPEN_SEA_DEPTH_M,
@@ -228,6 +221,43 @@ def open_sea(
         "seconds": round(time.time() - started, 1),
     }
     return OpenSea(level, grades, void, meta)
+
+
+def _dry_beside(
+    field: hf.Field, grades: U8Grid, nodata: BoolMask, unknown: BoolMask, ocean_level_m: float
+) -> tuple[BoolMask, BoolMask, BoolMask]:
+    """``(coast, sunken, low)``: dry ground beside ``unknown`` the bed rises to, dry ground at
+    or under the top of the ocean's band, and the sunken ground beside, which joins the sea."""
+    # Read against the field's own heights: the rebuilt fill stands a metre above them.
+    top = (ocean_level_m + OCEAN_BAND_M) * hf.DM_PER_M
+    stored = np.asarray(field_heights(field))
+    beside = (grades == hf.WATER_DRY) & ~nodata & ndimage.binary_dilation(unknown, iterations=3)
+    coast = beside & (stored >= top + COAST_ABOVE_M * hf.DM_PER_M)
+    sunken = (grades == hf.WATER_DRY) & ~nodata & (stored <= top) & (stored != hf.NODATA)
+    return coast, sunken, beside & sunken
+
+
+def _bed(
+    heights_dm: FloatGrid,
+    level_m: FloatGrid,
+    masks: tuple[BoolMask, BoolMask, BoolMask],
+    tone: U8Grid,
+    step_m: float,
+    ocean_level_m: float,
+) -> tuple[BoolMask, FloatGrid, BoolMask]:
+    """``(drawn, bed_dm, blended)``: the texels the open sea's bed is drawn under, its height
+    there, and the measured texels it blended into.
+
+    ``masks`` is ``(coast, measured, unknown)``: the bed is seeded on the measured bed and at
+    the coast, whose surface is ``ocean_level_m``, and drawn under ``unknown`` (``_settled``).
+    """
+    coast, measured, unknown = masks
+    seeds = measured | coast
+    surface = np.where(coast, np.float32(ocean_level_m), level_m)
+    depth = np.where(seeds, surface - heights_dm / np.float32(hf.DM_PER_M), 0.0)
+    depth, blended = _settled(depth.astype(np.float32), (seeds, measured, unknown), tone, step_m)
+    drawn = unknown | blended
+    return drawn, (level_m[drawn] - depth[drawn]) * np.float32(hf.DM_PER_M), blended
 
 
 def void_planes(
