@@ -132,6 +132,10 @@ strict = [
     "src/satisfactory_mcp/core/gpu.py",
     "src/satisfactory_mcp/core/jsontypes.py",
     "src/satisfactory_mcp/core/mapprogress.py",
+    "src/satisfactory_mcp/core/saveio/__init__.py",
+    "src/satisfactory_mcp/core/saveio/extract",
+    "src/satisfactory_mcp/core/saveio/ports.py",
+    "src/satisfactory_mcp/core/saveio/projection.py",
     "src/satisfactory_mcp/core/saveio/schema.py",
     "src/satisfactory_mcp/core/schema.py",
     "src/satisfactory_mcp/core/singleflight.py",
@@ -217,7 +221,6 @@ ignore = [
 "tests/**/*.py" = ["TID251"]
 # The modules that still import typing.Any. The list only shrinks, and a line no longer needed
 # fails tests/architecture/test_typing.py.
-"src/satisfactory_mcp/core/saveio/rows.py" = ["TID251"]
 "src/satisfactory_mcp/domain/planning/siting/ground.py" = ["TID251"]
 "src/satisfactory_mcp/domain/planning/siting/resolve.py" = ["TID251"]
 "src/satisfactory_mcp/domain/spatial/caves.py" = ["TID251"]

@@ -11,20 +11,21 @@ import traceback
 from pathlib import Path
 
 from ..projection import SCHEMA_VERSION
+from ..schema import HeaderOnly, Projection, SaveHeader, SaveScan, UnsupportedSave
 from .parser import PARSE_ERROR, header_info
 from .walk import extract_projection
 
 __all__ = ["list_dir", "main"]
 
 
-def list_dir(root: str) -> dict:
+def list_dir(root: str) -> SaveScan:
     """Header-only scan of every .sav under ``root``, in ONE process.
 
     Header parsing is milliseconds and process startup is not. Unsupported saves are bucketed
     with their reason rather than aborting the scan.
     """
-    saves: list[dict] = []
-    unsupported: list[dict] = []
+    saves: list[SaveHeader] = []
+    unsupported: list[UnsupportedSave] = []
     for path in sorted(Path(root).rglob("*.sav")):
         try:
             saves.append(header_info(str(path)))
@@ -58,15 +59,16 @@ def main(argv: list[str]) -> int:
             )
         )
         return 2
+    listing = argv[0] == "--list"
+    if listing and len(argv) < 2:
+        json.dump({"error": "usage: --list <dir>"}, sys.stdout)
+        return 2
+    path = argv[1] if listing else argv[0]
+    payload: HeaderOnly | Projection
     try:
-        if argv[0] == "--list":
-            if len(argv) < 2:
-                json.dump({"error": "usage: --list <dir>"}, sys.stdout)
-                return 2
-            path = argv[1]
+        if listing:
             json.dump(list_dir(path), sys.stdout, separators=(",", ":"))
             return 0
-        path = argv[0]
         if "--header-only" in argv:
             payload = {"schema_version": SCHEMA_VERSION, "header": header_info(path)}
         else:

@@ -34,7 +34,7 @@ BUDGETS: dict[str, int] = {
     "src/satisfactory_mcp/core": 0,
     "src/satisfactory_mcp/core/gameassets": 8,
     "src/satisfactory_mcp/core/gamedata": 0,
-    "src/satisfactory_mcp/core/saveio": 5,
+    "src/satisfactory_mcp/core/saveio": 3,
     "src/satisfactory_mcp/domain": 0,
     "src/satisfactory_mcp/domain/advice": 5,
     "src/satisfactory_mcp/domain/collectibles": 0,

@@ -7,13 +7,19 @@ component literally named ``StorageInventory``.
 
 from __future__ import annotations
 
+from ..schema import CrateKind
+
 #: The actor the game drops when items have nowhere else to go; death and dismantle crates
 #: are one class told apart by ``mCrateType``. See ``docs/save-projection.md`` §6.13.
 CRATE_CLASSES = ("BP_Crate_C",)
 
 #: ``EFGCrateType`` with the ``CT_`` dropped and lowercased; ``none`` is the game's own
 #: value for a crate older than the property, not a parse failure (§6.13).
-CRATE_KINDS = {"CT_None": "none", "CT_DismantleCrate": "dismantle", "CT_DeathCrate": "death"}
+CRATE_KINDS: dict[str, CrateKind] = {
+    "CT_None": "none",
+    "CT_DismantleCrate": "dismantle",
+    "CT_DeathCrate": "death",
+}
 
 #: Where a wire can end at something placed to end wires at it (§6.12). Listed: the conveyor
 #: pole and pipeline support are "poles" with no power, and the tower platform has no "Pole"

@@ -7,22 +7,34 @@ both; see ``docs/save-projection.md`` §6.12.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, TypeAlias
 
+from ..schema import PoleRow, PoleTable, Position, PowerBlock, PowerEdge, WireRow
 from .census import Drops
 from .interning import Interner
+from .readers import to_float
 
-__all__ = ["power_network", "wire_span"]
+if TYPE_CHECKING:
+    from .parser import SaveValue
+
+__all__ = ["PoleActor", "WireSpan", "power_network", "wire_span"]
+
+#: ``(class, instanceName, pos, yaw)`` per pole.
+PoleActor: TypeAlias = tuple[str, str, Position | None, float | None]
+#: A wire's two drawn ends, ``[x, y, z]`` each in whole world centimetres.
+WireSpan: TypeAlias = tuple[list[int], list[int]]
 
 
-def wire_span(raw) -> tuple[list, list] | None:
+def wire_span(raw: SaveValue) -> WireSpan | None:
     """The two ends of one power wire, in WORLD centimetres, or None if it has no pair.
 
     The first ``Locations`` pair of ``mWireInstances``, which is one strand of a two-strand
     tower line (§6.12). Walked, because the decoded property nests values beside their types.
     """
-    found: list[list] = []
+    found: list[list[int]] = []
 
-    def walk(node) -> None:
+    def walk(node: SaveValue) -> None:
         if len(found) >= 2 or not isinstance(node, (list, tuple)):
             return
         if len(node) == 2 and node[0] == "Locations":
@@ -30,7 +42,11 @@ def wire_span(raw) -> tuple[list, list] | None:
             if isinstance(point, (list, tuple)) and len(point) == 3:
                 try:
                     found.append(
-                        [round(float(point[0])), round(float(point[1])), round(float(point[2]))]
+                        [
+                            round(to_float(point[0])),
+                            round(to_float(point[1])),
+                            round(to_float(point[2])),
+                        ]
                     )
                 except (TypeError, ValueError):
                     pass
@@ -43,13 +59,13 @@ def wire_span(raw) -> tuple[list, list] | None:
 
 
 def power_network(
-    wire_ends: dict,
-    wire_geometry: dict,
-    pole_actors: list,
-    actor_positions: dict,
+    wire_ends: dict[str, list[tuple[str, str]]],
+    wire_geometry: dict[str, WireSpan],
+    pole_actors: list[PoleActor],
+    actor_positions: dict[str, tuple[float, ...]],
     actors: Interner,
     drops: Drops,
-) -> tuple[list, dict]:
+) -> tuple[list[PowerEdge], PowerBlock]:
     """``(graph["power"], power)``: the edge list and the geometry that is its twin.
 
     The wire pass is the last to mint actor indices, so ``actors`` is frozen after it and the
@@ -61,11 +77,14 @@ def power_network(
 
 
 def _wire_edges(
-    wire_ends: dict, wire_geometry: dict, actor_positions: dict, actors: Interner
-) -> tuple[list[list[int]], list[list | None]]:
+    wire_ends: dict[str, list[tuple[str, str]]],
+    wire_geometry: dict[str, WireSpan],
+    actor_positions: dict[str, tuple[float, ...]],
+    actors: Interner,
+) -> tuple[list[PowerEdge], list[WireRow | None]]:
     """One edge and one span per wire with exactly two connections, in one pass."""
-    edges: list[list[int]] = []
-    wires: list[list | None] = []
+    edges: list[PowerEdge] = []
+    wires: list[WireRow | None] = []
     for path, ends in wire_ends.items():
         # A half-built or orphaned line is dropped rather than guessed at.
         if len(ends) != 2:
@@ -77,10 +96,10 @@ def _wire_edges(
     return edges, wires
 
 
-def _pole_table(pole_actors: list, actors: Interner, drops: Drops) -> dict:
+def _pole_table(pole_actors: list[PoleActor], actors: Interner, drops: Drops) -> PoleTable:
     """``{classes, instances}`` rows ``[classIndex, x, y, z, yaw, actorIndex]`` (§6.16)."""
     classes = Interner()
-    instances: list[list] = []
+    instances: list[PoleRow] = []
     for cls, instance, at, yaw in pole_actors:
         if at is None:
             drops["pole(s) dropped: the actor position would not read"] += 1
@@ -98,7 +117,12 @@ def _pole_table(pole_actors: list, actors: Interner, drops: Drops) -> dict:
     return {"classes": classes.names(), "instances": instances}
 
 
-def _wire_row(span, a_owner: str, b_owner: str, actor_positions: dict) -> list | None:
+def _wire_row(
+    span: WireSpan | None,
+    a_owner: str,
+    b_owner: str,
+    actor_positions: dict[str, tuple[float, ...]],
+) -> WireRow | None:
     """One wire's six numbers, each end assigned to the nearer of the edge's two actors.
 
     The save's own end order agrees with the edge's only half the time (§6.12). Plan distance,
@@ -116,6 +140,6 @@ def _wire_row(span, a_owner: str, b_owner: str, actor_positions: dict) -> list |
     return [*a, *b]
 
 
-def _plan_gap(point, at) -> float:
+def _plan_gap(point: Sequence[float], at: Sequence[float]) -> float:
     """Horizontal distance between a wire endpoint and an actor's origin, centimetres."""
     return math.hypot(point[0] - at[0], point[1] - at[1])

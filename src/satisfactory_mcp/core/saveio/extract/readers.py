@@ -2,14 +2,23 @@
 
 Each helper guards one: a ComponentHeader has no typePath, a BoolProperty is a uint8 where 16
 means True, UE omits empty arrays, and an ObjectReference has no ``__repr__``. The full list
-is in ``docs/save-projection.md`` §6.
+is in ``docs/save-projection.md`` §6. The ``to_*`` and ``as_sequence`` helpers type a value
+the way ``float()``, ``int()`` and iteration would use it: the same answer, the same error.
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator, Sequence
+from typing import TYPE_CHECKING
+
+from ..schema import Position
+
+if TYPE_CHECKING:
+    from .parser import ActorHeader, ComponentHeader, ParsedObject, ParsedSave, SaveValue
 
 __all__ = [
+    "as_sequence",
     "class_from_type_path",
     "iter_objects",
     "owner_class",
@@ -18,14 +27,42 @@ __all__ = [
     "ref_class",
     "ref_path",
     "struct_fields",
+    "to_float",
+    "to_int",
     "truthy",
     "yaw_of",
 ]
 
 
-def truthy(value) -> bool:
+def truthy(value: object) -> bool:
     """BoolProperty comes back as a uint8 where 16 is True. `v == 1` is wrong."""
     return bool(value)
+
+
+def to_float(value: SaveValue) -> float:
+    """``float(value)``: a number or a numeric string, else the ``TypeError`` it raises."""
+    if isinstance(value, (int, float, str, bytes)):
+        return float(value)
+    raise TypeError(
+        f"float() argument must be a string or a real number, not '{type(value).__name__}'"
+    )
+
+
+def to_int(value: SaveValue) -> int:
+    """``int(value)``, on ``to_float``'s terms."""
+    if isinstance(value, (int, float, str, bytes)):
+        return int(value)
+    raise TypeError(
+        "int() argument must be a string, a bytes-like object or a real number, "
+        f"not '{type(value).__name__}'"
+    )
+
+
+def as_sequence(value: SaveValue) -> Sequence[SaveValue]:
+    """``value`` to index or iterate, or the ``TypeError`` indexing it would raise."""
+    if isinstance(value, Sequence):
+        return value
+    raise TypeError(f"'{type(value).__name__}' object is not subscriptable")
 
 
 def class_from_type_path(type_path: str) -> str:
@@ -33,13 +70,13 @@ def class_from_type_path(type_path: str) -> str:
     return type_path.rsplit(".", 1)[-1] if type_path else ""
 
 
-def ref_path(value) -> str | None:
+def ref_path(value: object) -> str | None:
     """instanceName of an ObjectReference, or None. Never use repr() on these."""
     path = getattr(value, "pathName", None)
     return str(path) if path else None
 
 
-def ref_class(value) -> str | None:
+def ref_class(value: object) -> str | None:
     """Class name from an ObjectReference OR a bare asset-path string.
 
     Some structs store references as plain path strings (an inventory stack's ``Item`` is
@@ -54,18 +91,21 @@ def ref_class(value) -> str | None:
     return tail or None
 
 
-def properties_of(obj) -> dict:
+def properties_of(obj: ParsedObject) -> dict[str, SaveValue]:
     """properties is a list of [name, value] pairs; absent means empty."""
-    out: dict = {}
-    for entry in getattr(obj, "properties", None) or []:
+    out: dict[str, SaveValue] = {}
+    pairs: list[list[SaveValue]] = getattr(obj, "properties", None) or []
+    for entry in pairs:
         try:
-            out[entry[0]] = entry[1]
+            name, value = entry[0], entry[1]
         except (IndexError, TypeError):
             continue
+        if isinstance(name, str):
+            out[name] = value
     return out
 
 
-def struct_fields(entry) -> dict:
+def struct_fields(entry: SaveValue) -> dict[str, SaveValue]:
     """Flatten one element of a StructProperty array into {field: value}.
 
     The parser emits a struct as ``[values, propertyTypes]`` and some nested structs arrive
@@ -74,34 +114,41 @@ def struct_fields(entry) -> dict:
     """
     if not isinstance(entry, list):
         return {}
-    candidate = entry
-    if len(entry) == 2 and all(isinstance(part, list) for part in entry):
-        values = entry[0]
-        if values and all(
-            isinstance(pair, list) and pair and isinstance(pair[0], str) for pair in values
-        ):
-            candidate = values
-    out: dict = {}
+    candidate: Sequence[SaveValue] = entry
+    values = entry[0] if len(entry) == 2 else None
+    if (
+        isinstance(values, list)
+        and isinstance(entry[1], list)
+        and values
+        and all(isinstance(pair, list) and pair and isinstance(pair[0], str) for pair in values)
+    ):
+        candidate = values
+    out: dict[str, SaveValue] = {}
     for pair in candidate:
         if isinstance(pair, list) and len(pair) >= 2 and isinstance(pair[0], str):
             out[pair[0]] = pair[1]
     return out
 
 
-def iter_objects(save):
+def iter_objects(
+    save: ParsedSave,
+) -> Iterator[tuple[str, ActorHeader | ComponentHeader, ParsedObject]]:
     """Yield (type_path, header, object) over every level.
 
     ComponentHeader lacks typePath, hence the getattr default: attribute access would raise
     partway through a 44k-object walk.
     """
     for level in save.levels:
-        headers = getattr(level, "actorAndComponentObjectHeaders", None) or []
-        objects = getattr(level, "objects", None) or []
+        headers: list[ActorHeader | ComponentHeader] = (
+            getattr(level, "actorAndComponentObjectHeaders", None) or []
+        )
+        objects: list[ParsedObject] = getattr(level, "objects", None) or []
         for header, obj in zip(headers, objects):
-            yield (getattr(header, "typePath", "") or ""), header, obj
+            type_path: str = getattr(header, "typePath", "") or ""
+            yield type_path, header, obj
 
 
-def position_of(header) -> list | None:
+def position_of(header: object) -> Position | None:
     """An actor header's position, rounded to millimetres, or None where it will not read."""
     position = getattr(header, "position", None)
     if not position:
@@ -116,7 +163,7 @@ def position_of(header) -> list | None:
         return None
 
 
-def yaw_of(quat) -> float | None:
+def yaw_of(quat: SaveValue) -> float | None:
     """Top-down facing in degrees from a placement quaternion ``(x, y, z, w)``, or None.
 
     Positive yaw turns +X towards +Y, in ``(-180, 180]``. None, never 0.0, when the rotation
@@ -124,7 +171,7 @@ def yaw_of(quat) -> float | None:
     ``docs/save-projection.md`` §6.16.
     """
     try:
-        x, y, z, w = (float(v) for v in quat)
+        x, y, z, w = (to_float(v) for v in as_sequence(quat))
     except (TypeError, ValueError):
         return None
     deg = round(math.degrees(math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))), 2)
