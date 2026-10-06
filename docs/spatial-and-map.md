@@ -4248,9 +4248,9 @@ A window of the full-size sheet: rows 12288 to 16384, which is 16 bands across t
 the map, and columns 8192 to 24576, half the width so that 16 threads fit in memory beside
 other work. It was drawn through the run's own preparation, unlit and without the light's
 surface, with every raster the bands read cut to the window and stored as a band store, so
-the threads shared `BandArray`s as in a full render. `master` drew it in turn; this change
-drew it on 1, 4, 8 and 16 threads, in one process, one after the other. Seconds, and how many
-times faster than this change on one thread:
+the threads shared `BandArray`s as in a full render. `master` (`9768976`) drew it in turn,
+and the threaded draw on 1, 4, 8 and 16 threads, in one process, one after the other.
+Seconds, and how many times faster than the threaded draw on one thread:
 
 | Layer | `master` | 1 thread | 4 | 8 | 16 |
 | --- | --- | --- | --- | --- | --- |
@@ -4261,7 +4261,9 @@ times faster than this change on one thread:
 | relief-dark | 58.5 | 59.7 | 22.5 (2.7×) | 19.2 (3.1×) | 19.4 (3.1×) |
 
 - **Every array is byte-identical** by SHA-256: each layer's `master` draw and its four
-  threaded draws.
+  threaded draws. Run again on `master` `af97dec`, after the code-quality merge, the arrays
+  of `master`'s serial draw and of 1, 8 and 16 threads all matched these, and 8 threads
+  drew 2.5 to 3.1 times faster than one on a quieter machine.
 - Painted on 8 threads and satellite on 16 ran in a second process, when the machine had the
   memory free. Painted on 16 threads needs about 28 GB at half width, so it ran on a quarter
   of the width instead (columns 12288 to 20480): 60.8 s on one thread, 21.8 s on 8 and 21.7 s
@@ -4278,18 +4280,19 @@ times faster than this change on one thread:
 
 ### Checked at 2048 (2026-10-06)
 
-The same 2048 render, all five layers, lit, `--workers 2`, ran from `master` and then from
-this change, one after the other, with the field and paint copied off the data drive. The
-second drew every layer on 8 threads.
+The same 2048 render, all five layers, lit, `--workers 2`, ran from `master` (`af97dec`) and
+then with the threaded draw, one after the other, with the field and paint copied off the
+data drive. The second drew every layer on 8 threads.
 
 - All 1,131 files are byte-identical by SHA-256: 955 PNG tiles across `tiles/`, `tiles@2x/`
   and `unlit/`, the 170 WebP tiles of the light pyramid, and the six sidecars once their
   timings are left out.
 - The raw sidecars differ only in timings and the new `render.draw_threads`.
-- The draw took 13.2, 10.4, 30.0, 10.7 and 10.8 s for terrain, satellite, painted, relief and
-  relief-dark before, and 3.8, 3.9, 21.4, 3.6 and 3.7 s after, on a machine running other
-  work.
+- The draw took 7.7, 7.8, 20.4, 8.2 and 8.2 s for terrain, satellite, painted, relief and
+  relief-dark before, and 3.0, 2.9, 13.6, 3.0 and 3.3 s after.
 - Both runs peaked at a working set of 8.0 GB, the run's setup rather than its draw.
+- The same pair from the `master` before the code-quality merge (`9768976`) was
+  byte-identical too.
 
 ### Known limits
 
