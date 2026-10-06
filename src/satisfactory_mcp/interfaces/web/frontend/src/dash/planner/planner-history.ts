@@ -6,7 +6,7 @@ import { button, empty, error, link, loading, subTabs, table } from "../../kit/d
 import { make } from "../../kit/dom";
 import { ageShort } from "../../kit/format";
 import { go, withQuery } from "../../app/nav";
-import { argsWords } from "./planner-bench";
+import { describeArgs } from "./planner-chat-card";
 import { actorWord, bench, changed, commitWords, inbox } from "./planner-state";
 import { duplicatePlan, restoreRev, undoRevisionOf } from "./planner-writes";
 import { renderVersionResult } from "./planner-result";
@@ -183,7 +183,7 @@ export function renderView(parent: HTMLElement, select: (s: FocusSelection) => v
   if (bench.viewedError) error(card, "v" + rev, bench.viewedError);
   else if (!shown) loading(card, "v" + rev);
   else {
-    card.appendChild(make("p", "", (shown.name !== plan.name ? "named “" + shown.name + "” · " : "") + argsWords(shown.args as unknown as Record<string, unknown>)));
+    card.appendChild(make("p", "", (shown.name !== plan.name ? "named “" + shown.name + "” · " : "") + describeArgs(shown.args as unknown as Record<string, unknown>)));
     if (bench.viewedDelta && bench.viewedDelta.from_rev === rev) {
       card.appendChild(make("p", "dash-note", "result from v" + rev + " to v" + bench.viewedDelta.to_rev + ": " + bench.viewedDelta.text));
     }

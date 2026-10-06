@@ -16,7 +16,8 @@ import { actorWord, bench, changed, inbox, loadItems, onBench, pendingFocus, res
 import { followHead, openPlan, redoLast, resyncHead, undoLast } from "./planner-writes";
 import { scheduleFocus, wireFocusReports } from "./planner-focus";
 import { loadActivity } from "./planner-history";
-import { loadList, planTitle, renderList } from "./planner-list";
+import { renderList } from "./planner-list";
+import { loadList, planTitle } from "./planner-plan-index";
 import { onPins } from "../../chat/pins";
 import { clearPick } from "./planner-result";
 import { showGhost } from "./planner-site";

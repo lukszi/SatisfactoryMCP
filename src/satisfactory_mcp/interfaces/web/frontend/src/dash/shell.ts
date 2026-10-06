@@ -13,7 +13,7 @@ import { onVitals, vitals } from "../app/vitals";
 import { renderPlanner } from "./planner/planner";
 import { viewFocus } from "./planner/planner-focus";
 import { bench, onBench } from "./planner/planner-state";
-import { planTitle } from "./planner/planner-list";
+import { planTitle } from "./planner/planner-plan-index";
 import { onProgress, renderProgress } from "./progress/progress";
 import { renderRecipes } from "./recipes/recipes";
 import { cancelRename, editName, renamingIn } from "./factories/rename";

@@ -1,14 +1,14 @@
 /* The plans list, and the item-at-rate form that starts a new plan. */
 
-import { get } from "../../api/client";
 import { renderAsks } from "../../chat/asks-card";
 import { empty, error, link, loading, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { ageShort, perMin } from "../../kit/format";
 import { go } from "../../app/nav";
-import { renderCard } from "./planner-bench";
+import { renderChatSolveCard } from "./planner-chat-card";
 import { progressText, toggleProgress } from "./planner-built";
 import { trackDash } from "./planner-address";
+import { loadList, planIndex } from "./planner-plan-index";
 import { actorWord, changed, commitWords, itemList, knownItem, loadItems } from "./planner-state";
 import { createPlan } from "./planner-writes";
 import { renderActivity } from "./planner-history";
@@ -18,68 +18,28 @@ import { friendlyError } from "../../kit/toast";
 import { OBJECTIVES } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
-import type { PlanBuiltRow, PlanIndexRow, PlansBuiltResponse, PlansResponse } from "../../api/shapes";
+import type { PlanIndexRow } from "../../api/shapes";
 
-var list = {
-  world: "",
-  data: null as PlansResponse | null,
-  built: {} as Record<string, PlanBuiltRow>,
-  error: "",
+var newPlan = {
   creating: false,
-  draft: ["", ""],
+  draft: { item: "", rate: "" },
   problem: "",
 };
 
 var order: SortState = { key: "plan", desc: false };
-var seq = 0;
-
-export function loadList(): void {
-  var mine = ++seq;
-  var world = state.world;
-  get<PlansResponse>("/api/plans")
-    .then(function (data) {
-      if (mine !== seq) return;
-      list.world = world;
-      list.data = data;
-      list.error = "";
-      changed();
-      loadBuilt(mine);
-    })
-    .catch(function (reason) {
-      if (mine !== seq) return;
-      list.error = friendlyError(reason);
-      changed();
-    });
-}
-
-function loadBuilt(mine: number): void {
-  get<PlansBuiltResponse>("/api/plan/built")
-    .then(function (data) {
-      if (mine !== seq) return;
-      var rows: Record<string, PlanBuiltRow> = {};
-      data.rows.forEach(function (r) {
-        rows[r.key] = r;
-      });
-      list.built = rows;
-      changed();
-    })
-    .catch(function () {
-      /* the column stays "…"; the list itself is fine */
-    });
-}
 
 function builtCell(row: PlanIndexRow): HTMLElement | string {
-  var b = list.built[row.key];
-  if (!b || b.rev !== row.rev) return "…";
-  if (b.figure === "?") {
+  var built = planIndex.built[row.key];
+  if (!built || built.rev !== row.rev) return "…";
+  if (built.figure === "?") {
     var ask = link(trackDash(row.key, 0), "?");
-    ask.title = b.text || "open Track to say which factory this plan is";
+    ask.title = built.text || "open Track to say which factory this plan is";
     return ask;
   }
-  var cell = make("button", "built-figure", progressText(b));
+  var cell = make("button", "built-figure", progressText(built));
   cell.type = "button";
-  cell.title = b.text + (b.built === null ? "" : " · click to switch machines and percent");
-  cell.disabled = b.built === null;
+  cell.title = built.text + (built.built === null ? "" : " · click to switch machines and percent");
+  cell.disabled = built.built === null;
   cell.onclick = function (event) {
     event.stopPropagation();
     toggleProgress();
@@ -87,21 +47,13 @@ function builtCell(row: PlanIndexRow): HTMLElement | string {
   return cell;
 }
 
-export function planTitle(key: string): string {
-  var row = list.data
-    ? list.data.index.filter(function (r) {
-        return r.key === key;
-      })[0]
-    : undefined;
-  return row ? row.name : "";
-}
-
-function target(row: PlanIndexRow): string {
+/** What the plan exports, with the rates it asks for. */
+function exportsText(row: PlanIndexRow): string {
   var parts = Object.keys(row.rates).map(function (item) {
     return item + " " + perMin(row.rates[item]!);
   });
-  row.exports.forEach(function (e) {
-    if (!(e in row.rates)) parts.push(e);
+  row.exports.forEach(function (item) {
+    if (!(item in row.rates)) parts.push(item);
   });
   if (row.target_item && !parts.length) parts.push(row.target_item);
   return parts.join(", ") || "MW";
@@ -116,7 +68,7 @@ function statusWords(row: PlanIndexRow): string {
   return row.recorded ? "" : "field not recorded";
 }
 
-function plans(parent: HTMLElement, rows: PlanIndexRow[]): void {
+function plansTable(parent: HTMLElement, rows: PlanIndexRow[]): void {
   var columns: Column<PlanIndexRow>[] = [
     {
       key: "plan",
@@ -141,7 +93,7 @@ function plans(parent: HTMLElement, rows: PlanIndexRow[]): void {
     {
       key: "target",
       label: "exports",
-      render: target,
+      render: exportsText,
     },
     {
       key: "built",
@@ -150,8 +102,8 @@ function plans(parent: HTMLElement, rows: PlanIndexRow[]): void {
       className: "dash-nowrap",
       title: "what stands at the plan's site; ? means Track asks which factory it is, – that the plan has no site",
       sort: function (r) {
-        var b = list.built[r.key];
-        return b && b.total ? (b.built || 0) / b.total : -1;
+        var built = planIndex.built[r.key];
+        return built && built.total ? (built.built || 0) / built.total : -1;
       },
       render: builtCell,
     },
@@ -198,7 +150,7 @@ function plans(parent: HTMLElement, rows: PlanIndexRow[]): void {
   );
 }
 
-function form(parent: HTMLElement): void {
+function newPlanForm(parent: HTMLElement): void {
   var card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "new plan: an item at a rate"));
   var row = make("form", "plan-controls");
@@ -207,8 +159,8 @@ function form(parent: HTMLElement): void {
   item.setAttribute("data-ctl", "new-item");
   item.setAttribute("aria-label", "item");
   item.setAttribute("list", "plan-items");
-  item.value = item.defaultValue = list.draft[0]!;
-  if (list.problem) item.setAttribute("aria-invalid", "true");
+  item.value = item.defaultValue = newPlan.draft.item;
+  if (newPlan.problem) item.setAttribute("aria-invalid", "true");
   var rate = make("input", "dash-number");
   rate.type = "number";
   rate.step = "any";
@@ -216,39 +168,39 @@ function form(parent: HTMLElement): void {
   rate.placeholder = "rate";
   rate.setAttribute("data-ctl", "new-rate");
   rate.setAttribute("aria-label", "rate per minute");
-  rate.value = rate.defaultValue = list.draft[1]!;
-  var submit = make("button", "btn", list.creating ? "creating…" : "create");
+  rate.value = rate.defaultValue = newPlan.draft.rate;
+  var submit = make("button", "btn", newPlan.creating ? "creating…" : "create");
   submit.type = "submit";
-  submit.disabled = list.creating;
+  submit.disabled = newPlan.creating;
   row.onsubmit = function (event) {
     event.preventDefault();
-    list.draft = [item.value, rate.value];
+    newPlan.draft = { item: item.value, rate: rate.value };
     item.defaultValue = item.value;
     rate.defaultValue = rate.value;
-    var n = Number(rate.value);
+    var perMinute = Number(rate.value);
     var name = knownItem(item.value);
-    if (!item.value.trim()) list.problem = "name the item to make";
-    else if (!name) list.problem = "no item is called “" + item.value.trim() + "”; pick one from the list";
-    else if (!(n > 0)) list.problem = "the rate is a positive number per minute";
-    else list.problem = "";
-    if (list.problem || !name) {
+    if (!item.value.trim()) newPlan.problem = "name the item to make";
+    else if (!name) newPlan.problem = "no item is called “" + item.value.trim() + "”; pick one from the list";
+    else if (!(perMinute > 0)) newPlan.problem = "the rate is a positive number per minute";
+    else newPlan.problem = "";
+    if (newPlan.problem || !name) {
       changed();
       return;
     }
-    list.creating = true;
+    newPlan.creating = true;
     changed();
     var minimums: Record<string, number> = {};
-    minimums[name] = n;
-    createPlan(name + " " + perMin(n), { objective: "min_machines", exports: [name], export_minimums: minimums }, "")
+    minimums[name] = perMinute;
+    createPlan(name + " " + perMin(perMinute), { objective: "min_machines", exports: [name], export_minimums: minimums }, "")
       .then(function (key) {
-        list.draft = ["", ""];
+        newPlan.draft = { item: "", rate: "" };
         go("planner/" + key);
       })
       .catch(function (reason) {
-        list.problem = friendlyError(reason);
+        newPlan.problem = friendlyError(reason);
       })
       .then(function () {
-        list.creating = false;
+        newPlan.creating = false;
         changed();
       });
   };
@@ -257,8 +209,8 @@ function form(parent: HTMLElement): void {
   row.appendChild(make("span", "dash-muted", "/min"));
   row.appendChild(submit);
   card.appendChild(row);
-  if (list.problem) {
-    var bad = make("p", "plan-invalid", list.problem);
+  if (newPlan.problem) {
+    var bad = make("p", "plan-invalid", newPlan.problem);
     bad.setAttribute("role", "alert");
     card.appendChild(bad);
   }
@@ -267,22 +219,22 @@ function form(parent: HTMLElement): void {
 }
 
 export function renderList(root: HTMLElement): void {
-  if (list.world !== state.world && list.data) {
-    list.data = null;
+  if (planIndex.world !== state.world && planIndex.data) {
+    planIndex.data = null;
     loadList();
   }
   loadItems();
   root.appendChild(make("h1", "dk-hidden", "Planner"));
   root.appendChild(itemList());
-  renderCard(root);
+  renderChatSolveCard(root);
   var card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "plans"));
-  if (list.error) error(card, "the plans", list.error, loadList);
-  else if (!list.data) loading(card, "plans");
-  else if (!list.data.index.length) empty(card, "no plans in this world yet", "make one below, or ask chat to plan a factory");
-  else plans(card, list.data.index);
+  if (planIndex.error) error(card, "the plans", planIndex.error, loadList);
+  else if (!planIndex.data) loading(card, "plans");
+  else if (!planIndex.data.index.length) empty(card, "no plans in this world yet", "make one below, or ask chat to plan a factory");
+  else plansTable(card, planIndex.data.index);
   root.appendChild(card);
-  form(root);
+  newPlanForm(root);
   renderActivity(root);
   renderPins(root, changed);
   renderAsks(root, changed);
