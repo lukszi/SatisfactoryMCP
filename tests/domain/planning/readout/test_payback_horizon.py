@@ -475,14 +475,13 @@ PLASTIC20 = {"objective": "min_power", "exports": ["Plastic"], "export_minimums"
 
 
 @pytest.fixture
-def fresh_state_factory(monkeypatch, projection, game):
+def fresh_state_factory(monkeypatch, projection, game, use_world):
     from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.mcp.tools import planning
 
     def fresh(*_a, **_k):
         return WorldState(projection=projection, game=game)
 
-    monkeypatch.setattr(planning, "_state", fresh)
+    use_world(fresh)
     return fresh
 
 

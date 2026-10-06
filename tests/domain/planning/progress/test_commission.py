@@ -32,7 +32,6 @@ from satisfactory_mcp.domain.planning.progress.stages import track
 from satisfactory_mcp.domain.planning.progress.startup import commission
 from satisfactory_mcp.domain.planning.solver.prepare import prepare
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.mcp.tools import planning
 from tests.support.reference_world import REFERENCE_FIELD, REFERENCE_MAX_MW_ARGS
 
 pytestmark = pytest.mark.integration
@@ -49,17 +48,13 @@ WINDOW = 300.0
 
 
 @pytest.fixture(autouse=True)
-def _tools_read_the_reference_world(monkeypatch, projection, game):
+def _tools_read_the_reference_world(use_world, projection, game):
     """The tool tests below quote this world's headroom, so they must not read the newest save.
 
     A new state per call, as the server builds one, so a plan saved by one call is seen by
     the next.
     """
-    monkeypatch.setattr(
-        planning,
-        "_state",
-        lambda save=None, world=None, as_of=None: WorldState(projection=projection, game=game),
-    )
+    use_world(lambda: WorldState(projection=projection, game=game))
 
 
 @pytest.fixture
@@ -712,4 +707,3 @@ def test_the_presenter_speaks_the_domain_caveats():
 
     assert text.ENERGISED_CAVEAT is domain.ENERGISED_CAVEAT
     assert text.RANGE_CAVEAT is domain.RANGE_CAVEAT
-    assert planning.ENERGISED_CAVEAT is domain.ENERGISED_CAVEAT

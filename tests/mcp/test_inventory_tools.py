@@ -5,8 +5,8 @@ read both, and no MCP tool read either -- so a client could be told "short 500 Q
 no way to ask what was in the boxes. These pin the answer and, more importantly, the three
 sentences it must never blur: spendable stock, material in machine buffers, and crates.
 
-Fixture-backed rather than live: ``_state`` is replaced on the tool module, so every number
-below is the committed projection's and moves only when that is re-cut.
+Fixture-backed rather than live: ``use_world`` serves the tools the committed projection, so
+every number below is that projection's and moves only when it is re-cut.
 """
 
 from __future__ import annotations
@@ -18,9 +18,9 @@ from tests.support import tables
 
 
 @pytest.fixture
-def tools(monkeypatch, state):
+def tools(use_world, state):
     """The tool module answering about the fixture world instead of the newest save."""
-    monkeypatch.setattr(tool, "_state", lambda save=None, world=None, as_of=None: state)
+    use_world(state)
     return tool
 
 

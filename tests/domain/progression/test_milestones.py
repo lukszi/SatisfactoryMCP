@@ -27,16 +27,9 @@ def ladder(state) -> SchematicLadder:
 
 
 @pytest.fixture
-def tool(state, monkeypatch):
-    """The tool pointed at the committed projection, not at this machine's save.
-
-    Patched in the module that calls it, for the reason `test_research.py` records: `_state`
-    is looked up where it is used, so patching `app._state` would leave this module holding
-    the original.
-    """
-    monkeypatch.setattr(
-        progression_tools, "_state", lambda save=None, world=None, as_of=None: state
-    )
+def tool(state, use_world):
+    """The tool pointed at the committed projection, not at this machine's save."""
+    use_world(state)
     return progression_tools.milestones
 
 

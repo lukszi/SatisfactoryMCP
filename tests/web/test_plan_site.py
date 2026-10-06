@@ -14,7 +14,6 @@ from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.stored.planlog import PlanLog
 from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.mcp.tools import planning
 from satisfactory_mcp.interfaces.web import terrain
 from satisfactory_mcp.interfaces.web.routers.plans import plan_site
 from tests.support.reference_world import FIXTURE_WORLD
@@ -24,12 +23,12 @@ PREVIEW = "/api/plan/site-preview"
 
 
 @pytest.fixture
-def site_client(monkeypatch, projection, game):
+def site_client(monkeypatch, projection, game, use_world):
     """The page and chat over one shared world, with no terrain and no open preview."""
     monkeypatch.setattr(plan_site, "_PREVIEW_CACHE", type(plan_site._PREVIEW_CACHE)())
     monkeypatch.setattr(terrain, "field", lambda: None)
     one = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(planning, "_state", lambda *_a, **_k: one)
+    use_world(one)
     with client_over(one, game) as client:
         yield client
 

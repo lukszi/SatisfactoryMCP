@@ -18,9 +18,9 @@ KW = dict(
 
 
 @pytest.fixture
-def tool(state, monkeypatch):
+def tool(state, monkeypatch, use_world):
     fresh = lambda *a, **k: WorldState(projection=state.projection, game=state.game)
-    monkeypatch.setattr(planning, "_state", fresh)
+    use_world(fresh)
     return planning
 
 

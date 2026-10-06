@@ -16,6 +16,7 @@ from satisfactory_mcp.domain.planning.siting import preview as site_preview
 from satisfactory_mcp.domain.planning.stored import planlog
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, InvalidOp, PlanLog, describe_op
 from satisfactory_mcp.domain.spatial import geo
+from satisfactory_mcp.presenters.text.site_preview import render_site_preview
 from tests.support.reference_world import FIVE_RIP_ARGS
 
 PAGE = Actor("page", "", 1)
@@ -277,7 +278,7 @@ def test_outside_the_map_only_where_is_filled(world):
     sess = site_preview.open_session(world.game, world, _plan(world, at=BUILT_SPOT))
     out = site_preview.preview(world.game, world, sess, _pad(4200.0, 0.0))
     assert out["in_map"] is False and out["built"]["mode"] == "" and out["trunks"] == []
-    lines = site_preview.preview_lines(out)
+    lines = render_site_preview(out).splitlines()
     assert lines[-1] == "outside the map: a site here is refused"
 
 

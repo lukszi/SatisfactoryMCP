@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.maps import registry
+from satisfactory_mcp.interfaces.mcp import app
 from satisfactory_mcp.interfaces.mcp.tools import settings as settings_tool
 from satisfactory_mcp.interfaces.mcp.tools import spatial
 
@@ -33,7 +34,7 @@ def test_settings_lists_the_base_maps_with_the_default_and_what_is_stale(local):
 
 
 def test_show_on_map_opens_the_local_link_on_a_named_base_map(local, monkeypatch):
-    monkeypatch.setattr(spatial, "_state", _no_save)
+    monkeypatch.setattr(app, "load_state", _no_save)
     # The node table is read from the real data dir; only the maps are the scratch tree's.
     monkeypatch.setattr(registry, "local_dir", lambda: local)
     monkeypatch.setattr(config, "data_dir", REAL_DATA_DIR)

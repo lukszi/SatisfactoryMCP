@@ -4,6 +4,8 @@ Everything here answers 'what does this save contain', with no planning."""
 
 from __future__ import annotations
 
+from collections import Counter
+
 from .... import config
 from ....core.saveio import projection as proj
 from ....core.schema import NewerSchema
@@ -12,19 +14,19 @@ from ....domain import advice
 from ....domain.power.report import biomass_note, starved_cause
 from ....presenters.text import advice as advice_text
 from ....presenters.text import primitives as render
-from ..app import (
-    AsOf,
-    Biomass,
-    Limit,
-    _state,
-    integrity_notes,
-    mcp,
-    shared,
-    stale_artifact_notes,
-)
+from .. import app
+from ..params import AsOf, Biomass, Limit
 
 
-@mcp.tool(structured_output=False)
+def _generator_rows(power: dict) -> list[tuple]:
+    """One row per generator kind, biggest output first."""
+    return [
+        (v["name"], v["count"], render.num(v["mw"]))
+        for v in sorted(power["by_generator"].values(), key=lambda v: -v["mw"])
+    ]
+
+
+@app.tool()
 def list_worlds() -> str:
     """List save games grouped by world, newest first.
 
@@ -60,9 +62,7 @@ def list_worlds() -> str:
             "periodically, so disk may lag the live world"
         )
     if unsupported:
-        reasons: dict[str, int] = {}
-        for u in unsupported:
-            reasons[u["reason"]] = reasons.get(u["reason"], 0) + 1
+        reasons = Counter(u["reason"] for u in unsupported)
         notes.append(
             f"{len(unsupported)} file(s) unreadable: "
             + "; ".join(f"{n}x {r}" for r, n in reasons.items())
@@ -76,45 +76,32 @@ def list_worlds() -> str:
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def world_summary(
     save: str | None = None, world: str | None = None, as_of: AsOf = None, biomass: Biomass = None
 ) -> str:
     """Progress, power and problems for one world, and the advisories worth a look (adv: ids)."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     g = st.game
-    p = st.progression()
-    unread = ""
-    if biomass is None:
-        biomass, unread = shared("biomass")
-    pw = st.power_report(biomass=biomass)
-    notes = [n for n in [unread, biomass_note(pw)] if n]
+    progression = st.progression()
+    biomass, unread = app.biomass_setting(biomass)
+    power = st.power_report(biomass=biomass)
+    notes = [n for n in [unread, biomass_note(power)] if n]
     unbuilt = st.unlocked_but_unbuilt()
     if unbuilt:
         notes.append("unlocked but never built: " + ", ".join(g.buildings[c].name for c in unbuilt))
     if st.misconfigured:
-        kinds: dict[str, int] = {}
-        for m in st.misconfigured:
-            kinds[m["cls"]] = kinds.get(m["cls"], 0) + 1
+        kinds = Counter(m["cls"] for m in st.misconfigured)
         notes.append(
             "no recipe set: "
-            + ", ".join(
-                f"{n}x {g.buildings[c].name if c in g.buildings else c}" for c, n in kinds.items()
-            )
+            + ", ".join(f"{n}x {g.building_name(c) or c}" for c, n in kinds.items())
         )
     if st.paused:
         notes.append(f"{len(st.paused)} building(s) paused by the player")
-    notes.extend(integrity_notes(st.projection, g))
-    notes.extend(stale_artifact_notes())
+    notes.extend(app.integrity_notes(st.projection, g))
+    notes.extend(app.stale_artifact_notes())
     working_on = st.unlocks.last_active_schematic
     last_drive = st.harddrive_desk.last_used_hard_drive_id
-    gen_rows = [
-        (v["name"], v["count"], render.num(v["mw"]))
-        for v in sorted(pw["by_generator"].values(), key=lambda v: -v["mw"])
-    ]
     try:
         worth = advice_text.summary_block(advice.current(st, biomass=biomass))
     except NewerSchema as exc:
@@ -126,17 +113,15 @@ def world_summary(
                 f"# {st.age_note}",
                 render.kv(
                     [
-                        ("phase", p["game_phase"]),
-                        ("target", p["target_phase"]),
-                        ("tier_complete", p["highest_complete_tier"]),
-                        ("recipes", p["available_recipes"]),
+                        ("phase", progression["game_phase"]),
+                        ("target", progression["target_phase"]),
+                        ("tier_complete", progression["highest_complete_tier"]),
+                        ("recipes", progression["available_recipes"]),
                         ("alternates", len(st.unlocked_alternates)),
                         ("hard_drives_pending", len(st.hard_drive_offers)),
                     ]
                 ),
-                # Where the player left off, which is the one thing a resuming assistant
-                # cannot work out from counts: the HUB's own active pick, and the drive
-                # analysed last.
+                # Where the player left off: the HUB's active pick and the drive analysed last.
                 render.kv(
                     [
                         ("working_on", working_on.name if working_on else ""),
@@ -145,22 +130,22 @@ def world_summary(
                 ),
                 render.kv(
                     [
-                        ("power_gen_MW", render.num(pw["generation_mw"])),
-                        ("draw_MW", render.num(pw["draw_mw"])),
-                        ("headroom_MW", render.num(pw["headroom_mw"])),
+                        ("power_gen_MW", render.num(power["generation_mw"])),
+                        ("draw_MW", render.num(power["draw_mw"])),
+                        ("headroom_MW", render.num(power["headroom_mw"])),
                     ]
                 ),
                 "milestones/tier: "
-                + " ".join(f"T{t}:{v}" for t, v in p["milestones_by_tier"].items()),
+                + " ".join(f"T{t}:{v}" for t, v in progression["milestones_by_tier"].items()),
             ]
             if line
         ),
-        render.table(("generator", "count", "MW"), gen_rows) + "\n\n" + worth,
+        render.table(("generator", "count", "MW"), _generator_rows(power)) + "\n\n" + worth,
         notes,
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def unlocked_recipes(
     save: str | None = None,
     world: str | None = None,
@@ -172,25 +157,28 @@ def unlocked_recipes(
     """Which recipes this world has. Defaults to alternates, never all 872.
 
     Sorted by name and paged with `offset=`, so the whole list is reachable."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     picks = st.unlocked_alternates if only_alternates else st.unlocked_recipes("part")
     picks = sorted(picks, key=lambda r: r.name)
-    start = max(0, offset)
-    n = render.clamp(limit, default=25)
-    page = picks[start : start + n]
-    rows = [(r.name, st.game.machine(r).name if st.game.machine(r) else "-") for r in page]
+    window = render.page(limit, offset, default=25)
+    rows = [
+        (r.name, st.game.machine(r).name if st.game.machine(r) else "-") for r in window.of(picks)
+    ]
     return render.envelope(
         f"# {st.age_note}\n"
         f"# {len(st.unlocked_alternates)} of {len(st.game.alternates())} alternates unlocked; "
         f"{len(st.unlocked_recipes('part'))} automatable recipes total",
-        render.table(("recipe", "building"), rows, total=len(picks), offset=start, limit=n),
+        render.table(
+            ("recipe", "building"),
+            rows,
+            total=len(picks),
+            offset=window.start,
+            limit=window.size,
+        ),
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def power_report(
     save: str | None = None, world: str | None = None, as_of: AsOf = None, biomass: Biomass = None
 ) -> str:
@@ -205,29 +193,18 @@ def power_report(
     whose fuel or supplemental water has run dry AND whose own monitor read zero is listed as
     starved, because those MW will not arrive when the grid asks for them.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
-    unread = ""
-    if biomass is None:
-        biomass, unread = shared("biomass")
-    pw = st.power_report(biomass=biomass)
-    rows = [
-        (v["name"], v["count"], render.num(v["mw"]))
-        for v in sorted(pw["by_generator"].values(), key=lambda v: -v["mw"])
-    ]
-    # This note used to read "nameplate only: fuel supply and uptime are not modelled".
-    # The uptime was in the projection the whole time, on 524 of 570 records.
+    st = app.load_world(save, world, as_of)
+    biomass, unread = app.biomass_setting(biomass)
+    power = st.power_report(biomass=biomass)
     notes = [
         (
             "nameplate headroom assumes every built machine runs at once -- the SAFE "
-            f"bound. Measured weights {pw['monitored']} machine(s) by the last complete "
+            f"bound. Measured weights {power['monitored']} machine(s) by the last complete "
             "300s window and is what is free right now; utilisation is "
-            f"{pw['utilisation']:.0%}"
+            f"{power['utilisation']:.0%}"
         ),
         (
-            f"{pw['unmonitored']} machine(s) carry no productivity monitor and are charged "
+            f"{power['unmonitored']} machine(s) carry no productivity monitor and are charged "
             "in FULL on both figures -- unknown utilisation must not read as idle"
         ),
         (
@@ -235,19 +212,19 @@ def power_report(
             "rather than at a rate of their own"
         ),
     ]
-    notes += [n for n in (unread, biomass_note(pw)) if n]
-    if pw["unmodellable"]:
-        notes.append(f"not in game data, excluded: {', '.join(pw['unmodellable'])}")
-    if pw["unwired_consumers"] or pw["unwired_generators"]:
+    notes += [n for n in (unread, biomass_note(power)) if n]
+    if power["unmodellable"]:
+        notes.append(f"not in game data, excluded: {', '.join(power['unmodellable'])}")
+    if power["unwired_consumers"] or power["unwired_generators"]:
         notes.append(
-            f"on no wire, so left out of every figure above: {pw['unwired_consumers']} "
-            f"machine(s) rated {render.num(pw['unwired_draw_mw'])} MW and "
-            f"{pw['unwired_generators']} generator(s) rated "
-            f"{render.num(pw['unwired_generation_mw'])} MW"
+            f"on no wire, so left out of every figure above: {power['unwired_consumers']} "
+            f"machine(s) rated {render.num(power['unwired_draw_mw'])} MW and "
+            f"{power['unwired_generators']} generator(s) rated "
+            f"{render.num(power['unwired_generation_mw'])} MW"
         )
 
-    starved = pw["starved_generators"]
-    body = render.table(("generator", "count", "MW"), rows)
+    starved = power["starved_generators"]
+    body = render.table(("generator", "count", "MW"), _generator_rows(power))
     if starved:
         body += "\n\n## starved generators\n" + render.table(
             ("generator", "building", "MW", "why"),
@@ -258,7 +235,7 @@ def power_report(
             total=len(starved),
         )
         notes.append(
-            f"{render.num(pw['starved_generation_mw'])} MW of the generation above stands on "
+            f"{render.num(power['starved_generation_mw'])} MW of the generation above stands on "
             f"{len(starved)} generator(s) whose input has run dry and which produced nothing "
             "in their own window. Subtract it before planning against headroom -- that "
             "capacity is a pipe or a belt away, not a build away"
@@ -267,13 +244,13 @@ def power_report(
         f"# {st.age_note}\n"
         + render.kv(
             [
-                ("generation_MW", render.num(pw["generation_mw"])),
-                ("generation_MW_starved", render.num(pw["starved_generation_mw"])),
-                ("draw_MW_nameplate", render.num(pw["draw_mw"])),
-                ("draw_MW_measured", render.num(pw["measured_draw_mw"])),
-                ("headroom_MW_nameplate", render.num(pw["headroom_mw"])),
-                ("headroom_MW_measured", render.num(pw["measured_headroom_mw"])),
-                ("paused", pw["paused_count"]),
+                ("generation_MW", render.num(power["generation_mw"])),
+                ("generation_MW_starved", render.num(power["starved_generation_mw"])),
+                ("draw_MW_nameplate", render.num(power["draw_mw"])),
+                ("draw_MW_measured", render.num(power["measured_draw_mw"])),
+                ("headroom_MW_nameplate", render.num(power["headroom_mw"])),
+                ("headroom_MW_measured", render.num(power["measured_headroom_mw"])),
+                ("paused", power["paused_count"]),
             ]
         ),
         body,
@@ -281,7 +258,7 @@ def power_report(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def factory_sites(
     save: str | None = None,
     world: str | None = None,
@@ -290,27 +267,23 @@ def factory_sites(
     offset: int = 0,
 ) -> str:
     """Built production buildings clustered into sites, largest first."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     g = st.game
     sites = st.sites()
+    window = render.page(limit, offset)
     rows = []
-    start = max(0, offset)
-    n = render.clamp(limit)
-    for s in sites[start : start + n]:
-        top = sorted(s["buildings"].items(), key=lambda kv: -kv[1])[:4]
-        x_m, y_m, z_m = (int(v / 100) for v in s["centroid"])
+    for site in window.of(sites):
+        top = sorted(site["buildings"].items(), key=lambda kv: -kv[1])[:4]
+        x_m, y_m, z_m = (int(v / 100) for v in site["centroid"])
         rows.append(
             (
-                s["direction"],
-                s["grid"],
+                site["direction"],
+                site["grid"],
                 f"{x_m},{y_m},{z_m}",
-                s["count"],
-                f"{s['diameter_m']}m",
-                s["selector"],
-                ", ".join(f"{n}x {g.buildings[c].name if c in g.buildings else c}" for c, n in top),
+                site["count"],
+                f"{site['diameter_m']}m",
+                site["selector"],
+                ", ".join(f"{n}x {g.building_name(c) or c}" for c, n in top),
             )
         )
     return render.envelope(
@@ -319,8 +292,8 @@ def factory_sites(
             ("dir", "grid", "x,y,z(m)", "buildings", "spread", "selector", "contents"),
             rows,
             total=len(sites),
-            offset=start,
-            limit=n,
+            offset=window.start,
+            limit=window.size,
         ),
         [
             (

@@ -51,14 +51,14 @@ def test_factories_are_ordered_worst_first(labelled_client):
 
 
 def test_the_sweep_counts_blocked_machines_as_todo_like_the_route(
-    labelled_client, labelled, monkeypatch
+    labelled_client, labelled, use_world
 ):
     """The MCP sweep's ``todo`` and the route's ``actionable`` are one number per factory."""
     from satisfactory_mcp.interfaces.mcp.tools import factories as tool
 
     rows = labelled_client.get("/api/factories/health").json()["factories"]
     assert rows
-    monkeypatch.setattr(tool, "_state", lambda save=None, world=None, as_of=None: labelled)
+    use_world(labelled)
     out = tool.factory_health(factory="all", limit=500)
     todo = {}
     for line in out.splitlines():

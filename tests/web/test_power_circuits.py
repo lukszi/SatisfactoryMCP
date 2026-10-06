@@ -186,13 +186,13 @@ def test_an_unknown_biomass_value_is_refused(game):
 
 
 @pytest.mark.parametrize("counted", [False, True])
-def test_the_page_and_chat_agree_on_headroom_either_way(client, state, counted, monkeypatch):
+def test_the_page_and_chat_agree_on_headroom_either_way(client, state, counted, use_world):
     """Same save, same setting: /api/power/circuits, /api/summary and power_report print
     one set of figures, with biomass left out or counted."""
     from satisfactory_mcp.interfaces.mcp.tools import world as tool
     from satisfactory_mcp.presenters.text import primitives as render
 
-    monkeypatch.setattr(tool, "_state", lambda *a, **k: state)
+    use_world(state)
 
     query = "?biomass=" + ("include" if counted else "exclude")
     report = state.power_report(biomass=counted)

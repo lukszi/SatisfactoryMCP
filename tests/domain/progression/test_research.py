@@ -46,8 +46,6 @@ import pytest
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.core.gamedata.constants import CAPABILITY_SCHEMATICS
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.mcp.tools import planning as planning_tools
-from satisfactory_mcp.interfaces.mcp.tools import progression as progression_tools
 from tests.support import tables
 from tests.support.reference_world import REFERENCE_FIELD
 
@@ -88,20 +86,16 @@ def _unresearched(game, projection: dict) -> WorldState:
 
 
 @pytest.fixture
-def locked(game, live, monkeypatch) -> WorldState:
-    """This machine's world, un-researched, and the two tool modules pointed at it.
+def locked(game, live, use_world) -> WorldState:
+    """This machine's world, un-researched, and every tool pointed at it.
 
     Built from `live` rather than from the committed projection because the tools it feeds
-    print a PLAN, and a plan is judged against the world the reader is playing.
-
-    The two tool modules are patched by name. `_state` is looked up in the module that calls
-    it, so patching `app._state` would leave both of these holding the original -- and the two
-    are patched together because `mam_research` and `plan_factory` have to be answering about
-    the same world for their two halves of the same warning to line up.
+    print a PLAN, and a plan is judged against the world the reader is playing. One world for
+    every tool, because `mam_research` and `plan_factory` have to be answering about the same
+    world for their two halves of the same warning to line up.
     """
     st = _unresearched(game, live.projection)
-    for module in (planning_tools, progression_tools):
-        monkeypatch.setattr(module, "_state", lambda save=None, world=None, as_of=None, _st=st: _st)
+    use_world(st)
     return st
 
 
@@ -310,7 +304,7 @@ def test_the_cost_note_names_the_buckets_the_check_actually_reads(game):
 
 
 @pytest.fixture
-def constructed(game, projection, monkeypatch):
+def constructed(game, projection, use_world):
     """A copy of the committed projection the caller may edit, wired into the tool.
 
     The reference world has every MAM tree open and nothing under research, which is
@@ -322,9 +316,7 @@ def constructed(game, projection, monkeypatch):
         copy = deepcopy(projection)
         copy.setdefault("research", {}).update(research)
         st = WorldState(projection=copy, game=game)
-        monkeypatch.setattr(
-            progression_tools, "_state", lambda save=None, world=None, as_of=None, _st=st: _st
-        )
+        use_world(st)
         return st
 
     return build
@@ -390,14 +382,14 @@ def test_research_already_under_way_says_so_and_says_how_long(constructed, game)
     assert name not in srv.mam_research(show="affordable", limit=25)
 
 
-def test_an_older_projection_says_it_cannot_judge_the_trees(game, projection, monkeypatch):
+def test_an_older_projection_says_it_cannot_judge_the_trees(game, projection, use_world):
     """Absent is not empty. A projection cut before the key existed cannot tell a shut tree
     from an open one, and guessing either way would be an invented answer -- so it reports
     every node as before and says why."""
     copy = deepcopy(projection)
     copy["research"].pop("unlocked_trees", None)
     st = WorldState(projection=copy, game=game)
-    monkeypatch.setattr(progression_tools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     assert not st.research.knows_trees
     assert not st.research.tree_locked("Research_XMas_1_C")
     assert "predates the unlocked-tree list" in srv.mam_research()

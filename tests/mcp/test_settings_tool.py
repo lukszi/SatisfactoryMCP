@@ -8,7 +8,7 @@ import pytest
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain import settings
 from satisfactory_mcp.domain.planning.stored.planlog import Actor
-from satisfactory_mcp.interfaces.mcp.tools import planning, world
+from satisfactory_mcp.interfaces.mcp.tools.planning import staging
 
 
 class _Stop(Exception):
@@ -36,15 +36,15 @@ def test_the_tool_refuses_what_the_store_refuses(change):
     assert settings.read()["version"] == 0
 
 
-def _capture(monkeypatch, state, name):
+def _capture(monkeypatch, use_world, state, name):
     seen = {}
 
     def fake(*args, **kwargs):
         seen.update(kwargs)
         raise _Stop
 
-    monkeypatch.setattr(planning, "_state", lambda *a, **k: state)
-    monkeypatch.setattr(planning, name, fake)
+    use_world(state)
+    monkeypatch.setattr(staging, name, fake)
     return seen
 
 
@@ -52,8 +52,8 @@ def _capture(monkeypatch, state, name):
     "tool, builder",
     [("diff_vs_save", "build_diff_report"), ("commission_plan", "build_commission_report")],
 )
-def test_staging_tools_default_to_the_shared_settings(monkeypatch, state, tool, builder):
-    seen = _capture(monkeypatch, state, builder)
+def test_staging_tools_default_to_the_shared_settings(monkeypatch, use_world, state, tool, builder):
+    seen = _capture(monkeypatch, use_world, state, builder)
     with pytest.raises(_Stop):
         getattr(srv, tool)(objective="max_mw", exports=["MW"])
     assert (seen["default"], seen["biomass"]) == ("measured", False)
@@ -68,7 +68,7 @@ def test_staging_tools_default_to_the_shared_settings(monkeypatch, state, tool, 
 
 
 @pytest.mark.parametrize("tool", ["power_report", "world_summary"])
-def test_power_tools_take_biomass_from_the_shared_setting(monkeypatch, state, tool):
+def test_power_tools_take_biomass_from_the_shared_setting(monkeypatch, use_world, state, tool):
     asked = []
     real = state.power_report
 
@@ -77,7 +77,7 @@ def test_power_tools_take_biomass_from_the_shared_setting(monkeypatch, state, to
         return real(biomass=biomass)
 
     monkeypatch.setattr(state, "power_report", recorded)
-    monkeypatch.setattr(world, "_state", lambda *a, **k: state)
+    use_world(state)
     fn = getattr(srv, tool)
     seen = []
     for step in ("shared", "changed", "override"):

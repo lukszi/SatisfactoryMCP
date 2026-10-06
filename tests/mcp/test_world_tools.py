@@ -16,8 +16,8 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def tools(state, monkeypatch):
-    monkeypatch.setattr(world_tools, "_state", lambda save=None, world=None, as_of=None: state)
+def tools(state, use_world):
+    use_world(state)
     return world_tools
 
 
@@ -33,7 +33,7 @@ def test_the_summary_says_what_the_player_was_last_working_on(tools):
     assert "last_hard_drive_analysed=36" in out
 
 
-def test_a_save_naming_neither_prints_neither(state, game, monkeypatch):
+def test_a_save_naming_neither_prints_neither(state, game, use_world):
     """An empty continuity line is worse than no line: it reads as "nothing in progress"
     where the truth is that the save did not say."""
     from copy import deepcopy
@@ -44,7 +44,7 @@ def test_a_save_naming_neither_prints_neither(state, game, monkeypatch):
     projection["progression"].pop("last_active_schematic", None)
     projection["research"].pop("last_used_hard_drive_id", None)
     bare = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(world_tools, "_state", lambda save=None, world=None, as_of=None: bare)
+    use_world(bare)
     out = world_tools.world_summary()
     assert "working_on" not in out
     assert "last_hard_drive_analysed" not in out

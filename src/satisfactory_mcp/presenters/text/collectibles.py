@@ -178,28 +178,18 @@ _CONDITIONAL_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _census(st, view: CollectiblesView, limit: int, offset: int) -> str:
-    """The per-category table: placed, collected, remaining, and how much is observed.
+#: The first save version whose destroyed actors are keyed by world-partition cell; older
+#: ones key them through Persistent_Level, where the map places almost nothing.
+_FIRST_WORLD_PARTITION_SAVE = 52
 
-    ``group`` narrows the table to one category and takes its notes with it; the summary line
-    stays whole-world.
-    """
-    removed, table, group = view.removed, view.table, view.group
-    census = [r for r in census_rows(st) if group is None or r["category"] == group]
-    extra = [(key, head) for key, head in _CONDITIONAL_COLUMNS if any(r[key] for r in census)]
-    rows = [
-        (
-            row["category"],
-            row["placed"],
-            row["collected"],
-            "-" if row["remaining"] is None else row["remaining"],
-            row["standing"],
-            row["never_streamed"],
-            *(row[key] for key, _head in extra),
-        )
-        for row in census
-    ]
 
+def _predates_world_partition(st) -> bool:
+    version = st.header.get("save_version")
+    return bool(version) and version < _FIRST_WORLD_PARTITION_SAVE
+
+
+def _census_notes(st, census: list[dict], removed: dict, table, group) -> list[str]:
+    """How to read the census: what each column is, and the rows it cannot speak for."""
     notes = [
         (
             "placed is the MAP's own count and collected is THIS save's own destroyed list; "
@@ -247,16 +237,52 @@ def _census(st, view: CollectiblesView, limit: int, offset: int) -> str:
             "never placed -- which is what a pickup the PLAYER dropped is, and it shares its "
             "native class with the loot caches"
         )
-    if (st.header.get("save_version") or 99) < 52:
+    if _predates_world_partition(st):
         notes.append(
             "this save predates world partition, so its destroyed actors are keyed through "
             "Persistent_Level and the map places only 32 rows there: nearly everything will "
             "read as unresolved. Load a newer save of the same world for a real census"
         )
-
     if group and (note := table.note_for(group)):
         notes.append(f"{group}: {note}")
+    return notes
 
+
+def _unresolved_stems_table(removed: dict, table, window: render.Page) -> str:
+    """The destroyed records that join no placement, by name stem, with why."""
+    stems = [(k, v, table.excluded_reason(k) or "") for k, v in removed["unresolved_stems"].items()]
+    return render.table(
+        ("name_stem", "destroyed", "why the map table has no row for it"),
+        [(k, v, why[:96]) for k, v, why in window.of(stems)],
+        total=len(stems),
+        offset=window.start,
+        limit=window.size,
+    )
+
+
+def _census(st, view: CollectiblesView, limit: int, offset: int) -> str:
+    """The per-category table: placed, collected, remaining, and how much is observed.
+
+    ``group`` narrows the table to one category and takes its notes with it; the summary line
+    stays whole-world.
+    """
+    removed, table, group = view.removed, view.table, view.group
+    census = [r for r in census_rows(st) if group is None or r["category"] == group]
+    extra = [(key, head) for key, head in _CONDITIONAL_COLUMNS if any(r[key] for r in census)]
+    rows = [
+        (
+            row["category"],
+            row["placed"],
+            row["collected"],
+            "-" if row["remaining"] is None else row["remaining"],
+            row["standing"],
+            row["never_streamed"],
+            *(row[key] for key, _head in extra),
+        )
+        for row in census
+    ]
+
+    notes = _census_notes(st, census, removed, table, group)
     links, link_notes = _map_links(st, view)
     notes += link_notes
     body = [
@@ -275,29 +301,13 @@ def _census(st, view: CollectiblesView, limit: int, offset: int) -> str:
         ),
     ]
     if group is None:
-        stems = [
-            (k, v, table.excluded_reason(k) or "") for k, v in removed["unresolved_stems"].items()
-        ]
-        body.append(
-            render.table(
-                ("name_stem", "destroyed", "why the map table has no row for it"),
-                [
-                    (k, v, why[:96])
-                    for k, v, why in stems[
-                        max(0, offset) : max(0, offset) + render.clamp(limit, 25)
-                    ]
-                ],
-                total=len(stems),
-                offset=max(0, offset),
-                limit=render.clamp(limit, default=25),
-            )
-        )
+        body.append(_unresolved_stems_table(removed, table, render.page(limit, offset, default=25)))
     body.append(render.ids_footer([(r["category"], r["cls"]) for r in census], "classes"))
     return render.envelope(
         f"# {st.age_note}\n"
         f"# map table: {len(table)} placements, {table.build}\n"
-        # Labelled whole-world because they do not narrow with `group`: a scoped table under
-        # an unscoped total is how one gets read as the other.
+        # Whole-world because they do not narrow with `group`: a scoped table under an
+        # unscoped total is how one gets read as the other.
         + render.kv(
             [
                 ("whole_world_collected", removed["resolved"]),
@@ -319,9 +329,8 @@ def _listing(st, view: CollectiblesView, limit: int, offset: int) -> str:
     rows, origin, where = view.rows or [], view.origin, view.where
     pedestals, hidden, counts = view.pedestals, view.hidden, view.counts
 
-    n = render.clamp(limit, default=25)
-    start = max(0, offset)
-    page = rows[start : start + n]
+    window = render.page(limit, offset, default=25)
+    page = window.of(rows)
 
     notes = []
     if mode == "collected":
@@ -369,7 +378,9 @@ def _listing(st, view: CollectiblesView, limit: int, offset: int) -> str:
         + render.kv([("rows", len(rows)), *sorted(counts.items())]),
         links
         + "\n\n"
-        + _placement_table(page, g, origin is not None, total=len(rows), limit=n, offset=start),
+        + _placement_table(
+            page, g, origin is not None, total=len(rows), limit=window.size, offset=window.start
+        ),
         notes,
     )
 
@@ -421,16 +432,15 @@ def _save_only(st, view: CollectiblesView, limit: int, offset: int) -> str:
         render.table(("group", "collected"), [(k, str(v)) for k, v in removed["groups"].items()])
     ]
     if group is not None:
-        n = render.clamp(limit, default=25)
-        start = max(0, offset)
-        rows = [(a["name"], a["cell"]) for a in removed["actors"][start : start + n]]
+        window = render.page(limit, offset, default=25)
+        rows = [(a["name"], a["cell"]) for a in window.of(removed["actors"])]
         body.append(
             render.table(
                 ("actor", "cell"),
                 rows,
                 total=len(removed["actors"]),
-                offset=start,
-                limit=n,
+                offset=window.start,
+                limit=window.size,
             )
         )
     return render.envelope(

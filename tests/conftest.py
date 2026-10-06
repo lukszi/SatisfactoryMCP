@@ -106,10 +106,11 @@ def game():
 @pytest.fixture
 def live(game) -> WorldState:
     """The newest save on this machine, or a skip when there is none to read."""
-    from satisfactory_mcp.interfaces.mcp.app import _state
+    from satisfactory_mcp.domain.world.state import load_state
+    from satisfactory_mcp.interfaces.mcp import app
 
     try:
-        return _state(None, None)
+        return load_state(app.game(), path=None, world=None)
     except SaveError as exc:
         pytest.skip(f"needs a readable save: {exc}")
 
@@ -134,21 +135,38 @@ def state(game, projection) -> WorldState:
 
 
 @pytest.fixture
-def planned(monkeypatch, projection, game) -> WorldState:
+def use_world(monkeypatch):
+    """Serve every MCP tool a world of the test's choosing instead of reading a save.
+
+    ``use_world(state)`` answers every call with that state; ``use_world(make)`` calls
+    ``make()`` per call, for a fresh state each time as the server builds one.
+    """
+    from satisfactory_mcp.interfaces.mcp import app
+
+    def serve(chosen) -> None:
+        def load_world(save=None, world=None, as_of=None, **_):
+            return chosen() if callable(chosen) else chosen
+
+        monkeypatch.setattr(app, "load_world", load_world)
+
+    return serve
+
+
+@pytest.fixture
+def planned(monkeypatch, projection, game, use_world) -> WorldState:
     """The fixture world with ``spire-coast-full`` saved in the private plan store.
 
-    The planning tools read it too, through a new state per call as the server builds one,
-    so a plan one call saves is seen by the next.
+    Every tool reads it, through a new state per call as the server builds one, so a plan
+    one call saves is seen by the next.
     """
     from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
-    from satisfactory_mcp.interfaces.mcp.tools import planning
 
     PlanLog(FIXTURE_WORLD).create("spire-coast-full", SPIRE_COAST_FULL, actor=Actor("chat"))
 
-    def fresh(save=None, world=None, as_of=None):
+    def fresh():
         return WorldState(projection=projection, game=game)
 
-    monkeypatch.setattr(planning, "_state", fresh)
+    use_world(fresh)
     return fresh()
 
 

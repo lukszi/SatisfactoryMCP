@@ -13,7 +13,8 @@ testing contract. Section numbers are continuous with the rest of the spec;
 
 > **`structured_output=False` on every text tool.** A tool annotated `-> str` gets an `outputSchema`
 > *and* has its payload echoed into `structuredContent` — a measured **1.96×** wire-size tax for zero
-> benefit (580 → 1,136 bytes on the real Plastic response). Enforce via a shared decorator.
+> benefit (580 → 1,136 bytes on the real Plastic response). Enforced by the shared decorator
+> `app.tool`.
 
 ### 10.1 Tools
 
@@ -278,33 +279,37 @@ its recipe.
 
 ### 10.1d One module per concern
 
-`server.py` reached **3,467 lines and 36 tools** before being split. It is now 143 lines
-that import and re-export; the tools live in `tools/`, one module per concern:
+`server.py` reached **3,467 lines and 36 tools** before being split. It now only imports and
+re-exports; the tools live in `interfaces/mcp/tools/`, one module per concern, and the three
+biggest concerns are packages of their own: `planning/` (stored plans, solve, layout,
+staging, siting, analysis, the page's context), `factories/` (discovery, query, health,
+labels, trace, floors) and `spatial/` (places, nodes, conduits, map links). Resources and
+prompts sit beside `app.py` and `params.py` in `interfaces/mcp/`. Module sizes are not
+tabled here because they move: `TOOL_MODULE_MAX_LINES` in `tests/test_architecture.py` caps
+every module under `interfaces/mcp/` at the 700 lines the web routers are held to.
 
-| module | tools | lines |
-|---|---|---|
-| `planning` | 11 | 1,240 |
-| `factories` | 8 | 818 |
-| `spatial` | 6 | 577 |
-| `gamedata` | 5 | 240 |
-| `world` | 5 | 198 |
-| `progression` | 2 | 205 |
-| `harddrives` | 2 | 116 |
-| `resources` / `prompts` | 4 / 3 | 102 / 69 |
+These rules hold it together, each with a test:
 
-Three rules hold it together, each with a test:
-
-- **`tools/__init__.py` imports every module for its side effects.** The decorators run on
-  import, and that is what attaches a tool to the shared `mcp`. Those imports look unused
-  and are not — a module dropped from that list would leave the server starting cleanly and
-  simply not offering its tools. A test walks the directory and asserts nothing is missing.
-- **Tool modules never import each other.** Shared resolvers live with their domains —
-  `factories.select.resolve_factory`, `spatial.places.resolve_place` — because more than one
-  group needs each, and a resolver is a domain decision rather than an app detail. `app`
-  keeps the old private names bound so `server`'s re-exports still resolve. A sibling
-  import is the first step back toward one file, so a test forbids it.
-- **`server` re-exports every public name.** Tests and scripts reach for
-  `server.plan_factory`, and a caller should not need to know which module a tool landed in.
+- **Every tools `__init__.py` imports its modules for their side effects.** The decorators
+  run on import, and that is what attaches a tool to the shared `mcp`. Those imports look
+  unused and are not — a module dropped from its package's imports would leave the server
+  starting cleanly and simply not offering its tools. A test walks every package and asserts
+  nothing is missing. A subpackage's `__init__` re-exports its tools by name.
+- **Tool modules never import each other.** What every group needs lives in `app` — the
+  `mcp` object, `load_world`, the `tool` decorator, `Refusal` — and parameter types shared by
+  several schemas live in `params`. Inside a package the only sibling imports allowed are its
+  private helper modules (`planning/_plan_log.py`, `planning/_requests.py`). Shared resolvers
+  live with their domains — `factories.select.resolve_factory`, `spatial.places.resolve_place`
+  — because a resolver is a domain decision rather than an app detail. A sibling import is the
+  first step back toward one file, so a test forbids it.
+- **`server` re-exports every tool.** Tests and scripts reach for `server.plan_factory`, and
+  a caller should not need to know which module a tool landed in.
+- **One seam to the save.** Every tool reads its world through `app.load_world`, which turns
+  any failure into the refusal `could not read save: …`; a tool that answers without a save
+  uses `app.load_world_or_none`. Tests serve a world through the `use_world` fixture, which
+  patches that one function, rather than patching each tool module.
+- **A refusal is an answer.** `app.tool` registers a text tool and returns a raised
+  `Refusal`'s text, or a selector error as `! …`, as the tool's reply.
 
 The move was mechanical — every tool body is byte-identical — but two classes of breakage
 were invisible to the linter and only showed at runtime: relative imports written for the
@@ -599,7 +604,7 @@ ignores `base_rev` and says so. A write that finds the plan lock held for 10 s a
 `! plans are busy (another writer held the lock 10 s); nothing written`.
 
 The store stamps each landing version with the new head's `plan_id` and resolved field
-(`_stamp` in `tools/planning.py`), so `world moved` stays honest after merged edits and page
+(`_head_stamper` in `tools/planning/_plan_log.py`), so `world moved` stays honest after merged edits and page
 edits alike.
 
 **`required`** on `plan_factory` takes recipe names or class ids. The tool resolves each to a
@@ -742,6 +747,42 @@ the inspector and the siting z. No tool or argument changed. Two things read dif
   `cave=in a cave: floor -9.2 m, the rock collision just under the given height`. A site there
   gets that z, with `in a cave: z is the rock collision just under the hint` on its terrain
   line. With no floor in reach the answer stays `unknown`, as in §10.1m. No ceiling is printed.
+
+### 10.1o What the tool descriptions leave to this page
+
+A tool description is resident in every session, so it carries the usage contract and nothing
+else; `TOOL_DESCRIPTION_BUDGET` in `tests/test_surface.py` caps the total. The measurements and
+the history behind the contracts live here:
+
+- **`plan_factory`.** `machine_cost_mw` defaults to 5 MW, just above the 2.58 MW per machine
+  that spreading throughput over more machines was measured to save. Overclock modes are not
+  offered by default because they spend Power Shards. Somersloops are placed one at a time
+  across many machines because output is linear in sloops and power quadratic. How many
+  Water Extractors a body of water holds is placement geometry no data here carries, so
+  `site_at` measures the water and never moves an LP number.
+- **`propose_factories`** was validated leave-one-factory-out against the twelve hand-named
+  factories of the reference world: precision 1.000 on every fold, recall 0.945.
+- **`trace_upstream`.** 92.5% of the connectors landing on a machine name their direction;
+  the rest sit on extractors and generators, whose nature settles them. A trace from the
+  generators touches 331 nodes at depth 72, nearly all conveyor -- why belts and pipes are
+  walked through rather than listed.
+- **`select_machines`.** On the reference save 17 machines make Concrete and 15 of them are a
+  construction feed inside the steel site, which is why a product selector deserves a preview.
+- **`factory_map`.** Power islands left the reference world's grown-together base as one
+  476-machine blob.
+- **`list_buildings`.** `all` is 540 buildings, about 60k characters unpaged.
+- **`somersloops`.** Before it, the free sloop count could only be learned by guessing a
+  `sloops=` budget and reading the shortfall.
+- **`rename_factory`, `rename_plan`, `amend_factory`.** Before them a correction meant
+  naming or saving again under a second name, or re-selecting a whole factory to drop one
+  machine.
+- **`recipe_detail`** resolves a display name the way `match_recipes` does for
+  `exclude_recipes`; refusing one cost a caller two round trips.
+- **`mam_research`.** `BP_UnlockSubsystem_C` records overclocking as
+  `mIsBuildingOverclockUnlocked`; nothing in the save records production amplification.
+- **`diff_vs_save`.** A generator is matched on its building alone because its fuel is piped
+  in; Water Extractors have no recipe and no resolvable node; grid membership is not persisted.
+- **`commission_plan`.** Generators draw 0 MW in the dump, so energising one is free.
 
 ### 10.2 Context budget
 

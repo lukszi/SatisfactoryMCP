@@ -12,15 +12,16 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp.domain.world.state import WorldState
+from satisfactory_mcp.interfaces.mcp import app
 from satisfactory_mcp.interfaces.mcp.tools import factories as ftools
 from tests.support.projections import CONSTRUCTOR, SMELTER, smelter_belted_to_constructor
 
 
 @pytest.fixture
-def traced(game, monkeypatch) -> WorldState:
+def traced(game, monkeypatch, use_world) -> WorldState:
     st = WorldState(projection=smelter_belted_to_constructor(), game=game)
-    monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
-    monkeypatch.setattr(ftools, "game", lambda: game)
+    use_world(st)
+    monkeypatch.setattr(app, "game", lambda: game)
     return st
 
 
@@ -63,12 +64,12 @@ def test_the_example_ids_it_prints_resolve_as_selectors(traced):
     assert not ftools.factory_query(f"machine:{SMELTER}").startswith("! ")
 
 
-def test_a_walk_that_may_over_report_says_how_much(traced, game, monkeypatch):
+def test_a_walk_that_may_over_report_says_how_much(traced, game, use_world):
     """``Trace.ambiguous`` was carried and never printed, so a walk over undirected
     segments read exactly like one where every edge stated its direction."""
     assert "Every edge here states its direction" in ftools.trace_upstream(CONSTRUCTOR)
     st = WorldState(projection=smelter_belted_to_constructor(belts=3), game=game)
-    monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     assert "2 edge(s) have neither" in ftools.trace_upstream(CONSTRUCTOR)
 
 

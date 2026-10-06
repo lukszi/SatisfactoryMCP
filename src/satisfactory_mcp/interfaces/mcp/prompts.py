@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from ..app import mcp
+from . import app
 
 # Prompts also cost nothing until invoked, and they surface as slash commands. They
 # are where multi-step PROCEDURE lives, which keeps tool descriptions to one line and
 # the always-resident schema small.
 
 
-@mcp.prompt(title="Design a factory")
+@app.mcp.prompt(title="Design a factory")
 def design_factory(target_item: str, rate_per_min: str = "300") -> str:
     """Plan a factory for a target item, respecting what this world has unlocked."""
     return (
@@ -30,7 +30,7 @@ def design_factory(target_item: str, rate_per_min: str = "300") -> str:
     )
 
 
-@mcp.prompt(title="Plan a power plant")
+@app.mcp.prompt(title="Plan a power plant")
 def plan_power_plant(fuel_resource: str = "Crude Oil", sources: str = "north") -> str:
     """Plan a power plant from a given resource and area."""
     return (
@@ -49,7 +49,7 @@ def plan_power_plant(fuel_resource: str = "Crude Oil", sources: str = "north") -
     )
 
 
-@mcp.prompt(title="Which hard drive recipe?")
+@app.mcp.prompt(title="Which hard drive recipe?")
 def pick_hard_drive(hard_drive_id: str = "") -> str:
     """Advise which alternate recipe to take from a pending hard drive."""
     which = (

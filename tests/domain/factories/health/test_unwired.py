@@ -215,16 +215,14 @@ def _rewired(projection):
     return dict(projection, graph=dict(graph, actors=actors, power=power)), victim
 
 
-def test_the_note_names_a_machine_on_a_circuit_with_no_source(monkeypatch, game, projection):
+def test_the_note_names_a_machine_on_a_circuit_with_no_source(use_world, game, projection):
     """End to end, because the sentence is the deliverable: the tool used to answer a stall
     with "usually power" and now says which of the two unbuilt things it is."""
     from satisfactory_mcp.domain.world.state import WorldState
     from satisfactory_mcp.interfaces.mcp.tools import factories as tool
 
     patched, victim = _rewired(projection)
-    monkeypatch.setattr(
-        tool, "_state", lambda save=None, world=None, as_of=None: WorldState(patched, game)
-    )
+    use_world(lambda: WorldState(patched, game))
     out = tool.factory_health(factory=f"machine:{victim}")
     assert "1 machine(s) are wired to a circuit NO GENERATOR stands on" in out
     assert victim in out

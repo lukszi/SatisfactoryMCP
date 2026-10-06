@@ -133,7 +133,7 @@ def test_the_traversal_itself_did_not_change(live, game, gens):
 
 
 def test_the_route_note_summarises_rather_than_listing_every_run(live, game, gens):
-    from satisfactory_mcp.interfaces.mcp.tools.factories import VIA_NAMED, _via
+    from satisfactory_mcp.interfaces.mcp.tools.factories.trace import VIA_NAMED, _via
 
     said = _via(trace(live, game, gens, "up").crossed)
     assert "run(s)" in said

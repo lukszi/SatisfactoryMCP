@@ -129,10 +129,10 @@ def test_the_reference_world_has_three_throttled_buffers_and_seven_dark_pumps(ga
     assert unseen == 0, "every pump in the census is coupled to a pipe and so was checked"
 
 
-def test_the_sweep_over_every_factory_reports_both_and_calls_them_world_wide(monkeypatch, labelled):
+def test_the_sweep_over_every_factory_reports_both_and_calls_them_world_wide(use_world, labelled):
     """The sweep is the only view either finding can honestly appear in: a buffer and a
     pump belong to no machine set, so nothing scopes them to one factory."""
-    monkeypatch.setattr(tool, "_state", lambda save=None, world=None, as_of=None: labelled)
+    use_world(labelled)
     out = tool.factory_health(factory="all")
     assert "## fluid buffers below the level they need" in out
     assert "3 fluid buffer(s) world-wide are under the level they need" in out
@@ -184,9 +184,11 @@ def _crested(consumers, fluid="Desc_Water_C"):
     )
 
 
-def test_the_sweep_names_the_machines_on_a_pipe_network_no_source_reaches(monkeypatch, labelled):
+def test_the_sweep_names_the_machines_on_a_pipe_network_no_source_reaches(
+    monkeypatch, use_world, labelled
+):
     """Rung (1), world-wide, and the only rung that fires on this author's saves."""
-    monkeypatch.setattr(tool, "_state", lambda save=None, world=None, as_of=None: labelled)
+    use_world(labelled)
     monkeypatch.setattr(
         headlift,
         "head_lift",
@@ -205,13 +207,13 @@ def test_the_sweep_names_the_machines_on_a_pipe_network_no_source_reaches(monkey
     assert "Build_OilRefinery_C_1, Build_OilRefinery_C_2" in out
 
 
-def test_a_machine_behind_a_crest_is_told_where_the_pump_goes(monkeypatch, game, projection):
+def test_a_machine_behind_a_crest_is_told_where_the_pump_goes(
+    monkeypatch, use_world, game, projection
+):
     """Rung (2) end to end: the cause names the rung, and the crest that binds is named
     beside it -- twenty machines behind one hill are one problem with one fix."""
     patched, short = _thirsty(projection)
-    monkeypatch.setattr(
-        tool, "_state", lambda save=None, world=None, as_of=None: WorldState(patched, game)
-    )
+    use_world(lambda: WorldState(patched, game))
     monkeypatch.setattr(headlift, "head_lift", lambda *_a, **_k: _crested([short]))
     out = tool.factory_health(factory=f"machine:{short}")
     assert "Water (head lift)" in out
@@ -227,13 +229,13 @@ def test_a_machine_behind_a_crest_is_told_where_the_pump_goes(monkeypatch, game,
     assert "at (3) flow rate" not in out, "a head-lift failure never gets the rates answer"
 
 
-def test_a_crest_on_another_fluid_does_not_claim_this_machine(monkeypatch, game, projection):
+def test_a_crest_on_another_fluid_does_not_claim_this_machine(
+    monkeypatch, use_world, game, projection
+):
     """The reference world reports no crest at all, so an unrelated one leaves the same
     machine on rung (3) -- which is what makes the assertion above a verdict."""
     patched, short = _thirsty(projection)
-    monkeypatch.setattr(
-        tool, "_state", lambda save=None, world=None, as_of=None: WorldState(patched, game)
-    )
+    use_world(lambda: WorldState(patched, game))
     monkeypatch.setattr(
         headlift, "head_lift", lambda *_a, **_k: _crested([short], fluid="Desc_LiquidOil_C")
     )

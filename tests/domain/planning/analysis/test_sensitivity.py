@@ -211,7 +211,7 @@ def test_an_infeasible_candidate_is_marked_rather_than_left_at_zero(game, monkey
     """It printed nothing at all: gain 0 drops it out of the movers, so a candidate that
     could not be measured was indistinguishable from one measured and found irrelevant."""
     from satisfactory_mcp.domain.planning.analysis import sensitivity
-    from satisfactory_mcp.interfaces.mcp.tools import planning as tool
+    from satisfactory_mcp.interfaces.mcp.tools.planning import analysis as tool
 
     real = sensitivity.sweep_unlocks
     broke: list[str] = []

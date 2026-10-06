@@ -199,14 +199,13 @@ def test_paying_in_more_than_the_row_still_bills_for_is_the_other_proof(state):
     assert phase4["outstanding"]["Desc_SpaceElevatorPart_7_C"] == 4000
 
 
-def test_the_tool_says_the_subtraction_happened_and_what_it_is_worth(state, monkeypatch):
+def test_the_tool_says_the_subtraction_happened_and_what_it_is_worth(state, use_world):
     """A number whose provenance is not printed is a number the reader cannot weigh.
-    `_state` is patched in the module that calls it -- patching app._state would leave
-    the tool holding the original -- because this world cannot be reached from a save."""
+    The world is served to the tool because it cannot be reached from a save."""
     from satisfactory_mcp.interfaces.mcp.tools import progression as progression_tools
 
     st = _with(state, paid_off_target={"Desc_SpaceElevatorPart_7_C": 2500})
-    monkeypatch.setattr(progression_tools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     out = progression_tools.phase_requirements()
     assert "\tderived\t" in out
     assert "1500 Assembly Director System" in out
@@ -251,7 +250,7 @@ def test_absent_paid_off_record_is_empty_not_missing(state):
 
 
 @pytest.fixture
-def tool(state, monkeypatch):
+def tool(state, use_world):
     """`phase_requirements` answering about the committed projection.
 
     The tool reads the newest save on the machine, so judging its numbers against the
@@ -260,9 +259,7 @@ def tool(state, monkeypatch):
     """
     from satisfactory_mcp.interfaces.mcp.tools import progression as progression_tools
 
-    monkeypatch.setattr(
-        progression_tools, "_state", lambda save=None, world=None, as_of=None: state
-    )
+    use_world(state)
     return progression_tools.phase_requirements
 
 

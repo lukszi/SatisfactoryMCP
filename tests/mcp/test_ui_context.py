@@ -15,7 +15,8 @@ import pytest
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.session import asks, journal
-from satisfactory_mcp.interfaces.mcp.tools import planning
+from satisfactory_mcp.interfaces.mcp import app
+from satisfactory_mcp.interfaces.mcp.tools.planning import page_context
 
 PAGE = Actor("page", "", 4242)
 OTHER_CHAT = Actor("chat", "claude-code", 999_999)
@@ -36,11 +37,11 @@ class _World:
 
 
 @pytest.fixture
-def ctx(user_data, monkeypatch):
-    monkeypatch.setattr(planning, "_state", lambda *a, **k: _World())
-    monkeypatch.setattr(planning, "_sav", lambda st: "sav:3f2a91c0aa11")
-    monkeypatch.setattr(planning, "_cursor", {})
-    monkeypatch.setattr(planning, "_page_focus", lambda world_id: (None, False))
+def ctx(user_data, monkeypatch, use_world):
+    use_world(_World)
+    monkeypatch.setattr(app, "save_token", lambda st: "sav:3f2a91c0aa11")
+    monkeypatch.setattr(page_context, "_cursor", {})
+    monkeypatch.setattr(page_context, "_page_focus", lambda world_id: (None, False))
     return user_data
 
 
@@ -55,7 +56,7 @@ def _focus(monkeypatch, age_s: float, is_open: bool, **extra) -> None:
         "selection": None,
         **extra,
     }
-    monkeypatch.setattr(planning, "_page_focus", lambda world_id: (focus, is_open))
+    monkeypatch.setattr(page_context, "_page_focus", lambda world_id: (focus, is_open))
 
 
 def test_a_page_that_never_opened_says_so(ctx):
@@ -234,7 +235,7 @@ def test_the_real_focus_file_is_read_when_the_web_module_exists(ctx, monkeypatch
         ),
         encoding="utf-8",
     )
-    found, is_open = planning._page_focus(WORLD)
+    found, is_open = page_context._page_focus(WORLD)
     assert is_open and found["follow"] == "toasts"
 
 
@@ -327,7 +328,7 @@ def test_only_the_newest_eight_pins_show_and_the_reply_stays_in_budget(ctx):
     assert line.startswith("pins: pin:13 ") and line.endswith(" (+12 more)")
     parts = line.removeprefix("pins: ").removesuffix(" (+12 more)").split(" · ")
     assert len(parts) == 8 and all(len(part) <= 90 for part in parts)
-    assert len(out) < planning.CONTEXT_BUDGET
+    assert len(out) < page_context.CONTEXT_BUDGET
 
 
 def test_a_plan_created_since_the_last_look_reads_as_new(ctx):
@@ -440,11 +441,11 @@ def test_many_long_asks_stay_inside_the_budget(ctx):
     for n in range(200):
         asks.create(WORLD, f"{n} " + "y" * 190, {**ABOUT, "label": "l" * 120})
     out = srv.ui_context()
-    assert len(out) < planning.CONTEXT_BUDGET
+    assert len(out) < page_context.CONTEXT_BUDGET
     line = _asks_line(out)
     assert line.startswith("asks (200 waiting): ") and line.endswith(" (+194 more)")
     parts = line.removeprefix("asks (200 waiting): ").removesuffix(" (+194 more)").split(" · ")
-    assert len(parts) == 6 and all(len(p) <= planning.CONTEXT_ASK_WIDTH for p in parts)
+    assert len(parts) == 6 and all(len(p) <= page_context.CONTEXT_ASK_WIDTH for p in parts)
 
 
 def _advisory(kind: str, subject: str, members=("M_1",)):
@@ -485,7 +486,7 @@ def advised(ctx, monkeypatch):
         active, hidden = advice.store.split(items, data, 3600.0)
         return advice.Current(items, active, hidden, data["version"], 3600.0, [])
 
-    monkeypatch.setattr(planning.advice, "current", current)
+    monkeypatch.setattr(page_context.advice, "current", current)
     return current(None)
 
 
@@ -501,7 +502,7 @@ def test_the_advice_line_names_three_rows_by_id_inside_the_budget(advised):
     parts = line.split(": ", 1)[1].removesuffix(" (+6 more: world_summary)").split(" · ")
     assert len(parts) == 3 and all(len(p) <= 160 for p in parts)
     assert 'ui_context(dismissed=["' + advised.items[0].id + '"])' in out
-    assert len(out) < planning.CONTEXT_BUDGET
+    assert len(out) < page_context.CONTEXT_BUDGET
 
 
 def test_dismissed_hides_on_the_page_and_journals_as_chat(advised):

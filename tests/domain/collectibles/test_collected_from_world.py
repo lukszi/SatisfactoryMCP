@@ -42,8 +42,8 @@ from satisfactory_mcp.domain.collectibles.table import CollectiblesUnreadable, n
 from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.world import state as state_mod
 from satisfactory_mcp.domain.world.state import WorldState, load_collectibles
-from satisfactory_mcp.interfaces.mcp.tools import progression
-from satisfactory_mcp.interfaces.mcp.tools.progression import collected_from_world
+from satisfactory_mcp.interfaces.mcp import app
+from satisfactory_mcp.interfaces.mcp.tools.collectibles import collected_from_world
 
 pytestmark = pytest.mark.integration
 
@@ -439,13 +439,13 @@ def test_an_unknown_group_comes_back_as_an_error_not_an_exception(state, table):
 
 
 @pytest.fixture
-def tool(monkeypatch, state):
+def tool(use_world, state):
     """``collected_from_world`` against the committed projection rather than the live save.
 
     The tool resolves its own state and the numbers here are exact, so the fixture is
     substituted for the autosave -- otherwise every count below would drift with play.
     """
-    monkeypatch.setattr(progression, "_state", lambda save, world, as_of=None: state)
+    use_world(state)
     return collected_from_world
 
 
@@ -602,13 +602,13 @@ def test_an_unknown_view_is_refused_with_the_valid_ones(tool, table):
     assert "nearest" in out
 
 
-def test_an_empty_removed_key_is_called_unreadable_rather_than_none(monkeypatch, state, table):
+def test_an_empty_removed_key_is_called_unreadable_rather_than_none(use_world, state, table):
     """A projection cached before schema 11 has no list, and "0 collected" would be a
     confident wrong answer -- the player has certainly picked up a slug."""
     projection = copy.deepcopy(state.projection)
     projection["removed"] = {"cells": [], "instances": [], "counts": {}}
     older = WorldState(projection=projection, game=state.game)
-    monkeypatch.setattr(progression, "_state", lambda save, world, as_of=None: older)
+    use_world(older)
     out = collected_from_world()
     assert "destroyed_records=0" in out
     assert "power_slug_blue\t596\t0\t596" in out
@@ -618,10 +618,11 @@ def test_an_unreadable_save_is_a_sentence_not_a_traceback(monkeypatch):
     """Every save-reading tool in this package answers that way, and a raise here would reach
     the MCP client as a protocol error instead of something the model can act on."""
 
-    def boom(save, world, as_of=None):
+    def boom(game, path=None, world=None):
         raise RuntimeError("no such save")
 
-    monkeypatch.setattr(progression, "_state", boom)
+    monkeypatch.setattr(app, "game", lambda: None)
+    monkeypatch.setattr(app, "load_state", boom)
     assert collected_from_world() == "could not read save: no such save"
 
 
@@ -640,14 +641,14 @@ def test_without_the_map_table_the_census_degrades_to_names_and_says_so(save_onl
     assert "census" not in out and "resolved" not in out
 
 
-def test_the_degraded_tool_labels_itself_and_refuses_what_it_cannot_do(monkeypatch, save_only):
+def test_the_degraded_tool_labels_itself_and_refuses_what_it_cannot_do(use_world, save_only):
     """It must not answer a narrower question quietly: show=remaining and show=nearest are
     refused outright, because without the map nothing knows how many exist.
 
     Both the label and the refusal name the command that fixes it. "Regenerate it" is not
     something a player can type, and this answer's whole job is to end the dead end.
     """
-    monkeypatch.setattr(progression, "_state", lambda save, world, as_of=None: save_only)
+    use_world(save_only)
     census = collected_from_world()
     assert "DEGRADED: data/world_collectibles.json has never been generated" in census
     assert "misfiles 51 of 713" in census
@@ -663,13 +664,15 @@ def test_the_degraded_tool_labels_itself_and_refuses_what_it_cannot_do(monkeypat
         assert "total_removed" not in refused
 
 
-def test_a_corrupt_table_says_so_instead_of_reading_as_never_generated(monkeypatch, save_only):
+def test_a_corrupt_table_says_so_instead_of_reading_as_never_generated(
+    monkeypatch, use_world, save_only
+):
     """The two states the strict loader exists to separate, at the one place a player meets
     them. A half-written file is fixed by deleting it and running the generator; a missing
     one is fixed by running the generator. Told apart, each answer is actionable; told as
     one, the reader is left to guess which of the two they are in.
     """
-    monkeypatch.setattr(progression, "_state", lambda save, world, as_of=None: save_only)
+    use_world(save_only)
 
     def unreadable(*, strict: bool = False):
         """The loader's answer for a file that is there and will not parse."""

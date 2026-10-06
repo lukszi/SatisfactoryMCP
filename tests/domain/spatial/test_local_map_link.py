@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.spatial import maplink
+from satisfactory_mcp.interfaces.mcp import app
 from satisfactory_mcp.interfaces.mcp.tools import spatial
 
 
@@ -47,7 +48,7 @@ def test_show_on_map_leads_with_the_local_map(monkeypatch):
     def no_save(*_a, **_k):
         raise RuntimeError("no save in this test")
 
-    monkeypatch.setattr(spatial, "_state", no_save)
+    monkeypatch.setattr(app, "load_state", no_save)
     out = spatial.show_on_map("120,-340")
     first = next(line for line in out.splitlines() if "://" in line)
     assert first.startswith("local map: http://127.0.0.1:8797/#")
@@ -60,7 +61,7 @@ def test_the_echo_rounds_to_a_decimetre_rather_than_truncating(monkeypatch):
     def no_save(*_a, **_k):
         raise RuntimeError("no save in this test")
 
-    monkeypatch.setattr(spatial, "_state", no_save)
+    monkeypatch.setattr(app, "load_state", no_save)
     assert "at -7.9,-5.5 (metres)" in spatial.show_on_map("-7.9,-5.5").splitlines()[0]
 
 
@@ -79,15 +80,15 @@ def test_a_node_link_rings_that_node(monkeypatch):
     def no_save(*_a, **_k):
         raise RuntimeError("no save in this test")
 
-    monkeypatch.setattr(spatial, "_state", no_save)
+    monkeypatch.setattr(app, "load_state", no_save)
     assert _local(spatial.show_on_map("node:BP_FrackingSatellite10"))["show"] == (
         "node:BP_FrackingSatellite10"
     )
     assert "show" not in _local(spatial.show_on_map("120,-340"))
 
 
-def test_a_run_link_rings_that_run(monkeypatch, state):
-    monkeypatch.setattr(spatial, "_state", lambda save=None, world=None, as_of=None: state)
+def test_a_run_link_rings_that_run(use_world, state):
+    use_world(state)
     assert _local(spatial.show_on_map("chain:7"))["show"] == "chain:7"
     assert _local(spatial.show_on_map("PIPE:3"))["show"] == "pipe:3"
     assert "show" not in _local(spatial.show_on_map("me"))

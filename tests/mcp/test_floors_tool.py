@@ -6,8 +6,8 @@ tool's contract rather than the decomposition's -- ``tests/domain/factories/test
 these check the counts it prints against the domain call behind them, the two views it
 switches between, and the sentences a reader would otherwise get wrong.
 
-Fixture-backed: ``_state`` is replaced on the tool module, so the numbers are the committed
-projection's.
+Fixture-backed: ``use_world`` serves the tools the committed projection, so the numbers
+are that projection's.
 """
 
 from __future__ import annotations
@@ -15,13 +15,13 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp.domain.factories import floors as ffloors
-from satisfactory_mcp.interfaces.mcp.tools import floors as tool
+from satisfactory_mcp.interfaces.mcp.tools.factories import floors as tool
 from tests.support import tables
 
 
 @pytest.fixture
-def tools(monkeypatch, labelled):
-    monkeypatch.setattr(tool, "_state", lambda save=None, world=None, as_of=None: labelled)
+def tools(use_world, labelled):
+    use_world(labelled)
     return tool
 
 

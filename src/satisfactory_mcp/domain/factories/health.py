@@ -29,7 +29,6 @@ __all__ = [
     "Feed",
     "MachineHealth",
     "assess",
-    "summarise",
 ]
 
 #: Uptime at or above this counts as running flat out.
@@ -489,13 +488,3 @@ def assess(
                 report.starved_of[game.item_name(flow.item)] += 1
 
     return report
-
-
-def summarise(report: HealthReport) -> str:
-    """One line, states worst-first."""
-    parts = [f"{report.by_state[s]} {s}" for s in STATES if report.by_state[s]]
-    mean = report.mean_uptime
-    head = f"{len(report.machines)} machines"
-    if mean is not None:
-        head += f", mean uptime {mean:.0%}"
-    return head + (" -- " + ", ".join(parts) if parts else "")

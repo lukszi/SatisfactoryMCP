@@ -298,13 +298,11 @@ def test_a_row_choice_in_words():
 
 
 @pytest.fixture
-def fresh_state_factory(monkeypatch, projection, game):
-    from satisfactory_mcp.interfaces.mcp.tools import planning
-
+def fresh_state_factory(monkeypatch, projection, game, use_world):
     def fresh(*_a, **_k):
         return WorldState(projection=projection, game=game)
 
-    monkeypatch.setattr(planning, "_state", fresh)
+    use_world(fresh)
     return fresh
 
 
