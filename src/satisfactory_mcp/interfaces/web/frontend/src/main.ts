@@ -8,7 +8,14 @@
  */
 
 import "leaflet/dist/leaflet.css";
-import "./style.css";
+import "./app/base.css";
+import "./map/layer-control.css";
+import "./map/drawn.css";
+import "./dash/panel.css";
+import "./dash/planner/site.css";
+import "./chat/advice.css";
+import "./dash/maps/settings-maps.css";
+import "./map/live-light.css";
 
 import { listenForCopies } from "./kit/copy";
 import { el } from "./kit/dom";

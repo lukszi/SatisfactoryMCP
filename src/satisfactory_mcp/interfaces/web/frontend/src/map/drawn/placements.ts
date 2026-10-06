@@ -116,7 +116,7 @@ const MACHINE_SLOT: Record<(typeof MACHINE_KINDS)[number], number> = {
 
 /* Thick outline = the server's `actionable`: red when stopped, signal yellow when blocked.
  * Grammar and the yellow's measured distances: docs/save-projection.md §6.2d. The CSS twin of
- * the yellow is `--blocked` in style.css. */
+ * the yellow is `--blocked` in app/base.css. */
 export var BLOCKED_COLOUR = declareColours("placements", { blocked: "#ffd000" }).blocked;
 export var STOPPED_COLOUR = declareColours("placements", { stopped: "#d9534f" }).stopped;
 

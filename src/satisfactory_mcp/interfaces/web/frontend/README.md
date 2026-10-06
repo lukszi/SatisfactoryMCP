@@ -63,7 +63,7 @@ rather than the one a game session is running against.
 | --- | --- |
 | `index.html` | the page; Vite's entry, built into `../static/` |
 | `src/main.ts` | the entry: the FEATURES block, every map listener in its order, and boot |
-| `src/style.css` | the page's stylesheet, imported after Leaflet's so it wins on order |
+| `src/**/*.css` | the page's stylesheets, one per area beside its modules; `main.ts` imports them after Leaflet's, in one fixed order, so they win on order |
 | `src/app/` | page state, the fetch registry and its loader, the address bar, live events, header, rail, search, selection, settings, the world picker, the map-type registry and the side panel's shared reads |
 | `src/api/` | `get()` and the writes (`client.ts`), the response shapes (`shapes.ts`) and the generated schema |
 | `src/kit/` | shared building blocks: DOM and escaping, keeping focus through a redraw, formatting, vocabulary, toasts, copy, dashboard widgets |

@@ -1220,7 +1220,7 @@ Decided 2026-09-27, binding for the design-system work and the page batches afte
   but counted there, and the map outline for no wire uses the power-problem style.
 - **T2 Palette.** Map generators move off the stopped red to a warm neutral, storage moves
   off the selection pink to a teal-violet, LOCKED is muted instead of amber, and uptime
-  badges carry no colour. Tones (`:root` in style.css, dark only): `--bad` red is broken or
+  badges carry no colour. Tones (`:root` in app/base.css, dark only): `--bad` red is broken or
   stopped, errors and "this won't work" warnings; `--blocked` yellow is a blocked machine
   and soft warnings (incomplete, not broken); `--remove` amber is a pending lasso removal.
   Revised 2026-10-05: generators are pale mint `#a3f5b4` (tan vanished on sand) and extractors
