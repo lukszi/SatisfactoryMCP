@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ....core.gamedata.model import GameData
-from ...spatial.origin import PLAYER_WORDS, resolve_origin
+from ...spatial.places import PLAYER_WORDS, resolve_place
 from .ground import LOAD_FIELD, settle_z
 from .record import Siting, parse
 
@@ -42,7 +42,7 @@ def resolve_site_origin(st: WorldState, at: str) -> tuple[float, float, float | 
     """Resolve a site origin: any place, plus the 'x,y,z' form only a site can use.
 
     Returns (x_m, y_m, z_m-or-None, label). Two forms are handled here rather than in the
-    shared resolver: the three-part coordinate, because ``resolve_origin`` deliberately
+    shared resolver: the three-part coordinate, because ``resolve_place`` deliberately
     answers with pairs, and 'me', because the player pawn is the one place that DOES carry
     a height worth keeping. Everything else is the one place vocabulary.
     """
@@ -62,7 +62,7 @@ def resolve_site_origin(st: WorldState, at: str) -> tuple[float, float, float | 
         if here is None:
             raise ValueError("this save has no player pawn, so 'me' cannot be resolved")
         return here[0] / 100.0, here[1] / 100.0, here[2] / 100.0, "you"
-    origin_cm, label = resolve_origin(st, text)  # raises ValueError with the known names
+    origin_cm, label = resolve_place(st, text)  # raises ValueError with the known names
     return origin_cm[0] / 100.0, origin_cm[1] / 100.0, None, label
 
 

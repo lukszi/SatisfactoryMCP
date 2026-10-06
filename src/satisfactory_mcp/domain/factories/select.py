@@ -36,7 +36,7 @@ node selectors spell it. The whole grammar is written out in `docs/selectors.md`
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
-from ..spatial import geo, origin
+from ..spatial import geo, places
 from .identity import bases, cluster_machines
 from .model import FactoryGraph
 
@@ -137,8 +137,8 @@ def _by_building(graph: FactoryGraph, game: GameData, spec: str) -> set[str]:
 def _by_near(st, graph: FactoryGraph, projection: dict, spec: str) -> set[str]:
     """A circle around any place, resolved by the one place resolver every tool uses."""
     try:
-        body, radius_m = origin.parse_near(spec)
-        centre, _where = origin.resolve_origin(st, body)
+        body, radius_m = places.parse_near(spec)
+        centre, _where = places.resolve_place(st, body)
     except ValueError as exc:
         raise SelectorError(str(exc)) from exc
     pos = _positions(projection)

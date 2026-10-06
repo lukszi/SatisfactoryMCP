@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from ....core.gamedata.constants import WATER_EXTRACTOR_CAP_ASSUMED
 from ....core.gamedata.model import GameData, Recipe
 from ...spatial import nodes as nodes_mod
-from ...spatial.select import Selection, select_nodes
+from ...spatial.nodes.selectors import Selection, select_nodes
 from .. import siting as siting_mod
 from ..stored.planlog import is_power
 from . import prices as prices_mod
@@ -251,7 +251,7 @@ def build_scenario(
     power_price: float | str | None = None,
     #: Per recipe id, ``"last"`` or ``"spread"``: a row's own overclock-last choice.
     row_overclock: dict[str, str] | None = None,
-    #: Where the factory will stand, in any spelling ``spatial.origin`` takes. It buys the
+    #: Where the factory will stand, in any spelling ``spatial.places`` takes. It buys the
     #: plan a MEASURED water assumption instead of an assumed one; it changes no number the
     #: LP sees, because how much water a site yields is placement geometry no data here has.
     site_at: str = "",

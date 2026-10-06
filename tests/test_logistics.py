@@ -129,7 +129,7 @@ def test_a_machines_recipe_finds_its_feeders(projection, game) -> None:
 
 
 def test_both_a_pipe_run_and_a_belt_run_are_followable(projection, game) -> None:
-    """``ident`` is the id ``search_conduits`` prints and ``resolve_origin`` takes.
+    """``ident`` is the id ``search_conduits`` prints and ``resolve_place`` takes.
 
     Both media carry one since schema 20 gave a belt segment the actor index a pipe has had
     since 14 -- so both join by the save's OWN identity for the piece. That is the whole
@@ -194,7 +194,7 @@ def test_every_ident_a_contracted_run_prints_is_one_the_drawn_view_answers_to(
     ``logistics`` contracts runs out of the CONNECTION records and ``conduits`` builds them
     from the DRAWN LINE. They are two views of one world, and an ident is only useful if it
     means the same thing in both -- ``factory_health`` prints one from the first view and
-    ``resolve_origin`` and ``search_conduits`` look it up in the second. An id that resolved
+    ``resolve_place`` and ``search_conduits`` look it up in the second. An id that resolved
     to nothing would be worse than no id: it reads as a fact and dead-ends.
     """
     graph = build_physical_graph(projection, game)

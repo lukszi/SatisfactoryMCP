@@ -141,12 +141,12 @@ there is no guard change and no 409 besides the pinning middleware's.
 
 | Path | Params (default) | Model | Codes | Domain |
 |---|---|---|---|---|
-| `/api/world/here` | `radius_m` (500, 1–5000) | `HereResponse` | 200, 404 no save | `place.here` |
-| `/api/world/nodes` | `view` nodes\|fields (nodes); `resource`; `purity` pure\|normal\|impure\|all; `kind` node\|well_sat\|geyser\|all; `status` all\|free\|tapped (all); `source` (repeatable selector); `near` | `NodeFindResponse` | 200, 400 bad value / unresolvable near / every selector failed | `finder.find_nodes` |
-| `/api/world/sites` | `resource` (required); `source` (repeatable); `limit` (10, 1–50) | `RankedSitesResponse` | 200, 400 unknown resource, 404 no save | `finder.rank` |
+| `/api/world/here` | `radius_m` (500, 1–5000) | `HereResponse` | 200, 404 no save | `surroundings.player_surroundings` |
+| `/api/world/nodes` | `view` nodes\|fields (nodes); `resource`; `purity` pure\|normal\|impure\|all; `kind` node\|well_sat\|geyser\|all; `status` all\|free\|tapped (all); `source` (repeatable selector); `near` | `NodeFindResponse` | 200, 400 bad value / unresolvable near / every selector failed | `search.find_nodes` |
+| `/api/world/sites` | `resource` (required); `source` (repeatable); `limit` (10, 1–50) | `RankedSitesResponse` | 200, 400 unknown resource, 404 no save | `search.rank` |
 | `/api/world/conduits` | `near` (me); `radius_m` (250, 1–2000); `to`; `to_radius_m`; `conduit_kind` belt\|pipe\|all; `view` runs\|networks; `network`; `run`; `offset` (0); `limit` (200, 1–500) | `ConduitsResponse` | 200, 400 bad value / unresolvable place / networks with belt, 404 no save | `conduits.search`, `conduits.networks` |
 | `/api/world/regions` | `resource` | `RegionTableResponse` | 200, 400 unknown resource | `regions.region_rows` |
-| `/api/inspect` (changed) | `x_m`, `y_m`; `radius_m` (200, 1–2000) new, the elevation reach | `InspectResponse` + fields in §3.2 | as today | `place.describe` |
+| `/api/inspect` (changed) | `x_m`, `y_m`; `radius_m` (200, 1–2000) new, the elevation reach | `InspectResponse` + fields in §3.2 | as today | `surroundings.describe_point` |
 | `/api/nodes` (changed) | as today | `NodeRow` + `spoiler` | as today | as today |
 | `/api/collectibles` (changed) | as today + `spoilers` 0\|1 | `CollectiblesResponse` + fields in §3.2 | as today | `collect_view` + `service.census_rows` |
 
@@ -157,7 +157,7 @@ how many categories were dropped. Node routes take no `spoilers`: a locked node 
 flagged, and the page fades it (§8.1).
 
 `resource` takes an item name or class id, resolved by `domain/planning/solver/scenario.resolve_item`
-(the tools' `_item_id`). `near`, `to` and `at` take the place vocabulary of `resolve_origin`
+(the tools' `_item_id`). `near`, `to` and `at` take the place vocabulary of `resolve_place`
 (`x,y` metres, `me`, a factory label, `node:`, `slab:`, `chain:`, `pipe:`, `plan:`).
 
 ### 3.2 Response models (TypedDict, declaration order = wire order)
@@ -313,13 +313,13 @@ domain function. `tests/test_world_parity.py` pins that both answer alike.
 
 | New or changed domain function | Taken from | Used by |
 |---|---|---|
-| `domain/spatial/finder.py`: `find_nodes(st, game, *, sources, resource, purity, kind, status, view, near) -> NodeFind` | `search_resource_nodes` body (selection, annotate, status filter, distance, clusters, totals, notes, water block) | tool, `/api/world/nodes`, `place.here`, `place.describe` |
-| `finder.fields(rows) -> list[FieldView]`, `finder.rank(st, game, resource, sources) -> SiteRank` | tool bodies of fields view and `rank_build_sites` | tool, `/api/world/nodes?view=fields`, `/api/world/sites` |
-| `domain/spatial/place.py`: `here(st, game, radius_m) -> Here`, `describe(st, game, x, y, radius_m) -> Description` | `whereami`, `describe_location`, `routers/inspect.py` assembly | tools, `/api/world/here`, `/api/inspect` |
+| `domain/spatial/nodes/search.py`: `find_nodes(st, game, *, sources, resource, purity, kind, status, view, near) -> NodeFind` | `search_resource_nodes` body (selection, annotate, status filter, distance, clusters, totals, notes, water block) | tool, `/api/world/nodes`, `surroundings.player_surroundings`, `surroundings.describe_point` |
+| `search.fields(rows) -> list[FieldView]`, `search.rank(st, game, resource, sources) -> SiteRank` | tool bodies of fields view and `rank_build_sites` | tool, `/api/world/nodes?view=fields`, `/api/world/sites` |
+| `domain/spatial/surroundings.py`: `here(st, game, radius_m) -> Here`, `describe(st, game, x, y, radius_m) -> Description` | `whereami`, `describe_location`, `routers/inspect.py` assembly | tools, `/api/world/here`, `/api/inspect` |
 | `domain/world/conduits.py`: `search(st, near, radius_m, to, to_radius_m, kind, network, run) -> ConduitSearch`, `networks(st, origin) -> list[NetworkView]` | `search_conduits` body and `_networks_view` | tool, `/api/world/conduits` |
 | `domain/spatial/regions.py`: `region_rows(table, rid, rows=None) -> list[dict]` | `list_regions` body | tool, `/api/world/regions` |
-| `domain/spatial/nodes.py`: `table_age(header, table, instances) -> dict \| None` | `skew_for_save` + `skew_notes`, scoped | every node-bearing route |
-| `domain/collectibles/service.py`: `census_rows(st)`, `found(st)`, `is_spoiler(category, found)`, `table_age(st)`, `LABELS` | `render_collectibles` census assembly, `PICKUP_NAME` | tool, `/api/collectibles`, `place.describe` |
+| `domain/spatial/nodes/`: `table_age(header, table, instances) -> dict \| None` | `skew_for_save` + `skew_notes`, scoped | every node-bearing route |
+| `domain/collectibles/service.py`: `census_rows(st)`, `found(st)`, `is_spoiler(category, found)`, `table_age(st)`, `LABELS` | `render_collectibles` census assembly, `PICKUP_NAME` | tool, `/api/collectibles`, `surroundings.describe_point` |
 
 `status` in `find_nodes`: `free` = untapped (as `only_free` today), `tapped` = an extractor
 stands on it, `all`. "Locked" is not a filter; it is a row status and the spoiler.
@@ -342,11 +342,11 @@ None new. Behaviour on the existing ones:
 
 | Tool | Change | Text output |
 |---|---|---|
-| `search_resource_nodes` | body → `finder.find_nodes`; new `status: free \| tapped \| all` (`only_free=true` stays, means `status=free`) | unchanged except a tapped-only header word |
-| `rank_build_sites` | body → `finder.rank` | unchanged |
+| `search_resource_nodes` | body → `search.find_nodes`; new `status: free \| tapped \| all` (`only_free=true` stays, means `status=free`) | unchanged except a tapped-only header word |
+| `rank_build_sites` | body → `search.rank` | unchanged |
 | `search_conduits` | body → `conduits.search`/`networks`; new `network: int` (runs of one fluid network) | unchanged |
-| `whereami` | body → `place.here` | unchanged |
-| `describe_location` | body → `place.describe`; prints `nearest_node`, `fields` (count and the nearest), `pickups` (remaining within 500 m) | three new kv lines |
+| `whereami` | body → `surroundings.player_surroundings` | unchanged |
+| `describe_location` | body → `surroundings.describe_point`; prints `nearest_node`, `fields` (count and the nearest), `pickups` (remaining within 500 m) | three new kv lines |
 | `list_regions` | body → `regions.region_rows` | unchanged |
 | `show_on_map` | local link carries `show=node:<leaf>` / `chain:<n>` / `pipe:<n>` for those places | link text only |
 | `collected_from_world` | census built by `service.census_rows`; labels from `service.LABELS` | unchanged |
@@ -507,7 +507,7 @@ Backend (`PYTHONPATH=<worktree>/src`, the main venv, `satisfactory_mcp.__file__`
 
 | File | Covers |
 |---|---|
-| `tests/test_world_finder_domain.py` (new) | `find_nodes` filters (resource, purity, kind, status, region source, near), nearest ordering, totals, locked capacity; `fields`; `rank`; `place.here` no pawn; `place.describe` fields and pickups; `conduits.search` near/to/network/run and bridged; `region_rows`; `table_age` scoping; `census_rows`, `found`, spoiler rule incl. pods and caches |
+| `tests/test_world_finder_domain.py` (new) | `find_nodes` filters (resource, purity, kind, status, region source, near), nearest ordering, totals, locked capacity; `fields`; `rank`; `surroundings.player_surroundings` no pawn; `surroundings.describe_point` fields and pickups; `conduits.search` near/to/network/run and bridged; `region_rows`; `table_age` scoping; `census_rows`, `found`, spoiler rule incl. pods and caches |
 | `tests/test_web_world_finders.py` (new) | each `/api/world/*` route: shape, defaults, every 400/404/422, locked nodes kept and counted, `save_error` path, `as_of` 409 via the middleware, Host 403 |
 | `tests/test_world_parity.py` (new) | tool vs route on the fixture: same node ids and order, same field centres and totals, same site order, same run ids, same census numbers |
 | `tests/test_web_inspect.py` | new fields; `radius_m`; no-save path keeps nodes and nulls conduits |
@@ -566,8 +566,8 @@ read-only for both.
 
 **BACKEND**
 
-- `src/satisfactory_mcp/domain/spatial/finder.py` (new), `domain/spatial/place.py` (new)
-- `domain/spatial/nodes.py`, `domain/spatial/regions.py`, `domain/spatial/maplink.py`
+- `src/satisfactory_mcp/domain/spatial/nodes/search.py` (new), `domain/spatial/surroundings.py` (new)
+- `domain/spatial/nodes/`, `domain/spatial/regions.py`, `domain/spatial/maplink.py`
 - `domain/world/conduits.py`, `domain/world/sites.py` (only if `selector` moves)
 - `domain/collectibles/service.py`, `domain/collectibles/removed.py` (census only)
 - `interfaces/mcp/tools/spatial.py`, `interfaces/mcp/tools/progression.py` (`collected_from_world` only), `interfaces/mcp/tools/planning.py` (`_focus_line` only)

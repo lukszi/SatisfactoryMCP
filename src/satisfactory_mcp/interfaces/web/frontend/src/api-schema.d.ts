@@ -129,9 +129,10 @@ export interface paths {
          * Inspect
          * @description What is at a coordinate: region, measured ground, nodes, fields, conduits, pickups.
          *
-         *     Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
-         *     this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
-         *     elevation reach; conduits count within 250 m, fields and pickups look 500 m out.
+         *     Every answer comes out of ``surroundings.describe_point``, the function
+         *     ``describe_location`` calls; this endpoint converts metres to the save's centimetres and
+         *     rounds. ``radius_m`` is the elevation reach; conduits count within 250 m, fields and
+         *     pickups look 500 m out.
          *
          *     **A failed save is not a failed answer.** The node table is static, covers the whole map
          *     and needs no ``.sav`` at all, so a world whose save will not load still gets its region,
@@ -5598,7 +5599,7 @@ export interface components {
          *
          *     NOT centimetres, and this is the one payload on this surface where that is not a bug.
          *     ``Siting`` records metres because a player typed them, so ``serial._m`` has nothing to
-         *     do here -- see ``domain/planning/siting.py``.
+         *     do here -- see ``domain/planning/siting/``.
          *
          *     ``z_m`` is null wherever the origin was named by something with no height (a factory
          *     centroid, a bare ``x,y``); the pad is still a rectangle on the ground. ``source`` is

@@ -448,7 +448,7 @@ Every write may also raise `filelock.LockTimeout`.
 with `.world_id`, `.plans` (live plans as `Plan`-compatible objects carrying `.key` and `.rev`
 alongside `.name`, `.args`, `.kwargs()`, `.notes`, `.plan_id`, `.factory`, `.created`,
 `.provenance` and `.siting`) and `.find(name)`. `recall`, `diff_service`, `layout.service`,
-`siting`, `spatial.origin` and `routers/plans.py` keep working unchanged.
+`siting`, `spatial.places` and `routers/plans.py` keep working unchanged.
 
 `PlanStore`'s write paths (`editing`, `save`, `put`, `remove`) are deleted. `store.py` keeps
 `Plan` and `PLAN_ARGS` (+ `required`), and `PlanStore.load` only for migration.

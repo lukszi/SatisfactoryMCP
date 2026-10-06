@@ -12,7 +12,7 @@ from typing import Annotated
 from pydantic import Field
 
 from ....domain.spatial import regions as regions_mod
-from ....domain.spatial.origin import resolve_origin
+from ....domain.spatial.places import resolve_place
 from ....domain.world.inventory import CRATE_KIND_TEXT, Holding
 from ....presenters.text import primitives as render
 from ..app import AsOf, Limit, _item_id, _state, mcp, retired
@@ -234,7 +234,7 @@ def storage(
     origin, at = None, ""
     if near is not None:
         try:
-            origin, at = resolve_origin(st, near)
+            origin, at = resolve_place(st, near)
         except ValueError as exc:
             return f"! {exc}"
 
@@ -248,7 +248,7 @@ def storage(
     if not empty:
         hits = [h for h in hits if h.total]
     if origin is not None:
-        # ``resolve_origin`` answers in centimetres, which is what the placements are in.
+        # ``resolve_place`` answers in centimetres, which is what the placements are in.
         reach = (radius_m * 100.0) ** 2
         hits = [
             h

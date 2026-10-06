@@ -17,7 +17,7 @@ from ...factories import naming
 from ...factories.resolve import resolve_factory
 from ...factories.select import SelectorError
 from ...spatial import geo
-from ...spatial.origin import parse_near, resolve_origin
+from ...spatial.places import parse_near, resolve_place
 from ...world.state import WorldState
 from .. import siting as siting_mod
 from ..solver.prepare import PreparedPlan
@@ -239,7 +239,7 @@ def search_area(
         for term in near:
             try:
                 place, _reach = parse_near(term[5:])
-                point, _label = resolve_origin(st, place)
+                point, _label = resolve_place(st, place)
             except (ValueError, KeyError):
                 continue
             circles.append((point[0], point[1], radius))

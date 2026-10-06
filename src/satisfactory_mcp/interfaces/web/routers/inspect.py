@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from fastapi import APIRouter, Query, Request
 
 from ....domain.collectibles import service as collectibles_service
-from ....domain.spatial import caves, geo, place
+from ....domain.spatial import caves, geo, surroundings
 from ....domain.spatial import elevation as spatial_elevation
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
@@ -285,9 +285,10 @@ def inspect(
 ) -> Any:
     """What is at a coordinate: region, measured ground, nodes, fields, conduits, pickups.
 
-    Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
-    this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
-    elevation reach; conduits count within 250 m, fields and pickups look 500 m out.
+    Every answer comes out of ``surroundings.describe_point``, the function
+    ``describe_location`` calls; this endpoint converts metres to the save's centimetres and
+    rounds. ``radius_m`` is the elevation reach; conduits count within 250 m, fields and
+    pickups look 500 m out.
 
     **A failed save is not a failed answer.** The node table is static, covers the whole map
     and needs no ``.sav`` at all, so a world whose save will not load still gets its region,
@@ -319,7 +320,7 @@ def inspect(
 
     game = request.app.state.game()
     x, y = x_m * 100.0, y_m * 100.0
-    found = place.describe(st, game, x, y, radius_m, terrain_field=terrain.field())
+    found = surroundings.describe_point(st, game, x, y, radius_m, terrain_field=terrain.field())
     nearest = found.nearest
     stale = []
     if st is not None:

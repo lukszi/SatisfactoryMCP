@@ -10,8 +10,8 @@ from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.stored.recall import plan_ref, recall_plan
 from satisfactory_mcp.domain.session import pins
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
-from satisfactory_mcp.domain.spatial.origin import resolve_origin
-from satisfactory_mcp.domain.spatial.select import select_nodes
+from satisfactory_mcp.domain.spatial.nodes.selectors import select_nodes
+from satisfactory_mcp.domain.spatial.places import resolve_place
 
 WORLD = "X2faPVKjX06VaRzClNv5KQ"
 CHAT = Actor("chat", "claude-code", 4242)
@@ -44,12 +44,12 @@ def test_every_located_kind_is_a_place(world):
     factory, _ = pins.create(world, "factory", {"factory": world.labels.labels[0].name})
     made = PlanLog(WORLD).create("sited", HMF, actor=CHAT, siting={"origin_m": [5.0, 6.0, 0.0]})
     plan, _ = pins.create(world, "plan", {"plan": made.key})
-    centre, echo = resolve_origin(world, "pin:1")
+    centre, echo = resolve_place(world, "pin:1")
     assert centre == (10000.0, -20000.0) and echo == "pin:1 = 100,-200 (“spot” point)"
-    centre, echo = resolve_origin(world, f"PIN:{node['n']}")
+    centre, echo = resolve_place(world, f"PIN:{node['n']}")
     assert echo.startswith(f"pin:{node['n']} = node:{OIL} (Crude Oil, ")
     for pin in (machine, factory, plan):
-        centre, echo = resolve_origin(world, pin["id"])
+        centre, echo = resolve_place(world, pin["id"])
         assert centre == (pin["x_m"] * 100.0, pin["y_m"] * 100.0)
         assert echo.startswith(f"{pin['id']} = {pin['selector']}")
     assert point["n"] == 1
@@ -71,13 +71,13 @@ def test_a_place_refuses_what_has_no_place(world):
     )
     process, _ = pins.create(world, "process", {"plan": made.key, "recipe": "Recipe_IronPlate_C"})
     with pytest.raises(ValueError, match=f"^{plan['id']} is a plan with no site$"):
-        resolve_origin(world, plan["id"])
+        resolve_place(world, plan["id"])
     with pytest.raises(ValueError, match="is a process: it has no place on the map"):
-        resolve_origin(world, process["id"])
+        resolve_place(world, process["id"])
     with pytest.raises(ValueError, match=r"pin:9 does not exist \(pins run to pin:2\)"):
-        resolve_origin(world, "pin:9")
+        resolve_place(world, "pin:9")
     with pytest.raises(ValueError, match="needs a readable save"):
-        resolve_origin(None, "pin:1")
+        resolve_place(None, "pin:1")
 
 
 def test_near_a_pin_works_in_both_selector_languages(world):
@@ -154,7 +154,7 @@ def test_deleted_and_gone_pins_refuse_everywhere(world):
     sel = select_nodes([node["id"]], _nodes(), st=world)
     assert sel.errors == [f"{node['id']} was deleted"] and sel.nodes == []
     with pytest.raises(ValueError, match=f"{node['id']} was deleted"):
-        resolve_origin(world, node["id"])
+        resolve_place(world, node["id"])
     PlanLog(WORLD).push(made.key, 1, [{"op": "forget"}], actor=CHAT)
     with pytest.raises(KeyError, match=f"{plan['id']} is gone: plan forgotten"):
         recall_plan(world, plan["id"], {})

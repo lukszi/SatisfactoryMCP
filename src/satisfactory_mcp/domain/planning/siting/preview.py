@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from ....core.gamedata.model import GameData
 from ....core.text import plural
 from ...spatial import geo
-from ...spatial.origin import parse_near
+from ...spatial.places import parse_near
 from ...world.state import WorldState
 from .. import siting as siting_mod
 from ..layout.trunks import plan_trunks

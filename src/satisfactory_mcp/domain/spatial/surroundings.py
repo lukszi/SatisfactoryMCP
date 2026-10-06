@@ -10,11 +10,19 @@ from dataclasses import dataclass, field
 
 from ..collectibles import service as collectibles
 from ..world import conduits as conduits_mod
-from . import elevation, finder, geo
+from . import elevation, geo
 from . import nodes as nodes_mod
 from . import regions as regions_mod
+from .nodes import search as node_search
 
-__all__ = ["PICKUP_REACH_M", "Description", "Here", "describe", "here", "nearest_nodes"]
+__all__ = [
+    "PICKUP_REACH_M",
+    "PlayerSurroundings",
+    "PointDescription",
+    "describe_point",
+    "nearest_nodes",
+    "player_surroundings",
+]
 
 PICKUP_REACH_M = 500.0
 FIELD_REACH_M = 500.0
@@ -24,7 +32,7 @@ PICKUPS = 5
 
 
 @dataclass
-class Here:
+class PlayerSurroundings:
     player: tuple[float, float, float] | None
     radius_m: float
     label: regions_mod.Label | None = None
@@ -35,10 +43,10 @@ class Here:
     notes: list[str] = field(default_factory=list)
 
 
-def here(st, game, radius_m: float = 500.0) -> Here:
+def player_surroundings(st, game, radius_m: float = 500.0) -> PlayerSurroundings:
     """The player's position and the nodes within ``radius_m`` of it, nearest first."""
     pos = st.player_position()
-    out = Here(player=pos, radius_m=radius_m, pawns=len(st.players))
+    out = PlayerSurroundings(player=pos, radius_m=radius_m, pawns=len(st.players))
     if pos is None:
         return out
     x, y, _z = pos
@@ -91,14 +99,14 @@ def nearest_nodes(st, game, x: float, y: float, limit: int = NEAREST) -> list[di
     return rows
 
 
-def _fields_near(st, game, x: float, y: float) -> list[finder.FieldView]:
+def _fields_near(st, game, x: float, y: float) -> list[node_search.FieldView]:
     table = nodes_mod.load_nodes()
     close = {
         n["resource"]
         for n in table.nodes
         if geo.distance_m((x, y), (n["x"], n["y"])) <= FIELD_REACH_M
     }
-    out: list[finder.FieldView] = []
+    out: list[node_search.FieldView] = []
     for rid in sorted(close):
         rows = nodes_mod.annotate(
             table.by_resource(rid),
@@ -106,7 +114,7 @@ def _fields_near(st, game, x: float, y: float) -> list[finder.FieldView]:
             st.projection if st else None,
             st.unlocked_building_ids if st else None,
         )
-        out += [f for f in finder.fields(rows, (x, y)) if f.distance_m <= FIELD_REACH_M]
+        out += [f for f in node_search.fields(rows, (x, y)) if f.distance_m <= FIELD_REACH_M]
     out.sort(key=lambda f: f.distance_m)
     return out
 
@@ -140,7 +148,7 @@ def _pickups_near(st, x: float, y: float) -> list[dict]:
 
 
 @dataclass
-class Description:
+class PointDescription:
     x: float
     y: float
     radius_m: float
@@ -149,7 +157,7 @@ class Description:
     conduits: dict[str, int] | None
     conduit_radius_m: float
     nearest: list[dict]
-    fields: list[finder.FieldView]
+    fields: list[node_search.FieldView]
     fields_total: int
     pickups: list[dict]
     pickups_total: int | None
@@ -158,7 +166,7 @@ class Description:
     notes: list[str]
 
 
-def describe(
+def describe_point(
     st,
     game,
     x: float,
@@ -166,7 +174,7 @@ def describe(
     radius_m: float = 200.0,
     terrain_field=None,
     hint_z_cm: float | None = None,
-) -> Description:
+) -> PointDescription:
     """Region, sampled elevation, conduits, nearest nodes, fields and pickups at a point.
 
     ``radius_m`` is the elevation reach; conduits count within ``conduits.NEAR_RADIUS_M``.
@@ -186,7 +194,7 @@ def describe(
     fields = _fields_near(st, game, x, y)
     pickups = _pickups_near(st, x, y) if st is not None else []
     skew = nodes_mod.skew_for_save(st.header if st else None, table)
-    return Description(
+    return PointDescription(
         x=x,
         y=y,
         radius_m=radius_m,

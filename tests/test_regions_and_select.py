@@ -13,8 +13,8 @@ import pytest
 
 from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
+from satisfactory_mcp.domain.spatial.nodes.selectors import select_nodes
 from satisfactory_mcp.domain.spatial.regions import load_regions
-from satisfactory_mcp.domain.spatial.select import select_nodes
 
 pytestmark = pytest.mark.integration
 
@@ -194,7 +194,7 @@ def test_position_deltas_are_recorded_against_both_builds(table):
     inside that floor, no row is named past it (a summary must never outrun its rows),
     nothing is missing on either side, and the build, method and date stamps are present.
     These are exactly the preconditions under which the skew gate in
-    ``domain/spatial/nodes.py`` finds a pin and no drift, and stays silent -- which
+    ``domain/spatial/nodes/`` finds a pin and no drift, and stays silent -- which
     ``test_node_table_skew`` asserts against the reference save.
     """
     positions = table.meta["cross_validation"]["positions"]

@@ -163,6 +163,7 @@ def test_nodes_survive_a_save_that_cannot_be_read(game):
 
 def test_nodes_mark_rows_a_later_build_moved(client, monkeypatch):
     from satisfactory_mcp.domain.spatial import nodes as nodes_mod
+    from satisfactory_mcp.domain.spatial.nodes import skew as node_skew
 
     table = nodes_mod.load_nodes()
     leaf = table.nodes[0]["instance"]
@@ -178,7 +179,7 @@ def test_nodes_mark_rows_a_later_build_moved(client, monkeypatch):
         vertical_only=True,
         resource_and_purity_verified=True,
     )
-    monkeypatch.setattr(nodes_mod, "skew_for_save", lambda header, table=None: fake)
+    monkeypatch.setattr(node_skew, "skew_for_save", lambda header, table=None: fake)
     body = client.get("/api/world/nodes").json()
     moved = [r for r in body["nodes"] if r["moved"]]
     assert [r["id"] for r in moved] == [leaf]

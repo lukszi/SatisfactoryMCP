@@ -28,9 +28,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from . import geo
-from .origin import parse_near, resolve_origin
-from .regions import load_regions
+from .. import geo
+from ..places import parse_near, resolve_place
+from ..regions import load_regions
 
 __all__ = ["SELECTOR_HELP", "Selection", "select_nodes", "split_spec"]
 
@@ -232,7 +232,7 @@ def select_nodes(
         if prefix == "near":
             try:
                 place, radius = parse_near(value)
-                centre, where = resolve_origin(st, place)
+                centre, where = resolve_place(st, place)
             except ValueError as exc:
                 sel.errors.append(str(exc))
                 continue
@@ -305,7 +305,7 @@ def select_nodes(
 
 
 def _pin_nodes(st, value: str, by_instance: dict, short_index: dict, sel: Selection):
-    from ..session import pins
+    from ...session import pins
 
     n = pins.parse(value)
     if n is None:

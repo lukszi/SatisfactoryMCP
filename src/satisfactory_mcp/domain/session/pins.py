@@ -297,7 +297,7 @@ def _normalise(world: _World, kind: str, ref: dict) -> tuple[dict, tuple[float, 
         label = world.label(name)
         if label is None:
             raise ObjectMissing(f"no factory named “{name}” in this save")
-        from ..spatial import origin as origin_mod
+        from ..spatial import places as origin_mod
 
         centre = origin_mod.label_centre(world.st, label)
         return {"factory": label.name}, _metres(centre) if centre is not None else None
@@ -435,7 +435,7 @@ def _describe(world: _World, pin: dict) -> dict:
         if label is None:
             gone_why = f"no factory named “{name}” in this save"
         else:
-            from ..spatial import origin as origin_mod
+            from ..spatial import places as origin_mod
 
             x_m = y_m = None
             centre = origin_mod.label_centre(world.st, label)

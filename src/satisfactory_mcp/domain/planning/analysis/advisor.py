@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 from ....core.gamedata.model import GameData, Recipe
-from ...spatial.select import SELECTOR_HELP
+from ...spatial.nodes.selectors import SELECTOR_HELP
 from ...world.state import WorldState
 from ..solver.model import MW, Scenario, Solution
 from ..solver.optimize import solve

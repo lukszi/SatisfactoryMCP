@@ -4,7 +4,7 @@ Split out so tool modules can register against one ``mcp`` without importing eac
 ``server`` imports the tool packages purely for their decorator side effects.
 
 The shared resolvers now live with their domains -- ``domain.factories.resolve`` and
-``domain.spatial.origin`` -- and are re-bound here only so the old private names keep
+``domain.spatial.places`` -- and are re-bound here only so the old private names keep
 resolving for the tool modules that spell them.
 """
 
@@ -28,8 +28,8 @@ from ...domain.factories.resolve import resolve_factory as _resolve_factory
 from ...domain.planning.solver.scenario import resolve_item
 from ...domain.planning.stored.planlog import Actor
 from ...domain.session import journal
-from ...domain.spatial.origin import player_xy as _player_xy
-from ...domain.spatial.origin import resolve_origin as _origin_for
+from ...domain.spatial.places import player_xy as _player_xy
+from ...domain.spatial.places import resolve_place as _origin_for
 from ...domain.world import pin
 from ...domain.world.state import WorldState, load_state
 

@@ -1,7 +1,7 @@
 """Where a place is: a coordinate, the player, a factory, a node, a run, a slab, a plan.
 
 The ONE place vocabulary. Every tool that takes a place and both selector languages
-resolve through ``resolve_origin``, so a term that works in one of them works in all of
+resolve through ``resolve_place``, so a term that works in one of them works in all of
 them. The grammar it implements is written out in `docs/selectors.md`.
 """
 
@@ -192,7 +192,7 @@ def _plan_origin(st, text: str) -> tuple[tuple[float, float], str]:
     return (sited.x_m * 100.0, sited.y_m * 100.0), f"plan {stored.name!r} site ({sited.describe()})"
 
 
-def resolve_origin(st, near: str) -> tuple[tuple[float, float], str]:
+def resolve_place(st, near: str) -> tuple[tuple[float, float], str]:
     """Resolve a place to a point in centimetres, paired with what it resolved FROM.
 
     A factory name is the useful one now that factories exist -- "nearest coal to the

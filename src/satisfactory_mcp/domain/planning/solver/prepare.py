@@ -72,7 +72,7 @@ def prepare(
     ``diagnose`` runs the supply probe on failure, costing one extra solve and only on the
     infeasible path.
     """
-    from ...spatial.select import SELECTOR_HELP
+    from ...spatial.nodes.selectors import SELECTOR_HELP
     from .scenario import EXPORT_HELP
 
     request = build_scenario(

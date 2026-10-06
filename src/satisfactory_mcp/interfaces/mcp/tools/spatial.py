@@ -8,18 +8,19 @@ from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....domain.session import journal, pins
-from ....domain.spatial import caves, finder, geo, heightfield, place
+from ....domain.spatial import caves, geo, heightfield, surroundings
 from ....domain.spatial import nodes as nodes_mod
 from ....domain.spatial import ranking as ranking_mod
 from ....domain.spatial import regions as regions_mod
-from ....domain.spatial.origin import (
+from ....domain.spatial.nodes import search as node_search
+from ....domain.spatial.nodes.selectors import SELECTOR_HELP
+from ....domain.spatial.places import (
     NODE_PREFIX,
     PLAN_PREFIX,
     PLAYER_WORDS,
     RUN_PREFIXES,
-    resolve_origin,
+    resolve_place,
 )
-from ....domain.spatial.select import SELECTOR_HELP
 from ....domain.world import conduits as conduits_mod
 from ....presenters.text import primitives as render
 from ..app import (
@@ -141,13 +142,13 @@ def describe_location(
             "factory, 'slab:<n>', or a run id like 'chain:7'"
         )
     try:
-        (x, y), where = resolve_origin(st, at)
+        (x, y), where = resolve_place(st, at)
     except ValueError as exc:
         return f"! {exc}"
 
     field = heightfield.load_field()
     player = st.player_position() if st and at.strip().casefold() in PLAYER_WORDS else None
-    found = place.describe(
+    found = surroundings.describe_point(
         st, game(), x, y, radius_m, terrain_field=field, hint_z_cm=player[2] if player else None
     )
     label = found.label
@@ -281,13 +282,15 @@ def _surroundings(found) -> list[tuple[str, str]]:
             (
                 "fields",
                 (
-                    f"{found.fields_total} within {place.FIELD_REACH_M:g}m; nearest {names}, "
+                    f"{found.fields_total} within {surroundings.FIELD_REACH_M:g}m; nearest {names}, "
                     f"{f.size} node(s) {f.distance_m:.0f}m ({f.selector})"
                 ),
             )
         )
     if found.pickups_total is not None:
-        out.append(("pickups", f"{found.pickups_total} remaining within {place.PICKUP_REACH_M:g}m"))
+        out.append(
+            ("pickups", f"{found.pickups_total} remaining within {surroundings.PICKUP_REACH_M:g}m")
+        )
     return out
 
 
@@ -441,7 +444,7 @@ def search_conduits(
 
     if view == "networks":
         try:
-            origin, where = resolve_origin(st, near)
+            origin, where = resolve_place(st, near)
         except ValueError as exc:
             return f"! {exc}"
         if want == "belt":
@@ -672,10 +675,10 @@ def search_resource_nodes(
 
     view = (show or "fields").strip().casefold()
     view = {"field": "fields", "node": "nodes"}.get(view, view)
-    if view not in finder.VIEWS:
+    if view not in node_search.VIEWS:
         return f"! unknown show {show!r}. Choose from: fields, nodes, nearest"
     wanted = (status or ("free" if only_free else "all")).strip().casefold()
-    if wanted not in finder.STATUSES:
+    if wanted not in node_search.STATUSES:
         return f"! unknown status {status!r}. Choose from: free, tapped, all"
 
     st = None
@@ -686,7 +689,7 @@ def search_resource_nodes(
 
     if view == "nearest" and not near:
         return "! show='nearest' needs near=<x,y | me | factory name> to measure from"
-    found = finder.find_nodes(
+    found = node_search.find_nodes(
         st,
         g,
         sources=sources,
@@ -733,7 +736,7 @@ def search_resource_nodes(
                 f"{int(r['x'] / 100)},{int(r['y'] / 100)}",
                 f"{r['z'] / 100:.0f}",
                 render.num(r["rate"]),
-                {"locked": "LOCKED"}.get(finder.status_of(r), finder.status_of(r)),
+                {"locked": "LOCKED"}.get(node_search.status_of(r), node_search.status_of(r)),
                 _occupant(r, g),
                 rm.label_for_node(r).name or "-",
             )
@@ -924,7 +927,7 @@ def show_on_map(
         )
     else:
         try:
-            origin, where = resolve_origin(st, text)
+            origin, where = resolve_place(st, text)
         except ValueError as exc:
             return f"! {exc}"
         # The resolver answers with a point; the overlay wants the node's own resource,
@@ -1064,7 +1067,7 @@ def rank_build_sites(
             f"could not read save: {exc} (site ranking needs a save to know what is already built)"
         )
 
-    ranked = finder.rank(st, g, rid, sources, resolve_resource=_item_id)
+    ranked = node_search.rank(st, g, rid, sources, resolve_resource=_item_id)
     sel = ranked.selection
     if ranked.unselected:
         return render.envelope("# no candidates", "", [*sel.errors, SELECTOR_HELP])
@@ -1091,7 +1094,7 @@ def rank_build_sites(
     unit = "m3/min" if g.items[rid].is_fluid else "/min"
     out_rows = []
     for sc in scored[:n]:
-        v = finder.site_view(sc, rm)
+        v = node_search.site_view(sc, rm)
         alt = v["alt_m"]
         out_rows.append(
             (
@@ -1188,7 +1191,7 @@ def whereami(
     except Exception as exc:
         return f"could not read save: {exc}"
 
-    found = place.here(st, g, radius_m)
+    found = surroundings.player_surroundings(st, g, radius_m)
     follow(st, ctx, "whereami", "", {}, "looked where the player is")
     if found.player is None:
         return "no player pawn in this save, so there is no position to report"
@@ -1202,7 +1205,7 @@ def whereami(
             render.num(n["rate"]),
             f"{n['distance_m']:.0f}m",
             n["direction"],
-            {"locked": "LOCKED"}.get(finder.status_of(n), finder.status_of(n)),
+            {"locked": "LOCKED"}.get(node_search.status_of(n), node_search.status_of(n)),
         )
         for n in near[: render.clamp(limit, default=8)]
     ]

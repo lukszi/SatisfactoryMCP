@@ -24,6 +24,7 @@ from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.stored.recall import PLAN_DEFAULTS, recall_plan
 from satisfactory_mcp.domain.planning.stored.store import Plan, PlanStore
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
+from satisfactory_mcp.domain.spatial.nodes import table as node_table
 
 
 def _node(name: str, x_m: float, y_m: float, resource: str = "Desc_OreIron_C") -> dict:
@@ -67,7 +68,9 @@ def table(monkeypatch):
     """The node table, swappable mid-test -- which is how the map moves under a plan."""
 
     def use(nodes):
-        monkeypatch.setattr(nodes_mod, "load_nodes", lambda: nodes_mod.NodeTable(nodes, {}))
+        # Both names: callers outside the package bind the re-export, those inside the table's.
+        for owner in (nodes_mod, node_table):
+            monkeypatch.setattr(owner, "load_nodes", lambda: nodes_mod.NodeTable(nodes, {}))
 
     use(FIELD)
     return use

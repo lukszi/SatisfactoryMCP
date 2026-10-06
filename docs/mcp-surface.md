@@ -299,7 +299,7 @@ Three rules hold it together, each with a test:
   and are not — a module dropped from that list would leave the server starting cleanly and
   simply not offering its tools. A test walks the directory and asserts nothing is missing.
 - **Tool modules never import each other.** Shared resolvers live with their domains —
-  `graph.resolve.resolve_factory`, `spatial.origin.resolve_origin` — because more than one
+  `graph.resolve.resolve_factory`, `spatial.places.resolve_place` — because more than one
   group needs each, and a resolver is a domain decision rather than an app detail. `app`
   keeps the old private names bound so `server`'s re-exports still resolve. A sibling
   import is the first step back toward one file, so a test forbids it.
@@ -349,8 +349,8 @@ length is filtering and table-building against a domain call that already exists
 no second copy to drift from. The rule applied was: extract where logic is *duplicated* or
 *unreachable without the MCP layer*, not wherever a function is long. `search_resource_nodes`
 met the second half of that rule once the World page needed the same answer: its selection,
-status, totals and fields are `domain/spatial/finder.py` now, beside `rank`, `place.here`,
-`place.describe`, `conduits.search` and `regions.region_rows`, and each spatial tool is that
+status, totals and fields are `domain/spatial/nodes/search.py` now, beside `rank`, `surroundings.player_surroundings`,
+`surroundings.describe_point`, `conduits.search` and `regions.region_rows`, and each spatial tool is that
 call plus its text (frontend_vision.md §18).
 
 ### 10.1f `search_conduits` — belts and pipes become queryable text

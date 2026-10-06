@@ -10,8 +10,9 @@ import pytest
 
 from satisfactory_mcp.domain.collectibles import service
 from satisfactory_mcp.domain.planning.solver.scenario import resolve_item
-from satisfactory_mcp.domain.spatial import finder, geo, maplink, place, regions
+from satisfactory_mcp.domain.spatial import geo, maplink, regions, surroundings
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
+from satisfactory_mcp.domain.spatial.nodes import search as node_search
 from satisfactory_mcp.domain.world import conduits
 from satisfactory_mcp.domain.world.state import WorldState
 
@@ -19,7 +20,7 @@ IRON = "Desc_OreIron_C"
 
 
 def _find(st, game, **kw):
-    return finder.find_nodes(st, game, resolve_resource=lambda q: resolve_item(game, q), **kw)
+    return node_search.find_nodes(st, game, resolve_resource=lambda q: resolve_item(game, q), **kw)
 
 
 # ------------------------------------------------------------------ find_nodes
@@ -85,7 +86,7 @@ def test_every_selector_failing_selects_nothing_rather_than_the_map(state, game)
 
 def test_locked_capacity_is_named_and_counted(state, game):
     crude = _find(state, game, resource="Crude Oil", view="nodes")
-    locked = [r for r in crude.rows if finder.status_of(r) == "locked"]
+    locked = [r for r in crude.rows if node_search.status_of(r) == "locked"]
     assert locked, "the reference world has locked crude satellites"
     assert crude.locked_rate == pytest.approx(sum(r["rate"] for r in locked))
     assert any("excluded from free" in n for n in crude.notes)
@@ -94,7 +95,7 @@ def test_locked_capacity_is_named_and_counted(state, game):
 
 def test_without_a_save_everything_reads_free(game):
     found = _find(None, game, resource=IRON, view="nodes")
-    assert {finder.status_of(r) for r in found.rows} == {"free"}
+    assert {node_search.status_of(r) for r in found.rows} == {"free"}
     assert "no save read" in found.notes[-1]
 
 
@@ -109,7 +110,7 @@ def test_a_fluid_search_reports_its_elevation_span_and_water_its_block(state, ga
     assert low < high
     water = _find(state, game, resource="Water", view="fields")
     assert water.water is not None and set(water.water) >= {"bodies", "pumps", "sea_level_m"}
-    assert water.notes[0] == finder.WATER_NOTE
+    assert water.notes[0] == node_search.WATER_NOTE
 
 
 # ---------------------------------------------------------------------- fields
@@ -140,23 +141,23 @@ def test_a_field_distance_is_to_its_nearest_member(state, game):
 
 
 def test_rank_orders_untapped_reachable_fields_best_first(state, game):
-    ranked = finder.rank(state, game, IRON, None)
+    ranked = node_search.rank(state, game, IRON, None)
     assert ranked.scored
     scores = [s.score for s in ranked.scored]
     assert scores == sorted(scores, reverse=True)
-    view = finder.site_view(ranked.scored[0])
+    view = node_search.site_view(ranked.scored[0])
     assert view["selector"].startswith("near:") and view["untapped"] > 0
 
 
 def test_rank_with_a_failed_selector_selects_nothing(state, game):
-    assert finder.rank(state, game, IRON, ["region:Nowhere"]).unselected
+    assert node_search.rank(state, game, IRON, ["region:Nowhere"]).unselected
 
 
 # ----------------------------------------------------------------------- place
 
 
 def test_here_lists_nodes_nearest_first_and_the_nearest_building(state, game):
-    found = place.here(state, game, 500.0)
+    found = surroundings.player_surroundings(state, game, 500.0)
     assert found.player is not None and found.label is not None
     d = [n["distance_m"] for n in found.nodes]
     assert d == sorted(d) and all(v <= 500.0 for v in d)
@@ -166,20 +167,20 @@ def test_here_lists_nodes_nearest_first_and_the_nearest_building(state, game):
 
 def test_here_with_no_pawn_has_no_position(game):
     st = WorldState(projection={"players": []}, game=game)
-    found = place.here(st, game, 500.0)
+    found = surroundings.player_surroundings(st, game, 500.0)
     assert found.player is None and found.nodes == []
 
 
 def test_describe_reports_fields_and_pickups_within_500m(state, game):
     x, y = 2000 * 100.0, -2400 * 100.0
-    found = place.describe(state, game, x, y, 200.0)
+    found = surroundings.describe_point(state, game, x, y, 200.0)
     assert len(found.nearest) == 5
     assert found.fields and len(found.fields) <= 3
-    assert all(f.distance_m <= place.FIELD_REACH_M for f in found.fields)
+    assert all(f.distance_m <= surroundings.FIELD_REACH_M for f in found.fields)
     assert found.fields_total >= len(found.fields)
     assert all(len(f.resources) == 1 for f in found.fields), "fields are per resource"
     assert found.pickups and len(found.pickups) <= 5
-    assert all(p["distance_m"] <= place.PICKUP_REACH_M for p in found.pickups)
+    assert all(p["distance_m"] <= surroundings.PICKUP_REACH_M for p in found.pickups)
     assert found.pickups_total >= len(found.pickups)
     assert all(not p["collected"] for p in found.pickups)
     assert {"label", "spoiler"} <= set(found.pickups[0])
@@ -187,7 +188,7 @@ def test_describe_reports_fields_and_pickups_within_500m(state, game):
 
 
 def test_describe_without_a_save_keeps_the_map_and_drops_the_save(game):
-    found = place.describe(None, game, 200000.0, -240000.0, 200.0)
+    found = surroundings.describe_point(None, game, 200000.0, -240000.0, 200.0)
     assert found.nearest and found.conduits is None
     assert found.pickups == [] and found.pickups_total is None
 
@@ -360,7 +361,7 @@ def test_show_ref_spells_each_place_kind():
 
 
 def test_choices_cover_the_whole_table(game):
-    got = finder.choices(game)
+    got = node_search.choices(game)
     table = nodes_mod.load_nodes()
     assert sum(r["nodes"] for r in got["resources"]) == len(table)
     assert set(got["kinds"]) == {n["kind"] for n in table.nodes}
@@ -372,8 +373,8 @@ def test_node_rate_without_game_data_is_zero():
 
 
 def test_hub_is_a_place(state):
-    from satisfactory_mcp.domain.spatial.origin import resolve_origin
+    from satisfactory_mcp.domain.spatial.places import resolve_place
 
-    (x, y), where = resolve_origin(state, "HUB")
+    (x, y), where = resolve_place(state, "HUB")
     assert where == "the HUB"
     assert (round(x / 100), round(y / 100)) == (-411, -1443)

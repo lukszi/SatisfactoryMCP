@@ -1,7 +1,7 @@
 """``/api/world/*``: the World finders -- where I am, nodes, fields, sites, conduits, regions.
 
-Each route calls the domain function its MCP tool calls (``place.here``,
-``finder.find_nodes``, ``finder.rank``, ``conduits.search``/``networks``,
+Each route calls the domain function its MCP tool calls (``surroundings.player_surroundings``,
+``node_search.find_nodes``, ``node_search.rank``, ``conduits.search``/``networks``,
 ``regions.region_rows``), so the page and the chat answer one question one way.
 
 WARNING: the function names are operation_ids -- renaming one churns the committed schema.
@@ -18,10 +18,12 @@ from fastapi import APIRouter, Query, Request
 from ....core.text import ago
 from ....domain.collectibles import service as collectibles_service
 from ....domain.planning.solver.scenario import resolve_item
-from ....domain.spatial import finder, geo, place, ranking
+from ....domain.spatial import geo, ranking, surroundings
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
-from ....domain.spatial.origin import resolve_origin
+from ....domain.spatial.nodes import search as node_search
+from ....domain.spatial.nodes import table as node_table
+from ....domain.spatial.places import resolve_place
 from ....domain.world import conduits as conduits_mod
 from ..serial import (
     FoundField,
@@ -251,7 +253,7 @@ class RegionTableResponse(TypedDict):
 
 
 def _found_node(r: dict, game, rm, drifted: set[str]) -> FoundNode:
-    status = finder.status_of(r)
+    status = node_search.status_of(r)
     cls = r.get("tapped_by")
     occupant = None
     if cls:
@@ -315,9 +317,9 @@ def world_nodes(
     status = status.strip().casefold()
     refusal = (
         _choice(view, PAGE_VIEWS, "view")
-        or _choice(status, finder.STATUSES, "status")
-        or _choice(purity, (*finder.PURITIES, "all"), "purity")
-        or _choice(kind, (*finder.KINDS, "all"), "kind")
+        or _choice(status, node_search.STATUSES, "status")
+        or _choice(purity, (*node_table.PURITIES, "all"), "purity")
+        or _choice(kind, (*node_table.KINDS, "all"), "kind")
     )
     if refusal:
         return _fail(refusal)
@@ -338,7 +340,7 @@ def world_nodes(
     except Exception as exc:
         save_error = f"could not read save: {exc}"
 
-    found = finder.find_nodes(
+    found = node_search.find_nodes(
         st,
         game,
         sources=source,
@@ -375,8 +377,8 @@ def world_nodes(
         "water": None
         if water is None
         else {k: water[k] for k in ("bodies", "pumps", "per_pump_m3_min", "sea_level_m")},
-        "choices": finder.choices(game),
-        "notes": finder.page_notes(found, st),
+        "choices": node_search.choices(game),
+        "notes": node_search.page_notes(found, st),
         "stale": spatial_nodes.table_age(
             st.header if st else None, None, [r["instance"] for r in found.rows]
         ),
@@ -402,13 +404,13 @@ def world_sites(
         st = _state(request, save, world)
     except Exception as exc:
         return _fail(f"could not read save: {exc}", 404)
-    ranked = finder.rank(st, game, rid, source, resolve_resource=_resolver(game))
+    ranked = node_search.rank(st, game, rid, source, resolve_resource=_resolver(game))
     if ranked.unselected:
         return _fail("no selector resolved: " + "; ".join(ranked.selection.errors))
     rm = spatial_regions.load_regions()
     sites = []
     for i, sc in enumerate(ranked.scored[:limit], 1):
-        v = finder.site_view(sc, rm)
+        v = node_search.site_view(sc, rm)
         sites.append(
             {
                 "rank": i,
@@ -521,7 +523,7 @@ def world_conduits(
     }
     if view == "networks":
         try:
-            origin, where = resolve_origin(st, near)
+            origin, where = resolve_place(st, near)
         except ValueError as exc:
             return _fail(f"! {exc}")
         views = conduits_mod.networks(st, origin)
@@ -592,7 +594,7 @@ def world_here(
     except Exception as exc:
         return _fail(f"could not read save: {exc}", 404)
     game = request.app.state.game()
-    found = place.here(st, game, radius_m)
+    found = surroundings.player_surroundings(st, game, radius_m)
     rows = found.nodes
     instances = [r["instance"] for r in rows]
     drifted = spatial_nodes.drifted(found.skew, instances)

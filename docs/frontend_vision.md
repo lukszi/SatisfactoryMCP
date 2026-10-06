@@ -152,7 +152,7 @@ tool table.
 | `factory_sites` | Factory detail > Sites (world list: open) | none | cluster list; map clusters | **built** `/api/factories/sites` (§17) |
 | `whereami` | World > Here (§18) | radius | position, region, grid, save age, nodes within the radius | **built** `/api/world/here` (§18) |
 | `list_regions` | World > Regions; region picker in every sources form | resource filter | list; region layer highlights | **built** `/api/world/regions` (§18); `/api/regions` stays the painted grid |
-| `describe_location` | Map click inspector | click point, radius | popup: region, elevation, grid, nearest node, fields, conduits, pickups | **built** `/api/inspect` (`place.describe`, §18) |
+| `describe_location` | Map click inspector | click point, radius | popup: region, elevation, grid, nearest node, fields, conduits, pickups | **built** `/api/inspect` (`surroundings.describe_point`, §18) |
 | `search_conduits` | World > Conduits; inspector "conduits here" | near, radius, to, belt/pipe, runs/networks, network | run list; runs drawn in the finder pane | **built** `/api/world/conduits` (§18) |
 | `search_resource_nodes` | World > Nodes and Fields | sources, resource, purity, kind, status free/tapped/all, view fields/nodes/nearest, near | field clusters or node rows; finder pane | **built** `/api/world/nodes` (§18); `/api/nodes` stays the layer |
 | `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick; `show=node:`/`chain:`/`pipe:` ring the place | exists (fragment); the tool's local link follows the configured port (§13) and carries `show=` (§18) |
@@ -299,7 +299,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | `/api/harddrives/{id}/advice` | POST | `domain/planning/analysis/advisor.py` | slow |
 | `/api/progress/shards`, `/api/progress/sloops` | GET | `domain/progression/shards.py` | **built**, under `/api/progress/` |
 | `/api/gamedata/{items,recipes,recipe,alternates,unlocked}`, `/api/search` | GET | `core/gamedata` | **built** (§12); no save needed except HAVE/LOCKED; `buildings` still open |
-| `/api/nodes/fields`, `/api/sites/rank` | GET | `domain/spatial/select.py`, `ranking.py` | |
+| `/api/nodes/fields`, `/api/sites/rank` | GET | `domain/spatial/nodes/selectors.py`, `ranking.py` | |
 | `/api/conduits` | GET | `domain/world/conduits.py` | |
 | `/api/select/nodes`, `/api/select/machines` | GET | the two selector modules | live preview counts |
 | `/api/plan/solve`, `/bom`, `/compare`, `/byproducts` | POST | `prepare.py`, `bom.py`, `compare.py`, `byproducts.py` | body = plan kwargs |
@@ -1453,11 +1453,11 @@ section records what the backend built and what it decided on the way.
 
 ### 18.1 What was built
 
-- **One domain function per question** (§5.1). `domain/spatial/finder.py` holds the node
+- **One domain function per question** (§5.1). `domain/spatial/nodes/search.py` holds the node
   search (`find_nodes`: selection, status, distance, totals, notes, water block), the fields
-  (`fields`) and the site ranking (`rank`, `site_view`). `domain/spatial/place.py` holds
+  (`fields`) and the site ranking (`rank`, `site_view`). `domain/spatial/surroundings.py` holds
   `here` and `describe`. `domain/world/conduits.py` gained `search` and `networks`,
-  `domain/spatial/regions.py` `region_rows`, `domain/spatial/nodes.py` `table_age` and
+  `domain/spatial/regions.py` `region_rows`, `domain/spatial/nodes/` `table_age` and
   `drifted`, and `domain/collectibles/service.py` `census_rows`, `found`, `is_spoiler`,
   `label`/`LABELS` and `table_age`. Each tool body is now that call plus its text; the tool
   text is byte-identical to before on the fixture world except where the contract adds a

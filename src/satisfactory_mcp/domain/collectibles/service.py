@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from ..spatial.origin import resolve_origin
+from ..spatial.places import resolve_place
 from ..world.state import WorldState
 from .removed import observed_session
 from .table import CollectiblesUnreadable, CollectibleTable, load_collectibles
@@ -173,7 +173,7 @@ def collect_view(
     if wanted == "nearest":
         if near:
             try:
-                origin, where = resolve_origin(st, near)
+                origin, where = resolve_place(st, near)
             except ValueError as exc:
                 return CollectiblesView(mode=wanted, group=group, error=f"! {exc}")
         else:

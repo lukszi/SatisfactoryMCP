@@ -74,7 +74,7 @@ caches keyed on `build_version`.
 **Two silent failure modes, which is why the gate machinery stays.** A join by instance name simply
 *misses* after a rename — and a per-kind count check cannot see it, because 459 == 459 across a
 rename. And a position can be a metre out while the answer stays confident. The **node-table skew
-gate** — `domain/spatial/nodes.py`, pinned by `tests/test_node_table_skew.py` — reads whatever
+gate** — `domain/spatial/nodes/`, pinned by `tests/test_node_table_skew.py` — reads whatever
 drift the artifact records; today's table matches the installed build so it records none and the
 gate is silent, and the synthetic tests keep the firing half honest for the next update.
 

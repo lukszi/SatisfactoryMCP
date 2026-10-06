@@ -9,13 +9,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import cached_property
 
-from ...core.text import num
-from ..world.sites import selector as site_selector
-from . import geo, heightfield, ranking
-from . import nodes as nodes_mod
-from . import regions as regions_mod
-from .origin import resolve_origin
-from .select import Selection, select_nodes
+from ....core.text import num
+from ...world.sites import selector as site_selector
+from .. import geo, heightfield, ranking
+from .. import regions as regions_mod
+from ..places import resolve_place
+from . import extraction as node_extraction
+from . import skew as node_skew
+from . import table as node_table
+from .selectors import Selection, select_nodes
 
 __all__ = [
     "FIELD_LINK_M",
@@ -34,8 +36,6 @@ __all__ = [
 
 VIEWS = ("fields", "nodes", "nearest")
 STATUSES = ("all", "free", "tapped")
-PURITIES = ("pure", "normal", "impure")
-KINDS = ("node", "well_sat", "geyser")
 FIELD_LINK_M = 200.0
 
 WATER = "Desc_Water_C"
@@ -136,7 +136,7 @@ class NodeFind:
     elevation: tuple[float, float] | None = None
     water: dict | None = None
     notes: list[str] = field(default_factory=list)
-    skew: nodes_mod.TableSkew | None = None
+    skew: node_skew.TableSkew | None = None
     save_read: bool = False
 
     @property
@@ -161,7 +161,7 @@ class NodeFind:
 
     @cached_property
     def drifted(self) -> set[str]:
-        return nodes_mod.drifted(self.skew, [r["instance"] for r in self.rows])
+        return node_skew.drifted(self.skew, [r["instance"] for r in self.rows])
 
 
 def _unit(game, resources: list[str]) -> str:
@@ -212,7 +212,7 @@ def page_notes(found: NodeFind, st) -> list[str]:
             f"{found.locked_rate:,.0f} {'m³/min' if found.unit == 'm3/min' else 'per min'} left out of free: "
             "it needs an extractor not unlocked yet"
         )
-    unmatched = len(nodes_mod.unresolved_extractors(st.projection))
+    unmatched = len(node_extraction.unresolved_extractors(st.projection))
     if unmatched:
         notes.append(
             f"{unmatched:,} extractors are not matched to a node (mostly water pumps), "
@@ -239,7 +239,7 @@ def find_nodes(
     ``view`` and ``status`` arrive validated. ``st`` may be ``None``: the table needs no
     save, and without one every node reads as free and reachable, which a note says.
     """
-    table = nodes_mod.load_nodes()
+    table = node_table.load_nodes()
     found = NodeFind(view=view, status=status, save_read=st is not None)
     spec = list(sources or [])
     for extra, value in (("resource", resource), ("purity", purity), ("kind", kind)):
@@ -248,7 +248,7 @@ def find_nodes(
     found.selectors = spec
     if near:
         try:
-            found.origin, found.where = resolve_origin(st, near)
+            found.origin, found.where = resolve_place(st, near)
         except ValueError as exc:
             found.error = f"! {exc}"
             return found
@@ -261,7 +261,7 @@ def find_nodes(
     )
     if found.unselected:
         return found
-    rows = nodes_mod.annotate(
+    rows = node_extraction.annotate(
         found.selection.nodes,
         game,
         st.projection if st else None,
@@ -285,7 +285,7 @@ def find_nodes(
     found.resources = sorted({r["resource"] for r in rows})
     found.unit = _unit(game, found.resources)
     found.total = sum(r["rate"] for r in rows)
-    found.free = nodes_mod.capacity(rows, only_free=True)
+    found.free = node_extraction.capacity(rows, only_free=True)
     found.locked_rate = sum(r["rate"] for r in rows if not r["reachable"])
 
     notes = []
@@ -303,14 +303,14 @@ def find_nodes(
                 f"{num(found.locked_rate)} excluded from free: needs an extractor this "
                 "world has not unlocked (marked LOCKED)"
             )
-        unres = nodes_mod.unresolved_extractors(st.projection)
+        unres = node_extraction.unresolved_extractors(st.projection)
         if unres:
             notes.append(
                 f"{len(unres)} extractor(s) unmatched to a node (mostly water pumps), "
                 "so free may be overstated"
             )
-        found.skew = nodes_mod.skew_for_save(st.header, table)
-        notes += nodes_mod.skew_notes(found.skew, [r["instance"] for r in rows])
+        found.skew = node_skew.skew_for_save(st.header, table)
+        notes += node_skew.skew_notes(found.skew, [r["instance"] for r in rows])
     found.notes = notes
 
     zs = [r["z"] / 100.0 for r in rows if "z" in r]
@@ -320,7 +320,7 @@ def find_nodes(
 
 
 def choices(game) -> dict:
-    table = nodes_mod.load_nodes()
+    table = node_table.load_nodes()
     counts: dict[str, int] = {}
     for n in table.nodes:
         counts[n["resource"]] = counts.get(n["resource"], 0) + 1
@@ -354,13 +354,13 @@ def rank(
     st, game, resource: str, sources: list[str] | None = None, resolve_resource=None
 ) -> SiteRank:
     """Candidate fields of one resource, best first; ``resource`` is a resolved class id."""
-    table = nodes_mod.load_nodes()
+    table = node_table.load_nodes()
     spec = [*(sources or []), f"resource:{resource}"]
     sel = select_nodes(spec, table.nodes, resolve_resource=resolve_resource, st=st)
     out = SiteRank(resource=resource, selection=sel)
     if out.unselected:
         return out
-    out.rows = nodes_mod.annotate(sel.nodes, game, st.projection, st.unlocked_building_ids)
+    out.rows = node_extraction.annotate(sel.nodes, game, st.projection, st.unlocked_building_ids)
     terrain = heightfield.load_field()
     out.terrain = terrain is not None
     out.consumer_z = st.consumer_z()
@@ -370,8 +370,8 @@ def rank(
         consumer_z=out.consumer_z,
         terrain=terrain,
     )
-    out.notes = nodes_mod.skew_notes(
-        nodes_mod.skew_for_save(st.header, table), [r["instance"] for r in out.rows]
+    out.notes = node_skew.skew_notes(
+        node_skew.skew_for_save(st.header, table), [r["instance"] for r in out.rows]
     )
     return out
 
