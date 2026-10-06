@@ -3,7 +3,7 @@
 
 import { get, latest } from "../../api/client";
 import { appendNote, capRows, empty, error, heading, link, loading, selectBox, subTabs, table } from "../../kit/dashkit";
-import { mapButton, render } from "../shell";
+import { mapButton, requestRender } from "../actions";
 import { code, make } from "../../kit/dom";
 import { isRebuilding } from "../../kit/focus";
 import { resourceOptions, worldUrl } from "./world-finds";
@@ -95,7 +95,7 @@ function shown(): boolean {
 }
 
 function redraw(): void {
-  if (shown()) render();
+  if (shown()) requestRender();
 }
 
 export function edit(params: Record<string, string>, soon?: boolean): void {

@@ -9,7 +9,7 @@ import { flyPadded, map } from "../map";
 import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "../mapcard";
 import { makeRoom } from "../panel";
 import { onVitals } from "../../app/vitals";
-import { newest, refreshLabels, refusal, wrote } from "../../dash/factories/rename";
+import { labelRefusal, labelsVersionToSend, recordLabelsVersion, refetchLabelledViews, staleWriteReason } from "../../dash/factories/rename";
 import { state } from "../../app/state";
 import { fail, friendlyError, notify } from "../../kit/toast";
 import { counted, WORDS } from "../../kit/words";
@@ -289,16 +289,16 @@ function body(dryRun: boolean): object {
     extra_areas: view.areas.slice(1),
     mode: view.mode,
     as_of: view.preview && !dryRun ? view.preview.token : view.token,
-    version: newest(view.preview ? view.preview.version : 0),
+    version: labelsVersionToSend(view.preview ? view.preview.version : 0),
     dry_run: dryRun,
   };
 }
 
 function refused(err: unknown, what: string): void {
-  var why = refusal(err);
+  var why = labelRefusal(err);
   if (why === "stale" || why === "pin") {
-    fail((why === "pin" ? "a newer save was written" : "factory names changed elsewhere") + ", so nothing was " + what + "; draw the area again");
-    refreshLabels();
+    fail(staleWriteReason(why) + ", so nothing was " + what + "; draw the area again");
+    refetchLabelledViews();
     discard();
     fetchMembers(false);
   } else fail(friendlyError(err));
@@ -335,9 +335,9 @@ function apply(): void {
     .then(function (reply) {
       if (!ticket.fresh()) return;
       view.busy = false;
-      wrote(reply.version);
+      recordLabelsVersion(reply.version);
       notify("“" + name + "” now holds " + counted(reply.after, "machine") + " (+" + reply.added.length + " −" + reply.dropped.length + ")");
-      refreshLabels();
+      refetchLabelledViews();
       discard();
       fetchMembers(false);
     })

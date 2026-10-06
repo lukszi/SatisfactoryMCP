@@ -12,21 +12,15 @@ import { showPoint } from "../map/map-highlight";
 import { registerFetch } from "../app/registry";
 import { state } from "../app/state";
 import { counted } from "../kit/words";
+import { leaveDashThen, requestRender } from "./actions";
 
 import type { Column, SortState } from "../kit/dashkit";
 import type { StockPile, StockPlace, StockResponse } from "../api/shapes";
-
-export interface InventoryHost {
-  leaveDashThen: (action: () => void) => void;
-  render: () => void;
-}
 
 var stock = {
   data: null as StockResponse | null,
   failed: false,
 };
-
-var host: InventoryHost | null = null;
 
 var results: HTMLElement | null = null;
 
@@ -118,10 +112,10 @@ function mapButton(place: StockPlace): HTMLElement {
 }
 
 function fly(place: StockPlace): void {
-  if (place.x_m === null || place.y_m === null || !host) return;
+  if (place.x_m === null || place.y_m === null) return;
   var at = { x: place.x_m, y: place.y_m };
   var shown = { label: place.name, layers: place.source === "storage" ? ["storage"] : undefined };
-  host.leaveDashThen(function () {
+  leaveDashThen(function () {
     showPoint(at.x, at.y, shown);
   });
 }
@@ -562,8 +556,7 @@ function redraw(): void {
   renderResults(results);
 }
 
-export function renderInventory(body: HTMLElement, into: InventoryHost): void {
-  host = into;
+export function renderInventory(body: HTMLElement): void {
   search(body);
   results = make("div", "inv-results");
   body.appendChild(results);
@@ -584,11 +577,11 @@ registerFetch<StockResponse>({
   draw: function (data) {
     stock.data = data;
     stock.failed = false;
-    if (host && shown()) host.render();
+    if (shown()) requestRender();
   },
   failed: function () {
     stock.data = null;
     stock.failed = true;
-    if (host && shown()) host.render();
+    if (shown()) requestRender();
   },
 });

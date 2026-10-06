@@ -11,7 +11,7 @@ import { vitals } from "../app/vitals";
 import { milestoneTile } from "./progress/progress";
 import { actionTone, statesOf } from "./machine-states";
 import { issueCount, issueGroups, issueTable, mixBar, mixLegend, mixOf } from "./machine-health";
-import { factoryMapButton, pointButton } from "./shell";
+import { factoryMapButton, pointButton } from "./actions";
 import { go } from "../app/nav";
 import {
   circuitTable,

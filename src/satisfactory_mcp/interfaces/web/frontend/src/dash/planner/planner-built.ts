@@ -8,7 +8,7 @@ import { goToMapThen } from "../../app/nav";
 import { showBox } from "../../map/map-highlight";
 import { vitals } from "../../app/vitals";
 import { bench, changed, gesture, pickTab } from "./planner-core";
-import { blankOrLong, newest, refreshLabels, refusal, wrote } from "../factories/rename";
+import { factoryNameProblem, labelRefusal, labelsVersionToSend, recordLabelsVersion, refetchLabelledViews } from "../factories/rename";
 import { setSetting, settingChoice } from "../../app/settings";
 import { fail, friendlyError, notify } from "../../kit/toast";
 import { WORDS } from "../../kit/words";
@@ -62,7 +62,7 @@ function startNaming(c: TrackBuiltCandidate): void {
 
 function saveName(b: TrackBuiltAt, field: HTMLInputElement): void {
   var name = field.value.trim();
-  var problem = blankOrLong(name);
+  var problem = factoryNameProblem(name);
   if (problem) {
     naming.problem = problem;
     naming.name = field.value;
@@ -76,17 +76,17 @@ function saveName(b: TrackBuiltAt, field: HTMLInputElement): void {
     name: name,
     proposal: naming.proposal,
     as_of: b.token,
-    version: newest(b.labels_version),
+    version: labelsVersionToSend(b.labels_version),
   })
     .then(function (reply) {
-      wrote(reply.version);
+      recordLabelsVersion(reply.version);
       naming = { key: "", proposal: -1, name: "", problem: "", busy: false };
       notify("named “" + reply.name + "”; the plan now counts it as built");
-      refreshLabels();
+      refetchLabelledViews();
       setFactory(reply.name);
     })
     .catch(function (failure) {
-      var why = refusal(failure);
+      var why = labelRefusal(failure);
       naming.busy = false;
       if (why === "name_taken") naming.problem = "“" + name + "” is already a factory name";
       else if (why === "bad") naming.problem = friendlyError(failure);

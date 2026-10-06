@@ -12,6 +12,7 @@ import { bytes, duration, isoDate } from "../../kit/format";
 import { adoptMaps, fetchMaps, mapDetails, mapState, onMaps, staleWhy, staleWord } from "../../app/map-types";
 import { askMode } from "../../map/tiles";
 import { fail, friendlyError } from "../../kit/toast";
+import { leaveDashThen, requestRender } from "../actions";
 
 import type { ApiPath, StatusError } from "../../api/client";
 import type {
@@ -23,11 +24,6 @@ import type {
   MapsResponse,
   MapTypeBody,
 } from "../../api/shapes";
-
-export interface MapsHost {
-  leaveDashThen: (action: () => void) => void;
-  render: () => void;
-}
 
 /* What the form says, kept across redraws: a redraw must not undo a half-filled form. */
 var form = {
@@ -50,7 +46,6 @@ var form = {
 var confirming = "";
 var renaming = "";
 var jobHost: HTMLElement | null = null;
-var host: MapsHost | null = null;
 var logs: Record<string, string[]> = {};
 var logOpen: Record<string, boolean> = {};
 
@@ -699,7 +694,7 @@ function thumb(row: MapTypeBody): HTMLElement {
     img.src = "/api/maptiles/" + encodeURIComponent(row.id) + "/0/0/0";
     link.appendChild(img);
     link.onclick = function () {
-      if (host) host.leaveDashThen(function () {
+      leaveDashThen(function () {
         askMode(row.id, true);
       });
     };
@@ -821,15 +816,14 @@ function renderStatus(parent: HTMLElement, body: MapsResponse): void {
 var tabBody: HTMLElement | null = null;
 
 function redrawTab(): void {
-  if (host) host.render();
+  requestRender();
 }
 
 function redraw(): void {
   redrawTab();
 }
 
-export function renderMaps(body: HTMLElement, into: MapsHost): void {
-  host = into;
+export function renderMaps(body: HTMLElement): void {
   tabBody = body;
   var data = mapState.body;
   if (!data) {

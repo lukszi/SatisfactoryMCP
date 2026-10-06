@@ -2,7 +2,7 @@
  * See docs/world-finders_contract.md §2.4. */
 
 import { appendNote, button, empty, heading, subTabs, table } from "../../kit/dashkit";
-import { leaveDashThen, mapButton, render } from "../shell";
+import { leaveDashThen, mapButton, requestRender } from "../actions";
 import { make } from "../../kit/dom";
 import { showRows } from "../../map/tools/finder";
 import { pickupPlace, pickupSelection, worldUrl } from "./world-finds";
@@ -158,7 +158,7 @@ function listTable(rows: CollectibleRow[], list: string): HTMLElement {
     caption: list + " pickups",
     onRow: function (r) {
       select(pickupSelection(r));
-      render();
+      requestRender();
     },
     rowClass: function (r) {
       return isSelected("pickup", r.name) ? "on" : "";

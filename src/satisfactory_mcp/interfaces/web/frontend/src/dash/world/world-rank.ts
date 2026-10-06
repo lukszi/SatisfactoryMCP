@@ -2,7 +2,7 @@
  * and whether only pure nodes count; those become `near:<place>@<m>` and `purity:pure`
  * sources. See docs/world-finders_contract.md §2.2. */
 
-import { leaveDashThen, mapButton, render } from "../shell";
+import { leaveDashThen, mapButton, requestRender } from "../actions";
 import { appendNote, button, empty, table, toggleButton } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { showRows } from "../../map/tools/finder";
@@ -261,7 +261,7 @@ function siteTable(rows: RankedSite[]): HTMLElement {
     caption: "ranked build sites",
     onRow: function (s) {
       select(siteSelection(s));
-      render();
+      requestRender();
     },
     rowClass: function (s) {
       return isSelected("field", s.selector) ? "on" : "";
@@ -327,7 +327,7 @@ export function renderRank(body: HTMLElement, params: Record<string, string>): v
 
 function rerank(): void {
   var at = dashParts();
-  if (at.tab === "world" && subjectQuery(at.subject).head === "rank") render();
+  if (at.tab === "world" && subjectQuery(at.subject).head === "rank") requestRender();
 }
 
 onVitals(rerank);

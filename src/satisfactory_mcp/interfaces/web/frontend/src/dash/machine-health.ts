@@ -5,7 +5,7 @@ import { link, table } from "../kit/dashkit";
 import { make } from "../kit/dom";
 import { count, joinWithConjunction } from "../kit/format";
 import { vitals } from "../app/vitals";
-import { isFine, needsAction, stateSets, tone } from "./machine-states";
+import { isFine, needsAction, stateSets, stateTone } from "./machine-states";
 import { WORDS } from "../kit/words";
 
 import type { Column } from "../kit/dashkit";
@@ -61,7 +61,7 @@ export function issueTable(
       label: "state",
       className: "dash-nowrap",
       tone: function (g) {
-        return tone(g.state, true);
+        return stateTone(g.state, true);
       },
       render: function (g) {
         return g.state;
@@ -118,22 +118,18 @@ export interface Mix {
   ok: number;
 }
 
-export function actionable(): string[] {
-  return stateSets().actionable;
-}
-
-function middling(): string[] {
-  var h = vitals().health;
-  return (h ? h.states : []).filter(function (s) {
-    return !needsAction(s) && !isFine(s);
+function middleStates(): string[] {
+  const health = vitals().health;
+  return (health ? health.states : []).filter(function (state) {
+    return !needsAction(state) && !isFine(state);
   });
 }
 
 export function mixOf(rows: FactoryHealthRow[]): Mix {
-  var mix = { bad: 0, blocked: 0, mid: 0, ok: 0 };
+  const mix = { bad: 0, blocked: 0, mid: 0, ok: 0 };
   rows.forEach(function (row) {
-    row.states.forEach(function (s) {
-      mix[tone(s.state)] += s.count;
+    row.states.forEach(function (entry) {
+      mix[stateTone(entry.state)] += entry.count;
     });
   });
   return mix;
@@ -144,14 +140,14 @@ function mixWords(): [keyof Mix, string][] {
     [
       "bad",
       joinWithConjunction(
-        actionable().filter(function (s) {
-          return s !== WORDS.blocked;
+        stateSets().actionable.filter(function (state) {
+          return state !== WORDS.blocked;
         }),
         "or"
       ),
     ],
     ["blocked", WORDS.blocked],
-    ["mid", joinWithConjunction(middling(), "or")],
+    ["mid", joinWithConjunction(middleStates(), "or")],
     ["ok", "running or unmonitored"],
   ];
 }

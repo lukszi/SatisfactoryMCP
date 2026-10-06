@@ -4,6 +4,7 @@
 import { send } from "../../api/client";
 import { fieldError } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
+import { createListeners } from "../../app/listeners";
 import { loadOne } from "../../app/load";
 import { state } from "../../app/state";
 import { fail, friendlyError, notify } from "../../kit/toast";
@@ -11,69 +12,73 @@ import { fail, friendlyError, notify } from "../../kit/toast";
 import type { StatusError } from "../../api/client";
 import type { LabelRefused, RenamedResponse } from "../../api/shapes";
 
-export var NAME_MAX = 60;
+export const NAME_MAX = 60;
 
-var formerly: Record<string, string> = {};
+const newNameByOldName: Record<string, string> = {};
 
-var written: Record<string, number> = {};
+const labelsVersionByWorld: Record<string, number> = {};
 
-var open: { input: HTMLInputElement; cancel: () => void } | null = null;
+let open: { input: HTMLInputElement; cancel: () => void } | null = null;
+
+const renamed = createListeners();
 
 export type Refusal = "stale" | "name_taken" | "pin" | "bad" | "";
 
-export function refusal(error: unknown): Refusal {
-  var e = error as StatusError | null;
+export function labelRefusal(error: unknown): Refusal {
+  const e = error as StatusError | null;
   if (!e || !e.status) return "";
   if (e.status === 400) return "bad";
   if (e.status !== 409) return "";
-  var body = (e.body || {}) as Partial<LabelRefused>;
+  const body = (e.body || {}) as Partial<LabelRefused>;
   if (body.name_taken) return "name_taken";
   if (body.stale) return "stale";
   if (body.pin) return "pin";
   return "";
 }
 
-export function wrote(version: number): void {
-  written[state.world] = Math.max(written[state.world] || 0, version);
+/* What changed under a refused write, as the first half of the toast that says so. */
+export function staleWriteReason(why: "stale" | "pin"): string {
+  return why === "pin" ? "a newer save was written" : "factory names changed elsewhere";
 }
 
-export function newest(version: number): number {
-  return Math.max(version, written[state.world] || 0);
+export function recordLabelsVersion(version: number): void {
+  labelsVersionByWorld[state.world] = Math.max(labelsVersionByWorld[state.world] || 0, version);
 }
 
-export function blankOrLong(name: string): string {
+/* A reply this page wrote may be newer than the read it is editing from. */
+export function labelsVersionToSend(version: number): number {
+  return Math.max(version, labelsVersionByWorld[state.world] || 0);
+}
+
+export function factoryNameProblem(name: string): string {
   if (!name) return "a factory name cannot be blank";
   if (name.length > NAME_MAX) return "at most " + NAME_MAX + " characters";
   return "";
 }
 
 export function renamedTo(name: string): string | undefined {
-  var seen: Record<string, boolean> = {};
-  var now = formerly[name];
-  while (now !== undefined && formerly[now] !== undefined && !seen[now]) {
+  const seen: Record<string, boolean> = {};
+  let now = newNameByOldName[name];
+  while (now !== undefined && newNameByOldName[now] !== undefined && !seen[now]) {
     seen[now] = true;
-    now = formerly[now];
+    now = newNameByOldName[now];
   }
   return now;
 }
 
-var renamedListeners: Array<() => void> = [];
-
 export function onRenamed(listener: () => void): void {
-  renamedListeners.push(listener);
+  renamed.on(listener);
 }
 
 export function onRenameActivity(entry: { kind: string; args?: unknown }): void {
   if (entry.kind !== "label.rename") return;
-  var args = (entry.args || {}) as { was?: unknown; to?: unknown };
-  if (typeof args.was !== "string" || typeof args.to !== "string" || formerly[args.was] === args.to) return;
-  formerly[args.was] = args.to;
-  renamedListeners.forEach(function (listener) {
-    listener();
-  });
+  const args = (entry.args || {}) as { was?: unknown; to?: unknown };
+  if (typeof args.was !== "string" || typeof args.to !== "string" || newNameByOldName[args.was] === args.to) return;
+  newNameByOldName[args.was] = args.to;
+  renamed.emit();
 }
 
-export function refreshLabels(): void {
+export function refetchLabelledViews(): void {
   loadOne("/api/factories");
   loadOne("/api/factories/health");
   loadOne("/api/power/circuits");
@@ -94,18 +99,18 @@ export function editName(
   done: (reply: RenamedResponse | null) => void
 ): void {
   cancelRename();
-  var trigger = document.activeElement as HTMLElement | null;
-  var kept = Array.prototype.slice.call(host.childNodes) as Node[];
-  var input = make("input", "dash-name");
+  const trigger = document.activeElement as HTMLElement | null;
+  const kept = Array.prototype.slice.call(host.childNodes) as Node[];
+  const input = make("input", "dash-name");
   input.type = "text";
   input.value = name;
   input.maxLength = NAME_MAX;
   input.spellcheck = false;
   input.setAttribute("aria-label", "new name for " + name);
   input.setAttribute("data-renaming", name);
-  var saving = false;
-  var closed = false;
-  var finish = function (reply: RenamedResponse | null) {
+  let saving = false;
+  let closed = false;
+  const finish = function (reply: RenamedResponse | null) {
     if (closed) return;
     closed = true;
     saving = true;
@@ -116,13 +121,13 @@ export function editName(
         host.appendChild(node);
       });
     }
-    var lost = !document.activeElement || document.activeElement === document.body;
+    const lost = !document.activeElement || document.activeElement === document.body;
     done(reply);
     if (lost && trigger && trigger.isConnected && (!document.activeElement || document.activeElement === document.body)) {
       trigger.focus({ preventScroll: true });
     }
   };
-  var cancel = function () {
+  const cancel = function () {
     if (!saving) finish(null);
   };
   input.onclick = function (event) {
@@ -138,10 +143,10 @@ export function editName(
     event.stopPropagation();
     if (event.key === "Escape") cancel();
     if (event.key !== "Enter" || saving) return;
-    var to = input.value.trim();
-    var invalid = blankOrLong(to);
-    if (invalid) {
-      fieldError(input, invalid);
+    const to = input.value.trim();
+    const problem = factoryNameProblem(to);
+    if (problem) {
+      fieldError(input, problem);
       return;
     }
     if (to === name) {
@@ -150,10 +155,10 @@ export function editName(
     }
     saving = true;
     input.disabled = true;
-    send<RenamedResponse>("PATCH", "/api/labels/{name}", { to: to, version: newest(version) }, name)
+    send<RenamedResponse>("PATCH", "/api/labels/{name}", { to: to, version: labelsVersionToSend(version) }, name)
       .then(function (reply) {
-        wrote(reply.version);
-        formerly[reply.was] = reply.name;
+        recordLabelsVersion(reply.version);
+        newNameByOldName[reply.was] = reply.name;
         notify(
           "renamed “" + reply.was + "” to “" + reply.name + "”" +
             (reply.plans.length ? "; " + reply.plans.length + " stored plan(s) followed it" : "")
@@ -161,13 +166,13 @@ export function editName(
         if (reply.plans_stuck.length) {
           fail(reply.plans_stuck.length + " stored plan(s) still name “" + reply.was + "”: " + reply.stuck_reason);
         }
-        refreshLabels();
+        refetchLabelledViews();
         finish(reply);
       })
       .catch(function (error) {
         saving = false;
         input.disabled = false;
-        var why = refusal(error);
+        const why = labelRefusal(error);
         if (why === "name_taken") {
           fieldError(input, "“" + to + "” is already a factory name");
           input.focus();
@@ -175,8 +180,8 @@ export function editName(
           fieldError(input, friendlyError(error));
           input.focus();
         } else if (why === "stale") {
-          fail("factory names changed elsewhere, so “" + name + "” was not renamed; they are reloaded now, try again");
-          refreshLabels();
+          fail(staleWriteReason(why) + ", so “" + name + "” was not renamed; they are reloaded now, try again");
+          refetchLabelledViews();
           finish(null);
         } else {
           fail("renaming “" + name + "”: " + friendlyError(error));

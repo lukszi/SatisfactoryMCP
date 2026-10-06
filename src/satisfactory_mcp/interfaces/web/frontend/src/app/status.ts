@@ -3,7 +3,7 @@
 
 import { onStale } from "../api/client";
 import { button, link } from "../kit/dashkit";
-import { leaveDashThen } from "../dash/shell";
+import { leaveDashThen } from "../dash/actions";
 import { el, make } from "../kit/dom";
 import { keepFocus } from "../kit/focus";
 import { count } from "../kit/format";

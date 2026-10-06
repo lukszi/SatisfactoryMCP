@@ -2,7 +2,7 @@
  * See docs/world-finders_contract.md §2.3. */
 
 import { appendNote, button, empty, subTabs, table } from "../../kit/dashkit";
-import { leaveDashThen, mapButton, render } from "../shell";
+import { leaveDashThen, mapButton, requestRender } from "../actions";
 import { make } from "../../kit/dom";
 import { CONDUIT_RADIUS_M, showRows } from "../../map/tools/finder";
 import { carriesText, runLabel, runSelection, worldUrl } from "./world-finds";
@@ -177,7 +177,7 @@ function runTable(rows: RunRow[], params: Record<string, string>): HTMLElement {
     caption: "belt and pipe runs",
     onRow: function (r) {
       select(runSelection(r));
-      render();
+      requestRender();
     },
     rowClass: function (r) {
       return isSelected("conduit", r.id) ? "on" : "";

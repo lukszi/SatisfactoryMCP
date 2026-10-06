@@ -32,7 +32,7 @@ import { clearMark, outline, ringAt, ringedKey, selectAndRing } from "./map-high
 import { editName, renamingIn } from "../dash/factories/rename";
 import { state } from "../app/state";
 import { notifyVitals, vitals } from "../app/vitals";
-import { actionTone, learnStates, statesOf, tone } from "../dash/machine-states";
+import { actionTone, learnStates, stateTone, statesOf } from "../dash/machine-states";
 import { counted, WORDS } from "../kit/words";
 
 import type { IssueGroup } from "../dash/machine-health";
@@ -181,7 +181,7 @@ function pinButton(row: { x_m: number | null; y_m: number | null }, label: strin
 function stateChips(row: FactoryHealthRow): HTMLElement {
   var chips = make("div", "panel-chips");
   row.states.forEach(function (s) {
-    var t = tone(s.state);
+    var t = stateTone(s.state);
     if (t === "ok") return;
     chips.appendChild(chip(s.count + " " + s.state, t));
   });
@@ -194,7 +194,7 @@ function stateChips(row: FactoryHealthRow): HTMLElement {
 function issueRow(group: IssueGroup): HTMLElement {
   var line = make("li", "panel-issue");
   var text = make("span", "panel-issue-text");
-  text.appendChild(make("span", "panel-issue-state " + tone(group.state, true), group.state));
+  text.appendChild(make("span", "panel-issue-state " + stateTone(group.state, true), group.state));
   text.appendChild(make("span", "panel-issue-what", group.what));
   var detail = [counted(group.issues.length, "machine"), group.cause].filter(Boolean).join(" · ");
   text.appendChild(make("span", "panel-issue-cause", detail));

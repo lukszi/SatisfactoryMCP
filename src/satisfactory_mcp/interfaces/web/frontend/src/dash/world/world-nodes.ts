@@ -2,7 +2,7 @@
  * See docs/world-finders_contract.md §2.1 and §2.2. */
 
 import { appendNote, button, chip, empty, statusChip, table } from "../../kit/dashkit";
-import { leaveDashThen, mapButton, render } from "../shell";
+import { leaveDashThen, mapButton, requestRender } from "../actions";
 import { make } from "../../kit/dom";
 import { showRows } from "../../map/tools/finder";
 import { fieldLabel, fieldSelection, nodeLabel, nodeRate, nodeSelection, resourceOptions, worldUrl } from "./world-finds";
@@ -83,7 +83,7 @@ function openRows(set: Shown, title: string, seed?: number): void {
 
 function pickNode(n: FoundNode): void {
   select(nodeSelection(n));
-  render();
+  requestRender();
 }
 
 export function nodeTable(rows: FoundNode[], near: boolean, stale?: TableAge | null): HTMLElement {
@@ -251,7 +251,7 @@ function fieldTable(rows: FoundField[], near: boolean): HTMLElement {
     caption: "fields",
     onRow: function (f) {
       select(fieldSelection(f));
-      render();
+      requestRender();
     },
     rowClass: function (f) {
       return (isSelected("field", f.key) ? "on " : "") + (f.spoiler ? "world-locked" : "");

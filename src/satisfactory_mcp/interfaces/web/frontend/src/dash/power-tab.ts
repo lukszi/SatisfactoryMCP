@@ -7,7 +7,7 @@ import { count, mw } from "../kit/format";
 import { loadOne } from "../app/load";
 import { showCircuit } from "../map/panel";
 import { vitals } from "../app/vitals";
-import { mapButton, pointButton } from "./shell";
+import { mapButton, pointButton } from "./actions";
 import { go } from "../app/nav";
 import {
   bar,

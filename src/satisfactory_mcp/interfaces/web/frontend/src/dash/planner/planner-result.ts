@@ -4,7 +4,7 @@
 import { button, chip, copyButton, error, idChip, loading, subTabs, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, flow, mw, pct } from "../../kit/format";
-import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "../graph";
+import { drawGraph, graphCardFrame, GRAPH_HINT, setPicked } from "../graph";
 import { dashParts, go } from "../../app/nav";
 import { vitals } from "../../app/vitals";
 import { renderAlternates } from "./planner-alternates";
@@ -540,7 +540,7 @@ function nodeCard(parent: HTMLElement, data: SolveResponse): void {
 }
 
 function graphTab(parent: HTMLElement, data: SolveResponse, select: (s: Selection) => void): HTMLElement | null {
-  var card = graphFrame("production graph", true);
+  var card = graphCardFrame("production graph", true);
   parent.appendChild(card);
   if (!data.graph.nodes.length) {
     card.appendChild(make("p", "dash-note", "nothing to draw"));

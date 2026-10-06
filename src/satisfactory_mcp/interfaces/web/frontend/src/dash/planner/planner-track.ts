@@ -14,7 +14,7 @@ import { builtColumn, builtLine } from "./planner-built";
 import { bench, changed, gesture, loadFeeders, loadTrack, pickStage, stageHeadroom } from "./planner-core";
 import { recipesButton } from "./planner-result";
 import { headroom } from "../power-ledger";
-import { actionTone, tone } from "../machine-states";
+import { actionTone, stateTone } from "../machine-states";
 import { fail, notify } from "../../kit/toast";
 import { counted, TRACK_VERB, WORDS } from "../../kit/words";
 
@@ -96,7 +96,7 @@ function marks(cell: HTMLElement, kind: string, ref: string): void {
 function stateChips(parent: HTMLElement, states: TrackState[]): void {
   states.forEach(function (s) {
     if (!s.count) return;
-    var t = tone(s.state);
+    var t = stateTone(s.state);
     if (t === "ok") return;
     parent.appendChild(chip(count(s.count) + " " + s.state, t));
   });
