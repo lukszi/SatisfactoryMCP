@@ -8,7 +8,7 @@ import { count, pct } from "../kit/format";
 import { loadOne } from "../app/load";
 import { hashFor } from "../map/map";
 import { vitals } from "../app/vitals";
-import { milestoneTile } from "./progress/progress";
+import { milestoneTile } from "./progress/milestones";
 import { actionTone, statesOf } from "./machine-states";
 import { issueCount, issueGroups, issueTable, mixBar, mixLegend, mixOf } from "./machine-health";
 import { factoryMapButton, pointButton } from "./actions";

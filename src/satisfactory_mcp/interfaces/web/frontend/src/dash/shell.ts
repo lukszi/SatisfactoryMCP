@@ -11,7 +11,7 @@ import { onVitals, vitals } from "../app/vitals";
 import { renderPlanner, viewFocus } from "./planner/planner";
 import { bench, onBench } from "./planner/planner-core";
 import { planTitle } from "./planner/planner-list";
-import { onProgress } from "./progress/progress";
+import { onProgress } from "./progress/feeds";
 import { renderProgress } from "./progress/progress";
 import { renderRecipes } from "./recipes/recipes";
 import { cancelRename, renamingIn } from "./factories/rename";
