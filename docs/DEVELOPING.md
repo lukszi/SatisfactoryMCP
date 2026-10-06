@@ -268,8 +268,8 @@ colour value, so every colour sits with its owner and its warrant.
   the process. The save projection's is `core/saveio/schema.py`: `Projection` and the rows of
   [save-projection.md](save-projection.md) §6.16, held against the committed fixture. A JSON
   shape a domain package builds is declared in that package's `views.py`, where the web
-  publishes it from; wire rule 2 of [web-wire.md](web-wire.md) says why each one is a
-  `typing_extensions.TypedDict`.
+  publishes it from; wire rules 2 and 5 of [web-wire.md](web-wire.md) say why each one is a
+  `typing_extensions.TypedDict` and why two with the same fields are one.
 - **Arrays and stubs.** A numpy array is typed by its dtype through `core/arrays.py`
   (`F32Grid`, `U8Grid`, `BoolMask` and the rest) rather than as a bare `ndarray`. scipy is typed
   by `scipy-stubs`, and pyooz, which ships no types, by the local stub `typings/ooz.pyi`.

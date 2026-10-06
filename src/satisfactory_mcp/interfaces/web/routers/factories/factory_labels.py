@@ -36,6 +36,7 @@ from .....domain.world import pin
 from ...serial import (
     Flow,
     MachineSpot,
+    NameCount,
     bbox_m,
     busy_response,
     error_response,
@@ -50,11 +51,6 @@ from ...serial import (
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-
-class Amount(TypedDict):
-    name: str
-    count: int
 
 
 class CandidateRow(TypedDict):
@@ -73,7 +69,7 @@ class CandidateRow(TypedDict):
     unrouted: list[Flow]
     inputs: list[Flow]
     buffers: int
-    buildings: list[Amount]
+    buildings: list[NameCount]
     region: str | None
     centroid_m: tuple[float, float]
     bbox_m: tuple[float, float, float, float] | None

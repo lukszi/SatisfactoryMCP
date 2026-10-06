@@ -21,6 +21,8 @@ from .....domain.session import asks as ask_store
 from .....domain.session import journal
 from .....domain.session.views import AskAbout, AskRow
 from ...serial import (
+    Dropped,
+    RevBody,
     busy_response,
     error_response,
     newer_schema_response,
@@ -41,15 +43,6 @@ class AsksResponse(TypedDict):
 class AskCreateBody(TypedDict):
     text: str
     about: AskAbout
-
-
-class AskDropBody(TypedDict):
-    rev: int
-
-
-class AskDropped(TypedDict):
-    ok: bool
-    n: int
 
 
 class AskStaleResponse(TypedDict):
@@ -124,13 +117,13 @@ def create_ask(
 
 @router.delete(
     "/asks/{n}",
-    response_model=AskDropped,
+    response_model=Dropped,
     responses={409: {"model": AskStaleResponse}},
 )
 def drop_ask(
     request: Request,
     n: int,
-    body: Annotated[AskDropBody, Body()],
+    body: Annotated[RevBody, Body()],
     save: str | None = None,
     world: str | None = None,
 ) -> Any:

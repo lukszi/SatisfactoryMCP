@@ -19,7 +19,9 @@ routers point at this file instead of re-telling them.
 5. **A router never imports another router**, enforced by
    `tests/architecture/test_router_registry.py`. A shape the domain builds is declared in
    that domain package's `views.py` and the routers import it from there; a shape that more
-   than one router builds lives in the `serial` package (`serial/shapes.py`).
+   than one router builds lives in the `serial` package (`serial/shapes.py`). Two shapes with
+   the same fields are one shape under one name, since a second copy is a second component in
+   `api/schema.d.ts` that can drift from the first; `tests/web/test_openapi.py` fails on twins.
 6. **Regenerate, never hand-edit** `api/schema.d.ts`: throwaway server on a port in
    8920–8999, then `npm run typegen -- <port>` (`scripts/typegen.mjs`: `openapi-typescript`
    against that port, then `scripts/stamp-schema.mjs`). Without an argument it reads

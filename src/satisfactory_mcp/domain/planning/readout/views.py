@@ -11,19 +11,19 @@ from ..solver.views import OverclockOption, OverclockRow, PowerSource, RowName
 
 __all__ = [
     "BuildAmount",
+    "ItemRate",
     "OverclockView",
     "PaybackStop",
     "PaybackView",
     "PlanGraph",
     "PlanGraphEdge",
     "PlanGraphNode",
-    "SolveRate",
     "SolveResponse",
     "SolveRow",
 ]
 
 
-class SolveRate(TypedDict):
+class ItemRate(TypedDict):
     item: str
     per_min: float
 
@@ -46,8 +46,8 @@ class SolveRow(TypedDict):
     last_clock: float | None
     overclock_option: OverclockOption | None
     mw: float
-    inputs: list[SolveRate]
-    outputs: list[SolveRate]
+    inputs: list[ItemRate]
+    outputs: list[ItemRate]
     required: bool
 
 
@@ -150,8 +150,8 @@ class SolveResponse(TypedDict):
     mw_generated: float | None
     mw_net: float | None
     grid_import: bool
-    exports: list[SolveRate]
-    inputs: list[SolveRate]
+    exports: list[ItemRate]
+    inputs: list[ItemRate]
     rows: list[SolveRow]
     graph: PlanGraph
     shards: int | None

@@ -21,6 +21,7 @@ from .....domain.world import pin
 from .....domain.world.state import WorldState
 from ...serial import (
     Flow,
+    FlowEdge,
     MachineSpot,
     RequestRefused,
     bbox_m,
@@ -56,21 +57,12 @@ class GraphNode(TypedDict):
     bbox_m: tuple[float, float, float, float] | None
 
 
-class GraphEdge(TypedDict):
-    """``per_min`` is null where an output reaches a terminal with no surplus to apportion."""
-
-    source: str
-    target: str
-    item: str
-    per_min: float | None
-
-
 class FactoryGraphResponse(TypedDict):
     title: str
     token: str
     buffers: int
     nodes: list[GraphNode]
-    edges: list[GraphEdge]
+    edges: list[FlowEdge]
 
 
 TERMINAL_LABELS = {

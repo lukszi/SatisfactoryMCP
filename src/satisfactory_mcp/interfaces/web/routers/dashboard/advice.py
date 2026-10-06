@@ -21,6 +21,7 @@ from .....domain.advice import store as hidden_store
 from .....domain.session import journal
 from .....domain.world import pin
 from ...serial import (
+    RevBody,
     busy_response,
     error_response,
     newer_schema_response,
@@ -87,10 +88,6 @@ class AdviceHideBody(TypedDict):
     mode: Literal["dismiss", "snooze"]
     hours: NotRequired[float | None]
     rev: NotRequired[int | None]
-
-
-class AdviceRestoreBody(TypedDict):
-    rev: int
 
 
 class AdviceRestored(TypedDict):
@@ -252,7 +249,7 @@ def hide_advice(
 def restore_advice(
     request: Request,
     adv_id: str,
-    body: Annotated[AdviceRestoreBody, Body()],
+    body: Annotated[RevBody, Body()],
     save: str | None = None,
     world: str | None = None,
 ) -> Any:

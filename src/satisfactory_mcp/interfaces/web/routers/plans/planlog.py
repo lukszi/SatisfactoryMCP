@@ -170,13 +170,9 @@ class PushArgsBody(TypedDict):
     from_entry: NotRequired[str]
 
 
-class UndoBody(TypedDict):
-    base_rev: int
-    rev: int
-    sav: NotRequired[str]
+class CommitRefBody(TypedDict):
+    """A push that names one earlier commit ``rev``: to undo it, or to restore the plan to it."""
 
-
-class RestoreBody(TypedDict):
     base_rev: int
     rev: int
     sav: NotRequired[str]
@@ -486,7 +482,7 @@ def push_args(
 def undo_rev(
     request: Request,
     key: str,
-    body: Annotated[UndoBody, Body()],
+    body: Annotated[CommitRefBody, Body()],
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
@@ -516,7 +512,7 @@ def undo_rev(
 def restore_rev(
     request: Request,
     key: str,
-    body: Annotated[RestoreBody, Body()],
+    body: Annotated[CommitRefBody, Body()],
     save: str | None = None,
     world: str | None = None,
 ) -> Any:

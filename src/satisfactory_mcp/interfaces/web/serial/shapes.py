@@ -23,12 +23,18 @@ __all__ = [
     "ActorBody",
     "Biomass",
     "CollectibleRow",
+    "Dropped",
     "Flow",
+    "FlowEdge",
     "FoundField",
     "ItemAmount",
     "MachineSpot",
+    "NameCount",
     "PlanOpBody",
+    "PlayerPosition",
     "Region",
+    "RevBody",
+    "StoredItem",
     "TableAge",
     "actor_json",
     "building_footprint",
@@ -87,6 +93,19 @@ def region_json(label: spatial_regions.Label) -> Region | None:
         "certain": label.certain,
         "text": label.describe(),
     }
+
+
+class PlayerPosition(TypedDict):
+    """Where the player last stood, or three nulls -- never a missing branch.
+
+    A save with no pawn, as a dedicated-server world has, sends three nulls rather than
+    dropping the key: the page branches on ``x_m === null`` to decide whether there is a
+    you-are-here to draw at all, and all three go null together.
+    """
+
+    x_m: float | None
+    y_m: float | None
+    z_m: float | None
 
 
 def regions_or_none() -> spatial_regions.RegionMap | None:
@@ -235,6 +254,24 @@ class ItemAmount(TypedDict):
     amount: float
 
 
+class NameCount(TypedDict):
+    name: str
+    count: int
+
+
+class RevBody(TypedDict):
+    """A write that names the ``rev`` it read, and nothing else."""
+
+    rev: int
+
+
+class Dropped(TypedDict):
+    """A delete that landed: ``n`` is the number it freed, never given out again."""
+
+    ok: bool
+    n: int
+
+
 def item_amounts(game: GameData, pairs: Iterable[tuple[str, float]]) -> list[ItemAmount]:
     """``(item class, amount)`` pairs as rows that also carry the item's display name."""
     return [
@@ -296,7 +333,18 @@ def flow_group_json(group: Any) -> dict:
     }
 
 
-def flow_edges_json(flow_graph: Any) -> list[dict]:
+class FlowEdge(TypedDict):
+    """Group to group, ``in:<item>`` for supply from outside the set, or a terminal
+    (``storage``, ``export``, ``sink``, ``nowhere``). ``per_min`` is null where an output
+    reaches a terminal with no surplus to apportion."""
+
+    source: str
+    target: str
+    item: str
+    per_min: float | None
+
+
+def flow_edges_json(flow_graph: Any) -> list[FlowEdge]:
     """A flow graph's edges; ``per_min`` is ``None`` where there is no surplus to share."""
     return [
         {"source": edge.source, "target": edge.target, "item": edge.item, "per_min": edge.per_min}
@@ -365,6 +413,14 @@ def placement_fields(game: GameData, row: dict) -> dict:
         "w_m": round(footprint.width_m, 1) if footprint else None,
         "l_m": round(footprint.depth_m, 1) if footprint else None,
     }
+
+
+class StoredItem(TypedDict):
+    """One kind of thing in a container or a crate, resolved to a display name."""
+
+    cls: str
+    name: str
+    count: int
 
 
 def contents_json(game: GameData, row: dict) -> dict:

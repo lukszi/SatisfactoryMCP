@@ -16,7 +16,16 @@ from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
 from .....domain.world.inventory import CRATE_KIND_TEXT, Holding
-from ...serial import Region, cm_to_m, region_json, regions_or_none, require_world, xyz_m
+from ...serial import (
+    ItemAmount,
+    PlayerPosition,
+    Region,
+    cm_to_m,
+    region_json,
+    regions_or_none,
+    require_world,
+    xyz_m,
+)
 
 __all__ = ["router"]
 
@@ -37,12 +46,6 @@ class StockPile(TypedDict):
     crates: float
 
 
-class PlaceItem(TypedDict):
-    item: str
-    name: str
-    amount: float
-
-
 class StockPlace(TypedDict):
     """A container, fluid buffer or crate. ``source`` is ``storage`` or ``crate``."""
 
@@ -56,7 +59,7 @@ class StockPlace(TypedDict):
     z_m: float | None
     region: Region | None
     distance_m: float | None
-    items: list[PlaceItem]
+    items: list[ItemAmount]
     total: float
     slots: int | None
     slots_used: int | None
@@ -75,17 +78,11 @@ class StockCensus(TypedDict):
     deaths: int
 
 
-class StockPlayer(TypedDict):
-    x_m: float | None
-    y_m: float | None
-    z_m: float | None
-
-
 class StockResponse(TypedDict):
     items: list[StockPile]
     places: list[StockPlace]
     census: StockCensus
-    player: StockPlayer
+    player: PlayerPosition
 
 
 def _place(st, region_map, player_xy, holding: Holding) -> StockPlace:

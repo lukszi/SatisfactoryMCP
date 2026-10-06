@@ -17,7 +17,7 @@ from typing_extensions import TypedDict
 from .....core.saveio.records import instance_leaf
 from .....domain.world.inventory import CRATE_KIND_TEXT
 from .....domain.world.state import WorldState
-from ...serial import contents_json, require_world, xyz_m, yaw_deg
+from ...serial import StoredItem, contents_json, require_world, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -25,14 +25,6 @@ router = APIRouter(prefix="/api")
 
 
 # --------------------------------------------------------------------- crates
-
-
-class CrateItem(TypedDict):
-    """One kind of thing in a crate, resolved to a display name by the server."""
-
-    cls: str
-    name: str
-    count: int
 
 
 class CrateRow(TypedDict):
@@ -52,7 +44,7 @@ class CrateRow(TypedDict):
     y_m: float | None
     z_m: float | None
     yaw: float | None
-    items: list[CrateItem]
+    items: list[StoredItem]
     more: int
     item_kinds: int
     total: int

@@ -12,19 +12,11 @@ from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
 from .....domain.world.state import WorldState
-from ...serial import contents_json, placement_fields, require_world
+from ...serial import StoredItem, contents_json, placement_fields, require_world
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-
-class StoredItem(TypedDict):
-    """One kind of thing in a container, resolved to a display name by the server."""
-
-    cls: str
-    name: str
-    count: int
 
 
 class StorageSolid(TypedDict):

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
+from ...factories.views import StateCount
+
 __all__ = [
     "Feeder",
     "FeedersResponse",
@@ -23,14 +25,8 @@ __all__ = [
     "TrackStage",
     "TrackStageRow",
     "TrackStartup",
-    "TrackState",
     "TrackTarget",
 ]
-
-
-class TrackState(TypedDict):
-    state: str
-    count: int
 
 
 class TrackMachine(TypedDict):
@@ -67,7 +63,7 @@ class TrackRow(TypedDict):
     count: int
     reuse: int
     running: int | None
-    states: list[TrackState]
+    states: list[StateCount]
     new_building: bool
     note: str
     delta_mw: float
@@ -86,7 +82,7 @@ class TrackStageRow(TypedDict):
     built: int
     built_max: int
     running: int | None
-    states: list[TrackState]
+    states: list[StateCount]
     draw_mw: float
     generation_mw: float
     to_build: int
@@ -109,7 +105,7 @@ class TrackStage(TypedDict):
     available_after: float
     fill_s: float
     waits_for_fill: bool
-    states: list[TrackState]
+    states: list[StateCount]
     rows: list[TrackStageRow]
     bbox_m: list[float] | None
 

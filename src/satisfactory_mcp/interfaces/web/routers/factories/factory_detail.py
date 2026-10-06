@@ -19,6 +19,7 @@ from .....domain.factories import candidates
 from .....domain.factories.query import build_view
 from .....domain.spatial import nodes as nodes_mod
 from ...serial import (
+    NameCount,
     bbox_m,
     cm_to_m,
     error_response,
@@ -62,11 +63,6 @@ class AspectMachine(TypedDict):
     x_m: float | None
     y_m: float | None
     z_m: float | None
-
-
-class AspectCount(TypedDict):
-    name: str
-    count: int
 
 
 class AspectNode(TypedDict):
@@ -117,8 +113,8 @@ class FactoryAspectsResponse(TypedDict):
     power: AspectPower
     balance: list[AspectBalance]
     machines: list[AspectMachine]
-    recipes: list[AspectCount]
-    buildings: list[AspectCount]
+    recipes: list[NameCount]
+    buildings: list[NameCount]
     nodes: list[AspectNode]
     links: list[AspectLink]
     issues: list[AspectIssue]
@@ -241,7 +237,7 @@ class SiteRow(TypedDict):
     count: int
     diameter_m: float
     selector: str
-    buildings: list[AspectCount]
+    buildings: list[NameCount]
     mine: int
 
 

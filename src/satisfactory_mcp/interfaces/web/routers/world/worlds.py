@@ -19,7 +19,7 @@ from .....core.saveio import projection as proj
 from .....domain.power.views import GeneratorTotal
 from .....domain.progression.views import ProgressionSummary
 from .....domain.world import pin
-from ...serial import Biomass, error_response, require_world, xyz_m
+from ...serial import Biomass, PlayerPosition, error_response, require_world, xyz_m
 
 __all__ = ["router"]
 
@@ -110,19 +110,6 @@ def worlds() -> Any:
 
 
 # -------------------------------------------------------------------- summary
-
-
-class PlayerPosition(TypedDict):
-    """Where the player last stood, or three nulls -- never a missing branch.
-
-    A save with no pawn, as a dedicated-server world has, sends three nulls rather than
-    dropping the key: the page branches on ``x_m === null`` to decide whether there is a
-    you-are-here to draw at all, and all three go null together.
-    """
-
-    x_m: float | None
-    y_m: float | None
-    z_m: float | None
 
 
 class PowerSummary(TypedDict):

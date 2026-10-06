@@ -19,6 +19,7 @@ from .....core.saveio.records import instance_leaf
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
 from .....domain.power.report import PowerLedger, starved_cause
+from .....domain.power.views import GeneratorTotal
 from .....domain.spatial import geo
 from .....domain.world.state import WorldState
 from ...serial import (
@@ -55,12 +56,6 @@ class Ledger(TypedDict):
     paused: int
     biomass_mw: float
     biomass_generators: int
-
-
-class GeneratorGroup(TypedDict):
-    name: str
-    count: int
-    mw: float
 
 
 class StarvedGenerator(TypedDict):
@@ -107,7 +102,7 @@ class CircuitRow(TypedDict):
 
     index: int
     ledger: Ledger
-    generators: list[GeneratorGroup]
+    generators: list[GeneratorTotal]
     starved: list[StarvedGenerator]
     unmodellable: list[str]
     consumers: int
@@ -124,7 +119,7 @@ class CircuitsResponse(TypedDict):
 
     world: Ledger
     paused: int
-    generators: list[GeneratorGroup]
+    generators: list[GeneratorTotal]
     starved: list[StarvedGenerator]
     unmodellable: list[str]
     circuits: list[CircuitRow]

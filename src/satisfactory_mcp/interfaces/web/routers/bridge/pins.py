@@ -21,6 +21,8 @@ from .....domain.session import journal
 from .....domain.session import pins as pin_store
 from .....domain.session.views import PinRef, PinRow
 from ...serial import (
+    Dropped,
+    RevBody,
     busy_response,
     error_response,
     newer_schema_response,
@@ -51,15 +53,6 @@ class PinCreateBody(TypedDict):
 class PinRenameBody(TypedDict):
     rev: int
     label: str
-
-
-class PinDropBody(TypedDict):
-    rev: int
-
-
-class PinDropped(TypedDict):
-    ok: bool
-    n: int
 
 
 class PinStaleResponse(TypedDict):
@@ -162,13 +155,13 @@ def rename_pin(
 
 @router.delete(
     "/pins/{n}",
-    response_model=PinDropped,
+    response_model=Dropped,
     responses={409: {"model": PinStaleResponse}},
 )
 def drop_pin(
     request: Request,
     n: int,
-    body: Annotated[PinDropBody, Body()],
+    body: Annotated[RevBody, Body()],
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
