@@ -14,9 +14,8 @@ from satisfactory_mcp.interfaces.mcp.tools import progression, spatial  # noqa: 
 
 
 @pytest.fixture
-def tools(state, monkeypatch):
-    monkeypatch.setattr(spatial, "_state", lambda save=None, world=None, as_of=None: state)
-    monkeypatch.setattr(progression, "_state", lambda save=None, world=None, as_of=None: state)
+def tools(state, use_world):
+    use_world(state)
     return spatial
 
 
@@ -127,13 +126,13 @@ def test_the_census_numbers_match_collected_from_world(tools, client, state):
 
 
 @pytest.fixture
-def followed(tools, tmp_path, monkeypatch):
+def followed(tools, state, tmp_path, monkeypatch):
     from satisfactory_mcp.domain.session import journal
 
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path)
     monkeypatch.setattr(journal, "_seq", {})
     journal.set_writer("chat")
-    return lambda: journal.read(tools._state().world_id, limit=50)
+    return lambda: journal.read(state.world_id, limit=50)
 
 
 def test_finder_calls_tell_a_following_page_where_to_go(tools, followed):

@@ -169,15 +169,16 @@ def test_both_gated_tools_answer_about_the_world_they_were_asked_about(game, mon
     factory. `list_buildings`, in the same module and with the same column, has always
     taken it.
     """
+    from satisfactory_mcp.interfaces.mcp import app
     from satisfactory_mcp.interfaces.mcp.tools import gamedata
 
     seen = []
 
-    def spy(save=None, world=None, as_of=None):
-        seen.append((save, world))
+    def spy(game, path=None, world=None):
+        seen.append((path, world))
         raise RuntimeError("no such world")
 
-    monkeypatch.setattr(gamedata, "_state", spy)
+    monkeypatch.setattr(app, "load_state", spy)
     gamedata.search_recipes(consumes="Rubber", world="Other Save")
     gamedata.alternates_for_item(item="Plastic", world="Other Save")
     assert seen == [(None, "Other Save"), (None, "Other Save")]

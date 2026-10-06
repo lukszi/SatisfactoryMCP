@@ -193,9 +193,7 @@ def test_the_ledger_survives_a_process_boundary(ledger):
     assert pin.recall("sav:0123456789ab") is None
 
 
-def test_a_ledger_that_cannot_be_written_costs_a_refusal_and_never_an_answer(
-    tmp_path, monkeypatch
-):
+def test_a_ledger_that_cannot_be_written_costs_a_refusal_and_never_an_answer(tmp_path, monkeypatch):
     """Best-effort, like every other cache here. The pin still holds; only the sharper of
     the two refusals is lost, because an unrecorded token reads as one never minted."""
     monkeypatch.setattr(pin.config, "cache_dir", lambda: tmp_path / "nope" / "deeper")
@@ -225,15 +223,16 @@ def test_the_hazard_a_read_then_an_autosave_then_a_pinned_call(autosaving):
     """THE test this contract exists for, at the chokepoint every save-reading tool goes
     through: read a world state, let the game rewrite the save under the same filename, and
     show that the pinned call REFUSES instead of quietly answering from the newer bytes."""
-    first = mcp_app._state()
+    first = mcp_app.load_world()
     pinned = first.token
-    assert mcp_app._state(as_of=pinned).token == pinned  # nothing has moved yet
+    assert mcp_app.load_world(as_of=pinned).token == pinned  # nothing has moved yet
 
     autosaving["header"] = HEADER_B  # the game autosaves, over the same file
 
-    assert mcp_app._state().token == save_token(HEADER_B)  # unpinned, the newer save answers
-    with pytest.raises(pin.PinRefused):
-        mcp_app._state(as_of=pinned)
+    assert mcp_app.load_world().token == save_token(HEADER_B)  # unpinned, the newer save answers
+    with pytest.raises(mcp_app.Refusal) as refused:
+        mcp_app.load_world(as_of=pinned)
+    assert isinstance(refused.value.__cause__, pin.PinRefused)
 
 
 def test_a_pinned_tool_call_returns_the_refusal_instead_of_the_newer_worlds_numbers(
@@ -242,7 +241,7 @@ def test_a_pinned_tool_call_returns_the_refusal_instead_of_the_newer_worlds_numb
     """End to end through a registered tool, because the guarantee is worthless if it stops
     at the loader: a tool answers from state A, the game writes state B, and the pinned call
     comes back as words rather than as B's figures under A's token."""
-    pinned = world_tools._state().token
+    pinned = mcp_app.load_world().token
     autosaving["header"] = HEADER_B
 
     out = world_tools.world_summary(as_of=pinned)
@@ -258,10 +257,11 @@ def test_as_of_checks_the_save_that_save_resolved_to_rather_than_competing_with_
 ):
     """``save=`` picks the file, ``as_of=`` checks what came back -- so pinning a FILENAME
     is no protection at all, which is the reason both exist."""
-    pinned = mcp_app._state(save="Han Solo_autosave_0.sav").token
+    pinned = mcp_app.load_world(save="Han Solo_autosave_0.sav").token
     autosaving["header"] = HEADER_B
 
     # The filename still resolves, happily, to a world state the caller has never seen.
-    assert mcp_app._state(save="Han Solo_autosave_0.sav").token == save_token(HEADER_B)
-    with pytest.raises(pin.PinRefused):
-        mcp_app._state(save="Han Solo_autosave_0.sav", as_of=pinned)
+    assert mcp_app.load_world(save="Han Solo_autosave_0.sav").token == save_token(HEADER_B)
+    with pytest.raises(mcp_app.Refusal) as refused:
+        mcp_app.load_world(save="Han Solo_autosave_0.sav", as_of=pinned)
+    assert isinstance(refused.value.__cause__, pin.PinRefused)

@@ -12,10 +12,10 @@ from typing import Annotated
 from pydantic import Field
 
 from ....domain.factories import floors as ffloors
-from ....domain.factories import select as fselect
 from ....domain.spatial import heightfield
 from ....presenters.text import primitives as render
-from ..app import AsOf, Limit, _state, mcp
+from .. import app
+from ..params import AsOf, Limit
 
 #: How many building kinds a band names before the rest become "+N more".
 DECK_KINDS = 3
@@ -67,7 +67,7 @@ def _band_rows(st, classes: dict[str, str], platform: ffloors.Platform) -> list[
     return rows
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def factory_floors(
     factory: Annotated[
         str | None, Field(description="a named factory, or any machine selector")
@@ -93,17 +93,11 @@ def factory_floors(
     (an index that is stable across calls on one save) or ``factory=``, and a single
     platform is answered floor by floor instead.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
 
-    try:
-        report = ffloors.floor_decomposition(
-            st, platform=platform, label=factory, terrain_field=heightfield.load_field()
-        )
-    except fselect.SelectorError as exc:
-        return f"! {exc}"
+    report = ffloors.floor_decomposition(
+        st, platform=platform, label=factory, terrain_field=heightfield.load_field()
+    )
     if not report.platforms:
         return f"# {st.age_note}\n! {report.note or 'no platform matches'}"
 

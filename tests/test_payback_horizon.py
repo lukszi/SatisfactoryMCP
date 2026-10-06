@@ -474,10 +474,9 @@ ORIGIN = {"origin": "http://testserver"}
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch, projection, game):
+def world(tmp_path, monkeypatch, projection, game, use_world):
     from satisfactory_mcp.domain.session import journal
     from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.mcp.tools import planning
 
     for name in ("plans_dir", "activity_dir", "pins_dir", "labels_dir", "ui_dir"):
         root = tmp_path / name
@@ -489,7 +488,7 @@ def world(tmp_path, monkeypatch, projection, game):
     def fresh(*_a, **_k):
         return WorldState(projection=projection, game=game)
 
-    monkeypatch.setattr(planning, "_state", fresh)
+    use_world(fresh)
     return fresh
 
 

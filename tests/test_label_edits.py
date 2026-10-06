@@ -15,6 +15,7 @@ import pytest
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.factories.labels import NAME_MAX, BadName, LabelError, LabelStore
+from satisfactory_mcp.interfaces.mcp import app
 
 STEEL = [f"Build_FoundryMk1_C_{100 + i}" for i in range(4)]
 STRAY = "Build_ConstructorMk1_C_300"
@@ -161,7 +162,7 @@ def live(tmp_path, monkeypatch):
 
     monkeypatch.setattr(labels_mod.config, "labels_dir", lambda: tmp_path / "labels")
     monkeypatch.setattr(plans_mod.config, "plans_dir", lambda: tmp_path / "plans")
-    st = srv._state()
+    st = app.load_world()
     picked = sorted(st.graph.machines())[:5]
     st.labels.put("north steel", picked[:3], notes="the first three")
     _persist(st.labels)

@@ -16,10 +16,10 @@ from ....domain.planning.analysis import swaps
 from ....domain.planning.stored.planlog import PlanLog
 from ....domain.planning.stored.recall import plan_ref
 from ....domain.session import journal
-from ....domain.world import pin as save_pin
 from ....presenters.text import primitives as render
 from ....presenters.text.search import render_search
-from ..app import AsOf, Limit, _item_id, _state, actor, game, mcp, retired
+from .. import app
+from ..params import AsOf, Limit
 
 
 def _no_save_note(reason: str | None) -> str:
@@ -39,10 +39,10 @@ def _no_save_note(reason: str | None) -> str:
     return f"no save could be read{detail}, so HAVE/LOCKED is blank -- game data only"
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
     """Find items by name. Returns form, energy and sink points."""
-    hits = search.find_items(game(), query)
+    hits = search.find_items(app.game(), query)
     page = hits[offset : offset + render.clamp(limit)]
     rows = [
         (i.name, "fluid" if i.is_fluid else "solid", render.num(i.energy_mj), i.sink_points)
@@ -55,7 +55,7 @@ def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
     return render.envelope(f"# {len(hits)} item(s) matching {query!r}", body + "\n" + footer)
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def recipe_detail(recipe_id: str) -> str:
     """Exact numbers for one recipe: rates, machine, power, unlock source.
 
@@ -66,7 +66,7 @@ def recipe_detail(recipe_id: str) -> str:
     """
     from ....core.gamedata.search import find_recipe
 
-    g = game()
+    g = app.game()
     r, hits = find_recipe(g, recipe_id)
     if r is None and hits:
         # Ambiguous is not the same as unknown, and listing the candidates is the
@@ -155,8 +155,8 @@ def _in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -> str:
     journal.append(
         st.world_id,
         "plan.view",
-        actor=actor(ctx),
-        sav=_sav(st),
+        actor=app.actor(ctx),
+        sav=app.save_token(st),
         tool="alternates_for_item",
         plan=state.key,
         rev=state.rev,
@@ -166,14 +166,7 @@ def _in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -> str:
     return render.envelope(f"# {result['text']}", body + "\n" + footer, notes)
 
 
-def _sav(st) -> str:
-    try:
-        return save_pin.check(st.header, None)
-    except Exception:
-        return ""
-
-
-@mcp.tool(structured_output=False)
+@app.tool()
 def alternates_for_item(
     item: str,
     save: str | None = None,
@@ -193,26 +186,19 @@ def alternates_for_item(
     With ``plan`` each recipe also carries its status in that plan and what requiring it
     would change there: machines, MW draw and the first raw inputs.
     """
-    g = game()
-    iid = _item_id(item)
+    g = app.game()
+    iid = app.resolve_item_id(item)
     if iid is None:
         return f"no item matching {item!r}"
     if plan:
-        try:
-            st = _state(save, world, as_of)
-        except Exception as exc:
-            return f"could not read save: {exc}"
+        st = app.load_world(save, world, as_of)
         return _in_plan(g, st, iid, plan, include_locked, ctx)
     producers = search.makers_of(g, iid)
     # ``None``, not an empty set. The status column blanks for both "no save" and "a save
     # whose recipe list is empty", and only one of those is a fact about the world -- so
     # the reason is carried rather than collapsed, and said out loud in the notes below.
-    have: set[str] | None = None
-    save_error: str | None = None
-    try:
-        have = _state(save, world, as_of).available_recipe_ids
-    except Exception as exc:
-        save_error = str(exc)
+    st, save_error = app.load_world_or_none(save, world, as_of)
+    have: set[str] | None = st.available_recipe_ids if st is not None else None
     shown = [r for r in producers if include_locked or have is None or r.cls in have]
     # Only when something is locked: on a page where everything is HAVE the column would
     # be a row of blanks.
@@ -249,7 +235,7 @@ def alternates_for_item(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def search_recipes(
     query: str = "",
     consumes: str | None = None,
@@ -271,27 +257,28 @@ def search_recipes(
     "all" -- and the header counts EVERY kind over the whole recipe table whatever it
     is set to, so a part-only view still says how many buildings eat the item.
     """
-    if gone := retired(("kind", kind, "recipe_kind")):
+    if gone := app.retired(("kind", kind, "recipe_kind")):
         return gone
-    g = game()
+    g = app.game()
     notes: list[str] = []
     consumes_id = produces_id = None
     if consumes:
-        consumes_id = _item_id(consumes)
+        consumes_id = app.resolve_item_id(consumes)
         if consumes_id is None:
             return f"no item matching {consumes!r}"
     if produces:
-        produces_id = _item_id(produces)
+        produces_id = app.resolve_item_id(produces)
         if produces_id is None:
             return f"no item matching {produces!r}"
     if consumes_id and produces_id:
         notes.append("consumes and produces are ANDed: this is the loop test, not a union")
 
+    st, save_error = app.load_world_or_none(save, world, as_of)
     have: set[str] | None = None
-    try:
-        have = _state(save, world, as_of).available_recipe_ids
-    except Exception as exc:
-        notes.append(_no_save_note(str(exc)))
+    if st is None:
+        notes.append(_no_save_note(save_error))
+    else:
+        have = st.available_recipe_ids
 
     try:
         hits, census = search.search(
@@ -337,7 +324,7 @@ def search_recipes(
 _ARCH_TOKENS = ("Foundation", "Ramp", "Wall", "Pillar", "Beam", "Stair", "Walkway", "Door")
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def list_buildings(
     building_kind: Annotated[
         str,
@@ -367,18 +354,13 @@ def list_buildings(
     an answer, it is a context eviction. The envelope says how many more there are and
     which offset fetches them.
     """
-    if gone := retired(("kind", kind, "building_kind")):
+    if gone := app.retired(("kind", kind, "building_kind")):
         return gone
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-        unlocked, built = st.unlocked_building_ids, st.built_counts
-        save_error = None
-    except Exception as exc:
-        # Game data alone is still a useful answer; the columns just go blank -- and the
-        # note at the bottom says which save could not be read and why.
-        st, unlocked, built = None, None, {}
-        save_error = str(exc)
+    g = app.game()
+    # Game data alone is still a useful answer: without a save the columns go blank and a
+    # note says which save could not be read and why.
+    st, save_error = app.load_world_or_none(save, world, as_of)
+    unlocked, built = (st.unlocked_building_ids, st.built_counts) if st is not None else (None, {})
     # Every kind reachable, and nothing unreachable. "all" used to match nothing at all,
     # and the AWESOME Sink and both Pipeline Pumps fell through every branch -- so a
     # caller could not check sink draw or pump head from the data and fell back on

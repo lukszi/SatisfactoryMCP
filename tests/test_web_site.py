@@ -19,7 +19,6 @@ from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.stored.planlog import PlanLog
 from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.mcp.tools import planning
 from satisfactory_mcp.interfaces.web import terrain
 from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.routers import plan_site
@@ -32,7 +31,7 @@ PREVIEW = "/api/plan/site-preview"
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch, projection, game):
+def client(tmp_path, monkeypatch, projection, game, use_world):
     for name in ("plans_dir", "labels_dir", "activity_dir", "ui_dir", "pins_dir"):
         root = tmp_path / name
         root.mkdir()
@@ -43,7 +42,7 @@ def client(tmp_path, monkeypatch, projection, game):
     monkeypatch.setattr(terrain, "field", lambda: None)
 
     one = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(planning, "_state", lambda *_a, **_k: one)
+    use_world(one)
     app = create_app(state_loader=lambda save=None, world=None: one, game_loader=lambda: game)
     with TestClient(app) as c:
         yield c

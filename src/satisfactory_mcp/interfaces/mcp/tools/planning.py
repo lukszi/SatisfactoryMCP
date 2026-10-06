@@ -22,7 +22,6 @@ from ....core.gamedata.unlocks import granted_by_label
 from ....core.schema import NewerSchema
 from ....domain import advice
 from ....domain.advice import store as advice_store
-from ....domain.factories.select import SelectorError
 from ....domain.planning import siting as siting_mod
 from ....domain.planning.analysis import bom as bom_mod
 from ....domain.planning.analysis import recipe_routes
@@ -64,7 +63,6 @@ from ....domain.planning.stored.recall import (
 from ....domain.planning.stored.recall import recall_plan as _plan_kwargs
 from ....domain.planning.stored.store import PLAN_ARGS
 from ....domain.session import asks, journal, pins
-from ....domain.world import pin
 from ....presenters.text import advice as advice_text
 from ....presenters.text import byproducts as byproducts_text
 from ....presenters.text import primitives as render
@@ -74,7 +72,8 @@ from ....presenters.text.compare import render_comparison
 from ....presenters.text.diff import ENERGISED_CAVEAT, RANGE_CAVEAT, render_diff
 from ....presenters.text.layout import render_layout
 from ....presenters.text.plan_factory import render_plan_factory
-from ..app import AsOf, Biomass, Limit, _item_id, _state, actor, game, mcp, retired, shared
+from .. import app
+from ..params import AsOf, Biomass, Limit
 
 #: The stored-argument defaults, re-exported under their old home for ``server``. The
 #: two stage caveats keep their old home too: they were read from here before they had
@@ -128,20 +127,6 @@ def _age(seconds: float) -> str:
 
 def _log(st) -> PlanLog:
     return PlanLog(st.world_id, st.header.get("session_name") or "")
-
-
-def _sav(st) -> str:
-    try:
-        return pin.check(st.header, None)
-    except Exception:
-        return ""
-
-
-def _recipe_names() -> dict[str, str]:
-    try:
-        return {cls: r.name for cls, r in game().recipes.items()}
-    except Exception:
-        return {}
 
 
 def _named(ops: list[dict], names: dict[str, str]) -> list[dict]:
@@ -202,7 +187,7 @@ def _write(name: str, nothing: str, push: Callable[[], Pushed]) -> tuple[Pushed 
 
 def _stamp(st) -> Callable:
     """What the store records on the new head: its solve-input hash and resolved field."""
-    return summary.stamp_for(game(), st)
+    return summary.stamp_for(app.game(), st)
 
 
 def _unknown(st, name: str) -> str:
@@ -271,7 +256,7 @@ def _plan_detail(st, stored) -> str:
     return render.envelope("\n".join(head), "\n".join(parts), notes)
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def list_plans(
     name: Annotated[
         str | None,
@@ -291,10 +276,7 @@ def list_plans(
     Every plan carries a version (``v14``). Pass it as ``base_rev`` to any tool that
     changes the plan; ``plan_log`` lists the versions and undoes them.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     if name:
         try:
             name, _echo = _plan_pin(st, name)
@@ -310,7 +292,7 @@ def list_plans(
             "Pass save_as=<name> to plan_factory to store one.",
         )
     log = _log(st)
-    names = _recipe_names()
+    names = app.recipe_names()
     now = time.time()
     rows = []
     unrecorded = []
@@ -391,7 +373,7 @@ def list_plans(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def forget_plan(
     name: str,
     base_rev: BaseRev = None,
@@ -401,10 +383,7 @@ def forget_plan(
     ctx: Context | None = None,
 ) -> str:
     """Delete a saved plan. Nothing in the world is touched, and plan_log can undo it."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     try:
         name, _echo = _plan_pin(st, name)
     except KeyError as exc:
@@ -418,7 +397,7 @@ def forget_plan(
         stored.name,
         "nothing forgotten",
         lambda: _log(st).push(
-            stored.key, base_rev, [{"op": "forget"}], actor=actor(ctx), sav=_sav(st)
+            stored.key, base_rev, [{"op": "forget"}], actor=app.actor(ctx), sav=app.save_token(st)
         ),
     )
     if pushed is None:
@@ -429,7 +408,7 @@ def forget_plan(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def rename_plan(
     name: str,
     to: Annotated[str, Field(description="the new name")],
@@ -445,10 +424,7 @@ def rename_plan(
     only thing here a player picked, and it was the only thing they could not correct
     without saving the plan again under a second name and forgetting the first.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     try:
         name, _echo = _plan_pin(st, name)
     except KeyError as exc:
@@ -472,8 +448,8 @@ def rename_plan(
             stored.key,
             base_rev,
             [{"op": "rename", "name": wanted}],
-            actor=actor(ctx),
-            sav=_sav(st),
+            actor=app.actor(ctx),
+            sav=app.save_token(st),
         ),
     )
     if pushed is None:
@@ -491,7 +467,7 @@ def rename_plan(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def site_plan(
     plan: str,
     at: Annotated[
@@ -537,11 +513,8 @@ def site_plan(
     The siting is a RECORD of your decision, not a constraint on the solve -- re-running
     the plan neither reads nor moves it, and ``save_as`` over the same name keeps it.
     """
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    g = app.game()
+    st = app.load_world(save, world, as_of)
     try:
         plan, _echo = _plan_pin(st, plan)
     except KeyError as exc:
@@ -558,8 +531,8 @@ def site_plan(
                 stored.key,
                 base_rev,
                 [{"op": "site", "value": value}],
-                actor=actor(ctx),
-                sav=_sav(st),
+                actor=app.actor(ctx),
+                sav=app.save_token(st),
             ),
         )
 
@@ -660,7 +633,7 @@ def site_plan(
 
 def _snapped(sit: siting_mod.Siting) -> siting_mod.Siting:
     """``sit`` on the shared ``site_snap`` lattice, as the page's drag places pads."""
-    mode, _note = shared("site_snap")
+    mode, _note = app.shared_setting("site_snap")
     x, y, yaw = siting_mod.snap(sit.x_m, sit.y_m, sit.yaw_deg, sit.width_m, sit.depth_m, mode)
     return dataclasses.replace(sit, x_m=x, y_m=y, yaw_deg=yaw)
 
@@ -671,8 +644,8 @@ def _site_preview(g, st, stored, existing, at: str, yaw_deg, footprint: str, ctx
     from ....domain.spatial import heightfield
 
     state = _log(st).state(stored.key)
-    biomass, _n1 = shared("biomass")
-    headroom, _n2 = shared("stage_headroom")
+    biomass, _n1 = app.shared_setting("biomass")
+    headroom, _n2 = app.shared_setting("stage_headroom")
     sess = site_preview.open_session(g, st, state, biomass=biomass, default=headroom)
     try:
         if at:
@@ -748,7 +721,7 @@ def _resolve_required(entries: list[str] | None) -> tuple[list[str] | None, str]
     """Recipe class ids for ``required``, by exact id or exact display name, or a refusal."""
     if not entries:
         return None, ""
-    recipes = game().recipes
+    recipes = app.game().recipes
     out = []
     for raw in entries:
         text = str(raw).strip()
@@ -820,8 +793,8 @@ def _journal_view(st, plan: str | None, tool: str, ctx, args: dict | None = None
     journal.append(
         st.world_id,
         "plan.view",
-        actor=actor(ctx),
-        sav=_sav(st),
+        actor=app.actor(ctx),
+        sav=app.save_token(st),
         tool=tool,
         plan=stored.key,
         rev=stored.rev,
@@ -894,7 +867,7 @@ def _factory_value(text: str | None) -> str | None:
 def _built_cell(st, stored) -> str:
     """``12/16 @oil setup``, ``?`` or ``not placed`` for the plans table."""
     try:
-        found = plan_progress(game(), st, stored)
+        found = plan_progress(app.game(), st, stored)
     except Exception:  # a stored plan can outlive the thing it referenced
         return "?"
     if found is None:
@@ -917,8 +890,8 @@ def _save_new(st, name, plan_kwargs, logistics, labels, field, plan_id, sit, ctx
     return _log(st).create(
         name,
         args,
-        actor=actor(ctx),
-        sav=_sav(st),
+        actor=app.actor(ctx),
+        sav=app.save_token(st),
         notes=notes,
         factory=factory,
         siting=sit.to_dict() if sit is not None else None,
@@ -1001,8 +974,8 @@ def _save_over(st, existing, base_rev, plan_kwargs, logistics, labels, sit, ctx,
             existing.key,
             base_rev,
             args,
-            actor=actor(ctx),
-            sav=_sav(st),
+            actor=app.actor(ctx),
+            sav=app.save_token(st),
             extra=extra,
             stamp=_stamp(st),
         )
@@ -1010,7 +983,7 @@ def _save_over(st, existing, base_rev, plan_kwargs, logistics, labels, sit, ctx,
     return _write(existing.name, "nothing saved", push)
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def plan_factory(
     objective: str = "max_mw",
     target_item: str | None = None,
@@ -1200,11 +1173,8 @@ def plan_factory(
     was sited is measured at its own site without being told again. Use site_plan to set or
     move the siting of an already-stored plan.
     """
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    g = app.game()
+    st = app.load_world(save, world, as_of)
 
     try:
         plan, pin_notes = _plan_pin(st, plan)
@@ -1365,8 +1335,8 @@ def plan_factory(
         journal.append(
             st.world_id,
             "plan.solve",
-            actor=actor(ctx),
-            sav=_sav(st),
+            actor=app.actor(ctx),
+            sav=app.save_token(st),
             tool="plan_factory",
             plan=recalled.key if recalled is not None else None,
             rev=recalled.rev if recalled is not None else None,
@@ -1392,7 +1362,7 @@ def plan_factory(
     return f"{out}\n{tail}" if tail else out
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def plan_layout(
     objective: str = "max_mw",
     target_item: str | None = None,
@@ -1502,13 +1472,10 @@ def plan_layout(
     share one manifold when a Mk2 pipe carries 600, so that is 3 blocks. Floors follow
     chain depth, with a logistics deck between each pair of production floors.
     """
-    g = game()
-    if gone := retired(("detail", detail, "show")):
+    g = app.game()
+    if gone := app.retired(("detail", detail, "show")):
         return gone
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
 
     row_overclock, refused = _resolve_rows(row_overclock)
     if refused:
@@ -1565,22 +1532,19 @@ def plan_layout(
     plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
-    try:
-        report = build_layout_report(
-            g,
-            st,
-            plan_kwargs,
-            tiers,
-            objective=objective,
-            show=show,
-            sites=sites,
-            max_floor_foundations=max_floor_foundations,
-            order_floors_by=order_floors_by,
-            factory=factory,
-            plan=plan,
-        )
-    except SelectorError as exc:
-        return f"! {exc}"
+    report = build_layout_report(
+        g,
+        st,
+        plan_kwargs,
+        tiers,
+        objective=objective,
+        show=show,
+        sites=sites,
+        max_floor_foundations=max_floor_foundations,
+        order_floors_by=order_floors_by,
+        factory=factory,
+        plan=plan,
+    )
     _journal_view(st, plan, "plan_layout", ctx)
     if report.prepared is not None and report.prepared.ok:
         plan_notes += _payback_notes(g, st, report.prepared)
@@ -1599,14 +1563,14 @@ def plan_layout(
 
 def _shared_power(biomass: bool | None) -> tuple[bool, str, list[str]]:
     """``biomass`` or the shared setting, the shared stage headroom, and any unread note."""
-    head, unread = shared("stage_headroom")
+    head, unread = app.shared_setting("stage_headroom")
     notes = [unread] if unread else []
     if biomass is None:
-        biomass, _ = shared("biomass")
+        biomass, _ = app.shared_setting("biomass")
     return biomass, head, notes
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def diff_vs_save(
     objective: str = "max_mw",
     target_item: str | None = None,
@@ -1669,11 +1633,8 @@ def diff_vs_save(
     Saves are read-only: this never proposes writing one, and there is no dismantle
     action. Machines standing among the plan but not in it are listed for you to judge.
     """
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    g = app.game()
+    st = app.load_world(save, world, as_of)
 
     supplied = dict(
         objective=objective,
@@ -1700,23 +1661,20 @@ def diff_vs_save(
     biomass, default, unread = _shared_power(biomass)
     plan_notes += unread
 
-    try:
-        report = build_diff_report(
-            g,
-            st,
-            plan_kwargs,
-            objective=objective,
-            plan=plan,
-            plan_name=plan_name,
-            stage=stage,
-            factory=_factory_value(factory),
-            biomass=biomass,
-            headroom_mw=stored.headroom_mw if stored is not None else None,
-            stored=stored,
-            default=default,
-        )
-    except SelectorError as exc:
-        return f"! {exc}"
+    report = build_diff_report(
+        g,
+        st,
+        plan_kwargs,
+        objective=objective,
+        plan=plan,
+        plan_name=plan_name,
+        stage=stage,
+        factory=_factory_value(factory),
+        biomass=biomass,
+        headroom_mw=stored.headroom_mw if stored is not None else None,
+        stored=stored,
+        default=default,
+    )
     view = {"view": "track", "stage": stage if stage and stage >= 1 else None, "section": "stages"}
     _journal_view(st, plan, "diff_vs_save", ctx, view)
     moved = _renumbered(st, stored, report.tracking)
@@ -1736,7 +1694,7 @@ def diff_vs_save(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def explain_byproducts(
     objective: str = "max_mw",
     target_item: str | None = None,
@@ -1761,17 +1719,14 @@ def explain_byproducts(
 
     Pass ``item`` to focus on one byproduct instead of the whole plan.
     """
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    g = app.game()
+    st = app.load_world(save, world, as_of)
     return byproducts_text.explain(
         g,
         st,
         objective=objective,
         target_item=target_item,
-        item=_item_id(item) if item else None,
+        item=app.resolve_item_id(item) if item else None,
         sources=sources,
         exports=exports,
         export_minimums=export_minimums,
@@ -1781,7 +1736,7 @@ def explain_byproducts(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def compare_recipe_options(
     item: str,
     rate: float = 100.0,
@@ -1800,12 +1755,9 @@ def compare_recipe_options(
     against Crude -> Fuel, priced in raw resource per unit, whole buildings, net
     power, and byproducts needing an outlet.
     """
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
-    iid = _item_id(item)
+    g = app.game()
+    st = app.load_world(save, world, as_of)
+    iid = app.resolve_item_id(item)
     if iid is None:
         return f"no item matching {item!r}"
     result = recipe_routes.compare_routes(
@@ -1815,12 +1767,12 @@ def compare_recipe_options(
         rate=rate,
         allow_sinks=allow_sinks,
         outlets=outlets,
-        per_resource=_item_id(per_resource) if per_resource else None,
+        per_resource=app.resolve_item_id(per_resource) if per_resource else None,
     )
     return render_comparison(result, limit=render.clamp(limit, default=10))
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def bom(
     item: str,
     qty: float = 60.0,
@@ -1841,11 +1793,8 @@ def bom(
     has no correct depth limit. Every row names the recipe chosen for that item,
     because alternates change the totals materially.
     """
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    g = app.game()
+    st = app.load_world(save, world, as_of)
     try:
         result = bom_mod.build_bom(
             g,
@@ -1862,7 +1811,7 @@ def bom(
     return render_bom(result, limit=render.clamp(limit, default=20), offset=max(0, offset))
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def commission_plan(
     objective: str = "max_mw",
     target_item: str | None = None,
@@ -1908,11 +1857,8 @@ def commission_plan(
 
     Takes plan_factory's arguments, or recall a saved plan with ``plan=``.
     """
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    g = app.game()
+    st = app.load_world(save, world, as_of)
 
     supplied = dict(
         objective=objective,
@@ -1969,7 +1915,7 @@ def commission_plan(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def rank_unlocks(
     objective: str = "max_mw",
     target_item: str | None = None,
@@ -2010,13 +1956,10 @@ def rank_unlocks(
     hard drive are flagged, which is the difference between "worth having" and "claimable
     now".
     """
-    if gone := retired(("search", search, "query")):
+    if gone := app.retired(("search", search, "query")):
         return gone
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    g = app.game()
+    st = app.load_world(save, world, as_of)
 
     supplied = dict(
         objective=objective,
@@ -2164,7 +2107,7 @@ def rank_unlocks(
 
 
 def _history(log: PlanLog, found, since: int | None, limit: int) -> str:
-    names = _recipe_names()
+    names = app.recipe_names()
     now = time.time()
     commits = log.commits(found.key)
     undone = manage.undone_by(commits)
@@ -2191,7 +2134,7 @@ def _history(log: PlanLog, found, since: int | None, limit: int) -> str:
     return render.envelope(head, "\n".join(lines) or "(no versions after that one)", notes)
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def plan_log(
     name: str,
     since: Annotated[int | None, Field(description="list versions after this one")] = None,
@@ -2213,10 +2156,7 @@ def plan_log(
     version equal to that one. Both take ``base_rev`` and merge like any other edit. A
     forgotten plan is found too, so its forget can be undone.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     try:
         name, _echo = _plan_pin(st, name)
     except KeyError as exc:
@@ -2235,7 +2175,7 @@ def plan_log(
     verb = "undone" if undo is not None else "restored"
     if base_rev is None:
         return _needs_base(found.name, found.rev, f"nothing {verb}")
-    who, sav, stamp = actor(ctx), _sav(st), _stamp(st)
+    who, sav, stamp = app.actor(ctx), app.save_token(st), _stamp(st)
     if undo is not None:
         pushed, text = _write(
             found.name,
@@ -2252,7 +2192,7 @@ def plan_log(
         done = f"restored v{restore}"
     if pushed is None:
         return text
-    changes = _ops_text(pushed.applied, _recipe_names()) or "no change"
+    changes = _ops_text(pushed.applied, app.recipe_names()) or "no change"
     return f'# {done} of plan "{pushed.state.name}": {changes}\n{text}'
 
 
@@ -2526,7 +2466,7 @@ def _journal_news(world_id: str, cursor, me: int) -> tuple[list[str], float]:
     return lines, last
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def ui_context(
     save: str | None = None,
     world: str | None = None,
@@ -2549,17 +2489,14 @@ def ui_context(
     the page; pass ``answered`` once you have answered them. It lists the advisories worth a
     look (adv: ids); ``dismissed`` hides one on the page, only when the user asks.
     """
-    try:
-        st = _state(save, world)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world)
     world_id = st.world_id
     log = _log(st)
     me = os.getpid()
     shown_world = st.header.get("session_name") or world_id
     focus, is_open = _page_focus(world_id)
 
-    ours = _sav(st)
+    ours = app.save_token(st)
     if focus is None:
         head = f'# page never opened for this world · world "{shown_world}"'
     else:
@@ -2574,7 +2511,7 @@ def ui_context(
             same = "= yours" if theirs == ours else f"≠ yours ({_short(ours)})"
             head += f" · page {_short(theirs)} {same}"
     lines = [head]
-    chat = actor(ctx)
+    chat = app.actor(ctx)
     if answered:
         lines += _answer(world_id, list(answered), chat.display(), chat)
     if dismissed:
@@ -2595,7 +2532,7 @@ def ui_context(
 
     cursor = _cursor.get(world_id)
     try:
-        plan_lines, revs = _plan_news(log, cursor, _recipe_names(), me)
+        plan_lines, revs = _plan_news(log, cursor, app.recipe_names(), me)
     except PlanLogError as exc:
         plan_lines, revs = [f"! plans could not be read: {exc}"], dict(cursor[1] if cursor else {})
     journal_lines, journal_ts = _journal_news(world_id, cursor, me)

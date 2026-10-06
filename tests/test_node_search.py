@@ -16,6 +16,7 @@ from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.factories.labels import LabelStore
+from satisfactory_mcp.domain.spatial.places import resolve_place
 from satisfactory_mcp.domain.world.state import WorldState
 
 pytestmark = pytest.mark.integration
@@ -52,14 +53,14 @@ def _state_with_label(game, name="probe", positions=((1000.0, 2000.0), (3000.0, 
 def test_a_coordinate_is_read_as_metres(game):
     """Every coordinate in this MCP is quoted in metres; the save stores centimetres.
     Getting this wrong silently searches 100x too far away."""
-    origin, where = srv._origin_for(_state_with_label(game), "-1069,-1273")
+    origin, where = resolve_place(_state_with_label(game), "-1069,-1273")
     assert origin == (-106_900.0, -127_300.0)
     assert where == "-1069,-1273"
 
 
 def test_a_factory_name_resolves_to_its_centroid(game):
     st = _state_with_label(game)
-    origin, where = srv._origin_for(st, "probe")
+    origin, where = resolve_place(st, "probe")
     assert origin == (2000.0, 3000.0)
     assert where == "probe"
 
@@ -67,18 +68,18 @@ def test_a_factory_name_resolves_to_its_centroid(game):
 def test_an_unknown_location_lists_what_is_known(game):
     st = _state_with_label(game, name="steel factory")
     with pytest.raises(ValueError, match="steel factory"):
-        srv._origin_for(st, "nowhere")
+        resolve_place(st, "nowhere")
 
 
 def test_a_bad_coordinate_is_rejected_rather_than_guessed(game):
     with pytest.raises(ValueError, match="x,y pair"):
-        srv._origin_for(_state_with_label(game), "12,north")
+        resolve_place(_state_with_label(game), "12,north")
 
 
 def test_me_needs_a_player_pawn(game):
     st = _state_with_label(game)
     with pytest.raises(ValueError, match="no player pawn"):
-        srv._origin_for(st, "me")
+        resolve_place(st, "me")
 
 
 def test_a_bare_platform_resolves_by_the_index_that_names_it(game):
@@ -96,16 +97,16 @@ def test_a_bare_platform_resolves_by_the_index_that_names_it(game):
         "generators": [],
     }
     st = WorldState(projection=projection, game=game)
-    origin, where = srv._origin_for(st, "slab:0")
+    origin, where = resolve_place(st, "slab:0")
     assert origin == (800.0, 800.0)
     assert where.startswith("slab:0 (9 tiles,")
 
     with pytest.raises(ValueError, match=r"out of range \(0\.\.0\)"):
-        srv._origin_for(st, "slab:7")
+        resolve_place(st, "slab:7")
     with pytest.raises(ValueError, match="integer index"):
-        srv._origin_for(st, "slab:middle")
+        resolve_place(st, "slab:middle")
     with pytest.raises(ValueError, match="needs a readable save"):
-        srv._origin_for(None, "slab:0")
+        resolve_place(None, "slab:0")
 
 
 def _rows(out: str) -> list[dict]:
@@ -305,11 +306,11 @@ def test_top_still_means_limit(game):
     )
 
 
-def test_status_tapped_lists_only_nodes_an_extractor_stands_on(game, monkeypatch, projection):
+def test_status_tapped_lists_only_nodes_an_extractor_stands_on(game, use_world, projection):
     from satisfactory_mcp.interfaces.mcp.tools import spatial as stools
 
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(stools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     out = stools.search_resource_nodes(resource="Iron Ore", status="tapped", show="nodes")
     assert "tapped node(s)" in out.splitlines()[0]
     rows = [line.split("\t") for line in out.splitlines() if line.startswith("BP_")]

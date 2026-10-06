@@ -12,6 +12,7 @@ from satisfactory_mcp.domain.session import pins
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.nodes.selectors import select_nodes
 from satisfactory_mcp.domain.spatial.places import resolve_place
+from satisfactory_mcp.interfaces.mcp import app
 
 WORLD = "X2faPVKjX06VaRzClNv5KQ"
 CHAT = Actor("chat", "claude-code", 4242)
@@ -203,13 +204,13 @@ def test_canonical_rewrites_what_a_stored_plan_would_hold(world):
     assert all(not s.startswith("pin:") for s in args["sources"])
 
 
-def test_plan_management_tools_take_a_plan_pin(world, tmp_path, monkeypatch):
+def test_plan_management_tools_take_a_plan_pin(world, tmp_path, monkeypatch, use_world):
     from satisfactory_mcp.domain.session import journal
     from satisfactory_mcp.interfaces.mcp.tools import planning
 
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
-    monkeypatch.setattr(planning, "_state", lambda *a, **k: world)
-    monkeypatch.setattr(planning, "_sav", lambda st: "sav:test")
+    use_world(world)
+    monkeypatch.setattr(app, "save_token", lambda st: "sav:test")
     made = PlanLog(WORLD).create("rip", HMF, actor=CHAT)
     plan, _ = pins.create(world, "plan", {"plan": made.key})
     point, _ = pins.create(world, "point", {"x_m": 1.0, "y_m": 2.0})
@@ -231,7 +232,7 @@ def test_a_site_at_a_pin_stores_the_place_not_the_pin(world):
     assert site.to_dict()["origin_label"] == "-7.9,-5.5 (point)"
 
 
-def test_show_on_map_pins_what_it_shows_once(world, tmp_path, monkeypatch):
+def test_show_on_map_pins_what_it_shows_once(world, tmp_path, monkeypatch, use_world):
     from satisfactory_mcp.domain.session import journal
     from satisfactory_mcp.interfaces.mcp.tools import spatial
 
@@ -239,7 +240,7 @@ def test_show_on_map_pins_what_it_shows_once(world, tmp_path, monkeypatch):
     monkeypatch.setattr(journal, "_writer", "")
     monkeypatch.setattr(journal, "_seq", {})
     journal.set_writer("chat")
-    monkeypatch.setattr(spatial, "_state", lambda *a, **k: world)
+    use_world(world)
     out = spatial.show_on_map("120,-340", pin=True)
     assert "pin: pinned as pin:1 point" in out
     assert "pin: already pin:1 point" in spatial.show_on_map("120,-340", pin=True)

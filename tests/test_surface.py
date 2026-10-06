@@ -399,10 +399,6 @@ def test_server_still_re_exports_what_callers_reach_for():
         "list_buildings",
         "search_recipes",
         "search_resource_nodes",
-        "_state",
-        "_origin_for",
-        "_plan_kwargs",
-        "_resolve_factory",
     ):
         assert hasattr(srv, name), name
 

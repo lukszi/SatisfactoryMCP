@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from ....domain.planning.analysis import advisor
 from ....presenters.text import primitives as render
-from ..app import AsOf, Limit, _state, mcp
+from .. import app
+from ..params import AsOf, Limit
 
 #: Said on every hard-drive response, because it is the fact that decides how hard to
 #: think about the choice, and it is not visible anywhere in the game's own UI.
@@ -58,7 +59,7 @@ def _grants(option: dict, game) -> str:
     return ", ".join(kept + ([f"+{len(out)} more"] if out else []))
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def list_pending_hard_drive_choices(
     save: str | None = None,
     world: str | None = None,
@@ -67,10 +68,7 @@ def list_pending_hard_drive_choices(
     offset: int = 0,
 ) -> str:
     """The pending hard-drive choices stored in the save, with rerolls left."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     g = st.game
     offers = st.hard_drive_offers
     rows = []
@@ -101,7 +99,7 @@ def list_pending_hard_drive_choices(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def advise_hard_drive_pick(
     hard_drive_id: int,
     sources: list[str] | None = None,
@@ -118,10 +116,7 @@ def advise_hard_drive_pick(
     ``sources`` is plan_factory's selector list and means the same thing here, so the
     baseline printed is the same quantity plan_factory reports for the same nodes.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
 
     try:
         results = advisor.advise_hard_drive(st, sources, hard_drive_id)

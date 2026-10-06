@@ -5,17 +5,17 @@ from __future__ import annotations
 from ....core.text import ago, format_local_time
 from ....domain.spatial import regions as regions_mod
 from ....presenters.text import primitives as render
-from ..app import _state, game, integrity_notes, mcp, stale_artifact_notes
+from .. import app
 
 # Resources are CLIENT-PULLED, so they cost zero context until something asks for
 # them. That makes them right for stable orientation data and wrong for anything
 # parameterised, which stays a tool.
 
 
-@mcp.resource("satisfactory://docs/summary", mime_type="text/plain")
+@app.mcp.resource("satisfactory://docs/summary", mime_type="text/plain")
 def docs_summary() -> str:
     """One-line census of the normalized game data, plus its content hash."""
-    g = game()
+    g = app.game()
     kinds: dict[str, int] = {}
     for r in g.recipes.values():
         kinds[r.kind] = kinds.get(r.kind, 0) + 1
@@ -33,17 +33,16 @@ def docs_summary() -> str:
                 ("warnings", len(g.warnings)),
             ]
         ),
-        notes=integrity_notes({}, g) + list(stale_artifact_notes()),
+        notes=app.integrity_notes({}, g) + list(app.stale_artifact_notes()),
     )
 
 
-@mcp.resource("satisfactory://save/current", mime_type="text/plain")
+@app.mcp.resource("satisfactory://save/current", mime_type="text/plain")
 def current_save() -> str:
     """Which world and file the server would read right now, and its headline state."""
-    try:
-        st = _state()
-    except Exception as exc:
-        return f"no readable save: {exc}"
+    st, reason = app.load_world_or_none()
+    if st is None:
+        return f"no readable save: {reason}"
     p = st.progression()
     mtime_ns = st.header.get("mtime_ns")
     written = f"{format_local_time(mtime_ns)} ({ago(mtime_ns)})" if mtime_ns else "?"
@@ -69,11 +68,11 @@ def current_save() -> str:
                 ("hard_drives_pending", len(st.hard_drive_offers)),
             ]
         ),
-        notes=integrity_notes(st.projection, st.game) + list(stale_artifact_notes()),
+        notes=app.integrity_notes(st.projection, st.game) + list(app.stale_artifact_notes()),
     )
 
 
-@mcp.resource("satisfactory://factories/labels", mime_type="application/json")
+@app.mcp.resource("satisfactory://factories/labels", mime_type="application/json")
 def factory_labels() -> str:
     """Factory labels for the current world, as the JSON another tool can consume.
 
@@ -91,10 +90,9 @@ def factory_labels() -> str:
 
     from ....domain.factories.labels import SCHEMA, LabelStore
 
-    try:
-        st = _state()
-    except Exception as exc:
-        return json.dumps({"error": f"no readable save: {exc}"}, indent=1)
+    st, reason = app.load_world_or_none()
+    if st is None:
+        return json.dumps({"error": f"no readable save: {reason}"}, indent=1)
 
     store = st.labels
     return json.dumps(
@@ -109,7 +107,7 @@ def factory_labels() -> str:
     )
 
 
-@mcp.resource("satisfactory://map/regions", mime_type="text/plain")
+@app.mcp.resource("satisfactory://map/regions", mime_type="text/plain")
 def map_regions() -> str:
     """Region names available as source selectors, with their accuracy caveat."""
     rm = regions_mod.load_regions()

@@ -15,6 +15,7 @@ import pytest
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.session import asks, journal
+from satisfactory_mcp.interfaces.mcp import app
 from satisfactory_mcp.interfaces.mcp.tools import planning
 
 PAGE = Actor("page", "", 4242)
@@ -36,7 +37,7 @@ class _World:
 
 
 @pytest.fixture
-def ctx(tmp_path, monkeypatch):
+def ctx(tmp_path, monkeypatch, use_world):
     from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
@@ -45,8 +46,8 @@ def ctx(tmp_path, monkeypatch):
     monkeypatch.setattr(journal.config, "asks_dir", lambda: tmp_path / "asks")
     monkeypatch.setattr(journal, "_writer", "")
     monkeypatch.setattr(journal, "_seq", {})
-    monkeypatch.setattr(planning, "_state", lambda *a, **k: _World())
-    monkeypatch.setattr(planning, "_sav", lambda st: "sav:3f2a91c0aa11")
+    use_world(_World)
+    monkeypatch.setattr(app, "save_token", lambda st: "sav:3f2a91c0aa11")
     monkeypatch.setattr(planning, "_cursor", {})
     monkeypatch.setattr(planning, "_page_focus", lambda world_id: (None, False))
     return tmp_path

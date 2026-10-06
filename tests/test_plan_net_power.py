@@ -19,13 +19,13 @@ KW = dict(
 
 
 @pytest.fixture
-def tool(state, tmp_path, monkeypatch):
+def tool(state, tmp_path, monkeypatch, use_world):
     from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
     fresh = lambda *a, **k: WorldState(projection=state.projection, game=state.game)
-    monkeypatch.setattr(planning, "_state", fresh)
+    use_world(fresh)
     return planning
 
 

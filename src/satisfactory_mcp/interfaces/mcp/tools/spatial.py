@@ -23,20 +23,11 @@ from ....domain.spatial.places import (
 )
 from ....domain.world import conduits as conduits_mod
 from ....presenters.text import primitives as render
-from ..app import (
-    AsOf,
-    Limit,
-    _item_id,
-    _state,
-    actor,
-    follow,
-    game,
-    mcp,
-    retired,
-)
+from .. import app
+from ..params import AsOf, Limit
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def list_regions(
     resource: str | None = None,
     with_resource: Annotated[
@@ -54,12 +45,12 @@ def list_regions(
     a concave region's mean lands on its neighbour's ground, and the map has drawn its
     names at the anchor all along.
     """
-    if gone := retired(("with_resource", with_resource, "resource")):
+    if gone := app.retired(("with_resource", with_resource, "resource")):
         return gone
-    g = game()
+    g = app.game()
     rm = regions_mod.load_regions()
     table = nodes_mod.load_nodes()
-    rid = _item_id(resource) if resource else None
+    rid = app.resolve_item_id(resource) if resource else None
     if resource and rid is None:
         return f"no resource matching {resource!r}"
 
@@ -89,7 +80,7 @@ def list_regions(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def describe_location(
     at: Annotated[
         str,
@@ -130,11 +121,7 @@ def describe_location(
     # The node table alone covers the whole map and needs no save, so an unexplored
     # coordinate still gets an answer. A readable save adds the dense sources -- and is
     # what every `at=` form but a bare coordinate is resolved against.
-    st = None
-    try:
-        st = _state(save, world, as_of)
-    except Exception:
-        pass
+    st, _reason = app.load_world_or_none(save, world, as_of)
 
     if not at.strip():
         return (
@@ -149,7 +136,7 @@ def describe_location(
     field = heightfield.load_field()
     player = st.player_position() if st and at.strip().casefold() in PLAYER_WORDS else None
     found = surroundings.describe_point(
-        st, game(), x, y, radius_m, terrain_field=field, hint_z_cm=player[2] if player else None
+        st, app.game(), x, y, radius_m, terrain_field=field, hint_z_cm=player[2] if player else None
     )
     label = found.label
     near = found.probe
@@ -262,7 +249,7 @@ def describe_location(
 
 
 def _surroundings(found) -> list[tuple[str, str]]:
-    g = game()
+    g = app.game()
     out = []
     if found.nearest:
         n = found.nearest[0]
@@ -355,7 +342,7 @@ def _networks_view(g, st, origin: tuple[float, float], where: str, limit, offset
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def search_conduits(
     near: Annotated[
         str,
@@ -409,13 +396,10 @@ def search_conduits(
     a busy junction can carry hundreds of chains and the tail of that list is as real
     as its head.
     """
-    if gone := retired(("kind", kind, "conduit_kind")):
+    if gone := app.retired(("kind", kind, "conduit_kind")):
         return gone
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc} (conduits are read from the save)"
+    g = app.game()
+    st = app.load_world(save, world, as_of, purpose=" (conduits are read from the save)")
 
     want = (conduit_kind or "").strip().casefold() or None
     if want == "all":
@@ -425,7 +409,7 @@ def search_conduits(
     view = (show or "runs").strip().casefold()
     if view not in ("runs", "networks"):
         return f"! unknown show {show!r}. Choose from: runs, networks"
-    follow(
+    app.journal_world_find(
         st,
         ctx,
         "search_conduits",
@@ -574,10 +558,10 @@ def _follow_nodes(st, ctx, view, resource, purity, kind, status, near, where) ->
     def given(value: str | None) -> str | None:
         return None if not value or value.strip().casefold() == "all" else value
 
-    rid = _item_id(resource) if given(resource) else None
-    name = game().item_name(rid) if rid else "every"
+    rid = app.resolve_item_id(resource) if given(resource) else None
+    name = app.game().item_name(rid) if rid else "every"
     shown = "fields" if view == "fields" else "nodes"
-    follow(
+    app.journal_world_find(
         st,
         ctx,
         "search_resource_nodes",
@@ -616,7 +600,7 @@ def _rank_pane(sources: list[str] | None) -> dict:
     return out
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def search_resource_nodes(
     sources: list[str] | None = None,
     resource: str | None = None,
@@ -669,9 +653,9 @@ def search_resource_nodes(
     for it returns only the fracking satellites; the bodies already being pumped, the pumps
     on each and the measured sea level are printed beside them instead.
     """
-    if gone := retired(("mode", mode, "show"), ("group", group, "show")):
+    if gone := app.retired(("mode", mode, "show"), ("group", group, "show")):
         return gone
-    g = game()
+    g = app.game()
 
     view = (show or "fields").strip().casefold()
     view = {"field": "fields", "node": "nodes"}.get(view, view)
@@ -681,11 +665,7 @@ def search_resource_nodes(
     if wanted not in node_search.STATUSES:
         return f"! unknown status {status!r}. Choose from: free, tapped, all"
 
-    st = None
-    try:
-        st = _state(save, world, as_of)
-    except Exception:
-        pass
+    st, _reason = app.load_world_or_none(save, world, as_of)
 
     if view == "nearest" and not near:
         return "! show='nearest' needs near=<x,y | me | factory name> to measure from"
@@ -699,7 +679,7 @@ def search_resource_nodes(
         status=wanted,
         view=view,
         near=near,
-        resolve_resource=_item_id,
+        resolve_resource=app.resolve_item_id,
     )
     if found.error:
         return found.error
@@ -840,7 +820,7 @@ def search_resource_nodes(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def show_on_map(
     at: Annotated[
         str,
@@ -895,11 +875,8 @@ def show_on_map(
             known = ", ".join([*maps.known_ids(), maps.PLAIN])
             return f"! no base map {mode!r}; known: {known}"
 
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception:
-        st = None
+    g = app.game()
+    st, _reason = app.load_world_or_none(save, world, as_of)
 
     table = nodes_mod.load_nodes()
     notes: list[str] = []
@@ -909,7 +886,7 @@ def show_on_map(
 
     node = None
     if kind.casefold() == "resource":
-        item = _item_id(value.strip())
+        item = app.resolve_item_id(value.strip())
         if not item or item not in maplink.LAYERS:
             return f"! no map layer for resource {value.strip()!r}"
         rows = table.by_resource(item)
@@ -1023,7 +1000,7 @@ def _pin_place(st, text: str, node, label, origin, resources, ctx) -> str:
     journal.append(
         st.world_id,
         "pin.add",
-        actor=actor(ctx),
+        actor=app.actor(ctx),
         plan=plan,
         args={"n": row["n"], "kind": kind},
         text=f"pinned {row['id']} {row['text']}",
@@ -1031,7 +1008,7 @@ def _pin_place(st, text: str, node, label, origin, resources, ctx) -> str:
     return f"pin: pinned as {row['id']} {row['text']}"
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def rank_build_sites(
     resource: str,
     sources: list[str] | None = None,
@@ -1054,24 +1031,21 @@ def rank_build_sites(
     A ranking does not page: the rows below the cut score worse by construction, so raise
     `limit` or narrow `sources` rather than looking for an offset.
     """
-    g = game()
-    rid = _item_id(resource)
+    g = app.game()
+    rid = app.resolve_item_id(resource)
     if rid is None:
         return f"no resource matching {resource!r}"
     n = render.clamp(top if top is not None else limit, default=5)
 
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return (
-            f"could not read save: {exc} (site ranking needs a save to know what is already built)"
-        )
+    st = app.load_world(
+        save, world, as_of, purpose=" (site ranking needs a save to know what is already built)"
+    )
 
-    ranked = node_search.rank(st, g, rid, sources, resolve_resource=_item_id)
+    ranked = node_search.rank(st, g, rid, sources, resolve_resource=app.resolve_item_id)
     sel = ranked.selection
     if ranked.unselected:
         return render.envelope("# no candidates", "", [*sel.errors, SELECTOR_HELP])
-    follow(
+    app.journal_world_find(
         st,
         ctx,
         "rank_build_sites",
@@ -1169,7 +1143,7 @@ def rank_build_sites(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def whereami(
     radius_m: float = 500.0,
     save: str | None = None,
@@ -1185,14 +1159,11 @@ def whereami(
     ``near:me@<radius>`` as a source selector in the planning tools to scope work to
     here.
     """
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    g = app.game()
+    st = app.load_world(save, world, as_of)
 
     found = surroundings.player_surroundings(st, g, radius_m)
-    follow(st, ctx, "whereami", "", {}, "looked where the player is")
+    app.journal_world_find(st, ctx, "whereami", "", {}, "looked where the player is")
     if found.player is None:
         return "no player pawn in this save, so there is no position to report"
     x, y, z = found.player

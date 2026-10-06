@@ -12,19 +12,11 @@ from ....domain import advice
 from ....domain.power.report import biomass_note, starved_cause
 from ....presenters.text import advice as advice_text
 from ....presenters.text import primitives as render
-from ..app import (
-    AsOf,
-    Biomass,
-    Limit,
-    _state,
-    integrity_notes,
-    mcp,
-    shared,
-    stale_artifact_notes,
-)
+from .. import app
+from ..params import AsOf, Biomass, Limit
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def list_worlds() -> str:
     """List save games grouped by world, newest first.
 
@@ -76,20 +68,17 @@ def list_worlds() -> str:
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def world_summary(
     save: str | None = None, world: str | None = None, as_of: AsOf = None, biomass: Biomass = None
 ) -> str:
     """Progress, power and problems for one world, and the advisories worth a look (adv: ids)."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     g = st.game
     p = st.progression()
     unread = ""
     if biomass is None:
-        biomass, unread = shared("biomass")
+        biomass, unread = app.shared_setting("biomass")
     pw = st.power_report(biomass=biomass)
     notes = [n for n in [unread, biomass_note(pw)] if n]
     unbuilt = st.unlocked_but_unbuilt()
@@ -107,8 +96,8 @@ def world_summary(
         )
     if st.paused:
         notes.append(f"{len(st.paused)} building(s) paused by the player")
-    notes.extend(integrity_notes(st.projection, g))
-    notes.extend(stale_artifact_notes())
+    notes.extend(app.integrity_notes(st.projection, g))
+    notes.extend(app.stale_artifact_notes())
     working_on = st.unlocks.last_active_schematic
     last_drive = st.harddrive_desk.last_used_hard_drive_id
     gen_rows = [
@@ -160,7 +149,7 @@ def world_summary(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def unlocked_recipes(
     save: str | None = None,
     world: str | None = None,
@@ -172,10 +161,7 @@ def unlocked_recipes(
     """Which recipes this world has. Defaults to alternates, never all 872.
 
     Sorted by name and paged with `offset=`, so the whole list is reachable."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     picks = st.unlocked_alternates if only_alternates else st.unlocked_recipes("part")
     picks = sorted(picks, key=lambda r: r.name)
     start = max(0, offset)
@@ -190,7 +176,7 @@ def unlocked_recipes(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def power_report(
     save: str | None = None, world: str | None = None, as_of: AsOf = None, biomass: Biomass = None
 ) -> str:
@@ -205,13 +191,10 @@ def power_report(
     whose fuel or supplemental water has run dry AND whose own monitor read zero is listed as
     starved, because those MW will not arrive when the grid asks for them.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     unread = ""
     if biomass is None:
-        biomass, unread = shared("biomass")
+        biomass, unread = app.shared_setting("biomass")
     pw = st.power_report(biomass=biomass)
     rows = [
         (v["name"], v["count"], render.num(v["mw"]))
@@ -281,7 +264,7 @@ def power_report(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def factory_sites(
     save: str | None = None,
     world: str | None = None,
@@ -290,10 +273,7 @@ def factory_sites(
     offset: int = 0,
 ) -> str:
     """Built production buildings clustered into sites, largest first."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     g = st.game
     sites = st.sites()
     rows = []

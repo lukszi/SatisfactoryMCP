@@ -226,7 +226,7 @@ def test_most_ends_on_the_reference_world_resolve_to_something(game, projection)
     assert 0.7 < plugged / len(ends) < 1.0
 
 
-def test_the_tool_pages_the_offset_its_truncation_line_promises(game, monkeypatch):
+def test_the_tool_pages_the_offset_its_truncation_line_promises(game, use_world):
     """The truncation envelope ends 'call again with offset=N', so the tool has to
     HAVE an offset -- a next step the caller cannot take is worse than no next step,
     and this surface already pages this way in list_buildings and commission_plan."""
@@ -248,7 +248,7 @@ def test_the_tool_pages_the_offset_its_truncation_line_promises(game, monkeypatc
         "generators": [],
     }
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(stools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
 
     first = stools.search_conduits(near="0,0", radius_m=500, limit=2)
     assert "5 match(es), showing 2 from offset 0. 3 more: call again with offset=2" in first
@@ -319,7 +319,7 @@ def test_an_unknown_run_ident_names_the_tool_that_lists_them(game):
         resolve_place(None, "pipe:1")
 
 
-def test_the_tool_takes_back_the_ids_it_prints(game, monkeypatch):
+def test_the_tool_takes_back_the_ids_it_prints(game, use_world):
     """One spelling, end to end: the id in the `id` and `connects` columns is the id
     `near=` reads."""
     from satisfactory_mcp.domain.world.state import WorldState
@@ -330,14 +330,14 @@ def test_the_tool_takes_back_the_ids_it_prints(game, monkeypatch):
         **PIPE_PROJECTION,
     }
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(stools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
 
     out = stools.search_conduits(near="pipe:0", radius_m=25)
     assert "midpoint of a 30m pipe" in out
     assert "pipe:1" in out
 
 
-def test_the_network_view_summarises_the_plumbing_systems(game, monkeypatch):
+def test_the_network_view_summarises_the_plumbing_systems(game, use_world):
     """503 pipe rows are not navigable; 19 plumbing systems are. The top-level
     pipe_networks table had no reader outside one test, and this is the view it is for."""
     from satisfactory_mcp.domain.world.state import WorldState
@@ -361,7 +361,7 @@ def test_the_network_view_summarises_the_plumbing_systems(game, monkeypatch):
         "generators": [],
     }
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(stools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
 
     out = stools.search_conduits(near="0,0", show="networks")
     assert "2 fluid network(s)" in out
@@ -425,12 +425,12 @@ def test_between_mode_requires_both_areas_and_says_so_in_the_scope(game, live):
     assert "AND 50m of -3400,3400" in out
 
 
-def test_the_tool_lists_one_fluid_network_by_id(game, projection, monkeypatch):
+def test_the_tool_lists_one_fluid_network_by_id(game, projection, use_world):
     from satisfactory_mcp.domain.world.state import WorldState
     from satisfactory_mcp.interfaces.mcp.tools import spatial as stools
 
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(stools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     net = next(r.network for r in st.conduit_runs if r.kind == "pipe" and r.network is not None)
     pieces = [r for r in st.conduit_runs if r.kind == "pipe" and r.network == net]
     out = stools.search_conduits(near="0,0", network=net, limit=100)

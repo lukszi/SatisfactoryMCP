@@ -18,12 +18,13 @@ from ....domain.factories.labels import LabelError, stamp
 from ....domain.factories.query import ASPECTS as QUERY_ASPECTS
 from ....domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from ....domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
-from ....domain.factories.select import SelectorError, resolve_factory
+from ....domain.factories.select import resolve_factory
 from ....domain.factories.trace import power_at_risk, resolve_seeds, trace
 from ....domain.session import journal
 from ....domain.spatial import nodes as nodes_mod
 from ....presenters.text import primitives as render
-from ..app import AsOf, Limit, _state, actor, game, mcp, retired
+from .. import app
+from ..params import AsOf, Limit
 
 #: Bare (machine-less) slabs at or above this many tiles are listed individually by
 #: factory_map; smaller ones are one summary line. 12 tiles is a 3x4 pour of 8 m
@@ -200,7 +201,7 @@ def _feed_row(machine, feed) -> tuple:
     return (machine.instance, feed.item, arrives, far, feed.far_state)
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def factory_map(
     save: str | None = None,
     world: str | None = None,
@@ -225,10 +226,7 @@ def factory_map(
     platform is a real place a build plan refers to. Pads under a stated tile threshold
     are summarised in one line.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     from ....domain.factories import candidates
 
     gr = st.graph
@@ -425,7 +423,7 @@ def factory_map(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def factory_query(
     factory: Annotated[str, Field(description="a label name, or any selector e.g. 'proposal:3'")],
     show: Annotated[
@@ -466,16 +464,10 @@ def factory_query(
     """
     from ....domain.factories.query import build_view
 
-    if gone := retired(("of", of, "show")):
+    if gone := app.retired(("of", of, "show")):
         return gone
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
-    try:
-        name, machines = resolve_factory(st, factory)
-    except SelectorError as exc:
-        return f"! {exc}"
+    st = app.load_world(save, world, as_of)
+    name, machines = resolve_factory(st, factory)
     if not machines:
         return f"! {factory!r} resolved to no machines that still exist in this save"
 
@@ -729,7 +721,7 @@ def factory_query(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def factory_health(
     factory: Annotated[
         str, Field(description="a label name, any selector, or 'all' for every named factory")
@@ -788,14 +780,10 @@ def factory_health(
         assess,
         summarise,
     )
-    from ....domain.factories.select import SelectorError
     from ....domain.world.headlift import head_lift
     from ....domain.world.plumbing import dark_pumps, throttled_buffers
 
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
 
     n = render.clamp(limit)
     start = max(0, offset)
@@ -992,10 +980,7 @@ def factory_health(
             notes,
         )
 
-    try:
-        name, machines = resolve_factory(st, factory)
-    except SelectorError as exc:
-        return f"! {exc}"
+    name, machines = resolve_factory(st, factory)
     if not machines:
         return f"! {factory!r} resolved to no machines that still exist in this save"
 
@@ -1184,7 +1169,7 @@ def factory_health(
     return render.envelope(f"# {st.age_note}\n# {name}", "\n\n".join(chunks), notes)
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def propose_factories(
     save: str | None = None,
     world: str | None = None,
@@ -1205,10 +1190,7 @@ def propose_factories(
     built and not named". The `#` column is the `proposal:<n>` selector every other tool
     takes, and it counts over ALL proposals -- so it does not shift when you page.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     from ....domain.factories import candidates, cohere
 
     store = st.labels
@@ -1269,7 +1251,7 @@ def propose_factories(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def select_machines(
     select: Annotated[
         list[str], Field(description=f"selector terms, ANDed. {GRAPH_SELECTOR_HELP}")
@@ -1289,16 +1271,10 @@ def select_machines(
     `slab:<n>` answers "what stands on this platform", and answers it for an empty one
     too: a poured platform with nothing on it yet is described rather than refused.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     from ....domain.factories import candidates
 
-    try:
-        picked = _pick(st, select, split=split, expand=expand)
-    except SelectorError as exc:
-        return f"! {exc}"
+    picked = _pick(st, select, split=split, expand=expand)
     if not picked:
         empty = _empty_platform(select, st.structures)
         if empty:
@@ -1341,7 +1317,7 @@ def _pin_notes(select: list[str] | None, st) -> list[str]:
     return gsel.pin_notes(select, st)
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def name_factory(
     name: str,
     select: Annotated[
@@ -1363,16 +1339,10 @@ def name_factory(
     machine the new selector misses -- `amend_factory` adds or drops a few without that,
     and `rename_factory` changes the name without touching the membership.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     from ....domain.factories import candidates
 
-    try:
-        picked = _pick(st, select, split=split, expand=expand)
-    except SelectorError as exc:
-        return f"! {exc}"
+    picked = _pick(st, select, split=split, expand=expand)
     if not picked:
         return "! that selector matched no machines; nothing named"
 
@@ -1408,7 +1378,7 @@ def _session(st) -> str:
     return st.header.get("session_name") or ""
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def rename_factory(
     name: str,
     to: Annotated[str, Field(description="the new name")],
@@ -1426,10 +1396,7 @@ def rename_factory(
     Stored plans scoped to this factory follow the new name. Renaming onto a name this
     world already uses is refused and says which label holds it.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     store = st.labels
     label = store.find(name)
     if label is None:
@@ -1437,7 +1404,7 @@ def rename_factory(
         return f"! no label named {name!r}. Known: {known}"
     if label.name == to.strip():
         return f"factory {label.name!r} already has that name"
-    who = actor(ctx)
+    who = app.actor(ctx)
     try:
         done = edits.rename(st.world_id, _session(st), label.name, to, actor=who, exact=True)
     except LABEL_REFUSALS as exc:
@@ -1468,7 +1435,7 @@ def rename_factory(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def amend_factory(
     name: str,
     add: Annotated[
@@ -1498,10 +1465,7 @@ def amend_factory(
     `list_factories` reports gone. One machine is `machine:<instance>` on either side.
     Dropping the last machine is refused -- deleting a label is `forget_factory`.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     from ....domain.factories import candidates
 
     store = st.labels
@@ -1511,11 +1475,8 @@ def amend_factory(
         return f"! no label named {name!r}. Known: {known}"
     if not (add or drop or prune_missing or notes):
         return "! nothing to amend: pass add=, drop=, prune_missing=true or notes="
-    try:
-        wanted = _pick(st, add) if add else []
-        unwanted = _pick(st, drop) if drop else []
-    except SelectorError as exc:
-        return f"! {exc}"
+    wanted = _pick(st, add) if add else []
+    unwanted = _pick(st, drop) if drop else []
 
     alive = set(st.graph.machines())
     going = set(unwanted) | (
@@ -1574,13 +1535,10 @@ def amend_factory(
     return render.envelope(f"# {head}", f"stored in {path}", warn)
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def list_factories(save: str | None = None, world: str | None = None, as_of: AsOf = None) -> str:
     """Named factories for this world, with how much of each is still standing."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     from ....domain.factories import candidates
 
     store = st.labels
@@ -1620,15 +1578,12 @@ def list_factories(save: str | None = None, world: str | None = None, as_of: AsO
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def forget_factory(
     name: str, save: str | None = None, world: str | None = None, as_of: AsOf = None
 ) -> str:
     """Delete a factory label. The machines themselves are untouched."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     store = st.labels
     label = store.find(name)
     if label is None:
@@ -1641,7 +1596,7 @@ def forget_factory(
     return f"forgot {label.name!r} ({len(label.anchors)} machine(s) released)"
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def trace_upstream(
     seed: Annotated[
         str, Field(description="a machine instance, a factory label, or a building name")
@@ -1672,16 +1627,10 @@ def trace_upstream(
     crossed is named instead in a note -- how many runs of each medium, and the ids
     `search_conduits` takes for the ones that have them.
     """
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    g = app.game()
+    st = app.load_world(save, world, as_of)
 
-    try:
-        seeds, subject = resolve_seeds(st, g, seed)
-    except SelectorError as exc:
-        return f"! {exc}"
+    seeds, subject = resolve_seeds(st, g, seed)
     if not seeds:
         return f"! nothing matches {seed!r} -- give a machine instance, a building name, or a factory label"
 

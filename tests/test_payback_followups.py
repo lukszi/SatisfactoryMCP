@@ -302,9 +302,7 @@ def test_a_row_choice_in_words():
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch, projection, game):
-    from satisfactory_mcp.interfaces.mcp.tools import planning
-
+def world(tmp_path, monkeypatch, projection, game, use_world):
     for name in ("plans_dir", "activity_dir", "pins_dir", "labels_dir", "ui_dir"):
         root = tmp_path / name
         root.mkdir()
@@ -313,7 +311,7 @@ def world(tmp_path, monkeypatch, projection, game):
     def fresh(*_a, **_k):
         return WorldState(projection=projection, game=game)
 
-    monkeypatch.setattr(planning, "_state", fresh)
+    use_world(fresh)
     return fresh
 
 

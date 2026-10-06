@@ -199,7 +199,7 @@ def test_producing_now_is_counted_from_the_flag_not_from_the_window(game):
     assert view.producers == 3
 
 
-def test_the_flow_aspects_print_both_rates_and_say_which_window(game, monkeypatch):
+def test_the_flow_aspects_print_both_rates_and_say_which_window(game, use_world):
     """A true answer that reads as a broken tool is not shipped. 2.50/min nameplate against
     0.00/min measured is only honest beside the sentence saying the measurement is of the
     window that ended when the save was written."""
@@ -210,7 +210,7 @@ def test_the_flow_aspects_print_both_rates_and_say_which_window(game, monkeypatc
     projection["header"] = {"save_identifier": "TEST-query-measured", "session_name": "t"}
     projection["machines"][1]["uptime"] = {"window_s": 300.0, "produce_s": 60.0}
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     out = ftools.factory_query(f"machine:{','.join(INSIDE)}", show="outputs,balance,summary")
     assert "per min (measured)" in out
     assert "net (measured)" in out
@@ -222,7 +222,7 @@ def test_the_flow_aspects_print_both_rates_and_say_which_window(game, monkeypatc
     assert "Iron Rod\t30\t3\t15" in out
 
 
-def test_the_internal_aspect_names_what_never_crosses_the_boundary(game, monkeypatch):
+def test_the_internal_aspect_names_what_never_crosses_the_boundary(game, use_world):
     """``FactoryView.internal`` was written, documented as "the mark of a self-contained
     line", and rendered by nothing. The fixture is balanced on purpose: 30 Iron Ingot
     made, 30 consumed, so the ingots appear in neither outputs nor inputs and the only
@@ -233,14 +233,14 @@ def test_the_internal_aspect_names_what_never_crosses_the_boundary(game, monkeyp
     projection = _projection()
     projection["header"] = {"save_identifier": "TEST-query-internal", "session_name": "t"}
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     out = ftools.factory_query(f"machine:{','.join(INSIDE)}", show="internal,summary")
     assert "## internal" in out
     assert "Iron Ingot\t30" in out
     assert "keeps: Iron Ingot 30/min" in out
 
 
-def test_the_machines_aspect_says_where_each_machine_stands(game, monkeypatch):
+def test_the_machines_aspect_says_where_each_machine_stands(game, use_world):
     """MachineRow has carried a 3-D position since it was written and no aspect printed
     it, so the one table that names individual machines could not place any of them."""
     from satisfactory_mcp.domain.world.state import WorldState
@@ -249,13 +249,13 @@ def test_the_machines_aspect_says_where_each_machine_stands(game, monkeypatch):
     projection = _projection()
     projection["header"] = {"save_identifier": "TEST-query-pos", "session_name": "t"}
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     out = ftools.factory_query(f"machine:{ROD_A}", show="machines")
     assert "x,y,z(m)" in out
     assert "10,0,0" in out, "1000 cm east of the origin, in metres, with its elevation"
 
 
-def test_the_power_aspect_prints_both_figures(game, monkeypatch):
+def test_the_power_aspect_prints_both_figures(game, use_world):
     from satisfactory_mcp.domain.world.state import WorldState
     from satisfactory_mcp.interfaces.mcp.tools import factories as ftools
 
@@ -263,7 +263,7 @@ def test_the_power_aspect_prints_both_figures(game, monkeypatch):
     projection["header"] = {"save_identifier": "TEST-query-power", "session_name": "t"}
     projection["machines"][1]["uptime"] = {"window_s": 300.0, "produce_s": 150.0}
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     out = ftools.factory_query(f"machine:{','.join(INSIDE)}", show="power")
     assert "draw (nameplate)" in out
     assert "draw (measured)" in out

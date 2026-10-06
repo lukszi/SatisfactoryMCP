@@ -17,8 +17,8 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def tools(state, monkeypatch):
-    monkeypatch.setattr(harddrive_tools, "_state", lambda save=None, world=None, as_of=None: state)
+def tools(state, use_world):
+    use_world(state)
     return harddrive_tools
 
 

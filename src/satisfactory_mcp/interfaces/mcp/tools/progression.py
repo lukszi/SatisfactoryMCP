@@ -17,7 +17,8 @@ from ....domain.collectibles.service import collect_view
 from ....domain.progression.ladder import Rung, SchematicLadder
 from ....presenters.text import primitives as render
 from ....presenters.text.collectibles import render_collectibles
-from ..app import AsOf, Limit, _state, follow, mcp, retired
+from .. import app
+from ..params import AsOf, Limit
 
 #: The three views onto a schematic ladder, spelled the same way by both tools that walk
 #: one. Adding a fourth here without teaching ``_select`` about it silently shows everything.
@@ -53,7 +54,7 @@ def _shortfall(g: GameData, rung: Rung) -> str:
     return ", ".join(f"{m.short_by:.0f} {g.item_name(m.item)}" for m in rung.missing)
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def phase_requirements(
     save: str | None = None, world: str | None = None, as_of: AsOf = None
 ) -> str:
@@ -62,10 +63,7 @@ def phase_requirements(
     The per-phase item table in the save is DEPRECATED and frozen, so it is shown
     labelled rather than believed. Read the header line first.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     g = st.game
     req = st.phase_requirements()
     stock = st.stock()
@@ -182,7 +180,7 @@ def phase_requirements(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def power_shards(
     save: str | None = None,
     world: str | None = None,
@@ -197,10 +195,7 @@ def power_shards(
     ``plan_machines`` machines at ``plan_clock`` costs shards per machine; the answer
     says whether the free pool covers it.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     budget = st.shard_budget()
     per_shard = max(budget["shard_items"].values()) if budget["shard_items"] else 0.0
     ceiling = max_clock(per_shard)
@@ -296,7 +291,7 @@ def power_shards(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def mam_research(
     show: Annotated[
         str, Field(description="all | todo | affordable -- todo hides finished research")
@@ -322,12 +317,9 @@ def mam_research(
     rows are marked LOCKS so it is obvious which research gates a tool argument rather
     than just adding a recipe.
     """
-    if gone := retired(("status", status, "show"), ("search", search, "query")):
+    if gone := app.retired(("status", status, "show"), ("search", search, "query")):
         return gone
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
 
     g = st.game
     start = max(0, offset)
@@ -429,7 +421,7 @@ def mam_research(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def milestones(
     show: Annotated[
         str, Field(description="all | todo | affordable -- todo hides finished milestones")
@@ -456,12 +448,9 @@ def milestones(
     deliveries, that gate is in no shipped data, and `phase_requirements` is where the
     elevator stands.
     """
-    if gone := retired(("status", status, "show"), ("search", search, "query")):
+    if gone := app.retired(("status", status, "show"), ("search", search, "query")):
         return gone
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
 
     g = st.game
     start = max(0, offset)
@@ -541,7 +530,7 @@ def milestones(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def somersloops(
     save: str | None = None,
     world: str | None = None,
@@ -559,10 +548,7 @@ def somersloops(
     component as Power Shards, so this counts slot contents rather than inverting a boost
     multiplier.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
 
     budget = st.sloop_budget()
     gate = st.research_gate("production_boost")
@@ -644,7 +630,7 @@ def somersloops(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def collected_from_world(
     group: Annotated[
         str | None,
@@ -688,17 +674,14 @@ def collected_from_world(
     ``never_streamed``. It is never called present -- the map says where it is and nothing
     on disk says whether it is still there.
     """
-    if gone := retired(("mode", mode, "show")):
+    if gone := app.retired(("mode", mode, "show")):
         return gone
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
 
     view = collect_view(st, group, show, near)
     if not view.error:
         listed = view.mode if view.mode in ("collected", "nearest") else None
-        follow(
+        app.journal_world_find(
             st,
             ctx,
             "collected_from_world",

@@ -15,7 +15,8 @@ from ....domain.spatial import regions as regions_mod
 from ....domain.spatial.places import resolve_place
 from ....domain.world.inventory import CRATE_KIND_TEXT, Holding
 from ....presenters.text import primitives as render
-from ..app import AsOf, Limit, _item_id, _state, mcp, retired
+from .. import app
+from ..params import AsOf, Limit
 
 #: How many item kinds a place lists before the rest become "+N more". Three names and a
 #: count read as a box; twelve names read as a wall.
@@ -47,7 +48,7 @@ def _fullness(holding: Holding) -> tuple[str, str]:
     return fill, f"{holding.slots_used}/{holding.slots}"
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def stock(
     item: Annotated[
         str | None, Field(description="one item by name; omit for everything you own")
@@ -72,15 +73,12 @@ def stock(
     item, with the region it stands in and its coordinate. Carried and Depot stock has no
     place, so it is reported on the summary line instead. Fluids are in m3.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     g = st.game
 
     wanted = None
     if item is not None:
-        wanted = _item_id(item)
+        wanted = app.resolve_item_id(item)
         if wanted is None:
             return f"no item matches {item!r}"
 
@@ -180,7 +178,7 @@ def stock(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def storage(
     item: Annotated[
         str | None, Field(description="only containers holding this item, fullest first")
@@ -212,17 +210,14 @@ def storage(
     slots, stacking each item at its own stack size, and a buffer is its m3 over what the
     class holds. It is ``-`` where either number is unknown.
     """
-    if gone := retired(("kind", kind, "container_kind")):
+    if gone := app.retired(("kind", kind, "container_kind")):
         return gone
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     g = st.game
 
     wanted = None
     if item is not None:
-        wanted = _item_id(item)
+        wanted = app.resolve_item_id(item)
         if wanted is None:
             return f"no item matches {item!r}"
     want_kind = (container_kind or "").strip().casefold() or None
@@ -322,7 +317,7 @@ def storage(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def crates(
     save: str | None = None,
     world: str | None = None,
@@ -340,10 +335,7 @@ def crates(
     Whose crate it is the save does not say: the crate's only saved property is its type,
     so there is no owner, no timestamp and no cause to report.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     g = st.game
 
     holdings = [h for h in st.inventory.holdings() if h.source == "crate"]

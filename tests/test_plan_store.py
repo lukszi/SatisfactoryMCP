@@ -12,7 +12,9 @@ import pytest
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.recall import recall_plan
 from satisfactory_mcp.domain.planning.stored.store import PLAN_ARGS, Plan, PlanStore
+from satisfactory_mcp.interfaces.mcp import app
 
 pytestmark = pytest.mark.integration
 
@@ -146,7 +148,7 @@ def live_plans(tmp_path, monkeypatch):
     from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
-    st = srv._state()
+    st = app.load_world()
     PlanLog(st.world_id).create(
         "north oil",
         {"objective": "max_mw", "sources": ["north"]},
@@ -227,7 +229,7 @@ def test_the_list_marks_a_cell_it_had_to_cut(live_plans):
 
 def test_recall_returns_the_stored_arguments():
     st = _held(Plan("p", {"objective": "min_power", "sources": ["north"]}, plan_id="x"))
-    kwargs, name, _ = srv._plan_kwargs(st, "p", dict(srv.PLAN_DEFAULTS))
+    kwargs, name, _ = recall_plan(st, "p", dict(srv.PLAN_DEFAULTS))
     assert name == "p"
     assert kwargs["objective"] == "min_power"
     assert kwargs["sources"] == ["north"]
@@ -238,7 +240,7 @@ def test_a_default_valued_argument_does_not_clobber_the_plan():
     arrives as "max_mw"; a naive merge would overwrite every recalled plan with it."""
     st = _held(Plan("p", {"objective": "min_power"}, plan_id="x"))
     supplied = dict(srv.PLAN_DEFAULTS)  # exactly what an untouched call looks like
-    kwargs, _, notes = srv._plan_kwargs(st, "p", supplied)
+    kwargs, _, notes = recall_plan(st, "p", supplied)
     assert kwargs["objective"] == "min_power"
     assert not any("overridden" in n for n in notes)
 
@@ -246,7 +248,7 @@ def test_a_default_valued_argument_does_not_clobber_the_plan():
 def test_an_explicit_override_wins_and_says_it_was_not_saved():
     st = _held(Plan("p", {"objective": "min_power", "sources": ["north"]}, plan_id="x"))
     supplied = {**srv.PLAN_DEFAULTS, "sources": ["south"]}
-    kwargs, _, notes = srv._plan_kwargs(st, "p", supplied)
+    kwargs, _, notes = recall_plan(st, "p", supplied)
     assert kwargs["sources"] == ["south"]
     assert kwargs["objective"] == "min_power", "untouched arguments still come from the plan"
     assert any("overridden" in n and "sources" in n for n in notes)
@@ -256,18 +258,18 @@ def test_an_explicit_override_wins_and_says_it_was_not_saved():
 def test_recalling_an_unknown_plan_lists_what_exists():
     st = _held(Plan("north oil", plan_id="x"))
     with pytest.raises(KeyError, match="north oil"):
-        srv._plan_kwargs(st, "nope", dict(srv.PLAN_DEFAULTS))
+        recall_plan(st, "nope", dict(srv.PLAN_DEFAULTS))
 
 
 def test_recall_names_the_version_first():
     st = _held(Plan("p", {"objective": "min_power"}, plan_id="x", rev=14))
-    _, _, notes = srv._plan_kwargs(st, "p", dict(srv.PLAN_DEFAULTS))
+    _, _, notes = recall_plan(st, "p", dict(srv.PLAN_DEFAULTS))
     assert notes[0] == 'recalled plan "p" v14'
 
 
 def test_no_plan_name_passes_arguments_straight_through():
     supplied = {**srv.PLAN_DEFAULTS, "objective": "max_item"}
-    kwargs, name, notes = srv._plan_kwargs(_held(), None, supplied)
+    kwargs, name, notes = recall_plan(_held(), None, supplied)
     assert name == "" and notes == []
     assert kwargs["objective"] == "max_item"
 

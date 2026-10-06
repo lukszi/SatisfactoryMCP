@@ -494,7 +494,7 @@ def test_a_slab_records_the_box_its_tiles_occupy_not_one_invented_from_the_centr
 
 
 def test_factory_map_lists_bare_platforms_and_summarises_pads_by_a_stated_threshold(
-    game, monkeypatch
+    game, use_world
 ):
     """show=slabs listed only slabs CARRYING machines, so a bare 1,901-foundation
     platform -- the most important object in that user's build -- was invisible. Bare
@@ -525,7 +525,7 @@ def test_factory_map_lists_bare_platforms_and_summarises_pads_by_a_stated_thresh
         "generators": [],
     }
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
 
     out = ftools.factory_map(show="slabs")
     assert "## bare platforms (no machines): 2, 17 tiles" in out
@@ -536,7 +536,7 @@ def test_factory_map_lists_bare_platforms_and_summarises_pads_by_a_stated_thresh
     assert "-500,-500" not in out
 
 
-def test_a_bare_platform_answers_a_slab_selector_instead_of_refusing_it(game, monkeypatch):
+def test_a_bare_platform_answers_a_slab_selector_instead_of_refusing_it(game, use_world):
     """factory_map lists bare platforms by index and the selector that index feeds
     refused exactly that case, so the table added to retire a nine-probe workflow
     dead-ended into an error. A poured platform is a place; the answer is to describe it.
@@ -567,7 +567,7 @@ def test_a_bare_platform_answers_a_slab_selector_instead_of_refusing_it(game, mo
     assert st.structures.machines_on(0) == [], "slab 0 is the big empty one"
     assert select_machines(["slab:0"], st) == []
 
-    monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     out = ftools.select_machines(["slab:0"])
     assert "nothing stands on this platform yet" in out
     assert "tiles=16" in out
@@ -575,7 +575,7 @@ def test_a_bare_platform_answers_a_slab_selector_instead_of_refusing_it(game, mo
     assert "1x Smelter" in ftools.select_machines(["slab:1"])
 
 
-def test_an_occupied_slab_reports_the_shape_a_bare_one_does(game, monkeypatch):
+def test_an_occupied_slab_reports_the_shape_a_bare_one_does(game, use_world):
     """The half of the table you can already build against was the half with no
     footprint: bare platforms got a bounding box, a z span and a storey count, and a
     platform carrying machines got a mean and a width. Both are places on a map."""
@@ -599,7 +599,7 @@ def test_an_occupied_slab_reports_the_shape_a_bare_one_does(game, monkeypatch):
         "generators": [],
     }
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
 
     out = ftools.factory_map(show="slabs")
     assert "extent\tbbox(m)\tz(m)\tfloors\tlabels" in out

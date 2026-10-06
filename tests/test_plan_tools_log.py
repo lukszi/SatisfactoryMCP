@@ -37,13 +37,13 @@ class _World:
 
 
 @pytest.fixture
-def log(tmp_path, monkeypatch):
+def log(tmp_path, monkeypatch, use_world):
     from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
-    monkeypatch.setattr(planning, "_state", lambda *a, **k: _World())
-    monkeypatch.setattr(planning, "_sav", lambda st: "sav:test")
+    use_world(_World)
+    monkeypatch.setattr(app, "save_token", lambda st: "sav:test")
     plans = PlanLog(WORLD)
     plans.create("north oil", {"objective": "max_mw", "sources": ["north"]}, actor=PAGE)
     return plans
@@ -286,10 +286,9 @@ FIXTURE_WORLD = "X2faPVKjX06VaRzClNv5KQ"
 
 
 @pytest.fixture
-def pinned(tmp_path, monkeypatch, projection, game):
+def pinned(tmp_path, monkeypatch, projection, game, use_world):
     from satisfactory_mcp import config
     from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.mcp.tools import gamedata
 
     for name in ("plans_dir", "activity_dir", "pins_dir"):
         root = tmp_path / name
@@ -301,8 +300,7 @@ def pinned(tmp_path, monkeypatch, projection, game):
     def fresh(*_a, **_k):
         return WorldState(projection=projection, game=game)
 
-    monkeypatch.setattr(planning, "_state", fresh)
-    monkeypatch.setattr(gamedata, "_state", fresh)
+    use_world(fresh)
     return fresh()
 
 
@@ -458,7 +456,7 @@ def test_save_as_creates_then_needs_base_rev_then_merges(scratch, game):
     assert refused.startswith('! plan "probe" exists at v1')
     assert refused.endswith("base_rev=1; nothing saved")
 
-    world = srv._state().world_id
+    world = app.load_world().world_id
     key = PlanLog(world).find("probe").key
     PlanLog(world).push(key, 1, [{"op": "set", "field": "notes", "value": "page"}], actor=PAGE)
     saved = srv.plan_factory(save_as="probe", sloops=1, base_rev=1, **PROBE)
@@ -471,7 +469,7 @@ def test_save_as_creates_then_needs_base_rev_then_merges(scratch, game):
 @pytest.mark.integration
 def test_recall_and_save_over_one_plan_merges_page_edits_made_since(scratch, game):
     srv.plan_factory(save_as="probe", **PROBE)
-    world = srv._state().world_id
+    world = app.load_world().world_id
     key = PlanLog(world).find("probe").key
     PlanLog(world).push(key, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
     PlanLog(world).push(key, 2, [{"op": "set", "field": "sloops", "value": 3}], actor=PAGE)
@@ -492,7 +490,7 @@ def test_a_new_name_ignores_base_rev_and_says_so(scratch, game):
 @pytest.mark.integration
 def test_a_same_key_edit_from_chat_is_outdated(scratch, game):
     srv.plan_factory(save_as="probe", **PROBE)
-    world = srv._state().world_id
+    world = app.load_world().world_id
     key = PlanLog(world).find("probe").key
     PlanLog(world).push(key, 1, [{"op": "set", "field": "sloops", "value": 3}], actor=PAGE)
     out = srv.plan_factory(save_as="probe", sloops=1, base_rev=1, **PROBE)
@@ -504,7 +502,7 @@ def test_a_same_key_edit_from_chat_is_outdated(scratch, game):
 @pytest.mark.integration
 def test_a_recalled_outdated_save_never_tells_chat_to_pass_save_as(scratch, game):
     srv.plan_factory(save_as="probe", **PROBE)
-    world = srv._state().world_id
+    world = app.load_world().world_id
     key = PlanLog(world).find("probe").key
     PlanLog(world).push(
         key, 1, [{"op": "set", "field": "water_extractors", "value": 5}], actor=PAGE
@@ -519,7 +517,7 @@ def test_a_recalled_outdated_save_never_tells_chat_to_pass_save_as(scratch, game
 def test_a_bare_solve_is_journalled_with_its_request(scratch, game):
     journal.set_writer("chat")
     srv.plan_factory(objective="min_power", **PROBE)
-    (entry,) = journal.read(srv._state().world_id)
+    (entry,) = journal.read(app.load_world().world_id)
     assert entry["kind"] == "plan.solve" and entry["tool"] == "plan_factory"
     assert entry["args"] == {
         "objective": "min_power",
@@ -534,7 +532,7 @@ def test_a_recalled_solve_journals_the_plans_pinned_logistics_and_its_rev(scratc
     srv.plan_factory(save_as="probe", logistics_items=["Water"], **PROBE)
     journal.set_writer("chat")
     srv.plan_factory(plan="probe", sloops=1, limit=2)
-    (entry,) = journal.read(srv._state().world_id)
+    (entry,) = journal.read(app.load_world().world_id)
     assert (entry["kind"], entry["rev"]) == ("plan.solve", 1)
     assert entry["args"]["logistics_items"] == ["Water"] and entry["args"]["sloops"] == 1
 
@@ -545,7 +543,7 @@ def test_a_recalled_plan_prints_its_version_and_journals_a_view(scratch, game):
     journal.set_writer("chat")
     out = srv.commission_plan(plan="probe", limit=2)
     assert 'recalled plan "probe" v1' in out
-    (entry,) = journal.read(srv._state().world_id)
+    (entry,) = journal.read(app.load_world().world_id)
     assert (entry["kind"], entry["tool"], entry["rev"]) == ("plan.view", "commission_plan", 1)
 
 

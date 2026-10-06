@@ -316,10 +316,10 @@ def test_every_world_route_refuses_a_foreign_host(client, path, params):
     assert client.get(path, params=params, headers={"host": "evil.example"}).status_code == 403
 
 
-def test_node_distances_travel_unrounded_so_chat_and_page_agree(client, state, monkeypatch):
+def test_node_distances_travel_unrounded_so_chat_and_page_agree(client, state, use_world):
     from satisfactory_mcp.interfaces.mcp.tools import spatial as stools
 
-    monkeypatch.setattr(stools, "_state", lambda save=None, world=None, as_of=None: state)
+    use_world(state)
     params = {"resource": "Desc_OreIron_C", "near": "me"}
     body = client.get("/api/world/nodes", params=params).json()
     page = {r["name"]: r["distance_m"] for r in body["nodes"]}

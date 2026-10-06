@@ -348,11 +348,11 @@ def table_and_header(projection):
 
 
 @pytest.fixture
-def tool(state, monkeypatch):
+def tool(state, use_world):
     """``tools.spatial`` reading the committed projection instead of this machine's saves."""
     from satisfactory_mcp.interfaces.mcp.tools import spatial as mod
 
-    monkeypatch.setattr(mod, "_state", lambda *a, **k: state)
+    use_world(state)
     return mod
 
 

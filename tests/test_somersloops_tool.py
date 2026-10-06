@@ -10,7 +10,6 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.interfaces.mcp.tools import progression as progression_tools
 
 pytestmark = pytest.mark.integration
 
@@ -69,7 +68,9 @@ def test_the_boost_the_save_carries_is_printed_beside_the_computed_one(game, liv
     assert row.split("\t")[-1] == (f"{saved:g}x" if saved else "-")
 
 
-def test_a_disagreement_between_the_two_is_reported_as_a_finding(game, live, monkeypatch):
+def test_a_disagreement_between_the_two_is_reported_as_a_finding(
+    game, live, monkeypatch, use_world
+):
     """The cross-check is only worth printing if a mismatch is called one. Constructed,
     because the two agree on every holder of this world -- which is the answer the check
     is supposed to give, and therefore the state that cannot exercise the alarm."""
@@ -80,13 +81,13 @@ def test_a_disagreement_between_the_two_is_reported_as_a_finding(game, live, mon
     budget["holders"][0]["boost"] = 1.25
     budget["holders"][0]["boost_in_save"] = 2.0
     monkeypatch.setattr(type(live), "sloop_budget", lambda self: budget)
-    monkeypatch.setattr(progression_tools, "_state", lambda save=None, world=None, as_of=None: live)
+    use_world(live)
     out = srv.somersloops()
     assert "THEY DISAGREE on 1 building(s)" in out
     assert "computed 1.25x, save says 2x" in out
 
 
-def test_the_holder_table_says_how_many_there_are(game, live, monkeypatch):
+def test_the_holder_table_says_how_many_there_are(game, live, monkeypatch, use_world):
     """It slices to 20 and printed no count, so a world with 30 boosted machines showed 20
     rows and nothing to say the list had been cut. Constructed: this world has one."""
     holder = dict((live.sloop_budget()["holders"] or [{}])[0]) or {
@@ -98,6 +99,6 @@ def test_the_holder_table_says_how_many_there_are(game, live, monkeypatch):
     }
     budget = {**live.sloop_budget(), "holders": [dict(holder) for _ in range(30)]}
     monkeypatch.setattr(type(live), "sloop_budget", lambda self: budget)
-    monkeypatch.setattr(progression_tools, "_state", lambda save=None, world=None, as_of=None: live)
+    use_world(live)
     out = srv.somersloops()
     assert "# 30 match(es), showing 20" in out

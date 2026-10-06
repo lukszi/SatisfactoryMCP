@@ -92,15 +92,13 @@ def test_commissioning_defaults_to_measured_but_names_the_safe_bound(game, live)
     assert "source: given by caller" in plate
 
 
-def test_a_bigger_headroom_really_does_mean_fewer_waves(monkeypatch, state):
+def test_a_bigger_headroom_really_does_mean_fewer_waves(use_world, state):
     """The reason the safe-bound note is worth printing at all.
 
     On the reference world, where the nameplate headroom clears the minimum slice: below it
     there is no order at all, and zero waves is not fewer.
     """
-    from satisfactory_mcp.interfaces.mcp.tools import planning
-
-    monkeypatch.setattr(planning, "_state", lambda save=None, world=None, as_of=None: state)
+    use_world(state)
     kw = dict(
         objective="max_mw",
         sources=list(REFERENCE_FIELD),
@@ -173,9 +171,8 @@ def test_uptime_only_corroborates_and_never_accuses_on_its_own(game):
     assert unreadable["starved_generators"] == []
 
 
-def test_the_tool_names_which_plant_and_what_it_is_out_of(game, monkeypatch):
+def test_the_tool_names_which_plant_and_what_it_is_out_of(game, use_world):
     from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.mcp.tools import world as wtools
 
     projection = {
         "generators": [
@@ -185,7 +182,7 @@ def test_the_tool_names_which_plant_and_what_it_is_out_of(game, monkeypatch):
         "header": {"save_identifier": "TEST-starved", "session_name": "t"},
     }
     st = WorldState(projection=projection, game=game)
-    monkeypatch.setattr(wtools, "_state", lambda save=None, world=None, as_of=None: st)
+    use_world(st)
     out = srv.power_report()
     assert "generation_MW_starved=75" in out
     assert "## starved generators" in out
