@@ -197,14 +197,15 @@ def _refine(samples, rows, cols, start, x0_m, y0_m, spacing_m):
 
 
 def ribbon_planes(
-    samples: dict, reach_m: float = RIBBON_REACH_M, shape=(GRID_PX, GRID_PX)
+    samples: dict, reach_m: float = RIBBON_REACH_M, shape=(GRID_PX, GRID_PX), hang=None
 ) -> dict[str, np.ndarray]:
     """The ribbons on the 1 m grid: the plane's height, its half width, and ``u``.
 
     ``u`` is distance from the centreline over the half width, 1 at the plane's edge. All
     three are NaN past ``reach_m`` beyond that edge.
     Where two planes overlap, the higher one wins, as it would seen from above; past both
-    edges, the nearer in half widths.
+    edges, the nearer in half widths. ``hang`` is ``(ground_m, metres)``: a plane standing
+    more than that over the ground, or over none, gives way to one that does not.
     """
     spacing_m = SPACING_CM / 100.0
     x0_m, y0_m = ORIGIN_X_CM / 100.0, ORIGIN_Y_CM / 100.0
@@ -234,6 +235,12 @@ def ribbon_planes(
         gr, gc = wr[keep] + r0, wc[keep] + c0
         u_new, u_old = u[keep], u_plane[gr, gc]
         higher = z[keep] > np.nan_to_num(level[gr, gc], nan=-np.inf)
+        if hang is not None:
+            ground = hang[0][gr, gc]
+            with np.errstate(invalid="ignore"):
+                hangs = ~(z[keep] - ground <= hang[1])
+                held = level[gr, gc] - ground <= hang[1]
+            higher = (higher & ~(hangs & held)) | (~hangs & ~held)
         on_plane = (u_new <= 1) & ((u_old > 1) | higher)
         better = on_plane | ((u_new > 1) & (u_old > 1) & (u_new < u_old))
         u_plane[gr[better], gc[better]] = u[keep][better]

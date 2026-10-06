@@ -154,18 +154,22 @@ def blend_regimes(base_m, missing, direct, linear, subsamples, keep=None):
 
 
 def band_water(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m) -> dict:
-    """Recipe 5's water, and within ``reach`` of the sea the ocean's crossing rule."""
+    """Recipe 5's water, and within ``reach`` of the sea the ocean's crossing rule. ``wet``
+    rides along for the rivers: past the last wet texel, the edge's blur is no water."""
     old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)
     old_depth = water_depth_fraction(z_m, water_m, measured)
     if reach is None:
-        return blend_water(None, old_cover, old_depth, None, WATER_DEPTH_FULL_M)
-    return blend_water(
-        sample_coverage(reach, linear),
-        old_cover,
-        old_depth,
-        shore_terms(z_m, spacing_m),
-        WATER_DEPTH_FULL_M,
-    )
+        terms = blend_water(None, old_cover, old_depth, None, WATER_DEPTH_FULL_M)
+    else:
+        terms = blend_water(
+            sample_coverage(reach, linear),
+            old_cover,
+            old_depth,
+            shore_terms(z_m, spacing_m),
+            WATER_DEPTH_FULL_M,
+        )
+    terms["wet"] = wet
+    return terms
 
 
 def crowns_in_band(painted, x_cm, y_cm, spacing_m, unlit=False) -> dict | None:

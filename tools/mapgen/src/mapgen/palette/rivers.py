@@ -15,7 +15,8 @@ import numpy as np
 
 from mapgen.cache import RIVER_CACHE_DIR_NAME, cached_rivers, river_stamp, write_rivers
 from mapgen.gamedata.rivers import box_tops, ribbon_planes, sample_rivers
-from mapgen.palette.shore import shore_terms
+from mapgen.gamedata.water import lower_bodies
+from mapgen.palette.shore import OCEAN_LEVEL_M, shore_terms
 from mapgen.palette.water import WATER_DEPTH_FULL_M, water_planes
 from mapgen.terrain.sample import sample_plain, sample_surface
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
@@ -59,13 +60,13 @@ class RiverWater:
     def __init__(self, cached: dict, field):
         samples = sample_rivers(cached["rivers"])
         shape = field._height_dm.shape
-        planes = ribbon_planes(samples, shape=shape)
-        boxes = [(name, tuple(box)) for name, box in cached["boxes"]]
-        river_top, other_top = box_tops(boxes, True, shape), box_tops(boxes, False, shape)
         heights = field._height_dm
         ground = np.where(
             heights == hf.NODATA, np.float32(np.nan), heights / np.float32(hf.DM_PER_M)
         )
+        planes = ribbon_planes(samples, shape=shape, hang=(ground, RIVER_MAX_DEPTH_M))
+        boxes = [(name, tuple(box)) for name, box in cached["boxes"]]
+        river_top, other_top = box_tops(boxes, True, shape), box_tops(boxes, False, shape)
         level, u, half = planes["level_m"], planes["u"], planes["half_m"]
         zone = np.isfinite(u)
         with np.errstate(invalid="ignore"):
@@ -73,9 +74,16 @@ class RiverWater:
             fade = np.clip((1.0 - u) * half / RIVER_EDGE_FADE_M, 0.0, 1.0)
             fade *= np.clip((RIVER_MAX_DEPTH_M - (level - ground)) / RIVER_EDGE_FADE_M, 0, 1)
         speaks = zone & ~deep
-        tops = (river_top, other_top)
-        self.water_dm, self.grades, self.stats = _reconcile(field, ground, speaks, level, tops)
-        fade *= _below_other(level, self.water_dm, self.grades) * ~_steps(level)
+        steps = _steps(level)
+        with np.errstate(invalid="ignore"):
+            valley = speaks & (ground - level <= RIVER_MAX_DEPTH_M)
+            draws = speaks & (u <= 1.0) & ~steps & (level > ground)
+        tops = (river_top, other_top, boxes)
+        self.water_dm, self.grades, self.stats = _reconcile(
+            field, ground, (speaks, valley, draws), level, tops
+        )
+        del valley, draws
+        fade *= _below_other(level, self.water_dm, self.grades) * ~steps
         fade = np.where(speaks, fade, 0.0)
         self.presence = np.round(fade * 255).astype(np.uint8)
         self.level_dm = np.where(zone, np.round(level * hf.DM_PER_M), hf.NODATA).astype(np.int16)
@@ -120,16 +128,21 @@ def _length_m(samples: dict) -> float:
     return float(step[samples["section"][1:] == samples["section"][:-1]].sum())
 
 
-def _reconcile(field, ground, speaks, plane_m, tops):
+def _reconcile(field, ground, ribbon, plane_m, tops):
     """The field's water planes with every texel a river box levelled taken back.
 
     A texel under another water box (a lake the river's AABB overhangs) takes that box's
     level, or goes dry where the ground stands above it, unless the ribbon speaks there and
     runs above that level: then the box is a lake's AABB reaching over the river's valley. Any other where the ribbon speaks
     (its reach, minus where the plane hangs too far over the ground) is dropped: the ribbon
-    draws the river there.
+    draws the river there. Then a lower body takes back the box tops over it
+    (``gamedata.water.lower_bodies``). ``ribbon`` is ``(speaks, valley, draws)``: ``valley``
+    where the ground stands at most ``RIVER_MAX_DEPTH_M`` over the plane, ``draws`` where the
+    ribbon covers the texel. Water in the valley more than that above the plane is a higher
+    body's box over the river (``_over_the_river``).
     """
-    river_top, other_top = tops
+    speaks, valley, draws = ribbon
+    river_top, other_top, boxes = tops
     water = field._water_raster().copy()
     grades = field._water_quality_raster().copy()
     level = water / np.float32(hf.DM_PER_M)
@@ -145,29 +158,49 @@ def _reconcile(field, ground, speaks, plane_m, tops):
         water[relevel] = np.round(other_top[relevel] * hf.DM_PER_M).astype(np.int16)
         above = (grades == hf.WATER_MEASURED) & (ground >= other_top)
         drop = from_river & ((speaks & ~relevel) | (relevel & above))
+    del level
     water[drop] = hf.NODATA
     grades[drop] = hf.WATER_DRY
+    water, lowered = lower_bodies(water, grades, field._height_dm, boxes, OCEAN_LEVEL_M)
+    hung = _over_the_river(water, grades != hf.WATER_DRY, plane_m, valley)
+    water[hung] = np.round(plane_m[hung] * hf.DM_PER_M).astype(np.int16)
+    with np.errstate(invalid="ignore"):
+        gone = hung & (draws | (ground >= plane_m))
+    water[gone] = hf.NODATA
+    grades[gone] = hf.WATER_DRY
     return (
         water,
         grades,
         {
             "from_river_boxes_km2": round(float(from_river.sum()) / 1e6, 4),
-            "dropped_km2": round(float(drop.sum()) / 1e6, 4),
+            "dropped_km2": round(float((drop | gone).sum()) / 1e6, 4),
             "relevelled_km2": round(float((relevel & ~drop).sum()) / 1e6, 4),
+            "lower_bodies_km2": round(lowered / 1e6, 4),
+            "over_the_river_km2": round(float(hung.sum()) / 1e6, 4),
         },
     )
+
+
+def _over_the_river(water, wet, plane_m, valley) -> np.ndarray:
+    """Wet texels in ``valley`` whose level stands more than ``RIVER_MAX_DEPTH_M`` above the
+    ribbon's plane: a higher body's box reaching over the river, as over a fall's basin."""
+    with np.errstate(invalid="ignore"):
+        return valley & wet & (water / np.float32(hf.DM_PER_M) - plane_m > RIVER_MAX_DEPTH_M)
 
 
 def river_terms(terms: dict, z_m, river_m, presence, spacing_m: float) -> dict:
     """Lay a river surface over the band's other water: whichever surface is higher shows.
 
     The river's coverage is its plane crossing the drawn ground, one pixel wide, so the
-    banks are where the game's plane meets the terrain and not where a mask ends.
+    banks are where the game's plane meets the terrain and not where a mask ends. Past the
+    other water's last wet texel (``terms["wet"]``), away from the sea, its edge's blur is no
+    water the river gives way to.
     """
     level = np.where(np.isfinite(river_m), river_m, z_m - np.float32(1e3))
     cross = shore_terms(z_m, spacing_m, level)
     other = z_m + terms["depth_m"]
-    rules = presence * ((terms["cover"] <= 0.0) | (level >= other - RIVER_TIE_M))
+    blur = (terms.get("wet", 1.0) <= 0.0) & (terms["ocean"] <= 0.0)
+    rules = presence * ((terms["cover"] <= 0.0) | blur | (level >= other - RIVER_TIE_M))
     mine = cross["cover"] * rules
     cover = mine + (1.0 - mine) * terms["cover"]
     share = mine / np.maximum(cover, np.float32(1e-6))

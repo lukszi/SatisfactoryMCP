@@ -12,6 +12,7 @@ from scipy import ndimage
 from mapgen.gamedata.biome import REGION_TABLE
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.mesh import WATER_SURFACE_CLASSES
+from mapgen.gamedata.rivers import RIVER_CLASS
 from satisfactory_mcp.core.gameassets.container import SHEET_PX, SLICES, TILE_PX, read_slice
 from satisfactory_mcp.core.gameassets.textures import decode_bc1_rgba
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -31,6 +32,9 @@ WATER_ARTWORK_BANDS = (40, 56, 70)
 
 #: Rows of the 1 m grid classified at a time, so the sheet is never held as integers whole.
 _ROWS_AT_ONCE = 500
+
+#: A box top more than this under a texel's level is another, lower body (§38).
+LOWER_BODY_STEP_M = 2.0
 
 
 def artwork_planes(sheet) -> tuple[np.ndarray, np.ndarray]:
@@ -89,22 +93,59 @@ def water_box_tops(boxes: list[tuple[str, tuple[float, ...]]]) -> tuple[np.ndarr
     tops = np.full((GRID_PX, GRID_PX), np.nan, np.float32)
     used = 0
     for name, box in boxes:
-        if name not in WATER_SURFACE_CLASSES:
-            continue
-        x0, y0, _z0, x1, y1, z1 = box
-        # Vertex-aligned, so a texel is covered when its own point lies inside the box.
-        col0 = max(0, math.ceil((x0 - ORIGIN_X_CM) / SPACING_CM))
-        col1 = min(GRID_PX, math.floor((x1 - ORIGIN_X_CM) / SPACING_CM) + 1)
-        row0 = max(0, math.ceil((y0 - ORIGIN_Y_CM) / SPACING_CM))
-        row1 = min(GRID_PX, math.floor((y1 - ORIGIN_Y_CM) / SPACING_CM) + 1)
-        if col1 <= col0 or row1 <= row0:
+        texels = _box_texels(box, tops.shape) if name in WATER_SURFACE_CLASSES else None
+        if texels is None:
             continue
         used += 1
-        window = tops[row0:row1, col0:col1]
-        top = np.float32(z1 / 100.0)
+        window = tops[texels]
+        top = np.float32(box[5] / 100.0)
         np.maximum(window, top, out=window, where=np.isfinite(window))
         window[~np.isfinite(window)] = top
     return tops, used
+
+
+def _box_texels(box, shape) -> tuple[slice, slice] | None:
+    """The texels a box covers, vertex-aligned: a texel's own point lies inside it."""
+    x0, y0, _z0, x1, y1, _z1 = box
+    col0 = max(0, math.ceil((x0 - ORIGIN_X_CM) / SPACING_CM))
+    col1 = min(shape[1], math.floor((x1 - ORIGIN_X_CM) / SPACING_CM) + 1)
+    row0 = max(0, math.ceil((y0 - ORIGIN_Y_CM) / SPACING_CM))
+    row1 = min(shape[0], math.floor((y1 - ORIGIN_Y_CM) / SPACING_CM) + 1)
+    return None if col1 <= col0 or row1 <= row0 else (slice(row0, row1), slice(col0, col1))
+
+
+def lower_bodies(level_dm, grades, height_dm, boxes, ocean_m: float) -> tuple[np.ndarray, int]:
+    """``level_dm`` with the higher box tops over a lower body given back to it, and how many.
+
+    The field levels a texel at the highest box top over it, so inside the rectangle where a
+    higher body's box reaches over a lower one the lower water stands at the higher top. Each
+    surface box with a level of its own, lowest first, floods from the wet texels at its top
+    every measured texel joined to them, under it, with ground below the top and a level more
+    than ``LOWER_BODY_STEP_M`` above it. A river's AABB has no level of its own, and the box
+    levels of the ocean (``ocean_m`` within a metre) are section 26's.
+    """
+    out = np.array(level_dm, copy=True)
+    measured = (np.asarray(grades) == hf.WATER_MEASURED) & (out != hf.NODATA)
+    wet = (np.asarray(grades) != hf.WATER_DRY) & (out != hf.NODATA)
+    step = round(LOWER_BODY_STEP_M * hf.DM_PER_M)
+    levelled = WATER_SURFACE_CLASSES - {RIVER_CLASS}
+    taken = 0
+    for box in sorted((box for name, box in boxes if name in levelled), key=lambda b: b[5]):
+        top = int(np.round(np.float32(box[5] / 100.0) * hf.DM_PER_M))
+        texels = _box_texels(box, out.shape)
+        if texels is None or abs(top - ocean_m * hf.DM_PER_M) <= hf.DM_PER_M:
+            continue
+        level = out[texels]
+        seeds = wet[texels] & (level == top)
+        under = measured[texels] & (np.asarray(height_dm[texels]) < top) & (level > top + step)
+        if not (seeds.any() and under.any()):
+            continue
+        parts, _count = ndimage.label(seeds | under, structure=np.ones((3, 3), bool))
+        reached = np.unique(parts[seeds])
+        take = under & np.isin(parts, reached[reached > 0])
+        level[take] = top
+        taken += int(take.sum())
+    return out, taken
 
 
 def region_mask(name: str) -> np.ndarray | None:
