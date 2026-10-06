@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.cache import cached_mesh_family, cached_meshes, mesh_stamp
+from mapgen.cache import MeshPlanes, cached_mesh_family, cached_meshes, mesh_stamp
 from mapgen.colour import oklab
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.rocks import families as rockfamily
@@ -162,8 +162,9 @@ def test_the_mesh_cache_holds_a_family_plane_and_the_pass_hands_it_on(tmp_path, 
     stamp = mesh_stamp(32, "b1", render_meshes.READER_VERSIONS["render_meshes"])
     assert cached_meshes(tmp_path, stamp) is not None
     assert cached_mesh_family(tmp_path, stamp) is not None
-    assert _band_family(maps, slice(0, 2)).shape == (2, 32)
-    assert _band_family(maps[:2], slice(0, 2)) is None and _band_family(None, slice(0, 2)) is None
+    assert _band_family(MeshPlanes(*maps), slice(0, 2)).shape == (2, 32)
+    assert _band_family(MeshPlanes(*maps[:2]), slice(0, 2)) is None
+    assert _band_family(None, slice(0, 2)) is None
     del maps, z, cls, family
 
 

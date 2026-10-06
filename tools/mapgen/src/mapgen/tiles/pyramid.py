@@ -1,14 +1,17 @@
-"""Cutting a drawn layer into its two tile pyramids, and the parallel cutter's self-check.
-
-Moved verbatim from ``tools/gen_map_renders.py``.
-"""
+"""Cutting a drawn layer into its two tile pyramids, and the parallel cutter's self-check."""
 
 from __future__ import annotations
 
 import argparse
 import shutil
 import time
+from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
+from types import ModuleType
+from typing import TYPE_CHECKING
+
+import numpy as np
 
 from mapgen.common import RENDERS_DIR_NAME
 from mapgen.gamedata.frame import RENDER_2X_PX
@@ -22,8 +25,13 @@ from satisfactory_mcp.core.gameassets.pyramid import (
     TILES_DIR_NAME,
     install_pyramid,
 )
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
+
+if TYPE_CHECKING:
+    from PIL.Image import Image
 
 __all__ = [
+    "ParallelCheck",
     "add_worker_flags",
     "check_parallel",
     "install_layer",
@@ -31,10 +39,6 @@ __all__ = [
     "pool_sizes",
     "queue_layer",
 ]
-
-# --------------------------------------------------------------------------------------
-# Installing a layer.
-# --------------------------------------------------------------------------------------
 
 
 def add_worker_flags(parser: argparse.ArgumentParser) -> None:
@@ -75,8 +79,8 @@ def pool_sizes(args: argparse.Namespace) -> tuple[int | None, int]:
     return None if light is None else max(1, light), max(1, CUT_WORKERS if cut is None else cut)
 
 
-def layer_dir(out_dir: Path, layer: str, name: str = RENDERS_DIR_NAME) -> Path:
-    return out_dir / name / layer
+def layer_dir(out_dir: Path, layer: str, renders_name: str = RENDERS_DIR_NAME) -> Path:
+    return out_dir / renders_name / layer
 
 
 def queue_layer(cutter: Cutter, source: Source, directory: Path, text: str) -> tuple[Tree, Tree]:
@@ -91,13 +95,13 @@ def queue_layer(cutter: Cutter, source: Source, directory: Path, text: str) -> t
 
 
 def install_layer(
-    sheet_rgb,
-    image_mod,
+    sheet_rgb: np.ndarray,
+    image_mod: ModuleType,
     out_dir: Path,
     layer: str,
     workers: int,
     recipe: int = RECIPE,
-    name: str = RENDERS_DIR_NAME,
+    renders_name: str = RENDERS_DIR_NAME,
 ) -> tuple[dict, dict, float]:
     """Cut one layer's two pyramids into place, and say what they wrote and how long it took.
 
@@ -106,7 +110,7 @@ def install_layer(
     on its own, so a run that dies between them never leaves the page without a base map.
     ``workers`` encode; one cuts serially with ``install_pyramid``, the reference.
     """
-    directory = layer_dir(out_dir, layer, name)
+    directory = layer_dir(out_dir, layer, renders_name)
     directory.mkdir(parents=True, exist_ok=True)
     text = f"tools/gen_map_renders.py, {layer} recipe {recipe}, Lanczos"
     started = time.time()
@@ -120,7 +124,9 @@ def install_layer(
     return stats, dense, time.time() - started
 
 
-def serial_layer(sheet, image_mod, directory: Path, text: str) -> tuple[dict, dict]:
+def serial_layer(
+    sheet: Image, image_mod: ModuleType, directory: Path, text: str
+) -> tuple[dict, dict]:
     """``queue_layer``'s two trees, one tile at a time in this process."""
     stats = install_pyramid(sheet, image_mod, directory, source=text)
     dense_px = min(sheet.width, RENDER_2X_PX)
@@ -138,55 +144,85 @@ def serial_layer(sheet, image_mod, directory: Path, text: str) -> tuple[dict, di
     return stats, dense
 
 
-def check_parallel(sheet_rgb, image_mod, scratch: Path, workers: int) -> dict:
+@dataclass(frozen=True)
+class ParallelCheck:
+    """One pyramid cut serially and in parallel, and whether every tile's bytes agreed.
+
+    ``differing_tiles`` names the first eight that did not.
+    """
+
+    levels: list[int]
+    tiles: int
+    seconds_serial: float
+    seconds_parallel: float
+    workers: int
+    byte_identical: bool
+    differing_tiles: list[str]
+
+    @property
+    def speedup(self) -> float:
+        return round(self.seconds_serial / max(self.seconds_parallel, 1e-9), 2)
+
+    def record(self) -> JsonObject:
+        """The check as the render sidecar keeps it."""
+        return {
+            "levels": list[JsonValue](self.levels),
+            "tiles": self.tiles,
+            "seconds_serial": self.seconds_serial,
+            "seconds_parallel": self.seconds_parallel,
+            "speedup": self.speedup,
+            "workers": self.workers,
+            "byte_identical": self.byte_identical,
+            "differing_tiles": list[JsonValue](self.differing_tiles),
+            "method": (
+                "the whole pyramid cut both ways into two scratch directories, SHA-256 of every "
+                "tile compared name by name: Pillow's resize of the whole sheet and one process "
+                "against the strip resampling and the encode pool"
+            ),
+        }
+
+
+def check_parallel(
+    sheet_rgb: np.ndarray, image_mod: ModuleType, scratch: Path, workers: int
+) -> ParallelCheck:
     """Cut one pyramid twice -- serially and in parallel -- and compare every tile's SHA-256.
 
     The parallel cutter's claim is **identical bytes** rather than equivalence, which a hash
     settles. On demand rather than every run: it costs two extra cuts of the sheet, and it
     guards against a change to the cutter, not against a flaky machine.
     """
-    from hashlib import sha256
-
-    digests = {}
-    timings = {}
-    for name in ("serial", "parallel"):
-        dest = scratch / name
-        dest.mkdir(parents=True, exist_ok=True)
+    serial_dir, parallel_dir = scratch / "serial", scratch / "parallel"
+    serial_dir.mkdir(parents=True, exist_ok=True)
+    started = time.time()
+    install_pyramid(image_mod.fromarray(sheet_rgb), image_mod, serial_dir)
+    seconds_serial = round(time.time() - started, 2)
+    serial = _tile_digests(serial_dir)
+    parallel_dir.mkdir(parents=True, exist_ok=True)
+    with Cutter(image_mod, workers) as cutter:
+        # Wake every encoder before the clock starts: spawning interpreters that each import
+        # numpy costs more than a small cut.
+        list(cutter.encoders.map(int, range(cutter.workers)))
         started = time.time()
-        if name == "serial":
-            install_pyramid(image_mod.fromarray(sheet_rgb), image_mod, dest)
-        else:
-            with Cutter(image_mod, workers) as cutter:
-                # Wake every encoder before the clock starts: spawning interpreters that each
-                # import numpy costs more than a small cut.
-                list(cutter.encoders.map(int, range(cutter.workers)))
-                started = time.time()
-                with cutter.publish(sheet_rgb) as source:
-                    tree = cutter.tree(source, dest, TILES_DIR_NAME, PYRAMID_TILE_PX, "check")
-                cutter.install(tree)
-        timings[name] = round(time.time() - started, 2)
-        digests[name] = {
-            str(path.relative_to(dest)).replace("\\", "/"): sha256(path.read_bytes()).hexdigest()
-            for path in sorted(dest.rglob("*.png"))
-        }
-    same = digests["serial"] == digests["parallel"]
+        with cutter.publish(sheet_rgb) as source:
+            tree = cutter.tree(source, parallel_dir, TILES_DIR_NAME, PYRAMID_TILE_PX, "check")
+        cutter.install(tree)
+    seconds_parallel = round(time.time() - started, 2)
+    parallel = _tile_digests(parallel_dir)
     shutil.rmtree(scratch, ignore_errors=True)
+    return ParallelCheck(
+        levels=sorted({int(name.split("/")[1]) for name in serial}),
+        tiles=len(serial),
+        seconds_serial=seconds_serial,
+        seconds_parallel=seconds_parallel,
+        workers=workers,
+        byte_identical=serial == parallel,
+        differing_tiles=sorted(name for name in serial if serial[name] != parallel.get(name))[:8],
+    )
+
+
+def _tile_digests(root: Path) -> dict[str, str]:
+    """Every PNG under ``root`` by its relative path, and the SHA-256 of its bytes."""
     return {
-        "levels": sorted({int(name.split("/")[1]) for name in digests["serial"]}),
-        "tiles": len(digests["serial"]),
-        "seconds_serial": timings["serial"],
-        "seconds_parallel": timings["parallel"],
-        "speedup": round(timings["serial"] / max(timings["parallel"], 1e-9), 2),
-        "workers": workers,
-        "byte_identical": same,
-        "differing_tiles": sorted(
-            name
-            for name in digests["serial"]
-            if digests["serial"][name] != digests["parallel"].get(name)
-        )[:8],
-        "method": (
-            "the whole pyramid cut both ways into two scratch directories, SHA-256 of every "
-            "tile compared name by name: Pillow's resize of the whole sheet and one process "
-            "against the strip resampling and the encode pool"
-        ),
+        str(path.relative_to(root)).replace("\\", "/"): sha256(path.read_bytes()).hexdigest()
+        for path in sorted(root.rglob("*.png"))
     }

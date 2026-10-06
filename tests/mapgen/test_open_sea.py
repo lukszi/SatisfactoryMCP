@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from mapgen.cache import DirectPlanes
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.water.channel import VOID_ARTWORK_LUMA_MAX, artwork_planes
 from mapgen.palette.relief import water_tint_plane
@@ -22,7 +23,8 @@ from mapgen.palette.water.open_sea import (
 )
 from mapgen.palette.water.rivers import water_sources
 from mapgen.palette.water.shore import OCEAN_LEVEL_M, composite_meshes
-from mapgen.render.compose import DIRECT_LIFT_KNEE_M, composite_top, render_layer
+from mapgen.render.compose import render_layer
+from mapgen.render.surface import DIRECT_LIFT_KNEE_M, composite_top
 from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, pit_mask, relax
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -424,9 +426,8 @@ def test_a_layer_draws_the_artwork_s_sea_and_the_void_past_the_data():
     heights = height.astype(np.float32)
     sea = open_sea(field, (heights, None), None, art, OCEAN_LEVEL_M)
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
-    biome = {"width": 1, "area": np.zeros((1, 1), np.uint8)}
-    old = render_layer("terrain", field, None, biome, borrow, n, False)
-    new = render_layer("terrain", field, None, biome, borrow, n, False, heights, sea=sea)
+    old = render_layer("terrain", field, None, 1, borrow, n, False)
+    new = render_layer("terrain", field, None, 1, borrow, n, False, heights, sea=sea)
     navy = np.all(np.abs(new.astype(np.float32) - SEA_RGB) <= 1, axis=-1)
     assert np.all(np.abs(old[:, 45:].astype(np.float32) - SEA_RGB) <= 1), "before: all navy"
     assert not navy[4:28, 45:].any(), "the artwork's sea is drawn as sea"
@@ -462,14 +463,13 @@ def test_a_rock_under_the_sea_s_level_is_the_void_s_where_the_sea_fades_into_it(
     ground = heights.copy()
     sea = open_sea(field, (heights, ground), None, art, OCEAN_LEVEL_M)
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
-    biome = {"width": 1, "area": np.zeros((1, 1), np.uint8)}
 
     def draw(top_m):
         rock = np.zeros((n, n), np.uint8)
         rock[480:530, 200:] = top_m is not None
-        direct = (np.full((n, n), (top_m or 0) * 100.0, np.float32), rock, ground, 1)
+        direct = DirectPlanes(np.full((n, n), (top_m or 0) * 100.0, np.float32), rock, ground, 1)
         surface = _Surface(n)
-        rgb = render_layer("terrain", field, None, biome, borrow, n, False, heights,
+        rgb = render_layer("terrain", field, None, 1, borrow, n, False, heights,
                            direct=direct, sea=sea, surface=surface)  # fmt: skip
         return rgb[490:520].astype(np.int16), surface.z[490:520], surface.land[490:520]
 

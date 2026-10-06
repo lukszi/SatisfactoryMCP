@@ -13,10 +13,17 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting import stage
 from mapgen.lighting.stage import Surface, bake_light, occluder_planes
-from mapgen.render.light import LIGHT_CACHE_DIR_NAME, add_light_flags, claim_scratch, light_run
+from mapgen.render.light import (
+    LIGHT_CACHE_DIR_NAME,
+    SCRATCH_IN_USE,
+    add_light_flags,
+    claim_scratch,
+    light_run,
+)
 
 
 def _args(*argv: str) -> argparse.Namespace:
@@ -56,8 +63,9 @@ def test_a_lit_run_starts_by_emptying_what_a_killed_run_left(tmp_path):
 def test_the_scratch_of_a_render_still_running_is_refused_and_left_as_it_is(tmp_path):
     live = Surface(tmp_path / LIGHT_CACHE_DIR_NAME, 16)
     np.save(live.path("terms"), np.zeros((16, 16, 3), np.uint8))
-    with pytest.raises(SystemExit, match="still running"):
+    with pytest.raises(Refusal, match="still running") as refused:
         claim_scratch(_args(), tmp_path)
+    assert refused.value.code == SCRATCH_IN_USE
     assert live.path("terms").is_file() and live.path("z").is_file()
     live.close()
 
@@ -73,6 +81,13 @@ def test_a_run_that_fails_still_deletes_its_scratch(tmp_path):
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
     with light_run(None, 16, _painted()) as run:
         assert run is None
+
+
+def test_crowns_that_fail_to_write_leave_no_scratch_behind(tmp_path):
+    broken = SimpleNamespace(crown=np.full((8, 8), 120, np.int16), meta={"grid": {}})
+    with pytest.raises(KeyError), light_run(tmp_path, 16, broken):
+        pass
+    assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
 
 
 def _surface(work: Path, size: int) -> Surface:

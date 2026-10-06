@@ -202,6 +202,7 @@ def test_workers_is_the_default_for_the_light_and_the_cut_and_each_flag_wins():
 
 def test_check_parallel_compares_a_whole_pyramid_and_says_so(tmp_path):
     check = layer_pyramid.check_parallel(_sheet(512), Image, tmp_path / "check", 2)
-    assert check["byte_identical"] and check["differing_tiles"] == []
-    assert (check["levels"], check["tiles"], check["workers"]) == ([0, 1], 5, 2)
+    assert check.byte_identical and check.differing_tiles == []
+    assert (check.levels, check.tiles, check.workers) == ([0, 1], 5, 2)
+    assert check.record()["byte_identical"] is True
     assert not (tmp_path / "check").exists()

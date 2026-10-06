@@ -98,4 +98,5 @@ def test_an_unlit_run_deletes_its_crown_occluder_with_the_light_cache(tmp_path):
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME / "crowns.npy").exists(), "written once"
     run.close()
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
-    assert crown_occluder(SimpleNamespace(), tmp_path, 16) is None
+    assert crown_occluder(SimpleNamespace(crown=None), tmp_path, 16) is None
+    assert crown_occluder(None, tmp_path, 16) is None
