@@ -66,7 +66,7 @@ import "./map/drawn/placements";
 import "./map/drawn/plan-sitings";
 import "./map/drawn/power-wires";
 import "./map/drawn/routes";
-import "./dash/world/world";
+import "./dash/world/world-here";
 
 /* ------------------------------------------------------------------- wiring */
 

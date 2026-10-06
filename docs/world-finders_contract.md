@@ -367,9 +367,11 @@ every tag `chip`. Numbers through `kit/format.ts`, words through `kit/words.ts`,
 
 | Module | Owns | Primitives it must use |
 |---|---|---|
-| `dash/world/world.ts` (new) | section shell `renderWorld(body, subject)`, `tabs2` of the six views, **here** and **regions** views; registers `/api/world/here` (live wave); exports `here()`, `onHere()` | `tabs2`, `table`, `button`, `link`, `empty/loading/error`, `chip`, `format.num/perMin`, `W`, `nav.dashParts`/`subjectQuery`, `pointButton` |
+| `dash/world/world.ts` (new) | section shell `renderWorld(body, subject)`, `tabs2` of the six views, the **regions** view | `tabs2`, `table`, `button`, `link`, `empty/loading/error`, `chip`, `format.num/perMin`, `W`, `nav.dashParts`/`subjectQuery`, `pointButton` |
+| `dash/world/world-here.ts` | the **here** view; registers `/api/world/here` (live wave) | as `world.ts` |
+| `dash/world/world-kit.ts` | what the views share: the address, one read per view, the filter fields, the repeated columns | `selectBox`, `capRows`, `code()` copy cells |
 | `dash/world/world-nodes.ts` (new) | nodes and fields | `table` (sortable), `pressed` (free), `button` (map, show all on map), `chip` (status, moved), `code()` copy cells, `latest("world-nodes")` |
-| `dash/world/world-rank.ts` (new) | the rank tab: resource, near anchor, within slider, pure only, the sites table; `rankSources(params)`, `fromFieldsRank(params)` | `choice` via `selectField`, `pressed`, `button`, `rangeField` (dash/world/world.ts), `note`, `panel.vitals`, `pins.livePins` |
+| `dash/world/world-rank.ts` (new) | the rank tab: resource, near anchor, within slider, pure only, the sites table; `rankSources(params)`, `fromFieldsRank(params)` | `choice` via `selectField`, `pressed`, `button`, `rangeField` (dash/world/world-kit.ts), `note`, `panel.vitals`, `pins.livePins` |
 | `dash/world/world-conduits.ts` (new) | runs and networks | `table`, `tabs2` (runs/networks), `button`, `latest("world-conduits")` |
 | `dash/world/world-pickups.ts` (new) | census and lists | `table`, `tabs2` (remaining/collected/nearest), `chip`, `markers.pickupName`, `crates`-style loot line from `markers.lootLine` (exported), `latest("world-pickups")` |
 | `map/tools/finder.ts` (new) | the map card `finder`, the `finder` pane (z 445, under trace's 450), `startAt(kind, x, y)`, `showRows(...)`, `showRef(ref)`, delegated click on `data-find` | `mapCard`, `claim`, `cardHead/Row/Line/Heading`, `tabs2`, `table`, `button`, `HIGHLIGHT`, `latest("finder")`, `select()` |
@@ -384,7 +386,7 @@ every tag `chip`. Numbers through `kit/format.ts`, words through `kit/words.ts`,
 | `app/settings.ts` | spoiler hint: "later tiers, MAM trees, phases, locked recipes and unfound pickups" | — |
 | `kit/words.ts` | `free`, `tapped`, `locked`, `field`, `node`, `run`, `network`, `remaining`, `collected`, `neverStreamed: "never streamed"`, `mapDataBehind: "map data older than this save"` | — |
 | `kit/dom.ts` | `FIND_ATTR = "data-find"`, `FIND_AT_ATTR = "data-find-at"` beside the trace constants | — |
-| `main.ts` | FEATURES line `import "./world";`; `listenForFinds()` beside `listenForTraces()` | — |
+| `main.ts` | FEATURES line `import "./dash/world/world-here";`; `listenForFinds()` beside `listenForTraces()` | — |
 | `api/shapes.ts` | aliases for every §3.2 name | — |
 | `style.css` | World filter bar, finder pane classes; tokens only, no hex | — |
 
@@ -578,7 +580,7 @@ read-only for both.
 
 **FRONTEND**
 
-- `frontend/src/dash/world/world.ts`, `dash/world/world-nodes.ts`, `dash/world/world-conduits.ts`, `dash/world/world-pickups.ts`, `map/tools/finder.ts` (new)
+- `frontend/src/dash/world/world.ts`, `dash/world/world-here.ts`, `dash/world/world-kit.ts`, `dash/world/world-nodes.ts`, `dash/world/world-conduits.ts`, `dash/world/world-pickups.ts`, `map/tools/finder.ts` (new)
 - `frontend/src/map/inspector.ts`, `app/selection.ts`, `app/status.ts`, `dash/shell.ts`, `app/nav.ts`, `dash/recipes/recipes.ts` (query helper only), `map/drawn/markers.ts`, `map/panel.ts` (`showSelector` only), `dash/planner/planner.ts` (`focusBody`, `onSelect` only), `app/settings.ts` (hint only), `kit/words.ts`, `kit/dom.ts` (constants only), `main.ts` (FEATURES line and one listener), `api/shapes.ts`, `style.css`
 
 ---
