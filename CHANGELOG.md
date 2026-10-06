@@ -61,6 +61,11 @@ Planned as 0.2.0.
   the painted layer, because the tree crowns are written once, where the bake reads them.
   `--scratch-dir` moves it off the cache drive. It is still not compressed: nothing reads it
   after the run that wrote it.
+- Map generator: a layer is drawn on several threads, 8 by default and fewer when free memory
+  is short, so the draw stage of a full-size render takes about a third as long, about an
+  hour less; the tiles are the same bytes. It needs about 2 GB of memory a thread at full
+  size, 3.4 GB for the painted layer. `--draw-threads 1` draws one band at a time as before.
+  The render's `meta.json` records the count as `draw_threads`.
 - `pioneersav`'s submodules re-export less; the top-level `pioneersav` API is unchanged.
   `pioneersav.properties` no longer exposes `ObjectReference`, `ObjectSlice`, `ParseError`,
   `Reader`, `FIRST_MODERN_BODY` or `TAG_EXTENSIONS`; `objects` no longer lists `ParseError`,

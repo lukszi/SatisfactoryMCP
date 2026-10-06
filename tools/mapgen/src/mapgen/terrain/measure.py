@@ -87,11 +87,24 @@ class SeamTrace:
         stride = max(1, values.size // SEAM_SAMPLE_MAX_PER_BAND)
         return values[::stride].astype(np.float32)
 
-    def _keep(self, name: str, curvature: np.ndarray, mask: np.ndarray) -> None:
-        if mask.any():
-            self.pools[name].append(self._thin(curvature[mask]))
-
     def add(self, z_m, z_switched, w, spacing_m: float, delta=None) -> None:
+        self.merge(self.measure(z_m, z_switched, w, spacing_m, delta))
+
+    def merge(self, measured: tuple) -> None:
+        """Pool one band's ``measure``; bands merged in sheet order pool what ``add`` would."""
+        rows, kept = measured
+        self.rows += rows
+        for name, values in kept:
+            self.pools[name].append(values)
+
+    def measure(self, z_m, z_switched, w, spacing_m: float, delta=None) -> tuple:
+        """One band's rows and thinned pools, touching nothing shared: safe on any thread."""
+        kept: list[tuple[str, np.ndarray]] = []
+
+        def keep(name: str, curvature: np.ndarray, mask: np.ndarray) -> None:
+            if mask.any():
+                kept.append((name, self._thin(curvature[mask])))
+
         blended = np.abs(np.diff(z_m, n=2, axis=1)) / (spacing_m * spacing_m)
         switched = np.abs(np.diff(z_switched, n=2, axis=1)) / (spacing_m * spacing_m)
         # A second difference reads three texels, so it belongs to the regime all three of
@@ -102,20 +115,20 @@ class SeamTrace:
         top = np.maximum(np.maximum(low, middle), high)
         bottom = np.minimum(np.minimum(low, middle), high)
         at_seam = (top > SEAM_PURE) & (bottom < 1.0 - SEAM_PURE)
-        self.rows += z_m.shape[0]
         if not at_seam.any():
-            return
+            return z_m.shape[0], kept
         near = ndimage.maximum_filter1d(at_seam, 2 * SEAM_NEAR_TEXELS + 1, axis=1, mode="nearest")
-        self._keep("seam", blended, at_seam)
-        self._keep("switch", switched, at_seam)
-        self._keep("pure_direct", blended, near & (bottom >= 1.0 - SEAM_PURE))
-        self._keep("pure_kernel", blended, near & (top <= SEAM_PURE))
+        keep("seam", blended, at_seam)
+        keep("switch", switched, at_seam)
+        keep("pure_direct", blended, near & (bottom >= 1.0 - SEAM_PURE))
+        keep("pure_kernel", blended, near & (top <= SEAM_PURE))
         if delta is None:
-            return
+            return z_m.shape[0], kept
         gap = np.abs(delta)
         same = np.minimum(np.minimum(gap[:, :-2], gap[:, 1:-1]), gap[:, 2:]) <= SEAM_SAME_SURFACE_M
-        self._keep("seam_same_surface", blended, at_seam & same)
-        self._keep("pure_same_surface", blended, near & same & ~at_seam)
+        keep("seam_same_surface", blended, at_seam & same)
+        keep("pure_same_surface", blended, near & same & ~at_seam)
+        return z_m.shape[0], kept
 
     def result(self) -> dict:
         pooled = {
@@ -195,19 +208,31 @@ class RegimeCoverage:
         self.weight: dict[int, float] = {}
 
     def add(self, prov: np.ndarray, w: np.ndarray, measured: np.ndarray) -> None:
+        self.merge(self.measure(prov, w, measured))
+
+    def merge(self, measured: list) -> None:
+        """Add one band's ``measure``; bands merged in sheet order sum what ``add`` would."""
+        for key, counts, weight in measured:
+            row = self.counts.setdefault(key, [0, 0, 0, 0])
+            for index in range(4):
+                row[index] += counts[index]
+            self.weight[key] = self.weight.get(key, 0.0) + weight
+
+    @staticmethod
+    def measure(prov: np.ndarray, w: np.ndarray, measured: np.ndarray) -> list:
+        """One band's counts and weight per province, touching nothing shared."""
         regime = np.where(
             w >= 1.0 - SEAM_PURE,
             np.where(measured, 0, 1),
             np.where(w > SEAM_PURE, 2, 3),
         )
+        out = []
         for value in np.unique(prov):
-            key = int(value)
-            row = self.counts.setdefault(key, [0, 0, 0, 0])
             here = prov == value
             picked = regime[here]
-            for index in range(4):
-                row[index] += int(np.count_nonzero(picked == index))
-            self.weight[key] = self.weight.get(key, 0.0) + float(w[here].sum())
+            counts = [int(np.count_nonzero(picked == index)) for index in range(4)]
+            out.append((int(value), counts, float(w[here].sum())))
+        return out
 
     NAMES = ("direct_measured", "direct_facet", "faded", "kernel")
 
