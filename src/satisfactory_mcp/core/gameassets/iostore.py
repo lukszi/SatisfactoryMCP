@@ -1,16 +1,8 @@
 """The container: a read-only UE5 IoStore reader, enough of one to get ``.umap`` bytes out.
 
-A ``.utoc`` is the table of contents and the ``.ucas`` beside it is the blob; together they
-are how UE 5 ships a cooked game. This reads them and never writes one. It was the opening
-section of ``tools/gen_world_collectibles.py``, which the three other generators reached by
-importing that file by path.
-
-**The Oodle decompressor is a parameter.** Container blocks are Oodle-compressed and the
-only decompressor available is ``ooz``, from the ``gen`` extra -- so ``IoStore`` takes the
-callable rather than importing it, which is what lets this module be imported (and driven by
-the test suite with a stand-in) on a machine that has no such package installed.
-``oodle_decompress`` below is the real one, ready to be handed in, and it does its import
-inside the call.
+A ``.utoc`` is the table of contents and the ``.ucas`` beside it is the blob; this reads them
+and never writes one. Blocks are Oodle-compressed, so ``IoStore`` takes its decompressor as a
+callable (DESIGN.md), and ``oodle_decompress`` below is the real one, ready to be handed in.
 """
 
 from __future__ import annotations

@@ -1,13 +1,9 @@
 """What a cooked texture's bytes are: how long the mip chain is, and the blocks unpacked.
 
-**The file's length is the integrity check.** A mip chain is stored largest-first with nothing
-between the levels, so its total is arithmetic: a ``.ubulk`` of any other length was re-cooked,
-i.e. the game changed, and is not decoded on a guess. :func:`inline_chain_side` is that check
-for a texture with no ``.ubulk``, whose levels are ``BulkDataMap`` entries in the ``.uasset``.
-
-All three decoders below hand back **BGRA**, so Pillow is told ``"raw", "BGRA"``; read as
-``"RGBA"`` the picture survives a glance with red and blue swapped. ``texture2ddecoder`` and
-Pillow arrive as arguments, so a machine without the ``gen`` extra still imports this module.
+A mip chain is stored largest-first with nothing between the levels, so **its length is the
+integrity check**: a ``.ubulk`` of any other length was re-cooked and is not decoded on a
+guess. The decoders hand back **BGRA**, so Pillow is told ``"raw", "BGRA"``; read as
+``"RGBA"`` the picture survives a glance with red and blue swapped.
 """
 
 from __future__ import annotations

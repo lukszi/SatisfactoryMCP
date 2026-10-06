@@ -1,26 +1,10 @@
 """The game's own map areas: a 4096x4096 raster, and what each palette index is called.
 
-``/Game/FactoryGame/Interface/UI/Minimap/MapAreaPersistenLevel/MapareatexturePersistentLevel``
-is an ``FGMapAreaTexture``. It carries ``mDataWidth`` 4096, ``mAreaData`` -- 4096x4096 palette
-indices, row 0 north -- and ``mColorToArea``, one entry per index naming the ``UFGMapArea``
-object that index means and the bounding box of its extent in texels. This is the game's own
-biome geometry: exact polygon boundaries rasterised at 1.83 m, not an approximation of them.
-
-**A palette index resolves to one area by ``PublicExportHash``, never by package name.** This
-build ships thirty-five ``Area_*`` assets under eighteen package names -- ``Area_RedJungle_1``
-and ``Area_RedJungle_2`` are both ``.../Area_RedJungle`` -- and such a pair does not always
-mean one place: the two ``Area_crater`` assets carry different display names. The hash is
-unique across the container, so :meth:`PackageView.import_export_hash` against an asset's own
-export map says exactly which file.
-
-**The names are the game's own.** Each asset's default object carries ``mDisplayName``, an
-``FText`` whose history is a string-table reference, and the KEY is what is read here --
-``Area_Savanna_1`` announcing ``Locations/RockyDesert`` is the game saying those two areas are
-one named region. The localised string it points at lives in ``AllStringTables.locres``, which
-this reader does not open.
-
-Nothing here is artwork: the raster is palette indices, the areas are identifiers, and
-``mColorPalette`` is decoded only for the record -- it is a minimap legend of flat primaries.
+The ``FGMapAreaTexture`` ``MapareatexturePersistentLevel`` carries ``mAreaData`` -- palette
+indices, row 0 north, the game's own biome boundaries rasterised at 1.83 m -- and
+``mColorToArea``, naming the ``UFGMapArea`` each index means and its texel bounding box. Nothing
+here is artwork: the raster is indices, the areas are identifiers, and the names are the
+game's own string-table keys.
 """
 
 from __future__ import annotations
@@ -235,8 +219,10 @@ def _colour_to_area(
 def _areas_by_export_hash(store, scripts: ScriptObjects | None) -> dict[int, Area]:
     """Every ``Area_*`` asset beside the texture, keyed by the hash an import names it by.
 
-    A directory scan rather than a list, because a list is a claim about the game that goes
-    stale silently: this build has an ``Area_EasternDuneForest_1`` the texture never references.
+    By ``PublicExportHash``, never by package name: this build ships thirty-five ``Area_*``
+    assets under eighteen package names, and such a pair is not always one place -- the two
+    ``Area_crater`` assets carry different display names. A directory scan rather than a list,
+    because a list goes stale silently: ``Area_EasternDuneForest_1`` is never referenced.
     """
     out: dict[int, Area] = {}
     for path in sorted(store.by_path):
@@ -274,7 +260,9 @@ def _display_name(view: PackageView) -> tuple[str | None, str | None]:
     The property is an ``FText``: ``int32`` flags, one history byte, then the history's payload.
     History 11 is a string-table entry, whose payload is an ``FName`` table id and an ``FString``
     key. Anything else comes back as nothing rather than guessed at, because inventing a label
-    defeats a table whose point is that the labels come from the game.
+    defeats a table whose point is that the labels come from the game. The KEY is the answer
+    (``Area_Savanna_1`` announcing ``Locations/RockyDesert`` joins two areas into one region);
+    the localised string lives in ``AllStringTables.locres``, which this does not open.
     """
     for export in view.exports:
         payload = view.props(export["slot"]).get(_DISPLAY_NAME)

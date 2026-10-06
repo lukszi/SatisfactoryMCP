@@ -212,11 +212,12 @@ SatisfactoryMcp/
     server.py          # thin: imports the tool modules, re-exports, main()
     config.py          # env: SATISFACTORY_DOCS, SATISFACTORY_SAVES, cache dir
     core/              # knows nothing about anything above it
-      gameassets/      # GENERATION-TIME only, used by tools/gen_*.py and nothing else
-                       # (§19, docs/parked.md):
+      gameassets/      # the generators' readers; the server reads only versions,
+                       # provenance and pyramid (§19, docs/parked.md):
                        # iostore.py (the game's own .utoc/.ucas container, Oodle
-                       # decompressor injected) + packages.py (a cooked package's
-                       # exports, property tags and transform chain)
+                       # decompressor injected) + packages/ (a cooked package's
+                       # Zen header, exports, property tags and transform chain)
+                       # staticmesh.py + nanite.py (mesh LODs, hulls, Nanite pages)
                        # provenance.py (which build an artifact was cut from, and the
                        # staged rename that stops one saying two things at once)
                        # textures.py (a mip chain's length, BC1 -> RGBA) +
@@ -292,12 +293,20 @@ path whose only job is to forward an import is a second name for one module, and
 always goes stale. `git log --follow` reaches through every move.
 
 **Generation time is not runtime.** `core/gameassets/` and `tools/` exist to cut the artifacts under
-`data/` out of the installed game; nothing the server answers a request with goes through them. They sit
-in `core` because four generators share them, and `tools/` is a package so the suite imports a generator
-by name rather than loading a file by path. Their decoders — `pyooz`, `texture2ddecoder`, `pillow` — are
-the optional `gen` extra, **optional at import time**: the server, the parser, the domain and the whole
-test suite run on a machine with none of the three installed, and `tests/test_architecture.py` reads the
-AST to keep it that way. The full record is §19, in [docs/parked.md](docs/parked.md).
+`data/` out of the installed game, and the server answers no request by reading the game's container.
+What it does take from `core/gameassets` is three small modules: `versions` (the artifact versions a
+render is checked against), `provenance` (which build an artifact, or the install, is) and `pyramid`
+(the tile layout the map serves). The package sits in `core` because several generators share it, and
+`tools/` is a package so the suite imports a generator by name rather than loading a file by path. The
+decoders — `pyooz`, `texture2ddecoder`, `pillow` — are the optional `gen` extra, **optional at import
+time**: no module imports one at module scope, and they are injected rather than found. `IoStore` takes
+its block decompressor as a callable (`iostore.oodle_decompress` is a convenience a caller may pass),
+`textures.decode_bc1_rgba` takes the BC1 decoder and Pillow, and `pyramid.install_pyramid` takes the image
+module, so the suite drives all three with stand-ins. The one body that imports Pillow itself is
+`pyramid._encode_tile_row`, because a spawned worker cannot be handed a module through a pickle. The
+server, the parser, the domain and the whole test suite run on a machine with none of the three installed,
+and `tests/test_architecture.py` reads the AST to keep it that way. The full record is §19, in
+[docs/parked.md](docs/parked.md).
 
 **The web adapter.** `interfaces/web/` is a *sibling* of `interfaces/mcp/`, not a layer above it: both are
 thin adapters over the same domain, and neither imports the other — the web app duplicates the two-line
