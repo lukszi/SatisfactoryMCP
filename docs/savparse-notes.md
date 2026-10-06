@@ -23,14 +23,14 @@ was corrected rather than kept alongside.
 | object references | `pioneersav/references.py` (67) | done |
 | header | `pioneersav/header.py` (236) | done |
 | chunk decompression | `pioneersav/chunks.py` (124) | done |
-| body, levels, object headers | `pioneersav/objects.py` (751) | done |
+| body, levels, object headers | `pioneersav/objects.py` (741) | done |
 | the three destroyed-actor lists | `pioneersav/destroyed.py` (78) | done |
 | tagged property serialiser | `pioneersav/properties/` (926, in five modules) | done |
 | composition + the sidecar switch | `pioneersav/save.py` (201) | done |
 | the lightweight buildables' trailing bytes | `pioneersav/lightweight.py` (190) | done |
 | the other seven classes' trailing bytes | `pioneersav/trailers.py` (156) | done |
 
-Line counts are `wc -l` on the tree as it stands; 2,982 with `__init__.py`'s 68 and
+Line counts are `wc -l` on the tree as it stands; 2,972 with `__init__.py`'s 68 and
 `versions.py`'s 73.
 
 **132 tests** across eight `tests/test_savparse_*.py` files, inside a suite of **918 passing, 1
