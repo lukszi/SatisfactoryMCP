@@ -107,7 +107,12 @@ pythonVersion = "3.11"
 pythonPlatform = "Windows"
 typeCheckingMode = "standard"
 # A package or module joins this list when it reaches zero strict errors.
-strict = ["src/satisfactory_mcp/core/arrays.py", "src/satisfactory_mcp/core/jsontypes.py"]
+strict = [
+    "src/satisfactory_mcp/core/arrays.py",
+    "src/satisfactory_mcp/core/jsontypes.py",
+    "src/satisfactory_mcp/domain/spatial/heightfield/__init__.py",
+    "src/satisfactory_mcp/domain/spatial/heightfield/planes.py",
+]
 reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.ruff]
