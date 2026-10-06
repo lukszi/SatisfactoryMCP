@@ -50,7 +50,8 @@ def _category_entry(ctx: BuildContext, category: str) -> dict:
     if category in CATEGORY_NOTES:
         entry["note"] = CATEGORY_NOTES[category]
     entry["class"] = next(c for c, cat in CATEGORIES.items() if cat == category)
-    entry["class_path"] = next(p.class_path for p in placements)
+    # None for a category the map no longer places: a game update must not kill the run.
+    entry["class_path"] = next((p.class_path for p in placements), None)
     return entry
 
 
