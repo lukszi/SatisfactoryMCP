@@ -209,6 +209,12 @@ those styles, built once per run. `falls` are the prepared waterfalls and `river
 `RiverWater` whose ribbons replace the field's river water. `window` draws part of the sheet,
 which is how crops are compared.
 
+On a sheet coarser than the paint's 1 m grid (4096 px and below) the painted layer samples
+its ground over each pixel's footprint (`terrain.sample.taps_footprint`). One bilinear sample
+of the 1 m ground per 3.66 m pixel drew the bake's stippled blends as speckle and its 1 to 2 m
+trails as dotted lines, in the Rocky Desert most of all. A pixel no wider than a texel keeps
+the bilinear taps, so 8192 px and up draw as before.
+
 ### Light (`lighting/hillshade.py`)
 
 - **The sun** sits north-west at 45 degrees, the convention every relief map uses. Lit from
