@@ -136,7 +136,7 @@ def test_biome_tints_move_the_ground_towards_the_biome():
 def test_a_restyle_names_every_cache_it_cannot_use(tmp_path):
     stamp = raster_cache_stamp(64, 1, "build 1")
     meshes = mesh_stamp(64, "build 1", 1)
-    assert missing_caches(tmp_path, stamp, meshes, True, True) == [
+    assert missing_caches(tmp_path, stamp, meshes, top=True, meshes=True) == [
         DIRECT_CACHE_DIR_NAME,
         TOP_CACHE_DIR_NAME,
         MESH_CACHE_DIR_NAME,
@@ -147,7 +147,9 @@ def test_a_restyle_names_every_cache_it_cannot_use(tmp_path):
         (folder / CACHE_SIDECAR_NAME).write_text(json.dumps(stamp), encoding="utf-8")
         np.zeros((64, 64), np.float32).tofile(folder / DIRECT_Z_NAME)
         np.zeros((64, 64), np.uint8).tofile(folder / DIRECT_COVERAGE_NAME)
-    assert missing_caches(tmp_path, stamp, meshes, True, False) == []
-    assert missing_caches(tmp_path, stamp, meshes, True, True) == [MESH_CACHE_DIR_NAME]
+    assert missing_caches(tmp_path, stamp, meshes, top=True, meshes=False) == []
+    assert missing_caches(tmp_path, stamp, meshes, top=True, meshes=True) == [MESH_CACHE_DIR_NAME]
     other = raster_cache_stamp(128, 1, "build 1")
-    assert missing_caches(tmp_path, other, meshes, False, False) == [DIRECT_CACHE_DIR_NAME]
+    assert missing_caches(tmp_path, other, meshes, top=False, meshes=False) == [
+        DIRECT_CACHE_DIR_NAME
+    ]

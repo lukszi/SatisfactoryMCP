@@ -114,12 +114,12 @@ from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.rasters import (
     DIRECT_SUBSAMPLES,
     direct_placements,
-    rasterise_direct,
     rasterise_direct_band,
     rasterise_top_band,
     read_cliff_geometry,
     sweep_world,
     top_items,
+    write_banded_raster,
 )
 from mapgen.terrain.sample import direct_mask, taps_cubic, taps_pchip
 from mapgen.tiles.pyramid import (
@@ -420,7 +420,8 @@ def main() -> int:
         root = args.cache_dir or out_dir / args.renders_name
         titan = "painted" in layers and not args.no_titan_trees
         gaps = restyle_gaps(root, args.size, args.direct_subsamples, field_build,
-                            not args.no_top, not args.no_meshes, titan)  # fmt: skip
+                            top=not args.no_top, meshes=not args.no_meshes,
+                            titan=titan)  # fmt: skip
         if gaps:
             print(f"--restyle: {', '.join(gaps)} under {root} is missing or for another size "
                   "or build. Draw once with --cache-dir and --keep-direct to keep it.")  # fmt: skip
@@ -667,7 +668,7 @@ def main() -> int:
             families = placement_families(store, scripts, loaded["index"], geometry["sweep"])
             prepared, dropped = direct_placements(geometry["sweep"], geometry["geometry"], families)
             print(f"  {len(prepared)} placements rasterised, dropped {dropped}")
-            cache_stats = rasterise_direct(
+            cache_stats = write_banded_raster(
                 partial(rasterise_direct_band, prepared, geometry["geometry"], with_source=True),
                 cache,
                 args.size,
@@ -743,7 +744,7 @@ def main() -> int:
                     f"  {top_meta['arch_placements']} arches, "
                     f"{top_meta['foliage_instances']} boulders {top_meta['foliage_sources']}"
                 )
-                top_stats = rasterise_direct(
+                top_stats = write_banded_raster(
                     partial(rasterise_top_band, items),
                     top_cache,
                     args.size,

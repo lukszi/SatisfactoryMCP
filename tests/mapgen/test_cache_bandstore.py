@@ -38,7 +38,7 @@ from mapgen.commands.compress_cache import compress
 from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.terrain import render_meshes
-from mapgen.terrain.rasters import rasterise_direct, reduce_direct, reduce_source
+from mapgen.terrain.rasters import reduce_direct, reduce_source, write_banded_raster
 from mapgen.terrain.render_meshes import rasterise_meshes
 
 pytest.importorskip("zstandard")
@@ -189,7 +189,7 @@ def _mesh_band(prepared, x0_cm, y0_cm, scale_cm, rows, cols):
 @pytest.mark.parametrize("storage", [STORAGE_RAW, STORAGE_BANDS])
 def test_both_storages_hit_and_hold_the_same_planes(tmp_path, monkeypatch, storage):
     folder, stamp = tmp_path / DIRECT_CACHE_DIR_NAME, raster_cache_stamp(SIZE, 1, "b1")
-    stats = rasterise_direct(_band_raster, folder, SIZE, 1, stamp, False, storage)
+    stats = write_banded_raster(_band_raster, folder, SIZE, 1, stamp, False, storage)
     assert stats["storage"] == storage
     z, cov = cached_raster(folder, stamp)
     family = cached_family(folder, stamp)
@@ -210,7 +210,7 @@ def test_both_storages_hit_and_hold_the_same_planes(tmp_path, monkeypatch, stora
     want_z, want_class = _mesh_band({}, 0, BOUNDS_M["y_min_m"] * 100, step, SIZE, SIZE)
     assert _same(mesh_class[:], want_class)
     assert _same(mesh_z[:], np.where(want_class > 0, want_z, 0.0).astype(np.float32))
-    assert missing_caches(tmp_path, stamp, key, False, True) == []
+    assert missing_caches(tmp_path, stamp, key, top=False, meshes=True) == []
     del z, cov, family, mesh_z, mesh_class
 
 
@@ -230,12 +230,12 @@ def test_a_legacy_cache_without_a_storage_field_still_hits(tmp_path):
 
 def test_a_rewrite_in_the_other_storage_removes_the_first(tmp_path):
     stamp = raster_cache_stamp(SIZE, 1, "b1")
-    rasterise_direct(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_RAW)
-    rasterise_direct(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_BANDS)
+    write_banded_raster(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_RAW)
+    write_banded_raster(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_BANDS)
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
         [CACHE_SIDECAR_NAME] + [name + BANDS_SUFFIX for name in DIRECT_PLANES]
     )
-    rasterise_direct(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_RAW)
+    write_banded_raster(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_RAW)
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
         [CACHE_SIDECAR_NAME, *DIRECT_PLANES]
     )
@@ -243,7 +243,7 @@ def test_a_rewrite_in_the_other_storage_removes_the_first(tmp_path):
 
 def test_a_corrupt_band_raises_and_unstamps_its_cache_so_the_next_run_misses(tmp_path):
     stamp = raster_cache_stamp(SIZE, 1, "b1")
-    rasterise_direct(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_BANDS)
+    write_banded_raster(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_BANDS)
     _corrupt_band(tmp_path / (DIRECT_Z_NAME + BANDS_SUFFIX), (SIZE, SIZE), np.float32, 1)
     z, _cov = cached_raster(tmp_path, stamp)
     with pytest.raises(BandStoreError, match="band 1"):
@@ -254,7 +254,7 @@ def test_a_corrupt_band_raises_and_unstamps_its_cache_so_the_next_run_misses(tmp
 
 def test_a_truncated_band_file_is_a_miss(tmp_path):
     stamp = raster_cache_stamp(SIZE, 1, "b1")
-    rasterise_direct(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_BANDS)
+    write_banded_raster(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_BANDS)
     plane = tmp_path / (DIRECT_COVERAGE_NAME + BANDS_SUFFIX)
     plane.write_bytes(plane.read_bytes()[:-100])
     assert cached_raster(tmp_path, stamp) is None
@@ -266,7 +266,7 @@ def test_a_truncated_band_file_is_a_miss(tmp_path):
 
 def _raw_caches(root):
     stamp = raster_cache_stamp(SIZE, 1, "b1")
-    rasterise_direct(_band_raster, root / DIRECT_CACHE_DIR_NAME, SIZE, 1, stamp, False,
+    write_banded_raster(_band_raster, root / DIRECT_CACHE_DIR_NAME, SIZE, 1, stamp, False,
                      STORAGE_RAW)  # fmt: skip
     key = mesh_stamp(SIZE, "b1", 2)
     rasterise_meshes({"items": {}, "shapes": {}}, root / MESH_CACHE_DIR_NAME, key, BOUNDS_M, 256,

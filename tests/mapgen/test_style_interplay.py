@@ -104,14 +104,18 @@ def _write_meshes(folder, stamp):
 
 
 def test_a_restyle_needs_the_titan_cache_only_when_it_draws_titan_trees(tmp_path):
-    gaps = restyle_gaps(tmp_path, 64, 1, "b", False, False, True)
+    gaps = restyle_gaps(tmp_path, 64, 1, "b", top=False, meshes=False, titan=True)
     assert gaps == [DIRECT_CACHE_DIR_NAME, TITAN_CACHE_DIR_NAME]
-    assert restyle_gaps(tmp_path, 64, 1, "b", True, True, False) == [
+    assert restyle_gaps(tmp_path, 64, 1, "b", top=True, meshes=True, titan=False) == [
         DIRECT_CACHE_DIR_NAME,
         TOP_CACHE_DIR_NAME,
         MESH_CACHE_DIR_NAME,
     ]
     titan = mesh_stamp(64 // TITAN_FACTOR, "b", READER_VERSIONS["titan_trees"])
     _write_meshes(tmp_path / TITAN_CACHE_DIR_NAME, titan)
-    assert TITAN_CACHE_DIR_NAME not in restyle_gaps(tmp_path, 64, 1, "b", False, False, True)
-    assert TITAN_CACHE_DIR_NAME in restyle_gaps(tmp_path, 64, 1, "other", False, False, True)
+    assert TITAN_CACHE_DIR_NAME not in restyle_gaps(
+        tmp_path, 64, 1, "b", top=False, meshes=False, titan=True
+    )
+    assert TITAN_CACHE_DIR_NAME in restyle_gaps(
+        tmp_path, 64, 1, "other", top=False, meshes=False, titan=True
+    )

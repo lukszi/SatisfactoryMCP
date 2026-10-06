@@ -271,7 +271,7 @@ def write_rivers(directory: Path, stamp: dict, rivers: list, boxes: list) -> dic
 
 
 def missing_caches(
-    root: Path, stamp: dict, meshes_stamp: dict, top: bool, meshes: bool, titan_stamp=None
+    root: Path, stamp: dict, meshes_stamp: dict, *, top: bool, meshes: bool, titan_stamp=None
 ) -> list[str]:
     """The cache directories under ``root`` a palette-only run needs and cannot use."""
     wanted = [(DIRECT_CACHE_DIR_NAME, stamp, cached_raster)]
@@ -284,10 +284,12 @@ def missing_caches(
     return [name for name, want, read in wanted if read(root / name, want) is None]
 
 
-def restyle_gaps(root: Path, size: int, subsamples: int, build, top: bool, meshes: bool,
+def restyle_gaps(root: Path, size: int, subsamples: int, build, *, top: bool, meshes: bool,
                  titan: bool) -> list[str]:  # fmt: skip
     """``missing_caches`` for a run at ``size``; ``titan`` when it draws the Titan trees."""
     mesh_key = mesh_stamp(size, build, READER_VERSIONS["render_meshes"])
     titan_key = mesh_stamp(size // TITAN_FACTOR, build, READER_VERSIONS["titan_trees"])
     stamp = raster_cache_stamp(size, subsamples, build)
-    return missing_caches(root, stamp, mesh_key, top, meshes, titan_key if titan else None)
+    return missing_caches(
+        root, stamp, mesh_key, top=top, meshes=meshes, titan_stamp=titan_key if titan else None
+    )

@@ -966,7 +966,7 @@ trees through `cached_meshes`. Nothing that draws changed.
 
 ### Writing
 
-`rasterise_direct`, including the family plane it opens on the first band that carries one,
+`write_banded_raster`, including the family plane it opens on the first band that carries one,
 and `rasterise_meshes`, which also writes the Titan raster, write through `cache.plane_writer`.
 Each first removes its planes in both layouts, so a cache never holds both, and records
 `storage` in the sidecar. Passing `storage="raw"` writes the old layout, which is how the

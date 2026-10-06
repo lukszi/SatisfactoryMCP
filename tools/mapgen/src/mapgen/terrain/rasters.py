@@ -34,7 +34,6 @@ __all__ = [
     "add_placements",
     "direct_placements",
     "pixel_coverage",
-    "rasterise_direct",
     "rasterise_direct_band",
     "rasterise_top_band",
     "read_cliff_geometry",
@@ -42,6 +41,7 @@ __all__ = [
     "reduce_source",
     "sweep_world",
     "top_items",
+    "write_banded_raster",
 ]
 
 #: How many sub-samples per output texel per axis the direct pass rasterises at. The pass
@@ -343,7 +343,7 @@ def pixel_coverage(coverage: np.ndarray, subsamples: int) -> np.ndarray:
     return coverage.astype(np.float32) / np.float32(subsamples * subsamples)
 
 
-def rasterise_direct(
+def write_banded_raster(
     band_raster,
     directory: Path,
     size: int,
