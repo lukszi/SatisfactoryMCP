@@ -15,17 +15,25 @@ pytest.importorskip("scipy")
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM  # noqa: E402
 from mapgen.gamedata.waterbodies import (  # noqa: E402
+    ACTOR_CLASS,
     BODY_STEP_M,
     CLASSES,
     HOT_SPRING_BOX_MAX_M,
     MATERIAL_CLASS,
+    MOUTH_BLEND,
+    MOUTH_FEATHER_M,
+    MOUTH_STEPS,
     OCEAN,
+    SWAMP,
     WATER_BODIES_NAME,
     body_class,
+    class_shares,
     classify,
+    feather_mouths,
     level_bodies,
     open_sea,
 )
+from mapgen.palette.optics import class_optics  # noqa: E402
 from mapgen.palette.painted import (  # noqa: E402
     WATER_TABLE_COLUMNS,
     PaintedGround,
@@ -60,6 +68,28 @@ def test_the_material_names_the_class():
     assert body_class("BP_Water_C", ["MI_Lake_Turquoise_01"], box, NO_SPRINGS) == "lake"
     assert body_class("FGWaterVolume", [], box, NO_SPRINGS) is None
     assert set(MATERIAL_CLASS.values()) <= set(CLASSES)
+
+
+def test_translucent_water_is_its_own_class_and_a_known_material_still_wins():
+    """The Blue Crater is a ``BP_TranslucentWater_C``, which names no material; the sulfur
+    ponds are ``BP_Water_C`` with ``SulfurPond_Inst`` and keep their row."""
+    box = _box(0, 0, 10, 10, 100.0)
+    assert body_class("BP_TranslucentWater_C", [], box, NO_SPRINGS) == "translucent"
+    assert body_class("BP_TranslucentWater_C", ["SulfurPond_Inst"], box, NO_SPRINGS) == "sulfur"
+    assert body_class("BP_Water_C", ["SulfurPond_Inst"], box, NO_SPRINGS) == "sulfur"
+    assert set(ACTOR_CLASS.values()) <= set(CLASSES)
+    spring = np.array([[box[0] + 500, box[1] + 500, 100 * 100.0]])
+    assert body_class("BP_TranslucentWater_C", [], box, spring) == "translucent"
+
+
+def test_a_translucent_box_claims_its_water_instead_of_the_lake_fallback():
+    level, wet, bodies, biome = _world()
+    translucent = ["BP_TranslucentWater_C", _box(18, 38, 27, 47, 80.0), []]
+    plane, counts = classify(level, wet, {**bodies, "actors": [*bodies["actors"], translucent]},
+                             biome, OCEAN_LEVEL_M)  # fmt: skip
+    assert (plane[40:45, 20:25] == ID["translucent"]).all()
+    assert (plane[40:45, 40:45] == ID["swamp"]).all(), "water outside the box keeps its fallback"
+    assert counts["bodies_claimed"] == 3 and counts["classes"]["translucent"] == 25
 
 
 def test_a_small_lake_holding_a_terrace_is_a_hot_spring_and_a_big_one_is_not():
@@ -282,6 +312,55 @@ def test_a_lake_box_under_the_sea_claims_no_water_at_the_sea_s_level():
     assert _edges_inside_bodies(plane, level) == 0
 
 
+# ----------------------------------------------------------------------- swamp mouths
+
+
+def _mouth():
+    """200x200 texels: the sea east of column 100, a swamp channel meeting it 0.3 m higher,
+    a swamp pond 2 m higher beside the sea, and an ocean pocket cut off by 2 m of land."""
+    plane = np.zeros((200, 200), np.uint8)
+    level = np.full((200, 200), np.nan, np.float32)
+    plane[:, 100:], level[:, 100:] = OCEAN, OCEAN_LEVEL_M
+    plane[60:140, :100], level[60:140, :100] = SWAMP, OCEAN_LEVEL_M + 0.3
+    plane[150:190, 60:100], level[150:190, 60:100] = SWAMP, OCEAN_LEVEL_M + 2.0
+    plane[50:58, 80:98], level[50:58, 80:98] = OCEAN, OCEAN_LEVEL_M
+    return plane, level
+
+
+def test_swamp_blends_into_the_ocean_across_the_line_they_meet_on():
+    plane, level = _mouth()
+    before = plane.copy()
+    changed = feather_mouths(plane, level)
+    share = class_shares()[plane, SWAMP]
+    assert changed == int((plane >= MOUTH_BLEND).sum()) > 0
+    row = share[100]
+    assert (np.diff(row[:200]) <= 0).all(), "the swamp share falls monotonically seawards"
+    assert 0.5 < row[99] < 0.6 and 0.4 < row[100] < 0.5, "a half at the line"
+    reach = int(np.ceil(MOUTH_FEATHER_M)) + 1
+    far = np.ones(plane.shape, bool)
+    far[:, 100 - reach : 100 + reach] = False
+    assert (plane[far] == before[far]).all(), "nothing moves past the feather"
+    assert (plane[150:190, 60:100] == SWAMP).all(), "a pond 2 m up is another body"
+    assert (plane[50:58, 80:98] == OCEAN).all(), "water across land is not reached"
+    assert (plane[60:140, 100 - reach : 100 + reach] >= MOUTH_BLEND).mean() > 0.9
+
+
+def test_a_blend_draws_the_mix_of_the_swamp_and_ocean_rows():
+    table = class_shares()
+    assert table.shape == (MOUTH_BLEND + MOUTH_STEPS, len(CLASSES))
+    np.testing.assert_array_equal(table[:MOUTH_BLEND], np.eye(MOUTH_BLEND, len(CLASSES)))
+    np.testing.assert_allclose(table.sum(1), 1.0)
+    assert (np.diff(table[MOUTH_BLEND:, SWAMP]) > 0).all()
+    rows = water_table(PAINTED_PALETTE)
+    k = MOUTH_BLEND + MOUTH_STEPS // 4
+    plane = np.full((2, 2), k, np.uint8)
+    optics = class_optics(plane, rows, {}, _taps([0.0], [0.0], plane.shape), shares=(SWAMP,))
+    swamp = table[k, SWAMP]
+    mixed = rows[OCEAN] + swamp * (rows[ID["swamp"]] - rows[OCEAN])
+    np.testing.assert_allclose(optics["k"][0, 0], mixed[:3], rtol=1e-6)
+    np.testing.assert_allclose(optics["share"][SWAMP][0, 0], swamp, rtol=1e-6)
+
+
 # ----------------------------------------------------------------------- sampling
 
 
@@ -312,7 +391,7 @@ def test_every_inland_class_has_optics_and_a_missing_one_draws_as_the_ocean():
     classes = PAINTED_PALETTE["water_classes"]
     assert set(CLASSES[2:]) <= set(classes)
     table = water_table(PAINTED_PALETTE)
-    assert table.shape == (len(CLASSES), sum(WATER_TABLE_COLUMNS))
+    assert table.shape == (MOUTH_BLEND + MOUTH_STEPS, sum(WATER_TABLE_COLUMNS))
     bare = {k: v for k, v in PAINTED_PALETTE.items() if k != "water_classes"}
     np.testing.assert_array_equal(water_table(bare)[ID["swamp"]], table[OCEAN])
     swamp = classes["swamp"]
