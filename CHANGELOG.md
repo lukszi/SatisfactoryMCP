@@ -84,6 +84,9 @@ Planned as 0.2.0.
 - Files written by a newer version are refused, not overwritten; a plan exporting power
   under any spelling stores it as `MW`.
 - `npm run typegen` takes the server port as an argument or from `SATISFACTORY_WEB_PORT`.
+- `python -m mapgen renders` no longer overwrites a map the registry lists: a run into its
+  folder, through a junction or link too, is refused and names it. `--renders-name` writes
+  beside it, and `--overwrite-in-use` replaces it anyway.
 
 ## [0.1.0] - 2026-09-27
 

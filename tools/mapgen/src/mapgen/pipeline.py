@@ -120,6 +120,7 @@ from mapgen.terrain.sidecar import GENERATOR_VERSION
 from mapgen.tiles.borrowmeta import borrow_metadata
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, render_layer
 from mapgen.tiles.extras import KEPT_CACHE_DIRS, load_extras
+from mapgen.tiles.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.tiles.lit import UnlitRun, crown_occluder
 from mapgen.tiles.pyramid import (
     CHECK_PARALLEL_Z,
@@ -337,10 +338,15 @@ def main() -> int:
         help="draw colour unlit beside a default-sun copy, and bake the lighting pyramid",
     )
     parser.add_argument("--quiet", action="store_true", help="no per-band progress lines")
+    add_in_use_flag(parser)
     args = parser.parse_args()
 
     layers = tuple(dict.fromkeys(args.layer)) if args.layer else LAYERS
     workers = max(1, args.workers)
+    renders = args.out_dir / args.renders_name
+    if refusal := in_use_refusal(LOCAL_DIR, renders, args.overwrite_in_use):
+        print(refusal)
+        return IN_USE
 
     versions = require_gen("ooz", "texture2ddecoder", "PIL.Image")
     pillow_version, pyooz_version = versions["pillow"], versions["pyooz"]
