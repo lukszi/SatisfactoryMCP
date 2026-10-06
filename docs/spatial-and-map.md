@@ -761,11 +761,16 @@ and that is a measurement rather than a preference: 95.2% of it stands over the 
 and 98% of its surface levels lie in a 0.7 m band around the ocean's own −16.99 m. It is the
 ocean. Running the ramp on `water_m − z_m` there would paint it the pale green of an
 ankle-deep sheet, because the number being subtracted is a 3.9 m raster's rounding error.
+Since 2026-10-05 the renders subtract a drawn bed instead, continued from the measured one
+beside it (section 26); only `--kernel-only` and level-only water away from the ocean's level
+keep the deep tint.
 
 One thing the channel still cannot fix: beyond the landscape's own extent the field has no
-height *and* no water volume, so those texels stay the page's `--sea`. Against bright water
-that edge is visible in the corners of the frame. It is the render saying nothing, which is
-the intended behaviour, and filling it would mean inventing ocean.
+height *and* no water volume, so those texels stay no-data in the field. The renders used to
+paint them the page's `--sea`, and against bright water that edge drew straight lines across
+the sea. Since 2026-10-05 the renders draw them as the artwork does instead: its water as
+the open sea over a drawn bed, the rest as the void (section 26, "The open sea, the void and
+the pits"). The field itself is unchanged.
 
 ### Four gates, each aimed at a specific silent failure
 
@@ -1297,23 +1302,30 @@ in section 25. Build 502094.
 
 | Texels | Source | Share of the field |
 | --- | --- | --- |
-| Landscape | `terrain.u16.z`, unchanged | 45.46% |
-| Cliff province | the field's own heights, copied unchanged | 21.06% |
-| Fill | the float16 interface raster: Gaussian with sigma 1 texel, then cubic, then +1.0 m | 13.64% |
-| Fill within 48 m of the landscape | as above, plus the landscape's residual carried in by a harmonic solve and a cosine taper | 0.32% |
-| Interior holes | biharmonic fill, or harmonic where the biharmonic leaves its border's range by more than 2 m | 0.16% (26 holes, 11 harmonic) |
-| No data out to the field's edge | left empty: the page's sea colour | 19.37% |
+| Landscape | `terrain.u16.z`, unchanged | 45.39% |
+| Cliff province | the field's own heights, copied unchanged | 20.97% |
+| Fill | the float16 interface raster: Gaussian with sigma 1 texel, then cubic, then +1.0 m | 13.49% |
+| Fill within 48 m of the landscape | as above, plus the landscape's residual carried in by a harmonic solve and a cosine taper | 0.25% |
+| Interior holes | biharmonic fill, or harmonic where the biharmonic leaves its border's range by more than 2 m | 0.005% outside the cliff province (35 holes, 14 harmonic, nearly all ground under rock) |
+| Pits: no data and ground below -200 m the artwork draws as void | left empty, drawn as the void | 0.55% (681 regions; 210,086 texels of ground) |
+| No data out to the field's edge | left empty: the open sea or the void, as the artwork has it | 19.35% |
+
+Shares from the 2048 preview of 2026-10-05, after the pits were taken out; before that the
+landscape was 45.46%, the cliff province 21.06%, the fill 13.64% and 0.32%, and 26 interior
+holes (0.16%, 11 harmonic) were filled, the pits among them.
 
 - **The de-terracing is gone.** `FILL_VERTICAL_M = 3.9` assumes an 8-bit raster. The raster
   is float16, with steps of 0.24–0.49 m, so there was nothing to de-terrace.
 - **Rock is never a constraint.** A hole next to a rock, or the ground under a rock with no
   landscape sample, is filled from the ground around it. The rock's own heights stay in the
   cliff province and are composited by coverage, as before.
-- **The open sea stays the page's colour.** The prototype drew the sea past the data as water
-  over an invented bed. That was declined: nothing is drawn where the field has no data.
-- **Water over the fill province** is drawn as before: level known, depth not, full alpha and
-  the deep tint. The raster stores the water surface there, so the ground under it is not a
-  sea bed and is not read as one.
+- **The open sea past the data** was left the page's colour, and the prototype's water over
+  an invented bed was declined. Its straight landscape-component edges then read as a
+  two-colour ocean in every style, so since 2026-10-05 a bed is drawn under it after all,
+  as drawing support and never as data: see "The open sea, the void and the pits" below.
+- **Water over the fill province** is not read against the raster: the raster stores the
+  water surface there, so the ground under it is not a sea bed. Until 2026-10-05 it was drawn
+  at full alpha and the deep tint; at the ocean's level it now gets the open sea's bed too.
 - **Holes under water** stand at least 0.5 m below their own water surface.
 
 The **sampler** is tensor-product PCHIP with Fritsch-Butland slopes: the harmonic mean of the
@@ -1351,6 +1363,155 @@ half and is scored on the east.
 - The 1 m staircase along the water edge is unchanged, because the water quality plane is 1 m.
 - The rebuilt lattice is not stored. The server's height lookups still read the field as
   generated.
+
+### The open sea, the void and the pits (2026-10-05)
+
+A review of the 2048 preview found the sea split into straight-edged blocks in every style.
+Four causes, all in how the shared band loop drew water and no data:
+
+- **Level-only ocean had no bed.** It covers 13.1% of the field (95% over the fill province)
+  and was drawn at the deep end of every ramp. The measured ocean beside it has its own depth:
+  61 m in the median where the two meet (the game's unsculpted floor), but in places a shelf
+  about 8 m deep runs straight up to a landscape component's edge. Every such edge was a
+  colour step.
+- **No data was sea and void at once.** Every no-data texel was the page's navy. The artwork
+  draws 86% of them black, the void past the world's edge, and 356,283 of them (the strip down
+  the west edge, among others) as sea; the water channel already calls those level-only water.
+- **Pits were filled flat.** The fill gave every interior no-data hole a membrane. The artwork
+  draws 14 of them as pits, among them the crater at (-164, 1310) (74,763 texels) and the pits
+  at (240, 1608) and (2224, 1566), the second the square notch beside the abyss. Other pits
+  are not holes but ground at the landscape's own floor, its lowest height (-254 to -258 m,
+  137,337 texels): the abyss pits around (2037, 1283) and (2107, 1485), and the fill at the
+  north-east corner (3941, -2935). They drew as flat ground at the bottom of every ramp.
+- **Render-only meshes became islands** in the styles that draw ground and water only
+  (section 27).
+
+What is drawn now, by `gamedata/water.py`, `terrain/fill.py` and `palette/water.py`:
+
+- **The artwork says sea or void.** `artwork_planes` classifies the decoded sheet on the 1 m
+  grid: water is the water channel's own test (`B - R >= 25`), void is anything else with a
+  Rec. 601 luma of 110 or less. The pits are black to a flat grey (luma 0 to about 80), the
+  ground beige or white (140 and up). Its water comes back as one of the artwork's four flat
+  tones, split at `G - R` of 40, 56 and 70 (`WATER_ARTWORK_BANDS`).
+- **A pit stays empty.** A region of no data and of ground below -200 m is a pit when at
+  least half of it is void in the artwork: 0.88 to 0.95 for the crater and the abyss pits, 0.5
+  to 0.7 for a crack under its white outline, 0.44 and less for the holes drawn as ground. Of
+  the ground below -200 m the artwork draws 93% as void, and 210,086 of its 213,306 texels lie
+  in regions that pass. A pit is taken out of both lattices, so it is drawn as the void; the
+  ground under rock beside it is still filled, bounded by it, unless the pit walls it in.
+- **The open sea gets a bed.** Under no-data texels the artwork draws as water, and under
+  level-only water within 1 m of the ocean's level, `open_sea` writes a bed into the lattice
+  the run draws. It is a screened Poisson membrane on a 4 m grid: the measured ocean's own
+  depth where the two meet, the surface at a dry coast, and settling to 60 m over about 400 m
+  away from both. A coast is dry ground standing at least 1 m above the top of the ocean's
+  band (-16 m) in the field as stored; dry ground at or under that top is sea the artwork's
+  mask left dry and joins it. The field's fill holds the sea's surface to within 0.7 m, and
+  the rebuilt fill stands 1 m above that, so only the stored heights can tell the two apart.
+  The water's depth is then read off that bed like any measured
+  water's, so every style draws one surface, the hillshade has no 60 m step to light at the
+  edge of the data, and the water classes and the relief tint read the same planes. 7.44 M
+  texels get a bed, in about 7 s, among them 53,117 dry texels at or under the band's top
+  beside the open sea, mostly the rows along the frame's edge the artwork's mask left dry.
+- **The void** is every other no-data texel, pits included: 10.84 M. It is drawn in the
+  page's navy, softened over 2 m and kept off any rock standing in it, and a pixel shared by
+  sea and void counts its water against the part that is not void, so the void's edge is
+  never drawn as land.
+
+### The open sea and the void, a second pass (2026-10-06)
+
+The next review still found straight lines in the sea and navy in the pits:
+
+- **A seam east of the swamp**, overview x 1718, y 1147 to 1330, and its corner at y 1147.
+  The measured landscape ends at game x 3045 on a 30.8 m plateau, and level-only fill lies
+  east of it. Sampled across that edge from y 450 to 1120, the depth had no step: the
+  membrane matched the plateau to within 0.6 m. It had a kink. The plateau is flat, while the
+  membrane climbs at 0.07 to 0.7 m per metre from the first texel, pulled by the 60 m floor
+  and by cliff-province seeds 98 m deep. The hillshade lights the bed and the depth tint
+  follows it, so the kink drew a line 670 m long. The 4 m cells next to the seeds were not
+  the cause: they put no step into the samples.
+- **A darker strip right of the island chain** in waterfall_1, game x -1730 to -1600, y 3100
+  to 3400. It is level-only fill closed in by the chain and the void, so no seed holds it
+  and the membrane drew it 7.5 to 9.5 m deep. The artwork draws it cyan.
+- **Pits in the page's navy**, flat and hard-edged: the crater at (-164, 1310), the abyss
+  pits and the pit under ow_perched_5. Satellite's deep sea (#152a3b) and relief dark's
+  (#031b2d) are close enough to that navy that the void past the world's edge read as ocean.
+- **Hard straight edges where the sea meets the void**: east of the dunes, the south-west
+  notch, and both 638 m falls.
+
+What `palette/water.py` and `palette/styles.py` draw now:
+
+- **A bed continuous in slope.** Within 100 m of the open sea (`OPEN_SEA_BLEND_M`) the
+  measured bed is no longer fixed in the membrane. It pulls the membrane towards itself over
+  about 25 m (`OPEN_SEA_BLEND_PULL_M`), and is then laid back over the result on a cosine
+  taper, from the membrane at the edge to the measured bed 100 m in. Past that it is drawn as
+  measured, to the decimetre. One solve does it (`membrane`): the screened membrane with a
+  pull per cell, conjugate gradients on the 4 m grid. A pull is a smooth constraint where a
+  fixed cell is a hard edge, so the edge of a pull bends the slope and cannot break it. Across
+  the swamp seam, the depth now rises from the plateau over about 60 m with no corner, and
+  1.47 M measured texels are blended. A measured shelf narrower than 100 m is held near its
+  own depth but no longer exactly: a 30 m wide, 8 m shelf beside open sea draws 10 to 11 m.
+- **The artwork's tones as depth.** On the landscape's measured ocean each of the artwork's
+  three lighter tones sits on one depth band. The median is 5.3 m for `G - R` about 48 (p10
+  to p90: 4.9 to 6.6 m), 3.5 m for about 64 (2.9 to 4.6 m) and 1.3 m for about 78 (0.5 to
+  2.1 m). The teal, about 32, has a 42 m median and says only "deeper". Where the open sea
+  has no bed, a lighter tone pulls the membrane to its depth over 12 m
+  (`OPEN_SEA_TONE_PULL_M`); 109,913 texels carry one. The strip right of the chain now draws
+  2 to 4 m deep, matching its tone.
+- **Pits are not the void past the edge.** No data that does not reach the field's edge
+  through no data is a pit; the rest is the void past the world's edge. A floor the fill
+  emptied at the north-east corner (3,939, -2,933) belongs to that void. Drawn as a pit, it
+  was a black rectangle on the page's navy. The crater and both abyss pits are pits: 135,744
+  texels of the 10.84 M.
+- **The artwork's falloff.** The artwork lights a pit or the void past the edge at its
+  rim, a white line about 2 m wide, and fades from a flat grey (luma 65 to 76) to black over
+  about 110 m. Half the light is gone by 37 m, three quarters by 63 m. A Gaussian of 50 m
+  (`VOID_FALLOFF_M`) on the void's mask fits that profile to about 5 points. Every style
+  draws both the same way: a light rim, then from the artwork's grey to black in a pit, and
+  from a lit tone of the page's navy (#424f5a) to the navy itself past the edge.
+- **The sea fades into the void.** Beside the open sea the bed runs on under the void
+  (338,807 texels), and the void's cover rises from 0 at its edge to 1 over the same falloff,
+  with no lit edge and no rim. A pixel takes its sea share from the ocean around it,
+  Gaussian-weighted, so a coast where land and sea meet the void changes treatment smoothly.
+  Dry ground under the sea's surface within the shore rule's 48 m of the ocean counts as sea
+  here, because that rule draws it as sea. In the south-west notch, the cliffs at -100 m
+  beside the void had a rim drawn down the middle of the water. Low ground further inland stays
+  land: 3.1 M dry texels lie under the sea's level, most of them in the southern lowlands.
+- **Rocks in the void.** The void's cover is still kept off a rock standing in it, but only
+  where the rock stands above the sea's level. A cliff mesh 250 m down at the bottom of the
+  south-west notch drew as a dark green blob before, and as deep water once the sea ran on
+  under the void. Now it is the void's, as the artwork draws it. Such a rock is also taken out
+  of the height before the water and colours are drawn (`compose._rock_kept`): kept, it still
+  counted as land, and the lighting stage shaded the void over rock 250 to 700 m down into
+  near-black silhouettes: x 1,500 to 1,760, y -3,750 to -3,150 on the north edge, and beside
+  the 638 m fall at (-1,480, 3,000). On no data it is dropped, so the pixel stays the void's;
+  where the sea runs on under the void it keeps only the share the void's cover leaves, so
+  the sea fades into the void without a break. About 6,800 pixels of the 2048 preview, 970
+  of them dark strips in pits, the abyss pits among them.
+
+Measured on the 2048 preview against the same run before the change, 3.5 to 4.2% of the
+sheet's pixels changed per style, all of them in the sea, the void or at their edges. The open
+sea's pass now takes about 12 s, up from about 8.
+
+The bed is drawing support, not a measurement: the field, its quality byte and the server's
+lookups are unchanged, and `--kernel-only` (recipe 2) still draws the page's sea past the
+data. The sidecar records the rule and the counts under `water.level_only` and the pits
+under `two_regime.fill_rebuild.pits`.
+
+Known limits:
+
+- A measured shelf that runs straight to a landscape component's edge still shows its
+  staircase, now as a soft gradient over a few hundred metres rather than a line.
+- A pit's edge is the data's: where the field has ground above -200 m beside a pit and the
+  artwork draws void, the ground is drawn.
+- 681 regions pass, many of them a few texels of deep ground; those inside the land are drawn
+  as small pits, grey with a rim.
+- In the satellite and relief dark styles the deep sea and the page's navy are still close in
+  colour. Beside the land the void now has a lit edge and a rim, but where the sea fades into
+  it nothing marks the edge of the world. Whether the void past the edge should leave the
+  page's navy, as the artwork's black does, is open.
+- The tones are a hint, not a bed: under the teal the open sea is not held deeper than 6 m,
+  and a tone's anti-aliased edge against land can read a metre or two too deep.
+- The falls off the edge of the world are still left out (section 35).
 
 ### Cost and output
 
@@ -1423,9 +1584,17 @@ build stamp, plus the reader version), with a class plane: coral, shell or rock.
 composited with the top layer's raise-only lift, and only where the mesh top stands within
 0.6 m of the water surface or above it, so seabed coral roots do not speckle the sea.
 
+The terrain, satellite and relief styles draw ground and water only, so since 2026-10-05 a
+mesh never breaks the water's surface there: under water, coral, shells and terraces are
+left to the seabed, and a rock is drawn only where its top stands above the surface. Most
+coral kept by the 0.6 m rule stands well clear of the water (median 6 m), so each was a one-
+or two-pixel island in the lagoons. At 2048 px this takes the mesh pixels over water from
+4,326 to 902 on the whole sheet and from 779 to 79 on the Spire Coast crop at (16, -2137).
+The game-painted style keeps the rule above and colours the meshes itself.
+
 **The heightfield is unchanged.** `CliffPillar_03` stays excluded there because it is passable
 in game: the map draws what the artwork draws, and height lookups keep reading the walkable
-ground. The provenance input is `render_meshes`, reader version 1.
+ground. The provenance input is `render_meshes`, reader version 1 (2 since section 35).
 
 ### The paint input
 
@@ -1470,8 +1639,8 @@ coral whose top is under water the seabed blue #5f8899, rock class takes the roc
 along a dry-land ramp. That ramp follows the recommended construction: heights over dry land
 only (`waterq` dry, p1 to p99.5), position `0.35 * linear + 0.65 * equalised`, applied as an
 even OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, times
-exposure 1.12 and the artwork borrow with its dark ink damped to 0.25. A highlight shoulder
-at 0.72, then sRGB.
+exposure 1.12 and the artwork borrow with its dark ink damped to 0.25. The gain and shoulder
+of section 31, then sRGB.
 
 **Water** is Beer-Lambert, calibrated against Spire Coast screenshots:
 `bed * T + W (1 - T) + 0.02 sky`, `T = exp(-k d)` with `k` = (4.08, 3.53, 3.53) per metre and
@@ -1503,9 +1672,1298 @@ adopts the painted layer as `game-painted-r6-502094`.
 
 ### Known limits
 
-- Lakes and rivers keep recipe 5's edge. Their banks need sloped surfaces from the river
-  splines, which is a separate item.
+- Lakes keep recipe 5's edge. Since recipe 7 (section 34), rivers get sloped banks from
+  their splines.
 - A river whose level is within 0.5 m of the sea and that reaches within 48 m of it is drawn
   by the ocean rule.
 - Pigment strength (0.15) makes the central Red Bamboo ground strongly red, as the prototype
   did.
+
+## 28. Relief styles, tones and the palette-only restyle (2026-10-05)
+
+Two styles were added to the three drawn ones, from the colour study's directions A (muted
+cartographic) and C (dark). Terrain and satellite stay selectable unchanged. Build 502094.
+
+| Layer | Style | Tone | Palette |
+|---|---|---|---|
+| `relief` | `relief-muted` | light | `palette/palettes/relief-muted.json` |
+| `relief-dark` | `relief-night` | dark | `palette/palettes/relief-night.json` |
+
+### What the relief painter does
+
+`palette/relief.py`, one painter for both palettes, all mixing in OKLab:
+
+1. **Ramp.** Height to `t` over dry land only (`waterq` dry, p1 to p99.5): `0.35·linear +
+   0.65·equalised` for the light style, `0.4/0.6` for the dark one. The stops are OKLCh; they are
+   joined in OKLab, lightly smoothed, and re-spaced so equal steps of `t` are equal OKLab steps
+   (largest step within 5% of the mean, checked by a test).
+2. **Biome tints** (light only): per biome `(dL, C, h, w)`, blurred 24 biome texels (44 m) like
+   the satellite's biome colours. Crater, Red Bamboo, Maze Canyons and Abyss Cliffs were pulled to
+   C ≤ 0.036 and away from pink and lavender hues, which read as a fault on the gentle and arch
+   crops.
+3. **Rock**: smoothstep over 32–52° slope, towards `L + dl` at the rock hue.
+4. **Shade**, measured from flat ground's n·L (sin 45°), so flat ground keeps its ramp colour
+   exactly. Light: three suns (NW 0.5, W 0.25, N 0.25), `L += 0.30·d`, chroma ×
+   `(1 + 0.35·min(d, 0))`. Dark: the NW sun, `L × clip(1 + 0.95·d, 0.42, 1.30)`. Both push the
+   shadow side towards a cool hue and the sunlit side a little warm.
+5. **Borrow**: the artwork's high pass rides on L only, as the cube root of the luminance
+   multiplier the other styles use, with its dark (ink) side damped to 0.25.
+6. **Water**: a 1 m tint plane built once per run, `1 − exp(−depth/τ)` for measured water,
+   blurred (12 m light, 6 m dark) and normalised by the wet mask, so a shore takes the colour
+   of the water beside it and no tint step follows the data edge. The depth is read off the
+   ground the run draws, so the open sea's bed (section 26) tints the open sea; level-only
+   water away from the ocean's level stays at 0.85. Over the sea the opacity rises from 0.45 at
+   the line with a 0.8 m depth fade; the light style strokes the shoreline at 0.2. The void
+   stays the page's sea colour, as in every style.
+
+The dark ramp's top two stops were `(.480 .040 40)` and `(.530 .038 285)`, which made high ground
+mauve-grey mud (92% on the gentle crop in the study). They are now `(.480 .055 70)` and
+`(.530 .045 85)`, ending warm; the two lowest stops moved from teal to green so lowland no longer
+matches the shallow water.
+
+Two changes on 2026-10-05, from a visual review of the 2048 preview:
+
+- **The light style's shoreline stroke** was 0.55, which inked a dark rim round every island
+  and rock in the water. It is 0.2.
+- **The dark style's contrast.** Its land ran from L 0.32 to 0.53 and its shallow water sat at
+  L 0.34, so the shallows read as lowland. The ramp now runs from `(.360 .056 148)` to
+  `(.600 .048 85)` with the same hues, and the water is darker and bluer: shallow
+  `(.300 .066 226)`, deep `(.215 .046 244)`. On the 2048 preview the land's median L goes
+  from 0.38 to 0.44 and water 0.5 to 4 m deep from 0.33 to 0.30, and the share of land
+  darker than that water from 20% to 8%. The mud shares in the table below are from before
+  this change and were not re-measured.
+
+### Measured
+
+On z7 crops through `render_layer` itself (rock, arch and mesh rasters for all but the arch crop,
+which is drawn from the lattice alone). Mud is CIELAB C* < 12 with 25 < L* < 60, near-white
+L* > 78 with C* < 4, as in the colour study.
+
+| Crop | relief: mud / near-white | relief dark: mud |
+|---|---|---|
+| gentle | 0.2% / 15.4% | 5.4% |
+| arch | 2.8% / 0.1% | 4.7% |
+| boulders | 9.2% / 0% | 1.8% |
+| coast | 1.4% / 0% | 0% |
+| desert lake | 1.1% / 0% | 6.6% |
+
+The gentle crop is the central plateau, near the top of the ramp; its near-white share is down
+from 64% on today's terrain. Drawing a 1.3 Mpx crop takes 1.2 to 2 s per style, about as long as
+terrain.
+
+### The palette-only restyle
+
+A full render spends most of its time on geometry that does not depend on the palette: the sweep,
+the rock pass, the arch-and-boulder pass and the render-only mesh pass. `--restyle` draws only
+from the caches a render kept with `--cache-dir` and `--keep-direct`, and exits 9 when one is
+missing or was cut for another size, sub-sampling or build, so a palette change never turns into
+a full render. The caches are kept afterwards. The job preset is `restyle` on a render
+(maps_contract.md §4).
+
+Measured at `--size 1024` on 2026-10-05, with other renders running on the machine: the run that
+built the caches (terrain only) took 8 min 41 s, most of it the sweep, the rock pass and the mesh
+pass; a restyle drawing `relief` and `relief-dark` from those caches took 1 min 40 s, nearly all
+of it the fixed preparation (field, lattice, artwork sheet, biome raster, the relief grounds at
+about 20 s); a restyle at a size with no cache refused in 3.6 s with exit 9. At full size the
+draw and cut dominate instead: from the recipe 5 stage times one layer is about 8.5 min against
+about 37 min for a full two-layer render. The full-size figure is an estimate, not a run.
+
+## 29. Live sun light (2026-10-05)
+
+A render drawn with `--unlit` (the Maps tab's "live sun" box) stores its colour without light
+and adds a lighting pyramid, and the page relights it in the browser for any sun. One light,
+the sun; the page picks where it stands.
+
+### The model
+
+`light = amb · sky · SVF + (1 − amb) · sun · max(n·L, 0) · (1 − shadow · (1 − fill)) / sin(max(el, 35°))`,
+divided by the same expression for flat ground in the open, so flat ground at any sun is 1.
+
+- **Lambert** is the shipped hillshade's own term. Relit at 315° / 45° with shadows and sky
+  off, unlit terrain reproduces the baked hillshade to 2 levels (a test holds it).
+- **Cast shadows** come from 32 stored horizon angles per pixel, interpolated between the two
+  directions either side of the sun. A blocker counts fully up to 40 m away and not at all
+  past 150 m (`FADE_M`): without the fade a low sun shadows a third to a half of the land. A
+  100 m fade was tried at 16:00 on the four shared crops and reads almost the same, so 150 m
+  stays.
+- **Soft edge** (`SHADOW_SOFT_DEG`, 6°). A horizon goes from lit to shadowed over 6° of
+  angle. The edge is constant in angle, so on the ground it grows with the distance from the
+  blocker to the end of its shadow, `soft · H / sin² el`: under the 16:00 sun (24°) about
+  13 m for a 20 m wall and 3 m for a 5 m rock (a test holds that a taller blocker throws the
+  wider one). At the old 2° the edge was a step at every pixel, and at 16:00 whole valleys
+  turned into flat polygons with stair-stepped edges.
+- **Fill** (`SHADOW_FILL`, 0.35). A cast shadow keeps 35% of the sun's Lambert term: the sky
+  around the sun and the light bounced off sunlit ground, both from the sun's side. Without
+  it shadowed ground is the ambient term alone, the same for every slope, and a valley in
+  shadow reads as one flat grey shape at the floor. 0.2 and 0.35 were compared at 16:00 on
+  the cliff-lakes and abyss crops; 0.35 keeps the rock's shape inside the shadow.
+- **Tree crowns** cast into horizons of their own (below). Only a style that draws the
+  crowns reads them (`shader_light(layer)["crowns"]`, the painted style today); every other
+  style is shaded by the ground alone. Before, terrain, satellite and relief showed the
+  shadows of trees they do not draw: near-black blocks in the forests and dashes in the
+  desert, five times as frequent beside a crown as away from one.
+- **Sky view** within 10 m darkens the foot of a cliff and the floor of a gully. Larger radii
+  grey whole valleys.
+- **Normalisation** by `sin(max(el, 35°))`: without the clamp a fifth to a third of the
+  pixels blow out at 20°.
+- **Shadow floor.** The light passes through a soft maximum with 0.36 at a knee of 0.1
+  (`SHADOW_FLOOR`, `SHADOW_FLOOR_KNEE`), so the darkest light lands at 0.36 to 0.40 instead of
+  the 0.2 the bare model reaches in a shadowed gully.
+- **Water** stays unlit: the land weight (one minus the water cover) blends the light out.
+- **Per style.** The painted style lights in linear light with its own ambient, sky and sun
+  colours; the shader undoes and reapplies the luminance tone curve of section 31
+  (`tone_knee`, `tone_white`). Terrain, satellite and both relief styles multiply into sRGB,
+  as the hillshade always did: ambient `SHADE_FLOOR / (SHADE_FLOOR + SHADE_RANGE · sin 45°)`,
+  white light, no curve (`palette/lightparams.py`). Relief drawn unlit keeps flat ground at its
+  ramp colour, so its live light is this sRGB approximation, not its own OKLab shade. One
+  lighting pyramid serves every style.
+
+The default sun is game noon, 225° / 62.25°. The game turns its sun about one fixed tilted
+axis (`AFGSkySphere`, pitch `30 + 15 h`); `lighting/sun.py` and the page's `sun.ts` both
+compute that path. The cartographic 315° / 45° is a one-click preset, not the default: the
+artwork has no light direction to inherit.
+
+### What is written
+
+| Where | What |
+| --- | --- |
+| `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land |
+| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | An 8 × 8 grey atlas of 128 px cells at half resolution, `255 · sqrt(deg / 90)`, WebP q75: cells 0–31 the ground's horizons, cells 32–63 the crowns' where they stand above the ground's, else 0 |
+| `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), tile counts, timings |
+| `<layer>/unlit/` | The unlit colour, 1x only |
+| `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun: what a page without WebGL, and every older reader, draws |
+
+Coarser levels are computed from the coarser surface, not by averaging encoded tiles: normals
+from the downsampled heights, sky view and horizons by mean.
+
+### The stage
+
+`render_layer` hands the first layer's drawn heights and land weight to a `Surface` (two
+memory maps beside the raster caches, 5.4 GB at 32768). After that layer is drawn,
+`lighting/stage.py` cuts the sheet into blocks of 16 × 16 native tiles, each with a 150 m
+halo, and a process pool computes per block: the ground's horizons and the crowns' at half
+resolution, sky view, normals, the native tiles, and the light at the default sun for the
+baked copy, once with the crowns and once without. A block whose core is all water skips the
+horizon march. Each layer then installs `unlit/`, is lit in place by the default sun with its
+own term (`tiles/lit.py`: the crowns' only for a style that draws them), and installs
+`tiles/` and `tiles@2x/` as before.
+
+**Horizon cost.** The march takes bilinear samples up to 16 px and the nearest pixel beyond,
+with in-place arithmetic: 0.14 µs per half-resolution pixel and direction, 6.3 times faster
+than the all-bilinear reference, which it matches to a mean 0.10 to 0.17° and a 0.1 to 0.3%
+difference in which pixels are shadowed at 25°. Measured again with the 6° edge on two
+full-size windows from the 1 m field: all-bilinear is 5.2 times slower and changes the
+horizon by a mean 0.15° (p99 2.4°), less than the q75 encoding does, and the shade by more
+than 0.1 on 0.4% of the pixels; the nearest pixel stays. A rotated row sweep was built and
+measured at 1.7 times slower than the reference: rotating the block grows it, and every
+pixel of the rotated square is computed. One full-size block of the steepest 2 km box took
+121 s on two threads of a shared machine, 69 s of it light terms and 52 s WebP encoding; 64
+blocks project to 2.2 CPU-hours, about 8 minutes on 16 workers, before water blocks are
+skipped. The research estimate for the ray march was 72 minutes.
+
+**Step growth** (`STEP_GROWTH`, 1%). Past `FINE_M` (44 m) the march steps grow with the
+distance. A plateau is sampled at the first step past its edge, so the horizon jumps from
+step to step and a soft edge shows the jumps as bands, as wide as the gap. At 3% they read
+as terraces in every penumbra at full size; at 1% they are 0.4 to 1.5 m and do not. 219
+steps instead of 138, measured at 19% more for the ground's 32 directions on a full-size
+window, because the bilinear steps near the receiver dominate. At 2048 every step is still
+one pixel.
+
+**Encoding.** q75 decodes within a mean 1.05° of the exact horizon (p99 6.4°), q90 within
+0.48° (p99 2.9°) at 1.44 times the bytes. With the 6° edge the two relight the abyss crop at
+16:00 the same to the eye, so q75 stays.
+
+**Bytes.** The steepest 2 km box writes 78 KB of lighting per z7 tile, so a full map is at
+most about 1.3 GB at z7 and less in practice, because open water compresses to almost
+nothing. The crown cells are 0 wherever no crown stands above the ground's horizon; at 2048
+they take the light pyramid from 18.8 to 24.2 MB. The unlit colour adds about half the
+colour pyramid again.
+
+### Hooks
+
+`bake_light` takes two optional rasters on the sheet's grid, both of which only cast:
+
+- `occluder`: the crown tops in metres, NaN where empty, or `(top, cover)` with the covered
+  share of each pixel as a byte. The crowns stand on the surface, each lifted by its cover
+  (`horizon.crown_surface`), and cast into the crown cells under their own shorter fade
+  (`OCCLUDER_FADE_M`, 25 to 80 m), received on the crown tops, so a crown is lit or shaded
+  where the painted layer draws it. A crown cell keeps its horizon only where it stands
+  above the ground's, which the shader's `max` makes exact and leaves the cells empty away
+  from trees. `occluder_layers` names the layers that read them. The paint store's crown
+  tops feed it (section 36; the mapgen README's "Tree shadows").
+- `slabs = (ground, min_z, max_z)`: the surface without the floating geometry, and that
+  geometry's underside and top. A slab extends a horizon only where its underside is below
+  the horizon already reached, so an arch stops casting a curtain to the ground. On the arch
+  crop at 16:00 the curtains go; the pipeline does not yet rasterise the arches' min-Z.
+
+### The page
+
+`litlayer.ts` draws a lit layer on one WebGL2 canvas in the base-map pane: per tile the unlit
+colour, normals and horizons, relit by the shader with the arithmetic of `lighting/model.py`.
+The z0 probe's `X-Map-Light` header carries the shader's numbers; the layer's `params.crowns`
+switches the crown cells on, and a pyramid without `hz_cells` reads as the old 8 × 4 atlas
+with no fill. A test holds the shader to the Python model's constants. Without WebGL2, or when the
+context or the tiles fail, the layer falls back to the baked `tiles/` with a toast. Settings →
+map holds the default sun (game noon, 09:00, 16:00 or map north-west) and the shadow and sky
+switches. The sun button on the map opens a time-of-day slider on the game's path, the
+presets, the switches and, under "advanced", a free compass with azimuth and elevation. The
+button moves the sun for the visit; Settings keeps the default.
+
+### Open
+
+- The arches' min-Z raster, so `slabs` is fed by the pipeline.
+- The sun in the fragment, so a link carries it.
+- Faint diagonal bands at low sun from the q75 horizon encoding and the direction
+  interpolation.
+- A crown top takes the ground's horizon measured on the ground under it, not on its top, so
+  in a valley a crown is shaded by terrain a little longer than it would be.
+- Whether the satellite style draws the tree crowns, and so reads their shadows.
+- Sun colour along the day, and whether the artwork style gets any light at all.
+
+## 30. The game's own surface colours on the painted layer (2026-10-05)
+
+Four additions to the game-painted style of section 27, each read from the install rather than
+chosen. Style `satellite-painted` version 2, paint generator version 2, two new readers.
+Build 502094. Every number below was measured on crops of the z7 grid, not on a full sheet.
+
+### The baked ground colour
+
+Every landscape HLOD cell of `Persistent_Level.umap` ships an unlit BaseColor of its 508 m
+square: a 1024 px virtual texture of 128 px BC1 tiles with a 4 px border, in Morton order.
+`gamedata/bake.py` finds each cell's mip-0 chunk by its size and bulk flags, box-filters it to
+1 m and places it where the landscape component of the same section lands. `python -m mapgen
+paint` writes it as `bake.rgb.u8.z` (47 MB). On this build 141 of 148 cells decode; the seven
+small edge cells (512 and 256 px) have another layout and are left out, and the paint covers
+them. The bake covers 63.7% of the grid and 97% of the painted land. Black texels are its own
+holes and count as no bake.
+
+A hole the bake encloses on every side is ground the game hides: a crater's pit, the abyss
+pits, a cave's mouth. The paint under it is never seen and is one solid layer per landscape
+component, so it drew as squares. Since style version 6 the paint is dropped there and the
+biome fallback (the area's median ground, blurred over `fallback_blur_m`) draws instead;
+`paint.hidden_ground_texels` in the sidecar counts them (238,054 on build 502094).
+
+Beside it the store keeps `layers_bake_fit`: each paint layer's albedo refitted to the bake by
+a non-negative least squares per channel, over 400,000 texels sampled every fourth texel where
+the layers' weights sum above one half. A layer dominant on fewer than 200 sampled texels keeps
+its name-matched albedo; on this build that is DesertRock and PurpleForest.
+
+With `"ground": "bake"` in the palette the painted ground is the bake wherever it has one,
+faded into the paint mix over `have_blur_m` (weight `clip(2 * blur(have) - 1) * have`), and the
+paint mix elsewhere uses the refitted table. The name-matched table's corrections (the 0.95
+darkening, WetSand's lightness fix) and the PigmentMap do not apply in that mode, and the biome
+tint touches only ground off the bake. The prototype measured the albedo against the bake at a
+median Delta E of 8.9 on the dune and 10.3 on the wet-sand beach with the old table, 1.0 and 1.2
+with the refit, and 0 with the bake. Wet sand stops reading as shallow water. The ground comes
+out darker (0.69 to 0.96 of the old luminance); retuning exposure and colour targets is the
+colour calibration's job, not this one's.
+
+### Rock surfaces
+
+**Families.** The sweep now records each placement's first `OverrideMaterials` entry. A rock
+wears that material, or its mesh's own first one, and the material's parent chain is walked to
+one of the `Cliff_<Layer>` instances (`gamedata/rockfamily.py`). Rocks on this build: grass
+4,737, plain cliff 4,344, forest 1,415, sand 1,019, red jungle 582, red grass 115, wet sand 42,
+and 8,772 others (desert rock, boulders, arches) with no family.
+
+**The plane.** The direct pass already rasterises every rock with the max-Z rasteriser, which
+keeps the winning triangle's source id; the source is now the placement's family, written as
+`direct.family.u8` beside the direct cache. The stamping therefore rides the rasteriser and
+costs no pass of its own. The direct cache's stamp gains `families` (the `rock_families` reader
+version), so a cache from before this change is rebuilt once.
+
+**Colour.** The paint store records each family's `Color Tint`, the nearest one up the chain
+(linear 0.624, 0.545, 0.471 for every family on this build), and its top layer, the mean of the
+family root's `Far Albedo` texture or else its `Albedo`: forest and grass from their far
+textures, red grass from `TX_GrassRed_01_Alb`, sand from `TX_Sand_BC`. Plain cliff, wet sand and
+red jungle have none. Per pixel, rock is multiplied by its family's tint relative to the
+median tint of all families, then blended to the top layer by an up-facing ramp on the drawn
+surface's normal, `nz` from 0.60 to 0.85, boxed over 3 pixels. That ramp is a guess: the
+`CliffTopMaterial` function is not decoded.
+
+The rock targets of section 31 are measured on rock that already wears the common tint, so
+only a family's departure from it is applied (`palette/surfaces.py` `family_tables`). With one
+tint for every family, as on this build, rock stays on its target. Through style version 5 the
+whole tint was multiplied on after the target was set, which drew every rock 44% darker in
+linear light and warmer than its target. A render-only rock (sea rocks, rubble, rock piles)
+has no family: it takes the area's calibrated rock, never the family or top layer of a cliff
+whose footprint it happens to overlap.
+
+**Trees over rock.** Rock used to hide the canopy: 86 to 97% of tree cover above 0.5 in the
+forest and ivy crops. The store's `crown.i16.z` holds, per 1 m texel, the highest crown top over
+it in decimetres: each tree's base height plus `max(4 m, 1.2 * radius)`, within its crown
+radius. Since generator version 3 the measured crown tops of section 36 fill it instead. The canopy is laid over rock wherever the drawn surface is no higher than that top, so
+a tree on a ledge shows and a tree below a cliff stays hidden. It is a per-pixel comparison
+against a 1 m plane; no tree is stamped at render time, which in the prototype extrapolated to
+about 7 minutes for a full sheet.
+
+### The Titan trees
+
+73 trunks (`SM_TitanTree_01`, Nanite) and 218 leaf meshes (`SM_TitanTree_Leaves_01` and `_02`)
+are StaticMeshActors the sweep already lists. `titan_items` picks them and the mesh rasteriser
+draws them at twice the render's pixel into `titan.cache` (stamp: half the size, the build, the
+`titan_trees` reader). The painter samples that raster bilinearly, lights the crowns by their
+own relief, and lays them over the finished pixel, water included, at `titan_trees.opacity`
+(0.8), leaves sRGB (77, 90, 48), trunks (99, 88, 81). They cover about 0.9 km² of ground that
+was mostly drawn bare. Since style version 6 they are exposed like everything else, by
+`exposure` times `tone.gain`; before, the plain exposure drew them 1.6 times too dark.
+
+Players build under these trees, so they are a style toggle. `--no-titan-trees` renders with
+opacity 0, skips the raster and records its own style digest; the Maps tab's generate form has
+a "Titan trees (game-painted)" checkbox for it, the preset option `titan_trees`.
+
+### Inland water
+
+Under a few centimetres of water the Beer-Lambert model lets nearly all of the bed through, so
+shallow pools and lake rims vanished: 0.81 km² of water is under 1 m deep. Off the ocean reach
+the transmitted share is now multiplied by `1 - water.inland_floor` (0.35), so inland water
+always keeps that much of its body colour. The sea is unchanged.
+
+### Provenance
+
+| Axis | Change |
+| --- | --- |
+| data: `paint` | generator version 2: `bake.rgb.u8.z`, `crown.i16.z`, `layers_bake_fit`, `rock_families`, `bake` stats |
+| data: `rock_families` | reader version 1, painted layer only |
+| data: `titan_trees` | reader version 1, painted layer only; absent when the trees are off |
+| style | `satellite-painted` version 2 |
+
+### Measured
+
+The paint command took 68 s (25 s before): the bake read and decode 19 s, the refit, the crown
+plane and the family colours most of the rest. The store is 104 MB. At render time the family
+lookup took 1.7 s. Preparing the painted ground took 195 to 227 s with other jobs running on the
+machine, against 112 to 124 s for the prototype on an idle one. Drawing a crop through
+`render_layer` took no longer than before: 1.0 to 5.8 s per crop with everything on, against
+1.6 to 7.4 s for the shipped recipe 6 on the same crops. The Titan raster for a 1600 px crop
+of the forest took 32 s at the 2x pixel; the whole map is estimated at 1.5 to 2.5 min and has
+not been measured.
+
+### Known limits
+
+- Nothing here has been compared with an in-game top-down view.
+- The up-facing ramp is a guess, and grass tops come out a little light.
+- The Titan crowns over water let the water's blue through at 0.8 opacity.
+- Murky water (a floor of about 0.55 for swamps) needs the per-body class plane, which is not
+  built.
+
+## 31. Colour calibration of the game-painted style (2026-10-05)
+
+The painted style is calibrated against in-game screenshots: first the Spire Coast, the Dune
+Desert, the Western Beaches and the Eastern Dune Forest, then a second pass over the biomes
+those left out (see "Area targets"). Style `satellite-painted` version 3; the crowns, the
+gated swamp water and the mesh colours below are version 6. Code: `palette/painted.py`,
+`palette/calibration.py`, `palette/trees.py` (crowns), `palette/optics.py` (water) and
+`palette/surfaces.py` (rock and meshes). Numbers: the `tone` and `calibration` blocks of
+`palette/palettes/satellite-painted.json`.
+
+### The ground albedo source
+
+`PaintedGround(..., bake=GroundBake(linear, have))` takes the game's baked ground colour (the
+landscape HLOD BaseColor) as an optional input. `linear` is linear RGB, `(rows, cols, 3)`
+float32, on the paint store's 1 m grid. `have` is a bool plane of the same shape.
+`GroundBake.from_srgb(rgb, have)` builds one from 8-bit sRGB and drops the bake's black
+holes. Without one, a palette with `"ground": "bake"` reads the paint store's own bake
+(section 30) through the same feather, block by block; a store without a bake draws from the
+paint table.
+
+One function picks the source: `ground_albedo(paint, have, bake, feather_m)` returns the paint
+mix unchanged when `bake` is None. Otherwise the bake replaces the paint mix where `have` is
+set, feathered over `have_blur_m` inside its own edge. `PaintedGround.albedo_source` records
+`"bake"` or `"paint"`. Under the bake the biome tint is skipped; elsewhere the paint table,
+pigment and biome tint stand as in section 27. Every later step works on whichever albedo
+arrived.
+
+### Tone
+
+- **Gain.** The ground's exposure is multiplied by `tone.gain` = 1.6, for both lit land and
+  the bed under water. On land layers the bake fitted best at ×1.6 to ×2.1 linear. The water
+  body, sky and deep colours are not scaled. The Beer-Lambert fit assumed a bed of the
+  displayed dry sand times 0.8, which the gain now delivers: over the Sand target the ramp is
+  0.25 m #8a9b92, 0.5 m #6d8c88 and 1 m #5a8182, against the fit's #8d9c93, #6f8e89 and
+  #5d8483.
+- **Shoulder.** It replaces the per-channel highlight shoulder. On luminance, the curve is
+  the identity below `knee` 0.6. Above it, a Reinhard curve takes `white` 1.6 to 1, scaled
+  to join the identity with slope 1.
+
+### Per-layer colour transfer
+
+The targets are display sRGB colours, at map exposure:
+
+| Target | Colour |
+| --- | --- |
+| Sand | #d5cbb6 |
+| WetSand | #b1a09e |
+| SandRipples (the Dune Desert) | #d07756 |
+| Grass | #83986e |
+| Forest and the canopy | #558653 |
+| Rock outside every area entry | #85816c |
+
+WetSand was #b8a083, from one Spire Coast waterline box that probably mixed in dry sand. The
+Western Beaches wet band and the 1.0 crash-beach store shot both read a low-chroma mauve
+grey, so the target keeps the old lightness (L 0.72) and takes their hue and chroma.
+
+Each target is taken back through the flat-ground pipeline into ground OKLab: the inverse
+shoulder, divided by exposure times gain and by the flat sky-and-sun light, then half the
+altitude lift and the chroma gain undone. For each layer, the median colour of its pure
+texels (at least 0.7 of the weight) is measured on the albedo as it arrived. The step from
+that median to the target has three parts: a lightness offset, a chroma scale (clipped to
+0.25 to 4) and a hue turn. Each texel moves by its layers' steps, mixed by their normalised
+weights. Because the transfer measures its own source, the same targets work on the bake
+and on the paint table.
+
+### Area targets
+
+`calibration.areas` is a list of entries. Each one names map areas and gives targets that hold
+only there. An area is named by its stem (`Area_crater`, both craters) or by one asset
+(`Area_crater_1`, the Blue Crater; `Area_RedJungle_2`, the Jungle Spires). The membership is
+blurred over `area_blur_m` (25 m) on the 4 m rock grid. An entry can carry:
+
+- **`layers`.** The layer's weight is split by the area share. The area's part moves to the
+  entry's target, the rest to the global target if there is one. Each source median is
+  measured on its own side, on pure texels as above.
+- **`rock`.** As the desert rock below.
+- **`canopy`** and **`meshes`** (coral, shell). The colour becomes a plane on the rock grid:
+  the global colour outside, the entry's inside. The canopy targets also move the tree crowns
+  (see "Crowns" below).
+- **`water`** with **`water_class`.** An opaque display colour for the water of one class of
+  section 33 (`swamp` for the Swamp). Under that class's share of a pixel's water it replaces
+  the Beer-Lambert result by `1 - exp(-depth / water.opaque_tau_m)`, with the tau 0.3 m, so
+  only the edge shows the bed. Ocean inside the area keeps the sea; through style version 5 the
+  colour went on every water texel of the area, sea included. A store without a class plane
+  gives it the water off the ocean's reach.
+
+No two entries scope the same material to the same area; a test checks this.
+
+**Offshore pieces.** The game's area map gives stretches of open sea, with their islands, to
+areas they do not touch: the Rocky Desert's id covers the sea north of the Spire Coast
+(around (743, -2527)) and the islands off the west coast (-2655, 1506). Its rock and sand
+targets followed, so the Spire Coast's outer islands drew red-brown rock (#b18574 against
+#51524d) and tan sand, with a seam through one rock mass at the area edge. Before any target
+is scoped, the area map on the 4 m rock grid is rehomed (`palette/calibration.py`
+`rehome_offshore`, from `PaintedGround._coarse_areas`). An area's pieces are its 8-connected
+components; the one holding the most land is its own. Any other piece with land under half
+its cells takes the named area it shares the longest border with, else No Man's Land. Sea is
+water within `OCEAN_LEVEL_BAND_M` (0.5 m) of the ocean level, any grade, and the void off the
+landscape; a lake or swamp is land, so the second crater and swamp keep their targets. This
+holds for every area entry. On build 502094 it moves 3.74 km² (sidecar
+`paint.offshore_cells_rehomed`, in 4 m cells): Rocky Desert to Spire Coast 2.47 km², Rocky
+Desert to none 1.09, Red Jungle to none 0.13, Grass Fields to none 0.05. At 2048 px the
+Spire Coast crop's red rocks go from #af8774 to #575951 (ΔE 22.7 to 2.4 against #51524d);
+dunes and the desert lake do not change.
+
+**Rock.** In each entry with a `rock` target, and with the default `rock` target everywhere
+else, the rock's chroma and hue are set to the target. The lightness moves by the step from
+the median to the target, so it keeps its variation. Every rock is now on a display target,
+so the old exposure (`rock_keeps_exposure`) no longer applies to any area; the flag stays
+for a palette without a default.
+
+The targets use the method above: the median sRGB over the top 60% of L in each box, then
+L ×0.95 (capped at 0.86) and chroma ×0.9 in OKLab. Only medium- or high-confidence
+references were used:
+
+| Material | Areas | Target | References |
+| --- | --- | --- | --- |
+| Rock | Dune Desert, Desert Canyons, Rocky Desert (not Savanna) | #ae8271 | first pass |
+| Rock | Grass Fields, Northern Forest, Western Dune Forest | #7e7868 | up-facing lit rock: [store shot](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/ss_b1104309f1c22c85de6ad6c401e6d889411c14d2.1920x1080.jpg), [Random mode 1](https://satisfactory.wiki.gg/images/Random_Game_Mode_-_Resource_Node_Example_1.png), [cave entrance](https://satisfactory.wiki.gg/images/Entrance_Of_A_Cave.webp), [Northern Forest U8](https://satisfactory.wiki.gg/images/Comparison_2_-_Northern_Forest_-_U8.png) |
+| Rock and Cliff layer | Red Jungle, Jungle Spires, Red Bamboo Fields | #877e6e | [Jungle Spires](https://satisfactory.wiki.gg/images/Jungle_Spires.png), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942) |
+| Rock | Spire Coast | #51524d | an unpublished 1.0 shot; [Spire Coast](https://satisfactory.wiki.gg/images/Spire_Coast.png) for the lightness |
+| Rock, default | everywhere else | #85816c | [Abyss Cliffs](https://satisfactory.wiki.gg/images/Abyss_Cliffs.png), [Lake Forest](https://satisfactory.wiki.gg/images/Lake_Forest.png), the store shot |
+| Sand | the deserts and Savanna | #c4ab8b | [Somersloop](https://satisfactory.wiki.gg/images/Somersloop_at_Rocky_Desert.jpg), [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), [Desert Canyons](https://satisfactory.wiki.gg/images/Desert_Canyons.png) |
+| Gravel | the deserts and Savanna | #8f8373 | Somersloop, and the gravel-to-sand ratio in Desert Canyons |
+| Grass | Grass Fields | #9dad70 | the v1.1 top-down HUB shots: [front](https://satisfactory.wiki.gg/images/HUB_Front_Overhead.png), [rear](https://satisfactory.wiki.gg/images/HUB_Rear_Overhead.png), [burners](https://satisfactory.wiki.gg/images/HUB_Biomass_Burners_Overhead.png), [freighter](https://satisfactory.wiki.gg/images/HUB_FICSIT_Freighter_Overhead.png) |
+| Canopy | Western Dune Forest | #7c9573 | [Western Dune Forest](https://satisfactory.wiki.gg/images/Western_Dune_Forest.png) |
+| Canopy | Jungle Spires | #6c7f5b | [Jungle Spires](https://satisfactory.wiki.gg/images/Jungle_Spires.png) for hue and chroma; the Spire Coast lightness, as the shot is low-angle |
+| Canopy | Red Jungle | #7c4955 | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942) |
+| CoralRock layer | Blue Crater, Crater Lakes | #6c7386 | [crater ground at noon](https://steamcommunity.com/sharedfiles/filedetails/?id=3372405479) |
+| Shell meshes (the pale plates) | Blue Crater | #747b85 | [Blue Crater aerial](https://steamcommunity.com/sharedfiles/filedetails/?id=3579556500), [Blue Crater](https://satisfactory.wiki.gg/images/Blue_Crater.png), the noon crater shot |
+| Water, opaque | Swamp | #7e7372 | [Swamp](https://satisfactory.wiki.gg/images/Swamp.png), [Swamp 2024](https://steamcommunity.com/sharedfiles/filedetails/?id=3202456199), [Swamp 1.0](https://steamcommunity.com/sharedfiles/filedetails/?id=3344959083) |
+| WetSand (global) | everywhere | #b1a09e | [Western Beaches](https://satisfactory.wiki.gg/images/Western_Beaches.png), [crash-beach store shot](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/ss_279a1e122f86b7c98931b42e38cac0fa91b996ce.1920x1080.jpg) |
+
+Two readings in these references:
+
+- Rock outside the deserts is a near-neutral warm grey (C 0.02 to 0.03), not the green the
+  ground tint gave it. Lit tops that face up read warm (h 80 to 100); vertical and hazy faces
+  read blue-grey from sky light, which a top-down map does not show.
+- The Rocky Desert rock in its own references is grey, not the Dune Desert red-brown, so
+  Savanna is kept out of the desert rock.
+
+### Other colours
+
+- **Meshes.** Coral-tree caps are #99868e, replacing the pink placeholder; a display target,
+  so the gain does not brighten it. Seabed coral #5f8899 is a bed colour, as in the water
+  fit, so it is also divided by the 0.8 wet factor. It is still composited into the bed
+  before Beer-Lambert, with the depth measured to the coral top, so shallow reefs stay
+  visible: #628b9b at the surface, #5a8286 at 0.5 m.
+- **Which coral is under water.** Coral takes the seabed colour by the pixel's water cover.
+  Through style version 5 it was `depth_m > 0`, which off the ocean's reach is the 40 m depth
+  fraction of dry land, so 4,023 px of coral on dry land drew seabed blue.
+- **Coral specks.** The mesh raster takes one sample per pixel, so coral narrower than a
+  pixel standing in the sea fills a whole 3.66 m preview pixel and drew as a pink dot. A
+  coral pixel whose eight neighbours are at least 60% water (`SPECK_WATER`) is drawn as that
+  water, at their mean depth, with the coral as its bed. Coral wider than a pixel keeps its
+  cap colour, and so does coral on land: the Spire Coast's coral trees stand a median 23 m
+  above the sea and are the caps the #99868e target was measured on. At 2048 px this sinks
+  823 coral pixels of the sheet, 260 of them in the Spire Coast crop at (16, -2137), whose
+  median goes from mauve #898189 to the water's #56787d.
+- **Shells** (`SM_BigShell_01`, `PlateauShell`, `SmallShell`: everything the `Shell` class
+  takes) wear their own material's colour: the mean of their BaseColor textures in linear
+  light is 0.08 to 0.11 neutral grey, kept as the albedo sRGB (88, 85, 83). The #d6ccba cream
+  was a placeholder. Their materials also carry a cyan emissive, not drawn. The Blue Crater
+  keeps its #747b85 target.
+
+### Crowns
+
+With crowns drawn the soft canopy is off (`canopy_kept` 0), so through style version 5 the
+canopy targets coloured nothing and the crowns drew their texture means: the Red Jungle a
+saturated red against its #7c4955. The targets now move the crowns (`palette/trees.py`
+`crown_ops`, applied in `over_crowns`):
+
+- **Scopes.** Each area entry with a `canopy` target is one, holding the trees where its area
+  share is at least 0.5; the global `canopy` target holds the trees no entry does.
+- **Source.** The per-channel weighted median of the scope's crown colours as drawn: the
+  texture mean times `darkening`, at the style's `chroma`. A tree counts by the ground its
+  crown hides, its species' sprite cover times its scale squared.
+- **Step.** As for the layers: a lightness step, a chroma scale and a hue turn to the
+  target, taken back through the flat light without the altitude lift a crown does not get
+  (`display_to_crown`). Per pixel the ops are mixed by the area weights on the 4 m grid, as
+  the canopy colour planes were.
+- **Hue gate.** A target was measured on canopy of one hue. A crown takes all of its scope's
+  step within 20 degrees of the target's hue and none past 40 (`HUE_GATE_DEG`), and greys
+  under chroma 0.02 never move; the source median is taken over the gated crowns only. Pink
+  bamboo, blue palms, coral trees and the yellow pines of the Northern and Lake Forests keep
+  their texture colours. Without the gate one step over every species drew the Red Bamboo
+  orange: a per-channel median over mixed hues has almost no chroma, so the global scale came
+  out x1.7.
+
+Measured at 2048 px on build 502094: the median of crown pixels at least 95% covered and dry,
+per area, Delta E (OKLab x100) to the target before and after.
+
+| Scope | Trees measured | Step (dL, chroma) | Area | Before | After |
+| --- | --- | --- | --- | --- | --- |
+| Red Jungle #7c4955 | 10,312 | -0.035, x0.65 | Red Jungle | 6.2 | 0.4 |
+| Jungle Spires #6c7f5b | 2,170 | +0.037, x0.71 | Jungle Spires | 5.7 | 1.0 |
+| Western Dune Forest #7c9573 | 3,070 | +0.094, x0.71 | Western Dune Forest | 12.1 | 1.0 |
+| Global #558653 | 20,540 | +0.037, x1.14 | Swamp | 5.2 | 0.3 |
+| | | | Titan Forest | 8.5 | 2.6 |
+| | | | Spire Coast | 6.5 | 3.6 |
+| | | | Northern Forest (pines, gated out) | 6.9 | 7.2 |
+
+### Measured
+
+Crops of the z7 grid through `render_layer`, with a scratch extraction of the bake as the
+`GroundBake`. Each value is the median of the material's pixels: for layers, texels with at
+least 0.7 of the weight, more than 1 m above the water and with no rock, mesh or canopy
+cover. Values are ΔE (OKLab ×100) to the target, and to the screenshot reference in
+brackets:
+
+| Material | Crop centre (m) | Before | After, bake | After, no bake |
+| --- | --- | --- | --- | --- |
+| Dry sand | forest (-1295, 826) | 10.9 (15.0) | 0.3 (4.2) | 1.2 (3.5) |
+| Dunes | Dune Desert (2700, -1700) | 7.3 (8.2) | 0.2 (4.6) | 1.4 (3.7) |
+| Canopy | forest (-1295, 826) | 13.6 (16.6) | 1.4 (2.7) | 2.2 (2.4) |
+| Desert rock | desert lake (3125, -674) | 1.8 (4.7) | 0.4 (3.1) | 0.5 (3.0) |
+| Coral-tree cap | Spire Coast (-339, -2275) | 5.6 (3.4) | 3.2 (6.5) | 3.2 (6.5) |
+
+The distance to the reference is the deliberate discount for the game's tonemap and grade,
+which the targets remove. The coral caps sit 3.2 below target because they are domes lit by
+their slope; their chroma and hue are within 0.5. Wet sand and grass had no dry, pure patches
+in these crops. On the Spire Coast the wet sand is under water, as the references show.
+
+The area targets were measured on the paint table (no bake), flat-lit: each material's pure
+texels pushed through the flat-ground pipeline, the median in OKLab against the target.
+Layers are texels with at least 0.7 of the weight and no canopy; rock is the rock grid
+under cliff provenance; canopy is texels at least 0.8 covered, which is 85% canopy and 15%
+ground; swamp water is one texel at 1.4 m. ΔE before is version 2, after is version 3:
+
+| Material | Areas | Before | After |
+| --- | --- | --- | --- |
+| Rock | Grass Fields, Northern Forest, Western Dune Forest | 4.6 | 0.2 |
+| Rock | Red Jungle, Jungle Spires, Red Bamboo Fields | 1.5 | 0.1 |
+| Rock | Spire Coast | 20.8 | 1.4 |
+| Rock, default | Abyss Cliffs, Lake Forest | 1.8 | 1.1 |
+| Rock, default | Titan Forest | 1.9 | 1.2 |
+| Rock, default | Savanna | 2.5 | 0.6 |
+| Grass | Grass Fields | 7.2 | 2.0 |
+| Canopy | Western Dune Forest | 7.6 | 1.1 |
+| Canopy | Jungle Spires | 2.2 | 3.2 |
+| Canopy | Red Jungle | 16.1 | 2.7 |
+| Sand | the deserts and Savanna | 9.0 | 2.2 |
+| Gravel | the deserts and Savanna | 2.5 | 1.7 |
+| Cliff layer | Red Jungle, Jungle Spires, Red Bamboo Fields | 4.8 | 1.4 |
+| CoralRock layer | the craters | 13.6 | 1.3 |
+| Shell plates | Blue Crater | 27.2 | 0.0 |
+| WetSand | everywhere | 4.0 | 0.5 |
+| Swamp water | Swamp, 1.4 m | 5.7 | 0.1 |
+
+The first-pass targets stay where they were: desert rock 0.5 to 0.1, Sand outside the
+deserts 0.5 to 0.7, Grass outside Grass Fields 0.6, the dunes 1.3 and the Spire Coast
+canopy 0.6. The Jungle Spires canopy was already close in hue and chroma and moves mostly
+in lightness; its remaining 3.2 is the 15% of ground under the canopy. What is left on
+the layers is mostly the biome tint, which is added after the transfer.
+
+### Known limits
+
+- No target, for want of a clean reference: SandRock (Dune Desert and Spire Coast),
+  SandPebbles, SandCracks, DesertRock, Soil (forest floor, swamp mud, Titan Forest),
+  Puddles, the Red Jungle and Red Bamboo ground (RedJungle_LayerInfo, also in Crater Lakes),
+  red grass, the jungle floor sand, the swamp canopy, the Abyss Cliffs Cliff layer, gravel
+  outside the deserts, and the moss on the Titan Forest formations.
+- Forest_LayerInfo still takes the canopy target, which makes the bare forest floor a
+  vivid treetop green. The two references for the floor disagree by 35° in hue, so it has
+  no target of its own yet.
+- The Grass Fields grass target comes from one place, seen in four v1.1 shots; the biome
+  is inferred from the flowers. Grass elsewhere keeps the Eastern Dune Forest target.
+- The Spire Coast rock target is near-neutral (C 0.008) because the hue in its references
+  is the shot's teal haze. The moss on the spires is not modelled.
+- The rocks on the North Beach lagoon islands sit inside the main piece of
+  `Area_DesertCanyons`, so the offshore rehoming leaves them, and they keep the desert rock.
+- The Red Bamboo Fields and Red Jungle lakes keep the sea fit: their reference water
+  reflects a purple sky, which is not the swamp's look.
+- Every target comes from tonemapped perspective screenshots; only the Grass Fields grass
+  is from a top-down view.
+
+## 32. The seabed coral carpet (2026-10-05)
+
+In the Spire Coast shallows the game shows patches of blue on the seabed: blue fans with pale
+rims under turquoise water (owner screenshots and the wiki's Spire Coast shot). The painted
+style drew none of it. Build 502094.
+
+### What it is
+
+Checked one candidate at a time against the game files:
+
+- **Not a paint layer.** The `CoralRock` layer (`TX_SeaRocks_01_Alb`, linear albedo 0.171,
+  0.173, 0.235) covers 0.62 km² of seabed at weight above 30, most of it on the Spire Coast.
+  It is already drawn, and the HLOD BaseColor bake over the spiral sandbars' seabed, which
+  carries it, is brown-grey, not blue.
+- **Not the layer's grass type.** `LandscapeGrassType` `CoralRock` spawns crater grass, Grass_03,
+  lichen and pebbles at runtime, culled at 150 m, so it never reaches a map view.
+- **Not decals or spline meshes.** None of the 105 `DecalActor`s stands in the Spire Coast box
+  (1 m grid rows 700 to 2400, columns 2500 to 4800), and the 19 spline meshes over its water
+  are all `SM_RiverPlane`.
+- **Placed foliage: `SM_CraterGrass_01`.** 112,525 instances map-wide. 48,145 have their origin
+  under water, and 47,118 of those stand on `CoralRock` paint. Median origin depth 1.41 m. They
+  form the clustered patches in the channels, where the screenshots show the carpet. The mesh is
+  a 1.3 x 1.0 m rosette of upright cards, 0.53 m tall. Its albedo
+  (`TX_CraterBush_01_Alb1`) is purple-pink with blue-white rims; the master material
+  (`MM_Grass_Master`, SSS 0.8) is stripped, and through the water the game draws it blue.
+
+Other coral foliage under water (barnacles, crater coral roots, coral formations) is grey-green,
+pink or beige in its textures and stays with the render-only meshes of section 27.
+
+### The input
+
+`python -m mapgen paint` harvests the carpet in the same level walk as the canopy trees
+(`gamedata/carpet.py`) and writes two more planes into the paint store, so they carry the paint
+input's digest and build. Paint generator version 2.
+
+| File | What |
+| --- | --- |
+| `carpet.u8.z` | Share of each 1 m texel under a rosette's plan, 0..255. The footprint is the convex hull of the mesh's plan view, sampled at 10 cm, times the instance's XY scale: 0.93 m² at scale 1. The blades are upright cards, so the triangles' own plan area (0.04 m²) would draw specks. |
+| `carpet_top.i16.z` | The highest rosette top over the texel, decimetres, no-data elsewhere: origin z plus the mesh top times the Z scale. |
+
+`meta.json` gains a `carpet` block: instances per mesh, the decode route, the footprint area and
+the covered texels (166,056 on this build). Every instance is kept, wet or dry; the renderer
+decides where water covers them.
+
+### Drawing it
+
+Style `satellite-painted` version 2, palette key `carpet`. In `palette/optics.py`:
+
+1. **Patches.** The cover is blurred by `blur_m` (3 m) and mapped through
+   `1 - exp(-gain * share)` with `gain` 8, so a cluster of rosettes reads as one patch with a
+   soft edge and a lone rosette as a faint tint (0.12 at most). Top no-data texels take the
+   highest top within the blur. Through style version 5 it was 1.25 m and 3: the rosettes cover
+   0.3% of the grid, 2.4% of the Spire Coast, and drew one blue dot each, a stipple, not a
+   carpet. Measured on the Spire Coast box, a 3 m blur leaves the cluster share at 0.13
+   (median) to 0.37 (90th percentile) where there is any, which the gain maps to 0.65 to
+   0.95.
+2. **In the bed, under the water.** Only where the pixel is under water. The carpet replaces the
+   bed by its cover, and is seen through the water above its own top: depth
+   `level - top`, with `level = z + depth`. Then the same Beer-Lambert as the bed, before the
+   open-sea term: `carpet * T + W (1 - T) + sky`.
+3. **`depth_scale` 0.2.** The water's fitted `k` saturates by about 1 m, and the median carpet
+   top is 0.8 m down (origins at 1.4 m). With the bed's own `k` the carpet would vanish, yet the
+   screenshots show it clearly through the channels. The carpet's depth is scaled by 0.2; the
+   water fit's depths were matched, not measured, so this is the weaker number of the two.
+4. **Colour** `#6c9ebe` (linear-light carpet albedo at map exposure). Drawn over the channels it
+   comes out at median `#5e8a9c`, against the calibration target `#5f8899` (the reference's
+   `#6493a6` at map exposure).
+
+`strength` 0 switches it off; a version 1 paint store has no carpet planes and draws none.
+
+### Measured
+
+On five 1280 px crops of the z7 grid through `render_layer`: the carpet changes 5.6% of the
+pixels of a dense Spire Coast channel by more than 40 (summed over RGB), and nothing on the
+spiral sandbars, where no crater grass grows. Its cost was not measured separately: one
+7500² blur and one dilation at load, two plane samples per band.
+
+### Known limits
+
+- The blue is matched to screenshots, not read from the material: the grass master material is
+  stripped, so in-game tint and subsurface scattering cannot be checked.
+- Rosettes above the water line (in the Crater biome) are not drawn; they are ordinary land
+  foliage, which the understory item covers.
+- The pale rims the screenshots show inside the patches are not drawn.
+## 33. Water by class in the game-painted style (2026-10-05)
+
+Recipe 6 drew every water texel with one set of Beer-Lambert optics, the ones calibrated on
+the Spire Coast sea. Inland that read wrong: rivers came out sea-blue, the swamp a clear blue
+sheet, and sulfur ponds like the sea. The game-painted style now gives each water body a
+class and each class its own optics. The ocean keeps its calibrated values unchanged.
+
+### The class plane
+
+`python -m mapgen paint` also writes `water_bodies.json` into the paint store: every water
+actor with a box (class, world box, the materials its export subtree assigns) and every
+root `StaticMeshComponent` whose mesh is under `/HotSpring/`. On build 502094 that is 839
+actors and 101 terraces, and it doubles the paint run to about 50 s because the water boxes
+read mesh bounds. `PAINT_GENERATOR_VERSION` is 3 (with sections 30 to 32 and 36).
+
+`gamedata/waterbodies.py` `classify` turns that into a uint8 plane on the 1 m grid, once per
+render (about 5 s):
+
+1. Each actor's class comes from its first known material (`MATERIAL_CLASS`):
+   `MI_SLW_River_*` river, `MM_Lake_01` lake, `MI_Lake_Blue_01` blue lake,
+   `MI_Lake_Turquoise_01` turquoise, `MI_WaterSwamp_Muddy` swamp, `MI_Lake_Caves_01` cave,
+   `SulfurPond_Inst` sulfur, `MM_OceanMaster` ocean. 527 actors (the `FGWaterVolume`
+   brushes, translucent water, lake and ocean spline tools) assign none.
+2. A lake box at most 150 m on a side with a hot-spring terrace inside it (within 1 m of its z
+   range) is a hot spring.
+3. Boxes paint wet texels whose level lies within 1 m of the box's z range, largest box
+   first, so a pond inside a big box keeps its own class. No box but the ocean's claims the
+   open sea: water within 1 m of the ocean level that the map's edge reaches through
+   channels at least 96 m wide (a 48 m opening on a 4 m grid, kept where it comes within
+   three radii of the edge). The swamp's `MI_WaterSwamp_Muddy` boxes are 230 m squares at
+   the sea's level and reach past its coast, to x 3250 against the swamp area's 3040; they
+   painted the open sea mauve in straight steps. A lagoon behind a narrower mouth keeps its
+   box.
+4. Unclaimed wet texels within 1 m of the ocean level are ocean. That includes the level-only
+   water around the frame at about -16.3 m.
+5. The rest of an inland body (8-connected) takes the body's majority class when that class
+   covers at least a quarter of it.
+6. What is left is swamp in `Area_Swamp` and lake everywhere else.
+
+Build 502094: ocean 16.23 M texels, lake 1.20 M, swamp 0.35 M, river 0.38 M, turquoise 53 k,
+hot spring 15 k, sulfur 9.7 k, cave 5.3 k, blue lake 5.2 k; 312 bodies claimed by
+material, 0.28 M texels by the biome fallback. The open sea is 14.92 M texels; it took
+264,581 texels from the swamp and 16 from a river, and nothing from any other class.
+Seeding it from the texels with no ground as well would add 2 k, so the edge alone does.
+
+The renderer samples the plane bilinearly with the dry taps dropped
+(`terrain/sample.py` `ClassMix`), so a shore pixel takes its water's class rather than half
+of nothing. A pixel whose wet taps agree takes its class's row exactly. A band holding only
+ocean and dry texels takes the recipe 6 path unchanged, and so does a render from a paint store
+without `water_bodies.json`; the sidecar's `paint.water_classes` says which happened.
+
+### The optics
+
+Per class, in `water_classes` of `satellite-painted.json`: absorption `k_per_m`, the body
+colour `body`, the `deep` colour and its `deep_tau_m`, a `turbidity` and a `bed_tint`.
+
+```
+T     = (1 - turbidity) * exp(-k d)
+under = bed * bed_tint * T + body * (1 - T) + 0.02 sky
+under = lerp(under, deep, 1 - exp(-d / deep_tau))
+```
+
+With turbidity 0 and a white bed tint this is the ocean's formula. Turbidity is an opacity
+floor: murky water hides its bed even at the edge. The bed tint stands for a stained bed,
+the sulfur pond's orange rim.
+
+| Class | Body | k (r, g, b) /m | Turbidity | Source |
+|---|---|---|---|---|
+| river | #4f7d78 | 2.4, 1.6, 1.6 | 0 | Hue from the wiki's Rocky Desert river; clear, so the bed shows |
+| lake | #56745b | 3.0, 2.2, 2.6 | 0.1 | Wiki Lake Forest and the crash-site pond: jade green |
+| lake_blue | #4a8494 | 3.4, 1.0, 0.75 | 0 | `MI_Lake_Blue_01` absorption (0.52, 0.15, 0.11) |
+| turquoise | #448882 | 3.5, 1.0, 1.1 | 0.05 | `MI_Lake_Turquoise_01` deep colour and tint |
+| swamp | #7e6e6a | 4.0, 4.5, 5.0 | 0.45 | Wiki Swamp: opaque mauve-brown mud |
+| cave | #2f4a47 | 3.0, 2.5, 2.5 | 0 | Dark; no reference |
+| sulfur | #67a395 | 3.0, 2.0, 2.0 | 0.3 | `SulfurPond_Inst`: deep (0.17, 1, 0.89) cyan, shallow (1, 0.26, 0) orange as the bed tint |
+| hot_spring | #68a098 | 2.5, 1.6, 1.5 | 0.2 | Milky turquoise; no reference |
+
+Targets follow the Spire Coast calibration (section 27): the reference colour times 0.85
+linear for map exposure, OKLab L times 0.95 and chroma times 0.9. Against the references at
+assumed depths, Delta E (OKLab x100): swamp 3.7 at 1 m and 5.2 at 3 m, lake 1.9 at 2 m and
+4.5 at 4 m. Hue alone (the a, b distance) is under 1 for both. The river references are a
+dusk shot at a grazing angle and a stream over white sand. They fix only the hue (a, b
+distance 1 to 3), not the lightness.
+
+### Known limits
+
+- No top-down screenshot has checked any class. The sulfur pond, hot spring and cave optics
+  come from material parameters, not from pictures.
+- Classes change at box edges. Where the water channel is itself built from boxes, as in the
+  Red Bamboo terrace lakes near (420, 560), a chain of pools reads as a mosaic of classes.
+- Where the swamp's lagoons open onto the sea, swamp turns to ocean along the edge of the
+  opening: a line of 48 m arcs across one sheet of water, with nothing in the game to place
+  it better.
+- The hot-spring rule finds terraces in lake boxes near the sulfur ponds and in the Red Bamboo
+  terraces. Whether those pools are milky in game is unchecked.
+- The satellite and terrain styles still draw one water colour.
+## 34. Rivers from the game's own splines: recipe 7 (2026-10-05)
+
+Recipe 7 draws every river as a continuous ribbon at its own height. Build 502094.
+
+### What the game ships
+
+- **The river actor is `BP_River_PROT_C`** (130 of them). There is no `WaterBodyRiver`; the one
+  `FGRiverSpline` in the world has no components.
+- Each river is a `SplineComponent` plus a chain of `SplineMeshComponent` sections (1,241
+  in all) that bend the flat `SM_RiverPlane` along a cubic Hermite curve. The plane's mesh
+  bounds are 1000 cm long, 500 cm either side of the centre and 0 cm thick.
+- **So the water surface is the plane:** a centreline height and a half width along the curve,
+  `500 cm * StartScale.X` to `500 cm * EndScale.X`. The scale's Y is 1 everywhere. 7 sections
+  carry a pitch or roll; they are read as flat across.
+- **There is no depth in the asset.** The depth along the spline is the plane minus the
+  ground under it, measured per pixel at render time.
+- The `SplineComponent`'s own scale curve has a Z of 46 to 78 on the river sampled. It does
+  not reach the spline meshes and its meaning is unknown, so it is not read.
+- The heightfield's water levelled each river on the **actor's boxes**. Their union is one
+  AABB around the whole river, rotated and 2.5 m tall, so its top is the highest point of the
+  river plus up to 2.5 m. Inside the ribbons the field's river water stood 1.8 m above the
+  plane at the median and 49 m at p90.
+
+Measured: 25.6 km of centreline, half width p10/p50/p90 3.4 / 15 / 30 m (max 113 m, at lake
+mouths). Plane footprint 0.92 km². 0.39 km² of it stands above the 1 m ground, and of that
+0.06 km² was not water in the field. Where it shows, the river is 0.91 m deep at the median;
+15% of it is under 0.3 m.
+
+### The reader
+
+`gamedata/rivers.py`, run inside the shared level sweep (`sweep_levels` keeps each river's
+sections beside the water boxes). The render caches both as `rivers.cache/rivers.json`,
+keyed on the build and the reader version `river_splines`, so a run whose raster caches hit
+skips the sweep. A standalone walk takes 9 s.
+
+### The ribbon on the 1 m grid
+
+`ribbon_planes` samples each section every 0.5 m and records three planes. Each texel takes
+the nearest centreline piece, measured exactly rather than to the nearest sample.
+
+| Plane | What it holds |
+| --- | --- |
+| `level_m` | the plane's height |
+| `half_m` | its half width |
+| `u` | distance over half width, 1 at the plane's edge |
+
+- The planes are filled 8 m past the edge (`RIBBON_REACH_M`), and NaN beyond.
+- **Open ends are square.** At an end no other section continues, the plane is cut across the
+  tangent instead of rounding off.
+- **Where two planes overlap, the higher shows**, as seen from above. Past both edges, the
+  nearer one in half widths wins.
+- The whole map takes about 1 s.
+
+### Reconciling with the field's water
+
+`palette/rivers.py`, once per run, on copies of the field's planes. The field on disk is not
+changed.
+
+- **A wet texel came from a river box** when its level equals that box's top within 5 cm and
+  no other surface box stands as high: 0.358 km².
+- **Under another surface box** (a lake the river AABB overhangs), the texel takes that box's
+  level, or goes dry where measured ground stands above it: 0.27 km². The exception is
+  inside the ribbon where the plane runs more than 1 m above that box. There the box is a
+  lake's AABB reaching over the river's valley, so it is not used.
+- **Anywhere else where the ribbon speaks**, the texel is dropped and the ribbon draws the
+  river: 0.088 km².
+- **The ribbon speaks** inside its reach, except where the plane stands more than 8 m over
+  the ground (`RIVER_MAX_DEPTH_M`) or over no ground. Those are wide sections hanging over a
+  waterfall pit or a lake below. Drawn there, they paint fans of water in the air.
+
+### Drawing
+
+Per band, through `RiverWater.over`.
+
+- **Coverage.** The plane is sampled bilinearly. The river covers a pixel where the plane
+  crosses the drawn surface: the ocean's one-pixel crossing rule (`shore_terms`) with a level
+  per pixel instead of -17 m. The banks are where the game's plane meets the terrain, not
+  where a mask ends.
+- **Presence fades** to 0 over 1.5 m inside the plane's edge, over 1.5 m before the 8 m depth
+  cut, where the plane hangs 1 to 2 m over other water (`RIVER_OVER_WATER_M`), and on
+  texels beside a jump of more than 0.5 m between neighbours. Such a jump is two planes
+  meeting, and any sampler draws a line along it.
+- **Where a river meets other water, the higher surface shows**; a tie of 5 cm goes to the
+  river. At a mouth the river plane dips under the lake or the sea, and the hand-over happens
+  where the two levels agree, so the colour is continuous.
+- **Optics.** River pixels get the shore optics: the opacity fade and wet darkening in
+  terrain and satellite, and the wet band on the banks in every style. Painted water is
+  Beer-Lambert, so the bed shows in the shallows.
+- **The pale-path fix.** In the prototype a river 0.2 to 0.9 m deep was mostly the riverbed
+  paint seen through recipe 5's 0.9 m alpha feather. Now the optics read a river at least
+  `shore.river.min_depth_m` (0.6 m) deep once `bank_m` (2.5 m) in from its waterline, a
+  taste setting per palette. At the waterline the true depth is used, so the bank stays soft.
+  The palettes gained the block, so the three style versions went up by one.
+- **Without rivers** (`--kernel-only`) the water terms are exactly recipe 6's.
+
+### Cost
+
+- `RiverWater` takes 4 to 7 s per run and about 1 GB of temporary 1 m planes.
+- Drawing a crop costs 5 to 20% more than recipe 6.
+- When the cache misses, the sweep is the shared one; the rivers add little to it.
+
+### Known limits
+
+- Nothing has been compared against an in-game top-down view of a river. The minimum
+  optical depth and the colour are a taste call.
+- Where the 8 m rule cuts a river plane, the field's river-box water stays at the box level,
+  as in recipe 6. One waterfall pool near (-1170, -240) keeps a dark rectangle.
+- Steps of more than 0.5 m per metre break the ribbon for a few metres. Those are
+  waterfalls, which are a separate item.
+- A section bent more tightly than its half width draws the fan its mesh would.
+## 35. Waterfalls and the first small-mesh batch (2026-10-05)
+
+Two additions to the satellite and game-painted styles. The heightfield is unchanged, and the
+recipe number stays 6. A render records them as two provenance inputs, `waterfalls` (reader
+version 1) and `render_meshes` (now reader version 2), plus each style's palette digest.
+Build 502094.
+
+### Where the falls come from
+
+Every waterfall on the map is a `BP_WaterFallTool_02` actor: 191 of them, 185 inside the map
+frame. The tool hangs a vertical curtain of `SM_Waterfall_Side_Module` instances, each 2 m wide
+and 10 m tall, from a lip. It lays `SM_Waterfall_Top_Module` instances (8.05 m of rushing
+water) upstream of the lip, and on 148 of the falls it puts `SM_SplashModule_Mid` discs where
+the water lands. The modules are instanced components whose mesh and attachment come from the
+class template, so the reader composes them onto the actor's root itself.
+`gamedata/waterfalls.py` turns one actor into one record:
+
+| Field | What |
+| --- | --- |
+| `x`, `y`, `z` | the middle of the lip, in metres |
+| `along`, `out` | the lip's direction and the direction the water falls (the actor's local -Y) |
+| `width_m` | the curtain's span along the lip |
+| `height_m` | the curtain's length, which often runs on far below the ground |
+| `top_len_m`, `splash` | the top modules' length, and each splash disc as `[x, y, z, radius]` |
+
+The level sweep reads them in the same pass that harvests the render-only meshes
+(`sweep_levels(read_actor=...)`), so this adds no second pass. A render caches the records in
+`falls.cache/falls.json` beside the raster caches, stamped with the build and the reader
+version, and deletes them with the caches unless `--keep-direct` is given. The 8
+`SM_WaterfallMesh_01` and the one `Waterfall_Top_01` are backdrop meshes outside the playable
+area and are not read.
+
+### Which falls are drawn
+
+`palette/falls.py` prepares the records against the field once per run. The drop is measured
+to the lowest surface within 11 m out from the lip, never below the curtain's own end. A fall
+is left out when:
+
+- its lip is less than 1 m above the ocean level, or under standing water. These are the ocean
+  pouring off the edge of the world: 102 of the 185 in-frame records.
+- the field has no ground under the lip, or less than half of the 30 points out from it.
+- the ground under the lip is more than 4 m above it, which means the fall is inside a cave or a
+  rock: 40 records.
+- it drops less than 2 m.
+
+One more record fails the last two tests, which leaves 42 drawable falls on this build.
+
+### How they are drawn
+
+The falls are drawn on the finished band in sRGB, after the sea fill, and only ever towards the
+foam colour. A pixel is never darkened. Each fall has three terms:
+
+- **The streak** is a band across the full width of the lip. It runs from the top modules
+  upstream (faint, 0.45) to `spread` metres out, where `spread = 0.05 * drop`, clamped to
+  2–9 m, and fades to 0.55 at its end. Two cosines across the lip break it into strands. It
+  shows only where the drawn ground stands below the lip plus 3 m, so a rock roof over the
+  fall hides it.
+- **The pool** is a filled capsule along the lip at the landing (the splash discs' median
+  offset, or half the spread), with a radius of `0.08 * drop`, clamped to 3–10 m, and a
+  slightly brighter rim. It shows only where the ground is at least 40% of the drop below the
+  lip, reaching full strength at 80%.
+- **The mist** is a soft halo 1.8 radii wide around the pool, at 0.28, in a cooler grey.
+
+The edges are softened over the larger of one pixel and 0.6 m. A fall narrower than a pixel
+therefore covers only part of it, so the falls stay small at preview sizes and on the coarse
+tiles. All the numbers are in each palette's `falls` block. The terrain style has none and
+draws no falls. The drawn ground, not the water surface, decides what hides the streak: the
+water boxes around a fall often stand above its lip.
+
+### The small-mesh batch
+
+The first slice of the satellite-gaps study's small-mesh list, drawn through the existing
+render-only path (section 27):
+
+| Meshes | How | Instances | Class |
+| --- | --- | --- | --- |
+| Hot-spring terraces, `/World/Environment/HotSpring/` | static meshes, added to `RENDER_ONLY_DIRS` | 101 | `terrace`, game-painted colour #ccbea8 |
+| `SmoothRock_03`, `SnakeStone_01` | foliage instances, matched by exact name in `RENDER_ONLY_FOLIAGE_MESHES` | 1,710 and 730 | `rock` |
+
+The 31 `Hotspring_Blob_01` meshes inside geyser nodes are components of the node actor, so the
+sweep does not reach them. The satellite style draws the new meshes as relief only, like the
+other render-only meshes.
+
+### Known limits
+
+- Nothing here has been checked against an in-game top-down view. The streak widths and the
+  pool sizes were chosen by looking at crops.
+- The waterfall material bends the curtain outwards in the vertex shader (`Curvature Amount`,
+  `WPO Strenght`). The record keeps the straight curtain the instances describe.
+- Where a rock overhangs part of a pool, the pool stops at the rock's edge. That is correct,
+  but it can draw a straight cut across the foam.
+- A 277 m wide fall, such as the one at (1784, 559), draws a long bright bar. At z3 and below
+  it is one of the brightest features in its area.
+- The 102 falls off the edge of the world stay out. The artwork draws them as curtains on
+  the void's edge, and since section 26's void follows the artwork they could be drawn
+  there; whether they should is still open.
+## 36. Tree crowns (2026-10-05)
+
+The painted style drew trees as a soft canopy: one blurred disc per tree with a radius guessed
+from the mesh name, under the rocks. Bamboo was guessed at 1.5 m and measures 4.4 m, and rock
+hid most of the forest on cliff tops. Each tree is now drawn as its own crown: the species'
+mesh seen from above, at its own position, yaw, scale and lean, in the colour its leaf texture
+has. The Titan trees are static meshes, not foliage, and are left to the satellite additions.
+
+### The paint input
+
+`python -m mapgen paint` (generator version 3) adds three files and a `crowns` block to
+`meta.json`:
+
+| File | What |
+| --- | --- |
+| `crowns.rec.z` | One record per tree foliage instance, zlib: `x`, `y`, `z` (world cm), `yaw` (degrees), `scale`, `scale_z`, the trunk axis `axis_x`, `axis_y`, `axis_z` (a unit vector), `species` (uint16). 99,073 trees, 2.4 MB |
+| `crowns.sprites.z` | One sprite per species, zlib: cover (uint8), crown top in cm above the pivot (uint16) and the material slot on top (uint8, 255 for none), at 0.125 m per texel. 53 sprites, 0.6 MB |
+| `crown.i16.z` | The crown top on the heightfield's 1 m grid: world decimetres, `NODATA` where no crown stands. The tree-shadow builder's occluder. 10.1 MB |
+
+`meta.json` `crowns.species[]` names each species, its mesh, its sprite's place in the stream,
+its measured radius and top, its instance count, and each material slot with its kind
+(`leaf`, `bark` or `skip`), linear colour and mask cover. `crowns.tilt_max_deg` records the
+steepest lean (logs and hanging bulbs; 90% of every tree species stands within 15 degrees).
+
+**A sprite** is the species' LOD 0, rasterised from above. Each section's material decides what
+its triangles are. Imposters, billboards, lianas, ivy and `WorldGridMaterial` are dropped:
+they are flat cards for distance, or hang on vertical faces. Every other triangle adds an
+optical depth of `-ln(1 - opacity)` to the texels it covers (at most 3), and cover is
+`1 - exp(-sum)`, so three half-clear leaf cards read denser than one. The top is the highest
+triangle; the slot is that triangle's material.
+
+**A material's colour** is the mean of its albedo texture (the instance's own parameter, else
+its parent's) in linear light, under its mask, times its `Brightness` and `Saturation`
+scalars. The mask is the first alpha that varies: the `ORMA` map's, then the albedo's, unless
+the albedo parameter says its alpha is subsurface (`Albedo(RGB,SSS)`). Palms, bamboo and the
+Snake Legs leaf planes carry no mask at all and draw as solid leaves. Nothing else in the
+material graph is read, so a tint the shader applies at run time is not in the colour.
+
+**The soft canopy** keeps its plane and its rule, `1 - exp(-crown area per m^2)`, but each
+tree's radius is now its species' measured one (the disc that hides as much ground as the
+sprite) times its own scale, snapped to eleven bins from 0.5 to 20 m.
+
+### Drawing
+
+`terrain/crowns.py` stamps the crowns into each band of the render's own grid. Each tree's
+sprite is turned by its yaw, scaled, and shifted along its trunk axis by the species' mean
+crown height, so a leaning bamboo's crown stands off its base. The sprite is read through a
+mip chain (2x2 means; the top channel takes the maximum) at the level whose texel is nearest
+the output pixel, bilinearly, so a 1024 preview keeps each crown's area. Trees are laid
+lowest top first, each over the ones below. A band returns cover, cover-weighted colour, a
+dome height and the highest crown top in world cm; `crown_band(...)["top_cm"]` is the crown
+height raster on any render grid.
+
+`palette/painted.py` composites them last, over water and foam, under the highlight
+shoulder. The `crowns` block of `satellite-painted.json`:
+
+| Key | Value | What |
+| --- | --- | --- |
+| `draw` | true | Off, the soft canopy is drawn as before |
+| `canopy_kept` | 0.0 | How much of the soft canopy stays under the crowns. 0: the crowns replace it, so no tree is drawn twice |
+| `darkening`, `chroma` | 0.85, 0.8 | Times the texture colour, and times the style's own chroma gain of 1.2 |
+| `dome_gain`, `shade_clamp` | 0.35, [0.55, 1.2] | The light: the style's sky and sun over the shared sun's `sun_dot` on the crown's smoothed height (0.75 m) times 0.35, relative to flat ground and clamped |
+| `hidden_below_m` | 0.5 | A crown whose top is more than this below the drawn surface is hidden: a tree under an overhang, or beside a higher rock |
+| `over_water` | 0.6 | Crown opacity over water, so a river under bamboo still reads |
+
+### Measured
+
+Extraction adds 28 to 56 s to the paint command (sprites, records and the 1 m top plane),
+which took 65 to 108 s in all on a loaded machine; the store grows from 54 to 66 MB. Drawing a z7 crop of the painted layer with crowns took 1.8 s against 0.8 s without (forest,
+1.1 Mpx), 2.3 against 1.1 s (Red Bamboo, 1.7 Mpx) and 2.5 against 1.8 s (Titan forest,
+2.7 Mpx). Most of the sheet has no tree. A 1024 preview of the painted layer ran end to end.
+
+### Known limits
+
+- **Colours are the textures', moved by the canopy targets.** Crowns of a target's own hue
+  are calibrated (section 31, "Crowns"); every other crown keeps its texture mean: bamboo is a
+  saturated pink-red, the tall mangroves' tops are their bark texture. The style's `chroma`
+  of 0.8 is a taste call.
+- **Blue palms are blue.** `BluePalm_01` and `_02` (3,332 trees: 1,747 in the Rocky Desert,
+  768 in the Savanna, 344 on the Spire Coast) draw pale blue. Their leaf colour is the leaf
+  half of `TX_BluePalm_01_Alb`, light blue with white midribs, linear (0.27, 0.40, 0.46).
+  Their instances `MI_BluePalm_03` and `_04` carry no vector parameter but the wind pivot,
+  and the parent `MM_WindPlants` is cooked without its graph, so no tint is skipped that could
+  be read. The wiki's Rocky Desert area, Rocky Desert river and Spire Coast shots show blue
+  palms in both biomes, so they stay blue.
+- A crown is lit by the fixed north-west sun of the painted style. The live sun shading takes
+  the crown tops as its occluder (section 29); the crown domes are not yet in its normal
+  pyramid.
+- Lean moves a crown; it does not foreshorten it.
+- `SM_Trunk_01` (6,933 logs and stumps) draws as small bark sprites.
+
+## 37. Where sections 28 to 36 meet (2026-10-05)
+
+Sections 28 to 32 and 33 to 36 were built side by side. Where two of them touch the same
+pixel, these rules decide.
+
+| Where | Rule |
+| --- | --- |
+| Inland water opacity | Section 31's `inland_floor` (0.35) and a water class's `turbidity` (section 33) both say how much body colour inland water keeps. The larger applies, never both, so the swamp (0.45) keeps its own and the lake (0.1) gets the floor. The ocean row has turbidity 0 and draws exactly as before. |
+| Swamp water | Section 31's opaque swamp colour is applied last, over whatever the swamp class's optics (section 33) drew, so its 0.3 m tau decides everywhere but the very edge. It goes only on the swamp class's share of a pixel's water: ocean inside `Area_Swamp` keeps the sea. Which texels the swamp class claims is section 33's rule. |
+| River ribbons | A pixel's share of ribbon water (section 34) takes the `river` class's optics, whatever the class plane says under it. The class plane was built from the field's water, which the ribbon partly replaces. |
+| Crown tops | One producer: the measured tops of section 36 write `crown.i16.z`. Section 30's estimate from the radius is gone. Section 30's trees-over-rock reads the same plane. |
+| Canopy over rock | With crowns drawn the soft canopy is off (`canopy_kept` 0), so section 30's rule draws nothing and the crowns' own "hidden under a higher surface" test decides. |
+| Canopy targets | Section 31's canopy targets move the crowns of section 36, each scope's step taken by the crowns near the target's hue; the soft canopy they used to colour stays off. |
+| Rock family and rock target | Section 31's rock targets are set first; section 30's family tint goes on relative to the families' median, so a common tint leaves rock on target. Render-only rocks take the area's rock. |
+| Coral, carpet and water | Section 32's carpet and section 31's seabed coral are both bed colours under the water. A coral speck standing in water is drawn as that water with the coral as its bed. |
+| Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
+| Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
+| Versions | Paint generator version 3. Styles: terrain 5, satellite 5, relief 3, relief dark 3 (the open sea, void and pits below, and section 38's water below a drop), game-painted 7 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop and section 31's offshore pieces). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
+| Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. Water below a drop inside a box is re-levelled before the rest of its body, so the class plane sees the basin under the wide fall at the swamp's level and the swamp box claims it. |
+| Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, and the open sea (row below) hands those grades to every style. Section 33's open sea is found on that same drawn water, so a box at the sea's level stops at the sea's reach. |
+| Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |
+| Open sea, void and pits | Section 26's open sea is laid into the lattice and the water planes after the rivers and section 38 have drawn theirs, and before any style draws. Every style, the water classes and the relief tint read that one bed, and the renderer's wet and measured planes come from those planes' grades, so water a later stage re-wets is drawn. Styles carrying it: terrain 4, satellite 4, relief 2, relief dark 2 (the relief two also for section 28's palette changes); its second pass, the bed smooth in slope and the pits apart from the void, terrain 5, satellite 5, relief 3, relief dark 3 and game-painted 7. |
+
+### Known limits
+
+- A palette-only `--restyle` checks the raster caches it needs, not the river and falls
+  caches. A restyle without them sweeps the game again rather than refusing.
+- The crown domes are not in the lighting stage's normal pyramid.
+- No combination has been compared against an in-game top-down view.
+
+## 38. Perched water: a box top that is not the surface (2026-10-05)
+
+The field levels each wet texel at the highest water-box top over it (section 19). Three
+kinds of box break that rule:
+
+- **A sloped river.** `BP_River_PROT_C` and some `FGWaterVolume` boxes span a whole reach,
+  so the box top is the river's upstream end. `BP_River_PROT_2` at (314, -1489) runs north
+  down a desert channel from about +18 m to the sea at -17 m. Its box spans -22.8 to
+  +22.0 m, so the whole channel was levelled at +22 m, 39 m above the bed at the mouth.
+- **A box over another body.** Where one body's axis-aligned box covers part of a lower
+  body, the higher top wins. At (831, -353) a 131 m box sits over a lake at 58 m.
+- **A box over its own fall.** At (1784, 559) the 94.8 m lake's `FGWaterVolume` reaches to
+  x 1863, over the basin 113 m below, which the swamp's boxes cover at -16.7 m. The ground
+  falls 100 m between two neighbouring texels at the lip.
+
+The renderer then drew tens of metres of water. In the painted style that is opaque
+Beer-Lambert water blended almost fully to the open-sea colour, in a flat shape with the
+artwork mask's 3.66 m block edges, because the depth feather never fades out on a 40 m
+depth. Every recipe since 2 has drawn it.
+
+`palette/perched.py` re-levels these bodies before drawing. The field is not changed. It
+runs on the water the rivers left (section 34), and the painted style's water classes
+(section 33) and the relief styles' water tint are taken from its result, so every consumer
+draws one surface. Part of recipe 7.
+
+- **Bodies.** Measured water, split into connected texels of one level. The ocean level
+  (within 0.5 m of -17 m) is exempt.
+- **Banks.** Dry ground at its height, and other water at its level. Dry ground the water
+  encloses is not a bank: the artwork draws deep water too dark for its blue test.
+- **The test.** A body is perched when its level stands more than 2 m above any bank, and
+  more than 25% of the banks 6 to 24 m from it stand more than 2 m below the level, which is
+  where still water at that level would run to. The ring test is what separates this from
+  a lake drawn smaller than its water: there the dry ground below the level is a thin rim
+  and the banks rise beyond it.
+- **The surface.** Each shoreline texel takes the highest level its neighbours allow:
+  `min(level, bank)`, never below its own ground. A harmonic membrane spans the shoreline,
+  so a river's surface runs downhill with its banks. A texel keeps the box level within
+  2 m of the membrane, takes the membrane at 4 m, and is handed over linearly between.
+  The result is never above the box top.
+
+Depth is then measured as for any other water, so the colour is a river's and the edge is
+the usual depth feather, which follows the ground rather than the mask blocks.
+
+### Water below a drop (2026-10-06)
+
+The test reads a body as one, so at the wide fall the big lake's high banks outvoted the
+basin's ring, and the basin drew at the lake's level, 113 m deep. Where such a body was
+perched, one membrane spanned the drop and ended in a straight hand-over line.
+
+- **The cut.** `_below_drops` cuts each body where the ground falls more than 8 m
+  (`LIP_DROP_M`) between eight-way neighbours. A part with no ground within 8 m of the level
+  is water below a drop.
+- **The test.** That water is judged first, and is perched when its own ring or the whole
+  body's spills.
+- **The surface.** Its membrane spans only shoreline more than 2 m below the level and within
+  8 m of its own ground: beside the water it joins, or failing that its own low banks (the
+  plateau at (-1101, -296)). The drop and the cliffs hold nothing up. The basin under the
+  wide fall sits at -17.4 to -16.7 m, the swamp's level.
+- **The rest of the body.** Once re-levelled, that water leaves the body and bounds the rest
+  at its new level. A body with no re-levelled water below a drop is judged byte for byte as
+  before.
+
+8 m was measured, not derived: at 10 m the plateau stays joined through one 10.0 m step, and
+at 5 m 494 texels draw deeper than at 8 m and 1,454 shallower. The falls records (section 35)
+are not read.
+
+### Measured (build 502094)
+
+591 bodies stand more than 2 m above a bank; 380 pass the ring test. 168,925 texels
+(0.17 km²) are re-levelled, in about 4 s. Their median depth goes from 18.3 m to 1.1 m, and
+the 90th percentile from 75.8 m to 8.2 m. Merged at 100 m, 38 places lose more than 5 m of
+drawn depth. The largest are at (-822, 201), (-612, 772), (624, -505), (-375, -895),
+(-1227, -278) and (-146, 961). Lakes whose banks stand above their level, the ocean, and
+level-only water are byte-identical.
+
+Water below a drop, measured on a render's planes after the river reconcile: 467 bodies stand
+more than 2 m above a bank, up from 390, and 57 are cut at a drop. 233 bodies are perched,
+up from 186, 47 of them below a drop with 32,791 texels; 115,440 texels are re-levelled, up
+from 94,144. Of the 34,149 texels that move, the median drawn depth goes from 53.9 m to
+1.4 m and the 90th percentile from 112.9 m to 3.4 m. 239 texels end more than 2 m deeper
+and over 5 m deep, most of them box pieces that now take the level of the lake they sit in.
+Bodies with no cut, sloped rivers and the ocean are byte-identical.
+
+### Holes in a lake
+
+The artwork's blue test also reads a lake's deep middle as dry, and the water under an arch
+or bridge it draws across a lake. The field keeps those texels dry, so the renderer drew
+the lake bed there: dark-middle blobs, and in the cliff-ringed lakes near (1980, -1890) a
+straight strip 18 m wide and 220 m long under the arch, and the spokes of the star-shaped
+rock beside it. `wet_holes` fills them after the re-levelling, on the same bodies:
+
+- **Inside.** The measured water at the body's level, and other inland measured water
+  within 2 m of it, closed over gaps up to 24 m wide (`HOLE_BRIDGE_M` 12), with what that
+  encloses.
+- **Below.** Dry ground standing below the surface of the body's nearest texel.
+- **Not where it spills.** Nothing within 12 m of ground outside that shape standing more
+  than 2 m below the surface and running on past 12 m from the water, where still water
+  would run to. The rounded ends of a bridged gap are not a spill.
+- **Deep, but not a drop.** A connected part reaching the body, more than 2 m deep at its
+  deepest and nowhere deeper than 15 m (`HOLE_DEPTH_MAX_M`). A sandbar awash stays as the
+  artwork drew it. Without the cap 172 parts (6,700 texels) go deeper, up to 181 m: the
+  wide fall at (1791, 553), cliff feet at (470, -563) and (-1916, 345), and the drop east
+  of the arch lake. A real lake middle deeper than 15 m would stay dry too.
+
+A hole takes the surface of its body's nearest texel and the measured grade; where two
+bodies close over one gap, the lower surface. Water the river reconcile dropped stays
+dropped, the ocean is never a body, and every texel that was water is byte-identical. Every
+style draws the result: the open sea (section 26) is laid on these planes, and the renderer's
+wet and measured planes, the class plane (section 33) and the relief tint read them.
+
+Measured on the field's own planes: 54,733 texels in 394 bodies, about 4.5 s and 760 MB
+at peak (the re-levelling peaks at 1.1 GB). Median depth 2.0 m, 99th percentile 9.2 m.
+The largest are the arch lake at (1979, -1889) with 5,062 texels, (3596, -2139),
+(2245, 741), (3149, -606) and the arch lake's east arm at (2026, -1904). In a render, on
+the water the river reconcile leaves: 38,048 texels in 306 bodies.
+
+### Known limits
+
+- Where a river spline speaks, its ribbon (section 34) has already taken the box's water
+  back before this runs, so the spline's own surface replaces the membrane there. The
+  membrane is left for boxes without a spline.
+- A box piece over another body passes the ring test only when enough of its ring is below
+  it.
+- The arch lake near (1980, -1890) ends in a straight line at y -1733, the edge of its
+  `FGWaterVolume`. South of it the only box is the ocean spline's at -17 m, so the field's
+  water rule (section 19) drops the artwork's water there as ground standing out of the
+  sea. That is the field's level rule, not a hole, and this section leaves it.
+- A faint straight line remains beside the wide fall, 48 m from the swamp's edge, in
+  terrain, satellite, relief and relief dark; painted shows no step. The shore rule's ocean
+  reach is found on the field's own planes, before the re-levelling. Finding it on the
+  re-levelled planes would also change the drawing around the older perched bodies.
+- About 50 texels at the fall's foot keep 94.8 m: corner-joined pieces with no shoreline of
+  their own, smaller than a pixel at 2048.
+- A sloped reach below a drop that joins lower water takes that water's level along its
+  whole length, so its upper end would draw dry. No such case shows on this build.
+- This section leaves level-only water alone. At the ocean's level it draws on section 26's
+  open-sea bed; away from it, it keeps the deep tint.

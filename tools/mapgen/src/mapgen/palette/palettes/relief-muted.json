@@ -1,0 +1,67 @@
+{
+ "id": "relief-muted",
+ "about": "a muted relief map: an even OKLab ramp over dry land, soft biome tints, slope rock, a hue-shifted three-sun hillshade and flat depth-tinted water",
+ "ramp_lo_pct": 1.0,
+ "ramp_hi_pct": 99.5,
+ "ramp_equalised": 0.65,
+ "ramp_lch": [
+  [0.660, 0.042, 140],
+  [0.715, 0.044, 124],
+  [0.765, 0.044, 106],
+  [0.810, 0.040, 90],
+  [0.850, 0.030, 92],
+  [0.885, 0.022, 95],
+  [0.915, 0.014, 98]
+ ],
+ "biome_blend_texels": 24.0,
+ "biome_tints": {
+  "Area_NorthernForest": [-0.080, 0.050, 125, 0.80],
+  "Area_LakeForest": [0.030, 0.045, 165, 0.80],
+  "Area_SouthernForest": [-0.080, 0.050, 160, 0.80],
+  "Area_TitanForest": [-0.080, 0.050, 135, 0.80],
+  "Area_GrassFields": [0.040, 0.050, 130, 0.75],
+  "Area_WesternDuneForest": [-0.080, 0.050, 160, 0.75],
+  "Area_Savanna": [0.020, 0.048, 95, 0.75],
+  "Area_SpireCoast": [0.030, 0.035, 178, 0.70],
+  "Area_Swamp": [-0.080, 0.045, 200, 0.80],
+  "Area_DuneDesert": [0.040, 0.050, 78, 0.85],
+  "Area_RockyDesert": [-0.050, 0.050, 65, 0.80],
+  "Area_DesertCanyons": [-0.080, 0.045, 50, 0.80],
+  "Area_MazeCanyons": [0.000, 0.030, 62, 0.75],
+  "Area_AbyssCliffs": [-0.050, 0.025, 300, 0.75],
+  "Area_crater": [-0.020, 0.028, 250, 0.75],
+  "Area_RedBambooFields": [-0.030, 0.036, 68, 0.80],
+  "Area_RedJungle": [-0.080, 0.040, 40, 0.80],
+  "Area_NoMansLand": [0.040, 0.013, 100, 0.75]
+ },
+ "biome_fallback": [0.040, 0.013, 100, 0.75],
+ "rock": {"lo_deg": 32.0, "hi_deg": 52.0, "max": 0.8, "dl": -0.03, "c": 0.014, "h": 65},
+ "shade": {
+  "suns": [[315, 45, 0.50], [270, 45, 0.25], [0, 45, 0.25]],
+  "mode": "add",
+  "k": 0.30,
+  "lo": 0.0,
+  "hi": 2.0,
+  "dechroma": 0.35,
+  "cool": [0.014, 260],
+  "warm": [0.008, 95],
+  "l_max": 0.955
+ },
+ "borrow_ink_damp": 0.25,
+ "water": {
+  "shallow_lch": [0.845, 0.040, 220],
+  "deep_lch": [0.760, 0.050, 238],
+  "tau_m": 15.0,
+  "level_only": 0.85,
+  "blur_m": 12.0,
+  "lit": 0.0,
+  "stroke_lch": [0.640, 0.055, 238],
+  "stroke": 0.2
+ },
+ "shore": {
+  "clarity_m": 0.8,
+  "edge_alpha": 0.45,
+  "wet_darken": 1.0,
+  "stroke": 0.0
+ }
+}

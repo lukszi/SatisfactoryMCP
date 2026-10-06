@@ -1,11 +1,25 @@
 {
  "id": "satellite-painted",
- "about": "the landscape's own paint layers times their albedo, pigment, canopy, rock and coral meshes, sky and sun light, Beer-Lambert water",
+ "about": "the game's baked ground colour, else the paint layers times their albedo; canopy, rock with its cliff family's top layer, coral meshes, Titan trees, sky and sun light, Beer-Lambert water",
  "albedo_darkening": 0.95,
  "wet_sand_lightness_of_sand": 0.9,
  "pigment": 0.15,
  "canopy_gain": 0.85,
  "canopy_dark": 0.85,
+ "crowns": {
+  "draw": true,
+  "canopy_kept": 0.0,
+  "opacity": 1.0,
+  "darkening": 0.85,
+  "chroma": 0.8,
+  "over_water": 0.6,
+  "dome_gain": 0.35,
+  "shade_clamp": [
+   0.55,
+   1.2
+  ],
+  "hidden_below_m": 0.5
+ },
  "have_blur_m": 6.0,
  "fallback_blur_m": 44.0,
  "seam_blend_m": 6.0,
@@ -96,14 +110,19 @@
    156
   ],
   "shell": [
-   214,
-   204,
-   186
+   88,
+   85,
+   83
   ],
   "coral_seabed": [
    95,
    136,
    153
+  ],
+  "terrace": [
+   204,
+   190,
+   168
   ]
  },
  "chroma_gain": 1.2,
@@ -123,10 +142,13 @@
   0.93
  ],
  "exposure": 1.12,
- "shoulder": 0.72,
  "borrow_ink_damp": 0.25,
  "shore": {
   "stroke": 0.0,
+  "river": {
+   "min_depth_m": 0.6,
+   "bank_m": 2.5
+  },
   "wet_band": {
    "m": 3.0,
    "tint": [
@@ -166,6 +188,389 @@
    104
   ],
   "deep_tau_m": 12.0,
-  "bed_wet": 0.8
+  "bed_wet": 0.8,
+  "inland_floor": 0.35,
+  "opaque_tau_m": 0.3
+ },
+ "water_classes": {
+  "about": "inland water by class; the ocean keeps water. docs/spatial-and-map.md section 33",
+  "river": {
+   "k_per_m": [
+    2.4,
+    1.6,
+    1.6
+   ],
+   "body": [
+    79,
+    125,
+    120
+   ],
+   "deep": [
+    46,
+    80,
+    84
+   ],
+   "deep_tau_m": 8.0,
+   "turbidity": 0.0,
+   "bed_tint": [
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  "lake": {
+   "k_per_m": [
+    3.0,
+    2.2,
+    2.6
+   ],
+   "body": [
+    86,
+    116,
+    91
+   ],
+   "deep": [
+    44,
+    78,
+    60
+   ],
+   "deep_tau_m": 6.0,
+   "turbidity": 0.1,
+   "bed_tint": [
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  "lake_blue": {
+   "k_per_m": [
+    3.4,
+    1.0,
+    0.75
+   ],
+   "body": [
+    74,
+    132,
+    148
+   ],
+   "deep": [
+    34,
+    72,
+    90
+   ],
+   "deep_tau_m": 10.0,
+   "turbidity": 0.0,
+   "bed_tint": [
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  "turquoise": {
+   "k_per_m": [
+    3.5,
+    1.0,
+    1.1
+   ],
+   "body": [
+    68,
+    136,
+    130
+   ],
+   "deep": [
+    36,
+    90,
+    88
+   ],
+   "deep_tau_m": 8.0,
+   "turbidity": 0.05,
+   "bed_tint": [
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  "swamp": {
+   "k_per_m": [
+    4.0,
+    4.5,
+    5.0
+   ],
+   "body": [
+    126,
+    110,
+    106
+   ],
+   "deep": [
+    114,
+    99,
+    96
+   ],
+   "deep_tau_m": 4.0,
+   "turbidity": 0.45,
+   "bed_tint": [
+    0.9,
+    0.85,
+    0.8
+   ]
+  },
+  "cave": {
+   "k_per_m": [
+    3.0,
+    2.5,
+    2.5
+   ],
+   "body": [
+    47,
+    74,
+    71
+   ],
+   "deep": [
+    28,
+    46,
+    45
+   ],
+   "deep_tau_m": 4.0,
+   "turbidity": 0.0,
+   "bed_tint": [
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  "sulfur": {
+   "k_per_m": [
+    3.0,
+    2.0,
+    2.0
+   ],
+   "body": [
+    103,
+    163,
+    149
+   ],
+   "deep": [
+    63,
+    138,
+    126
+   ],
+   "deep_tau_m": 6.0,
+   "turbidity": 0.3,
+   "bed_tint": [
+    1.0,
+    0.8,
+    0.45
+   ]
+  },
+  "hot_spring": {
+   "k_per_m": [
+    2.5,
+    1.6,
+    1.5
+   ],
+   "body": [
+    104,
+    160,
+    152
+   ],
+   "deep": [
+    70,
+    130,
+    125
+   ],
+   "deep_tau_m": 6.0,
+   "turbidity": 0.2,
+   "bed_tint": [
+    1.0,
+    0.95,
+    0.85
+   ]
+  }
+ },
+ "falls": {
+  "about": "foam streak at the lip, foam ring and mist where it lands; raise-only",
+  "foam": [
+   234,
+   239,
+   240
+  ],
+  "mist_rgb": [
+   212,
+   222,
+   226
+  ],
+  "streak": 0.85,
+  "streak_end": 0.55,
+  "pool": 0.55,
+  "core": 0.8,
+  "ring_width": 0.6,
+  "mist": 0.28,
+  "mist_reach": 1.8,
+  "edge_m": 0.6,
+  "spread": [
+   0.05,
+   2.0,
+   9.0
+  ],
+  "pool_radius": [
+   0.08,
+   3.0,
+   10.0
+  ],
+  "top": 0.45,
+  "above_m": 3.0,
+  "strands": 0.35,
+  "pool_below": 0.4
+ },
+ "ground": "bake",
+ "rock_top": {
+  "up": [
+   0.6,
+   0.85
+  ]
+ },
+ "titan_trees": {
+  "opacity": 0.8,
+  "leaves": [
+   77,
+   90,
+   48
+  ],
+  "trunk": [
+   99,
+   88,
+   81
+  ]
+ },
+ "carpet": {
+  "colour": [
+   108,
+   158,
+   190
+  ],
+  "strength": 1.0,
+  "depth_scale": 0.2,
+  "blur_m": 3.0,
+  "gain": 8.0
+ },
+ "tone": {
+  "gain": 1.6,
+  "knee": 0.6,
+  "white": 1.6
+ },
+ "calibration": {
+  "about": "display sRGB targets from in-game screenshots; docs/spatial-and-map.md section 31",
+  "pure_share": 0.7,
+  "min_texels": 200,
+  "area_blur_m": 25.0,
+  "layers": {
+   "Sand_LayerInfo": "#d5cbb6",
+   "WetSand_LayerInfo": "#b1a09e",
+   "SandRipples_LayerInfo": "#d07756",
+   "Grass_LayerInfo": "#83986e",
+   "Forest_LayerInfo": "#558653"
+  },
+  "canopy": "#558653",
+  "rock": "#85816c",
+  "rock_keeps_exposure": true,
+  "meshes": {
+   "coral": "#99868e",
+   "coral_seabed": "#5f8899"
+  },
+  "areas": [
+   {
+    "areas": [
+     "Area_DuneDesert",
+     "Area_DesertCanyons",
+     "Area_RockyDesert",
+     "Area_Savanna"
+    ],
+    "layers": {
+     "Sand_LayerInfo": "#c4ab8b",
+     "Gravel_WeightLayerInfo": "#8f8373"
+    }
+   },
+   {
+    "areas": [
+     "Area_DuneDesert",
+     "Area_DesertCanyons",
+     "Area_RockyDesert"
+    ],
+    "rock": "#ae8271"
+   },
+   {
+    "areas": [
+     "Area_GrassFields",
+     "Area_NorthernForest",
+     "Area_WesternDuneForest"
+    ],
+    "rock": "#7e7868"
+   },
+   {
+    "areas": [
+     "Area_GrassFields"
+    ],
+    "layers": {
+     "Grass_LayerInfo": "#9dad70"
+    }
+   },
+   {
+    "areas": [
+     "Area_WesternDuneForest"
+    ],
+    "canopy": "#7c9573"
+   },
+   {
+    "areas": [
+     "Area_RedJungle",
+     "Area_RedBambooFields"
+    ],
+    "rock": "#877e6e",
+    "layers": {
+     "Cliff_LayerInfo": "#877e6e"
+    }
+   },
+   {
+    "areas": [
+     "Area_RedJungle_2"
+    ],
+    "canopy": "#6c7f5b"
+   },
+   {
+    "areas": [
+     "Area_RedJungle_1"
+    ],
+    "canopy": "#7c4955"
+   },
+   {
+    "areas": [
+     "Area_SpireCoast"
+    ],
+    "rock": "#51524d"
+   },
+   {
+    "areas": [
+     "Area_crater"
+    ],
+    "layers": {
+     "CoralRock_LayerInfo": "#6c7386"
+    }
+   },
+   {
+    "areas": [
+     "Area_crater_1"
+    ],
+    "meshes": {
+     "shell": "#747b85"
+    }
+   },
+   {
+    "areas": [
+     "Area_Swamp"
+    ],
+    "water": "#7e7372",
+    "water_class": "swamp"
+   }
+  ]
  }
 }

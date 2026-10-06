@@ -244,7 +244,7 @@ function renderSettings(body: HTMLElement, subject: string): void {
     }
     card.appendChild(settingRow(s));
   });
-  card.appendChild(make("h3", "dash-setting-group", "map"));
+  // The last SETTINGS group is "map"; the default picker joins it.
   card.appendChild(mapPickerRow());
   body.appendChild(card);
 }

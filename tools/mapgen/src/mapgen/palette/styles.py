@@ -33,9 +33,12 @@ __all__ = [
     "PAINTED_DIGEST",
     "PAINTED_PALETTE",
     "PALETTE_DIR",
+    "PIT_EDGE_RGB",
+    "PIT_RGB",
     "RAMP_HI_PCT",
     "RAMP_LO_PCT",
     "RAMP_STOPS",
+    "RELIEF_PALETTES",
     "ROCK_HI_DEG",
     "ROCK_LO_DEG",
     "ROCK_RGB",
@@ -51,6 +54,8 @@ __all__ = [
     "TERRAIN_PALETTE",
     "TERRAIN_SHORE",
     "UNKNOWN_BIOME_RGB",
+    "VOID_EDGE_RGB",
+    "VOID_RIM_RGB",
     "WATER_DEEP",
     "WATER_SHALLOW",
     "biome_colour_field",
@@ -58,11 +63,14 @@ __all__ = [
     "biome_lookup",
     "load_palette",
     "noise_fields",
+    "painted_style",
+    "palette_digest",
     "ramp",
     "ramp_range",
     "satellite_colours",
     "terrain_colours",
     "with_sea",
+    "with_void",
 ]
 
 #: The palettes are files, one per style id, and a style's digest is the hash of its file's
@@ -72,30 +80,51 @@ LAYER_STYLES = {
     "terrain": "terrain-hypsometric",
     "satellite": "satellite-biome",
     "painted": "satellite-painted",
+    "relief": "relief-muted",
+    "relief-dark": "relief-night",
 }
+
+
+def palette_digest(palette: dict) -> str:
+    """The digest of a palette: the sha256 of its canonical JSON."""
+    canonical = json.dumps(palette, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return sha256_hex(canonical)
 
 
 def load_palette(style: str) -> tuple[dict, str]:
     """One palette file and its digest."""
     palette = json.loads((PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8"))
-    canonical = json.dumps(palette, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return palette, sha256_hex(canonical)
+    return palette, palette_digest(palette)
 
 
 TERRAIN_PALETTE, TERRAIN_DIGEST = load_palette(LAYER_STYLES["terrain"])
 SATELLITE_PALETTE, SATELLITE_DIGEST = load_palette(LAYER_STYLES["satellite"])
 PAINTED_PALETTE, PAINTED_DIGEST = load_palette(LAYER_STYLES["painted"])
+#: The relief layers share one painter (``palette.relief``), one palette each.
+RELIEF_PALETTES = {layer: load_palette(LAYER_STYLES[layer]) for layer in ("relief", "relief-dark")}
 STYLE_DIGESTS = {
     "terrain": TERRAIN_DIGEST,
     "satellite": SATELLITE_DIGEST,
     "painted": PAINTED_DIGEST,
+    **{layer: digest for layer, (_palette, digest) in RELIEF_PALETTES.items()},
 }
+
+
+def painted_style(no_titan_trees: bool) -> tuple[dict, str]:
+    """The painted palette and its digest, with the Titan trees switched off on request."""
+    if not no_titan_trees:
+        return PAINTED_PALETTE, PAINTED_DIGEST
+    trees = {**PAINTED_PALETTE["titan_trees"], "opacity": 0}
+    palette = {**PAINTED_PALETTE, "titan_trees": trees}
+    return palette, palette_digest(palette)
+
 
 #: The ocean shore's optics per style (recipe 6): opacity at the line, depth fade, wet ground.
 TERRAIN_SHORE = TERRAIN_PALETTE["shore"]
 SATELLITE_SHORE = SATELLITE_PALETTE["shore"]
 SHORE_OPTICS = {"terrain": TERRAIN_SHORE, "satellite": SATELLITE_SHORE,
-                "painted": PAINTED_PALETTE["shore"]}  # fmt: skip
+                "painted": PAINTED_PALETTE["shore"],
+                **{layer: palette["shore"] for layer, (palette, _d) in RELIEF_PALETTES.items()}}  # fmt: skip
 
 #: The ramp's height band, as land percentiles: one spire must not flatten it.
 RAMP_LO_PCT = float(TERRAIN_PALETTE["ramp_lo_pct"])
@@ -110,6 +139,14 @@ WATER_DEEP = np.array(TERRAIN_PALETTE["water_deep"], np.float32)
 
 #: No data, in the page's own ``--sea``, so the map's edge draws no border.
 SEA_RGB = np.array([16, 32, 44], np.float32)
+
+#: The void's edge beside the land, lit as the artwork lights it (luma about 70) in the page's
+#: hue, darkening to ``SEA_RGB``; a pit's from the artwork's flat grey to black; and the light
+#: rim the artwork draws round both. The same in every style.
+VOID_EDGE_RGB = np.array([66, 79, 90], np.float32)
+PIT_EDGE_RGB = np.array([76, 76, 76], np.float32)
+PIT_RGB = np.array([4, 5, 6], np.float32)
+VOID_RIM_RGB = np.array([236, 236, 230], np.float32)
 
 # The satellite layer's own rules (tools/mapgen/README.md, "Design notes").
 
@@ -261,6 +298,22 @@ def satellite_colours(scene: dict) -> np.ndarray:
 def with_sea(rgb: np.ndarray, missing: np.ndarray) -> np.ndarray:
     """No data in the page's own sea colour, whatever the style."""
     return np.where(missing[..., None], SEA_RGB, rgb)
+
+
+def with_void(rgb: np.ndarray, cover: np.ndarray, falloff=None, pit=None, rim=None):
+    """The void past the world's edge and in its pits, each plane in [0, 1] and the same
+    whatever the style. ``cover`` is how much of a pixel the void hides. Past the edge it is
+    the page's own sea colour, so the map's edge draws no border; a pit is black. Both are lit
+    at their edge and darken over ``falloff``, 0 at the edge, with a light ``rim`` round them;
+    without those planes, all of it is the page's sea."""
+    weight = cover[..., None]
+    if falloff is None:
+        return rgb * (1.0 - weight) + SEA_RGB * weight
+    deep, hole = falloff[..., None], pit[..., None]
+    edge = VOID_EDGE_RGB * (1.0 - hole) + PIT_EDGE_RGB * hole
+    colour = edge * (1.0 - deep) + (SEA_RGB * (1.0 - hole) + PIT_RGB * hole) * deep
+    line = rim[..., None]
+    return (rgb * (1.0 - weight) + colour * weight) * (1.0 - line) + VOID_RIM_RGB * line
 
 
 LAYER_PAINTERS = {"terrain": terrain_colours, "satellite": satellite_colours}

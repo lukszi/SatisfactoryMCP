@@ -102,7 +102,7 @@ if one refuses. A folder left empty is removed unless it is a junction or a link
 
 ---
 
-## 3. Provenance: three axes, never one counter
+## 3. Provenance: four axes, never one counter
 
 Every map generator writes `_meta.provenance` through
 `core.gameassets.provenance.provenance_block`. The change is additive: no existing key moved,
@@ -126,6 +126,10 @@ and the tools' own staleness guards read what they always read.
 }
 ```
 
+- **`light`**, on a render drawn with `--unlit` only: the light model its lighting pyramid
+  was baked for, from `lighting/model.py`'s `light_axis()` (`id`, `version`, the model
+  constants, `digest`). `versions.LIGHTS` holds the current version. The name of such a type
+  ends in its label, "live sun". The sun position is a viewer setting, never provenance.
 - **Inputs list only what the map read.** Terrain has no `biome_raster`, so a new biome raster
   cannot make terrain stale.
 - **Size is a renderer parameter, not a version.** A 4096 preview and a 32768 render of one
@@ -148,9 +152,24 @@ and the tools' own staleness guards read what they always read.
 ### 3.2 Palettes are files
 
 `tools/mapgen/src/mapgen/palette/palettes/<style id>.json` holds every colour a painter draws
-with (`terrain-hypsometric`, `satellite-biome`, `satellite-painted`). The style digest is the sha256 of the file's
-canonical JSON, so an edit without a version bump still reads as a different style, and line
-endings cannot change it. The version a style carries is `STYLES[id].version`.
+with (`terrain-hypsometric`, `satellite-biome`, `satellite-painted`, `relief-muted`,
+`relief-night`). The style digest is the sha256 of the file's canonical JSON, so an edit without
+a version bump still reads as a different style, and line endings cannot change it. The version
+a style carries is `STYLES[id].version`.
+
+Each style also declares a **tone**, `light` or `dark` (`STYLES[id].tone`; the renders write it
+into `provenance.style.tone`). `axes.style_tone` reads the sidecar's word, else the table's, else
+light, and every type on `GET /api/maps` carries it. The page's overlay colours follow it
+(frontend_vision.md §19). No imagery is `plain_tone`, dark.
+
+| Layer | Style id | Label | Tone |
+|---|---|---|---|
+| `terrain` | `terrain-hypsometric` | terrain | light |
+| `satellite` | `satellite-biome` | satellite | light |
+| `painted` | `satellite-painted` | game-painted | light |
+| `relief` | `relief-muted` | relief | light |
+| `relief-dark` | `relief-night` | relief dark | dark |
+| (artwork) | `artwork` | artwork | light |
 
 ### 3.3 Verdicts
 
@@ -175,7 +194,15 @@ A `paint` input reads `data/local/paint/meta.json` (`generator_version`, `cl` or
 `digest`) exactly as the heightfield does, and a map that lists `paint` goes stale on the same
 rules. `python -m mapgen paint` writes it (the `paint` preset, through
 `tools/gen_paint_layers.py`); only the game-painted layer
-lists it. spatial-and-map.md section 27 describes the planes.
+lists it. spatial-and-map.md sections 27 and 30 describe the planes. Generator version 2 added
+the baked ground colour, the crown tops, the cliff families and the seabed coral carpet planes
+(section 32). Version 3 adds the water bodies (`water_bodies.json`, section 33) the painted
+style classes its water from, and the tree crowns (section 36) whose measured crown tops
+replace version 2's estimate, so a version 1 or 2 store reads as stale.
+
+The game-painted layer also lists two readers, `rock_families` (each rock's cliff family, in
+the direct raster) and `titan_trees` (the Titan forest raster), compared like any reader
+version. A render with `--no-titan-trees` omits the second and records its own style digest.
 
 ### 3.5 Names and order
 
@@ -195,8 +222,8 @@ from a whitelist and every path is chosen by the server.
 
 | Preset | Command | Options |
 |---|---|---|
-| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] [--cache-dir data/local/maps/_cache/<S> --keep-direct]` | `layers` ⊆ terrain, satellite, painted (default the first two); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `keep_cache` |
-| `artwork` | `gen_map_image.py --game G --out-dir data/local/maps/<id> [--enhance] [--no-tiles-2x]` | `enhance`, `tiles_2x` |
+| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] [--cache-dir data/local/maps/_cache/<S> --keep-direct] [--restyle]` | `layers` ⊆ terrain, satellite, painted, relief, relief-dark (default the first two); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `keep_cache`; `restyle` |
+| `artwork` | `gen_map_image.py --game G --out-dir data/local/maps/<id> [--enhance] [--no-tiles-2x]` | `enhance` (only with a Vulkan GPU), `tiles_2x` |
 | `heightmap` | `gen_world_heightmap.py --game G --force --out-dir data/local/heightmap` | — |
 | `caves` | `… --caves --field … --caves-dir data/local/caves --force` | — |
 | `rocks` | `… --rocks --field … --force` | — |
@@ -215,6 +242,14 @@ records, and a job record still names its `script`.
 - `--cache-dir` puts `direct.cache/` and `top.cache/` where a later run at the same size and
   build reuses them. The runner passes it when the job ticks "keep the raster cache", or when a
   cache for that size already exists. `DELETE /api/maps/cache` clears it.
+- **`restyle`** is the palette-only path. It is refused (400) unless `direct.cache`, `top.cache`
+  and `meshes.cache` under `_cache/<S>` all hold a sidecar, which only a render that kept its
+  cache leaves; `GET /api/maps` lists those sizes as `cached_sizes`. The generator's `--restyle`
+  checks the stamps (size, sub-samples, build) itself and exits 9 rather than rebuilding a
+  raster, so a palette change never turns into a full render. The plan drops the sweep, direct
+  and top stages: one full-size layer is prep plus draw and cut, about 8.5 min against about
+  37 min for a full two-layer render (§4.3). A restyle's history row is kept apart from full
+  renders' when scaling the next estimate.
 - The one write outside `data/local` is the pre-existing one: `--enhance` downloads the
   upscaler into the user cache folder once; the form says so.
 
@@ -222,7 +257,11 @@ records, and a job record still names its `script`.
 
 `can_generate` on `GET /api/maps`, each check under a millisecond: the `gen` extra importable
 (`find_spec`), `tools/` present (a source checkout), a game install found, and for renders the
-heightfield present. A failed check is a muted setup line on the Maps tab, never red. The fix
+heightfield present. `vulkan` says whether a Vulkan device exists: `core/gpu.py` loads the
+Vulkan loader, makes a bare instance and counts physical devices (0.2 s here). The served
+instance asks once at start, off the event loop, and the answer is kept for the process. Without
+it the form does not offer the upscaler, a regenerate of the artwork asks for the plain cut, and
+`enhance: true` is refused (400). A failed check is a muted setup line on the Maps tab, never red. The fix
 for a missing `gen` extra says to stop satisfactory-mcp first, because uv cannot replace the
 `.exe` a running server holds; for the same reason the runner never calls `uv run`.
 
@@ -324,8 +363,10 @@ rather than `settings.json` (shared-settings.md §1 says why).
    one red chip, with the error line and the log. A progress event redraws only this card, so
    the form keeps what was typed.
 3. **Generate a map** (folded unless there are no types): what (render, artwork, heightfield
-   inputs); layers; size slider (preview 1024 … full 32768); arches and boulders; recipe; keep
-   the raster cache; for artwork the GPU upscale with its download note; an optional name; the
+   inputs); one box per style from `styles` (its tone as the title); size slider (preview 1024 …
+   full 32768); arches and boulders; recipe; keep the raster cache; "palette only" when that size
+   is in `cached_sizes`; for artwork the GPU upscale with its download note, or a line saying no
+   Vulkan GPU was found; an optional name; the
    estimate line, live; **generate**, or **queue** while a job runs, disabled with the reason as
    its title.
 4. **Map types**: a 64 px z0 thumbnail that opens the map on the type, the title (label or
@@ -367,8 +408,8 @@ lives in the web process, and a half-hour job deserves a visible confirm. No too
 
 | Method + path | Does | Refuses |
 |---|---|---|
-| `GET /api/maps` | `MapsResponse {version, default, types[], jobs[], can_generate, inputs[], disk, game_cl, unregistered[], queue_max, sizes[]}` | 503 newer manifest |
-| `GET /api/maps/estimate?preset=&layers=&size=&recipe=&top=&keep_cache=&enhance=&tiles_2x=` | `MapEstimateResponse {seconds, keep_bytes, transient_bytes, free_bytes, needs_bytes, ok, reason, measured}` | 400 bad option |
+| `GET /api/maps` | `MapsResponse {version, default, types[] (each with tone), jobs[], can_generate (with vulkan), inputs[], disk, game_cl, unregistered[], queue_max, sizes[], styles[] {layer, style, label, tone}, cached_sizes[], plain_tone}` | 503 newer manifest |
+| `GET /api/maps/estimate?preset=&layers=&size=&recipe=&top=&keep_cache=&restyle=&enhance=&tiles_2x=` | `MapEstimateResponse {seconds, keep_bytes, transient_bytes, free_bytes, needs_bytes, ok, reason, measured}` | 400 bad option |
 | `PUT /api/maps/default {id, version?}` | `MapsResponse` | 404 unknown, 409 not ready or stale version |
 | `POST /api/maps/adopt` | `MapsResponse` | |
 | `DELETE /api/maps/cache` | `{freed_bytes}` | 409 while a job runs |
@@ -385,6 +426,17 @@ registered type; an unknown id is a 404 listing the ids, and a `building` or `fa
 answers HEAD 204 and GET 404.
 
 ---
+
+### 8.1 Lit layers
+
+A layer drawn with `--unlit` names its lighting pyramid in its sidecar (`_meta.light.dir`,
+relative to the layer, refused unless it resolves inside `data/local`). Its z0 probe adds
+`X-Map-Light`, compact JSON: `{build, max_z, unlit_max_z, params, baked_sun, model}`.
+`?kind=unlit` serves the unlit colour (PNG), `?kind=nrm` and `?kind=hz` the lighting tiles
+(WebP); with `?v=` the light build tag they are immutable. Any other `kind`, or a layer drawn
+lit, is a 404. The `render` preset takes `light` (default false), which adds `--unlit`, a
+`light` stage after the first layer's draw, and the unlit and light trees to the estimate's
+bytes. docs/spatial-and-map.md §29 describes the light.
 
 ## 9. Verified
 
@@ -405,7 +457,7 @@ On this machine, 2026-10-05, the worktree's server on scratch user data and the 
 
 - The `::stage` protocol covers the draw and cut stages; the sweep, direct and top stages
   still come from the regexes, which stay as the fallback.
-- "Restyle" queues a full render, because `--cache-dir` reuse needs a kept cache; a palette-only
-  path that skips the rasters entirely is the colour workflow's to add.
+- A type's **re-render** button queues a palette-only restyle when only its palette moved and a
+  cache for its size is kept; otherwise it queues a full render.
 - The artwork's re-render offer is never made for a plain (recipe 0) artwork: the upscale needs
   a Vulkan GPU, which is a choice, not an upgrade.

@@ -11,7 +11,9 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 __all__ = [
     "DIRECT_SAMPLES_PER_TEXEL",
     "STENCIL_WHOLE",
+    "ClassMix",
     "PchipTaps",
+    "class_taps",
     "direct_weight",
     "frame_coordinates",
     "grid_position",
@@ -315,6 +317,49 @@ def sample_coverage(plane: np.ndarray, taps) -> np.ndarray:
     which is not a thing a texel can be.
     """
     return np.clip(sample_plain(plane, taps), 0.0, 1.0)
+
+
+def class_taps(plane: np.ndarray, taps) -> list[tuple[np.ndarray, np.ndarray]]:
+    """The four bilinear taps of a class plane: ``(class, weight)``, weight 0 on class 0."""
+    (row_index, row_weight), (col_index, col_weight) = taps
+    out = []
+    for i in range(2):
+        for j in range(2):
+            cls = plane[np.ix_(row_index[i], col_index[j])]
+            weight = row_weight[i][:, None] * col_weight[j][None, :]
+            out.append((cls, np.where(cls > 0, weight, np.float32(0.0)).astype(np.float32)))
+    return out
+
+
+class ClassMix:
+    """Rows of a per-class table at each pixel, mixed over the non-zero taps.
+
+    A pixel whose non-zero taps agree takes that class's row exactly; one with none takes
+    row ``fallback``. Only the mixed pixels are weighted, so a band costs one row array.
+    """
+
+    def __init__(self, found, fallback: int):
+        first = np.full(found[0][0].shape, fallback, np.uint8)
+        for cls, weight in reversed(found):
+            first = np.where(weight > 0, cls, first)
+        uniform = np.ones(first.shape, bool)
+        for cls, weight in found:
+            uniform &= (weight == 0) | (cls == first)
+        self.first, self.mixed = first, np.nonzero(~uniform)
+        self.taps = [(cls[self.mixed], weight[self.mixed]) for cls, weight in found]
+        self.total = np.maximum(sum(w for _c, w in self.taps), np.float32(1e-6))
+
+    def classes(self) -> set[int]:
+        return set(np.unique(self.first).tolist()) | {
+            int(c) for cls, _w in self.taps for c in np.unique(cls)
+        }
+
+    def of(self, table: np.ndarray) -> np.ndarray:
+        out = np.asarray(table, np.float32)[self.first]
+        if len(self.mixed[0]):
+            acc = sum(w[:, None] * np.asarray(table, np.float32)[c] for c, w in self.taps)
+            out[self.mixed] = acc / self.total[:, None]
+        return out
 
 
 def sample_noise(fields, rows: np.ndarray, cols: np.ndarray, size: int) -> np.ndarray:

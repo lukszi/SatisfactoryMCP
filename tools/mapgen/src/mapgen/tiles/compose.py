@@ -14,12 +14,22 @@ from mapgen.lighting.hillshade import (
     BORROW_CLAMP,
     BORROW_GAIN,
     SUN_ALTITUDE_DEG,
+    flat_shade,
     hillshade,
     slope_degrees,
     sun_dot,
 )
+from mapgen.palette.falls import draw_falls
 from mapgen.palette.painted import ROCK_GRID_M, painted_colours
-from mapgen.palette.shore import MESH_FULL_LIFT_M, blend_water, composite_meshes, shore_terms
+from mapgen.palette.relief import relief_colours
+from mapgen.palette.rivers import water_sources
+from mapgen.palette.shore import (
+    MESH_FULL_LIFT_M,
+    OCEAN_LEVEL_M,
+    blend_water,
+    composite_meshes,
+    shore_terms,
+)
 from mapgen.palette.styles import (
     LAYER_PAINTERS,
     NOISE_SEED,
@@ -27,14 +37,15 @@ from mapgen.palette.styles import (
     noise_fields,
     ramp_range,
     with_sea,
+    with_void,
 )
 from mapgen.palette.water import (
     WATER_DEPTH_FULL_M,
     WATER_EDGE_BLUR_M,
     water_alpha,
     water_depth_fraction,
-    water_planes,
 )
+from mapgen.terrain.crowns import crown_band
 from mapgen.terrain.measure import SEAM_MID
 from mapgen.terrain.rasters import pixel_coverage
 from mapgen.terrain.sample import (
@@ -55,8 +66,10 @@ __all__ = [
     "BAND_HALO",
     "BAND_ROWS",
     "DIRECT_LIFT_KNEE_M",
+    "band_water",
     "blend_regimes",
     "composite_top",
+    "crowns_in_band",
     "render_layer",
 ]
 
@@ -89,7 +102,7 @@ def composite_top(z_m, top_z_cm, top_coverage, subsamples: int = 1) -> np.ndarra
     return (z_m + w * 0.5 * (delta + np.sqrt(delta * delta + knee * knee))).astype(np.float32)
 
 
-def blend_regimes(base_m, missing, direct, linear, subsamples):
+def blend_regimes(base_m, missing, direct, linear, subsamples, keep=None):
     """The two-regime height and what it was made of: ``(z_m, missing, w, switched)``.
 
     This is the field's **own composition rule**, performed at the render's spacing instead
@@ -108,10 +121,13 @@ def blend_regimes(base_m, missing, direct, linear, subsamples):
 
     Where the lattice knows nothing -- inside a formation big enough that no landscape texel
     survives under it -- the caller passes the whole field's own fold as ``base_m``. There
-    the coverage is 1 and the rock is the answer either way.
+    the coverage is 1 and the rock is the answer either way. ``keep`` scales the coverage:
+    the share the void leaves a rock under the sea's level (``_rock_kept``).
     """
     z_cm, coverage = direct
     fraction = pixel_coverage(coverage, subsamples)
+    if keep is not None:
+        fraction = fraction * keep
     w = np.clip(fraction, 0.0, 1.0).astype(np.float32)
     z_direct_m = z_cm / np.float32(100.0)
     delta = z_direct_m - base_m
@@ -136,6 +152,96 @@ def blend_regimes(base_m, missing, direct, linear, subsamples):
     )
 
 
+def band_water(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m) -> dict:
+    """Recipe 5's water, and within ``reach`` of the sea the ocean's crossing rule."""
+    old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)
+    old_depth = water_depth_fraction(z_m, water_m, measured)
+    if reach is None:
+        return blend_water(None, old_cover, old_depth, None, WATER_DEPTH_FULL_M)
+    return blend_water(
+        sample_coverage(reach, linear),
+        old_cover,
+        old_depth,
+        shore_terms(z_m, spacing_m),
+        WATER_DEPTH_FULL_M,
+    )
+
+
+def crowns_in_band(painted, x_cm, y_cm, spacing_m, unlit=False) -> dict | None:
+    """The crowns over these pixel centres, with their domes lit by the shared sun."""
+    if painted.crowns is None:
+        return None
+    step_cm = spacing_m * 100.0
+    band = crown_band(
+        painted.crowns, x_cm[0] - step_cm / 2, y_cm[0] - step_cm / 2, step_cm, len(y_cm), len(x_cm)
+    )
+    gain = np.float32(painted.palette["crowns"]["dome_gain"])
+    flat = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
+    dome = band["dome_m"] * gain
+    band["ndl"] = np.full(dome.shape, flat) if unlit else sun_dot(dome, spacing_m)
+    return band
+
+
+def _capture(surface, rows, z_m, missing, cover) -> None:
+    """Hand one band's drawn heights and land weight, halo cropped, to the lighting stage."""
+    top, lo, bottom, c0, c1 = rows
+    keep = slice(top - lo, bottom - lo)
+    dry = np.where(missing, 0.0, 1.0 - cover)
+    surface.put(top, z_m[keep], dry[keep], slice(c0, c1))
+
+
+def _band_water(z_m, planes, smooth, linear):
+    """One band's water surface, level (NaN where none), wet cover and measured share.
+
+    ``planes`` ends with the run's ``OpenSea`` or None. With it, the wet cover counts only
+    the share of a pixel that is not void, so the void's edge is never drawn as land.
+    """
+    water, wet_plane, measured_plane, sea = planes
+    if wet_plane is None:
+        wet = measured = np.zeros(z_m.shape, np.float32)
+        return z_m, np.full(z_m.shape, np.nan, np.float32), wet, measured
+    water_dm, water_missing = sample_surface(water, smooth, linear, hf.NODATA)
+    water_m = water_dm / np.float32(hf.DM_PER_M)
+    level_m = np.where(water_missing, np.nan, water_m)
+    wet = sample_coverage(wet_plane, linear)
+    measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
+    if sea is not None:
+        land = 1.0 - sample_plain(sea.void.cover, linear) / np.float32(255.0)
+        wet = np.clip(wet / np.maximum(land, np.float32(1e-3)), 0.0, 1.0)
+    return water_m, level_m, wet, np.clip(measured, 0.0, 1.0)
+
+
+def _rock_kept(z_rock_cm, missing, planes, linear):
+    """The share of its coverage a rock keeps under the void; None without the open sea.
+
+    ``planes`` is ``(wet plane, OpenSea or None)``. Out of the sea a rock keeps all of it.
+    Under the sea's level it keeps none on no data, and where the open sea runs on under the
+    void only what the void's cover leaves, so the sea fades into the void with no rock in it.
+    """
+    wet_plane, sea = planes
+    if sea is None:
+        return None
+    above = np.clip(z_rock_cm / np.float32(100.0) - np.float32(OCEAN_LEVEL_M) + 0.5, 0.0, 1.0)
+    cover = np.clip(sample_plain(sea.void.cover, linear) / np.float32(255.0), 0.0, 1.0)
+    under = np.where(missing, np.float32(1.0), cover * sample_coverage(wet_plane, linear))
+    return (1.0 - (1.0 - above) * under).astype(np.float32)
+
+
+def _void(rgb, missing, sea, linear, rock, z_m):
+    """A finished band under the void: no data at all, and the open sea's void planes with
+    the cover and rim kept off the rocks a pixel's ``rock`` coverage holds where they stand
+    out of the sea; without the open sea, no data only, in the page's sea."""
+    if sea is None:
+        return with_sea(rgb, missing)
+    cover, falloff, pit, rim = (sample_plain(p, linear) / np.float32(255.0) for p in sea.void)
+    if rock is not None:
+        # A rock deep in the void, under the sea's level, is the void's, as the artwork has it.
+        rock = rock * np.clip(z_m - np.float32(OCEAN_LEVEL_M) + 0.5, 0.0, 1.0)
+        cover, rim = cover * (1.0 - rock), rim * (1.0 - rock)
+    cover = np.where(missing, np.float32(1.0), np.clip(cover, 0.0, 1.0))
+    return with_void(rgb, cover, falloff, pit, rim)
+
+
 def render_layer(
     layer,
     field,
@@ -152,28 +258,24 @@ def render_layer(
     overlay=None,
     kernel=None,
     meshes=None,
+    falls=None,
     reach=None,
     painted=None,
     window=None,
+    rivers=None,
+    relief=None,
+    unlit=False,
+    surface=None,
+    water_level=None,
+    sea=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
-    Banded because the sheet is a billion pixels at 32768 and this recipe holds a dozen
-    float32 intermediates over it, four gigabytes apiece whole. Each band is computed with
-    BAND_HALO extra rows on both sides and cropped afterwards, so neither the hillshade's
-    gradient nor the cubic sampler's stencil nor the water blur's kernel ever sees a band
-    edge: a one-sided difference at every 256th row would
-    draw 127 horizontal lines across the world.
-
-    ``direct`` is the pair of memory maps the direct pass wrote, with the weight plane and
-    the sub-sampling beside them; ``None`` draws the single-regime picture. ``seam`` and
-    ``regimes`` are accumulators, passed for the first layer only, both layers drawing the
-    identical surface. ``overlay`` is the arch-and-boulder pair of maps and its sub-sampling,
-    composited last. ``kernel`` builds the smooth taps: ``taps_pchip`` unless told otherwise.
-    ``meshes`` is the render-only mesh raster (z, class); ``reach`` the 1 m plane where the
-    ocean's crossing rule applies, ``None`` for recipe 5's water everywhere; ``painted`` the
-    ``palette.painted.PaintedGround`` the painted layer samples. ``window`` draws only rows
-    ``[r0, r1)`` and columns ``[c0, c1)`` of the sheet, with every raster passed in cut to it.
+    Each band carries BAND_HALO extra rows, cropped after, so no stencil sees a band edge.
+    ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. ``unlit`` draws
+    the sun term flat; ``surface`` receives the drawn heights and land weight. ``sea`` is the
+    run's ``OpenSea``, whose water planes replace ``water_level``'s. The other
+    arguments: tools/mapgen/README.md, "Design notes", "The band loop".
     """
     kernel = taps_pchip if kernel is None else kernel
     painter = LAYER_PAINTERS.get(layer)
@@ -186,8 +288,8 @@ def render_layer(
     heights = field._height_dm if height_dm is None else height_dm
     ramp_lo, ramp_hi = ramp_range(field)
     noise = noise_fields(NOISE_SEED) if layer == "satellite" else None
-    wet_plane, measured_plane, _source = water_planes(field)
-    water = field._water_raster()
+    planes = (water_level, None) if sea is None else sea.planes
+    water, wet_plane, measured_plane = water_sources(field, rivers, *planes)
     out = np.empty((r1 - r0, c1 - c0, 3), np.uint8)
     column_index = np.arange(c0, c1)
 
@@ -230,12 +332,10 @@ def render_layer(
             # the fold stands in, which is inside a formation the rock covers anyway.
             ground_dm, ground_missing = sample_surface(ground, smooth, linear, hf.NODATA)
             base_m = np.where(ground_missing, z_m, ground_dm / np.float32(hf.DM_PER_M))
+            rock = (np.asarray(direct_z[band], np.float32), np.asarray(direct_coverage[band]))
+            kept = _rock_kept(rock[0], missing, (wet_plane, sea), linear)
             z_m, missing, weight, switched = blend_regimes(
-                base_m,
-                missing,
-                (np.asarray(direct_z[band], np.float32), np.asarray(direct_coverage[band])),
-                linear,
-                subsamples,
+                base_m, missing, rock, linear, subsamples, kept
             )
             rock_lift = np.clip((z_m - base_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
             rock_seen = np.where(ground_missing, weight, np.minimum(weight, rock_lift))
@@ -246,7 +346,7 @@ def render_layer(
                     switched[keep],
                     weight[keep],
                     spacing_m,
-                    (np.asarray(direct_z[band], np.float32) / 100.0 - base_m)[keep],
+                    (rock[0] / 100.0 - base_m)[keep],
                 )
             if regimes is not None:
                 prov_rows = np.clip(
@@ -271,17 +371,9 @@ def render_layer(
                 top_subsamples,
             )
             top_weight = np.clip((z_m - below) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
-        if wet_plane is None:
-            wet = measured = np.zeros(z_m.shape, np.float32)
-            water_m = z_m
-            level_m = np.full(z_m.shape, np.nan, np.float32)
-        else:
-            water_dm, water_missing = sample_surface(water, smooth, linear, hf.NODATA)
-            water_m = water_dm / np.float32(hf.DM_PER_M)
-            level_m = np.where(water_missing, np.nan, water_m)
-            wet = sample_coverage(wet_plane, linear)
-            measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
-            measured = np.clip(measured, 0.0, 1.0)
+        water_m, level_m, wet, measured = _band_water(
+            z_m, (water, wet_plane, measured_plane, sea), smooth, linear
+        )
         mesh_weight = mesh_class = None
         if meshes is not None:
             z_m, mesh_weight, mesh_class = composite_meshes(
@@ -290,6 +382,7 @@ def render_layer(
                 np.asarray(meshes[1][band]),
                 level_m,
                 composite_top,
+                seabed=layer != "painted",
             )
 
         art_rows = taps_linear(
@@ -298,18 +391,11 @@ def render_layer(
         strength = sample_plain(province, linear) / 255.0
         lift = 1.0 + BORROW_GAIN * strength * (sample_plain(detail, (art_rows, art_cols)) / 127.0)
 
-        old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)
-        old_depth = water_depth_fraction(z_m, water_m, measured)
-        if reach is None:
-            water_terms = blend_water(None, old_cover, old_depth, None, WATER_DEPTH_FULL_M)
-        else:
-            water_terms = blend_water(
-                sample_coverage(reach, linear),
-                old_cover,
-                old_depth,
-                shore_terms(z_m, spacing_m),
-                WATER_DEPTH_FULL_M,
-            )
+        water_terms = band_water(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m)
+        if rivers is not None:
+            water_terms = rivers.over(water_terms, z_m, linear, spacing_m)
+        if surface is not None:
+            _capture(surface, (top, lo, bottom, c0, c1), z_m, missing, water_terms["cover"])
         scene: dict = {
             "z_m": z_m,
             "borrow": np.clip(lift, *BORROW_CLAMP),
@@ -324,12 +410,16 @@ def render_layer(
             rock_weight = np.zeros(z_m.shape, np.float32) if weight is None else rock_seen
             if top_weight is not None:
                 rock_weight = np.maximum(rock_weight, top_weight)
+            flat = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
+            scene["crowns"] = crowns_in_band(painted, x_cm, y_cm[lo:hi], spacing_m, unlit)
             scene.update(
-                ndl=sun_dot(z_m, spacing_m),
-                ndl_flat=np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG))),
+                ndl=np.full(z_m.shape, flat) if unlit else sun_dot(z_m, spacing_m),
+                ndl_flat=flat,
                 rock_weight=rock_weight,
                 mesh_weight=mesh_weight,
                 mesh_class=mesh_class,
+                water_optics=painted.water_optics(linear, water_terms.get("river")),
+                grid=(band, lo, hi, c0, c1, spacing_m),
             )
             rgb = painted_colours(
                 scene,
@@ -337,8 +427,19 @@ def render_layer(
                 lambda plane, taps=linear: sample_plain(plane, taps),
                 lambda plane, taps=(rock_rows, rock_cols): sample_plain(plane, taps),
             )
+        elif relief is not None:
+            scene.update(spacing_m=spacing_m, unlit=unlit)
+            rows = biome_index(
+                y_cm[lo:hi], BOUNDS_M["y_min_m"], BOUNDS_M["y_max_m"], biome["width"]
+            )
+            rgb = relief_colours(
+                scene,
+                relief,
+                lambda plane, taps=linear: sample_plain(plane, taps),
+                lambda plane, rows=rows: plane[np.ix_(rows, biome_cols)],
+            )
         else:
-            scene["shade"] = hillshade(z_m, spacing_m)
+            scene["shade"] = flat_shade(z_m.shape) if unlit else hillshade(z_m, spacing_m)
             if layer == "satellite":
                 scene["slope"] = slope_degrees(z_m, spacing_m)
                 biome_rows = biome_index(
@@ -347,7 +448,8 @@ def render_layer(
                 scene["biome_rgb"] = biome_rgb[np.ix_(biome_rows, biome_cols)].astype(np.float32)
                 scene["noise"] = sample_noise(noise, np.arange(lo, hi), column_index, size)
             rgb = painter(scene)
-        rgb = with_sea(rgb, missing)
+        rgb = _void(rgb, missing, sea, linear, weight, z_m)
+        rgb = draw_falls(rgb, falls, layer, x_cm, y_cm[lo:hi], z_m, spacing_m)
         out[top - r0 : bottom - r0] = np.clip(rgb[top - lo : bottom - lo], 0, 255).astype(np.uint8)
         if progress and (top // BAND_ROWS) % 16 == 0:
             done = (bottom - r0) / (r1 - r0)

@@ -40,7 +40,12 @@ def test_the_list_carries_every_type_its_freshness_and_what_can_run(client):
     assert terrain["status"] == "ready" and terrain["dir"] == "renders/terrain"
     old = next(t for t in body["types"] if t["id"] == "terrain-r3-502094")
     assert old["freshness"]["stale"][0]["text"] == "newer heightfield (v3 → v5)"
-    assert set(body["can_generate"]) == {"gen", "tools", "game", "heightfield", "ok", "reason"}
+    assert set(body["can_generate"]) == {
+        "gen", "tools", "game", "heightfield", "vulkan", "ok", "reason"
+    }  # fmt: skip
+    assert {row["tone"] for row in body["types"]} <= {"light", "dark"}
+    assert terrain["tone"] == "light" and body["plain_tone"] == "dark"
+    assert {"relief", "relief-dark"} <= {row["layer"] for row in body["styles"]}
     assert body["jobs"] == [] and body["queue_max"] == 4
     assert {row["name"] for row in body["inputs"]} == {"heightfield", "caves", "rocks", "paint"}
     assert KIND_MAPS in KINDS
@@ -116,8 +121,8 @@ def test_a_job_queued_from_the_page_runs_and_its_type_appears(client, local, tmp
     monkeypatch.setattr(
         presets,
         "can_generate",
-        lambda: {"gen": True, "tools": True, "game": True, "heightfield": True, "ok": True,
-                 "reason": None},
+        lambda: {"gen": True, "tools": True, "game": True, "heightfield": True, "vulkan": True,
+                 "ok": True, "reason": None},
     )  # fmt: skip
     registry.ensure()
     reply = client.post(
@@ -127,7 +132,7 @@ def test_a_job_queued_from_the_page_runs_and_its_type_appears(client, local, tmp
     )
     assert reply.status_code == 202, reply.text
     job = reply.json()["job"]
-    assert job["produces"] == ["terrain-r6-502094"]
+    assert job["produces"] == ["terrain-r7-502094"]
     deadline = time.monotonic() + 20
     while True:
         detail = client.get(f"/api/maps/jobs/{job['id']}").json()
@@ -138,7 +143,7 @@ def test_a_job_queued_from_the_page_runs_and_its_type_appears(client, local, tmp
     assert detail["job"]["status"] == "done", detail
     assert any("done in" in line for line in detail["log_tail"])
     body = client.get("/api/maps").json()
-    row = next(t for t in body["types"] if t["id"] == "terrain-r6-502094")
+    row = next(t for t in body["types"] if t["id"] == "terrain-r7-502094")
     assert row["status"] == "ready" and row["origin"] == "generated"
     assert body["jobs"][0]["id"] == job["id"]
     bad = client.post("/api/maps/jobs", json={"preset": "render", "options": {"size": 3}},

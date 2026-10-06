@@ -12,7 +12,9 @@ __all__ = [
     "ARTWORK_RECIPES",
     "CAVES_VERSION",
     "HEIGHTFIELD_GENERATOR_VERSION",
+    "LIGHTS",
     "PAINT_GENERATOR_VERSION",
+    "PLAIN_TONE",
     "PROVENANCE_SCHEMA",
     "READER_VERSIONS",
     "RENDER_RECIPES",
@@ -31,7 +33,7 @@ HEIGHTFIELD_GENERATOR_VERSION = 5
 CAVES_VERSION = 1
 
 #: ``tools/gen_paint_layers.py``'s output version; ``paint/meta.json``'s ``generator_version``.
-PAINT_GENERATOR_VERSION = 1
+PAINT_GENERATOR_VERSION = 3
 
 #: How the inputs a render reads straight from the install are decoded. ``cliff_geometry``
 #: is the heightfield generator's own sweep and decode, imported by the renders.
@@ -39,7 +41,11 @@ READER_VERSIONS = {
     "biome_raster": 1,
     "artwork_sheet": 1,
     "cliff_geometry": HEIGHTFIELD_GENERATOR_VERSION,
-    "render_meshes": 1,
+    "render_meshes": 2,
+    "river_splines": 1,
+    "rock_families": 1,
+    "titan_trees": 1,
+    "waterfalls": 1,
 }
 
 #: ``tools/gen_map_renders.py`` recipes. ``requires`` names the heightfield the recipe needs:
@@ -61,8 +67,12 @@ RENDER_RECIPES: dict[int, dict] = {
         "requires": {"heightfield": {"min_version": 4,
                                      "planes": ["height", "density", "terrain", "top",
                                                 "water", "waterq"]}}},
+    7: {"label": "river splines", "sampler": "pchip", "two_regime": True, "version": 1,
+        "requires": {"heightfield": {"min_version": 4,
+                                     "planes": ["height", "density", "terrain", "top",
+                                                "water", "waterq"]}}},
 }  # fmt: skip
-RENDER_RECIPE_CURRENT = 6
+RENDER_RECIPE_CURRENT = 7
 RENDER_RECIPE_KERNEL_ONLY = 2
 
 #: ``tools/gen_map_image.py``'s enhancement recipes: 0 is the game's own sheet, cut plainly.
@@ -75,9 +85,22 @@ ARTWORK_RECIPES: dict[int, dict] = {
 #: Palettes. A render's style ``id`` is its palette file's name under
 #: ``tools/mapgen/src/mapgen/palette/palettes/``,
 #: and the version is bumped when a palette changes on purpose; the file's hash is the digest.
+#: ``tone`` is the base's lightness, which the page's overlay colours follow.
 STYLES: dict[str, dict] = {
-    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 2},
-    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 2},
-    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 1},
-    "artwork": {"label": "artwork", "layer": "map", "version": 1},
+    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 6, "tone": "light"},
+    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 6, "tone": "light"},
+    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 8,
+                          "tone": "light"},
+    "relief-muted": {"label": "relief", "layer": "relief", "version": 4, "tone": "light"},
+    "relief-night": {"label": "relief dark", "layer": "relief-dark", "version": 4, "tone": "dark"},
+    "artwork": {"label": "artwork", "layer": "map", "version": 1, "tone": "light"},
+}  # fmt: skip
+
+#: The tone of no imagery at all: the page's own dark sea.
+PLAIN_TONE = "dark"
+
+#: Light models. A render drawn unlit names the one its lighting pyramid was baked for; a
+#: version bump offers a relight, never a stale chip.
+LIGHTS: dict[str, dict] = {
+    "sun": {"label": "live sun", "version": 2},
 }

@@ -12,6 +12,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
+from mapgen.terrain.rasters import MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "blend_water",
     "composite_meshes",
     "ocean_reach",
+    "optical_depth",
     "shore_terms",
     "water_composite",
     "wet_band",
@@ -74,13 +76,14 @@ def ocean_reach(field) -> tuple[np.ndarray, dict]:
     }
 
 
-def shore_terms(z_m: np.ndarray, spacing_m: float) -> dict:
-    """The crossing of the ocean level through each pixel: coverage, depth, the edge, and how
-    far above the waterline a dry pixel is, in metres across the ground."""
+def shore_terms(z_m: np.ndarray, spacing_m: float, level_m=OCEAN_LEVEL_M) -> dict:
+    """The crossing of a water level (the ocean's, or a river's per pixel) through each pixel:
+    coverage, depth, the edge, and how far above the waterline a dry pixel is, in metres
+    across the ground."""
     d_south, d_east = np.gradient(z_m, spacing_m)
     grade = np.maximum(np.hypot(d_east, d_south), np.float32(1e-3))
     per_px = np.maximum(grade * spacing_m, np.float32(1e-3))
-    depth = np.float32(OCEAN_LEVEL_M) - z_m
+    depth = (np.asarray(level_m, np.float32) - z_m).astype(np.float32)
     return {
         "cover": np.clip(depth / per_px + 0.5, 0.0, 1.0),
         "depth_m": np.maximum(depth, 0.0),
@@ -94,12 +97,16 @@ def blend_water(reach, old_cover, old_depth_fraction, shore: dict | None, full_m
     """Recipe 6's water where ``reach`` is 1 and recipe 5's where it is 0, blended between.
 
     Returns ``cover`` (water share of the pixel), ``depth`` (the tint fraction),
-    ``depth_m`` (metres, for the optics), ``ocean`` (the reach) and ``edge`` (where the
-    crossing passes through the pixel).
+    ``depth_m`` (metres, for the optics), ``ocean`` (the reach), ``banks`` (where the shore
+    optics apply: the ocean's reach, and the rivers once laid over) and ``edge`` (where the
+    crossing passes through the pixel). ``river`` and ``river_below_m`` stay empty here.
     """
+    zero = np.zeros_like(old_cover)
+    rivers = {"river": zero, "river_below_m": np.full_like(old_cover, np.inf)}
     if shore is None:
-        zero = np.zeros_like(old_cover)
         return {
+            **rivers,
+            "banks": zero,
             "cover": old_cover,
             "depth": old_depth_fraction,
             "ocean": zero,
@@ -110,6 +117,8 @@ def blend_water(reach, old_cover, old_depth_fraction, shore: dict | None, full_m
         }
     keep = 1.0 - reach
     return {
+        **rivers,
+        "banks": reach,
         "cover": reach * shore["cover"] + keep * old_cover,
         "depth": reach * np.clip(shore["depth_m"] / full_m, 0.0, 1.0) + keep * old_depth_fraction,
         "depth_m": reach * shore["depth_m"] + keep * old_depth_fraction * np.float32(full_m),
@@ -131,11 +140,12 @@ def water_composite(
     faint line over the shallowest water.
     """
     land = wet_band(land, water, optics.get("wet_band"))
-    ocean = water["ocean"]
-    fade = 1.0 - np.exp(-water["depth_m"] / np.float32(optics["clarity_m"]))
+    banks = water.get("banks", water["ocean"])
+    depth = optical_depth(water, optics.get("river"))
+    fade = 1.0 - np.exp(-depth / np.float32(optics["clarity_m"]))
     a0 = np.float32(optics["edge_alpha"])
-    opacity = (ocean * (a0 + (1.0 - a0) * fade) + (1.0 - ocean))[..., None]
-    wet = (1.0 - (1.0 - np.float32(optics["wet_darken"])) * ocean)[..., None]
+    opacity = (banks * (a0 + (1.0 - a0) * fade) + (1.0 - banks))[..., None]
+    wet = (1.0 - (1.0 - np.float32(optics["wet_darken"])) * banks)[..., None]
     tint = water["depth"][..., None]
     colour = (shallow * (1 - tint) + deep * tint) * (shade_floor + shade_range * shade[..., None])
     under = land * wet * (1.0 - opacity) + colour * opacity
@@ -152,8 +162,18 @@ def wet_band(land, water: dict, band: dict | None):
     if not band or not band.get("m"):
         return land
     reach = np.clip(1.0 - water["above_m"] / np.float32(band["m"]), 0.0, 1.0)
-    weight = (reach * reach * water["ocean"])[..., None]
+    weight = (reach * reach * water.get("banks", water["ocean"]))[..., None]
     return land * (1.0 - weight + weight * np.asarray(band["tint"], np.float32))
+
+
+def optical_depth(water: dict, river: dict | None):
+    """The depth the optics see: a river reads at least ``min_depth_m`` deep once ``bank_m``
+    in from its waterline, so a shallow bed does not draw it as a pale path."""
+    if not river or not river.get("min_depth_m") or "river" not in water:
+        return water["depth_m"]
+    ramp = np.clip(water["river_below_m"] / np.float32(river["bank_m"]), 0.0, 1.0)
+    floor = water["river"] * np.float32(river["min_depth_m"]) * ramp
+    return np.maximum(water["depth_m"], floor)
 
 
 def add_foam(rgb, water: dict, foam: dict | None, white):
@@ -167,14 +187,21 @@ def add_foam(rgb, water: dict, foam: dict | None, white):
     return rgb * (1.0 - weight) + white * np.float32(foam.get("white", 1.0)) * weight
 
 
-def composite_meshes(z_m, mesh_z_cm, mesh_class_band, water_level_m, composite):
+def composite_meshes(z_m, mesh_z_cm, mesh_class_band, water_level_m, composite, seabed=False):
     """``z_m`` raised by the meshes standing near or above the water; and their weight.
 
     ``composite`` is the renderer's raise-only lift (``composite_top``). The weight is how
-    much of the drawn surface is the mesh: 0 where it did not raise the ground.
+    much of the drawn surface is the mesh: 0 where it did not raise the ground. With
+    ``seabed`` (the styles that draw ground and water only) nothing breaks the water's
+    surface: under water the coral, shells and terraces are left to the seabed, and a rock
+    stays only where its top stands above the surface.
     """
     level = np.where(np.isfinite(water_level_m), water_level_m, -np.inf)
-    keep = (mesh_class_band > 0) & (mesh_z_cm / np.float32(100.0) > level - MESH_REACH_M)
+    top_m = mesh_z_cm / np.float32(100.0)
+    keep = (mesh_class_band > 0) & (top_m > level - MESH_REACH_M)
+    if seabed:
+        dry = ~np.isfinite(water_level_m)
+        keep &= dry | ((mesh_class_band == MESH_ROCK) & (top_m > level))
     raised = composite(z_m, mesh_z_cm, keep.astype(np.uint8))
     weight = np.clip((raised - z_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     return raised, weight, np.where(keep, mesh_class_band, 0).astype(np.uint8)

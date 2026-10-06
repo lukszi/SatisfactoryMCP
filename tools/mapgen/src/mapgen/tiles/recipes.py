@@ -59,6 +59,13 @@ RECIPES = {
         "lakes unchanged. Coral, shells, CliffPillar_03 and rubble rasterised for the map "
         "only and composited raise-only where they stand near or above the water"
     ),
+    7: (
+        "recipe 6 with the rivers drawn from the game's own river splines: each section of "
+        "BP_River_PROT_C's plane as a sloped ribbon on the 1 m grid, covering the drawn "
+        "ground where the plane stands above it, one pixel wide at the bank, under the same "
+        "shallow-water optics as the sea. The water the river boxes levelled is taken back "
+        "out of the field's, so a river is drawn once, at its own height"
+    ),
 }
 RECIPE = RENDER_RECIPE_CURRENT
 

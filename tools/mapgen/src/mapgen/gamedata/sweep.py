@@ -10,6 +10,7 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.mesh import is_water_class, water_actor_box
+from mapgen.gamedata.rivers import RIVER_CLASS, river_actor
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels
 from satisfactory_mcp.core.gameassets.packages import (
     class_name_of,
@@ -44,6 +45,7 @@ __all__ = [
     "TRANSFORM_TOLERANCE",
     "decode_baseline",
     "drop_offsets",
+    "first_override",
     "flagged_tags",
     "foliage_instances",
     "instance_matrices",
@@ -222,6 +224,18 @@ def instance_matrices(tail: bytes, expect: int | None) -> np.ndarray | None:
     return None
 
 
+def first_override(view, payload: bytes | None) -> str | None:
+    """The first non-empty entry of a component's ``OverrideMaterials``, as a package path."""
+    if not payload or len(payload) < 4:
+        return None
+    count = struct.unpack_from("<i", payload, 0)[0]
+    for i in range(max(0, min(count, (len(payload) - 4) // 4))):
+        path = view.import_path(payload[4 + 4 * i : 8 + 4 * i])
+        if path:
+            return path
+    return None
+
+
 def is_top_foliage(mesh: str) -> bool:
     return mesh.rsplit("/", 1)[-1] in TOP_FOLIAGE_MESHES
 
@@ -260,14 +274,33 @@ def foliage_instances(
     return mesh, world
 
 
+def _placement(view, slot) -> tuple | None:
+    """``(mesh path, x, y, z, pitch, yaw, roll, sx, sy, sz)`` of a root mesh component."""
+    props = view.props(slot)
+    reference = props.get("StaticMesh")
+    location = props.get("RelativeLocation")
+    if reference is None or location is None or len(location) != 24:
+        return None
+    mesh = view.import_path(reference)
+    if not mesh:
+        return None
+    rotation = props.get("RelativeRotation")
+    scale = props.get("RelativeScale3D")
+    turn = struct.unpack("<3d", rotation) if rotation and len(rotation) == 24 else (0.0,) * 3
+    size = struct.unpack("<3d", scale) if scale and len(scale) == 24 else (1.0,) * 3
+    return (mesh, *struct.unpack("<3d", location), *turn, *size)
+
+
 def sweep_levels(
-    store, scripts, classes, meshes, progress: bool = True, extra_foliage=None
+    store, scripts, classes, meshes, progress: bool = True, extra_foliage=None, read_actor=None
 ) -> dict:
     """One pass over every ``*.umap`` of the world: landscape, placements, water actors.
 
     All three harvests need the same ``PackageView`` of the same 4,521 packages, and
     building that view is the whole cost of the pass, so they share it. Returns raw material
-    and nothing interpreted. Foliage ``extra_foliage`` accepts lands in ``extra_foliage``.
+    and nothing interpreted. Foliage ``extra_foliage`` accepts lands in ``extra_foliage``;
+    whatever ``read_actor(view, slot, class path, classes)`` returns for a level actor, in
+    ``actors``.
     """
     components: list[tuple[int, int, np.ndarray]] = []
     proxies: list[tuple[float, float, float, float, float, float]] = []
@@ -277,11 +310,16 @@ def sweep_levels(
     water: list[tuple[str, tuple[float, ...]]] = []
     water_actors: dict[str, int] = {}
     water_boxless: list[tuple[str, str, str]] = []
+    rivers: list[dict] = []
     box_sources: dict[str, int] = {}
     mesh_ids: dict[str, int] = {}
     owner_ids: dict[str, int] = {}
+    #: Each placement's first override material, as an index into ``materials``; -1 for none.
+    material_ids: dict[str, int] = {}
+    chosen: list[int] = []
     foliage: dict[str, list[np.ndarray]] = {}
     extra: dict[str, list[np.ndarray]] = {}
+    actors: list = []
     unreadable = 0
     malformed = 0
     started = time.time()
@@ -304,6 +342,10 @@ def sweep_levels(
                 root_owner[root] = class_name_of(class_path)
 
         for slot, class_path in view.class_of.items():
+            if read_actor is not None and view.outer_of.get(slot) in view.level_slots:
+                found = read_actor(view, slot, class_path, classes)
+                if found is not None:
+                    actors.append(found)
             name = class_name_of(class_path)
             if name == "LandscapeStreamingProxy":
                 props = view.props(slot)
@@ -331,30 +373,16 @@ def sweep_levels(
                     continue
                 components.append((base_x, base_y, heights))
             elif name == "StaticMeshComponent":
-                if slot not in root_owner:
+                placed = _placement(view, slot) if slot in root_owner else None
+                if placed is None:
                     continue
-                props = view.props(slot)
-                reference = props.get("StaticMesh")
-                location = props.get("RelativeLocation")
-                if reference is None or location is None or len(location) != 24:
-                    continue
-                mesh = view.import_path(reference)
-                if not mesh:
-                    continue
-                rotation = props.get("RelativeRotation")
-                scale = props.get("RelativeScale3D")
-                x, y, z = struct.unpack("<3d", location)
-                turn = (0.0, 0.0, 0.0)
-                if rotation and len(rotation) == 24:
-                    turn = struct.unpack("<3d", rotation)
-                size = (1.0, 1.0, 1.0)
-                if scale and len(scale) == 24:
-                    size = struct.unpack("<3d", scale)
-                pitch, yaw, roll = turn
-                sx, sy, sz = size
-                mesh_id = mesh_ids.setdefault(mesh, len(mesh_ids))
+                mesh_id = mesh_ids.setdefault(placed[0], len(mesh_ids))
                 owner_id = owner_ids.setdefault(root_owner[slot], len(owner_ids))
-                placements.append((mesh_id, owner_id, x, y, z, pitch, yaw, roll, sx, sy, sz))
+                placements.append((mesh_id, owner_id, *placed[1:]))
+                material = first_override(view, view.props(slot).get("OverrideMaterials"))
+                chosen.append(
+                    material_ids.setdefault(material, len(material_ids)) if material else -1
+                )
             elif name in FOLIAGE_CLASSES:
                 found = foliage_instances(
                     view,
@@ -376,6 +404,8 @@ def sweep_levels(
                     )
                 else:
                     water.append((name, box))
+                if name == RIVER_CLASS:
+                    rivers.append(river_actor(view, slot, classes, meshes))
 
         if progress and index % 500 == 0:
             print(
@@ -393,12 +423,16 @@ def sweep_levels(
         "placements": np.array(placements, dtype=np.float64) if placements else np.zeros((0, 11)),
         "meshes": [m for m, _ in sorted(mesh_ids.items(), key=lambda kv: kv[1])],
         "owners": [o for o, _ in sorted(owner_ids.items(), key=lambda kv: kv[1])],
+        "placement_materials": np.array(chosen, dtype=np.int32),
+        "materials": [m for m, _ in sorted(material_ids.items(), key=lambda kv: kv[1])],
         "water": water,
         "water_actors": water_actors,
         "water_boxless": water_boxless,
         "water_box_sources": box_sources,
+        "rivers": rivers,
         "foliage": {mesh: np.concatenate(parts) for mesh, parts in foliage.items()},
         "extra_foliage": {mesh: np.concatenate(parts) for mesh, parts in extra.items()},
+        "actors": actors,
         "seconds": time.time() - started,
     }
 

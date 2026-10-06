@@ -182,7 +182,8 @@ class Progress:
 
     def stage_words(self) -> str:
         names = {"prep": "reading the field", "sweep": "reading the rock meshes",
-                 "direct": "direct raster", "top": "arches and boulders", "run": "running"}  # fmt: skip
+                 "direct": "direct raster", "top": "arches and boulders", "light": "baking the light",
+                 "run": "running"}  # fmt: skip
         kind, _, layer = self.stage.partition(":")
         if kind == "draw":
             return f"drawing {layer}"

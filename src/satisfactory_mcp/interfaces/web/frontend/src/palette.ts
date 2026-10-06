@@ -268,6 +268,51 @@ var DISCHARGED: Exception[] = [
       "published ramp -- moving it re-derives the house step every family here is measured " +
       "against.",
   },
+  /* Dark-tone values, drawn only over a dark base (tone.ts), where the belts' steel and a
+   * light grey are both chosen to read against near-black ground. Each pair is a different
+   * kind of mark: a 1 px X or a filled disc against a stroked run. docs/frontend_vision.md §19. */
+  {
+    a: "markers/pickup collected dark",
+    b: "routes/belts",
+    de: 5.7,
+    why: "the dark-tone X over a collected pickup: two crossed 8 px strokes, never a run.",
+  },
+  {
+    a: "markers/pickup collected dark",
+    b: "routes/belt slow",
+    de: 8.6,
+    why: "as above.",
+  },
+  {
+    a: "markers/pickup collected dark",
+    b: "routes/belt fast",
+    de: 10.0,
+    why: "as above.",
+  },
+  {
+    a: "markers/coal dark",
+    b: "routes/belt slow",
+    de: 6.1,
+    why: "coal on a dark base: a filled disc against a stroked line, the limestone warrant's split.",
+  },
+  {
+    a: "markers/coal dark",
+    b: "routes/belts",
+    de: 10.0,
+    why: "as above.",
+  },
+  {
+    a: "markers/coal dark",
+    b: "regions/J",
+    de: 12.1,
+    why: "the coal warrant above, on a dark base (No Man's Land).",
+  },
+  {
+    a: "power/casing dark",
+    b: "routes/lift fill",
+    de: 3.5,
+    why: "a 1 px rim either side of a lilac wire against the hole inside a steel ring.",
+  },
 ];
 
 /* And the debt: pairs that are under the threshold, that no warrant defends, and that are

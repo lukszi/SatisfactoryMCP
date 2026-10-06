@@ -51,7 +51,7 @@ MODULE_MAX_LINES = 800
 #: ``CEILING_SLACK`` above the file is stale. Measured after the move.
 MODULE_CEILINGS: dict[str, int] = {
     "gamedata/mesh.py": 825,
-    "pipeline.py": 1039,
+    "pipeline.py": 1013,
     "heightmap.py": 310,
     # A thin command, held at its size so the stages stay in their modules.
     "artwork.py": 298,
@@ -62,7 +62,7 @@ CEILING_SLACK = 25
 #: 2d7eaa9 (a pure move keeps every body's length). Shrink-only, same slack.
 FUNCTION_MAX_LINES = 150
 FUNCTION_CEILINGS: dict[str, int] = {
-    "pipeline.py::main": 840,
+    "pipeline.py::main": 812,
     "terrain/sidecar.py::build_meta": 156,
     "artwork.py::main": 119,
     "enhance/levels.py::enhance_levels": 249,
