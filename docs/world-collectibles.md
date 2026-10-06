@@ -150,6 +150,8 @@ by offset for the drop pods and the probed plants only. The game drops a 105-byt
 | Module | Holds |
 | --- | --- |
 | `catalog.py`, `catalog.toml` | which class is a row, the category notes and the exclusions (data); the shared constants |
+| `rows.py` | the shape of a row and of the objects nested in it |
+| `stats.py` | how `_meta` carries numbers: a distance spread, a count table, typed values as JSON |
 | `map_read.py` | the map walk; `_meta.source.placements` and `_meta.class_census` |
 | `saves.py` | one save's facts |
 | `hazards.py` | hazard sources, the per-row hazard block, `_meta.hazard_context` |
