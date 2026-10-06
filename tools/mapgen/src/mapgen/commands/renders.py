@@ -72,16 +72,14 @@ from mapgen.gamedata.ground.paint_store import PAINT_DIR
 from mapgen.gamedata.nodes import oil_nodes
 from mapgen.gamedata.rocks.families import placement_families
 from mapgen.gamedata.water.channel import artwork_planes
-from mapgen.lighting.hillshade import (
+from mapgen.lighting.borrow import (
     BORROW_DETAIL_SIGMA_PX,
     BORROW_FEATHER_M,
-    SHADE_FLOOR,
-    SHADE_RANGE,
-    SUN_ALTITUDE_DEG,
-    SUN_AZIMUTH_DEG,
     artwork_detail,
+    borrow_metadata,
     coarse_province,
 )
+from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, SUN_ALTITUDE_DEG, SUN_AZIMUTH_DEG
 from mapgen.palette.painted import PaintedGround, load_paint_meta
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import (
@@ -118,7 +116,6 @@ from mapgen.terrain.rasters import (
     top_items,
 )
 from mapgen.terrain.sample import direct_weight, taps_cubic, taps_pchip
-from mapgen.tiles.borrowmeta import borrow_metadata
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, render_layer
 from mapgen.tiles.drawpool import add_draw_flags, draw_threads
 from mapgen.tiles.extras import KEPT_CACHE_DIRS, load_extras

@@ -14,13 +14,8 @@ import numpy as np
 import pytest
 
 from mapgen.lighting import horizon as hz
-from mapgen.lighting.hillshade import (
-    SHADE_FLOOR,
-    SHADE_RANGE,
-    artwork_detail,
-    flat_shade,
-    hillshade,
-)
+from mapgen.lighting.borrow import artwork_detail
+from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, flat_shade, hillshade
 from mapgen.lighting.model import (
     SHADOW_FLOOR,
     apply_terms,

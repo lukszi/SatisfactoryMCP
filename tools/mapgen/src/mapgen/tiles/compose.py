@@ -13,9 +13,8 @@ from types import SimpleNamespace
 import numpy as np
 
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.lighting.borrow import BORROW_CLAMP, BORROW_GAIN
 from mapgen.lighting.hillshade import (
-    BORROW_CLAMP,
-    BORROW_GAIN,
     SUN_ALTITUDE_DEG,
     flat_shade,
     hillshade,
