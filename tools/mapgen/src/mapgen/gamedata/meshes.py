@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import struct
 import time
-from typing import NamedTuple, TypedDict
+from typing import NamedTuple, TypeAlias, TypedDict
 
 import numpy as np
 
@@ -63,7 +63,7 @@ BOUNDS_INSIDE_MIN = staticmesh.BOUNDS_INSIDE_MIN
 DIRECT_SAMPLES_MIN = 1
 
 #: ``(Origin, BoxExtent)``: a mesh's local box about its origin, in cm.
-MeshBox = tuple[tuple[float, float, float], tuple[float, float, float]]
+MeshBox: TypeAlias = tuple[tuple[float, float, float], tuple[float, float, float]]
 
 
 class CookedMesh(NamedTuple):

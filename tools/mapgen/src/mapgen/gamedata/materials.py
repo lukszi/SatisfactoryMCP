@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import struct
+from typing import TypeAlias
 
 from satisfactory_mcp.core.gameassets.packages import PackageView, property_tags
 
@@ -17,7 +18,7 @@ __all__ = [
 ]
 
 #: A ``VectorParameterValues`` entry: a linear colour, RGBA.
-Vector4 = tuple[float, float, float, float]
+Vector4: TypeAlias = tuple[float, float, float, float]
 
 
 def mesh_materials(view: PackageView, export: dict[str, int]) -> list[str | None]:

@@ -6,7 +6,7 @@ import struct
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import NotRequired, TypedDict
+from typing import NotRequired, TypeAlias, TypedDict
 
 import numpy as np
 
@@ -49,13 +49,13 @@ __all__ = [
 ]
 
 #: A component's world ``(location cm, rotation quaternion xyzw, scale)``.
-Transform = tuple[
+Transform: TypeAlias = tuple[
     tuple[float, float, float], tuple[float, float, float, float], tuple[float, float, float]
 ]
 #: A landscape proxy's ``(origin x, origin y, z offset, scale x, scale y, scale z)``.
-Proxy = tuple[float, float, float, float, float, float]
+Proxy: TypeAlias = tuple[float, float, float, float, float, float]
 #: ``read_actor(view, slot, class path, classes)``: a level actor's record, or ``None``.
-ActorReader = Callable[[PackageView, int, "str | None", ClassFacts], object]
+ActorReader: TypeAlias = Callable[[PackageView, int, str | None, ClassFacts], object]
 
 
 class Sweep(TypedDict):

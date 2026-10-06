@@ -8,7 +8,7 @@ import struct
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, NotRequired, TypeAlias, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
@@ -138,7 +138,7 @@ class PackCounts(TypedDict):
 
 
 #: One placed copy: mesh index, kind, row-vector matrix (scale folded in), origin in cm.
-_Instance = tuple[int, int, F64Grid, F64Grid]
+_Instance: TypeAlias = tuple[int, int, F64Grid, F64Grid]
 
 
 def is_pack_mesh(mesh: str) -> bool:
