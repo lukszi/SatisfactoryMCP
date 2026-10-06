@@ -550,6 +550,26 @@ memory is short the cutter runs them closer to one after the other. renders-v7 c
 layers in 1,826 s on 8 workers; at the 2.75 times measured here that is about 660 s, more
 than 19 minutes saved. The relight, serial before, now overlaps the unlit tree.
 
+### Deflate level (2026-10-06)
+
+Every tile PNG, serial or parallel, is now written at zlib level 6 (`pyramid.TILE_PNG`)
+instead of `optimize=True`, which is level 9 with a search over the filters. It is lossless
+either way, so a tile decodes to the same pixels; only the file differs. Measured on 460 z7
+and @2x tiles of renders-v7 (painted, terrain, relief, satellite `unlit/`), each re-encoded
+from its decoded pixels three times both ways in one process, CPU per tile:
+
+| Tiles | `optimize=True` | level 6 | Faster | Bytes |
+| --- | --- | --- | --- | --- |
+| painted z7 | 17.6 ms | 2.6 ms | 6.9× | +7.0% |
+| terrain z7 | 18.0 ms | 2.6 ms | 7.0× | +6.9% |
+| relief z7 | 16.6 ms | 2.5 ms | 6.6× | +6.1% |
+| satellite `unlit/` z7 | 9.8 ms | 1.7 ms | 5.9× | +7.1% |
+| painted @2x z5, 512 px | 71.9 ms | 12.4 ms | 5.8× | +6.5% |
+
+Every tile decoded to the same mode and pixels both ways. At full size a lit layer's three
+trees, about 3.2 GB in renders-v7, grow by about 0.2 GB, and their encoding takes about a
+seventh of the CPU it did. The owner chose the trade on 2026-10-06.
+
 ### And a swap Windows can refuse
 
 `install_pyramid` renames the finished tree over the old one so a reader meets a whole
@@ -2092,6 +2112,14 @@ same 512 files, terms and coarser-level sources by SHA-256; a full-size block un
 peaks at 1.36 and 1.04 GB. `LIGHT_WORKER_BYTES` is 1.5 GB, the larger of those with room for
 a block that has both. The cutter's encoders import no numpy, so their pool needs no such
 setting (section 17).
+
+**Normal tiles at WebP method 2 (2026-10-06).** The lossless `.nrm.webp` tiles are written
+at effort 2 (`stage.NRM_METHOD`) instead of 4; the lossy horizon atlases keep 4. Lossless at
+any effort, so the pixels are the same and only the file differs: on 200 z7 normal tiles of
+renders-v7, re-encoded from their decoded pixels, 13.7 ms a tile instead of 35.0 (2.6×) for
+5.7% more bytes, every tile the same RGBA pixels. A full-size block writes 256, so it saves
+about 5 s of the 37 s its WebP encoding took; the normal tiles are about a third of the
+light pyramid's bytes, which grows about 2%. The owner chose the trade on 2026-10-06.
 
 **Step growth** (`STEP_GROWTH`, 1%). Past `FINE_M` (44 m) the march steps grow with the
 distance. A plateau is sampled at the first step past its edge, so the horizon jumps from

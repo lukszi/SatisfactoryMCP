@@ -67,6 +67,8 @@ LIGHT_DIR_NAME = "light"
 NRM_SUFFIX = ".nrm.webp"
 HZ_SUFFIX = ".hz.webp"
 HZ_QUALITY = 75
+#: The lossless normal tiles' WebP effort: the same pixels as 4 in less time (section 29).
+NRM_METHOD = 2
 ATLAS_COLS = 8
 
 #: Native tiles per block edge; a block is computed with its own halo.
@@ -166,7 +168,7 @@ def _encode(jobs: Iterable[tuple[str, np.ndarray, np.ndarray]]) -> int:
     for path, nrm, atlas in jobs:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         buf = io.BytesIO()
-        Image.fromarray(nrm, "RGBA").save(buf, "WEBP", lossless=True, exact=True, method=4)
+        Image.fromarray(nrm, "RGBA").save(buf, "WEBP", lossless=True, exact=True, method=NRM_METHOD)
         Path(path + NRM_SUFFIX).write_bytes(buf.getvalue())
         buf = io.BytesIO()
         Image.fromarray(atlas, "L").convert("RGB").save(buf, "WEBP", quality=HZ_QUALITY, method=4)

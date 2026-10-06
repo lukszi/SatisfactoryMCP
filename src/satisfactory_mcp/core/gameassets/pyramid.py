@@ -47,6 +47,10 @@ DEFAULT_LEVEL_SOURCE = "the game's own 8192 px artwork, Lanczos"
 #: How much an upscaled top level multiplies the sheet by when the caller does not say.
 DEFAULT_UPSCALE = 4
 
+#: How a tile is deflated: zlib level 6, the same pixels as ``optimize=True`` for an eighth of
+#: its CPU and a few percent more bytes (docs/spatial-and-map.md section 17, "Deflate level").
+TILE_PNG = {"format": "PNG", "compress_level": 6}
+
 
 class PyramidError(Exception):
     """A pyramid cannot be cut, or must not be installed."""
@@ -99,7 +103,7 @@ def cut_square(piece, dest: Path, z: int, ox: int, oy: int, tile_px: int) -> int
         for x in range(piece.width // tile_px):
             box = (x * tile_px, y * tile_px, (x + 1) * tile_px, (y + 1) * tile_px)
             path = dest / tile_relpath(z, ox + x, oy + y)
-            piece.crop(box).save(path, format="PNG", optimize=True)
+            piece.crop(box).save(path, **TILE_PNG)
             written += path.stat().st_size
     return written
 
@@ -125,7 +129,7 @@ def encode_tile_row(job: tuple[str, int, int, int, str, int]) -> int:
         for x in range(width // tile_px):
             path = Path(dest) / tile_relpath(z, x, row)
             box = (x * tile_px, 0, (x + 1) * tile_px, tile_px)
-            strip.crop(box).save(path, format="PNG", optimize=True)
+            strip.crop(box).save(path, **TILE_PNG)
             written += path.stat().st_size
         return written
     finally:

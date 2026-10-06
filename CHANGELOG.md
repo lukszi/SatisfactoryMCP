@@ -87,6 +87,10 @@ Planned as 0.2.0.
   at full size cuts in about a third of the time; the tiles are the same bytes. The new
   `--cut-workers` sets the encoders (default one per core, at most 24, fewer when memory is
   short). `--workers N` still sets both pools wherever their own flag is not given.
+- Map generator: tile PNGs are deflated at zlib level 6 instead of `optimize=True`, about a
+  seventh of the CPU for about 7% more bytes, and the light's lossless normal tiles at WebP
+  effort 2 instead of 4, 2.6 times faster for about 6% more. The tiles decode to the same
+  pixels; their files are not the same bytes as before.
 
 ### Deprecated
 
