@@ -161,7 +161,7 @@ rather than a 201. A pins file from a newer version is a 503 `{error, newer_sche
 naming the pins, not the path. Pin numbers are never reused.
 
 `PlanOpBody` lives in `serial` because two routers publish it (`planlog` for pushes,
-`planner` for the ops an alternates option would push). The alternates route's reply is
+`plan_solve` for the ops an alternates option would push). The alternates route's reply is
 named `PlanAlternatesResponse` because `routers/gamedata.py` already publishes an
 `AlternatesResponse` and two models with one name would rename both in `api-schema.d.ts`.
 

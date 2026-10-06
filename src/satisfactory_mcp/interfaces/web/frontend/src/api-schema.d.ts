@@ -942,6 +942,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/progress/harddrives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Harddrives
+         * @description ``list_pending_hard_drive_choices``: each unclaimed drive's two options and rerolls.
+         */
+        get: operations["progress_harddrives_api_progress_harddrives_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/progress/shards": {
         parameters: {
             query?: never;
@@ -976,26 +996,6 @@ export interface paths {
          *     With ``spoilers=0`` a spoiler amplifier research loses its name and bill.
          */
         get: operations["progress_sloops_api_progress_sloops_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/progress/harddrives": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Progress Harddrives
-         * @description ``list_pending_hard_drive_choices``: each unclaimed drive's two options and rerolls.
-         */
-        get: operations["progress_harddrives_api_progress_harddrives_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1111,46 +1111,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/ui/focus": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Put Focus
-         * @description Record what the page has open, stamped with a heartbeat. The page's only focus write.
-         */
-        put: operations["put_focus_api_ui_focus_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Activity
-         * @description Plan commits and journal entries after ``since``, oldest first, the newest ``limit``.
-         */
-        get: operations["activity_api_activity_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/plan/delta": {
         parameters: {
             query?: never;
@@ -1185,6 +1145,46 @@ export interface paths {
          * @description Every recipe making ``item``, each with what requiring it would change in the plan.
          */
         post: operations["plan_alternates_api_plan_alternates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/focus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Focus
+         * @description Record what the page has open, stamped with a heartbeat. The page's only focus write.
+         */
+        put: operations["put_focus_api_ui_focus_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity
+         * @description Plan commits and journal entries after ``since``, oldest first, the newest ``limit``.
+         */
+        get: operations["activity_api_activity_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1595,29 +1595,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/world/conduits": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * World Conduits
-         * @description Belt and pipe runs near a place (and ``to`` a second one), or every fluid network.
-         *
-         *     The runs are ``search_conduits``'s, longest first. ``network`` lists every pipe of one
-         *     fluid network and ``run`` one run by id; both ignore the radii.
-         */
-        get: operations["world_conduits_api_world_conduits_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/world/here": {
         parameters: {
             query?: never;
@@ -1650,6 +1627,29 @@ export interface paths {
          * @description Named regions with their node counts, as ``list_regions`` lists them.
          */
         get: operations["world_regions_api_world_regions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/world/conduits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Conduits
+         * @description Belt and pipe runs near a place (and ``to`` a second one), or every fluid network.
+         *
+         *     The runs are ``search_conduits``'s, longest first. ``network`` lists every pipe of one
+         *     fluid network and ``run`` one run by id; both ignore the radii.
+         */
+        get: operations["world_conduits_api_world_conduits_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9047,6 +9047,38 @@ export interface operations {
             };
         };
     };
+    progress_harddrives_api_progress_harddrives_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HardDrivesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     progress_shards_api_progress_shards_get: {
         parameters: {
             query?: {
@@ -9099,38 +9131,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SloopsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    progress_harddrives_api_progress_harddrives_get: {
-        parameters: {
-            query?: {
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HardDrivesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9468,76 +9468,6 @@ export interface operations {
             };
         };
     };
-    put_focus_api_ui_focus_put: {
-        parameters: {
-            query?: {
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FocusBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FocusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    activity_api_activity_get: {
-        parameters: {
-            query?: {
-                since?: number;
-                limit?: number;
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivityResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     plan_delta_api_plan_delta_get: {
         parameters: {
             query: {
@@ -9597,6 +9527,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanAlternatesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_focus_api_ui_focus_put: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FocusBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FocusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_api_activity_get: {
+        parameters: {
+            query?: {
+                since?: number;
+                limit?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10363,48 +10363,6 @@ export interface operations {
             };
         };
     };
-    world_conduits_api_world_conduits_get: {
-        parameters: {
-            query?: {
-                near?: string;
-                radius_m?: number;
-                to?: string | null;
-                to_radius_m?: number | null;
-                conduit_kind?: string;
-                view?: string;
-                network?: number | null;
-                run?: string | null;
-                offset?: number;
-                limit?: number;
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConduitsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     world_here_api_world_here_get: {
         parameters: {
             query?: {
@@ -10458,6 +10416,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RegionTableResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_conduits_api_world_conduits_get: {
+        parameters: {
+            query?: {
+                near?: string;
+                radius_m?: number;
+                to?: string | null;
+                to_radius_m?: number | null;
+                conduit_kind?: string;
+                view?: string;
+                network?: number | null;
+                run?: string | null;
+                offset?: number;
+                limit?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConduitsResponse"];
                 };
             };
             /** @description Validation Error */

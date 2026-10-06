@@ -16,6 +16,7 @@ __all__ = [
     "RequestRefused",
     "busy_response",
     "check_plan_key",
+    "choice_refusal",
     "error_response",
     "newer_schema_response",
     "plan_log",
@@ -51,6 +52,13 @@ def require_world(request: Request, save: str | None, world: str | None) -> Worl
         return world_state(request, save, world)
     except Exception as exc:
         raise RequestRefused(f"could not read save: {exc}", 404) from exc
+
+
+def choice_refusal(value: str | None, allowed: tuple[str, ...], name: str) -> str | None:
+    """Why ``value`` is not one of ``allowed``, or ``None`` when it is or was not given."""
+    if value is None or value.strip().casefold() in allowed:
+        return None
+    return f"unknown {name} {value!r}. Choose from: {', '.join(allowed)}"
 
 
 #: Every plan key is eight hex digits; anything else is refused before a log is opened.

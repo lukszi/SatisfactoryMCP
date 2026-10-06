@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from . import (
+    activity,
     advice,
     asks,
     collectibles,
@@ -32,12 +33,13 @@ from . import (
     pins,
     placements,
     plan_site,
+    plan_solve,
     plan_track,
     planlog,
-    planner,
     plans,
     power,
-    progress,
+    progress_boosts,
+    progress_unlocks,
     regions,
     routes_layer,
     search,
@@ -47,6 +49,7 @@ from . import (
     tiles,
     trace,
     world,
+    world_conduits,
 )
 
 __all__ = ["ALL_ROUTERS"]
@@ -74,9 +77,11 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     plans.router,
     health.router,
     grid.router,
-    progress.router,
+    progress_unlocks.router,
+    progress_boosts.router,
     naming.router,
-    planner.router,
+    plan_solve.router,
+    activity.router,
     planlog.router,
     stock.router,
     gamedata.router,
@@ -84,6 +89,7 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     trace.router,
     factory_detail.router,
     finders.router,
+    world_conduits.router,
     pins.router,
     asks.router,
     factory_graph.router,

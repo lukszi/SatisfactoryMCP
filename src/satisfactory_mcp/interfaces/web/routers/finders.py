@@ -1,12 +1,9 @@
-"""``/api/world/*``: the World finders -- where I am, nodes, fields, sites, conduits, regions.
+"""``/api/world/*``: the World finders -- where I am, nodes, fields, sites, regions.
 
 Each route calls the domain function its MCP tool calls (``place.here``,
-``finder.find_nodes``, ``finder.rank``, ``conduits.search``/``networks``,
-``regions.region_rows``), so the page and the chat answer one question one way.
-
-WARNING: the function names are operation_ids -- renaming one churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+``finder.find_nodes``, ``finder.rank``, ``regions.region_rows``), so the page and the chat
+answer one question one way. Conduits are ``world_conduits.py``. Handler names are
+operation_ids (wire rule 1 of docs/web-wire.md).
 """
 
 from __future__ import annotations
@@ -21,12 +18,11 @@ from ....domain.planning.scenario import resolve_item
 from ....domain.spatial import finder, geo, place, ranking
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
-from ....domain.spatial.origin import resolve_origin
-from ....domain.world import conduits as conduits_mod
 from ..serial import (
     FoundField,
     Region,
     TableAge,
+    choice_refusal,
     cm_to_m,
     error_response,
     found_field_json,
@@ -142,70 +138,6 @@ class RankedSitesResponse(TypedDict):
     stale: TableAge | None
 
 
-class RunEnd(TypedDict):
-    x_m: float
-    y_m: float
-    z_m: float
-    plugs: str | None
-
-
-class RunRow(TypedDict):
-    """One belt chain or pipe piece; ``lines_m`` are the drawn polylines, as trace sends."""
-
-    id: str
-    kind: Literal["belt", "lift", "pipe"]
-    label: str
-    pieces: int
-    length_m: float
-    a: RunEnd
-    b: RunEnd
-    z_min_m: float
-    z_max_m: float
-    directed: bool
-    basis: str | None
-    carries: str | None
-    rate: float | None
-    network: int | None
-    via: list[str]
-    distance_m: float
-    lines_m: list[list[tuple[float, float]]]
-
-
-class NetworkRow(TypedDict):
-    network: int | None
-    carries: str | None
-    pieces: int
-    length_m: float
-    x_m: float
-    y_m: float
-    z_min_m: float
-    z_max_m: float
-    distance_m: float
-    touches: list[str]
-
-
-class ConduitsResponse(TypedDict):
-    """``total`` counts every match; ``runs``/``networks`` hold one page of them."""
-
-    view: Literal["runs", "networks"]
-    where: str
-    where_to: str
-    radius_m: float
-    to_radius_m: float | None
-    runs: list[RunRow]
-    networks: list[NetworkRow]
-    total: int
-    offset: int
-    belts: int
-    pipes: int
-    belt_m: float
-    pipe_m: float
-    fluids: list[str]
-    bridged: list[str]
-    notes: list[str]
-    age_note: str
-
-
 class PlayerAt(TypedDict):
     x_m: float
     y_m: float
@@ -280,12 +212,6 @@ def _found_node(r: dict, game, rm, drifted: set[str]) -> FoundNode:
     }
 
 
-def _choice(value: str | None, allowed: tuple[str, ...], name: str) -> str | None:
-    if value is None or value.strip().casefold() in allowed:
-        return None
-    return f"unknown {name} {value!r}. Choose from: {', '.join(allowed)}"
-
-
 def _resolver(game):
     return lambda query: resolve_item(game, query)
 
@@ -315,10 +241,10 @@ def world_nodes(
     view = view.strip().casefold()
     status = status.strip().casefold()
     refusal = (
-        _choice(view, PAGE_VIEWS, "view")
-        or _choice(status, finder.STATUSES, "status")
-        or _choice(purity, (*finder.PURITIES, "all"), "purity")
-        or _choice(kind, (*finder.KINDS, "all"), "kind")
+        choice_refusal(view, PAGE_VIEWS, "view")
+        or choice_refusal(status, finder.STATUSES, "status")
+        or choice_refusal(purity, (*finder.PURITIES, "all"), "purity")
+        or choice_refusal(kind, (*finder.KINDS, "all"), "kind")
     )
     if refusal:
         return error_response(refusal)
@@ -436,141 +362,6 @@ def world_sites(
         "weights": dict(ranking.WEIGHTS),
         "notes": [*ranked.selection.errors, *ranked.notes],
         "stale": spatial_nodes.table_age(st.header, None, [r["instance"] for r in ranked.rows]),
-    }
-
-
-def _end(e) -> RunEnd:
-    return {"x_m": cm_to_m(e.x), "y_m": cm_to_m(e.y), "z_m": cm_to_m(e.z), "plugs": e.plugs}
-
-
-def _run_row(run, origin, game) -> RunRow:
-    return {
-        "id": run.ident,
-        "kind": run.kind,
-        "label": run.label,
-        "pieces": run.pieces,
-        "length_m": round(run.length_m, 1),
-        "a": _end(run.a),
-        "b": _end(run.b),
-        "z_min_m": round(run.z_min_m, 1),
-        "z_max_m": round(run.z_max_m, 1),
-        "directed": run.directed,
-        "basis": run.basis,
-        "carries": (resource_name(game, run.fluid) if run.fluid else None),
-        "rate": None if run.rate is None else round(run.rate, 2),
-        "network": run.network,
-        "via": list(run.via),
-        "distance_m": run.dist_m(*origin),
-        "lines_m": [[(cm_to_m(p[0]), cm_to_m(p[1])) for p in line] for line in run.lines],
-    }
-
-
-@router.get("/conduits", response_model=ConduitsResponse)
-def world_conduits(
-    request: Request,
-    near: str = "me",
-    radius_m: Annotated[float, Query(ge=1, le=2000)] = conduits_mod.NEAR_RADIUS_M,
-    to: str | None = None,
-    to_radius_m: Annotated[float | None, Query(ge=1, le=2000)] = None,
-    conduit_kind: str = "all",
-    view: str = "runs",
-    network: int | None = None,
-    run: str | None = None,
-    offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=500)] = 200,
-    save: str | None = None,
-    world: str | None = None,
-) -> Any:
-    """Belt and pipe runs near a place (and ``to`` a second one), or every fluid network.
-
-    The runs are ``search_conduits``'s, longest first. ``network`` lists every pipe of one
-    fluid network and ``run`` one run by id; both ignore the radii.
-    """
-    view = view.strip().casefold()
-    kind = conduit_kind.strip().casefold()
-    refusal = _choice(view, ("runs", "networks"), "view") or _choice(
-        kind, (*conduits_mod.KINDS, "all"), "conduit_kind"
-    )
-    if refusal:
-        return error_response(refusal)
-    if view == "networks" and kind == "belt":
-        return error_response("view=networks lists fluid networks; a belt chain belongs to none")
-    st = require_world(request, save, world)
-    game = request.app.state.game()
-    base = {
-        "view": view,
-        "where_to": "",
-        "radius_m": radius_m,
-        "to_radius_m": None,
-        "runs": [],
-        "networks": [],
-        "offset": offset,
-        "belts": 0,
-        "pipes": 0,
-        "belt_m": 0.0,
-        "pipe_m": 0.0,
-        "fluids": [],
-        "bridged": [],
-        "notes": [],
-        "age_note": st.age_note,
-    }
-    if view == "networks":
-        try:
-            origin, where = resolve_origin(st, near)
-        except ValueError as exc:
-            return error_response(f"! {exc}")
-        views = conduits_mod.networks(st, origin)
-        page = views[offset : offset + limit]
-        return {
-            **base,
-            "where": where,
-            "networks": [
-                {
-                    "network": v.network,
-                    "carries": resource_name(game, v.fluid) if v.fluid else None,
-                    "pieces": v.pieces,
-                    "length_m": round(v.length_m, 1),
-                    "x_m": cm_to_m(v.centre[0]),
-                    "y_m": cm_to_m(v.centre[1]),
-                    "z_min_m": round(v.z_min_m, 1),
-                    "z_max_m": round(v.z_max_m, 1),
-                    "distance_m": v.distance_m,
-                    "touches": v.touches,
-                }
-                for v in page
-            ],
-            "total": len(views),
-            "pipes": sum(v.pieces for v in views),
-            "pipe_m": round(sum(v.length_m for v in views), 1),
-            "fluids": sorted({resource_name(game, v.fluid) for v in views if v.fluid}),
-        }
-
-    found = conduits_mod.search(
-        st,
-        near,
-        radius_m,
-        to=to,
-        to_radius_m=to_radius_m,
-        kind=None if kind == "all" else kind,
-        network=network,
-        run=run,
-    )
-    if found.error:
-        return error_response(found.error)
-    belts, pipes = found.belts, found.pipes
-    return {
-        **base,
-        "where": found.where,
-        "where_to": found.where_to,
-        "to_radius_m": found.to_radius_m,
-        "runs": [_run_row(r, found.origin, game) for r in found.hits[offset : offset + limit]],
-        "total": len(found.hits),
-        "belts": len(belts),
-        "pipes": len(pipes),
-        "belt_m": round(sum(r.length_m for r in belts), 1),
-        "pipe_m": round(sum(r.length_m for r in pipes), 1),
-        "fluids": sorted({resource_name(game, r.fluid) for r in pipes if r.fluid}),
-        "bridged": found.bridged,
     }
 
 

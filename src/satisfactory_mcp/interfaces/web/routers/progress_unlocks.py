@@ -1,14 +1,10 @@
-"""``/api/progress/*``: the progression tools' facts, one route per tool.
+"""``/api/progress/{milestones,mam,phase,harddrives}``: what the save has unlocked and what is next.
 
 ``milestones`` and ``mam`` walk the same ``SchematicLadder`` the MCP tools walk, priced against
-the same spendable stock, so READY means the bill is covered and nothing about whether the
-tier is open. ``phase``, ``shards``, ``sloops`` and ``harddrives`` read the same ``WorldState``
-records as ``phase_requirements``, ``power_shards``, ``somersloops`` and
-``list_pending_hard_drive_choices``. The dashboard they feed: docs/frontend_vision.md §8 and
-"Phase 4: Progress". Wire rules: docs/web-wire.md. ``spoiler`` on a row and ``?spoilers=``:
-docs/frontend_vision.md §12.3.
-
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+the same spendable stock, so READY means the bill is covered and nothing about whether the tier
+is open. ``phase`` and ``harddrives`` read the ``WorldState`` records ``phase_requirements`` and
+``list_pending_hard_drive_choices`` read. The dashboard: docs/frontend_vision.md §8; spoilers:
+§12.3 there. Handler names are operation_ids (wire rule 1 of docs/web-wire.md).
 """
 
 from __future__ import annotations
@@ -18,21 +14,14 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from ....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock
+from ....core.gamedata.constants import CAPABILITY_SCHEMATICS
 from ....domain.progression.ladder import SchematicLadder
 from ....domain.progression.phases import opened_tier, opening_phase, phase_number
-from ....domain.world.state import WorldState
-from ..serial import require_world, xyz_m
+from ..serial import ItemAmount, item_amounts, require_world
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-
-class ItemAmount(TypedDict):
-    item: str
-    name: str
-    amount: float
 
 
 class MilestoneRow(TypedDict):
@@ -69,7 +58,8 @@ class MilestonesResponse(TypedDict):
     milestones: list[MilestoneRow]
 
 
-def _reach(rows: list[dict[str, Any]]) -> int:
+def _highest_reached_tier(rows: list[dict[str, Any]]) -> int:
+    """The highest tier with a finished milestone, else the lowest tier there is."""
     done = [r["tier"] for r in rows if r["status"] == "DONE"]
     if done:
         return max(done)
@@ -90,8 +80,8 @@ def progress_milestones(
     """
     st = require_world(request, save, world)
 
-    g = st.game
-    ladder = SchematicLadder(game=g, unlocks=st.unlocks, inventory=st.inventory)
+    game = st.game
+    ladder = SchematicLadder(game=game, unlocks=st.unlocks, inventory=st.inventory)
     rungs = sorted(
         ladder.rungs("EST_Milestone"), key=lambda r: (r.schematic.tier, r.schematic.name)
     )
@@ -99,46 +89,41 @@ def progress_milestones(
     tiers: dict[int, list[int]] = {}
     rows = []
     for rung in rungs:
-        s = rung.schematic
-        tally = tiers.setdefault(s.tier, [0, 0])
+        schematic = rung.schematic
+        tally = tiers.setdefault(schematic.tier, [0, 0])
         tally[0] += rung.done
         tally[1] += 1
         rows.append(
             {
-                "cls": s.cls,
-                "tier": s.tier,
-                "name": s.name,
+                "cls": schematic.cls,
+                "tier": schematic.tier,
+                "name": schematic.name,
                 "status": rung.status,
-                "cost": [
-                    {"item": f.item, "name": g.item_name(f.item), "amount": f.amount}
-                    for f in s.cost
-                ],
-                "short": [
-                    {"item": m.item, "name": g.item_name(m.item), "amount": round(m.short_by, 1)}
-                    for m in rung.missing
-                ],
-                "unlocks": len(st.unlocks.schematic_recipes(s)),
+                "cost": item_amounts(game, ((f.item, f.amount) for f in schematic.cost)),
+                "short": item_amounts(game, ((m.item, round(m.short_by, 1)) for m in rung.missing)),
+                "unlocks": len(st.unlocks.schematic_recipes(schematic)),
                 "blocked_by": list(rung.blocked_by),
             }
         )
 
-    prog = st.progression()
-    opened = opened_tier(prog["game_phase"])
-    top = _reach(rows) if opened is None else max(_reach(rows), opened)
+    progression = st.progression()
+    opened = opened_tier(progression["game_phase"])
+    reached = _highest_reached_tier(rows)
+    top = reached if opened is None else max(reached, opened)
     for row in rows:
         shut = opened is not None and row["tier"] > opened and row["status"] != "DONE"
         row["opens_at"] = opening_phase(row["tier"]) if shut else None
         row["spoiler"] = row["tier"] > top
     tier_rows = [
-        {"tier": t, "done": d, "total": n, "spoiler": t > top}
-        for t, (d, n) in sorted(tiers.items())
+        {"tier": tier, "done": done, "total": total, "spoiler": tier > top}
+        for tier, (done, total) in sorted(tiers.items())
     ]
     if spoilers is False:
         rows = [r for r in rows if not r["spoiler"]]
         tier_rows = [t for t in tier_rows if not t["spoiler"]]
     return {
-        "game_phase": prog["game_phase"],
-        "highest_complete_tier": prog["highest_complete_tier"],
+        "game_phase": progression["game_phase"],
+        "highest_complete_tier": progression["highest_complete_tier"],
         "tiers": tier_rows,
         "milestones": rows,
     }
@@ -185,10 +170,6 @@ def _tree_name(tree: str | None) -> str | None:
     return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", core)
 
 
-def _amounts(st: WorldState, pairs: Any) -> list[ItemAmount]:
-    return [{"item": i, "name": st.game.item_name(i), "amount": float(a)} for i, a in pairs]
-
-
 @router.get("/progress/mam", response_model=MamResponse)
 def progress_mam(
     request: Request,
@@ -207,20 +188,22 @@ def progress_mam(
     ladder = SchematicLadder(game=st.game, unlocks=st.unlocks, inventory=st.inventory)
     rows = []
     for rung in ladder.rungs("EST_MAM"):
-        s = rung.schematic
-        running = research.ongoing.get(s.cls)
+        schematic = rung.schematic
+        running = research.ongoing.get(schematic.cls)
         status = research.status(rung)
         rows.append(
             {
-                "cls": s.cls,
-                "name": s.name,
-                "tree": _tree_name(research.tree_of(s.cls)),
+                "cls": schematic.cls,
+                "name": schematic.name,
+                "tree": _tree_name(research.tree_of(schematic.cls)),
                 "status": status,
                 "running_s": None if running is None else float(running),
-                "capability": gates.get(s.cls),
-                "cost": _amounts(st, ((f.item, f.amount) for f in s.cost)),
-                "short": _amounts(st, ((m.item, round(m.short_by, 1)) for m in rung.missing)),
-                "unlocks": len(st.unlocks.schematic_recipes(s)),
+                "capability": gates.get(schematic.cls),
+                "cost": item_amounts(st.game, ((f.item, f.amount) for f in schematic.cost)),
+                "short": item_amounts(
+                    st.game, ((m.item, round(m.short_by, 1)) for m in rung.missing)
+                ),
+                "unlocks": len(st.unlocks.schematic_recipes(schematic)),
                 "blocked_by": list(rung.blocked_by),
                 "spoiler": status == "TREE SHUT",
             }
@@ -323,204 +306,9 @@ def progress_phase(
     return {
         "current_phase": req["current_phase"] or None,
         "target_phase": req["target_phase"] or None,
-        "delivered": _amounts(st, sorted(req["paid_off_target"].items())),
+        "delivered": item_amounts(st.game, sorted(req["paid_off_target"].items())),
         "deliverable": deliverable,
         "phases": phases,
-    }
-
-
-class NamedAmount(TypedDict):
-    name: str
-    amount: float
-
-
-class PlaceRow(TypedDict):
-    """``place`` is carried, storage or depot."""
-
-    place: str
-    items: list[NamedAmount]
-
-
-class SlugRow(TypedDict):
-    item: str
-    name: str
-    held: float
-    each: float
-    shards: float
-
-
-class ShardHolder(TypedDict):
-    instance: str
-    name: str | None
-    clock: float
-    slotted: int
-    needed: int
-    idle: int
-    x_m: float | None
-    y_m: float | None
-
-
-class ShardsResponse(TypedDict):
-    """``measured`` false means ``committed`` is unknown rather than zero."""
-
-    measured: bool
-    free: float
-    craftable: float
-    potential: float
-    committed: int
-    owned: float
-    per_shard: float
-    max_clock: float
-    slots_per_building: int
-    idle: int
-    slugs: list[SlugRow]
-    by_place: list[PlaceRow]
-    holders: list[ShardHolder]
-
-
-def _positions(st: WorldState) -> dict[str, dict[str, float | None]]:
-    out = {}
-    for record in st.overclock.records:
-        xyz = xyz_m(record.get("pos"))
-        out[str(record.get("instance", "")).rsplit(".", 1)[-1]] = {
-            "x_m": xyz["x_m"],
-            "y_m": xyz["y_m"],
-        }
-    return out
-
-
-def _nowhere() -> dict[str, float | None]:
-    return {"x_m": None, "y_m": None}
-
-
-@router.get("/progress/shards", response_model=ShardsResponse)
-def progress_shards(request: Request, save: str | None = None, world: str | None = None) -> Any:
-    """The ``power_shards`` budget: free, craftable from slugs, committed, and who holds them."""
-    st = require_world(request, save, world)
-
-    budget = st.shard_budget()
-    per_shard = max(budget["shard_items"].values()) if budget["shard_items"] else 0.0
-    at = _positions(st)
-    return {
-        "measured": budget["measured"],
-        "free": float(budget["free"]),
-        "craftable": float(budget["craftable"]),
-        "potential": float(budget["potential"]),
-        "committed": int(budget["committed"]),
-        "owned": float(budget["owned"]),
-        "per_shard": float(per_shard),
-        "max_clock": float(max_clock(per_shard)),
-        "slots_per_building": int(budget["slots_per_building"]),
-        "idle": sum(int(h["idle"]) for h in budget["holders"]),
-        "slugs": [
-            {
-                "item": s["item"],
-                "name": s["name"],
-                "held": float(s["held"]),
-                "each": float(s["each"]),
-                "shards": float(s["shards"]),
-            }
-            for s in budget["slugs"]
-        ],
-        "by_place": [
-            {
-                "place": place,
-                "items": [{"name": k, "amount": float(v)} for k, v in sorted(held.items())],
-            }
-            for place, held in budget["by_place"].items()
-        ],
-        "holders": [
-            {
-                "instance": h["instance"],
-                "name": st.game.building_name(h["cls"]),
-                "clock": float(h["clock"]),
-                "slotted": int(h["slotted"]),
-                "needed": int(h["needed"]),
-                "idle": int(h["idle"]),
-                **at.get(h["instance"], _nowhere()),
-            }
-            for h in budget["holders"]
-        ],
-    }
-
-
-class SloopHolder(TypedDict):
-    """``boost`` is the plan model's multiplier, ``boost_in_save`` the save's own."""
-
-    instance: str
-    name: str
-    sloops: float
-    boost: float | None
-    boost_in_save: float | None
-    x_m: float | None
-    y_m: float | None
-
-
-class SloopsResponse(TypedDict):
-    """``amplifier_researched`` false means no sloop can go into a machine yet.
-
-    ``amplifier_tree_shut`` is true while that research sits in a MAM tree not opened yet, and
-    ``amplifier_spoiler`` while it is both unresearched and in that shut tree.
-    """
-
-    measured: bool
-    free: float
-    committed: float
-    owned: float
-    mercer_spheres: float
-    by_place: list[NamedAmount]
-    amplifier_researched: bool
-    amplifier_research: str | None
-    amplifier_tree_shut: bool
-    amplifier_spoiler: bool
-    amplifier_cost: list[ItemAmount]
-    holders: list[SloopHolder]
-
-
-@router.get("/progress/sloops", response_model=SloopsResponse)
-def progress_sloops(
-    request: Request,
-    save: str | None = None,
-    world: str | None = None,
-    spoilers: bool | None = None,
-) -> Any:
-    """The ``somersloops`` budget: free, slotted and owned, and which machines hold them.
-
-    With ``spoilers=0`` a spoiler amplifier research loses its name and bill.
-    """
-    st = require_world(request, save, world)
-
-    budget = st.sloop_budget()
-    gate = st.research_gate("production_boost")
-    shut = st.research.tree_locked(CAPABILITY_SCHEMATICS["production_boost"])
-    spoiler = gate is not None and shut
-    hide = spoiler and spoilers is False
-    at = _positions(st)
-    return {
-        "measured": budget["committed_measured"],
-        "free": float(budget["free"]),
-        "committed": float(budget["committed"]),
-        "owned": float(budget["owned"]),
-        "mercer_spheres": float(budget["mercer_spheres"]),
-        "by_place": [{"name": k, "amount": float(v)} for k, v in budget["by_place"].items()],
-        "amplifier_researched": gate is None,
-        "amplifier_research": gate["schematic_name"] if gate and not hide else None,
-        "amplifier_tree_shut": shut,
-        "amplifier_spoiler": spoiler,
-        "amplifier_cost": _amounts(st, ((r["item"], r["need"]) for r in gate["cost"]))
-        if gate and not hide
-        else [],
-        "holders": [
-            {
-                "instance": h["instance"],
-                "name": h["name"],
-                "sloops": float(h["sloops"]),
-                "boost": None if h["boost"] is None else float(h["boost"]),
-                "boost_in_save": None if h["boost_in_save"] is None else float(h["boost_in_save"]),
-                **at.get(h["instance"], _nowhere()),
-            }
-            for h in budget["holders"]
-        ],
     }
 
 
@@ -559,21 +347,21 @@ def progress_harddrives(request: Request, save: str | None = None, world: str | 
     """``list_pending_hard_drive_choices``: each unclaimed drive's two options and rerolls."""
     st = require_world(request, save, world)
 
-    g = st.game
+    game = st.game
     drives = []
     for offer in st.hard_drive_offers:
         options = []
         for opt in offer.options:
             recipes = []
-            for r in opt["recipes"]:
-                machine = g.machine(r)
+            for recipe in opt["recipes"]:
+                machine = game.machine(recipe)
                 recipes.append(
                     {
-                        "cls": r.cls,
-                        "name": r.name,
+                        "cls": recipe.cls,
+                        "name": recipe.name,
                         "machine": machine.name if machine else None,
-                        "products": _amounts(
-                            st, ((f.item, round(f.per_min, 2)) for f in r.products)
+                        "products": item_amounts(
+                            game, ((f.item, round(f.per_min, 2)) for f in recipe.products)
                         ),
                     }
                 )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any, Literal, TypedDict
 
 from ....core.gamedata.model import GameData, pretty_class
@@ -17,6 +18,7 @@ __all__ = [
     "CollectibleRow",
     "Flow",
     "FoundField",
+    "ItemAmount",
     "MachineSpot",
     "PlanOpBody",
     "Region",
@@ -25,6 +27,7 @@ __all__ = [
     "collectible_json",
     "flow_json",
     "found_field_json",
+    "item_amounts",
     "machine_spots",
     "region_json",
     "resource_name",
@@ -195,6 +198,20 @@ def resource_name(game: GameData | None, cls: str) -> str:
     if game is None or cls not in game.items:
         return pretty_class(cls) or cls
     return game.item_name(cls)
+
+
+class ItemAmount(TypedDict):
+    item: str
+    name: str
+    amount: float
+
+
+def item_amounts(game: GameData, pairs: Iterable[tuple[str, float]]) -> list[ItemAmount]:
+    """``(item class, amount)`` pairs as rows that also carry the item's display name."""
+    return [
+        {"item": item, "name": game.item_name(item), "amount": float(amount)}
+        for item, amount in pairs
+    ]
 
 
 class PlanOpBody(TypedDict, total=False):
