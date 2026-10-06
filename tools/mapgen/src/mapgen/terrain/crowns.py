@@ -45,12 +45,13 @@ class CrownSet:
     """Records sorted by y, each tree's reach and crown lift, and every species' mips.
 
     ``mid_cm`` is a species' cover-weighted crown height, where a leaning tree's crown is
-    shifted to; ``top_cm`` its highest texel, which orders the stamping.
+    shifted to; ``top_cm`` its highest texel, which orders the stamping. ``names`` are the
+    species' names, as the paint store gives them.
     """
 
-    def __init__(self, records, levels, origins, reach_cm, mid_cm, top_cm):
+    def __init__(self, records, levels, origins, reach_cm, mid_cm, top_cm, names=()):
         self.records = records[np.argsort(records["y"], kind="stable")]
-        self.levels, self.origins = levels, origins
+        self.levels, self.origins, self.names = levels, origins, list(names)
         k, rec = self.records["species"], self.records
         lean = np.hypot(rec["axis_x"], rec["axis_y"])
         self.lift_cm = mid_cm[k] * rec["scale_z"]
@@ -117,8 +118,9 @@ def load_crowns(paint_dir: Path, meta: dict) -> CrownSet | None:
         far = np.hypot(x0 + (xs + 0.5) * step, y0 + (ys + 0.5) * step)
         reach.append(float(far.max()) + 2 * step if len(far) else 0.0)
     return CrownSet(
-        records, levels, origins, *(np.array(v, np.float32) for v in (reach, mid, high))
-    )
+        records, levels, origins, *(np.array(v, np.float32) for v in (reach, mid, high)),
+        [entry.get("name", "") for entry in species],
+    )  # fmt: skip
 
 
 def _bilinear(level: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:

@@ -37,6 +37,7 @@ from mapgen.palette.calibration import (
     split_weight,
     tone,
     transfer_op,
+    with_derived,
 )
 from mapgen.palette.colour import (
     LUMA,
@@ -74,6 +75,7 @@ from mapgen.palette.trees import (
     crown_ops,
     over_crowns,
     sample_titan,
+    species_targets,
     titan_over,
 )
 from mapgen.terrain.crowns import load_crowns
@@ -513,9 +515,9 @@ class PaintedGround:
                   for e in entries]  # fmt: skip
         if "canopy" in targets:
             scopes.append((None, display_to_crown(self.palette, targets["canopy"])))
-        ops, self.crown_measured = crown_ops(
-            self.crowns, style, (rows, cols), scopes, targets["min_texels"]
-        )
+        moved = species_targets(self.crowns, style, targets.get("species", {}), self.palette)
+        ops, measured = crown_ops(self.crowns, style, (rows, cols), scopes, targets["min_texels"])
+        self.crown_measured = {**measured, **moved}
         default = ops[-1] if "canopy" in targets and ops[-1] is not None else IDENTITY_OP
         scoped = [(w, op) for (w, _t), op in zip(scopes, ops, strict=True) if w is not None]
         out = [(scoped_planes(default, [(w, op) for w, op in scoped if op is not None]),
@@ -644,7 +646,7 @@ class PaintedGround:
         An area entry's layer target takes that layer's weight inside its areas; the global
         target takes the rest, and each one's source median is measured on its own side.
         """
-        cal = self.palette["calibration"]
+        cal = with_derived(self.palette["calibration"])
         sample = (slice(None, None, 4), slice(None, None, 4))
         total = sum(w[sample].astype(np.float32) for w in weights.values())
         flat = albedo[sample]

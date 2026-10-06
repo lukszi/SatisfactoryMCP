@@ -28,6 +28,8 @@ __all__ = [
     "material_parent",
     "mesh_material",
     "placement_families",
+    "placement_material",
+    "worn_family",
 ]
 
 #: Family codes, as the direct raster's family plane stores them. 0 is "no family".
@@ -134,20 +136,29 @@ def mesh_material(store, scripts, index, mesh: str, cache: dict) -> str | None:
     return cache[mesh]
 
 
+def worn_family(store, scripts, index, mesh: str, material: str | None, caches: tuple) -> int:
+    """The family a mesh wears: its placement's override ``material``, else its own first one.
+    ``caches`` is ``(by mesh, by material)``, two dicts kept across calls."""
+    if material is None:
+        material = mesh_material(store, scripts, index, mesh, caches[0])
+    return family_of(store, scripts, index, material, caches[1])
+
+
+def placement_material(sweep: dict, row: int) -> str | None:
+    """The override material the sweep recorded for placement ``row``, if any."""
+    chosen = sweep.get("placement_materials")
+    pick = int(chosen[row]) if chosen is not None and row < len(chosen) else -1
+    return sweep.get("materials", [])[pick] if pick >= 0 else None
+
+
 def placement_families(store, scripts, index, sweep: dict) -> np.ndarray:
     """One family code per row of ``sweep["placements"]``."""
     meshes, rows = sweep["meshes"], sweep["placements"]
-    chosen = sweep.get("placement_materials")
-    materials = sweep.get("materials", [])
-    by_mesh: dict[str, str | None] = {}
-    by_material: dict[str, int] = {}
+    caches: tuple[dict, dict] = ({}, {})
     codes = np.zeros(len(rows), np.uint8)
     for i, row in enumerate(rows):
-        pick = int(chosen[i]) if chosen is not None and i < len(chosen) else -1
-        material = materials[pick] if pick >= 0 else None
-        if material is None:
-            material = mesh_material(store, scripts, index, meshes[int(row[0])], by_mesh)
-        codes[i] = family_of(store, scripts, index, material, by_material)
+        material = placement_material(sweep, i)
+        codes[i] = worn_family(store, scripts, index, meshes[int(row[0])], material, caches)
     return codes
 
 

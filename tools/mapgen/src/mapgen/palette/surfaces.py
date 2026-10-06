@@ -11,7 +11,7 @@ from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.rockfamily import FAMILIES
 from mapgen.palette.calibration import display_to_ground, sampled_rgb
 from mapgen.palette.colour import linear_from_oklab
-from mapgen.terrain.rasters import MESH_CORAL
+from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -91,13 +91,14 @@ def family_targets(base_lab, codes, targets: dict, palette: dict, min_cells: int
     return planes, measured
 
 
-def rock_surface(rock_rgb, scene: dict, ground, sample_rock=None) -> np.ndarray:
+def rock_surface(rock_rgb, scene: dict, ground, sample_rock=None, code=None) -> np.ndarray:
     """Rock in its family's colour: the family's own target where it has one, else the area's
-    rock in the family's tint, with the family's top layer on its up-facing faces."""
-    if ground.rock_family is None:
+    rock in the family's tint, with the family's top layer on its up-facing faces. ``code`` is
+    the family per pixel; the direct pass's family plane on this band when None."""
+    if code is None and ground.rock_family is None:
         return rock_rgb
     band, *_sheet, spacing_m = scene["grid"]
-    code = np.asarray(ground.rock_family[band])
+    code = np.asarray(ground.rock_family[band] if code is None else code)
     for which, planes in getattr(ground, "family_rock", {}).items():
         hit = (code == which)[..., None]
         if hit.any():
@@ -155,14 +156,18 @@ def sunk_specks(scene: dict) -> dict:
 def mesh_surface(g, area_rock, scene: dict, ground, sample_rock):
     """The render-only meshes over ``g``, each class in its own colour.
 
-    Rocks take the area's rock, never the family of a cliff they happen to overlap. Coral
-    under water is the seabed coral; ``scene["water"]`` is the water after ``sunk_specks``.
+    A rock wears its own family (``scene["mesh_family"]``) and that family's top layer, as a
+    cliff does, never the family of a cliff it happens to overlap; without the plane it takes
+    the area's rock. Coral under water is the seabed coral; ``scene["water"]`` is the water
+    after ``sunk_specks``.
     """
     mesh_w = scene.get("mesh_weight")
     if mesh_w is None or not mesh_w.any():
         return g
-    cls = scene["mesh_class"]
+    cls, family = scene["mesh_class"], scene.get("mesh_family")
     colour = area_rock
+    if family is not None and (cls == MESH_ROCK).any():
+        colour = rock_surface(area_rock, scene, ground, sample_rock, family)
     for which, rgb in ground.mesh_rgb.items():
         colour = np.where((cls == which)[..., None], sampled_rgb(rgb, sample_rock), colour)
     wet = np.where(cls == MESH_CORAL, np.clip(scene["water"]["cover"], 0.0, 1.0), 0.0)

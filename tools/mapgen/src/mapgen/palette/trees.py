@@ -1,6 +1,7 @@
 """Trees laid over the finished painted pixel: the Titan forest's raster and per-tree crowns,
-the crowns moved onto the canopy targets and the named crown targets; a crown under the
-water's surface goes to the bed instead. docs/spatial-and-map.md sections 30, 31 and 36.
+the crowns moved onto the species targets, the canopy targets and the named crown targets;
+a crown under the water's surface goes to the bed instead. docs/spatial-and-map.md sections
+30, 31 and 36.
 """
 
 from __future__ import annotations
@@ -9,7 +10,12 @@ import numpy as np
 
 from mapgen.gamedata.crowns import SPRITE_M
 from mapgen.lighting.hillshade import sun_dot
-from mapgen.palette.calibration import sampled_rgb, transfer_op, weighted_median
+from mapgen.palette.calibration import (
+    display_to_crown,
+    sampled_rgb,
+    transfer_op,
+    weighted_median,
+)
 from mapgen.palette.colour import flat_light, linear_from_oklab, oklab, unit_luminance
 
 __all__ = [
@@ -27,6 +33,7 @@ __all__ = [
     "over_crowns",
     "sample_titan",
     "species_colours",
+    "species_targets",
     "titan_over",
 ]
 
@@ -120,6 +127,41 @@ def crown_ops(
         measured[f"crowns@{i}"] = {"trees": int(inside.sum()), "dL": round(step, 4),
                                    "chroma_scale": round(float(np.hypot(*matrix[0])), 3)}  # fmt: skip
     return ops, measured
+
+
+def species_targets(crowns, style: dict, targets: dict, palette: dict) -> dict:
+    """Each named species' crowns moved onto its own target wherever they grow, in place.
+
+    The step runs from the species' own colour as drawn (``crown_lab``) to the target as a
+    crown (``display_to_crown``) and moves every texel of its mips, so the hue-gated ops that
+    follow see the moved colour. Returns what was measured, per species.
+    """
+    names = list(getattr(crowns, "names", ()))
+    colours, _areas = species_colours(crowns)
+    measured = {}
+    for name, hex_colour in targets.items():
+        if name not in names:
+            continue
+        k = names.index(name)
+        target = display_to_crown(palette, hex_colour)
+        step, matrix = transfer_op(crown_lab(colours[k], style), target)
+        crowns.levels[k] = [_moved_level(level, step, matrix, style) for level in crowns.levels[k]]
+        measured[f"species@{name}"] = {"trees": int((crowns.records["species"] == k).sum()),
+                                       "dL": round(step, 4),
+                                       "chroma_scale": round(float(np.hypot(*matrix[0])), 3)}  # fmt: skip
+    return measured
+
+
+def _moved_level(level, step: float, matrix, style: dict) -> np.ndarray:
+    """One mip with each texel's colour moved by a transfer in the crown's OKLab."""
+    cover = level[..., :1]
+    lab = crown_lab(level[..., 1:4] / np.maximum(cover, np.float32(1e-6)), style)
+    lab[..., 0] += np.float32(step)
+    lab[..., 1:] = lab[..., 1:] @ matrix.T / np.float32(style["chroma"])
+    moved = np.clip(linear_from_oklab(lab), 0.0, None) / np.float32(style["darkening"])
+    out = level.copy()
+    out[..., 1:4] = np.where(cover > 0, moved * cover, 0.0)
+    return out
 
 
 def sample_titan(titan, sheet) -> tuple | None:

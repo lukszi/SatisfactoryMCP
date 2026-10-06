@@ -188,6 +188,11 @@ def crowns_in_band(painted, x_cm, y_cm, spacing_m, unlit=False) -> dict | None:
     return band
 
 
+def _band_family(meshes, band):
+    """The render-only meshes' rock family on this band; None for a cache without the plane."""
+    return None if meshes is None or len(meshes) < 3 else np.asarray(meshes[2][band])
+
+
 def _capture(surface, rows, z_m, missing, cover) -> None:
     """Hand one band's drawn heights and land weight, halo cropped, to the lighting stage."""
     top, lo, bottom, c0, c1 = rows
@@ -426,6 +431,7 @@ def render_layer(
                 rock_weight=rock_weight,
                 mesh_weight=mesh_weight,
                 mesh_class=mesh_class,
+                mesh_family=_band_family(meshes, band),
                 water_optics=painted.water_optics(linear, water_terms.get("river")),
                 grid=(band, lo, hi, c0, c1, spacing_m),
             )
