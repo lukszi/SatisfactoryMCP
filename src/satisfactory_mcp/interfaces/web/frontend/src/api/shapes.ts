@@ -71,7 +71,7 @@ export type PipeRow = Schema["PipeRow"];
 export type PipesResponse = Body<"PipesResponse">;
 
 /** The two closed vocabularies `/api/pipes` publishes, read off the row's own fields rather
- *  than restated. `PIPE_FLOW_BASIS` in routes.ts is a `Record` keyed by the second, so a
+ *  than restated. `PIPE_FLOW_BASIS` in map/drawn/pipes.ts is a `Record` keyed by the second, so a
  *  fifth basis in `domain/world/flow.py` is a missing key and a compile error here. */
 export type PipeDirection = PipeRow["direction"];
 export type PipeFlowBasis = PipeRow["basis"];

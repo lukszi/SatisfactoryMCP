@@ -6,7 +6,7 @@ import { L } from "../leaflet";
 import { boundsOfBbox, latLngOf } from "../map";
 // Reached for a rule rather than a picture: `sinkRoutes` owns the stacking inside the three
 // route layers, and rebuilding a group is exactly what disturbs it.
-import { sinkRoutes } from "../drawn/routes";
+import { sinkRoutes } from "../drawn/route-passes";
 import { state } from "../../app/state";
 import { connectorGlyph, ghost, ghostRows, unghost, wireGlyph } from "./glyphs";
 import {

@@ -144,7 +144,7 @@ var DISCHARGED: Exception[] = [
       "measured when the chevron cream was chosen, and discharged there: the mark is a thin V " +
       "drawn on a pipe at 0.7 opacity -- which composites to 14.3-17.0 from the iron dot now " +
       "that the pipes are oxide -- and the dot is a filled disc on open terrain. See " +
-      "CHEVRON_COLOUR in routes.ts.",
+      "CHEVRON_COLOUR in pipes.ts.",
   },
   /* Coal on the grounds it lies on: the game's own coal tint, near black because coal is,
    * over biome tints that are dark on purpose. This IS the same square metre -- the dot sits

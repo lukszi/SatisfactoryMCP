@@ -92,7 +92,7 @@ each other: `power_slug_blue` and `Desc_NitrogenGas_C` are dE 4.6 apart and noth
 | `storage` | `#6a78c8` | a solid container, filled box | markers/hard_drive 18.0 | must clear the other filled boxes and the selection pink (dE 64.1) |
 | `storage fluid` | `#253496` | a fluid buffer, one value step below | markers/Desc_LiquidOil_C 16.2 | |
 
-### `routes` — the belts and the pipes (`drawn/routes.ts`)
+### `routes` — the belts and the pipes (`drawn/belts.ts`, `drawn/pipes.ts`)
 
 | key | hex | role | nearest cross-owner neighbour | constraint |
 | --- | --- | --- | --- | --- |

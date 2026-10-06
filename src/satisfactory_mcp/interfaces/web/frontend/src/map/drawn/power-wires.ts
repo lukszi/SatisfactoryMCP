@@ -7,16 +7,14 @@
  * docs/frontend_palette.md.
  */
 
-import { popup } from "../../kit/dom";
+import { popup, popupTitleRow } from "../../kit/dom";
 import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
 import { latLngOf, pixelsPerMetre } from "../map";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
-import { ROUTE_FLOOR_PX, ROUTE_WIDTH_M, routeWeight, sinkRoutes } from "./routes";
+import { ROUTE_FLOOR_PX, ROUTE_WIDTH_M, routeWeight, sinkRoutes } from "./route-passes";
 import { toned } from "../map-tone";
-
-import type { Row } from "../../kit/dom";
 
 import type { PoleRow, PowerResponse, WireRow } from "../../api/shapes";
 import type { Point3M } from "../geometry";
@@ -71,16 +69,9 @@ function poleRadius(cls: string | null): number {
   return (cls && POLE_RADIUS_PX[cls]) || POLE_FALLBACK_PX;
 }
 
-/* The row that names the thing a reader just clicked. Both `name` and `cls` are nullable
- * server-side, and a popup whose title row was dropped would lose the word "pole" while
- * keeping every coordinate under it. */
-function titleRow(key: string, name: string | null, cls: string | null): Row {
-  return [key, name || cls || "class not recorded in this projection"];
-}
-
 function polePopup(p: PoleRow): string {
   return popup([
-    titleRow(p.cls === TOWER_CLASS ? "power tower" : "power pole", p.name, p.cls),
+    popupTitleRow(p.cls === TOWER_CLASS ? "power tower" : "power pole", p.name, p.cls),
     // A count off the wiring graph: 0 is an answer, a pole built and never strung.
     [
       "connections",
@@ -113,7 +104,7 @@ export function drawPower(data: PowerResponse): void {
    * are drawn too; they are the layer at factory zoom. Last of the three networks. */
   var group = clearedLayer("power", { on: true, colour: WIRE_COLOUR, rank: [BAND.built, 30, "power"] });
   // The same expression the zoom pass restyles these with, off the same two tables.
-  var weight = routeWeight(ROUTE_WIDTH_M.power!, pixelsPerMetre(), ROUTE_FLOOR_PX.power);
+  var weight = routeWeight(ROUTE_WIDTH_M.power, pixelsPerMetre(), ROUTE_FLOOR_PX.power);
 
   /* THE CORES FIRST AND THE CASINGS AFTER THEM, WHICH IS WHAT PUTS THE CASINGS UNDERNEATH:
    * `sinkRoutes` at the end calls `bringToBack` down the list, so the piece sunk last ends up at

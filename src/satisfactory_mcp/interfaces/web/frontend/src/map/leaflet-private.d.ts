@@ -58,8 +58,8 @@ declare module "leaflet" {
     _chevron?: boolean;
     /** A glyph whose radius is a fixed pixel size rather than one derived from the scale.
      *
-     * Set on the power poles. Read twice in routes.ts: styleRoutes leaves such a piece's
-     * radius alone, and sinkRoutes puts it above the runs it terminates rather than under. */
+     * Set on the power poles. Read twice in drawn/route-passes.ts: the zoom restyle leaves such
+     * a piece's radius alone, and sinkRoutes puts it above the runs it terminates. */
     _fixed?: boolean;
     /** How this path was drawn before it was ghosted, so unghosting is exact rather than a
      *  second guess at the drawing module's own options. Its presence IS "this path is
@@ -74,7 +74,7 @@ declare module "leaflet" {
     _widen?: number;
     /** The route this polyline was tessellated FROM, kept so it can be tessellated again at
      *  another scale: the drawn latlngs are an output and cannot be re-subdivided from
-     *  themselves. See routeShape and styleRoutes in routes.ts. */
+     *  themselves. See routePolyline and retessellate in drawn/route-geometry.ts. */
     _route?: import("./geometry").RouteShape;
     _occupied?: boolean;
   }

@@ -20,7 +20,7 @@ export type BboxM = [number, number, number, number];
  * `leave` leaves the point behind the span and `arrive` arrives at the point ahead of it,
  * which is the pair a cubic Hermite between those two points takes. They are displacements in
  * the same space as `points_m`, so whatever transform a client applies to a point applies to
- * these unchanged -- see hermite() in routes.ts. */
+ * these unchanged -- see hermite() in drawn/route-geometry.ts. */
 export type SpanCurveM = [Point3M, Point3M];
 
 /** A route's curve, one entry per span, in step with `points_m`.
