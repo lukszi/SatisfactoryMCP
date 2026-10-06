@@ -132,8 +132,8 @@ which it does use — the asset exists and states that name — but puts no grou
 
 That is also why the planner suite stopped planning over `region:Spire Coast`. Those reference plans
 were hand-verified over the 51 nodes that selector used to return and it now returns 18, so
-`tests/conftest.py` states the field as a bounding box instead: a region name is advisory by design
-and a regression suite must not stand on one.
+`tests/support/reference_world.py` states the field as a bounding box instead: a region name is
+advisory by design and a regression suite must not stand on one.
 
 Also: 200 m single-linkage recovers the real oil fields, but one cluster merges 6 well satellites with a
 standalone node 85 m away — so **node kind must never be inferred from one cluster member**.
@@ -3098,7 +3098,7 @@ water outside `Area_Swamp`'s blur, which section 31's opaque colour does not rea
 near-black too: #322a2d, where the sky's 0.02 reflection lifts it a little. A body of
 #302627 less that reflection (#2a180e) would land on the target exactly, but over so dark a
 body a crown sunk 0.3 m in the swamp showed more than in the sea, which murky water must not
-do (`tests/test_map_crowns_over_water.py`). Absorption, `deep_tau_m`, turbidity and the rule
+do (`tests/mapgen/test_crowns_over_water.py`). Absorption, `deep_tau_m`, turbidity and the rule
 for which water takes the opaque colour (section 37, "Swamp water") are unchanged.
 
 **Measured.** Drawn by the painted layer's own water code (`band_water`, `class_optics`,
