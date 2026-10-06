@@ -2110,7 +2110,9 @@ textures, red grass from `TX_GrassRed_01_Alb`, sand from `TX_Sand_BC`. Plain cli
 red jungle have none. Per pixel, rock is multiplied by its family's tint relative to the
 median tint of all families, then blended to the top layer by an up-facing ramp on the drawn
 surface's normal, `nz` from 0.60 to 0.85, boxed over 3 pixels. That ramp is a guess: the
-`CliffTopMaterial` function is not decoded.
+`CliffTopMaterial` function is not decoded. Since game-painted 18 the top lies in patches
+inside that ramp, and the forest top wears a display target in place of its texture's mean
+(section 31, "Moss in patches").
 
 The rock targets of section 31 are measured on rock that already wears the common tint, so
 only a family's departure from it is applied (`palette/surfaces.py` `family_tables`). With one
@@ -2187,7 +2189,7 @@ those left out (see "Area targets"). Style `satellite-painted` version 3; the cr
 gated swamp water and the mesh colours below are version 6, the blue palms' own crown target
 version 9, the desert rock family's target and the daylight dune target version 11, and the
 three land rules (the Spire Coast rock from its own material, wet sand by rule, the red Kapok
-by species) version 17. Code:
+by species) version 17, and the moss in patches version 18. Code:
 `palette/painted.py`, `palette/calibration.py`, `palette/trees.py` (crowns),
 `palette/optics.py` (water) and `palette/surfaces.py` (rock and meshes). Numbers: the `tone`
 and `calibration` blocks of `palette/palettes/satellite-painted.json`.
@@ -2357,6 +2359,7 @@ references were used. A target is a screenshot measured so, or derived by a rule
 | Rock | Grass Fields, Northern Forest, Western Dune Forest | #7e7868 | screenshot | up-facing lit rock: [store shot](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/ss_b1104309f1c22c85de6ad6c401e6d889411c14d2.1920x1080.jpg), [Random mode 1](https://satisfactory.wiki.gg/images/Random_Game_Mode_-_Resource_Node_Example_1.png), [cave entrance](https://satisfactory.wiki.gg/images/Entrance_Of_A_Cave.webp), [Northern Forest U8](https://satisfactory.wiki.gg/images/Comparison_2_-_Northern_Forest_-_U8.png) |
 | Rock and Cliff layer | Red Jungle, Jungle Spires, Red Bamboo Fields | #877e6e | screenshot | [Jungle Spires](https://satisfactory.wiki.gg/images/Jungle_Spires.png), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942) |
 | Rock, default | everywhere else, the Spire Coast included since 17 | #85816c | screenshot | [Abyss Cliffs](https://satisfactory.wiki.gg/images/Abyss_Cliffs.png), [Lake Forest](https://satisfactory.wiki.gg/images/Lake_Forest.png), the store shot. Lit up-facing bare rock on the Spire Coast pools to #877b71, ΔE 2.1 from it (see "The Spire Coast rock from its own material") |
+| Top layer, forest family | the up-facing faces of every `_Forest` cliff and rock, in patches | #505936 | screenshot | moss and grass on lit Spire Coast tops, six boxes pooled: [Can't beat that view](https://images.steamusercontent.com/ugc/12186521166813992372/550A8BFD145E1EC2AFAF479D7DE6B99D87CB37FD/) (the arch top and a shelf), [a Spire pillar](https://images.steamusercontent.com/ugc/54708874924571662/8337E85F52B3538ED4EC6B96D2B0281B9DC53240/), [a leaning pillar from above](https://images.steamusercontent.com/ugc/14675271398369972649/33698D99D1A66B96456520E8149422C870255F1D/), [the oil platform](https://images.steamusercontent.com/ugc/16557712698482623084/7042B540721BDD03CD7F72A2D5CD82452986D6E4/) and an unpublished 1.0 shot. Through game-painted 17 it was the far texture's mean (see "Moss in patches") |
 | Sand | the deserts and Savanna | #c4ab8b | screenshot | [Somersloop](https://satisfactory.wiki.gg/images/Somersloop_at_Rocky_Desert.jpg), [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), [Desert Canyons](https://satisfactory.wiki.gg/images/Desert_Canyons.png) |
 | WetSand | the deserts and Savanna | #987b61 | derived (rule) | the entry's Sand at L ×0.80, C ×1.0, h −10 ("Wet sand by rule" above) |
 | Gravel | the deserts and Savanna | #8f8373 | screenshot | Somersloop, and the gravel-to-sand ratio in Desert Canyons |
@@ -2506,6 +2509,69 @@ and 26,000 after, a lightness step of +0.037 and a chroma scale of ×1.141 both 
 Kapok's own step is −0.035 and ×0.646 over its 1,324 trees, as the Red Jungle's was. The wet
 sand's derived targets reach the bed under shallow water too: the sea 0.3 to 1 m deep goes
 0.001 to 0.010 darker in L, its hue within 2° (#5f8182 to #5d7e7f at the north beach).
+
+### Moss in patches (2026-10-06)
+
+Through game-painted 17 the top layer covered every up-facing face of a family that has one,
+at the full weight of section 30's ramp, in its texture's mean. So every `_Forest` cliff and
+pillar wore a solid green lid, #58713d on flat ground. On the Spire Coast's lit tops the
+screenshots show moss and grass on 14 to 66% of the face, in patches with bare rock between
+them, and darker: the boxes pool to #505936, ΔE 7.5 from #58713d. Since game-painted 18 the
+top lies in patches, and the forest top wears that colour.
+
+**No mask from the game.** Where the top shows is decided inside `CliffTopMaterial`, the
+Cliff master's top-layer function. It is cooked into the master, so its mask cannot be read
+(section 30, "Rock surfaces"). The patches are a rule drawn by the style and tuned to the
+screenshots' share, not game data.
+
+**The mask.** `palette/surfaces.py` `top_cover` multiplies section 30's up-facing ramp by a
+patch mask from `rock_top.patches`. The mask's noise is `patch_noise`: value noise on a
+lattice in world metres from the frame's corner, each lattice point valued by a 64-bit hash
+of its indices and the seed, blended by smoothstep. Three octaves of 16, 6 and 2.5 m weigh
+0.4, 0.35 and 0.25 (`octaves_m`, `seed` 5). Each pixel samples the noise at its own centre,
+so a point of the world draws the same in every band, tile, window and sheet size, and no
+texture is stored. Flatness shapes it: the noise is lowered by up to `flat_gain` 0.1, all of
+it at `nz` 0.85 and none from 0.97 up (`flat`), so flatter faces carry more moss. The mask is
+that noise against `level` 0.5, through an edge `soft` 0.06 wide. On flat faces that is moss
+on 49% of the rock, 26 to 72% in 30 m boxes (10th to 90th percentile); at `nz` 0.85 it is
+21%, 6 to 40% in 30 m boxes. The mask applies wherever the top does: on the heightfield
+cliffs by the direct pass's family plane, and on the render-only rocks by their own family
+(`mesh_surface`).
+
+**The forest top.** `calibration.tops` names a display target for a family's top, made a
+ground colour as the other display targets are (`top_targets`, applied by `family_tables`).
+Only the forest family has one, #505936, from the Spire Coast boxes of the target table
+above. The grass, red grass and sand tops keep their textures' means, in the same patches.
+
+**Measured.** As in "The land rules, measured": windows of the full-size grid, 280 m across,
+drawn in-process once with game-painted 17 and once with 18. The pixels are forest-family
+rock facing up (`nz` above 0.85), clear of water, crowns and canopy, with the heightfield
+cliffs (rock weight at least 0.99, no mesh) and the render-only rocks counted apart. The moss
+share is the share of them with a top weight of at least 0.5. Colours are medians in display
+sRGB, over all of them ("all tops") and over those at least 0.9 moss ("moss"); ΔE is OKLab
+×100.
+
+| Window | Pixels | Moss share | All tops | Moss | Moss ΔE to #505936 |
+| --- | --- | --- | --- | --- | --- |
+| Lagoon stacks (203, -2515) | cliff tops, 13,253 | 0.998 → 0.523 | #57703c → #707157 | #566f3b → #4e5734 | 6.9 → 0.7 |
+| | render-only rock tops, 6,184 | 0.999 → 0.384 | #58713d → #7c7861 | #58713d → #4e5734 | 7.4 → 0.7 |
+| Spiral (-339, -2275) | cliff tops, 35,848 | 0.999 → 0.343 | #57703c → #837f69 | #57703c → #4f5835 | 7.2 → 0.4 |
+| Lake Forest (298, -557) | cliff tops, 123,793 | 0.999 → 0.353 | #5b7440 → #7f7b65 | #5b7440 → #535c38 | 8.4 → 1.1 |
+| | render-only rock tops, 3,070 | 0.999 → 0.308 | #5d7642 → #86826c | #5c7541 → #555e3b | 8.7 → 1.7 |
+| Spire cliffs (357, -1670) | cliff tops, 189,822 | 0.998 → 0.452 | #59723e → #7f795f | #59723e → #515a37 | 7.8 → 0.4 |
+| | render-only rock tops, 68,450 | 1.000 → 0.514 | #5c7541 → #767259 | #5c7541 → #535c39 | 8.7 → 1.1 |
+
+In 30 m boxes the cliff tops carry 14 to 72% moss in the Lake Forest (10th to 90th
+percentile of 15 boxes) and 26 to 67% at the Spire cliffs (25 boxes), against the
+screenshots' 14 to 66%. A window's share is below the flat 49% because most of its tops are
+short of `nz` 0.97. Between the patches the tops show the area's rock as drawn: #85816c in
+the Lake Forest, the default target, #86826d to #8e8a74 in the two Spire Coast windows, and
+#9a8472 at the Spire cliffs, which stand on the Desert Canyons' edge. Steep
+faces (`nz` below 0.6) move by at most 3 levels, where the ramp's 3-pixel box reaches them.
+The spiral's render-only rocks have a single up-facing forest pixel and are left out.
+
+**Cost.** On one full-width band of the 32768 sheet the mask adds 0.43 s where 2.5% of the
+pixels carry a top, and 1.0 s where 10 to 26% do: 55 to 133 s over the sheet's 128 bands.
 
 ### Other colours
 
@@ -2671,11 +2737,11 @@ the rule ("Area targets" above).
   no target of its own yet.
 - The Grass Fields grass target comes from one place, seen in four v1.1 shots; the biome
   is inferred from the flowers. Grass elsewhere keeps the Eastern Dune Forest target.
-- The forest family's moss top is drawn on every up-facing face of a `_Forest` cliff or
-  pillar at full weight, as on the heightfield cliffs since section 30. On the Spire Coast's
-  lit tops the screenshots show it on 14 to 66% of the face, and darker (#505936, ΔE 7.5 from
-  the #58713d drawn on flat ground). The `_WetSand` instances' top layer is the cooked
-  master's default and is not drawn; whether it shows in game is unchecked.
+- The patches of the top layer are a rule, not the game's mask, which is cooked into
+  `CliffTopMaterial` ("Moss in patches"). Only the forest top has a colour measured from
+  screenshots; the grass, red grass and sand tops keep their texture means, in the same
+  patches. The `_WetSand` instances' top layer is the cooked master's default and is not
+  drawn; whether it shows in game is unchecked.
 - The red Kapok is crimson wherever it grows, the Rocky Desert and the Red Bamboo Fields
   included, by the Red Jungle's references. Its crowns there were not measured from above.
 - On a beach whose paint has no WetSand above the drawn sea, as at the north beach, the
@@ -3682,7 +3748,7 @@ pixel, these rules decide.
 | Meshes standing in the water, lit | The lighting pyramid's surface is the first layer's. When that is a ground-and-water style, the render-only meshes standing in the water are water in it; the painted layer, drawn unlit after it, keeps the default sun's light of their own top on them. |
 | Crowns and water | A crown standing out of the water is composited after the water, the foam and the shore line, whole; one under the surface goes into the bed after section 32's carpet and before the open-sea term and section 31's opaque water, so the class optics, the open sea and the swamp's murk all apply to it (section 36, "Crowns and the water"). |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
-| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 18 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes; then section 36's coral trees left to their meshes, with the default sun on the meshes standing in the water; then section 33's sea deep colour and near-black swamp water; then section 33's translucent water and swamp mouths; then section 31's land rules: the Spire Coast rock dropped, render-only rocks in their own family, wet sand by rule with a mild warm shore band, and the red Kapok by species). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 3 (the render-only rocks' family plane), `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
+| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 19 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes; then section 36's coral trees left to their meshes, with the default sun on the meshes standing in the water; then section 33's sea deep colour and near-black swamp water; then section 33's translucent water and swamp mouths; then section 31's land rules: the Spire Coast rock dropped, render-only rocks in their own family, wet sand by rule with a mild warm shore band, and the red Kapok by species; then section 31's moss in patches, with the forest top on its own target). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 3 (the render-only rocks' family plane), `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. Water below a drop inside a box is re-levelled before the rest of its body, so the class plane sees the basin under the wide fall at the swamp's level and the swamp box claims it. |
 | Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, and the open sea (row below) hands those grades to every style. Section 33's open sea is found on that same drawn water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |

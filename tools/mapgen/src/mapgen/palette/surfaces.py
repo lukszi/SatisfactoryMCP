@@ -21,18 +21,28 @@ __all__ = [
     "family_tables",
     "family_targets",
     "mesh_surface",
+    "patch_noise",
     "rock_surface",
     "sunk_specks",
+    "top_cover",
+    "top_targets",
 ]
 
 #: A coral pixel is narrower than the pixel when at least this share of its eight neighbours
 #: is water: a coral head standing in the sea, which the max-Z raster widens to a pixel.
 SPECK_WATER = 0.6
 
+_MASK64 = (1 << 64) - 1
+_PRIMES = (0x9E3779B97F4A7C15, 0xC2B2AE3D27D4EB4F, 0x165667B19E3779F9)
+_FMIX = (np.uint64(0xFF51AFD7ED558CCD), np.uint64(0xC4CEB9FE1A85EC53))
 
-def family_tables(families: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+def family_tables(
+    families: dict, palette: dict | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """By family code: the tint relative to the families' median, the top layer, and whether
-    there is one.
+    there is one. With ``palette``, its ``calibration.tops`` replace their families' tops
+    (``top_targets``).
 
     The rock targets are calibrated on rock that already wears the common tint, so only a
     family's departure from it is applied; with one tint for all, rock stays on target.
@@ -54,6 +64,8 @@ def family_tables(families: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
             has_top[code] = 1.0
     if tinted:
         tint[tinted] /= np.maximum(np.median(tint[tinted], axis=0), np.float32(1e-6))
+    if palette is not None:
+        top = top_targets(top, palette["calibration"].get("tops", {}), palette)
     return tint, top, has_top
 
 
@@ -91,24 +103,92 @@ def family_targets(base_lab, codes, targets: dict, palette: dict, min_cells: int
     return planes, measured
 
 
+def top_targets(top, targets: dict, palette: dict) -> np.ndarray:
+    """The top layer table with each named family's display target, as ground colour, in
+    place of its texture's mean."""
+    top = np.array(top, np.float32)
+    for name, hex_colour in targets.items():
+        lab = display_to_ground(palette, hex_colour)
+        top[FAMILIES.index(name)] = np.clip(linear_from_oklab(lab), 0.0, 1.0)
+    return top
+
+
+def _lattice(i, j, seed: int) -> np.ndarray:
+    """A value in [0, 1) per integer lattice point: a hash of the point and ``seed``."""
+    mixed = (seed * _PRIMES[2]) & _MASK64
+    h = i.astype(np.uint64) * np.uint64(_PRIMES[0]) + j.astype(np.uint64) * np.uint64(_PRIMES[1])
+    h = h ^ np.uint64(mixed)
+    for mult in _FMIX:
+        h = (h ^ (h >> np.uint64(33))) * mult
+    h = h ^ (h >> np.uint64(33))
+    return (h >> np.uint64(40)).astype(np.float32) / np.float32(1 << 24)
+
+
+def patch_noise(x_m, y_m, octaves, seed: int) -> np.ndarray:
+    """Value noise in [0, 1] at points in metres from the frame's corner: per octave
+    ``(wavelength m, amount)`` a hashed lattice blended by smoothstep, mixed by amount. The
+    lattice is hashed once over the points' extent and its corners gathered from it."""
+    x_m, y_m = np.broadcast_arrays(np.asarray(x_m, np.float64), np.asarray(y_m, np.float64))
+    total = np.zeros(x_m.shape, np.float32)
+    if not x_m.size:
+        return total
+    for k, (wavelength, amount) in enumerate(octaves):
+        u, v = x_m / wavelength, y_m / wavelength
+        i, j = np.floor(u), np.floor(v)
+        su, sv = (t * t * (3.0 - 2.0 * t) for t in (u - i, v - j))
+        i, j = i.astype(np.int64), j.astype(np.int64)
+        i0, j0 = int(i.min()), int(j.min())
+        width = int(i.max()) - i0 + 2
+        cols, rows = np.arange(i0, i0 + width), np.arange(j0, int(j.max()) + 2)
+        table = _lattice(cols[None, :], rows[:, None], seed + k).ravel()
+        at = (j - j0) * width + (i - i0)
+        corner = [table[at + offset] for offset in (0, 1, width, width + 1)]
+        near = corner[0] + (corner[1] - corner[0]) * su
+        far = corner[2] + (corner[3] - corner[2]) * su
+        total += np.float32(amount) * (near + (far - near) * sv).astype(np.float32)
+    return total / np.float32(sum(amount for _w, amount in octaves))
+
+
+def _ramp(nz, lo_hi) -> np.ndarray:
+    lo, hi = lo_hi
+    return ndimage.uniform_filter(np.clip((nz - lo) / (hi - lo), 0.0, 1.0), 3)
+
+
+def top_cover(scene: dict, ground, code) -> np.ndarray:
+    """The top layer's weight per pixel: the up-facing faces of a family with a top, and with
+    ``rock_top.patches`` only in patches, more of them the flatter the face. The patches are
+    ``patch_noise`` at each pixel's centre, so a point draws the same at any size or band."""
+    _band, lo, _hi, c0, _c1, spacing_m = scene["grid"]
+    d_south, d_east = np.gradient(scene["z_m"], spacing_m)
+    nz = 1.0 / np.sqrt(1.0 + d_east * d_east + d_south * d_south)
+    rule = ground.palette["rock_top"]
+    weight = _ramp(nz, rule["up"]) * ground.family_has_top[code]
+    patches = rule.get("patches")
+    seen = weight > 0.0
+    if patches is None or not seen.any():
+        return weight
+    rows, cols = np.nonzero(seen)
+    noise = patch_noise((c0 + cols + 0.5) * spacing_m, (lo + rows + 0.5) * spacing_m,
+                        patches["octaves_m"], patches["seed"])  # fmt: skip
+    level = noise + patches["flat_gain"] * (_ramp(nz, patches["flat"])[seen] - 1.0)
+    weight[seen] *= np.clip((level - patches["level"]) / patches["soft"] + 0.5, 0.0, 1.0)
+    return weight
+
+
 def rock_surface(rock_rgb, scene: dict, ground, sample_rock=None, code=None) -> np.ndarray:
     """Rock in its family's colour: the family's own target where it has one, else the area's
-    rock in the family's tint, with the family's top layer on its up-facing faces. ``code`` is
-    the family per pixel; the direct pass's family plane on this band when None."""
+    rock in the family's tint, with the family's top layer on its up-facing faces (``top_cover``).
+    ``code`` is the family per pixel; the direct pass's family plane on this band when None."""
     if code is None and ground.rock_family is None:
         return rock_rgb
-    band, *_sheet, spacing_m = scene["grid"]
+    band = scene["grid"][0]
     code = np.asarray(ground.rock_family[band] if code is None else code)
     for which, planes in getattr(ground, "family_rock", {}).items():
         hit = (code == which)[..., None]
         if hit.any():
             rock_rgb = np.where(hit, sampled_rgb(planes, sample_rock), rock_rgb)
     rgb = rock_rgb * ground.family_tint[code]
-    d_south, d_east = np.gradient(scene["z_m"], spacing_m)
-    nz = 1.0 / np.sqrt(1.0 + d_east * d_east + d_south * d_south)
-    lo, hi = ground.palette["rock_top"]["up"]
-    up = ndimage.uniform_filter(np.clip((nz - lo) / (hi - lo), 0.0, 1.0), 3)
-    weight = (up * ground.family_has_top[code])[..., None]
+    weight = top_cover(scene, ground, code)[..., None]
     return rgb * (1.0 - weight) + ground.family_top[code] * weight
 
 
