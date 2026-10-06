@@ -370,7 +370,7 @@ class PaintedGround:
         self.crowns = load_crowns(paint_dir, meta) if drawn else None
         self.crown = _plane(paint_dir, meta, CROWN_NAME) if CROWN_NAME in meta["files"] else None
         self.family_tint, self.family_top, self.family_has_top = family_tables(
-            meta.get("rock_families") or {}
+            meta.get("rock_families") or {}, palette
         )
         # Render-grid rasters the pipeline attaches: the direct pass's family plane (with
         # ``attach_families``), and the Titan tree raster as (z cm, class, factor, row0, col0).

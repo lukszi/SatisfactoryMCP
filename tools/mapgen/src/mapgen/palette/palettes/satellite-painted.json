@@ -403,7 +403,31 @@
   "up": [
    0.6,
    0.85
-  ]
+  ],
+  "patches": {
+   "seed": 5,
+   "octaves_m": [
+    [
+     16.0,
+     0.4
+    ],
+    [
+     6.0,
+     0.35
+    ],
+    [
+     2.5,
+     0.25
+    ]
+   ],
+   "level": 0.5,
+   "soft": 0.06,
+   "flat": [
+    0.85,
+    0.97
+   ],
+   "flat_gain": 0.1
+  }
  },
  "titan_trees": {
   "opacity": 0.8,
@@ -458,6 +482,9 @@
   "rock_keeps_exposure": true,
   "families": {
    "desert": "#ae8271"
+  },
+  "tops": {
+   "forest": "#505936"
   },
   "meshes": {
    "coral": "#99868e",
