@@ -12,6 +12,8 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
+from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
+from mapgen.lighting.model import surface_direct
 from mapgen.terrain.rasters import MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -26,6 +28,8 @@ __all__ = [
     "composite_meshes",
     "ocean_reach",
     "optical_depth",
+    "painted_ndl",
+    "seabed_keeps",
     "shore_terms",
     "water_composite",
     "wet_band",
@@ -187,6 +191,14 @@ def add_foam(rgb, water: dict, foam: dict | None, white):
     return rgb * (1.0 - weight) + white * np.float32(foam.get("white", 1.0)) * weight
 
 
+def seabed_keeps(mesh_class_band, top_m, water_level_m) -> np.ndarray:
+    """Where a style that draws ground and water only keeps a mesh: on dry land, or a rock
+    whose top stands above the surface."""
+    dry = ~np.isfinite(water_level_m)
+    level = np.where(dry, -np.inf, water_level_m)
+    return dry | ((mesh_class_band == MESH_ROCK) & (top_m > level))
+
+
 def composite_meshes(z_m, mesh_z_cm, mesh_class_band, water_level_m, composite, seabed=False):
     """``z_m`` raised by the meshes standing near or above the water; and their weight.
 
@@ -200,8 +212,25 @@ def composite_meshes(z_m, mesh_z_cm, mesh_class_band, water_level_m, composite, 
     top_m = mesh_z_cm / np.float32(100.0)
     keep = (mesh_class_band > 0) & (top_m > level - MESH_REACH_M)
     if seabed:
-        dry = ~np.isfinite(water_level_m)
-        keep &= dry | ((mesh_class_band == MESH_ROCK) & (top_m > level))
+        keep &= seabed_keeps(mesh_class_band, top_m, water_level_m)
     raised = composite(z_m, mesh_z_cm, keep.astype(np.uint8))
     weight = np.clip((raised - z_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     return raised, weight, np.where(keep, mesh_class_band, 0).astype(np.uint8)
+
+
+def painted_ndl(z_m, spacing_m: float, unlit: bool, surface, meshes) -> np.ndarray:
+    """The game-painted style's sun term, ``n.L`` against the flat ``sin 45``.
+
+    Lit, the north-west hillshade. Unlit, flat, except on a mesh only this style draws, one
+    standing in the water, when another layer captured the light's ``surface``: that layer
+    left it to the seabed, so the live light leaves it alone, and it keeps the default sun's
+    light on its own top. ``meshes`` is ``(weight, kept class, water level)``.
+    """
+    if not unlit:
+        return sun_dot(z_m, spacing_m)
+    flat = np.full(z_m.shape, np.sin(np.deg2rad(SUN_ALTITUDE_DEG)), np.float32)
+    weight, kept, level = meshes
+    if surface is not None or weight is None:
+        return flat
+    sea = np.where((kept > 0) & ~seabed_keeps(kept, z_m, level), weight, np.float32(0.0))
+    return flat * (1.0 + sea * (surface_direct(z_m, spacing_m) - 1.0))
