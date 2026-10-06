@@ -10,13 +10,15 @@
     "container_flags": "0xd",
     "container_flags_note": "0x0d is Compressed|Signed|Indexed. The Encrypted bit is unset and the encryption key GUID is null: signed is not encrypted, and no DRM is circumvented by reading it.",
     "container_bytes": [
-     13035833,
-     8053329360
+     13010893,
+     7885556928
     ],
-    "container_modified_utc": "2026-07-10T02:13:31+00:00",
-    "game_build": "++FactoryGame+rel-main-1.2.0-CL-495413",
+    "container_modified_utc": "2026-08-11T17:47:38+00:00",
+    "game_build": "++FactoryGame+rel-main-anniversary-2026-CL-502094",
     "packages_read": 4521,
     "packages_with_no_level_export": 0,
+    "packages_that_failed_to_parse": {},
+    "packages_that_failed_to_parse_note": "world packages the reader refused, by exception type, each skipped whole. Their actors are in neither the rows nor the class histogram, so accounting cannot see them; empty means every package listed in packages_read was read.",
     "map_actors_placed": 69364,
     "actor_classes_placed": 106,
     "level_read": "Map/GameLevel01",
@@ -86,17 +88,17 @@
     ],
     "other_levels_note": "that the level above is the whole world was once a sentence in the source; it is this list instead. Every other .umap the container holds is walked with the identical actor rule and reported with its actor count and, the point of it, how many actors of a class this file emits it places -- actors_of_an_emitted_class. All of them empty is what makes 'the row set is the map's placement list' a statement about the game rather than about one directory. A non-empty one would mean rows are missing. Note what these levels ARE: a HUB audio sub-level, the dedicated-server entry, the two main-menu backdrops and a developer test map -- the test map does place resource nodes, which is why the check is run against emitted classes rather than eyeballed.",
     "actors_read_but_given_no_transform": {},
-    "actors_read_but_given_no_transform_note": "an actor of a class this file reads whose root component or attach chain could not be resolved, so it has no position and is NOT a row. Empty means every one was placed. This is the one way a collectible could go missing without the accounting noticing, since the class histogram counts it either way -- hence a number here rather than nothing.",
+    "actors_read_but_given_no_transform_note": "an actor of a class this file reads whose root component or attach chain could not be resolved, so it has no position and is NOT a row. Empty means every one was placed. This is one of the two ways a collectible could go missing without the accounting noticing, since the class histogram counts it either way -- hence a number here rather than nothing. packages_that_failed_to_parse is the other.",
     "actor_rule": "an export whose Outer is the package's /Script/Engine.Level export. A class-path prefix test cannot be used: a native class is a 62-bit hash rather than a path, so a /Game/ test silently drops every one of them.",
     "script_objects": {
      "source": "global.utoc chunk type 5 (ScriptObjects)",
-     "chunk_bytes": 3539420,
-     "objects": 54949,
-     "script_packages": 555,
+     "chunk_bytes": 3540687,
+     "objects": 54967,
+     "script_packages": 556,
      "unresolved_class_hashes_in_the_map": 0,
      "role": "turns a script-import hash back into /Script/FactoryGame.<Class>. With 0 unresolved hashes above, every actor class in the map has a name."
     },
-    "seconds": 4.1,
+    "seconds": 10.1,
     "decompressor": {
      "name": "pyooz",
      "version": "0.0.8",
@@ -110,15 +112,15 @@
     "kind": "the player's own save files",
     "role": "state only -- collected / present / unknown. Never a position.",
     "session": "Han Solo",
-    "save_files_found": 67,
-    "saves_read": 66,
+    "save_files_found": 99,
+    "saves_read": 98,
     "files_that_are_not_a_save": 1,
     "files_that_are_not_a_save_note": "the game drops a 105-byte ServerManager_V2.sav beside the real saves. It is not a save game; any other count here would be a save this project's parser cannot read, which is a bug worth chasing.",
     "sessions_on_disk": {
-     "Han Solo": 54,
+     "Han Solo": 86,
      "Vanilla": 12
     },
-    "saves_used": 54,
+    "saves_used": 86,
     "saves_in_another_session": 12,
     "sessions_note": "the union of two sessions is not a world: an instance name means whatever the save that wrote it meant. Only the largest session's saves are used, and the rest are counted here and dropped.",
     "save_versions": [
@@ -136,7 +138,8 @@
      455399,
      458806,
      460533,
-     495413
+     495413,
+     502094
     ],
     "saves_predating_world_partition": 23,
     "saves_that_join_no_row_here": 9,
@@ -147,13 +150,13 @@
     "pre_partition_note": "23 of the saves used are below saveVersion 52, from before the world was partitioned. They parse -- the body layout is version-gated on the header's own save_version -- and they are read because they are evidence for the rename below. What they can key is measured rather than assumed: their per-tile level records carry a package path for a tile the current map has no cell for, which leaves only the names both layouts share -- see cells_the_pre_partition_saves_key_through for what those turn out to be. They set no state either way: the newest save does that.",
     "saved_between": [
      "2022-05-07",
-     "2026-07-28"
+     "2026-08-16"
     ],
     "play_duration_hours": [
      0.5,
-     319.9
+     333.5
     ],
-    "newest_save": "Han Solo_280726-230847.sav",
+    "newest_save": "Han Solo_autosave_0.sav",
     "state_authority": "the newest save by the clock it was written at, not by file mtime -- an autosave rewritten in place has a fresh mtime and an old clock. Its live set and destroyed list are cumulative, and rows_only_older_saves_could_state below measures whether the union of all of them would say anything more."
    }
   },
@@ -175,28 +178,28 @@
    "schema_rule": "a class whose contents regrow gets no row. It would need a state field that cannot be filled: a harvested berry bush is NOT destroyed -- it stays live with mUpdatedOnDayNr set and its fruit comes back -- so 'present' would mean 'a bush is here', which a consumer would read as 'there is fruit here'. Rather than ship a state-shaped field that cannot carry a state, the two regrowing classes are in _meta.excluded with their map counts, and nothing in this file offers a remaining-set for them. mSavedNumItems in the values below is the plant's fixed YIELD and is never a countdown: every nut bush on disk writes 5.",
    "durability": {
     "method": "over the saves used, in save-clock order. Two failure modes: a key leaving a destroyed list, and a key a save called destroyed turning up live in a later one. The first is only meaningful between saves of the SAME build, because a build that re-issues instance names makes a key disappear without anything coming back -- those pairs are counted and skipped. The second is gated on position, because an auto-numbered instance name is not identity.",
-    "consecutive_same_build_pairs_compared": 46,
-    "pairs_skipped_because_the_build_changed": 7,
+    "consecutive_same_build_pairs_compared": 77,
+    "pairs_skipped_because_the_build_changed": 8,
     "destroyed_observations_by_class": {
-     "FGItemPickup_Spawnable": 4072,
-     "BP_Crystal_C": 3036,
-     "BP_Shroom_01_C": 2181,
-     "BP_Crystal_mk2_C": 2139,
-     "BP_SporeFlower_C": 2127,
-     "BP_MercerShrine_C": 1992,
-     "BP_WAT2_C": 1992,
-     "BP_Crystal_mk3_C": 1052,
+     "FGItemPickup_Spawnable": 9512,
+     "BP_Crystal_C": 6906,
+     "BP_Shroom_01_C": 5253,
+     "BP_Crystal_mk2_C": 4986,
+     "BP_SporeFlower_C": 4655,
+     "BP_MercerShrine_C": 4552,
+     "BP_WAT2_C": 4552,
+     "BP_Crystal_mk3_C": 2523,
+     "BP_DebrisActor_02_C": 1485,
      "not a map-placed actor at all": 1006,
-     "BP_DebrisActor_02_C": 557,
-     "BP_WAT1_C": 403,
-     "BP_DropPod_C": 382,
-     "BP_CrashSiteDebris_C": 365,
-     "BP_DebrisActor_03_C": 357,
-     "BP_Ship_C": 246,
-     "BP_BerryBush_C": 237,
-     "BP_DestructibleFoliage_C": 90,
-     "BP_DestructibleLargeRock_C": 31,
-     "BP_NutBush_C": 27
+     "BP_DropPod_C": 990,
+     "BP_WAT1_C": 979,
+     "BP_CrashSiteDebris_C": 941,
+     "BP_DebrisActor_03_C": 933,
+     "BP_Ship_C": 822,
+     "BP_BerryBush_C": 525,
+     "BP_DestructibleFoliage_C": 186,
+     "BP_DestructibleLargeRock_C": 63,
+     "BP_NutBush_C": 59
     },
     "keys_that_left_the_destroyed_list_by_class": {
      "not a map-placed actor at all": 4
@@ -222,19 +225,19 @@
    "flora": {
     "BP_BerryBush_C": {
      "placed_by_the_map": 2164,
-     "live_records_over_the_saves_used": 77699,
+     "live_records_over_the_saves_used": 130659,
      "records_carrying": {
-      "mNumRespawns": 1911,
-      "mUpdatedOnDayNr": 827,
-      "mSavedNumItems": 77699
+      "mNumRespawns": 5047,
+      "mUpdatedOnDayNr": 1691,
+      "mSavedNumItems": 130659
      },
      "values": {
       "mNumRespawns": {
-       "1": 1717,
-       "2": 90,
-       "3": 40,
-       "4": 32,
-       "5": 32
+       "1": 4629,
+       "2": 218,
+       "3": 72,
+       "4": 64,
+       "5": 64
       },
       "mUpdatedOnDayNr": {
        "0": 3,
@@ -246,7 +249,7 @@
        "132": 3,
        "174": 8,
        "179": 1,
-       "203": 60,
+       "203": 124,
        "208": 11,
        "215": 1,
        "217": 3,
@@ -260,44 +263,44 @@
        "253": 30,
        "265": 79,
        "267": 28,
-       "268": 398,
+       "268": 1038,
        "271": 6,
        "272": 10,
-       "281": 14,
-       "282": 13,
-       "315": 20
+       "281": 46,
+       "282": 45,
+       "315": 116
       },
       "mSavedNumItems": {
-       "1": 25418,
-       "2": 25814,
-       "3": 26467
+       "1": 42570,
+       "2": 43670,
+       "3": 44419
       }
      },
      "highest_mNumRespawns_seen": 5,
      "counter_first_appearances": 112,
      "counter_rose": 12,
      "counter_fell": 0,
-     "counter_pairs_a_build_change_made_incomparable": 263,
-     "destroyed_observations": 237,
+     "counter_pairs_a_build_change_made_incomparable": 361,
+     "destroyed_observations": 525,
      "keys_that_left_the_destroyed_list": 0,
      "respawns": true,
      "emitted_as": null
     },
     "BP_NutBush_C": {
      "placed_by_the_map": 1525,
-     "live_records_over_the_saves_used": 58681,
+     "live_records_over_the_saves_used": 100825,
      "records_carrying": {
-      "mNumRespawns": 1936,
-      "mUpdatedOnDayNr": 788,
-      "mSavedNumItems": 58681
+      "mNumRespawns": 4816,
+      "mUpdatedOnDayNr": 1298,
+      "mSavedNumItems": 100825
      },
      "values": {
       "mNumRespawns": {
-       "1": 1615,
-       "2": 243,
+       "1": 4207,
+       "2": 435,
        "3": 15,
-       "4": 49,
-       "5": 11,
+       "4": 113,
+       "5": 43,
        "8": 1,
        "10": 2
       },
@@ -312,54 +315,55 @@
        "132": 3,
        "179": 2,
        "180": 1,
-       "203": 104,
+       "203": 200,
        "204": 28,
        "205": 20,
        "222": 108,
-       "223": 124,
+       "223": 220,
        "224": 20,
        "243": 4,
        "244": 5,
        "253": 6,
        "265": 22,
        "267": 88,
-       "268": 145,
-       "269": 64,
+       "268": 273,
+       "269": 192,
        "271": 2,
        "272": 6,
        "275": 12,
        "281": 8,
-       "296": 1
+       "296": 1,
+       "328": 62
       },
       "mSavedNumItems": {
-       "5": 58681
+       "5": 100825
       }
      },
      "highest_mNumRespawns_seen": 10,
      "counter_first_appearances": 108,
      "counter_rose": 13,
      "counter_fell": 0,
-     "counter_pairs_a_build_change_made_incomparable": 246,
-     "destroyed_observations": 27,
+     "counter_pairs_a_build_change_made_incomparable": 336,
+     "destroyed_observations": 59,
      "keys_that_left_the_destroyed_list": 0,
      "respawns": true,
      "emitted_as": null
     },
     "BP_Shroom_01_C": {
      "placed_by_the_map": 1615,
-     "live_records_over_the_saves_used": 59587,
+     "live_records_over_the_saves_used": 102083,
      "records_carrying": {
       "mNumRespawns": 0,
       "mUpdatedOnDayNr": 0,
-      "mSavedNumItems": 1350
+      "mSavedNumItems": 2822
      },
      "values": {
       "mNumRespawns": {},
       "mUpdatedOnDayNr": {},
       "mSavedNumItems": {
-       "1": 614,
-       "2": 409,
-       "3": 327
+       "1": 1286,
+       "2": 857,
+       "3": 679
       }
      },
      "highest_mNumRespawns_seen": null,
@@ -367,7 +371,7 @@
      "counter_rose": 0,
      "counter_fell": 0,
      "counter_pairs_a_build_change_made_incomparable": 0,
-     "destroyed_observations": 2181,
+     "destroyed_observations": 5253,
      "keys_that_left_the_destroyed_list": 0,
      "respawns": false,
      "emitted_as": "mushroom"
@@ -396,14 +400,14 @@
    },
    "note": "(cell, instance) is unique over every map-placed actor -- duplicate_keys is 0. The bare instance name is NOT, and rather than say which classes are to blame, actors_reusing_an_instance_name_by_class counts them: widening the walk to native classes brought in per-cell housekeeping singletons that reuse one name across every cell, and they account for the whole of the difference between map_actors_in_gamelevel01 and distinct_instance_names. None of them is a collectible class. The _UAID_ names -- the map's own placement ids -- stay globally unique.",
    "placement_id_note": "the _UAID_ suffix is a sufficient mark of a map placement and not a necessary one: some map-placed actors carry names inherited from older hand-placed ones. with_the_map_s_own_placement_id is reported per category so a consumer filtering on the suffix can see what that filter would cost.",
-   "rows_within_1m_of_another_row_in_the_same_category": 6,
-   "rows_within_1m_of_another_row_by_category": {
+   "coincident_pairs_in_the_same_category": 6,
+   "coincident_pairs_by_category": {
     "mushroom": 6
    },
    "coincident_pairs_the_saves_hold_a_record_for_both_of": 4,
    "coincident_pairs_where_both_carry_a_placement_id": 2,
    "coincident_pairs_the_saves_give_different_states": 0,
-   "coincident_note": "pairs, not rows, and a question rather than an error: two rows of one category within a metre of each other COULD be one physical collectible emitted twice. For every artefact class the count is 0, which is the result worth having. It is not 0 for the mushroom, which is what a mushroom is -- they grow in clumps. What settles those pairs is identity, not distance, and the three numbers beside the count are exactly how far the evidence goes: the saves hold a SEPARATE record for both members of coincident_pairs_the_saves_hold_a_record_for_both_of of them, so the game itself tracks two actors there; both members carry the map's own globally unique _UAID_ placement id in coincident_pairs_where_both_carry_a_placement_id of them. coincident_pairs_the_saves_give_different_states would be the strongest evidence of all -- one harvested while the other still stands, which one actor cannot be -- and it is reported even though this player's saves happen to give it as 0: the pairs are all in the same state, so that particular proof is simply not available here."
+   "coincident_note": "a pair is two rows of one category within a metre of each other, and a question rather than an error: such a pair COULD be one physical collectible emitted twice. For every artefact class the count is 0, which is the result worth having. It is not 0 for the mushroom, which is what a mushroom is -- they grow in clumps. What settles those pairs is identity, not distance, and the three numbers beside the count are exactly how far the evidence goes: the saves hold a SEPARATE record for both members of coincident_pairs_the_saves_hold_a_record_for_both_of of them, so the game itself tracks two actors there; both members carry the map's own globally unique _UAID_ placement id in coincident_pairs_where_both_carry_a_placement_id of them. coincident_pairs_the_saves_give_different_states would be the strongest evidence of all -- one harvested while the other still stands, which one actor cannot be -- and it is reported even though this player's saves happen to give it as 0: the pairs are all in the same state, so that particular proof is simply not available here."
   },
   "class_census": {
    "what": "a narrow regression guard, and it is worth being exact about how narrow. The bug it exists for was a missing CLASS rather than a missing row: a native class cannot appear in a /Game/ walk, so every loot cache was absent with nothing in the file to show it. What this section catches is that specific shape of regression -- a class whose NAME CONTAINS 'pickup' that stops being emitted, or a new one the map gains. emitted_as null on one of them is either a deliberate exclusion or a bug.",
@@ -543,7 +547,7 @@
    "rotation": "not emitted. It was extracted and validated against the saves' own quaternions, but nothing downstream asks which way a slug faces, so it is left out rather than carried as 4 more numbers on every row."
   },
   "status_evidence": {
-   "live_records_accepted": 2931,
+   "live_records_accepted": 2925,
    "live_records_displaced": 70,
    "live_records_displaced_note": "a live header whose (cell, instance) hits a map row but whose position does not. The saveVersion 52 -> 60 patch re-issued names and cells, and the game migrates a cell's saved records only when that cell is next streamed, so a cell not revisited since the patch still holds pre-patch records that key the wrong map row. These set no state; the rows they touch stay unknown.",
    "displaced_gap_cm": [
@@ -574,8 +578,8 @@
    "orphan_keys_unexplained": 0,
    "orphan_keys_unexplained_note": "THIS is the number that would say a collectible is missing from the table. An orphan is a save's live record of an emitted class with no row here, and it can only be three things: a record written under the pre-partition world layout, whose level names no current cell matches; a pre-patch record whose instance name the map now places in a different cell, which is the 52 -> 60 rename again; or a collectible the map read failed to find. The first two are counted above and this is the remainder. Scope: LIVE records of the emitted classes. 0 means no save on disk holds a live record of one of those classes that this table cannot account for -- it is not a statement about the destroyed lists, which are accounted for separately in destroyed_entries_that_are_not_rows_here_by_class, nor about classes this file does not emit.",
    "live_records_with_no_map_row_note": "a live header of an emitted class whose (cell, instance) is not a row here. Two things land in it and both are excluded from the table by the same mechanism -- having no row: a crate the player dropped, which shares FGItemPickup_Spawnable with the map's loot caches, and an actor from a cell layout the current map no longer has, which is why the figure over every save used is large while the newest save's is what it is. The map's own caches are told apart by having a row at all, never by their name.",
-   "destroyed_entries_in_newest_save": 889,
-   "destroyed_entries_that_are_rows_here": 713,
+   "destroyed_entries_in_newest_save": 895,
+   "destroyed_entries_that_are_rows_here": 719,
    "destroyed_entries_that_are_not_rows_here_by_class": {
     "BP_SporeFlower_C": 79,
     "BP_DebrisActor_02_C": 29,
@@ -600,9 +604,9 @@
   },
   "position_agreement": {
    "what": "the accepted positions re-measured against the newest save's own live actor headers, which is the game's word on where its actors are. The displaced records are excluded and counted under status_evidence instead.",
-   "matched": 2931,
+   "matched": 2925,
    "median_cm": 0.0,
-   "p90_cm": 0.001872,
+   "p90_cm": 0.001835,
    "max_cm": 81.584,
    "over_1cm": 26,
    "over_1m": 0,
@@ -745,8 +749,8 @@
     },
     "power_slug_blue": {
      "placed": 596,
-     "collected": 119,
-     "present": 381,
+     "collected": 121,
+     "present": 379,
      "unknown": 96,
      "rows_any_save_mentions": 515,
      "with_the_map_s_own_placement_id": 173,
@@ -755,8 +759,8 @@
     },
     "power_slug_purple": {
      "placed": 257,
-     "collected": 44,
-     "present": 192,
+     "collected": 46,
+     "present": 190,
      "unknown": 21,
      "rows_any_save_mentions": 237,
      "with_the_map_s_own_placement_id": 67,
@@ -765,8 +769,8 @@
     },
     "power_slug_yellow": {
      "placed": 389,
-     "collected": 87,
-     "present": 259,
+     "collected": 89,
+     "present": 257,
      "unknown": 43,
      "rows_any_save_mentions": 350,
      "with_the_map_s_own_placement_id": 107,
@@ -807,8 +811,8 @@
     }
    },
    "rows": 4446,
-   "collected": 713,
-   "present": 2931,
+   "collected": 719,
+   "present": 2925,
    "unknown": 802,
    "pedestals": {
     "mercer_shrine": {
@@ -847,8 +851,8 @@
    "there_is_deliberately_no_cells_the_map_places_an_actor_in_figure": "it would be 4521, which is exactly source.placements.packages_read, because every cooked cell holds the per-cell housekeeping singletons (FGWorldSettings, Model) whatever else is in it. It used to be printed above and its only use was to be divided into the two save-side cell counts, which measures nothing at all. The cell population that is about collectibles is cells_holding_a_collectible.",
    "cell_counts_are_not_denominators": "the cell counts above are still three different populations and none divides another. The map places collectibles in one set of cells, the save's grid table declares another set of runtime cells, and the save has level records for a third -- including cells the grid table does not declare, some of which hold a collectible, which is what cells_holding_a_collectible_the_grid_table_does_not_declare counts. Read them side by side, not as a fraction.",
    "map_actors_in_cells_the_newest_save_records": 55928,
-   "of_those_the_newest_save_has_a_record_of": 13399,
-   "cell_is_not_a_unit_of_coverage": "a partition cell streams in pieces. Over all 106 map-placed classes, the newest save has a level record for cells holding 55928 map actors and a record of only 13399 of them (24%), so 'the cell has been visited' does not mean 'its contents are known'. That is why unknown is a per-collectible state here and not a per-cell one, and why the cell counts above are context rather than the coverage figure."
+   "of_those_the_newest_save_has_a_record_of": 13401,
+   "cell_is_not_a_unit_of_coverage": "a partition cell streams in pieces. Over all 106 map-placed classes, the newest save has a level record for cells holding 55928 map actors and a record of only 13401 of them (24%), so 'the cell has been visited' does not mean 'its contents are known'. That is why unknown is a per-collectible state here and not a per-cell one, and why the cell counts above are context rather than the coverage figure."
   },
   "naming": {
    "what": "a naming aid, kept apart from the placements. The placements are map facts; this section is about what a consumer may and may not infer from a name.",
@@ -1093,7 +1097,7 @@
    "WorldDataLayers": 1,
    "export:53": 1
   },
-  "not_classified_note": "every remaining actor class the packages under source.placements.level_read place, native and blueprint alike, with counts. What that buys is bounded and worth stating: every actor the walk FOUND lands in a category, in excluded or here, and accounting.adds_up checks the three against the map's own actor count -- so a class cannot go missing the way the loot caches did. It is not evidence that the walk found every actor, which is what source.placements.actors_read_but_given_no_transform and packages_with_no_level_export are for, nor that this level is the only one -- see other_levels_in_the_container. The largest are BP_Spline_C (1016), NodeMeshActor_C (871), FGWaterVolume (279), BP_WaterFallTool_02_C (191), BP_Water_C (180). One entry may read 'export:N': that is an actor whose class is an export of its own package rather than an import, reported as it is found rather than binned.",
+  "not_classified_note": "every remaining actor class the packages under source.placements.level_read place, native and blueprint alike, with counts. What that buys is bounded and worth stating: every actor the walk FOUND lands in a category, in excluded or here, and accounting.adds_up checks the three against the map's own actor count -- so a class cannot go missing the way the loot caches did. It is not evidence that the walk found every actor, which is what source.placements.actors_read_but_given_no_transform, packages_that_failed_to_parse and packages_with_no_level_export are for, nor that this level is the only one -- see other_levels_in_the_container. The largest are BP_Spline_C (1016), NodeMeshActor_C (871), FGWaterVolume (279), BP_WaterFallTool_02_C (191), BP_Water_C (180). One entry may read 'export:N': that is an actor whose class is an export of its own package rather than an import, reported as it is found rather than binned.",
   "join_key": "instance (matches save actor instanceName exactly)",
   "cell_note": "'cell' is the cooked package the map places the actor in, and it is byte-identical to the save's own level record name -- which is what makes the join exact. It is a world-partition cell for all but 32 rows, which the map puts in Persistent_Level itself. It is not a spatial box: one cell's actors can be far apart.",
   "units": "centimetres; north is -Y, east is +X, up is +Z"
@@ -52731,7 +52735,7 @@
    "x": 151858.4,
    "y": -205861.4,
    "z": -1132.0,
-   "state": "present"
+   "state": "collected"
   },
   {
    "instance": "Persistent_Level:PersistentLevel.BP_Crystal113",
@@ -53446,7 +53450,7 @@
    "x": 119553.4,
    "y": -228340.4,
    "z": -942.0,
-   "state": "present"
+   "state": "collected"
   },
   {
    "instance": "Persistent_Level:PersistentLevel.BP_Crystal6_76",
@@ -63185,7 +63189,7 @@
    "x": 121164.4,
    "y": -214016.9,
    "z": 3009.7,
-   "state": "present",
+   "state": "collected",
    "hazard": {
     "hostiles_nearby": {
      "Char_BigCrabHatcher_C": 3
@@ -63268,7 +63272,7 @@
    "x": 9055.4,
    "y": -221877.7,
    "z": 4925.0,
-   "state": "present"
+   "state": "collected"
   },
   {
    "instance": "Persistent_Level:PersistentLevel.BP_Crystal_mk31_12",
@@ -65129,7 +65133,7 @@
    "x": 122984.4,
    "y": -215475.4,
    "z": -1216.0,
-   "state": "present",
+   "state": "collected",
    "hazard": {
     "hostiles_nearby": {
      "Char_BigCrabHatcher_C": 1,
@@ -68745,7 +68749,7 @@
    "x": 8908.4,
    "y": -220731.7,
    "z": 2203.0,
-   "state": "present",
+   "state": "collected",
    "hazard": {
     "hostiles_nearby": {
      "Desc_SpitterAquatic_Alpha_C": 1

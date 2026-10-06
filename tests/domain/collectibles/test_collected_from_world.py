@@ -281,8 +281,10 @@ def test_remaining_is_placed_minus_collected_and_the_parts_add_up(state, table):
             assert row["remaining"] == row["placed"] - row["collected"] == buckets
     census = {r["category"]: r for r in state.collectible_census()}
     assert census["power_slug_blue"]["remaining"] == 596 - 119 == 477
-    assert census["power_slug_blue"]["standing"] == 381
+    assert census["power_slug_blue"]["standing"] == 379
     assert census["power_slug_blue"]["never_streamed"] == 96
+    # The table's newest save is later than the reference save and has taken two more.
+    assert census["power_slug_blue"]["gone_in_a_later_save"] == 2
     assert census["somersloop"]["remaining"] == 88
 
 
@@ -455,7 +457,7 @@ def test_the_census_shows_placed_collected_and_remaining(tool, table):
     assert "unresolved=176" in out
     assert "showing=every category" in out
     assert "category\tplaced\tcollected\tremaining\tstanding\tnever_streamed" in out
-    assert "power_slug_blue\t596\t119\t477\t381\t96" in out
+    assert "power_slug_blue\t596\t119\t477\t379\t96\t2" in out
     assert "somersloop\t106\t18\t88\t66\t22" in out
 
 
