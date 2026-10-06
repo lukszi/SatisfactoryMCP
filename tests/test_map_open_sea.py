@@ -321,6 +321,49 @@ def test_dry_ground_the_shore_draws_as_sea_takes_no_rim_beside_the_void():
     assert inland.void.rim[200, 315:325].max() > 150 and inland.void.cover[200, 322] > 200
 
 
+def _strip(rows=200, cols=300, width=8):
+    """Level-only sea in the west, a strip of dry ground 164 m down, then no data."""
+    height = np.full((rows, cols), OCEAN_DM, np.int16)  # the fill raster holds the surface
+    water = np.full((rows, cols), OCEAN_DM, np.int16)
+    grades = np.full((rows, cols), hf.WATER_LEVEL_ONLY, np.uint8)
+    height[:, 150 : 150 + width], water[:, 150:] = -1640, hf.NODATA
+    grades[:, 150:] = hf.WATER_DRY
+    height[:, 150 + width :] = hf.NODATA
+    return height, water, grades
+
+
+def test_sunken_ground_between_the_open_sea_and_the_void_is_sea():
+    height, water, grades = _strip()
+    height[150:, 100:150], water[150:, 100:150] = 50, hf.NODATA  # a headland in the south
+    grades[150:, 100:150] = hf.WATER_DRY
+    sea, heights, _ground = _sea(height, water, grades)
+    strip = (slice(0, 140), slice(150, 158))
+    assert (sea.grades[strip] == hf.WATER_MEASURED).all() and (sea.level[strip] == OCEAN_DM).all()
+    depth = (OCEAN_DM - heights[strip]) / hf.DM_PER_M
+    assert depth.max() < 70.0 and depth.min() > 0.0, "on the open sea's bed, not 147 m down"
+    assert sea.meta["strip_texels_joined"] >= 140 * 5
+    assert (sea.grades[150:, 100:150] == hf.WATER_DRY).all(), "ground above the sea stays land"
+    assert (sea.grades[180:, 150:158] == hf.WATER_DRY).all(), "past the reach it stays land"
+    assert (grades[:, 150:158] == hf.WATER_DRY).all(), "the field's own planes are untouched"
+
+
+def test_a_sunken_band_wider_than_the_strip_stays_land():
+    height, water, grades = _strip(width=20)
+    sea, _heights, _ground = _sea(height, water, grades)
+    assert sea.meta["strip_texels_joined"] == 0
+    assert (sea.grades[:, 150:153] == hf.WATER_MEASURED).all(), "the coast rule's 3 m only"
+    assert (sea.grades[:, 153:170] == hf.WATER_DRY).all()
+
+
+def test_sunken_ground_beside_a_pit_stays_land():
+    height, water, grades = _strip()
+    height[:, 158:] = 50  # land all round, with a pit beside the strip
+    height[40:160, 160:200] = hf.NODATA
+    sea, _heights, _ground = _sea(height, water, grades)
+    assert sea.meta["strip_texels_joined"] == 0
+    assert (sea.grades[60:140, 154:158] == hf.WATER_DRY).all()
+
+
 def _land_with_a_pit(n=600):
     """Land with a hole in it and no data past its east edge: ``(sea, height)``."""
     height = np.full((n, n), 300, np.int16)
