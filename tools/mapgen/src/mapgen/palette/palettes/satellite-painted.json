@@ -12,7 +12,7 @@
   "opacity": 1.0,
   "darkening": 0.85,
   "chroma": 0.8,
-  "over_water": 0.6,
+  "waterline_m": 0.1,
   "dome_gain": 0.35,
   "shade_clamp": [
    0.55,

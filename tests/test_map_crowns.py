@@ -15,8 +15,8 @@ pytest.importorskip("scipy")
 from mapgen.gamedata import crowns as data  # noqa: E402
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM  # noqa: E402
 from mapgen.gamedata.paint import RADIUS_BINS_M, canopy_cover  # noqa: E402
-from mapgen.palette.painted import over_crowns  # noqa: E402
 from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
+from mapgen.palette.trees import crown_layer, over_crowns  # noqa: E402
 from mapgen.terrain.crowns import crown_band, load_crowns, sprite_levels  # noqa: E402
 
 LEAF = (0.1, 0.3, 0.05)
@@ -207,13 +207,14 @@ def test_a_band_with_no_tree_is_empty(tmp_path):
 # ----------------------------------------------------------------------- colour
 
 
-def _scene(z_m, water=0.0):
+def _scene(z_m, water=0.0, depth_m=0.0):
     shape = (1, 3)
     return {
         "z_m": np.full(shape, z_m, np.float32),
         "ndl_flat": np.float32(np.sin(np.radians(45.0))),
-        "water": {"cover": np.full(shape, water, np.float32)},
-    }
+        "water": {"cover": np.full(shape, water, np.float32),
+                  "depth_m": np.full(shape, depth_m, np.float32)},
+    }  # fmt: skip
 
 
 def _crown_terms(top_cm=1500.0):
@@ -226,21 +227,39 @@ def _crown_terms(top_cm=1500.0):
     }
 
 
-def test_a_crown_is_hidden_under_a_higher_surface_and_thinned_over_water():
+def _over(ground, scene, top_cm=1500.0):
+    layer = crown_layer(_crown_terms(top_cm), scene, PAINTED_PALETTE, 0.4, 1.0)
+    return over_crowns(ground, layer), layer
+
+
+def test_a_crown_is_hidden_under_a_higher_surface_and_whole_over_water_it_rises_from():
     ground = np.full((1, 3, 3), 0.5, np.float32)
-    p = PAINTED_PALETTE
-    shown = over_crowns(ground, _crown_terms(), _scene(5.0), p, 0.4, 1.0)
+    shown, _ = _over(ground, _scene(5.0))
     assert (np.abs(shown - ground) > 0.1).all(), "a crown above the ground is drawn"
-    hidden = over_crowns(ground, _crown_terms(), _scene(40.0), p, 0.4, 1.0)
+    hidden, _ = _over(ground, _scene(40.0))
     np.testing.assert_allclose(hidden, ground)
-    wet = over_crowns(ground, _crown_terms(), _scene(5.0, water=1.0), p, 0.4, 1.0)
-    share = (wet - ground) / (shown - ground)
-    np.testing.assert_allclose(share, p["crowns"]["over_water"], rtol=1e-4)
+    awash, layer = _over(ground, _scene(5.0, water=1.0, depth_m=0.25))
+    np.testing.assert_array_equal(awash, shown)
+    assert not layer["sunk"].any(), "10 m out of the water, nothing of it is under"
+    drowned, layer = _over(ground, _scene(5.0, water=1.0, depth_m=12.0))
+    np.testing.assert_array_equal(drowned, ground)
+    np.testing.assert_array_equal(layer["sunk"], 1.0)
+
+
+def test_the_waterline_cuts_a_crown_over_a_tenth_of_a_metre():
+    terms = _crown_terms()
+    terms["top_cm"] = np.array([[1490.0, 1500.0, 1510.0]], np.float32)
+    layer = crown_layer(terms, _scene(5.0, water=1.0, depth_m=10.0), PAINTED_PALETTE, 0.4, 1.0)
+    assert PAINTED_PALETTE["crowns"]["waterline_m"] == 0.1
+    np.testing.assert_allclose(layer["sunk"], [[1.0, 0.5, 0.0]], atol=1e-5)
+    dry = crown_layer(terms, _scene(-5.0, water=0.0, depth_m=30.0), PAINTED_PALETTE, 0.4, 1.0)
+    assert not dry["sunk"].any(), "no water, nothing sunk"
 
 
 def test_the_painted_palette_draws_crowns_instead_of_the_soft_canopy():
     style = PAINTED_PALETTE["crowns"]
     assert style["draw"] is True and style["canopy_kept"] == 0.0
     assert set(style) >= {"opacity", "darkening", "chroma", "dome_gain", "shade_clamp",
-                          "hidden_below_m", "over_water"}  # fmt: skip
+                          "hidden_below_m", "waterline_m"}  # fmt: skip
+    assert "over_water" not in style, "a crown out of the water is drawn whole"
     json.dumps(style)

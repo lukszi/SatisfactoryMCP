@@ -1833,7 +1833,8 @@ divided by the same expression for flat ground in the open, so flat ground at an
 - **Shadow floor.** The light passes through a soft maximum with 0.36 at a knee of 0.1
   (`SHADOW_FLOOR`, `SHADOW_FLOOR_KNEE`), so the darkest light lands at 0.36 to 0.40 instead of
   the 0.2 the bare model reaches in a shadowed gully.
-- **Water** stays unlit: the land weight (one minus the water cover) blends the light out.
+- **Water** stays unlit: the land weight (one minus the water cover) blends the light out,
+  from the tree crowns over it too (section 36, "Crowns and the water").
 - **Per style.** The painted style lights in linear light with its own ambient, sky and sun
   colours; the shader undoes and reapplies the luminance tone curve of section 31
   (`tone_knee`, `tone_white`). Terrain, satellite and both relief styles multiply into sRGB,
@@ -1950,6 +1951,8 @@ button moves the sun for the visit; Settings keeps the default.
 - A crown top takes the ground's horizon measured on the ground under it, not on its top, so
   in a valley a crown is shaded by terrain a little longer than it would be.
 - Whether the satellite style draws the tree crowns, and so reads their shadows.
+- A land weight for the crowns over water, read by the painted layer only, so they take the
+  live light and a tree's shadow can fall on the water.
 - Sun colour along the day, and whether the artwork style gets any light at all.
 
 ## 30. The game's own surface colours on the painted layer (2026-10-05)
@@ -2362,7 +2365,7 @@ SandRipples layer in the Dune Desert.
 With crowns drawn the soft canopy is off (`canopy_kept` 0), so through style version 5 the
 canopy targets coloured nothing and the crowns drew their texture means: the Red Jungle a
 saturated red against its #7c4955. The targets now move the crowns (`palette/trees.py`
-`crown_ops`, applied in `over_crowns`):
+`crown_ops`, applied in `crown_layer`):
 
 - **Scopes.** Each area entry with a `canopy` target is one, holding the trees where its area
   share is at least 0.5; the global `canopy` target holds the trees no entry does.
@@ -3006,8 +3009,9 @@ lowest top first, each over the ones below. A band returns cover, cover-weighted
 dome height and the highest crown top in world cm; `crown_band(...)["top_cm"]` is the crown
 height raster on any render grid.
 
-`palette/painted.py` composites them last, over water and foam, under the highlight
-shoulder. The `crowns` block of `satellite-painted.json`:
+`palette/painted.py` composites the crowns that stand out of the water last, over water and
+foam, under the highlight shoulder; a crown under the water's surface is drawn in the bed
+instead ("Crowns and the water" below). The `crowns` block of `satellite-painted.json`:
 
 | Key | Value | What |
 | --- | --- | --- |
@@ -3016,7 +3020,7 @@ shoulder. The `crowns` block of `satellite-painted.json`:
 | `darkening`, `chroma` | 0.85, 0.8 | Times the texture colour, and times the style's own chroma gain of 1.2 |
 | `dome_gain`, `shade_clamp` | 0.35, [0.55, 1.2] | The light: the style's sky and sun over the shared sun's `sun_dot` on the crown's smoothed height (0.75 m) times 0.35, relative to flat ground and clamped |
 | `hidden_below_m` | 0.5 | A crown whose top is more than this below the drawn surface is hidden: a tree under an overhang, or beside a higher rock |
-| `over_water` | 0.6 | Crown opacity over water, so a river under bamboo still reads |
+| `waterline_m` | 0.1 | The height over which a crown's top passes from over the water to under it, centred on the water's surface |
 
 ### Measured
 
@@ -3049,6 +3053,70 @@ which took 65 to 108 s in all on a loaded machine; the store grows from 54 to 66
 - Lean moves a crown; it does not foreshorten it.
 - `SM_Trunk_01` (6,933 logs and stumps) draws as small bark sprites.
 
+### Crowns and the water (2026-10-06)
+
+Through style version 12 a crown over a wet pixel was drawn at 60% opacity (`over_water`, so
+a river under bamboo would read), whether or not the tree stood out of the water. The crowns
+were already composited after the water; the fade was the fault. On the Spire Coast's sand
+spit at (243, -2078) the crowns over water stand on ground a median 0.2 m under the drawn sea
+(quartiles 0.1 to 0.4 m), so the water cover there is 1 and 40% of the sea showed through
+every crown: faded and blue, as if drowned. Of the 99,073 trees, 6,490 stand on a wet texel of the field, 6,035 of them at the
+ocean's level, and 475 have their top under the water's level.
+
+Now each pixel of a crown is compared with the water's surface there, the drawn ground plus
+the water's depth (`palette/trees.py` `crown_layer`):
+
+- **Out of the water**, its top more than half of `waterline_m` over the surface: drawn
+  whole over the water, the foam and the shore line, exactly as over dry ground. The rocks
+  and the render-only meshes already stand out of the water this way, by raising the drawn
+  surface.
+- **Under it**: composited into the bed after the coral carpet and before the open-sea term
+  and the opaque area water, seen through the water above its own top with the class's
+  optics (`palette/optics.py` `underwater`), as the seabed coral is (section 31). Shallow
+  under clear water it reads as a dark shape; under the swamp's murk it is gone within a
+  few tens of centimetres.
+- Between the two, `waterline_m` (0.1 m) cuts a crown where its top crosses the surface, so a
+  swamp plant whose upper leaves break the surface shows only those.
+
+**The swamp.** Its trees stand in water up to about 0.6 m deep. Of the 2,650 trees within
+250 m of (2343, 291), 2,063 stand on wet texels, their tops a median 0.9 m over the water
+and 146 under it, most of those `SM_UppochnerBulb` and `SM_SwampStump`. The tall trees, and
+the stumps and bulbs that break the surface, are drawn over the swamp water; those under it
+go into the bed, where the swamp's opaque water (tau 0.3 m) hides them. The game's swamp
+water is murky, so a plant under it is not seen from above either.
+
+A river under bamboo is now hidden by the crowns, as from above in the game; it shows where
+the canopy is open. The Titan trees were already laid over the water and stand tens of
+metres out of it; they keep their 0.8 opacity everywhere (section 30).
+
+**The light.** The lighting stage leaves water unlit: its land weight is one minus the water
+cover (section 29), and the one pyramid serves every layer, of which only the painted one
+draws crowns. So in a render with the light a crown over water keeps the flat light it was
+drawn with: no live shading, no shadow from its neighbours. No tree shadow falls on water,
+neither on its surface nor on its bed, and a render without the light draws no cast shadow
+at all. Lighting the crowns over water needs a crown land weight in the light pyramid that
+only the painted layer reads.
+
+**Measured** on six windows at 0.229 m/px, drawn through `render_layer` from inputs cut to
+the window, with no rock geometry, open-sea bed, rivers or artwork detail, the same before
+and after. Crown pixels are those at least half covered by a crown and by water; Delta E
+is OKLab x100.
+
+| Window | Centre (m) | Crown px over water | Mean before, after | Delta E mean (p95) |
+| --- | --- | --- | --- | --- |
+| Sand spit | (243, -2078) | 36,093 | #718575, #5f7c66 | 5.1 (10.7) |
+| Spiral | (-339, -2275) | 101,927 | #6c8573, #5c7d63 | 4.6 (9.3) |
+| Spire islets | (269, -1943) | 48,021 | #678176, #5a7966 | 4.7 (10.2) |
+| Lake Forest | (235, -437) | 4,110 | #7f8378, #908d84 | 4.6 (7.6) |
+| Swamp | (2343, 291) | 75,523 | #697961, #567b54 | 4.8 (11.3) |
+| Dry forest | (-1590, 934) | 0 | | 0 |
+
+Every pixel without a crown, and every crown over dry ground, is unchanged to the bit; the
+dry forest has no changed pixel. Over the sea the crowns come out darker and more saturated
+(OKLab L -0.032 to -0.037, chroma from about 0.042 to 0.064); over the lake, whose water is darker than
+its trees, lighter (L +0.040). In the swamp 2,692 crown pixels are under the surface and draw
+as its water.
+
 ## 37. Where sections 28 to 36 meet (2026-10-05)
 
 Sections 28 to 32 and 33 to 36 were built side by side. Where two of them touch the same
@@ -3065,6 +3133,7 @@ pixel, these rules decide.
 | Rock family and rock target | Section 31's rock targets are set first; section 30's family tint goes on relative to the families' median, so a common tint leaves rock on target. A family with a target of its own (desert rock, section 31's "Rock by mesh family") takes it over the area's rock. Render-only rocks take the area's rock. |
 | Coral, carpet and water | Section 32's carpet and section 31's seabed coral are both bed colours under the water. A coral speck standing in water is drawn as that water with the coral as its bed. |
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
+| Crowns and water | A crown standing out of the water is composited after the water, the foam and the shore line, whole; one under the surface goes into the bed after section 32's carpet and before the open-sea term and section 31's opaque water, so the class optics, the open sea and the swamp's murk all apply to it (section 36, "Crowns and the water"). |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
 | Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 12 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. Water below a drop inside a box is re-levelled before the rest of its body, so the class plane sees the basin under the wide fall at the swamp's level and the swamp box claims it. |
