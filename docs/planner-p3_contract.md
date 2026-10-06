@@ -109,7 +109,7 @@ badge "chat", never a hue; local only; the page never prompts the agent.
 ## 3. Data: the production graph (on `SolveResponse`)
 
 Built by `summary.solve_summary` from the solver's own processes (item ids), with
-`layout.chain_depth` over each row's non-MW inputs and outputs. TypeScript no longer builds
+`graph.chain_depth` over each row's non-MW inputs and outputs. TypeScript no longer builds
 edges (`planner-result.ts graphOf` is deleted).
 
 | Model | Field | Type | Rule |

@@ -20,7 +20,7 @@ import pytest
 from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning.sites import partition
+from satisfactory_mcp.domain.planning.layout.site_partition import partition
 from satisfactory_mcp.domain.planning.solver.prepare import prepare
 from satisfactory_mcp.domain.world.state import WorldState
 
@@ -195,8 +195,9 @@ def test_head_order_respects_the_site_partition(decoupled, game):
     lift accordingly, where the right answer stacks each site by itself. Declared sites
     are separate buildings, so the floors are ordered within each independently and the
     whole-plan riser count is the SUM of the per-site counts."""
-    from satisfactory_mcp.domain.planning.layout import build_layout, fluid_head
-    from satisfactory_mcp.domain.planning.layout_service import _layout_by_site
+    from satisfactory_mcp.domain.planning.layout.head import fluid_head
+    from satisfactory_mcp.domain.planning.layout.schematic import build_layout
+    from satisfactory_mcp.domain.planning.layout.service import _layout_by_site
 
     fused = build_layout(game, decoupled.solution, order_floors_by="head")
     merged, per_site = _layout_by_site(
@@ -226,8 +227,8 @@ def test_head_order_respects_the_site_partition(decoupled, game):
 def test_an_incomplete_partition_still_lays_out_every_block(decoupled, game):
     """Unclaimed processes land in a visible "(unassigned)" stack rather than vanishing
     -- a block dropped here would silently shrink the materials bill."""
-    from satisfactory_mcp.domain.planning.layout import build_layout
-    from satisfactory_mcp.domain.planning.layout_service import _layout_by_site
+    from satisfactory_mcp.domain.planning.layout.schematic import build_layout
+    from satisfactory_mcp.domain.planning.layout.service import _layout_by_site
 
     merged, per_site = _layout_by_site(
         game,

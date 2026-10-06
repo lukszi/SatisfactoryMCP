@@ -9,7 +9,7 @@ lengths and world coordinates are absent.
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
-from ...domain.planning.layout_service import LayoutReport
+from ...domain.planning.layout.service import LayoutReport
 from ...domain.planning.readout.slice import slice_of
 from ...domain.world.state import WorldState
 from . import primitives as render

@@ -15,8 +15,8 @@ import pytest
 from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
+from satisfactory_mcp.domain.planning.layout.trunks import plan_trunks
 from satisfactory_mcp.domain.planning.solver.prepare import prepare
-from satisfactory_mcp.domain.planning.trunks import plan_trunks
 
 pytestmark = pytest.mark.integration
 
@@ -83,7 +83,7 @@ def test_the_crude_field_needs_six_pipes(spire):
 def test_a_node_that_alone_exceeds_a_line_still_gets_a_run(game, state):
     """Never dropped and never silently split: it is a real situation the player solves
     with a second pipe off one extractor, and hiding it would be the wrong help."""
-    from satisfactory_mcp.domain.planning.trunks import TrunkMember, _split
+    from satisfactory_mcp.domain.planning.layout.trunks import TrunkMember, _split
 
     big = TrunkMember("solo", 0.0, 0.0, 0.0, "pure", 1200.0)
     small = TrunkMember("b", 100.0, 0.0, 0.0, "normal", 100.0)
@@ -199,7 +199,7 @@ def test_a_climbing_trunk_gets_a_real_pump_count(game):
 
 def test_a_falling_trunk_needs_no_pumps(game):
     """The reason lift_m is signed. Fluid runs downhill unaided."""
-    from satisfactory_mcp.domain.planning.trunks import Trunk, TrunkMember
+    from satisfactory_mcp.domain.planning.layout.trunks import Trunk, TrunkMember
 
     downhill = Trunk(
         item="x",
@@ -217,7 +217,7 @@ def test_a_falling_trunk_needs_no_pumps(game):
 
 def test_pump_counts_round_up_per_pump_head(game):
     """A 51 m climb is two Mk2 pumps, not one and a bit."""
-    from satisfactory_mcp.domain.planning.trunks import Trunk, TrunkMember
+    from satisfactory_mcp.domain.planning.layout.trunks import Trunk, TrunkMember
 
     def climb(metres: float) -> Trunk:
         return Trunk(

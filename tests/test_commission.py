@@ -240,7 +240,7 @@ def test_a_cycle_puts_its_members_on_the_SAME_stage(game, state):
     This is the regression that motivated deleting a second depth implementation. Relaxing
     with a cap, which is what commission used to do, returned plastic=7 rubber=8 sink=8 on
     exactly this shape: the cycle split across stages and the consumer landed level with
-    its own producer. layout.chain_depth condenses the cycle instead and returns 1, 1, 2.
+    its own producer. graph.chain_depth condenses the cycle instead and returns 1, 1, 2.
     """
     from satisfactory_mcp.domain.planning.commission import _depths
 
@@ -260,7 +260,7 @@ def test_commission_and_diff_order_a_plant_the_same_way(game, state):
     depth. They now agree by construction -- one function -- and this pins that they are
     not allowed to drift back apart."""
     from satisfactory_mcp.domain.planning.commission import _depths
-    from satisfactory_mcp.domain.planning.layout import chain_depth
+    from satisfactory_mcp.domain.planning.solver.graph import chain_depth
 
     prepared = prepare(game, state, dict(SPIRE))
     procs = prepared.solution.processes

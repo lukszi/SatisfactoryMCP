@@ -992,7 +992,7 @@ A sweep for "same computation implemented twice", prompted by the sizing primiti
 turning out to be exactly that. Ranked by whether the copies can actually disagree.
 
 **Chain depth — fixed, and it was a live bug.** `commission._depths` relaxed depths
-iteratively with a cap while `layout.chain_depth` condenses strongly connected components,
+iteratively with a cap while `graph.chain_depth` condenses strongly connected components,
 and `diff` already used the latter. On a Recycled-shaped 2-cycle they disagree outright:
 
 | process | `chain_depth` | the relaxation |

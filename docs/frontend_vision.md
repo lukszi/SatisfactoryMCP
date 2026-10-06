@@ -303,7 +303,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | `/api/conduits` | GET | `domain/world/conduits.py` | |
 | `/api/select/nodes`, `/api/select/machines` | GET | the two selector modules | live preview counts |
 | `/api/plan/solve`, `/bom`, `/compare`, `/byproducts` | POST | `prepare.py`, `bom.py`, `compare.py`, `byproducts.py` | body = plan kwargs |
-| `/api/plan/layout`, `/diff`, `/commission`, `/unlocks` | POST | `layout_service`, `diff_service`, `commission_service`, `sensitivity` | `/unlocks` slow |
+| `/api/plan/layout`, `/diff`, `/commission`, `/unlocks` | POST | `layout.service`, `diff_service`, `commission_service`, `sensitivity` | `/unlocks` slow |
 | `/api/plans` (CRUD) + `/api/plans/{n}/site` | POST/PATCH/DELETE | `domain/planning/stored/store.py`, `siting.py` | W; watcher already publishes store events |
 | `/api/labels` (CRUD) | POST/PATCH/DELETE | `domain/factories/labels.py` | W; POST, PATCH and DELETE **built** (§9) |
 

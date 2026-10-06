@@ -193,7 +193,7 @@ def _cycle_s(proc: dict, game: GameData) -> float:
 
 
 def _depths(processes: list[dict]) -> dict[str, int]:
-    """Chain depth per process id, from ``layout.chain_depth``.
+    """Chain depth per process id, from ``graph.chain_depth``.
 
     That function and not a local one: ``diff`` computes build order with it and ``track``
     joins a wave against a diff row, so two implementations would let the two halves of
@@ -207,7 +207,7 @@ def _depths(processes: list[dict]) -> dict[str, int]:
     consumer depend on every generator and every generator on its fuel, leaving one
     component and no order at all.
     """
-    from .layout import chain_depth
+    from .solver.graph import chain_depth
     from .solver.model import MW
 
     depths = chain_depth(

@@ -14,15 +14,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from dataclasses import replace as replace_solution
 
-from ...core.gamedata.model import GameData
-from ..factories.resolve import resolve_factory
-from ..world.state import WorldState
-from .layout import Layout, build_layout, fluid_head
+from ....core.gamedata.model import GameData
+from ...factories.resolve import resolve_factory
+from ...world.state import WorldState
+from ..solver.carrier import TierChoice
+from ..solver.model import Solution
+from ..solver.prepare import PreparedPlan, prepare
+from .head import fluid_head
 from .materials import build_materials
-from .sites import claim_processes, partition
-from .solver.carrier import TierChoice
-from .solver.model import Solution
-from .solver.prepare import PreparedPlan, prepare
+from .model import Layout
+from .schematic import build_layout
+from .site_partition import claim_processes, partition
 from .trunks import plan_trunks
 
 __all__ = ["LayoutReport", "build_layout_report"]

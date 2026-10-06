@@ -30,7 +30,7 @@ from ....domain.planning.analysis.sensitivity import sweep_unlocks
 from ....domain.planning.commission import partition_id
 from ....domain.planning.commission_service import build_commission_report
 from ....domain.planning.diff_service import build_diff_report, plan_progress
-from ....domain.planning.layout_service import LayoutReport, build_layout_report
+from ....domain.planning.layout.service import LayoutReport, build_layout_report
 from ....domain.planning.readout import payback, summary
 from ....domain.planning.readout.report import build_plan_report
 from ....domain.planning.solver.carrier import resolve_tiers

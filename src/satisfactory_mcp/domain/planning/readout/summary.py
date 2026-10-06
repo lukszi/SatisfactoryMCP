@@ -14,7 +14,7 @@ from ....core.gamedata.model import GameData
 from ...spatial import nodes as nodes_mod
 from ...world import pin
 from ...world.state import WorldState
-from ..layout import chain_depth
+from ..solver.graph import chain_depth
 from ..solver.model import MW
 from ..solver.scenario import build_scenario, shard_stock
 from ..stored import provenance

@@ -15,7 +15,11 @@ import pytest
 from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning.materials import FOUNDATION_ID, build_materials, cost_of
+from satisfactory_mcp.domain.planning.layout.materials import (
+    FOUNDATION_ID,
+    build_materials,
+    cost_of,
+)
 from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
 pytestmark = pytest.mark.integration

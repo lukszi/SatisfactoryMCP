@@ -49,7 +49,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ...core.gamedata.model import GameData
+from ....core.gamedata.model import GameData
 
 __all__ = ["BuildingCost", "MaterialLine", "MaterialsBill", "build_materials"]
 

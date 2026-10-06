@@ -447,7 +447,7 @@ Every write may also raise `filelock.LockTimeout`.
 **Compatibility view.** `WorldState.plans` returns `PlanLog.view()`. It is a read-only object
 with `.world_id`, `.plans` (live plans as `Plan`-compatible objects carrying `.key` and `.rev`
 alongside `.name`, `.args`, `.kwargs()`, `.notes`, `.plan_id`, `.factory`, `.created`,
-`.provenance` and `.siting`) and `.find(name)`. `recall`, `diff_service`, `layout_service`,
+`.provenance` and `.siting`) and `.find(name)`. `recall`, `diff_service`, `layout.service`,
 `siting`, `spatial.origin` and `routers/plans.py` keep working unchanged.
 
 `PlanStore`'s write paths (`editing`, `save`, `put`, `remove`) are deleted. `store.py` keeps

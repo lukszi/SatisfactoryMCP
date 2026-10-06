@@ -52,7 +52,7 @@ Section numbers like §8.4 refer to [planning.md](planning.md).
 | Bill | `planning/readout/slice.py`, `report.py` | same | Exact MW, shard bill, sloop use, flows with line counts, buildings never built, overclocked rows, zero exports | The plan draws from the grid freely unless MW is exported (`grid_import_mw = 1e6`) |
 | Byproducts | `planning/analysis/byproducts.py` `analyse` | `explain_byproducts` | 2 + up to 8 solves. Names stuck items, whether they can be sunk, and legal consumers | Takes **8 of the 18 plan arguments** (gap G6) |
 | Routes | `planning/analysis/recipe_routes.py`, `bom.py` | `compare_recipe_options`, `bom` | Whole map, per item, in isolation | Do not see the plan's sources or exclusions |
-| Layout | `layout.py`, `layout_service.py`, `trunks.py`, `materials.py`, `sites.py`, `fit.py` | `plan_layout` | Blocks by line count, one bus per item, floors by SCC-condensed depth, deck cap, head ordering, trunks, materials, site partition, fit to a platform | A **schematic**: no world coordinates, no belt routing (§8.5) |
+| Layout | `layout/schematic.py`, `layout/service.py`, `trunks.py`, `materials.py`, `site_partition.py`, `fit.py` | `plan_layout` | Blocks by line count, one bus per item, floors by SCC-condensed depth, deck cap, head ordering, trunks, materials, site partition, fit to a platform | A **schematic**: no world coordinates, no belt routing (§8.5) |
 | Site | `planning/siting.py` | `site_plan`, `plan_factory site_at=` | A *record* of origin, yaw and footprint. `survey` counts what stands on the pad. Terrain is read at the pad | Never fed to the LP. Not part of `plan_id` |
 | Where to mine | `spatial/ranking.py` | `rank_build_sites` | Fields for **one resource**, with a weighted score and every raw term | Siting by the whole bill is not built (roadmap §2.1) |
 | Startup | `planning/commission.py` | `commission_plan` | Waves under nameplate headroom; generators refund power | A startup order, not a build order (§8.5d) |
@@ -543,7 +543,7 @@ split for Site (§11 D1). Every view marks chat-changed rows with the **chat** b
 | | |
 |---|---|
 | Shows | Process nodes (machines, clock, building, recipe) and item edges (rate, belt/pipe lines). Raw on the left, exports and sinks on the right. Cycles in one column. Pin tags; chat badges |
-| Columns | `layout.chain_depth`, the SCC condensation shared by diff and commission (§8.5h), sent by the server. Not recomputed in TypeScript |
+| Columns | `graph.chain_depth`, the SCC condensation shared by diff and commission (§8.5h), sent by the server. Not recomputed in TypeScript |
 | Controls | Node: alternates, ban, pin, ask chat. Edge: pin to logistics, explain byproduct. Hover: rates |
 | Data | `POST /api/plan/solve` → `processes[].rates`, `flows`, `depth[]` |
 | Reuse | `frontend/src/graph.ts` already draws a built factory's recipe-group graph (frontend_vision.md §9.8). It takes any `{nodes, edges}` of that shape, so a plan can be mapped onto it; its longest-path layers would yield to the server's `depth[]` |

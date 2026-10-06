@@ -759,7 +759,7 @@ def build_siting(
             raise ValueError(
                 "cannot derive a footprint from an empty plan -- pass footprint='WxD' in metres"
             )
-        from .layout import build_layout
+        from .layout.schematic import build_layout
         from .solver.carrier import resolve_tiers
 
         tiers = resolve_tiers(game, st, "", "")
