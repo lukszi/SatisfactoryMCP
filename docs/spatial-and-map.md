@@ -2442,9 +2442,10 @@ render (about 5 s):
    box.
 4. Unclaimed wet texels within 1 m of the ocean level are ocean. That includes the level-only
    water around the frame at about -16.3 m.
-5. The rest of an inland body (8-connected) takes the body's majority class when that class
+5. River boxes are settled body by body (`_settle_rivers`). See "River boxes" below.
+6. The rest of an inland body (8-connected) takes the body's majority class when that class
    covers at least a quarter of it.
-6. What is left is swamp in `Area_Swamp` and lake everywhere else.
+7. What is left is swamp in `Area_Swamp` and lake everywhere else.
 
 Build 502094: ocean 16.23 M texels, lake 1.20 M, swamp 0.35 M, river 0.38 M, turquoise 53 k,
 hot spring 15 k, sulfur 9.7 k, cave 5.3 k, blue lake 5.2 k; 312 bodies claimed by
@@ -2457,6 +2458,42 @@ The renderer samples the plane bilinearly with the dry taps dropped
 of nothing. A pixel whose wet taps agree takes its class's row exactly. A band holding only
 ocean and dry texels takes the recipe 6 path unchanged, and so does a render from a paint store
 without `water_bodies.json`; the sidecar's `paint.water_classes` says which happened.
+
+### River boxes (2026-10-06)
+
+A `BP_River_PROT_C` box is one AABB around a whole river (section 34). Its rectangle reaches
+into the lakes and the sea the river feeds, at their level. Painted like any other box, it
+left a straight-edged block of river colour in them, in the game-painted style only: at
+(-370, -868), (-1033, -366) and (12, -70) among others. Since recipe 7 the ribbons draw the
+river row wherever they speak, so the rectangle added nothing but the seam.
+
+The boxes still paint in size order, then each river's texels are judged by the body they
+lie in:
+
+- A body is wet texels 8-connected through neighbours whose levels differ by at most 0.5 m
+  (`level_bodies`, `BODY_STEP_M`). The unclaimed water at the ocean level outside the open
+  sea counts, as ocean.
+- Where the river holds more of the body than every other class together, and at least a
+  quarter of it, the whole body is river, except what boxes smaller than its river box
+  claimed. A small pond inside it keeps its class.
+- Anywhere else the river's texels go back to what the other boxes painted under it, or to
+  unclaimed. The sidecar's `river_box_texels_given_back` counts them.
+
+Measured on build 502094's reconciled water, on nine 2.5 km tiles with 400 m margins (close
+to a render's counts, not equal to them):
+
+| | Before | After |
+|---|---|---|
+| River texels | 0.277 M | 0.167 M |
+| Straight river edges, runs of 8 m or more (texels) | 3,024 | 681 |
+| The same inside one body | 2,544 | 39 |
+
+The river's texels went to lake (64 k), ocean (40 k), swamp and turquoise (2.8 k each) and
+hot spring (0.8 k); 0.7 k of lake turned river. The 39 are two lake boxes smaller than the
+river box, which keep their class. The rest lie on level steps between two bodies. On the
+field's own planes (`--kernel-only`) the river keeps 0.31 M of 0.38 M texels. On a 3.3 km
+tile the classification takes 0.53 s against 0.29 s, at the same peak memory. The other
+styles draw no class plane and are unchanged; style `satellite-painted` is version 9.
 
 ### The optics
 
@@ -2497,6 +2534,9 @@ distance 1 to 3), not the lightness.
   come from material parameters, not from pictures.
 - Classes change at box edges. Where the water channel is itself built from boxes, as in the
   Red Bamboo terrace lakes near (420, 560), a chain of pools reads as a mosaic of classes.
+- Two bodies more than 0.5 m apart in level are judged apart. Where the field levelled them
+  on two boxes, they meet along a box edge, and the class changes along that straight line:
+  0.64 k texels of river edge on build 502094.
 - Where the swamp's lagoons open onto the sea, swamp turns to ocean along the edge of the
   opening: a line of 48 m arcs across one sheet of water, with nothing in the game to place
   it better.

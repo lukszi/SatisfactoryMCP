@@ -89,7 +89,7 @@ ARTWORK_RECIPES: dict[int, dict] = {
 STYLES: dict[str, dict] = {
     "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 6, "tone": "light"},
     "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 6, "tone": "light"},
-    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 8,
+    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 9,
                           "tone": "light"},
     "relief-muted": {"label": "relief", "layer": "relief", "version": 4, "tone": "light"},
     "relief-night": {"label": "relief dark", "layer": "relief-dark", "version": 4, "tone": "dark"},

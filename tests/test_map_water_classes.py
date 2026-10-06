@@ -15,6 +15,7 @@ pytest.importorskip("scipy")
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM  # noqa: E402
 from mapgen.gamedata.waterbodies import (  # noqa: E402
+    BODY_STEP_M,
     CLASSES,
     HOT_SPRING_BOX_MAX_M,
     MATERIAL_CLASS,
@@ -22,6 +23,7 @@ from mapgen.gamedata.waterbodies import (  # noqa: E402
     WATER_BODIES_NAME,
     body_class,
     classify,
+    level_bodies,
     open_sea,
 )
 from mapgen.palette.painted import (  # noqa: E402
@@ -114,6 +116,105 @@ def test_a_box_claims_only_water_at_its_own_level():
     bodies["actors"].append(["BP_Water_C", _box(0, 0, 60, 60, 200.0), ["SulfurPond_Inst"]])
     plane, _ = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
     assert not (plane == ID["sulfur"]).any()
+
+
+RIVER_BOX = ["BP_River_PROT_C", ["MI_SLW_River_Base_01"]]
+LAKE_BOX = ["BP_Water_C", ["MM_Lake_01"]]
+GRASS = ["Area_GrassFields"]
+
+
+def _actor(kind, c0, r0, c1, r1, z0, z1=None):
+    box = _box(c0, r0, c1, r1, z0)
+    box[5] = (z0 if z1 is None else z1) * 100
+    return [kind[0], box, kind[1]]
+
+
+def _edges_inside_bodies(plane, level):
+    """Neighbouring wet texels of two classes whose levels agree: a seam inside one body."""
+    count = 0
+    for a, b, la, lb in (
+        (plane[:-1], plane[1:], level[:-1], level[1:]),
+        (plane[:, :-1], plane[:, 1:], level[:, :-1], level[:, 1:]),
+    ):
+        with np.errstate(invalid="ignore"):
+            same = np.abs(la - lb) <= BODY_STEP_M
+        count += int(((a != b) & (a > 0) & (b > 0) & same).sum())
+    return count
+
+
+def _lake_and_channel():
+    """An 80x80 world: a lake at 50 m, and a river channel at 51.5 m running into its north
+    shore. The river's box is one AABB around the channel that reaches into the lake."""
+    wet = np.zeros((80, 80), bool)
+    level = np.full((80, 80), np.nan, np.float32)
+    wet[20:70, 10:70] = True
+    level[20:70, 10:70] = 50.0
+    wet[0:20, 35:40] = True
+    level[0:20, 35:40] = 51.5
+    river = _actor(RIVER_BOX, 30, 0, 45, 40, 48.0, 52.0)
+    return level, wet, river
+
+
+def test_a_river_box_reaching_into_a_lake_leaves_the_lake_one_class():
+    """The ribbon draws the river; the box's rectangle in the lake would only draw a seam."""
+    level, wet, river = _lake_and_channel()
+    biome = (np.zeros((80, 80), np.uint8), GRASS)
+    for lake in ([_actor(LAKE_BOX, 5, 15, 75, 75, 50.0)], []):
+        bodies = {"actors": [*lake, river], "hot_springs": []}
+        plane, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
+        assert (plane[20:70, 10:70] == ID["lake"]).all()
+        assert (plane[0:20, 35:40] == ID["river"]).all(), "the channel at its own level is river"
+        assert _edges_inside_bodies(plane, level) == 0
+        assert counts["river_box_texels_given_back"] == 21 * 16, "lake rows 20-40, cols 30-45"
+    labels = level_bodies(wet, level)
+    assert len(np.unique(labels[wet])) == 2 and not labels[~wet].any()
+
+
+def test_a_small_pond_inside_a_big_box_keeps_its_class():
+    wet = np.ones((40, 40), bool)
+    level = np.full((40, 40), 20.0, np.float32)
+    pond = ["BP_Water_C", ["MI_Lake_Turquoise_01"]]
+    bodies = {"actors": [_actor(pond, 10, 10, 15, 15, 20.0), _actor(LAKE_BOX, 0, 0, 40, 40, 20.0)]}
+    plane, _ = classify(level, wet, bodies, (np.zeros((40, 40), np.uint8), GRASS), 0.0)
+    assert (plane[10:16, 10:16] == ID["turquoise"]).all()
+    assert (plane == ID["lake"]).sum() == 40 * 40 - 36
+
+
+def test_a_body_a_river_box_mostly_covers_is_a_river_whole():
+    """A pool the river's box mostly covers is river throughout, over a bigger lake box's
+    claim; a smaller pond's box inside it keeps its class."""
+    wet = np.zeros((60, 60), bool)
+    wet[10:50, 10:50] = True
+    level = np.where(wet, np.float32(30.0), np.nan).astype(np.float32)
+    bodies = {
+        "actors": [
+            _actor(RIVER_BOX, 10, 10, 40, 50, 25.0, 31.0),
+            _actor(LAKE_BOX, 0, 38, 60, 60, 30.0),
+            _actor(["BP_Water_C", ["MI_Lake_Turquoise_01"]], 20, 20, 25, 25, 30.0),
+        ],
+        "hot_springs": [],
+    }
+    plane, counts = classify(level, wet, bodies, (np.zeros((60, 60), np.uint8), GRASS), 0.0)
+    assert (plane[20:26, 20:26] == ID["turquoise"]).all(), "a small pond keeps its own class"
+    rest = wet.copy()
+    rest[20:26, 20:26] = False
+    assert (plane[rest] == ID["river"]).all()
+    assert counts["river_box_texels_given_back"] == 0
+
+
+def test_a_river_box_over_sea_level_water_draws_no_rectangle_in_it():
+    """Sea-level water no box claims is ocean, so a river box over part of it gives way."""
+    n = 240
+    wet = np.zeros((n, n), bool)
+    wet[:, n // 2 :] = True
+    wet[100:140, 40:100] = True
+    wet[116:124, 100 : n // 2] = True
+    level = _sea_level(wet)
+    bodies = {"actors": [_actor(RIVER_BOX, 30, 90, 60, 150, -30.0, 5.0)], "hot_springs": []}
+    biome = (np.zeros((n, n), np.uint8), GRASS)
+    plane, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
+    assert (plane[wet] == OCEAN).all()
+    assert counts["river_box_texels_given_back"] == 40 * 21, "lagoon columns 40-60"
 
 
 def _sea_level(wet):
