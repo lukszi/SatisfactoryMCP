@@ -200,9 +200,9 @@ the baked ground colour, the crown tops, the cliff families and the seabed coral
 style classes its water from, and the tree crowns (section 36) whose measured crown tops
 replace version 2's estimate, so a version 1 or 2 store reads as stale.
 
-The game-painted layer also lists two readers, `rock_families` (each rock's cliff family, in
-the direct raster) and `titan_trees` (the Titan forest raster), compared like any reader
-version. A render with `--no-titan-trees` omits the second and records its own style digest.
+The game-painted layer also lists two readers, `rock_families` (each rock's material family
+in the direct raster: the cliff layers, and desert rock since version 2) and `titan_trees`
+(the Titan forest raster), compared like any reader version. A render with `--no-titan-trees` omits the second and records its own style digest.
 
 ### 3.5 Names and order
 

@@ -43,7 +43,7 @@ READER_VERSIONS = {
     "cliff_geometry": HEIGHTFIELD_GENERATOR_VERSION,
     "render_meshes": 2,
     "river_splines": 1,
-    "rock_families": 1,
+    "rock_families": 2,
     "titan_trees": 1,
     "waterfalls": 1,
 }
@@ -93,7 +93,7 @@ STYLES: dict[str, dict] = {
     "satellite-biome": {"label": "satellite", "name": "Satellite", "layer": "satellite",
                         "version": 8, "tone": "light"},
     "satellite-painted": {"label": "game-painted", "name": "Painted", "layer": "painted",
-                          "version": 11, "tone": "light"},
+                          "version": 12, "tone": "light"},
     "relief-muted": {"label": "relief", "name": "Relief", "layer": "relief", "version": 6,
                      "tone": "light"},
     "relief-night": {"label": "relief dark", "name": "Relief (dark)", "layer": "relief-dark",

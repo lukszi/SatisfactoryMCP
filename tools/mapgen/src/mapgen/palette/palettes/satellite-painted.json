@@ -466,13 +466,16 @@
   "layers": {
    "Sand_LayerInfo": "#d5cbb6",
    "WetSand_LayerInfo": "#b1a09e",
-   "SandRipples_LayerInfo": "#d07756",
+   "SandRipples_LayerInfo": "#ca784f",
    "Grass_LayerInfo": "#83986e",
    "Forest_LayerInfo": "#558653"
   },
   "canopy": "#558653",
   "rock": "#85816c",
   "rock_keeps_exposure": true,
+  "families": {
+   "desert": "#ae8271"
+  },
   "meshes": {
    "coral": "#99868e",
    "coral_seabed": "#5f8899"

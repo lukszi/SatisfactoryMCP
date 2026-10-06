@@ -228,6 +228,24 @@ def test_a_material_walks_its_parents_to_its_cliff_family(monkeypatch):
     )
 
 
+def test_desert_rock_roots_the_desert_family_and_reads_no_cliff_colour(monkeypatch):
+    base = "/Game/FactoryGame/World/Environment/Rock/DesertRock/Material/"
+    chain = {
+        base + "MI_DesertRock_05_Vista": _View(parent=base + "MI_DesertRock_05"),
+        base + "MI_DesertRock_05": _View(parent=base + "MI_DesertRock"),
+        base + "MI_DesertRock": _View(parent="/Game/FactoryGame/World/Environment/Rock/M_Rock"),
+    }
+    monkeypatch.setattr(rockfamily, "_view", lambda _s, _c, _i, package: chain.get(package))
+    desert = rockfamily.FAMILIES.index("desert")
+    for leaf in ("MI_DesertRock_05_Vista", "MI_DesertRock_05", "MI_DesertRock"):
+        assert rockfamily.family_of(None, None, None, base + leaf, {}) == desert
+    opened: list[str] = []
+    monkeypatch.setattr(rockfamily, "_view", lambda _s, _c, _i, package: opened.append(package))
+    sources = rockfamily.family_sources(None, None, None)
+    assert "desert" not in sources and "cliff" in sources, "the palette's target colours it"
+    assert not any("DesertRock" in package for package in opened)
+
+
 def test_an_override_wins_over_the_mesh_s_own_material(monkeypatch):
     monkeypatch.setattr(rockfamily, "mesh_material", lambda *a: rockfamily.ROOT_DIR + "Cliff_Sand")
     sweep = {
@@ -378,6 +396,7 @@ def test_a_mesh_raster_is_reused_when_its_stamp_matches(tmp_path, capsys):
 def test_the_direct_cache_carries_the_family_reader_and_its_plane(tmp_path):
     stamp = direct_cache_stamp(8, 1, "build 1")
     assert stamp["families"] == READER_VERSIONS["rock_families"]
+    assert READER_VERSIONS["rock_families"] >= 2, "a plane without the desert family is a miss"
     np.zeros((8, 8), np.float32).tofile(tmp_path / DIRECT_Z_NAME)
     np.zeros((8, 8), np.uint8).tofile(tmp_path / DIRECT_COVERAGE_NAME)
     (tmp_path / DIRECT_CACHE_SIDECAR).write_text(json.dumps(stamp), encoding="utf-8")

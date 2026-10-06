@@ -13,6 +13,7 @@ np = pytest.importorskip("numpy")
 pytest.importorskip("scipy")
 
 from mapgen.gamedata.paint import LAYERS  # noqa: E402
+from mapgen.gamedata.rockfamily import FAMILIES  # noqa: E402
 from mapgen.gamedata.waterbodies import CLASSES  # noqa: E402
 from mapgen.palette.calibration import scoped_planes  # noqa: E402
 from mapgen.palette.painted import (  # noqa: E402
@@ -28,6 +29,7 @@ from mapgen.palette.painted import (  # noqa: E402
     linear_to_srgb,
     oklab,
     painted_colours,
+    rock_surface,
     split_weight,
     srgb_to_linear,
     tone,
@@ -78,7 +80,7 @@ def _area_targets() -> list[str]:
 
 @pytest.mark.parametrize(
     "target",
-    ["#d5cbb6", "#d07756", "#558653", "#ae8271", "#99868e", "#b1a09e", "#85816c", *_area_targets()],
+    ["#d5cbb6", "#ca784f", "#558653", "#ae8271", "#99868e", "#b1a09e", "#85816c", *_area_targets()],
 )
 def test_a_display_target_survives_the_trip_back_through_light_and_tone(target):
     lab = display_to_ground(PAINTED_PALETTE, target)
@@ -246,6 +248,48 @@ def test_rock_takes_its_area_target_and_the_default_elsewhere_at_full_exposure()
         lab = oklab(rock[r, c])
         np.testing.assert_allclose(lab[1:], display_to_ground(p, target)[1:], atol=2e-3)
         assert lab[0] == pytest.approx(display_to_ground(p, target)[0], abs=2e-3)
+
+
+def test_a_desert_family_rock_takes_the_desert_target_in_any_area():
+    index = np.zeros((32, 32), np.uint8)
+    index[:, 16:] = 1
+    ground = _bare_ground(
+        ["Area_A", "Area_B"],
+        [],
+        index,
+        {
+            "area_blur_m": 0.4,
+            "min_texels": 4,
+            "rock": "#85816c",
+            "families": {"desert": "#ae8271"},
+            "areas": [{"areas": ["Area_B"], "rock": "#51524d"}],
+        },
+    )
+    ground.meta, ground.source = {"albedo_linear": {"rock": [0.2, 0.2, 0.2]}}, {}
+    albedo = np.random.default_rng(5).uniform(0.15, 0.35, (32, 32, 3)).astype(np.float32)
+    ground.rock = ground._rock(albedo)
+    desert = FAMILIES.index("desert")
+    plane = np.zeros((1875, 1875), np.uint8)  # one pixel per 4 m cell of the frame
+    plane[:8, 4:8] = desert
+    ground.attach_families(plane)
+    assert ground.source["rock_family_targets"]["desert"]["cells"] == 32
+    p = ground.palette
+    own = oklab(np.stack(ground.family_rock[desert], -1)[:8, 4:8].reshape(-1, 3))
+    want = display_to_ground(p, "#ae8271")
+    np.testing.assert_allclose(own[:, 1:], np.broadcast_to(want[1:], own[:, 1:].shape), atol=2e-3)
+    assert np.median(own[:, 0]) == pytest.approx(want[0], abs=2e-3)
+    # Drawn: the desert rock on the grey area wears the desert target, its neighbour of no
+    # family keeps the area's rock.
+    ground.rock_family = np.array([[desert, 0], [desert, 0]], np.uint8)
+    ground.family_tint = np.ones((len(FAMILIES), 3), np.float32)
+    ground.family_top = np.zeros((len(FAMILIES), 3), np.float32)
+    ground.family_has_top = np.zeros(len(FAMILIES), np.float32)
+    sample = lambda plane: plane[2:4, 6:8]
+    area_rock = np.stack([sample(plane) for plane in ground.rock], -1)
+    scene = {"z_m": np.zeros((2, 2), np.float32), "grid": (slice(0, 2), 0, 2, 0, 2, 0.25)}
+    out = rock_surface(area_rock, scene, ground, sample)
+    np.testing.assert_allclose(oklab(out[0, 0])[1:], want[1:], atol=2e-3)
+    np.testing.assert_allclose(oklab(out[0, 1])[1:], display_to_ground(p, "#51524d")[1:], atol=2e-3)
 
 
 def _water_ground(opaque):

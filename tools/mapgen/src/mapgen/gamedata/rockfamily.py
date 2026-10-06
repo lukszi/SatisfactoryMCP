@@ -1,9 +1,10 @@
-"""Which cliff material family each placed rock wears, and what that family's top layer is.
+"""Which material family each placed rock wears, and what a cliff family's top layer is.
 
 A cliff mesh is placed with an override material whose parent chain ends in one of the
 ``Cliff_<Layer>`` instances: that instance names the ground texture laid over the rock's
-up-facing faces, and the chain carries the cliff's ``Color Tint``. docs/spatial-and-map.md
-section 30 has the measurements.
+up-facing faces, and the chain carries the cliff's ``Color Tint``. A desert rock mesh wears
+an ``MI_DesertRock_*`` instance of ``MI_DesertRock``. docs/spatial-and-map.md sections 30
+and 31 have the measurements.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ __all__ = [
     "FAMILIES",
     "FAMILY_ROOTS",
     "MAX_CHAIN",
+    "TARGET_ONLY",
     "TINT_PARAMETER",
     "TOP_TEXTURE_PARAMETERS",
     "family_of",
@@ -28,8 +30,10 @@ __all__ = [
     "placement_families",
 ]
 
-#: Family codes, as the direct raster's family plane stores them. 0 is "not a cliff family".
-FAMILIES = ("none", "cliff", "forest", "grass", "redgrass", "sand", "wetsand", "redjungle")
+#: Family codes, as the direct raster's family plane stores them. 0 is "no family".
+FAMILIES = (
+    "none", "cliff", "forest", "grass", "redgrass", "sand", "wetsand", "redjungle", "desert",
+)  # fmt: skip
 
 #: The material instances that root a family, by leaf name.
 FAMILY_ROOTS = {
@@ -40,7 +44,10 @@ FAMILY_ROOTS = {
     "Cliff_Sand": "sand",
     "Cliff_WetSand": "wetsand",
     "Cliff_RedJungle": "redjungle",
+    "MI_DesertRock": "desert",
 }
+#: Families with no ``Color Tint`` or top layer to read: the palette's target colours them.
+TARGET_ONLY = frozenset({"desert"})
 ROOT_DIR = "/Game/FactoryGame/World/Environment/Rock/Cliff/Material/"
 TINT_PARAMETER = "Color Tint"
 #: The family's top-layer texture, the far one first: the map sees the rock from afar.
@@ -148,6 +155,8 @@ def family_sources(store, scripts, index) -> dict[str, dict]:
     """Per family: its ``Color Tint`` (the nearest one up the chain) and top-layer texture."""
     out: dict[str, dict] = {}
     for leaf, family in FAMILY_ROOTS.items():
+        if family in TARGET_ONLY:
+            continue
         tint, top, current = None, None, ROOT_DIR + leaf
         for _ in range(MAX_CHAIN):
             view = _view(store, scripts, index, current)

@@ -138,7 +138,7 @@ be traced to the axis it should move.
 | `gamedata/mesh.py` | data | Mesh decode, `MaxZRaster`, cliff and top rasters, water-actor boxes |
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
 | `gamedata/bake.py` | data | The landscape's baked ground colour and the layer refit |
-| `gamedata/rockfamily.py` | data | Cliff material families: per placement, tint and top layer |
+| `gamedata/rockfamily.py` | data | Rock material families (the cliff layers and desert rock): per placement, tint and top layer |
 | `gamedata/carpet.py` | data | The seabed coral carpet's harvest and planes, written by the paint command |
 | `gamedata/crowns.py` | data | Tree crown sprites from LOD 0, tree records, the crown top plane |
 | `gamedata/biome.py` | data | Biome raster and its calibration |

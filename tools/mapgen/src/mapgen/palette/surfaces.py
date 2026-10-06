@@ -1,5 +1,5 @@
-"""What stands on the painted ground: rock in its cliff family's colour, the canopy over rock,
-and the render-only meshes. docs/spatial-and-map.md sections 27, 30 and 31.
+"""What stands on the painted ground: rock in its family's colour, the canopy over rock, and
+the render-only meshes. docs/spatial-and-map.md sections 27, 30 and 31.
 """
 
 from __future__ import annotations
@@ -7,15 +7,19 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
+from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.rockfamily import FAMILIES
-from mapgen.palette.calibration import sampled_rgb
+from mapgen.palette.calibration import display_to_ground, sampled_rgb
+from mapgen.palette.colour import linear_from_oklab
 from mapgen.terrain.rasters import MESH_CORAL
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "SPECK_WATER",
     "canopy_over_rock",
+    "family_cells",
     "family_tables",
+    "family_targets",
     "mesh_surface",
     "rock_surface",
     "sunk_specks",
@@ -53,12 +57,51 @@ def family_tables(families: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return tint, top, has_top
 
 
-def rock_surface(rock_rgb, scene: dict, ground) -> np.ndarray:
-    """Rock in its cliff family's tint, with the family's top layer on its up-facing faces."""
+def family_cells(plane, shape: tuple[int, int], step_m: float) -> np.ndarray:
+    """The family plane's code at each point of a ``step_m`` grid from the frame's corner: the
+    code of the pixel the point falls in."""
+    span_m = BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]
+    picks = [
+        np.clip(np.floor(np.arange(n) * step_m * size / span_m), 0, size - 1).astype(int)
+        for n, size in zip(shape, plane.shape, strict=True)
+    ]
+    return np.asarray(plane[picks[0]][:, picks[1]])
+
+
+def family_targets(base_lab, codes, targets: dict, palette: dict, min_cells: int):
+    """Per family with a target, its rock on the rock grid, and the step measured for it.
+
+    ``base_lab`` is the rock grid in OKLab before any target, ``codes`` the family under each
+    cell. As for an area target, chroma and hue become the target's and the lightness moves
+    by the step from the median of the family's own cells to the target's.
+    """
+    planes, measured = {}, {}
+    for name, hex_colour in targets.items():
+        own = codes == FAMILIES.index(name)
+        if own.sum() < min_cells:
+            continue
+        target = display_to_ground(palette, hex_colour)
+        lab = base_lab.copy()
+        step = float(target[0] - np.median(base_lab[own][:, 0]))
+        lab[..., 0] += np.float32(step)
+        lab[..., 1:] = target[1:]
+        rgb = np.clip(linear_from_oklab(lab), 0.0, 1.0)
+        planes[FAMILIES.index(name)] = [rgb[..., k].astype(np.float32) for k in range(3)]
+        measured[name] = {"cells": int(own.sum()), "dL": round(step, 4)}
+    return planes, measured
+
+
+def rock_surface(rock_rgb, scene: dict, ground, sample_rock=None) -> np.ndarray:
+    """Rock in its family's colour: the family's own target where it has one, else the area's
+    rock in the family's tint, with the family's top layer on its up-facing faces."""
     if ground.rock_family is None:
         return rock_rgb
     band, *_sheet, spacing_m = scene["grid"]
     code = np.asarray(ground.rock_family[band])
+    for which, planes in getattr(ground, "family_rock", {}).items():
+        hit = (code == which)[..., None]
+        if hit.any():
+            rock_rgb = np.where(hit, sampled_rgb(planes, sample_rock), rock_rgb)
     rgb = rock_rgb * ground.family_tint[code]
     d_south, d_east = np.gradient(scene["z_m"], spacing_m)
     nz = 1.0 / np.sqrt(1.0 + d_east * d_east + d_south * d_south)
