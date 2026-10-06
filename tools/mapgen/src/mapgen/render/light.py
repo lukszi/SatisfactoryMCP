@@ -12,7 +12,7 @@ import argparse
 import shutil
 import time
 import traceback
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
@@ -165,7 +165,7 @@ class LightingRun:
         self.light_workers = light_workers
         self.captured = False
         self.meta: JsonObject | None = None
-        self.unlit: dict[str, dict] = {}
+        self.unlit: dict[str, JsonObject] = {}
 
     def surface_for(self) -> Surface | None:
         """The surface to capture into: only the first layer draws it, all draw the same."""
@@ -183,7 +183,7 @@ class LightingRun:
         workers: int,
         recipe: int,
         renders_name: str,
-    ) -> tuple[dict, dict, float]:
+    ) -> tuple[JsonObject, JsonObject, float]:
         """``install_layer``'s contract, plus ``unlit/``; the first call bakes the light.
 
         Above one worker the unlit tree encodes while the sheet is relit, from its own copy.
@@ -229,7 +229,7 @@ class LightingRun:
         layer: str,
         recipe: int,
         renders_name: str,
-    ) -> tuple[dict, dict, float]:
+    ) -> tuple[JsonObject, JsonObject, float]:
         directory = layer_dir(out_dir, layer, renders_name)
         directory.mkdir(parents=True, exist_ok=True)
         started = time.time()
@@ -275,7 +275,7 @@ class LightingRun:
 @contextmanager
 def light_run(
     root: Path | None, size: int, painted: PaintedGround | None, workers: int | None = None
-) -> Iterator[LightingRun | None]:
+) -> Generator[LightingRun | None, None, None]:
     """The run's light stage in ``root``, crowns first, its scratch deleted however the run
     ends, the crowns' and the surface's failures included; or None without the light."""
     if root is None:

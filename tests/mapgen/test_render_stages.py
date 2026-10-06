@@ -16,7 +16,13 @@ from mapgen.common import Refusal
 from mapgen.render import cached_rasters
 from mapgen.render.cached_rasters import UNREADABLE_RASTER, LevelSweep, RasterGrid, stamped_raster
 from mapgen.render.extras import RUN_CACHE_DIRS, remove_run_caches
-from mapgen.tiles.layer_meta import LayerDraw, RenderFacts, RunRecord, layer_provenance, render_block
+from mapgen.tiles.layer_meta import (
+    LayerDraw,
+    RenderFacts,
+    RunRecord,
+    layer_provenance,
+    render_block,
+)
 
 
 def test_the_levels_are_swept_once_whatever_asks_first(monkeypatch):

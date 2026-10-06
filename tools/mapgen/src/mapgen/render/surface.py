@@ -258,7 +258,7 @@ def band_water_terms(
     reach: np.ndarray | None,
     linear: GridTaps,
     spacing_m: float,
-) -> dict:
+) -> dict[str, np.ndarray]:
     """Recipe 5's water, and within ``reach`` of the sea the ocean's crossing rule. ``wet``
     rides along for the rivers: past the last wet texel, the edge's blur is no water."""
     old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)

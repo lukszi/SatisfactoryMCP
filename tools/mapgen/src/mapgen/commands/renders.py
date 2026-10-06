@@ -33,12 +33,7 @@ from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import LAYER_STYLES, RELIEF_PALETTES, SHORE_OPTICS, STYLE_DIGESTS
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.perched import WaterSurfaces
-from mapgen.palette.water.surface import (
-    WATER_DEPTH_FULL_M,
-    WATER_EDGE_BLUR_M,
-    WATER_EDGE_M,
-    drawn_water,
-)
+from mapgen.palette.water.surface import drawn_water
 from mapgen.render.biome_inputs import BiomeInputs, read_biome_inputs
 from mapgen.render.cached_rasters import LevelSweep, RasterGrid, direct_raster, top_raster
 from mapgen.render.compose import render_layer
@@ -58,17 +53,22 @@ from mapgen.render.inputs import (
     rebuilt_lattice,
     refuse_restyle_gaps,
     refuse_stale_layers,
+    water_record,
 )
 from mapgen.render.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.render.light import LightingRun, add_light_flags, claim_scratch, light_run
-from mapgen.render.surface import DIRECT_LIFT_KNEE_M
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.rasters import DIRECT_SUBSAMPLES
 from mapgen.terrain.sample import taps_cubic, taps_pchip
 from mapgen.tiles.layer_meta import LayerDraw, RenderFacts, RunRecord, layer_sidecar
-from mapgen.tiles.pyramid import add_worker_flags, install_layer, layer_dir, pool_sizes
+from mapgen.tiles.pyramid import (
+    add_worker_flags,
+    install_layer,
+    layer_dir,
+    pool_sizes,
+    tree_megabytes,
+)
 from mapgen.tiles.recipes import RECIPE_KERNEL_ONLY
-from mapgen.tiles.rendertext import LEVEL_ONLY_TEXT
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME
 from satisfactory_mcp.core.gameassets.provenance import changelist
 from satisfactory_mcp.core.gameassets.pyramid import PyramidError
@@ -254,8 +254,8 @@ def _prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) ->
         spacing_m=spacing_m,
         subsamples=args.direct_subsamples,
         two_regime=direct is not None,
-        composition=_composition_record(lattice, top is not None),
-        water=_water_record(water, sea, extras.river_meta, spacing_m, water_source),
+        composition=lattice.composition(top_overlay=top is not None),
+        water=water_record(water, sea, extras.river_meta, spacing_m, water_source),
         cut_workers=setup.cut_workers,
         parallel_check=parallel_check,
         pillow_version=versions["pillow"],
@@ -311,49 +311,6 @@ def _rasters(
         top = TopPlanes(top_z, top_coverage, args.direct_subsamples)
         sources = {**sources, **top_source}
     return direct, top, sources
-
-
-def _composition_record(lattice: Lattice, top_overlay: bool) -> JsonObject:
-    """``_meta.render.two_regime``'s record of the run's lattices and its lift rule."""
-    return {
-        "ground_lattice": lattice.ground_meta,
-        "terrain_lattice": lattice.terrain_meta,
-        "top_overlay": top_overlay,
-        "measurement_rule": lattice.measurement_rule,
-        "lift_knee_m": DIRECT_LIFT_KNEE_M,
-        "fill_rebuild": lattice.fill_meta,
-    }
-
-
-def _water_record(
-    water: WaterSurfaces,
-    sea: OpenSea | None,
-    river_meta: JsonObject,
-    spacing_m: float,
-    source: str,
-) -> JsonObject:
-    """``_meta.render.water`` as every layer says it; the shore's optics are each style's."""
-    shore = None
-    if water.reach is not None:
-        shore = {
-            **water.reach_meta,
-            "rule": (
-                "within reach_m of measured ocean water, coverage is the drawn "
-                "surface crossing level_m, antialiased to one pixel; elsewhere "
-                "recipe 5's rule"
-            ),
-        }
-    return {
-        "source": source,
-        "depth_ramp_m": WATER_DEPTH_FULL_M,
-        "edge_feather_m": WATER_EDGE_M,
-        "edge_blur_m": WATER_EDGE_BLUR_M,
-        "edge_blur_px": round(WATER_EDGE_BLUR_M / spacing_m, 3),
-        "shore": shore,
-        "perched": water.perched,
-        "level_only": LEVEL_ONLY_TEXT if sea is None else sea.meta,
-        "rivers": river_meta or None,
-    }
 
 
 def _draw_layers(
@@ -420,12 +377,15 @@ def _draw_layers(
             json.dumps(sidecar, indent=1), encoding="utf-8"
         )
         print(
-            f"wrote {directory}  {stats['count']} tiles over "
-            f"z0..z{stats['max_z']} ({stats['bytes'] / 1e6:.1f} MB) plus {dense['count']} "
-            f"@2x over z0..z{dense['max_z']} ({dense['bytes'] / 1e6:.1f} MB)  "
+            f"wrote {directory}  {_tree_text(stats, 'tiles')} plus {_tree_text(dense, '@2x')}  "
             f"(drew {drew:.0f}s, cut {cut:.0f}s)"
         )
         print(encode_stage(f"cut:{layer}", 1.0), flush=True)
+
+
+def _tree_text(tree: JsonObject, noun: str) -> str:
+    """``N <noun> over z0..zM (S MB)`` for a tile tree an install recorded."""
+    return f"{tree['count']} {noun} over z0..z{tree['max_z']} ({tree_megabytes(tree):.1f} MB)"
 
 
 def _report_measured(measured: JsonObject) -> None:

@@ -36,6 +36,7 @@ from satisfactory_mcp.core.gameassets.pyramid import (
     pyramid_top_z,
     stage_tree,
 )
+from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
     "CUT_WORKERS",
@@ -178,7 +179,7 @@ class Source:
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *_exc) -> None:
+    def __exit__(self, *_exc: object) -> None:
         self.close()
 
 
@@ -204,19 +205,19 @@ class Cutter:
         self.encoders = ProcessPoolExecutor(max_workers=workers, mp_context=spawn)
         self.threads = ThreadPoolExecutor(max_workers=threads, thread_name_prefix="lanczos")
         self.blocks: list[Block] = []
-        self.inflight: set[Future] = set()
+        self.inflight: set[Future[int]] = set()
 
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *_exc) -> None:
+    def __exit__(self, *_exc: object) -> None:
         self.threads.shutdown(wait=True, cancel_futures=True)
         self.encoders.shutdown(wait=True, cancel_futures=True)
         gc.collect()
         for block in self.blocks:
             block.free()
 
-    def _track(self, future: Future[T]) -> Future[T]:
+    def _track(self, future: Future[int]) -> Future[int]:
         self.inflight.add(future)
         future.add_done_callback(self.inflight.discard)
         return future
@@ -256,10 +257,11 @@ class Cutter:
         left, failures = [len(spans)], list[BaseException]()
         lock = threading.Lock()
 
-        def strip(r0: int, r1: int) -> None:
+        def strip(r0: int, r1: int) -> int:
             resample_strip(self.image_mod, source.pixels, out.pixels, r0, r1)
+            return r1 - r0
 
-        def done(future: Future[None]) -> None:
+        def done(future: Future[int]) -> None:
             # Settled only once every strip has stopped writing: a failure settled early
             # would let the level be freed under the strips still running.
             with lock:
@@ -310,9 +312,9 @@ class Cutter:
         block.ready.add_done_callback(submit)
         return jobs
 
-    def install(self, tree: Tree) -> dict:
+    def install(self, tree: Tree) -> JsonObject:
         """Wait for every tile of ``tree``, then check it and rename it into place."""
-        levels: list[dict] = []
+        levels: list[JsonObject] = []
         for z in sorted(tree.levels):
             written = sum(future.result() for future in tree.levels[z].result())
             levels.append(level_record(z, written, tree.text, tree.tile_px))

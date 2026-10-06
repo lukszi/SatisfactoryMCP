@@ -38,6 +38,7 @@ __all__ = [
     "layer_dir",
     "pool_sizes",
     "queue_layer",
+    "tree_megabytes",
 ]
 
 
@@ -83,6 +84,12 @@ def layer_dir(out_dir: Path, layer: str, renders_name: str = RENDERS_DIR_NAME) -
     return out_dir / renders_name / layer
 
 
+def tree_megabytes(tree: JsonObject) -> float:
+    """The megabytes a tile tree's install record says it wrote."""
+    size = tree.get("bytes")
+    return size / 1e6 if isinstance(size, int | float) else 0.0
+
+
 def queue_layer(cutter: Cutter, source: Source, directory: Path, text: str) -> tuple[Tree, Tree]:
     """Queue ``tiles/``, then ``tiles@2x/`` cut from a downscale capped at ``RENDER_2X_PX``.
 
@@ -102,7 +109,7 @@ def install_layer(
     workers: int,
     recipe: int = RECIPE,
     renders_name: str = RENDERS_DIR_NAME,
-) -> tuple[dict, dict, float]:
+) -> tuple[JsonObject, JsonObject, float]:
     """Cut one layer's two pyramids into place, and say what they wrote and how long it took.
 
     ``tiles/`` first, because that is what every client can read, then ``tiles@2x/``, which
@@ -126,7 +133,7 @@ def install_layer(
 
 def serial_layer(
     sheet: Image, image_mod: ModuleType, directory: Path, text: str
-) -> tuple[dict, dict]:
+) -> tuple[JsonObject, JsonObject]:
     """``queue_layer``'s two trees, one tile at a time in this process."""
     stats = install_pyramid(sheet, image_mod, directory, source=text)
     dense_px = min(sheet.width, RENDER_2X_PX)

@@ -9,6 +9,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.tiles.pyramid import tree_megabytes
 from mapgen.tiles.recipes import ENHANCE_RECIPE, UNNUMBERED_RECIPE
 from satisfactory_mcp.core.gameassets.container import (
     MIP0_BYTES,
@@ -74,24 +75,21 @@ def install_artwork_trees(
     image_mod: ModuleType,
     out_dir: Path,
     *,
-    enhance: Callable[[Path], dict] | None,
+    enhance: Callable[[Path], JsonObject] | None,
     with_2x: bool,
     build_pin: str,
-) -> tuple[dict, dict | None]:
+) -> tuple[JsonObject, JsonObject | None]:
     """Install the 1x tree, then the @2x one on its own. Returns their sidecar blocks.
 
     A failure in the second leaves the first where it is. ``install_pyramid``'s and
     ``enhance``'s exceptions pass through to the caller.
     """
-    tiles = install_pyramid(sheet, image_mod, out_dir, enhance=enhance)
+    tiles: JsonObject = install_pyramid(sheet, image_mod, out_dir, enhance=enhance)
     tiles["game_version_pinned"] = build_pin
-    print(
-        f"wrote {out_dir / TILES_DIR_NAME}  {tiles['count']} tiles over z0..z{tiles['max_z']}  "
-        f"{tiles['bytes']} B  ({tiles['bytes'] / 1e6:.1f} MB)"
-    )
+    print(f"wrote {out_dir / TILES_DIR_NAME}  {_tree_text(tiles)}")
 
     # Never enhanced: @2x level z is 1x level z+1, so the upscaled levels stay reachable.
-    tiles_2x = None
+    tiles_2x: JsonObject | None = None
     if with_2x:
         tiles_2x = install_pyramid(
             sheet,
@@ -101,12 +99,16 @@ def install_artwork_trees(
             dir_name=TILES_2X_DIR_NAME,
         )
         tiles_2x["game_version_pinned"] = build_pin
-        print(
-            f"wrote {out_dir / TILES_2X_DIR_NAME}  {tiles_2x['count']} tiles over "
-            f"z0..z{tiles_2x['max_z']}  {tiles_2x['bytes']} B  "
-            f"({tiles_2x['bytes'] / 1e6:.1f} MB)"
-        )
+        print(f"wrote {out_dir / TILES_2X_DIR_NAME}  {_tree_text(tiles_2x)}")
     return tiles, tiles_2x
+
+
+def _tree_text(tree: JsonObject) -> str:
+    """``N tiles over z0..zM  B B  (S MB)`` for a tree ``install_pyramid`` recorded."""
+    return (
+        f"{tree['count']} tiles over z0..z{tree['max_z']}  {tree['bytes']} B  "
+        f"({tree_megabytes(tree):.1f} MB)"
+    )
 
 
 def pinned_build(sidecar: Mapping[str, object]) -> str | None:

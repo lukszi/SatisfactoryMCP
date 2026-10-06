@@ -101,6 +101,8 @@ _FLAT_SUN = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
 
 #: A style's colours for one band's scene, sRGB 0..255.
 Painter: TypeAlias = Callable[[dict[str, object]], np.ndarray]
+#: How a painter reads a plane of its own grid over a band.
+PlaneReader: TypeAlias = Callable[[np.ndarray], np.ndarray]
 
 
 @runtime_checkable
@@ -403,8 +405,8 @@ def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> np.nd
         rgb = relief_colours(
             _as_painter_dict(scene),
             job.relief,
-            lambda plane, taps=grid.linear: sample_plain(plane, taps),
-            lambda plane, rows=biome_rows: plane[np.ix_(rows, job.biome_cols)],
+            _sampler(grid.linear),
+            _picker(biome_rows, job.biome_cols),
         )
     else:
         rgb = _style_colours(job, grid, scene)
@@ -469,8 +471,8 @@ def _painted_colours(
     return painted_colours(
         _as_painter_dict(scene),
         ground,
-        lambda plane, taps=paint: sample_plain(plane, taps),
-        lambda plane, taps=rock: sample_plain(plane, taps),
+        _sampler(paint),
+        _sampler(rock),
     )
 
 
@@ -490,6 +492,24 @@ def domed_crowns(
     dome = stamped["dome_m"] * np.float32(painted.palette["crowns"]["dome_gain"])
     stamped["ndl"] = np.full(dome.shape, _FLAT_SUN) if unlit else sun_dot(dome, spacing_m)
     return cast(CrownBand, stamped)
+
+
+def _sampler(taps: GridTaps) -> PlaneReader:
+    """A plane interpolated at ``taps``: the painters' way to read the field's grids."""
+
+    def sample(plane: np.ndarray) -> np.ndarray:
+        return sample_plain(plane, taps)
+
+    return sample
+
+
+def _picker(rows: np.ndarray, cols: np.ndarray) -> PlaneReader:
+    """A plane's texels at ``rows`` by ``cols``: the biome raster read nearest."""
+
+    def pick(plane: np.ndarray) -> np.ndarray:
+        return plane[np.ix_(rows, cols)]
+
+    return pick
 
 
 def _as_painter_dict(scene: BandScene) -> dict[str, object]:

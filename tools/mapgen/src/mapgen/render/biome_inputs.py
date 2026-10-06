@@ -86,7 +86,7 @@ def read_biome_inputs(
     return BiomeInputs(biome, drawn, biome_colour_field(biome, table), source, provenance)
 
 
-def _print_calibration(calibration: dict) -> None:
+def _print_calibration(calibration: JsonObject) -> None:
     print(
         f"  calibration: edge ratio {calibration['edge_ratio_at_the_pin']} at the pin "
         f"against {calibration['edge_ratio_at_the_best_rival_shift']} for the best "
@@ -102,7 +102,7 @@ def _print_calibration(calibration: dict) -> None:
         )
 
 
-def _print_agreement(agreement: dict) -> None:
+def _print_agreement(agreement: JsonObject) -> None:
     if "skipped" in agreement:
         print(f"  region table: {agreement['skipped']}")
         return
@@ -120,7 +120,11 @@ def _print_agreement(agreement: dict) -> None:
 
 
 def _biome_source(
-    biome: dict, drawn: list[str], calibration: dict, agreement: dict, pyooz_version: str
+    biome: dict,
+    drawn: list[str],
+    calibration: JsonObject,
+    agreement: JsonObject,
+    pyooz_version: str,
 ) -> JsonObject:
     """``sources.biome_raster``: the asset, how it was read and checked, and this palette."""
     asset = MAP_AREA_PATH.split("/FactoryGame/Content/")[1].rsplit(".", 1)[0]

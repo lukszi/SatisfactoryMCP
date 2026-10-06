@@ -1,7 +1,8 @@
 """The renders command's inputs: the field and its lattices, the game, the borrow, the paint.
 
 Each stage prints what it found, and raises ``Refusal`` with the command's exit code when the
-run cannot go on (docs/spatial-and-map.md section 20, "Refusals").
+run cannot go on (docs/spatial-and-map.md section 20, "Refusals"). The lattices and the water
+also say what every layer's sidecar records of them.
 """
 
 from __future__ import annotations
@@ -29,13 +30,22 @@ from mapgen.lighting.borrow import (
 from mapgen.palette.painted.albedo import load_paint_meta
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.styles import painted_style
-from mapgen.palette.water.surface import water_planes
+from mapgen.palette.water.open_sea import OpenSea
+from mapgen.palette.water.perched import WaterSurfaces
+from mapgen.palette.water.surface import (
+    WATER_DEPTH_FULL_M,
+    WATER_EDGE_BLUR_M,
+    WATER_EDGE_M,
+    water_planes,
+)
 from mapgen.render.cached_rasters import RasterGrid
+from mapgen.render.surface import DIRECT_LIFT_KNEE_M
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
 from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
 from mapgen.terrain.sample import direct_mask
 from mapgen.tiles.pyramid import check_parallel, layer_dir
 from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
+from mapgen.tiles.rendertext import LEVEL_ONLY_TEXT
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, pinned_field_build
 from satisfactory_mcp.core.gameassets.container import (
     SHEET_PX,
@@ -83,6 +93,7 @@ __all__ = [
     "rebuilt_lattice",
     "refuse_restyle_gaps",
     "refuse_stale_layers",
+    "water_record",
 ]
 
 #: The renders command's exit codes for the runs these stages refuse.
@@ -111,6 +122,17 @@ class Lattice:
     ground_meta: JsonObject
     terrain_meta: JsonObject
     fill_meta: JsonObject
+
+    def composition(self, *, top_overlay: bool) -> JsonObject:
+        """``_meta.render.two_regime``'s record of these lattices and the lift rule."""
+        return {
+            "ground_lattice": self.ground_meta,
+            "terrain_lattice": self.terrain_meta,
+            "top_overlay": top_overlay,
+            "measurement_rule": self.measurement_rule,
+            "lift_knee_m": DIRECT_LIFT_KNEE_M,
+            "fill_rebuild": self.fill_meta,
+        }
 
 
 @dataclass(frozen=True)
@@ -330,6 +352,37 @@ def field_water_source(field: hf.Field) -> str:
     _wet, _measured, source = water_planes(field)
     print(f"  water: {source}")
     return source
+
+
+def water_record(
+    water: WaterSurfaces,
+    sea: OpenSea | None,
+    river_meta: JsonObject,
+    spacing_m: float,
+    source: str,
+) -> JsonObject:
+    """``_meta.render.water`` as every layer says it; the shore's optics are each style's."""
+    shore = None
+    if water.reach is not None:
+        shore = {
+            **water.reach_meta,
+            "rule": (
+                "within reach_m of measured ocean water, coverage is the drawn "
+                "surface crossing level_m, antialiased to one pixel; elsewhere "
+                "recipe 5's rule"
+            ),
+        }
+    return {
+        "source": source,
+        "depth_ramp_m": WATER_DEPTH_FULL_M,
+        "edge_feather_m": WATER_EDGE_M,
+        "edge_blur_m": WATER_EDGE_BLUR_M,
+        "edge_blur_px": round(WATER_EDGE_BLUR_M / spacing_m, 3),
+        "shore": shore,
+        "perched": water.perched,
+        "level_only": LEVEL_ONLY_TEXT if sea is None else sea.meta,
+        "rivers": river_meta or None,
+    }
 
 
 def check_parallel_cutter(

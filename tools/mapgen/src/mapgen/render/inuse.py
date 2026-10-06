@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from satisfactory_mcp.core.gameassets.pyramid import TILES_DIR_NAME
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = ["IN_USE", "MANIFEST", "OVERRIDE", "add_in_use_flag", "held_types", "in_use_refusal"]
 
@@ -34,7 +34,7 @@ def add_in_use_flag(parser: argparse.ArgumentParser) -> None:
 
 def _manifest(local: Path) -> JsonObject:
     try:
-        data = json.loads((local / MANIFEST).read_text(encoding="utf-8"))
+        data: JsonValue = json.loads((local / MANIFEST).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
