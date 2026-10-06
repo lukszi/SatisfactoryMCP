@@ -17,19 +17,27 @@ second; ~90 corrections from that pass are folded in.
 
 This file is the **spine**: what the project is for, what was decided, where the data comes from, how
 the tree is arranged, and the contract that turns the game's dump into numbers. Everything else lives
-in `docs/`, and **section numbers are unique across the whole set** — a reference to `§8.5d` or `§6.11`
-resolves through this table wherever it is written, in a document or in a docstring.
+in `docs/`, and **section numbers are unique across the whole set**, with the one exception below — a
+reference to `§8.5d` or `§6.11` resolves through this table wherever it is written, in a document or in a
+docstring.
 
 | sections | file | what it holds |
 |---|---|---|
 | §1–§5, §13, appendices | **this file** | scope, decisions, data sources, architecture, the normalization contract, the licence, and the reference world every number was measured against |
-| §6–§6.16, §13a, §13b | [docs/save-projection.md](docs/save-projection.md) | what the sidecar emits and how each fact in it was verified, the row layouts and the schema history; the parser that replaced the vendored one, and the parity that can never be re-run |
-| §7, §17, §18, §19 | [docs/spatial-and-map.md](docs/spatial-and-map.md) | coordinate frame, regions, node lookup and the selector language; the map's three base layers, the mode model and the heightfield's water channel |
+| §6–§6.16, §13a, §13b, §13c | [docs/save-projection.md](docs/save-projection.md) | what the sidecar emits and how each fact in it was verified, the row layouts and the schema history; the parser that replaced the vendored one, and the parity that can never be re-run; the save facts the web map's placement layers rest on |
+| §7, §17–§40 | [docs/spatial-and-map.md](docs/spatial-and-map.md) and [docs/map/](docs/map/) | coordinate frame, regions, node lookup and the selector language; the web map: its base layers and page, the heightfield and its water, the drawn renders, their styles, water, light and caches. spatial-and-map.md holds §7 and §37 and indexes the rest by file |
 | §8, §9 | [docs/planning.md](docs/planning.md) | the LP/MILP formulation, layout, commissioning, diffing against the save, and the hard-drive advisor |
 | §10, §11, §12 | [docs/mcp-surface.md](docs/mcp-surface.md) | the tools with their transcripts, the context budget, caching, and the testing contract |
 | §14, §15, §15b, §16, §16b, §19–§22 | [docs/parked.md](docs/parked.md) | open questions, parked work with the measurements that would otherwise be redone, and finished work kept as a record |
 | §23 | [docs/residency.md](docs/residency.md) | what an autosave costs the two processes, and why the answer is a pre-warming watcher rather than a resident daemon |
 | §24 | [docs/plumbing.md](docs/plumbing.md) | head lift and flow: which of the manual's constants the dump confirms, the one it does not carry, what the save measures about pipes, buffers and pumps, and the connection → head lift → flow rate ladder a missing fluid is diagnosed on |
+
+**The exception: §19 to §24 were given out twice.** The map has its own §19 to §24, and so do
+parked.md (§19–§22), residency.md (§23) and plumbing.md (§24). The file named with the number
+decides: `parked.md §20` is the parked sampler design, `spatial-and-map.md §20` the sampler as
+built. Inside one of those documents a number with no file named means that document's own
+section. Renumbering either side would mean editing every reference to the six across the docs and
+the code, so they stay as they are, and no new section takes a number already given.
 
 Four documents carry no section numbers of their own. Two are ledgers rather than design:
 [docs/backlog.md](docs/backlog.md) is every known defect with the commit that closed it, and

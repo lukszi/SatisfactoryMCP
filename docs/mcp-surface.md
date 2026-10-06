@@ -191,7 +191,7 @@ eight speculative calls, and at the end of them still no way to say the list was
 was specific and correct: *"if some Tier 7-9 building eats rubber, I'd have missed it."*
 
 **A parameter on `search_recipes`, not a new tool**, for the same reason `search_resource_nodes` took a
-`mode` instead of splitting ([§7.2a](spatial-and-map.md#72a-node-lookup--one-tool-three-modes)): the body is ~90 % shared —
+`show` instead of splitting ([§7.2a](spatial-and-map.md#72a-node-lookup--one-tool-three-views)): the body is ~90 % shared —
 filter, sort, page, render, HAVE/LOCKED — and only the predicate differs. §10.3's rule against duplicate
 surfaces applies with more force here, since a `consumers_of_item` tool would sit directly beside
 `alternates_for_item` and make tool selection worse. `produces=` comes along free and is the only way to
