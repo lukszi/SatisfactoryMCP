@@ -13,22 +13,25 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from ....core.gamedata.model import GameData
 from ....core.text import plural
-from ..solver.graph import chain_depth
-from ..solver.model import MW
+from ..solver.graph import chain_depth_of_rates
 
-__all__ = ["Commissioning", "Energised", "Wave", "commission"]
+__all__ = ["Commissioning", "Wave", "WaveRow", "commission"]
 
 
 #: How many waves to attempt before giving up. A plant whose generation exceeds its draw
 #: converges geometrically, so a run that reaches this many is not converging.
 MAX_WAVES = 24
+#: How often, and by how much, a wave's share of the plant shrinks to fit whole machines.
+_MAX_SHRINK_STEPS = 60
+_SHRINK_FACTOR = 0.75
 
 
 @dataclass
-class Energised:
+class WaveRow:
     """One process, and how much of it comes on in this wave."""
 
     label: str
@@ -54,7 +57,7 @@ class Energised:
 @dataclass
 class Wave:
     index: int
-    rows: list[Energised] = field(default_factory=list)
+    rows: list[WaveRow] = field(default_factory=list)
     available_before: float = 0.0
 
     def fill_s(self) -> float:
@@ -135,30 +138,47 @@ def _cycle_s(proc: dict, game: GameData) -> float:
 
 
 def _depths(processes: list[dict]) -> dict[str, int]:
-    """Chain depth per process id, from ``graph.chain_depth``.
-
-    That function and not a local one: ``diff`` computes build order with it and ``track``
-    joins a wave against a diff row, so two implementations would let the two halves of
-    "which stage am I in" order the same plant differently. It condenses cycles rather
-    than relaxing depths, which matters because item flow is genuinely cyclic -- Recycled
-    Plastic and Recycled Rubber consume each other's output -- and cycle members have to
-    go up on the same stage or the stage is unbuildable.
-
-    ``MW`` is filtered out here rather than inside ``chain_depth``: power is modelled as an
-    item so the balance is just another row, but as a DEPENDENCY it would make every
-    consumer depend on every generator and every generator on its fuel, leaving one
-    component and no order at all.
-    """
-    depths = chain_depth(
-        [
-            (
-                [i for i, rate in p["rates"].items() if rate < 0 and i != MW],
-                [i for i, rate in p["rates"].items() if rate > 0 and i != MW],
-            )
-            for p in processes
-        ]
-    )
+    """Chain depth per process id, from the same ``graph.chain_depth_of_rates`` the diff
+    orders its build with, so the two halves of "which stage am I in" order one plant alike."""
+    depths = chain_depth_of_rates([p["rates"] for p in processes])
     return {p["pid"]: d for p, d in zip(processes, depths, strict=True)}
+
+
+class _MachinePower(NamedTuple):
+    """One machine's share of its row: what it draws, or what it generates."""
+
+    draw_mw: float
+    generation_mw: float
+
+
+def _fit_wave(
+    fraction: float,
+    totals: dict[str, int],
+    started: dict[str, int],
+    per_machine: dict[str, _MachinePower],
+    available: float,
+) -> dict[str, int] | None:
+    """Machines per process for the next wave: ``fraction`` of the plant, shrunk until the
+    whole-machine draw fits ``available``; None when no shrink fits.
+
+    Ceil keeps the chain fed: flooring 0.64 of an extractor to zero would light six
+    refineries with nothing to refine. Exact ratios are unreachable at the bottom of the
+    ramp, so early waves run starved -- which errs safe, since an idle machine draws well
+    under its modelled figure.
+    """
+    for _ in range(_MAX_SHRINK_STEPS):
+        starting_now = {
+            pid: min(
+                totals[pid] - started[pid],
+                max(1, math.ceil(fraction * totals[pid])) if totals[pid] > started[pid] else 0,
+            )
+            for pid in totals
+        }
+        cost = sum(per_machine[pid].draw_mw * n for pid, n in starting_now.items())
+        if cost <= available + 1e-6:
+            return starting_now
+        fraction *= _SHRINK_FACTOR
+    return None
 
 
 def commission(
@@ -179,16 +199,16 @@ def commission(
     depth = _depths(procs)
     # Per MACHINE, because a wave energises whole machines. p["mw"] is exact for the whole
     # row at its derived clock, so dividing is right and rounding is not.
-    per: dict[str, tuple[float, float]] = {}
+    per_machine: dict[str, _MachinePower] = {}
     for p in procs:
         each = p["mw"] / p["machines"]
-        per[p["pid"]] = (max(0.0, -each), max(0.0, each))
+        per_machine[p["pid"]] = _MachinePower(max(0.0, -each), max(0.0, each))
         out.plant_draw_mw += max(0.0, -p["mw"])
         out.plant_generation_mw += max(0.0, p["mw"])
 
     # One machine of every consuming process: the cheapest slice that still feeds the whole
     # chain. Generators draw nothing, so they are not part of the floor.
-    out.minimum_slice_mw = sum(draw for draw, _ in per.values())
+    out.minimum_slice_mw = sum(power.draw_mw for power in per_machine.values())
     if out.minimum_slice_mw > headroom_mw + 1e-6:
         out.ok = False
         out.warnings.append(
@@ -200,14 +220,14 @@ def commission(
         return out
 
     totals = {p["pid"]: p["machines"] for p in procs}
-    done = {p["pid"]: 0 for p in procs}
+    started = {p["pid"]: 0 for p in procs}
     by_pid = {p["pid"]: p for p in procs}
     available = headroom_mw
 
-    while sum(done.values()) < sum(totals.values()):
+    while sum(started.values()) < sum(totals.values()):
         if len(out.waves) >= MAX_WAVES:
             out.ok = False
-            left = sum(totals.values()) - sum(done.values())
+            left = sum(totals.values()) - sum(started.values())
             out.warnings.append(
                 f"gave up after {MAX_WAVES} waves with "
                 f"{left} {plural('machine', left)} unstarted -- "
@@ -217,46 +237,31 @@ def commission(
             return out
 
         wave = Wave(index=len(out.waves) + 1, available_before=available)
-        # Largest fraction of the remaining plant this wave's power can carry, then shrunk
-        # until the WHOLE-MACHINE bill fits. Ceil keeps the chain fed: flooring 0.64 of an
-        # extractor to zero would light six refineries with nothing to refine. Exact ratios
-        # are unreachable at the bottom of the ramp, so early waves run starved -- which
-        # errs safe, since an idle machine draws well under its modelled figure.
+        # The largest fraction of the remaining plant this wave's power can carry.
         fraction = 1.0 if out.plant_draw_mw <= 0 else min(1.0, available / out.plant_draw_mw)
-        for _ in range(60):
-            take = {
-                pid: min(
-                    totals[pid] - done[pid],
-                    max(1, math.ceil(fraction * totals[pid])) if totals[pid] > done[pid] else 0,
-                )
-                for pid in totals
-            }
-            cost = sum(per[pid][0] * n for pid, n in take.items())
-            if cost <= available + 1e-6:
-                break
-            fraction *= 0.75
-        else:
+        starting_now = _fit_wave(fraction, totals, started, per_machine, available)
+        if starting_now is None:
             out.ok = False
             out.warnings.append("could not fit a whole-machine wave inside the headroom")
             return out
 
-        for pid, n in sorted(take.items(), key=lambda kv: (depth[kv[0]], kv[0])):
+        for pid, n in sorted(starting_now.items(), key=lambda kv: (depth[kv[0]], kv[0])):
             if n <= 0:
                 continue
-            done[pid] += n
+            started[pid] += n
             p = by_pid[pid]
             wave.rows.append(
-                Energised(
+                WaveRow(
                     pid=pid,
                     label=p["label"],
                     kind=p["kind"],
                     cycle_s=_cycle_s(p, game),
                     building=p["building"],
                     machines=n,
-                    cumulative=done[pid],
+                    cumulative=started[pid],
                     total=totals[pid],
-                    draw_mw=per[pid][0] * n,
-                    generation_mw=per[pid][1] * n,
+                    draw_mw=per_machine[pid].draw_mw * n,
+                    generation_mw=per_machine[pid].generation_mw * n,
                     depth=depth[pid],
                 )
             )

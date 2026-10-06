@@ -263,17 +263,17 @@ def test_the_preview_moves_the_built_line_and_writes_nothing(world, tmp_path):
     state = _plan(world, at=BUILT_SPOT)
     before = _files(tmp_path / "plans")
     sess = site_preview.open_session(world.game, world, state)
-    assert sess.now["built"] and sess.now["mode"] == "auto"
+    assert sess.built_now["built"] and sess.built_now["mode"] == "auto"
     home = site_preview.preview(world.game, world, sess, _pad(*BUILT_SPOT))
     away = site_preview.preview(world.game, world, sess, _pad(*SEA))
-    assert home["built"]["built"] == sess.now["built"] and home["loses"] is None
-    assert away["built"]["built"] == 0 and away["now"] == sess.now
+    assert home["built"]["built"] == sess.built_now["built"] and home["loses"] is None
+    assert away["built"]["built"] == 0 and away["now"] == sess.built_now
     loss = away["loses"]
     assert loss == {
-        "now": sess.now["built"],
+        "now": sess.built_now["built"],
         "here": 0,
-        "total": sess.now["total"],
-        "text": f"{sess.now['built']} of {sess.now['total']} built here → 0 at the new spot",
+        "total": sess.built_now["total"],
+        "text": f"{sess.built_now['built']} of {sess.built_now['total']} built here → 0 at the new spot",
     }
     assert home["on_pad"] > 0 and away["on_pad"] == 0
     assert _files(tmp_path / "plans") == before
@@ -284,7 +284,7 @@ def test_a_picked_factory_does_not_follow_the_pad(world):
     sess = site_preview.open_session(world.game, world, state)
     away = site_preview.preview(world.game, world, sess, _pad(*SEA))
     assert away["built"]["mode"] == "picked" and away["loses"] is None
-    assert away["built"]["figure"] == sess.now["figure"]
+    assert away["built"]["figure"] == sess.built_now["figure"]
     assert "the pad does not change the count" in away["built"]["where"]
 
 
@@ -298,7 +298,7 @@ def test_outside_the_map_only_where_is_filled(world):
 
 def test_the_first_reply_carries_nodes_and_the_playable_box(world):
     sess = site_preview.open_session(world.game, world, _plan(world, at=BUILT_SPOT))
-    first = site_preview.preview(world.game, world, sess, _pad(*BUILT_SPOT), first=True)
+    first = site_preview.preview(world.game, world, sess, _pad(*BUILT_SPOT), include_static=True)
     step = site_preview.preview(world.game, world, sess, _pad(*BUILT_SPOT))
     assert first["content_bbox_m"] == [v / 100 for v in geo.CONTENT_BBOX]
     assert isinstance(first["nodes"], list) and step["nodes"] is None
@@ -330,7 +330,7 @@ def test_a_first_placement_names_its_new_basis_and_starts_at_its_near_centre(wor
     args = dict(ARGS, sources=["near:-238,-1466@400"])
     state = _plan(world, args=args)
     sess = site_preview.open_session(world.game, world, state)
-    start = site_preview.start_siting(world.game, world, sess)
+    start = site_preview.initial_siting(world.game, world, sess)
     assert (start.x_m, start.y_m) == BUILT_SPOT and start.source == "layout"
     out = site_preview.preview(world.game, world, sess, start)
     assert out["sited"] is False

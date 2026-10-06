@@ -53,7 +53,7 @@ open questions are in §13.
 - The map frames the pad (and chat's ghost, when there is one). The bench controls are hidden
   on this tab; the header, versions, strip and conflict chips stay.
 - A never-sited plan starts at its `near:` centre, else its nodes' centroid, else the map
-  square's centre, sized by the layout square (`site_preview.start_siting`). The card says
+  square's centre, sized by the layout square (`site_preview.initial_siting`). The card says
   `not placed yet`, and a drop there is the first placement.
 
 ### F2 Move on a desktop
@@ -132,7 +132,7 @@ confirm, since it moves the pad onto what is built.
 `GET /api/plan/site-preview?key=&rev=&x_m=&y_m=&yaw_deg=&w_m=&d_m=&first=&full=&biomass=&headroom=`
 → `SitePreviewResponse` (`routers/plan_site.py`).
 
-- Any of x, y, yaw, w, d left out comes from the stored site, else from `start_siting`.
+- Any of x, y, yaw, w, d left out comes from the stored site, else from `initial_siting`.
 - `first=1` adds `nodes` (the plan's chosen nodes) and `content_bbox_m`.
 - `full=1` reads the terrain at 1 m; otherwise the window is capped at 40,000 texels.
 - Unknown key or rev: 404. A pad with any corner outside the map square: 200 with

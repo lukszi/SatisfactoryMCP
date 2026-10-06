@@ -7,9 +7,9 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from satisfactory_mcp.domain.planning.progress.diff import DiffRow, build_diff, rate_units
+from satisfactory_mcp.domain.planning.progress.diff import DiffRow, build_diff, whole_machines
 from satisfactory_mcp.domain.planning.progress.stages import track
-from satisfactory_mcp.domain.planning.progress.startup import Energised, Wave
+from satisfactory_mcp.domain.planning.progress.startup import Wave, WaveRow
 from satisfactory_mcp.domain.world.state import WorldState
 
 
@@ -79,9 +79,7 @@ def test_stages_fill_by_rate():
     waves = [
         Wave(
             index=i,
-            rows=[
-                Energised("Iron Plate", "recipe", "Constructor", 2, 2 * i, 4, 8.0, 0.0, pid="p1")
-            ],
+            rows=[WaveRow("Iron Plate", "recipe", "Constructor", 2, 2 * i, 4, 8.0, 0.0, pid="p1")],
         )
         for i in (1, 2)
     ]
@@ -97,8 +95,8 @@ def test_stages_fill_by_rate():
     assert out.current == 0
 
 
-def test_rate_units_are_whole_machines():
-    assert rate_units(2.0001, 1.0) == 2
-    assert rate_units(1.9999999, 1.0) == 2
-    assert rate_units(1.5, 1.0) == 1
-    assert rate_units(1.0, 0.0) == 0
+def test_a_rate_counts_as_whole_machines_at_the_plans_clock():
+    assert whole_machines(2.0001, 1.0) == 2
+    assert whole_machines(1.9999999, 1.0) == 2
+    assert whole_machines(1.5, 1.0) == 1
+    assert whole_machines(1.0, 0.0) == 0

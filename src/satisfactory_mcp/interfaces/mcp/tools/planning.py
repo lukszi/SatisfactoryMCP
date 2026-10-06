@@ -688,7 +688,7 @@ def _site_preview(g, st, stored, existing, at: str, yaw_deg, footprint: str, ctx
                 plan_kwargs=stored.kwargs(),
             )
         else:
-            base = existing or site_preview.start_siting(g, st, sess)
+            base = existing or site_preview.initial_siting(g, st, sess)
             width, depth = base.width_m, base.depth_m
             if footprint:
                 width, depth = siting_mod.parse_footprint(footprint)
@@ -1711,7 +1711,6 @@ def diff_vs_save(
             stage=stage,
             factory=_factory_value(factory),
             biomass=biomass,
-            headroom_mw=stored.headroom_mw if stored is not None else None,
             stored=stored,
             default=default,
         )

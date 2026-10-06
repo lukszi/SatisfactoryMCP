@@ -826,7 +826,7 @@ Three modules and no new tool, because each already owns exactly one half of the
 | the matching | `build_diff()` | which of them exist in the save |
 | the evidence | `graph.health.assess()` | what each existing one is doing |
 
-`track()` only joins them, on `diff.group_key` — the same key the diff matches on, promoted from
+`track()` only joins them, on `jobs.group_key` — the same key the diff matches on, promoted from
 private to public for exactly this reason. Joining on anything else (the display label, the building
 class) would let the tracker credit a Refinery on Alt HOR with one making alumina, which is the
 failure §8.6 exists to prevent, re-introduced one layer up.

@@ -24,6 +24,7 @@ from satisfactory_mcp.domain.planning.progress.diff import (
     _reclock_note,
     build_diff,
 )
+from satisfactory_mcp.domain.planning.progress.jobs import BuildJob
 from satisfactory_mcp.domain.planning.solver.optimize import solve
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 from satisfactory_mcp.domain.world.state import WorldState
@@ -173,8 +174,8 @@ def test_the_range_only_appears_where_identity_is_actually_missing(spire):
 )
 def test_reclock_compares_the_total_against_the_plans_total(clock, expected):
     """One machine planned at 100%: only a clock that changes the job's total is noted."""
-    group = {"machines": 1, "clock": 1.0}
-    assert bool(_reclock_note([{"clock": clock}], 0, group)) is expected
+    job = BuildJob(("recipe", "", ""), "recipe", "", "", "", "", "", 1, 1.0, 0.0, [], {})
+    assert bool(_reclock_note([{"clock": clock}], 0, job)) is expected
 
 
 def test_a_ratio_clock_plan_row_asks_nobody_to_reclock(spire):
@@ -258,7 +259,7 @@ def test_the_ids_of_an_action_reach_the_reader(game, state):
 
     report = build_diff_report(game, state, dict(SPIRE), objective="max_mw")
     out = render_diff(game, state, report, objective="max_mw", limit=20)
-    water = _row(report.rep, "normal Water")
+    water = _row(report.diff, "normal Water")
     assert "# machines to act on, reusable as machine: selectors" in out
     assert f"#   UNPAUSE normal Water: {' '.join(water.act_instances)}" in out
     # Four idle Assemblers, three named, and the fourth is counted rather than dropped.
@@ -425,8 +426,8 @@ def test_the_cost_table_says_when_it_hid_rows(game, state):
     from satisfactory_mcp.presenters.text.diff import COST_ROWS, render_diff
 
     report = build_diff_report(game, state, dict(SPIRE), objective="max_mw")
-    assert len(report.rep.cost) <= COST_ROWS, "this world stopped being the short case"
-    report.rep.cost = [
+    assert len(report.diff.cost) <= COST_ROWS, "this world stopped being the short case"
+    report.diff.cost = [
         CostLine(item=f"Desc_{i}_C", name=f"Item {i}", need=100.0, stock=1.0, lines=0)
         for i in range(COST_ROWS + 3)
     ]

@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from ...core.singleflight import Singleflight
 from ...core.text import plural
 from ..factories import health
-from ..planning.progress.diff_service import match_scope
+from ..planning.progress.diff_service import diff_in_scope
 from ..planning.solver.prepare import prepare
 from ..planning.stored import manage
 from ..planning.stored.planlog import PlanLog, PlanLogError
@@ -664,7 +664,7 @@ def _plan_facts(st, state) -> tuple[str, list[str], str]:
         return "it no longer solves", drift, ""
     if not prepared.solution.processes:
         return "", drift, ""
-    rep, _ = match_scope(st.game, st, prepared, None, False, stored=state)
+    rep, _ = diff_in_scope(st.game, st, prepared, None, False, stored=state)
     built = rep.built_at
     return "", drift, (built.node_owner if built is not None else "")
 

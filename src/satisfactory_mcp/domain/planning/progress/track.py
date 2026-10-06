@@ -9,6 +9,7 @@ import re
 from collections import Counter
 
 from ....core.gamedata.model import GameData
+from ....core.saveio.records import instance_leaf
 from ....core.text import ago
 from ...factories.select import SelectorError
 from ...factories.trace import feeder_records
@@ -19,20 +20,23 @@ from ...world.state import WorldState
 from ..readout.summary import failure_cause
 from ..stored.planlog import PlanState
 from . import built as built_mod
-from .diff import _save_id
-from .diff_service import DEFAULT_HEADROOM, STORED_SOURCE, build_diff_report, default_headroom
+from .diff import CostLine, DiffRow, save_id
+from .diff_service import DEFAULT_HEADROOM, DiffVsSaveReport, build_diff_report, resolve_headroom
 from .stages import (
     ENERGISED_CAVEAT,
     MONITORED_STATES,
     NO_MONITOR,
     RANGE_CAVEAT,
     RUNNING_STATES,
+    Stage,
+    Tracking,
     partition_id,
 )
+from .startup import Commissioning
 
 __all__ = [
-    "CAP",
     "COST_ROWS",
+    "MAX_LISTED_INSTANCES",
     "PAGE_DRIFT",
     "PAGE_ENERGISED",
     "PAGE_NO_MONITOR",
@@ -46,7 +50,8 @@ __all__ = [
     "track_view",
 ]
 
-CAP = 50
+#: How many machines or node targets one job row lists.
+MAX_LISTED_INSTANCES = 50
 COST_ROWS = 12
 _VERBS = {"OK": "ok", "UNPAUSE": "unpause", "SETRECIPE": "setrecipe", "BUILD": "build"}
 
@@ -92,22 +97,22 @@ def page_lines(text: str) -> list[str]:
     return out
 
 
-def _metres(value: float) -> str:
+def _whole_metres(value: float) -> str:
     n = round(float(value))
     return f"{n if n else 0:,}"
 
 
 def site_line(site) -> str:
     """The recorded site in page words: whole metres, degrees and a spaced footprint."""
-    where = f"origin x {_metres(site.x_m)} m, y {_metres(site.y_m)} m"
+    where = f"origin x {_whole_metres(site.x_m)} m, y {_whole_metres(site.y_m)} m"
     if site.z_m is not None:
-        where += f", z {_metres(site.z_m)} m"
+        where += f", z {_whole_metres(site.z_m)} m"
     if site.origin_label:
         where += f" (from {site.origin_label})"
-    where += f", yaw {_metres(site.yaw_deg)}°"
+    where += f", yaw {_whole_metres(site.yaw_deg)}°"
     if not site.has_footprint:
         return where + ", no footprint recorded"
-    size = f"{_metres(site.width_m)} × {_metres(site.depth_m)} m"
+    size = f"{_whole_metres(site.width_m)} × {_whole_metres(site.depth_m)} m"
     source = {"layout": "from the plan layout", "given": "as given", "default": "by default"}.get(
         site.source, ""
     )
@@ -133,23 +138,23 @@ def job_id(key: tuple) -> str:
     return "job:" + "|".join(str(k) for k in key)
 
 
-def _m(value: float) -> float:
+def _cm_to_m(value: float) -> float:
     return round(float(value) / 100.0, 1)
 
 
 def _positions(st: WorldState) -> dict[str, tuple[float, float]]:
+    """Every placed machine's position in metres, by its leaf name."""
     out = {}
-    for group in ("machines", "extractors", "generators"):
-        for record in st.projection.get(group, ()):
-            pos = record.get("pos")
-            if pos:
-                out[str(record.get("instance") or "").rsplit(".", 1)[-1]] = (_m(pos[0]), _m(pos[1]))
+    for record in st.all_records():
+        pos = record.get("pos")
+        if pos:
+            out[instance_leaf(record.get("instance"))] = (_cm_to_m(pos[0]), _cm_to_m(pos[1]))
     return out
 
 
 def _node_positions() -> dict[str, tuple[float, float]]:
     return {
-        str(n["instance"]).rsplit(".", 1)[-1]: (_m(n["x"]), _m(n["y"]))
+        instance_leaf(n["instance"]): (_cm_to_m(n["x"]), _cm_to_m(n["y"]))
         for n in nodes_mod.load_nodes().nodes
     }
 
@@ -166,27 +171,32 @@ def _states(counter: Counter) -> list[dict]:
     return [{"state": s, "count": n} for s, n in rows]
 
 
-def _machine(name: str, where: dict) -> dict:
-    x, y = where.get(name, (None, None))
+def _machine(name: str, positions: dict) -> dict:
+    x, y = positions.get(name, (None, None))
     return {"instance": name, "x_m": x, "y_m": y}
 
 
-def _main_item(g: GameData, recipe_id: str | None) -> str | None:
+def _job_row(
+    g: GameData,
+    st: WorldState,
+    row: DiffRow,
+    health: dict[str, str],
+    positions: dict[str, tuple[float, float]],
+    node_positions: dict[str, tuple[float, float]],
+    stages_by_row: dict[tuple, list[int]],
+) -> dict:
+    """One ``TrackResponse.rows`` entry: a build job, what to do, and where on the map."""
+    kind = row.key[0] if row.key else ""
+    recipe_id = row.key[2] if kind == "recipe" and len(row.key) > 2 else None
     recipe = g.recipes.get(recipe_id or "")
-    return recipe.products[0].item if recipe is not None and recipe.products else None
-
-
-def _row(g, st, r, health, where, nodes, stages_of) -> dict:
-    kind = r.key[0] if r.key else ""
-    recipe_id = r.key[2] if kind == "recipe" and len(r.key) > 2 else None
-    states = Counter(health.get(name, "unmonitored") for name in r.have_instances)
+    states = Counter(health.get(name, "unmonitored") for name in row.have_instances)
     monitored = sum(n for s, n in states.items() if s in MONITORED_STATES)
-    act = [_machine(name, where) for name in r.act_instances[:CAP]]
+    act = [_machine(name, positions) for name in row.act_instances[:MAX_LISTED_INSTANCES]]
     targets = []
-    for node, metres in r.targets[:CAP]:
-        x, y = nodes.get(node, (None, None))
+    for node, metres in row.targets[:MAX_LISTED_INSTANCES]:
+        x, y = node_positions.get(node, (None, None))
         targets.append({"node": node, "x_m": x, "y_m": y, "m": round(metres, 1)})
-    shown = act or [_machine(name, where) for name in r.have_instances[:CAP]]
+    shown = act or [_machine(name, positions) for name in row.have_instances[:MAX_LISTED_INSTANCES]]
     points = [(m["x_m"], m["y_m"]) for m in shown if m["x_m"] is not None]
     points += [(t["x_m"], t["y_m"]) for t in targets if t["x_m"] is not None]
     if act:
@@ -194,29 +204,31 @@ def _row(g, st, r, health, where, nodes, stages_of) -> dict:
     elif targets:
         selectors = ",".join(f"node:{t['node']}" for t in targets)
     else:
-        selectors = ",".join(f"machine:{name}" for name in r.have_instances[:CAP])
+        selectors = ",".join(
+            f"machine:{name}" for name in row.have_instances[:MAX_LISTED_INSTANCES]
+        )
     return {
-        "id": job_id(r.key),
+        "id": job_id(row.key),
         "kind": kind,
-        "step": r.stage,
-        "stages": stages_of.get(r.key, []),
-        "process": r.process,
-        "building": r.building,
+        "step": row.stage,
+        "stages": stages_by_row.get(row.key, []),
+        "process": row.process,
+        "building": row.building,
         "recipe_id": recipe_id,
-        "item": _main_item(g, recipe_id),
-        "need": r.need,
-        "have": r.have,
-        "have_min": r.have_min,
-        "build": r.build,
-        "build_max": r.build_max,
-        "verb": _VERBS.get(r.verb, r.verb.lower()),
-        "count": r.count,
-        "reuse": r.reuse,
+        "item": recipe.main_product if recipe is not None else None,
+        "need": row.need,
+        "have": row.have,
+        "have_min": row.have_min,
+        "build": row.build,
+        "build_max": row.build_max,
+        "verb": _VERBS.get(row.verb, row.verb.lower()),
+        "count": row.count,
+        "reuse": row.reuse,
         "running": sum(n for s, n in states.items() if s in RUNNING_STATES) if monitored else None,
         "states": _states(states),
-        "new_building": bool(r.building_id) and st.built(r.building_id) == 0,
-        "note": r.page_note,
-        "delta_mw": round(r.delta_mw, 2),
+        "new_building": bool(row.building_id) and st.built(row.building_id) == 0,
+        "note": row.page_note,
+        "delta_mw": round(row.delta_mw, 2),
         "act": act,
         "targets": targets,
         "bbox_m": _bbox(points),
@@ -224,8 +236,8 @@ def _row(g, st, r, health, where, nodes, stages_of) -> dict:
     }
 
 
-def _stage(stage, where) -> dict:
-    points = [where[name] for row in stage.rows for name in row.instances if name in where]
+def _stage_view(stage: Stage, positions: dict[str, tuple[float, float]]) -> dict:
+    points = [positions[name] for row in stage.rows for name in row.instances if name in positions]
     return {
         "index": stage.index,
         "machines": stage.machines,
@@ -265,22 +277,19 @@ def _stage(stage, where) -> dict:
     }
 
 
-def _power(pw: dict, biomass: bool) -> dict:
+def _power(power: dict, biomass: bool) -> dict:
     return {
-        "generation_mw": round(pw.get("generation_mw", 0.0), 2),
-        "draw_mw": round(pw.get("draw_mw", 0.0), 2),
-        "headroom_mw": pw.get("headroom_mw", 0.0),
-        "measured_headroom_mw": pw.get("measured_headroom_mw", 0.0),
+        "generation_mw": round(power.get("generation_mw", 0.0), 2),
+        "draw_mw": round(power.get("draw_mw", 0.0), 2),
+        "headroom_mw": power.get("headroom_mw", 0.0),
+        "measured_headroom_mw": power.get("measured_headroom_mw", 0.0),
         "biomass": biomass,
     }
 
 
-def _startup(run, pw: dict, state: PlanState, default: str) -> dict:
-    if run is None:
-        if state.headroom_mw is not None:
-            head, source = float(state.headroom_mw), STORED_SOURCE
-        else:
-            head, source = default_headroom(pw, default)
+def _startup(startup: Commissioning | None, power: dict, stored: PlanState, default: str) -> dict:
+    if startup is None:
+        head, source = resolve_headroom(power, stored=stored, default=default)
         return {
             "ok": False,
             "headroom_mw": head,
@@ -291,20 +300,20 @@ def _startup(run, pw: dict, state: PlanState, default: str) -> dict:
             "warnings": [],
         }
     return {
-        "ok": run.ok,
-        "headroom_mw": run.headroom_mw,
-        "headroom_source": run.headroom_source,
-        "plant_draw_mw": round(run.plant_draw_mw, 2),
-        "plant_generation_mw": round(run.plant_generation_mw, 2),
-        "minimum_slice_mw": round(run.minimum_slice_mw, 2),
-        "warnings": [line for w in run.warnings for line in page_lines(w)],
+        "ok": startup.ok,
+        "headroom_mw": startup.headroom_mw,
+        "headroom_source": startup.headroom_source,
+        "plant_draw_mw": round(startup.plant_draw_mw, 2),
+        "plant_generation_mw": round(startup.plant_generation_mw, 2),
+        "minimum_slice_mw": round(startup.minimum_slice_mw, 2),
+        "warnings": [line for w in startup.warnings for line in page_lines(w)],
     }
 
 
-def built_view(found: built_mod.BuiltAt | None, st: WorldState, state: PlanState) -> dict:
+def built_view(found: built_mod.BuiltAt | None, st: WorldState, stored: PlanState) -> dict:
     """``TrackResponse.built_at``: where the plan's built machines were found, and progress."""
     if found is None:
-        found = built_mod.BuiltAt(mode=built_mod.mode_of(state.factory))
+        found = built_mod.BuiltAt(mode=built_mod.mode_of(stored.factory))
     return {
         "mode": found.mode,
         "confidence": found.confidence,
@@ -338,25 +347,26 @@ def built_view(found: built_mod.BuiltAt | None, st: WorldState, state: PlanState
     }
 
 
-def _blank(st: WorldState, state: PlanState, biomass: bool, default: str) -> dict:
-    pw = st.power_report(biomass=biomass)
+def _empty_track_view(st: WorldState, stored: PlanState, biomass: bool, default: str) -> dict:
+    """The ``TrackResponse`` before anything is solved or matched."""
+    power = st.power_report(biomass=biomass)
     return {
-        "key": state.key,
-        "rev": state.rev,
-        "name": state.name,
+        "key": stored.key,
+        "rev": stored.rev,
+        "name": stored.name,
         "feasible": True,
         "empty": False,
         "headline": "",
         "cause": "",
-        "save_id": _save_id(st),
+        "save_id": save_id(st),
         "age_note": save_line(st),
         "written_ago": ago(st.projection.get("header", {}).get("mtime_ns")),
-        "plan_id": state.plan_id,
-        "scope": state.factory,
+        "plan_id": stored.plan_id,
+        "scope": stored.factory,
         "scope_note": "",
         "scope_error": "",
         "drift_note": "",
-        "headroom_mw": state.headroom_mw,
+        "headroom_mw": stored.headroom_mw,
         "current": 0,
         "count": 0,
         "partition_id": "",
@@ -368,46 +378,95 @@ def _blank(st: WorldState, state: PlanState, biomass: bool, default: str) -> dic
         "setrecipe": 0,
         "rows": [],
         "stages": [],
-        "startup": _startup(None, pw, state, default),
-        "power": _power(pw, biomass),
+        "startup": _startup(None, power, stored, default),
+        "power": _power(power, biomass),
         "cost": [],
         "neighbours": [],
         "site": None,
         "notes": [],
         "caveats": [PAGE_ENERGISED],
         "monitored": 0,
-        "built_at": built_view(None, st, state),
+        "built_at": built_view(None, st, stored),
     }
+
+
+def _stages_by_row(tracking: Tracking | None) -> dict[tuple, list[int]]:
+    """Each build job's key -> the stages that energise part of it, in stage order."""
+    out: dict[tuple, list[int]] = {}
+    for stage in tracking.stages if tracking is not None else ():
+        for row in stage.rows:
+            out.setdefault(row.key, [])
+            if stage.index not in out[row.key]:
+                out[row.key].append(stage.index)
+    return out
+
+
+def _caveats(rows: list[dict], stages: list[dict], monitored: int) -> list[str]:
+    caveats = [PAGE_ENERGISED]
+    ranged = any(r["build_max"] is not None and r["build_max"] != r["build"] for r in rows)
+    ranged = ranged or any(s["built_max"] != s["built"] for s in stages)
+    if ranged:
+        caveats.append(PAGE_RANGE)
+    if monitored == 0:
+        caveats.append(PAGE_NO_MONITOR)
+    return caveats
+
+
+def _site_view(report: DiffVsSaveReport) -> dict | None:
+    survey = report.site_survey
+    if report.site is None or survey is None:
+        return None
+    return {
+        "text": site_line(report.site),
+        "planned_total": survey.planned_total,
+        "standing_total": survey.standing_total,
+        "rows": [
+            {"name": r.name, "planned": r.planned, "standing": r.standing} for r in survey.rows
+        ],
+    }
+
+
+def _cost_rows(cost: list[CostLine]) -> list[dict]:
+    return [
+        {
+            "item": c.item,
+            "name": c.name,
+            "need": round(c.need, 2),
+            "stock": round(c.stock, 2),
+            "short": round(c.shortfall, 2),
+            "lines": c.lines,
+        }
+        for c in cost[:COST_ROWS]
+    ]
 
 
 def track_view(
     g: GameData,
     st: WorldState,
-    state: PlanState,
+    stored: PlanState,
     *,
     biomass: bool = False,
     default: str = DEFAULT_HEADROOM,
 ) -> dict:
     """The whole ``TrackResponse`` for one plan version, from one solve. ``default`` is the
     save's headroom (measured or nameplate) a plan with none stored is partitioned against."""
-    kwargs = state.kwargs()
-    objective = kwargs.get("objective") or state.args.objective
-    out = _blank(st, state, biomass, default)
+    kwargs = stored.kwargs()
+    objective = kwargs.get("objective") or stored.args.objective
+    out = _empty_track_view(st, stored, biomass, default)
     try:
         report = build_diff_report(
             g,
             st,
             kwargs,
             objective=objective,
-            plan=state.key,
-            plan_name=state.name,
+            plan=stored.key,
+            plan_name=stored.name,
             biomass=biomass,
-            headroom_mw=state.headroom_mw,
-            stored=state,
+            stored=stored,
             default=default,
         )
     except SelectorError:
-        out["scope_error"] = f"“{state.factory}” has no machines in this save"
+        out["scope_error"] = f"“{stored.factory}” has no machines in this save"
         return out
 
     prepared = report.prepared
@@ -419,52 +478,28 @@ def track_view(
         )
         return out
     out["headline"] = f"{objective} over {prepared.request.selection.description}"
-    if report.empty or report.rep is None:
+    if report.empty or report.diff is None:
         out["empty"] = True
         return out
 
-    rep, tracking, health = report.rep, report.tracking, report.health
-    found = rep.built_at if isinstance(rep.built_at, built_mod.BuiltAt) else None
+    diff, tracking, health = report.diff, report.tracking, report.health
+    found = diff.built_at if isinstance(diff.built_at, built_mod.BuiltAt) else None
     placed = found is None or found.built is not None
-    out["built_at"] = built_view(found, st, state)
-    where = _positions(st)
-    nodes = _node_positions() if any(r.targets for r in rep.rows) else {}
-    stages_of: dict[tuple, list[int]] = {}
-    for stage in tracking.stages if tracking is not None else ():
-        for row in stage.rows:
-            stages_of.setdefault(row.key, [])
-            if stage.index not in stages_of[row.key]:
-                stages_of[row.key].append(stage.index)
-    rows = [_row(g, st, r, health, where, nodes, stages_of) for r in rep.rows]
-    stages = [_stage(s, where) for s in tracking.stages] if tracking is not None else []
+    out["built_at"] = built_view(found, st, stored)
+    positions = _positions(st)
+    node_positions = _node_positions() if any(r.targets for r in diff.rows) else {}
+    stages_by_row = _stages_by_row(tracking)
+    rows = [_job_row(g, st, r, health, positions, node_positions, stages_by_row) for r in diff.rows]
+    stages = [_stage_view(s, positions) for s in tracking.stages] if tracking is not None else []
     monitored = sum(1 for s in health.values() if s in MONITORED_STATES)
 
-    caveats = [PAGE_ENERGISED]
-    ranged = any(r["build_max"] is not None and r["build_max"] != r["build"] for r in rows)
-    ranged = ranged or any(s["built_max"] != s["built"] for s in stages)
-    if ranged:
-        caveats.append(PAGE_RANGE)
-    if monitored == 0:
-        caveats.append(PAGE_NO_MONITOR)
-    notes = [page_text(n) for n in rep.notes]
+    notes = [page_text(n) for n in diff.notes]
     left_out = report.power.get("biomass_mw") or 0
     if biomass_note(report.power):
         notes.append(f"{left_out:,.0f} MW of biomass burners left out of generation and headroom")
 
-    sv = report.site_survey
-    site = None
-    if report.site is not None and sv is not None:
-        site = {
-            "text": site_line(report.site),
-            "planned_total": sv.planned_total,
-            "standing_total": sv.standing_total,
-            "rows": [
-                {"name": r.name, "planned": r.planned, "standing": r.standing} for r in sv.rows
-            ],
-        }
-
     out.update(
-        save_id=rep.save_id,
+        save_id=diff.save_id,
         scope_note=(
             f"only machines in “{found.picked}” count as built, and nodes other factories "
             "tap are taken"
@@ -476,30 +511,20 @@ def track_view(
         count=len(stages),
         partition_id=partition_id(tracking) if tracking is not None else "",
         stage_text=tracking.headline(brief=True) if tracking is not None and placed else "",
-        to_build=rep.to_build,
-        to_build_max=rep.to_build_max,
-        actionable=sum(1 for r in rep.rows if r.actionable),
+        to_build=diff.to_build,
+        to_build_max=diff.to_build_max,
+        actionable=sum(1 for r in diff.rows if r.actionable),
         unpause=sum(r["count"] for r in rows if r["verb"] == "unpause"),
         setrecipe=sum(r["count"] for r in rows if r["verb"] == "setrecipe"),
         rows=rows,
         stages=stages,
-        startup=_startup(report.run, report.power, state, default),
+        startup=_startup(report.startup, report.power, stored, default),
         power=_power(report.power, biomass),
-        cost=[
-            {
-                "item": c.item,
-                "name": c.name,
-                "need": round(c.need, 2),
-                "stock": round(c.stock, 2),
-                "short": round(c.shortfall, 2),
-                "lines": c.lines,
-            }
-            for c in rep.cost[:COST_ROWS]
-        ],
-        neighbours=[{"label": label, "count": n} for label, n in rep.neighbours],
-        site=site,
+        cost=_cost_rows(diff.cost),
+        neighbours=[{"label": label, "count": n} for label, n in diff.neighbours],
+        site=_site_view(report),
         notes=notes,
-        caveats=caveats,
+        caveats=_caveats(rows, stages, monitored),
         monitored=monitored,
     )
     return out
@@ -520,14 +545,13 @@ def feeders_view(g: GameData, st: WorldState, *, biomass: bool = False) -> dict:
         regions = None
     feeders = []
     for record, name, mw in found:
-        instance = str(record.get("instance") or "").rsplit(".", 1)[-1]
         pos = record.get("pos")
         feeders.append(
             {
                 "name": name,
-                "instance": instance,
-                "x_m": _m(pos[0]) if pos else None,
-                "y_m": _m(pos[1]) if pos else None,
+                "instance": instance_leaf(record.get("instance")),
+                "x_m": _cm_to_m(pos[0]) if pos else None,
+                "y_m": _cm_to_m(pos[1]) if pos else None,
                 "mw": round(mw, 1),
                 "region": (regions.label_for(pos[0], pos[1]).name if regions and pos else None)
                 or "",

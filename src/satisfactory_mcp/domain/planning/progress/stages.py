@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass, field
 
 from ....core.gamedata.model import GameData
 from ...factories.health import assess
 from ...world.state import WorldState
-from .diff import DiffReport, group_key, rate_units
+from .diff import DiffReport, whole_machines
+from .jobs import group_key
 from .startup import Commissioning
 
 __all__ = [
@@ -294,9 +295,35 @@ def _states_for(row, health: dict[str, str]) -> list[tuple[str, str, float]]:
     return sorted(triples, key=lambda p: (p[1] not in RUNNING_STATES, p[1]))
 
 
+class _JobPool:
+    """One build job's matched machines, handed to the waves that want them BY RATE, so
+    machines spread at a lower clock fill a stage as the fewer machines they stand in for.
+
+    ``certain_rate_left`` is the pessimistic rate: where machines cannot be attributed, only
+    those standing among the plan's own are certainly its own.
+    """
+
+    def __init__(self, row, health: dict[str, str]) -> None:
+        self.machines = deque(_states_for(row, health))
+        self.clock = row.plan_clock or 1.0
+        self.rate_left = sum(clock for _, _, clock in self.machines)
+        self.certain_rate_left = (
+            self.rate_left if row.have_min is None else row.have_min * self.clock
+        )
+
+    def take(self, rate: float) -> list[tuple[str, str, float]]:
+        """Machines off the front, running ones first, until their clocks reach ``rate``."""
+        taken, total = [], 0.0
+        while self.machines and total < rate - 1e-6:
+            machine = self.machines.popleft()
+            taken.append(machine)
+            total += machine[2]
+        return taken
+
+
 def track(
     prepared,
-    run: Commissioning,
+    startup: Commissioning,
     report: DiffReport,
     game: GameData,
     state: WorldState,
@@ -306,10 +333,10 @@ def track(
     """Group a diff by startup wave: which stage is built, and which is proven running.
 
     ``commission`` owns the partition and ``build_diff`` owns the matching; this only joins
-    them on ``diff.group_key``, so the two can never disagree about what one build job is.
+    them on ``jobs.group_key``, so the two can never disagree about what one build job is.
     """
     out = Tracking(plan_name=plan_name)
-    if not run.ok or not run.waves:
+    if not startup.ok or not startup.waves:
         out.ok = False
         out.warnings.append(
             "no startup order exists at this headroom, so the plan has no stages to "
@@ -324,22 +351,9 @@ def track(
     # row it would rescan the whole projection once per build job.
     if health is None:
         health = machine_states(report, game, state)
+    pools = {key: _JobPool(row, health) for key, row in by_key.items()}
 
-    # Remaining pool per build job, consumed wave by wave BY RATE, so machines spread at a
-    # lower clock fill a stage as the fewer machines they stand in for. `low` is the
-    # pessimistic rate: where machines cannot be attributed, only those standing among the
-    # plan's own are certainly its own and the rest may belong to any plant.
-    pool: dict[tuple, list[tuple[str, str, float]]] = {}
-    left: dict[tuple, float] = {}
-    low: dict[tuple, float] = {}
-    clock_of: dict[tuple, float] = {}
-    for key, row in by_key.items():
-        pool[key] = _states_for(row, health)
-        clock_of[key] = row.plan_clock or 1.0
-        left[key] = sum(clock for _, _, clock in pool[key])
-        low[key] = left[key] if row.have_min is None else row.have_min * clock_of[key]
-
-    for wave in run.waves:
+    for wave in startup.waves:
         stage = Stage(
             index=wave.index,
             draw_mw=wave.draw_mw,
@@ -349,41 +363,36 @@ def track(
             fill_s=wave.fill_s(),
             waits_for_fill=wave.waits_for_fill,
         )
-        for energised in wave.rows:
-            key = key_of_pid.get(energised.pid, ())
+        for wave_row in wave.rows:
+            key = key_of_pid.get(wave_row.pid, ())
             diff_row = by_key.get(key)
-            clock = clock_of.get(key, 1.0)
-            wanted = energised.machines * clock
-            got = min(wanted, left.get(key, 0.0))
-            sure = min(wanted, low.get(key, 0.0))
-            if key in left:
-                left[key] -= got
-                low[key] = max(0.0, low[key] - wanted)
-            take, taken = [], 0.0
-            rest = pool.get(key, [])
-            while rest and taken < got - 1e-6:
-                take.append(rest[0])
-                taken += rest[0][2]
-                rest = rest[1:]
-            if key in pool:
-                pool[key] = rest
-            reached = min(energised.machines, rate_units(got, clock))
-            certain = min(reached, rate_units(sure, clock))
+            pool = pools.get(key)
+            clock = pool.clock if pool is not None else 1.0
+            wanted = wave_row.machines * clock
+            reached_rate = min(wanted, pool.rate_left if pool is not None else 0.0)
+            certain_rate = min(wanted, pool.certain_rate_left if pool is not None else 0.0)
+            taken: list[tuple[str, str, float]] = []
+            if pool is not None:
+                pool.rate_left -= reached_rate
+                pool.certain_rate_left = max(0.0, pool.certain_rate_left - wanted)
+                taken = pool.take(reached_rate)
+            reached = min(wave_row.machines, whole_machines(reached_rate, clock))
+            certain = min(reached, whole_machines(certain_rate, clock))
             stage.rows.append(
                 StageRow(
                     stage=wave.index,
-                    label=energised.label,
-                    kind=energised.kind,
-                    building=energised.building,
-                    machines=energised.machines,
-                    total=energised.total,
+                    label=wave_row.label,
+                    kind=wave_row.kind,
+                    building=wave_row.building,
+                    machines=wave_row.machines,
+                    total=wave_row.total,
                     built=certain,
                     built_max=reached,
-                    by_state=Counter(s for _, s, _ in take),
+                    by_state=Counter(s for _, s, _ in taken),
                     key=key,
-                    instances=[name for name, _, _ in take],
-                    draw_mw=energised.draw_mw,
-                    generation_mw=energised.generation_mw,
+                    instances=[name for name, _, _ in taken],
+                    draw_mw=wave_row.draw_mw,
+                    generation_mw=wave_row.generation_mw,
                     verb=diff_row.verb if diff_row else "OK",
                     free=diff_row.count if diff_row and diff_row.verb not in ("OK", "BUILD") else 0,
                     note=diff_row.note if diff_row else "",

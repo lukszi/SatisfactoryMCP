@@ -297,9 +297,9 @@ def test_kwargs_filters_out_anything_no_longer_accepted():
 
 
 def _diff_index(state, request, scope=None):
-    from satisfactory_mcp.domain.planning.progress.diff import _index
+    from satisfactory_mcp.domain.planning.progress.diff import _index_save
 
-    return _index(state, request, scope)
+    return _index_save(state, request, scope)
 
 
 def test_scoping_limits_what_counts_as_already_built(game, state):
