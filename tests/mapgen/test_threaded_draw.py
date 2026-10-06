@@ -20,16 +20,10 @@ from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.palette.water.open_sea import open_sea
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.pools import free_ram_bytes
+from mapgen.render import compose, drawpool
+from mapgen.render.compose import BAND_ROWS, render_layer
+from mapgen.render.drawpool import AHEAD, add_draw_flags, bands_held, draw_threads, in_order
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
-from mapgen.tiles import compose, drawpool
-from mapgen.tiles.compose import BAND_ROWS, render_layer
-from mapgen.tiles.drawpool import (
-    AHEAD,
-    add_draw_flags,
-    bands_held,
-    draw_threads,
-    in_order,
-)
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 #: Six bands, the last one short, one 1 m-scaled texel per output pixel.

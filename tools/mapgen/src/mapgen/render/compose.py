@@ -47,6 +47,7 @@ from mapgen.palette.water.surface import (
     water_alpha,
     water_depth_fraction,
 )
+from mapgen.render.drawpool import bands_held, in_order
 from mapgen.terrain.crown_stamp import crown_band
 from mapgen.terrain.measure import SEAM_MID
 from mapgen.terrain.rasters import pixel_coverage
@@ -62,7 +63,6 @@ from mapgen.terrain.sample import (
     taps_linear,
     taps_pchip,
 )
-from mapgen.tiles.drawpool import bands_held, in_order
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.core.mapprogress import encode_stage
 from satisfactory_mcp.domain.spatial import heightfield as hf

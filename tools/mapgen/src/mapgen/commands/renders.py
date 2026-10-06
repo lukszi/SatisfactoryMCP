@@ -103,6 +103,11 @@ from mapgen.palette.water.surface import (
     drawn_water,
     water_planes,
 )
+from mapgen.render.compose import DIRECT_LIFT_KNEE_M, render_layer
+from mapgen.render.drawpool import add_draw_flags, draw_threads
+from mapgen.render.extras import KEPT_CACHE_DIRS, load_extras
+from mapgen.render.inuse import IN_USE, add_in_use_flag, in_use_refusal
+from mapgen.render.light import add_light_flags, claim_scratch, light_run
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
 from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
@@ -117,11 +122,6 @@ from mapgen.terrain.rasters import (
     top_items,
 )
 from mapgen.terrain.sample import direct_weight, taps_cubic, taps_pchip
-from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, render_layer
-from mapgen.tiles.drawpool import add_draw_flags, draw_threads
-from mapgen.tiles.extras import KEPT_CACHE_DIRS, load_extras
-from mapgen.tiles.inuse import IN_USE, add_in_use_flag, in_use_refusal
-from mapgen.tiles.lit import add_light_flags, claim_scratch, light_run
 from mapgen.tiles.pyramid import (
     add_worker_flags,
     check_parallel,

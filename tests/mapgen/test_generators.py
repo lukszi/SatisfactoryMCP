@@ -81,6 +81,7 @@ from mapgen.palette.water.surface import (
     water_over,
     water_planes,
 )
+from mapgen.render.compose import DIRECT_LIFT_KNEE_M, blend_regimes, composite_top
 from mapgen.terrain.fill import (
     SOURCE_HOLE,
     SOURCE_NONE,
@@ -109,7 +110,6 @@ from mapgen.tiles.artwork_output import (
     pinned_enhanced,
     pinned_recipe,
 )
-from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, blend_regimes, composite_top
 from mapgen.tiles.recipes import ENHANCE_RECIPE, ENHANCE_RECIPES, UNNUMBERED_RECIPE
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, pinned_field_build
 from satisfactory_mcp import config

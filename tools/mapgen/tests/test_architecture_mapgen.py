@@ -22,7 +22,8 @@ PRESETS_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "presets.py
 
 #: Who may import whom inside ``mapgen``. A unit is a subpackage or a top-level module, and
 #: each command module is a unit of its own (``commands.renders``).
-#: gamedata <- terrain <- lighting <- palette <- tiles <- commands <- cli, with ``common``,
+#: gamedata <- terrain <- lighting <- palette <- render <- commands <- cli, with ``tiles``
+#: (cutting and describing a finished sheet) under render and ``common``,
 #: ``bandstore``, ``cache`` and ``colour`` as leaves under all of them, and ``pools`` (free
 #: memory, a worker's BLAS threads) under the units that start pools. ``cli`` reaches its
 #: commands through ``importlib`` by name, so it statically imports nothing here.
@@ -38,12 +39,34 @@ ALLOWED: dict[str, frozenset[str]] = {
     "palette": frozenset(
         {"common", "colour", "pools", "cache", "gamedata", "terrain", "lighting", "palette"}
     ),
-    "tiles": frozenset(
-        {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}
+    "tiles": frozenset({"common", "pools", "gamedata", "lighting", "tiles"}),
+    "render": frozenset(
+        {
+            "common",
+            "colour",
+            "pools",
+            "cache",
+            "gamedata",
+            "terrain",
+            "lighting",
+            "palette",
+            "tiles",
+            "render",
+        }
     ),
     "enhance": frozenset({"common", "gamedata", "tiles", "enhance"}),
     "commands.renders": frozenset(
-        {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}
+        {
+            "common",
+            "pools",
+            "cache",
+            "gamedata",
+            "terrain",
+            "lighting",
+            "palette",
+            "tiles",
+            "render",
+        }
     ),
     "commands.heightmap": frozenset(
         {"common", "gamedata", "terrain", "commands.caves", "commands.rocks"}
@@ -233,7 +256,7 @@ def _first_doc_line(path: Path) -> str | None:
 
 
 def test_mapgen_imports_point_down():
-    """gamedata <- terrain <- lighting <- palette <- tiles <- commands <- cli."""
+    """gamedata <- terrain <- lighting <- palette <- render <- commands <- cli."""
     bad = []
     for importer, target in sorted(_mapgen_edges()):
         source, dest = _unit(importer), _unit(target)

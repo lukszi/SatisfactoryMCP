@@ -28,6 +28,7 @@ from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
 from mapgen.palette.painted.surfaces import mesh_surface
 from mapgen.palette.painted.trees import crown_lab, crown_layer, over_crowns, species_targets
 from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.render.compose import _band_family
 from mapgen.terrain import render_meshes
 from mapgen.terrain.crown_stamp import CrownSet
 from mapgen.terrain.render_meshes import (
@@ -39,7 +40,6 @@ from mapgen.terrain.render_meshes import (
     mesh_pass,
     rasterise_mesh_band,
 )
-from mapgen.tiles.compose import _band_family
 
 CAL = PAINTED_PALETTE["calibration"]
 STYLE = PAINTED_PALETTE["crowns"]

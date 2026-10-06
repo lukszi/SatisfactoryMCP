@@ -60,11 +60,20 @@ BUDGETS: dict[str, int] = {
     "tools/mapgen/src/mapgen": 1,
     "tools/mapgen/src/mapgen/commands": 19,
     "tools/mapgen/src/mapgen/enhance": 1,
-    "tools/mapgen/src/mapgen/gamedata": 13,
+    "tools/mapgen/src/mapgen/gamedata": 2,
+    "tools/mapgen/src/mapgen/gamedata/ground": 0,
+    "tools/mapgen/src/mapgen/gamedata/level": 1,
+    "tools/mapgen/src/mapgen/gamedata/rocks": 3,
+    "tools/mapgen/src/mapgen/gamedata/vegetation": 5,
+    "tools/mapgen/src/mapgen/gamedata/water": 2,
     "tools/mapgen/src/mapgen/lighting": 26,
-    "tools/mapgen/src/mapgen/palette": 22,
+    "tools/mapgen/src/mapgen/palette": 3,
+    "tools/mapgen/src/mapgen/palette/painted": 11,
+    "tools/mapgen/src/mapgen/palette/water": 8,
+    "tools/mapgen/src/mapgen/render": 2,
     "tools/mapgen/src/mapgen/terrain": 15,
-    "tools/mapgen/src/mapgen/tiles": 5,
+    "tools/mapgen/src/mapgen/terrain/heightfield": 0,
+    "tools/mapgen/src/mapgen/tiles": 3,
 }
 
 #: The ruff rule that bans ``typing.Any``, and the per-file-ignore that exempts the tests.

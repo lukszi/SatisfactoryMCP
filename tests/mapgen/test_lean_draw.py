@@ -20,6 +20,7 @@ from mapgen.palette.styles import (
 )
 from mapgen.palette.water.open_sea import VoidPlanes
 from mapgen.palette.water.shore import wet_mix
+from mapgen.render import compose
 from mapgen.terrain.sample import (
     reads_nothing,
     resample,
@@ -29,7 +30,6 @@ from mapgen.terrain.sample import (
     taps_linear,
     taps_pchip,
 )
-from mapgen.tiles import compose
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 SOURCE = (90, 120)

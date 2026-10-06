@@ -87,7 +87,7 @@ def test_sheet_crowns_keeps_a_crown_a_coarse_pixel_would_miss():
 def test_an_unlit_run_deletes_its_crown_occluder_with_the_light_cache(tmp_path):
     from types import SimpleNamespace
 
-    from mapgen.tiles.lit import LIGHT_CACHE_DIR_NAME, UnlitRun, crown_occluder
+    from mapgen.render.light import LIGHT_CACHE_DIR_NAME, UnlitRun, crown_occluder
 
     grid = {"x0_cm": BOUNDS_M["x_min_m"] * 100.0, "y0_cm": BOUNDS_M["y_min_m"] * 100.0,
             "spacing_cm": 100.0}  # fmt: skip

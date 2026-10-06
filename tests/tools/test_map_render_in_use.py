@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from mapgen.tiles.inuse import IN_USE, MANIFEST, OVERRIDE, held_types, in_use_refusal
+from mapgen.render.inuse import IN_USE, MANIFEST, OVERRIDE, held_types, in_use_refusal
 from satisfactory_mcp.domain.maps import presets, registry
 from tests.support.map_jobs import (
     PNG_MAGIC,

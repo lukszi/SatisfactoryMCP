@@ -1,1 +1,1 @@
-"""The band loop that composes a sheet, the pyramid cut and the render sidecar."""
+"""Output: cutting a sheet into pyramids, and the sidecars and recipes that describe it."""

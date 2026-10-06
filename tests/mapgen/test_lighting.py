@@ -172,7 +172,7 @@ def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
     from PIL import Image
 
     from mapgen.lighting.stage import Surface, bake_light
-    from mapgen.tiles.lit import UNLIT_DIR_NAME, UnlitRun
+    from mapgen.render.light import UNLIT_DIR_NAME, UnlitRun
 
     size = 512
     run = UnlitRun(tmp_path / "cache", size)

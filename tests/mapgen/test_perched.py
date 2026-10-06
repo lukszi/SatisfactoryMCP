@@ -24,7 +24,7 @@ from mapgen.palette.water.perched import (
 )
 from mapgen.palette.water.rivers import water_sources
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
-from mapgen.tiles.compose import render_layer
+from mapgen.render.compose import render_layer
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 ROWS, COLS, MID, HALF_WIDTH = 160, 120, 60, 8

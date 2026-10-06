@@ -16,8 +16,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from mapgen.render import light
 from mapgen.tiles import cutter as cut
-from mapgen.tiles import lit
 from mapgen.tiles import pyramid as layer_pyramid
 from satisfactory_mcp.core.gameassets.pyramid import PyramidError
 
@@ -167,17 +167,17 @@ def test_a_lit_layer_encodes_the_unlit_tree_while_the_sheet_is_relit(tmp_path, m
         renamed.append(dir_name)
         return real_commit(stats, out_dir, dir_name)
 
-    monkeypatch.setattr(lit, "relight_in_place", relight)
+    monkeypatch.setattr(light, "relight_in_place", relight)
     monkeypatch.setattr(cut, "commit_tree", commit)
     results = {}
     for name, workers in (("serial", 1), ("parallel", 2)):
-        run = lit.UnlitRun.__new__(lit.UnlitRun)
+        run = light.UnlitRun.__new__(light.UnlitRun)
         run.surface, run.meta, run.unlit = None, {"tiles": {}}, {}
         sheet = _sheet(512, seed=3)
         stats, dense, _ = run.install(sheet, Image, tmp_path / name, "terrain", workers, 7, "r")
         results[name] = (_record(stats), _record(dense), _record(run.unlit["terrain"]))
     assert relit == [True, True]
-    assert renamed == [lit.UNLIT_DIR_NAME, "tiles", "tiles@2x"]
+    assert renamed == [light.UNLIT_DIR_NAME, "tiles", "tiles@2x"]
     assert results["serial"] == results["parallel"]
     a = _digests(tmp_path / "serial" / "r" / "terrain")
     assert len(a) == 11 and a == _digests(tmp_path / "parallel" / "r" / "terrain")

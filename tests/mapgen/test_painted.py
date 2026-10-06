@@ -43,6 +43,7 @@ from mapgen.palette.water.shore import (
     wet_band,
 )
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_over
+from mapgen.render.compose import composite_top
 from mapgen.terrain.render_meshes import (
     MESH_CORAL,
     MESH_ROCK,
@@ -52,7 +53,6 @@ from mapgen.terrain.render_meshes import (
     mesh_class,
 )
 from mapgen.terrain.sample import sample_plain, taps_footprint, taps_linear
-from mapgen.tiles.compose import composite_top
 from mapgen.tiles.recipes import RECIPE
 from satisfactory_mcp.core.gameassets import provenance, versions
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -363,7 +363,7 @@ def test_a_trail_narrower_than_the_pixel_is_drawn_at_every_phase_not_as_dots():
 
 
 def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkeypatch):
-    from mapgen.tiles import compose
+    from mapgen.render import compose
 
     n = 400  # texels over the frame, 18.75 m each
     spacing_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / n
