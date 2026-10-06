@@ -18,7 +18,7 @@ from itertools import pairwise
 
 import pytest
 
-from satisfactory_mcp.domain.factories import identity
+from satisfactory_mcp.domain.factories import candidates
 from satisfactory_mcp.domain.factories.build import build_graph, class_of
 from satisfactory_mcp.domain.factories.labels import Label, LabelStore
 from satisfactory_mcp.domain.factories.select import SelectorError, select_machines
@@ -118,9 +118,9 @@ def test_material_components_cannot_split_a_grown_together_base(graph):
 
 
 def test_dropping_towers_separates_the_outpost(graph):
-    with_towers = identity.bases.__wrapped__ if hasattr(identity.bases, "__wrapped__") else None
+    with_towers = candidates.bases.__wrapped__ if hasattr(candidates.bases, "__wrapped__") else None
     assert with_towers is None  # bases() is plain; guard against it growing a cache
-    islands = identity.bases(graph)
+    islands = candidates.bases(graph)
     assert len(islands) == 2, islands
     assert set(OUTPOST) in [set(i) for i in islands]
     # Without the skip, the tower welds them into one.
@@ -132,7 +132,7 @@ def test_dropping_towers_separates_the_outpost(graph):
 
 def test_product_clusters_split_concrete_by_position(graph, game, projection):
     """17 machines make Concrete on the real save; only one is "the concrete setup"."""
-    clusters = identity.product_clusters(graph, game, projection, ["Concrete"])
+    clusters = candidates.product_clusters(graph, game, projection, ["Concrete"])
     assert [c.size for c in clusters] == [3, 1]
     assert set(clusters[0].machines) == set(STEEL_CONCRETE)
     assert set(clusters[1].machines) == set(BASE_CONCRETE)
@@ -140,12 +140,12 @@ def test_product_clusters_split_concrete_by_position(graph, game, projection):
 
 def test_name_hint_falls_back_to_buildings_when_there_is_no_recipe(graph, game, projection):
     """Generators run no recipe, so a coal plant would otherwise render blank."""
-    cand = identity.describe([TOWER], graph, game, projection, "test")
+    cand = candidates.describe([TOWER], graph, game, projection, "test")
     assert cand.name_hint().startswith("1x ")
 
 
 def test_unassigned_is_every_machine_no_label_covers(graph):
-    loose = identity.unassigned(graph, set(STEEL))
+    loose = candidates.unassigned(graph, set(STEEL))
     assert ORPHAN in loose
     assert not set(STEEL) & set(loose)
 
@@ -789,7 +789,7 @@ def test_name_hint_does_not_let_one_recipe_outvote_a_power_plant():
     the coal plant to 'Concrete'."""
     from collections import Counter
 
-    from satisfactory_mcp.domain.factories.identity import Candidate
+    from satisfactory_mcp.domain.factories.candidates import Candidate
 
     cand = Candidate(
         machines=[f"m{i}" for i in range(33)],

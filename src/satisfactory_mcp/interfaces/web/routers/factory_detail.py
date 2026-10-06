@@ -13,7 +13,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from ....domain.factories import identity as fidentity
+from ....domain.factories import candidates
 from ....domain.factories.query import build_view
 from ....domain.spatial import geo
 from ....domain.spatial import nodes as nodes_mod
@@ -152,7 +152,7 @@ def factory_aspects(
     name, machines = found
     g = st.game
     view = build_view(name, machines, st.graph, g, st.projection, st.labels)
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     box = geo.bbox([placed[m][:2] for m in machines if m in placed])
     places = _node_places() if view.nodes else {}
 

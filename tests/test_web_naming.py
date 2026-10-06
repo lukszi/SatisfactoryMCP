@@ -17,7 +17,7 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.factories import fed, flowgraph, identity, naming
+from satisfactory_mcp.domain.factories import candidates, fed, flowgraph, naming
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.web.app import create_app
@@ -135,7 +135,7 @@ def test_a_named_suggestion_leads_with_a_product(empty):
 
 
 def _cand(**buildings):
-    return identity.Candidate(machines=["a", "b"], source="p", buildings=Counter(buildings))
+    return candidates.Candidate(machines=["a", "b"], source="p", buildings=Counter(buildings))
 
 
 def test_no_product_falls_back_to_what_is_made_and_says_it_guessed(game):

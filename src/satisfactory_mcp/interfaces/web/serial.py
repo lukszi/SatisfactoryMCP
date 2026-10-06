@@ -16,7 +16,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from ...core.gamedata.model import GameData, pretty_class
-from ...domain.factories import identity as fidentity
+from ...domain.factories import candidates
 from ...domain.planning.stored.planlog import Actor
 from ...domain.spatial import regions as spatial_regions
 from ...domain.world.state import WorldState
@@ -236,7 +236,7 @@ class MachineSpot(TypedDict):
 
 
 def _machine_spots(st: WorldState, machines) -> list[dict]:
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     out = []
     for m in sorted(machines):
         if m not in placed:

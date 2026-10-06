@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
+from .select import SelectorError, resolve_factory
 
 __all__ = ["Reached", "Trace", "feeder_records", "live_feeders", "orient", "resolve_seeds", "trace"]
 
@@ -158,9 +159,6 @@ def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
 
     Raises ``SelectorError`` when the text is none of the three.
     """
-    from .resolve import resolve_factory
-    from .select import SelectorError
-
     records = {r["instance"].rsplit(".", 1)[-1]: r for r in state._all_records()}
     what = seed.strip()
     if what.casefold().startswith("label:"):

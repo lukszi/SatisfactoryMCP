@@ -16,10 +16,9 @@ from ....core.saveio import ports
 from ....domain.factories import edits, naming
 from ....domain.factories.labels import LabelError, stamp
 from ....domain.factories.query import ASPECTS as QUERY_ASPECTS
-from ....domain.factories.resolve import resolve_factory
 from ....domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from ....domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
-from ....domain.factories.select import SelectorError
+from ....domain.factories.select import SelectorError, resolve_factory
 from ....domain.factories.trace import power_at_risk, resolve_seeds, trace
 from ....domain.session import journal
 from ....domain.spatial import nodes as nodes_mod
@@ -230,11 +229,11 @@ def factory_map(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
-    from ....domain.factories import identity
+    from ....domain.factories import candidates
 
     gr = st.graph
     store = st.labels
-    base_c, line_c = identity.candidates(gr, st.game, st.projection)
+    base_c, line_c = candidates.bases_and_lines(gr, st.game, st.projection)
     labelled = store.assigned()
     machines = set(gr.machines())
     n = render.clamp(limit)
@@ -249,7 +248,7 @@ def factory_map(
         rows = []
         for label in sorted(store.labels, key=lambda x: -len(x.anchors)):
             alive = set(label.anchors) & machines
-            cand = identity.describe(sorted(alive), gr, st.game, st.projection, "label")
+            cand = candidates.describe(sorted(alive), gr, st.game, st.projection, "label")
             rows.append(
                 (
                     label.name,
@@ -301,7 +300,7 @@ def factory_map(
         for group in sx.groups()[start:end]:
             index = sx.slab_of[group[0]]
             slab = sx.slabs[index]
-            cand = identity.describe(group, gr, st.game, st.projection, "structure")
+            cand = candidates.describe(group, gr, st.game, st.projection, "structure")
             names = sorted({lbl.name for m in group if (lbl := store.label_for(m))})
             rows.append(
                 (
@@ -401,9 +400,9 @@ def factory_map(
             )
 
     if want in ("all", "unlabelled"):
-        loose = identity.unassigned(gr, labelled)
+        loose = candidates.unassigned(gr, labelled)
         if loose:
-            grouped = identity.describe(loose, gr, st.game, st.projection, "unlabelled")
+            grouped = candidates.describe(loose, gr, st.game, st.projection, "unlabelled")
             top = ", ".join(f"{name} {count}" for name, count in grouped.products.most_common(12))
             chunks.append(f"## unlabelled: {len(loose)} machine(s)\n{top or '(no recipes set)'}")
 
@@ -1210,7 +1209,7 @@ def propose_factories(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
-    from ....domain.factories import cohere, identity
+    from ....domain.factories import candidates, cohere
 
     store = st.labels
     proposals = (
@@ -1230,7 +1229,7 @@ def propose_factories(
         shown += 1
         if not start < shown <= start + n:
             continue
-        cand = identity.describe(pr.machines, st.graph, st.game, st.projection, "proposal")
+        cand = candidates.describe(pr.machines, st.graph, st.game, st.projection, "proposal")
         rows.append(
             (
                 k,
@@ -1294,7 +1293,7 @@ def select_machines(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
-    from ....domain.factories import identity
+    from ....domain.factories import candidates
 
     try:
         picked = _pick(st, select, split=split, expand=expand)
@@ -1306,8 +1305,8 @@ def select_machines(
             return render.envelope(f"# {st.age_note}", empty)
         return "! that selector matched no machines"
 
-    cand = identity.describe(picked, st.graph, st.game, st.projection, "selector")
-    groups = identity.cluster_machines(picked, st.projection)
+    cand = candidates.describe(picked, st.graph, st.game, st.projection, "selector")
+    groups = candidates.cluster_machines(picked, st.projection)
     parts = [
         render.kv(
             [
@@ -1324,7 +1323,7 @@ def select_machines(
         ),
     ]
     if len(groups) > 1:
-        sub = identity.describe(groups[0], st.graph, st.game, st.projection, "selector")
+        sub = candidates.describe(groups[0], st.graph, st.game, st.projection, "selector")
         parts.append(
             f"! {len(groups)} separate sites {[len(g) for g in groups]}; the largest is "
             f"{sub.size} at {int(sub.centroid[0] / 100)},{int(sub.centroid[1] / 100)}. "
@@ -1368,7 +1367,7 @@ def name_factory(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
-    from ....domain.factories import identity
+    from ....domain.factories import candidates
 
     try:
         picked = _pick(st, select, split=split, expand=expand)
@@ -1378,7 +1377,7 @@ def name_factory(
         return "! that selector matched no machines; nothing named"
 
     store = st.labels
-    cand = identity.describe(picked, st.graph, st.game, st.projection, "label")
+    cand = candidates.describe(picked, st.graph, st.game, st.projection, "label")
     existing = store.find(name)
     verb = "would name" if dry_run else ("re-anchored" if existing else "named")
     head = (
@@ -1503,7 +1502,7 @@ def amend_factory(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
-    from ....domain.factories import identity
+    from ....domain.factories import candidates
 
     store = st.labels
     label = store.find(name)
@@ -1536,7 +1535,7 @@ def amend_factory(
     added, dropped, standing = plan.added, plan.dropped, plan.standing
 
     pruned = sum(1 for m in dropped if m not in alive)
-    cand = identity.describe(standing, st.graph, st.game, st.projection, "label")
+    cand = candidates.describe(standing, st.graph, st.game, st.projection, "label")
     head = (
         f"{'would amend' if dry_run else 'amended'} {label.name!r}: "
         f"{len(plan.before)} -> {len(plan.after)} anchor(s), +{len(added)} -{len(dropped)}"
@@ -1582,7 +1581,7 @@ def list_factories(save: str | None = None, world: str | None = None, as_of: AsO
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
-    from ....domain.factories import identity
+    from ....domain.factories import candidates
 
     store = st.labels
     if not store.labels:
@@ -1594,7 +1593,7 @@ def list_factories(save: str | None = None, world: str | None = None, as_of: AsO
     rows = []
     for label in sorted(store.labels, key=lambda x: -len(x.anchors)):
         alive = sorted(set(label.anchors) & machines)
-        cand = identity.describe(alive, st.graph, st.game, st.projection, "label")
+        cand = candidates.describe(alive, st.graph, st.game, st.projection, "label")
         rows.append(
             (
                 label.name,
@@ -1606,7 +1605,7 @@ def list_factories(save: str | None = None, world: str | None = None, as_of: AsO
                 label.notes[:40],
             )
         )
-    loose = len(identity.unassigned(st.graph, store.assigned()))
+    loose = len(candidates.unassigned(st.graph, store.assigned()))
     from ....domain.factories.labels import LabelStore
 
     # Say where the file is. Labels are the one thing here a player authored by hand,

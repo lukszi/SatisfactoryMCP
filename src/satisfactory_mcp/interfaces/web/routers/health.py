@@ -13,7 +13,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from ....domain.factories import identity as fidentity
+from ....domain.factories import candidates
 from ....domain.factories.health import ACTIONABLE, OK, STATES
 from ....domain.factories.sweep import sweep
 from ....domain.spatial import geo
@@ -88,7 +88,7 @@ def factory_health(request: Request, save: str | None = None, world: str | None 
         return _fail(f"could not read save: {exc}", 404)
 
     alive_set = set(st.graph.machines())
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     review = {row["name"]: row["status"] for row in st.labels.review(alive_set)}
 
     def issue(m) -> dict:

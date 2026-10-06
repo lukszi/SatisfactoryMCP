@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from dataclasses import replace as replace_solution
 
 from ....core.gamedata.model import GameData
-from ...factories.resolve import resolve_factory
+from ...factories.select import resolve_factory
 from ...world.state import WorldState
 from ..solver.carrier import TierChoice
 from ..solver.model import Solution

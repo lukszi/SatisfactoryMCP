@@ -3,7 +3,7 @@
 Split out so tool modules can register against one ``mcp`` without importing each other.
 ``server`` imports the tool packages purely for their decorator side effects.
 
-The shared resolvers now live with their domains -- ``domain.factories.resolve`` and
+The shared resolvers now live with their domains -- ``domain.factories.select`` and
 ``domain.spatial.places`` -- and are re-bound here only so the old private names keep
 resolving for the tool modules that spell them.
 """
@@ -24,7 +24,7 @@ from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
 from ...core.schema import NewerSchema
 from ...domain import settings
-from ...domain.factories.resolve import resolve_factory as _resolve_factory
+from ...domain.factories.select import resolve_factory as _resolve_factory
 from ...domain.planning.solver.scenario import resolve_item
 from ...domain.planning.stored.planlog import Actor
 from ...domain.session import journal

@@ -13,8 +13,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from ....domain.factories import flowgraph
-from ....domain.factories import identity as fidentity
+from ....domain.factories import candidates, flowgraph
 from ....domain.factories.query import build_view
 from ....domain.factories.select import SelectorError, select_machines
 from ....domain.spatial import geo
@@ -141,7 +140,7 @@ def factory_graph(
     st, machines, title = picked
     fg = flowgraph.build(st, st.game, build_view(title, machines, st.graph, st.game, st.projection))
     whole = "factory" if factory else "cluster"
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     nodes: list[dict] = []
     for g in fg.groups.values():
         box = geo.bbox([placed[m][:2] for m in g.machines if m in placed])

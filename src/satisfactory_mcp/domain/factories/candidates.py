@@ -217,7 +217,7 @@ def product_clusters(
     ]
 
 
-def candidates(
+def bases_and_lines(
     graph: FactoryGraph, game: GameData, projection: dict
 ) -> tuple[list[Candidate], list[Candidate]]:
     """Every base, and the lines inside each. Returns (bases, lines)."""

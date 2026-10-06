@@ -14,7 +14,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from ....domain.factories import identity as fidentity
+from ....domain.factories import candidates
 from ....domain.factories.health import assess
 from ....domain.power.report import PowerLedger, starved_cause
 from ....domain.spatial import geo
@@ -190,7 +190,7 @@ def power_circuits(
 
     counted = biomass == "include"
     graph = st.graph
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     records = {
         key: {r["instance"].rsplit(".", 1)[-1]: r for r in st.projection.get(key) or ()}
         for key in RECORD_LISTS

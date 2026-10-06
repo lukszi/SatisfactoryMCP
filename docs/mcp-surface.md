@@ -299,7 +299,7 @@ Three rules hold it together, each with a test:
   and are not — a module dropped from that list would leave the server starting cleanly and
   simply not offering its tools. A test walks the directory and asserts nothing is missing.
 - **Tool modules never import each other.** Shared resolvers live with their domains —
-  `graph.resolve.resolve_factory`, `spatial.places.resolve_place` — because more than one
+  `factories.select.resolve_factory`, `spatial.places.resolve_place` — because more than one
   group needs each, and a resolver is a domain decision rather than an app detail. `app`
   keeps the old private names bound so `server`'s re-exports still resolve. A sibling
   import is the first step back toward one file, so a test forbids it.

@@ -37,10 +37,17 @@ from __future__ import annotations
 
 from ...core.gamedata.model import GameData
 from ..spatial import geo, places
-from .identity import bases, cluster_machines
+from .candidates import bases, cluster_machines
 from .model import FactoryGraph
 
-__all__ = ["INDEX_WARNING", "SELECTOR_HELP", "SelectorError", "pin_notes", "select_machines"]
+__all__ = [
+    "INDEX_WARNING",
+    "SELECTOR_HELP",
+    "SelectorError",
+    "pin_notes",
+    "resolve_factory",
+    "select_machines",
+]
 
 #: ``base:``, ``line:``, ``slab:`` and ``proposal:`` are POSITIONS in lists that are
 #: recomputed from the save every call, and every one of those lists is ordered by size.
@@ -339,3 +346,21 @@ def select_machines(
         if groups:
             result = set(groups[0])
     return sorted(result)
+
+
+def resolve_factory(st, factory: str):
+    """A label name, a selector, or a proposal index -- in that order.
+
+    Label first because that is what a player types. Falling through to the selector
+    grammar means ``factory_query("proposal:3", ...)`` works before anything is named.
+    """
+    label = st.labels.find(factory)
+    if label is not None:
+        alive = set(st.graph.machines())
+        return label.name, [m for m in label.anchors if m in alive]
+    try:
+        picked = select_machines([factory], st)
+    except SelectorError as exc:
+        known = ", ".join(x.name for x in st.labels.labels) or "(none named yet)"
+        raise SelectorError(f"{exc}. Named factories: {known}") from exc
+    return factory, picked

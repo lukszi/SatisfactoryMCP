@@ -37,10 +37,10 @@ def test_a_factory_carries_the_box_its_machines_occupy(client, state):
     extent, and a centroid alone cannot decide a zoom. Every anchor still standing has to
     lie inside the box, in metres, or the viewport it produces cuts machines off.
     """
-    from satisfactory_mcp.domain.factories import identity as fidentity
+    from satisfactory_mcp.domain.factories import candidates
 
     body = client.get("/api/factories").json()
-    placed = fidentity.positions(state.projection)
+    placed = candidates.positions(state.projection)
     by_name = {label.name: label for label in state.labels.labels}
 
     for row in body["labels"]:
@@ -86,7 +86,7 @@ def test_a_factory_whose_machines_are_all_gone_has_no_box_to_fly_to(labelled_cli
     """A label outlives its machines -- that is the point of anchoring to instance ids --
     so the honest answer is a name with nowhere to go, not a zero box at the world centre
     that would fly the map to (0, 0) and read as a bug in the projection."""
-    monkeypatch.setattr(web_factories.fidentity, "positions", lambda projection: {})
+    monkeypatch.setattr(web_factories.candidates, "positions", lambda projection: {})
     body = labelled_client.get("/api/factories").json()
     assert body["labels"], "the labels survive; only their positions are gone"
     assert all(row["bbox_m"] is None for row in body["labels"])

@@ -19,8 +19,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from ....domain.factories import identity as fidentity
-from ....domain.factories import naming
+from ....domain.factories import candidates, naming
 from ....domain.spatial import geo
 from ....domain.spatial import regions as spatial_regions
 from ..serial import _fail, _m, _state
@@ -102,7 +101,7 @@ def factories(
     except FileNotFoundError:
         rmap = None
     names = naming.proposal_names(st, st.proposals, style, rmap)
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
 
     def _bbox_m(machines) -> list[float] | None:
         box = geo.bbox([placed[m][:2] for m in machines if m in placed])
@@ -123,7 +122,7 @@ def factories(
     for index, pr in enumerate(st.proposals):
         if st.labels.covers(pr.machines):
             continue  # already named by the player; the label speaks for it
-        cand = fidentity.describe(pr.machines, st.graph, st.game, st.projection, "proposal")
+        cand = candidates.describe(pr.machines, st.graph, st.game, st.projection, "proposal")
         proposals.append(
             {
                 "index": index,

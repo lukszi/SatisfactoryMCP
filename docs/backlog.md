@@ -88,7 +88,7 @@ landed by `4f47e33`, `571a59a` and `3678718`.
 
 The power half was less blind than this row originally claimed, and the correction mattered
 because it changed the remedy. Power ISLANDS already reached text:
-`domain/factories/identity.py::bases` calls `graph.machine_components("power",
+`domain/factories/candidates.py::bases` calls `graph.machine_components("power",
 skip=graph.towers())` and `factory_map show=candidates` prints them under
 `## power islands (bases)`.
 

@@ -14,8 +14,7 @@ from dataclasses import dataclass, field
 from ....core.gamedata.model import GameData
 from ....core.text import plural
 from ...factories import naming
-from ...factories.resolve import resolve_factory
-from ...factories.select import SelectorError
+from ...factories.select import SelectorError, resolve_factory
 from ...spatial import geo
 from ...spatial.places import parse_near, resolve_place
 from ...world.state import WorldState

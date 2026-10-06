@@ -19,8 +19,7 @@ from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
-from ....domain.factories import edits, fed, flowgraph, naming
-from ....domain.factories import identity as fidentity
+from ....domain.factories import candidates, edits, fed, flowgraph, naming
 from ....domain.factories.labels import (
     BadName,
     LabelError,
@@ -198,7 +197,7 @@ def factory_candidates(
     except FileNotFoundError:
         rmap = None
 
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     names = naming.proposal_names(st, st.proposals, style, rmap)
     hidden = {"small": 0, "not_fed": 0}
     rows = []
@@ -212,7 +211,7 @@ def factory_candidates(
         if fed_only and verdict == fed.NOT_FED:
             hidden["not_fed"] += 1
             continue
-        cand = fidentity.describe(pr.machines, st.graph, st.game, st.projection, "proposal")
+        cand = candidates.describe(pr.machines, st.graph, st.game, st.projection, "proposal")
         view, fg = _cluster(st, pr.machines, "proposal")
         extracted = {row[1] for row in view.nodes}
         _item, confident = naming.lead(fg, cand, st.game, extracted)
@@ -285,7 +284,7 @@ def name_candidate(
         return _fail(str(exc), 404)
     if not picked:
         return _fail("that unnamed cluster matched no machines; detect again", 404)
-    cand = fidentity.describe(picked, st.graph, st.game, st.projection, "label")
+    cand = candidates.describe(picked, st.graph, st.game, st.projection, "label")
     overlaps = st.labels.overlaps(picked, name)
     try:
         label, _held, written = edits.name(
@@ -436,7 +435,7 @@ def amend_label(
     if label is None:
         return _fail(f"no factory named “{name}” in this world", 404)
     alive = set(st.graph.machines())
-    placed = fidentity.positions(st.projection)
+    placed = candidates.positions(st.projection)
     polygons = [[(x * geo.CM_PER_M, y * geo.CM_PER_M) for x, y in a] for a in areas]
     within = sorted(
         m
@@ -462,7 +461,7 @@ def amend_label(
     }
     if dry_run or not (plan.added or plan.dropped):
         return reply
-    cand = fidentity.describe(plan.standing, st.graph, st.game, st.projection, "label")
+    cand = candidates.describe(plan.standing, st.graph, st.game, st.projection, "label")
     try:
         _label, written = edits.amend(
             st.world_id,
