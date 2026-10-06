@@ -107,7 +107,23 @@ pythonVersion = "3.11"
 pythonPlatform = "Windows"
 typeCheckingMode = "standard"
 # A package or module joins this list when it reaches zero strict errors.
-strict = ["src/satisfactory_mcp/core/arrays.py", "src/satisfactory_mcp/core/jsontypes.py"]
+strict = [
+    "src/satisfactory_mcp/core/arrays.py",
+    "src/satisfactory_mcp/core/jsontypes.py",
+    "src/satisfactory_mcp/core/saveio/schema.py",
+    "src/satisfactory_mcp/domain/factories/views.py",
+    "src/satisfactory_mcp/domain/maps/views.py",
+    "src/satisfactory_mcp/domain/planning/analysis/views.py",
+    "src/satisfactory_mcp/domain/planning/progress/views.py",
+    "src/satisfactory_mcp/domain/planning/readout/views.py",
+    "src/satisfactory_mcp/domain/planning/siting/views.py",
+    "src/satisfactory_mcp/domain/planning/solver/views.py",
+    "src/satisfactory_mcp/domain/planning/stored/views.py",
+    "src/satisfactory_mcp/domain/power/views.py",
+    "src/satisfactory_mcp/domain/progression/views.py",
+    "src/satisfactory_mcp/domain/session/views.py",
+    "src/satisfactory_mcp/domain/spatial/nodes/views.py",
+]
 reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.ruff]
