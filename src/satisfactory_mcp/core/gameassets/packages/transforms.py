@@ -6,12 +6,15 @@ UE composes parent * child, and rotators are pitch/yaw/roll in degrees.
 from __future__ import annotations
 
 import math
+from typing import TypeAlias
 
 from .classfacts import ClassFacts
-from .properties import relative_transform
+from .properties import RelativeTransform, Vec3, relative_transform
 from .view import PackageView
 
 __all__ = [
+    "Quat",
+    "Transform",
     "compose",
     "local_transform",
     "quat_mul",
@@ -21,11 +24,17 @@ __all__ = [
     "world_transform",
 ]
 
+#: A rotation as ``(x, y, z, w)``.
+Quat: TypeAlias = tuple[float, float, float, float]
+
+#: A placed component's ``(location, rotation, scale)``.
+Transform: TypeAlias = tuple[Vec3, Quat, Vec3]
+
 _D2R = math.pi / 180.0
 _UNIT_SCALE = (1.0, 1.0, 1.0)
 
 
-def rotator_to_quat(pitch: float, yaw: float, roll: float) -> tuple[float, float, float, float]:
+def rotator_to_quat(pitch: float, yaw: float, roll: float) -> Quat:
     sp, cp = math.sin(pitch * _D2R * 0.5), math.cos(pitch * _D2R * 0.5)
     sy, cy = math.sin(yaw * _D2R * 0.5), math.cos(yaw * _D2R * 0.5)
     sr, cr = math.sin(roll * _D2R * 0.5), math.cos(roll * _D2R * 0.5)
@@ -37,7 +46,7 @@ def rotator_to_quat(pitch: float, yaw: float, roll: float) -> tuple[float, float
     )
 
 
-def quat_mul(a: tuple, b: tuple) -> tuple[float, float, float, float]:
+def quat_mul(a: Quat, b: Quat) -> Quat:
     ax, ay, az, aw = a
     bx, by, bz, bw = b
     return (
@@ -48,7 +57,7 @@ def quat_mul(a: tuple, b: tuple) -> tuple[float, float, float, float]:
     )
 
 
-def quat_rotate(q: tuple, v: tuple) -> tuple[float, float, float]:
+def quat_rotate(q: Quat, v: Vec3) -> Vec3:
     x, y, z, w = q
     vx, vy, vz = v
     tx = 2.0 * (y * vz - z * vy)
@@ -61,7 +70,7 @@ def quat_rotate(q: tuple, v: tuple) -> tuple[float, float, float]:
     )
 
 
-def compose(parent: tuple, child: tuple) -> tuple:
+def compose(parent: Transform, child: Transform) -> Transform:
     parent_location, parent_rotation, parent_scale = parent
     child_location, child_rotation, child_scale = child
     scaled = (
@@ -94,10 +103,10 @@ def _owner_class(view: PackageView, component: int) -> str | None:
     return path if path and path.startswith("/Game/") else None
 
 
-def local_transform(view: PackageView, slot: int, classes: ClassFacts) -> tuple:
+def local_transform(view: PackageView, slot: int, classes: ClassFacts) -> Transform:
     """A component's own ``(location, quaternion, scale)``, template defaults filled in."""
     props = view.props(slot)
-    defaults: tuple = (None, None, None)
+    defaults: RelativeTransform = (None, None, None)
     owner = _owner_class(view, slot)
     if owner:
         template = classes.templates(owner).get(view.exports[slot]["name"])
@@ -116,7 +125,7 @@ def world_transform(
     slot: int,
     classes: ClassFacts,
     seen: set[int] | None = None,
-) -> tuple[tuple | None, int | None]:
+) -> tuple[Transform | None, int | None]:
     """Compose up the ``AttachParent`` chain. Returns the transform and the parent actor.
 
     The parent actor is the export the immediate ``AttachParent`` belongs to when that is a

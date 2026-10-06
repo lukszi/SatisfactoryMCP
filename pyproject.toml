@@ -107,7 +107,26 @@ pythonVersion = "3.11"
 pythonPlatform = "Windows"
 typeCheckingMode = "standard"
 # A package or module joins this list when it reaches zero strict errors.
-strict = ["src/satisfactory_mcp/core/arrays.py", "src/satisfactory_mcp/core/jsontypes.py"]
+strict = [
+    "src/satisfactory_mcp/core/arrays.py",
+    "src/satisfactory_mcp/core/gameassets/__init__.py",
+    "src/satisfactory_mcp/core/gameassets/container.py",
+    "src/satisfactory_mcp/core/gameassets/imaging.py",
+    "src/satisfactory_mcp/core/gameassets/iostore.py",
+    "src/satisfactory_mcp/core/gameassets/levels.py",
+    "src/satisfactory_mcp/core/gameassets/meshdata.py",
+    "src/satisfactory_mcp/core/gameassets/packages/__init__.py",
+    "src/satisfactory_mcp/core/gameassets/packages/properties.py",
+    "src/satisfactory_mcp/core/gameassets/textures.py",
+    "src/satisfactory_mcp/core/gameassets/versions.py",
+    "src/satisfactory_mcp/core/jsontypes.py",
+    "tools/check_map_fill.py",
+    "tools/gen_map_image.py",
+    "tools/gen_map_renders.py",
+    "tools/gen_paint_layers.py",
+    "tools/gen_world_collectibles.py",
+    "tools/gen_world_heightmap.py",
+]
 reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.ruff]

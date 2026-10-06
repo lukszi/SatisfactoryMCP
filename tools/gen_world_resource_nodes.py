@@ -25,6 +25,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NotRequired, TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
@@ -50,6 +51,7 @@ from satisfactory_mcp.core.gameassets.packages import (
     world_transform,
 )
 from satisfactory_mcp.core.gameassets.provenance import InstallNotFound, installed_build
+from satisfactory_mcp.core.jsontypes import JsonObject
 
 PERSISTENT_LEAF = "Persistent_Level.umap"
 
@@ -75,11 +77,27 @@ PURITY = {None: "normal", "RP_Normal": "normal", "RP_Inpure": "impure", "RP_Pure
 #: this, and a fixed rounding keeps regeneration diffs readable.
 POSITION_DECIMALS = 4
 
+#: One row of the table. The functional form, because "class" is a keyword; ``core`` is on
+#: the satellites only.
+WorldNode = TypedDict(
+    "WorldNode",
+    {
+        "id": str,
+        "class": str,
+        "resource": str | None,
+        "purity": str,
+        "x": float,
+        "y": float,
+        "z": float,
+        "core": NotRequired[str],
+    },
+)
+
 #: The retirement record for ``data/world_resource_nodes.mit.json``, deleted in the same
 #: commit that first generated this file. Transcribed, not recomputed -- the file it was
 #: measured against is gone -- so no run gates on it. ``tests/data/test_nodes_provenance.py``
 #: pins these figures.
-RETIRED_MIT_TABLE = {
+RETIRED_MIT_TABLE: JsonObject = {
     "what": (
         "data/world_resource_nodes.mit.json: 626 resource-node rows vendored from "
         "rockfactory/satisfactory-logistics (MIT, Copyright (c) 2024 Leonardo Ascione), "
@@ -158,12 +176,18 @@ class WorldSweep:
     """One walk over every world package: the census, and the persistent level it found."""
 
     #: Package leaf -> counts, for the packages placing any counted class.
-    per_package: dict[str, collections.Counter]
+    per_package: dict[str, collections.Counter[str]]
     #: Counted class -> how many the whole world places.
     census: dict[str, int]
     persistent_view: PackageView
     persistent_path: str
     packages_swept: int
+
+    def deposits(self) -> tuple[int, int]:
+        """Deposits placed by the persistent level and by the streamed cells; none is emitted."""
+        persistent = self.per_package.get(PERSISTENT_LEAF, collections.Counter[str]())
+        in_persistent = persistent.get(DEPOSIT_CLASS, 0)
+        return in_persistent, self.census.get(DEPOSIT_CLASS, 0) - in_persistent
 
 
 def sweep_world_levels(store: IoStore, scripts: ScriptObjects) -> WorldSweep:
@@ -173,11 +197,11 @@ def sweep_world_levels(store: IoStore, scripts: ScriptObjects) -> WorldSweep:
     so the proof and the read cannot diverge. Dies if any package is unreadable or a node
     turns up in a streamed cell.
     """
-    per_package: dict[str, collections.Counter] = {}
-    census: collections.Counter = collections.Counter()
+    per_package: dict[str, collections.Counter[str]] = {}
+    census: collections.Counter[str] = collections.Counter()
     persistent: PackageView | None = None
     persistent_path: str | None = None
-    failures: collections.Counter = collections.Counter()
+    failures: collections.Counter[str] = collections.Counter()
 
     def unreadable(_path: str, exc: Exception) -> None:
         failures[type(exc).__name__] += 1
@@ -187,7 +211,7 @@ def sweep_world_levels(store: IoStore, scripts: ScriptObjects) -> WorldSweep:
     for number, total, path, view in walk_levels(
         store, scripts, paths=paths, on_unreadable=unreadable
     ):
-        here: collections.Counter = collections.Counter()
+        here: collections.Counter[str] = collections.Counter()
         for export in view.exports:
             slot = export["slot"]
             if view.outer_of.get(slot) not in view.level_slots:
@@ -227,17 +251,17 @@ def sweep_world_levels(store: IoStore, scripts: ScriptObjects) -> WorldSweep:
     )
 
 
-def sweep_other_levels(store: IoStore, scripts: ScriptObjects) -> list[dict]:
+def sweep_other_levels(store: IoStore, scripts: ScriptObjects) -> list[JsonObject]:
     """The container's non-world levels, swept with the identical rule.
 
     The developer test map places resource nodes too, so a count from outside the world
     level is recorded rather than treated as a contradiction.
     """
-    out: list[dict] = []
+    out: list[JsonObject] = []
     for path in sorted(
         p for p in store.by_path if p.endswith(LEVEL_SUFFIX) and WORLD_LEVEL_DIR not in p
     ):
-        entry: dict = {"package": path.rsplit("/", 1)[-1]}
+        entry: JsonObject = {"package": path.rsplit("/", 1)[-1]}
         try:
             view = PackageView(store.read_path(path), scripts)
             counts = collections.Counter(
@@ -257,7 +281,7 @@ def sweep_other_levels(store: IoStore, scripts: ScriptObjects) -> list[dict]:
     return out
 
 
-def read_rows(view: PackageView, classes: ClassFacts) -> list[dict]:
+def read_rows(view: PackageView, classes: ClassFacts) -> list[WorldNode]:
     """Every node actor of the persistent level as a finished row, or die saying why."""
     problems: list[str] = []
     actors = [
@@ -268,7 +292,7 @@ def read_rows(view: PackageView, classes: ClassFacts) -> list[dict]:
     core_names = {
         export["slot"]: export["name"] for export, cls in actors if cls == FRACKING_CORE_CLASS
     }
-    rows: list[dict] = []
+    rows: list[WorldNode] = []
     for export, cls in actors:
         if cls not in NODE_CLASSES:
             continue
@@ -291,7 +315,7 @@ def _read_node_row(
     cls: str,
     core_names: dict[int, str],
     problems: list[str],
-) -> dict | None:
+) -> WorldNode | None:
     """One node's row, appending what is wrong with it to ``problems``.
 
     None where the row cannot be written at all: an unknown purity or no transform.
@@ -327,7 +351,7 @@ def _read_node_row(
         problems.append(f"{name}: no composable root-component transform")
         return None
 
-    row = {
+    row: WorldNode = {
         "id": name,
         "class": cls,
         "resource": resource,
@@ -341,7 +365,7 @@ def _read_node_row(
     return row
 
 
-def _check_well_links(rows: list[dict]) -> list[str]:
+def _check_well_links(rows: list[WorldNode]) -> list[str]:
     """A core and its satellites tap one deposit, so a resource disagreement across the link
     is a misread rather than a curiosity; so is a core no satellite references."""
     problems: list[str] = []
@@ -400,9 +424,9 @@ def main() -> int:
     print(f"wrote {_shown(args.out)}  {len(rows)} rows  {args.out.stat().st_size} B")
     print("by class:", meta["by_class"])
     print("by purity:", meta["by_purity"])
+    in_persistent, in_streamed = world.deposits()
     print(
-        f"deposits: {meta['deposits']['placed_by_the_persistent_level']} in the "
-        f"persistent level, {meta['deposits']['placed_by_the_streamed_cells']} in the "
+        f"deposits: {in_persistent} in the persistent level, {in_streamed} in the "
         "streamed cells, 0 emitted"
     )
     return 0
@@ -415,18 +439,18 @@ def _shown(path: Path) -> Path:
 
 def build_meta(
     *,
-    rows: list[dict],
+    rows: list[WorldNode],
     world: WorldSweep,
-    side_levels: list[dict],
+    side_levels: list[JsonObject],
     build_pin: str,
     versions: dict[str, str],
-) -> dict:
+) -> JsonObject:
     """The table's ``_meta``: provenance, counts, coverage, and the retired table's record."""
     by_class = collections.Counter(r["class"] for r in rows)
     by_purity = collections.Counter(r["purity"] for r in rows)
     satellites = [r for r in rows if r["class"] == FRACKING_SATELLITE_CLASS]
     cores = {r["id"] for r in rows if r["class"] == FRACKING_CORE_CLASS}
-    deposits_in_persistent = world.per_package.get(PERSISTENT_LEAF, {}).get(DEPOSIT_CLASS, 0)
+    deposits_in_persistent, deposits_streamed = world.deposits()
     return {
         "description": (
             "Every resource-node actor the game's world level places: class, resource, "
@@ -455,7 +479,7 @@ def build_meta(
                 "ObjectProperty, an export reference in the same package; positions "
                 "from the composed root-component world transform"
             ),
-            "decoder": versions,
+            "decoder": dict(versions),
         },
         "game_version_pinned": build_pin,
         "generated": datetime.now(UTC).date().isoformat(),
@@ -472,7 +496,7 @@ def build_meta(
                 "over every world package, and the run refuses to write when that "
                 "stops holding, so the one-package read cannot go quietly incomplete"
             ),
-            "other_levels_in_the_container": side_levels,
+            "other_levels_in_the_container": list(side_levels),
         },
         "deposits": {
             "why_no_rows": (
@@ -481,8 +505,7 @@ def build_meta(
                 "cannot be built"
             ),
             "placed_by_the_persistent_level": deposits_in_persistent,
-            "placed_by_the_streamed_cells": world.census.get(DEPOSIT_CLASS, 0)
-            - deposits_in_persistent,
+            "placed_by_the_streamed_cells": deposits_streamed,
         },
         "geysers": (
             "carry no mResourceClass -- a geyser is a placement target for the "

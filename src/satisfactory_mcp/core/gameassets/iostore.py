@@ -129,7 +129,7 @@ class IoStore:
         pos += 4 * seed_count + 4 * nonopt_count  # perfect-hash tables
         self.blocks = blob[pos : pos + 12 * self.block_count]
         pos += 12 * self.block_count
-        self.methods = []
+        self.methods: list[str] = []
         for _ in range(method_count):
             self.methods.append(blob[pos : pos + method_length].split(b"\0")[0].decode("latin1"))
             pos += method_length

@@ -16,6 +16,7 @@ import shutil
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+from ..jsontypes import JsonObject, JsonValue
 from .versions import PROVENANCE_SCHEMA
 
 #: The engine's own version file, the one the build system writes beside the executable.
@@ -42,13 +43,15 @@ class InstallNotFound(Exception):
     """
 
 
-def installed_build(game: Path) -> tuple[str, dict]:
+def installed_build(game: Path) -> tuple[str, JsonObject]:
     """The installed build as ``(pin string, the raw version JSON)``. The string is built here
     rather than per generator so two artifacts cannot spell one build two ways."""
     found = sorted(game.glob(VERSION_GLOB))
     if not found:
         raise InstallNotFound(f"no {VERSION_GLOB} under {game}")
-    raw = json.loads(found[0].read_text(encoding="utf-8"))
+    raw: JsonValue = json.loads(found[0].read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise InstallNotFound(f"{found[0]} holds no JSON object")
     pin = (
         f"buildVersion {raw.get('Changelist')} "
         f"(engine branch {raw.get('BranchName')}), the installed build"
@@ -76,15 +79,15 @@ def installed_build_from_exe(game: Path) -> str | None:
     return None
 
 
-def read_path(sidecar: object, path: Iterable[str]) -> object:
+def read_path(sidecar: JsonValue, path: Iterable[str]) -> JsonValue:
     """Walk nested dicts to whatever is at ``path``, or ``None`` the moment the walk fails.
 
-    Untyped because the staleness guards in ``tools/`` want a string, a bool and an int off
-    the identical walk. Incurious about what it finds: an older sidecar, a truncated one, a
-    JSON document that is not an object are all "this path is not there", which is what makes
-    a guard refuse rather than crash. Checking the type is the caller's, not this.
+    Any JSON value, because the staleness guards in ``tools/`` want a string, a bool and an
+    int off the identical walk. Incurious about what it finds: an older sidecar, a truncated
+    one, a JSON document that is not an object are all "this path is not there", which is
+    what makes a guard refuse rather than crash. Checking the type is the caller's, not this.
     """
-    node: object = sidecar
+    node = sidecar
     for key in path:
         if not isinstance(node, dict):
             return None
@@ -92,7 +95,7 @@ def read_path(sidecar: object, path: Iterable[str]) -> object:
     return node
 
 
-def read_str_path(sidecar: object, path: Iterable[str]) -> str | None:
+def read_str_path(sidecar: JsonValue, path: Iterable[str]) -> str | None:
     """:func:`read_path`, refusing anything that is not a string. A pin that arrived as a
     number is a sidecar this reader does not understand, which refuses the same way."""
     node = read_path(sidecar, path)
@@ -136,10 +139,10 @@ def stale_artifacts(game: Path, data: Path) -> list[str]:
         pin, _ = installed_build(game)
     except (InstallNotFound, OSError, ValueError):
         return []
-    drifted = []
+    drifted: list[str] = []
     for name, parts, where in PINNED_ARTIFACTS:
         try:
-            sidecar = json.loads(data.joinpath(*parts).read_text(encoding="utf-8"))
+            sidecar: JsonValue = json.loads(data.joinpath(*parts).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         recorded = read_str_path(sidecar, (*where, PIN_KEY))
@@ -170,7 +173,7 @@ def files_digest(hashes: Mapping[str, str]) -> str:
     return sha256_hex(lines.encode("utf-8"))
 
 
-def changelist(raw: object) -> int | None:
+def changelist(raw: JsonValue) -> int | None:
     """The build number out of a raw version JSON or a pin string, or ``None``."""
     if isinstance(raw, dict):
         value = raw.get("Changelist")
@@ -181,7 +184,12 @@ def changelist(raw: object) -> int | None:
     return None
 
 
-def provenance_block(game_raw: Mapping, inputs: dict, renderer: dict, style: dict) -> dict:
+def provenance_block(
+    game_raw: Mapping[str, JsonValue],
+    inputs: Mapping[str, object],
+    renderer: Mapping[str, object],
+    style: Mapping[str, object],
+) -> dict[str, object]:
     """The ``_meta.provenance`` block every map generator writes (docs/maps_contract.md §3).
 
     ``inputs`` lists only what this map read; each entry carries its own ``cl``.
@@ -212,7 +220,7 @@ def install_directory(out_dir: Path, payload: Mapping[str, bytes]) -> dict[str, 
         if stale.exists():
             shutil.rmtree(stale)
     staging.mkdir(parents=True)
-    written = {}
+    written: dict[str, int] = {}
     for name, blob in payload.items():
         (staging / name).write_bytes(blob)
         written[name] = len(blob)

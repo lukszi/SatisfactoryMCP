@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import shutil
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypedDict, cast
 
+from .imaging import LanczosFilter, PngOptions, TileImage
 from .provenance import RETIRED_SUFFIX, STAGING_SUFFIX
 
 #: The directory a pyramid lives in, and the square a browser fetches. Deliberately not
@@ -49,7 +52,12 @@ DEFAULT_UPSCALE = 4
 
 #: How a tile is deflated: zlib level 6, the same pixels as ``optimize=True`` for an eighth of
 #: its CPU and a few percent more bytes (docs/spatial-and-map.md section 17, "Deflate level").
-TILE_PNG = {"format": "PNG", "compress_level": 6}
+TILE_PNG: PngOptions = {"format": "PNG", "compress_level": 6}
+
+#: One level of a cut, as the pyramid record lists it. The functional form: "from" is a keyword.
+LevelRecord = TypedDict(
+    "LevelRecord", {"z": int, "sheet_px": int, "tiles": int, "bytes": int, "from": str}
+)
 
 
 class PyramidError(Exception):
@@ -90,7 +98,7 @@ def tile_relpath(z: int, x: int, y: int) -> str:
     return f"{z}/{x}_{y}.png"
 
 
-def cut_square(piece, dest: Path, z: int, ox: int, oy: int, tile_px: int) -> int:
+def cut_square(piece: TileImage, dest: Path, z: int, ox: int, oy: int, tile_px: int) -> int:
     """Slice one square image into ``dest/{z}/{x}_{y}.png``, starting at tile ``(ox, oy)``.
 
     Returns the bytes written, which the caller sums into the level record a reader checks the
@@ -122,9 +130,13 @@ def encode_tile_row(job: tuple[str, int, int, int, str, int]) -> int:
     name, width, z, row, dest, tile_px = job
     block = SharedMemory(name=name)
     try:
+        if block.buf is None:
+            raise PyramidError(f"the shared level {name} is closed")
         start, length = row * tile_px * width * 3, tile_px * width * 3
         with block.buf[start : start + length] as raw:
-            strip = Image.frombuffer("RGB", (width, tile_px), raw, "raw", "RGB", 0, 1)
+            # Pillow reads any buffer, but its stub admits only bytes and array interfaces.
+            data = cast("bytes", raw)
+            strip = Image.frombuffer("RGB", (width, tile_px), data, "raw", "RGB", 0, 1)
         written = 0
         for x in range(width // tile_px):
             path = Path(dest) / tile_relpath(z, x, row)
@@ -136,7 +148,7 @@ def encode_tile_row(job: tuple[str, int, int, int, str, int]) -> int:
         block.close()
 
 
-def level_record(z: int, written: int, source: str, tile_px: int = PYRAMID_TILE_PX) -> dict:
+def level_record(z: int, written: int, source: str, tile_px: int = PYRAMID_TILE_PX) -> LevelRecord:
     """One level's entry in the record, printed as it is made."""
     side, tiles = tile_px << z, (1 << z) ** 2
     print(f"  pyramid z{z}: {side}x{side}, {tiles} tiles, {written / 1e6:.2f} MB")
@@ -144,8 +156,8 @@ def level_record(z: int, written: int, source: str, tile_px: int = PYRAMID_TILE_
 
 
 def cut_pyramid(
-    sheet,
-    image_mod,
+    sheet: TileImage,
+    image_mod: LanczosFilter,
     dest: Path,
     tile_px: int = PYRAMID_TILE_PX,
     source: str = DEFAULT_LEVEL_SOURCE,
@@ -157,7 +169,7 @@ def cut_pyramid(
     a level with real pixels behind it has no business being drawn from invented ones.
     """
     top = pyramid_top_z(sheet.width, tile_px)
-    levels = []
+    levels: list[LevelRecord] = []
     for z in range(top + 1):
         side = tile_px << z
         level = sheet if side == sheet.width else sheet.resize((side, side), image_mod.LANCZOS)
@@ -165,7 +177,7 @@ def cut_pyramid(
     return pyramid_record(levels, tile_px, 1, dir_name)
 
 
-def pyramid_record(levels: list[dict], tile_px: int, workers: int, dir_name: str) -> dict:
+def pyramid_record(levels: list[LevelRecord], tile_px: int, workers: int, dir_name: str) -> dict:
     """What a cut wrote, ``levels`` in z order: the block a sidecar carries."""
     return {
         "layout": f"{dir_name}/{{z}}/{{x}}_{{y}}.png",
@@ -207,11 +219,11 @@ def merge_enhanced(stats: dict, extra: dict) -> dict:
 
 
 def install_pyramid(
-    sheet,
-    image_mod,
+    sheet: TileImage,
+    image_mod: LanczosFilter,
     out_dir: Path,
     tile_px: int = PYRAMID_TILE_PX,
-    enhance=None,
+    enhance: Callable[[Path], dict] | None = None,
     source: str = DEFAULT_LEVEL_SOURCE,
     dir_name: str = TILES_DIR_NAME,
 ) -> dict:

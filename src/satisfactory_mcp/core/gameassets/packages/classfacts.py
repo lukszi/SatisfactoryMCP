@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..iostore import IoStore
-from .properties import read_float, relative_transform
+from .properties import RelativeTransform, read_float, relative_transform
 from .view import PackageView
 
 __all__ = ["MOUNT_ROOTS", "AssetIndex", "ClassFacts"]
@@ -83,7 +83,7 @@ class ClassFacts:
     def __init__(self, store: IoStore, index: AssetIndex) -> None:
         self.store = store
         self.index = index
-        self._templates: dict[str, dict[str, tuple]] = {}
+        self._templates: dict[str, dict[str, RelativeTransform]] = {}
         self._defaults: dict[str, dict[str, bytes]] = {}
         self._flags: dict[str, dict[str, bool | None]] = {}
         self._components: dict[str, dict[str, dict[str, bytes]]] = {}
@@ -129,7 +129,7 @@ class ClassFacts:
         return view
 
     def _load(self, class_package: str) -> None:
-        templates: dict[str, tuple] = {}
+        templates: dict[str, RelativeTransform] = {}
         defaults: dict[str, bytes] = {}
         flags: dict[str, bool | None] = {}
         components: dict[str, dict[str, bytes]] = {}
@@ -152,7 +152,7 @@ class ClassFacts:
         self._flags[class_package] = flags
         self._components[class_package] = components
 
-    def templates(self, class_package: str) -> dict[str, tuple]:
+    def templates(self, class_package: str) -> dict[str, RelativeTransform]:
         if class_package not in self._templates:
             self._load(class_package)
         return self._templates[class_package]

@@ -52,14 +52,26 @@ evidence, and counting it as one is how a decode regression hides.
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import TypeAlias
 
 import numpy as np
 
+from ..arrays import F32Grid, F64Grid, I64Grid
 from .iostore import IoStore
+from .meshdata import (
+    CollisionHull,
+    Lod,
+    MeshGates,
+    NaniteResource,
+    NaniteSummary,
+    PageSpan,
+    PageState,
+    RenderData,
+    Section,
+)
 from .packages import (
     AssetIndex,
+    BulkEntry,
     PackageView,
     ScriptObjects,
     class_name_of,
@@ -120,6 +132,15 @@ LOD_COUNT_SEARCH = (38, 36, 40, 34, 42, 30, 32, 44, 46)
 SOCKET_COUNT_AT = 34
 SOCKET_MAX = 64
 
+#: ``ExtendedBounds`` as ``(low, high)`` corners, in mesh-local centimetres.
+Bounds: TypeAlias = tuple[F64Grid, F64Grid]
+
+#: LOD 0 as ``(positions, triangles, max vertex)``.
+Lod0: TypeAlias = tuple[F32Grid, I64Grid, int]
+
+#: What :func:`extract` reports for one mesh, filled in as each gate runs.
+MeshRow: TypeAlias = dict[str, object]
+
 
 class ParseError(Exception):
     """A tail that does not hold together. Never a silently different answer."""
@@ -167,12 +188,12 @@ class Cursor:
         return size, count, at
 
 
-def bounds_pad(low, high) -> float:
+def bounds_pad(low: F64Grid, high: F64Grid) -> float:
     """How far outside ``ExtendedBounds`` a vertex may sit, in centimetres."""
     return BOUNDS_PAD_CM + BOUNDS_PAD_FRACTION * float(np.max(np.asarray(high) - np.asarray(low)))
 
 
-def inside_fraction(verts: np.ndarray, low, high, pad: float) -> float:
+def inside_fraction(verts: F32Grid, low: F64Grid, high: F64Grid, pad: float) -> float:
     """The share of ``verts`` inside ``[low - pad, high + pad]`` on every axis."""
     return float(((verts >= low - pad) & (verts <= high + pad)).all(axis=1).mean())
 
@@ -180,89 +201,6 @@ def inside_fraction(verts: np.ndarray, low, high, pad: float) -> float:
 # --------------------------------------------------------------------------------------
 # The render-data walk.
 # --------------------------------------------------------------------------------------
-
-
-@dataclass
-class Section:
-    material: int
-    first_index: int
-    triangles: int
-    min_vertex: int
-    max_vertex: int
-
-
-@dataclass
-class Lod:
-    index: int
-    sections: list[Section]
-    max_deviation: float
-    cooked_out: bool
-    inlined: bool
-    position_stride: int = 0
-    vertices: int = 0
-    positions_at: int = 0
-    index_bytes: int = 0
-    index_32bit: bool = False
-    indices_at: int = 0
-    start: int = 0
-    end: int = 0
-
-    @property
-    def triangles(self) -> int:
-        return sum(section.triangles for section in self.sections)
-
-    @property
-    def max_vertex(self) -> int:
-        return max((section.max_vertex for section in self.sections), default=-1)
-
-
-class PageState(NamedTuple):
-    """One ``FPageStreamingState`` row of the page table."""
-
-    offset: int
-    size: int
-    page_size: int
-    deps_start: int
-    deps_num: int
-    depth: int
-    flags: int
-
-
-@dataclass
-class PageSpan:
-    """One Nanite page: where its bytes live, what the table claims, and the bytes."""
-
-    index: int
-    offset: int
-    size: int
-    page_size: int
-    deps_start: int
-    deps_num: int
-    depth: int
-    flags: int
-    is_root: bool
-    data: bytes = b""
-
-
-@dataclass
-class NaniteResource:
-    """``FNaniteResources``, with the offsets a page decode needs kept rather than dropped."""
-
-    present: bool
-    resource_flags: int = 0
-    bulk_index: int = -1
-    root_bytes: int = 0
-    root_data_at: int = 0
-    root_pages: int = 0
-    position_precision: int = 0
-    normal_precision: int = 0
-    input_triangles: int = 0
-    input_vertices: int = 0
-    clusters: int = 0
-    mesh_bounds: tuple[float, ...] = ()
-    page_states: list[PageState] = field(default_factory=list)
-    page_dependencies: list[int] = field(default_factory=list)
-    pages: list[PageSpan] = field(default_factory=list)
 
 
 def _section(cur: Cursor) -> Section:
@@ -374,7 +312,7 @@ def _nanite(cur: Cursor) -> NaniteResource:
     root_data_at = cur.pos
     cur.skip(root_bytes)
 
-    states = []
+    states: list[PageState] = []
     for _ in range(cur.i32()):
         offset, size, page_size, deps_start = struct.unpack("<4I", cur.take(16))
         deps_num, depth, page_flags = struct.unpack("<H2B", cur.take(4))
@@ -461,7 +399,7 @@ def _lod_count_candidates(tail: bytes) -> list[int]:
     return [*candidates, *LOD_COUNT_SEARCH]
 
 
-def parse_render_data(tail: bytes, lod_count_at: int | None = None) -> dict:
+def parse_render_data(tail: bytes, lod_count_at: int | None = None) -> RenderData:
     """The cooked render data of one ``StaticMesh`` export, from past its property tags.
 
     Without ``lod_count_at`` the offset is searched, and a candidate whose Nanite page table
@@ -483,7 +421,7 @@ def parse_render_data(tail: bytes, lod_count_at: int | None = None) -> dict:
     raise first or ParseError("no LOD array offset parses")
 
 
-def _parse_render_data_at(tail: bytes, lod_count_at: int) -> dict:
+def _parse_render_data_at(tail: bytes, lod_count_at: int) -> RenderData:
     cur = Cursor(tail, lod_count_at)
     count = cur.i32()
     if not 1 <= count <= 8:
@@ -518,7 +456,7 @@ def static_mesh_export(view: PackageView) -> dict | None:
     )
 
 
-def extended_bounds(view: PackageView, export: dict) -> tuple[np.ndarray, np.ndarray] | None:
+def extended_bounds(view: PackageView, export: dict) -> Bounds | None:
     """``ExtendedBounds`` as ``(low, high)`` in mesh-local centimetres, or ``None``.
 
     The mesh's own statement about where its vertices are, and therefore the only check
@@ -546,7 +484,7 @@ def render_tail(view: PackageView, export: dict) -> bytes:
     return body[end:]
 
 
-def lod0_buffers(tail: bytes, parsed: dict) -> tuple[np.ndarray, np.ndarray, int] | None:
+def lod0_buffers(tail: bytes, parsed: RenderData) -> Lod0 | None:
     """LOD0's ``(positions, triangles, max vertex)`` from a parsed walk, or None."""
     lod = parsed["lods"][0]
     if not lod.vertices or not lod.index_bytes or lod.position_stride != 12:
@@ -562,7 +500,7 @@ def lod0_buffers(tail: bytes, parsed: dict) -> tuple[np.ndarray, np.ndarray, int
     return verts.reshape(-1, 3), indices.astype(np.int64), lod.max_vertex
 
 
-def _lod0_by_search(tail: bytes) -> tuple[np.ndarray, np.ndarray, int] | None:
+def _lod0_by_search(tail: bytes) -> Lod0 | None:
     """The fallback route: the section table at a fixed offset, then SEARCH for the indices.
 
     Kept because it does one thing the walk does not -- it finds the index buffer by
@@ -609,7 +547,7 @@ def _lod0_by_search(tail: bytes) -> tuple[np.ndarray, np.ndarray, int] | None:
         return None
 
 
-def _render_walk(tail: bytes, out: dict, gates: dict) -> dict | None:
+def _render_walk(tail: bytes, out: MeshRow, gates: MeshGates) -> RenderData | None:
     """Gates 1 and 2: the render-data walk, which raises when either fails."""
     try:
         parsed = parse_render_data(tail)
@@ -624,28 +562,32 @@ def _render_walk(tail: bytes, out: dict, gates: dict) -> dict | None:
     return parsed
 
 
-def _nanite_gates(view: PackageView, parsed: dict | None, out: dict, gates: dict) -> None:
+def _nanite_gates(
+    view: PackageView, parsed: RenderData | None, out: MeshRow, gates: MeshGates
+) -> None:
     """Gates 3 and 4, ``"n/a"`` on a mesh with no Nanite pages."""
     nanite = parsed["nanite"] if parsed is not None else None
     if nanite is None or not nanite.page_states:
         gates["3_nanite_root_tiling"] = gates["4_nanite_stream_tiling"] = "n/a"
-        out["nanite"] = {"present": False}
+        absent: NaniteSummary = {"present": False}
+        out["nanite"] = absent
         return
     root_problems = _root_tiling_problems(nanite)
     stream_problems = _stream_tiling_problems(nanite, bulk_size(view, nanite))
     gates["3_nanite_root_tiling"] = not root_problems
     gates["4_nanite_stream_tiling"] = not stream_problems
-    out["nanite"] = {
+    summary: NaniteSummary = {
         "present": True,
         "input_triangles": int(nanite.input_triangles),
         "clusters": int(nanite.clusters),
         "problems": root_problems + stream_problems,
     }
+    out["nanite"] = summary
 
 
 def _lod0_geometry(
-    tail: bytes, parsed: dict | None, out: dict, gates: dict
-) -> tuple[np.ndarray, np.ndarray, int] | None:
+    tail: bytes, parsed: RenderData | None, out: MeshRow, gates: MeshGates
+) -> Lod0 | None:
     """LOD0 off the walk, or off the index search, which then also passes gates 1 and 2."""
     got = lod0_buffers(tail, parsed) if parsed is not None else None
     if got is None:
@@ -656,7 +598,7 @@ def _lod0_geometry(
     return got
 
 
-def _bounds_gate(verts: np.ndarray, bounds, out: dict, gates: dict) -> None:
+def _bounds_gate(verts: F32Grid, bounds: Bounds | None, out: MeshRow, gates: MeshGates) -> None:
     """Gate 6: nearly every position inside the mesh's own padded ``ExtendedBounds``."""
     if bounds is None:
         gates["6_inside_bounds"] = "n/a"
@@ -675,7 +617,8 @@ def extract(store: IoStore, scripts: ScriptObjects, index: AssetIndex, mesh_path
     when it is false, deliberately: a caller that cannot look at the numbers of a failure
     cannot fix it. Nothing downstream is expected to consume a row whose ``ok`` is false.
     """
-    out: dict = {"mesh": mesh_path, "gates": {}}
+    gates: MeshGates = {}
+    out: MeshRow = {"mesh": mesh_path, "gates": gates}
     package = index.path_for(mesh_path)
     if not package:
         out["error"] = "unresolved: no container path"
@@ -691,7 +634,6 @@ def extract(store: IoStore, scripts: ScriptObjects, index: AssetIndex, mesh_path
 
     bounds = extended_bounds(view, mesh_export)
     tail = render_tail(view, mesh_export)
-    gates = out["gates"]
     parsed = _render_walk(tail, out, gates)
     _nanite_gates(view, parsed, out, gates)
     got = _lod0_geometry(tail, parsed, out, gates)
@@ -715,15 +657,9 @@ def extract(store: IoStore, scripts: ScriptObjects, index: AssetIndex, mesh_path
     return out
 
 
-class CollisionHull(NamedTuple):
-    """A cooked collision trimesh, and the bounds pad it was checked with."""
-
-    vertices: np.ndarray
-    triangles: np.ndarray
-    pad: float
-
-
-def collision_hull(view: PackageView, low, high) -> tuple[CollisionHull | None, str | None]:
+def collision_hull(
+    view: PackageView, low: F64Grid, high: F64Grid
+) -> tuple[CollisionHull | None, str | None]:
     """The cooked Chaos trimesh out of a ``BodySetup``, as ``(hull, why)``.
 
     Layout, past the export's property tags::
@@ -784,7 +720,7 @@ def collision_hull(view: PackageView, low, high) -> tuple[CollisionHull | None, 
 # --------------------------------------------------------------------------------------
 
 
-def _bulk_entries(view: PackageView) -> list[dict] | None:
+def _bulk_entries(view: PackageView) -> list[BulkEntry] | None:
     """The package's ``BulkDataMap``, or None where its header does not hold together."""
     try:
         return view.pkg.bulk_entries()
@@ -801,7 +737,7 @@ def bulk_size(view: PackageView, nanite: NaniteResource) -> int | None:
 
 
 def load_nanite(
-    store: IoStore, package_path: str, view: PackageView, parsed: dict, tail: bytes
+    store: IoStore, package_path: str, view: PackageView, parsed: RenderData, tail: bytes
 ) -> NaniteResource | None:
     """Fill a parsed :class:`NaniteResource` with its pages' actual bytes, or ``None``.
 
@@ -810,7 +746,7 @@ def load_nanite(
     the Zen ``BulkDataMap`` locates. Both are checked to tile exactly before anything is
     decoded, which is gates 3 and 4 again at the point where being wrong would matter.
     """
-    nanite: NaniteResource = parsed["nanite"]
+    nanite = parsed["nanite"]
     if not nanite.present or not nanite.page_states:
         return None
     root_blob = tail[nanite.root_data_at : nanite.root_data_at + nanite.root_bytes]
