@@ -6,19 +6,24 @@ per stop by ``overclock.payback_curve``; this turns those readouts into what a p
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from ....core import text
 from ....core.gamedata.model import GameData
 from ..layout.materials import cost_of
-from ..solver.model import PAYBACK_STOPS
+from ..solver.model import PAYBACK_STOPS, Scenario, Solution
+from ..solver.views import OverclockPick, OverclockRow, PowerSource
+from .views import BuildAmount, OverclockView, PaybackStop, PaybackView
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ..solver.scenario import ShardStock
 
 __all__ = ["no_overclock", "trade_text", "view"]
 
 
 class _AddedCost(NamedTuple):
-    #: ``{item, amount}`` rows, largest first.
-    materials: list[dict]
+    #: Largest first.
+    materials: list[BuildAmount]
     area_m2: float
     points: float
 
@@ -38,18 +43,20 @@ def _added_build_cost(
         if building.footprint is not None:
             area += building.footprint.area_m2 * count
         spent += build_points.get(cls, 0.0) * count
-    rows = [
+    rows: list[BuildAmount] = [
         {"item": g.item_name(item), "amount": round(amount, 4)}
         for item, amount in sorted(amounts.items(), key=lambda kv: -kv[1])
     ]
     return _AddedCost(rows, round(area, 1), spent)
 
 
-def _stops(g: GameData, sol, sc, machines: int, draw_mw: float) -> list[dict]:
+def _stops(
+    g: GameData, sol: Solution, sc: Scenario, machines: int, draw_mw: float
+) -> list[PaybackStop]:
     curve = [r for r in sol.payback_curve if not r.get("plain")]
     plain = next(r for r in sol.payback_curve if r.get("plain"))
     here = next(r for r in curve if r["hours"] == sc.payback_hours)
-    out = []
+    out: list[PaybackStop] = []
     for r in curve:
         added = {
             cls: n - plain["buildings"].get(cls, 0)
@@ -80,47 +87,52 @@ def _stops(g: GameData, sol, sc, machines: int, draw_mw: float) -> list[dict]:
 
 def view(
     g: GameData,
-    sol,
-    sc,
+    sol: Solution,
+    sc: Scenario,
     machines: int,
     draw_mw: float,
     *,
     inherited: bool,
     default_hours: float,
     price_source: str,
-    mix: list[dict],
+    mix: list[PowerSource],
     overclock_inherited: bool,
-    shards: dict | None,
-) -> dict:
+    shards: ShardStock | None,
+) -> PaybackView:
     """Every stop of ``sol`` beside the horizon it was solved at, and the overclock pick."""
-    base = {
+    oc: OverclockView = {
+        **(sol.overclock or no_overclock(sc.overclock_last)),
+        "inherited": overclock_inherited,
+        "shards_free": shards["free"] if shards else None,
+        "shards_craftable": shards["craftable"] if shards else None,
+    }
+    stops: list[PaybackStop] = []
+    splits, reason = False, ""
+    if sol.payback_curve:
+        stops = _stops(g, sol, sc, machines, draw_mw)
+        splits = any(s["extra_machines"] for s in stops)
+        if not splits:
+            reason = (
+                "power costs nothing to run on this grid"
+                if sc.power_price <= 0
+                else "nothing here to spread: extractors, generators and somersloop rows keep "
+                "their count"
+            )
+    return {
         "hours": sc.payback_hours,
         "inherited": inherited,
         "default_hours": default_hours,
         "price": sc.power_price,
         "price_source": price_source,
         "mix": mix,
+        "splits": splits,
+        "reason": reason,
+        "stops": stops,
+        "overclock": oc,
     }
-    oc = dict(sol.overclock) if sol.overclock else no_overclock(sc.overclock_last)
-    oc["inherited"] = overclock_inherited
-    oc["shards_free"] = (shards or {}).get("free")
-    oc["shards_craftable"] = (shards or {}).get("craftable")
-    if not sol.payback_curve:
-        return {**base, "splits": False, "reason": "", "stops": [], "overclock": oc}
-    stops = _stops(g, sol, sc, machines, draw_mw)
-    splits = any(s["extra_machines"] for s in stops)
-    reason = ""
-    if not splits:
-        reason = (
-            "power costs nothing to run on this grid"
-            if sc.power_price <= 0
-            else "nothing here to spread: extractors, generators and somersloop rows keep "
-            "their count"
-        )
-    return {**base, "splits": splits, "reason": reason, "stops": stops, "overclock": oc}
 
 
-def no_overclock(on: bool) -> dict:
+def no_overclock(on: bool) -> OverclockPick:
     return {
         "on": on,
         "rows": [],
@@ -134,7 +146,7 @@ def no_overclock(on: bool) -> dict:
     }
 
 
-def _price_words(v: dict) -> str:
+def _price_words(v: PaybackView) -> str:
     if v["price_source"] == "plan":
         return f"{v['price']:,.0f} pts/MWh set on the plan"
     sources = ", ".join(f"{m['source']} {m['mw']:,.0f} MW" for m in v["mix"][:3])
@@ -145,13 +157,13 @@ def _signed(value: float, fmt: str) -> str:
     return ("−" if value < 0 else "+") + format(abs(value), fmt)
 
 
-def _change(a: dict, b: dict) -> str:
+def _change(a: PaybackStop, b: PaybackStop) -> str:
     more = b["extra_machines"] - a["extra_machines"]
     saved = b["saved_mw"] - a["saved_mw"]
     return f"{_signed(more, ',')} machines, {_signed(-saved, ',.1f')} MW"
 
 
-def _next_words(v: dict) -> str:
+def _next_words(v: PaybackView) -> str:
     stops = v["stops"]
     now = next(s for s in stops if s["hours"] == v["hours"])
     later = [s for s in stops if s["hours"] > v["hours"] and s["hours"] in PAYBACK_STOPS]
@@ -169,7 +181,7 @@ def _next_words(v: dict) -> str:
     )
 
 
-def stock_text(oc: dict) -> str:
+def stock_text(oc: OverclockView) -> str:
     """`` (19 in hand + 411 craftable)``, or nothing when the save was not read."""
     free = oc.get("shards_free")
     if free is None:
@@ -177,7 +189,7 @@ def stock_text(oc: dict) -> str:
     return f" ({free:,.0f} in hand + {oc.get('shards_craftable') or 0:,.0f} craftable)"
 
 
-def _sums(rows: list[dict]) -> tuple[int, int, float]:
+def _sums(rows: list[OverclockRow]) -> tuple[int, int, float]:
     return (
         sum(r["shards"] for r in rows),
         sum(r["instead"] - r["machines"] for r in rows),
@@ -185,9 +197,9 @@ def _sums(rows: list[dict]) -> tuple[int, int, float]:
     )
 
 
-def _overclock_words(oc: dict) -> list[str]:
+def _overclock_words(oc: OverclockView) -> list[str]:
     hand = stock_text(oc)
-    lines = []
+    lines: list[str] = []
     rows = len(oc["rows"])
     own = [r for r in oc["rows"] if r.get("applied") and r.get("pinned") == "last"]
     spare = [r for r in oc["rows"] if not r.get("applied", oc["on"])]
@@ -225,7 +237,7 @@ def _overclock_words(oc: dict) -> list[str]:
     return lines
 
 
-def trade_text(v: dict) -> list[str]:
+def trade_text(v: PaybackView) -> list[str]:
     """Chat lines: this horizon against the plain build, the next stop, and the overclock."""
     lines = _overclock_words(v["overclock"])
     if not v["stops"]:
