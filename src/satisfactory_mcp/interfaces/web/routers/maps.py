@@ -300,7 +300,7 @@ def _maps_json(request: Request) -> dict:
         },
         "game_cl": view["current"]["game_cl"],
         "unregistered": registry.unregistered(),
-        "queue_max": 4,
+        "queue_max": job_store.QUEUE_MAX,
         "sizes": list(presets.RENDER_SIZES),
         "styles": [
             {"layer": row["layer"], "style": sid, "label": row["label"], "tone": row["tone"]}
@@ -406,7 +406,7 @@ async def adopt_maps(request: Request) -> Any:
 @router.delete("/maps/cache", response_model=MapCacheResponse)
 async def clear_map_cache(request: Request) -> Any:
     """Delete the rasters kept for fast re-renders; refused while a job is running."""
-    if request.app.state.mapjobs.run is not None:
+    if request.app.state.mapjobs.is_running():
         return error_response(
             "a job is running and may be reading the cache; try once it ends", 409
         )
