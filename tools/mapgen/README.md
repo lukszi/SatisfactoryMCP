@@ -112,6 +112,9 @@ as the artwork. The main options:
 - `--scratch-dir` puts the light's `light.cache/` elsewhere, such as a fast local disk; by
   default it sits beside the raster caches. It is scratch for one run, kept by no flag: the
   run deletes it however it ends, and the next lit run removes what a killed one left (§29).
+- `--light-workers` sets how many processes bake the light. By default it is one a core, at
+  most 16, and no more than the free memory holds at 2.5 GB each, counted when the bake starts;
+  `--workers` no longer sets it (§29, "The stage").
 - `--restyle` draws only from those kept caches and exits with code 9 when one is missing or
   was cut for another size or build, so a palette change never turns into a full render.
 - `--no-titan-trees` leaves the Titan forest's trees off the painted layer, a style variant

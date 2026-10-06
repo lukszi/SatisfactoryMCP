@@ -10,10 +10,14 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
+import sys
 import time
 import warnings
-from concurrent.futures import ProcessPoolExecutor
+from collections import deque
+from collections.abc import Iterable
+from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -21,16 +25,17 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting.horizon import (
+    HORIZON_DIRS,
     SKY_RADIUS_M,
-    crown_horizons,
+    crown_horizon,
     crown_surface,
     encode_horizon,
-    faded_horizons,
     horizon_reach_px,
+    march_horizon,
     normals,
     sky_view,
 )
-from mapgen.lighting.model import DIRECT_SCALE, HZ_CELLS, direct_term, light_axis
+from mapgen.lighting.model import DIRECT_SCALE, HZ_CELLS, direct_term, light_axis, sun_cells
 from mapgen.lighting.sun import DEFAULT_SUN
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_PX,
@@ -45,13 +50,17 @@ from satisfactory_mcp.core.mapprogress import encode_stage
 __all__ = [
     "HZ_SUFFIX",
     "LIGHT_DIR_NAME",
+    "LIGHT_WORKER_BYTES",
+    "LIGHT_WORKER_CAP",
     "NRM_SUFFIX",
     "Surface",
     "bake_light",
     "decode_linear",
     "default_terms",
     "discard",
+    "free_ram_bytes",
     "hz_atlas",
+    "light_workers",
     "occluder_planes",
 ]
 
@@ -66,6 +75,16 @@ BLOCK_TILES = 16
 
 #: Stored horizons for the coarser levels, before encoding: degrees times this, as a byte.
 HZ_LINEAR_SCALE = 2.8
+
+#: Strips of a coarser level whose tiles may still be encoding while the next is computed,
+#: and the tiles a task of the pool encodes.
+LEVEL_AHEAD = 4
+LEVEL_TASK_TILES = 4
+
+#: Light processes at most, and the free memory each one needs: its measured commit peak on a
+#: full-size block.
+LIGHT_WORKER_CAP = 16
+LIGHT_WORKER_BYTES = 2_500_000_000
 
 _FILES = (
     "z",
@@ -141,7 +160,7 @@ def _window(arr, r0, r1, c0, c1, fill=None):
     return np.pad(part, pads, mode="constant", constant_values=fill)
 
 
-def _encode(jobs: list[tuple[str, np.ndarray, np.ndarray]]) -> int:
+def _encode(jobs: Iterable[tuple[str, np.ndarray, np.ndarray]]) -> int:
     from PIL import Image
 
     written = 0
@@ -158,15 +177,14 @@ def _encode(jobs: list[tuple[str, np.ndarray, np.ndarray]]) -> int:
 
 
 def _tile_jobs(dest: Path, z: int, tx0: int, ty0: int, nrm: np.ndarray, hz_u8: np.ndarray):
+    """Each tile's stem, normal tile and atlas, made as they are asked for."""
     t, h = PYRAMID_TILE_PX, PYRAMID_TILE_PX // 2
-    jobs = []
     for j in range(nrm.shape[0] // t):
         for i in range(nrm.shape[1] // t):
             stem = str(dest / tile_relpath(z, tx0 + i, ty0 + j))[: -len(".png")]
             cell = np.ascontiguousarray(nrm[j * t : (j + 1) * t, i * t : (i + 1) * t])
             atlas = hz_atlas(hz_u8[:, j * h : (j + 1) * h, i * h : (i + 1) * h])
-            jobs.append((stem, cell, atlas))
-    return jobs
+            yield stem, cell, atlas
 
 
 def _open(work: Path, name: str, mode: str = "r+"):
@@ -186,64 +204,91 @@ def _crown_surfaces(work: Path, window, zw, ground_w):
     return on_z, None if ground_w is None else _down(crown_surface(ground_w, top, share))
 
 
-def _horizons(zh, halo, sp, crowns, slabs) -> np.ndarray:
-    """The ground's horizons, then the crowns' where they stand above the ground's."""
-    ground = faded_horizons(zh, halo, sp, None, slabs)
-    if crowns is None:
-        return np.concatenate([ground, np.zeros_like(ground)])
-    over = crown_horizons(crowns[0], halo, sp, crowns[1])
-    return np.concatenate([ground, np.where(over > ground, over, np.float32(0.0))])
-
-
-def _bake_block(job: dict) -> dict:
-    """One block of native tiles: horizons, sky view, normals, tiles, default-sun terms."""
-    started = time.time()
-    work, sp, (r0, c0, n) = Path(job["work"]), job["spacing_m"], job["block"]
-    z, land = _open(work, "z", "r"), _open(work, "land", "r")
-    ground, lo, hi = (_open(work, f"slab_{k}", "r") for k in ("ground", "lo", "hi"))
-    halo = job["halo_h"]
-    window = (r0 - 2 * halo, r0 + n + 2 * halo, c0 - 2 * halo, c0 + n + 2 * halo)
-    zw = _window(z, *window)
+def _half_surfaces(work: Path, window, march: bool):
+    """The block's heights at half resolution, and what casts on them when it marches."""
+    zw = _window(_open(work, "z", "r"), *window)
     zh = _down(zw)
+    if not march:
+        return zh, None, None
+    ground, lo, hi = (_open(work, f"slab_{k}", "r") for k in ("ground", "lo", "hi"))
     slabs = ground_w = None
     if ground is not None and lo is not None and hi is not None:
         ground_w = _window(ground, *window)
         slabs = (_down(ground_w),
                  _down(_window(lo, *window, np.nan), how=np.nanmin),
                  _down(_window(hi, *window, np.nan), how=np.nanmax))  # fmt: skip
-    land_core = np.asarray(land[r0 : r0 + n, c0 : c0 + n])
-    if job["skip_water"] and not land_core.any():
-        hz = np.zeros((HZ_CELLS, n // 2, n // 2), np.float32)
-    else:
-        hz = _horizons(zh, halo, 2 * sp, _crown_surfaces(work, window, zw, ground_w), slabs)
+    return zh, _crown_surfaces(work, window, zw, ground_w), slabs
+
+
+def _horizon_cells(zh, halo, sp, crowns, slabs):
+    """Each direction's ground cell, then its crown cell where the crowns stand above it."""
+    for k in range(HORIZON_DIRS):
+        az = k * 360.0 / HORIZON_DIRS
+        ground = march_horizon(zh, halo, az, sp, None, slabs)
+        yield k, ground
+        if crowns is not None:
+            over = crown_horizon(crowns[0], halo, az, sp, crowns[1])
+            yield HORIZON_DIRS + k, np.where(over > ground, over, np.float32(0.0))
+
+
+def _bake_horizons(zh, halo, sp, crowns, slabs, m: int, march: bool):
+    """The atlas bytes, the coarser levels' source and the default sun's planes, a cell at a time.
+
+    No ``(cells, m, m)`` float stack: each cell is encoded as it is marched.
+    """
+    hz_u8 = np.zeros((HZ_CELLS, m, m), np.uint8)
+    hq = np.zeros((m // 2, m // 2, HZ_CELLS), np.uint8)
+    sun = [np.zeros((m, m), np.float32)] * HZ_CELLS
+    keep = sun_cells(DEFAULT_SUN[0])
+    for k, deg in _horizon_cells(zh, halo, sp, crowns, slabs) if march else ():
+        hz_u8[k] = encode_horizon(deg)
+        hq[..., k] = np.round(np.clip(_down(deg), 0, 90) * HZ_LINEAR_SCALE)
+        if k in keep:
+            sun[k] = deg
+    return hz_u8, hq, sun
+
+
+def _bake_block(job: dict) -> dict:
+    """One block of native tiles: horizons, sky view, normals, tiles, default-sun terms."""
+    started = time.time()
+    work, sp, (r0, c0, n) = Path(job["work"]), job["spacing_m"], job["block"]
+    halo, m = job["halo_h"], n // 2
+    window = (r0 - 2 * halo, r0 + n + 2 * halo, c0 - 2 * halo, c0 + n + 2 * halo)
+    land_core = np.asarray(_open(work, "land", "r")[r0 : r0 + n, c0 : c0 + n])
+    march = not (job["skip_water"] and not land_core.any())
+    zh, crowns, slabs = _half_surfaces(work, window, march)
+    hz_u8, hq, sun = _bake_horizons(zh, halo, 2 * sp, crowns, slabs, m, march)
+    del crowns, slabs
     sky = job["sky_halo"]
     svf_h = sky_view(zh[halo - sky : zh.shape[0] - halo + sky, halo - sky : zh.shape[1] - halo + sky],
                      sky, 2 * sp)  # fmt: skip
-    nx, ny = normals(_window(z, r0 - 1, r0 + n + 1, c0 - 1, c0 + n + 1), sp)
+    nx, ny = normals(_window(_open(work, "z", "r"), r0 - 1, r0 + n + 1, c0 - 1, c0 + n + 1), sp)
     svf = np.clip(ndimage.zoom(svf_h, 2, order=1, mode="nearest", grid_mode=True), 0, 1)
     q = lambda v: np.round((v * 0.5 + 0.5) * 255).astype(np.uint8)
     nrm = np.stack([q(nx), q(ny), np.round(svf * 255).astype(np.uint8), land_core], -1)
-    hz_u8 = encode_horizon(hz)
-    jobs = _tile_jobs(
-        Path(job["dest"]), job["z"], c0 // PYRAMID_TILE_PX, r0 // PYRAMID_TILE_PX, nrm, hz_u8
-    )
-    hz_bytes = _encode(jobs)
+    del nx, ny, svf
+    t = PYRAMID_TILE_PX
+    hz_bytes = _encode(_tile_jobs(Path(job["dest"]), job["z"], c0 // t, r0 // t, nrm, hz_u8))
+    del hz_u8
     terms = _open(work, "terms")
     terms[r0 : r0 + n, c0 : c0 + n, 0] = nrm[..., 2]
     for k, crowns in ((1, False), (2, True)):
-        direct = direct_term(nrm, hz, DEFAULT_SUN, crowns=crowns)
+        direct = direct_term(nrm, sun, DEFAULT_SUN, crowns=crowns)
         terms[r0 : r0 + n, c0 : c0 + n, k] = np.clip(np.round(direct * DIRECT_SCALE), 0, 255)
-    h0, w0, m = r0 // 2, c0 // 2, n // 2
+    h0, w0 = r0 // 2, c0 // 2
     _open(work, "zh")[h0 : h0 + m, w0 : w0 + m] = zh[halo:-halo, halo:-halo]
     _open(work, "landh")[h0 : h0 + m, w0 : w0 + m] = np.round(_down(land_core.astype(np.float32)))
     _open(work, "svfh")[h0 : h0 + m, w0 : w0 + m] = np.round(np.clip(svf_h, 0, 1) * 255)
-    hq = np.round(np.clip(_down(np.moveaxis(hz, 0, -1)), 0, 90) * HZ_LINEAR_SCALE)
     _open(work, "hzq")[h0 // 2 : (h0 + m) // 2, w0 // 2 : (w0 + m) // 2] = hq
-    return {"tiles": len(jobs), "hz_bytes": hz_bytes, "seconds": time.time() - started}
+    tiles = (nrm.shape[0] // t) * (nrm.shape[1] // t)
+    return {"tiles": tiles, "hz_bytes": hz_bytes, "seconds": time.time() - started}
 
 
 def _level_strips(work: Path, dest: Path, level: int, sp: float, pool, last: bool) -> int:
-    """One coarser level from the sources below it, a strip of tile rows at a time."""
+    """One coarser level from the sources below it, a strip of tile rows at a time.
+
+    The pool encodes a strip's tiles while this process computes the strips after it.
+    """
     z, land, svf, hzq = (_open(work, k, "r") for k in ("zh", "landh", "svfh", "hzq"))
     n = z.shape[0]
     q4 = max(n // 4, 1)
@@ -257,15 +302,18 @@ def _level_strips(work: Path, dest: Path, level: int, sp: float, pool, last: boo
     t = PYRAMID_TILE_PX
     rows = t
     count = 0
+    pending: deque[list[Future]] = deque()
     for r0 in range(0, n, rows):
         zz = _window(z, r0 - 1, r0 + rows + 1, -1, n + 1)
         nx, ny = normals(zz, sp)
         q = lambda v: np.round((v * 0.5 + 0.5) * 255).astype(np.uint8)
         nrm = np.stack([q(nx), q(ny), svf[r0 : r0 + rows], land[r0 : r0 + rows]], -1)
-        hz = decode_linear(hzq[r0 // 2 : (r0 + rows) // 2])
-        jobs = _tile_jobs(dest, level, 0, r0 // t, nrm, encode_horizon(np.moveaxis(hz, -1, 0)))
+        hz_u8 = np.moveaxis(_LINEAR_TO_HZ[hzq[r0 // 2 : (r0 + rows) // 2]], -1, 0)
+        jobs = list(_tile_jobs(dest, level, 0, r0 // t, nrm, hz_u8))
         count += len(jobs)
-        list(pool.map(_encode, [jobs[i : i + 8] for i in range(0, len(jobs), 8)]))
+        tasks = [jobs[i : i + LEVEL_TASK_TILES] for i in range(0, len(jobs), LEVEL_TASK_TILES)]
+        pending.append([pool.submit(_encode, task) for task in tasks])
+        del jobs, tasks
         if nxt is not None:
             a, b = r0 // 2, (r0 + rows) // 2
             nxt["zh"][a:b] = _down(np.asarray(z[r0 : r0 + rows]))
@@ -273,6 +321,10 @@ def _level_strips(work: Path, dest: Path, level: int, sp: float, pool, last: boo
             nxt["svfh"][a:b] = np.round(_down(svf[r0 : r0 + rows].astype(np.float32)))
             hz_rows = hzq[r0 // 2 : (r0 + rows) // 2].astype(np.float32)
             nxt["hzq"][r0 // 4 : (r0 + rows) // 4] = np.round(_down(hz_rows))
+        while len(pending) > LEVEL_AHEAD:
+            _wait(pending.popleft())
+    while pending:
+        _wait(pending.popleft())
     del z, land, svf, hzq
     for name in list(nxt or ()):
         nxt.pop(name).flush()  # Windows replaces a file only once its last map is closed
@@ -282,6 +334,15 @@ def _level_strips(work: Path, dest: Path, level: int, sp: float, pool, last: boo
 
 def decode_linear(q: np.ndarray) -> np.ndarray:
     return np.asarray(q, np.float32) / np.float32(HZ_LINEAR_SCALE)
+
+
+#: ``encode_horizon(decode_linear(q))`` for every byte: elementwise, so a lookup is exact.
+_LINEAR_TO_HZ = encode_horizon(decode_linear(np.arange(256, dtype=np.uint8)))
+
+
+def _wait(futures: list[Future]) -> None:
+    for future in futures:
+        future.result()
 
 
 def _alloc(work: Path, size: int) -> None:
@@ -315,18 +376,51 @@ def _extra(work: Path, name: str, raster, dtype=np.float32) -> None:
         np.save(path, np.asarray(raster, dtype))
 
 
-def bake_light(surface: Surface, out_dir: Path, workers: int, occluder=None, slabs=None,
+def free_ram_bytes() -> int | None:
+    """Memory free now, in bytes, or None where the platform does not say.
+
+    On Windows the lesser of the free physical memory and the commit still available.
+    """
+    if sys.platform == "win32":
+        import ctypes
+
+        class _Status(ctypes.Structure):
+            _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong)] + [
+                (k, ctypes.c_ulonglong) for k in ("total", "free", "pt", "pf", "vt", "vf", "x")
+            ]
+
+        status = _Status(length=ctypes.sizeof(_Status))
+        ok = ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
+        return int(min(status.free, status.pf)) if ok else None
+    try:
+        return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def light_workers(requested: int | None = None) -> int:
+    """``requested``, else one a core up to ``LIGHT_WORKER_CAP`` that the free RAM holds."""
+    if requested:
+        return max(1, requested)
+    free = free_ram_bytes()
+    by_ram = LIGHT_WORKER_CAP if free is None else int(free // LIGHT_WORKER_BYTES)
+    return max(1, min(os.cpu_count() or 1, LIGHT_WORKER_CAP, by_ram))
+
+
+def bake_light(surface: Surface, out_dir: Path, workers: int | None, occluder=None, slabs=None,
                progress: bool = True, occluder_layers=()) -> dict:  # fmt: skip
     """Write ``out_dir/light/`` from a captured surface; returns its sidecar's ``_meta``.
 
-    ``occluder`` is an optional crown-top raster on the sheet's grid, metres, NaN where
-    empty, or ``(top, cover)`` with the covered share as a byte; it casts into the crown
-    horizons that ``occluder_layers`` read. ``slabs`` is an optional ``(ground, min_z,
-    max_z)`` for geometry with open space beneath it (arches): the surface without it, and
-    its underside and top. Both only cast. An occluder made by ``occluder_planes`` in the
-    surface's directory is read where it is, not copied.
+    ``workers`` None is ``light_workers()``, counted when the bake starts. ``occluder`` is an
+    optional crown-top raster on the sheet's grid, metres, NaN where empty, or ``(top,
+    cover)`` with the covered share as a byte; it casts into the crown horizons that
+    ``occluder_layers`` read. ``slabs`` is an optional ``(ground, min_z, max_z)`` for geometry
+    with open space beneath it (arches): the surface without it, and its underside and top.
+    Both only cast. An occluder made by ``occluder_planes`` in the surface's directory is
+    read where it is, not copied.
     """
     started = time.time()
+    workers = light_workers(workers)
     surface.flush()
     size, work = surface.size, surface.directory
     sp = surface.spacing_m
@@ -351,7 +445,7 @@ def bake_light(surface: Surface, out_dir: Path, workers: int, occluder=None, sla
         for c in range(0, size, block)
     ]
     tiles = hz_bytes = 0
-    with ProcessPoolExecutor(max_workers=max(1, workers)) as pool:
+    with ProcessPoolExecutor(max_workers=workers) as pool:
         for k, done in enumerate(pool.map(_bake_block, jobs), 1):
             tiles += done["tiles"]
             hz_bytes += done["hz_bytes"]

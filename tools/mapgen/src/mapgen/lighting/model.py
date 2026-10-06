@@ -37,6 +37,7 @@ __all__ = [
     "light_axis",
     "model_block",
     "relight",
+    "sun_cells",
     "surface_direct",
 ]
 
@@ -141,19 +142,30 @@ def _by_luminance(c, curve, knee: float, white: float):
     return c * (curve(y, knee, white) / y)[..., None]
 
 
-def _toward(hz_deg, az: float, first: int = 0) -> np.ndarray:
-    """The horizon toward ``az``, between the two stored directions either side of it."""
+def _either_side(az: float) -> tuple[int, int, np.float32]:
     f = (az % 360.0) / (360.0 / HORIZON_DIRS)
     i0 = int(np.floor(f)) % HORIZON_DIRS
-    w = np.float32(f - np.floor(f))
-    return hz_deg[first + i0] * (1 - w) + hz_deg[first + (i0 + 1) % HORIZON_DIRS] * w
+    return i0, (i0 + 1) % HORIZON_DIRS, np.float32(f - np.floor(f))
+
+
+def _toward(hz_deg, az: float, first: int = 0) -> np.ndarray:
+    """The horizon toward ``az``, between the two stored directions either side of it."""
+    i0, i1, w = _either_side(az)
+    return hz_deg[first + i0] * (1 - w) + hz_deg[first + i1] * w
+
+
+def sun_cells(az: float) -> tuple[int, int, int, int]:
+    """The cells ``direct_term`` reads for a sun at ``az``: two of the ground's, two crowns'."""
+    i0, i1, _w = _either_side(az)
+    return i0, i1, HORIZON_DIRS + i0, HORIZON_DIRS + i1
 
 
 def direct_term(nrm_u8, hz_deg, sun, shadows: bool = True, crowns: bool = False) -> np.ndarray:
     """``ndl * (1 - shadow * (1 - fill)) / sin(max(el, 35))`` per pixel.
 
     ``hz_deg`` is ``(cells, h, w)``: the ground's ``HORIZON_DIRS`` horizons, then, when
-    ``crowns`` and the atlas has them, the crowns', which shade where they stand higher.
+    ``crowns`` and the atlas has them, the crowns', which shade where they stand higher. A
+    sequence of as many planes does too; only the ``sun_cells`` are read.
     """
     az, el = sun
     nx = nrm_u8[..., 0].astype(np.float32) / 127.5 - 1
@@ -164,7 +176,7 @@ def direct_term(nrm_u8, hz_deg, sun, shadows: bool = True, crowns: bool = False)
     shade = np.zeros_like(ndl)
     if shadows and hz_deg is not None:
         hz = _toward(hz_deg, az)
-        if crowns and hz_deg.shape[0] >= HZ_CELLS:
+        if crowns and len(hz_deg) >= HZ_CELLS:
             hz = np.maximum(hz, _toward(hz_deg, az, HORIZON_DIRS))
         if hz.shape != ndl.shape:
             hz = ndimage.zoom(hz, np.array(ndl.shape) / np.array(hz.shape), order=1)

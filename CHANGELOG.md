@@ -72,6 +72,10 @@ Planned as 0.2.0.
   sampled without the weight sums nothing read, and the void and the water are blended only
   on the pixels they cover. A full-size render draws about 12% faster, 10 to 15 minutes of
   one core over the five layers; the tiles are the same bytes.
+- Map generator: the light bake is about 2.7 times faster at full size on 8 workers (about
+  18 minutes instead of 48) and 3.5 times on 16, with the same bytes. Each of its processes
+  peaks at 1.1 GB instead of 3.9 GB, so it now takes up to 16 by default, as many as the free
+  memory holds; `--light-workers` sets the number, and `--workers` no longer does.
 
 ### Deprecated
 

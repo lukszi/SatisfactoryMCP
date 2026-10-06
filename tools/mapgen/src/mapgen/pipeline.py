@@ -816,7 +816,7 @@ def main() -> int:
 
     # ---- draw and cut ----------------------------------------------------------------
     borrow_source = borrow_metadata(detail_meta, province_meta)
-    with light_run(scratch, args.size, painted) as light:
+    with light_run(scratch, args.size, painted, args.light_workers) as light:
         total_started = time.time()
         seam = SeamTrace() if direct is not None else None
         regimes = RegimeCoverage() if direct is not None else None
