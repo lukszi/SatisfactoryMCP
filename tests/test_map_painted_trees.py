@@ -40,6 +40,7 @@ from mapgen.palette.trees import (  # noqa: E402
     IDENTITY_OP,
     TARGET_GREY,
     crown_lab,
+    crown_layer,
     crown_ops,
     hue_gate,
     over_crowns,
@@ -116,16 +117,18 @@ def test_the_identity_op_draws_crowns_as_before():
              "rgb": np.tile(np.array(GREEN, np.float32), (*shape, 1)),
              "ndl": np.full(shape, 0.7, np.float32)}  # fmt: skip
     scene = {"z_m": np.zeros(shape, np.float32), "ndl_flat": np.float32(0.7),
-             "water": {"cover": np.zeros(shape, np.float32)}}  # fmt: skip
-    plain = over_crowns(ground, terms, scene, PAINTED_PALETTE, 0.4, 1.0)
-    ops = [(IDENTITY_OP, CANOPY_GREY)]
-    same = over_crowns(ground, terms, scene, PAINTED_PALETTE, 0.4, 1.0, ops)
+             "water": {"cover": np.zeros(shape, np.float32),
+                       "depth_m": np.zeros(shape, np.float32)}}  # fmt: skip
+
+    def draw(ops=()):
+        return over_crowns(ground, crown_layer(terms, scene, PAINTED_PALETTE, 0.4, 1.0, ops))
+
+    plain = draw()
+    same = draw([(IDENTITY_OP, CANOPY_GREY)])
     np.testing.assert_allclose(same, plain, atol=1e-6)
     green = crown_lab(np.array(GREEN, np.float32), STYLE)[1:]
     lift = np.array([0.1, 0, 0, 0, 0, *(green / np.hypot(*green))], np.float32)
-    lifted = over_crowns(
-        ground, terms, scene, PAINTED_PALETTE, 0.4, 1.0, [(IDENTITY_OP + lift, CANOPY_GREY)]
-    )
+    lifted = draw([(IDENTITY_OP + lift, CANOPY_GREY)])
     assert (lifted.sum(-1) > plain.sum(-1)).all()
 
 
@@ -152,13 +155,15 @@ def test_blue_palms_take_their_own_target_and_keep_their_saturation():
     terms = {"cover": np.ones(shape, np.float32), "top_cm": np.full(shape, 1500.0, np.float32),
              "rgb": np.array([colours], np.float32), "ndl": np.full(shape, 0.7, np.float32)}  # fmt: skip
     scene = {"z_m": np.zeros(shape, np.float32), "ndl_flat": np.float32(0.7),
-             "water": {"cover": np.zeros(shape, np.float32)}}  # fmt: skip
+             "water": {"cover": np.zeros(shape, np.float32),
+                       "depth_m": np.zeros(shape, np.float32)}}  # fmt: skip
     p = ground.palette
     exposure = np.float32(p["exposure"] * p["tone"]["gain"])
     under = np.zeros((*shape, 3), np.float32)
 
     def draw(taken):
-        return over_crowns(under, terms, scene, p, np.float32(p["ambient"]), exposure, taken)
+        layer = crown_layer(terms, scene, p, np.float32(p["ambient"]), exposure, taken)
+        return over_crowns(under, layer)
 
     canopy_only, both = draw(ops[:1]), draw(ops)
     for k in (0, 1, 3, 4):

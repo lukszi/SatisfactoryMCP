@@ -6,9 +6,9 @@ each layer's albedo, tinted by the PigmentMap; a per-layer colour transfer to ca
 targets; under the tree canopy; rocks take their family's target or tint and top layer, trees stand
 over them where their crowns reach, arches and the render-only meshes take their own colours,
 and the Titan trees can be laid over everything; then a sky-and-sun light, an exposure gain
-with a soft shoulder and Beer-Lambert water over a seabed that carries the coral carpet. Every
-number is in ``palette/palettes/satellite-painted.json``. docs/spatial-and-map.md sections 27
-and 30 to 32; the water is ``palette/optics.py``, the rocks and meshes ``palette/surfaces.py``.
+with a soft shoulder and Beer-Lambert water over a seabed with the coral carpet and sunk
+crowns. Every number is in ``palette/palettes/satellite-painted.json``. docs/spatial-and-map.md
+sections 27, 30 to 32 and 36; the water ``palette/optics.py``, rocks ``palette/surfaces.py``.
 """
 
 from __future__ import annotations
@@ -70,6 +70,7 @@ from mapgen.palette.trees import (
     CANOPY_GREY,
     IDENTITY_OP,
     TARGET_GREY,
+    band_crowns,
     crown_ops,
     over_crowns,
     sample_titan,
@@ -778,18 +779,17 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     lit = g * light * (exposure * borrow)[..., None]
 
     water = scene["water"]
+    trees = band_crowns(scene, ground, sample_rock, exposure)
     lit = wet_band(lit, water, p["shore"].get("wet_band"))
-    under = underwater(g, scene, ground, sample, sample_rock, exposure)
+    under = underwater(g, scene, ground, sample, sample_rock, exposure, trees)
     cover = water["cover"][..., None]
     out = lit * (1.0 - cover) + under * cover
     stroke = np.float32(p["shore"]["stroke"])
     if stroke:
         out = out * (1.0 - stroke * water["edge"][..., None])
     out = add_foam(out, water, p["shore"].get("foam"), np.float32(1.0))
-    if crowns is not None:
-        taken = getattr(ground, "crown_ops", ())
-        ops = [(sampled_rgb(op, sample_rock), grey) for op, grey in taken]
-        out = over_crowns(out, crowns, scene, p, np.float32(p["ambient"]), exposure, ops)
+    if trees is not None:
+        out = over_crowns(out, trees)
     out = titan_over(out, scene, ground)
 
     y = np.maximum(out @ LUMA, 1e-7)

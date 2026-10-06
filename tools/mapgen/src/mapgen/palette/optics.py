@@ -1,8 +1,9 @@
 """The water of the game-painted style: what is seen under each wet pixel.
 
 Beer-Lambert over the bed (section 27), each water class's own optics (section 33), the
-seabed carpet (section 32) and the calibrated opaque water of an area (section 31), gated by
-the class it names. docs/spatial-and-map.md sections 31 to 33 and 37.
+seabed carpet (section 32), the crowns under the surface (section 36) and the calibrated
+opaque water of an area (section 31), gated by the class it names. docs/spatial-and-map.md
+sections 31 to 33, 36 and 37.
 """
 
 from __future__ import annotations
@@ -155,23 +156,31 @@ def carpet_bed(under, scene, ground, sample):
     return under * (1.0 - cover) + seen * cover
 
 
-def underwater(g, scene: dict, ground, sample, sample_rock, exposure):
+def underwater(g, scene: dict, ground, sample, sample_rock, exposure, trees=None):
     """The colour under the water surface: the bed through the class's optics, the carpet,
-    the open-sea term, and the opaque area water where its class is."""
+    the crowns under the surface (``trees``, ``crown_layer``'s), the open-sea term, and the
+    opaque area water where its class is."""
     p = ground.palette
     water = scene["water"]
     optics = scene.get("water_optics")
     w = optics or ground.water
     depth = optical_depth(water, p["shore"].get("river"))[..., None]
     floor = w["inland_floor"] * (1.0 - water["ocean"])[..., None]
-    bed = g * exposure * w["bed"]
+    tint = w["tint"] if "turbidity" in w else np.float32(1.0)
     if "turbidity" in w:
         floor = np.maximum(floor, w["turbidity"])
-        bed = bed * w["tint"]
-    transmit = np.exp(-w["k"] * depth) * (1.0 - floor)
-    under = bed * transmit + w["body"] * (1.0 - transmit) + w["sky"]
+
+    def through(colour, metres):
+        transmit = np.exp(-w["k"] * metres) * (1.0 - floor)
+        return colour * w["bed"] * tint * transmit + w["body"] * (1.0 - transmit) + w["sky"]
+
+    under = through(g * exposure, depth)
     if ground.carpet is not None:
         under = carpet_bed(under, scene, ground, sample)
+    sunk = None if trees is None else (trees["alpha"] * trees["sunk"])[..., None]
+    if sunk is not None and sunk.any():
+        above = np.maximum(scene["z_m"] + water["depth_m"] - trees["top_m"], 0.0)[..., None]
+        under = under * (1.0 - sunk) + through(trees["colour"], above) * sunk
     open_sea = 1.0 - np.exp(-depth / w["deep_tau_m"])
     under = under * (1.0 - open_sea) + w["deep"] * open_sea
     if ground.opaque_water:

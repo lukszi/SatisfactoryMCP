@@ -1,6 +1,6 @@
 """Trees laid over the finished painted pixel: the Titan forest's raster and per-tree crowns,
-the crowns moved onto the canopy targets and the named crown targets. docs/spatial-and-map.md
-sections 30, 31 and 36.
+the crowns moved onto the canopy targets and the named crown targets; a crown under the
+water's surface goes to the bed instead. docs/spatial-and-map.md sections 30, 31 and 36.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ import numpy as np
 
 from mapgen.gamedata.crowns import SPRITE_M
 from mapgen.lighting.hillshade import sun_dot
-from mapgen.palette.calibration import transfer_op, weighted_median
+from mapgen.palette.calibration import sampled_rgb, transfer_op, weighted_median
 from mapgen.palette.colour import flat_light, linear_from_oklab, oklab, unit_luminance
 
 __all__ = [
@@ -18,7 +18,9 @@ __all__ = [
     "HUE_GATE_DEG",
     "IDENTITY_OP",
     "TARGET_GREY",
+    "band_crowns",
     "crown_lab",
+    "crown_layer",
     "crown_ops",
     "hue_gate",
     "moved_crowns",
@@ -179,8 +181,9 @@ def titan_over(out, scene: dict, ground) -> np.ndarray:
     return out * (1.0 - alpha) + lit * alpha
 
 
-def over_crowns(out, crowns: dict, scene: dict, p: dict, ambient, exposure, ops=()):
-    """Tree crowns over everything below them, lit by their own domes.
+def crown_layer(crowns: dict, scene: dict, p: dict, ambient, exposure, ops=()) -> dict:
+    """The crowns of a band, lit by their own domes: ``alpha``, ``colour``, ``top_m``, and
+    ``sunk``, the share of each pixel's crown that stands under the water's surface.
 
     A crown is hidden where the drawn surface stands above its top: a tree under an
     overhang, or rock the tree grows beside and below. ``ops`` are the calibration's
@@ -188,11 +191,11 @@ def over_crowns(out, crowns: dict, scene: dict, p: dict, ambient, exposure, ops=
     """
     style = p["crowns"]
     cover = crowns["cover"]
-    seen = (
-        np.nan_to_num(crowns["top_cm"], nan=-1e9) / 100.0 > scene["z_m"] - style["hidden_below_m"]
-    )
-    wet = scene["water"]["cover"] * np.float32(1.0 - style["over_water"])
-    alpha = (np.clip(cover, 0.0, 1.0) * style["opacity"] * seen * (1.0 - wet))[..., None]
+    top_m = np.nan_to_num(crowns["top_cm"], nan=-1e9) / np.float32(100.0)
+    seen = top_m > scene["z_m"] - style["hidden_below_m"]
+    water = scene["water"]
+    below = scene["z_m"] + water["depth_m"] - top_m
+    sunk = water["cover"] * np.clip(below / np.float32(style["waterline_m"]) + 0.5, 0.0, 1.0)
     lab = moved_crowns(crown_lab(crowns["rgb"] / np.maximum(cover, 1e-4)[..., None], style), ops)
     lab[..., 1:] *= np.float32(p["chroma_gain"])
     colour = np.clip(linear_from_oklab(lab), 0.0, 1.0)
@@ -201,4 +204,20 @@ def over_crowns(out, crowns: dict, scene: dict, p: dict, ambient, exposure, ops=
         ambient * unit_luminance(p["sky"])
         + (1 - ambient) * unit_luminance(p["sun"]) * shade[..., None]
     )
-    return out * (1.0 - alpha) + colour * light * exposure * alpha
+    return {"alpha": np.clip(cover, 0.0, 1.0) * np.float32(style["opacity"]) * seen,
+            "colour": colour * light * exposure, "top_m": top_m, "sunk": sunk}  # fmt: skip
+
+
+def band_crowns(scene: dict, ground, sample_rock, exposure) -> dict | None:
+    """The band's ``crown_layer`` with the ground's calibration ops on it; None without crowns."""
+    crowns, p = scene.get("crowns"), ground.palette
+    if crowns is None:
+        return None
+    ops = [(sampled_rgb(op, sample_rock), grey) for op, grey in getattr(ground, "crown_ops", ())]
+    return crown_layer(crowns, scene, p, np.float32(p["ambient"]), exposure, ops)
+
+
+def over_crowns(out, layer: dict):
+    """The crowns that stand out of the water, over the finished pixel and its water."""
+    alpha = (layer["alpha"] * (1.0 - layer["sunk"]))[..., None]
+    return out * (1.0 - alpha) + layer["colour"] * alpha
