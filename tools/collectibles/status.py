@@ -8,6 +8,7 @@ import collections
 import math
 
 from pioneersav import FIRST_MODERN_BODY
+from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import (
     CATEGORIES,
     DROP_POD_CLASS,
@@ -18,14 +19,15 @@ from tools.collectibles.catalog import (
 from tools.collectibles.context import BuildContext, agrees_with_map
 from tools.collectibles.hazards import hazard_context
 from tools.collectibles.map_read import Placement
-from tools.collectibles.stats import by_count, spread
+from tools.collectibles.rows import CollectibleRow, RowState
+from tools.collectibles.stats import by_count, json_array, spread
 
 
 def measure_status(ctx: BuildContext) -> None:
     """The newest save's live and destroyed records, joined to the map's rows."""
     present: dict[ActorKey, bool | None] = {}
     displaced: list[tuple[ActorKey, float]] = []
-    orphan_live: collections.Counter = collections.Counter()
+    orphan_live: collections.Counter[str] = collections.Counter()
     agreeing: list[float] = []
     for key, (cls, position, looted) in ctx.newest.live.items():
         placement = ctx.by_key.get(key)
@@ -42,7 +44,7 @@ def measure_status(ctx: BuildContext) -> None:
     collected = {key for key in ctx.newest.destroyed if key in ctx.by_key}
     # The rest of the destroyed list, by the map's own class for each key, so "the
     # remainder is scenery" is derived rather than assumed.
-    destroyed_others: collections.Counter = collections.Counter()
+    destroyed_others: collections.Counter[str] = collections.Counter()
     for key in ctx.newest.destroyed:
         if key not in ctx.by_key:
             destroyed_others[ctx.world.class_by_key.get(key, "not a map-placed actor at all")] += 1
@@ -77,16 +79,17 @@ def _recoverable_by_position(ctx: BuildContext, displaced: list[tuple[ActorKey, 
 
 def build_rows(ctx: BuildContext) -> None:
     """One row per placement, its state the merge ``measure_status`` made."""
-    rows: list[dict] = []
+    rows: list[CollectibleRow] = []
     for placement in ctx.row_placements:
         key = (placement.cell, placement.instance)
+        state: RowState
         if key in ctx.collected:
             state = "collected"
         elif key in ctx.present:
             state = "present"
         else:
             state = "unknown"
-        row = {
+        row: CollectibleRow = {
             "instance": INSTANCE_PREFIX + placement.instance,
             "cell": placement.cell,
             "category": CATEGORIES[placement.cls],
@@ -100,7 +103,10 @@ def build_rows(ctx: BuildContext) -> None:
             row["attached_to"] = INSTANCE_PREFIX + placement.attached_to
         if placement.cls == DROP_POD_CLASS:
             row["looted"] = ctx.present.get(key) if state == "present" else None
-        row.update(placement.detail)
+        if placement.contents is not None:
+            row["contents"] = placement.contents
+        if placement.unlock_cost is not None:
+            row["unlock_cost"] = placement.unlock_cost
         context = hazard_context(placement.position, ctx.hazards)
         if context:
             row["hazard"] = context
@@ -113,12 +119,12 @@ def measure_older_save_staleness(ctx: BuildContext) -> None:
     """What the older saves add, and how stale their keys are: if their union resolved rows
     the newest save cannot, the newest save would not be the authority."""
     keys_only_older_saves_state: set[ActorKey] = set()
-    displaced_by_version: dict[int, set] = collections.defaultdict(set)
+    displaced_by_version: dict[int, set[ActorKey]] = collections.defaultdict(set)
     joined_by_save: dict[str, int] = {}
-    orphan_live_over_all_saves: collections.Counter = collections.Counter()
+    orphan_live_over_all_saves: collections.Counter[str] = collections.Counter()
     orphan_versions: dict[ActorKey, set[int]] = collections.defaultdict(set)
     pre_partition_keys: set[ActorKey] = set()
-    pre_partition_cells: collections.Counter = collections.Counter()
+    pre_partition_cells: collections.Counter[str] = collections.Counter()
     for save in ctx.session_saves:
         old = save.save_version < FIRST_MODERN_BODY
         joined = 0
@@ -198,7 +204,7 @@ def measure_exploration(ctx: BuildContext) -> None:
     ctx.map_cells = {cell for cell, _instance in ctx.world.class_by_key}
 
 
-def status_source_meta(ctx: BuildContext) -> dict:
+def status_source_meta(ctx: BuildContext) -> JsonObject:
     """``_meta.source.status``: which saves were read, and which one decides."""
     return {
         "kind": "the player's own save files",
@@ -220,8 +226,8 @@ def status_source_meta(ctx: BuildContext) -> dict:
             "whatever the save that wrote it meant. Only the largest session's "
             "saves are used, and the rest are counted here and dropped."
         ),
-        "save_versions": sorted({f.save_version for f in ctx.session_saves}),
-        "build_versions": sorted({f.build_version for f in ctx.session_saves}),
+        "save_versions": json_array(sorted({f.save_version for f in ctx.session_saves})),
+        "build_versions": json_array(sorted({f.build_version for f in ctx.session_saves})),
         "saves_predating_world_partition": len(ctx.pre_partition),
         "saves_that_join_no_row_here": sum(1 for v in ctx.joined_by_save.values() if v == 0),
         "rows_the_pre_partition_saves_can_key": len(ctx.pre_partition_keys),
@@ -256,7 +262,7 @@ def status_source_meta(ctx: BuildContext) -> dict:
     }
 
 
-def status_evidence_meta(ctx: BuildContext) -> dict:
+def status_evidence_meta(ctx: BuildContext) -> JsonObject:
     """``_meta.status_evidence``: what the live and destroyed records did and did not join."""
     return {
         "live_records_accepted": len(ctx.present),
@@ -351,7 +357,7 @@ def status_evidence_meta(ctx: BuildContext) -> dict:
     }
 
 
-def position_agreement_meta(ctx: BuildContext) -> dict:
+def position_agreement_meta(ctx: BuildContext) -> JsonObject:
     """``_meta.position_agreement``: the accepted positions against the newest save's own."""
     return {
         "what": (
@@ -376,7 +382,7 @@ def position_agreement_meta(ctx: BuildContext) -> dict:
     }
 
 
-def exploration_meta(ctx: BuildContext) -> dict:
+def exploration_meta(ctx: BuildContext) -> JsonObject:
     """``_meta.exploration``: how much of the map the saves have observed."""
     return {
         "what": (

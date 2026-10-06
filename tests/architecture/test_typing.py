@@ -56,7 +56,7 @@ BUDGETS: dict[str, int] = {
     "src/satisfactory_mcp/interfaces/web": 46,
     "src/satisfactory_mcp/presenters/text": 171,
     "tools": 4,
-    "tools/collectibles": 8,
+    "tools/collectibles": 4,
     "tools/mapgen/src/mapgen": 17,
     "tools/mapgen/src/mapgen/enhance": 1,
     "tools/mapgen/src/mapgen/gamedata": 17,

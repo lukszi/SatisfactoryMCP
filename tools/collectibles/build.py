@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import collections
+from collections.abc import Callable
 
 from pioneersav import FIRST_MODERN_BODY
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import ScriptObjects
+from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import CATEGORIES, POSITION_TOLERANCE_CM
 from tools.collectibles.context import BuildContext
 from tools.collectibles.hazards import HazardWorld, hazard_context_meta
@@ -25,6 +27,7 @@ from tools.collectibles.map_read import (
     placements_source_meta,
 )
 from tools.collectibles.respawn import measure_durability, measure_flora, respawn_meta
+from tools.collectibles.rows import CollectibleRow
 from tools.collectibles.saves import SaveFacts
 from tools.collectibles.status import (
     build_rows,
@@ -45,7 +48,7 @@ from tools.collectibles.totals import (
 )
 
 #: The measurements, in the order they run: each may read what the earlier ones measured.
-MEASUREMENTS = (
+MEASUREMENTS: tuple[Callable[[BuildContext], None], ...] = (
     measure_status,
     build_rows,
     measure_pedestals,
@@ -72,8 +75,8 @@ def build(
     pyooz_version: str,
     readable_saves: list[SaveFacts],
     files_found: int,
-    other_levels: list[dict],
-) -> tuple[list[dict], dict]:
+    other_levels: list[JsonObject],
+) -> tuple[list[CollectibleRow], JsonObject]:
     """Turn map placements plus the session's saves into rows and ``_meta``."""
     session_saves = sorted(saves, key=lambda f: (f.ticks, f.play_seconds))
     row_placements = [p for p in world.placements if p.cls in CATEGORIES]
@@ -105,7 +108,7 @@ def build(
     return ctx.rows, assemble_meta(ctx)
 
 
-def assemble_meta(ctx: BuildContext) -> dict:
+def assemble_meta(ctx: BuildContext) -> JsonObject:
     """``_meta``, one builder per key, in the key order the file has always had."""
     persistent = sum(1 for r in ctx.rows if r["cell"] == "Persistent_Level")
     return {
@@ -152,7 +155,7 @@ def assemble_meta(ctx: BuildContext) -> dict:
     }
 
 
-def source_meta(ctx: BuildContext) -> dict:
+def source_meta(ctx: BuildContext) -> JsonObject:
     """``_meta.source``: where the placements come from, and where the states do."""
     return {
         "placements": placements_source_meta(
@@ -167,7 +170,7 @@ def source_meta(ctx: BuildContext) -> dict:
     }
 
 
-def derivation_meta() -> dict:
+def derivation_meta() -> JsonObject:
     """``_meta.derivation``: how each row field is read."""
     return {
         "placed": (
@@ -217,7 +220,7 @@ def derivation_meta() -> dict:
     }
 
 
-def not_derived_meta() -> dict:
+def not_derived_meta() -> JsonObject:
     """``_meta.not_derived``: context a consumer may want and this file does not produce."""
     return {
         "what": (

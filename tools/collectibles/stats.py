@@ -1,11 +1,14 @@
-"""The two shapes ``_meta`` summarises numbers in: a distance spread and a count table."""
+"""How ``_meta`` carries numbers: a distance spread, a count table, and typed values as JSON."""
 
 from __future__ import annotations
 
 import collections
+from collections.abc import Iterable, Mapping
+
+from satisfactory_mcp.core.jsontypes import JsonArray, JsonObject, JsonValue
 
 
-def spread(values: list[float]) -> dict[str, float | int | None]:
+def spread(values: list[float]) -> JsonObject:
     """Matched count plus the distribution of a list of distances."""
     ordered = sorted(values)
     return {
@@ -18,6 +21,21 @@ def spread(values: list[float]) -> dict[str, float | int | None]:
     }
 
 
-def by_count(counter: collections.Counter) -> dict[str, int]:
+def ranked(counter: collections.Counter[str]) -> list[tuple[str, int]]:
+    """Biggest first, ties by name: the order ``_meta`` lists counts in."""
+    return sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def by_count(counter: collections.Counter[str]) -> JsonObject:
     """A counter as a plain dict, biggest first, so ``_meta`` reads in a stable order."""
-    return dict(sorted(counter.items(), key=lambda kv: (-kv[1], kv[0])))
+    return dict(ranked(counter))
+
+
+def json_array(values: Iterable[JsonValue]) -> JsonArray:
+    """``values`` as a JSON array: to a type checker a ``list[int]`` is no ``list[JsonValue]``."""
+    return list(values)
+
+
+def json_object(values: Mapping[str, JsonValue]) -> JsonObject:
+    """``values`` as a JSON object, for the reason ``json_array`` gives."""
+    return dict(values)
