@@ -111,6 +111,8 @@ strict = [
     "src/satisfactory_mcp/core/arrays.py",
     "src/satisfactory_mcp/core/jsontypes.py",
     "src/satisfactory_mcp/core/saveio/schema.py",
+    "src/satisfactory_mcp/domain/collectibles/__init__.py",
+    "src/satisfactory_mcp/domain/collectibles/views.py",
     "src/satisfactory_mcp/domain/factories/views.py",
     "src/satisfactory_mcp/domain/maps/__init__.py",
     "src/satisfactory_mcp/domain/maps/jobs.py",
