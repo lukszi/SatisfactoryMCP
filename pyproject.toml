@@ -122,7 +122,10 @@ strict = [
     "src/satisfactory_mcp/domain/power/views.py",
     "src/satisfactory_mcp/domain/progression/views.py",
     "src/satisfactory_mcp/domain/session/views.py",
+    "src/satisfactory_mcp/domain/spatial/geo.py",
     "src/satisfactory_mcp/domain/spatial/nodes/views.py",
+    "src/satisfactory_mcp/domain/spatial/ranking.py",
+    "src/satisfactory_mcp/domain/spatial/regions.py",
 ]
 reportUnnecessaryTypeIgnoreComment = "error"
 
