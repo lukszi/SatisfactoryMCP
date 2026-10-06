@@ -65,9 +65,9 @@ def _mesh_ground():
     has = np.zeros(n, np.float32)
     top[FOREST], has[FOREST] = (0.05, 0.08, 0.03), 1.0
     return SimpleNamespace(
-        rock_family=None, family_tint=np.ones((n, 3), np.float32), family_top=top,
-        family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}}, mesh_rgb={},
-        seabed_coral=np.zeros(3, np.float32),
+        rock_family=None, family_rock={}, family_tint=np.ones((n, 3), np.float32),
+        family_top=top, family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
+        mesh_rgb={}, seabed_coral=np.zeros(3, np.float32),
     )  # fmt: skip
 
 
@@ -251,18 +251,22 @@ def _crowns(colours, species, names=NAMES):
 def test_a_species_target_moves_only_that_species_onto_it():
     crowns = _crowns([GREEN, RED, PINK], [0, 1, 1, 2])
     before = [copy.deepcopy(lv) for lv in crowns.levels]
-    measured = species_targets(crowns, STYLE, {"SM_Kapok_03": "#7c4955", "Absent": "#000000"},
-                               PAINTED_PALETTE)  # fmt: skip
+    levels, measured = species_targets(
+        crowns, STYLE, {"SM_Kapok_03": "#7c4955", "Absent": "#000000"}, PAINTED_PALETTE
+    )
     assert (
         set(measured) == {"species@SM_Kapok_03"} and measured["species@SM_Kapok_03"]["trees"] == 2
     )
-    level = crowns.levels[1][0]
+    level = levels[1][0]
     lab = crown_lab(level[1, 1, 1:4] / level[1, 1, 0], STYLE)
     np.testing.assert_allclose(lab, display_to_crown(PAINTED_PALETTE, "#7c4955"), atol=2e-3)
-    assert crowns.levels[1][0][0, 0, 1:4].tolist() == [0.0, 0.0, 0.0], "no cover, no colour"
+    assert levels[1][0][0, 0, 1:4].tolist() == [0.0, 0.0, 0.0], "no cover, no colour"
     for k in (0, 2):
-        for got, want in zip(crowns.levels[k], before[k], strict=True):
+        for got, want in zip(levels[k], before[k], strict=True):
             np.testing.assert_array_equal(got, want)
+    for got, want in zip(crowns.levels, before, strict=True):
+        for got_mip, want_mip in zip(got, want, strict=True):
+            np.testing.assert_array_equal(got_mip, want_mip, err_msg="the crowns stay as they are")
 
 
 def test_the_red_kapok_is_crimson_in_any_area_and_the_green_ones_are_not():
@@ -272,7 +276,8 @@ def test_the_red_kapok_is_crimson_in_any_area_and_the_green_ones_are_not():
     ground.crowns, ground.crown_measured = crowns, {}
     ground.area_names, ground.area_assets = ["Area_JungleSpires"], []
     ground.coarse_index = np.zeros((4, 4), np.uint8)
-    ops = ground._crown_ops(ground.palette["calibration"])
+    ground._calibrate_crowns(ground.palette["calibration"])
+    ops = ground.crown_ops
     assert "species@SM_Kapok_03" in ground.crown_measured
     p = ground.palette
     colours = [crowns.levels[k][0][1, 1, 1:4] for k in range(3)]

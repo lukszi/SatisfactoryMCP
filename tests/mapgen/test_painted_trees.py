@@ -18,6 +18,7 @@ from mapgen.gamedata.rocks import families as rockfamily
 from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD, SPRITE_M
 from mapgen.gamedata.water.bodies import OCEAN, WATER_CLASSES
 from mapgen.palette.painted.albedo import hidden_ground
+from mapgen.palette.painted.band import painted_colours
 from mapgen.palette.painted.calibration import (
     display_to_crown,
     display_to_ground,
@@ -25,7 +26,7 @@ from mapgen.palette.painted.calibration import (
     scoped_planes,
     weighted_median,
 )
-from mapgen.palette.painted.ground import PaintedGround, painted_colours
+from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.painted.optics import class_optics, opaque_share, underwater, water_table
 from mapgen.palette.painted.surfaces import family_tables, mesh_surface, rock_surface, sunk_specks
 from mapgen.palette.painted.trees import (
@@ -62,7 +63,7 @@ def _crowns(colours, species, xs, scale=1.0):
         levels.append([level])
     records = np.zeros(len(species), CROWN_RECORD)
     records["species"], records["x"], records["scale"] = species, xs, scale
-    return SimpleNamespace(levels=levels, records=records)
+    return SimpleNamespace(levels=levels, records=records, names=[])
 
 
 def test_crowns_move_their_median_onto_each_scopes_target():
@@ -142,7 +143,8 @@ def test_blue_palms_take_their_own_target_and_keep_their_saturation():
     colours = [GREEN, pink, PALM, BALLOON, neutral]
     crowns = _crowns(colours, np.repeat(np.arange(5), 10), [0.0] * 50)
     ground = _crown_ground(crowns)
-    ops = ground._crown_ops(ground.palette["calibration"])
+    ground._calibrate_crowns(ground.palette["calibration"])
+    ops = ground.crown_ops
     assert [grey for _op, grey in ops] == [CANOPY_GREY, TARGET_GREY]
     assert ground.crown_measured["crowns@blue_palm"]["trees"] == 10, "the palms alone"
     shape = (1, len(colours))
@@ -249,8 +251,8 @@ def test_rock_keeps_its_target_under_the_common_tint_and_a_family_keeps_its_depa
     np.testing.assert_allclose(ratio[0], 1.0)
     assert has[names.index("grass")] == 1.0 and has[names.index("cliff")] == 0.0
     ground = SimpleNamespace(rock_family=np.full((4, 4), names.index("cliff"), np.uint8),
-                             family_tint=ratio, family_top=top, family_has_top=has,
-                             palette={"rock_top": {"up": [0.6, 0.85]}})  # fmt: skip
+                             family_rock={}, family_tint=ratio, family_top=top,
+                             family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}})  # fmt: skip
     rock = np.full((4, 4, 3), 0.3, np.float32)
     scene = {"z_m": np.zeros((4, 4), np.float32), "grid": (slice(0, 4), 0, 4, 0, 4, 1.0)}
     np.testing.assert_allclose(rock_surface(rock, scene, ground), rock, atol=1e-6)

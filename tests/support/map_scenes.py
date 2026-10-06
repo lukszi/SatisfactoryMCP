@@ -6,8 +6,9 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from mapgen.colour import srgb_to_linear
 from mapgen.gamedata.water.bodies import WATER_CLASSES
-from mapgen.palette.painted.ground import WATER_TABLE_COLUMNS, srgb_to_linear, water_table
+from mapgen.palette.painted.optics import WATER_TABLE_COLUMNS, water_table
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import PAINTED_PALETTE, RELIEF_PALETTES
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -51,7 +52,9 @@ def painted_ground_stub(n: int) -> SimpleNamespace:
         canopy_rgb=np.zeros(3, np.float32),
         rock=rock,
         rock_family=None,
+        family_rock={},
         crown=None,
+        crown_ops=[],
         titan=None,
         carpet=None,
         mesh_rgb={},
@@ -67,6 +70,7 @@ def painted_ground_stub(n: int) -> SimpleNamespace:
         },
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
         opaque_water=[],
+        water_class=None,
     )
 
 

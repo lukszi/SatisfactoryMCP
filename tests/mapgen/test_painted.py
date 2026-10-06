@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from mapgen.colour import oklab
 from mapgen.commands.renders import LAYERS
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.ground.landscape_albedo import layer_albedo
@@ -19,7 +20,6 @@ from mapgen.gamedata.ground.weightmaps import component_origin, place, weightmap
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
 from mapgen.palette import styles
 from mapgen.palette.painted.albedo import layer_table, mix_layers, seam_blend
-from mapgen.palette.painted.ground import oklab
 from mapgen.palette.styles import (
     LAYER_STYLES,
     PAINTED_DIGEST,

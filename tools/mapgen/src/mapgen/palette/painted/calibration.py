@@ -6,7 +6,11 @@ transfer, the targets derived by rule and the area scoping. docs/spatial-and-map
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping, Sequence
+from typing import TypeAlias
+
 import numpy as np
+import numpy.typing as npt
 from scipy import ndimage
 
 from mapgen.colour import (
@@ -17,14 +21,28 @@ from mapgen.colour import (
     srgb_to_linear,
     unit_luminance,
 )
+from mapgen.palette.painted.shapes import (
+    AreaTarget,
+    CalibrationTargets,
+    ColourPlanes,
+    DerivedTarget,
+    FloatGrid,
+    PaintedStyle,
+    PaintPlane,
+    Sampler,
+)
+from satisfactory_mcp.core.arrays import BoolMask, U8Grid
 
 __all__ = [
+    "Transfer",
     "area_ids",
+    "chroma_turn",
     "derived_hex",
     "display_to_crown",
     "display_to_ground",
     "display_to_linear",
     "flat_ground_light",
+    "hex_rgb",
     "layer_transfer",
     "median_lab",
     "rehome_offshore",
@@ -37,8 +55,11 @@ __all__ = [
     "with_derived",
 ]
 
+#: A colour transfer: the lightness step and the (a, b) matrix, chroma scale times hue turn.
+Transfer: TypeAlias = tuple[float, FloatGrid]
 
-def tone(luminance, knee: float, white: float):
+
+def tone(luminance: npt.ArrayLike, knee: float, white: float) -> FloatGrid:
     """Identity below ``knee``; above it a Reinhard shoulder that takes ``white`` to 1."""
     y = np.asarray(luminance, np.float32)
     span = np.float32(1.0 - knee)
@@ -48,41 +69,64 @@ def tone(luminance, knee: float, white: float):
     return np.where(y > knee, shoulder, y).astype(np.float32)
 
 
-def flat_ground_light(p: dict) -> np.ndarray:
+def flat_ground_light(palette: PaintedStyle) -> FloatGrid:
     """The flat-ground sky-and-sun light as a colour of unit luminance per term."""
-    a = np.float32(p["ambient"])
-    return a * unit_luminance(p["sky"]) + (1 - a) * unit_luminance(p["sun"])
+    a = np.float32(palette["ambient"])
+    return a * unit_luminance(palette["sky"]) + (1 - a) * unit_luminance(palette["sun"])
 
 
-def display_to_linear(p: dict, hex_colour: str) -> np.ndarray:
+def hex_rgb(hex_colour: str) -> list[int]:
+    """``#rrggbb`` as its three 0..255 channels."""
+    return [int(hex_colour[i : i + 2], 16) for i in (1, 3, 5)]
+
+
+def chroma_turn(turn: float | np.floating, scale: float | np.floating) -> FloatGrid:
+    """The (a, b) matrix that turns the hue by ``turn`` radians and scales the chroma."""
+    c, s = np.cos(turn) * scale, np.sin(turn) * scale
+    return np.array([[c, -s], [s, c]], np.float32)
+
+
+def display_to_linear(palette: PaintedStyle, hex_colour: str) -> FloatGrid:
     """A display sRGB colour back through the tone: the linear colour the tone maps onto it."""
-    rgb = srgb_to_linear([int(hex_colour[i : i + 2], 16) for i in (1, 3, 5)])
-    t = p["tone"]
+    rgb = srgb_to_linear(hex_rgb(hex_colour))
+    curve = palette["tone"]
     y = float(rgb @ LUMA)
-    grid = np.linspace(0.0, t["white"], 4097, dtype=np.float32)
-    y0 = float(np.interp(min(y, 0.999), tone(grid, t["knee"], t["white"]), grid))
+    grid = np.linspace(0.0, curve["white"], 4097, dtype=np.float32)
+    y0 = float(np.interp(min(y, 0.999), tone(grid, curve["knee"], curve["white"]), grid))
     return rgb * np.float32(y0 / max(y, 1e-6))
 
 
-def display_to_ground(p: dict, hex_colour: str) -> np.ndarray:
+def display_to_ground(palette: PaintedStyle, hex_colour: str) -> FloatGrid:
     """A display sRGB target back through flat light, exposure, tone and chroma: OKLab."""
-    rgb = display_to_linear(p, hex_colour) / np.float32(p["exposure"] * p["tone"]["gain"])
-    lab = oklab(rgb / flat_ground_light(p))
-    lab[0] -= np.float32(p["altitude_lift"] * 0.5)
-    lab[1:] /= np.float32(p["chroma_gain"])
+    exposure = palette["exposure"] * palette["tone"]["gain"]
+    rgb = display_to_linear(palette, hex_colour) / np.float32(exposure)
+    lab = oklab(rgb / flat_ground_light(palette))
+    lab[0] -= np.float32(palette["altitude_lift"] * 0.5)
+    lab[1:] /= np.float32(palette["chroma_gain"])
     return lab
 
 
-def transfer_op(source_lab, target_lab) -> tuple[float, np.ndarray]:
+def display_to_crown(palette: PaintedStyle, hex_colour: str) -> FloatGrid:
+    """A display target as a tree crown's OKLab: the ground's, without the altitude lift."""
+    lab = display_to_ground(palette, hex_colour)
+    lab[0] += np.float32(palette["altitude_lift"] * 0.5)
+    return lab
+
+
+def transfer_op(source_lab: npt.ArrayLike, target_lab: npt.ArrayLike) -> Transfer:
     """The lightness step and (a, b) matrix, chroma scale times hue turn, source to target."""
     s, t = np.asarray(source_lab, np.float64), np.asarray(target_lab, np.float64)
-    scale = np.clip(np.hypot(*t[1:]) / max(np.hypot(*s[1:]), 1e-4), 0.25, 4.0)
+    scale = np.clip(np.hypot(t[1], t[2]) / max(np.hypot(s[1], s[2]), 1e-4), 0.25, 4.0)
     turn = np.arctan2(t[2], t[1]) - np.arctan2(s[2], s[1])
-    c, si = np.cos(turn) * scale, np.sin(turn) * scale
-    return float(t[0] - s[0]), np.array([[c, -si], [si, c]], np.float32)
+    return float(t[0] - s[0]), chroma_turn(turn, scale)
 
 
-def layer_transfer(albedo, weights: dict, ops: dict, rows_per_block: int = 512) -> np.ndarray:
+def layer_transfer(
+    albedo: FloatGrid,
+    weights: Mapping[str, PaintPlane],
+    ops: Mapping[str, Transfer],
+    rows_per_block: int = 512,
+) -> FloatGrid:
     """Each texel moved by its layers' ops, mixed by their normalised weights."""
     out = np.empty_like(albedo)
     for start in range(0, albedo.shape[0], rows_per_block):
@@ -107,12 +151,12 @@ def layer_transfer(albedo, weights: dict, ops: dict, rows_per_block: int = 512) 
     return out
 
 
-def median_lab(colours: np.ndarray) -> np.ndarray:
+def median_lab(colours: FloatGrid) -> FloatGrid:
     """The per-channel OKLab median of linear colours."""
     return np.median(oklab(np.clip(colours, 1e-7, None)), axis=0)
 
 
-def area_ids(area_names: list[str], assets: list, keys) -> list[int]:
+def area_ids(area_names: Sequence[str], assets: Sequence[str], keys: Collection[str]) -> list[int]:
     """Biome raster indices whose area stem (``Area_crater``) or asset (``Area_crater_1``) is listed."""
     return [
         i
@@ -121,7 +165,7 @@ def area_ids(area_names: list[str], assets: list, keys) -> list[int]:
     ]
 
 
-def rehome_offshore(index: np.ndarray, names: list[str], land: np.ndarray, sea: str) -> np.ndarray:
+def rehome_offshore(index: U8Grid, names: Sequence[str], land: BoolMask, sea: str) -> U8Grid:
     """The area raster with each area's offshore pieces handed to the area they border.
 
     A piece of an area other than the one holding most of its land, and itself mostly sea,
@@ -138,10 +182,10 @@ def rehome_offshore(index: np.ndarray, names: list[str], land: np.ndarray, sea: 
         cells = np.bincount(pieces.ravel(), minlength=count + 1)[1:]
         held = np.bincount(pieces.ravel(), land.ravel().astype(np.float32), count + 1)[1:]
         main = int(np.argmax(held))
-        for k, box in enumerate(ndimage.find_objects(pieces)):
-            if k == main or 2 * held[k] >= cells[k]:
+        for k, found in enumerate(ndimage.find_objects(pieces)):
+            if found is None or k == main or 2 * held[k] >= cells[k]:
                 continue
-            box = tuple(slice(max(s.start - 1, 0), s.stop + 1) for s in box)
+            box = tuple(slice(max(s.start - 1, 0), s.stop + 1) for s in found)
             piece = pieces[box] == k + 1
             ring = ndimage.binary_dilation(piece, eight) & ~piece
             border = np.bincount(index[box][ring], minlength=len(names))[: len(names)]
@@ -154,47 +198,45 @@ def rehome_offshore(index: np.ndarray, names: list[str], land: np.ndarray, sea: 
     return out
 
 
-def split_weight(weight: np.ndarray, share_u8: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def split_weight(weight: PaintPlane, share_u8: U8Grid) -> tuple[U8Grid, PaintPlane]:
     """A u8 layer weight cut in two by a 0..255 share: ``(inside, outside)``, summing to it."""
     inside = ((weight.astype(np.uint16) * share_u8 + 127) // 255).astype(np.uint8)
     return inside, weight - inside
 
 
-def derived_hex(hex_colour: str, rule: dict) -> str:
+def derived_hex(hex_colour: str, rule: DerivedTarget) -> str:
     """A display colour moved in its OKLab by ``rule``: the lightness times ``lightness``, the
     chroma times ``chroma``, the hue turned by ``hue_deg``."""
-    lab = oklab(srgb_to_linear([int(hex_colour[i : i + 2], 16) for i in (1, 3, 5)]))
-    turn = np.radians(np.float32(rule.get("hue_deg", 0.0)))
-    c, s = np.cos(turn) * rule.get("chroma", 1.0), np.sin(turn) * rule.get("chroma", 1.0)
+    lab = oklab(srgb_to_linear(hex_rgb(hex_colour)))
+    turn = chroma_turn(np.radians(np.float32(rule.get("hue_deg", 0.0))), rule.get("chroma", 1.0))
     a, b = lab[1], lab[2]
-    moved = np.array([lab[0] * rule.get("lightness", 1.0), c * a - s * b, s * a + c * b])
+    moved = np.array(
+        [
+            lab[0] * rule.get("lightness", 1.0),
+            turn[0, 0] * a + turn[0, 1] * b,
+            turn[1, 0] * a + turn[1, 1] * b,
+        ]
+    )
     rgb = np.round(linear_to_srgb(np.clip(linear_from_oklab(moved), 0.0, 1.0))).astype(int)
     return "#" + "".join(f"{v:02x}" for v in rgb)
 
 
-def with_derived(cal: dict) -> dict:
-    """The calibration with each ``derived`` rule's layer target added to every scope, the
-    global layers and each area entry, whose ``from`` layer has a target and it has none."""
+def with_derived(cal: CalibrationTargets) -> CalibrationTargets:
+    """The calibration with each ``derived`` rule's target added to every layer scope where its
+    ``from`` layer has one and it has none."""
     rules = cal.get("derived", {})
 
-    def scope(layers: dict) -> dict:
+    def scope(layers: dict[str, str]) -> dict[str, str]:
         found = {name: derived_hex(layers[rule["from"]], rule) for name, rule in rules.items()
                  if rule["from"] in layers and name not in layers}  # fmt: skip
         return {**layers, **found}
 
-    areas = [{**e, "layers": scope(e["layers"])} if "layers" in e else e
-             for e in cal.get("areas", [])]  # fmt: skip
+    areas: list[AreaTarget] = [{**e, "layers": scope(e["layers"])} if "layers" in e else e
+                               for e in cal.get("areas", [])]  # fmt: skip
     return {**cal, "layers": scope(cal.get("layers", {})), "areas": areas}
 
 
-def display_to_crown(p: dict, hex_colour: str) -> np.ndarray:
-    """A display target as a tree crown's OKLab: the ground's, without the altitude lift."""
-    lab = display_to_ground(p, hex_colour)
-    lab[0] += np.float32(p["altitude_lift"] * 0.5)
-    return lab
-
-
-def weighted_median(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
+def weighted_median(values: FloatGrid, weights: FloatGrid) -> FloatGrid:
     """The per-column median of ``values`` (n, k), each row counted by its weight."""
     out = np.empty(values.shape[1], np.float32)
     for k in range(values.shape[1]):
@@ -204,7 +246,9 @@ def weighted_median(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
     return out
 
 
-def scoped_planes(default, scoped: list) -> np.ndarray | list:
+def scoped_planes(
+    default: FloatGrid, scoped: Sequence[tuple[FloatGrid, FloatGrid]]
+) -> ColourPlanes:
     """``default`` where no area entry reaches, each entry's value by its weight: one plane
     per component of ``default``."""
     if not scoped:
@@ -213,7 +257,7 @@ def scoped_planes(default, scoped: list) -> np.ndarray | list:
     for weight, _ in scoped:
         total += weight
     norm = np.maximum(total, 1.0)
-    planes = []
+    planes: list[FloatGrid] = []
     for k in range(len(default)):
         plane = np.float32(default[k]) * (1.0 - np.minimum(total, 1.0))
         for weight, rgb in scoped:
@@ -222,8 +266,10 @@ def scoped_planes(default, scoped: list) -> np.ndarray | list:
     return planes
 
 
-def sampled_rgb(value, sample_rock) -> np.ndarray:
+def sampled_rgb(value: ColourPlanes, sample_rock: Sampler | None) -> FloatGrid:
     """A constant colour, or three coarse planes sampled onto the band."""
-    if isinstance(value, list):
-        return np.stack([sample_rock(plane) for plane in value], -1)
-    return value
+    if not isinstance(value, list):
+        return value
+    if sample_rock is None:
+        raise ValueError("coarse colour planes need the rock grid's sampler")
+    return np.stack([sample_rock(plane) for plane in value], -1)

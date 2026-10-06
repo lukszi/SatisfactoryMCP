@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 from scipy import ndimage
 
 from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, srgb_to_linear
 from mapgen.gamedata.ground.bake import BAKE_NAME, STAMP_RING_MIN, stamp_windows
 from mapgen.gamedata.ground.paint_store import META_NAME
 from mapgen.gamedata.water.bodies import WATER_BODIES_NAME
+from mapgen.palette.painted.shapes import FloatGrid, PaintedStyle, PaintMeta, PaintPlane
+from satisfactory_mcp.core.arrays import BoolMask, F64Grid
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -30,14 +35,15 @@ __all__ = [
 ]
 
 
-def load_paint_meta(paint_dir: Path) -> dict | None:
+def load_paint_meta(paint_dir: Path) -> PaintMeta | None:
+    """The paint store's ``meta.json``; None where there is no store."""
     try:
         return json.loads((paint_dir / META_NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 
 
-def bake_table(meta: dict) -> dict[str, np.ndarray] | None:
+def bake_table(meta: PaintMeta) -> dict[str, FloatGrid] | None:
     """The paint layers' albedo refitted to the bake, or ``None`` for a store without one."""
     fit = meta["albedo_linear"].get("layers_bake_fit")
     if not fit or BAKE_NAME not in meta["files"]:
@@ -45,13 +51,13 @@ def bake_table(meta: dict) -> dict[str, np.ndarray] | None:
     return {name: np.asarray(value, np.float32) for name, value in fit.items()}
 
 
-def hidden_ground(ok: np.ndarray) -> np.ndarray:
+def hidden_ground(ok: BoolMask) -> BoolMask:
     """Holes the bake's own cover encloses: landscape the game hides, a crater's pit or a
     cave's mouth, where the paint under it is never seen."""
     return ndimage.binary_fill_holes(ok) & ~ok
 
 
-def layer_table(meta: dict, palette: dict) -> dict[str, np.ndarray]:
+def layer_table(meta: PaintMeta, palette: PaintedStyle) -> dict[str, FloatGrid]:
     """Linear albedo per paint layer, with the palette's WetSand correction applied."""
     darkening = np.float32(palette["albedo_darkening"])
     table = {
@@ -66,7 +72,9 @@ def layer_table(meta: dict, palette: dict) -> dict[str, np.ndarray]:
     return table
 
 
-def mix_layers(weights: dict[str, np.ndarray], table: dict[str, np.ndarray], shape) -> tuple:
+def mix_layers(
+    weights: Mapping[str, PaintPlane], table: Mapping[str, FloatGrid], shape: tuple[int, int]
+) -> tuple[FloatGrid, BoolMask]:
     """Weight-normalised mix of the layers' albedos; and where any layer was painted."""
     acc = np.zeros((*shape, 3), np.float32)
     total = np.zeros(shape, np.float32)
@@ -80,7 +88,9 @@ def mix_layers(weights: dict[str, np.ndarray], table: dict[str, np.ndarray], sha
     return acc / np.maximum(total, 1e-6)[..., None], have
 
 
-def seam_blend(rgb: np.ndarray, origins, size_px: int, palette: dict) -> tuple[np.ndarray, int]:
+def seam_blend(
+    rgb: FloatGrid, origins: Sequence[Sequence[int]], size_px: int, palette: PaintedStyle
+) -> tuple[FloatGrid, int]:
     """Soften paint steps that sit exactly on landscape-component edges.
 
     A component painted solid with one layer meets its neighbour in a straight 127 m line. The
@@ -119,11 +129,11 @@ def seam_blend(rgb: np.ndarray, origins, size_px: int, palette: dict) -> tuple[n
 class GroundBake:
     """The game's baked ground colour on the paint grid: linear RGB and where it exists."""
 
-    linear: np.ndarray
-    have: np.ndarray
+    linear: FloatGrid
+    have: BoolMask
 
     @classmethod
-    def from_srgb(cls, rgb, have) -> GroundBake:
+    def from_srgb(cls, rgb: npt.ArrayLike, have: npt.ArrayLike) -> GroundBake:
         """From 8-bit sRGB; black texels inside ``have`` are holes in the bake, not ground."""
         rgb = np.asarray(rgb)
         linear = np.empty(rgb.shape, np.float32)
@@ -132,7 +142,7 @@ class GroundBake:
         return cls(linear, np.asarray(have, bool) & (rgb.astype(np.uint16).sum(-1) >= 3))
 
 
-def patch_stamps(rgb, ok, paint, nodes_m) -> int:
+def patch_stamps(rgb: PaintPlane, ok: BoolMask, paint: FloatGrid, nodes_m: F64Grid) -> int:
     """Over each node's stamp, in place on the sRGB bake ``rgb`` where ``ok``: the linear paint
     mix scaled by the median ratio of bake to paint on the ring where the bake comes back
     (``stamp_windows``). Returns the texels replaced outright."""
@@ -151,7 +161,9 @@ def patch_stamps(rgb, ok, paint, nodes_m) -> int:
     return replaced
 
 
-def ground_albedo(paint, have, bake: GroundBake | None, feather_m: float) -> tuple:
+def ground_albedo(
+    paint: FloatGrid, have: BoolMask, bake: GroundBake | None, feather_m: float
+) -> tuple[FloatGrid, BoolMask, FloatGrid | None]:
     """The ground albedo source: the bake where it exists, else the paint mix.
 
     Returns ``(albedo, have, bake_weight)``; ``bake_weight`` is None without a bake.
@@ -164,7 +176,7 @@ def ground_albedo(paint, have, bake: GroundBake | None, feather_m: float) -> tup
     return paint * (1.0 - w) + bake.linear.astype(np.float32) * w, have | bake.have, weight
 
 
-def paint_plane(paint_dir: Path, meta: dict, name: str) -> np.ndarray:
+def paint_plane(paint_dir: Path, meta: PaintMeta, name: str) -> PaintPlane:
     """One plane of the paint store, decoded to its recorded shape."""
     entry = meta["files"][name]
     shape = entry["shape"]
@@ -174,7 +186,7 @@ def paint_plane(paint_dir: Path, meta: dict, name: str) -> np.ndarray:
     return grid.reshape(shape)
 
 
-def load_water_bodies(paint_dir: Path, meta: dict) -> dict | None:
+def load_water_bodies(paint_dir: Path, meta: PaintMeta) -> JsonObject | None:
     """The store's water actors and hot-spring terraces; None for a store that predates them."""
     if WATER_BODIES_NAME not in meta.get("files", {}):
         return None

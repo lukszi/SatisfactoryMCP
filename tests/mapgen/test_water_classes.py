@@ -25,13 +25,10 @@ from mapgen.gamedata.water.bodies import (
     level_bodies,
     open_sea,
 )
-from mapgen.palette.painted.ground import (
-    WATER_TABLE_COLUMNS,
-    PaintedGround,
-    load_water_bodies,
-    painted_colours,
-    water_table,
-)
+from mapgen.palette.painted.albedo import load_water_bodies
+from mapgen.palette.painted.band import painted_colours
+from mapgen.palette.painted.ground import PaintedGround
+from mapgen.palette.painted.optics import WATER_TABLE_COLUMNS, water_table
 from mapgen.palette.painted.optics import class_optics as plane_optics
 from mapgen.palette.painted.water_classes import (
     MOUTH_BLEND,
