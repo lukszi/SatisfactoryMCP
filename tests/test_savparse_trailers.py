@@ -89,7 +89,7 @@ def test_the_registry_covers_exactly_the_classes_that_carry_trailing_bytes():
     and it shows up as `actorSpecificInfo` being None rather than as an error.
 
     Eight rather than seven since the anniversary build (502094), which added a fourth
-    conveyor-chain size variant, ``_RepSizeNoCull``. It reads with the same ``_chain`` and was
+    conveyor-chain size variant, ``_RepSizeNoCull``. It reads with the same ``_read_chain`` and was
     found the way this docstring predicts -- a chain silently dropped, 318,579 trailing bytes
     of belt geometry, reported as `no reader knows this class` rather than as a failure.
     """

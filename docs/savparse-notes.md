@@ -18,17 +18,20 @@ was corrected rather than kept alongside.
 
 | layer | module | state |
 |---|---|---|
-| primitives | `pioneersav/reader.py` (95 lines) | done |
-| one exception type | `pioneersav/errors.py` (27) | done |
-| header | `pioneersav/header.py` (183) | done |
-| chunk decompression | `pioneersav/chunks.py` (123) | done |
-| body, levels, object headers, destroyed actors | `pioneersav/objects.py` (747) | done |
+| primitives | `pioneersav/reader.py` (87 lines) | done |
+| one exception type and its check | `pioneersav/errors.py` (25) | done |
+| object references | `pioneersav/references.py` (67) | done |
+| header | `pioneersav/header.py` (236) | done |
+| chunk decompression | `pioneersav/chunks.py` (124) | done |
+| body, levels, object headers | `pioneersav/objects.py` (751) | done |
+| the three destroyed-actor lists | `pioneersav/destroyed.py` (78) | done |
 | tagged property serialiser | `pioneersav/properties/` (926, in five modules) | done |
-| composition + the sidecar switch | `pioneersav/save.py` (212) | done |
-| the lightweight buildables' trailing bytes | `pioneersav/lightweight.py` (172) | done |
-| the other seven classes' trailing bytes | `pioneersav/trailers.py` (192) | done |
+| composition + the sidecar switch | `pioneersav/save.py` (201) | done |
+| the lightweight buildables' trailing bytes | `pioneersav/lightweight.py` (190) | done |
+| the other seven classes' trailing bytes | `pioneersav/trailers.py` (156) | done |
 
-Line counts are `wc -l` on the tree as it stands; 2,969 with `__init__.py`'s 58.
+Line counts are `wc -l` on the tree as it stands; 2,982 with `__init__.py`'s 68 and
+`versions.py`'s 73.
 
 **132 tests** across eight `tests/test_savparse_*.py` files, inside a suite of **918 passing, 1
 skipped** — the same count with `SATISFACTORY_SAVPARSE=own` and with `=vendor`. They run
@@ -854,11 +857,32 @@ per class:
         reference    empty
         uint8        0
         reference    the recipe the piece was built from
-        reference    empty
-        int32        0
-        uint8        version 4 only
+        reference    the blueprint proxy it was placed as part of, empty when placed by hand
+        int32        COUNT of the type-specific data blocks that follow, 0 on most classes
+        per block:
+            reference      the data struct's type, e.g. BuildableBeamLightweightData
+            int32          byte size of the property list that follows
+            property list  tagged and "None"-terminated, kept as raw bytes
+        uint8        version 4 only: with the int32 after it, one FPlayerInfoHandle
         int32        version 4 only
 ```
+
+**The int32 before the blocks is a count, not a constant.** It is 0 for foundations, walls,
+catwalks and railings, which is every class on a save built without beams — so it read as
+"0 everywhere" for as long as no beam had been placed. A beam carries one block holding its
+`BeamLength`, because a beam's length is chosen per piece and there is nowhere else to keep it.
+Reading the field as a constant leaves the walk 116 bytes short on the first beam, and the next
+class path fails its own length check thousands of records later. The blocks are kept as raw
+bytes: each is size-prefixed, so consuming it exactly needs no tag reader, and decoding
+`BeamLength` is separate work. They are appended as the record's *last* field, so every index
+the record already had keeps its meaning — the version-4 player handle stays at 13 and 14 — and
+as a nested list, because `extract._placed` tells a real piece from a stale slot by scanning an
+instance's top-level fields for a non-empty string or a `pathName`, and a bare type path at that
+level would make every stale slot look placed.
+
+`RECORD_BYTES` is therefore a **minimum** per instance rather than the whole of one, which is
+what it always was — the two reference paths were never in it either. It is used only to bound a
+claimed instance count, and a bound that is too generous is still a bound.
 
 **How this was derived, and what that leaves uncertain.** The class count and the first
 instance count were read off the front and matched against the oracle's census. The record

@@ -22,7 +22,7 @@ CIRCUIT_SUBSYSTEM = "/Game/FactoryGame/-Shared/Blueprint/BP_CircuitSubsystem.BP_
 PLAYER_STATE = "/Game/FactoryGame/Character/Player/BP_PlayerState.BP_PlayerState_C"
 
 
-def _chain(r: Reader, end: int) -> list:
+def _read_chain(r: Reader, end: int) -> list:
     """A conveyor chain: the belts it spans, their splines, and the items on it.
 
     The projection's ``belts`` key comes from the spline geometry; nothing reads the items::
@@ -54,23 +54,12 @@ def _chain(r: Reader, end: int) -> list:
             int32           the item's state, a length that is 0 on every item seen
             float32         how far along the chain it is, centimetres
 
-    **The items are a ring buffer**: ``(last - first) mod capacity + 1`` is the item count on a
-    non-empty chain, and every index is ``-1`` -- the empty sentinel -- or in ``[0, capacity)``.
-    A chain's own index pair names the first and last segment *that actually holds items*, not
-    ``segments[0]`` and ``segments[-1]``.
-
-    **Offsets increase along the direction of travel**, so ``segments[0]`` and ``first_belt``
-    are the DOWNSTREAM end, which reads backwards from their names. The last segment starts at
-    0 at the chain's INPUT and the first segment's end is the OUTPUT.
-
-    **An offset is not confined to ``[0, length]`` and a consumer must clamp both ends.** One
-    item per chain may sit above the length -- the one at ring index ``first``, by up to a few
-    centimetres, scaling with belt speed -- and items sit below 0, down to about -1,000 cm, when
-    the contiguous pack is longer than 120 cm spacing allows.
+    Ring buffer, direction of travel and offset bounds: savparse-notes.md, ``### The conveyor
+    chain record, explained``.
     """
     first_belt, last_belt = read_reference(r), read_reference(r)
     segments = []
-    for _ in range(_count(r, end, 24, "chain segments")):
+    for _ in range(_read_count(r, end, 24, "chain segments")):
         owner, belt = read_reference(r), read_reference(r)
         points = [
             [
@@ -78,17 +67,17 @@ def _chain(r: Reader, end: int) -> list:
                 [r.f64(), r.f64(), r.f64()],
                 [r.f64(), r.f64(), r.f64()],
             ]
-            for _ in range(_count(r, end, 72, "spline points"))
+            for _ in range(_read_count(r, end, 72, "spline points"))
         ]
         segments.append([owner, belt, points, r.f32(), r.f32(), r.f32(), r.i32(), r.i32(), r.i32()])
     chain = [r.f32(), r.i32(), r.i32(), r.i32()]
     items = [
-        [read_reference(r), r.i32(), r.f32()] for _ in range(_count(r, end, 12, "chain items"))
+        [read_reference(r), r.i32(), r.f32()] for _ in range(_read_count(r, end, 12, "chain items"))
     ]
     return [first_belt, last_belt, segments, chain, items]
 
 
-def _power_line(r: Reader, end: int) -> list:
+def _read_power_line(r: Reader, end: int) -> list:
     """The two power connections a line joins.
 
     Nothing reads this -- the projection's power graph comes from the connection components'
@@ -98,14 +87,14 @@ def _power_line(r: Reader, end: int) -> list:
     return [read_reference(r), read_reference(r)]
 
 
-def _circuit_subsystem(r: Reader, end: int) -> list:
+def _read_circuit_subsystem(r: Reader, end: int) -> list:
     """Every power circuit in the world, as ``(id, reference)`` pairs. The id is the same
     number the circuit's own ``mCircuitID`` property carries.
     """
-    return [[r.i32(), read_reference(r)] for _ in range(_count(r, end, 12, "power circuits"))]
+    return [[r.i32(), read_reference(r)] for _ in range(_read_count(r, end, 12, "power circuits"))]
 
 
-def _player_state(r: Reader, end: int) -> list:
+def _read_player_state(r: Reader, end: int) -> list:
     """The player's account id.
 
     A ``uint8`` of unknown meaning, then a one-byte id type, then a length-prefixed blob of 8
@@ -121,36 +110,30 @@ def _player_state(r: Reader, end: int) -> list:
     return [unknown, id_type, r.bytes(size)]
 
 
-def _count(r: Reader, end: int, stride: int, what: str) -> int:
-    """An int32 count, refused if the records it promises cannot fit.
-
-    A count is the one field a torn file turns into an arbitrary number, and a loop over two
-    billion iterations is a hang rather than an error. ``stride`` is the smallest a record of
-    this kind can be.
-    """
+def _read_count(r: Reader, end: int, min_record_bytes: int, what: str) -> int:
+    """An int32 count, refused if that many records of at least ``min_record_bytes`` cannot fit:
+    a torn file makes a count anything, and two billion iterations is a hang, not an error."""
     at = r.pos
-    n = r.i32()
-    if n < 0 or r.pos + n * stride > end:
+    count = r.i32()
+    if count < 0 or r.pos + count * min_record_bytes > end:
         raise ParseError(
-            f"at body offset {at}: {n} {what} do not fit in the {end - r.pos} bytes left"
+            f"at body offset {at}: {count} {what} do not fit in the {end - r.pos} bytes left"
         )
-    return n
+    return count
 
 
 #: Which classes this module can read, by the ``typePath`` their actor header carries. The
-#: three ``RepSize`` variants are the same actor with a bigger replication budget and the
-#: identical record.
+#: ``RepSize`` variants are the same actor with another replication budget and the identical
+#: record.
 TRAILER_READERS = {
-    CONVEYOR_CHAIN: _chain,
-    f"{CONVEYOR_CHAIN}_RepSizeMedium": _chain,
-    f"{CONVEYOR_CHAIN}_RepSizeLarge": _chain,
-    f"{CONVEYOR_CHAIN}_RepSizeHuge": _chain,
-    # Added by the anniversary build (502094). Same reader: verified by exact
-    # consumption on a chain of 318,579 trailing bytes, which is what it was dropping.
-    f"{CONVEYOR_CHAIN}_RepSizeNoCull": _chain,
-    POWER_LINE: _power_line,
-    CIRCUIT_SUBSYSTEM: _circuit_subsystem,
-    PLAYER_STATE: _player_state,
+    CONVEYOR_CHAIN: _read_chain,
+    f"{CONVEYOR_CHAIN}_RepSizeMedium": _read_chain,
+    f"{CONVEYOR_CHAIN}_RepSizeLarge": _read_chain,
+    f"{CONVEYOR_CHAIN}_RepSizeHuge": _read_chain,
+    f"{CONVEYOR_CHAIN}_RepSizeNoCull": _read_chain,
+    POWER_LINE: _read_power_line,
+    CIRCUIT_SUBSYSTEM: _read_circuit_subsystem,
+    PLAYER_STATE: _read_player_state,
 }
 
 
