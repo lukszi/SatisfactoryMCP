@@ -5,11 +5,10 @@ import { button, chip, copyButton, error, idChip, loading, subTabs, table } from
 import { make } from "../../kit/dom";
 import { count, flow, mw, pct } from "../../kit/format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "../graph";
-import { dashParts, go } from "../../app/nav";
 import { vitals } from "../../app/vitals";
-import { renderAlternates } from "./planner-alternates";
+import { recipesButton, renderAlternates } from "./planner-alternates";
 import { askButton, askMarks } from "../../chat/asks";
-import { pickTab, showAlternates } from "./planner-reads";
+import { pickTab } from "./planner-reads";
 import { bench, changed, pendingFocus } from "./planner-state";
 import { applyOps, banOps, undoRev } from "./planner-writes";
 import { rowOverclock } from "./planner-power";
@@ -194,24 +193,6 @@ WIDE.addEventListener("change", function () {
 function pickRow(row: SolveRow, select: (s: FocusSelection) => void): void {
   bench.picked = row.id;
   select({ kind: "process", label: row.building + " · " + row.recipe, ref: row.recipe_id || row.recipe });
-}
-
-export function recipesButton(item: string, name: string, where: string): HTMLButtonElement {
-  var ctl = "alt:" + where + ":" + item;
-  var open = !!bench.alternates && bench.alternates.item === item;
-  var b = button(
-    WORDS.recipes,
-    function () {
-      var switching = dashParts().rest[1] === "alt";
-      showAlternates(item, ctl);
-      if (!switching) bench.alternatesCloseGoesBack = true;
-      go("planner/" + bench.key + "/alt/" + item, switching);
-    },
-    { title: "every recipe for " + name + " and what requiring each would change", label: "recipes for " + name }
-  );
-  b.setAttribute("data-ctl", ctl);
-  b.setAttribute("aria-expanded", String(open));
-  return b;
 }
 
 function banButton(row: SolveRow): HTMLButtonElement {
