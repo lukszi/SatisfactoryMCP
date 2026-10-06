@@ -2,11 +2,11 @@
 
     uv run --extra gen python tools/check_terrain_geometry.py
 
-``tools/gen_world_heightmap.py`` writes one field from one geometry source; this asks
-whether a different source would be better, and by how much. It imports that generator and
-calls its rasteriser, its transforms and its cull rules, so the geometry dict is the only
-thing that differs between a candidate and the field that ships. Nothing here writes to
-``data/local``.
+The heightfield's cliff layer is built from one geometry source; this asks whether a
+different source would be better, and by how much. It calls the same rasteriser, transforms
+and cull rules the field is built with (``mapgen.gamedata.mesh`` and ``mapgen.gamedata.sweep``),
+so the geometry dict is the only thing that differs between a candidate and the field that
+ships. Nothing here writes to ``data/local``.
 
 Three rungs, one variable between them:
 
@@ -41,17 +41,17 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
-sys.path.insert(0, str(ROOT / "tools" / "mapgen" / "src"))
+for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.mesh import ROCK_DIRS, MeshBounds, rasterise_cliffs
 from mapgen.gamedata.sweep import drop_offsets, landscape_frame, sweep_levels
-from mapgen.terrain.validate import NODE_TABLE
-from satisfactory_mcp.core.gameassets import nanite as nan
-from satisfactory_mcp.core.gameassets import staticmesh as sm
-from satisfactory_mcp.core.gameassets.container import open_container
+from mapgen.terrain.validate import NODE_TABLE, VALIDATION_TRIM
+from satisfactory_mcp.core.gameassets import nanite, staticmesh
+from satisfactory_mcp.core.gameassets.container import CONTAINER, open_container, paks_dir
 from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
 from satisfactory_mcp.core.gameassets.packages import (
     AssetIndex,
@@ -63,9 +63,6 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 
 #: The rungs, in the order the table prints them. ``hull`` first because it is what ships.
 RUNGS = ("hull", "lod0", "best")
-
-#: The trim the score vocabulary uses, matching the generator's own ``VALIDATION_TRIM``.
-TRIM = 0.90
 
 
 # --- Reading all three sources out of one open of each mesh. --------------------------
@@ -91,43 +88,50 @@ def read_rungs(store, scripts, index, meshes: list[str], progress: bool = True) 
         except Exception as exc:
             notes[mesh] = f"unreadable package: {type(exc).__name__}"
             continue
-        export = sm.static_mesh_export(view)
+        export = staticmesh.static_mesh_export(view)
         if export is None:
             notes[mesh] = "no StaticMesh export"
             continue
-        bounds = sm.extended_bounds(view, export)
+        bounds = staticmesh.extended_bounds(view, export)
         if bounds is None:
             notes[mesh] = "no ExtendedBounds, so no decode could be checked"
             continue
-        low, high = bounds
-        row: dict = {"package": package, "bounds": (low, high)}
-
-        hull, why = sm.collision_hull(view, low, high)
-        row["hull"] = None if hull is None else (hull[0], hull[1].astype(np.int64), hull[2])
-        row["hull_note"] = why
-
-        tail = sm.render_tail(view, export)
-        try:
-            parsed = sm.parse_render_data(tail)
-        except sm.ParseError as exc:
-            row["parse_error"] = str(exc)
-            parsed = None
-        if parsed is not None:
-            got = sm.lod0_buffers(tail, parsed)
-            if got is not None:
-                row["lod0"] = (got[0].astype(np.float32), got[1])
-            resource = sm.load_nanite(store, package, view, parsed, tail)
-            if resource is not None:
-                decoded = nan.decode_resource(resource)
-                problems = sm.page_table_problems(resource, sm.bulk_size(view, resource))
-                problems += nan.identity_checks(resource, decoded)
-                row["nanite"] = (decoded["positions"], decoded["triangles"])
-                row["nanite_problems"] = problems
-                row["nanite_clusters"] = decoded["total_clusters"]
-        out[mesh] = row
+        out[mesh] = _read_mesh_rungs(store, view, export, package, bounds)
         if progress and count % 25 == 0:
             print(f"  {count}/{len(wanted)} meshes, {time.time() - started:.0f}s", flush=True)
     return {"meshes": out, "wanted": len(wanted), "notes": notes, "seconds": time.time() - started}
+
+
+def _read_mesh_rungs(store, view: PackageView, export, package: str, bounds) -> dict:
+    """One mesh's hull, LOD 0 and Nanite leaf, with what went wrong reading each."""
+    low, high = bounds
+    row: dict = {"package": package, "bounds": (low, high)}
+
+    hull, why = staticmesh.collision_hull(view, low, high)
+    row["hull"] = None if hull is None else (hull[0], hull[1].astype(np.int64), hull[2])
+    row["hull_note"] = why
+
+    tail = staticmesh.render_tail(view, export)
+    try:
+        parsed = staticmesh.parse_render_data(tail)
+    except staticmesh.ParseError as exc:
+        row["parse_error"] = str(exc)
+        parsed = None
+    if parsed is not None:
+        got = staticmesh.lod0_buffers(tail, parsed)
+        if got is not None:
+            row["lod0"] = (got[0].astype(np.float32), got[1])
+        resource = staticmesh.load_nanite(store, package, view, parsed, tail)
+        if resource is not None:
+            decoded = nanite.decode_resource(resource)
+            problems = staticmesh.page_table_problems(
+                resource, staticmesh.bulk_size(view, resource)
+            )
+            problems += nanite.identity_checks(resource, decoded)
+            row["nanite"] = (decoded["positions"], decoded["triangles"])
+            row["nanite_problems"] = problems
+            row["nanite_clusters"] = decoded["total_clusters"]
+    return row
 
 
 def geometry_for(rung: str, read: dict) -> dict:
@@ -166,7 +170,7 @@ def geometry_for(rung: str, read: dict) -> dict:
 
 
 def _metrics(sorted_abs: np.ndarray) -> dict:
-    cut = max(1, int(sorted_abs.size * TRIM))
+    cut = max(1, int(sorted_abs.size * VALIDATION_TRIM))
     return {
         "median_abs_m": round(float(np.median(sorted_abs)), 4),
         "p90_abs_m": round(float(np.percentile(sorted_abs, 90)), 4),
@@ -197,23 +201,29 @@ def score(truth_m: np.ndarray, field_m: np.ndarray, n_total: int | None = None) 
     }
 
 
-def row(tag: str, s: dict) -> str:
-    if not s.get("n"):
+def format_score_row(tag: str, scored: dict) -> str:
+    if not scored.get("n"):
         return f"{tag:24s}  (no probes)"
     return (
-        f"{tag:24s} n={s['n']:>9,}  med {s['median_abs_m']:7.4f}  p90 {s['p90_abs_m']:8.2f}  "
-        f"trimRMS90 {s['trimRMS90_m']:7.3f}  <1m {s['frac_lt_1m']:.4f}  "
-        f"<0.25m {s['frac_lt_0.25m']:.4f}"
+        f"{tag:24s} n={scored['n']:>9,}  med {scored['median_abs_m']:7.4f}  "
+        f"p90 {scored['p90_abs_m']:8.2f}  trimRMS90 {scored['trimRMS90_m']:7.3f}  "
+        f"<1m {scored['frac_lt_1m']:.4f}  <0.25m {scored['frac_lt_0.25m']:.4f}"
     )
+
+
+def world_to_texel(x_cm, y_cm) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """World centimetres -> the field's ``(row, col)`` texels, and which fall on the grid."""
+    col = np.round((np.asarray(x_cm) - ORIGIN_X_CM) / SPACING_CM).astype(np.int64)
+    row = np.round((np.asarray(y_cm) - ORIGIN_Y_CM) / SPACING_CM).astype(np.int64)
+    on_grid = (col >= 0) & (col < GRID_PX) & (row >= 0) & (row < GRID_PX)
+    return row, col, on_grid
 
 
 def sample(grid_cm: np.ndarray, x_cm, y_cm) -> np.ndarray:
     """The candidate raster read in metres at world coordinates, NaN where it is silent."""
-    col = np.round((np.asarray(x_cm) - ORIGIN_X_CM) / SPACING_CM).astype(np.int64)
-    row_i = np.round((np.asarray(y_cm) - ORIGIN_Y_CM) / SPACING_CM).astype(np.int64)
-    on = (col >= 0) & (col < GRID_PX) & (row_i >= 0) & (row_i < GRID_PX)
-    value = grid_cm[np.clip(row_i, 0, GRID_PX - 1), np.clip(col, 0, GRID_PX - 1)]
-    return np.where(on & np.isfinite(value), value / 100.0, np.nan)
+    row, col, on_grid = world_to_texel(x_cm, y_cm)
+    value = grid_cm[np.clip(row, 0, GRID_PX - 1), np.clip(col, 0, GRID_PX - 1)]
+    return np.where(on_grid & np.isfinite(value), value / 100.0, np.nan)
 
 
 # --- Density, which is the claim this whole exercise can actually make. ---------------
@@ -324,9 +334,9 @@ def main() -> int:
     args = parser.parse_args()
 
     require_gen("ooz")
-    paks = args.game / "FactoryGame" / "Content" / "Paks"
-    if not (paks / "FactoryGame-Windows.utoc").exists():
-        print(f"no FactoryGame-Windows.utoc under {paks}")
+    paks = paks_dir(args.game)
+    if not (paks / f"{CONTAINER}.utoc").exists():
+        print(f"no {CONTAINER}.utoc under {paks}")
         return 1
     loud = not args.quiet
 
@@ -341,6 +351,29 @@ def main() -> int:
 
     print("reading every rock mesh's hull, LOD0 and Nanite leaf")
     read = read_rungs(store, scripts, index, sweep["meshes"], loud)
+    hulls, nanites = _report_rungs_read(read)
+
+    field = hf.load_field(args.field)
+    if field is None:
+        print(f"no shipped field at {args.field}; the cliff province cannot be defined")
+        return 2
+    probes, province = load_probes(field, args.foliage, args.foliage_mask)
+
+    table: dict = {"rungs": {}, "meshes_with_a_hull": hulls, "meshes_with_nanite": nanites}
+    for rung in args.rungs.split(","):
+        if rung not in RUNGS:
+            print(f"unknown rung {rung!r}")
+            return 2
+        table["rungs"][rung] = score_rung(rung, read, sweep, frame, probes, province, loud)
+
+    if args.out:
+        args.out.write_text(json.dumps(table, indent=1), encoding="utf-8")
+        print(f"\nwrote {args.out}")
+    return 0
+
+
+def _report_rungs_read(read: dict) -> tuple[int, int]:
+    """Print what the mesh read found; ``(meshes with a hull, meshes with Nanite)``."""
     hulls = sum(1 for r in read["meshes"].values() if r.get("hull") is not None)
     nanites = sum(1 for r in read["meshes"].values() if "nanite" in r)
     broken = {
@@ -354,74 +387,78 @@ def main() -> int:
     for mesh, problems in broken.items():
         print(f"    {mesh.rsplit('/', 1)[-1]}: {'; '.join(problems)}")
 
-    closed = {}
-    for mesh, r in read["meshes"].items():
-        if "nanite" in r:
-            closed[mesh] = nan.boundary_edges(r["nanite"][1])
-    manifolds = sum(1 for v in closed.values() if v == 0)
-    print(f"  closed 2-manifolds among the Nanite decodes: {manifolds}/{len(closed)}")
+    boundary_edges_by_mesh = {
+        mesh: nanite.boundary_edges(r["nanite"][1])
+        for mesh, r in read["meshes"].items()
+        if "nanite" in r
+    }
+    closed_mesh_count = sum(1 for v in boundary_edges_by_mesh.values() if v == 0)
+    print(
+        f"  closed 2-manifolds among the Nanite decodes: "
+        f"{closed_mesh_count}/{len(boundary_edges_by_mesh)}"
+    )
+    return hulls, nanites
 
-    # -- the probe sets ------------------------------------------------------------------
-    field = hf.load_field(args.field)
-    if field is None:
-        print(f"no shipped field at {args.field}; the cliff province cannot be defined")
-        return 2
+
+def load_probes(
+    field, foliage: Path | None, foliage_mask: Path | None
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    """The probe sets, and per set which probes stand on the shipped field's cliff province."""
     nodes = json.loads(NODE_TABLE.read_text(encoding="utf-8"))["nodes"]
-    node_pts = np.array([[n["x"], n["y"], n["z"]] for n in nodes], float)
-
-    probes = {"nodes": node_pts}
-    if args.foliage is not None:
-        points = np.load(args.foliage)
-        if args.foliage_mask is not None:
-            points = points[np.load(args.foliage_mask)]
+    probes = {"nodes": np.array([[n["x"], n["y"], n["z"]] for n in nodes], float)}
+    if foliage is not None:
+        points = np.load(foliage)
+        if foliage_mask is not None:
+            points = points[np.load(foliage_mask)]
         probes["foliage"] = points
     province = {}
     for name, pts in probes.items():
-        col = np.clip(np.round((pts[:, 0] - ORIGIN_X_CM) / 100.0).astype(int), 0, 7499)
-        row_i = np.clip(np.round((pts[:, 1] - ORIGIN_Y_CM) / 100.0).astype(int), 0, 7499)
+        row, col, _on_grid = world_to_texel(pts[:, 0], pts[:, 1])
+        texels = (np.clip(row, 0, GRID_PX - 1), np.clip(col, 0, GRID_PX - 1))
         # Both cliff values: testing ``== PROV_CLIFF`` scores a v3 field on a quarter of
         # the probes and calls it the same measurement.
-        province[name] = np.isin(field._prov[row_i, col], hf.PROV_CLIFF_VALUES)
+        province[name] = np.isin(field._prov[texels], hf.PROV_CLIFF_VALUES)
         print(f"  {name}: {len(pts)} probes, {int(province[name].sum())} on the cliff province")
+    return probes, province
 
-    # -- the ladder ----------------------------------------------------------------------
-    table: dict = {"rungs": {}, "meshes_with_a_hull": hulls, "meshes_with_nanite": nanites}
-    for rung in args.rungs.split(","):
-        if rung not in RUNGS:
-            print(f"unknown rung {rung!r}")
-            return 2
-        geometry = geometry_for(rung, read)
-        triangles = sum(len(t) for _v, t, _lo, _hi in geometry.values())
-        print(f"\nrung {rung}: {len(geometry)} meshes, {triangles} source triangles")
-        cliffs = rasterise_cliffs(sweep, geometry, frame, loud)
-        whole = np.full((GRID_PX, GRID_PX), np.nan, np.float32)
-        dx, dy = drop_offsets(frame)
-        whole[dy : dy + frame["height"], dx : dx + frame["width"]] = cliffs["z_cm"]
-        entry = {
-            "meshes": len(geometry),
-            "source_triangles": triangles,
-            "rasterised_triangles": cliffs["triangles"],
-            "placements": cliffs["placements_used"],
-            "covered_texels": int(np.isfinite(whole).sum()),
-            "grain": world_grain(geometry, sweep["placements"], sweep["meshes"]),
-            "scores": {},
-        }
-        print(f"  {entry['covered_texels']} texels covered; grain {entry['grain']}")
-        for name, pts in probes.items():
-            pick = province[name]
-            got = score(
-                pts[pick, 2] / 100.0,
-                sample(whole, pts[pick, 0], pts[pick, 1]),
-                int(pick.sum()),
-            )
-            entry["scores"][name] = got
-            print("  " + row(f"{name} (cliff province)", got))
-        table["rungs"][rung] = entry
 
-    if args.out:
-        args.out.write_text(json.dumps(table, indent=1), encoding="utf-8")
-        print(f"\nwrote {args.out}")
-    return 0
+def score_rung(
+    rung: str,
+    read: dict,
+    sweep: dict,
+    frame: dict,
+    probes: dict[str, np.ndarray],
+    province: dict[str, np.ndarray],
+    loud: bool,
+) -> dict:
+    """Rasterise one rung's geometry into a whole-world field and score it on every probe set."""
+    geometry = geometry_for(rung, read)
+    triangles = sum(len(t) for _v, t, _lo, _hi in geometry.values())
+    print(f"\nrung {rung}: {len(geometry)} meshes, {triangles} source triangles")
+    cliffs = rasterise_cliffs(sweep, geometry, frame, loud)
+    whole = np.full((GRID_PX, GRID_PX), np.nan, np.float32)
+    dx, dy = drop_offsets(frame)
+    whole[dy : dy + frame["height"], dx : dx + frame["width"]] = cliffs["z_cm"]
+    entry = {
+        "meshes": len(geometry),
+        "source_triangles": triangles,
+        "rasterised_triangles": cliffs["triangles"],
+        "placements": cliffs["placements_used"],
+        "covered_texels": int(np.isfinite(whole).sum()),
+        "grain": world_grain(geometry, sweep["placements"], sweep["meshes"]),
+        "scores": {},
+    }
+    print(f"  {entry['covered_texels']} texels covered; grain {entry['grain']}")
+    for name, pts in probes.items():
+        pick = province[name]
+        scored = score(
+            pts[pick, 2] / 100.0,
+            sample(whole, pts[pick, 0], pts[pick, 1]),
+            int(pick.sum()),
+        )
+        entry["scores"][name] = scored
+        print("  " + format_score_row(f"{name} (cliff province)", scored))
+    return entry
 
 
 if __name__ == "__main__":

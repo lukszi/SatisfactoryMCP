@@ -6,7 +6,7 @@ container and no ``gen`` extra. That is deliberate and it is the same split
 ``test_map_generators.py`` makes: what is worth pinning here is the reasoning, and the
 reasoning is the part that runs on a clone.
 
-The decode itself is not faked into a picture. ``decode_icon`` is driven with stand-ins for
+The decode itself is not faked into a picture. ``decode_bulk_icon`` is driven with stand-ins for
 ``Package``, ``texture2ddecoder`` and Pillow, so what is under test is which branch it takes
 and which refusal it names, not anybody's block decoder -- ``test_gameassets_textures.py``
 owns the argument pair those decoders are called with.
@@ -47,10 +47,10 @@ def test_a_chain_runs_from_the_textures_own_side_down_to_the_tail_and_no_further
     the tail rather than passed in, so this is the property that would break first if a
     future cook streamed the whole chain.
     """
-    assert gen.chain_length(256, block=True) == 81_920
-    assert gen.chain_length(512, block=True) == 344_064
-    assert gen.chain_length(gen.MIP_TAIL_PX, block=True) == 16_384, "the tail alone is one level"
-    assert gen.chain_length(gen.MIP_TAIL_PX, block=False) == gen.MIP_TAIL_PX**2 * 4
+    assert gen.chain_length(256, is_bc3=True) == 81_920
+    assert gen.chain_length(512, is_bc3=True) == 344_064
+    assert gen.chain_length(gen.MIP_TAIL_PX, is_bc3=True) == 16_384, "the tail alone is one level"
+    assert gen.chain_length(gen.MIP_TAIL_PX, is_bc3=False) == gen.MIP_TAIL_PX**2 * 4
 
 
 @pytest.mark.parametrize(
@@ -123,7 +123,7 @@ class _Decoder:
 
 
 def _decode(names, bulk):
-    return gen.decode_icon(
+    return gen.decode_bulk_icon(
         _Packages(names), _Decoder(), _Imaging(), b"asset", bulk, gen.bulk_layouts()
     )
 
