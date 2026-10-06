@@ -7,6 +7,8 @@ and clocks are discrete modes. docs/planning.md §8.1-§8.4 has the formulation 
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 from scipy.optimize import LinearConstraint
 
@@ -31,6 +33,15 @@ from .processes import build_processes
 __all__ = ["free_lunch_audit", "solve"]
 
 _EPS = 1e-7
+
+
+def _flow_values(
+    x: np.ndarray, items: tuple[str, ...], column: Callable[[int], int]
+) -> dict[str, float]:
+    """``{item: rate}`` for each of ``items`` whose column is above zero, to 4 dp."""
+    return {
+        item: round(float(x[column(j)]), 4) for j, item in enumerate(items) if x[column(j)] > _EPS
+    }
 
 
 def solve(sc: Scenario) -> Solution:
@@ -68,21 +79,9 @@ def solve(sc: Scenario) -> Solution:
     x, warnings = solved
 
     table = build_rows(sc, processes, x, columns)
-    raw_used = {
-        item: round(float(x[columns.raw(j)]), 4)
-        for j, item in enumerate(columns.raw_items)
-        if x[columns.raw(j)] > _EPS
-    }
-    exports = {
-        item: round(float(x[columns.export(j)]), 4)
-        for j, item in enumerate(columns.export_items)
-        if x[columns.export(j)] > _EPS
-    }
-    sunk = {
-        item: round(float(x[columns.sink(j)]), 4)
-        for j, item in enumerate(columns.sink_items)
-        if x[columns.sink(j)] > _EPS
-    }
+    raw_used = _flow_values(x, columns.raw_items, columns.raw)
+    exports = _flow_values(x, columns.export_items, columns.export)
+    sunk = _flow_values(x, columns.sink_items, columns.sink)
     # The goal without the machine price, so objective_value is never understated (§8.4).
     pure_goal = float(goal @ x)
     grid_draw = round(float(x[columns.grid]), 2)
