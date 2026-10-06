@@ -11,7 +11,6 @@ import functools
 import os
 from collections.abc import Callable, Mapping, Sequence
 from functools import lru_cache
-from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ContentBlock, TextContent
@@ -22,6 +21,7 @@ from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
 from ...core.gamedata.search import resolve_item
+from ...core.jsontypes import JsonObject
 from ...core.schema import NewerSchema
 from ...domain import settings
 from ...domain.factories.select import SelectorError
@@ -69,8 +69,8 @@ class StrictFastMCP(FastMCP):
     """
 
     async def call_tool(
-        self, name: str, arguments: dict[str, Any]
-    ) -> Sequence[ContentBlock] | dict[str, Any]:
+        self, name: str, arguments: JsonObject
+    ) -> Sequence[ContentBlock] | JsonObject:
         declared = await self.declared_arguments(name)
         refusal = undeclared_refusal(name, arguments, declared) if declared is not None else ""
         if refusal:
