@@ -23,7 +23,7 @@ was corrected rather than kept alongside.
 | header | `pioneersav/header.py` (183) | done |
 | chunk decompression | `pioneersav/chunks.py` (123) | done |
 | body, levels, object headers, destroyed actors | `pioneersav/objects.py` (747) | done |
-| tagged property serialiser | `pioneersav/properties.py` (1,160) | done |
+| tagged property serialiser | `pioneersav/properties/` (926, in five modules) | done |
 | composition + the sidecar switch | `pioneersav/save.py` (212) | done |
 | the lightweight buildables' trailing bytes | `pioneersav/lightweight.py` (172) | done |
 | the other seven classes' trailing bytes | `pioneersav/trailers.py` (192) | done |
@@ -461,7 +461,10 @@ groups["artifact_unsplit"] = 65                                             65 e
 so the two paths cannot diverge again. `counts` stays in the projection as a raw class census for
 diagnostics, and nothing derives a group from it.
 
-### Properties (`pioneersav/properties.py`) — DONE
+### Properties (`pioneersav/properties/`) — DONE
+
+The package reads the tag layouts in `tags.py`, the self-serialising structs in `structs.py`,
+the values and containers in `decoder.py`, and one object's whole payload in `payload.py`.
 
 `read_object(body, slice, actor=…)` turns one property block into `[[name, value], …]`,
 which is what `extract.props()` reads. `actor` comes from the header: nothing inside a
@@ -514,7 +517,7 @@ length and broke 16,445 objects. And `InventoryItem` has two layouts that no ver
 the file tells apart, worth 87 pickups when first misread; the declared size now decides, see
 *Struct layouts the bytes do not name* below.
 
-**Struct bodies.** Decided by NAME (`_NATIVE_STRUCTS`), not by the flag, because the flag is
+**Struct bodies.** Decided by NAME (`NATIVE_STRUCTS`), not by the flag, because the flag is
 not reliably per-element: the foliage subsystem's `mSaveData` is one MapProperty with `0x08`
 set whose keys are native `IntVector` and whose values are property lists. Nine native
 structs are enough for every save: `Vector` (three **doubles**, on version-52 objects too —

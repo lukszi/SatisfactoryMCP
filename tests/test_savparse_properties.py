@@ -13,7 +13,7 @@ These tests run against committed real bytes, so the suite needs no game install
 still pass once the vendored parser is deleted.
 
 ``fixtures/save_properties.bin``, 26,200 bytes, is 18 real property blocks lifted verbatim
-from the reference save, chosen so that every distinct code path in ``properties.py`` is
+from the reference save, chosen so that every distinct code path in ``pioneersav.properties`` is
 exercised by bytes the game actually wrote:
 
 * both tag layouts -- version 60's type-name tree and version 36/52's fixed tag data;

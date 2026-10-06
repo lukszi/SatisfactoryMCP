@@ -1293,7 +1293,7 @@ an instance name like `BP_WAT112` belongs to.
 
 The two layers `pioneersav` spends its lines on: `objects.py` (747 lines) walks the inflated
 body into levels, object headers, one property-block slice per object and the three
-destroyed-actor lists, and `properties.py` (1,160) turns a slice into the `[name, value]` pairs
+destroyed-actor lists, and `properties/` (926) turns a slice into the `[name, value]` pairs
 the projection reads. Together they are 64% of the package and all of the format that could not
 be read off a hex dump.
 

@@ -47,8 +47,9 @@ FIRST_LEVEL_LIST = 30
 #:   and above it.
 #:
 #: ``FInventoryItem`` is gated on this constant only where it has to be guessed. Which layout
-#: a record uses does NOT follow from any version in the file -- see ``properties._inventory_item``
-#: -- so where the record's declared size is known it is refereed by that size instead.
+#: a record uses does NOT follow from any version in the file -- see
+#: ``properties.structs.read_inventory_item`` -- so where the record's declared size is known it
+#: is refereed by that size instead.
 FIRST_MODERN_BODY = 52
 
 #: The OBJECT version, off each object's own entry, at and above which an object has:

@@ -36,7 +36,7 @@ An object's serialisation version is per object rather than per save -- an untou
 world-partition cell keeps the bytes it was written with, so 36, 52 and 60 all appear in one
 file. A version-60 payload carries one extra byte immediately before its property list (after
 the reference lists on an actor, at the very start on a component); it is inside the slice, so
-``properties.py`` reads it.
+``pioneersav.properties`` reads it.
 """
 
 from __future__ import annotations
