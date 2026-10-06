@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from mapgen.colour import linear_to_srgb, oklab
 from mapgen.gamedata.rocks import families as rockfamily
 from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD, SPRITE_M
 from mapgen.gamedata.water.bodies import CLASSES, OCEAN
@@ -23,7 +24,6 @@ from mapgen.palette.calibration import (
     scoped_planes,
     weighted_median,
 )
-from mapgen.palette.colour import linear_to_srgb, oklab
 from mapgen.palette.optics import class_optics, opaque_share, underwater, water_table
 from mapgen.palette.painted import PaintedGround, hidden_ground, painted_colours
 from mapgen.palette.styles import PAINTED_PALETTE

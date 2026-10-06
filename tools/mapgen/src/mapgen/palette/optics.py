@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
+from mapgen.colour import srgb_to_linear
 from mapgen.gamedata.vegetation.carpet import COVER_NAME, TOP_NAME
 from mapgen.gamedata.water.bodies import (
     CLASSES,
@@ -23,7 +24,6 @@ from mapgen.gamedata.water.bodies import (
     classify,
     feather_mouths,
 )
-from mapgen.palette.colour import srgb_to_linear
 from mapgen.palette.shore import OCEAN_LEVEL_M, optical_depth
 from mapgen.terrain.sample import ClassMix, class_taps
 from satisfactory_mcp.domain.spatial import heightfield as hf

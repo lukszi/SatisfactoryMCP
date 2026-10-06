@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from mapgen.cache import cached_mesh_family, cached_meshes, mesh_stamp
+from mapgen.colour import oklab
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.rocks import families as rockfamily
 from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD
@@ -23,7 +24,6 @@ from mapgen.palette.calibration import (
     display_to_linear,
     with_derived,
 )
-from mapgen.palette.colour import oklab
 from mapgen.palette.painted import ROCK_GRID_M, PaintedGround
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.palette.surfaces import mesh_surface

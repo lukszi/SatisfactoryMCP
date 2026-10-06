@@ -23,19 +23,20 @@ PRESETS_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "presets.py
 #: Who may import whom inside ``mapgen``. A unit is a subpackage or a top-level module, and
 #: each command module is a unit of its own (``commands.renders``).
 #: gamedata <- terrain <- lighting <- palette <- tiles <- commands <- cli, with ``common``,
-#: ``bandstore`` and ``cache`` as leaves under all of them, and ``pools`` (free memory, a
-#: worker's BLAS threads) under the units that start pools. ``cli`` reaches its commands
-#: through ``importlib`` by name, so it statically imports nothing here.
+#: ``bandstore``, ``cache`` and ``colour`` as leaves under all of them, and ``pools`` (free
+#: memory, a worker's BLAS threads) under the units that start pools. ``cli`` reaches its
+#: commands through ``importlib`` by name, so it statically imports nothing here.
 ALLOWED: dict[str, frozenset[str]] = {
     "common": frozenset(),
     "bandstore": frozenset(),
     "pools": frozenset(),
+    "colour": frozenset(),
     "cache": frozenset({"common", "bandstore"}),
-    "gamedata": frozenset({"common", "gamedata"}),
+    "gamedata": frozenset({"common", "colour", "gamedata"}),
     "terrain": frozenset({"common", "cache", "gamedata", "terrain"}),
-    "lighting": frozenset({"common", "pools", "gamedata", "terrain", "lighting"}),
+    "lighting": frozenset({"common", "colour", "pools", "gamedata", "terrain", "lighting"}),
     "palette": frozenset(
-        {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette"}
+        {"common", "colour", "pools", "cache", "gamedata", "terrain", "lighting", "palette"}
     ),
     "tiles": frozenset(
         {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}

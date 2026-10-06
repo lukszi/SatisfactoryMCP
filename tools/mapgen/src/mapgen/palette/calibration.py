@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
-from mapgen.palette.colour import (
+from mapgen.colour import (
     LUMA,
     linear_from_oklab,
     linear_to_srgb,

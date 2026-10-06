@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
+from mapgen.colour import LUMA, flat_light, linear_from_oklab, linear_to_srgb, oklab, srgb_to_linear
 from mapgen.gamedata.frame import SPACING_CM
 from mapgen.gamedata.ground.bake import BAKE_NAME, STAMP_RING_MIN, bake_have, stamp_windows
 from mapgen.gamedata.ground.paint_store import CANOPY_NAME, CROWN_NAME, META_NAME, PIGMENT_NAME
@@ -37,14 +38,6 @@ from mapgen.palette.calibration import (
     tone,
     transfer_op,
     with_derived,
-)
-from mapgen.palette.colour import (
-    LUMA,
-    flat_light,
-    linear_from_oklab,
-    linear_to_srgb,
-    oklab,
-    srgb_to_linear,
 )
 from mapgen.palette.optics import (
     WATER_TABLE_COLUMNS,
