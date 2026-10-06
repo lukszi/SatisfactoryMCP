@@ -119,6 +119,30 @@ The **committed fixture and the current save have none** — every wired machine
 a generator stands on, which is the sharper sentence and the one the tool prints. The degree-zero
 half stands at 7 on the fixture and 8 on the current save.
 
+**`power_report` carries draw twice, because the two answer different questions.** Uptime
+is the 300 s productivity monitor, carried by **524 of 570** records on the reference save.
+`headroom_mw` (nameplate) is the *safe* figure: what is free if everything built ran at once,
+and energising a block can un-starve idle machines downstream, so it is the one not to exceed
+when nobody is watching. `measured_headroom_mw` is the *current* figure, weighted by how much
+of the factory is actually running. They are far apart: nameplate draw **6,901 MW** against a
+measured **2,389 MW**, so 649 MW of headroom nameplate against roughly **5,161 MW** actual.
+
+- A machine with no monitor is charged at full nameplate on both sides: unknown utilisation
+  must not read as idle. Paused buildings are excluded from both.
+- Generators are capacity either way, since they burn to meet demand. The exception is
+  `starved_generators`: a plant with a dry input is a number that will not appear when the
+  grid asks for it, and each is named, because knowing WHICH plant is the whole value. The
+  dry input decides and a zero uptime only corroborates — a generator load-follows, so one
+  below 1.0 with full tanks is healthy, and one with no monitor is left alone.
+- With the wire layer present, a record on no power edge is left out of both sides and counted
+  under `unwired_*`, so the ledger is the sum of the circuits. The wire is tested first: a
+  paused record on no wire is still counted there, at no MW, which is the rule `assess` lists
+  its unwired machines by.
+- Wired biomass burners count only with `biomass=true`; otherwise they are left out of
+  generation, both headrooms and the starved list, and summed under `biomass_*`, so a surface
+  can say what it left out. The HUB's built-in burner has no rating and stays under
+  `unmodellable` in both modes.
+
 ### 6.2a Foundation slabs — the fourth signal
 
 A player builds a platform, then fills it. Belts and wires cross between platforms freely
