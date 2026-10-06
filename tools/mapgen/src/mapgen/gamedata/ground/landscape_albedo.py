@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
-import struct
+from collections.abc import Callable, Mapping, Sequence
+from types import ModuleType
+from typing import TypeVar
 
 import numpy as np
+import numpy.typing as npt
 
+from mapgen.gamedata.install import GameReader
+from mapgen.gamedata.materials import material_parameters
 from mapgen.gamedata.rocks.families import FAMILIES, family_sources
-from satisfactory_mcp.core.gameassets.packages import PackageView, class_name_of, property_tags
+from satisfactory_mcp.core.arrays import F64Grid, U8Grid
+from satisfactory_mcp.core.gameassets.packages import PackageView, class_name_of
+from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
     "CANOPY_TEXTURE",
@@ -25,6 +32,7 @@ __all__ = [
     "material_vectors",
     "rock_family_colours",
     "srgb_to_linear",
+    "srgb_unit_to_linear",
 ]
 
 
@@ -53,7 +61,7 @@ TEXTURES = {
 
 #: Paint layer -> (texture or None, material vector parameter or None); the albedo is their
 #: product. Matched by name: the cooked layer functions that wire them are stripped.
-LAYERS = {
+LAYERS: dict[str, tuple[str | None, str | None]] = {
     "Grass_LayerInfo": ("TX_Grass_Far_01_Alb", None),
     "Forest_LayerInfo": ("TX_Forest_Far_01_Alb", None),
     "PurpleForest_LayerInfo": ("TX_Forest_Far_01_Alb", None),
@@ -73,62 +81,61 @@ LAYERS = {
 }
 
 #: Not weight-blended: lerped over the blend by its own weight.
-OVERLAYS = {"Puddles_LayerInfo": ("TX_Puddles_01_Alb", None)}
+OVERLAYS: dict[str, tuple[str | None, str | None]] = {
+    "Puddles_LayerInfo": ("TX_Puddles_01_Alb", None)
+}
 
 ROCK_TEXTURES = ("Cliff_Macro_Alb_02", "Cliff_Detail_Alb")
 CANOPY_TEXTURE = "TX_Forest_Far_01_Alb"
 
 PIGMENT_MAX_PX = 2048
 
+#: A bulk entry with this flag lives inline in the export body rather than in the ``.ubulk``.
+_INLINE_BULK = 0x40
 
-def srgb_to_linear(values: np.ndarray) -> np.ndarray:
-    c = np.asarray(values, np.float64) / 255.0
+_Float = TypeVar("_Float", np.float32, np.float64)
+
+
+def srgb_unit_to_linear(c: npt.NDArray[_Float]) -> npt.NDArray[_Float]:
+    """The sRGB transfer function undone, on values in 0-1, in their own dtype."""
     return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
 
 
-# ----------------------------------------------------------------------- textures
+def srgb_to_linear(values: npt.ArrayLike) -> F64Grid:
+    """0-255 sRGB values as linear light in 0-1, float64."""
+    return srgb_unit_to_linear(np.asarray(values, np.float64) / 255.0)
 
 
-def material_vectors(view) -> dict[str, tuple[float, float, float]]:
+def material_vectors(view: PackageView) -> dict[str, tuple[float, ...]]:
     """The material instance's ``VectorParameterValues`` as ``{name: (r, g, b)}``."""
-    payload = view.props(0).get("VectorParameterValues", b"")
-    count = struct.unpack_from("<I", payload, 0)[0] if len(payload) >= 4 else 0
-    pos, out = 4, {}
-    for _ in range(count):
-        tags, pos = property_tags(payload, view.pkg.names, pos)
-        name, value = None, None
-        for tag, kind, raw, _v in tags:
-            if tag == "ParameterInfo" and kind == "StructProperty":
-                inner, _end = property_tags(raw, view.pkg.names, 0)
-                for key, inner_kind, inner_raw, _iv in inner:
-                    if key == "Name" and inner_kind == "NameProperty":
-                        name = view.read_fname(inner_raw)
-            elif tag == "ParameterValue" and len(raw) == 16:
-                value = struct.unpack("<4f", raw)[:3]
-        if name and value:
-            out[name] = tuple(float(v) for v in value)
-    return out
+    vectors: Mapping[str, Sequence[float]] = material_parameters(view)["vector"]
+    return {name: tuple(value[:3]) for name, value in vectors.items()}
+
+
+def _texture_view(game: GameReader, path: str) -> tuple[PackageView, bytes]:
+    """A texture asset's package view and its ``.ubulk`` (empty when it has none)."""
+    view = PackageView(game.store.read_path(path + ".uasset"), game.scripts)
+    has_bulk = path + ".ubulk" in game.store.by_path
+    return view, game.store.read_path(path + ".ubulk") if has_bulk else b""
 
 
 def decode_texture(
-    store, scripts, decoder, asset: str, want_max: int, channels: int = 3
-) -> np.ndarray:
+    game: GameReader, decoder: ModuleType, asset: str, want_max: int, channels: int = 3
+) -> U8Grid:
     """The largest mip no wider than ``want_max`` as (H, W, channels) uint8 RGB(A). Square."""
-    blocks = {
+    blocks: dict[str, tuple[int, Callable[[bytes, int, int], bytes]]] = {
         "PF_DXT1": (8, decoder.decode_bc1),
         "PF_DXT5": (16, decoder.decode_bc3),
         "PF_BC7": (16, decoder.decode_bc7),
         "PF_BC5": (16, decoder.decode_bc5),
         "PF_BC4": (8, decoder.decode_bc4),
     }
-    path = GAME_ROOT + asset
-    view = PackageView(store.read_path(path + ".uasset"), scripts)
+    view, ubulk = _texture_view(game, GAME_ROOT + asset)
     fmt = next(n for n in view.pkg.names if n.startswith("PF_"))
     export = next(
         e for e in view.exports if class_name_of(view.class_of[e["slot"]]).startswith("Texture")
     )
-    ubulk = store.read_path(path + ".ubulk") if path + ".ubulk" in store.by_path else b""
-    best = None
+    best: tuple[int, bytes] | None = None
     for entry in view.pkg.bulk_entries():
         if fmt in blocks:
             side = round((entry["size"] / blocks[fmt][0]) ** 0.5) * 4
@@ -136,10 +143,8 @@ def decode_texture(
             side = round((entry["size"] / (4 if fmt == "PF_B8G8R8A8" else 1)) ** 0.5)
         if side > want_max or (best and best[0] >= side):
             continue
-        if entry["flags"] & 0x40:
-            raw = view.pkg.body(export)[entry["offset"] : entry["offset"] + entry["size"]]
-        else:
-            raw = ubulk[entry["offset"] : entry["offset"] + entry["size"]]
+        source = view.pkg.body(export) if entry["flags"] & _INLINE_BULK else ubulk
+        raw = source[entry["offset"] : entry["offset"] + entry["size"]]
         if len(raw) == entry["size"]:
             best = (side, raw)
     if best is None:
@@ -156,9 +161,13 @@ def decode_texture(
     return np.ascontiguousarray(rgba[..., :channels])
 
 
-def layer_albedo(layers: dict, means: dict, vectors: dict) -> dict[str, list[float]]:
+def layer_albedo(
+    layers: Mapping[str, tuple[str | None, str | None]],
+    means: Mapping[str, Sequence[float]],
+    vectors: Mapping[str, Sequence[float]],
+) -> dict[str, list[float]]:
     """Linear albedo per layer: texture mean times material vector, either alone."""
-    table = {}
+    table: dict[str, list[float]] = {}
     for layer, (texture, vector) in layers.items():
         value = np.ones(3)
         if texture is not None:
@@ -169,20 +178,18 @@ def layer_albedo(layers: dict, means: dict, vectors: dict) -> dict[str, list[flo
     return table
 
 
-# ----------------------------------------------------------------------- rock families
-
-
-def rock_family_colours(store, scripts, index, decoder) -> dict:
+def rock_family_colours(game: GameReader, decoder: ModuleType) -> dict[str, JsonObject]:
     """Each cliff family's ``Color Tint`` and its top layer's mean linear albedo."""
-    out = {}
-    for family, source in family_sources(store, scripts, index).items():
-        top = source["top_texture"]
-        mean = None
+    out: dict[str, JsonObject] = {}
+    sources = family_sources(game.store, game.scripts, game.index)
+    for family, source in sources.items():
+        top: str | None = source["top_texture"]
+        mean: list[float] | None = None
         if top:
             asset = top.split("/Game/FactoryGame/", 1)[-1]
-            mean = srgb_to_linear(decode_texture(store, scripts, decoder, asset, 512))
-            mean = [round(float(v), 5) for v in mean.reshape(-1, 3).mean(0)]
-        tint = source["tint"]
+            linear = srgb_to_linear(decode_texture(game, decoder, asset, 512))
+            mean = [round(float(v), 5) for v in linear.reshape(-1, 3).mean(0)]
+        tint: Sequence[float] | None = source["tint"]
         out[family] = {
             "code": FAMILIES.index(family),
             "material": source["material"],

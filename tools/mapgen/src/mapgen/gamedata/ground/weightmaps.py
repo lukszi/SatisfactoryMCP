@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 import struct
+from collections.abc import Mapping
+from typing import TypeAlias, TypedDict
 
 import numpy as np
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.level.landscape import LANDSCAPE_SECTION_ORIGIN
-from satisfactory_mcp.core.gameassets.packages import class_name_of, property_tags
+from satisfactory_mcp.core.arrays import U8Grid
+from satisfactory_mcp.core.gameassets.packages import PackageView, class_name_of, property_tags
 
 __all__ = [
     "IGNORED",
     "WEIGHTMAP_BYTES",
     "WEIGHTMAP_PX",
-    "allocations",
+    "ComponentLayers",
+    "WeightmapAllocation",
     "component_layers",
     "component_origin",
-    "place",
+    "place_component_layers",
+    "weightmap_allocations",
     "weightmap_channels",
     "weightmap_textures",
 ]
@@ -29,8 +34,22 @@ IGNORED = frozenset({"LandscapeVisibilityLayerInfo", "Foliage_Eraser_LayerInfo"}
 WEIGHTMAP_PX = 128
 WEIGHTMAP_BYTES = WEIGHTMAP_PX * WEIGHTMAP_PX * 4
 
+#: A bulk entry with this flag continues the group of the entry before it.
+_INLINE_BULK = 0x40
 
-def weightmap_channels(bgra: bytes) -> np.ndarray:
+#: ``(SectionBaseX, SectionBaseY, {layer: 128x128 weights})`` of one LandscapeComponent.
+ComponentLayers: TypeAlias = tuple[int, int, dict[str, U8Grid]]
+
+
+class WeightmapAllocation(TypedDict, total=False):
+    """One ``WeightmapLayerAllocations`` entry: the layer, its texture and its channel."""
+
+    LayerInfo: str | None
+    WeightmapTextureIndex: int
+    WeightmapTextureChannel: int
+
+
+def weightmap_channels(bgra: bytes) -> U8Grid:
     """A 128x128 BGRA8 weightmap mip as (128, 128, 4) in R, G, B, A channel order."""
     pixels = np.frombuffer(bgra, np.uint8, count=WEIGHTMAP_BYTES).reshape(
         WEIGHTMAP_PX, WEIGHTMAP_PX, 4
@@ -38,31 +57,34 @@ def weightmap_channels(bgra: bytes) -> np.ndarray:
     return pixels[..., [2, 1, 0, 3]]
 
 
-def allocations(view, payload: bytes) -> list[dict]:
+def weightmap_allocations(view: PackageView, payload: bytes) -> list[WeightmapAllocation]:
     """``WeightmapLayerAllocations``: layer name, texture index and channel per entry."""
     count = struct.unpack_from("<I", payload, 0)[0] if len(payload) >= 4 else 0
-    pos, out = 4, []
+    pos = 4
+    out: list[WeightmapAllocation] = []
     for _ in range(count):
         tags, pos = property_tags(payload, view.pkg.names, pos)
-        entry: dict = {}
+        entry: WeightmapAllocation = {}
         for name, kind, raw, _value in tags:
-            if kind == "ObjectProperty":
-                entry[name] = view.import_path(raw)
-            elif kind == "ByteProperty":
-                entry[name] = raw[0]
+            if kind == "ObjectProperty" and name == "LayerInfo":
+                entry["LayerInfo"] = view.import_path(raw)
+            elif kind == "ByteProperty" and name == "WeightmapTextureIndex":
+                entry["WeightmapTextureIndex"] = raw[0]
+            elif kind == "ByteProperty" and name == "WeightmapTextureChannel":
+                entry["WeightmapTextureChannel"] = raw[0]
         out.append(entry)
     return out
 
 
-def weightmap_textures(view, ubulk: bytes) -> dict[int, np.ndarray]:
+def weightmap_textures(view: PackageView, ubulk: bytes) -> dict[int, U8Grid]:
     """``{export slot: (128,128,4)}`` for every Weightmap texture in a level package.
 
     Bulk entries are grouped per owning export (an inline entry continues the group before
     it); owners and groups pair up in export offset order, which is checked by count.
     """
-    groups: list[list[dict]] = []
+    groups: list[list[dict[str, int]]] = []
     for entry in view.pkg.bulk_entries():
-        if not entry["flags"] & 0x40:
+        if not entry["flags"] & _INLINE_BULK:
             groups.append([entry])
         elif groups:
             groups[-1].append(entry)
@@ -78,7 +100,7 @@ def weightmap_textures(view, ubulk: bytes) -> dict[int, np.ndarray]:
     )
     if len(owners) != len(groups):
         raise ValueError(f"{len(owners)} weightmap owners against {len(groups)} bulk groups")
-    out = {}
+    out: dict[int, U8Grid] = {}
     for export, group in zip(owners, groups, strict=True):
         if not export["name"].startswith("Weightmap"):
             continue
@@ -89,23 +111,25 @@ def weightmap_textures(view, ubulk: bytes) -> dict[int, np.ndarray]:
     return out
 
 
-def component_layers(view, ubulk: bytes) -> list[tuple[int, int, dict[str, np.ndarray]]]:
+def _texture_refs(payload: bytes) -> list[int]:
+    """``WeightmapTextures``: each entry's export slot (an ``FPackageIndex`` less one)."""
+    count = struct.unpack_from("<I", payload)[0]
+    return [struct.unpack_from("<i", payload, 4 + 4 * i)[0] - 1 for i in range(count)]
+
+
+def component_layers(view: PackageView, ubulk: bytes) -> list[ComponentLayers]:
     """``(SectionBaseX, SectionBaseY, {layer: 128x128 uint8})`` per LandscapeComponent."""
     textures = weightmap_textures(view, ubulk)
-    found = []
+    found: list[ComponentLayers] = []
     for slot, class_path in view.class_of.items():
         if class_name_of(class_path) != "LandscapeComponent":
             continue
         props = view.props(slot)
         base_x = struct.unpack("<i", props.get("SectionBaseX", b"\0\0\0\0"))[0]
         base_y = struct.unpack("<i", props.get("SectionBaseY", b"\0\0\0\0"))[0]
-        refs_raw = props.get("WeightmapTextures", b"\0\0\0\0")
-        refs = [
-            struct.unpack_from("<i", refs_raw, 4 + 4 * i)[0] - 1
-            for i in range(struct.unpack_from("<I", refs_raw)[0])
-        ]
-        layers = {}
-        for entry in allocations(view, props.get("WeightmapLayerAllocations", b"")):
+        refs = _texture_refs(props.get("WeightmapTextures", b"\0\0\0\0"))
+        layers: dict[str, U8Grid] = {}
+        for entry in weightmap_allocations(view, props.get("WeightmapLayerAllocations", b"")):
             name = (entry.get("LayerInfo") or "None").rsplit("/", 1)[-1].split(".")[0]
             index = entry.get("WeightmapTextureIndex", 0)
             channel = entry.get("WeightmapTextureChannel", 0)
@@ -123,7 +147,9 @@ def component_origin(base_x: int, base_y: int) -> tuple[int, int]:
     return row, col
 
 
-def place(planes: dict[str, np.ndarray], row: int, col: int, layers: dict, grid: int) -> None:
+def place_component_layers(
+    planes: dict[str, U8Grid], row: int, col: int, layers: Mapping[str, U8Grid], grid: int
+) -> None:
     """Write one component's layers into the grid planes, clipped to the grid."""
     r0, c0 = max(row, 0), max(col, 0)
     r1, c1 = min(row + WEIGHTMAP_PX, grid), min(col + WEIGHTMAP_PX, grid)

@@ -6,12 +6,15 @@ each instance's own scale from its world matrix. Design notes: tools/mapgen/READ
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
+from mapgen.gamedata.meshes import MeshBounds
+from satisfactory_mcp.core.arrays import F32Grid, F64Grid, U8Grid
 
 __all__ = [
     "CROWN_DEFAULT_M",
@@ -49,12 +52,12 @@ class Crown:
 class TreeTable:
     """One row per placed tree, world metres; ``species`` indexes ``names``."""
 
-    x_m: np.ndarray
-    y_m: np.ndarray
-    base_m: np.ndarray
-    height_m: np.ndarray
-    radius_m: np.ndarray
-    species: np.ndarray
+    x_m: F32Grid
+    y_m: F32Grid
+    base_m: F32Grid
+    height_m: F32Grid
+    radius_m: F32Grid
+    species: U8Grid
     names: tuple[str, ...]
 
     def __len__(self) -> int:
@@ -70,16 +73,21 @@ class TreeTable:
             & (self.y_m - r <= y1_m)
         )
         return TreeTable(
-            *(a[keep] for a in (self.x_m, self.y_m, self.base_m, self.height_m, self.radius_m)),
+            self.x_m[keep],
+            self.y_m[keep],
+            self.base_m[keep],
+            self.height_m[keep],
+            self.radius_m[keep],
             self.species[keep],
             self.names,
         )
 
 
-def crown_species(meshes, names) -> dict[str, Crown]:
+def crown_species(meshes: MeshBounds, names: Iterable[str]) -> dict[str, Crown]:
     """``{mesh: Crown}`` from each tree mesh's ``ExtendedBounds``; unreadable ones are left out."""
-    out = {}
+    out: dict[str, Crown] = {}
     for mesh in names:
+        bounds: tuple[tuple[float, float, float], tuple[float, float, float]] | None
         bounds = meshes.extended_bounds(mesh)
         if bounds is None:
             continue
@@ -92,10 +100,10 @@ def crown_species(meshes, names) -> dict[str, Crown]:
     return out
 
 
-def tree_table(trees: dict[str, np.ndarray], species: dict[str, Crown]) -> TreeTable:
+def tree_table(trees: Mapping[str, F32Grid | F64Grid], species: Mapping[str, Crown]) -> TreeTable:
     """Every instance of every known species, from its ``(n, 4, 4)`` world matrices."""
     names = tuple(sorted(m for m in trees if m in species))
-    parts: list[list[np.ndarray]] = [[] for _ in range(6)]
+    parts: list[list[F64Grid]] = [[] for _ in range(6)]
     for index, mesh in enumerate(names):
         mats = np.asarray(trees[mesh], np.float64)
         crown = species[mesh]
@@ -180,16 +188,16 @@ def crown_radius(mesh: str) -> float:
 
 
 def canopy_cover(
-    trees: dict[str, np.ndarray], grid: int, radii: dict[str, float] | None = None
-) -> tuple[np.ndarray, dict]:
+    trees: Mapping[str, F32Grid], grid: int, radii: Mapping[str, float] | None = None
+) -> tuple[F32Grid, dict[str, int]]:
     """Crown cover in [0, 1]: ``1 - exp(-crown area per m^2)``, crowns blurred by radius.
 
     ``trees`` holds each mesh's 4x4 matrices. ``radii`` is the measured crown radius per
     mesh, scaled per tree; a mesh without one keeps the guessed ``crown_radius``.
     """
-    by_radius: dict[float, list[np.ndarray]] = {}
-    for mesh, mats in trees.items():
-        mats = np.asarray(mats)
+    by_radius: dict[float, list[F32Grid]] = {}
+    for mesh, given in trees.items():
+        mats = np.asarray(given)
         measured = (radii or {}).get(mesh)
         if measured is None:
             by_radius.setdefault(crown_radius(mesh), []).append(mats[:, 3, :3])
@@ -201,7 +209,7 @@ def canopy_cover(
         for radius in np.unique(snapped):
             by_radius.setdefault(float(radius), []).append(mats[snapped == radius, 3, :3])
     area = np.zeros((grid, grid), np.float32)
-    counts = {}
+    counts: dict[str, int] = {}
     for radius, parts in sorted(by_radius.items()):
         points = np.concatenate(parts)
         col = np.floor((points[:, 0] - ORIGIN_X_CM) / SPACING_CM).astype(np.int64)
@@ -211,4 +219,4 @@ def canopy_cover(
         np.add.at(hits, (row[ok], col[ok]), np.float32(np.pi * radius * radius))
         area += ndimage.gaussian_filter(hits, radius / 1.5)
         counts[str(radius)] = int(ok.sum())
-    return 1.0 - np.exp(-area), counts
+    return np.float32(1.0) - np.exp(-area), counts
