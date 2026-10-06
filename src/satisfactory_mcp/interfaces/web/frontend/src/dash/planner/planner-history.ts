@@ -27,11 +27,11 @@ var activity = {
 };
 var activitySeq = 0;
 
-export function planDash(key: string, rev?: number): string {
+function planDash(key: string, rev?: number): string {
   return "planner/" + key + (rev ? "/v" + rev : "");
 }
 
-function copyTo(rev?: number): void {
+function duplicateAndOpen(rev?: number): void {
   duplicatePlan(rev)
     .then(function (key) {
       notify("copied to a new plan");
@@ -46,13 +46,13 @@ export function duplicateButton(rev?: number): HTMLButtonElement {
   return button(
     rev ? "duplicate v" + rev : "duplicate",
     function () {
-      copyTo(rev);
+      duplicateAndOpen(rev);
     },
     { title: "a new plan at v1 with this version's request; this plan is untouched" }
   );
 }
 
-function stateWords(row: VersionRow, head: number): string {
+function versionStateText(row: VersionRow, head: number): string {
   var parts: string[] = [];
   if (row.rev === head) parts.push("head");
   if (row.undone_by) parts.push("undone in v" + row.undone_by);
@@ -133,7 +133,7 @@ export function renderVersions(parent: HTMLElement): void {
         label: "",
         className: "dash-sub",
         render: function (r) {
-          return stateWords(r, head);
+          return versionStateText(r, head);
         },
       },
     ];
@@ -150,7 +150,7 @@ export function renderVersions(parent: HTMLElement): void {
   parent.appendChild(card);
 }
 
-export function renderView(parent: HTMLElement, select: (s: FocusSelection) => void): void {
+export function renderRevisionView(parent: HTMLElement, select: (s: FocusSelection) => void): void {
   var rev = bench.viewedRev;
   var plan = bench.plan!;
   var card = make("section", "dash-card plan-strip");
@@ -212,7 +212,7 @@ export function loadActivity(): void {
     });
 }
 
-function kept(row: ActivityRow): boolean {
+function matchesActivityFilter(row: ActivityRow): boolean {
   if (activity.filter === "you") return row.actor.kind === "page";
   if (activity.filter === "chat") return row.actor.kind === "chat";
   return true;
@@ -224,7 +224,7 @@ function sameRun(a: ActivityRow, b: ActivityRow): boolean {
   return a.kind === "plan.view" && a.plan === b.plan && a.text === b.text;
 }
 
-function collapsed(rows: ActivityRow[]): ActivityRow[] {
+function collapseRuns(rows: ActivityRow[]): ActivityRow[] {
   var out: ActivityRow[] = [];
   rows.forEach(function (row) {
     var last = out[out.length - 1];
@@ -245,7 +245,7 @@ function findDash(row: ActivityRow): string {
   return withQuery(view ? "world/" + view : "world", args.params || {});
 }
 
-function what(row: ActivityRow): string {
+function activityText(row: ActivityRow): string {
   if (row.kind === "world.find" && row.count > 1) return counted(row.count, "find") + " · latest: " + row.text;
   if (row.source === "plan") return "v" + row.rev + " " + commitWords(row.text);
   return objectiveText(row.text);
@@ -317,7 +317,7 @@ export function renderActivity(parent: HTMLElement): void {
   if (activity.error && activity.world === state.world) error(card, "the activity", activity.error, loadActivity);
   else if (!data) loading(card, "activity");
   else {
-    var rows = collapsed(data.entries.filter(kept).reverse());
+    var rows = collapseRuns(data.entries.filter(matchesActivityFilter).reverse());
     if (!rows.length) empty(card, "nothing yet", "plan edits from the page and from chat, and chat's solves and finds, show here");
     else {
       var columns: Column<ActivityRow>[] = [
@@ -345,7 +345,7 @@ export function renderActivity(parent: HTMLElement): void {
             return r.plan ? link(planDash(r.plan), r.name || r.plan) : "–";
           },
         },
-        { key: "what", label: "what", render: what },
+        { key: "what", label: "what", render: activityText },
         { key: "acts", label: "", render: activityActs },
       ];
       card.appendChild(table(columns, rows, { caption: "activity, newest first" }));

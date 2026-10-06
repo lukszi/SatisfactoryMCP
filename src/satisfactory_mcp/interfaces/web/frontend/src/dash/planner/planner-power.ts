@@ -12,22 +12,22 @@ import type { Op } from "./planner-state";
 
 type Payback = SolveResponse["power"];
 type Stop = Payback["stops"][number];
-type Option = NonNullable<SolveRow["overclock_option"]>;
+type OverclockOption = NonNullable<SolveRow["overclock_option"]>;
 
 /* The recipes before a slider release, kept until the re-solve lands (F5a). */
 var switched = { key: "", from: -1, before: {} as Record<string, string>, rev: 0, text: "" };
 
-var HOURS = [0, 1, 2, 5, 10, 20, 50, 100];
-var STOPS = HOURS.map(hours);
+var PAYBACK_HOURS = [0, 1, 2, 5, 10, 20, 50, 100];
+var PAYBACK_LABELS = PAYBACK_HOURS.map(hours);
 
 export function hours(h: number): string {
   return formatNumber(h, 1) + " h";
 }
 
-function nearest(h: number): number {
+function nearestStopIndex(h: number): number {
   var best = 0;
-  HOURS.forEach(function (stop, i) {
-    if (Math.abs(stop - h) < Math.abs(HOURS[best]! - h)) best = i;
+  PAYBACK_HOURS.forEach(function (stop, i) {
+    if (Math.abs(stop - h) < Math.abs(PAYBACK_HOURS[best]! - h)) best = i;
   });
   return best;
 }
@@ -40,15 +40,15 @@ function stopAt(view: Payback | null, h: number): Stop | undefined {
     : undefined;
 }
 
-function machines(n: number): string {
+function signedMachineCount(n: number): string {
   return (n > 0 ? "+" : n < 0 ? "−" : "") + count(Math.abs(n)) + (Math.abs(n) === 1 ? " machine" : " machines");
 }
 
-export function stopWords(view: Payback | null, h: number): string {
+function stopWords(view: Payback | null, h: number): string {
   var stop = stopAt(view, h);
   if (!stop) return hours(h) + (bench.solvingRev ? ": solving…" : "");
   if (!h || !stop.extra_machines) return hours(h) + ": no extra machines · " + count(stop.machines) + " machines · " + mw(stop.mw_draw);
-  var parts = ["pays back within " + hours(h), machines(stop.extra_machines), (stop.saved_mw < 0 ? "+" : "−") + mw(Math.abs(stop.saved_mw))];
+  var parts = ["pays back within " + hours(h), signedMachineCount(stop.extra_machines), (stop.saved_mw < 0 ? "+" : "−") + mw(Math.abs(stop.saved_mw))];
   if (stop.average_payback_h !== null) parts.push("on average " + hours(stop.average_payback_h));
   return parts.join(" · ");
 }
@@ -67,7 +67,7 @@ function shardWords(oc: Payback["overclock"], shards: number): string {
   return count(shards) + (shards === 1 ? " shard" : " shards") + (hand ? " (" + hand + ")" : "");
 }
 
-function tally(oc: Payback["overclock"], rows: OverclockRow[], stock: boolean): string {
+function overclockTally(oc: Payback["overclock"], rows: OverclockRow[], stock: boolean): string {
   var shards = 0;
   var saved = 0;
   var extra = 0;
@@ -77,10 +77,10 @@ function tally(oc: Payback["overclock"], rows: OverclockRow[], stock: boolean): 
     extra += r.extra_mw;
   });
   var bill = stock ? shardWords(oc, shards) : count(shards) + (shards === 1 ? " shard" : " shards");
-  return [machines(-saved), "+" + mw(extra), bill].join(" · ");
+  return [signedMachineCount(-saved), "+" + mw(extra), bill].join(" · ");
 }
 
-export function overclockWords(view: Payback | null): string {
+function overclockWords(view: Payback | null): string {
   if (!view) return bench.solvingRev ? "solving…" : "";
   var oc = view.overclock;
   var own = oc.pinned_last ? count(oc.pinned_last) + " row(s) overclocked by their own setting" : "";
@@ -96,10 +96,10 @@ export function overclockWords(view: Payback | null): string {
     return !r.applied;
   });
   var parts: string[] = [];
-  if (oc.on) parts.push(tally(oc, built, true));
+  if (oc.on) parts.push(overclockTally(oc, built, true));
   else {
-    if (built.length) parts.push(own + ": " + tally(oc, built, true));
-    if (spare.length) parts.push((built.length ? "the switch would save " : "would save: ") + tally(oc, spare, !built.length));
+    if (built.length) parts.push(own + ": " + overclockTally(oc, built, true));
+    if (spare.length) parts.push((built.length ? "the switch would save " : "would save: ") + overclockTally(oc, spare, !built.length));
   }
   if ((oc.on || oc.pinned_last) && oc.without.length) parts.push(count(oc.without.length) + " row(s) went without");
   if (oc.pinned_spread) parts.push(count(oc.pinned_spread) + " row(s) set to one more machine");
@@ -132,7 +132,7 @@ function followDefault(field: "payback_hours" | "overclock_last"): HTMLElement {
   );
 }
 
-function recipes(data: SolveResponse | null): Record<string, string> {
+function recipeNamesById(data: SolveResponse | null): Record<string, string> {
   var out: Record<string, string> = {};
   if (data && data.feasible)
     data.rows.forEach(function (r) {
@@ -141,7 +141,7 @@ function recipes(data: SolveResponse | null): Record<string, string> {
   return out;
 }
 
-function missing(a: Record<string, string>, b: Record<string, string>): string[] {
+function namesOnlyIn(a: Record<string, string>, b: Record<string, string>): string[] {
   return Object.keys(a)
     .filter(function (id) {
       return !(id in b);
@@ -152,28 +152,28 @@ function missing(a: Record<string, string>, b: Record<string, string>): string[]
     .sort();
 }
 
-export function switchWords(before: Record<string, string>, after: Record<string, string>): string {
-  var added = missing(after, before);
-  var dropped = missing(before, after);
+function switchWords(before: Record<string, string>, after: Record<string, string>): string {
+  var added = namesOnlyIn(after, before);
+  var dropped = namesOnlyIn(before, after);
   if (!added.length) return dropped.length ? "dropped " + dropped.join(", ") : "";
   return "switched to " + added.join(", ") + (dropped.length ? ", from " + dropped.join(", ") : "");
 }
 
-function released(): void {
-  switched = { key: bench.key, from: bench.resultRev, before: recipes(bench.result), rev: 0, text: "" };
+function snapshotRecipes(): void {
+  switched = { key: bench.key, from: bench.resultRev, before: recipeNamesById(bench.result), rev: 0, text: "" };
 }
 
 function switchLine(): string {
   if (switched.key !== bench.key) return "";
   if (switched.from >= 0 && bench.resultRev > switched.from && bench.result) {
-    switched.text = bench.result.feasible ? switchWords(switched.before, recipes(bench.result)) : "";
+    switched.text = bench.result.feasible ? switchWords(switched.before, recipeNamesById(bench.result)) : "";
     switched.rev = bench.resultRev;
     switched.from = -1;
   }
   return switched.rev === bench.resultRev ? switched.text : "";
 }
 
-function optionWords(o: Option): string {
+function optionWords(o: OverclockOption): string {
   var last = count(o.machines) + (o.machines === 1 ? " machine" : " machines") + ", the last at " + pct(o.last_clock, 1) + ", " + count(o.shards) + (o.shards === 1 ? " shard" : " shards");
   var spread = count(o.spread_machines) + " at " + pct(o.spread_clock, 1);
   return "overclock last: " + last + " (+" + mw(o.extra_mw) + ") · one more underclocked: " + spread;
@@ -225,15 +225,15 @@ export function powerRow(body: HTMLElement): void {
   var row = make("div", "plan-line plan-payback");
   row.appendChild(
     slider(
-      STOPS,
-      nearest(current),
+      PAYBACK_LABELS,
+      nearestStopIndex(current),
       function (i) {
-        if (!still) line.textContent = stopWords(view, HOURS[i]!);
+        if (!still) line.textContent = stopWords(view, PAYBACK_HOURS[i]!);
       },
       function (i) {
-        if (HOURS[i] === plan.args.payback_hours) return;
-        released();
-        applyOps([{ op: "set", field: "payback_hours", value: HOURS[i]! }]);
+        if (PAYBACK_HOURS[i] === plan.args.payback_hours) return;
+        snapshotRecipes();
+        applyOps([{ op: "set", field: "payback_hours", value: PAYBACK_HOURS[i]! }]);
       },
       { label: "payback horizon in hours of play", ends: ["fewer machines", "less power"], disabled: still, title: "hours of play the saved power must repay the extra machines in" }
     )

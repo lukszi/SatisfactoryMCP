@@ -544,7 +544,7 @@ function siteTabShowing(): boolean {
   return document.body.classList.contains("dash-on") && state.dash.indexOf("planner/") === 0 && /\/site$/.test(state.dash) && bench.tab === "site";
 }
 
-export function syncSplit(): void {
+function syncSplit(): void {
   var on = siteTabShowing();
   if (document.body.classList.contains("site-on") === on) return;
   document.body.classList.toggle("site-on", on);

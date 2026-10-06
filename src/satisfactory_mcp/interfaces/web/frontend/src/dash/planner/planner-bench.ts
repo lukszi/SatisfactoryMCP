@@ -6,7 +6,7 @@ import { bench, changed, displayName, itemList, knownItem, NAME_MAX, NOTES_MAX }
 import { applyOps, banOps, dropChip, openPlan } from "./planner-writes";
 import { cancelRename, forgottenBanner, renderBenchHeader, stripRows } from "./planner-bench-header";
 import { renderChatSolveCard } from "./planner-chat-card";
-import { renderVersions, renderView } from "./planner-history";
+import { renderVersions, renderRevisionView } from "./planner-history";
 import { powerRow } from "./planner-power";
 import { renderResult } from "./planner-result";
 import { counted, OBJECTIVES } from "../../kit/words";
@@ -417,7 +417,7 @@ export function renderBench(root: HTMLElement, select: (selection: FocusSelectio
   if (bench.gone) forgottenBanner(root);
   renderVersions(root);
   if (bench.viewedRev) {
-    renderView(root, select);
+    renderRevisionView(root, select);
     return;
   }
   renderChatSolveCard(root);
