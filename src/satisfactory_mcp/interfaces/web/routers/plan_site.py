@@ -10,7 +10,6 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-import re
 import threading
 from collections import OrderedDict
 from typing import Any, Literal, TypedDict
@@ -18,16 +17,14 @@ from typing import Any, Literal, TypedDict
 from fastapi import APIRouter, Request
 
 from ....domain.planning import site_preview, siting
-from ....domain.planning.planlog import InvalidOp, PlanLog, UnknownPlan
 from ....domain.world import pin
 from .. import terrain
-from ..serial import Biomass, error_response, require_world
+from ..serial import Biomass, check_plan_key, plan_log, require_plan, require_world
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
 
-_KEY = re.compile(r"[0-9a-f]{8}")
 _SESSIONS: OrderedDict[tuple, site_preview.Session] = OrderedDict()
 _LOCK = threading.Lock()
 SESSIONS = 8
@@ -190,15 +187,9 @@ def plan_site_preview(
 ) -> Any:
     """A plan version's pad at (x, y, yaw, w × d), every part omitted taken from its stored
     site, else from where a first placement starts. ``full`` reads the terrain at 1 m."""
-    if not _KEY.fullmatch(key):
-        return error_response(f"no plan “{key}” in this world", 404)
+    check_plan_key(key)
     st = require_world(request, save, world)
-    try:
-        state = PlanLog(st.world_id).state(key, rev)
-    except UnknownPlan:
-        return error_response(f"no plan “{key}” in this world", 404)
-    except InvalidOp as exc:
-        return error_response(str(exc), 404)
+    state = require_plan(plan_log(st), key, rev)
     token = pin.check(st.header, None)
     sess = _session(st, state, biomass == "include", headroom, token)
     base = siting.parse(state) or site_preview.start_siting(st.game, st, sess)

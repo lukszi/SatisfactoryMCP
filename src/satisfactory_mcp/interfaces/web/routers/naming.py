@@ -45,6 +45,7 @@ from ..serial import (
     flow_json,
     machine_spots,
     require_world,
+    session_name,
 )
 
 __all__ = ["router"]
@@ -261,10 +262,6 @@ def factory_candidates(
     }
 
 
-def _session(st) -> str:
-    return st.header.get("session_name") or ""
-
-
 @router.post("/labels", response_model=NamedResponse, responses=_REFUSALS)
 def name_candidate(
     request: Request,
@@ -293,7 +290,7 @@ def name_candidate(
     try:
         label, _held, written = edits.name(
             st.world_id,
-            _session(st),
+            session_name(st),
             name,
             cand,
             notes=notes,
@@ -326,7 +323,7 @@ def rename_label(
     page = Actor("page", "", os.getpid())
     try:
         done = edits.rename(
-            st.world_id, _session(st), name, to, actor=page, exact=True, expect=version
+            st.world_id, session_name(st), name, to, actor=page, exact=True, expect=version
         )
     except (StaleStore, LabelError, LockTimeout) as exc:
         return _refused(exc)
@@ -360,7 +357,9 @@ def forget_label(
     """Delete a label by its exact name. The machines are untouched."""
     st = require_world(request, save, world)
     try:
-        label, written = edits.forget(st.world_id, _session(st), name, exact=True, expect=version)
+        label, written = edits.forget(
+            st.world_id, session_name(st), name, exact=True, expect=version
+        )
     except (StaleStore, LabelError, LockTimeout) as exc:
         return _refused(exc)
     return {
@@ -460,7 +459,7 @@ def amend_label(
     try:
         _label, written = edits.amend(
             st.world_id,
-            _session(st),
+            session_name(st),
             label.name,
             wanted,
             going,

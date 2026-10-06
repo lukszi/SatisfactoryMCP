@@ -14,22 +14,28 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-import re
 import time
 from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
 
 from ....domain.planning import focus, journal, manage, summary, swaps
-from ....domain.planning.planlog import InvalidOp, PlanArgs, PlanLog, UnknownPlan
+from ....domain.planning.planlog import InvalidOp, PlanArgs, PlanLog
 from ....domain.planning.scenario import resolve_item
-from ..serial import ActorBody, PlanOpBody, actor_json, error_response, require_world
+from ..serial import (
+    ActorBody,
+    PlanOpBody,
+    actor_json,
+    check_plan_key,
+    error_response,
+    plan_log,
+    require_plan,
+    require_world,
+)
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-_KEY = re.compile(r"[0-9a-f]{8}")
 
 
 class SolveRate(TypedDict):
@@ -373,14 +379,8 @@ def solve_plan(
         return error_response("send exactly one of args and key", 400)
     st = require_world(request, save, world)
     if key is not None:
-        if not _KEY.fullmatch(key):
-            return error_response(f"no plan “{key}” in this world", 404)
-        try:
-            kwargs = PlanLog(st.world_id).state(key, body.get("rev")).kwargs()
-        except UnknownPlan:
-            return error_response(f"no plan “{key}” in this world", 404)
-        except InvalidOp as exc:
-            return error_response(str(exc), 404)
+        check_plan_key(key)
+        kwargs = require_plan(plan_log(st), key, body.get("rev")).kwargs()
     else:
         try:
             kwargs = PlanArgs.from_dict(args).kwargs()
@@ -461,7 +461,7 @@ def activity(
     st = require_world(request, save, world)
     now = time.time()
     limit = max(0, min(limit, 500))
-    log = PlanLog(st.world_id, st.header.get("session_name") or "")
+    log = plan_log(st)
     names = {s.key: s.name for s in log.heads(include_forgotten=True)}
     rows = _commit_rows(log, since)
     rows += [_entry_row(e, names) for e in journal.read(st.world_id, since_ts=since, limit=500)]
@@ -503,18 +503,12 @@ def plan_delta(
     world: str | None = None,
 ) -> Any:
     """The result deltas between two versions of one plan, both re-solved against this save."""
-    if not _KEY.fullmatch(key):
-        return error_response(f"no plan “{key}” in this world", 404)
+    check_plan_key(key)
     st = require_world(request, save, world)
-    log = PlanLog(st.world_id)
-    try:
-        to = log.head_rev(key) if to_rev is None else to_rev
-        before = log.state(key, from_rev).kwargs()
-        after = log.state(key, to).kwargs()
-    except UnknownPlan:
-        return error_response(f"no plan “{key}” in this world", 404)
-    except InvalidOp as exc:
-        return error_response(str(exc), 404)
+    log = plan_log(st)
+    before = require_plan(log, key, from_rev).kwargs()
+    to = log.head_rev(key) if to_rev is None else to_rev
+    after = require_plan(log, key, to).kwargs()
     try:
         delta = manage.result_delta(
             summary.solve_summary(st.game, st, before), summary.solve_summary(st.game, st, after)
@@ -534,19 +528,13 @@ def plan_alternates(
 ) -> Any:
     """Every recipe making ``item``, each with what requiring it would change in the plan."""
     key = body["key"]
-    if not _KEY.fullmatch(key):
-        return error_response(f"no plan “{key}” in this world", 404)
+    check_plan_key(key)
     st = require_world(request, save, world)
     g = st.game
     item = resolve_item(g, body["item"]) if body["item"] else None
     if item is None:
         return error_response(f"no item named “{body['item']}”", 404)
-    try:
-        state = PlanLog(st.world_id).state(key, body.get("rev"))
-    except UnknownPlan:
-        return error_response(f"no plan “{key}” in this world", 404)
-    except InvalidOp as exc:
-        return error_response(str(exc), 404)
+    state = require_plan(plan_log(st), key, body.get("rev"))
     try:
         return swaps.swap_deltas(g, st, state, item, spoilers is not False)
     except ValueError as exc:

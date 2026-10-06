@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+import re
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from ....core.schema import NewerSchema
+from ....domain.planning.planlog import InvalidOp, PlanLog, PlanState, UnknownPlan
 from ....domain.world.state import WorldState
 
 __all__ = [
+    "PLAN_KEY",
     "RequestRefused",
     "busy_response",
+    "check_plan_key",
     "error_response",
     "newer_schema_response",
+    "plan_log",
+    "plan_not_found",
+    "require_plan",
     "require_world",
+    "session_name",
     "world_state",
 ]
 
@@ -42,6 +51,37 @@ def require_world(request: Request, save: str | None, world: str | None) -> Worl
         return world_state(request, save, world)
     except Exception as exc:
         raise RequestRefused(f"could not read save: {exc}", 404) from exc
+
+
+#: Every plan key is eight hex digits; anything else is refused before a log is opened.
+PLAN_KEY = re.compile(r"[0-9a-f]{8}")
+
+
+def plan_not_found(key: str) -> RequestRefused:
+    return RequestRefused(f"no plan “{key}” in this world", 404)
+
+
+def check_plan_key(key: str) -> None:
+    if not PLAN_KEY.fullmatch(key):
+        raise plan_not_found(key)
+
+
+def session_name(st: WorldState) -> str:
+    return st.header.get("session_name") or ""
+
+
+def plan_log(st: WorldState) -> PlanLog:
+    return PlanLog(st.world_id, session_name(st))
+
+
+def require_plan(log: PlanLog, key: str, rev: int | None = None) -> PlanState:
+    """One plan at ``rev`` (its head when ``None``), or the 404 for a plan or rev not there."""
+    try:
+        return log.state(key, rev)
+    except UnknownPlan as exc:
+        raise plan_not_found(key) from exc
+    except InvalidOp as exc:
+        raise RequestRefused(str(exc), 404) from exc
 
 
 def newer_schema_response(

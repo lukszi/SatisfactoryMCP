@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
@@ -29,7 +28,6 @@ from ....domain.planning.planlog import (
     AlreadyUndone,
     Commit,
     Forgotten,
-    InvalidOp,
     NameTaken,
     Outdated,
     PlanArgs,
@@ -40,14 +38,18 @@ from ....domain.planning.planlog import (
     UnknownPlan,
 )
 from ....domain.world import pin
+from ....domain.world.state import WorldState
 from ..serial import (
     ActorBody,
     PlanOpBody,
     actor_json,
     busy_response,
+    check_plan_key,
     error_response,
+    plan_log,
+    plan_not_found,
+    require_plan,
     require_world,
-    world_state,
 )
 
 __all__ = ["router"]
@@ -55,8 +57,6 @@ __all__ = ["router"]
 router = APIRouter(prefix="/api")
 
 _logger = logging.getLogger(__name__)
-
-_KEY = re.compile(r"[0-9a-f]{8}")
 
 
 class CommitBody(TypedDict):
@@ -241,10 +241,6 @@ def _page() -> Actor:
     return Actor("page", "", os.getpid())
 
 
-def _log(st) -> PlanLog:
-    return PlanLog(st.world_id, st.header.get("session_name") or "")
-
-
 def _token(st, given: str | None) -> str:
     if given:
         return given
@@ -312,7 +308,7 @@ def _refused(log: PlanLog, exc: Exception, game: GameData) -> JSONResponse:
     if isinstance(exc, Forgotten):
         return error_response(str(exc), 410)
     if isinstance(exc, UnknownPlan):
-        return _no_plan(exc.what)
+        raise plan_not_found(exc.what) from exc
     if isinstance(exc, LockTimeout):
         return busy_response("plans", exc)
     return error_response(str(exc), 400)
@@ -334,19 +330,13 @@ def _reject(st, key: str, sav: str, exc: Exception) -> None:
         )
 
 
-def _no_plan(key: str) -> JSONResponse:
-    return error_response(f"no plan “{key}” in this world", 404)
-
-
-def _opened(request: Request, key: str, save: str | None, world: str | None):
-    """``(state, log)`` for a plan route, or the 404 that stops it."""
-    if not _KEY.fullmatch(key):
-        return None, _no_plan(key)
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return None, error_response(f"could not read save: {exc}", 404)
-    return st, _log(st)
+def _world_and_log(
+    request: Request, key: str, save: str | None, world: str | None
+) -> tuple[WorldState, PlanLog]:
+    """The world and plan log a plan route reads; the key is checked before the save loads."""
+    check_plan_key(key)
+    st = require_world(request, save, world)
+    return st, plan_log(st)
 
 
 @router.post(
@@ -363,7 +353,7 @@ def create_plan(
 ) -> Any:
     """A new plan at v1, stamped against the save this request read."""
     st = require_world(request, save, world)
-    log = _log(st)
+    log = plan_log(st)
     try:
         canon, _said = pins.canonical_args(st, body["args"])
     except pins.PinError as exc:
@@ -403,15 +393,8 @@ def plan_state(
     world: str | None = None,
 ) -> Any:
     """A plan at ``rev`` (the head when omitted), forgotten plans included."""
-    st, log = _opened(request, key, save, world)
-    if st is None:
-        return log
-    try:
-        return _state_body(log, log.state(key, rev), st.game)
-    except UnknownPlan:
-        return _no_plan(key)
-    except InvalidOp as exc:
-        return error_response(str(exc), 404)
+    st, log = _world_and_log(request, key, save, world)
+    return _state_body(log, require_plan(log, key, rev), st.game)
 
 
 @router.get("/plans/{key}/ops", response_model=PlanOpsResponse)
@@ -423,14 +406,12 @@ def plan_ops(
     world: str | None = None,
 ) -> Any:
     """Every commit after ``since``, oldest first."""
-    st, log = _opened(request, key, save, world)
-    if st is None:
-        return log
+    _, log = _world_and_log(request, key, save, world)
     try:
         commits = log.commits(key, since=since)
         head = log.head_rev(key)
-    except UnknownPlan:
-        return _no_plan(key)
+    except UnknownPlan as exc:
+        raise plan_not_found(key) from exc
     return {"key": key, "head": head, "commits": [_commit(c) for c in commits]}
 
 
@@ -447,9 +428,7 @@ def push_ops(
     world: str | None = None,
 ) -> Any:
     """One gesture as one commit, merged onto the head by rule M1 or refused whole."""
-    st, log = _opened(request, key, save, world)
-    if st is None:
-        return log
+    st, log = _world_and_log(request, key, save, world)
     sav = _token(st, body.get("sav"))
     try:
         ops, _said = pins.canonical_ops(st, body["ops"])
@@ -492,9 +471,7 @@ def push_args(
     world: str | None = None,
 ) -> Any:
     """A whole request, diffed against ``base_rev`` and merged: how a chat solve is applied."""
-    st, log = _opened(request, key, save, world)
-    if st is None:
-        return log
+    st, log = _world_and_log(request, key, save, world)
     sav = _token(st, body.get("sav"))
     try:
         args, _said = pins.canonical_args(st, body["args"])
@@ -529,9 +506,7 @@ def undo_rev(
     world: str | None = None,
 ) -> Any:
     """The inverse of commit ``rev`` as a new commit; redo is the undo of that undo."""
-    st, log = _opened(request, key, save, world)
-    if st is None:
-        return log
+    st, log = _world_and_log(request, key, save, world)
     sav = _token(st, body.get("sav"))
     try:
         pushed = log.undo(
@@ -561,9 +536,7 @@ def restore_rev(
     world: str | None = None,
 ) -> Any:
     """A new commit that makes the head equal ``rev`` again: never a rewind."""
-    st, log = _opened(request, key, save, world)
-    if st is None:
-        return log
+    st, log = _world_and_log(request, key, save, world)
     sav = _token(st, body.get("sav"))
     try:
         pushed = log.restore_to(
@@ -596,14 +569,12 @@ def duplicate_plan(
     world: str | None = None,
 ) -> Any:
     """A new plan at v1 equal to this one at ``rev`` (the head when omitted)."""
-    st, log = _opened(request, key, save, world)
-    if st is None:
-        return log
+    st, log = _world_and_log(request, key, save, world)
     rev = body.get("rev")
     try:
         head = log.head_rev(key)
-    except UnknownPlan:
-        return _no_plan(key)
+    except UnknownPlan as exc:
+        raise plan_not_found(key) from exc
     if rev is not None and not 1 <= rev <= head:
         return error_response(f"plan {key} has no v{rev}; it is at v{head}", 404)
     try:
@@ -631,14 +602,9 @@ def plan_versions(
     world: str | None = None,
 ) -> Any:
     """Every version of one plan, newest first, with what undid or restored what."""
-    st, log = _opened(request, key, save, world)
-    if st is None:
-        return log
-    try:
-        head = log.state(key)
-        rows = manage.versions(log, key)
-    except UnknownPlan:
-        return _no_plan(key)
+    _, log = _world_and_log(request, key, save, world)
+    head = require_plan(log, key)
+    rows = manage.versions(log, key)
     return {
         "key": key,
         "name": head.name,

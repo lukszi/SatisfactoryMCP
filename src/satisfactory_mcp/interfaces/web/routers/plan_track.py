@@ -11,21 +11,17 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-import re
 from typing import Any, Literal, TypedDict
 
 from fastapi import APIRouter, Request
 
 from ....domain.planning import track
-from ....domain.planning.planlog import InvalidOp, PlanLog, UnknownPlan
 from ....domain.world import pin
-from ..serial import Biomass, error_response, require_world
+from ..serial import Biomass, check_plan_key, error_response, plan_log, require_plan, require_world
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-_KEY = re.compile(r"[0-9a-f]{8}")
 
 
 class TrackState(TypedDict):
@@ -269,15 +265,9 @@ def plan_track(
 ) -> Any:
     """One plan version (the head when ``rev`` is omitted) diffed and staged against this save.
     ``headroom`` is the save's figure a plan with no stored headroom is staged against."""
-    if not _KEY.fullmatch(key):
-        return error_response(f"no plan “{key}” in this world", 404)
+    check_plan_key(key)
     st = require_world(request, save, world)
-    try:
-        state = PlanLog(st.world_id).state(key, rev)
-    except UnknownPlan:
-        return error_response(f"no plan “{key}” in this world", 404)
-    except InvalidOp as exc:
-        return error_response(str(exc), 404)
+    state = require_plan(plan_log(st), key, rev)
     try:
         out = track.track_view(st.game, st, state, biomass=biomass == "include", default=headroom)
     except ValueError as exc:

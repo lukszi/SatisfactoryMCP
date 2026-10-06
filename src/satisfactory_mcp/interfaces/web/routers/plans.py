@@ -20,7 +20,7 @@ from ....domain.planning import siting as planning_siting
 from ....domain.planning.diff_service import plan_progress
 from ....domain.planning.planlog import PlanLog
 from ....domain.world import pin
-from ..serial import ActorBody, actor_json, require_world
+from ..serial import ActorBody, actor_json, plan_log, require_world
 
 __all__ = ["router"]
 
@@ -159,7 +159,7 @@ def plans(request: Request, save: str | None = None, world: str | None = None) -
                 "factory": plan.factory,
             }
         )
-    log = PlanLog(st.world_id, st.header.get("session_name") or "")
+    log = plan_log(st)
     return {"plans": rows, "stored": len(st.plans.plans), "index": _index(log, st)}
 
 
@@ -232,7 +232,7 @@ def plans_built(request: Request, save: str | None = None, world: str | None = N
     per plan version, save and factory names."""
     st = require_world(request, save, world)
     token = pin.check(st.header, None)
-    log = PlanLog(st.world_id, st.header.get("session_name") or "")
+    log = plan_log(st)
     rows = []
     for state in log.heads():
         key = (st.world_id, state.key, state.rev, token, st.labels.version)

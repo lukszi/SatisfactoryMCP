@@ -4,11 +4,17 @@ The three conventions it serves are rules 8 to 10 of docs/web-wire.md.
 """
 
 from .responses import (
+    PLAN_KEY,
     RequestRefused,
     busy_response,
+    check_plan_key,
     error_response,
     newer_schema_response,
+    plan_log,
+    plan_not_found,
+    require_plan,
     require_world,
+    session_name,
     world_state,
 )
 from .shapes import (
@@ -33,6 +39,7 @@ from .shapes import (
 from .units import cm_to_m, xyz_m, yaw_deg
 
 __all__ = [
+    "PLAN_KEY",
     "ActorBody",
     "Biomass",
     "CollectibleRow",
@@ -45,6 +52,7 @@ __all__ = [
     "TableAge",
     "actor_json",
     "busy_response",
+    "check_plan_key",
     "cm_to_m",
     "collectible_json",
     "error_response",
@@ -52,9 +60,13 @@ __all__ = [
     "found_field_json",
     "machine_spots",
     "newer_schema_response",
+    "plan_log",
+    "plan_not_found",
     "region_json",
+    "require_plan",
     "require_world",
     "resource_name",
+    "session_name",
     "settings_json",
     "world_state",
     "xyz_m",
