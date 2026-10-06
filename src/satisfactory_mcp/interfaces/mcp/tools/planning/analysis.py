@@ -57,7 +57,7 @@ def explain_byproducts(
         exports=exports,
         export_minimums=export_minimums,
         allow_sinks=allow_sinks,
-        item=app.resolve_item_id(item) if item else None,
+        item=item,
         exclude_recipes=exclude_recipes,
     )
     return render_byproducts(g, report, limit=render.clamp(limit, default=12))
@@ -84,18 +84,18 @@ def compare_recipe_options(
     """
     g = app.game()
     st = app.load_world(save, world, as_of)
-    iid = app.resolve_item_id(item)
-    if iid is None:
-        return f"no item matching {item!r}"
-    result = recipe_routes.compare_routes(
-        g,
-        st,
-        iid,
-        rate=rate,
-        allow_sinks=allow_sinks,
-        outlets=outlets,
-        per_resource=app.resolve_item_id(per_resource) if per_resource else None,
-    )
+    try:
+        result = recipe_routes.compare_routes(
+            g,
+            st,
+            item,
+            rate=rate,
+            allow_sinks=allow_sinks,
+            outlets=outlets,
+            per_resource=per_resource,
+        )
+    except ValueError as exc:
+        return f"! {exc}"
     return render_comparison(result, limit=render.clamp(limit, default=10))
 
 

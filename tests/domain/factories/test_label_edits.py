@@ -278,5 +278,15 @@ def test_amend_factory_writes_nothing_on_a_dry_run(labelled_live_machines):
 
 
 @pytest.mark.integration
+def test_a_dry_run_re_anchor_says_what_it_would_keep_and_drop(labelled_live_machines):
+    st, picked = labelled_live_machines
+    out = srv.name_factory(name="north steel", select=[f"machine:{picked[0]}"], dry_run=True)
+    assert "would re-anchor" in out
+    assert "was 3 machine(s), 1 kept, 2 dropped" in out
+    assert "dry run: nothing written" in out
+    assert _reload(st).find("north steel").anchors == sorted(picked[:3])
+
+
+@pytest.mark.integration
 def test_amend_factory_asks_for_something_to_do(labelled_live_machines):
     assert srv.amend_factory(name="north steel").startswith("! nothing to amend")

@@ -37,13 +37,18 @@ def _no_save_note(reason: str | None) -> str:
 def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
     """Find items by name. Returns form, energy and sink points."""
     hits = search.find_items(app.game(), query)
-    page = hits[offset : offset + render.clamp(limit)]
+    window = render.page(limit, offset)
+    page = window.of(hits)
     rows = [
         (i.name, "fluid" if i.is_fluid else "solid", render.num(i.energy_mj), i.sink_points)
         for i in page
     ]
     body = render.table(
-        ("item", "form", "MJ", "sink_pts"), rows, total=len(hits), offset=offset, limit=limit
+        ("item", "form", "MJ", "sink_pts"),
+        rows,
+        total=len(hits),
+        offset=window.start,
+        limit=window.size,
     )
     footer = render.ids_footer((i.name, i.cls) for i in page)
     return render.envelope(f"# {len(hits)} item(s) matching {query!r}", body + "\n" + footer)
@@ -370,7 +375,8 @@ def list_buildings(
     # note says which save could not be read and why.
     st, save_error = app.load_world_or_none(save, world, as_of)
     unlocked, built = (st.unlocked_building_ids, st.built_counts) if st is not None else (None, {})
-    want = _BUILDING_KINDS.get((building_kind or "").strip().casefold())
+    chosen_kind = (building_kind or "").strip().casefold()
+    want = _BUILDING_KINDS.get(chosen_kind)
     if want is None:
         return (
             f"! unknown building_kind {building_kind!r}. "
@@ -404,7 +410,7 @@ def list_buildings(
             "so a row of N machines needs somewhat fewer than N x found"
         )
     ]
-    if unlocked is not None and building_kind == "logistics" and st is not None:
+    if unlocked is not None and chosen_kind == "logistics" and st is not None:
         belt, pipe = st.best_belt(), st.best_pipe()
         chosen = (
             ", ".join(f"{g.buildings[c].name} ({v:g})" for c, v in (belt, pipe) if c)

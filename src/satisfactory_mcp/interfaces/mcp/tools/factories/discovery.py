@@ -21,6 +21,9 @@ BARE_TILE_FLOOR = 12
 #: The candidate tables' columns, for power islands and belt components alike.
 CANDIDATE_COLUMNS = ("src", "n", "x,y(m)", "spread", "named", "labels", "makes")
 
+#: What ``factory_map(show=)`` can draw.
+FACTORY_MAP_VIEWS = ("candidates", "named", "slabs", "unlabelled", "all")
+
 
 def _z_range(slab) -> str:
     """A slab's elevation in metres -- both ends of it where they differ.
@@ -257,9 +260,7 @@ def factory_map(
     as_of: AsOf = None,
     limit: Limit = 12,
     offset: int = 0,
-    show: Annotated[
-        str, Field(description="candidates | named | slabs | unlabelled | all")
-    ] = "all",
+    show: Annotated[str, Field(description=" | ".join(FACTORY_MAP_VIEWS))] = "all",
 ) -> str:
     """Proposed factories, from power islands and belt topology, plus what is named.
 
@@ -273,6 +274,9 @@ def factory_map(
     with tile count, extent, bounding box and elevation; pads under a stated tile threshold
     are summarised in one line.
     """
+    want = show.strip().casefold()
+    if want not in FACTORY_MAP_VIEWS:
+        return f"! unknown show {show!r}. Choose from: {', '.join(FACTORY_MAP_VIEWS)}"
     st = app.load_world(save, world, as_of)
     graph, store = st.graph, st.labels
     island_candidates, belt_candidates = candidates.bases_and_lines(graph, st.game, st.projection)
@@ -280,7 +284,6 @@ def factory_map(
     machines = set(graph.machines())
     window = render.page(limit, offset)
 
-    want = show.casefold()
     chunks: list[str] = []
     notes: list[str] = []
     if want in ("all", "named") and store.labels:
