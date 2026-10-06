@@ -33,6 +33,7 @@ __all__ = [
     "OPEN_SEA_CELL",
     "OPEN_SEA_RADIUS_M",
     "RIVER",
+    "SEA_ROUNDING_M",
     "WATER_BODIES_NAME",
     "actor_materials",
     "body_class",
@@ -81,6 +82,9 @@ OCEAN_BAND_M = 1.0
 
 #: A box claims a texel whose water level lies within this of the box's z range.
 BOX_Z_TOLERANCE_M = 1.0
+
+#: Half the field's decimetre: a level this close to the ocean's is the ocean's own.
+SEA_ROUNDING_M = 0.05
 
 #: A body's majority class fills the rest of it only above this share of its texels.
 MAJORITY_SHARE = 0.25
@@ -193,8 +197,8 @@ def classify(
 
     ``level_m`` is the water level per texel (nan where none), ``wet`` the texels the
     channel calls water, ``biome`` the biome index grid and the names it indexes. No box
-    but the ocean's claims the open sea. A river box's claim stands only on a body it
-    mostly covers (``_settle_rivers``).
+    but the ocean's claims the open sea, nor water at the ocean's level from under it. A
+    river box's claim stands only on a body it mostly covers (``_settle_rivers``).
     """
     springs = np.asarray(bodies.get("hot_springs") or np.zeros((0, 3)), np.float64)
     claims = []
@@ -216,6 +220,8 @@ def classify(
         hit = wet[window] & (level >= z0) & (level <= z1)
         if cid != OCEAN:
             hit &= ~sea[window]
+            if box[5] / 100 < ocean_level_m:
+                hit &= np.abs(level - ocean_level_m) > SEA_ROUNDING_M
         plane[window][hit] = cid
         rank[window][hit] = order
         if cid != RIVER:

@@ -255,6 +255,32 @@ def test_sea_level_water_the_map_edge_does_not_reach_keeps_its_box():
     assert (plane[wet] == ID["swamp"]).all() and counts["open_sea_texels"] == 0
 
 
+def test_a_lake_box_under_the_sea_claims_no_water_at_the_sea_s_level():
+    """The Rocky Desert box 5 cm under the sea reaches half across a lagoon whose level is the
+    sea's: the lagoon stays ocean with no seam at the box's edge. A pond under the sea at its
+    own box's level keeps its class."""
+    n = 240
+    wet = np.zeros((n, n), bool)
+    wet[:, n // 2 :] = True
+    wet[100:140, 40:100] = True
+    wet[116:124, 100 : n // 2] = True
+    level = _sea_level(wet)
+    wet[20:40, 20:40] = True
+    level[20:40, 20:40] = OCEAN_LEVEL_M - 0.5
+    bodies = {
+        "actors": [
+            _actor(LAKE_BOX, 30, 90, 70, 150, OCEAN_LEVEL_M - 0.046),
+            _actor(LAKE_BOX, 15, 15, 45, 45, OCEAN_LEVEL_M - 0.55),
+        ],
+        "hot_springs": [],
+    }
+    biome = (np.zeros((n, n), np.uint8), GRASS)
+    plane, _ = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
+    assert (plane[100:140, 40:100] == OCEAN).all()
+    assert (plane[20:40, 20:40] == ID["lake"]).all()
+    assert _edges_inside_bodies(plane, level) == 0
+
+
 # ----------------------------------------------------------------------- sampling
 
 

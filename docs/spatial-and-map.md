@@ -2498,7 +2498,8 @@ render (about 5 s):
    three radii of the edge). The swamp's `MI_WaterSwamp_Muddy` boxes are 230 m squares at
    the sea's level and reach past its coast, to x 3250 against the swamp area's 3040; they
    painted the open sea mauve in straight steps. A lagoon behind a narrower mouth keeps its
-   box.
+   box. A box whose top lies under the sea's level claims no water at the sea's level (see
+   "Lake boxes under the sea" below).
 4. Unclaimed wet texels within 1 m of the ocean level are ocean. That includes the level-only
    water around the frame at about -16.3 m.
 5. River boxes are settled body by body (`_settle_rivers`). See "River boxes" below.
@@ -2554,6 +2555,29 @@ field's own planes (`--kernel-only`) the river keeps 0.31 M of 0.38 M texels. On
 tile the classification takes 0.53 s against 0.29 s, at the same peak memory. The other
 styles draw no class plane and are unchanged; style `satellite-painted` is version 9.
 
+### Lake boxes under the sea (2026-10-06)
+
+The field's level at a texel is the highest box top over it (section 19), stored in
+decimetres. Four lake boxes stand under the sea's level. Two of them reach over water whose
+level is the sea's: the Rocky Desert box at -17.046 m, 5 cm under the sea's -16.994 m
+(x -1,100 to -870, y -1,475 to -1,116), and a box at -17.7 m (x -1,958 to -1,678, y -558 to
+-329). The sea's surface stands over both, so the field holds the sea's level there; under the
+-17.7 m box, water at the box's own surface would read -17.7. A channel narrower than the open
+sea's 96 m is not open sea, so step 3 let the lake boxes claim it. In the Rocky Desert it drew a
+dark green rectangle in the sea, with straight edges at x -870 and y -1,475.
+
+A box whose top lies under the ocean level (`OCEAN_LEVEL_M`) now claims no texel whose level
+is within half a decimetre of it (`SEA_ROUNDING_M`, the field's rounding): that water is the
+sea's. A box under the sea whose water reads its own level keeps it, such as the pond at
+-17.55 m near (3,825, -2,604). Boxes at or above the sea's level, the swamp's at -16.666 m
+among them, are unchanged.
+
+On the field's own planes this turns 46,704 lake texels to ocean, exactly the two boxes'
+sea-level texels, and changes nothing else. Straight class edges inside one body (runs of 8 m
+or more) go from 1,310 to 1,042 map-wide, and from 199 to 0 in the Rocky Desert window. In a
+render of that window the step across the box's old edge goes from 0.062 to 0.010 OKLab.
+Style `satellite-painted` is version 10.
+
 ### The optics
 
 Per class, in `water_classes` of `satellite-painted.json`: absorption `k_per_m`, the body
@@ -2599,6 +2623,10 @@ distance 1 to 3), not the lightness.
 - Where the swamp's lagoons open onto the sea, swamp turns to ocean along the edge of the
   opening: a line of 48 m arcs across one sheet of water, with nothing in the game to place
   it better.
+- A box less than half a decimetre under the sea cannot be told from it by level. Two ponds
+  inside the Rocky Desert's -17.046 m box, near (-989, -1,434) and (-978, -1,262), and two
+  puddles beside them (6,993 texels in all) read the sea's level and draw as sea; the sea's
+  box stands over them too.
 - The hot-spring rule finds terraces in lake boxes near the sulfur ponds and in the Red Bamboo
   terraces. Whether those pools are milky in game is unchecked.
 - The satellite and terrain styles still draw one water colour.
