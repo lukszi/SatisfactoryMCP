@@ -11,15 +11,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, TypeAlias
 
 from ....core.saveio.records import instance_leaf
 from .. import geo
 from ..places import parse_near, resolve_place
-from ..regions import load_regions
-from .table import KINDS, PURITIES
+from ..regions import RegionMap, load_regions
+from .table import KINDS, PURITIES, NodeRecord
 
-__all__ = ["SELECTOR_HELP", "Selection", "select_nodes", "split_spec"]
+if TYPE_CHECKING:
+    from ...world.state import WorldState
+
+__all__ = ["SELECTOR_HELP", "ResourceResolver", "Selection", "select_nodes", "split_spec"]
+
+#: A display name or class id -> the item's class id, or ``None`` when nothing matches.
+ResourceResolver: TypeAlias = Callable[[str], str | None]
 
 SELECTOR_HELP = (
     "selectors: north|south|east|west|northeast|... , region:<name>, grid:X3Y4, "
@@ -34,9 +40,9 @@ _FILTER_PREFIXES = ("resource", "purity", "kind")
 
 @dataclass
 class Selection:
-    nodes: list[dict] = field(default_factory=list)
-    described: list[str] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
+    nodes: list[NodeRecord] = field(default_factory=list[NodeRecord])
+    described: list[str] = field(default_factory=list[str])
+    errors: list[str] = field(default_factory=list[str])
     #: True when no location selector was given, so the whole map is in scope.
     whole_map: bool = False
 
@@ -93,21 +99,21 @@ def split_spec(spec: list[str] | str | None) -> tuple[list[str], list[str]]:
 class _SelectContext:
     """What every location resolver reads: the nodes, their indexes and the caller's frame."""
 
-    nodes: list[dict]
+    nodes: list[NodeRecord]
     selection: Selection
     origin: tuple[float, float] | None
     half_angle: float
-    st: object
-    by_instance: dict[str, dict] = field(default_factory=dict)
-    by_leaf: dict[str, dict] = field(default_factory=dict)
-    _regions: object = None
+    st: WorldState | None
+    by_instance: dict[str, NodeRecord] = field(default_factory=dict[str, NodeRecord])
+    by_leaf: dict[str, NodeRecord] = field(default_factory=dict[str, NodeRecord])
+    _regions: RegionMap | None = None
 
     def __post_init__(self) -> None:
         self.by_instance = {n["instance"]: n for n in self.nodes}
         self.by_leaf = {instance_leaf(n["instance"]): n for n in self.nodes}
 
     @property
-    def regions(self):
+    def regions(self) -> RegionMap:
         if self._regions is None:
             self._regions = load_regions()
         return self._regions
@@ -120,7 +126,7 @@ class _SelectContext:
 class _Match(NamedTuple):
     """A location resolved: its nodes, how to describe it, and a warning if any."""
 
-    hits: list[dict]
+    hits: list[NodeRecord]
     described: str
     error: str | None = None
 
@@ -136,8 +142,11 @@ class _NoMatch:
 _REJECTED = _Rejected()
 _NO_MATCH = _NoMatch()
 
+#: What one resolver makes of one location selector.
+_Outcome: TypeAlias = "_Match | _Rejected | _NoMatch"
 
-def _select_pin(ctx: _SelectContext, prefix, value: str):
+
+def _select_pin(ctx: _SelectContext, prefix: str | None, value: str) -> _Outcome:
     if prefix is not None or not value.casefold().startswith("pin:"):
         return _NO_MATCH
     from ...session import pins
@@ -149,7 +158,7 @@ def _select_pin(ctx: _SelectContext, prefix, value: str):
         wanted, echo = pins.selector_terms(ctx.st, n, "nodes")
     except pins.PinError as exc:
         return ctx.error(str(exc))
-    hits = []
+    hits: list[NodeRecord] = []
     for term in wanted:
         key = term.removeprefix("node:")
         hit = ctx.by_instance.get(key) or ctx.by_leaf.get(key)
@@ -158,13 +167,13 @@ def _select_pin(ctx: _SelectContext, prefix, value: str):
     return _Match(hits, f"{echo} ({len(hits)} nodes)")
 
 
-def _select_all(ctx: _SelectContext, prefix, value: str):
+def _select_all(ctx: _SelectContext, prefix: str | None, value: str) -> _Outcome:
     if prefix is not None or value.casefold() != "all":
         return _NO_MATCH
     return _Match(list(ctx.nodes), "whole map")
 
 
-def _select_direction(ctx: _SelectContext, prefix, value: str):
+def _select_direction(ctx: _SelectContext, prefix: str | None, value: str) -> _Outcome:
     if prefix is not None:
         return _NO_MATCH
     try:
@@ -180,7 +189,7 @@ def _select_direction(ctx: _SelectContext, prefix, value: str):
     return _Match(hits, f"{scope} ({len(hits)} nodes)")
 
 
-def _select_region(ctx: _SelectContext, prefix, value: str):
+def _select_region(ctx: _SelectContext, prefix: str | None, value: str) -> _Outcome:
     if prefix not in ("region", None):
         return _NO_MATCH
     resolved = ctx.regions.resolve(value)
@@ -192,7 +201,7 @@ def _select_region(ctx: _SelectContext, prefix, value: str):
     return _NO_MATCH
 
 
-def _select_grid(ctx: _SelectContext, prefix, value: str):
+def _select_grid(ctx: _SelectContext, prefix: str | None, value: str) -> _Outcome:
     if not (prefix == "grid" or (prefix is None and _looks_like_grid(value))):
         return _NO_MATCH
     want = value.upper().replace(" ", "")
@@ -201,7 +210,7 @@ def _select_grid(ctx: _SelectContext, prefix, value: str):
     return _Match(hits, f"grid {want} ({len(hits)} nodes)", error)
 
 
-def _select_node_id(ctx: _SelectContext, prefix, value: str):
+def _select_node_id(ctx: _SelectContext, prefix: str | None, value: str) -> _Outcome:
     if prefix not in ("node", None):
         return _NO_MATCH
     hit = ctx.by_instance.get(value) or ctx.by_leaf.get(value)
@@ -212,7 +221,7 @@ def _select_node_id(ctx: _SelectContext, prefix, value: str):
     return _NO_MATCH
 
 
-def _select_near(ctx: _SelectContext, prefix, value: str):
+def _select_near(ctx: _SelectContext, prefix: str | None, value: str) -> _Outcome:
     if prefix != "near":
         return _NO_MATCH
     try:
@@ -224,7 +233,7 @@ def _select_near(ctx: _SelectContext, prefix, value: str):
     return _Match(hits, f"within {radius:g}m of {where} ({len(hits)} nodes)")
 
 
-def _select_bbox(ctx: _SelectContext, prefix, value: str):
+def _select_bbox(ctx: _SelectContext, prefix: str | None, value: str) -> _Outcome:
     if prefix != "bbox":
         return _NO_MATCH
     nums = _numbers(value, 4)
@@ -238,7 +247,7 @@ def _select_bbox(ctx: _SelectContext, prefix, value: str):
 
 
 #: Tried in this order for every location selector; the first that claims it decides.
-_RESOLVERS: tuple[Callable, ...] = (
+_RESOLVERS: tuple[Callable[[_SelectContext, str | None, str], _Outcome], ...] = (
     _select_pin,
     _select_all,
     _select_direction,
@@ -251,8 +260,11 @@ _RESOLVERS: tuple[Callable, ...] = (
 
 
 def _apply_filters(
-    nodes: list[dict], filters: list[tuple[str, str]], resolve_resource, selection: Selection
-) -> list[dict]:
+    nodes: list[NodeRecord],
+    filters: list[tuple[str, str]],
+    resolve_resource: ResourceResolver | None,
+    selection: Selection,
+) -> list[NodeRecord]:
     """Narrow the located nodes by every filter; ``all`` is the surface's word for none."""
     result = nodes
     for kind, value in filters:
@@ -283,11 +295,11 @@ def _apply_filters(
 
 def select_nodes(
     spec: list[str] | str | None,
-    nodes: list[dict],
-    resolve_resource=None,
+    nodes: list[NodeRecord],
+    resolve_resource: ResourceResolver | None = None,
     origin: tuple[float, float] | None = None,
     half_angle: float = 60.0,
-    st=None,
+    st: WorldState | None = None,
 ) -> Selection:
     """Apply a source spec to ``nodes``.
 
@@ -314,7 +326,7 @@ def select_nodes(
         return selection
 
     ctx = _SelectContext(nodes, selection, origin, half_angle, st)
-    picked: dict[str, dict] = {}
+    picked: dict[str, NodeRecord] = {}
     filters: list[tuple[str, str]] = []
     location_seen = False
     # "No location asked for" is the whole map; "asked for and none resolved" is nothing,

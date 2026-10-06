@@ -130,7 +130,7 @@ def stale_tables(st: WorldState, node_table: Any, instances: list[str]) -> list[
     ]
 
 
-def node_identity(node: dict, game: GameData | None) -> dict:
+def node_identity(node: spatial_nodes.NodeRecord, game: GameData | None) -> dict:
     """The four fields that name a resource node on every node row."""
     return {
         "id": node["instance"],

@@ -21,7 +21,7 @@ from .....domain.spatial import nodes as spatial_nodes
 from .....domain.spatial import regions as spatial_regions
 from .....domain.spatial.nodes import search as node_search
 from .....domain.spatial.nodes import table as node_table
-from .....domain.spatial.nodes.views import NodeChoices
+from .....domain.spatial.nodes.views import NodeChoices, SiteRow
 from ...serial import (
     FoundField,
     Region,
@@ -178,7 +178,9 @@ class RegionTableResponse(TypedDict):
     accuracy_m: int
 
 
-def _found_node(node: dict, game, region_map, drifted: set[str]) -> FoundNode:
+def _found_node(
+    node: spatial_nodes.AnnotatedNode, game, region_map, drifted: set[str]
+) -> FoundNode:
     status = node_search.status_of(node)
     cls = node.get("tapped_by")
     occupant = None
@@ -204,7 +206,7 @@ def _found_node(node: dict, game, region_map, drifted: set[str]) -> FoundNode:
     }
 
 
-def _ranked_site_json(rank: int, site: dict) -> RankedSite:
+def _ranked_site_json(rank: int, site: SiteRow) -> RankedSite:
     return {
         "rank": rank,
         "score": site["score"],

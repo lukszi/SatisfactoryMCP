@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import NotRequired
+
+from typing_extensions import TypedDict
 
 from .... import config
+from ....core.jsontypes import JsonObject
 from .. import geo
 
 __all__ = [
@@ -14,6 +18,7 @@ __all__ = [
     "KINDS",
     "PURITIES",
     "SUPPORT_BUILDINGS_FOR_KIND",
+    "NodeRecord",
     "NodeTable",
     "load_nodes",
 ]
@@ -24,7 +29,7 @@ KINDS = ("node", "well_sat", "geyser")
 
 #: Node kind -> the extractors that can tap it. A well satellite needs a Well Extractor
 #: AND a Pressurizer on its parent core, so it is not interchangeable with a plain node.
-EXTRACTOR_FOR_KIND = {
+EXTRACTOR_FOR_KIND: dict[str, tuple[str, ...]] = {
     "node": ("Build_MinerMk1_C", "Build_MinerMk2_C", "Build_MinerMk3_C", "Build_OilPump_C"),
     "well_sat": ("Build_FrackingExtractor_C",),
     "geyser": (),
@@ -32,27 +37,49 @@ EXTRACTOR_FOR_KIND = {
 
 #: What a node needs BESIDES an extractor: no Pressurizer on the core, every satellite of
 #: that well yields exactly zero.
-SUPPORT_BUILDINGS_FOR_KIND = {"well_sat": ("Build_FrackingSmasher_C",)}
+SUPPORT_BUILDINGS_FOR_KIND: dict[str, tuple[str, ...]] = {"well_sat": ("Build_FrackingSmasher_C",)}
 
 #: A geyser is not extracted at all; it is a placement target for this generator.
 GEYSER_CONSUMER = "Build_GeneratorGeoThermal_C"
 
 
+class NodeRecord(TypedDict):
+    """One row of ``data/resource_nodes.json``; the position is in centimetres.
+
+    ``well_core`` is the fracking core a satellite belongs to, and null on any other kind.
+    """
+
+    instance: str
+    resource: str
+    purity: str
+    kind: str
+    x: float
+    y: float
+    z: float
+    well_core: str | None
+
+
+class _NodeFile(TypedDict):
+    nodes: list[NodeRecord]
+    _meta: NotRequired[JsonObject]
+
+
 @dataclass
 class NodeTable:
-    nodes: list[dict]
-    meta: dict
+    nodes: list[NodeRecord]
+    #: The file's ``_meta`` block: provenance, and the cross-validation ``skew`` reads.
+    meta: JsonObject
 
     def __len__(self) -> int:
         return len(self.nodes)
 
-    def by_resource(self, resource: str) -> list[dict]:
+    def by_resource(self, resource: str) -> list[NodeRecord]:
         return [n for n in self.nodes if n["resource"] == resource]
 
-    def by_instance(self) -> dict[str, dict]:
+    def by_instance(self) -> dict[str, NodeRecord]:
         return {n["instance"]: n for n in self.nodes}
 
-    def within(self, center: tuple[float, float], radius_m: float) -> list[dict]:
+    def within(self, center: tuple[float, float], radius_m: float) -> list[NodeRecord]:
         """The nodes within ``radius_m`` of ``center`` (cm), in table order."""
         return [n for n in self.nodes if geo.distance_m((n["x"], n["y"]), center) <= radius_m]
 
@@ -72,7 +99,7 @@ def load_nodes() -> NodeTable:
     hit = _TABLE.get(key)
     if hit is not None:
         return hit
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload: _NodeFile = json.loads(path.read_text(encoding="utf-8"))
     table = NodeTable(nodes=payload["nodes"], meta=payload.get("_meta", {}))
     _TABLE.clear()
     _TABLE[key] = table

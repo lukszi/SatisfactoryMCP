@@ -50,7 +50,7 @@ BUDGETS: dict[str, int] = {
     "src/satisfactory_mcp/domain/power": 0,
     "src/satisfactory_mcp/domain/progression": 0,
     "src/satisfactory_mcp/domain/session": 4,
-    "src/satisfactory_mcp/domain/spatial": 62,
+    "src/satisfactory_mcp/domain/spatial": 48,
     "src/satisfactory_mcp/domain/world": 8,
     "src/satisfactory_mcp/interfaces/mcp": 35,
     "src/satisfactory_mcp/interfaces/web": 46,
