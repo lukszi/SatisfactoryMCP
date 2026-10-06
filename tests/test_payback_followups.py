@@ -193,8 +193,8 @@ def _plastic(game, priced, hours=0.0, **extra):
             exports=("Desc_Plastic_C", "Desc_LiquidFuel_C"),
             grid_import_mw=1e5,
             payback_hours=hours,
-            power_price=priced.price,
-            build_points=priced.points,
+            power_price=priced.power_price,
+            build_points=priced.build_points,
             **extra,
         )
     )

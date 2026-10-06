@@ -73,8 +73,8 @@ def _draw(sol) -> float:
 
 
 def test_the_grid_mix_is_the_mw_weighted_running_price(priced):
-    assert priced.price == pytest.approx((2550 * 36 + 5000 * 360) / 7550, abs=0.1)
-    assert [(m["source"], m["mw"], m["price"]) for m in priced.mix] == [
+    assert priced.power_price == pytest.approx((2550 * 36 + 5000 * 360) / 7550, abs=0.1)
+    assert [(m["source"], m["mw"], m["price"]) for m in priced.grid_mix] == [
         ("Fuel", 5000.0, 360.0),
         ("Coal", 2550.0, 36.0),
     ]
@@ -109,10 +109,10 @@ def test_geothermal_runs_free_and_biomass_follows_its_setting(game):
 
 
 def test_a_machine_is_priced_by_its_save_priced_materials_and_its_floor(priced, game):
-    assert round(priced.points[REFINERY]) == 9064
-    assert round(priced.points["Build_Blender_C"]) == 146162
+    assert round(priced.build_points[REFINERY]) == 9064
+    assert round(priced.build_points["Build_Blender_C"]) == 146162
     smelter = game.buildings["Build_SmelterMk1_C"]
-    assert priced.points["Build_SmelterMk1_C"] >= smelter.footprint.area_m2 * 15.6
+    assert priced.build_points["Build_SmelterMk1_C"] >= smelter.footprint.area_m2 * 15.6
 
 
 def test_scarcity_tiers_snap_to_factors_of_two_and_hold_inside_the_band(game):
@@ -134,28 +134,33 @@ def test_scarcity_tiers_snap_to_factors_of_two_and_hold_inside_the_band(game):
 
 def test_zero_hours_is_todays_build(game, priced):
     plain = _plastic(game)
-    zero = _plastic(game, 0.0, priced.price, priced.points)
+    zero = _plastic(game, 0.0, priced.power_price, priced.build_points)
     assert zero.processes == plain.processes and zero.exports == plain.exports
     assert zero.machines_total == 12 and _draw(zero) == pytest.approx(347.1, abs=0.1)
     assert [p["clock"] for p in zero.processes if p["label"] == "Plastic"] == [1.0]
 
 
 def test_machine_counts_never_fall_as_the_horizon_rises(game, priced):
-    counts = [_plastic(game, h, priced.price, priced.points).machines_total for h in PAYBACK_STOPS]
-    draws = [_draw(_plastic(game, h, priced.price, priced.points)) for h in PAYBACK_STOPS]
+    counts = [
+        _plastic(game, h, priced.power_price, priced.build_points).machines_total
+        for h in PAYBACK_STOPS
+    ]
+    draws = [
+        _draw(_plastic(game, h, priced.power_price, priced.build_points)) for h in PAYBACK_STOPS
+    ]
     assert counts == sorted(counts) and counts[0] == 12 and counts[-1] > 100
     assert draws == sorted(draws, reverse=True)
 
 
 def test_the_flows_never_move_only_machines_and_draw(game, priced):
-    plain, spread = _plastic(game), _plastic(game, 10.0, priced.price, priced.points)
+    plain, spread = _plastic(game), _plastic(game, 10.0, priced.power_price, priced.build_points)
     assert plain.exports == spread.exports and plain.raw_used == spread.raw_used
     sc = Scenario(
         game=game,
         recipes=[],
         payback_hours=10.0,
-        power_price=priced.price,
-        build_points=priced.points,
+        power_price=priced.power_price,
+        build_points=priced.build_points,
     )
     best = best_clock(sc, game.buildings[REFINERY], 30.0)
     assert 0.4 < best < 0.55
@@ -165,7 +170,7 @@ def test_the_flows_never_move_only_machines_and_draw(game, priced):
 
 def test_every_stop_is_read_out_from_one_solve(game, priced):
     for hours in (0.0, 10.0):
-        sol = _plastic(game, hours, priced.price, priced.points)
+        sol = _plastic(game, hours, priced.power_price, priced.build_points)
         here = next(r for r in sol.payback_curve if r["hours"] == hours)
         assert here["machines"] == sol.machines_total
         assert here["draw_mw"] == pytest.approx(_draw(sol), abs=0.05)
@@ -174,13 +179,13 @@ def test_every_stop_is_read_out_from_one_solve(game, priced):
 
 
 def test_the_view_prices_the_extra_machines_and_says_what_next(game, priced):
-    sol = _plastic(game, 5.0, priced.price, priced.points)
+    sol = _plastic(game, 5.0, priced.power_price, priced.build_points)
     sc = Scenario(
         game=game,
         recipes=[],
         payback_hours=5.0,
-        power_price=priced.price,
-        build_points=priced.points,
+        power_price=priced.power_price,
+        build_points=priced.build_points,
     )
     view = payback.view(
         game,
@@ -191,7 +196,7 @@ def test_the_view_prices_the_extra_machines_and_says_what_next(game, priced):
         inherited=False,
         default_hours=0.0,
         price_source="grid mix",
-        mix=priced.mix,
+        mix=priced.grid_mix,
         overclock_inherited=True,
         shards={"free": 19, "craftable": 411},
     )
@@ -212,8 +217,8 @@ def _view(game, priced, sol, hours, overclock=False):
         game=game,
         recipes=[],
         payback_hours=hours,
-        power_price=priced.price,
-        build_points=priced.points,
+        power_price=priced.power_price,
+        build_points=priced.build_points,
         overclock_last=overclock,
     )
     return payback.view(
@@ -225,18 +230,18 @@ def _view(game, priced, sol, hours, overclock=False):
         inherited=True,
         default_hours=0.0,
         price_source="grid mix",
-        mix=priced.mix,
+        mix=priced.grid_mix,
         overclock_inherited=False,
         shards=None,
     )
 
 
 def test_every_stop_compares_with_the_plain_build(game, priced):
-    off = _view(game, priced, _plastic(game, 0.0, priced.price, priced.points), 0.0)
+    off = _view(game, priced, _plastic(game, 0.0, priced.power_price, priced.build_points), 0.0)
     on = _view(
         game,
         priced,
-        _plastic(game, 0.0, priced.price, priced.points, overclock_last=True),
+        _plastic(game, 0.0, priced.power_price, priced.build_points, overclock_last=True),
         0.0,
         overclock=True,
     )
@@ -268,7 +273,7 @@ def test_required_and_banned_hold_at_every_horizon(game, state, monkeypatch):
 
 
 def test_overclock_last_carries_the_fraction_on_one_machine(game, priced):
-    sol = _plastic(game, 0.0, priced.price, priced.points, overclock_last=True)
+    sol = _plastic(game, 0.0, priced.power_price, priced.build_points, overclock_last=True)
     rows = {p["label"]: p for p in sol.processes}
     assert rows["Plastic"]["machines"] == 10 and "last_clock" not in rows["Plastic"]
     fuel = rows["Residual Fuel"]
@@ -291,19 +296,21 @@ def test_the_last_machine_never_needs_more_than_two_shards(game, units):
 
 
 def test_overclock_last_spends_only_the_shards_in_hand(game, priced):
-    kept = _plastic(game, 0.0, priced.price, priced.points, overclock_last=True, overclock_shards=1)
+    kept = _plastic(
+        game, 0.0, priced.power_price, priced.build_points, overclock_last=True, overclock_shards=1
+    )
     assert all("last_clock" not in p for p in kept.processes)
     assert kept.overclock["without"] and kept.machines_total == 12
 
 
 def test_overclock_last_is_weighed_against_the_horizon(game, priced):
-    long = _plastic(game, 100.0, priced.price, priced.points, overclock_last=True)
+    long = _plastic(game, 100.0, priced.power_price, priced.build_points, overclock_last=True)
     assert all("last_clock" not in p for p in long.processes)
     assert long.overclock["rows"] == []
 
 
 def test_overclock_last_off_still_says_what_it_would_save(game, priced):
-    sol = _plastic(game, 0.0, priced.price, priced.points)
+    sol = _plastic(game, 0.0, priced.power_price, priced.build_points)
     assert all("last_clock" not in p for p in sol.processes)
     assert not sol.overclock["on"] and sol.overclock["machines_saved"] == 1
 
@@ -313,7 +320,7 @@ def test_the_bill_counts_shards_on_the_last_machine_only(game, priced):
 
     from satisfactory_mcp.domain.planning.readout.slice import slice_of
 
-    sol = _plastic(game, 0.0, priced.price, priced.points, overclock_last=True)
+    sol = _plastic(game, 0.0, priced.power_price, priced.build_points, overclock_last=True)
     bill = slice_of(
         SimpleNamespace(
             solution=sol, request=SimpleNamespace(scenario=SimpleNamespace(belt_ipm=780.0))
