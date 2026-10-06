@@ -2,10 +2,10 @@
 
 The field levels each wet texel at the highest water-box top over it. For a sloped river the
 box's top is the river's upstream end, and where boxes of two bodies overlap in plan the
-higher body's top lands on the lower one. Either way the level stands metres above the dry
-banks around it, which still water cannot do, and the renderer would draw tens of metres of
-depth. The artwork's mask also leaves dry holes inside a lake, which ``wet_holes`` fills.
-docs/spatial-and-map.md section 38.
+higher body's top lands on the lower one, as where a lake's box reaches past its fall over the
+basin below. Either way the level stands metres above the dry banks around it, which still
+water cannot do, and the renderer would draw tens of metres of depth. The artwork's mask also
+leaves dry holes inside a lake, which ``wet_holes`` fills. docs/spatial-and-map.md section 38.
 """
 
 from __future__ import annotations
@@ -14,6 +14,8 @@ from typing import NamedTuple
 
 import numpy as np
 from scipy import ndimage
+from scipy import sparse as sp
+from scipy.sparse import csgraph
 
 from mapgen.palette.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
 from mapgen.terrain.fill import solve
@@ -22,6 +24,7 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 __all__ = [
     "HOLE_BRIDGE_M",
     "HOLE_DEPTH_MAX_M",
+    "LIP_DROP_M",
     "PERCHED_EXCESS_M",
     "PERCHED_LIST_MAX",
     "SPILL_RING_M",
@@ -45,6 +48,11 @@ SPILL_RING_M = (6.0, 24.0)
 
 #: A body is perched when more than this share of that ring stands below its level.
 SPILL_SHARE = 0.25
+
+#: Ground falling more than this between neighbouring texels of a body is a fall's lip or a
+#: cliff. A part beyond such drops that stands this far under the level all over is water
+#: below the drop, re-levelled on its own.
+LIP_DROP_M = 8.0
 
 #: How many of the largest perched bodies the sidecar lists by place.
 PERCHED_LIST_MAX = 12
@@ -105,6 +113,37 @@ def _bodies(measured: np.ndarray, level: np.ndarray, skip, pad: int):
                 yield window, mask, int(value)
 
 
+def _below_drops(body: np.ndarray, ground: np.ndarray, value: int, pad: int) -> list[tuple]:
+    """The water below a drop in ``body``, as ``(window, mask)`` inside its window, lowest
+    first. Cut wherever the ground falls more than ``LIP_DROP_M`` between neighbours, it is
+    every part with no ground within ``LIP_DROP_M`` of ``value``, beside one that has."""
+    h, w = body.shape
+    drop = LIP_DROP_M * hf.DM_PER_M
+    index = np.arange(h * w).reshape(h, w)
+    kept, cut = [], False
+    for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):
+        a = (slice(0, h - dr), slice(max(-dc, 0), w + min(-dc, 0)))
+        b = (slice(dr, h), slice(max(dc, 0), w + min(dc, 0)))
+        both = body[a] & body[b]
+        steep = np.abs(ground[a][both].astype(np.int32) - ground[b][both]) > drop
+        kept.append(np.stack([index[a][both], index[b][both]])[:, ~steep])
+        cut |= bool(steep.any())
+    if not cut:
+        return []
+    kept = np.concatenate(kept, axis=1)
+    graph = sp.coo_matrix((np.ones(kept.shape[1], np.int8), (kept[0], kept[1])), (h * w,) * 2)
+    labels = csgraph.connected_components(graph, directed=False)[1].reshape(h, w)
+    level_held = np.unique(labels[body & (ground >= value - drop)])
+    below = body & ~np.isin(labels, level_held)
+    if not len(level_held) or not below.any():
+        return []
+    parts, count = ndimage.label(below, structure=_EIGHT)
+    order = np.argsort(ndimage.mean(ground, parts, np.arange(1, count + 1)))
+    found = ndimage.find_objects(parts)
+    subs = [(_padded(found[k], (0, 0), pad, body.shape), k + 1) for k in order]
+    return [(sub, parts[sub] == k) for sub, k in subs]
+
+
 def _shore(body: np.ndarray, ground: np.ndarray, bank: np.ndarray, level: float):
     """``(shore, waterline)``: the body's shoreline texels, and on each the highest surface
     its neighbours allow, ``level`` where they all stand above it (decimetres)."""
@@ -141,6 +180,46 @@ def relevel(level_dm: float, surface_dm: np.ndarray) -> np.ndarray:
     return np.where(excess <= band, np.float32(level_dm), handed)
 
 
+def _judged(body, g, bank, value: int, step_m: float):
+    """``(shore, waterline, spill share)`` where ``body``'s level stands more than
+    ``PERCHED_EXCESS_M`` above a bank, else ``None``."""
+    shore, waterline = _shore(body, g, bank, value)
+    if not shore.any() or value - float(waterline[shore].min()) <= PERCHED_EXCESS_M * hf.DM_PER_M:
+        return None
+    return shore, waterline, spill_share(body, bank, value, step_m)
+
+
+def _surface(body, g, shore, waterline, value: int, wet=None) -> np.ndarray | None:
+    """The new levels on a perched ``body``: the membrane over its shoreline, handed over.
+
+    Below a drop (``wet``, the window's water, given), the drop and the cliffs standing more
+    than ``LIP_DROP_M`` over the water's ground hold nothing up. The water it joins below
+    the level holds its surface, or failing that its low shoreline. ``None`` for neither.
+    """
+    held = shore
+    if wet is not None:
+        low = waterline < value - PERCHED_EXCESS_M * hf.DM_PER_M
+        held = shore & low & (waterline - g <= LIP_DROP_M * hf.DM_PER_M)
+        beside = np.logical_or.reduce([_shifted(wet & ~body, dr, dc, False) for dr, dc in _FOUR])
+        held = held & beside if (held & beside).any() else held
+        if not held.any():
+            return None
+    surface = solve(waterline, held, body & ~held, 1).astype(np.float32)
+    # A part joined to the rest only by a corner has no shoreline of its own to span.
+    parts, count = ndimage.label(body)
+    ashore = np.zeros(count + 1, bool)
+    ashore[parts[held]] = True
+    surface[body & ~ashore[parts]] = value
+    return np.rint(relevel(value, surface[body])).astype(np.int16)
+
+
+def _place(field, window, sub, body, step_m: float) -> dict:
+    rows, cols = np.nonzero(body)
+    x_m = field.x0_cm / 100 + (window[1].start + sub[1].start + cols.mean()) * step_m
+    y_m = field.y0_cm / 100 + (window[0].start + sub[0].start + rows.mean()) * step_m
+    return {"x_m": round(float(x_m), 1), "y_m": round(float(y_m), 1)}
+
+
 def perched_levels(field, planes=None) -> tuple[np.ndarray | None, dict]:
     """The water raster with every perched texel re-levelled, and what was changed.
 
@@ -148,8 +227,9 @@ def perched_levels(field, planes=None) -> tuple[np.ndarray | None, dict]:
 
     A body is perched when its level stands above its banks and still water at that level
     would run off across the ring around it. Its surface is then the harmonic membrane
-    spanning its shoreline, so a river's follows it downhill. Every other body, and the
-    ocean, is returned byte for byte.
+    spanning its shoreline, so a river's follows it downhill. Water below a drop in a body
+    (``_below_drops``) is judged first, by its own ring or the body's, and once re-levelled
+    is a bank of the rest. Every other body, and the ocean, is returned byte for byte.
     """
     water, grades = planes or (field._water_raster(), field._water_quality_raster())
     if water is None or grades is None:
@@ -164,49 +244,51 @@ def perched_levels(field, planes=None) -> tuple[np.ndarray | None, dict]:
     # What bounds a body: dry ground at its height, other water at its level.
     banks = np.where(dry, heights, np.where(wet & (water != hf.NODATA), water, np.nan))
     banks = banks.astype(np.float32)
-    band_dm = PERCHED_EXCESS_M * hf.DM_PER_M
     out = water.copy()
     found = []
-    candidates = 0
+    candidates = cut = 0
     step_m = field.spacing_cm / 100.0
     pad = int(np.ceil(SPILL_RING_M[1] / step_m)) + 1
-    for window, body, value in _bodies(measured, water, _is_ocean, pad):
+    for window, whole, value in _bodies(measured, water, _is_ocean, pad):
         g = heights[window].astype(np.float32)
-        bank = np.where(body, np.float32(np.nan), banks[window])
-        shore, waterline = _shore(body, g, bank, value)
-        if not shore.any() or value - float(waterline[shore].min()) <= band_dm:
-            continue
-        share = spill_share(body, bank, value, step_m)
-        candidates += 1
-        if share <= SPILL_SHARE:
-            continue
-        surface = solve(waterline, shore, body & ~shore, 1).astype(np.float32)
-        # A part joined to the rest only by a corner has no shoreline of its own to span.
-        parts, count = ndimage.label(body)
-        ashore = np.zeros(count + 1, bool)
-        ashore[parts[shore]] = True
-        surface[body & ~ashore[parts]] = value
-        new = np.rint(relevel(value, surface[body])).astype(np.int16)
-        changed = new < value
-        if not changed.any():
-            continue
-        out[window][body] = np.minimum(new, value)
-        rows, cols = np.nonzero(body)
-        x_m = field.x0_cm / 100 + (window[1].start + cols.mean()) * step_m
-        y_m = field.y0_cm / 100 + (window[0].start + rows.mean()) * step_m
-        found.append(
-            {
-                "texels": int(changed.sum()),
-                "x_m": round(float(x_m), 1),
-                "y_m": round(float(y_m), 1),
-                "box_level_m": value / hf.DM_PER_M,
-                "spill_share": round(share, 3),
-                "surface_m": [
-                    round(float(new[changed].min()) / hf.DM_PER_M, 1),
-                    round(float(new[changed].max()) / hf.DM_PER_M, 1),
-                ],
-            }
-        )
+        drops = _below_drops(whole, heights[window], value, pad)
+        work, rest, spills = banks[window], whole, False
+        if drops:
+            cut += 1
+            # Water below a drop, once re-levelled, leaves the body and bounds the rest at
+            # its new level; any part spills when the whole body would.
+            work, rest = work.copy(), whole.copy()
+            judged = _judged(whole, g, np.where(whole, np.float32(np.nan), work), value, step_m)
+            spills = judged is not None and judged[2] > SPILL_SHARE
+        parts = [(sub, mask, True) for sub, mask in drops]
+        parts.append(((slice(0, whole.shape[0]), slice(0, whole.shape[1])), rest, False))
+        for sub, body, below in parts:
+            bank = np.where(body, np.float32(np.nan), work[sub])
+            judged = _judged(body, g[sub], bank, value, step_m)
+            candidates += judged is not None
+            if judged is None or (judged[2] <= SPILL_SHARE and not spills):
+                continue
+            lakes = (wet[window][sub] & (water[window][sub] != hf.NODATA)) if below else None
+            new = _surface(body, g[sub], *judged[:2], value, lakes)
+            if new is None or not (changed := new < value).any():
+                continue
+            out[window][sub][body] = np.minimum(new, value)
+            if below:
+                work[sub][body] = np.minimum(new, value)
+                rest[sub][body] &= ~changed
+            found.append(
+                {
+                    "texels": int(changed.sum()),
+                    **_place(field, window, sub, body, step_m),
+                    "box_level_m": value / hf.DM_PER_M,
+                    "spill_share": round(judged[2], 3),
+                    "below_a_drop": below,
+                    "surface_m": [
+                        round(float(new[changed].min()) / hf.DM_PER_M, 1),
+                        round(float(new[changed].max()) / hf.DM_PER_M, 1),
+                    ],
+                }
+            )
     found.sort(key=lambda body: -body["texels"])
     return out, {
         "rule": (
@@ -216,12 +298,20 @@ def perched_levels(field, planes=None) -> tuple[np.ndarray | None, dict]:
             "surface is then the harmonic membrane spanning its shoreline, each shoreline "
             "texel at the highest level its neighbours allow; a texel keeps the box level "
             "within excess_m of that surface, takes the surface at twice excess_m, and is "
-            "handed over linearly between. The ocean level is exempt"
+            "handed over linearly between. A body is cut where its ground falls more than "
+            "lip_drop_m between neighbours; a part below such a cut and more than lip_drop_m "
+            "under the level all over is judged first, perched when its own ring or the "
+            "body's spills. Its membrane spans only the shoreline beside the water it joins "
+            "more than excess_m below the level, or failing that the shoreline that far below "
+            "and within lip_drop_m of its ground, never the drop or the cliffs. Re-levelled, "
+            "it leaves the body and bounds the rest at its new level. The ocean level is exempt"
         ),
         "excess_m": PERCHED_EXCESS_M,
         "spill_ring_m": list(SPILL_RING_M),
         "spill_share": SPILL_SHARE,
+        "lip_drop_m": LIP_DROP_M,
         "bodies_standing_above_a_bank": candidates,
+        "bodies_cut_at_a_drop": cut,
         "bodies": len(found),
         "texels": int(sum(body["texels"] for body in found)),
         "largest": found[:PERCHED_LIST_MAX],
