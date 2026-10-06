@@ -342,6 +342,7 @@ class _Field:
     """
 
     spacing_cm = 100.0
+    terrain_grid = None
 
     def __init__(self, height_dm, prov, density=None):
         self.height_dm = numpy.asarray(height_dm, numpy.int16)
@@ -352,6 +353,9 @@ class _Field:
 
     def density_raster(self):
         return self._density
+
+    def plane(self, _name):
+        return None
 
 
 def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent():
