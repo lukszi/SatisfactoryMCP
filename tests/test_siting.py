@@ -242,7 +242,7 @@ def test_survey_without_a_footprint_is_none(game, state):
 
 
 def test_the_local_map_link_matches_the_frontends_own_writer():
-    """``writeHash`` in map.ts writes ``#world=…&z=…&c=x,y`` with c in metres to one
+    """``writeHash`` in map/map.ts writes ``#world=…&z=…&c=x,y`` with c in metres to one
     decimal; the deep link must be a fragment that reader accepts."""
     from satisfactory_mcp.domain.spatial.maplink import local_map_url
 

@@ -18,6 +18,7 @@ FORMAT_TS = (
     / "web"
     / "frontend"
     / "src"
+    / "kit"
     / "format.ts"
 )
 

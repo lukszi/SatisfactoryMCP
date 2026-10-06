@@ -10,7 +10,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-const FILE = new URL("../src/api-schema.d.ts", import.meta.url);
+const FILE = new URL("../src/api/schema.d.ts", import.meta.url);
 const MARK = "GENERATED from the server's own /openapi.json";
 
 const HEADER = `/**
@@ -57,8 +57,8 @@ const HEADER = `/**
 
 const body = readFileSync(FILE, "utf8");
 if (body.includes(MARK)) {
-  console.log("api-schema.d.ts: header already present");
+  console.log("api/schema.d.ts: header already present");
 } else {
   writeFileSync(FILE, HEADER + body, "utf8");
-  console.log("api-schema.d.ts: header stamped");
+  console.log("api/schema.d.ts: header stamped");
 }

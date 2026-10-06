@@ -299,8 +299,8 @@ def test_the_fragment_key_the_link_writes_is_the_one_the_page_reads():
     key = written.split("#")[1].split("=")[0]
     assert key == "pickups"
 
-    reader = (FRONTEND / "fragment.ts").read_text(encoding="utf-8")
-    writer = (FRONTEND / "map.ts").read_text(encoding="utf-8")
+    reader = (FRONTEND / "app" / "fragment.ts").read_text(encoding="utf-8")
+    writer = (FRONTEND / "map" / "map.ts").read_text(encoding="utf-8")
     assert f"asked.{key}" in reader, f"fragment.ts does not read {key}= out of the fragment"
     assert f'"{key}="' in writer, f"writeHash does not put {key}= back into the address bar"
 
@@ -313,7 +313,7 @@ def test_the_page_tells_the_three_loot_states_apart():
     a drive still in it -- and the category name is the other half, because null on a mushroom
     is not a claim about a mushroom at all.
     """
-    drawing = (FRONTEND / "markers.ts").read_text(encoding="utf-8")
+    drawing = (FRONTEND / "map" / "drawn" / "markers.ts").read_text(encoding="utf-8")
     assert 'POD_CATEGORY = "crashed_drop_pod"' in drawing, "the page spells the category itself"
     assert "r.looted === true" in drawing, "markers.ts does not single out a looted pod"
     assert "r.looted === null" in drawing, "markers.ts draws an unread flag as a full pod"

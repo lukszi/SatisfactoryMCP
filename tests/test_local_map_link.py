@@ -1,5 +1,5 @@
 """``show_on_map``'s local link: this project's own map, on the configured port, in the
-fragment ``fragment.ts`` reads (``world``, ``z``, ``c`` in metres)."""
+fragment ``app/fragment.ts`` reads (``world``, ``z``, ``c`` in metres)."""
 
 from __future__ import annotations
 

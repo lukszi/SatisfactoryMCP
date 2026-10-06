@@ -18,33 +18,33 @@
 import "leaflet/dist/leaflet.css";
 import "./style.css";
 
-import { listenForCopies } from "./copy";
-import { el } from "./dom";
-import { listenForFinds } from "./finder";
-import { applyFloorFragment, escapeLeavesFloorMode, noteFloorChoice } from "./floors";
-import { listenToFragment } from "./fragment";
-import { inspect } from "./inspector";
-import { declutter } from "./labels";
-import { isBatching, onSettled } from "./layercontrol";
-import { loadLive, loadOne, loadRegions, loadStatic } from "./load";
-import { rememberTick } from "./layers";
-import { fitWorld, map, padPopups, writeHash } from "./map";
-import { listenForEmptyClicks } from "./mapclick";
-import { markHiddenRows, notePickupChoice } from "./markers";
-import { render as renderPanel, showSelector } from "./panel";
-import { listenForPins } from "./pins";
-import { noteRegionChoice, updateRegionBlend } from "./regions";
-import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
-import { wireSearch } from "./search";
-import { syncSharedSettings } from "./shared-settings";
-import { listen } from "./sse";
-import { BOOT, BOOT_GARBLED, garbledNote, state } from "./state";
-import { wireStatus } from "./status";
-import { loadBaseMap } from "./tiles";
-import { onTone } from "./tone";
-import { fail } from "./toast";
-import { listenForTraces } from "./trace";
-import { loadWorlds } from "./worlds";
+import { listenForCopies } from "./kit/copy";
+import { el } from "./kit/dom";
+import { listenForFinds } from "./map/tools/finder";
+import { applyFloorFragment, escapeLeavesFloorMode, noteFloorChoice } from "./map/floors/floors";
+import { listenToFragment } from "./app/fragment";
+import { inspect } from "./map/inspector";
+import { declutter } from "./map/labels";
+import { isBatching, onSettled } from "./map/layercontrol/control";
+import { loadLive, loadOne, loadRegions, loadStatic } from "./app/load";
+import { rememberTick } from "./map/layers";
+import { fitWorld, map, padPopups, writeHash } from "./map/map";
+import { listenForEmptyClicks } from "./map/mapclick";
+import { markHiddenRows, notePickupChoice } from "./map/drawn/markers";
+import { render as renderPanel, showSelector } from "./map/panel";
+import { listenForPins } from "./chat/pins";
+import { noteRegionChoice, updateRegionBlend } from "./map/regions";
+import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./map/drawn/routes";
+import { wireSearch } from "./app/search";
+import { syncSharedSettings } from "./app/shared-settings";
+import { listen } from "./app/sse";
+import { BOOT, BOOT_GARBLED, garbledNote, state } from "./app/state";
+import { wireStatus } from "./app/status";
+import { loadBaseMap } from "./map/tiles";
+import { onTone } from "./map/map-tone";
+import { fail } from "./kit/toast";
+import { listenForTraces } from "./map/tools/trace";
+import { loadWorlds } from "./app/world-picker";
 
 /* ---------------------------------------------------------------- features */
 
@@ -60,21 +60,21 @@ import { loadWorlds } from "./worlds";
  * against the set of modules that call `registerFetch`, in both directions. Three of these are
  * imported by name above as well, and are repeated here anyway: a rule with exceptions in it
  * is a rule nobody can check at a glance. */
-import "./advice";
-import "./crates";
-import "./header";
-import "./inventory";
-import "./labels";
-import "./markers";
-import "./panel";
-import "./pins";
-import "./placements";
-import "./plans";
-import "./power";
-import "./progress";
-import "./recipes";
-import "./routes";
-import "./world";
+import "./chat/advice";
+import "./map/drawn/crates";
+import "./app/header";
+import "./dash/inventory";
+import "./map/labels";
+import "./map/drawn/markers";
+import "./map/panel";
+import "./chat/pins";
+import "./map/drawn/placements";
+import "./map/drawn/plan-sitings";
+import "./map/drawn/power-wires";
+import "./dash/progress/progress";
+import "./dash/recipes/recipes";
+import "./map/drawn/routes";
+import "./dash/world/world";
 
 /* ------------------------------------------------------------------- wiring */
 
