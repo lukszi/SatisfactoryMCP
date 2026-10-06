@@ -27,13 +27,13 @@ from ..serial import (
     FoundField,
     Region,
     TableAge,
-    _fail,
-    _field_json,
-    _label_json,
-    _pickup_json,
-    _resource_name,
-    _state,
-    _xyz,
+    collectible_json,
+    error_response,
+    found_field_json,
+    region_json,
+    resource_name,
+    world_state,
+    xyz_m,
 )
 
 __all__ = ["INSPECT_NEAREST", "INSPECT_RADIUS_M", "router"]
@@ -263,10 +263,10 @@ def _nearest_json(n: dict, game) -> NearestNode:
         "id": n["instance"],
         "name": str(n["instance"]).rsplit(".", 1)[-1],
         "resource": n["resource"],
-        "resource_name": _resource_name(game, n["resource"]),
+        "resource_name": resource_name(game, n["resource"]),
         "kind": n["kind"],
         "purity": n["purity"],
-        **_xyz((n["x"], n["y"], n["z"])),
+        **xyz_m((n["x"], n["y"], n["z"])),
         "occupied": n["tapped"],
         "occupant_cls": n["tapped_by"],
         "distance_m": n["distance_m"],
@@ -308,12 +308,12 @@ def inspect(
         table = spatial_nodes.load_nodes()
         spatial_regions.load_regions()
     except FileNotFoundError as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
 
     st: WorldState | None = None
     save_error: str | None = None
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
         save_error = f"could not read save: {exc}"
 
@@ -333,14 +333,16 @@ def inspect(
     counted = found.conduits
     return {
         "at": {"x_m": round(x_m, 1), "y_m": round(y_m, 1)},
-        "region": _label_json(found.label),
+        "region": region_json(found.label),
         "elevation": _elevation_json(found.probe),
         "nearest": [_nearest_json(n, game) for n in nearest],
         "grid": geo.grid_cell(x, y),
         "direction": geo.direction_of(x, y),
         "conduits": None if counted is None else {**counted, "radius_m": found.conduit_radius_m},
-        "fields": [_field_json(f, game) for f in found.fields],
-        "pickups": [{**_pickup_json(p, p["spoiler"]), "label": p["label"]} for p in found.pickups],
+        "fields": [found_field_json(f, game) for f in found.fields],
+        "pickups": [
+            {**collectible_json(p, p["spoiler"]), "label": p["label"]} for p in found.pickups
+        ],
         "pickups_within": found.pickups_total,
         "pickups_within_spoilers": found.pickups_spoilers,
         "stale": stale,

@@ -19,7 +19,7 @@ from ....core.filelock import LockTimeout
 from ....core.schema import NewerSchema
 from ....domain import settings as store
 from ....domain.planning.planlog import Actor
-from ..serial import ActorBody, _fail, _settings_json
+from ..serial import ActorBody, error_response, settings_json
 
 __all__ = ["router"]
 
@@ -88,7 +88,7 @@ def _newer(exc: NewerSchema) -> JSONResponse:
 def shared_settings() -> Any:
     """The shared settings: chat's tools read the same file."""
     try:
-        return _settings_json(store.read())
+        return settings_json(store.read())
     except NewerSchema as exc:
         return _newer(exc)
 
@@ -110,11 +110,11 @@ def change_settings(body: Annotated[SettingsPatchBody, Body()]) -> Any:
     except NewerSchema as exc:
         return _newer(exc)
     except LockTimeout as exc:
-        return _fail(f"settings are busy, nothing written: {exc}", 503)
+        return error_response(f"settings are busy, nothing written: {exc}", 503)
     except store.SettingsStale as exc:
         current = {k: v for k, v in exc.current.items() if k != "asked"}
-        payload = {"error": str(exc), "stale": True, "settings": _settings_json(current)}
+        payload = {"error": str(exc), "stale": True, "settings": settings_json(current)}
         return JSONResponse(payload, status_code=409)
     except store.SettingsError as exc:
-        return _fail(str(exc), 400)
-    return _settings_json(view)
+        return error_response(str(exc), 400)
+    return settings_json(view)

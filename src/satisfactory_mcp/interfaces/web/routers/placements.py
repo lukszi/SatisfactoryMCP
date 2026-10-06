@@ -28,7 +28,7 @@ from ....core.gamedata.model import pretty_class
 from ....core.saveio import rows as saverows
 from ....domain.factories import health
 from ....domain.world.state import WorldState
-from ..serial import _fail, _m, _state, _xyz, _yaw
+from ..serial import cm_to_m, error_response, world_state, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -151,7 +151,7 @@ def _record_row(
         # Readable words either way; the raw class stays in ``cls`` for anything that needs
         # the exact id, and the same holds for the recipe below.
         "name": st.game.building_name(cls),
-        **_xyz(row.get("pos")),
+        **xyz_m(row.get("pos")),
         "recipe": recipe_id,
         "recipe_name": recipe.name if recipe else pretty_class(recipe_id),
         "clock": row.get("clock"),
@@ -160,7 +160,7 @@ def _record_row(
         "actionable": verdict.state in health.ACTIONABLE,
         # Three decimals: at two, 0.9994 rounds onto 1.0 and health.SATURATED's line vanishes.
         "uptime": None if verdict.uptime is None else round(verdict.uptime, 3),
-        "yaw": _yaw(row.get("yaw")),
+        "yaw": yaw_deg(row.get("yaw")),
         # Footprint is already metres; the projection's coordinates are not.
         "w_m": round(footprint.width_m, 1) if footprint else None,
         "l_m": round(footprint.depth_m, 1) if footprint else None,
@@ -183,9 +183,9 @@ def machines(request: Request, save: str | None = None, world: str | None = None
     states in ``health.ACTIONABLE``. How the map marks it: docs/save-projection.md §6.2d.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     p = st.projection
     leaves = [_leaf(row) for kind in MACHINE_KINDS for row in p.get(kind, ())]
     # Total by construction -- assess walks MACHINE_KINDS too -- and keyed on the leaf
@@ -238,20 +238,20 @@ def structures(request: Request, save: str | None = None, world: str | None = No
     the point inspector read.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     out = [
         {
             "cls": piece.cls,
-            "x_m": _m(piece.x),
-            "y_m": _m(piece.y),
-            "z_m": _m(piece.z),
+            "x_m": cm_to_m(piece.x),
+            "y_m": cm_to_m(piece.y),
+            "z_m": cm_to_m(piece.z),
             # Optional on purpose: a row from a schema-11 projection is four columns long
             # and is still a real piece at a real place, it just has no facing. ``None``
             # covers the schema-16 unreadable rotation too -- see ``saveio.rows``.
-            "yaw": _yaw(piece.yaw),
+            "yaw": yaw_deg(piece.yaw),
         }
         for piece in saverows.iter_structures(st.projection)
     ]

@@ -23,7 +23,7 @@ from ....domain.advice import store as hidden_store
 from ....domain.planning import journal
 from ....domain.planning.planlog import Actor
 from ....domain.world import pin
-from ..serial import _fail, _state
+from ..serial import error_response, world_state
 
 __all__ = ["router"]
 
@@ -159,13 +159,13 @@ def _refused(st, exc: Exception) -> JSONResponse:
     if isinstance(exc, NewerSchema):
         return _newer(exc)
     if isinstance(exc, LockTimeout):
-        return _fail(f"advisories are busy, nothing written: {exc}", 503)
+        return error_response(f"advisories are busy, nothing written: {exc}", 503)
     if isinstance(exc, hidden_store.AdviceStale):
         row = _one(advice.current(st), exc.key)
         return JSONResponse({"error": str(exc), "stale": True, "row": row}, status_code=409)
     if isinstance(exc, hidden_store.AdviceMissing):
-        return _fail(str(exc), 404)
-    return _fail(str(exc), 400)
+        return error_response(str(exc), 404)
+    return error_response(str(exc), 400)
 
 
 _ERRORS = (hidden_store.AdviceError, LockTimeout, NewerSchema)
@@ -194,9 +194,9 @@ def advice_list(
     """Every advisory firing on this save, active and hidden. ``biomass`` overrides the
     shared setting for this read; ``spoilers=1`` counts pickups not found yet."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     wants = None if biomass is None else biomass == "include"
     try:
         cur = advice.current(st, biomass=wants, spoilers=bool(spoilers))
@@ -226,14 +226,14 @@ def hide_advice(
 ) -> Any:
     """Dismiss an advisory until it gets worse, or snooze it for hours of play time."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         cur = advice.current(st, spoilers=bool(spoilers))
         adv = next((a for a in cur.items if a.key == body["key"]), None)
         if adv is None:
-            return _fail("that advisory no longer fires on this save", 404)
+            return error_response("that advisory no longer fires on this save", 404)
         mode, hours = body["mode"], body.get("hours")
         hidden_store.hide(
             st.world_id,
@@ -270,14 +270,14 @@ def restore_advice(
 ) -> Any:
     """Show a hidden advisory again; a ``rev`` that is not its current one is a 409."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         cur = advice.current(st)
         adv = cur.find(adv_id)
         if adv is None:
-            return _fail(f"{adv_id} is not an advisory on this save", 404)
+            return error_response(f"{adv_id} is not an advisory on this save", 404)
         hidden_store.restore(st.world_id, adv.key, body["rev"])
     except _ERRORS as exc:
         return _refused(st, exc)

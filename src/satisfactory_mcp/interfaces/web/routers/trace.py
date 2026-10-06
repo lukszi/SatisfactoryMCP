@@ -22,7 +22,7 @@ from ....domain.factories.select import SelectorError
 from ....domain.factories.trace import resolve_seeds, trace
 from ....domain.spatial import geo
 from ....domain.world import pin
-from ..serial import _fail, _m, _state
+from ..serial import cm_to_m, error_response, world_state
 
 __all__ = ["router"]
 
@@ -143,7 +143,7 @@ def _runs(st, nodes: set[str]) -> list[dict]:
                 "pieces": link.pieces if link is not None else 1,
                 "lines_m": [],
             }
-        run["lines_m"].append([[_m(p[0]), _m(p[1])] for p in seg.points])
+        run["lines_m"].append([[cm_to_m(p[0]), cm_to_m(p[1])] for p in seg.points])
     return list(runs.values())
 
 
@@ -159,21 +159,21 @@ def trace_path(
     """What feeds a machine, a building type or a factory (``up``), or what it feeds (``down``)."""
     way = direction.strip().casefold()
     if way not in ("up", "down"):
-        return _fail(f"unknown direction “{direction}”: up or down", 400)
+        return error_response(f"unknown direction “{direction}”: up or down", 400)
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         token = pin.check(st.header, as_of)
     except pin.PinRefused:
-        return _fail("a newer save was written since this was traced; trace again", 409)
+        return error_response("a newer save was written since this was traced; trace again", 409)
     try:
         seeds, subject = resolve_seeds(st, st.game, seed)
     except SelectorError as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
     if not seeds:
-        return _fail(f"nothing matches “{seed}”", 404)
+        return error_response(f"nothing matches “{seed}”", 404)
 
     walked = trace(st, st.game, seeds, way)
     reached = {r.instance: r for r in walked.reached}
@@ -209,8 +209,8 @@ def trace_path(
                 "uses": _rates(row.uses),
                 "state": state,
                 "actionable": state in health.ACTIONABLE,
-                "x_m": _m(at[0]) if at else None,
-                "y_m": _m(at[1]) if at else None,
+                "x_m": cm_to_m(at[0]) if at else None,
+                "y_m": cm_to_m(at[1]) if at else None,
             }
         )
     machines.sort(key=lambda r: (not r["seed"], r["hops"], r["name"]))
@@ -225,7 +225,7 @@ def trace_path(
         "ambiguous": walked.ambiguous,
         "truncated": walked.truncated,
         "seeds": len(seeds),
-        "bbox_m": None if box is None else [_m(v) for v in box],
+        "bbox_m": None if box is None else [cm_to_m(v) for v in box],
         "items": _rates(totals),
         "machines": machines,
         "runs": _runs(st, walked.nodes),

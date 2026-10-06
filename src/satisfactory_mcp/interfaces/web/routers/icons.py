@@ -23,7 +23,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, Response
 
 from .... import config
-from ..serial import _fail
+from ..serial import error_response
 
 __all__ = ["ICONS_DIR_NAME", "router"]
 
@@ -118,7 +118,7 @@ def icon(request: Request, desc: str) -> Any:
     """
     path = icon_path(desc)
     if path is None:
-        return _fail(
+        return error_response(
             f"{desc!r} is not a descriptor class name: these are named exactly as the save "
             "and the docs dump name them, e.g. Desc_IronPlate_C or "
             "Build_StorageContainerMk1_C, and nothing else is looked up",
@@ -129,12 +129,12 @@ def icon(request: Request, desc: str) -> Any:
             return Response(status_code=204)
         directory = _icons_dir()
         if not (directory / ICONS_MANIFEST_NAME).is_file():
-            return _fail(
+            return error_response(
                 f"no icons: {directory} is written by {ICONS_TOOL}. Like the map image, it "
                 "is only ever read locally, never uploaded and never committed.",
                 404,
             )
-        return _fail(
+        return error_response(
             f"no icon for {desc}: the directory was generated and holds no such file. Either "
             "the class is one of the few the game ships no picture for -- manifest.json "
             "lists every one under 'unresolved', with the reason -- or it is not an item "

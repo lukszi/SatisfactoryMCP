@@ -16,7 +16,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from ....domain.spatial import regions as spatial_regions
-from ..serial import _fail, _m
+from ..serial import cm_to_m, error_response
 
 __all__ = ["router"]
 
@@ -77,22 +77,22 @@ def regions() -> Any:
     try:
         rmap = spatial_regions.load_regions()
     except FileNotFoundError as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
 
     def _label_m(name: str, centroid: tuple[float, float]) -> list[float]:
         anchor = rmap.label_anchor(name) or centroid
-        return [_m(anchor[0]), _m(anchor[1])]
+        return [cm_to_m(anchor[0]), cm_to_m(anchor[1])]
 
     payload = {
         "grid": list(rmap.grid),
         "legend": dict(rmap.legend),
-        "cell_m": _m(rmap.cell),
-        "x0_m": _m(rmap.x0),
-        "y0_m": _m(rmap.y0),
+        "cell_m": cm_to_m(rmap.cell),
+        "x0_m": cm_to_m(rmap.x0),
+        "y0_m": cm_to_m(rmap.y0),
         "regions": {
             name: {
-                "centroid_m": [_m(entry["centroid"][0]), _m(entry["centroid"][1])],
-                "bbox_m": [_m(v) for v in entry["bbox"]],
+                "centroid_m": [cm_to_m(entry["centroid"][0]), cm_to_m(entry["centroid"][1])],
+                "bbox_m": [cm_to_m(v) for v in entry["bbox"]],
                 "label_m": _label_m(name, entry["centroid"]),
             }
             for name, entry in rmap.regions.items()

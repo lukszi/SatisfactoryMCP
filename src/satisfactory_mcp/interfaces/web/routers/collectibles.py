@@ -16,7 +16,7 @@ from fastapi import APIRouter, Query, Request
 
 from ....domain.collectibles import service
 from ....domain.collectibles.service import collect_view
-from ..serial import CollectibleRow, TableAge, _fail, _pickup_json, _state
+from ..serial import CollectibleRow, TableAge, collectible_json, error_response, world_state
 
 __all__ = ["router"]
 
@@ -95,13 +95,13 @@ def collectibles(
     with its ``spoiler`` flag.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     view = collect_view(st, group, mode, near)
     if view.error:
-        return _fail(view.error)
+        return error_response(view.error)
 
     census = service.census_rows(st) if view.table is not None else []
     found = service.found(st, census)
@@ -110,7 +110,7 @@ def collectibles(
     kept_census = [c for c in census if not (hide and c["spoiler"])]
     hidden = {c["category"] for c in census} - {c["category"] for c in kept_census}
     rows = [
-        _pickup_json(r, service.is_spoiler(r["category"], found))
+        collectible_json(r, service.is_spoiler(r["category"], found))
         for r in (view.rows or ())
         if r["category"] not in hidden
     ]

@@ -21,7 +21,7 @@ from ....domain.planning import site_preview, siting
 from ....domain.planning.planlog import InvalidOp, PlanLog, UnknownPlan
 from ....domain.world import pin
 from .. import terrain
-from ..serial import Biomass, _fail, _state
+from ..serial import Biomass, error_response, world_state
 
 __all__ = ["router"]
 
@@ -191,17 +191,17 @@ def plan_site_preview(
     """A plan version's pad at (x, y, yaw, w × d), every part omitted taken from its stored
     site, else from where a first placement starts. ``full`` reads the terrain at 1 m."""
     if not _KEY.fullmatch(key):
-        return _fail(f"no plan “{key}” in this world", 404)
+        return error_response(f"no plan “{key}” in this world", 404)
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         state = PlanLog(st.world_id).state(key, rev)
     except UnknownPlan:
-        return _fail(f"no plan “{key}” in this world", 404)
+        return error_response(f"no plan “{key}” in this world", 404)
     except InvalidOp as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
     token = pin.check(st.header, None)
     sess = _session(st, state, biomass == "include", headroom, token)
     base = siting.parse(state) or site_preview.start_siting(st.game, st, sess)

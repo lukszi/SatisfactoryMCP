@@ -19,7 +19,7 @@ from ....domain.factories.health import assess
 from ....domain.power.report import PowerLedger, starved_cause
 from ....domain.spatial import geo
 from ....domain.spatial import regions as spatial_regions
-from ..serial import Biomass, Region, _fail, _label_json, _m, _state
+from ..serial import Biomass, Region, cm_to_m, error_response, region_json, world_state
 
 __all__ = ["router"]
 
@@ -142,7 +142,7 @@ def _ledger(report: dict) -> dict:
 
 def _at(placed: dict, short: str) -> tuple[float | None, float | None]:
     pos = placed.get(short)
-    return (_m(pos[0]), _m(pos[1])) if pos else (None, None)
+    return (cm_to_m(pos[0]), cm_to_m(pos[1])) if pos else (None, None)
 
 
 def _groups(report: dict) -> list[dict]:
@@ -184,9 +184,9 @@ def power_circuits(
     ledger counts only what stands on a wire, so it is the sum of the circuits.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     counted = biomass == "include"
     graph = st.graph
@@ -222,8 +222,8 @@ def power_circuits(
                 "poles": sum(1 for s in component if graph.kind(s) in ("pole", "tower")),
                 "factories": [n for n, _ in named.most_common()],
                 "factory_count": len(named),
-                "centroid_m": None if centre is None else [_m(centre[0]), _m(centre[1])],
-                "bbox_m": None if box is None else [_m(v) for v in box],
+                "centroid_m": None if centre is None else [cm_to_m(centre[0]), cm_to_m(centre[1])],
+                "bbox_m": None if box is None else [cm_to_m(v) for v in box],
             }
         )
     circuits.sort(key=lambda c: -(c["ledger"]["generation_mw"] + c["ledger"]["draw_mw"]))
@@ -242,7 +242,7 @@ def power_circuits(
         pos = placed.get(short)
         if rmap is None or pos is None:
             return None
-        return _label_json(rmap.label_for(pos[0], pos[1]))
+        return region_json(rmap.label_for(pos[0], pos[1]))
 
     def refs(shorts: list[str]) -> list[dict]:
         out = []

@@ -16,7 +16,7 @@ from fastapi import APIRouter, Request
 
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world.inventory import CRATE_KIND_TEXT, Holding
-from ..serial import Region, _fail, _label_json, _m, _state, _xyz
+from ..serial import Region, cm_to_m, error_response, region_json, world_state, xyz_m
 
 __all__ = ["router"]
 
@@ -94,16 +94,16 @@ def _place(st, rmap, me, h: Holding) -> StockPlace:
     distance = None
     if h.pos is not None:
         if rmap is not None:
-            region = _label_json(rmap.label_for(h.pos[0], h.pos[1]))
+            region = region_json(rmap.label_for(h.pos[0], h.pos[1]))
         if me is not None:
-            distance = _m(hypot(h.pos[0] - me[0], h.pos[1] - me[1]))
+            distance = cm_to_m(hypot(h.pos[0] - me[0], h.pos[1] - me[1]))
     return {
         "source": h.source,
         "kind": h.kind,
         "instance_leaf": h.instance,
         "cls": h.cls,
         "name": g.building_name(h.cls) or h.cls,
-        **_xyz(h.pos),
+        **xyz_m(h.pos),
         "region": region,
         "distance_m": distance,
         "items": [{"item": i, "name": g.item_name(i), "amount": n} for i, n in h.items],
@@ -121,9 +121,9 @@ def _place(st, rmap, me, h: Holding) -> StockPlace:
 def stock(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Every item held, split into piles, and every place holding something, biggest first."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     g = st.game
     inv = st.inventory
@@ -165,5 +165,5 @@ def stock(request: Request, save: str | None = None, world: str | None = None) -
             "crates": len(crates),
             "deaths": sum(1 for h in crates if h.crate_kind == "death"),
         },
-        "player": _xyz(me),
+        "player": xyz_m(me),
     }

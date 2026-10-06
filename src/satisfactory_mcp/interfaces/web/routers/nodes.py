@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request
 
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
-from ..serial import Region, _fail, _label_json, _resource_name, _state, _xyz
+from ..serial import Region, error_response, region_json, resource_name, world_state, xyz_m
 
 __all__ = ["router"]
 
@@ -107,13 +107,13 @@ def nodes(
         table = spatial_nodes.load_nodes()
         rmap = spatial_regions.load_regions()
     except FileNotFoundError as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
 
     save_error: str | None = None
     taken: dict = {}
     unlocked: set[str] | None = None
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
         taken = spatial_nodes.occupancy(st.projection)
         unlocked = st.unlocked_building_ids
     except Exception as exc:
@@ -130,11 +130,11 @@ def nodes(
             {
                 "id": n["instance"],
                 "resource": n["resource"],
-                "resource_name": _resource_name(game, n["resource"]),
+                "resource_name": resource_name(game, n["resource"]),
                 "name": str(n["instance"]).rsplit(".", 1)[-1],
                 "kind": n["kind"],
                 "purity": n["purity"],
-                **_xyz((n["x"], n["y"], n["z"])),
+                **xyz_m((n["x"], n["y"], n["z"])),
                 "occupied": held is not None,
                 "occupant_cls": occupant,
                 "occupant_name": game.building_name(occupant),
@@ -142,7 +142,7 @@ def nodes(
                 # world to judge against, so assume yes", which is the right default for a
                 # capacity sum and the wrong one for a dot somebody plans around.
                 "reachable": reachable,
-                "region": _label_json(rmap.label_for_node(n)),
+                "region": region_json(rmap.label_for_node(n)),
                 "spoiler": reachable is False and held is None,
             }
         )

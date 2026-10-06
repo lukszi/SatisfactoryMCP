@@ -40,7 +40,7 @@ from ....domain.planning.planlog import (
     UnknownPlan,
 )
 from ....domain.world import pin
-from ..serial import ActorBody, PlanOpBody, _actor_json, _fail, _state
+from ..serial import ActorBody, PlanOpBody, actor_json, error_response, world_state
 
 __all__ = ["router"]
 
@@ -251,7 +251,7 @@ def _note(from_entry: str | None) -> str:
 
 
 def _commit(commit: Commit) -> CommitBody:
-    return {**commit.to_dict(), "actor": _actor_json(commit.actor), "text": commit.text()}
+    return {**commit.to_dict(), "actor": actor_json(commit.actor), "text": commit.text()}
 
 
 def _state_body(log: PlanLog, state: PlanState, game: GameData) -> PlanStateBody:
@@ -288,7 +288,7 @@ def _outdated(log: PlanLog, exc: Outdated, game: GameData) -> JSONResponse:
         "base_rev": exc.base_rev,
         "since": [_commit(c) for c in exc.since],
         "conflicts": [
-            {**c.to_dict(), "theirs_actor": _actor_json(c.theirs_actor)} for c in exc.conflicts
+            {**c.to_dict(), "theirs_actor": actor_json(c.theirs_actor)} for c in exc.conflicts
         ],
         "state": _state_body(log, exc.state, game),
     }
@@ -302,12 +302,12 @@ def _refused(log: PlanLog, exc: Exception, game: GameData) -> JSONResponse:
         body = {"error": str(exc), "already_undone": True, "by": exc.by}
         return JSONResponse(body, status_code=409)
     if isinstance(exc, Forgotten):
-        return _fail(str(exc), 410)
+        return error_response(str(exc), 410)
     if isinstance(exc, UnknownPlan):
         return _no_plan(exc.what)
     if isinstance(exc, LockTimeout):
-        return _fail(f"plans are busy, nothing written: {exc}", 503)
-    return _fail(str(exc), 400)
+        return error_response(f"plans are busy, nothing written: {exc}", 503)
+    return error_response(str(exc), 400)
 
 
 _ERRORS = (PlanLogError, LockTimeout)
@@ -327,7 +327,7 @@ def _reject(st, key: str, sav: str, exc: Exception) -> None:
 
 
 def _no_plan(key: str) -> JSONResponse:
-    return _fail(f"no plan “{key}” in this world", 404)
+    return error_response(f"no plan “{key}” in this world", 404)
 
 
 def _opened(request: Request, key: str, save: str | None, world: str | None):
@@ -335,9 +335,9 @@ def _opened(request: Request, key: str, save: str | None, world: str | None):
     if not _KEY.fullmatch(key):
         return None, _no_plan(key)
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return None, _fail(f"could not read save: {exc}", 404)
+        return None, error_response(f"could not read save: {exc}", 404)
     return st, _log(st)
 
 
@@ -355,14 +355,14 @@ def create_plan(
 ) -> Any:
     """A new plan at v1, stamped against the save this request read."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     log = _log(st)
     try:
         canon, _said = pins.canonical_args(st, body["args"])
     except pins.PinError as exc:
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)
     try:
         args = PlanArgs.from_dict(canon)
         draft = PlanState(key="", rev=1, name=body["name"], args=args)
@@ -406,7 +406,7 @@ def plan_state(
     except UnknownPlan:
         return _no_plan(key)
     except InvalidOp as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
 
 
 @router.get("/plans/{key}/ops", response_model=PlanOpsResponse)
@@ -449,7 +449,7 @@ def push_ops(
     try:
         ops, _said = pins.canonical_ops(st, body["ops"])
     except pins.PinError as exc:
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)
     item = body.get("require_item")
     extend = None
     if item:
@@ -494,7 +494,7 @@ def push_args(
     try:
         args, _said = pins.canonical_args(st, body["args"])
     except pins.PinError as exc:
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)
     try:
         pushed = log.push_args(
             key,
@@ -600,7 +600,7 @@ def duplicate_plan(
     except UnknownPlan:
         return _no_plan(key)
     if rev is not None and not 1 <= rev <= head:
-        return _fail(f"plan {key} has no v{rev}; it is at v{head}", 404)
+        return error_response(f"plan {key} has no v{rev}; it is at v{head}", 404)
     try:
         pushed = manage.duplicate(
             log,
@@ -643,7 +643,7 @@ def plan_versions(
             {
                 "rev": r["commit"].rev,
                 "ts": r["commit"].ts,
-                "actor": _actor_json(r["commit"].actor),
+                "actor": actor_json(r["commit"].actor),
                 "text": r["commit"].text(),
                 "undoes": r["commit"].undoes,
                 "undone_by": r["undone_by"],

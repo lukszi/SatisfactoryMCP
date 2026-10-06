@@ -22,7 +22,7 @@ from ....core.schema import NewerSchema
 from ....domain.planning import asks as ask_store
 from ....domain.planning import journal
 from ....domain.planning.planlog import Actor
-from ..serial import _fail, _state
+from ..serial import error_response, world_state
 
 __all__ = ["router"]
 
@@ -103,14 +103,14 @@ def _refused(world_id: str, exc: Exception) -> JSONResponse:
     if isinstance(exc, NewerSchema):
         return _newer(exc)
     if isinstance(exc, LockTimeout):
-        return _fail(f"asks are busy, nothing written: {exc}", 503)
+        return error_response(f"asks are busy, nothing written: {exc}", 503)
     if isinstance(exc, ask_store.AskStale):
         names = {r["about"]["plan"]: r["plan_name"] for r in ask_store.live(world_id)}
         body = {"error": str(exc), "stale": True, "ask": ask_store.row(exc.ask, names)}
         return JSONResponse(body, status_code=409)
     if isinstance(exc, ask_store.AskMissing | ask_store.AboutMissing):
-        return _fail(str(exc), 404)
-    return _fail(str(exc), 400)
+        return error_response(str(exc), 404)
+    return error_response(str(exc), 400)
 
 
 _ERRORS = (ask_store.AskError, LockTimeout, NewerSchema)
@@ -133,9 +133,9 @@ def _note(world_id: str, kind: str, ask: dict, text: str) -> None:
 def asks(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Every live ask of this world, ascending by number, answered ones included."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         version = ask_store.read(st.world_id)["version"]
         rows = ask_store.live(st.world_id)
@@ -153,9 +153,9 @@ def create_ask(
 ) -> Any:
     """Queue one question for chat; the player pastes its ``copy`` into chat."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         ask = ask_store.create(st.world_id, body["text"], dict(body["about"]))
     except _ERRORS as exc:
@@ -178,9 +178,9 @@ def drop_ask(
 ) -> Any:
     """Delete one ask, refused with a 409 when ``rev`` is not its current one."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         ask = ask_store.drop(st.world_id, n, body["rev"])
     except _ERRORS as exc:

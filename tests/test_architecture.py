@@ -356,7 +356,7 @@ WEB_APP_PY = WEB / "app.py"
 #:
 #: ``fastapi``/``starlette`` because it is one; ``config``/``core``/``domain`` because that
 #: is the whole point of the layer -- parse a query, call a domain service, serialise; and
-#: the web package's own two shared modules, ``serial`` (the metre/error vocabulary) and
+#: the web package's own two shared homes, ``serial`` (the metre/error vocabulary) and
 #: ``terrain`` (the heightfield seam), which exist precisely so that routers need nothing
 #: else from each other.
 ROUTER_ALLOWED_ROOTS = frozenset({"fastapi", "starlette"})
@@ -1341,7 +1341,8 @@ def test_a_router_sees_the_domain_and_its_own_two_helpers_and_nothing_else():
     assert not stray, (
         "a router may import the standard library, fastapi/starlette, config/core/domain "
         "and the web package's own serial and terrain -- never another router, never app, "
-        "never a presenter. Whatever is shared belongs in serial.py:\n" + "\n".join(sorted(stray))
+        "never a presenter. Whatever is shared belongs in the serial package:\n"
+        + "\n".join(sorted(stray))
     )
 
 

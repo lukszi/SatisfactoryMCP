@@ -19,7 +19,15 @@ from ....domain.factories.query import build_view
 from ....domain.factories.select import SelectorError, select_machines
 from ....domain.spatial import geo
 from ....domain.world import pin
-from ..serial import Flow, MachineSpot, _fail, _flow, _m, _machine_spots, _state
+from ..serial import (
+    Flow,
+    MachineSpot,
+    cm_to_m,
+    error_response,
+    flow_json,
+    machine_spots,
+    world_state,
+)
 
 __all__ = ["router"]
 
@@ -98,27 +106,27 @@ def _subject(
     """The standing machines of a named factory, or of a candidate detected at ``token``:
     ``(state, machines, title)``, or the refusal to send."""
     if bool(factory) == bool(candidate):
-        return _fail("pass exactly one of factory= or candidate=", 400)
+        return error_response("pass exactly one of factory= or candidate=", 400)
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     if factory:
         label = next((x for x in st.labels.labels if x.name == factory), None)
         if label is None:
-            return _fail(f"no factory named “{factory}” in this world", 404)
+            return error_response(f"no factory named “{factory}” in this world", 404)
         alive = set(st.graph.machines())
         return st, [m for m in label.anchors if m in alive], label.name
     if not token:
-        return _fail("candidate= needs the token= it was detected at", 400)
+        return error_response("candidate= needs the token= it was detected at", 400)
     try:
         pin.check(st.header, token)
     except pin.PinRefused:
-        return _fail("a newer save was written since this was detected; detect again", 409)
+        return error_response("a newer save was written since this was detected; detect again", 409)
     try:
         return st, select_machines([candidate], st), candidate
     except SelectorError as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
 
 
 @router.get("/factories/graph", response_model=FactoryGraphResponse)
@@ -154,13 +162,13 @@ def factory_graph(
                 "machines": len(g.machines),
                 "clock": round(sum(g.clocks) / len(g.clocks), 3) if g.clocks else None,
                 "makes": [
-                    _flow(fg, k, v) for k, v in sorted(g.makes.items(), key=lambda kv: -kv[1])
+                    flow_json(fg, k, v) for k, v in sorted(g.makes.items(), key=lambda kv: -kv[1])
                 ],
                 "running": g.states["running"],
                 "blocked": g.states["blocked"],
                 "stopped": g.states["stopped"],
                 "states": dict(sorted(g.health.items())),
-                "bbox_m": None if box is None else [_m(v) for v in box],
+                "bbox_m": None if box is None else [cm_to_m(v) for v in box],
             }
         )
     used = {e.source for e in fg.edges} | {e.target for e in fg.edges}
@@ -206,5 +214,5 @@ def factory_machines(
     return {
         "title": title,
         "token": pin.check(st.header, None),
-        "machines": _machine_spots(st, machines),
+        "machines": machine_spots(st, machines),
     }

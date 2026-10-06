@@ -19,7 +19,7 @@ from fastapi import APIRouter, Request
 from ....domain.planning import track
 from ....domain.planning.planlog import InvalidOp, PlanLog, UnknownPlan
 from ....domain.world import pin
-from ..serial import Biomass, _fail, _state
+from ..serial import Biomass, error_response, world_state
 
 __all__ = ["router"]
 
@@ -270,23 +270,21 @@ def plan_track(
     """One plan version (the head when ``rev`` is omitted) diffed and staged against this save.
     ``headroom`` is the save's figure a plan with no stored headroom is staged against."""
     if not _KEY.fullmatch(key):
-        return _fail(f"no plan “{key}” in this world", 404)
+        return error_response(f"no plan “{key}” in this world", 404)
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         state = PlanLog(st.world_id).state(key, rev)
     except UnknownPlan:
-        return _fail(f"no plan “{key}” in this world", 404)
+        return error_response(f"no plan “{key}” in this world", 404)
     except InvalidOp as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
     try:
-        out = track.track_view(
-            st.game, st, state, biomass=biomass == "include", default=headroom
-        )
+        out = track.track_view(st.game, st, state, biomass=biomass == "include", default=headroom)
     except ValueError as exc:
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)
     out["built_at"]["token"] = pin.check(st.header, None)
     return out
 
@@ -300,7 +298,7 @@ def plan_feeders(
 ) -> Any:
     """Built extractors whose output reaches a running generator: what startup waves stand on."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     return track.feeders_view(st.game, st, biomass=biomass == "include")

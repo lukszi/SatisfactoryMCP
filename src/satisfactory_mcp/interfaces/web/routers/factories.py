@@ -23,7 +23,7 @@ from ....domain.factories import identity as fidentity
 from ....domain.factories import naming
 from ....domain.spatial import geo
 from ....domain.spatial import regions as spatial_regions
-from ..serial import _fail, _m, _state
+from ..serial import cm_to_m, error_response, world_state
 
 __all__ = ["router"]
 
@@ -91,12 +91,12 @@ def factories(
     which named anchors are the majority is dropped here.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     if style not in naming.STYLES:
-        return _fail(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
+        return error_response(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
     try:
         rmap = spatial_regions.load_regions()
     except FileNotFoundError:
@@ -106,12 +106,12 @@ def factories(
 
     def _bbox_m(machines) -> list[float] | None:
         box = geo.bbox([placed[m][:2] for m in machines if m in placed])
-        return None if box is None else [_m(v) for v in box]
+        return None if box is None else [cm_to_m(v) for v in box]
 
     named = [
         {
             "name": label.name,
-            "centroid_m": [_m(label.centroid[0]), _m(label.centroid[1])],
+            "centroid_m": [cm_to_m(label.centroid[0]), cm_to_m(label.centroid[1])],
             "bbox_m": _bbox_m(label.anchors),
             "machines": len(label.anchors),
             "notes": label.notes,
@@ -128,7 +128,7 @@ def factories(
             {
                 "index": index,
                 "label": names[index],
-                "centroid_m": [_m(cand.centroid[0]), _m(cand.centroid[1])],
+                "centroid_m": [cm_to_m(cand.centroid[0]), cm_to_m(cand.centroid[1])],
                 "bbox_m": _bbox_m(pr.machines),
                 "machines": pr.size,
                 "score": round(pr.cohesion, 3),

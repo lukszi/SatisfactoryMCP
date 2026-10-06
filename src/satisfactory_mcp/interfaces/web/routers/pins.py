@@ -22,7 +22,7 @@ from ....core.schema import NewerSchema
 from ....domain.planning import journal
 from ....domain.planning import pins as pin_store
 from ....domain.planning.planlog import Actor
-from ..serial import _fail, _state
+from ..serial import error_response, world_state
 
 __all__ = ["router"]
 
@@ -115,13 +115,13 @@ def _refused(st, exc: Exception) -> JSONResponse:
     if isinstance(exc, NewerSchema):
         return _newer(exc)
     if isinstance(exc, LockTimeout):
-        return _fail(f"pins are busy, nothing written: {exc}", 503)
+        return error_response(f"pins are busy, nothing written: {exc}", 503)
     if isinstance(exc, pin_store.PinStale):
         body = {"error": str(exc), "stale": True, "pin": pin_store.row(st, exc.pin)}
         return JSONResponse(body, status_code=409)
     if isinstance(exc, pin_store.PinMissing | pin_store.ObjectMissing):
-        return _fail(str(exc), 404)
-    return _fail(str(exc), 400)
+        return error_response(str(exc), 404)
+    return error_response(str(exc), 400)
 
 
 _ERRORS = (pin_store.PinError, LockTimeout, NewerSchema)
@@ -139,9 +139,9 @@ def _note(st, kind: str, pin: dict, args: dict, text: str) -> None:
 def pins(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Every live pin of this world, ascending by number, gone ones included and marked."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         version = pin_store.read(st.world_id)["version"]
         rows = pin_store.live(st)
@@ -164,9 +164,9 @@ def create_pin(
 ) -> Any:
     """Pin an object; pinning one that already has a live pin returns that pin with a 200."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         pin, existing = pin_store.create(
             st, body["kind"], dict(body["ref"]), body.get("label") or ""
@@ -194,9 +194,9 @@ def rename_pin(
 ) -> Any:
     """A new label for one pin, refused with a 409 when ``rev`` is not the pin's current one."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         stored = pin_store.rename(st.world_id, n, body["rev"], body["label"])
     except _ERRORS as exc:
@@ -221,9 +221,9 @@ def drop_pin(
 ) -> Any:
     """Delete one pin. Not undoable, and its number is never given out again."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         stored = pin_store.drop(st.world_id, n, body["rev"])
     except _ERRORS as exc:

@@ -20,7 +20,7 @@ from ....domain.planning import siting as planning_siting
 from ....domain.planning.diff_service import plan_progress
 from ....domain.planning.planlog import PlanLog
 from ....domain.world import pin
-from ..serial import ActorBody, _actor_json, _fail, _state
+from ..serial import ActorBody, actor_json, error_response, world_state
 
 __all__ = ["router"]
 
@@ -115,7 +115,7 @@ def _index(log: PlanLog, st) -> list[PlanIndexRow]:
                 "last": {
                     "rev": newest.rev,
                     "ts": newest.ts,
-                    "actor": _actor_json(newest.actor),
+                    "actor": actor_json(newest.actor),
                     "text": newest.text(),
                 },
                 "status": status.flags,
@@ -138,9 +138,9 @@ def plans(request: Request, save: str | None = None, world: str | None = None) -
     origin alone bounds nothing this layer could draw.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     rows = []
     for plan in st.plans.plans:
@@ -234,9 +234,9 @@ def plans_built(request: Request, save: str | None = None, world: str | None = N
     """Every live plan's built progress, for the Planner's list: a solve per plan, cached
     per plan version, save and factory names."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     token = pin.check(st.header, None)
     log = PlanLog(st.world_id, st.header.get("session_name") or "")
     rows = []

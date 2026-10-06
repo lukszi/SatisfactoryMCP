@@ -17,7 +17,7 @@ from ....domain.factories import identity as fidentity
 from ....domain.factories.query import build_view
 from ....domain.spatial import geo
 from ....domain.spatial import nodes as nodes_mod
-from ..serial import _fail, _m, _state, _xyz
+from ..serial import cm_to_m, error_response, world_state, xyz_m
 
 __all__ = ["router"]
 
@@ -143,12 +143,12 @@ def factory_aspects(
     Rates are items/min at the saved clocks, nameplate and measured, never blended.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     found = _label_machines(st, factory)
     if found is None:
-        return _fail(f"no factory named “{factory}” in this world", 404)
+        return error_response(f"no factory named “{factory}” in this world", 404)
     name, machines = found
     g = st.game
     view = build_view(name, machines, st.graph, g, st.projection, st.labels)
@@ -162,8 +162,8 @@ def factory_aspects(
     return {
         "name": name,
         "size": view.size,
-        "centroid_m": [_m(view.centroid[0]), _m(view.centroid[1])],
-        "bbox_m": None if box is None else [_m(v) for v in box],
+        "centroid_m": [cm_to_m(view.centroid[0]), cm_to_m(view.centroid[1])],
+        "bbox_m": None if box is None else [cm_to_m(v) for v in box],
         "spread_m": round(view.spread_m, 1),
         "producers": view.producers,
         "unmonitored_producers": view.unmonitored_producers,
@@ -195,7 +195,7 @@ def factory_aspects(
                 "recipe": m.recipe or None,
                 "clock": round(m.clock, 4),
                 "paused": m.paused,
-                **_xyz(m.pos if any(m.pos) else None),
+                **xyz_m(m.pos if any(m.pos) else None),
             }
             for m in sorted(view.machines, key=lambda x: (bname(x.building), x.recipe))
         ],
@@ -209,8 +209,8 @@ def factory_aspects(
                 "extractor": bname(cls),
                 "clock": round(clock, 4),
                 "left": left,
-                "x_m": _m(places[node][0]) if node in places else None,
-                "y_m": _m(places[node][1]) if node in places else None,
+                "x_m": cm_to_m(places[node][0]) if node in places else None,
+                "y_m": cm_to_m(places[node][1]) if node in places else None,
             }
             for node, resource, purity, cls, clock, left in view.nodes
         ],
@@ -260,14 +260,14 @@ def factory_sites(
     base, and one spread over several sites is not one place.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     mine: set[str] = set()
     if factory is not None:
         found = _label_machines(st, factory)
         if found is None:
-            return _fail(f"no factory named “{factory}” in this world", 404)
+            return error_response(f"no factory named “{factory}” in this world", 404)
         mine = set(found[1])
     g = st.game
     sites = st.sites()
@@ -282,7 +282,7 @@ def factory_sites(
                 "index": index,
                 "direction": s["direction"],
                 "grid": s["grid"],
-                **_xyz(s["centroid"]),
+                **xyz_m(s["centroid"]),
                 "count": s["count"],
                 "diameter_m": s["diameter_m"],
                 "selector": s["selector"],

@@ -14,9 +14,9 @@ routers point at this file instead of re-telling them.
 4. **Numeric types rewrite wire bytes.** Declaring `float` where the value is an int
    validates `15` into `15.0` on the wire, and vice versa fails validation. Match the real
    type of the value.
-5. **A router never imports another router.** Shared shapes live in `serial.py` only when
-   one function builds them for more than one router; two shapes that merely look alike stay
-   separate. Enforced by `tests/test_architecture.py`.
+5. **A router never imports another router.** Shared shapes live in the `serial` package
+   (`serial/shapes.py`) only when one function builds them for more than one router; two
+   shapes that merely look alike stay separate. Enforced by `tests/test_architecture.py`.
 6. **Regenerate, never hand-edit** `api-schema.d.ts`: throwaway server on a port in
    8920–8999, then `npm run typegen -- <port>` (`scripts/typegen.mjs`: `openapi-typescript`
    against that port, then `scripts/stamp-schema.mjs`). Without an argument it reads
@@ -27,6 +27,13 @@ routers point at this file instead of re-telling them.
    `api-schema.d.ts` like a 200 does. The planner routes (`routers/planlog.py`) answer a
    conflict with `OutdatedResponse` and never apply part of a push. The server stamps the
    actor (`page`, its own pid); the page never sends one.
+8. **Metres, one decimal.** The save stores centimetres; every coordinate that leaves this
+   layer has been divided by 100 and rounded (`serial.cm_to_m`), exactly as the text
+   presenters do. A plan's siting is the exception: it records metres a player typed.
+9. **`?save=` and `?world=` wherever a state is read**, so a page can pin itself to one save
+   while the game keeps autosaving over another.
+10. **An error is `{"error": "..."}` with a 4xx**, never a 200 with an empty list: a browser
+    that cannot tell "no nodes" from "no save" draws an empty map and says nothing.
 
 ## The event stream
 
@@ -121,12 +128,12 @@ written. A create of an object that already has a live pin is a **200** with `ex
 rather than a 201. A pins file from a newer version is a 503 `{error, newer_schema: true}`
 naming the pins, not the path. Pin numbers are never reused.
 
-`PlanOpBody` lives in `serial.py` because two routers publish it (`planlog` for pushes,
+`PlanOpBody` lives in `serial` because two routers publish it (`planlog` for pushes,
 `planner` for the ops an alternates option would push). The alternates route's reply is
 named `PlanAlternatesResponse` because `routers/gamedata.py` already publishes an
 `AlternatesResponse` and two models with one name would rename both in `api-schema.d.ts`.
 
-`Flow`, `MachineSpot` and their builders `_flow` and `_machine_spots` live in `serial.py`
+`Flow`, `MachineSpot` and their builders `flow_json` and `machine_spots` live in `serial`
 because `routers/naming.py` (candidates, amend) and `routers/factory_graph.py` (`/api/factories/graph`,
 `/api/factories/machines`) both send them.
 

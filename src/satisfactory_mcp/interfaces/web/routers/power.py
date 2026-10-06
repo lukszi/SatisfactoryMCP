@@ -23,7 +23,7 @@ from fastapi import APIRouter, Request
 from ....core.saveio import rows as saverows
 from ....domain.spatial import geo
 from ....domain.world.state import WorldState
-from ..serial import _fail, _m, _state, _yaw
+from ..serial import cm_to_m, error_response, world_state, yaw_deg
 
 __all__ = ["router"]
 
@@ -152,9 +152,9 @@ def power(request: Request, save: str | None = None, world: str | None = None) -
     own endpoint order agrees with it only about half the time.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     projection = st.projection
     actors = projection.get("graph", {}).get("actors") or []
@@ -178,10 +178,10 @@ def power(request: Request, save: str | None = None, world: str | None = None) -
         {
             "cls": pole.cls,
             "name": st.game.building_name(pole.cls),
-            "x_m": _m(pole.x),
-            "y_m": _m(pole.y),
-            "z_m": _m(pole.z),
-            "yaw": _yaw(pole.yaw),
+            "x_m": cm_to_m(pole.x),
+            "y_m": cm_to_m(pole.y),
+            "z_m": cm_to_m(pole.z),
+            "yaw": yaw_deg(pole.yaw),
             "connections": degree.get(pole.actor_index, 0) if pole.actor_index >= 0 else 0,
         }
         for pole in pole_rows
@@ -198,8 +198,8 @@ def power(request: Request, save: str | None = None, world: str | None = None) -
             named.get(str(actors[end])) if isinstance(end, int) and 0 <= end < len(actors) else None
             for end in pair
         ]
-        a = [_m(v) for v in wire.a]
-        b = [_m(v) for v in wire.b]
+        a = [cm_to_m(v) for v in wire.a]
+        b = [cm_to_m(v) for v in wire.b]
         wires.append(
             {
                 "a_m": a,

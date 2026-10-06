@@ -27,13 +27,13 @@ from ..serial import (
     FoundField,
     Region,
     TableAge,
-    _fail,
-    _field_json,
-    _label_json,
-    _m,
-    _resource_name,
-    _state,
-    _xyz,
+    cm_to_m,
+    error_response,
+    found_field_json,
+    region_json,
+    resource_name,
+    world_state,
+    xyz_m,
 )
 
 __all__ = ["router"]
@@ -263,16 +263,16 @@ def _found_node(r: dict, game, rm, drifted: set[str]) -> FoundNode:
         "id": r["instance"],
         "name": leaf,
         "resource": r["resource"],
-        "resource_name": _resource_name(game, r["resource"]),
+        "resource_name": resource_name(game, r["resource"]),
         "purity": r["purity"],
         "kind": r["kind"],
-        **_xyz((r["x"], r["y"], r["z"])),
+        **xyz_m((r["x"], r["y"], r["z"])),
         "grid": r["grid"],
         "rate": round(r["rate"], 2),
         "status": status,
         "occupant": occupant,
         "occupant_off": bool(r.get("tapped_paused")) if cls else None,
-        "region": _label_json(rm.label_for_node(r)),
+        "region": region_json(rm.label_for_node(r)),
         "distance_m": r.get("distance_m"),
         "moved": leaf in drifted,
         "spoiler": status == "locked",
@@ -320,21 +320,21 @@ def world_nodes(
         or _choice(kind, (*finder.KINDS, "all"), "kind")
     )
     if refusal:
-        return _fail(refusal)
+        return error_response(refusal)
     if resource and resource.strip().casefold() != "all":
         rid = resolve_item(game, resource)
         if rid is None:
-            return _fail(f"unknown resource {resource!r}")
-        resource = _resource_name(game, rid)
+            return error_response(f"unknown resource {resource!r}")
+        resource = resource_name(game, rid)
     try:
         spatial_nodes.load_nodes()
     except FileNotFoundError as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
 
     st = None
     save_error = None
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
         save_error = f"could not read save: {exc}"
 
@@ -351,9 +351,9 @@ def world_nodes(
         resolve_resource=_resolver(game),
     )
     if found.error:
-        return _fail(found.error)
+        return error_response(found.error)
     if found.unselected:
-        return _fail("no selector resolved: " + "; ".join(found.errors))
+        return error_response("no selector resolved: " + "; ".join(found.errors))
 
     rm = spatial_regions.load_regions()
     drifted = found.drifted
@@ -366,7 +366,7 @@ def world_nodes(
         "nodes": []
         if view == "fields"
         else [_found_node(r, game, rm, drifted) for r in found.rows],
-        "fields": [_field_json(f, game) for f in found.fields] if view == "fields" else [],
+        "fields": [found_field_json(f, game) for f in found.fields] if view == "fields" else [],
         "count": len(found.rows),
         "total": round(found.total, 2),
         "free": round(found.free, 2),
@@ -397,14 +397,14 @@ def world_sites(
     game = request.app.state.game()
     rid = resolve_item(game, resource)
     if rid is None:
-        return _fail(f"unknown resource {resource!r}")
+        return error_response(f"unknown resource {resource!r}")
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     ranked = finder.rank(st, game, rid, source, resolve_resource=_resolver(game))
     if ranked.unselected:
-        return _fail("no selector resolved: " + "; ".join(ranked.selection.errors))
+        return error_response("no selector resolved: " + "; ".join(ranked.selection.errors))
     rm = spatial_regions.load_regions()
     sites = []
     for i, sc in enumerate(ranked.scored[:limit], 1):
@@ -415,8 +415,8 @@ def world_sites(
                 "score": v["score"],
                 "region": v["region"],
                 "grid": v["grid"],
-                "x_m": _m(v["x"]),
-                "y_m": _m(v["y"]),
+                "x_m": cm_to_m(v["x"]),
+                "y_m": cm_to_m(v["y"]),
                 "selector": v["selector"],
                 "nodes": v["nodes"],
                 "untapped": v["untapped"],
@@ -431,7 +431,7 @@ def world_sites(
         )
     return {
         "resource": rid,
-        "resource_name": _resource_name(game, rid),
+        "resource_name": resource_name(game, rid),
         "description": ranked.selection.description,
         "sites": sites,
         "count": len(ranked.scored),
@@ -442,7 +442,7 @@ def world_sites(
 
 
 def _end(e) -> RunEnd:
-    return {"x_m": _m(e.x), "y_m": _m(e.y), "z_m": _m(e.z), "plugs": e.plugs}
+    return {"x_m": cm_to_m(e.x), "y_m": cm_to_m(e.y), "z_m": cm_to_m(e.z), "plugs": e.plugs}
 
 
 def _run_row(run, origin, game) -> RunRow:
@@ -458,12 +458,12 @@ def _run_row(run, origin, game) -> RunRow:
         "z_max_m": round(run.z_max_m, 1),
         "directed": run.directed,
         "basis": run.basis,
-        "carries": (_resource_name(game, run.fluid) if run.fluid else None),
+        "carries": (resource_name(game, run.fluid) if run.fluid else None),
         "rate": None if run.rate is None else round(run.rate, 2),
         "network": run.network,
         "via": list(run.via),
         "distance_m": run.dist_m(*origin),
-        "lines_m": [[(_m(p[0]), _m(p[1])) for p in line] for line in run.lines],
+        "lines_m": [[(cm_to_m(p[0]), cm_to_m(p[1])) for p in line] for line in run.lines],
     }
 
 
@@ -494,13 +494,13 @@ def world_conduits(
         kind, (*conduits_mod.KINDS, "all"), "conduit_kind"
     )
     if refusal:
-        return _fail(refusal)
+        return error_response(refusal)
     if view == "networks" and kind == "belt":
-        return _fail("view=networks lists fluid networks; a belt chain belongs to none")
+        return error_response("view=networks lists fluid networks; a belt chain belongs to none")
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     game = request.app.state.game()
     base = {
         "view": view,
@@ -523,7 +523,7 @@ def world_conduits(
         try:
             origin, where = resolve_origin(st, near)
         except ValueError as exc:
-            return _fail(f"! {exc}")
+            return error_response(f"! {exc}")
         views = conduits_mod.networks(st, origin)
         page = views[offset : offset + limit]
         return {
@@ -532,11 +532,11 @@ def world_conduits(
             "networks": [
                 {
                     "network": v.network,
-                    "carries": _resource_name(game, v.fluid) if v.fluid else None,
+                    "carries": resource_name(game, v.fluid) if v.fluid else None,
                     "pieces": v.pieces,
                     "length_m": round(v.length_m, 1),
-                    "x_m": _m(v.centre[0]),
-                    "y_m": _m(v.centre[1]),
+                    "x_m": cm_to_m(v.centre[0]),
+                    "y_m": cm_to_m(v.centre[1]),
                     "z_min_m": round(v.z_min_m, 1),
                     "z_max_m": round(v.z_max_m, 1),
                     "distance_m": v.distance_m,
@@ -547,7 +547,7 @@ def world_conduits(
             "total": len(views),
             "pipes": sum(v.pieces for v in views),
             "pipe_m": round(sum(v.length_m for v in views), 1),
-            "fluids": sorted({_resource_name(game, v.fluid) for v in views if v.fluid}),
+            "fluids": sorted({resource_name(game, v.fluid) for v in views if v.fluid}),
         }
 
     found = conduits_mod.search(
@@ -561,7 +561,7 @@ def world_conduits(
         run=run,
     )
     if found.error:
-        return _fail(found.error)
+        return error_response(found.error)
     belts, pipes = found.belts, found.pipes
     return {
         **base,
@@ -574,7 +574,7 @@ def world_conduits(
         "pipes": len(pipes),
         "belt_m": round(sum(r.length_m for r in belts), 1),
         "pipe_m": round(sum(r.length_m for r in pipes), 1),
-        "fluids": sorted({_resource_name(game, r.fluid) for r in pipes if r.fluid}),
+        "fluids": sorted({resource_name(game, r.fluid) for r in pipes if r.fluid}),
         "bridged": found.bridged,
     }
 
@@ -588,9 +588,9 @@ def world_here(
 ) -> Any:
     """Where the player stands and the nodes around them, as ``whereami`` answers it."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     game = request.app.state.game()
     found = place.here(st, game, radius_m)
     rows = found.nodes
@@ -611,8 +611,8 @@ def world_here(
         "age_note": st.age_note,
         "written_ago": ago(st.header.get("mtime_ns")),
         "save_token": st.token,
-        "player": None if player is None else _xyz(player),
-        "region": _label_json(found.label) if found.label else None,
+        "player": None if player is None else xyz_m(player),
+        "region": region_json(found.label) if found.label else None,
         "grid": None if player is None else geo.grid_cell(player[0], player[1]),
         "direction": None if player is None else geo.direction_of(player[0], player[1]),
         "radius_m": radius_m,
@@ -637,18 +637,18 @@ def world_regions(
     game = request.app.state.game()
     rid = resolve_item(game, resource) if resource else None
     if resource and rid is None:
-        return _fail(f"unknown resource {resource!r}")
+        return error_response(f"unknown resource {resource!r}")
     table = spatial_nodes.load_nodes()
     rm = spatial_regions.load_regions()
     return {
         "resource": rid,
-        "resource_name": _resource_name(game, rid) if rid else None,
+        "resource_name": resource_name(game, rid) if rid else None,
         "rows": [
             {
                 "name": r["name"],
                 "direction": r["direction"],
                 "grid": r["grid"],
-                "anchor_m": (_m(r["anchor"][0]), _m(r["anchor"][1])),
+                "anchor_m": (cm_to_m(r["anchor"][0]), cm_to_m(r["anchor"][1])),
                 "area_km2": r["area_km2"],
                 "nodes": r["nodes"],
             }

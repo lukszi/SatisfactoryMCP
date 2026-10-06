@@ -13,7 +13,7 @@ from typing import Any, TypedDict
 from fastapi import APIRouter, Request
 
 from ....core.gamedata import search as gsearch
-from ..serial import _state
+from ..serial import world_state
 
 __all__ = ["router"]
 
@@ -99,7 +99,7 @@ def search(
     labels = []
     note = None
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
         have = st.available_recipe_ids
         labels = [lb for lb in st.labels.labels if key in lb.name.casefold()]
     except Exception as exc:

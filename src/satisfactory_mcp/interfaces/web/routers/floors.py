@@ -21,7 +21,7 @@ from ....domain.factories import floors as ffloors
 from ....domain.factories import select as fselect
 from ....domain.world.state import WorldState
 from .. import terrain
-from ..serial import _fail, _m, _state, _xyz
+from ..serial import cm_to_m, error_response, world_state, xyz_m
 
 __all__ = ["router"]
 
@@ -167,10 +167,10 @@ def _band_json(band: ffloors.Band) -> FloorBand:
     """
     return {
         "ordinal": band.ordinal,
-        "top_m": _m(band.top_cm),
-        "low_m": _m(band.low_cm),
-        "high_m": _m(band.high_cm),
-        "span_m": _m(band.span_cm),
+        "top_m": cm_to_m(band.top_cm),
+        "low_m": cm_to_m(band.low_cm),
+        "high_m": cm_to_m(band.high_cm),
+        "span_m": cm_to_m(band.span_cm),
         "pieces": band.pieces,
         "cells": band.cells,
         "area_m2": round(band.area_m2, 1),
@@ -194,8 +194,8 @@ def _platform_json(platform: ffloors.Platform) -> FloorPlatform:
         "cells": platform.cells,
         "pieces": platform.pieces,
         "area_m2": round(platform.area_m2, 1),
-        "centre_m": [_m(platform.centre_cm[0]), _m(platform.centre_cm[1])],
-        "extent_m": [_m(platform.extent_cm[0]), _m(platform.extent_cm[1])],
+        "centre_m": [cm_to_m(platform.centre_cm[0]), cm_to_m(platform.centre_cm[1])],
+        "extent_m": [cm_to_m(platform.extent_cm[0]), cm_to_m(platform.extent_cm[1])],
         # The premise, per platform rather than averaged: the share of this platform's
         # foundation pieces that landed within epsilon of one of its own bands.
         "clean": round(platform.clean, 4),
@@ -209,7 +209,7 @@ def _platform_json(platform: ffloors.Platform) -> FloorPlatform:
 def _deck_json(deck: ffloors.Deck | None) -> FloorDeck | None:
     if deck is None:
         return None
-    return {"platform": deck.platform, "ordinal": deck.ordinal, "top_m": _m(deck.top_cm)}
+    return {"platform": deck.platform, "ordinal": deck.ordinal, "top_m": cm_to_m(deck.top_cm)}
 
 
 def _run_json(run: ffloors.Run) -> FloorRun:
@@ -224,7 +224,7 @@ def _run_json(run: ffloors.Run) -> FloorRun:
         "key": run.key,
         "pieces": run.pieces,
         "lift": run.lift,
-        "rise_m": _m(run.rise_cm),
+        "rise_m": cm_to_m(run.rise_cm),
         # Tall enough that it can only be a floor connector, which is a different claim
         # from being a lift: a quarter of lift chains are belt-height jogs on one deck.
         "riser": run.riser,
@@ -239,7 +239,7 @@ def _placement_json(st: WorldState, placement: ffloors.Placement) -> FloorPlacem
         "cls": placement.cls,
         "name": st.game.building_name(placement.cls),
         "kind": placement.kind,
-        **_xyz(placement.pos_cm),
+        **xyz_m(placement.pos_cm),
         "above_terrain_m": (
             None if placement.above_terrain_m is None else round(placement.above_terrain_m, 1)
         ),
@@ -294,21 +294,21 @@ def floors_view(
     show them, and those are different sentences.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     try:
         report = ffloors.floor_decomposition(
             st, platform=platform, label=factory, terrain_field=terrain.field()
         )
     except fselect.SelectorError as exc:
-        return _fail(str(exc))
+        return error_response(str(exc))
 
     if report.note and (platform is not None or factory is not None) and not report.platforms:
         # A selection that matched nothing is a bad request; a save that cannot carry the
         # data at all is not, and falls through to the 200 with its note below.
-        return _fail(report.note, 404)
+        return error_response(report.note, 404)
 
     return {
         "note": report.note,
@@ -329,12 +329,12 @@ def floors_view(
         # of the decomposition drifting and is reported rather than swallowed.
         "violations": [_run_json(r) for r in report.violations],
         "rules": {
-            "tile_m": _m(ffloors.CELL_CM),
-            "cluster_tol_m": _m(ffloors.CLUSTER_TOL_CM),
-            "band_eps_m": _m(ffloors.BAND_EPS_CM),
+            "tile_m": cm_to_m(ffloors.CELL_CM),
+            "cluster_tol_m": cm_to_m(ffloors.CLUSTER_TOL_CM),
+            "band_eps_m": cm_to_m(ffloors.BAND_EPS_CM),
             "min_band_pieces": ffloors.MIN_BAND_PIECES,
-            "belt_height_m": _m(ffloors.BELT_HEIGHT_CM),
-            "riser_m": _m(ffloors.RISER_CM),
+            "belt_height_m": cm_to_m(ffloors.BELT_HEIGHT_CM),
+            "riser_m": cm_to_m(ffloors.RISER_CM),
             "terrain_tol_m": ffloors.TERRAIN_TOL_M,
             "minor_share": ffloors.MINOR_SHARE,
         },

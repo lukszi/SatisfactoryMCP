@@ -23,7 +23,7 @@ from fastapi import APIRouter, Body, Request
 from ....domain.planning import focus, journal, manage, summary, swaps
 from ....domain.planning.planlog import InvalidOp, PlanArgs, PlanLog, UnknownPlan
 from ....domain.planning.scenario import resolve_item
-from ..serial import ActorBody, PlanOpBody, _actor_json, _fail, _state
+from ..serial import ActorBody, PlanOpBody, actor_json, error_response, world_state
 
 __all__ = ["router"]
 
@@ -370,29 +370,29 @@ def solve_plan(
     """Solve a request or a stored version against this save; nothing is written."""
     args, key = body.get("args"), body.get("key")
     if (args is None) == (key is None):
-        return _fail("send exactly one of args and key", 400)
+        return error_response("send exactly one of args and key", 400)
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     if key is not None:
         if not _KEY.fullmatch(key):
-            return _fail(f"no plan “{key}” in this world", 404)
+            return error_response(f"no plan “{key}” in this world", 404)
         try:
             kwargs = PlanLog(st.world_id).state(key, body.get("rev")).kwargs()
         except UnknownPlan:
-            return _fail(f"no plan “{key}” in this world", 404)
+            return error_response(f"no plan “{key}” in this world", 404)
         except InvalidOp as exc:
-            return _fail(str(exc), 404)
+            return error_response(str(exc), 404)
     else:
         try:
             kwargs = PlanArgs.from_dict(args).kwargs()
         except InvalidOp as exc:
-            return _fail(str(exc), 400)
+            return error_response(str(exc), 400)
     try:
         return summary.solve_summary(st.game, st, kwargs)
     except ValueError as exc:
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)
 
 
 @router.put("/ui/focus", response_model=FocusResponse)
@@ -404,13 +404,13 @@ def put_focus(
 ) -> Any:
     """Record what the page has open, stamped with a heartbeat. The page's only focus write."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         written = focus.write(st.world_id, dict(body))
     except focus.InvalidFocus as exc:
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)
     return {"ok": True, "heartbeat": written["heartbeat"]}
 
 
@@ -425,7 +425,7 @@ def _commit_rows(log: PlanLog, since: float) -> list[ActivityRow]:
                     "id": f"{state.key}:v{commit.rev}",
                     "ts": commit.ts,
                     "source": "plan",
-                    "actor": _actor_json(commit.actor),
+                    "actor": actor_json(commit.actor),
                     "kind": "commit",
                     "plan": state.key,
                     "name": state.name,
@@ -444,7 +444,7 @@ def _entry_row(entry: dict, names: dict[str, str]) -> ActivityRow:
         "id": str(entry.get("id") or ""),
         "ts": float(entry.get("ts") or 0.0),
         "source": "journal",
-        "actor": _actor_json(entry.get("actor")),
+        "actor": actor_json(entry.get("actor")),
         "kind": str(entry.get("kind") or ""),
         "plan": plan,
         "name": names.get(plan) if plan else None,
@@ -465,9 +465,9 @@ def activity(
 ) -> Any:
     """Plan commits and journal entries after ``since``, oldest first, the newest ``limit``."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     now = time.time()
     limit = max(0, min(limit, 500))
     log = PlanLog(st.world_id, st.header.get("session_name") or "")
@@ -513,26 +513,26 @@ def plan_delta(
 ) -> Any:
     """The result deltas between two versions of one plan, both re-solved against this save."""
     if not _KEY.fullmatch(key):
-        return _fail(f"no plan “{key}” in this world", 404)
+        return error_response(f"no plan “{key}” in this world", 404)
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     log = PlanLog(st.world_id)
     try:
         to = log.head_rev(key) if to_rev is None else to_rev
         before = log.state(key, from_rev).kwargs()
         after = log.state(key, to).kwargs()
     except UnknownPlan:
-        return _fail(f"no plan “{key}” in this world", 404)
+        return error_response(f"no plan “{key}” in this world", 404)
     except InvalidOp as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
     try:
         delta = manage.result_delta(
             summary.solve_summary(st.game, st, before), summary.solve_summary(st.game, st, after)
         )
     except ValueError as exc:
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)
     return {"key": key, "from_rev": from_rev, "to_rev": to, **delta}
 
 
@@ -547,22 +547,22 @@ def plan_alternates(
     """Every recipe making ``item``, each with what requiring it would change in the plan."""
     key = body["key"]
     if not _KEY.fullmatch(key):
-        return _fail(f"no plan “{key}” in this world", 404)
+        return error_response(f"no plan “{key}” in this world", 404)
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     g = st.game
     item = resolve_item(g, body["item"]) if body["item"] else None
     if item is None:
-        return _fail(f"no item named “{body['item']}”", 404)
+        return error_response(f"no item named “{body['item']}”", 404)
     try:
         state = PlanLog(st.world_id).state(key, body.get("rev"))
     except UnknownPlan:
-        return _fail(f"no plan “{key}” in this world", 404)
+        return error_response(f"no plan “{key}” in this world", 404)
     except InvalidOp as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
     try:
         return swaps.swap_deltas(g, st, state, item, spoilers is not False)
     except ValueError as exc:
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)

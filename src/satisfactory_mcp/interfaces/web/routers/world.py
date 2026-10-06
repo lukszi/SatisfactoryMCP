@@ -18,7 +18,7 @@ from fastapi import APIRouter, Request
 
 from ....core.saveio import projection as proj
 from ....domain.world import pin
-from ..serial import Biomass, _fail, _state, _xyz
+from ..serial import Biomass, error_response, world_state, xyz_m
 
 __all__ = ["router"]
 
@@ -93,7 +93,7 @@ def worlds() -> Any:
     try:
         found, unsupported = proj.list_worlds()
     except Exception as exc:
-        return _fail(f"could not scan saves: {exc}", 404)
+        return error_response(f"could not scan saves: {exc}", 404)
     rows = []
     for w in found:
         newest = w.newest
@@ -210,9 +210,9 @@ def summary(
     biomass: Biomass = "exclude",
 ) -> Any:
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     return {
         "header": st.header,
         # Recorded as well as sent: a token the page shows and the assistant is then handed
@@ -222,5 +222,5 @@ def summary(
         "age_note": st.age_note,
         "power": st.power_report(biomass=biomass == "include"),
         "progression": st.progression(),
-        "player": _xyz(st.player_position()),
+        "player": xyz_m(st.player_position()),
     }

@@ -17,7 +17,7 @@ from ....domain.factories import identity as fidentity
 from ....domain.factories.health import ACTIONABLE, OK, STATES
 from ....domain.factories.sweep import sweep
 from ....domain.spatial import geo
-from ..serial import _fail, _m, _state
+from ..serial import cm_to_m, error_response, world_state
 
 __all__ = ["router"]
 
@@ -83,9 +83,9 @@ class FactoryHealthResponse(TypedDict):
 def factory_health(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Uptime, states and the worst machines of every named factory, worst factory first."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     alive_set = set(st.graph.machines())
     placed = fidentity.positions(st.projection)
@@ -99,8 +99,8 @@ def factory_health(request: Request, save: str | None = None, world: str | None 
             "uptime": None if m.uptime is None else round(m.uptime, 3),
             "what": m.recipe or st.game.building_name(m.building) or m.building,
             "cause": list(m.cause),
-            "x_m": _m(at[0]) if at else None,
-            "y_m": _m(at[1]) if at else None,
+            "x_m": cm_to_m(at[0]) if at else None,
+            "y_m": cm_to_m(at[1]) if at else None,
         }
 
     rows = []
@@ -111,8 +111,8 @@ def factory_health(request: Request, save: str | None = None, world: str | None 
         rows.append(
             {
                 "name": label.name,
-                "centroid_m": [_m(label.centroid[0]), _m(label.centroid[1])],
-                "bbox_m": None if box is None else [_m(v) for v in box],
+                "centroid_m": [cm_to_m(label.centroid[0]), cm_to_m(label.centroid[1])],
+                "bbox_m": None if box is None else [cm_to_m(v) for v in box],
                 "anchors": len(label.anchors),
                 "alive": len(standing),
                 "review": review.get(label.name),

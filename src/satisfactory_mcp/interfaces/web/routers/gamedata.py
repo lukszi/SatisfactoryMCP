@@ -16,7 +16,7 @@ from ....core.gamedata.model import GameData, Recipe
 from ....core.gamedata.unlocks import granted_by
 from ....core.text import ago
 from ....domain.planning.scenario import find_recipe, resolve_item
-from ..serial import _fail, _state
+from ..serial import error_response, world_state
 
 __all__ = ["router"]
 
@@ -143,7 +143,7 @@ def _have(
     request: Request, save: str | None, world: str | None
 ) -> tuple[set[str] | None, str | None]:
     try:
-        return _state(request, save, world).available_recipe_ids, None
+        return world_state(request, save, world).available_recipe_ids, None
     except Exception as exc:
         return None, f"no save could be read ({exc}), so have and locked are unknown"
 
@@ -227,7 +227,7 @@ def gamedata_recipes(
         if text:
             ids[key] = resolve_item(g, text)
             if ids[key] is None:
-                return _fail(f"no item matching “{text}”", 404)
+                return error_response(f"no item matching “{text}”", 404)
     have, note = _have(request, save, world)
     question = {
         "query": q,
@@ -244,7 +244,7 @@ def gamedata_recipes(
             **question,
         )
     except ValueError as exc:
-        return _fail(str(exc))
+        return error_response(str(exc))
     counted = _census(census)
     if spoilers is False:
         hits = [h for h in hits if h.unlocked is not False]
@@ -286,9 +286,9 @@ def gamedata_recipe(
     if r is None and spoilers is False and have is not None:
         hits = [h for h in hits if h in have]
     if r is None and hits:
-        return _fail(f"“{recipe}” matches {len(hits)} recipes", 409)
+        return error_response(f"“{recipe}” matches {len(hits)} recipes", 409)
     if r is None:
-        return _fail(f"no recipe named “{recipe}”", 404)
+        return error_response(f"no recipe named “{recipe}”", 404)
     unlocked = None if have is None else r.cls in have
     return {
         "cls": r.cls,
@@ -322,7 +322,7 @@ def gamedata_alternates(
     g = request.app.state.game()
     iid = resolve_item(g, item)
     if iid is None:
-        return _fail(f"no item named “{item}”", 404)
+        return error_response(f"no item named “{item}”", 404)
     have, note = _have(request, save, world)
     rows = []
     for r in search.makers_of(g, iid):
@@ -369,9 +369,9 @@ def gamedata_unlocked(
 ) -> Any:
     """``unlocked_recipes``: the recipes this save has, alternates only by default."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     picks = st.unlocked_alternates if only_alternates else st.unlocked_recipes("part")
     return {
         "age_note": st.age_note,

@@ -38,7 +38,7 @@ from ....core.gameassets.pyramid import (
 )
 from ....domain.maps import registry
 from ....domain.spatial import geo
-from ..serial import _fail
+from ..serial import error_response
 
 __all__ = ["DEFAULT_MAP_BOUNDS_M", "router"]
 
@@ -278,7 +278,7 @@ def _light_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
     kind = request.query_params.get(MAP_TILE_KIND_PARAM, "")
     light = _light(layer)
     if kind not in LIGHT_KINDS or light is None:
-        return _fail(
+        return error_response(
             f"no {kind!r} tiles for {layer}: kind is one of {', '.join(LIGHT_KINDS)}, on a "
             "layer drawn with --unlit",
             404,
@@ -286,14 +286,16 @@ def _light_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
     depth = light["unlit_max_z"] if kind == "unlit" else light["max_z"]
     span = 1 << z
     if not (0 <= z <= depth and 0 <= x < span and 0 <= y < span):
-        return _fail(f"no {kind} tile {layer}/{z}/{x}/{y}: that tree runs z0..z{depth}", 404)
+        return error_response(
+            f"no {kind} tile {layer}/{z}/{x}/{y}: that tree runs z0..z{depth}", 404
+        )
     stem = tile_relpath(z, x, y)[: -len(".png")]
     tree = light["unlit"] if kind == "unlit" else light["root"] / MAP_TILES_DIR_NAME
     path = tree / (stem + LIGHT_KINDS[kind])
     if not path.is_file():
         if request.method == "HEAD":
             return Response(status_code=204)
-        return _fail(f"no {kind} tile {layer}/{z}/{x}/{y}: {path} is not there", 404)
+        return error_response(f"no {kind} tile {layer}/{z}/{x}/{y}: {path} is not there", 404)
     etag = f'"{light["header"]["build"]}"'
     headers = {
         "Cache-Control": "public, max-age=31536000, immutable"
@@ -353,7 +355,7 @@ def mapimage(request: Request) -> Any:
     if not path.is_file():
         if request.method == "HEAD":
             return Response(status_code=204)
-        return _fail(
+        return error_response(
             f"no map image: put a map render at {path}; it is only ever read locally, "
             "never uploaded and never committed. Optionally pin its corners with "
             f"{path.with_name(MAP_BOUNDS_NAME)} "
@@ -420,7 +422,7 @@ def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
     tree, depth = _tile_tree(request, pyramid)
     path = map_tile_path(z, x, y, depth, layer, tree)
     if path is None:
-        return _fail(
+        return error_response(
             f"no tile {layer}/{z}/{x}/{y}: this pyramid runs z0..z{depth}, and level z is a "
             "2**z by 2**z grid, so x and y stop there",
             404,
@@ -431,7 +433,7 @@ def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
         entry, _where = registry.lookup(layer)
         painter = (entry or {}).get("layer", layer)
         tool = _LAYER_TOOLS.get(painter, "the Maps tab of the Settings page")
-        return _fail(
+        return error_response(
             f"no {layer} tiles: {path.parent.parent} is written by {tool}. "
             "Like the map image, it is only ever read locally, never uploaded and never "
             "committed.",
@@ -500,7 +502,7 @@ def maptiles_layer(request: Request, layer: str, z: int, x: int, y: int) -> Any:
     """
     entry, _where = registry.lookup(layer)
     if entry is None:
-        return _fail(
+        return error_response(
             f"no base layer {layer!r}: this server serves {', '.join(registry.known_ids())}. "
             f"{MAP_LAYER_DEFAULT} is the game's own artwork; the rest are listed by /api/maps.",
             404,
@@ -508,5 +510,5 @@ def maptiles_layer(request: Request, layer: str, z: int, x: int, y: int) -> Any:
     if entry.get("status") != "ready":
         if request.method == "HEAD":
             return Response(status_code=204)
-        return _fail(f"{layer} is {entry.get('status')}, not ready to be served", 404)
+        return error_response(f"{layer} is {entry.get('status')}, not ready to be served", 404)
     return _serve_tile(request, layer, z, x, y)

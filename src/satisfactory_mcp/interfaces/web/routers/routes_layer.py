@@ -24,7 +24,7 @@ from fastapi import APIRouter, Request
 
 from ....core.saveio import rows as saverows
 from ....domain.world.state import WorldState
-from ..serial import _fail, _m, _state, _xyz, _yaw
+from ..serial import cm_to_m, error_response, world_state, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -160,7 +160,7 @@ def _curve_m(spans: Any, points: list) -> RouteCurveM:
             out.append(None)  # 0, the projection's flat-span marker, lands here too
             continue
         try:
-            vals = [_m(float(c)) for c in entry]
+            vals = [cm_to_m(float(c)) for c in entry]
         except (TypeError, ValueError):
             out.append(None)
             continue
@@ -181,8 +181,8 @@ def _attachment_row(st: WorldState, row: dict) -> AttachmentRow:
         "instance_leaf": str(row.get("instance", "")).rsplit(".", 1)[-1],
         "cls": row.get("cls"),
         "name": st.game.building_name(cls),
-        **_xyz(row.get("pos")),
-        "yaw": _yaw(row.get("yaw")),
+        **xyz_m(row.get("pos")),
+        "yaw": yaw_deg(row.get("yaw")),
         "w_m": round(footprint.width_m, 1) if footprint else None,
         "l_m": round(footprint.depth_m, 1) if footprint else None,
     }
@@ -219,16 +219,16 @@ def belts(request: Request, save: str | None = None, world: str | None = None) -
     per-piece class is what a popup reads.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     resolved: dict[int, BeltClass] = {}
     rows = []
     for seg in saverows.iter_belt_segments(st.projection):
         if seg.class_index not in resolved:
             resolved[seg.class_index] = _belt_class(st, seg.cls)
-        points = [[_m(x), _m(y), _m(z)] for x, y, z in seg.points]
+        points = [[cm_to_m(x), cm_to_m(y), cm_to_m(z)] for x, y, z in seg.points]
         rows.append(
             {
                 "chain": seg.chain,
@@ -361,9 +361,9 @@ def pipes(request: Request, save: str | None = None, world: str | None = None) -
     key leaves open about splitters and mergers.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     networks = list((st.projection.get("pipes") or {}).get("networks") or ())
     # Positional against ``segments``, so a projection too old to carry the join reads as one
@@ -376,7 +376,7 @@ def pipes(request: Request, save: str | None = None, world: str | None = None) -
     for seg in saverows.iter_pipe_segments(st.projection):
         if seg.class_index not in resolved:
             resolved[seg.class_index] = _pipe_class(st, seg.cls)
-        points = [[_m(x), _m(y), _m(z)] for x, y, z in seg.points]
+        points = [[cm_to_m(x), cm_to_m(y), cm_to_m(z)] for x, y, z in seg.points]
         net = seg.network_index
         entry = networks[net] if 0 <= net < len(networks) else {}
         fluid = entry.get("fluid") if isinstance(entry, dict) else None

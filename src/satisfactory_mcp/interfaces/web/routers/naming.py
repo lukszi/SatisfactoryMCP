@@ -36,7 +36,15 @@ from ....domain.planning.planlog import Actor
 from ....domain.spatial import geo
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world import pin
-from ..serial import Flow, MachineSpot, _fail, _flow, _m, _machine_spots, _state
+from ..serial import (
+    Flow,
+    MachineSpot,
+    cm_to_m,
+    error_response,
+    flow_json,
+    machine_spots,
+    world_state,
+)
 
 __all__ = ["router"]
 
@@ -147,7 +155,7 @@ _REFUSALS: dict[int | str, dict[str, Any]] = {
 
 
 def _flows(fg: flowgraph.FlowGraph, role: str) -> list[dict]:
-    return [_flow(fg, item, rate) for item, rate in fg.listed(role)]
+    return [flow_json(fg, item, rate) for item, rate in fg.listed(role)]
 
 
 def _cluster(st, machines: list[str], name: str):
@@ -167,12 +175,12 @@ def _refused(exc: Exception) -> Any:
     if isinstance(exc, NameClash):
         return _conflict(exc, name_taken=True)
     if isinstance(exc, BadName):
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)
     if isinstance(exc, UnknownLabel):
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
     if isinstance(exc, LabelError):
         return _conflict(exc)
-    return _fail(f"factory labels are busy, nothing written: {exc}", 503)
+    return error_response(f"factory labels are busy, nothing written: {exc}", 503)
 
 
 @router.get("/factories/candidates", response_model=CandidatesResponse)
@@ -186,13 +194,13 @@ def factory_candidates(
 ) -> Any:
     """Every proposal the player has not named, filtered, each with a suggested name."""
     if style not in naming.STYLES:
-        return _fail(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
+        return error_response(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
     if min_machines < 1:
-        return _fail("min_machines is at least 1", 400)
+        return error_response("min_machines is at least 1", 400)
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         rmap = spatial_regions.load_regions()
     except FileNotFoundError:
@@ -235,8 +243,8 @@ def factory_candidates(
                     for k, v in cand.buildings.most_common()
                 ],
                 "region": region,
-                "centroid_m": [_m(cand.centroid[0]), _m(cand.centroid[1])],
-                "bbox_m": None if box is None else [_m(v) for v in box],
+                "centroid_m": [cm_to_m(cand.centroid[0]), cm_to_m(cand.centroid[1])],
+                "bbox_m": None if box is None else [cm_to_m(v) for v in box],
                 "spread_m": round(cand.spread_m, 1),
                 "score": round(pr.cohesion, 3),
                 "suggested_name": names[index],
@@ -272,9 +280,9 @@ def name_candidate(
 ) -> Any:
     """Name one proposal as a new factory. 409 for a taken name, a moved save or store."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         pin.check(st.header, as_of)
     except pin.PinRefused as exc:
@@ -282,9 +290,9 @@ def name_candidate(
     try:
         picked = select_machines([f"proposal:{proposal}"], st)
     except SelectorError as exc:
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
     if not picked:
-        return _fail("that unnamed cluster matched no machines; detect again", 404)
+        return error_response("that unnamed cluster matched no machines; detect again", 404)
     cand = fidentity.describe(picked, st.graph, st.game, st.projection, "label")
     overlaps = st.labels.overlaps(picked, name)
     try:
@@ -320,9 +328,9 @@ def rename_label(
 ) -> Any:
     """Rename a label by its exact name; its machines stay and plans scoped to it follow."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     page = Actor("page", "", os.getpid())
     try:
         done = edits.rename(
@@ -359,9 +367,9 @@ def forget_label(
 ) -> Any:
     """Delete a label by its exact name. The machines are untouched."""
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         label, written = edits.forget(st.world_id, _session(st), name, exact=True, expect=version)
     except (StaleStore, LabelError, LockTimeout) as exc:
@@ -420,21 +428,21 @@ def amend_label(
     """
     name, dry_run = body["name"], body.get("dry_run", False)
     if body["mode"] not in AMEND_MODES:
-        return _fail(f"mode is one of {', '.join(AMEND_MODES)}", 400)
+        return error_response(f"mode is one of {', '.join(AMEND_MODES)}", 400)
     areas = [body["area"], *body.get("extra_areas", [])]
     if any(len(a) < 3 for a in areas):
-        return _fail("an area needs at least three corners", 400)
+        return error_response("an area needs at least three corners", 400)
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
     try:
         pin.check(st.header, body["as_of"])
     except pin.PinRefused as exc:
         return _conflict(exc, pin=True)
     label = next((x for x in st.labels.labels if x.name == name), None)
     if label is None:
-        return _fail(f"no factory named “{name}” in this world", 404)
+        return error_response(f"no factory named “{name}” in this world", 404)
     alive = set(st.graph.machines())
     placed = fidentity.positions(st.projection)
     polygons = [[(x * geo.CM_PER_M, y * geo.CM_PER_M) for x, y in a] for a in areas]
@@ -454,8 +462,8 @@ def amend_label(
         "written": False,
         "before": len(plan.before),
         "after": len(plan.after),
-        "added": _machine_spots(st, plan.added),
-        "dropped": _machine_spots(st, plan.dropped),
+        "added": machine_spots(st, plan.added),
+        "dropped": machine_spots(st, plan.dropped),
         "overlaps": [f"overlaps {k!r} on {n} machine(s)" for k, n in plan.overlaps.items()],
         "token": pin.check(st.header, None),
         "version": st.labels.version,

@@ -31,7 +31,7 @@ from ...core.saveio.projection import load_projection
 from ...domain import settings
 from ...domain.planning import journal
 from ...domain.planning.planlog import Commit, PlanLog, PlanLogError
-from .serial import _actor_json, _settings_json
+from .serial import actor_json, settings_json
 
 __all__ = [
     "KINDS",
@@ -124,7 +124,7 @@ def _plan_event(world: str, key: str, rows: list[dict]) -> WatchEvent | None:
         name, forgotten = "", False
     actors: list[dict] = []
     for commit in commits:
-        body = _actor_json(commit.actor)
+        body = actor_json(commit.actor)
         if body not in actors:
             actors.append(body)
     data = {
@@ -147,7 +147,7 @@ def _activity_event(world: str, row: dict) -> WatchEvent:
         "world": world,
         "id": str(row.get("id") or ""),
         "ts": ts,
-        "actor": _actor_json(row.get("actor")),
+        "actor": actor_json(row.get("actor")),
         "kind": str(row.get("kind") or ""),
         "plan": row.get("plan"),
         "rev": row.get("rev"),
@@ -380,7 +380,7 @@ class SaveWatcher:
             view = settings.read()
         except Exception:
             return []
-        data = _settings_json(view)
+        data = settings_json(view)
         return [WatchEvent(KIND_SETTINGS, "settings.json", float(view["updated"] or 0.0), data)]
 
     async def tail_once(self) -> list[WatchEvent]:

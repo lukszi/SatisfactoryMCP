@@ -25,7 +25,7 @@ from ....core.schema import NewerSchema
 from ....domain.maps import axes as ax
 from ....domain.maps import jobs as job_store
 from ....domain.maps import presets, registry
-from ..serial import _fail
+from ..serial import error_response
 
 __all__ = ["router"]
 
@@ -317,9 +317,9 @@ def _refused(exc: Exception) -> JSONResponse:
         body = {"error": str(exc), "stale": True, "version": exc.current}
         return JSONResponse(body, status_code=409)
     if isinstance(exc, registry.MapsUnknown):
-        return _fail(str(exc), 404)
+        return error_response(str(exc), 404)
     if isinstance(exc, registry.MapsRefused):
-        return _fail(str(exc), 409)
+        return error_response(str(exc), 409)
     if isinstance(exc, NewerSchema):
         text = (
             f"the map list was saved by a newer version of satisfactory-mcp (schema "
@@ -327,8 +327,8 @@ def _refused(exc: Exception) -> JSONResponse:
         )
         return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
     if isinstance(exc, LockTimeout):
-        return _fail(f"the map list is busy, nothing written: {exc}", 503)
-    return _fail(str(exc), 400)
+        return error_response(f"the map list is busy, nothing written: {exc}", 503)
+    return error_response(str(exc), 400)
 
 
 WRITE_REFUSALS = (registry.MapsError, NewerSchema, LockTimeout)
@@ -378,7 +378,7 @@ def map_estimate(
     try:
         return presets.estimate(preset, options)
     except presets.PresetError as exc:
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)
 
 
 @router.put(
@@ -409,7 +409,9 @@ async def adopt_maps(request: Request) -> Any:
 async def clear_map_cache(request: Request) -> Any:
     """Delete the rasters kept for fast re-renders; refused while a job is running."""
     if request.app.state.mapjobs.run is not None:
-        return _fail("a job is running and may be reading the cache; try once it ends", 409)
+        return error_response(
+            "a job is running and may be reading the cache; try once it ends", 409
+        )
     freed = await asyncio.to_thread(registry.clear_cache)
     request.app.state.mapjobs.announce()
     return {"freed_bytes": freed}
@@ -429,11 +431,11 @@ async def start_map_job(request: Request, body: Annotated[MapJobRequest, Body()]
             body["preset"], dict(body.get("options") or {}), body.get("label"), body.get("replaces")
         )
     except presets.QueueFull as exc:
-        return _fail(str(exc), 409)
+        return error_response(str(exc), 409)
     except presets.DiskShort as exc:
-        return _fail(str(exc), 507)
+        return error_response(str(exc), 507)
     except presets.PresetError as exc:
-        return _fail(str(exc), 400)
+        return error_response(str(exc), 400)
     except WRITE_REFUSALS as exc:
         return _refused(exc)
     runner.announce(job)
@@ -445,7 +447,7 @@ async def map_job(request: Request, job: str) -> Any:
     """One job and the end of its log."""
     found = request.app.state.mapjobs.jobs.get(job)
     if found is None:
-        return _fail(f"no map job “{job}”", 404)
+        return error_response(f"no map job “{job}”", 404)
     tail = await asyncio.to_thread(job_store.log_tail, job)
     return {"job": request.app.state.mapjobs.view(found), "log_tail": tail}
 
@@ -457,7 +459,7 @@ async def cancel_map_job(request: Request, job: str) -> Any:
     try:
         found = await runner.cancel(job)
     except KeyError:
-        return _fail(f"no map job “{job}”", 404)
+        return error_response(f"no map job “{job}”", 404)
     return {"job": runner.view(found)}
 
 

@@ -24,7 +24,7 @@ from typing import Any, Literal, TypedDict
 from fastapi import APIRouter, Request
 
 from ....domain.world.state import WorldState
-from ..serial import _fail, _state, _xyz, _yaw
+from ..serial import error_response, world_state, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -143,8 +143,8 @@ def _storage_row(st: WorldState, row: dict) -> StorageSolid | StorageFluid:
         "instance_leaf": str(row.get("instance", "")).rsplit(".", 1)[-1],
         "cls": row.get("cls"),
         "name": st.game.building_name(cls),
-        **_xyz(row.get("pos")),
-        "yaw": _yaw(row.get("yaw")),
+        **xyz_m(row.get("pos")),
+        "yaw": yaw_deg(row.get("yaw")),
         "w_m": round(footprint.width_m, 1) if footprint else None,
         "l_m": round(footprint.depth_m, 1) if footprint else None,
     }
@@ -218,9 +218,9 @@ def storage(request: Request, save: str | None = None, world: str | None = None)
     Sent in one payload, ungrouped, the posture every placement endpoint here takes.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     rows = [
         _storage_row(st, row) for row in st.projection.get("storage") or () if isinstance(row, dict)

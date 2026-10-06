@@ -17,7 +17,7 @@ from fastapi import APIRouter, Request
 
 from ....domain.world.inventory import CRATE_KIND_TEXT
 from ....domain.world.state import WorldState
-from ..serial import _fail, _state, _xyz, _yaw
+from ..serial import error_response, world_state, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -75,9 +75,7 @@ class CratesResponse(TypedDict):
 def _crate_row(st: WorldState, row: dict) -> CrateRow:
     """One crate row, its contents resolved to display names and sent whole."""
     raw = [e for e in row.get("items") or () if isinstance(e, (list, tuple)) and len(e) >= 2]
-    items = [
-        {"cls": str(e[0]), "name": st.game.item_name(str(e[0])), "count": e[1]} for e in raw
-    ]
+    items = [{"cls": str(e[0]), "name": st.game.item_name(str(e[0])), "count": e[1]} for e in raw]
     kind = str(row.get("kind") or "none")
     return {
         "instance_leaf": str(row.get("instance", "")).rsplit(".", 1)[-1],
@@ -85,8 +83,8 @@ def _crate_row(st: WorldState, row: dict) -> CrateRow:
         "kind": kind,
         # ``.get``, not ``[]`` -- see ``CrateRow`` for the kind this build has not heard of.
         "kind_text": CRATE_KIND_TEXT.get(kind),
-        **_xyz(row.get("pos")),
-        "yaw": _yaw(row.get("yaw")),
+        **xyz_m(row.get("pos")),
+        "yaw": yaw_deg(row.get("yaw")),
         "items": items,
         # Arithmetic rather than the literal 0 it comes to, so that a bound put back on
         # ``items`` makes this the count of what was left off again.
@@ -106,9 +104,9 @@ def crates(request: Request, save: str | None = None, world: str | None = None) 
     sorted by kind, and contents are the whole crate.
     """
     try:
-        st = _state(request, save, world)
+        st = world_state(request, save, world)
     except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
+        return error_response(f"could not read save: {exc}", 404)
 
     rows = [
         _crate_row(st, row) for row in st.projection.get("crates") or () if isinstance(row, dict)
