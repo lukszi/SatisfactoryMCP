@@ -21,7 +21,7 @@ from .planes import (
     TOP_NAME,
     WATER_DRY,
 )
-from .readings import AMBIGUOUS_M, SURFACES, Reading, Surface, Surfaces
+from .readings import AMBIGUOUS_M, SURFACES, Reading, Surface, SurfaceOrFloor, Surfaces
 
 __all__ = ["Field"]
 
@@ -87,8 +87,8 @@ class Field(FieldAreas):
         y_cm: float,
         hint_z_cm: float | None = None,
         lowest_m: float | None = None,
-    ) -> str:
-        """``cave_masks.CAVE_VALUES`` at a point; ``none`` wherever no mask was generated."""
+    ) -> cave_masks.CaveValue:
+        """The cave value at a point; ``none`` wherever no mask was generated."""
         found = self.caves()
         if found is None:
             return cave_masks.NONE
@@ -260,7 +260,7 @@ class Field(FieldAreas):
 
 def _hinted(
     found: Surfaces, exact: Surfaces | None, hint_m: float, *, in_cave: bool
-) -> tuple[tuple[str, float] | None, Surfaces, bool]:
+) -> tuple[tuple[SurfaceOrFloor, float] | None, Surfaces, bool]:
     """``(the pick, the surfaces it came from, whether it is a cave floor)`` for a hint.
 
     In a cave only a collision surface from ``AMBIGUOUS_M`` above the hint to

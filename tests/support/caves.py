@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from satisfactory_mcp.core.arrays import F64Grid, U8Grid
 from satisfactory_mcp.domain.spatial.heightfield import cave_masks
 
 CELL_CM = 200.0
@@ -18,7 +19,7 @@ CELL_CM = 200.0
 HULL = (450.0, 250.0, -900.0, 650.0, 450.0, -200.0)
 
 
-def box_planes(box: tuple[float, ...]) -> np.ndarray:
+def box_planes(box: tuple[float, ...]) -> F64Grid:
     x0, y0, z0, x1, y1, z1 = box
     return np.array(
         [
@@ -33,7 +34,7 @@ def box_planes(box: tuple[float, ...]) -> np.ndarray:
     )
 
 
-def write_caves(directory: Path, mask: np.ndarray, hulls: list[tuple[float, ...]]) -> Path:
+def write_caves(directory: Path, mask: U8Grid, hulls: list[tuple[float, ...]]) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     planes = [box_planes(h) for h in hulls]
     np.savez_compressed(
@@ -49,7 +50,7 @@ def write_caves(directory: Path, mask: np.ndarray, hulls: list[tuple[float, ...]
     return directory
 
 
-def fixture_mask() -> np.ndarray:
+def fixture_mask() -> U8Grid:
     mask = np.zeros((3, 4), np.uint8)
     mask[0, 0] = cave_masks.BIT_MARKERS
     mask[1:3, 2:4] |= cave_masks.BIT_HULL

@@ -53,7 +53,16 @@ from .planes import (
     WATER_QUALITY_NAME,
     WATER_QUALITY_NAMES,
 )
-from .readings import AMBIGUOUS_M, SURFACES, Area, NearWater, Reading, Surface, Surfaces
+from .readings import (
+    AMBIGUOUS_M,
+    SURFACES,
+    Area,
+    NearWater,
+    Reading,
+    Surface,
+    SurfaceOrFloor,
+    Surfaces,
+)
 
 __all__ = [
     "AMBIGUOUS_M",
@@ -88,6 +97,7 @@ __all__ = [
     "NearWater",
     "Reading",
     "Surface",
+    "SurfaceOrFloor",
     "Surfaces",
     "TerrainGrid",
     "decode_i16",

@@ -20,6 +20,7 @@ __all__ = [
     "NearWater",
     "Reading",
     "Surface",
+    "SurfaceOrFloor",
     "Surfaces",
     "area_shape",
 ]
@@ -27,6 +28,8 @@ __all__ = [
 #: Which surface a lookup reads. ``ground`` is the fused field and the default.
 Surface = Literal["ground", "terrain", "top"]
 SURFACES: tuple[Surface, ...] = ("ground", "terrain", "top")
+#: Which surface answered: one of ``SURFACES``, or ``floor`` for a collision surface a hint picked.
+SurfaceOrFloor = Literal["ground", "terrain", "top", "floor"]
 
 #: Ground above the bare landscape by more than this is a rock or overhang, so the answer
 #: may be a roof. Also the slack a hint gets: a thing rests on a surface at or below it.
@@ -46,16 +49,15 @@ class Reading:
     accuracy_m: float | None
     water_m: float | None = None
     water_quality: int = WATER_DRY
-    #: Which of ``SURFACES`` answered, or ``floor`` for a collision surface a hint picked.
-    surface: str = "ground"
+    surface: SurfaceOrFloor = "ground"
     #: The bare landscape under the point, where the field carries that plane.
     terrain_z_m: float | None = None
     #: The answer may be a rock top or roof rather than the floor beneath it. Without a
     #: terrain plane this is every cliff texel, since nothing else can tell them apart.
     ambiguous: bool = False
-    #: ``cave_masks.CAVE_VALUES``, never folded into ``ambiguous``: under ``inside`` ``z_m``
-    #: is the surface above the point and must not be presented as its height.
-    cave: str = cave_masks.NONE
+    #: Never folded into ``ambiguous``: under ``inside`` ``z_m`` is the surface above the point
+    #: and must not be presented as its height.
+    cave: cave_masks.CaveValue = cave_masks.NONE
     #: Under ``inside``: ``z_m`` is a collision floor just under the hint, not the surface above.
     cave_floor: bool = False
 
@@ -121,19 +123,16 @@ class Surfaces:
             return self.ground_m
         return self.terrain_m if surface == "terrain" else self.top_m
 
-    def candidates(self) -> list[tuple[str, float]]:
-        return [
-            (name, value)
-            for name, value in (
-                ("ground", self.ground_m),
-                ("terrain", self.terrain_m),
-                ("top", self.top_m),
-                *(("floor", z) for z in self.floors),
-            )
-            if value is not None
+    def candidates(self) -> list[tuple[SurfaceOrFloor, float]]:
+        named: list[tuple[SurfaceOrFloor, float | None]] = [
+            ("ground", self.ground_m),
+            ("terrain", self.terrain_m),
+            ("top", self.top_m),
+            *(("floor", z) for z in self.floors),
         ]
+        return [(name, value) for name, value in named if value is not None]
 
-    def pick(self, hint_m: float) -> tuple[str, float] | None:
+    def pick(self, hint_m: float) -> tuple[SurfaceOrFloor, float] | None:
         """The candidate nearest ``hint_m``, preferring one at or below hint + ``AMBIGUOUS_M``."""
         found = self.candidates()
         below = [c for c in found if c[1] <= hint_m + AMBIGUOUS_M]
@@ -193,7 +192,7 @@ class Area:
     #: Share of the rectangle each source layer answered, by ``PROV_NAMES`` key: a pad that
     #: is mostly fill has error bars that swamp the roughness it reports.
     provenance_pct: dict[int, float] = field(default_factory=dict[int, float])
-    surface: str = "ground"
+    surface: Surface = "ground"
     #: Share of the rectangle where ground stands over the bare landscape by more than
     #: ``AMBIGUOUS_M``; without a terrain plane, the cliff share.
     ambiguous_pct: float = 0.0

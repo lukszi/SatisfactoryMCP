@@ -12,6 +12,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final, Literal
 
 import numpy as np
 
@@ -31,6 +32,7 @@ __all__ = [
     "META_NAME",
     "NONE",
     "CaveGrid",
+    "CaveValue",
     "Caves",
     "load_caves",
     "note",
@@ -41,10 +43,11 @@ DATA_NAME = "caves.npz"
 META_NAME = "meta.json"
 
 #: ``Reading.cave``: no cave known here; a cave lies under this (x, y); the point is in one.
-NONE = "none"
-BELOW = "below"
-INSIDE = "inside"
-CAVE_VALUES = (NONE, BELOW, INSIDE)
+CaveValue = Literal["none", "below", "inside"]
+NONE: Final = "none"
+BELOW: Final = "below"
+INSIDE: Final = "inside"
+CAVE_VALUES: tuple[CaveValue, ...] = (NONE, BELOW, INSIDE)
 
 #: The mask's bits, which are the file format. Markers: cave decoration under the ground,
 #: buffered. Hull: every cell a cave sound volume's plan touches; the 3D test runs only there.
@@ -55,7 +58,7 @@ BIT_HULL = 2
 INSIDE_DEPTH_M = 3.0
 
 
-def note(cave: str, surface_m: float | None) -> str | None:
+def note(cave: CaveValue, surface_m: float | None) -> str | None:
     """The one line a height answer carries for a cave, or ``None`` for no cave."""
     above = "" if surface_m is None else f" (the surface above is {surface_m:.0f} m)"
     if cave == INSIDE:
@@ -143,7 +146,7 @@ class Caves:
         y_cm: float,
         hint_z_cm: float | None = None,
         lowest_surface_m: float | None = None,
-    ) -> str:
+    ) -> CaveValue:
         """``none``, ``below`` or ``inside``. Without a hint never ``inside``."""
         bits = self.bits(x_cm, y_cm)
         flagged = bits != 0
