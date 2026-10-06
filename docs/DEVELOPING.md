@@ -199,8 +199,9 @@ a hard dependency.
 lines; routers and MCP tool modules stop at 650, generators outside `tools/mapgen` at 800
 lines and 150 per function. `api.py` was 2,174 lines and `planning.py` 2,615 before they were
 split, and neither got there in one commit, so a cap is what makes "one module per concern" a
-measurement. The largest module, `core/gameassets/staticmesh.py`, sets the general cap: it
-splits only together with `tools/mapgen`, which reaches its names directly.
+measurement. The general cap is what `core/gameassets/staticmesh.py` measured when it was the
+largest module. Its record types have since moved to `meshdata.py`; the readers stay, because
+`tools/mapgen` calls them through the module.
 
 **Routers** (`test_router_registry.py`). A router may import the standard library, FastAPI,
 `config`, `core`, `domain` and the web package's `serial` and `terrain` — never another router
