@@ -18,12 +18,16 @@ from ....domain.factories import identity as fidentity
 from ....domain.factories.health import assess
 from ....domain.power.report import PowerLedger, starved_cause
 from ....domain.spatial import geo
-from ....domain.spatial import regions as spatial_regions
+from ....domain.world.state import WorldState
 from ..serial import (
     Biomass,
     Region,
+    bbox_m,
     cm_to_m,
+    instance_leaf,
+    point_m,
     region_json,
+    regions_or_none,
     require_world,
 )
 
@@ -146,8 +150,8 @@ def _ledger(report: dict) -> dict:
     }
 
 
-def _at(placed: dict, short: str) -> tuple[float | None, float | None]:
-    pos = placed.get(short)
+def _position_m(placed: dict, leaf: str) -> tuple[float | None, float | None]:
+    pos = placed.get(leaf)
     return (cm_to_m(pos[0]), cm_to_m(pos[1])) if pos else (None, None)
 
 
@@ -159,21 +163,102 @@ def _groups(report: dict) -> list[dict]:
 
 
 def _starved(report: dict, placed: dict) -> list[dict]:
-    out = []
-    for s in report["starved_generators"]:
-        x, y = _at(placed, s["instance"])
-        out.append(
+    rows = []
+    for starved in report["starved_generators"]:
+        x, y = _position_m(placed, starved["instance"])
+        rows.append(
             {
-                "instance": s["instance"],
-                "name": s["name"],
-                "mw": round(s["mw"], 1),
-                "missing": list(s["missing"]),
-                "cause": starved_cause(s["missing"]),
+                "instance": starved["instance"],
+                "name": starved["name"],
+                "mw": round(starved["mw"], 1),
+                "missing": list(starved["missing"]),
+                "cause": starved_cause(starved["missing"]),
                 "x_m": x,
                 "y_m": y,
             }
         )
-    return out
+    return rows
+
+
+def _circuit_rows(
+    st: WorldState, placed: dict, label_of: dict[str, str], counted: bool
+) -> list[tuple[dict, set[str]]]:
+    """Every circuit with a record on it, biggest ledger first, each with its member leaves."""
+    graph = st.graph
+    records = {
+        key: {instance_leaf(r["instance"]): r for r in st.projection.get(key) or ()}
+        for key in RECORD_LISTS
+    }
+    pairs = []
+    for component in graph.components("power"):
+        members = set(component)
+        sub = {
+            key: [r for leaf, r in records[key].items() if leaf in members] for key in RECORD_LISTS
+        }
+        if not any(sub.values()):
+            continue
+        report = PowerLedger(projection=sub, game=st.game).power_report(biomass=counted)
+        standing = [leaf for leaf in component if leaf in placed]
+        points = [placed[leaf][:2] for leaf in standing]
+        centre = geo.centroid(points)
+        named = Counter(label_of[leaf] for leaf in standing if leaf in label_of)
+        row = {
+            "index": 0,
+            "ledger": _ledger(report),
+            "generators": _groups(report),
+            "starved": _starved(report, placed),
+            "unmodellable": list(report["unmodellable"]),
+            "consumers": len(sub["machines"]) + len(sub["extractors"]),
+            "poles": sum(1 for leaf in component if graph.kind(leaf) in ("pole", "tower")),
+            "factories": [name for name, _count in named.most_common()],
+            "factory_count": len(named),
+            "centroid_m": None if centre is None else point_m(centre),
+            "bbox_m": bbox_m(placed, standing),
+        }
+        pairs.append((row, members))
+    pairs.sort(
+        key=lambda pair: -(pair[0]["ledger"]["generation_mw"] + pair[0]["ledger"]["draw_mw"])
+    )
+    for index, (row, _members) in enumerate(pairs):
+        row["index"] = index
+    return pairs
+
+
+def _circuit_index(pairs: list[tuple[dict, set[str]]]) -> dict[str, int]:
+    """Member leaf to the ``index`` of the circuit it stands on."""
+    return {leaf: row["index"] for row, members in pairs for leaf in members}
+
+
+def _machine_refs(
+    st: WorldState,
+    leaves: list[str],
+    placed: dict,
+    circuit_of: dict[str, int],
+    label_of: dict[str, str],
+    region_map,
+) -> list[dict]:
+    """Machines by leaf, sorted, with the circuit, factory and region each stands in."""
+    refs = []
+    for leaf in sorted(leaves):
+        x, y = _position_m(placed, leaf)
+        cls = st.graph.cls.get(leaf, "")
+        pos = placed.get(leaf)
+        refs.append(
+            {
+                "instance": leaf,
+                "name": st.game.building_name(cls) or cls,
+                "circuit": circuit_of.get(leaf),
+                "factory": label_of.get(leaf),
+                "region": (
+                    None
+                    if region_map is None or pos is None
+                    else region_json(region_map.label_for(pos[0], pos[1]))
+                ),
+                "x_m": x,
+                "y_m": y,
+            }
+        )
+    return refs
 
 
 @router.get("/power/circuits", response_model=CircuitsResponse)
@@ -192,79 +277,13 @@ def power_circuits(
     st = require_world(request, save, world)
 
     counted = biomass == "include"
-    graph = st.graph
     placed = fidentity.positions(st.projection)
-    records = {
-        key: {r["instance"].rsplit(".", 1)[-1]: r for r in st.projection.get(key) or ()}
-        for key in RECORD_LISTS
-    }
-    label_of = {a: label.name for label in st.labels.labels for a in label.anchors}
+    label_of = {anchor: label.name for label in st.labels.labels for anchor in label.anchors}
+    pairs = _circuit_rows(st, placed, label_of, counted)
+    circuit_of = _circuit_index(pairs)
 
-    circuits = []
-    circuit_of: dict[str, int] = {}
-    for component in graph.components("power"):
-        members = set(component)
-        sub = {key: [r for s, r in records[key].items() if s in members] for key in RECORD_LISTS}
-        if not any(sub.values()):
-            continue
-        report = PowerLedger(projection=sub, game=st.game).power_report(biomass=counted)
-        standing = [s for s in component if s in placed]
-        pts = [placed[s][:2] for s in standing]
-        box = geo.bbox(pts)
-        centre = geo.centroid(pts)
-        named = Counter(label_of[s] for s in standing if s in label_of)
-        circuits.append(
-            {
-                "index": 0,
-                "members": members,
-                "ledger": _ledger(report),
-                "generators": _groups(report),
-                "starved": _starved(report, placed),
-                "unmodellable": list(report["unmodellable"]),
-                "consumers": len(sub["machines"]) + len(sub["extractors"]),
-                "poles": sum(1 for s in component if graph.kind(s) in ("pole", "tower")),
-                "factories": [n for n, _ in named.most_common()],
-                "factory_count": len(named),
-                "centroid_m": None if centre is None else [cm_to_m(centre[0]), cm_to_m(centre[1])],
-                "bbox_m": None if box is None else [cm_to_m(v) for v in box],
-            }
-        )
-    circuits.sort(key=lambda c: -(c["ledger"]["generation_mw"] + c["ledger"]["draw_mw"]))
-    for index, row in enumerate(circuits):
-        row["index"] = index
-        for short in row.pop("members"):
-            circuit_of[short] = index
-
-    dark = assess("world", graph.machines(), st.game, st.projection, graph)
-    try:
-        rmap = spatial_regions.load_regions()
-    except FileNotFoundError:
-        rmap = None
-
-    def region(short: str) -> dict | None:
-        pos = placed.get(short)
-        if rmap is None or pos is None:
-            return None
-        return region_json(rmap.label_for(pos[0], pos[1]))
-
-    def refs(shorts: list[str]) -> list[dict]:
-        out = []
-        for short in sorted(shorts):
-            x, y = _at(placed, short)
-            cls = graph.cls.get(short, "")
-            out.append(
-                {
-                    "instance": short,
-                    "name": st.game.building_name(cls) or cls,
-                    "circuit": circuit_of.get(short),
-                    "factory": label_of.get(short),
-                    "region": region(short),
-                    "x_m": x,
-                    "y_m": y,
-                }
-            )
-        return out
-
+    wiring = assess("world", st.graph.machines(), st.game, st.projection, st.graph)
+    region_map = regions_or_none()
     world_report = st.power_report(biomass=counted)
     return {
         "world": _ledger(world_report),
@@ -272,7 +291,7 @@ def power_circuits(
         "generators": _groups(world_report),
         "starved": _starved(world_report, placed),
         "unmodellable": list(world_report["unmodellable"]),
-        "circuits": circuits,
+        "circuits": [row for row, _members in pairs],
         "off_grid": {
             "consumers": world_report["unwired_consumers"],
             "paused": world_report["unwired_paused"],
@@ -280,7 +299,11 @@ def power_circuits(
             "generators": world_report["unwired_generators"],
             "generation_mw": round(world_report["unwired_generation_mw"], 1),
         },
-        "unwired": refs(dark.unwired),
-        "unwired_generators": refs(dark.unwired_generators),
-        "no_generator": refs(dark.no_generator),
+        "unwired": _machine_refs(st, wiring.unwired, placed, circuit_of, label_of, region_map),
+        "unwired_generators": _machine_refs(
+            st, wiring.unwired_generators, placed, circuit_of, label_of, region_map
+        ),
+        "no_generator": _machine_refs(
+            st, wiring.no_generator, placed, circuit_of, label_of, region_map
+        ),
     }

@@ -10,7 +10,7 @@ from ....domain.factories import identity as fidentity
 from ....domain.planning.planlog import Actor
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world.state import WorldState
-from .units import cm_to_m, xyz_m
+from .units import cm_to_m, instance_leaf, xyz_m
 
 __all__ = [
     "ActorBody",
@@ -30,6 +30,7 @@ __all__ = [
     "item_amounts",
     "machine_spots",
     "region_json",
+    "regions_or_none",
     "resource_name",
     "settings_json",
 ]
@@ -72,6 +73,14 @@ def region_json(label: spatial_regions.Label) -> Region | None:
         "certain": label.certain,
         "text": label.describe(),
     }
+
+
+def regions_or_none() -> spatial_regions.RegionMap | None:
+    """The region raster, or ``None`` on a machine that has none to read."""
+    try:
+        return spatial_regions.load_regions()
+    except FileNotFoundError:
+        return None
 
 
 class TableAge(TypedDict):
@@ -168,7 +177,7 @@ def found_field_json(found_field: Any, game: GameData | None) -> FoundField:
     return {
         "key": found_field.key,
         "selector": found_field.selector,
-        "members": [str(member["instance"]).rsplit(".", 1)[-1] for member in found_field.members],
+        "members": [instance_leaf(member["instance"]) for member in found_field.members],
         "region": found_field.region,
         "grid": found_field.grid,
         "direction": found_field.direction,

@@ -36,10 +36,11 @@ from .shapes import (
     item_amounts,
     machine_spots,
     region_json,
+    regions_or_none,
     resource_name,
     settings_json,
 )
-from .units import cm_to_m, xyz_m, yaw_deg
+from .units import bbox_m, cm_to_m, instance_leaf, point_m, xyz_m, yaw_deg
 
 __all__ = [
     "PLAN_KEY",
@@ -55,6 +56,7 @@ __all__ = [
     "RequestRefused",
     "TableAge",
     "actor_json",
+    "bbox_m",
     "busy_response",
     "check_plan_key",
     "choice_refusal",
@@ -63,12 +65,15 @@ __all__ = [
     "error_response",
     "flow_json",
     "found_field_json",
+    "instance_leaf",
     "item_amounts",
     "machine_spots",
     "newer_schema_response",
     "plan_log",
     "plan_not_found",
+    "point_m",
     "region_json",
+    "regions_or_none",
     "require_plan",
     "require_world",
     "resource_name",
