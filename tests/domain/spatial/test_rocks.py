@@ -18,8 +18,8 @@ import pytest
 from mapgen.gamedata.meshes import winding_sign
 from mapgen.gamedata.rocks.collision_pack import _element_points, build_rock_pack
 from satisfactory_mcp.domain.planning import siting
-from satisfactory_mcp.domain.spatial.heightfield import cave_masks, collision_pack
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from satisfactory_mcp.domain.spatial.heightfield import cave_masks, collision_pack
 from tests.support.caves import HULL, fixture_mask, write_caves
 from tests.support.heightfields import build_layered_field
 
@@ -141,17 +141,17 @@ def test_a_vertical_line_crosses_every_surface_highest_first(field):
 
 
 def test_without_a_hint_the_ground_is_the_highest_rock_and_stays_ambiguous(field):
-    reading = field.z(300.0, 200.0)
+    reading = field.height_at(300.0, 200.0)
     assert reading.z_m == pytest.approx(32.0)
     assert reading.ambiguous and reading.terrain_z_m == pytest.approx(3.0, abs=0.01)
-    assert field.z(300.0, 200.0, surface="top").z_m == pytest.approx(52.0)
-    surfaces = field.collision(300.0, 200.0, field.surfaces(300.0, 200.0))
+    assert field.height_at(300.0, 200.0, surface="top").z_m == pytest.approx(52.0)
+    surfaces = field.collision_surfaces(300.0, 200.0, field.surfaces(300.0, 200.0))
     assert surfaces.floors == pytest.approx((12.0,))
 
 
 def test_a_hint_picks_among_the_hits(field):
     def pick(hint_m: float) -> tuple[str, float]:
-        reading = field.z(300.0, 200.0, hint_z_cm=hint_m * 100)
+        reading = field.height_at(300.0, 200.0, hint_z_cm=hint_m * 100)
         return reading.surface, round(reading.z_m, 2)
 
     assert pick(13.0) == ("floor", 12.0), "the lower slab, which no plane holds"
@@ -164,14 +164,14 @@ def test_landscape_away_from_rock_keeps_the_fast_path(field, monkeypatch):
     def refuse(*_args, **_kwargs):
         raise AssertionError("no ray on bare landscape")
 
-    monkeypatch.setattr(field, "collision", refuse)
-    assert field.z(125.0, 100.0).z_m == pytest.approx(1.25)
+    monkeypatch.setattr(field, "collision_surfaces", refuse)
+    assert field.height_at(125.0, 100.0).z_m == pytest.approx(1.25)
 
 
 def test_a_mesh_with_only_simple_collision_falls_back_to_its_hull(field):
-    on_pile = field.z(500.0, 100.0, hint_z_cm=850.0)
+    on_pile = field.height_at(500.0, 100.0, hint_z_cm=850.0)
     assert (on_pile.surface, on_pile.z_m) == ("top", pytest.approx(8.0))
-    assert field.z(500.0, 100.0).z_m == pytest.approx(5.0), "not in the ground set"
+    assert field.height_at(500.0, 100.0).z_m == pytest.approx(5.0), "not in the ground set"
     assert field.rocks().hits(500.0, 100.0).kind[0] == collision_pack.KIND_ROCK_SIMPLE
 
 
@@ -211,7 +211,7 @@ def test_the_cache_evicts_the_least_recent_tile_and_rebuilds_it(field):
 
 
 def test_in_a_cave_a_hint_just_above_a_collision_floor_gets_that_floor(field):
-    reading = field.z(500.0, 300.0, hint_z_cm=-400.0)
+    reading = field.height_at(500.0, 300.0, hint_z_cm=-400.0)
     assert reading.cave == cave_masks.INSIDE and reading.cave_floor and reading.height_known
     assert reading.z_m == pytest.approx(-5.0)
     assert (
@@ -224,10 +224,12 @@ def test_in_a_cave_a_hint_just_above_a_collision_floor_gets_that_floor(field):
 
 
 def test_in_a_cave_with_no_floor_near_the_hint_the_height_stays_unknown(field):
-    reading = field.z(500.0, 300.0, hint_z_cm=-850.0)
+    reading = field.height_at(500.0, 300.0, hint_z_cm=-850.0)
     assert reading.cave == cave_masks.INSIDE and not reading.cave_floor and not reading.height_known
     assert reading.cave_note.startswith("in a cave: ground height unknown here")
-    assert field.z(500.0, 300.0).cave == cave_masks.BELOW, "no hint never finds a cave floor"
+    assert field.height_at(500.0, 300.0).cave == cave_masks.BELOW, (
+        "no hint never finds a cave floor"
+    )
 
 
 def test_a_pack_from_another_build_is_not_read(tmp_path):
@@ -235,4 +237,4 @@ def test_a_pack_from_another_build_is_not_read(tmp_path):
     write_pack(directory, build="buildVersion 1, elsewhere")
     field = hf.load_field(directory)
     assert field.rocks() is None
-    assert field.z(300.0, 200.0).z_m == pytest.approx(50.0), "the raster answers as before"
+    assert field.height_at(300.0, 200.0).z_m == pytest.approx(50.0), "the raster answers as before"

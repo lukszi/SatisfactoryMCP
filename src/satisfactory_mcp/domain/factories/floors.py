@@ -548,7 +548,7 @@ def _assign(projection, game, index, platforms, terrain_field) -> list[Placement
             continue
         above: float | None = None
         if terrain_field is not None:
-            reading = terrain_field.at(point[0], point[1])
+            reading = terrain_field.texel_reading(point[0], point[1])
             if reading is not None:
                 above = point[2] / 100.0 - reading.z_m
         group = "terrain" if above is not None and abs(above) <= TERRAIN_TOL_M else "off-deck"

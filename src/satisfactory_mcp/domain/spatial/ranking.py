@@ -109,7 +109,7 @@ def _pad(cluster: geo.Cluster, terrain: Field | None):
         return None
     cx, cy, _ = cluster.centroid
     half = SITE_PAD_M * 100 / 2
-    return terrain.window(cx - half, cy - half, cx + half, cy + half)
+    return terrain.area(cx - half, cy - half, cx + half, cy + half)
 
 
 def _pad_raw(area) -> dict[str, float | None]:

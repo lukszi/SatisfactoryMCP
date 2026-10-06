@@ -259,7 +259,7 @@ class Field(FieldAreas):
         block = self.provenance_plane[max(r0, 0) : r0 + 2, max(c0, 0) : c0 + 2]
         return bool(np.isin(block, PROV_CLIFF_VALUES).any())
 
-    def collision(self, x_cm: float, y_cm: float, found: Surfaces) -> Surfaces | None:
+    def collision_surfaces(self, x_cm: float, y_cm: float, found: Surfaces) -> Surfaces | None:
         """``found`` with its rock surfaces read off the collision pack, or ``None``.
 
         ``ground`` is the highest of the landscape and the cliff set, ``top`` the highest of
@@ -330,7 +330,7 @@ class Field(FieldAreas):
             return None
         return row, col
 
-    def at(self, x_cm: float, y_cm: float) -> Reading | None:
+    def texel_reading(self, x_cm: float, y_cm: float) -> Reading | None:
         """The terrain at one world coordinate, or ``None`` where the field knows nothing.
 
         ``None`` covers both silences -- off the grid, and a no-data texel inside it --
@@ -476,7 +476,7 @@ class Field(FieldAreas):
             provenance=int(self.provenance_plane[row, col]),
         )
 
-    def z(
+    def height_at(
         self,
         x_cm: float,
         y_cm: float,
@@ -504,7 +504,7 @@ class Field(FieldAreas):
         if surface != "terrain" and (
             hint_z_cm is not None or surface == "top" or self.near_rock(x_cm, y_cm)
         ):
-            exact = self.collision(x_cm, y_cm, found)
+            exact = self.collision_surfaces(x_cm, y_cm, found)
         cave_floor = False
         if hint_z_cm is not None:
             hint_m = hint_z_cm / 100.0

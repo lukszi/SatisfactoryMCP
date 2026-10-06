@@ -62,7 +62,9 @@ def terrain_z(
         "build": field.build,
     }
     if width_m <= 0 or depth_m <= 0:
-        reading = field.z(x_m * 100, y_m * 100, hint_z_cm=None if hint_m is None else hint_m * 100)
+        reading = field.height_at(
+            x_m * 100, y_m * 100, hint_z_cm=None if hint_m is None else hint_m * 100
+        )
         if reading is None:
             return {**out, "z_m": None, "reason": _silence(field, x_m, y_m)}
         if not reading.height_known:
@@ -86,11 +88,11 @@ def terrain_z(
             "cave_floor": reading.cave_floor,
         }
     box = footprint_box_cm(x_m, y_m, width_m, depth_m, yaw_deg)
-    areas = {"ground": field.window(*box)}
+    areas = {"ground": field.area(*box)}
     if field.has_terrain:
-        areas["terrain"] = field.window(*box, surface="terrain", shape=False)
+        areas["terrain"] = field.area(*box, surface="terrain", shape=False)
     if field.has_top:
-        areas["top"] = field.window(*box, surface="top", shape=False)
+        areas["top"] = field.area(*box, surface="top", shape=False)
     ground = areas["ground"]
     if ground.z_median_m is None:
         return {**out, "z_m": None, "reason": _silence(field, x_m, y_m)}

@@ -10,11 +10,11 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from fastapi import APIRouter, Query, Request
 
-from .....domain.spatial import geo, surroundings
-from .....domain.spatial.heightfield import cave_masks
 from .....domain.spatial import elevation as spatial_elevation
+from .....domain.spatial import geo, surroundings
 from .....domain.spatial import nodes as spatial_nodes
 from .....domain.spatial import regions as spatial_regions
+from .....domain.spatial.heightfield import cave_masks
 from .....domain.world.state import WorldState
 from ... import terrain
 from ...serial import (

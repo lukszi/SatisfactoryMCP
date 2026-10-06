@@ -25,7 +25,7 @@ __all__ = ["FieldAreas"]
 
 
 class FieldAreas:
-    """``window`` and ``nearest_water`` for ``Field``, which supplies the planes they cut."""
+    """``area`` and ``nearest_water`` for ``Field``, which supplies the planes they cut."""
 
     def _rows_cols(
         self, x0_cm: float, y0_cm: float, x1_cm: float, y1_cm: float
@@ -49,7 +49,7 @@ class FieldAreas:
             min(col_hi, self.width),
         )
 
-    def window(
+    def area(
         self,
         x0_cm: float,
         y0_cm: float,
@@ -68,7 +68,7 @@ class FieldAreas:
         ``nodata_pct`` is what says how much of the pad they speak for.
 
         Reads a strided numpy view, never a per-texel loop: at 1 m over a 750 km2 world a
-        200 m pad is 40k texels and a kilometre pad is a million, and ``at()`` costs ~1.2 us
+        200 m pad is 40k texels and a kilometre pad is a million, and ``texel_reading()`` costs ~1.2 us
         a texel. Beyond ``max_texels`` the view is decimated by an integer ``stride``, which
         is reported -- decimation lowers roughness and slope, because it cannot see detail
         finer than the new spacing, so a caller comparing two areas must compare their
@@ -271,7 +271,7 @@ class FieldAreas:
 
         ``None`` only when this field carries no water plane at all, which is a different
         answer from "no water nearby" and must not be collapsed into it. Decimated past
-        ``max_texels`` exactly as ``window`` is, so ``distance_m`` is quantised to
+        ``max_texels`` exactly as ``area`` is, so ``distance_m`` is quantised to
         ``stride`` metres and ``stride`` is reported rather than folded away.
         """
         water = self.water_raster()

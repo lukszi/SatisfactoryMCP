@@ -14,8 +14,8 @@ import pytest
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.rocks.caves import CAVE_BUFFER_CELLS, CAVE_CELL_CM, CAVE_MASK_PX, build_caves
 from satisfactory_mcp.domain.planning import siting
-from satisfactory_mcp.domain.spatial.heightfield import cave_masks
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from satisfactory_mcp.domain.spatial.heightfield import cave_masks
 from tests.support.caves import HULL, fixture_mask, write_caves
 from tests.support.heightfields import build_field, build_layered_field
 from tests.support.web import client_over
@@ -31,42 +31,44 @@ def field(tmp_path):
 def test_without_cave_masks_every_answer_is_none(tmp_path):
     field = hf.load_field(build_layered_field(tmp_path))
     assert field.caves() is None
-    assert field.z(100, 100).cave == cave_masks.NONE
-    assert field.z(500, 300, hint_z_cm=-500).cave == cave_masks.NONE
-    assert field.window(0, 0, 600, 500).cave_pct == 0.0
+    assert field.height_at(100, 100).cave == cave_masks.NONE
+    assert field.height_at(500, 300, hint_z_cm=-500).cave == cave_masks.NONE
+    assert field.area(0, 0, 600, 500).cave_pct == 0.0
 
 
 def test_without_a_hint_a_flagged_cell_reads_below_and_never_inside(field):
-    assert field.z(100, 100).cave == cave_masks.BELOW
-    assert field.at(100, 100).cave == cave_masks.BELOW
-    assert field.z(500, 300).cave == cave_masks.BELOW
-    assert field.z(100, 300).cave == cave_masks.NONE
+    assert field.height_at(100, 100).cave == cave_masks.BELOW
+    assert field.texel_reading(100, 100).cave == cave_masks.BELOW
+    assert field.height_at(500, 300).cave == cave_masks.BELOW
+    assert field.height_at(100, 300).cave == cave_masks.NONE
 
 
 def test_a_hint_inside_a_sound_volume_reads_inside(field):
-    assert field.z(500, 300, hint_z_cm=-500).cave == cave_masks.INSIDE
-    assert field.z(500, 300, hint_z_cm=500).cave == cave_masks.BELOW, "standing on the ramp above"
+    assert field.height_at(500, 300, hint_z_cm=-500).cave == cave_masks.INSIDE
+    assert field.height_at(500, 300, hint_z_cm=500).cave == cave_masks.BELOW, (
+        "standing on the ramp above"
+    )
 
 
 def test_a_hint_deep_under_every_surface_over_cave_decoration_reads_inside(field):
     # Ground at (100, 100) is 1 m; the rule is more than 3 m under the lowest surface.
-    assert field.z(100, 100, hint_z_cm=-250).cave == cave_masks.INSIDE
-    assert field.z(100, 100, hint_z_cm=-150).cave == cave_masks.BELOW
+    assert field.height_at(100, 100, hint_z_cm=-250).cave == cave_masks.INSIDE
+    assert field.height_at(100, 100, hint_z_cm=-150).cave == cave_masks.BELOW
 
 
 def test_a_deep_hint_over_unflagged_ground_is_not_a_cave(field):
-    assert field.z(100, 300, hint_z_cm=-5000).cave == cave_masks.NONE
+    assert field.height_at(100, 300, hint_z_cm=-5000).cave == cave_masks.NONE
 
 
 def test_cave_is_kept_apart_from_ambiguous(field):
-    rock = field.z(300, 200)
+    rock = field.height_at(300, 200)
     assert rock.ambiguous and rock.cave == cave_masks.NONE
-    decorated = field.z(100, 100)
+    decorated = field.height_at(100, 100)
     assert decorated.cave == cave_masks.BELOW and not decorated.ambiguous
 
 
 def test_a_pad_reports_the_share_with_a_cave_under_it(field):
-    area = field.window(0, 0, 600, 500)
+    area = field.area(0, 0, 600, 500)
     # 42 texels: 4 under the decoration cell, 12 under the hull cells (x 400..600, y 200..500).
     assert area.cave_pct == pytest.approx(100 * (4 + 12) / 42, abs=0.1)
     assert area.ambiguous_pct > 0, "the rock still counts on its own"
@@ -74,13 +76,13 @@ def test_a_pad_reports_the_share_with_a_cave_under_it(field):
 
 def test_rewritten_masks_are_picked_up(field, tmp_path, monkeypatch):
     monkeypatch.setattr(hf.field, "CAVES_RECHECK_S", 0.0)
-    assert field.z(100, 300).cave == cave_masks.NONE
+    assert field.height_at(100, 300).cave == cave_masks.NONE
     mask = fixture_mask()
     mask[1, 0] = cave_masks.BIT_MARKERS
     write_caves(tmp_path / cave_masks.DIR_NAME, mask, [HULL])
     meta = tmp_path / cave_masks.DIR_NAME / cave_masks.META_NAME
     os.utime(meta, ns=(meta.stat().st_atime_ns, meta.stat().st_mtime_ns + 10**9))
-    assert field.z(100, 300).cave == cave_masks.BELOW
+    assert field.height_at(100, 300).cave == cave_masks.BELOW
 
 
 def test_a_broken_mask_reads_as_no_caves(tmp_path):
@@ -89,7 +91,7 @@ def test_a_broken_mask_reads_as_no_caves(tmp_path):
     (tmp_path / cave_masks.DIR_NAME / cave_masks.DATA_NAME).write_bytes(b"not an npz")
     field = hf.load_field(directory)
     assert field.caves() is None
-    assert field.z(100, 100).cave == cave_masks.NONE
+    assert field.height_at(100, 100).cave == cave_masks.NONE
 
 
 def test_the_note_names_the_surface_and_never_a_ceiling():

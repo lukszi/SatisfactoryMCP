@@ -199,10 +199,10 @@ class _OneTexel:
     def __init__(self, reading: heightfield.Reading | None) -> None:
         self._reading = reading
 
-    def at(self, x_cm: float, y_cm: float) -> heightfield.Reading | None:
+    def texel_reading(self, x_cm: float, y_cm: float) -> heightfield.Reading | None:
         return self._reading
 
-    def z(self, x_cm: float, y_cm: float, **_: object) -> heightfield.Reading | None:
+    def height_at(self, x_cm: float, y_cm: float, **_: object) -> heightfield.Reading | None:
         return self._reading
 
 

@@ -20,12 +20,12 @@ def test_water_is_a_second_surface_and_never_a_correction_to_the_ground(tmp_path
     water reports both numbers and moves neither.
     """
     field = hf.load_field(build_field(tmp_path))
-    under = field.at(FAKE_X0, FAKE_Y0 + 4 * FAKE_SPACING)
+    under = field.texel_reading(FAKE_X0, FAKE_Y0 + 4 * FAKE_SPACING)
     assert under.z_m == -15.0, "the ground was moved to the water surface"
     assert under.water_m == 2.0
     assert under.submerged is True
     assert under.water_depth_m == 17.0
-    assert field.at(FAKE_X0, FAKE_Y0).submerged is False
+    assert field.texel_reading(FAKE_X0, FAKE_Y0).submerged is False
 
 
 def test_a_depth_the_field_cannot_measure_is_None_and_never_a_zero(tmp_path):
@@ -39,7 +39,7 @@ def test_a_depth_the_field_cannot_measure_is_None_and_never_a_zero(tmp_path):
     perfectly reasonable-looking 0.0 m of water.
     """
     field = hf.load_field(build_field(tmp_path))
-    sea = field.at(FAKE_X0, FAKE_Y0 + 5 * FAKE_SPACING)
+    sea = field.texel_reading(FAKE_X0, FAKE_Y0 + 5 * FAKE_SPACING)
     assert sea.water_m == -17.0
     assert sea.z_m == -15.0, "the ground was moved to meet the water"
     assert sea.water_quality == hf.WATER_LEVEL_ONLY
@@ -55,17 +55,17 @@ def test_a_field_written_before_the_quality_byte_reads_exactly_as_it_used_to(tmp
     that raster was added to fix, and is the honest behaviour for a field that predates it.
     """
     field = hf.load_field(build_field(tmp_path, quality=False))
-    lake = field.at(FAKE_X0, FAKE_Y0 + 4 * FAKE_SPACING)
+    lake = field.texel_reading(FAKE_X0, FAKE_Y0 + 4 * FAKE_SPACING)
     assert lake.water_m == 2.0 and lake.submerged is True
     assert lake.water_depth_m == 17.0
-    sea = field.at(FAKE_X0, FAKE_Y0 + 5 * FAKE_SPACING)
+    sea = field.texel_reading(FAKE_X0, FAKE_Y0 + 5 * FAKE_SPACING)
     assert sea.water_m == -17.0 and sea.submerged is False
 
 
 def test_a_field_without_a_water_channel_still_answers(tmp_path):
     """Water is decoded separately and only if asked, so its absence costs one attribute."""
     field = hf.load_field(build_field(tmp_path, water=False))
-    reading = field.at(FAKE_X0, FAKE_Y0 + 4 * FAKE_SPACING)
+    reading = field.texel_reading(FAKE_X0, FAKE_Y0 + 4 * FAKE_SPACING)
     assert reading.z_m == -15.0
     assert reading.water_m is None and reading.submerged is False
 

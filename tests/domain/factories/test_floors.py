@@ -47,7 +47,7 @@ class _FlatField:
     def __init__(self, z_m: float) -> None:
         self._z = z_m
 
-    def at(self, x: float, y: float):
+    def texel_reading(self, x: float, y: float):
         del x, y
         return type("Reading", (), {"z_m": self._z})()
 

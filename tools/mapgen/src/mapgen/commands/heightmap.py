@@ -87,8 +87,8 @@ from satisfactory_mcp.core.gameassets.provenance import (
     install_directory,
     installed_build,
 )
-from satisfactory_mcp.domain.spatial.heightfield import cave_masks as caves
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from satisfactory_mcp.domain.spatial.heightfield import cave_masks as caves
 
 
 def parse_args():
