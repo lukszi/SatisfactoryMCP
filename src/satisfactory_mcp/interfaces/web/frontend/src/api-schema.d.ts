@@ -4484,7 +4484,7 @@ export interface components {
         };
         /**
          * MapTypeBody
-         * @description One map type. ``name`` is derived from its axes; ``label`` is the player's, or null.
+         * @description One map type: ``title`` is what every list shows, ``name`` the axes' technical name.
          */
         MapTypeBody: {
             /** Id */
@@ -4493,6 +4493,8 @@ export interface components {
             label: string | null;
             /** Name */
             name: string;
+            /** Title */
+            title: string;
             /** Style */
             style: string;
             /** Renderer */

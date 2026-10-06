@@ -16,6 +16,7 @@ from pathlib import Path
 from ... import config
 from ...core import atomic, filelock, schema
 from . import axes as ax
+from . import titles
 
 __all__ = [
     "LEGACY",
@@ -375,7 +376,7 @@ def game_cl() -> int | None:
 
 
 def view(current: dict | None = None) -> dict:
-    """Every type with its computed status, freshness and names, in display order."""
+    """Every type with its computed status, freshness, name and title, in display order."""
     data = read()
     local = local_dir()
     current = current if current is not None else ax.current_state(local, game_cl())
@@ -398,8 +399,10 @@ def view(current: dict | None = None) -> dict:
     for row in rows:
         short = ax.display_name(row["axes"])
         groups[short] = groups.get(short, 0) + 1
+    named = titles.titles(rows, data["default"])
     for row in rows:
         row["name"] = ax.display_name(row["axes"], groups[ax.display_name(row["axes"])] > 1)
+        row["title"] = named[row["id"]]
     rows.sort(key=lambda row: ax.sort_key(row["axes"], row["id"]))
     return {
         "version": data["version"],

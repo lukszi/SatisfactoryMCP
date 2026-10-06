@@ -37,6 +37,9 @@ def test_the_list_carries_every_type_its_freshness_and_what_can_run(client):
     assert body["default"] == "map"
     terrain = next(t for t in body["types"] if t["id"] == "terrain")
     assert terrain["name"] == "terrain · PCHIP r5 · data 502094/hf v5"
+    assert terrain["title"].startswith("Terrain · "), "three terrain maps are dated apart"
+    artwork = next(t for t in body["types"] if t["id"] == "map")
+    assert artwork["title"] == "Game map ★" and artwork["label"] is None
     assert terrain["status"] == "ready" and terrain["dir"] == "renders/terrain"
     old = next(t for t in body["types"] if t["id"] == "terrain-r3-502094")
     assert old["freshness"]["stale"][0]["text"] == "newer heightfield (v3 → v5)"
@@ -77,6 +80,7 @@ def test_rename_hide_default_and_a_stale_version(client):
     assert reply.status_code == 200, reply.text
     row = next(t for t in reply.json()["types"] if t["id"] == "terrain-r4-502094")
     assert row["label"] == "two-regime" and row["in_switcher"] is False
+    assert row["title"] == "two-regime"
     stale = client.patch(
         "/api/maps/terrain", json={"label": "x", "version": version}, headers=ORIGIN
     )

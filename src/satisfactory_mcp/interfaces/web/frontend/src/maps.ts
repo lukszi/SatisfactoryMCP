@@ -8,7 +8,7 @@
 import { get, send } from "./api";
 import { button, checkbox, chip, choice, empty, error, fieldError, idChip, loading, note, slider } from "./dashkit";
 import { make } from "./dom";
-import { adoptMaps, fetchMaps, mapState, mapTitle, onMaps, staleWhy, staleWord } from "./mapstore";
+import { adoptMaps, fetchMaps, mapDetails, mapState, onMaps, staleWhy, staleWord } from "./mapstore";
 import { askMode } from "./tiles";
 import { fail, friendly } from "./toast";
 
@@ -127,7 +127,7 @@ export function mapPickerRow(): HTMLElement {
       return t.status === "ready";
     })
     .map(function (t): [string, string] {
-      return [t.id, mapTitle(t) + (t.freshness.stale.length ? " (stale)" : "")];
+      return [t.id, t.title + (t.freshness.stale.length ? " (stale)" : "")];
     });
   options.push(["plain", "plain: no imagery"]);
   var value = body.default || "plain";
@@ -624,7 +624,7 @@ function nameCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
     input.type = "text";
     input.maxLength = 80;
     input.value = row.label || "";
-    input.placeholder = row.name;
+    input.placeholder = "empty: named by its style";
     input.setAttribute("aria-label", "label for " + row.id);
     var save = function () {
       renaming = "";
@@ -643,24 +643,13 @@ function nameCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
       input.focus();
     }, 0);
   } else {
-    title.appendChild(make("strong", "", mapTitle(row)));
+    title.appendChild(make("strong", "", row.title));
   }
   title.appendChild(idChip(row.id, row.dir));
-  if (row.default) title.appendChild(chip("★ default", "ok"));
+  if (row.default) title.appendChild(chip("default", "ok"));
   if (row.status !== "ready") title.appendChild(chip(row.status, row.status === "failed" ? "bad" : "muted"));
   cell.appendChild(title);
-  var sub = [row.label ? row.name : "", row.size_px ? row.size_px + " px" : "", "data/local/" + row.dir.replace(/^\.$/, "")];
-  cell.appendChild(
-    make(
-      "div",
-      "dash-sub",
-      sub
-        .filter(function (part) {
-          return !!part;
-        })
-        .join(" · ")
-    )
-  );
+  cell.appendChild(make("div", "dash-sub", mapDetails(row) + " · data/local/" + row.dir.replace(/^\.$/, "")));
   return cell;
 }
 
@@ -724,8 +713,8 @@ function actionsCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
 function thumb(row: MapTypeBody): HTMLElement {
   var link = make("button", "maps-thumb");
   link.type = "button";
-  link.title = "open the map on " + mapTitle(row);
-  link.setAttribute("aria-label", "open the map on " + mapTitle(row));
+  link.title = "open the map on " + row.title;
+  link.setAttribute("aria-label", "open the map on " + row.title);
   if (row.status === "ready") {
     var img = make("img");
     img.loading = "lazy";

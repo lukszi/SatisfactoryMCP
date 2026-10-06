@@ -14,7 +14,7 @@ import { tilePath } from "./api";
 import { onModePick, showModes } from "./layercontrol";
 import { L } from "./leaflet";
 import { makeLitLayer, parseLight, webglReady } from "./litlayer";
-import { fetchMaps, mapState, mapTitle, onMaps, staleWhy, staleWord } from "./mapstore";
+import { fetchMaps, mapDetails, mapState, onMaps, staleWhy, staleWord } from "./mapstore";
 import { MAP_SHEET_PX, MAP_SQUARE_M, map, writeHash } from "./map";
 import { regionsUnderMode, updateRegionBlend } from "./regions";
 import { BOOT, state } from "./state";
@@ -34,8 +34,6 @@ interface ModeSpec {
    * pyramid. */
   layer: string;
   label: string;
-  /** A second line under the label: the axes name when the player renamed the type. */
-  sub: string;
   /** The row's tooltip when the mode can be picked: what this picture actually is. */
   about: string;
   /* ...and what it says when it cannot: which tool writes that tree. Repeated here rather
@@ -71,7 +69,6 @@ var PLAIN: ModeSpec = {
   key: "plain",
   layer: "",
   label: "plain",
-  sub: "",
   about: "no base imagery: the biome regions on the page's own sea",
   generator: "",
   flag: "",
@@ -79,7 +76,7 @@ var PLAIN: ModeSpec = {
 };
 
 function legacy(key: string, label: string, about: string): ModeSpec {
-  return { key: key, layer: key, label: label, sub: "", about: about, generator: GENERATORS[key] || "", flag: "", flagTitle: "" };
+  return { key: key, layer: key, label: label, about: about, generator: GENERATORS[key] || "", flag: "", flagTitle: "" };
 }
 
 /* What the switcher offers before the registry answers, or when it cannot: the three names the
@@ -96,9 +93,8 @@ function specOf(row: MapTypeBody): ModeSpec {
   return {
     key: row.id,
     layer: row.id,
-    label: mapTitle(row),
-    sub: row.label ? row.name : "",
-    about: row.name + (row.freshness.stale.length ? " -- " + staleWhy(row) : ""),
+    label: row.title,
+    about: mapDetails(row) + (row.freshness.stale.length ? "\n" + staleWord(row) + ": " + staleWhy(row) : ""),
     generator: GENERATORS[row.layer] || "the Maps tab in Settings",
     flag: staleWord(row),
     flagTitle: staleWhy(row),
@@ -430,7 +426,6 @@ function modeChoices(): ModeChoice[] {
     return {
       key: spec.key,
       label: spec.label,
-      sub: spec.sub,
       flag: spec.flag,
       flagTitle: spec.flagTitle,
       ready: ready,

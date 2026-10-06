@@ -162,14 +162,14 @@ into `provenance.style.tone`). `axes.style_tone` reads the sidecar's word, else 
 light, and every type on `GET /api/maps` carries it. The page's overlay colours follow it
 (frontend_vision.md §19). No imagery is `plain_tone`, dark.
 
-| Layer | Style id | Label | Tone |
-|---|---|---|---|
-| `terrain` | `terrain-hypsometric` | terrain | light |
-| `satellite` | `satellite-biome` | satellite | light |
-| `painted` | `satellite-painted` | game-painted | light |
-| `relief` | `relief-muted` | relief | light |
-| `relief-dark` | `relief-night` | relief dark | dark |
-| (artwork) | `artwork` | artwork | light |
+| Layer | Style id | Label | Name (§3.5) | Tone |
+|---|---|---|---|---|
+| `terrain` | `terrain-hypsometric` | terrain | Terrain | light |
+| `satellite` | `satellite-biome` | satellite | Satellite | light |
+| `painted` | `satellite-painted` | game-painted | Painted | light |
+| `relief` | `relief-muted` | relief | Relief | light |
+| `relief-dark` | `relief-night` | relief dark | Relief (dark) | dark |
+| (artwork) | `artwork` | artwork | Game map | light |
 
 ### 3.3 Verdicts
 
@@ -206,12 +206,31 @@ version. A render with `--no-titan-trees` omits the second and records its own s
 
 ### 3.5 Names and order
 
-Picker and switcher name a type `{style} · {renderer} · data {cl}/hf v{n}`, e.g. "terrain ·
-PCHIP r5 · data 502094/hf v5"; the artwork is "artwork · ESRGAN r2 · data 502094". Two types
-whose names would be equal add their size. A label replaces the name in the title only; the
-name is always shown under it. Order: style, then data (newest changelist, then highest
-heightfield version), then recipe, then style version, so older data drawn with a newer
-renderer sorts below newer data.
+Every type carries two names on `GET /api/maps`:
+
+- **`title`**, what the switcher, the default picker, the Maps tab and chat call it. It is
+  composed once, by `domain/maps/titles.py`, so the page and chat cannot disagree:
+  1. The player's `label` when the type has one, used as it is. The generate form's optional
+     name sets it on every type the job makes, **rename** in the Maps tab sets or clears it,
+     and a **re-render** carries it to the new type.
+  2. Otherwise the style's name, `STYLES[id].name` (the table in §3.2): "Game map",
+     "Painted", "Satellite", "Terrain", "Relief", "Relief (dark)". Any artwork is "Game map";
+     a style the table does not know is its label, capitalised.
+  3. The build date is added, "Painted · 6 Oct", only when the switcher shows another
+     unlabelled type of the same name. "Shows" means `ready` or `missing`, and ticked "in
+     switcher" or the default. A type the switcher does not show is still dated beside a twin it
+     does show, so the Maps tab tells the two apart. When two of them were built on one day,
+     the time is added too: "Terrain · 6 Oct 14:05". The date is the type's `created`, in the
+     server's local time, with English month names whatever the locale. A type with no
+     `created` gets no date.
+  4. The default gets " ★" after all of that, a label included.
+- **`name`**, the technical name from the axes: `{style} · {renderer} · data {cl}/hf v{n}`,
+  e.g. "terrain · PCHIP r5 · data 502094/hf v5", and "artwork · ESRGAN r2 · data 502094" for
+  the artwork, then the light. Two types whose names would be equal add their size. The page
+  shows it, with the size, in the switcher row's tooltip and under the title in the Maps tab.
+
+Order: style, then data (newest changelist, then highest heightfield version), then recipe,
+then style version, so older data drawn with a newer renderer sorts below newer data.
 
 ---
 
@@ -347,7 +366,7 @@ adopt, cache clear) publishes one with `job: null`.
 
 ### 6.1 Settings → general
 
-A `map` group with one row, **default base map**: every `ready` type by name, " (stale)" after
+A `map` group with one row, **default base map**: every `ready` type by title, " (stale)" after
 a stale one, then "plain". It writes `PUT /api/maps/default`. The default lives in the manifest
 rather than `settings.json` (shared-settings.md §1 says why).
 
@@ -371,9 +390,9 @@ rather than `settings.json` (shared-settings.md §1 says why).
    Vulkan GPU was found; an optional name; the
    estimate line, live; **generate**, or **queue** while a job runs, disabled with the reason as
    its title.
-4. **Map types**: a 64 px z0 thumbnail that opens the map on the type, the title (label or
-   name), id chip, ★ default, the name and size and folder, built date, size, the amber stale
-   chip and its reason, neutral re-render and palette chips, then **set as default**,
+4. **Map types**: a 64 px z0 thumbnail that opens the map on the type, the title (§3.5), id
+   chip, a "default" chip, the technical name and size and folder, built date, size, the amber
+   stale chip and its reason, neutral re-render and palette chips, then **set as default**,
    **re-render** / **regenerate** (queues the heightfield first when the offer needs it, and the
    render with `replaces`), **rename** (inline), **in switcher**, **delete** (inline "delete X?
    size · delete · keep", disabled on the default). Rows stack under 600 px.
@@ -384,9 +403,14 @@ rather than `settings.json` (shared-settings.md §1 says why).
 
 `tiles.ts` builds its modes from `mapstore.ts`: every `ready` type ticked "in switcher", the
 default first, plus whatever is on screen or named by the address, plus plain. A row shows the
-title, the name under it when the type is renamed, and an amber "older build" or "older data"
-after a stale one. Each pyramid is HEAD-probed as before. A registry change rebuilds the rows
-and re-probes; a type that has just become ready raises a toast "<name> is ready · show".
+title (§3.5) and an amber "older build" or "older data" after a stale one. Its tooltip is the
+technical name and the size, then the stale reason. Each pyramid is HEAD-probed as before. A
+registry change rebuilds the rows and re-probes; a type that has just become ready raises a
+toast "<title> is ready · show".
+
+The server does not know what a page has on screen, so a type the switcher lists only for that
+reason (unticked, not the default) does not count as shown when titles are dated: it is dated
+beside its ticked twin, and the twin keeps its plain title. The two still read differently.
 
 The page opens on the fragment's `mode=` if it can be drawn, else the shared default, else the
 artwork, else plain. `mode=` holds a type id; the old `mode=artwork` is read as `map`, and
@@ -398,11 +422,13 @@ does not have is ignored rather than turning the map plain. `BaseMode` and `MapT
 
 ## 7. Chat
 
-Read-only. `settings()` adds one header line, `# base maps (show_on_map mode=): map (default),
-…, terrain-r3-502094 -- stale: newer heightfield (v3 → v5)`. `show_on_map(mode=)` takes an id
-from that line, `artwork` or `plain`, checks it against the registry, and puts `mode=` in the
-local link; an unknown id is refused with the list. Generation stays on the page: the runner
-lives in the web process, and a half-hour job deserves a visible confirm. No tool was added.
+Read-only. `settings()` adds one header line naming every `ready` type by id and by the title
+the page shows (§3.5): `# base maps (show_on_map mode=): map "Game map ★" (default), …,
+terrain-r3-502094 "Terrain · 5 Oct" -- stale: newer heightfield (v3 → v5)`.
+`show_on_map(mode=)` takes an id from that line, `artwork` or `plain`, checks it against the
+registry, and puts `mode=` in the local link; an unknown id is refused with the list.
+Generation stays on the page: the runner lives in the web process, and a half-hour job deserves
+a visible confirm. No tool was added.
 
 ---
 
@@ -410,7 +436,7 @@ lives in the web process, and a half-hour job deserves a visible confirm. No too
 
 | Method + path | Does | Refuses |
 |---|---|---|
-| `GET /api/maps` | `MapsResponse {version, default, types[] (each with tone), jobs[], can_generate (with vulkan), inputs[], disk, game_cl, unregistered[], queue_max, sizes[], styles[] {layer, style, label, tone}, cached_sizes[], plain_tone}` | 503 newer manifest |
+| `GET /api/maps` | `MapsResponse {version, default, types[] (each with title, name and tone), jobs[], can_generate (with vulkan), inputs[], disk, game_cl, unregistered[], queue_max, sizes[], styles[] {layer, style, label, tone}, cached_sizes[], plain_tone}` | 503 newer manifest |
 | `GET /api/maps/estimate?preset=&layers=&size=&recipe=&top=&keep_cache=&restyle=&enhance=&tiles_2x=` | `MapEstimateResponse {seconds, keep_bytes, transient_bytes, free_bytes, needs_bytes, ok, reason, measured}` | 400 bad option |
 | `PUT /api/maps/default {id, version?}` | `MapsResponse` | 404 unknown, 409 not ready or stale version |
 | `POST /api/maps/adopt` | `MapsResponse` | |
