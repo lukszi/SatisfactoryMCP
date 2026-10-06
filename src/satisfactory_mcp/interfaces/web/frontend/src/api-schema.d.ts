@@ -11158,6 +11158,7 @@ export interface operations {
                 top?: boolean;
                 keep_cache?: boolean;
                 restyle?: boolean;
+                light?: boolean;
                 enhance?: boolean;
                 tiles_2x?: boolean;
             };

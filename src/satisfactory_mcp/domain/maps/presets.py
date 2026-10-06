@@ -74,11 +74,14 @@ GEN_MODULES = ("ooz", "texture2ddecoder", "PIL")
 #: never drops under its floor because the triangles are the same at any size.
 RENDER_STAGE_S = {"prep": 30.0, "sweep": 36.0, "direct": 692.0, "top": 119.0}
 RENDER_LAYER_S = {"draw": 355.0, "cut": 122.0}
-#: ``--unlit``: the lighting bake once (projected, docs/spatial-and-map.md section 29), and per
-#: layer the unlit tree cut beside the baked one.
+#: ``--light``: the lighting bake once (projected, docs/spatial-and-map.md section 29), and per
+#: layer the unlit tree cut beside the baked one. The scratch is the light cache while it runs,
+#: and the crown occluder a painted layer adds to it (section 29, "Scratch").
 LIGHT_STAGE_S = 600.0
 LIGHT_KEEP_BYTES = 1_000_000_000
 UNLIT_KEEP_BYTES = 420_000_000
+LIGHT_SCRATCH_BYTES = 14_500_000_000
+CROWN_SCRATCH_BYTES = 10_700_000_000
 DIRECT_FLOOR_S = 80.0
 TOP_FLOOR_S = 18.0
 RENDER_KEEP_BYTES = 830_000_000
@@ -149,7 +152,7 @@ def normalise(preset: str, options: dict | None) -> dict:
             "top": _bool(options, "top", True),
             "keep_cache": _bool(options, "keep_cache", False),
             "restyle": restyle,
-            "light": _bool(options, "light", False),
+            "light": _bool(options, "light", True),
             "titan_trees": _bool(options, "titan_trees", True),
         }
     if preset == "artwork":
@@ -203,7 +206,7 @@ def _scaled_history(preset: str, options: dict) -> float | None:
         was = row.get("options") or {}
         if was.get("recipe") != options["recipe"] or not was.get("size"):
             continue
-        if bool(was.get("restyle")) != options["restyle"]:
+        if any(bool(was.get(key)) != options[key] for key in ("restyle", "light")):
             continue
         layers = max(1, len(was.get("layers") or []))
         per_layer = row["seconds"] / layers
@@ -245,6 +248,9 @@ def estimate(preset: str, options: dict) -> dict:
         keep = len(options["layers"]) * max(RENDER_KEEP_FLOOR, int(per_layer * area))
         keep += int(LIGHT_KEEP_BYTES * area) if options["light"] else 0
         transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
+        if options["light"]:
+            crowns = CROWN_SCRATCH_BYTES if "painted" in options["layers"] else 0
+            transient += int((LIGHT_SCRATCH_BYTES + crowns) * area)
     elif preset == "artwork":
         seconds, keep = FIXED["artwork"]["enhanced" if options["enhance"] else "plain"]
         transient = keep
@@ -359,8 +365,7 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
             argv.append("--kernel-only")
         if not options["top"]:
             argv.append("--no-top")
-        if options["light"]:
-            argv.append("--unlit")
+        argv.append("--light" if options["light"] else "--no-light")
         if not options["titan_trees"]:
             argv.append("--no-titan-trees")
         if options["keep_cache"] or options["restyle"] or cache_dir(options["size"]).is_dir():

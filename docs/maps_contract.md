@@ -126,10 +126,11 @@ and the tools' own staleness guards read what they always read.
 }
 ```
 
-- **`light`**, on a render drawn with `--unlit` only: the light model its lighting pyramid
-  was baked for, from `lighting/model.py`'s `light_axis()` (`id`, `version`, the model
-  constants, `digest`). `versions.LIGHTS` holds the current version. The name of such a type
-  ends in its label, "live sun". The sun position is a viewer setting, never provenance.
+- **`light`**, on a render drawn with the light only (`--light`, the default; §8.1): the
+  light model its lighting pyramid was baked for, from `lighting/model.py`'s `light_axis()`
+  (`id`, `version`, the model constants, `digest`). `versions.LIGHTS` holds the current
+  version. The name of such a type ends in its label, "live sun". The sun position is a
+  viewer setting, never provenance.
 - **Inputs list only what the map read.** Terrain has no `biome_raster`, so a new biome raster
   cannot make terrain stale.
 - **Size is a renderer parameter, not a version.** A 4096 preview and a 32768 render of one
@@ -241,7 +242,7 @@ from a whitelist and every path is chosen by the server.
 
 | Preset | Command | Options |
 |---|---|---|
-| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] [--cache-dir data/local/maps/_cache/<S> --keep-direct] [--restyle]` | `layers` ⊆ terrain, satellite, painted, relief, relief-dark (default the first two); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `keep_cache`; `restyle` |
+| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] --light\|--no-light [--no-titan-trees] [--cache-dir data/local/maps/_cache/<S> --keep-direct] [--restyle]` | `layers` ⊆ terrain, satellite, painted, relief, relief-dark (default the first two); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `light` (default true, §8.1); `titan_trees`; `keep_cache`; `restyle` |
 | `artwork` | `gen_map_image.py --game G --out-dir data/local/maps/<id> [--enhance] [--no-tiles-2x]` | `enhance` (only with a Vulkan GPU), `tiles_2x` |
 | `heightmap` | `gen_world_heightmap.py --game G --force --out-dir data/local/heightmap` | — |
 | `caves` | `… --caves --field … --caves-dir data/local/caves --force` | — |
@@ -269,8 +270,10 @@ records, and a job record still names its `script`.
   checks the stamps (size, sub-samples, build) itself and exits 9 rather than rebuilding a
   raster, so a palette change never turns into a full render. The plan drops the sweep, direct
   and top stages: one full-size layer is prep plus draw and cut, about 8.5 min against about
-  37 min for a full two-layer render (§4.3). A restyle's history row is kept apart from full
-  renders' when scaling the next estimate.
+  37 min for a full two-layer render (§4.3), both without the light. With the light, the
+  default, a restyle bakes it again, budgeted at 10 min at full size, because the raster cache
+  does not keep it (§8.1). A restyle's history row is kept apart from full renders' when
+  scaling the next estimate.
 - The one write outside `data/local` is the pre-existing one: `--enhance` downloads the
   upscaler into the user cache folder once; the form says so.
 
@@ -289,15 +292,17 @@ for a missing `gen` extra says to stop satisfactory-mcp first, because uv cannot
 ### 4.2 Disk
 
 A job is refused (507) unless free space covers what it keeps, what it needs while running
-(the raster caches, about 10.7 GB at 32768, scaled by area) and 2 GB more. Checked at the form,
-at submit and again at start.
+(the raster caches, about 10.7 GB at 32768, and with the light its cache, 14.5 GB and 10.7 GB
+more with the painted layer, all scaled by area) and 2 GB more. Checked at the form, at submit
+and again at start.
 
 ### 4.3 Estimates
 
 From the stage seconds of one measured full render (prep 30, sweep 36, direct 692, top 119,
 draw 355 and cut 122 per layer), area-scaled, with the direct and top passes floored because
-the triangles are the same at any size. Once a job of the same preset and recipe has finished,
-its wall time scaled by area replaces the constants, and the form says "(from the last run)".
+the triangles are the same at any size. Once a job of the same preset and recipe, restyle or
+not and light or not, has finished, its wall time scaled by area replaces the constants, and
+the form says "(from the last run)".
 
 ---
 
@@ -437,7 +442,7 @@ a visible confirm. No tool was added.
 | Method + path | Does | Refuses |
 |---|---|---|
 | `GET /api/maps` | `MapsResponse {version, default, types[] (each with title, name and tone), jobs[], can_generate (with vulkan), inputs[], disk, game_cl, unregistered[], queue_max, sizes[], styles[] {layer, style, label, tone}, cached_sizes[], plain_tone}` | 503 newer manifest |
-| `GET /api/maps/estimate?preset=&layers=&size=&recipe=&top=&keep_cache=&restyle=&enhance=&tiles_2x=` | `MapEstimateResponse {seconds, keep_bytes, transient_bytes, free_bytes, needs_bytes, ok, reason, measured}` | 400 bad option |
+| `GET /api/maps/estimate?preset=&layers=&size=&recipe=&top=&keep_cache=&restyle=&light=&enhance=&tiles_2x=` | `MapEstimateResponse {seconds, keep_bytes, transient_bytes, free_bytes, needs_bytes, ok, reason, measured}` | 400 bad option |
 | `PUT /api/maps/default {id, version?}` | `MapsResponse` | 404 unknown, 409 not ready or stale version |
 | `POST /api/maps/adopt` | `MapsResponse` | |
 | `DELETE /api/maps/cache` | `{freed_bytes}` | 409 while a job runs |
@@ -457,14 +462,17 @@ answers HEAD 204 and GET 404.
 
 ### 8.1 Lit layers
 
-A layer drawn with `--unlit` names its lighting pyramid in its sidecar (`_meta.light.dir`,
-relative to the layer, refused unless it resolves inside `data/local`). Its z0 probe adds
-`X-Map-Light`, compact JSON: `{build, max_z, unlit_max_z, params, baked_sun, model}`.
-`?kind=unlit` serves the unlit colour (PNG), `?kind=nrm` and `?kind=hz` the lighting tiles
-(WebP); with `?v=` the light build tag they are immutable. Any other `kind`, or a layer drawn
-lit, is a 404. The `render` preset takes `light` (default false), which adds `--unlit`, a
-`light` stage after the first layer's draw, and the unlit and light trees to the estimate's
-bytes. docs/spatial-and-map.md §29 describes the light.
+A layer drawn with the light (`--light`, the default; `--unlit` is the old spelling) names
+its lighting pyramid in its sidecar (`_meta.light.dir`, relative to the layer, refused unless
+it resolves inside `data/local`). Its z0 probe adds `X-Map-Light`, compact JSON: `{build,
+max_z, unlit_max_z, params, baked_sun, model}`. `?kind=unlit` serves the unlit colour (PNG),
+`?kind=nrm` and `?kind=hz` the lighting tiles (WebP); with `?v=` the light build tag they are
+immutable. Any other `kind`, or a layer drawn with `--no-light` or before the light existed,
+is a 404. The `render` preset takes `light`, default true since 2026-10-06, and passes
+`--light`, or `--no-light` when it is false. With the light the plan adds a `light` stage
+after the first layer's draw, the unlit and light trees to the estimate's kept bytes, and the
+light cache (§4.2) to its bytes while running. docs/spatial-and-map.md §29 describes the
+light.
 
 ## 9. Verified
 

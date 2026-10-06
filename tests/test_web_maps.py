@@ -113,6 +113,8 @@ def test_an_estimate_says_whether_the_disk_has_room(client):
     assert body["seconds"] > 0 and body["keep_bytes"] > 0 and isinstance(body["ok"], bool)
     full = client.get("/api/maps/estimate?preset=render&size=32768").json()
     assert full["seconds"] > body["seconds"] and full["needs_bytes"] > body["needs_bytes"]
+    dark = client.get("/api/maps/estimate?preset=render&size=32768&light=false").json()
+    assert dark["seconds"] < full["seconds"] and dark["needs_bytes"] < full["needs_bytes"]
     assert client.get("/api/maps/estimate?preset=render&size=999").status_code == 400
 
 

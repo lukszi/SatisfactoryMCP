@@ -110,15 +110,19 @@ def test_a_light_dir_outside_data_local_is_never_followed(client, tmp_path, monk
     assert client.get("/api/maptiles/terrain/0/0/0?kind=nrm").status_code == 404
 
 
-def test_the_render_preset_takes_live_light_and_names_it():
+def test_the_render_preset_bakes_live_light_by_default_and_names_it():
     from satisfactory_mcp.domain.maps import axes, presets
 
-    options = presets.normalise("render", {"size": 1024, "light": True})
-    plan = presets.plan("render", options, "j1", 502094, set())
-    assert "--unlit" in plan["argv"]
+    options = presets.normalise("render", {"size": 1024})
+    assert options["light"] is True
+    argv = presets.plan("render", options, "j1", 502094, set())["argv"]
+    assert "--light" in argv and "--no-light" not in argv
     stages = list(presets.stage_plan("render", options))
     assert stages.index("light") == stages.index("draw:terrain") + 1
-    assert "--unlit" not in presets.plan("render", {"size": 1024}, "j2", 502094, set())["argv"]
+    dark = presets.normalise("render", {"size": 1024, "light": False})
+    argv = presets.plan("render", dark, "j2", 502094, set())["argv"]
+    assert "--no-light" in argv and "--light" not in argv
+    assert "light" not in presets.stage_plan("render", dark)
     with pytest.raises(presets.PresetError):
         presets.normalise("render", {"light": "yes"})
     named = axes.display_name({"style": {"label": "terrain"}, "light": {"label": "live sun"}})

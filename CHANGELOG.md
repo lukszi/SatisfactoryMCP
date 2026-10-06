@@ -44,6 +44,14 @@ Planned as 0.2.0.
   row one machine short. Both default from shared settings and are on `plan_factory` and
   `plan_layout`.
 
+### Changed
+
+- Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
+  the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
+  "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
+  still accepted. With the light a full-size render is budgeted at about 10 minutes more and
+  needs 14.5 GB more scratch space.
+
 ### Deprecated
 
 - The map generator scripts `tools/gen_map_renders.py`, `gen_map_image.py`,
@@ -87,6 +95,8 @@ Planned as 0.2.0.
 - `python -m mapgen renders` no longer overwrites a map the registry lists: a run into its
   folder, through a junction or link too, is refused and names it. `--renders-name` writes
   beside it, and `--overwrite-in-use` replaces it anyway.
+- The Maps tab's render estimate follows the "live sun" box, counts the light cache's
+  scratch space against the free disk, and times a lit render only from an earlier lit one.
 
 ## [0.1.0] - 2026-09-27
 

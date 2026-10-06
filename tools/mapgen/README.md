@@ -43,7 +43,7 @@ estimate assumes before a job of that kind has run once.
 | `rocks` | `gen_world_heightmap.py --rocks` | `rocks.npz` and `rocks.json` beside the field in `data/local/heightmap/` | 24 s; budget 5 min |
 | `paint` | `gen_paint_layers.py` | `data/local/paint/` (113 MB) | 2 min on a loaded machine; budget 2.5 min |
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
-| `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` | 3 min at `--size 1024`; about 30 min for two layers at full size |
+| `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; about 30 min for two layers at full size, both measured without the light; budget about 12 min more for the light on two layers at full size |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
 
 ### heightmap
@@ -100,8 +100,12 @@ as the artwork. The main options:
   `renders` links to the set the default map is drawn from, a run without `--renders-name`
   stops there. `--force` overrides only the build check. With no manifest nothing is in use.
   The server's jobs always write a new folder and never pass it.
-- `--unlit` draws the colour without light, bakes the lighting pyramid into
-  `<renders>/light/`, and keeps a default-sun copy in each layer's `tiles/`. See §29.
+- The live-sun light is on by default (`--light`). The colour is drawn without light, the
+  lighting pyramid goes into `<renders>/light/`, and each layer's `tiles/` keeps a
+  default-sun copy. It applies to every layer and size, to `--kernel-only` and to
+  `--restyle`, which bakes the light again: the raster cache does not keep it. `--no-light`
+  draws the hillshade into the colour and writes no lighting pyramid. `--unlit`, the opt-in
+  from before the light was the default, still means `--light`. See §29.
 - `--cache-dir` with `--keep-direct` keeps the geometry rasters, so a later run at the same
   size and build reuses them.
 - `--restyle` draws only from those kept caches and exits with code 9 when one is missing or
@@ -109,7 +113,8 @@ as the artwork. The main options:
 - `--no-titan-trees` leaves the Titan forest's trees off the painted layer, a style variant
   with its own digest (§30).
 
-A full-size run needs about 10.7 GB of scratch space for those caches. See §25 to §27, and
+A full-size run needs about 10.7 GB of scratch space for those caches. The light cache adds
+14.5 GB, and 10.7 GB more with the painted layer (§29, "Scratch"). See §25 to §27, and
 [maps_contract.md](../../docs/maps_contract.md) for how the server registers the result.
 
 ### check-fill
@@ -275,7 +280,7 @@ shade for any sun.
   the forests and Red Bamboo, dashes in the desert. A crown cell keeps its horizon only
   where it stands above the ground's, so it is empty away from trees and costs 29% more
   light bytes at 2048.
-- **Where the occluder comes from.** A run drawn with `--unlit` and the painted layer hands
+- **Where the occluder comes from.** A run drawn with the light and the painted layer hands
   the paint store's 1 m crown-top plane (`crown.i16.z`, section 36) to the stage, sampled on
   the sheet's grid (`occluders.sheet_crowns`): each pixel averages a box of its own width,
   one texel wide on a sheet finer than the plane, which is the bilinear sample. It gives the

@@ -1786,9 +1786,17 @@ about 37 min for a full two-layer render. The full-size figure is an estimate, n
 
 ## 29. Live sun light (2026-10-05)
 
-A render drawn with `--unlit` (the Maps tab's "live sun" box) stores its colour without light
-and adds a lighting pyramid, and the page relights it in the browser for any sun. One light,
-the sun; the page picks where it stands.
+A render drawn with the light stores its colour without light and adds a lighting pyramid,
+and the page relights it in the browser for any sun. One light, the sun; the page picks where
+it stands.
+
+Since 2026-10-06 every render bakes the light unless told not to: `--light` is the default
+of `python -m mapgen renders` and `--no-light` turns it off; in the Maps tab the "live sun"
+box starts ticked and the `render` preset's `light` option defaults to true. `--unlit`, the
+old opt-in, still means `--light`. While the light was opt-in, a plain command-line run drew
+a map the page could not relight. Every render mode takes it: each layer, each size,
+`--kernel-only`, and `--restyle`, which bakes the light again because the raster cache does
+not keep it.
 
 ### The model
 
@@ -1894,6 +1902,14 @@ most about 1.3 GB at z7 and less in practice, because open water compresses to a
 nothing. The crown cells are 0 wherever no crown stands above the ground's horizon; at 2048
 they take the light pyramid from 18.8 to 24.2 MB. The unlit colour adds about half the
 colour pyramid again.
+
+**Scratch.** While the run lasts, `light.cache/` beside the raster caches holds 13.5 bytes a
+pixel, 14.5 GB at full size: the surface (heights 4, land 1), the default-sun terms (3), and
+the bake's half-resolution heights, land and sky view (1.5) and quarter-resolution horizons
+(4). With the painted layer the crown tops and cover (5) are written there and copied into
+the bake's own occluder files (5), 10.7 GB more. The cache is removed at the end of the run.
+The Maps tab's estimate counts it as `presets.LIGHT_SCRATCH_BYTES` and
+`CROWN_SCRATCH_BYTES`, scaled by area; a test holds the first to the stage's allocation.
 
 ### Hooks
 
