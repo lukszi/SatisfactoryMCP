@@ -2141,7 +2141,7 @@ The targets are display sRGB colours, at map exposure:
 | --- | --- |
 | Sand | #d5cbb6 |
 | WetSand | #b1a09e |
-| SandRipples (the Dune Desert) | #d07756 |
+| SandRipples (the Dune Desert) | #ca784f |
 | Grass | #83986e |
 | Forest and the canopy | #558653 |
 | Rock outside every area entry | #85816c |
@@ -2149,6 +2149,23 @@ The targets are display sRGB colours, at map exposure:
 WetSand was #b8a083, from one Spire Coast waterline box that probably mixed in dry sand. The
 Western Beaches wet band and the 1.0 crash-beach store shot both read a low-chroma mauve
 grey, so the target keeps the old lightness (L 0.72) and takes their hue and chroma.
+
+SandRipples was #d07756 through style version 10. It came from one golden-hour shot,
+[Dune Desert](https://satisfactory.wiki.gg/images/Dune_Desert_Area.png) (low sun, pink sky,
+probably Early Access), which measures h 44.5, and a further -3° hue turn took it to h 40.9.
+The low sun and the turn both pushed it towards red, so the dunes drew a little salmon. Since
+version 11 the target is the pooled median of four 1.0 daylight Steam shots, measured as the
+area targets below are: [3486291454](https://steamcommunity.com/sharedfiles/filedetails/?id=3486291454)
+(rippled sand seen almost straight down, high sun),
+[3352353206](https://steamcommunity.com/sharedfiles/filedetails/?id=3352353206),
+[3360666296](https://steamcommunity.com/sharedfiles/filedetails/?id=3360666296) and
+[3590923329](https://steamcommunity.com/sharedfiles/filedetails/?id=3590923329). They range
+from h 44 to h 49 and pool to L 0.653, C 0.117, h 46.9, which is #ca784f. That is ΔE 1.4 from
+the old value: the same lightness and chroma, turned from salmon towards orange. The game's
+own bake for the layer is red-orange too (#b36957). One more daylight shot of a rippled flat
+by a lake reads h 54 and is left out as an outlier. On a 300 m window of the full-size grid
+at (3025, -1826), the median of the ground clear of rock with at least 0.7 SandRipples goes
+from #d07958 (h 41) to #ca7a52 (h 47).
 
 Each target is taken back through the flat-ground pipeline into ground OKLab: the inverse
 shoulder, divided by exposure times gain and by the flat sky-and-sun light, then half the
