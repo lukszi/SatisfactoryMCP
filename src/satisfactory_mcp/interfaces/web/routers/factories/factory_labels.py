@@ -12,10 +12,11 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....domain.factories import candidates, edits, fed, flowgraph, naming

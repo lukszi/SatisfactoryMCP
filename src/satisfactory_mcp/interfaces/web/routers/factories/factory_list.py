@@ -13,9 +13,10 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....domain.factories import candidates, naming
 from ...serial import bbox_m, error_response, point_m, regions_or_none, require_world

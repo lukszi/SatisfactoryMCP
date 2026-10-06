@@ -6,9 +6,10 @@ each field means: docs/web-wire.md "Belts and pipes". Handler names are operatio
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....core.saveio import rows as saverows
 from .....domain.world.state import WorldState

@@ -6,9 +6,10 @@ docs/web-wire.md "Storage". Handler names are operation_ids.
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....domain.world.state import WorldState
 from ...serial import contents_json, placement_fields, require_world

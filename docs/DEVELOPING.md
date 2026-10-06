@@ -264,6 +264,12 @@ colour value, so every colour sits with its owner and its warrant.
   string alias, because pydantic cannot resolve a string alias inside a response model. The
   modules that still import `Any` are listed one by one in `[tool.ruff.lint.per-file-ignores]`.
   The gate fails on an entry that is no longer needed and on a glob, so the list only shrinks.
+- **Shapes.** Data with a fixed key set is a TypedDict, or a dataclass when it never leaves
+  the process. The save projection's is `core/saveio/schema.py`: `Projection` and the rows of
+  [save-projection.md](save-projection.md) §6.16, held against the committed fixture. A JSON
+  shape a domain package builds is declared in that package's `views.py`, where the web
+  publishes it from; wire rule 2 of [web-wire.md](web-wire.md) says why each one is a
+  `typing_extensions.TypedDict`.
 - **Arrays and stubs.** A numpy array is typed by its dtype through `core/arrays.py`
   (`F32Grid`, `U8Grid`, `BoolMask` and the rest) rather than as a bare `ndarray`. scipy is typed
   by `scipy-stubs`, and pyooz, which ships no types, by the local stub `typings/ooz.pyi`.

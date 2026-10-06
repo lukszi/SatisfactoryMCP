@@ -9,15 +9,17 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain.session import asks as ask_store
 from .....domain.session import journal
+from .....domain.session.views import AskAbout, AskRow
 from ...serial import (
     busy_response,
     error_response,
@@ -29,37 +31,6 @@ from ...serial import (
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-
-class AskAbout(TypedDict):
-    """What an ask is about: ``kind`` is plan, process, stage, item or pin; ``plan`` a plan key."""
-
-    kind: str
-    label: str
-    ref: str
-    plan: NotRequired[str | None]
-    rev: NotRequired[int | None]
-
-
-class AskRow(TypedDict):
-    """One ask. ``state`` is open, seen or answered; ``answer`` is the one line chat left
-    with it ("" for none); ``copy`` is what the page puts on the clipboard; ``plan_name`` is
-    ``about.plan`` resolved when read."""
-
-    n: int
-    id: str
-    text: str
-    about: AskAbout
-    state: str
-    rev: int
-    created: float
-    seen: float | None
-    seen_by: str
-    answered: float | None
-    answered_by: str
-    answer: str
-    plan_name: str | None
-    copy: str
 
 
 class AsksResponse(TypedDict):

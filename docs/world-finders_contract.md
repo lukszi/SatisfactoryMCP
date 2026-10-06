@@ -165,10 +165,11 @@ flagged, and the page fades it (§8.1).
 
 ### 3.2 Response models (TypedDict, declaration order = wire order)
 
-Shared shapes go in `serial/` only where two routers build them (`TableAge`, `Region`).
+`TableAge` is built by the domain and lives in `domain/spatial/nodes/views.py`; `Region`
+is built by `serial/` for every router.
 
 ```python
-class TableAge(TypedDict):            # serial.py; "is this map data older than the save"
+class TableAge(TypedDict):            # spatial/nodes/views.py; "is this map data older than the save"
     table: Literal["nodes", "collectibles"]
     behind: bool                      # the save's build is past the table's
     gap: str | None                   # "buildVersion 495413 -> 502094"; null when not behind

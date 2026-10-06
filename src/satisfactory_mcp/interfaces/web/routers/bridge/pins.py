@@ -9,15 +9,17 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain.session import journal
 from .....domain.session import pins as pin_store
+from .....domain.session.views import PinRef, PinRow
 from ...serial import (
     busy_response,
     error_response,
@@ -29,39 +31,6 @@ from ...serial import (
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-
-class PinRef(TypedDict, total=False):
-    """What a pin points at. ``resource`` and ``nodes`` are filled by the server for a field."""
-
-    plan: str
-    recipe: str
-    factory: str
-    machine: str
-    node: str
-    x_m: float
-    y_m: float
-    resource: str
-    nodes: list[str]
-
-
-class PinRow(TypedDict):
-    """One pin as the page shows it. ``selector`` is the canonical text it stands for; a gone
-    pin says why in ``gone_why``; ``x_m``/``y_m`` are null for a pin with no place."""
-
-    n: int
-    id: str
-    kind: str
-    ref: PinRef
-    label: str
-    text: str
-    selector: str
-    x_m: float | None
-    y_m: float | None
-    rev: int
-    created: float
-    gone: bool
-    gone_why: str
 
 
 class PinsResponse(TypedDict):

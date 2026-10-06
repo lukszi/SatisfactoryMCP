@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from typing import Literal, NotRequired
+
+from typing_extensions import TypedDict
 
 from .. import config
 from ..core import atomic, filelock, schema
@@ -16,9 +19,13 @@ from .planning.stored.planlog import Actor
 __all__ = [
     "SCHEMA",
     "SPECS",
+    "SettingsChanges",
     "SettingsError",
     "SettingsStale",
+    "SettingsValues",
+    "SiteSnap",
     "Spec",
+    "StageHeadroom",
     "check",
     "read",
     "value",
@@ -26,6 +33,31 @@ __all__ = [
 ]
 
 SCHEMA = 1
+
+StageHeadroom = Literal["measured", "nameplate"]
+SiteSnap = Literal["fine", "grid8"]
+
+
+class SettingsValues(TypedDict):
+    """Every shared setting, set or defaulted."""
+
+    stage_headroom: StageHeadroom
+    biomass: bool
+    payback_hours: float
+    overclock_last: bool
+    site_snap: SiteSnap
+    advice_box_fed: bool
+
+
+class SettingsChanges(TypedDict):
+    """The settings to change; null puts one back to its default."""
+
+    stage_headroom: NotRequired[StageHeadroom | None]
+    biomass: NotRequired[bool | None]
+    payback_hours: NotRequired[float | None]
+    overclock_last: NotRequired[bool | None]
+    site_snap: NotRequired[SiteSnap | None]
+    advice_box_fed: NotRequired[bool | None]
 
 
 @dataclass(frozen=True)

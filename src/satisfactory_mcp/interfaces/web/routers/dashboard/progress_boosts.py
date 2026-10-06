@@ -7,12 +7,14 @@ docs/web-wire.md).
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock
 from .....core.saveio.records import instance_leaf
+from .....domain.progression.views import SlugRow
 from .....domain.world.state import WorldState
 from ...serial import ItemAmount, item_amounts, require_world, xyz_m
 
@@ -34,14 +36,6 @@ class PlaceRow(TypedDict):
 
     place: str
     items: list[NamedAmount]
-
-
-class SlugRow(TypedDict):
-    item: str
-    name: str
-    held: float
-    each: float
-    shards: float
 
 
 class ShardHolder(TypedDict):

@@ -8,9 +8,10 @@ operation_ids (wire rule 1 of docs/web-wire.md).
 from __future__ import annotations
 
 import time
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired
 
 from fastapi import APIRouter, Body, Request
+from typing_extensions import TypedDict
 
 from .....domain.planning.stored.planlog import PlanLog
 from .....domain.session import focus, journal

@@ -8,10 +8,11 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....domain.spatial import regions as spatial_regions
 from ...serial import cm_to_m, error_response, point_m

@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
+
+from typing_extensions import TypedDict
 
 from ....core.gamedata.model import GameData, pretty_class
 from ....core.saveio.records import instance_leaf
 from ....domain.collectibles import service as collectibles_service
 from ....domain.factories import candidates
 from ....domain.planning.stored.planlog import Actor
+from ....domain.planning.stored.views import PlanOpBody
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
+from ....domain.spatial.nodes.views import TableAge
 from ....domain.world.state import WorldState
 from .units import cm_to_m, xyz_m, yaw_deg
 
@@ -91,23 +95,6 @@ def regions_or_none() -> spatial_regions.RegionMap | None:
         return spatial_regions.load_regions()
     except FileNotFoundError:
         return None
-
-
-class TableAge(TypedDict):
-    """Whether a shipped map table is older than the save; built by the domain's ``table_age``.
-
-    ``moved`` and ``unjoinable`` count rows in the reply they travel with (nodes only);
-    ``observed_from``/``observed_matches`` are the collectible table's (null for nodes).
-    """
-
-    table: Literal["nodes", "collectibles"]
-    behind: bool
-    gap: str | None
-    moved: int
-    unjoinable: int
-    observed_from: str | None
-    observed_matches: bool | None
-    notes: list[str]
 
 
 def stale_tables(st: WorldState, node_table: Any, instances: list[str]) -> list[TableAge]:
@@ -254,18 +241,6 @@ def item_amounts(game: GameData, pairs: Iterable[tuple[str, float]]) -> list[Ite
         {"item": item, "name": game.item_name(item), "amount": float(amount)}
         for item, amount in pairs
     ]
-
-
-class PlanOpBody(TypedDict, total=False):
-    """One op as the log holds it; which keys are present depends on ``op`` (contract §3)."""
-
-    op: str
-    field: str
-    value: Any
-    item: str
-    member: Any
-    name: str
-    was: Any
 
 
 class ActorBody(TypedDict):

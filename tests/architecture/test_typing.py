@@ -157,6 +157,32 @@ def _imports_any(path: Path) -> bool:
     return False
 
 
+def _typing_typeddicts(path: Path) -> list[int]:
+    """Lines that take ``TypedDict`` from ``typing`` rather than ``typing_extensions``."""
+    found = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom) and node.module == "typing":
+            names = {alias.name for alias in node.names}
+        elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            names = {node.attr} if node.value.id == "typing" else set()
+        else:
+            continue
+        if "TypedDict" in names:
+            found.append(node.lineno)
+    return found
+
+
+def test_every_typed_dict_is_one_pydantic_accepts_on_python_3_11() -> None:
+    """pydantic refuses ``typing.TypedDict`` in a model below 3.12 (docs/web-wire.md, rule 2)."""
+    wrong = [
+        f"{path.relative_to(REPO).as_posix()}:{line}"
+        for path in sorted((REPO / "src").rglob("*.py"))
+        if "node_modules" not in path.parts
+        for line in _typing_typeddicts(path)
+    ]
+    assert not wrong, f"take TypedDict from typing_extensions: {wrong}"
+
+
 def test_the_any_exemptions_only_shrink() -> None:
     ignores = _pyproject()["tool"]["ruff"]["lint"]["per-file-ignores"]
     exempt = [pattern for pattern, rules in ignores.items() if ANY_BAN in rules]

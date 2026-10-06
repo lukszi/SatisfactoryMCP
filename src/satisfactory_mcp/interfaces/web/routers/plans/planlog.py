@@ -12,10 +12,11 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....core.gamedata.model import GameData
@@ -34,6 +35,7 @@ from .....domain.planning.stored.planlog import (
     Pushed,
     UnknownPlan,
 )
+from .....domain.planning.stored.views import PlanArgsBody
 from .....domain.session import journal, pins
 from .....domain.world import pin
 from .....domain.world.state import WorldState
@@ -71,35 +73,6 @@ class CommitBody(TypedDict):
     undoes: int | None
     note: str
     text: str
-
-
-class PlanArgsBody(TypedDict):
-    """The whole solve request, every field present at its default when unset (contract §2)."""
-
-    objective: str
-    target_item: str | None
-    sources: list[str]
-    exports: list[str]
-    export_minimums: dict[str, float]
-    only_free_nodes: bool
-    allow_sinks: bool
-    clocks: list[float]
-    extractor_clocks: list[float]
-    machine_cost_mw: float
-    banned: list[str]
-    required: list[str]
-    only_recipes: list[str]
-    water_extractors: int | None
-    sloops: int
-    belt_ipm: float | None
-    pipe_m3min: float | None
-    recycle_once: list[str]
-    supplied: dict[str, float]
-    logistics_items: list[str]
-    payback_hours: float | None
-    overclock_last: bool | None
-    power_price: float | None
-    row_overclock: dict[str, str]
 
 
 class PlanStateBody(TypedDict):

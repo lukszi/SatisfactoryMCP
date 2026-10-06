@@ -9,9 +9,10 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....core.saveio.records import instance_leaf
 from .....domain.factories import candidates

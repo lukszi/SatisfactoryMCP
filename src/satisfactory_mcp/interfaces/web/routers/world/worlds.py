@@ -10,11 +10,14 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....core.saveio import projection as proj
+from .....domain.power.views import GeneratorTotal
+from .....domain.progression.views import ProgressionSummary
 from .....domain.world import pin
 from ...serial import Biomass, error_response, require_world, xyz_m
 
@@ -122,14 +125,6 @@ class PlayerPosition(TypedDict):
     z_m: float | None
 
 
-class GeneratorTotal(TypedDict):
-    """One generator class, counted and summed. A value of ``PowerSummary.by_generator``."""
-
-    name: str
-    count: int
-    mw: float
-
-
 class PowerSummary(TypedDict):
     """The scalar fields of ``WorldState.power_report()`` the page can use.
 
@@ -157,26 +152,6 @@ class PowerSummary(TypedDict):
     #: What ``?biomass=exclude`` left out: wired, unpaused biomass burners and their MW.
     biomass_generators: int
     biomass_mw: float
-
-
-class ProgressionSummary(TypedDict):
-    """``WorldState.progression()`` verbatim, on the same terms as ``PowerSummary``.
-
-    ``game_phase`` and ``target_phase`` are ``null`` on the pre-1.0 saves that carry no
-    phase at all; ``highest_complete_tier`` is ``null`` when not one tier is finished, which
-    is different from tier 0 and there is no tier 0.
-
-    ``milestones_by_tier`` is keyed by the tier NUMBER, which JSON spells as a string, and is
-    left an open map: the tiers are the game's, and a game update adds one.
-    """
-
-    game_phase: str | None
-    target_phase: str | None
-    phase_costs_remaining: dict[str, dict[str, int]]
-    milestones_by_tier: dict[int, str]
-    highest_complete_tier: int | None
-    purchased_schematics: int
-    available_recipes: int
 
 
 class SummaryResponse(TypedDict):

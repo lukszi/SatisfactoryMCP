@@ -6,9 +6,10 @@ module shadows the stdlib's name only inside this package. Handler names are ope
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
+from typing_extensions import TypedDict
 
 from .....domain.spatial import caves, geo, surroundings
 from .....domain.spatial import elevation as spatial_elevation

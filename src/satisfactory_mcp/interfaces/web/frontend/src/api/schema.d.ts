@@ -3838,6 +3838,9 @@ export interface components {
             /** Items */
             items: components["schemas"]["ItemRow"][];
         };
+        JsonValue: string | number | boolean | components["schemas"]["JsonValue"][] | {
+            [key: string]: components["schemas"]["JsonValue"];
+        } | null;
         /**
          * LabelErrorResponse
          * @description A label write refused before it reached the store: a bad name (400) or a save, proposal
@@ -5329,16 +5332,13 @@ export interface components {
             op?: string;
             /** Field */
             field?: string;
-            /** Value */
-            value?: unknown;
+            value?: components["schemas"]["JsonValue"];
             /** Item */
             item?: string;
-            /** Member */
-            member?: unknown;
+            member?: components["schemas"]["JsonValue"];
             /** Name */
             name?: string;
-            /** Was */
-            was?: unknown;
+            was?: components["schemas"]["JsonValue"];
         };
         /** PlanOpsResponse */
         PlanOpsResponse: {

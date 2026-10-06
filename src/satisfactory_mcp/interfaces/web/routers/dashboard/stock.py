@@ -10,9 +10,10 @@ Handler names are operation_ids (wire rule 1).
 from __future__ import annotations
 
 from math import hypot
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....domain.world.inventory import CRATE_KIND_TEXT, Holding
 from ...serial import Region, cm_to_m, region_json, regions_or_none, require_world, xyz_m

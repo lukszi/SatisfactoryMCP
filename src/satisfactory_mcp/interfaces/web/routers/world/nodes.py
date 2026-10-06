@@ -5,9 +5,10 @@ What the join can and cannot say: docs/web-wire.md "Nodes". Handler names are op
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....domain.spatial import nodes as spatial_nodes
 from .....domain.spatial import regions as spatial_regions

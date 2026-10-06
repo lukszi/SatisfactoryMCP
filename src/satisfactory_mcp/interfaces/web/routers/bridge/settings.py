@@ -7,14 +7,16 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired
 
 from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain import settings as store
+from .....domain.settings import SettingsChanges, SettingsValues
 from ...serial import (
     ActorBody,
     busy_response,
@@ -28,20 +30,6 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
 
-StageHeadroom = Literal["measured", "nameplate"]
-SiteSnap = Literal["fine", "grid8"]
-
-
-class SettingsValues(TypedDict):
-    """Every shared setting, set or defaulted."""
-
-    stage_headroom: StageHeadroom
-    biomass: bool
-    payback_hours: float
-    overclock_last: bool
-    site_snap: SiteSnap
-    advice_box_fed: bool
-
 
 class SettingsResponse(TypedDict):
     """``stored`` names the settings that were set rather than defaulted; ``by`` and
@@ -52,17 +40,6 @@ class SettingsResponse(TypedDict):
     stored: list[str]
     updated: float | None
     by: ActorBody | None
-
-
-class SettingsChanges(TypedDict):
-    """The settings to change; null puts one back to its default."""
-
-    stage_headroom: NotRequired[StageHeadroom | None]
-    biomass: NotRequired[bool | None]
-    payback_hours: NotRequired[float | None]
-    overclock_last: NotRequired[bool | None]
-    site_snap: NotRequired[SiteSnap | None]
-    advice_box_fed: NotRequired[bool | None]
 
 
 class SettingsPatchBody(TypedDict):
