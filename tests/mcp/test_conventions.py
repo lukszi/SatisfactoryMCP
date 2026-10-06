@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp import server as srv
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("game")]
 
@@ -70,6 +71,30 @@ def test_show_is_the_only_way_to_ask_for_a_view(call, value):
     and giving each a `show=` alias left a client reading the schema meeting five rather than
     fewer. `show=` is the parameter now, on every tool that has a view at all."""
     assert not call(show=value).startswith("! ")
+
+
+@pytest.mark.parametrize(
+    ("call", "views"),
+    [
+        (srv.factory_map, "candidates, named, slabs, unlabelled, all"),
+        (srv.plan_layout, "floors, blocks, buses, trunks, materials, sites"),
+    ],
+)
+def test_an_unknown_show_lists_the_views(call, views):
+    """An unknown view answered an empty body on one and silently drew the floors on the
+    other, so a misspelt view read as an empty or default answer."""
+    out = call(show="material")
+    assert out == f"! unknown show 'material'. Choose from: {views}", out
+
+
+def test_a_view_is_matched_without_case_or_padding(state, use_world):
+    use_world(state)
+    out = srv.plan_layout(
+        show=" Materials ", sources=list(REFERENCE_FIELD), exports=["MW"], limit=3
+    )
+    assert not out.startswith("! "), out
+    assert "construction cost only" in out
+    assert not srv.factory_map(show="Named", limit=3).startswith("! ")
 
 
 @pytest.mark.parametrize(

@@ -74,14 +74,17 @@ def name_factory(
     store = st.labels
     candidate = candidates.describe(picked, st.graph, st.game, st.projection, "label")
     existing = store.find(name)
-    verb = "would name" if dry_run else ("re-anchored" if existing else "named")
+    if dry_run:
+        verb = "would re-anchor" if existing else "would name"
+    else:
+        verb = "re-anchored" if existing else "named"
     head = (
         f"{verb} {candidate.size} machine(s) as {name!r} at "
         f"{int(candidate.centroid[0] / 100)},{int(candidate.centroid[1] / 100)} "
         f"(spread {candidate.spread_m:.0f}m): {candidate.name_hint()}"
     )
     warn = machine_select.pin_notes(select, st) + _overlaps(store, picked, name)
-    if existing and not dry_run:
+    if existing:
         kept = len(set(existing.anchors) & set(picked))
         warn.append(
             f"was {len(existing.anchors)} machine(s), {kept} kept, "
