@@ -26,14 +26,14 @@ satisfactory-mcp-web = "satisfactory_mcp.interfaces.web.__main__:main"
 dev = ["pytest>=8.0", "pytest-cov", "pytest-xdist>=3.6,<4", "ruff"]
 # The web interface is optional on purpose: the MCP server is the product, and a
 # stdio server has no business pulling in an ASGI stack. interfaces/web is the only
-# place allowed to import these, which tests/architecture/test_import_direction.py enforces.
+# place allowed to import these, which tests/test_architecture.py enforces.
 web = ["fastapi>=0.115", "uvicorn>=0.30"]
 # What the tools/ generators need to open the game's own container, and nothing in this
 # repository imports at module scope: `ooz` (from pyooz) decompresses the container's
 # blocks, texture2ddecoder unpacks BC1 texture blocks and Pillow writes the PNGs. Optional
 # means optional AT IMPORT TIME -- the server, the parser and the domain run with none of
 # them installed, and the only import of one under src/ is the lazy `import ooz` inside
-# core.gameassets.iostore.oodle_decompress, which tests/architecture/test_optional_extras.py enforces the
+# core.gameassets.iostore.oodle_decompress, which tests/test_architecture.py enforces the
 # same way it does for the web stack. Exact pins, because these three decide the BYTES the
 # generators write and a silent upgrade would be a silent redraw: they are the versions
 # every previous run of every generator used, recorded off those runs' environments.
