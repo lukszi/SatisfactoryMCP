@@ -14,16 +14,15 @@ Wire rules: docs/web-wire.md.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 
-from .... import config
-from ..serial import error_response
+from ....domain.maps import registry
+from ..serial import cached_file, error_response, sidecar_meta_block
 
 __all__ = ["ICONS_DIR_NAME", "router"]
 
@@ -35,7 +34,6 @@ router = APIRouter(prefix="/api")
 
 #: Where ``tools/gen_item_icons.py`` writes, under the same ``data/local/`` the map render
 #: and the tile pyramids live in. Nothing here is ever committed.
-LOCAL_DIR_NAME = "local"
 ICONS_DIR_NAME = "icons"
 ICONS_MANIFEST_NAME = "manifest.json"
 
@@ -53,7 +51,7 @@ DESC_RE = re.compile(r"\A[A-Za-z0-9_]{1,128}\Z")
 
 def _icons_dir() -> Path:
     """The generated directory, read at call time so a test can point it somewhere else."""
-    return config.data_dir() / LOCAL_DIR_NAME / ICONS_DIR_NAME
+    return registry.local_dir() / ICONS_DIR_NAME
 
 
 def _icons_build() -> str:
@@ -64,12 +62,7 @@ def _icons_build() -> str:
     is not an error but a stable tag for "nothing": a typo in an optional file must not take
     down the endpoint that serves a picture.
     """
-    try:
-        meta = json.loads((_icons_dir() / ICONS_MANIFEST_NAME).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        meta = {}
-    block = meta.get("_meta") if isinstance(meta, dict) else None
-    block = block if isinstance(block, dict) else {}
+    block = sidecar_meta_block(_icons_dir() / ICONS_MANIFEST_NAME)
     source = block.get("source") if isinstance(block.get("source"), dict) else {}
     counts = block.get("counts") if isinstance(block.get("counts"), dict) else {}
     stamp = "|".join(
@@ -142,13 +135,6 @@ def icon(request: Request, desc: str) -> Any:
             404,
         )
     build = _icons_build()
-    etag = f'"{build}"'
-    versioned = "v" in request.query_params
-    headers = {
-        "X-Icons-Build": build,
-        "Cache-Control": "public, max-age=31536000, immutable" if versioned else "no-cache",
-        "ETag": etag,
-    }
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers=headers)
-    return FileResponse(path, media_type="image/png", headers=headers)
+    return cached_file(
+        request, path, build, media_type="image/png", headers={"X-Icons-Build": build}
+    )

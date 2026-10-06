@@ -193,7 +193,7 @@ def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, mon
     assert pinned_field_build({"_meta": {"sources": {}}}) is None
 
     # The endpoint reads that file, unmodified, out of the place the tool writes it to.
-    directory = tmp_path / web_tiles.LOCAL_DIR_NAME / web_tiles.MAP_RENDERS_DIR_NAME / "terrain"
+    directory = tmp_path / registry.local_dir().name / web_tiles.MAP_RENDERS_DIR_NAME / "terrain"
     directory.mkdir(parents=True)
     (directory / web_tiles.MAP_RENDER_SIDECAR_NAME).write_text(
         json.dumps(sidecar), encoding="utf-8"
@@ -1088,7 +1088,7 @@ def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
     )
 
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    local = tmp_path / web_tiles.LOCAL_DIR_NAME
+    local = tmp_path / registry.local_dir().name
     local.mkdir()
     (local / web_tiles.MAP_IMAGE_NAME).write_bytes(b"\x89PNG\r\n\x1a\n")
     (local / web_tiles.MAP_BOUNDS_NAME).write_text(json.dumps(sidecar), encoding="utf-8")
@@ -1097,7 +1097,7 @@ def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
     assert client.head("/api/mapimage").headers["x-map-bounds-m"] == "-3247.0,-3750.0,4253.0,3750.0"
 
     # The tool writes where this endpoint looks, under the names it looks for.
-    assert LOCAL_DIR.name == web_tiles.LOCAL_DIR_NAME
+    assert LOCAL_DIR.name == registry.local_dir().name
     assert IMAGE_NAME == web_tiles.MAP_IMAGE_NAME
     assert SIDECAR_NAME == web_tiles.MAP_BOUNDS_NAME
     # And it pins the same square, rather than holding a second opinion about it.
@@ -1134,7 +1134,7 @@ def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
     # A sidecar that says nothing about tiles still serves them, at the defaults.
     (local / web_tiles.MAP_BOUNDS_NAME).write_text("{}", encoding="utf-8")
     bare = web_tiles._map_pyramid()
-    assert (bare["tile_px"], bare["max_z"]) == (web_tiles.MAP_TILE_PX, web_tiles.MAP_TILE_MAX_Z)
+    assert (bare["tile_px"], bare["max_z"]) == (PYRAMID_TILE_PX, web_tiles.MAP_TILE_MAX_Z)
 
 
 def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_path, monkeypatch):
@@ -1175,7 +1175,7 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
     assert dense_top == pyramid_top_z(SHEET_PX) - 1 == 4
 
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    local = tmp_path / web_tiles.LOCAL_DIR_NAME
+    local = tmp_path / registry.local_dir().name
     local.mkdir()
     _fake_pyramid(local, max_z=0)  # something for the probe to answer about
 
@@ -1289,10 +1289,10 @@ def test_the_enhanced_pyramid_is_two_levels_deeper_and_the_server_follows_it_the
     assert web_tiles.map_tile_path(7, 0, 0, 5) is None
 
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    local = tmp_path / web_tiles.LOCAL_DIR_NAME
+    local = tmp_path / registry.local_dir().name
     local.mkdir()
     for z, x, y in ((0, 0, 0), (7, 127, 127)):
-        path = local / web_tiles.MAP_TILES_DIR_NAME / str(z)
+        path = local / TILES_DIR_NAME / str(z)
         path.mkdir(parents=True)
         (path / f"{x}_{y}.png").write_bytes(_PNG)
     (local / web_tiles.MAP_BOUNDS_NAME).write_text(

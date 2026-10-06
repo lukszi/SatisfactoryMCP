@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
+from typing import Any
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from ....core.schema import NewerSchema
 from ....domain.planning.planlog import InvalidOp, PlanLog, PlanState, UnknownPlan
 from ....domain.world.state import WorldState
 
 __all__ = [
+    "IMMUTABLE",
     "PLAN_KEY",
     "RequestRefused",
     "busy_response",
+    "cached_file",
     "check_plan_key",
     "choice_refusal",
     "error_response",
@@ -24,8 +29,12 @@ __all__ = [
     "require_plan",
     "require_world",
     "session_name",
+    "sidecar_meta_block",
     "world_state",
 ]
+
+#: The ``Cache-Control`` of a file asked for with its build tag: it can never change.
+IMMUTABLE = "public, max-age=31536000, immutable"
 
 
 class RequestRefused(Exception):
@@ -110,3 +119,36 @@ def newer_schema_response(
 def busy_response(what: str, exc: Exception, *, verb: str = "are") -> JSONResponse:
     """The 503 for a store whose file lock timed out; nothing was written."""
     return error_response(f"{what} {verb} busy, nothing written: {exc}", 503)
+
+
+def cached_file(
+    request: Request,
+    path: Path,
+    build: str,
+    media_type: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> Response:
+    """A generated file tagged with its build: cached for good behind ``?v=``, else revalidated.
+
+    ``immutable`` is earned by the ``?v=`` tag alone, which changes whenever the file is
+    regenerated; an untagged fetch revalidates, and the ETag makes that a 304, not the bytes.
+    """
+    etag = f'"{build}"'
+    tagged = {
+        **(headers or {}),
+        "Cache-Control": IMMUTABLE if "v" in request.query_params else "no-cache",
+        "ETag": etag,
+    }
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=tagged)
+    return FileResponse(path, media_type=media_type, headers=tagged)
+
+
+def sidecar_meta_block(path: Path | None) -> dict[str, Any]:
+    """The ``_meta`` block of a generator's JSON sidecar; ``{}`` when absent or unreadable."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")) if path is not None else {}
+    except (OSError, ValueError):
+        return {}
+    block = raw.get("_meta") if isinstance(raw, dict) else None
+    return block if isinstance(block, dict) else {}

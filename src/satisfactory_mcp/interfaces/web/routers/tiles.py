@@ -28,7 +28,6 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, Response
 
-from .... import config
 from ....core.gameassets.pyramid import (
     PYRAMID_TILE_2X_PX,
     PYRAMID_TILE_PX,
@@ -38,7 +37,7 @@ from ....core.gameassets.pyramid import (
 )
 from ....domain.maps import registry
 from ....domain.spatial import geo
-from ..serial import error_response
+from ..serial import cached_file, error_response, sidecar_meta_block
 
 __all__ = ["DEFAULT_MAP_BOUNDS_M", "router"]
 
@@ -48,38 +47,13 @@ router = APIRouter(prefix="/api")
 # ------------------------------------------------------------- where it lives
 
 
-#: Where a user-supplied map render goes, and nothing here is ever committed. Drop your own
-#: render at ``data/local/map.png`` and, if its corners are not the standard in-game map
-#: square, ``data/local/map.json`` next to it.
-LOCAL_DIR_NAME = "local"
+#: A user-supplied map render, and the sidecar that may pin its corners, under
+#: ``data/local``. Nothing there is ever committed.
 MAP_IMAGE_NAME = "map.png"
 MAP_BOUNDS_NAME = "map.json"
 
-#: And where the same render's tile pyramid goes, if the generator cut one. One 8192 px
-#: sheet is 16 MB on the wire and 268 MB of RGBA in the browser however far out the view is
-#: zoomed; the pyramid is that sheet at one resolution per zoom, so a whole-world framing
-#: costs the 16 tiles of z2 and nothing else. ``tools/gen_map_image.py`` writes it, renaming
-#: the finished tree into place so this endpoint can never serve half of one.
-#:
-#: Imported from the cutter rather than typed again, here and for the three below: the
-#: layout of that directory is ONE fact, and the ``MAP_`` aliases are only a prefix this
-#: module reads better with.
-MAP_TILES_DIR_NAME = TILES_DIR_NAME
-
-#: ...and the same tile GRID at twice the pixels, for a display whose device pixel ratio is
-#: above one. Level z of ``tiles@2x/`` covers the identical squares of the world that level z
-#: of ``tiles/`` does, at 512 px instead of 256, so a client asks for the same
-#: ``{z}/{x}/{y}`` and draws twice the pixels into the same CSS box.
-#:
-#: One level shallower than the 1x tree by arithmetic, since ``512 * 2**z`` runs out of sheet
-#: before ``256 * 2**z`` does -- so the probe advertises the two depths separately and a
-#: client past the @2x top asks for 1x tiles again.
-MAP_TILES_2X_DIR_NAME = TILES_2X_DIR_NAME
-MAP_TILE_2X_PX = PYRAMID_TILE_2X_PX
-
-#: The query parameter that picks between them, and it takes the tile size the client wants
-#: in pixels rather than a flag, so a third density is one more value and not one more
-#: spelling. A density this server has no tree for falls back to the 1x tile.
+#: The query parameter that picks the tile density, as the tile size in pixels the client
+#: wants, so a third density is one more value and not one more spelling.
 MAP_TILE_PX_PARAM = "px"
 
 #: The type ``/api/maptiles/{z}/{x}/{y}`` serves: the game's own artwork under ``local/tiles/``.
@@ -88,11 +62,8 @@ MAP_LAYER_DEFAULT = "map"
 MAP_RENDERS_DIR_NAME = "renders"
 MAP_RENDER_SIDECAR_NAME = "meta.json"
 
-#: What a pyramid looks like when the sidecar does not say: 256 px tiles, z0 (the world in
-#: one tile) through z5 (the full 8192 in 32x32). Both are read back from ``_meta.tiles``
-#: when it is there, so a pyramid cut at another size is served at that size rather than
-#: half-refused.
-MAP_TILE_PX = PYRAMID_TILE_PX
+#: A pyramid's depth when its sidecar does not say: z0 (the world in one tile) through z5
+#: (the full 8192 px sheet in 32x32).
 MAP_TILE_MAX_Z = 5
 
 #: The corners of the in-game map square, metres, game axes. The playable content is strictly
@@ -101,11 +72,6 @@ MAP_TILE_MAX_Z = 5
 #: is pinned on.
 _X0, _Y0, _X1, _Y1 = geo.MAP_SQUARE_M
 DEFAULT_MAP_BOUNDS_M = {"x_min_m": _X0, "x_max_m": _X1, "y_min_m": _Y0, "y_max_m": _Y1}
-
-
-def _local_dir() -> Path:
-    """The user's own files, read at call time so a test can point it somewhere else."""
-    return config.data_dir() / LOCAL_DIR_NAME
 
 
 def _layer_dir(layer: str) -> Path | None:
@@ -142,39 +108,25 @@ def _map_bounds(layer: str = MAP_LAYER_DEFAULT) -> dict[str, float]:
     return bounds
 
 
+def _whole(source: dict, key: str, default: int, floor: int) -> int:
+    """An integer sidecar field at or above ``floor``, else ``default``."""
+    value = source.get(key)
+    if isinstance(value, int) and not isinstance(value, bool) and value >= floor:
+        return value
+    return default
+
+
 def _map_pyramid(layer: str = MAP_LAYER_DEFAULT) -> dict[str, Any]:
     """What a layer's sidecar says about its pyramid: tile size, depth, build.
 
-    Same posture as ``_map_bounds``: an absent or malformed sidecar is not an error but a
-    pyramid described by the defaults above. ``build`` is only ever a cache tag, so a sidecar
-    that says nothing produces a stable tag for "nothing".
-
-    The layer's NAME is folded into that digest, so two layers cut from one build at one tile
-    count still get different tags -- sharing a tag between two pictures is how an
-    ``immutable`` tile of one ends up cached as a tile of the other.
+    An absent or malformed sidecar describes a default pyramid, and ``build`` is only a cache
+    tag, so saying nothing still yields a stable tag. The layer's name and both trees' numbers
+    are in its digest: a tag shared between two pictures, or two cuts of one, is how an
+    ``immutable`` tile of one gets cached as a tile of the other.
     """
-    path = _layer_sidecar(layer)
-    meta: Any = {}
-    try:
-        meta = json.loads(path.read_text(encoding="utf-8")) if path is not None else {}
-    except (OSError, ValueError):
-        meta = {}
-    block: Any = meta.get("_meta") if isinstance(meta, dict) else None
-    block = block if isinstance(block, dict) else {}
+    block = sidecar_meta_block(_layer_sidecar(layer))
     tiles = block.get("tiles") if isinstance(block.get("tiles"), dict) else {}
     dense = block.get("tiles_2x") if isinstance(block.get("tiles_2x"), dict) else None
-
-    def _whole(source: dict, key: str, default: int, floor: int) -> int:
-        value = source.get(key)
-        return (
-            value
-            if isinstance(value, int) and not isinstance(value, bool) and value >= floor
-            else default
-        )
-
-    # The @2x tree's own numbers ride in the SAME digest, so recutting one and not the other
-    # still changes every URL of that layer: two trees of one picture that disagree about
-    # which build they came from is the state an ``immutable`` tile must not be served in.
     stamp = "|".join(
         [
             layer,
@@ -183,9 +135,9 @@ def _map_pyramid(layer: str = MAP_LAYER_DEFAULT) -> dict[str, Any]:
         ]
     )
     return {
-        "tile_px": _whole(tiles, "tile_px", MAP_TILE_PX, 1),
+        "tile_px": _whole(tiles, "tile_px", PYRAMID_TILE_PX, 1),
         "max_z": _whole(tiles, "max_z", MAP_TILE_MAX_Z, 0),
-        "tile_2x_px": _whole(dense, "tile_px", MAP_TILE_2X_PX, 1) if dense else None,
+        "tile_2x_px": _whole(dense, "tile_px", PYRAMID_TILE_2X_PX, 1) if dense else None,
         "max_2x_z": _whole(dense, "max_z", 0, 0) if dense else None,
         "build": hashlib.sha256(stamp.encode("utf-8")).hexdigest()[:12],
     }
@@ -197,7 +149,7 @@ def map_tile_path(
     y: int,
     max_z: int = MAP_TILE_MAX_Z,
     layer: str = MAP_LAYER_DEFAULT,
-    tree: str = MAP_TILES_DIR_NAME,
+    tree: str = TILES_DIR_NAME,
 ) -> Path | None:
     """Where one pyramid tile lives, or ``None`` if ``(z, x, y)`` is off the pyramid.
 
@@ -207,10 +159,10 @@ def map_tile_path(
     the one segment that IS a string, and it never reaches a path: it is a key into the
     registry, whose ``dir`` only the server writes and which is checked to resolve inside
     ``data/local``, so a layer segment shaped like an escape is an unknown layer. ``tree`` is
-    chosen by ``_tile_tree`` from the two names above and is never a request's string.
+    chosen by ``_tile_tree`` from the two tree names and is never a request's string.
     """
     directory = _layer_dir(layer)
-    if directory is None or tree not in (MAP_TILES_DIR_NAME, MAP_TILES_2X_DIR_NAME):
+    if directory is None or tree not in (TILES_DIR_NAME, TILES_2X_DIR_NAME):
         return None
     if not 0 <= z <= max_z:
         return None
@@ -227,15 +179,6 @@ MAP_TILE_KIND_PARAM = "kind"
 LIGHT_KINDS = {"unlit": ".png", "nrm": ".nrm.webp", "hz": ".hz.webp"}
 
 
-def _sidecar_meta(path: Path | None) -> dict[str, Any]:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8")) if path is not None else {}
-    except (OSError, ValueError):
-        return {}
-    block = raw.get("_meta") if isinstance(raw, dict) else None
-    return block if isinstance(block, dict) else {}
-
-
 def _light(layer: str) -> dict[str, Any] | None:
     """A lit layer's lighting: its unlit tree, the light pyramid, the shader's numbers.
 
@@ -243,20 +186,26 @@ def _light(layer: str) -> dict[str, Any] | None:
     refused unless it resolves inside ``data/local``, like a registry ``dir``.
     """
     directory = _layer_dir(layer)
-    block = _sidecar_meta(_layer_sidecar(layer)).get("light")
+    block = sidecar_meta_block(_layer_sidecar(layer)).get("light")
     if directory is None or not isinstance(block, dict) or not isinstance(block.get("dir"), str):
         return None
     root = (directory / block["dir"]).resolve()
-    if not root.is_relative_to(_local_dir().resolve()):
+    if not root.is_relative_to(registry.local_dir().resolve()):
         return None
-    meta = _sidecar_meta(root / MAP_RENDER_SIDECAR_NAME)
+    meta = sidecar_meta_block(root / MAP_RENDER_SIDECAR_NAME)
     tiles = meta.get("tiles") if isinstance(meta.get("tiles"), dict) else {}
     unlit = block.get("unlit_tiles") if isinstance(block.get("unlit_tiles"), dict) else {}
     model = meta.get("light") if isinstance(meta.get("light"), dict) else {}
     if not isinstance(tiles.get("max_z"), int) or not isinstance(unlit.get("max_z"), int):
         return None
-    stamp = "|".join([layer, str(model.get("digest")), *(str(tiles.get(k)) for k in ("count", "bytes")),
-                      str(unlit.get("bytes"))])  # fmt: skip
+    stamp = "|".join(
+        [
+            layer,
+            str(model.get("digest")),
+            *(str(tiles.get(key)) for key in ("count", "bytes")),
+            str(unlit.get("bytes")),
+        ]
+    )
     return {
         "root": root,
         "unlit": directory / str(block.get("unlit_dir") or "unlit"),
@@ -290,23 +239,14 @@ def _light_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
             f"no {kind} tile {layer}/{z}/{x}/{y}: that tree runs z0..z{depth}", 404
         )
     stem = tile_relpath(z, x, y)[: -len(".png")]
-    tree = light["unlit"] if kind == "unlit" else light["root"] / MAP_TILES_DIR_NAME
+    tree = light["unlit"] if kind == "unlit" else light["root"] / TILES_DIR_NAME
     path = tree / (stem + LIGHT_KINDS[kind])
     if not path.is_file():
         if request.method == "HEAD":
             return Response(status_code=204)
         return error_response(f"no {kind} tile {layer}/{z}/{x}/{y}: {path} is not there", 404)
-    etag = f'"{light["header"]["build"]}"'
-    headers = {
-        "Cache-Control": "public, max-age=31536000, immutable"
-        if "v" in request.query_params
-        else "no-cache",
-        "ETag": etag,
-    }
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers=headers)
     media = "image/png" if kind == "unlit" else "image/webp"
-    return FileResponse(path, media_type=media, headers=headers)
+    return cached_file(request, path, light["header"]["build"], media_type=media)
 
 
 def _tile_tree(request: Request, pyramid: dict[str, Any]) -> tuple[str, int]:
@@ -314,14 +254,15 @@ def _tile_tree(request: Request, pyramid: dict[str, Any]) -> tuple[str, int]:
 
     Forgiving in one direction only: a client that asks for a density this layer has gets it,
     and one that asks for a density it has not gets the 1x tile, which every client can draw
-    at any density. A client that asks for nothing wants 256 and there is no fallback to make.
+    at any density. The @2x tree is one level shallower, since 512 px tiles run out of sheet
+    a level before 256 px ones do.
     """
     if pyramid["max_2x_z"] is None:
-        return MAP_TILES_DIR_NAME, pyramid["max_z"]
+        return TILES_DIR_NAME, pyramid["max_z"]
     asked = request.query_params.get(MAP_TILE_PX_PARAM)
     if asked is not None and asked.isdigit() and int(asked) == pyramid["tile_2x_px"]:
-        return MAP_TILES_2X_DIR_NAME, pyramid["max_2x_z"]
-    return MAP_TILES_DIR_NAME, pyramid["max_z"]
+        return TILES_2X_DIR_NAME, pyramid["max_2x_z"]
+    return TILES_DIR_NAME, pyramid["max_z"]
 
 
 # ------------------------------------------------------------------- mapimage
@@ -351,7 +292,7 @@ def mapimage(request: Request) -> Any:
     The corners travel with the file in ``X-Map-Bounds-M`` (``x_min,y_min,x_max,y_max``,
     metres, game axes) so the one probe the page already makes answers both questions.
     """
-    path = _local_dir() / MAP_IMAGE_NAME
+    path = registry.local_dir() / MAP_IMAGE_NAME
     if not path.is_file():
         if request.method == "HEAD":
             return Response(status_code=204)
@@ -362,11 +303,11 @@ def mapimage(request: Request) -> Any:
             '{"x_min_m":…,"x_max_m":…,"y_min_m":…,"y_max_m":…}',
             404,
         )
-    b = _map_bounds()
+    bounds = _map_bounds()
     return FileResponse(
         path,
         headers={
-            "X-Map-Bounds-M": "{x_min_m},{y_min_m},{x_max_m},{y_max_m}".format(**b),
+            "X-Map-Bounds-M": "{x_min_m},{y_min_m},{x_max_m},{y_max_m}".format(**bounds),
             "Cache-Control": "no-cache",
         },
     )
@@ -389,6 +330,23 @@ _LAYER_TOOLS = {
         "biome raster, from the 1 m heightfield in data/local/heightmap/"
     ),
 }
+
+
+def _pyramid_headers(layer: str, pyramid: dict[str, Any]) -> dict[str, str]:
+    """The layer's own corners, grid and build, so the page configures its tile layer from
+    the probe it already makes; the @2x pair is absent, not zero, without a denser tree."""
+    bounds = _map_bounds(layer)
+    headers = {
+        "X-Map-Bounds-M": "{x_min_m},{y_min_m},{x_max_m},{y_max_m}".format(**bounds),
+        "X-Map-Layer": layer,
+        "X-Map-Tile-Px": str(pyramid["tile_px"]),
+        "X-Map-Tile-Max-Z": str(pyramid["max_z"]),
+        "X-Map-Build": pyramid["build"],
+    }
+    if pyramid["max_2x_z"] is not None:
+        headers["X-Map-Tile-2x-Px"] = str(pyramid["tile_2x_px"])
+        headers["X-Map-Tile-2x-Max-Z"] = str(pyramid["max_2x_z"])
+    return headers
 
 
 def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
@@ -439,42 +397,12 @@ def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
             "committed.",
             404,
         )
-    b = _map_bounds(layer)
-    etag = f'"{pyramid["build"]}"'
-    # ``immutable`` is earned by the ``?v=`` build tag and only by it: a tagged URL changes
-    # whenever the pyramid is recut, so the response behind it never can. An UNTAGGED fetch
-    # must revalidate -- caching those hard is how a regenerated map stays invisible behind a
-    # year-old probe -- and the ETag makes that a 304 rather than bytes.
-    versioned = "v" in request.query_params
-    headers = {
-        # The corners, the shape of the grid and the build, on the probe the page already
-        # makes, so the client configures its tile layer from the server.
-        "X-Map-Bounds-M": "{x_min_m},{y_min_m},{x_max_m},{y_max_m}".format(**b),
-        "X-Map-Layer": layer,
-        "X-Map-Tile-Px": str(pyramid["tile_px"]),
-        "X-Map-Tile-Max-Z": str(pyramid["max_z"]),
-        "X-Map-Build": pyramid["build"],
-        # The denser tree, when this layer has one, on the same probe: a client has to know
-        # both that @2x tiles exist and how deep they go BEFORE it builds its layer. Absent,
-        # not zero, when there is no such tree.
-        **(
-            {
-                "X-Map-Tile-2x-Px": str(pyramid["tile_2x_px"]),
-                "X-Map-Tile-2x-Max-Z": str(pyramid["max_2x_z"]),
-            }
-            if pyramid["max_2x_z"] is not None
-            else {}
-        ),
-        "Cache-Control": "public, max-age=31536000, immutable" if versioned else "no-cache",
-        "ETag": etag,
-    }
+    headers = _pyramid_headers(layer, pyramid)
     light = _light(layer) if z == 0 else None
     if light is not None:
         # On the z0 probe only: what the page needs to relight this layer live.
         headers["X-Map-Light"] = json.dumps(light["header"], separators=(",", ":"))
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers=headers)
-    return FileResponse(path, headers=headers)
+    return cached_file(request, path, pyramid["build"], headers=headers)
 
 
 @router.api_route("/maptiles/{z}/{x}/{y}", methods=["GET", "HEAD"], operation_id=OPERATION_MAPTILES)

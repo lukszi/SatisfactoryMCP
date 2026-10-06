@@ -4,9 +4,11 @@ The three conventions it serves are rules 8 to 10 of docs/web-wire.md.
 """
 
 from .responses import (
+    IMMUTABLE,
     PLAN_KEY,
     RequestRefused,
     busy_response,
+    cached_file,
     check_plan_key,
     choice_refusal,
     error_response,
@@ -16,6 +18,7 @@ from .responses import (
     require_plan,
     require_world,
     session_name,
+    sidecar_meta_block,
     world_state,
 )
 from .shapes import (
@@ -52,6 +55,7 @@ from .shapes import (
 from .units import bbox_m, cm_to_m, instance_leaf, point_m, xyz_m, yaw_deg
 
 __all__ = [
+    "IMMUTABLE",
     "PLAN_KEY",
     "ActorBody",
     "Biomass",
@@ -68,6 +72,7 @@ __all__ = [
     "bbox_m",
     "building_footprint",
     "busy_response",
+    "cached_file",
     "check_plan_key",
     "choice_refusal",
     "cm_to_m",
@@ -95,6 +100,7 @@ __all__ = [
     "resource_name",
     "session_name",
     "settings_json",
+    "sidecar_meta_block",
     "stale_tables",
     "standing_anchors",
     "world_state",
