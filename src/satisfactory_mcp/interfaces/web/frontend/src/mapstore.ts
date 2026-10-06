@@ -85,9 +85,13 @@ export function mapType(id: string): MapTypeBody | null {
   );
 }
 
-/** A type's title: the player's label if it has one, else the name its axes give it. */
-export function mapTitle(row: MapTypeBody): string {
-  return row.label || row.name;
+/** What a type technically is: style, renderer, data build and heightfield, then its size,
+ *  which the name already ends in when another type has the same axes. Its title is
+ *  `row.title`, composed by the server so the page and chat agree. */
+export function mapDetails(row: MapTypeBody): string {
+  var size = row.size_px ? " · " + row.size_px + " px" : "";
+  var named = size && row.name.slice(-size.length) === size;
+  return row.name + (named ? "" : size);
 }
 
 /** The one amber word a stale type carries, or "" for a type whose data is current. */

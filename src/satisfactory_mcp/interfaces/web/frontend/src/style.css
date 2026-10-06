@@ -477,14 +477,7 @@ select {
   cursor: help;
 }
 
-/* A map type's second line, and the amber word on one whose data is outdated. */
-.layer-mode-sub {
-  display: block;
-  padding-left: 20px;
-  color: var(--dim);
-  font-size: var(--fs-s);
-}
-
+/* The amber word on a map type whose data is outdated. */
 .layer-mode-flag {
   margin-left: var(--sp-1);
   color: var(--flash);
