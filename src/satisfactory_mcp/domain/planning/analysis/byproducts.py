@@ -1,35 +1,8 @@
 """Why an equality-balanced plan has no answer: find the byproduct with no outlet.
 
-Every item balance in the LP is an equality, so a byproduct that nothing consumes
-does not silently vanish -- it makes the plan infeasible, or (worse, because it is
-quiet about it) collapses the plan to nothing and lets a different resource win.
-``plan_factory`` can only say "infeasible" and suggest adding something to
-``exports``. Working out *which* item is stuck, and what could possibly eat it, is
-the job this module does.
-
-**The verdict is always the LP's, never a graph walk.** Two static analyses are
-tempting here and both are wrong on this user's own recipe set:
-
-* "an item with no consumer is stuck" misses the real trap. Polymer Resin has two
-  unlocked consumers (Residual Plastic, Residual Rubber) and is stuck anyway,
-  because what they make -- Plastic and Rubber -- has nowhere to go either.
-* "an item whose consumers reach an outlet is fine" over-reports the other way. A
-  grounded-chain search says Plastic terminates, via Empty Canister -> Packaged
-  Liquid Biofuel -> a Biomass Burner. True as a chain, useless as a plan: nothing
-  in a crude-oil scope can supply the biofuel. A chain test ignores co-inputs.
-
-So candidates come from a *relaxed solve* -- every produced item made exportable,
-deliberately the naive ``net >= 0`` formulation, used only as a probe and never
-shown as a plan -- and each candidate is then confirmed by re-solving with that one
-item opened up. An item is named as the blocker only when opening it alone
-measurably rescues the plan, and the gain is quoted in the caller's own objective.
-
-The graph work that remains is explanatory, not decisive: which recipes would
-consume the item, split by whether this save has unlocked them, and whether the
-chain out of it dead-ends in a closed loop. That last one is the trap the design
-spec names: Recycled Plastic and Recycled Rubber consume each other's product, and
-no non-negative combination of the two absorbs either -- the pair net-CREATES both
-out of Fuel, so it can never soak up a resin surplus.
+The verdict is always the LP's: a relaxed probe names the candidates, and an item is the
+blocker only when opening it alone moves the caller's objective. The graph work left is
+explanatory -- outlets, packaging, closed loops. docs/planning.md §8.2a.
 """
 
 from __future__ import annotations
@@ -48,24 +21,24 @@ from ...world.state import WorldState
 from ..solver.model import MW, Process, Scenario, Solution
 from ..solver.optimize import solve
 from ..solver.processes import build_processes
-from ..solver.scenario import build_scenario
+from ..solver.scenario import build_scenario, with_recipes
 
-__all__ = ["Blocker", "Fix", "Loop", "Outlet", "Report", "analyse"]
+__all__ = ["Blocker", "ByproductReport", "Fix", "Loop", "Outlet", "analyse"]
 
 _EPS = 1e-6
 
 #: Objectives whose value gets better as it gets bigger.
 _MAXIMISE = ("max_mw", "max_item")
 
+#: The one building that turns a fluid into a sinkable solid.
+_PACKAGER = "Build_Packager_C"
+
 # --------------------------------------------------------------------- objective
 
 
 def _value(objective: str, sol: Solution) -> float | None:
-    """The number the caller actually asked to move, in its own units.
-
-    Not ``objective_value`` for max_mw: that one carries the per-machine penalty, so
-    quoting it as MW would understate the plan by a few thousand megawatts.
-    """
+    """The number the caller asked to move, in its own units: ``net_mw`` for max_mw, since
+    the objective carries the machine price (docs/planning.md §8.4)."""
     if not sol.ok:
         return None
     if objective == "max_mw":
@@ -95,12 +68,7 @@ def _improved(objective: str, base: float | None, cand: float | None) -> bool:
 
 @dataclass
 class _Probes:
-    """Counted, budgeted re-solves.
-
-    Budgeted because every probe is a full MILP: an unbounded fix search would turn
-    a diagnostic into a minute of solving. Counted because the caller deserves to
-    know how much work the answer cost.
-    """
+    """Counted, budgeted re-solves: each is a full MILP, and the caller is told the count."""
 
     objective: str
     budget: int
@@ -122,12 +90,7 @@ class _Probes:
 
 
 def _flows(procs: list[Process]) -> tuple[dict[str, list[Process]], dict[str, list[Process]]]:
-    """Net producers and net consumers of each item, over the LP's own columns.
-
-    Built from ``build_processes`` rather than from a recipe list, so the census is
-    exactly what the solver sees: recipes whose machine is not unlocked are already
-    gone, and extractors and generators are already in.
-    """
+    """Net producers and net consumers of each item, over the LP's own columns."""
     produced: dict[str, list[Process]] = {}
     consumed: dict[str, list[Process]] = {}
     for p in procs:
@@ -166,12 +129,8 @@ class Outlet:
 
 
 def _outlets(game: GameData, state: WorldState, item_id: str) -> list[Outlet]:
-    """Every automatable recipe that consumes the item, unlocked or not.
-
-    Deliberately over the FULL recipe set rather than the allowed one: "you already
-    own the fix" and "you need a hard drive" are different answers, and a caller
-    staring at an infeasible plan needs to know which of the two they are in.
-    """
+    """Every automatable recipe that consumes the item, unlocked or not: "you own the fix"
+    and "you need a hard drive" are different answers."""
     out: list[Outlet] = []
     for r in game.consumers_of(item_id, "part"):
         if r.is_event:
@@ -199,22 +158,19 @@ def _outlets(game: GameData, state: WorldState, item_id: str) -> list[Outlet]:
 
 
 def _packaging(game: GameData, state: WorldState, item_id: str) -> Outlet | None:
-    """The Packager route that turns a fluid into a solid an AWESOME Sink can take.
-
-    Fluids cannot be sunk at all (constants.FLUIDS_CANNOT_BE_SUNK), so for a fluid
-    dead end this is frequently the only disposal that physically exists.
-    """
+    """The Packager route that turns a fluid into a solid an AWESOME Sink can take, often
+    the only disposal a fluid has (constants.FLUIDS_CANNOT_BE_SUNK)."""
     it = game.items.get(item_id)
     if it is None or not it.is_fluid:
         return None
     best: Outlet | None = None
     for r in game.consumers_of(item_id, "part"):
-        if r.machine != "Build_Packager_C":
+        if r.machine != _PACKAGER:
             continue
         packaged = [f.item for f in r.products if not game.items[f.item].is_fluid]
         if not packaged:
             continue
-        has_machine = "Build_Packager_C" in state.unlocked_building_ids
+        has_machine = _PACKAGER in state.unlocked_building_ids
         unlocked = state.has_recipe(r.cls) and has_machine
         cand = Outlet(
             recipe=r.cls,
@@ -223,8 +179,7 @@ def _packaging(game: GameData, state: WorldState, item_id: str) -> Outlet | None
             unlocked=unlocked,
             net_rate=r.rate_of(item_id),
             products=tuple(packaged),
-            # Never left blank when locked: the response prints "LOCKED, <source>",
-            # and a missing Packager is a different job from a missing recipe.
+            # Never blank when locked: a missing Packager is a different job from a recipe.
             source=""
             if unlocked
             else (
@@ -245,8 +200,8 @@ class Loop:
 
     items: tuple[str, ...]  # display names
     recipes: tuple[str, ...]  # display names
-    #: True when no non-negative combination of the cycle's own recipes reduces any
-    #: of its items. Such a cycle can never absorb a surplus, however many you build.
+    #: True when no non-negative mix of the cycle's own recipes reduces any of its items:
+    #: such a cycle never absorbs a surplus, however many you build.
     absorbs_nothing: bool
     net_creates: bool
 
@@ -262,13 +217,8 @@ def _cycle_recipes(procs: list[Process], members: set[str]) -> list[Process]:
 
 
 def _cycle_absorbs(inner: list[Process], members: set[str]) -> tuple[bool, bool]:
-    """Can the cycle net-consume any member? And does it net-create them?
-
-    A tiny LP, because the question really is an LP: it asks whether some
-    non-negative mix of the cycle's recipes has a negative net on one member without
-    a positive net on another. Reading the two Recycled recipes and concluding "they
-    consume each other, so they must cancel" gets it exactly backwards.
-    """
+    """Can the cycle net-consume any member? And does it net-create them? A tiny LP, since
+    "they consume each other, so they cancel" is backwards (docs/planning.md §8.2a)."""
     if not inner:
         return False, False
     order = sorted(members)
@@ -303,14 +253,8 @@ def _cycle_absorbs(inner: list[Process], members: set[str]) -> tuple[bool, bool]
 def _loop_for(
     game: GameData, procs: list[Process], terminal: set[str], seeds: list[str]
 ) -> Loop | None:
-    """Does the stuck item's chain terminate, or exchange inside a closed cycle?
-
-    Scoped to the DIRECT products of the item's own unlocked consumers, not to a
-    full strongly connected component. The big component is not a useful answer --
-    it absorbs plenty in principle, none of which this scope can supply -- whereas
-    the small one is the exact trap the player walks into: resin ends in Plastic and
-    Rubber, whose only mutual consumers are Recycled Rubber and Recycled Plastic.
-    """
+    """Does the stuck item's chain terminate, or exchange inside a closed cycle among the
+    direct products of its unlocked consumers (docs/planning.md §8.2a)?"""
     members = {s for s in dict.fromkeys(seeds) if s not in terminal and s != MW}
     if len(members) < 2:
         return None
@@ -319,8 +263,7 @@ def _loop_for(
         return None
     eats = {i for p in inner for i, r in p.rates.items() if r < -_EPS and i in members}
     makes = {i for p in inner for i, r in p.rates.items() if r > _EPS and i in members}
-    # Every member both fed and produced by the same recipe set is what makes this a
-    # closed exchange rather than an ordinary chain that happens to fork.
+    # Every member both fed and made by the set: a closed exchange, not a forking chain.
     if eats != members or makes != members:
         return None
     absorbs, creates = _cycle_absorbs(inner, members)
@@ -353,11 +296,10 @@ class Blocker:
     is_fluid: bool
     sinkable: bool
     sink_points: int
-    #: Rate the plan would emit once the item is allowed out -- i.e. the size of the
-    #: problem, and the belt or pipe count it implies.
+    #: Rate the plan would emit once the item is allowed out: the size of the problem.
     rate: float
-    #: How many of the LP's own columns consume it. Zero means nothing you have
-    #: touches it at all; non-zero with the item still stuck is the loop trap.
+    #: How many LP columns consume it. Zero: nothing touches it; non-zero and still stuck
+    #: is the loop trap.
     allowed_consumers: int
     producers: tuple[str, ...]
     outlets: list[Outlet]
@@ -377,7 +319,7 @@ class Blocker:
 
 
 @dataclass
-class Report:
+class ByproductReport:
     plan_id: str
     objective: str
     unit: str
@@ -386,11 +328,10 @@ class Report:
     base_value: float | None
     open_value: float | None
     blockers: list[Blocker]
-    #: Items produced with no outlet that opening alone does NOT rescue -- either
-    #: irrelevant at this scope, or only blocking jointly with another item.
+    #: Items with no outlet that opening alone does NOT rescue: irrelevant at this scope,
+    #: or blocking only jointly with another.
     also_stuck: list[tuple[str, float]]
-    #: Items whose only outlet in the current plan is an AWESOME Sink, and what the
-    #: plan is worth if sinking is taken away.
+    #: Items whose only outlet is an AWESOME Sink, and the plan's value without sinking.
     sink_only: dict[str, float]
     no_sink_value: float | None
     notes: list[str]
@@ -398,6 +339,78 @@ class Report:
 
 
 # ---------------------------------------------------------------------- analysis
+
+
+def _surplus_candidates(
+    sc: Scenario,
+    produced: dict[str, list[Process]],
+    terminal: set[str],
+    focus: str | None,
+    probes: _Probes,
+) -> tuple[dict[str, float], float | None]:
+    """What the relaxed probe exports with every produced item opened, and its value.
+
+    The probe is the naive ``net >= 0`` formulation, used only to size and rank candidates.
+    """
+    openable = tuple(i for i in sorted(produced) if i != MW and i not in sc.exports)
+    open_value, opened = probes.run(replace(sc, exports=(*sc.exports, *openable)))
+    surplus = {
+        i: rate
+        for i, rate in opened.exports.items()
+        if i != MW and i not in terminal and rate > _EPS
+    }
+    if focus is not None:
+        surplus = {focus: surplus.get(focus, 0.0)}
+    return surplus, open_value
+
+
+def _absorbed_items(base: Solution) -> set[str]:
+    """Items the base plan produces: already consumed exactly, so never the dead end (§8.2a)."""
+    if not base.ok:
+        return set()
+    return {i for row in base.processes for i, r in row["rates"].items() if r > _EPS}
+
+
+def _loop_seeds(blocker: Blocker, terminal: set[str]) -> list[str]:
+    """What the blocker's unlocked consumers make that cannot leave the plant."""
+    return [
+        product
+        for outlet in blocker.unlocked_outlets
+        for product in outlet.products
+        if product not in terminal and product != blocker.item
+    ]
+
+
+def _blocker_for(
+    game: GameData,
+    state: WorldState,
+    item_id: str,
+    rate: float,
+    confirmed: bool,
+    procs: list[Process],
+    produced: dict[str, list[Process]],
+    consumed: dict[str, list[Process]],
+    terminal: set[str],
+) -> Blocker:
+    """One stuck item with its outlets, packaging route and the loop its chain runs into."""
+    known = game.items[item_id]
+    blocker = Blocker(
+        item=item_id,
+        name=known.name,
+        is_fluid=known.is_fluid,
+        sinkable=known.sinkable,
+        sink_points=known.sink_points,
+        rate=round(rate, 2),
+        allowed_consumers=len(consumed.get(item_id, ())),
+        producers=tuple(
+            dict.fromkeys(p.label for p in produced.get(item_id, ()) if p.kind == "recipe")
+        ),
+        outlets=_outlets(game, state, item_id),
+        confirmed=confirmed,
+        packaging=_packaging(game, state, item_id),
+    )
+    blocker.loop = _loop_for(game, procs, terminal, _loop_seeds(blocker, terminal))
+    return blocker
 
 
 def analyse(
@@ -413,7 +426,7 @@ def analyse(
     item: str | None = None,
     exclude_recipes: list[str] | None = None,
     max_probes: int = 8,
-) -> Report:
+) -> ByproductReport:
     """Diagnose one plan scope's byproducts. Costs 2 + up to ``max_probes`` solves."""
     req = build_scenario(
         game,
@@ -433,8 +446,7 @@ def analyse(
     terminal = _terminal(sc)
     notes = [*req.selection.errors, *req.export_errors]
     if req.selection.errors and not req.selection.nodes:
-        # A typo'd selector and a genuinely stuck byproduct look identical from the
-        # solved plan -- both give nothing -- so the two must never be confused.
+        # A typo'd selector and a stuck byproduct both give nothing; never confuse them.
         notes.append("no node matched these sources, so nothing can be extracted at all")
     probes = _Probes(objective=objective, budget=max_probes)
 
@@ -443,89 +455,36 @@ def analyse(
         notes.append(f"unknown item {item!r}; diagnosing the whole scope instead")
 
     base_value, base = probes.run(sc)
-
-    # The relaxed probe. This IS the naive net>=0 formulation the design rejects,
-    # and it exists only to size and rank candidates -- what it exports is precisely
-    # the set of items the real, equality-balanced plan has nowhere to put.
-    openable = tuple(i for i in sorted(produced) if i != MW and i not in sc.exports)
-    open_value, opened = probes.run(replace(sc, exports=(*sc.exports, *openable)))
-
-    surplus = {
-        i: rate
-        for i, rate in opened.exports.items()
-        if i != MW and i not in terminal and rate > _EPS
-    }
-    if focus is not None:
-        surplus = {focus: surplus.get(focus, 0.0)}
-
-    # Every item balance is an EQUALITY, so anything the base plan produces at all is
-    # already consumed by it exactly -- it provably has an outlet and cannot be the
-    # dead end. Without this the relaxed probe is only a byproduct detector for the
-    # maximising objectives: under min_power/min_raw/min_machines, dumping any
-    # intermediate is cheaper than processing it, so the probe exports every one of
-    # them and every one gets reported as STUCK in a plan that in fact works.
-    absorbed = (
-        {i for row in base.processes for i, r in row["rates"].items() if r > _EPS}
-        if base.ok
-        else set()
-    )
+    surplus, open_value = _surplus_candidates(sc, produced, terminal, focus, probes)
+    absorbed = _absorbed_items(base)
 
     blockers: list[Blocker] = []
     also_stuck: list[tuple[str, float]] = []
     for item_id, rate in sorted(surplus.items(), key=lambda kv: -kv[1]):
-        it = game.items.get(item_id)
-        if it is None:
+        known = game.items.get(item_id)
+        if known is None:
             continue
         already = item_id in absorbed
         if already and focus is None:
             continue
-        # Confirmation, and the only claim this tool makes as fact: does opening
-        # THIS item alone move the caller's objective? A candidate that does not is
-        # noise -- it is only in the list because the relaxed probe let it out.
+        # The one claim made as fact: does opening THIS item alone move the objective?
         if not probes.spend():
-            also_stuck.append((it.name, rate))
+            also_stuck.append((known.name, rate))
             continue
         solo_value, _ = probes.run(replace(sc, exports=(*sc.exports, item_id)))
         confirmed = _improved(objective, base_value, solo_value) and not already
         if not confirmed and focus is None:
-            also_stuck.append((it.name, rate))
+            also_stuck.append((known.name, rate))
             continue
-
-        blocker = Blocker(
-            item=item_id,
-            name=it.name,
-            is_fluid=it.is_fluid,
-            sinkable=it.sinkable,
-            sink_points=it.sink_points,
-            rate=round(rate, 2),
-            allowed_consumers=len(consumed.get(item_id, ())),
-            producers=tuple(
-                dict.fromkeys(p.label for p in produced.get(item_id, ()) if p.kind == "recipe")
-            ),
-            outlets=_outlets(game, state, item_id),
-            confirmed=confirmed,
-            packaging=_packaging(game, state, item_id),
+        blocker = _blocker_for(
+            game, state, item_id, rate, confirmed, procs, produced, consumed, terminal
         )
-        blocker.loop = _loop_for(
-            game,
-            procs,
-            terminal,
-            [
-                prod
-                for o in blocker.unlocked_outlets
-                for prod in o.products
-                if prod not in terminal and prod != item_id
-            ],
-        )
-        # Fixes are only meaningful for an item that is actually blocking. Probing
-        # them for one the caller merely asked about measures how some OTHER route
-        # opens up, and reports it under this item's name.
+        # Fixes for an item merely asked about would price some OTHER route's opening.
         if confirmed:
             _add_fixes(game, sc, objective, base_value, blocker, probes)
         blockers.append(blocker)
 
-    # Sinking is neither free nor always wanted: it is a real belt and 30 MW per
-    # Sink. When it is the only thing holding a plan up, that is a finding.
+    # Sinking is a real belt and 30 MW per Sink; when it alone holds a plan up, say so.
     sink_only = {game.item_name(k): v for k, v in base.sunk.items()} if base.ok else {}
     no_sink_value: float | None = None
     if sink_only and sc.allow_sinks:
@@ -538,7 +497,7 @@ def analyse(
             + " have to be given an outlet together"
         )
 
-    return Report(
+    return ByproductReport(
         plan_id=req.plan_id,
         objective=objective,
         unit=_unit(objective),
@@ -555,6 +514,114 @@ def analyse(
     )
 
 
+# -------------------------------------------------------------------------- fixes
+
+
+def _priced_fix(
+    kind: str,
+    label: str,
+    detail: str,
+    scenario: Scenario,
+    objective: str,
+    base_value: float | None,
+    probes: _Probes,
+) -> Fix:
+    """One fix, solved to its value in the caller's objective."""
+    value, _ = probes.run(scenario)
+    return Fix(kind, label, detail, value, _improved(objective, base_value, value))
+
+
+def _sink_fix(
+    sc: Scenario, objective: str, base_value: float | None, blocker: Blocker, probes: _Probes
+) -> list[Fix]:
+    if sc.allow_sinks or not blocker.sinkable or not probes.spend():
+        return []
+    belts = max(1, -int(-blocker.rate // max(sc.belt_ipm, 1.0)))
+    detail = (
+        f"{blocker.sink_points} pts, {belts} belt(s) to an AWESOME Sink, "
+        f"{belts * AWESOME_SINK_MW:g} MW"
+    )
+    scenario = replace(sc, allow_sinks=True)
+    return [
+        _priced_fix("sink", "allow_sinks=true", detail, scenario, objective, base_value, probes)
+    ]
+
+
+def _export_fixes(
+    game: GameData,
+    sc: Scenario,
+    objective: str,
+    base_value: float | None,
+    blocker: Blocker,
+    probes: _Probes,
+) -> list[Fix]:
+    """Let each unlocked consumer's products leave, one distinct product set at a time."""
+    fixes: list[Fix] = []
+    seen: set[frozenset[str]] = set()
+    for outlet in blocker.unlocked_outlets:
+        wanted = tuple(p for p in outlet.products if p not in sc.exports)
+        if not wanted or frozenset(wanted) in seen:
+            continue
+        if not probes.spend():
+            break
+        seen.add(frozenset(wanted))
+        fixes.append(
+            _priced_fix(
+                "export",
+                "exports+=" + ", ".join(game.item_name(p) for p in wanted),
+                f"{outlet.name} ({outlet.building}) eats {-outlet.net_rate:g}/min per machine",
+                replace(sc, exports=(*sc.exports, *wanted)),
+                objective,
+                base_value,
+                probes,
+            )
+        )
+    return fixes
+
+
+def _package_fix(
+    game: GameData,
+    sc: Scenario,
+    objective: str,
+    base_value: float | None,
+    blocker: Blocker,
+    probes: _Probes,
+) -> list[Fix]:
+    pack = blocker.packaging
+    if pack is None or not probes.spend():
+        return []
+    packed = pack.products[0]
+    scenario = replace(with_recipes(sc, [pack.recipe]), exports=(*sc.exports, packed))
+    detail = (
+        f"{pack.name} ({'unlocked' if pack.unlocked else pack.source}); costs an "
+        "Empty Canister per m3 unless you unpackage it back"
+    )
+    label = f"package -> {game.item_name(packed)}"
+    return [_priced_fix("package", label, detail, scenario, objective, base_value, probes)]
+
+
+def _unlock_fixes(
+    sc: Scenario, objective: str, base_value: float | None, blocker: Blocker, probes: _Probes
+) -> list[Fix]:
+    """Each locked consumer, solved as if unlocked with its machine buildable."""
+    fixes: list[Fix] = []
+    for outlet in blocker.locked_outlets:
+        if not probes.spend():
+            break
+        fixes.append(
+            _priced_fix(
+                "unlock",
+                f"unlock {outlet.name}",
+                f"{outlet.source} -- {outlet.building}",
+                with_recipes(sc, [outlet.recipe]),
+                objective,
+                base_value,
+                probes,
+            )
+        )
+    return fixes
+
+
 def _add_fixes(
     game: GameData,
     sc: Scenario,
@@ -564,92 +631,14 @@ def _add_fixes(
     probes: _Probes,
 ) -> None:
     """Price the things the caller could actually do next, in the caller's units."""
-    fixes: list[Fix] = []
-
-    if not sc.allow_sinks and blocker.sinkable and probes.spend():
-        belts = max(1, -int(-blocker.rate // max(sc.belt_ipm, 1.0)))
-        value, _ = probes.run(replace(sc, allow_sinks=True))
-        fixes.append(
-            Fix(
-                "sink",
-                "allow_sinks=true",
-                f"{blocker.sink_points} pts, {belts} belt(s) to an AWESOME Sink, "
-                f"{belts * AWESOME_SINK_MW:g} MW",
-                value,
-                _improved(objective, base_value, value),
-            )
-        )
-
-    seen: set[frozenset[str]] = set()
-    for o in blocker.unlocked_outlets:
-        wanted = tuple(p for p in o.products if p not in sc.exports)
-        if not wanted or frozenset(wanted) in seen:
-            continue
-        if not probes.spend():
-            break
-        seen.add(frozenset(wanted))
-        value, _ = probes.run(replace(sc, exports=(*sc.exports, *wanted)))
-        fixes.append(
-            Fix(
-                "export",
-                "exports+=" + ", ".join(game.item_name(p) for p in wanted),
-                f"{o.name} ({o.building}) eats {-o.net_rate:g}/min per machine",
-                value,
-                _improved(objective, base_value, value),
-            )
-        )
-
-    pack = blocker.packaging
-    if pack is not None and probes.spend():
-        packed = pack.products[0]
-        # A recipe can be available while its machine is not, in which case it is
-        # already in sc.recipes AND reported as locked. Re-adding it builds two
-        # columns with the same process id, which build_processes rejects outright.
-        extra = [] if pack.recipe in sc.recipes else [pack.recipe]
-        value, _ = probes.run(
-            replace(
-                sc,
-                recipes=[*sc.recipes, *extra],
-                buildings_available=(sc.buildings_available or set()) | {"Build_Packager_C"},
-                exports=(*sc.exports, packed),
-            )
-        )
-        fixes.append(
-            Fix(
-                "package",
-                f"package -> {game.item_name(packed)}",
-                f"{pack.name} ({'unlocked' if pack.unlocked else pack.source}); costs an "
-                "Empty Canister per m3 unless you unpackage it back",
-                value,
-                _improved(objective, base_value, value),
-            )
-        )
-
-    for o in blocker.locked_outlets:
-        if not probes.spend():
-            break
-        machine = game.recipes[o.recipe].machine
-        value, _ = probes.run(
-            replace(
-                sc,
-                recipes=[*sc.recipes, *([] if o.recipe in sc.recipes else [o.recipe])],
-                buildings_available=(sc.buildings_available or set())
-                | ({machine} if machine else set()),
-            )
-        )
-        fixes.append(
-            Fix(
-                "unlock",
-                f"unlock {o.name}",
-                f"{o.source} -- {o.building}",
-                value,
-                _improved(objective, base_value, value),
-            )
-        )
-
-    # Best first. Fixes that move nothing sink to the bottom instead of being
-    # dropped: "that recipe would consume it and still gains you nothing" is a real
-    # answer, and it is the one that stops a pointless hard-drive pick.
+    fixes = [
+        *_sink_fix(sc, objective, base_value, blocker, probes),
+        *_export_fixes(game, sc, objective, base_value, blocker, probes),
+        *_package_fix(game, sc, objective, base_value, blocker, probes),
+        *_unlock_fixes(sc, objective, base_value, blocker, probes),
+    ]
+    # Best first; a fix that moves nothing sinks rather than vanishing, since "it would
+    # consume it and gain nothing" is what stops a pointless hard-drive pick.
     fixes.sort(
         key=lambda f: (
             not f.gain,

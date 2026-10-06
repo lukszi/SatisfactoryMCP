@@ -64,12 +64,12 @@ def test_gain_is_positive_for_better_whichever_way_the_objective_points(game, pl
     """`objective_value` is sign-normalised for max/min, so a min_* objective needs
     flipping -- otherwise a recipe that halves raw usage reports a large NEGATIVE gain and
     sorts last, which is exactly backwards."""
-    from satisfactory_mcp.domain.planning.analysis.sensitivity import _better
+    from satisfactory_mcp.domain.planning.analysis.sensitivity import _as_gain
 
-    assert _better("max_mw", 100.0) == 100.0
-    assert _better("min_raw", 100.0) == -100.0
+    assert _as_gain("max_mw", 100.0) == 100.0
+    assert _as_gain("min_raw", 100.0) == -100.0
     # A min_raw plan that drops from 100 to 60 must read as a gain.
-    assert _better("min_raw", 60.0) - _better("min_raw", 100.0) == pytest.approx(40.0)
+    assert _as_gain("min_raw", 60.0) - _as_gain("min_raw", 100.0) == pytest.approx(40.0)
 
 
 def test_rows_are_ranked_best_first(sweep):

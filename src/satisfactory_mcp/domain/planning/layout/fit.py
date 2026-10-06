@@ -1,28 +1,16 @@
 """Does a planned layout fit the factory that already exists, and what of it is standing?
 
-``build_layout`` is deliberately abstract -- blocks, buses and floors with sizes in
-metres and no coordinates -- because a player places machines themselves and a solver
-guessing exact positions would be both wrong and unwelcome. So "scope a layout to a
-factory" cannot mean placing blocks at coordinates. It means answering the two questions
-an abstract layout leaves open once you know *where* it is going:
-
-1. **Does it fit on the platform I already built?** The structure layer knows the slab's
-   tile count and extent; the layout knows its peak-floor footprint. The gap is the
-   number of foundations to pour.
-2. **What of it already stands there?** A block whose machines already exist in that
-   factory is not work. Matching by (building, recipe) turns "build 47 blocks" into
-   "build 12 blocks, 35 are already up".
-
-Both are honest about their limits. Floors stack, so a layout needing more tiles than the
-slab has may still fit by building upward -- the report says how many are short rather
-than declaring failure. And a machine already standing may be running a different clock
-or feeding something else; it is reported as present, never as *correct*.
+The layout has no coordinates, so scoping it to a factory answers two questions: how many
+tiles short the existing platform is at the peak floor, and which blocks already stand there,
+matched by (building, recipe). A standing machine is reported as present, never as correct.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+
+from ....core.saveio.records import instance_leaf
 
 __all__ = ["FitReport", "assess_fit"]
 
@@ -97,7 +85,7 @@ def assess_fit(name: str, machines: list[str], layout, structures, projection: d
     # What is already there, keyed the way a block is: building class plus recipe.
     have: Counter = Counter()
     for record in projection.get("machines", ()):
-        if record["instance"].rsplit(".", 1)[-1] in wanted and record.get("recipe"):
+        if instance_leaf(record["instance"]) in wanted and record.get("recipe"):
             have[(record["cls"], record["recipe"])] += 1
 
     for block in layout.blocks:

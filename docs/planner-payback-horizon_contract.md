@@ -50,7 +50,7 @@ average too.
   that tie on the goal.
 - **Power goals (F1a, 3b).** `max_mw` and `min_power` already trade machines against MW in
   phase 1. From **5 h** (`overclock.POWER_GOAL_BUILD_COST_FROM_H`) each column's machine price
-  there is its building's `K_b / (H · r)` MW (`overclock.machine_mw`) instead of the flat
+  there is its building's `K_b / (H · r)` MW (`overclock.machine_price_mw`) instead of the flat
   `machine_cost_mw`. Below 5 h, at 0 h, or with no running price, the flat 5 MW stays; the
   horizon still sets column clocks and phase 2. At 0 h the LP is the one from before F1a.
   Why a threshold (ruling 3b): a short horizon on a power plan means a temporary build, and a

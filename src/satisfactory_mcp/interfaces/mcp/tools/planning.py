@@ -2080,7 +2080,7 @@ def rank_unlocks(
             # use: a hard drive and a milestone are different evenings. Never truncated --
             # a cut-off schematic name is a name the reader cannot look up.
             granted_by_label(st.game, swept[r.recipe], width=40),
-            render.num(r.machines),
+            render.num(r.machines_delta),
             f"drive {on_offer[r.recipe]}" if r.recipe in on_offer else "",
             ", ".join(r.needs)[:18],
             ", ".join(r.activates)[:40],

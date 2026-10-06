@@ -1,18 +1,8 @@
 """Cutting one solved plan into named sites, and reporting what crosses the boundaries.
 
-This is NOT a joint multi-site solver: nothing in the model prices distance, so a joint LP
-with no per-site cap would collapse every site into one and would be RIGHT to, since a
-split into rig, generator hall and resin plant is usually a preference the caller never
-expressed as a constraint. What has a defensible answer is to declare the partition and
-report it -- every flow crossing a boundary, as item, rate, direction and carrier count.
-
-The unit of assignment is a PROCESS rather than a machine, so shared infrastructure lives
-wholly in one site and exports: a water farm serving two coastal sites appears as an
-interface that may not exist on the ground, and splitting it would mean per-MACHINE
-assignment, which breaks the "a machine is in one place" rule that makes ``contested``
-meaningful. An interface the caller named is reported even at zero, because a decoupled
-design is characterised entirely by one flow BEING zero and a table of nonzero rows would
-omit exactly that.
+Accounting, not a joint multi-site solver: nothing prices distance (docs/planning.md §8.5k).
+The unit of assignment is a PROCESS, so shared infrastructure lives wholly in one site and
+exports; per-machine assignment would break "a machine is in one place".
 """
 
 from __future__ import annotations
@@ -55,10 +45,6 @@ class Interface:
     rate: float
     carrier: str
     lines: int
-
-    @property
-    def zero(self) -> bool:
-        return abs(self.rate) <= _EPS
 
 
 @dataclass
@@ -175,16 +161,14 @@ def partition(
             for taker, _ in takers:
                 out.unsupplied.append((taker, game.item_name(item)))
             continue
-        # Proportional attribution. The LP gives net balances, never who fed whom -- the
-        # same reason `layout` models a bus rather than producer-consumer pairs. Splitting
-        # a shared flow by share is the only answer that is not invented.
+        # Split by share: the LP gives net balances, never who fed whom (§8.5k).
         supply = sum(v for _, v in makers)
+        line = carrier_for(game, item, sc.belt_ipm, sc.pipe_m3min)
         for taker, wanted in takers:
             for maker, made in makers:
                 rate = wanted * (made / supply) if supply else 0.0
                 if maker == taker:
                     continue
-                line = carrier_for(game, item, sc.belt_ipm, sc.pipe_m3min)
                 out.interfaces.append(
                     Interface(
                         item=item,

@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from ...domain.planning.analysis.recipe_routes import PROBE_RATE, Route, RouteComparison, _short
+from ...domain.planning.analysis.recipe_routes import (
+    PROBE_RATE,
+    Route,
+    RouteComparison,
+    short_recipe_name,
+)
 from . import primitives as render
 
 __all__ = ["render_comparison"]
@@ -36,10 +41,12 @@ def render_comparison(cmp: RouteComparison, limit: int = 10) -> str:
     rows = []
     for r in cmp.routes[: render.clamp(limit)]:
         if not r.ok:
-            rows.append([_short(r.name), r.status.upper(), *["-"] * (n_cols - 3), r.note])
+            rows.append(
+                [short_recipe_name(r.name), r.status.upper(), *["-"] * (n_cols - 3), r.note]
+            )
             continue
         row = [
-            _short(r.name),
+            short_recipe_name(r.name),
             render.num(r.yield_per_probe),
             render.num(r.per_unit, 4),
             _machines(r),
@@ -63,7 +70,7 @@ def render_comparison(cmp: RouteComparison, limit: int = 10) -> str:
         hint="raise limit -- the routes are ranked, so there is no offset",
     )
     footer = render.ids_footer(
-        (_short(r.name), r.recipe) for r in cmp.routes[: render.clamp(limit)]
+        (short_recipe_name(r.name), r.recipe) for r in cmp.routes[: render.clamp(limit)]
     )
     return render.envelope(head + ("\n" + gap if gap else ""), body + "\n" + footer, cmp.notes)
 
@@ -96,7 +103,7 @@ def _gap_line(cmp: RouteComparison, short_primary: str, unit: str) -> str:
     best, worst = ok[0], ok[-1]
     parts = [
         (
-            f"# best vs worst: {_short(best.name)} needs {render.num(best.per_unit, 4)} vs "
+            f"# best vs worst: {short_recipe_name(best.name)} needs {render.num(best.per_unit, 4)} vs "
             f"{render.num(worst.per_unit, 4)} {unit} {cmp.primary_name} per {cmp.item_name} "
             f"({render.num(worst.per_unit / best.per_unit)}x)"
         )

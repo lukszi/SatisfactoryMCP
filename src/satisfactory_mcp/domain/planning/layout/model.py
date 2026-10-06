@@ -89,9 +89,8 @@ class Floor:
     height_m: float
     blocks: list[Block] = field(default_factory=list)
     buses: list[Bus] = field(default_factory=list)
-    #: Which declared site this floor belongs to. Empty outside a site partition; set by
-    #: ``layout_service`` when floors are stacked per site, so a reader can tell three
-    #: separate buildings from one tower.
+    #: Which declared site this floor belongs to, set when floors are stacked per site;
+    #: empty outside a site partition.
     site: str = ""
 
     @property

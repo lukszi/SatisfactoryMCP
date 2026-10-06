@@ -6,37 +6,43 @@ per stop by ``overclock._payback_curve``; this turns those readouts into what a 
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
+from ....core import text
 from ....core.gamedata.model import GameData
+from ..layout.materials import cost_of
 from ..solver.model import PAYBACK_STOPS
 
-__all__ = ["MAX_HOURS", "STOPS", "hours_text", "no_overclock", "trade_text", "view"]
-
-STOPS = PAYBACK_STOPS
-MAX_HOURS = PAYBACK_STOPS[-1]
+__all__ = ["no_overclock", "trade_text", "view"]
 
 
-def hours_text(hours: float) -> str:
-    """``"10 h"``, ``"7.5 h"``."""
-    return f"{hours:,.1f}".rstrip("0").rstrip(".") + " h"
+class _AddedCost(NamedTuple):
+    #: ``{item, amount}`` rows, largest first.
+    materials: list[dict]
+    area_m2: float
+    points: float
 
 
-def _cost(g: GameData, added: dict[str, int], points: dict[str, float]) -> tuple:
+def _added_build_cost(
+    g: GameData, added: dict[str, int], build_points: dict[str, float]
+) -> _AddedCost:
+    """What the machines a stop adds over the plain build cost: parts, floor and points."""
     amounts: dict[str, float] = {}
     area = spent = 0.0
-    for cls, n in added.items():
-        b = g.buildings.get(cls)
-        if b is None or n <= 0:
+    for cls, count in added.items():
+        building = g.buildings.get(cls)
+        if building is None or count <= 0:
             continue
-        for f in b.build_cost:
-            amounts[f.item] = amounts.get(f.item, 0.0) + f.amount * n
-        if b.footprint is not None:
-            area += b.footprint.area_m2 * n
-        spent += points.get(cls, 0.0) * n
+        for item, amount in cost_of(g, cls, count).parts.items():
+            amounts[item] = amounts.get(item, 0.0) + amount
+        if building.footprint is not None:
+            area += building.footprint.area_m2 * count
+        spent += build_points.get(cls, 0.0) * count
     rows = [
         {"item": g.item_name(item), "amount": round(amount, 4)}
         for item, amount in sorted(amounts.items(), key=lambda kv: -kv[1])
     ]
-    return rows, round(area, 1), spent
+    return _AddedCost(rows, round(area, 1), spent)
 
 
 def _stops(g: GameData, sol, sc, machines: int, draw_mw: float) -> list[dict]:
@@ -50,9 +56,11 @@ def _stops(g: GameData, sol, sc, machines: int, draw_mw: float) -> list[dict]:
             for cls, n in r["buildings"].items()
             if n > plain["buildings"].get(cls, 0)
         }
-        cost, area, spent = _cost(g, added, sc.build_points)
+        cost = _added_build_cost(g, added, sc.build_points)
         saved = plain["draw_mw"] - r["draw_mw"]
-        average = spent / (saved * sc.power_price) if saved > 0.05 and sc.power_price else None
+        average = (
+            cost.points / (saved * sc.power_price) if saved > 0.05 and sc.power_price else None
+        )
         out.append(
             {
                 "hours": r["hours"],
@@ -60,9 +68,9 @@ def _stops(g: GameData, sol, sc, machines: int, draw_mw: float) -> list[dict]:
                 "mw_draw": round(draw_mw + r["draw_mw"] - here["draw_mw"], 2),
                 "extra_machines": round(r["machines"] - plain["machines"]),
                 "saved_mw": round(saved, 2),
-                "cost": cost,
-                "area_m2": area,
-                "points": round(spent),
+                "cost": cost.materials,
+                "area_m2": cost.area_m2,
+                "points": round(cost.points),
                 "average_payback_h": None if average is None else round(average, 2),
                 "shards": r["shards"],
             }
@@ -146,17 +154,17 @@ def _change(a: dict, b: dict) -> str:
 def _next_words(v: dict) -> str:
     stops = v["stops"]
     now = next(s for s in stops if s["hours"] == v["hours"])
-    later = [s for s in stops if s["hours"] > v["hours"] and s["hours"] in STOPS]
+    later = [s for s in stops if s["hours"] > v["hours"] and s["hours"] in PAYBACK_STOPS]
     if not later:
         return ""
     nxt = later[0]
     if nxt["extra_machines"] != now["extra_machines"]:
-        return f"; {hours_text(nxt['hours'])} would change {_change(now, nxt)}"
+        return f"; {text.hours(nxt['hours'])} would change {_change(now, nxt)}"
     moved = next((s for s in later if s["extra_machines"] != now["extra_machines"]), None)
     if moved is None:
-        return f"; {hours_text(nxt['hours'])} would change nothing, nor would any longer horizon"
+        return f"; {text.hours(nxt['hours'])} would change nothing, nor would any longer horizon"
     return (
-        f"; {hours_text(nxt['hours'])} would change nothing, {hours_text(moved['hours'])} "
+        f"; {text.hours(nxt['hours'])} would change nothing, {text.hours(moved['hours'])} "
         f"{_change(now, moved)}"
     )
 
@@ -223,7 +231,7 @@ def trade_text(v: dict) -> list[str]:
     if not v["stops"]:
         return lines
     tag = " (default)" if v["inherited"] else ""
-    head = f"payback {hours_text(v['hours'])}{tag} at {_price_words(v)}"
+    head = f"payback {text.hours(v['hours'])}{tag} at {_price_words(v)}"
     if not v["splits"]:
         if v["hours"] or not v["inherited"]:
             return [f"{head}: {v['reason']}", *lines]
@@ -234,10 +242,10 @@ def trade_text(v: dict) -> list[str]:
         saved = _signed(-now["saved_mw"], ",.1f")
         head += (
             f": {more} machines, {saved} MW against the plain build; "
-            f"the last pays back within {hours_text(v['hours'])}"
+            f"the last pays back within {text.hours(v['hours'])}"
         )
         if now["average_payback_h"] is not None:
-            head += f", on average {hours_text(now['average_payback_h'])}"
+            head += f", on average {text.hours(now['average_payback_h'])}"
     else:
         head += ": no extra machines"
     return [head + _next_words(v), *lines]

@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ....core import atomic, filelock, schema
 from ....core.gamedata.model import GameData
+from ....core.saveio.records import instance_leaf
 from ...power.report import BIOMASS_BURNERS, generator_building
 from ..stored.store import PlanStore
 
@@ -72,10 +73,13 @@ def _write_tiers(path: Path, tiers: dict[tuple[str, str], float]) -> None:
 
 @dataclass(frozen=True)
 class Prices:
-    points: dict[str, float] = field(default_factory=dict)
+    """One save's prices: build points per building, scarcity tiers, and the grid's price."""
+
+    build_points: dict[str, float] = field(default_factory=dict)
     tiers: dict[tuple[str, str], float] = field(default_factory=dict)
-    price: float = 0.0
-    mix: list[dict] = field(default_factory=list)
+    #: Points per MWh, MW-weighted over the grid's running generators.
+    power_price: float = 0.0
+    grid_mix: list[dict] = field(default_factory=list)
 
 
 def _sink(g: GameData, item: str) -> float:
@@ -100,11 +104,12 @@ def nameplate_surplus(g: GameData, projection: dict) -> dict[str, float]:
     return net
 
 
-def _snap(raw: float) -> float:
+def _nearest_tier(raw: float) -> float:
     return min(TIERS, key=lambda t: abs(math.log(t / raw)))
 
 
-def _tier(available: float, per_machine: float, before: float | None) -> float:
+def _scarcity_tier(available: float, per_machine: float, before: float | None) -> float:
+    """One build-cost line's tier; ``before`` holds within a factor of 2 (contract §3.1)."""
     if available <= 0:
         raw = TIERS[-1]
     else:
@@ -112,7 +117,7 @@ def _tier(available: float, per_machine: float, before: float | None) -> float:
         raw = min(TIERS[-1], max(TIERS[0], raw))
     if before is not None and before / 2 < raw < before * 2:
         return before
-    return _snap(raw)
+    return _nearest_tier(raw)
 
 
 def material_tiers(
@@ -123,24 +128,24 @@ def material_tiers(
     With ``world`` the last tiers are read from and written back to ``tiers_path`` under its
     lock, so the web server and the MCP server hold the same band."""
     if not world:
-        return _tiers(g, stock, surplus, {})
+        return _all_tiers(g, stock, surplus, {})
     path = tiers_path(world)
     try:
         with filelock.held(path):
             before = _read_tiers(path)
-            out = _tiers(g, stock, surplus, before)
+            out = _all_tiers(g, stock, surplus, before)
             if out != before:
                 _write_tiers(path, out)
             return out
     except schema.NewerSchema:
         _log.warning("%s is from a newer version; scarcity tiers are not stored", path)
-        return _tiers(g, stock, surplus, {})
+        return _all_tiers(g, stock, surplus, {})
     except OSError:
         _log.warning("scarcity tiers for %s not stored", world, exc_info=True)
-        return _tiers(g, stock, surplus, _read_tiers(path))
+        return _all_tiers(g, stock, surplus, _read_tiers(path))
 
 
-def _tiers(
+def _all_tiers(
     g: GameData, stock: dict[str, float], surplus: dict[str, float], before: dict
 ) -> dict[tuple[str, str], float]:
     out: dict[tuple[str, str], float] = {}
@@ -151,7 +156,7 @@ def _tiers(
             available = stock.get(f.item, 0.0) + SURPLUS_MINUTES * max(
                 0.0, surplus.get(f.item, 0.0)
             )
-            out[(cls, f.item)] = _tier(available, f.amount, before.get((cls, f.item)))
+            out[(cls, f.item)] = _scarcity_tier(available, f.amount, before.get((cls, f.item)))
     return out
 
 
@@ -176,7 +181,8 @@ def fuel_price(g: GameData, cls: str, fuel: str | None) -> float:
     return per_hour * _sink(g, fuel) / b.power_production_mw
 
 
-def _source(g: GameData, rec: dict) -> tuple[str, float, float] | None:
+def _generator_source(g: GameData, rec: dict) -> tuple[str, float, float] | None:
+    """``(source name, MW, points per MWh)`` for one generator record, None if not one."""
     b = generator_building(g, rec.get("cls", ""))
     if b is None:
         return None
@@ -196,9 +202,9 @@ def grid_mix(g: GameData, projection: dict, wired, biomass: bool) -> tuple[float
     for rec in projection.get("generators", ()):
         if rec.get("paused") or (not biomass and rec.get("cls") in BIOMASS_BURNERS):
             continue
-        if wired is not None and rec.get("instance", "").rsplit(".", 1)[-1] not in wired:
+        if wired is not None and instance_leaf(rec.get("instance", "")) not in wired:
             continue
-        found = _source(g, rec)
+        found = _generator_source(g, rec)
         if found is None or found[1] <= 0:
             continue
         name, mw, price = found
@@ -231,6 +237,6 @@ def prices_for(state, biomass: bool) -> Prices:
             if b.build_cost or b.footprint is not None
         }
         price, mix = grid_mix(g, state.projection, state.power.wired, biomass)
-        return Prices(points=points, tiers=tiers, price=price, mix=mix)
+        return Prices(build_points=points, tiers=tiers, power_price=price, grid_mix=mix)
 
     return state._derived(f"prices:{bool(biomass)}", build)

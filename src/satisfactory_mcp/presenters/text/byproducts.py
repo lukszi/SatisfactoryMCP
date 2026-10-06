@@ -1,14 +1,14 @@
 """The byproduct diagnostic as compact TSV.
 
-``analyse`` does the solving and hands back a ``Report``; everything below only
-decides how it reads. The Report already carries the objective, its unit, the scope
+``analyse`` does the solving and hands back a ``ByproductReport``; everything below only
+decides how it reads. The report already carries the objective, its unit, the scope
 description and the age note, so this module never re-derives a fact.
 """
 
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
-from ...domain.planning.analysis.byproducts import Blocker, Report, analyse
+from ...domain.planning.analysis.byproducts import Blocker, ByproductReport, analyse
 from ...domain.world.state import WorldState
 from . import primitives as render
 
@@ -170,7 +170,7 @@ def explain(
     return render.envelope("\n".join(summary), body + ("\n" + footer if footer else ""), notes)
 
 
-def _also_stuck_note(rep: Report) -> str:
+def _also_stuck_note(rep: ByproductReport) -> str:
     return "surplus with no outlet but no effect here: " + ", ".join(
         f"{n} {render.num(r)}/min" for n, r in rep.also_stuck[:4]
     )

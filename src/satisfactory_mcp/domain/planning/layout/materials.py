@@ -1,48 +1,8 @@
 """What a plan costs to BUILD, as opposed to what it costs to run.
 
-The startup re-frame (§8.5d, ``docs/planning.md``) split the two cleanly: power is what a
-plant costs to run and is the only thing constraining the order you switch it on in, while
-materials are what it costs to construct and are independent of order. So "can I afford
-this yet?" became a question worth answering on its own.
-
-Every number is data. A building's cost is ``Building.build_cost`` -- the ingredients of
-the ``kind == "building"`` recipe that constructs it -- so a Fuel-Powered Generator is
-15 Motor + 15 Encased Industrial Beam + 30 Copper Sheet + 50 Rubber + 50 Quickwire because
-Docs.json says so, and a game update moves it without touching this file.
-
-Why this is not ``diff._cost``
-------------------------------
-``diff_vs_save`` already charges materials, and this does NOT replace it. They answer
-different questions and the difference is the whole point:
-
-* ``_cost`` charges the **delta** -- ``row.build``, what is left to place -- filtered to
-  items you are **short of**, ranked by how hard the shortfall is to fix. It is a shopping
-  list for the next session.
-* This charges the **whole plan**, every item whether or not you hold it, attributed to the
-  buildings that want it, plus the **deck**. It is the price tag.
-
-The second is what you need before starting and the first is what you need once you have.
-Neither is derivable from the other: the delta cannot tell you what the plant costs, and
-the total cannot tell you what to go and make next.
-
-**Foundations are the number nobody had.** They are not machines, so no build table counts
-them, and at 5 Concrete each a measured 6,472-foundation deck is 32,360 Concrete -- larger
-than most of the machine bill and previously invisible.
-
-Direct components, not flattened to ore
----------------------------------------
-The bill stops at what the build gun consumes, which is what a player actually needs on
-hand. Flattening further is ``bom``'s job and a genuinely different computation: Recycled
-Plastic and Recycled Rubber form a real 2-cycle, so a tree walk has no correct depth limit
-and only the LP expands it honestly. Doing it badly here would produce a confident ore
-number that quietly stopped early. The two compose instead -- this says "9,970 Motors",
-``bom`` says what a Motor costs.
-
-Belts and pipes are deliberately not costed. Their cost is per metre and there is no route:
-the same missing terrain that stops ``plan_layout`` drawing coordinates and stops ``trunks``
-claiming more than a straight-line lower bound. A belt bill from a guessed length would be
-the largest invented number in this project. Line counts are reported instead, because
-those are measured.
+The whole plan and its deck, every item whether held or not, attributed to the buildings
+that want it -- not ``diff``'s shortfall list. It stops at build-gun components and never
+costs belts or pipes, which have no route here (docs/planning.md §8.5f).
 """
 
 from __future__ import annotations
@@ -51,7 +11,7 @@ from dataclasses import dataclass, field
 
 from ....core.gamedata.model import GameData
 
-__all__ = ["BuildingCost", "MaterialLine", "MaterialsBill", "build_materials"]
+__all__ = ["BuildingCost", "MaterialLine", "MaterialsBill", "build_materials", "cost_of"]
 
 #: The 8 m x 8 m foundation the layout counts in. `build_layout` reports whole tiles of
 #: this size, so this is the class its foundation totals are priced at.

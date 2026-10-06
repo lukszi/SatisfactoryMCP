@@ -1,70 +1,28 @@
 """Bill of materials: the flattened raw and intermediate bill for a target rate.
 
-**This is the LP, not a recursive expansion, and that is not a preference.** The
-design spec's ban on ``plan_chain`` applies verbatim here: Recycled Plastic
-(30 Rubber + 30 Fuel -> 60 Plastic) and Recycled Rubber (30 Plastic + 30 Fuel ->
-60 Rubber) form a genuine 2-cycle and this save has both unlocked, so a tree walk
-has no correct depth limit -- it either stops early and understates, or recurses
-for ever. Worse, it is silent about which of the two it did. The LP has no depth at
-all: it solves one flow balance per item and the cycle is just two more columns.
-The loop, when the solver uses one, is detected and named in the response, because
-a bill whose Plastic line reads 200/min for a 10/min export is not an error and the
-reader has to be told why.
-
-So this module is a presentation layer over ``solve``, and deliberately a thin one.
-It answers a narrower question than ``plan_factory``: no nodes, no extractors, no
-geography. Charging extraction here would make the bill depend on which miners this
-save happens to have free, which is a different question and ``plan_factory``'s.
-
-The recipe choice is the answer, not a detail
----------------------------------------------
-An item's bill is only defined once you fix which recipe makes each intermediate,
-and alternates move the numbers by more than any rounding: on Reinforced Iron Plate
-the base chain costs **120 Iron Ore/min per 10 plates**, and the alternates this
-save has unlocked bring that down. So every row names the recipe that produced it,
-and ``only_recipes`` / ``exclude_recipes`` let a caller pin the chain and get an
-arithmetic answer they can check by hand.
-
-The degeneracy, and the one tie-break applied
----------------------------------------------
-``min_raw`` LPs over this recipe set are degenerate -- equally optimal vertices
-give materially different raw vectors -- and a bare ``min_raw`` also sums every
-resource with weight one, so it will trade crude against water. Water is effectively
-unlimited on this map, so that trade is always the wrong way round. The documented
-tie-break is lexicographic: **minimise every other resource with water free, then
-pin those and minimise water.** Whatever degeneracy survives that is labelled in the
-response rather than presented as the number.
+A presentation layer over the LP, never a recursive expansion: Recycled Plastic and Recycled
+Rubber are a real 2-cycle, so a tree walk has no correct depth. Water is priced last, a
+lexicographic tie-break for the degeneracy (docs/mcp-surface.md §10.1c, docs/planning.md §8.7).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+from ....core.gamedata.constants import UNLIMITED_RATE, WATER
 from ....core.gamedata.model import GameData
 from ....core.gamedata.search import resolve_item
 from ....core.text import num
 from ...world.state import WorldState
+from ..solver.graph import item_cycles
 from ..solver.model import Solution
 from ..solver.optimize import solve
-from ..solver.scenario import build_scenario
+from ..solver.scenario import chain_scenario
 
 __all__ = ["BOM", "BomRow", "build_bom"]
 
-#: Stand-in for "unlimited". Every resource needs a cap because ``min_raw`` only
-#: prices resources that HAVE a raw column; one left out has no column at all and
-#: its balance row is unsatisfiable.
-_UNLIMITED = 1e7
-
-#: Water is the free half of the lexicographic tie-break. See the module docstring.
-_WATER = "Desc_Water_C"
-
-#: A process carrying less than this share of the plan's largest is LP noise, not a
-#: building. A degenerate vertex routinely leaves a column at ~1e-6
-#: machine-equivalents; ``ceil`` then turns it into one whole Smelter with a recipe
-#: name, and the bill claims a second route for an item that has only one. Measured
-#: on Reinforced Iron Plate: it added a Smelter to a plan whose Iron Ingot came
-#: entirely from Pure Iron Ingot, and named two extra alternates that carry no flow.
-#: Relative rather than absolute so a bill for 0.1/min is not filtered away.
+#: A process under this share of the plan's largest is LP noise, not a building; relative,
+#: so a bill for 0.1/min is not filtered away (docs/mcp-surface.md §10.1c).
 _NOISE_FRACTION = 1e-4
 
 _EPS = 1e-7
@@ -74,8 +32,7 @@ _EPS = 1e-7
 class BomRow:
     item: str
     name: str
-    #: GROSS production per minute -- the capacity that has to exist, which in a
-    #: recipe loop is strictly more than what leaves the plant.
+    #: GROSS production per minute: in a recipe loop, more than what leaves the plant.
     made: float
     used: float
     is_raw: bool = False
@@ -96,11 +53,11 @@ class BOM:
     raw: dict[str, float] = field(default_factory=dict)
     machines: int = 0
     mw: float = 0.0
-    #: Items that must leave the plant besides the target, and items sunk. Both are
-    #: obligations, not spare output: an unconsumed byproduct stalls the line.
+    #: Items that must leave the plant besides the target, and items sunk: obligations,
+    #: since an unconsumed byproduct stalls the line.
     byproducts: dict[str, float] = field(default_factory=dict)
     sunk: dict[str, float] = field(default_factory=dict)
-    #: Items caught in a production cycle among the chosen recipes.
+    #: Item names caught in a production cycle among the chosen recipes.
     loops: list[tuple[str, ...]] = field(default_factory=list)
     alternates: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -112,43 +69,8 @@ class BOM:
 
 
 def _loops(game: GameData, processes: list[dict]) -> list[tuple[str, ...]]:
-    """Items that lie on a cycle among the CHOSEN recipes.
-
-    Mutual reachability by closure rather than Tarjan: the chosen set is a couple of
-    dozen items, so the simple thing is the readable thing. This is the check that
-    makes the response honest about a bill whose Plastic line is 20x its export.
-    """
-    edges: dict[str, set[str]] = {}
-    for row in processes:
-        rates = row.get("rates") or {}
-        ins = [i for i, v in rates.items() if v < 0]
-        outs = [i for i, v in rates.items() if v > 0]
-        for i in ins:
-            edges.setdefault(i, set()).update(outs)
-
-    nodes = set(edges) | {j for outs in edges.values() for j in outs}
-    reach = {n: set(edges.get(n, ())) for n in nodes}
-    changed = True
-    while changed:
-        changed = False
-        for n in nodes:
-            grown = set(reach[n])
-            for m in list(reach[n]):
-                grown |= reach.get(m, set())
-            if grown != reach[n]:
-                reach[n] = grown
-                changed = True
-
-    seen: set[str] = set()
-    out: list[tuple[str, ...]] = []
-    for n in sorted(nodes):
-        if n in seen or n not in reach[n]:
-            continue
-        component = sorted(m for m in nodes if m in reach[n] and n in reach.get(m, set()))
-        seen.update(component)
-        if len(component) > 1:
-            out.append(tuple(game.item_name(m) for m in component))
-    return out
+    """Item names on each cycle among the chosen recipes, so a looped line is explained."""
+    return [tuple(game.item_name(item) for item in cycle) for cycle in item_cycles(processes)]
 
 
 def live_processes(sol: Solution) -> list[dict]:
@@ -175,12 +97,8 @@ def _rows(
             if v < -_EPS:
                 used[item] = used.get(item, 0.0) - v
         if positive:
-            # Machines are charged to ONE product per process, so the column sums to
-            # the plan total instead of counting a Refinery under both of its
-            # outputs. The recipe NAME is still listed against every product it
-            # makes, or a byproduct row would name no recipe at all and read as
-            # arriving from nowhere -- Polymer Resin off Alternate: Heavy Oil
-            # Residue is exactly that row.
+            # Machines count under one product so the column sums to the plan; the recipe
+            # NAME is listed under every product, or a byproduct row names no recipe.
             primary = max(positive, key=lambda i: positive[i])
             owners.setdefault(primary, []).append(row)
 
@@ -238,10 +156,9 @@ def build_bom(
         raise ValueError("qty must be positive (it is a rate, per minute)")
 
     name = game.item_name(target)
-    it = game.items.get(target)
-    if it is not None and it.is_resource:
-        # Its own bill. Solving would demand a recipe that MAKES the ore and report
-        # "infeasible", which is a true statement about the wrong question.
+    known = game.items.get(target)
+    if known is not None and known.is_resource:
+        # Its own bill: solving would report the recipe that MAKES ore as infeasible.
         return BOM(
             item=target,
             item_name=name,
@@ -251,58 +168,35 @@ def build_bom(
             notes=[f"{name} is a raw resource: its bill of materials is {num(qty)} of itself"],
         )
 
-    # build_scenario is the one path from tool arguments to a Scenario, so the recipe
-    # set, the building set and the item resolution match what plan_factory solves.
-    request = build_scenario(
+    chain = chain_scenario(
         game,
         state,
-        objective="min_raw",
-        exports=["MW"],
+        target,
+        outlets=outlets or [],
+        allow_sinks=allow_sinks,
         exclude_recipes=exclude_recipes,
         only_recipes=only_recipes,
     )
-    raw_caps = {cls: _UNLIMITED for cls, i in game.items.items() if i.is_resource}
-    raw_caps.pop(target, None)
-    outlet_ids = [resolve_item(game, o) or o for o in (outlets or [])]
-
-    base = replace(
-        request.scenario,
-        objective="min_raw",
-        target_item=target,
-        exports=(target, *(o for o in outlet_ids if o != target)),
-        export_minimums={target: qty},
-        raw_caps=raw_caps,
-        # A bill is the chain, not the mine. Charging extractors would make it depend
-        # on which nodes this save has free -- plan_factory's question, not this one.
-        extractor_nodes={},
-        allow_sinks=allow_sinks,
-        grid_import_mw=_UNLIMITED,
-    )
+    base = replace(chain.scenario, export_minimums={target: qty})
 
     bom = BOM(item=target, item_name=name, qty=qty, status="infeasible")
-    bom.notes.extend(request.recipe_errors)
-    if request.excluded:
-        bom.notes.append("excluded: " + ", ".join(request.excluded))
+    bom.notes.extend(chain.request.recipe_errors)
+    if chain.request.excluded:
+        bom.notes.append("excluded: " + ", ".join(chain.request.excluded))
 
     # Phase 1 of the tie-break: water free, everything else priced.
-    sol = solve(replace(base, raw_weights={_WATER: 0.0}))
+    sol = solve(replace(base, raw_weights={WATER: 0.0}))
     bom.solves = 1
-    if sol.ok and sol.raw_used.get(_WATER, 0.0) > _EPS:
-        # Phase 2: pin what phase 1 proved reachable and minimise water alone. Without
-        # the pin water returns at its stand-in cap, since phase 1 never priced it.
-        #
-        # The headroom is not decoration. ``Solution.raw_used`` is rounded to 4dp, so
-        # a draw of 13.33333 is reported as 13.3333 and a cap derived from it sits
-        # BELOW what the chain actually needs -- which made phase 2 infeasible on
-        # Reinforced Iron Plate and silently threw the tie-break away. Widen by
-        # exactly that rounding, plus slack for the MILP's own 1e-6 optimum.
-        pinned = {k: sol.raw_used.get(k, 0.0) * (1 + 1e-6) + 5e-5 for k in raw_caps}
-        pinned[_WATER] = _UNLIMITED
+    if sol.ok and sol.raw_used.get(WATER, 0.0) > _EPS:
+        # Phase 2: pin what phase 1 reached and minimise water alone. The caps carry the
+        # 4 dp rounding of raw_used plus MILP slack, or phase 2 is infeasible (§10.1c).
+        pinned = {k: sol.raw_used.get(k, 0.0) * (1 + 1e-6) + 5e-5 for k in chain.raw_caps}
+        pinned[WATER] = UNLIMITED_RATE
         second = solve(
             replace(
                 base,
                 raw_caps=pinned,
-                raw_weights={k: 0.0 for k in raw_caps if k != _WATER},
+                raw_weights={k: 0.0 for k in chain.raw_caps if k != WATER},
             )
         )
         bom.solves = 2
@@ -320,9 +214,7 @@ def build_bom(
         return bom
 
     live = live_processes(sol)
-    # A raw draw of 1e-4/min is the same LP residue as a 1e-6 machine, and core.text.num
-    # prints it as a flat "0" -- a bill line reading "0 Water" invites the reader to
-    # go looking for a water supply that the plan does not need.
+    # A 1e-4/min draw is LP residue, and it would print as a "0 Water" line.
     raw = {k: v for k, v in sol.raw_used.items() if v > 1e-3}
     bom.status = "optimal"
     bom.rows = _rows(game, live, raw, target)

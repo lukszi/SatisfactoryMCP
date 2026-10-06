@@ -59,22 +59,11 @@ def strongly_connected(n: int, edges: dict[int, set[int]]) -> list[list[int]]:
 
 
 def chain_depth(nodes: Sequence[tuple[Iterable[str], Iterable[str]]]) -> list[int]:
-    """Chain depth per node, computed on the condensation of the item graph.
+    """Longest-path depth per node over the condensation of the item graph.
 
-    Each node is ``(inputs, outputs)`` as item ids; the result is its longest-path
-    depth, so pure consumers of raw material sit at 0 and terminal consumers sit
-    highest. Shared by the layout (floors) and the diff (build stages), because
-    "what has to exist before this can run" is one question, not two.
-
-    A plain longest-path walk is not available: the recipe graph genuinely contains
-    cycles, because Recycled Plastic and Recycled Rubber each consume the other's
-    output. Naive relaxation does not settle on a cycle either -- it lifts every
-    member by one stage per pass until the iteration cap, so depth ends up reporting
-    how long the loop ran rather than how deep the chain is.
-
-    Collapsing each strongly connected component to a single node fixes both: the
-    condensation is acyclic by construction, and every member of a cycle shares a
-    depth, which is also right physically since they must be built together.
+    Each node is ``(inputs, outputs)`` as item ids; raw consumers sit at 0. Members of a
+    cycle share one depth, since they are built together. The layout's floors and the diff's
+    stages both use it (docs/planning.md §8.5, §8.5h).
     """
     producers: dict[str, list[int]] = {}
     for i, (_ins, outs) in enumerate(nodes):

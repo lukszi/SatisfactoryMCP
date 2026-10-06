@@ -41,7 +41,7 @@ def render_layout(
         )
     req = prepared.request
     sel = req.selection
-    lay = report.lay
+    lay = report.layout
     plan_notes = [*(plan_notes or [])]
 
     production = [f for f in lay.floors if f.kind == "production"]

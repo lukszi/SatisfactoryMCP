@@ -331,8 +331,8 @@ def render_plan_factory(
             + ", ".join(g.buildings[c].name for c in report.needed_buildings if c in g.buildings)
         )
 
-    flows, pin = report.flows, report.pins
-    notes += report.pin_errors
+    flows, pin = report.flows, report.logistics_item_ids
+    notes += report.logistics_item_errors
     # Pins are ADDITIVE to the limit, not carved out of it: naming two small items
     # must not silently drop two big ones, or the fix trades one blind spot for another.
     rest = [e for e in flows if e["item"] not in pin]

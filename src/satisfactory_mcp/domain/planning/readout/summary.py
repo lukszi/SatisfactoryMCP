@@ -11,17 +11,25 @@ import math
 from collections.abc import Callable
 
 from ....core.gamedata.model import GameData
+from ....core.saveio.records import instance_leaf
 from ...spatial import nodes as nodes_mod
 from ...world import pin
 from ...world.state import WorldState
-from ..solver.graph import chain_depth
+from ..solver.graph import chain_depth_of_rates
 from ..solver.model import MW
 from ..solver.scenario import build_scenario, shard_stock
 from ..stored import provenance
 from . import payback
-from .report import build_plan_report
+from .report import PlanFactoryReport, build_plan_report
 
-__all__ = ["failure_cause", "names_for", "production_graph", "solve_summary", "stamp_for"]
+__all__ = [
+    "failure_cause",
+    "names_for",
+    "power_view",
+    "production_graph",
+    "solve_summary",
+    "stamp_for",
+]
 
 _EPS = 1e-6
 
@@ -39,12 +47,18 @@ def _rates(g: GameData, rates: dict, sign: int) -> list[dict]:
     return sorted(rows, key=lambda r: -r["per_min"])
 
 
-def _main_item(g: GameData, row: dict) -> str | None:
-    recipe = g.recipes.get(row.get("recipe") or "")
-    if recipe is not None and recipe.products:
-        return g.item_name(recipe.products[0].item)
-    made = [(rate, item) for item, rate in row["rates"].items() if rate > _EPS and item != MW]
-    return g.item_name(max(made)[1]) if made else None
+def _main_id(g: GameData, proc: dict) -> str | None:
+    """The item a row is for: its recipe's main product, else its largest output."""
+    recipe = g.recipes.get(proc.get("recipe") or "")
+    if recipe is not None and recipe.main_product is not None:
+        return recipe.main_product
+    made = [(rate, item) for item, rate in proc["rates"].items() if rate > _EPS and item != MW]
+    return max(made)[1] if made else None
+
+
+def _main_item(g: GameData, proc: dict) -> str | None:
+    item = _main_id(g, proc)
+    return g.item_name(item) if item is not None else None
 
 
 def _row(g: GameData, row: dict, required: set[str]) -> dict:
@@ -87,42 +101,34 @@ def _row_ids(paired: list) -> list[str]:
     return ids
 
 
-def _main_id(g: GameData, proc: dict) -> str | None:
-    recipe = g.recipes.get(proc.get("recipe") or "")
-    if recipe is not None and recipe.products:
-        return recipe.products[0].item
-    made = [(rate, item) for item, rate in proc["rates"].items() if rate > _EPS and item != MW]
-    return max(made)[1] if made else None
-
-
-def production_graph(g: GameData, paired: list, exports: dict) -> dict:
-    """The graph the workbench draws, and ``id``/``depth`` set on every row (contract §3)."""
-    ids = _row_ids(paired)
-    flows = [
-        (
-            [i for i, r in proc["rates"].items() if r < -_EPS and i != MW],
-            [i for i, r in proc["rates"].items() if r > _EPS and i != MW],
-        )
-        for _, proc in paired
-    ]
-    depths = chain_depth(flows)
+def _graph_edges(
+    g: GameData, paired: list, ids: list[str], exports: dict
+) -> tuple[list[dict], list[str]]:
+    """Every flow into a row or an export, split across its producers by share, and the
+    items nothing in the plan makes (drawn from outside)."""
     made: dict[str, list[tuple[str, float]]] = {}
-    for (row, proc), rid, depth in zip(paired, ids, depths, strict=True):
-        row["id"], row["depth"] = rid, depth
+    for (row, proc), rid in zip(paired, ids, strict=True):
         for item, rate in proc["rates"].items():
             if rate > _EPS and item != MW:
                 made.setdefault(item, []).append((rid, rate))
         if row["mw"] > 0:
             made.setdefault(MW, []).append((rid, row["mw"]))
+    demands = [
+        (item, rid, -rate)
+        for (_, proc), rid in zip(paired, ids, strict=True)
+        for item, rate in proc["rates"].items()
+        if rate < -_EPS and item != MW
+    ]
+    demands += [(item, "ex:" + _name(g, item), rate) for item, rate in exports.items()]
+
     inputs: dict[str, None] = {}
     edges: list[dict] = []
-
-    def feed(item: str, target: str, need: float) -> None:
+    for item, target, need in demands:
         sources = made.get(item) or []
         total = sum(rate for _, rate in sources)
         if not sources or total <= _EPS:
             if item == MW:
-                return
+                continue
             inputs.setdefault(item)
             edges.append(
                 {
@@ -133,7 +139,7 @@ def production_graph(g: GameData, paired: list, exports: dict) -> dict:
                     "text": None,
                 }
             )
-            return
+            continue
         for source, rate in sources:
             share = need * rate / total
             edges.append(
@@ -145,13 +151,16 @@ def production_graph(g: GameData, paired: list, exports: dict) -> dict:
                     "text": _mw_text(share) if item == MW else None,
                 }
             )
+    return edges, list(inputs)
 
-    for (_, proc), rid in zip(paired, ids, strict=True):
-        for item, rate in proc["rates"].items():
-            if rate < -_EPS and item != MW:
-                feed(item, rid, -rate)
-    for item, rate in exports.items():
-        feed(item, "ex:" + _name(g, item), rate)
+
+def production_graph(g: GameData, paired: list, exports: dict) -> dict:
+    """The graph the workbench draws, and ``id``/``depth`` set on every row (contract §3)."""
+    ids = _row_ids(paired)
+    depths = chain_depth_of_rates([proc["rates"] for _, proc in paired])
+    for (row, _), rid, depth in zip(paired, ids, depths, strict=True):
+        row["id"], row["depth"] = rid, depth
+    edges, inputs = _graph_edges(g, paired, ids, exports)
     top = max((d + 1 for d in depths), default=0) + 1
     nodes = [
         {
@@ -223,7 +232,7 @@ def names_for(g: GameData, args) -> dict[str, str]:
     wanted = [m for m in args.sources if isinstance(m, str) and m.startswith("node:")]
     if wanted:
         table = nodes_mod.load_nodes().by_instance()
-        table.update({k.rsplit(".", 1)[-1]: n for k, n in table.items()})
+        table.update({instance_leaf(k): n for k, n in table.items()})
         for member in wanted:
             node = table.get(member[len("node:") :])
             if node is not None:
@@ -242,14 +251,15 @@ def _clip(text: str) -> str:
     return text
 
 
+def _request_errors(req) -> list[str]:
+    return [] if req is None else [*req.selection.errors, *req.site_errors, *req.recipe_errors]
+
+
 def failure_cause(prepared) -> str:
     """Why a prepared plan failed to solve, in player words."""
     req, failure = prepared.request, prepared.failure
     headline, notes = failure.headline, failure.notes
-    request_errors = (
-        [] if req is None else [*req.selection.errors, *req.site_errors, *req.recipe_errors]
-    )
-    errors = request_errors or list(notes)
+    errors = _request_errors(req) or list(notes)
     required = list(req.required) if req is not None else []
     if headline == "no sources selected":
         return "the sources match no resource nodes: " + "; ".join(_clip(e) for e in errors[:3])
@@ -274,7 +284,7 @@ def failure_cause(prepared) -> str:
     return "these sources and recipes cannot meet every export minimum; lower a rate or add sources"
 
 
-def _warnings(g: GameData, st: WorldState, report, objective: str) -> list[str]:
+def _warnings(g: GameData, report: PlanFactoryReport, objective: str) -> list[str]:
     sol, bill = report.prepared.solution, report.bill
     out = [
         f"export at zero: {z['name']} is named in exports but 0/min leaves this plan"
@@ -341,21 +351,13 @@ def _no_power(req) -> dict:
     }
 
 
-def solve_summary(
-    g: GameData, st: WorldState, kwargs: dict, required: list[str] | None = None
-) -> dict:
-    kwargs = dict(kwargs)
-    if required and not kwargs.get("required"):
-        kwargs["required"] = list(required)
-    objective = kwargs.get("objective", "max_mw")
-    report = build_plan_report(g, st, kwargs, objective=objective)
-    prepared = report.prepared
-    req = prepared.request
+def _empty_summary(st: WorldState, req) -> dict:
+    """The fields every summary carries, at their no-plan values."""
     try:
         token = pin.check(st.header, None)
     except Exception:
         token = ""
-    base = {
+    return {
         "plan_id": req.plan_id if req is not None else "",
         "machines": 0,
         "processes": 0,
@@ -372,18 +374,36 @@ def solve_summary(
         "power": _no_power(req),
         "token": token,
     }
-    errors = [] if req is None else [*req.selection.errors, *req.site_errors, *req.recipe_errors]
+
+
+def _failure_summary(prepared, errors: list[str], empty: dict) -> dict:
+    failure = prepared.failure
+    return {
+        "feasible": False,
+        "headline": failure.headline,
+        "cause": failure_cause(prepared),
+        "notes": list(failure.notes),
+        "warnings": [],
+        "blockers": _blockers(errors, failure.notes),
+        **empty,
+    }
+
+
+def solve_summary(
+    g: GameData, st: WorldState, kwargs: dict, required: list[str] | None = None
+) -> dict:
+    """``SolveResponse`` for ``kwargs``: the solved plan as plain data, or why there is none."""
+    kwargs = dict(kwargs)
+    if required and not kwargs.get("required"):
+        kwargs["required"] = list(required)
+    objective = kwargs.get("objective", "max_mw")
+    report = build_plan_report(g, st, kwargs, objective=objective)
+    prepared = report.prepared
+    req = prepared.request
+    empty = _empty_summary(st, req)
+    errors = _request_errors(req)
     if prepared.failure is not None:
-        failure = prepared.failure
-        return {
-            "feasible": False,
-            "headline": failure.headline,
-            "cause": failure_cause(prepared),
-            "notes": list(failure.notes),
-            "warnings": [],
-            "blockers": _blockers(errors, prepared.failure.notes),
-            **base,
-        }
+        return _failure_summary(prepared, errors, empty)
     sol, bill = prepared.solution, report.bill
     in_force = set(req.required)
     paired = sorted(
@@ -403,9 +423,9 @@ def solve_summary(
         "headline": f"{objective} over {req.selection.description}",
         "cause": "",
         "notes": notes,
-        "warnings": _warnings(g, st, report, objective),
+        "warnings": _warnings(g, report, objective),
         "blockers": _blockers(errors, []),
-        **base,
+        **empty,
         "machines": machines,
         "processes": len(sol.processes),
         "mw_draw": mw_draw,
