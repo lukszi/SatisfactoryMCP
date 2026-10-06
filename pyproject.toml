@@ -126,8 +126,18 @@ strict = [
     "src/pioneersav/values.py",
     "src/pioneersav/versions.py",
     "src/satisfactory_mcp/core/arrays.py",
+    "src/satisfactory_mcp/core/atomic.py",
+    "src/satisfactory_mcp/core/filelock.py",
+    "src/satisfactory_mcp/core/gamedata",
+    "src/satisfactory_mcp/core/gpu.py",
     "src/satisfactory_mcp/core/jsontypes.py",
+    "src/satisfactory_mcp/core/mapprogress.py",
     "src/satisfactory_mcp/core/saveio/schema.py",
+    "src/satisfactory_mcp/core/schema.py",
+    "src/satisfactory_mcp/core/singleflight.py",
+    "src/satisfactory_mcp/core/solverlane.py",
+    "src/satisfactory_mcp/core/text.py",
+    "src/satisfactory_mcp/core/unionfind.py",
     "src/satisfactory_mcp/domain/factories/views.py",
     "src/satisfactory_mcp/domain/maps/views.py",
     "src/satisfactory_mcp/domain/planning/analysis/views.py",
@@ -208,8 +218,6 @@ ignore = [
 # The modules that still import typing.Any. The list only shrinks, and a line no longer needed
 # fails tests/architecture/test_typing.py.
 "src/satisfactory_mcp/core/saveio/rows.py" = ["TID251"]
-"src/satisfactory_mcp/core/singleflight.py" = ["TID251"]
-"src/satisfactory_mcp/core/solverlane.py" = ["TID251"]
 "src/satisfactory_mcp/domain/planning/siting/ground.py" = ["TID251"]
 "src/satisfactory_mcp/domain/planning/siting/resolve.py" = ["TID251"]
 "src/satisfactory_mcp/domain/spatial/caves.py" = ["TID251"]

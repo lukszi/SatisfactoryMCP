@@ -26,7 +26,9 @@ def _tmp_beside(target: Path) -> Path:
     return target.with_name(f"{target.name}.{os.getpid()}.{next(_SERIAL)}.tmp")
 
 
-def _replace_through(target: Path, tmp: Path, mode: str, payload, encoding: str | None) -> Path:
+def _replace_through(
+    target: Path, tmp: Path, mode: str, payload: str | bytes, encoding: str | None
+) -> Path:
     """Write ``payload`` to ``tmp`` and move it onto ``target``, or leave ``target`` alone.
 
     ``fsync`` before the replace: the rename can reach the disk before the data it renames,

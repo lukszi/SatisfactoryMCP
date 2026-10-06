@@ -6,12 +6,15 @@ Grammar, exhaustive over the 14,666 struct-shaped fields in the dump::
     list  := '(' entry (',' entry)* ')'
     entry := (KEY '=')? value
 
-Keyed lists become dicts, positional lists become lists, leaves stay strings.
+Keyed lists become dicts, positional lists become lists, leaves stay strings, so a parsed
+struct is JSON, and the three fields that arrive as real JSON pass through as they are.
 Recursive descent and quote-aware, because ``(``, ``)`` and ``,`` all occur inside
 quoted asset paths -- ``split(',')`` and regex approaches are wrong.
 """
 
 from __future__ import annotations
+
+from ..jsontypes import JsonArray, JsonObject, JsonValue
 
 __all__ = ["amount", "as_float", "as_list", "obj_class", "parse_struct"]
 
@@ -22,18 +25,20 @@ class UeStructError(ValueError):
     """Raised when a struct string is malformed."""
 
 
-def parse_struct(text: str | list | dict | None) -> object:
+def parse_struct(text: JsonValue) -> JsonValue:
     """Parse a UE struct string.
 
-    Accepts ``str | list | dict | None`` because three fields in Docs.json arrive as
-    real JSON rather than struct strings (``mUnlocks``, ``mSchematicDependencies``,
-    ``mFuel``); their *inner* fields are still struct strings. Passing those through
-    unchanged lets callers treat every field uniformly.
+    Accepts any Docs.json value because three fields arrive as real JSON rather than struct
+    strings (``mUnlocks``, ``mSchematicDependencies``, ``mFuel``); their *inner* fields are
+    still struct strings. Passing those through unchanged lets callers treat every field
+    uniformly. A number or a bool is no struct string, and raises ``TypeError``.
     """
     if text is None:
         return None
     if isinstance(text, (list, dict)):
         return text
+    if not isinstance(text, str):
+        raise TypeError(f"a struct string, not {type(text).__name__}")
     s = text.strip()
     if not s:
         return None
@@ -50,7 +55,7 @@ def _skip_ws(s: str, i: int) -> int:
     return i
 
 
-def _parse_value(s: str, i: int) -> tuple[object, int]:
+def _parse_value(s: str, i: int) -> tuple[JsonValue, int]:
     i = _skip_ws(s, i)
     if i >= len(s):
         return "", i
@@ -61,10 +66,10 @@ def _parse_value(s: str, i: int) -> tuple[object, int]:
     return _parse_bare(s, i)
 
 
-def _parse_list(s: str, i: int) -> tuple[object, int]:
+def _parse_list(s: str, i: int) -> tuple[JsonValue, int]:
     assert s[i] == "("
     i += 1
-    items: list[object] = []
+    items: JsonArray = []
     keys: list[str | None] = []
     i = _skip_ws(s, i)
     if i < len(s) and s[i] == ")":
@@ -139,7 +144,7 @@ def _parse_bare(s: str, i: int) -> tuple[str, int]:
     return s[start:i].strip(), i
 
 
-def as_list(value: object) -> list:
+def as_list(value: JsonValue) -> JsonArray:
     """Normalise a parsed value to a list.
 
     ``((A=1))`` parses to ``[{...}]`` but a bare ``(A=1)`` parses to ``{...}``.
@@ -152,7 +157,7 @@ def as_list(value: object) -> list:
     return [value]
 
 
-def obj_class(ref: str | None) -> str | None:
+def obj_class(ref: JsonValue) -> str | None:
     """Extract the class name from any of the reference shapes Docs.json uses.
 
     Handles both asset paths (943 occurrences) and raw native names (51)::
@@ -173,11 +178,12 @@ def obj_class(ref: str | None) -> str | None:
     return s.rsplit(".", 1)[-1] if "." in s else s
 
 
-def as_float(raw: object, default: float = 0.0) -> float:
+def as_float(raw: JsonValue, default: float = 0.0) -> float:
     """A float from a Docs field, tolerating absence and struct-valued fields.
 
     ``Desc_Locomotive_C.mPowerConsumption`` is ``(Min=25,Max=110)``, so a blanket ``float()``
-    over every class crashes; a range reads as its ``Max``.
+    over every class crashes; a range reads as its ``Max``. A list or a dict is not a
+    number and reads as ``default``, as ``float()``'s ``TypeError`` did.
     """
     if raw is None or raw == "":
         return default
@@ -186,13 +192,15 @@ def as_float(raw: object, default: float = 0.0) -> float:
         if isinstance(parsed, dict):
             return as_float(parsed.get("Max") or parsed.get("Min"), default)
         return default
+    if isinstance(raw, (list, dict)):
+        return default
     try:
         return float(raw)
-    except (TypeError, ValueError):
+    except ValueError:
         return default
 
 
-def amount(entry: dict, key: str = "Amount", default: float = 0.0) -> float:
+def amount(entry: JsonObject, key: str = "Amount", default: float = 0.0) -> float:
     """Read a numeric struct member, defaulting when UE omitted it.
 
     UE omits struct members equal to their default, so ``Schematic_Goat_C.mCost``

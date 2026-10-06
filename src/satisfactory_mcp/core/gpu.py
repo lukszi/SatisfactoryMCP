@@ -37,7 +37,7 @@ class _InstanceCreateInfo(ctypes.Structure):
     ]
 
 
-def _load():
+def _load() -> ctypes.CDLL | None:
     for name in _LOADERS.get(sys.platform, _DEFAULT_LOADERS):
         path = ctypes.util.find_library(name) or name
         try:
