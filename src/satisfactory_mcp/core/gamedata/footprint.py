@@ -15,9 +15,10 @@ hard box falls back to the union of its soft ones rather than reporting no size 
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
-from .uestruct import as_list, parse_struct
+from .uestruct import as_float, as_list, parse_struct
 
 __all__ = ["FOUNDATION_M", "Footprint", "Packed", "extract_footprint"]
 
@@ -30,6 +31,11 @@ FOUNDATION_M = 8.0
 #: saving 4% over a squarish block), which is correct arithmetic and not a build. Pass
 #: `columns=` to override it in either direction.
 MAX_BLOCK_ASPECT = 4.0
+
+
+def _foundations_covering(width_m: float, depth_m: float) -> int:
+    """8 m foundations a ``width_m`` x ``depth_m`` rectangle covers, at least one each way."""
+    return max(1, math.ceil(width_m / FOUNDATION_M)) * max(1, math.ceil(depth_m / FOUNDATION_M))
 
 
 @dataclass(frozen=True)
@@ -47,11 +53,7 @@ class Footprint:
     @property
     def foundations(self) -> int:
         """8 m foundations covered by one machine, ignoring shared edges."""
-        import math
-
-        return max(1, math.ceil(self.width_m / FOUNDATION_M)) * max(
-            1, math.ceil(self.depth_m / FOUNDATION_M)
-        )
+        return _foundations_covering(self.width_m, self.depth_m)
 
     def __str__(self) -> str:
         return f"{self.width_m:g}x{self.depth_m:g}x{self.height_m:g}m"
@@ -69,34 +71,36 @@ class Footprint:
         The result is never worse than ``count x foundations``, because the single row is
         always a candidate and ``ceil`` is subadditive.
         """
-        import math
+        machine_count = max(1, int(count))
 
-        n = max(1, int(count))
-
-        def measure(cols: int) -> Packed:
-            cols = max(1, min(cols, n))
-            rows = math.ceil(n / cols)
-            width, depth = cols * self.width_m, rows * self.depth_m
-            tiles = max(1, math.ceil(width / FOUNDATION_M)) * max(
-                1, math.ceil(depth / FOUNDATION_M)
-            )
+        def measure(column_count: int) -> Packed:
+            column_count = max(1, min(column_count, machine_count))
+            rows = math.ceil(machine_count / column_count)
+            width, depth = column_count * self.width_m, rows * self.depth_m
             return Packed(
-                count=n, columns=cols, rows=rows, width_m=width, depth_m=depth, foundations=tiles
+                count=machine_count,
+                columns=column_count,
+                rows=rows,
+                width_m=width,
+                depth_m=depth,
+                foundations=_foundations_covering(width, depth),
             )
 
         if columns:
             return measure(int(columns))
-        options = [measure(c) for c in range(1, n + 1)]
+        options = [measure(column_count) for column_count in range(1, machine_count + 1)]
         buildable = [
-            p
-            for p in options
-            if max(p.width_m, p.depth_m) <= MAX_BLOCK_ASPECT * min(p.width_m, p.depth_m)
+            packed
+            for packed in options
+            if max(packed.width_m, packed.depth_m)
+            <= MAX_BLOCK_ASPECT * min(packed.width_m, packed.depth_m)
         ]
-        # `measure(n)`, the single row, is a candidate whatever its aspect: it is the shape
-        # the `n x foundations` bound assumes, and dropping it lets a 5-machine block come
+        # The single row is a candidate whatever its aspect: it is the shape the
+        # `count x foundations` bound assumes, and dropping it lets a 5-machine block come
         # out at 6 tiles against that bound's 5.
         return min(
-            [*buildable, measure(n)], key=lambda p: (p.foundations, abs(p.width_m - p.depth_m))
+            [*buildable, measure(machine_count)],
+            key=lambda packed: (packed.foundations, abs(packed.width_m - packed.depth_m)),
         )
 
 
@@ -115,19 +119,12 @@ class Packed:
         return f"{self.columns}x{self.rows} = {self.width_m:,.0f}x{self.depth_m:,.0f}m"
 
 
-def _f(value, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
 def _rotate(q: dict, v: tuple[float, float, float]) -> tuple[float, float, float]:
     """Rotate a vector by a quaternion (x, y, z, w).
 
     v' = v + 2 * cross(q_xyz, cross(q_xyz, v) + w*v)
     """
-    qx, qy, qz, qw = (_f(q.get(k)) for k in ("X", "Y", "Z", "W"))
+    qx, qy, qz, qw = (as_float(q.get(k)) for k in ("X", "Y", "Z", "W"))
     if (qx, qy, qz, qw) == (0.0, 0.0, 0.0, 0.0):
         return v
     vx, vy, vz = v
@@ -143,9 +140,9 @@ def _rotate(q: dict, v: tuple[float, float, float]) -> tuple[float, float, float
     )
 
 
-def _corners(mn: dict, mx: dict) -> list[tuple[float, float, float]]:
-    x0, y0, z0 = (_f(mn.get(k)) for k in ("X", "Y", "Z"))
-    x1, y1, z1 = (_f(mx.get(k)) for k in ("X", "Y", "Z"))
+def _corners(box_min: dict, box_max: dict) -> list[tuple[float, float, float]]:
+    x0, y0, z0 = (as_float(box_min.get(k)) for k in ("X", "Y", "Z"))
+    x1, y1, z1 = (as_float(box_max.get(k)) for k in ("X", "Y", "Z"))
     return [(x, y, z) for x in (x0, x1) for y in (y0, y1) for z in (z0, z1)]
 
 
@@ -167,39 +164,39 @@ def extract_footprint(raw: object) -> Footprint | None:
 
 def _union(entries) -> Footprint | None:
     """Axis-aligned union of transformed clearance boxes, or None for no boxes."""
-    lo = [float("inf")] * 3
-    hi = [float("-inf")] * 3
+    low_cm = [float("inf")] * 3
+    high_cm = [float("-inf")] * 3
     seen = False
 
     for entry in entries:
         box = entry.get("ClearanceBox")
         if not isinstance(box, dict):
             continue
-        mn, mx = box.get("Min"), box.get("Max")
-        if not isinstance(mn, dict) or not isinstance(mx, dict):
+        box_min, box_max = box.get("Min"), box.get("Max")
+        if not isinstance(box_min, dict) or not isinstance(box_max, dict):
             continue
 
         transform = entry.get("RelativeTransform") or {}
         rotation = transform.get("Rotation") if isinstance(transform, dict) else None
         translation = transform.get("Translation") if isinstance(transform, dict) else None
         tx, ty, tz = (
-            (_f(translation.get(k)) for k in ("X", "Y", "Z"))
+            (as_float(translation.get(k)) for k in ("X", "Y", "Z"))
             if isinstance(translation, dict)
             else (0.0, 0.0, 0.0)
         )
 
-        for corner in _corners(mn, mx):
+        for corner in _corners(box_min, box_max):
             point = _rotate(rotation, corner) if isinstance(rotation, dict) else corner
             for axis, (value, offset) in enumerate(zip(point, (tx, ty, tz))):
                 world = value + offset
-                lo[axis] = min(lo[axis], world)
-                hi[axis] = max(hi[axis], world)
+                low_cm[axis] = min(low_cm[axis], world)
+                high_cm[axis] = max(high_cm[axis], world)
             seen = True
 
     if not seen:
         return None
     return Footprint(
-        width_m=round((hi[0] - lo[0]) / 100.0, 2),
-        depth_m=round((hi[1] - lo[1]) / 100.0, 2),
-        height_m=round((hi[2] - lo[2]) / 100.0, 2),
+        width_m=round((high_cm[0] - low_cm[0]) / 100.0, 2),
+        depth_m=round((high_cm[1] - low_cm[1]) / 100.0, 2),
+        height_m=round((high_cm[2] - low_cm[2]) / 100.0, 2),
     )

@@ -92,7 +92,11 @@ class Census:
 
 def _qty(recipe: Recipe, item: str, side: str) -> float:
     flows = recipe.ingredients if side == "consumes" else recipe.products
-    return sum((f.per_min if recipe.kind == "part" else f.amount) for f in flows if f.item == item)
+    return sum(
+        (flow.per_min if recipe.kind == "part" else flow.amount)
+        for flow in flows
+        if flow.item == item
+    )
 
 
 def search(
@@ -111,11 +115,10 @@ def search(
     are counted in the census. ``recipe_kind`` and ``include_events`` only filter the
     rows that come back, so the header can promise a total the rows do not reach.
 
-    An unknown ``recipe_kind`` is a ValueError. It used to match nothing and report an
-    empty table, which reads as "the game has no such recipe" rather than "that is not a
-    word".
+    An unknown ``recipe_kind`` is a ValueError: matching nothing would read as "the game
+    has no such recipe" rather than "that is not a word".
     """
-    q = query.strip().casefold()
+    needle = query.strip().casefold()
     census = Census(scanned=len(game.recipes))
     hits: list[Hit] = []
     wanted = None if recipe_kind in ("all", "", None) else recipe_kind
@@ -124,50 +127,63 @@ def search(
             f"unknown recipe_kind {recipe_kind!r}. Choose from: {', '.join(KINDS)}, all"
         )
 
-    for r in game.recipes.values():
-        if q and q not in r.name.casefold():
+    for recipe in game.recipes.values():
+        if needle and needle not in recipe.name.casefold():
             continue
-        if only_alternates and not r.is_alternate:
+        if only_alternates and not recipe.is_alternate:
             continue
-        if consumes and not any(f.item == consumes for f in r.ingredients):
+        if consumes and not any(flow.item == consumes for flow in recipe.ingredients):
             continue
-        if produces and not any(f.item == produces for f in r.products):
+        if produces and not any(flow.item == produces for flow in recipe.products):
             continue
-        have = None if unlocked is None else (r.cls in unlocked)
-        census.add(r, have)
-        if wanted is not None and r.kind != wanted:
+        have = None if unlocked is None else (recipe.cls in unlocked)
+        census.add(recipe, have)
+        if wanted is not None and recipe.kind != wanted:
             continue
-        if r.is_event and not include_events:
+        if recipe.is_event and not include_events:
             continue
         side, item = ("consumes", consumes) if consumes else ("produces", produces)
-        hits.append(Hit(r, _qty(r, item, side) if item else 0.0, have))
+        hits.append(Hit(recipe, _qty(recipe, item, side) if item else 0.0, have))
 
     if consumes or produces:
         # Biggest consumer first within a kind: the question is "what eats my
         # Rubber", and the answer is ordered by how much.
         hits.sort(
-            key=lambda h: (_KIND_RANK.get(h.recipe.kind, 9), -h.qty, h.recipe.name.casefold())
+            key=lambda hit: (
+                _KIND_RANK.get(hit.recipe.kind, 9),
+                -hit.qty,
+                hit.recipe.name.casefold(),
+            )
         )
     else:
-        hits.sort(key=lambda h: (not h.recipe.is_alternate, h.recipe.name.casefold()))
+        hits.sort(key=lambda hit: (not hit.recipe.is_alternate, hit.recipe.name.casefold()))
     return hits, census
 
 
 def find_items(game: GameData, query: str) -> list[Item]:
     """Items whose name contains ``query``: names that start with it first, event items
     last, alphabetical regardless of case within each."""
-    q = query.casefold()
+    needle = query.casefold()
     events = game.event_items()
     return sorted(
-        (i for i in game.items.values() if q in i.name.casefold() and i.form != "RF_INVALID"),
-        key=lambda i: (not i.name.casefold().startswith(q), i.cls in events, i.name.casefold()),
+        (
+            item
+            for item in game.items.values()
+            if needle in item.name.casefold() and item.form != "RF_INVALID"
+        ),
+        key=lambda item: (
+            not item.name.casefold().startswith(needle),
+            item.cls in events,
+            item.name.casefold(),
+        ),
     )
 
 
 def makers_of(game: GameData, item: str) -> list[Recipe]:
     """Every automatable recipe that makes ``item``, alternates first."""
     return sorted(
-        game.producers_of(item, "part"), key=lambda r: (not r.is_alternate, r.name.casefold())
+        game.producers_of(item, "part"),
+        key=lambda recipe: (not recipe.is_alternate, recipe.name.casefold()),
     )
 
 
@@ -175,11 +191,11 @@ def resolve_item(game: GameData, query: str) -> str | None:
     """Resolve a display name or class id to an item id."""
     if query in game.items:
         return query
-    q = query.casefold()
-    exact = [c for c, i in game.items.items() if i.name.casefold() == q]
+    needle = query.casefold()
+    exact = [cls for cls, item in game.items.items() if item.name.casefold() == needle]
     if exact:
         return exact[0]
-    partial = [c for c, i in game.items.items() if q in i.name.casefold()]
+    partial = [cls for cls, item in game.items.items() if needle in item.name.casefold()]
     return partial[0] if partial else None
 
 
@@ -192,11 +208,11 @@ def match_recipes(game: GameData, pattern: str, pool: list[str]) -> list[str]:
     """
     if pattern in pool:
         return [pattern]
-    q = pattern.strip().casefold()
-    exact = [rid for rid in pool if game.recipes[rid].name.casefold() == q]
+    needle = pattern.strip().casefold()
+    exact = [recipe_id for recipe_id in pool if game.recipes[recipe_id].name.casefold() == needle]
     if exact:
         return exact
-    return [rid for rid in pool if q in game.recipes[rid].name.casefold()]
+    return [recipe_id for recipe_id in pool if needle in game.recipes[recipe_id].name.casefold()]
 
 
 def find_recipe(game: GameData, text: str) -> tuple[Recipe | None, list[str]]:

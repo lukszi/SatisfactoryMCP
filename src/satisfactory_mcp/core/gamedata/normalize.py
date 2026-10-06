@@ -11,8 +11,9 @@ empty, so drift is still caught loudly in CI.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
-from .constants import BELT_SPEED_TO_IPM, PURITY_MULT
+from .constants import BELT_SPEED_TO_IPM, PURITY_MULT, max_clock
 from .footprint import extract_footprint
 from .loader import DocsDump
 from .model import (
@@ -25,7 +26,7 @@ from .model import (
     Recipe,
     Schematic,
 )
-from .uestruct import amount, as_list, obj_class, parse_struct
+from .uestruct import amount, as_float, as_list, obj_class, parse_struct
 
 __all__ = ["normalize"]
 
@@ -33,33 +34,14 @@ _CLASS_RE = re.compile(r"[\w/\-.]+?\.(\w+_C)\b")
 _FLUID_FORMS = ("RF_LIQUID", "RF_GAS")
 
 
-def _f(raw: object, default: float = 0.0) -> float:
-    """Float from a Docs field, tolerating absence and struct-valued fields.
-
-    ``Desc_Locomotive_C.mPowerConsumption`` is ``(Min=25,Max=110)``, so a blanket
-    float() over every class crashes.
-    """
-    if raw is None or raw == "":
-        return default
-    if isinstance(raw, str) and raw.startswith("("):
-        parsed = parse_struct(raw)
-        if isinstance(parsed, dict):
-            return _f(parsed.get("Max") or parsed.get("Min"), default)
-        return default
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return default
-
-
-def _b(raw: object, default: bool = False) -> bool:
+def _as_bool(raw: object, default: bool = False) -> bool:
     if raw is None or raw == "":
         return default
     return str(raw).strip().lower() == "true"
 
 
-def _i(raw: object, default: int = 0) -> int:
-    return int(_f(raw, default))
+def _as_int(raw: object, default: int = 0) -> int:
+    return int(as_float(raw, default))
 
 
 def _classes_in(raw: object) -> tuple[str, ...]:
@@ -78,19 +60,19 @@ def _classes_in(raw: object) -> tuple[str, ...]:
     if parsed is not None:
         for entry in as_list(parsed):
             if isinstance(entry, str):
-                c = obj_class(entry)
-                if c:
-                    out.append(c)
+                class_name = obj_class(entry)
+                if class_name:
+                    out.append(class_name)
             elif isinstance(entry, dict):
-                for v in entry.values():
-                    c = obj_class(v) if isinstance(v, str) else None
-                    if c:
-                        out.append(c)
+                for value in entry.values():
+                    class_name = obj_class(value) if isinstance(value, str) else None
+                    if class_name:
+                        out.append(class_name)
     if not out and isinstance(raw, str):
         out = _CLASS_RE.findall(raw)
     seen: dict[str, None] = {}
-    for c in out:
-        seen.setdefault(c, None)
+    for class_name in out:
+        seen.setdefault(class_name, None)
     return tuple(seen)
 
 
@@ -107,34 +89,34 @@ def _build_items(dump: DocsDump) -> dict[str, Item]:
     """
     items: dict[str, Item] = {}
     shown = {
-        c["ClassName"]: str(c["mDisplayName"])
+        docs_class["ClassName"]: str(docs_class["mDisplayName"])
         for classes in dump.by_native.values()
-        for c in classes
-        if c.get("ClassName") and c.get("mDisplayName")
+        for docs_class in classes
+        if docs_class.get("ClassName") and docs_class.get("mDisplayName")
     }
     for native, classes in dump.by_native.items():
-        for c in classes:
-            if "mForm" not in c or "ClassName" not in c:
+        for docs_class in classes:
+            if "mForm" not in docs_class or "ClassName" not in docs_class:
                 continue
-            form = str(c.get("mForm") or "RF_INVALID")
-            energy = _f(c.get("mEnergyValue"))
+            form = str(docs_class.get("mForm") or "RF_INVALID")
+            energy = as_float(docs_class.get("mEnergyValue"))
             if form in _FLUID_FORMS:
                 energy *= 1000  # mEnergyValue is MJ per litre for fluids
-            cls = c["ClassName"]
+            cls = docs_class["ClassName"]
             built = "Build_" + cls[len("Desc_") :] if cls.startswith("Desc_") else ""
             items[cls] = Item(
                 cls=cls,
-                name=str(c.get("mDisplayName") or shown.get(built) or cls),
+                name=str(docs_class.get("mDisplayName") or shown.get(built) or cls),
                 native=native,
                 form=form,
                 energy_mj=energy,
-                stack_size=str(c.get("mStackSize") or ""),
-                sink_points=_i(c.get("mResourceSinkPoints")),
-                can_be_discarded=_b(c.get("mCanBeDiscarded"), True),
+                stack_size=str(docs_class.get("mStackSize") or ""),
+                sink_points=_as_int(docs_class.get("mResourceSinkPoints")),
+                can_be_discarded=_as_bool(docs_class.get("mCanBeDiscarded"), True),
                 is_resource=native == "FGResourceDescriptor",
                 # Absent on all but the two FGPowerShardDescriptor classes, so the
                 # default 0.0 is the right answer everywhere else.
-                extra_potential=_f(c.get("mExtraPotential")),
+                extra_potential=as_float(docs_class.get("mExtraPotential")),
             )
     return items
 
@@ -167,15 +149,15 @@ def _fuels(raw: object) -> tuple[Fuel, ...]:
     for entry in as_list(raw if isinstance(raw, (list, dict)) else parse_struct(raw)):
         if not isinstance(entry, dict):
             continue
-        fc = obj_class(entry.get("mFuelClass"))
-        if not fc:
+        fuel_class = obj_class(entry.get("mFuelClass"))
+        if not fuel_class:
             continue
         out.append(
             Fuel(
-                fuel_class=fc,
+                fuel_class=fuel_class,
                 supplemental_class=obj_class(entry.get("mSupplementalResourceClass")),
                 byproduct_class=obj_class(entry.get("mByproduct")),
-                byproduct_amount=_f(entry.get("mByproductAmount")),
+                byproduct_amount=as_float(entry.get("mByproductAmount")),
             )
         )
     return tuple(out)
@@ -187,8 +169,8 @@ _HEAD_LIFT_RE = re.compile(r"Head\s*Lift:\s*([\d.]+)\s*m", re.IGNORECASE)
 
 
 def _stated_head_lift(desc: object) -> float:
-    m = _HEAD_LIFT_RE.search(str(desc or ""))
-    return float(m.group(1)) if m else 0.0
+    found = _HEAD_LIFT_RE.search(str(desc or ""))
+    return float(found.group(1)) if found else 0.0
 
 
 #: Natives outside the FGBuildable* family whose classes are still placed buildings.
@@ -196,26 +178,38 @@ _OTHER_BUILDABLES = ("FGCentralStorageContainer",)
 
 
 def _build_buildings(dump: DocsDump, items: dict[str, Item]) -> dict[str, Building]:
-    descriptors = {k: v for k, v in items.items() if v.native == "FGBuildingDescriptor"}
+    descriptors = {
+        cls: item for cls, item in items.items() if item.native == "FGBuildingDescriptor"
+    }
+    # The Power Shard's ``mExtraPotential``; filtering on > 0 leaves the Somersloop out.
+    per_shard = max(
+        (item.extra_potential for item in items.values() if item.extra_potential > 0), default=0.0
+    )
     out: dict[str, Building] = {}
     for native, classes in dump.by_native.items():
         if not native.startswith("FGBuildable") and native not in _OTHER_BUILDABLES:
             continue
-        for c in classes:
-            cls = c.get("ClassName")
+        for docs_class in classes:
+            cls = docs_class.get("ClassName")
             if not cls:
                 continue
 
             # Somersloop slots: read the override flag, because Smelter carries a
             # stale 0/False pair that would otherwise zero its single slot.
-            override = _b(c.get("mOverrideProductionShardSlotSize"))
-            slots = _i(c.get("mProductionShardSlotSize"), 1) if override else 1
-            mult = _f(c.get("mProductionShardBoostMultiplier"), 1.0) if override else 1.0
+            override = _as_bool(docs_class.get("mOverrideProductionShardSlotSize"))
+            slots = _as_int(docs_class.get("mProductionShardSlotSize"), 1) if override else 1
+            mult = (
+                as_float(docs_class.get("mProductionShardBoostMultiplier"), 1.0)
+                if override
+                else 1.0
+            )
 
-            items_per_cycle = _f(c.get("mItemsPerCycle"))
-            cycle_s = _f(c.get("mExtractCycleTime"))
+            items_per_cycle = as_float(docs_class.get("mItemsPerCycle"))
+            cycle_s = as_float(docs_class.get("mExtractCycleTime"))
             forms = tuple(
-                x for x in _split_enum(c.get("mAllowedResourceForms")) if x.startswith("RF_")
+                form
+                for form in _split_enum(docs_class.get("mAllowedResourceForms"))
+                if form.startswith("RF_")
             )
             base_rate = 0.0
             if items_per_cycle and cycle_s:
@@ -225,40 +219,45 @@ def _build_buildings(dump: DocsDump, items: dict[str, Item]) -> dict[str, Buildi
                 if any(f in _FLUID_FORMS for f in forms):
                     base_rate /= 1000
 
-            speed = _f(c.get("mSpeed"))
+            speed = as_float(docs_class.get("mSpeed"))
+            can_overclock = _as_bool(docs_class.get("mCanChangePotential"))
+            base_max_clock = as_float(docs_class.get("mMaxPotential"), 1.0)
             out[cls] = Building(
                 cls=cls,
-                name=str(c.get("mDisplayName") or cls),
+                name=str(docs_class.get("mDisplayName") or cls),
                 native=native,
-                power_mw=_f(c.get("mPowerConsumption")),
-                power_exponent=_f(c.get("mPowerConsumptionExponent"), 1.0),
-                boost_power_exponent=_f(c.get("mProductionBoostPowerConsumptionExponent"), 1.0),
-                can_overclock=_b(c.get("mCanChangePotential")),
-                min_clock=_f(c.get("mMinPotential"), 0.01),
-                base_max_clock=_f(c.get("mMaxPotential"), 1.0),
-                can_boost=_b(c.get("mCanChangeProductionBoost")),
+                power_mw=as_float(docs_class.get("mPowerConsumption")),
+                power_exponent=as_float(docs_class.get("mPowerConsumptionExponent"), 1.0),
+                boost_power_exponent=as_float(
+                    docs_class.get("mProductionBoostPowerConsumptionExponent"), 1.0
+                ),
+                can_overclock=can_overclock,
+                min_clock=as_float(docs_class.get("mMinPotential"), 0.01),
+                base_max_clock=base_max_clock,
+                can_boost=_as_bool(docs_class.get("mCanChangeProductionBoost")),
                 sloop_slots=slots,
                 sloop_mult=mult,
-                base_boost=_f(c.get("mBaseProductionBoost"), 1.0),
-                mfg_speed=_f(c.get("mManufacturingSpeed"), 1.0),
+                base_boost=as_float(docs_class.get("mBaseProductionBoost"), 1.0),
+                mfg_speed=as_float(docs_class.get("mManufacturingSpeed"), 1.0),
+                max_clock=max_clock(per_shard, base_max_clock) if can_overclock else 1.0,
                 descriptor=_descriptor_for(cls, descriptors),
                 items_per_cycle=items_per_cycle,
                 extract_cycle_s=cycle_s,
                 base_extract_rate=base_rate,
-                allowed_resources=_classes_in(c.get("mAllowedResources")),
+                allowed_resources=_classes_in(docs_class.get("mAllowedResources")),
                 allowed_forms=forms,
-                power_production_mw=_f(c.get("mPowerProduction")),
-                variable_power_factor=_f(c.get("mVariablePowerProductionFactor")),
-                requires_supplemental=_b(c.get("mRequiresSupplementalResource")),
-                supplemental_ratio=_f(c.get("mSupplementalToPowerRatio")),
-                fuels=_fuels(c.get("mFuel")),
+                power_production_mw=as_float(docs_class.get("mPowerProduction")),
+                variable_power_factor=as_float(docs_class.get("mVariablePowerProductionFactor")),
+                requires_supplemental=_as_bool(docs_class.get("mRequiresSupplementalResource")),
+                supplemental_ratio=as_float(docs_class.get("mSupplementalToPowerRatio")),
+                fuels=_fuels(docs_class.get("mFuel")),
                 items_per_min=speed * BELT_SPEED_TO_IPM if speed else 0.0,
-                flow_m3_min=_f(c.get("mFlowLimit")) * 60,
-                storage_capacity_m3=_f(c.get("mStorageCapacity")),
-                head_lift_m=_f(c.get("mDesignPressure")),
-                max_head_lift_m=_f(c.get("mMaxPressure")),
-                machine_head_lift_m=_stated_head_lift(c.get("mDescription")),
-                footprint=extract_footprint(c.get("mClearanceData")),
+                flow_m3_min=as_float(docs_class.get("mFlowLimit")) * 60,
+                storage_capacity_m3=as_float(docs_class.get("mStorageCapacity")),
+                head_lift_m=as_float(docs_class.get("mDesignPressure")),
+                max_head_lift_m=as_float(docs_class.get("mMaxPressure")),
+                machine_head_lift_m=_stated_head_lift(docs_class.get("mDescription")),
+                footprint=extract_footprint(docs_class.get("mClearanceData")),
             )
     return out
 
@@ -270,13 +269,13 @@ def _split_enum(raw: object) -> tuple[str, ...]:
         parsed = parse_struct(raw)
     except Exception:
         return ()
-    vals = as_list(parsed)
+    values = as_list(parsed)
     out: list[str] = []
-    for v in vals:
-        if isinstance(v, str):
-            out.append(v.strip())
-        elif isinstance(v, dict):
-            out.extend(str(x).strip() for x in v.values() if isinstance(x, str))
+    for value in values:
+        if isinstance(value, str):
+            out.append(value.strip())
+        elif isinstance(value, dict):
+            out.extend(str(member).strip() for member in value.values() if isinstance(member, str))
     return tuple(out)
 
 
@@ -285,49 +284,56 @@ def _split_enum(raw: object) -> tuple[str, ...]:
 
 def _build_schematics(dump: DocsDump) -> dict[str, Schematic]:
     out: dict[str, Schematic] = {}
-    for c in dump.classes("FGSchematic"):
-        cls = c.get("ClassName")
+    for docs_class in dump.classes("FGSchematic"):
+        cls = docs_class.get("ClassName")
         if not cls:
             continue
         recipes: list[str] = []
         schematics: list[str] = []
         slots = 0
         # mUnlocks arrives as real JSON: a list of dicts, each with a 'Class' key.
-        for unlock in as_list(c.get("mUnlocks") or []):
+        for unlock in as_list(docs_class.get("mUnlocks") or []):
             if not isinstance(unlock, dict):
                 continue
-            ucls = str(unlock.get("Class") or "")
-            if ucls in ("BP_UnlockRecipe_C", "BP_UnlockBlueprints_C"):
+            unlock_class = str(unlock.get("Class") or "")
+            if unlock_class in ("BP_UnlockRecipe_C", "BP_UnlockBlueprints_C"):
                 recipes.extend(_classes_in(unlock.get("mRecipes")))
-            elif ucls == "BP_UnlockSchematic_C":
+            elif unlock_class == "BP_UnlockSchematic_C":
                 # Recorded, never expanded here: recursive expansion pulls in 23
                 # CBG_* customization schematics and inflates the derived recipe
                 # set to 514, of which 113 are not actually unlocked.
                 schematics.extend(_classes_in(unlock.get("mSchematics")))
-            elif ucls == "BP_UnlockInventorySlot_C":
-                slots += _i(unlock.get("mNumInventorySlotsToUnlock"))
+            elif unlock_class == "BP_UnlockInventorySlot_C":
+                slots += _as_int(unlock.get("mNumInventorySlotsToUnlock"))
 
         deps: list[str] = []
-        for dep in as_list(c.get("mSchematicDependencies") or []):
-            if isinstance(dep, dict) and dep.get("Class") == "BP_SchematicPurchasedDependency_C":
-                deps.extend(_classes_in(dep.get("mSchematics")))
+        for dependency in as_list(docs_class.get("mSchematicDependencies") or []):
+            if (
+                isinstance(dependency, dict)
+                and dependency.get("Class") == "BP_SchematicPurchasedDependency_C"
+            ):
+                deps.extend(_classes_in(dependency.get("mSchematics")))
 
         cost = tuple(
-            Flow(item=obj_class(e.get("ItemClass")) or "?", amount=amount(e), per_min=0.0)
-            for e in as_list(parse_struct(c.get("mCost")))
-            if isinstance(e, dict)
+            Flow(
+                item=obj_class(cost_entry.get("ItemClass")) or "?",
+                amount=amount(cost_entry),
+                per_min=0.0,
+            )
+            for cost_entry in as_list(parse_struct(docs_class.get("mCost")))
+            if isinstance(cost_entry, dict)
         )
         out[cls] = Schematic(
             cls=cls,
-            name=str(c.get("mDisplayName") or cls),
-            type=str(c.get("mType") or ""),
-            tier=_i(c.get("mTechTier")),
-            time_s=_f(c.get("mTimeToComplete")),
+            name=str(docs_class.get("mDisplayName") or cls),
+            type=str(docs_class.get("mType") or ""),
+            tier=_as_int(docs_class.get("mTechTier")),
+            time_s=as_float(docs_class.get("mTimeToComplete")),
             cost=cost,
             unlocks_recipes=tuple(dict.fromkeys(recipes)),
             unlocks_schematics=tuple(dict.fromkeys(schematics)),
             dependencies=tuple(dict.fromkeys(deps)),
-            events=str(c.get("mRelevantEvents") or ""),
+            events=str(docs_class.get("mRelevantEvents") or ""),
             grants_inventory_slots=slots,
         )
     return out
@@ -338,39 +344,45 @@ def _build_schematics(dump: DocsDump) -> dict[str, Schematic]:
 
 def _flows(raw: object, items: dict[str, Item], duration: float) -> tuple[Flow, ...]:
     out: list[Flow] = []
-    for e in as_list(parse_struct(raw)):
-        if not isinstance(e, dict):
+    for entry in as_list(parse_struct(raw)):
+        if not isinstance(entry, dict):
             continue
-        cls = obj_class(e.get("ItemClass"))
+        cls = obj_class(entry.get("ItemClass"))
         if not cls:
             continue
-        qty = amount(e)
-        it = items.get(cls)
-        if it is not None and it.is_fluid:
-            qty = qty / 1000.0  # float: Recipe_Battery_C has SulfuricAcid=2500
-        per_min = qty * 60 / duration if duration else 0.0
-        out.append(Flow(item=cls, amount=qty, per_min=per_min))
+        quantity = amount(entry)
+        item = items.get(cls)
+        if item is not None and item.is_fluid:
+            quantity = quantity / 1000.0  # float: Recipe_Battery_C has SulfuricAcid=2500
+        per_min = quantity * 60 / duration if duration else 0.0
+        out.append(Flow(item=cls, amount=quantity, per_min=per_min))
     return tuple(out)
 
 
 def _build_recipes(
     dump: DocsDump, items: dict[str, Item], buildings: dict[str, Building]
 ) -> dict[str, Recipe]:
-    building_descs = {k for k, v in items.items() if v.native == "FGBuildingDescriptor"}
-    manufacturers = {c for c, b in buildings.items() if b.native in MANUFACTURER_NATIVES}
+    building_descs = {cls for cls, item in items.items() if item.native == "FGBuildingDescriptor"}
+    manufacturers = {
+        building_cls
+        for building_cls, building in buildings.items()
+        if building.native in MANUFACTURER_NATIVES
+    }
     variable = {
-        c for c, b in buildings.items() if b.native == "FGBuildableManufacturerVariablePower"
+        building_cls
+        for building_cls, building in buildings.items()
+        if building.native == "FGBuildableManufacturerVariablePower"
     }
 
     out: dict[str, Recipe] = {}
-    for c in dump.classes("FGRecipe"):
-        cls = c.get("ClassName")
+    for docs_class in dump.classes("FGRecipe"):
+        cls = docs_class.get("ClassName")
         if not cls:
             continue
-        duration = _f(c.get("mManufactoringDuration"))  # typo is in the game data
-        products = _flows(c.get("mProduct"), items, duration)
-        ingredients = _flows(c.get("mIngredients"), items, duration)
-        produced_in = _classes_in(c.get("mProducedIn"))
+        duration = as_float(docs_class.get("mManufactoringDuration"))  # typo is in the game data
+        products = _flows(docs_class.get("mProduct"), items, duration)
+        ingredients = _flows(docs_class.get("mIngredients"), items, duration)
+        produced_in = _classes_in(docs_class.get("mProducedIn"))
 
         machines = [p for p in produced_in if p in manufacturers]
         if products and products[0].item in building_descs:
@@ -380,26 +392,26 @@ def _build_recipes(
         else:
             kind, machine = "manual", None
 
-        pmin = pmax = 0.0
+        power_min = power_max = 0.0
         if machine in variable:
-            const = _f(c.get("mVariablePowerConsumptionConstant"))
-            factor = _f(c.get("mVariablePowerConsumptionFactor"))
+            const = as_float(docs_class.get("mVariablePowerConsumptionConstant"))
+            factor = as_float(docs_class.get("mVariablePowerConsumptionFactor"))
             # Factor is a RANGE, not a multiplier: building-level
             # mEstimatedMininum/MaximumPowerConsumption exactly bracket const..const+factor.
-            pmin, pmax = const, const + factor
+            power_min, power_max = const, const + factor
 
         out[cls] = Recipe(
             cls=cls,
-            name=str(c.get("mDisplayName") or cls),
+            name=str(docs_class.get("mDisplayName") or cls),
             kind=kind,
             machine=machine,
             duration_s=duration,
             ingredients=ingredients,
             products=products,
-            manual_mult=_f(c.get("mManualManufacturingMultiplier"), 1.0),
-            power_min_mw=pmin,
-            power_max_mw=pmax,
-            events=str(c.get("mRelevantEvents") or ""),
+            manual_mult=as_float(docs_class.get("mManualManufacturingMultiplier"), 1.0),
+            power_min_mw=power_min,
+            power_max_mw=power_max,
+            events=str(docs_class.get("mRelevantEvents") or ""),
         )
     return out
 
@@ -407,67 +419,183 @@ def _build_recipes(
 # ---------------------------------------------------------------------- assertions
 
 
-def _check(data: GameData, dump: DocsDump) -> None:
-    w = data.warnings
+def _warn_recipe_partition(data: GameData) -> list[str]:
+    warnings: list[str] = []
     counts: dict[str, int] = {}
-    for r in data.recipes.values():
-        counts[r.kind] = counts.get(r.kind, 0) + 1
+    for recipe in data.recipes.values():
+        counts[recipe.kind] = counts.get(recipe.kind, 0) + 1
     total = len(data.recipes)
     if total != sum(counts.values()):
-        w.append(f"recipe partition lost entries: {total} != {counts}")
-    # Known-good shape for v1.2.2.1: 872 = 547 building + 291 part + 34 manual.
+        warnings.append(f"recipe partition lost entries: {total} != {counts}")
     if counts.get("part", 0) == 0:
-        w.append("no part recipes found -- mProducedIn / manufacturer join is broken")
+        warnings.append("no part recipes found -- mProducedIn / manufacturer join is broken")
+    return warnings
 
-    # Belts state their own rate in prose, so BELT_SPEED_TO_IPM is self-checking.
-    for c in dump.classes("FGBuildableConveyorBelt"):
-        b = data.buildings.get(c.get("ClassName", ""))
-        desc = str(c.get("mDescription") or "")
-        m = re.search(r"(\d[\d\s,]*)\s*(?:items|resources)?\s*per minute", desc, re.IGNORECASE)
-        if b and m:
-            stated = float(m.group(1).replace(",", "").replace(" ", ""))
-            if abs(stated - b.items_per_min) > 0.5:
-                w.append(f"{b.cls}: computed {b.items_per_min}/min but description says {stated}")
 
-    # Pipes likewise.
-    for c in dump.classes("FGBuildablePipeline"):
-        b = data.buildings.get(c.get("ClassName", ""))
-        desc = str(c.get("mDescription") or "")
-        m = re.search(r"(\d+)\s*m.{0,4}\s*of fluid per minute", desc, re.IGNORECASE)
-        if b and m and abs(float(m.group(1)) - b.flow_m3_min) > 0.5:
-            w.append(f"{b.cls}: computed {b.flow_m3_min} m3/min, description says {m.group(1)}")
+def _warn_belt_rates(data: GameData, dump: DocsDump) -> list[str]:
+    """Belts state their own rate in prose, so ``BELT_SPEED_TO_IPM`` is self-checking."""
+    warnings: list[str] = []
+    for entry in dump.classes("FGBuildableConveyorBelt"):
+        belt = data.buildings.get(entry.get("ClassName", ""))
+        desc = str(entry.get("mDescription") or "")
+        found = re.search(r"(\d[\d\s,]*)\s*(?:items|resources)?\s*per minute", desc, re.IGNORECASE)
+        if belt and found:
+            stated = float(found.group(1).replace(",", "").replace(" ", ""))
+            if abs(stated - belt.items_per_min) > 0.5:
+                warnings.append(
+                    f"{belt.cls}: computed {belt.items_per_min}/min but description says {stated}"
+                )
+    return warnings
 
-    # A pump states its head lift in prose as well as in mDesignPressure, so the prose parse
-    # that gives every other machine its rating is checked against a field on the two classes
-    # that carry both.
-    for c in dump.classes("FGBuildablePipelinePump"):
-        b = data.buildings.get(c.get("ClassName", ""))
-        if b and b.machine_head_lift_m and abs(b.machine_head_lift_m - b.head_lift_m) > 0.01:
-            w.append(
-                f"{b.cls}: mDesignPressure {b.head_lift_m} m but description says "
-                f"{b.machine_head_lift_m} m"
+
+def _warn_pipe_rates(data: GameData, dump: DocsDump) -> list[str]:
+    warnings: list[str] = []
+    for entry in dump.classes("FGBuildablePipeline"):
+        pipe = data.buildings.get(entry.get("ClassName", ""))
+        desc = str(entry.get("mDescription") or "")
+        found = re.search(r"(\d+)\s*m.{0,4}\s*of fluid per minute", desc, re.IGNORECASE)
+        if pipe and found and abs(float(found.group(1)) - pipe.flow_m3_min) > 0.5:
+            warnings.append(
+                f"{pipe.cls}: computed {pipe.flow_m3_min} m3/min, description says {found.group(1)}"
+            )
+    return warnings
+
+
+def _warn_pump_head_lift(data: GameData, dump: DocsDump) -> list[str]:
+    """The prose parse that rates every machine, checked on the classes that also carry
+    ``mDesignPressure``."""
+    warnings: list[str] = []
+    for entry in dump.classes("FGBuildablePipelinePump"):
+        pump = data.buildings.get(entry.get("ClassName", ""))
+        if (
+            pump
+            and pump.machine_head_lift_m
+            and abs(pump.machine_head_lift_m - pump.head_lift_m) > 0.01
+        ):
+            warnings.append(
+                f"{pump.cls}: mDesignPressure {pump.head_lift_m} m but description says "
+                f"{pump.machine_head_lift_m} m"
+            )
+    return warnings
+
+
+def _warn_extractor_rates(data: GameData, dump: DocsDump) -> list[str]:
+    """Extractor descriptions state the NORMAL-purity rate, which is what pins
+    ``PURITY_MULT``."""
+    warnings: list[str] = []
+    for native in ("FGBuildableResourceExtractor", "FGBuildableWaterPump"):
+        for entry in dump.classes(native):
+            extractor = data.buildings.get(entry.get("ClassName", ""))
+            desc = str(entry.get("mDescription") or "")
+            found = re.search(
+                r"(\d+)\s*(?:resources|m.{0,4} of \w+)\s*per minute", desc, re.IGNORECASE
+            )
+            if extractor and found and extractor.base_extract_rate:
+                stated = float(found.group(1))
+                got = extractor.base_extract_rate * PURITY_MULT["normal"]
+                if abs(stated - got) > 0.5:
+                    warnings.append(
+                        f"{extractor.cls}: normal rate {got}/min but description says {stated}"
+                    )
+    return warnings
+
+
+def _warn_unjoined_buildings(data: GameData) -> list[str]:
+    """A production building with no descriptor silently loses its build cost."""
+    warnings: list[str] = []
+    for building in data.buildings.values():
+        producing = building.is_manufacturer or building.is_extractor or building.is_generator
+        if producing and not building.descriptor:
+            warnings.append(
+                f"{building.cls}: no FGBuildingDescriptor match, build cost unavailable"
+            )
+        if (building.is_manufacturer or building.is_generator) and building.footprint is None:
+            warnings.append(f"{building.cls}: no clearance data, cannot size a layout")
+    return warnings
+
+
+def _collect_drift_warnings(data: GameData, dump: DocsDump) -> None:
+    data.warnings.extend(_warn_recipe_partition(data))
+    data.warnings.extend(_warn_belt_rates(data, dump))
+    data.warnings.extend(_warn_pipe_rates(data, dump))
+    data.warnings.extend(_warn_pump_head_lift(data, dump))
+    data.warnings.extend(_warn_extractor_rates(data, dump))
+    data.warnings.extend(_warn_unjoined_buildings(data))
+
+
+# ------------------------------------------------------------------------- wiring
+
+
+def _recipe_unlockers(schematics: dict[str, Schematic]) -> dict[str, list[str]]:
+    """Recipe class -> the schematics that unlock it, in schematic order."""
+    unlockers: dict[str, list[str]] = {}
+    for schematic in schematics.values():
+        for recipe_cls in schematic.unlocks_recipes:
+            unlockers.setdefault(recipe_cls, []).append(schematic.cls)
+    return unlockers
+
+
+def _building_recipes(recipes: dict[str, Recipe]) -> dict[str, list[Recipe]]:
+    """Building descriptor -> the build-gun recipes that make it, in recipe order."""
+    by_descriptor: dict[str, list[Recipe]] = {}
+    for recipe in recipes.values():
+        if recipe.kind == "building":
+            for product in recipe.products:
+                by_descriptor.setdefault(product.item, []).append(recipe)
+    return by_descriptor
+
+
+def _wire_recipe_unlocks(
+    recipes: dict[str, Recipe],
+    schematics: dict[str, Schematic],
+    unlockers: dict[str, list[str]],
+) -> None:
+    # is_alternate comes from EST_Alternate reachability, never from "Alternate" in the
+    # ClassName, which is wrong in both directions.
+    alternates = {
+        recipe_cls
+        for schematic in schematics.values()
+        if schematic.is_alternate
+        for recipe_cls in schematic.unlocks_recipes
+    }
+    for recipe_cls, sources in unlockers.items():
+        recipe = recipes.get(recipe_cls)
+        if recipe is not None:
+            recipes[recipe_cls] = replace(
+                recipe,
+                unlocked_by=tuple(dict.fromkeys(sources)),
+                is_alternate=recipe_cls in alternates,
             )
 
-    # Extractor descriptions state the NORMAL-purity rate, which is what pins
-    # PURITY_MULT. Check the ones that spell out a number.
-    for native in ("FGBuildableResourceExtractor", "FGBuildableWaterPump"):
-        for c in dump.classes(native):
-            b = data.buildings.get(c.get("ClassName", ""))
-            desc = str(c.get("mDescription") or "")
-            m = re.search(r"(\d+)\s*(?:resources|m.{0,4} of \w+)\s*per minute", desc, re.IGNORECASE)
-            if b and m and b.base_extract_rate:
-                stated = float(m.group(1))
-                got = b.base_extract_rate * PURITY_MULT["normal"]
-                if abs(stated - got) > 0.5:
-                    w.append(f"{b.cls}: normal rate {got}/min but description says {stated}")
 
-    # Every production-relevant buildable must resolve to a descriptor, or build
-    # costs silently vanish.
-    for b in data.buildings.values():
-        if (b.is_manufacturer or b.is_extractor or b.is_generator) and not b.descriptor:
-            w.append(f"{b.cls}: no FGBuildingDescriptor match, build cost unavailable")
-        if (b.is_manufacturer or b.is_generator) and b.footprint is None:
-            w.append(f"{b.cls}: no clearance data, cannot size a layout")
+def _wire_building_unlocks(
+    buildings: dict[str, Building],
+    schematics: dict[str, Schematic],
+    unlockers: dict[str, list[str]],
+    building_recipes: dict[str, list[Recipe]],
+) -> None:
+    """A building is unlocked by whatever unlocks a build-gun recipe for its descriptor."""
+    schematic_order = {cls: position for position, cls in enumerate(schematics)}
+    for building_cls, building in list(buildings.items()):
+        sources = {
+            schematic
+            for recipe in building_recipes.get(building.descriptor or "", ())
+            for schematic in unlockers.get(recipe.cls, ())
+        }
+        if sources:
+            buildings[building_cls] = replace(
+                building, unlocked_by=tuple(sorted(sources, key=schematic_order.__getitem__))
+            )
+
+
+def _attach_build_costs(
+    buildings: dict[str, Building], building_recipes: dict[str, list[Recipe]]
+) -> None:
+    """A building costs the ingredients of the first build-gun recipe for its descriptor."""
+    for building_cls, building in list(buildings.items()):
+        candidates = building_recipes.get(building.descriptor or "")
+        if candidates:
+            buildings[building_cls] = replace(building, build_cost=candidates[0].ingredients)
 
 
 def normalize(dump: DocsDump) -> GameData:
@@ -476,49 +604,11 @@ def normalize(dump: DocsDump) -> GameData:
     schematics = _build_schematics(dump)
     recipes = _build_recipes(dump, items, buildings)
 
-    # Wire unlocks. is_alternate comes from EST_Alternate reachability, never from
-    # "Alternate" in ClassName -- that set is 110 and wrong in both directions.
-    unlocked_by: dict[str, list[str]] = {}
-    alternates: set[str] = set()
-    for s in schematics.values():
-        for rc in s.unlocks_recipes:
-            unlocked_by.setdefault(rc, []).append(s.cls)
-            if s.is_alternate:
-                alternates.add(rc)
-    for rc, srcs in unlocked_by.items():
-        r = recipes.get(rc)
-        if r is None:
-            continue
-        recipes[rc] = Recipe(
-            **{
-                **r.__dict__,
-                "unlocked_by": tuple(dict.fromkeys(srcs)),
-                "is_alternate": rc in alternates,
-            }
-        )
-
-    b_unlocked: dict[str, list[str]] = {}
-    for s in schematics.values():
-        for rc in s.unlocks_recipes:
-            r = recipes.get(rc)
-            if r is None or r.kind != "building":
-                continue
-            for f in r.products:
-                for bcls, b in buildings.items():
-                    if b.descriptor == f.item:
-                        b_unlocked.setdefault(bcls, []).append(s.cls)
-    for bcls, srcs in b_unlocked.items():
-        b = buildings[bcls]
-        buildings[bcls] = Building(**{**b.__dict__, "unlocked_by": tuple(dict.fromkeys(srcs))})
-
-    # Attach build costs.
-    for bcls, b in list(buildings.items()):
-        if not b.descriptor:
-            continue
-        for r in recipes.values():
-            if r.kind == "building" and any(f.item == b.descriptor for f in r.products):
-                buildings[bcls] = Building(**{**b.__dict__, "build_cost": r.ingredients})
-                break
+    unlockers = _recipe_unlockers(schematics)
+    _wire_recipe_unlocks(recipes, schematics, unlockers)
+    building_recipes = _building_recipes(recipes)
+    _wire_building_unlocks(buildings, schematics, unlockers, building_recipes)
+    _attach_build_costs(buildings, building_recipes)
 
     data = GameData(
         items=items,
@@ -527,5 +617,5 @@ def normalize(dump: DocsDump) -> GameData:
         schematics=schematics,
         docs_sha256=dump.sha256,
     )
-    _check(data, dump)
+    _collect_drift_warnings(data, dump)
     return data

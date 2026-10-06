@@ -549,8 +549,10 @@ Pipes `mFlowLimit × 60` → **300 / 600** m³/min. Both self-corroborated by ea
 
 ### 5.6 Hardcoded constants register
 
-Four values are **not** in `Docs.json`. They live in one module, each with a comment saying so, and each
-unit-tested. Nothing else may be hardcoded.
+The values absent from or overriding `Docs.json` live in one module, `core/gamedata/constants.py`, each
+tagged with where it comes from and unit-tested. Nothing else may be hardcoded. The four that shape every
+rate are below; the fluid and planning ones carry their evidence in `docs/fluids_model.md` and
+`docs/planning.md`.
 
 | constant | value | justification |
 |---|---|---|
@@ -572,8 +574,10 @@ unit-tested. Nothing else may be hardcoded.
 
 **The shard maths lives with the constant, not next to it.** `max_clock()` and `shards_for_clock()`
 are in `constants.py` because they are the only two places `POTENTIAL_SHARD_SLOTS` meets data:
-`max_clock = 1 + slots × mExtraPotential` and `shards = min(slots, ceil((clock − 1) / mExtraPotential))`.
-Writing `2.5` as a literal anywhere would bury the one game-knowledge input inside a derived number.
+`max_clock = mMaxPotential + slots × mExtraPotential` and
+`shards = min(slots, ceil((clock − 1) / mExtraPotential))`. `normalize` stores the first on every
+`Building` as `max_clock`. Writing `2.5` as a literal anywhere would bury the one game-knowledge input
+inside a derived number.
 Two traps, both found by measurement:
 
 - **Round before ceiling.** Saved clocks are floats and 2.0 arrives as 1.9999999 often enough that a
