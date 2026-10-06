@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import NDArray
+
+from satisfactory_mcp.core.arrays import F32Grid, I64Grid, U16Grid, U32Grid
 
 __all__ = [
+    "INSTANCE_BATCH",
     "RASTER_FLUSH",
     "MaxZRaster",
 ]
@@ -13,6 +17,9 @@ __all__ = [
 #: The rasteriser's scatter buffer, in candidate texels. Bounded so a 21,000-placement run
 #: holds a few hundred MB rather than the whole 120 M-triangle scatter at once.
 RASTER_FLUSH = 6_000_000
+
+#: Instances of one mesh transformed per ``add``, so a foliage set is stamped in batches.
+INSTANCE_BATCH = 512
 
 
 class MaxZRaster:
@@ -23,7 +30,7 @@ class MaxZRaster:
     take-last.
 
     ``sample`` is where in a texel, in texels, its value is taken: 0 at the vertex
-    ``x0 + col * scale``, which is where ``heightfield`` reads every plane; 0.5 at the
+    ``origin + col * scale``, which is where ``heightfield`` reads every plane; 0.5 at the
     texel centre, which is a render's pixel.
     """
 
@@ -38,19 +45,19 @@ class MaxZRaster:
         sample: float = 0.0,
     ) -> None:
         self.width, self.height = width, height
-        self.x0, self.y0, self.scale = x0_cm, y0_cm, scale
+        self.origin_x_cm, self.origin_y_cm, self.scale = x0_cm, y0_cm, scale
         self.sample = sample
-        self.z = np.full(height * width, -np.inf, dtype=np.float32)
-        self.src = np.zeros(height * width, dtype=np.uint16)
-        self.density = np.zeros(height * width, dtype=np.uint32)
-        self._idx: list[np.ndarray] = []
-        self._z: list[np.ndarray] = []
-        self._s: list[np.ndarray] = []
-        self._n = 0
-        self._samples: list[np.ndarray] = []
-        self._sample_n = 0
+        self.z: F32Grid = np.full(height * width, -np.inf, dtype=np.float32)
+        self.source_id: U16Grid = np.zeros(height * width, dtype=np.uint16)
+        self.density: U32Grid = np.zeros(height * width, dtype=np.uint32)
+        self._pending_texels: list[I64Grid] = []
+        self._pending_heights: list[F32Grid] = []
+        self._pending_sources: list[U16Grid] = []
+        self._pending_count = 0
+        self._pending_samples: list[I64Grid] = []
+        self._pending_sample_count = 0
 
-    def count_samples(self, points: np.ndarray) -> None:
+    def count_samples(self, points: NDArray[np.floating]) -> None:
         """Record which texel each SOURCE VERTEX landed in. The density plane, accumulated.
 
         Not the fold's question: the fold answers every texel a triangle covers, however
@@ -61,69 +68,75 @@ class MaxZRaster:
         ``add`` writes heights under; two would put density half a texel off its heights.
         """
         shift = 0.5 - self.sample
-        col = np.floor((points[:, 0] - self.x0) / self.scale + shift).astype(np.int64)
-        row = np.floor((points[:, 1] - self.y0) / self.scale + shift).astype(np.int64)
+        col = np.floor((points[:, 0] - self.origin_x_cm) / self.scale + shift).astype(np.int64)
+        row = np.floor((points[:, 1] - self.origin_y_cm) / self.scale + shift).astype(np.int64)
         ok = (col >= 0) & (col < self.width) & (row >= 0) & (row < self.height)
         if not ok.any():
             return
-        self._samples.append(row[ok] * self.width + col[ok])
-        self._sample_n += int(ok.sum())
-        if self._sample_n > RASTER_FLUSH:
-            self.flush_samples()
+        self._pending_samples.append(row[ok] * self.width + col[ok])
+        self._pending_sample_count += int(ok.sum())
+        if self._pending_sample_count > RASTER_FLUSH:
+            self.fold_samples()
 
-    def flush_samples(self) -> None:
+    def fold_samples(self) -> None:
         """Reduce the buffered sample texels into the density plane.
 
         Sorted and run-length counted rather than ``bincount``-ed: a bincount over the frame
-        allocates a 43-million-element temporary on every one of dozens of flushes.
+        allocates a 43-million-element temporary on every one of dozens of folds.
         """
-        if not self._samples:
+        if not self._pending_samples:
             return
-        idx = np.concatenate(self._samples)
-        self._samples, self._sample_n = [], 0
-        unique, counts = np.unique(idx, return_counts=True)
+        texels = np.concatenate(self._pending_samples)
+        self._pending_samples, self._pending_sample_count = [], 0
+        unique, counts = np.unique(texels, return_counts=True)
         self.density[unique] += counts.astype(np.uint32)
 
-    def flush(self) -> None:
-        if not self._idx:
-            return
-        idx = np.concatenate(self._idx)
-        z = np.concatenate(self._z)
-        src = np.concatenate(self._s)
-        self._idx, self._z, self._s, self._n = [], [], [], 0
-        order = np.lexsort((z, idx))
-        idx, z, src = idx[order], z[order], src[order]
-        last = np.empty(idx.size, bool)
-        last[-1] = True
-        last[:-1] = idx[1:] != idx[:-1]
-        idx, z, src = idx[last], z[last], src[last]
-        better = z > self.z[idx]
-        self.z[idx[better]] = z[better]
-        self.src[idx[better]] = src[better]
+    def _on_fold(self, texels: I64Grid, sources: U16Grid) -> None:
+        """Every buffered candidate, before the fold keeps each texel's highest one."""
 
-    def add(self, tri: np.ndarray, source_id: int) -> None:
+    def fold_heights(self) -> None:
+        """Reduce the buffered candidates into the height and source planes."""
+        if not self._pending_texels:
+            return
+        texels = np.concatenate(self._pending_texels)
+        heights = np.concatenate(self._pending_heights)
+        sources = np.concatenate(self._pending_sources)
+        self._pending_texels, self._pending_heights, self._pending_sources = [], [], []
+        self._pending_count = 0
+        self._on_fold(texels, sources)
+        order = np.lexsort((heights, texels))
+        texels, heights, sources = texels[order], heights[order], sources[order]
+        last = np.empty(texels.size, bool)
+        last[-1] = True
+        last[:-1] = texels[1:] != texels[:-1]
+        texels, heights, sources = texels[last], heights[last], sources[last]
+        better = heights > self.z[texels]
+        self.z[texels[better]] = heights[better]
+        self.source_id[texels[better]] = sources[better]
+
+    def add(self, tri: NDArray[np.floating], source_id: int) -> None:
         """Buffer every texel covered by ``tri`` (M, 3, 3) in world cm, with its plane Z.
 
         Bucketed by bounding-box span so one vectorised barycentric test runs over a whole
         bucket at a fixed candidate-grid size, instead of every triangle paying for the
         largest one's box.
         """
-        fx = (tri[:, :, 0] - self.x0) / self.scale
-        fy = (tri[:, :, 1] - self.y0) / self.scale
+        fx = (tri[:, :, 0] - self.origin_x_cm) / self.scale
+        fy = (tri[:, :, 1] - self.origin_y_cm) / self.scale
         z = tri[:, :, 2]
-        x0 = np.floor(fx.min(1) - 0.5)
-        x1 = np.ceil(fx.max(1) + 0.5)
-        y0 = np.floor(fy.min(1) - 0.5)
-        y1 = np.ceil(fy.max(1) + 0.5)
-        span = np.maximum(x1 - x0, y1 - y0).astype(np.int32)
+        box_col0 = np.floor(fx.min(1) - 0.5)
+        box_col1 = np.ceil(fx.max(1) + 0.5)
+        box_row0 = np.floor(fy.min(1) - 0.5)
+        box_row1 = np.ceil(fy.max(1) + 0.5)
+        span = np.maximum(box_col1 - box_col0, box_row1 - box_row0).astype(np.int32)
         for size in (1, 2, 4, 8, 16, 32, 64, 128, 256):
             pick = (span <= size) & (span > (size // 2 if size > 1 else 0))
             if not pick.any():
                 continue
             steps = np.arange(size + 1, dtype=np.float32)
             ox, oy = np.meshgrid(steps, steps)
-            gx = x0[pick][:, None] + ox.ravel()[None, :] + self.sample
-            gy = y0[pick][:, None] + oy.ravel()[None, :] + self.sample
+            gx = box_col0[pick][:, None] + ox.ravel()[None, :] + self.sample
+            gy = box_row0[pick][:, None] + oy.ravel()[None, :] + self.sample
             ax, ay = fx[pick, 0][:, None], fy[pick, 0][:, None]
             bx, by = fx[pick, 1][:, None], fy[pick, 1][:, None]
             cx, cy = fx[pick, 2][:, None], fy[pick, 2][:, None]
@@ -146,19 +159,20 @@ class MaxZRaster:
             if not ok.any():
                 continue
             plane = l1 * z[pick, 0][:, None] + l2 * z[pick, 1][:, None] + l3 * z[pick, 2][:, None]
-            self._idx.append(row[ok].astype(np.int64) * self.width + col[ok])
-            self._z.append(plane[ok].astype(np.float32))
-            self._s.append(np.full(int(ok.sum()), source_id, np.uint16))
-            self._n += int(ok.sum())
-        if self._n > RASTER_FLUSH:
-            self.flush()
+            self._pending_texels.append(row[ok].astype(np.int64) * self.width + col[ok])
+            self._pending_heights.append(plane[ok].astype(np.float32))
+            self._pending_sources.append(np.full(int(ok.sum()), source_id, np.uint16))
+            self._pending_count += int(ok.sum())
+        if self._pending_count > RASTER_FLUSH:
+            self.fold_heights()
 
-    def result(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        self.flush()
-        self.flush_samples()
+    def result(self) -> tuple[F32Grid, U16Grid, U32Grid]:
+        """The height plane in cm (``nan`` where nothing landed), the sources, the density."""
+        self.fold_heights()
+        self.fold_samples()
         z = self.z.reshape(self.height, self.width)
         return (
             np.where(np.isfinite(z), z, np.nan).astype(np.float32),
-            self.src.reshape(self.height, self.width),
+            self.source_id.reshape(self.height, self.width),
             self.density.reshape(self.height, self.width),
         )

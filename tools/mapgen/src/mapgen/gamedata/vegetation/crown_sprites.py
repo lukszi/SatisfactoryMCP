@@ -178,14 +178,10 @@ class _DepthRaster(MaxZRaster):
         self.tau = np.asarray(tau, np.float32)
         self.depth = np.zeros(width * height, np.float32)
 
-    def flush(self) -> None:
-        if self._idx:
-            idx = np.concatenate(self._idx)
-            src = np.concatenate(self._s)
-            self.depth += np.bincount(idx, weights=self.tau[src], minlength=self.depth.size).astype(
-                np.float32
-            )
-        super().flush()
+    def _on_fold(self, texels, sources) -> None:
+        self.depth += np.bincount(
+            texels, weights=self.tau[sources], minlength=self.depth.size
+        ).astype(np.float32)
 
 
 def equivalent_radius_m(cover: np.ndarray) -> float:
