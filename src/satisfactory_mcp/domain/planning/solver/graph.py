@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 
-from .model import MW
+from .model import MW, ProcessRow
 
 __all__ = ["chain_depth", "chain_depth_of_rates", "item_cycles", "strongly_connected"]
 
 
 def strongly_connected(n: int, edges: dict[int, set[int]]) -> list[list[int]]:
     """Tarjan's SCC, iterative so a deep chain cannot blow the recursion limit."""
-    index = [None] * n
+    index: list[int | None] = [None] * n
     low = [0] * n
     on_stack = [False] * n
     stack: list[int] = []
@@ -21,7 +21,7 @@ def strongly_connected(n: int, edges: dict[int, set[int]]) -> list[list[int]]:
     for root in range(n):
         if index[root] is not None:
             continue
-        work = [(root, iter(sorted(edges.get(root, ()))))]
+        work: list[tuple[int, Iterator[int]]] = [(root, iter(sorted(edges.get(root, ()))))]
         index[root] = low[root] = counter
         counter += 1
         stack.append(root)
@@ -31,7 +31,8 @@ def strongly_connected(n: int, edges: dict[int, set[int]]) -> list[list[int]]:
             node, it = work[-1]
             advanced = False
             for nxt in it:
-                if index[nxt] is None:
+                visited = index[nxt]
+                if visited is None:
                     index[nxt] = low[nxt] = counter
                     counter += 1
                     stack.append(nxt)
@@ -40,14 +41,14 @@ def strongly_connected(n: int, edges: dict[int, set[int]]) -> list[list[int]]:
                     advanced = True
                     break
                 if on_stack[nxt]:
-                    low[node] = min(low[node], index[nxt])
+                    low[node] = min(low[node], visited)
             if advanced:
                 continue
             work.pop()
             if work:
                 low[work[-1][0]] = min(low[work[-1][0]], low[node])
             if low[node] == index[node]:
-                component = []
+                component: list[int] = []
                 while True:
                     member = stack.pop()
                     on_stack[member] = False
@@ -78,7 +79,7 @@ def chain_depth(nodes: Sequence[tuple[Iterable[str], Iterable[str]]]) -> list[in
                     edges.setdefault(src, set()).add(i)
 
     components = strongly_connected(len(nodes), edges)
-    component_of = {}
+    component_of: dict[int, int] = {}
     for cid, members in enumerate(components):
         for member in members:
             component_of[member] = cid
@@ -121,15 +122,14 @@ def chain_depth_of_rates(rate_maps: Sequence[Mapping[str, float]]) -> list[int]:
     )
 
 
-def item_cycles(processes: Iterable[Mapping]) -> list[list[str]]:
+def item_cycles(processes: Iterable[ProcessRow]) -> list[list[str]]:
     """Items on a production cycle: components of two or more in the input-to-output graph.
 
-    ``processes`` are solution rows carrying ``rates``. Each cycle is sorted, and the cycles
-    are ordered by their first item.
+    Each cycle is sorted, and the cycles are ordered by their first item.
     """
     outputs_of: dict[str, set[str]] = {}
     for row in processes:
-        rates = row.get("rates") or {}
+        rates = row["rates"]
         outputs = [item for item, rate in rates.items() if rate > 0]
         for item, rate in rates.items():
             if rate < 0:

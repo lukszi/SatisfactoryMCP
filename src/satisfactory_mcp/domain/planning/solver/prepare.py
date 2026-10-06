@@ -26,19 +26,20 @@ class PlanFailure:
     """Why a plan could not be produced, in the caller's own words."""
 
     headline: str
-    notes: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list[str])
 
 
 @dataclass
 class PreparedPlan:
-    """A solved plan, or the reason there is not one."""
+    """A solved plan, or the reason there is not one: ``solution`` is None exactly when
+    ``failure`` is set."""
 
-    request: PlanRequest | None = None
+    request: PlanRequest
     solution: Solution | None = None
     #: Name of the saved plan this came from, empty if the arguments were given directly.
     plan_name: str = ""
     #: Recall and override notices, plus anything the solve wants to say.
-    notes: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list[str])
     failure: PlanFailure | None = None
     #: free_lunch_audit result, only when the caller asked for it.
     audit_ok: bool = True

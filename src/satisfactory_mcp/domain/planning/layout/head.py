@@ -9,13 +9,30 @@ from __future__ import annotations
 import math
 from itertools import permutations
 
+from typing_extensions import TypedDict
+
 from ....core.gamedata.constants import WATER_PUMP
 from .model import Block, Bus, Floor, Layout
 
-__all__ = ["fluid_head", "order_stages_by_head"]
+__all__ = ["HeadRow", "fluid_head", "order_stages_by_head"]
 
 
-def fluid_head(layout: Layout, pump_head_m: float = 0.0) -> list[dict]:
+class HeadRow(TypedDict):
+    """One pipe bus that changes floor: ``direction`` is ``climbs`` or ``falls``."""
+
+    item: str
+    rate: float
+    unit: str
+    floors: int
+    lines: int
+    metres: float
+    pumps_per_line: int
+    pumps: int
+    direction: str
+    site: str
+
+
+def fluid_head(layout: Layout, pump_head_m: float = 0.0) -> list[HeadRow]:
     """Each internal pipe bus that changes floor: storeys, metres crossed and the pumps a
     climb needs at ``pump_head_m`` per pump -- a lower bound, since pipe friction and the
     head a full pipe holds are not modelled (docs/planning.md §8.5m)."""
@@ -27,7 +44,7 @@ def fluid_head(layout: Layout, pump_head_m: float = 0.0) -> list[dict]:
             site_of[floor.stage] = floor.site
     height_of = {floor.index: floor.height_m for floor in layout.floors}
 
-    out: list[dict] = []
+    out: list[HeadRow] = []
     for bus in layout.buses:
         if bus.carrier != "pipe" or bus.external:
             continue
