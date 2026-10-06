@@ -1,7 +1,7 @@
 """Colour calibration of the game-painted style: display targets taken back to ground colour.
 
 The tone curve, the inverse pipeline from a display sRGB target to ground OKLab, the per-layer
-transfer and the area scoping. docs/spatial-and-map.md section 31.
+transfer, the targets derived by rule and the area scoping. docs/spatial-and-map.md section 31.
 """
 
 from __future__ import annotations
@@ -9,10 +9,18 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
-from mapgen.palette.colour import LUMA, linear_from_oklab, oklab, srgb_to_linear, unit_luminance
+from mapgen.palette.colour import (
+    LUMA,
+    linear_from_oklab,
+    linear_to_srgb,
+    oklab,
+    srgb_to_linear,
+    unit_luminance,
+)
 
 __all__ = [
     "area_ids",
+    "derived_hex",
     "display_to_crown",
     "display_to_ground",
     "display_to_linear",
@@ -26,6 +34,7 @@ __all__ = [
     "tone",
     "transfer_op",
     "weighted_median",
+    "with_derived",
 ]
 
 
@@ -149,6 +158,33 @@ def split_weight(weight: np.ndarray, share_u8: np.ndarray) -> tuple[np.ndarray, 
     """A u8 layer weight cut in two by a 0..255 share: ``(inside, outside)``, summing to it."""
     inside = ((weight.astype(np.uint16) * share_u8 + 127) // 255).astype(np.uint8)
     return inside, weight - inside
+
+
+def derived_hex(hex_colour: str, rule: dict) -> str:
+    """A display colour moved in its OKLab by ``rule``: the lightness times ``lightness``, the
+    chroma times ``chroma``, the hue turned by ``hue_deg``."""
+    lab = oklab(srgb_to_linear([int(hex_colour[i : i + 2], 16) for i in (1, 3, 5)]))
+    turn = np.radians(np.float32(rule.get("hue_deg", 0.0)))
+    c, s = np.cos(turn) * rule.get("chroma", 1.0), np.sin(turn) * rule.get("chroma", 1.0)
+    a, b = lab[1], lab[2]
+    moved = np.array([lab[0] * rule.get("lightness", 1.0), c * a - s * b, s * a + c * b])
+    rgb = np.round(linear_to_srgb(np.clip(linear_from_oklab(moved), 0.0, 1.0))).astype(int)
+    return "#" + "".join(f"{v:02x}" for v in rgb)
+
+
+def with_derived(cal: dict) -> dict:
+    """The calibration with each ``derived`` rule's layer target added to every scope, the
+    global layers and each area entry, whose ``from`` layer has a target and it has none."""
+    rules = cal.get("derived", {})
+
+    def scope(layers: dict) -> dict:
+        found = {name: derived_hex(layers[rule["from"]], rule) for name, rule in rules.items()
+                 if rule["from"] in layers and name not in layers}  # fmt: skip
+        return {**layers, **found}
+
+    areas = [{**e, "layers": scope(e["layers"])} if "layers" in e else e
+             for e in cal.get("areas", [])]  # fmt: skip
+    return {**cal, "layers": scope(cal.get("layers", {})), "areas": areas}
 
 
 def display_to_crown(p: dict, hex_colour: str) -> np.ndarray:

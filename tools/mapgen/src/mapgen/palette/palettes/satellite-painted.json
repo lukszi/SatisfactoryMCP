@@ -152,9 +152,9 @@
   "wet_band": {
    "m": 3.0,
    "tint": [
-    0.78,
-    0.8,
-    0.85
+    0.9,
+    0.88,
+    0.86
    ]
   },
   "foam": {
@@ -465,10 +465,17 @@
   "area_blur_m": 25.0,
   "layers": {
    "Sand_LayerInfo": "#d5cbb6",
-   "WetSand_LayerInfo": "#b1a09e",
    "SandRipples_LayerInfo": "#ca784f",
    "Grass_LayerInfo": "#83986e",
    "Forest_LayerInfo": "#558653"
+  },
+  "derived": {
+   "WetSand_LayerInfo": {
+    "from": "Sand_LayerInfo",
+    "lightness": 0.8,
+    "chroma": 1.0,
+    "hue_deg": -10.0
+   }
   },
   "canopy": "#558653",
   "rock": "#85816c",
@@ -482,6 +489,9 @@
   },
   "crowns": {
    "blue_palm": "#3d627d"
+  },
+  "species": {
+   "SM_Kapok_03": "#7c4955"
   },
   "areas": [
    {
@@ -522,12 +532,6 @@
    },
    {
     "areas": [
-     "Area_WesternDuneForest"
-    ],
-    "canopy": "#7c9573"
-   },
-   {
-    "areas": [
      "Area_RedJungle",
      "Area_RedBambooFields"
     ],
@@ -535,24 +539,6 @@
     "layers": {
      "Cliff_LayerInfo": "#877e6e"
     }
-   },
-   {
-    "areas": [
-     "Area_RedJungle_2"
-    ],
-    "canopy": "#6c7f5b"
-   },
-   {
-    "areas": [
-     "Area_RedJungle_1"
-    ],
-    "canopy": "#7c4955"
-   },
-   {
-    "areas": [
-     "Area_SpireCoast"
-    ],
-    "rock": "#51524d"
    },
    {
     "areas": [

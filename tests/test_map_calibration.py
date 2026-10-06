@@ -80,7 +80,17 @@ def _area_targets() -> list[str]:
 
 @pytest.mark.parametrize(
     "target",
-    ["#d5cbb6", "#ca784f", "#558653", "#ae8271", "#99868e", "#b1a09e", "#85816c", *_area_targets()],
+    [
+        "#d5cbb6",
+        "#ca784f",
+        "#558653",
+        "#ae8271",
+        "#99868e",
+        "#a29583",
+        "#987b61",
+        "#85816c",
+        *_area_targets(),
+    ],
 )
 def test_a_display_target_survives_the_trip_back_through_light_and_tone(target):
     lab = display_to_ground(PAINTED_PALETTE, target)

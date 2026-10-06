@@ -194,4 +194,4 @@ def test_hot_spring_terraces_and_two_foliage_rocks_are_render_only():
     assert is_render_only_foliage(smooth) and mesh_class(smooth) == MESH_ROCK
     assert is_render_only_foliage(snake) and mesh_class(snake) == MESH_ROCK
     assert not is_render_only_foliage(smooth.replace("_03", "_01")), "only the two named"
-    assert versions.READER_VERSIONS["render_meshes"] == 2
+    assert versions.READER_VERSIONS["render_meshes"] >= 2

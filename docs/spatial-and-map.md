@@ -1571,11 +1571,13 @@ beach with a median slope of 0.067, smearing the edge over about 13 m. Nothing f
   uses `WATER_DEPTH_FULL_M`. Terrain: `a0` 0.30, `c` 0.6 m. Satellite: 0.15 and 1.1 m. Wet
   darkening 0.82. (A first cut used 0.62 and 0.38, which read as too sharp a border.)
 - **Wet sand and foam**, per style in `shore`: `wet_band` multiplies the ground within `m`
-  metres above the waterline (measured across the ground, `height / slope`) towards a darker,
-  cooler tint, fading quadratically; `foam` lays a faint line over water shallower than
+  metres above the waterline (measured across the ground, `height / slope`) towards a darker
+  tint, fading quadratically; `foam` lays a faint line over water shallower than
   `max_depth_m` and within `width_m` of the line, so a flat sandbar gets a line and not a
   sheet. Satellite: 3 m band, foam 0.25. Painted: 3 m band, foam 0.4 (0.12 m deep, 1 m wide).
-  Terrain: neither.
+  Terrain: neither. The painted band's tint was a cool (0.78, 0.80, 0.85), which pulled the
+  band towards mauve; since game-painted 17 it is a mild warm (0.90, 0.88, 0.86), because the
+  wet sand layer now carries the wet colour by rule (section 31, "Wet sand by rule").
 - **The stroke.** A dark line where the crossing passes through a pixel is a style constant,
   `shore.stroke`, and is 0 (off) in every palette.
 - **The level** is one constant, `OCEAN_LEVEL_M = -17.0`, the water boxes' and ocean tiles'
@@ -1612,7 +1614,8 @@ The game-painted style keeps the rule above and colours the meshes itself.
 
 **The heightfield is unchanged.** `CliffPillar_03` stays excluded there because it is passable
 in game: the map draws what the artwork draws, and height lookups keep reading the walkable
-ground. The provenance input is `render_meshes`, reader version 1 (2 since section 35).
+ground. The provenance input is `render_meshes`, reader version 1 (2 since section 35, 3
+since the rocks' family plane of section 31, "The Spire Coast rock from its own material").
 
 ### The paint input
 
@@ -1637,7 +1640,10 @@ in `palette/painted.py` (both under `tools/mapgen/src/mapgen/`). Once per run, o
 
 1. Paint weights times layer albedo times 0.95, normalised by total weight; Puddles lerped on
    top. WetSand's OKLab lightness is set to 0.9 of Sand's: as shipped it is lighter than the
-   sand it wets.
+   sand it wets. (In the game the wet sand is the sand multiplied by `WetSand_Color`, about
+   (0.42, 0.38, 0.34), which the name-matched texture mean misses. With the bake as the
+   ground this step does not apply, and section 31 derives the wet sand target from the sand
+   target.)
 2. Times `(0.85 + 0.15 * PigmentMap)`.
 3. **Component seams.** A component painted solid with one layer meets its neighbour in a
    straight 127 m line. Where the jump across a component edge is a step (above 0.03 in
@@ -1653,7 +1659,8 @@ in `palette/painted.py` (both under `tools/mapgen/src/mapgen/`). Once per run, o
 Per pixel: canopy over the ground (0.85 times cover, Forest_Far albedo times 0.85); rock where
 a rock, arch or boulder raises the surface (by its lift, not its coverage, so a buried mesh is
 never coloured); the render-only meshes in their own colours (coral #b08a9c, shell #d6ccba,
-coral whose top is under water the seabed blue #5f8899, rock class takes the rock colour); OKLab chroma times 1.2; then an altitude lift of 0.03 L
+coral whose top is under water the seabed blue #5f8899, rock class takes the rock colour, in
+its own family since game-painted 17, section 31); OKLab chroma times 1.2; then an altitude lift of 0.03 L
 along a dry-land ramp. That ramp follows the recommended construction: heights over dry land
 only (`waterq` dry, p1 to p99.5), position `0.35 * linear + 0.65 * equalised`, applied as an
 even OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, times
@@ -2056,9 +2063,10 @@ The rock targets of section 31 are measured on rock that already wears the commo
 only a family's departure from it is applied (`palette/surfaces.py` `family_tables`). With one
 tint for every family, as on this build, rock stays on its target. Through style version 5 the
 whole tint was multiplied on after the target was set, which drew every rock 44% darker in
-linear light and warmer than its target. A render-only rock (sea rocks, rubble, rock piles)
-has no family: it takes the area's calibrated rock, never the family or top layer of a cliff
-whose footprint it happens to overlap.
+linear light and warmer than its target. A render-only rock (`CliffPillar_03`, sea rocks,
+rubble, rock piles) never takes the family or top layer of a cliff whose footprint it happens
+to overlap. Through game-painted 16 it had no family at all and took the area's calibrated
+rock; since 17 it wears its own (section 31, "The Spire Coast rock from its own material").
 
 **Trees over rock.** Rock used to hide the canopy: 86 to 97% of tree cover above 0.5 in the
 forest and ivy crops. The store's `crown.i16.z` holds, per 1 m texel, the highest crown top over
@@ -2124,7 +2132,9 @@ The painted style is calibrated against in-game screenshots: first the Spire Coa
 Desert, the Western Beaches and the Eastern Dune Forest, then a second pass over the biomes
 those left out (see "Area targets"). Style `satellite-painted` version 3; the crowns, the
 gated swamp water and the mesh colours below are version 6, the blue palms' own crown target
-version 9, the desert rock family's target and the daylight dune target version 11. Code:
+version 9, the desert rock family's target and the daylight dune target version 11, and the
+three land rules (the Spire Coast rock from its own material, wet sand by rule, the red Kapok
+by species) version 17. Code:
 `palette/painted.py`, `palette/calibration.py`, `palette/trees.py` (crowns),
 `palette/optics.py` (water) and `palette/surfaces.py` (rock and meshes). Numbers: the `tone`
 and `calibration` blocks of `palette/palettes/satellite-painted.json`.
@@ -2160,20 +2170,53 @@ arrived.
 
 ### Per-layer colour transfer
 
-The targets are display sRGB colours, at map exposure:
+The targets are display sRGB colours, at map exposure. Each is tagged by its source: a
+screenshot measured by the method below, or derived by a rule from another target.
 
-| Target | Colour |
-| --- | --- |
-| Sand | #d5cbb6 |
-| WetSand | #b1a09e |
-| SandRipples (the Dune Desert) | #ca784f |
-| Grass | #83986e |
-| Forest and the canopy | #558653 |
-| Rock outside every area entry | #85816c |
+| Target | Colour | Source |
+| --- | --- | --- |
+| Sand | #d5cbb6 | screenshot |
+| WetSand | #a29583: the Sand target at OKLab L ×0.80, C ×1.0, h −10 | derived (rule) |
+| SandRipples (the Dune Desert) | #ca784f | screenshot |
+| Grass | #83986e | screenshot |
+| Forest and the canopy | #558653 | screenshot |
+| Rock outside every area entry | #85816c | screenshot |
 
-WetSand was #b8a083, from one Spire Coast waterline box that probably mixed in dry sand. The
-Western Beaches wet band and the 1.0 crash-beach store shot both read a low-chroma mauve
-grey, so the target keeps the old lightness (L 0.72) and takes their hue and chroma.
+WetSand was #b8a083, from one Spire Coast waterline box that probably mixed in dry sand, then
+#b1a09e through game-painted 16: the Western Beaches wet band and the 1.0 crash-beach store
+shot both read a low-chroma mauve grey, so that target kept the old lightness (L 0.72) and
+took their hue and chroma. Since 17 it is a rule (below).
+
+#### Wet sand by rule (2026-10-06)
+
+In the game the wet sand is the sand multiplied by `WetSand_Color`: the bake's Sand times
+(0.422, 0.378, 0.336) matches the bake's WetSand within 1 to 11%. Five daylight screenshots of
+an exposed wet band against the dry sand beside it pool to L ×0.80, C ×0.98 and a hue turn of
+−13° (Steam [3771679183](https://steamcommunity.com/sharedfiles/filedetails/?id=3771679183),
+the north beach; [3806590944](https://steamcommunity.com/sharedfiles/filedetails/?id=3806590944);
+[3427095273](https://steamcommunity.com/sharedfiles/filedetails/?id=3427095273);
+[3438470146](https://steamcommunity.com/sharedfiles/filedetails/?id=3438470146); and
+[Western Beaches](https://satisfactory.wiki.gg/images/Western_Beaches.png)). Warm light gives
+−3 to −13°. Under a blue-cast sky the glossy band reflects the sky and turns −30 to −50°, which
+is where the mauve of #b1a09e came from.
+
+`calibration.derived` holds the rule: WetSand is the Sand target with OKLab lightness ×0.80,
+chroma ×1.0 and hue −10°. `with_derived` (`palette/calibration.py`) adds it to every scope that
+has a Sand target and no WetSand target of its own: #a29583 from the global #d5cbb6, and
+#987b61 inside the desert entry from its #c4ab8b. A target written out in a scope wins over the
+rule. The derived targets then go through the per-layer transfer like any other.
+
+The band the shore draws (section 27, `wet_band`) multiplies the ground near the waterline on
+top of that. Its tint was a cool (0.78, 0.80, 0.85), which pulled towards mauve; it is now a
+mild warm (0.90, 0.88, 0.86). Measured on windows of the full-size grid (see "The land rules,
+measured" below), dry ground painted WetSand lands at L ×0.72 to ×0.78 of the dry sand 10 to
+60 m up the beach, C ×0.82 to ×0.94 and h −3 to −9°, against ×0.75 to ×0.87, C ×0.53 to ×0.62
+and h −42 to −77° before. (On the ocean coast at (-2515, 645), whose dry sand is near grey, it
+reads C ×1.32 and h −15°.) A stronger band would sink it further below ×0.80 within the first
+metre: the cool tint took 0.03 to 0.04 of L there, the mild one takes 0.02. On a beach painted
+Sand down to the drawn sea, as at the north beach (-58, -1507), the band alone draws the wet
+line, at L ×0.97 in the first metre (×0.95 before). The paint has no WetSand above the drawn
+sea there: its Sand/WetSand crossover sits near -17.4 m and the sea at -17.0 m (section 27).
 
 SandRipples was #d07756 through style version 10. It came from one golden-hour shot,
 [Dune Desert](https://satisfactory.wiki.gg/images/Dune_Desert_Area.png) (low sun, pink sky,
@@ -2214,7 +2257,9 @@ blurred over `area_blur_m` (25 m) on the 4 m rock grid. An entry can carry:
 - **`rock`.** As the desert rock below.
 - **`canopy`** and **`meshes`** (coral, shell). The colour becomes a plane on the rock grid:
   the global colour outside, the entry's inside. The canopy targets also move the tree crowns
-  (see "Crowns" below).
+  (see "Crowns" below). Since game-painted 17 no entry carries a canopy target: the Western
+  Dune Forest and the Jungle Spires take the global one, and the Red Jungle's crimson is keyed
+  by species.
 - **`water`** with **`water_class`.** An opaque display colour for the water of one class of
   section 33 (`swamp` for the Swamp). Under that class's share of a pixel's water it replaces
   the Beer-Lambert result by `1 - exp(-depth / water.opaque_tau_m)`, with the tau 0.3 m, so
@@ -2239,7 +2284,8 @@ holds for every area entry. On build 502094 it moves 3.74 km² (sidecar
 `paint.offshore_cells_rehomed`, in 4 m cells): Rocky Desert to Spire Coast 2.47 km², Rocky
 Desert to none 1.09, Red Jungle to none 0.13, Grass Fields to none 0.05. At 2048 px the
 Spire Coast crop's red rocks go from #af8774 to #575951 (ΔE 22.7 to 2.4 against #51524d);
-dunes and the desert lake do not change.
+dunes and the desert lake do not change. Since game-painted 17 the Spire Coast has no rock
+target of its own, so the islands it takes wear the default rock and their families.
 
 **Rock.** In each entry with a `rock` target, and with the default `rock` target everywhere
 else, the rock's chroma and hue are set to the target. The lightness moves by the step from
@@ -2249,27 +2295,29 @@ for a palette without a default.
 
 The targets use the method above: the median sRGB over the top 60% of L in each box, then
 L ×0.95 (capped at 0.86) and chroma ×0.9 in OKLab. Only medium- or high-confidence
-references were used:
+references were used. A target is a screenshot measured so, or derived by a rule:
 
-| Material | Areas | Target | References |
-| --- | --- | --- | --- |
-| Rock | Dune Desert, Desert Canyons, Rocky Desert (not Savanna) | #ae8271 | first pass |
-| Rock, desert rock family | wherever desert rock stands (see "Rock by mesh family" below) | #ae8271 | the desert rock target above. On the desert spires: [Spires Base](https://images.steamusercontent.com/ugc/23177420036648851/71D9249104B80F4E0B96989BE624C9583A34D636/) and [Funicular base](https://images.steamusercontent.com/ugc/9849253882402225725/30B60C5F97C3A2CDF7BA66D4554AB06E246919FD/) pool to #af6f58 (ΔE 4.9), and a Dune Desert mesa wall, [Desert for Dessert](https://steamcommunity.com/sharedfiles/filedetails/?id=3360666296), reads #925e4b |
-| Rock | Grass Fields, Northern Forest, Western Dune Forest | #7e7868 | up-facing lit rock: [store shot](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/ss_b1104309f1c22c85de6ad6c401e6d889411c14d2.1920x1080.jpg), [Random mode 1](https://satisfactory.wiki.gg/images/Random_Game_Mode_-_Resource_Node_Example_1.png), [cave entrance](https://satisfactory.wiki.gg/images/Entrance_Of_A_Cave.webp), [Northern Forest U8](https://satisfactory.wiki.gg/images/Comparison_2_-_Northern_Forest_-_U8.png) |
-| Rock and Cliff layer | Red Jungle, Jungle Spires, Red Bamboo Fields | #877e6e | [Jungle Spires](https://satisfactory.wiki.gg/images/Jungle_Spires.png), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942) |
-| Rock | Spire Coast | #51524d | an unpublished 1.0 shot; [Spire Coast](https://satisfactory.wiki.gg/images/Spire_Coast.png) for the lightness |
-| Rock, default | everywhere else | #85816c | [Abyss Cliffs](https://satisfactory.wiki.gg/images/Abyss_Cliffs.png), [Lake Forest](https://satisfactory.wiki.gg/images/Lake_Forest.png), the store shot |
-| Sand | the deserts and Savanna | #c4ab8b | [Somersloop](https://satisfactory.wiki.gg/images/Somersloop_at_Rocky_Desert.jpg), [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), [Desert Canyons](https://satisfactory.wiki.gg/images/Desert_Canyons.png) |
-| Gravel | the deserts and Savanna | #8f8373 | Somersloop, and the gravel-to-sand ratio in Desert Canyons |
-| Grass | Grass Fields | #9dad70 | the v1.1 top-down HUB shots: [front](https://satisfactory.wiki.gg/images/HUB_Front_Overhead.png), [rear](https://satisfactory.wiki.gg/images/HUB_Rear_Overhead.png), [burners](https://satisfactory.wiki.gg/images/HUB_Biomass_Burners_Overhead.png), [freighter](https://satisfactory.wiki.gg/images/HUB_FICSIT_Freighter_Overhead.png) |
-| Canopy | Western Dune Forest | #7c9573 | [Western Dune Forest](https://satisfactory.wiki.gg/images/Western_Dune_Forest.png) |
-| Canopy | Jungle Spires | #6c7f5b | [Jungle Spires](https://satisfactory.wiki.gg/images/Jungle_Spires.png) for hue and chroma; the Spire Coast lightness, as the shot is low-angle |
-| Canopy | Red Jungle | #7c4955 | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942) |
-| Crowns, blue palms | everywhere, by hue | #3d627d | [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), high-angle daylight: the blue leaf pixels (hue 190 to 290, chroma at least 0.04) of five crowns pooled, then the method above. The [Rocky Desert area](https://satisfactory.wiki.gg/images/Rocky_Desert_Area.png) crowns agree on hue (242) but are seen from below; the [river split](https://satisfactory.wiki.gg/images/Rocky_Desert_river_split.png) crowns are backlit |
-| CoralRock layer | Blue Crater, Crater Lakes | #6c7386 | [crater ground at noon](https://steamcommunity.com/sharedfiles/filedetails/?id=3372405479) |
-| Shell meshes (the pale plates) | Blue Crater | #747b85 | [Blue Crater aerial](https://steamcommunity.com/sharedfiles/filedetails/?id=3579556500), [Blue Crater](https://satisfactory.wiki.gg/images/Blue_Crater.png), the noon crater shot |
-| Water, opaque | Swamp | #302627 | screenshot: 1.0 views from above, see section 33, "Sea deep and swamp water". It was #7e7372 through style version 15, measured through the swamp's fog on [Swamp](https://satisfactory.wiki.gg/images/Swamp.png), [Swamp 2024](https://steamcommunity.com/sharedfiles/filedetails/?id=3202456199) and [Swamp 1.0](https://steamcommunity.com/sharedfiles/filedetails/?id=3344959083) |
-| WetSand (global) | everywhere | #b1a09e | [Western Beaches](https://satisfactory.wiki.gg/images/Western_Beaches.png), [crash-beach store shot](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/ss_279a1e122f86b7c98931b42e38cac0fa91b996ce.1920x1080.jpg) |
+| Material | Areas | Target | Source | References |
+| --- | --- | --- | --- | --- |
+| Rock | Dune Desert, Desert Canyons, Rocky Desert (not Savanna) | #ae8271 | screenshot | first pass |
+| Rock, desert rock family | wherever desert rock stands (see "Rock by mesh family" below) | #ae8271 | screenshot | the desert rock target above. On the desert spires: [Spires Base](https://images.steamusercontent.com/ugc/23177420036648851/71D9249104B80F4E0B96989BE624C9583A34D636/) and [Funicular base](https://images.steamusercontent.com/ugc/9849253882402225725/30B60C5F97C3A2CDF7BA66D4554AB06E246919FD/) pool to #af6f58 (ΔE 4.9), and a Dune Desert mesa wall, [Desert for Dessert](https://steamcommunity.com/sharedfiles/filedetails/?id=3360666296), reads #925e4b |
+| Rock | Grass Fields, Northern Forest, Western Dune Forest | #7e7868 | screenshot | up-facing lit rock: [store shot](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/ss_b1104309f1c22c85de6ad6c401e6d889411c14d2.1920x1080.jpg), [Random mode 1](https://satisfactory.wiki.gg/images/Random_Game_Mode_-_Resource_Node_Example_1.png), [cave entrance](https://satisfactory.wiki.gg/images/Entrance_Of_A_Cave.webp), [Northern Forest U8](https://satisfactory.wiki.gg/images/Comparison_2_-_Northern_Forest_-_U8.png) |
+| Rock and Cliff layer | Red Jungle, Jungle Spires, Red Bamboo Fields | #877e6e | screenshot | [Jungle Spires](https://satisfactory.wiki.gg/images/Jungle_Spires.png), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942) |
+| Rock, default | everywhere else, the Spire Coast included since 17 | #85816c | screenshot | [Abyss Cliffs](https://satisfactory.wiki.gg/images/Abyss_Cliffs.png), [Lake Forest](https://satisfactory.wiki.gg/images/Lake_Forest.png), the store shot. Lit up-facing bare rock on the Spire Coast pools to #877b71, ΔE 2.1 from it (see "The Spire Coast rock from its own material") |
+| Sand | the deserts and Savanna | #c4ab8b | screenshot | [Somersloop](https://satisfactory.wiki.gg/images/Somersloop_at_Rocky_Desert.jpg), [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), [Desert Canyons](https://satisfactory.wiki.gg/images/Desert_Canyons.png) |
+| WetSand | the deserts and Savanna | #987b61 | derived (rule) | the entry's Sand at L ×0.80, C ×1.0, h −10 ("Wet sand by rule" above) |
+| Gravel | the deserts and Savanna | #8f8373 | screenshot | Somersloop, and the gravel-to-sand ratio in Desert Canyons |
+| Grass | Grass Fields | #9dad70 | screenshot | the v1.1 top-down HUB shots: [front](https://satisfactory.wiki.gg/images/HUB_Front_Overhead.png), [rear](https://satisfactory.wiki.gg/images/HUB_Rear_Overhead.png), [burners](https://satisfactory.wiki.gg/images/HUB_Biomass_Burners_Overhead.png), [freighter](https://satisfactory.wiki.gg/images/HUB_FICSIT_Freighter_Overhead.png) |
+| Crowns, red Kapok (`SM_Kapok_03`) | everywhere, by species | #7c4955 | screenshot | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942); two 1.0 sources agree (ΔE 1.8 and 1.9). Through game-painted 16 it was the Red Jungle's canopy target (see "Crowns") |
+| Crowns, blue palms | everywhere, by hue | #3d627d | screenshot | [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), high-angle daylight: the blue leaf pixels (hue 190 to 290, chroma at least 0.04) of five crowns pooled, then the method above. The [Rocky Desert area](https://satisfactory.wiki.gg/images/Rocky_Desert_Area.png) crowns agree on hue (242) but are seen from below; the [river split](https://satisfactory.wiki.gg/images/Rocky_Desert_river_split.png) crowns are backlit. A 1.0 shot gives #556b85 (ΔE 4.4); not derivable, as a third of the leaf is midribs and the fronds are sparse |
+| CoralRock layer | Blue Crater, Crater Lakes | #6c7386 | screenshot | [crater ground at noon](https://steamcommunity.com/sharedfiles/filedetails/?id=3372405479) |
+| Shell meshes (the pale plates) | Blue Crater | #747b85 | screenshot | [Blue Crater aerial](https://steamcommunity.com/sharedfiles/filedetails/?id=3579556500), [Blue Crater](https://satisfactory.wiki.gg/images/Blue_Crater.png), the noon crater shot |
+| Water, opaque | Swamp | #302627 | screenshot | 1.0 views from above, see section 33, "Sea deep and swamp water". It was #7e7372 through style version 15, measured through the swamp's fog on [Swamp](https://satisfactory.wiki.gg/images/Swamp.png), [Swamp 2024](https://steamcommunity.com/sharedfiles/filedetails/?id=3202456199) and [Swamp 1.0](https://steamcommunity.com/sharedfiles/filedetails/?id=3344959083) |
+
+Removed in game-painted 17: the Spire Coast rock #51524d (one backlit, shaded vertical face in
+an unpublished 1.0 shot, see "The Spire Coast rock from its own material"), the Western Dune
+Forest canopy #7c9573 and the Jungle Spires canopy #6c7f5b (Early Access wiki images, see
+"Crowns"), and the global WetSand #b1a09e (now the rule).
 
 Two readings in these references:
 
@@ -2338,6 +2386,74 @@ area's rock median is measured over ground the new SandRipples target also moves
 rock, boulders and meshes (3 px clear of any), no pixel changes in any window except on the
 SandRipples layer in the Dune Desert.
 
+### The Spire Coast rock from its own material (2026-10-06)
+
+Through game-painted 16 the Spire Coast had a rock target of its own, #51524d. It came from
+one box in an unpublished 1.0 shot: a vertical cliff face at the frame's edge, backlit and in
+shade. Measured on Steam shots of the coast in daylight, the rock falls in three pools: lit
+up-facing bare rock #877b71, moss and grass on the tops #505936, and shaded faces #3a3935.
+The default rock #85816c is ΔE 2.1 from the lit bare rock; #51524d was 15.6 from it. So the
+entry is gone, and the Spire Coast's rock falls back to the default.
+
+**The pillars' own material.** The grey pillars are `Cliff` meshes in `_Forest`, `_WetSand`
+and plain instances of the Cliff master, with no tint of their own: in the lagoon box (x -600
+to 1,100, y -2,900 to -1,600) 371 of 435 placements are `_Forest`. `Cliff_Forest`'s static
+switches turn on "Blend Material on Top", `UseForestGrass` and "Use Far Albedo", with
+`TX_Forest_Far_01_Alb` as the far albedo: a forest-floor top layer on the up-facing faces,
+which the heightfield cliffs already draw (section 30, "Rock surfaces"). `Cliff_WetSand`
+switches its top layer on too, but overrides no texture, so its top is the cooked master's
+default, which is not readable; it stays bare. Through the camera model of the colour study
+the far albedo gives #54662b; the style draws it #58713d on flat ground, ΔE 3.6 from that.
+
+**Render-only rocks.** `CliffPillar_03` is passable in game, so it stays out of the
+heightfield and is drawn by the render-only mesh pass (section 27). Through game-painted 16
+its 32 lagoon sea stacks drew in the area's rock, flat #51524d, with no family and no top
+layer. Now the mesh pass records each rock's family as the direct pass does: the placement's
+override material, else the mesh's own, walked up to a `Cliff_<Layer>` root
+(`gamedata/rockfamily.py` `worn_family`). `rasterise_mesh_band` carries it above the class in
+each instance's source code (`MESH_FAMILY_SHIFT`), and the cache gains a family plane,
+`meshes.family.u8`, beside the class plane (render meshes reader version 3, so an older mesh
+cache is rasterised again once). `mesh_surface` draws a rock pixel through `rock_surface` with
+that family, so it takes the family's tint and its top layer on the up-facing faces exactly as
+a cliff does; a rock with no family keeps the area's rock. On build 502094 the 376
+`CliffPillar_03` placements are 137 plain cliff, 128 grass, 57 forest, 21 red jungle, 7 sand,
+5 red grass and 21 with no family; all 32 lagoon stacks are forest.
+
+### The land rules, measured (2026-10-06)
+
+Windows of the full-size grid (0.229 m to the pixel, 240 to 300 m across) were drawn
+in-process through `render_layer`, with the fifth render's raster caches, the paint store, and
+no artwork detail and no open sea, once with game-painted 16 and once with 17. The
+render-only rocks' family plane was rasterised for each window by `mesh_items` and
+`rasterise_mesh_band` from the level sweep's placements; where both have a rock, the heights
+agree within 10 cm on 99.4% of the pixels (96.5% in the Red Jungle). Values are the median of
+the pixels named, display sRGB, and ΔE is OKLab ×100.
+
+| Window | Pixels | Before | After | ΔE to the reference, before → after |
+| --- | --- | --- | --- | --- |
+| Lagoon stacks (203, -2515) | render-only rock facing up | #51524d | #59723e | moss #54662b (model): 9.1 → 3.9 |
+| | render-only rock, steep faces | #383b39 | #616053 | lit bare rock #877b71: 24.3 → 10.6 |
+| | cliff rock facing up (forest top) | #58703d | #59723d | the stacks' tops: 0.1 apart |
+| | cliff rock, steep faces | #53554e | #89856f | #877b71: 14.6 → 3.1 |
+| Spiral (-339, -2275) | cliff rock, steep faces | #494d44 | #6f6e5c | #877b71: 17.8 → 6.0 |
+| | render-only rock, all | #595a51 | #666558 | #877b71: 12.8 → 8.8 |
+| Spire spit (243, -2078) | dry WetSand 0 to 4 m from the water | #96888a to #a19291 | #8f8372 to #948878 | the rule, L ×0.80, h −10: L ×0.75 to 0.79, h −62 to −77 → L ×0.72 to 0.74, h −6 to −8 |
+| Spire shore (269, -1943) | dry WetSand 0 to 4 m | #9d8f8f to #a89796 | #958877 to #998d7c | L ×0.78 to 0.81, h −58 to −62 → L ×0.74 to 0.76, h −6 to −8 |
+| | dry WetSand 4 to 60 m | #aa9a95 | #9d917f | L ×0.82, C ×0.62, h −42 → L ×0.78, C ×0.91, h −5 |
+| North beach (-58, -1507) | Sand 0 to 1 m from the water | #baa486 | #c2a886 | L ×0.95 → ×0.97 of the dry sand #cab08d; no WetSand above the drawn sea |
+| Western Dune Forest (-1239, 1305) | crowns | #79916f | #548552 | #558653: 6.8 → 0.3 |
+| Jungle Spires (-1696, 936) | crowns | #6c7f5b | #558552 | #558653: 3.9 → 0.3 |
+| Red Jungle (-1036, 237) | red Kapok crowns | #7b4854 | #7b4854 | #7c4955: 0.3 → 0.3 |
+| | other crowns (bamboo) | #a1657e | #c7616e | their own texture colour, as in the Red Bamboo Fields |
+| Red trees in the Jungle Spires (-650, 700) | red Kapok crowns | #994946 | #7b4854 | #7c4955: 6.0 → 0.3 |
+| Dune Desert (3025, -1826), dry and inland | everything | | | 38,941 of 1.7 M pixels change, by one level at most |
+
+The canopy's global step hardly moves when the two forests join its scope: 20,540 trees before
+and 26,000 after, a lightness step of +0.037 and a chroma scale of ×1.141 both times. The red
+Kapok's own step is −0.035 and ×0.646 over its 1,324 trees, as the Red Jungle's was. The wet
+sand's derived targets reach the bed under shallow water too: the sea 0.3 to 1 m deep goes
+0.001 to 0.010 darker in L, its hue within 2° (#5f8182 to #5d7e7f at the north beach).
+
 ### Other colours
 
 - **Meshes.** Coral-tree caps are #99868e, replacing the pink placeholder; a display target,
@@ -2396,9 +2512,32 @@ saturated red against its #7c4955. The targets now move the crowns (`palette/tre
   against the purple tree (0.016 to 0.019). Each op is gated on the crown's colour before any
   op; the canopy and palm gates do not overlap. The blue palms' target is #3d627d: 3,332
   trees, step -0.285 and ×1.51 (sidecar `crowns@blue_palm`).
+- **Species targets** (game-painted 17). `calibration.species` names a target per tree
+  species, for a colour that belongs to the tree rather than to the place. Before the scopes
+  are measured, each named species' crowns move from the species' own colour as drawn onto
+  its target, every texel of its sprite's mips (`palette/trees.py` `species_targets`), so the
+  hue gates that follow see the moved colour. One is named: the red Kapok `SM_Kapok_03`, on
+  #7c4955, 1,324 trees, step -0.035 and ×0.646 (sidecar `species@SM_Kapok_03`).
 
-Measured at 2048 px on build 502094: the median of crown pixels at least 95% covered and dry,
-per area, Delta E (OKLab x100) to the target before and after.
+**Why by species.** Through game-painted 16 the crimson was the canopy target of
+`Area_RedJungle_1`, and the Western Dune Forest (#7c9573) and the Jungle Spires (#6c7f5b) had
+canopy targets of their own. Those two came from Early Access wiki images (uploaded 2023-03,
+before Lumen). Their crowns are 86 to 90% `SM_Kapok_01` and they have no grading volume of
+their own, so they now take the global #558653; 1.0 Kapok canopy ranges h 127 to 152. The red
+Kapok grows outside the Red Jungle too: 68% of its crowns there, but also 32% of the Rocky
+Desert's, 22% of the Red Bamboo Fields' and 19% of the Jungle Spires'. Keyed by area, the red
+Kapok in the Jungle Spires around (-650, 700) fell to the green target's scope, which its hue
+gate refused, and drew its texture mean #994946, ΔE 6 from the crimson. Its crimson is real
+(two 1.0 sources at ΔE 1.8 and 1.9; not sub-surface light, which reads coral, and not haze,
+which reads mauve from afar). Other red-leaved species are not named: the research names
+only the red Kapok, so the pink bamboo, the mangroves' bark, the cat palms, the Dypsis palms
+and the Diospyros keep their texture colours. Inside the Red Jungle the bamboo was moved by
+the area's crimson step through game-painted 16 and now draws its texture colour, as it does
+in the Red Bamboo Fields.
+
+Measured at 2048 px on build 502094, game-painted 6: the median of crown pixels at least 95%
+covered and dry, per area, Delta E (OKLab x100) to the target before and after. Game-painted
+17 is measured in "The land rules, measured" above.
 
 | Scope | Trees measured | Step (dL, chroma) | Area | Before | After |
 | --- | --- | --- | --- | --- | --- |
@@ -2463,7 +2602,9 @@ The first-pass targets stay where they were: desert rock 0.5 to 0.1, Sand outsid
 deserts 0.5 to 0.7, Grass outside Grass Fields 0.6, the dunes 1.3 and the Spire Coast
 canopy 0.6. The Jungle Spires canopy was already close in hue and chroma and moves mostly
 in lightness; its remaining 3.2 is the 15% of ground under the canopy. What is left on
-the layers is mostly the biome tint, which is added after the transfer.
+the layers is mostly the biome tint, which is added after the transfer. Game-painted 17
+dropped the Spire Coast rock and the two forest canopy rows and turned the WetSand row into
+the rule ("Area targets" above).
 
 ### Known limits
 
@@ -2477,8 +2618,16 @@ the layers is mostly the biome tint, which is added after the transfer.
   no target of its own yet.
 - The Grass Fields grass target comes from one place, seen in four v1.1 shots; the biome
   is inferred from the flowers. Grass elsewhere keeps the Eastern Dune Forest target.
-- The Spire Coast rock target is near-neutral (C 0.008) because the hue in its references
-  is the shot's teal haze. The moss on the spires is not modelled.
+- The forest family's moss top is drawn on every up-facing face of a `_Forest` cliff or
+  pillar at full weight, as on the heightfield cliffs since section 30. On the Spire Coast's
+  lit tops the screenshots show it on 14 to 66% of the face, and darker (#505936, ΔE 7.5 from
+  the #58713d drawn on flat ground). The `_WetSand` instances' top layer is the cooked
+  master's default and is not drawn; whether it shows in game is unchecked.
+- The red Kapok is crimson wherever it grows, the Rocky Desert and the Red Bamboo Fields
+  included, by the Red Jungle's references. Its crowns there were not measured from above.
+- On a beach whose paint has no WetSand above the drawn sea, as at the north beach, the
+  shore's band is the only wet cue and reads L ×0.97 in its first metre, against ×0.80 in
+  game.
 - The rocks on the North Beach lagoon islands, and the cliff foot and boulders along the north
   beach around (128, -1500), sit inside the main piece of `Area_DesertCanyons`, so the
   offshore rehoming leaves them, and they keep the desert rock, though the wiki and a 2022
@@ -2492,9 +2641,9 @@ the layers is mostly the biome tint, which is added after the transfer.
   Rocky Desert, so it is left undone. The boulders wear the same materials everywhere, with no
   override, so following their mesh would give them one colour across the map, the Dune Desert
   included.
-- Boulders, rubble, rock piles and arches have no family, so they keep the area's rock. On the
-  mesas, which the area map gives to the Spire Coast, a few of them stay charcoal on the
-  red-brown rock.
+- Boulders, arches, and rubble and rock piles whose material roots no family keep the area's
+  rock. On the mesas, which the area map gives to the Spire Coast, a few of them stay grey
+  (the default rock since game-painted 17, charcoal before) on the red-brown rock.
 - The Red Bamboo Fields and Red Jungle lakes keep the sea fit: their reference water
   reflects a purple sky, which is not the swamp's look.
 - Every target comes from tonemapped perspective screenshots; only the Grass Fields grass
@@ -3301,10 +3450,11 @@ which took 65 to 108 s in all on a loaded machine; the store grows from 54 to 66
 
 ### Known limits
 
-- **Colours are the textures', moved by the canopy targets and, for the blue palms, a target
-  of their own.** Crowns of a target's own hue are calibrated (section 31, "Crowns"); every
-  other crown keeps its texture mean: bamboo is a saturated pink-red, the tall mangroves' tops
-  are their bark texture. The style's `chroma` of 0.8 is a taste call.
+- **Colours are the textures', moved by the canopy target, the red Kapok's species target
+  and, for the blue palms, a target of their own.** Crowns of a target's own hue, and the red
+  Kapok `SM_Kapok_03` by name, are calibrated (section 31, "Crowns"); every other crown keeps
+  its texture mean: bamboo is a saturated pink-red, the tall mangroves' tops are their bark
+  texture. The style's `chroma` of 0.8 is a taste call.
 - **Blue palms are blue, on a target of their own.** `BluePalm_01` and `_02` (3,332 trees:
   1,747 in the Rocky Desert, 768 in the Savanna, 344 on the Spire Coast) have one leaf colour,
   the leaf half of `TX_BluePalm_01_Alb`: light blue with white midribs, linear (0.27, 0.40,
@@ -3471,15 +3621,15 @@ pixel, these rules decide.
 | River ribbons | A pixel's share of ribbon water (section 34) takes the `river` class's optics, whatever the class plane says under it. The class plane was built from the field's water, which the ribbon partly replaces. |
 | Crown tops | One producer: the measured tops of section 36 write `crown.i16.z`. Section 30's estimate from the radius is gone. Section 30's trees-over-rock reads the same plane. |
 | Canopy over rock | With crowns drawn the soft canopy is off (`canopy_kept` 0), so section 30's rule draws nothing and the crowns' own "hidden under a higher surface" test decides. |
-| Canopy targets | Section 31's canopy targets move the crowns of section 36, each scope's step taken by the crowns near the target's hue; the soft canopy they used to colour stays off. Its named crown targets (the blue palms) move the crowns of their own hue wherever they grow, gated apart from the canopy targets. |
-| Rock family and rock target | Section 31's rock targets are set first; section 30's family tint goes on relative to the families' median, so a common tint leaves rock on target. A family with a target of its own (desert rock, section 31's "Rock by mesh family") takes it over the area's rock. Render-only rocks take the area's rock. |
+| Canopy targets | Section 31's species targets (the red Kapok) move their species' crowns first, wherever they grow; then the canopy target moves the crowns of section 36, the step taken by the crowns near the target's hue, so a crown a species target moved is gated by its new colour. The soft canopy they used to colour stays off. Its named crown targets (the blue palms) move the crowns of their own hue wherever they grow, gated apart from the canopy target. |
+| Rock family and rock target | Section 31's rock targets are set first; section 30's family tint goes on relative to the families' median, so a common tint leaves rock on target. A family with a target of its own (desert rock, section 31's "Rock by mesh family") takes it over the area's rock. A render-only rock wears its own family from the mesh cache's family plane, tint, target and top layer, as a cliff does; one with no family takes the area's rock. |
 | Coral, carpet and water | Section 32's carpet and section 31's seabed coral are both bed colours under the water. A coral speck standing in water is drawn as that water with the coral as its bed. |
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
 | Coral trees | One producer: the render-only mesh pass of section 27. Section 36's crowns leave out every species that pass draws; the crown-top plane still holds them, so they still cast tree shadows (section 36, "Coral trees are no crowns"). |
 | Meshes standing in the water, lit | The lighting pyramid's surface is the first layer's. When that is a ground-and-water style, the render-only meshes standing in the water are water in it; the painted layer, drawn unlit after it, keeps the default sun's light of their own top on them. |
 | Crowns and water | A crown standing out of the water is composited after the water, the foam and the shore line, whole; one under the surface goes into the bed after section 32's carpet and before the open-sea term and section 31's opaque water, so the class optics, the open sea and the swamp's murk all apply to it (section 36, "Crowns and the water"). |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
-| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 17 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes; then section 36's coral trees left to their meshes, with the default sun on the meshes standing in the water; then section 33's sea deep colour and near-black swamp water; then section 33's translucent water and swamp mouths). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
+| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 18 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes; then section 36's coral trees left to their meshes, with the default sun on the meshes standing in the water; then section 33's sea deep colour and near-black swamp water; then section 33's translucent water and swamp mouths; then section 31's land rules: the Spire Coast rock dropped, render-only rocks in their own family, wet sand by rule with a mild warm shore band, and the red Kapok by species). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 3 (the render-only rocks' family plane), `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. Water below a drop inside a box is re-levelled before the rest of its body, so the class plane sees the basin under the wide fall at the swamp's level and the swamp box claims it. |
 | Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, and the open sea (row below) hands those grades to every style. Section 33's open sea is found on that same drawn water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |

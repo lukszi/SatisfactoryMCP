@@ -49,6 +49,10 @@ MESH_Z_NAME = "meshes.z.f32"
 MESH_CLASS_NAME = "meshes.class.u8"
 
 
+#: The rock family of each texel's winning render-only mesh, as the direct cache's.
+MESH_FAMILY_NAME = "meshes.family.u8"
+
+
 MESH_CACHE_SIDECAR = "meta.json"
 
 
@@ -59,6 +63,7 @@ PLANE_DTYPES = {
     DIRECT_FAMILY_NAME: np.dtype(np.uint8),
     MESH_Z_NAME: np.dtype(np.float32),
     MESH_CLASS_NAME: np.dtype(np.uint8),
+    MESH_FAMILY_NAME: np.dtype(np.uint8),
 }
 
 #: A sidecar's ``storage``. One without the field is ``raw``, as every cache before it was.
@@ -206,6 +211,12 @@ def mesh_stamp(size: int, build: str | None, reader_version: int) -> dict:
 def cached_meshes(directory: Path, stamp: dict):
     """``(z cm, class)`` planes, read-only, if the cache is this one, else ``None``."""
     return _planes(directory, MESH_CACHE_SIDECAR, stamp, (MESH_Z_NAME, MESH_CLASS_NAME))
+
+
+def cached_mesh_family(directory: Path, stamp: dict):
+    """The mesh cache's family plane, when it is this cache and one was written."""
+    found = _planes(directory, MESH_CACHE_SIDECAR, stamp, (MESH_FAMILY_NAME,))
+    return None if found is None else found[0]
 
 
 RIVER_CACHE_NAME = "rivers.json"
