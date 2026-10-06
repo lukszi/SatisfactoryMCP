@@ -105,19 +105,21 @@ class SamplerScore(TypedDict):
     overshoot_p999_m: float
 
 
+#: Why the checks refuse a field: its terrain plane is missing or off the field's vertices.
+OFF_GRID = f"the field's {hf.TERRAIN_NAME} has no terrain_grid on the field's vertices"
+
+
 def terrain_m(field: hf.Field) -> F32Grid:
     """``terrain.u16.z`` on the field grid in metres, NaN where it has no sample."""
     plane = np.asarray(field.plane(hf.TERRAIN_NAME))
     grid = field.terrain_grid
-    if grid is None:
-        raise ValueError(f"the field's {hf.TERRAIN_NAME} has no terrain_grid")
+    if grid is None or grid["row_off"] is None or grid["col_off"] is None:
+        raise ValueError(OFF_GRID)
+    row_off, col_off = grid["row_off"], grid["col_off"]
     out = np.full(np.asarray(field.height_dm).shape, np.nan, np.float32)
     rows, cols = plane.shape
     z = (plane.astype(np.float32) - grid["zero"]) / grid["units_per_m"] + grid["offset_m"]
-    window = (
-        slice(grid["row_off"], grid["row_off"] + rows),
-        slice(grid["col_off"], grid["col_off"] + cols),
-    )
+    window = (slice(row_off, row_off + rows), slice(col_off, col_off + cols))
     out[window] = np.where(plane > 0, z, np.nan)
     return out
 
@@ -188,16 +190,17 @@ def check_seam(field: hf.Field, land: F32Grid, raster_m: F64Grid, raster_valid: 
     )
     rows, cols = raster_grid(field)
     grid = field.terrain_grid
-    if grid is None:
-        raise ValueError(f"the field's {hf.TERRAIN_NAME} has no terrain_grid")
+    if grid is None or grid["row_off"] is None or grid["col_off"] is None:
+        raise ValueError(OFF_GRID)
+    row_off, col_off = grid["row_off"], grid["col_off"]
     rng = np.random.default_rng(SEAM_SEED)
     padded = nearest_fill(np.where(raster_valid, raster_m, 0.0), raster_valid)
     width = SEAM_WINDOW
     before: list[float] = []
     after: list[float] = []
     for _ in range(20000):
-        r = int(rng.integers(grid["row_off"], grid["row_off"] + grid["height"] - width))
-        c = int(rng.integers(grid["col_off"], grid["col_off"] + grid["width"] - width))
+        r = int(rng.integers(row_off, row_off + grid["height"] - width))
+        c = int(rng.integers(col_off, col_off + grid["width"] - width))
         if not (
             bad[r : r + width, c : c + width].mean() < 0.02
             and raster_valid[int(rows[r]), int(cols[c])]
