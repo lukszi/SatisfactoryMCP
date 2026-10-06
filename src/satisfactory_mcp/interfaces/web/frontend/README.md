@@ -64,15 +64,15 @@ rather than the one a game session is running against.
 | `index.html` | the page; Vite's entry, built into `../static/` |
 | `src/main.ts` | the entry: the FEATURES block, every map listener in its order, and boot |
 | `src/style.css` | the page's stylesheet, imported after Leaflet's so it wins on order |
-| `src/app/` | page state, the fetch registry and its loader, the address bar, live events, header, rail, search, selection, settings and the world picker |
+| `src/app/` | page state, the fetch registry and its loader, the address bar, live events, header, rail, search, selection, settings, the world picker, the map-type registry and the side panel's shared reads |
 | `src/api/` | `get()` and the writes (`client.ts`), the response shapes (`shapes.ts`) and the generated schema |
-| `src/kit/` | shared building blocks: DOM and escaping, formatting, vocabulary, toasts, copy, dashboard widgets |
-| `src/map/` | the Leaflet map: CRS and panes, layer groups, palette, base map and lighting, regions, labels, inspector, side panel |
+| `src/kit/` | shared building blocks: DOM and escaping, keeping focus through a redraw, formatting, vocabulary, toasts, copy, dashboard widgets |
+| `src/map/` | the Leaflet map: CRS and panes, layer groups, palette, base map and lighting, regions, labels, inspector, side panel and the one highlight |
 | `src/map/layercontrol/` | the folded layer control |
 | `src/map/drawn/` | the drawn layers: nodes and pickups, belts and pipes, placements, crates, power wires, plan sitings |
 | `src/map/floors/` | floor mode: one storey at a time, by filtering what is already drawn |
 | `src/map/tools/` | the map's tools: finder, lasso, trace |
-| `src/dash/` | the dashboard shell and its tabs: overview, inventory, power, the production graph |
+| `src/dash/` | the dashboard shell and its tabs: overview, inventory, power, the production graph, machine states and health |
 | `src/dash/factories/` | the Factories tab, the factory detail page and renaming |
 | `src/dash/world/` | the World section and its finders |
 | `src/dash/planner/` | the Planner tab: plan list, workbench, result, track, history, site and the pad drag |
