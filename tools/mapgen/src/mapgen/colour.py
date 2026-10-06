@@ -12,7 +12,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from satisfactory_mcp.core.arrays import F32Grid
-from satisfactory_mcp.core.jsontypes import JsonValue
 
 __all__ = [
     "LUMA",
@@ -142,7 +141,7 @@ def sky_sun_light(
     return ambient * unit_luminance(sky) + sun_term
 
 
-def number_at(block: Mapping[str, JsonValue], key: str) -> float:
+def number_at(block: Mapping[str, object], key: str) -> float:
     """A palette's or a light block's number, read as JSON holds it."""
     value = block[key]
     if not isinstance(value, int | float):
@@ -150,19 +149,18 @@ def number_at(block: Mapping[str, JsonValue], key: str) -> float:
     return float(value)
 
 
-def colour_at(block: Mapping[str, JsonValue], key: str) -> list[float]:
+def colour_at(block: Mapping[str, object], key: str) -> list[float]:
     """A palette's or a light block's colour, a list of numbers, read as JSON holds it."""
     value = block[key]
-    channels = (
-        [float(c) for c in value if isinstance(c, int | float)] if isinstance(value, list) else []
-    )
-    if not isinstance(value, list) or len(channels) != len(value):
+    items: list[object] = value if isinstance(value, list) else []
+    channels = [float(c) for c in items if isinstance(c, int | float)]
+    if not isinstance(value, list) or len(channels) != len(items):
         raise TypeError(f"{key} is {value!r}, not a colour")
     return channels
 
 
 def flat_light(
-    p: Mapping[str, JsonValue],
+    p: Mapping[str, object],
     ndl: NDArray[np.floating],
     ndl_flat: np.float32 | NDArray[np.floating],
 ) -> NDArray[np.floating]:

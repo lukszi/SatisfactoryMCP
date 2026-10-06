@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from typing import TypeAlias
+from typing import Literal, TypeAlias, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
@@ -49,10 +49,13 @@ __all__ = [
     "SHADOW_FLOOR_KNEE",
     "SHADOW_SOFT_DEG",
     "Horizons",
+    "LightBlock",
     "LightParams",
+    "LightSpace",
     "apply_terms",
     "direct_term",
     "light_axis",
+    "light_params",
     "model_block",
     "relight",
     "sun_cells",
@@ -83,9 +86,43 @@ DIRECT_SCALE = 127.0
 #: Horizon planes in degrees, one per atlas cell: a ``(cells, h, w)`` stack or a sequence.
 Horizons: TypeAlias = F32Grid | Sequence[F32Grid]
 
-#: ``shader_light``'s block, as a layer's sidecar carries it: ``space`` ("linear" or "srgb"),
-#: ``ambient``, the ``sky`` and ``sun`` colours, ``tone_knee``, ``tone_white`` and ``crowns``.
-LightParams: TypeAlias = Mapping[str, JsonValue]
+#: Where a style multiplies its light in: linear light under its tone curve, or sRGB.
+LightSpace: TypeAlias = Literal["linear", "srgb"]
+
+#: A light block as it arrives: ``shader_light``'s, or one read back from a sidecar.
+LightBlock: TypeAlias = Mapping[str, object]
+
+
+class LightParams(TypedDict):
+    """``shader_light``'s block, checked; a tone knee of 1 is no tone curve."""
+
+    space: LightSpace
+    ambient: float
+    sky: list[float]
+    sun: list[float]
+    tone_knee: float
+    tone_white: float
+    crowns: bool
+
+
+def light_params(block: LightBlock) -> LightParams:
+    """``block`` read key by key; ``TypeError`` names the first value of the wrong kind."""
+    space: LightSpace
+    if block["space"] == "linear":
+        space = "linear"
+    elif block["space"] == "srgb":
+        space = "srgb"
+    else:
+        raise TypeError(f"space is {block['space']!r}, not linear or srgb")
+    return {
+        "space": space,
+        "ambient": number_at(block, "ambient"),
+        "sky": colour_at(block, "sky"),
+        "sun": colour_at(block, "sun"),
+        "tone_knee": number_at(block, "tone_knee"),
+        "tone_white": number_at(block, "tone_white"),
+        "crowns": bool(block.get("crowns")),
+    }
 
 
 def model_block() -> JsonObject:
@@ -188,20 +225,20 @@ def apply_terms(
     svf: NDArray[np.floating],
     direct: NDArray[np.floating],
     land: NDArray[np.floating],
-    params: LightParams,
+    params: LightBlock,
 ) -> U8Grid:
     """Unlit colour times the light, in the style's own space. Arrays in [0, 1] except rgb."""
-    amb = np.float32(number_at(params, "ambient"))
-    sky_rgb, sun_rgb = colour_at(params, "sky"), colour_at(params, "sun")
-    sky, sun = unit_luminance(sky_rgb), unit_luminance(sun_rgb)
-    flat = sky_sun_light(sky_rgb, sun_rgb, amb)
-    rel = (amb * sky * svf[..., None] + (1 - amb) * sun * direct[..., None]) / flat
+    light = light_params(params)
+    ambient = np.float32(light["ambient"])
+    sky, sun = unit_luminance(light["sky"]), unit_luminance(light["sun"])
+    flat = sky_sun_light(light["sky"], light["sun"], ambient)
+    rel = (ambient * sky * svf[..., None] + (1 - ambient) * sun * direct[..., None]) / flat
     k = SHADOW_FLOOR_KNEE
     rel = 0.5 * (rel + SHADOW_FLOOR + np.sqrt((rel - SHADOW_FLOOR) ** 2 + k * k))
     rel = 1 + (rel - 1) * land[..., None]
     c = rgb_u8.astype(np.float32) / 255.0
-    if params["space"] == "linear":
-        knee, white = number_at(params, "tone_knee"), number_at(params, "tone_white")
+    if light["space"] == "linear":
+        knee, white = light["tone_knee"], light["tone_white"]
         base = by_luminance(srgb_unit_to_linear(c), untone, knee, white)
         out = linear_to_srgb_unit(by_luminance(base * rel, tone, knee, white))
     else:
@@ -214,7 +251,7 @@ def relight(
     nrm_u8: U8Grid,
     hz_u8: U8Grid | None,
     sun: Sun,
-    params: LightParams,
+    params: LightBlock,
     shadows: bool = True,
     sky: bool = True,
 ) -> U8Grid:
@@ -222,8 +259,9 @@ def relight(
 
     ``params`` is ``shader_light``'s; its ``crowns`` says whether the crown horizons count.
     """
+    light = light_params(params)
     hz_deg = decode_horizon(hz_u8) if (shadows and hz_u8 is not None) else None
-    direct = direct_term(nrm_u8, hz_deg, sun, shadows, bool(params.get("crowns")))
+    direct = direct_term(nrm_u8, hz_deg, sun, shadows, light["crowns"])
     svf = nrm_u8[..., 2].astype(np.float32) / 255.0 if sky else np.ones(direct.shape, np.float32)
     land = nrm_u8[..., 3].astype(np.float32) / 255.0
-    return apply_terms(rgb_u8, svf, direct, land, params)
+    return apply_terms(rgb_u8, svf, direct, land, light)

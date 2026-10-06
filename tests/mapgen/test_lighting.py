@@ -21,6 +21,7 @@ from mapgen.lighting.model import (
     apply_terms,
     direct_term,
     light_axis,
+    light_params,
     model_block,
     relight,
     surface_direct,
@@ -166,6 +167,16 @@ def test_the_light_axis_is_versioned_and_digested():
     flat = SHADE_FLOOR + SHADE_RANGE * math.sin(math.radians(45.0))
     assert terrain["ambient"] == pytest.approx(SHADE_FLOOR / flat, abs=1e-6)
     assert shader_light("painted")["space"] == "linear"
+
+
+@pytest.mark.parametrize("layer", ["painted", "terrain"])
+def test_a_light_block_reads_as_the_params_it_holds(layer):
+    block = shader_light(layer)
+    assert light_params(block) == block
+    assert light_params(json.loads(json.dumps(block))) == block, "a sidecar's copy reads the same"
+    for key, wrong in (("space", "hsv"), ("ambient", "0.5"), ("sky", [1.0, "1"])):
+        with pytest.raises(TypeError, match=key):
+            light_params({**block, key: wrong})
 
 
 def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
