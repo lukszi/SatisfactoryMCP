@@ -25,8 +25,9 @@ from .objects import (
     SaveBody,
     read_body,
 )
-from .properties import ObjectReference, ParsedObject, TypeName, read_object
+from .properties import ParsedObject, TypeName, read_object
 from .reader import Reader
+from .references import ObjectReference
 from .save import ParsedLevel, ParsedSave, read_full_save, read_full_save_bytes
 from .trailers import TRAILER_READERS, read_trailer
 from .versions import FIRST_LEVEL_LIST, FIRST_MODERN_BODY, KNOWN_HEADER_TYPES

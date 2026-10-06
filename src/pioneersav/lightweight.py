@@ -56,8 +56,8 @@ bound a claimed instance count, and a bound that is too generous is still a boun
 from __future__ import annotations
 
 from .errors import ParseError
-from .properties import ObjectReference
 from .reader import Reader
+from .references import read_reference
 
 __all__ = ["LIGHTWEIGHT_SUBSYSTEM", "VERSION", "read_lightweight"]
 
@@ -77,10 +77,6 @@ VERSION = 4
 #: Longest class path seen is 112 bytes; the cap is a bound on a length that a desynchronised
 #: walk would otherwise turn into a multi-megabyte read.
 MAX_PATH = 512
-
-
-def _reference(r: Reader) -> ObjectReference:
-    return ObjectReference(r.string(), r.string())
 
 
 #: Most type-specific data blocks a single instance may carry. Every instance seen carries 0
@@ -110,7 +106,7 @@ def _type_data(r: Reader, count: int, end: int) -> list:
         )
     out = []
     for _ in range(count):
-        type_ref = _reference(r)
+        type_ref = read_reference(r)
         at = r.pos
         size = r.i32()
         if not 0 <= size <= end - r.pos:
@@ -135,15 +131,15 @@ def _instance(r: Reader, version: int, end: int) -> list:
         [r.f64(), r.f64(), r.f64(), r.f64()],
         [r.f64(), r.f64(), r.f64()],
         [r.f64(), r.f64(), r.f64()],
-        _reference(r),
-        _reference(r),
-        _reference(r),
-        _reference(r),
+        read_reference(r),
+        read_reference(r),
+        read_reference(r),
+        read_reference(r),
         [[r.f32(), r.f32(), r.f32(), r.f32()], [r.f32(), r.f32(), r.f32(), r.f32()]],
-        _reference(r),
+        read_reference(r),
         r.i8(),
-        _reference(r),
-        _reference(r),
+        read_reference(r),
+        read_reference(r),
         r.i32(),
     ]
     data = _type_data(r, out[12], end)
@@ -194,7 +190,7 @@ def read_lightweight(body: bytes, offset: int, length: int) -> list:
                 f"found string lengths {level_len} and {path_len} -- the walk is out of "
                 "step. Every class here has an empty level name and a path under 512 bytes"
             )
-        path = _reference(r).path_name
+        path = read_reference(r).path_name
         if not path.startswith("/"):
             raise ParseError(
                 f"at body offset {at}: expected buildable class {k + 1} of {class_count}, "

@@ -20,12 +20,11 @@ from .chunks import decompress_body
 from .header import SaveInfo, read_info_bytes
 from .lightweight import LIGHTWEIGHT_SUBSYSTEM, read_lightweight
 from .objects import ActorHeader, ComponentHeader, read_body
-from .properties import ParsedObject, read_object
+from .properties import PLAIN_TRAILER, ParsedObject, read_object
 from .trailers import TRAILER_READERS, read_trailer
 from .versions import FIRST_MODERN_BODY
 
 __all__ = [
-    "PLAIN_TRAILER",
     "UNDECODED_TRAILER_CLASSES",
     "ParsedLevel",
     "ParsedSave",
@@ -79,11 +78,6 @@ class ParsedSave:
     @property
     def object_count(self) -> int:
         return sum(len(lv.objects) for lv in self.levels)
-
-
-#: What an actor leaves after its property list when its class writes nothing of its own.
-#: Which of the two an actor gets is not established.
-PLAIN_TRAILER = (4, 8)
 
 
 #: Class paths that carry their own bytes after the property list on a save below

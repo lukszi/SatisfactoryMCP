@@ -46,16 +46,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .objects import ObjectSlice, ParseError
+from .errors import ParseError, expect
+from .objects import ObjectSlice
 from .reader import Reader
+from .references import ObjectReference, read_reference, read_references, read_soft_reference
 from .versions import FIRST_MODERN_BODY
 
 __all__ = [
+    "PLAIN_TRAILER",
     "TAG_ARRAY_INDEX",
     "TAG_BOOL_TRUE",
     "TAG_NATIVE_SERIALIZE",
     "TAG_PROPERTY_GUID",
-    "ObjectReference",
     "ParsedObject",
     "TypeName",
     "read_object",
@@ -84,38 +86,15 @@ _TERMINATOR = "None"
 #: recursion limit turns the same bytes into a ``RecursionError`` with no byte offset in it.
 _MAX_NESTING = 32
 
-#: Bytes between the property list's ``"None"`` terminator and the end of an object's payload.
-#: A component leaves 4 or 8 and never more; an actor leaves 4, 8, or -- in the eight classes
-#: with class-specific data -- much more. Nothing is ever below 4.
-_TRAILER_SIZES = (4, 8)
+#: Bytes between the property list's ``"None"`` terminator and the end of an object's payload
+#: when its class writes nothing of its own. A component always leaves one of these; an actor
+#: with class-specific data leaves more. Which of the two a given object gets is not established.
+PLAIN_TRAILER = (4, 8)
 
 #: Guard on the type-name tree's branching factor. A MapProperty has two parameters and
 #: nothing seen has more; 16 is loose enough to survive a patch and tight enough that a
 #: misaligned cursor reading a float as a count fails here instead of allocating.
 _MAX_TYPE_PARAMS = 16
-
-
-@dataclass(slots=True)
-class ObjectReference:
-    """A reference to another object: the level it lives in and its full path.
-
-    ``pathName`` is the spelling the projection reads, and ``__str__`` returns it so that a
-    reference formats as the thing it points at.
-    """
-
-    level_name: str
-    path_name: str
-
-    @property
-    def pathName(self) -> str:
-        return self.path_name
-
-    @property
-    def levelName(self) -> str:
-        return self.level_name
-
-    def __str__(self) -> str:
-        return self.path_name
 
 
 @dataclass(slots=True)
@@ -193,11 +172,6 @@ class ParsedObject:
         return self.actor_specific_info
 
 
-def _expect(condition: bool, offset: int, message: str) -> None:
-    if not condition:
-        raise ParseError(f"at body offset {offset}: {message}")
-
-
 class _TooDeep(ParseError):
     """The nesting guard tripping, as a type ``attempt`` can tell apart from a bad guess.
 
@@ -208,45 +182,6 @@ class _TooDeep(ParseError):
     the parser is about to run out of Python stack. Absorbed there it stops being a guess that
     failed and becomes a guess that gets retried all the way down.
     """
-
-
-# --------------------------------------------------------------- primitives
-
-
-def _reference(r: Reader) -> ObjectReference:
-    """A level name and a path name, in that order.
-
-    An empty reference is two zero int32s rather than a flag, so an unset reference costs 8
-    bytes and reads back as ``("", "")``.
-    """
-    return ObjectReference(r.string(), r.string())
-
-
-def _soft_reference(r: Reader) -> list:
-    """FSoftObjectPath: a package name, an asset name, and a sub-path.
-
-    THREE strings, not two, which is what distinguishes it from ``ObjectProperty``: read as a
-    plain reference it leaves 4 bytes over and fails the size check.
-    """
-    return [ObjectReference(r.string(), r.string()), r.string()]
-
-
-def _references(r: Reader, limit: int) -> list[ObjectReference]:
-    """A counted list of references, bounded by the object's own payload.
-
-    ``limit`` is the end of the payload this list has to fit inside, and the bound is what it
-    can hold: a reference is two length-prefixed strings, so the shortest possible one is the
-    eight bytes of two zero lengths. A flat ceiling is too generous to be a check -- see
-    ``_Decoder._count``.
-    """
-    count = r.i32()
-    _expect(
-        0 <= count <= (limit - r.pos) // 8,
-        r.pos - 4,
-        f"a reference list claims {count} entries with {limit - r.pos} bytes of payload "
-        "left, and a reference is at least eight",
-    )
-    return [_reference(r) for _ in range(count)]
 
 
 # ----------------------------------------------------------- struct bodies
@@ -315,7 +250,7 @@ def _client_identity_info(d: _Decoder) -> list:
     r = d.r
     offline_id = r.string()
     count = r.i32()
-    _expect(0 <= count <= 64, r.pos - 4, f"a client identity claims {count} platforms")
+    expect(0 <= count <= 64, r.pos - 4, f"a client identity claims {count} platforms")
     out = []
     for _ in range(count):
         platform = r.i8()
@@ -336,13 +271,13 @@ def _inventory_item_modern(d: _Decoder) -> list:
     would take the ``repr`` of a reference object and find nothing.
     """
     r = d.r
-    item_class = _reference(r)
+    item_class = read_reference(r)
     has_state = r.i32()
     if not has_state:
         return [item_class.path_name, None]
-    state_class = _reference(r)
+    state_class = read_reference(r)
     size = r.i32()
-    _expect(
+    expect(
         0 <= size <= r.remaining,
         r.pos - 4,
         f"an item state claims {size} bytes with {r.remaining} left",
@@ -358,8 +293,8 @@ def _inventory_item_legacy(d: _Decoder) -> list:
     No has-state int32 and no nested property list.
     """
     r = d.r
-    item_class = _reference(r)
-    return [item_class.path_name, _reference(r).path_name or None]
+    item_class = read_reference(r)
+    return [item_class.path_name, read_reference(r).path_name or None]
 
 
 def _inventory_item(d: _Decoder) -> list:
@@ -468,13 +403,13 @@ def _read_type_name(r: Reader, depth: int = 0) -> TypeName:
     at = r.pos
     name = r.string()
     count = r.i32()
-    _expect(
+    expect(
         0 <= count <= _MAX_TYPE_PARAMS,
         r.pos - 4,
         f"type name {name!r} at {at} claims {count} parameters; a MapProperty has two "
         "and nothing seen has more, so the cursor is not on a tag",
     )
-    _expect(depth < 8, at, f"type name {name!r} nested more than 8 deep")
+    expect(depth < 8, at, f"type name {name!r} nested more than 8 deep")
     return TypeName(name, [_read_type_name(r, depth + 1) for _ in range(count)])
 
 
@@ -500,12 +435,12 @@ def _read_tag_60(r: Reader) -> _Tag:
         return _Tag(name=name, type=TypeName(""), size=0, index=0, flags=0)
     tag = _Tag(name=name, type=_read_type_name(r), size=0, index=0, flags=0)
     tag.size = r.i32()
-    _expect(tag.size >= 0, r.pos - 4, f"property {tag.name!r} declares size {tag.size}")
+    expect(tag.size >= 0, r.pos - 4, f"property {tag.name!r} declares size {tag.size}")
     # Check the extensions bit before reading the fields it would move, so that the offset in
     # the message is the flags byte and not the end of the array index or the guid.
     at_flags = r.pos
     tag.flags = r.i8()
-    _expect(
+    expect(
         not tag.flags & TAG_EXTENSIONS,
         at_flags,
         f"property {tag.name!r} sets tag bit 0x04, which is unset on every property of "
@@ -530,7 +465,7 @@ def _read_tag_old(r: Reader) -> _Tag:
         return _Tag(name=name, type=TypeName(""), size=0, index=0, flags=0)
     type_name = r.string()
     size = r.i32()
-    _expect(size >= 0, r.pos - 4, f"property {name!r} declares size {size}")
+    expect(size >= 0, r.pos - 4, f"property {name!r} declares size {size}")
     index = r.i32()
 
     params: list[TypeName] = []
@@ -546,7 +481,7 @@ def _read_tag_old(r: Reader) -> _Tag:
         bool_value = r.i8()
 
     has_guid = r.i8()
-    _expect(
+    expect(
         has_guid in (0, 1),
         r.pos - 1,
         f"property {name!r} has a property-guid flag of {has_guid}; UE4 writes 0 or 1 "
@@ -632,7 +567,7 @@ class _Decoder:
         values: list[list] = []
         types: list[list] = []
         while True:
-            _expect(
+            expect(
                 r.pos < limit,
                 r.pos,
                 f"a property list ran to {limit} without its {_TERMINATOR!r} terminator",
@@ -640,7 +575,7 @@ class _Decoder:
             tag = _read_tag_old(r) if self.old else _read_tag_60(r)
             if tag.name == _TERMINATOR:
                 return values, types
-            _expect(
+            expect(
                 r.pos + tag.size <= limit,
                 r.pos,
                 f"property {tag.name!r} declares {tag.size} bytes, which runs "
@@ -649,7 +584,7 @@ class _Decoder:
             start = r.pos
             end = start + tag.size
             value = self.value(tag, end)
-            _expect(
+            expect(
                 r.pos == end,
                 r.pos,
                 f"property {tag.name!r} of type {tag.type.name!r} declared {tag.size} "
@@ -673,9 +608,9 @@ class _Decoder:
             # comes out -- 16, 1 or 0 -- because `truthy()` is what reads it.
             return tag.bool_value if self.old else (tag.flags & TAG_BOOL_TRUE)
         if name in ("ObjectProperty", "InterfaceProperty"):
-            return _reference(r)
+            return read_reference(r)
         if name == "SoftObjectProperty":
-            return _soft_reference(r)
+            return read_soft_reference(r)
         if name == "ByteProperty":
             return self.byte_value(tag)
         if name == "EnumProperty":
@@ -708,7 +643,7 @@ class _Decoder:
         container, and it turns that into an offset rather than a shorter factory.
         """
         r = self.r
-        _expect(
+        expect(
             end >= r.pos,
             r.pos,
             f"cannot skip {what}: the cursor is already {r.pos - end} bytes past the end "
@@ -844,7 +779,7 @@ class _Decoder:
         """
         r = self.r
         count = r.i32()
-        _expect(
+        expect(
             0 <= count <= end - r.pos,
             r.pos - 4,
             f"{what} claims {count} elements with {end - r.pos} bytes left in its block, "
@@ -868,9 +803,9 @@ class _Decoder:
         if element is not None:
             return [element(r) for _ in range(count)]
         if inner.name in ("ObjectProperty", "InterfaceProperty"):
-            return [_reference(r) for _ in range(count)]
+            return [read_reference(r) for _ in range(count)]
         if inner.name == "SoftObjectProperty":
-            return [_soft_reference(r) for _ in range(count)]
+            return [read_soft_reference(r) for _ in range(count)]
         if inner.name == "BoolProperty":
             return [r.i8() for _ in range(count)]
         if inner.name == "ByteProperty":
@@ -896,7 +831,7 @@ class _Decoder:
         native = bool(tag.flags & TAG_NATIVE_SERIALIZE)
         if self.old:
             inner = _read_tag_old(r)
-            _expect(
+            expect(
                 inner.type.name == "StructProperty",
                 r.pos,
                 f"array {tag.name!r} of structs has an inner tag of type "
@@ -943,7 +878,7 @@ class _Decoder:
         """
         r = self.r
         removed = r.i32()
-        _expect(
+        expect(
             removed == 0,
             r.pos - 4,
             f"set {tag.name!r} declares {removed} removed elements; a saved set has no "
@@ -959,7 +894,7 @@ class _Decoder:
         """Split out from ``set_`` only so ``attempt`` can run it and throw it away."""
         r = self.r
         removed = r.i32()
-        _expect(
+        expect(
             removed == 0,
             r.pos - 4,
             f"set {tag.name!r} declares {removed} removed elements; a saved set has no "
@@ -982,7 +917,7 @@ class _Decoder:
         inside that struct's property list, which is why ``element`` needs no container branch.
         """
         r = self.r
-        _expect(
+        expect(
             len(tag.type.params) == 2,
             r.pos,
             f"map {tag.name!r} has {len(tag.type.params)} type parameters, expected a "
@@ -1005,7 +940,7 @@ class _Decoder:
         """Split out from ``map_`` only so ``attempt`` can run it and throw it away."""
         r = self.r
         removed = r.i32()
-        _expect(
+        expect(
             removed == 0,
             r.pos - 4,
             f"map {tag.name!r} declares {removed} removed keys; every map checked writes 0",
@@ -1031,9 +966,9 @@ class _Decoder:
         if scalar is not None:
             return scalar(r)
         if type_name.name in ("ObjectProperty", "InterfaceProperty"):
-            return _reference(r)
+            return read_reference(r)
         if type_name.name == "SoftObjectProperty":
-            return _soft_reference(r)
+            return read_soft_reference(r)
         if type_name.name == "StructProperty":
             return self.struct(type_name.inner, native_hint=False, end=end)
         if type_name.name == "ByteProperty":
@@ -1108,8 +1043,8 @@ def read_object(
     out = ParsedObject(version=slot.version)
 
     if actor:
-        out.parent_reference = _reference(r)
-        out.child_references = _references(r, end)
+        out.parent_reference = read_reference(r)
+        out.child_references = read_references(r, end)
     if slot.version >= 60:
         # The object-reference migration flag: one byte, 0 on every object seen, and the
         # reason a version-60 payload is a byte longer than a version-52 one holding the
@@ -1128,26 +1063,26 @@ def read_object(
     # corrupted into the "None" terminator reads as a few properties with the rest filed
     # silently as trailing data -- a save that parses cleanly and reports a different factory.
     #
-    # What can be bounded without inventing structure is `_TRAILER_SIZES`: nothing has a
+    # What can be bounded without inventing structure is `PLAIN_TRAILER`: nothing has a
     # trailer shorter than 4, so a list terminating ON the payload's end byte is wrong whatever
     # the object is; and a component's is 4 or 8 and never more, so for components the check is
     # exact. An ACTOR's is left unchecked, because bounding it needs the eight class names that
     # legitimately carry more and a ninth arriving in a patch would then refuse the save.
-    _expect(
-        out.extra_length >= _TRAILER_SIZES[0],
+    expect(
+        out.extra_length >= PLAIN_TRAILER[0],
         r.pos,
         f"the property list of {'an actor' if actor else 'a component'} ended "
         f"{out.extra_length} bytes before its {slot.length}-byte payload does, and every "
-        f"one of 1,243,288 objects leaves at least {_TRAILER_SIZES[0]}. A property name was "
+        f"one of 1,243,288 objects leaves at least {PLAIN_TRAILER[0]}. A property name was "
         "read as the list terminator, so the properties after it are missing",
     )
     if not actor:
-        _expect(
-            out.extra_length in _TRAILER_SIZES,
+        expect(
+            out.extra_length in PLAIN_TRAILER,
             r.pos,
             f"a component's property list left {out.extra_length} bytes of its "
             f"{slot.length}-byte payload unread; every one of 567,856 components in the 31 "
-            f"readable saves leaves exactly {' or '.join(map(str, _TRAILER_SIZES))}, so the "
+            f"readable saves leaves exactly {' or '.join(map(str, PLAIN_TRAILER))}, so the "
             "list terminated early and the properties after that point are missing",
         )
     return out

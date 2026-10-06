@@ -52,9 +52,9 @@ from pioneersav import ObjectSlice, ParseError, Reader
 from pioneersav.properties import (
     TAG_BOOL_TRUE,
     TAG_NATIVE_SERIALIZE,
-    ObjectReference,
     read_object,
 )
+from pioneersav.references import ObjectReference
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE = FIXTURES / "save_properties.bin"

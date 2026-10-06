@@ -43,7 +43,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .errors import ParseError
+from .errors import ParseError, expect
 from .reader import Reader
 from .versions import FIRST_LEVEL_LIST, FIRST_MODERN_BODY
 
@@ -57,7 +57,6 @@ __all__ = [
     "Grid",
     "Level",
     "ObjectSlice",
-    "ParseError",
     "SaveBody",
     "read_body",
 ]
@@ -264,11 +263,6 @@ class SaveBody:
         return sum(lv.toc_extra_bytes for lv in self.levels)
 
 
-def _expect(condition: bool, offset: int, message: str) -> None:
-    if not condition:
-        raise ParseError(f"at body offset {offset}: {message}")
-
-
 def _at_archive_header(r: Reader) -> bool:
     """Is an archive version header at the cursor?
 
@@ -309,7 +303,7 @@ def _read_archive_header(
     """
     start = r.pos
     fields = (r.i32(), r.i32(), r.i32(), r.i32())
-    _expect(
+    expect(
         fields[:2] == _ARCHIVE_MARK,
         start,
         f"expected an archive version header starting {_ARCHIVE_MARK}, found {fields[:2]}",
@@ -335,7 +329,7 @@ def _read_archive_header(
             warnings.append((changelist_at, what))
     branch_at = r.pos
     branch = r.string()
-    _expect(
+    expect(
         branch_at - start == ARCHIVE_HEADER_FIXED_LEN,
         start,
         f"archive header read {branch_at - start} bytes before the engine branch string, "
@@ -349,7 +343,7 @@ def _read_custom_versions(r: Reader) -> list[tuple[bytes, int]]:
     terminates it; there is no sentinel.
     """
     count = r.i32()
-    _expect(0 <= count <= 4096, r.pos - 4, f"custom version count {count} is not plausible")
+    expect(0 <= count <= 4096, r.pos - 4, f"custom version count {count} is not plausible")
     return [(r.bytes(16), r.i32()) for _ in range(count)]
 
 
@@ -364,14 +358,14 @@ def _read_grids(r: Reader) -> list[Grid]:
     -- so this is a one-way correspondence and not a set equality.
     """
     count = r.i32()
-    _expect(0 <= count <= 256, r.pos - 4, f"grid count {count} is not plausible")
+    expect(0 <= count <= 256, r.pos - 4, f"grid count {count} is not plausible")
     grids = []
     for _ in range(count):
         name = r.string()
         cell_size = r.i32()
         content_id = r.u32()
         n_cells = r.i32()
-        _expect(
+        expect(
             0 <= n_cells <= 1_000_000,
             r.pos - 4,
             f"grid {name!r} claims {n_cells} cells",
@@ -452,7 +446,7 @@ def _read_object_entry(r: Reader, save_version: int) -> ObjectSlice:
     else:
         version, flag = save_version, 0
     size = r.i32()
-    _expect(size >= 0, r.pos - 4, f"object entry declares a negative payload size {size}")
+    expect(size >= 0, r.pos - 4, f"object entry declares a negative payload size {size}")
     return ObjectSlice(version=version, flag=flag, offset=r.pos, length=size)
 
 
@@ -460,7 +454,7 @@ def _read_destroyed_refs(r: Reader, where: str, limit: int) -> list[tuple[str, s
     """A count, then that many ``(level name, actor path)`` pairs."""
     at = r.pos
     count = r.i32()
-    _expect(
+    expect(
         0 <= count <= 1_000_000 and r.pos + count * 8 <= limit,
         at,
         f"{where}: {count} destroyed actors do not fit in the {limit - r.pos} bytes left",
@@ -483,7 +477,7 @@ def _read_destroyed_block(
         return _read_destroyed_refs(r, f"level {name!r}", end)
     at = r.pos
     groups = r.i32()
-    _expect(
+    expect(
         0 <= groups <= 100_000,
         at,
         f"level {name!r}: its destroyed-actor list claims {groups} cell groups",
@@ -514,20 +508,20 @@ def _read_level(r: Reader, *, named: bool, save_version: int) -> Level:
     toc_size = _read_block_size(r, save_version)
     toc_start = r.pos
     toc_end = toc_start + toc_size
-    _expect(
+    expect(
         0 <= toc_size <= r.remaining,
         toc_size_at,
         f"level {name!r} declares a {toc_size}-byte header block, {r.remaining} left",
     )
     header_count = r.i32()
-    _expect(
+    expect(
         0 <= header_count <= 10_000_000,
         r.pos - 4,
         f"level {name!r} claims {header_count} object headers",
     )
     headers: list[ActorHeader | ComponentHeader] = []
     for _ in range(header_count):
-        _expect(
+        expect(
             r.pos < toc_end,
             r.pos,
             f"level {name!r}: header {len(headers)} of {header_count} starts past the "
@@ -535,7 +529,7 @@ def _read_level(r: Reader, *, named: bool, save_version: int) -> Level:
         )
         headers.append(_read_header(r, save_version))
     extra = toc_end - r.pos
-    _expect(
+    expect(
         extra >= 0,
         r.pos,
         f"level {name!r}: {header_count} headers overran the header block by {-extra} bytes",
@@ -545,7 +539,7 @@ def _read_level(r: Reader, *, named: bool, save_version: int) -> Level:
     # sub-level does, and reading it as grouped turns the count into a string length.
     grouped = not named and save_version >= FIRST_MODERN_BODY
     destroyed = _read_destroyed_block(r, name, toc_end, grouped=grouped) if extra else []
-    _expect(
+    expect(
         r.pos == toc_end,
         r.pos,
         f"level {name!r}: its destroyed-actor list ended at {r.pos}, but the header block "
@@ -556,13 +550,13 @@ def _read_level(r: Reader, *, named: bool, save_version: int) -> Level:
     data_size = _read_block_size(r, save_version)
     data_start = r.pos
     data_end = data_start + data_size
-    _expect(
+    expect(
         0 <= data_size <= r.remaining,
         data_size_at,
         f"level {name!r} declares a {data_size}-byte object block, {r.remaining} left",
     )
     object_count = r.i32()
-    _expect(
+    expect(
         object_count == header_count,
         r.pos - 4,
         f"level {name!r} has {header_count} headers but {object_count} objects. They are "
@@ -571,7 +565,7 @@ def _read_level(r: Reader, *, named: bool, save_version: int) -> Level:
     objects = []
     for _ in range(object_count):
         slot = _read_object_entry(r, save_version)
-        _expect(
+        expect(
             slot.end <= data_end,
             slot.offset - 4,
             f"level {name!r}: object {len(objects)} declares {slot.length} bytes, which "
@@ -581,14 +575,14 @@ def _read_level(r: Reader, *, named: bool, save_version: int) -> Level:
         r.pos = slot.end
         if slot.version >= 60:
             trailing = r.i32()
-            _expect(
+            expect(
                 trailing == 0,
                 r.pos - 4,
                 f"level {name!r}: version {slot.version} object {len(objects) - 1} is "
                 f"followed by {trailing}, and every one of the 39,015 in the reference "
                 "save is followed by 0. Something after the payload is not understood",
             )
-    _expect(
+    expect(
         r.pos == data_end,
         r.pos,
         f"level {name!r}: {object_count} object payloads ended at {r.pos}, but the block "
@@ -626,7 +620,7 @@ def _read_level_trailer(
     """
     if save_version >= FIRST_MODERN_BODY:
         version = r.i32()
-        _expect(
+        expect(
             version in (52, 60),
             r.pos - 4,
             f"level {name!r} trailer version {version}, expected 52 or 60",
@@ -635,7 +629,7 @@ def _read_level_trailer(
     if not versioned_archive:
         return destroyed
     flag = r.i32()
-    _expect(flag in (0, 1), r.pos - 4, f"level {name!r} trailer flag {flag}, expected 0 or 1")
+    expect(flag in (0, 1), r.pos - 4, f"level {name!r} trailer flag {flag}, expected 0 or 1")
     if flag:
         # Checked, not skipped: nearly every archive header in a body is one of these per-level
         # ones, so a body assembled from two builds' level records is caught here rather than
@@ -666,7 +660,7 @@ def _read_final_destroyed_table(
         return out
     at = r.pos
     groups = r.i32()
-    _expect(0 <= groups <= 100_000, at, f"the closing table claims {groups} level groups")
+    expect(0 <= groups <= 100_000, at, f"the closing table claims {groups} level groups")
     out: list[tuple[str, str]] = []
     for _ in range(groups):
         name = r.string()
@@ -700,7 +694,7 @@ def _read_flat_levels(r: Reader, save_version: int) -> list[Level]:
     # block to bound it: an object header is an int32 kind plus three length-prefixed strings,
     # so the shortest conceivable one is 16 bytes. A flat ceiling on a count that lives inside
     # the payload lets a torn file allocate for millions of records before anything notices.
-    _expect(
+    expect(
         0 <= header_count <= (r.remaining) // 16,
         at,
         f"the body claims {header_count} object headers with {r.remaining} bytes left, and a "
@@ -710,7 +704,7 @@ def _read_flat_levels(r: Reader, save_version: int) -> list[Level]:
 
     at = r.pos
     object_count = r.i32()
-    _expect(
+    expect(
         object_count == header_count,
         at,
         f"the body has {header_count} headers but {object_count} objects. They are parallel "
@@ -719,7 +713,7 @@ def _read_flat_levels(r: Reader, save_version: int) -> list[Level]:
     slots = []
     for index in range(object_count):
         slot = _read_object_entry(r, save_version)
-        _expect(
+        expect(
             slot.end <= len(r.data),
             slot.offset - 4,
             f"object {index} declares {slot.length} bytes, which runs "
@@ -764,14 +758,14 @@ def read_body(
     # A save truncated to exactly its header inflates to an EMPTY body, which is the shape of a
     # save the game created and had not finished. Named here, because otherwise the size field
     # below reports an offset of 0 in a buffer of 0 with no hint that the body is meant.
-    _expect(
+    expect(
         len(body) >= size_width,
         0,
         f"the inflated body is {len(body)} bytes, too short to hold the int{size_width * 8} "
         "size field it opens with -- a save truncated to its header inflates to nothing at all",
     )
     declared = r.i32() if old else r.i64()
-    _expect(
+    expect(
         declared == len(body) - size_width,
         0,
         f"the body says it is {declared} bytes; {len(body) - size_width} follow the size field",
@@ -799,7 +793,7 @@ def read_body(
         levels = _read_flat_levels(r, save_version)
     else:
         sub_count = r.i32()
-        _expect(
+        expect(
             0 <= sub_count <= 1_000_000,
             r.pos - 4,
             f"the body claims {sub_count} sub-levels",

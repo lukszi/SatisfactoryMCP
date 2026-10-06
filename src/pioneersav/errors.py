@@ -7,7 +7,7 @@ catch that.
 
 from __future__ import annotations
 
-__all__ = ["ParseError"]
+__all__ = ["ParseError", "expect"]
 
 
 class ParseError(ValueError):
@@ -17,3 +17,9 @@ class ParseError(ValueError):
     mid-write is routine rather than exceptional. Every raise site names what was expected
     and where.
     """
+
+
+def expect(condition: bool, offset: int, message: str) -> None:
+    """Raise a ``ParseError`` located at body ``offset`` unless ``condition`` holds."""
+    if not condition:
+        raise ParseError(f"at body offset {offset}: {message}")

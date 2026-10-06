@@ -11,8 +11,8 @@ malformed trailer raises inside the caller rather than at the save boundary.
 from __future__ import annotations
 
 from .errors import ParseError
-from .properties import ObjectReference
 from .reader import Reader
+from .references import read_reference
 
 __all__ = ["TRAILER_READERS", "read_trailer"]
 
@@ -20,10 +20,6 @@ CONVEYOR_CHAIN = "/Script/FactoryGame.FGConveyorChainActor"
 POWER_LINE = "/Game/FactoryGame/Buildable/Factory/PowerLine/Build_PowerLine.Build_PowerLine_C"
 CIRCUIT_SUBSYSTEM = "/Game/FactoryGame/-Shared/Blueprint/BP_CircuitSubsystem.BP_CircuitSubsystem_C"
 PLAYER_STATE = "/Game/FactoryGame/Character/Player/BP_PlayerState.BP_PlayerState_C"
-
-
-def _reference(r: Reader) -> ObjectReference:
-    return ObjectReference(r.string(), r.string())
 
 
 def _chain(r: Reader, end: int) -> list:
@@ -72,10 +68,10 @@ def _chain(r: Reader, end: int) -> list:
     centimetres, scaling with belt speed -- and items sit below 0, down to about -1,000 cm, when
     the contiguous pack is longer than 120 cm spacing allows.
     """
-    first_belt, last_belt = _reference(r), _reference(r)
+    first_belt, last_belt = read_reference(r), read_reference(r)
     segments = []
     for _ in range(_count(r, end, 24, "chain segments")):
-        owner, belt = _reference(r), _reference(r)
+        owner, belt = read_reference(r), read_reference(r)
         points = [
             [
                 [r.f64(), r.f64(), r.f64()],
@@ -86,7 +82,7 @@ def _chain(r: Reader, end: int) -> list:
         ]
         segments.append([owner, belt, points, r.f32(), r.f32(), r.f32(), r.i32(), r.i32(), r.i32()])
     chain = [r.f32(), r.i32(), r.i32(), r.i32()]
-    items = [[_reference(r), r.i32(), r.f32()] for _ in range(_count(r, end, 12, "chain items"))]
+    items = [[read_reference(r), r.i32(), r.f32()] for _ in range(_count(r, end, 12, "chain items"))]
     return [first_belt, last_belt, segments, chain, items]
 
 
@@ -97,14 +93,14 @@ def _power_line(r: Reader, end: int) -> list:
     own properties -- but decoding it is what lets ``save._attach_trailer`` treat any other
     actor with a long trailer as unexplained.
     """
-    return [_reference(r), _reference(r)]
+    return [read_reference(r), read_reference(r)]
 
 
 def _circuit_subsystem(r: Reader, end: int) -> list:
     """Every power circuit in the world, as ``(id, reference)`` pairs. The id is the same
     number the circuit's own ``mCircuitID`` property carries.
     """
-    return [[r.i32(), _reference(r)] for _ in range(_count(r, end, 12, "power circuits"))]
+    return [[r.i32(), read_reference(r)] for _ in range(_count(r, end, 12, "power circuits"))]
 
 
 def _player_state(r: Reader, end: int) -> list:
