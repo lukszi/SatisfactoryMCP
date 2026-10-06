@@ -43,6 +43,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .destroyed import read_closing_destroyed_table, read_destroyed_block, read_destroyed_refs
 from .errors import ParseError, expect
 from .reader import Reader
 from .versions import FIRST_LEVEL_LIST, FIRST_MODERN_BODY, FIRST_UE5_OBJECT_VERSION
@@ -209,7 +210,7 @@ class Level:
     #: a number so a caller can see it is nonzero even though it is read.
     toc_extra_bytes: int = 0
     #: Actors the save records as gone: ``(level cell, actor path)`` pairs from this level's
-    #: header block. See ``_read_destroyed_block``.
+    #: header block. See ``destroyed.read_destroyed_block``.
     destroyed: list[tuple[str, str]] = field(default_factory=list)
 
     @property
@@ -421,45 +422,6 @@ def _read_object_entry(r: Reader, save_version: int) -> ObjectSlice:
     return ObjectSlice(version=version, flag=flag, offset=r.pos, length=size)
 
 
-def _read_destroyed_refs(r: Reader, where: str, limit: int) -> list[tuple[str, str]]:
-    """A count, then that many ``(level name, actor path)`` pairs."""
-    at = r.pos
-    count = r.i32()
-    expect(
-        0 <= count <= 1_000_000 and r.pos + count * 8 <= limit,
-        at,
-        f"{where}: {count} destroyed actors do not fit in the {limit - r.pos} bytes left",
-    )
-    return [(r.string(), r.string()) for _ in range(count)]
-
-
-def _read_destroyed_block(
-    r: Reader, name: str, end: int, *, grouped: bool
-) -> list[tuple[str, str]]:
-    """The destroyed-actor list trailing a level's header block.
-
-    Two shapes, and which one appears is decided by the level rather than by a flag in the
-    file: a sub-level writes one bare ``[i32 count][refs]``, and the persistent level writes it
-    grouped by the world-partition cell the actors lived in,
-    ``[i32 groups][str cell][i32 count][refs]``. Reading the wrong shape lands off the block's
-    declared end, which the caller checks.
-    """
-    if not grouped:
-        return _read_destroyed_refs(r, f"level {name!r}", end)
-    at = r.pos
-    groups = r.i32()
-    expect(
-        0 <= groups <= 100_000,
-        at,
-        f"level {name!r}: its destroyed-actor list claims {groups} cell groups",
-    )
-    out: list[tuple[str, str]] = []
-    for _ in range(groups):
-        cell = r.string()
-        out.extend(_read_destroyed_refs(r, f"level {name!r} cell {cell!r}", end))
-    return out
-
-
 def _read_block_size(r: Reader, save_version: int) -> int:
     """A level's TOC or data size: int32 below saveVersion 52, int64 at and above it."""
     return r.i64() if save_version >= FIRST_MODERN_BODY else r.i32()
@@ -531,7 +493,7 @@ def _read_header_block(
     )
     # grouped by cell only on a modern persistent level: below 52 there is no world partition
     grouped = not named and save_version >= FIRST_MODERN_BODY
-    destroyed = _read_destroyed_block(r, name, end, grouped=grouped) if destroyed_bytes else []
+    destroyed = read_destroyed_block(r, name, end, grouped=grouped) if destroyed_bytes else []
     expect(
         r.pos == end,
         r.pos,
@@ -612,7 +574,7 @@ def _read_level_trailer(
             r.pos - 4,
             f"level {name!r} trailer version {version}, expected 52 or 60",
         )
-    destroyed = _read_destroyed_refs(r, f"level {name!r} trailer", len(r.data))
+    destroyed = read_destroyed_refs(r, f"level {name!r} trailer", len(r.data))
     if not versioned_archive:
         return destroyed
     flag = r.i32()
@@ -624,40 +586,6 @@ def _read_level_trailer(
         _read_archive_header(r, warnings, build_version)
         _read_custom_versions(r)
     return destroyed
-
-
-def _read_final_destroyed_table(
-    r: Reader, warnings: list[tuple[int, str]], save_version: int
-) -> list[tuple[str, str]]:
-    """The body's last structure: destroyed actors, grouped by level name, in two lists per
-    group -- looted drop pods and crashed ships, then Mercer shrines.
-
-    Parsed rather than skipped because it is the only thing that can prove the whole walk
-    consumed the file: landing exactly on the last byte is what says every level count, block
-    size and payload size before it was right.
-
-    Below saveVersion 52 it is one bare ``[i32 count][refs]`` list rather than a table grouped
-    by level, and a body with a level list (saveVersion 30 and 36) is preceded by one more such
-    list, read as the unnamed persistent record's trailer.
-    """
-    if save_version < FIRST_MODERN_BODY:
-        out = _read_destroyed_refs(r, "the closing destroyed-actor list", len(r.data))
-        if r.remaining:
-            warnings.append((r.pos, f"{r.remaining} bytes after the closing destroyed-actor list"))
-        return out
-    at = r.pos
-    groups = r.i32()
-    expect(0 <= groups <= 100_000, at, f"the closing table claims {groups} level groups")
-    out: list[tuple[str, str]] = []
-    for _ in range(groups):
-        name = r.string()
-        for which in (1, 2):
-            out.extend(
-                _read_destroyed_refs(r, f"closing table, level {name!r}, list {which}", len(r.data))
-            )
-    if r.remaining:
-        warnings.append((r.pos, f"{r.remaining} bytes after the closing destroyed-actor table"))
-    return out
 
 
 def _read_flat_levels(r: Reader, save_version: int) -> list[Level]:
@@ -777,7 +705,7 @@ def _read_level_list(
     levels.append(_read_level(r, named=False, save_version=save_version))
     if save_version < FIRST_MODERN_BODY:
         # an old persistent record has a trailer too: one bare list before the closing one
-        trailer_destroyed += _read_destroyed_refs(r, "the persistent level's trailer", len(r.data))
+        trailer_destroyed += read_destroyed_refs(r, "the persistent level's trailer", len(r.data))
     return levels, trailer_destroyed
 
 
@@ -812,7 +740,7 @@ def read_body(
             build_version=build_version,
         )
 
-    closing_destroyed = _read_final_destroyed_table(r, warnings, save_version)
+    closing_destroyed = read_closing_destroyed_table(r, warnings, save_version)
 
     return SaveBody(
         preamble=preamble,

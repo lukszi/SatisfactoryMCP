@@ -389,7 +389,7 @@ deduplicated unions. **Zero differences on any list on any save**, duplicates in
 readable/refused split unchanged — 31 readable, every other file in the folder refused by both.
 
 **What it costs: 1–3 ms, under 1.1% of the walk.** Interleaved A/B, best of 7, against a
-monkeypatched `_read_destroyed_block` that jumps straight to `end`:
+monkeypatched `read_destroyed_block` that jumps straight to `end`:
 
 | save | body | read | skip | delta |
 |---|---|---|---|---|
