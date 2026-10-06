@@ -411,11 +411,8 @@ def list_buildings(
         )
     ]
     if unlocked is not None and chosen_kind == "logistics" and st is not None:
-        belt, pipe = st.best_belt(), st.best_pipe()
-        chosen = (
-            ", ".join(f"{g.buildings[c].name} ({v:g})" for c, v in (belt, pipe) if c)
-            or "none unlocked"
-        )
+        best = [carrier for carrier in (st.best_belt(), st.best_pipe()) if carrier is not None]
+        chosen = ", ".join(f"{g.buildings[c].name} ({v:g})" for c, v in best if c) or "none unlocked"
         notes.append(
             f"planning defaults to the fastest UNLOCKED tier: {chosen}. A tier assumed "
             "rather than checked changes every belt and pipe count in a plan"
