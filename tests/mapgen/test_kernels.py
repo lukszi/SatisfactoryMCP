@@ -1,0 +1,200 @@
+"""The numba kernels give the bits of the numpy reference they replace, and the switch holds.
+
+docs/map/renders.md section 41. Synthetic fixtures: no install, no field. Each comparison runs
+one call twice, ``MAPGEN_KERNELS=numpy`` then the kernels, and compares the bytes.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from collections.abc import Callable
+
+import numpy as np
+import pytest
+from scipy import ndimage
+
+from mapgen import jit
+from mapgen.lighting import horizon as hz
+from mapgen.terrain import sample as sm
+from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.paths import REPO_ROOT
+
+needs_numba = pytest.mark.skipif(jit._numba() is None, reason="numba is not installed")
+
+
+def _terrain(side: int, seed: int) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    z = np.full((side, side), 0.37, np.float32)  # off zero: a signed zero is not compared
+    for octave, amp in ((4, 40.0), (16, 8.0), (64, 2.0)):
+        small = rng.standard_normal((octave + 3, octave + 3)).astype(np.float32)
+        z += amp * ndimage.zoom(small, side / octave, order=3)[:side, :side]
+    return z
+
+
+def _both(monkeypatch: pytest.MonkeyPatch, call: Callable[[], object]) -> tuple[object, object]:
+    monkeypatch.setenv(jit.KERNEL_SWITCH, jit.REFERENCE)
+    reference = call()
+    monkeypatch.delenv(jit.KERNEL_SWITCH)
+    assert jit.kernels_on()
+    return reference, call()
+
+
+def _bits(value: object) -> object:
+    if isinstance(value, tuple):
+        return tuple(_bits(part) for part in value)
+    assert isinstance(value, np.ndarray)
+    return value.dtype, value.shape, value.tobytes()
+
+
+def _same(monkeypatch: pytest.MonkeyPatch, call: Callable[[], object]) -> None:
+    reference, compiled = _both(monkeypatch, call)
+    assert _bits(compiled) == _bits(reference)
+
+
+# ------------------------------------------------------------------------------- switch
+
+
+def test_the_switch_names_the_reference(monkeypatch):
+    monkeypatch.setenv(jit.KERNEL_SWITCH, " NumPy ")
+    assert not jit.kernels_on()
+    monkeypatch.setattr(jit, "_numba", lambda: None)
+    monkeypatch.delenv(jit.KERNEL_SWITCH)
+    assert not jit.kernels_on(), "without numba the reference runs"
+
+
+def test_the_reference_never_loads_numba():
+    code = (
+        "import os, sys\n"
+        "os.environ['MAPGEN_KERNELS'] = 'numpy'\n"
+        "import numpy as np\n"
+        "from mapgen.lighting import horizon as hz\n"
+        "from mapgen.terrain import sample as sm\n"
+        "z = np.random.default_rng(1).random((90, 90), dtype=np.float32)\n"
+        "hz.march_horizon(z, 40, 30.0, 4.0); hz.sky_view(z, 12, 1.0)\n"
+        "taps = (sm.taps_linear(np.arange(5.0), 90), sm.taps_linear(np.arange(9.0), 90))\n"
+        "sm.sample_plain(z, taps); sm.resample(z, *taps, None)\n"
+        "print(sorted(m for m in sys.modules if m == 'numba' or m.endswith('.kernels')))\n"
+    )
+    paths = [str(REPO_ROOT / "src"), str(REPO_ROOT / "tools" / "mapgen" / "src")]
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(paths)}
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                          env=env, timeout=120, check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert done.stdout.strip() == "[]"
+
+
+@needs_numba
+def test_every_kernel_releases_the_gil_and_caches_on_disk():
+    from numba.core.caching import NullCache
+
+    from mapgen.lighting import kernels as light
+    from mapgen.terrain import kernels as gathers
+
+    for kernel in (light.march, light.sky_view, gathers.separable, gathers.pchip):
+        assert kernel.targetoptions["nogil"] is True
+        assert not isinstance(kernel._cache, NullCache)
+
+
+# ---------------------------------------------------------------------------- the light
+
+SP = 1.0
+HALO = hz.horizon_reach_px(SP)
+
+
+@needs_numba
+@pytest.mark.parametrize("az", [0.0, 33.75, 90.0, 191.25, 270.0])
+def test_the_march_is_the_reference_bit_for_bit(monkeypatch, az):
+    z = _terrain(2 * HALO + 70, seed=1)
+    lo = np.where(z > 20, z - 4, np.nan).astype(np.float32)
+    _same(monkeypatch, lambda: hz.march_horizon(z, HALO, az, SP))
+    _same(monkeypatch, lambda: hz.march_horizon(z, HALO, az, SP, slabs=(z - 1, lo, lo + 9)))
+    _same(monkeypatch, lambda: hz.crown_horizon(z + 3, HALO, az, SP, z))
+
+
+@needs_numba
+def test_the_march_reads_slabs_at_their_own_precision(monkeypatch):
+    z = _terrain(2 * HALO + 40, seed=2)
+    lo = np.where(z > 10, z - 2.5, np.nan)
+    slabs = (z, lo, lo + 4.25)  # float64, as numpy reads them
+    _same(monkeypatch, lambda: hz.march_horizon(z, HALO, 123.75, SP, slabs=slabs))
+
+
+@needs_numba
+def test_the_march_with_crowns_is_the_reference_bit_for_bit(monkeypatch):
+    z = _terrain(2 * HALO + 50, seed=3)
+    occluder = np.where(z > 12, z + 9, np.nan).astype(np.float32)
+    _same(monkeypatch, lambda: hz.march_horizon(z, HALO, 45.0, SP, occluder=occluder))
+
+
+@needs_numba
+def test_a_halo_short_of_the_march_is_refused(monkeypatch):
+    monkeypatch.delenv(jit.KERNEL_SWITCH, raising=False)
+    z = _terrain(2 * HALO + 10, seed=4)
+    with pytest.raises(ValueError, match="halo"):
+        hz.march_horizon(z, HALO - 3, 90.0, SP)
+
+
+@needs_numba
+@pytest.mark.parametrize("spacing", [0.5, 2.0, 100.0])
+def test_the_sky_view_is_the_reference_bit_for_bit(monkeypatch, spacing):
+    halo = int(np.ceil(hz.SKY_RADIUS_M / spacing)) + 2
+    z = _terrain(2 * halo + 90, seed=5)
+    _same(monkeypatch, lambda: hz.sky_view(z, halo, spacing))
+    _same(monkeypatch, lambda: hz.sky_view(z[3:-1, 2:-5], halo, spacing))  # a strided view
+
+
+# -------------------------------------------------------------------------- the sampler
+
+SOURCE = (160, 700)
+
+
+def _rasters() -> dict[str, np.ndarray]:
+    rng = np.random.default_rng(9)
+    heights = rng.integers(-20000, 30000, SOURCE).astype(np.int16)
+    heights[rng.random(SOURCE) < 0.08] = hf.NODATA
+    cover = rng.integers(0, 256, SOURCE).astype(np.uint8)
+    cover[rng.random(SOURCE) < 0.5] = 0
+    signed = rng.normal(0.0, 40.0, SOURCE).astype(np.float32)
+    return {"i16": heights, "u8": cover, "f32": signed, "f16": signed.astype(np.float16)}
+
+
+def _taps(kind: str, scale: float):
+    rows = np.clip(20.3 + (np.arange(48) + 0.5) * scale, 0.0, SOURCE[0] - 1.0)
+    cols = np.clip(1.6 + (np.arange(500) + 0.5) * scale, 0.0, SOURCE[1] - 1.0)
+    if kind == "pchip":
+        return sm.taps_pchip(rows, SOURCE[0]), sm.taps_pchip(cols, SOURCE[1])
+    if kind == "cubic":
+        return sm.taps_cubic(rows, SOURCE[0]), sm.taps_cubic(cols, SOURCE[1])
+    if kind == "footprint":
+        return sm.taps_linear(rows, SOURCE[0]), sm.taps_footprint(cols, scale, SOURCE[1])
+    return sm.taps_linear(rows, SOURCE[0]), sm.taps_linear(cols, SOURCE[1])
+
+
+@needs_numba
+@pytest.mark.parametrize("scale", [0.29, 1.3])
+@pytest.mark.parametrize("kind", ["linear", "cubic", "footprint"])
+@pytest.mark.parametrize("dtype", ["i16", "u8", "f32", "f16"])
+def test_the_separable_gathers_are_the_reference_bit_for_bit(monkeypatch, dtype, kind, scale):
+    raster, taps = _rasters()[dtype], _taps(kind, scale)
+    nodata = hf.NODATA if dtype == "i16" else None
+    _same(monkeypatch, lambda: sm.resample(raster, *taps, nodata))
+    _same(monkeypatch, lambda: sm.sample_plain(raster, taps))
+
+
+@needs_numba
+@pytest.mark.parametrize("scale", [0.29, 1.3])
+@pytest.mark.parametrize("dtype", ["i16", "f32"])
+def test_pchip_is_the_reference_bit_for_bit(monkeypatch, dtype, scale):
+    raster = _rasters()[dtype]
+    smooth, linear = _taps("pchip", scale), _taps("linear", scale)
+    _same(monkeypatch, lambda: sm.resample_pchip(raster, *smooth, hf.NODATA))
+    _same(monkeypatch, lambda: sm.sample_surface(raster, smooth, linear, hf.NODATA))
+
+
+@needs_numba
+def test_float64_weights_round_after_every_tap_as_numpy_does(monkeypatch):
+    raster = _rasters()["f32"]
+    taps = tuple((index, weight.astype(np.float64)) for index, weight in _taps("cubic", 0.7))
+    _same(monkeypatch, lambda: sm.sample_plain(raster, taps))
