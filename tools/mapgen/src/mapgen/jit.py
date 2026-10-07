@@ -28,6 +28,8 @@ __all__ = [
     "CUDA_OPTIONS",
     "GPU",
     "KERNEL_SWITCH",
+    "NO_GPU",
+    "ON_NUMBA",
     "REFERENCE",
     "add_gpu_flag",
     "cuda_kernel",
@@ -44,6 +46,10 @@ KERNEL_SWITCH = "MAPGEN_KERNELS"
 REFERENCE = "numpy"
 #: The switch's value that selects the CUDA kernels.
 GPU = "cuda"
+#: Where a CUDA kernel's call is counted when the device had no memory for it and numba ran it.
+ON_NUMBA = "numba"
+#: Exit code of a run whose ``--gpu`` cannot run here.
+NO_GPU = 12
 
 #: NVRTC's options for every CUDA kernel: no fused multiply-add, and division, square roots
 #: and subnormals as IEEE has them, so each operation rounds as numpy's does.
@@ -186,7 +192,7 @@ def _gpu_problem_apart() -> str | None:
 
 class _SelectGpu(argparse.Action):
     """``--gpu``: the switch set to ``GPU`` for this process and the light's processes, which
-    inherit it; refused at once where the kernels cannot run."""
+    inherit it; refused at once with ``NO_GPU`` where the kernels cannot run."""
 
     def __call__(
         self,
@@ -197,7 +203,8 @@ class _SelectGpu(argparse.Action):
     ) -> None:
         problem = _gpu_problem_apart()
         if problem is not None:
-            parser.error(f"--gpu: {problem}")
+            print(f"--gpu: {problem}", flush=True)
+            raise SystemExit(NO_GPU)
         os.environ[KERNEL_SWITCH] = GPU
         setattr(namespace, self.dest, True)
 

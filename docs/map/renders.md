@@ -395,7 +395,6 @@ it writes. The codes are constants beside the stage that raises them.
 | Exit | Constant | When |
 | --- | --- | --- |
 | 1 | `render/inputs.NO_CONTAINER` | the game's container is not at `--game` |
-| 2 | `jit.add_gpu_flag` | `--gpu` and the CUDA kernels cannot run here: numba, CuPy or a device is missing (section 41, "On the GPU") |
 | 3 | `render/inputs.STALE_LAYER` | a layer folder holds tiles this run cannot show were drawn from the field on disk; `--force` replaces them |
 | 4 | `render/inputs.NO_FIELD` | there is no heightfield |
 | 5 | `render/inputs.PARALLEL_MISMATCH` | `--check-parallel` found the parallel cutter's bytes differ from the serial one's |
@@ -405,7 +404,10 @@ it writes. The codes are constants beside the stage that raises them.
 | 9 | `render/inputs.RESTYLE_MISS` | `--restyle` and a kept raster cache is missing or was cut for another size, sub-sampling or build |
 | 10 | `render/inuse.IN_USE` | the output folder holds a map type the server's registry lists; `--overwrite-in-use` writes anyway |
 | 11 | `render/light.SCRATCH_IN_USE` | the light's scratch is held open by a render still running (section 29, "Scratch") |
+| 12 | `jit.NO_GPU` | `--gpu` and the CUDA kernels cannot run here: numba, CuPy or a device is missing (section 41, "On the GPU") |
 | 1 | `commands/renders.CUT_FAILED` | the tiles could not be cut into place |
+
+Exit code 2 is argparse's, for a command line it cannot parse.
 
 A raster cache carries the size, the sub-sampling and the build it was rasterised for, so a
 cache from another render is rebuilt, not refused. `--kernel-only` is the honest way to draw
@@ -1450,9 +1452,16 @@ bytes either way.
 - **The switch.** `--gpu` sets `MAPGEN_KERNELS=cuda`, which the light's processes inherit;
   setting it by hand does the same. `jit.gpu_on()` says CUDA where the switch says `cuda`
   and numba's kernels are on. `--gpu` checks at once, in under a second, that numba and CuPy
-  import and that a kernel compiles and loads on a device, and refuses with exit code 2 and
-  the reason when one does not: a run never finds out at its light. The reference and
-  numba's path never import CuPy; a test holds that.
+  import and that a kernel compiles and loads on a device, and refuses with exit code 12
+  (`jit.NO_GPU`) and the reason on stdout when one does not: a run never finds out at its
+  light. It was argparse's exit code 2 until 2026-10-07, which a wrapper could not tell from
+  a bad command line. The reference and numba's path never import CuPy; a test holds that.
+- **The log.** Nothing a run writes says where its light was marched: the light's
+  `meta.json` and the sidecars are a numba run's, timings apart. So each light process counts
+  its march and sky-view calls by where they ran (`gpu.ran`), each block hands its count back
+  with its tiles, and a `--gpu` bake prints the sum once its block rows are in:
+  `light: horizon and sky-view calls 2,112 on NVIDIA GeForce RTX 3080; 0 ran on numba, the
+  device out of memory`. A run without `--gpu` prints no such line.
 - **What it needs.** The `gpu` extra: CuPy (`cupy-cuda12x`) and NVRTC from
   `nvidia-cuda-nvrtc-cu12`, both pinned, on Windows or Linux on x86-64, and an NVIDIA
   driver. No CUDA toolkit. CuPy compiles `lighting/gpu.cu` once a process and keeps the
@@ -1506,8 +1515,9 @@ one step to the next, which is a different draw.
 - `tests/mapgen/test_gpu_kernels.py` compares the CUDA march and sky view with the reference
   byte for byte on the cases of `test_kernels.py`, plus a block whose width is not a whole
   number of thread blocks, float64 slabs and a device out of memory. It also holds the
-  switch, the flag and its refusal, the light's worker count, and that CuPy loads only under
-  `cuda`. On a machine without numba, CuPy or a device the kernel tests skip and say which.
+  switch, the flag and its refusal, the light's worker count, the count of where each call
+  ran and the bake's line, and that CuPy loads only under `cuda`. On a machine without numba,
+  CuPy or a device the kernel tests skip and say which.
 - G1 at 2048 (all five layers, lit), with `--gpu` and without, side by side: all 1,125 tiles
   the same bytes as each other and as the pixel-batch baseline, and the six sidecars the same
   apart from their timings. Against that baseline both also add the light's `key`, which the

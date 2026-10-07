@@ -139,8 +139,8 @@ claim is refused with its own exit code (§20, "Refusals"). The main options:
   (§40, "Column pieces").
 - `--gpu` runs the light's horizon march and sky view as CUDA kernels. It needs the root
   project's `gpu` extra (`uv sync --all-extras` installs it) and an NVIDIA driver, and
-  refuses with exit code 2 where either is missing. The tiles are the same bytes (§41, "On
-  the GPU").
+  refuses with exit code 12 where either is missing. The bake's log says where its calls
+  ran. The tiles are the same bytes (§41, "On the GPU").
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and

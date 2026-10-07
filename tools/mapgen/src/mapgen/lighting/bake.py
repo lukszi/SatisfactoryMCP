@@ -11,6 +11,7 @@ import json
 import shutil
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable, Sequence
 from concurrent.futures import CancelledError, Future, ProcessPoolExecutor
 from dataclasses import replace
@@ -20,6 +21,7 @@ from pathlib import Path
 import numpy as np
 
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.jit import ON_NUMBA, gpu_on
 from mapgen.lighting.horizon import SKY_RADIUS_M, Slabs, horizon_reach_px
 from mapgen.lighting.light_tiles import level_strips
 from mapgen.lighting.model import light_axis
@@ -48,7 +50,20 @@ from satisfactory_mcp.core.gameassets.pyramid import (
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.core.mapprogress import encode_stage
 
-__all__ = ["LightBake", "bake_light", "block_rows"]
+__all__ = ["LightBake", "bake_light", "block_rows", "gpu_calls_line"]
+
+
+def gpu_calls_line(done: Sequence[BlockDone]) -> str:
+    """The log line of a ``--gpu`` bake: where its horizon and sky-view calls ran."""
+    calls: Counter[str] = Counter()
+    for block in done:
+        calls.update(block.on_gpu)
+    on_numba = calls.pop(ON_NUMBA, 0)
+    devices = ", ".join(f"{n:,} on {name}" for name, n in sorted(calls.items()))
+    return (
+        f"light: horizon and sky-view calls {devices or 'none on CUDA'}; {on_numba:,} ran on "
+        "numba, the device out of memory"
+    )
 
 
 def block_rows(size: int) -> tuple[int, list[int]]:
@@ -195,6 +210,8 @@ class LightBake:
             if on_row is not None:
                 on_row(row)
         native_s = time.time() - self.started
+        if gpu_on():
+            print(gpu_calls_line(self.done), flush=True)
         tiles = sum(done.tiles for done in self.done)
         spacing_m, work = self.surface.spacing_m, self.surface.directory
         with one_blas_thread():

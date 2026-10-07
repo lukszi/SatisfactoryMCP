@@ -137,9 +137,10 @@ Planned as 0.2.0.
   the light are the same bytes. A light kept before this is baked again once.
 - Map generator: `--gpu` runs the light's horizon march and sky view as CUDA kernels. It
   needs the new `gpu` extra (CuPy and its NVRTC) and an NVIDIA driver, and a run where they
-  cannot work is refused at once with exit code 2. The CPU path stays the default, and the
+  cannot work is refused at once with exit code 12. The CPU path stays the default, and the
   tiles are the same bytes either way; a full-size light block's ground horizons take about
-  3 s instead of 8.
+  3 s instead of 8. The bake logs how many of its calls ran on the GPU and how many fell back
+  to the CPU for want of device memory.
 - Map generator: a render whose light scratch another running render holds is refused with
   exit code 11 and the reason on stdout (it was exit 1 on stderr). The render sidecar's
   `cliff_geometry.placements_dropped` counts the passable `CliffPillar_03` as `excluded_mesh`

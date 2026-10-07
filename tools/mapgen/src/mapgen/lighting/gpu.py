@@ -2,26 +2,32 @@
 
 Each takes its numba twin's arguments and gives its bits: ``gpu.cu`` does the same float32
 operations in the same order, compiled without fused multiply-adds (``mapgen.jit``). A call
-the device has no memory for runs the twin instead. Imported only when
-``mapgen.jit.gpu_on()``. docs/map/renders.md section 41, "On the GPU".
+the device has no memory for runs the twin instead. Each call is counted by where it ran, for
+the run's log (``ran``). Imported only when ``mapgen.jit.gpu_on()``. docs/map/renders.md
+section 41, "On the GPU".
 """
 
 from __future__ import annotations
 
+import functools
+from collections import Counter
+
 import cupy as cp
 import numpy as np
 
-from mapgen.jit import cuda_kernel
+from mapgen.jit import ON_NUMBA, cuda_kernel
 from mapgen.lighting import kernels
 from mapgen.lighting.kernels import Offsets
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid
 
-__all__ = ["ROW_THREADS", "march", "sky_view"]
+__all__ = ["ROW_THREADS", "march", "ran", "sky_view"]
 
 #: Threads of a block, along a row: a block reads a run of contiguous memory.
 ROW_THREADS = 128
 
 _SOURCE = ("mapgen.lighting", "gpu.cu")
+
+_calls: Counter[str] = Counter()
 
 
 def march(
@@ -31,8 +37,10 @@ def march(
     """``kernels.march``: ``best`` raised in place. Every array C-ordered, the slabs float32."""
     try:
         _march(solid, z, halo, bilinear, offsets, scale, best, lo, hi, slabbed)
+        _calls[_device()] += 1
     except MemoryError:  # CuPy's OutOfMemoryError
         kernels.march(solid, z, halo, bilinear, offsets, scale, best, lo, hi, slabbed)
+        _calls[ON_NUMBA] += 1
     finally:
         cp.get_default_memory_pool().free_all_blocks()
 
@@ -41,10 +49,25 @@ def sky_view(z: F32Grid, halo: int, offsets: Offsets, scale: F32Grid, out: F32Gr
     """``kernels.sky_view``: ``out`` written in place; the offsets are ``(dirs, steps)``."""
     try:
         _sky_view(z, halo, offsets, scale, out)
+        _calls[_device()] += 1
     except MemoryError:  # CuPy's OutOfMemoryError
         kernels.sky_view(z, halo, offsets, scale, out)
+        _calls[ON_NUMBA] += 1
     finally:
         cp.get_default_memory_pool().free_all_blocks()
+
+
+def ran() -> dict[str, int]:
+    """This process's calls since the last ``ran()``, by the device's name or ``ON_NUMBA``."""
+    counted = dict(_calls)
+    _calls.clear()
+    return counted
+
+
+@functools.cache
+def _device() -> str:
+    name: object = cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())["name"]
+    return name.decode() if isinstance(name, bytes) else str(name)
 
 
 def _march(

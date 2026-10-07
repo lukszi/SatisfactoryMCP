@@ -137,9 +137,13 @@ class BlockJob:
 
 
 class BlockDone(NamedTuple):
+    """A baked block: its tiles, horizon bytes and seconds, and with ``--gpu`` where its
+    horizon and sky-view calls ran (``gpu.ran``)."""
+
     tiles: int
     hz_bytes: int
     seconds: float
+    on_gpu: dict[str, int]
 
 
 class Place(NamedTuple):
@@ -336,7 +340,15 @@ def bake_block(job: BlockJob) -> BlockDone:
     quarter = (slice(h0 // 2, (h0 + half_px) // 2), slice(w0 // 2, (w0 + half_px) // 2))
     work_array(work, "hzq", np.uint8)[quarter] = horizon_quarter
     tiles = (nrm.shape[0] // t) * (nrm.shape[1] // t)
-    return BlockDone(tiles, hz_bytes, time.time() - started)
+    return BlockDone(tiles, hz_bytes, time.time() - started, _gpu_calls())
+
+
+def _gpu_calls() -> dict[str, int]:
+    if not gpu_on():
+        return {}
+    from mapgen.lighting import gpu
+
+    return gpu.ran()
 
 
 def allocate_work_arrays(work: Path, size: int) -> None:

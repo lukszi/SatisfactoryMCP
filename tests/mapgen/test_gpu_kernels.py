@@ -1,4 +1,5 @@
-"""The CUDA kernels give the bits of the numpy reference, and ``--gpu`` sets the switch.
+"""The CUDA kernels give the bits of the numpy reference, ``--gpu`` sets the switch, and a bake
+logs where its calls ran.
 
 docs/map/renders.md section 41, "On the GPU". Synthetic fixtures: no install, no field. The kernel tests
 skip, saying why, on a machine without numba, CuPy or a CUDA device; the switch, the flag
@@ -85,8 +86,8 @@ def test_the_flag_is_refused_where_the_kernels_cannot_run(monkeypatch, capsys):
     monkeypatch.setattr(jit, "_gpu_problem_apart", lambda: "no CUDA device")
     with pytest.raises(SystemExit) as refused:
         _parser().parse_args(["--gpu"])
-    assert refused.value.code == 2
-    assert "--gpu: no CUDA device" in capsys.readouterr().err
+    assert refused.value.code == jit.NO_GPU != 2, "not argparse's code for a bad command line"
+    assert "--gpu: no CUDA device" in capsys.readouterr().out
     assert os.environ[jit.KERNEL_SWITCH] == ""
 
 
@@ -192,6 +193,32 @@ def test_a_march_the_device_has_no_memory_for_runs_numba(monkeypatch):
     monkeypatch.setattr(gpu, "_sky_view", _out_of_memory)
     _same(monkeypatch, lambda: hz.march_horizon(z, HALO, 210.0, SP))
     _same(monkeypatch, lambda: hz.sky_view(z, 12, SP))
+
+
+@pytest.mark.usefixtures("device")
+def test_each_call_is_counted_where_it_ran(monkeypatch):
+    from mapgen.lighting import gpu
+
+    z = octave_terrain(2 * HALO + 30, seed=8)
+    gpu.ran()
+    _same(monkeypatch, lambda: hz.sky_view(z, 12, SP))
+    on_device = gpu.ran()
+    assert on_device and jit.ON_NUMBA not in on_device
+    assert gpu.ran() == {}, "read once"
+    monkeypatch.setattr(gpu, "_sky_view", _out_of_memory)
+    _same(monkeypatch, lambda: hz.sky_view(z, 12, SP))
+    assert gpu.ran() == {jit.ON_NUMBA: sum(on_device.values())}
+
+
+def test_a_gpu_bake_logs_where_its_calls_ran():
+    from mapgen.lighting.bake import gpu_calls_line
+    from mapgen.lighting.stage import BlockDone
+
+    done = [BlockDone(1, 0, 0.0, {"RTX": 3}), BlockDone(1, 0, 0.0, {"RTX": 2, jit.ON_NUMBA: 1})]
+    assert gpu_calls_line(done) == (
+        "light: horizon and sky-view calls 5 on RTX; 1 ran on numba, the device out of memory"
+    )
+    assert "calls none on CUDA; 0 ran" in gpu_calls_line([BlockDone(1, 0, 0.0, {})])
 
 
 def _refused(*_args: object) -> None:
