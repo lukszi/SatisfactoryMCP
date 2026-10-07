@@ -213,7 +213,11 @@ class PaintedGround:
         else:
             biome, names = self._biome
             index = biome_grid(biome, grades.shape[0], grades.shape[1])
-            self.water_class, found = water_classes(water, grades, self._bodies, (index, names))
+            heights = field.height_dm
+            void = None if heights is None else heights == hf.NODATA
+            self.water_class, found = water_classes(
+                water, grades, self._bodies, (index, names), void
+            )
         self.source["water_classes"] = found
         return found
 
