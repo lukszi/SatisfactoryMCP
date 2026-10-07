@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tracemalloc
 
 import numpy as np
 import pytest
@@ -105,7 +106,8 @@ def test_a_plane_round_trips_across_band_edges_and_a_short_last_band(tmp_path, d
         slice(None), slice(250, 270), slice(255, 257), slice(0, 1), slice(999, 1000),
         slice(768, None), slice(-5, None), slice(300, 300), slice(100, 900, 7),
         slice(900, 100, -3), 10, -1, (slice(250, 520), slice(3, 20)), (slice(None), 5),
-        (slice(10, 800), [0, 36, 4]), (511, slice(2, 9)), (0, 0),
+        (slice(10, 800), [0, 36, 4]), (511, slice(2, 9)), (0, 0), (slice(240, 560), slice(30, 99)),
+        (slice(100, 50), slice(2, 5)), (slice(200, 300, 2), slice(1, 4)), (slice(0, 9), slice(9, 2)),
     ]  # fmt: skip
     for key in keys:
         assert _same(store[key], plane[key]), key
@@ -141,6 +143,21 @@ def test_the_render_s_halo_reads_decode_each_band_once_and_hold_no_file(tmp_path
         assert len(store._cache) <= 3
     assert len(decoded) == 6, "five whole bands and a short one, each decoded once"
     store.path.rename(tmp_path / "moved.bands")
+
+
+def test_a_piece_of_a_band_copies_its_own_columns_from_the_bands_it_spans(tmp_path):
+    plane = _plane(np.float32, (700, 512))
+    store = _write(tmp_path / "p.bands", plane)
+    piece = (slice(240, 530), slice(16, 80))
+    assert _same(store[piece], plane[piece]), "the three bands it spans, decoded and kept"
+    tracemalloc.start()
+    try:
+        got = store[piece]
+        _now, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert _same(got, plane[piece]) and not got.flags.writeable
+    assert peak < 2 * got.nbytes, "the piece's columns copied, not the bands' whole rows"
 
 
 def test_the_writer_refuses_bands_out_of_order_or_missing_and_leaves_nothing(tmp_path):

@@ -1,9 +1,9 @@
-"""How far the steps of a band's draw read past the pixel they write, and the halo that holds them.
+"""How far the steps of a band's draw read past the pixel they write, and the halos that hold them.
 
 ``render/compose.py`` draws the layers 256 rows at a time, each band ``BAND_HALO`` rows past its
-edges and cropped after. A step that reads its neighbours, a gradient, a blur or a mean, draws
-what the whole sheet would only while all it reads lies within the halo. docs/map/renders.md
-section 40.
+edges, and each band in column pieces ``PIECE_HALO`` columns past theirs, cropped after. A
+step that reads its neighbours, a gradient, a blur or a mean, draws what the whole sheet would
+only while all it reads lies within the halo. docs/map/renders.md section 40.
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ __all__ = [
     "Stencil",
     "band_halo",
     "band_reach",
+    "piece_halo",
+    "piece_reach",
     "pixel_m",
     "water_blur_reach",
 ]
@@ -37,14 +39,16 @@ HALO_STEP = 8
 class Stencil:
     """A step of the draw that reads its neighbours, and the functions that take it.
 
-    ``reach(size)`` is how many pixels away it reads, through every step before it; ``rows``
-    is False for one that reads along its row only.
+    ``reach(size)`` is how many pixels away it reads, through every step before it, along a
+    row and, unless ``rows`` is False, across rows. ``pieces`` is False for a step that reads
+    a band's rows once its pieces are put together, which no piece edge cuts.
     """
 
     name: str
     sites: tuple[str, ...]
     reach: Callable[[int], int]
     rows: bool = True
+    pieces: bool = True
 
 
 def pixel_m(size: int) -> float:
@@ -93,7 +97,9 @@ STENCILS: tuple[Stencil, ...] = (
     Stencil("rock top", ("palette.painted.surfaces.top_cover",), _rock_top),
     Stencil("water edge blur", ("palette.water.surface.water_alpha",), water_blur_reach),
     Stencil("sunk specks", ("palette.painted.surfaces.sunk_specks",), _sunk_specks),
-    Stencil("seam trace", ("terrain.measure.SeamTrace.measure",), _seam_trace, rows=False),
+    Stencil(
+        "seam trace", ("terrain.measure.SeamTrace.measure",), _seam_trace, rows=False, pieces=False
+    ),
 )
 
 
@@ -102,9 +108,23 @@ def band_reach(size: int) -> int:
     return max(stencil.reach(size) for stencil in STENCILS if stencil.rows)
 
 
+def piece_reach(size: int) -> int:
+    """The farthest any stencil a piece draws reads along its rows at ``size``."""
+    return max(stencil.reach(size) for stencil in STENCILS if stencil.pieces)
+
+
+def _in_steps(reach: int) -> int:
+    return -(-reach // HALO_STEP) * HALO_STEP
+
+
 def band_halo(size: int = RENDER_PX) -> int:
     """The rows that hold every stencil at ``size``, in whole ``HALO_STEP``s.
 
     A reach is fixed in pixels or in metres, so the largest size holds it at every size.
     """
-    return -(-band_reach(size) // HALO_STEP) * HALO_STEP
+    return _in_steps(band_reach(size))
+
+
+def piece_halo(size: int = RENDER_PX) -> int:
+    """The columns that hold every stencil a piece draws at ``size``, in whole ``HALO_STEP``s."""
+    return _in_steps(piece_reach(size))

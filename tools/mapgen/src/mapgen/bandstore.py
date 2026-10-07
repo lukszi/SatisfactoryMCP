@@ -250,14 +250,16 @@ class BandArray:
             self._cache.popitem(last=False)
         return band
 
-    def _span(self, r0: int, r1: int) -> NDArray[np.generic]:
+    def _span(self, r0: int, r1: int, cols: slice) -> NDArray[np.generic]:
+        """Rows ``[r0, r1)`` over ``cols``, each stored band cut to them before they join."""
         if r1 <= r0:
-            return np.empty((0, self.shape[1]), self.dtype)
+            return np.empty((0, self.shape[1]), self.dtype)[:, cols]
         k0, k1 = r0 // self.band_rows, (r1 - 1) // self.band_rows
         parts: list[NDArray[np.generic]] = []
         for k in range(k0, k1 + 1):
             top = k * self.band_rows
-            parts.append(self._band(k)[max(r0, top) - top : min(r1, top + self.band_rows) - top])
+            rows = slice(max(r0, top) - top, min(r1, top + self.band_rows) - top)
+            parts.append(self._band(k)[rows, cols])
         return parts[0] if len(parts) == 1 else np.concatenate(parts)
 
     def _gather(self, rows: NDArray[np.integer] | NDArray[np.bool_]) -> NDArray[np.generic]:
@@ -279,20 +281,26 @@ class BandArray:
         if not 1 <= len(parts) <= 2 or not all(map(_is_axis_key, parts)):
             raise IndexError("a band array takes a row index and an optional column index")
         rows, cols = (parts[0], parts[1]) if len(parts) == 2 else (parts[0], slice(None))
+        # A column slice is cut from each stored band as it is read, so a piece of a band
+        # copies its own columns only; any other column key picks from the rows read.
+        cut = cols if isinstance(cols, slice) else slice(None)
         if isinstance(rows, slice):
             r0, r1, step = rows.indices(self.shape[0])
-            out = self._span(r0, r1) if step == 1 else self._gather(np.arange(r0, r1, step))
+            if step == 1:
+                out = self._span(r0, r1, cut)
+            else:
+                out = self._gather(np.arange(r0, r1, step))[:, cut]
         elif np.ndim(rows) == 0:
             row = operator.index(np.asarray(rows).item())
             row = row + self.shape[0] if row < 0 else row
             if not 0 <= row < self.shape[0]:
                 raise IndexError(f"row {rows} is outside 0..{self.shape[0] - 1}")
-            out = self._span(row, row + 1)[0]
+            out = self._span(row, row + 1, cut)[0]
         else:
             if not isinstance(cols, slice) and np.ndim(cols) != 0:
                 raise IndexError("index the rows, then the columns, of a band array")
-            out = self._gather(np.asarray(rows))
-        if not (isinstance(cols, slice) and cols == slice(None)):
+            out = self._gather(np.asarray(rows))[:, cut]
+        if not isinstance(cols, slice):
             out = out[..., cols]
         out.flags.writeable = False
         return out

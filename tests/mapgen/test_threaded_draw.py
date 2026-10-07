@@ -1,7 +1,7 @@
-"""A layer's bands drawn on threads: the same bytes, the accumulators in band order, the pool,
-the band store shared between threads, and how many threads a run takes.
+"""A layer's bands drawn in column pieces on threads: the same bytes, the accumulators in band
+order, the pool, the band store shared between threads, and how many threads a run takes.
 
-docs/spatial-and-map.md section 40. Synthetic fixtures: no install, no field on disk.
+docs/map/renders.md section 40. Synthetic fixtures: no install, no field on disk.
 """
 
 from __future__ import annotations
@@ -23,7 +23,14 @@ from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.pools import free_ram_bytes
 from mapgen.render import compose, drawpool
 from mapgen.render.compose import BAND_ROWS, render_layer, render_layers
-from mapgen.render.drawpool import AHEAD, add_draw_flags, bands_held, draw_threads, in_order
+from mapgen.render.drawpool import (
+    AHEAD,
+    PIECE_COLS,
+    add_draw_flags,
+    bands_held,
+    draw_threads,
+    in_order,
+)
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -94,14 +101,14 @@ class _Surface:
         self.land[row : row + len(z_m), columns] = land
 
 
-def _draw(scene, layer, threads):
+def _draw(scene, layer, threads, columns=N):
     seam, regimes, surface = SeamTrace(), RegimeCoverage(), _Surface()
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
     rgb = render_layer(
         layer, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
         scene.heights, direct=scene.direct, seam=seam, regimes=regimes,
         measured_plane_u8=scene.measured, overlay=scene.overlay, sea=scene.sea, unlit=True,
-        surface=surface, threads=threads,
+        surface=surface, threads=threads, columns=columns,
     )  # fmt: skip
     measured = json.dumps({"seam": seam.result(), "regimes": regimes.result()}, sort_keys=True)
     return rgb, measured, surface
@@ -112,12 +119,12 @@ def test_a_layer_draws_the_same_bytes_and_measures_on_any_number_of_threads(tmp_
     scene = _scene(tmp_path)
     rgb, measured, surface = _draw(scene, layer, 1)
     assert json.loads(measured)["seam"]["measured"], "the fixture has a seam to measure"
-    for threads in (3, 64):
-        got, got_measured, got_surface = _draw(scene, layer, threads)
-        assert got.tobytes() == rgb.tobytes(), threads
-        assert got_measured == measured, threads
-        assert got_surface.z.tobytes() == surface.z.tobytes(), threads
-        assert got_surface.land.tobytes() == surface.land.tobytes(), threads
+    for threads, columns in ((3, N), (64, N), (1, 333), (5, 97), (64, 41)):
+        got, got_measured, got_surface = _draw(scene, layer, threads, columns)
+        assert got.tobytes() == rgb.tobytes(), (threads, columns)
+        assert got_measured == measured, (threads, columns)
+        assert got_surface.z.tobytes() == surface.z.tobytes(), (threads, columns)
+        assert got_surface.land.tobytes() == surface.land.tobytes(), (threads, columns)
     assert all(store.keep == 3 for store in scene.stores), "the band stores keep three again"
 
 
@@ -151,25 +158,33 @@ def test_one_pass_draws_each_layer_as_it_draws_alone_and_measures_once(tmp_path)
         render_layers(("terrain",), scene.field, None, 1, borrow, N, False, painted=object())
 
 
-def test_the_accumulators_take_the_bands_in_order_whatever_order_they_finish(tmp_path, monkeypatch):
-    merged, finished = [], []
-    real = compose._draw_band
+def test_the_bands_settle_in_order_whatever_order_their_pieces_finish(tmp_path, monkeypatch):
+    settled, finished = [], []
+    real_piece, real_settle = compose._draw_piece, compose.settle_band
 
-    def last_first(draw, sheets, top):
-        time.sleep(0.05 * (6 - top // BAND_ROWS))
-        owed = real(draw, sheets, top)
-        finished.append(top)
-        return [*owed, (merged.append, top)]
+    def last_first(draw, sheets, at):
+        top, left = at
+        time.sleep(0.01 * (3 * (6 - top // BAND_ROWS) - left // 500))
+        owed = real_piece(draw, sheets, at)
+        finished.append(at)
+        return owed
+
+    def settle(sources, rows, pieces):
+        settled.append((rows.start, len(pieces)))
+        return real_settle(sources, rows, pieces)
 
     scene = _scene(tmp_path)
-    rgb, measured, _surface = _draw(scene, "terrain", 1)
-    monkeypatch.setattr(compose, "_draw_band", last_first)
-    merged.clear()
-    got, got_measured, _surface = _draw(scene, "terrain", 6)
-    tops = list(range(0, N, BAND_ROWS))
-    assert finished != tops, "the bands finished out of order"
-    assert merged == tops
+    rgb, measured, surface = _draw(scene, "terrain", 1)
+    monkeypatch.setattr(compose, "_draw_piece", last_first)
+    monkeypatch.setattr(compose, "settle_band", settle)
+    got, got_measured, got_surface = _draw(scene, "terrain", 6, columns=500)
+    assert finished != sorted(finished), "the pieces finished out of order"
+    assert settled == [(top, 3) for top in range(0, N, BAND_ROWS)]
     assert (got.tobytes(), got_measured) == (rgb.tobytes(), measured)
+    assert (got_surface.z.tobytes(), got_surface.land.tobytes()) == (
+        surface.z.tobytes(),
+        surface.land.tobytes(),
+    )
 
 
 def test_the_pool_yields_in_order_and_keeps_a_bounded_number_ahead():
@@ -251,9 +266,19 @@ def test_threads_share_a_band_store_and_decode_each_band_once(tmp_path):
     assert store.keep == 3 and len(store._cache) <= 3
 
 
-def test_the_band_stores_hold_two_bands_a_thread_and_a_halo():
+def test_the_band_stores_hold_the_bands_the_pieces_in_flight_span_and_a_halo():
     assert bands_held(1) == 4
-    assert bands_held(8) == 18
+    assert bands_held(8) == 18, "a band one piece wide: two bands a thread"
+    assert bands_held(8, 16) == 4, "sixteen pieces in flight span two bands"
+    assert bands_held(16, 16) == 5
+    assert bands_held(1, 16) == 4
+
+
+#: A full-size run's sheet and the reserve, which the threads' memory comes after.
+SET_ASIDE = 32768 * 32768 * 3 + drawpool.RESERVE_BYTES
+
+#: Every layer, as a full run draws them.
+EVERY = ("terrain", "satellite", "painted", "relief", "relief-dark")
 
 
 def test_the_thread_count_is_the_request_or_the_default_capped_by_memory(monkeypatch):
@@ -261,9 +286,11 @@ def test_the_thread_count_is_the_request_or_the_default_capped_by_memory(monkeyp
     gb = 1e9
     assert draw_threads(None, ["terrain"], 32768, free=60 * gb) == drawpool.DRAW_THREADS
     assert draw_threads(16, ["terrain"], 32768, free=60 * gb) == 16
-    assert draw_threads(32, ["painted"], 32768, free=60 * gb) == 16
-    assert draw_threads(None, ["painted"], 32768, free=20 * gb) == 4
-    assert draw_threads(None, ["relief"], 32768, free=20 * gb) == 7
+    assert draw_threads(32, ["painted"], 32768, free=60 * gb) == 32
+    for threads in (1, 4, 7):
+        fits = SET_ASIDE + drawpool.pass_bytes(["painted"], 32768, PIECE_COLS, threads)
+        assert draw_threads(None, ["painted"], 32768, free=int(fits)) == threads
+        assert draw_threads(None, ["painted"], 32768, free=int(fits) - 1) == max(threads - 1, 1)
     assert draw_threads(None, ["painted"], 32768, free=4 * gb) == 1
     assert draw_threads(1, ["terrain"], 2048, free=60 * gb) == 1
     assert draw_threads(0, ["terrain"], 2048, free=60 * gb) == 1
@@ -274,23 +301,31 @@ def test_the_thread_count_is_the_request_or_the_default_capped_by_memory(monkeyp
     assert draw_threads(None, ["painted"], 32768) == 4
 
 
-def test_a_pass_costs_its_dearest_layer_and_the_painted_layer_s_second_ground(monkeypatch):
+def test_a_piece_costs_its_dearest_layer_and_the_second_ground_by_its_width(monkeypatch):
     monkeypatch.setattr(drawpool.os, "cpu_count", lambda: 32)
-    every = ("terrain", "satellite", "painted", "relief", "relief-dark")
-    assert drawpool.band_bytes(["terrain", "relief"], 32768) == drawpool.BAND_BYTES[None]
-    assert drawpool.band_bytes(["painted"], 32768) == drawpool.BAND_BYTES["painted"]
-    both = drawpool.BAND_BYTES["painted"] + drawpool.SEABED_BYTES
-    assert drawpool.band_bytes(every, 32768) == both
-    assert drawpool.band_bytes(every, 16384) == both / 2
-    gb = 1e9
-    assert draw_threads(None, every, 32768, free=20 * gb) == 3
-    assert draw_threads(None, ["painted"], 32768, free=20 * gb) == 4
+    width = drawpool.PIECE_BYTES_WIDTH
+    assert drawpool.piece_bytes(["terrain", "relief"], width) == drawpool.PIECE_BYTES[None]
+    assert drawpool.piece_bytes(["painted"], width) == drawpool.PIECE_BYTES["painted"]
+    both = drawpool.PIECE_BYTES["painted"] + drawpool.SEABED_BYTES
+    assert drawpool.piece_bytes(EVERY, width) == pytest.approx(both)
+    assert drawpool.piece_bytes(EVERY, width // 2) == pytest.approx(both / 2)
+    fits = SET_ASIDE + drawpool.pass_bytes(EVERY, 32768, PIECE_COLS, 4)
+    assert draw_threads(None, EVERY, 32768, free=int(fits)) == 4
+    assert draw_threads(None, EVERY, 32768, free=int(fits), columns=512) > 4, "narrower: more"
+    stored = drawpool.STORED_BAND_BYTES["painted"] * 2048 / 32768
+    assert drawpool.pass_bytes(EVERY, 2048, PIECE_COLS, 1) == pytest.approx(
+        drawpool.piece_bytes(EVERY, 2048) + bands_held(1) * stored
+    ), "a sheet no wider than a piece is one piece of its own width"
 
 
-def test_free_memory_reads_on_this_machine_and_the_flag_parses():
+def test_free_memory_reads_on_this_machine_and_the_flags_parse():
     free = free_ram_bytes()
     assert free is None or free > 0
     parser = argparse.ArgumentParser()
     add_draw_flags(parser)
     assert parser.parse_args([]).draw_threads is None
     assert parser.parse_args(["--draw-threads", "1"]).draw_threads == 1
+    assert parser.parse_args([]).draw_columns == PIECE_COLS
+    assert parser.parse_args(["--draw-columns", "256"]).draw_columns == 256
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--draw-columns", "0"])
