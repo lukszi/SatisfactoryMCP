@@ -36,6 +36,8 @@ from mapgen.terrain.render_meshes import (
     MESH_CORAL,
     MESH_FAMILY_SHIFT,
     MESH_ROCK,
+    MeshGroup,
+    PreparedMeshes,
     mesh_items,
     mesh_pass,
     rasterise_mesh_band,
@@ -121,13 +123,13 @@ def test_mesh_items_carry_each_rock_s_family_and_leave_coral_alone(monkeypatch):
         "extra_foliage": {SEA_ROCK: [np.eye(4)]},
     }
     prepared, meta = mesh_items(None, None, None, sweep)
-    codes = prepared["items"][PILLAR][0]
+    codes = prepared.items[PILLAR].codes
     assert (codes & MESH_CLASS_MASK).tolist() == [MESH_ROCK, MESH_ROCK]
     assert (codes >> MESH_FAMILY_SHIFT).tolist() == [FOREST, GRASS], "override, then its own"
-    assert prepared["items"][CORAL][0].tolist() == [MESH_CORAL]
-    assert (prepared["items"][SEA_ROCK][0] >> MESH_FAMILY_SHIFT).tolist() == [GRASS]
+    assert prepared.items[CORAL].codes.tolist() == [MESH_CORAL]
+    assert (prepared.items[SEA_ROCK].codes >> MESH_FAMILY_SHIFT).tolist() == [GRASS]
     assert all(mesh != CORAL for mesh, _m in asked), "coral is not a rock"
-    assert prepared["families"] and meta["rock_families"] == {"forest": 1, "grass": 2}
+    assert prepared.families and meta["rock_families"] == {"forest": 1, "grass": 2}
 
 
 def test_the_band_keeps_each_instance_s_code():
@@ -136,8 +138,8 @@ def test_the_band_keeps_each_instance_s_code():
     mats = np.tile(np.eye(4, dtype=np.float32), (2, 1, 1))
     mats[0, 3, :2], mats[1, 3, :2] = (x0, y0), (x0 + 1000, y0)
     code = np.array([MESH_ROCK | FOREST << MESH_FAMILY_SHIFT, MESH_ROCK], np.uint16)
-    prepared = {"items": {PILLAR: (code, mats, mats[:, 3, 1] - 600, mats[:, 3, 1] + 600)},
-                "shapes": {PILLAR: (verts, np.array([[0, 1, 2], [0, 2, 3]]))}}  # fmt: skip
+    group = MeshGroup(code, mats, mats[:, 3, 1] - 600, mats[:, 3, 1] + 600)
+    prepared = PreparedMeshes({PILLAR: group}, {PILLAR: (verts, np.array([[0, 1, 2], [0, 2, 3]]))})
     z, src = rasterise_mesh_band(prepared, x0, y0, 100.0, 8, 16)
     assert src[2, 2] == code[0] and src[2, 12] == code[1] and src[2, 6] == 0
     assert np.isfinite(z[2, 2]) and not np.isfinite(z[2, 6])
@@ -153,7 +155,7 @@ def test_the_mesh_cache_holds_a_family_plane_and_the_pass_hands_it_on(tmp_path, 
         return np.full((rows, cols), 900.0, np.float32), code
 
     monkeypatch.setattr(render_meshes, "rasterise_mesh_band", band)
-    build = lambda: ({"items": {}, "shapes": {}, "families": True}, {"instances": {}})
+    build = lambda: (PreparedMeshes({}, {}, families=True), {"instances": {}})
     maps, _source = mesh_pass(tmp_path, 32, "b1", "render_meshes", build, "m", True)
     assert len(maps) == 3
     z, cls, family = (np.asarray(m[:]) for m in maps)

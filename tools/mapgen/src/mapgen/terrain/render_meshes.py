@@ -4,33 +4,42 @@ from __future__ import annotations
 
 import json
 import time
-from contextlib import ExitStack
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple, TypeAlias
 
 import numpy as np
+from numpy.typing import NDArray
 
 from mapgen.cache import (
     CACHE_SIDECAR_NAME,
     DIRECT_BAND_ROWS,
-    MESH_CLASS_NAME,
-    MESH_FAMILY_NAME,
-    MESH_Z_NAME,
+    MESH_PLANE_NAMES,
     STORAGE_BANDS,
+    MeshMaps,
+    MeshStamp,
+    Plane,
+    band_spans,
     cached_mesh_family,
     cached_meshes,
-    clear_planes,
     mesh_stamp,
-    plane_writer,
+    rewrite_planes,
+    write_sidecar,
 )
+from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.level.sweep import is_top_foliage
 from mapgen.gamedata.maxz_raster import MaxZRaster
 from mapgen.gamedata.meshes import finer_source, read_hull
 from mapgen.gamedata.placements import EXCLUDED_MESHES, placement_material, rotation_matrix
 from mapgen.gamedata.rocks.families import FAMILIES, worn_family
+from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I64Grid, U8Grid, U16Grid
 from satisfactory_mcp.core.gameassets import staticmesh
-from satisfactory_mcp.core.gameassets.packages import PackageView
+from satisfactory_mcp.core.gameassets.iostore import IoStore
+from satisfactory_mcp.core.gameassets.packages import AssetIndex, PackageView, ScriptObjects
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
+from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
     "MESH_CLASS_MASK",
@@ -41,6 +50,7 @@ __all__ = [
     "MESH_ROCK",
     "MESH_SHELL",
     "MESH_TERRACE",
+    "RASTER_UNREADABLE",
     "RENDER_ONLY_DIRS",
     "RENDER_ONLY_FOLIAGE_MARKS",
     "RENDER_ONLY_FOLIAGE_MESHES",
@@ -48,6 +58,12 @@ __all__ = [
     "TITAN_LEAVES",
     "TITAN_MARK",
     "TITAN_TRUNK",
+    "InstanceSpans",
+    "MeshGroup",
+    "MeshRasterStats",
+    "PreparedMeshes",
+    "Shape",
+    "instance_y_spans",
     "is_render_only_foliage",
     "is_render_only_static",
     "mesh_class",
@@ -88,8 +104,49 @@ MESH_CLASS_MASK = (1 << MESH_FAMILY_SHIFT) - 1
 TITAN_MARK = "TitanTree"
 TITAN_TRUNK, TITAN_LEAVES = 4, 5
 
-
+#: Instances transformed per batch.
 MESH_FOLIAGE_BATCH = 512
+
+#: The exit code of a run whose mesh raster cannot be read back after it was written.
+RASTER_UNREADABLE = 7
+
+#: A mesh's geometry in mesh-local cm: ``(verts, tris)``.
+Shape: TypeAlias = tuple[F32Grid, I64Grid]
+
+
+class InstanceSpans(NamedTuple):
+    """Instances of one mesh: their 4x4 matrices, and the world Y interval each can reach."""
+
+    mats: F32Grid
+    y_lo_cm: NDArray[np.floating]
+    y_hi_cm: NDArray[np.floating]
+
+
+class MeshGroup(NamedTuple):
+    """One mesh's instances: their source codes, 4x4 matrices and world Y intervals."""
+
+    codes: U16Grid
+    mats: F32Grid
+    y_lo_cm: NDArray[np.floating]
+    y_hi_cm: NDArray[np.floating]
+
+
+@dataclass
+class PreparedMeshes:
+    """What ``rasterise_mesh_band`` draws: each mesh's instances and its shape, and whether
+    the codes carry a rock family above the class (``MESH_FAMILY_SHIFT``)."""
+
+    items: dict[str, MeshGroup]
+    shapes: dict[str, Shape]
+    families: bool = False
+
+
+class MeshRasterStats(MeshStamp):
+    """A mesh or Titan cache's sidecar: its stamp, and what the pass wrote."""
+
+    storage: str
+    texels: int
+    seconds: float
 
 
 def is_render_only_static(mesh: str) -> bool:
@@ -117,7 +174,32 @@ def mesh_class(mesh: str) -> int:
     return MESH_CORAL
 
 
-def read_shape(store, scripts, index, mesh: str):
+def titan_class(mesh: str) -> int:
+    name = mesh.rsplit("/", 1)[-1]
+    if TITAN_MARK not in name:
+        return 0
+    return TITAN_LEAVES if "Leaves" in name else TITAN_TRUNK
+
+
+def instance_y_spans(verts: F32Grid, mats: F32Grid) -> InstanceSpans:
+    """``mats`` with each instance's world Y reach: the mesh's farthest vertex, scaled by the
+    instance's largest axis, either side of its translation."""
+    reach = float(np.linalg.norm(verts, axis=1).max())
+    reach = reach * np.linalg.norm(mats[:, :3, :3], axis=2).max(1)
+    return InstanceSpans(mats, mats[:, 3, 1] - reach, mats[:, 3, 1] + reach)
+
+
+def _placement_matrix(row: F64Grid) -> F64Grid:
+    """A placement row as the 4x4 instance matrix foliage carries: rotation times scale, then
+    the translation in the last row."""
+    matrix = np.eye(4, dtype=np.float64)
+    matrix[:3, :3] = rotation_matrix(*row[5:8]) * row[8:11][:, None]
+    matrix[3, :3] = row[2:5]
+    return matrix
+
+
+def read_shape(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
+               mesh: str) -> tuple[Shape | None, str]:  # fmt: skip
     """The finest geometry a mesh ships, falling back to its collision hull, or ``None``."""
     package = index.path_for(mesh)
     if not package:
@@ -136,47 +218,39 @@ def read_shape(store, scripts, index, mesh: str):
     return hull, "hull" if hull is not None else "none"
 
 
-def titan_class(mesh: str) -> int:
-    name = mesh.rsplit("/", 1)[-1]
-    if TITAN_MARK not in name:
-        return 0
-    return TITAN_LEAVES if "Leaves" in name else TITAN_TRUNK
-
-
-def titan_items(store, scripts, index, sweep: dict) -> tuple[dict, dict]:
+def titan_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
+                sweep: dict) -> tuple[PreparedMeshes, JsonObject]:  # fmt: skip
     """The Titan trees' placements in ``rasterise_mesh_band``'s format, at their finest mesh."""
     meshes = sweep["meshes"]
-    groups: dict[str, list[np.ndarray]] = {}
+    groups: dict[str, list[F64Grid]] = {}
     for row in sweep["placements"]:
-        mesh = meshes[int(row[0])]
-        if not titan_class(mesh):
-            continue
-        matrix = np.eye(4, dtype=np.float64)
-        matrix[:3, :3] = rotation_matrix(*row[5:8]) * row[8:11][:, None]
-        matrix[3, :3] = row[2:5]
-        groups.setdefault(mesh, []).append(matrix)
-    items, shapes, sources = {}, {}, {}
+        mesh: str = meshes[int(row[0])]
+        if titan_class(mesh):
+            groups.setdefault(mesh, []).append(_placement_matrix(row))
+    items: dict[str, MeshGroup] = {}
+    shapes: dict[str, Shape] = {}
+    sources: JsonObject = {}
     for mesh, mats in groups.items():
         shape, source = read_shape(store, scripts, index, mesh)
         sources[mesh.rsplit("/", 1)[-1]] = source
         if shape is None or not len(shape[1]):
             continue
         shapes[mesh] = shape
-        mats = np.asarray(mats, np.float32)
-        reach = float(np.linalg.norm(shape[0], axis=1).max())
-        reach = reach * np.linalg.norm(mats[:, :3, :3], axis=2).max(1)
-        items[mesh] = (titan_class(mesh), mats, mats[:, 3, 1] - reach, mats[:, 3, 1] + reach)
-    counts = {mesh.rsplit("/", 1)[-1]: len(item[1]) for mesh, item in items.items()}
-    return {"items": items, "shapes": shapes}, {"placements": counts, "sources": sources}
+        codes = np.full(len(mats), titan_class(mesh), np.uint16)
+        items[mesh] = MeshGroup(codes, *instance_y_spans(shape[0], np.asarray(mats, np.float32)))
+    counts: JsonObject = {mesh.rsplit("/", 1)[-1]: len(group.mats) for mesh, group in items.items()}
+    return PreparedMeshes(items, shapes), {"placements": counts, "sources": sources}
 
 
-def _mesh_groups(store, scripts, index, sweep: dict, shapes: dict) -> dict[str, tuple]:
+def _mesh_groups(store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: dict,
+                 shapes: Mapping[str, Shape]) -> dict[str, tuple[list[F64Grid], list[int]]]:  # fmt: skip
     """Per render-only mesh, its instances' matrices and source codes: the class, and for a
     rock the family its placement wears (``worn_family``), shifted above it."""
-    meshes, caches = sweep["meshes"], ({}, {})
-    groups: dict[str, tuple[list, list]] = {}
+    meshes = sweep["meshes"]
+    caches: tuple[dict[str, str | None], dict[str, int]] = ({}, {})
+    groups: dict[str, tuple[list[F64Grid], list[int]]] = {}
 
-    def add(mesh: str, mats, materials) -> None:
+    def add(mesh: str, mats: list[F64Grid], materials: list[str | None]) -> None:
         cls = mesh_class(mesh)
         mats_now, codes = groups.setdefault(mesh, ([], []))
         mats_now.extend(mats)
@@ -186,21 +260,19 @@ def _mesh_groups(store, scripts, index, sweep: dict, shapes: dict) -> dict[str, 
             codes.append(cls | family << MESH_FAMILY_SHIFT)
 
     for i, row in enumerate(sweep["placements"]):
-        mesh = meshes[int(row[0])]
+        mesh: str = meshes[int(row[0])]
         if mesh not in shapes or not is_render_only_static(mesh):
             continue
-        matrix = np.eye(4, dtype=np.float64)
-        matrix[:3, :3] = rotation_matrix(*row[5:8]) * row[8:11][:, None]
-        matrix[3, :3] = row[2:5]
-        add(mesh, [matrix], [placement_material(sweep, i)])
+        add(mesh, [_placement_matrix(row)], [placement_material(sweep, i)])
     for mesh, mats in sweep.get("extra_foliage", {}).items():
         if mesh in shapes:
             add(mesh, list(np.asarray(mats)), [None] * len(mats))
     return groups
 
 
-def mesh_items(store, scripts, index, sweep: dict) -> tuple[dict, dict]:
-    """Every render-only placement and foliage instance as ``(codes, matrix, offset)`` groups."""
+def mesh_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
+               sweep: dict) -> tuple[PreparedMeshes, JsonObject]:  # fmt: skip
+    """Every render-only placement and foliage instance, grouped by mesh with their codes."""
     started = time.time()
     meshes = sweep["meshes"]
     wanted = sorted(
@@ -211,44 +283,45 @@ def mesh_items(store, scripts, index, sweep: dict) -> tuple[dict, dict]:
         }
         | set(sweep.get("extra_foliage", {}))
     )
-    shapes, sources = {}, {}
+    shapes: dict[str, Shape] = {}
+    sources: JsonObject = {}
     for mesh in wanted:
         shape, source = read_shape(store, scripts, index, mesh)
         sources[mesh.rsplit("/", 1)[-1]] = source
         if shape is not None and len(shape[1]):
             shapes[mesh] = shape
-    items = {}
+    items: dict[str, MeshGroup] = {}
     counts = {MESH_CLASS_NAMES[c]: 0 for c in MESH_CLASS_NAMES}
     families = dict.fromkeys(FAMILIES, 0)
     for mesh, (mats, codes) in _mesh_groups(store, scripts, index, sweep, shapes).items():
-        mats, codes = np.asarray(mats, np.float32), np.asarray(codes, np.uint16)
-        reach = float(np.linalg.norm(shapes[mesh][0], axis=1).max())
-        reach = reach * np.linalg.norm(mats[:, :3, :3], axis=2).max(1)
-        items[mesh] = (codes, mats, mats[:, 3, 1] - reach, mats[:, 3, 1] + reach)
-        counts[MESH_CLASS_NAMES[mesh_class(mesh)]] += len(mats)
+        group = MeshGroup(np.asarray(codes, np.uint16),
+                          *instance_y_spans(shapes[mesh][0], np.asarray(mats, np.float32)))  # fmt: skip
+        items[mesh] = group
+        counts[MESH_CLASS_NAMES[mesh_class(mesh)]] += len(group.mats)
         if mesh_class(mesh) == MESH_ROCK:
-            for code in codes >> MESH_FAMILY_SHIFT:
+            for code in group.codes >> MESH_FAMILY_SHIFT:
                 families[FAMILIES[code]] += 1
-    return {"items": items, "shapes": shapes, "families": True}, {
+    return PreparedMeshes(items, shapes, families=True), {
         "meshes": len(items),
-        "instances": counts,
+        "instances": {**counts},
         "rock_families": {name: n for name, n in families.items() if n},
         "sources": sources,
         "seconds": round(time.time() - started, 1),
     }
 
 
-def rasterise_mesh_band(prepared: dict, x0_cm, y0_cm, scale_cm, rows, cols):
+def rasterise_mesh_band(prepared: PreparedMeshes, x0_cm: float, y0_cm: float, scale_cm: float,
+                        rows: int, cols: int) -> tuple[F32Grid, U8Grid]:  # fmt: skip
     """One band: max-Z in world cm (nan where empty) and the source code of the winning mesh,
     its class or, per instance, its class and rock family (``MESH_FAMILY_SHIFT``)."""
     raster = MaxZRaster(cols, rows, x0_cm, y0_cm, scale_cm, sample=0.5)
     y_hi = y0_cm + rows * scale_cm
-    for mesh, (code, mats, span_lo, span_hi) in prepared["items"].items():
-        near = (span_hi >= y0_cm) & (span_lo <= y_hi)
+    for mesh, group in prepared.items.items():
+        near = (group.y_hi_cm >= y0_cm) & (group.y_lo_cm <= y_hi)
         if not near.any():
             continue
-        verts, tris = prepared["shapes"][mesh]
-        codes, nearby = np.broadcast_to(np.asarray(code), near.shape)[near], mats[near]
+        verts, tris = prepared.shapes[mesh]
+        codes, nearby = group.codes[near], group.mats[near]
         for value in np.unique(codes):
             picked = nearby[codes == value]
             for start in range(0, len(picked), MESH_FOLIAGE_BATCH):
@@ -259,34 +332,26 @@ def rasterise_mesh_band(prepared: dict, x0_cm, y0_cm, scale_cm, rows, cols):
     return z, np.where(np.isfinite(z), src, 0).astype(np.uint8)
 
 
-def rasterise_meshes(
-    prepared, directory: Path, stamp: dict, bounds_m: dict, band_rows: int, progress: bool,
-    storage: str = STORAGE_BANDS,
-) -> dict:  # fmt: skip
+def rasterise_meshes(prepared: PreparedMeshes, directory: Path, stamp: MeshStamp,
+                     bounds_m: Mapping[str, float], band_rows: int,
+                     progress: bool) -> MeshRasterStats:  # fmt: skip
     """Rasterise the render-only meshes into the render's grid, banded, onto disk: the class
     plane, and the family plane when the items carry families."""
     size = stamp["size"]
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / CACHE_SIDECAR_NAME).unlink(missing_ok=True)
-    clear_planes(directory, (MESH_Z_NAME, MESH_CLASS_NAME, MESH_FAMILY_NAME))
     step_cm = (bounds_m["x_max_m"] - bounds_m["x_min_m"]) * 100 / size
     covered, started = 0, time.time()
-    names = (MESH_Z_NAME, MESH_CLASS_NAME, MESH_FAMILY_NAME)[: 3 if prepared.get("families") else 2]
-    with ExitStack() as planes:
-        maps = [planes.enter_context(plane_writer(directory, n, size, storage, band_rows))
-                for n in names]  # fmt: skip
-        z_map, class_map, family_map = (*maps, None)[:3]
-        for band, top in enumerate(range(0, size, band_rows)):
-            bottom = min(top + band_rows, size)
+    names = MESH_PLANE_NAMES if prepared.families else MESH_PLANE_NAMES[:2]
+    with rewrite_planes(directory, names, size, band_rows, clear=MESH_PLANE_NAMES) as planes:
+        for band, (top, bottom) in enumerate(band_spans(size, band_rows)):
             y0 = bounds_m["y_min_m"] * 100 + top * step_cm
             z, code = rasterise_mesh_band(
                 prepared, bounds_m["x_min_m"] * 100, y0, step_cm, bottom - top, size
             )
             cls = code & MESH_CLASS_MASK
-            z_map.write(top, np.where(cls > 0, z, 0.0))
-            class_map.write(top, cls)
-            if family_map is not None:
-                family_map.write(top, code >> MESH_FAMILY_SHIFT)
+            planes[0].write(top, np.where(cls > 0, z, 0.0))
+            planes[1].write(top, cls)
+            if prepared.families:
+                planes[2].write(top, code >> MESH_FAMILY_SHIFT)
             covered += int(np.count_nonzero(cls))
             if progress and band % 16 == 0:
                 print(
@@ -294,18 +359,20 @@ def rasterise_meshes(
                     f"{time.time() - started:5.1f}s",
                     flush=True,
                 )
-    stats = {**stamp, "storage": storage, "texels": covered,
-             "seconds": round(time.time() - started, 1)}  # fmt: skip
-    (directory / CACHE_SIDECAR_NAME).write_text(json.dumps(stats, indent=1), encoding="utf-8")
+    stats: MeshRasterStats = {**stamp, "storage": STORAGE_BANDS, "texels": covered,
+                              "seconds": round(time.time() - started, 1)}  # fmt: skip
+    write_sidecar(directory / CACHE_SIDECAR_NAME, stats)
     return stats
 
 
-def mesh_pass(cache: Path, size: int, build, reader: str, build_items, label: str, quiet: bool):
+def mesh_pass(cache: Path, size: int, build: str | None, reader: str,
+              build_items: Callable[[], tuple[PreparedMeshes, JsonObject]], label: str,
+              quiet: bool) -> tuple[MeshMaps, dict[str, object]]:  # fmt: skip
     """A mesh raster of ``size`` px in ``cache``, reused when its stamp matches.
 
     ``build_items`` returns ``(prepared, meta)`` for ``rasterise_meshes``. Returns the
     ``(z cm, class)`` maps, plus the family plane when the cache has one, and the sidecar's
-    source block, keyed by ``reader``.
+    source block, keyed by ``reader``. A raster that does not read back is a refusal.
     """
     stamp = mesh_stamp(size, build, READER_VERSIONS[reader])
     maps = cached_meshes(cache, stamp)
@@ -319,10 +386,13 @@ def mesh_pass(cache: Path, size: int, build, reader: str, build_items, label: st
     print(f"  {label}: {meta.get('instances', meta.get('placements'))}")
     stats = rasterise_meshes(prepared, cache, stamp, BOUNDS_M, DIRECT_BAND_ROWS, not quiet)
     print(f"  {label} raster: {stats['texels'] / 1e6:.2f} M texels in {stats['seconds']}s")
-    maps = _with_family(cache, stamp, cached_meshes(cache, stamp))
-    return maps, {reader: {**meta, "raster": stats}}
+    maps = cached_meshes(cache, stamp)
+    if maps is None:
+        raise Refusal(RASTER_UNREADABLE,
+                      f"the {label} raster in {cache} could not be read back after writing it")  # fmt: skip
+    return _with_family(cache, stamp, maps), {reader: {**meta, "raster": stats}}
 
 
-def _with_family(cache: Path, stamp: dict, maps):
-    family = None if maps is None else cached_mesh_family(cache, stamp)
+def _with_family(cache: Path, stamp: MeshStamp, maps: tuple[Plane, Plane]) -> MeshMaps:
+    family = cached_mesh_family(cache, stamp)
     return maps if family is None else (*maps, family)

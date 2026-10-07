@@ -2,22 +2,51 @@
 
 from __future__ import annotations
 
+from typing import TypedDict
+
 import numpy as np
+from numpy.typing import NDArray
 
 from mapgen.gamedata.frame import FILL_RASTER_BOX_CM, GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.level.fill_raster import FILL_RASTER_PX, FILL_RASTER_SCALE_CM_PER_RAW
 from mapgen.gamedata.level.landscape import drop_offsets
 from mapgen.gamedata.meshes import DIRECT_SAMPLES_MIN
+from satisfactory_mcp.core.arrays import BoolMask, I16Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
+__all__ = [
+    "FILL_HORIZONTAL_M",
+    "FILL_VERTICAL_M",
+    "FieldLayers",
+    "compose_field",
+    "encode_planes",
+    "fill_raster_indices",
+    "fold_top_overlay",
+    "report_field",
+]
+
 #: The interface raster's own resolution, for the accuracy the fill layer inherits.
-FILL_HORIZONTAL_M = 7500.0 / FILL_RASTER_PX
-
-
+FILL_HORIZONTAL_M = (FILL_RASTER_BOX_CM[1] - FILL_RASTER_BOX_CM[0]) / 100.0 / FILL_RASTER_PX
 FILL_VERTICAL_M = FILL_RASTER_SCALE_CM_PER_RAW / 255.0 / 100.0
 
 
-def fold_top_overlay(height_dm: np.ndarray, frame: dict, top: dict) -> tuple[np.ndarray, int]:
+class FieldLayers(TypedDict):
+    """``compose_field``: the fused planes, where the landscape dropped in, and the tallies."""
+
+    height_dm: I16Grid
+    prov: U8Grid
+    density: U8Grid
+    drop: tuple[int, int]
+    coverage: dict[str, float]
+    cliff_texels: int
+    cliff_direct_fraction: float
+    density_p50: int
+    z_range_m: list[float]
+    quantisation_max_m: float
+    quantisation_rms_m: float
+
+
+def fold_top_overlay(height_dm: I16Grid, frame: dict, top: dict) -> tuple[I16Grid, int]:
     """``height_dm`` max-folded with the overlay, and how many texels the overlay raised."""
     dx, dy = drop_offsets(frame)
     out = height_dm.copy()
@@ -29,7 +58,7 @@ def fold_top_overlay(height_dm: np.ndarray, frame: dict, top: dict) -> tuple[np.
     return out, int(raise_.sum())
 
 
-def fill_raster_indices() -> tuple[np.ndarray, np.ndarray]:
+def fill_raster_indices() -> tuple[NDArray[np.integer], NDArray[np.integer]]:
     """Which baseline texel each output column and row falls in. Nearest, never blended.
 
     The fill is 3.66 m data read at 1 m, so an interpolation would draw a smooth surface out
@@ -49,7 +78,8 @@ def fill_raster_indices() -> tuple[np.ndarray, np.ndarray]:
     return bi, bj
 
 
-def compose_field(frame: dict, cliffs: dict, baseline_cm: np.ndarray, valid: np.ndarray) -> dict:
+def compose_field(frame: dict, cliffs: dict, baseline_cm: NDArray[np.floating],
+                  valid: BoolMask) -> FieldLayers:  # fmt: skip
     """Fuse the layers into the output grid: fill, then landscape, then cliff over both.
 
     The fill is everywhere the interface raster says anything, so it goes down first and is
@@ -112,7 +142,7 @@ def compose_field(frame: dict, cliffs: dict, baseline_cm: np.ndarray, valid: np.
     }
 
 
-def report_field(field: dict) -> None:
+def report_field(field: FieldLayers) -> None:
     """The composed field's coverage, range and cliff province, one progress line each."""
     for name, fraction in field["coverage"].items():
         print(f"  {name:>10}: {fraction * 100:6.2f}% of the box")
@@ -127,7 +157,8 @@ def report_field(field: dict) -> None:
     )
 
 
-def encode_planes(field: dict, water: dict, frame: dict, top_dm: np.ndarray) -> dict[str, bytes]:
+def encode_planes(field: FieldLayers, water: dict, frame: dict,
+                  top_dm: I16Grid) -> dict[str, bytes]:  # fmt: skip
     """Every plane of the field, encoded with the shipped codec, keyed by file name."""
     water_dm = np.where(
         np.isfinite(water["level_m"]),

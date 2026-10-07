@@ -2,38 +2,60 @@
 
 from __future__ import annotations
 
-import json
 import time
-from contextlib import ExitStack
+from collections.abc import Sequence
 from pathlib import Path
-from typing import NamedTuple
+from typing import Literal, NamedTuple, Protocol, TypeAlias, TypedDict, overload
 
 import numpy as np
+from numpy.typing import NDArray
 
 from mapgen.cache import (
     CACHE_SIDECAR_NAME,
     DIRECT_BAND_ROWS,
     DIRECT_COVERAGE_NAME,
-    DIRECT_FAMILY_NAME,
+    DIRECT_PLANE_NAMES,
     DIRECT_Z_NAME,
     STORAGE_BANDS,
-    clear_planes,
-    plane_writer,
+    DirectStamp,
+    band_spans,
+    rewrite_planes,
+    write_sidecar,
 )
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.level.sweep import sweep_levels
 from mapgen.gamedata.maxz_raster import MaxZRaster
 from mapgen.gamedata.meshes import MeshBounds, read_hull, read_mesh_geometry, winding_sign
-from mapgen.gamedata.placements import ARCH_MARK, EXCLUDED_OWNERS, OVERSIZE_CM, rotation_matrix
+from mapgen.gamedata.placements import (
+    ARCH_MARK,
+    EXCLUDED_MESHES,
+    EXCLUDED_OWNERS,
+    OVERSIZE_CM,
+    rotation_matrix,
+)
 from mapgen.gamedata.vegetation.trees import is_tree
 from mapgen.gamedata.water.falls import read_fall
-from mapgen.terrain.render_meshes import is_render_only_foliage
-from satisfactory_mcp.core.arrays import F32Grid
+from mapgen.terrain.render_meshes import (
+    InstanceSpans,
+    Shape,
+    instance_y_spans,
+    is_render_only_foliage,
+)
+from satisfactory_mcp.core.arrays import F32Grid, I64Grid, U8Grid, U16Grid
+from satisfactory_mcp.core.gameassets.iostore import IoStore
+from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
 
 __all__ = [
+    "DIRECT_RASTER_ROLE",
     "DIRECT_SUBSAMPLES",
     "TOP_FOLIAGE_BATCH",
+    "TOP_RASTER_ROLE",
+    "BandRaster",
+    "CliffGeometry",
     "PreparedPlacement",
+    "RasterStats",
+    "TopItems",
+    "TopMeta",
     "add_placements",
     "direct_placements",
     "pixel_coverage",
@@ -46,6 +68,31 @@ __all__ = [
     "top_items",
     "write_banded_raster",
 ]
+
+#: How many sub-samples per output texel per axis the direct pass rasterises at. The pass
+#: costs 4x per doubling and the silhouette is already at 0.229 m, an eighth of the 1 m
+#: staircase this regime exists to remove. Raise it with ``--direct-subsamples`` and the
+#: sidecar records what was run. A silhouette is antialiased only by these sub-samples:
+#: rock heights are never blurred across one.
+DIRECT_SUBSAMPLES = 1
+
+#: Foliage instances transformed per batch in the top pass.
+TOP_FOLIAGE_BATCH = 512
+
+#: What a direct or top cache's sidecar says it holds.
+DIRECT_RASTER_ROLE = (
+    "max-Z of the cliff geometry on this render's own grid, in world centimetres, "
+    "with the count of sub-samples that hit something beside it. Written once and "
+    "read by every layer; deleted at the end of the run unless --keep-direct."
+)
+TOP_RASTER_ROLE = (
+    "max-Z of the arches and foliage boulders on this render's own grid, in world "
+    "centimetres, with the count of sub-samples that hit something beside it. Written once "
+    "and read by every layer; deleted at the end of the run unless --keep-direct."
+)
+
+#: The world's placed meshes by path, at the finest geometry each ships: ``(verts, tris)``.
+Geometry: TypeAlias = dict[str, tuple[F32Grid, I64Grid]]
 
 
 class PreparedPlacement(NamedTuple):
@@ -62,16 +109,54 @@ class PreparedPlacement(NamedTuple):
     family: int | None = None
 
 
-#: How many sub-samples per output texel per axis the direct pass rasterises at. The pass
-#: costs 4x per doubling and the silhouette is already at 0.229 m, an eighth of the 1 m
-#: staircase this regime exists to remove. Raise it with ``--direct-subsamples`` and the
-#: sidecar records what was run. A silhouette is antialiased only by these sub-samples:
-#: rock heights are never blurred across one.
-DIRECT_SUBSAMPLES = 1
+class CliffGeometry(TypedDict):
+    """``read_cliff_geometry``: the sweep, every rock's clamped geometry, and the tallies."""
+
+    sweep: dict
+    geometry: Geometry
+    meshes: int
+    by_source: dict[str, int]
+    verts: int
+    tris: int
+    triangles_out_of_bounds: int
+    seconds_sweep: float
+    seconds_decode: float
 
 
-#: Foliage instances transformed per batch in the top pass.
-TOP_FOLIAGE_BATCH = 512
+class TopItems(NamedTuple):
+    """What the top pass draws: the arches, the foliage boulders, and every shape they use."""
+
+    arches: list[PreparedPlacement]
+    boulders: dict[str, InstanceSpans]
+    shapes: dict[str, Shape]
+
+
+class TopMeta(TypedDict):
+    """``top_items``' record: how many arches and boulders, and what decoded them."""
+
+    arch_placements: int
+    foliage_instances: int
+    foliage_sources: dict[str, str]
+    meshes_skipped: list[str]
+
+
+class RasterStats(DirectStamp):
+    """A direct or top cache's sidecar: its stamp, and what the pass wrote."""
+
+    storage: str
+    sub_texel_m: float
+    texels_with_geometry: int
+    share_of_the_sheet: float
+    seconds: float
+    band_rows: int
+    role: str
+
+
+class BandRaster(Protocol):
+    """One band of a banded raster: max-Z in cm, and with it the winning source per sample."""
+
+    def __call__(self, x0_cm: float, y0_cm: float, scale_cm: float, rows: int, cols: int,
+                 subsamples: int, /) -> F32Grid | tuple[F32Grid, U16Grid]: ...  # fmt: skip
 
 
 # --------------------------------------------------------------------------------------
@@ -79,23 +164,20 @@ TOP_FOLIAGE_BATCH = 512
 # --------------------------------------------------------------------------------------
 
 
-def read_cliff_geometry(
-    store, scripts, index, classes, progress: bool = True, sweep: dict | None = None
-) -> dict:
+def read_cliff_geometry(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
+                        classes: ClassFacts, progress: bool = True,
+                        sweep: dict | None = None) -> CliffGeometry:  # fmt: skip
     """The world's placements and the finest triangles every placed rock ships.
 
-    Two calls into ``tools/gen_world_heightmap.py``: the same pass over the same 4,521
-    ``*.umap`` the field was cut from, and the same finest-source ladder over the same
-    hull-equivalent mesh set.
-
-    The one thing done here is the generator's per-triangle bounds clamp, hoisted out of the
-    placement loop. It is a test in the mesh's own local space against the mesh's own padded
-    ``ExtendedBounds``, so it gives the same answer for all two hundred copies of a rock.
+    The field's own sweep (``sweep_levels``) and finest-source ladder (``read_mesh_geometry``)
+    over the same hull-equivalent mesh set. The one thing done here is their per-triangle
+    bounds clamp, hoisted out of the placement loop: it is a test in the mesh's own local
+    space against its own padded ``ExtendedBounds``, the same for every copy of a rock.
     """
     if sweep is None:
         sweep = sweep_world(store, scripts, index, classes, progress)
     read = read_mesh_geometry(store, scripts, index, sweep["meshes"], progress)
-    geometry: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    geometry: Geometry = {}
     clamped = 0
     for mesh, (verts, tris, low, high) in read["geometry"].items():
         keep = ((verts >= low) & (verts <= high)).all(axis=1)
@@ -118,7 +200,8 @@ def read_cliff_geometry(
     }
 
 
-def sweep_world(store, scripts, index, classes, progress: bool = True) -> dict:
+def sweep_world(store: IoStore, scripts: ScriptObjects, index: AssetIndex, classes: ClassFacts,
+                progress: bool = True) -> dict:  # fmt: skip
     """The field generator's sweep, also harvesting the render-only foliage and the trees."""
     sweep = sweep_levels(
         store,
@@ -135,30 +218,37 @@ def sweep_world(store, scripts, index, classes, progress: bool = True) -> dict:
     return sweep
 
 
-def direct_placements(sweep: dict, geometry: dict, families=None) -> tuple[list, dict]:
+def _box_corners() -> F32Grid:
+    """The eight corners of the unit cube, scaled onto a mesh's own vertex box."""
+    return np.array([[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)], np.float32)
+
+
+def direct_placements(sweep: dict, geometry: Geometry, families: NDArray[np.integer] | None = None
+                      ) -> tuple[list[PreparedPlacement], dict[str, int]]:  # fmt: skip
     """Every placement the field's own cliff layer rasterises, with its world Y span.
 
-    The four culls are the generator's, in the generator's order: an excluded owner, a mesh
-    with no cooked geometry, an arch, an oversized shell. Any of them applied differently
-    here would draw a render of a different world from the field it is blended with.
+    The five culls are the field's (``rasterise_cliffs``), in its order: an excluded owner,
+    an excluded mesh, a mesh with no cooked geometry, an arch, an oversized shell. Any of
+    them applied differently here would draw a different world from the field it blends with.
 
     ``families``, one code per placement row, is carried as each entry's raster source id.
-
-    What is added is the **Y span**, in world centimetres, of the placement's transformed
-    vertex box. That is the whole of the band selection: a bounding-interval test over
-    24,000 placements is a numpy comparison rather than a search.
+    The **Y span** in world centimetres of the placement's transformed vertex box is the
+    whole of the band selection: a bounding-interval test over the placements.
     """
     meshes, owners = sweep["meshes"], sweep["owners"]
     arch_ids = {i for i, m in enumerate(meshes) if ARCH_MARK in m.rsplit("/", 1)[-1]}
     windings = {mesh: winding_sign(v, t) for mesh, (v, t) in geometry.items()}
-    corners = np.array([[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)], np.float32)
-    prepared: list[tuple] = []
-    dropped = {"owner": 0, "no_geometry": 0, "arch": 0, "oversize": 0}
+    corners = _box_corners()
+    prepared: list[PreparedPlacement] = []
+    dropped = {"owner": 0, "excluded_mesh": 0, "no_geometry": 0, "arch": 0, "oversize": 0}
     for i, row in enumerate(sweep["placements"]):
         mesh_id, owner_id = int(row[0]), int(row[1])
-        mesh = meshes[mesh_id]
+        mesh: str = meshes[mesh_id]
         if owners[owner_id] in EXCLUDED_OWNERS:
             dropped["owner"] += 1
+            continue
+        if mesh.rsplit("/", 1)[-1] in EXCLUDED_MESHES:
+            dropped["excluded_mesh"] += 1
             continue
         if mesh not in geometry:
             dropped["no_geometry"] += 1
@@ -177,46 +267,36 @@ def direct_placements(sweep: dict, geometry: dict, families=None) -> tuple[list,
         box = low + corners * (high - low)
         world_y = ((box * scale) @ matrix + offset)[:, 1]
         facing = windings[mesh] * float(np.sign(scale[0] * scale[1] * scale[2]))
-        prepared.append(
-            (
-                mesh,
-                mesh_id,
-                matrix,
-                scale,
-                offset,
-                facing,
-                float(world_y.min()),
-                float(world_y.max()),
-                *(() if families is None else (int(families[i]),)),
-            )
-        )
+        family = None if families is None else int(families[i])
+        prepared.append(PreparedPlacement(mesh, mesh_id, matrix, scale, offset, facing,
+                                          float(world_y.min()), float(world_y.max()), family))  # fmt: skip
     return prepared, dropped
 
 
-def rasterise_direct_band(
-    prepared: list,
-    geometry: dict,
-    x0_cm: float,
-    y0_cm: float,
-    scale_cm: float,
-    rows: int,
-    cols: int,
-    subsamples: int,
-    with_source: bool = False,
-):
+@overload
+def rasterise_direct_band(prepared: Sequence[PreparedPlacement], geometry: Geometry,
+                          x0_cm: float, y0_cm: float, scale_cm: float, rows: int, cols: int,
+                          subsamples: int, with_source: Literal[False] = False) -> F32Grid: ...  # fmt: skip
+@overload
+def rasterise_direct_band(prepared: Sequence[PreparedPlacement], geometry: Geometry,
+                          x0_cm: float, y0_cm: float, scale_cm: float, rows: int, cols: int,
+                          subsamples: int, with_source: Literal[True]) -> tuple[F32Grid, U16Grid]: ...  # fmt: skip
+def rasterise_direct_band(prepared: Sequence[PreparedPlacement], geometry: Geometry,
+                          x0_cm: float, y0_cm: float, scale_cm: float, rows: int, cols: int,
+                          subsamples: int, with_source: bool = False
+                          ) -> F32Grid | tuple[F32Grid, U16Grid]:  # fmt: skip
     """One band of the output, max-Z rasterised from the triangles. ``nan`` where none fell.
 
     ``with_source`` also returns the winning triangle's source id: the placement's family
     when ``direct_placements`` was given families.
 
-    The rasteriser is ``gen_world_heightmap.MaxZRaster`` itself, pointed at a grid whose
-    origin is this band's north-west corner and whose spacing is this render's, divided by
-    the sub-sampling. Sampled at ``col + 0.5`` in grid units and written to ``col``
-    (``sample=0.5``), which is exactly ``frame_coordinates``' pixel centres when the origin is the frame's
-    own corner, so nothing is half a texel out.
+    The rasteriser is ``MaxZRaster`` itself, pointed at a grid whose origin is this band's
+    north-west corner and whose spacing is this render's, divided by the sub-sampling.
+    Sampled at ``col + 0.5`` in grid units and written to ``col`` (``sample=0.5``), which is
+    exactly ``frame_coordinates``' pixel centres when the origin is the frame's own corner.
 
-    The facing cull runs per placement as it does in the generator, and then the triangles
-    are cut down to the ones whose own Y interval reaches this band.
+    The facing cull runs per placement as it does in the field, and then the triangles are
+    cut down to the ones whose own Y interval reaches this band.
     """
     raster = MaxZRaster(
         cols * subsamples, rows * subsamples, x0_cm, y0_cm, scale_cm / subsamples, sample=0.5
@@ -226,31 +306,32 @@ def rasterise_direct_band(
     return (z, source) if with_source else z
 
 
-def add_placements(raster, prepared: list, geometry: dict, y_lo: float, y_hi: float) -> None:
+def add_placements(raster: MaxZRaster, prepared: Sequence[PreparedPlacement], geometry: Geometry,
+                   y_lo: float, y_hi: float) -> None:  # fmt: skip
     """Every prepared placement whose Y span reaches ``[y_lo, y_hi]``, into ``raster``.
 
-    The source id is an entry's ninth field when it has one, else its mesh id plus one.
+    The source id is an entry's family when it has one, else its mesh id plus one.
     """
     for entry in prepared:
-        mesh, mesh_id, matrix, scale, offset, facing, span_lo, span_hi = entry[:8]
-        if span_hi < y_lo or span_lo > y_hi:
+        if entry.y_max_cm < y_lo or entry.y_min_cm > y_hi:
             continue
-        verts, tris = geometry[mesh]
-        world = (verts * scale) @ matrix + offset
-        if facing != 0.0:
+        verts, tris = geometry[entry.mesh]
+        world = (verts * entry.scale) @ entry.matrix + entry.offset
+        if entry.facing != 0.0:
             corner = world[tris[:, 0]]
             normals = np.cross(world[tris[:, 1]] - corner, world[tris[:, 2]] - corner)
-            tris = tris[(normals[:, 2] * facing) > 0]
+            tris = tris[(normals[:, 2] * entry.facing) > 0]
             if not tris.size:
                 continue
         ty = world[:, 1][tris]
         tris = tris[(ty.max(1) >= y_lo) & (ty.min(1) <= y_hi)]
         if not tris.size:
             continue
-        raster.add(world[tris], entry[8] if len(entry) > 8 else mesh_id + 1)
+        raster.add(world[tris], entry.mesh_id + 1 if entry.family is None else entry.family)
 
 
-def top_items(store, scripts, index, sweep: dict, geometry: dict) -> tuple[dict, dict]:
+def top_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: dict,
+              geometry: Geometry) -> tuple[TopItems, TopMeta]:  # fmt: skip
     """The arches and foliage boulders ``top.i16.z`` carries, at their finest geometry.
 
     Arches are placements, prepared like rocks but never culled by facing: an arch is an
@@ -260,65 +341,63 @@ def top_items(store, scripts, index, sweep: dict, geometry: dict) -> tuple[dict,
     """
     meshes, owners = sweep["meshes"], sweep["owners"]
     arch_ids = {i for i, m in enumerate(meshes) if ARCH_MARK in m.rsplit("/", 1)[-1]}
-    shapes: dict[str, tuple[np.ndarray, np.ndarray] | None] = dict(geometry)
+    shapes: dict[str, Shape | None] = dict(geometry)
     finest = read_mesh_geometry(store, scripts, index, list(sweep["foliage"]), False)
     for mesh, (verts, tris, low, high) in finest["geometry"].items():
         keep = ((verts >= low) & (verts <= high)).all(axis=1)
         shapes[mesh] = (verts, tris[keep[tris].all(axis=1)])
 
-    def shape(mesh):
+    def shape(mesh: str) -> Shape | None:
         if mesh not in shapes:
             shapes[mesh] = read_hull(store, scripts, index, mesh)
         return shapes[mesh]
 
-    corners = np.array([[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)], np.float32)
-    arches, skipped = [], set()
+    corners = _box_corners()
+    arches: list[PreparedPlacement] = []
+    skipped: set[str] = set()
     for row in sweep["placements"]:
         mesh_id = int(row[0])
         if mesh_id not in arch_ids or owners[int(row[1])] in EXCLUDED_OWNERS:
             continue
-        mesh = meshes[mesh_id]
-        if shape(mesh) is None:
+        mesh: str = meshes[mesh_id]
+        found = shape(mesh)
+        if found is None:
             skipped.add(mesh.rsplit("/", 1)[-1])
             continue
-        verts = shapes[mesh][0]
+        verts = found[0]
         matrix = rotation_matrix(*row[5:8]).astype(np.float32)
         scale, offset = row[8:11].astype(np.float32), row[2:5].astype(np.float32)
         low, high = verts.min(0), verts.max(0)
         world_y = (((low + corners * (high - low)) * scale) @ matrix + offset)[:, 1]
-        arches.append(
-            (mesh, mesh_id, matrix, scale, offset, 0.0, float(world_y.min()), float(world_y.max()))
-        )
-    boulders = {}
+        arches.append(PreparedPlacement(mesh, mesh_id, matrix, scale, offset, 0.0,
+                                        float(world_y.min()), float(world_y.max())))  # fmt: skip
+    boulders: dict[str, InstanceSpans] = {}
     for mesh, mats in sweep["foliage"].items():
-        if shape(mesh) is None:
+        found = shape(mesh)
+        if found is None:
             skipped.add(mesh.rsplit("/", 1)[-1])
             continue
-        mats = np.asarray(mats, np.float32)
-        reach = float(np.linalg.norm(shapes[mesh][0], axis=1).max())
-        reach *= np.linalg.norm(mats[:, :3, :3], axis=2).max(1)
-        boulders[mesh] = (mats, mats[:, 3, 1] - reach, mats[:, 3, 1] + reach)
-    items = {"arches": arches, "boulders": boulders, "shapes": shapes}
-    return items, {
+        boulders[mesh] = instance_y_spans(found[0], np.asarray(mats, np.float32))
+    drawn = {mesh: found for mesh, found in shapes.items() if found is not None}
+    return TopItems(arches, boulders, drawn), {
         "arch_placements": len(arches),
-        "foliage_instances": int(sum(len(v[0]) for v in boulders.values())),
+        "foliage_instances": int(sum(len(group.mats) for group in boulders.values())),
         "foliage_sources": finest["sources"],
         "meshes_skipped": sorted(skipped),
     }
 
 
-def rasterise_top_band(
-    items: dict, x0_cm: float, y0_cm: float, scale_cm: float, rows: int, cols: int, subsamples: int
-) -> np.ndarray:
+def rasterise_top_band(items: TopItems, x0_cm: float, y0_cm: float, scale_cm: float, rows: int,
+                       cols: int, subsamples: int) -> F32Grid:  # fmt: skip
     """One band of arches and boulders, max-Z on the render's pixel centres."""
     raster = MaxZRaster(
         cols * subsamples, rows * subsamples, x0_cm, y0_cm, scale_cm / subsamples, sample=0.5
     )
     y_hi = y0_cm + rows * scale_cm
-    add_placements(raster, items["arches"], items["shapes"], y0_cm, y_hi)
-    for mesh, (mats, span_lo, span_hi) in items["boulders"].items():
-        verts, tris = items["shapes"][mesh]
-        picked = mats[(span_hi >= y0_cm) & (span_lo <= y_hi)]
+    add_placements(raster, items.arches, items.shapes, y0_cm, y_hi)
+    for mesh, group in items.boulders.items():
+        verts, tris = items.shapes[mesh]
+        picked = group.mats[(group.y_hi_cm >= y0_cm) & (group.y_lo_cm <= y_hi)]
         for start in range(0, len(picked), TOP_FOLIAGE_BATCH):
             chunk = picked[start : start + TOP_FOLIAGE_BATCH]
             world = np.einsum("vi,nij->nvj", verts, chunk[:, :3, :3]) + chunk[:, None, 3, :3]
@@ -326,7 +405,7 @@ def rasterise_top_band(
     return raster.result()[0]
 
 
-def reduce_direct(sub_z: np.ndarray, rows: int, cols: int, subsamples: int):
+def reduce_direct(sub_z: F32Grid, rows: int, cols: int, subsamples: int) -> tuple[F32Grid, U8Grid]:
     """A sub-sampled band folded onto the output grid: mean height and coverage count.
 
     The mean is over the sub-samples that HIT something and the count comes back beside it,
@@ -343,7 +422,8 @@ def reduce_direct(sub_z: np.ndarray, rows: int, cols: int, subsamples: int):
     return (total / np.maximum(count, 1)).astype(np.float32), count
 
 
-def reduce_source(sub_z: np.ndarray, sub_source: np.ndarray, rows: int, cols: int, subsamples: int):
+def reduce_source(sub_z: F32Grid, sub_source: NDArray[np.integer], rows: int, cols: int,
+                  subsamples: int) -> U8Grid:  # fmt: skip
     """The source id of each output texel's highest sub-sample; 0 where nothing fell."""
     hit = np.isfinite(sub_z)
     if subsamples == 1:
@@ -356,64 +436,47 @@ def reduce_source(sub_z: np.ndarray, sub_source: np.ndarray, rows: int, cols: in
     return best.astype(np.uint8)
 
 
-def pixel_coverage(coverage: np.ndarray, subsamples: int) -> np.ndarray:
+def pixel_coverage(coverage: NDArray[np.generic], subsamples: int) -> F32Grid:
     """The share of a pixel's sub-samples a triangle hit, in [0, 1]. No neighbour is read."""
     return coverage.astype(np.float32) / np.float32(subsamples * subsamples)
 
 
-def write_banded_raster(
-    band_raster,
-    directory: Path,
-    size: int,
-    subsamples: int,
-    stamp: dict,
-    progress: bool,
-    storage: str = STORAGE_BANDS,
-) -> dict:
-    """Rasterise every placed rock into the render's own grid, banded, onto disk.
+def write_banded_raster(band_raster: BandRaster, directory: Path, size: int, subsamples: int,
+                        stamp: DirectStamp, progress: bool, *,
+                        role: str = DIRECT_RASTER_ROLE) -> RasterStats:  # fmt: skip
+    """Rasterise every placed rock into the render's own grid, ``DIRECT_BAND_ROWS`` at a time,
+    into a cache ``cached_raster`` reads back only under the same ``stamp``.
 
-    Banded because a 32768 square of float32 is 4.3 GB and the render already holds 3.2 GB
-    of output; 256 rows is 34 MB. On disk because the answer is the same for both layers and
-    rasterising 216 M triangles is twenty minutes. The planes are written beside a sidecar
-    naming what they are of, and ``cached_raster`` refuses anything that does not match
-    rather than drawing last week's rocks under this week's field.
-
-    A ``band_raster`` that returns ``(z, source)`` also writes the family plane.
+    A ``band_raster`` that returns ``(z, source)`` also writes the family plane; the first
+    band says which, before any plane is opened, and every band after it must agree.
     """
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / CACHE_SIDECAR_NAME).unlink(missing_ok=True)
-    clear_planes(directory, (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME, DIRECT_FAMILY_NAME))
     step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / size
     x0_cm = BOUNDS_M["x_min_m"] * 100
-    covered = 0
     started = time.time()
-    with ExitStack() as planes:
 
-        def writer(name):
-            return planes.enter_context(
-                plane_writer(directory, name, size, storage, DIRECT_BAND_ROWS)
-            )
+    def band_at(top: int, bottom: int) -> tuple[F32Grid, U16Grid | None]:
+        y0_cm = BOUNDS_M["y_min_m"] * 100 + top * step_cm
+        sub = band_raster(x0_cm, y0_cm, step_cm, bottom - top, size, subsamples)
+        return sub if isinstance(sub, tuple) else (sub, None)
 
-        z, coverage, family = writer(DIRECT_Z_NAME), writer(DIRECT_COVERAGE_NAME), None
-        for band, top in enumerate(range(0, size, DIRECT_BAND_ROWS)):
-            bottom = min(top + DIRECT_BAND_ROWS, size)
+    spans = list(band_spans(size, DIRECT_BAND_ROWS))
+    first = band_at(*spans[0])
+    families = first[1] is not None
+    names = DIRECT_PLANE_NAMES if families else (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME)
+    covered = 0
+    with rewrite_planes(
+        directory, names, size, DIRECT_BAND_ROWS, clear=DIRECT_PLANE_NAMES
+    ) as planes:
+        for band, (top, bottom) in enumerate(spans):
             rows = bottom - top
-            sub = band_raster(
-                x0_cm,
-                BOUNDS_M["y_min_m"] * 100 + top * step_cm,
-                step_cm,
-                rows,
-                size,
-                subsamples,
-            )
-            if isinstance(sub, tuple):
-                if family is None:
-                    family = writer(DIRECT_FAMILY_NAME)
-                family.write(top, reduce_source(*sub, rows, size, subsamples))
-                sub = sub[0]
-            band_z, band_coverage = reduce_direct(sub, rows, size, subsamples)
-            z.write(top, band_z)
-            coverage.write(top, band_coverage)
+            sub_z, sub_source = first if band == 0 else band_at(top, bottom)
+            if (sub_source is not None) != families:
+                raise ValueError(f"band {band} of {directory.name} changed what it returns")
+            if sub_source is not None:
+                planes[2].write(top, reduce_source(sub_z, sub_source, rows, size, subsamples))
+            band_z, band_coverage = reduce_direct(sub_z, rows, size, subsamples)
+            planes[0].write(top, band_z)
+            planes[1].write(top, band_coverage)
             covered += int(np.count_nonzero(band_coverage))
             if progress and band % 8 == 0:
                 print(
@@ -422,19 +485,15 @@ def write_banded_raster(
                     f"{time.time() - started:5.1f}s",
                     flush=True,
                 )
-    stats = {
+    stats: RasterStats = {
         **stamp,
-        "storage": storage,
+        "storage": STORAGE_BANDS,
         "sub_texel_m": round(step_cm / 100 / subsamples, 5),
         "texels_with_geometry": covered,
         "share_of_the_sheet": round(100 * covered / (size * size), 3),
         "seconds": round(time.time() - started, 1),
         "band_rows": DIRECT_BAND_ROWS,
-        "role": (
-            "max-Z of the cliff geometry on this render's own grid, in world centimetres, "
-            "with the count of sub-samples that hit something beside it. Written once and "
-            "read by every layer; deleted at the end of the run unless --keep-direct."
-        ),
+        "role": role,
     }
-    (directory / CACHE_SIDECAR_NAME).write_text(json.dumps(stats, indent=1), encoding="utf-8")
+    write_sidecar(directory / CACHE_SIDECAR_NAME, stats)
     return stats

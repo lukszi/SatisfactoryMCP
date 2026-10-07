@@ -56,7 +56,8 @@ from mapgen.enhance.upscaler import (
     ENHANCE_URL,
 )
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_2X_PX, RENDER_PX
-from mapgen.gamedata.placements import EXCLUDED_OWNERS
+from mapgen.gamedata.placements import EXCLUDED_MESHES, EXCLUDED_OWNERS
+from mapgen.gamedata.rocks.cliffs import rasterise_cliffs
 from mapgen.lighting.hillshade import (
     SHADE_FLOOR,
     SHADE_RANGE,
@@ -93,12 +94,15 @@ from mapgen.terrain.fill import (
 )
 from mapgen.terrain.measure import SEAM_MID, SEAM_SWITCH_CEILING, RegimeCoverage, SeamTrace
 from mapgen.terrain.rasters import (
+    PreparedPlacement,
+    TopItems,
     direct_placements,
     pixel_coverage,
     rasterise_direct_band,
     rasterise_top_band,
     reduce_direct,
 )
+from mapgen.terrain.render_meshes import InstanceSpans
 from mapgen.terrain.sample import direct_mask, sample_surface, taps_cubic, taps_linear, taps_pchip
 from mapgen.tiles import artwork_output
 from mapgen.tiles import sidecar as render_sidecar
@@ -338,6 +342,7 @@ class _Field:
     """
 
     spacing_cm = 100.0
+    terrain_grid = None
 
     def __init__(self, height_dm, prov, density=None):
         self.height_dm = numpy.asarray(height_dm, numpy.int16)
@@ -348,6 +353,9 @@ class _Field:
 
     def density_raster(self):
         return self._density
+
+    def plane(self, _name):
+        return None
 
 
 def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent():
@@ -793,7 +801,7 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
     }
     prepared, dropped = direct_placements(sweep, geometry)
     assert len(prepared) == 1
-    assert dropped == {"owner": 1, "no_geometry": 1, "arch": 1, "oversize": 1}
+    assert dropped == {"owner": 1, "excluded_mesh": 0, "no_geometry": 1, "arch": 1, "oversize": 1}
 
     # And it rasterises onto the frame's own grid at the frame's own spacing. A 1 m slab
     # placed 10 m east of the frame's western edge covers exactly the z7 texels whose own
@@ -811,6 +819,36 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
     assert coverage[:, first:last].all(), "every texel centred inside the slab is covered"
     assert not coverage[:, :first].any() and not coverage[:, last:].any(), "and none outside"
     assert z_cm[coverage > 0] == pytest.approx(500.0)
+
+
+def test_the_direct_pass_drops_what_the_field_drops_and_counts_it_the_same():
+    """``direct_placements`` against the field's ``rasterise_cliffs``: the same rows culled,
+    under the same counters, a rock excluded by name included."""
+    verts = numpy.array([[0, 0, 500], [100, 0, 500], [100, 100, 500], [0, 100, 500]], numpy.float32)
+    tris = numpy.array([[0, 1, 2], [0, 2, 3]], numpy.int64)
+    rock = "/World/Environment/Rock/"
+    excluded = rock + next(iter(EXCLUDED_MESHES))
+    geometry = {
+        rock + "Slab": (verts, tris),
+        rock + "Arc_Slab": (verts, tris),
+        excluded: (verts, tris),
+    }
+    x0, y0 = BOUNDS_M["x_min_m"] * 100, BOUNDS_M["y_min_m"] * 100
+    place = lambda mesh, owner, x, s=1.0: (mesh, owner, x0 + x, y0 + 1000, 0, 0, 0, 0, s, s, s)
+    sweep = {
+        "meshes": [rock + "Slab", rock + "Arc_Slab", rock + "Missing", excluded],
+        "owners": ["RockActor_C", next(iter(EXCLUDED_OWNERS))],
+        "placements": numpy.array(
+            [place(0, 0, 1000), place(0, 1, 2000), place(1, 0, 3000), place(2, 0, 4000),
+             place(3, 0, 5000), place(0, 0, 6000, 1e4)], numpy.float64),
+    }  # fmt: skip
+    prepared, dropped = direct_placements(sweep, geometry)
+    frame = {"width": 128, "height": 32, "x0_cm": x0, "y0_cm": y0, "scale_cm": 100.0}
+    bounds = (verts.min(0) - 1, verts.max(0) + 1)
+    field = rasterise_cliffs(sweep, {m: (*g, *bounds) for m, g in geometry.items()}, frame, False)
+    want = {"owner": 1, "excluded_mesh": 1, "no_geometry": 1, "arch": 1, "oversize": 1}
+    assert dropped == field["dropped"] == want
+    assert [entry.mesh for entry in prepared] == [rock + "Slab"] and field["placements_used"] == 1
 
 
 class _TerrainField(_Field):
@@ -881,22 +919,21 @@ def test_the_top_overlay_raises_the_ground_smoothly_and_lands_on_pixel_centres()
     up = numpy.array([[0, 1, 2], [0, 2, 3]], numpy.int64)
     matrix = numpy.eye(4, dtype=numpy.float32)
     matrix[3, :3] = (1000.0, 0.0, 0.0)
-    items = {
-        "arches": [
-            (
-                "Arc",
-                0,
-                numpy.eye(3, dtype=numpy.float32),
-                numpy.ones(3, numpy.float32),
-                numpy.array([3000.0, 0.0, 200.0], numpy.float32),
-                0.0,
-                0.0,
-                100.0,
-            )
-        ],
-        "boulders": {"Boulder": (matrix[None], numpy.array([-200.0]), numpy.array([200.0]))},
-        "shapes": {"Arc": (flat, up[:, ::-1].copy()), "Boulder": (flat, up)},
-    }
+    arch = PreparedPlacement(
+        "Arc",
+        0,
+        numpy.eye(3, dtype=numpy.float32),
+        numpy.ones(3, numpy.float32),
+        numpy.array([3000.0, 0.0, 200.0], numpy.float32),
+        0.0,
+        0.0,
+        100.0,
+    )
+    items = TopItems(
+        [arch],
+        {"Boulder": InstanceSpans(matrix[None], numpy.array([-200.0]), numpy.array([200.0]))},
+        {"Arc": (flat, up[:, ::-1].copy()), "Boulder": (flat, up)},
+    )
     band = rasterise_top_band(items, 0.0, 0.0, step_cm, 4, 160, 1)
     z_cm, cover = reduce_direct(band, 4, 160, 1)
     first = int(numpy.ceil(1000.0 / step_cm - 0.5))

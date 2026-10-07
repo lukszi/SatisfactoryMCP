@@ -18,6 +18,7 @@ from mapgen.palette.water.open_sea import (
     OPEN_SEA_DEPTH_M,
     OPEN_SEA_SETTLE_M,
     OPEN_SEA_TONE_DEPTH_M,
+    membrane,
     open_sea,
 )
 from mapgen.palette.water.rivers import water_sources
@@ -158,6 +159,19 @@ def test_the_membrane_settles_towards_the_far_value_over_its_scale():
     assert got[0] == 10.0 and abs(got[-1] - 50.0) < 0.1
     assert np.all(np.diff(got) > 0), "deeper with distance, never a step back"
     assert abs((50.0 - got[20]) / 40.0 - np.exp(-1.0)) < 0.05
+
+
+def test_relax_with_a_pull_is_the_open_sea_s_membrane_to_the_bit():
+    """``relax`` takes the pull and target ``membrane`` has, so the two can become one."""
+    rng = np.random.default_rng(5)
+    values = rng.random((24, 24)) * 10
+    known = np.zeros(values.shape, bool)
+    known[:, :3] = True
+    pull = np.where(rng.random(values.shape) < 0.3, 0.05, 0.0)
+    target = rng.random(values.shape) * 20
+    for args in ((), (pull, target)):
+        got = relax(values, known, ~known, 6.0, 30.0, *args)
+        assert np.array_equal(got, membrane(values, known, ~known, 6.0, 30.0, *args))
 
 
 def _sea(height, water, grades, art=None):
