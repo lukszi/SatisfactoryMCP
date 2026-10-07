@@ -19,7 +19,7 @@ from scipy import ndimage
 
 from mapgen import pools
 from mapgen.lighting import horizon as hz
-from mapgen.lighting import model, stage
+from mapgen.lighting import light_tiles, model, stage
 from mapgen.lighting.stage import Surface, bake_light
 from mapgen.lighting.sun import DEFAULT_SUN
 
@@ -96,15 +96,15 @@ def test_a_direction_s_2x2_mean_sums_as_the_stacked_one_did():
     rng = np.random.default_rng(5)
     stack = (rng.random((model.HZ_CELLS, 66, 66), dtype=np.float32) * 90).astype(np.float32)
     stack *= np.where(rng.random(stack.shape) < 0.3, 1e-3, 1.0).astype(np.float32)
-    whole = stage._down(np.moveaxis(stack, 0, -1))
-    each = np.stack([stage._down(cell) for cell in stack], -1)
+    whole = light_tiles.downsample(np.moveaxis(stack, 0, -1))
+    each = np.stack([light_tiles.downsample(cell) for cell in stack], -1)
     assert each.tobytes() == whole.tobytes()
 
 
 def test_the_coarser_levels_lookup_is_the_decode_and_encode_it_replaced():
     q = np.random.default_rng(6).integers(0, 256, (37, 41, model.HZ_CELLS), dtype=np.uint8)
-    want = hz.encode_horizon(np.moveaxis(stage.decode_linear(q), -1, 0))
-    assert np.moveaxis(stage._LINEAR_TO_HZ[q], -1, 0).tobytes() == want.tobytes()
+    want = hz.encode_horizon(np.moveaxis(light_tiles.decode_linear(q), -1, 0))
+    assert np.moveaxis(light_tiles.LINEAR_TO_HZ[q], -1, 0).tobytes() == want.tobytes()
 
 
 SP = 5.0
@@ -126,8 +126,8 @@ def test_a_block_s_horizons_a_direction_at_a_time_are_the_stacked_ones():
     stack = np.concatenate([ground, np.where(over > ground, over, np.float32(0.0))])
     hz_u8, hq, sun = stage._bake_horizons(zh, halo, SP, crowns, slabs, m, True)
     assert hz_u8.tobytes() == hz.encode_horizon(stack).tobytes()
-    scale = stage.HZ_LINEAR_SCALE
-    want_hq = np.round(np.clip(stage._down(np.moveaxis(stack, 0, -1)), 0, 90) * scale)
+    scale = light_tiles.HZ_LINEAR_SCALE
+    want_hq = np.round(np.clip(light_tiles.downsample(np.moveaxis(stack, 0, -1)), 0, 90) * scale)
     assert hq.tobytes() == want_hq.astype(np.uint8).tobytes()
     nrm = np.random.default_rng(7).integers(0, 256, (2 * m, 2 * m, 4), dtype=np.uint8)
     for crowned in (False, True):
@@ -189,11 +189,11 @@ def _level_sources(work: Path, n: int) -> None:
 
 
 def test_a_coarser_level_runs_at_most_level_ahead_strips_before_the_pool(tmp_path, monkeypatch):
-    monkeypatch.setattr(stage, "LEVEL_AHEAD", 1)
-    monkeypatch.setattr(stage, "LEVEL_TASK_TILES", 2)
+    monkeypatch.setattr(light_tiles, "LEVEL_AHEAD", 1)
+    monkeypatch.setattr(light_tiles, "LEVEL_TASK_TILES", 2)
     _level_sources(tmp_path / "work", 1024)
     pool = _LazyPool()
-    count = stage._level_strips(tmp_path / "work", tmp_path / "dest", 2, 1.0, pool, False)
+    count = light_tiles.level_strips(tmp_path / "work", tmp_path / "dest", 2, 1.0, pool, False)
     assert count == pool.tiles == 16, "every strip's tiles were submitted and waited for"
     assert not pool.open and pool.submitted == 8, "4 strips of 4 tiles, 2 tiles to a task"
     assert pool.most == (1 + 1) * 2, "the strip being computed and one ahead, 2 tasks each"
@@ -204,10 +204,12 @@ def test_a_coarser_level_runs_at_most_level_ahead_strips_before_the_pool(tmp_pat
 def test_a_level_is_the_same_bytes_however_far_ahead_it_runs(tmp_path, monkeypatch):
     trees = {}
     for ahead in (0, 3):
-        monkeypatch.setattr(stage, "LEVEL_AHEAD", ahead)
+        monkeypatch.setattr(light_tiles, "LEVEL_AHEAD", ahead)
         _level_sources(tmp_path / f"w{ahead}", 512)
         with ProcessPoolExecutor(2) as pool:
-            stage._level_strips(tmp_path / f"w{ahead}", tmp_path / f"d{ahead}", 1, 2.0, pool, False)
+            light_tiles.level_strips(
+                tmp_path / f"w{ahead}", tmp_path / f"d{ahead}", 1, 2.0, pool, False
+            )
         root = tmp_path / f"d{ahead}"
         trees[ahead] = {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob("*")
                         if p.is_file()}  # fmt: skip

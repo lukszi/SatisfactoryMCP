@@ -3,26 +3,30 @@
     uv run --extra gen python tools/gen_map_image.py [--enhance]
 
 Writes ``map.png``, ``tiles/``, ``tiles@2x/`` and ``map.json`` into gitignored
-``data/local/`` from the player's own install; ``--enhance`` adds z6 and z7 on the GPU.
-This module is the arguments, the stage order and the refusals; the stages live in
-``gamedata/artwork_sheet.py``, ``enhance/`` and ``tiles/artwork_output.py``, and
-docs/spatial-and-map.md §17 has the reasoning.
+``data/local/``; ``--enhance`` adds z6 and z7 on the GPU. The arguments, the stage order and
+the refusals; the stages live in ``gamedata/artwork_sheet.py``, ``enhance/`` and
+``tiles/artwork_output.py``. Why: docs/spatial-and-map.md §17.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
+from collections.abc import Callable
 from pathlib import Path
+from types import ModuleType
+from typing import TYPE_CHECKING
 
-from mapgen.common import LOCAL_DIR, base_parser, require_gen
+from mapgen.common import LOCAL_DIR, Refusal, base_parser, require_gen
 from mapgen.enhance.levels import ENHANCE_WORK, enhance_levels
+from mapgen.enhance.pixels import ImageModule
 from mapgen.enhance.upscaler import (
     ENHANCE_MODEL,
     ENHANCE_SCALE,
     EnhanceError,
-    check_array_stack,
-    ensure_upscaler,
+    Upscaler,
+    ready_upscaler,
 )
 from mapgen.gamedata.artwork_sheet import (
     calibrate,
@@ -48,13 +52,20 @@ from mapgen.tiles.recipes import ENHANCE_RECIPE, ENHANCE_RECIPES
 from satisfactory_mcp.core.gameassets.container import SHEET_PX, open_container
 from satisfactory_mcp.core.gameassets.provenance import InstallNotFound, installed_build, sha256_hex
 from satisfactory_mcp.core.gameassets.pyramid import TILES_2X_DIR_NAME, TILES_DIR_NAME, PyramidError
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 #: The game's own resolution: 16 MB of PNG, which ``--size`` cuts for a slow decoder.
 DEFAULT_SIZE_PX = 8192
 
+#: Exit codes: no game or a bad pyramid, another build, a bad layout, a downgrade, no GPU stage.
+_FAILED, _OTHER_BUILD, _BAD_LAYOUT, _DOWNGRADE, _NO_UPSCALER = 1, 3, 4, 5, 6
 
-def _parser():
-    parser = base_parser(__doc__.splitlines()[0])
+
+def _parser() -> argparse.ArgumentParser:
+    parser = base_parser(str(__doc__).splitlines()[0])
     parser.add_argument(
         "--size",
         type=int,
@@ -110,16 +121,15 @@ def _parser():
     return parser
 
 
-def _refuse_stale(out_dir: Path, build_pin: str, enhance: bool) -> int | None:
-    """Exit code 5 for a recipe downgrade, 3 for another build's picture, else None."""
+def _refuse_stale(out_dir: Path, build_pin: str, enhance: bool) -> None:
+    """Refuse a recipe downgrade, then another build's picture; nothing there passes."""
     image_path = out_dir / IMAGE_NAME
     tiles_dir = out_dir / TILES_DIR_NAME
     # The pyramid is refused like the picture: another build's tiles are another world.
     if not (image_path.is_file() or tiles_dir.is_dir()):
-        return None
-    sidecar_now: dict = {}
+        return
     try:
-        sidecar_now = json.loads((out_dir / SIDECAR_NAME).read_text(encoding="utf-8"))
+        sidecar_now: JsonValue = json.loads((out_dir / SIDECAR_NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         sidecar_now = {}
     if not isinstance(sidecar_now, dict):
@@ -127,20 +137,21 @@ def _refuse_stale(out_dir: Path, build_pin: str, enhance: bool) -> int | None:
     if enhancement_downgrades(sidecar_now, enhance):
         have = pinned_recipe(sidecar_now)
         want = ENHANCE_RECIPE if enhance else 0
-        print(
+        raise Refusal(
+            _DOWNGRADE,
             f"{tiles_dir} was cut by enhancement recipe {have} -- "
             f"{ENHANCE_RECIPES.get(have, 'a recipe this checkout has never heard of')} "
             f"-- and this run would cut it with recipe {want}: "
             f"{ENHANCE_RECIPES[want]}.\n"
             "A refresh that quietly costs the reader picture they already generated is "
             "exactly the kind of drift this tool announces rather than performs. Pass "
-            "--enhance to keep it, or --force to accept the plainer map."
+            "--enhance to keep it, or --force to accept the plainer map.",
         )
-        return 5
     existing = pinned_build(sidecar_now)
     if existing != build_pin:
         there = " and ".join(str(p) for p in (image_path, tiles_dir) if p.exists())
-        print(
+        raise Refusal(
+            _OTHER_BUILD,
             f"{there} already exists and this run cannot show it was cut from the "
             f"installed build.\n"
             f"  installed: {build_pin}\n"
@@ -148,73 +159,38 @@ def _refuse_stale(out_dir: Path, build_pin: str, enhance: bool) -> int | None:
             "A picture from another build -- or from somewhere else entirely -- is not "
             "this tool's to replace: the repository's own tables are pinned to a build "
             "the new artwork may no longer agree with, and drift is meant to be "
-            "announced rather than overwritten. Pass --force to overwrite it anyway."
+            "announced rather than overwritten. Pass --force to overwrite it anyway.",
         )
-        return 3
-    return None
 
 
-def _prove_upscaler(args) -> tuple[dict | None, int | None]:
+def _prove_upscaler(args: argparse.Namespace) -> Upscaler:
     """The binary, model and numpy settled before any decode, so a failure costs nothing."""
     if args.size != SHEET_PX:
-        print(
+        raise Refusal(
+            _NO_UPSCALER,
             f"--enhance and --size {args.size} together would upscale a downscale, "
             "which is inventing detail twice. Refusing: run at "
-            f"{SHEET_PX} or without --enhance."
+            f"{SHEET_PX} or without --enhance.",
         )
-        return None, 6
     try:
-        upscaler = ensure_upscaler(args.esrgan_cache)
-        upscaler["numpy"], upscaler["scipy"] = check_array_stack()
+        return ready_upscaler(args.esrgan_cache)
     except EnhanceError as exc:
-        print(exc)
-        return None, 6
-    print(
-        f"  upscaler: {upscaler['exe']} ({ENHANCE_MODEL}, sha256 "
-        f"{upscaler['sha256'][:16]}...), numpy {upscaler['numpy']} / "
-        f"scipy {upscaler['scipy']}"
-    )
-    return upscaler, None
+        raise Refusal(_NO_UPSCALER, str(exc)) from exc
 
 
-def main() -> int:
-    args = _parser().parse_args()
-
-    versions = require_gen("ooz", "texture2ddecoder", "PIL.Image")
-    pyooz_version = versions["pyooz"]
-    import texture2ddecoder as decoder
-    from PIL import Image as image_mod
-
-    try:
-        build_pin, build_raw = installed_build(args.game)
-    except InstallNotFound as exc:
-        print(f"{exc} -- point --game at the install holding FactoryGame/ and Engine/")
-        return 1
-    print(f"installed build: {build_pin}")
-
-    out_dir: Path = args.out_dir
-    if not args.force:
-        code = _refuse_stale(out_dir, build_pin, args.enhance)
-        if code is not None:
-            return code
-
-    upscaler = None
-    if args.enhance:
-        upscaler, code = _prove_upscaler(args)
-        if code is not None:
-            return code
-
-    paks = args.game / "FactoryGame" / "Content" / "Paks"
+def _read_sheet(
+    game: Path, pyooz_version: str, decoder: ModuleType, image_mod: ImageModule
+) -> tuple[Image.Image, JsonObject, str]:
+    """The four map slices decoded, their layout proved, stitched: (sheet, layout, alpha)."""
+    paks = game / "FactoryGame" / "Content" / "Paks"
     if not (paks / "FactoryGame-Windows.utoc").exists():
-        print(f"no FactoryGame-Windows.utoc under {paks}")
-        return 1
+        raise Refusal(_FAILED, f"no FactoryGame-Windows.utoc under {paks}")
     print(f"reading the map slices from {paks} with pyooz {pyooz_version}")
-    store = open_container(args.game)
+    store = open_container(game)
     print(
         f"  .utoc v{store.version}, {store.entry_count} entries, "
         f"{store.block_size // 1024} KiB blocks, methods {store.methods}"
     )
-
     tiles = decode_slices(store, decoder, image_mod)
     layout = seam_residuals(tiles)
     for label, value in layout["seams"].items():
@@ -222,21 +198,36 @@ def main() -> int:
     for label, value in layout["controls_inside_one_tile"].items():
         print(f"  control {label:23s} {value:8.4f}")
     if not layout["layout_holds"]:
-        print(
+        raise Refusal(
+            _BAD_LAYOUT,
             "the seams read no better than two scanlines 100 rows apart inside one tile, "
             "so these four slices do not abut the way their names say. The layout is "
-            "wrong -- a mirrored world is worse than no world. Refusing to write."
+            "wrong -- a mirrored world is worse than no world. Refusing to write.",
         )
-        return 4
-
     sheet, alpha_note = stitch_sheet(tiles, image_mod)
+    return sheet, layout, alpha_note
+
+
+def _cut(
+    args: argparse.Namespace, versions: dict[str, str], decoder: ModuleType, image_mod: ImageModule
+) -> int:
+    """The stages in order: build, guards, sheet, ``map.png``, the trees, ``map.json``."""
+    try:
+        build_pin, build_raw = installed_build(args.game)
+    except InstallNotFound as exc:
+        message = f"{exc} -- point --game at the install holding FactoryGame/ and Engine/"
+        raise Refusal(_FAILED, message) from exc
+    print(f"installed build: {build_pin}")
+    out_dir: Path = args.out_dir
+    if not args.force:
+        _refuse_stale(out_dir, build_pin, args.enhance)
+    upscaler = _prove_upscaler(args) if args.enhance else None
+    sheet, layout, alpha_note = _read_sheet(args.game, versions["pyooz"], decoder, image_mod)
     sheet_digest = sha256_hex(sheet.tobytes())
     calibration = calibrate(sheet, image_mod, BOUNDS_M)
     report_calibration(calibration)
-
     if args.size != SHEET_PX:
-        sheet = sheet.resize((args.size, args.size), image_mod.LANCZOS)
-
+        sheet = sheet.resize((args.size, args.size), image_mod.Resampling.LANCZOS)
     image_path = out_dir / IMAGE_NAME
     out_dir.mkdir(parents=True, exist_ok=True)
     sheet.save(image_path, format="PNG", optimize=True)
@@ -245,10 +236,10 @@ def main() -> int:
 
     # Enhanced levels come from the full-resolution sheet: the preflight refused --size.
     work = out_dir / ENHANCE_WORK
-    enhance = None
+    enhance: Callable[[Path], JsonObject] | None = None
     if upscaler is not None:
 
-        def run_enhance(staging: Path) -> dict:
+        def run_enhance(staging: Path) -> JsonObject:
             if work.exists():
                 shutil.rmtree(work)
             try:
@@ -257,7 +248,6 @@ def main() -> int:
                 shutil.rmtree(work, ignore_errors=True)
 
         enhance = run_enhance
-
     try:
         tiles, tiles_2x = install_artwork_trees(
             sheet,
@@ -268,11 +258,9 @@ def main() -> int:
             build_pin=build_pin,
         )
     except EnhanceError as exc:
-        print(exc)
-        return 6
+        raise Refusal(_NO_UPSCALER, str(exc)) from exc
     except PyramidError as exc:
-        print(exc)
-        return 1
+        raise Refusal(_FAILED, str(exc)) from exc
 
     sidecar = build_artwork_sidecar(
         build_pin=build_pin,
@@ -289,10 +277,21 @@ def main() -> int:
     sidecar_path = out_dir / SIDECAR_NAME
     sidecar_path.write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
     print(f"wrote {sidecar_path}  {sidecar_path.stat().st_size} B")
-    print(
-        "  pinned at x [{x_min_m:.0f}, {x_max_m:.0f}] y [{y_min_m:.0f}, {y_max_m:.0f}] m".format(
-            **BOUNDS_M
-        )
-    )
+    corners = "x [{x_min_m:.0f}, {x_max_m:.0f}] y [{y_min_m:.0f}, {y_max_m:.0f}] m"
+    print("  pinned at " + corners.format(**BOUNDS_M))
     print("none of it is committed: data/local/ is gitignored and stays that way.")
     return 0
+
+
+def main() -> int:
+    """The command; a refusal prints its reason and returns its exit code."""
+    args = _parser().parse_args()
+    versions = require_gen("ooz", "texture2ddecoder", "PIL.Image")
+    import texture2ddecoder as decoder
+    from PIL import Image as image_mod
+
+    try:
+        return _cut(args, versions, decoder, image_mod)
+    except Refusal as refused:
+        print(refused.message)
+        return refused.code

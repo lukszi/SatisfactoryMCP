@@ -92,7 +92,7 @@ MODULE_CEILINGS: dict[str, int] = {
     "commands/renders.py": 1013,
     "commands/heightmap.py": 310,
     # A thin command, held at its size so the stages stay in their modules.
-    "commands/artwork.py": 298,
+    "commands/artwork.py": 297,
 }
 CEILING_SLACK = 25
 
@@ -101,8 +101,6 @@ CEILING_SLACK = 25
 FUNCTION_MAX_LINES = 150
 FUNCTION_CEILINGS: dict[str, int] = {
     "commands/renders.py::main": 812,
-    "commands/artwork.py::main": 119,
-    "enhance/levels.py::enhance_levels": 249,
 }
 
 #: The entry scripts that became shims, and the ``mapgen`` command each one runs.

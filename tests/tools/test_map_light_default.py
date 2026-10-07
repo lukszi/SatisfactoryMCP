@@ -11,7 +11,7 @@ import argparse
 
 import pytest
 
-from mapgen.lighting.stage import Surface, _alloc, occluder_planes
+from mapgen.lighting.stage import Surface, _allocate_work_arrays, occluder_planes
 from satisfactory_mcp.domain.maps import presets, registry
 from tests.support.map_jobs import Passed, keep_cache, run_renders
 
@@ -76,7 +76,7 @@ def test_the_light_scratch_is_the_light_cache_the_stage_allocates(tmp_path):
     size = 512
     work = tmp_path / "light.cache"
     Surface(work, size).close()
-    _alloc(work, size)
+    _allocate_work_arrays(work, size)
     written = sum(path.stat().st_size for path in work.glob("*.npy"))
     expected = presets.LIGHT_SCRATCH_BYTES * (size / presets.FULL_PX) ** 2
     assert written == pytest.approx(expected, rel=0.01)

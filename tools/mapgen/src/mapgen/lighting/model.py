@@ -9,10 +9,24 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
+from typing import Literal, TypeAlias, TypedDict
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy import ndimage
 
+from mapgen.colour import (
+    by_luminance,
+    colour_at,
+    linear_to_srgb_unit,
+    number_at,
+    sky_sun_light,
+    srgb_unit_to_linear,
+    tone,
+    unit_luminance,
+    untone,
+)
 from mapgen.lighting.horizon import (
     FADE_M,
     HORIZON_DIRS,
@@ -20,8 +34,10 @@ from mapgen.lighting.horizon import (
     SKY_RADIUS_M,
     decode_horizon,
 )
-from mapgen.lighting.sun import DEFAULT_SUN, NOON_HOUR, sun_vector
+from mapgen.lighting.sun import DEFAULT_SUN, NOON_HOUR, Sun, sun_vector
+from satisfactory_mcp.core.arrays import F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.versions import LIGHTS
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
     "DIRECT_SCALE",
@@ -32,9 +48,14 @@ __all__ = [
     "SHADOW_FLOOR",
     "SHADOW_FLOOR_KNEE",
     "SHADOW_SOFT_DEG",
+    "Horizons",
+    "LightBlock",
+    "LightParams",
+    "LightSpace",
     "apply_terms",
     "direct_term",
     "light_axis",
+    "light_params",
     "model_block",
     "relight",
     "sun_cells",
@@ -62,8 +83,49 @@ SHADOW_FLOOR_KNEE = 0.1
 #: The stored direct term is ``direct * DIRECT_SCALE`` as a byte.
 DIRECT_SCALE = 127.0
 
+#: Horizon planes in degrees, one per atlas cell: a ``(cells, h, w)`` stack or a sequence.
+Horizons: TypeAlias = F32Grid | Sequence[F32Grid]
 
-def model_block() -> dict:
+#: Where a style multiplies its light in: linear light under its tone curve, or sRGB.
+LightSpace: TypeAlias = Literal["linear", "srgb"]
+
+#: A light block as it arrives: ``shader_light``'s, or one read back from a sidecar.
+LightBlock: TypeAlias = Mapping[str, object]
+
+
+class LightParams(TypedDict):
+    """``shader_light``'s block, checked; a tone knee of 1 is no tone curve."""
+
+    space: LightSpace
+    ambient: float
+    sky: list[float]
+    sun: list[float]
+    tone_knee: float
+    tone_white: float
+    crowns: bool
+
+
+def light_params(block: LightBlock) -> LightParams:
+    """``block`` read key by key; ``TypeError`` names the first value of the wrong kind."""
+    space: LightSpace
+    if block["space"] == "linear":
+        space = "linear"
+    elif block["space"] == "srgb":
+        space = "srgb"
+    else:
+        raise TypeError(f"space is {block['space']!r}, not linear or srgb")
+    return {
+        "space": space,
+        "ambient": number_at(block, "ambient"),
+        "sky": colour_at(block, "sky"),
+        "sun": colour_at(block, "sun"),
+        "tone_knee": number_at(block, "tone_knee"),
+        "tone_white": number_at(block, "tone_white"),
+        "crowns": bool(block.get("crowns")),
+    }
+
+
+def model_block() -> JsonObject:
     """Every constant the shader reads, as the light pyramid's ``meta.json`` carries it."""
     return {
         "model": "lambert+shadow+fill+sky",
@@ -88,58 +150,18 @@ def model_block() -> dict:
     }
 
 
-def light_axis() -> dict:
+def light_axis() -> JsonObject:
     """The fourth provenance axis: which light model the pyramid was baked for."""
     block = model_block()
     canonical = json.dumps(block, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    light: dict[str, JsonValue] = LIGHTS[LIGHT_ID]
     return {
         "id": LIGHT_ID,
-        "version": LIGHTS[LIGHT_ID]["version"],
-        "label": LIGHTS[LIGHT_ID]["label"],
+        "version": light["version"],
+        "label": light["label"],
         **block,
         "digest": "sha256:" + hashlib.sha256(canonical).hexdigest(),
     }
-
-
-def _unit(rgb) -> np.ndarray:
-    rgb = np.asarray(rgb, np.float32)
-    return rgb / np.float32(0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2])
-
-
-def _s2l(c):
-    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
-
-
-def _l2s(c):
-    c = np.clip(c, 0.0, 1.0)
-    return np.where(c <= 0.0031308, c * 12.92, 1.055 * c ** (1 / 2.4) - 0.055)
-
-
-_LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)
-
-
-def _tone(y, knee: float, white: float):
-    """The painted style's luminance shoulder (``palette.painted.calibration.tone``); knee 1 is none."""
-    if knee >= 1.0:
-        return y
-    span = 1.0 - knee
-    x = np.maximum(y - knee, 0.0) / span
-    top = (white - knee) / span
-    return np.where(y > knee, knee + span * x * (1 + x / (top * top)) / (1 + x), y)
-
-
-def _untone(o, knee: float, white: float):
-    if knee >= 1.0:
-        return o
-    span = 1.0 - knee
-    u = np.clip((o - knee) / span, 0.0, 0.999)
-    a, b = 1.0 / ((white - knee) / span) ** 2, 1.0 - u
-    return np.where(o > knee, knee + span * (np.sqrt(b * b + 4 * a * u) - b) / (2 * a), o)
-
-
-def _by_luminance(c, curve, knee: float, white: float):
-    y = np.maximum(c @ _LUMA, 1e-7)
-    return c * (curve(y, knee, white) / y)[..., None]
 
 
 def _either_side(az: float) -> tuple[int, int, np.float32]:
@@ -148,10 +170,12 @@ def _either_side(az: float) -> tuple[int, int, np.float32]:
     return i0, (i0 + 1) % HORIZON_DIRS, np.float32(f - np.floor(f))
 
 
-def _toward(hz_deg, az: float, first: int = 0) -> np.ndarray:
+def _toward(hz_deg: Horizons, az: float, first: int = 0) -> F32Grid:
     """The horizon toward ``az``, between the two stored directions either side of it."""
     i0, i1, w = _either_side(az)
-    return hz_deg[first + i0] * (1 - w) + hz_deg[first + i1] * w
+    before: F32Grid = hz_deg[first + i0] * (1 - w)
+    after: F32Grid = hz_deg[first + i1] * w
+    return before + after
 
 
 def sun_cells(az: float) -> tuple[int, int, int, int]:
@@ -160,7 +184,9 @@ def sun_cells(az: float) -> tuple[int, int, int, int]:
     return i0, i1, HORIZON_DIRS + i0, HORIZON_DIRS + i1
 
 
-def direct_term(nrm_u8, hz_deg, sun, shadows: bool = True, crowns: bool = False) -> np.ndarray:
+def direct_term(
+    nrm_u8: U8Grid, hz_deg: Horizons | None, sun: Sun, shadows: bool = True, crowns: bool = False
+) -> F32Grid:
     """``ndl * (1 - shadow * (1 - fill)) / sin(max(el, 35))`` per pixel.
 
     ``hz_deg`` is ``(cells, h, w)``: the ground's ``HORIZON_DIRS`` horizons, then, when
@@ -185,7 +211,7 @@ def direct_term(nrm_u8, hz_deg, sun, shadows: bool = True, crowns: bool = False)
     return (ndl * (1 - shade * (1 - SHADOW_FILL)) * inv).astype(np.float32)
 
 
-def surface_direct(z_m, spacing_m: float, sun=DEFAULT_SUN) -> np.ndarray:
+def surface_direct(z_m: NDArray[np.floating], spacing_m: float, sun: Sun = DEFAULT_SUN) -> F32Grid:
     """``direct_term`` of a height raster without shadows: Lambert toward ``sun``, flat is 1."""
     d_south, d_east = np.gradient(np.asarray(z_m, np.float32), spacing_m)
     lx, ly, lz = sun_vector(*sun)
@@ -194,32 +220,48 @@ def surface_direct(z_m, spacing_m: float, sun=DEFAULT_SUN) -> np.ndarray:
     return (np.maximum(ndl, 0.0) * inv).astype(np.float32)
 
 
-def apply_terms(rgb_u8, svf, direct, land, params: dict) -> np.ndarray:
+def apply_terms(
+    rgb_u8: U8Grid,
+    svf: NDArray[np.floating],
+    direct: NDArray[np.floating],
+    land: NDArray[np.floating],
+    params: LightBlock,
+) -> U8Grid:
     """Unlit colour times the light, in the style's own space. Arrays in [0, 1] except rgb."""
-    amb = np.float32(params["ambient"])
-    sky, sun = _unit(params["sky"]), _unit(params["sun"])
-    flat = amb * sky + (1 - amb) * sun
-    rel = (amb * sky * svf[..., None] + (1 - amb) * sun * direct[..., None]) / flat
+    light = light_params(params)
+    ambient = np.float32(light["ambient"])
+    sky, sun = unit_luminance(light["sky"]), unit_luminance(light["sun"])
+    flat = sky_sun_light(light["sky"], light["sun"], ambient)
+    rel = (ambient * sky * svf[..., None] + (1 - ambient) * sun * direct[..., None]) / flat
     k = SHADOW_FLOOR_KNEE
     rel = 0.5 * (rel + SHADOW_FLOOR + np.sqrt((rel - SHADOW_FLOOR) ** 2 + k * k))
     rel = 1 + (rel - 1) * land[..., None]
     c = rgb_u8.astype(np.float32) / 255.0
-    if params["space"] == "linear":
-        knee, white = float(params["tone_knee"]), float(params["tone_white"])
-        base = _by_luminance(_s2l(c), _untone, knee, white)
-        out = _l2s(_by_luminance(base * rel, _tone, knee, white))
+    if light["space"] == "linear":
+        knee, white = light["tone_knee"], light["tone_white"]
+        base = by_luminance(srgb_unit_to_linear(c), untone, knee, white)
+        out = linear_to_srgb_unit(by_luminance(base * rel, tone, knee, white))
     else:
         out = np.clip(c * rel, 0, 1)
     return np.round(out * 255).astype(np.uint8)
 
 
-def relight(rgb_u8, nrm_u8, hz_u8, sun, params, shadows: bool = True, sky: bool = True):
+def relight(
+    rgb_u8: U8Grid,
+    nrm_u8: U8Grid,
+    hz_u8: U8Grid | None,
+    sun: Sun,
+    params: LightBlock,
+    shadows: bool = True,
+    sky: bool = True,
+) -> U8Grid:
     """The shader's answer in numpy: unlit colour, the light tile, a sun.
 
     ``params`` is ``shader_light``'s; its ``crowns`` says whether the crown horizons count.
     """
+    light = light_params(params)
     hz_deg = decode_horizon(hz_u8) if (shadows and hz_u8 is not None) else None
-    direct = direct_term(nrm_u8, hz_deg, sun, shadows, bool(params.get("crowns")))
+    direct = direct_term(nrm_u8, hz_deg, sun, shadows, light["crowns"])
     svf = nrm_u8[..., 2].astype(np.float32) / 255.0 if sky else np.ones(direct.shape, np.float32)
     land = nrm_u8[..., 3].astype(np.float32) / 255.0
-    return apply_terms(rgb_u8, svf, direct, land, params)
+    return apply_terms(rgb_u8, svf, direct, land, light)
