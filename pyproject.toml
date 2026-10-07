@@ -51,8 +51,16 @@ web = ["fastapi>=0.115", "uvicorn>=0.30"]
 # BYTES the generators write and a silent upgrade would be a silent redraw: they are the
 # versions every previous run of every generator used, recorded off those runs' environments.
 # zstandard is the render caches' codec (docs/spatial-and-map.md section 39), pinned the
-# same way because it decides the bytes of a kept cache.
-gen = ["pyooz==0.0.8", "texture2ddecoder==1.0.6", "pillow==12.3.0", "zstandard==0.25.0"]
+# same way because it decides the bytes of a kept cache. numba compiles the render's loop
+# kernels (mapgen.jit); pinned because each kernel is proven equal to its numpy reference bit
+# for bit, and a new compiler would need that proof again.
+gen = [
+    "pyooz==0.0.8",
+    "texture2ddecoder==1.0.6",
+    "pillow==12.3.0",
+    "zstandard==0.25.0",
+    "numba==0.68.0",
+]
 
 [tool.uv.workspace]
 # The map generators: not shipped in the wheel below, run as `python -m mapgen <command>`.
