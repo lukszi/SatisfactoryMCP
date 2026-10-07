@@ -79,8 +79,8 @@ RENDER_STAGE_S = {"prep": 30.0, "sweep": 36.0, "direct": 692.0, "top": 119.0}
 RENDER_LAYER_S = {"draw": 340.0, "cut": 73.0}
 #: ``--light``: the lighting bake once, on 16 workers (docs/spatial-and-map.md section 29), and
 #: per layer the unlit tree cut beside the baked one, ``LIGHT_CUT_FACTOR`` times the cut. The
-#: scratch is the light cache while it runs, and the crown occluder a painted layer adds to
-#: it, written once (section 29, "Scratch").
+#: scratch is the light cache while it runs, and the crown occluder the paint store adds to
+#: it whatever the layers, written once (section 29, "Scratch").
 LIGHT_STAGE_S = 830.0
 LIGHT_CUT_FACTOR = 1.8
 LIGHT_KEEP_BYTES = 1_000_000_000
@@ -256,8 +256,7 @@ def estimate(preset: str, options: dict) -> dict:
         keep += int(LIGHT_KEEP_BYTES * area) if options["light"] else 0
         transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
         if options["light"]:
-            crowns = CROWN_SCRATCH_BYTES if "painted" in options["layers"] else 0
-            transient += int((LIGHT_SCRATCH_BYTES + crowns) * area)
+            transient += int((LIGHT_SCRATCH_BYTES + CROWN_SCRATCH_BYTES) * area)
     elif preset == "artwork":
         seconds, keep = FIXED["artwork"]["enhanced" if options["enhance"] else "plain"]
         transient = keep

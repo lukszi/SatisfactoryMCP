@@ -203,7 +203,8 @@ def render_layer(
     """One whole layer, drawn a band of rows at a time. Returns ``(rows, cols, 3)`` uint8.
 
     ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. ``unlit``
-    draws the sun term flat; ``surface`` receives the drawn heights and land weight. ``sea``
+    draws the sun term flat; ``surface`` receives the heights and land weight the seabed rule
+    draws, the same whatever the layer. ``sea``
     is the run's ``OpenSea``, whose water planes replace ``water_level``'s. ``threads`` bands
     are drawn at once, to the same bytes; ``seam`` and ``regimes`` take the bands in order.
     The rest: docs/spatial-and-map.md sections 20, 25 and 40.
@@ -470,7 +471,7 @@ def _painted_colours(
     ground = painted.ground
     scene["crowns"] = domed_crowns(ground, job.ground.x_cm, y_cm, spacing_m, job.unlit)
     meshes = (surface.mesh_weight, surface.mesh_class, surface.level_m)
-    scene["ndl"] = painted_ndl(z_m, spacing_m, job.unlit, job.ground.capture, meshes)
+    scene["ndl"] = painted_ndl(z_m, spacing_m, job.unlit, meshes)
     scene["ndl_flat"] = _FLAT_SUN
     scene["rock_weight"] = rock_weight
     scene["mesh_weight"] = surface.mesh_weight

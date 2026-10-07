@@ -342,15 +342,15 @@ shade for any sun.
   the forests and Red Bamboo, dashes in the desert. A crown cell keeps its horizon only
   where it stands above the ground's, so it is empty away from trees and costs 29% more
   light bytes at 2048.
-- **Where the occluder comes from.** A run drawn with the light and the painted layer hands
-  the paint store's 1 m crown-top plane (`crown.i16.z`, section 36) to the stage, sampled on
+- **Where the occluder comes from.** A run drawn with the light hands the paint store's 1 m
+  crown-top plane (`crown.i16.z`, section 36) to the stage whatever layers it draws, sampled on
   the sheet's grid (`occluders.sheet_crowns`): each pixel averages a box of its own width,
   one texel wide on a sheet finer than the plane, which is the bilinear sample. It gives the
   mean crown top and the covered share, and the stage stands each crown on the surface
   lifted by that share (`horizon.crown_surface`), so a crown keeps its area and its round
   edge and a small one casts a small shadow. The old maximum filter and nearest sample drew
   every crown as a block a pixel too big. Both are memory maps in the light cache. A run
-  without the painted layer bakes no tree shadows; the light sidecar's `occluder` says which.
+  without a paint store bakes no tree shadows; the light sidecar's `occluder` says which.
 - **`OCCLUDER_FADE_M` (25 m, 80 m)**: a crown is porous and its far shadow diffuse, so the
   occluder blocks under its own, shorter fade, beside the ground's `FADE_M`. With the
   ground's fade a Mangrove_Tall_01 at the 80 m cap lays a shadow about 93 m long under the

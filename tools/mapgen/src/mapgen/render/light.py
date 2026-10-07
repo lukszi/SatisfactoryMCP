@@ -15,14 +15,15 @@ import traceback
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
 import numpy as np
 
 from mapgen.cache import held_open
 from mapgen.common import Refusal
+from mapgen.gamedata.ground.paint_store import CROWN_NAME
 from mapgen.lighting.model import DIRECT_SCALE, apply_terms
-from mapgen.lighting.occluders import sheet_crowns
+from mapgen.lighting.occluders import CrownGrid, sheet_crowns
 from mapgen.lighting.stage import (
     LIGHT_DIR_NAME,
     Surface,
@@ -33,7 +34,9 @@ from mapgen.lighting.stage import (
 )
 from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.palette.lightparams import shader_light
+from mapgen.palette.painted.albedo import load_paint_meta, paint_plane
 from mapgen.palette.painted.ground import PaintedGround
+from mapgen.palette.painted.shapes import PaintPlane
 from mapgen.palette.styles import LAYER_STYLES
 from mapgen.tiles.cutter import Cutter, TileImaging
 from mapgen.tiles.pyramid import install_layer, layer_dir, queue_layer
@@ -45,12 +48,14 @@ __all__ = [
     "LIGHT_CACHE_DIR_NAME",
     "SCRATCH_IN_USE",
     "UNLIT_DIR_NAME",
+    "CrownTops",
     "LightingRun",
     "Occluder",
     "add_light_flags",
     "claim_scratch",
     "crown_layers",
     "crown_occluder",
+    "crown_tops",
     "light_run",
     "relight_in_place",
 ]
@@ -64,6 +69,13 @@ SCRATCH_IN_USE = 11
 
 #: The crowns the light bake casts: their tops in metres and the share of a pixel covered.
 Occluder = tuple[np.ndarray, np.ndarray]
+
+
+class CrownTops(NamedTuple):
+    """The paint store's crown-top plane, decimetres on its 1 m grid, and where it lies."""
+
+    top_dm: PaintPlane
+    grid: CrownGrid
 
 
 def add_light_flags(parser: argparse.ArgumentParser) -> None:
@@ -133,20 +145,33 @@ def crown_layers() -> list[str]:
     return [layer for layer in LAYER_STYLES if shader_light(layer).get("crowns")]
 
 
-def crown_occluder(painted: PaintedGround | None, scratch_root: Path, size: int) -> Occluder | None:
-    """The painted ground's crown tops and cover, written where the bake reads its occluder.
+def crown_tops(paint_dir: Path, painted: PaintedGround | None) -> CrownTops | None:
+    """The crown tops the light casts whatever layers a run draws: the painted ground's when
+    it is drawn, else the paint store's; None without a store or its crown plane."""
+    if painted is not None:
+        meta, plane = painted.meta, painted.crown
+    else:
+        meta = load_paint_meta(paint_dir)
+        if meta is None or CROWN_NAME not in meta["files"]:
+            return None
+        plane = paint_plane(paint_dir, meta, CROWN_NAME)
+    return None if plane is None else CrownTops(plane, meta["grid"])
+
+
+def crown_occluder(crowns: CrownTops | None, scratch_root: Path, size: int) -> Occluder | None:
+    """The crown tops and cover on the sheet, written where the bake reads its occluder.
 
     None without them. The stage reads these files in place: there is no second copy.
     """
-    if painted is None or painted.crown is None:
+    if crowns is None:
         return None
     top, cover = occluder_planes(scratch_root / LIGHT_CACHE_DIR_NAME, size)
-    return sheet_crowns(painted.crown, painted.meta["grid"], size, top, cover), cover
+    return sheet_crowns(crowns.top_dm, crowns.grid, size, top, cover), cover
 
 
 class LightingRun:
-    """The default ``--light`` run: the surface the first layer captures, the light bake,
-    and each layer's ``unlit/`` and relit installs.
+    """The default ``--light`` run: the surface the first layer captures, which every layer
+    captures alike, the light bake, and each layer's ``unlit/`` and relit installs.
 
     ``light_workers`` bake the light, None counting them from the cores and free memory;
     ``install``'s own ``workers`` encode the tiles.
@@ -168,7 +193,7 @@ class LightingRun:
         self.unlit: dict[str, JsonObject] = {}
 
     def surface_for(self) -> Surface | None:
-        """The surface to capture into: only the first layer draws it, all draw the same."""
+        """The surface to capture into: only the first layer draws it, any layer the same."""
         if self.captured:
             return None
         self.captured = True
@@ -274,7 +299,7 @@ class LightingRun:
 
 @contextmanager
 def light_run(
-    root: Path | None, size: int, painted: PaintedGround | None, workers: int | None = None
+    root: Path | None, size: int, crowns: CrownTops | None, workers: int | None = None
 ) -> Generator[LightingRun | None, None, None]:
     """The run's light stage in ``root``, crowns first, its scratch deleted however the run
     ends, the crowns' and the surface's failures included; or None without the light."""
@@ -283,7 +308,7 @@ def light_run(
         return
     run = None
     try:
-        run = LightingRun(root, size, crown_occluder(painted, root, size), light_workers=workers)
+        run = LightingRun(root, size, crown_occluder(crowns, root, size), light_workers=workers)
         yield run
     except BaseException as exc:
         # The failed frames hold the scratch's memory maps, which Windows will not delete.

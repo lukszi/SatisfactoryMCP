@@ -60,12 +60,10 @@ def test_a_job_hands_its_light_choice_to_the_generator(
     assert args.kernel_only is (mode == "kernel-only") and args.restyle is (mode == "restyle")
 
 
-def test_the_estimate_counts_the_light_cache_and_its_crowns(in_use_local):
+def test_the_estimate_counts_the_light_cache_and_its_crowns_for_any_layers(in_use_local):
     area = (2048 / presets.FULL_PX) ** 2
-    for layers, scratch in (
-        (["terrain"], presets.LIGHT_SCRATCH_BYTES),
-        (["painted"], presets.LIGHT_SCRATCH_BYTES + presets.CROWN_SCRATCH_BYTES),
-    ):
+    scratch = presets.LIGHT_SCRATCH_BYTES + presets.CROWN_SCRATCH_BYTES
+    for layers in (["terrain"], ["painted"]):
         lit = presets.estimate("render", {"layers": layers, "size": 2048})
         dark = presets.estimate("render", {"layers": layers, "size": 2048, "light": False})
         assert lit["transient_bytes"] - dark["transient_bytes"] >= int(scratch * area)

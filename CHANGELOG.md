@@ -154,6 +154,10 @@ Planned as 0.2.0.
 - Tree crowns on the game-painted map are placed from each pixel's own centre, so they no
   longer shift with where a band of rows starts. A few hundred crown pixels of a 2048 map,
   and 0.02% of a full-size one, change once where a crown's edge decides whether it shows.
+- A lit render's light no longer depends on which layers it draws or in which order. Drawn
+  first, the painted layer put its sea meshes into the light every layer is relit with, and
+  a run without the painted layer baked the light without tree shadows. A full render of
+  every layer is unchanged.
 
 ## [0.1.0] - 2026-09-27
 

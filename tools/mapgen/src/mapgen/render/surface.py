@@ -2,7 +2,8 @@
 
 ``band_grid`` places a band's rows on the field's lattice and ``band_surface`` composes the
 ground there. Only the meshes' seabed depends on the layer, so one surface can serve every
-layer drawn from it (docs/spatial-and-map.md sections 20, 25 and 40).
+layer drawn from it, and the light captures the seabed's whichever layer draws it
+(docs/spatial-and-map.md sections 20, 25, 29 and 40).
 """
 
 from __future__ import annotations
@@ -297,8 +298,9 @@ def band_surface(
 ) -> tuple[BandSurface, list[Owed]]:
     """One band's ground, and the seam and regime measurements it owes, merged in band order.
 
-    ``seabed`` draws the meshes under the sea's level too. With a capture, the drawn heights
-    and land weight go to the light stage.
+    ``seabed`` leaves the meshes in the water to the seabed (``shore.composite_meshes``). With
+    a capture, the heights and land weight drawn under the seabed rule go to the light stage,
+    whatever ``seabed`` the layer draws with.
     """
     rows, smooth, linear = grid.rows, grid.smooth, grid.linear
     z_dm, missing = sample_surface(sources.heights, smooth, linear, hf.NODATA)
@@ -323,31 +325,68 @@ def band_surface(
     water_m, level_m, wet, measured = _sample_water_surface(
         z_m, sources.water, sources.sea, smooth, linear
     )
+    planes = (water_m, wet, measured)
+    under = z_m
     mesh_weight = mesh_class = None
     if sources.meshes is not None:
-        z_m, mesh_weight, mesh_class = composite_meshes(
-            z_m,
-            np.asarray(sources.meshes.z_cm[rows.band], np.float32),
-            np.asarray(sources.meshes.cls[rows.band], np.uint8),
-            level_m,
-            composite_top,
-            seabed=seabed,
-        )
-    water = band_water_terms(
-        z_m, water_m, wet, measured, sources.blur_px, sources.reach, linear, sources.spacing_m
-    )
-    if sources.rivers is not None:
-        water = sources.rivers.over(water, z_m, linear, sources.spacing_m)
+        z_m, mesh_weight, mesh_class = _meshes(sources.meshes, rows, under, level_m, seabed)
+    water = _water_terms(sources, linear, z_m, planes)
     if sources.capture is not None:
-        dry = np.where(missing, 0.0, 1.0 - water["cover"])
-        columns = slice(sources.window.c0, sources.window.c1)
-        sources.capture.put(rows.top, z_m[rows.kept], dry[rows.kept], columns)
+        lit_z, lit_water = z_m, water
+        if not seabed and sources.meshes is not None:
+            lit_z = _meshes(sources.meshes, rows, under, level_m, True)[0]
+            lit_water = _water_terms(sources, linear, lit_z, planes)
+        _capture(sources.capture, sources.window, rows, lit_z, missing, lit_water)
     surface = BandSurface(
         z_m=z_m, missing=missing, weight=weight, rock_seen=rock_seen, top_weight=top_weight,
         water_m=water_m, level_m=level_m, wet=wet, measured=measured, mesh_weight=mesh_weight,
         mesh_class=mesh_class, water=water, borrow=_borrow(sources, grid),
     )  # fmt: skip
     return surface, owed
+
+
+def _meshes(
+    meshes: MeshPlanes, rows: BandRows, z_m: np.ndarray, level_m: np.ndarray, seabed: bool
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The band's ground raised by its render-only meshes: ``(z_m, weight, kept class)``."""
+    return composite_meshes(
+        z_m,
+        np.asarray(meshes.z_cm[rows.band], np.float32),
+        np.asarray(meshes.cls[rows.band], np.uint8),
+        level_m,
+        composite_top,
+        seabed=seabed,
+    )
+
+
+def _water_terms(
+    sources: GroundSources,
+    linear: GridTaps,
+    z_m: np.ndarray,
+    planes: tuple[np.ndarray, np.ndarray, np.ndarray],
+) -> WaterTerms:
+    """The band's water over ``z_m``, the rivers' laid over it; ``planes`` is ``(water_m, wet,
+    measured)``."""
+    water_m, wet, measured = planes
+    water = band_water_terms(
+        z_m, water_m, wet, measured, sources.blur_px, sources.reach, linear, sources.spacing_m
+    )
+    if sources.rivers is not None:
+        water = sources.rivers.over(water, z_m, linear, sources.spacing_m)
+    return water
+
+
+def _capture(
+    capture: LightCapture,
+    window: Window,
+    rows: BandRows,
+    z_m: np.ndarray,
+    missing: BoolMask,
+    water: WaterTerms,
+) -> None:
+    """The band's output rows to the light stage: the heights and the land weight."""
+    dry = np.where(missing, 0.0, 1.0 - water["cover"])
+    capture.put(rows.top, z_m[rows.kept], dry[rows.kept], slice(window.c0, window.c1))
 
 
 def _direct_regime(
