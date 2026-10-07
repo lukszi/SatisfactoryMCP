@@ -104,11 +104,12 @@ as the artwork. The main options:
 - The live-sun light is on by default (`--light`). The colour is drawn without light, the
   lighting pyramid goes into `<renders>/light/`, and each layer's `tiles/` keeps a
   default-sun copy. It applies to every layer and size, to `--kernel-only` and to
-  `--restyle`, which bakes the light again: the raster cache does not keep it. `--no-light`
-  draws the hillshade into the colour and writes no lighting pyramid. `--unlit`, the opt-in
-  from before the light was the default, still means `--light`. See §29.
+  `--restyle`. `--no-light` draws the hillshade into the colour and writes no lighting
+  pyramid. `--unlit`, the opt-in from before the light was the default, still means
+  `--light`. See §29.
 - `--cache-dir` with `--keep-direct` keeps the geometry rasters, so a later run at the same
-  size and build reuses them.
+  size and build reuses them, and the finished light in `light.kept/`, which a later run that
+  draws the same surface installs instead of baking (§29, "Kept light").
 - `--scratch-dir` puts the light's `light.cache/` elsewhere, such as a fast local disk; by
   default it sits beside the raster caches. It is scratch for one run, kept by no flag: the
   run deletes it however it ends, and the next lit run removes what a killed one left (§29).

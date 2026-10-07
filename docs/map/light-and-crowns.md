@@ -15,8 +15,8 @@ of `python -m mapgen renders` and `--no-light` turns it off; in the Maps tab the
 box starts ticked and the `render` preset's `light` option defaults to true. `--unlit`, the
 old opt-in, still means `--light`. While the light was opt-in, a plain command-line run drew
 a map the page could not relight. Every render mode takes it: each layer, each size,
-`--kernel-only`, and `--restyle`, which bakes the light again because the raster cache does
-not keep it.
+`--kernel-only`, and `--restyle`, which installs the light an earlier run kept when it draws
+the same surface (below, "Kept light").
 
 ### The model
 
@@ -83,7 +83,7 @@ artwork has no light direction to inherit.
 | --- | --- |
 | `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land |
 | `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | An 8 × 8 grey atlas of 128 px cells at half resolution, `255 · sqrt(deg / 90)`, WebP q75: cells 0–31 the ground's horizons, cells 32–63 the crowns' where they stand above the ground's, else 0 |
-| `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), tile counts, timings |
+| `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), the `key` the bake was made under (below, "Kept light"), tile counts, timings |
 | `<layer>/unlit/` | The unlit colour, 1x only |
 | `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun: what a page without WebGL, and every older reader, draws |
 
@@ -244,16 +244,16 @@ a paint store the crown tops and cover add 5, 5.4 GB, whatever layers the run dr
 as `presets.LIGHT_SCRATCH_BYTES` and `CROWN_SCRATCH_BYTES`, scaled by area; tests hold both to
 what the stage allocates.
 
-It is scratch for one run, not a cache. It carries no stamp, no flag keeps it (`--keep-direct`
-keeps the raster caches only), and every lit run, `--restyle` and another layer set included,
-bakes the light again. Nothing reads it after the run, so the question of storing it
-compressed (section 39) is one of size and traffic while the run lasts, not of reuse.
+It is scratch for one run, not a cache: no flag keeps it, and nothing reads it after the run.
+What a later run can use, the finished pyramid and the default-sun terms, is filed apart from
+it (below, "Kept light"). So the question of storing it compressed (section 39) is one of
+size and traffic while the run lasts, not of reuse.
 
 | Planes | Written | Read |
 | --- | --- | --- |
-| `z`, `land` | By the first layer drawn, a band of rows at a time | By the bake, one block of 16 × 16 tiles at a time with its halo (`land` without one); `land` again by each layer's default-sun copy, 512 rows at a time |
-| `occluder`, `occluder_cover` | By `crown_occluder`, 256 rows at a time | By the bake, a block with its halo |
-| `terms` | By the bake's processes, a block each | By each layer's default-sun copy, 512 rows at a time |
+| `z`, `land` | By the draw pass, a band of rows at a time, each band hashed as it is stored | By the bake, one block of 16 × 16 tiles at a time with its halo (`land` without one); `land` again by each layer's default-sun copy, 512 rows at a time |
+| `occluder`, `occluder_cover` | By `crown_occluder`, 256 rows at a time, then hashed once | By the bake, a block with its halo |
+| `terms` | By the bake's processes, a block each, then moved to the kept light | By each layer's default-sun copy, 512 rows at a time |
 | `zh`, `landh`, `svfh`, `hzq` | By the bake's processes, a block each | By each coarser level, a strip of rows at a time; each level replaces them with its own |
 
 Until 2026-10-06 the crowns went to `crowns.npy` and `crown_cover.npy` and the bake copied
@@ -286,17 +286,77 @@ other plane unchanged.
   write and under 1 s to read. It would take a 2-D tiled store the bake's processes can
   write a block at a time, for space nothing keeps after the run; moving the scratch to an
   SSD with `--scratch-dir` takes all of the traffic off the hard disk instead.
-- **The start of a run.** `lit.claim_scratch` empties a scratch a run left when it was
+- **The start of a run.** `light.claim_scratch` empties a scratch a run left when it was
   killed, before the field is read. A render that has started drawing keeps its `z.npy`
   mapped until it ends, and Windows refuses to rename a mapped file, so a scratch in use is
   refused with a message instead. Elsewhere that check finds nothing. Before, the second run
   failed with `[Errno 22]` when it created its first plane, after the preparation; two runs
   started while both are still preparing still meet that way.
-- **The end of a run.** `lit.light_run` closes the stage however the draw loop ends:
+- **The end of a run.** `light.light_run` closes the stage however the draw loop ends:
   finished, returned early, failed or interrupted. A run killed outright, as a job cancelled
   from the Maps tab is, leaves the scratch to the next lit run's start or, under the cache
   folder, to the tab's cache clear. So can a failure whose traceback still holds a plane
   mapped.
+
+### Kept light (2026-10-07)
+
+A palette-only restyle draws the surface the render before it drew, so its bake would write
+the same pyramid. The finished bake is kept beside the raster caches, and a run that draws
+the same surface installs it instead of baking (`render/kept_light.py`).
+
+**The key.** After the draw pass the run digests what the bake reads (`stage.light_key`):
+
+- the surface: each band's heights and land weight, hashed as `Surface.put` stores them on
+  the thread that drew the band and folded in row order, so neither the thread count nor the
+  order the bands finish in matters;
+- the crown tops and cover, hashed once `crown_occluder` has written them, and the slabs when
+  there are any;
+- the size, the light model's digest (`light_axis`, the default sun included), the layers
+  that read the crown cells, and `stage.LIGHT_VERSION`.
+
+The key and its digest go into `light/meta.json` as `key`; two bakes under one digest write
+the same tiles and terms. `LIGHT_VERSION` stands for the bake's own code. A test pins the
+bytes one small bake writes (its terms, sky view, land and horizon planes and its lossless
+normal tiles), so a change that moves them fails until the version is bumped and the new
+digest pinned.
+
+**What is kept.** `light.kept/` sits in the raster caches' folder: `--cache-dir`, else beside
+the renders.
+
+| File | What |
+| --- | --- |
+| `tiles/` | The pyramid's tiles: a hard link to each installed one, or a copy where the cache and the renders are on different volumes |
+| `terms.npy` | The default-sun terms, 3 bytes a pixel (3.2 GB at 32768), moved out of the scratch: a rename on one volume |
+| `meta.json` | The bake's `meta.json`, key included. It is removed first and written last, so a keep cut short is never read |
+
+It goes with the raster caches: a run that keeps none (no `--keep-direct`, `--restyle` or
+`--kernel-only`) deletes it at its end, and the Maps tab's cache clear takes it with the rest
+of `_cache/<size>/`. A keep that fails, in a read-only folder say, leaves no `meta.json`, and
+the run relights from its own scratch.
+
+**Reuse.** When the kept `meta.json` carries the run's digest and its terms and tiles are
+there, the run links the tiles into `<renders>/light/` through the usual staging and swap,
+writes the kept `meta.json` there, and relights each layer from the kept terms. A run into
+the folder that already holds that bake leaves it untouched. Anything else bakes and replaces
+the kept light. A palette change keeps the key. A change to the drawn heights or to the water
+cover the land weight comes from (a new field, build, raster cache or seabed rule) changes
+the surface, so the light is baked again.
+
+**Cost.** The hashing reads what the run holds in memory already: each band on its draw
+thread (SHA-256 runs at about 2.8 GB/s a core; the surface is 5.4 GB at 32768) and the crowns
+once as they are written (5.4 GB, about 2 s). Linking a full-size pyramid's 43,690 files took
+6.5 s on the hard disk and 9.4 s on the SSD of the reference machine, once to keep it and once
+to install it, against about 830 s for the bake. The Maps tab budgets a restyle whose cache
+holds `light.kept/meta.json` at `LIGHT_KEPT_S`, 10 s at full size, in place of the bake. Its
+cache size counts the linked tiles in full, though they share their blocks with the render
+they came from.
+
+**Measured** at 2048, all five layers, against the pixel batch's baseline (2026-10-07). A full
+run writes the same 1,125 tiles to the byte, the light's 170 among them, and the same
+sidecars but for the light's new `key`. A full run that kept its caches, then a restyle from
+them into a new folder, as the Maps tab runs one: the restyle installed the kept light, baked
+nothing, and wrote the same 1,125 tiles to the byte. A plain full run and that pair read the
+same surface digest.
 
 ### Hooks
 
