@@ -1,7 +1,7 @@
 """Suite-wide fixtures: the game data, the committed reference world, and private user data.
 
 docs/DEVELOPING.md ("Test suite") explains the reference world, how its projection is re-cut,
-and why the whole-folder tests are dealt first.
+and why each whole-folder test starts on a worker of its own.
 """
 
 from __future__ import annotations
@@ -16,22 +16,26 @@ from satisfactory_mcp.core.gamedata.normalize import normalize
 from satisfactory_mcp.core.saveio.projection import SaveError
 from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.fanout import heads_of_shares
 from tests.support.map_jobs import in_use_local, local, runner  # noqa: F401  (fixtures)
 from tests.support.paths import FIXTURES
 from tests.support.reference_world import FIXTURE_SAVE, FIXTURE_WORLD, SPIRE_COAST_FULL
 from tests.support.user_data import private_user_data
 from tests.support.web import client_over
 
-#: Marks the tests that parse every save on the machine; they are dealt to workers first.
+#: Marks the tests that parse every save on the machine; each opens a worker's first share.
 WHOLE_FOLDER = "whole_folder"
 
 
-def pytest_collection_modifyitems(items):
-    """Deal the ``whole_folder`` tests first, keeping every other test's relative order."""
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(config, items):
+    """Start each ``whole_folder`` test first on a worker of its own, keeping every other
+    test's relative order. Last, so the count it splits is the count left after ``-m``."""
     hoisted = [item for item in items if item.get_closest_marker(WHOLE_FOLDER)]
     if hoisted:
         rest = [item for item in items if not item.get_closest_marker(WHOLE_FOLDER)]
-        items[:] = hoisted + rest
+        workers = getattr(config, "workerinput", {}).get("workercount", 1)
+        items[:] = heads_of_shares(hoisted, rest, workers)
 
 
 def _docs_available() -> bool:

@@ -119,20 +119,27 @@ the tools its world through `use_world`, which replaces `app.load_world` (docs/m
 
 **Speed.** `-n 8` is measured. On a 16-core, 32-thread machine the default set took 5.8 s at 8
 workers, 7.7 s at 16 and 14.3 s at 32, and the integration set 30 s at 8 against 38 s at 32,
-because every worker imports and collects the suite alone. `--dist worksteal` (29.6 s),
-`--dist loadfile` (28.3 s) and `-p no:cacheprovider` were within noise of the default and were
-not adopted. After a hardware change, re-measure `uv run pytest -q -n <k>` and the same with
+because every worker imports and collects the suite alone. `--dist loadfile` (28.3 s) and
+`-p no:cacheprovider` were within noise of the default and were not adopted; `--dist worksteal`
+was too, until the whole-folder tests below were spread over it. After a hardware change, re-measure `uv run pytest -q -n <k>` and the same with
 `-m integration` for k in 4, 6, 8, 12, 16 and auto, three samples each.
 
 **The whole-folder tests.** Three integration tests parse every save on the machine (vendor
-parity, trailer arc lengths, lightweight records) and carry the `whole_folder` marker.
-`conftest.py` deals them to the workers first, because xdist deals tests in collection order
-and the longest ones would otherwise start last; that saves about a second per integration run.
-Each fans its saves out through `tests/support/fanout.py` at half the logical CPUs: widths 4,
-8, 16, 24 and 32 measured 43.9, 32.5, 22.6, 25.0 and 24.0 s for the integration set, the second
-thread of a core contending rather than helping. Hoisting them while each fanned out eight wide
-was slower, from oversubscription. `in_order` returns results in submission order, so per-save
-messages and early stops match a serial loop; `SATISFACTORY_TEST_FANOUT` overrides the width.
+parity, trailer arc lengths, lightweight records) and carry the `whole_folder` marker. They
+used to be moved to the front of the collection on the belief that xdist then dealt them to the
+workers first. It does not: the default `--dist load` hands each worker a contiguous run of a
+quarter of its average share, 36 tests of the integration set, so all three landed on the first
+worker and ran back to back, and that worker finished last. The suite now runs
+`--dist worksteal`, which opens by dealing each worker, in turn, an equal run of what is left,
+and later moves the tail of a busy worker's queue to an idle one. `conftest.py` puts each
+whole-folder test at the head of a different worker's opening run (`heads_of_shares` in
+`tests/support/fanout.py`), so the three start together on three workers. Its hook runs last,
+because the split depends on the count `-m` leaves. Each test fans its saves out through
+`tests/support/fanout.py` at a third of the logical CPUs, so that the three side by side about
+fill the machine. While they ran one after another, each at half the CPUs, widths 4, 8, 16, 24
+and 32 measured 43.9, 32.5, 22.6, 25.0 and 24.0 s for the integration set. `in_order` returns
+results in submission order, so per-save messages and early stops match a serial loop;
+`SATISFACTORY_TEST_FANOUT` overrides the width.
 
 **The vendor parity bank.** While `pioneersav` was being written, its acceptance test was a diff
 against the vendored GPL-3.0 parser, leaf for leaf. Deleting that library destroyed the diff, so
