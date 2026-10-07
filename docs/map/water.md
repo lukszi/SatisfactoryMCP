@@ -486,7 +486,14 @@ class template, so the reader composes them onto the actor's root itself.
 The level sweep reads them in the same pass that harvests the render-only meshes
 (`sweep_levels(read_actor=...)`), so this adds no second pass. A render caches the records in
 `falls.cache/falls.json` beside the raster caches, stamped with the build and the reader
-version, and deletes them with the caches unless `--keep-direct` is given. The 8
+version, and deletes them with the caches unless `--keep-direct` is given. The records are
+sorted by their lip's `x`, `y` and `z` as soon as they are swept, and drawn and digested in
+that order whether they came from the sweep or the cache: overlapping falls blend one after
+another, so the order moves pixels. Until 2026-10-07 a run that swept them drew them in the
+sweep's order and only the cache was sorted. Drawn on the field's surface, the two orders
+differ in 22 pixels of the satellite and of the painted layer at full size, each by one level
+(4 at 16384 and at 8192, none at 2048), so a palette-only restyle did not equal the full run
+it followed, and the two recorded different `waterfalls.digest`s for the same 191 records. The 8
 `SM_WaterfallMesh_01` and the one `Waterfall_Top_01` are backdrop meshes outside the playable
 area and are not read.
 

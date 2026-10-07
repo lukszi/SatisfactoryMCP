@@ -752,8 +752,9 @@ kernels on the same pixels (section 41, "The painters").
 The render's raster caches (`direct.cache`, `top.cache`, `meshes.cache`, `titan.cache`) are a
 zstd band store, 0.93 GB at 32768 against 18.5 GB as raw memory maps, which the render reads
 directly: nothing is inflated back to a raw file first. Each plane is written once, top to
-bottom in 256-row bands, and every layer then reads it top to bottom again, rows
-`[top - 8, top + 264)` per band. Two other reads exist: the family plane's strided row
+bottom in 256-row bands, and the draw then reads it top to bottom again, once for every layer
+of its pass (section 40), rows `[top - 16, top + 272)` per band (`BAND_HALO`), which the
+band's column pieces cut to their columns. Two other reads exist: the family plane's strided row
 gather, once per run, and the Titan raster's half-resolution window. Nothing reads them at
 random. The planes round-trip bit for bit, so the tiles are the same bytes as from a raw
 cache.
@@ -900,8 +901,10 @@ reading 18.5 GB from a hard disk; that is an estimate from the read rates above,
 ## 40. Drawing a layer's bands on threads (2026-10-06)
 
 A band is bound by memory bandwidth more than by arithmetic: nearly every step allocates a
-fresh band-sized array. So `render_layer` runs a layer's 256-row bands on a pool of threads,
-several at once, and the tiles are the same bytes as one band after another.
+fresh band-sized array. So `render_layers` runs the 256-row bands on a pool of threads,
+several at once, in one pass for all the run's layers ("One pass for every layer" below) and
+in column pieces ("Column pieces" below), and the tiles are the same bytes as one band after
+another.
 
 ### What runs where
 

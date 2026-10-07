@@ -32,7 +32,7 @@ job runner starts `python -m mapgen <command>` with `tools/mapgen/src` on the ch
 A render prints `::stage {"id": ..., "done": ...}` lines beside its human log lines
 (`satisfactory_mcp.core.mapprogress`); the job runner reads progress from those first.
 
-The design and its measurements are the map's sections of the spec, 17 to 40, which
+The design and its measurements are the map's sections of the spec, 17 to 42, which
 [docs/spatial-and-map.md](../../docs/spatial-and-map.md) indexes by file under
 [docs/map/](../../docs/map/). A § below is one of them.
 
@@ -48,7 +48,7 @@ estimate assumes before a job of that kind has run once.
 | `rocks` | `gen_world_heightmap.py --rocks` | `rocks.npz` and `rocks.json` beside the field in `data/local/heightmap/` | 24 s; budget 5 min |
 | `paint` | `gen_paint_layers.py` | `data/local/paint/` (113 MB) | 2 min on a loaded machine; budget 2.5 min |
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
-| `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 68 min for all five layers and 44 min for two |
+| `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 58 min for all five layers and 42 min for two |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
 | `compress-cache` | | the given raster caches, converted in place | 4 s for a 1.3 GB Titan cache; about 2.5 min for a full set (estimate) |
 
@@ -144,8 +144,10 @@ claim is refused with its own exit code (§20, "Refusals"). The main options:
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
-`compress-cache` converts it. The light cache adds 14.5 GB while the run lasts, and 5.4 GB
-more with the painted layer; the run deletes it (§29, "Scratch"). A cache the run cannot
+`compress-cache` converts it. The light's scratch adds 14.5 GB while the run lasts, and the
+crown occluder 5.4 GB more wherever there is a paint store, whatever layers the run draws; the
+run deletes it (§29, "Scratch"). With `--keep-direct` the light's default-sun terms, 3.2 GB,
+stay in `light.kept/` (§29, "Kept light"). A cache the run cannot
 delete at its end is named: "could not remove <dir>: a file in it is still open". See §25 to
 §27 and §39, and [maps_contract.md](../../docs/maps_contract.md) for how the server registers
 the result.
