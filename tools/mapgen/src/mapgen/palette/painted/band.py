@@ -13,7 +13,7 @@ from typing import cast
 import numpy as np
 
 from mapgen.colour import LUMA, flat_light, linear_from_oklab, linear_to_srgb, oklab
-from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
+from mapgen.lighting.hillshade import FLAT_SUN_DOT, sun_dot
 from mapgen.lighting.model import surface_direct
 from mapgen.palette.painted.calibration import exposure_gain, sampled_rgb, tone
 from mapgen.palette.painted.optics import underwater
@@ -133,7 +133,7 @@ def painted_ndl(
     """
     if not unlit:
         return sun_dot(z_m, spacing_m)
-    flat = np.full(z_m.shape, np.sin(np.deg2rad(SUN_ALTITUDE_DEG)), np.float32)
+    flat = np.full(z_m.shape, FLAT_SUN_DOT, np.float32)
     weight, kept, level = meshes
     if surface is not None or weight is None or kept is None:
         return flat
