@@ -46,6 +46,7 @@ from satisfactory_mcp.core.gameassets.textures import (
     raw_mip_sizes,
 )
 from satisfactory_mcp.core.gamedata.loader import DocsDump, load_docs
+from satisfactory_mcp.core.jsontypes import JsonValue
 
 if TYPE_CHECKING:
     from PIL.Image import Image, Resampling
@@ -362,7 +363,7 @@ def to_png(image_mod: IconImaging, image: Image, px: int, want: int) -> bytes:
 def pinned_build(out_dir: Path) -> str | None:
     """The build the icons already on disk say they were cut from, or ``None``."""
     try:
-        existing = json.loads((out_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
+        existing: JsonValue = json.loads((out_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         return None
     return read_str_path(existing, BUILD_PIN_PATH)

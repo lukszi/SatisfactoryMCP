@@ -14,7 +14,7 @@ from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.core.gameassets.imaging import ImageFactory
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND, MapAreaError, read_map_areas
-from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, require_object
 
 if TYPE_CHECKING:
     from PIL import Image
@@ -245,7 +245,9 @@ def _region_table() -> RegionTable | None:
     """``data/region_names.json``, or ``None`` when it is not there."""
     if not REGION_TABLE.is_file():
         return None
-    return cast(RegionTable, json.loads(REGION_TABLE.read_text(encoding="utf-8")))
+    loaded: JsonValue = json.loads(REGION_TABLE.read_text(encoding="utf-8"))
+    # Written by tools/gen_region_names.py, which checks the shape before it writes.
+    return cast(RegionTable, require_object(loaded))
 
 
 def _cell_texels(

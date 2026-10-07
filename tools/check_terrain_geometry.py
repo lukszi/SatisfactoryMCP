@@ -51,7 +51,7 @@ from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.level.landscape import drop_offsets, landscape_frame
 from mapgen.gamedata.level.sweep import sweep_levels
 from mapgen.gamedata.meshes import ROCK_DIRS, CookedMesh, MeshBounds
-from mapgen.gamedata.nodes import NODE_TABLE
+from mapgen.gamedata.nodes import node_rows
 from mapgen.gamedata.rocks.cliffs import rasterise_cliffs
 from mapgen.terrain.heightfield.validate import VALIDATION_TRIM
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid
@@ -63,6 +63,7 @@ from satisfactory_mcp.core.gameassets.packages import (
     ClassFacts,
     PackageView,
     ScriptObjects,
+    ZenExport,
 )
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -200,7 +201,7 @@ def read_rungs(
 
 
 def _read_mesh_rungs(
-    store: IoStore, view: PackageView, export: dict, package: str, bounds: staticmesh.Bounds
+    store: IoStore, view: PackageView, export: ZenExport, package: str, bounds: staticmesh.Bounds
 ) -> MeshRungs:
     """One mesh's hull, LOD 0 and Nanite leaf, with what went wrong reading each."""
     low, high = bounds
@@ -508,7 +509,7 @@ def load_probes(
     field: hf.Field, foliage: Path | None, foliage_mask: Path | None
 ) -> tuple[dict[str, F64Grid], dict[str, BoolMask]]:
     """The probe sets, and per set which probes stand on the shipped field's cliff province."""
-    nodes = json.loads(NODE_TABLE.read_text(encoding="utf-8"))["nodes"]
+    nodes = node_rows()
     probes: dict[str, F64Grid] = {
         "nodes": np.array([[n["x"], n["y"], n["z"]] for n in nodes], float)
     }

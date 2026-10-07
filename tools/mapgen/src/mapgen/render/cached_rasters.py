@@ -129,7 +129,7 @@ def stamped_raster(
         maps = cached_raster(cache, grid.stamp)
     else:
         print(f"reusing the {label} raster already in {cache}")
-        reused = json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
+        reused: JsonValue = json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
         source: JsonObject = {key: {"reused": reused}}
     if maps is None:
         message = f"the {label} raster in {cache} could not be read back after writing it"

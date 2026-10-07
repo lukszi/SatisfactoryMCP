@@ -13,9 +13,11 @@ from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from ... import config
 from ...core import atomic, filelock, schema
+from ...core.jsontypes import JsonValue, as_int, require_list, require_object
 from ...core.saveio.schema import SaveHeader
 from .candidates import Candidate
 from .views import LabelDoc, LabelReview
@@ -158,13 +160,17 @@ class LabelStore:
         path = cls.path_for(world_id)
         if not path.is_file():
             return cls(world_id=world_id, session_name=session_name)
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(path.read_text(encoding="utf-8"))
         schema.check(raw, SCHEMA, path)
+        doc = require_object(raw)
+        stored_world, stored_session = doc.get("world_id"), doc.get("session_name")
+        # Past the schema check, each row is a LabelDoc as ``to_json`` wrote it.
+        rows = [cast(LabelDoc, require_object(x)) for x in require_list(doc.get("labels", []))]
         return cls(
-            world_id=raw.get("world_id", world_id),
-            session_name=raw.get("session_name", session_name),
-            labels=[Label.from_json(x) for x in raw.get("labels", ())],
-            version=int(raw.get("version", 0)),
+            world_id=stored_world if isinstance(stored_world, str) else world_id,
+            session_name=stored_session if isinstance(stored_session, str) else session_name,
+            labels=[Label.from_json(row) for row in rows],
+            version=as_int(doc.get("version", 0)),
         )
 
     @classmethod

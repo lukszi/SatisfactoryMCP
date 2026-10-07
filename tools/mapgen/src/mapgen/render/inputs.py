@@ -285,7 +285,9 @@ def refuse_stale_layers(
         if not (directory / TILES_DIR_NAME).is_dir():
             continue
         try:
-            existing = json.loads((directory / RENDER_SIDECAR_NAME).read_text(encoding="utf-8"))
+            existing: JsonValue = json.loads(
+                (directory / RENDER_SIDECAR_NAME).read_text(encoding="utf-8")
+            )
         except (OSError, ValueError, TypeError):
             existing = {}
         pinned = pinned_field_build(existing if isinstance(existing, dict) else {})

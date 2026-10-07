@@ -18,7 +18,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ....core.arrays import F32Grid, F64Grid, I8Grid, I32Grid, I64Grid, U8Grid
-from .meta import json_int, json_object, pinned_build
+from ....core.jsontypes import JsonValue, as_int, require_object
+from .meta import pinned_build
 
 __all__ = [
     "CACHE_BYTES",
@@ -295,10 +296,11 @@ def _cell_index(tris: F32Grid) -> tuple[I32Grid, I64Grid]:
 def load_rocks(directory: Path, build: str | None = None) -> RockIndex | None:
     """The pack in ``directory``, or ``None`` if absent, unparsable, or cut from another build."""
     try:
-        meta = json_object(json.loads((directory / META_NAME).read_text(encoding="utf-8")))
+        loaded: JsonValue = json.loads((directory / META_NAME).read_text(encoding="utf-8"))
+        meta = require_object(loaded)
         if build is not None and pinned_build(meta) != build:
             return None
-        if json_int(meta.get("rocks_version", 0)) != ROCKS_VERSION:
+        if as_int(meta.get("rocks_version", 0)) != ROCKS_VERSION:
             return None
         with np.load(directory / DATA_NAME, allow_pickle=False) as data:
             arrays: dict[str, NDArray[np.generic]] = {

@@ -16,6 +16,7 @@ from satisfactory_mcp.core.gameassets.packages import (
     AssetIndex,
     PackageView,
     ScriptObjects,
+    ZenExport,
     property_tags,
 )
 
@@ -108,7 +109,7 @@ def finer_source(
     store: IoStore,
     package: str,
     view: PackageView,
-    export: dict[str, int] | None,
+    export: ZenExport | None,
     low: F64Grid,
     high: F64Grid,
 ) -> tuple[str, tuple[F32Grid, I64Grid]] | None:

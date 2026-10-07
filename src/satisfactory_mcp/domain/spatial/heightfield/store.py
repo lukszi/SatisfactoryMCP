@@ -17,17 +17,10 @@ from typing import Generic, TypeVar, cast
 import numpy as np
 
 from ....core.arrays import I16Grid, U8Grid
-from ....core.jsontypes import JsonObject, JsonValue
+from ....core.jsontypes import JsonObject, JsonValue, as_float, as_int, require_object
 from . import cave_masks, collision_pack
 from .codec import DECODERS, RasterGrid, sha256_of
-from .meta import (
-    json_float,
-    json_int,
-    json_object,
-    layer_accuracies,
-    pinned_build,
-    read_terrain_grid,
-)
+from .meta import layer_accuracies, pinned_build, read_terrain_grid
 from .planes import (
     CACHE_DIR_NAME,
     DENSITY_NAME,
@@ -90,12 +83,12 @@ class PlaneStore:
         self.directory = directory
         self.cache = cache
         self.caves_dir = caves_dir
-        grid = json_object(meta["grid"])
-        self.width = json_int(grid["width"])
-        self.height = json_int(grid["height"])
-        self.x0_cm = json_float(grid["x0_cm"])
-        self.y0_cm = json_float(grid["y0_cm"])
-        self.spacing_cm = json_float(grid["spacing_cm"])
+        grid = require_object(meta["grid"])
+        self.width = as_int(grid["width"])
+        self.height = as_int(grid["height"])
+        self.x0_cm = as_float(grid["x0_cm"])
+        self.y0_cm = as_float(grid["y0_cm"])
+        self.spacing_cm = as_float(grid["spacing_cm"])
         self._planes: dict[str, RasterGrid | None] = {}
         #: How each plane was opened: ``mapped``, ``written``, ``decoded`` or ``failed, decoded``.
         self.cache_events: dict[str, str] = {}

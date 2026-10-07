@@ -278,8 +278,9 @@ colour value, so every colour sits with its owner and its warrant.
   indexing. A field the projection carries exactly as the save wrote it is a `cast` to the
   schema's type.
 - **A seam moves in one step.** A TypedDict is not assignable to a bare `dict`, nor the other
-  way, so a producer cannot type its return while its callers still annotate `dict`. Until they
-  read the schema's types, `saveio.resolve_save` and `load_projection` return `JsonObject`,
+  way, so a producer cannot type its return while its callers still annotate `dict`. The
+  producer declares the type and every caller reads it in the same change; a `cast` out to a
+  loose type on one side and back on the other hides a mismatch from the checker.
   `ParsedObject.properties` stays loose, and `saveio.rows` takes a `Mapping[str, object]`,
   which accepts both.
 - **Plan arguments** travel as `Mapping[str, object]`, or `dict[str, object]` where they are

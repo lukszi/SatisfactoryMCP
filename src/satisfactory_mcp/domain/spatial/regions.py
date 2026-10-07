@@ -15,11 +15,12 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NotRequired
+from typing import TYPE_CHECKING, NotRequired, cast
 
 from typing_extensions import TypedDict
 
 from ... import config
+from ...core.jsontypes import JsonValue, require_object
 from . import geo
 from .geo import PlacedT
 
@@ -341,7 +342,9 @@ def load_regions() -> RegionMap:
     hit = _MAP.get(key)
     if hit is not None:
         return hit
-    payload: _RegionFile = json.loads(path.read_text(encoding="utf-8"))
+    loaded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
+    # Written by tools/gen_region_names.py, which checks the shape before it writes.
+    payload = cast(_RegionFile, require_object(loaded))
     grid_meta = payload["grid_meta"]
     region_map = RegionMap(
         grid=payload["region_grid"],

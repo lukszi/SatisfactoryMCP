@@ -39,7 +39,7 @@ from satisfactory_mcp.core.gameassets import staticmesh
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, PackageView, ScriptObjects
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
     "MESH_CLASS_MASK",
@@ -378,7 +378,7 @@ def mesh_pass(cache: Path, size: int, build: str | None, reader: str,
     maps = cached_meshes(cache, stamp)
     if maps is not None:
         print(f"reusing the {label} raster already in {cache}")
-        recorded = json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
+        recorded: JsonValue = json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
         return _with_family(cache, stamp, maps), {reader: {"reused": recorded}}
     spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
     print(f"rasterising the {label} at {spacing_m:.4f} m")

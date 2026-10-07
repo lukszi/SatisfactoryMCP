@@ -16,10 +16,12 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from typing_extensions import TypedDict
 
 from .....core import atomic, filelock, schema
+from .....core.jsontypes import JsonValue, require_object
 from ..plan_args import PLAN_SCALARS, InvalidOp, PlanArgs, checked_text
 from ..store import Plan, PlanStore, find_by_name
 from ..views import PlanOp, PlanStamp, PlanStateRecord
@@ -79,7 +81,8 @@ def _read_commits(path: Path) -> list[Commit]:
     out: list[Commit] = []
     for line in data.split(b"\n")[:-1]:
         try:
-            commit = Commit.from_dict(json.loads(line))
+            stored: JsonValue = json.loads(line)
+            commit = Commit.from_dict(require_object(stored))
         except (ValueError, KeyError, TypeError):
             continue
         if commit.rev == len(out) + 1:
@@ -238,8 +241,11 @@ class PlanLog:
         revs = sorted((int(p.stem) for p in snaps.glob("*.json") if p.stem.isdigit()), reverse=True)
         for snap in (r for r in revs if r <= rev):
             try:
-                raw: _Snapshot = json.loads((snaps / f"{snap}.json").read_text(encoding="utf-8"))
-                schema.check(raw, SCHEMA, snaps / f"{snap}.json")
+                path = snaps / f"{snap}.json"
+                loaded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
+                schema.check(loaded, SCHEMA, path)
+                # Past the schema check, a snapshot is what ``_snapshot`` wrote.
+                raw = cast(_Snapshot, require_object(loaded))
                 if raw.get("rev") != snap or raw.get("key") != key:
                     continue
                 return PlanState.from_dict(raw["state"], key=key, rev=snap)

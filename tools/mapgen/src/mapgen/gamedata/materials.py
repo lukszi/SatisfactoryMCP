@@ -5,7 +5,7 @@ from __future__ import annotations
 import struct
 from typing import TypeAlias
 
-from satisfactory_mcp.core.gameassets.packages import PackageView, property_tags
+from satisfactory_mcp.core.gameassets.packages import PackageView, ZenExport, property_tags
 
 __all__ = [
     "Vector4",
@@ -21,7 +21,7 @@ __all__ = [
 Vector4: TypeAlias = tuple[float, float, float, float]
 
 
-def mesh_materials(view: PackageView, export: dict[str, int]) -> list[str | None]:
+def mesh_materials(view: PackageView, export: ZenExport) -> list[str | None]:
     """``StaticMaterials`` in slot order: the material each section's index names."""
     payload = view.props(export["slot"]).get("StaticMaterials", b"")
     count = struct.unpack_from("<I", payload, 0)[0] if len(payload) >= 4 else 0

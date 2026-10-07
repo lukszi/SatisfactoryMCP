@@ -6,10 +6,13 @@ The reasons, and how a package graduates to strict, are in docs/DEVELOPING.md, "
 from __future__ import annotations
 
 import ast
+import io
 import json
 import os
+import re
 import subprocess
 import sys
+import tokenize
 import tomllib
 from collections import Counter
 from importlib import metadata
@@ -77,6 +80,23 @@ BUDGETS: dict[str, int] = {
     "tools/mapgen/src/mapgen/tiles": 0,
 }
 
+#: Rules that report the environment rather than the code: a package whose ``py.typed`` is
+#: missing, or an import that does not resolve, hides every error behind it.
+ENVIRONMENT_RULES = frozenset(
+    {"reportMissingImports", "reportMissingModuleSource", "reportMissingTypeStubs"}
+)
+
+#: A comment that would take a line or a file out of the count.
+SILENCER = re.compile(r"#\s*(type:\s*ignore|pyright:)")
+
+#: Calls whose result is ``Any``, and the annotations that bind one at the boundary: a check
+#: narrows it from there (docs/DEVELOPING.md, "Types").
+UNTYPED_LOADS = frozenset(
+    {("json", "load"), ("json", "loads"), ("pickle", "load"), ("pickle", "loads")}
+    | {("tomllib", "load"), ("tomllib", "loads")}
+)
+BOUNDARY_TYPES = frozenset({"JsonValue", "object", "dict[str, object]"})
+
 #: The ruff rule that bans ``typing.Any``, and the per-file-ignore that exempts the tests.
 ANY_BAN = "TID251"
 TESTS_PATTERN = "tests/**/*.py"
@@ -118,10 +138,20 @@ def _pyright_errors() -> list[str]:
     )
     if done.returncode not in (0, 1):
         pytest.fail(f"pyright exited {done.returncode}:\n{done.stderr or done.stdout}")
-    report = json.loads(done.stdout)
+    diagnostics = json.loads(done.stdout)["generalDiagnostics"]
+    unresolved = sorted(
+        f"{Path(os.path.relpath(entry['file'], REPO)).as_posix()}: {entry['message']}"
+        for entry in diagnostics
+        if entry.get("rule") in ENVIRONMENT_RULES
+    )
+    if unresolved:
+        pytest.fail(
+            "the environment, not the code: rebuild it (uv sync --all-extras --locked); "
+            "these imports do not resolve or ship no types:\n" + "\n".join(unresolved[:20])
+        )
     return [
         Path(os.path.relpath(entry["file"], REPO)).as_posix()
-        for entry in report["generalDiagnostics"]
+        for entry in diagnostics
         if entry["severity"] == "error"
     ]
 
@@ -202,3 +232,75 @@ def test_the_any_exemptions_only_shrink() -> None:
     assert not globs, f"name each module that imports typing.Any, never a glob: {globs}"
     stale = [p for p in listed if not (REPO / p).is_file() or not _imports_any(REPO / p)]
     assert not stale, f"no longer import typing.Any; delete their {ANY_BAN} lines: {stale}"
+
+
+def _sources() -> list[Path]:
+    """Every module the type rules cover: ``src`` and ``tools``, less the page and mapgen's tests."""
+    skip = ("src/satisfactory_mcp/interfaces/web/frontend/", "tools/mapgen/tests/")
+    return [
+        path
+        for root in ("src", "tools")
+        for path in sorted((REPO / root).rglob("*.py"))
+        if "node_modules" not in path.parts
+        and not path.relative_to(REPO).as_posix().startswith(skip)
+    ]
+
+
+def _silencers(path: Path) -> list[int]:
+    source = path.read_text(encoding="utf-8")
+    return [
+        token.start[0]
+        for token in tokenize.generate_tokens(io.StringIO(source).readline)
+        if token.type == tokenize.COMMENT and SILENCER.search(token.string)
+    ]
+
+
+def test_no_comment_silences_the_checker() -> None:
+    """``# type: ignore`` and ``# pyright:`` would hide an error from the count; fix it instead."""
+    found = [
+        f"{path.relative_to(REPO).as_posix()}:{line}"
+        for path in _sources()
+        for line in _silencers(path)
+    ]
+    assert not found, f"comments that silence pyright: {found}"
+
+
+def _unbound_loads(path: Path) -> list[int]:
+    """Lines where a ``json``, ``pickle`` or ``tomllib`` load binds to no boundary type."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    found = []
+    for node in ast.walk(tree):
+        func = node.func if isinstance(node, ast.Call) else None
+        if not (
+            isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Name)
+            and (func.value.id, func.attr) in UNTYPED_LOADS
+        ):
+            continue
+        holder = parents.get(node)
+        while isinstance(holder, ast.IfExp):
+            holder = parents.get(holder)
+        if isinstance(holder, ast.AnnAssign) and ast.unparse(holder.annotation) in BOUNDARY_TYPES:
+            continue
+        found.append(node.lineno)
+    return found
+
+
+def test_a_loaded_document_binds_to_a_boundary_type() -> None:
+    """What ``json.load`` and its kin return is ``Any``, which strict mode does not see: bound
+    to a TypedDict it is an unchecked cast. It binds to ``JsonValue`` (or ``object``), and a
+    check or one named ``cast`` narrows it from there."""
+    found = [
+        f"{path.relative_to(REPO).as_posix()}:{line}"
+        for path in _sources()
+        for line in _unbound_loads(path)
+    ]
+    assert not found, f"bind these to {sorted(BOUNDARY_TYPES)}: {found}"
+
+
+def test_every_strict_entry_names_a_path() -> None:
+    """A renamed module would drop out of strict without a word."""
+    strict = _pyproject()["tool"]["pyright"].get("strict", [])
+    missing = [entry for entry in strict if not (REPO / entry).exists()]
+    assert not missing, f"strict entries that name nothing; fix or delete them: {missing}"

@@ -14,6 +14,7 @@ from typing_extensions import TypedDict
 
 from ... import config
 from ...core import atomic
+from ...core.jsontypes import JsonValue
 from ...core.saveio.schema import SaveHeader
 from ...core.text import format_gap, format_local_time, format_playtime
 from .identity import TOKEN_SHAPE, save_token
@@ -56,7 +57,7 @@ def ledger_path() -> Path:
 
 def _load() -> dict[str, PinEntry]:
     try:
-        raw = json.loads(ledger_path().read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(ledger_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     # The ledger is this module's own file: ``remember`` is the only writer.

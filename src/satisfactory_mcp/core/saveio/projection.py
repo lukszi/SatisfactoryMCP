@@ -3,9 +3,7 @@
 This is the ONLY module that knows a save parser exists. Everything downstream
 consumes the plain-dict projection, which is why the whole test suite can run from a
 committed JSON fixture with no game install. The sidecar is this package's own extractor, so
-what it prints is typed by ``schema`` with one ``cast`` per command it runs. ``resolve_save``
-and ``load_projection`` hand their answer on as JSON until their callers read the schema's
-types (docs/DEVELOPING.md, "Types").
+what it prints is typed by ``schema`` with one ``cast`` per command it runs.
 """
 
 from __future__ import annotations
@@ -342,9 +340,9 @@ def resolve_save(
     path: str | Path | None = None,
     world: str | None = None,
     prefer_manual: bool = False,
-) -> JsonObject:
+) -> SaveHeader:
     """Pick a save header: explicit path or filename, else newest in the named/only world."""
-    return cast("JsonObject", _pick_save(path, world, prefer_manual))
+    return _pick_save(path, world, prefer_manual)
 
 
 def _pick_save(path: str | Path | None, world: str | None, prefer_manual: bool) -> SaveHeader:
@@ -406,7 +404,7 @@ def _read_disk_cache(key: str) -> Projection | None:
     if not disk.is_file():
         return None
     try:
-        payload: Projection = pickle.loads(disk.read_bytes())
+        loaded: object = pickle.loads(disk.read_bytes())
     except Exception:
         # Corrupt, or a stale pickle format, or a file another process's `prune_cache`
         # deleted between the `is_file` above and the read. The unlink is best-effort
@@ -426,7 +424,8 @@ def _read_disk_cache(key: str) -> Projection | None:
         os.utime(disk)
     except OSError:
         pass
-    return payload
+    # The key carries SCHEMA_VERSION, so what is stored under it was pickled from a Projection.
+    return cast("Projection", loaded) if isinstance(loaded, dict) else None
 
 
 def _parse_and_cache(header: SaveHeader, key: str) -> Projection:
@@ -454,14 +453,14 @@ def load_projection(
     world: str | None = None,
     prefer_manual: bool = False,
     refresh: bool = False,
-) -> JsonObject:
+) -> Projection:
     """Return the projection for a save, using the two-tier cache.
 
     Parsing costs ~4 s, reading the pickle another process wrote ~15 ms, and a memo hit
     ~1 ms. The ``resolve_save`` above it costs one directory walk while the save tree is
     still, and a sidecar of its own the first time it moves.
     """
-    header = cast("SaveHeader", resolve_save(path, world, prefer_manual))
+    header = resolve_save(path, world, prefer_manual)
     key = _cache_key(header)
 
     def build() -> Projection:
@@ -471,7 +470,7 @@ def load_projection(
                 return cached
         return _parse_and_cache(header, key)
 
-    return cast("JsonObject", _PROJECTION_MEMO.get(key, build, refresh=refresh))
+    return _PROJECTION_MEMO.get(key, build, refresh=refresh)
 
 
 def prune_cache(keep: int = 12) -> int:

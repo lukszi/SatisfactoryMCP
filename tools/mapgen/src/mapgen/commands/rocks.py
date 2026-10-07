@@ -11,7 +11,7 @@ from mapgen.gamedata.install import missing_container, open_game
 from mapgen.gamedata.level.sweep import sweep_levels
 from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.rocks.collision_pack import encode_rock_pack
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, require_object
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -48,8 +48,8 @@ def write_rocks(args: argparse.Namespace, build_pin: str, build_raw: JsonObject)
         tmp = field_dir / f"{name}.tmp"
         tmp.write_bytes(blob)
         tmp.replace(field_dir / name)
-    counts = json.loads(payload[rocks.META_NAME])["counts"]
-    for name, value in counts.items():
+    meta: JsonValue = json.loads(payload[rocks.META_NAME])
+    for name, value in require_object(require_object(meta)["counts"]).items():
         print(f"  {name:>26}: {value}")
     total = sum(len(b) for b in payload.values())
     print(f"wrote {field_dir}: {total / 1e6:.1f} MB in {time.time() - started:.0f}s")

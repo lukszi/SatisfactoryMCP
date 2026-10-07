@@ -135,11 +135,10 @@ def write_carpet(
     shapes: dict[str, tuple[F64Grid, float]] = {}
     sources: dict[str, JsonValue] = {}
     for mesh in sorted(instances):
-        got: dict[str, object] = staticmesh.extract(game.store, game.scripts, game.index, mesh)
-        source = got.get("route", got.get("error"))
-        sources[mesh.rsplit("/", 1)[-1]] = source if isinstance(source, str) else None
+        got = staticmesh.extract(game.store, game.scripts, game.index, mesh)
+        sources[mesh.rsplit("/", 1)[-1]] = got.get("route", got.get("error"))
         indices, verts = got.get("idx"), got.get("verts")
-        if not (isinstance(indices, np.ndarray) and isinstance(verts, np.ndarray)):
+        if indices is None or verts is None:
             continue
         if got.get("ok") and len(indices):
             shapes[mesh] = footprint(verts)

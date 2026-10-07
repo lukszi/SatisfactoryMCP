@@ -29,7 +29,12 @@ from mapgen.gamedata.placements import (
 )
 from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I8Grid, I32Grid, I64Grid, U8Grid
 from satisfactory_mcp.core.gameassets import staticmesh
-from satisfactory_mcp.core.gameassets.packages import PackageView, class_name_of, world_transform
+from satisfactory_mcp.core.gameassets.packages import (
+    PackageView,
+    ZenExport,
+    class_name_of,
+    world_transform,
+)
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.core.jsontypes import JsonObject
 
@@ -146,7 +151,7 @@ def is_pack_mesh(mesh: str) -> bool:
     return any(d in mesh for d in ROCK_DIRS) or is_arch(mesh)
 
 
-def _body_setup(view: PackageView) -> dict[str, int] | None:
+def _body_setup(view: PackageView) -> ZenExport | None:
     return next(
         (e for e in view.exports if class_name_of(view.class_of.get(e["slot"])) == "BodySetup"),
         None,
@@ -233,7 +238,7 @@ def simple_collision(view: PackageView, agg: bytes) -> tuple[F32Grid, I64Grid] |
     return np.concatenate(verts).astype(np.float32), np.concatenate(tris).astype(np.int64)
 
 
-def collision_mesh(view: PackageView, export: dict[str, int]) -> tuple[CollisionMesh | None, str]:
+def collision_mesh(view: PackageView, export: ZenExport) -> tuple[CollisionMesh | None, str]:
     """The collision a mesh's ``BodySetup`` gives the player, as ``(mesh, why)``.
 
     Complex-as-simple meshes collide with their cooked trimesh, which is render LOD

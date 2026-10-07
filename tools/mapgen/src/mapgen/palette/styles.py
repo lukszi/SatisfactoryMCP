@@ -37,7 +37,7 @@ from mapgen.palette.water.shore import blend_where, water_composite
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, require_object
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -120,7 +120,8 @@ def palette_digest(palette: Mapping[str, object]) -> str:
 
 def load_palette(style: str) -> tuple[JsonObject, str]:
     """One palette file as read, and its digest."""
-    palette: JsonObject = json.loads((PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8"))
+    loaded: JsonValue = json.loads((PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8"))
+    palette = require_object(loaded)
     return palette, palette_digest(palette)
 
 

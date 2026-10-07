@@ -34,6 +34,7 @@ from mapgen.cache import (
     write_sidecar,
 )
 from mapgen.common import Refusal, require_gen
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, as_int, require_object
 
 __all__ = ["REFUSED", "AlreadyBanded", "Converted", "caches_under", "compress", "main"]
 
@@ -148,11 +149,12 @@ def _drop_raw(
     return {"removed": removed, "kept": kept}
 
 
-def _recorded_size(cache: Path) -> tuple[dict[str, object], int]:
+def _recorded_size(cache: Path) -> tuple[JsonObject, int]:
     """The cache's sidecar and the plane size it names, or a refusal saying why not."""
     try:
-        recorded = json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
-        size = int(recorded["size"])
+        loaded: JsonValue = json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
+        recorded = require_object(loaded)
+        size = as_int(recorded["size"])
     except (OSError, ValueError, TypeError, KeyError) as exc:
         raise Refusal(REFUSED, f"no readable {CACHE_SIDECAR_NAME} naming a size: still being "
                                f"written, or not a raster cache ({exc})") from exc  # fmt: skip

@@ -15,6 +15,7 @@ __all__ = [
     "BulkEntry",
     "Package",
     "ScriptObjects",
+    "ZenExport",
     "apply_fname_number",
     "bulk_data_entries",
 ]
@@ -32,6 +33,23 @@ _SUMMARY_WORDS = 15
 #: One ``FByteBulkData`` entry in the Zen header's ``BulkDataMap``: three uint64 (offset,
 #: duplicate offset, size), a uint32 of flags, three pad bytes, then the cooked-index byte.
 BULK_ENTRY_BYTES = 32
+
+
+#: One export of the export map. ``class`` is a keyword, hence the functional form; ``outer``
+#: and ``class`` are packed ``FPackageObjectIndex`` values, and ``public_hash`` is what another
+#: package's import names this export by, unique across the container where a name is not.
+ZenExport = TypedDict(
+    "ZenExport",
+    {
+        "slot": int,
+        "offset": int,
+        "size": int,
+        "name": str,
+        "outer": int,
+        "class": int,
+        "public_hash": int,
+    },
+)
 
 
 class BulkEntry(TypedDict):
@@ -249,8 +267,8 @@ class Package:
             base = f"<kind{kind}:{slot}>"
         return apply_fname_number(base, number)
 
-    def exports(self) -> list[dict]:
-        out = []
+    def exports(self) -> list[ZenExport]:
+        out: list[ZenExport] = []
         for slot in range(self.export_count):
             pos = self.export_offset + slot * self.EXPORT_SIZE
             offset, size = struct.unpack_from("<QQ", self.blob, pos)
@@ -265,14 +283,12 @@ class Package:
                     "name": self.name(name_index, name_number),
                     "outer": outer,
                     "class": class_index,
-                    # What another package's import refers to this export BY. Unique across
-                    # the container, where the package name is not.
                     "public_hash": public_hash,
                 }
             )
         return out
 
-    def body(self, export: dict) -> bytes:
+    def body(self, export: ZenExport) -> bytes:
         start = self.header_size + export["offset"]
         return self.blob[start : start + export["size"]]
 

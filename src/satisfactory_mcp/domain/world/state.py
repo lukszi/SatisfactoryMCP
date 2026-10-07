@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, TypeVar
 
 from ...core.gamedata.model import GameData, Recipe
 from ...core.saveio import projection as proj
@@ -471,6 +471,5 @@ def load_state(
     prefer_manual: bool = False,
     refresh: bool = False,
 ) -> WorldState:
-    # The loader checks schema_version, which is what makes the projection's types hold.
-    projection = cast("Projection", proj.load_projection(path, world, prefer_manual, refresh))
+    projection = proj.load_projection(path, world, prefer_manual, refresh)
     return WorldState(projection=projection, game=game)

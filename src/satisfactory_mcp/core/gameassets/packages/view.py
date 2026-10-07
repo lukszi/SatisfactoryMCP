@@ -5,6 +5,7 @@ from __future__ import annotations
 import collections
 import struct
 
+from ...jsontypes import JsonObject
 from .properties import property_tags, read_float, read_int32
 from .zen import Package, ScriptObjects, apply_fname_number
 
@@ -169,7 +170,7 @@ class PackageView:
         hashes = self.pkg.imported_public_export_hashes
         return hashes[slot] if slot < len(hashes) else None
 
-    def decode_struct(self, payload: bytes) -> dict:
+    def decode_struct(self, payload: bytes) -> JsonObject:
         """A nested tagged struct as plain values, one level of types deep.
 
         Anything this does not know is kept as ``{"_type": ..., "_raw": hex}`` rather than
@@ -177,7 +178,7 @@ class PackageView:
         all, so its bytes had to survive to be read as an ``FPackageIndex``.
         """
         entries, _end = property_tags(payload, self.pkg.names, 0)
-        out: dict = {}
+        out: JsonObject = {}
         for name, kind, raw, value in entries:
             if name is None:
                 continue

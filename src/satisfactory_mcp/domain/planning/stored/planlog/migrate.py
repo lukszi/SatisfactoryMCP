@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .....core import atomic, schema
+from .....core.jsontypes import JsonValue, as_float
 from ..plan_args import PlanArgs
 from ..store import PLAN_ARGS, Plan, PlanStore
 from .records import SCHEMA, Actor, PlanState
@@ -39,7 +40,7 @@ def _backup(log: PlanLog, legacy: Path, version: str) -> Path:
 
 def _check_marker(marker: Path) -> None:
     try:
-        raw = json.loads(marker.read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(marker.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return
     schema.check(raw, SCHEMA, marker)
@@ -135,9 +136,11 @@ def _warn_if_newer(world_id: str, legacy: Path, marker: Path) -> None:
     if world_id in _warned:
         return
     try:
-        at = float(json.loads(marker.read_text(encoding="utf-8")).get("at") or 0)
-        newer = legacy.stat().st_mtime > at
-    except (OSError, ValueError, AttributeError):
+        marked: JsonValue = json.loads(marker.read_text(encoding="utf-8"))
+        if not isinstance(marked, dict):
+            return
+        newer = legacy.stat().st_mtime > as_float(marked.get("at") or 0)
+    except (OSError, ValueError):
         return
     if newer:
         _warned.add(world_id)

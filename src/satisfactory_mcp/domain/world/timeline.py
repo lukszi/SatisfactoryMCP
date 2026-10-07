@@ -12,12 +12,13 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from typing_extensions import TypedDict
 
 from ... import config
 from ...core import atomic
+from ...core.jsontypes import JsonValue
 from ...core.saveio import projection as proj
 from ...core.saveio.schema import SaveHeader
 from ...core.text import format_playtime
@@ -245,14 +246,17 @@ def load_timeline(world_id: str) -> Timeline:
     rows: list[TimelineRow] = []
     if index_path.is_file():
         try:
-            rows = [
-                r
-                for r in json.loads(index_path.read_text(encoding="utf-8"))
-                if r.get("index_schema") == INDEX_SCHEMA
-                and r.get("projection_schema") == proj.SCHEMA_VERSION
-            ]
+            stored: JsonValue = json.loads(index_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            rows = []
+            stored = []
+        # A row whose two schemas match is one ``save_row`` wrote at those schemas.
+        rows = [
+            cast(TimelineRow, r)
+            for r in (stored if isinstance(stored, list) else [])
+            if isinstance(r, dict)
+            and r.get("index_schema") == INDEX_SCHEMA
+            and r.get("projection_schema") == proj.SCHEMA_VERSION
+        ]
     return Timeline(world_id=world_id, rows=rows)
 
 

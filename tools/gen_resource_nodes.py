@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
 
 if TYPE_CHECKING:
-    from satisfactory_mcp.core.jsontypes import JsonObject
+    from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -98,8 +98,9 @@ def load_world_node_table() -> tuple[list[WorldNode], WorldTableMeta]:
         raise SystemExit(
             f"{path} missing -- run: uv run --extra gen python tools/gen_world_resource_nodes.py"
         )
-    payload: JsonObject = json.loads(path.read_text(encoding="utf-8"))
-    nodes, meta = payload["nodes"], payload["_meta"]
+    payload: JsonValue = json.loads(path.read_text(encoding="utf-8"))
+    nodes = payload.get("nodes") if isinstance(payload, dict) else None
+    meta = payload.get("_meta") if isinstance(payload, dict) else None
     if not isinstance(nodes, list) or not isinstance(meta, dict):
         raise SystemExit(f"{path} holds no node list and _meta object -- regenerate it")
     return cast("list[WorldNode]", nodes), cast(WorldTableMeta, meta)

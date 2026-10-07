@@ -52,11 +52,12 @@ evidence, and counting it as one is how a decode regression hides.
 from __future__ import annotations
 
 import struct
-from typing import TypeAlias
+from typing import Required, TypeAlias
 
 import numpy as np
+from typing_extensions import TypedDict
 
-from ..arrays import F32Grid, F64Grid, I64Grid
+from ..arrays import F32Grid, F64Grid, I32Grid, I64Grid
 from .iostore import IoStore
 from .meshdata import (
     CollisionHull,
@@ -74,6 +75,7 @@ from .packages import (
     BulkEntry,
     PackageView,
     ScriptObjects,
+    ZenExport,
     class_name_of,
     property_tags,
 )
@@ -138,8 +140,26 @@ Bounds: TypeAlias = tuple[F64Grid, F64Grid]
 #: LOD 0 as ``(positions, triangles, max vertex)``.
 Lod0: TypeAlias = tuple[F32Grid, I64Grid, int]
 
-#: What :func:`extract` reports for one mesh, filled in as each gate runs.
-MeshRow: TypeAlias = dict[str, object]
+
+class MeshRow(TypedDict, total=False):
+    """What :func:`extract` reports for one mesh, filled in as each gate runs."""
+
+    mesh: Required[str]
+    gates: Required[MeshGates]
+    ok: bool
+    error: str
+    parse_error: str
+    package: str
+    route: str
+    lod_triangles: list[int]
+    nanite: NaniteSummary
+    inside_fraction: float | None
+    verts: F32Grid
+    idx: I32Grid
+    bounds_local_cm: list[list[float]] | None
+    view: PackageView
+    tail: bytes
+    parsed: RenderData | None
 
 
 class ParseError(Exception):
@@ -444,7 +464,7 @@ def _parse_render_data_at(tail: bytes, lod_count_at: int) -> RenderData:
 # --------------------------------------------------------------------------------------
 
 
-def static_mesh_export(view: PackageView) -> dict | None:
+def static_mesh_export(view: PackageView) -> ZenExport | None:
     """The package's ``StaticMesh`` export, or ``None``."""
     return next(
         (
@@ -456,7 +476,7 @@ def static_mesh_export(view: PackageView) -> dict | None:
     )
 
 
-def extended_bounds(view: PackageView, export: dict) -> Bounds | None:
+def extended_bounds(view: PackageView, export: ZenExport) -> Bounds | None:
     """``ExtendedBounds`` as ``(low, high)`` in mesh-local centimetres, or ``None``.
 
     The mesh's own statement about where its vertices are, and therefore the only check
@@ -469,15 +489,18 @@ def extended_bounds(view: PackageView, export: dict) -> Bounds | None:
     origin, extent = decoded.get("Origin"), decoded.get("BoxExtent")
     if not isinstance(origin, dict) or not isinstance(extent, dict):
         return None
+    origin_hex, extent_hex = origin.get("_raw"), extent.get("_raw")
+    if not isinstance(origin_hex, str) or not isinstance(extent_hex, str):
+        return None
     try:
-        centre = np.array(struct.unpack("<3d", bytes.fromhex(origin["_raw"])[:24]))
-        half_size = np.array(struct.unpack("<3d", bytes.fromhex(extent["_raw"])[:24]))
-    except (KeyError, ValueError, struct.error):
+        centre = np.array(struct.unpack("<3d", bytes.fromhex(origin_hex)[:24]))
+        half_size = np.array(struct.unpack("<3d", bytes.fromhex(extent_hex)[:24]))
+    except (ValueError, struct.error):
         return None
     return centre - half_size, centre + half_size
 
 
-def render_tail(view: PackageView, export: dict) -> bytes:
+def render_tail(view: PackageView, export: ZenExport) -> bytes:
     """The untagged bytes behind an export's property tags."""
     body = view.pkg.body(export)
     _tags, end = property_tags(body, view.pkg.names)
@@ -610,7 +633,7 @@ def _bounds_gate(verts: F32Grid, bounds: Bounds | None, out: MeshRow, gates: Mes
     out["inside_fraction"] = round(inside, 5)
 
 
-def extract(store: IoStore, scripts: ScriptObjects, index: AssetIndex, mesh_path: str) -> dict:
+def extract(store: IoStore, scripts: ScriptObjects, index: AssetIndex, mesh_path: str) -> MeshRow:
     """LOD0 triangles for one placed mesh, with the verdict of every gate attached.
 
     ``ok`` is true only when every gate that could run passed. The geometry comes back even

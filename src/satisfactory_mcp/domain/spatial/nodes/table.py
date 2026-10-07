@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import NotRequired
+from typing import NotRequired, cast
 
 from typing_extensions import TypedDict
 
 from .... import config
-from ....core.jsontypes import JsonObject
+from ....core.jsontypes import JsonObject, JsonValue, require_object
 from .. import geo
 
 __all__ = [
@@ -99,7 +99,9 @@ def load_nodes() -> NodeTable:
     hit = _TABLE.get(key)
     if hit is not None:
         return hit
-    payload: _NodeFile = json.loads(path.read_text(encoding="utf-8"))
+    loaded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
+    # Written by tools/gen_resource_nodes.py, which checks the shape before it writes.
+    payload = cast(_NodeFile, require_object(loaded))
     table = NodeTable(nodes=payload["nodes"], meta=payload.get("_meta", {}))
     _TABLE.clear()
     _TABLE[key] = table

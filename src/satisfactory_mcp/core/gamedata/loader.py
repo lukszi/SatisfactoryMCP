@@ -14,7 +14,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..jsontypes import JsonObject
+from ..jsontypes import JsonObject, JsonValue, require_list, require_object
 
 __all__ = ["DocsDump", "load_docs"]
 
@@ -70,10 +70,14 @@ def load_docs(path: str | Path) -> DocsDump:
     raw = p.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
     with open(p, encoding="utf-16") as fh:
-        groups = json.load(fh)
+        groups: JsonValue = json.load(fh)
 
     by_native: dict[str, list[JsonObject]] = {}
-    for group in groups:
-        name = _native_name(group["NativeClass"])
-        by_native.setdefault(name, []).extend(group.get("Classes", ()))
+    for group in require_list(groups):
+        body = require_object(group)
+        native = body["NativeClass"]
+        if not isinstance(native, str):
+            raise TypeError(f"{p}: a NativeClass that is not a string: {native!r}")
+        classes = require_list(body.get("Classes", []))
+        by_native.setdefault(_native_name(native), []).extend(map(require_object, classes))
     return DocsDump(by_native=by_native, sha256=sha, path=p, size=len(raw))

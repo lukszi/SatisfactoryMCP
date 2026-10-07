@@ -23,6 +23,7 @@ from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.packages import (
     BulkEntry,
     PackageView,
+    ZenExport,
     class_name_of,
     property_tags,
 )
@@ -136,7 +137,7 @@ def _mip0_entry(body: bytes, entries: Sequence[BulkEntry], want: int) -> int | N
 
 def _mip0(
     view: PackageView,
-    export: dict[str, object],
+    export: ZenExport,
     entries: Sequence[BulkEntry],
     ubulk: bytes,
     decoder: ModuleType,

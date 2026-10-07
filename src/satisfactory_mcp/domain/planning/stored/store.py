@@ -14,11 +14,13 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Protocol, Required, TypeVar, cast
+
+from typing_extensions import TypedDict
 
 from .... import config
 from ....core import schema
-from ....core.jsontypes import JsonObject, JsonValue
+from ....core.jsontypes import JsonObject, JsonValue, as_int, require_list, require_object
 from .plan_args import PLAN_ARGS
 
 __all__ = ["PLAN_ARGS", "SCHEMA", "Plan", "PlanStore", "StoredPlan", "find_by_name"]
@@ -83,6 +85,27 @@ class Plan:
 _FIELDS = frozenset(f.name for f in fields(Plan))
 
 
+class _PlanRow(TypedDict, total=False):
+    """One plan of the legacy file, cut to the fields ``Plan`` takes."""
+
+    name: Required[str]
+    args: dict[str, object]
+    notes: str
+    plan_id: str
+    factory: str
+    created: str
+    provenance: JsonObject
+    siting: JsonObject
+    key: str
+    rev: int
+
+
+def _legacy_plan(row: JsonValue) -> Plan:
+    """One stored plan; past the schema check its fields are the ones ``Plan`` wrote."""
+    known = {k: v for k, v in require_object(row).items() if k in _FIELDS}
+    return Plan(**cast(_PlanRow, known))
+
+
 @dataclass
 class PlanStore:
     world_id: str
@@ -100,15 +123,15 @@ class PlanStore:
         path = cls.path_for(world_id)
         if not path.is_file():
             return cls(world_id=world_id, session_name=session_name)
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(path.read_text(encoding="utf-8"))
         schema.check(raw, SCHEMA, path)
+        doc = require_object(raw)
+        stored_world, stored_session = doc.get("world_id"), doc.get("session_name")
         return cls(
-            world_id=raw.get("world_id", world_id),
-            session_name=raw.get("session_name", session_name),
-            plans=[
-                Plan(**{k: v for k, v in p.items() if k in _FIELDS}) for p in raw.get("plans", ())
-            ],
-            version=int(raw.get("version", 0)),
+            world_id=stored_world if isinstance(stored_world, str) else world_id,
+            session_name=stored_session if isinstance(stored_session, str) else session_name,
+            plans=[_legacy_plan(p) for p in require_list(doc.get("plans", []))],
+            version=as_int(doc.get("version", 0)),
         )
 
     def find(self, name: str) -> Plan | None:
