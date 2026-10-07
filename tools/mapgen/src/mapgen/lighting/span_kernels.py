@@ -22,7 +22,6 @@ from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid
 __all__ = ["march_spans", "sky_view_spans"]
 
 _ZERO = np.float32(0.0)
-_HALF = np.float32(0.5)
 _ONE = np.float32(1.0)
 
 #: ``spans.SpanSurface`` as the kernels take it: receivers, solid, underside, top, tops.
@@ -42,11 +41,23 @@ def _higher(low: np.float32, high: np.float32, lo: F32Grid, hi: F32Grid, r: int,
 
 
 @helper
+def _reach(low: np.float32, high: np.float32, under: np.float32, top: np.float32) -> np.float32:
+    """``low``, or ``under`` where that span overlaps ``[low, high]`` and reaches lower."""
+    if under <= high and top >= low and under < low:
+        return under
+    return low
+
+
+@helper
 def _quad(lo: F32Grid, hi: F32Grid, r: int, c: int) -> tuple[np.float32, np.float32]:
     """``spans._quad`` at one pixel: the four pixels from ``[r, c]`` down and right."""
     low, high = _higher(lo[r, c], hi[r, c], lo, hi, r, c + 1)
     low, high = _higher(low, high, lo, hi, r + 1, c)
-    return _higher(low, high, lo, hi, r + 1, c + 1)
+    low, high = _higher(low, high, lo, hi, r + 1, c + 1)
+    low = _reach(low, high, lo[r, c], hi[r, c])
+    low = _reach(low, high, lo[r, c + 1], hi[r, c + 1])
+    low = _reach(low, high, lo[r + 1, c], hi[r + 1, c])
+    return _reach(low, high, lo[r + 1, c + 1], hi[r + 1, c + 1]), high
 
 
 @helper
@@ -91,8 +102,7 @@ def _into_band(j: int, tl: np.float32, th: np.float32, weight: np.float32,
     """``spans._span_step``'s band update for a sample that floats, at core column ``j``."""
     lo, hi = band
     te, gap = target
-    centre, half = (tl + th) * _HALF, (th - tl) * _HALF * weight
-    sl, sh = centre - half, centre + half
+    sl, sh = tl * weight, th * weight
     have = np.isfinite(lo[j])
     if have and sl <= hi[j] + gap and sh >= lo[j] - gap:
         lo[j] = min(lo[j], sl)

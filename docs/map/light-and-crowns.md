@@ -97,12 +97,20 @@ between its underside and its top as the receiver sees them:
   direction: a sample that overlaps it, or leaves a gap narrower than the sun disc (6°,
   `BAND_GAP_DEG`), widens it; one apart from it replaces it when it is nearer the elevation the
   sun's path has in that direction (`path_elevation`; 45° where the path never comes). So two
-  arches in line keep the sky between them. A band that ends within a sun disc above the
-  horizon joins it.
+  arches in line keep the sky between them. A band joins the horizon only where it reaches
+  down to it; above it, however narrow the sky beneath, the shade reads the share of the sun
+  disc each hides. Joining any band within a sun disc of the horizon flipped neighbouring
+  receivers between lit and shaded.
 - A sample stands for the stretch of ray from halfway back to the step before to halfway on to
-  the next, and reads the lowest underside and the highest top of the four pixels around it,
-  so a thin arch crossed between two samples still blocks: its shadow is a line, not dots.
-- Past 40 m a band narrows about its centre by the fade weight; its centre stays exact.
+  the next, and reads, of the four pixels around it, the span whose top is highest, reaching
+  down over those it overlaps. A thin arch crossed between two samples still blocks, so its
+  shadow is a line, not dots; one object's pixels are read whole; and two spans one above the
+  other are never read as one: the lowest underside and the highest top of the four made a
+  low slab beside a high deck one solid span, which drew a lattice of wall shadows on the
+  maze and spire sites.
+- Past 40 m a band's tangents fade by the fade weight, as the ground's do, so a far span
+  shades alike whether it floats or reaches the horizon. Narrowing a band about an exact
+  centre while a merged span faded drew dashed arcs in a far spire's shadow.
 - **Sky view**: a band costs `sin(hi) − sin(lo)` of a direction's sky, not the whole wall
   under it. Beside an arch the median sky view rose from 0.55–0.67 to 0.78–0.83 on the
   prototype's three arch sites.
@@ -117,7 +125,9 @@ between its underside and its top as the receiver sees them:
 **What casts as a span.**
 
 - **Arches.** The top raster draws the arches apart (`terrain/top_raster.py`): their top
-  (max-Z), their underside (the same triangles rasterised upside down) and the boulders alone.
+  (max-Z); their underside, the highest arch surface 25 cm or more below the top
+  (`SAME_SURFACE_CM`), else the lowest (the same triangles rasterised upside down), so under
+  a deck that crosses another it is the deck's own; and the boulders alone.
   Every pixel an arch covers is a span from its underside to the drawn top; the solid surface
   there is drawn with the boulders only.
 - **Rock overhangs** (`terrain/overhangs.py`). Under each rock's top the direct pass finds the
@@ -170,12 +180,17 @@ would be (`render/stream.py`).
 beside the top; `direct.cache` holds the overhangs' underside and floor, NaN where none. Both
 carry `planes: 2` in their stamp, so a cache from before is rebuilt, never read without them.
 The light's scratch holds the captured spans in `slabs/`, one file per 256 px tile that has
-any; they are digested with the surface they came with (below, "Kept light").
+any; they are digested with the surface they came with (below, "Kept light"). A block reads
+them at half resolution, each cell the highest of its four pixels' spans, whole.
 
 **Limits.**
 
 - One band per direction: a third arch in line, apart from the kept band by more than a sun
   disc, casts no shadow in that direction.
+- One span per pixel: where two decks cross, the part of the lower one under the upper casts
+  nothing.
+- Where several spans compete for a direction's one band, neighbouring cells can keep
+  different ones: a faint speckle in the shadow, seen under the maze site's stacked arches.
 - One crown underside for every species: a palm's crown is shallower, a conifer's deeper.
 - An overhang over a ledge sets the ledge's top down as the floor only where it is the highest
   face under the overhang; an overhang over another overhang keeps the lower one a column.

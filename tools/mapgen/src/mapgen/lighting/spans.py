@@ -66,8 +66,6 @@ OFF_PATH_EL_DEG = 45.0
 #: light passes beneath it. One share for every species (a limit, section 29).
 CROWN_UNDERSIDE = np.float32(0.5)
 
-_HALF = np.float32(0.5)
-
 
 class SpanRuns(NamedTuple):
     """Per row, the runs of columns where a sample's four pixels (``_quad``) hold a span:
@@ -198,20 +196,26 @@ def span_steps(az_deg: float, spacing_m: float, fade: Fade) -> list[SpanStep]:
 def _quad(surface: SpanSurface, rows: tuple[int, int], cols: tuple[int, int], oy: float,
           ox: float) -> tuple[F32Grid, F32Grid]:  # fmt: skip
     """Of the four pixels around the sample, as ``bilinear`` reads them, the span whose top is
-    highest: its underside and top, NaN where none floats. A thin span is never stepped over
-    on a diagonal, and two spans side by side are never read as one."""
+    highest, reaching down over those of the others it overlaps: its underside and top, NaN
+    where none floats. A thin span is never stepped over on a diagonal, one object's pixels
+    are read whole, and two spans one above the other are never read as one."""
     (a, b), (c0, c1) = rows, cols
     iy, ix = int(np.floor(oy)), int(np.floor(ox))
+    corners = ((0, 0), (0, 1), (1, 0), (1, 1))
 
-    def at(p: F32Grid, dy: int, dx: int) -> F32Grid:
+    def at(p: F32Grid, corner: tuple[int, int]) -> F32Grid:
+        dy, dx = corner
         return p[a + iy + dy : b + iy + dy, c0 + ix + dx : c1 + ix + dx]
 
-    low, high = at(surface.lo, 0, 0), at(surface.hi, 0, 0)
-    for dy, dx in ((0, 1), (1, 0), (1, 1)):
-        top = at(surface.hi, dy, dx)
+    low, high = at(surface.lo, corners[0]), at(surface.hi, corners[0])
+    for corner in corners[1:]:
+        top = at(surface.hi, corner)
         take = (top > high) | (np.isnan(high) & ~np.isnan(top))
-        low = np.where(take, at(surface.lo, dy, dx), low)
+        low = np.where(take, at(surface.lo, corner), low)
         high = np.where(take, top, high)
+    for corner in corners:
+        under, top = at(surface.lo, corner), at(surface.hi, corner)
+        np.fmin(low, np.where((under <= high) & (top >= low), under, np.nan), out=low)
     return low, high
 
 
@@ -263,8 +267,7 @@ def _span_step(surface: SpanSurface, strip: _Strip, step: SpanStep,
     if not free.any():
         return
     te, gap = target
-    centre, half = (tl + th) * _HALF, (th - tl) * _HALF * step.weight
-    sl, sh = (centre - half).astype(np.float32), (centre + half).astype(np.float32)
+    sl, sh = (tl * step.weight).astype(np.float32), (th * step.weight).astype(np.float32)
     have = np.isfinite(strip.lo)
     overlap = free & have & (sl <= strip.hi + gap) & (sh >= strip.lo - gap)
     nearer = _distance(sl, sh, te) < _distance(strip.lo, strip.hi, te)

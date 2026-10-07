@@ -440,8 +440,9 @@ is reader version 4 and `titan_trees` 2. The paint store keeps generator version
 
 The top pass now drops an arch larger than `OVERSIZE_CM` or wholly off the raster, as the
 direct pass drops a rock, and counts them in its sidecar block (`arches_dropped`): the scenery
-arches above. On build 502094 that is 80 arches over 600 m across and 93 off the map, none of
-them reaching the raster, so no pixel moves; the tiled scan had clipped them to nothing.
+arches above. On build 502094 that is 93 of 1,076 arches: 68 over 600 m across and 25 more
+wholly off the raster, none of them reaching it, so no pixel moves; the tiled scan had
+clipped them to nothing.
 
 ## 25. Renders after the terrain work: recipe 4 (2026-10-05)
 
