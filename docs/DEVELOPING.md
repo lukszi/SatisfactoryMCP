@@ -78,12 +78,12 @@ fixture world), `labelled_client`, `fresh_state_client` (a new world per request
 `stateless_client`, or `tests.support.web.client_over` for a hand-built world; none reads a
 `.sav`. `client_over` reuses its apps within a worker: an app's first request builds the
 schema of every route, about 0.1 s, which once cost the default run 48 s of CPU over 477
-apps. Each use still calls `create_app`, which takes a millisecond, and lends a reused app that
-app's `state` (the two loaders, a new save watcher and a new map job runner); on the way out
-the app gets an empty `state` and goes back to the pool. A test that opens a client inside
-another gets a second app. `tests/web/test_app_reuse.py` holds both rules. A test that needs
-anything else of its own on the app, such as `dependency_overrides`, builds its app with
-`create_app`.
+apps; the web tests alone at 4 workers went from 21 s to 13 s. Each use still calls
+`create_app`, which takes a millisecond, and lends a reused app that app's `state` (the two
+loaders, a new save watcher and a new map job runner); on the way out the app gets an empty
+`state` and goes back to the pool. A test that opens a client inside another gets a second
+app. `tests/web/test_app_reuse.py` holds both rules. A test that needs anything else of its
+own on the app, such as `dependency_overrides`, builds its app with `create_app`.
 
 **The reference world.** `tests/fixtures/save_projection.json` is the sidecar projection of one
 real save, named in `tests/support/reference_world.py` and committed because the `.sav` is not.
@@ -117,11 +117,16 @@ on the machine, for tests that measure the tool's real answer. `live` skips on `
 a machine with the game and no save reports skips rather than errors. An MCP tool test hands
 the tools its world through `use_world`, which replaces `app.load_world` (docs/mcp-surface.md).
 
-**Speed.** `-n 8` is measured. On a 16-core, 32-thread machine the default set took 5.8 s at 8
-workers, 7.7 s at 16 and 14.3 s at 32, and the integration set 30 s at 8 against 38 s at 32,
-because every worker imports and collects the suite alone. `--dist loadfile` (28.3 s) and
-`-p no:cacheprovider` were within noise of the default and were not adopted; `--dist worksteal`
-was too, until the whole-folder tests below were spread over it. After a hardware change, re-measure `uv run pytest -q -n <k>` and the same with
+**Speed.** `-n 8` is measured. On a 16-core, 32-thread machine with other work holding about a
+tenth of it, the default set (2,668 tests) takes 36 to 39 s at 8 workers and the integration set
+(1,185) a median 28 s, against 43 to 54 s and 31 s before the web apps were reused, the longest
+tests spread and the sensitivity sweep made module-wide. Before the typing gate added its two
+pyright runs, the default set took 134 s serial, 76 s at 2 workers, 42 to 45 s at 4 and 28 s at
+8, 59% of linear at 8. More workers stopped paying long ago: every worker imports and collects
+the suite alone, about 4 s before its first test, and when last counted, 16 and 32 workers were
+slower than 8. `--dist loadfile` and `-p no:cacheprovider` were within noise of the default and
+were not adopted; `--dist worksteal` was too, until the longest tests below were spread over
+it. After a hardware change, re-measure `uv run pytest -q -n <k>` and the same with
 `-m integration` for k in 4, 6, 8, 12, 16 and auto, three samples each.
 
 **The whole-folder tests.** Three integration tests parse every save on the machine (vendor
@@ -135,13 +140,16 @@ and later moves the tail of a busy worker's queue to an idle one. `conftest.py` 
 whole-folder test at the head of a different worker's opening run (`heads_of_shares` in
 `tests/support/fanout.py`), so the three start together on three workers. Its hook runs last,
 because the split depends on the count `-m` leaves. The default run's two pyright runs in
-`tests/architecture/test_typing.py` carry the `long` marker and are spread the same way: next to
-each other in one worker's run, they once ran back to back, 29 s of a 44 s default run. Each test fans its saves out through
-`tests/support/fanout.py` at a third of the logical CPUs, so that the three side by side about
-fill the machine. While they ran one after another, each at half the CPUs, widths 4, 8, 16, 24
-and 32 measured 43.9, 32.5, 22.6, 25.0 and 24.0 s for the integration set. `in_order` returns
-results in submission order, so per-save messages and early stops match a serial loop;
-`SATISFACTORY_TEST_FANOUT` overrides the width.
+`tests/architecture/test_typing.py` carry the `long` marker and are spread the same way: next
+to each other in one worker's run, they ran back to back, 29 s of a 44 s default run.
+
+Each whole-folder test fans its saves out through `tests/support/fanout.py` at a third of the
+logical CPUs, so the three side by side about fill the machine: at 10 the integration set took
+25 s, as at 16, for 50 CPU-seconds less. While they ran one after another, each at half the
+CPUs, widths 4, 8, 16, 24 and 32 measured 43.9, 32.5, 22.6, 25.0 and 24.0 s. Starting them
+apart rather than together, the second and third 36 tests behind the first, measured no better.
+`in_order` returns results in submission order, so per-save messages and early stops match a
+serial loop; `SATISFACTORY_TEST_FANOUT` overrides the width.
 
 **The vendor parity bank.** While `pioneersav` was being written, its acceptance test was a diff
 against the vendored GPL-3.0 parser, leaf for leaf. Deleting that library destroyed the diff, so
