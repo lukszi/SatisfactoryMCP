@@ -61,6 +61,14 @@ gen = [
     "zstandard==0.25.0",
     "numba==0.68.0",
 ]
+# The renders' CUDA kernels behind `mapgen renders --gpu` (mapgen.jit): CuPy compiles them with
+# NVRTC, which the second package brings, so the NVIDIA driver is all a machine needs besides.
+# Pinned like numba: each kernel is proven equal to its numpy reference bit for bit. Only
+# Windows and Linux on x86-64 have the wheels.
+gpu = [
+    "cupy-cuda12x==14.2.0; platform_machine == 'AMD64' or platform_machine == 'x86_64'",
+    "nvidia-cuda-nvrtc-cu12==12.9.86; platform_machine == 'AMD64' or platform_machine == 'x86_64'",
+]
 
 [tool.uv.workspace]
 # The map generators: not shipped in the wheel below, run as `python -m mapgen <command>`.
