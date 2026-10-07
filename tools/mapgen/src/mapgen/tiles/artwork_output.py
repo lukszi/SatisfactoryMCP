@@ -137,7 +137,7 @@ def enhancement_downgrades(
 ) -> bool:
     """Would this run replace a pyramid with one cut by an earlier recipe? Then it must not.
 
-    The whole rule in one place, compared on the number: docs/spatial-and-map.md section 17.
+    The whole rule in one place, compared on the number: docs/map/renders.md section 17.
     """
     return pinned_recipe(sidecar) > (recipe if enhance_now else 0)
 

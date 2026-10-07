@@ -6,7 +6,7 @@ The game-painted satellite style colours the ground from these planes: one uint8
 per paint layer on the heightfield's 1 m grid, the tree canopy cover, the PigmentMap tint
 texture, and the albedo of every layer as the game's own textures and material parameters
 state it. A palette change never re-reads the install; a new game build does.
-docs/spatial-and-map.md section 27 describes the planes and how they are drawn.
+docs/map/painted.md section 27 describes the planes and how they are drawn.
 """
 
 from __future__ import annotations

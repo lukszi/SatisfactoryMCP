@@ -31,8 +31,8 @@ from mapgen.palette.painted.ground import ROCK_GRID_M
 from mapgen.palette.painted.surfaces import _mean3x3
 from mapgen.palette.relief import relief_colours
 from mapgen.palette.styles import PAINTED_PALETTE, RELIEF_PALETTES
-from mapgen.render import compose
-from mapgen.render.drawpool import PIECE_COLS
+from mapgen.render.draw import compose
+from mapgen.render.draw.drawpool import PIECE_COLS
 from mapgen.terrain.sample import frame_coordinates
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.domain.spatial import heightfield as hf

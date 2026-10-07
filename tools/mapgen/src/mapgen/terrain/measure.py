@@ -53,7 +53,7 @@ class SeamTrace:
     Each 3-texel stencil is pooled by the weights under all three of its texels. Read it
     against the hard switch, not the pure regimes: the join is the rock's own silhouette, and
     ``blend_regimes``' arithmetic, not this statistic, is what keeps it smooth (the sidecar's
-    ``reading``; docs/spatial-and-map.md section 20).
+    ``reading``; docs/map/renders.md section 20).
     """
 
     def __init__(self) -> None:
@@ -187,7 +187,7 @@ class RegimeCoverage:
 
     Provinces are sampled nearest: a province is a name, and two names do not average. The
     direct bucket is split by the density plane into measurements and facets, which is all
-    that plane decides (docs/spatial-and-map.md section 20).
+    that plane decides (docs/map/renders.md section 20).
     """
 
     NAMES = ("direct_measured", "direct_facet", "faded", "kernel")

@@ -2,7 +2,7 @@
 
 Each landscape HLOD cell of the persistent level ships a 1024 px virtual-texture BaseColor of
 its 508 m square. Read here once per build into the paint store, together with the paint
-layers' albedos refitted to it. docs/spatial-and-map.md section 30 describes both.
+layers' albedos refitted to it. docs/map/painted.md section 30 describes both.
 """
 
 from __future__ import annotations

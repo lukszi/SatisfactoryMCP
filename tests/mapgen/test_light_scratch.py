@@ -19,7 +19,7 @@ from mapgen.lighting import stage
 from mapgen.lighting.bake import bake_light
 from mapgen.lighting.occluders import CrownGrid
 from mapgen.lighting.stage import Surface, occluder_planes
-from mapgen.render.light import (
+from mapgen.render.draw.light import (
     LIGHT_CACHE_DIR_NAME,
     SCRATCH_IN_USE,
     CrownTops,

@@ -5,7 +5,7 @@ Each layer keeps ``tiles/`` and ``tiles@2x/`` lit by the default sun, so a page 
 WebGL and every older reader still draw a lit map, and adds ``unlit/``, the colour the page
 relights live. The stage's ``light.cache/`` is scratch for one run; the finished bake is
 kept beside the raster caches for a run that draws the same surface (``kept_light``).
-docs/spatial-and-map.md section 29 and docs/map/renders.md section 42.
+docs/map/light-and-crowns.md section 29 and docs/map/renders.md section 42.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.painted.shapes import PaintPlane
 from mapgen.palette.painted.trees import sample_titan
 from mapgen.palette.styles import LAYER_STYLES
-from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME, KeptBake, KeptLight
+from mapgen.render.draw.kept_light import KEPT_LIGHT_DIR_NAME, KeptBake, KeptLight
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject, as_float, require_object
 from satisfactory_mcp.core.mapprogress import encode_stage

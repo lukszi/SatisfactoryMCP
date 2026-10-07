@@ -5,7 +5,7 @@
 Writes ``map.png``, ``tiles/``, ``tiles@2x/`` and ``map.json`` into gitignored
 ``data/local/``; ``--enhance`` adds z6 and z7 on the GPU. The arguments, the stage order and
 the refusals; the stages live in ``gamedata/artwork_sheet.py``, ``enhance/`` and
-``tiles/artwork_output.py``. Why: docs/spatial-and-map.md §17.
+``tiles/artwork_output.py``. Why: docs/map/renders.md §17.
 """
 
 from __future__ import annotations

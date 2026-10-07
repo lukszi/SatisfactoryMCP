@@ -1,7 +1,6 @@
 """Trees laid over the finished painted pixel: the Titan forest's raster and per-tree crowns,
 the crowns moved onto the species targets, the canopy targets and the named crown targets;
-a crown under the water's surface goes to the bed instead. docs/spatial-and-map.md sections
-30, 31 and 36.
+a crown under the water's surface goes to the bed instead. docs/map/painted.md section 30, docs/map/calibration.md section 31 and docs/map/light-and-crowns.md section 36.
 """
 
 from __future__ import annotations

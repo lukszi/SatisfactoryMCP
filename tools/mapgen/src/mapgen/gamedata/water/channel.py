@@ -41,11 +41,11 @@ __all__ = [
 WATER_ARTWORK_BLUE_OVER_RED = 25
 
 #: The artwork draws a pit, and the void past the world's edge, black to a flat grey (Rec. 601
-#: luma 0 to about 80); its ground is beige or white, 140 and up. docs/spatial-and-map.md §26.
+#: luma 0 to about 80); its ground is beige or white, 140 and up. docs/map/renders.md §26.
 VOID_ARTWORK_LUMA_MAX = 110
 
 #: The artwork's water comes in four flat tones, G - R about 32, 48, 64 and 78 from the open
-#: sea's teal to the brightest cyan; these split them. docs/spatial-and-map.md §26.
+#: sea's teal to the brightest cyan; these split them. docs/map/renders.md §26.
 WATER_ARTWORK_BANDS = (40, 56, 70)
 
 #: Rows of the 1 m grid classified at a time, so the sheet is never held as integers whole.

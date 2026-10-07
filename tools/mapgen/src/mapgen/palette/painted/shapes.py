@@ -197,7 +197,7 @@ class CrownLayer(TypedDict):
 
 
 class PaintedScene(BandScene):
-    """One band as the painted style draws it (``render.painting``): the shared scene, then
+    """One band as the painted style draws it (``render.draw.painting``): the shared scene, then
     its crowns, sun term, rock and mesh weights, the arches' and boulders' lift over the
     cliffs, and water optics."""
 

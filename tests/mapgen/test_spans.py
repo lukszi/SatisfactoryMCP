@@ -12,9 +12,11 @@ import numpy as np
 import pytest
 
 from mapgen.lighting import horizon as hz
-from mapgen.lighting import span_bake, spans, stage
+from mapgen.lighting import stage
 from mapgen.lighting.light_tiles import downsample, padded_window
-from mapgen.lighting.slabs import SlabPlanes, SlabStore
+from mapgen.lighting.spans import bake as span_bake
+from mapgen.lighting.spans import march as spans
+from mapgen.lighting.spans.slabs import SlabPlanes, SlabStore
 from mapgen.lighting.sun import DEFAULT_SUN
 
 SP = 0.5

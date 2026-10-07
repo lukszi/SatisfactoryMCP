@@ -2,7 +2,7 @@
 
 Read once a run, and only when a layer coloured from it is drawn. The pin is scored against
 the artwork every run, and the region table checked against the raster
-(docs/spatial-and-map.md section 17, "The game ships biome geometry after all").
+(docs/map/renders.md section 17, "The game ships biome geometry after all").
 """
 
 from __future__ import annotations

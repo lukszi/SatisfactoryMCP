@@ -12,7 +12,7 @@ the game or writes a file. Three steps on the 1 m lattice the kernel samples:
 
 Rock texels are never read as a constraint and never written. Empty ground connected to
 the edge of the field stays empty, and so does a pit and the fill past the artwork's world
-rim (``terrain.void``): the render draws the open sea or the void there. The numbers behind
+rim (``terrain.emptied``): the render draws the open sea or the void there. The numbers behind
 every constant are in docs/map/renders.md section 26.
 """
 
@@ -30,8 +30,7 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import FILL_RASTER_BOX_CM
 from mapgen.gamedata.level.fill_raster import FILL_RASTER_PATH, read_fill_raster
-from mapgen.terrain.solve import jacobi_cg
-from mapgen.terrain.void import (
+from mapgen.terrain.emptied import (
     PIT_FLOOR_M,
     PIT_SHARE,
     RIM_CORE_TEXELS,
@@ -40,6 +39,7 @@ from mapgen.terrain.void import (
     pits,
     void_past_rim,
 )
+from mapgen.terrain.solve import jacobi_cg
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -459,7 +459,7 @@ def fill_field(
     made it (cliff removed, landscape at 7.8 mm). ``heights_dm`` is that ground with the
     cliff province's own heights put back unchanged. Both are float32 with ``nodata``.
     ``void`` is where the artwork draws void (``gamedata.water.channel.artwork_planes``): the
-    fill past its world rim (``terrain.void.void_past_rim``), the no-data holes and the
+    fill past its world rim (``terrain.emptied.void_past_rim``), the no-data holes and the
     ground below ``PIT_FLOOR_M`` it draws as pits are left empty.
     """
     timings = _Timings()
@@ -500,7 +500,7 @@ def ground_lattice(field: hf.Field, heights: F32Grid) -> tuple[F32Grid, JsonObje
     """The same heights with the CLIFF province removed: the surface under the rocks.
 
     The kernel regime interpolates this and never the composed field, whose 1 m fold comes
-    back as a staircase at any output resolution (docs/spatial-and-map.md section 20). Where
+    back as a staircase at any output resolution (docs/map/renders.md section 20). Where
     it knows nothing, inside a formation, the caller substitutes the fold and the rock answers.
     """
     cliff = np.isin(np.asarray(field.provenance_plane), hf.PROV_CLIFF_VALUES)

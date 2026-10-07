@@ -5,7 +5,7 @@ box's top is the river's upstream end, and where boxes of two bodies overlap in 
 higher body's top lands on the lower one, as where a lake's box reaches past its fall over the
 basin below. Either way the level stands metres above the dry banks around it, which still
 water cannot do, and the renderer would draw tens of metres of depth. The artwork's mask also
-leaves dry holes inside a lake, which ``wet_holes`` fills. docs/spatial-and-map.md section 38.
+leaves dry holes inside a lake, which ``wet_holes`` fills. docs/map/water.md section 38.
 """
 
 from __future__ import annotations

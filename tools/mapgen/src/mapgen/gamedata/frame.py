@@ -41,7 +41,7 @@ ORIGIN_X_CM = _X0 * 100
 ORIGIN_Y_CM = _Y0 * 100
 
 #: What a render is drawn at, z7 at the top of the 1x tree, and what its @2x tree is cut
-#: from: the artwork's sheet size, the same frame (docs/spatial-and-map.md §20 says why z7).
+#: from: the artwork's sheet size, the same frame (docs/map/renders.md §20 says why z7).
 RENDER_PX = SHEET_PX * 4
 RENDER_2X_PX = SHEET_PX * 2
 #: Metres of world per pixel at those two sizes.

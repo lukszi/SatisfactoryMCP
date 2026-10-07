@@ -3,7 +3,7 @@
 ``python -m mapgen compress-cache <dir> [--to <dir>]``. ``<dir>`` is one raster cache or a
 folder holding them. Each plane is written, every band read back against a digest of the raw
 band, the sidecar records the storage, and only then are the raw planes removed. ``--to``
-must lie outside the source. docs/spatial-and-map.md section 39.
+must lie outside the source. docs/map/renders.md section 39.
 """
 
 from __future__ import annotations

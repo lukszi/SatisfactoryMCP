@@ -1,8 +1,8 @@
 """The band loop that draws a run's layers in one pass: each band in column pieces, each
 piece's ground once, then every layer's colour over it.
 
-The pieces run on threads (``render/drawpool.py``). ``render/surface.py`` composes a piece's
-ground and settles each band once its pieces are in, and ``render/painting.py`` colours a
+The pieces run on threads (``render/draw/drawpool.py``). ``render/ground/surface.py`` composes a piece's
+ground and settles each band once its pieces are in, and ``render/draw/painting.py`` colours a
 piece in each layer's style.
 """
 
@@ -24,11 +24,11 @@ from mapgen.palette.relief import ReliefGround
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater, water_sources
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M
-from mapgen.render.drawpool import PIECE_COLS, bands_held, in_order
-from mapgen.render.lift import lattice_edge
-from mapgen.render.painting import LayerJob, layer_job, paint_band
-from mapgen.render.stencils import band_halo, piece_halo
-from mapgen.render.surface import (
+from mapgen.render.draw.drawpool import PIECE_COLS, bands_held, in_order
+from mapgen.render.draw.painting import LayerJob, layer_job, paint_band
+from mapgen.render.ground.lift import lattice_edge
+from mapgen.render.ground.stencils import band_halo, piece_halo
+from mapgen.render.ground.surface import (
     GroundSources,
     Kernel,
     LightCapture,
@@ -64,7 +64,7 @@ __all__ = [
 BAND_ROWS = 256
 
 #: The rows each band is drawn beyond its edges and cropped after, so no stencil sees a band
-#: edge: the widest reach at the largest size, from ``render/stencils.py``.
+#: edge: the widest reach at the largest size, from ``render/ground/stencils.py``.
 BAND_HALO = band_halo()
 
 #: The columns each piece of a band is drawn beyond its edges and cropped after: the widest
@@ -169,7 +169,7 @@ def render_layers(
     term flat; the ground's ``surface`` receives the heights and land weight the seabed rule
     draws, once, whatever the layers. ``threads`` pieces are drawn at once, to the same bytes
     at any count and any width; ``bands`` takes the bands in order. The rest:
-    docs/spatial-and-map.md sections 20, 25, 40 and 42.
+    docs/map/renders.md sections 20, 25, 40 and 42.
     """
     if not layers or len(set(layers)) != len(layers):
         raise ValueError(f"a pass draws each of its layers once: {list(layers)}")

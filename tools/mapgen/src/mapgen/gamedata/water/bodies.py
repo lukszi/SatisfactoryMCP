@@ -2,7 +2,7 @@
 
 The paint command records every water actor's box and material, and every hot-spring terrace,
 in ``water_bodies.json``; ``classify`` turns that into a class plane on the 1 m grid. The
-rules and the classes are in docs/spatial-and-map.md section 33.
+rules and the classes are in docs/map/water.md section 33.
 """
 
 from __future__ import annotations

@@ -28,7 +28,7 @@ from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
 from mapgen.palette.painted.surfaces import mesh_surface
 from mapgen.palette.painted.trees import crown_lab, crown_layer, over_crowns, species_targets
 from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.render.painting import _band_family
+from mapgen.render.draw.painting import _band_family
 from mapgen.terrain import render_meshes
 from mapgen.terrain.crown_stamp import CrownSet
 from mapgen.terrain.render_meshes import (

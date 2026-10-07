@@ -3,7 +3,7 @@
 Beer-Lambert over the bed (section 27), the class plane and each class's own optics (section
 33), the seabed carpet (section 32), the crowns under the surface (section 36) and the
 calibrated opaque water of an area (section 31), gated by the class it names.
-docs/spatial-and-map.md sections 31 to 33, 36 and 37. The mix runs as a numba kernel unless
+docs/map/calibration.md section 31, docs/map/painted.md section 32, docs/map/water.md section 33, docs/map/light-and-crowns.md section 36 and docs/spatial-and-map.md section 37. The mix runs as a numba kernel unless
 ``mapgen.jit`` selects this numpy, its reference (docs/map/renders.md section 41).
 """
 

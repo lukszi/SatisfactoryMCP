@@ -26,10 +26,10 @@ from mapgen.palette.styles import RELIEF_PALETTES, STYLE_DIGESTS
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.perched import WaterSurfaces
 from mapgen.palette.water.surface import drawn_water
-from mapgen.render.biome_inputs import BiomeInputs, read_biome_inputs
-from mapgen.render.cached_rasters import LevelSweep, RasterGrid, direct_raster, top_raster
-from mapgen.render.extras import RenderExtras, load_extras
-from mapgen.render.inputs import (
+from mapgen.render.run.biome_inputs import BiomeInputs, read_biome_inputs
+from mapgen.render.run.cached_rasters import LevelSweep, RasterGrid, direct_raster, top_raster
+from mapgen.render.run.extras import RenderExtras, load_extras
+from mapgen.render.run.inputs import (
     GameInputs,
     Lattice,
     PaintInputs,

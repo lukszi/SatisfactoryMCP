@@ -12,9 +12,10 @@ import numpy as np
 
 from mapgen.cache import DirectPlanes
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.render import compose, lift
-from mapgen.render.lift import lattice_edge
-from mapgen.render.surface import Window, band_grid, band_surfaces, span
+from mapgen.render.draw import compose
+from mapgen.render.ground import lift
+from mapgen.render.ground.lift import lattice_edge
+from mapgen.render.ground.surface import Window, band_grid, band_surfaces, span
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 #: One texel of the field to an output pixel.

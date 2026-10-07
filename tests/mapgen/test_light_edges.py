@@ -10,10 +10,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mapgen.lighting import bake, holes, stage
+from mapgen.lighting import bake, stage
 from mapgen.lighting import horizon as hz
 from mapgen.lighting.bake import bake_light
 from mapgen.lighting.light_tiles import work_array
+from mapgen.lighting.spans import holes
 from mapgen.lighting.stage import Surface
 
 SIZE = 512
@@ -168,7 +169,7 @@ def test_a_canopy_under_the_surface_is_hidden_and_takes_no_light_of_its_own(tmp_
 
 
 def test_the_canopy_s_relief_and_blur_are_the_painted_crowns():
-    from mapgen.lighting import canopy
+    from mapgen.lighting.spans import canopy
     from mapgen.palette.styles import PAINTED_PALETTE
     from mapgen.terrain.crown_stamp import DOME_SIGMA_M
 
@@ -184,7 +185,7 @@ def test_the_terms_in_strips_of_rows_are_the_bytes_of_one_strip(tmp_path, monkey
 
 def test_relight_rows_lights_the_crowned_style_with_its_own_terms():
     from mapgen.palette.lightparams import shader_light
-    from mapgen.render.light import relight_rows
+    from mapgen.render.draw.light import relight_rows
 
     rgb = np.full((2, 2, 3), 150, np.uint8)
     land = np.full((2, 2), 255, np.uint8)
@@ -201,7 +202,7 @@ def test_relight_rows_lights_the_crowned_style_with_its_own_terms():
 
 def test_the_titan_trees_join_the_crowns_where_they_stand_higher():
     from mapgen.cache import TitanPlanes
-    from mapgen.render.light import titan_crowns
+    from mapgen.render.draw.light import titan_crowns
 
     n = 64
     z_cm = np.zeros((n // 2, n // 2), np.int32)

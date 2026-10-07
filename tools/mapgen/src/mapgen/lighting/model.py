@@ -1,7 +1,7 @@
 """The light model: Lambert, faded cast shadows and a sky-view term, applied to unlit colour.
 
 The page's shader runs the same arithmetic per pixel; this module is its reference, the
-baked fallback, and the provenance the light axis records. docs/spatial-and-map.md
+baked fallback, and the provenance the light axis records. docs/map/light-and-crowns.md
 section 29 says why each constant has its value.
 """
 
@@ -35,7 +35,7 @@ from mapgen.lighting.horizon import (
     SKY_RADIUS_M,
     decode_horizon,
 )
-from mapgen.lighting.spans import span_block
+from mapgen.lighting.spans.march import span_block
 from mapgen.lighting.sun import DEFAULT_SUN, NOON_HOUR, Sun, sun_vector
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.versions import LIGHTS

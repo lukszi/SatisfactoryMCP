@@ -4,7 +4,7 @@ The shore: near the sea, water coverage comes from the drawn surface crossing th
 antialiased to one pixel, instead of from the 3.66 m artwork mask. Rivers and lakes keep
 recipe 5's rule. The meshes: coral, shells, CliffPillar_03 and rubble, which the artwork
 draws as land and the heightfield leaves out, rasterised for the map only. docs/
-spatial-and-map.md section 27 has the measurements behind every constant here.
+map/painted.md section 27 has the measurements behind every constant here.
 """
 
 from __future__ import annotations
@@ -283,7 +283,7 @@ def blend_where(
 ) -> FloatGrid:
     """``blend(base, *planes)``, worked only on the ``touched`` pixels, where it may differ
     from ``base``, unless they are more than ``most`` of them. Every array has a trailing
-    channel axis; docs/spatial-and-map.md section 26, "Drawing less"."""
+    channel axis; docs/map/renders.md section 26, "Drawing less"."""
     picked = np.flatnonzero(touched)
     if picked.size > most * touched.size:
         return blend(base, *planes)

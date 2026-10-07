@@ -1,6 +1,6 @@
 """The open sea: the bed beyond the coast, settled on the field, and the void planes.
 
-Its constants: docs/spatial-and-map.md section 26.
+Its constants: docs/map/renders.md section 26.
 """
 
 from __future__ import annotations

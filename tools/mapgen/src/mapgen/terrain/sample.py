@@ -83,7 +83,7 @@ def direct_mask(field: hf.Field, spacing_m: float) -> tuple[U8Grid | None, JsonO
     caller refuses rather than assumes. The rule is the field's, one source vertex
     (``DIRECT_SAMPLES_MIN``) under the output texel, scaled by its area. A mask and not a
     weight: it names what was drawn, never gates it, so it is read nearest and never blurred
-    (docs/spatial-and-map.md section 20).
+    (docs/map/renders.md section 20).
     """
     density = field.density_raster()
     if density is None:

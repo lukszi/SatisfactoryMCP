@@ -1,5 +1,5 @@
 """What stands on the painted ground: rock in its family's colour, the canopy over rock, and
-the render-only meshes. docs/spatial-and-map.md sections 27, 30 and 31.
+the render-only meshes. docs/map/painted.md sections 27 and 30 and docs/map/calibration.md section 31.
 """
 
 from __future__ import annotations

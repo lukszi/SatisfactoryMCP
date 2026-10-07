@@ -13,9 +13,9 @@ import pytest
 
 from mapgen.cache import MESH_CACHE_DIR_NAME
 from mapgen.common import Refusal
-from mapgen.render import cached_rasters
-from mapgen.render.cached_rasters import UNREADABLE_RASTER, LevelSweep, stamped_raster
-from mapgen.render.extras import RUN_CACHE_DIRS, remove_run_caches
+from mapgen.render.run import cached_rasters
+from mapgen.render.run.cached_rasters import UNREADABLE_RASTER, LevelSweep, stamped_raster
+from mapgen.render.run.extras import RUN_CACHE_DIRS, remove_run_caches
 from mapgen.tiles.layer_meta import (
     LayerDraw,
     RenderFacts,

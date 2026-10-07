@@ -2,7 +2,7 @@
 
 The game turns its sun about one fixed tilted axis (``AFGSkySphere``: pitch ``30 + 15 h``),
 with no seasons. The frontend's ``sun.ts`` is the same arithmetic; a test holds the two to
-the same noon. docs/spatial-and-map.md section 29.
+the same noon. docs/map/light-and-crowns.md section 29.
 """
 
 from __future__ import annotations

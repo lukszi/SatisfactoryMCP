@@ -197,7 +197,7 @@ be traced to the axis it should move.
 | `jit.py` | | The kernel switch: numba-compiled loops, CUDA kernels (`MAPGEN_KERNELS=cuda`, `--gpu`), or the numpy they equal bit for bit (`MAPGEN_KERNELS=numpy`); a cache file per compiled signature |
 | `cache.py` | | The stamped caches (direct, top, meshes, Titan trees, rivers): stamps, readers, `rewrite_planes` and the atomic `write_sidecar`. Raster caches are written as band stores; raw memory maps are still read. |
 | `bandstore.py` | | The zstd band store: `BandWriter` and the read-only `BandArray` |
-| `commands/renders.py` | | The renders orchestrator: arguments, refusals, stage order |
+| `commands/renders.py` | | The renders orchestrator: arguments, the pass and each layer's install; `render/run/prepare.py` prepares the run |
 | `commands/heightmap.py` | data | The heightmap command: arguments, refusals, stage order; `--caves` and `--rocks` go to the next row |
 | `commands/caves.py`, `rocks.py` | data | The cave masks and the rock collision pack, written beside a field |
 | `commands/paint.py` | data | The paint command: one level walk into the paint-layer store |
@@ -216,7 +216,7 @@ be traced to the axis it should move.
 | `gamedata/level/sweep.py` | data | The level sweep: foliage, water actors, landscape components; `world_levels`, and instances to world (`quat_axes`, `instances_to_world`) |
 | `gamedata/level/landscape.py` | data | The landscape frame and its seam offsets |
 | `gamedata/level/fill_raster.py` | data | `HeightData_Test`, the interface raster that fills outside the landscape |
-| `gamedata/level/curves.py` | data | Property tags with their array index, and `FRichCurve` keys and evaluation |
+| `gamedata/level/curves.py` | data | `FRichCurve` keys and evaluation, and the numbers a tag holds |
 | `gamedata/level/lighting.py` | data | The persistent level's noon light and the atmosphere volumes that override it |
 | `gamedata/rocks/cliffs.py` | data | The field's cliff and top rasters |
 | `gamedata/rocks/families.py` | data | Rock material families (the cliff layers and desert rock): `FamilyResolver`, per placement, tint and top layer |
@@ -239,6 +239,7 @@ be traced to the axis it should move.
 | `terrain/heightfield/sidecar_blocks.py` | data | Each layer's sidecar block, per-layer accuracy, the water block |
 | `terrain/heightfield/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes, pits |
+| `terrain/emptied.py` | renderer | Where the rebuilt lattice is left empty because the artwork draws void: its pits, and the fill past its rim |
 | `terrain/solve.py` | renderer | Conjugate gradients with fixed-order sums, for the membranes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
 | `terrain/kernels.py` | renderer | The resampling gathers and the crown stamps compiled by numba |
@@ -255,11 +256,11 @@ be traced to the axis it should move.
 | `lighting/bake.py` | light | The lighting pyramid baked a row of blocks at a time, as the surface's rows come in |
 | `lighting/light_tiles.py` | light | The lighting pyramid's tile format, the bake's work files, and the coarser levels |
 | `lighting/kernels.py` | light | The horizon march and the sky view compiled by numba |
-| `lighting/spans.py`, `span_kernels.py` | light | The march and the sky view over spans (arches, overhangs, crowns), and their numba kernels |
-| `lighting/span_bake.py`, `slabs.py` | light | A block's spans, the atlas's folded bands and the default sun's per-cell shade; the captured spans' sparse store |
+| `lighting/spans/march.py`, `kernels.py` | light | The march and the sky view over spans (arches, overhangs, crowns), and their numba kernels |
+| `lighting/spans/bake.py`, `slabs.py` | light | A block's spans, the atlas's folded bands and the default sun's per-cell shade; the captured spans' sparse store |
+| `lighting/spans/holes.py`, `canopy.py` | light | No data in the captured surface, which the light takes as open; the canopy's own light |
 | `lighting/gpu.py`, `gpu.cu` | light | The same two as CUDA kernels, for `--gpu` |
 | `lighting/occluders.py` | light | The occluders the horizons take: the paint store's crown tops on a render grid (`sheet_crowns`) and a tree table's domes (`canopy_top`) |
-| `lighting/lights/` | light | Light files (empty for now) |
 | `palette/styles.py` | style | Palette loading, digests, the colour painters and their height ramp |
 | `palette/schema.py` | style | The palette files' shapes, and the check at load: a stray or missing key, or an unknown rock family, stops the run with a `PaletteError` naming the place in the file (§28). A key added to a palette needs its field here. |
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
@@ -271,6 +272,7 @@ be traced to the axis it should move.
 | `palette/painted/shapes.py` | style | The painted style's palette, band, paint-store and ground types |
 | `palette/painted/albedo.py` | style | The paint store mixed into a ground albedo, and the bake patched over it |
 | `palette/painted/calibration.py` | style | Colour calibration: display targets taken back to ground colour |
+| `palette/painted/transfer.py` | style | The paint layers moved onto their calibrated targets, texel by texel |
 | `palette/painted/derive/camera.py` | style | The camera model: UE5's film curve, the default sky, the exposure, the screenshot discount |
 | `palette/painted/derive/scene.py`, `rules.py` | style | The paint store on the 4 m grid, and the rule that derives each calibration key |
 | `palette/painted/derive/targets.py`, `palette.py` | style | The light vote, the derived colours, `targets.derived.json`, and the palette a render wears them in |
@@ -286,23 +288,26 @@ be traced to the axis it should move.
 | `palette/water/rivers.py` | style | River water: reconciled with the field's, laid over each band |
 | `palette/water/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |
 | `palette/water/perched.py` | style | Water levels re-read from the shoreline where a box top is not the surface |
+| `palette/water/seams.py` | style | Small level steps inside one sheet of water, feathered into a ramp |
 | `palette/water/geodesic.py` | style | Steps counted through a mask, as a flood grows out from its seeds |
-| `render/inputs.py` | | A run's inputs and their refusals: the field and its lattices, the game, the borrow, the paint and the water |
-| `render/biome_inputs.py` | | The game's biome raster as the biome layers draw it: read, checked and coloured |
-| `render/cached_rasters.py` | | The level sweep (`LevelSweep`) and the stamped direct and top rasters, rasterised or read back |
-| `render/compose.py` | | The band loop that draws every layer of a run in one pass |
-| `render/surface.py` | | One band's ground, composed once for all the layers (`band_grid`, `band_surfaces`) |
-| `render/lift.py` | | The raise-only lift by which rocks and the top raster raise the ground |
-| `render/floating.py` | | What floats over a piece for the light: the arches and overhangs, and the surface without them |
-| `render/archaa.py` | | FXAA on the arches only, a band at a time with its neighbours' rows |
-| `render/painting.py` | | One band coloured in one layer's style over that ground (`paint_band`) |
-| `render/stream.py` | | Each settled band handed to its layers' tile trees, the lit ones once the light has its rows |
-| `render/drawpool.py` | | How many threads draw a pass's bands, and the pool that keeps their order |
-| `render/stencils.py` | | How far each step of a band's draw reads its neighbours, and the band halo that holds them |
-| `render/extras.py` | | What a run loads beside the field: meshes, falls, Titan trees and rivers |
-| `render/light.py` | | A run drawn unlit: the scratch claimed and closed, the crown occluder, the light baked as the bands come in, a kept light read while it matches, the default-sun relight |
-| `render/kept_light.py` | | The finished light a lit render keeps beside its raster caches, and its install |
-| `render/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
+| `render/run/prepare.py` | | Every stage of a run before the first band is drawn, in order (`prepare`) |
+| `render/run/inputs.py` | | A run's inputs and their refusals: the field and its lattices, the game, the borrow, the paint and the water |
+| `render/run/biome_inputs.py` | | The game's biome raster as the biome layers draw it: read, checked and coloured |
+| `render/run/cached_rasters.py` | | The level sweep (`LevelSweep`) and the stamped direct and top rasters, rasterised or read back |
+| `render/draw/compose.py` | | The band loop that draws every layer of a run in one pass |
+| `render/ground/surface.py` | | One band's ground, composed once for all the layers (`band_grid`, `band_surfaces`) |
+| `render/ground/lift.py` | | The raise-only lift by which rocks and the top raster raise the ground |
+| `render/ground/floating.py` | | What floats over a piece for the light: the arches and overhangs, and the surface without them |
+| `render/ground/void.py` | | The void as a piece draws it, once for every layer, and the land weight the light reads off it |
+| `render/draw/archaa.py` | | FXAA on the arches only, a band at a time with its neighbours' rows |
+| `render/draw/painting.py` | | One band coloured in one layer's style over that ground (`paint_band`) |
+| `render/draw/stream.py` | | Each settled band handed to its layers' tile trees, the lit ones once the light has its rows |
+| `render/draw/drawpool.py` | | How many threads draw a pass's bands, and the pool that keeps their order |
+| `render/ground/stencils.py` | | How far each step of a band's draw reads its neighbours, and the band halo that holds them |
+| `render/run/extras.py` | | What a run loads beside the field: meshes, falls, Titan trees and rivers |
+| `render/draw/light.py` | | A run drawn unlit: the scratch claimed and closed, the crown occluder, the light baked as the bands come in, a kept light read while it matches, the default-sun relight |
+| `render/draw/kept_light.py` | | The finished light a lit render keeps beside its raster caches, and its install |
+| `render/run/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
 | `tiles/pyramid.py` | | A layer's tile trees, the worker flags, the parallel cutter's self-check |
 | `tiles/cutter.py` | | The parallel cutter: every tree of a run cut as its sheets' rows come in, through one encode pool |
 | `tiles/levels.py` | | A sheet's pyramid levels resampled in strips as its rows arrive |
@@ -329,16 +334,16 @@ The container opener and the artwork sheet's slice reader are game readers, so t
 Why some constants have the values they have: one line each, and the section that has the
 measurement. The code keeps a one-line comment and points here.
 
-### The band loop (`render/compose.py`, `render/surface.py`, `render/lift.py`)
+### The band loop (`render/draw/compose.py`, `render/ground/surface.py`, `render/ground/lift.py`)
 
 `render_layers` draws every layer of a run in one pass, 256 rows at a time (`BAND_ROWS`): at
-32768 a whole-sheet float32 intermediate is four gigabytes. `render/surface.py` composes each
+32768 a whole-sheet float32 intermediate is four gigabytes. `render/ground/surface.py` composes each
 band's ground once (heights, rocks, overlay, meshes, water, borrow), with a second one for the
-painted layer's meshes in the sea, `render/painting.py` puts each layer's colour on it, and
-`render/stream.py` cuts each settled band into its tiles (§40, §42).
+painted layer's meshes in the sea, `render/draw/painting.py` puts each layer's colour on it, and
+`render/draw/stream.py` cuts each settled band into its tiles (§40, §42).
 
 - **`BAND_HALO`**, **`PIECE_HALO`** (16 rows, 16 columns): the widest reach in
-  `render/stencils.py`; each band and piece reads that far past its edges and crops it, so no
+  `render/ground/stencils.py`; each band and piece reads that far past its edges and crops it, so no
   edge is a one-sided difference drawn as a line across the world (§40).
 - **`DRAW_THREADS`** (8), **`PIECE_COLS`** (512): the pieces share the pass's inputs
   read-only and write their own pixels; narrow pieces keep a thread's memory small, and past
@@ -370,7 +375,7 @@ painted layer's meshes in the sea, `render/painting.py` puts each layer's colour
 - **`BORROW_GAIN`** (0.30): picked by looking at four crops (§17).
 - **`BORROW_LUMA`**: Rec. 601; light crosses, colour never does (§17).
 
-### Horizons and tree shadows (`lighting/horizon.py`, `lighting/occluders.py`, `render/light.py`)
+### Horizons and tree shadows (`lighting/horizon.py`, `lighting/occluders.py`, `render/draw/light.py`)
 
 Shadows are not baked into colour: the lighting stage stores faded horizons and the page's
 sun picks two directions (§29). Trees join it as its `occluder`.
@@ -378,13 +383,13 @@ sun picks two directions (§29). Trees join it as its `occluder`.
 - **`FADE_M`** (40 m, 150 m): a blocker counts fully to 40 m and not past 150 m; without the
   fade a low sun shadows a third to a half of the land (§29).
 - **Only where trees are drawn.** The crowns cast into horizons of their own, read only by a
-  style that draws them (`shader_light`'s `crowns`, `render.light.crown_layers`, the light
+  style that draws them (`shader_light`'s `crowns`, `render.draw.light.crown_layers`, the light
   sidecar's `occluder_layers`); in the shared horizons they drew black blocks on every style
   (§29).
 - **`sheet_crowns`**: the paint store's crown tops, whatever layers a run draws, box-averaged
   to the sheet's pixel, mean top and covered share; `horizon.crown_surface` lifts each crown by that share, so a small crown
   casts a small shadow (§29, "Hooks").
-- **Spans** (`lighting/spans.py`): arches, rock overhangs and crowns block only between their
+- **Spans** (`lighting/spans/march.py`): arches, rock overhangs and crowns block only between their
   underside and their top, so light passes beneath; `CROWN_UNDERSIDE` (0.5) puts a crown's
   underside halfway up its lift, `OVERHANG_CLEAR_M` (2 m) is the gap that makes a rock float
   (§29, "Arches as spans").

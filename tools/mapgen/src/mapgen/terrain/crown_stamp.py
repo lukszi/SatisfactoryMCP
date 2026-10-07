@@ -2,7 +2,7 @@
 
 Each tree stamps its species' sprite, turned and scaled, at the mip whose texel is closest
 to the output pixel. Taller crowns are laid over lower ones. A species the render-only mesh
-pass draws is no crown. docs/spatial-and-map.md section 36 describes the planes a band
+pass draws is no crown. docs/map/light-and-crowns.md section 36 describes the planes a band
 returns. The stamps run as a numba kernel unless ``mapgen.jit`` selects ``_stamp``, their
 reference (docs/map/renders.md section 41).
 """

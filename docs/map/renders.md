@@ -414,16 +414,16 @@ it writes. The codes are constants beside the stage that raises them.
 
 | Exit | Constant | When |
 | --- | --- | --- |
-| 1 | `render/inputs.NO_CONTAINER` | the game's container is not at `--game` |
-| 3 | `render/inputs.STALE_LAYER` | a layer folder holds tiles this run cannot show were drawn from the field on disk; `--force` replaces them |
-| 4 | `render/inputs.NO_FIELD` | there is no heightfield |
-| 5 | `render/inputs.PARALLEL_MISMATCH` | `--check-parallel` found the parallel cutter's bytes differ from the serial one's |
-| 6 | `render/inputs.NO_DENSITY` | the field has no `density.u8.z`, so it cannot say which cliff texels are measurements; the message names the generator version that writes one, and `--kernel-only` draws without the geometry |
-| 7 | `render/cached_rasters.UNREADABLE_RASTER`, `terrain/render_meshes.RASTER_UNREADABLE` | a raster just written does not read back (section 39) |
-| 8 | `render/inputs.NO_PAINT` | the painted layer is asked for and there is no paint store |
-| 9 | `render/inputs.RESTYLE_MISS` | `--restyle` and a kept raster cache is missing or was cut for another size, sub-sampling or build |
-| 10 | `render/inuse.IN_USE` | the output folder holds a map type the server's registry lists; `--overwrite-in-use` writes anyway |
-| 11 | `render/light.SCRATCH_IN_USE` | the light's scratch is held open by a render still running (section 29, "Scratch") |
+| 1 | `render/run/inputs.NO_CONTAINER` | the game's container is not at `--game` |
+| 3 | `render/run/inputs.STALE_LAYER` | a layer folder holds tiles this run cannot show were drawn from the field on disk; `--force` replaces them |
+| 4 | `render/run/inputs.NO_FIELD` | there is no heightfield |
+| 5 | `render/run/inputs.PARALLEL_MISMATCH` | `--check-parallel` found the parallel cutter's bytes differ from the serial one's |
+| 6 | `render/run/inputs.NO_DENSITY` | the field has no `density.u8.z`, so it cannot say which cliff texels are measurements; the message names the generator version that writes one, and `--kernel-only` draws without the geometry |
+| 7 | `render/run/cached_rasters.UNREADABLE_RASTER`, `terrain/render_meshes.RASTER_UNREADABLE` | a raster just written does not read back (section 39) |
+| 8 | `render/run/inputs.NO_PAINT` | the painted layer is asked for and there is no paint store |
+| 9 | `render/run/inputs.RESTYLE_MISS` | `--restyle` and a kept raster cache is missing or was cut for another size, sub-sampling or build |
+| 10 | `render/run/inuse.IN_USE` | the output folder holds a map type the server's registry lists; `--overwrite-in-use` writes anyway |
+| 11 | `render/draw/light.SCRATCH_IN_USE` | the light's scratch is held open by a render still running (section 29, "Scratch") |
 | 12 | `jit.NO_GPU` | `--gpu` and the CUDA kernels cannot run here: numba, CuPy or a device is missing (section 41, "On the GPU") |
 | 1 | `commands/renders.CUT_FAILED` | the tiles could not be cut into place |
 
@@ -507,10 +507,10 @@ colour and a height step, which the hillshade and the light draw as a crease; al
 landscape's straight east and south edges (x 4064 m, y 3048 m), where the cliff province meets
 the fill, it was a line several hundred metres long in every layer.
 
-`render/lift.py` `lattice_edge` softens that edge over `LATTICE_EDGE_BLUR_M` (2 m) inside the
+`render/ground/lift.py` `lattice_edge` softens that edge over `LATTICE_EDGE_BLUR_M` (2 m) inside the
 lattice: a byte per texel, 255 where the fold stands in, falling to 0 about 6 m in, built once
 a draw. A band blends the lattice's height towards the fold, and the rock's share towards its
-coverage, by it (`render/surface.py` `_direct_regime`). Where the field has no data either,
+coverage, by it (`render/ground/surface.py` `_direct_regime`). Where the field has no data either,
 the lattice's edge is the void's or a pit's, which the void draws, so it is not softened.
 Past about 6 m from the edge every pixel is the same bits as before.
 
@@ -687,7 +687,7 @@ void past the world's edge, and others as sea; and the pits were filled flat. Wh
   1,316 texels join, all within 8 m of the void.
 - **Rocks in the void.** The void's cover is kept off a rock standing in it only where the
   rock stands above the sea's level. A deeper one is the void's, as the artwork draws it, and
-  is taken out of the height before the water and colours are drawn (`render/surface.py`
+  is taken out of the height before the water and colours are drawn (`render/ground/surface.py`
   `_rock_kept`): kept, the lighting stage shaded the void over rock 250 to 700 m down into
   near-black silhouettes. On no data it is dropped; where the sea runs on under the void it
   keeps only the share the void's cover leaves.
@@ -719,7 +719,7 @@ The interface raster has heights in places the artwork draws black, past the whi
 draws round the world: a 226,000 m² island south-east of the abyss that the game's map
 does not show, a lobe on the east edge north of the abyss cliffs, and smaller pieces. Drawn
 as fill they were land or a beach where the artwork has the void (sweep class 18, auto
-#11). `terrain/void.py`
+#11). `terrain/emptied.py`
 `void_past_rim` finds the void past the rim, and `fill_field` leaves the fill there empty
 before anything is rebuilt, as it leaves a pit (`SOURCE_RIM`, under
 `two_regime.fill_rebuild.past_the_rim` in the sidecar). The render then draws it as the
@@ -785,7 +785,7 @@ The band loop skips arithmetic whose answer it already has, and the tiles are th
   everywhere, so it is not worked out.
 - **The void is drawn where it is.** Where its cover and rim are both 0, `with_void`'s blend
   gives back the pixel, so only the pixels under one of them are blended. The four planes are
-  sampled once a piece for every layer and the light (`render/void.py`). A piece with no void
+  sampled once a piece for every layer and the light (`render/ground/void.py`). A piece with no void
   under it and no pixel without data returns before the void's four planes are sampled, and
   `_sample_water_surface` and `_rock_kept` skip the cover there too.
 - **Water is mixed where it is.** The terrain and satellite styles (`water_composite`), the
@@ -839,7 +839,7 @@ conversions after the mix (`linear_from_oklab`, the tone curve) still run on the
 since a matrix product's summation order may change with the array's shape. The relief's mix
 weight is the cover plus half the shore stroke, and the stroke is 0 wherever the cover is, so
 its wet pixels are the same. The samplers still read the whole band before the wet pixels are
-taken: they belong to the band loop (`render/painting.py`).
+taken: they belong to the band loop (`render/draw/painting.py`).
 
 **Measured (2026-10-07, build 502094).** Eight full-width bands of the full-size sheet, at rows
 1,024 + 4,096k, were drawn by both versions in one process, alternating, twice each, lit by
@@ -871,7 +871,7 @@ rest of each painter, the ground and the light, is untouched. The eight bands we
   show it.
 
 Left out: the class optics (`class_optics`) are still mixed for the whole band, in
-`render/painting.py`'s band loop, and the shore terms, the river terms, the wet band and the
+`render/draw/painting.py`'s band loop, and the shore terms, the river terms, the wet band and the
 foam stay whole-band work.
 
 Both painters, with the terrain and satellite styles' `water_composite`, also run as numba
@@ -1055,7 +1055,7 @@ another.
   and are merged (`merge`). The pools, the float sums and the order the provinces are first
   seen in are the serial loop's, so the sidecar's numbers are too. `add` is
   `merge(measure(...))`.
-- `render/drawpool.in_order` runs the pool. Results come back in order, at most
+- `render/draw/drawpool.in_order` runs the pool. Results come back in order, at most
   `2 × threads` pieces are submitted past the one being waited on, and a failure is raised
   when its piece's turn comes, after the pieces not yet started are cancelled and the running
   ones have finished. On one thread it is a plain loop on the caller's thread: the serial
@@ -1064,7 +1064,7 @@ another.
 ### The halo (2026-10-07)
 
 A step that reads its neighbours draws what the whole sheet would only while all it reads
-lies within the band and its halo. `render/stencils.py` lists every such step with its reach,
+lies within the band and its halo. `render/ground/stencils.py` lists every such step with its reach,
 how many pixels away it reads through every step before it. The tests measure each reach on
 the code, by moving one row of the step's input and finding the farthest output row that
 moves.
@@ -1211,8 +1211,8 @@ The layers drew the same ground band by band, each layer again: the heights, the
 the overlay, the water surface, the meshes and the water over them, the borrowed shading.
 That was about half of each layer's draw but the painted layer's. A run now draws every
 layer it draws in one pass over the bands (`render_layers`), and each band composes its
-ground once (`render/surface.py` `band_surfaces`) before every layer's painter colours it
-(`render/painting.py` `paint_band`), in the order of `--layer`.
+ground once (`render/ground/surface.py` `band_surfaces`) before every layer's painter colours it
+(`render/draw/painting.py` `paint_band`), in the order of `--layer`.
 
 - **Two grounds, where the meshes need them.** Only the render-only meshes in the water
   depend on the style: every style but painted leaves them to the seabed (section 27). So a
@@ -1467,7 +1467,7 @@ runs.
   `gen` extra, pinned; without it the reference runs. `cuda` also runs the light's loops on
   the GPU ("On the GPU", below).
 - The two paths write the same bytes, so nothing a render writes records which one ran.
-- A kernel module (`lighting/kernels.py`, `lighting/span_kernels.py`, `terrain/kernels.py`,
+- A kernel module (`lighting/kernels.py`, `lighting/spans/kernels.py`, `terrain/kernels.py`,
   `palette/water/kernels.py`, `palette/painted/kernels.py`) is imported only once the switch
   says kernels, so the reference never loads numba. A test holds that.
 - The light's spawned processes inherit the switch with the environment.
@@ -1480,7 +1480,7 @@ runs.
     `np.maximum` has it). The bilinear sample is
     `(a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + e * fx) * fy` with the same float32
     fractions.
-  - The span march and its sky view (`lighting/span_kernels.py`, light-and-crowns.md
+  - The span march and its sky view (`lighting/spans/kernels.py`, light-and-crowns.md
     section 29, "Arches as spans") do the same per pixel for the ground, then each span
     sample's four-pixel minimum and maximum, its two tangents and the band's rules, in
     `spans.py`'s order. A row with no span in reach skips that work, which changes nothing.
@@ -1806,7 +1806,7 @@ light are the same bytes.
   and handed to the sink once its pieces are in and it is settled: after its rows of the
   light's surface are written and its measurements merged, and in order. Without a sink the
   pass returns whole sheets as before, which the crops and the tests use.
-- **The stream takes it** (`render/stream.py` `RenderStream`). Without the light the band is
+- **The stream takes it** (`render/draw/stream.py` `RenderStream`). Without the light the band is
   the lit colour and goes to the layer's `tiles/` and `tiles@2x/`. With it, it goes to
   `unlit/` at once and waits for the default sun's terms of its rows (below); then it is
   relit (`light.relight_rows`, the arithmetic of section 29's baked copy, row by row) and goes

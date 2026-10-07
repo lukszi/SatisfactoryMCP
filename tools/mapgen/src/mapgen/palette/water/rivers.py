@@ -3,7 +3,7 @@
 The field levels a river's water on the river actor's box, one AABB around the whole river,
 so it stands metres too high and as wide as the artwork drew it. Here that water gives way
 to the spline's own sloped plane, whose banks are where it meets the ground. Why each
-constant is what it is: docs/spatial-and-map.md section 34.
+constant is what it is: docs/map/water.md section 34.
 """
 
 from __future__ import annotations

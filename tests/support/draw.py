@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 
-from mapgen.render.compose import GroundInputs, render_layers
+from mapgen.render.draw.compose import GroundInputs, render_layers
 
 #: The keywords that are the ground's, not the pass's.
 GROUND_KEYWORDS = frozenset(field.name for field in fields(GroundInputs))

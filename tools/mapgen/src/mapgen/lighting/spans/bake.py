@@ -1,6 +1,6 @@
 """A light block's spans: arches and overhangs over the ground, crowns over both, as baked.
 
-``block_spans`` reads a block's window: the slabs the draw captured (``lighting/slabs.py``)
+``block_spans`` reads a block's window: the slabs the draw captured (``lighting/spans/slabs.py``)
 and the crowns, each crown a span from ``CROWN_UNDERSIDE`` of its height to its top.
 ``horizon_cells`` marches them into the atlas, where a band floating over the horizon is
 folded in at the elevation the sun's path has in that direction (``path_horizon``), and keeps
@@ -17,7 +17,6 @@ from typing import NamedTuple
 import numpy as np
 from scipy import ndimage
 
-from mapgen.lighting.holes import Holes, fill_holes, half_heights
 from mapgen.lighting.horizon import (
     FADE_M,
     HORIZON_DIRS,
@@ -27,8 +26,8 @@ from mapgen.lighting.horizon import (
 )
 from mapgen.lighting.light_tiles import downsample, optional_array, padded_window
 from mapgen.lighting.model import SHADOW_SOFT_DEG, sun_cells
-from mapgen.lighting.slabs import SlabStore
-from mapgen.lighting.spans import (
+from mapgen.lighting.spans.holes import Holes, fill_holes, half_heights
+from mapgen.lighting.spans.march import (
     CROWN_UNDERSIDE,
     Bands,
     SpanSurface,
@@ -36,6 +35,7 @@ from mapgen.lighting.spans import (
     path_elevation,
     span_surface,
 )
+from mapgen.lighting.spans.slabs import SlabStore
 from mapgen.lighting.sun import Sun
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid
 
@@ -174,7 +174,7 @@ def _filled(bands: Bands, holes: Holes | None) -> Bands:
 def horizon_cells(z_half: F32Grid, halo: int, spacing_m: float, spans: BlockSpans,
                   holes: Holes | None = None) -> Iterator[Cell]:  # fmt: skip
     """Each direction's ground cell, then its crown cell where the crowns stand above it, as
-    the atlas stores them (``Cell``). A hole (``lighting/holes.py``) takes the cells of the
+    the atlas stores them (``Cell``). A hole (``lighting/spans/holes.py``) takes the cells of the
     pixel nearest it."""
     for k in range(HORIZON_DIRS):
         az = k * 360.0 / HORIZON_DIRS

@@ -16,7 +16,7 @@ import pytest
 
 from mapgen import jit
 from mapgen.lighting import horizon as hz
-from mapgen.lighting import spans
+from mapgen.lighting.spans import march as spans
 from mapgen.terrain import sample as sm
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.paths import REPO_ROOT
@@ -82,7 +82,7 @@ def test_every_kernel_releases_the_gil_and_caches_on_disk():
     from numba.core.caching import NullCache
 
     from mapgen.lighting import kernels as light
-    from mapgen.lighting import span_kernels
+    from mapgen.lighting.spans import kernels as span_kernels
     from mapgen.terrain import kernels as gathers
 
     every = (light.march, light.sky_view, span_kernels.march_spans, span_kernels.sky_view_spans,

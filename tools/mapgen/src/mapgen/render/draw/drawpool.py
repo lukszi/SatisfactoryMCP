@@ -15,7 +15,7 @@ from typing import TypeVar
 
 from mapgen.jit import add_gpu_flag
 from mapgen.pools import free_ram_bytes
-from mapgen.render.stencils import piece_halo
+from mapgen.render.ground.stencils import piece_halo
 
 __all__ = [
     "AHEAD",
@@ -99,7 +99,7 @@ def draw_threads(
 
     ``requested``, or ``DRAW_THREADS`` but no more than the cores; then no more than ``free``
     bytes hold (``free_ram_bytes()`` when None) once one sheet's bytes and ``RESERVE_BYTES``
-    are set aside: about what the cut beside the draw holds (``render/stream.py``).
+    are set aside: about what the cut beside the draw holds (``render/draw/stream.py``).
     """
     want = min(DRAW_THREADS, os.cpu_count() or 1) if requested is None else requested
     free = free_ram_bytes() if free is None else free

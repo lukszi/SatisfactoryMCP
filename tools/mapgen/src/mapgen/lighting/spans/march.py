@@ -341,7 +341,7 @@ def _compiled_march(surface: SpanSurface, halo: int, steps: list[SpanStep],
                     out: tuple[F32Grid, F32Grid, F32Grid, BoolMask],
                     rows: tuple[NDArray[np.int64], int]) -> None:  # fmt: skip
     """``march_spans``' loop as a kernel, fed the steps it works out."""
-    from mapgen.lighting import span_kernels
+    from mapgen.lighting.spans import kernels as span_kernels
 
     smooth = [step.sample is bilinear for step in steps]
     oy, ox = [s.oy for s in steps], [s.ox for s in steps]
@@ -375,7 +375,7 @@ def sky_view_spans(surface: SpanSurface, halo: int, spacing_m: float,
     span = int(np.ceil(reach)) + 2
     rows = _rows_with_spans(surface.lo)
     if kernels_on():
-        from mapgen.lighting import span_kernels
+        from mapgen.lighting.spans import kernels as span_kernels
 
         thetas = [2 * np.pi * k / SKY_DIRS for k in range(SKY_DIRS)]
         oy = [np.sin(theta) * t for theta in thetas for t in steps]

@@ -4,7 +4,7 @@ The cooked landscape, every placed rock's own geometry folded max-Z, the ``Heigh
 interface raster outside the landscape frame and the game's water actors fuse into one field,
 measured on every static resource node before it is written. ``--caves`` and ``--rocks`` write
 only the cave masks or the collision pack. ``meta.json`` says what each plane holds, and
-docs/spatial-and-map.md sections 19 and 22 to 24 have the design.
+docs/map/heightfield.md sections 19 and 22 to 24 have the design.
 """
 
 from __future__ import annotations

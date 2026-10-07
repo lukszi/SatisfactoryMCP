@@ -3,7 +3,7 @@
 The painted style lights in linear light under its luminance tone curve; terrain and
 satellite multiply their hillshade into sRGB, which is ``SHADE_FLOOR`` as the ambient share
 of the flat-ground light and no tone curve. Only a style that draws the tree crowns reads
-their shadows (``crowns``). docs/spatial-and-map.md section 29.
+their shadows (``crowns``). docs/map/light-and-crowns.md section 29.
 """
 
 from __future__ import annotations

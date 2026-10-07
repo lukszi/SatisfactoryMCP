@@ -2,7 +2,7 @@
 
 The names and stamp bytes are what existing caches were written under, so they still hit.
 A raster cache's planes are written as a zstd band store; the raw memory maps every cache was
-before it are still read, and the sidecar's ``storage`` says which (docs/spatial-and-map.md
+before it are still read, and the sidecar's ``storage`` says which (docs/map/renders.md
 section 39).
 """
 

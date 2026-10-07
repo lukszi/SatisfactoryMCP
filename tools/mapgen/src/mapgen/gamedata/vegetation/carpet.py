@@ -3,7 +3,7 @@
 The paint command harvests their foliage instances in its own level walk and writes two planes
 into the paint store on the 1 m grid: how much of each texel a rosette covers, and the highest
 rosette top over it. The painted style draws them into the seabed under the water.
-docs/spatial-and-map.md section 32 has the evidence and the numbers.
+docs/map/painted.md section 32 has the evidence and the numbers.
 """
 
 from __future__ import annotations

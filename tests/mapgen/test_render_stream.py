@@ -18,9 +18,9 @@ from mapgen.lighting.bake import bake_light
 from mapgen.lighting.light_tiles import work_array
 from mapgen.lighting.stage import Surface
 from mapgen.palette.lightparams import shader_light
-from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME
-from mapgen.render.light import UNLIT_DIR_NAME, LightingRun, crown_layers, relight_rows
-from mapgen.render.stream import RenderStream
+from mapgen.render.draw.kept_light import KEPT_LIGHT_DIR_NAME
+from mapgen.render.draw.light import UNLIT_DIR_NAME, LightingRun, crown_layers, relight_rows
+from mapgen.render.draw.stream import RenderStream
 from mapgen.tiles.cutter import TileStream
 from satisfactory_mcp.core.gameassets.pyramid import install_pyramid
 

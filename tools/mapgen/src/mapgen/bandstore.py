@@ -1,6 +1,6 @@
 """A 2-D plane stored as one zstd frame per band of rows, and read back a band at a time.
 
-The layout, the measurements behind it and what a corrupt band does: docs/spatial-and-map.md
+The layout, the measurements behind it and what a corrupt band does: docs/map/renders.md
 section 39. ``zstandard`` is the ``gen`` extra's, so it is imported where it is used.
 """
 

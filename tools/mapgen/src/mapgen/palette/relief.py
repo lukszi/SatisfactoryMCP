@@ -2,7 +2,7 @@
 
 An OKLab elevation ramp over dry land, soft biome tints, slope rock, a hillshade that keeps flat
 ground at its ramp colour and shifts hue into shadow, then flat depth-tinted water. Every number
-is in the style's palette file; docs/spatial-and-map.md section 28 explains them.
+is in the style's palette file; docs/map/painted.md section 28 explains them.
 """
 
 from __future__ import annotations

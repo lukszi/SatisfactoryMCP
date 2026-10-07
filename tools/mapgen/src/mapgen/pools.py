@@ -1,6 +1,6 @@
 """What a pool of workers may take: the memory free now, and a numpy without a BLAS pool.
 
-docs/spatial-and-map.md sections 17, 29 ("Strips, memory and workers") and 40.
+docs/map/renders.md section 17 and docs/map/light-and-crowns.md section 29 ("Strips, memory and workers") and 40.
 """
 
 from __future__ import annotations

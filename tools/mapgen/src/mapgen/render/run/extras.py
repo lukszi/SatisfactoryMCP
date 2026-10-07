@@ -1,7 +1,7 @@
 """What a render draws beside the field: render-only meshes, waterfalls, Titan trees, rivers.
 
 Each comes from its own cache or from the shared level sweep, and each names the reader the
-sidecar records. docs/spatial-and-map.md sections 27, 30, 34 and 35.
+sidecar records. docs/map/painted.md sections 27 and 30 and docs/map/water.md sections 34 and 35.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.water.falls import FALLS_CACHE_DIR_NAME
 from mapgen.palette.water.falls import load_falls
 from mapgen.palette.water.rivers import RiverWater, load_rivers
-from mapgen.render.cached_rasters import LevelSweep
-from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME
+from mapgen.render.draw.kept_light import KEPT_LIGHT_DIR_NAME
+from mapgen.render.run.cached_rasters import LevelSweep
 from mapgen.terrain.render_meshes import mesh_items, mesh_pass, titan_items
 from satisfactory_mcp.core.arrays import F64Grid
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, to_json_object

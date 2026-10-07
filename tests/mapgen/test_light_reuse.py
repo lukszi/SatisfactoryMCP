@@ -21,11 +21,11 @@ from mapgen.lighting import stage
 from mapgen.lighting.bake import bake_light
 from mapgen.lighting.light_tiles import work_array
 from mapgen.lighting.stage import LIGHT_VERSION, Surface
-from mapgen.render import kept_light, light
-from mapgen.render.extras import RUN_CACHE_DIRS, remove_run_caches
-from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME
-from mapgen.render.light import LIGHT_CACHE_DIR_NAME, LightingRun
-from mapgen.render.stream import RenderStream
+from mapgen.render.draw import kept_light, light
+from mapgen.render.draw.kept_light import KEPT_LIGHT_DIR_NAME
+from mapgen.render.draw.light import LIGHT_CACHE_DIR_NAME, LightingRun
+from mapgen.render.draw.stream import RenderStream
+from mapgen.render.run.extras import RUN_CACHE_DIRS, remove_run_caches
 from mapgen.tiles.cutter import TileStream
 
 SIZE = 512

@@ -22,9 +22,9 @@ from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.palette.water.open_sea import open_sea
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.pools import free_ram_bytes
-from mapgen.render import compose, drawpool
-from mapgen.render.compose import BAND_ROWS
-from mapgen.render.drawpool import (
+from mapgen.render.draw import compose, drawpool
+from mapgen.render.draw.compose import BAND_ROWS
+from mapgen.render.draw.drawpool import (
     AHEAD,
     PIECE_COLS,
     add_draw_flags,

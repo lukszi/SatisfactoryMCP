@@ -3,7 +3,7 @@
 Per tile, ``{z}/{x}_{y}.nrm.webp`` (lossless RGBA: east and south normal, sky view, land
 weight) and ``{z}/{x}_{y}.hz.webp`` (an 8 x 8 grey atlas at half resolution: 32 faded ground
 horizons, then 32 crown horizons). Every style reads the ground's; only a style that draws
-the crowns adds theirs. docs/spatial-and-map.md section 29.
+the crowns adds theirs. docs/map/light-and-crowns.md section 29.
 """
 
 from __future__ import annotations

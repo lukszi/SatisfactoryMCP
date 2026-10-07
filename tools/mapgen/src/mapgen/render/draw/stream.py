@@ -1,10 +1,10 @@
 """A pass's bands cut into every layer's tile trees as they settle, so no sheet is kept whole.
 
 With the light, each band goes to its layer's ``unlit/`` at once and waits for the default
-sun's terms of its rows (``render/light.py``); then it is relit on the cutter's lanes and
+sun's terms of its rows (``render/draw/light.py``); then it is relit on the cutter's lanes and
 goes to ``tiles/`` and ``tiles@2x/``. Without it, the band is the lit colour and goes there
 at once. A band near an arch waits for the next band's first rows, so the arches' FXAA reads
-past its edges (``render/archaa.py``). docs/map/renders.md section 42.
+past its edges (``render/draw/archaa.py``). docs/map/renders.md section 42.
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ import numpy as np
 
 from mapgen.cache import Plane
 from mapgen.palette.lightparams import shader_light
-from mapgen.render.archaa import FXAA_HALO, arch_fxaa
-from mapgen.render.light import UNLIT_DIR_NAME, LightingRun, relight_rows
+from mapgen.render.draw.archaa import FXAA_HALO, arch_fxaa
+from mapgen.render.draw.light import UNLIT_DIR_NAME, LightingRun, relight_rows
 from mapgen.tiles.cutter import Sheet, TileStream, TreeSpec
 from mapgen.tiles.pyramid import layer_dir, lit_trees
 from satisfactory_mcp.core.arrays import U8Grid

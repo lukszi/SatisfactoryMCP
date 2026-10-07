@@ -357,7 +357,7 @@ def _void_blend(
     return (rgb * (1.0 - weight) + colour * weight) * (1.0 - line) + VOID_RIM_RGB * line
 
 
-#: The layers ``render.painting`` draws with ``terrain_colours`` or ``satellite_colours``.
+#: The layers ``render.draw.painting`` draws with ``terrain_colours`` or ``satellite_colours``.
 PLAIN_LAYERS = frozenset({"terrain", "satellite"})
 
 

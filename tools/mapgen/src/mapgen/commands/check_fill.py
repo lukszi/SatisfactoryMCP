@@ -4,7 +4,7 @@
 
 Every number comes from ``mapgen.terrain`` and ``mapgen.commands.renders`` as the render
 calls them; only the baselines are emulated here. Four checks, defined in
-docs/spatial-and-map.md section 26:
+docs/map/renders.md section 26:
 
 * **fill**: the interface raster read at held-out dry landscape (east half, every third
   texel), against the 1 m terrain. Baseline: the nearest texel, which is what the field

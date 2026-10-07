@@ -1,7 +1,7 @@
 """What a layer's ``meta.json`` says about how it was drawn: the render block and provenance.
 
 A run gathers what every layer says alike once (``RunRecord``); each layer adds its style,
-its measurements and its timings (docs/spatial-and-map.md sections 17 and 20).
+its measurements and its timings (docs/map/renders.md sections 17 and 20).
 """
 
 from __future__ import annotations

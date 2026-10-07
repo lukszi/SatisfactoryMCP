@@ -2,7 +2,7 @@
 
 The inverse pipeline from a display sRGB target back through the shader's tone to ground OKLab,
 the per-layer transfer, the targets derived by rule and the area scoping.
-docs/spatial-and-map.md section 31.
+docs/map/calibration.md section 31.
 """
 
 from __future__ import annotations

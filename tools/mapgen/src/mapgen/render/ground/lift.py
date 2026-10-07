@@ -1,7 +1,7 @@
 """The raise-only rule by which rocks and the top raster lift the ground over the lattice.
 
 ``blend_regimes`` is the field's own composition rule at the render's spacing; the top raster
-and the meshes go through the same smoothed lift (docs/spatial-and-map.md sections 20 and 25).
+and the meshes go through the same smoothed lift (docs/map/renders.md sections 20 and 25).
 """
 
 from __future__ import annotations

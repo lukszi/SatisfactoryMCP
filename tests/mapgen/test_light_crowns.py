@@ -63,7 +63,7 @@ def test_the_crowns_cast_into_their_own_cells_and_never_into_the_ground_s(tmp_pa
 
 
 def test_only_a_style_that_draws_the_crowns_is_shaded_by_them():
-    from mapgen.render.light import crown_layers
+    from mapgen.render.draw.light import crown_layers
 
     assert crown_layers() == ["painted"]
     assert shader_light("painted")["crowns"] and not shader_light("satellite")["crowns"]
@@ -82,7 +82,7 @@ def test_only_a_style_that_draws_the_crowns_is_shaded_by_them():
 
 
 def test_the_baked_copy_takes_the_crown_term_only_for_a_crown_style():
-    from mapgen.render.light import relight_rows
+    from mapgen.render.draw.light import relight_rows
 
     land = np.full((4, 4), 255, np.uint8)
     terms = np.zeros((4, 4, 4), np.uint8)

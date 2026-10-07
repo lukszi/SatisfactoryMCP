@@ -3,7 +3,7 @@
 A block is baked with its own halo on a light process; ``lighting/bake.py`` queues the blocks
 and bakes the coarser levels, whose tile format is ``light_tiles``. A bake is keyed on what it
 reads (``light_key``), so a run that draws the same surface reuses it
-(``render/kept_light.py``). docs/spatial-and-map.md section 29.
+(``render/draw/kept_light.py``). docs/map/light-and-crowns.md section 29.
 """
 
 from __future__ import annotations
@@ -26,8 +26,6 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
-from mapgen.lighting.canopy import Canopy, blend_canopy, block_canopy, canopy_rows
-from mapgen.lighting.holes import Holes, fill_holes, find_holes, half_heights, opened
 from mapgen.lighting.horizon import HORIZON_DIRS, encode_horizon, normals, sky_view
 from mapgen.lighting.light_tiles import (
     HZ_LINEAR_SCALE,
@@ -49,8 +47,7 @@ from mapgen.lighting.model import (
     sun_cells,
     sun_horizon,
 )
-from mapgen.lighting.slabs import SLAB_DIR_NAME, SlabPlanes, SlabStore
-from mapgen.lighting.span_bake import (
+from mapgen.lighting.spans.bake import (
     BlockSpans,
     block_spans,
     default_shade,
@@ -58,7 +55,10 @@ from mapgen.lighting.span_bake import (
     plain_bands,
     shade_cells,
 )
-from mapgen.lighting.spans import Bands, SpanSurface, sky_view_spans, span_surface
+from mapgen.lighting.spans.canopy import Canopy, blend_canopy, block_canopy, canopy_rows
+from mapgen.lighting.spans.holes import Holes, fill_holes, find_holes, half_heights, opened
+from mapgen.lighting.spans.march import Bands, SpanSurface, sky_view_spans, span_surface
+from mapgen.lighting.spans.slabs import SLAB_DIR_NAME, SlabPlanes, SlabStore
 from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.pools import free_ram_bytes
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid

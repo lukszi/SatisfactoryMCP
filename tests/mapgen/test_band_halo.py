@@ -1,5 +1,5 @@
 """The band and piece halos against the stencils a band's draw reads through
-(``render/stencils.py``), each measured on the code across rows and along them, and a
+(``render/ground/stencils.py``), each measured on the code across rows and along them, and a
 full-size window drawn in bands and in pieces against one band.
 
 docs/map/renders.md section 40. Synthetic fixtures: no install, no field on disk.
@@ -22,8 +22,8 @@ from mapgen.palette.painted.surfaces import sunk_specks, top_cover
 from mapgen.palette.scene import BandGrid
 from mapgen.palette.water.shore import shore_terms
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M, water_alpha
-from mapgen.render import compose
-from mapgen.render.stencils import STENCILS, band_halo, band_reach, piece_halo, piece_reach
+from mapgen.render.draw import compose
+from mapgen.render.ground.stencils import STENCILS, band_halo, band_reach, piece_halo, piece_reach
 from mapgen.terrain.render_meshes import MESH_CORAL
 from mapgen.terrain.sample import frame_coordinates
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
@@ -45,7 +45,7 @@ WINDOW = (40 * compose.BAND_ROWS, 43 * compose.BAND_ROWS, 4096, 4160)
 
 
 def _spacing(size: int) -> float:
-    """A pixel's edge in metres, as ``render.compose`` works it out."""
+    """A pixel's edge in metres, as ``render.draw.compose`` works it out."""
     return (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
 
 

@@ -9,8 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from mapgen.render import archaa
-from mapgen.render.stream import RenderStream
+from mapgen.render.draw import archaa
+from mapgen.render.draw.stream import RenderStream
 
 SIZE = 128
 

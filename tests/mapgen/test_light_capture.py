@@ -19,8 +19,8 @@ from mapgen.gamedata.ground.paint_store import CROWN_NAME, META_NAME
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import RELIEF_PALETTES
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
-from mapgen.render import painting
-from mapgen.render.light import crown_occluder, crown_tops
+from mapgen.render.draw import painting
+from mapgen.render.draw.light import crown_occluder, crown_tops
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.draw import draw_layers, render_layer

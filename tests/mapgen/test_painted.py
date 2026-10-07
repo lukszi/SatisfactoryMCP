@@ -57,7 +57,7 @@ from mapgen.palette.water.shore import (
     wet_band,
 )
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_over
-from mapgen.render.lift import composite_top
+from mapgen.render.ground.lift import composite_top
 from mapgen.terrain.render_meshes import (
     MESH_CORAL,
     MESH_ROCK,
@@ -389,7 +389,7 @@ def test_a_trail_narrower_than_the_pixel_is_drawn_at_every_phase_not_as_dots():
 
 
 def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkeypatch):
-    from mapgen.render import painting
+    from mapgen.render.draw import painting
     from tests.support.draw import render_layer
 
     n = 400  # texels over the frame, 18.75 m each

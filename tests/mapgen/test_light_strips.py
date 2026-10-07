@@ -18,9 +18,11 @@ import pytest
 from scipy import ndimage
 
 from mapgen import pools
-from mapgen.lighting import bake, light_tiles, model, span_bake, spans, stage
+from mapgen.lighting import bake, light_tiles, model, stage
 from mapgen.lighting import horizon as hz
 from mapgen.lighting.bake import bake_light
+from mapgen.lighting.spans import bake as span_bake
+from mapgen.lighting.spans import march as spans
 from mapgen.lighting.stage import Surface
 from mapgen.lighting.sun import DEFAULT_SUN
 

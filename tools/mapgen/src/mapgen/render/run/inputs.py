@@ -1,7 +1,7 @@
 """The renders command's inputs: the field and its lattices, the game, the borrow, the paint.
 
 Each stage prints what it found, and raises ``Refusal`` with the command's exit code when the
-run cannot go on (docs/spatial-and-map.md section 20, "Refusals"). The lattices and the water
+run cannot go on (docs/map/renders.md section 20, "Refusals"). The lattices and the water
 also say what every layer's sidecar records of them.
 """
 
@@ -39,8 +39,8 @@ from mapgen.palette.water.surface import (
     WATER_EDGE_M,
     water_planes,
 )
-from mapgen.render.cached_rasters import RasterGrid
-from mapgen.render.lift import DIRECT_LIFT_KNEE_M
+from mapgen.render.ground.lift import DIRECT_LIFT_KNEE_M
+from mapgen.render.run.cached_rasters import RasterGrid
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
 from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
 from mapgen.terrain.sample import direct_mask

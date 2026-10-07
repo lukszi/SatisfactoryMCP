@@ -1,7 +1,7 @@
 """Waterfalls in the colour step: a foam streak at the lip and a foam ring where it lands.
 
 Drawn over the finished colour, raise-only: a pixel only ever moves towards the foam colour
-and is never darkened. See docs/spatial-and-map.md section 35.
+and is never darkened. See docs/map/water.md section 35.
 """
 
 from __future__ import annotations

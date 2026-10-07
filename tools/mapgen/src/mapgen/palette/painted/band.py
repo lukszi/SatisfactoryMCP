@@ -2,7 +2,7 @@
 
 The ground under its canopy, rock and meshes; a sky-and-sun light, an exposure gain with a soft
 shoulder; Beer-Lambert water over a seabed with the coral carpet and sunk crowns; the crowns and
-Titan trees over it all. docs/spatial-and-map.md sections 27, 30 to 32 and 36.
+Titan trees over it all. docs/map/painted.md sections 27, 30 and 32, docs/map/calibration.md section 31 and docs/map/light-and-crowns.md section 36.
 """
 
 from __future__ import annotations

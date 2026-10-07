@@ -5,7 +5,7 @@ water, borrow.
 composes the ground there. Only the meshes' seabed depends on the layer, so one surface
 serves every layer that draws the seabed and a second one the painted layer. What the light
 captures and the seam trace measures waits for the band's last piece: ``settle_band``
-(docs/spatial-and-map.md sections 20, 25, 29 and 40).
+(docs/map/renders.md sections 20, 25 and 40 and docs/map/light-and-crowns.md section 29).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from numpy.typing import NDArray
 
 from mapgen.cache import DirectPlanes, MeshPlanes, TopPlanes
 from mapgen.lighting.borrow import BORROW_CLAMP, BORROW_GAIN
-from mapgen.lighting.slabs import SlabPlanes
+from mapgen.lighting.spans.slabs import SlabPlanes
 from mapgen.palette.scene import WaterTerms
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater
@@ -31,9 +31,9 @@ from mapgen.palette.water.shore import (
     shore_terms,
 )
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_alpha, water_depth_fraction
-from mapgen.render.floating import FieldPiece, FloatSources, band_slabs, piece_slabs
-from mapgen.render.lift import blend_regimes, composite_top, rock_kept
-from mapgen.render.void import DrawnVoid, drawn_void, land_weight
+from mapgen.render.ground.floating import FieldPiece, FloatSources, band_slabs, piece_slabs
+from mapgen.render.ground.lift import blend_regimes, composite_top, rock_kept
+from mapgen.render.ground.void import DrawnVoid, drawn_void, land_weight
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.sample import (
     AxisTaps,
@@ -460,8 +460,8 @@ def _water_terms(
 
 def _light_planes(grid: BandSampling, lit: BandSurface, slabs: SlabPlanes | None) -> LightPlanes:
     """The piece's output pixels for the light stage: the heights, NaN where no data is drawn
-    (``lighting/holes.py``), the land weight (``render/void.py``), and what floats over them
-    (``render/floating.py``), cut to them already."""
+    (``lighting/spans/holes.py``), the land weight (``render/ground/void.py``), and what floats over them
+    (``render/ground/floating.py``), cut to them already."""
     kept = (grid.rows.kept, grid.cols.kept)
     land = land_weight(lit.missing, lit.water["cover"], lit.void)
     z_m = np.where(lit.missing, np.float32(np.nan), lit.z_m)
@@ -490,9 +490,7 @@ def _direct_regime(
     rock = (np.asarray(direct.z[cut], np.float32), np.asarray(direct.coverage[cut]))
     wet_plane = None if sources.water is None else sources.water.wet
     kept = rock_kept(rock[0], missing, linear, wet_plane, sources.sea)
-    z_m, missing, weight, switched = blend_regimes(
-        base_m, missing, rock, direct.subsamples, kept
-    )
+    z_m, missing, weight, switched = blend_regimes(base_m, missing, rock, direct.subsamples, kept)
     rock_lift = np.clip((z_m - base_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     rock_seen = np.where(ground_missing, weight, np.minimum(weight, rock_lift))
     if edge is not None:

@@ -12,7 +12,7 @@ import argparse
 import pytest
 
 from mapgen.lighting.stage import Surface, allocate_work_arrays, occluder_planes
-from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME
+from mapgen.render.draw.kept_light import KEPT_LIGHT_DIR_NAME
 from satisfactory_mcp.domain.maps import presets, registry
 from tests.support.map_jobs import Passed, keep_cache, run_renders
 

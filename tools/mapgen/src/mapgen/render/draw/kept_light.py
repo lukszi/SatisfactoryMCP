@@ -4,7 +4,7 @@
 installed ones where the volume allows), the default-sun terms, the digest of each band of
 the surface it was baked from (``surface.json``), and the bake's ``meta.json``, written last,
 whose ``key`` (``lighting.stage.light_key``) says what the bake read.
-docs/spatial-and-map.md section 29, "Kept light", and docs/map/renders.md section 42.
+docs/map/light-and-crowns.md section 29, "Kept light", and docs/map/renders.md section 42.
 """
 
 from __future__ import annotations

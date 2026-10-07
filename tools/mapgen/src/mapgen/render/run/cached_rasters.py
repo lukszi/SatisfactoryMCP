@@ -1,7 +1,7 @@
 """The rocks and the arches rasterised into the render's grid, or read back from their caches.
 
 A raster cache is reused by any run whose stamp it carries; a miss sweeps the game's levels
-once, for every raster that needs them (docs/spatial-and-map.md sections 20, 25 and 39).
+once, for every raster that needs them (docs/map/renders.md sections 20, 25 and 39).
 """
 
 from __future__ import annotations

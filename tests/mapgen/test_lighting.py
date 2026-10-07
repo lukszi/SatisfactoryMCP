@@ -176,8 +176,8 @@ def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
 
     from mapgen.lighting.bake import bake_light
     from mapgen.lighting.stage import Surface
-    from mapgen.render.light import UNLIT_DIR_NAME, LightingRun
-    from mapgen.render.stream import RenderStream
+    from mapgen.render.draw.light import UNLIT_DIR_NAME, LightingRun
+    from mapgen.render.draw.stream import RenderStream
     from mapgen.tiles.cutter import TileStream
 
     size = 512

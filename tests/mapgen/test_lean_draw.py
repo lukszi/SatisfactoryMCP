@@ -20,8 +20,9 @@ from mapgen.palette.styles import (
 )
 from mapgen.palette.water.open_sea import VoidPlanes
 from mapgen.palette.water.shore import wet_mix
-from mapgen.render import lift, painting, surface, void
-from mapgen.render.surface import WaterPlanes
+from mapgen.render.draw import painting
+from mapgen.render.ground import lift, surface, void
+from mapgen.render.ground.surface import WaterPlanes
 from mapgen.terrain.sample import (
     reads_nothing,
     resample,

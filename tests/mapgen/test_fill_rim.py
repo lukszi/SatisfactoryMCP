@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from mapgen.terrain.emptied import RIM_REACH_TEXELS, void_past_rim
 from mapgen.terrain.fill import SOURCE_RASTER, SOURCE_RIM, SOURCE_ROCK, SOURCE_SEAM, fill_field
-from mapgen.terrain.void import RIM_REACH_TEXELS, void_past_rim
 from satisfactory_mcp.core.arrays import BoolMask
 from satisfactory_mcp.domain.spatial import heightfield as hf
 

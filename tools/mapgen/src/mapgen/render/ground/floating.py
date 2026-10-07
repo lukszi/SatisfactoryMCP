@@ -3,7 +3,7 @@
 An arch floats wherever it covers a pixel; a rock where the underside of its top layer clears
 both the surface under it and the ground by ``OVERHANG_CLEAR_M``. The light takes, there, the
 surface drawn without what floats (the ``solid``), and the floating geometry's underside and
-the drawn top (``lighting/slabs.py``). docs/map/light-and-crowns.md section 29.
+the drawn top (``lighting/spans/slabs.py``). docs/map/light-and-crowns.md section 29.
 """
 
 from __future__ import annotations
@@ -14,16 +14,16 @@ from typing import NamedTuple, Protocol
 import numpy as np
 
 from mapgen.cache import DirectPlanes, MeshPlanes, TopPlanes
-from mapgen.lighting.slabs import SlabPlanes
+from mapgen.lighting.spans.slabs import SlabPlanes
 from mapgen.palette.water.shore import composite_meshes
-from mapgen.render.lift import blend_regimes, composite_top
+from mapgen.render.ground.lift import blend_regimes, composite_top
 from mapgen.terrain.overhangs import OVERHANG_CLEAR_M
 from mapgen.terrain.sample import Taps
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, FloatGrid
 
 __all__ = ["FieldPiece", "FloatSources", "band_slabs", "piece_slabs"]
 
-#: ``render.lift.rock_kept`` with the piece's water and sea bound: ``(z_rock_cm, missing,
+#: ``render.ground.lift.rock_kept`` with the piece's water and sea bound: ``(z_rock_cm, missing,
 #: linear)`` to the share of its coverage a rock keeps, None without the open sea.
 RockKept = Callable[[F32Grid, BoolMask, Taps], F32Grid | None]
 

@@ -85,7 +85,7 @@ artwork has no light direction to inherit.
 An arch, a rock overhang and a tree crown stand over what is beneath them. Until light model 3
 the march stood each of them on the ground as a column, so an arch cast a wall from its foot to
 the end of its shadow, a crown a straight streak from its trunk, and an overhang a wedge. Now
-each is a span with an underside and a top, and the sun's ray decides (`lighting/spans.py`).
+each is a span with an underside and a top, and the sun's ray decides (`lighting/spans/march.py`).
 
 **The march.** Along each of the 32 directions the ground blocks as before, but the ground is
 the *solid* surface: the drawn one without what floats. A span sample blocks only the tangents
@@ -169,13 +169,13 @@ shadow there. The model block's `spans` records the rule and the 32 path elevati
 on the page (their underside and top per direction in a texture of their own, read per texel
 by the shader) are a later step; nothing here needs to change for it.
 
-**FXAA on the arches** (`render/archaa.py`). Their silhouettes stair-step at the pixel. FXAA
+**FXAA on the arches** (`render/draw/archaa.py`). Their silhouettes stair-step at the pixel. FXAA
 3.11 at its quality preset (an end-of-edge search 12 px along, `FXAA_REACH`) runs on each band
 of every layer's unlit and lit copy that an arch is near, and its answer is kept only inside the
 arches' coverage grown 3 px (`MASK_DILATE_PX`): rocks, crowns, water and the ground keep their
 bytes. The luma is summed in one fixed order (section 41 of renders.md). A band near an arch
 waits for the next band's first 14 rows (`FXAA_HALO`), so it is filtered as the whole sheet
-would be (`render/stream.py`).
+would be (`render/draw/stream.py`).
 
 **On disk.** `top.cache` holds the boulders alone, the arches' underside and their coverage
 beside the top; `direct.cache` holds the overhangs' underside and floor, NaN where none. Both
@@ -233,7 +233,7 @@ and the coarser levels are `lighting/light_tiles.py`'s.
 
 The land weight is the share of each drawn pixel that is the ground, and so the share the light
 lights: `(1 - water cover) * (1 - void cover) * (1 - void rim)`. The void's cover and rim are
-the ones every layer draws (`render/void.py`), worked out once a piece for the surface the light
+the ones every layer draws (`render/ground/void.py`), worked out once a piece for the surface the light
 captures. The void is not water: its cover is not added to the water's, and the water's own
 drawing does not change.
 
@@ -267,17 +267,17 @@ crowns and their canopy's own light (below, "The canopy's own light"). A block
 whose core is all water skips the horizon march. A row of blocks is queued as soon as the
 surface holds every row it reads, while the pass is still drawing (`lighting/bake.py`,
 section 42). Each band of a layer goes to `unlit/` at once and, once the terms of its rows
-are in, is lit by the default sun with its own term (`render/light.py` `relight_rows`: the
+are in, is lit by the default sun with its own term (`render/draw/light.py` `relight_rows`: the
 crowns' only for a style that draws them) and goes to `tiles/` and `tiles@2x/`. The three
 trees are renamed into place in that order (section 17, "Cutting in parallel").
 
 **One capture (2026-10-07).** The light does not depend on which layers a run draws, or in
 which order. It takes the surface the seabed rule draws: a band composes the seabed's heights
 and water for the light beside the painted layer's own, whether a layer that draws the seabed
-is in the pass or not (`render/surface.py` `band_surfaces`), and the painted layer drawn unlit
+is in the pass or not (`render/ground/surface.py` `band_surfaces`), and the painted layer drawn unlit
 always keeps the default sun on the meshes only it draws (section 36, "Coral trees are no
 crowns"). The crown tops come from the paint store whenever there is one: the painted
-ground's plane when that layer is drawn, else the store's (`render/light.py` `crown_tops`). A
+ground's plane when that layer is drawn, else the store's (`render/draw/light.py` `crown_tops`). A
 run without a paint store still bakes no crown cells. Before this date the surface was the
 first layer's as that layer drew it, and the crowns came with the painted layer only: `--layer
 painted --layer terrain` relit terrain around the sea meshes it draws as water, and `--layer
@@ -408,13 +408,13 @@ reads them where they are; a test bakes from them and from a copy to the same by
   write and under 1 s to read. It would take a 2-D tiled store the bake's processes can
   write a block at a time, for space nothing keeps after the run; moving the scratch to an
   SSD with `--scratch-dir` takes all of the traffic off the hard disk instead.
-- **The start of a run.** `render/light.py` `claim_scratch` empties a scratch a run left when
+- **The start of a run.** `render/draw/light.py` `claim_scratch` empties a scratch a run left when
   it was killed, before the field is read. A render that has started drawing keeps its
   `z.npy` mapped until it ends, and Windows refuses to rename a mapped file, so a scratch in
   use is refused with exit code 11 and the reason on stdout (section 20, "Refusals").
   Elsewhere that check finds nothing. Two runs started while both are still preparing can
   still meet: the second fails when it creates its first plane.
-- **The end of a run.** `render/light.py` `light_run` closes the stage however the draw loop
+- **The end of a run.** `render/draw/light.py` `light_run` closes the stage however the draw loop
   ends: finished, returned early, failed or interrupted, a crown occluder that fails
   included. A run killed outright, as a job cancelled from the Maps tab is, leaves the scratch
   to the next lit run's start or, under the cache folder, to the tab's cache clear. So can a
@@ -424,7 +424,7 @@ reads them where they are; a test bakes from them and from a copy to the same by
 
 A palette-only restyle draws the surface the render before it drew, so its bake would write
 the same pyramid. The finished bake is kept beside the raster caches, and a run that draws
-the same surface installs it instead of baking (`render/kept_light.py`).
+the same surface installs it instead of baking (`render/draw/kept_light.py`).
 
 **The key.** After the draw pass the run digests what the bake reads (`stage.light_key`):
 
@@ -489,8 +489,8 @@ the light's `key`. At full size the bake a restyle skips is about 830 s.
 ### Edges of the light (2026-10-07)
 
 **No data.** The capture stores NaN where the draw has no height at all, the void the
-painters draw there (`render/surface.py` `_light_planes`; the land weight there was 0
-already). The bake takes it as open (`lighting/holes.py`):
+painters draw there (`render/ground/surface.py` `_light_planes`; the land weight there was 0
+already). The bake takes it as open (`lighting/spans/holes.py`):
 
 - a half-resolution pixel averages only its pixels that have a height;
 - for the march and the sky view a hole stands at `OPEN_M`, 10 km down, so nothing in it
@@ -535,11 +535,11 @@ The painted layer lays the tree crowns and the Titan trees over the ground, and 
 light was the ground's: a crown took the Lambert term, sky view and horizon of the ground
 beneath it, so a ravine under the Titan forest showed through the canopy (sweep class 6,
 auto #5). The crown occluder's canopy now has a light of its own, baked at the default sun
-into the painted layer's terms (`lighting/canopy.py` `block_canopy` and `canopy_rows`):
+into the painted layer's terms (`lighting/spans/canopy.py` `block_canopy` and `canopy_rows`):
 
 - **Where:** the occluder's covered share of each pixel, where its top stands above the drawn
   surface (a crown under it the painter hides). The Titan trees join the paint store's crowns
-  in the occluder where the painted layer draws them (`render/light.py` `titan_crowns`):
+  in the occluder where the painted layer draws them (`render/draw/light.py` `titan_crowns`):
   their top where it stands higher, and the larger cover. So they cast into the crown cells
   as the crowns do.
 - **Its slope:** the occluder's top smoothed over its own pixels by `DOME_SIGMA_M` (0.75 m),

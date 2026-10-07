@@ -2,7 +2,7 @@
 shares.
 
 ``layer_job`` builds what a layer's bands read, once, over the window's columns;
-``paint_band`` colours one piece of a band of it over a ``render/surface.py`` ground, then
+``paint_band`` colours one piece of a band of it over a ``render/ground/surface.py`` ground, then
 the void and the falls, reading the piece's own columns of the job.
 """
 
@@ -37,7 +37,7 @@ from mapgen.palette.styles import (
 )
 from mapgen.palette.water.falls import draw_falls
 from mapgen.palette.water.open_sea import OpenSea
-from mapgen.render.surface import (
+from mapgen.render.ground.surface import (
     AxisTaps,
     BandSampling,
     BandSurface,
@@ -45,7 +45,7 @@ from mapgen.render.surface import (
     GroundSources,
     cut_taps,
 )
-from mapgen.render.void import DrawnVoid
+from mapgen.render.ground.void import DrawnVoid
 from mapgen.terrain.crown_stamp import LitCrowns, stamp_crowns
 from mapgen.terrain.sample import (
     grid_position,
@@ -312,7 +312,7 @@ def _void(
     rgb: FloatGrid, missing: BoolMask, sea: OpenSea | None, void: DrawnVoid | None
 ) -> FloatGrid:
     """A finished band under the void: the open sea's void as the ground drew it
-    (``render/void.py``); without the open sea, no data only, in the page's sea."""
+    (``render/ground/void.py``); without the open sea, no data only, in the page's sea."""
     if sea is None:
         return with_sea(rgb, missing)
     if void is None:
