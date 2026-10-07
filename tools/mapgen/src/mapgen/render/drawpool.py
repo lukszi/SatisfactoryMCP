@@ -97,8 +97,8 @@ def draw_threads(
     """Threads to draw a pass over ``layers`` of a ``size`` sheet on; at least one.
 
     ``requested``, or ``DRAW_THREADS`` but no more than the cores; then no more than ``free``
-    bytes hold (``free_ram_bytes()`` when None) once one sheet and ``RESERVE_BYTES`` are set
-    aside: the run's sheets are files (``render/sheets.py``).
+    bytes hold (``free_ram_bytes()`` when None) once one sheet's bytes and ``RESERVE_BYTES``
+    are set aside: about what the cut beside the draw holds (``render/stream.py``).
     """
     want = min(DRAW_THREADS, os.cpu_count() or 1) if requested is None else requested
     free = free_ram_bytes() if free is None else free

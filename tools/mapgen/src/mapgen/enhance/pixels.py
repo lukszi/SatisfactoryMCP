@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from scipy.ndimage import convolve, gaussian_filter, maximum_filter, uniform_filter
 
 from mapgen.enhance.upscaler import ENHANCE_SCALE
-from mapgen.tiles.cutter import TileImaging
+from mapgen.tiles.imaging import TileImaging
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid
 
 if TYPE_CHECKING:

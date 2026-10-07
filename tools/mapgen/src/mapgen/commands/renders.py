@@ -57,16 +57,16 @@ from mapgen.render.inputs import (
 )
 from mapgen.render.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.render.light import LightingRun, add_light_flags, claim_scratch, crown_tops, light_run
-from mapgen.render.sheets import SheetFiles, claim_sheets
+from mapgen.render.stream import RenderStream
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace, measured_lines
 from mapgen.terrain.rasters import DIRECT_SUBSAMPLES
 from mapgen.terrain.sample import taps_cubic, taps_pchip
-from mapgen.tiles.cutter import TileImaging, load_imaging
+from mapgen.tiles.cutter import TileStream
+from mapgen.tiles.imaging import TileImaging, load_imaging
 from mapgen.tiles.layer_meta import LayerDraw, RenderFacts, RunRecord, layer_sidecar
-from mapgen.tiles.pyramid import add_worker_flags, install_layer, layer_dir, pool_sizes, tree_text
+from mapgen.tiles.pyramid import add_worker_flags, layer_dir, pool_sizes, tree_text
 from mapgen.tiles.recipes import RECIPE_KERNEL_ONLY
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME
-from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
 from satisfactory_mcp.core.gameassets.provenance import changelist
 from satisfactory_mcp.core.gameassets.pyramid import PyramidError
@@ -131,9 +131,9 @@ def main() -> int:
         return IN_USE
     cache_root: Path = args.cache_dir or renders
     try:
-        scratch = claim_scratch(args, renders), claim_sheets(args, renders)
+        root = claim_scratch(args, renders)
         versions = require_gen("ooz", "texture2ddecoder", "PIL.Image", "zstandard")
-        started = _render(args, layers, scratch, (cache_root, versions))
+        started = _render(args, layers, root, (cache_root, versions))
     except Refusal as refusal:
         print(refusal.message)
         return refusal.code
@@ -149,27 +149,26 @@ def main() -> int:
 def _render(
     args: argparse.Namespace,
     layers: tuple[str, ...],
-    scratch: tuple[Path | None, SheetFiles],
+    root: Path | None,
     caching: tuple[Path, dict[str, str]],
 ) -> float:
     """Prepare the run, then draw and cut every layer; when the drawing started.
 
-    ``scratch`` is the light's root, None without it, and the sheets'; ``caching`` the raster
-    caches' root and the ``gen`` extra's versions.
+    ``root`` is the light's scratch, None without it; ``caching`` the raster caches' root
+    and the ``gen`` extra's versions.
     """
     import texture2ddecoder as decoder
 
     light_workers, cut_workers = pool_sizes(args)
     setup = Setup(caching[0], decoder, load_imaging(), caching[1], cut_workers)
     run = _prepare(args, layers, setup)
-    root, sheets = scratch
     crowns = None if root is None else crown_tops(args.paint_dir, run.painted)
-    try:
-        with light_run(root, args.size, crowns, light_workers, setup.cache_root) as light:
-            started = time.time()
-            _draw_layers(args, layers, run, light, setup, sheets)
-    finally:
-        sheets.close()
+    with (
+        light_run(root, args.size, crowns, light_workers, setup.cache_root) as light,
+        TileStream(setup.image_mod, cut_workers) as cutter,
+    ):
+        started = time.time()
+        _draw_layers(args, layers, run, light, cutter)
     return started
 
 
@@ -308,10 +307,10 @@ def _draw_layers(
     layers: tuple[str, ...],
     run: Prepared,
     light: LightingRun | None,
-    setup: Setup,
-    sheets: SheetFiles,
+    cutter: TileStream,
 ) -> None:
-    """Draw every layer in one pass, then cut each into place with its sidecar beside it."""
+    """Draw every layer in one pass, each band cut as it settles; then install each layer's
+    trees with its sidecar beside them."""
     two_regime = run.direct is not None
     seam = SeamTrace() if two_regime else None
     regimes = RegimeCoverage() if two_regime else None
@@ -319,7 +318,9 @@ def _draw_layers(
     print(f"drawing {', '.join(layers)} at {args.size}x{args.size} on {threads} thread(s)")
     print(encode_stage(DRAW_STAGE, 0.0), flush=True)
     started = time.time()
-    drawn = render_layers(
+    stream = RenderStream(cutter, layers, (args.out_dir, args.renders_name), args.size,
+                          run.record.recipe, light)  # fmt: skip
+    render_layers(
         layers, run.field, run.biome.rgb, run.biome.width, run.borrow, args.size,
         not args.quiet, height_dm=run.lattice.heights, direct=run.direct,
         measured_plane_u8=run.lattice.measured_plane, overlay=run.top,
@@ -327,7 +328,7 @@ def _draw_layers(
         falls=run.extras.falls, reach=run.water.reach, water_level=run.water.level,
         sea=run.sea, painted=run.painted, rivers=run.extras.rivers, relief=run.relief,
         seam=seam, regimes=regimes, unlit=light is not None, columns=args.draw_columns,
-        surface=light.surface if light else None, threads=threads, sheets=sheets,
+        surface=light.surface if light else None, threads=threads, bands=stream.put,
     )  # fmt: skip
     timing = (time.time() - started, threads)
     measured: JsonObject = {}
@@ -335,34 +336,28 @@ def _draw_layers(
         trace, table = seam.result(), regimes.result()
         measured = {"seam_trace": trace, "regimes": table}
         print("\n".join(measured_lines(trace, table)))
-    if light is not None:
-        light.bake(args.out_dir / args.renders_name)
+    stream.finish()
     for layer in layers:
         print(encode_stage(f"cut:{layer}", 0.0), flush=True)
-        _install(args, layer, drawn.pop(layer), (run, light, setup), measured, timing)
-        sheets.release(layer)
+        _install(args, layer, stream, (run, light), measured, timing)
 
 
 def _install(
     args: argparse.Namespace,
     layer: str,
-    sheet: U8Grid,
-    context: tuple[Prepared, LightingRun | None, Setup],
+    stream: RenderStream,
+    context: tuple[Prepared, LightingRun | None],
     measured: JsonObject,
     timing: tuple[float, int],
 ) -> None:
-    """Cut one drawn layer into place and write its sidecar; ``timing`` is the pass's
-    seconds and threads, which every layer of the pass records."""
-    run, light, setup = context
-    install = light.install if light else install_layer
+    """Install one layer's trees and write its sidecar; ``timing`` is the pass's seconds and
+    threads, which every layer of the pass records."""
+    run, light = context
     try:
-        stats, dense, cut = install(
-            sheet, setup.image_mod, args.out_dir, layer, setup.cut_workers, run.record.recipe,
-            args.renders_name,
-        )  # fmt: skip
+        trees = stream.install(layer)
     except PyramidError as exc:
         raise Refusal(CUT_FAILED, str(exc)) from exc
-    del sheet
+    stats, dense, cut = trees.tiles, trees.dense, trees.seconds
     stats["game_version_pinned"] = dense["game_version_pinned"] = run.field.build
     draw = LayerDraw(
         layer=layer,
@@ -377,7 +372,7 @@ def _install(
     )
     sidecar = layer_sidecar(run.record, draw, stats, dense)
     if light is not None:
-        light.decorate(sidecar, layer)
+        light.decorate(sidecar, layer, trees.unlit)
     directory = layer_dir(args.out_dir, layer, args.renders_name)
     (directory / RENDER_SIDECAR_NAME).write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
     trees = f"{tree_text(stats, 'tiles')} plus {tree_text(dense, '@2x')}"

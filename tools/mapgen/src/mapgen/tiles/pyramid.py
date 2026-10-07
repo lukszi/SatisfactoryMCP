@@ -1,4 +1,4 @@
-"""Cutting a drawn layer into its two tile pyramids, and the parallel cutter's self-check."""
+"""A drawn layer's tile trees, the cut's pool flags, and the parallel cutter's self-check."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ import time
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 
 from mapgen.common import RENDERS_DIR_NAME
 from mapgen.gamedata.frame import RENDER_2X_PX
 from mapgen.lighting.stage import LIGHT_WORKER_BYTES, LIGHT_WORKER_CAP
-from mapgen.tiles.cutter import CUT_WORKERS, Cutter, Source, TileImaging, Tree
+from mapgen.tiles.cutter import CUT_WORKERS, TileStream, TreeSpec
+from mapgen.tiles.imaging import TileImaging
 from mapgen.tiles.recipes import RECIPE
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_2X_PX,
@@ -26,17 +26,13 @@ from satisfactory_mcp.core.gameassets.pyramid import (
 )
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
-if TYPE_CHECKING:
-    from PIL.Image import Image
-
 __all__ = [
     "ParallelCheck",
     "add_worker_flags",
     "check_parallel",
-    "install_layer",
     "layer_dir",
+    "lit_trees",
     "pool_sizes",
-    "queue_layer",
     "tree_megabytes",
     "tree_text",
 ]
@@ -95,65 +91,16 @@ def tree_text(tree: JsonObject, noun: str) -> str:
     return f"{tree['count']} {noun} over z0..z{tree['max_z']} ({tree_megabytes(tree):.1f} MB)"
 
 
-def queue_layer(cutter: Cutter, source: Source, directory: Path, text: str) -> tuple[Tree, Tree]:
-    """Queue ``tiles/``, then ``tiles@2x/`` cut from a downscale capped at ``RENDER_2X_PX``.
+def lit_trees(layer: str, recipe: int = RECIPE) -> tuple[TreeSpec, tuple[TreeSpec, int]]:
+    """A drawn layer's ``tiles/``, and ``tiles@2x/`` cut from the sheet downscaled to at most
+    ``RENDER_2X_PX``.
 
     Cut from the full sheet the @2x tree would gain a z6 of 512 px tiles weighing as much as
     the whole 1x pyramid. That downscale is the 1x level of the same size, resampled once.
     """
-    tiles = cutter.tree(source, directory, TILES_DIR_NAME, PYRAMID_TILE_PX, text)
-    dense = source.derive(min(source.px, RENDER_2X_PX))
-    return tiles, cutter.tree(dense, directory, TILES_2X_DIR_NAME, PYRAMID_TILE_2X_PX, text)
-
-
-def install_layer(
-    sheet_rgb: np.ndarray,
-    image_mod: TileImaging,
-    out_dir: Path,
-    layer: str,
-    workers: int,
-    recipe: int = RECIPE,
-    renders_name: str = RENDERS_DIR_NAME,
-) -> tuple[JsonObject, JsonObject, float]:
-    """Cut one layer's two pyramids into place, and say what they wrote and how long it took.
-
-    ``tiles/`` first, because that is what every client can read, then ``tiles@2x/``, which
-    a client that cannot find it simply asks for the 1x instead. Each is renamed into place
-    on its own, so a run that dies between them never leaves the page without a base map.
-    ``workers`` encode; one cuts serially with ``install_pyramid``, the reference.
-    """
-    directory = layer_dir(out_dir, layer, renders_name)
-    directory.mkdir(parents=True, exist_ok=True)
     text = f"tools/gen_map_renders.py, {layer} recipe {recipe}, Lanczos"
-    started = time.time()
-    if workers <= 1:
-        stats, dense = serial_layer(image_mod.fromarray(sheet_rgb), image_mod, directory, text)
-        return stats, dense, time.time() - started
-    with Cutter(image_mod, workers) as cutter:
-        with cutter.publish(sheet_rgb) as source:
-            trees = queue_layer(cutter, source, directory, text)
-        stats, dense = (cutter.install(tree) for tree in trees)
-    return stats, dense, time.time() - started
-
-
-def serial_layer(
-    sheet: Image, image_mod: TileImaging, directory: Path, text: str
-) -> tuple[JsonObject, JsonObject]:
-    """``queue_layer``'s two trees, one tile at a time in this process."""
-    stats = install_pyramid(sheet, image_mod, directory, source=text)
-    dense_px = min(sheet.width, RENDER_2X_PX)
-    dense_sheet = (
-        sheet if dense_px == sheet.width else sheet.resize((dense_px, dense_px), image_mod.LANCZOS)
-    )
-    dense = install_pyramid(
-        dense_sheet,
-        image_mod,
-        directory,
-        tile_px=PYRAMID_TILE_2X_PX,
-        source=text,
-        dir_name=TILES_2X_DIR_NAME,
-    )
-    return stats, dense
+    dense = TreeSpec(TILES_2X_DIR_NAME, PYRAMID_TILE_2X_PX, text)
+    return TreeSpec(TILES_DIR_NAME, PYRAMID_TILE_PX, text), (dense, RENDER_2X_PX)
 
 
 @dataclass(frozen=True)
@@ -210,14 +157,14 @@ def check_parallel(
     seconds_serial = round(time.time() - started, 2)
     serial = _tile_digests(serial_dir)
     parallel_dir.mkdir(parents=True, exist_ok=True)
-    with Cutter(image_mod, workers) as cutter:
-        # Wake every encoder before the clock starts: spawning interpreters that each import
-        # numpy costs more than a small cut.
-        list(cutter.encoders.map(int, range(cutter.workers)))
+    px = sheet_rgb.shape[0]
+    with TileStream(image_mod, workers) as stream:
+        stream.warm()
         started = time.time()
-        with cutter.publish(sheet_rgb) as source:
-            tree = cutter.tree(source, parallel_dir, TILES_DIR_NAME, PYRAMID_TILE_PX, "check")
-        cutter.install(tree)
+        sheet = stream.sheet(parallel_dir, px, [TreeSpec(TILES_DIR_NAME, PYRAMID_TILE_PX, "check")])
+        for top in range(0, px, PYRAMID_TILE_PX):
+            stream.put(sheet, sheet_rgb[top : top + PYRAMID_TILE_PX])
+        stream.install(sheet)
     seconds_parallel = round(time.time() - started, 2)
     parallel = _tile_digests(parallel_dir)
     shutil.rmtree(scratch, ignore_errors=True)

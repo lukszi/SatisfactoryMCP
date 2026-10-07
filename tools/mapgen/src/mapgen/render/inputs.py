@@ -43,7 +43,7 @@ from mapgen.render.surface import DIRECT_LIFT_KNEE_M
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
 from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
 from mapgen.terrain.sample import direct_mask
-from mapgen.tiles.cutter import TileImaging
+from mapgen.tiles.imaging import TileImaging
 from mapgen.tiles.pyramid import check_parallel, layer_dir
 from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
 from mapgen.tiles.rendertext import LEVEL_ONLY_TEXT

@@ -134,22 +134,26 @@ def test_one_pass_draws_each_layer_as_it_draws_alone_and_measures_once(tmp_path)
     alone = {layer: _draw(scene, layer, 1) for layer in ("terrain", "satellite")}
     seam, regimes, surface = SeamTrace(), RegimeCoverage(), _Surface()
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
-    made = []
+    handed: list[tuple[int, list[str]]] = []
+    parts: dict[str, list[np.ndarray]] = {"terrain": [], "satellite": []}
 
-    def sheets(layer, shape):
-        made.append(layer)
-        return np.full(shape, 7, np.uint8)
+    def bands(top, rows):
+        handed.append((top, list(rows)))
+        for layer, band in rows.items():
+            parts[layer].append(band)
 
-    drawn = render_layers(
+    kept = render_layers(
         ("terrain", "satellite"), scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow,
         N, False, scene.heights, direct=scene.direct, seam=seam, regimes=regimes,
         measured_plane_u8=scene.measured, overlay=scene.overlay, sea=scene.sea, unlit=True,
-        surface=surface, threads=3, sheets=sheets,
+        surface=surface, threads=3, bands=bands,
     )  # fmt: skip
     measured = json.dumps({"seam": seam.result(), "regimes": regimes.result()}, sort_keys=True)
-    assert made == ["terrain", "satellite"] and list(drawn) == made
+    assert kept == {}, "a pass that hands its bands on keeps no sheet"
+    tops = list(range(0, N, BAND_ROWS))
+    assert handed == [(top, ["terrain", "satellite"]) for top in tops], "in order, each once"
     for layer, (rgb, alone_measured, alone_surface) in alone.items():
-        assert drawn[layer].tobytes() == rgb.tobytes(), layer
+        assert np.concatenate(parts[layer]).tobytes() == rgb.tobytes(), layer
         assert measured == alone_measured, "the pass measures the shared ground once"
         assert surface.z.tobytes() == alone_surface.z.tobytes()
         assert surface.land.tobytes() == alone_surface.land.tobytes()

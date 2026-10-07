@@ -1,19 +1,19 @@
-"""A render drawn unlit: the surface it hands the lighting stage, and how each layer installs.
+"""A render drawn unlit: the surface it hands the lighting stage, the bake that follows the
+draw a block row at a time, and the default sun's terms that relight each layer's bands.
 
 Each layer keeps ``tiles/`` and ``tiles@2x/`` lit by the default sun, so a page without
 WebGL and every older reader still draw a lit map, and adds ``unlit/``, the colour the page
 relights live. The stage's ``light.cache/`` is scratch for one run; the finished bake is
 kept beside the raster caches for a run that draws the same surface (``kept_light``).
-docs/spatial-and-map.md section 29.
+docs/spatial-and-map.md section 29 and docs/map/renders.md section 42.
 """
 
 from __future__ import annotations
 
 import argparse
 import shutil
-import time
 import traceback
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import NamedTuple, cast
@@ -23,14 +23,13 @@ import numpy as np
 from mapgen.cache import held_open
 from mapgen.common import Refusal
 from mapgen.gamedata.ground.paint_store import CROWN_NAME
+from mapgen.lighting.bake import LightBake, block_rows
 from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import CrownGrid, sheet_crowns
 from mapgen.lighting.stage import (
     LIGHT_DIR_NAME,
     Surface,
-    bake_light,
     cast_digests,
-    default_terms,
     discard,
     light_key,
     occluder_planes,
@@ -41,11 +40,8 @@ from mapgen.palette.painted.albedo import load_paint_meta, paint_plane
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.painted.shapes import PaintPlane
 from mapgen.palette.styles import LAYER_STYLES
-from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME, KeptLight
-from mapgen.tiles.cutter import Cutter, TileImaging
-from mapgen.tiles.pyramid import install_layer, layer_dir, queue_layer
+from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME, KeptBake, KeptLight
 from satisfactory_mcp.core.arrays import U8Grid
-from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX, install_pyramid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.core.mapprogress import encode_stage
 
@@ -62,19 +58,23 @@ __all__ = [
     "crown_occluder",
     "crown_tops",
     "light_run",
-    "relight_in_place",
+    "relight_rows",
     "scratch_root",
 ]
 
 UNLIT_DIR_NAME = "unlit"
 LIGHT_CACHE_DIR_NAME = "light.cache"
-RELIGHT_ROWS = 512
+#: Rows relit at a time: each row is lit on its own, so only the memory it takes changes.
+RELIGHT_ROWS = 64
 
 #: Exit code of a run whose light scratch a render still running holds open.
 SCRATCH_IN_USE = 11
 
 #: The crowns the light bake casts: their tops in metres and the share of a pixel covered.
 Occluder = tuple[np.ndarray, np.ndarray]
+
+#: Where a block row's terms are read from: the kept bake's, or this run's bake.
+KEPT, BAKED = "kept", "baked"
 
 
 class CrownTops(NamedTuple):
@@ -101,10 +101,9 @@ def add_light_flags(parser: argparse.ArgumentParser) -> None:
         type=Path,
         default=None,
         help=(
-            f"where the light's {LIGHT_CACHE_DIR_NAME}/ and the drawn sheets' sheets.cache/ "
-            "live while the run lasts (default: --cache-dir, else beside the renders). Nothing "
-            "reads them after the run, which deletes them; at full size the light takes about "
-            "20 GB and the sheets 3.2 GB a layer, so a fast local disk helps"
+            f"where the light's {LIGHT_CACHE_DIR_NAME}/ lives while the run lasts (default: "
+            "--cache-dir, else beside the renders). Nothing reads it after the run, which "
+            "deletes it; at full size it takes about 20 GB, so a fast local disk helps"
         ),
     )
 
@@ -136,21 +135,22 @@ def claim_scratch(args: argparse.Namespace, renders: Path) -> Path | None:
     return root
 
 
-def relight_in_place(sheet: U8Grid, surface: Surface, params: JsonObject) -> None:
-    """Light an unlit sheet by the default sun, a band of rows at a time.
+def relight_rows(rgb: U8Grid, terms: U8Grid, land: U8Grid, params: JsonObject) -> U8Grid:
+    """Unlit rows lit by the default sun, from the bake's terms and the land weight of the
+    same rows.
 
     A style that draws the crowns (``params["crowns"]``) takes the direct term with their
     shadows; every other style the ground's alone.
     """
-    terms = default_terms(surface)
     which = 2 if params.get("crowns") else 1
-    for top in range(0, sheet.shape[0], RELIGHT_ROWS):
+    out = np.empty_like(rgb)
+    for top in range(0, rgb.shape[0], RELIGHT_ROWS):
         rows = slice(top, top + RELIGHT_ROWS)
         svf = terms[rows, :, 0].astype(np.float32) / 255.0
         direct = terms[rows, :, which].astype(np.float32) / DIRECT_SCALE
-        land = surface.land[rows].astype(np.float32) / 255.0
-        sheet[rows] = apply_terms(sheet[rows], svf, direct, land, params)
-    del terms
+        dry = land[rows].astype(np.float32) / 255.0
+        out[rows] = apply_terms(rgb[rows], svf, direct, dry, params)
+    return out
 
 
 def crown_layers() -> list[str]:
@@ -183,12 +183,13 @@ def crown_occluder(crowns: CrownTops | None, scratch_root: Path, size: int) -> O
 
 
 class LightingRun:
-    """The default ``--light`` run: the surface the draw's one pass captures, the light bake,
-    and each layer's ``unlit/`` and relit installs.
+    """The default ``--light`` run: the surface the draw's one pass captures, the bake that
+    follows it a block row at a time, and the terms each band is relit by.
 
-    ``light_workers`` bake the light, None counting them from the cores and free memory;
-    ``install``'s own ``workers`` encode the tiles. With a ``cache_root`` the bake is kept
-    under it, and a kept bake of the same surface is installed instead of baking again.
+    ``light_workers`` bake the light, None counting them from the cores and free memory.
+    With a ``cache_root`` the bake is kept under it. A kept bake that differs at most in the
+    surface is read while the bands drawn so far are the ones it was baked from, and is
+    installed if they all are; the first band drawn otherwise starts this run's bake.
     """
 
     def __init__(
@@ -207,102 +208,130 @@ class LightingRun:
         self.light_workers = light_workers
         self.kept = None if cache_root is None else KeptLight(cache_root / KEPT_LIGHT_DIR_NAME)
         self.meta: JsonObject | None = None
-        self.unlit: dict[str, JsonObject] = {}
+        self.renders: Path | None = None
+        self.bake: LightBake | None = None
+        self.reuse: KeptBake | None = None
+        self.matched = self.matched_rows = 0
+        self.block, self.reads = block_rows(size)
+        self.served: list[str | None] = [None] * len(self.reads)
+        self._terms: dict[str, np.ndarray] = {}
 
-    def install(
-        self,
-        sheet: U8Grid,
-        image_mod: TileImaging,
-        out_dir: Path,
-        layer: str,
-        workers: int,
-        recipe: int,
-        renders_name: str,
-    ) -> tuple[JsonObject, JsonObject, float]:
-        """``install_layer``'s contract, plus ``unlit/``; the light is baked first if it is not.
+    def begin(self, renders: Path) -> None:
+        """Before the draw: read a kept bake that may be this surface's, else start baking."""
+        self.renders = renders
+        if self.kept is not None:
+            self.reuse = self.kept.candidate(light_key(self.surface, self.casts, crown_layers()))
+        if self.reuse is None:
+            self._start_bake()
 
-        Above one worker the unlit tree encodes while the sheet is relit, from its own copy.
-        """
-        self.bake(out_dir / renders_name)
-        if workers <= 1:
-            return self._install_serially(sheet, image_mod, out_dir, layer, recipe, renders_name)
-        directory = layer_dir(out_dir, layer, renders_name)
-        directory.mkdir(parents=True, exist_ok=True)
-        started = time.time()
-        with Cutter(image_mod, workers) as cutter:
-            with cutter.publish(sheet) as unlit:
-                text = f"tools/gen_map_renders.py, {layer} unlit, Lanczos"
-                first = cutter.tree(unlit, directory, UNLIT_DIR_NAME, PYRAMID_TILE_PX, text)
-            relight_in_place(sheet, self.surface, shader_light(layer))
-            with cutter.publish(sheet) as lit:
-                text = f"tools/gen_map_renders.py, {layer} recipe {recipe}, Lanczos"
-                tiles, dense = queue_layer(cutter, lit, directory, text)
-            self.unlit[layer] = cutter.install(first)
-            stats, dense_stats = cutter.install(tiles), cutter.install(dense)
-        return stats, dense_stats, time.time() - started
+    def _start_bake(self) -> LightBake:
+        if self.bake is None:
+            if self.renders is None:
+                raise RuntimeError("a light run bakes into the renders it began with")
+            print("baking the lighting pyramid as the bands come in", flush=True)
+            self.bake = LightBake(
+                self.surface, self.renders, self.light_workers, self.occluder, self.slabs,
+                occluder_layers=crown_layers(),
+            )  # fmt: skip
+        return self.bake
 
-    def bake(self, renders: Path) -> None:
-        """The lighting pyramid of the captured surface in ``renders``, once: the kept bake
-        when its key is this surface's, else baked here and kept."""
-        if self.meta is not None:
+    def drawn(self, rows: int) -> None:
+        """The surface holds its first ``rows`` rows: each block row whose reads they cover is
+        read from the kept bake while it matches, else queued on this run's bake."""
+        if self.reuse is not None:
+            self._match_kept()
+        size = self.surface.size
+        for row, reads in enumerate(self.reads):
+            if reads > rows and rows < size:
+                break
+            if self.reuse is not None:
+                if self.served[row] is None and self.matched_rows >= reads:
+                    self.served[row] = KEPT
+            else:
+                self._start_bake().queue(row)
+
+    def _match_kept(self) -> None:
+        """The kept bake's bands this run has drawn the same, in row order; the first drawn
+        otherwise ends the reading."""
+        kept = self.reuse
+        if kept is None:
             return
+        drawn = dict(self.surface.puts())
+        places = {place for place, _ in kept.puts}
+        same = set(drawn) <= places
+        while same and self.matched < len(kept.puts):
+            place, digest = kept.puts[self.matched]
+            if place not in drawn:
+                return
+            full = (place.c0, place.c1) == (0, self.surface.size)
+            same = drawn[place] == digest and full and place.row == self.matched_rows
+            if same:
+                self.matched, self.matched_rows = self.matched + 1, place.row + place.rows
+        if not same:
+            self.reuse = None
+
+    def ready(self) -> int:
+        """The rows whose terms are in, from the top: a run of block rows read or baked."""
+        for row in range(len(self.reads)):
+            if self.served[row] is None and self.bake is not None and row in self.bake.rows:
+                future = self.bake.rows[row]
+                if future.done():
+                    future.result()
+                    self.served[row] = BAKED
+            if self.served[row] is None:
+                return row * self.block
+        return self.surface.size
+
+    def terms(self, r0: int, r1: int) -> tuple[U8Grid, U8Grid]:
+        """The default sun's terms of rows ``[r0, r1)``, and their land weight, as copies."""
+        source = self.served[r0 // self.block]
+        if source is None or (r1 - 1) // self.block != r0 // self.block:
+            raise ValueError(f"rows {r0}:{r1} are not in one block row whose terms are in")
+        if source not in self._terms:
+            path = self.kept.terms if source == KEPT and self.kept else self.surface.terms
+            self._terms[source] = np.load(path, mmap_mode="r")
+        return np.array(self._terms[source][r0:r1]), np.array(self.surface.land[r0:r1])
+
+    def finish(self, release: Callable[[], None]) -> None:
+        """After the draw: the kept bake installed when every band matched it, else this
+        run's bake finished and kept. ``release`` runs each time more rows' terms are in."""
+        renders = self.renders
+        if renders is None:
+            raise RuntimeError("a light run finishes the renders it began with")
         key = light_key(self.surface, self.casts, crown_layers())
-        if self.kept is not None and (kept := self.kept.matching(key)) is not None:
+        kept = self.kept.matching(key) if self.reuse is not None and self.kept else None
+        if kept is not None and self.kept is not None:
             print("the lighting pyramid: kept from a run that drew this surface", flush=True)
+            release()
+            self._terms.clear()
             self.meta = self.kept.install(kept, renders)
             self.surface.terms = self.kept.terms
             print(encode_stage("light", 1.0), flush=True)
             return
-        self.meta = self._bake(renders, key)
+        self.reuse = None
+        bake = self._start_bake()
+        self.meta = bake.finish(key, on_row=lambda _row: release())
+        self._terms.clear()
         if self.kept is not None:
-            self.surface.terms = self.kept.keep(self.meta, renders, self.surface.terms)
-
-    def _bake(self, renders: Path, key: JsonObject) -> JsonObject:
-        print("baking the lighting pyramid", flush=True)
-        meta = bake_light(
-            self.surface, renders, self.light_workers, self.occluder, self.slabs,
-            occluder_layers=crown_layers(), key=key,
-        )  # fmt: skip
-        done, render = cast(JsonObject, meta["tiles"]), cast(JsonObject, meta["render"])
+            puts = self.surface.puts()
+            self.surface.terms = self.kept.keep(self.meta, renders, self.surface.terms, puts)
+        done, render = cast(JsonObject, self.meta["tiles"]), cast(JsonObject, self.meta["render"])
         print(
             f"  light: {done['count']} tiles over z0..z{done['max_z']} "
             f"({cast(int, done['bytes']) / 1e6:.1f} MB) in {render['seconds']}s "
             f"on {render['workers']} workers"
         )
-        return meta
 
-    def _install_serially(
-        self,
-        sheet: U8Grid,
-        image_mod: TileImaging,
-        out_dir: Path,
-        layer: str,
-        recipe: int,
-        renders_name: str,
-    ) -> tuple[JsonObject, JsonObject, float]:
-        directory = layer_dir(out_dir, layer, renders_name)
-        directory.mkdir(parents=True, exist_ok=True)
-        started = time.time()
-        source = f"tools/gen_map_renders.py, {layer} unlit, Lanczos"
-        self.unlit[layer] = install_pyramid(
-            image_mod.fromarray(sheet), image_mod, directory, source=source,
-            dir_name=UNLIT_DIR_NAME,
-        )  # fmt: skip
-        relight_in_place(sheet, self.surface, shader_light(layer))
-        stats, dense, _cut = install_layer(
-            sheet, image_mod, out_dir, layer, 1, recipe, renders_name
-        )
-        return stats, dense, time.time() - started
-
-    def decorate(self, sidecar: JsonObject, layer: str) -> None:
-        """Name the lighting pyramid and the shader's style fields in a layer's sidecar."""
+    def decorate(self, sidecar: JsonObject, layer: str, unlit: JsonObject | None) -> None:
+        """Name the lighting pyramid, ``unlit/`` and the shader's style fields in a layer's
+        sidecar."""
         meta = sidecar["_meta"]
         if not isinstance(meta, dict):
             return
         meta["light"] = {
             "dir": f"../{LIGHT_DIR_NAME}",
             "unlit_dir": UNLIT_DIR_NAME,
-            "unlit_tiles": self.unlit.get(layer),
+            "unlit_tiles": unlit,
             "params": shader_light(layer),
             "baked_sun": list(DEFAULT_SUN),
             "role": (
@@ -315,7 +344,11 @@ class LightingRun:
             provenance["light"] = self.meta["light"]
 
     def close(self) -> None:
-        # The occluder is a memory map in the light cache; Windows will not delete it while open.
+        # The light processes and every map of the scratch go first: Windows will not delete
+        # a mapped file.
+        if self.bake is not None:
+            self.bake.close()
+        self._terms.clear()
         self.occluder = None
         self.surface.close()
         discard(self.surface)

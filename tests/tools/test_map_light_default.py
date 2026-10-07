@@ -11,9 +11,8 @@ import argparse
 
 import pytest
 
-from mapgen.lighting.stage import Surface, _allocate_work_arrays, occluder_planes
+from mapgen.lighting.stage import Surface, allocate_work_arrays, occluder_planes
 from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME
-from mapgen.render.sheets import SheetFiles
 from satisfactory_mcp.domain.maps import presets, registry
 from tests.support.map_jobs import Passed, keep_cache, run_renders
 
@@ -93,24 +92,18 @@ def test_the_light_scratch_is_the_light_cache_the_stage_allocates(tmp_path):
     size = 512
     work = tmp_path / "light.cache"
     Surface(work, size).close()
-    _allocate_work_arrays(work, size)
+    allocate_work_arrays(work, size)
     written = sum(path.stat().st_size for path in work.glob("*.npy"))
     expected = presets.LIGHT_SCRATCH_BYTES * (size / presets.FULL_PX) ** 2
     assert written == pytest.approx(expected, rel=0.01)
 
 
-def test_the_sheet_scratch_is_the_file_a_drawn_layer_takes(in_use_local, tmp_path):
-    size = 512
-    sheet = SheetFiles(tmp_path)("terrain", (size, size, 3))
-    del sheet
-    written = (tmp_path / "terrain.npy").stat().st_size
-    expected = presets.SHEET_SCRATCH_BYTES * (size / presets.FULL_PX) ** 2
-    assert written == pytest.approx(expected, rel=0.01)
+def test_the_bands_are_cut_as_they_settle_so_more_layers_need_no_more_scratch(in_use_local):
     dark = {"size": 2048, "light": False}
     every = presets.estimate("render", {**dark, "layers": list(presets.RENDER_LAYERS)})
     one = presets.estimate("render", {**dark, "layers": ["terrain"]})
-    sheets = 4 * int(presets.SHEET_SCRATCH_BYTES * (2048 / presets.FULL_PX) ** 2)
-    assert every["transient_bytes"] - one["transient_bytes"] == sheets
+    assert every["transient_bytes"] == one["transient_bytes"]
+    assert every["keep_bytes"] == 5 * one["keep_bytes"]
 
 
 def test_the_crown_scratch_is_the_one_occluder_the_bake_reads(tmp_path):

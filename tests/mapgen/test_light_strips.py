@@ -18,9 +18,10 @@ import pytest
 from scipy import ndimage
 
 from mapgen import pools
+from mapgen.lighting import bake, light_tiles, model, stage
 from mapgen.lighting import horizon as hz
-from mapgen.lighting import light_tiles, model, stage
-from mapgen.lighting.stage import Surface, bake_light
+from mapgen.lighting.bake import bake_light
+from mapgen.lighting.stage import Surface
 from mapgen.lighting.sun import DEFAULT_SUN
 
 
@@ -226,7 +227,7 @@ def test_a_bake_is_the_same_bytes_on_one_worker_and_on_the_default_count(tmp_pat
             entered.append(os.environ["OPENBLAS_NUM_THREADS"])
             yield
 
-    monkeypatch.setattr(stage, "one_blas_thread", counted)
+    monkeypatch.setattr(bake, "one_blas_thread", counted)
     trees, workers = {}, {}
     for name, asked in (("one", 1), ("default", None)):
         surface = Surface(tmp_path / name / "work", 512)
@@ -239,7 +240,7 @@ def test_a_bake_is_the_same_bytes_on_one_worker_and_on_the_default_count(tmp_pat
         workers[name] = meta["render"]["workers"]
     assert workers == {"one": 1, "default": min(3, os.cpu_count() or 1)}
     assert len(trees["one"]) == 2 * (4 + 1) and trees["one"] == trees["default"]
-    assert entered == ["1", "1"], "each bake's pool starts its workers with one BLAS thread"
+    assert len(entered) >= 2 and set(entered) == {"1"}, "every bake starts its workers so"
 
 
 def test_light_workers_take_the_cores_capped_by_the_free_ram(monkeypatch):
