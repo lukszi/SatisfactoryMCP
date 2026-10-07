@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Hashable
+from typing import Generic, TypeVar
 
 __all__ = ["UnionFind"]
 
+K = TypeVar("K", bound=Hashable)
 
-class UnionFind:
+
+class UnionFind(Generic[K]):
     """Disjoint sets, created on first sight of a key."""
 
     def __init__(self) -> None:
-        self._parent: dict[Hashable, Hashable] = {}
+        self._parent: dict[K, K] = {}
 
-    def find(self, key: Hashable) -> Hashable:
+    def find(self, key: K) -> K:
         """The root of ``key``'s set, halving the path on the way up."""
         parent = self._parent
         parent.setdefault(key, key)
@@ -22,7 +25,7 @@ class UnionFind:
             key = parent[key]
         return key
 
-    def union(self, a: Hashable, b: Hashable) -> None:
+    def union(self, a: K, b: K) -> None:
         """Join two sets; ``a``'s root goes under ``b``'s, so ``b``'s root names the result."""
         root_a, root_b = self.find(a), self.find(b)
         if root_a != root_b:

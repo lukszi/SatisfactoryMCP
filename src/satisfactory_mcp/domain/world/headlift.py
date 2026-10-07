@@ -196,7 +196,7 @@ class _Plumbing:
 
 def _spans(
     projection: Projection,
-    joins: UnionFind,
+    joins: UnionFind[FluidNode],
     ports: dict[int, set[int]],
     gas: set[int],
     plumbing: _Plumbing,
@@ -215,7 +215,7 @@ def _spans(
         ends: list[tuple[FluidNode, list[float]]] = [
             (joins.find((seg.actor_index, role)), point)
             for role, point in ((c0, seg.points[0]), (c1, seg.points[-1]))
-            if role in held
+            if role is not None and role in held
         ]
         for node, point in ends:
             heights[node].append(point[2] / CM_PER_M)

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TypeAlias, cast
+from typing import TypeAlias
 
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
@@ -120,9 +120,9 @@ def _named_side(roles: list[str]) -> str | None:
     return next((ports.port_direction(r) for r in roles if ports.port_direction(r)), None)
 
 
-def _run_root(joins: UnionFind, piece: int) -> int:
-    """The root piece of ``piece``'s run: ``joins`` holds actor indices only."""
-    return cast(int, joins.find(piece))
+def _run_root(joins: UnionFind[int], piece: int) -> int:
+    """The root piece of ``piece``'s run."""
+    return joins.find(piece)
 
 
 def _contract_conduits(
@@ -142,7 +142,7 @@ def _contract_conduits(
     )
     is_conduit = [actor_class(a) in conduit_classes for a in actors]
 
-    joins = UnionFind()
+    joins = UnionFind[int]()
     edges: list[tuple[int, int, str, str]] = []
     for edge in (projection.get("graph") or {}).get("material") or ():
         if not isinstance(edge, (list, tuple)) or len(edge) < 4:

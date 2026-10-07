@@ -8,7 +8,7 @@ into one volume of fluid.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Hashable
+from collections.abc import Callable
 from typing import NamedTuple, TypeAlias
 
 from ...core.saveio.ports import PIPE, medium
@@ -24,13 +24,13 @@ __all__ = [
 ]
 
 #: A place fluid can stand: the ``joins`` root of an ``(actor index, role index)`` port.
-FluidNode: TypeAlias = Hashable
+FluidNode: TypeAlias = tuple[int, int]
 
 
 class FluidCouplings(NamedTuple):
     """``joins`` over ``(actor index, role index)``, and every fluid port each actor uses."""
 
-    joins: UnionFind
+    joins: UnionFind[FluidNode]
     ports_of: dict[int, set[int]]
     actors: list[str]
     roles: list[str]
@@ -48,7 +48,7 @@ def fluid_couplings(projection: Projection, is_body: Callable[[str], bool]) -> F
     actors = list(graph.get("actors") or ())
     roles = list(graph.get("roles") or ())
     fluid_roles = {i for i, name in enumerate(roles) if medium(name) == PIPE}
-    joins = UnionFind()
+    joins = UnionFind[FluidNode]()
     ports_of: dict[int, set[int]] = defaultdict(set)
     for edge in graph.get("material") or ():
         if not isinstance(edge, (list, tuple)) or len(edge) < 4:

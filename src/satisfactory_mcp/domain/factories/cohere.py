@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter, defaultdict, deque
-from collections.abc import Callable, Hashable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TypeAlias
 
@@ -236,10 +236,10 @@ def attach_dependents(
             wanted[k] = best
         if not wanted:
             break
-        joins = UnionFind()
+        joins = UnionFind[int]()
         for child, host in wanted.items():
             joins.union(child, host)
-        merged: dict[Hashable, list[str]] = defaultdict(list)
+        merged: dict[int, list[str]] = defaultdict(list)
         for k, members in enumerate(groups):
             merged[joins.find(k)] += members
         groups = list(merged.values())

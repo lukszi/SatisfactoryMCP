@@ -157,8 +157,8 @@ def _build(projection: Projection) -> _PipeGraph:
         actor = seg.actor_index
         ports = ports_of.get(actor, ()) if actor >= 0 else ()
         pipes[seg.position] = (
-            joins.find((actor, c0)) if c0 in ports else None,
-            joins.find((actor, c1)) if c1 in ports else None,
+            joins.find((actor, c0)) if c0 is not None and c0 in ports else None,
+            joins.find((actor, c1)) if c1 is not None and c1 in ports else None,
         )
 
     adjacency: Adjacency = defaultdict(list)
@@ -287,7 +287,9 @@ def _settle_by_conservation(
             far = n1 if at_first else n0
             outbound = (direction == 1) == at_first
             wanted, wanted_ports = (sink, inlets) if outbound else (source, outlets)
-            if not _has_receiver(adjacency, far, index, wanted, wanted_ports, stores):
+            if far is None or not _has_receiver(
+                adjacency, far, index, wanted, wanted_ports, stores
+            ):
                 continue
             settled[index] = direction
             changed = True

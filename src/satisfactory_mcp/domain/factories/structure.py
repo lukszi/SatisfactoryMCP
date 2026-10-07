@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from collections.abc import Hashable
 from dataclasses import dataclass, field
 from typing import TypeAlias
 
@@ -135,10 +134,10 @@ def _split_pieces(projection: Projection) -> tuple[list[Point3], list[Point3]]:
     return tiles, walkways
 
 
-def _union_pieces(nodes: list[Point3], link_xy: float, link_z: float) -> UnionFind:
+def _union_pieces(nodes: list[Point3], link_xy: float, link_z: float) -> UnionFind[int]:
     """Join every pair of pieces touching face to face, or stacked within ``link_z``."""
     cells = _grid(nodes)
-    union = UnionFind()
+    union = UnionFind[int]()
     for (cx, cy), members in cells.items():
         near = _neighbourhood(cells, cx, cy)
         for i in members:
@@ -154,9 +153,9 @@ def _union_pieces(nodes: list[Point3], link_xy: float, link_z: float) -> UnionFi
     return union
 
 
-def _slabs_of(tiles: list[Point3], union: UnionFind) -> tuple[list[Slab], dict[int, int]]:
+def _slabs_of(tiles: list[Point3], union: UnionFind[int]) -> tuple[list[Slab], dict[int, int]]:
     """The slabs, largest first, and each tile's slab index."""
-    grouped: dict[Hashable, list[int]] = defaultdict(list)
+    grouped: dict[int, list[int]] = defaultdict(list)
     for i in range(len(tiles)):
         grouped[union.find(i)].append(i)
     slabs: list[Slab] = []
