@@ -148,7 +148,7 @@ def _mean3x3(a: FloatGrid) -> FloatGrid:
     one order and rounded to ``a``'s type. Past the edge the edge texel stands in."""
     out = a
     for axis in (0, 1):
-        n = out.shape[axis]
+        n: int = out.shape[axis]
         pad = [(1, 1) if k == axis else (0, 0) for k in range(out.ndim)]
         wide = np.pad(out, pad, mode="edge").astype(np.float64)
         before, here, after = (np.take(wide, np.arange(k, k + n), axis) for k in range(3))
