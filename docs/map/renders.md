@@ -486,6 +486,13 @@ coverage, by it (`render/surface.py` `_direct_regime`). Where the field has no d
 the lattice's edge is the void's or a pit's, which the void draws, so it is not softened.
 Past about 6 m from the edge every pixel is the same bits as before.
 
+Measured (2026-10-07, build 502094): at 2048 the unlit tiles of each layer move in 21 to 23 of
+85 tiles, 699 (relief) to 1,808 (painted) pixels, 20 of the terrain's by more than 15 levels.
+On full-size windows the east line at x 4064 m falls from a mean step of 2.9 levels across one
+column of the painted layer to 0.2, its neighbours' being 0.1, and the heights' curvature there
+from 0.31 to 0.06; along y 3048 m the painted step falls from 2.8 to 0.3. The three windows of
+section 40 hold no lattice edge and draw the same bytes.
+
 Left as it is: a step in the field's own heights at that edge. Along y 3048 m the cliff
 texels stand 1.1 m under the fill beside them, because the fill's seam band carries only the
 landscape's residual and never reads rock (section 26); that step still draws a soft crease in

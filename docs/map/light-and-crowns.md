@@ -109,6 +109,13 @@ curve. Now the light fades out with the ground under the void's soft edge, so th
 the unlit one. The heights the light marches are unchanged: the 0 m plane under no data still
 casts (Open).
 
+**Measured** (2026-10-07, build 502094). On 27 full-size windows, 14 of them at void edges, the
+unlit sheets are the same bytes and the land weight moves only within a few metres of the void.
+At 2048, all five layers, with the lattice's softened edge of section 25 beside it: the lit
+tiles of each layer move in 31 of 85 tiles, 34,148 to 36,901 pixels, at most 73 levels in
+the painted layer and 121 to 124 in the others; the light's normal tiles move in 31 of 85,
+25,223 pixels, and its lossy horizon atlases in 25.
+
 ### The stage
 
 The one pass that draws every layer (section 40) hands its heights and land weight to a
