@@ -383,15 +383,15 @@ def preview(
     terrain: heightfield.Field | None = None,
     terrain_cap: int = 0,
     include_static: bool = False,
-) -> dict:
+) -> SitePreviewResponse:
     """``SitePreviewResponse`` for ``sit``; writes nothing. ``terrain`` is a loaded field or None.
 
     ``include_static`` adds what does not move with the pad: the plan's chosen nodes and the
-    playable box. A plain dict for the text presenter, which reads it as one.
+    playable box.
     """
     out = _preview_base(st, sess, sit, include_static)
     if not out["in_map"]:
-        return dict(out)
+        return out
     z = siting_mod.ground_z(sit.x_m, sit.y_m, sit.yaw_deg, sit.width_m, sit.depth_m)
     if z is not None:
         out["z_m"], out["z_note"] = z, ""
@@ -406,7 +406,7 @@ def preview(
     solution = sess.prepared.solution
     if sess.failure or solution is None:
         out["terrain_note"] = out["terrain_note"] or sess.failure
-        return dict(out)
+        return out
     survey = siting_mod.survey(g, st, sit, solution.processes)
     if survey is not None:
         out["on_pad"], out["planned"] = survey.standing_total, survey.planned_total
@@ -424,4 +424,4 @@ def preview(
         out["basis"] = f"counted on its pad from now (was: {sess.built_now['area']})"
     out["loses"] = _progress_lost(sess.built_now, here)
     out["fits"] = _fit_candidates(sit, here, str(st.header.get("save_datetime") or ""))
-    return dict(out)
+    return out

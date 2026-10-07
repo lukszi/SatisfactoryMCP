@@ -6,7 +6,9 @@ the world lookups a plan implies. It returns data, never presentation.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import cast
 
 from typing_extensions import TypedDict
 
@@ -85,7 +87,11 @@ class PlanFactoryReport:
 
 
 def _water_facts(
-    report: PlanFactoryReport, g: GameData, st: WorldState, sol: Solution, plan_kwargs: dict
+    report: PlanFactoryReport,
+    g: GameData,
+    st: WorldState,
+    sol: Solution,
+    plan_kwargs: Mapping[str, object],
 ) -> None:
     """Pump count, its assumed cap and whether it binds, and what the site measures.
 
@@ -183,7 +189,7 @@ def _logistics_item_ids(
 def build_plan_report(
     g: GameData,
     st: WorldState,
-    plan_kwargs: dict,
+    plan_kwargs: Mapping[str, object],
     logistics_items: list[str] | None = None,
     *,
     objective: str = "",
@@ -212,7 +218,7 @@ def build_plan_report(
     report.bill = bill = slice_of(prepared, g)
     if bill.shard_rows:
         report.shard_budget = st.shard_budget()
-    report.sloops_asked = int(plan_kwargs.get("sloops") or 0)
+    report.sloops_asked = int(cast("int | None", plan_kwargs.get("sloops")) or 0)
     # Reported rather than refused: planning ahead of the research is legitimate.
     if report.sloops_asked:
         report.sloop_gate = st.research_gate("production_boost")

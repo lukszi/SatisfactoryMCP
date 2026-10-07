@@ -8,6 +8,7 @@ that repipes one of those takes running generation down mid-startup.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -53,7 +54,7 @@ class CommissionReport:
 def build_commission_report(
     g: GameData,
     st: WorldState,
-    plan_kwargs: dict,
+    plan_kwargs: Mapping[str, object],
     headroom_mw: float | None,
     *,
     objective: str = "",

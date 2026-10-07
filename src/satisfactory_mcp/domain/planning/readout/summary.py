@@ -8,7 +8,8 @@ ranked. ``plan_factory`` renders the same report as text.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, cast
 
 from typing_extensions import TypedDict
 
@@ -20,7 +21,7 @@ from ...world.state import WorldState
 from ..solver.graph import chain_depth_of_rates
 from ..solver.model import MW, ProcessRow, Solution
 from ..solver.prepare import PlanFailure, PreparedPlan
-from ..solver.scenario import PlanRequest, build_scenario, shard_stock
+from ..solver.scenario import PlanKwargs, PlanRequest, build_scenario, shard_stock
 from ..stored import provenance
 from . import payback
 from .report import PlanFactoryReport, build_plan_report
@@ -451,7 +452,7 @@ def _failure_summary(
 
 
 def solve_summary(
-    g: GameData, st: WorldState, kwargs: dict, required: list[str] | None = None
+    g: GameData, st: WorldState, kwargs: Mapping[str, object], required: list[str] | None = None
 ) -> dict:
     """``SolveResponse`` for ``kwargs``: the solved plan as plain data, or why there is none.
 
@@ -461,12 +462,12 @@ def solve_summary(
 
 
 def _solve_response(
-    g: GameData, st: WorldState, kwargs: dict, required: list[str] | None
+    g: GameData, st: WorldState, kwargs: Mapping[str, object], required: list[str] | None
 ) -> SolveResponse:
     kwargs = dict(kwargs)
     if required and not kwargs.get("required"):
         kwargs["required"] = list(required)
-    objective = kwargs.get("objective", "max_mw")
+    objective = cast("str", kwargs.get("objective", "max_mw"))
     report = build_plan_report(g, st, kwargs, objective=objective)
     prepared = report.prepared
     req = prepared.request
@@ -517,7 +518,7 @@ def stamp_for(g: GameData, st: WorldState) -> Stamp:
 
     def stamp(state: PlanState) -> PlanStamp:
         return {
-            "plan_id": build_scenario(g, st, **state.kwargs()).plan_id,
+            "plan_id": build_scenario(g, st, **cast(PlanKwargs, state.kwargs())).plan_id,
             "provenance": provenance.record(g, st, list(state.args.sources) or None),
         }
 

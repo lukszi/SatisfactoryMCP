@@ -94,7 +94,7 @@ class PlanState:
     args: PlanArgs = field(default_factory=PlanArgs)
     headroom_mw: float | None = None
 
-    def kwargs(self) -> dict:
+    def kwargs(self) -> dict[str, object]:
         return self.args.kwargs()
 
     def to_dict(self) -> PlanStateRecord:

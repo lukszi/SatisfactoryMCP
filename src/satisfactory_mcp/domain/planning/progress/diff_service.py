@@ -8,6 +8,7 @@ was asked -- partition the plan into startup stages and match them against the s
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from ....core.gamedata.model import GameData
@@ -153,7 +154,7 @@ def diff_in_scope(
     return diff, note
 
 
-def plan_progress(g: GameData, st: WorldState, stored: PlanState) -> built.BuiltAt | None:
+def plan_progress(g: GameData, st: WorldState, stored: PlanState | Plan) -> built.BuiltAt | None:
     """A stored plan's ``built_at`` alone, for a list of plans: one solve and one match, no
     startup order. None when the plan does not solve or builds nothing."""
     prepared = prepare(g, st, stored.kwargs(), diagnose=False)
@@ -206,7 +207,7 @@ def _track_stages(
 def build_diff_report(
     g: GameData,
     st: WorldState,
-    plan_kwargs: dict,
+    plan_kwargs: Mapping[str, object],
     *,
     objective: str = "",
     plan: str | None = None,

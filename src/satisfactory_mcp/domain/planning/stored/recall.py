@@ -37,7 +37,9 @@ def merge_rows(stored: object, given: object) -> dict[str, object] | None:
     return out or None
 
 
-def with_overrides(stored: Mapping[str, object], overrides: Mapping[str, object]) -> dict:
+def with_overrides(
+    stored: Mapping[str, object], overrides: Mapping[str, object]
+) -> dict[str, object]:
     """A stored plan's arguments with this call's overrides laid over them."""
     merged = {**PLAN_DEFAULTS, **stored, **overrides}
     if "row_overclock" in overrides:
@@ -47,7 +49,7 @@ def with_overrides(stored: Mapping[str, object], overrides: Mapping[str, object]
     return merged
 
 
-def overrides_of(supplied: Mapping[str, object]) -> dict:
+def overrides_of(supplied: Mapping[str, object]) -> dict[str, object]:
     """The arguments this call set away from their declared default: what it overrode."""
     return {k: v for k, v in supplied.items() if k in PLAN_DEFAULTS and v != PLAN_DEFAULTS[k]}
 
@@ -71,7 +73,7 @@ def expand_plan_pin(st: WorldState, plan: _Plan) -> tuple[_Plan | str, str]:
 
 def recall_plan(
     st: WorldState, plan: str | None, supplied: Mapping[str, object]
-) -> tuple[dict, str, list[str]]:
+) -> tuple[dict[str, object], str, list[str]]:
     """Merge a stored plan's arguments with anything explicitly overridden this call.
 
     Returns (kwargs, resolved plan name, notes).

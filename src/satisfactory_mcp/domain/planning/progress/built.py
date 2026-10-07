@@ -12,7 +12,7 @@ import math
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
@@ -234,7 +234,11 @@ def search_area(
         centre = (sit.x_m * 100.0, sit.y_m * 100.0)
         return SearchArea("circle", ((*centre, radius),), words=f"{radius:,.0f} m around its site")
     args = stored.args
-    raw = args.get("sources") if isinstance(args, dict) else args.sources
+    raw = (
+        cast("Iterable[object] | None", args.get("sources"))
+        if isinstance(args, dict)
+        else args.sources
+    )
     sources = [str(s).strip() for s in (raw or [])]
     near = [s for s in sources if s.casefold().startswith("near:")]
     if near and len(near) == len(sources):

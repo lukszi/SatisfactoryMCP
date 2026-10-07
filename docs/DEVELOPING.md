@@ -278,6 +278,10 @@ colour value, so every colour sits with its owner and its warrant.
   read the schema's types, `saveio.resolve_save` and `load_projection` return `JsonObject`,
   `ParsedObject.properties` stays loose, and `saveio.rows` takes a `Mapping[str, object]`,
   which accepts both.
+- **Plan arguments** travel as `Mapping[str, object]`, or `dict[str, object]` where they are
+  built (`PlanArgs.kwargs`, `recall_plan`, `with_overrides`). They become
+  `solver.scenario.PlanKwargs` only where `build_scenario` unpacks them, by a `cast` at that
+  call, and a typed read of one value is a `cast` to the type `build_scenario` declares.
 - **Empty dataclass fields.** `field(default_factory=list)` leaves the element type unknown in
   strict mode and ruff refuses a `lambda: []`, so a field names its own type:
   `field(default_factory=list[str])`.

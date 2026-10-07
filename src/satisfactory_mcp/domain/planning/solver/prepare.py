@@ -9,14 +9,16 @@ script as well.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import cast
 
 from ....core.gamedata.model import GameData
 from ...world.state import WorldState
 from ..analysis import supply
 from .model import Solution
 from .optimize import free_lunch_audit, solve
-from .scenario import PlanRequest, build_scenario
+from .scenario import PlanKwargs, PlanRequest, build_scenario
 
 __all__ = ["PlanFailure", "PreparedPlan", "prepare"]
 
@@ -53,7 +55,7 @@ class PreparedPlan:
 def prepare(
     game: GameData,
     state: WorldState,
-    plan_kwargs: dict,
+    plan_kwargs: Mapping[str, object],
     *,
     objective_label: str = "",
     audit: bool = False,
@@ -77,7 +79,11 @@ def prepare(
     from .scenario import EXPORT_HELP
 
     request = build_scenario(
-        game, state, **plan_kwargs, site_at=site_at, site_footprint=site_footprint
+        game,
+        state,
+        **cast(PlanKwargs, plan_kwargs),
+        site_at=site_at,
+        site_footprint=site_footprint,
     )
     prepared = PreparedPlan(request=request)
 

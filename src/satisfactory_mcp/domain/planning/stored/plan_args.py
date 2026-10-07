@@ -367,7 +367,7 @@ class PlanArgs:
             "row_overclock": dict(self.row_overclock),
         }
 
-    def kwargs(self) -> dict:
+    def kwargs(self) -> dict[str, object]:
         """The non-default fields as ``build_scenario``'s keyword arguments."""
         blank = PlanArgs()
         out: dict[str, object] = {}

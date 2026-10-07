@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from typing import TypeAlias, cast
 
 from ....core.gamedata.model import GameData
 from ...world.state import WorldState
 from ..readout.views import ItemRate, SolveResponse, SolveRow
-from ..solver.scenario import build_scenario
+from ..solver.scenario import PlanKwargs, build_scenario
 from . import provenance as prov
 from .plan_args import InvalidOp
 from .planlog import Actor, Commit, NameTaken, PlanLog, Pushed, Stamp
@@ -56,7 +56,7 @@ def plan_status(st: WorldState, plan: StoredPlan, g: GameData | None = None) -> 
     out = PlanStatus()
     try:
         g = st.game if g is None else g
-        if build_scenario(g, st, **plan.kwargs()).plan_id != plan.plan_id:
+        if build_scenario(g, st, **cast(PlanKwargs, plan.kwargs())).plan_id != plan.plan_id:
             out.flags.append("world moved")
         for drift in prov.compare(g, st, plan):
             out.flags.append(f"field {drift.then}->{drift.now}")

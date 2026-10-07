@@ -43,7 +43,7 @@ class StoredPlan(Protocol):
     @property
     def siting(self) -> JsonObject: ...
 
-    def kwargs(self) -> dict: ...
+    def kwargs(self) -> dict[str, object]: ...
 
 
 def find_by_name(items: list[_Item], name_of: Callable[[_Item], str], needle: str) -> _Item | None:
@@ -59,7 +59,7 @@ def find_by_name(items: list[_Item], name_of: Callable[[_Item], str], needle: st
 @dataclass
 class Plan:
     name: str
-    args: dict = field(default_factory=dict)
+    args: dict[str, object] = field(default_factory=dict[str, object])
     notes: str = ""
     #: plan_id at the moment it was saved. A different id on recall means the WORLD moved.
     plan_id: str = ""
@@ -75,7 +75,7 @@ class Plan:
     key: str = ""
     rev: int = 0
 
-    def kwargs(self) -> dict:
+    def kwargs(self) -> dict[str, object]:
         """Stored arguments, filtered to those a planning call still accepts."""
         return {k: v for k, v in self.args.items() if k in PLAN_ARGS}
 

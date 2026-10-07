@@ -7,6 +7,7 @@ asked. All lookups, never sentences: the presenter decides what is worth a table
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 
 from typing_extensions import TypedDict
@@ -121,7 +122,7 @@ def _fit_scope(
 def build_layout_report(
     g: GameData,
     st: WorldState,
-    plan_kwargs: dict,
+    plan_kwargs: Mapping[str, object],
     tiers: TierChoice,
     *,
     objective: str = "",
