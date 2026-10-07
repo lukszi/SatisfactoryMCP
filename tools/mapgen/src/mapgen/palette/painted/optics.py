@@ -317,7 +317,7 @@ def _mix_compiled(
         floor = np.maximum(floor, w["turbidity"])
     wet_terms = (np.exp(-w["k"] * depth), (1.0 - floor)[:, 0],
                  np.exp(-depth / w["deep_tau_m"])[:, 0])  # fmt: skip
-    heights = (pixels.take(scene["z_m"]), water["depth_m"])
+    heights = (scene, water["depth_m"])  # the heights are read only where they are needed
     carpet = _carpet_terms(pixels, heights, ground, sample)
     sunk = _sunk_terms(pixels, heights, crowns, w["k"])
     murky = (sample_rock, w.get("opaque_tau_m"))
@@ -352,7 +352,10 @@ def _band_terms(
 
 
 def _carpet_terms(
-    pixels: WetPixels, heights: tuple[FloatGrid, FloatGrid], ground: PaintedSurface, sample: Sampler
+    pixels: WetPixels,
+    heights: tuple[PaintedScene, FloatGrid],
+    ground: PaintedSurface,
+    sample: Sampler,
 ) -> _Terms:
     """``carpet_bed``'s ``exp``, cover, colour and the ocean's body and sky; no pixels
     without the carpet."""
@@ -360,7 +363,8 @@ def _carpet_terms(
     if style is None or carpet is None:
         return (np.zeros((0, 3), np.float32), np.zeros(0, np.float32),
                 *(np.zeros(3, np.float32) for _ in range(3)))  # fmt: skip
-    z_m, depth = heights
+    scene, depth = heights
+    z_m = pixels.take(scene["z_m"])
     top = pixels.take(sample(carpet[1]))
     above = np.clip(z_m + depth - top, 0.0, None) * np.float32(style["depth_scale"])
     cover = pixels.take(sample(carpet[0])) / np.float32(255.0) * np.float32(style["strength"])
@@ -370,14 +374,15 @@ def _carpet_terms(
 
 
 def _sunk_terms(
-    pixels: WetPixels, heights: tuple[FloatGrid, FloatGrid], crowns: CrownLayer | None,
+    pixels: WetPixels, heights: tuple[PaintedScene, FloatGrid], crowns: CrownLayer | None,
     k: FloatGrid,
 ) -> _Terms:  # fmt: skip
     """The sunk crowns' ``exp`` and share; no pixels where none is sunk."""
     sunk = None if crowns is None else pixels.take(crowns["alpha"]) * pixels.take(crowns["sunk"])
     if crowns is None or sunk is None or not sunk.any():
         return np.zeros((0, 3), np.float32), np.zeros(0, np.float32)
-    z_m, depth = heights
+    scene, depth = heights
+    z_m = pixels.take(scene["z_m"])
     above = np.maximum(z_m + depth - pixels.take(crowns["top_m"]), 0.0)[..., None]
     return np.exp(-k * above), sunk
 

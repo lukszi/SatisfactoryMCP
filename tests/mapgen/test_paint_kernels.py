@@ -195,6 +195,19 @@ def test_the_water_composite_is_the_reference_bit_for_bit(monkeypatch, dry, styl
                                                      0.75, 0.25))  # fmt: skip
 
 
+@needs_numba
+def test_the_water_kernel_reads_only_the_planes_its_style_reads(monkeypatch):
+    """No wet band, stroke or foam: the water reads no distances to the waterline, no edge."""
+    rng = np.random.default_rng(8)
+    full = band_water(rng, SHAPE, 0.4)
+    water = {key: full[key] for key in ("cover", "depth", "depth_m", "ocean")}
+    land = rng.uniform(0.0, 255.0, (*SHAPE, 3)).astype(np.float32)
+    shade = np.ones(SHAPE, np.float32)
+    plain = {"clarity_m": 0.6, "edge_alpha": 0.3, "wet_darken": 0.82}
+    _same(monkeypatch, lambda: shore.water_composite(land, water, shade, plain, WATER_SHALLOW,
+                                                     WATER_DEEP, 0.75, 0.25))  # fmt: skip
+
+
 def test_float64_water_takes_the_reference(monkeypatch):
     """The kernels take float32 planes; with any other the numpy painter runs."""
     monkeypatch.delenv(jit.KERNEL_SWITCH, raising=False)
