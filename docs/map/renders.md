@@ -66,6 +66,26 @@ twice: over 0.9 m of depth (`WATER_EDGE_M`), which handles a beach, and by a 0.7
 depth band to blend in. The blur is in metres, so the sheet's size does not change how much
 ground it means.
 
+### The noise, read between its cells (2026-10-07)
+
+The two octaves are fields of 256 and 1024 texels over the 7500 m square, so their cells are
+29.3 m and 7.3 m. `terrain/sample.py` `sample_noise` read them nearest, so every cell was a
+flat square with a step at its edge: a quilt of 29 m and 7.3 m blocks on every flat of the
+satellite layer, steps of about 1 to 2% in brightness (sweep class 10, auto #4). Each octave is
+now read between its texel centres, wrapping, with smoothstep weights: the value at a cell's
+centre is the field's, and the slope is continuous across its edge, so no cell edge draws a
+line. The fields, their seed and their amounts are unchanged; the spread of the noise moves by
+a few percent. The layer's dry pixels move by up to 4 levels on the 2048 render, where about
+a fifth of its top level moves, and by up to 5 on the full-size sheet.
+
+Nothing changed in the noise between the sixth and the seventh render. The archived crops
+of the Dune Desert (`render-archive/biome-dune-desert`) show the same 29 m blocks in the
+fifth and sixth renders under a contrast stretch: those drew the 45° north-west hillshade into
+the colour, and its stronger shading hid them. The seventh draws the satellite layer unlit
+under the live sun (section 29), whose high noon sun leaves a flat nearly flat, so the
+blocks stood out. Each pixel still reads the noise at its own place in the sheet, so a band,
+a piece or a thread count cannot move it. Since satellite 10.
+
 ### Layers on the serving side
 
 * **`/api/maptiles/{z}/{x}/{y}` is an alias for `map`.** Not a redirect and not a
@@ -531,13 +551,17 @@ arches and boulders are drawn as in section 25. Build 502094.
 | --- | --- | --- |
 | Landscape | `terrain.u16.z`, unchanged | 45.39% |
 | Cliff province | the field's own heights, copied unchanged | 20.97% |
-| Fill | the float16 interface raster: Gaussian with sigma 1 texel, then cubic, then +1.0 m | 13.49% |
+| Fill | the float16 interface raster: Gaussian with sigma 1 texel, then cubic, then +1.0 m | 13.10% |
 | Fill within 48 m of the landscape | as above, plus the landscape's residual carried in by a harmonic solve and a cosine taper | 0.25% |
-| Interior holes | biharmonic fill, or harmonic where the biharmonic leaves its border's range by more than 2 m | 0.005% outside the cliff province (35 holes, 14 harmonic, nearly all ground under rock) |
-| Pits: no data and ground below -200 m the artwork draws as void | left empty, drawn as the void | 0.55% (681 regions; 210,086 texels of ground) |
+| Interior holes | biharmonic fill, or harmonic where the biharmonic leaves its border's range by more than 2 m | 0.005% outside the cliff province (35 holes, 13 harmonic, nearly all ground under rock) |
+| Pits: no data and ground below -200 m the artwork draws as void | left empty, drawn as the void | 0.36% (680 regions; 107,212 texels of ground) |
+| Fill past the artwork's world rim | left empty, drawn as the void ("The fill past the world's rim", below) | 0.57% (20 regions) |
 | No data out to the field's edge | left empty: the open sea or the void, as the artwork has it | 19.35% |
 
-Shares from the 2048 preview of 2026-10-05.
+Shares from the 2048 preview of 2026-10-05, the fill, the pits and the rim from the field of
+2026-10-07 (they do not depend on the render's size). Before the rim was clipped the fill
+was 13.49% and the pits 0.55% (681 regions; 210,086 texels of ground, 102,874 of them now
+past the rim).
 
 - **No de-terracing.** The interface raster is float16, with steps of 0.24–0.49 m, so there
   is nothing to de-terrace; the blocks once on screen were nearest-neighbour 3.66 m cells.
@@ -685,6 +709,64 @@ Known limits:
 - The tones are a hint, not a bed: under the teal the open sea is not held deeper than 6 m,
   and a tone's anti-aliased edge against land can read a metre or two too deep.
 - The falls off the edge of the world are left out (section 35).
+
+### The fill past the world's rim (2026-10-07)
+
+The interface raster has heights in places the artwork draws black, past the white line it
+draws round the world: a 226,000 m² island south-east of the abyss that the game's map
+does not show, a lobe on the east edge north of the abyss cliffs, and smaller pieces. Drawn
+as fill they were land or a beach where the artwork has the void (sweep class 18, auto
+#11). `terrain/void.py`
+`void_past_rim` finds the void past the rim, and `fill_field` leaves the fill there empty
+before anything is rebuilt, as it leaves a pit (`SOURCE_RIM`, under
+`two_regime.fill_rebuild.past_the_rim` in the sidecar). The render then draws it as the
+void past the world's edge, with the lit edge and rim line of the section above where it
+meets the land, and the sea fading into it where it meets the sea. Since terrain and
+satellite 10, game-painted 21, and relief and relief dark 8.
+
+- **The void past the rim** is the artwork's void (`artwork_planes`) that outlasts an
+  erosion of 4 texels (`RIM_CORE_TEXELS`) and reaches the grid's edge, grown back through
+  the void by 8 texels (`RIM_REACH_TEXELS`). Only fill is clipped: the landscape, the cliff
+  province and the water stay as they are.
+- **Why not every void joined to the edge.** That rule takes 435,301 texels, and a third of
+  them are not past the rim: 40,806 lie under the sheet's own dark frame, 3 pixels round its
+  north, west and east sides, which runs over the open sea; most of the rest are cliff faces
+  the artwork draws dark just inside its rim line, joined to the void through a gap in the
+  line or a dark stroke across it. The frame and those strokes are thinner than the erosion,
+  and the growth stays inside the void, so it reaches past a gap by 8 texels at most.
+- **What it clips** (build 502094): 321,562 texels in 20 regions. The south-east island
+  225,974; two blocks in the north-east corner, 59,653 and 21,169; the east edge's lobe
+  11,660; a block on the abyss's north rim at (2930, 1145), 1,936; the south-west corner
+  788; the rest 244 and less. The north-east blocks and the abyss's are a floor below
+  -200 m that the pit rule had emptied already, as had 19,984 texels of the island, so
+  218,688 texels are newly empty, nearly all of them the island and the lobe. Fill under the
+  rim's light line is kept, so the land ends where the artwork's line does. It takes about
+  1 s a run.
+- **Downstream.** The open sea counts 218,688 more void texels, 12,464 more under the sea's
+  fade into the void and 885 more in the sunken strips beside it. The open sea's bed is one membrane over the whole sheet,
+  so it moves well past the clip: by up to 3.6 m within 200 m of a clipped region, where the
+  coast it rose to is gone, 0.4 m within 400 m, 16 cm within a kilometre and 2 cm within
+  two, measured with the membrane solved to 1e-10; past that, the solve's own tolerance
+  (1e-6, within about 5 mm of the exact bed) moves it by up to 1.1 mm.
+- **The 2048 render** (against round 2's baseline): in each layer but satellite about
+  36,000 pixels of the top level move, 26,700 of them within 50 m of a clipped region (land
+  to the void), 8,900 within 400 m (the void's falloff and the bed) by at most 16 levels,
+  and 200 to 1,700 further out by one level, where the bed moved. The light's horizon tiles
+  are lossy WebP, so every tile whose bed moved at all is encoded anew, up to 36 levels
+  apart on the open sea and on the coasts beside it; the tiles lit by the default sun move
+  no more pixels there than the unlit ones.
+- **The full-size sheet**, unlit, the satellite layer aside: over the island 7.6 M pixels
+  move in every layer, over the lobe 0.63 to 0.68 M; of the three gate windows the densest
+  water is unchanged, the full-width strip moves 9,600 to 90,000 pixels and the first two
+  bands 63 to 425, all by one level and within 1.3 km of a clipped region.
+
+Known limits:
+
+- The fake east beach (4111, -2530) is not past the rim: the artwork draws water there
+  inside its line. It is the open sea's bed rising to the coast over the first tens of
+  metres, as everywhere beside a cliff, under a bay the artwork draws in its deep teal.
+- The fill inside the rim keeps its edge, a staircase of the interface raster's 3.66 m
+  texels where it ends, along the east edge between the abyss cliffs and the swamp.
 
 ### Drawing less (2026-10-06)
 

@@ -275,6 +275,13 @@ Planned as 0.2.0.
   arches no longer wear the moss or sand of the cliff below; and wet sand under a crude oil
   puddle keeps the colour of the wet sand around it. The game-painted style is one version
   up.
+- Map renders leave out the land the game's height data has past the world's rim, where the
+  game's own map draws nothing, and draw the void there: a 0.23 km² island south-east of the
+  abyss, a lobe on the east edge and smaller pieces. The open sea beside them moves too, by
+  a level at most a kilometre or more away.
+- The satellite map no longer shows a quilt of 29 m and 7.3 m squares on flat ground: its
+  noise is read smoothly between its cells. Every rendered map style is one version up for
+  these two fixes.
 
 ## [0.1.0] - 2026-09-27
 

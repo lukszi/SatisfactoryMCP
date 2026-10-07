@@ -11,8 +11,9 @@ the game or writes a file. Three steps on the 1 m lattice the kernel samples:
    its own border, unless the artwork draws the hole as a pit.
 
 Rock texels are never read as a constraint and never written. Empty ground connected to
-the edge of the field stays empty, and so does a pit: the render draws the open sea or the
-void there. The numbers behind every constant are in docs/spatial-and-map.md section 26.
+the edge of the field stays empty, and so does a pit and the fill past the artwork's world
+rim (``terrain.void``): the render draws the open sea or the void there. The numbers behind
+every constant are in docs/map/renders.md section 26.
 """
 
 from __future__ import annotations
@@ -30,6 +31,15 @@ from scipy import ndimage
 from mapgen.gamedata.frame import FILL_RASTER_BOX_CM
 from mapgen.gamedata.level.fill_raster import FILL_RASTER_PATH, read_fill_raster
 from mapgen.terrain.solve import jacobi_cg
+from mapgen.terrain.void import (
+    PIT_FLOOR_M,
+    PIT_SHARE,
+    RIM_CORE_TEXELS,
+    RIM_REACH_TEXELS,
+    edge_labels,
+    pits,
+    void_past_rim,
+)
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -39,8 +49,6 @@ __all__ = [
     "HOLE_FALLBACK_M",
     "HOLE_MAX_TEXELS",
     "HOLE_RING_TEXELS",
-    "PIT_FLOOR_M",
-    "PIT_SHARE",
     "RASTER_BIAS_M",
     "RASTER_SIGMA_TEXELS",
     "SEAM_BAND_M",
@@ -52,6 +60,7 @@ __all__ = [
     "SOURCE_NONE",
     "SOURCE_PIT",
     "SOURCE_RASTER",
+    "SOURCE_RIM",
     "SOURCE_ROCK",
     "SOURCE_SEAM",
     "WET_BELOW_M",
@@ -66,7 +75,6 @@ __all__ = [
     "ground_lattice",
     "harmonic_fill",
     "nearest_fill",
-    "pit_mask",
     "raster_positions",
     "rebuild_lattice",
     "reconstruct_raster",
@@ -84,15 +92,6 @@ SEAM_BAND_M = 48
 
 #: Holes larger than this are left empty, as is anything touching the field's edge.
 HOLE_MAX_TEXELS = 200_000
-
-#: An interior no-data hole is a pit, left empty, when the artwork draws at least this share
-#: of it as void: 0.88 to 0.95 for the crater and the abyss pits, 0.5 to 0.7 for a crack
-#: under its white outline, 0.44 and less for the holes it draws as ground.
-PIT_SHARE = 0.5
-
-#: Ground lower than this is a pit's floor, not ground the map shows: the landscape's own
-#: lowest height (-254 to -258 m) and the deepest abyss walls, 93% drawn as void.
-PIT_FLOOR_M = -200.0
 
 #: Context around a hole that the solve is anchored to, in texels.
 HOLE_RING_TEXELS = 16
@@ -112,7 +111,7 @@ SOLVE_HALO = 96
 
 #: What each texel of the rebuilt lattice is, for the sidecar's tally.
 SOURCE_NONE, SOURCE_LAND, SOURCE_ROCK, SOURCE_RASTER, SOURCE_SEAM, SOURCE_HOLE = range(6)
-SOURCE_PIT = 6
+SOURCE_PIT, SOURCE_RIM = 6, 7
 SOURCE_NAMES = {
     SOURCE_NONE: "no data: drawn as the open sea or the void, as the artwork has it",
     SOURCE_LAND: "landscape, measured",
@@ -121,6 +120,7 @@ SOURCE_NAMES = {
     SOURCE_SEAM: "fill inside the seam band",
     SOURCE_HOLE: "interior hole, filled",
     SOURCE_PIT: "a hole or a pit's floor the artwork draws as void, left empty",
+    SOURCE_RIM: "fill past the artwork's world rim, left empty: drawn as the void",
 }
 
 
@@ -153,6 +153,7 @@ class _Provinces(NamedTuple):
     holes: BoolMask
     rock: BoolMask
     pit: BoolMask
+    rim: BoolMask
 
 
 def raster_positions(count: int, origin_cm: float, spacing_cm: float, lo_cm: float,
@@ -296,21 +297,6 @@ def blend_seam(rec: NDArray[np.floating], land_m: NDArray[np.floating], land: Bo
     return blended.astype(np.float32), band
 
 
-def pit_mask(nodata: BoolMask, void: BoolMask, floor: BoolMask | None = None) -> BoolMask:
-    """The pits: each region of no data and ``floor`` ground the artwork draws as void over
-    ``PIT_SHARE`` of. Of one that reaches the field's edge only the floor, as the rest is
-    left empty anyway."""
-    floor = np.zeros(nodata.shape, bool) if floor is None else floor
-    labels, count = ndimage.label(nodata | floor)
-    if not count:
-        return np.zeros(nodata.shape, bool)
-    share = ndimage.mean(void, labels, np.arange(1, count + 1))
-    keep = np.concatenate([[False], share >= PIT_SHARE])
-    edge = np.zeros(count + 1, bool)
-    edge[np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))] = True
-    return keep[labels] & (floor | ~edge[labels])
-
-
 def fill_holes(ground_m: NDArray[np.floating], known: BoolMask, hole_max: int = HOLE_MAX_TEXELS,
                keep_out: BoolMask | None = None) -> tuple[F32Grid, BoolMask, HoleFill]:  # fmt: skip
     """Biharmonic fill of every unknown component that is small and off the field's edge.
@@ -326,8 +312,7 @@ def fill_holes(ground_m: NDArray[np.floating], known: BoolMask, hole_max: int = 
     if not count:
         return out, holes, stats
     sizes = ndimage.sum(unknown, labels, np.arange(1, count + 1))
-    edge = np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])
-    border = set(np.unique(edge).tolist()) - {0}
+    border = set(edge_labels(labels).tolist())
     ring_n = HOLE_RING_TEXELS
     for label, box in enumerate(ndimage.find_objects(labels), start=1):
         if box is None or label in border or sizes[label - 1] > hole_max:
@@ -366,14 +351,6 @@ def _raster_on_field(raster_m: NDArray[np.floating], raster_ok: BoolMask, shape:
     return reconstruct_raster(raster_m, raster_ok, fr, fc)
 
 
-def _pits(height_dm: NDArray[np.number], nodata: int, void: BoolMask | None,
-          shape: tuple[int, int]) -> tuple[BoolMask, BoolMask]:  # fmt: skip
-    """The pits the artwork draws as void, and the ground below ``PIT_FLOOR_M``."""
-    floor = (height_dm != nodata) & (height_dm <= np.float32(PIT_FLOOR_M * 10.0))
-    pit = np.zeros(shape, bool) if void is None else pit_mask(height_dm == nodata, void, floor)
-    return pit, floor
-
-
 def _wet_holes(ground: F32Grid, holes: BoolMask, water_dm: NDArray[np.number],
                water_quality: NDArray[np.integer], nodata: int) -> BoolMask:  # fmt: skip
     """Hold the filled holes under water below its surface; returns the texels it moved."""
@@ -387,12 +364,12 @@ def _wet_holes(ground: F32Grid, holes: BoolMask, water_dm: NDArray[np.number],
 def _composed(ground: F32Grid, ground_dm: NDArray[np.number], height_dm: NDArray[np.number],
               nodata: int, where: _Provinces) -> tuple[F32Grid, F32Grid, U8Grid]:  # fmt: skip
     """``(heights_dm, ground_dm, source)``: measured texels copied from the inputs rather
-    than round-tripped through metres, the cliff put back, the pits emptied."""
+    than round-tripped through metres, the cliff put back, the pits and the rim emptied."""
     ground_out = np.where(np.isnan(ground), np.float32(nodata), ground * 10.0).astype(np.float32)
     ground_out[where.land] = ground_dm[where.land]
-    ground_out[where.pit] = nodata
+    ground_out[where.pit | where.rim] = nodata
     heights_dm = np.where(where.rock, height_dm, ground_out).astype(np.float32)
-    heights_dm[where.pit] = nodata
+    heights_dm[where.pit | where.rim] = nodata
     source = np.zeros(heights_dm.shape, np.uint8)
     source[where.land] = SOURCE_LAND
     source[where.fill] = SOURCE_RASTER
@@ -401,11 +378,23 @@ def _composed(ground: F32Grid, ground_dm: NDArray[np.number], height_dm: NDArray
     source[where.rock] = SOURCE_ROCK
     source[heights_dm == nodata] = SOURCE_NONE
     source[where.pit] = SOURCE_PIT
+    source[where.rim] = SOURCE_RIM
     return heights_dm, ground_out, source
 
 
-def _fill_meta(source: U8Grid, holes: HoleFill, pit: BoolMask, floor: BoolMask, wet: BoolMask,
-               timings: dict[str, float]) -> JsonObject:  # fmt: skip
+def _rim_meta(rim: BoolMask) -> JsonObject:
+    """The sidecar's record of the fill left empty past the artwork's world rim."""
+    return {
+        "core_texels": RIM_CORE_TEXELS,
+        "reach_texels": RIM_REACH_TEXELS,
+        "regions": int(ndimage.label(rim)[1]),
+        "texels": int(rim.sum()),
+    }
+
+
+def _fill_meta(source: U8Grid, holes: HoleFill, empty: tuple[BoolMask, BoolMask, BoolMask],
+               wet: BoolMask, timings: dict[str, float]) -> JsonObject:  # fmt: skip
+    pit, floor, rim = empty
     shares: JsonObject = {
         SOURCE_NAMES[key]: round(100 * float((source == key).mean()), 3) for key in SOURCE_NAMES
     }
@@ -423,6 +412,7 @@ def _fill_meta(source: U8Grid, holes: HoleFill, pit: BoolMask, floor: BoolMask, 
             "texels": int(pit.sum()),
             "floor_texels": int((pit & floor).sum()),
         },
+        "past_the_rim": _rim_meta(rim),
         "wet_hole_texels_clamped": int(wet.sum()),
         "share_of_the_field_pct": shares,
         "seconds": {**timings},
@@ -469,13 +459,17 @@ def fill_field(
     made it (cliff removed, landscape at 7.8 mm). ``heights_dm`` is that ground with the
     cliff province's own heights put back unchanged. Both are float32 with ``nodata``.
     ``void`` is where the artwork draws void (``gamedata.water.channel.artwork_planes``): the
-    no-data holes and the ground below ``PIT_FLOOR_M`` it draws as pits are left empty.
+    fill past its world rim (``terrain.void.void_past_rim``), the no-data holes and the
+    ground below ``PIT_FLOOR_M`` it draws as pits are left empty.
     """
     timings = _Timings()
     rock = np.isin(prov, rock_values)
     fill = prov == fill_value
-    ground = np.where(ground_dm == nodata, np.nan, ground_dm / 10.0).astype(np.float32)
+    rim = fill & void_past_rim(void) if void is not None else np.zeros(fill.shape, bool)
+    fill &= ~rim
+    ground = np.where((ground_dm == nodata) | rim, np.nan, ground_dm / 10.0).astype(np.float32)
     land = ~np.isnan(ground) & ~fill
+    timings.tick("rim")
     rec, whole = _raster_on_field(
         raster_m, raster_ok, ground_dm.shape, field_origin_cm, spacing_cm, raster_box_cm
     )
@@ -488,16 +482,17 @@ def fill_field(
     del blended, rec
     timings.tick("seam")
 
-    pit, floor = _pits(height_dm, nodata, void, ground.shape)
+    pit, floor = pits(height_dm, (height_dm == nodata) | rim, void)
+    pit &= ~rim
     ground[pit] = np.nan
-    ground, holes, hole_fill = fill_holes(ground, ~np.isnan(ground), keep_out=pit)
+    ground, holes, hole_fill = fill_holes(ground, ~np.isnan(ground), keep_out=pit | rim)
     wet = _wet_holes(ground, holes, water_dm, water_quality, nodata)
     timings.tick("holes")
 
-    where = _Provinces(land, fill, band, holes, rock, pit)
+    where = _Provinces(land, fill, band, holes, rock, pit, rim)
     heights_dm, ground_out, source = _composed(ground, ground_dm, height_dm, nodata, where)
     timings.tick("compose")
-    meta = _fill_meta(source, hole_fill, pit, floor, wet, timings.seconds)
+    meta = _fill_meta(source, hole_fill, (pit, floor, rim), wet, timings.seconds)
     return FillResult(heights_dm, ground_out, source, meta)
 
 
