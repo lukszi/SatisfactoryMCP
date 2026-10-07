@@ -233,8 +233,8 @@ Planned as 0.2.0.
   Every rendered map style is one version up for these fixes.
 - Map renders leave out the land the game's height data has past the world's rim, where the
   game's own map draws nothing, and draw the void there: a 0.23 km² island south-east of the
-  abyss, a block in the north-east corner, a lobe on the east edge and smaller pieces, 0.57%
-  of the map square in all.
+  abyss, a lobe on the east edge and smaller pieces. The open sea beside them moves too, by
+  a level at most a kilometre or more away.
 - The satellite map no longer shows a quilt of 29 m and 7.3 m squares on flat ground: its
   noise is read smoothly between its cells. Every rendered map style is one version up for
   these two fixes.

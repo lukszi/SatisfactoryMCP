@@ -75,7 +75,8 @@ satellite layer, steps of about 1 to 2% in brightness (sweep class 10, auto #4).
 now read between its texel centres, wrapping, with smoothstep weights: the value at a cell's
 centre is the field's, and the slope is continuous across its edge, so no cell edge draws a
 line. The fields, their seed and their amounts are unchanged; the spread of the noise moves by
-a few percent.
+a few percent. The layer's dry pixels move by up to 4 levels on the 2048 render, where about
+a fifth of its top level moves, and by up to 5 on the full-size sheet.
 
 Nothing changed in the noise between the sixth and the seventh render. The archived crops
 of the Dune Desert (`render-archive/biome-dune-desert`) show the same 29 m blocks in the
@@ -667,9 +668,9 @@ Known limits:
 
 The interface raster has heights in places the artwork draws black, past the white line it
 draws round the world: a 226,000 m² island south-east of the abyss that the game's map
-does not show, a block of land in the north-east corner, a lobe on the east edge north of
-the abyss cliffs, and smaller pieces. Drawn as fill they were land, a beach or a lit rim
-where the artwork has the void (sweep class 18, auto #11). `terrain/void.py`
+does not show, a lobe on the east edge north of the abyss cliffs, and smaller pieces. Drawn
+as fill they were land or a beach where the artwork has the void (sweep class 18, auto
+#11). `terrain/void.py`
 `void_past_rim` finds the void past the rim, and `fill_field` leaves the fill there empty
 before anything is rebuilt, as it leaves a pit (`SOURCE_RIM`, under
 `two_regime.fill_rebuild.past_the_rim` in the sidecar). The render then draws it as the
@@ -688,16 +689,30 @@ satellite 10, game-painted 21, and relief and relief dark 8.
   line or a dark stroke across it. The frame and those strokes are thinner than the erosion,
   and the growth stays inside the void, so it reaches past a gap by 8 texels at most.
 - **What it clips** (build 502094): 321,562 texels in 20 regions. The south-east island
-  225,974; the north-east corner 59,653 and 21,169; the east edge's lobe 11,660; a block on
-  the abyss's north rim at (2930, 1145) 1,936; the south-west corner 788; the rest 244 and
-  less. Fill under the rim's light line is kept, so the land ends where the artwork's line
-  does. It takes about 1 s a run.
-- **Downstream.** The open sea counts 218,688 more void texels (102,874 of the clipped ones
-  were a pit's floor already), 12,464 more under the sea's fade into the void and 885 more
-  in the sunken strips beside it. The membrane of the open sea's bed is one solve over the
-  whole sheet, so its answer moves everywhere: by up to 3.6 m within 200 m of a clipped
-  region, where the coast it rose to is gone, 0.4 m within 400 m, 16 cm within a kilometre
-  and under 2 cm further out.
+  225,974; two blocks in the north-east corner, 59,653 and 21,169; the east edge's lobe
+  11,660; a block on the abyss's north rim at (2930, 1145), 1,936; the south-west corner
+  788; the rest 244 and less. The north-east blocks and the abyss's are a floor below
+  -200 m that the pit rule had emptied already, as had 19,984 texels of the island, so
+  218,688 texels are newly empty, nearly all of them the island and the lobe. Fill under the
+  rim's light line is kept, so the land ends where the artwork's line does. It takes about
+  1 s a run.
+- **Downstream.** The open sea counts 218,688 more void texels, 12,464 more under the sea's
+  fade into the void and 885 more in the sunken strips beside it. The open sea's bed is one membrane over the whole sheet,
+  so it moves well past the clip: by up to 3.6 m within 200 m of a clipped region, where the
+  coast it rose to is gone, 0.4 m within 400 m, 16 cm within a kilometre and 2 cm within
+  two, measured with the membrane solved to 1e-10; past that, the solve's own tolerance
+  (1e-6, within about 5 mm of the exact bed) moves it by up to 1.1 mm.
+- **The 2048 render** (against round 2's baseline): in each layer but satellite about
+  36,000 pixels of the top level move, 26,700 of them within 50 m of a clipped region (land
+  to the void), 8,900 within 400 m (the void's falloff and the bed) by at most 16 levels,
+  and 200 to 1,700 further out by one level, where the bed moved. The light's horizon tiles
+  are lossy WebP, so every tile whose bed moved at all is encoded anew, up to 36 levels
+  apart on the open sea and on the coasts beside it; the tiles lit by the default sun move
+  no more pixels there than the unlit ones.
+- **The full-size sheet**, unlit, the satellite layer aside: over the island 7.6 M pixels
+  move in every layer, over the lobe 0.63 to 0.68 M; of the three gate windows the densest
+  water is unchanged, the full-width strip moves 9,600 to 90,000 pixels and the first two
+  bands 63 to 425, all by one level and within 1.3 km of a clipped region.
 
 Known limits:
 
