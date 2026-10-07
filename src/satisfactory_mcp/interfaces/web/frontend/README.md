@@ -19,6 +19,7 @@ npm ci            # exact versions from package-lock.json
 npm run build     # build the page into ../static/, which app.py serves
 npm run dev       # Vite on :5173, hot reload, /api proxied to :8712
 npm run check     # tsc --noEmit
+npm test          # Vitest over test/, coverage to coverage/lcov.info
 npm run typegen   # regenerate src/api/schema.d.ts from a running server
 ```
 
@@ -81,6 +82,7 @@ rather than the one a game session is running against.
 | `vite.config.ts` | where the build writes, the banner it stamps, the licence it copies out of `node_modules/leaflet/`, the dev proxy |
 | `node-fs.d.ts` | the one Node module the config imports, declared by hand instead of installing `@types/node` |
 | `scripts/` | `typegen.mjs` regenerates the schema; `stamp-schema.mjs` re-applies its provenance header |
+| `test/`, `vitest.config.ts` | the unit tests, one file per module under the same path as in `src/`, and how `npm test` runs them |
 
 Four things about the graph are deliberate and easy to undo by accident.
 
@@ -154,6 +156,25 @@ travel with that binary form for whoever ever distributes one, so every build ca
 `vite.config.ts` copies `node_modules/leaflet/LICENSE` — the npm package is the source of
 truth, there is no vendored copy to drift — into `static/vendor/LEAFLET-LICENSE`, the page
 names it in a comment, and the bundle's own banner states what is compiled in.
+
+## Tests
+
+`npm test` runs Vitest in node, with no DOM. It covers the modules whose logic stands on its
+own: formatting and words, markup escaping, copy, toasts' error wording, the fetch registry,
+settings and the address parser, the palette audit, the sun, floor membership, machine states
+and route geometry. The DOM and Leaflet glue is left to the page itself. A module that touches
+the page while it is imported is loaded afresh per test with that global stubbed (`app/state.ts`
+reads the address bar, `app/settings.ts` reads storage); `map/drawn/route-geometry.ts` runs with
+`map/map.ts` and Leaflet mocked, because importing those creates the map.
+
+The tests live in `test/` rather than beside their modules because the architecture tests
+(`test_frontend_layout.py`, `test_comment_budget.py`) read every `.ts` under `src/` as page
+source, and a test file is not part of the page.
+
+Coverage spans every module under `src/`, tested or not, and is written to `coverage/lcov.info`
+(untracked) with paths relative to the repository root, which is how Sonar's
+`sonar.javascript.lcov.reportPaths` resolves them. `tests/frontend/test_format_ts.py` stays: it
+holds `format.ts` to the Python tools' own rounding, a comparison only the Python side can make.
 
 ## Types
 

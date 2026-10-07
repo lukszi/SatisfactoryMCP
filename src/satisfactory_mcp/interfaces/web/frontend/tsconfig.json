@@ -26,5 +26,5 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src", "vite.config.ts", "node-fs.d.ts"]
+  "include": ["src", "test", "vite.config.ts", "vitest.config.ts", "node-fs.d.ts"]
 }

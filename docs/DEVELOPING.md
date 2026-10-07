@@ -16,7 +16,7 @@ uv run pytest -q -m integration    # the other half: needs the game and at least
 
 The default run reads committed fixtures only, so a clone with no game install passes it in
 seconds. The map generators' own tests live in `tools/mapgen/tests/`; their
-[README](../tools/mapgen/README.md) has the command. Frontend checks are `npm run check` (strict `tsc --noEmit`) and `npm run build` in
+[README](../tools/mapgen/README.md) has the command. Frontend checks are `npm run check` (strict `tsc --noEmit`), `npm test` (Vitest) and `npm run build` in
 `src/satisfactory_mcp/interfaces/web/frontend/` —
 [the frontend README](../src/satisfactory_mcp/interfaces/web/frontend/README.md) covers the
 dev loop, the layer modules, and the type story.
