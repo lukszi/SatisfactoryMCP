@@ -1,7 +1,8 @@
 """The web app over stub loaders, and the plan-route calls the web tests repeat.
 
 ``fastapi`` is imported inside ``client_over``: it is an optional extra, and ``conftest``
-imports this module for every test.
+imports this module for every test. Why the apps are reused: docs/DEVELOPING.md ("Test
+suite", "Web tests").
 """
 
 from __future__ import annotations
@@ -18,6 +19,9 @@ from tests.support.reference_world import FIVE_RIP_ARGS
 #: The page's own origin; a write without it is refused as cross-site.
 PAGE_ORIGIN = {"origin": "http://testserver"}
 
+#: Apps no test is using, with their routes already built; each is lent its next world.
+_IDLE_APPS: list[Any] = []
+
 
 def failing_state_loader(save=None, world=None):
     """A state loader that fails the way the real one does when the sidecar produces nothing."""
@@ -30,9 +34,13 @@ def client_over(state_or_loader: Any, game: Any) -> Iterator[Any]:
 
     ``state_or_loader`` is a world served as is, a callable used as the state loader, or
     ``None`` for an app with no world at all. Skips when the ``web`` extra is not installed.
+
+    The app may be one an earlier call used, carrying this call's ``app.state`` and nothing of
+    the earlier one's.
     """
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
+    from starlette.datastructures import State
 
     from satisfactory_mcp.interfaces.web.app import create_app
 
@@ -43,9 +51,15 @@ def client_over(state_or_loader: Any, game: Any) -> Iterator[Any]:
         def state_loader(save=None, world=None):
             return state_or_loader
 
-    app = create_app(state_loader=state_loader, game_loader=lambda: game)
-    with TestClient(app) as client:
-        yield client
+    fresh = create_app(state_loader=state_loader, game_loader=lambda: game)
+    app = _IDLE_APPS.pop() if _IDLE_APPS else fresh
+    app.state = fresh.state
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        app.state = State()
+        _IDLE_APPS.append(app)
 
 
 def create_plan(client, name: str = "rip 5", args: dict = FIVE_RIP_ARGS) -> dict:

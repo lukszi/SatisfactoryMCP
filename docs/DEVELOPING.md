@@ -74,7 +74,14 @@ fixture is that root. `data_dir` and `cache_dir` are not redirected: a test that
 scope, because the web stack is an optional extra. It gets the app through `client` (the shared
 fixture world), `labelled_client`, `fresh_state_client` (a new world per request),
 `stateless_client`, or `tests.support.web.client_over` for a hand-built world; none reads a
-`.sav`.
+`.sav`. `client_over` reuses its apps within a worker: an app's first request builds the
+schema of every route, about 0.1 s, which once cost the default run 48 s of CPU over 477
+apps. Each use still calls `create_app`, which takes a millisecond, and lends a reused app that
+app's `state` (the two loaders, a new save watcher and a new map job runner); on the way out
+the app gets an empty `state` and goes back to the pool. A test that opens a client inside
+another gets a second app. `tests/web/test_app_reuse.py` holds both rules. A test that needs
+anything else of its own on the app, such as `dependency_overrides`, builds its app with
+`create_app`.
 
 **The reference world.** `tests/fixtures/save_projection.json` is the sidecar projection of one
 real save, named in `tests/support/reference_world.py` and committed because the `.sav` is not.
