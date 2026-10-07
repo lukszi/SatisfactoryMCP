@@ -8,7 +8,9 @@ and the light's worker count run everywhere.
 from __future__ import annotations
 
 import argparse
+import importlib
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -81,13 +83,30 @@ def test_the_flag_sets_the_switch_for_the_run_and_its_processes(monkeypatch):
 
 
 def test_the_flag_is_refused_where_the_kernels_cannot_run(monkeypatch, capsys):
+    from mapgen.commands.renders import build_parser
+
     monkeypatch.setenv(jit.KERNEL_SWITCH, "")
     monkeypatch.setattr(jit, "_gpu_problem_apart", lambda: "no CUDA device")
-    with pytest.raises(SystemExit) as refused:
-        _parser().parse_args(["--gpu"])
-    assert refused.value.code == 2
-    assert "--gpu: no CUDA device" in capsys.readouterr().err
-    assert os.environ[jit.KERNEL_SWITCH] == ""
+    for parser in (_parser(), build_parser()):
+        with pytest.raises(SystemExit) as refused:
+            parser.parse_args(["--gpu"])
+        assert refused.value.code == jit.GPU_UNAVAILABLE
+        assert "--gpu: no CUDA device" in capsys.readouterr().out
+        assert os.environ[jit.KERNEL_SWITCH] == ""
+
+
+def test_the_refusal_table_holds_each_code_and_the_gpu_s_is_its_own():
+    """docs/map/renders.md section 20, "Refusals": each constant it names has its row's code."""
+    text = (REPO_ROOT / "docs" / "map" / "renders.md").read_text(encoding="utf-8")
+    table = text.split("### Refusals", 1)[1].split("\n### ", 1)[0]
+    codes = []
+    for code, names in re.findall(r"^\| (\d+) \| ([^|]+) \|", table, re.MULTILINE):
+        for module, name in re.findall(r"`([\w/]+)\.([A-Z_]+)`", names):
+            found = importlib.import_module("mapgen." + module.replace("/", "."))
+            assert getattr(found, name) == int(code), f"{module}.{name}"
+            codes.append(int(code))
+    assert codes.count(jit.GPU_UNAVAILABLE) == 1 and len(codes) > 10
+    assert jit.GPU_UNAVAILABLE != 2, "argparse exits 2 on a usage error"
 
 
 @pytest.mark.usefixtures("device")

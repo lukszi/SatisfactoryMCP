@@ -144,8 +144,10 @@ def _is_journal_write(func: ast.expr) -> bool:
 def _written_kinds() -> set[str]:
     """Every literal kind, the second positional argument, of every journal write in src."""
     kinds = set()
-    for path in (REPO_ROOT / "src" / "satisfactory_mcp").rglob("*.py"):
-        if "frontend" in path.parts:
+    package = REPO_ROOT / "src" / "satisfactory_mcp"
+    page = package / "interfaces" / "web" / "frontend"
+    for path in package.rglob("*.py"):
+        if path.is_relative_to(page):
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Call) and _is_journal_write(node.func) and len(node.args) > 1:

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 __all__ = [
     "CUDA_OPTIONS",
     "GPU",
+    "GPU_UNAVAILABLE",
     "KERNEL_SWITCH",
     "REFERENCE",
     "add_gpu_flag",
@@ -44,6 +45,8 @@ KERNEL_SWITCH = "MAPGEN_KERNELS"
 REFERENCE = "numpy"
 #: The switch's value that selects the CUDA kernels.
 GPU = "cuda"
+#: Exit code of a ``--gpu`` the CUDA kernels cannot run under: not argparse's 2.
+GPU_UNAVAILABLE = 12
 
 #: NVRTC's options for every CUDA kernel: no fused multiply-add, and division, square roots
 #: and subnormals as IEEE has them, so each operation rounds as numpy's does.
@@ -186,7 +189,8 @@ def _gpu_problem_apart() -> str | None:
 
 class _SelectGpu(argparse.Action):
     """``--gpu``: the switch set to ``GPU`` for this process and the light's processes, which
-    inherit it; refused at once where the kernels cannot run."""
+    inherit it; refused at once with ``GPU_UNAVAILABLE`` and the reason on stdout where the
+    kernels cannot run."""
 
     def __call__(
         self,
@@ -197,7 +201,8 @@ class _SelectGpu(argparse.Action):
     ) -> None:
         problem = _gpu_problem_apart()
         if problem is not None:
-            parser.error(f"--gpu: {problem}")
+            print(f"--gpu: {problem}", flush=True)
+            raise SystemExit(GPU_UNAVAILABLE)
         os.environ[KERNEL_SWITCH] = GPU
         setattr(namespace, self.dest, True)
 

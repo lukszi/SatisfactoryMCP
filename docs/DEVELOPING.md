@@ -361,6 +361,10 @@ are outside the type rules.
 
 `sonar-project.properties` configures a SonarQube scan; Python coverage comes from
 `coverage.xml` and the frontend's from its `coverage/lcov.info`, so both test runs go first.
+The frontend's `npm test` ends by rewriting `lcov.info`'s source paths with `/`, since a
+Windows run writes `\`, which the Linux scanner container cannot resolve (frontend/README.md,
+"Tests"). The frontend's `test/` and mapgen's `tools/mapgen/tests/` are scanned as tests and
+excluded from the sources.
 The server is a local SonarQube Community container with its own Postgres, kept outside the
 repository (for example a compose file in `%USERPROFILE%\.sonarqube-satisfactory\`) and
 published on host port 9100. From the repository root in PowerShell, with an analysis token in

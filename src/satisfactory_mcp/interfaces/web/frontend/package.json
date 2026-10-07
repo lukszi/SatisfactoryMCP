@@ -8,6 +8,7 @@
     "build": "vite build",
     "check": "tsc --noEmit",
     "test": "vitest run --coverage",
+    "posttest": "node scripts/lcov-posix.mjs",
     "typegen": "node scripts/typegen.mjs"
   },
   "dependencies": {

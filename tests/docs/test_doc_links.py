@@ -1,7 +1,7 @@
 """Every relative link, anchor and section reference in the docs resolves.
 
 Section numbers are the spec's: DESIGN.md, "The document set", says which file holds which,
-and the map's §17 to §41 resolve through the index in docs/spatial-and-map.md. Anchors are
+and the map's §17 to §42 resolve through the index in docs/spatial-and-map.md. Anchors are
 GitHub's heading slugs, so a renamed heading breaks every link to it.
 """
 
