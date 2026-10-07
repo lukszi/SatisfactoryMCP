@@ -947,6 +947,15 @@ A piece that is all water costs about 1.3 times as much gathered as whole, which
 rest of each painter, the ground and the light, is untouched. The eight bands were 18% to
 64% wet.
 
+- The 2048 render, all five layers, lit: all 1,131 tiles, light tiles and sidecars have the
+  same content as before; the bytes differ in the sidecars' timings only.
+- The three windows of the full-size sheet of "One pass for every layer" (section 40), every
+  layer, unlit, on 8 threads with no other render on the machine: every array is
+  byte-identical. The passes took 67.5, 41.0 and 28.5 s against 68.2, 40.6 and 25.9 s, and
+  the run's CPU fell 3%. The painters' saving is a few percent of a band's whole draw, and on
+  8 threads the bands wait on memory (section 40, "Known limits"), so the wall time does not
+  show it.
+
 Left out: the class optics (`class_optics`) are still mixed for the whole band, in
 `render/painting.py`'s band loop, and the shore terms, the river terms, the wet band and the
 foam stay whole-band work.
