@@ -236,7 +236,7 @@ reads them where they are; a test bakes from them and from a copy to the same by
   where the painted layer draws it. A crown cell keeps its horizon only where it stands
   above the ground's, which the shader's `max` makes exact and leaves the cells empty away
   from trees. `occluder_layers` names the layers that read them. The paint store's crown
-  tops feed it (section 36; the mapgen README's "Tree shadows").
+  tops feed it (section 36; the mapgen README's "Horizons and tree shadows").
 - `slabs = (ground, min_z, max_z)`: the surface without the floating geometry, and that
   geometry's underside and top. A slab extends a horizon only where its underside is below
   the horizon already reached, so an arch stops casting a curtain to the ground. On the arch
