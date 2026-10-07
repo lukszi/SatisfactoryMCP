@@ -156,7 +156,7 @@ def _build(projection: Projection) -> _PipeGraph:
     for seg in segments:
         actor = seg.actor_index
         ports = ports_of.get(actor, ()) if actor >= 0 else ()
-        pipes[seg.index] = (
+        pipes[seg.position] = (
             joins.find((actor, c0)) if c0 in ports else None,
             joins.find((actor, c1)) if c1 in ports else None,
         )

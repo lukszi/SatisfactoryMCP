@@ -127,14 +127,20 @@ def test_a_projection_with_no_structures_at_all_yields_nothing():
 def test_a_belt_row_decodes_its_chain_its_class_its_points_its_actor_and_its_curve():
     span = [7, 8, 9, 1, 2, 3]
     (seg,) = rows.iter_belt_segments(_belts([[4, 0, [[1, 2, 3], [4, 5, 6]], 11, [span]]]))
-    assert seg.index == 0
+    assert seg.position == 0
     assert seg.chain == 4
     assert seg.class_index == 0
     assert seg.cls == "Build_ConveyorBeltMk3_C"
     assert seg.points == [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
     assert seg.actor_index == 11
-    # Handed through exactly as stored: the one reader of it converts to metres itself.
-    assert seg.spans == [span]
+    # Decoded to numbers, still centimetres: each reader converts to metres itself.
+    assert seg.spans == [(7.0, 8.0, 9.0, 1.0, 2.0, 3.0)]
+
+
+def test_a_flat_or_torn_span_reads_as_straight_and_keeps_its_place():
+    route = [[0, 0, 0], [1, 1, 1], [2, 2, 2], [3, 3, 3]]
+    (seg,) = rows.iter_belt_segments(_belts([[0, 0, route, 1, [0, [1, 2], [1, 2, 3, 4, 5, 6]]]]))
+    assert seg.spans == [None, None, (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)]
 
 
 def test_a_four_column_belt_row_is_a_straight_run_and_not_an_old_projection():
@@ -175,7 +181,7 @@ def test_a_torn_belt_row_costs_that_row_and_leaves_the_ordinals_of_the_rest():
         ]
     )
     decoded = list(rows.iter_belt_segments(projection))
-    assert [seg.index for seg in decoded] == [5], "the ordinal is the row's place in the table"
+    assert [seg.position for seg in decoded] == [5], "the ordinal is the row's place in the table"
     assert decoded[0].chain == 1
 
 
@@ -199,13 +205,13 @@ def test_the_belt_segment_count_is_rows_in_not_rows_decoded():
 def test_a_pipe_row_decodes_its_network_its_class_its_points_its_actor_and_its_curve():
     span = [7, 8, 9, 1, 2, 3]
     (seg,) = rows.iter_pipe_segments(_pipes([[2, 0, [[1, 2, 3], [4, 5, 6]], 11, [span]]]))
-    assert seg.index == 0
+    assert seg.position == 0
     assert seg.network_index == 2
     assert seg.class_index == 0
     assert seg.cls == "Build_Pipeline_C"
     assert seg.points == [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
     assert seg.actor_index == 11
-    assert seg.spans == [span]
+    assert seg.spans == [(7.0, 8.0, 9.0, 1.0, 2.0, 3.0)]
 
 
 def test_a_three_column_pipe_row_is_a_schema_13_projection_and_joins_nothing():
@@ -248,7 +254,7 @@ def test_a_torn_pipe_row_leaves_a_HOLE_in_the_ordinals_rather_than_shifting_them
         ]
     )
     decoded = list(rows.iter_pipe_segments(projection))
-    assert [seg.index for seg in decoded] == [0, 2]
+    assert [seg.position for seg in decoded] == [0, 2]
     assert rows.pipe_segment_count(projection) == 3
 
 
@@ -301,7 +307,7 @@ def test_a_torn_pole_row_costs_that_pole_and_nothing_after_it():
 
 def test_a_wire_decodes_to_its_two_ends_and_carries_its_ordinal():
     (wire,) = rows.iter_wires(_power(wires=[[1, 2, 3, 4, 5, 6]]))
-    assert wire == rows.Wire(index=0, a=[1.0, 2.0, 3.0], b=[4.0, 5.0, 6.0])
+    assert wire == rows.Wire(position=0, a=[1.0, 2.0, 3.0], b=[4.0, 5.0, 6.0])
 
 
 def test_a_wire_with_no_geometry_leaves_a_HOLE_in_the_ordinals():
@@ -313,7 +319,7 @@ def test_a_wire_with_no_geometry_leaves_a_HOLE_in_the_ordinals():
     """
     projection = _power(wires=[[0, 0, 0, 100, 0, 0], None, "not a wire", [1, 2, 3, 4, 5]])
     decoded = list(rows.iter_wires(projection))
-    assert [w.index for w in decoded] == [0]
+    assert [w.position for w in decoded] == [0]
     assert rows.wire_count(projection) == 4
 
 

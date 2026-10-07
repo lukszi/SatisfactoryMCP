@@ -620,7 +620,9 @@ def pipe_runs(projection: Projection) -> list[tuple[int, list[list[float]]]]:
     ``index`` is the position in ``pipes["segments"]``, which is the same positional key
     ``domain.world.flow`` hands back and ``/api/pipes`` emits rows in.
     """
-    return [(segment.index, segment.points) for segment in saverows.iter_pipe_segments(projection)]
+    return [
+        (segment.position, segment.points) for segment in saverows.iter_pipe_segments(projection)
+    ]
 
 
 def _run_over_decks(

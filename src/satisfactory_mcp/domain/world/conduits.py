@@ -195,26 +195,23 @@ def _arc_cm(p0: list[float], p1: list[float], m0: list[float], m1: list[float]) 
     return total
 
 
-def _tangents(spans: object, index: int) -> tuple[list[float], list[float]] | None:
+def _tangents(
+    spans: saverows.SplineSpans | None, index: int
+) -> tuple[list[float], list[float]] | None:
     """One span's ``[leave, arrive]`` pair, or ``None`` where it is straight.
 
-    Read guarded on the same terms as the points beside it -- schema 15 emits the column
-    only for a route that bends, stores ``0`` for a flat span inside a bent one, and a row
-    that will not decode costs its curve rather than the run.
+    Schema 15 emits the column only for a route that bends, and ``saverows`` reads a flat or
+    torn span inside a bent one as ``None``, so a bad span costs its curve rather than the run.
     """
-    if not isinstance(spans, (list, tuple)) or index >= len(spans):
+    if spans is None or index >= len(spans):
         return None
     entry = spans[index]
-    if not isinstance(entry, (list, tuple)) or len(entry) != 6:
+    if entry is None:
         return None
-    try:
-        vals = [float(v) for v in entry]
-    except (TypeError, ValueError):
-        return None
-    return vals[:3], vals[3:]
+    return list(entry[:3]), list(entry[3:])
 
 
-def _length_m(line: list[list[float]], spans: object = None) -> float:
+def _length_m(line: list[list[float]], spans: saverows.SplineSpans | None = None) -> float:
     """3D drawn length in metres, a riser's vertical leg included: a span with recorded
     tangents is integrated along its spline, one without is its chord."""
     total = 0.0
@@ -397,10 +394,10 @@ def _pipe_runs(
         entry = networks[seg.network_index] if 0 <= seg.network_index < len(networks) else None
         fluid = entry.get("fluid") if isinstance(entry, dict) else None
         flow: PipeFlow | dict[str, str] = (
-            pipe_flow[seg.index]
+            pipe_flow[seg.position]
             if pipe_flow
-            and 0 <= seg.index < len(pipe_flow)
-            and isinstance(pipe_flow[seg.index], dict)
+            and 0 <= seg.position < len(pipe_flow)
+            and isinstance(pipe_flow[seg.position], dict)
             else {}
         )
         direction = flow.get("direction", "unknown")
@@ -420,7 +417,7 @@ def _pipe_runs(
         runs.append(
             ConduitRun(
                 kind="pipe",
-                ident=f"pipe:{seg.index}",
+                ident=f"pipe:{seg.position}",
                 label=_mk_label("pipe", {seg.cls} if seg.cls else set()),
                 pieces=1,
                 length_m=_length_m(seg.points, seg.spans),

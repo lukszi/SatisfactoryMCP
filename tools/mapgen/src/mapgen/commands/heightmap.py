@@ -29,7 +29,12 @@ from mapgen.gamedata.rocks.collision_pack import encode_rock_pack
 from mapgen.gamedata.water.channel import artwork_water_mask, water_surface
 from mapgen.terrain.heightfield import field, sidecar, sidecar_blocks, validate
 from mapgen.terrain.heightfield.field import FieldLayers
-from mapgen.terrain.heightfield.validate import FieldValidation, TerrainCheck, WaterChecks
+from mapgen.terrain.heightfield.validate import (
+    ErrorStats,
+    FieldValidation,
+    TerrainCheck,
+    WaterChecks,
+)
 from satisfactory_mcp.core.arrays import I16Grid
 from satisfactory_mcp.core.gameassets.container import paks_dir
 from satisfactory_mcp.core.gameassets.provenance import (
@@ -205,22 +210,29 @@ def _water(run: _Run, sweep: dict, fused: FieldLayers) -> tuple[dict, WaterCheck
     return water, water_checks
 
 
+def field_gate(whole: ErrorStats) -> None:
+    """Refuse a field the node table holds outside the trimmed-RMS gate, or never measured."""
+    trim = whole.get("trim90_rms_m")
+    if trim is None:
+        raise Refusal(6, "no node of the table landed on the field. Refusing to write.")
+    if trim > validate.VALIDATION_TRIM_RMS_MAX_M:
+        raise Refusal(
+            6,
+            f"trimmed RMS is {trim:.3f} m against a gate of "
+            f"{validate.VALIDATION_TRIM_RMS_MAX_M} m. Something in the decode moved: the "
+            "workflow that proved this pipeline measured 0.368 m, and a field this far out "
+            "would be a plausible-looking raster that is quietly metres wrong. Refusing to "
+            "write.",
+        )
+
+
 def _validate(run: _Run, frame: dict, fused: FieldLayers) -> tuple[FieldValidation, TerrainCheck]:
     """The field on the node table, and the bare terrain on the landscape's nodes."""
     started = time.time()
     validation = validate.validate_field(fused["height_dm"], fused["prov"])
     run.timed("validate", started)
     validate.report_validation(validation)
-    whole = validation["field"]
-    if whole["trim90_rms_m"] > validate.VALIDATION_TRIM_RMS_MAX_M:
-        raise Refusal(
-            6,
-            f"trimmed RMS is {whole['trim90_rms_m']:.3f} m against a gate of "
-            f"{validate.VALIDATION_TRIM_RMS_MAX_M} m. Something in the decode moved: the "
-            "workflow that proved this pipeline measured 0.368 m, and a field this far out "
-            "would be a plausible-looking raster that is quietly metres wrong. Refusing to "
-            "write.",
-        )
+    field_gate(validation["field"])
     terrain_check = validate.validate_terrain(frame, fused["prov"])
     print(
         f"  bare terrain on {terrain_check['n']} landscape nodes: median absolute "

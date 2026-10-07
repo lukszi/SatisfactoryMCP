@@ -5,7 +5,7 @@
 out as the numbers it holds -- raw centimetres, no unit conversion, no display names -- and
 the one lookup done here is the interned class index against the table's own ``classes``.
 Trailing columns are additive, so a short row means "the projection does not carry that
-column", and a row that will not decode leaves a HOLE: ``index`` is the row's position in the
+column", and a row that will not decode leaves a HOLE: ``position`` is the row's place in the
 raw list, because ``pipe_flow`` and ``/api/pipes`` join by position. The projection is read
 as whatever it holds, ``object`` until a check narrows it.
 """
@@ -13,7 +13,7 @@ as whatever it holds, ``object`` until a check narrows it.
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from typing import NamedTuple, SupportsFloat, SupportsIndex, SupportsInt
+from typing import NamedTuple, SupportsFloat, SupportsIndex, SupportsInt, TypeAlias
 
 from typing_extensions import TypeIs
 
@@ -26,6 +26,8 @@ __all__ = [
     "BeltSegment",
     "PipeSegment",
     "PowerPole",
+    "SpanTangents",
+    "SplineSpans",
     "Structure",
     "Wire",
     "belt_segment_count",
@@ -63,6 +65,12 @@ POWER_POLE_ROW_WIDTH = 6
 #: order of the ``graph["power"]`` edge the row sits opposite. Schema 17.
 WIRE_ROW_WIDTH = 6
 
+#: One span's leave tangent of the point behind, then arrive tangent of the point ahead, in
+#: world centimetres.
+SpanTangents: TypeAlias = tuple[float, float, float, float, float, float]
+#: A route's ``spans`` column, one entry per span; ``None`` for a flat or unreadable span.
+SplineSpans: TypeAlias = list[SpanTangents | None]
+
 
 class Structure(NamedTuple):
     """One lightweight buildable: where it stands, which way it faces, and what it is.
@@ -86,18 +94,18 @@ class BeltSegment(NamedTuple):
     ``points`` are the spline's control points in world centimetres, in travel order, and
     there is at least one. ``actor_index`` points into ``graph["actors"]`` on a
     ``PipeSegment``'s terms and is ``-1`` for a piece that has none -- a projection older than
-    schema 20, or a belt the graph does not name. ``spans`` is schema 15's tangent column
-    exactly as stored -- one entry per span, ``0`` for a straight one -- or ``None`` where the
-    row carries no such column; its only reader is ``/api/belts``, so it is left undecoded.
+    schema 20, or a belt the graph does not name. ``spans`` is schema 15's tangent column, one
+    entry per span and ``None`` for a straight one, or ``None`` where the row carries no such
+    column.
     """
 
-    index: int
+    position: int
     chain: int
     class_index: int
     cls: str | None
     points: list[list[float]]
     actor_index: int
-    spans: object
+    spans: SplineSpans | None
 
 
 class PipeSegment(NamedTuple):
@@ -108,13 +116,13 @@ class PipeSegment(NamedTuple):
     points into ``pipes["networks"]`` and is likewise ``-1`` where no network claims the pipe.
     """
 
-    index: int
+    position: int
     network_index: int
     class_index: int
     cls: str | None
     points: list[list[float]]
     actor_index: int
-    spans: object
+    spans: SplineSpans | None
 
 
 class PowerPole(NamedTuple):
@@ -138,14 +146,15 @@ class PowerPole(NamedTuple):
 class Wire(NamedTuple):
     """One power wire's drawn span: its two endpoints in world centimetres.
 
-    ``index`` is the row's position in ``power["wires"]``, which is also its position in
+    ``position`` is the row's place in ``power["wires"]``, which is also its place in
     ``graph["power"]`` -- the two lists are written in one pass for exactly that reason -- so
-    ``wire.index`` is how a caller reaches the pair of actors this span joins. ``a`` is the
-    end at ``graph["power"][index][0]`` and ``b`` the end at ``[1]``, an order ``extract.power``
-    establishes by measurement because the save's own agrees with the edge's about half the time.
+    ``wire.position`` is how a caller reaches the pair of actors this span joins. ``a`` is the
+    end at ``graph["power"][position][0]`` and ``b`` the end at ``[1]``, an order
+    ``extract.power`` establishes by measurement because the save's own agrees with the edge's
+    about half the time.
     """
 
-    index: int
+    position: int
     a: list[float]
     b: list[float]
 
@@ -268,12 +277,29 @@ def _placement(row: object) -> _Placement | None:
     return _Placement(class_index, x, y, z, yaw)
 
 
+def _span(entry: object) -> SpanTangents | None:
+    """One span's six tangent numbers, or ``None`` for ``0`` (flat) and for a torn entry."""
+    if not _is_row(entry) or len(entry) != 6:
+        return None
+    try:
+        a, b, c, d, e, f = (_float(value) for value in entry)
+    except (TypeError, ValueError):
+        return None
+    return a, b, c, d, e, f
+
+
+def _spans(raw: object) -> SplineSpans | None:
+    """A route's tangent column, or ``None`` where the row carries none: a torn span costs
+    that span's curve, never the route's."""
+    return [_span(entry) for entry in raw] if _is_row(raw) else None
+
+
 class _Route(NamedTuple):
     group: int
     class_index: int
     points: list[list[float]]
     actor_index: int
-    spans: object
+    spans: SplineSpans | None
 
 
 def _route(row: object) -> _Route | None:
@@ -292,7 +318,9 @@ def _route(row: object) -> _Route | None:
     points = _points(row[2])
     if not points:
         return None
-    return _Route(group, class_index, points, _actor_index(_column(row, 3)), _column(row, 4))
+    return _Route(
+        group, class_index, points, _actor_index(_column(row, 3)), _spans(_column(row, 4))
+    )
 
 
 def iter_structures(projection: Mapping[str, object]) -> Iterator[Structure]:
@@ -326,12 +354,12 @@ def iter_belt_segments(projection: Mapping[str, object]) -> Iterator[BeltSegment
     """Every conveyor piece in ``belts``, decoded, in the table's own order."""
     table = _table(projection, "belts")
     classes = _classes(table)
-    for index, row in enumerate(_rows(table, "segments")):
+    for position, row in enumerate(_rows(table, "segments")):
         route = _route(row)
         if route is None:
             continue
         yield BeltSegment(
-            index=index,
+            position=position,
             chain=route.group,
             class_index=route.class_index,
             cls=_class_at(classes, route.class_index),
@@ -357,12 +385,12 @@ def iter_pipe_segments(projection: Mapping[str, object]) -> Iterator[PipeSegment
     """
     table = _table(projection, "pipes")
     classes = _classes(table)
-    for index, row in enumerate(_rows(table, "segments")):
+    for position, row in enumerate(_rows(table, "segments")):
         route = _route(row)
         if route is None:
             continue
         yield PipeSegment(
-            index=index,
+            position=position,
             network_index=route.group,
             class_index=route.class_index,
             cls=_class_at(classes, route.class_index),
@@ -413,11 +441,11 @@ def iter_wires(projection: Mapping[str, object]) -> Iterator[Wire]:
     than the property yields no wires at all while ``graph["power"]`` still carries every
     edge: the connections are known and where they run is not.
     """
-    for index, row in enumerate(_rows(_table(projection, "power"), "wires")):
+    for position, row in enumerate(_rows(_table(projection, "power"), "wires")):
         if not _is_row(row) or len(row) < WIRE_ROW_WIDTH:
             continue
         try:
             ends = [_float(v) for v in row[:WIRE_ROW_WIDTH]]
         except (TypeError, ValueError):
             continue
-        yield Wire(index=index, a=ends[:3], b=ends[3:])
+        yield Wire(position=position, a=ends[:3], b=ends[3:])

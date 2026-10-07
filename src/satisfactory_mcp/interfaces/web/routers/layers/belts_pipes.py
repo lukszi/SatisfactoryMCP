@@ -113,41 +113,24 @@ def _points_m(points: list[list[float]]) -> list[Point3M]:
     return [(cm_to_m(x), cm_to_m(y), cm_to_m(z)) for x, y, z in points]
 
 
-def _curve_m(spans: object, points: Sequence[Point3M]) -> RouteCurveM:
+def _curve_m(spans: saverows.SplineSpans | None, points: Sequence[Point3M]) -> RouteCurveM:
     """A route's spline tangents in metres, or ``None`` where the route is straight.
 
     A tangent is a displacement in the same space as a point, so dividing by 100 is the whole
-    conversion. A span that will not decode becomes straight rather than costing the route.
+    conversion. A span that did not decode is already ``None``, which reads as straight.
     """
-    if not isinstance(spans, (list, tuple)):
+    if spans is None or len(spans) != len(points) - 1:
         return None
-    entries = cast("Sequence[object]", spans)
-    if len(entries) != len(points) - 1:
-        return None
-    out = [_tangents_m(entry) for entry in entries]
+    out = [_tangents_m(entry) for entry in spans]
     return out if any(out) else None
 
 
-def _tangents_m(entry: object) -> SpanCurveM | None:
-    """One span's tangents in metres; ``None`` for a straight one, which is also what 0, the
-    projection's flat-span marker, reads as."""
-    if not isinstance(entry, (list, tuple)):
+def _tangents_m(entry: saverows.SpanTangents | None) -> SpanCurveM | None:
+    """One span's tangents in metres; ``None`` for a straight one."""
+    if entry is None:
         return None
-    values = cast("Sequence[object]", entry)
-    if len(values) != 6:
-        return None
-    try:
-        x0, y0, z0, x1, y1, z1 = (cm_to_m(_coordinate(c)) for c in values)
-    except (TypeError, ValueError):
-        return None
+    x0, y0, z0, x1, y1, z1 = (cm_to_m(c) for c in entry)
     return (x0, y0, z0), (x1, y1, z1)
-
-
-def _coordinate(value: object) -> float:
-    """``float(value)``, with its ``TypeError`` for what is neither a number nor a string."""
-    if isinstance(value, (str, int, float)):
-        return float(value)
-    raise TypeError(f"not a number: {value!r}")
 
 
 @router.get("/belts", response_model=BeltsResponse)
@@ -250,19 +233,19 @@ def _pipe_row(
 ) -> PipeRow:
     """One pipe: the network that claims it, its inferred direction, its class and shape.
 
-    ``seg.index`` is the raw row position, so the positional joins to ``networks`` and
+    ``seg.position`` is the raw row position, so the positional joins to ``networks`` and
     ``flows`` stay lined up when a row is torn, and a projection too old for them reads as
     ``unknown`` rather than as an error.
     """
     entry = networks[seg.network_index] if 0 <= seg.network_index < len(networks) else None
     fluid = entry.get("fluid") if isinstance(entry, dict) else None
-    flow = flows[seg.index] if 0 <= seg.index < len(flows) else None
+    flow = flows[seg.position] if 0 <= seg.position < len(flows) else None
     points = _points_m(seg.points)
     # The flow model writes only the words these two types close over.
     direction = flow.get("direction", "unknown") if flow is not None else "unknown"
     basis = flow.get("basis", "unresolved") if flow is not None else "unresolved"
     return {
-        "row": seg.index,
+        "row": seg.position,
         "direction": cast(PipeDirection, direction),
         "basis": cast(PipeFlowBasis, basis),
         "network": entry.get("id") if isinstance(entry, dict) else None,

@@ -179,7 +179,7 @@ def _run_numbers(projection: Projection) -> dict[int, int]:
     than a nearest match; save-projection.md §6.15.
     """
     numbers: dict[int, int] = {
-        seg.actor_index: seg.index
+        seg.actor_index: seg.position
         for seg in saverows.iter_pipe_segments(projection)
         if seg.actor_index >= 0
     }

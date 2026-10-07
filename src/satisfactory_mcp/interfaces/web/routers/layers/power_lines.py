@@ -143,7 +143,7 @@ def _wire_row(
     pole_at: dict[int, int],
 ) -> WireRow:
     """One wire's span, with both ends named and their poles read off the same edge."""
-    pair = _ends(edges[wire.index] if wire.index < len(edges) else None)
+    pair = _ends(edges[wire.position] if wire.position < len(edges) else None)
     ends = [
         named.get(str(actors[end])) if end is not None and 0 <= end < len(actors) else None
         for end in pair
