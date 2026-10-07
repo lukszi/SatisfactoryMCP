@@ -83,9 +83,10 @@ from the downsampled heights, sky view and horizons by mean.
 
 ### The stage
 
-`render_layer` hands the first layer's drawn heights and land weight to a `Surface` (two
+`render_layer` hands the first layer's heights and land weight to a `Surface` (two
 memory maps in the light's scratch, 5.4 GB at 32768), each band its own rows from whichever
-thread drew it (section 40). After that layer is drawn,
+thread drew it (section 40). Every layer hands the same surface, the one the seabed rule
+draws (below, "One capture"). After that layer is drawn,
 `lighting/stage.py` cuts the sheet into blocks of 16 × 16 native tiles, each with a 150 m
 halo, and a process pool computes per block: the ground's horizons and the crowns' at half
 resolution, sky view, normals, the native tiles, and the light at the default sun for the
@@ -94,6 +95,33 @@ horizon march. Each layer then queues `unlit/` from a copy of the sheet, is lit 
 the default sun with its own term while that tree encodes (`render/light.py`: the crowns' only
 for a style that draws them), and queues `tiles/` and `tiles@2x/`. All three go through one
 encode pool and are renamed into place in that order (section 17, "Cutting in parallel").
+
+**One capture (2026-10-07).** The light does not depend on which layers a run draws, or in
+which order. Until this date it did, in two ways:
+
+- The surface was the first layer's as that layer drew it. The painted layer keeps the
+  render-only meshes standing in the water, and the other styles leave them to the seabed
+  (section 27), so `--layer painted --layer terrain` baked the painted layer's sea meshes
+  into the one light every layer reads: terrain was relit around rocks it draws as water.
+- The crown occluder came with the painted layer only, so `--layer terrain` alone baked a
+  `light/` without the crowns' horizons, which the painted layer reads.
+
+Now every layer captures the surface the seabed rule draws: a band of the painted layer
+composes the seabed's heights and water for the light beside its own (`render/surface.py`
+`band_surface`), and the painted layer drawn unlit always keeps the default sun on the meshes
+only it draws (section 36, "Coral trees are no crowns"). The crown tops come from the paint
+store whenever there is one: the painted ground's plane when that layer is drawn, else the
+store's (`render/light.py` `crown_tops`). A run without a paint store still bakes no crown
+cells. A full run draws terrain first and the painted layer, so its light and tiles are
+unchanged.
+
+Measured at 2048 against a full run of every layer, which the change leaves the same to the
+bit. Before it, `--layer painted --layer terrain` differed from that run in the light (52 of
+the 85 normal tiles, 63,702 pixels; 51 of the 85 horizon atlases), in 50 of the 85 painted
+tiles (22,085 pixels, at most 55 levels; its `unlit/` in 13,073 pixels) and in 51 of the 85
+terrain tiles (29,134 pixels, at most 137; its `unlit/` not at all). `--layer terrain`
+differed in 68 of the 85 horizon atlases, the crown cells, and in nothing else. After it,
+both runs' light and tiles match the full run's to the bit.
 
 **Horizon cost.** The march takes bilinear samples up to 16 px and the nearest pixel beyond,
 with in-place arithmetic: 0.14 µs per half-resolution pixel and direction, 6.3 times faster
@@ -202,7 +230,7 @@ colour pyramid again.
 While the run lasts, `light.cache/` holds 13.5 bytes a pixel, 14.5 GB at full
 size: the surface (heights 4, land 1), the default-sun terms (3), and the bake's
 half-resolution heights, land and sky view (1.5) and quarter-resolution horizons (4). With
-the painted layer the crown tops and cover add 5, 5.4 GB. The Maps tab's estimate counts them
+a paint store the crown tops and cover add 5, 5.4 GB, whatever layers the run draws. The Maps tab's estimate counts them
 as `presets.LIGHT_SCRATCH_BYTES` and `CROWN_SCRATCH_BYTES`, scaled by area; tests hold both to
 what the stage allocates.
 
@@ -495,17 +523,15 @@ coral trees then draw as recipe 6 drew them, in the calibrated colours: the cora
 #99868e lit by the mesh's own top, the seabed coral under water, and section 31's rule for a
 coral speck standing in the sea, which the crown over it had hidden.
 
-**In a render with the light.** The lighting pyramid's surface is the first layer's (section
-29), and in a full run that is terrain. Its seabed rule (section 27) leaves a render-only mesh
-standing in the water to the seabed, so the pyramid holds those pixels as water, with land
-weight 0, and leaves them unlit. Most coral stands in the sea, so in a lit run it drew flat.
-The painted layer, drawn unlit in a run whose surface another layer captured, now keeps the
-default sun's Lambert term of its own top on the meshes only it draws (`palette/painted/ground.py`
-`painted_ndl`, with `lighting/model.py` `surface_direct`, the shader's direct term without
-shadows). The pyramid has those pixels as water, so the page leaves them as baked. Coral on
-dry land is in the surface and is lit live. When the painted layer captures the surface
-itself, in a run without terrain and satellite, nothing is baked. The pyramid is unchanged,
-so the light model stays at version 2.
+**In a render with the light.** The lighting pyramid's surface is the seabed rule's (section
+27), whichever layer captures it (section 29, "One capture"). The rule leaves a render-only
+mesh standing in the water to the seabed, so the pyramid holds those pixels as water, with
+land weight 0, and leaves them unlit. Most coral stands in the sea, so in a lit run it drew
+flat. The painted layer, drawn unlit, now keeps the default sun's Lambert term of its own top
+on the meshes only it draws (`palette/painted/band.py` `painted_ndl`, with
+`lighting/model.py` `surface_direct`, the shader's direct term without shadows). The pyramid
+has those pixels as water, so the page leaves them as baked. Coral on dry land is in the
+surface and is lit live. The pyramid is unchanged, so the light model stays at version 2.
 
 **Measured** on the render archive's windows with the harness of "Crowns and the water", now
 also given the window's render-only meshes from its base sweep. Coral-tree pixels are those
@@ -533,6 +559,3 @@ mesh pixels only. Leaving the coral crowns out changes pixels under them only, a
 
 - In a lit run the coral standing in the sea keeps the noon light whatever sun the page
   picks, and takes no cast shadow.
-- A run that draws the painted layer and a relief style without terrain or satellite lets
-  the painted layer capture the surface, so the relief styles light their water over the
-  coral standing in the sea as land. This predates the rule.

@@ -148,6 +148,10 @@ Planned as 0.2.0.
   or lies inside it, through a junction or link too, is now refused before anything is
   written. Raw planes left by an interrupted run are removed only once they match their
   bands, and the report says whether a cache was converted in place or copied.
+- A lit render's light no longer depends on which layers it draws or in which order. Drawn
+  first, the painted layer put its sea meshes into the light every layer is relit with, and
+  a run without the painted layer baked the light without tree shadows. A full render of
+  every layer is unchanged.
 
 ## [0.1.0] - 2026-09-27
 
