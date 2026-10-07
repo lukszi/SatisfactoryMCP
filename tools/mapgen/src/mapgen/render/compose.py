@@ -150,7 +150,7 @@ def render_layers(
     term flat; ``surface`` receives the heights and land weight the seabed rule draws, once,
     whatever the layers. ``sea`` is the run's ``OpenSea``, whose water planes replace
     ``water_level``'s. ``threads`` pieces are drawn at once, to the same bytes at any count
-    and any width up to 16384; ``surface``, ``seam`` and ``regimes`` take the bands in order.
+    and any width; ``surface``, ``seam`` and ``regimes`` take the bands in order.
     The rest: docs/spatial-and-map.md sections 20, 25 and 40.
     """
     if not layers or len(set(layers)) != len(layers):

@@ -168,6 +168,6 @@ def add_draw_flags(parser: argparse.ArgumentParser) -> None:
         default=PIECE_COLS,
         help=(
             f"output columns of a band drawn at a time (default {PIECE_COLS}). Narrower pieces "
-            "take less memory a thread; the tiles are the same bytes at any width up to 16384"
+            "take less memory a thread; the tiles are the same bytes at any width"
         ),
     )

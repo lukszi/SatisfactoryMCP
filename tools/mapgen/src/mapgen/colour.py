@@ -2,7 +2,7 @@
 
 Björn Ottosson's OKLab matrices. A leaf, so the lighting model and the painters read one copy.
 Every sum of a pixel's channels is elementwise in one fixed order, never BLAS
-(docs/map/renders.md section 42).
+(docs/map/renders.md section 40, "Fixed-order sums").
 """
 
 from __future__ import annotations

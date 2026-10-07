@@ -1,7 +1,7 @@
 """A pixel's colour sums are elementwise in one fixed order, so a band draws the same bytes at
 any width, in any pieces, on any threads, and with any BLAS.
 
-docs/map/renders.md section 42. Synthetic fixtures: no install, no field.
+docs/map/renders.md section 40, "Fixed-order sums". Synthetic fixtures: no install, no field.
 """
 
 from __future__ import annotations
@@ -216,7 +216,8 @@ def test_the_three_by_three_mean_is_scipy_s_where_its_running_sum_is_exact():
 
 
 #: Where the draw and paint path reaches BLAS or LAPACK, by name: none but the open sea's
-#: sparse membrane, whose solve is an open question (docs/map/renders.md section 42).
+#: sparse membrane, whose solve is an open question (docs/map/renders.md section 40,
+#: "Fixed-order sums").
 BLAS_NAMES = {"dot", "vdot", "inner", "matmul", "tensordot", "einsum", "inv", "solve", "lstsq"}
 KNOWN = {"palette/water/open_sea.py:membrane"}
 

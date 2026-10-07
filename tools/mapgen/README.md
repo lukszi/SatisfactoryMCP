@@ -127,8 +127,8 @@ as the artwork. The main options:
   cores, and fewer when free memory holds fewer pieces in flight; `1` draws them in turn. The
   tiles are the same bytes either way (§40).
 - `--draw-columns N` draws each band in pieces of N output columns, 512 by default. Narrower
-  pieces take less memory a thread, and the tiles are the same bytes at any width up to 16384
-  (§40, "Column pieces").
+  pieces take less memory a thread, and the tiles are the same bytes at any width (§40,
+  "Column pieces" and "Fixed-order sums").
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
