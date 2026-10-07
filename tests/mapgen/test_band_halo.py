@@ -63,11 +63,18 @@ def _gradients(size: int) -> list[int]:
     def shore(heights: np.ndarray) -> np.ndarray:
         return np.concatenate(list(shore_terms(heights, sp, 0.0).values()), axis=1)
 
+    shade = {"suns": [(315.0, 45.0, 1.0)], "mode": "add", "k": 0.0, "dechroma": 0.0, "l_max": 1.0}
+    flat = np.zeros(2, np.float32)
+    ground = SimpleNamespace(palette={"shade": shade}, cool=flat, warm=flat)
+
+    def relief_sun(heights: np.ndarray) -> np.ndarray:
+        return relief._shade(np.zeros((ROWS, COLS, 3), np.float32), heights, sp, ground)[1]
+
     draws = [
         lambda heights: sun_dot(heights, sp),
         lambda heights: slope_degrees(heights, sp),
         lambda heights: surface_direct(heights, sp),
-        lambda heights: relief._lambert(heights, sp, 315.0, 45.0),
+        relief_sun,
         shore,
     ]
     return [_rows_reached(draw, _plane(1, 0.05 * sp), 0.01 * sp) for draw in draws]

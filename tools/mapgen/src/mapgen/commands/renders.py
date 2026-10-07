@@ -164,8 +164,7 @@ def _render(
     import texture2ddecoder as decoder
 
     light_workers, cut_workers = pool_sizes(args)
-    cache_root, versions = caching
-    setup = Setup(cache_root, decoder, load_imaging(), versions, cut_workers)
+    setup = Setup(caching[0], decoder, load_imaging(), caching[1], cut_workers)
     run = _prepare(args, layers, setup)
     crowns = None if scratch is None else crown_tops(args.paint_dir, run.painted)
     with light_run(scratch, args.size, crowns, light_workers) as light:

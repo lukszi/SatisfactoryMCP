@@ -85,7 +85,7 @@ STENCILS: tuple[Stencil, ...] = (
             "lighting.hillshade.sun_dot",
             "lighting.hillshade.slope_degrees",
             "lighting.model.surface_direct",
-            "palette.relief._lambert",
+            "palette.relief._shade",
             "palette.water.shore.shore_terms",
         ),
         _gradient,
