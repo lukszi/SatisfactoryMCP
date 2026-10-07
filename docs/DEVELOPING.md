@@ -231,19 +231,22 @@ colour value, so every colour sits with its owner and its warrant.
 ### Code-quality scan
 
 `sonar-project.properties` configures a SonarQube scan; Python coverage comes from
-`coverage.xml`, so the test run goes first. From the repository root in PowerShell, with a
-SonarQube server on the host's port 9000 and an analysis token in `%USERPROFILE%\.sonar-token`:
+`coverage.xml`, so the test run goes first. The server is a local SonarQube Community container
+with its own Postgres, kept outside the repository (for example a compose file in
+`%USERPROFILE%\.sonarqube-satisfactory\`) and published on host port 9100. From the repository
+root in PowerShell, with an analysis token in `%USERPROFILE%\.sonar-token`:
 
 ```powershell
 uv sync --all-extras --all-packages
 uv run pytest -q --cov --cov-report=xml
+if (-not $env:SONAR_HOST_URL) { $env:SONAR_HOST_URL = "http://host.docker.internal:9100" }
 $env:SONAR_TOKEN = (Get-Content "$env:USERPROFILE\.sonar-token" -Raw).Trim()
-docker run --rm -e SONAR_HOST_URL=http://host.docker.internal:9000 -e SONAR_TOKEN `
-    -v "${PWD}:/usr/src" sonarsource/sonar-scanner-cli
+docker run --rm -e SONAR_HOST_URL -e SONAR_TOKEN -v "${PWD}:/usr/src" sonarsource/sonar-scanner-cli
 Remove-Item Env:SONAR_TOKEN
 ```
 
-`-e SONAR_TOKEN` without a value hands the container the variable, so the token never appears
+`SONAR_HOST_URL` is the server as the container sees it; set it first to scan against another
+server. `-e NAME` without a value hands the container the variable, so the token never appears
 on a command line.
 
 ## Solver threads
