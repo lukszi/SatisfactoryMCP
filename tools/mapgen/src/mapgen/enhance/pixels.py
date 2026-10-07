@@ -11,6 +11,7 @@ from scipy.ndimage import convolve, gaussian_filter, maximum_filter, uniform_fil
 
 from mapgen.enhance.upscaler import ENHANCE_SCALE
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
+from satisfactory_mcp.core.gameassets.imaging import ImageFactory
 
 if TYPE_CHECKING:
     from PIL import Image
@@ -64,15 +65,13 @@ PRESHARPEN_EDGE = 0.6
 COLOUR_FIX_SIGMA = 6.0
 
 
-class ImageModule(Protocol):
-    """The parts of ``PIL.Image`` the enhancement uses; the module is passed in, not imported."""
+class ImageModule(ImageFactory["Image.Image"], Protocol):
+    """The parts of ``PIL.Image`` the artwork and its enhancement use; passed in, not imported."""
 
     @property
     def Resampling(self) -> type[Image.Resampling]: ...
 
     def open(self, fp: Path, /) -> Image.Image: ...
-
-    def new(self, mode: str, size: tuple[int, int], /) -> Image.Image: ...
 
     def fromarray(self, obj: U8Grid, /) -> Image.Image: ...
 

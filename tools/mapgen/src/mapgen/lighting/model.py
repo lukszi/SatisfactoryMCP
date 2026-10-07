@@ -37,7 +37,7 @@ from mapgen.lighting.horizon import (
 from mapgen.lighting.sun import DEFAULT_SUN, NOON_HOUR, Sun, sun_vector
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.versions import LIGHTS
-from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
+from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
     "DIRECT_SCALE",
@@ -154,7 +154,7 @@ def light_axis() -> JsonObject:
     """The fourth provenance axis: which light model the pyramid was baked for."""
     block = model_block()
     canonical = json.dumps(block, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    light: dict[str, JsonValue] = LIGHTS[LIGHT_ID]
+    light = LIGHTS[LIGHT_ID]
     return {
         "id": LIGHT_ID,
         "version": light["version"],

@@ -15,7 +15,6 @@ import json
 import shutil
 from collections.abc import Callable
 from pathlib import Path
-from types import ModuleType
 from typing import TYPE_CHECKING
 
 from mapgen.common import LOCAL_DIR, Refusal, base_parser, require_gen
@@ -179,9 +178,11 @@ def _prove_upscaler(args: argparse.Namespace) -> Upscaler:
 
 
 def _read_sheet(
-    game: Path, pyooz_version: str, decoder: ModuleType, image_mod: ImageModule
+    game: Path, pyooz_version: str, image_mod: ImageModule
 ) -> tuple[Image.Image, JsonObject, str]:
     """The four map slices decoded, their layout proved, stitched: (sheet, layout, alpha)."""
+    import texture2ddecoder as decoder
+
     paks = game / "FactoryGame" / "Content" / "Paks"
     if not (paks / "FactoryGame-Windows.utoc").exists():
         raise Refusal(_FAILED, f"no FactoryGame-Windows.utoc under {paks}")
@@ -208,9 +209,7 @@ def _read_sheet(
     return sheet, layout, alpha_note
 
 
-def _cut(
-    args: argparse.Namespace, versions: dict[str, str], decoder: ModuleType, image_mod: ImageModule
-) -> int:
+def _cut(args: argparse.Namespace, versions: dict[str, str], image_mod: ImageModule) -> int:
     """The stages in order: build, guards, sheet, ``map.png``, the trees, ``map.json``."""
     try:
         build_pin, build_raw = installed_build(args.game)
@@ -222,7 +221,7 @@ def _cut(
     if not args.force:
         _refuse_stale(out_dir, build_pin, args.enhance)
     upscaler = _prove_upscaler(args) if args.enhance else None
-    sheet, layout, alpha_note = _read_sheet(args.game, versions["pyooz"], decoder, image_mod)
+    sheet, layout, alpha_note = _read_sheet(args.game, versions["pyooz"], image_mod)
     sheet_digest = sha256_hex(sheet.tobytes())
     calibration = calibrate(sheet, image_mod, BOUNDS_M)
     report_calibration(calibration)
@@ -287,11 +286,10 @@ def main() -> int:
     """The command; a refusal prints its reason and returns its exit code."""
     args = _parser().parse_args()
     versions = require_gen("ooz", "texture2ddecoder", "PIL.Image")
-    import texture2ddecoder as decoder
     from PIL import Image as image_mod
 
     try:
-        return _cut(args, versions, decoder, image_mod)
+        return _cut(args, versions, image_mod)
     except Refusal as refused:
         print(refused.message)
         return refused.code

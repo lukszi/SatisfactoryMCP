@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from types import ModuleType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
 from mapgen.common import ROOT
+from mapgen.gamedata.ground.biome import CalibrationImaging
 from mapgen.gamedata.nodes import NODE_TABLE, load_static_nodes
 from satisfactory_mcp.core.gameassets.container import (
     SHEET_PX,
@@ -138,7 +138,7 @@ def decode_slices(
     return tiles
 
 
-def stitch_sheet(tiles: dict[str, Image], image_mod: ModuleType) -> tuple[Image, str]:
+def stitch_sheet(tiles: dict[str, Image], image_mod: ImageFactory[Image]) -> tuple[Image, str]:
     """The slices pasted 2x2 into one sheet, ``tiles`` emptied. Returns (sheet, alpha note)."""
     sheet = image_mod.new("RGBA", (SHEET_PX, SHEET_PX))
     for name in SLICES:
@@ -147,7 +147,7 @@ def stitch_sheet(tiles: dict[str, Image], image_mod: ModuleType) -> tuple[Image,
     tiles.clear()
 
     # Whether alpha says anything is measured: uniformly opaque alpha is a third of the file.
-    alpha_min, alpha_max = sheet.getextrema()[3]
+    alpha_min, alpha_max = cast("tuple[tuple[int, int], ...]", sheet.getextrema())[3]
     if alpha_min == 255:
         sheet = sheet.convert("RGB")
         alpha_note = "alpha was 255 everywhere and was dropped; the PNG is RGB"
@@ -157,7 +157,7 @@ def stitch_sheet(tiles: dict[str, Image], image_mod: ModuleType) -> tuple[Image,
     return sheet, alpha_note
 
 
-def calibrate(sheet: Image, image_mod: ModuleType, bounds: dict[str, float]) -> JsonObject:
+def calibrate(sheet: Image, image_mod: CalibrationImaging, bounds: dict[str, float]) -> JsonObject:
     """Project the static node table onto the sheet and sweep the pin for a better one.
 
     Nodes stand on land, so a pin that is right puts as few of them as possible on the flat
@@ -170,7 +170,8 @@ def calibrate(sheet: Image, image_mod: ModuleType, bounds: dict[str, float]) -> 
             "skipped": f"{NODE_TABLE.relative_to(ROOT)} is not present, so the pin is unchecked"
         }
     nodes = load_static_nodes()
-    small = sheet.resize((CALIBRATION_PX, CALIBRATION_PX), image_mod.LANCZOS).convert("RGB")
+    lanczos = image_mod.Resampling.LANCZOS
+    small = sheet.resize((CALIBRATION_PX, CALIBRATION_PX), lanczos).convert("RGB")
     pixels = np.asarray(small, dtype=np.int16)
     ocean = pixels[8, 8]  # the extreme corner of the sheet is open sea on every reading
 

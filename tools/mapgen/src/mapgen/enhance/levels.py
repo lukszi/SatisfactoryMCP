@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from mapgen.enhance.checks import (
     SEAM_RATIO_MAX,
@@ -396,7 +396,8 @@ def enhance_levels(
         "detail restored and low frequencies put back"
     )
     records: list[JsonObject] = [
-        level_record(z, written, source, tile_px) for z, written in sorted(levels.written.items())
+        cast(JsonObject, level_record(z, written, source, tile_px))
+        for z, written in sorted(levels.written.items())
     ]
     core_px = source_tile * scale
     seams = seam_check(dest, image_mod, enhanced_top, core_px // tile_px, 1 << enhanced_top)
