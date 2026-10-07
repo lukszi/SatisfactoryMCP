@@ -40,20 +40,21 @@ R = TypeVar("R")
 DRAW_THREADS = 8
 
 #: Output columns of a band drawn at a time (``--draw-columns``): a piece's arrays, 288 rows
-#: by 2080 columns with the halo, are 2.4 MB of float32 against 38 MB for a whole band.
-PIECE_COLS = 2048
+#: by 544 columns with the halo, are 0.6 MB of float32 against 38 MB for a whole band. The
+#: fastest of 256 to 2048 measured.
+PIECE_COLS = 512
 
 #: Items submitted per thread ahead of the one waited on.
 AHEAD = 2
 
 #: Memory one more piece in flight takes, for a piece ``PIECE_BYTES_WIDTH`` wide: the
 #: painted layer's, and every other layer's (None). Scaled by the piece's width.
-PIECE_BYTES = {"painted": 0.21e9, None: 0.12e9}
+PIECE_BYTES = {"painted": 0.08e9, None: 0.045e9}
 PIECE_BYTES_WIDTH = PIECE_COLS + 2 * piece_halo()
 
 #: What a piece of a pass that draws the painted layer and another adds: the second ground,
 #: the meshes and the water over them under the other seabed rule.
-SEABED_BYTES = 0.04e9
+SEABED_BYTES = 0.015e9
 
 #: One decoded stored band of every plane a pass reads, at 32768 wide: with the painted
 #: layer, and without (None). Scaled by the sheet's width.
@@ -156,8 +157,9 @@ def add_draw_flags(parser: argparse.ArgumentParser) -> None:
         help=(
             f"threads drawing the layers (default {DRAW_THREADS}, fewer on fewer cores; 1 "
             "draws the pieces in turn). Fewer when free memory holds fewer pieces in flight: "
-            "about 0.12 GB each, 0.21 GB with painted and 0.25 GB with painted and another "
-            "layer, beside the decoded bands they share. The tiles are the same bytes"
+            "at the default width about 0.05 GB each, 0.08 GB with painted and 0.1 GB with "
+            "painted and another layer, beside the decoded bands they share. The tiles are "
+            "the same bytes"
         ),
     )
     parser.add_argument(

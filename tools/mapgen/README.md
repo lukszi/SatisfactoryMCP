@@ -122,9 +122,11 @@ as the artwork. The main options:
   was cut for another size or build, so a palette change never turns into a full render.
 - `--no-titan-trees` leaves the Titan forest's trees off the painted layer, a style variant
   with its own digest (§30).
-- `--draw-threads N` draws N bands of a layer at once. The default is 8, no more than the
-  cores, and fewer when free memory holds fewer bands in flight; `1` draws them in turn. The
+- `--draw-threads N` draws N pieces of the bands at once. The default is 8, no more than the
+  cores, and fewer when free memory holds fewer pieces in flight; `1` draws them in turn. The
   tiles are the same bytes either way (§40).
+- `--draw-columns N` draws each band in pieces of N output columns, 512 by default. Narrower
+  pieces take less memory a thread, and the tiles are the same bytes (§40, "Column pieces").
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
@@ -278,9 +280,11 @@ where the ocean's crossing rule applies (`None` keeps recipe 5's water). `painte
 the prepared waterfalls and `rivers` the `RiverWater` whose ribbons replace the field's river
 water. `window` draws part of the sheet, which is how crops are compared. `sheets` makes each
 layer's sheet: in memory by default, and memory-mapped files in the run's scratch from the
-renders command (`render/sheets.py`). `threads` draws that many bands at once to the same
-bytes (`render/drawpool.py`, `--draw-threads`): the bands share the pass's inputs read-only,
-each writes its own rows, and their seam and regime measurements are merged in band order
+renders command (`render/sheets.py`). Each band is drawn in pieces of `columns` output
+columns, and `threads` draws that many pieces at once to the same bytes
+(`render/drawpool.py`, `--draw-columns`, `--draw-threads`): the pieces share the pass's
+inputs read-only and each writes its own pixels; each band, once its pieces are in, hands
+the light its rows and is measured for the seam and regime tables, in band order
 (docs/spatial-and-map.md section 40). `render_layer` is one layer alone, in memory.
 
 On a sheet coarser than the paint's 1 m grid (4096 px and below) the painted layer samples

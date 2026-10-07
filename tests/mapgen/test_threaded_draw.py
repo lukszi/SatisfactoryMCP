@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import threading
 import time
 from types import SimpleNamespace
@@ -289,8 +290,10 @@ def test_the_thread_count_is_the_request_or_the_default_capped_by_memory(monkeyp
     assert draw_threads(32, ["painted"], 32768, free=60 * gb) == 32
     for threads in (1, 4, 7):
         fits = SET_ASIDE + drawpool.pass_bytes(["painted"], 32768, PIECE_COLS, threads)
-        assert draw_threads(None, ["painted"], 32768, free=int(fits)) == threads
-        assert draw_threads(None, ["painted"], 32768, free=int(fits) - 1) == max(threads - 1, 1)
+        assert draw_threads(None, ["painted"], 32768, free=math.ceil(fits)) == threads
+        assert draw_threads(None, ["painted"], 32768, free=math.ceil(fits) - 1) == max(
+            threads - 1, 1
+        )
     assert draw_threads(None, ["painted"], 32768, free=4 * gb) == 1
     assert draw_threads(1, ["terrain"], 2048, free=60 * gb) == 1
     assert draw_threads(0, ["terrain"], 2048, free=60 * gb) == 1
@@ -309,11 +312,11 @@ def test_a_piece_costs_its_dearest_layer_and_the_second_ground_by_its_width(monk
     both = drawpool.PIECE_BYTES["painted"] + drawpool.SEABED_BYTES
     assert drawpool.piece_bytes(EVERY, width) == pytest.approx(both)
     assert drawpool.piece_bytes(EVERY, width // 2) == pytest.approx(both / 2)
-    fits = SET_ASIDE + drawpool.pass_bytes(EVERY, 32768, PIECE_COLS, 4)
-    assert draw_threads(None, EVERY, 32768, free=int(fits)) == 4
-    assert draw_threads(None, EVERY, 32768, free=int(fits), columns=512) > 4, "narrower: more"
+    fits = SET_ASIDE + drawpool.pass_bytes(EVERY, 32768, 2048, 4)
+    assert draw_threads(None, EVERY, 32768, free=math.ceil(fits), columns=2048) == 4
+    assert draw_threads(None, EVERY, 32768, free=math.ceil(fits), columns=512) > 4, "narrower"
     stored = drawpool.STORED_BAND_BYTES["painted"] * 2048 / 32768
-    assert drawpool.pass_bytes(EVERY, 2048, PIECE_COLS, 1) == pytest.approx(
+    assert drawpool.pass_bytes(EVERY, 2048, 4096, 1) == pytest.approx(
         drawpool.piece_bytes(EVERY, 2048) + bands_held(1) * stored
     ), "a sheet no wider than a piece is one piece of its own width"
 
