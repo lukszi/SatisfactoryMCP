@@ -78,7 +78,7 @@ RENDER_STAGE_S = {"prep": 30.0, "sweep": 36.0, "direct": 692.0, "top": 119.0}
 RENDER_LAYER_S = {"cut": 73.0}
 #: The draw, one pass over every layer (section 4.3): the ground the layers share, once, and
 #: each layer's colour over it. One layer alone takes 340 s, the draw on 8 threads less lean
-#: sampling's 12%.
+#: sampling's 12%; five take 0.65 of five drawn one by one (2026-10-07).
 RENDER_DRAW_S = {"ground": 150.0, "layer": 190.0}
 #: A layer's drawn sheet, held in the run's scratch until it is cut: 3 bytes a pixel.
 SHEET_SCRATCH_BYTES = 3 * 32768 * 32768

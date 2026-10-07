@@ -1173,7 +1173,7 @@ whole size when it is allocated: with other work running, the commit ran out at 
 1.9 GB, and 3.4 GB for the painted layer, at 32768 wide, scaled by the width: the working set
 measured at 1, 4 and 8 threads below, so the decoded bands it keeps are counted too. The
 performance plan had estimated 1.4 and 2.9 GB. A pass paints its layers in turn over one
-ground, so a band of it costs its dearest layer's, and 0.5 GB more (`SEABED_BYTES`) for the
+ground, so a band of it costs its dearest layer's, and 0.6 GB more (`SEABED_BYTES`) for the
 second ground of a pass that draws the painted layer and another (`band_bytes`). With nothing
 else running, a 64 GB machine draws every layer on 8 threads. `1` draws the bands in turn.
 The run prints the count, and every layer's `meta.json` records it as `render.draw_threads`,
@@ -1315,6 +1315,31 @@ ground once (`render/surface.py` `band_surfaces`) before every layer's painter c
 - `render.seconds_to_draw` in each layer's `meta.json` is the pass's, the same for every
   layer of the run, and `render.draw_threads` the pass's threads.
 - `render_layer` draws one layer alone, in memory, as before: the crops and the tests use it.
+
+**Measured** (2026-10-07, build 502094):
+
+- The 2048 render, all five layers, lit: all 1,131 tiles, light tiles and sidecars have the
+  same content as before the pass; the bytes differ in the sidecars' timings only. The draw
+  took 18.0 s against 27.9 s for the five layers one by one, and the run's CPU 574 s against
+  636 s; both peaked at 9.2 GB of commit.
+- Three windows of the full-size sheet, every layer, unlit, on 8 threads, the layers drawn
+  one by one and then in one pass, one run after the other with no other render on the
+  machine: every array is byte-identical. Seconds:
+
+  | Window | One by one | One pass | Ratio |
+  | --- | --- | --- | --- |
+  | 16 bands over the densest water edges, half the width | 107.5 | 72.3 | 0.67 |
+  | A full-width strip of 4 bands | 63.6 | 41.4 | 0.65 |
+  | The first two bands, full width | 43.0 | 26.1 | 0.61 |
+
+  The whole run's CPU, its preparation included, fell from 1,167 to 808 s. At the water
+  window's rate the five layers draw the full sheet in about 1,160 s against 1,720 s.
+- Memory: the peak commit rose from 13.4 to 16.6 GB on the water window and from 12.7 to
+  15.6 GB on the strip. The five windows' sheets, held in memory there, are 0.8 and 0.4 GB of
+  it; the rest is the second ground, about 0.6 GB a band at full width (`SEABED_BYTES`).
+- A full-size sheet in a file filled band by band in 0.85 s against 0.29 s in memory, and
+  copied out for the cutter in 0.29 s either way; with 43 GB free nothing reached the disk
+  before it was deleted.
 
 ### Known limits
 

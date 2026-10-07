@@ -44,7 +44,7 @@ BAND_BYTES_WIDTH = 32768
 
 #: What a band of a pass that draws the painted layer and another adds: the second ground,
 #: the meshes and the water over them under the other seabed rule. At 32768 wide.
-SEABED_BYTES = 0.5e9
+SEABED_BYTES = 0.6e9
 
 #: Memory left free for everything but the bands: the rest of the process and the machine.
 RESERVE_BYTES = 2 << 30
@@ -117,7 +117,7 @@ def add_draw_flags(parser: argparse.ArgumentParser) -> None:
         help=(
             f"threads drawing the layers (default {DRAW_THREADS}, fewer on fewer cores; 1 "
             "draws the bands in turn). Fewer when free memory holds fewer bands in flight: "
-            "about 1.9 GB each at full size, 3.4 GB with painted and 3.9 GB with painted and "
+            "about 1.9 GB each at full size, 3.4 GB with painted and 4 GB with painted and "
             "another layer. The tiles are the same bytes"
         ),
     )

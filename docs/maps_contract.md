@@ -304,8 +304,11 @@ and 2 GB more. Checked at the form, at submit and again at start.
 
 From the stage seconds of measured full renders, area-scaled, with the direct and top passes
 floored because the triangles are the same at any size: prep 30, sweep 36, direct 692 and
-top 119 (2026-10-05); per layer draw 340 and cut 73, and with the light a bake of 830 once
-and each layer's cut 1.8 times as long (2026-10-06). The 2026-10-06 figures are renders-v7's
+top 119 (2026-10-05); per layer a cut of 73, and with the light a bake of 830 once and each
+layer's cut 1.8 times as long (2026-10-06); the draw, one pass for every layer
+(spatial-and-map.md §40), 150 for the ground the layers share and 190 a layer (2026-10-07).
+One layer alone draws in 340, as before; five drew in 0.65 of the time five layers drawn one
+by one took, on windows of the full-size sheet. The 2026-10-06 figures are renders-v7's
 measured stages carried over the performance work of that day (spatial-and-map.md §17, §26,
 §29 and §40): the draw, 5,810 s for five layers, on 8 threads and less 12% for lean sampling,
 about 1,700 s; the light, 2,903 s, on 16 workers in strips; the cut of five lit layers,

@@ -91,9 +91,18 @@ Planned as 0.2.0.
   seventh of the CPU for about 7% more bytes, and the light's lossless normal tiles at WebP
   effort 2 instead of 4, 2.6 times faster for about 6% more. The tiles decode to the same
   pixels; their files are not the same bytes as before.
+- Map generator: a render draws all its layers in one pass over the bands. Each band's
+  heights, rocks, water and meshes are composed once and every layer's style colours them,
+  where each layer composed them again before; drawing all five layers takes about a third
+  less time (on 8 threads, windows of the full-size sheet: 140 s against 214 s), and the
+  tiles are the same bytes. The drawn sheets wait in the run's scratch as files until each
+  layer is cut, 3.2 GB a layer at full size beside the light's cache (`--scratch-dir`), and
+  a job's disk check counts them. A band in flight takes 0.6 GB more memory when the painted
+  layer is drawn with another. The light is baked after the draw, and a job's progress shows
+  one draw stage for all the layers.
 - The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
-  render of all five layers with the light is budgeted at about 68 minutes, the default two
-  layers at about 44.
+  render of all five layers with the light is budgeted at about 58 minutes, the default two
+  layers at about 42.
 
 ### Deprecated
 
