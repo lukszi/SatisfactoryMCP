@@ -48,7 +48,7 @@ from mapgen.lighting.span_bake import (
     plain_bands,
     shade_cells,
 )
-from mapgen.lighting.spans import Bands, SpanSurface, sky_view_spans
+from mapgen.lighting.spans import Bands, sky_view_spans, span_surface
 from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.pools import free_ram_bytes
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
@@ -265,7 +265,8 @@ def _sky_view(z_half: F32Grid, halo: int, sky: int, spacing_m: float, spans: Blo
     rows, cols = (slice(halo - sky, side - halo + sky) for side in z_half.shape[:2])
     if spans.ground is None:
         return sky_view(z_half[rows, cols], sky, spacing_m)
-    cut = SpanSurface(*(plane[rows, cols] for plane in spans.ground))
+    g = spans.ground
+    cut = span_surface(*(plane[rows, cols] for plane in (g.z, g.solid, g.lo, g.hi)))
     return sky_view_spans(cut, sky, spacing_m)
 
 

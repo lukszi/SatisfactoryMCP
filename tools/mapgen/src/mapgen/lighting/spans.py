@@ -36,7 +36,7 @@ from mapgen.lighting.horizon import (
     step_lengths,
 )
 from mapgen.lighting.sun import game_sun
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
@@ -44,6 +44,7 @@ __all__ = [
     "CROWN_UNDERSIDE",
     "OFF_PATH_EL_DEG",
     "Bands",
+    "SpanRuns",
     "SpanStep",
     "SpanSurface",
     "march_spans",
@@ -68,16 +69,26 @@ CROWN_UNDERSIDE = np.float32(0.5)
 _HALF = np.float32(0.5)
 
 
+class SpanRuns(NamedTuple):
+    """Per row, the runs of columns where a sample's four pixels (``_quad``) hold a span:
+    ``start[row[r] : row[r + 1]]`` to ``end`` (exclusive). The kernels visit only these."""
+
+    row: I64Grid
+    start: I64Grid
+    end: I64Grid
+
+
 class SpanSurface(NamedTuple):
     """What a span march reads, one grid with a halo, metres: the receivers, what blocks as
-    ground, the spans' underside and top (NaN where none), and the tops a span that merges
-    into the horizon blocks with."""
+    ground, the spans' underside and top (NaN where none), the tops a span that merges into
+    the horizon blocks with, and the runs of columns with a span."""
 
     z: F32Grid
     solid: F32Grid
     lo: F32Grid
     hi: F32Grid
     tops: F32Grid
+    runs: SpanRuns
 
 
 class SpanStep(NamedTuple):
@@ -107,7 +118,19 @@ def span_surface(z: F32Grid, solid: F32Grid, lo: F32Grid, hi: F32Grid) -> SpanSu
     """A ``SpanSurface``; the tops are the spans' top over the solid surface, as it is drawn."""
     tops = np.where(np.isfinite(hi), np.fmax(hi, solid), solid).astype(np.float32)
     plane = partial(np.ascontiguousarray, dtype=np.float32)
-    return SpanSurface(plane(z), plane(solid), plane(lo), plane(hi), tops)
+    return SpanSurface(plane(z), plane(solid), plane(lo), plane(hi), tops, _runs(lo))
+
+
+def _runs(lo: F32Grid) -> SpanRuns:
+    """The ``SpanRuns`` of an underside plane."""
+    f = np.isfinite(lo)
+    quad = (f[:-1, :-1] | f[:-1, 1:]) | (f[1:, :-1] | f[1:, 1:])
+    edges = np.diff(np.pad(quad, ((0, 0), (1, 1))).view(np.int8), axis=1)
+    rows, start = np.nonzero(edges == 1)
+    end = np.nonzero(edges == -1)[1]
+    per_row = np.bincount(rows, minlength=quad.shape[0])
+    row = np.concatenate([[0], np.cumsum(per_row)]).astype(np.int64)
+    return SpanRuns(row, start.astype(np.int64), end.astype(np.int64))
 
 
 def _planes(surface: SpanSurface) -> tuple[F32Grid, F32Grid, F32Grid, F32Grid, F32Grid]:
@@ -311,7 +334,7 @@ def _compiled_march(surface: SpanSurface, halo: int, steps: list[SpanStep],
     offsets = kernel_offsets(oy, ox, smooth, (len(steps),), halo)
     per_step = np.array([[s.scale, s.near_m, s.far_m, s.weight] for s in steps], np.float32)
     span_kernels.march_spans(_planes(surface), halo, np.array(smooth), offsets, _quads(oy, ox),
-                             per_step, target, out, rows)  # fmt: skip
+                             per_step, target, out, rows, tuple(surface.runs))  # fmt: skip
 
 
 def _quads(oy: list[float], ox: list[float]) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
@@ -350,7 +373,7 @@ def sky_view_spans(surface: SpanSurface, halo: int, spacing_m: float,
                              for t, n, f in zip(steps, near_t, far_t, strict=True)], np.float32)  # fmt: skip
         qy, qx = (q.reshape(shape) for q in _quads(oy, ox))
         span_kernels.sky_view_spans(_planes(surface), halo, offsets, (qy, qx), per_step, out,
-                                    (rows, span))  # fmt: skip
+                                    (rows, span), tuple(surface.runs))  # fmt: skip
         return out
     for a in range(r0, r1, STRIP_ROWS):
         b = min(a + STRIP_ROWS, r1)

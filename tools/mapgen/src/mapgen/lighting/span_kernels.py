@@ -3,7 +3,8 @@
 Each reproduces its numpy reference in ``spans`` bit for bit: per pixel the same float32
 operations in the same order, every step's offsets, fractions and scales worked out by that
 numpy code beforehand. The ground's steps run a row at a time as ``kernels.march`` does; a row
-with no span within reach skips the span work, which then changes nothing. Imported only when
+with no span within reach skips the span work, which then changes nothing, and a step visits
+only the columns ``spans.SpanRuns`` holds, where the work does something. Imported only when
 ``mapgen.jit.kernels_on()``. docs/map/renders.md section 41.
 """
 
@@ -26,6 +27,8 @@ _ONE = np.float32(1.0)
 
 #: ``spans.SpanSurface`` as the kernels take it: receivers, solid, underside, top, tops.
 _Surface: TypeAlias = tuple[F32Grid, F32Grid, F32Grid, F32Grid, F32Grid]
+#: ``spans.SpanRuns`` as a plain tuple.
+_Runs: TypeAlias = tuple[I64Grid, I64Grid, I64Grid]
 
 
 @helper
@@ -108,16 +111,24 @@ def _into_band(j: int, tl: np.float32, th: np.float32, weight: np.float32,
         lo[j], hi[j] = sl, sh
 
 
+@helper
+def _run_columns(runs: _Runs, qr: int, qc: int, cols: int, run: int) -> tuple[int, int]:
+    """Run ``run`` of quad row ``qr`` as core columns, clipped to ``[0, cols)``."""
+    _row, start, end = runs
+    return max(start[run] - qc, 0), min(end[run] - qc, cols)
+
+
 @kernel
 def march_spans(
     surface: _Surface, halo: int, smooth: BoolMask, offsets: Offsets, quads: tuple[I64Grid, I64Grid],
     per_step: F32Grid, target: tuple[np.float32, np.float32],
-    out: tuple[F32Grid, F32Grid, F32Grid, BoolMask], rows: tuple[I64Grid, int],
+    out: tuple[F32Grid, F32Grid, F32Grid, BoolMask], rows: tuple[I64Grid, int], runs: _Runs,
 ) -> None:  # fmt: skip
     """``spans.march_spans``' loop over every row of the core; ``out`` is raised in place.
 
     ``per_step`` holds each step's scale, stretch near and far end, and fade weight;
-    ``quads`` each step's whole-pixel offsets to the four pixels a span sample reads.
+    ``quads`` each step's whole-pixel offsets to the four pixels a span sample reads, and
+    ``runs`` the columns where those hold a span, the only ones visited.
     """
     z, solid, lo_p, hi_p, tops = surface
     iy, ix, fy, fx, gy, gx = offsets
@@ -148,27 +159,27 @@ def march_spans(
                 continue
             frac[0], frac[1], frac[2], frac[3] = fy[s], fx[s], gy[s], gx[s]
             qr, qc = r + qy[s], halo + qx[s]
-            for j in range(cols):
-                low = _quad(lo_p, qr, qc + j, True)
-                if not np.isfinite(low):
-                    continue
-                high = _quad(hi_p, qr, qc + j, False)
-                tl, th = _tangents(low, high, near[j], near_m, far_m)
-                seen[i, j] = True
-                if tl * weight <= top[j]:
-                    exact = (_sample(tops, sr, sc + j, smooth[s], frac) - near[j]) * scale
-                    top[j] = raise_nan(top[j], exact)
-                else:
-                    _into_band(j, tl, th, weight, (band_lo[i], band_hi[i]), target)
+            for run in range(runs[0][qr], runs[0][qr + 1]):
+                a, b = _run_columns(runs, qr, qc, cols, run)
+                for j in range(a, b):
+                    low = _quad(lo_p, qr, qc + j, True)
+                    high = _quad(hi_p, qr, qc + j, False)
+                    tl, th = _tangents(low, high, near[j], near_m, far_m)
+                    seen[i, j] = True
+                    if tl * weight <= top[j]:
+                        exact = (_sample(tops, sr, sc + j, smooth[s], frac) - near[j]) * scale
+                        top[j] = raise_nan(top[j], exact)
+                    else:
+                        _into_band(j, tl, th, weight, (band_lo[i], band_hi[i]), target)
 
 
 @kernel
 def sky_view_spans(
     surface: _Surface, halo: int, offsets: Offsets, quads: tuple[I64Grid, I64Grid],
-    per_step: F32Grid, out: F32Grid, rows: tuple[I64Grid, int],
+    per_step: F32Grid, out: F32Grid, rows: tuple[I64Grid, int], runs: _Runs,
 ) -> None:  # fmt: skip
     """``spans.sky_view_spans``' loop over every row of ``out``: offsets are ``(dirs, steps)``,
-    ``per_step`` each step's scale and stretch near and far end."""
+    ``per_step`` each step's scale and stretch near and far end; ``runs`` as ``march_spans``."""
     z, solid, lo_p, hi_p, tops = surface
     iy, ix, fy, fx, gy, gx = offsets
     qy, qx = quads
@@ -199,18 +210,18 @@ def sky_view_spans(
                     continue
                 frac[0], frac[1], frac[2], frac[3] = fy[d, s], fx[d, s], gy[d, s], gx[d, s]
                 qr, qc = r + qy[d, s], halo + qx[d, s]
-                for j in range(cols):
-                    low = _quad(lo_p, qr, qc + j, True)
-                    if not np.isfinite(low):
-                        continue
-                    high = _quad(hi_p, qr, qc + j, False)
-                    tl, th = _tangents(low, high, near[j], near_m, far_m)
-                    if tl <= best[j]:
-                        exact = _sample(tops, r + iy[d, s], halo + ix[d, s] + j, True, frac)
-                        best[j] = raise_nan(best[j], (exact - near[j]) * scale)
-                    else:
-                        lo[j] = min(lo[j], tl)
-                        hi[j] = max(hi[j], th)
+                for run in range(runs[0][qr], runs[0][qr + 1]):
+                    a, b = _run_columns(runs, qr, qc, cols, run)
+                    for j in range(a, b):
+                        low = _quad(lo_p, qr, qc + j, True)
+                        high = _quad(hi_p, qr, qc + j, False)
+                        tl, th = _tangents(low, high, near[j], near_m, far_m)
+                        if tl <= best[j]:
+                            exact = _sample(tops, r + iy[d, s], halo + ix[d, s] + j, True, frac)
+                            best[j] = raise_nan(best[j], (exact - near[j]) * scale)
+                        else:
+                            lo[j] = min(lo[j], tl)
+                            hi[j] = max(hi[j], th)
             for j in range(cols):
                 banded = np.isfinite(lo[j])
                 late = banded and lo[j] <= best[j]

@@ -100,6 +100,21 @@ def test_without_spans_the_march_and_the_sky_view_are_the_plain_ones():
     assert spans.sky_view_spans(surface, sky, SP).tobytes() == hz.sky_view(z, sky, SP).tobytes()
 
 
+def test_the_runs_are_the_columns_whose_four_pixels_hold_a_span():
+    rng = np.random.default_rng(5)
+    z = np.zeros((40, 50), np.float32)
+    lo = np.where(rng.random(z.shape) < 0.1, 1.0, np.nan).astype(np.float32)
+    lo[7, :] = 2.0
+    runs = spans.span_surface(z, z, lo, lo + 1).runs
+    visited = np.zeros((39, 49), bool)
+    for r in range(39):
+        for k in range(runs.row[r], runs.row[r + 1]):
+            assert not visited[r, runs.start[k] : runs.end[k]].any()
+            visited[r, runs.start[k] : runs.end[k]] = True
+    f = np.isfinite(lo)
+    assert (visited == ((f[:-1, :-1] | f[:-1, 1:]) | (f[1:, :-1] | f[1:, 1:]))).all()
+
+
 def test_the_sky_beside_a_span_is_open_and_beside_a_wall_it_is_not():
     col = HALO + 100
     surface, z = _deck(30.0, 34.0, slice(col, col + 8))
