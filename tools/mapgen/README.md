@@ -225,7 +225,7 @@ be traced to the axis it should move.
 | `lighting/occluders.py` | light | The occluders the horizons take: the paint store's crown tops on a render grid (`sheet_crowns`) and a tree table's domes (`canopy_top`) |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `palette/styles.py` | style | Palette loading, digests, the colour painters and their height ramp |
-| `palette/schema.py` | style | The palette files' shapes, and the check at load (`checked`, `PaletteError`) |
+| `palette/schema.py` | style | The palette files' shapes, and the check at load: a stray or missing key, or an unknown rock family, stops the run with a `PaletteError` naming the place in the file (§28). A key added to a palette needs its field here. |
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
 | `palette/relief.py` | style | The relief styles' painter (light and dark palettes) |
 | `palette/lightparams.py` | style | What the page's shader reads from a style |

@@ -300,9 +300,12 @@ triangles folded onto it were.
 
 So the renders read the **triangles**, by *importing the code that writes the field*:
 `sweep_levels`, `read_mesh_geometry`, `rotation_matrix`, `winding_sign`, `MaxZRaster` and all
-of the placement culls are called, not copied. The only thing the render changes is the grid
-they are pointed at, its own 32768², 0.229 m to the texel, so a difference between the render
-and the field is one of spacing rather than of rasteriser. About 216 M triangles over 20,233
+of the placement culls are called, not copied; the sidecar's
+`cliff_geometry.placements_dropped` counts each cull, `excluded_mesh` among them (376 on build
+502094: the passable `CliffPillar_03`, which the render-only mesh pass draws instead). The only
+thing the render changes is the grid they are pointed at, its own 32768², 0.229 m to the
+texel, so a difference between the render and the field is one of spacing rather than of
+rasteriser. About 216 M triangles over 20,233
 placements are rasterised once, banded at 256 rows, into the direct cache (a zstd band store,
 section 39) that every layer draws from. Two rules make that draw smooth.
 

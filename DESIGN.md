@@ -34,7 +34,7 @@ docstring.
 
 **The exception: §19 to §24 were given out twice.** The map has its own §19 to §24, and so do
 parked.md (§19–§22), residency.md (§23) and plumbing.md (§24). The file named with the number
-decides: `parked.md §20` is the parked sampler design, `spatial-and-map.md §20` the sampler as
+decides: `parked.md §20` is the parked sampler's record, `spatial-and-map.md §20` the sampler as
 built. Inside one of those documents a number with no file named means that document's own
 section. Renumbering either side would mean editing every reference to the six across the docs and
 the code, so they stay as they are, and no new section takes a number already given.
