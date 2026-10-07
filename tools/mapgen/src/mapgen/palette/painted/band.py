@@ -12,10 +12,10 @@ from typing import cast
 
 import numpy as np
 
-from mapgen.colour import LUMA, flat_light, linear_from_oklab, linear_to_srgb, oklab
+from mapgen.colour import by_luminance, flat_light, linear_from_oklab, linear_to_srgb, oklab, tone
 from mapgen.lighting.hillshade import FLAT_SUN_DOT, sun_dot
 from mapgen.lighting.model import surface_direct
-from mapgen.palette.painted.calibration import exposure_gain, sampled_rgb, tone
+from mapgen.palette.painted.calibration import exposure_gain, sampled_rgb
 from mapgen.palette.painted.optics import underwater
 from mapgen.palette.painted.shapes import (
     FloatGrid,
@@ -112,11 +112,9 @@ def _lit_and_wet(
 
 
 def _toned(out: FloatGrid, palette: PaintedPalette) -> FloatGrid:
-    """Linear light through the style's luminance shoulder, as sRGB 0..255."""
-    y = np.maximum(out @ LUMA, 1e-7)
+    """Linear light through the style's luminance shoulder, the shader's tone, as sRGB 0..255."""
     curve = palette["tone"]
-    out = out * (tone(y, curve["knee"], curve["white"]) / y)[..., None]
-    return linear_to_srgb(out)
+    return linear_to_srgb(by_luminance(out, tone, curve["knee"], curve["white"]))
 
 
 def painted_ndl(

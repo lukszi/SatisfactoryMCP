@@ -62,6 +62,15 @@ divided by the same expression for flat ground in the open, so flat ground at an
   white light, no curve (`palette/lightparams.py`). Relief drawn unlit keeps flat ground at its
   ramp colour, so its live light is this sRGB approximation, not its own OKLab shade. One
   lighting pyramid serves every style.
+- **One copy, in float32.** The baked fallback (`lighting/model.py`) computes as the shader
+  does: the normalisation is the float32 that the page's `uInvNorm` uniform holds, and one
+  tone curve (`colour.tone`) serves the shader's reference, the painted draw and its
+  calibration. A height raster's Lambert term is always `lighting/hillshade.py` `sun_dot`:
+  the hillshade, the relief suns and `surface_direct`; flat ground's is its `FLAT_SUN_DOT`.
+  Until game-painted 20, relief 7 and terrain and satellite 9 the normalisation and the relief
+  suns ran in float64. At 2048 float32 flips the baked direct byte for about 2 in 65,536
+  normals and moves 9 to 14 lit pixels a layer by one level, and 14 pixels of each relief
+  style drawn without the light; the unlit sheets and the lighting pyramid do not change.
 
 The default sun is game noon, 225° / 62.25°. The game turns its sun about one fixed tilted
 axis (`AFGSkySphere`, pitch `30 + 15 h`); `lighting/sun.py` and the page's `sun.ts` both

@@ -27,6 +27,7 @@ from mapgen.colour import (
     unit_luminance,
     untone,
 )
+from mapgen.lighting.hillshade import sun_dot
 from mapgen.lighting.horizon import (
     FADE_M,
     HORIZON_DIRS,
@@ -207,17 +208,18 @@ def direct_term(
         if hz.shape != ndl.shape:
             hz = ndimage.zoom(hz, np.array(ndl.shape) / np.array(hz.shape), order=1)
         shade = np.clip((hz - el) / SHADOW_SOFT_DEG + 0.5, 0, 1)
-    inv = 1.0 / max(np.sin(np.radians(el)), np.sin(np.radians(NORMALISE_MIN_EL_DEG)))
-    return (ndl * (1 - shade * (1 - SHADOW_FILL)) * inv).astype(np.float32)
+    return (ndl * (1 - shade * (1 - SHADOW_FILL)) * _sun_gain(el)).astype(np.float32)
+
+
+def _sun_gain(el: float) -> np.float32:
+    """``1 / sin(max(el, NORMALISE_MIN_EL_DEG))`` as the float32 the shader's ``uInvNorm`` is."""
+    return np.float32(1.0 / max(np.sin(np.radians(el)), np.sin(np.radians(NORMALISE_MIN_EL_DEG))))
 
 
 def surface_direct(z_m: NDArray[np.floating], spacing_m: float, sun: Sun = DEFAULT_SUN) -> F32Grid:
     """``direct_term`` of a height raster without shadows: Lambert toward ``sun``, flat is 1."""
-    d_south, d_east = np.gradient(np.asarray(z_m, np.float32), spacing_m)
-    lx, ly, lz = sun_vector(*sun)
-    ndl = (lz - d_east * lx - d_south * ly) / np.sqrt(d_east * d_east + d_south * d_south + 1.0)
-    inv = 1.0 / max(np.sin(np.radians(sun[1])), np.sin(np.radians(NORMALISE_MIN_EL_DEG)))
-    return (np.maximum(ndl, 0.0) * inv).astype(np.float32)
+    ndl = sun_dot(np.asarray(z_m, np.float32), spacing_m, *sun)
+    return (ndl * _sun_gain(sun[1])).astype(np.float32)
 
 
 def apply_terms(

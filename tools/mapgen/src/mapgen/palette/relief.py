@@ -14,7 +14,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.colour import linear_from_oklab, linear_to_srgb
-from mapgen.lighting.hillshade import slope_degrees
+from mapgen.lighting.hillshade import slope_degrees, sun_dot
 from mapgen.palette.scene import FloatGrid, ReliefScene, WaterPlanes, field_heights
 from mapgen.palette.schema import ReliefPalette, ReliefWaterStyle
 from mapgen.palette.styles import area_plane, dry_land_range, ramp_position
@@ -146,17 +146,6 @@ class ReliefGround:
         self.rock_ab = oklab_from_lch([0.0, rock["c"], rock["h"]])[1:]
 
 
-def _lambert(z_m: FloatGrid, spacing_m: float, azimuth: float, altitude: float) -> FloatGrid:
-    """n.L for one sun; rows run south, as ``lighting.hillshade.sun_dot``."""
-    az, alt = np.deg2rad(azimuth), np.deg2rad(altitude)
-    light = (np.cos(alt) * np.sin(az), -np.cos(alt) * np.cos(az), np.sin(alt))
-    d_south, d_east = np.gradient(z_m, spacing_m)
-    lit = (-d_east * light[0] - d_south * light[1] + light[2]) / np.sqrt(
-        d_east * d_east + d_south * d_south + 1.0
-    )
-    return np.clip(lit, 0.0, 1.0).astype(np.float32)
-
-
 def _shade(
     lab: FloatGrid, z_m: FloatGrid, spacing_m: float, ground: ReliefGround, unlit: bool = False
 ) -> tuple[FloatGrid, FloatGrid]:
@@ -167,7 +156,7 @@ def _shade(
     else:
         lit = np.zeros(z_m.shape, np.float32)
         for azimuth, altitude, weight in shade["suns"]:
-            lit = lit + weight * _lambert(z_m, spacing_m, azimuth, altitude)
+            lit = lit + weight * sun_dot(z_m, spacing_m, azimuth, altitude)
     excess = (lit - FLAT_LIT).astype(np.float32)
     if shade["mode"] == "add":
         lab[..., 0] += np.float32(shade["k"]) * excess

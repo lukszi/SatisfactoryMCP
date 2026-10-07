@@ -1,7 +1,8 @@
 """Colour calibration of the game-painted style: display targets taken back to ground colour.
 
-The tone curve, the inverse pipeline from a display sRGB target to ground OKLab, the per-layer
-transfer, the targets derived by rule and the area scoping. docs/spatial-and-map.md section 31.
+The inverse pipeline from a display sRGB target back through the shader's tone to ground OKLab,
+the per-layer transfer, the targets derived by rule and the area scoping.
+docs/spatial-and-map.md section 31.
 """
 
 from __future__ import annotations
@@ -18,8 +19,9 @@ from mapgen.colour import (
     linear_from_oklab,
     linear_to_srgb,
     oklab,
+    sky_sun_light,
     srgb_to_linear,
-    unit_luminance,
+    tone,
 )
 from mapgen.palette.painted.shapes import (
     CalibrationArea,
@@ -42,7 +44,6 @@ __all__ = [
     "display_to_ground",
     "display_to_linear",
     "exposure_gain",
-    "flat_ground_light",
     "hex_rgb",
     "layer_transfer",
     "median_lab",
@@ -50,7 +51,6 @@ __all__ = [
     "sampled_rgb",
     "scoped_planes",
     "split_weight",
-    "tone",
     "transfer_op",
     "weighted_median",
     "with_derived",
@@ -60,25 +60,9 @@ __all__ = [
 Transfer: TypeAlias = tuple[float, FloatGrid]
 
 
-def tone(luminance: npt.ArrayLike, knee: float, white: float) -> FloatGrid:
-    """Identity below ``knee``; above it a Reinhard shoulder that takes ``white`` to 1."""
-    y = np.asarray(luminance, np.float32)
-    span = np.float32(1.0 - knee)
-    x = np.maximum(y - knee, 0.0) / span
-    top = np.float32((white - knee) / span)
-    shoulder = knee + span * x * (1.0 + x / (top * top)) / (1.0 + x)
-    return np.where(y > knee, shoulder, y).astype(np.float32)
-
-
 def exposure_gain(palette: PaintedPalette) -> np.float32:
     """The linear gain before the tone: the style's exposure times the tone's gain."""
     return np.float32(palette["exposure"] * palette["tone"]["gain"])
-
-
-def flat_ground_light(palette: PaintedPalette) -> FloatGrid:
-    """The flat-ground sky-and-sun light as a colour of unit luminance per term."""
-    a = np.float32(palette["ambient"])
-    return a * unit_luminance(palette["sky"]) + (1 - a) * unit_luminance(palette["sun"])
 
 
 def hex_rgb(hex_colour: str) -> list[int]:
@@ -105,7 +89,8 @@ def display_to_linear(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
 def display_to_ground(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
     """A display sRGB target back through flat light, exposure, tone and chroma: OKLab."""
     rgb = display_to_linear(palette, hex_colour) / exposure_gain(palette)
-    lab = oklab(rgb / flat_ground_light(palette))
+    flat = sky_sun_light(palette["sky"], palette["sun"], np.float32(palette["ambient"]))
+    lab = oklab(rgb / flat)
     lab[0] -= np.float32(palette["altitude_lift"] * 0.5)
     lab[1:] /= np.float32(palette["chroma_gain"])
     return lab

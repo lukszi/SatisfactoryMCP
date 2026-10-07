@@ -533,7 +533,7 @@ def terrain_lattice(field: hf.Field, ground: F32Grid) -> tuple[F32Grid, JsonObje
 
     Written wherever the bare landscape has a sample and the province is landscape or
     cliff, so the lattice under a rock is the real terrain rather than a hole. Fill keeps
-    its value for ``map_fill`` to rebuild. A field without the plane comes back unchanged.
+    its value for ``rebuild_lattice`` to rebuild. A field without the plane comes back unchanged.
     """
     plane = field.plane(hf.TERRAIN_NAME)
     grid = field.terrain_grid

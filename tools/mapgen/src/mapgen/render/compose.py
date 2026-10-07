@@ -18,7 +18,7 @@ import numpy as np
 from mapgen.cache import DirectPlanes, MeshPlanes, TopPlanes
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting.hillshade import (
-    SUN_ALTITUDE_DEG,
+    FLAT_SUN_DOT,
     flat_shade,
     hillshade,
     slope_degrees,
@@ -93,7 +93,7 @@ BAND_ROWS = 256
 BAND_HALO = band_halo()
 
 #: The flat ground's sun term, ``n.L`` of the default sun on level ground.
-_FLAT_SUN = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
+_FLAT_SUN = np.float32(FLAT_SUN_DOT)
 
 #: A style's colours for one band's scene, sRGB 0..255.
 Painter: TypeAlias = Callable[[SatelliteScene], np.ndarray]

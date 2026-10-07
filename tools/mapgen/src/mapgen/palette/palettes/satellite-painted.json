@@ -193,7 +193,7 @@
   "opaque_tau_m": 0.3
  },
  "water_classes": {
-  "about": "inland water by class; the ocean keeps water. docs/spatial-and-map.md section 33",
+  "about": "inland water by class; the ocean keeps water. docs/map/water.md section 33",
   "river": {
    "k_per_m": [
     2.4,
@@ -483,7 +483,7 @@
   "white": 1.6
  },
  "calibration": {
-  "about": "display sRGB targets from in-game screenshots; docs/spatial-and-map.md section 31",
+  "about": "display sRGB targets from in-game screenshots; docs/map/calibration.md section 31",
   "pure_share": 0.7,
   "min_texels": 200,
   "area_blur_m": 25.0,

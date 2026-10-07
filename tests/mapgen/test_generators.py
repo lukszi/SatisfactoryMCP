@@ -580,7 +580,7 @@ def _fill_fixture():
 
 
 def test_the_fill_is_rebuilt_from_the_raster_and_meets_the_landscape_without_a_step():
-    """``map_fill.fill_field`` on a fixture whose truth is known everywhere.
+    """``terrain.fill.fill_field`` on a fixture whose truth is known everywhere.
 
     The rebuilt fill beats the stored nearest texel, the seam column jumps by about what the
     truth does, and the hole is filled close to the hidden surface.
