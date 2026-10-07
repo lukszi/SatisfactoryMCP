@@ -8,6 +8,7 @@ from typing import NamedTuple, NotRequired, Protocol, TypeAlias, TypedDict
 import numpy as np
 from numpy.typing import NDArray
 
+from mapgen.terrain.sample import Taps
 from satisfactory_mcp.core.arrays import I16Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -40,9 +41,7 @@ WaterPlanes: TypeAlias = tuple[I16Grid, U8Grid | None]
 
 #: How a 1 m plane is read onto a band (``terrain.sample``): per axis, its taps' indices and
 #: weights, rows first.
-BandTaps: TypeAlias = tuple[
-    tuple[NDArray[np.integer], FloatGrid], tuple[NDArray[np.integer], FloatGrid]
-]
+BandTaps: TypeAlias = Taps
 
 
 class ReconciledWater(Protocol):

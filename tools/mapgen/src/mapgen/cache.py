@@ -274,7 +274,7 @@ def write_sidecar(path: Path, recorded: Mapping[str, object], indent: int | None
         raise
 
 
-def write_rivers(directory: Path, stamp: RiverStamp, rivers: list[dict[str, object]],
+def write_rivers(directory: Path, stamp: RiverStamp, rivers: Sequence[Mapping[str, object]],
                  boxes: Iterable[tuple[str, Iterable[float]]]) -> dict[str, object]:  # fmt: skip
     """``rivers.json``: the river splines and the water boxes, as ``[name, [x0..z1]]`` pairs."""
     payload: dict[str, object] = {

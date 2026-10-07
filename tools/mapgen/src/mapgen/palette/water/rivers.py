@@ -18,14 +18,14 @@ import numpy as np
 from mapgen.cache import RIVER_CACHE_DIR_NAME, cached_rivers, river_stamp, write_rivers
 from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.water.channel import lower_bodies
-from mapgen.gamedata.water.rivers import box_tops, ribbon_planes, sample_rivers
+from mapgen.gamedata.water.rivers import RiverActor, box_tops, ribbon_planes, sample_rivers
 from mapgen.palette.scene import BandTaps, FloatGrid, WaterTerms, field_heights, field_water
 from mapgen.palette.water.shore import OCEAN_LEVEL_M, shore_terms
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_planes
 from mapgen.terrain.sample import sample_plain, sample_surface
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
-from satisfactory_mcp.core.jsontypes import JsonArray, JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -68,7 +68,7 @@ class RiverCache(TypedDict):
     """``rivers.cache``: its stamp, the river splines as swept, and every water box."""
 
     stamp: JsonObject
-    rivers: list[JsonObject]
+    rivers: list[RiverActor]
     boxes: list[tuple[str, list[float]]]
 
 
@@ -113,7 +113,7 @@ class RiverWater:
         )
         self.stats.update(
             rivers=len(cached["rivers"]),
-            sections=sum(len(cast(JsonArray, river["sections"])) for river in cached["rivers"]),
+            sections=sum(len(river["sections"]) for river in cached["rivers"]),
             centreline_km=round(_length_m(samples) / 1000, 2),
             ribbon_km2=round(float((self.presence > 0).sum()) / 1e6, 4),
         )

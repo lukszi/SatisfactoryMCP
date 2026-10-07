@@ -85,7 +85,7 @@ def _surface_at(field: hf.Field, x_m: F64Grid, y_m: F64Grid) -> tuple[F64Grid, F
 
 def load_falls(
     cache_root: Path, build: str | None, sweep_once: Callable[[], Sweep], field: hf.Field
-) -> tuple[F64Grid, JsonObject]:
+) -> tuple[F64Grid, dict[str, JsonObject]]:
     """The drawable falls for this field, and the sidecar's ``waterfalls`` block."""
     records, source = load_or_sweep_falls(cache_root, build, sweep_once)
     # Stamped by its reader's version, or just swept: the records have the sweep's shape.
