@@ -411,6 +411,7 @@ def test_the_new_readers_are_named_for_the_maps_tab():
 
 def _band_ground(floor):
     palette = copy.deepcopy(PAINTED_PALETTE)
+    palette["shore"].pop("inland", None)  # the opacity floor alone, without the depth floor
     w = palette["water"]
     linear = lambda c: (np.asarray(c, np.float32) / 255) ** 2.2
     return SimpleNamespace(

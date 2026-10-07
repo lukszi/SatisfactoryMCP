@@ -318,7 +318,8 @@ def titan_over(out: FloatGrid, scene: PaintedScene, ground: PaintedSurface) -> F
         albedo = np.where((cls == which)[..., None], rgb, albedo)
     palette = ground.palette
     exposure = exposure_gain(palette)
-    light = flat_light(palette, sun_dot(surface, scene["grid"].spacing_m), scene["ndl_flat"])
+    spacing_m = scene["grid"][5]
+    light = flat_light(palette, sun_dot(surface, spacing_m), scene["ndl_flat"])
     lit = albedo * light * exposure
     return out * (1.0 - alpha[..., None]) + lit * alpha[..., None]
 

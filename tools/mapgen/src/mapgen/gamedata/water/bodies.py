@@ -58,6 +58,7 @@ __all__ = [
     "level_bodies",
     "open_sea",
     "spring_terraces",
+    "stored_bodies",
 ]
 
 WATER_BODIES_NAME = "water_bodies.json"
@@ -193,11 +194,16 @@ def body_class(name: str, materials: Collection[str]) -> str | None:
     return found or ACTOR_CLASS.get(name)
 
 
+def stored_bodies(bodies: Mapping[str, object]) -> WaterBodies:
+    """The paint store's ``water_bodies.json``, which the paint command writes in this shape."""
+    return cast(WaterBodies, bodies)
+
+
 def spring_terraces(bodies: Mapping[str, object]) -> F64Grid:
     """The hot-spring terraces standing in a lake box at most ``HOT_SPRING_BOX_MAX_M`` on a
     side, within ``BOX_Z_TOLERANCE_M`` of its z range: one row each, ``(x, y)`` in cm and the
     box's water levels ``(z0, z1)`` in metres, the tolerance included."""
-    stored = cast(WaterBodies, bodies)
+    stored = stored_bodies(bodies)
     springs = np.asarray(stored.get("hot_springs") or np.zeros((0, 3)), np.float64)
     rows: list[tuple[float, float, float, float]] = []
     pad = BOX_Z_TOLERANCE_M * 100
@@ -247,7 +253,7 @@ def classify(
     the ocean's level from under it. A river box's claim stands only on a body it mostly
     covers (``_settle_rivers``).
     """
-    stored = cast(WaterBodies, bodies)
+    stored = stored_bodies(bodies)
     springs = stored.get("hot_springs") or []
     claims: list[tuple[float, int, Sequence[float]]] = []
     for name, box, materials in stored.get("actors", []):
