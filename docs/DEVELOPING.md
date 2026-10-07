@@ -228,6 +228,24 @@ colour value, so every colour sits with its owner and its warrant.
 
 **Prose** (`test_comment_budget.py`): see [comments.md](comments.md), rule 9.
 
+### Code-quality scan
+
+`sonar-project.properties` configures a SonarQube scan; Python coverage comes from
+`coverage.xml`, so the test run goes first. From the repository root in PowerShell, with a
+SonarQube server on the host's port 9000 and an analysis token in `%USERPROFILE%\.sonar-token`:
+
+```powershell
+uv sync --all-extras --all-packages
+uv run pytest -q --cov --cov-report=xml
+$env:SONAR_TOKEN = (Get-Content "$env:USERPROFILE\.sonar-token" -Raw).Trim()
+docker run --rm -e SONAR_HOST_URL=http://host.docker.internal:9000 -e SONAR_TOKEN `
+    -v "${PWD}:/usr/src" sonarsource/sonar-scanner-cli
+Remove-Item Env:SONAR_TOKEN
+```
+
+`-e SONAR_TOKEN` without a value hands the container the variable, so the token never appears
+on a command line.
+
 ## Solver threads
 
 Every `scipy.optimize.milp` and `linprog` call goes through `core/solverlane.run`, which runs it on
