@@ -28,7 +28,6 @@ from mapgen.enhance.upscaler import (
     ready_upscaler,
 )
 from mapgen.gamedata.artwork_sheet import (
-    SeamLayout,
     calibrate,
     decode_slices,
     report_calibration,
@@ -180,7 +179,7 @@ def _prove_upscaler(args: argparse.Namespace) -> Upscaler:
 
 def _read_sheet(
     game: Path, pyooz_version: str, image_mod: ImageModule
-) -> tuple[Image.Image, SeamLayout, str]:
+) -> tuple[Image.Image, JsonObject, str]:
     """The four map slices decoded, their layout proved, stitched: (sheet, layout, alpha)."""
     import texture2ddecoder as decoder
 
@@ -207,7 +206,7 @@ def _read_sheet(
             "wrong -- a mirrored world is worse than no world. Refusing to write.",
         )
     sheet, alpha_note = stitch_sheet(tiles, image_mod)
-    return sheet, layout, alpha_note
+    return sheet, to_json_object(layout), alpha_note
 
 
 def _cut(args: argparse.Namespace, versions: dict[str, str], image_mod: ImageModule) -> int:
@@ -267,7 +266,7 @@ def _cut(args: argparse.Namespace, versions: dict[str, str], image_mod: ImageMod
         build_raw=build_raw,
         image=image_block(args.size, written, sheet.mode, alpha_note),
         integrity=integrity_block(),
-        layout=to_json_object(layout),
+        layout=layout,
         calibration=calibration,
         versions=versions,
         tiles=tiles,
