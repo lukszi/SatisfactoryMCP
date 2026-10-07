@@ -616,7 +616,7 @@ def _power(ctx: RuleContext, biomass: bool, headroom: str) -> list[Advisory]:
     return out
 
 
-#: (world, plan key, rev, save token, labels version) -> (failure, drift flags, node owner).
+#: (world, plan key, rev, save token, label digest) -> (failure, drift flags, node owner).
 _PLANS: dict[tuple[object, ...], tuple[str, list[str], str]] = {}
 _PLANS_MAX = 256
 
@@ -646,8 +646,9 @@ def _plan_facts(st: WorldState, state: PlanState) -> tuple[str, list[str], str]:
 
 def _plans(st: WorldState) -> list[Advisory]:
     out: list[Advisory] = []
+    labels = st.labels.fingerprint()
     for state in plan_heads(st):
-        key = (st.world_id, state.key, state.rev, st.token, st.labels.version)
+        key = (st.world_id, state.key, state.rev, st.token, labels)
         facts = _PLANS.get(key)
         if facts is None:
             if len(_PLANS) >= _PLANS_MAX:

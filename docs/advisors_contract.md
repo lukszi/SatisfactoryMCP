@@ -203,9 +203,18 @@ Median of 5, main repo `.venv`, the worktree's `src`.
 | `GET /api/advice`, cached | 6–8 ms | – |
 | Chat dismissal → gone from an open page | 0.67 s | ≤ 1 s |
 
-Rows are cached per (projection, game, labels version, plan heads, settings, spoilers) in a
+Rows are cached per (save token, label digest, plan heads, settings, spoilers) in a
 singleflight of eight; the head-lift model per projection. A route and a tool asking at once
 compute once.
+
+- The key holds a digest of the labels, not their `version`. The version counts one file's
+  writes: a world with no labels file and a file written without a version both read 0, and a
+  file deleted or restored by hand repeats a number with other names behind it. Keyed on the
+  version, the rows went on naming factories from the old labels until the next save.
+- The token names a save, not a projection object: a save read again, or a copy a test builds,
+  shares it. So an entry answers only the projection and game data it was computed from, and
+  is replaced for any other.
+- K8's per-plan facts carry the same digest.
 
 ## 10. Verified
 

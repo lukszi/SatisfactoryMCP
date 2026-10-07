@@ -8,6 +8,7 @@ the most common thing that happens to one. docs/save-projection.md §6.3 has the
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
@@ -208,6 +209,12 @@ class LabelStore:
             ),
             encoding="utf-8",
         )
+
+    def fingerprint(self) -> str:
+        """A digest of the labels as they stand. Not ``version``: that counts one file's
+        writes, so stores with different names can share it (docs/advisors_contract.md §9)."""
+        body = json.dumps([x.to_json() for x in self.labels], sort_keys=True)
+        return hashlib.blake2b(body.encode("utf-8"), digest_size=16).hexdigest()
 
     # ---- mutation ------------------------------------------------------
 
