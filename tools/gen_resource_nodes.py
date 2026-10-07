@@ -12,6 +12,7 @@ writing, so the two committed artifacts cannot drift apart.
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 from pathlib import Path
@@ -236,7 +237,9 @@ def check_projection(
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    # No options: the parse is what makes --help print instead of regenerating the table.
+    argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0]).parse_args(argv)
     world, world_meta = load_world_node_table()
     nodes, core_count = project_nodes(world)
     geometry = check_well_links_by_position(world)
