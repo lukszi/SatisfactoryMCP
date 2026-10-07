@@ -369,13 +369,16 @@ beneath it, so a ravine under the Titan forest showed through the canopy (sweep 
 auto #5). The crown occluder's canopy now has a light of its own, baked at the default sun
 into the painted layer's terms (`lighting/canopy.py`, `stage._canopy_light`):
 
-- **Where:** the occluder's covered share of each pixel. The Titan trees join the paint
-  store's crowns in the occluder where the painted layer draws them (`render/light.py`
-  `titan_crowns`): their top where it stands higher, and the larger cover. So they cast into
-  the crown cells as the crowns do.
-- **Its slope:** the occluder's top smoothed over its own pixels by 0.75 m
-  (`CANOPY_SMOOTH_M`, the blur of the painted crowns' domes), so the 1 m grid of the crown
-  plane draws no facets; flat where no canopy is.
+- **Where:** the occluder's covered share of each pixel, where its top stands above the drawn
+  surface (a crown under it the painter hides). The Titan trees join the paint store's crowns
+  in the occluder where the painted layer draws them (`render/light.py` `titan_crowns`):
+  their top where it stands higher, and the larger cover. So they cast into the crown cells
+  as the crowns do.
+- **Its slope:** the occluder's top smoothed over its own pixels by `DOME_SIGMA_M` (0.75 m),
+  with 0.35 of its relief (`CANOPY_RELIEF`), as the painted crowns' own lit domes take it
+  (`dome_gain`; a test holds the two to the painter's); flat where no canopy is. The crown
+  plane steps by metres between neighbouring trees, and at its full relief a forest drew as a
+  mottle of dark crescents.
 - **Its horizon:** the crowns' horizon received on the canopy top, whole: the crowns and the
   ground under `OCCLUDER_FADE_M`, not the larger of it and the ground's horizon measured
   under the canopy.
