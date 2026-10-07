@@ -150,7 +150,7 @@ STYLES: dict[str, Style] = {
     "satellite-biome": {"label": "satellite", "name": "Satellite", "layer": "satellite",
                         "version": 8, "tone": "light"},
     "satellite-painted": {"label": "game-painted", "name": "Painted", "layer": "painted",
-                          "version": 19, "tone": "light"},
+                          "version": 20, "tone": "light"},
     "relief-muted": {"label": "relief", "name": "Relief", "layer": "relief", "version": 6,
                      "tone": "light"},
     "relief-night": {"label": "relief dark", "name": "Relief (dark)", "layer": "relief-dark",
