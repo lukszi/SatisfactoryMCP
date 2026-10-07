@@ -478,13 +478,14 @@ The direct pass samples at `col + 0.5` on the frame's corner, the pixel centre;
 - The artwork borrow still multiplies the drawn map's arch strokes into the shading, so a
   faint ghost stripe can sit beside an arch where the drawing and the mesh disagree.
 
-### Arches as spans: recipe 8 (2026-10-07)
+### Arches as spans (2026-10-07)
 
-Recipe 8 is recipe 7 with the arches drawn as spans: the top raster keeps their underside and
-the boulders apart and fills the sub-metre holes their open mesh edges leave, the direct raster
-finds the rock overhangs, and each layer's arches are antialiased by FXAA, nothing else. In the
-light the arches, the overhangs and the crowns cast where the sun's ray meets them (light model
-3). Both are light-and-crowns.md section 29, "Arches as spans".
+Recipe 7 keeps its number and draws the arches as spans: the top raster keeps their underside
+and the boulders apart and fills the sub-metre holes their open mesh edges leave, the direct
+raster finds the rock overhangs, and each layer's arches are antialiased by FXAA, nothing else.
+In the light the arches, the overhangs and the crowns cast where the sun's ray meets them. The
+rendered styles each go one version up (terrain and satellite 10, painted 21, both reliefs 8)
+and the live sun is light model 3. Both are light-and-crowns.md section 29, "Arches as spans".
 
 ## 26. Rebuilt base data and a PCHIP sampler: recipe 5 (2026-10-05)
 

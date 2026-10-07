@@ -106,8 +106,9 @@ between its underside and its top as the receiver sees them:
 - **Sky view**: a band costs `sin(hi) − sin(lo)` of a direction's sky, not the whole wall
   under it. Beside an arch the median sky view rose from 0.55–0.67 to 0.78–0.83 on the
   prototype's three arch sites.
-- **Normals** beside a span come from the solid surface, so a span's edge draws no rim on the
-  ground beside it.
+- **Normals** of the ground beside or beneath a span, a pixel below a neighbouring underside,
+  come from the solid surface, so a span's edge draws no rim on it. The span's own pixels, and
+  a rock beside it at its height, keep the drawn surface's.
 - Where no span is in reach, the march and the sky view are the plain ones to the bit, and a
   strip of rows with none skips the span work. Both run as numba kernels equal to their numpy
   reference bit for bit (`span_kernels.py`, section 41 of renders.md). `--gpu` keeps the
@@ -143,7 +144,8 @@ than 0.46 m to the pixel nothing is filled.
 
 **The default sun** is baked from the bands themselves: per cell, the horizon's soft edge plus
 the share of the sun disc the bands above it hide (with the crowns, the union of two bands),
-and that shade is zoomed to the pixels as the horizon is (`span_bake.default_shade`). Only
+weighted between the sun's two directions as the horizon is, and zoomed to the pixels as the
+horizon is (`span_bake.default_shade`). Only
 cells a span was in reach of, grown by one, take it; every other pixel's term is the horizon's
 as before. Zoomed horizons would draw one-pixel bright rings where a cell holding an arch as
 horizon meets one holding it as a band.
