@@ -77,10 +77,9 @@ def test_the_march_in_strips_is_the_whole_array_march_bit_for_bit(az):
     lo = np.where(z > 20, z - 4, np.nan).astype(np.float32)
     cases = ((hz.FADE_M, None), (hz.OCCLUDER_FADE_M, None), (hz.FADE_M, (z, lo, lo + 9)))
     for fade, slabs in cases:
-        want, got = np.zeros(z[core].shape, np.float32), np.zeros(z[core].shape, np.float32)
+        want = np.zeros(z[core].shape, np.float32)
         _march_whole(z, z[core], halo, az, sp, fade, want, slabs)
-        hz._march(z, z[core], halo, az, sp, fade, got, slabs)
-        assert got.tobytes() == want.tobytes()
+        assert hz._march(z, z, halo, az, sp, fade, slabs).tobytes() == want.tobytes()
 
 
 def test_the_sky_view_in_strips_is_the_whole_array_one_bit_for_bit():

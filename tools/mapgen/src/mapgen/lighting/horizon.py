@@ -1,18 +1,23 @@
 """Sun-independent light terms of a height surface: normals, sky view and faded horizons.
 
 Rows run south and columns east; an azimuth is compass degrees from north. Why each constant
-has its value: docs/spatial-and-map.md section 29.
+has its value: docs/spatial-and-map.md section 29. The march and the sky view run as numba
+kernels unless ``mapgen.jit`` selects this numpy, their reference (section 41).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import TypeAlias
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
 from numpy.typing import NDArray
 
+from mapgen.jit import kernels_on
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
+
+if TYPE_CHECKING:
+    from mapgen.lighting.kernels import Offsets
 
 __all__ = [
     "BILINEAR_PX",
@@ -48,6 +53,9 @@ Slabs: TypeAlias = tuple[F32Grid, F32Grid, F32Grid]
 
 #: ``z[r0 + oy : r1 + oy, c0 + ox : c1 + ox]``, read at a fractional offset.
 _Sampler: TypeAlias = Callable[[F32Grid, int, int, int, int, float, float], NDArray[np.floating]]
+
+#: One step of the march: its sampler, its offset in rows and columns, its weight over distance.
+_Step: TypeAlias = tuple[_Sampler, float, float, np.float32]
 
 #: A float32 raster known to be 2-D, which is what lets numpy's stubs type its gradient.
 _Plane: TypeAlias = np.ndarray[tuple[int, int], np.dtype[np.float32]]
@@ -106,11 +114,16 @@ def normals(z: NDArray[np.floating], spacing_m: float) -> tuple[F32Grid, F32Grid
     return (-d_east * inv).astype(np.float32), (-d_south * inv).astype(np.float32)
 
 
+def _split(offset: float) -> tuple[int, np.float32]:
+    """A fractional offset as whole pixels and the float32 remainder ``_bilinear`` weighs."""
+    whole = int(np.floor(offset))
+    return whole, np.float32(offset - whole)
+
+
 def _bilinear(
     z: F32Grid, r0: int, r1: int, c0: int, c1: int, oy: float, ox: float
 ) -> NDArray[np.floating]:
-    iy, ix = int(np.floor(oy)), int(np.floor(ox))
-    fy, fx = np.float32(oy - iy), np.float32(ox - ix)
+    (iy, fy), (ix, fx) = _split(oy), _split(ox)
     a = z[r0 + iy : r1 + iy, c0 + ix : c1 + ix]
     b = z[r0 + iy : r1 + iy, c0 + ix + 1 : c1 + ix + 1]
     c = z[r0 + iy + 1 : r1 + iy + 1, c0 + ix : c1 + ix]
@@ -129,6 +142,9 @@ def sky_view(
     if reach < 1.0:
         return out
     steps = np.geomspace(1.0, reach, SKY_STEPS)
+    if kernels_on():
+        _compiled_sky_view(z, halo, spacing_m, steps, out)
+        return out
     for a in range(r0, r1, STRIP_ROWS):
         b = min(a + STRIP_ROWS, r1)
         zc = z[a:b, c0:c1]
@@ -142,6 +158,45 @@ def sky_view(
             acc += best / np.sqrt(1.0 + best * best)
         out[a - r0 : b - r0] = 1.0 - acc / SKY_DIRS
     return out
+
+
+def _compiled_sky_view(
+    z: F32Grid, halo: int, spacing_m: float, steps: NDArray[np.float64], out: F32Grid
+) -> None:
+    """``sky_view``'s loop as a kernel, fed the offsets and scales that loop works out."""
+    from mapgen.lighting import kernels
+
+    thetas = [2 * np.pi * k / SKY_DIRS for k in range(SKY_DIRS)]
+    oy = [np.sin(theta) * t for theta in thetas for t in steps]
+    ox = [np.cos(theta) * t for theta in thetas for t in steps]
+    offsets = _offsets(oy, ox, [True] * len(oy), (SKY_DIRS, len(steps)), halo)
+    scale = np.array([np.float32(1.0 / (t * spacing_m)) for t in steps], np.float32)
+    kernels.sky_view(np.ascontiguousarray(z), halo, offsets, scale, out)
+
+
+def _offsets(
+    oy: Sequence[float],
+    ox: Sequence[float],
+    bilinear: Sequence[bool],
+    shape: tuple[int, ...],
+    halo: int,
+) -> Offsets:
+    """Each step's sample position as the kernels take it, split the way ``_bilinear`` and
+    ``_nearest`` split it. The kernels read unchecked, so a halo the steps overrun is refused.
+    """
+    parts = [
+        [
+            _split(o) if b else (round(o), np.float32(0.0))
+            for o, b in zip(axis, bilinear, strict=True)
+        ]
+        for axis in (oy, ox)
+    ]
+    iy, ix = (np.array([w for w, _f in axis], np.int64).reshape(shape) for axis in parts)
+    fy, fx = (np.array([f for _w, f in axis], np.float32).reshape(shape) for axis in parts)
+    reach = int(max(np.abs(iy).max(initial=0), np.abs(ix).max(initial=0))) + 1
+    if reach > halo:
+        raise ValueError(f"a halo of {halo} px is short of the {reach} px the steps reach")
+    return iy, ix, fy, fx, 1 - fy, 1 - fx
 
 
 def crown_surface(
@@ -179,10 +234,8 @@ def march_horizon(
     floating geometry's underside and top, NaN where nothing floats.
     """
     z = np.asarray(z, np.float32)
-    core = (slice(halo, z.shape[0] - halo), slice(halo, z.shape[1] - halo))
     solid = z if slabs is None else np.asarray(slabs[0], np.float32)
-    best = np.zeros(z[core].shape, np.float32)
-    _march(solid, z[core], halo, az_deg, spacing_m, fade, best, slabs)
+    best = _march(solid, z, halo, az_deg, spacing_m, fade, slabs)
     out = np.degrees(np.arctan(best)).astype(np.float32)
     if occluder is None:
         return out
@@ -203,27 +256,16 @@ def crown_horizon(
     The receivers stand on the crown tops, so a crown is lit or shaded where it is drawn.
     """
     crown_z = np.asarray(crown_z, np.float32)
-    core = (slice(halo, crown_z.shape[0] - halo), slice(halo, crown_z.shape[1] - halo))
     solid = crown_z if blockers is None else np.asarray(blockers, np.float32)
-    best = np.zeros(crown_z[core].shape, np.float32)
-    _march(solid, crown_z[core], halo, az_deg, spacing_m, OCCLUDER_FADE_M, best)
+    best = _march(solid, crown_z, halo, az_deg, spacing_m, OCCLUDER_FADE_M)
     return np.degrees(np.arctan(best)).astype(np.float32)
 
 
-def _march(
-    solid: F32Grid,
-    zc: F32Grid,
-    halo: int,
-    az_deg: float,
-    spacing_m: float,
-    fade: Fade,
-    best: F32Grid,
-    slabs: Slabs | None = None,
-) -> None:
-    r0, r1, c0, c1 = halo, solid.shape[0] - halo, halo, solid.shape[1] - halo
+def _march_steps(az_deg: float, spacing_m: float, fade: Fade) -> list[_Step]:
+    """Toward ``az_deg``, every step that still counts: its sampler, offset and weight."""
     az = np.deg2rad(az_deg)
     dr, dc = -np.cos(az), np.sin(az)
-    steps: list[tuple[_Sampler, float, float, np.float32]] = []
+    steps: list[_Step] = []
     for t in _steps(fade[1] / spacing_m, FINE_M / spacing_m):
         d = t * spacing_m
         w = fade_weight(d, fade)
@@ -231,6 +273,26 @@ def _march(
             break
         sample = _bilinear if t < BILINEAR_PX else _nearest
         steps.append((sample, dr * t, dc * t, np.float32(w / d)))
+    return steps
+
+
+def _march(
+    solid: F32Grid,
+    z: F32Grid,
+    halo: int,
+    az_deg: float,
+    spacing_m: float,
+    fade: Fade,
+    slabs: Slabs | None = None,
+) -> F32Grid:
+    """The tangent of the faded horizon over ``solid`` for the core of ``z``, the receivers."""
+    r0, r1, c0, c1 = halo, solid.shape[0] - halo, halo, solid.shape[1] - halo
+    zc = z[halo : z.shape[0] - halo, halo : z.shape[1] - halo]
+    best = np.zeros(zc.shape, np.float32)
+    steps = _march_steps(az_deg, spacing_m, fade)
+    if kernels_on():
+        _compiled_march(solid, z, halo, steps, best, slabs)
+        return best
     for a in range(r0, r1, STRIP_ROWS):
         b = min(a + STRIP_ROWS, r1)
         near, top = zc[a - r0 : b - r0], best[a - r0 : b - r0]
@@ -243,6 +305,23 @@ def _march(
                 lo = sample(slabs[1], a, b, c0, c1, oy, ox)
                 hi = sample(slabs[2], a, b, c0, c1, oy, ox)
                 _raise_by_slab(top, (lo - near) * scale, (hi - near) * scale)
+    return best
+
+
+def _compiled_march(
+    solid: F32Grid, z: F32Grid, halo: int, steps: list[_Step], best: F32Grid, slabs: Slabs | None
+) -> None:
+    """``_march``'s loop as a kernel, fed the steps it works out."""
+    from mapgen.lighting import kernels
+
+    bilinear = [sample is _bilinear for sample, _oy, _ox, _scale in steps]
+    oy, ox = [s[1] for s in steps], [s[2] for s in steps]
+    offsets = _offsets(oy, ox, bilinear, (len(steps),), halo)
+    scale = np.array([s[3] for s in steps], np.float32)
+    lo, hi = (np.zeros((1, 1), np.float32),) * 2 if slabs is None else slabs[1:]
+    kernels.march(np.ascontiguousarray(solid), np.ascontiguousarray(z), halo,
+                  np.array(bilinear), offsets, scale, best, np.ascontiguousarray(lo),
+                  np.ascontiguousarray(hi), slabs is not None)  # fmt: skip
 
 
 def _raise_by_slab(best: F32Grid, lo: F32Grid, hi: F32Grid) -> None:
