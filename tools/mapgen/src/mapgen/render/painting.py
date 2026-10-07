@@ -8,7 +8,9 @@ the void and the falls, reading the piece's own columns of the job.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 from numpy.typing import NDArray
@@ -19,6 +21,7 @@ from mapgen.lighting.hillshade import FLAT_SUN_DOT, flat_shade, hillshade, slope
 from mapgen.palette.painted.band import painted_colours, painted_ndl
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
 from mapgen.palette.painted.shapes import PaintedScene, Sampler
+from mapgen.palette.painted.trees import canopy_cover
 from mapgen.palette.relief import BiomeSample, ReliefGround, relief_colours
 from mapgen.palette.scene import BandGrid, BandScene, FloatGrid, ReliefScene, ShadedScene
 from mapgen.palette.styles import (
@@ -175,8 +178,9 @@ def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> Float
         "ramp_hi": job.ramp[1],
         "water": surface.water,
     }
+    hidden: Callable[[], FloatGrid | None] | None = None
     if job.painted is not None:
-        rgb = _painted_colours(job, job.painted, grid, surface, scene)
+        rgb, hidden = _painted_colours(job, job.painted, grid, surface, scene)
     elif job.relief is not None:
         relief: ReliefScene = {**scene, "spacing_m": job.ground.spacing_m, "unlit": job.unlit}
         biome_rows = biome_index(y_cm, BOUNDS_M["y_min_m"], BOUNDS_M["y_max_m"], job.biome_width)
@@ -190,7 +194,8 @@ def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> Float
         rgb = _style_colours(job, grid, scene)
     sea = job.ground.sea
     rgb = _void(rgb, surface.missing, sea, grid.linear, surface.weight, z_m)
-    return draw_falls(rgb, job.falls, job.layer, grid.x_cm, y_cm, z_m, job.ground.spacing_m)
+    spacing_m = job.ground.spacing_m
+    return draw_falls(rgb, job.falls, job.layer, grid.x_cm, y_cm, z_m, spacing_m, hidden)
 
 
 def _style_colours(job: LayerJob, grid: BandSampling, scene: BandScene) -> FloatGrid:
@@ -222,8 +227,9 @@ def _painted_colours(
     grid: BandSampling,
     surface: BandSurface,
     scene: BandScene,
-) -> FloatGrid:
-    """The game-painted style's band: its rock weight, crowns, sun term and water optics."""
+) -> tuple[FloatGrid, Callable[[], FloatGrid | None]]:
+    """The game-painted style's band: its rock weight, crowns, sun term and water optics; and
+    what the crowns and Titan trees hide of it, worked out when asked."""
     rows, cols, z_m, field = grid.rows, grid.cols, surface.z_m, job.ground.field
     spacing_m = job.ground.spacing_m
     y_cm = job.ground.y_cm[rows.lo : rows.hi]
@@ -256,12 +262,8 @@ def _painted_colours(
         cut_taps(painted.paint_cols, cols.cut),
     )
     rock: GridTaps = (rock_rows, cut_taps(painted.rock_cols, cols.cut))
-    return painted_colours(
-        band,
-        ground,
-        _sampler(paint),
-        _sampler(rock),
-    )
+    rgb = painted_colours(band, ground, _sampler(paint), _sampler(rock))
+    return rgb, partial(canopy_cover, band, ground)
 
 
 def domed_crowns(

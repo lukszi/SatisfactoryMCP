@@ -217,7 +217,7 @@ def underwater(
     water = scene["water"]
     optics = scene.get("water_optics")
     w = optics or ground.water
-    depth = optical_depth(water, ground.palette["shore"].get("river"))[..., None]
+    depth = _optical_depth(water, ground)[..., None]
     floor = w["inland_floor"] * (1.0 - water["ocean"])[..., None]
     tint = w["tint"] if "turbidity" in w else np.float32(1.0)
     if "turbidity" in w:
@@ -247,6 +247,12 @@ def underwater(
             s = (sample_rock(weight) * share)[..., None] * murk
             under = under * (1.0 - s) + colour * s
     return under
+
+
+def _optical_depth(water: BandWater, ground: PaintedSurface) -> FloatGrid:
+    """The depth the optics see, with the palette's river and inland floors."""
+    shore = ground.palette["shore"]
+    return optical_depth(water, shore.get("river"), shore.get("inland"))
 
 
 def mix_underwater(
@@ -316,7 +322,7 @@ def _mix_compiled(
     taken = None if optics is None else pixels.take_planes(
         optics, [key for key in optics if key not in in_place])  # fmt: skip
     w = taken or ground.water
-    depth = optical_depth(water, ground.palette["shore"].get("river"))[..., None]
+    depth = _optical_depth(water, ground)[..., None]
     floor = w["inland_floor"] * (1.0 - water["ocean"])[..., None]
     if "turbidity" in w:
         floor = np.maximum(floor, w["turbidity"])

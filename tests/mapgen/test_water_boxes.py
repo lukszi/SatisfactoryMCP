@@ -1,7 +1,8 @@
-"""A higher body's water box over lower water draws no rectangle.
+"""A higher body's water box over lower water draws no rectangle, and two box tops meeting
+inside one sheet of water draw no line.
 
-docs/spatial-and-map.md section 38, "Boxes over lower water". Synthetic fixtures: no install,
-no field.
+docs/spatial-and-map.md section 38, "Boxes over lower water", and section 33, "Box seams".
+Synthetic fixtures: no install, no field.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.water.channel import lower_bodies
 from mapgen.gamedata.water.rivers import RIVER_CLASS, ribbon_planes, sample_rivers
 from mapgen.palette.water.rivers import RIVER_MAX_DEPTH_M, RiverWater, river_terms
+from mapgen.palette.water.seams import BOX_SEAMS, feather_box_seams, feather_steps, step_marks
 from mapgen.palette.water.shore import OCEAN_LEVEL_M, blend_water
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -150,3 +152,46 @@ def test_the_river_draws_through_the_blur_past_the_last_wet_texel():
     assert not under["river"].any(), "real deep water above the river still hides it"
     del halo["wet"]
     assert not river_terms(halo, z, river, np.ones_like(z), 0.25)["river"].any()
+
+
+# ------------------------------------------------------------------------ box seams
+
+
+def _sheets(step_m, slope_m=0.0):
+    """One sheet of water 60 texels wide, levelled by two boxes that meet at column 30 with
+    ``step_m`` between their tops, the second one sloping by ``slope_m`` a texel."""
+    level = np.full((20, 60), 5.0, np.float32)
+    level[:, 30:] = 5.0 + step_m + slope_m * np.arange(30, dtype=np.float32)
+    level[:, :3] = np.nan
+    return level, np.isfinite(level)
+
+
+def test_a_small_step_between_two_box_tops_becomes_a_ramp():
+    level, valid = _sheets(0.6)
+    out, moved = feather_steps(level, valid, BOX_SEAMS)
+    row = out[10]
+    assert moved > 0 and (np.diff(row[3:]) >= -1e-6).all(), "it rises from one top to the other"
+    assert np.abs(np.diff(row[3:])).max() < 0.2, "a ramp, no step"
+    reach = BOX_SEAMS.reach
+    assert row[30 - reach - 2] == pytest.approx(5.0) and row[30 + reach + 2] == pytest.approx(5.6)
+    assert np.abs(out[valid] - level[valid]).max() <= BOX_SEAMS.high_m / 2 + 1e-6
+    assert np.isnan(out[:, :3]).all(), "dry stays dry"
+
+
+def test_a_fall_and_a_slope_are_no_seams():
+    level, valid = _sheets(3.0)
+    assert np.array_equal(feather_steps(level, valid, BOX_SEAMS)[0], level, equal_nan=True)
+    level, valid = _sheets(0.0, slope_m=0.3)
+    level[:, :30] = 5.0 - 0.3 * np.arange(30, 0, -1, dtype=np.float32)
+    level[:, :3] = np.nan
+    assert not step_marks(level, valid, BOX_SEAMS.low_m, BOX_SEAMS.high_m).any()
+
+
+def test_the_drawn_level_keeps_its_decimetres_and_its_dry_texels():
+    level, valid = _sheets(0.5)
+    level_dm = np.where(valid, np.round(level * 10), hf.NODATA).astype(np.int16)
+    grades = np.where(valid, hf.WATER_MEASURED, hf.WATER_DRY).astype(np.uint8)
+    out, changed = feather_box_seams(level_dm, grades)
+    assert out.dtype == np.int16 and (out[~valid] == hf.NODATA).all()
+    assert changed == int((out != level_dm).sum()) > 0
+    assert out[10, 3] == 50 and out[10, 59] == 55

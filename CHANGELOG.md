@@ -249,6 +249,16 @@ Planned as 0.2.0.
   forest no longer shows through its canopy; the Titan trees cast tree shadows like the other
   crowns. The live-sun page still lights the canopy by the ground until it gets a canopy
   tile. Game-painted style 21.
+- Map water: two water boxes meeting inside one sheet of water no longer draw a straight line
+  where their tops differ by up to a metre; the level is feathered over about 12 m. A river
+  hands over to a lake or the sea along a ramp, is drawn across the joints between its
+  sections, and fades out where it ends in other water, instead of drawing panels and square
+  ends. Waterfall foam fades out at the ends of its lip, and on the game-painted map goes
+  under the crowns and the Titan canopy. On the game-painted map, pools a few decimetres
+  deep are drawn as water, a hot-spring terrace tints only the water around it instead of
+  its whole lake, dry patches inside the swamp no longer draw as teal sea, and the swamp's
+  dark water stays off the sea past the landscape's edge. Every rendered map style is one
+  version up: terrain and satellite 10, game-painted 21, relief and relief dark 8.
 
 ## [0.1.0] - 2026-09-27
 

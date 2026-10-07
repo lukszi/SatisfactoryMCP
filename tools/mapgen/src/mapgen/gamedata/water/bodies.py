@@ -34,8 +34,10 @@ __all__ = [
     "BODY_STEP_M",
     "BOX_Z_TOLERANCE_M",
     "DRY",
+    "HOT_SPRING",
     "HOT_SPRING_BOX_MAX_M",
     "HOT_SPRING_MARK",
+    "LAKE",
     "MAJORITY_SHARE",
     "MATERIAL_CLASS",
     "OCEAN",
@@ -55,6 +57,8 @@ __all__ = [
     "collect_water_bodies",
     "level_bodies",
     "open_sea",
+    "spring_terraces",
+    "stored_bodies",
 ]
 
 WATER_BODIES_NAME = "water_bodies.json"
@@ -75,7 +79,7 @@ WATER_CLASSES = (
 )
 DRY, OCEAN, RIVER = 0, 1, 2
 _ID = {name: i for i, name in enumerate(WATER_CLASSES)}
-SWAMP = _ID["swamp"]
+SWAMP, LAKE, HOT_SPRING = _ID["swamp"], _ID["lake"], _ID["hot_spring"]
 
 
 #: A water actor's first material, by short name.
@@ -121,7 +125,7 @@ OPEN_SEA_CELL = 4
 
 HOT_SPRING_MARK = "/HotSpring/"
 
-#: A lake box holding a hot-spring terrace is a hot spring only up to this side.
+#: A hot-spring terrace tints the lake around it only in a lake box up to this side.
 HOT_SPRING_BOX_MAX_M = 150.0
 
 _MATERIAL_KEYS = ("OverrideMaterials", "Material", "WaterMaterial", "OceanMaterial", "LakeMaterial")
@@ -184,28 +188,35 @@ def collect_water_bodies(
                 out["hot_springs"].append([round(v, 1) for v in struct.unpack("<3d", location)])
 
 
-def body_class(
-    name: str, materials: Collection[str], box: Sequence[float], hot_springs: F64Grid
-) -> str | None:
-    """One actor's class: its material's, else its actor class's; a lake holding a terrace
-    becomes a hot spring."""
+def body_class(name: str, materials: Collection[str]) -> str | None:
+    """One actor's class: its material's, else its actor class's."""
     found = next((MATERIAL_CLASS[m] for m in materials if m in MATERIAL_CLASS), None)
-    found = found or ACTOR_CLASS.get(name)
-    if found != "lake" or not len(hot_springs):
-        return found
-    x0, y0, z0, x1, y1, z1 = box
-    if max(x1 - x0, y1 - y0) > HOT_SPRING_BOX_MAX_M * 100:
-        return found
+    return found or ACTOR_CLASS.get(name)
+
+
+def stored_bodies(bodies: Mapping[str, object]) -> WaterBodies:
+    """The paint store's ``water_bodies.json``, which the paint command writes in this shape."""
+    return cast(WaterBodies, bodies)
+
+
+def spring_terraces(bodies: Mapping[str, object]) -> F64Grid:
+    """The hot-spring terraces standing in a lake box at most ``HOT_SPRING_BOX_MAX_M`` on a
+    side, within ``BOX_Z_TOLERANCE_M`` of its z range: one row each, ``(x, y)`` in cm and the
+    box's water levels ``(z0, z1)`` in metres, the tolerance included."""
+    stored = stored_bodies(bodies)
+    springs = np.asarray(stored.get("hot_springs") or np.zeros((0, 3)), np.float64)
+    rows: list[tuple[float, float, float, float]] = []
     pad = BOX_Z_TOLERANCE_M * 100
-    inside = (
-        (hot_springs[:, 0] >= x0)
-        & (hot_springs[:, 0] <= x1)
-        & (hot_springs[:, 1] >= y0)
-        & (hot_springs[:, 1] <= y1)
-        & (hot_springs[:, 2] >= z0 - pad)
-        & (hot_springs[:, 2] <= z1 + pad)
-    )
-    return "hot_spring" if inside.any() else found
+    for name, box, materials in stored.get("actors", []):
+        x0, y0, z0, x1, y1, z1 = box
+        if body_class(name, materials) != "lake" or not len(springs):
+            continue
+        if max(x1 - x0, y1 - y0) > HOT_SPRING_BOX_MAX_M * 100:
+            continue
+        for x, y, z in springs:
+            if x0 <= x <= x1 and y0 <= y <= y1 and z0 - pad <= z <= z1 + pad:
+                rows.append((x, y, (z0 - pad) / 100, (z1 + pad) / 100))
+    return np.array(rows, np.float64).reshape(-1, 4)
 
 
 def open_sea(level_m: F32Grid, wet: BoolMask, ocean_level_m: float) -> BoolMask:
@@ -242,11 +253,11 @@ def classify(
     the ocean's level from under it. A river box's claim stands only on a body it mostly
     covers (``_settle_rivers``).
     """
-    stored = cast(WaterBodies, bodies)
-    springs = np.asarray(stored.get("hot_springs") or np.zeros((0, 3)), np.float64)
+    stored = stored_bodies(bodies)
+    springs = stored.get("hot_springs") or []
     claims: list[tuple[float, int, Sequence[float]]] = []
     for name, box, materials in stored.get("actors", []):
-        found = body_class(name, materials, box, springs)
+        found = body_class(name, materials)
         if found is not None:
             claims.append(((box[3] - box[0]) * (box[4] - box[1]), _ID[found], box))
     sea = open_sea(level_m, wet, ocean_level_m)

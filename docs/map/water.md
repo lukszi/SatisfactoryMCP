@@ -26,8 +26,8 @@ render (about 5 s):
    actor whose class is in `ACTOR_CLASS` takes that: the 26 `BP_TranslucentWater_C` are
    translucent (see "Translucent water" below). The other 501 (the `FGWaterVolume` brushes,
    the falls, the lake and ocean spline tools) have no class of their own.
-2. A lake box at most 150 m on a side with a hot-spring terrace inside it (within 1 m of its z
-   range) is a hot spring.
+2. A hot-spring terrace standing in a lake box at most 150 m on a side (within 1 m of its z
+   range) tints that lake around itself only; see "Hot springs" below.
 3. Boxes paint wet texels whose level lies within 1 m of the box's z range, largest box
    first, so a pond inside a big box keeps its own class. No box but the ocean's claims the
    open sea: water within 1 m of the ocean level that the map's edge reaches through
@@ -45,6 +45,9 @@ render (about 5 s):
 7. What is left is swamp in `Area_Swamp` and lake everywhere else.
 8. Where swamp meets the ocean inside one body, the plane blends the two
    (`feather_mouths`; see "Swamp mouths" below).
+9. The terraces tint their lakes (`tint_springs`).
+10. Dry texels within 8 m of classed water take the class of the nearest (`fill_dry`,
+    `DRY_FILL_M`); see "Dry texels beside water" below.
 
 Build 502094, when the plane was first built: ocean 16.23 M texels, lake 1.20 M, river 0.38 M,
 swamp 0.35 M, the turquoise lakes 53 k (lake since, below), hot spring 15 k, sulfur 9.7 k, cave
@@ -160,8 +163,7 @@ The 14 `MI_Lake_Turquoise_01` lakes on the Desert Spires mesas are lakes: the in
 shader maps are hash-identical to `MM_Lake_01`'s and no actor sets anything the shader reads,
 so in game they render exactly as it does. As lakes, these boxes fall under step 2's
 hot-spring rule: the 230.3 m lake by the crash site at (1908, -2368) is a 114 m box holding
-three hot-spring terraces near (1918, -2428), so it draws as a hot spring (2.1 k texels on the
-field's own planes).
+three hot-spring terraces near (1918, -2428), whose tint reaches 20 m around each of them.
 
 ### Sea deep and swamp water (2026-10-06)
 
@@ -310,6 +312,111 @@ steps left are the water's own: a texel 30.6 m deep beside one 1.1 m deep, and t
 waterline. No texel farther than 33 m from a line changes class, and no drawn colour farther
 than 60 m from one changes at all.
 
+**Over the void (2026-10-07).** The swamp's boxes reach past its coast into No Man's Land,
+where the artwork's sea runs on over no data to the void's edge, as at (3031, 1140). The open
+sea's 48 m opening does not reach between the rocks there, so the boxes claimed that water,
+and the blend carried the near-black swamp on into the void's sea. Ocean over no data
+(`void`, the field's height `NODATA`) now takes no swamp: where swamp meets it, the blend lies
+on the swamp's side alone, a smoothstep from none at the line to all of it 30 m in. On the
+run's planes the blend shrinks from 90,125 to 85,168 texels; nothing else moves.
+
+### Hot springs (2026-10-07)
+
+A hot-spring terrace used to turn the whole lake box holding it into a hot spring: a 150 m
+lake drew milky turquoise for one terrace, as at (1915, -2440) and (-950, -690). Now the lake
+stays a lake and each terrace (`spring_terraces`: one standing in a lake box at most
+`HOT_SPRING_BOX_MAX_M` on a side, within 1 m of its z range) tints the lake water around its
+root (`tint_springs`): all of it within 8 m, along a smoothstep to none at 20 m
+(`SPRING_REACH_M`), where the water's level lies in the box's range. The terrace meshes reach
+20.7 m from their roots at the median of the 101 (p10 6.2 m, p90 40.1 m), measured on the
+full-size mesh raster, and the mesh is drawn over its own footprint, so the tint shows as a
+ring around the terrace and on its submerged steps.
+
+Plane values from `SPRING_BLEND` (74) on blend the hot spring into the lake in 32 steps
+(`SPRING_STEPS`), as the mouth blends do swamp into ocean. On the run's planes 5,505 texels
+take the tint, where 18,170 drew as hot spring before; the sidecar's `spring_tinted_texels`
+counts them.
+
+### Dry texels beside water (2026-10-07)
+
+Within the ocean's reach the coast is where the drawn surface crosses the sea's level
+(section 27), so water is drawn over texels the class plane leaves dry: the artwork's
+3.66 m blocks of dry ground inside the swamp's lagoons, at the swamp's level but under the
+sea's crossing. The sampler gives a pixel with no wet tap the ocean's row, so those blocks
+drew as teal squares in the near-black swamp, as at (2322, 265) and (2725, 280).
+
+`fill_dry` gives every dry texel within 8 m (`DRY_FILL_M`) of classed water the class of the
+nearest, a step at a time through the 4-neighbours in a fixed order. Drawn water there takes
+the water's class around it, and the opaque swamp colour with it. A shore pixel whose dry taps
+take the same class as its wet ones is drawn as before. On the run's planes 1.50 million dry
+texels are filled, and the sidecar's `dry_texels_filled` counts them.
+
+### Box seams (2026-10-07)
+
+The field levels each wet texel at the highest box top over it (section 19), so where two
+boxes meet inside one sheet of water the level steps along the box edge: a lake box over a
+river's junction at (-1585, -480) stands 0.3 m over the river around it, and the depth, and
+with it the tone, jumps along a straight line in every style. A box edge cuts the water's
+extent too, where the lower box's level falls under the ground.
+
+`palette/water/seams.py` feathers these steps in the level the renders draw (the open sea's,
+or the surfaces' without it):
+
+- **A seam** is a step of more than 0.15 m and at most 1 m between 4-neighbours
+  (`BOX_SEAMS`) where the level runs on flat, within half a decimetre, to the next texel on
+  both sides: a step between two box tops, not a sloped surface.
+- **The feather.** Within 12 m of a seam, through the water, the level is a screened membrane
+  joining the two sides of each seam and neighbours on one flat sheet, held to the level as
+  it was over 4 m: a step becomes a ramp about 8 m long, and a slope or a fall is never
+  smoothed over. No texel moves by more than half a metre, and past 12 m nothing changes.
+- The membrane's sums are fixed in order (`terrain.solve.jacobi_cg`), so the level is the same
+  bits on any machine.
+
+The class plane and the relief styles' tint are still read off the levels as they were: the
+feathered level would join bodies across 0.5 to 1 m seams and move 16,504 texels from river to
+lake. On the run's planes 32,995 texels sit beside a seam and 377,942 texels move, by up to
+0.5 m (p99 0.45 m), in 1.6 s.
+
+### Shallow inland water (2026-10-07)
+
+The painted style draws water by Beer-Lambert over its bed, and inland field water is covered
+by the depth feather of `surface.water_alpha`, full only at 0.9 m. A pool 0.3 m deep was
+therefore a third water and that third mostly its bed: hot springs, desert ponds and the
+shallows of the Titan Forest and Red Bamboo lakes drew as dry ground, where the relief
+styles show them, as at (-1405, -585), (2370, -2500) and (680, -170).
+
+The painted palette's `shore.inland` sets a floor for inland field water, the share that is
+neither the ocean's reach nor a river's:
+
+- **Cover** (`edge_m`, 0.25 m): it covers its pixel fully once 0.25 m deep
+  (`shore.inland_cover`), so the waterline still follows the ground.
+- **Depth** (`min_depth_m`, 1.0 m): the optics read it at least 1 m deep (`optical_depth`), so
+  every wet texel takes at least the tint of a metre of its class's water. A river keeps its
+  own floor, 0.6 m once 2.5 m in from its bank (section 34).
+
+### What the water fixes moved (2026-10-07)
+
+Build 502094, against round 2's baseline; this section's rules with section 34's hand-over
+and section 35's falls:
+
+- **The 2048 render**, every level: painted 98,909 lit, 94,135 `@2x` and 98,452 unlit pixels
+  (by up to 155 levels); relief 37,906, 36,321 and 35,881 (165); relief dark 34,225, 32,767 and
+  35,186 (144); satellite 36,559, 35,073 and 36,331 (109); terrain 38,344, 36,581 and 37,645
+  (200). Of the finest painted level's 45,200, 44,758 lie within 30 m of the water as drawn
+  before; the rest along the river ribbons.
+- **The light**: 6.6 million pixels of its horizon tiles move, 438,750 by more than 8 levels,
+  and 16,056 of its normal tiles. The horizons read only the heights, which follow the water:
+  the seabed rule keeps a render-only mesh or leaves it to the bed by the water level
+  (section 27), and water the river reconcile now drops leaves the meshes in a channel standing.
+- **Three windows of the full-size sheet**, unlit: painted 4.69 million of 117 million pixels
+  (by up to 150 levels), relief 1.46 million (62), relief dark 1.34 million (145), satellite
+  1.46 million (66), terrain 1.40 million (113), every one within 30 m of water drawn before
+  or after.
+- **The river reconcile** (section 34): water from river boxes 0.358 to 0.372 km², dropped to
+  the ribbons 0.128 to 0.210 km², re-levelled 0.271 to 0.178 km², taken back by lower bodies
+  0.041 to 0.026 km²; section 38 then re-levels 478 bodies where it did 455, and fills 31,619
+  texels of holes where it did 36,892.
+
 ### Known limits
 
 - The lake, the sea's deep colour and the swamp have been checked against screenshots from
@@ -332,15 +439,18 @@ than 60 m from one changes at all.
   it better. The blend of "Swamp mouths" takes the step off it (the p99 step per metre at the
   line goes from 27 to 1.8), but the dark water still follows the arcs, as a soft band 60 m
   wide.
-- The blend joins only swamp and ocean. Any other two classes meeting inside one body still
-  change within a texel.
+- The blends join only swamp and ocean, and a terrace's tint and its lake. Any other two
+  classes meeting inside one body still change within a texel.
 - A box less than half a decimetre under the sea cannot be told from it by level. Two ponds
   inside the Rocky Desert's -17.046 m box, near (-989, -1,434) and (-978, -1,262), and two
   puddles beside them (6,993 texels in all) read the sea's level and draw as sea; the sea's
   box stands over them too.
 - The hot-spring rule finds terraces in lake boxes near the sulfur ponds, in the Red Bamboo
-  terraces and in the mesa lake by the crash site at (1908, -2368). Whether those pools are
-  milky in game is unchecked.
+  terraces and in the mesa lake by the crash site at (1908, -2368). Whether the water around
+  a terrace is milky in game is unchecked, and the tint's reach is one number for every
+  terrace, where the meshes range from 6 to 56 m.
+- A seam over 1 m, such as a box edge across a lake whose two boxes stand 1.5 m apart, is
+  left as a step: the rule cannot tell it from a fall.
 - The satellite and terrain styles still draw one water colour.
 
 ## 34. Rivers from the game's own splines: recipe 7 (2026-10-05)
@@ -403,14 +513,22 @@ the nearest centreline piece, measured exactly rather than to the nearest sample
 `palette/water/rivers.py`, once per run, on copies of the field's planes. The field on disk is not
 changed.
 
+- **A river's own volumes are its box** (2026-10-07). A classless `FGWaterVolume` lying at
+  least 90% inside a river's box, its top within 1.5 m of the box's, is the river's physics
+  volume, not a lake's (`river_volumes`; 56 of the 270). Read as a lake's, its top kept the
+  river box's water standing over the ribbon in a straight-edged block, as at the junction at
+  (-1585, -480) and below the fall at (-1891, 320). A lake's own visible box, where it stands
+  at the volume's top, still holds that lake's level.
 - **A wet texel came from a river box** when its level equals that box's top within 5 cm and
-  no other surface box stands as high: 0.358 km².
+  no other surface box stands as high: 0.358 km², 0.372 km² with the volumes.
 - **Under another surface box** (a lake the river AABB overhangs), the texel takes that box's
   level, or goes dry where measured ground stands above it: 0.27 km². The exception is
   inside the ribbon where the plane runs more than 1 m above that box. There the box is a
   lake's AABB reaching over the river's valley, so it is not used.
 - **Anywhere else where the ribbon speaks**, the texel is dropped and the ribbon draws the
-  river: 0.088 km².
+  river: 0.088 km². Beside a step of more than 0.5 m left in the drawn plane, a fall, the
+  ribbon draws nothing, so there the water stays at the higher plane's level and opens no
+  crack at the lip (2026-10-07).
 - **The ribbon speaks** inside its reach, except where the plane stands more than 8 m over
   the ground (`RIVER_MAX_DEPTH_M`) or over no ground. Those are wide sections hanging over a
   waterfall pit or a lake below. Drawn there, they paint fans of water in the air.
@@ -428,12 +546,26 @@ Per band, through `RiverWater.over`.
 - **Presence fades** to 0 over 1.5 m inside the plane's edge, over 1.5 m before the 8 m depth
   cut, where the plane hangs 1 to 2 m over other water (`RIVER_OVER_WATER_M`), and on
   texels beside a jump of more than 0.5 m between neighbours (`RIVER_STEP_M`). Such a jump is
-  two planes meeting, and any sampler draws a line along it.
-- **Where a river meets other water, the higher surface shows**; a tie of 5 cm goes to the
-  river. At a mouth the river plane dips under the lake or the sea, and the hand-over happens
-  where the two levels agree, so the colour is continuous. Past the other water's last wet
-  texel, away from the sea, the blur of its edge is no water to give way to (section 38,
-  "Boxes over lower water").
+  two planes meeting, and any sampler draws a line along it. Over other water the plane fades
+  in over 12 m from its edges and its open ends instead (`RIVER_MOUTH_FADE_M`, the other
+  water's edge blended over 2 m), so a river ending in a lake leaves no square end.
+- **Joints are one surface** (2026-10-07). Where two sections meet with a step of 0.5 to 2 m
+  between their planes, the drawn plane is feathered across the joint over 8 m either side
+  (`RIVER_JOINTS`, the membrane of section 33's "Box seams", through a surface sloping at most
+  0.25 m a texel), and the river is drawn across it. The field's reconcile above reads the
+  planes as they were. A step over 2 m is a fall and keeps its gap.
+- **Where a river meets other water, the higher surface shows**, handed over along a ramp
+  (2026-10-07): the river's share of the water runs from none where its plane stands 0.55 m
+  under the other surface to all of it 0.45 m over (`RIVER_HANDOVER_M`, 1 m, centred on the
+  5 cm tie). A plane meandering a few decimetres about a lake's level, as at (-1115, 1630),
+  drew panels of river and lake colour wherever it crossed the tie, and a mouth a line; both
+  now change tone along the ramp. Past the other water's last wet texel, away from the sea,
+  the blur of its edge is no water to give way to (section 38, "Boxes over lower water").
+- **Water a box leaves in the channel gives way at its edge** (2026-10-07). Where a lake's box
+  keeps the field's water standing in a river's channel, its edge is the box's straight edge,
+  and deeper than the river it drew a darker block, as at the junction at (-1585, -480). On the
+  plane, other water gives way to the river at its edge whatever the levels, and holds its
+  own only 12 m in (`RiverWater.yields`, over `RIVER_MOUTH_FADE_M`).
 - **Optics.** River pixels get the shore optics: the opacity fade and wet darkening in
   terrain and satellite, and the wet band on the banks in every style. Painted water is
   Beer-Lambert, so the bed shows in the shallows.
@@ -445,7 +577,8 @@ Per band, through `RiverWater.over`.
 
 ### Cost
 
-- `RiverWater` takes 4 to 7 s per run and about 1 GB of temporary 1 m planes.
+- `RiverWater` takes 8 to 11 s per run and about 1 GB of temporary 1 m planes; the joints'
+  feather and the two distance planes over other water add about 4 s.
 - Drawing a crop costs 5 to 20% more than recipe 6.
 - When the cache misses, the sweep is the shared one; the rivers add little to it.
 
@@ -455,8 +588,13 @@ Per band, through `RiverWater.over`.
   optical depth and the colour are a taste call.
 - Where the 8 m rule cuts a river plane and no other plane speaks, the field's river-box
   water stays at the box level, for section 38 to re-level.
-- Steps of more than 0.5 m per metre break the ribbon for a few metres. Those are
-  waterfalls, which are a separate item.
+- Steps of more than 2 m per metre break the ribbon for a few metres. Those are
+  waterfalls, which are a separate item. The water kept beside the lip (2,975 texels in 300
+  runs) still steps by the fall's height, so the lip reads as a line under a metre wide, as
+  at (-999, 1575); that fall is not drawn, because the falls are prepared on the field's own
+  water, whose river volume stands over its lip.
+- The river's colour model is parked: the ramp makes the hand-over continuous, but a river
+  in a lake of another class still draws a band of mixed colour along its course.
 - A section bent more tightly than its half width draws the fan its mesh would.
 
 ## 35. Waterfalls and the first small-mesh batch (2026-10-05)
@@ -526,6 +664,17 @@ therefore covers only part of it, so the falls stay small at preview sizes and o
 tiles. All the numbers are in each palette's `falls` block. The terrain style has none and
 draws no falls. The drawn ground, not the water surface, decides what hides the streak: the
 water boxes around a fall often stand above its lip.
+
+**No white box (2026-10-07).** Softened over a pixel, a streak across a 32 m lip drew as a
+hard white rectangle, as at (740, 285) and (2040, -1880). Its sides now fade along a
+smoothstep over half the lip's half width, and its far end over half the spread (`soft`,
+0.5), so the foam thins out towards the ends of the lip and the end of its run.
+
+**Under the trees (2026-10-07).** The falls are drawn after everything else, so a crown or
+the Titan canopy over a lip drew the foam on top of the trees, as at (1805, 480) and
+(2278, 775). In the painted style the foam and the mist now go under what the crowns and the
+Titan trees cover of the pixel (`trees.canopy_cover`), worked out only for a band a fall
+comes near.
 
 ### The small-mesh batch
 

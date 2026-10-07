@@ -51,6 +51,7 @@ __all__ = [
     "IDENTITY_OP",
     "TARGET_GREY",
     "CrownCalibration",
+    "canopy_cover",
     "crown_calibration",
     "crown_lab",
     "crown_layer",
@@ -308,27 +309,51 @@ def titan_colours(palette: PaintedPalette) -> dict[int, FloatGrid]:
 def titan_over(out: FloatGrid, scene: PaintedScene, ground: PaintedSurface) -> FloatGrid:
     """The Titan trees over the finished pixel at the style's opacity; 0 turns them off.
     Drawn unlit they stand flat, as the crowns do: the light lights them by their own top."""
-    palette = ground.palette
-    style: TitanTreesStyle = palette.get("titan_trees") or {}
-    opacity = np.float32(style.get("opacity", 0.0))
-    if ground.titan is None or not opacity:
-        return out
-    _band, lo, hi, c0, c1, spacing_m = scene["grid"]
-    found = sample_titan(ground.titan, (lo, hi, c0, c1))
+    found = _titan_seen(scene, ground)
     if found is None:
         return out
-    z_t, cover, cls = found
-    above = cover * (z_t >= scene["z_m"] - np.float32(0.5))
+    z_t, cover, cls, alpha = found
     surface = np.where(cover > 0, z_t, scene["z_m"])
     albedo = np.zeros(out.shape, np.float32)
     for which, rgb in ground.titan_rgb.items():
         albedo = np.where((cls == which)[..., None], rgb, albedo)
+    palette = ground.palette
     exposure = exposure_gain(palette)
+    spacing_m = scene["grid"][5]
     flat = scene["ndl_flat"]
     ndl = np.full(surface.shape, flat) if scene.get("unlit") else sun_dot(surface, spacing_m)
     lit = albedo * flat_light(palette, ndl, flat) * exposure
-    alpha = (opacity * np.clip(above, 0.0, 1.0))[..., None]
-    return out * (1.0 - alpha) + lit * alpha
+    return out * (1.0 - alpha[..., None]) + lit * alpha[..., None]
+
+
+def canopy_cover(scene: PaintedScene, ground: PaintedSurface) -> FloatGrid | None:
+    """How much of each pixel the crowns and the Titan trees hide, as the style draws them
+    over everything else; None where there are neither."""
+    crowns = scene.get("crowns")
+    cover = None if crowns is None else np.clip(crowns["cover"], 0.0, 1.0)
+    found = _titan_seen(scene, ground)
+    if found is None:
+        return cover
+    alpha = found[3]
+    return alpha if cover is None else 1.0 - (1.0 - cover) * (1.0 - alpha)
+
+
+def _titan_seen(
+    scene: PaintedScene, ground: PaintedSurface
+) -> tuple[FloatGrid, FloatGrid, NDArray[np.generic], FloatGrid] | None:
+    """The Titan trees over the band: ``(z m, cover, class, alpha)``, the alpha they are drawn
+    at; None where the palette draws none or the band holds none."""
+    style: TitanTreesStyle = ground.palette.get("titan_trees") or {}
+    opacity = np.float32(style.get("opacity", 0.0))
+    if ground.titan is None or not opacity:
+        return None
+    _band, lo, hi, c0, c1, _spacing_m = scene["grid"]
+    found = sample_titan(ground.titan, (lo, hi, c0, c1))
+    if found is None:
+        return None
+    z_t, cover, cls = found
+    above = cover * (z_t >= scene["z_m"] - np.float32(0.5))
+    return z_t, cover, cls, opacity * np.clip(above, 0.0, 1.0)
 
 
 def crown_layer(

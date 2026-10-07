@@ -17,7 +17,13 @@ from scipy import ndimage
 
 from mapgen.jit import kernels_on
 from mapgen.palette.scene import FloatGrid, WaterTerms
-from mapgen.palette.schema import FoamStyle, RiverShoreStyle, ShoreOptics, WetBandStyle
+from mapgen.palette.schema import (
+    FoamStyle,
+    InlandShoreStyle,
+    RiverShoreStyle,
+    ShoreOptics,
+    WetBandStyle,
+)
 from mapgen.palette.water.wet import cover_mix, float32_planes
 from mapgen.terrain.render_meshes import MESH_ROCK
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
@@ -36,6 +42,7 @@ __all__ = [
     "blend_water",
     "blend_where",
     "composite_meshes",
+    "inland_cover",
     "ocean_reach",
     "optical_depth",
     "seabed_keeps",
@@ -198,7 +205,7 @@ def water_composite(
             return compiled
     land = wet_band(land, water, optics.get("wet_band"))
     banks = water.get("banks", water["ocean"])
-    depth = optical_depth(water, optics.get("river"))
+    depth = optical_depth(water, optics.get("river"), optics.get("inland"))
     fade = 1.0 - np.exp(-depth / np.float32(optics["clarity_m"]))
     edge_alpha = np.float32(optics["edge_alpha"])
     opacity = (banks * (edge_alpha + (1.0 - edge_alpha) * fade) + (1.0 - banks))[..., None]
@@ -237,7 +244,8 @@ def _composite_compiled(
     banks = water.get("banks", water["ocean"])
     planes = (cover, water["depth"], banks, shade, above, edge, water["depth_m"], below,
               water["ocean"])  # fmt: skip
-    transmit = np.exp(-optical_depth(water, optics.get("river")) / np.float32(optics["clarity_m"]))
+    depth = optical_depth(water, optics.get("river"), optics.get("inland"))
+    transmit = np.exp(-depth / np.float32(optics["clarity_m"]))
     if not float32_planes(land, *colours, *planes, transmit):
         return None
     tint = np.asarray(band["tint"] if band_m else (1.0, 1.0, 1.0), np.float32)
@@ -281,14 +289,39 @@ def wet_band(land: FloatGrid, water: WaterTerms, band: WetBandStyle | None) -> F
     return land * (1.0 - weight + weight * np.asarray(band["tint"], np.float32))
 
 
-def optical_depth(water: WaterTerms, river: RiverShoreStyle | None) -> FloatGrid:
+def optical_depth(
+    water: WaterTerms, river: RiverShoreStyle | None, inland: InlandShoreStyle | None = None
+) -> FloatGrid:
     """The depth the optics see: a river reads at least ``min_depth_m`` deep once ``bank_m``
-    in from its waterline, so a shallow bed does not draw it as a pale path."""
-    if not river or not river.get("min_depth_m") or "river" not in water:
-        return water["depth_m"]
-    ramp = np.clip(water["river_below_m"] / np.float32(river["bank_m"]), 0.0, 1.0)
-    floor = water["river"] * np.float32(river["min_depth_m"]) * ramp
-    return np.maximum(water["depth_m"], floor)
+    in from its waterline, so a shallow bed does not draw it as a pale path; inland field
+    water reads at least ``inland``'s ``min_depth_m`` deep, for the same reason."""
+    depth = water["depth_m"]
+    if river and river.get("min_depth_m") and "river" in water:
+        ramp = np.clip(water["river_below_m"] / np.float32(river["bank_m"]), 0.0, 1.0)
+        floor = water["river"] * np.float32(river["min_depth_m"]) * ramp
+        depth = np.maximum(depth, floor)
+    if inland and inland.get("min_depth_m"):
+        floor = _inland_share(water) * np.float32(inland["min_depth_m"])
+        depth = np.maximum(depth, floor)
+    return depth
+
+
+def inland_cover(water: WaterTerms, inland: InlandShoreStyle | None) -> WaterTerms:
+    """``water`` with inland field water fully covering its pixel once ``inland``'s ``edge_m``
+    deep, where the depth feather (``surface.WATER_EDGE_M``) takes 0.9 m: a pool a few
+    decimetres deep is drawn as water, not as its bed. The ocean's reach and the rivers keep
+    their own cover."""
+    if not inland or not inland.get("edge_m") or "wet" not in water:
+        return water
+    ramp = np.clip(water["depth_m"] / np.float32(inland["edge_m"]), 0.0, 1.0)
+    floor = _inland_share(water) * water["wet"] * ramp
+    return {**water, "cover": np.maximum(water["cover"], floor)}
+
+
+def _inland_share(water: WaterTerms) -> FloatGrid:
+    """The share of each pixel's water that is neither the ocean's reach nor a river's."""
+    river = water["river"] if "river" in water else np.float32(0.0)
+    return (1.0 - water["ocean"]) * (1.0 - river)
 
 
 def add_foam(

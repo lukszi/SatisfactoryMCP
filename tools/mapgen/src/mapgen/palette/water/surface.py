@@ -14,6 +14,7 @@ from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
 from mapgen.palette.scene import FloatGrid, ReconciledWater, WaterPlanes, field_heights
 from mapgen.palette.water.open_sea import Lattice, OpenSea, open_sea
 from mapgen.palette.water.perched import WaterSurfaces, water_surfaces
+from mapgen.palette.water.seams import feather_box_seams
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -50,11 +51,17 @@ def drawn_water(
 
     ``palette.water.perched.water_surfaces``, then ``open_sea`` over the run's ``lattice``.
     ``--kernel-only`` (recipe 2) has neither, and keeps the page's sea past the data.
-    ``rivers`` is the run's ``RiverWater`` or None.
+    ``rivers`` is the run's ``RiverWater`` or None. The level drawn, the open sea's or the
+    surfaces', has its box seams feathered (``seams.feather_box_seams``); ``planes``, which
+    the classes and the relief tint are read from, keep the levels as they were.
     """
     water = water_surfaces(field, kernel_only, cast(ReconciledWater | None, rivers))
-    if kernel_only or artwork_water is None:
+    if kernel_only or water.level is None or water.grades is None:
         return water, None, water.planes
+    if artwork_water is None:
+        level, seams = feather_box_seams(water.level, water.grades)
+        _announce_seams(seams)
+        return water._replace(level=level), None, water.planes
     sea = open_sea(field, lattice, water.planes, artwork_water, OCEAN_LEVEL_M)
     meta = sea.meta
     print(
@@ -64,7 +71,14 @@ def drawn_water(
         f"{meta['toned_texels']} toned), {meta['blended_texels']} measured blended into it, "
         f"in {meta['seconds']}s"
     )
-    return water, sea, sea.planes
+    level, seams = feather_box_seams(sea.level, sea.grades)
+    _announce_seams(seams)
+    meta["seam_texels_feathered"] = seams
+    return water, sea._replace(level=level), sea.planes
+
+
+def _announce_seams(texels: int) -> None:
+    print(f"  box seams: {texels} texels of the drawn level feathered")
 
 
 def water_alpha(

@@ -172,6 +172,45 @@ def test_a_style_without_falls_draws_none_and_no_data_is_lip_level():
     assert np.isfinite(holes).all() and (holes >= rgb).all()
 
 
+def test_the_streak_fades_out_towards_the_ends_of_its_lip_and_its_far_end():
+    """No hard white box: across the lip and at its far end the foam fades over a share of
+    the lip's half width and of the spread, not over a pixel."""
+    cfg = FALL_STYLES["painted"]
+    fall = _fall(half=10.0)[0]
+    xs = np.arange(-16.0, 16.01, 0.25)
+    near_lip = 47.0  # ground just under the lip: the streak, no pool
+    foam, _mist = fallpaint._fall_alpha(fall, cfg, xs, np.array([0.5]),
+                                        np.full((1, len(xs)), near_lip), 0.25)  # fmt: skip
+    row = foam[0]
+    assert row[np.abs(xs) < 2].min() > 0.5 * row.max()
+    assert np.abs(np.diff(row)).max() < 0.1, "no step across the streak's sides"
+    assert row[np.abs(xs) > 10.0 * (1 + cfg["soft"] / 2)].max() == 0.0
+    ys = np.arange(0.0, 12.0, 0.25)
+    along, _mist = fallpaint._fall_alpha(fall, cfg, np.array([0.0]), ys,
+                                         np.full((len(ys), 1), near_lip), 0.25)  # fmt: skip
+    streak = along[:, 0][ys < 8.0]
+    assert np.abs(np.diff(streak)).max() < 0.15, "the far end fades too"
+
+
+def test_the_foam_goes_under_what_hides_it_and_is_asked_only_near_a_fall():
+    x_cm, y_cm = _grid()
+    rgb = np.full((len(y_cm), len(x_cm), 3), 60.0)
+    surface = np.where(y_cm[:, None] > 0, 10.0, 50.0) + np.zeros((1, len(x_cm)))
+    asked: list[int] = []
+
+    def canopy():
+        asked.append(1)
+        return np.ones(rgb.shape[:2])
+
+    hidden = draw_falls(rgb.copy(), _fall(), "painted", x_cm, y_cm, surface, 0.25, canopy)
+    assert np.array_equal(hidden, rgb) and asked == [1], "a crown over the fall hides its foam"
+    seen = draw_falls(rgb.copy(), _fall(), "painted", x_cm, y_cm, surface, 0.25, lambda: None)
+    assert (seen > rgb + 1).any()
+    far = _fall(x=500.0)
+    draw_falls(rgb.copy(), far, "painted", x_cm, y_cm, surface, 0.25, canopy)
+    assert asked == [1], "no fall near: the cover is never worked out"
+
+
 def test_a_coarse_pixel_softens_the_foam():
     cfg = FALL_STYLES["painted"]
     xs = ys = np.array([0.0, 30.0])
