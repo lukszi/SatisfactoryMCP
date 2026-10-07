@@ -100,8 +100,9 @@ def test_fill_holes_gives_each_hole_its_nearest_value_or_the_empty_one():
     assert holes.opened(plane)[0, 1] == holes.OPEN_M
 
 
-def _trench_block(tmp: Path, canopy: bool) -> np.ndarray:
-    """One block at 1 m of a trench 40 m deep, under a flat canopy 30 m up or bare: its terms."""
+def _trench_block(tmp: Path, canopy: bool, canopy_m: float = 30.0) -> np.ndarray:
+    """One block at 1 m of a trench 40 m deep, under a flat canopy ``canopy_m`` up or bare:
+    its terms."""
     n = 512
     z = np.zeros((n, n), np.float32)
     z[200:260] = -40.0
@@ -111,7 +112,7 @@ def _trench_block(tmp: Path, canopy: bool) -> np.ndarray:
     work = tmp / "work"
     top = np.full((n, n), np.nan, np.float32)
     if canopy:
-        top[150:310, 100:400] = 30.0
+        top[150:310, 100:400] = canopy_m
     np.save(work / "occluder.npy", top)
     np.save(work / "occluder_cover.npy", np.where(np.isfinite(top), 255, 0).astype(np.uint8))
     stage.allocate_work_arrays(work, n)
@@ -131,6 +132,23 @@ def test_the_canopy_takes_its_own_light_and_not_the_trench_s_beneath_it(tmp_path
     assert roofed[floor][..., :2].tobytes() == bare[floor][..., :2].tobytes(), "the ground's own"
     away = (slice(400, 500), slice(0, 60))
     assert np.array_equal(roofed[away][..., 3], roofed[away][..., 0]), "no canopy, the ground's"
+
+
+def test_a_canopy_under_the_surface_is_hidden_and_takes_no_light_of_its_own(tmp_path):
+    bare = _trench_block(tmp_path / "bare", False)
+    sunk = _trench_block(tmp_path / "sunk", True, canopy_m=-60.0)
+    assert np.array_equal(sunk[..., 3], sunk[..., 0])
+    floor = (slice(205, 255), slice(150, 350))
+    assert sunk[floor][..., 2].tobytes() == bare[floor][..., 2].tobytes()
+
+
+def test_the_canopy_s_relief_and_blur_are_the_painted_crowns():
+    from mapgen.lighting import canopy
+    from mapgen.palette.styles import PAINTED_PALETTE
+    from mapgen.terrain.crown_stamp import DOME_SIGMA_M
+
+    assert canopy.CANOPY_RELIEF == PAINTED_PALETTE["crowns"]["dome_gain"]
+    assert canopy.CANOPY_SMOOTH_M == DOME_SIGMA_M
 
 
 def test_the_terms_in_strips_of_rows_are_the_bytes_of_one_strip(tmp_path, monkeypatch):

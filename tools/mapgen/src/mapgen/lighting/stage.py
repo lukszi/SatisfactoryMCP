@@ -405,11 +405,12 @@ def bake_block(job: BlockJob) -> BlockDone:
 
 
 class _Canopy(NamedTuple):
-    """What the canopy's own light reads: its top and cover planes, and its horizon toward
-    the default sun and its sky view at half resolution, with a ring."""
+    """What the canopy's own light reads: its top and cover planes, the surface, and its
+    horizon toward the default sun and its sky view at half resolution, with a ring."""
 
     top: NDArray[np.float32]
     cover: NDArray[np.uint8] | None
+    surface: NDArray[np.float32]
     horizon: F32Grid
     sky: F32Grid
 
@@ -426,18 +427,22 @@ def _canopy(work: Path, job: BlockJob, cells: list[F32Grid], sky: F32Grid) -> _C
     there = np.isfinite(top[core]) if cover is None else np.asarray(cover[core]) > 0
     if not there.any():
         return None
-    return _Canopy(top, cover, sun_horizon(cells, DEFAULT_SUN[0]), sky)
+    surface = work_array(work, "z", np.float32, "r")
+    return _Canopy(top, cover, surface, sun_horizon(cells, DEFAULT_SUN[0]), sky)
 
 
 def _canopy_rows(canopy: _Canopy, job: BlockJob, rows: slice) -> CanopyLight:
-    """The canopy's light on ``rows`` of the block: its share of each pixel, its direct term
-    under its own smoothed top and horizons, and its sky view."""
+    """The canopy's light on ``rows`` of the block: its share of each pixel where it stands
+    above the surface, its direct term under its own smoothed top and horizons, and its sky
+    view."""
     r0, c0, n = job.block
     a, b = r0 + rows.start, r0 + rows.stop
+    top = np.asarray(canopy.top[a:b, c0 : c0 + n])
     if canopy.cover is None:
-        share = np.isfinite(canopy.top[a:b, c0 : c0 + n]).astype(np.float32)
+        share = np.isfinite(top).astype(np.float32)
     else:
         share = np.asarray(canopy.cover[a:b, c0 : c0 + n], np.float32) / np.float32(255.0)
+    share *= top > np.asarray(canopy.surface[a:b, c0 : c0 + n])
     margin = smoothing_margin(job.spacing_m)
     reach = margin + 1
     top = padded_window(canopy.top, a - reach, b + reach, c0 - reach, c0 + n + reach, np.nan)

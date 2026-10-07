@@ -15,9 +15,11 @@ from scipy import ndimage
 
 from mapgen.lighting.horizon import normals
 from mapgen.lighting.light_tiles import normal_byte
+from mapgen.terrain.crown_stamp import DOME_SIGMA_M
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
 
 __all__ = [
+    "CANOPY_RELIEF",
     "CANOPY_SMOOTH_M",
     "CanopyLight",
     "blend_canopy",
@@ -27,7 +29,10 @@ __all__ = [
 
 #: The canopy top is smoothed over this before its slope is taken, as the painted crowns'
 #: domes are, so the 1 m grid of the crown plane draws no facets.
-CANOPY_SMOOTH_M = 0.75
+CANOPY_SMOOTH_M = DOME_SIGMA_M
+
+#: The share of the canopy top's relief its slope keeps: the painted crowns' ``dome_gain``.
+CANOPY_RELIEF = 0.35
 
 
 class CanopyLight(NamedTuple):
@@ -55,10 +60,11 @@ def _smoothed(top: F32Grid, spacing_m: float) -> F32Grid:
 
 def canopy_normal_bytes(top: NDArray[np.floating], margin: int, spacing_m: float) -> U8Grid:
     """The canopy top's east and south normal as bytes, ``(h, w, 2)``, for a window of ``top``
-    with ``margin`` pixels and a ring of one more on each side; flat where no canopy is."""
+    with ``margin`` pixels and a ring of one more on each side, its relief scaled by
+    ``CANOPY_RELIEF``; flat where no canopy is."""
     smooth = _smoothed(np.asarray(top, np.float32), spacing_m)
     inner = smooth[margin : smooth.shape[0] - margin, margin : smooth.shape[1] - margin]
-    east, south = normals(inner, spacing_m)
+    east, south = normals(inner * np.float32(CANOPY_RELIEF), spacing_m)
     return np.stack([normal_byte(east), normal_byte(south)], -1)
 
 
