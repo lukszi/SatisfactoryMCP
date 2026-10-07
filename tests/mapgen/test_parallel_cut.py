@@ -106,8 +106,9 @@ def _serial(out: Path, sheet: np.ndarray, dense_px: int) -> list[dict]:
 
 
 @pytest.mark.parametrize("workers", [1, 3])
-def test_the_stream_writes_the_serial_cutters_bytes(tmp_path, workers):
+def test_the_stream_writes_the_serial_cutters_bytes(tmp_path, monkeypatch, workers):
     """1x and @2x, the @2x top a level of the 1x and its levels resampled from that."""
+    monkeypatch.setattr(cut, "free_ram_bytes", lambda: 1 << 40)  # the count, not the machine's
     sheet = _sheet(2048)
     serial = _serial(tmp_path / "a", sheet, 1024)
     with TileStream(Image, workers, threads=3) as stream:
