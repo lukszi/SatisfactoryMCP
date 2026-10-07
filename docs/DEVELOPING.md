@@ -357,6 +357,30 @@ are outside the type rules.
   measured 7 s alone; 12 and 16 threads were no faster. Inside the parallel suite it took 10 s,
   on one worker. The gate makes two runs, one per Python.
 
+### Code-quality scan
+
+`sonar-project.properties` configures a SonarQube scan; Python coverage comes from
+`coverage.xml`, so the test run goes first. The server is a local SonarQube Community container
+with its own Postgres, kept outside the repository (for example a compose file in
+`%USERPROFILE%\.sonarqube-satisfactory\`) and published on host port 9100. From the repository
+root in PowerShell, with an analysis token in `%USERPROFILE%\.sonar-token`:
+
+```powershell
+uv sync --all-extras --all-packages
+uv run pytest -q --cov --cov-report=xml
+if (-not $env:SONAR_HOST_URL) { $env:SONAR_HOST_URL = "http://host.docker.internal:9100" }
+$env:SONAR_TOKEN = (Get-Content "$env:USERPROFILE\.sonar-token" -Raw).Trim()
+$scm = @(); if (Test-Path .git -PathType Leaf) { $scm = @("-Dsonar.scm.disabled=true") }
+docker run --rm -e SONAR_HOST_URL -e SONAR_TOKEN -v "${PWD}:/usr/src" `
+    sonarsource/sonar-scanner-cli sonar-scanner @scm
+Remove-Item Env:SONAR_TOKEN
+```
+
+`SONAR_HOST_URL` is the server as the container sees it; set it first to scan against another
+server. `-e NAME` without a value hands the container the variable, so the token never appears
+on a command line. In a linked git worktree `.git` is a file naming a host path the container
+cannot open, and the scanner aborts on it, so there the scan runs without SCM data.
+
 ## Solver threads
 
 Every `scipy.optimize.milp` and `linprog` call goes through `core/solverlane.run`, which runs it on
