@@ -41,18 +41,18 @@ import type { Selection } from "../app/selection";
 
 type Tab = "factories" | "power";
 
-var CIRCUIT_ZOOM = 1;
+const CIRCUIT_ZOOM = 1;
 
 /** How many machines a folded reference list shows; the rest are counted. */
-var REF_ROWS_SHOWN = 40;
+const REF_ROWS_SHOWN = 40;
 
-var STORE_KEY = "panel";
+const STORE_KEY = "panel";
 
-var HEALTH_PATH = "/api/factories/health" as const;
+const HEALTH_PATH = "/api/factories/health" as const;
 
-var CIRCUITS_PATH = "/api/power/circuits" as const;
+const CIRCUITS_PATH = "/api/power/circuits" as const;
 
-var view = {
+const view = {
   open: !NARROW.matches,
   tab: "factories" as Tab,
   factory: "",
@@ -60,10 +60,10 @@ var view = {
   pending: "",
 };
 
-var readings = vitals();
+const readings = vitals();
 
 /** Set when a render was skipped because a rename was being typed; the rename renders after. */
-var renderDeferred = false;
+let renderDeferred = false;
 
 function changed(): void {
   renderPanel();
@@ -354,7 +354,7 @@ function ledgerBlock(r: Rated, starved: number): HTMLElement {
 
 type Ref = MachineRef | StarvedGenerator;
 
-var STARVED_HINT = "input ran dry and produced nothing in its window";
+const STARVED_HINT = "input ran dry and produced nothing in its window";
 
 function refList(title: string, rows: Ref[], hint: string): HTMLElement {
   const fold = make("details", "panel-fold-list");

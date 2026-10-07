@@ -11,15 +11,15 @@ import { machineSelection, select } from "../app/selection";
 import type { Selection } from "../app/selection";
 import type { BboxM } from "./geometry";
 
-export var HIGHLIGHT = declareColours("map-highlight", { highlight: "#ff4fd8" }).highlight;
+export const HIGHLIGHT = declareColours("map-highlight", { highlight: "#ff4fd8" }).highlight;
 
-var MACHINE_ZOOM = 2;
+const MACHINE_ZOOM = 2;
 
-var highlightLayer = L.layerGroup();
+const highlightLayer = L.layerGroup();
 
 /* The selection key the ring stands on, so a selection that is already ringed is not
  * redrawn. */
-export var ringedKey = "";
+export let ringedKey = "";
 
 export function outline(bounds: L.LatLngBounds): void {
   clearMark();

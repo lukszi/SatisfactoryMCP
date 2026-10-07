@@ -27,19 +27,19 @@ type TraceItem = TraceResponse["items"][number];
 type TraceEdge = TraceResponse["edges"][number];
 
 /** How many rows each table in the card lists; the rest are counted. */
-var MAX_TABLE_ROWS = 10;
+const MAX_TABLE_ROWS = 10;
 
-var TRACE_MAX_ZOOM = 2;
+const TRACE_MAX_ZOOM = 2;
 
-var RATE_TITLE = "nameplate rate at each machine's clock";
+const RATE_TITLE = "nameplate rate at each machine's clock";
 
-var pane = map.createPane("trace");
+const pane = map.createPane("trace");
 pane.style.zIndex = "450";
 pane.style.pointerEvents = "none";
-var renderer = L.svg({ pane: "trace", padding: 0.5 });
-var group = L.layerGroup();
+const renderer = L.svg({ pane: "trace", padding: 0.5 });
+const group = L.layerGroup();
 
-var view = {
+const view = {
   seed: "",
   direction: "up" as Direction,
   world: "",
@@ -322,7 +322,7 @@ export function startTrace(seed: string, direction: Direction): void {
 }
 
 /** The debounce on a vitals-driven refetch. */
-var refreshTimer = 0;
+let refreshTimer = 0;
 
 function refresh(): void {
   if (!view.seed) return;

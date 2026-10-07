@@ -13,14 +13,14 @@ interface Declared {
  * other reader, so in a production build `declareColours` is a function that hands its
  * argument straight back and everything below this line folds out of the bundle -- which is
  * checkable, and checked: the built app.js contains none of the strings in this file. */
-var declared: Declared[] = [];
-var audited = false;
+const declared: Declared[] = [];
+let audited = false;
 
 /* Record a feature's colours and hand them straight back, so that the declaration IS the
  * assignment and there is no second way for a colour to reach the page:
  *
- *   var RESOURCE_COLOUR: Record<string, string> = declareColours("markers", { … });
- *   var STORAGE_COLOUR = declareColours("placements", { storage: "#…" }).storage;
+ *   const RESOURCE_COLOUR: Record<string, string> = declareColours("markers", { … });
+ *   const STORAGE_COLOUR = declareColours("placements", { storage: "#…" }).storage;
  *
  * `owner` is the drawing MODULE, not the layer, because that is the line the check needs.
  * Colours are compared across owners and never within one: a step inside a single family is
@@ -106,7 +106,7 @@ function deltaE(a: string, b: string): number {
 /* dE 15, the house step read off the page rather than a number from a standard: just under the
  * smallest step any deliberate ramp here takes, so two colours from different modules landing
  * as close as a ramp is exactly the thing that gets called out. */
-var MIN_DELTA_E = 15;
+const MIN_DELTA_E = 15;
 
 /** `owner/name`, which is how a colour is named below and in every message the audit prints. */
 function colourKey(owner: string, name: string): string {
@@ -135,7 +135,7 @@ interface Exception {
 /* The pairs a measurement answers: where NEITHER colour can move -- the game's ore tints on one
  * side, the biome grounds and the oldest network families on the other -- each carries the map
  * fact that keeps it from being a confusion, at the distance the audit re-derives every boot. */
-var DISCHARGED: Exception[] = [
+const DISCHARGED: Exception[] = [
   {
     a: "markers/Desc_OreIron_C",
     b: "routes/chevrons",
@@ -302,7 +302,7 @@ interface Standing {
   pairs: [string, string, number][];
 }
 
-var STANDING: Standing[] = [];
+const STANDING: Standing[] = [];
 
 /** One listed pair: the distance it was written down at, and whether it is owed or answered. */
 interface Listed {

@@ -20,19 +20,19 @@ import type { PointM } from "../geometry";
 
 type Mode = "add" | "drop";
 
-var FLY_ZOOM = 2;
+const FLY_ZOOM = 2;
 
-var STEP_PX = 4;
+const STEP_PX = 4;
 
-var pane = map.createPane("lasso");
+const pane = map.createPane("lasso");
 pane.style.zIndex = "455";
 pane.style.pointerEvents = "none";
-var renderer = L.svg({ pane: "lasso", padding: 0.5 });
+const renderer = L.svg({ pane: "lasso", padding: 0.5 });
 /** The rings on the machines, and the areas being drawn. */
-var ringLayer = L.layerGroup();
-var areaLayer = L.layerGroup();
+const ringLayer = L.layerGroup();
+const areaLayer = L.layerGroup();
 
-var view = {
+const view = {
   title: "",
   kind: "",
   factory: "",
@@ -51,10 +51,10 @@ var view = {
   epoch: 0,
 };
 
-var stroke: { points: L.LatLng[]; line: L.Polyline; last: L.Point } | null = null;
+let stroke: { points: L.LatLng[]; line: L.Polyline; last: L.Point } | null = null;
 
 /** Set when a drag ends, so the click the browser fires after it does not reach the map. */
-var swallowNextClick = false;
+let swallowNextClick = false;
 
 function lassoCard(): HTMLElement {
   return mapCard("lasso", "machines on the map", closeLasso);

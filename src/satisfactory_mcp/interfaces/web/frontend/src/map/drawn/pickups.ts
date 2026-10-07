@@ -19,7 +19,7 @@ import type { CollectibleRow, CollectiblesResponse } from "../../api/shapes";
 // One colour per pickup category, so the category rows do not all draw one teal dot; unlisted
 // categories share the fallback below. The slugs and the mercer sphere are picked against the
 // node dots (docs/frontend_palette.md).
-export var PICKUP_COLOUR: Record<string, string> = declareColours("pickups", {
+export const PICKUP_COLOUR: Record<string, string> = declareColours("pickups", {
   somersloop: "#d84378",
   mercer_sphere: "#9f87ff",
   hard_drive: "#5468d4",
@@ -35,12 +35,12 @@ export var PICKUP_COLOUR: Record<string, string> = declareColours("pickups", {
 /* For the categories the table above does not name, and DECLARED rather than left a bare
  * literal: a stand-in that reaches the screen is a colour on the page and belongs in the
  * comparison. */
-var PICKUP_FALLBACK = declareColours("pickups", { "pickup fallback": "#7fd1b9" })[
+const PICKUP_FALLBACK = declareColours("pickups", { "pickup fallback": "#7fd1b9" })[
   "pickup fallback"
 ];
 
 /* The X over a collected pickup: dark on a light base, light on a dark one. */
-var COLLECTED_MARK_COLOURS = declareColours("pickups", {
+const COLLECTED_MARK_COLOURS = declareColours("pickups", {
   "pickup collected": "#2a3147",
   "pickup collected dark": "#9aa0a8",
 });
@@ -53,16 +53,16 @@ function collectedMarkColour(): string {
  * category as `/api/collectibles` names it and a row in the control. Named because the
  * fragment speaks the category and the control speaks the row, and three literals is how the
  * two drift apart. The trailing space is load-bearing; see Section.prefix. */
-var PICKUP_PREFIX = "pickup: ";
+const PICKUP_PREFIX = "pickup: ";
 
 /** Each category's own word, from the last census the server sent. */
-var pickupLabels: Record<string, string> = {};
+const pickupLabels: Record<string, string> = {};
 
 /** The categories the spoiler setting hides: rows drawn disabled, with nothing in them. */
-var hiddenPickupCategories: string[] = [];
+let hiddenPickupCategories: string[] = [];
 
 /** The last reply drawn, kept so a setting or a base-map tone can repaint without a fetch. */
-var lastPayload: CollectiblesResponse | null = null;
+let lastPayload: CollectiblesResponse | null = null;
 
 export function pickupName(category: string): string {
   return pickupLabels[category] || category.replace(/_/g, " ");
@@ -73,7 +73,7 @@ export function layerDisplayName(name: string): string {
   return name.indexOf(PICKUP_PREFIX) === 0 ? pickupName(name.slice(PICKUP_PREFIX.length)) : name;
 }
 
-var HIDDEN_TITLE = "not found yet: turn spoilers on in Settings";
+const HIDDEN_TITLE = "not found yet: turn spoilers on in Settings";
 
 export function markHiddenRows(): void {
   const box = control.getContainer();
@@ -96,7 +96,7 @@ function pickupCategory(name: string): string {
 /* The one category whose rows carry `looted`. Every other category sends null there for want
  * of the property, which is not the same claim as a null on a pod, so the two must not reach
  * the same style. See CollectibleRow for what null means. */
-var POD_CATEGORY = "crashed_drop_pod";
+const POD_CATEGORY = "crashed_drop_pod";
 
 /* A pickup that is still there. Fill is how much is in it, and pods are the only rows that
  * vary: solid is what every other category keeps. A hollow ring is a looted pod, which is what

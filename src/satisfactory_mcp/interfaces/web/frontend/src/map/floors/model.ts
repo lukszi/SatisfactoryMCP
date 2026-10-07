@@ -6,12 +6,12 @@ import type { Point3M } from "../geometry";
 import type { FloorMark } from "../leaflet-private";
 
 /** The pseudo-floor's key, in the picker and in the fragment alike. */
-export var GROUND = "ground";
+export const GROUND = "ground";
 
 /* How deep the concrete under a deck is, metres: half the thickest foundation the game builds
  * (`8x4`), so a thing lower than this is under the floor rather than on it. The one number in
  * floor mode that is not the server's, used only for the layers no band lists. */
-export var DECK_DEPTH_M = 2;
+export const DECK_DEPTH_M = 2;
 
 export function bandOf(platform: FloorPlatform | null, key: string): FloorBand | null {
   if (!platform || key === GROUND) return null;

@@ -45,7 +45,7 @@ import type { FloorChoice } from "../layercontrol/floor-picker";
 
 /* How close the flight to a platform may get: the factory-label flight's limit, for the same
  * reason as the padding in filter.ts. */
-var FLOOR_MAX_ZOOM = 1;
+const FLOOR_MAX_ZOOM = 1;
 
 /** One floor mode session: what was asked for, what came back, and what it changed. */
 interface FloorView {
@@ -66,7 +66,7 @@ interface FloorView {
   flown: boolean;
 }
 
-var view: FloorView | null = null;
+let view: FloorView | null = null;
 
 /** Whether the page is currently slicing a factory. */
 export function inFloorMode(): boolean {

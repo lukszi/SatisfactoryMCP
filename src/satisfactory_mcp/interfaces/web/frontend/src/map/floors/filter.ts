@@ -30,7 +30,7 @@ import type { FloorMark } from "../leaflet-private";
 
 /* Every layer floor mode filters. `foundations` FIRST: the storage and pole rules need this
  * deck's own 8 m cells, which the deck pieces of the same pass record. */
-var FILTERED = [
+const FILTERED = [
   "foundations",
   "machines",
   "extractors",
@@ -43,11 +43,11 @@ var FILTERED = [
 
 /* Breathing room around a platform, metres: the same pad a factory-label flight uses, so a deck
  * that exactly fills the screen keeps the surroundings that say where it is. */
-var FLOOR_PAD_M = 40;
+const FLOOR_PAD_M = 40;
 
 /* Programmatic layer ticks are not the reader's decisions, and Leaflet fires `overlayadd` for
  * `map.addLayer` exactly as for a click; same flag, same reason, as regions.ts. */
-var applying = false;
+let applying = false;
 
 /** Run `action` with the layer events it causes marked as this mode's, not the reader's. */
 export function withFilterGuard<T>(action: () => T): T {
@@ -94,8 +94,8 @@ interface Verdict {
   glyph?: L.Marker;
 }
 
-var DROP: Verdict = { keep: false };
-var KEEP: Verdict = { keep: true };
+const DROP: Verdict = { keep: false };
+const KEEP: Verdict = { keep: true };
 
 /** Everything a group holds, snapshotted once per redraw so that leaving can put it back. */
 function snapshot(group: L.LayerGroup): L.Layer[] {

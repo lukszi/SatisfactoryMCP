@@ -95,7 +95,7 @@ function nearestText(n: InspectResponse["nearest"][number]): string {
   return n.resource_name + " " + n.purity + " · " + metres(n.distance_m) + (n.occupied ? " (occupied)" : n.spoiler ? " (" + WORDS.locked + ")" : "");
 }
 
-var PICKUPS_NEAR_M = 500;
+const PICKUPS_NEAR_M = 500;
 
 function onSquare(x: number, y: number): boolean {
   return x >= MAP_SQUARE_M.x_min && x <= MAP_SQUARE_M.x_max && y >= MAP_SQUARE_M.y_min && y <= MAP_SQUARE_M.y_max;

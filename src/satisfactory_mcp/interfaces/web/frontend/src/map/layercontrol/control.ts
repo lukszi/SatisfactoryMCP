@@ -17,7 +17,7 @@ import { state } from "../../app/state";
 
 import type { LayerInput, SectionPart } from "../leaflet-private";
 
-export var control = L.control.layers(
+export const control = L.control.layers(
   undefined,
   {},
   {
@@ -84,7 +84,7 @@ export interface Section {
  * Order here is registration order and is not load-bearing: a head is inserted immediately
  * before its own family's first row, and where that row sits was decided by the row rank.
  */
-var SECTIONS: Section[] = [];
+const SECTIONS: Section[] = [];
 
 export function registerSection(section: Section): void {
   if (import.meta.env.DEV) {
@@ -199,7 +199,7 @@ export function onActivate(element: HTMLElement, action: () => void): void {
  * `_handlingClick` is Leaflet's own flag for exactly this -- its `_onLayerChange` skips the
  * re-render while it is set. The two decorators this file adds take the same hint, and one
  * render happens at the end. */
-var batching = false;
+let batching = false;
 
 /* Read through a function rather than exported as a variable, so the caller outside this file
  * gets the value at the moment it asks rather than at the moment it imported. */
@@ -211,15 +211,15 @@ export function isBatching() {
  * `declutter()` by name here would make the layer control import the module that draws factory
  * labels, which imports the module that creates layers, which imports this one. The control's
  * claim is only that the list has stopped changing; who cares is main.ts's business. */
-var settled = createListeners();
+const settled = createListeners();
 
-export var onSettled = settled.on;
+export const onSettled = settled.on;
 
 /* The radio sections above the overlays, refreshed after every render of the list in the order
  * they registered; REGISTERED for the same reason as `onSettled`, since they import this file. */
-var decorators = createListeners();
+const decorators = createListeners();
 
-export var onDecorate = decorators.on;
+export const onDecorate = decorators.on;
 
 /* Exported for the callers outside this file that also change several layers in one gesture.
  *
@@ -332,9 +332,9 @@ function panelHead(rows: HTMLElement[]): HTMLElement {
 }
 
 /** Who to tell when the reader folds or unfolds the whole list from its head. */
-var layersToggled = createListeners<[boolean]>();
+const layersToggled = createListeners<[boolean]>();
 
-export var onLayersToggle = layersToggled.on;
+export const onLayersToggle = layersToggled.on;
 
 export function setLayersOpen(open: boolean): void {
   state.panel.open = open;
@@ -370,7 +370,7 @@ function focusMark(): FocusMark | null {
   return active && active._section ? { key: active._section, part: active._part } : null;
 }
 
-var pendingFocus: FocusMark | null = null;
+let pendingFocus: FocusMark | null = null;
 
 /* Re-applied after every render of the list, and idempotent: Leaflet empties the overlay
  * list on each `_update`, so the section heads are rebuilt rather than moved. */

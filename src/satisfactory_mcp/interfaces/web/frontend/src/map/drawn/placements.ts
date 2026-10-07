@@ -33,7 +33,7 @@ import type {
 } from "../../api/shapes";
 
 // Concrete: slate violet, the one cool direction the grounds leave open (docs/frontend_palette.md).
-var STRUCTURE_COLOUR = declareColours("placements", { foundations: "#545470" }).foundations;
+const STRUCTURE_COLOUR = declareColours("placements", { foundations: "#545470" }).foundations;
 
 /* The player's floor plan: one 8 m tile per placed foundation, ramp, wall or catwalk.
  *
@@ -90,10 +90,10 @@ registerFetch<StructuresResponse>({
  * biomass burners, here. Everything else is drawn at its own `w_m`/`l_m` and turned by its own
  * `yaw`, so a Manufacturer (18x20 m) reads as the eight-times-larger thing it is beside a
  * Constructor (8x10 m). */
-var MACHINE_FALLBACK_M = 6;
+const MACHINE_FALLBACK_M = 6;
 
 // Blue, ultramarine, mint, one per machine layer (docs/frontend_palette.md).
-var KIND_COLOUR: Record<string, string> = declareColours("placements", {
+const KIND_COLOUR: Record<string, string> = declareColours("placements", {
   machines: "#4aa3df",
   extractors: "#19039c",
   generators: "#a3f5b4",
@@ -117,8 +117,8 @@ const MACHINE_SLOT: Record<(typeof MACHINE_KINDS)[number], number> = {
 /* Thick outline = the server's `actionable`: red when stopped, signal yellow when blocked.
  * Grammar and the yellow's measured distances: docs/save-projection.md §6.2d. The CSS twin of
  * the yellow is `--blocked` in app/base.css. */
-export var BLOCKED_COLOUR = declareColours("placements", { blocked: "#ffd000" }).blocked;
-export var STOPPED_COLOUR = declareColours("placements", { stopped: "#d9534f" }).stopped;
+export const BLOCKED_COLOUR = declareColours("placements", { blocked: "#ffd000" }).blocked;
+export const STOPPED_COLOUR = declareColours("placements", { stopped: "#d9534f" }).stopped;
 
 export function drawMachines(data: MachinesResponse): void {
   MACHINE_KINDS.forEach(function (kind) {
@@ -229,19 +229,19 @@ registerFetch<MachinesResponse>({
  */
 
 // A cool blue-violet box, and the fluid buffers a value step below it (docs/frontend_palette.md).
-var STORAGE = declareColours("placements", {
+const STORAGE = declareColours("placements", {
   storage: "#6a78c8",
   "storage fluid": "#253496",
 });
-var STORAGE_COLOUR = STORAGE.storage;
-var STORAGE_FLUID_COLOUR = STORAGE["storage fluid"];
+const STORAGE_COLOUR = STORAGE.storage;
+const STORAGE_FLUID_COLOUR = STORAGE["storage fluid"];
 
 /* A container the docs dump carries no clearance for: the HUB's own box and the Blueprint
  * Designer's. The server sends null rather than a number invented there, because an invented
  * one would arrive indistinguishable from a measurement. Four metres is half a foundation
  * tile: small enough not to overstate a box, big enough to be clickable at the zoom the layer
  * is read at. */
-var STORAGE_FALLBACK_M = 4;
+const STORAGE_FALLBACK_M = 4;
 
 /* What is in one container, as popup rows.
  *

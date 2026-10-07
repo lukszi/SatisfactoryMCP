@@ -3,7 +3,7 @@
 
 import { make } from "../kit/dom";
 
-var closers: Record<string, () => void> = {};
+const closers: Record<string, () => void> = {};
 
 export function mapCard(id: string, label: string, close: () => void): HTMLElement {
   closers[id] = close;

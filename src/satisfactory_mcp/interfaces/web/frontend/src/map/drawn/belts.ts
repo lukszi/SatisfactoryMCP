@@ -30,17 +30,17 @@ import type { Point3M } from "../geometry";
 
 /* Mid steel with one value step either side for the tiers (docs/frontend_palette.md); the
  * middle stays the layer's swatch. */
-var BELTS = declareColours("routes", {
+const BELTS = declareColours("routes", {
   belts: "#93a5b4",
   "belt slow": "#7f8f9d",
   "belt fast": "#a7b9c7",
   // The hole inside a lift's ring, and the belts' casing: near-black.
   "lift fill": "#0e1116",
 });
-var BELT_COLOUR = BELTS.belts;
-var LIFT_FILL = BELTS["lift fill"];
-var BELT_SLOW = BELTS["belt slow"];
-var BELT_FAST = BELTS["belt fast"];
+const BELT_COLOUR = BELTS.belts;
+const LIFT_FILL = BELTS["lift fill"];
+const BELT_SLOW = BELTS["belt slow"];
+const BELT_FAST = BELTS["belt fast"];
 
 /* Tier as value. `items_per_min` is the dump's own figure for the class -- 60, 120, 270, 480,
  * 780 -- so this is a banding of a measurement rather than a parse of "Mk3" out of a display
@@ -53,13 +53,13 @@ function beltColour(items_per_min: number | null | undefined): string {
 }
 
 /* How much wider a belt's casing is than the belt, in SCREEN pixels. */
-var BELT_CASING_PX = 2;
+const BELT_CASING_PX = 2;
 
 /* A splitter or merger with no measured footprint: the docs dump carries clearance for none of
  * these four classes, so the server sends null rather than a number invented there, which
  * would arrive indistinguishable from a measurement. Four metres is the square the pieces snap
  * to, which is also what makes a run read as continuous through one. */
-var ATTACHMENT_FALLBACK_M = 4;
+const ATTACHMENT_FALLBACK_M = 4;
 
 function beltWeight(ppm: number): number {
   return routeWeight(ROUTE_WIDTH_M.belts, ppm);
@@ -72,7 +72,7 @@ function beltWeight(ppm: number): number {
  * them says "this is an ordinary run" about the one shape that cannot be drawn as one.
  *
  * A tenth of a metre because that is what the payload is rounded to. */
-var FLAT_ROUTE_M = 0.1;
+const FLAT_ROUTE_M = 0.1;
 
 function coversGround(points: Point3M[]): boolean {
   const first = points[0];

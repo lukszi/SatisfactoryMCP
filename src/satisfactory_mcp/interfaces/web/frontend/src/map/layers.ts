@@ -24,7 +24,7 @@ import { state } from "../app/state";
  * than to whatever order parallel fetches resolved in. The base map has no row at all: it is
  * the MODE radios at the top of the control, and tiles.ts puts its layer on the map directly.
  */
-export var BAND = {
+export const BAND = {
   /** The frame the world is read against: the biomes, their names, where you last stood,
    *  and the labels naming the places on it. Not things the player built. */
   chrome: 0,
@@ -59,9 +59,9 @@ export interface LayerOptions {
   title?: string;
 }
 
-var TICKS_KEY = "layer-ticks";
+const TICKS_KEY = "layer-ticks";
 
-var UNREMEMBERED = ["pickup: ", "regions"];
+const UNREMEMBERED = ["pickup: ", "regions"];
 
 function remembered(name: string): boolean {
   return !UNREMEMBERED.some(function (prefix) {
@@ -122,7 +122,7 @@ export function clearedLayer(name: string, options: LayerOptions): L.LayerGroup 
  * machines are a scatter, without pipes a refinery block is half missing. Not storage, a toggle
  * asked for on purpose; not power, which starts ticked, so re-ticking it would overrule the
  * reader who unticked it. */
-export var BUILT_AREA_LAYERS = ["machines", "belts", "pipes"];
+export const BUILT_AREA_LAYERS = ["machines", "belts", "pipes"];
 
 /** Turn these layers on in one control render, and return the names that were off. */
 export function turnOnLayers(names: string[]): string[] {

@@ -14,7 +14,7 @@ import type { FloorMark } from "../leaflet-private";
 
 /* The arrow's box in screen pixels: its size and its click target. In pixels so it stays
  * hittable zoomed out, and never 0x0, because the arrow itself is what opens the popup. */
-var GLYPH_PX = 14;
+const GLYPH_PX = 14;
 
 /** A deck's height as the picker and the popups print it. */
 export function deckHeightText(value: number | null): string {

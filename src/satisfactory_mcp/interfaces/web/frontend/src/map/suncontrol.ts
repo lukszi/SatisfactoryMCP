@@ -26,12 +26,12 @@ import {
 import type { Sun } from "./sun";
 
 /** The compass dial's radius, in its own SVG units: the horizon ring. */
-var COMPASS_RADIUS_PX = 46;
-var control: L.Control | null = null;
-var root: HTMLElement | null = null;
-var refresh: ((sun: Sun) => void) | null = null;
+const COMPASS_RADIUS_PX = 46;
+let control: L.Control | null = null;
+let root: HTMLElement | null = null;
+let refresh: ((sun: Sun) => void) | null = null;
 
-var SVG = "http://www.w3.org/2000/svg";
+const SVG = "http://www.w3.org/2000/svg";
 
 function svg(tag: string, attrs: Record<string, string | number>): SVGElement {
   const made = document.createElementNS(SVG, tag) as SVGElement;

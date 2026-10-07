@@ -7,8 +7,8 @@ import { createListeners } from "../app/listeners";
 
 export type MapTone = "light" | "dark";
 
-var current: MapTone = "light";
-var listeners = createListeners();
+let current: MapTone = "light";
+const listeners = createListeners();
 
 export function mapTone(): MapTone {
   return current;
@@ -19,7 +19,7 @@ export function byMapTone<T>(light: T, dark: T): T {
   return current === "dark" ? dark : light;
 }
 
-export var onMapTone = listeners.on;
+export const onMapTone = listeners.on;
 
 /** Set by tiles.ts on every base switch; mirrored to `<html data-map-tone>` for CSS. */
 export function setMapTone(next: MapTone): void {

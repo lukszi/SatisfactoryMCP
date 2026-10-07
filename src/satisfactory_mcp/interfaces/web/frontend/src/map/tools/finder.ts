@@ -62,27 +62,27 @@ export type FinderResults =
   | { kind: "pickups"; rows: CollectibleRow[] };
 
 /** How many rows the card lists; the rest are counted. */
-var MAX_TABLE_ROWS = 25;
+const MAX_TABLE_ROWS = 25;
 
-var NEAR_M = 500;
+const NEAR_M = 500;
 
-var POINT_ZOOM = 1;
+const POINT_ZOOM = 1;
 
-var ALL_ZOOM = 1;
+const ALL_ZOOM = 1;
 
-var ALL_PAD = 0.05;
+const ALL_PAD = 0.05;
 
-export var CONDUIT_RADIUS_M = "250";
+export const CONDUIT_RADIUS_M = "250";
 
-var RADII = ["100", CONDUIT_RADIUS_M, "500", "1000"];
+const RADII = ["100", CONDUIT_RADIUS_M, "500", "1000"];
 
-var pane = map.createPane("finder");
+const pane = map.createPane("finder");
 pane.style.zIndex = "445";
 pane.style.pointerEvents = "none";
-var renderer = L.svg({ pane: "finder", padding: 0.5 });
-var group = L.layerGroup();
+const renderer = L.svg({ pane: "finder", padding: 0.5 });
+const group = L.layerGroup();
 
-var view = {
+const view = {
   open: false,
   title: "",
   /** The point a "near here" search is about, or null for a list handed in from elsewhere. */
@@ -686,7 +686,7 @@ export function showRef(ref: string, spot?: { x_m?: number; y_m?: number; label:
 }
 
 /** The debounce on a vitals-driven refetch. */
-var refreshTimer = 0;
+let refreshTimer = 0;
 
 function refresh(): void {
   if (!view.open) return;

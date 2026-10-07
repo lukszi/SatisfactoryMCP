@@ -38,7 +38,7 @@ export function reveal(names: string[]): void {
   );
 }
 
-export var FACTORY_PICKED = "factory-picked";
+export const FACTORY_PICKED = "factory-picked";
 
 /* Factory labels: a permanent tooltip has to hang off something, and that something is a
  * zero-sized divIcon. The DEFAULT icon would request two image files and append 25x41 px of
@@ -55,11 +55,11 @@ export var FACTORY_PICKED = "factory-picked";
 
 // Breathing room around a factory's extent, metres. A one-machine factory has a
 // zero-size box, and flying to a zero-size box means flying to maxZoom on top of it.
-var FACTORY_PAD_M = 40;
+const FACTORY_PAD_M = 40;
 
 // Never closer than this when flying to a factory: a small cluster filling the screen
 // loses the surroundings that say where it is.
-var FACTORY_MAX_ZOOM = 1;
+const FACTORY_MAX_ZOOM = 1;
 
 function anchorMarker(centroid_m: PointM): L.Marker {
   return L.marker(latLngOf(centroid_m), {
@@ -124,7 +124,7 @@ function factoryAnchor(
 }
 
 /** The factory whose label outranks every other one, because the reader just picked it. */
-var prioritisedLabel = "";
+let prioritisedLabel = "";
 
 export function prioritiseLabel(name: string): void {
   if (prioritisedLabel === name) return;
@@ -313,7 +313,7 @@ export function declutter(): void {
  * separate until zoom 3, and flying six levels in one go from the whole-world view loses every
  * landmark on the way. If the group is still covered when the flight ends the badge is still
  * there, so the step simply repeats. */
-var LABEL_STEP_ZOOM = 2;
+const LABEL_STEP_ZOOM = 2;
 
 function addHiddenCountBadge(entry: Entry, hidden: Entry[]): void {
   // Absolutely positioned, so it hangs off the label's corner without changing the
