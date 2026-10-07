@@ -100,7 +100,7 @@ READER_VERSIONS = {
     "cliff_geometry": HEIGHTFIELD_GENERATOR_VERSION,
     "render_meshes": 4,
     "river_splines": 1,
-    "rock_families": 2,
+    "rock_families": 3,
     "titan_trees": 2,
     "waterfalls": 1,
 }
