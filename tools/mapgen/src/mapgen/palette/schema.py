@@ -360,6 +360,7 @@ class CalibrationStyle(TypedDict):
     crowns: dict[str, str]
     species: dict[str, str]
     areas: list[CalibrationArea]
+    derived_keys: NotRequired[list[str]]
 
 
 class PaintedPalette(TypedDict):

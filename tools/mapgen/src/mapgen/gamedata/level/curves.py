@@ -1,7 +1,7 @@
 """Tagged properties with their array index and flags, and the ``FRichCurve`` the lighting keys.
 
 A curve's keys are evaluated as the engine does: constant, linear, or the cubic Hermite written
-as a Bezier. docs/map/calibration.md section 43 says which curves the lighting reads.
+as a Bezier. docs/map/calibration.md section 31 says which curves the lighting reads.
 """
 
 from __future__ import annotations

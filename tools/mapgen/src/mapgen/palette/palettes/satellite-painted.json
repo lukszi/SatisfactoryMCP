@@ -483,7 +483,7 @@
   "white": 1.6
  },
  "calibration": {
-  "about": "display sRGB targets from in-game screenshots; docs/map/calibration.md section 31",
+  "about": "display sRGB targets from in-game screenshots; derived_keys names the ones a render takes from the game install instead (mapgen calibrate); docs/map/calibration.md section 31",
   "pure_share": 0.7,
   "min_texels": 200,
   "area_blur_m": 25.0,
@@ -590,6 +590,29 @@
     "water": "#302627",
     "water_class": "swamp"
    }
+  ],
+  "derived_keys": [
+   "layers.Sand_LayerInfo",
+   "layers.Grass_LayerInfo",
+   "layers.Forest_LayerInfo",
+   "derived.WetSand_LayerInfo",
+   "canopy",
+   "rock",
+   "families.desert",
+   "tops.forest",
+   "meshes.coral",
+   "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].layers.Gravel_WeightLayerInfo",
+   "areas[DuneDesert,DesertCanyons,RockyDesert].rock",
+   "areas[GrassFields,NorthernForest,WesternDuneForest].rock",
+   "areas[RedJungle,RedBambooFields].rock",
+   "areas[RedJungle,RedBambooFields].layers.Cliff_LayerInfo",
+   "layers.GrassRed_LayerInfo",
+   "layers.Puddles_LayerInfo",
+   "layers.RedJungle_LayerInfo",
+   "layers.SandCracks_LayerInfo",
+   "layers.SandPebbles_LayerInfo",
+   "layers.SandRock_LayerInfo",
+   "layers.Soil_LayerInfo"
   ]
  }
 }

@@ -77,6 +77,7 @@ ALLOWED: dict[str, frozenset[str]] = {
     "commands.caves": frozenset({"common", "gamedata"}),
     "commands.rocks": frozenset({"common", "gamedata"}),
     "commands.paint": frozenset({"common", "gamedata"}),
+    "commands.calibrate": frozenset({"common", "gamedata", "palette"}),
     "commands.artwork": frozenset({"common", "gamedata", "tiles", "enhance"}),
     "commands.check_fill": frozenset({"common", "cache", "gamedata", "terrain"}),
     "commands.compress_cache": frozenset({"common", "bandstore", "cache"}),

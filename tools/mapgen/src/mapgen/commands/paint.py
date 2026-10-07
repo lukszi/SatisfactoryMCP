@@ -82,7 +82,7 @@ from satisfactory_mcp.core.gameassets.provenance import (
     sha256_hex,
 )
 from satisfactory_mcp.core.gameassets.versions import PAINT_GENERATOR_VERSION
-from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, to_json
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -421,11 +421,10 @@ def _daylight(game: GameReader, decoder: ModuleType, volumes: list[AtmosphereVol
 
     shells = {p: crown_sprites.material_colour(game, p, texture_rgba) for p in SHELL_MATERIALS}
     print(f"  daylight {'read' if lighting else 'missing'}, {len(volumes)} atmosphere volumes")
-    # Both TypedDicts hold JSON values only.
     return {
-        "lighting": cast(JsonValue, lighting),
-        "atmosphere_volumes": cast(list[JsonValue], volumes),
-        "mesh_materials": cast(JsonObject, shells),
+        "lighting": to_json(lighting),
+        "atmosphere_volumes": to_json(volumes),
+        "mesh_materials": to_json(shells),
     }
 
 

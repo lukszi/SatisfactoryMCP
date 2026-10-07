@@ -9,7 +9,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mapgen.cache import Plane, TitanPlanes
-from mapgen.gamedata.vegetation.crown_sprites import CrownsBlock
+from mapgen.gamedata.level.lighting import AtmosphereVolume, LevelLighting
+from mapgen.gamedata.vegetation.crown_sprites import CrownsBlock, MaterialColour
 from mapgen.palette.scene import BandGrid, BandScene, BandTaps, WaterTerms
 from mapgen.palette.schema import (
     CalibrationArea,
@@ -87,7 +88,9 @@ class AlbedoTable(TypedDict):
 class RockFamilyEntry(TypedDict, total=False):
     """One rock family of the store: its tint and, where it has one, its top layer's colour."""
 
+    material: str
     tint: list[float] | None
+    top_texture: str | None
     top: list[float] | None
 
 
@@ -115,6 +118,11 @@ class PaintMeta(TypedDict):
     generator_version: NotRequired[int]
     cl: NotRequired[int]
     digest: NotRequired[str]
+    texture_means_linear: NotRequired[dict[str, list[float]]]
+    material_vectors: NotRequired[dict[str, list[float]]]
+    lighting: NotRequired[LevelLighting | None]
+    atmosphere_volumes: NotRequired[list[AtmosphereVolume]]
+    mesh_materials: NotRequired[dict[str, MaterialColour]]
 
 
 class BiomeGrid(TypedDict):

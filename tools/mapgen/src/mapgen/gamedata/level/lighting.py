@@ -1,7 +1,7 @@
 """The persistent level's daylight and the atmosphere volumes that override it, read at noon.
 
 The paint command stores both in its ``meta.json``; ``mapgen calibrate`` derives display colours
-from them. docs/map/calibration.md section 43 names every property read.
+from them. docs/map/calibration.md section 31 names every property read.
 """
 
 from __future__ import annotations
