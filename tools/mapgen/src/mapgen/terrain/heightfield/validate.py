@@ -4,7 +4,7 @@ the accuracy each layer was measured to have."""
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import NamedTuple, NotRequired, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, NamedTuple, NotRequired, TypeAlias, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
@@ -16,6 +16,10 @@ from mapgen.gamedata.ground.biome import region_mask
 from mapgen.gamedata.nodes import NODE_TABLE, load_static_nodes
 from satisfactory_mcp.core.arrays import BoolMask, F64Grid, I16Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
+
+if TYPE_CHECKING:
+    from mapgen.gamedata.level.landscape import LandscapeFrame
+    from mapgen.gamedata.water.channel import WaterSurface
 
 __all__ = [
     "ACCURACY_MIN_SAMPLES",
@@ -175,7 +179,7 @@ def _node_table_path() -> str:
     return str(NODE_TABLE.relative_to(ROOT)).replace("\\", "/")
 
 
-def validate_terrain(frame: dict, prov: U8Grid) -> TerrainCheck:
+def validate_terrain(frame: LandscapeFrame, prov: U8Grid) -> TerrainCheck:
     """The bare terrain against the nodes standing on the landscape layer."""
     nodes = _static_nodes()
     x, y, z = nodes.x_cm, nodes.y_cm, nodes.z_m
@@ -226,7 +230,7 @@ def _ocean_level(level_m: NDArray[np.floating], wet: BoolMask, mask: BoolMask,
     }
 
 
-def validate_water(surface: dict, mask: BoolMask, boxes: WaterBoxes) -> WaterChecks:
+def validate_water(surface: WaterSurface, mask: BoolMask, boxes: WaterBoxes) -> WaterChecks:
     """The four gates, each measured against something this stage did not make.
 
     Returns every number whether it passes or not; ``main`` decides what to do about it. A
@@ -339,7 +343,7 @@ def water_gate_failures(checks: WaterChecks) -> list[str]:
     return failures
 
 
-def report_water(water: dict, checks: WaterChecks) -> None:
+def report_water(water: WaterSurface, checks: WaterChecks) -> None:
     """The water channel's summary and its four gates, one progress line each."""
     print(
         f"  artwork water {water['artwork_texels'] / 1e6:.3f} km2 over "

@@ -7,6 +7,7 @@ import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.terrain.heightfield.field import FieldLayers
@@ -25,6 +26,13 @@ from satisfactory_mcp.core.gameassets.provenance import files_digest, read_str_p
 from satisfactory_mcp.core.gameassets.versions import HEIGHTFIELD_GENERATOR_VERSION
 from satisfactory_mcp.core.jsontypes import JsonValue
 from satisfactory_mcp.domain.spatial import heightfield as hf
+
+if TYPE_CHECKING:
+    from mapgen.gamedata.level.landscape import LandscapeFrame
+    from mapgen.gamedata.level.sweep import Sweep
+    from mapgen.gamedata.meshes import MeshGeometry
+    from mapgen.gamedata.rocks.cliffs import CliffRaster
+    from mapgen.gamedata.water.channel import WaterSurface
 
 __all__ = [
     "GENERATOR_VERSION",
@@ -121,7 +129,7 @@ def _decoders_block(decoders: Mapping[str, str]) -> dict[str, object]:
     }
 
 
-def _known_defects(sweep: dict, water: dict) -> list[str]:
+def _known_defects(sweep: Sweep, water: WaterSurface) -> list[str]:
     """What the field is known to get wrong, with the counts this run measured."""
     return [
         (
@@ -159,12 +167,12 @@ def build_meta(
     *,
     build_pin: str,
     build_raw: Mapping[str, object],
-    sweep: dict,
-    frame: dict,
-    meshes: dict,
-    cliffs: dict,
+    sweep: Sweep,
+    frame: LandscapeFrame,
+    meshes: MeshGeometry,
+    cliffs: CliffRaster,
     field: FieldLayers,
-    water: dict,
+    water: WaterSurface,
     water_checks: WaterChecks,
     validation: FieldValidation,
     files: dict[str, FileEntry],
@@ -249,7 +257,7 @@ def refuse_stale(out_dir: Path, build_pin: str) -> int | None:
     return 3
 
 
-def report_sweep(sweep: dict) -> None:
+def report_sweep(sweep: Sweep) -> None:
     print(
         f"  {sweep['packages']} packages in {sweep['seconds']:.0f}s: "
         f"{len(sweep['components'])} landscape components, {len(sweep['placements'])} "
@@ -263,7 +271,7 @@ def report_sweep(sweep: dict) -> None:
     )
 
 
-def report_frame(frame: dict, dx: int, dy: int) -> None:
+def report_frame(frame: LandscapeFrame, dx: int, dy: int) -> None:
     print(
         f"  landscape {frame['width']}x{frame['height']} m at "
         f"({frame['x0_cm']:.0f}, {frame['y0_cm']:.0f}) cm, {frame['coverage'] * 100:.1f}% "
@@ -273,7 +281,7 @@ def report_frame(frame: dict, dx: int, dy: int) -> None:
     print(f"  {frame['seam_disagreements']} shared edge samples disagree between components")
 
 
-def report_meshes(meshes: dict) -> None:
+def report_meshes(meshes: MeshGeometry) -> None:
     print(
         f"  {len(meshes['geometry'])}/{meshes['wanted']} rock meshes decoded in "
         f"{meshes['seconds']:.0f}s: {meshes['verts']} vertices, {meshes['tris']} triangles "

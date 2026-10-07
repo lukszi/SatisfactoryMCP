@@ -23,7 +23,7 @@ from mapgen.cache import (
     write_sidecar,
 )
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.level.sweep import sweep_levels
+from mapgen.gamedata.level.sweep import Sweep, sweep_levels
 from mapgen.gamedata.maxz_raster import MaxZRaster
 from mapgen.gamedata.meshes import MeshBounds, read_hull, read_mesh_geometry, winding_sign
 from mapgen.gamedata.placements import (
@@ -112,7 +112,7 @@ class PreparedPlacement(NamedTuple):
 class CliffGeometry(TypedDict):
     """``read_cliff_geometry``: the sweep, every rock's clamped geometry, and the tallies."""
 
-    sweep: dict
+    sweep: Sweep
     geometry: Geometry
     meshes: int
     by_source: dict[str, int]
@@ -166,7 +166,7 @@ class BandRaster(Protocol):
 
 def read_cliff_geometry(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
                         classes: ClassFacts, progress: bool = True,
-                        sweep: dict | None = None) -> CliffGeometry:  # fmt: skip
+                        sweep: Sweep | None = None) -> CliffGeometry:  # fmt: skip
     """The world's placements and the finest triangles every placed rock ships.
 
     The field's own sweep (``sweep_levels``) and finest-source ladder (``read_mesh_geometry``)
@@ -201,7 +201,7 @@ def read_cliff_geometry(store: IoStore, scripts: ScriptObjects, index: AssetInde
 
 
 def sweep_world(store: IoStore, scripts: ScriptObjects, index: AssetIndex, classes: ClassFacts,
-                progress: bool = True) -> dict:  # fmt: skip
+                progress: bool = True) -> Sweep:  # fmt: skip
     """The field generator's sweep, also harvesting the render-only foliage and the trees."""
     sweep = sweep_levels(
         store,
@@ -223,7 +223,7 @@ def _box_corners() -> F32Grid:
     return np.array([[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)], np.float32)
 
 
-def direct_placements(sweep: dict, geometry: Geometry, families: NDArray[np.integer] | None = None
+def direct_placements(sweep: Sweep, geometry: Geometry, families: NDArray[np.integer] | None = None
                       ) -> tuple[list[PreparedPlacement], dict[str, int]]:  # fmt: skip
     """Every placement the field's own cliff layer rasterises, with its world Y span.
 
@@ -330,7 +330,7 @@ def add_placements(raster: MaxZRaster, prepared: Sequence[PreparedPlacement], ge
         raster.add(world[tris], entry.mesh_id + 1 if entry.family is None else entry.family)
 
 
-def top_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: dict,
+def top_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep,
               geometry: Geometry) -> tuple[TopItems, TopMeta]:  # fmt: skip
     """The arches and foliage boulders ``top.i16.z`` carries, at their finest geometry.
 

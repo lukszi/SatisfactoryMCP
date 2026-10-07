@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
 import numpy.typing as npt
@@ -28,7 +28,7 @@ __all__ = [
     "VOID_ARTWORK_LUMA_MAX",
     "WATER_ARTWORK_BANDS",
     "WATER_ARTWORK_BLUE_OVER_RED",
-    "SurfaceValue",
+    "WaterSurface",
     "artwork_planes",
     "artwork_water_mask",
     "lower_bodies",
@@ -54,8 +54,23 @@ _ROWS_AT_ONCE = 500
 #: A box top more than this under a texel's level is another, lower body (§38).
 LOWER_BODY_STEP_M = 2.0
 
-#: One value of ``water_surface``'s result: the level and quality planes, or a tally.
-SurfaceValue: TypeAlias = F32Grid | U8Grid | int | float | None
+
+class WaterSurface(TypedDict):
+    """``water_surface``'s level and quality planes, and the tallies the sidecar records."""
+
+    level_m: F32Grid
+    quality: U8Grid
+    boxes_rasterised: int
+    bodies: int
+    artwork_texels: int
+    uncovered_texels: int
+    orphan_bodies: int
+    dropped_standing_out_texels: int
+    water_texels: int
+    measured_texels: int
+    level_only_texels: int
+    depth_p50_m: float | None
+    depth_p90_m: float | None
 
 
 def _grid_index() -> I32Grid:
@@ -157,7 +172,7 @@ def water_surface(
     boxes: Iterable[tuple[str, Sequence[float]]],
     height_dm: I16Grid,
     prov: U8Grid,
-) -> dict[str, SurfaceValue]:
+) -> WaterSurface:
     """The artwork's plan shape given the water volumes' level, and what is left unknown.
 
     A wet texel's level is the highest box top over it, else its drawn body's median covered

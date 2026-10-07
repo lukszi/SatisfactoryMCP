@@ -206,14 +206,13 @@ def read_mesh_geometry(
     index: AssetIndex,
     meshes: list[str],
     progress: bool = True,
-) -> dict:
+) -> MeshGeometry:
     """The finest geometry every placed rock mesh ships, over the hull-equivalent set.
 
     Only ``ROCK_DIRS`` are opened: a tree's collision is a tree, and the point of this layer
     is the geometry the landscape does not contain. **The cooked collision hull decides the
     SET**, and a mesh with no hull is skipped: those are cave pillars, holes and merged
-    floors, roofs to a max-Z sampler (``sidecar_blocks.cliff_source`` has the cost). Returns
-    ``MeshGeometry``'s shape.
+    floors, roofs to a max-Z sampler (``sidecar_blocks.cliff_source`` has the cost).
     """
     wanted = [m for m in meshes if any(d in m for d in ROCK_DIRS)]
     geometry: dict[str, CookedMesh] = {}

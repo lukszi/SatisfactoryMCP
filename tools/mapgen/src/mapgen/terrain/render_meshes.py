@@ -29,7 +29,7 @@ from mapgen.cache import (
 )
 from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.level.sweep import is_top_foliage
+from mapgen.gamedata.level.sweep import Sweep, is_top_foliage
 from mapgen.gamedata.maxz_raster import MaxZRaster
 from mapgen.gamedata.meshes import finer_source, read_hull
 from mapgen.gamedata.placements import EXCLUDED_MESHES, placement_material, rotation_matrix
@@ -219,7 +219,7 @@ def read_shape(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
 
 
 def titan_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
-                sweep: dict) -> tuple[PreparedMeshes, JsonObject]:  # fmt: skip
+                sweep: Sweep) -> tuple[PreparedMeshes, JsonObject]:  # fmt: skip
     """The Titan trees' placements in ``rasterise_mesh_band``'s format, at their finest mesh."""
     meshes = sweep["meshes"]
     groups: dict[str, list[F64Grid]] = {}
@@ -242,7 +242,7 @@ def titan_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
     return PreparedMeshes(items, shapes), {"placements": counts, "sources": sources}
 
 
-def _mesh_groups(store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: dict,
+def _mesh_groups(store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep,
                  shapes: Mapping[str, Shape]) -> dict[str, tuple[list[F64Grid], list[int]]]:  # fmt: skip
     """Per render-only mesh, its instances' matrices and source codes: the class, and for a
     rock the family its placement wears (``worn_family``), shifted above it."""
@@ -271,7 +271,7 @@ def _mesh_groups(store: IoStore, scripts: ScriptObjects, index: AssetIndex, swee
 
 
 def mesh_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
-               sweep: dict) -> tuple[PreparedMeshes, JsonObject]:  # fmt: skip
+               sweep: Sweep) -> tuple[PreparedMeshes, JsonObject]:  # fmt: skip
     """Every render-only placement and foliage instance, grouped by mesh with their codes."""
     started = time.time()
     meshes = sweep["meshes"]

@@ -10,7 +10,7 @@ from typing import NotRequired, TypeAlias, TypedDict
 
 import numpy as np
 
-from mapgen.gamedata.level.landscape import grass_data_heights
+from mapgen.gamedata.level.landscape import Proxy, grass_data_heights
 from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.water.actors import is_water_class, water_actor_box
 from mapgen.gamedata.water.rivers import RIVER_CLASS, RiverRecord, river_actor
@@ -52,8 +52,6 @@ __all__ = [
 Transform: TypeAlias = tuple[
     tuple[float, float, float], tuple[float, float, float, float], tuple[float, float, float]
 ]
-#: A landscape proxy's ``(origin x, origin y, z offset, scale x, scale y, scale z)``.
-Proxy: TypeAlias = tuple[float, float, float, float, float, float]
 #: ``read_actor(view, slot, class path, classes)``: a level actor's record, or ``None``.
 ActorReader: TypeAlias = Callable[[PackageView, int, str | None, ClassFacts], object]
 
@@ -396,7 +394,7 @@ class _Harvest:
         if name == RIVER_CLASS:
             self.rivers.append(river_actor(view, slot, self.classes, self.meshes))
 
-    def packed(self, packages: int, unreadable: int, seconds: float) -> dict:
+    def packed(self, packages: int, unreadable: int, seconds: float) -> Sweep:
         """The sweep's record, keys in the order ``Sweep`` lists them."""
 
         def by_id(ids: dict[str, int]) -> list[str]:
@@ -437,12 +435,12 @@ def sweep_levels(
     progress: bool = True,
     extra_foliage: Callable[[str], bool] | None = None,
     read_actor: ActorReader | None = None,
-) -> dict:
+) -> Sweep:
     """One pass over every ``*.umap`` of the world: landscape, placements, water actors.
 
     All three harvests need the same ``PackageView`` of the same 4,521 packages, and
     building that view is the whole cost of the pass, so they share it. Returns raw material
-    and nothing interpreted, in ``Sweep``'s shape. Foliage ``extra_foliage`` accepts lands in
+    and nothing interpreted. Foliage ``extra_foliage`` accepts lands in
     ``extra_foliage``; whatever ``read_actor`` returns for a level actor, in ``actors``.
     """
     harvest = _Harvest(meshes, classes, extra_foliage)

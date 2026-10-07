@@ -68,8 +68,7 @@ def load_extras(
     out = RenderExtras()
 
     def swept_levels() -> Sweep:
-        # sweep_world returns the sweep's dict in Sweep's shape (gamedata.level.sweep).
-        return cast(Sweep, level.sweep)
+        return level.sweep
 
     if meshes:
         maps, mesh_source = mesh_pass(

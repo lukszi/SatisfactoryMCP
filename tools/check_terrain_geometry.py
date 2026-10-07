@@ -48,8 +48,8 @@ for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
 
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.level.landscape import drop_offsets, landscape_frame
-from mapgen.gamedata.level.sweep import sweep_levels
+from mapgen.gamedata.level.landscape import LandscapeFrame, drop_offsets, landscape_frame
+from mapgen.gamedata.level.sweep import Sweep, sweep_levels
 from mapgen.gamedata.meshes import ROCK_DIRS, CookedMesh, MeshBounds
 from mapgen.gamedata.nodes import node_rows
 from mapgen.gamedata.rocks.cliffs import rasterise_cliffs
@@ -535,8 +535,8 @@ def load_probes(
 def score_rung(
     rung: str,
     read: RungRead,
-    sweep: dict,
-    frame: dict,
+    sweep: Sweep,
+    frame: LandscapeFrame,
     probes: dict[str, F64Grid],
     province: dict[str, BoolMask],
     loud: bool,

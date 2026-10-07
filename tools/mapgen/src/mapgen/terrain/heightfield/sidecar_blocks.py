@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from mapgen.gamedata.frame import GRID_PX, Z6_TEXEL_M, Z7_TEXEL_M
 from mapgen.gamedata.level.fill_raster import (
@@ -32,6 +32,13 @@ from mapgen.terrain.heightfield.validate import (
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
+if TYPE_CHECKING:
+    from mapgen.gamedata.level.landscape import LandscapeFrame
+    from mapgen.gamedata.level.sweep import Sweep
+    from mapgen.gamedata.meshes import MeshGeometry
+    from mapgen.gamedata.rocks.cliffs import CliffRaster, TopOverlay
+    from mapgen.gamedata.water.channel import WaterSurface
+
 __all__ = [
     "FileEntry",
     "accuracy_block",
@@ -54,7 +61,7 @@ class FileEntry(TypedDict):
     sha256: str
 
 
-def _file_contents(frame: dict) -> dict[str, str]:
+def _file_contents(frame: LandscapeFrame) -> dict[str, str]:
     """What each plane holds, in the order the sidecar lists them."""
     return {
         hf.HEIGHT_NAME: f"{GRID_PX}x{GRID_PX} int16 decimetres, row-delta then zlib",
@@ -87,7 +94,7 @@ def _file_contents(frame: dict) -> dict[str, str]:
     }
 
 
-def describe_files(payload: dict[str, bytes], frame: dict) -> dict[str, FileEntry]:
+def describe_files(payload: dict[str, bytes], frame: LandscapeFrame) -> dict[str, FileEntry]:
     """The sidecar's ``files`` block: what each plane holds, its size and its hash."""
     return {
         name: {"content": content, "bytes": len(payload[name]), "sha256": sha256_hex(payload[name])}
@@ -95,7 +102,7 @@ def describe_files(payload: dict[str, bytes], frame: dict) -> dict[str, FileEntr
     }
 
 
-def add_planes(meta: dict[str, object], frame: dict, terrain_check: TerrainCheck, top: dict,
+def add_planes(meta: dict[str, object], frame: LandscapeFrame, terrain_check: TerrainCheck, top: TopOverlay,
                top_raised: int) -> None:  # fmt: skip
     """The ``planes``, ``terrain_grid`` and ``top`` blocks, appended after ``build_meta``'s."""
     meta["planes"] = {
@@ -127,7 +134,7 @@ def add_planes(meta: dict[str, object], frame: dict, terrain_check: TerrainCheck
     meta["top"] = {**{key: top[key] for key in kept}, "raised_texels": top_raised}
 
 
-def landscape_source(frame: dict, field: FieldLayers) -> dict[str, object]:
+def landscape_source(frame: LandscapeFrame, field: FieldLayers) -> dict[str, object]:
     """The sidecar's ``sources.landscape`` block: the cooked heightfield, dropped unresampled."""
     dx, dy = field["drop"]
     return {
@@ -158,7 +165,7 @@ def landscape_source(frame: dict, field: FieldLayers) -> dict[str, object]:
     }
 
 
-def cliff_source(meshes: dict, cliffs: dict) -> dict[str, object]:
+def cliff_source(meshes: MeshGeometry, cliffs: CliffRaster) -> dict[str, object]:
     """The sidecar's ``sources.cliffs`` block: the rock geometry and what was culled."""
     return {
         "class": "StaticMesh render data / BodySetup / FTriangleMeshImplicitObject",
@@ -382,7 +389,7 @@ def accuracy_block(validation: FieldValidation) -> dict[str, object]:
     return out
 
 
-def water_source(sweep: dict, water: dict, water_checks: WaterChecks) -> dict[str, object]:
+def water_source(sweep: Sweep, water: WaterSurface, water_checks: WaterChecks) -> dict[str, object]:
     """The sidecar's ``sources.water`` block: how the channel was made and how it measured."""
     return {
         "recipe": (

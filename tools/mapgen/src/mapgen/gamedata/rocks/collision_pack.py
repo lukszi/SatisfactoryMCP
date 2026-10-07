@@ -14,7 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mapgen.gamedata.install import GameReader
-from mapgen.gamedata.level.sweep import flagged_tags, quat_axes, world_levels
+from mapgen.gamedata.level.sweep import Sweep, flagged_tags, quat_axes, world_levels
 from mapgen.gamedata.meshes import ROCK_DIRS, clamp_triangles, winding_sign
 from mapgen.gamedata.placements import (
     EXCLUDED_MESHES,
@@ -386,7 +386,7 @@ class _PackMeshes:
 
 
 def _place_instances(
-    sweep: dict, have: dict[str, CollisionMesh], mesh_ids: dict[str, int], pack: _PackMeshes
+    sweep: Sweep, have: dict[str, CollisionMesh], mesh_ids: dict[str, int], pack: _PackMeshes
 ) -> dict[str, int]:
     """Add the placements and foliage boulders the pack keeps; what it dropped, by why.
 
@@ -432,7 +432,7 @@ def _place_instances(
 
 
 def rock_pack_arrays(
-    sweep: dict, collision: CollisionMeshes, floors: CaveFloors
+    sweep: Sweep, collision: CollisionMeshes, floors: CaveFloors
 ) -> tuple[RockPackArrays, PackCounts]:
     """The arrays of ``rocks.npz`` and the counts its sidecar records.
 
@@ -512,7 +512,7 @@ def _pack_counts(
 
 
 def encode_rock_pack(
-    reader: GameReader, sweep: dict, build_pin: str, build_raw: JsonObject
+    reader: GameReader, sweep: Sweep, build_pin: str, build_raw: JsonObject
 ) -> dict[str, bytes]:
     """``rocks.npz`` and ``rocks.json`` as bytes, ready for the field's directory."""
     from satisfactory_mcp.domain.spatial.heightfield import collision_pack as rocks

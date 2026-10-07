@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
@@ -13,6 +13,11 @@ from mapgen.gamedata.level.landscape import drop_offsets
 from mapgen.gamedata.meshes import DIRECT_SAMPLES_MIN
 from satisfactory_mcp.core.arrays import BoolMask, I16Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
+
+if TYPE_CHECKING:
+    from mapgen.gamedata.level.landscape import LandscapeFrame
+    from mapgen.gamedata.rocks.cliffs import CliffRaster, TopOverlay
+    from mapgen.gamedata.water.channel import WaterSurface
 
 __all__ = [
     "FILL_HORIZONTAL_M",
@@ -46,7 +51,9 @@ class FieldLayers(TypedDict):
     quantisation_rms_m: float
 
 
-def fold_top_overlay(height_dm: I16Grid, frame: dict, top: dict) -> tuple[I16Grid, int]:
+def fold_top_overlay(
+    height_dm: I16Grid, frame: LandscapeFrame, top: TopOverlay
+) -> tuple[I16Grid, int]:
     """``height_dm`` max-folded with the overlay, and how many texels the overlay raised."""
     dx, dy = drop_offsets(frame)
     out = height_dm.copy()
@@ -78,7 +85,7 @@ def fill_raster_indices() -> tuple[NDArray[np.integer], NDArray[np.integer]]:
     return bi, bj
 
 
-def compose_field(frame: dict, cliffs: dict, baseline_cm: NDArray[np.floating],
+def compose_field(frame: LandscapeFrame, cliffs: CliffRaster, baseline_cm: NDArray[np.floating],
                   valid: BoolMask) -> FieldLayers:  # fmt: skip
     """Fuse the layers into the output grid: fill, then landscape, then cliff over both.
 
@@ -157,7 +164,7 @@ def report_field(field: FieldLayers) -> None:
     )
 
 
-def encode_planes(field: FieldLayers, water: dict, frame: dict,
+def encode_planes(field: FieldLayers, water: WaterSurface, frame: LandscapeFrame,
                   top_dm: I16Grid) -> dict[str, bytes]:  # fmt: skip
     """Every plane of the field, encoded with the shipped codec, keyed by file name."""
     water_dm = np.where(

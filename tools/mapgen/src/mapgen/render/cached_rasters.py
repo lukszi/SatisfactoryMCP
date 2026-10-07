@@ -71,7 +71,7 @@ class LevelSweep:
         return AssetIndex(self.store)
 
     @cached_property
-    def sweep(self) -> dict:
+    def sweep(self) -> Sweep:
         """The placements, foliage, trees and water actors of every level."""
         classes = ClassFacts(self.store, self.index)
         return sweep_world(self.store, self.scripts, self.index, classes, self.progress)
@@ -149,8 +149,7 @@ def direct_raster(
             + (f" with {sampled}x{sampled} sub-samples" if sampled > 1 else "")
         )
         geometry = level.geometry
-        sweep = cast(Sweep, geometry["sweep"])
-        families = placement_families(level.store, level.scripts, level.index, sweep)
+        families = placement_families(level.store, level.scripts, level.index, geometry["sweep"])
         prepared, dropped = direct_placements(geometry["sweep"], geometry["geometry"], families)
         print(f"  {len(prepared)} placements rasterised, dropped {dropped}")
         band = partial(rasterise_direct_band, prepared, geometry["geometry"], with_source=True)

@@ -20,13 +20,13 @@ from mapgen.commands.rocks import write_rocks
 from mapgen.common import LOCAL_DIR, Refusal, base_parser, require_gen
 from mapgen.gamedata.install import GameReader, missing_container, open_game
 from mapgen.gamedata.level.fill_raster import read_fill_raster
-from mapgen.gamedata.level.landscape import drop_offsets, landscape_frame
-from mapgen.gamedata.level.sweep import sweep_levels
-from mapgen.gamedata.meshes import MeshBounds, read_mesh_geometry
+from mapgen.gamedata.level.landscape import LandscapeFrame, drop_offsets, landscape_frame
+from mapgen.gamedata.level.sweep import Sweep, sweep_levels
+from mapgen.gamedata.meshes import MeshBounds, MeshGeometry, read_mesh_geometry
 from mapgen.gamedata.nodes import NODE_TABLE
-from mapgen.gamedata.rocks.cliffs import rasterise_cliffs, rasterise_top
+from mapgen.gamedata.rocks.cliffs import CliffRaster, TopOverlay, rasterise_cliffs, rasterise_top
 from mapgen.gamedata.rocks.collision_pack import encode_rock_pack
-from mapgen.gamedata.water.channel import artwork_water_mask, water_surface
+from mapgen.gamedata.water.channel import WaterSurface, artwork_water_mask, water_surface
 from mapgen.terrain.heightfield import field, sidecar, sidecar_blocks, validate
 from mapgen.terrain.heightfield.field import FieldLayers
 from mapgen.terrain.heightfield.validate import FieldValidation, TerrainCheck, WaterChecks
@@ -117,7 +117,7 @@ def open_reader(game: Path, pyooz_version: str) -> GameReader:
     return reader
 
 
-def _landscape(run: _Run) -> tuple[dict, dict]:
+def _landscape(run: _Run) -> tuple[Sweep, LandscapeFrame]:
     """The level sweep, and the landscape stitched from it into one frame."""
     reader = run.reader
     print("sweeping the world's packages for landscape, placements and water volumes")
@@ -133,7 +133,7 @@ def _landscape(run: _Run) -> tuple[dict, dict]:
     return sweep, frame
 
 
-def _cliffs(run: _Run, sweep: dict, frame: dict) -> tuple[dict, dict]:
+def _cliffs(run: _Run, sweep: Sweep, frame: LandscapeFrame) -> tuple[MeshGeometry, CliffRaster]:
     """Every placed rock's finest geometry, folded into the 1 m max-Z overlay."""
     reader = run.reader
     print("decoding the finest geometry every placed rock ships")
@@ -159,7 +159,7 @@ def _cliffs(run: _Run, sweep: dict, frame: dict) -> tuple[dict, dict]:
     return meshes, cliffs
 
 
-def _compose(run: _Run, frame: dict, cliffs: dict) -> FieldLayers:
+def _compose(run: _Run, frame: LandscapeFrame, cliffs: CliffRaster) -> FieldLayers:
     """The fill raster decoded, and the three layers fused onto the output grid."""
     started = time.time()
     fill_cm, fill_valid = read_fill_raster(run.reader.store)
@@ -172,7 +172,9 @@ def _compose(run: _Run, frame: dict, cliffs: dict) -> FieldLayers:
     return fused
 
 
-def _top(run: _Run, sweep: dict, frame: dict, fused: FieldLayers) -> tuple[dict, I16Grid, int]:
+def _top(
+    run: _Run, sweep: Sweep, frame: LandscapeFrame, fused: FieldLayers
+) -> tuple[TopOverlay, I16Grid, int]:
     """Arches and foliage boulders, folded over the field into the ``top`` plane."""
     print("rasterising arches and foliage boulders for the top plane")
     top = rasterise_top(sweep, frame, run.reader, run.loud)
@@ -185,7 +187,7 @@ def _top(run: _Run, sweep: dict, frame: dict, fused: FieldLayers) -> tuple[dict,
     return top, top_dm, top_raised
 
 
-def _water(run: _Run, sweep: dict, fused: FieldLayers) -> tuple[dict, WaterChecks]:
+def _water(run: _Run, sweep: Sweep, fused: FieldLayers) -> tuple[WaterSurface, WaterChecks]:
     """The water channel, refused unless it passes its own four gates."""
     import texture2ddecoder
     from PIL import Image
@@ -205,7 +207,9 @@ def _water(run: _Run, sweep: dict, fused: FieldLayers) -> tuple[dict, WaterCheck
     return water, water_checks
 
 
-def _validate(run: _Run, frame: dict, fused: FieldLayers) -> tuple[FieldValidation, TerrainCheck]:
+def _validate(
+    run: _Run, frame: LandscapeFrame, fused: FieldLayers
+) -> tuple[FieldValidation, TerrainCheck]:
     """The field on the node table, and the bare terrain on the landscape's nodes."""
     started = time.time()
     validation = validate.validate_field(fused["height_dm"], fused["prov"])
