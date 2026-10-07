@@ -18,12 +18,15 @@ import pytest
 from PIL import Image
 
 from mapgen.lighting import stage
+from mapgen.lighting.bake import bake_light
 from mapgen.lighting.light_tiles import work_array
-from mapgen.lighting.stage import LIGHT_VERSION, Surface, bake_light
+from mapgen.lighting.stage import LIGHT_VERSION, Surface
 from mapgen.render import kept_light, light
 from mapgen.render.extras import RUN_CACHE_DIRS, remove_run_caches
 from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME
 from mapgen.render.light import LIGHT_CACHE_DIR_NAME, LightingRun
+from mapgen.render.stream import RenderStream
+from mapgen.tiles.cutter import TileStream
 
 SIZE = 512
 
@@ -76,25 +79,34 @@ class _Counted:
         return self.real(*args, **kwargs)
 
 
-def _run(tmp: Path, cache: Path | None, planes=None, occluder=None) -> LightingRun:
-    run = LightingRun(tmp / "scratch", SIZE, occluder, light_workers=1, cache_root=cache)
-    _put(run.surface, planes or _planes())
-    return run
-
-
 def _baked(tmp: Path, cache: Path | None, planes=None, occluder=None) -> None:
-    run = _run(tmp, cache, planes, occluder)
-    run.bake(tmp / "out")
-    run.close()
+    """The light alone into ``tmp/out``, its surface drawn 64 rows at a time."""
+    run = LightingRun(tmp / "scratch", SIZE, occluder, light_workers=1, cache_root=cache)
+    z, land = planes or _planes()
+    try:
+        run.begin(tmp / "out")
+        for top in range(0, SIZE, 64):
+            run.surface.put(top, z[top : top + 64], land[top : top + 64])
+            run.drawn(top + 64)
+        run.finish(lambda: None)
+    finally:
+        run.close()
 
 
 def _installed(tmp: Path, cache: Path | None, occluder=None):
-    """One lit layer into ``tmp/out``: the light's ``_meta`` and the layer's lit sheet."""
-    run = _run(tmp, cache, occluder=occluder)
+    """One lit layer into ``tmp/out/r``: the light's ``_meta`` and the layer's tiles."""
+    run = LightingRun(tmp / "scratch", SIZE, occluder, light_workers=1, cache_root=cache)
+    z, land = _planes()
     sheet = np.full((SIZE, SIZE, 3), 128, np.uint8)
     try:
-        run.install(sheet, Image, tmp / "out", "painted", 1, 6, "r")
-        return run.meta, sheet
+        with TileStream(Image, 1) as cutter:
+            stream = RenderStream(cutter, ("painted",), (tmp / "out", "r"), SIZE, 6, run)
+            for top in range(0, SIZE, 64):
+                run.surface.put(top, z[top : top + 64], land[top : top + 64])
+                stream.put(top, {"painted": sheet[top : top + 64]})
+            stream.finish()
+            stream.install("painted")
+        return run.meta, _files(tmp / "out" / "r" / "painted")
     finally:
         run.close()
 
@@ -112,26 +124,25 @@ def _kept_meta(cache: Path) -> dict:
 
 
 def test_a_run_that_draws_the_same_surface_installs_the_kept_light(tmp_path, monkeypatch):
-    bakes, cache = _Counted(monkeypatch, light, "bake_light"), tmp_path / "cache"
-    first_meta, first_sheet = _installed(tmp_path / "a", cache, _occluder())
+    bakes, cache = _Counted(monkeypatch, light, "LightBake"), tmp_path / "cache"
+    first_meta, first_tiles = _installed(tmp_path / "a", cache, _occluder())
     kept = cache / KEPT_LIGHT_DIR_NAME
     assert bakes.count == 1 and (kept / "terms.npy").is_file()
     assert not (tmp_path / "a" / "scratch" / LIGHT_CACHE_DIR_NAME).exists(), "scratch still goes"
 
-    meta, sheet = _installed(tmp_path / "b", cache, _occluder())
+    meta, tiles = _installed(tmp_path / "b", cache, _occluder())
     assert bakes.count == 1, "the second run baked nothing"
     assert meta == first_meta and meta["key"] == _kept_meta(cache)["key"]
     a, b = tmp_path / "a" / "out" / "r", tmp_path / "b" / "out" / "r"
     assert len(_files(a / "light")) == 11 and _files(b / "light") == _files(a / "light")
-    assert _files(b / "painted") == _files(a / "painted")
-    assert np.array_equal(sheet, first_sheet), "relit by the kept terms, to the byte"
+    assert tiles == first_tiles, "relit by the kept terms, to the byte"
     tile = Path("tiles") / "0" / "0_0.nrm.webp"
     assert os.path.samefile(a / "light" / tile, kept / tile), "a hard link, not a copy"
     assert os.path.samefile(b / "light" / tile, kept / tile)
 
 
 def test_a_run_into_the_folder_that_holds_the_kept_light_leaves_it_be(tmp_path, monkeypatch):
-    bakes, cache = _Counted(monkeypatch, light, "bake_light"), tmp_path / "cache"
+    bakes, cache = _Counted(monkeypatch, light, "LightBake"), tmp_path / "cache"
     links = _Counted(monkeypatch, kept_light, "_link_tree")
     _baked(tmp_path / "a", cache)
     meta = tmp_path / "a" / "out" / "light" / "meta.json"
@@ -154,7 +165,7 @@ CHANGES = {
 
 @pytest.mark.parametrize("change", CHANGES)
 def test_whatever_the_bake_reads_that_changes_bakes_again(tmp_path, monkeypatch, change):
-    bakes, cache = _Counted(monkeypatch, light, "bake_light"), tmp_path / "cache"
+    bakes, cache = _Counted(monkeypatch, light, "LightBake"), tmp_path / "cache"
     _baked(tmp_path / "a", cache, occluder=_occluder())
     first = _kept_meta(cache)["key"]
     planes, occluder = _planes(), _occluder()
@@ -179,7 +190,7 @@ def test_whatever_the_bake_reads_that_changes_bakes_again(tmp_path, monkeypatch,
 
 
 def test_a_keep_cut_short_is_baked_again_and_kept_whole(tmp_path, monkeypatch):
-    bakes, cache = _Counted(monkeypatch, light, "bake_light"), tmp_path / "cache"
+    bakes, cache = _Counted(monkeypatch, light, "LightBake"), tmp_path / "cache"
     for name, gone in (("a", None), ("b", "meta.json"), ("c", "terms.npy"), ("d", "tiles")):
         if gone is not None:
             path = cache / KEPT_LIGHT_DIR_NAME / gone
@@ -196,10 +207,10 @@ def test_a_keep_that_fails_leaves_the_run_its_own_terms(tmp_path, monkeypatch):
         raise PermissionError("the cache folder is read-only")
 
     monkeypatch.setattr(kept_light, "_move", refuse)
-    meta, sheet = _installed(tmp_path / "a", tmp_path / "cache")
+    meta, tiles = _installed(tmp_path / "a", tmp_path / "cache")
     assert not (tmp_path / "cache" / KEPT_LIGHT_DIR_NAME / "meta.json").exists()
-    alone, sheet_alone = _installed(tmp_path / "b", None)
-    assert np.array_equal(sheet, sheet_alone), "relit by the scratch's own terms"
+    alone, tiles_alone = _installed(tmp_path / "b", None)
+    assert tiles == tiles_alone, "relit by the scratch's own terms"
     assert meta is not None and alone is not None and alone["key"] == meta["key"]
 
 

@@ -1,9 +1,9 @@
-"""The lighting stage: the surface a render drew, baked into the lighting pyramid.
+"""The lighting stage: the surface a render drew, and one block of it baked into native tiles.
 
-Native tiles are baked in blocks with their own halo, on a pool of light processes; the
-coarser levels and the tile format are ``light_tiles``. A bake is keyed on what it reads
-(``light_key``), so a run that draws the same surface reuses it (``render/kept_light.py``).
-docs/spatial-and-map.md section 29.
+A block is baked with its own halo on a light process; ``lighting/bake.py`` queues the blocks
+and bakes the coarser levels, whose tile format is ``light_tiles``. A bake is keyed on what it
+reads (``light_key``), so a run that draws the same surface reuses it
+(``render/kept_light.py``). docs/spatial-and-map.md section 29.
 """
 
 from __future__ import annotations
@@ -11,13 +11,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import struct
 import threading
 import time
 from collections.abc import Iterator, Sequence
-from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple, TypeAlias
 
@@ -28,12 +26,10 @@ from scipy import ndimage
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting.horizon import (
     HORIZON_DIRS,
-    SKY_RADIUS_M,
     Slabs,
     crown_horizon,
     crown_surface,
     encode_horizon,
-    horizon_reach_px,
     march_horizon,
     normals,
     sky_view,
@@ -43,7 +39,6 @@ from mapgen.lighting.light_tiles import (
     downsample,
     encode_tiles,
     level_layout,
-    level_strips,
     normal_byte,
     optional_array,
     padded_window,
@@ -52,26 +47,24 @@ from mapgen.lighting.light_tiles import (
 )
 from mapgen.lighting.model import DIRECT_SCALE, HZ_CELLS, direct_term, light_axis, sun_cells
 from mapgen.lighting.sun import DEFAULT_SUN
-from mapgen.pools import free_ram_bytes, one_blas_thread
+from mapgen.pools import free_ram_bytes
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
-from satisfactory_mcp.core.gameassets.pyramid import (
-    PYRAMID_TILE_PX,
-    RETIRED_SUFFIX,
-    STAGING_SUFFIX,
-    TILES_DIR_NAME,
-    swap_into_place,
-)
+from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX
 from satisfactory_mcp.core.jsontypes import JsonObject
-from satisfactory_mcp.core.mapprogress import encode_stage
 
 __all__ = [
+    "BLOCK_TILES",
     "LIGHT_DIR_NAME",
     "LIGHT_VERSION",
     "LIGHT_WORKER_BYTES",
     "LIGHT_WORKER_CAP",
+    "BlockDone",
+    "BlockJob",
     "Occluder",
+    "Place",
     "Surface",
-    "bake_light",
+    "allocate_work_arrays",
+    "bake_block",
     "cast_digests",
     "default_terms",
     "discard",
@@ -79,6 +72,7 @@ __all__ = [
     "light_workers",
     "occluder_planes",
     "plane_digest",
+    "save_work_array",
 ]
 
 LIGHT_DIR_NAME = "light"
@@ -125,7 +119,7 @@ _CrownSurfaces: TypeAlias = tuple[F32Grid, F32Grid | None]
 
 
 @dataclass(frozen=True)
-class _BlockJob:
+class BlockJob:
     """One block of native tiles for a light worker: where it reads, writes, and how far."""
 
     work: str
@@ -138,10 +132,19 @@ class _BlockJob:
     block: tuple[int, int, int] = (0, 0, 0)
 
 
-class _BlockDone(NamedTuple):
+class BlockDone(NamedTuple):
     tiles: int
     hz_bytes: int
     seconds: float
+
+
+class Place(NamedTuple):
+    """Where a ``put`` went: its first row, how many rows, and its columns."""
+
+    row: int
+    rows: int
+    c0: int
+    c1: int
 
 
 class Surface:
@@ -163,7 +166,7 @@ class Surface:
             directory / "land.npy", "w+", np.uint8, (size, size)
         )
         self.terms = self.path("terms")
-        self._puts: dict[tuple[int, int, int, int], bytes] = {}
+        self._puts: dict[Place, bytes] = {}
         self._lock = threading.Lock()
 
     def put(
@@ -181,7 +184,12 @@ class Surface:
         digest.update(dry)
         c0, c1, _step = columns.indices(self.size)
         with self._lock:
-            self._puts[(row, z.shape[0], c0, c1)] = digest.digest()
+            self._puts[Place(row, z.shape[0], c0, c1)] = digest.digest()
+
+    def puts(self) -> list[tuple[Place, str]]:
+        """Every ``put`` so far in row order: where it went, and its bytes' digest."""
+        with self._lock:
+            return [(place, self._puts[place].hex()) for place in sorted(self._puts)]
 
     def digest(self) -> str:
         """Every ``put`` so far, its place and its bytes, in row order."""
@@ -280,7 +288,7 @@ def _bake_horizons(
     return hz_u8, horizon_quarter, sun
 
 
-def _bake_block(job: _BlockJob) -> _BlockDone:
+def bake_block(job: BlockJob) -> BlockDone:
     """One block of native tiles: horizons, sky view, normals, tiles, default-sun terms."""
     started = time.time()
     work, spacing_m, (r0, c0, block_px) = Path(job.work), job.spacing_m, job.block
@@ -324,13 +332,37 @@ def _bake_block(job: _BlockJob) -> _BlockDone:
     quarter = (slice(h0 // 2, (h0 + half_px) // 2), slice(w0 // 2, (w0 + half_px) // 2))
     work_array(work, "hzq", np.uint8)[quarter] = horizon_quarter
     tiles = (nrm.shape[0] // t) * (nrm.shape[1] // t)
-    return _BlockDone(tiles, hz_bytes, time.time() - started)
+    return BlockDone(tiles, hz_bytes, time.time() - started)
 
 
-def _allocate_work_arrays(work: Path, size: int) -> None:
+def allocate_work_arrays(work: Path, size: int) -> None:
+    """The bake's work files in ``work``: the terms and the coarser levels' sources."""
     layout = (("terms", np.uint8, (size, size, 3)), *level_layout(size // 2))
     for name, dtype, shape in layout:
         np.lib.format.open_memmap(work / f"{name}.npy", "w+", dtype, shape).flush()
+
+
+def _in_place(raster: NDArray[np.number], path: Path, dtype: type[np.number]) -> bool:
+    name = getattr(raster, "filename", None)
+    return name is not None and raster.dtype == dtype and Path(name).resolve() == path.resolve()
+
+
+def save_work_array(
+    work: Path, name: str, raster: NDArray[np.number] | None, dtype: type[np.number] = np.float32
+) -> None:
+    """``raster`` as the work file ``name``, unless it is that file already or None."""
+    path = work / f"{name}.npy"
+    if raster is not None and not _in_place(raster, path, dtype):
+        np.save(path, np.asarray(raster, dtype))
+
+
+def light_workers(requested: int | None = None) -> int:
+    """``requested``, else one a core up to ``LIGHT_WORKER_CAP`` that the free RAM holds."""
+    if requested:
+        return max(1, requested)
+    free = free_ram_bytes()
+    by_ram = LIGHT_WORKER_CAP if free is None else int(free // LIGHT_WORKER_BYTES)
+    return max(1, min(os.cpu_count() or 1, LIGHT_WORKER_CAP, by_ram))
 
 
 def occluder_planes(work: Path, size: int) -> tuple[F32Grid, U8Grid]:
@@ -339,19 +371,6 @@ def occluder_planes(work: Path, size: int) -> tuple[F32Grid, U8Grid]:
     shape = (size, size)
     top = np.lib.format.open_memmap(work / "occluder.npy", "w+", np.float32, shape)
     return top, np.lib.format.open_memmap(work / "occluder_cover.npy", "w+", np.uint8, shape)
-
-
-def _in_place(raster: NDArray[np.number], path: Path, dtype: type[np.number]) -> bool:
-    name = getattr(raster, "filename", None)
-    return name is not None and raster.dtype == dtype and Path(name).resolve() == path.resolve()
-
-
-def _save_optional_array(
-    work: Path, name: str, raster: NDArray[np.number] | None, dtype: type[np.number] = np.float32
-) -> None:
-    path = work / f"{name}.npy"
-    if raster is not None and not _in_place(raster, path, dtype):
-        np.save(path, np.asarray(raster, dtype))
 
 
 def plane_digest(plane: NDArray[np.number] | None) -> str | None:
@@ -393,117 +412,6 @@ def light_key(
 def _json_digest(value: JsonObject) -> str:
     canonical = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return "sha256:" + hashlib.sha256(canonical).hexdigest()
-
-
-def light_workers(requested: int | None = None) -> int:
-    """``requested``, else one a core up to ``LIGHT_WORKER_CAP`` that the free RAM holds."""
-    if requested:
-        return max(1, requested)
-    free = free_ram_bytes()
-    by_ram = LIGHT_WORKER_CAP if free is None else int(free // LIGHT_WORKER_BYTES)
-    return max(1, min(os.cpu_count() or 1, LIGHT_WORKER_CAP, by_ram))
-
-
-def bake_light(
-    surface: Surface,
-    out_dir: Path,
-    workers: int | None,
-    occluder: Occluder | None = None,
-    slabs: Slabs | None = None,
-    progress: bool = True,
-    occluder_layers: Sequence[str] = (),
-    key: JsonObject | None = None,
-) -> JsonObject:
-    """Write ``out_dir/light/`` from a captured surface; returns its sidecar's ``_meta``.
-
-    ``workers`` None is ``light_workers()``, counted when the bake starts. ``occluder`` is an
-    optional crown-top raster on the sheet's grid, metres, NaN where empty, or ``(top,
-    cover)`` with the covered share as a byte; it casts into the crown horizons that
-    ``occluder_layers`` read. ``slabs`` is an optional ``(ground, min_z, max_z)`` for geometry
-    with open space beneath it (arches): the surface without it, and its underside and top.
-    Both only cast. An occluder made by ``occluder_planes`` in the surface's directory is
-    read where it is, not copied. ``key`` is the bake's ``light_key``, made here when None.
-    """
-    started = time.time()
-    workers = light_workers(workers)
-    if key is None:
-        key = light_key(surface, cast_digests(occluder, slabs), occluder_layers)
-    surface.flush()
-    size, work = surface.size, surface.directory
-    spacing_m = surface.spacing_m
-    _allocate_work_arrays(work, size)
-    crown_top, crown_cover = occluder if isinstance(occluder, tuple) else (occluder, None)
-    _save_optional_array(work, "occluder", crown_top)
-    _save_optional_array(work, "occluder_cover", crown_cover, np.uint8)
-    for name, raster in zip(("ground", "lo", "hi"), slabs or (), strict=False):
-        _save_optional_array(work, f"slab_{name}", raster)
-    top = int(np.log2(size // PYRAMID_TILE_PX))
-    root = out_dir / LIGHT_DIR_NAME
-    staging = root / (TILES_DIR_NAME + STAGING_SUFFIX)
-    shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(parents=True)
-    block = min(size, BLOCK_TILES * PYRAMID_TILE_PX)
-    common = _BlockJob(
-        work=str(work),
-        dest=str(staging),
-        z=top,
-        spacing_m=spacing_m,
-        halo_h=horizon_reach_px(2 * spacing_m),
-        sky_halo=int(np.ceil(SKY_RADIUS_M / (2 * spacing_m))) + 2,
-        skip_water=True,
-    )
-    jobs = [
-        replace(common, block=(r, c, block))
-        for r in range(0, size, block)
-        for c in range(0, size, block)
-    ]
-    tiles = hz_bytes = 0
-    with one_blas_thread(), ProcessPoolExecutor(max_workers=workers) as pool:
-        for k, done in enumerate(pool.map(_bake_block, jobs), 1):
-            tiles += done.tiles
-            hz_bytes += done.hz_bytes
-            if progress:
-                print(encode_stage("light", k / len(jobs)), flush=True)
-        native_s = time.time() - started
-        for level in range(top - 1, -1, -1):
-            tiles += level_strips(
-                work, staging, level, spacing_m * 2 ** (top - level), pool, level == 0
-            )
-    written = sum(p.stat().st_size for p in staging.rglob("*.webp"))
-    installed_by = swap_into_place(
-        staging, root / TILES_DIR_NAME, root / (TILES_DIR_NAME + RETIRED_SUFFIX)
-    )
-    meta: JsonObject = {
-        "generator": "tools/gen_map_renders.py",
-        "kind": LIGHT_DIR_NAME,
-        "light": {
-            **light_axis(),
-            "occluder_layers": list(occluder_layers) if occluder is not None else [],
-        },
-        "key": key,
-        "tiles": {
-            "tile_px": PYRAMID_TILE_PX,
-            "hz_tile_px": PYRAMID_TILE_PX // 2,
-            "max_z": top,
-            "count": tiles,
-            "bytes": written,
-            "hz_bytes": hz_bytes,
-            "installed_by": installed_by,
-        },
-        "render": {
-            "size_px": size,
-            "metres_per_pixel": round(spacing_m, 4),
-            "horizon_res_m": round(2 * spacing_m, 4),
-            "blocks": len(jobs),
-            "workers": workers,
-            "seconds_native": round(native_s, 1),
-            "seconds": round(time.time() - started, 1),
-            "occluder": occluder is not None,
-            "slabs": slabs is not None,
-        },
-    }
-    (root / "meta.json").write_text(json.dumps({"_meta": meta}, indent=1), encoding="utf-8")
-    return meta
 
 
 def default_terms(surface: Surface) -> U8Grid:

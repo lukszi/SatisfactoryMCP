@@ -1,8 +1,9 @@
-"""The parallel tile cutter: every tree of a layer through one encode pool that never waits.
+"""The parallel tile cutter: every tree of a run cut while its sheets' rows are still coming in.
 
-Levels are resampled in strips on threads, encoded by processes straight out of shared
-memory, and a level two trees share is resampled once. The bytes are the serial
-``install_pyramid``'s. docs/spatial-and-map.md section 17, "Cutting in parallel".
+Each sheet takes its rows in order on a lane of a thread pool, resamples its levels in strips
+as their rows arrive (``tiles/levels.py``), and hands each row of tiles to a pool of encoder
+processes through shared memory as soon as it is whole. No sheet is held whole, and the bytes
+are the serial ``install_pyramid``'s. docs/map/renders.md sections 17 and 42.
 """
 
 from __future__ import annotations
@@ -11,25 +12,21 @@ import gc
 import multiprocessing
 import os
 import threading
-from concurrent.futures import (
-    FIRST_COMPLETED,
-    CancelledError,
-    Future,
-    ProcessPoolExecutor,
-    ThreadPoolExecutor,
-    wait,
-)
+from collections import defaultdict, deque
+from collections.abc import Callable, Sequence
+from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
+from functools import partial
 from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, Self, TypeVar, cast
+from typing import NamedTuple, Self
 
 import numpy as np
 
 from mapgen.pools import free_ram_bytes
+from mapgen.tiles.imaging import TileImaging
+from mapgen.tiles.levels import SheetRows
 from satisfactory_mcp.core.arrays import U8Grid
-from satisfactory_mcp.core.gameassets.imaging import ImageFactory, LanczosFilter
 from satisfactory_mcp.core.gameassets.pyramid import (
-    LevelRecord,
     PyramidError,
     commit_tree,
     encode_tile_row,
@@ -40,188 +37,161 @@ from satisfactory_mcp.core.gameassets.pyramid import (
 )
 from satisfactory_mcp.core.jsontypes import JsonObject
 
-if TYPE_CHECKING:
-    from PIL.Image import Image, Resampling
-
-__all__ = [
-    "CUT_WORKERS",
-    "Block",
-    "Cutter",
-    "Source",
-    "TileImaging",
-    "Tree",
-    "load_imaging",
-    "resample_strip",
-    "strip_spans",
-]
-
-T = TypeVar("T")
+__all__ = ["CUT_WORKERS", "Sheet", "TileStream", "TreeSpec"]
 
 #: Encoders when ``--cut-workers`` is not given.
 CUT_WORKER_CAP = 24
 CUT_WORKERS = min(os.cpu_count() or 1, CUT_WORKER_CAP)
-#: Threads resampling in the parent; Pillow releases the GIL inside a resize.
+#: Threads the sheets' lanes run on; Pillow releases the GIL inside a resize.
 LANCZOS_THREADS = min(os.cpu_count() or 1, 8)
-#: Source pixels per resampling strip, at Pillow's four bytes a pixel.
-STRIP_BYTES = 1 << 27
-#: What one encoder holds, and what stays free while a new block waits for memory.
+#: What one encoder holds, and what stays free while new rows wait for memory.
 WORKER_BYTES = 200 << 20
 RAM_RESERVE = 4 << 30
+#: Rows queued on the lanes or encoding before ``put`` waits for them.
+QUEUED_BYTES = 2 << 30
+
+#: How a sheet's rows are changed on its lane before it takes them.
+Transform = Callable[[U8Grid], U8Grid]
 
 
-class TileImaging(ImageFactory["Image"], LanczosFilter, Protocol):
-    """``PIL.Image`` as the cutters and pyramids use it, handed in rather than imported."""
+class TreeSpec(NamedTuple):
+    """A tile tree: its directory, its tile size, and what its levels say they were cut from."""
 
-    @property
-    def Resampling(self) -> type[Resampling]: ...
-
-    def fromarray(self, obj: U8Grid, /) -> Image: ...
-
-
-def load_imaging() -> TileImaging:
-    """Pillow, once ``require_gen`` has shown it is there, with its size limit off.
-
-    The limit is a decompression-bomb rule for images off the internet; an 8192 px sheet is
-    the point here. The cast: Pillow sets ``LANCZOS`` at import, out of its stubs' sight.
-    """
-    from PIL import Image
-
-    Image.MAX_IMAGE_PIXELS = None
-    return cast(TileImaging, Image)
+    dir_name: str
+    tile_px: int
+    text: str
 
 
-def strip_spans(source_px: int, side: int, width: int) -> list[tuple[int, int]]:
-    """The output rows ``[r0, r1)`` each resampling strip of a ``side`` level fills."""
-    if source_px % side:
-        raise PyramidError(f"a {side} px level does not divide a {source_px} px sheet")
-    rows = max(1, STRIP_BYTES // (4 * width * (source_px // side)))
-    return [(r0, min(r0 + rows, side)) for r0 in range(0, side, rows)]
+class _Tree:
+    """One tree staged and being cut: per level, the encoders' futures of its tile rows."""
+
+    def __init__(self, out_dir: Path, spec: TreeSpec, top_px: int) -> None:
+        self.out_dir, self.spec = out_dir, spec
+        self.top_z = pyramid_top_z(top_px, spec.tile_px)
+        self.staging = stage_tree(out_dir, spec.dir_name)
+        self.rows: dict[int, list[Future[int]]] = {}
+        for z in range(self.top_z + 1):
+            (self.staging / str(z)).mkdir()
+            self.rows[z] = []
+
+    def futures(self) -> list[Future[int]]:
+        return [future for level in self.rows.values() for future in level]
 
 
-def resample_strip(
-    image_mod: TileImaging, src: np.ndarray, out: np.ndarray, r0: int, r1: int
-) -> None:
-    """Rows ``[r0, r1)`` of ``src`` Lanczos'd to ``out``'s size, written into ``out``.
+class _Lane:
+    """Tasks run one at a time, in the order they were posted, on the stream's threads."""
 
-    The pixels a resize of the whole sheet gives: Pillow's taps for a row depend only on its
-    position, and the halo covers the 3 * scale source rows Lanczos reaches either side.
-    """
-    height, width = src.shape[:2]
-    scale = height // out.shape[0]
-    halo = 3 * scale + 4
-    y0, y1 = r0 * scale, r1 * scale
-    top, bottom = max(y0 - halo, 0), min(y1 + halo, height)
-    part = image_mod.fromarray(src[top:bottom]).resize(
-        (out.shape[1], r1 - r0), image_mod.LANCZOS, box=(0, y0 - top, width, y1 - top)
-    )
-    out[r0:r1] = np.asarray(part)
-
-
-def _failure(future: Future[T]) -> BaseException | None:
-    return CancelledError() if future.cancelled() else future.exception()
-
-
-class Block:
-    """One level's pixels in shared memory, freed when the last hold on it is released."""
-
-    def __init__(self, shape: tuple[int, int, int]) -> None:
-        self.shape = shape
-        self.shm = SharedMemory(create=True, size=int(np.prod(shape)))
-        self.array: np.ndarray | None = np.ndarray(shape, np.uint8, buffer=self.shm.buf)
-        self.ready: Future[Block] = Future()
-        self.freed = False
-        self._holds = 1
-        self._lock = threading.Lock()
+    def __init__(self, stream: TileStream) -> None:
+        self.stream = stream
+        self.tasks: deque[tuple[Callable[[], None], int]] = deque()
+        self.running = False
 
     @property
-    def pixels(self) -> np.ndarray:
-        """The level's pixels, while the block is held."""
-        if self.array is None:
-            raise RuntimeError("a freed block was read")
-        return self.array
+    def idle(self) -> bool:
+        return not self.running and not self.tasks
 
-    def hold(self) -> None:
-        with self._lock:
-            if self._holds <= 0:
-                raise RuntimeError("a freed block was held again")
-            self._holds += 1
-
-    def release(self, _done: object = None) -> None:
-        with self._lock:
-            self._holds -= 1
-            if self._holds:
+    def post(self, task: Callable[[], None], nbytes: int) -> None:
+        stream = self.stream
+        if stream.threads is None:
+            stream.run(task)
+            return
+        with stream.changed:
+            stream.queued += nbytes
+            self.tasks.append((task, nbytes))
+            if self.running:
                 return
-        self.free()
+            self.running = True
+        stream.threads.submit(self._drain)
 
-    def free(self) -> None:
-        """Close and unlink now: the last release, or a cutter closing whatever is left."""
-        with self._lock:
-            if self.freed:
-                return
-            self.array = None
-            try:
-                self.shm.close()
-            except BufferError:
-                return
-            self.freed = True
-        self.shm.unlink()
+    def _drain(self) -> None:
+        stream = self.stream
+        while True:
+            with stream.changed:
+                if not self.tasks:
+                    self.running = False
+                    stream.changed.notify_all()
+                    return
+                task, nbytes = self.tasks.popleft()
+            stream.run(task)
+            with stream.changed:
+                stream.queued -= nbytes
+                stream.changed.notify_all()
 
 
-class Source:
-    """A published sheet and the levels resampled from it, each computed once.
+class _TileRows:
+    """One level of one tree: its rows gathered into rows of tiles, each encoded once whole."""
 
-    It holds every block it made until ``close``; work in flight holds its own.
+    def __init__(self, stream: TileStream, tree: _Tree, z: int) -> None:
+        self.stream, self.tree, self.z = stream, tree, z
+        self.parts: list[U8Grid] = []
+        self.pending = 0
+
+    def add(self, rows: U8Grid) -> None:
+        tile = self.tree.spec.tile_px
+        self.parts.append(rows)
+        self.pending += rows.shape[0]
+        while self.pending >= tile:
+            joined = self.parts[0] if len(self.parts) == 1 else np.concatenate(self.parts)
+            self.parts = [joined[tile:]] if joined.shape[0] > tile else []
+            self.pending -= tile
+            futures = self.tree.rows[self.z]
+            futures.append(self.stream.encode(joined[:tile], self.tree, self.z, len(futures)))
+
+
+class Sheet:
+    """One sheet cut as its rows come in: its levels, the trees cut from them, and the sheet
+    a downscale's tree is cut from (``tiles@2x/`` from 16384 when the sheet is larger)."""
+
+    def __init__(
+        self,
+        stream: TileStream,
+        out_dir: Path,
+        px: int,
+        trees: Sequence[TreeSpec],
+        dense: tuple[TreeSpec, int] | None = None,
+    ) -> None:
+        self.px, self.posted = px, 0
+        self.trees = [_Tree(out_dir, spec, px) for spec in trees]
+        self.child: Sheet | None = None
+        self.consumers: dict[int, list[Callable[[U8Grid], None]]] = defaultdict(list)
+        if dense is not None and (dense_px := min(px, dense[1])) < px:
+            self.child = Sheet(stream, out_dir, dense_px, [dense[0]])
+            self.consumers[dense_px].append(self.child.post)
+        elif dense is not None:
+            self.trees.append(_Tree(out_dir, dense[0], px))
+        for tree in self.trees:
+            for z in range(tree.top_z + 1):
+                side = tree.spec.tile_px << z
+                self.consumers[side].append(_TileRows(stream, tree, z).add)
+        self.rows = SheetRows(stream.image_mod, px, [side for side in self.consumers if side < px])
+        self.lane = _Lane(stream)
+
+    def sheets(self) -> list[Sheet]:
+        """This sheet and the one its downscale's tree is cut from, parent first."""
+        return [self] if self.child is None else [self, *self.child.sheets()]
+
+    def post(self, rows: U8Grid, transform: Transform | None = None) -> None:
+        """Queue ``rows``, the next of the sheet, on its lane; ``transform`` runs there first."""
+        self.posted += rows.shape[0]
+        if self.posted > self.px:
+            raise PyramidError(f"rows past the end of a {self.px} px sheet")
+        self.lane.post(partial(self._take, rows, transform), rows.nbytes)
+
+    def _take(self, rows: U8Grid, transform: Transform | None) -> None:
+        if transform is not None:
+            rows = transform(rows)
+        for side, out in self.rows.add(rows):
+            for consume in self.consumers.get(side, ()):
+                consume(out)
+
+
+class TileStream:
+    """One encode pool and one pool of lanes for every sheet of a run.
+
+    ``workers`` encode, capped by free memory; one cuts serially on the caller's thread, each
+    row as it is put. A failure anywhere stops the work and is raised by the next ``put`` or
+    ``install``.
     """
-
-    def __init__(self, cutter: Cutter, top: Block) -> None:
-        self.cutter, self.top = cutter, top
-        self.levels: dict[int, Block] = {top.shape[0]: top}
-        self.children: list[Source] = []
-
-    @property
-    def px(self) -> int:
-        return self.top.shape[0]
-
-    def level(self, side: int) -> Block:
-        if side not in self.levels:
-            self.levels[side] = self.cutter.resample(self.top, side)
-        return self.levels[side]
-
-    def derive(self, side: int) -> Source:
-        """What a downscale to ``side`` is cut from: this source at its own size, else that level."""
-        if side == self.px:
-            return self
-        top = self.level(side)
-        top.hold()
-        child = Source(self.cutter, top)
-        self.children.append(child)
-        return child
-
-    def close(self) -> None:
-        for child in self.children:
-            child.close()
-        for block in self.levels.values():
-            block.release()
-        self.children, self.levels = [], {}
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        self.close()
-
-
-class Tree:
-    """One tile tree being cut into its staging directory: per level, its queued row jobs."""
-
-    def __init__(self, out_dir: Path, dir_name: str, tile_px: int, text: str) -> None:
-        self.out_dir, self.dir_name, self.tile_px, self.text = out_dir, dir_name, tile_px, text
-        self.staging = stage_tree(out_dir, dir_name)
-        self.levels: dict[int, Future[list[Future[int]]]] = {}
-
-
-class Cutter:
-    """One encode pool and one resampling pool for every tree of a layer."""
 
     def __init__(
         self, image_mod: TileImaging, workers: int, threads: int = LANCZOS_THREADS
@@ -229,124 +199,143 @@ class Cutter:
         free = free_ram_bytes()
         if free is not None:
             workers = max(1, min(workers, (free - RAM_RESERVE) // WORKER_BYTES))
-        self.image_mod, self.workers = image_mod, workers
-        # Spawned, not forked: the encoders start while the resampling threads run.
-        spawn = multiprocessing.get_context("spawn")
-        self.encoders = ProcessPoolExecutor(max_workers=workers, mp_context=spawn)
-        self.threads = ThreadPoolExecutor(max_workers=threads, thread_name_prefix="lanczos")
-        self.blocks: list[Block] = []
-        self.inflight: set[Future[int]] = set()
+        self.image_mod, self.workers = image_mod, max(1, workers)
+        self.encoders: ProcessPoolExecutor | None = None
+        self.threads: ThreadPoolExecutor | None = None
+        if self.workers > 1:
+            # Spawned, not forked: the encoders start while the lanes' threads run.
+            spawn = multiprocessing.get_context("spawn")
+            self.encoders = ProcessPoolExecutor(max_workers=self.workers, mp_context=spawn)
+            self.threads = ThreadPoolExecutor(max_workers=threads, thread_name_prefix="lanczos")
+        self.changed = threading.Condition()
+        self.queued = 0
+        self.failure: BaseException | None = None
+        self.blocks: set[SharedMemory] = set()
 
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *_exc: object) -> None:
-        self.threads.shutdown(wait=True, cancel_futures=True)
-        self.encoders.shutdown(wait=True, cancel_futures=True)
+    def __exit__(self, exc_type: object, exc: BaseException | None, _tb: object) -> None:
+        if exc is not None:
+            self.fail(exc)
+        if self.threads is not None:
+            self.threads.shutdown(wait=True, cancel_futures=True)
+        if self.encoders is not None:
+            self.encoders.shutdown(wait=True, cancel_futures=True)
         gc.collect()
-        for block in self.blocks:
-            block.free()
+        for block in list(self.blocks):
+            self._free(block)
 
-    def _track(self, future: Future[int]) -> Future[int]:
-        self.inflight.add(future)
-        future.add_done_callback(self.inflight.discard)
+    def warm(self) -> None:
+        """Start every encoder now: spawning interpreters costs more than a small cut."""
+        if self.encoders is not None:
+            list(self.encoders.map(int, range(self.workers)))
+
+    def sheet(
+        self,
+        out_dir: Path,
+        px: int,
+        trees: Sequence[TreeSpec],
+        dense: tuple[TreeSpec, int] | None = None,
+    ) -> Sheet:
+        """A ``px`` sheet cut into ``trees`` under ``out_dir``, each staged now; ``dense`` is a
+        tree cut from the sheet downscaled to at most its size."""
+        return Sheet(self, out_dir, px, trees, dense)
+
+    def put(self, sheet: Sheet, rows: U8Grid, transform: Transform | None = None) -> None:
+        """``sheet.post``, once the rows queued and encoding leave room for these."""
+        if self.threads is not None:
+            with self.changed:
+                while self.failure is None and self.queued > 0 and not self._room(rows.nbytes):
+                    self.changed.wait(1.0)
+        self._raise()
+        sheet.post(rows, transform)
+
+    def _room(self, nbytes: int) -> bool:
+        free = free_ram_bytes()
+        enough = free is None or free >= nbytes + RAM_RESERVE
+        return enough and self.queued + nbytes <= QUEUED_BYTES
+
+    def run(self, task: Callable[[], None]) -> None:
+        """A lane's task, unless the stream has failed; its failure fails the stream."""
+        if self.failure is not None:
+            return
+        try:
+            task()
+        except BaseException as exc:
+            self.fail(exc)
+
+    def fail(self, exc: BaseException) -> None:
+        with self.changed:
+            if self.failure is None:
+                self.failure = exc
+            self.changed.notify_all()
+
+    def _raise(self) -> None:
+        if self.failure is not None:
+            raise self.failure
+
+    def encode(self, rows: U8Grid, tree: _Tree, z: int, row: int) -> Future[int]:
+        """Row ``row`` of level ``z``'s tiles, copied to shared memory and queued."""
+        block = SharedMemory(create=True, size=rows.nbytes)
+        view = np.ndarray(rows.shape, np.uint8, buffer=block.buf)
+        view[...] = rows
+        del view
+        job = (block.name, rows.shape[1], z, row, str(tree.staging), tree.spec.tile_px)
+        with self.changed:
+            self.blocks.add(block)
+            self.queued += rows.nbytes
+        if self.encoders is None:
+            future: Future[int] = Future()
+            try:
+                future.set_result(encode_tile_row(job))
+            except Exception as exc:
+                future.set_exception(exc)
+        else:
+            future = self.encoders.submit(encode_tile_row, job)
+        future.add_done_callback(partial(self._encoded, block, rows.nbytes))
         return future
 
-    def _block(self, shape: tuple[int, int, int]) -> Block:
-        """A new block, once there is room: while RAM is short, in-flight work is waited on."""
-        need = int(np.prod(shape)) + RAM_RESERVE
-        while (free := free_ram_bytes()) is not None and free < need:
-            busy = [future for future in list(self.inflight) if not future.done()]
-            if not busy:
-                break
-            wait(busy, timeout=1.0, return_when=FIRST_COMPLETED)
-        block = Block(shape)
-        self.blocks.append(block)
-        return block
+    def _encoded(self, block: SharedMemory, nbytes: int, future: Future[int]) -> None:
+        self._free(block)
+        failed = future.exception() if not future.cancelled() else None
+        with self.changed:
+            self.queued -= nbytes
+            if failed is not None and self.failure is None:
+                self.failure = failed
+            self.changed.notify_all()
 
-    def publish(self, sheet: np.ndarray) -> Source:
-        """A copy of ``sheet`` the encoders read; ``sheet`` is the caller's again on return."""
-        block = self._block(sheet.shape)
-        np.copyto(block.pixels, sheet)
-        block.ready.set_result(block)
-        return Source(self, block)
+    def _free(self, block: SharedMemory) -> None:
+        with self.changed:
+            if block not in self.blocks:
+                return
+            self.blocks.discard(block)
+        block.close()
+        block.unlink()
 
-    def resample(self, source: Block, side: int) -> Block:
-        """``source`` Lanczos'd to ``side``, in strips on the threads once ``source`` is ready."""
-        out = self._block((side, side, 3))
-        source.hold()
-        source.ready.add_done_callback(lambda ready: self._strips(ready, source, out))
-        return out
+    def install(self, sheet: Sheet) -> list[JsonObject]:
+        """Wait for every tile of ``sheet``'s trees, then check each and rename it into place:
+        the sheet's own trees first, then its downscale's."""
+        sheets = sheet.sheets()
+        trees = [tree for part in sheets for tree in part.trees]
+        with self.changed:
+            while self.failure is None and not (
+                all(part.lane.idle for part in sheets)
+                and all(future.done() for tree in trees for future in tree.futures())
+            ):
+                self.changed.wait(1.0)
+        self._raise()
+        for part in sheets:
+            if not part.rows.complete:
+                raise PyramidError(f"a {part.px} px sheet was cut from {part.rows.have} rows")
+        return [self._commit(tree) for tree in trees]
 
-    def _strips(self, ready: Future[Block], source: Block, out: Block) -> None:
-        if (failed := _failure(ready)) is not None:
-            out.ready.set_exception(failed)
-            source.release()
-            return
-        spans = strip_spans(source.shape[0], out.shape[0], source.shape[1])
-        left, failures = [len(spans)], list[BaseException]()
-        lock = threading.Lock()
-
-        def strip(r0: int, r1: int) -> int:
-            resample_strip(self.image_mod, source.pixels, out.pixels, r0, r1)
-            return r1 - r0
-
-        def done(future: Future[int]) -> None:
-            # Settled only once every strip has stopped writing: a failure settled early
-            # would let the level be freed under the strips still running.
-            with lock:
-                left[0] -= 1
-                last = not left[0]
-                if (failed := _failure(future)) is not None:
-                    failures.append(failed)
-            if last:
-                source.release()
-                if failures:
-                    out.ready.set_exception(failures[0])
-                else:
-                    out.ready.set_result(out)
-
-        for r0, r1 in spans:
-            self._track(self.threads.submit(strip, r0, r1)).add_done_callback(done)
-
-    def tree(self, source: Source, out_dir: Path, dir_name: str, tile_px: int, text: str) -> Tree:
-        """Stage ``dir_name`` and queue every level of it, the top first."""
-        tree = Tree(out_dir, dir_name, tile_px, text)
-        for z in range(pyramid_top_z(source.px, tile_px), -1, -1):
-            (tree.staging / str(z)).mkdir()
-            tree.levels[z] = self._encode(tree, z, source.level(tile_px << z))
-        return tree
-
-    def _encode(self, tree: Tree, z: int, block: Block) -> Future[list[Future[int]]]:
-        """The level's row jobs, queued on the encoders once its pixels are ready."""
-        jobs: Future[list[Future[int]]] = Future()
-        block.hold()
-
-        def submit(ready: Future[Block]) -> None:
-            try:
-                if (failed := _failure(ready)) is not None:
-                    raise failed
-                queued: list[Future[int]] = []
-                for row in range(block.shape[0] // tree.tile_px):
-                    block.hold()
-                    job = (block.shm.name, block.shape[1], z, row, str(tree.staging), tree.tile_px)
-                    future = self._track(self.encoders.submit(encode_tile_row, job))
-                    future.add_done_callback(block.release)
-                    queued.append(future)
-                jobs.set_result(queued)
-            except BaseException as exc:
-                jobs.set_exception(exc)
-            finally:
-                block.release()
-
-        block.ready.add_done_callback(submit)
-        return jobs
-
-    def install(self, tree: Tree) -> JsonObject:
-        """Wait for every tile of ``tree``, then check it and rename it into place."""
-        levels: list[LevelRecord] = []
-        for z in sorted(tree.levels):
-            written = sum(future.result() for future in tree.levels[z].result())
-            levels.append(level_record(z, written, tree.text, tree.tile_px))
-        stats = pyramid_record(levels, tree.tile_px, self.workers, tree.dir_name)
-        return commit_tree(stats, tree.out_dir, tree.dir_name)
+    def _commit(self, tree: _Tree) -> JsonObject:
+        spec = tree.spec
+        levels = []
+        for z in range(tree.top_z + 1):
+            written = sum(future.result() for future in tree.rows[z])
+            levels.append(level_record(z, written, spec.text, spec.tile_px))
+        stats = pyramid_record(levels, spec.tile_px, self.workers, spec.dir_name)
+        installed: JsonObject = commit_tree(stats, tree.out_dir, spec.dir_name)
+        return installed

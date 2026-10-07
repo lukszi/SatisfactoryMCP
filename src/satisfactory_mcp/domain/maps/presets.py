@@ -80,8 +80,6 @@ RENDER_LAYER_S = {"cut": 73.0}
 #: each layer's colour over it. One layer alone takes 340 s, the draw on 8 threads less lean
 #: sampling's 12%; five take 0.65 of five drawn one by one (2026-10-07).
 RENDER_DRAW_S = {"ground": 150.0, "layer": 190.0}
-#: A layer's drawn sheet, held in the run's scratch until it is cut: 3 bytes a pixel.
-SHEET_SCRATCH_BYTES = 3 * 32768 * 32768
 #: ``--light``: the lighting bake once, on 16 workers (docs/spatial-and-map.md section 29), and
 #: per layer the unlit tree cut beside the baked one, ``LIGHT_CUT_FACTOR`` times the cut. The
 #: scratch is the light cache while it runs, and the crown occluder the paint store adds to
@@ -274,7 +272,6 @@ def estimate(preset: str, options: dict) -> dict:
         keep = len(options["layers"]) * max(RENDER_KEEP_FLOOR, int(per_layer * area))
         keep += int(LIGHT_KEEP_BYTES * area) if options["light"] else 0
         transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
-        transient += int(SHEET_SCRATCH_BYTES * area) * len(options["layers"])
         if options["light"]:
             transient += int((LIGHT_SCRATCH_BYTES + CROWN_SCRATCH_BYTES) * area)
     elif preset == "artwork":

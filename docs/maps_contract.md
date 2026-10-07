@@ -297,10 +297,9 @@ for a missing `gen` extra says to stop satisfactory-mcp first, because uv cannot
 ### 4.2 Disk
 
 A job is refused (507) unless free space covers what it keeps, what it needs while running
-(the raster caches, about 1 GB at 32768 in the zstd band store of spatial-and-map.md §39; the
-drawn sheets, 3.2 GB a layer, which wait in the scratch until each layer is cut, §40; and
-with the light its cache, 14.5 GB and 5.4 GB more with the painted layer, all scaled by area)
-and 2 GB more. Checked at the form, at submit and again at start.
+(the raster caches, about 1 GB at 32768 in the zstd band store of spatial-and-map.md §39, and
+with the light its cache, 14.5 GB and 5.4 GB more with the painted layer, both scaled by area)
+and 2 GB more. The drawn bands are cut as they settle and never wait on disk (§42). Checked at the form, at submit and again at start.
 
 ### 4.3 Estimates
 

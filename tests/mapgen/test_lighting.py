@@ -182,8 +182,11 @@ def test_a_light_block_reads_as_the_params_it_holds(layer):
 def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
     from PIL import Image
 
-    from mapgen.lighting.stage import Surface, bake_light
+    from mapgen.lighting.bake import bake_light
+    from mapgen.lighting.stage import Surface
     from mapgen.render.light import UNLIT_DIR_NAME, LightingRun
+    from mapgen.render.stream import RenderStream
+    from mapgen.tiles.cutter import TileStream
 
     size = 512
     run = LightingRun(tmp_path / "cache", size)
@@ -192,10 +195,15 @@ def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
     z = (40 * np.exp(-((xx - 256) ** 2 + (yy - 256) ** 2) / 4000.0)).astype(np.float32)
     land = np.ones((size, size), np.float32)
     land[:, :64] = 0.0
-    for top in range(0, size, 128):
-        surface.put(top, z[top : top + 128], land[top : top + 128])
     sheet = np.full((size, size, 3), 128, np.uint8)
-    stats, _dense, _ = run.install(sheet, Image, tmp_path / "out", "terrain", 1, 6, "r")
+    with TileStream(Image, 1) as cutter:
+        stream = RenderStream(cutter, ("terrain",), (tmp_path / "out", "r"), size, 6, run)
+        for top in range(0, size, 128):
+            surface.put(top, z[top : top + 128], land[top : top + 128])
+            stream.put(top, {"terrain": sheet[top : top + 128]})
+        stream.finish()
+        trees = stream.install("terrain")
+    stats = trees.tiles
     root = tmp_path / "out" / "r"
     meta = json.loads((root / "light" / "meta.json").read_text(encoding="utf-8"))["_meta"]
     assert meta["tiles"]["max_z"] == 1 and meta["tiles"]["count"] == 5
@@ -213,7 +221,7 @@ def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
     baked = np.asarray(Image.open(root / "terrain" / "tiles" / "1" / "0_0.png"))
     assert baked[20, 20].tolist() == [128, 128, 128]  # water: unlit either way
     sidecar = {"_meta": {"provenance": {}}}
-    run.decorate(sidecar, "terrain")
+    run.decorate(sidecar, "terrain", trees.unlit)
     assert sidecar["_meta"]["light"]["dir"] == "../light"
     assert sidecar["_meta"]["provenance"]["light"]["id"] == "sun"
     run.close()

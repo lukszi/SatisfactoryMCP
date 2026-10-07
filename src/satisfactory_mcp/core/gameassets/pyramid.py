@@ -8,7 +8,7 @@ into place, so a reader meets a whole tree or no tree.
 
 This cutter is serial and the reference. The renders cut through ``mapgen.tiles.cutter``,
 which stages and commits through ``stage_tree`` and ``commit_tree`` here and writes the same
-bytes (docs/spatial-and-map.md section 17, "Cutting in parallel").
+bytes (docs/map/renders.md sections 17 and 42).
 """
 
 from __future__ import annotations
@@ -117,7 +117,8 @@ def cut_square(piece: TileImage, dest: Path, z: int, ox: int, oy: int, tile_px: 
 
 
 def encode_tile_row(job: tuple[str, int, int, int, str, int]) -> int:
-    """One row of RGB tiles out of a level in a ``shared_memory`` block, deflated to PNG.
+    """Row ``row`` of RGB tiles of level ``z``, out of a ``shared_memory`` block that holds
+    just that row, deflated to PNG.
 
     The parallel cutter's encoder, run in a spawned process: argument-shaped so it pickles,
     and free of numpy, whose thread pool would commit most of a gigabyte in every encoder.
@@ -131,9 +132,8 @@ def encode_tile_row(job: tuple[str, int, int, int, str, int]) -> int:
     block = SharedMemory(name=name)
     try:
         if block.buf is None:
-            raise PyramidError(f"the shared level {name} is closed")
-        start, length = row * tile_px * width * 3, tile_px * width * 3
-        with block.buf[start : start + length] as raw:
+            raise PyramidError(f"the shared row {name} is closed")
+        with block.buf[: tile_px * width * 3] as raw:
             # Pillow reads any buffer, but its stub admits only bytes and array interfaces.
             data = cast("bytes", raw)
             strip = Image.frombuffer("RGB", (width, tile_px), data, "raw", "RGB", 0, 1)

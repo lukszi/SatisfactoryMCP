@@ -289,7 +289,7 @@ def main() -> int:
     from PIL import Image as image_mod
 
     try:
-        # Pillow sets LANCZOS at import, out of its stubs' sight (tiles.cutter.load_imaging).
+        # Pillow sets LANCZOS at import, out of its stubs' sight (tiles.imaging.load_imaging).
         return _cut(args, versions, cast(ImageModule, image_mod))
     except Refusal as refused:
         print(refused.message)

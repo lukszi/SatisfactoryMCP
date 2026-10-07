@@ -32,7 +32,8 @@ def _flat_nrm(shape, nx=0.0):
 
 
 def _crowned_bake(tmp_path, with_crown=True):
-    from mapgen.lighting.stage import Surface, bake_light
+    from mapgen.lighting.bake import bake_light
+    from mapgen.lighting.stage import Surface
 
     size = 512
     surface = Surface(tmp_path / "work", size)
@@ -80,21 +81,20 @@ def test_only_a_style_that_draws_the_crowns_is_shaded_by_them():
     assert shaded.mean() < model.relight(colour, _flat_nrm((8, 8)), None, low, painted).mean() - 10
 
 
-def test_the_baked_copy_takes_the_crown_term_only_for_a_crown_style(tmp_path):
-    from mapgen.lighting.stage import Surface
-    from mapgen.render.light import relight_in_place
+def test_the_baked_copy_takes_the_crown_term_only_for_a_crown_style():
+    from mapgen.render.light import relight_rows
 
-    surface = Surface(tmp_path, 4)
-    surface.land[:] = 255
+    land = np.full((4, 4), 255, np.uint8)
     terms = np.zeros((4, 4, 3), np.uint8)
     terms[..., 0], terms[..., 1], terms[..., 2] = 255, 127, 20
-    np.save(surface.path("terms"), terms)
-    sheets = {layer: np.full((4, 4, 3), 140, np.uint8) for layer in ("terrain", "painted")}
-    for layer, sheet in sheets.items():
-        relight_in_place(sheet, surface, shader_light(layer))
+    colour = np.full((4, 4, 3), 140, np.uint8)
+    sheets = {
+        layer: relight_rows(colour, terms, land, shader_light(layer))
+        for layer in ("terrain", "painted")
+    }
     assert np.abs(sheets["terrain"].astype(int) - 140).max() <= 1
     assert sheets["painted"].max() < 120
-    surface.close()
+    assert (colour == 140).all(), "the unlit rows are left as they were"
 
 
 def _ground_cells(row: np.ndarray) -> np.ndarray:

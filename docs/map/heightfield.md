@@ -2,7 +2,7 @@
 
 Sections 19, 22, 23 and 24 of the [design spec](../../DESIGN.md): the water channel the heightmap
 generator writes beside the 1 m field, and how the server reads a height, a cave and a
-rock from it. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-41-the-map).
+rock from it. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-42-the-map).
 
 Numbers 19 to 24 also name sections of parked.md, residency.md and plumbing.md; in these
 files they are the map's ([the document set](../../DESIGN.md#the-document-set)).

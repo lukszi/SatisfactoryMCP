@@ -25,7 +25,7 @@ docstring.
 |---|---|---|
 | §1–§5, §13, appendices | **this file** | scope, decisions, data sources, architecture, the normalization contract, the licence, and the reference world every number was measured against |
 | §6–§6.16, §13a, §13b, §13c | [docs/save-projection.md](docs/save-projection.md) | what the sidecar emits and how each fact in it was verified, the row layouts and the schema history; the parser that replaced the vendored one, and the parity that can never be re-run; the save facts the web map's placement layers rest on |
-| §7, §17–§41 | [docs/spatial-and-map.md](docs/spatial-and-map.md) and [docs/map/](docs/map/) | coordinate frame, regions, node lookup and the selector language; the web map: its base layers and page, the heightfield and its water, the drawn renders, their styles, water, light and caches. spatial-and-map.md holds §7 and §37 and indexes the rest by file |
+| §7, §17–§42 | [docs/spatial-and-map.md](docs/spatial-and-map.md) and [docs/map/](docs/map/) | coordinate frame, regions, node lookup and the selector language; the web map: its base layers and page, the heightfield and its water, the drawn renders, their styles, water, light and caches. spatial-and-map.md holds §7 and §37 and indexes the rest by file |
 | §8, §9 | [docs/planning.md](docs/planning.md) | the LP/MILP formulation, layout, commissioning, diffing against the save, and the hard-drive advisor |
 | §10, §11, §12 | [docs/mcp-surface.md](docs/mcp-surface.md) | the tools with their transcripts, the context budget, caching, and the testing contract |
 | §14, §15, §15b, §16, §16b, §19–§22 | [docs/parked.md](docs/parked.md) | open questions, parked work with the measurements that would otherwise be redone, and finished work kept as a record |

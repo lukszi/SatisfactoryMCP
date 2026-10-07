@@ -2,7 +2,7 @@
 
 Sections 27, 28, 30 and 32 of the [design spec](../../DESIGN.md): the game-painted style, the relief
 styles, the game's own surface colours and the seabed carpet. A section number below
-resolves through the [map's index](../spatial-and-map.md#sections-17-to-41-the-map).
+resolves through the [map's index](../spatial-and-map.md#sections-17-to-42-the-map).
 
 ## 27. A crisp shore, render-only meshes and the game-painted satellite: recipe 6 (2026-10-05)
 

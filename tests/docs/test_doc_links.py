@@ -21,7 +21,7 @@ from tests.support.paths import REPO_ROOT
 DOCS = REPO_ROOT / "docs"
 DESIGN = REPO_ROOT / "DESIGN.md"
 MAP_INDEX = DOCS / "spatial-and-map.md"
-MAP_INDEX_TITLE = "Sections 17 to 41: the map"
+MAP_INDEX_TITLE = "Sections 17 to 42: the map"
 #: The documents DESIGN.md's table gives section numbers to, the map's folder aside.
 SPEC_DOCS = [
     DESIGN,

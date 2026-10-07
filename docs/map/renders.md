@@ -1,8 +1,9 @@
 # The drawn renders: layers, sampler, recipes and caches
 
-Sections 17, 20, 25, 26, 39, 40 and 41 of the [design spec](../../DESIGN.md): the drawn base layers,
+Sections 17, 20, 25, 26, 39, 40, 41 and 42 of the [design spec](../../DESIGN.md): the drawn base layers,
 how they sample the field and the rocks, the recipes they draw by, their raster caches,
-how a layer's bands are drawn, and the loops compiled for it. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-41-the-map).
+how a layer's bands are drawn, the loops compiled for it, and how the bands are cut as they
+settle. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-42-the-map).
 
 Numbers 19 to 24 also name sections of parked.md, residency.md and plumbing.md; in these
 files they are the map's ([the document set](../../DESIGN.md#the-document-set)).
@@ -197,71 +198,39 @@ bargain the CRS already makes.
 
 ### Cutting in parallel, and the proof that it is the same bytes
 
-A lit layer writes three trees: `unlit/`, `tiles/` and `tiles@2x/`, 45,055 tiles at 32768,
-all at `optimize=True`. Until 2026-10-06 each tree was cut on its own. Every level's Lanczos
-ran serially in the parent while the encode processes waited, 37 to 61 s a tree at full
-size, and each tree copied the sheet three times on its way to them (a Pillow image, its
-bytes, a shared block), about 14 GB. `mapgen/tiles/cutter.py` now cuts a layer's trees
-through one pool:
+A lit layer writes three trees: `unlit/`, `tiles/` and `tiles@2x/`, 45,055 tiles at 32768.
+`mapgen/tiles/cutter.py` cuts every tree of a run while the draw is still going, a band of
+rows at a time (section 42), and writes the bytes of the serial cutter, `install_pyramid`:
 
-- **One encode pool per layer.** `--cut-workers` processes (default one per logical core, at
-  most 24) encode one row of tiles per job, for all three trees. A level's rows are queued as
-  soon as its pixels are ready, so the pool encodes the unlit z7 while the levels are
-  resampled and the sheet is relit. `--workers N`, as before, sizes both this pool and the
-  light bake's where `--cut-workers` or `--light-workers` is not given (section 29).
-- **One copy of the sheet per tree.** The sheet is copied into a `shared_memory` block and
-  z7 is encoded from that block; no Pillow image of the whole sheet is made. The unlit tree
-  encodes from its own block, so the relight can change the sheet underneath it.
+- **One encode pool.** `--cut-workers` processes (default one per logical core, at most 24)
+  encode one row of tiles per job, for every tree of every layer. A row of tiles is queued as
+  soon as its rows are in. `--workers N`, as before, sizes both this pool and the light
+  bake's where `--cut-workers` or `--light-workers` is not given (section 29).
+- **Rows through shared memory.** Each row of tiles is copied into a `shared_memory` block of
+  its own, which the encoder reads and which is freed when its job is done. No Pillow image
+  of a whole sheet is made.
 - **Encoders without numpy.** The encoder (`core/gameassets/pyramid.encode_tile_row`) reads
   the block through Pillow. numpy's BLAS thread pool commits about 0.75 GB in every process
   that imports it, 18 GB for 24 encoders, and on a busy machine that exhausted the commit
   limit with physical memory to spare.
-- **Levels in strips, on threads.** Each level is still one Lanczos downscale of the whole
-  sheet. Eight threads compute it in strips of about 128 MiB of source: each strip resizes a
-  row range with a `box`, out of source rows cut with a halo of 3 × scale + 4. Pillow
-  derives each output row's taps from its position alone and reaches 2.5 × scale + 0.5
+- **Levels in strips.** Each level is still one Lanczos downscale of the whole sheet. A strip
+  resizes a range of rows with a `box`, out of source rows cut with a halo of 3 × scale + 4.
+  Pillow derives each output row's taps from its position alone and reaches 2.5 × scale + 0.5
   source rows either side, so every strip is the same bytes as those rows of a whole-sheet
-  resize. Measured at scales 2 to 128; a halo of 2 × scale fails at every scale. The threads
-  run in the parent, because Pillow releases the GIL inside a resize.
+  resize. Measured at scales 2 to 128; a halo of 2 × scale fails at every scale. The strips
+  run on threads in the parent, because Pillow releases the GIL inside a resize.
 - **A level two trees share is resampled once.** `tiles@2x/` is cut from the sheet
-  downscaled to 16384, the same resize as `tiles/` z6, so its top level is that block. On a
+  downscaled to 16384, the same resize as `tiles/` z6, so its top level is that level. On a
   sheet of 16384 or less every @2x level is a 1x level.
-- **Memory.** Before a new block the cutter checks free memory (`mapgen/pools.py`, shared
-  with the light bake), physical and on Windows commit; with less than the block plus 4 GB
-  it waits for work in flight. The encoder count
-  is capped the same way at 200 MB an encoder. A block is freed when the last job and strip
-  reading it finish. A failed strip settles its level only after every strip of it has
-  stopped, so no strip writes into a freed block.
-- **Serial.** `--cut-workers 1` cuts one tree at a time with `install_pyramid`, the
-  reference the parallel path is compared with.
+- **Serial.** `--cut-workers 1` cuts on the caller's thread, each band as it is handed on.
+  `install_pyramid` stays the reference: `--check-parallel` and the tests compare with it.
 
 The 15 to 26% of z7 tiles that are one void colour are encoded like any other. A one-colour
 tile takes 0.5 to 0.7 ms against about 34 ms for a land tile, so writing cached bytes would
 save under 1%.
 
 `--check-parallel` proves it rather than asserting it: the artwork's whole pyramid cut both
-ways, SHA-256 of every tile compared name for name, recorded in the sidecar. On an 8192 piece
-of renders-v7, 1,365 tiles: 38.0 s serial against 2.3 s on 24 encoders, byte_identical true.
-
-A 2048 render of all five layers, lit, `--workers 2`, ran before and after the change, one
-after the other: all 1,125 tiles and light tiles match by SHA-256 (425 unlit, 425 lit, 105
-@2x, 170 light). The sidecars differ in their timings and in the encoder count (2, now the
-default 24) only. The cut took 0.9 to 1.6 s a layer, against 3.2 to 3.5 s.
-
-Measured on the reference machine (2026-10-06, other renders running), the trees of one lit
-layer, the bake skipped and the relight an in-place invert:
-
-| | before | after (24 encoders) |
-| --- | --- | --- |
-| 8192 piece of renders-v7 `painted` z7, 3,071 tiles | 29.8 s on 8 workers, 23.6 s on 24 | 8.9 s |
-| the same piece tiled to 32768, 45,055 tiles | 343 s on 8 workers | 125 s |
-| peak working set at 32768 | 13.1 GB | 12.9 GB |
-
-Every tile hashes the same before and after. The peak is no lower: each tree now holds about
-6 GB where it held 14, and the difference is spent running the three trees at once. When
-memory is short the cutter runs them closer to one after the other. renders-v7 cut its five
-layers in 1,826 s on 8 workers; at the 2.75 times measured here that is about 660 s, more
-than 19 minutes saved. The relight, serial before, now overlaps the unlit tree.
+ways, SHA-256 of every tile compared name for name, recorded in the sidecar.
 
 ### Deflate level (2026-10-06)
 
@@ -1374,17 +1343,11 @@ ground once (`render/surface.py` `band_surfaces`) before every layer's painter c
 - **Measured once.** The seam trace and the regime table measure the one ground, as the first
   layer's draw did before; the sidecars' numbers are the same.
 - **The light** captures the seabed rule's ground once, whatever layers the pass draws
-  (light-and-crowns.md section 29, "One capture"), and is baked after the pass, before the
-  first layer is cut. The progress lines follow: one `draw` stage, then `light`, then each
-  layer's `cut` (maps_contract.md §5.3).
-- **The sheets wait in files.** Every layer's sheet is drawn before the first is cut, 3 bytes
-  a pixel each, 3.2 GB a layer at full size. They are memory-mapped files in the run's
-  scratch, `sheets.cache/<layer>.npy` beside the light's (`--scratch-dir`, else
-  `--cache-dir`, else beside the renders; `render/sheets.py`), so the system can write them
-  out rather than hold them in memory. Each is deleted once its layer is installed, and the
-  folder when the run ends. A run that died leaves its sheets to the next, which empties
-  them; the sheets of a render still running are refused, exit 11, as its light scratch is.
-  The job's disk check counts them (maps_contract.md §4.2).
+  (light-and-crowns.md section 29, "One capture"), and is baked a block row at a time as the
+  bands come in (section 42). The progress lines follow: one `draw` stage, then `light`, then
+  each layer's `cut` (maps_contract.md §5.3).
+- **No sheet waits.** Each band, once settled, goes on to its layers' tile trees (section
+  42), so no layer's sheet is held whole, in memory or in a file.
 - `render.seconds_to_draw` in each layer's `meta.json` is the pass's, the same for every
   layer of the run, and `render.draw_threads` the pass's threads.
 - `render_layer` draws one layer alone, in memory, as before: the crops and the tests use it.
@@ -1410,9 +1373,6 @@ ground once (`render/surface.py` `band_surfaces`) before every layer's painter c
 - Memory: the peak commit rose from 13.4 to 16.6 GB on the water window and from 12.7 to
   15.6 GB on the strip. The five windows' sheets, held in memory there, are 0.8 and 0.4 GB of
   it; the rest is the second ground, about 0.6 GB a band at full width (`SEABED_BYTES`).
-- A full-size sheet in a file filled band by band in 0.85 s against 0.29 s in memory, and
-  copied out for the cutter in 0.29 s either way; with 43 GB free nothing reached the disk
-  before it was deleted.
 
 ### Column pieces (2026-10-07)
 
@@ -1509,9 +1469,6 @@ in whole rows. The slab is now cut to the columns the taps read as well (`_slab`
   gathers from the field, which a piece's size does not change.
 - The decoded bands the threads need, and the pieces in flight, are memory the serial loop
   did not take; the thread count is cut to fit, and `--draw-threads` lowers it further.
-- The pass holds every layer's sheet until that layer is cut, in files: 3.2 GB a layer at
-  full size. Cutting the tiles as the bands finish would drop them, which is the streaming
-  step of the performance plan.
 
 ## 41. Compiled kernels: the light's march and the sampler's gathers (2026-10-07)
 
@@ -1641,3 +1598,130 @@ of satellite, relief and relief-dark fell from about 3 s to about 1 s, painted f
   the next kernels.
 - A numba release is a new proof, which is why it is pinned: the bit tests in
   `tests/mapgen/test_kernels.py` and a G1 against the reference come with an upgrade.
+
+## 42. Cutting the bands as they settle (2026-10-07)
+
+Until this date a run drew every layer's whole sheet, then baked the light from the whole
+surface, then cut each layer's trees from its sheet: the light and each layer's cut were
+stages of their own after the draw, and the sheets waited for them, 3.2 GB a layer at full
+size in files of the run's scratch. Now each band goes on to its layers' trees as soon as it
+is settled, and the light bakes a row of blocks as soon as the surface holds every row the
+row reads. No sheet is held whole, there are no sheet files, and what is left after the draw
+is the light's last rows, the lit trees' last bands and the coarse levels. The tiles and the
+light are the same bytes.
+
+### A band's way
+
+- **The draw hands it on.** `render_layers` (section 40) takes a sink, `bands=`
+  (`compose.BandSink`). Each band is drawn into rows of its own, made before its first piece,
+  and handed to the sink once its pieces are in and it is settled: after its rows of the
+  light's surface are written and its measurements merged, and in order. Without a sink the
+  pass returns whole sheets as before, which the crops and the tests use.
+- **The stream takes it** (`render/stream.py` `RenderStream`). Without the light the band is
+  the lit colour and goes to the layer's `tiles/` and `tiles@2x/`. With it, it goes to
+  `unlit/` at once and waits for the default sun's terms of its rows (below); then it is
+  relit (`light.relight_rows`, the arithmetic of section 29's baked copy, row by row) and goes
+  to `tiles/` and `tiles@2x/`.
+- **The cutter cuts it** (`tiles/cutter.py` `TileStream`, `tiles/levels.py`). Each sheet,
+  the unlit and the lit of every layer, takes its rows in order on a lane: its tasks run one
+  at a time in the order they came, and the lanes of all the sheets share a pool of 8
+  threads. A level is resampled a strip at a time as soon as the source rows the strip reads
+  are in, halo included, and the sheet drops the rows no level reads again. A level's rows
+  are gathered into rows of tiles, and each row of tiles goes to the encode pool as soon as
+  it is whole (section 17, "Cutting in parallel"). At 32768, `tiles@2x/` is cut from the
+  16384 level, which a second sheet takes as its rows as they come.
+- **The install waits for it.** After the draw and the light, each layer's trees are waited
+  for, checked against their counts and renamed into place, `unlit/`, then `tiles/`, then
+  `tiles@2x/`, as before.
+
+### The light, a row of blocks at a time
+
+- **When a row can bake.** The bake's blocks are those of section 29, 16 × 16 native tiles
+  with a 150 m halo. Block row k reads the surface to the end of its rows and twice the
+  horizon's reach past it (`bake.block_rows`): 660 rows at 32768, so the first of its 8 rows
+  can bake once 4,756 rows are drawn. After each band the run queues every row whose reads
+  are in (`LightingRun.drawn`; `lighting/bake.py` `LightBake.queue`). At 2048 the one block is
+  the whole sheet, so the bake starts when the draw ends.
+- **When a band is relit.** A lit band waits until every block row up to its rows is baked
+  (`LightingRun.ready`). Its terms and land weight are then copied out of the scratch
+  (`LightingRun.terms`), and the relight runs on the cutter's lanes.
+- **After the draw** the rows not yet queued are queued, the waiting bands relit as their
+  rows come in, the coarser levels baked from the native ones, and the pyramid renamed into
+  place, as in section 29.
+- **The same bytes.** A block reads and writes what it did; only when it runs changes. A
+  band is relit a row at a time with the terms of its own rows, and the luminance's row width
+  (section 40, "Column pieces") is the sheet's, as it was.
+
+### A kept light, read while it matches
+
+A kept light (section 29, "Kept light") is installed when its key, the whole surface's digest
+included, is this run's, and that digest is known only once the draw is done; a lit band
+cannot wait that long. So a run reads a kept bake while it draws:
+
+- `light.kept/surface.json` lists the digest and place of each band of the surface the bake
+  was made from (`Surface.puts`). A kept bake whose key differs from this run's at most in the
+  surface is a candidate (`KeptLight.candidate`).
+- While the bands this run draws hash the same, in order, each block row whose reads they
+  cover takes the kept terms. A block's terms depend only on the rows it reads and on what
+  casts on them, which the key matched, so they are the terms this run's bake would write.
+- If every band matched, the kept bake is installed and nothing is baked. The first band
+  drawn otherwise ends the reading: every row whose reads are in is queued on this run's own
+  bake, and the bands already relit by the kept terms stand.
+- A kept light from before this date has no `surface.json` and is baked again once.
+
+### Memory and disk
+
+Estimated from the sizes, not measured at full size:
+
+- **The rows a sheet keeps.** A strip of the coarsest level, 8 of its 256 rows out of 1,024 of
+  the sheet's, reads 388 rows past either edge, so a 32768 sheet keeps about 2,100 rows, 0.2 GB.
+  A lit layer has three sheets: the unlit, the lit, and the 16384 one, about 0.15 GB.
+- **The bands waiting for the light.** A block row's 4,096 rows, its 660 rows of reach and
+  the bands drawn while it bakes: about 20 bands, 0.5 GB a layer at 32768.
+- **Rows on their way.** `put` waits while the rows queued on the lanes and encoding pass
+  2 GiB (`QUEUED_BYTES`), or while free memory is short of them and 4 GiB more.
+- So a full-size run of five lit layers holds about 5 to 7 GB of rows, where it held 16 GB of
+  sheet files, and a peak working set of 12.9 GB while a layer's three trees were cut. The
+  draw still sets one sheet's bytes aside before it counts its threads (section 40, "How many
+  threads").
+- **Disk.** `sheets.cache/` is gone, 16 GB of scratch at full size for five layers, and the
+  Maps tab's disk check no longer counts it (maps_contract.md §4.2).
+- **Pools.** The draw's 8 threads, the lanes' 8, the light's processes and the encoders now
+  run at once. The light's process count is taken from free memory when its first row is
+  queued, by then with the draw under way.
+
+### Progress
+
+The stages keep their order (maps_contract.md §5.3): `draw` while the pass runs, `light` once
+it has ended, starting at the share of blocks already baked, then each layer's `cut`, which
+is now the wait for its trees and their rename. A layer's `pyramid zN:` lines are printed as
+its trees are installed, as before.
+
+### Checked
+
+- Tests (`tests/mapgen/test_parallel_cut.py`, `test_render_stream.py`): every level of a
+  2048 sheet taken in runs of 1 to 300 rows is a whole resize, at scales 2 to 128, and the
+  sheet never kept more than 1,300 of its rows; the stream is `install_pyramid`'s bytes on 1
+  and 3 encoders; at 1024 in rows of 256-px blocks, the light's first row is queued after the
+  second band and every tree and light tile is a whole bake's and cut's; a kept bake is read
+  while the bands match and baked again from the first that does not, to a fresh run's bytes;
+  a failure on a lane or in an encoder is raised and leaves no shared block behind.
+- The 2048 render of all five layers, lit, on the numpy reference path (build 502094): every
+  one of its 1,125 tiles and light tiles is the same bytes as before this change, and all
+  1,131 files have the same content, the light's `key` and so its surface digest included.
+  The draw took 19.6 s and the light 13.8 s after it, and no layer then waited for its trees.
+  The run peaked at 9.21 GB of commit, as before: at this size the preparation decides that.
+- Three windows of the full-size sheet, every layer, unlit (section 40): all 15 draws are the
+  same bytes as before. Those draws cut no tiles.
+- The artwork's 1,708 tiles are the same bytes.
+- A full run that kept its caches, then a restyle from them into a new folder: the restyle
+  read the kept light as its bands matched, installed it and baked nothing, and its 1,131
+  files have the content of the same pair before this change.
+
+### Known limits
+
+- Not timed at full size. The draw, the light and the encoders now contend for the cores,
+  and the presets' stage seconds for the cut and the light (maps_contract.md §4.3) wait for
+  that measurement.
+- The bands waiting for the light are held in memory, not in files.
+- At 2048 and below the light is one block: nothing of it overlaps the draw.

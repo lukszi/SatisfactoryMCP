@@ -1,7 +1,7 @@
 # The map page: one base map at a time, and the side panel
 
 Sections 18 and 21 of the [design spec](../../DESIGN.md): how the page picks a base map, and what its
-side panel shows. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-41-the-map).
+side panel shows. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-42-the-map).
 
 Numbers 19 to 24 also name sections of parked.md, residency.md and plumbing.md; in these
 files they are the map's ([the document set](../../DESIGN.md#the-document-set)).

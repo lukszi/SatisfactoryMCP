@@ -1,7 +1,7 @@
 # Water on the renders: classes, rivers, falls and perched water
 
 Sections 33, 34, 35 and 38 of the [design spec](../../DESIGN.md): how the renders class, level and draw
-water. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-41-the-map).
+water. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-42-the-map).
 
 ## 33. Water by class in the game-painted style (2026-10-05)
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.tiles.cutter import TileImaging
+from mapgen.tiles.imaging import TileImaging
 from mapgen.tiles.pyramid import tree_megabytes
 from mapgen.tiles.recipes import ENHANCE_RECIPE, UNNUMBERED_RECIPE
 from satisfactory_mcp.core.gameassets.container import (

@@ -22,7 +22,7 @@ from mapgen.palette.styles import (
     biome_colour_field,
     biome_lookup,
 )
-from mapgen.tiles.cutter import TileImaging
+from mapgen.tiles.imaging import TileImaging
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.maparea import MAP_AREA_CLASS, MAP_AREA_PATH, NO_MANS_LAND
 from satisfactory_mcp.core.gameassets.packages import ScriptObjects
