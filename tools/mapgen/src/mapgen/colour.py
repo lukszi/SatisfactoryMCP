@@ -1,6 +1,8 @@
 """Colour spaces every unit shares: sRGB, linear light and OKLab, the tone curve, the flat light.
 
 Björn Ottosson's OKLab matrices. A leaf, so the lighting model and the painters read one copy.
+The luminance is summed elementwise in one fixed order, never by BLAS (docs/map/renders.md
+section 42).
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ __all__ = [
     "linear_from_oklab",
     "linear_to_srgb",
     "linear_to_srgb_unit",
+    "luminance",
     "number_at",
     "oklab",
     "sky_sun_light",
@@ -31,6 +34,7 @@ __all__ = [
     "tone",
     "unit_luminance",
     "untone",
+    "weighted_channels",
 ]
 
 #: A colour, a list of them, or an array of them with the channels last.
@@ -62,6 +66,22 @@ _M2_INV: F32Grid = np.linalg.inv(_M2).astype(np.float32)
 
 #: Rec. 709 luminance weights.
 LUMA: F32Grid = np.array([0.2126, 0.7152, 0.0722], np.float32)
+
+
+def weighted_channels(c: NDArray[np.floating], weights: F32Grid) -> NDArray[np.floating]:
+    """``c``'s three channels times ``weights``, summed as ``(c0 w0 + c1 w1) + c2 w2``.
+
+    Each product and sum rounds to ``c``'s float type on its own, with no fused multiply-add,
+    so a pixel's bits depend on nothing but its own channels.
+    """
+    total = c[..., 0] * weights[0]
+    total = total + c[..., 1] * weights[1]
+    return total + c[..., 2] * weights[2]
+
+
+def luminance(c: NDArray[np.floating]) -> NDArray[np.floating]:
+    """The Rec. 709 luminance of linear colour ``c``, in ``c``'s float type."""
+    return weighted_channels(c, LUMA)
 
 
 def srgb_unit_to_linear(c: NDArray[np.floating]) -> NDArray[np.floating]:
@@ -98,8 +118,7 @@ def linear_from_oklab(lab: Colours) -> F32Grid:
 
 def unit_luminance(colour: Colours) -> F32Grid:
     c = np.asarray(colour, np.float32)
-    luminance: F32Grid | np.float32 = c @ LUMA
-    return c / luminance
+    return (c / luminance(c)).astype(np.float32, copy=False)
 
 
 def tone(y: NDArray[np.floating], knee: float, white: float) -> NDArray[np.floating]:
@@ -126,7 +145,7 @@ def by_luminance(
     c: NDArray[np.floating], curve: ToneCurve, knee: float, white: float
 ) -> NDArray[np.floating]:
     """``curve`` applied to the luminance of linear colour ``c``, the chromaticity kept."""
-    y = np.maximum(c @ LUMA, 1e-7)
+    y = np.maximum(luminance(c), 1e-7)
     return c * (curve(y, knee, white) / y)[..., None]
 
 

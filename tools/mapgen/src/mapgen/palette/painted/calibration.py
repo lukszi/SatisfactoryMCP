@@ -15,9 +15,9 @@ import numpy.typing as npt
 from scipy import ndimage
 
 from mapgen.colour import (
-    LUMA,
     linear_from_oklab,
     linear_to_srgb,
+    luminance,
     oklab,
     sky_sun_light,
     srgb_to_linear,
@@ -80,7 +80,7 @@ def display_to_linear(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
     """A display sRGB colour back through the tone: the linear colour the tone maps onto it."""
     rgb = srgb_to_linear(hex_rgb(hex_colour))
     curve = palette["tone"]
-    y = float(rgb @ LUMA)
+    y = float(luminance(rgb))
     grid = np.linspace(0.0, curve["white"], 4097, dtype=np.float32)
     y0 = float(np.interp(min(y, 0.999), tone(grid, curve["knee"], curve["white"]), grid))
     return rgb * np.float32(y0 / max(y, 1e-6))
