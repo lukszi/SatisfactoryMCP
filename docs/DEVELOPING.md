@@ -242,8 +242,9 @@ colour value, so every colour sits with its owner and its warrant.
 
 - **The floor is `standard` mode** for every package. A package or module that reaches zero
   errors in strict mode joins the `strict` list in the config, and from then on the gate wants
-  zero there. When every package has joined, `typeCheckingMode` becomes `strict` and the list
-  and the budgets go.
+  zero there. Every module that is clean today is on the list, a whole folder as one entry. When
+  every package has joined, `typeCheckingMode` becomes `strict` and the list and the budgets go.
+- **Every signature is typed.** ruff's ANN rules run over `src/` and `tools/`; tests are exempt.
 - **A budget only moves down.** The gate fails on a count above its budget, and the remedy is
   to fix the error, not to raise the number. It also fails on a count below its budget and
   prints the numbers to write, so the table always holds today's counts and a fix in one place
@@ -267,9 +268,9 @@ colour value, so every colour sits with its owner and its warrant.
   rather than a string alias, because pydantic cannot resolve a string alias inside a response
   model. pyright reads the plain recursive alias under `TYPE_CHECKING` instead: pyright 1.1.414
   loses the `TypeAliasType`'s self-reference when another module evaluates `JsonObject` before
-  `jsontypes` itself, and reports it in `jsontypes.py`. The modules that still import `Any` are
-  listed one by one in `[tool.ruff.lint.per-file-ignores]`. The gate fails on an entry that is
-  no longer needed and on a glob, so the list only shrinks.
+  `jsontypes` itself, and reports it in `jsontypes.py`. No module imports `Any` now. One that
+  had to would be named on its own line in `[tool.ruff.lint.per-file-ignores]`; the gate fails
+  on an entry that is no longer needed and on a glob.
 - **The save parser's values.** `pioneersav` decodes every property, container element and
   trailer field into one `SaveValue` (`pioneersav/values.py`). The extractor reads them as that
   boundary type and narrows them with `extract/readers.py`'s `to_float`, `to_int` and
