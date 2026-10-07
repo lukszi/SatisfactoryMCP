@@ -961,6 +961,9 @@ Left out: the class optics (`class_optics`) are still mixed for the whole band, 
 `render/painting.py`'s band loop, and the shore terms, the river terms, the wet band and the
 foam stay whole-band work.
 
+Both painters, with the terrain and satellite styles' `water_composite`, also run as numba
+kernels on the same pixels (section 41, "The painters").
+
 ## 39. Compressed raster caches: the zstd band store (2026-10-06)
 
 The render's raster caches (`direct.cache`, `top.cache`, `meshes.cache`, `titan.cache`) were
@@ -1513,14 +1516,16 @@ in whole rows. The slab is now cut to the columns the taps read as well (`_slab`
   full size. Cutting the tiles as the bands finish would drop them, which is the streaming
   step of the performance plan.
 
-## 41. Compiled kernels: the light's march and the sampler's gathers (2026-10-07)
+## 41. Compiled kernels: the light, the sampler's gathers and the painters (2026-10-07)
 
 The light bake spends its time in two loops: the horizon march, 32 directions on the ground
 and 32 on the crowns at a few hundred steps each, and the sky view. The draw spends about a
 fifth of its terrain time in the sampler's gathers. Each of them now also exists as a numba
 kernel: the same arithmetic, compiled, a row at a time, with none of the temporary arrays
-numpy makes for every step. The numpy code stays where it was, as the reference the kernels
-are proven against and the path a machine without numba runs.
+numpy makes for every step. So do the crown stamps and the water of every style, the
+painters that took the most of the draw ("The painters", below). The numpy code stays where
+it was, as the reference the kernels are proven against and the path a machine without numba
+runs.
 
 ### The switch
 
@@ -1528,8 +1533,9 @@ are proven against and the path a machine without numba runs.
   reference; unset, or any other value, the kernels wherever `numba` imports. numba is in the
   `gen` extra, pinned; without it the reference runs.
 - The two paths write the same bytes, so nothing a render writes records which one ran.
-- A kernel module (`lighting/kernels.py`, `terrain/kernels.py`) is imported only once the
-  switch says kernels, so the reference never loads numba. A test holds that.
+- A kernel module (`lighting/kernels.py`, `terrain/kernels.py`, `palette/water/kernels.py`,
+  `palette/painted/kernels.py`) is imported only once the switch says kernels, so the
+  reference never loads numba. A test holds that.
 - The light's spawned processes inherit the switch with the environment.
 
 ### Why the bits are the same
@@ -1578,6 +1584,16 @@ are proven against and the path a machine without numba runs.
   differ by up to 0.8 s.
 - A change to `mapgen.jit`'s options does not invalidate that cache: delete the files, or
   touch the kernel module.
+- Each signature's code is a file named by a digest of the signature's key
+  (`jit.keyed_cache_files`, 2026-10-07). numba numbers them in the order it compiles them,
+  and two processes compiling different signatures of one kernel at once can take the same
+  number: the index then hands one signature the other's code, which reads its arguments as
+  the wrong types, garbage or a `TypeError`. The test suite's workers do exactly that, and so
+  can light processes or two renders on a cold cache. Measured with stock numba 0.68: eight
+  processes compiling eight signatures at once left a cache that handed out the wrong code in
+  3 of 7 rounds; named by key, in none of 6. A process that saves the index over another's
+  only drops that one's entry, which is compiled again. Code files of an old kernel source
+  are no longer overwritten by number; they stay until deleted, which is always safe.
 
 ### Measured (2026-10-07, build 502094)
 
@@ -1635,9 +1651,97 @@ of satellite, relief and relief-dark fell from about 3 s to about 1 s, painted f
   and float sources; float64 weights; a column piece against the same columns of whole rows.
 - The full-size light block above came out the same bytes both ways.
 
+### The painters (2026-10-07)
+
+A profile of one pass over two bands of the full-size sheet (rows 17,408 to 17,920, every
+column, all five layers, unlit, on one thread, after a pass that warmed it up) spread the
+draw over many painters, none of them a tenth of it. The four that cost the most, and that
+are arithmetic once their transcendentals are worked out, now run as kernels. Measured on
+build 502094 by running every call of them both ways, back to back and alternating which
+went first, on that strip and on two bands of the water window of section 40 (rows 18,432
+to 18,944, columns 10,240 to 26,624), seconds over the pass:
+
+| Painter | Layers | Strip, numpy → kernel | Water, numpy → kernel |
+| --- | --- | --- | --- |
+| `crown_stamp.stamp_crowns`: the crowns, tree by tree | painted | 2.71 → 0.43 | 3.02 → 0.48 |
+| `shore.water_composite`: the water | terrain, satellite | 2.94 → 0.37 | 2.13 → 0.27 |
+| `relief._water`: the water | relief, relief-dark | 1.66 → 0.44 | 0.80 → 0.27 |
+| `optics.mix_underwater`: the colour under the water, and the mix | painted | 1.88 → 0.99 | 1.31 → 0.67 |
+| The four | | 9.18 → 2.22 | 7.25 → 1.68 |
+| The whole pass, all five layers | | 31.9 → 24.9 | 25.5 → 19.9 |
+
+The pass figures are the pass as measured, both ways run, less the other way's four painters.
+All 1,152 calls gave the same bits both ways. The pass is 22% shorter on one thread; on 8
+threads the stamps also stop holding the GIL tree by tree. The 8-thread draw has not been
+timed yet with no other run on the machine.
+
+- `terrain/kernels.py`, `stamp`: `_stamp` for every tree of a band in turn. What `_stamp`
+  works out per tree before it reads a texel (the crown's centre and the rows and columns it
+  may reach, its mip level and texel, its yaw's cosine and sine) is worked out by numpy for
+  all the band's trees at once (`crown_stamp._placements`), with the float64 operations
+  `_stamp` does one tree at a time. The mips are read from one float64 atlas
+  (`CrownSet.atlas()`, 53 MB on build 502094, which holds a float32 texel exactly), laid out
+  again only when the set's `levels` is replaced.
+- `palette/water/kernels.py`: `water_composite` and the relief's `_water` per pixel, the wet
+  band, the stroke and the foam included, and the mix by the cover.
+- `palette/painted/kernels.py`, `underwater`: `mix_underwater` on the pixels it mixes: the bed
+  through the optics, the carpet, the sunk crowns, the open sea and the opaque water, then the
+  mix. The band's own planes (`g`, the cover, the class optics' tint, body and deep colour, the
+  crowns' colour) are read in place, without the gather the numpy painter makes; a band past
+  `WET_MOST` is read as flat views.
+
+Left in numpy, measured in the profile:
+
+- `blend_regimes` (0.12 s), `composite_top` (0.13 s) and `composite_meshes` (0.22 s), together
+  1.3% of the pass: about 5 ns a pixel, so a kernel would save a few tenths of a second.
+- The colour spaces (`oklab`, `linear_from_oklab`, `linear_to_srgb`), 5.0 s: matrix products
+  in whatever order numpy's BLAS adds them, and cube roots and powers.
+- The relief's shade and slope rock, the satellite's colours, the painted ground's rock and
+  meshes, the crowns' light: each a twentieth of the pass or less.
+
+**Why the bits are the same.** The rules above hold, and:
+
+- Every transcendental stays in numpy: the crowns' cosine, sine and `log2`; every `exp` of the
+  water (the fade, the bed's and the sunk crowns' transmission, the carpet's, the open sea's
+  and the opaque water's); the relief stroke's power 1.5. They are worked out on the pixels
+  the painter reads and handed to the kernel. The power is worked out only where the cover is
+  neither 0 nor 1; there `4 c (1 - c)` is +0, and so is its power.
+- numpy's cosine, sine and `log2` give an element of an array what they give it alone: the
+  placements of all 97,689 trees of the paint store equal `_stamp`'s own, one tree at a time,
+  at sheet sizes 2048, 8192, 32768 and 65536.
+- The mix makes the numpy painter's choices: `shore.wet_mix` mixes only a band's wet pixels
+  when under a third of it is wet and every pixel above, and the wet painters paint the whole
+  band past `WET_MOST`. A dry pixel keeps the ground's value either way.
+- A kernel takes float32 planes, colours and exposure only, and float64 pixel centres for
+  the crowns. With any other the numpy painter runs, whose float types follow its inputs'.
+- `np.clip` and `np.maximum` are reproduced with their NaN rules; the signed zero above can
+  meet the crowns' dome and top, and cannot show there either.
+
+**Compiling.** The painter kernels' signatures took 3.3 s together in a fresh process with
+an empty cache (the stamps 1.0 s of it, numba starting up with them), and 0.44 s loaded from
+disk. Their first test run, on parallel workers, left a cache that handed the painted water
+another signature's code; that race is why each signature now has a file of its own
+("Threads, processes and compiling", above).
+
+**Checked.**
+
+- G1 at 2048 (all five layers, lit), with the kernels and with `MAPGEN_KERNELS=numpy`: all
+  1,125 tiles the same bytes as the base's numpy run, and the six sidecars the same apart from
+  their timings.
+- G2 at 32768: all 15 windows the same SHA-256 as the pixel-batch baseline, both ways, and
+  each window's two draws the same, also with the kernels compiled from an empty cache while
+  a G1 compiled them in another process.
+- The A/B above: 1,152 calls on real bands of the full-size sheet, the same bits both ways.
+- `tests/mapgen/test_paint_kernels.py` compares each painter kernel with its reference byte
+  for byte: trees of three species at every scale, yaw and lean over three sheet sizes and
+  windows that cut them, mips replaced after a stamp; the plain styles' water with and
+  without a stroke, the relief's tinted or not, the painted style's with each of the class
+  optics, the carpet, the sunk crowns and the opaque water, each on bands from all wet to all
+  dry, mixed both ways; and float64 planes, which run the reference.
+
 ### Known limits
 
-- The painters (`blend_regimes`, the composites, the crown stamps) are still numpy. They are
-  the next kernels.
+- The painters left in numpy above. A kernel for the colour spaces would move last bits.
 - A numba release is a new proof, which is why it is pinned: the bit tests in
-  `tests/mapgen/test_kernels.py` and a G1 against the reference come with an upgrade.
+  `tests/mapgen/test_kernels.py` and `tests/mapgen/test_paint_kernels.py` and a G1 against the
+  reference come with an upgrade.

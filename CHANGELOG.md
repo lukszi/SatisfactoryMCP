@@ -111,6 +111,13 @@ Planned as 0.2.0.
   full-size draw about 22% less, about 7 minutes on 8 threads. The tiles are the same bytes.
   Without numba, or with `MAPGEN_KERNELS=numpy`, the generator runs the numpy code as before.
   The first run compiles the loops, about 3 s, and keeps them beside the code.
+- Map generator: the tree crowns and the water of every style (the terrain and satellite
+  water, the relief styles' and the painted style's colour under the water) are drawn by
+  numba-compiled loops too. Those painters take a quarter of the time they did, and a
+  full-size draw about a fifth less on one thread; the tiles are the same bytes. The first
+  run compiles them, about 3 s more. Each compiled signature is now kept in a file of its
+  own, so processes compiling at once, such as the test suite's workers, no longer leave a
+  cache that hands one signature another's code.
 - The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
   render of all five layers with the light is budgeted at about 58 minutes, the default two
   layers at about 42.
