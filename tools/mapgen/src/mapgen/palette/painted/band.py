@@ -29,7 +29,7 @@ from mapgen.palette.painted.surfaces import (
 )
 from mapgen.palette.painted.trees import lit_crowns, over_crowns, titan_over
 from mapgen.palette.styles import ramp_position
-from mapgen.palette.water.shore import add_foam, seabed_keeps, wet_band
+from mapgen.palette.water.shore import add_foam, inland_cover, seabed_keeps, wet_band
 from satisfactory_mcp.core.arrays import U8Grid
 
 __all__ = ["painted_colours", "painted_ndl"]
@@ -43,7 +43,8 @@ def painted_colours(
     ``sample(plane)`` resamples a 1 m plane onto the band, ``sample_rock(plane)`` a plane of
     the coarse rock grid.
     """
-    band: PaintedScene = {**scene, "water": sunk_specks(scene)}
+    water = inland_cover(sunk_specks(scene), ground.palette["shore"].get("inland"))
+    band: PaintedScene = {**scene, "water": water}
     g = _ground_colour(band, ground, sample, sample_rock)
     out = _lit_and_wet(g, band, ground, sample, sample_rock)
     return _toned(out, ground.palette)

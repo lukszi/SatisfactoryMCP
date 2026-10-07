@@ -20,6 +20,7 @@ __all__ = [
     "DerivedLayer",
     "FallsStyle",
     "FoamStyle",
+    "InlandShoreStyle",
     "PaintedPalette",
     "PaintedWaterStyle",
     "Palette",
@@ -64,6 +65,14 @@ class RiverShoreStyle(TypedDict):
     bank_m: float
 
 
+class InlandShoreStyle(TypedDict):
+    """``shore.inland``: inland field water is covered fully once ``edge_m`` deep and reads at
+    least ``min_depth_m`` deep."""
+
+    min_depth_m: float
+    edge_m: float
+
+
 class WetBandStyle(TypedDict):
     """``shore.wet_band``: ground within ``m`` of the waterline, multiplied towards ``tint``."""
 
@@ -81,10 +90,12 @@ class FoamStyle(TypedDict):
 
 
 class ShoreStyle(TypedDict, total=False):
-    """``shore`` as any style may hold it: the line's stroke, the river, wet band and foam."""
+    """``shore`` as any style may hold it: the line's stroke, the river, inland water, the wet
+    band and foam."""
 
     stroke: float
     river: RiverShoreStyle
+    inland: InlandShoreStyle
     wet_band: WetBandStyle
     foam: FoamStyle
 

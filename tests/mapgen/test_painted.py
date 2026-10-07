@@ -49,7 +49,9 @@ from mapgen.palette.water.shore import (
     add_foam,
     blend_water,
     composite_meshes,
+    inland_cover,
     ocean_reach,
+    optical_depth,
     shore_terms,
     water_composite,
     wet_band,
@@ -414,3 +416,27 @@ def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkey
     coarse, fine = (np.concatenate(seen[size]) for size in (n // 4, n))
     assert np.allclose(coarse[2:-2, 2:-2], 0.25, atol=1e-5), "four texels a pixel: their mean"
     assert set(np.unique(fine[2:-2, 2:-2]).round(4)) <= {0.0, 1.0}, "a texel a pixel: as before"
+
+
+def test_a_pool_a_few_decimetres_deep_is_drawn_as_water():
+    """Inland field water covers its pixel once ``edge_m`` deep and reads at least
+    ``min_depth_m`` deep, where the depth feather leaves a 0.3 m pool mostly its bed. The
+    sea's reach and the rivers keep their own rules."""
+    inland = PAINTED_PALETTE["shore"]["inland"]
+    zero = np.zeros((1, 5), np.float32)
+    depth = np.array([[0.0, 0.1, 0.3, 0.6, 3.0]], np.float32)
+    water = blend_water(None, np.clip(depth / 0.9, 0.0, 1.0), depth / WATER_DEPTH_FULL_M,
+                        None, WATER_DEPTH_FULL_M)  # fmt: skip
+    water["wet"] = zero + 1.0
+    covered = inland_cover(water, inland)
+    cover = covered["cover"][0]
+    assert cover[0] == 0.0 and cover[2] == 1.0
+    assert cover[1] == pytest.approx(0.1 / inland["edge_m"], rel=1e-5)
+    seen = optical_depth(covered, None, inland)[0]
+    assert (seen[:4] == inland["min_depth_m"]).all() and seen[4] == pytest.approx(3.0)
+    sea = {**water, "ocean": zero + 1.0}
+    assert np.array_equal(inland_cover(sea, inland)["cover"], sea["cover"])
+    assert np.array_equal(optical_depth(sea, None, inland), sea["depth_m"])
+    river = {**water, "river": zero + 1.0}
+    assert np.array_equal(inland_cover(river, inland)["cover"], river["cover"])
+    assert inland_cover(water, None) is water

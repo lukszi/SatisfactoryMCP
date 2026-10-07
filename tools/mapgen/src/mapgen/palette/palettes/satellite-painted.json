@@ -149,6 +149,10 @@
    "min_depth_m": 0.6,
    "bank_m": 2.5
   },
+  "inland": {
+   "min_depth_m": 1.0,
+   "edge_m": 0.25
+  },
   "wet_band": {
    "m": 3.0,
    "tint": [
