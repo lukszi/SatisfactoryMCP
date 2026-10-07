@@ -95,11 +95,8 @@ Planned as 0.2.0.
   heights, rocks, water and meshes are composed once and every layer's style colours them,
   where each layer composed them again before; drawing all five layers takes about a third
   less time (on 8 threads, windows of the full-size sheet: 140 s against 214 s), and the
-  tiles are the same bytes. The drawn sheets wait in the run's scratch as files until each
-  layer is cut, 3.2 GB a layer at full size beside the light's cache (`--scratch-dir`), and
-  a job's disk check counts them. A band in flight takes 0.6 GB more memory when the painted
-  layer is drawn with another. The light is baked after the draw, and a job's progress shows
-  one draw stage for all the layers.
+  tiles are the same bytes. A band in flight takes 0.6 GB more memory when the painted layer
+  is drawn with another, and a job's progress shows one draw stage for all the layers.
 - Map generator: the painted and relief styles work out the colour under the water only on
   the pixels that hold water, where they worked it out for every pixel and kept it on those.
   On bands a fifth to a half wet that part costs a third to two thirds of what it did, and
@@ -133,6 +130,16 @@ Planned as 0.2.0.
   render and windows of the full-size sheet are the same bytes; on the whole full-size sheet
   11 of the painted layer's pixels move by one level, because its luminance is now summed as
   every narrower draw sums it.
+- Map generator: each band goes on to its layers' tiles as soon as it is drawn, and the light
+  bakes a row of blocks as soon as the surface holds the rows it reads, while the draw goes
+  on. No layer's sheet is held whole, in memory or in a file: a full-size run of five layers
+  needs 16 GB less scratch, and the Maps tab's disk check no longer counts it. The tiles and
+  the light are the same bytes. A light kept before this is baked again once.
+- Map generator: `--gpu` runs the light's horizon march and sky view as CUDA kernels. It
+  needs the new `gpu` extra (CuPy and its NVRTC) and an NVIDIA driver, and a run where they
+  cannot work is refused at once with exit code 2. The CPU path stays the default, and the
+  tiles are the same bytes either way; a full-size light block's ground horizons take about
+  3 s instead of 8.
 - Map generator: a render whose light scratch another running render holds is refused with
   exit code 11 and the reason on stdout (it was exit 1 on stderr). The render sidecar's
   `cliff_geometry.placements_dropped` counts the passable `CliffPillar_03` as `excluded_mesh`
