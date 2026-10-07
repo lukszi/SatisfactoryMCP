@@ -87,6 +87,10 @@ SHEET_SCRATCH_BYTES = 3 * 32768 * 32768
 #: scratch is the light cache while it runs, and the crown occluder the paint store adds to
 #: it whatever the layers, written once (section 29, "Scratch").
 LIGHT_STAGE_S = 830.0
+#: A restyle at a size whose cache keeps a light installs it instead of baking: hard links to
+#: the full-size pyramid's 43,690 files, 6.5 to 9.4 s on the reference machine
+#: (docs/spatial-and-map.md section 29, "Kept light").
+LIGHT_KEPT_S = 10.0
 LIGHT_CUT_FACTOR = 1.8
 LIGHT_KEEP_BYTES = 1_000_000_000
 UNLIT_KEEP_BYTES = 450_000_000
@@ -194,7 +198,8 @@ def _render_seconds(options: dict) -> dict[str, float]:
     draw = RENDER_DRAW_S["ground"] + RENDER_DRAW_S["layer"] * len(layers)
     stages["draw"] = draw * area + 2.0
     if options.get("light"):
-        stages["light"] = LIGHT_STAGE_S * area + 2.0
+        kept = options.get("restyle") and light_kept(options["size"])
+        stages["light"] = (LIGHT_KEPT_S if kept else LIGHT_STAGE_S) * area + 2.0
     cut = RENDER_LAYER_S["cut"] * (LIGHT_CUT_FACTOR if options.get("light") else 1.0)
     for layer in layers:
         stages[f"cut:{layer}"] = cut * area + 2.0
@@ -238,11 +243,18 @@ def cache_dir(size: int) -> Path:
 
 #: The raster caches a palette-only restyle draws from, by their directory names.
 CACHE_PARTS = ("direct.cache", "top.cache", "meshes.cache")
+#: The light a lit render keeps beside them, which a restyle of the same surface installs.
+KEPT_LIGHT_PART = "light.kept"
 
 
 def cache_ready(size: int) -> bool:
     """Whether a full render kept every raster a restyle at this size needs."""
     return all((cache_dir(size) / part / "meta.json").is_file() for part in CACHE_PARTS)
+
+
+def light_kept(size: int) -> bool:
+    """Whether a lit render kept its light in the cache at this size."""
+    return (cache_dir(size) / KEPT_LIGHT_PART / "meta.json").is_file()
 
 
 def cached_sizes() -> list[int]:

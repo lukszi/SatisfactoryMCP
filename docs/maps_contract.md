@@ -274,9 +274,11 @@ records, and a job record still names its `script`.
   raster, so a palette change never turns into a full render. The plan drops the sweep, direct
   and top stages: one full-size layer is prep plus draw and cut, about 7.5 min against about
   29 min for a full two-layer render (§4.3), both without the light. With the light, the
-  default, a restyle bakes it again, budgeted at about 14 min at full size, because the raster
-  cache does not keep it (§8.1). A restyle's history row is kept apart from full renders' when
-  scaling the next estimate.
+  default, a lit render that kept its cache keeps its light beside it (`light.kept/`), and a
+  restyle that draws the same surface installs that light instead of baking it again
+  (spatial-and-map.md §29, "Kept light"). The estimate budgets 10 s at full size for that when
+  `light.kept/meta.json` is in the size's cache, else the bake, about 14 min (§8.1). A
+  restyle's history row is kept apart from full renders' when scaling the next estimate.
 - The one write outside `data/local` is the pre-existing one: `--enhance` downloads the
   upscaler into the user cache folder once; the form says so.
 
