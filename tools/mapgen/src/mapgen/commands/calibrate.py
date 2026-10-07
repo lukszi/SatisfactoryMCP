@@ -39,7 +39,9 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = ["main"]
 
-NO_STORE, NO_DAYLIGHT = 1, 2
+#: Exit codes: no paint store, a store without daylight, and a game install it cannot use
+#: (no container there, or the output inside it).
+NO_STORE, NO_DAYLIGHT, BAD_GAME = 1, 2, 1
 
 
 def _parse_args() -> argparse.Namespace:
@@ -88,10 +90,10 @@ def main() -> int:
         return NO_DAYLIGHT
     if out.resolve().is_relative_to(Path(args.game).resolve()):
         print(f"{out} is inside the game install, which this command never writes")
-        return NO_STORE
+        return BAD_GAME
     if why := missing_container(args.game):
         print(f"not a game install: {why}")
-        return NO_STORE
+        return BAD_GAME
     require_gen("ooz")
     started = time.time()
     game = open_game(args.game)

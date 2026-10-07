@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from functools import partial
-from typing import NamedTuple, Protocol, TypeAlias, cast
+from typing import NamedTuple, Protocol, TypeAlias
 
 import numpy as np
 from numpy.typing import NDArray
@@ -298,7 +298,7 @@ def band_water_terms(
             WATER_DEPTH_FULL_M,
         )
     terms["wet"] = wet
-    return cast(WaterTerms, terms)
+    return terms
 
 
 def band_grid(sources: GroundSources, rows: Span, cols: Span) -> BandSampling:

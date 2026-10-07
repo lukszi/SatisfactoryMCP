@@ -23,6 +23,7 @@ import numpy as np
 from mapgen.cache import TitanPlanes, held_open
 from mapgen.common import Refusal
 from mapgen.gamedata.ground.paint_store import CROWN_NAME
+from mapgen.jit import add_gpu_flag
 from mapgen.lighting.bake import LightBake, block_rows
 from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import CrownGrid, sheet_crowns
@@ -95,7 +96,9 @@ class CrownTops(NamedTuple):
 
 
 def add_light_flags(parser: argparse.ArgumentParser) -> None:
-    """``--light`` (the default) or ``--no-light``; ``--unlit``, the old opt-in, is ``--light``."""
+    """``--light`` (the default) or ``--no-light``; ``--unlit``, the old opt-in, is ``--light``;
+    ``--gpu``, the light's CUDA kernels."""
+    add_gpu_flag(parser)
     parser.add_argument(
         "--light",
         action=argparse.BooleanOptionalAction,

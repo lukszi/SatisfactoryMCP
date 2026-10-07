@@ -57,9 +57,10 @@ TOP_PLANE_NAMES = (
     ARCH_COVERAGE_NAME,
 )
 
-#: What the direct and top caches hold beyond max-Z and coverage. Old caches lack it in
-#: their stamp, so they are rebuilt rather than read without the planes the light needs.
-RASTER_PLANES = 2
+#: The version of the planes the direct and top caches hold beyond max-Z and coverage, bumped
+#: when that set changes. Old caches lack it in their stamp, so they are rebuilt rather than
+#: read without the planes the light needs.
+RASTER_SCHEMA = 2
 
 MESH_CACHE_DIR_NAME = "meshes.cache"
 MESH_Z_NAME = "meshes.z.f32"
@@ -213,7 +214,7 @@ def raster_cache_stamp(
     rasterised onto, how finely it sampled each texel of that grid, and the build of the game
     whose rocks it is. Everything else in the sidecar is a record rather than a key.
     The fourth, ``families``, is the rock family reader that wrote the family plane beside
-    them; it defaults to the current one. The fifth, ``planes``, is ``RASTER_PLANES``.
+    them; it defaults to the current one. The fifth, ``planes``, is ``RASTER_SCHEMA``.
     """
     families = READER_VERSIONS["rock_families"] if families is None else families
     return {
@@ -221,7 +222,7 @@ def raster_cache_stamp(
         "subsamples": int(subsamples),
         "game_version_pinned": build,
         "families": int(families),
-        "planes": RASTER_PLANES,
+        "planes": RASTER_SCHEMA,
     }
 
 

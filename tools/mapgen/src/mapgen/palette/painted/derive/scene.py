@@ -53,7 +53,9 @@ STRIDE = ROCK_GRID_M
 #: Layers that carry no colour of their own.
 NO_COLOUR = frozenset({"LandscapeVisibilityLayerInfo", "Foliage_Eraser_LayerInfo"})
 
-_FALLBACK_RGB = (0.05, 0.08, 0.03)
+#: A crown slot whose material has no colour takes the first coloured slot's, and a crown with
+#: none this dark leaf green, linear.
+_UNCOLOURED_LEAF_RGB = (0.05, 0.08, 0.03)
 
 
 class AreaGrid(NamedTuple):
@@ -141,7 +143,7 @@ def _species(entry: CrownSpecies, sprite: DecodedSprite) -> Species:
     """The crown's colour: each visible slot's albedo, weighted by the cover over it."""
     cover = sprite["cover"].astype(np.float64) / 255.0
     colours = [m["linear"] for m in entry["materials"]]
-    fallback = next((c for c in colours if c is not None), _FALLBACK_RGB)
+    fallback = next((c for c in colours if c is not None), _UNCOLOURED_LEAF_RGB)
     rgb = np.zeros(3)
     for k in map(int, np.unique(sprite["slot"])):
         if k != MATERIAL_NONE:

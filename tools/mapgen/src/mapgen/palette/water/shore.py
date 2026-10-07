@@ -143,7 +143,7 @@ def blend_water(
     old_depth_fraction: FloatGrid,
     shore: ShoreTerms | None,
     full_m: float,
-) -> dict[str, FloatGrid]:
+) -> WaterTerms:
     """Recipe 6's water where ``reach`` is 1 and recipe 5's where it is 0, blended between.
 
     Returns ``cover`` (water share of the pixel), ``depth`` (the tint fraction),

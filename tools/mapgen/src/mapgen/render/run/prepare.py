@@ -134,7 +134,7 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
         )
     biome, paint, style_digests = _biome_and_paint(args, layers, setup, game, field, gathered)
     level = LevelSweep(game.store, game.scripts, not args.quiet)
-    direct, top, raster_sources = _rasters(args, setup, lattice, (level, grid), paint, gathered)
+    direct, top, raster_sources = _rasters(args, setup, lattice, level, grid, paint, gathered)
     extras = _extras(args, setup, lattice, level, field, paint, gathered)
     water, sea, planes = drawn_water(
         field, args.kernel_only, extras.rivers, (lattice.heights, lattice.ground), art_water
@@ -225,18 +225,16 @@ def _rasters(
     args: argparse.Namespace,
     setup: Setup,
     lattice: Lattice,
-    rasters: tuple[LevelSweep, RasterGrid],
+    level: LevelSweep,
+    grid: RasterGrid,
     paint: PaintInputs | None,
     gathered: _Gathered,
 ) -> tuple[DirectPlanes | None, TopPlanes | None, JsonObject]:
-    """The rocks and the top overlay at the render's own spacing, and their sidecar blocks.
-
-    ``rasters`` is the level sweep and the grid. None for ``--kernel-only``, which opens no
-    geometry.
+    """The rocks and the top overlay on ``grid``, swept from ``level``, and their sidecar
+    blocks. None for ``--kernel-only``, which opens no geometry.
     """
     if lattice.measured_plane is None or lattice.ground is None:
         return None, None, {}
-    level, grid = rasters
     inputs = gathered.inputs
     cache = setup.cache_root / DIRECT_CACHE_DIR_NAME
     rock, sources = direct_raster(level, cache, grid, setup.versions["pyooz"])

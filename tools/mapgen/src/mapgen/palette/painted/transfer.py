@@ -109,7 +109,7 @@ def layer_transfer(
                 shift += w[..., None] * op.shift
                 shifted = True
         if pairs:
-            shifted = _cross(shift, share, pairs) or shifted
+            shifted = _add_pair_terms(shift, share, pairs) or shifted
         lab[..., 0] += d_l
         lab[..., 1:] = turned(lab[..., 1], lab[..., 2], m)
         if shifted:
@@ -162,7 +162,7 @@ def by_colour(
     return out
 
 
-def _cross(
+def _add_pair_terms(
     shift: FloatGrid, share: Mapping[str, FloatGrid], pairs: list[tuple[str, str, FloatGrid]]
 ) -> bool:
     """Adds the pair terms into ``shift`` where both layers of a pair are present; whether

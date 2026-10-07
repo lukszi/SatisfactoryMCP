@@ -28,7 +28,7 @@ PRESETS_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "presets.py
 #: (cutting and describing a finished sheet) under render and ``common``,
 #: ``bandstore``, ``cache`` and ``colour`` as leaves under all of them, ``pools`` (free
 #: memory, a worker's BLAS threads) under the units that start pools, and ``jit`` (the kernel
-#: switch) under the units with kernels and ``render``, whose draw flags set it. ``cli``
+#: switch) under the units with kernels and ``render``, whose light flags set it. ``cli``
 #: reaches its commands through ``importlib`` by name, so it statically imports nothing here.
 ALLOWED: dict[str, frozenset[str]] = {
     "common": frozenset(),

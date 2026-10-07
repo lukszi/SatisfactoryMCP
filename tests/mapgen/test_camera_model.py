@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mapgen.palette.painted.derive import camera
+from mapgen.palette.painted.derive import atmosphere, camera, tonemap
 from mapgen.palette.painted.derive.camera import Light
 
 #: Build 502094's noon light, as the paint store keeps it.
@@ -25,24 +25,24 @@ E = 2.8067
 
 
 def test_mid_grey_comes_out_of_the_film_curve_as_mid_grey():
-    out = camera.tonemap(np.full(3, 0.18))
+    out = tonemap.tonemap(np.full(3, 0.18))
     np.testing.assert_allclose(out, 0.18, atol=1e-4)
 
 
 def test_a_neutral_stays_neutral_and_a_ramp_stays_in_order():
-    grey = camera.tonemap(np.full(3, 0.5))
+    grey = tonemap.tonemap(np.full(3, 0.5))
     assert float(grey.max() - grey.min()) < 2e-4
-    ramp = camera.tonemap(np.linspace(0.0, 4.0, 50)[:, None] * np.ones(3))
+    ramp = tonemap.tonemap(np.linspace(0.0, 4.0, 50)[:, None] * np.ones(3))
     assert np.all(np.diff(ramp, axis=0) > 0)
     assert float(ramp.max()) < 1.0
 
 
 def test_the_default_sky_is_pinned():
     np.testing.assert_allclose(
-        camera.sun_transmittance(59.5), [0.931192810375, 0.848208311258, 0.730035441295], rtol=1e-9
+        atmosphere.sun_transmittance(59.5), [0.931192810375, 0.848208311258, 0.730035441295], rtol=1e-9
     )
     np.testing.assert_allclose(
-        camera.sky_irradiance(59.5), [0.024073644309, 0.044318029284, 0.081888076753], rtol=1e-9
+        atmosphere.sky_irradiance(59.5), [0.024073644309, 0.044318029284, 0.081888076753], rtol=1e-9
     )
     np.testing.assert_allclose(
         camera.illuminant(NOON), [0.828969253372, 0.724411101691, 0.524469038137], rtol=1e-9
@@ -51,8 +51,8 @@ def test_the_default_sky_is_pinned():
 
 def test_unit_gains_grade_nothing():
     colours = np.array([[0.3, 0.2, 0.1], [0.05, 0.4, 0.2], [0.9, 0.9, 0.95]])
-    graded = camera.tonemap(colours, ((1.0, 1.0, 1.0),) * 3)
-    np.testing.assert_array_equal(graded, camera.tonemap(colours))
+    graded = tonemap.tonemap(colours, ((1.0, 1.0, 1.0),) * 3)
+    np.testing.assert_array_equal(graded, tonemap.tonemap(colours))
 
 
 @pytest.mark.parametrize(

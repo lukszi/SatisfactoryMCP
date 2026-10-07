@@ -15,15 +15,10 @@ from pathlib import Path
 import numpy as np
 
 from mapgen.gamedata.level.lighting import AtmosphereVolume, LevelLighting
-from mapgen.palette.painted.derive.camera import (
-    Gains,
-    Light,
-    exposure,
-    hex_of_lab,
-    measured_lab,
-)
+from mapgen.palette.painted.derive.camera import Light, exposure, hex_of_lab, measured_lab
 from mapgen.palette.painted.derive.rules import Derivation, entries, scope_key, untargeted_layers
 from mapgen.palette.painted.derive.scene import Scene
+from mapgen.palette.painted.derive.tonemap import Gains
 from mapgen.palette.painted.shapes import CalibrationStyle, PaintedPalette
 from mapgen.palette.schema import checked
 from mapgen.palette.styles import palette_digest
@@ -39,6 +34,7 @@ __all__ = [
     "Target",
     "derive",
     "key_slot",
+    "make_key_slot",
     "read_targets",
     "stamp_of",
     "targets_json",
@@ -165,12 +161,12 @@ def derive(scene: Scene, cal: CalibrationStyle) -> Derived:
         raise NoDaylight("the paint store keeps no daylight: re-run `python -m mapgen paint`")
     volumes = scene.meta.get("atmosphere_volumes", [])
     lights, notes = _lights(lighting, volumes)
-    ae = lighting["auto_exposure"]
-    e, band = exposure(
+    auto = lighting["auto_exposure"]
+    gain, band = exposure(
         scene.bake_linear[scene.have],
         lights[GLOBAL],
-        ae["bias_ev"],
-        (ae["low_pct"], ae["high_pct"]),
+        auto["bias_ev"],
+        (auto["low_pct"], auto["high_pct"]),
     )
     found: list[Target] = []
     rows = [(row, True) for row in entries(scene, cal)]
@@ -180,9 +176,9 @@ def derive(scene: Scene, cal: CalibrationStyle) -> Derived:
         light = row.light if row.light in lights else next(iter(shares))
         colour = None
         if row.albedo is not None:
-            colour = hex_of_lab(measured_lab(row.albedo, lights[light], e))
+            colour = hex_of_lab(measured_lab(row.albedo, lights[light], gain))
         found.append(Target(row.key, colour, light, shares, row, targeted))
-    return Derived(e, band, int(scene.have.sum()), lights, found, notes)
+    return Derived(gain, band, int(scene.have.sum()), lights, found, notes)
 
 
 # -- the file beside the store, and the palette that wears it ----------------------------------
@@ -268,26 +264,42 @@ def _entry_scope(entry: JsonValue) -> str | None:
     return scope_key([str(a) for a in areas]) if isinstance(areas, list) else None
 
 
-def key_slot(cal: JsonObject, key: str, make: bool = False) -> tuple[JsonObject, str] | None:
-    """Where a calibration key's colour sits: its table and its name there, a ``derived`` key's
-    on its layer; None for a key the block cannot hold. ``make`` adds a missing table."""
+def _key_place(cal: JsonObject, key: str) -> tuple[JsonObject, str, str] | None:
+    """The table holder a calibration key names (the block, or its area's entry), the table's
+    block (``derived`` reads ``layers``) and the name in it; None for a key the block cannot
+    hold."""
     holder: JsonValue = cal
     block, _, name = key.partition(".")
     if key.startswith("areas["):
         scope, _, rest = key.partition("].")
         areas = cal.get("areas")
-        entries_ = areas if isinstance(areas, list) else []
-        holder = next((e for e in entries_ if _entry_scope(e) == scope + "]"), None)
+        area_entries = areas if isinstance(areas, list) else []
+        holder = next((area for area in area_entries if _entry_scope(area) == scope + "]"), None)
         block, _, name = rest.partition(".")
     if not isinstance(holder, dict) or block not in _BLOCKS:
         return None
+    return holder, ("layers" if name and block == "derived" else block), name
+
+
+def key_slot(cal: JsonObject, key: str) -> tuple[JsonObject, str] | None:
+    """Where a calibration key's colour sits: its table and its name there, a ``derived`` key's
+    on its layer; None for a key the block cannot hold, or whose table it lacks."""
+    place = _key_place(cal, key)
+    if place is None:
+        return None
+    holder, block, name = place
     if not name:
         return holder, block
-    block = "layers" if block == "derived" else block
-    if make and block not in holder:
-        holder[block] = {}
     table = holder.get(block)
     return (table, name) if isinstance(table, dict) else None
+
+
+def make_key_slot(cal: JsonObject, key: str) -> tuple[JsonObject, str] | None:
+    """``key_slot``, with the key's table added to ``cal`` first where it is missing."""
+    place = _key_place(cal, key)
+    if place is not None and place[2]:
+        place[0].setdefault(place[1], {})
+    return key_slot(cal, key)
 
 
 def with_targets(
@@ -296,14 +308,15 @@ def with_targets(
     """The palette with each ``derived_keys`` key that has a derived colour wearing it, and
     those keys. A derived key the calibration block cannot hold is refused."""
     keys = palette["calibration"].get("derived_keys", [])
-    unknown = [k for k in keys if key_slot(to_json_object(palette["calibration"]), k, True) is None]
+    calibration = palette["calibration"]
+    unknown = [k for k in keys if make_key_slot(to_json_object(calibration), k) is None]
     if unknown:
         raise ValueError(f"calibration.derived_keys names no calibration key: {unknown}")
     merged = to_json_object(palette)
     cal = require_object(merged["calibration"])
     applied = [key for key in keys if key in hexes]
     for key in applied:
-        slot = key_slot(cal, key, make=True)
+        slot = make_key_slot(cal, key)
         if slot is not None:
             slot[0][slot[1]] = hexes[key]
     return checked(PaintedPalette, merged, palette["id"]), applied
