@@ -231,6 +231,13 @@ Planned as 0.2.0.
 - Map renders take the sun term from one float32 copy, the live-sun page's own, in place of
   several copies in mixed precision. A few dozen lit pixels of a 2048 map move by one level.
   Every rendered map style is one version up for these fixes.
+- Game-painted map colours: blue palms under a sparse tree crown no longer draw pale grey;
+  the edges of the Red Jungle's and Red Bamboo Fields' ground layers lose their fire-red rims
+  and colour confetti, and forest floor its orange halo; sand and grass on rock tops take
+  their ground's colour instead of near white; hot-spring terraces are cream, not white;
+  arches no longer wear the moss or sand of the cliff below; and wet sand under a crude oil
+  puddle keeps the colour of the wet sand around it. The game-painted style is one version
+  up.
 
 ## [0.1.0] - 2026-09-27
 
