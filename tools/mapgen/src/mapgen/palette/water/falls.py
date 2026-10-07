@@ -116,6 +116,12 @@ def _soft_step(value: F64Grid, edge: float) -> F64Grid:
     return np.clip(value / edge + 0.5, 0.0, 1.0)
 
 
+def _smooth_step(value: F64Grid, edge: float) -> F64Grid:
+    """0 to 1 as ``value`` crosses 0, along a smoothstep over ``edge``."""
+    t = _soft_step(value, edge)
+    return t * t * (3.0 - 2.0 * t)
+
+
 def _fall_alpha(
     fall: F64Grid, style: FallsStyle, xs: F64Grid, ys: F64Grid, surface: FloatGrid, px_m: float
 ) -> tuple[F64Grid, F64Grid]:
@@ -128,8 +134,10 @@ def _fall_alpha(
     across_m, out_m = dx * ux + dy * uy, dx * nx + dy * ny
     spread_gain, spread_lo, spread_hi = style["spread"]
     spread = float(np.clip(spread_gain * drop, spread_lo, spread_hi))
-    across = _soft_step(half_m - np.abs(across_m), edge)
-    along = _soft_step(out_m + top_len, edge) * _soft_step(spread - out_m, edge)
+    soft = style["soft"]
+    across = _smooth_step(half_m - np.abs(across_m), max(edge, soft * half_m))
+    end = _smooth_step(spread - out_m, max(edge, soft * spread))
+    along = _soft_step(out_m + top_len, edge) * end
     upstream = style["top"] * np.clip(1.0 + out_m / max(top_len, 1e-6), 0.0, 1.0)
     downstream = 1.0 - (1.0 - style["streak_end"]) * np.clip(out_m / spread, 0, 1)
     fade = np.where(out_m < 0, upstream, downstream)
@@ -160,14 +168,19 @@ def draw_falls(
     y_cm: FloatGrid,
     surface_m: FloatGrid,
     px_m: float,
+    hidden: Callable[[], FloatGrid | None] | None = None,
 ) -> FloatGrid:
-    """``rgb`` (sRGB 0..255, rows ``y_cm`` by columns ``x_cm``) with the falls laid over it."""
+    """``rgb`` (sRGB 0..255, rows ``y_cm`` by columns ``x_cm``) with the falls laid over it.
+
+    ``hidden``, asked only when a fall comes near, gives how much of each pixel what the
+    style draws over the ground hides, such as the crowns; the foam and mist go under it.
+    """
     style = FALL_STYLES.get(layer)
     if not style or falls is None or not len(falls):
         return rgb
     xs, ys = np.asarray(x_cm, np.float64) / 100, np.asarray(y_cm, np.float64) / 100
     reach = (
-        falls[:, _HALF_WIDTH] + falls[:, _TOP_LEN] + style["spread"][2]
+        falls[:, _HALF_WIDTH] * (1.0 + style["soft"]) + falls[:, _TOP_LEN] + style["spread"][2]
         + 3 * style["pool_radius"][2]
     )  # fmt: skip
     near = (
@@ -178,6 +191,7 @@ def draw_falls(
     )
     foam = np.asarray(style["foam"], np.float32)
     mist_rgb = np.asarray(style["mist_rgb"], np.float32)
+    over = hidden() if hidden is not None and near.any() else None
     for fall, fall_reach in zip(falls[near], reach[near], strict=True):
         cols = np.flatnonzero(np.abs(xs - fall[_X]) <= fall_reach)
         rows = np.flatnonzero(np.abs(ys - fall[_Y]) <= fall_reach)
@@ -187,6 +201,9 @@ def draw_falls(
         foam_alpha, mist_alpha = _fall_alpha(
             fall, style, xs[cols], ys[rows], surface_m[window], px_m
         )
+        if over is not None:
+            seen = 1.0 - np.clip(over[window], 0.0, 1.0)
+            foam_alpha, mist_alpha = foam_alpha * seen, mist_alpha * seen
         part = rgb[window]
         misty = part + mist_alpha[..., None] * (mist_rgb - part)
         foamy = misty + foam_alpha[..., None] * (foam - misty)

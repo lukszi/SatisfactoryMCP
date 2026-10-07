@@ -128,6 +128,7 @@ class FallsStyle(TypedDict):
     above_m: float
     strands: float
     pool_below: float
+    soft: float
 
 
 # -------------------------------------------------------------------- terrain, satellite

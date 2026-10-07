@@ -424,7 +424,8 @@
   "top": 0.45,
   "above_m": 3.0,
   "strands": 0.35,
-  "pool_below": 0.4
+  "pool_below": 0.4,
+  "soft": 0.5
  },
  "ground": "bake",
  "rock_top": {
