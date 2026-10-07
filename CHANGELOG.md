@@ -133,6 +133,9 @@ Planned as 0.2.0.
   map moves by a level or two, and fewer pixels of the other styles; a 2048 map moves about 500
   painted pixels in each tile tree, a few dozen relief and about ten terrain and satellite.
   Every rendered map style is one version up.
+- Map generator: the open sea's bed is solved by conjugate gradients whose dot products are
+  summed in a fixed order, where scipy's took them from BLAS and its bits followed the
+  number of BLAS threads. The maps are the same bytes, and the solve takes about 2 s less.
 
 ### Deprecated
 

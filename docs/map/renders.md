@@ -1529,9 +1529,12 @@ own, with no fused multiply-add (`colour.weighted_channels`).
   tone shoulder and OKLab both ways at 33,000 columns, whole and in pieces of 32,768, 16,385
   and 7 on 1 and 4 threads; a painted band 16,500 pixels long and a relief band drawn whole
   and in pieces; the 3 × 3 mean against scipy; and that no `@`, `dot`, `matmul`, `einsum`,
-  `tensordot`, `inv` or `solve` is left in `colour.py`, `render/`, `palette/`, `lighting/` and
-  `terrain/sample.py` but the open sea's membrane (below). The two band tests fail with the
-  old luminance.
+  `tensordot`, `inv`, `solve` or `cg` is left in `colour.py`, `render/`, `palette/`,
+  `lighting/` and `terrain/sample.py` but the open sea's membrane, whose `@` is a sparse
+  product (below). The two band tests fail with the old luminance.
+  `tests/mapgen/test_fixed_solve.py`: `fixed_sum` against its order one Python float at a
+  time, `jacobi_cg` against scipy's `cg`, and a membrane solved in processes at 1, 4 and the
+  default BLAS threads to one digest, where scipy's `cg` gave three.
 
 **What it moved** (2026-10-07, build 502094), against the pixel batch's baseline. Until
 game-painted 21, relief and relief dark 8, and terrain and satellite 10, these sums were BLAS's.
@@ -1550,16 +1553,37 @@ game-painted 21, relief and relief dark 8, and terrain and satellite 10, these s
   dominating either way. Drawn in one process, alternating, two bands of 16,384 columns on 2
   threads took 13.4 s with the sums written out against 15.1 and 15.6 s with BLAS.
 
+**The open sea's membrane.** `palette/water/open_sea.py` `membrane` solved its 579,602 cells
+with scipy's `cg`, and the answer's bits followed OpenBLAS's thread count, which defaults to
+the machine's cores (24 here, OpenBLAS's cap). Traced step by step at 1, 4 and 24 threads, the
+first iteration's vectors were the same bits: the sparse product (scipy's own loop), the
+Jacobi step and the updates are elementwise or single-threaded. What differed was every
+reduction `cg` hands to BLAS: `np.linalg.norm(b)` (and so the stopping tolerance), the
+residual's norm, `r . z` and `p . q`, because OpenBLAS splits a long dot product over its
+threads and adds the parts in another grouping. From the second iteration on the steps
+differed, and the answers ended up to 3e-13 m apart. numpy's own sums of the same products
+were the same at every thread count.
+
+- `terrain/solve.py` `jacobi_cg` is scipy's loop step for step, its stopping rule and its
+  first guess included, with every dot product and norm a `fixed_sum`: the products added by
+  halves, each level the second half onto the first, elementwise, an odd last term carried
+  on. The order follows the length alone, so the answer is the same bits at any thread count
+  and in any library; a numba or GPU port adds in the same pairs. `relax` in
+  `terrain/fill.py` uses it too.
+- Its answer lies within 1.4e-13 m of scipy's at 24 threads, nearer than scipy's own at 1 and
+  24 threads (3.2e-13 m), and converges in the same 1,059 steps to the same tolerance. The
+  bed is written into the float32 lattice, which rounds both answers alike: the heights,
+  the ground and the water planes were the same bytes with either solver at 1 and at 24
+  threads, so no map changes.
+- It is faster: 4.5 s against scipy's 6.6 s at 24 threads and 4.9 s at one, best of three
+  on the captured system, as it reuses its scratch arrays. The membrane is solved once a
+  render, at any size.
+- The other sparse solves, `spsolve` in `terrain/fill.py` (the seam band, the holes and the
+  perched water: 159 systems a run, up to 55,000 cells), gave the same bits at 1, 4 and 24
+  threads, every one of them.
+
 Not covered:
 
-- **The sparse solves.** The open sea's membrane (`palette/water/open_sea.py` `membrane`) and
-  the field's fills (`terrain/fill.py`, which the perched water reads too) solve with scipy's
-  `cg`, whose dot products and norms are BLAS, and `spsolve`. OpenBLAS splits a long dot
-  product over its threads, and its thread count defaults to the machine's cores (24 here,
-  OpenBLAS's cap): `cg` on a 160,000-cell membrane returned other bits at 1, 4 and 24
-  threads; `spsolve` the same bits. Neither a piece, a draw thread nor the sheet's width
-  reaches them, as they solve the whole field once, but another machine can lay another sea
-  bed.
 - **Transcendental functions.** numpy's float32 `cbrt`, `power` and `exp` take the processor's
   vector paths, which differ between processors (AVX-512 against AVX2). They are elementwise
   and read no width, checked at every width and offset when the pieces came, but they are not
