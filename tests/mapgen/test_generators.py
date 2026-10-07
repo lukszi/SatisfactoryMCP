@@ -56,6 +56,7 @@ from mapgen.enhance.upscaler import (
     ENHANCE_URL,
 )
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_2X_PX, RENDER_PX
+from mapgen.gamedata.meshes import CookedMesh
 from mapgen.gamedata.placements import EXCLUDED_MESHES, EXCLUDED_OWNERS
 from mapgen.gamedata.rocks.cliffs import rasterise_cliffs
 from mapgen.lighting.hillshade import (
@@ -845,7 +846,8 @@ def test_the_direct_pass_drops_what_the_field_drops_and_counts_it_the_same():
     prepared, dropped = direct_placements(sweep, geometry)
     frame = {"width": 128, "height": 32, "x0_cm": x0, "y0_cm": y0, "scale_cm": 100.0}
     bounds = (verts.min(0) - 1, verts.max(0) + 1)
-    field = rasterise_cliffs(sweep, {m: (*g, *bounds) for m, g in geometry.items()}, frame, False)
+    cooked = {m: CookedMesh(*g, *bounds) for m, g in geometry.items()}
+    field = rasterise_cliffs(sweep, cooked, frame, False)
     want = {"owner": 1, "excluded_mesh": 1, "no_geometry": 1, "arch": 1, "oversize": 1}
     assert dropped == field["dropped"] == want
     assert [entry.mesh for entry in prepared] == [rock + "Slab"] and field["placements_used"] == 1
