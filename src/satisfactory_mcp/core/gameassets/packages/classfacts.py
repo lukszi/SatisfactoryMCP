@@ -40,24 +40,30 @@ class AssetIndex:
                 self._by_leaf.setdefault(leaf.lower(), []).append(path)
 
     @staticmethod
-    def _directory(package: str) -> str:
-        """A package path's directory below its mount point, case-folded. The mount is dropped
-        because it is the part the two spellings genuinely disagree on; what is left is a
-        substring of the container path, which is what the namesake guard tests for."""
-        directory = package.rsplit("/", 1)[0]
+    def _folder_tail(package: str) -> str:
+        """How the container folder of a package path ends, case-folded: ``/content/<dir>``
+        below ``/Game/`` or ``/Engine/``, ``/<plugin>/content/<dir>`` below a plugin. The
+        mount is dropped because it is the part the two spellings genuinely disagree on."""
+        directory = package.rsplit("/", 1)[0] + "/"
         for root in MOUNT_ROOTS:
             if root in directory:
-                return directory.split(root, 1)[-1].strip("/").lower()
-        return directory.strip("/").lower()
+                return f"/content/{directory.split(root, 1)[-1]}".rstrip("/").lower()
+        plugin, _, rest = directory.strip("/").partition("/")
+        return f"/{plugin}/content/{rest}".rstrip("/").lower()
 
     def path_for(self, class_package: str) -> str | None:
-        """The container path of a class package, guarded against namesakes."""
+        """The container path of a class package, guarded against namesakes by whole folder
+        names: ``Cliff/Mesh`` matches neither ``Cliff/Mesh_Old`` nor ``Old/Cliff/Mesh``."""
         leaf = class_package.rsplit("/", 1)[-1]
         candidates = self._by_leaf.get(leaf.lower())
         if not candidates:
             return None
-        directory = self._directory(class_package)
-        matches = [path for path in candidates if directory in path.replace("\\", "/").lower()]
+        tail = self._folder_tail(class_package)
+        matches = [
+            path
+            for path in candidates
+            if path.replace("\\", "/").rsplit("/", 1)[0].lower().endswith(tail)
+        ]
         if not matches:
             return None
         exact = [

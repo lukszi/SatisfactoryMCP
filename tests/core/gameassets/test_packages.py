@@ -206,6 +206,38 @@ def test_the_namesake_guard_still_chooses_by_directory(index: AssetIndex) -> Non
     )
 
 
+def test_the_namesake_guard_matches_whole_folder_names() -> None:
+    """``Cliff/Mesh`` is a prefix of ``Cliff/Mesh_Old``, and the old copy is listed first."""
+    cliff = f"{GAME}/World/Environment/Rock/Cliff"
+    index = AssetIndex(
+        FakeStore(
+            [f"{cliff}/Mesh_Old/CliffPillar_03.uasset", f"{cliff}/Mesh/CliffPillar_03.uasset"]
+        )
+    )
+    package = "/Game/FactoryGame/World/Environment/Rock/Cliff/{}/CliffPillar_03"
+    assert index.path_for(package.format("Mesh")) == f"{cliff}/Mesh/CliffPillar_03.uasset"
+    assert index.path_for(package.format("Mesh_Old")) == f"{cliff}/Mesh_Old/CliffPillar_03.uasset"
+    assert index.path_for("/Game/FactoryGame/World/Environment/Cliff/Mesh/CliffPillar_03") is None
+
+
+def test_a_plugin_path_resolves_below_the_plugins_content() -> None:
+    plugins = "../../../Engine/Plugins"
+    index = AssetIndex(
+        FakeStore(
+            [
+                f"{plugins}/2D/Paper2D/Content/DefaultSpriteMaterial.uasset",
+                f"{plugins}/FX/Niagara/Content/DefaultAssets/DefaultSpriteMaterial.uasset",
+            ]
+        )
+    )
+    assert index.path_for("/Paper2D/DefaultSpriteMaterial") == (
+        f"{plugins}/2D/Paper2D/Content/DefaultSpriteMaterial.uasset"
+    )
+    assert index.path_for("/Niagara/DefaultAssets/DefaultSpriteMaterial") == (
+        f"{plugins}/FX/Niagara/Content/DefaultAssets/DefaultSpriteMaterial.uasset"
+    )
+
+
 def test_a_reference_to_nothing_still_resolves_to_nothing(index: AssetIndex) -> None:
     assert index.path_for("/Game/FactoryGame/World/Environment/Rock/Mesh/SM_NotHere") is None
     assert index.path_for("/Game/Somewhere/Else/CliffPillar_01") is None

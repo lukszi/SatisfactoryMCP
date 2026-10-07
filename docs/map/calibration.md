@@ -294,8 +294,14 @@ each instance's source code (`MESH_FAMILY_SHIFT`), and the cache gains a family 
 cache is rasterised again once). `mesh_surface` draws a rock pixel through `rock_surface` with
 that family, so it takes the family's tint and its top layer on the up-facing faces exactly as
 a cliff does; a rock with no family keeps the area's rock. On build 502094 the 376
-`CliffPillar_03` placements are 137 plain cliff, 128 grass, 57 forest, 21 red jungle, 7 sand,
-5 red grass and 21 with no family; all 32 lagoon stacks are forest.
+`CliffPillar_03` placements are 137 plain cliff, 128 grass, 57 forest, 21 red jungle, 25 sand,
+5 red grass and 3 with no family; all 32 lagoon stacks are forest.
+
+Those counts read the mesh from its own package in `Rock/Cliff/Mesh/`. Before render meshes
+reader version 4 and rock families reader version 3 (2026-10-07), the asset index matched the
+folder `Mesh` as a prefix of `Mesh_Old` and read the unused copy there: another shape (3,510
+Nanite triangles, 48.6 m tall, against 67,202 and 38.7 m) with no material of its own, so 18
+placements without an override material had no family instead of sand.
 
 ### The land rules, measured (2026-10-06)
 

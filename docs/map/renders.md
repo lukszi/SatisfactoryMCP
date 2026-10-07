@@ -515,6 +515,31 @@ is the honest way to draw without the geometry: it draws **recipe 2 whole** — 
 lattice split, no de-terracing — and records that recipe number, so a before/after against it
 is a comparison of two recipes rather than of one recipe against half of itself.
 
+### Triangles wider than 256 texels (2026-10-07)
+
+`MaxZRaster.add` buckets triangles by the span of their box, up to `MAX_SPAN` (256) texels,
+and dropped every wider one without a count. A wider box is now scanned in tiles of 256
+texels, clipped to the raster first. A tile tests the same sample points against the same
+triangle as one unbounded bucket would, so the tiling changes no texel and no height, and a
+narrower triangle takes the path it always took.
+
+Measured on build 502094, counting every pass with a rasteriser that only counts:
+
+| Pass | Wider than 256 texels | Of them on the raster |
+| --- | --- | --- |
+| field cliffs, 1 m | 3 | 0 |
+| field top, 1 m | 3,538 (scenery arches) | 0 |
+| render direct, 2048 / 16384 / 32768 | 0 / 31 / 258 | 0 / 0 / 85 |
+| render top, 2048 / 16384 / 32768 | 0 / 91 / 1,433 | 0 / 0 / 0 |
+| render meshes and Titan trees, all three sizes | 0 | 0 |
+| crown sprites, 12.5 cm | 0 (the widest spans 62) | |
+
+So the field's planes are unchanged, and only the 32768 direct raster gains anything: the 85
+triangles that left two `CliffSide_01` flat tops open, about 19,000 m² around (-2115, 79) and
+(-1437, 31). Scanning them adds 229 tiles across the sheet's bands. The heightfield generator
+is version 6, which moves `cliff_geometry` and so every direct and top cache; `render_meshes`
+is reader version 4 and `titan_trees` 2. The paint store keeps generator version 3.
+
 ## 25. Renders after the terrain work: recipe 4 (2026-10-05)
 
 Four ideas from the terrain study (section 22) were tried on the map renders. Each was

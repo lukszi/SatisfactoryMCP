@@ -158,6 +158,12 @@ Planned as 0.2.0.
   first, the painted layer put its sea meshes into the light every layer is relit with, and
   a run without the painted layer baked the light without tree shadows. A full render of
   every layer is unchanged.
+- Map generator: a triangle wider than 256 texels of a raster was dropped, which left two flat
+  cliff tops open in a full-size render. It is rasterised now. The heightfield generator is
+  version 6 though the field itself is unchanged, so the next render rebuilds its rock caches.
+- Map generator: `CliffPillar_03` was read from the game's unused `Mesh_Old` copy, another
+  shape, and 18 of its 376 placements lost their sand family. Asset paths now match a folder
+  by whole names.
 
 ## [0.1.0] - 2026-09-27
 

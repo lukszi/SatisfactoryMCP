@@ -574,3 +574,16 @@ mesh pixels only. Leaving the coral crowns out changes pixels under them only, a
 
 - In a lit run the coral standing in the sea keeps the noon light whatever sun the page
   picks, and takes no cast shadow.
+
+**The paint store keeps the coral (measured 2026-10-07).** The 1,384 coral trees, of 99,073,
+still write the crown-top and canopy planes. Without them the crown top loses 63,997 texels
+and the canopy 289,406 (111,343 by a tenth of cover or more). Neither is a second drawing:
+
+- The canopy plane is weighted by `canopy_kept`, 0.0 while game-painted draws crowns, so
+  leaving the coral out of it changed no unlit pixel at 2048.
+- The crown top is the light's crown occluder, which casts the coral's tree shadow. Leaving
+  the coral out took that shadow away: 32 of the light pyramid's 85 horizon tiles changed,
+  and 571 pixels of the lit painted pyramid at 2048, by at most 21 levels. A coral tree
+  standing in the sea casts no other shadow.
+
+So the paint store stays at generator version 3.
