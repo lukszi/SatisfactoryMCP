@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import struct
 import time
-from typing import NamedTuple, TypeAlias, TypedDict
+from typing import NamedTuple, TypeAlias, TypedDict, TypeVar
 
 import numpy as np
 
 from mapgen.gamedata.install import open_package
-from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I64Grid
+from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I32Grid, I64Grid
 from satisfactory_mcp.core.gameassets import nanite, staticmesh
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import (
@@ -64,6 +64,8 @@ DIRECT_SAMPLES_MIN = 1
 
 #: ``(Origin, BoxExtent)``: a mesh's local box about its origin, in cm.
 MeshBox: TypeAlias = tuple[tuple[float, float, float], tuple[float, float, float]]
+
+_Tris = TypeVar("_Tris", I32Grid, I64Grid)
 
 
 class CookedMesh(NamedTuple):
@@ -150,9 +152,7 @@ def _inside_bounds(verts: F32Grid, low: F64Grid, high: F64Grid) -> bool:
     return bool(inside.mean() >= BOUNDS_INSIDE_MIN)
 
 
-def clamp_triangles(
-    verts: F32Grid, tris: I64Grid, low: F64Grid, high: F64Grid
-) -> tuple[I64Grid, int]:
+def clamp_triangles(verts: F32Grid, tris: _Tris, low: F64Grid, high: F64Grid) -> tuple[_Tris, int]:
     """``tris`` less every triangle with a vertex outside ``low``..``high``, and how many
     that dropped; ``tris`` itself when every vertex is inside."""
     keep = ((verts >= low) & (verts <= high)).all(axis=1)
@@ -250,7 +250,7 @@ def read_mesh_geometry(
     }
 
 
-def winding_sign(verts: F32Grid | F64Grid, tris: I64Grid) -> float:
+def winding_sign(verts: F32Grid | F64Grid, tris: I32Grid | I64Grid) -> float:
     """+1 if this mesh's triangle normals point outward, -1 if inward, 0 if it cannot tell.
 
     A max-Z field wants only the up-facing half of a closed rock, and which half that is

@@ -58,7 +58,7 @@ BUDGETS: dict[str, int] = {
     "tools": 0,
     "tools/collectibles": 7,
     "tools/mapgen/src/mapgen": 0,
-    "tools/mapgen/src/mapgen/commands": 15,
+    "tools/mapgen/src/mapgen/commands": 12,
     "tools/mapgen/src/mapgen/enhance": 1,
     "tools/mapgen/src/mapgen/gamedata": 0,
     "tools/mapgen/src/mapgen/gamedata/ground": 0,

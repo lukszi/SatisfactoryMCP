@@ -158,7 +158,7 @@ def _cliffs(run: _Run, sweep: dict, frame: dict) -> tuple[dict, dict]:
     return meshes, cliffs
 
 
-def _compose(run: _Run, frame: dict, cliffs: dict) -> dict:
+def _compose(run: _Run, frame: dict, cliffs: dict) -> field.FieldLayers:
     """The fill raster decoded, and the three layers fused onto the output grid."""
     started = time.time()
     fill_cm, fill_valid = read_fill_raster(run.reader.store)
@@ -171,7 +171,9 @@ def _compose(run: _Run, frame: dict, cliffs: dict) -> dict:
     return fused
 
 
-def _top(run: _Run, sweep: dict, frame: dict, fused: dict) -> tuple[dict, I16Grid, int]:
+def _top(
+    run: _Run, sweep: dict, frame: dict, fused: field.FieldLayers
+) -> tuple[dict, I16Grid, int]:
     """Arches and foliage boulders, folded over the field into the ``top`` plane."""
     print("rasterising arches and foliage boulders for the top plane")
     top = rasterise_top(sweep, frame, run.reader, run.loud)
@@ -185,8 +187,8 @@ def _top(run: _Run, sweep: dict, frame: dict, fused: dict) -> tuple[dict, I16Gri
 
 
 def _water(
-    run: _Run, sweep: dict, fused: dict, decoder: ModuleType, image_mod: ModuleType
-) -> tuple[dict, dict]:
+    run: _Run, sweep: dict, fused: field.FieldLayers, decoder: ModuleType, image_mod: ModuleType
+) -> tuple[dict, validate.WaterChecks]:
     """The water channel, refused unless it passes its own four gates."""
     print("classifying the map artwork's water and levelling it on the water volumes")
     started = time.time()
@@ -203,7 +205,9 @@ def _water(
     return water, water_checks
 
 
-def _validate(run: _Run, frame: dict, fused: dict) -> tuple[dict, dict]:
+def _validate(
+    run: _Run, frame: dict, fused: field.FieldLayers
+) -> tuple[validate.FieldValidation, validate.TerrainCheck]:
     """The field on the node table, and the bare terrain on the landscape's nodes."""
     started = time.time()
     validation = validate.validate_field(fused["height_dm"], fused["prov"])

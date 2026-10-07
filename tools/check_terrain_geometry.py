@@ -50,7 +50,7 @@ from mapgen.common import LOCAL_DIR, base_parser, require_gen
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.level.landscape import drop_offsets, landscape_frame
 from mapgen.gamedata.level.sweep import sweep_levels
-from mapgen.gamedata.meshes import ROCK_DIRS, MeshBounds
+from mapgen.gamedata.meshes import ROCK_DIRS, CookedMesh, MeshBounds
 from mapgen.gamedata.nodes import NODE_TABLE
 from mapgen.gamedata.rocks.cliffs import rasterise_cliffs
 from mapgen.terrain.heightfield.validate import VALIDATION_TRIM
@@ -73,7 +73,7 @@ RUNGS = ("hull", "lod0", "best")
 Mesh: TypeAlias = tuple[F32Grid, I64Grid]
 
 #: One rung's mesh, ready to rasterise: ``(vertices, triangles, low, high)``, bounds padded.
-Geometry: TypeAlias = tuple[F32Grid, I64Grid, F64Grid, F64Grid]
+Geometry: TypeAlias = CookedMesh
 
 
 class MeshRungs(TypedDict):
@@ -259,7 +259,7 @@ def geometry_for(rung: str, read: RungRead) -> dict[str, Geometry]:
             if source is None:
                 continue
             verts, tris = source
-        out[mesh] = (
+        out[mesh] = CookedMesh(
             np.ascontiguousarray(verts, dtype=np.float32),
             np.ascontiguousarray(tris, dtype=np.int64),
             low - pad,

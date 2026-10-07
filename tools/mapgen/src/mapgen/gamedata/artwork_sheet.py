@@ -16,6 +16,7 @@ from satisfactory_mcp.core.gameassets.container import (
     UBULK_BYTES,
     read_slice,
 )
+from satisfactory_mcp.core.gameassets.imaging import BlockDecoder, ImageFactory
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.textures import decode_bc1_rgba
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -122,7 +123,9 @@ def seam_residuals(tiles: dict[str, Image]) -> dict:
     }
 
 
-def decode_slices(store: IoStore, decoder: ModuleType, image_mod: ModuleType) -> dict[str, Image]:
+def decode_slices(
+    store: IoStore, decoder: BlockDecoder, image_mod: ImageFactory[Image]
+) -> dict[str, Image]:
     """Mip 0 of every slice, BC1-decoded, keyed by slice name."""
     tiles: dict[str, Image] = {}
     for name in SLICES:
