@@ -231,6 +231,11 @@ Planned as 0.2.0.
 - Map renders take the sun term from one float32 copy, the live-sun page's own, in place of
   several copies in mixed precision. A few dozen lit pixels of a 2048 map move by one level.
   Every rendered map style is one version up for these fixes.
+- Lit map renders draw the edge of the void, a pit's rim and a coast past the world's edge as
+  the smooth curve the unlit colour has. The light took the void's soft edge and rim as land
+  up to the field's last 1 m texel, so it drew a staircase with a light or dark rim there, and
+  a lone texel with data inside the void as a dark square. The live-sun light pyramid's land
+  weight changes the same way. Every rendered map style is one more version up for this.
 
 ## [0.1.0] - 2026-09-27
 

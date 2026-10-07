@@ -31,6 +31,7 @@ from mapgen.palette.water.shore import (
 )
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_alpha, water_depth_fraction
 from mapgen.render.lift import blend_regimes, composite_top
+from mapgen.render.void import DrawnVoid, drawn_void, land_weight
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.sample import (
     AxisTaps,
@@ -212,7 +213,8 @@ class BandSurface:
 
     ``weight`` is the rock's coverage and ``rock_seen`` how much of it stands proud, both None
     without the direct regime; ``top_weight`` the overlay's lift; ``level_m`` the water level,
-    NaN where there is none.
+    NaN where there is none; ``void`` the open sea's void as every layer draws it, None where
+    it draws none.
     """
 
     z_m: FloatGrid
@@ -228,6 +230,7 @@ class BandSurface:
     mesh_class: U8Grid | None
     water: WaterTerms
     borrow: FloatGrid
+    void: DrawnVoid | None
 
 
 class SeamPlanes(NamedTuple):
@@ -352,11 +355,11 @@ def band_surfaces(
             top_weight=top_weight, water_m=water_m, level_m=level_m, wet=wet, measured=measured,
             mesh_weight=mesh_weight, mesh_class=mesh_class,
             water=_water_terms(sources, linear, lifted, planes), borrow=borrow,
+            void=drawn_void(missing, sources.sea, linear, weight, lifted),
         ))  # fmt: skip
     light = None
     if sources.capture is not None:
-        lit = surfaces[True]
-        light = _light_planes(grid, lit.z_m, missing, lit.water)
+        light = _light_planes(grid, surfaces[True])
     return {seabed: surfaces[seabed] for seabed in seabeds}, PieceOwed(seam, light)
 
 
@@ -390,7 +393,7 @@ def settle_band(sources: GroundSources, rows: Span, pieces: Sequence[PieceOwed])
 def _read_only(surface: BandSurface) -> BandSurface:
     """``surface`` with its arrays and its water's marked read-only, so no layer's painter
     changes what the next one reads."""
-    planes = [*vars(surface).values(), *surface.water.values()]
+    planes = [*vars(surface).values(), *surface.water.values(), *(surface.void or ())]
     for plane in planes:
         if isinstance(plane, np.ndarray):
             plane.flags.writeable = False
@@ -429,13 +432,11 @@ def _water_terms(
     return water
 
 
-def _light_planes(
-    grid: BandSampling, z_m: FloatGrid, missing: BoolMask, water: WaterTerms
-) -> LightPlanes:
+def _light_planes(grid: BandSampling, lit: BandSurface) -> LightPlanes:
     """The piece's output pixels for the light stage: the heights and the land weight."""
     kept = (grid.rows.kept, grid.cols.kept)
-    dry = np.where(missing, 0.0, 1.0 - water["cover"])
-    return LightPlanes(z_m[kept], dry[kept])
+    land = land_weight(lit.missing, lit.water["cover"], lit.void)
+    return LightPlanes(lit.z_m[kept], land[kept])
 
 
 def _direct_regime(

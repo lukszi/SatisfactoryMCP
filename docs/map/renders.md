@@ -597,7 +597,8 @@ void past the world's edge, and others as sea; and the pits were filled flat. Wh
   the same way: a light rim, then from the artwork's grey to black in a pit, and from a lit
   tone of the page's navy (#424f5a) to the navy itself past the edge. The void is softened
   over 2 m, and a pixel shared by sea and void counts its water against the part that is not
-  void, so the void's edge is never drawn as land.
+  void, so the void's edge is never drawn as land. The light fades out with the void as it is
+  drawn (section 29, "The land weight").
 - **The sea fades into the void.** Beside the open sea the bed runs on under the void, and
   the void's cover rises from 0 at its edge to 1 over the same falloff, with no lit edge and
   no rim. A pixel takes its sea share from the ocean around it, Gaussian-weighted, so a coast
@@ -653,7 +654,8 @@ The band loop skips arithmetic whose answer it already has, and the tiles are th
   the piece's columns ("Column pieces", section 40): when they are all zero the sample is 0.0
   everywhere, so it is not worked out.
 - **The void is drawn where it is.** Where its cover and rim are both 0, `with_void`'s blend
-  gives back the pixel, so only the pixels under one of them are blended. A piece with no void
+  gives back the pixel, so only the pixels under one of them are blended. The four planes are
+  sampled once a piece for every layer and the light (`render/void.py`). A piece with no void
   under it and no pixel without data returns before the void's four planes are sampled, and
   `_sample_water_surface` and `_rock_kept` skip the cover there too.
 - **Water is mixed where it is.** The terrain and satellite styles (`water_composite`), the
