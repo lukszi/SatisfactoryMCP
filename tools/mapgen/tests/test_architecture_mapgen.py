@@ -39,7 +39,7 @@ ALLOWED: dict[str, frozenset[str]] = {
     "terrain": frozenset({"common", "cache", "jit", "gamedata", "terrain"}),
     "lighting": frozenset({"common", "colour", "pools", "jit", "gamedata", "terrain", "lighting"}),
     "palette": frozenset(
-        {"common", "colour", "pools", "cache", "gamedata", "terrain", "lighting", "palette"}
+        {"common", "colour", "pools", "cache", "jit", "gamedata", "terrain", "lighting", "palette"}
     ),
     "tiles": frozenset({"common", "pools", "gamedata", "lighting", "tiles"}),
     "render": frozenset(

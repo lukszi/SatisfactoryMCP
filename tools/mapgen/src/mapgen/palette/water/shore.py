@@ -15,9 +15,10 @@ from typing import TypedDict
 import numpy as np
 from scipy import ndimage
 
+from mapgen.jit import kernels_on
 from mapgen.palette.scene import FloatGrid, WaterTerms
 from mapgen.palette.schema import FoamStyle, RiverShoreStyle, ShoreOptics, WetBandStyle
-from mapgen.palette.water.wet import cover_mix
+from mapgen.palette.water.wet import cover_mix, float32_planes
 from mapgen.terrain.render_meshes import MESH_ROCK
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -190,6 +191,10 @@ def water_composite(
     Optional, per style: ``wet_band`` darkens the sand just above the line and ``foam`` lays a
     faint line over the shallowest water.
     """
+    planes = _composite_planes(water, shade)
+    if kernels_on() and float32_planes(land, shallow, deep, *planes):
+        shading = (shade_floor, shade_range)
+        return _composite_compiled(land, water, planes, optics, (shallow, deep), shading)
     land = wet_band(land, water, optics.get("wet_band"))
     banks = water.get("banks", water["ocean"])
     depth = optical_depth(water, optics.get("river"))
@@ -205,6 +210,37 @@ def water_composite(
     if stroke:
         rgb = rgb * (1.0 - stroke * water["edge"][..., None])
     return add_foam(rgb, water, optics.get("foam"), np.float32(255.0))
+
+
+def _composite_planes(water: WaterTerms, shade: FloatGrid) -> tuple[FloatGrid, ...]:
+    """The band's planes ``kernels.water_composite`` reads, in its order."""
+    banks = water.get("banks", water["ocean"])
+    return (water["cover"], water["depth"], banks, shade, water["above_m"], water["edge"],
+            water["depth_m"], water["below_m"], water["ocean"])  # fmt: skip
+
+
+def _composite_compiled(
+    land: F32Grid,
+    water: WaterTerms,
+    planes: tuple[FloatGrid, ...],
+    optics: ShoreOptics,
+    colours: tuple[F32Grid, F32Grid],
+    shading: tuple[float, float],
+) -> F32Grid:
+    """``water_composite`` by the kernel; the fade's ``exp`` is worked out here, by numpy."""
+    from mapgen.palette.water import kernels
+
+    depth = optical_depth(water, optics.get("river"))
+    transmit = np.exp(-depth / np.float32(optics["clarity_m"]))
+    band, foam = optics.get("wet_band") or {}, optics.get("foam") or {}
+    band_m, strength = band.get("m") or 0.0, foam.get("strength") or 0.0
+    tint = np.asarray(band["tint"] if band_m else (1.0, 1.0, 1.0), np.float32)
+    froth = (foam["max_depth_m"], foam["width_m"]) if strength else (1.0, 1.0)
+    white = np.float32(255.0) * np.float32(foam.get("white", 1.0))
+    knobs = [band_m, optics["edge_alpha"], optics["wet_darken"], *shading,
+             optics.get("stroke", 0.0), strength, *froth, white]  # fmt: skip
+    style = (*colours, tint, np.array(knobs, np.float32))
+    return kernels.water_composite(land, planes, transmit, WET_MIX_MOST, style)
 
 
 def blend_where(
