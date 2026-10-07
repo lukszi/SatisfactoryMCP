@@ -134,7 +134,9 @@ worker and ran back to back, and that worker finished last. The suite now runs
 and later moves the tail of a busy worker's queue to an idle one. `conftest.py` puts each
 whole-folder test at the head of a different worker's opening run (`heads_of_shares` in
 `tests/support/fanout.py`), so the three start together on three workers. Its hook runs last,
-because the split depends on the count `-m` leaves. Each test fans its saves out through
+because the split depends on the count `-m` leaves. The default run's two pyright runs in
+`tests/architecture/test_typing.py` carry the `long` marker and are spread the same way: next to
+each other in one worker's run, they once ran back to back, 29 s of a 44 s default run. Each test fans its saves out through
 `tests/support/fanout.py` at a third of the logical CPUs, so that the three side by side about
 fill the machine. While they ran one after another, each at half the CPUs, widths 4, 8, 16, 24
 and 32 measured 43.9, 32.5, 22.6, 25.0 and 24.0 s for the integration set. `in_order` returns

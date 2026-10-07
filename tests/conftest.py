@@ -1,7 +1,7 @@
 """Suite-wide fixtures: the game data, the committed reference world, and private user data.
 
 docs/DEVELOPING.md ("Test suite") explains the reference world, how its projection is re-cut,
-and why each whole-folder test starts on a worker of its own.
+and why each of the longest tests starts on a worker of its own.
 """
 
 from __future__ import annotations
@@ -23,17 +23,22 @@ from tests.support.reference_world import FIXTURE_SAVE, FIXTURE_WORLD, SPIRE_COA
 from tests.support.user_data import private_user_data
 from tests.support.web import client_over
 
-#: Marks the tests that parse every save on the machine; each opens a worker's first share.
-WHOLE_FOLDER = "whole_folder"
+#: The markers of the longest tests, ``whole_folder`` for the ones that parse every save on the
+#: machine; each such test opens a worker's first share.
+LONG_MARKERS = ("whole_folder", "long")
+
+
+def _is_long(item: pytest.Item) -> bool:
+    return any(item.get_closest_marker(name) for name in LONG_MARKERS)
 
 
 @pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(config, items):
-    """Start each ``whole_folder`` test first on a worker of its own, keeping every other
+    """Start each of the longest tests first on a worker of its own, keeping every other
     test's relative order. Last, so the count it splits is the count left after ``-m``."""
-    hoisted = [item for item in items if item.get_closest_marker(WHOLE_FOLDER)]
+    hoisted = [item for item in items if _is_long(item)]
     if hoisted:
-        rest = [item for item in items if not item.get_closest_marker(WHOLE_FOLDER)]
+        rest = [item for item in items if not _is_long(item)]
         workers = getattr(config, "workerinput", {}).get("workercount", 1)
         items[:] = heads_of_shares(hoisted, rest, workers)
 

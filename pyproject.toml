@@ -84,6 +84,7 @@ pythonpath = [".", "tools/mapgen/src"]
 markers = [
     "integration: requires the real game install / save files",
     "whole_folder: walks every .sav on the machine; the longest tests in the suite",
+    "long: one of the longest default tests; started first, on a worker of its own",
 ]
 # Why the default run deselects integration, why eight workers and why work stealing:
 # docs/DEVELOPING.md, "Test suite".
