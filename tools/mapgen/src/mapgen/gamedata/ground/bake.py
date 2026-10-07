@@ -145,7 +145,7 @@ def _mip0(
     """The cell's mip 0 as (h, w, 3) uint8, or ``None`` when its layout is not the known one."""
     body = view.pkg.body(export)
     tags, _end = property_tags(body, view.pkg.names)
-    size = next((raw for name, _kind, raw, _v in tags if name == "ImportedSize"), None)
+    size = next((tag.payload for tag in tags if tag.name == "ImportedSize"), None)
     if size is None or len(size) != 8:
         return None
     width, height = struct.unpack("<ii", size)

@@ -95,7 +95,7 @@ def is_water_class(name: str) -> bool:
 def _box_sphere_bounds(payload: bytes, names: list[str]) -> _BoundsPair | None:
     """An ``FBoxSphereBounds``, unwrapping the ``CachedBounds`` container it arrives in."""
     entries, _end = property_tags(payload, names, 0)
-    found = {name: raw for name, _kind, raw, _value in entries if name is not None}
+    found = {tag.name: tag.payload for tag in entries if tag.name is not None}
     if "Value" in found:
         return _box_sphere_bounds(found["Value"], names)
     pair: _BoundsPair | None = bounds_pair(found)
@@ -114,14 +114,14 @@ def _agg_geom_box(payload: bytes, names: list[str]) -> Corners | None:
     low = [math.inf] * 3
     high = [-math.inf] * 3
     found = 0
-    for name, _kind, array, _value in entries:
+    for name, _kind, array, _flags, _index in entries:
         if name not in ("ConvexElems", "BoxElems") or len(array) < 4:
             continue
         count = struct.unpack_from("<I", array, 0)[0]
         position = 4
         for _ in range(count):
             elements, position = property_tags(array, names, position)
-            for inner, _k, blob, _v in elements:
+            for inner, _k, blob, _flags, _index in elements:
                 if inner == "ElemBox" and len(blob) >= 48:
                     minimum = struct.unpack_from("<3d", blob, 0)
                     maximum = struct.unpack_from("<3d", blob, 24)

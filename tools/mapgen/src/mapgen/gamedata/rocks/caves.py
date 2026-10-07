@@ -15,9 +15,9 @@ from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM,
 from mapgen.gamedata.install import GameReader
 from mapgen.gamedata.level.sweep import (
     FOLIAGE_CLASSES,
-    flagged_tags,
     foliage_instances,
     quat_axes,
+    tag_payloads,
     world_levels,
 )
 from satisfactory_mcp.core.arrays import BoolMask, F64Grid, I16Grid, I64Grid, U8Grid
@@ -94,14 +94,14 @@ def is_cave_marker(mesh: str) -> bool:
 
 def convex_elems(payload: bytes, names: list[str]) -> list[F64Grid]:
     """``AggGeom.ConvexElems[*].VertexData`` as local (n, 3) float64 arrays."""
-    agg, _ = flagged_tags(payload, names, pos=0)
+    agg, _ = tag_payloads(payload, names, pos=0)
     raw = agg.get("ConvexElems")
     if not raw or len(raw) < 4:
         return []
     out: list[F64Grid] = []
     pos = 4
     for _ in range(struct.unpack_from("<I", raw, 0)[0]):
-        element, pos = flagged_tags(raw, names, pos=pos)
+        element, pos = tag_payloads(raw, names, pos=pos)
         data = element.get("VertexData", b"")
         count = struct.unpack_from("<I", data, 0)[0] if len(data) >= 4 else 0
         if count and len(data) == 4 + 24 * count:
@@ -123,7 +123,7 @@ def cave_volume_hulls(view: PackageView, slot: int, classes: ClassFacts) -> list
     transform = world_transform(view, root, classes)[0]
     if body_setup is None or transform is None:
         return []
-    tags, _ = flagged_tags(view.pkg.body(view.exports[body_setup]), view.pkg.names)
+    tags, _ = tag_payloads(view.pkg.body(view.exports[body_setup]), view.pkg.names)
     if "AggGeom" not in tags:
         return []
     location, quat, scale = transform

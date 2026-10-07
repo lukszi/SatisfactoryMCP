@@ -15,7 +15,7 @@ from typing import NotRequired, TypedDict, TypeGuard
 import numpy as np
 
 from mapgen.common import ReaderStamp
-from mapgen.gamedata.level.sweep import Sweep, flagged_tags, instance_matrices
+from mapgen.gamedata.level.sweep import Sweep, instance_matrices, tag_payloads
 from satisfactory_mcp.core.arrays import F64Grid
 from satisfactory_mcp.core.gameassets.packages import (
     ClassFacts,
@@ -94,7 +94,7 @@ def _instances(
 ) -> F64Grid | None:
     """An instanced component's matrices in world space, rows as UE's (scaled axes, origin)."""
     body = view.pkg.body(view.exports[slot])
-    _props, end = flagged_tags(body, view.pkg.names)
+    _props, end = tag_payloads(body, view.pkg.names)
     mats = instance_matrices(body[end:], None)
     if mats is None:
         return None

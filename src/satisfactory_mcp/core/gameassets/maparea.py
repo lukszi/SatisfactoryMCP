@@ -186,7 +186,7 @@ def _colour_to_area(
     pos = 4
     for index in range(count):
         tags, end = property_tags(blob, view.pkg.names, pos)
-        fields = {name: payload for name, _kind, payload, _value in tags}
+        fields = {tag.name: tag.payload for tag in tags}
         if "MapArea" not in fields:
             raise MapAreaError(
                 "an mColorToArea entry carries no MapArea reference -- the struct this reader "

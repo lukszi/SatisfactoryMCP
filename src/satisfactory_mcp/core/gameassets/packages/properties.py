@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import struct
-from typing import TypeAlias
+from typing import NamedTuple, TypeAlias
 
 __all__ = [
     "PropertyTag",
@@ -23,11 +23,29 @@ Vec3: TypeAlias = tuple[float, float, float]
 #: A component's serialised ``(location, rotation, scale)``, ``None`` where it holds the default.
 RelativeTransform: TypeAlias = tuple[Vec3 | None, Vec3 | None, Vec3 | None]
 
-#: One tag of a property stream: ``(name, type, payload, value byte)``.
-PropertyTag: TypeAlias = tuple[str | None, str | None, bytes, int]
+#: The tag's flag byte (``EPropertyTagFlags``): what follows it, and a bool's value.
+_HAS_INDEX, _HAS_GUID, _HAS_EXTENSIONS, _BOOL_TRUE = 0x01, 0x02, 0x04, 0x10
+#: An extension byte with this bit has two more bytes, the overridable operation and logic.
+_OVERRIDABLE = 0x02
 
 #: The component properties a relative transform is serialised in, in transform order.
 _RELATIVE_KEYS = ("RelativeLocation", "RelativeRotation", "RelativeScale3D")
+
+
+class PropertyTag(NamedTuple):
+    """One tag of a property stream: its name, outer type, payload, flag byte and position in
+    a fixed-size array (0 for a plain property)."""
+
+    name: str | None
+    kind: str | None
+    payload: bytes
+    flags: int
+    array_index: int
+
+    @property
+    def true(self) -> bool:
+        """A ``BoolProperty``'s value, which lives in the flags: its payload is empty."""
+        return bool(self.flags & _BOOL_TRUE)
 
 
 def _skip_property_type(body: bytes, names: list[str], pos: int) -> tuple[int, str | None]:
@@ -43,10 +61,10 @@ def _skip_property_type(body: bytes, names: list[str], pos: int) -> tuple[int, s
 
 
 def property_tags(body: bytes, names: list[str], pos: int = 1) -> tuple[list[PropertyTag], int]:
-    """Walk a tagged-property stream, yielding ``(name, type, payload, value byte)``.
+    """Walk a tagged-property stream to its ``None``; return its tags and the offset after it.
 
-    The value byte follows ``Size`` in the tag and is dead weight for every type except
-    ``BoolProperty``, whose payload is empty and whose value lives there and nowhere else. An
+    After ``Size`` comes the flag byte, which says whether an array index, a GUID or an
+    extension block follows before the payload, and holds a ``BoolProperty``'s value. An
     export body starts one byte in and a nested struct payload starts at 0, which is what *pos*
     is for; the end offset comes back so a ``TArray<FStruct>`` can walk element by element. A
     malformed run stops the walk rather than raising -- a truncated tail costs one actor's
@@ -56,24 +74,24 @@ def property_tags(body: bytes, names: list[str], pos: int = 1) -> tuple[list[Pro
     limit = len(body)
     while pos + 8 <= limit:
         name_index, name_number = struct.unpack_from("<II", body, pos)
-        if name_index == 0 and name_number == 0:  # the None that terminates the stream
-            pos += 8
-            break
         slot = name_index & 0x3FFFFFFF
         name = names[slot] if (name_index >> 30) == 0 and slot < len(names) else None
         pos += 8
+        if name_number == 0 and (name_index == 0 or name == "None"):
+            break
         try:
             pos, kind = _skip_property_type(body, names, pos)
+            size, flags = struct.unpack_from("<iB", body, pos)
+            pos += 5
+            index = struct.unpack_from("<i", body, pos)[0] if flags & _HAS_INDEX else 0
+            pos += (4 if flags & _HAS_INDEX else 0) + (16 if flags & _HAS_GUID else 0)
+            if flags & _HAS_EXTENSIONS:
+                pos += 3 if body[pos] & _OVERRIDABLE else 1
         except (struct.error, IndexError, RecursionError):
             break
-        if pos + 5 > limit:
+        if size < 0 or pos + size > limit:
             break
-        size = struct.unpack_from("<I", body, pos)[0]
-        value_byte = body[pos + 4]
-        pos += 5  # uint32 size, then one byte that is the value of a bool
-        if size > limit - pos + 1:
-            break
-        out.append((name, kind, body[pos : pos + size], value_byte))
+        out.append(PropertyTag(name, kind, body[pos : pos + size], flags, index))
         pos += size
     return out, pos
 

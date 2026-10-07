@@ -11,18 +11,13 @@ from dataclasses import dataclass, field
 from typing import TypedDict
 
 from mapgen.gamedata.install import GameReader
-from mapgen.gamedata.level.curves import (
-    Tag,
-    evaluate,
-    runtime_curves,
-    tag_float,
-    tag_floats,
-    tag_stream,
-)
+from mapgen.gamedata.level.curves import evaluate, runtime_curves, tag_float, tag_floats
 from satisfactory_mcp.core.gameassets.packages import (
     ClassFacts,
     PackageView,
+    PropertyTag,
     class_name_of,
+    property_tags,
     quat_rotate,
     root_component,
     world_transform,
@@ -110,13 +105,13 @@ class _Found:
     exposure: dict[str, float] = field(default_factory=dict[str, float])
 
 
-def _noon(tag: Tag, names: list[str], channels: int) -> list[float] | None:
+def _noon(tag: PropertyTag, names: list[str], channels: int) -> list[float] | None:
     values = [evaluate(curve, NOON_H) for curve in runtime_curves(tag.payload, names)[:channels]]
     return [v for v in values if v is not None] if None not in values else None
 
 
-def _export_tags(view: PackageView, slot: int) -> list[Tag]:
-    return tag_stream(view.pkg.body(view.exports[slot]), view.pkg.names, 1)[0]
+def _export_tags(view: PackageView, slot: int) -> list[PropertyTag]:
+    return property_tags(view.pkg.body(view.exports[slot]), view.pkg.names, 1)[0]
 
 
 def _sky(view: PackageView, slot: int, found: _Found) -> None:
@@ -140,7 +135,7 @@ def _exposure(view: PackageView, slot: int, found: _Found) -> None:
     for tag in _export_tags(view, slot):
         if tag.name != "Settings":
             continue
-        for inner in tag_stream(tag.payload, view.pkg.names)[0]:
+        for inner in property_tags(tag.payload, view.pkg.names, 0)[0]:
             value = tag_float(inner)
             if inner.name in AUTO_EXPOSURE and value is not None:
                 found.exposure[AUTO_EXPOSURE[inner.name]] = value
@@ -214,10 +209,12 @@ def _convex_vertices(view: PackageView, body: int) -> list[tuple[float, float, f
     found: list[tuple[float, float, float]] = []
     names = view.pkg.names
     for agg in (t for t in _export_tags(view, body) if t.name == "AggGeom"):
-        for elems in (t for t in tag_stream(agg.payload, names)[0] if t.name == "ConvexElems"):
+        for elems in (
+            t for t in property_tags(agg.payload, names, 0)[0] if t.name == "ConvexElems"
+        ):
             pos = 4
             for _ in range(struct.unpack_from("<i", elems.payload)[0]):
-                element, pos = tag_stream(elems.payload, names, pos)
+                element, pos = property_tags(elems.payload, names, pos)
                 for data in (t.payload for t in element if t.name == "VertexData"):
                     count = struct.unpack_from("<i", data)[0]
                     if len(data) >= 4 + 24 * count:

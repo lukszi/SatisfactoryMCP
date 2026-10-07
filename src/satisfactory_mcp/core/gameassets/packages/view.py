@@ -54,7 +54,7 @@ class PackageView:
         self.level_slots: set[int] = set()
         self._props: dict[int, dict[str, bytes]] = {}
         self._kinds: dict[int, dict[str, str | None]] = {}
-        self._bools: dict[int, dict[str, int]] = {}
+        self._bools: dict[int, dict[str, bool]] = {}
         for export in self.exports:
             slot = export["slot"]
             path = self.object_path(export["class"])
@@ -93,14 +93,14 @@ class PackageView:
     def _parse_properties(self, slot: int) -> None:
         props: dict[str, bytes] = {}
         kinds: dict[str, str | None] = {}
-        bools: dict[str, int] = {}
+        bools: dict[str, bool] = {}
         entries, _end = property_tags(self.pkg.body(self.exports[slot]), self.pkg.names)
-        for name, kind, payload, value in entries:
-            if name is None or name in props:
+        for tag in entries:
+            if tag.name is None or tag.name in props:
                 continue
-            props[name] = payload
-            kinds[name] = kind
-            bools[name] = value
+            props[tag.name] = tag.payload
+            kinds[tag.name] = tag.kind
+            bools[tag.name] = tag.true
         self._props[slot] = props
         self._kinds[slot] = kinds
         self._bools[slot] = bools
@@ -119,9 +119,7 @@ class PackageView:
         """A ``BoolProperty``'s value, which lives in the tag rather than the payload."""
         if slot not in self._bools:
             self._parse_properties(slot)
-        if name not in self._bools[slot]:
-            return None
-        return bool(self._bools[slot][name])
+        return self._bools[slot].get(name)
 
     def export_ref(self, payload: bytes) -> int | None:
         """An ``FPackageIndex`` pointing at an export in this same package, or None."""
@@ -179,7 +177,8 @@ class PackageView:
         """
         entries, _end = property_tags(payload, self.pkg.names, 0)
         out: JsonObject = {}
-        for name, kind, raw, value in entries:
+        for tag in entries:
+            name, kind, raw = tag.name, tag.kind, tag.payload
             if name is None:
                 continue
             if kind == "StructProperty":
@@ -195,7 +194,7 @@ class PackageView:
             elif kind in ("FloatProperty", "DoubleProperty"):
                 out[name] = read_float(raw)
             elif kind == "BoolProperty":
-                out[name] = bool(value)
+                out[name] = tag.true
             else:
                 out[name] = {"_type": kind, "_raw": raw[:32].hex()}
         return out

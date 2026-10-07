@@ -37,13 +37,13 @@ __all__ = [
     "Sweep",
     "Transform",
     "first_override",
-    "flagged_tags",
     "foliage_instances",
     "instance_matrices",
     "instances_to_world",
     "is_top_foliage",
     "quat_axes",
     "sweep_levels",
+    "tag_payloads",
     "world_level_paths",
     "world_levels",
 ]
@@ -137,54 +137,11 @@ def instances_to_world(
     return world
 
 
-def flagged_tags(body: bytes, names: list[str], pos: int = 1) -> tuple[dict[str, bytes], int]:
-    """Top-level ``{name: payload}`` of a tag stream whose tags carry the 5.x flag byte.
-
-    ``property_tags`` reads the byte after ``Size`` as a bool value; on a foliage component
-    it is a flag set that announces an array index, a GUID or an extension block, and
-    skipping those wrongly loses ``StaticMesh``. Indexed array elements are left out.
-    """
-    out: dict[str, bytes] = {}
-    limit = len(body)
-
-    def skip_type(at: int) -> int:
-        inner = struct.unpack_from("<i", body, at + 8)[0]
-        at += 12
-        for _ in range(inner):
-            at = skip_type(at)
-        return at
-
-    while pos + 8 <= limit:
-        index, number = struct.unpack_from("<II", body, pos)
-        slot = index & 0x3FFFFFFF
-        name = names[slot] if (index >> 30) == 0 and slot < len(names) else None
-        pos += 8
-        if (index == 0 and number == 0) or (name == "None" and number == 0):
-            break
-        try:
-            pos = skip_type(pos)
-            size = struct.unpack_from("<i", body, pos)[0]
-            flags = body[pos + 4]
-        except (struct.error, IndexError, RecursionError):
-            break
-        pos += 5
-        array_index = 0
-        if flags & 1:
-            array_index = struct.unpack_from("<i", body, pos)[0]
-            pos += 4
-        if flags & 2:
-            pos += 16
-        if flags & 4:
-            extension = body[pos]
-            pos += 1
-            if extension & 2:
-                pos += 2
-        if size < 0 or pos + size > limit:
-            break
-        if name and array_index == 0:
-            out[name] = body[pos : pos + size]
-        pos += size
-    return out, pos
+def tag_payloads(body: bytes, names: list[str], pos: int = 1) -> tuple[dict[str, bytes], int]:
+    """Top-level ``{name: payload}`` of a tag stream, and the offset after it. The elements of
+    a fixed-size array past the first are left out."""
+    tags, end = property_tags(body, names, pos)
+    return {tag.name: tag.payload for tag in tags if tag.name and tag.array_index == 0}, end
 
 
 def instance_matrices(tail: bytes, expect: int | None) -> F64Grid | None:
@@ -229,7 +186,7 @@ def foliage_instances(
 ) -> tuple[str, F64Grid] | None:
     """One foliage component's mesh and world matrices, for meshes ``wanted`` accepts."""
     body = view.pkg.body(view.exports[slot])
-    props, end = flagged_tags(body, view.pkg.names)
+    props, end = tag_payloads(body, view.pkg.names)
     reference = props.get("StaticMesh")
     mesh = view.import_path(reference) if reference else None
     if not mesh or not wanted(mesh):

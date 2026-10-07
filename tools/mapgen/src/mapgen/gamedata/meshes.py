@@ -301,7 +301,7 @@ def _extended_bounds(view: PackageView) -> MeshBox | None:
         if not payload:
             continue
         entries, _end = property_tags(payload, view.pkg.names, 0)
-        pair = bounds_pair({name: raw for name, _kind, raw, _value in entries if name})
+        pair = bounds_pair({tag.name: tag.payload for tag in entries if tag.name})
         if pair is not None:
             return pair
     return None

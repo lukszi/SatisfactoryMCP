@@ -1,4 +1,4 @@
-"""Tagged properties with their array index and flags, and the ``FRichCurve`` the lighting keys.
+"""The ``FRichCurve`` the lighting keys, and the numbers its tags hold.
 
 A curve's keys are evaluated as the engine does: constant, linear, or the cubic Hermite written
 as a Bezier. docs/map/calibration.md section 31 says which curves the lighting reads.
@@ -11,37 +11,19 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import NamedTuple
 
+from satisfactory_mcp.core.gameassets.packages import PropertyTag, property_tags
+
 __all__ = [
     "CurveKey",
     "RichCurve",
-    "Tag",
     "evaluate",
     "runtime_curves",
     "tag_float",
     "tag_floats",
-    "tag_stream",
 ]
-
-#: The tag's flag bits (UE 5.4 and later).
-_HAS_INDEX, _HAS_GUID, _HAS_EXTENSIONS, _BOOL_TRUE = 0x01, 0x02, 0x04, 0x10
 
 #: ``ERichCurveInterpMode``.
 _LINEAR, _CONSTANT = 0, 1
-
-
-class Tag(NamedTuple):
-    """One tag: its name, outer type, payload, flag byte and array position."""
-
-    name: str | None
-    kind: str | None
-    payload: bytes
-    flags: int
-    position: int
-
-    @property
-    def true(self) -> bool:
-        """A ``BoolProperty``'s value, which lives in the flags."""
-        return bool(self.flags & _BOOL_TRUE)
 
 
 class CurveKey(NamedTuple):
@@ -62,45 +44,7 @@ class RichCurve:
     default: float | None
 
 
-def _skip_type(body: bytes, pos: int, names: list[str]) -> tuple[int, str | None]:
-    index = struct.unpack_from("<I", body, pos)[0]
-    inner = struct.unpack_from("<i", body, pos + 8)[0]
-    slot = index & 0x3FFFFFFF
-    kind = names[slot] if (index >> 30) == 0 and slot < len(names) else None
-    pos += 12
-    for _ in range(inner):
-        pos, _inner = _skip_type(body, pos, names)
-    return pos, kind
-
-
-def tag_stream(body: bytes, names: list[str], pos: int = 0) -> tuple[list[Tag], int]:
-    """Every tag up to the stream's ``None``, and the offset after it; a malformed tail stops."""
-    out: list[Tag] = []
-    while pos + 8 <= len(body):
-        index, number = struct.unpack_from("<II", body, pos)
-        pos += 8
-        if index == 0 and number == 0:
-            break
-        slot = index & 0x3FFFFFFF
-        name = names[slot] if (index >> 30) == 0 and slot < len(names) else None
-        try:
-            pos, kind = _skip_type(body, pos, names)
-            size, flags = struct.unpack_from("<iB", body, pos)
-            pos += 5
-            array_index = struct.unpack_from("<i", body, pos)[0] if flags & _HAS_INDEX else 0
-        except (struct.error, IndexError, RecursionError):
-            break
-        pos += (4 if flags & _HAS_INDEX else 0) + (16 if flags & _HAS_GUID else 0)
-        if flags & _HAS_EXTENSIONS:
-            pos += 2 if body[pos] & 0x02 else 1
-        if size < 0 or pos + size > len(body):
-            break
-        out.append(Tag(name, kind, body[pos : pos + size], flags, array_index))
-        pos += size
-    return out, pos
-
-
-def tag_float(tag: Tag) -> float | None:
+def tag_float(tag: PropertyTag) -> float | None:
     """A float, double or int tag's number."""
     width = {"FloatProperty": "<f", "DoubleProperty": "<d", "IntProperty": "<i"}.get(tag.kind or "")
     if width is None or len(tag.payload) != struct.calcsize(width):
@@ -108,7 +52,7 @@ def tag_float(tag: Tag) -> float | None:
     return float(struct.unpack(width, tag.payload)[0])
 
 
-def tag_floats(tag: Tag) -> tuple[float, ...] | None:
+def tag_floats(tag: PropertyTag) -> tuple[float, ...] | None:
     """A ``LinearColor`` (four floats) or a ``Vector`` or ``Rotator`` (three doubles)."""
     if tag.kind != "StructProperty":
         return None
@@ -122,7 +66,7 @@ def tag_floats(tag: Tag) -> tuple[float, ...] | None:
 def _rich_curve(payload: bytes, names: list[str]) -> RichCurve:
     keys: list[CurveKey] = []
     default: float | None = None
-    for tag in tag_stream(payload, names)[0]:
+    for tag in property_tags(payload, names, 0)[0]:
         if tag.name == "Keys" and len(tag.payload) >= 4:
             count = struct.unpack_from("<i", tag.payload)[0]
             size = (len(tag.payload) - 4) // count if count > 0 else 0
@@ -138,9 +82,9 @@ def _rich_curve(payload: bytes, names: list[str]) -> RichCurve:
 def runtime_curves(payload: bytes, names: list[str]) -> list[RichCurve]:
     """A ``RuntimeFloatCurve`` as one curve, a ``RuntimeCurveLinearColor`` as four (RGBA)."""
     curves: dict[int, RichCurve] = {}
-    for tag in tag_stream(payload, names)[0]:
+    for tag in property_tags(payload, names, 0)[0]:
         if tag.name in ("ColorCurves", "EditorCurveData"):
-            curves[tag.position] = _rich_curve(tag.payload, names)
+            curves[tag.array_index] = _rich_curve(tag.payload, names)
     empty = RichCurve((), None)
     return [curves.get(i, empty) for i in range(max(curves) + 1)] if curves else [empty]
 

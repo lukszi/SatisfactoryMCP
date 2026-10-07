@@ -40,7 +40,7 @@ def mesh_materials(view: PackageView, export: ZenExport) -> list[str | None]:
     for _ in range(count):
         tags, pos = property_tags(payload, view.pkg.names, pos)
         path = None
-        for name, kind, raw, _value in tags:
+        for name, kind, raw, _flags, _index in tags:
             if name == "MaterialInterface" and kind == "ObjectProperty":
                 path = view.import_path(raw)
         out.append(path)
@@ -58,10 +58,10 @@ def _parameter_array(view: PackageView, array: str) -> list[tuple[str, str | Non
         name: str | None = None
         kind: str | None = None
         value = b""
-        for tag, tag_kind, raw, _v in tags:
+        for tag, tag_kind, raw, _flags, _index in tags:
             if tag == "ParameterInfo" and tag_kind == "StructProperty":
                 inner, _end = property_tags(raw, view.pkg.names, 0)
-                for key, inner_kind, inner_raw, _iv in inner:
+                for key, inner_kind, inner_raw, _inner_flags, _inner_index in inner:
                     if key == "Name" and inner_kind == "NameProperty":
                         name = view.read_fname(inner_raw)
             elif tag == "ParameterValue":

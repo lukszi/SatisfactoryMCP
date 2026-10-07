@@ -14,7 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mapgen.gamedata.install import GameReader
-from mapgen.gamedata.level.sweep import Sweep, flagged_tags, quat_axes, world_levels
+from mapgen.gamedata.level.sweep import Sweep, quat_axes, tag_payloads, world_levels
 from mapgen.gamedata.meshes import ROCK_DIRS, clamp_triangles, winding_sign
 from mapgen.gamedata.placements import (
     EXCLUDED_MESHES,
@@ -207,7 +207,7 @@ def simple_collision(view: PackageView, agg: bytes) -> tuple[F32Grid, I64Grid] |
     from scipy.spatial import ConvexHull, QhullError
 
     names = view.pkg.names
-    groups, _ = flagged_tags(agg, names, pos=0)
+    groups, _ = tag_payloads(agg, names, pos=0)
     verts: list[F64Grid] = []
     tris: list[NDArray[np.integer]] = []
     base = 0
@@ -216,7 +216,7 @@ def simple_collision(view: PackageView, agg: bytes) -> tuple[F32Grid, I64Grid] |
             continue
         pos = 4
         for _ in range(struct.unpack_from("<I", raw, 0)[0]):
-            element, pos = flagged_tags(raw, names, pos=pos)
+            element, pos = tag_payloads(raw, names, pos=pos)
             if NO_COLLISION in _enum_name(view, element.get("CollisionEnabled")):
                 continue
             points = _element_points(group, element)
@@ -248,7 +248,7 @@ def collision_mesh(view: PackageView, export: ZenExport) -> tuple[CollisionMesh 
     body = _body_setup(view)
     if bounds is None or body is None:
         return None, "no ExtendedBounds or no BodySetup"
-    tags, _ = flagged_tags(view.pkg.body(body), view.pkg.names)
+    tags, _ = tag_payloads(view.pkg.body(body), view.pkg.names)
     complex_as_simple = COMPLEX_AS_SIMPLE in _enum_name(view, tags.get("CollisionTraceFlag"))
     hull, why = staticmesh.collision_hull(view, *bounds)
     if hull is not None and complex_as_simple:

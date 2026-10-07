@@ -70,7 +70,7 @@ def weightmap_allocations(view: PackageView, payload: bytes) -> list[WeightmapAl
     for _ in range(count):
         tags, pos = property_tags(payload, view.pkg.names, pos)
         entry: WeightmapAllocation = {}
-        for name, kind, raw, _value in tags:
+        for name, kind, raw, _flags, _index in tags:
             if kind == "ObjectProperty" and name == "LayerInfo":
                 entry["LayerInfo"] = view.import_path(raw)
             elif kind == "ByteProperty" and name == "WeightmapTextureIndex":
