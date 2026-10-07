@@ -3,7 +3,7 @@
 Rows run south and columns east; an azimuth is compass degrees from north. Why each constant
 has its value: docs/spatial-and-map.md section 29. The march and the sky view run as numba
 kernels, or CUDA ones, unless ``mapgen.jit`` selects this numpy, their reference
-(docs/map/renders.md sections 41 and 43).
+(docs/map/renders.md section 41).
 """
 
 from __future__ import annotations

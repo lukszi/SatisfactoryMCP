@@ -1,6 +1,6 @@
 // The light's loops on the GPU: lighting/kernels.py's march and sky view, a thread a pixel.
 // Compiled with --fmad=false, so every float operation is the one IEEE operation numpy does,
-// in the same order. docs/map/renders.md section 43.
+// in the same order. docs/map/renders.md section 41, "On the GPU".
 
 __device__ float raise_to(float top, float rise) {
     // np.maximum(top, rise) as kernels._raise has it: NaN when either is.

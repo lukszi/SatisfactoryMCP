@@ -3,7 +3,7 @@
 Each takes its numba twin's arguments and gives its bits: ``gpu.cu`` does the same float32
 operations in the same order, compiled without fused multiply-adds (``mapgen.jit``). A call
 the device has no memory for runs the twin instead. Imported only when
-``mapgen.jit.gpu_on()``. docs/map/renders.md section 43.
+``mapgen.jit.gpu_on()``. docs/map/renders.md section 41, "On the GPU".
 """
 
 from __future__ import annotations

@@ -129,6 +129,10 @@ as the artwork. The main options:
 - `--draw-columns N` draws each band in pieces of N output columns, 512 by default. Narrower
   pieces take less memory a thread, and the tiles are the same bytes at any width up to 16384
   (§40, "Column pieces").
+- `--gpu` runs the light's horizon march and sky view as CUDA kernels. It needs the root
+  project's `gpu` extra (`uv sync --all-extras` installs it) and an NVIDIA driver, and
+  refuses with exit code 2 where either is missing. The tiles are the same bytes (§41, "On
+  the GPU").
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
@@ -165,7 +169,7 @@ be traced to the axis it should move.
 | `common.py` | | Repository root, `data/local`, the default game path, the shared argument parser |
 | `colour.py` | | sRGB, linear light and OKLab, the luminance weights and the flat light |
 | `pools.py` | | What a pool of workers may take: the free memory, and one BLAS thread in each worker |
-| `jit.py` | | The kernel switch: numba-compiled loops, or the numpy they equal bit for bit (`MAPGEN_KERNELS=numpy`); a cache file per compiled signature |
+| `jit.py` | | The kernel switch: numba-compiled loops, CUDA kernels (`MAPGEN_KERNELS=cuda`, `--gpu`), or the numpy they equal bit for bit (`MAPGEN_KERNELS=numpy`); a cache file per compiled signature |
 | `cache.py` | | The stamped caches (direct, top, meshes, Titan trees, rivers) and how a raster cache is stored: band store or raw memory maps. The on-disk names and stamps are unchanged. |
 | `bandstore.py` | | The zstd band store: `BandWriter` and the read-only `BandArray` |
 | `commands/renders.py` | | The renders orchestrator: arguments, refusals, stage order |
@@ -218,6 +222,7 @@ be traced to the axis it should move.
 | `lighting/sun.py`, `model.py` | light | The game's sun path and default; the live-light model and its reference |
 | `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the stage that writes the lighting pyramid |
 | `lighting/kernels.py` | light | The horizon march and the sky view compiled by numba |
+| `lighting/gpu.py`, `gpu.cu` | light | The same two as CUDA kernels, for `--gpu` |
 | `lighting/occluders.py` | light | The canopy-top occluder raster the horizons take |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `palette/styles.py` | style | Palette loading, digests, the colour painters and their height ramp |

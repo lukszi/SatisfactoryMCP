@@ -1531,7 +1531,8 @@ runs.
 
 - `mapgen.jit.kernels_on()` decides, at every call. `MAPGEN_KERNELS=numpy` selects the
   reference; unset, or any other value, the kernels wherever `numba` imports. numba is in the
-  `gen` extra, pinned; without it the reference runs.
+  `gen` extra, pinned; without it the reference runs. `cuda` also runs the light's loops on
+  the GPU ("On the GPU", below).
 - The two paths write the same bytes, so nothing a render writes records which one ran.
 - A kernel module (`lighting/kernels.py`, `terrain/kernels.py`, `palette/water/kernels.py`,
   `palette/painted/kernels.py`) is imported only once the switch says kernels, so the
@@ -1739,9 +1740,89 @@ another signature's code; that race is why each signature now has a file of its 
   optics, the carpet, the sunk crowns and the opaque water, each on bands from all wet to all
   dry, mixed both ways; and float64 planes, which run the reference.
 
+### On the GPU (2026-10-07)
+
+`mapgen renders --gpu` runs the light's horizon march and sky view as CUDA kernels, in each
+light process. Everything else runs as above: numba's kernels where they exist, numpy
+elsewhere. The CPU path stays the default and the reference, and the tiles are the same
+bytes either way.
+
+- **The switch.** `--gpu` sets `MAPGEN_KERNELS=cuda`, which the light's processes inherit;
+  setting it by hand does the same. `jit.gpu_on()` says CUDA where the switch says `cuda`
+  and numba's kernels are on. `--gpu` checks at once, in under a second, that numba and CuPy
+  import and that a kernel compiles and loads on a device, and refuses with exit code 2 and
+  the reason when one does not: a run never finds out at its light. The reference and
+  numba's path never import CuPy; a test holds that.
+- **What it needs.** The `gpu` extra: CuPy (`cupy-cuda12x`) and NVRTC from
+  `nvidia-cuda-nvrtc-cu12`, both pinned, on Windows or Linux on x86-64, and an NVIDIA
+  driver. No CUDA toolkit. CuPy compiles `lighting/gpu.cu` once a process and keeps the
+  compiled code on disk. The type gate reads CuPy through the stub in `typings/cupy/` and
+  needs no `gpu` extra.
+- **Why the bits are the same.** Each thread does for its pixel what `lighting/kernels.py`
+  does for one element of a row: the same float32 operations, in the same order, from the
+  offsets, fractions and scales numpy works out (the rules above). NVRTC compiles with
+  `--fmad=false`, because its default fuses `a * b + c` into one rounding: a probe of
+  100,000 such sums left 15,734 different without the option and none with it. Division,
+  the square root and subnormals are IEEE's (`--prec-div`, `--prec-sqrt`, `--ftz=false`).
+  The arctangent and the degrees stay in numpy, as every transcendental does.
+- **What still differs, and cannot show.** A NaN the GPU makes carries CUDA's one bit
+  pattern, where x86 keeps the payload of the NaN it came from. None arose in the tests, and
+  every reader of a horizon rounds it to a byte, where the two agree.
+- **Float64 slabs** take numba's march: the CUDA march reads float32 only.
+- **Memory.** A call uploads its rasters and the steps, marches, reads the result back and
+  hands the device memory back. One the device has no memory for runs numba's kernel, with
+  the same bits. A light process with the GPU imports CuPy and opens a CUDA context: 0.65 GB
+  more commit (0.33 GB working set) and 0.19 GB of device memory, so `light_workers()`
+  counts `LIGHT_GPU_BYTES`, 0.7 GB, more a process.
+
+**Measured** (build 502094, RTX 3080; the machine shared, its CPU about half busy, no render
+lock: timings wait for the round's one exclusive run). One full-size light block, the bench of
+"Measured" above, numba against CUDA, the same bits:
+
+| Part | numba, s | CUDA, s |
+| --- | --- | --- |
+| 32 ground horizons, with slabs | 8.04 | 2.97 |
+| 32 crown horizons | 2.80 | 2.81 |
+| The sky view | 0.11 | 0.03 |
+
+One march over that block, 219 steps, takes 3.2 ms in the kernel and 11.5 ms with its
+transfers (3.4 ms to upload a raster, 3.9 ms to read the horizon back). numpy's arctangent and
+degrees after it take 53 ms, so they are now most of a horizon's cost. The crowns' march is
+short (its fade ends at 80 m), and there the transfers cost what numba's march does.
+
+**The painters stay on the CPU.** A CUDA twin of `water_composite` gave the numba kernel's
+bits, and took 1.36 ms against 1.81 ms for a 288 by 544 piece, and 60 to 93 ms against 73 to
+101 ms for a whole band 32,768 wide: moving its planes to the device and back costs what the
+numba kernel computes. The heaviest, `underwater`, is no better placed: on a piece from all wet
+to a fifth wet, its arrays alone take 2.2 to 3.0 ms to move (14 to 23 MB up, 1.9 MB down),
+against 3.0 to 7.1 ms for numba's whole call. So a GPU painter is worth at most about one
+more draw thread, while the draw runs 8 that one GPU behind one bus would have to serve; and
+the four painters with kernels are under a tenth of a pass (2.22 s of 24.9 s on one thread,
+"The painters" above). A painter gains only when the band's planes stay on the device from
+one step to the next, which is a different draw.
+
+**Checked.**
+
+- `tests/mapgen/test_gpu_kernels.py` compares the CUDA march and sky view with the reference
+  byte for byte on the cases of `test_kernels.py`, plus a block whose width is not a whole
+  number of thread blocks, float64 slabs and a device out of memory. It also holds the
+  switch, the flag and its refusal, the light's worker count, and that CuPy loads only under
+  `cuda`. On a machine without numba, CuPy or a device the kernel tests skip and say which.
+- G1 at 2048 (all five layers, lit), with `--gpu` and without, side by side: all 1,125 tiles
+  the same bytes as each other and as the pixel-batch baseline, and the six sidecars the same
+  apart from their timings. Against that baseline both also add the light's `key`, which the
+  kept light brought after it ("Kept light", section 29). The `--gpu` run's light process was
+  seen on the device. At 2048 the light is one small block, and it took 12.4 s against 12.8 s:
+  the march gains at full size.
+
 ### Known limits
 
 - The painters left in numpy above. A kernel for the colour spaces would move last bits.
+- On the GPU, each of a block's 64 marches uploads the block's rasters again, about a third
+  of the call; kept on the device for the block they would cost one upload. numpy's
+  arctangent after each march costs more than the whole call.
+- Each light process opens its own CUDA context, 0.19 GB of device memory: 16 processes take
+  3 GB of a 10 GB card before they march.
 - A numba release is a new proof, which is why it is pinned: the bit tests in
   `tests/mapgen/test_kernels.py` and `tests/mapgen/test_paint_kernels.py` and a G1 against the
   reference come with an upgrade.
