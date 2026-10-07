@@ -150,6 +150,7 @@ def _oldest_python() -> str:
     return ".".join(floors[0].split(".")[:2])
 
 
+@pytest.mark.long
 def test_pyright_finds_nothing_in_strict_mode() -> None:
     config = _pyproject()["tool"]["pyright"]
     assert config["typeCheckingMode"] == "strict" and "strict" not in config
@@ -157,6 +158,7 @@ def test_pyright_finds_nothing_in_strict_mode() -> None:
     assert not errors, f"{len(errors)} pyright errors; fix them:\n{_shown(errors)}"
 
 
+@pytest.mark.long
 def test_the_code_type_checks_on_the_oldest_python() -> None:
     """The same run as the oldest supported Python reads it: a standard-library name that
     arrived later fails here. The rules a newer stub trips over are the main run's."""

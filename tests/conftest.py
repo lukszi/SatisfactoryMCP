@@ -1,7 +1,7 @@
 """Suite-wide fixtures: the game data, the committed reference world, and private user data.
 
 docs/DEVELOPING.md ("Test suite") explains the reference world, how its projection is re-cut,
-and why the whole-folder tests are dealt first.
+and why each of the longest tests starts on a worker of its own.
 """
 
 from __future__ import annotations
@@ -16,34 +16,31 @@ from satisfactory_mcp.core.gamedata.normalize import normalize
 from satisfactory_mcp.core.saveio.projection import SaveError
 from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.fanout import heads_of_shares
 from tests.support.map_jobs import in_use_local, local, runner  # noqa: F401  (fixtures)
 from tests.support.paths import FIXTURES
 from tests.support.reference_world import FIXTURE_SAVE, FIXTURE_WORLD, SPIRE_COAST_FULL
+from tests.support.user_data import private_user_data
 from tests.support.web import client_over
 
-#: Marks the tests that parse every save on the machine; they are dealt to workers first.
-WHOLE_FOLDER = "whole_folder"
-
-#: The ``config`` paths under the user data root, each cached after its first call. Held as
-#: the functions themselves, so a test that patches one cannot hide its cache from a clear.
-USER_DATA_PATHS = (
-    config.plans_dir,
-    config.labels_dir,
-    config.activity_dir,
-    config.ui_dir,
-    config.pins_dir,
-    config.asks_dir,
-    config.advice_dir,
-    config.settings_path,
-)
+#: The markers of the longest tests, ``whole_folder`` for the ones that parse every save on the
+#: machine; each such test opens a worker's first share.
+LONG_MARKERS = ("whole_folder", "long")
 
 
-def pytest_collection_modifyitems(items):
-    """Deal the ``whole_folder`` tests first, keeping every other test's relative order."""
-    hoisted = [item for item in items if item.get_closest_marker(WHOLE_FOLDER)]
+def _is_long(item: pytest.Item) -> bool:
+    return any(item.get_closest_marker(name) for name in LONG_MARKERS)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(config, items):
+    """Start each of the longest tests first on a worker of its own, keeping every other
+    test's relative order. Last, so the count it splits is the count left after ``-m``."""
+    hoisted = [item for item in items if _is_long(item)]
     if hoisted:
-        rest = [item for item in items if not item.get_closest_marker(WHOLE_FOLDER)]
-        items[:] = hoisted + rest
+        rest = [item for item in items if not _is_long(item)]
+        workers = getattr(config, "workerinput", {}).get("workercount", 1)
+        items[:] = heads_of_shares(hoisted, rest, workers)
 
 
 def _docs_available() -> bool:
@@ -54,22 +51,11 @@ def _docs_available() -> bool:
         return False
 
 
-def _clear_user_data_caches() -> None:
-    for cached in USER_DATA_PATHS:
-        cached.cache_clear()
-
-
 @pytest.fixture(autouse=True)
 def _private_user_data(tmp_path):
-    """Every store a test writes lives under its own ``tmp_path``, never the reader's.
-
-    Its own patch rather than ``monkeypatch``, so a test's ``monkeypatch.undo()`` keeps it.
-    """
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setenv("SATISFACTORY_USER_DATA", str(tmp_path / "user"))
-        _clear_user_data_caches()
+    """Every store a test writes lives under its own ``tmp_path``, never the reader's."""
+    with private_user_data(tmp_path / "user"):
         yield
-    _clear_user_data_caches()
 
 
 @pytest.fixture

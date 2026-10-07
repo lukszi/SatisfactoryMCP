@@ -42,7 +42,7 @@ def test_the_web_server_binds_what_the_links_name(monkeypatch):
     assert config.web_url() == "http://127.0.0.1:8798/"
 
 
-def test_show_on_map_leads_with_the_local_map(monkeypatch):
+def test_show_on_map_leads_with_the_local_map(monkeypatch, game):
     monkeypatch.setenv("SATISFACTORY_WEB_PORT", "8797")
 
     def no_save(*_a, **_k):
@@ -57,7 +57,7 @@ def test_show_on_map_leads_with_the_local_map(monkeypatch):
     assert "z" in frag
 
 
-def test_the_echo_rounds_to_a_decimetre_rather_than_truncating(monkeypatch):
+def test_the_echo_rounds_to_a_decimetre_rather_than_truncating(monkeypatch, game):
     def no_save(*_a, **_k):
         raise RuntimeError("no save in this test")
 
@@ -76,7 +76,7 @@ def _local(out: str) -> dict[str, str]:
     return _fragment(line.split(": ", 1)[1])
 
 
-def test_a_node_link_rings_that_node(monkeypatch):
+def test_a_node_link_rings_that_node(monkeypatch, game):
     def no_save(*_a, **_k):
         raise RuntimeError("no save in this test")
 

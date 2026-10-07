@@ -1,7 +1,8 @@
 """The plan tools over the op log: versions in reads, base_rev on writes, plan_log (contract §10).
 
-The unit half runs against a stand-in world, so it needs neither a save nor the game install.
-The integration half drives plan_factory against the reference world.
+The unit half runs against a stand-in world, so it needs no save; a test that undoes, restores
+or saves over a version also needs the game install, for the stamp the new head carries. The
+integration half drives plan_factory against the reference world.
 """
 
 from __future__ import annotations
@@ -102,7 +103,7 @@ def test_the_same_key_changed_elsewhere_is_outdated_and_nothing_lands(log):
     assert log.head_rev(key) == 2
 
 
-def test_a_forget_can_be_undone_through_plan_log(log):
+def test_a_forget_can_be_undone_through_plan_log(log, game):
     key = _key(log)
     out = srv.forget_plan(name="north oil", base_rev=1)
     assert out.startswith("forgot plan 'north oil' in v2")
@@ -130,7 +131,7 @@ def _over(log, key, base_rev, overrides, whole=None):
     )
 
 
-def test_a_recalled_save_diffs_only_what_chat_overrode_against_its_base(log):
+def test_a_recalled_save_diffs_only_what_chat_overrode_against_its_base(log, game):
     key = _key(log)
     log.push(key, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
     log.push(key, 2, [{"op": "set", "field": "sloops", "value": 3}], actor=PAGE)
@@ -147,7 +148,7 @@ def test_a_recalled_save_diffs_only_what_chat_overrode_against_its_base(log):
     assert (now.rev, now.args.sloops, now.args.water_extractors) == (4, 3, 5)
 
 
-def test_a_save_over_a_plan_renamed_since_base_rev_merges_into_it(log):
+def test_a_save_over_a_plan_renamed_since_base_rev_merges_into_it(log, game):
     key = _key(log)
     log.push(key, 1, [{"op": "rename", "name": "coast oil"}], actor=PAGE)
     assert solve._save_target(_World(), "north oil", None) == (None, "")
@@ -196,7 +197,7 @@ def test_plan_log_lists_versions_newest_first_with_head_and_key(log):
     assert "(+2 more" in srv.plan_log(name="north oil", limit=2)
 
 
-def test_undo_needs_base_rev_and_refuses_twice(log):
+def test_undo_needs_base_rev_and_refuses_twice(log, game):
     key = _key(log)
     log.push(key, 1, [{"op": "add", "field": "banned", "member": "Recipe_X_C"}], actor=PAGE)
     assert "base_rev=2; nothing undone" in srv.plan_log(name="north oil", undo=2)
@@ -208,7 +209,7 @@ def test_undo_needs_base_rev_and_refuses_twice(log):
     assert "not both" in srv.plan_log(name="north oil", undo=2, restore=1, base_rev=3)
 
 
-def test_undo_of_a_version_changed_again_since_is_outdated(log):
+def test_undo_of_a_version_changed_again_since_is_outdated(log, game):
     key = _key(log)
     log.push(key, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
     log.push(key, 2, [{"op": "set", "field": "sloops", "value": 5}], actor=PAGE)
@@ -217,7 +218,7 @@ def test_undo_of_a_version_changed_again_since_is_outdated(log):
     assert log.head_rev(key) == 3
 
 
-def test_restore_makes_the_head_equal_an_old_version(log):
+def test_restore_makes_the_head_equal_an_old_version(log, game):
     key = _key(log)
     log.push(key, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
     log.push(key, 2, [{"op": "add", "field": "sources", "member": "south"}], actor=PAGE)

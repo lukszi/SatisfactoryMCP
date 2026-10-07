@@ -20,14 +20,38 @@ WIDTH_ENV = "SATISFACTORY_TEST_FANOUT"
 
 
 def fanout_width() -> int:
-    """How many children one whole-folder test runs at once: half the logical CPUs, at least 2.
+    """How many children one whole-folder test runs at once: a third of the logical CPUs, so
+    the three can run side by side; at least 2.
 
     Never below 2, so the parallel path is the one every machine exercises.
     """
     override = os.environ.get(WIDTH_ENV)
     if override:
         return max(1, int(override))
-    return max(2, (os.cpu_count() or 4) // 2)
+    return max(2, (os.cpu_count() or 4) // 3)
+
+
+def heads_of_shares(first: list[T], rest: list[T], workers: int) -> list[T]:
+    """``first`` and ``rest`` in one order that puts each of ``first`` at the head of a
+    different worker's opening share, round-robin when there are more of them than workers.
+
+    ``--dist worksteal`` opens by dealing each worker, in turn, an equal run of what is left,
+    and steals from the tail of a queue: this mirrors that split.
+    """
+    shares: list[list[T]] = [[] for _ in range(max(1, workers))]
+    for index, item in enumerate(first):
+        shares[index % len(shares)].append(item)
+    remaining = len(first) + len(rest)
+    taken = 0
+    ordered: list[T] = []
+    for index, share in enumerate(shares):
+        size = remaining // (len(shares) - index)
+        fill = max(0, size - len(share))
+        share.extend(rest[taken : taken + fill])
+        taken += fill
+        remaining -= len(share)
+        ordered.extend(share)
+    return ordered + rest[taken:]
 
 
 def in_order(
