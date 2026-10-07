@@ -1098,10 +1098,27 @@ the same cover. Those rows now draw what the whole sheet would. No other row cha
 size below 32768 changes at all. A band is now 288 rows instead of 272, about 6% more to draw;
 it still spans three stored bands, so the band stores keep as many as before.
 
+One step depended on where a band starts without reading a neighbour: the crowns placed each
+pixel on a sprite from the band's first row, in float32, so the wider halo moved them at
+every size. They are placed from each pixel's own centre now (light-and-crowns.md section
+36, "Drawing").
+
 `tests/mapgen/test_band_halo.py` draws three bands of the full-size sheet over a lake and
 compares them with the same rows drawn as one band. They are equal at the new halo, and at 13
 for the terrain and satellite layers, the blur's own reach. At 8 the rows within 5 of a band
 edge move: one level of RGB, 0.0013 of the light's land weight.
+
+Measured on build 502094 (2026-10-07), with the crowns placed from the pixel centres in both
+runs, the halo at 8 against 16:
+
+- The 2048 render, all five layers lit: every tile and light tile has the same pixels.
+- Three windows of the full-size sheet drawn unlit (16 bands over the densest water edges, a
+  full-width strip, and the first two bands): every layer moves, and only in rows within 8 of
+  a band edge, by one level. 3,504 pixels in all: terrain 1,135, relief-dark 995, relief
+  537, satellite 514, painted 323.
+- The light at full size is not windowed, so it was not measured. Its land weight comes from
+  the same water cover and moves in the same rows.
+- The peak commit of the windowed draws on 2 threads stayed at 12.1 to 12.5 GB.
 
 The column pieces of the performance plan read the same table: every stencil but the seam
 trace reaches as far along a row as across rows.

@@ -150,10 +150,10 @@ Planned as 0.2.0.
   bands, and the report says whether a cache was converted in place or copied.
 - Full-size (32768) map renders no longer draw a faint line along water edges every 256
   rows, in every layer and in the live-sun light: each band of rows is now drawn 16 rows
-  past its edges instead of 8, enough for the water edge's blur. Smaller sizes are unchanged,
-  except that tree crowns on the game-painted map move once by a fraction of a pixel's colour
-  level: each is now placed from the pixel's own centre, so it no longer depends on where a
-  band of rows starts.
+  past its edges instead of 8, enough for the water edge's blur. Smaller sizes are unchanged.
+- Tree crowns on the game-painted map are placed from each pixel's own centre, so they no
+  longer shift with where a band of rows starts. A few hundred crown pixels of a 2048 map,
+  and 0.02% of a full-size one, change once where a crown's edge decides whether it shows.
 
 ## [0.1.0] - 2026-09-27
 
