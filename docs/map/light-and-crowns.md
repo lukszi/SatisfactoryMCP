@@ -183,6 +183,23 @@ The light's scratch holds the captured spans in `slabs/`, one file per 256 px ti
 any; they are digested with the surface they came with (below, "Kept light"). A block reads
 them at half resolution, each cell the highest of its four pixels' spans, whole.
 
+**Cost** (2026-10-07, shared mode, other jobs running; base is the code before spans):
+
+| What | Base | Spans |
+| --- | --- | --- |
+| Light block, 4096 px, terrain only | 26.7 s | 25.9 s |
+| Light block, 4096 px, crowns over 40% | 39–59 s, 1.03 GB | 105–120 s, 1.44 GB |
+| Light block, 4096 px, crowns and 3% arches | | 107–127 s, 1.50 GB |
+| Nine real 1024 px blocks (arch and forest sites), summed | 33 s | 111 s (2.4–5.7× each) |
+| Direct raster, 16384, back to back | 308 s | 739 s |
+| Top raster, 16384, back to back | 44 s | 66 s, before the underside's own pass |
+
+The span march is most of it: a scalar loop over the pixels a span covers, against the plain
+march's vectorised rows, and it visits only the columns holding a span
+(`spans.SpanRuns`). Blocks of open terrain cost what they did. The full-size light, 830 s on
+16 workers before, so lands at about two to three times that, by the share of the map under
+crowns and arches; the direct raster, built once per cache, at about 2.4 times its 634 s.
+
 **Limits.**
 
 - One band per direction: a third arch in line, apart from the kept band by more than a sun
@@ -279,7 +296,7 @@ worker holds more than it needs; none of it moves a byte:
   after; the parent keeps the BLAS it loaded with), and a worker that imports both commits
   0.04 GB. A full-size block peaks at 1.08 GB working set and 0.98 GB commit, one under arches
   at 1.36 and 1.04 GB. With the crowns and arches as spans (2026-10-07) a block under crowns
-  peaks at 1.41 GB commit and one with crowns and arches at 1.49 GB; `LIGHT_WORKER_BYTES` is
+  peaks at 1.44 GB commit and one with crowns and arches at 1.50 GB; `LIGHT_WORKER_BYTES` is
   2.0 GB, the larger with room. The cutter's encoders import no numpy, so their pool needs no
   such setting (section 17).
 

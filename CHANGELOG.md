@@ -155,13 +155,14 @@ Planned as 0.2.0.
   summed in a fixed order, where scipy's took them from BLAS and its bits followed the
   number of BLAS threads. The maps are the same bytes, and the solve takes about 2 s less.
 - Map generator (every rendered style one version up, light model 3): arches, rock overhangs
-  and tree crowns cast their
-  shadow where the sun's ray meets them, with light passing beneath, instead of a wall from
-  their foot, a wedge or a streak from the trunk; the sky beside an arch is no longer dimmed
-  as beside a wall. The arches' sub-metre holes are filled and their edges antialiased, and
-  nothing else is. The page's live light shades the new shadows for a sun on the game's own
-  path. The direct and top raster caches gain planes and are rebuilt once, about 15 minutes
-  at full size; a kept light is baked again.
+  and tree crowns cast their shadow where the sun's ray meets them, with light passing
+  beneath, instead of a wall from their foot, a wedge or a streak from the trunk; the sky
+  beside an arch is no longer dimmed as beside a wall. The arches' sub-metre holes are
+  filled and their edges antialiased, and nothing else is. The page's live light shades the
+  new shadows for a sun on the game's own path. The direct and top raster caches gain planes
+  and are rebuilt once, the direct raster taking about 2.4 times as long; a kept light is
+  baked again. The light takes two to three times as long under crowns and arches, and each
+  of its processes counts 2.0 GB instead of 1.5.
 
 ### Deprecated
 
