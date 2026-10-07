@@ -27,6 +27,7 @@ from mapgen.gamedata.water.falls import FALLS_CACHE_DIR_NAME
 from mapgen.palette.water.falls import load_falls
 from mapgen.palette.water.rivers import RiverWater, load_rivers
 from mapgen.render.cached_rasters import UNREADABLE_RASTER, LevelSweep
+from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME
 from mapgen.terrain.render_meshes import mesh_items, mesh_pass, titan_items
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -34,7 +35,7 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 __all__ = ["RUN_CACHE_DIRS", "RenderExtras", "load_extras", "remove_run_caches"]
 
 #: Every cache a run deletes at its end unless ``--keep-direct``.
-RUN_CACHE_DIRS = (*CACHE_DIR_NAMES, FALLS_CACHE_DIR_NAME)
+RUN_CACHE_DIRS = (*CACHE_DIR_NAMES, FALLS_CACHE_DIR_NAME, KEPT_LIGHT_DIR_NAME)
 
 
 @dataclass

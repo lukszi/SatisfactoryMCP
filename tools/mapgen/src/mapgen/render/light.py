@@ -2,8 +2,9 @@
 
 Each layer keeps ``tiles/`` and ``tiles@2x/`` lit by the default sun, so a page without
 WebGL and every older reader still draw a lit map, and adds ``unlit/``, the colour the page
-relights live. The stage's ``light.cache/`` is scratch for one run. docs/spatial-and-map.md
-section 29.
+relights live. The stage's ``light.cache/`` is scratch for one run; the finished bake is
+kept beside the raster caches for a run that draws the same surface (``kept_light``).
+docs/spatial-and-map.md section 29.
 """
 
 from __future__ import annotations
@@ -28,8 +29,10 @@ from mapgen.lighting.stage import (
     LIGHT_DIR_NAME,
     Surface,
     bake_light,
+    cast_digests,
     default_terms,
     discard,
+    light_key,
     occluder_planes,
 )
 from mapgen.lighting.sun import DEFAULT_SUN
@@ -38,11 +41,13 @@ from mapgen.palette.painted.albedo import load_paint_meta, paint_plane
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.painted.shapes import PaintPlane
 from mapgen.palette.styles import LAYER_STYLES
+from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME, KeptLight
 from mapgen.tiles.cutter import Cutter, TileImaging
 from mapgen.tiles.pyramid import install_layer, layer_dir, queue_layer
 from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX, install_pyramid
 from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.mapprogress import encode_stage
 
 __all__ = [
     "LIGHT_CACHE_DIR_NAME",
@@ -182,7 +187,8 @@ class LightingRun:
     and each layer's ``unlit/`` and relit installs.
 
     ``light_workers`` bake the light, None counting them from the cores and free memory;
-    ``install``'s own ``workers`` encode the tiles.
+    ``install``'s own ``workers`` encode the tiles. With a ``cache_root`` the bake is kept
+    under it, and a kept bake of the same surface is installed instead of baking again.
     """
 
     def __init__(
@@ -192,10 +198,14 @@ class LightingRun:
         occluder: Occluder | None = None,
         slabs: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
         light_workers: int | None = None,
+        cache_root: Path | None = None,
     ) -> None:
         self.surface = Surface(scratch_root / LIGHT_CACHE_DIR_NAME, size)
         self.occluder, self.slabs = occluder, slabs
+        # Hashed now, while the planes sheet_crowns just wrote are still in memory.
+        self.casts = cast_digests(occluder, slabs)
         self.light_workers = light_workers
+        self.kept = None if cache_root is None else KeptLight(cache_root / KEPT_LIGHT_DIR_NAME)
         self.meta: JsonObject | None = None
         self.unlit: dict[str, JsonObject] = {}
 
@@ -232,15 +242,26 @@ class LightingRun:
         return stats, dense_stats, time.time() - started
 
     def bake(self, renders: Path) -> None:
-        """Bake the lighting pyramid from the captured surface into ``renders``, once."""
-        if self.meta is None:
-            self.meta = self._bake(renders)
+        """The lighting pyramid of the captured surface in ``renders``, once: the kept bake
+        when its key is this surface's, else baked here and kept."""
+        if self.meta is not None:
+            return
+        key = light_key(self.surface, self.casts, crown_layers())
+        if self.kept is not None and (kept := self.kept.matching(key)) is not None:
+            print("the lighting pyramid: kept from a run that drew this surface", flush=True)
+            self.meta = self.kept.install(kept, renders)
+            self.surface.terms = self.kept.terms
+            print(encode_stage("light", 1.0), flush=True)
+            return
+        self.meta = self._bake(renders, key)
+        if self.kept is not None:
+            self.surface.terms = self.kept.keep(self.meta, renders, self.surface.terms)
 
-    def _bake(self, renders: Path) -> JsonObject:
+    def _bake(self, renders: Path, key: JsonObject) -> JsonObject:
         print("baking the lighting pyramid", flush=True)
         meta = bake_light(
             self.surface, renders, self.light_workers, self.occluder, self.slabs,
-            occluder_layers=crown_layers(),
+            occluder_layers=crown_layers(), key=key,
         )  # fmt: skip
         done, render = cast(JsonObject, meta["tiles"]), cast(JsonObject, meta["render"])
         print(
@@ -303,16 +324,25 @@ class LightingRun:
 
 @contextmanager
 def light_run(
-    root: Path | None, size: int, crowns: CrownTops | None, workers: int | None = None
+    root: Path | None,
+    size: int,
+    crowns: CrownTops | None,
+    workers: int | None = None,
+    cache_root: Path | None = None,
 ) -> Generator[LightingRun | None, None, None]:
     """The run's light stage in ``root``, crowns first, its scratch deleted however the run
-    ends, the crowns' and the surface's failures included; or None without the light."""
+    ends, the crowns' and the surface's failures included; or None without the light. The
+    bake is kept under ``cache_root``, where one of the same surface is reused."""
     if root is None:
         yield None
         return
     run = None
     try:
-        run = LightingRun(root, size, crown_occluder(crowns, root, size), light_workers=workers)
+        # No local holds the occluder: its memory maps must go with the run's.
+        run = LightingRun(
+            root, size, crown_occluder(crowns, root, size), light_workers=workers,
+            cache_root=cache_root,
+        )  # fmt: skip
         yield run
     except BaseException as exc:
         # The failed frames hold the scratch's memory maps, which Windows will not delete.
