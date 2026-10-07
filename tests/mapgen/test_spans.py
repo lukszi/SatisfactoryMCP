@@ -12,8 +12,8 @@ import numpy as np
 import pytest
 
 from mapgen.lighting import horizon as hz
-from mapgen.lighting import span_bake, spans
-from mapgen.lighting.light_tiles import downsample
+from mapgen.lighting import span_bake, spans, stage
+from mapgen.lighting.light_tiles import downsample, padded_window
 from mapgen.lighting.slabs import SlabPlanes, SlabStore
 from mapgen.lighting.sun import DEFAULT_SUN
 
@@ -149,6 +149,37 @@ def test_the_default_sun_s_shade_is_filtered_only_where_a_span_was_in_reach():
     assert span_bake.default_shade(plain, DEFAULT_SUN, crowns=True) is None
 
 
+def test_the_crowns_of_a_window_reaching_far_off_the_sheet(tmp_path, monkeypatch):
+    monkeypatch.setattr(span_bake, "_CROWN_ROWS", 16)
+    z = np.zeros((64, 64), np.float32)
+    top = np.full(z.shape, np.nan, np.float32)
+    top[40:60, 10:20] = 8.0
+    np.save(tmp_path / "occluder.npy", top)
+    window = (32, 112, -8, 72)  # its last chunks lie wholly below the sheet
+    z_window = padded_window(z, *window)
+    z_half = downsample(z_window)
+    store = SlabStore(tmp_path / "slabs")
+    crowns = span_bake.block_spans(tmp_path, window, z_window, z_half, store).crowns
+    assert crowns is not None and crowns.lo.shape == z_half.shape
+    assert (crowns.lo[4:14, 9:14] == 4.0).all() and np.isfinite(crowns.lo).sum() == 50
+    assert crowns.z[30:].tobytes() == z_half[30:].tobytes()
+
+
+def test_the_ground_beside_a_span_takes_the_solid_surface_s_normals(tmp_path):
+    z = np.zeros((64, 64), np.float32)
+    z[:, 30:40] = 20.0  # an arch's deck, then a rock it rests on, drawn alike
+    lo = np.full(z.shape, np.nan, np.float32)
+    lo[:, 30:34] = 18.0
+    np.save(tmp_path / "z.npy", z)
+    SlabStore(tmp_path / "slabs").put(0, 0, SlabPlanes(np.where(np.isfinite(lo), 0.0, z), lo, z))
+    nx, _ny = stage._normals(tmp_path, (0, 64, 0, 64), SP)
+    plain, _plain_y = hz.normals(z, SP)
+    row = 20
+    assert nx[row, 28] == 0.0 and plain[row, 28] != 0.0, "the ground beside the deck is flat"
+    assert nx[row, 29] == plain[row, 29], "the deck's own edge keeps its normal"
+    assert nx[row, 33] == plain[row, 33], "so does the rock beside the deck, at its height"
+
+
 # ---------------------------------------------------------------------- the slab store
 
 
@@ -174,6 +205,11 @@ def test_the_slab_store_keeps_only_tiles_with_a_slab_and_reads_them_back(tmp_pat
     stood[56:312, 40:552] = z - 1
     assert (half.solid[floating] == downsample(stood)[floating]).all()
     assert (half.solid[~floating] == downsample(z_window)[~floating]).all()
-    solid, floats = store.full(window, z_window)
+    found = store.full(window, z_window)
+    assert found is not None
+    solid, under = found
+    floats = np.isfinite(under)
     assert floats.sum() == 100 and (solid[floats] == (z - 1)[10:20, 300:310].ravel()).all()
+    assert (under[floats] == 5.0).all()
     assert store.half((0, 128, 0, 128), np.zeros((64, 64), np.float32)) is None
+    assert store.full((0, 128, 0, 128), np.zeros((128, 128), np.float32)) is None

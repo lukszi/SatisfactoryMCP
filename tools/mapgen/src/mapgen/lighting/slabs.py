@@ -111,16 +111,19 @@ class SlabStore:
             solid[cells] = np.where(floats, _down(part[0], "mean"), solid[cells])
         return HalfSlabs(solid, lo, hi)
 
-    def full(self, window: tuple[int, int, int, int], z: F32Grid) -> tuple[F32Grid, BoolMask]:
-        """The window's solid surface at full resolution (``z`` where nothing floats) and
-        where something floats."""
+    def full(self, window: tuple[int, int, int, int], z: F32Grid) -> tuple[F32Grid, F32Grid] | None:
+        """The window's solid surface at full resolution (``z`` where nothing floats) and the
+        floating geometry's underside, NaN where none; None without a slab."""
         r0, r1, c0, c1 = window
-        solid, floats = z.copy(), np.zeros(z.shape, bool)
-        for row, col, path in self._tiles(r0, r1, c0, c1):
+        tiles = self._tiles(r0, r1, c0, c1)
+        if not tiles:
+            return None
+        solid, lo = z.copy(), np.full(z.shape, np.nan, np.float32)
+        for row, col, path in tiles:
             stack = np.load(path)
             a0, a1 = max(row, r0), min(row + stack.shape[1], r1)
             b0, b1 = max(col, c0), min(col + stack.shape[2], c1)
             part = stack[:, a0 - row : a1 - row, b0 - col : b1 - col]
             solid[a0 - r0 : a1 - r0, b0 - c0 : b1 - c0] = part[0]
-            floats[a0 - r0 : a1 - r0, b0 - c0 : b1 - c0] = np.isfinite(part[1])
-        return solid, floats
+            lo[a0 - r0 : a1 - r0, b0 - c0 : b1 - c0] = part[1]
+        return solid, lo

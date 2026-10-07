@@ -127,7 +127,7 @@ def test_a_block_s_horizons_a_direction_at_a_time_are_the_stacked_ones():
     scale = light_tiles.HZ_LINEAR_SCALE
     want_hq = np.round(np.clip(light_tiles.downsample(np.moveaxis(stack, 0, -1)), 0, 90) * scale)
     assert found.quarter.tobytes() == want_hq.astype(np.uint8).tobytes()
-    assert set(found.bands) == set(model.sun_cells(DEFAULT_SUN[0]))
+    assert set(found.bands) == span_bake.shade_cells(DEFAULT_SUN[0]) == {20, 52}
     nrm = np.random.default_rng(7).integers(0, 256, (2 * m, 2 * m, 4), dtype=np.uint8)
     for crowned in (False, True):
         want = model.direct_term(nrm, stack, DEFAULT_SUN, crowns=crowned)

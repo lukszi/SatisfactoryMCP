@@ -46,6 +46,7 @@ from mapgen.lighting.span_bake import (
     full_resolution,
     horizon_cells,
     plain_bands,
+    shade_cells,
 )
 from mapgen.lighting.spans import Bands, SpanSurface, sky_view_spans
 from mapgen.lighting.sun import DEFAULT_SUN
@@ -245,14 +246,17 @@ def _bake_horizons(
     horizon_quarter = np.zeros((half_px // 2, half_px // 2, HZ_CELLS), np.uint8)
     sun = [np.zeros((half_px, half_px), np.float32)] * HZ_CELLS
     bands: dict[int, Bands] = {}
-    keep = sun_cells(DEFAULT_SUN[0])
+    keep, shaded = sun_cells(DEFAULT_SUN[0]), shade_cells(DEFAULT_SUN[0])
     cells = horizon_cells(z_half, halo, spacing_m, spans) if march else iter(())
     for k, deg, marched in cells:
         hz_u8[k] = encode_horizon(deg)
         horizon_quarter[..., k] = np.round(np.clip(downsample(deg), 0, 90) * HZ_LINEAR_SCALE)
         if k in keep:
             sun[k] = deg
-            bands[k] = plain_bands(deg) if marched is None else marched
+        if k in shaded and marched is not None:
+            bands[k] = marched
+    if bands:
+        bands.update({k: plain_bands(sun[k]) for k in shaded if k not in bands and march})
     return _Horizons(hz_u8, horizon_quarter, sun, bands)
 
 
@@ -266,16 +270,21 @@ def _sky_view(z_half: F32Grid, halo: int, sky: int, spacing_m: float, spans: Blo
 
 
 def _normals(work: Path, ring: _Window, spacing_m: float) -> tuple[F32Grid, F32Grid]:
-    """The block's normals; beside a span, the solid surface's, so the span's edge draws no
-    rim on the ground beside it."""
+    """The block's normals; on the ground beside and beneath a span, the solid surface's, so
+    the span's edge draws no rim on it. A pixel at or above a neighbouring span's underside
+    is the span's own, and keeps the drawn surface's."""
     z_ring = padded_window(work_array(work, "z", np.float32, "r"), *ring)
     nx, ny = normals(z_ring, spacing_m)
-    solid, floats = SlabStore(work / SLAB_DIR_NAME).full(ring, z_ring)
-    if not floats.any():
+    found = SlabStore(work / SLAB_DIR_NAME).full(ring, z_ring)
+    if found is None:
+        return nx, ny
+    solid, lo = found
+    nearest_under = ndimage.minimum_filter(np.where(np.isfinite(lo), lo, np.inf), size=3)
+    beneath = (~np.isfinite(lo) & (z_ring < nearest_under))[1:-1, 1:-1]
+    if not beneath.any():
         return nx, ny
     sx, sy = normals(solid, spacing_m)
-    core = floats[1:-1, 1:-1]
-    return np.where(core, nx, sx), np.where(core, ny, sy)
+    return np.where(beneath, sx, nx), np.where(beneath, sy, ny)
 
 
 def _default_terms(nrm: U8Grid, horizons: _Horizons, crowned: bool) -> F32Grid:

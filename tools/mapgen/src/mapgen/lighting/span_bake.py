@@ -49,6 +49,7 @@ __all__ = [
     "horizon_cells",
     "path_horizon",
     "plain_bands",
+    "shade_cells",
 ]
 
 #: Rows of the window a block reads the crowns for at a time, at full resolution.
@@ -81,17 +82,20 @@ def _crown_rows(z: F32Grid, top: F32Grid, share: F32Grid | None,
     out[2][cells] = downsample(hi, how=np.nanmax)
 
 
-def _crowns(work: Path, window: _Window, z_window: F32Grid, solid: F32Grid) -> SpanSurface | None:
-    """The crowns of the window as spans over ``solid`` (half resolution), or None."""
+def _crowns(work: Path, window: _Window, z_window: F32Grid, z_half: F32Grid,
+            solid: F32Grid) -> SpanSurface | None:  # fmt: skip
+    """The crowns of the window as spans over ``solid`` (half resolution), or None. Rows off
+    the sheet hold none."""
     occluder = optional_array(work, "occluder", np.float32)
     if occluder is None:
         return None
     cover = optional_array(work, "occluder_cover", np.uint8)
     r0, r1, c0, c1 = window
-    half = (z_window.shape[0] // 2, z_window.shape[1] // 2)
-    planes = (np.empty(half, np.float32), np.empty(half, np.float32), np.empty(half, np.float32))
-    for row in range(0, r1 - r0, _CROWN_ROWS):
-        a, b = r0 + row, min(r0 + row + _CROWN_ROWS, r1)
+    nan = np.full(z_half.shape, np.nan, np.float32)
+    planes = (z_half.copy(), nan, nan.copy())
+    first, last = max(r0, 0) - r0, min(r1, occluder.shape[0]) - r0
+    for row in range(first, last, _CROWN_ROWS):
+        a, b = r0 + row, min(r0 + row + _CROWN_ROWS, r0 + last)
         top = padded_window(occluder, a, b, c0, c1, np.nan)
         share = (
             None if cover is None else padded_window(cover, a, b, c0, c1, 0.0) / np.float32(255.0)
@@ -107,7 +111,7 @@ def block_spans(work: Path, window: _Window, z_window: F32Grid, z_half: F32Grid,
     found = slabs.half(window, z_half)
     ground = None if found is None else span_surface(z_half, found.solid, found.lo, found.hi)
     solid = z_half if found is None else found.solid
-    return BlockSpans(ground, _crowns(work, window, z_window, solid))
+    return BlockSpans(ground, _crowns(work, window, z_window, z_half, solid))
 
 
 def band_cover(hz: F32Grid, bands: tuple[tuple[F32Grid, F32Grid], ...], el: float) -> F32Grid:
@@ -166,10 +170,18 @@ def horizon_cells(z_half: F32Grid, halo: int, spacing_m: float,
             yield HORIZON_DIRS + k, np.where(over > cell, over, np.float32(0.0)), crowns
 
 
-def _either_side(az: float) -> tuple[int, int, np.float32]:
+def _weighted(az: float) -> list[tuple[int, np.float32]]:
+    """The ground's directions a sun at ``az`` reads, with their weights: the two either side
+    of it, or the one it stands on."""
     i0, i1, _crown0, _crown1 = sun_cells(az)
     f = (az % 360.0) / (360.0 / HORIZON_DIRS)
-    return i0, i1, np.float32(f - np.floor(f))
+    w = np.float32(f - np.floor(f))
+    return [(i0, np.float32(1.0) - w)] + ([(i1, w)] if w > 0 else [])
+
+
+def shade_cells(az: float) -> set[int]:
+    """The atlas cells whose bands ``default_shade`` reads for a sun at ``az``."""
+    return {k + offset for k, _w in _weighted(az) for offset in (0, HORIZON_DIRS)}
 
 
 def plain_bands(horizon: F32Grid) -> Bands:
@@ -183,22 +195,23 @@ def default_shade(
 ) -> tuple[BoolMask, F32Grid] | None:
     """The default sun's shade per cell where a span was in reach of its directions, and
     where: ``(use, shade)`` at half resolution, or None where none was. ``bands`` holds the
-    ``sun_cells`` of ``sun``, the crowns' only with crowns."""
+    ``shade_cells`` of ``sun``, the crowns' only with crowns."""
     az, el = sun
-    i0, i1, w = _either_side(az)
-    crowns = crowns and HORIZON_DIRS + i0 in bands
-    keys = [i0, i1] + ([HORIZON_DIRS + i0, HORIZON_DIRS + i1] if crowns else [])
+    weighted = _weighted(az)
+    crowns = crowns and HORIZON_DIRS + weighted[0][0] in bands
+    keys = [k + offset for k, _w in weighted for offset in ((0, HORIZON_DIRS) if crowns else (0,))]
     seen = np.logical_or.reduce([bands[k].seen for k in keys])
     if not seen.any():
         return None
-    shades: list[F32Grid] = []
-    for k in (i0, i1):
+    shade: F32Grid | None = None
+    for k, w in weighted:
         marched = [bands[k]] + ([bands[HORIZON_DIRS + k]] if crowns else [])
         hz = marched[0].horizon if len(marched) == 1 else np.maximum(*(b.horizon for b in marched))
-        shades.append(cell_shade(hz, tuple((b.lo, b.hi) for b in marched), el))
-    shade = (shades[0] * (np.float32(1.0) - w) + shades[1] * w).astype(np.float32)
+        part = cell_shade(hz, tuple((b.lo, b.hi) for b in marched), el) * w
+        shade = part if shade is None else (shade + part).astype(np.float32)
+    assert shade is not None
     use: BoolMask = ndimage.binary_dilation(seen, iterations=1)
-    return use, shade
+    return use, shade.astype(np.float32)
 
 
 def full_resolution(plane: NDArray[np.floating], shape: tuple[int, int]) -> F32Grid:
