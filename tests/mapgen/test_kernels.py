@@ -95,6 +95,28 @@ def test_every_kernel_releases_the_gil_and_caches_on_disk():
     for kernel in (light.march, light.sky_view, gathers.separable, gathers.pchip):
         assert kernel.targetoptions["nogil"] is True
         assert not isinstance(kernel._cache, NullCache)
+        assert isinstance(kernel._cache._cache_file, jit.keyed_cache_files())
+
+
+@needs_numba
+def test_two_processes_compiling_at_once_keep_each_signature_s_own_code(tmp_path):
+    """Both read the index before either writes it; the second's index lands last and the
+    first's code after it. numba's numbered files would hand ``b`` the code of ``a``."""
+    from numba.core.caching import IndexDataCacheFile
+
+    files = jit.keyed_cache_files()
+    first, second = (files(str(tmp_path), "kernels.loop-1.py313", "stamp") for _ in range(2))
+    held: list[tuple[str, object]] = []
+    for process in (first, second):
+        process._save_data = lambda name, data: held.append((name, data))
+    first.save(("a",), "code a")
+    second._load_index = dict
+    second.save(("b",), "code b")
+    for name, data in reversed(held):
+        IndexDataCacheFile._save_data(first, name, data)
+    reader = files(str(tmp_path), "kernels.loop-1.py313", "stamp")
+    assert reader.load(("b",)) == "code b"
+    assert reader.load(("a",)) is None, "the lost entry is compiled again, never mistaken"
 
 
 # ---------------------------------------------------------------------------- the light
