@@ -1,5 +1,5 @@
 """The painters' numba kernels give the bits of the numpy they replace: the crown stamps and
-the water of the terrain, satellite and relief styles.
+the water of the terrain, satellite, relief and painted styles.
 
 docs/map/renders.md section 41. Synthetic fixtures: no install, no field. Each comparison runs
 one call twice, ``MAPGEN_KERNELS=numpy`` then the kernels, and compares the bytes.
@@ -18,6 +18,7 @@ import pytest
 from mapgen import jit
 from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD
 from mapgen.palette import relief
+from mapgen.palette.painted.optics import mix_underwater
 from mapgen.palette.styles import (
     SATELLITE_WATER_DEEP,
     SATELLITE_WATER_SHALLOW,
@@ -29,6 +30,7 @@ from mapgen.palette.water import shore, wet
 from mapgen.terrain.crown_stamp import CrownSet, sprite_levels, stamp_crowns
 from tests.support.map_scenes import relief_ground
 from tests.support.paths import REPO_ROOT
+from tests.support.wet_bands import band_water, painted_band
 
 needs_numba = pytest.mark.skipif(jit._numba() is None, reason="numba is not installed")
 
@@ -94,10 +96,12 @@ def test_the_reference_never_loads_numba():
 def test_every_painter_kernel_releases_the_gil_and_caches_on_disk():
     from numba.core.caching import NullCache
 
+    from mapgen.palette.painted import kernels as painted
     from mapgen.palette.water import kernels as water
     from mapgen.terrain import kernels as terrain
 
-    for kernel in (terrain.stamp, water.relief_water, water.water_composite):
+    kernels = (terrain.stamp, water.relief_water, water.water_composite, painted.underwater)
+    for kernel in kernels:
         assert kernel.targetoptions["nogil"] is True
         assert not isinstance(kernel._cache, NullCache)
 
@@ -170,24 +174,8 @@ def test_float32_pixel_centres_take_the_reference(monkeypatch):
 
 # ----------------------------------------------------------------------------- the water
 
-
-def _water(rng: np.random.Generator, dry: float, partial: float = 0.7) -> dict:
-    """A band's water terms: ``dry`` of it without water, ``partial`` of the rest partly
-    covered and the others wholly."""
-    cover = np.where(rng.random(SHAPE) < partial, rng.random(SHAPE), 1.0).astype(np.float32)
-    cover[rng.random(SHAPE) < dry] = 0.0
-    river = np.where(rng.random(SHAPE) < 0.3, rng.random(SHAPE), 0.0).astype(np.float32)
-    planes = {name: rng.uniform(0.0, 6.0, SHAPE).astype(np.float32)
-              for name in ("depth_m", "above_m", "below_m", "river_below_m")}  # fmt: skip
-    planes["river_below_m"][river == 0] = np.inf
-    ocean = (rng.random(SHAPE) < 0.5).astype(np.float32)
-    return {**planes, "cover": cover, "depth": rng.random(SHAPE).astype(np.float32),
-            "ocean": ocean, "banks": ocean, "edge": rng.random(SHAPE).astype(np.float32),
-            "river": river}  # fmt: skip
-
-
 #: Bands below and above a third wet (``shore.wet_mix`` mixes only the wet pixels below it)
-#: and above three quarters (the relief paints its water whole).
+#: and above three quarters (the wet painters then paint the band whole).
 DRY = [0.0, 0.5, 0.8, 1.0]
 
 
@@ -197,7 +185,7 @@ DRY = [0.0, 0.5, 0.8, 1.0]
 @pytest.mark.parametrize("stroke", [0.0, 0.22])
 def test_the_water_composite_is_the_reference_bit_for_bit(monkeypatch, dry, style, stroke):
     rng = np.random.default_rng(int(dry * 10) + 7 * (style == "terrain"))
-    water = _water(rng, dry)
+    water = band_water(rng, SHAPE, dry)
     land = rng.uniform(0.0, 255.0, (*SHAPE, 3)).astype(np.float32)
     shade = rng.uniform(0.4, 1.0, SHAPE).astype(np.float32)
     optics = {**SHORE_OPTICS[style], "stroke": stroke}
@@ -211,7 +199,7 @@ def test_float64_water_takes_the_reference(monkeypatch):
     """The kernels take float32 planes; with any other the numpy painter runs."""
     monkeypatch.delenv(jit.KERNEL_SWITCH, raising=False)
     rng = np.random.default_rng(2)
-    water = {key: plane.astype(np.float64) for key, plane in _water(rng, 0.3).items()}
+    water = {key: plane.astype(np.float64) for key, plane in band_water(rng, SHAPE, 0.3).items()}
     land = rng.uniform(0.0, 255.0, (*SHAPE, 3))
     shade = np.ones(SHAPE)
     args = (SHORE_OPTICS["satellite"], WATER_SHALLOW, WATER_DEEP, 0.75, 0.25)
@@ -225,12 +213,12 @@ def test_float64_water_takes_the_reference(monkeypatch):
 @pytest.mark.parametrize("dry", DRY)
 @pytest.mark.parametrize("layer", ["relief", "relief-dark"])
 @pytest.mark.parametrize("tinted", [True, False])
-@pytest.mark.parametrize("partial", [0.7, 0.02])
-def test_the_relief_water_is_the_reference_bit_for_bit(monkeypatch, dry, layer, tinted, partial):
+@pytest.mark.parametrize("full", [0.3, 0.98])
+def test_the_relief_water_is_the_reference_bit_for_bit(monkeypatch, dry, layer, tinted, full):
     rng = np.random.default_rng(int(dry * 10) + 3 * tinted)
     ground = relief_ground(layer)
     ground.water = rng.integers(0, 256, SHAPE).astype(np.uint8) if tinted else None
-    scene = {"water": _water(rng, dry, partial)}
+    scene = {"water": band_water(rng, SHAPE, dry, full)}
     land = rng.uniform(-0.2, 1.0, (*SHAPE, 3)).astype(np.float32)
     lit = rng.uniform(0.2, 1.0, SHAPE).astype(np.float32)
 
@@ -240,3 +228,36 @@ def test_the_relief_water_is_the_reference_bit_for_bit(monkeypatch, dry, layer, 
     for most in (wet.WET_MOST, 0.0, 1.0):
         monkeypatch.setattr(wet, "WET_MOST", most)
         _same(monkeypatch, lambda: relief._water(land, scene, ground, sample, lit))
+
+
+def _plane(plane: np.ndarray) -> np.ndarray:
+    return plane
+
+
+@needs_numba
+@pytest.mark.parametrize("dry", DRY)
+@pytest.mark.parametrize("extras", ["none", "optics", "crowns", "carpet", "opaque", "all"])
+def test_the_painted_water_is_the_reference_bit_for_bit(monkeypatch, dry, extras):
+    rng = np.random.default_rng(len(extras) * 10 + int(dry * 10))
+    on = {k: extras in (k, "all") for k in ("optics", "crowns", "carpet", "opaque")}
+    scene, ground, crowns = painted_band(rng, SHAPE, dry, **on)
+    g = rng.random((*SHAPE, 3)).astype(np.float32)
+    lit = rng.random((*SHAPE, 3)).astype(np.float32)
+    exposure = np.float32(1.3)
+    for most in (wet.WET_MOST, 0.0, 1.0):
+        monkeypatch.setattr(wet, "WET_MOST", most)
+        _same(monkeypatch, lambda: mix_underwater(lit, g, scene, ground, _plane, _plane,
+                                                  exposure, crowns))  # fmt: skip
+
+
+def test_float64_painted_water_takes_the_reference(monkeypatch):
+    monkeypatch.delenv(jit.KERNEL_SWITCH, raising=False)
+    rng = np.random.default_rng(6)
+    scene, ground, _crowns = painted_band(rng, SHAPE, 0.4, optics=False, crowns=False,
+                                          carpet=False, opaque=False)  # fmt: skip
+    ground.water["k"] = ground.water["k"].astype(np.float64)
+    g, lit = rng.random((2, *SHAPE, 3)).astype(np.float32)
+    got = mix_underwater(lit, g, scene, ground, _plane, _plane, np.float32(1.3))
+    monkeypatch.setenv(jit.KERNEL_SWITCH, jit.REFERENCE)
+    want = mix_underwater(lit, g, scene, ground, _plane, _plane, np.float32(1.3))
+    assert got.dtype == np.float64 and _bits(got) == _bits(want)
