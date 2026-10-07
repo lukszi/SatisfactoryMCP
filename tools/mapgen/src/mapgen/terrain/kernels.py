@@ -102,26 +102,26 @@ def pchip(
     slab: NDArray[np.generic], nodata: int, low: int,
     rows: tuple[I64Grid, F32Grid], cols: tuple[I64Grid, F32Grid],
 ) -> tuple[F32Grid, BoolMask]:  # fmt: skip
-    """``sample.resample_pchip`` on the source rows ``slab`` (from ``low``): ``(values, whole)``."""
+    """``sample.resample_pchip`` on the source rows ``slab`` from ``low``: ``(values, whole)``."""
     (row_index, row_t), (col_index, col_t) = rows, cols
     width = col_index.shape[1]
     across = np.empty((slab.shape[0], width), np.float32)
     across_whole = np.empty((slab.shape[0], width), np.bool_)
     for r in range(slab.shape[0]):
         for j in range(width):
-            a, b = slab[r, col_index[0, j]], slab[r, col_index[1, j]]
-            c, d = slab[r, col_index[2, j]], slab[r, col_index[3, j]]
-            across[r, j] = _hermite(_value(a, nodata), _value(b, nodata), _value(c, nodata),
-                                    _value(d, nodata), col_t[j])  # fmt: skip
-            across_whole[r, j] = a != nodata and b != nodata and c != nodata and d != nodata
+            t0, t1 = slab[r, col_index[0, j]], slab[r, col_index[1, j]]
+            t2, t3 = slab[r, col_index[2, j]], slab[r, col_index[3, j]]
+            across[r, j] = _hermite(_value(t0, nodata), _value(t1, nodata), _value(t2, nodata),
+                                    _value(t3, nodata), col_t[j])  # fmt: skip
+            across_whole[r, j] = t0 != nodata and t1 != nodata and t2 != nodata and t3 != nodata
     total = np.empty((row_index.shape[1], width), np.float32)
     whole_out = np.empty((row_index.shape[1], width), np.bool_)
     for i in range(row_index.shape[1]):
-        a, b = row_index[0, i] - low, row_index[1, i] - low
-        c, d = row_index[2, i] - low, row_index[3, i] - low
+        r0, r1 = row_index[0, i] - low, row_index[1, i] - low
+        r2, r3 = row_index[2, i] - low, row_index[3, i] - low
         t = row_t[i]
         for j in range(width):
-            total[i, j] = _hermite(across[a, j], across[b, j], across[c, j], across[d, j], t)
-            whole_out[i, j] = (across_whole[a, j] and across_whole[b, j]
-                               and across_whole[c, j] and across_whole[d, j])  # fmt: skip
+            total[i, j] = _hermite(across[r0, j], across[r1, j], across[r2, j], across[r3, j], t)
+            whole_out[i, j] = (across_whole[r0, j] and across_whole[r1, j]
+                               and across_whole[r2, j] and across_whole[r3, j])  # fmt: skip
     return total, whole_out
