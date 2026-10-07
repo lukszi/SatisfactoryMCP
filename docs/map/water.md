@@ -589,7 +589,10 @@ Per band, through `RiverWater.over`.
 - Where the 8 m rule cuts a river plane and no other plane speaks, the field's river-box
   water stays at the box level, for section 38 to re-level.
 - Steps of more than 2 m per metre break the ribbon for a few metres. Those are
-  waterfalls, which are a separate item.
+  waterfalls, which are a separate item. The water kept beside the lip (2,975 texels in 300
+  runs) still steps by the fall's height, so the lip reads as a line under a metre wide, as
+  at (-999, 1575); that fall is not drawn, because the falls are prepared on the field's own
+  water, whose river volume stands over its lip.
 - The river's colour model is parked: the ramp makes the hand-over continuous, but a river
   in a lake of another class still draws a band of mixed colour along its course.
 - A section bent more tightly than its half width draws the fan its mesh would.
