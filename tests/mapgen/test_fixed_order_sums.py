@@ -215,10 +215,11 @@ def test_the_three_by_three_mean_is_scipy_s_where_its_running_sum_is_exact():
         assert _bits(got) == _bits(whole[:, lo + 1 : hi - 1]), "no running sum across a row"
 
 
-#: Where the draw and paint path reaches BLAS or LAPACK, by name: none but the open sea's
-#: sparse membrane, whose solve is an open question (docs/map/renders.md section 40,
-#: "Fixed-order sums").
-BLAS_NAMES = {"dot", "vdot", "inner", "matmul", "tensordot", "einsum", "inv", "solve", "lstsq"}
+#: Where the draw and paint path could reach BLAS or LAPACK, by name: none but the open sea's
+#: membrane, whose ``@`` is a sparse matrix product, scipy's own loop (docs/map/renders.md
+#: section 40, "Fixed-order sums").
+BLAS_NAMES = {"dot", "vdot", "inner", "matmul", "tensordot", "einsum", "inv", "solve", "lstsq",
+              "cg"}  # fmt: skip
 KNOWN = {"palette/water/open_sea.py:membrane"}
 
 
