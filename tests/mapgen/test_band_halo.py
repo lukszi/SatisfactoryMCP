@@ -1,4 +1,5 @@
-"""The stencils a band's draw reads through (``render/stencils.py``), each measured on the code.
+"""The band halo against the stencils a band's draw reads through (``render/stencils.py``),
+each measured on the code, and a full-size window drawn in bands against one band.
 
 docs/map/renders.md section 40. Synthetic fixtures: no install, no field on disk.
 """
@@ -20,8 +21,12 @@ from mapgen.palette.painted.surfaces import sunk_specks, top_cover
 from mapgen.palette.scene import BandGrid
 from mapgen.palette.water.shore import shore_terms
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M, water_alpha
+from mapgen.render import compose
 from mapgen.render.stencils import STENCILS, band_halo, band_reach
 from mapgen.terrain.render_meshes import MESH_CORAL
+from mapgen.terrain.sample import frame_coordinates
+from satisfactory_mcp.core.gameassets.container import SHEET_PX
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 #: Every size ``mapgen renders --size`` takes.
 SIZES = [RENDER_PX >> shift for shift in range(6)]
@@ -29,6 +34,9 @@ SIZES = [RENDER_PX >> shift for shift in range(6)]
 #: A probe's plane: rows wider than any reach either side of the one it moves.
 ROWS, COLS = 81, 24
 MOVED = ROWS // 2
+
+#: Three bands of the full-size sheet, 64 columns wide: ``(r0, r1, c0, c1)``.
+WINDOW = (40 * compose.BAND_ROWS, 43 * compose.BAND_ROWS, 4096, 4160)
 
 
 def _spacing(size: int) -> float:
@@ -147,3 +155,74 @@ def test_each_stencil_reads_as_far_as_its_entry_says(stencil, size):
 def test_the_widest_reach_is_the_specks_over_the_water_edge_blur():
     assert [band_reach(size) for size in SIZES] == [14, 7, 4, 3, 2, 2]
     assert band_halo() == 16
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_the_band_halo_holds_every_stencil_at_every_size(size):
+    assert compose.BAND_HALO >= band_reach(size)
+
+
+def _lake_field() -> SimpleNamespace:
+    """Hills under a lake on 0.25 m texels over the window and 8 m round it: shores that
+    cross the band edges at a slant."""
+    x_cm, y_cm = frame_coordinates(RENDER_PX)
+    r0, r1, c0, c1 = WINDOW
+    step_cm, margin_cm = 25.0, 800.0
+    x0, y0 = x_cm[c0] - margin_cm, y_cm[r0] - margin_cm
+    rows = int((y_cm[r1 - 1] + margin_cm - y0) / step_cm) + 1
+    cols = int((x_cm[c1 - 1] + margin_cm - x0) / step_cm) + 1
+    y_m, x_m = np.mgrid[0:rows, 0:cols] * step_cm / 100.0
+    height_m = 2.0 * np.sin(y_m / 3.1) * np.cos(x_m / 2.3) + 0.4 * np.sin(y_m / 0.9 + x_m / 1.3)
+    height = np.round(height_m * hf.DM_PER_M).astype(np.int16)
+    level = np.full(height.shape, 3, np.int16)
+    grades = np.where(height < level, hf.WATER_MEASURED, hf.WATER_DRY).astype(np.uint8)
+    return SimpleNamespace(
+        height_dm=height, provenance_plane=np.ones(height.shape, np.uint8),
+        water_raster=lambda: level, water_quality_raster=lambda: grades,
+        x0_cm=x0, y0_cm=y0, spacing_cm=step_cm, width=cols, height=rows,
+    )  # fmt: skip
+
+
+class _Capture:
+    """The light's surface over the window."""
+
+    def __init__(self):
+        r0, r1, c0, c1 = WINDOW
+        self.z = np.full((r1 - r0, c1 - c0), np.nan, np.float32)
+        self.land = self.z.copy()
+
+    def put(self, row, z_m, land, columns=slice(None)):
+        r0, _r1, c0, _c1 = WINDOW
+        rows = slice(row - r0, row - r0 + len(z_m))
+        cols = slice(columns.start - c0, columns.stop - c0)
+        self.z[rows, cols], self.land[rows, cols] = z_m, land
+
+
+def _drawn(field: SimpleNamespace, layer: str) -> tuple[np.ndarray, _Capture]:
+    capture = _Capture()
+    borrow = (np.broadcast_to(np.int8(0), (SHEET_PX, SHEET_PX)), np.zeros_like(field.height_dm))
+    rgb = compose.render_layer(
+        layer, field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, RENDER_PX, False,
+        window=WINDOW, surface=capture,
+    )  # fmt: skip
+    return rgb, capture
+
+
+@pytest.mark.parametrize("layer", ["terrain", "satellite"])
+def test_a_full_size_window_drawn_in_bands_is_the_window_drawn_whole(monkeypatch, layer):
+    field = _lake_field()
+    rgb, capture = _drawn(field, layer)
+    with monkeypatch.context() as patch:
+        patch.setattr(compose, "BAND_ROWS", WINDOW[1] - WINDOW[0])
+        whole_rgb, whole = _drawn(field, layer)
+    assert rgb.tobytes() == whole_rgb.tobytes()
+    assert capture.z.tobytes() == whole.z.tobytes()
+    assert capture.land.tobytes() == whole.land.tobytes()
+
+    monkeypatch.setattr(compose, "BAND_HALO", 8)
+    _rgb, narrow = _drawn(field, layer)
+    moved = np.flatnonzero((narrow.land != whole.land).any(axis=1))
+    in_band = moved % compose.BAND_ROWS
+    edge = np.minimum(in_band, compose.BAND_ROWS - 1 - in_band)
+    assert moved.size, "the halo before the registry drew a seam at full size"
+    assert edge.max() < band_reach(RENDER_PX) - 8, "only within the reach of a band edge"

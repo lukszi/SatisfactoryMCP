@@ -262,7 +262,8 @@ here.
 
 `render_layer` draws a sheet 256 rows at a time; at 32768 a whole-sheet float32 intermediate
 is four gigabytes. Each band carries `BAND_HALO` rows either side and crops them, because a
-one-sided difference at every band edge would draw a line across the world. `direct` is the
+one-sided difference at every band edge would draw a line across the world; the halo is the
+widest reach in `render/stencils.py` (docs/map/renders.md section 40). `direct` is the
 rock raster's two planes with the ground lattice and the sub-sampling, and `overlay` the
 arch-and-boulder pair; without them the picture is one regime. `seam` and `regimes` are the
 measuring accumulators, passed for the first layer only since every layer draws one surface.

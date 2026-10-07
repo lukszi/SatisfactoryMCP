@@ -43,6 +43,7 @@ from mapgen.palette.water.rivers import RiverWater, water_sources
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M
 from mapgen.render.drawpool import bands_held, in_order
+from mapgen.render.stencils import band_halo
 from mapgen.render.surface import (
     AxisTaps,
     BandSampling,
@@ -87,10 +88,9 @@ __all__ = [
 #: Rows of the output drawn at a time: 256 rows of 32768 is 34 MB of float32 an array.
 BAND_ROWS = 256
 
-#: The rows each band is drawn beyond its edges and cropped after, so no stencil (the
-#: hillshade's gradient, the water edge's blur) sees a band edge. Too small for the widest
-#: kernel and the render draws a seam every 256 rows (docs/spatial-and-map.md section 40).
-BAND_HALO = 8
+#: The rows each band is drawn beyond its edges and cropped after, so no stencil sees a band
+#: edge: the widest reach at the largest size, from ``render/stencils.py``.
+BAND_HALO = band_halo()
 
 #: The flat ground's sun term, ``n.L`` of the default sun on level ground.
 _FLAT_SUN = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))

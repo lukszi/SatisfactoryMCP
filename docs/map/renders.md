@@ -1054,11 +1054,10 @@ bytes.
 
 ### What runs where
 
-- **The bands are unchanged:** 256 rows, with `BAND_HALO` (8) rows either side, cropped. A
-  band on a thread computes exactly what it computed in turn; only when it runs changes.
-  128-row bands were tried in the research and changed pixels, so the band and block
-  geometry stay. So does the known seam where the halo is narrower than the 13 px water blur
-  at 32768: widening the halo changes pixels and is a separate item.
+- **The bands are unchanged:** 256 rows, with `BAND_HALO` rows either side, cropped ("The
+  halo" below). A band on a thread computes exactly what it computed in turn; only when it
+  runs changes. 128-row bands were tried in the research and changed pixels, so the band and
+  block geometry stay.
 - `_layer_job` builds what every band of a layer shares, once, before any band starts: the
   arguments, the column taps, the satellite noise and the water planes. The bands only read
   it.
@@ -1074,6 +1073,38 @@ bytes.
   when its band's turn comes, after the bands not yet started are cancelled and the running
   ones have finished. On one thread it is a plain loop on the caller's thread: the serial
   path.
+
+### The halo (2026-10-07)
+
+A step that reads its neighbours draws what the whole sheet would only while all it reads
+lies within the band and its halo. `render/stencils.py` lists every such step with its reach,
+how many pixels away it reads through every step before it. The tests measure each reach on
+the code, by moving one row of the step's input and finding the farthest output row that
+moves.
+
+| Stencil | Where | Reach, px |
+| --- | --- | --- |
+| The gradient | `sun_dot`, `slope_degrees`, `surface_direct`, relief's `_lambert`, `shore_terms` | 1 |
+| Rock tops | `top_cover`: the gradient's normal, then a 3 × 3 mean of its ramp | 2 |
+| The water edge's blur | `water_alpha`: a Gaussian of 0.73 m, cut at 4 σ | 0 at 1024, 1 at 2048, 6 at 16384, 13 at 32768 |
+| Sunk specks | `sunk_specks`: a 3 × 3 mean over the water's cover | the blur's (at least the shore's 1) plus 1: 14 at 32768 |
+| The seam trace | `SeamTrace.measure`, along its row only | 33, no rows |
+
+`BAND_HALO` is the widest reach across rows at 32768, rounded up to whole steps of 8 rows:
+16. It was 8, which held every reach up to 16384 (7) but not the water edge at 32768. There
+the rows up to 5 from a band edge drew the blur with the band's own edge in it, 6 in the
+painted layer, whose sunk specks read one further, and the light's land weight came from
+the same cover. Those rows now draw what the whole sheet would. No other row changes, and no
+size below 32768 changes at all. A band is now 288 rows instead of 272, about 6% more to draw;
+it still spans three stored bands, so the band stores keep as many as before.
+
+`tests/mapgen/test_band_halo.py` draws three bands of the full-size sheet over a lake and
+compares them with the same rows drawn as one band. They are equal at the new halo, and at 13
+for the terrain and satellite layers, the blur's own reach. At 8 the rows within 5 of a band
+edge move: one level of RGB, 0.0013 of the light's land weight.
+
+The column pieces of the performance plan read the same table: every stencil but the seam
+trace reaches as far along a row as across rows.
 
 ### The band stores
 
