@@ -27,6 +27,7 @@ from mapgen.colour import (
     unit_luminance,
     untone,
 )
+from mapgen.lighting.hillshade import sun_dot
 from mapgen.lighting.horizon import (
     FADE_M,
     HORIZON_DIRS,
@@ -217,10 +218,8 @@ def _sun_gain(el: float) -> np.float32:
 
 def surface_direct(z_m: NDArray[np.floating], spacing_m: float, sun: Sun = DEFAULT_SUN) -> F32Grid:
     """``direct_term`` of a height raster without shadows: Lambert toward ``sun``, flat is 1."""
-    d_south, d_east = np.gradient(np.asarray(z_m, np.float32), spacing_m)
-    lx, ly, lz = sun_vector(*sun)
-    ndl = (lz - d_east * lx - d_south * ly) / np.sqrt(d_east * d_east + d_south * d_south + 1.0)
-    return (np.maximum(ndl, 0.0) * _sun_gain(sun[1])).astype(np.float32)
+    ndl = sun_dot(np.asarray(z_m, np.float32), spacing_m, *sun)
+    return (ndl * _sun_gain(sun[1])).astype(np.float32)
 
 
 def apply_terms(
