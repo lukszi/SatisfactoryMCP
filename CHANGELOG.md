@@ -105,6 +105,12 @@ Planned as 0.2.0.
   On bands a fifth to a half wet that part costs a third to two thirds of what it did, and
   the three styles' painters 10 to 17% less CPU; a full-size draw on 8 threads, which waits
   on memory, is no faster by the clock. The tiles are the same bytes.
+- Map generator: the light's horizon march and sky view, and the sampler's resampling, run
+  as loops compiled by numba, now in the `gen` extra (`uv sync --extra gen`). A full-size
+  light block's horizons and sky view take about 8 s instead of 91 s, and the five layers'
+  full-size draw about 22% less, about 7 minutes on 8 threads. The tiles are the same bytes.
+  Without numba, or with `MAPGEN_KERNELS=numpy`, the generator runs the numpy code as before.
+  The first run compiles the loops, about 3 s, and keeps them beside the code.
 - The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
   render of all five layers with the light is budgeted at about 58 minutes, the default two
   layers at about 42.

@@ -1,8 +1,8 @@
 # The drawn renders: layers, sampler, recipes and caches
 
-Sections 17, 20, 25, 26, 39 and 40 of the [design spec](../../DESIGN.md): the drawn base layers, how
-they sample the field and the rocks, the recipes they draw by, their raster caches, and
-how a layer's bands are drawn. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-40-the-map).
+Sections 17, 20, 25, 26, 39, 40 and 41 of the [design spec](../../DESIGN.md): the drawn base layers,
+how they sample the field and the rocks, the recipes they draw by, their raster caches,
+how a layer's bands are drawn, and the loops compiled for it. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-41-the-map).
 
 Numbers 19 to 24 also name sections of parked.md, residency.md and plumbing.md; in these
 files they are the map's ([the document set](../../DESIGN.md#the-document-set)).
@@ -1512,3 +1512,132 @@ in whole rows. The slab is now cut to the columns the taps read as well (`_slab`
 - The pass holds every layer's sheet until that layer is cut, in files: 3.2 GB a layer at
   full size. Cutting the tiles as the bands finish would drop them, which is the streaming
   step of the performance plan.
+
+## 41. Compiled kernels: the light's march and the sampler's gathers (2026-10-07)
+
+The light bake spends its time in two loops: the horizon march, 32 directions on the ground
+and 32 on the crowns at a few hundred steps each, and the sky view. The draw spends about a
+fifth of its terrain time in the sampler's gathers. Each of them now also exists as a numba
+kernel: the same arithmetic, compiled, a row at a time, with none of the temporary arrays
+numpy makes for every step. The numpy code stays where it was, as the reference the kernels
+are proven against and the path a machine without numba runs.
+
+### The switch
+
+- `mapgen.jit.kernels_on()` decides, at every call. `MAPGEN_KERNELS=numpy` selects the
+  reference; unset, or any other value, the kernels wherever `numba` imports. numba is in the
+  `gen` extra, pinned; without it the reference runs.
+- The two paths write the same bytes, so nothing a render writes records which one ran.
+- A kernel module (`lighting/kernels.py`, `terrain/kernels.py`) is imported only once the
+  switch says kernels, so the reference never loads numba. A test holds that.
+- The light's spawned processes inherit the switch with the environment.
+
+### Why the bits are the same
+
+- Per pixel, each kernel does the operations its numpy code does, on the same types and in
+  the same order.
+  - The march: `(sample - near) * scale`, the maximum, NaN when either side is (as
+    `np.maximum` has it), then the slab test. The bilinear sample is
+    `(a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + e * fx) * fy` with the same float32
+    fractions.
+  - The sky view adds a division and a square root. IEEE rounds both correctly, so they are
+    as exact as an addition.
+  - The gathers add the taps in numpy's order and round to float32 after each one, as
+    numpy's in-place add does, float64 weights included. PCHIP's slopes and Hermite basis
+    follow `pchip_slope` and `pchip_1d` term by term.
+- Everything per step, the steps themselves, their offsets, fractions and weights, is worked
+  out by the numpy code that did it before, in Python, and handed to the kernel. The
+  transcendentals (the directions' sine and cosine, the horizon's arctangent and degrees) stay
+  in numpy.
+- No fastmath, so no fused multiply-add and no reassociation; numpy's error model, so a
+  division by zero is infinite rather than an exception.
+- So no kernel moves a last bit. The kernels that may move one, the transcendental ones the
+  plan allowed with a measured list, are none.
+- One difference exists and cannot show. Where `np.maximum` meets +0 and -0, numpy's vector
+  loop and its scalar tail return different ones; the kernel keeps the first. Every reader of
+  a horizon rounds it to a byte or compares it, and the two zeros are equal there.
+- numba has no float16 arrays. A float16 source reaches a kernel as float32, which is what
+  numpy's path reads too.
+- The kernels read without bounds checks. The light's feed therefore refuses a halo its steps
+  overrun, where numpy would fail on the shapes.
+
+### Threads, processes and compiling
+
+- The kernels release the GIL (`nogil`), so the draw's threads run the gathers side by side.
+- A gather reads the block its taps cover, cut to the piece's columns (section 40, "Column
+  pieces"), copied into one C-ordered array for the kernel.
+- `cache=True`: numba keeps the compiled code beside the module, in `__pycache__`
+  (`kernels.*.nbi`, `kernels.*.nbc`), keyed on the source file and the CPU. A light process
+  loads it instead of compiling it again.
+- The first run after a change to a kernel module compiles: each kernel once per argument
+  types, about 0.3 s apiece, 1.1 s for the first because numba starts up with it. Every
+  signature the light and the draw use took 2.7 s together, under the exclusive render lock.
+  Loaded from disk they take 0.4 s, nearly all of it numba starting up, once per process.
+  In the windowed gate, which drew every window twice, a first draw took 0 to 0.4 s longer
+  than its second, except two water windows (1.4 s and 3.5 s); the reference's own pairs
+  differ by up to 0.8 s.
+- A change to `mapgen.jit`'s options does not invalidate that cache: delete the files, or
+  touch the kernel module.
+
+### Measured (2026-10-07, build 502094)
+
+Each pair ran under the exclusive render lock, the reference first, minutes apart, with
+numba 0.68.0; other work on the machine averaged under two cores throughout. The code drew
+each layer alone and in whole rows: these numbers predate the one pass and the column pieces
+(section 40).
+
+**One full-size light block.** A 32768 render's block: 4096 native pixels, 2048 at half
+resolution plus the march's 330-pixel halo each side, synthetic relief (the march costs the
+same whatever the heights are), one process.
+
+| Part | numpy, s | Kernels, s | Faster |
+| --- | --- | --- | --- |
+| 32 ground horizons, with slabs | 77.9 | 5.7 | 13.6× |
+| 32 crown horizons | 11.7 | 2.0 | 5.7× |
+| The sky view | 1.73 | 0.12 | 14× |
+
+The block's other work (normals, encoding, tiles) is unchanged, and the light at 32768 was
+not rerun whole: the windowed gate below draws unlit.
+
+**The 32768 sheet in windows** (G2: three windows of each of the five layers, 8 threads,
+each window drawn twice). The draws took 162 s against 211 s, 23% less. Projected to the
+whole sheet from the full-width window:
+
+| Layer | numpy, s | Kernels, s |
+| --- | --- | --- |
+| terrain | 250 | 166 |
+| satellite | 294 | 205 |
+| relief | 323 | 235 |
+| relief-dark | 313 | 223 |
+| painted | 824 | 727 |
+| All five | 2,004 | 1,555 |
+
+The water windows gain most, 28% to 33% for the four plain layers. The run's peak commit
+fell from 19.2 to 19.0 GB; three of the fifteen draws peaked 0.6 to 1.1 GB higher than
+before, the others within 0.4 GB either way.
+
+**The 2048 render** (G1, lit, five layers). 493 s either way, 525 CPU seconds against 589.
+Nearly all of it is the rasters the run prepares first, which no kernel touches. The draws
+of satellite, relief and relief-dark fell from about 3 s to about 1 s, painted from 15.2 to
+13.1 s, and the light from 14.8 to 13.1 s. Terrain, the first layer drawn, rose from 3.0 to
+7.7 s: that run started with no compiled code on disk and paid the compile there.
+
+### Checked
+
+- G1 at 2048 (all five layers, lit): all 1,125 tiles the same bytes as the reference and as
+  the pixel-batch baseline, and the six sidecars the same apart from their timings, with the
+  kernels and with `MAPGEN_KERNELS=numpy`.
+- G2 at 32768: all 15 windows the same SHA-256 as the baseline, both ways, and each window's
+  two draws the same.
+- `tests/mapgen/test_kernels.py` compares every kernel with its reference byte for byte:
+  five azimuths, slabs with holes, float64 slabs, crowns, three sky spacings and a strided
+  view; four source types, three tap kinds and two scales for the gathers; PCHIP on integer
+  and float sources; float64 weights.
+- The full-size light block above came out the same bytes both ways.
+
+### Known limits
+
+- The painters (`blend_regimes`, the composites, the crown stamps) are still numpy. They are
+  the next kernels.
+- A numba release is a new proof, which is why it is pinned: the bit tests in
+  `tests/mapgen/test_kernels.py` and a G1 against the reference come with an upgrade.

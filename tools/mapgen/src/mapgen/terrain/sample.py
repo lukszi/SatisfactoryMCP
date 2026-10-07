@@ -1,4 +1,8 @@
-"""Sampling the 1 m field onto the output frame: the kernels, their taps and the direct mask."""
+"""Sampling the 1 m field onto the output frame: the kernels, their taps and the direct mask.
+
+The gathers run as numba kernels unless ``mapgen.jit`` selects this numpy, their reference
+(docs/map/renders.md section 41).
+"""
 
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ from numpy.typing import ArrayLike, NDArray
 from mapgen.cache import Plane
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.meshes import DIRECT_SAMPLES_MIN
+from mapgen.jit import kernels_on
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -250,6 +255,19 @@ def _slab(
     return block, low, col_index - left
 
 
+def _contiguous(slab: NDArray[np.generic]) -> NDArray[np.generic]:
+    """The source block as the kernels take it: one C-ordered array, a view where it is one.
+
+    numba has no float16 arrays, so those come as the float32 that numpy's path reads too.
+    """
+    return np.ascontiguousarray(slab, np.float32 if slab.dtype == np.float16 else None)
+
+
+def _axis(index: I64Grid, weight: NDArray[np.floating]) -> tuple[I64Grid, NDArray[np.floating]]:
+    """One axis's taps as the kernels take them: a plain pair of C-ordered arrays."""
+    return np.ascontiguousarray(index), np.ascontiguousarray(weight)
+
+
 def resample_pchip(raster: Plane, rows: PchipTaps, cols: PchipTaps,
                    nodata: int) -> tuple[F32Grid, BoolMask]:  # fmt: skip
     """Separable PCHIP onto the output grid. Returns ``(values, whole)``.
@@ -259,6 +277,11 @@ def resample_pchip(raster: Plane, rows: PchipTaps, cols: PchipTaps,
     """
     (row_index, row_t), (col_index, col_t) = rows, cols
     slab, low, col_index = _slab(raster, row_index, col_index)
+    if kernels_on():
+        from mapgen.terrain import kernels
+
+        rows_in, cols_in = _axis(row_index, row_t), _axis(col_index, col_t)
+        return kernels.pchip(_contiguous(slab), nodata, low, rows_in, cols_in)
     known = slab != nodata
     values = np.where(known, slab, 0).astype(np.float32)
     across = _pchip_taps([values[:, col_index[tap]] for tap in range(4)], col_t[None, :])
@@ -286,6 +309,13 @@ def resample(raster: Plane, rows: AxisTaps, cols: AxisTaps,
     """
     (row_index, row_weight), (col_index, col_weight) = rows, cols
     slab, low, col_index = _slab(raster, row_index, col_index)
+    if kernels_on():
+        from mapgen.terrain import kernels
+
+        holes = nodata is not None
+        rows_in, cols_in = _axis(row_index, row_weight), _axis(col_index, col_weight)
+        return kernels.separable(_contiguous(slab), nodata if holes else 0, holes, True, low,
+                                 rows_in, cols_in)  # fmt: skip
     values = slab.astype(np.float32)
     known = None if nodata is None else (slab != nodata).astype(np.float32)
     if known is not None:
@@ -351,6 +381,11 @@ def sample_plain(raster: Plane, taps: Taps) -> F32Grid:
     slab, low, col_index = _slab(raster, row_index, col_index)
     if not slab.any():
         return np.zeros(shape, np.float32)
+    if kernels_on():
+        from mapgen.terrain import kernels
+
+        rows_in, cols_in = _axis(row_index, row_weight), _axis(col_index, col_weight)
+        return kernels.separable(_contiguous(slab), 0, False, False, low, rows_in, cols_in)[0]
     values = slab.astype(np.float32)
     across = np.zeros((values.shape[0], shape[1]), np.float32)
     for tap in range(col_index.shape[0]):
