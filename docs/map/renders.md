@@ -1083,11 +1083,12 @@ bytes.
   halo" below). A band on a thread computes exactly what it computed in turn; only when it
   runs changes. 128-row bands were tried in the research and changed pixels, so the band and
   block geometry stay.
-- `_layer_job` builds what every band of a layer shares, once, before any band starts: the
-  arguments, the column taps, the satellite noise and the water planes. The bands only read
-  it.
-- `_draw_band` writes its own rows of the sheet and, for the first layer, its own rows of
-  the light's `Surface` (section 29). From a band's thread nothing else shared is written.
+- `render_layers` builds what every band shares, once, before any band starts: the ground's
+  sources (`_ground_sources`: the arguments, the column taps, the water planes) and each
+  layer's job (`painting.layer_job`: its painter's inputs, the satellite noise). The bands
+  only read them.
+- `_draw_band` writes its own rows of every layer's sheet and its own rows of the light's
+  `Surface` (section 29). From a band's thread nothing else shared is written.
 - **The seam trace and the regime table** are measured per band on the band's thread
   (`SeamTrace.measure`, `RegimeCoverage.measure`, which touch nothing shared) and merged by
   the caller in band order (`merge`). The pools, the float sums and the order the provinces
@@ -1152,9 +1153,9 @@ trace reaches as far along a row as across rows.
 
 The draw's threads share each `BandArray` (section 39). Its cache and its zstd decoder are
 not safe to use from two threads at once, so a lock covers both: one lock per plane, so two
-planes decode at once and one plane decodes one band at a time. While a layer is drawn on N
+planes decode at once and one plane decodes one band at a time. While a pass is drawn on N
 threads, each plane keeps `2N + 2` decoded bands (`bands_held`), because the bands in flight
-span that many stored bands with their halos. The count drops back to three when the layer
+span that many stored bands with their halos. The count drops back to three when the pass
 is done. At 32768 one stored band of every plane the painted layer reads comes to about
 160 MB, so on 8 threads it holds about 2.9 GB of decoded bands; the other layers read fewer
 planes, about 125 MB a band.
@@ -1162,29 +1163,34 @@ planes, about 125 MB a band.
 ### How many threads
 
 `--draw-threads N`; by default 8 (`DRAW_THREADS`), and no more than the machine has cores.
-Before each layer the count is cut to what free memory holds: the free memory, less the sheet
-(3 bytes a pixel) and 2 GiB, over the peak one band in flight takes. The free memory is the
+Before the pass the count is cut to what free memory holds: the free memory, less one sheet
+(3 bytes a pixel; the sheets are files, "One pass for every layer" below) and 2 GiB, over the
+peak one band in flight takes. The free memory is the
 one `mapgen/pools.py` reads for the light bake and the cutter too. On Windows it is the
 lesser of the free physical memory and the commit left, because an array commits its
 whole size when it is allocated: with other work running, the commit ran out at 17 GB while
 37 GB of RAM stood free, and an allocation failed. One more band in flight costs about
 1.9 GB, and 3.4 GB for the painted layer, at 32768 wide, scaled by the width: the working set
 measured at 1, 4 and 8 threads below, so the decoded bands it keeps are counted too. The
-performance plan had estimated 1.4 and 2.9 GB. With nothing else running, a 64 GB machine
-draws every layer on 8 threads. `1` draws the bands in turn. The run prints the count per
-layer, and the layer's `meta.json` records it as `render.draw_threads`, beside `cut_workers`.
+performance plan had estimated 1.4 and 2.9 GB. A pass paints its layers in turn over one
+ground, so a band of it costs its dearest layer's, and 0.5 GB more (`SEABED_BYTES`) for the
+second ground of a pass that draws the painted layer and another (`band_bytes`). With nothing
+else running, a 64 GB machine draws every layer on 8 threads. `1` draws the bands in turn.
+The run prints the count, and every layer's `meta.json` records it as `render.draw_threads`,
+beside `cut_workers`.
 
 ### What the threads share, audited
 
 | Shared | Why it is safe |
 | --- | --- |
 | The heights, lattices, water and void planes, and the rasters | Read only: numpy arrays, `r` memory maps, or band stores whose bands are read-only |
-| The field | Its planes are decoded when it loads; the water planes are read in `_layer_job`, before any band |
+| The field | Its planes are decoded when it loads; the water planes are read in `_ground_sources`, before any band |
+| A band's ground | Its own band's only. Every layer's painter reads it, and its arrays are read-only, so a painter that wrote to one would fail rather than change what the next layer reads |
 | `PaintedGround`, `ReliefGround`, `RiverWater`, `OpenSea` | Built before the draw. The crowns' calibrated sprites, the water classes and the family targets are written in setup, never by a band |
-| Random numbers | The satellite noise comes from a seeded generator, once per layer in `_layer_job`; the moss patches hash each pixel's position |
+| Random numbers | The satellite noise comes from a seeded generator, once per run in `layer_job`; the moss patches hash each pixel's position |
 | numpy's error state | Per thread since numpy 2; the band code sets no warnings filters, which are process-wide |
 | Palettes and colour tables | Module constants, read only |
-| The sheet and the light's surface | Each band writes only its own rows |
+| The sheets and the light's surface | Each band writes only its own rows |
 
 ### The GIL
 
@@ -1275,11 +1281,47 @@ data drive. The second drew every layer on 8 threads.
   all 1,125 tiles and light tiles byte-identical, the sidecars differing in timings and
   `render.draw_threads` only.
 
+### One pass for every layer (2026-10-07)
+
+The layers drew the same ground band by band, each layer again: the heights, the rocks and
+the overlay, the water surface, the meshes and the water over them, the borrowed shading.
+That was about half of each layer's draw but the painted layer's. A run now draws every
+layer it draws in one pass over the bands (`render_layers`), and each band composes its
+ground once (`render/surface.py` `band_surfaces`) before every layer's painter colours it
+(`render/painting.py` `paint_band`), in the order of `--layer`.
+
+- **Two grounds, where the meshes need them.** Only the render-only meshes in the water
+  depend on the style: every style but painted leaves them to the seabed (section 27). So a
+  band composes the rest once, and the meshes and the water over them once per rule the pass
+  draws: the seabed rule for the other layers and for the light, the painted layer's own for
+  it. Without meshes one ground serves both.
+- **Read-only.** The ground's arrays are marked read-only before the first painter reads
+  them, so a painter that wrote to one would fail rather than change what the next layer
+  draws. None does.
+- **Measured once.** The seam trace and the regime table measure the one ground, as the first
+  layer's draw did before; the sidecars' numbers are the same.
+- **The light** captures the seabed rule's ground once, whatever layers the pass draws
+  (light-and-crowns.md section 29, "One capture"), and is baked after the pass, before the
+  first layer is cut. The progress lines follow: one `draw` stage, then `light`, then each
+  layer's `cut` (maps_contract.md §5.3).
+- **The sheets wait in files.** Every layer's sheet is drawn before the first is cut, 3 bytes
+  a pixel each, 3.2 GB a layer at full size. They are memory-mapped files in the run's
+  scratch, `sheets.cache/<layer>.npy` beside the light's (`--scratch-dir`, else
+  `--cache-dir`, else beside the renders; `render/sheets.py`), so the system can write them
+  out rather than hold them in memory. Each is deleted once its layer is installed, and the
+  folder when the run ends. A run that died leaves its sheets to the next, which empties
+  them; the sheets of a render still running are refused, exit 11, as its light scratch is.
+  The job's disk check counts them (maps_contract.md §4.2).
+- `render.seconds_to_draw` in each layer's `meta.json` is the pass's, the same for every
+  layer of the run, and `render.draw_threads` the pass's threads.
+- `render_layer` draws one layer alone, in memory, as before: the crops and the tests use it.
+
 ### Known limits
 
 - More threads than 8 drew little faster, and relief slower: the bands wait on memory, not
   on cores.
 - The decoded bands the threads need, and the bands in flight, are memory the serial loop
   did not take; the thread count is cut to fit, and `--draw-threads` lowers it further.
-- The layers still recompute the same heights, water and meshes band by band, each layer
-  again. Drawing all layers in one pass over the bands is the next step, and a larger one.
+- The pass holds every layer's sheet until that layer is cut, in files: 3.2 GB a layer at
+  full size. Cutting the tiles as the bands finish would drop them, which is the streaming
+  step of the performance plan.

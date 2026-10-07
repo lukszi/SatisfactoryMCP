@@ -363,7 +363,7 @@ def _void_blend(
     return (rgb * (1.0 - weight) + colour * weight) * (1.0 - line) + VOID_RIM_RGB * line
 
 
-#: The painters ``render.compose`` calls by the layer's name.
+#: The painters ``render.painting`` calls by the layer's name.
 LAYER_PAINTERS: dict[str, Callable[[SatelliteScene], FloatGrid]] = {
     "terrain": terrain_colours,
     "satellite": satellite_colours,

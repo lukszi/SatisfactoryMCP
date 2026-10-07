@@ -149,7 +149,7 @@ class FieldPlanes(Protocol):
 FloatGrid: TypeAlias = NDArray[np.floating]
 #: A band's water terms by name, one plane each (``palette.water``'s).
 BandWater: TypeAlias = WaterTerms
-#: The crowns stamped over a band by name, one plane each (``render.compose.domed_crowns``).
+#: The crowns stamped over a band by name, one plane each (``render.painting.domed_crowns``).
 CrownTerms: TypeAlias = dict[str, F32Grid]
 #: A plane of the paint store or the rock grid, sampled onto a band's pixels.
 Sampler: TypeAlias = Callable[[NDArray[np.generic]], F32Grid]
@@ -192,7 +192,7 @@ class CrownLayer(TypedDict):
 
 
 class PaintedScene(TypedDict):
-    """One band as the painted style draws it (``render.compose``)."""
+    """One band as the painted style draws it (``render.painting``)."""
 
     z_m: F32Grid
     borrow: F32Grid

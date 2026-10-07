@@ -92,10 +92,10 @@ from the downsampled heights, sky view and horizons by mean.
 
 ### The stage
 
-`render_layer` hands the first layer's heights and land weight to a `Surface` (two
-memory maps in the light's scratch, 5.4 GB at 32768), each band its own rows from whichever
-thread drew it (section 40). Every layer hands the same surface, the one the seabed rule
-draws (below, "One capture"). After that layer is drawn,
+The one pass that draws every layer (section 40) hands its heights and land weight to a
+`Surface` (two memory maps in the light's scratch, 5.4 GB at 32768), each band its own rows
+from whichever thread drew it, once, whatever layers the pass draws: the surface the seabed
+rule draws (below, "One capture"). After the pass,
 `lighting/stage.py` cuts the sheet into blocks of 16 × 16 native tiles, each with a 150 m
 halo, and a process pool computes per block: the ground's horizons and the crowns' at half
 resolution, sky view, normals, the native tiles, and the light at the default sun for the
@@ -115,10 +115,11 @@ which order. Until this date it did, in two ways:
 - The crown occluder came with the painted layer only, so `--layer terrain` alone baked a
   `light/` without the crowns' horizons, which the painted layer reads.
 
-Now every layer captures the surface the seabed rule draws: a band of the painted layer
-composes the seabed's heights and water for the light beside its own (`render/surface.py`
-`band_surface`), and the painted layer drawn unlit always keeps the default sun on the meshes
-only it draws (section 36, "Coral trees are no crowns"). The crown tops come from the paint
+Now the light takes the surface the seabed rule draws: a band composes the seabed's heights
+and water for the light beside the painted layer's own, whether a layer that draws the
+seabed is in the pass or not (`render/surface.py` `band_surfaces`), and the painted layer
+drawn unlit always keeps the default sun on the meshes only it draws (section 36, "Coral
+trees are no crowns"). The crown tops come from the paint
 store whenever there is one: the painted ground's plane when that layer is drawn, else the
 store's (`render/light.py` `crown_tops`). A run without a paint store still bakes no crown
 cells. A full run draws terrain first and the painted layer, so its light and tiles are

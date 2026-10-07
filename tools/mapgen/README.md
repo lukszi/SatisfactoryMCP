@@ -230,8 +230,11 @@ be traced to the axis it should move.
 | `palette/water/rivers.py` | style | River water: reconciled with the field's, laid over each band |
 | `palette/water/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |
 | `palette/water/perched.py` | style | Water levels re-read from the shoreline where a box top is not the surface |
-| `render/compose.py` | | The band loop that draws a layer |
-| `render/drawpool.py` | | How many threads draw a layer's bands, and the pool that keeps their order |
+| `render/compose.py` | | The band loop that draws every layer of a run in one pass |
+| `render/surface.py` | | One band's ground, composed once for all the layers |
+| `render/painting.py` | | One band coloured in one layer's style over that ground |
+| `render/sheets.py` | | The drawn sheets as memory-mapped files until each layer is cut |
+| `render/drawpool.py` | | How many threads draw a pass's bands, and the pool that keeps their order |
 | `render/stencils.py` | | How far each step of a band's draw reads its neighbours, and the band halo that holds them |
 | `render/extras.py` | | What a run loads beside the field: meshes, falls, Titan trees and rivers |
 | `render/light.py` | | Installing a layer drawn unlit: `unlit/` and the default-sun copy |
@@ -260,21 +263,25 @@ here.
 
 ### The band loop (`render/compose.py`)
 
-`render_layer` draws a sheet 256 rows at a time; at 32768 a whole-sheet float32 intermediate
-is four gigabytes. Each band carries `BAND_HALO` rows either side and crops them, because a
-one-sided difference at every band edge would draw a line across the world; the halo is the
-widest reach in `render/stencils.py` (docs/map/renders.md section 40). `direct` is the
-rock raster's two planes with the ground lattice and the sub-sampling, and `overlay` the
-arch-and-boulder pair; without them the picture is one regime. `seam` and `regimes` are the
-measuring accumulators, passed for the first layer only since every layer draws one surface.
-`meshes` is the render-only mesh raster, `reach` the plane where the ocean's crossing rule
-applies (`None` keeps recipe 5's water). `painted` and `relief` are the prepared grounds of
-those styles, built once per run. `falls` are the prepared waterfalls and `rivers` the
-`RiverWater` whose ribbons replace the field's river water. `window` draws part of the sheet,
-which is how crops are compared. `threads` draws that many bands at once to the same bytes
-(`render/drawpool.py`, `--draw-threads`): the bands share the layer's inputs read-only, each
-writes its own rows, and their seam and regime measurements are merged in band order
-(docs/spatial-and-map.md section 40).
+`render_layers` draws every layer of a run in one pass, 256 rows at a time; at 32768 a
+whole-sheet float32 intermediate is four gigabytes. Each band's ground is composed once and
+every layer's painter colours it; the painted layer, which keeps the meshes in the sea, gets
+a second ground that differs in the meshes and the water over them alone. Each band carries
+`BAND_HALO` rows either side and crops them, because a one-sided difference at every band
+edge would draw a line across the world; the halo is the widest reach in
+`render/stencils.py` (docs/map/renders.md section 40). `direct` is the rock raster's two
+planes with the ground lattice and the sub-sampling, and `overlay` the arch-and-boulder pair;
+without them the picture is one regime. `seam` and `regimes` are the measuring accumulators,
+which measure the one ground once. `meshes` is the render-only mesh raster, `reach` the plane
+where the ocean's crossing rule applies (`None` keeps recipe 5's water). `painted` and
+`relief` (by layer) are the prepared grounds of those styles, built once per run. `falls` are
+the prepared waterfalls and `rivers` the `RiverWater` whose ribbons replace the field's river
+water. `window` draws part of the sheet, which is how crops are compared. `sheets` makes each
+layer's sheet: in memory by default, and memory-mapped files in the run's scratch from the
+renders command (`render/sheets.py`). `threads` draws that many bands at once to the same
+bytes (`render/drawpool.py`, `--draw-threads`): the bands share the pass's inputs read-only,
+each writes its own rows, and their seam and regime measurements are merged in band order
+(docs/spatial-and-map.md section 40). `render_layer` is one layer alone, in memory.
 
 On a sheet coarser than the paint's 1 m grid (4096 px and below) the painted layer samples
 its ground over each pixel's footprint (`terrain.sample.taps_footprint`). One bilinear sample

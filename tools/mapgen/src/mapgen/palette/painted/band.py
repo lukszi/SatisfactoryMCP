@@ -46,7 +46,7 @@ def painted_colours(
     ``sample(plane)`` resamples a 1 m plane onto the band, ``sample_rock(plane)`` a plane of
     the coarse rock grid.
     """
-    # render.compose builds the scene as a plain dict.
+    # render.painting builds the scene as a plain dict.
     given = cast(PaintedScene, scene)
     band: PaintedScene = {**given, "water": sunk_specks(given)}
     g = _ground_colour(band, ground, sample, sample_rock)

@@ -295,7 +295,8 @@ for a missing `gen` extra says to stop satisfactory-mcp first, because uv cannot
 ### 4.2 Disk
 
 A job is refused (507) unless free space covers what it keeps, what it needs while running
-(the raster caches, about 1 GB at 32768 in the zstd band store of spatial-and-map.md §39, and
+(the raster caches, about 1 GB at 32768 in the zstd band store of spatial-and-map.md §39; the
+drawn sheets, 3.2 GB a layer, which wait in the scratch until each layer is cut, §40; and
 with the light its cache, 14.5 GB and 5.4 GB more with the painted layer, all scaled by area)
 and 2 GB more. Checked at the form, at submit and again at start.
 
@@ -345,12 +346,16 @@ process pool and killing only the parent orphans its workers.
 ### 5.3 Progress
 
 Read by `domain/maps/jobs.py` `Progress`. A `::stage {"id": "<step>[:<layer>]", "done": f}`
-line (`core/mapprogress.py`) is read first: the renders print one per draw progress line, at
-the start of each layer's draw and after each layer's cut, which covers `painted` too. Every
-other line falls back to the regexes over the human log lines:
+line (`core/mapprogress.py`) is read first. The renders draw every layer in one pass
+(spatial-and-map.md §40) and print `draw` at its start and with each draw progress line, then
+the light's `light`, then `cut:<layer>` before and after each layer's cut, which covers
+`painted` too. The plan's stages follow: `draw`, `light`, then each layer's `cut`, and a
+`pyramid zN:` line counts for the layer being cut. Every other line falls back to the regexes
+over the human log lines:
 `N/4521 packages` and `… rock meshes,` (sweep), `direct.cache: P%`, `top.cache: P%`,
-`drawing <layer> at`, `<layer>: P% of`, `pyramid zN:` (counted against the tree's depth),
-`wrote …/<layer>` and `done in`. Stage weights come from §4.3, so the percentage is of the
+`drawing <layer> at`, `<layer>: P% of` (a log from before the one pass, which drew the layers
+in turn; they drive `draw`), `pyramid zN:` (counted against the tree's depth), `wrote
+…/<layer>` and `done in`. Stage weights come from §4.3, so the percentage is of the
 whole job; the ETA is shown past 3%. A preset whose lines say nothing (artwork, inputs) shows
 elapsed against the estimate. `tests/test_map_runner.py` pins the regexes against a recorded
 full render log (`tests/fixtures/map_render_full.log`).
@@ -480,8 +485,8 @@ max_z, unlit_max_z, params, baked_sun, model}`. `?kind=unlit` serves the unlit c
 immutable. Any other `kind`, or a layer drawn with `--no-light` or before the light existed,
 is a 404. The `render` preset takes `light`, default true since 2026-10-06, and passes
 `--light`, or `--no-light` when it is false. With the light the plan adds a `light` stage
-after the first layer's draw, the unlit and light trees to the estimate's kept bytes, and the
-light cache (§4.2) to its bytes while running. docs/spatial-and-map.md §29 describes the
+after the draw, the unlit and light trees to the estimate's kept bytes, and the light cache
+(§4.2) to its bytes while running. docs/spatial-and-map.md §29 describes the
 light.
 
 ## 9. Verified
