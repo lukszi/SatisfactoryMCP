@@ -27,7 +27,8 @@ from mapgen.colour import untone as shader_untone
 from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
 from mapgen.lighting.model import apply_terms
 from mapgen.palette.lightparams import shader_light
-from mapgen.palette.painted.ground import painted_ndl, tone
+from mapgen.palette.painted.band import painted_ndl
+from mapgen.palette.painted.calibration import tone
 from mapgen.palette.relief import FLAT_LIT, _shade
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.palette.water.shore import OCEAN_LEVEL_M

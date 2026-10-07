@@ -20,8 +20,8 @@ from mapgen.cache import (
     missing_caches,
     raster_cache_stamp,
 )
+from mapgen.colour import oklab, srgb_to_linear
 from mapgen.commands.renders import BIOME_LAYERS, LAYERS
-from mapgen.palette.painted.ground import oklab, srgb_to_linear
 from mapgen.palette.relief import (
     LUT_STEPS,
     oklab_from_lch,

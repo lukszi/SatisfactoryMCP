@@ -21,7 +21,8 @@ from mapgen.lighting.hillshade import (
     slope_degrees,
     sun_dot,
 )
-from mapgen.palette.painted.ground import ROCK_GRID_M, painted_colours, painted_ndl
+from mapgen.palette.painted.band import painted_colours, painted_ndl
+from mapgen.palette.painted.ground import ROCK_GRID_M
 from mapgen.palette.relief import relief_colours
 from mapgen.palette.styles import (
     LAYER_PAINTERS,

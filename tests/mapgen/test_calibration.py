@@ -10,28 +10,24 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, srgb_to_linear
 from mapgen.gamedata.ground.landscape_albedo import LAYERS
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.gamedata.water.bodies import WATER_CLASSES
 from mapgen.palette.painted.albedo import GroundBake, ground_albedo
-from mapgen.palette.painted.calibration import scoped_planes
-from mapgen.palette.painted.ground import (
-    ROCK_GRID_M,
-    PaintedGround,
+from mapgen.palette.painted.band import painted_colours
+from mapgen.palette.painted.calibration import (
     area_ids,
     display_to_ground,
     display_to_linear,
     layer_transfer,
-    linear_from_oklab,
-    linear_to_srgb,
-    oklab,
-    painted_colours,
-    rock_surface,
+    scoped_planes,
     split_weight,
-    srgb_to_linear,
     tone,
     transfer_op,
 )
+from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
+from mapgen.palette.painted.surfaces import rock_surface
 from mapgen.palette.styles import PAINTED_PALETTE
 from satisfactory_mcp.core.gameassets import versions
 
@@ -309,7 +305,9 @@ def _water_ground(opaque):
         canopy_rgb=np.zeros(3, np.float32),
         rock=[np.full((1, 2), 0.2, np.float32)] * 3,
         rock_family=None,
+        family_rock={},
         crown=None,
+        crown_ops=[],
         titan=None,
         carpet=None,
         mesh_rgb={},
@@ -326,6 +324,7 @@ def _water_ground(opaque):
         },
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
         opaque_water=opaque,
+        water_class=None,
     )
 
 

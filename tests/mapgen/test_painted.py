@@ -12,18 +12,26 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from mapgen.colour import oklab
 from mapgen.commands.renders import LAYERS
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.ground.landscape_albedo import layer_albedo
+from mapgen.gamedata.ground.paint_store import META_NAME
 from mapgen.gamedata.ground.weightmaps import (
     component_origin,
     place_component_layers,
     weightmap_channels,
 )
+from mapgen.gamedata.water.bodies import WATER_BODIES_NAME
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
 from mapgen.palette import styles
-from mapgen.palette.painted.albedo import layer_table, mix_layers, seam_blend
-from mapgen.palette.painted.ground import oklab
+from mapgen.palette.painted.albedo import (
+    layer_table,
+    load_paint_meta,
+    load_water_bodies,
+    mix_layers,
+    seam_blend,
+)
 from mapgen.palette.styles import (
     LAYER_STYLES,
     PAINTED_DIGEST,
@@ -269,6 +277,18 @@ def test_a_solid_component_edge_is_blended_and_a_smooth_one_is_left_alone():
     smooth = np.tile(np.linspace(0.1, 0.5, 128, dtype=np.float32)[None, :, None], (64, 1, 3))
     same, none = seam_blend(smooth, [(0, 0), (0, 64)], 64, palette)
     assert none == 0 and np.allclose(same, smooth)
+
+
+def test_a_store_whose_files_hold_no_json_object_is_no_store_or_refused(tmp_path):
+    assert load_paint_meta(tmp_path) is None, "no meta.json"
+    (tmp_path / META_NAME).write_text("[1, 2]", encoding="utf-8")
+    assert load_paint_meta(tmp_path) is None, "a meta.json that is no object"
+    (tmp_path / META_NAME).write_text(json.dumps({"files": {WATER_BODIES_NAME: {}}}), "utf-8")
+    meta = load_paint_meta(tmp_path)
+    assert meta is not None
+    (tmp_path / WATER_BODIES_NAME).write_text("[]", encoding="utf-8")
+    with pytest.raises(TypeError, match="holds no JSON object"):
+        load_water_bodies(tmp_path, meta)
 
 
 # ----------------------------------------------------------------------- the style file

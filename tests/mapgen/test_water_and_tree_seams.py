@@ -12,12 +12,9 @@ import pytest
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.water.bodies import OCEAN, WATER_CLASSES
 from mapgen.lighting.occluders import sheet_crowns
-from mapgen.palette.painted.ground import (
-    WATER_TABLE_COLUMNS,
-    PaintedGround,
-    painted_colours,
-    water_table,
-)
+from mapgen.palette.painted.band import painted_colours
+from mapgen.palette.painted.ground import PaintedGround
+from mapgen.palette.painted.optics import WATER_TABLE_COLUMNS, water_table
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.terrain.sample import taps_linear
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -31,6 +28,7 @@ def _ground(plane) -> PaintedGround:
     ground.water_class = plane
     ground.water_rows = water_table(PAINTED_PALETTE)
     ground.water = {"inland_floor": np.float32(0.35)}
+    ground.opaque_water = []
     return ground
 
 

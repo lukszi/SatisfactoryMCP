@@ -21,6 +21,7 @@ from mapgen.cache import (
     cached_family,
     raster_cache_stamp,
 )
+from mapgen.colour import srgb_to_linear
 from mapgen.gamedata.frame import BOUNDS_M, ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.ground.bake import (
     BAKE_NAME,
@@ -37,15 +38,10 @@ from mapgen.gamedata.level.sweep import first_override
 from mapgen.gamedata.nodes import oil_nodes
 from mapgen.gamedata.rocks import families as rockfamily
 from mapgen.palette.painted.albedo import bake_table, patch_stamps
-from mapgen.palette.painted.ground import (
-    PaintedGround,
-    canopy_over_rock,
-    painted_colours,
-    rock_surface,
-    sample_titan,
-    srgb_to_linear,
-    titan_over,
-)
+from mapgen.palette.painted.band import painted_colours
+from mapgen.palette.painted.ground import PaintedGround
+from mapgen.palette.painted.surfaces import canopy_over_rock, rock_surface
+from mapgen.palette.painted.trees import sample_titan, titan_over
 from mapgen.palette.styles import PAINTED_DIGEST, PAINTED_PALETTE, painted_style
 from mapgen.terrain.rasters import direct_placements, rasterise_direct_band, reduce_source
 from mapgen.terrain.render_meshes import (
@@ -297,8 +293,8 @@ def _rock_ground(flat_top=True):
     top[grass] = (0.1, 0.2, 0.05)
     has[grass] = 1.0 if flat_top else 0.0
     return SimpleNamespace(
-        rock_family=np.full((8, 8), grass, np.uint8), family_tint=tint, family_top=top,
-        family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
+        rock_family=np.full((8, 8), grass, np.uint8), family_rock={}, family_tint=tint,
+        family_top=top, family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
     )  # fmt: skip
 
 
@@ -427,7 +423,7 @@ def _band_ground(floor):
                "sky": np.zeros(3, np.float32), "deep": linear(w["deep"]),
                "deep_tau_m": np.float32(12.0), "bed": np.float32(0.8),
                "inland_floor": np.float32(floor)},
-        opaque_water=[],
+        opaque_water=[], water_class=None, family_rock={}, crown_ops=[],
     )  # fmt: skip
 
 

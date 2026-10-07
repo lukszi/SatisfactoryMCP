@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
+from typing import TypeAlias
+
 import numpy as np
+from numpy.typing import NDArray
 from scipy import ndimage
 
 from mapgen.gamedata.water.bodies import (
@@ -14,7 +18,10 @@ from mapgen.gamedata.water.bodies import (
     classify,
     level_bodies,
 )
+from mapgen.palette.painted.shapes import FloatGrid
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
+from satisfactory_mcp.core.arrays import BoolMask, I16Grid, U8Grid
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -26,8 +33,13 @@ __all__ = [
     "water_classes",
 ]
 
+#: Texels as their row and column indices.
+Texels: TypeAlias = tuple[NDArray[np.intp], NDArray[np.intp]]
 
-def water_classes(water, grades, bodies: dict, areas: tuple) -> tuple[np.ndarray, dict]:
+
+def water_classes(
+    water: I16Grid, grades: U8Grid, bodies: JsonObject, areas: tuple[U8Grid, Sequence[str]]
+) -> tuple[U8Grid, JsonObject]:
     """The class plane of the water as drawn, swamp feathered into the ocean where they meet
     (``feather_mouths``), and what the sidecar records. ``water`` is the level plane in dm,
     ``grades`` its quality, ``areas`` the area index grid and the names it indexes."""
@@ -48,7 +60,7 @@ MOUTH_STEPS = 64
 MOUTH_FEATHER_M = 30.0
 
 
-def class_shares() -> np.ndarray:
+def class_shares() -> FloatGrid:
     """Each plane value's share of each class: a class is all its own, a mouth blend is
     part swamp and the rest ocean."""
     table = np.eye(MOUTH_BLEND + MOUTH_STEPS, len(WATER_CLASSES), dtype=np.float32)
@@ -58,13 +70,9 @@ def class_shares() -> np.ndarray:
     return table
 
 
-def feather_mouths(plane: np.ndarray, level_m: np.ndarray) -> int:
-    """Blend swamp into ocean where the two meet inside one body, in place, and return how
-    many texels turned to a blend.
-
-    Within ``MOUTH_FEATHER_M`` of the line where they meet, counted through water of the
-    texel's own class, the swamp share runs from 1 to 0 along a smoothstep, a half at the line.
-    """
+def feather_mouths(plane: U8Grid, level_m: FloatGrid) -> int:
+    """Swamp blended into ocean in place, within ``MOUTH_FEATHER_M`` of where the two meet
+    inside one body, along a smoothstep; returns the texels that turned to a blend."""
     found = _meeting(plane, level_m)
     if found is None:
         return 0
@@ -89,11 +97,12 @@ def feather_mouths(plane: np.ndarray, level_m: np.ndarray) -> int:
     return changed
 
 
-def _meeting(plane, level_m):
-    """``(swamp, ocean)`` index arrays of the texels where the two classes are 8-neighbours at
-    levels within ``BODY_STEP_M``, or None."""
+def _meeting(plane: U8Grid, level_m: FloatGrid) -> tuple[Texels, Texels] | None:
+    """``(swamp, ocean)`` texels where the two classes are 8-neighbours at levels within
+    ``BODY_STEP_M``, or None."""
     rows, cols = np.nonzero(plane == SWAMP)
-    swamp, ocean = [], []
+    swamp: list[Texels] = []
+    ocean: list[Texels] = []
     for dr, dc in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)):
         r, c = rows + dr, cols + dc
         ok = (r >= 0) & (r < plane.shape[0]) & (c >= 0) & (c < plane.shape[1])
@@ -104,10 +113,14 @@ def _meeting(plane, level_m):
         ocean.append((r[hit], c[hit]))
     if not sum(len(r) for r, _c in swamp):
         return None
-    return tuple(tuple(np.concatenate(axis) for axis in zip(*side)) for side in (swamp, ocean))
+    return _joined(swamp), _joined(ocean)
 
 
-def _mouth_windows(line: np.ndarray, reach: int, cell: int = 64):
+def _joined(parts: Sequence[Texels]) -> Texels:
+    return np.concatenate([r for r, _c in parts]), np.concatenate([c for _r, c in parts])
+
+
+def _mouth_windows(line: BoolMask, reach: int, cell: int = 64) -> Iterator[tuple[slice, slice]]:
     """Disjoint windows holding every texel within ``reach`` of ``line``."""
     rows, cols = line.shape
     coarse = np.pad(line, ((0, -rows % cell), (0, -cols % cell)))
@@ -115,7 +128,7 @@ def _mouth_windows(line: np.ndarray, reach: int, cell: int = 64):
     grown = ndimage.binary_dilation(coarse, np.ones((3, 3), bool), int(np.ceil(reach / cell)))
     while True:
         labels, _count = ndimage.label(grown, structure=np.ones((3, 3), bool))
-        boxes = ndimage.find_objects(labels)
+        boxes = [box for box in ndimage.find_objects(labels) if box is not None]
         filled = np.zeros_like(grown)
         for box in boxes:
             filled[box] = True
@@ -129,7 +142,7 @@ def _mouth_windows(line: np.ndarray, reach: int, cell: int = 64):
         )
 
 
-def _steps(seed: np.ndarray, inside: np.ndarray, reach: int) -> np.ndarray:
+def _steps(seed: BoolMask, inside: BoolMask, reach: int) -> FloatGrid:
     """Steps from ``seed`` to each texel of ``inside`` through ``inside``, the 8- and the
     4-neighbourhood in turn (an octagon close to the circle); ``reach + 1`` past ``reach``."""
     out = np.full(seed.shape, np.float32(reach + 1))

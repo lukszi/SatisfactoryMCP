@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from mapgen.colour import srgb_to_linear
 from mapgen.gamedata.vegetation.carpet import (
     COVER_NAME,
     TOP_NAME,
@@ -18,7 +19,6 @@ from mapgen.gamedata.vegetation.carpet import (
     footprint,
     is_carpet,
 )
-from mapgen.palette.painted.ground import srgb_to_linear
 from mapgen.palette.painted.optics import carpet_bed, load_carpet
 from mapgen.palette.styles import PAINTED_PALETTE
 from satisfactory_mcp.core.gameassets import versions

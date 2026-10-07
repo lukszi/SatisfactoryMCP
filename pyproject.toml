@@ -132,6 +132,7 @@ strict = [
     "tools/mapgen/src/mapgen/gamedata/placements.py",
     "tools/mapgen/src/mapgen/gamedata/rocks/families.py",
     "tools/mapgen/src/mapgen/lighting/sun.py",
+    "tools/mapgen/src/mapgen/palette/painted/shapes.py",
     "tools/mapgen/src/mapgen/palette/scene.py",
     "tools/mapgen/src/mapgen/palette/schema.py",
 ]

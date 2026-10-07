@@ -782,7 +782,7 @@ def main() -> int:
     )  # fmt: skip
     meshes, mesh_source = extras.meshes, extras.mesh_source
     if extras.titan is not None:
-        painted.titan = extras.titan
+        painted.attach_titan(extras.titan)
         paint_source.update(extras.titan_source)
     for name in extras.readers:
         inputs[name] = {"cl": changelist(field_build), "reader_version": READER_VERSIONS[name]}

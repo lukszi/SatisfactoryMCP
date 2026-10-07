@@ -68,7 +68,7 @@ BUDGETS: dict[str, int] = {
     "tools/mapgen/src/mapgen/gamedata/water": 0,
     "tools/mapgen/src/mapgen/lighting": 0,
     "tools/mapgen/src/mapgen/palette": 0,
-    "tools/mapgen/src/mapgen/palette/painted": 11,
+    "tools/mapgen/src/mapgen/palette/painted": 0,
     "tools/mapgen/src/mapgen/palette/water": 0,
     "tools/mapgen/src/mapgen/render": 2,
     "tools/mapgen/src/mapgen/terrain": 0,
