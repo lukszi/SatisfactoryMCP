@@ -178,7 +178,7 @@ def _pad_terrain(sit: siting_mod.Siting, terrain, cap: int) -> tuple[dict | None
         return None, NO_FIELD
     x0, y0, x1, y1 = sit.bbox_cm()
     try:
-        pad = terrain.window(x0, y0, x1, y1, max_texels=cap or 1_000_000)
+        pad = terrain.area(x0, y0, x1, y1, max_texels=cap or 1_000_000)
         near = None
         if pad.water_level_m is None:
             near = terrain.nearest_water(sit.x_m * 100, sit.y_m * 100, WATER_SEARCH_M * 100)

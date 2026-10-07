@@ -24,8 +24,8 @@ from mapgen.gamedata.rocks.caves import (
 from satisfactory_mcp.core.gameassets.provenance import install_directory, sha256_hex
 from satisfactory_mcp.core.gameassets.versions import CAVES_VERSION
 from satisfactory_mcp.core.jsontypes import JsonObject
-from satisfactory_mcp.domain.spatial import caves
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from satisfactory_mcp.domain.spatial.heightfield import cave_masks as caves
 
 __all__ = [
     "write_caves",

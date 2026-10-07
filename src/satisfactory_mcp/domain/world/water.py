@@ -137,7 +137,7 @@ def site_water(
         return None
     x_cm, y_cm = x_m * 100.0, y_m * 100.0
     half_w, half_d = width_m * 50.0, depth_m * 50.0
-    pad = field.window(x_cm - half_w, y_cm - half_d, x_cm + half_w, y_cm + half_d)
+    pad = field.area(x_cm - half_w, y_cm - half_d, x_cm + half_w, y_cm + half_d)
     # Searched only when the pad is dry: on a wet pad the answer is zero metres away, and
     # the search costs a full pass over a box 25x the pad's area.
     near = (

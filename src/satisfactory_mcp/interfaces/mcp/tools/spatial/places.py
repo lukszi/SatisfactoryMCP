@@ -7,9 +7,10 @@ from typing import Annotated
 from mcp.server.fastmcp import Context
 from pydantic import Field
 
-from .....domain.spatial import caves, geo, heightfield, surroundings
+from .....domain.spatial import geo, heightfield, surroundings
 from .....domain.spatial import nodes as nodes_mod
 from .....domain.spatial import regions as regions_mod
+from .....domain.spatial.heightfield import cave_masks
 from .....domain.spatial.nodes import search as node_search
 from .....domain.spatial.places import PLAYER_WORDS, resolve_place
 from .....presenters.text import primitives as render
@@ -79,7 +80,7 @@ def _terrain_fields(reading, field) -> tuple[list[tuple[str, str]], list[str]]:
     elif reading is not None:
         accuracy = "" if reading.accuracy_m is None else f", +-{reading.accuracy_m:g}m"
         fields.append(("terrain_m", f"{reading.z_m:.1f} ({reading.source}{accuracy})"))
-        if reading.cave != caves.NONE:
+        if reading.cave != cave_masks.NONE:
             fields.append(("cave", reading.cave_note))
         if reading.ambiguous:
             bare = reading.terrain_z_m
@@ -327,7 +328,7 @@ def whereami(
     notes = [f"use near:me@{radius_m:g} as a source selector to plan around here"]
     notes += found.notes
     field = heightfield.load_field()
-    reading = field.z(x, y, hint_z_cm=z) if field is not None else None
+    reading = field.height_at(x, y, hint_z_cm=z) if field is not None else None
     cave_line = reading.cave_note if reading is not None else None
     if found.nearest_building is not None:
         name, distance = found.nearest_building

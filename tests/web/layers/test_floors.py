@@ -224,7 +224,7 @@ def test_a_terrain_field_turns_off_deck_into_a_measurement(client, monkeypatch):
     """With a field, "on the ground" stops being a guess -- and the flag says a field ran."""
 
     class _Flat:
-        def at(self, x, y):
+        def texel_reading(self, x, y):
             del x, y
             return types.SimpleNamespace(z_m=80.0)
 

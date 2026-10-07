@@ -158,7 +158,7 @@ def probe(
     """
     out = Elevation(x=x, y=y, radius_m=radius_m)
     if terrain_field is not None:
-        out.terrain = terrain_field.z(x, y, hint_z_cm=hint_z_cm)
+        out.terrain = terrain_field.height_at(x, y, hint_z_cm=hint_z_cm)
     for s in samples:
         d = geo.distance_m((x, y), (s.x, s.y))
         if d <= radius_m:

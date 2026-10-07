@@ -6,7 +6,8 @@ import statistics
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
-from ...spatial import caves, heightfield
+from ...spatial import heightfield
+from ...spatial.heightfield import cave_masks
 from .record import Siting, footprint_box_cm, ground_provider
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
@@ -61,14 +62,16 @@ def terrain_z(
         "build": field.build,
     }
     if width_m <= 0 or depth_m <= 0:
-        reading = field.z(x_m * 100, y_m * 100, hint_z_cm=None if hint_m is None else hint_m * 100)
+        reading = field.height_at(
+            x_m * 100, y_m * 100, hint_z_cm=None if hint_m is None else hint_m * 100
+        )
         if reading is None:
             return {**out, "z_m": None, "reason": _silence(field, x_m, y_m)}
         if not reading.height_known:
             return {
                 **out,
                 "z_m": None,
-                "cave": caves.INSIDE,
+                "cave": cave_masks.INSIDE,
                 "reason": reading.cave_note,
             }
         return {
@@ -85,11 +88,11 @@ def terrain_z(
             "cave_floor": reading.cave_floor,
         }
     box = footprint_box_cm(x_m, y_m, width_m, depth_m, yaw_deg)
-    areas = {"ground": field.window(*box)}
+    areas = {"ground": field.area(*box)}
     if field.has_terrain:
-        areas["terrain"] = field.window(*box, surface="terrain", shape=False)
+        areas["terrain"] = field.area(*box, surface="terrain", shape=False)
     if field.has_top:
-        areas["top"] = field.window(*box, surface="top", shape=False)
+        areas["top"] = field.area(*box, surface="top", shape=False)
     ground = areas["ground"]
     if ground.z_median_m is None:
         return {**out, "z_m": None, "reason": _silence(field, x_m, y_m)}
@@ -109,8 +112,8 @@ def terrain_z(
         return {
             **out,
             "z_m": None,
-            "cave": caves.INSIDE,
-            "reason": caves.note(caves.INSIDE, surface_m),
+            "cave": cave_masks.INSIDE,
+            "reason": cave_masks.note(cave_masks.INSIDE, surface_m),
         }
     dominant = max(ground.provenance_pct.items(), key=lambda kv: kv[1])[0]
     terrain_area = areas.get("terrain")
@@ -145,11 +148,11 @@ def _pad_in_cave(
     areas: dict[str, heightfield.Area],
 ) -> bool:
     """Whether the hint puts the pad inside a cave: in a sound volume at its centre, or
-    deeper than ``caves.INSIDE_DEPTH_M`` under every surface median over flagged ground."""
+    deeper than ``cave_masks.INSIDE_DEPTH_M`` under every surface median over flagged ground."""
     lowest = min((a.z_median_m for a in areas.values() if a.z_median_m is not None), default=None)
-    if field.cave_at(x_m * 100, y_m * 100, hint_m * 100, lowest) == caves.INSIDE:
+    if field.cave_at(x_m * 100, y_m * 100, hint_m * 100, lowest) == cave_masks.INSIDE:
         return True
-    return bool(cave_pct) and lowest is not None and hint_m < lowest - caves.INSIDE_DEPTH_M
+    return bool(cave_pct) and lowest is not None and hint_m < lowest - cave_masks.INSIDE_DEPTH_M
 
 
 def _silence(field: heightfield.Field, x_m: float, y_m: float) -> str:

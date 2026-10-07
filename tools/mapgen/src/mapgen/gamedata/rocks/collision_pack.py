@@ -434,7 +434,7 @@ def rock_pack_arrays(
     The cliff pass's placement set and culls, with arches, foliage boulders, simple-collision
     rocks and cave floors kept under their own kind instead of dropped.
     """
-    from satisfactory_mcp.domain.spatial import rocks
+    from satisfactory_mcp.domain.spatial.heightfield import collision_pack as rocks
 
     have = collision["meshes"]
     pack = _PackMeshes()
@@ -510,7 +510,7 @@ def encode_rock_pack(
     reader: GameReader, sweep: dict, build_pin: str, build_raw: JsonObject
 ) -> dict[str, bytes]:
     """``rocks.npz`` and ``rocks.json`` as bytes, ready for the field's directory."""
-    from satisfactory_mcp.domain.spatial import rocks
+    from satisfactory_mcp.domain.spatial.heightfield import collision_pack as rocks
 
     started = time.time()
     wanted = sorted({m for m in sweep["meshes"] if is_pack_mesh(m)} | set(sweep["foliage"]))

@@ -10,10 +10,11 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from fastapi import APIRouter, Query, Request
 
-from .....domain.spatial import caves, geo, surroundings
 from .....domain.spatial import elevation as spatial_elevation
+from .....domain.spatial import geo, surroundings
 from .....domain.spatial import nodes as spatial_nodes
 from .....domain.spatial import regions as spatial_regions
+from .....domain.spatial.heightfield import cave_masks
 from .....domain.world.state import WorldState
 from ... import terrain
 from ...serial import (
@@ -193,7 +194,7 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
         "terrain_accuracy_m": probe.accuracy_m if probe else None,
         "terrain_bare_m": _rounded(probe.terrain_z_m) if probe else None,
         "terrain_ambiguous": bool(probe and probe.ambiguous),
-        "terrain_cave": probe.cave if probe else caves.NONE,
+        "terrain_cave": probe.cave if probe else cave_masks.NONE,
         "terrain_cave_note": cave_note,
         "terrain_water_m": _rounded(probe.water_m) if probe and probe.submerged else None,
         "terrain_water_depth_m": _rounded(probe.water_depth_m) if probe else None,
