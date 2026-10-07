@@ -67,12 +67,7 @@ RESPONSE_CLASSES = frozenset(
 )
 
 #: GET handlers allowed to publish no response schema, by function name, with the reason.
-RESPONSE_MODEL_EXEMPT: dict[str, str] = {
-    "mapimage": "serves a PNG, a 204 or a 404 -- there is no JSON body to describe",
-    "maptiles": "serves a tile, a 204 or a 404 -- there is no JSON body to describe",
-    "maptiles_layer": "serves a tile, a 204 or a 404 -- there is no JSON body to describe",
-    "icon": "serves a PNG, a 204 or a 404 -- there is no JSON body to describe",
-}
+RESPONSE_MODEL_EXEMPT: dict[str, str] = {}
 
 WRITE_VERBS = frozenset({"post", "put", "patch", "delete"})
 

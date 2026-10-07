@@ -8,13 +8,12 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
 from .....core.gamedata import search as gsearch
-from ...serial import machine_name, world_state
+from .....domain.factories.labels import Label
+from ...serial import game_data, machine_name, world_state
 
 __all__ = ["router"]
 
@@ -71,7 +70,7 @@ def search(
     save: str | None = None,
     world: str | None = None,
     spoilers: bool | None = None,
-) -> Any:
+) -> SearchResponse:
     """Items, recipes of every kind and named factories whose names contain ``q``.
 
     ``spoilers=0``, or its older alias ``only_unlocked``, drops locked recipes before the cut
@@ -90,11 +89,11 @@ def search(
             "save_note": None,
         }
     key = text.casefold()
-    game = request.app.state.game()
+    game = game_data(request)
     items = gsearch.find_items(game, text)
-    have = None
-    labels = []
-    note = None
+    have: set[str] | None = None
+    labels: list[Label] = []
+    note: str | None = None
     try:
         st = world_state(request, save, world)
         have = st.available_recipe_ids

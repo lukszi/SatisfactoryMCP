@@ -8,16 +8,49 @@ a server start announces nothing old; docs/web-wire.md has the rules.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
+
+from typing_extensions import TypedDict
 
 from .... import config
+from ....core.jsontypes import JsonObject
 from ....domain import settings
 from ....domain.planning.stored.plan_args import PlanLogError
 from ....domain.planning.stored.planlog import Commit, PlanLog
 from ....domain.session import journal
-from ..serial import actor_json, settings_json
+from ....domain.session.views import JournalEntry
+from ..serial import ActorBody, actor_json, settings_json
 from .events import KIND_ACTIVITY, KIND_PLANS, KIND_SETTINGS, WatchEvent
 
 __all__ = ["LogTail"]
+
+
+class PlanEventData(TypedDict):
+    """A ``plans`` event: one plan's new commits, summed up by the newest."""
+
+    world: str
+    key: str
+    name: str
+    rev: int
+    from_rev: int
+    actors: list[ActorBody]
+    text: str
+    ts: float
+    forgotten: bool
+
+
+class ActivityEventData(TypedDict):
+    """An ``activity`` event: one journal entry."""
+
+    world: str
+    id: str
+    ts: float
+    actor: ActorBody
+    kind: str
+    plan: str | None
+    rev: int | None
+    text: str
+    args: dict[str, object] | None
 
 
 def _end_of_last_line(path: Path) -> int:
@@ -28,7 +61,7 @@ def _end_of_last_line(path: Path) -> int:
         return 0
 
 
-def _plan_event(world: str, key: str, rows: list[dict]) -> WatchEvent | None:
+def _plan_event(world: str, key: str, rows: list[JsonObject]) -> WatchEvent | None:
     """One plan's new commits as a single event, or ``None`` when none would parse."""
     try:
         commits = [Commit.from_dict(r) for r in rows]
@@ -42,12 +75,12 @@ def _plan_event(world: str, key: str, rows: list[dict]) -> WatchEvent | None:
         name, forgotten = state.name, state.forgotten
     except (PlanLogError, OSError, ValueError):
         name, forgotten = "", False
-    actors: list[dict] = []
+    actors: list[ActorBody] = []
     for commit in commits:
         body = actor_json(commit.actor)
         if body not in actors:
             actors.append(body)
-    data = {
+    data: PlanEventData = {
         "world": world,
         "key": key,
         "name": name,
@@ -61,9 +94,9 @@ def _plan_event(world: str, key: str, rows: list[dict]) -> WatchEvent | None:
     return WatchEvent(KIND_PLANS, f"{key}/ops.jsonl", newest.ts, data)
 
 
-def _activity_event(world: str, row: dict) -> WatchEvent:
+def _activity_event(world: str, row: JournalEntry) -> WatchEvent:
     ts = float(row.get("ts") or 0.0)
-    data = {
+    data: ActivityEventData = {
         "world": world,
         "id": str(row.get("id") or ""),
         "ts": ts,
@@ -87,7 +120,7 @@ class LogTail:
 
     def _tailed(self) -> list[tuple[str, str, Path]]:
         """``(kind, world, path)`` for every plan log and journal file on disk now."""
-        found = []
+        found: list[tuple[str, str, Path]] = []
         for kind, root, pattern in (
             (KIND_PLANS, config.plans_dir(), "*/ops.jsonl"),
             (KIND_ACTIVITY, config.activity_dir(), "*.jsonl"),
@@ -129,7 +162,9 @@ class LogTail:
                 event = _plan_event(world, path.parent.name, rows)
                 events += [] if event is None else [event]
             else:
-                events += [_activity_event(world, row) for row in rows]
+                # The journal's own lines, read as ``journal.read`` reads them.
+                entries = cast("list[JournalEntry]", rows)
+                events += [_activity_event(world, row) for row in entries]
         return events
 
     def settings_scan(self) -> list[WatchEvent]:

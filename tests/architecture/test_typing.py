@@ -53,7 +53,7 @@ BUDGETS: dict[str, int] = {
     "src/satisfactory_mcp/domain/spatial": 48,
     "src/satisfactory_mcp/domain/world": 0,
     "src/satisfactory_mcp/interfaces/mcp": 34,
-    "src/satisfactory_mcp/interfaces/web": 45,
+    "src/satisfactory_mcp/interfaces/web": 0,
     "src/satisfactory_mcp/presenters/text": 171,
     "tools": 4,
     "tools/collectibles": 4,

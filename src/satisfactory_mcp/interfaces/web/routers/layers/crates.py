@@ -9,8 +9,6 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
@@ -18,7 +16,7 @@ from .....core.saveio.records import instance_leaf
 from .....core.saveio.schema import CrateRecord
 from .....domain.world.inventory import CRATE_KIND_TEXT
 from .....domain.world.state import WorldState
-from ...serial import StoredItem, contents_json, require_world, xyz_m, yaw_deg
+from ...serial import StoredItem, contents_json, object_rows, require_world, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -81,7 +79,7 @@ def _crate_row(st: WorldState, row: CrateRecord) -> CrateRow:
 
 
 @router.get("/crates", response_model=CratesResponse)
-def crates(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def crates(request: Request, save: str | None = None, world: str | None = None) -> CratesResponse:
     """Every crate lying on the ground, what kind it is, and what is inside it.
 
     Whose crate it is, the save does not say: ``mCrateType`` is the actor's only saved
@@ -90,9 +88,7 @@ def crates(request: Request, save: str | None = None, world: str | None = None) 
     """
     st = require_world(request, save, world)
 
-    rows = [
-        _crate_row(st, row) for row in st.projection.get("crates") or () if isinstance(row, dict)
-    ]
+    rows = [_crate_row(st, row) for row in object_rows(st.projection.get("crates"))]
     return {
         "crates": rows,
         "count": len(rows),

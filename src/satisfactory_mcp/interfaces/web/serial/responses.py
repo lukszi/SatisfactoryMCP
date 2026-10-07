@@ -6,11 +6,12 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
 
 from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+from ....core.gamedata.model import GameData
+from ....core.jsontypes import JsonObject, JsonValue
 from ....core.schema import NewerSchema
 from ....domain.planning.stored.plan_args import InvalidOp
 from ....domain.planning.stored.planlog import Actor, PlanLog, PlanState, UnknownPlan
@@ -25,6 +26,8 @@ __all__ = [
     "check_plan_key",
     "choice_refusal",
     "error_response",
+    "game_data",
+    "json_object",
     "newer_schema_response",
     "page_actor",
     "plan_log",
@@ -50,6 +53,11 @@ class RequestRefused(Exception):
 
 def error_response(message: str, status: int = 400) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=status)
+
+
+def game_data(request: Request) -> GameData:
+    """The normalized docs the app was built with; needs no save."""
+    return request.app.state.game()
 
 
 def world_state(request: Request, save: str | None, world: str | None) -> WorldState:
@@ -147,11 +155,15 @@ def cached_file(
     return FileResponse(path, media_type=media_type, headers=tagged)
 
 
-def sidecar_meta_block(path: Path | None) -> dict[str, Any]:
+def json_object(value: JsonValue | None) -> JsonObject:
+    """``value`` when it is a JSON object, else an empty one."""
+    return value if isinstance(value, dict) else {}
+
+
+def sidecar_meta_block(path: Path | None) -> JsonObject:
     """The ``_meta`` block of a generator's JSON sidecar; ``{}`` when absent or unreadable."""
     try:
-        raw = json.loads(path.read_text(encoding="utf-8")) if path is not None else {}
+        raw: JsonValue = json.loads(path.read_text(encoding="utf-8")) if path is not None else {}
     except (OSError, ValueError):
         return {}
-    block = raw.get("_meta") if isinstance(raw, dict) else None
-    return block if isinstance(block, dict) else {}
+    return json_object(raw.get("_meta")) if isinstance(raw, dict) else {}

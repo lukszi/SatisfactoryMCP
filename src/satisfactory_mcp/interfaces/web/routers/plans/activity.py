@@ -8,9 +8,10 @@ operation_ids (wire rule 1 of docs/web-wire.md).
 from __future__ import annotations
 
 import time
-from typing import Annotated, Any, NotRequired
+from typing import Annotated, NotRequired
 
 from fastapi import APIRouter, Body, Request
+from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....domain.planning.stored.planlog import PlanLog
@@ -57,7 +58,7 @@ class ActivityRow(TypedDict):
     name: str | None
     rev: int | None
     text: str
-    args: dict | None
+    args: dict[str, object] | None
     count: int  # entries a collapsed run stands for; 1 otherwise
 
 
@@ -72,7 +73,7 @@ def put_focus(
     body: Annotated[FocusBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> FocusResponse | JSONResponse:
     """Record what the page has open, stamped with a heartbeat. The page's only focus write."""
     st = require_world(request, save, world)
     try:
@@ -130,7 +131,7 @@ def activity(
     limit: int = 50,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> ActivityResponse:
     """Plan commits and journal entries after ``since``, oldest first, the newest ``limit``."""
     st = require_world(request, save, world)
     now = time.time()
@@ -144,7 +145,7 @@ def activity(
     return {"now": now, "entries": rows[-limit:] if limit else []}
 
 
-def _view_key(row: ActivityRow) -> tuple | None:
+def _view_key(row: ActivityRow) -> tuple[object, ...] | None:
     if row["kind"] == "world.find":
         return ("world.find", row["actor"].get("kind"), row["actor"].get("pid"))
     if row["kind"] != "plan.view":

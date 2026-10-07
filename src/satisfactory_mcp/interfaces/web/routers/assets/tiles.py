@@ -21,10 +21,10 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, Response
+from typing_extensions import TypedDict
 
 from .....core.gameassets.pyramid import (
     PYRAMID_TILE_2X_PX,
@@ -33,9 +33,10 @@ from .....core.gameassets.pyramid import (
     TILES_DIR_NAME,
     tile_relpath,
 )
+from .....core.jsontypes import JsonObject, JsonValue
 from .....domain.maps import registry
 from .....domain.spatial import geo
-from ...serial import cached_file, error_response, sidecar_meta_block
+from ...serial import cached_file, error_response, json_object, sidecar_meta_block
 
 __all__ = ["DEFAULT_MAP_BOUNDS_M", "router"]
 
@@ -99,14 +100,22 @@ def _map_bounds(layer: str = MAP_LAYER_DEFAULT) -> dict[str, float]:
     if path is None:
         return bounds
     try:
-        override = json.loads(path.read_text(encoding="utf-8"))
-        bounds.update({k: float(override[k]) for k in DEFAULT_MAP_BOUNDS_M if k in override})
+        raw: JsonValue = json.loads(path.read_text(encoding="utf-8"))
+        override = json_object(raw)
+        bounds.update({k: _number(override[k]) for k in DEFAULT_MAP_BOUNDS_M if k in override})
     except (OSError, ValueError, TypeError):
         return bounds
     return bounds
 
 
-def _whole(source: dict, key: str, default: int, floor: int) -> int:
+def _number(value: JsonValue) -> float:
+    """``float(value)``, with its ``TypeError`` for a list, an object or a null."""
+    if isinstance(value, (str, int, float)):
+        return float(value)
+    raise TypeError(f"not a number: {value!r}")
+
+
+def _whole(source: JsonObject, key: str, default: int, floor: int) -> int:
     """An integer sidecar field at or above ``floor``, else ``default``."""
     value = source.get(key)
     if isinstance(value, int) and not isinstance(value, bool) and value >= floor:
@@ -114,7 +123,17 @@ def _whole(source: dict, key: str, default: int, floor: int) -> int:
     return default
 
 
-def _map_pyramid(layer: str = MAP_LAYER_DEFAULT) -> dict[str, Any]:
+class Pyramid(TypedDict):
+    """A layer's tile pyramid as its sidecar describes it; the @2x pair is null without one."""
+
+    tile_px: int
+    max_z: int
+    tile_2x_px: int | None
+    max_2x_z: int | None
+    build: str
+
+
+def _map_pyramid(layer: str = MAP_LAYER_DEFAULT) -> Pyramid:
     """What a layer's sidecar says about its pyramid: tile size, depth, build.
 
     An absent or malformed sidecar describes a default pyramid, and ``build`` is only a cache
@@ -123,8 +142,9 @@ def _map_pyramid(layer: str = MAP_LAYER_DEFAULT) -> dict[str, Any]:
     ``immutable`` tile of one gets cached as a tile of the other.
     """
     block = sidecar_meta_block(_layer_sidecar(layer))
-    tiles = block.get("tiles") if isinstance(block.get("tiles"), dict) else {}
-    dense = block.get("tiles_2x") if isinstance(block.get("tiles_2x"), dict) else None
+    tiles = json_object(block.get("tiles"))
+    found = block.get("tiles_2x")
+    dense = found if isinstance(found, dict) else None
     stamp = "|".join(
         [
             layer,
@@ -177,7 +197,28 @@ MAP_TILE_KIND_PARAM = "kind"
 LIGHT_KINDS = {"unlit": ".png", "nrm": ".nrm.webp", "hz": ".hz.webp"}
 
 
-def _light(layer: str) -> dict[str, Any] | None:
+class LightHeader(TypedDict):
+    """``X-Map-Light``: what the page needs to relight a layer live."""
+
+    build: str
+    max_z: int
+    unlit_max_z: int
+    params: JsonValue
+    baked_sun: JsonValue
+    model: JsonObject
+
+
+class Light(TypedDict):
+    """A lit layer's two trees, their depths, and the header that describes them."""
+
+    root: Path
+    unlit: Path
+    max_z: int
+    unlit_max_z: int
+    header: LightHeader
+
+
+def _light(layer: str) -> Light | None:
     """A lit layer's lighting: its unlit tree, the light pyramid, the shader's numbers.
 
     ``None`` for a layer drawn lit. The light pyramid's folder comes from the sidecar and is
@@ -185,16 +226,20 @@ def _light(layer: str) -> dict[str, Any] | None:
     """
     directory = _layer_dir(layer)
     block = sidecar_meta_block(_layer_sidecar(layer)).get("light")
-    if directory is None or not isinstance(block, dict) or not isinstance(block.get("dir"), str):
+    if directory is None or not isinstance(block, dict):
         return None
-    root = (directory / block["dir"]).resolve()
+    rel = block.get("dir")
+    if not isinstance(rel, str):
+        return None
+    root = (directory / rel).resolve()
     if not root.is_relative_to(registry.local_dir().resolve()):
         return None
     meta = sidecar_meta_block(root / MAP_RENDER_SIDECAR_NAME)
-    tiles = meta.get("tiles") if isinstance(meta.get("tiles"), dict) else {}
-    unlit = block.get("unlit_tiles") if isinstance(block.get("unlit_tiles"), dict) else {}
-    model = meta.get("light") if isinstance(meta.get("light"), dict) else {}
-    if not isinstance(tiles.get("max_z"), int) or not isinstance(unlit.get("max_z"), int):
+    tiles = json_object(meta.get("tiles"))
+    unlit = json_object(block.get("unlit_tiles"))
+    model = json_object(meta.get("light"))
+    max_z, unlit_max_z = tiles.get("max_z"), unlit.get("max_z")
+    if not isinstance(max_z, int) or not isinstance(unlit_max_z, int):
         return None
     stamp = "|".join(
         [
@@ -207,12 +252,12 @@ def _light(layer: str) -> dict[str, Any] | None:
     return {
         "root": root,
         "unlit": directory / str(block.get("unlit_dir") or "unlit"),
-        "max_z": tiles["max_z"],
-        "unlit_max_z": unlit["max_z"],
+        "max_z": max_z,
+        "unlit_max_z": unlit_max_z,
         "header": {
             "build": hashlib.sha256(stamp.encode("utf-8")).hexdigest()[:12],
-            "max_z": tiles["max_z"],
-            "unlit_max_z": unlit["max_z"],
+            "max_z": max_z,
+            "unlit_max_z": unlit_max_z,
             "params": block.get("params"),
             "baked_sun": block.get("baked_sun"),
             "model": {k: v for k, v in model.items() if k not in ("label", "digest")},
@@ -220,7 +265,7 @@ def _light(layer: str) -> dict[str, Any] | None:
     }
 
 
-def _light_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
+def _light_tile(request: Request, layer: str, z: int, x: int, y: int) -> Response:
     """One tile of a lit layer's ``unlit``, ``nrm`` or ``hz`` tree; ``kind`` picks which."""
     kind = request.query_params.get(MAP_TILE_KIND_PARAM, "")
     light = _light(layer)
@@ -247,7 +292,7 @@ def _light_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
     return cached_file(request, path, light["header"]["build"], media_type=media)
 
 
-def _tile_tree(request: Request, pyramid: dict[str, Any]) -> tuple[str, int]:
+def _tile_tree(request: Request, pyramid: Pyramid) -> tuple[str, int]:
     """Which of a layer's two trees this request asked for, and how deep that one goes.
 
     Forgiving in one direction only: a client that asks for a density this layer has gets it,
@@ -269,14 +314,17 @@ def _tile_tree(request: Request, pyramid: dict[str, Any]) -> tuple[str, int]:
 #: Explicit, on the three routes that serve GET and HEAD from one handler: FastAPI walks
 #: ``route.methods``, which is a SET, so an implicit id is ``..._get`` or ``..._head`` at
 #: random per interpreter run and the committed schema grows a diff that is nothing of the
-#: kind. Naming them fixes the id to one string that is true of both methods.
+#: kind. Naming them fixes the id to one string that is true of both methods. Their
+#: ``response_model`` is ``object``, the unconstrained body a picture route has always published.
 OPERATION_MAPIMAGE = "mapimage"
 OPERATION_MAPTILES = "maptiles"
 OPERATION_MAPTILES_LAYER = "maptiles_layer"
 
 
-@router.api_route("/mapimage", methods=["GET", "HEAD"], operation_id=OPERATION_MAPIMAGE)
-def mapimage(request: Request) -> Any:
+@router.api_route(
+    "/mapimage", methods=["GET", "HEAD"], operation_id=OPERATION_MAPIMAGE, response_model=object
+)
+def mapimage(request: Request) -> Response:
     """A map render the *user* dropped in, if they dropped one in. Never shipped.
 
     HEAD is routed alongside GET because the page probes with HEAD before it builds an
@@ -330,7 +378,7 @@ _LAYER_TOOLS = {
 }
 
 
-def _pyramid_headers(layer: str, pyramid: dict[str, Any]) -> dict[str, str]:
+def _pyramid_headers(layer: str, pyramid: Pyramid) -> dict[str, str]:
     """The layer's own corners, grid and build, so the page configures its tile layer from
     the probe it already makes; the @2x pair is absent, not zero, without a denser tree."""
     bounds = _map_bounds(layer)
@@ -347,7 +395,7 @@ def _pyramid_headers(layer: str, pyramid: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
-def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
+def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Response:
     """One tile of one layer's pyramid. The whole of what both tile routes do.
 
     **HEAD 204 for an absent pyramid, like the image probe next door.** The page probes
@@ -387,7 +435,7 @@ def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
         if request.method == "HEAD":
             return Response(status_code=204)
         entry, _where = registry.lookup(layer)
-        painter = (entry or {}).get("layer", layer)
+        painter = entry.get("layer", layer) if entry else layer
         tool = _LAYER_TOOLS.get(painter, "the Maps tab of the Settings page")
         return error_response(
             f"no {layer} tiles: {path.parent.parent} is written by {tool}. "
@@ -403,8 +451,13 @@ def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
     return cached_file(request, path, pyramid["build"], headers=headers)
 
 
-@router.api_route("/maptiles/{z}/{x}/{y}", methods=["GET", "HEAD"], operation_id=OPERATION_MAPTILES)
-def maptiles(request: Request, z: int, x: int, y: int) -> Any:
+@router.api_route(
+    "/maptiles/{z}/{x}/{y}",
+    methods=["GET", "HEAD"],
+    operation_id=OPERATION_MAPTILES,
+    response_model=object,
+)
+def maptiles(request: Request, z: int, x: int, y: int) -> Response:
     """The artwork pyramid, at the URL it has always had. An alias for ``map``.
 
     Not a redirect and not a deprecation: the default layer's name is optional, and this
@@ -414,9 +467,12 @@ def maptiles(request: Request, z: int, x: int, y: int) -> Any:
 
 
 @router.api_route(
-    "/maptiles/{layer}/{z}/{x}/{y}", methods=["GET", "HEAD"], operation_id=OPERATION_MAPTILES_LAYER
+    "/maptiles/{layer}/{z}/{x}/{y}",
+    methods=["GET", "HEAD"],
+    operation_id=OPERATION_MAPTILES_LAYER,
+    response_model=object,
 )
-def maptiles_layer(request: Request, layer: str, z: int, x: int, y: int) -> Any:
+def maptiles_layer(request: Request, layer: str, z: int, x: int, y: int) -> Response:
     """One tile of a named base layer: a map type id from ``/api/maps``.
 
     Four segments where the alias above has three, so the two routes cannot collide.

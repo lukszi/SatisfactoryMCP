@@ -10,14 +10,16 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from typing import Any, Literal
+from typing import Literal, cast
 
 from fastapi import APIRouter, Request
 
 from .....domain.planning import siting
 from .....domain.planning.siting import preview as site_preview
 from .....domain.planning.siting.views import SitePreviewResponse
+from .....domain.planning.stored.planlog import PlanState
 from .....domain.world import pin
+from .....domain.world.state import WorldState
 from ... import terrain
 from ...serial import Biomass, check_plan_key, plan_log, require_plan, require_world
 
@@ -25,15 +27,17 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
 
-_PREVIEW_CACHE: OrderedDict[tuple, site_preview.PreviewSession] = OrderedDict()
+#: (world, plan key, rev, save token, biomass, headroom) -> the session opened for them.
+PreviewKey = tuple[str, str, int, str, bool, str]
+_PREVIEW_CACHE: OrderedDict[PreviewKey, site_preview.PreviewSession] = OrderedDict()
 _LOCK = threading.Lock()
 PREVIEW_CACHE_MAX = 8
 
 
 def _preview_session(
-    st, state, biomass: bool, headroom: str, token: str
+    st: WorldState, state: PlanState, biomass: bool, headroom: str, token: str
 ) -> site_preview.PreviewSession:
-    key = (st.world_id, state.key, state.rev, token, biomass, headroom)
+    key: PreviewKey = (st.world_id, state.key, state.rev, token, biomass, headroom)
     with _LOCK:
         hit = _PREVIEW_CACHE.get(key)
         if hit is not None:
@@ -63,7 +67,7 @@ def plan_site_preview(
     headroom: Literal["measured", "nameplate"] = "measured",
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> SitePreviewResponse:
     """A plan version's pad at (x, y, yaw, w × d), every part omitted taken from its stored
     site, else from where a first placement starts. ``full`` reads the terrain at 1 m."""
     check_plan_key(key)
@@ -88,14 +92,18 @@ def plan_site_preview(
         field, unread = terrain.field(), False
     except MemoryError:
         field, unread = None, True
-    out = site_preview.preview(
-        st.game,
-        st,
-        session,
-        sit,
-        terrain=field,
-        terrain_cap=0 if full else site_preview.DRAG_TEXELS,
-        include_static=first,
+    # ``preview`` documents its plain dict as this shape.
+    out = cast(
+        SitePreviewResponse,
+        site_preview.preview(
+            st.game,
+            st,
+            session,
+            sit,
+            terrain=field,
+            terrain_cap=0 if full else site_preview.DRAG_TEXELS,
+            include_static=first,
+        ),
     )
     if unread and out["in_map"]:
         out["terrain_note"] = site_preview.NOT_READ

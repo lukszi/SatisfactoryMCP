@@ -12,7 +12,7 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NotRequired
+from typing import Annotated, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
@@ -20,6 +20,7 @@ from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....domain.factories import candidates, edits, fed, flowgraph, naming
+from .....domain.factories.cohere import Proposal
 from .....domain.factories.labels import (
     BadName,
     LabelError,
@@ -28,15 +29,18 @@ from .....domain.factories.labels import (
     UnknownLabel,
     edit_stamp,
 )
-from .....domain.factories.query import build_view
+from .....domain.factories.query import FactoryView, build_view
 from .....domain.factories.select import SelectorError, select_machines
 from .....domain.session import journal
 from .....domain.spatial import geo
+from .....domain.spatial.regions import RegionMap
 from .....domain.world import pin
+from .....domain.world.state import WorldState
 from ...serial import (
     Flow,
     MachineSpot,
     NameCount,
+    Placed,
     bbox_m,
     busy_response,
     error_response,
@@ -144,29 +148,31 @@ class LabelRefusedResponse(TypedDict):
     pin: bool
 
 
-_REFUSALS: dict[int | str, dict[str, Any]] = {
+_REFUSALS: dict[int | str, dict[str, object]] = {
     400: {"model": LabelErrorResponse},
     404: {"model": LabelErrorResponse},
     409: {"model": LabelRefusedResponse},
 }
 
 
-def _flows(flow_graph: flowgraph.FlowGraph, role: str) -> list[dict]:
+def _flows(flow_graph: flowgraph.FlowGraph, role: str) -> list[Flow]:
     return [flow_json(flow_graph, item, rate) for item, rate in flow_graph.listed(role)]
 
 
-def _cluster(st, machines: list[str], name: str):
+def _cluster(
+    st: WorldState, machines: list[str], name: str
+) -> tuple[FactoryView, flowgraph.FlowGraph]:
     view = build_view(name, machines, st.graph, st.game, st.projection)
     return view, flowgraph.build(st, st.game, view)
 
 
 def _conflict(exc: Exception, **flag: bool) -> JSONResponse:
-    body = {"error": str(exc), "stale": False, "name_taken": False, "pin": False}
+    body: dict[str, object] = {"error": str(exc), "stale": False, "name_taken": False, "pin": False}
     body.update(flag)
     return JSONResponse(body, status_code=409)
 
 
-def _refused(exc: Exception) -> Any:
+def _refused(exc: Exception) -> JSONResponse:
     if isinstance(exc, StaleStore):
         return _conflict(exc, stale=True)
     if isinstance(exc, NameClash):
@@ -181,8 +187,14 @@ def _refused(exc: Exception) -> Any:
 
 
 def _candidate_row(
-    st, index: int, proposal, verdict: str, suggested: str, region_map, placed: dict
-) -> dict:
+    st: WorldState,
+    index: int,
+    proposal: Proposal,
+    verdict: str,
+    suggested: str,
+    region_map: RegionMap | None,
+    placed: Placed,
+) -> CandidateRow:
     """One unnamed proposal: what it makes and takes, where it is, and the name it would get."""
     cand = candidates.describe(proposal.machines, st.graph, st.game, st.projection, "proposal")
     view, flow_graph = _cluster(st, proposal.machines, "proposal")
@@ -221,7 +233,7 @@ def factory_candidates(
     style: str = naming.DEFAULT_STYLE,
     min_machines: int = 1,
     fed_only: bool = False,
-) -> Any:
+) -> CandidatesResponse | JSONResponse:
     """Every proposal the player has not named, filtered, each with a suggested name."""
     if style not in naming.STYLES:
         return error_response(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
@@ -232,8 +244,8 @@ def factory_candidates(
 
     placed = candidates.positions(st.projection)
     names = naming.proposal_names(st, st.proposals, style, region_map)
-    hidden = {"small": 0, "not_fed": 0}
-    rows = []
+    hidden: Hidden = {"small": 0, "not_fed": 0}
+    rows: list[CandidateRow] = []
     for index, proposal in enumerate(st.proposals):
         if st.labels.covers(proposal.machines):
             continue
@@ -267,7 +279,7 @@ def name_candidate(
     notes: str = Body(""),
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> NamedResponse | JSONResponse:
     """Name one proposal as a new factory. 409 for a taken name, a moved save or store."""
     st = require_world(request, save, world)
     try:
@@ -312,7 +324,7 @@ def rename_label(
     version: int = Body(),
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> RenamedResponse | JSONResponse:
     """Rename a label by its exact name; its machines stay and plans scoped to it follow."""
     st = require_world(request, save, world)
     page = page_actor()
@@ -348,7 +360,7 @@ def forget_label(
     version: int,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> ForgotResponse | JSONResponse:
     """Delete a label by its exact name. The machines are untouched."""
     st = require_world(request, save, world)
     try:
@@ -403,7 +415,7 @@ def amend_label(
     body: Annotated[AmendBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> AmendedResponse | JSONResponse:
     """Add the machines inside ``area`` or ``extra_areas`` (metres, map frame) to a label, or
     drop them from it.
 
@@ -431,12 +443,12 @@ def amend_label(
         for m in alive
         if m in placed and any(geo.inside(placed[m][:2], corners) for corners in polygons)
     )
-    wanted, going = (within, set()) if body["mode"] == "add" else ([], set(within))
+    wanted, going = (within, set[str]()) if body["mode"] == "add" else (list[str](), set(within))
     try:
         plan = edits.preview_amendment(st.labels, label, wanted, going, alive)
     except LabelError as exc:
         return _refused(exc)
-    reply = {
+    reply: AmendedResponse = {
         "name": label.name,
         "dry_run": dry_run,
         "written": False,
@@ -464,5 +476,6 @@ def amend_label(
         )
     except (StaleStore, LabelError, LockTimeout) as exc:
         return _refused(exc)
-    reply.update(written=True, version=written)
+    reply["written"] = True
+    reply["version"] = written
     return reply

@@ -9,21 +9,27 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from collections.abc import Mapping
+from typing import Literal
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
+from .....core.gamedata.model import GameData
 from .....core.saveio import ports
 from .....core.saveio import rows as saverows
 from .....domain.factories import candidates, flowgraph, health
-from .....domain.factories.query import build_view
+from .....domain.factories.health import MachineHealth
+from .....domain.factories.query import FactoryView, build_view
 from .....domain.factories.select import SelectorError
-from .....domain.factories.trace import resolve_seeds, trace
+from .....domain.factories.trace import Reached, resolve_seeds, trace
 from .....domain.planning.readout.views import ItemRate
 from .....domain.world import pin
+from .....domain.world.state import WorldState
 from ...serial import (
     FlowEdge,
+    Placed,
     bbox_m,
     cm_to_m,
     error_response,
@@ -99,14 +105,14 @@ class TraceResponse(TypedDict):
     edges: list[FlowEdge]
 
 
-def _rates(values: dict[str, float]) -> list[dict]:
+def _rates(values: Mapping[str, float]) -> list[ItemRate]:
     return [
         {"item": item, "per_min": round(rate, 2)}
         for item, rate in sorted(values.items(), key=lambda kv: -kv[1])
     ]
 
 
-def _machine_kind(game, cls: str) -> str:
+def _machine_kind(game: GameData, cls: str) -> str:
     building = game.buildings.get(cls)
     if building is not None and building.is_extractor:
         return "extractor"
@@ -115,11 +121,12 @@ def _machine_kind(game, cls: str) -> str:
     return "production"
 
 
-def _crossed_runs(st, nodes: set[str]) -> list[dict]:
+def _crossed_runs(st: WorldState, nodes: set[str]) -> list[TraceRun]:
     """The belt and pipe runs the walk crossed, each with the polylines of its pieces."""
-    actors = (st.projection.get("graph") or {}).get("actors") or []
+    graph = st.projection.get("graph")
+    actors = (graph.get("actors") if graph else None) or []
     run_of = st.physical.run_of
-    runs: dict[int, dict] = {}
+    runs: dict[int, TraceRun] = {}
     segments = [(ports.CONVEYOR, s) for s in saverows.iter_belt_segments(st.projection)]
     segments += [(ports.PIPE, s) for s in saverows.iter_pipe_segments(st.projection)]
     for medium, seg in segments:
@@ -142,7 +149,9 @@ def _crossed_runs(st, nodes: set[str]) -> list[dict]:
     return list(runs.values())
 
 
-def _reached_totals(view, reached: dict, seed_set: set[str], way: str) -> dict[str, float]:
+def _reached_totals(
+    view: FactoryView, reached: Mapping[str, Reached], seed_set: set[str], way: str
+) -> dict[str, float]:
     """What the reached machines make (``up``) or use (``down``), seeds left out."""
     totals: dict[str, float] = {}
     for row in view.machines:
@@ -153,10 +162,15 @@ def _reached_totals(view, reached: dict, seed_set: set[str], way: str) -> dict[s
 
 
 def _machine_rows(
-    st, view, reached: dict, seed_set: set[str], verdicts: dict, placed: dict
-) -> list[dict]:
+    st: WorldState,
+    view: FactoryView,
+    reached: Mapping[str, Reached],
+    seed_set: set[str],
+    verdicts: Mapping[str, MachineHealth],
+    placed: Placed,
+) -> list[TraceMachine]:
     """Every machine of the traced set: seeds first, then by hops from them, then by name."""
-    rows = []
+    rows: list[TraceMachine] = []
     for row in view.machines:
         hit = reached.get(row.instance)
         verdict = verdicts.get(row.instance)
@@ -190,7 +204,7 @@ def trace_path(
     as_of: str | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> TraceResponse | JSONResponse:
     """What feeds a machine, a building type or a factory (``up``), or what it feeds (``down``)."""
     way = direction.strip().casefold()
     if way not in ("up", "down"):

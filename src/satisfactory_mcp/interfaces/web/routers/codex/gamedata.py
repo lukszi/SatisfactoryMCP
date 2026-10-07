@@ -7,17 +7,18 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Iterable
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....core.gamedata import search
-from .....core.gamedata.model import GameData, Recipe
+from .....core.gamedata.model import Flow, GameData, Item, Recipe
 from .....core.gamedata.search import find_recipe, resolve_item
 from .....core.gamedata.unlocks import granted_by
 from .....core.text import ago
-from ...serial import error_response, machine_name, require_world, world_state
+from ...serial import error_response, game_data, machine_name, require_world, world_state
 
 __all__ = ["router"]
 
@@ -122,6 +123,15 @@ class AlternatesResponse(TypedDict):
     recipes: list[MakerRow]
 
 
+class RecipeQuestion(TypedDict):
+    """What a recipe search asks: the part its census counts."""
+
+    query: str
+    consumes: str | None
+    produces: str | None
+    only_alternates: bool
+
+
 class UnlockedRow(TypedDict):
     cls: str
     name: str
@@ -150,7 +160,7 @@ def _unlocked_ids_or_note(
         return None, f"no save could be read ({exc}), so have and locked are unknown"
 
 
-def _rates(game: GameData, flows) -> list[Rate]:
+def _rates(game: GameData, flows: Iterable[Flow]) -> list[Rate]:
     return [
         {
             "item": flow.item,
@@ -172,7 +182,9 @@ def _census(census: search.Census) -> Census:
     }
 
 
-def _census_without_locked(game: GameData, have: set[str] | None, **question: Any) -> Census:
+def _census_without_locked(
+    game: GameData, have: set[str] | None, question: RecipeQuestion
+) -> Census:
     """The census of a search over every kind, counting only what is not known to be locked."""
     every, _ = search.search(
         game, recipe_kind="all", include_events=True, unlocked=have, **question
@@ -184,7 +196,7 @@ def _census_without_locked(game: GameData, have: set[str] | None, **question: An
     return _census(tally)
 
 
-def _item_row(item) -> ItemRow:
+def _item_row(item: Item) -> ItemRow:
     return {
         "cls": item.cls,
         "name": item.name,
@@ -210,9 +222,9 @@ def _maker_row(game: GameData, recipe: Recipe, unlocked: bool | None) -> MakerRo
 
 
 @router.get("/gamedata/items", response_model=ItemsResponse)
-def gamedata_items(request: Request, q: str = "", limit: int = ITEMS_MAX) -> Any:
+def gamedata_items(request: Request, q: str = "", limit: int = ITEMS_MAX) -> ItemsResponse:
     """Items whose name contains ``q``, the ``search_items`` order. Needs no save."""
-    hits = search.find_items(request.app.state.game(), q.strip())
+    hits = search.find_items(game_data(request), q.strip())
     return {
         "total": len(hits),
         "items": [_item_row(item) for item in hits[: max(0, min(limit, ITEMS_MAX))]],
@@ -231,20 +243,20 @@ def gamedata_recipes(
     save: str | None = None,
     world: str | None = None,
     spoilers: bool | None = None,
-) -> Any:
+) -> RecipesResponse | JSONResponse:
     """``search_recipes``: by name, or by what a recipe eats or makes, marked HAVE or LOCKED.
 
     With ``spoilers=0`` locked recipes leave the rows and the census alike.
     """
-    game = request.app.state.game()
-    ids = {}
+    game = game_data(request)
+    ids: dict[str, str | None] = {}
     for key, text in (("consumes", consumes), ("produces", produces)):
         if text:
             ids[key] = resolve_item(game, text)
             if ids[key] is None:
                 return error_response(f"no item matching “{text}”", 404)
     have, note = _unlocked_ids_or_note(request, save, world)
-    question = {
+    question: RecipeQuestion = {
         "query": q,
         "consumes": ids.get("consumes"),
         "produces": ids.get("produces"),
@@ -263,7 +275,7 @@ def gamedata_recipes(
     counted = _census(census)
     if spoilers is False:
         hits = [hit for hit in hits if hit.unlocked is not False]
-        counted = _census_without_locked(game, have, **question)
+        counted = _census_without_locked(game, have, question)
     return {
         "census": counted,
         "save_note": note,
@@ -290,12 +302,12 @@ def gamedata_recipe(
     save: str | None = None,
     world: str | None = None,
     spoilers: bool | None = None,
-) -> Any:
+) -> RecipeDetail | JSONResponse:
     """``recipe_detail``: one recipe by class id or display name.
 
     With ``spoilers=0`` an ambiguous name counts only the unlocked candidates.
     """
-    game = request.app.state.game()
+    game = game_data(request)
     found, hits = find_recipe(game, recipe)
     have, note = _unlocked_ids_or_note(request, save, world)
     if found is None and spoilers is False and have is not None:
@@ -334,14 +346,14 @@ def gamedata_alternates(
     save: str | None = None,
     world: str | None = None,
     spoilers: bool | None = None,
-) -> Any:
+) -> AlternatesResponse | JSONResponse:
     """``alternates_for_item``: every automatable recipe that makes an item, alternates first."""
-    game = request.app.state.game()
+    game = game_data(request)
     item_id = resolve_item(game, item)
     if item_id is None:
         return error_response(f"no item named “{item}”", 404)
     have, note = _unlocked_ids_or_note(request, save, world)
-    rows = []
+    rows: list[MakerRow] = []
     for maker in search.makers_of(game, item_id):
         unlocked = None if have is None else maker.cls in have
         if spoilers is False and unlocked is False:
@@ -355,9 +367,13 @@ def gamedata_alternates(
         ),
         None,
     )
+    found = _item_row(game.items[item_id])
     return {
-        **_item_row(game.items[item_id]),
         "item": item_id,
+        "name": found["name"],
+        "fluid": found["fluid"],
+        "energy_mj": found["energy_mj"],
+        "sink_points": found["sink_points"],
         "save_note": note,
         "build_recipe": built,
         "recipes": rows,
@@ -370,7 +386,7 @@ def gamedata_unlocked(
     only_alternates: bool = True,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> UnlockedResponse:
     """``unlocked_recipes``: the recipes this save has, alternates only by default."""
     st = require_world(request, save, world)
     picks = st.unlocked_alternates if only_alternates else st.unlocked_recipes("part")

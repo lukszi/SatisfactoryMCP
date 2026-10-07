@@ -6,14 +6,17 @@ each field means: docs/web-wire.md "Belts and pipes". Handler names are operatio
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from collections.abc import Sequence
+from typing import Literal, cast
 
 from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
 from .....core.saveio import rows as saverows
+from .....core.saveio.schema import PipeNetwork
+from .....domain.world.flow import PipeFlow
 from .....domain.world.state import WorldState
-from ...serial import cm_to_m, placement_fields, require_world
+from ...serial import cm_to_m, object_rows, placement_fields, require_world
 
 __all__ = ["router"]
 
@@ -106,40 +109,55 @@ def _belt_class(st: WorldState, cls: str | None) -> BeltClass:
     }
 
 
-def _points_m(points: Any) -> list[list[float | None]]:
-    return [[cm_to_m(x), cm_to_m(y), cm_to_m(z)] for x, y, z in points]
+def _points_m(points: list[list[float]]) -> list[Point3M]:
+    return [(cm_to_m(x), cm_to_m(y), cm_to_m(z)) for x, y, z in points]
 
 
-def _curve_m(spans: Any, points: list) -> RouteCurveM:
+def _curve_m(spans: object, points: Sequence[Point3M]) -> RouteCurveM:
     """A route's spline tangents in metres, or ``None`` where the route is straight.
 
     A tangent is a displacement in the same space as a point, so dividing by 100 is the whole
     conversion. A span that will not decode becomes straight rather than costing the route.
     """
-    if not isinstance(spans, (list, tuple)) or len(spans) != len(points) - 1:
+    if not isinstance(spans, (list, tuple)):
         return None
-    out: list = []
-    for entry in spans:
-        if not isinstance(entry, (list, tuple)) or len(entry) != 6:
-            out.append(None)  # 0, the projection's flat-span marker, lands here too
-            continue
-        try:
-            vals = [cm_to_m(float(c)) for c in entry]
-        except (TypeError, ValueError):
-            out.append(None)
-            continue
-        out.append([vals[:3], vals[3:]])
+    entries = cast("Sequence[object]", spans)
+    if len(entries) != len(points) - 1:
+        return None
+    out = [_tangents_m(entry) for entry in entries]
     return out if any(out) else None
 
 
+def _tangents_m(entry: object) -> SpanCurveM | None:
+    """One span's tangents in metres; ``None`` for a straight one, which is also what 0, the
+    projection's flat-span marker, reads as."""
+    if not isinstance(entry, (list, tuple)):
+        return None
+    values = cast("Sequence[object]", entry)
+    if len(values) != 6:
+        return None
+    try:
+        x0, y0, z0, x1, y1, z1 = (cm_to_m(_coordinate(c)) for c in values)
+    except (TypeError, ValueError):
+        return None
+    return (x0, y0, z0), (x1, y1, z1)
+
+
+def _coordinate(value: object) -> float:
+    """``float(value)``, with its ``TypeError`` for what is neither a number nor a string."""
+    if isinstance(value, (str, int, float)):
+        return float(value)
+    raise TypeError(f"not a number: {value!r}")
+
+
 @router.get("/belts", response_model=BeltsResponse)
-def belts(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def belts(request: Request, save: str | None = None, world: str | None = None) -> BeltsResponse:
     """Every conveyor belt and lift, as the polyline it was actually built along, in travel
     order, with the splitters and mergers on them."""
     st = require_world(request, save, world)
 
     resolved: dict[int, BeltClass] = {}
-    rows = []
+    rows: list[BeltRow] = []
     for seg in saverows.iter_belt_segments(st.projection):
         if seg.class_index not in resolved:
             resolved[seg.class_index] = _belt_class(st, seg.cls)
@@ -153,9 +171,7 @@ def belts(request: Request, save: str | None = None, world: str | None = None) -
             }
         )
     attachments = [
-        placement_fields(st.game, row)
-        for row in st.projection.get("attachments") or ()
-        if isinstance(row, dict)
+        placement_fields(st.game, row) for row in object_rows(st.projection.get("attachments"))
     ]
     return {
         "belts": rows,
@@ -225,21 +241,30 @@ def _pipe_class(st: WorldState, cls: str | None) -> PipeClass:
     }
 
 
-def _pipe_row(st: WorldState, seg: Any, networks: list, flows: list, pipe_class: dict) -> dict:
+def _pipe_row(
+    st: WorldState,
+    seg: saverows.PipeSegment,
+    networks: list[PipeNetwork],
+    flows: list[PipeFlow],
+    pipe_class: PipeClass,
+) -> PipeRow:
     """One pipe: the network that claims it, its inferred direction, its class and shape.
 
     ``seg.index`` is the raw row position, so the positional joins to ``networks`` and
     ``flows`` stay lined up when a row is torn, and a projection too old for them reads as
     ``unknown`` rather than as an error.
     """
-    entry = networks[seg.network_index] if 0 <= seg.network_index < len(networks) else {}
+    entry = networks[seg.network_index] if 0 <= seg.network_index < len(networks) else None
     fluid = entry.get("fluid") if isinstance(entry, dict) else None
-    flow = flows[seg.index] if 0 <= seg.index < len(flows) else {}
+    flow = flows[seg.index] if 0 <= seg.index < len(flows) else None
     points = _points_m(seg.points)
+    # The flow model writes only the words these two types close over.
+    direction = flow.get("direction", "unknown") if flow is not None else "unknown"
+    basis = flow.get("basis", "unresolved") if flow is not None else "unresolved"
     return {
         "row": seg.index,
-        "direction": flow.get("direction", "unknown"),
-        "basis": flow.get("basis", "unresolved"),
+        "direction": cast(PipeDirection, direction),
+        "basis": cast(PipeFlowBasis, basis),
         "network": entry.get("id") if isinstance(entry, dict) else None,
         "fluid": fluid,
         "fluid_name": st.game.item_name(fluid) if fluid else None,
@@ -250,7 +275,7 @@ def _pipe_row(st: WorldState, seg: Any, networks: list, flows: list, pipe_class:
 
 
 @router.get("/pipes", response_model=PipesResponse)
-def pipes(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def pipes(request: Request, save: str | None = None, world: str | None = None) -> PipesResponse:
     """Every fluid pipe, as the polyline it was actually built along, the fluid it carries
     and which way it flows where the plumbing around it settles that."""
     st = require_world(request, save, world)
@@ -258,7 +283,7 @@ def pipes(request: Request, save: str | None = None, world: str | None = None) -
     networks = list((st.projection.get("pipes") or {}).get("networks") or ())
     flows = st.pipe_flow
     resolved: dict[int, PipeClass] = {}
-    rows = []
+    rows: list[PipeRow] = []
     for seg in saverows.iter_pipe_segments(st.projection):
         if seg.class_index not in resolved:
             resolved[seg.class_index] = _pipe_class(st, seg.cls)

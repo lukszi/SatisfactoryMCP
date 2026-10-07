@@ -214,7 +214,9 @@ the tuple's order is the committed schema's path order. Every routed handler dec
 `response_model` or returns a `Response` subclass in its annotation; without one the endpoint's
 `200` is `unknown` in `api/schema.d.ts`, and the page ends up typing it from observed payloads,
 which is how a 438-line hand-written types file with wrong nullability once came about. The four
-byte-serving endpoints are the named exemptions, and an exemption that stops being needed fails.
+byte-serving endpoints declare `response_model=object`, the unconstrained body they have always
+published, and return a `Response`; an exemption list stands for any later one, and an exemption
+that stops being needed fails.
 
 **The page** (`test_frontend_layout.py`). `static/` is build output: gitignored (it embeds
 minified Leaflet, and the repository distributes no build), complete when present, every file
@@ -287,6 +289,13 @@ colour value, so every colour sits with its owner and its warrant.
   shape a domain package builds is declared in that package's `views.py`, where the web
   publishes it from; wire rules 2 and 5 of [web-wire.md](web-wire.md) say why each one is a
   `typing_extensions.TypedDict` and why two with the same fields are one.
+- **A handler says what it returns**: its `response_model`'s TypedDict, `| JSONResponse` where it
+  can refuse. FastAPI reads the `response_model` and never the annotation once one is given, so
+  the annotation changes nothing on the wire and lets pyright check the body. A field published
+  as an open object is `Mapping[str, object]`, which pydantic describes exactly as it did `dict`.
+  Where a domain function still returns a loose `dict`, or a `str` the wire closes into a
+  `Literal`, the handler casts once and says why. A projection list is read guarded:
+  `serial.object_rows` drops a torn row that is not an object and keeps the schema's row type.
 - **Arrays and stubs.** A numpy array is typed by its dtype through `core/arrays.py`
   (`F32Grid`, `U8Grid`, `BoolMask` and the rest) rather than as a bare `ndarray`. scipy is typed
   by `scipy-stubs`, and pyooz, which ships no types, by the local stub `typings/ooz.pyi`.

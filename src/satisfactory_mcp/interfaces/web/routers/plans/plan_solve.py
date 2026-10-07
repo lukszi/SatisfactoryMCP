@@ -8,9 +8,10 @@ Handler names are operation_ids (wire rule 1 of docs/web-wire.md).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NotRequired
+from typing import Annotated, NotRequired, cast
 
 from fastapi import APIRouter, Body, Request
+from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....core.gamedata.search import resolve_item
@@ -37,7 +38,7 @@ router = APIRouter(prefix="/api")
 class SolveBody(TypedDict):
     """Exactly one of ``args`` (a request) and ``key`` (a stored plan, at ``rev`` or its head)."""
 
-    args: NotRequired[dict | None]
+    args: NotRequired[dict[str, object] | None]
     key: NotRequired[str | None]
     rev: NotRequired[int | None]
 
@@ -71,7 +72,7 @@ def solve_plan(
     body: Annotated[SolveBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> SolveResponse | JSONResponse:
     """Solve a request or a stored version against this save; nothing is written."""
     args, key = body.get("args"), body.get("key")
     if (args is None) == (key is None):
@@ -86,9 +87,11 @@ def solve_plan(
         except InvalidOp as exc:
             return error_response(str(exc), 400)
     try:
-        return summary.solve_summary(st.game, st, kwargs)
+        solved = summary.solve_summary(st.game, st, kwargs)
     except ValueError as exc:
         return error_response(str(exc), 400)
+    # ``solve_summary`` documents its plain dict as this shape.
+    return cast(SolveResponse, solved)
 
 
 @router.get("/plan/delta", response_model=DeltaResponse)
@@ -99,7 +102,7 @@ def plan_delta(
     to_rev: int | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> DeltaResponse | JSONResponse:
     """The result deltas between two versions of one plan, both re-solved against this save."""
     check_plan_key(key)
     st = require_world(request, save, world)
@@ -123,7 +126,7 @@ def plan_alternates(
     save: str | None = None,
     world: str | None = None,
     spoilers: bool | None = None,
-) -> Any:
+) -> PlanAlternatesResponse | JSONResponse:
     """Every recipe making ``item``, each with what requiring it would change in the plan."""
     key = body["key"]
     check_plan_key(key)
