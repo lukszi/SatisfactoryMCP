@@ -24,7 +24,6 @@ from mapgen.cache import held_open
 from mapgen.common import Refusal
 from mapgen.gamedata.ground.paint_store import CROWN_NAME
 from mapgen.lighting.bake import LightBake, block_rows
-from mapgen.lighting.horizon import Slabs
 from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import CrownGrid, sheet_crowns
 from mapgen.lighting.stage import (
@@ -198,14 +197,13 @@ class LightingRun:
         scratch_root: Path,
         size: int,
         occluder: Occluder | None = None,
-        slabs: Slabs | None = None,
         light_workers: int | None = None,
         cache_root: Path | None = None,
     ) -> None:
         self.surface = Surface(scratch_root / LIGHT_CACHE_DIR_NAME, size)
-        self.occluder, self.slabs = occluder, slabs
+        self.occluder = occluder
         # Hashed now, while the planes sheet_crowns just wrote are still in memory.
-        self.casts = cast_digests(occluder, slabs)
+        self.casts = cast_digests(occluder)
         self.light_workers = light_workers
         self.kept = None if cache_root is None else KeptLight(cache_root / KEPT_LIGHT_DIR_NAME)
         self.meta: JsonObject | None = None
@@ -231,7 +229,7 @@ class LightingRun:
                 raise RuntimeError("a light run bakes into the renders it began with")
             print("baking the lighting pyramid as the bands come in", flush=True)
             self.bake = LightBake(
-                self.surface, self.renders, self.light_workers, self.occluder, self.slabs,
+                self.surface, self.renders, self.light_workers, self.occluder,
                 occluder_layers=crown_layers(),
             )  # fmt: skip
         return self.bake

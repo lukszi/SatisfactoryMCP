@@ -39,7 +39,10 @@ class MaxZRaster:
 
     ``sample`` is where in a texel, in texels, its value is taken: 0 at the vertex
     ``origin + col * scale``, which is where ``heightfield`` reads every plane; 0.5 at the
-    texel centre, which is a render's pixel.
+    texel centre, which is a render's pixel. ``ceiling``, one height per texel, keeps only
+    the candidates below it: the highest surface under another. ``row0`` is the raster's
+    first row on the grid its origin starts, so rows above the origin are rasterised exactly
+    as the origin's own rows are.
     """
 
     def __init__(
@@ -51,10 +54,13 @@ class MaxZRaster:
         scale: float,
         *,
         sample: float = 0.0,
+        ceiling: F32Grid | None = None,
+        row0: int = 0,
     ) -> None:
-        self.width, self.height = width, height
+        self.width, self.height, self.row0 = width, height, row0
         self.origin_x_cm, self.origin_y_cm, self.scale = x0_cm, y0_cm, scale
         self.sample = sample
+        self.ceiling = None if ceiling is None else np.ravel(ceiling)
         self.z: F32Grid = np.full(height * width, -np.inf, dtype=np.float32)
         self.source_id: U16Grid = np.zeros(height * width, dtype=np.uint16)
         self.density: U32Grid = np.zeros(height * width, dtype=np.uint32)
@@ -78,6 +84,7 @@ class MaxZRaster:
         shift = 0.5 - self.sample
         col = np.floor((points[:, 0] - self.origin_x_cm) / self.scale + shift).astype(np.int64)
         row = np.floor((points[:, 1] - self.origin_y_cm) / self.scale + shift).astype(np.int64)
+        row -= self.row0
         ok = (col >= 0) & (col < self.width) & (row >= 0) & (row < self.height)
         if not ok.any():
             return
@@ -111,6 +118,11 @@ class MaxZRaster:
         sources = np.concatenate(self._pending_sources)
         self._pending_texels, self._pending_heights, self._pending_sources = [], [], []
         self._pending_count = 0
+        if self.ceiling is not None:
+            below = heights < self.ceiling[texels]
+            texels, heights, sources = texels[below], heights[below], sources[below]
+            if not texels.size:
+                return
         self._on_fold(texels, sources)
         order = np.lexsort((heights, texels))
         texels, heights, sources = texels[order], heights[order], sources[order]
@@ -158,8 +170,8 @@ class MaxZRaster:
         bucket would, so the texels and heights do not depend on the tiling.
         """
         tile_w, tile_h = min(MAX_SPAN, self.width - 1), min(MAX_SPAN, self.height - 1)
-        first = np.maximum(box[:, :2], 0)
-        last = np.minimum(box[:, 2:], [self.width - 1, self.height - 1])
+        first = np.maximum(box[:, :2], [0, self.row0])
+        last = np.minimum(box[:, 2:], [self.width - 1, self.row0 + self.height - 1])
         owners: list[NDArray[np.intp]] = []
         corners: list[NDArray[np.floating]] = []
         for k in np.flatnonzero((first <= last).all(axis=1)):
@@ -196,7 +208,7 @@ class MaxZRaster:
         l2 = ((cy - ay) * (gx - cx) + (ax - cx) * (gy - cy)) / den
         l3 = 1.0 - l1 - l2
         col = np.floor(gx).astype(np.int32)
-        row = np.floor(gy).astype(np.int32)
+        row = np.floor(gy).astype(np.int32) - self.row0
         ok = (
             (l1 >= -1e-6)
             & (l2 >= -1e-6)

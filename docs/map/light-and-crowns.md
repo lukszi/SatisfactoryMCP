@@ -45,6 +45,9 @@ divided by the same expression for flat ground in the open, so flat ground at an
   style is shaded by the ground alone. Shared by every style, the crowns' shadows drew
   near-black blocks in the forests and dashes in the desert on layers that draw no trees,
   five times as frequent beside a crown as away from one.
+- **Arches, rock overhangs and crowns are spans** (below, "Arches as spans"): each blocks only
+  between its underside and its top, so its shadow falls where the sun's ray meets it and
+  light passes beneath.
 - **Sky view** within 10 m darkens the foot of a cliff and the floor of a gully. Larger radii
   grey whole valleys.
 - **Normalisation** by `sin(max(el, 35°))`: without the clamp a fifth to a third of the
@@ -76,12 +79,147 @@ axis (`AFGSkySphere`, pitch `30 + 15 h`); `lighting/sun.py` and the page's `sun.
 compute that path. The cartographic 315° / 45° is a one-click preset, not the default: the
 artwork has no light direction to inherit.
 
+### Arches as spans (2026-10-07)
+
+An arch, a rock overhang and a tree crown stand over what is beneath them. Until light model 3
+the march stood each of them on the ground as a column, so an arch cast a wall from its foot to
+the end of its shadow, a crown a straight streak from its trunk, and an overhang a wedge. Now
+each is a span with an underside and a top, and the sun's ray decides (`lighting/spans.py`).
+
+**The march.** Along each of the 32 directions the ground blocks as before, but the ground is
+the *solid* surface: the drawn one without what floats. A span sample blocks only the tangents
+between its underside and its top as the receiver sees them:
+
+- Where that reaches down to what already blocks, the sample merges into the horizon with the
+  drawn top's exact tangent: an arch's foot, a rock's base, and a receiver on the span itself,
+  which sees its own top as a plain march does.
+- Otherwise it is a band above the horizon, and light passes beneath. One band is kept per
+  direction: a sample that overlaps it, or leaves a gap narrower than the sun disc (6°,
+  `BAND_GAP_DEG`), widens it; one apart from it replaces it when it is nearer the elevation the
+  sun's path has in that direction (`path_elevation`; 45° where the path never comes). So two
+  arches in line keep the sky between them. A band joins the horizon only where it reaches
+  down to it; above it, however narrow the sky beneath, the shade reads the share of the sun
+  disc each hides. Joining any band within a sun disc of the horizon flipped neighbouring
+  receivers between lit and shaded.
+- A sample stands for the stretch of ray from halfway back to the step before to halfway on to
+  the next, and reads, of the four pixels around it, the span whose top is highest, reaching
+  down over those it overlaps. A thin arch crossed between two samples still blocks, so its
+  shadow is a line, not dots; one object's pixels are read whole; and two spans one above the
+  other are never read as one: the lowest underside and the highest top of the four made a
+  low slab beside a high deck one solid span, which drew a lattice of wall shadows on the
+  maze and spire sites.
+- Past 40 m a band's tangents fade by the fade weight, as the ground's do, so a far span
+  shades alike whether it floats or reaches the horizon. Narrowing a band about an exact
+  centre while a merged span faded drew dashed arcs in a far spire's shadow.
+- **Sky view**: a band costs `sin(hi) − sin(lo)` of a direction's sky, not the whole wall
+  under it. Beside an arch the median sky view rose from 0.55–0.67 to 0.78–0.83 on the
+  prototype's three arch sites.
+- **Normals** of the ground beside or beneath a span, a pixel below a neighbouring underside,
+  come from the solid surface, so a span's edge draws no rim on it. The span's own pixels, and
+  a rock beside it at its height, keep the drawn surface's.
+- Where no span is in reach, the march and the sky view are the plain ones to the bit, and a
+  strip of rows with none skips the span work. Both run as numba kernels equal to their numpy
+  reference bit for bit (`span_kernels.py`, section 41 of renders.md). `--gpu` keeps the
+  plain march on CUDA; a block with spans marches them on numba.
+
+**What casts as a span.**
+
+- **Arches.** The top raster draws the arches apart (`terrain/top_raster.py`): their top
+  (max-Z); their underside, the highest arch surface 25 cm or more below the top
+  (`SAME_SURFACE_CM`), else the lowest (the same triangles rasterised upside down), so under
+  a deck that crosses another it is the deck's own; and the boulders alone.
+  Every pixel an arch covers is a span from its underside to the drawn top; the solid surface
+  there is drawn with the boulders only.
+- **Rock overhangs** (`terrain/overhangs.py`). Under each rock's top the direct pass finds the
+  highest downward face that rises 1 m over its placement's lowest point (`UNDERSIDE_RISE_CM`,
+  so a rock's own foot is no underside), and the highest upward face under the top, the floor.
+  A rock floats where its underside clears both the floor and the ground by 2 m
+  (`OVERHANG_CLEAR_M`): the cap of a mushroom rock, a ledge leaning out. A rock resting on
+  another or sunk into it finds the other's top as its floor, and a mesh with an open bottom,
+  or whose winding is unknown, has no underside: both stay columns. The solid surface sets a
+  floating rock down on its floor, or the ground.
+- **Crowns.** Each crown pixel is a span from `CROWN_UNDERSIDE` (half) of its top's height over
+  the drawn surface to its top, marched into the crown cells under the crowns' own fade. A
+  crown over open ground now throws its own shape, offset by the sun, instead of a streak.
+
+**The arches' holes.** Their meshes have open edges that left slits and specks in the raster,
+drawn as dark lines through the deck. The top raster fills a hole the arch encloses whose
+widest point is within 0.5 m of it (`FILL_HALF_WIDTH_M`), and a pixel the arch covers from
+opposite sides within 0.46 m along a row, a column or a diagonal (`FILL_RADIUS_M`), three times
+over (`terrain/archfill.py`); a filled pixel takes the mean top and underside of the covered
+pixels around it. Holes wider than a metre, the ground framed by the arches, stay open. The fill
+reads 7.3 m past a band's edges (`FILL_HALO_M`) on the band's own grid, so a slit the band edge
+cuts closes, and where nothing is filled the top raster is the one it was. On a sheet coarser
+than 0.46 m to the pixel nothing is filled.
+
+**The default sun** is baked from the bands themselves: per cell, the horizon's soft edge plus
+the share of the sun disc the bands above it hide (with the crowns, the union of two bands),
+weighted between the sun's two directions as the horizon is, and zoomed to the pixels as the
+horizon is (`span_bake.default_shade`). Only
+cells a span was in reach of, grown by one, take it; every other pixel's term is the horizon's
+as before. Zoomed horizons would draw one-pixel bright rings where a cell holding an arch as
+horizon meets one holding it as a band.
+
+**The atlas.** The page reads horizons, no bands yet. So a cell folds its band in at the
+elevation the sun's path has in that direction, `el + 6° × (cover − ½)` where the band hides
+some of the disc there (`span_bake.path_horizon`). For a sun on the game's path, the time-of-day
+slider, the page shades a span where the bake does; a sun off the path keeps the path's
+shadow there. The model block's `spans` records the rule and the 32 path elevations. Live bands
+on the page (their underside and top per direction in a texture of their own, read per texel
+by the shader) are a later step; nothing here needs to change for it.
+
+**FXAA on the arches** (`render/archaa.py`). Their silhouettes stair-step at the pixel. FXAA
+3.11 at its quality preset (an end-of-edge search 12 px along, `FXAA_REACH`) runs on each band
+of every layer's unlit and lit copy that an arch is near, and its answer is kept only inside the
+arches' coverage grown 3 px (`MASK_DILATE_PX`): rocks, crowns, water and the ground keep their
+bytes. The luma is summed in one fixed order (section 41 of renders.md). A band near an arch
+waits for the next band's first 14 rows (`FXAA_HALO`), so it is filtered as the whole sheet
+would be (`render/stream.py`).
+
+**On disk.** `top.cache` holds the boulders alone, the arches' underside and their coverage
+beside the top; `direct.cache` holds the overhangs' underside and floor, NaN where none. Both
+carry `planes: 2` in their stamp, so a cache from before is rebuilt, never read without them.
+The light's scratch holds the captured spans in `slabs/`, one file per 256 px tile that has
+any; they are digested with the surface they came with (below, "Kept light"). A block reads
+them at half resolution, each cell the highest of its four pixels' spans, whole.
+
+**Cost** (2026-10-07, shared mode, other jobs running; base is the code before spans):
+
+| What | Base | Spans |
+| --- | --- | --- |
+| Light block, 4096 px, terrain only | 26.7 s | 25.9 s |
+| Light block, 4096 px, crowns over 40% | 39–59 s, 1.03 GB | 105–120 s, 1.44 GB |
+| Light block, 4096 px, crowns and 3% arches | | 107–127 s, 1.50 GB |
+| Nine real 1024 px blocks (arch and forest sites), summed | 33 s | 111 s (2.4–5.7× each) |
+| Direct raster, 16384, back to back | 308 s | 739 s |
+| Top raster, 16384, back to back | 44 s | 66 s, before the underside's own pass |
+
+The span march is most of it: a scalar loop over the pixels a span covers, against the plain
+march's vectorised rows, and it visits only the columns holding a span
+(`spans.SpanRuns`). Blocks of open terrain cost what they did. The full-size light, 830 s on
+16 workers before, so lands at about two to three times that, by the share of the map under
+crowns and arches; the direct raster, built once per cache, at about 2.4 times its 634 s.
+
+**Limits.**
+
+- One band per direction: a third arch in line, apart from the kept band by more than a sun
+  disc, casts no shadow in that direction.
+- One span per pixel: where two decks cross, the part of the lower one under the upper casts
+  nothing.
+- Where several spans compete for a direction's one band, neighbouring cells can keep
+  different ones: a faint speckle in the shadow, seen under the maze site's stacked arches.
+- One crown underside for every species: a palm's crown is shallower, a conifer's deeper.
+- An overhang over a ledge sets the ledge's top down as the floor only where it is the highest
+  face under the overhang; an overhang over another overhang keeps the lower one a column.
+- The page's horizons are exact for a sun on the game's path only, until the bands reach it.
+- Holes in the arches wider than a metre stay open.
+
 ### What is written
 
 | Where | What |
 | --- | --- |
 | `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land |
-| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | An 8 × 8 grey atlas of 128 px cells at half resolution, `255 · sqrt(deg / 90)`, WebP q75: cells 0–31 the ground's horizons, cells 32–63 the crowns' where they stand above the ground's, else 0 |
+| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | An 8 × 8 grey atlas of 128 px cells at half resolution, `255 · sqrt(deg / 90)`, WebP q75: cells 0–31 the ground's horizons, cells 32–63 the crowns' where they stand above the ground's, else 0; a span's band folded in at the sun path's elevation (above, "Arches as spans") |
 | `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), the `key` the bake was made under (below, "Kept light"), tile counts, timings |
 | `<layer>/unlit/` | The unlit colour, 1x only |
 | `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun: what a page without WebGL, and every older reader, draws |
@@ -141,7 +279,7 @@ worker holds more than it needs; none of it moves a byte:
   1 GB of floats. The mean of one direction sums its four pixels as a stacked mean would,
   `(a + b) + (c + d)`, which a test holds.
 - **Workers of its own.** `--light-workers` sets the bake's pool. By default it is one a
-  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 1.5 GB
+  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 2.0 GB
   each (`LIGHT_WORKER_BYTES`, below), counted when the bake starts. On Windows the free
   memory is the lesser of the free RAM and the commit still available
   (`pools.free_ram_bytes`): a process that cannot commit fails with RAM to spare, which
@@ -157,9 +295,10 @@ worker holds more than it needs; none of it moves a byte:
   `OPENBLAS_NUM_THREADS=1` (`pools.one_blas_thread`, set while the pool lives and put back
   after; the parent keeps the BLAS it loaded with), and a worker that imports both commits
   0.04 GB. A full-size block peaks at 1.08 GB working set and 0.98 GB commit, one under arches
-  at 1.36 and 1.04 GB; `LIGHT_WORKER_BYTES` is 1.5 GB, the larger of those with room for a
-  block that has both. The cutter's encoders import no numpy, so their pool needs no such
-  setting (section 17).
+  at 1.36 and 1.04 GB. With the crowns and arches as spans (2026-10-07) a block under crowns
+  peaks at 1.44 GB commit and one with crowns and arches at 1.50 GB; `LIGHT_WORKER_BYTES` is
+  2.0 GB, the larger with room. The cutter's encoders import no numpy, so their pool needs no
+  such setting (section 17).
 
 Measured on synthetic terrain with crowns at the full-size spacing, 4096 px blocks, on the
 16-core reference machine while other jobs ran: one block takes 73 s, 32 s of it the ground's
@@ -210,6 +349,7 @@ size and traffic while the run lasts, not of reuse.
 | --- | --- | --- |
 | `z`, `land` | By the draw pass, a band of rows at a time, each band hashed as it is stored | By the bake, one block of 16 × 16 tiles at a time with its halo (`land` without one); `land` again for each lit band, a band at a time |
 | `occluder`, `occluder_cover` | By `crown_occluder`, 256 rows at a time, then hashed once | By the bake, a block with its halo |
+| `slabs/` | With the surface, a band at a time: only the 256 px tiles that hold an arch or an overhang, hashed with it | By the bake, the tiles in a block's window, at half resolution |
 | `terms` | By the bake's processes, a block each, then moved to the kept light | For each lit band, a band at a time, once its row of blocks is baked |
 | `zh`, `landh`, `svfh`, `hzq` | By the bake's processes, a block each | By each coarser level, a strip of rows at a time; each level replaces them with its own |
 
@@ -257,11 +397,10 @@ the same surface installs it instead of baking (`render/kept_light.py`).
 
 **The key.** After the draw pass the run digests what the bake reads (`stage.light_key`):
 
-- the surface: each band's heights and land weight, hashed as `Surface.put` stores them on
-  the thread that drew the band and folded in row order, so neither the thread count nor the
-  order the bands finish in matters;
-- the crown tops and cover, hashed once `crown_occluder` has written them, and the slabs when
-  there are any;
+- the surface: each band's heights and land weight, and its spans' tiles, hashed as
+  `Surface.put` stores them on the thread that drew the band and folded in row order, so
+  neither the thread count nor the order the bands finish in matters;
+- the crown tops and cover, hashed once `crown_occluder` has written them;
 - the size, the light model's digest (`light_axis`, the default sun included), the layers
   that read the crown cells, and `stage.LIGHT_VERSION`.
 
@@ -318,20 +457,16 @@ the light's `key`. At full size the bake a restyle skips is about 830 s.
 
 ### Hooks
 
-`bake_light` takes two optional rasters on the sheet's grid, both of which only cast:
-
-- `occluder`: the crown tops in metres, NaN where empty, or `(top, cover)` with the covered
-  share of each pixel as a byte. The crowns stand on the surface, each lifted by its cover
-  (`horizon.crown_surface`), and cast into the crown cells under their own shorter fade
-  (`OCCLUDER_FADE_M`, 25 to 80 m), received on the crown tops, so a crown is lit or shaded
-  where the painted layer draws it. A crown cell keeps its horizon only where it stands
-  above the ground's, which the shader's `max` makes exact and leaves the cells empty away
-  from trees. `occluder_layers` names the layers that read them. The paint store's crown
-  tops feed it (section 36; the mapgen README's "Horizons and tree shadows").
-- `slabs = (ground, min_z, max_z)`: the surface without the floating geometry, and that
-  geometry's underside and top. A slab extends a horizon only where its underside is below
-  the horizon already reached, so an arch stops casting a curtain to the ground. On the arch
-  crop at 16:00 the curtains go; the pipeline does not yet rasterise the arches' min-Z.
+`bake_light` takes an optional `occluder` on the sheet's grid, which only casts: the crown tops
+in metres, NaN where empty, or `(top, cover)` with the covered share of each pixel as a byte.
+The crowns stand on the surface, each lifted by its cover (`horizon.crown_surface`), and are
+spans from half their lift to that top (above, "Arches as spans"), cast into the crown cells
+under their own shorter fade (`OCCLUDER_FADE_M`, 25 to 80 m) and received on the crown tops, so
+a crown is lit or shaded where the painted layer draws it. A crown cell keeps its horizon only
+where it stands above the ground's, which the shader's `max` makes exact and leaves the cells
+empty away from trees. `occluder_layers` names the layers that read them. The paint store's
+crown tops feed it (section 36; the mapgen README's "Horizons and tree shadows"). The arches
+and the overhangs come with the surface itself, in its `slabs/`.
 
 ### The page
 
@@ -348,7 +483,7 @@ button moves the sun for the visit; Settings keeps the default.
 
 ### Open
 
-- The arches' min-Z raster, so `slabs` is fed by the pipeline.
+- The spans' bands on the page, so a sun off the game's path shades them too.
 - The sun in the fragment, so a link carries it.
 - Faint diagonal bands at low sun from the q75 horizon encoding and the direction
   interpolation.

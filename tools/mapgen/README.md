@@ -122,7 +122,7 @@ claim is refused with its own exit code (§20, "Refusals"). The main options:
   run deletes it however it ends, and the next lit run removes what a killed one left. A
   scratch a render still running holds is refused with exit code 11 (§29, "Scratch").
 - `--light-workers` sets how many processes bake the light. By default it is one a core, at
-  most 16, and no more than the free memory holds at 1.5 GB each, counted when the bake starts
+  most 16, and no more than the free memory holds at 2.0 GB each, counted when the bake starts
   (§29, "The stage"). `--cut-workers` sets how many encode the tiles: by default one a core, at
   most 24, fewer when memory is short, and `1` cuts serially (§17, "Cutting in parallel").
   `--workers N` sets both where its own flag is not given, so older command lines keep their
@@ -225,6 +225,8 @@ be traced to the axis it should move.
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
 | `terrain/kernels.py` | renderer | The resampling gathers and the crown stamps compiled by numba |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid |
+| `terrain/top_raster.py`, `archfill.py` | renderer | The top raster with the arches apart (top, underside) and the boulders alone; the arches' sub-metre holes filled |
+| `terrain/overhangs.py` | renderer | Under each rock's top, its overhang's underside and the floor beneath it |
 | `terrain/render_meshes.py` | renderer | The render-only meshes and the Titan trees on the output grid |
 | `terrain/crown_stamp.py` | renderer | Tree crowns stamped into a band of the output grid |
 | `terrain/measure.py` | renderer | `SeamTrace`, `RegimeCoverage` |
@@ -235,6 +237,8 @@ be traced to the axis it should move.
 | `lighting/bake.py` | light | The lighting pyramid baked a row of blocks at a time, as the surface's rows come in |
 | `lighting/light_tiles.py` | light | The lighting pyramid's tile format, the bake's work files, and the coarser levels |
 | `lighting/kernels.py` | light | The horizon march and the sky view compiled by numba |
+| `lighting/spans.py`, `span_kernels.py` | light | The march and the sky view over spans (arches, overhangs, crowns), and their numba kernels |
+| `lighting/span_bake.py`, `slabs.py` | light | A block's spans, the atlas's folded bands and the default sun's per-cell shade; the captured spans' sparse store |
 | `lighting/gpu.py`, `gpu.cu` | light | The same two as CUDA kernels, for `--gpu` |
 | `lighting/occluders.py` | light | The occluders the horizons take: the paint store's crown tops on a render grid (`sheet_crowns`) and a tree table's domes (`canopy_top`) |
 | `lighting/lights/` | light | Light files (empty for now) |
@@ -268,6 +272,8 @@ be traced to the axis it should move.
 | `render/compose.py` | | The band loop that draws every layer of a run in one pass |
 | `render/surface.py` | | One band's ground, composed once for all the layers (`band_grid`, `band_surfaces`) |
 | `render/lift.py` | | The raise-only lift by which rocks and the top raster raise the ground |
+| `render/floating.py` | | What floats over a piece for the light: the arches and overhangs, and the surface without them |
+| `render/archaa.py` | | FXAA on the arches only, a band at a time with its neighbours' rows |
 | `render/painting.py` | | One band coloured in one layer's style over that ground (`paint_band`) |
 | `render/stream.py` | | Each settled band handed to its layers' tile trees, the lit ones once the light has its rows |
 | `render/drawpool.py` | | How many threads draw a pass's bands, and the pool that keeps their order |
@@ -357,6 +363,10 @@ sun picks two directions (§29). Trees join it as its `occluder`.
 - **`sheet_crowns`**: the paint store's crown tops, whatever layers a run draws, box-averaged
   to the sheet's pixel, mean top and covered share; `horizon.crown_surface` lifts each crown by that share, so a small crown
   casts a small shadow (§29, "Hooks").
+- **Spans** (`lighting/spans.py`): arches, rock overhangs and crowns block only between their
+  underside and their top, so light passes beneath; `CROWN_UNDERSIDE` (0.5) puts a crown's
+  underside halfway up its lift, `OVERHANG_CLEAR_M` (2 m) is the gap that makes a rock float
+  (§29, "Arches as spans").
 - **`OCCLUDER_FADE_M`** (25 m, 80 m): a crown is porous; under the 16:00 sun an 80 m mangrove
   lays a 61 m shadow with it, 93 m with the ground's fade.
 - **Receivers on the crown top**: received on the ground under the crowns, 71-86% of two

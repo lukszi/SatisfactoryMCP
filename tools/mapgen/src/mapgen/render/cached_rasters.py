@@ -11,31 +11,42 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property, partial
 from pathlib import Path
-from typing import TypeAlias, cast
+from typing import NamedTuple, TypeAlias, TypeVar, cast
 
-from mapgen.cache import CACHE_SIDECAR_NAME, DirectStamp, Plane, cached_raster, raster_cache_stamp
+from mapgen.cache import (
+    CACHE_SIDECAR_NAME,
+    DirectStamp,
+    Plane,
+    TopPlanes,
+    cached_overhangs,
+    cached_raster,
+    cached_top,
+    raster_cache_stamp,
+)
 from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.rocks.families import placement_families
+from mapgen.terrain.overhangs import rasterise_direct_planes
 from mapgen.terrain.rasters import (
+    TOP_RASTER_ROLE,
     BandRaster,
     CliffGeometry,
     RasterStats,
     direct_placements,
-    rasterise_direct_band,
-    rasterise_top_band,
     read_cliff_geometry,
     sweep_world,
     top_items,
     write_banded_raster,
 )
+from mapgen.terrain.top_raster import rasterise_top_planes
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
     "UNREADABLE_RASTER",
+    "DirectRaster",
     "LevelSweep",
     "RasterGrid",
     "RasterPlanes",
@@ -49,6 +60,19 @@ UNREADABLE_RASTER = 7
 
 #: A raster cache's two planes: max-Z in cm and the coverage of each pixel.
 RasterPlanes: TypeAlias = tuple[Plane, Plane]
+
+#: What a cache's reader hands back.
+_Read = TypeVar("_Read")
+
+
+class DirectRaster(NamedTuple):
+    """The direct cache's planes: max-Z and coverage, and the overhangs' underside and floor."""
+
+    z: Plane
+    coverage: Plane
+    under: Plane | None
+    floor: Plane | None
+
 
 _GEOMETRY_LICENCE = (
     "Coffee Stain Studios' own cooked assets, read out of the reader's installed copy of the "
@@ -108,25 +132,36 @@ class RasterGrid:
     def spacing_m(self) -> float:
         return (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / self.size
 
-    def write(self, rasterise_band: BandRaster, directory: Path) -> RasterStats:
+    def write(
+        self, rasterise_band: BandRaster, directory: Path, role: str | None = None
+    ) -> RasterStats:
         """Every band rasterised into ``directory`` under this grid's stamp; the stats."""
+        roles = {} if role is None else {"role": role}
         return write_banded_raster(
-            rasterise_band, directory, self.size, self.subsamples, self.stamp, self.progress
-        )
+            rasterise_band, directory, self.size, self.subsamples, self.stamp, self.progress,
+            **roles,
+        )  # fmt: skip
 
 
 def stamped_raster(
-    cache: Path, grid: RasterGrid, label: str, key: str, rasterise: Callable[[], JsonObject]
-) -> tuple[RasterPlanes, JsonObject]:
-    """The cache's planes, ``rasterise``d into it first on a miss, and the sidecar block.
+    cache: Path,
+    grid: RasterGrid,
+    names: tuple[str, str],
+    rasterise: Callable[[], JsonObject],
+    read: Callable[[], _Read | None],
+) -> tuple[_Read, JsonObject]:
+    """The cache's planes as ``read`` gives them, ``rasterise``d into it first on a miss, and
+    the sidecar block.
 
-    On a hit the block quotes the cache's own sidecar under ``key``; on a miss it is what
-    ``rasterise`` returns. A cache that will not read back refuses the run.
+    ``names`` is the raster's label and its sidecar key. On a hit the block quotes the
+    cache's own sidecar under the key; on a miss it is what ``rasterise`` returns. A cache
+    that will not read back refuses the run.
     """
-    maps = cached_raster(cache, grid.stamp)
+    label, key = names
+    maps = read()
     if maps is None:
         source = rasterise()
-        maps = cached_raster(cache, grid.stamp)
+        maps = read()
     else:
         print(f"reusing the {label} raster already in {cache}")
         reused: JsonValue = json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
@@ -134,12 +169,19 @@ def stamped_raster(
     if maps is None:
         message = f"the {label} raster in {cache} could not be read back after writing it"
         raise Refusal(UNREADABLE_RASTER, message)
-    return (maps[0], maps[1]), source
+    return maps, source
+
+
+def _direct_planes(cache: Path, stamp: DirectStamp) -> DirectRaster | None:
+    found, overhangs = cached_raster(cache, stamp), cached_overhangs(cache, stamp)
+    if found is None:
+        return None
+    return DirectRaster(*found, *(overhangs or (None, None)))
 
 
 def direct_raster(
     level: LevelSweep, cache: Path, grid: RasterGrid, pyooz_version: str
-) -> tuple[RasterPlanes, JsonObject]:
+) -> tuple[DirectRaster, JsonObject]:
     """The cliff geometry rasterised at the render's spacing: ``stamped_raster``'s answer."""
 
     def rasterise() -> JsonObject:
@@ -152,7 +194,7 @@ def direct_raster(
         families = placement_families(level.store, level.scripts, level.index, geometry["sweep"])
         prepared, dropped = direct_placements(geometry["sweep"], geometry["geometry"], families)
         print(f"  {len(prepared)} placements rasterised, dropped {dropped}")
-        band = partial(rasterise_direct_band, prepared, geometry["geometry"], with_source=True)
+        band = partial(rasterise_direct_planes, prepared, geometry["geometry"])
         stats = grid.write(band, cache)
         print(
             f"  direct raster: {stats['texels_with_geometry'] / 1e6:.1f} M texels "
@@ -179,10 +221,11 @@ def direct_raster(
             }
         }
 
-    return stamped_raster(cache, grid, "direct", "cliff_geometry", rasterise)
+    return stamped_raster(cache, grid, ("direct", "cliff_geometry"), rasterise,
+                          partial(_direct_planes, cache, grid.stamp))  # fmt: skip
 
 
-def top_raster(level: LevelSweep, cache: Path, grid: RasterGrid) -> tuple[RasterPlanes, JsonObject]:
+def top_raster(level: LevelSweep, cache: Path, grid: RasterGrid) -> tuple[TopPlanes, JsonObject]:
     """The arches and foliage boulders rasterised like the rocks: ``stamped_raster``'s answer."""
 
     def rasterise() -> JsonObject:
@@ -195,11 +238,12 @@ def top_raster(level: LevelSweep, cache: Path, grid: RasterGrid) -> tuple[Raster
             f"  {top_meta['arch_placements']} arches, "
             f"{top_meta['foliage_instances']} boulders {top_meta['foliage_sources']}"
         )
-        stats = grid.write(partial(rasterise_top_band, items), cache)
+        stats = grid.write(partial(rasterise_top_planes, items), cache, TOP_RASTER_ROLE)
         print(
             f"  top raster: {stats['texels_with_geometry'] / 1e6:.1f} M texels in "
             f"{stats['seconds']}s"
         )
         return {"top_overlay": cast(JsonValue, {**top_meta, "raster": stats})}
 
-    return stamped_raster(cache, grid, "top", "top_overlay", rasterise)
+    return stamped_raster(cache, grid, ("top", "top_overlay"), rasterise,
+                          partial(cached_top, cache, grid.stamp, grid.subsamples))  # fmt: skip

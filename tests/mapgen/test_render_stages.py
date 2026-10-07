@@ -45,21 +45,21 @@ def test_the_levels_are_swept_once_whatever_asks_first(monkeypatch):
     assert len(swept) == 1, "the geometry reads the sweep the run already made"
 
 
-def test_a_raster_that_will_not_read_back_refuses_the_run(tmp_path, monkeypatch):
+def test_a_raster_that_will_not_read_back_refuses_the_run(tmp_path):
     grid = RasterGrid(64, 1, "b1", False)
-    monkeypatch.setattr(cached_rasters, "cached_raster", lambda cache, stamp: None)
     written = []
     with pytest.raises(Refusal, match="could not be read back") as refused:
-        stamped_raster(tmp_path, grid, "direct", "cliff_geometry", lambda: written.append(1) or {})
+        stamped_raster(tmp_path, grid, ("direct", "cliff_geometry"),
+                       lambda: written.append(1) or {}, lambda: None)  # fmt: skip
     assert refused.value.code == UNREADABLE_RASTER and written == [1]
 
 
-def test_a_cached_raster_is_quoted_and_not_rasterised(tmp_path, monkeypatch):
+def test_a_cached_raster_is_quoted_and_not_rasterised(tmp_path):
     grid = RasterGrid(64, 1, "b1", False)
     (tmp_path / "meta.json").write_text('{"size": 64}', encoding="utf-8")
     planes = (np.zeros((64, 64), np.float32), np.zeros((64, 64), np.uint8))
-    monkeypatch.setattr(cached_rasters, "cached_raster", lambda cache, stamp: planes)
-    maps, source = stamped_raster(tmp_path, grid, "top", "top_overlay", lambda: pytest.fail())
+    maps, source = stamped_raster(tmp_path, grid, ("top", "top_overlay"), pytest.fail,
+                                  lambda: planes)  # fmt: skip
     assert maps == planes and source == {"top_overlay": {"reused": {"size": 64}}}
 
 

@@ -26,13 +26,13 @@ _SOURCE = ("mapgen.lighting", "gpu.cu")
 
 def march(
     solid: F32Grid, z: F32Grid, halo: int, bilinear: BoolMask, offsets: Offsets,
-    scale: F32Grid, best: F32Grid, lo: F32Grid, hi: F32Grid, slabbed: bool,
+    scale: F32Grid, best: F32Grid,
 ) -> None:  # fmt: skip
-    """``kernels.march``: ``best`` raised in place. Every array C-ordered, the slabs float32."""
+    """``kernels.march``: ``best`` raised in place. Every array C-ordered."""
     try:
-        _march(solid, z, halo, bilinear, offsets, scale, best, lo, hi, slabbed)
+        _march(solid, z, halo, bilinear, offsets, scale, best)
     except MemoryError:  # CuPy's OutOfMemoryError
-        kernels.march(solid, z, halo, bilinear, offsets, scale, best, lo, hi, slabbed)
+        kernels.march(solid, z, halo, bilinear, offsets, scale, best)
     finally:
         cp.get_default_memory_pool().free_all_blocks()
 
@@ -49,7 +49,7 @@ def sky_view(z: F32Grid, halo: int, offsets: Offsets, scale: F32Grid, out: F32Gr
 
 def _march(
     solid: F32Grid, z: F32Grid, halo: int, bilinear: BoolMask, offsets: Offsets,
-    scale: F32Grid, best: F32Grid, lo: F32Grid, hi: F32Grid, slabbed: bool,
+    scale: F32Grid, best: F32Grid,
 ) -> None:  # fmt: skip
     run = cuda_kernel(*_SOURCE, "march")
     on_solid = cp.asarray(solid)
@@ -59,8 +59,7 @@ def _march(
     args = (
         on_solid, np.int64(solid.shape[1]), on_z, np.int64(z.shape[1]), np.int32(halo),
         cp.asarray(np.ascontiguousarray(bilinear, np.bool_)), *_steps(offsets), cp.asarray(scale),
-        np.int32(scale.shape[0]), cp.asarray(lo), cp.asarray(hi), np.int64(lo.shape[1]),
-        np.bool_(slabbed), on_best, np.int32(rows), np.int32(cols),
+        np.int32(scale.shape[0]), on_best, np.int32(rows), np.int32(cols),
     )  # fmt: skip
     run(*_grid(rows, cols), args)
     best[...] = on_best.get()

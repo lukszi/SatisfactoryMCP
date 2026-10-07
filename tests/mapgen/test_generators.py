@@ -100,11 +100,11 @@ from mapgen.terrain.rasters import (
     direct_placements,
     pixel_coverage,
     rasterise_direct_band,
-    rasterise_top_band,
     reduce_direct,
 )
 from mapgen.terrain.render_meshes import InstanceSpans
 from mapgen.terrain.sample import direct_mask, sample_surface, taps_cubic, taps_linear, taps_pchip
+from mapgen.terrain.top_raster import rasterise_top_band
 from mapgen.tiles import artwork_output
 from mapgen.tiles import sidecar as render_sidecar
 from mapgen.tiles.artwork_output import (
@@ -937,7 +937,7 @@ def test_the_top_overlay_raises_the_ground_smoothly_and_lands_on_pixel_centres()
         {"Arc": (flat, up[:, ::-1].copy()), "Boulder": (flat, up)},
     )
     band = rasterise_top_band(items, 0.0, 0.0, step_cm, 4, 160, 1)
-    z_cm, cover = reduce_direct(band, 4, 160, 1)
+    z_cm, cover = reduce_direct(band.top, 4, 160, 1)
     first = int(numpy.ceil(1000.0 / step_cm - 0.5))
     last = int(numpy.ceil(1100.0 / step_cm - 0.5))
     assert cover[:, first:last].all() and not cover[:, last : last + 2].any()

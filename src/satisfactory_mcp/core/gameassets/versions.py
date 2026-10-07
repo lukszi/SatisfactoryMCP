@@ -146,15 +146,15 @@ ARTWORK_RECIPES: dict[int, ArtworkRecipe] = {
 #: the switcher and chat call a map of the style (docs/maps_contract.md §3.5).
 STYLES: dict[str, Style] = {
     "terrain-hypsometric": {"label": "terrain", "name": "Terrain", "layer": "terrain",
-                            "version": 9, "tone": "light"},
+                            "version": 10, "tone": "light"},
     "satellite-biome": {"label": "satellite", "name": "Satellite", "layer": "satellite",
-                        "version": 9, "tone": "light"},
+                        "version": 10, "tone": "light"},
     "satellite-painted": {"label": "game-painted", "name": "Painted", "layer": "painted",
-                          "version": 20, "tone": "light"},
-    "relief-muted": {"label": "relief", "name": "Relief", "layer": "relief", "version": 7,
+                          "version": 21, "tone": "light"},
+    "relief-muted": {"label": "relief", "name": "Relief", "layer": "relief", "version": 8,
                      "tone": "light"},
     "relief-night": {"label": "relief dark", "name": "Relief (dark)", "layer": "relief-dark",
-                     "version": 7, "tone": "dark"},
+                     "version": 8, "tone": "dark"},
     "artwork": {"label": "artwork", "name": "Game map", "layer": "map", "version": 1,
                 "tone": "light"},
 }  # fmt: skip
@@ -165,5 +165,5 @@ PLAIN_TONE = "dark"
 #: Light models. A render drawn unlit names the one its lighting pyramid was baked for; a
 #: version bump offers a relight, never a stale chip.
 LIGHTS: dict[str, LightModel] = {
-    "sun": {"label": "live sun", "version": 2},
+    "sun": {"label": "live sun", "version": 3},
 }

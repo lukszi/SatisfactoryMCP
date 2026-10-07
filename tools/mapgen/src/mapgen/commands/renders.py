@@ -282,8 +282,9 @@ def _rasters(
         return None, None, {}
     level, grid = rasters
     cache = setup.cache_root / DIRECT_CACHE_DIR_NAME
-    (rock_z, rock_coverage), sources = direct_raster(level, cache, grid, setup.versions["pyooz"])
-    direct = DirectPlanes(rock_z, rock_coverage, lattice.ground, args.direct_subsamples)
+    rock, sources = direct_raster(level, cache, grid, setup.versions["pyooz"])
+    direct = DirectPlanes(rock.z, rock.coverage, lattice.ground, args.direct_subsamples,
+                          rock.under, rock.floor)  # fmt: skip
     inputs["cliff_geometry"] = {
         "cl": changelist(grid.build),
         "reader_version": READER_VERSIONS["cliff_geometry"],
@@ -294,9 +295,7 @@ def _rasters(
             inputs[name] = {**inputs["cliff_geometry"], "reader_version": READER_VERSIONS[name]}
     top = None
     if not args.no_top:
-        top_cache = setup.cache_root / TOP_CACHE_DIR_NAME
-        (top_z, top_coverage), top_source = top_raster(level, top_cache, grid)
-        top = TopPlanes(top_z, top_coverage, args.direct_subsamples)
+        top, top_source = top_raster(level, setup.cache_root / TOP_CACHE_DIR_NAME, grid)
         sources = {**sources, **top_source}
     return direct, top, sources
 
@@ -317,8 +316,9 @@ def _draw_layers(
     print(f"drawing {', '.join(layers)} at {args.size}x{args.size} on {threads} thread(s)")
     print(encode_stage(DRAW_STAGE, 0.0), flush=True)
     started = time.time()
+    arches = None if run.top is None else run.top.arch_coverage
     stream = RenderStream(cutter, layers, (args.out_dir, args.renders_name), args.size,
-                          run.record.recipe, light)  # fmt: skip
+                          run.record.recipe, light, arches)  # fmt: skip
     render_layers(
         layers, run.field, run.biome.rgb, run.biome.width, run.borrow, args.size,
         not args.quiet, height_dm=run.lattice.heights, direct=run.direct,

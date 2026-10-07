@@ -438,6 +438,12 @@ triangles that left two `CliffSide_01` flat tops open, about 19,000 m² around (
 is version 6, which moves `cliff_geometry` and so every direct and top cache; `render_meshes`
 is reader version 4 and `titan_trees` 2. The paint store keeps generator version 3.
 
+The top pass now drops an arch larger than `OVERSIZE_CM` or wholly off the raster, as the
+direct pass drops a rock, and counts them in its sidecar block (`arches_dropped`): the scenery
+arches above. On build 502094 that is 93 of 1,076 arches: 68 over 600 m across and 25 more
+wholly off the raster, none of them reaching it, so no pixel moves; the tiled scan had
+clipped them to nothing.
+
 ## 25. Renders after the terrain work: recipe 4 (2026-10-05)
 
 Three ideas from the terrain study (section 22) were tried on the map renders, on 176 m crops
@@ -472,6 +478,15 @@ The direct pass samples at `col + 0.5` on the frame's corner, the pixel centre;
 
 - The artwork borrow still multiplies the drawn map's arch strokes into the shading, so a
   faint ghost stripe can sit beside an arch where the drawing and the mesh disagree.
+
+### Arches as spans (2026-10-07)
+
+Recipe 7 keeps its number and draws the arches as spans: the top raster keeps their underside
+and the boulders apart and fills the sub-metre holes their open mesh edges leave, the direct
+raster finds the rock overhangs, and each layer's arches are antialiased by FXAA, nothing else.
+In the light the arches, the overhangs and the crowns cast where the sun's ray meets them. The
+rendered styles each go one version up (terrain and satellite 10, painted 21, both reliefs 8)
+and the live sun is light model 3. Both are light-and-crowns.md section 29, "Arches as spans".
 
 ## 26. Rebuilt base data and a PCHIP sampler: recipe 5 (2026-10-05)
 
@@ -1328,9 +1343,9 @@ runs.
   `gen` extra, pinned; without it the reference runs. `cuda` also runs the light's loops on
   the GPU ("On the GPU", below).
 - The two paths write the same bytes, so nothing a render writes records which one ran.
-- A kernel module (`lighting/kernels.py`, `terrain/kernels.py`, `palette/water/kernels.py`,
-  `palette/painted/kernels.py`) is imported only once the switch says kernels, so the
-  reference never loads numba. A test holds that.
+- A kernel module (`lighting/kernels.py`, `lighting/span_kernels.py`, `terrain/kernels.py`,
+  `palette/water/kernels.py`, `palette/painted/kernels.py`) is imported only once the switch
+  says kernels, so the reference never loads numba. A test holds that.
 - The light's spawned processes inherit the switch with the environment.
 
 ### Why the bits are the same
@@ -1338,9 +1353,13 @@ runs.
 - Per pixel, each kernel does the operations its numpy code does, on the same types and in
   the same order.
   - The march: `(sample - near) * scale`, the maximum, NaN when either side is (as
-    `np.maximum` has it), then the slab test. The bilinear sample is
+    `np.maximum` has it). The bilinear sample is
     `(a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + e * fx) * fy` with the same float32
     fractions.
+  - The span march and its sky view (`lighting/span_kernels.py`, light-and-crowns.md
+    section 29, "Arches as spans") do the same per pixel for the ground, then each span
+    sample's four-pixel minimum and maximum, its two tangents and the band's rules, in
+    `spans.py`'s order. A row with no span in reach skips that work, which changes nothing.
   - The sky view adds a division and a square root. IEEE rounds both correctly, so they are
     as exact as an addition.
   - The gathers add the taps in numpy's order and round to float32 after each one, as
@@ -1441,9 +1460,10 @@ of satellite, relief and relief-dark fell from about 3 s to about 1 s, painted f
 - G2 at 32768: all 15 windows the same SHA-256 as the baseline, both ways, and each window's
   two draws the same.
 - `tests/mapgen/test_kernels.py` compares every kernel with its reference byte for byte:
-  five azimuths, slabs with holes, float64 slabs, crowns, three sky spacings and a strided
-  view; four source types, three tap kinds and two scales for the gathers; PCHIP on integer
-  and float sources; float64 weights; a column piece against the same columns of whole rows.
+  five azimuths, crowns, the span march under both fades and its sky view, three sky
+  spacings and a strided view; four source types, three tap kinds and two scales for the
+  gathers; PCHIP on integer and float sources; float64 weights; a column piece against the
+  same columns of whole rows.
 - The full-size light block above came out the same bytes both ways.
 
 ### The painters (2026-10-07)
@@ -1562,7 +1582,8 @@ bytes either way.
 - **What still differs, and cannot show.** A NaN the GPU makes carries CUDA's one bit
   pattern, where x86 keeps the payload of the NaN it came from. None arose in the tests, and
   every reader of a horizon rounds it to a byte, where the two agree.
-- **Float64 slabs** take numba's march: the CUDA march reads float32 only.
+- **Spans** take numba's span march: the CUDA march is the plain one, which a block with no
+  span in its window runs.
 - **Memory.** A call uploads its rasters and the steps, marches, reads the result back and
   hands the device memory back. One the device has no memory for runs numba's kernel, with
   the same bits. A light process with the GPU imports CuPy and opens a CUDA context: 0.65 GB
@@ -1599,7 +1620,7 @@ one step to the next, which is a different draw.
 
 - `tests/mapgen/test_gpu_kernels.py` compares the CUDA march and sky view with the reference
   byte for byte on the cases of `test_kernels.py`, plus a block whose width is not a whole
-  number of thread blocks, float64 slabs and a device out of memory. It also holds the
+  number of thread blocks and a device out of memory. It also holds the
   switch, the flag and its refusal, the light's worker count, and that CuPy loads only under
   `cuda`. On a machine without numba, CuPy or a device the kernel tests skip and say which.
 - G1 at 2048 (all five layers, lit), with `--gpu` and without, side by side: all 1,125 tiles

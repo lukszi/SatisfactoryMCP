@@ -24,7 +24,6 @@ extern "C" __global__ void march(
     const float* solid, long long solid_w, const float* z, long long z_w, int halo,
     const bool* smooth, const int* iy, const int* ix, const float* fy, const float* fx,
     const float* gy, const float* gx, const float* scale, int steps,
-    const float* lo, const float* hi, long long slab_w, bool slabbed,
     float* best, int rows, int cols) {
     int j = blockIdx.x * blockDim.x + threadIdx.x;
     int i = blockIdx.y;
@@ -34,13 +33,8 @@ extern "C" __global__ void march(
     float top = best[(long long)i * cols + j];
     for (int s = 0; s < steps; ++s) {
         long long sr = r + iy[s], sc = (long long)halo + ix[s] + j;
-        float k = scale[s];
         float at = sample(solid, solid_w, sr, sc, smooth[s], fy[s], fx[s], gy[s], gx[s]);
-        top = raise_to(top, (at - near) * k);
-        if (!slabbed) continue;
-        float low = (sample(lo, slab_w, sr, sc, smooth[s], fy[s], fx[s], gy[s], gx[s]) - near) * k;
-        float high = (sample(hi, slab_w, sr, sc, smooth[s], fy[s], fx[s], gy[s], gx[s]) - near) * k;
-        if (isfinite(low) && low <= top) top = raise_to(top, high);
+        top = raise_to(top, (at - near) * scale[s]);
     }
     best[(long long)i * cols + j] = top;
 }

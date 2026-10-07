@@ -16,6 +16,7 @@ import pytest
 
 from mapgen import jit
 from mapgen.lighting import horizon as hz
+from mapgen.lighting import spans
 from mapgen.terrain import sample as sm
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.paths import REPO_ROOT
@@ -81,9 +82,12 @@ def test_every_kernel_releases_the_gil_and_caches_on_disk():
     from numba.core.caching import NullCache
 
     from mapgen.lighting import kernels as light
+    from mapgen.lighting import span_kernels
     from mapgen.terrain import kernels as gathers
 
-    for kernel in (light.march, light.sky_view, gathers.separable, gathers.pchip):
+    every = (light.march, light.sky_view, span_kernels.march_spans, span_kernels.sky_view_spans,
+             gathers.separable, gathers.pchip)  # fmt: skip
+    for kernel in every:
         assert kernel.targetoptions["nogil"] is True
         assert not isinstance(kernel._cache, NullCache)
         assert isinstance(kernel._cache._cache_file, jit.keyed_cache_files())
@@ -120,19 +124,25 @@ HALO = hz.horizon_reach_px(SP)
 @pytest.mark.parametrize("az", [0.0, 33.75, 90.0, 191.25, 270.0])
 def test_the_march_is_the_reference_bit_for_bit(monkeypatch, az):
     z = octave_terrain(2 * HALO + 70, seed=1)
-    lo = np.where(z > 20, z - 4, np.nan).astype(np.float32)
     _same(monkeypatch, lambda: hz.march_horizon(z, HALO, az, SP))
-    _same(monkeypatch, lambda: hz.march_horizon(z, HALO, az, SP, slabs=(z - 1, lo, lo + 9)))
     _same(monkeypatch, lambda: hz.crown_horizon(z + 3, HALO, az, SP, z))
 
 
+def _spans(z: np.ndarray) -> spans.SpanSurface:
+    """A span over a third of ``z``: an arch deck 6 to 9 m over it, and thin posts."""
+    lo = np.where(z > 15, z + 6, np.nan).astype(np.float32)
+    lo[::23, :] = z[::23, :] + 0.2
+    return spans.span_surface(np.fmax(lo + 3, z), z, lo, lo + 3)
+
+
 @needs_numba
-def test_the_march_reads_slabs_at_their_own_precision(monkeypatch):
-    z = octave_terrain(2 * HALO + 40, seed=2)
-    lo = np.where(z > 10, z - 2.5, np.nan).astype(np.float64)  # float32 without the cast
-    slabs = (z, lo, lo + 4.25)  # float64, as numpy reads them
-    assert lo.dtype == slabs[2].dtype == np.float64
-    _same(monkeypatch, lambda: hz.march_horizon(z, HALO, 123.75, SP, slabs=slabs))
+@pytest.mark.parametrize("az", [0.0, 33.75, 90.0, 191.25, 270.0])
+def test_the_span_march_and_sky_view_are_the_reference_bit_for_bit(monkeypatch, az):
+    surface = _spans(octave_terrain(2 * HALO + 70, seed=8))
+    _same(monkeypatch, lambda: tuple(spans.march_spans(surface, HALO, az, SP)))
+    _same(monkeypatch, lambda: tuple(spans.march_spans(surface, HALO, az, SP, hz.OCCLUDER_FADE_M)))
+    sky = int(np.ceil(hz.SKY_RADIUS_M / SP)) + 2
+    _same(monkeypatch, lambda: spans.sky_view_spans(surface, sky, SP))
 
 
 @needs_numba
