@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-from typing import Annotated, Any, Literal, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....core.gameassets.versions import PLAIN_TONE, STYLES
@@ -23,6 +24,13 @@ from .....core.schema import NewerSchema
 from .....domain.maps import axes as ax
 from .....domain.maps import jobs as job_store
 from .....domain.maps import presets, registry
+from .....domain.maps.views import (
+    MapCanGenerate,
+    MapEstimateResponse,
+    MapFreshness,
+    MapJobOptions,
+    MapViewRow,
+)
 from ...serial import busy_response, error_response, newer_schema_response
 
 __all__ = ["newer_map_list", "router"]
@@ -32,31 +40,7 @@ router = APIRouter(prefix="/api")
 Status = Literal["building", "ready", "failed", "missing"]
 JobStatus = Literal["queued", "running", "done", "failed", "cancelled", "interrupted"]
 Preset = Literal["render", "artwork", "heightmap", "caves", "rocks", "paint"]
-Layer = Literal["terrain", "satellite", "painted", "relief", "relief-dark"]
 Tone = Literal["light", "dark"]
-
-
-class MapStaleAxis(TypedDict):
-    axis: str
-    text: str
-
-
-class MapRerender(TypedDict):
-    """A newer renderer this map could be drawn with; ``needs`` are inputs to rebuild first."""
-
-    recipe: int
-    label: str
-    needs: list[str]
-    text: str
-
-
-class MapFreshness(TypedDict):
-    """``stale`` is outdated DATA (amber); ``rerender`` and ``restyle`` are offers (neutral)."""
-
-    stale: list[MapStaleAxis]
-    rerender: MapRerender | None
-    restyle: bool
-    incomplete: bool
 
 
 class MapTypeBody(TypedDict):
@@ -122,16 +106,6 @@ class MapInputBody(TypedDict):
     transcribed: str | None
 
 
-class MapCanGenerate(TypedDict):
-    gen: bool
-    tools: bool
-    game: bool
-    heightfield: bool
-    vulkan: bool
-    ok: bool
-    reason: str | None
-
-
 class MapStyleBody(TypedDict):
     """A render layer the generate form offers, and the tone of the base it draws."""
 
@@ -181,19 +155,6 @@ class MapDefaultBody(TypedDict):
     version: NotRequired[int | None]
 
 
-class MapJobOptions(TypedDict):
-    layers: NotRequired[list[Layer]]
-    size: NotRequired[int]
-    recipe: NotRequired[Literal["current", "kernel-only"]]
-    top: NotRequired[bool]
-    keep_cache: NotRequired[bool]
-    restyle: NotRequired[bool]
-    light: NotRequired[bool]
-    enhance: NotRequired[bool]
-    tiles_2x: NotRequired[bool]
-    titan_trees: NotRequired[bool]
-
-
 class MapJobRequest(TypedDict):
     preset: Preset
     options: NotRequired[MapJobOptions]
@@ -212,19 +173,6 @@ class MapJobDetailResponse(TypedDict):
     log_tail: list[str]
 
 
-class MapEstimateResponse(TypedDict):
-    """What a job would cost: wall time, disk kept, disk needed while it runs."""
-
-    seconds: int
-    keep_bytes: int
-    transient_bytes: int
-    free_bytes: int
-    needs_bytes: int
-    ok: bool
-    reason: str | None
-    measured: bool
-
-
 class MapsStaleResponse(TypedDict):
     """The 409 of a write whose ``version`` is not the current one: nothing was written."""
 
@@ -237,7 +185,7 @@ class MapCacheResponse(TypedDict):
     freed_bytes: int
 
 
-def _type_json(row: dict, default: str | None) -> dict:
+def _type_json(row: MapViewRow, default: str | None) -> dict:
     entry, axes = row["entry"], row["axes"]
     return {
         "id": row["id"],
@@ -250,7 +198,7 @@ def _type_json(row: dict, default: str | None) -> dict:
         "kind": entry.get("kind") or "render",
         "layer": entry.get("layer") or "",
         "tone": ax.style_tone(axes),
-        "size_px": (axes.get("renderer") or {}).get("size_px") or entry.get("size_px"),
+        "size_px": ax.dict_at(axes, "renderer").get("size_px") or entry.get("size_px"),
         "dir": entry["dir"],
         "bytes": int(entry.get("bytes") or 0),
         "max_z": entry.get("max_z"),

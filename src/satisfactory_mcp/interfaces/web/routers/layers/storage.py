@@ -6,24 +6,18 @@ docs/web-wire.md "Storage". Handler names are operation_ids.
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
+from .....core.saveio.schema import StorageRecord
 from .....domain.world.state import WorldState
-from ...serial import contents_json, placement_fields, require_world
+from ...serial import StoredItem, contents_json, placement_fields, require_world
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-
-class StoredItem(TypedDict):
-    """One kind of thing in a container, resolved to a display name by the server."""
-
-    cls: str
-    name: str
-    count: int
 
 
 class StorageSolid(TypedDict):
@@ -89,7 +83,7 @@ class StorageResponse(TypedDict):
     items_total: int
 
 
-def _storage_row(st: WorldState, row: dict) -> StorageSolid | StorageFluid:
+def _storage_row(st: WorldState, row: StorageRecord) -> StorageSolid | StorageFluid:
     """One container or fluid buffer: where it stands, how big it is, and what is in it."""
     if "stored_m3" not in row:
         return {**placement_fields(st.game, row), "kind": "solid", **contents_json(st.game, row)}

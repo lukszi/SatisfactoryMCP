@@ -4,14 +4,18 @@ from __future__ import annotations
 
 from typing import Annotated, NamedTuple
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
+from .....core.gamedata.model import GameData
+from .....domain.factories.labels import Label
 from .....domain.maps import registry as maps
 from .....domain.session import journal, pins
+from .....domain.session.views import PinRef
 from .....domain.spatial import maplink
 from .....domain.spatial import nodes as nodes_mod
+from .....domain.spatial.nodes import NodeRecord, NodeTable
 from .....domain.spatial.places import NODE_PREFIX, PLAN_PREFIX, RUN_PREFIXES, resolve_place
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf
@@ -22,7 +26,7 @@ class MapTarget(NamedTuple):
 
     origin: tuple[float, float]
     where: str
-    node: dict | None
+    node: NodeRecord | None
     resources: list[str]
     notes: list[str]
 
@@ -37,7 +41,7 @@ def _base_map(mode: str) -> str:
     return mode
 
 
-def _resource_target(g, table, value: str) -> MapTarget:
+def _resource_target(g: GameData, table: NodeTable, value: str) -> MapTarget:
     """``resource:<name>``: the centroid of every node of it, with its overlays on."""
     item = app.resolve_item_id(value.strip())
     if not item or item not in maplink.CALCULATOR_RESOURCE_LAYERS:
@@ -63,14 +67,16 @@ def _resource_target(g, table, value: str) -> MapTarget:
     )
 
 
-def _place_target(g, st, table, text: str, kind: str, value: str) -> MapTarget:
+def _place_target(
+    g: GameData, st: WorldState | None, table: NodeTable, text: str, kind: str, value: str
+) -> MapTarget:
     """Any other place, and the node's own resource when the place is a node."""
     try:
         origin, where = resolve_place(st, text)
     except ValueError as exc:
         raise app.Refusal(f"! {exc}") from None
     # The resolver answers with a point; the overlay wants the node's own resource.
-    node = None
+    node: NodeRecord | None = None
     if kind.casefold() == NODE_PREFIX:
         short = {k.rsplit(".", 1)[-1]: v for k, v in table.by_instance().items()}
         node = short.get(value.strip())
@@ -104,7 +110,7 @@ def show_on_map(
         str | None,
         Field(description="base map type for the local link, an id settings() lists, or plain"),
     ] = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Map links centred on something: this project's own map, and the public one.
 
@@ -186,7 +192,15 @@ def show_on_map(
     )
 
 
-def _pin_place(st, text: str, node, label, origin, resources, ctx) -> str:
+def _pin_place(
+    st: WorldState | None,
+    text: str,
+    node: NodeRecord | None,
+    label: Label | None,
+    origin: tuple[float, float],
+    resources: list[str],
+    ctx: app.ToolContext | None,
+) -> str:
     """Pin what ``show_on_map`` showed; the ``pin:`` line, or why nothing was pinned."""
     if st is None:
         return "! not pinned: the save could not be read"
@@ -196,6 +210,8 @@ def _pin_place(st, text: str, node, label, origin, resources, ctx) -> str:
     if head == "pin":
         n = pins.parse(text)
         return f"pin: already pin:{n}" if n is not None else "! not pinned"
+    kind: str
+    ref: PinRef
     if node is not None:
         kind, ref = "node", {"node": node["instance"]}
     elif head == PLAN_PREFIX:

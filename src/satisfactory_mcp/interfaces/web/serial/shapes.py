@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import Any, Literal, TypedDict
+from collections.abc import Iterable, Mapping
+from typing import Any, Literal
+
+from typing_extensions import TypedDict
 
 from ....core.gamedata.model import GameData, pretty_class
 from ....core.saveio.records import instance_leaf
+from ....core.saveio.schema import ContainerRecord, CrateRecord
 from ....domain.collectibles import service as collectibles_service
 from ....domain.factories import candidates
 from ....domain.planning.stored.planlog import Actor
+from ....domain.planning.stored.views import PlanOpBody
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
+from ....domain.spatial.nodes.views import TableAge
 from ....domain.world.state import WorldState
 from .units import cm_to_m, xyz_m, yaw_deg
 
@@ -19,12 +24,18 @@ __all__ = [
     "ActorBody",
     "Biomass",
     "CollectibleRow",
+    "Dropped",
     "Flow",
+    "FlowEdge",
     "FoundField",
     "ItemAmount",
     "MachineSpot",
+    "NameCount",
     "PlanOpBody",
+    "PlayerPosition",
     "Region",
+    "RevBody",
+    "StoredItem",
     "TableAge",
     "actor_json",
     "building_footprint",
@@ -85,29 +96,25 @@ def region_json(label: spatial_regions.Label) -> Region | None:
     }
 
 
+class PlayerPosition(TypedDict):
+    """Where the player last stood, or three nulls -- never a missing branch.
+
+    A save with no pawn, as a dedicated-server world has, sends three nulls rather than
+    dropping the key: the page branches on ``x_m === null`` to decide whether there is a
+    you-are-here to draw at all, and all three go null together.
+    """
+
+    x_m: float | None
+    y_m: float | None
+    z_m: float | None
+
+
 def regions_or_none() -> spatial_regions.RegionMap | None:
     """The region raster, or ``None`` on a machine that has none to read."""
     try:
         return spatial_regions.load_regions()
     except FileNotFoundError:
         return None
-
-
-class TableAge(TypedDict):
-    """Whether a shipped map table is older than the save; built by the domain's ``table_age``.
-
-    ``moved`` and ``unjoinable`` count rows in the reply they travel with (nodes only);
-    ``observed_from``/``observed_matches`` are the collectible table's (null for nodes).
-    """
-
-    table: Literal["nodes", "collectibles"]
-    behind: bool
-    gap: str | None
-    moved: int
-    unjoinable: int
-    observed_from: str | None
-    observed_matches: bool | None
-    notes: list[str]
 
 
 def stale_tables(st: WorldState, node_table: Any, instances: list[str]) -> list[TableAge]:
@@ -123,7 +130,7 @@ def stale_tables(st: WorldState, node_table: Any, instances: list[str]) -> list[
     ]
 
 
-def node_identity(node: dict, game: GameData | None) -> dict:
+def node_identity(node: spatial_nodes.NodeRecord, game: GameData | None) -> dict:
     """The four fields that name a resource node on every node row."""
     return {
         "id": node["instance"],
@@ -164,7 +171,7 @@ class CollectibleRow(TypedDict):
     spoiler: bool
 
 
-def collectible_json(row: dict, spoiler: bool) -> dict:
+def collectible_json(row: Mapping[str, object], spoiler: bool) -> dict:
     return {
         "category": row["category"],
         "name": row["name"],
@@ -248,24 +255,30 @@ class ItemAmount(TypedDict):
     amount: float
 
 
+class NameCount(TypedDict):
+    name: str
+    count: int
+
+
+class RevBody(TypedDict):
+    """A write that names the ``rev`` it read, and nothing else."""
+
+    rev: int
+
+
+class Dropped(TypedDict):
+    """A delete that landed: ``n`` is the number it freed, never given out again."""
+
+    ok: bool
+    n: int
+
+
 def item_amounts(game: GameData, pairs: Iterable[tuple[str, float]]) -> list[ItemAmount]:
     """``(item class, amount)`` pairs as rows that also carry the item's display name."""
     return [
         {"item": item, "name": game.item_name(item), "amount": float(amount)}
         for item, amount in pairs
     ]
-
-
-class PlanOpBody(TypedDict, total=False):
-    """One op as the log holds it; which keys are present depends on ``op`` (contract §3)."""
-
-    op: str
-    field: str
-    value: Any
-    item: str
-    member: Any
-    name: str
-    was: Any
 
 
 class ActorBody(TypedDict):
@@ -284,7 +297,7 @@ def actor_json(raw: Any) -> ActorBody:
     return {**actor.to_dict(), "display": actor.display()}
 
 
-def settings_json(view: dict) -> dict:
+def settings_json(view: Mapping[str, object]) -> dict:
     """``domain.settings.read()`` as ``/api/settings`` and the ``settings`` event send it."""
     by = view.get("by")
     return {**view, "by": actor_json(by) if by else None}
@@ -321,7 +334,18 @@ def flow_group_json(group: Any) -> dict:
     }
 
 
-def flow_edges_json(flow_graph: Any) -> list[dict]:
+class FlowEdge(TypedDict):
+    """Group to group, ``in:<item>`` for supply from outside the set, or a terminal
+    (``storage``, ``export``, ``sink``, ``nowhere``). ``per_min`` is null where an output
+    reaches a terminal with no surplus to apportion."""
+
+    source: str
+    target: str
+    item: str
+    per_min: float | None
+
+
+def flow_edges_json(flow_graph: Any) -> list[FlowEdge]:
     """A flow graph's edges; ``per_min`` is ``None`` where there is no surplus to share."""
     return [
         {"source": edge.source, "target": edge.target, "item": edge.item, "per_min": edge.per_min}
@@ -377,9 +401,10 @@ def building_footprint(game: GameData, cls: str) -> Any:
     return getattr(building, "footprint", None) if building else None
 
 
-def placement_fields(game: GameData, row: dict) -> dict:
+def placement_fields(game: GameData, row: Mapping[str, object]) -> dict:
     """What an actor placement row leads with: id, class, name, position, facing and size."""
-    cls = row.get("cls") or ""
+    named = row.get("cls")
+    cls = named if isinstance(named, str) else ""
     footprint = building_footprint(game, cls)
     return {
         "instance_leaf": instance_leaf(row.get("instance", "")),
@@ -392,7 +417,15 @@ def placement_fields(game: GameData, row: dict) -> dict:
     }
 
 
-def contents_json(game: GameData, row: dict) -> dict:
+class StoredItem(TypedDict):
+    """One kind of thing in a container or a crate, resolved to a display name."""
+
+    cls: str
+    name: str
+    count: int
+
+
+def contents_json(game: GameData, row: ContainerRecord | CrateRecord) -> dict:
     """What a container or crate holds, every stack named, with the totals a header shows."""
     raw = [e for e in row.get("items") or () if isinstance(e, (list, tuple)) and len(e) >= 2]
     items = [{"cls": str(e[0]), "name": game.item_name(str(e[0])), "count": e[1]} for e in raw]

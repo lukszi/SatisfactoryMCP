@@ -9,9 +9,10 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....core.saveio import ports
 from .....core.saveio import rows as saverows
@@ -19,8 +20,10 @@ from .....domain.factories import candidates, flowgraph, health
 from .....domain.factories.query import build_view
 from .....domain.factories.select import SelectorError
 from .....domain.factories.trace import resolve_seeds, trace
+from .....domain.planning.readout.views import ItemRate
 from .....domain.world import pin
 from ...serial import (
+    FlowEdge,
     bbox_m,
     cm_to_m,
     error_response,
@@ -37,11 +40,6 @@ router = APIRouter(prefix="/api")
 PointM = tuple[float, float]
 
 
-class TraceRate(TypedDict):
-    item: str
-    per_min: float
-
-
 class TraceMachine(TypedDict):
     """``kind`` is ``extractor``, ``generator`` or ``production``; ``hops`` is 0 on a seed.
     Rates are nameplate at the machine's clock. ``x_m``/``y_m`` are null for an unplaced
@@ -53,8 +51,8 @@ class TraceMachine(TypedDict):
     seed: bool
     hops: int
     recipe: str | None
-    makes: list[TraceRate]
-    uses: list[TraceRate]
+    makes: list[ItemRate]
+    uses: list[ItemRate]
     state: str
     actionable: bool
     x_m: float | None
@@ -78,17 +76,7 @@ class TraceGroup(TypedDict):
     running: int
     blocked: int
     stopped: int
-    makes: list[TraceRate]
-
-
-class TraceEdge(TypedDict):
-    """Group to group, ``in:<item>`` for supply from outside the traced set, or a terminal
-    (``storage``, ``export``, ``sink``, ``nowhere``). ``per_min`` null: nothing to share."""
-
-    source: str
-    target: str
-    item: str
-    per_min: float | None
+    makes: list[ItemRate]
 
 
 class TraceResponse(TypedDict):
@@ -104,11 +92,11 @@ class TraceResponse(TypedDict):
     truncated: bool
     seeds: int
     bbox_m: tuple[float, float, float, float] | None
-    items: list[TraceRate]
+    items: list[ItemRate]
     machines: list[TraceMachine]
     runs: list[TraceRun]
     groups: list[TraceGroup]
-    edges: list[TraceEdge]
+    edges: list[FlowEdge]
 
 
 def _rates(values: dict[str, float]) -> list[dict]:

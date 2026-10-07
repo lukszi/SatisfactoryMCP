@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
 from ...core.gamedata.constants import CAPABILITY_SCHEMATICS
 from ...core.gamedata.model import GameData
+from ...core.saveio.schema import Projection, ResearchBlock, UnlockFlags
+from .views import GateCost, ResearchGate
 
 if TYPE_CHECKING:
     from ..world.inventory import Inventory
@@ -20,7 +23,7 @@ __all__ = ["ResearchGates"]
 class ResearchGates:
     """The unlock flags a save carries, and the schematics behind the ones it lacks."""
 
-    projection: dict
+    projection: Projection
     game: GameData
     unlocks: UnlockSet
     inventory: Inventory
@@ -51,11 +54,12 @@ class ResearchGates:
     }
 
     @property
-    def _unlock_flags(self) -> dict:
-        return self.projection.get("unlock_flags", {}) or {}
+    def _unlock_flags(self) -> Mapping[str, object]:
+        flags: UnlockFlags = self.projection.get("unlock_flags", {}) or {}
+        return flags
 
     @property
-    def _research(self) -> dict:
+    def _research(self) -> ResearchBlock:
         return self.projection.get("research", {}) or {}
 
     @property
@@ -127,7 +131,7 @@ class ResearchGates:
         gate = CAPABILITY_SCHEMATICS.get(name)
         return bool(gate) and gate in self.unlocks.purchased_schematic_ids
 
-    def research_gate(self, name: str) -> dict | None:
+    def research_gate(self, name: str) -> ResearchGate | None:
         """The schematic that unlocks ``name``, its cost, and what the player holds.
 
         ``None`` when the capability is already researched, so a caller can treat a
@@ -135,10 +139,10 @@ class ResearchGates:
         """
         gate = CAPABILITY_SCHEMATICS.get(name)
         schematic = self.game.schematics.get(gate or "")
-        if schematic is None or self.has_capability(name):
+        if gate is None or schematic is None or self.has_capability(name):
             return None
         stock = self.inventory.stock()
-        rows = [
+        rows: list[GateCost] = [
             {
                 "item": f.item,
                 "name": self.game.item_name(f.item),

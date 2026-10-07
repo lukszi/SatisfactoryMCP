@@ -47,13 +47,13 @@ class SupplyReport:
     #: Resources tested, i.e. everything with a node somewhere that this scope has no
     #: extractor for. Reported so a reader can see what the probe did NOT rule out.
     candidates: tuple[str, ...] = ()
-    missing: list[MissingRaw] = field(default_factory=list)
+    missing: list[MissingRaw] = field(default_factory=list[MissingRaw])
     #: Whether free supply of all candidates made the solve feasible at all.
     rescued: bool = False
     solves: int = 0
     #: Export or target items nothing in scope can produce at all. Needs no probe:
     #: an export with no producing column is a demonstrable dead end on its own.
-    unmakeable: list[str] = field(default_factory=list)
+    unmakeable: list[str] = field(default_factory=list[str])
 
 
 def _supplied(req: PlanRequest) -> set[str]:
@@ -162,13 +162,12 @@ def unmakeable(req: PlanRequest, game: GameData) -> list[str]:
             continue
         # In the recipe pool but still no column: build_processes drops a recipe whose
         # machine the world has not unlocked.
+        machines = [game.machine(r) for r in in_pool]
         blocked = sorted(
             {
-                game.machine(r).name
-                for r in in_pool
-                if game.machine(r)
-                and available is not None
-                and game.machine(r).cls not in available
+                m.name
+                for m in machines
+                if m is not None and available is not None and m.cls not in available
             }
         )
         out.append(

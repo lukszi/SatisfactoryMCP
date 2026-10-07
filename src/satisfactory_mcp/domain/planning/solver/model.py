@@ -4,14 +4,21 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import NotRequired
+
+from typing_extensions import TypedDict
 
 from ....core.gamedata.model import GameData
+from .views import OverclockOption, OverclockPick
 
 __all__ = [
     "MW",
     "NEGLIGIBLE_IPM",
     "PAYBACK_STOPS",
+    "LogisticsRow",
+    "PaybackPoint",
     "Process",
+    "ProcessRow",
     "Scenario",
     "Solution",
     "normalise_objective",
@@ -79,12 +86,14 @@ class Scenario:
     target_item: str | None = None
     #: Items that may leave the plant: a whitelist, never every item (docs/planning.md §8.2).
     exports: tuple[str, ...] = (MW,)
-    export_minimums: dict[str, float] = field(default_factory=dict)
-    raw_caps: dict[str, float] = field(default_factory=dict)
+    export_minimums: dict[str, float] = field(default_factory=dict[str, float])
+    raw_caps: dict[str, float] = field(default_factory=dict[str, float])
     #: Per-resource weight in ``min_raw``, 1.0 when missing; 0 only as the first half of a
     #: lexicographic pair (docs/planning.md §8.7).
-    raw_weights: dict[str, float] = field(default_factory=dict)
-    extractor_nodes: dict[tuple[str, str, str], int] = field(default_factory=dict)
+    raw_weights: dict[str, float] = field(default_factory=dict[str, float])
+    extractor_nodes: dict[tuple[str, str, str], int] = field(
+        default_factory=dict[tuple[str, str, str], int]
+    )
     allow_sinks: bool = True
     #: Extra clock modes offered as choices; ratio clocks need none (docs/planning.md §8.4).
     clocks: tuple[float, ...] = (1.0,)
@@ -114,14 +123,14 @@ class Scenario:
     #: Running price of power, points per MWh.
     power_price: float = 0.0
     #: Build points per building class: save-priced materials plus floor area.
-    build_points: dict[str, float] = field(default_factory=dict)
+    build_points: dict[str, float] = field(default_factory=dict[str, float])
     #: Offer each row one machine fewer, the last one overclocked, as a priced candidate.
     overclock_last: bool = False
     #: Power Shards that candidate may spend; None is no limit.
     overclock_shards: float | None = None
     #: Per recipe id, a row's own choice over ``overclock_last``: ``"last"`` builds the
     #: overclocked candidate whatever it costs, ``"spread"`` never does.
-    row_overclock: dict[str, str] = field(default_factory=dict)
+    row_overclock: dict[str, str] = field(default_factory=dict[str, str])
 
     def __post_init__(self) -> None:
         self.objective = normalise_objective(self.objective)
@@ -130,28 +139,73 @@ class Scenario:
             raise ValueError(f"payback_hours must be 0 or more, not {hours!r}")
 
 
+class ProcessRow(TypedDict):
+    """One build-table row: whole ``machines`` at a derived ``clock``, its ``rates`` per
+    minute with clock and somersloop boost in, ``mw`` exact and ``mw_linear`` the LP's."""
+
+    pid: str
+    kind: str
+    label: str
+    #: The building's display name.
+    building: str
+    building_id: str | None
+    recipe: str | None
+    purity: str
+    machines: int
+    machine_equivalents: float
+    clock: float
+    sloops: int
+    mw: float
+    mw_linear: float
+    rates: dict[str, float]
+    #: Set when every machine but the last runs at 100% (overclock-last).
+    last_clock: NotRequired[float]
+    overclock_option: NotRequired[OverclockOption]
+
+
+class LogisticsRow(TypedDict):
+    """One item's flow and the belt or pipe lines it needs."""
+
+    item: str
+    name: str
+    rate: float
+    carrier: str
+    unit: str
+    capacity_per_line: float
+    lines: int
+
+
+class PaybackPoint(TypedDict):
+    """The plan read out at one payback stop; ``buildings`` counts only the rows a horizon
+    can spread. ``plain`` flags the 0 h build with no overclock every stop compares with."""
+
+    hours: float
+    machines: int
+    draw_mw: float
+    buildings: dict[str, int]
+    shards: int
+    plain: NotRequired[bool]
+
+
 @dataclass
 class Solution:
     status: str
     objective_value: float
     net_mw: float
-    processes: list[dict]
+    processes: list[ProcessRow]
     raw_used: dict[str, float]
     exports: dict[str, float]
     sunk: dict[str, float]
     machines_total: float
     grid_import_mw: float = 0.0
     machine_penalty_mw: float = 0.0
-    logistics: list[dict] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    binding: list[str] = field(default_factory=list)
-    #: The same recipes read out at every payback stop:
-    #: ``{hours, machines, draw_mw, buildings: {class: count}, shards}``, where
-    #: ``buildings`` counts only the rows a horizon can spread. The last entry, flagged
-    #: ``plain``, is 0 h with no overclock: what every stop is compared with.
-    payback_curve: list[dict] = field(default_factory=list)
+    logistics: list[LogisticsRow] = field(default_factory=list[LogisticsRow])
+    warnings: list[str] = field(default_factory=list[str])
+    binding: list[str] = field(default_factory=list[str])
+    #: The same recipes read out at every payback stop, the plain build last.
+    payback_curve: list[PaybackPoint] = field(default_factory=list[PaybackPoint])
     #: The overclock-last pick at this solve's horizon, made whether or not it is on.
-    overclock: dict = field(default_factory=dict)
+    overclock: OverclockPick | None = None
 
     @classmethod
     def infeasible(cls, reason: str) -> Solution:

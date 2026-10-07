@@ -8,7 +8,10 @@ ranked. ``plan_factory`` renders the same report as text.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, cast
+
+from typing_extensions import TypedDict
 
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
@@ -16,11 +19,27 @@ from ...spatial import nodes as nodes_mod
 from ...world import pin
 from ...world.state import WorldState
 from ..solver.graph import chain_depth_of_rates
-from ..solver.model import MW
-from ..solver.scenario import build_scenario, shard_stock
+from ..solver.model import MW, ProcessRow, Solution
+from ..solver.prepare import PlanFailure, PreparedPlan
+from ..solver.scenario import PlanKwargs, PlanRequest, build_scenario, shard_stock
 from ..stored import provenance
 from . import payback
 from .report import PlanFactoryReport, build_plan_report
+from .slice import PlanSlice
+from .views import (
+    ItemRate,
+    PaybackView,
+    PlanGraph,
+    PlanGraphEdge,
+    PlanGraphNode,
+    SolveResponse,
+    SolveRow,
+)
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ..stored.plan_args import PlanArgs
+    from ..stored.planlog.records import PlanState, Stamp
+    from ..stored.views import PlanStamp
 
 __all__ = [
     "failure_cause",
@@ -34,12 +53,32 @@ __all__ = [
 _EPS = 1e-6
 
 
+class _SummaryBase(TypedDict):
+    """The fields every summary carries, at their no-plan values until a plan solves."""
+
+    plan_id: str
+    machines: int
+    processes: int
+    mw_draw: float | None
+    mw_generated: float | None
+    mw_net: float | None
+    grid_import: bool
+    exports: list[ItemRate]
+    inputs: list[ItemRate]
+    rows: list[SolveRow]
+    graph: PlanGraph
+    shards: int | None
+    sloops_used: int
+    power: PaybackView
+    token: str
+
+
 def _name(g: GameData, item: str) -> str:
     return "MW" if item == MW else g.item_name(item)
 
 
-def _rates(g: GameData, rates: dict, sign: int) -> list[dict]:
-    rows = [
+def _rates(g: GameData, rates: dict[str, float], sign: int) -> list[ItemRate]:
+    rows: list[ItemRate] = [
         {"item": _name(g, item), "per_min": round(abs(rate), 4)}
         for item, rate in rates.items()
         if rate * sign > _EPS
@@ -47,35 +86,41 @@ def _rates(g: GameData, rates: dict, sign: int) -> list[dict]:
     return sorted(rows, key=lambda r: -r["per_min"])
 
 
-def _main_id(g: GameData, proc: dict) -> str | None:
+def _main_id(g: GameData, proc: ProcessRow) -> str | None:
     """The item a row is for: its recipe's main product, else its largest output."""
-    recipe = g.recipes.get(proc.get("recipe") or "")
+    recipe = g.recipes.get(proc["recipe"] or "")
     if recipe is not None and recipe.main_product is not None:
         return recipe.main_product
     made = [(rate, item) for item, rate in proc["rates"].items() if rate > _EPS and item != MW]
     return max(made)[1] if made else None
 
 
-def _main_item(g: GameData, proc: dict) -> str | None:
+def _main_item(g: GameData, proc: ProcessRow) -> str | None:
     item = _main_id(g, proc)
     return g.item_name(item) if item is not None else None
 
 
-def _row(g: GameData, row: dict, required: set[str]) -> dict:
-    recipe = g.recipes.get(row.get("recipe") or "")
+def _recipe_name(g: GameData, proc: ProcessRow) -> str:
+    recipe = g.recipes.get(proc["recipe"] or "")
+    return recipe.name if recipe is not None else proc["label"]
+
+
+def _row(g: GameData, proc: ProcessRow, required: set[str], rid: str, depth: int) -> SolveRow:
     return {
-        "building": row["building"] or "",
-        "recipe": recipe.name if recipe is not None else row["label"],
-        "recipe_id": row.get("recipe"),
-        "item": _main_item(g, row),
-        "machines": int(row["machines"]),
-        "clock": float(row["clock"]),
-        "last_clock": row.get("last_clock"),
-        "overclock_option": row.get("overclock_option"),
-        "mw": float(row["mw"]),
-        "inputs": _rates(g, row["rates"], -1),
-        "outputs": _rates(g, row["rates"], 1),
-        "required": row.get("recipe") in required,
+        "building": proc["building"] or "",
+        "recipe": _recipe_name(g, proc),
+        "recipe_id": proc["recipe"],
+        "item": _main_item(g, proc),
+        "machines": int(proc["machines"]),
+        "clock": float(proc["clock"]),
+        "last_clock": proc.get("last_clock"),
+        "overclock_option": proc.get("overclock_option"),
+        "mw": float(proc["mw"]),
+        "inputs": _rates(g, proc["rates"], -1),
+        "outputs": _rates(g, proc["rates"], 1),
+        "required": proc["recipe"] in required,
+        "id": rid,
+        "depth": depth,
     }
 
 
@@ -92,37 +137,52 @@ def _mw_text(value: float, signed: bool = False) -> str:
     return ("+" if signed and whole > 0 else "") + f"{whole:,}" + " MW"
 
 
-def _row_ids(paired: list) -> list[str]:
-    ids, seen = [], {}
-    for row, proc in paired:
-        base = row["recipe_id"] or "label:" + str(proc.get("label") or row["recipe"])
+def _row_ids(g: GameData, processes: list[ProcessRow]) -> list[str]:
+    ids: list[str] = []
+    seen: dict[str, int] = {}
+    for proc in processes:
+        base = proc["recipe"] or "label:" + str(proc.get("label") or _recipe_name(g, proc))
         seen[base] = seen.get(base, 0) + 1
         ids.append(base if seen[base] == 1 else f"{base}#{seen[base]}")
     return ids
 
 
+def _rows(
+    g: GameData, processes: list[ProcessRow], required: set[str]
+) -> list[tuple[SolveRow, ProcessRow]]:
+    """Each row beside the process it reads, by building then recipe, with its graph ``id``
+    and chain ``depth`` (contract §3)."""
+    ordered = sorted(processes, key=lambda p: (p["building"] or "", _recipe_name(g, p)))
+    ids = _row_ids(g, ordered)
+    depths = chain_depth_of_rates([proc["rates"] for proc in ordered])
+    return [
+        (_row(g, proc, required, rid, depth), proc)
+        for proc, rid, depth in zip(ordered, ids, depths, strict=True)
+    ]
+
+
 def _graph_edges(
-    g: GameData, paired: list, ids: list[str], exports: dict
-) -> tuple[list[dict], list[str]]:
+    g: GameData, paired: list[tuple[SolveRow, ProcessRow]], exports: dict[str, float]
+) -> tuple[list[PlanGraphEdge], list[str]]:
     """Every flow into a row or an export, split across its producers by share, and the
     items nothing in the plan makes (drawn from outside)."""
     made: dict[str, list[tuple[str, float]]] = {}
-    for (row, proc), rid in zip(paired, ids, strict=True):
+    for row, proc in paired:
         for item, rate in proc["rates"].items():
             if rate > _EPS and item != MW:
-                made.setdefault(item, []).append((rid, rate))
+                made.setdefault(item, []).append((row["id"], rate))
         if row["mw"] > 0:
-            made.setdefault(MW, []).append((rid, row["mw"]))
+            made.setdefault(MW, []).append((row["id"], row["mw"]))
     demands = [
-        (item, rid, -rate)
-        for (_, proc), rid in zip(paired, ids, strict=True)
+        (item, row["id"], -rate)
+        for row, proc in paired
         for item, rate in proc["rates"].items()
         if rate < -_EPS and item != MW
     ]
     demands += [(item, "ex:" + _name(g, item), rate) for item, rate in exports.items()]
 
     inputs: dict[str, None] = {}
-    edges: list[dict] = []
+    edges: list[PlanGraphEdge] = []
     for item, target, need in demands:
         sources = made.get(item) or []
         total = sum(rate for _, rate in sources)
@@ -154,15 +214,13 @@ def _graph_edges(
     return edges, list(inputs)
 
 
-def production_graph(g: GameData, paired: list, exports: dict) -> dict:
-    """The graph the workbench draws, and ``id``/``depth`` set on every row (contract §3)."""
-    ids = _row_ids(paired)
-    depths = chain_depth_of_rates([proc["rates"] for _, proc in paired])
-    for (row, _), rid, depth in zip(paired, ids, depths, strict=True):
-        row["id"], row["depth"] = rid, depth
-    edges, inputs = _graph_edges(g, paired, ids, exports)
-    top = max((d + 1 for d in depths), default=0) + 1
-    nodes = [
+def production_graph(
+    g: GameData, paired: list[tuple[SolveRow, ProcessRow]], exports: dict[str, float]
+) -> PlanGraph:
+    """The graph the workbench draws over rows that carry their ``id`` and ``depth``."""
+    edges, inputs = _graph_edges(g, paired, exports)
+    top = max((row["depth"] + 1 for row, _ in paired), default=0) + 1
+    nodes: list[PlanGraphNode] = [
         {
             "id": "in:" + _name(g, item),
             "kind": "input",
@@ -174,17 +232,17 @@ def production_graph(g: GameData, paired: list, exports: dict) -> dict:
         }
         for item in inputs
     ]
-    for (row, proc), rid in zip(paired, ids, strict=True):
+    for row, proc in paired:
         power = f" · {_mw_text(row['mw'], signed=True)}" if row["mw"] else ""
         nodes.append(
             {
-                "id": rid,
+                "id": row["id"],
                 "kind": "process",
                 "label": row["recipe"],
                 "detail": f"{row['building']} ×{row['machines']:,}{power} · "
                 f"{_num(row['clock'] * 100, 1)}%",
                 "rank": row["depth"] + 1,
-                "row": rid,
+                "row": row["id"],
                 "item": _main_id(g, proc),
             }
         )
@@ -204,7 +262,7 @@ def production_graph(g: GameData, paired: list, exports: dict) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-def _raw(g: GameData, sol) -> list[dict]:
+def _raw(g: GameData, sol: Solution) -> list[ItemRate]:
     """What the plan takes from the world: extractor output plus raw drawn from outside."""
     raw = dict(sol.raw_used)
     for row in sol.processes:
@@ -222,7 +280,7 @@ def _blockers(errors: list[str], failure_notes: list[str]) -> list[str]:
     return named + [n for n in failure_notes if n.startswith("required in force")]
 
 
-def names_for(g: GameData, args) -> dict[str, str]:
+def names_for(g: GameData, args: PlanArgs) -> dict[str, str]:
     """Display names for the ids a request can hold: recipes, node instances and items."""
     out: dict[str, str] = {}
     for member in [*args.required, *args.banned, *args.only_recipes, *args.row_overclock]:
@@ -251,16 +309,17 @@ def _clip(text: str) -> str:
     return text
 
 
-def _request_errors(req) -> list[str]:
-    return [] if req is None else [*req.selection.errors, *req.site_errors, *req.recipe_errors]
+def _request_errors(req: PlanRequest) -> list[str]:
+    return [*req.selection.errors, *req.site_errors, *req.recipe_errors]
 
 
-def failure_cause(prepared) -> str:
+def failure_cause(prepared: PreparedPlan) -> str:
     """Why a prepared plan failed to solve, in player words."""
     req, failure = prepared.request, prepared.failure
+    assert failure is not None, "only a plan that failed has a cause"
     headline, notes = failure.headline, failure.notes
     errors = _request_errors(req) or list(notes)
-    required = list(req.required) if req is not None else []
+    required = list(req.required)
     if headline == "no sources selected":
         return "the sources match no resource nodes: " + "; ".join(_clip(e) for e in errors[:3])
     if headline == "unusable exports":
@@ -284,8 +343,9 @@ def failure_cause(prepared) -> str:
     return "these sources and recipes cannot meet every export minimum; lower a rate or add sources"
 
 
-def _warnings(g: GameData, report: PlanFactoryReport, objective: str) -> list[str]:
-    sol, bill = report.prepared.solution, report.bill
+def _warnings(
+    g: GameData, report: PlanFactoryReport, sol: Solution, bill: PlanSlice, objective: str
+) -> list[str]:
     out = [
         f"export at zero: {z['name']} is named in exports but 0/min leaves this plan"
         for z in report.zero_exports
@@ -311,7 +371,9 @@ def _warnings(g: GameData, report: PlanFactoryReport, objective: str) -> list[st
     return out
 
 
-def power_view(g: GameData, st: WorldState, req, sol, machines: int, draw_mw: float) -> dict:
+def power_view(
+    g: GameData, st: WorldState, req: PlanRequest, sol: Solution, machines: int, draw_mw: float
+) -> PaybackView:
     """``SolveResponse.power`` for a solved request: the horizon's stops and the overclock."""
     info = req.payback
     return payback.view(
@@ -320,45 +382,44 @@ def power_view(g: GameData, st: WorldState, req, sol, machines: int, draw_mw: fl
         req.scenario,
         machines,
         draw_mw,
-        inherited=info.get("inherited", True),
-        default_hours=info.get("default_hours", 0.0),
-        price_source=info.get("price_source", "grid mix"),
-        mix=info.get("mix", []),
-        overclock_inherited=info.get("overclock_inherited", True),
+        inherited=info["inherited"],
+        default_hours=info["default_hours"],
+        price_source=info["price_source"],
+        mix=info["mix"],
+        overclock_inherited=info["overclock_inherited"],
         shards=shard_stock(st),
     )
 
 
-def _no_power(req) -> dict:
-    sc = req.scenario if req is not None else None
-    info = req.payback if req is not None else {}
+def _no_power(req: PlanRequest) -> PaybackView:
+    sc, info = req.scenario, req.payback
     return {
-        "hours": sc.payback_hours if sc else 0.0,
-        "inherited": info.get("inherited", True),
-        "default_hours": info.get("default_hours", 0.0),
-        "price": sc.power_price if sc else 0.0,
-        "price_source": info.get("price_source", "grid mix"),
-        "mix": info.get("mix", []),
+        "hours": sc.payback_hours,
+        "inherited": info["inherited"],
+        "default_hours": info["default_hours"],
+        "price": sc.power_price,
+        "price_source": info["price_source"],
+        "mix": info["mix"],
         "splits": False,
         "reason": "",
         "stops": [],
         "overclock": {
-            **payback.no_overclock(bool(sc and sc.overclock_last)),
-            "inherited": info.get("overclock_inherited", True),
+            **payback.no_overclock(sc.overclock_last),
+            "inherited": info["overclock_inherited"],
             "shards_free": None,
             "shards_craftable": None,
         },
     }
 
 
-def _empty_summary(st: WorldState, req) -> dict:
+def _empty_summary(st: WorldState, req: PlanRequest) -> _SummaryBase:
     """The fields every summary carries, at their no-plan values."""
     try:
         token = pin.check(st.header, None)
     except Exception:
         token = ""
     return {
-        "plan_id": req.plan_id if req is not None else "",
+        "plan_id": req.plan_id,
         "machines": 0,
         "processes": 0,
         "mw_draw": None,
@@ -376,8 +437,9 @@ def _empty_summary(st: WorldState, req) -> dict:
     }
 
 
-def _failure_summary(prepared, errors: list[str], empty: dict) -> dict:
-    failure = prepared.failure
+def _failure_summary(
+    prepared: PreparedPlan, failure: PlanFailure, errors: list[str], empty: _SummaryBase
+) -> SolveResponse:
     return {
         "feasible": False,
         "headline": failure.headline,
@@ -390,26 +452,32 @@ def _failure_summary(prepared, errors: list[str], empty: dict) -> dict:
 
 
 def solve_summary(
-    g: GameData, st: WorldState, kwargs: dict, required: list[str] | None = None
+    g: GameData, st: WorldState, kwargs: Mapping[str, object], required: list[str] | None = None
 ) -> dict:
-    """``SolveResponse`` for ``kwargs``: the solved plan as plain data, or why there is none."""
+    """``SolveResponse`` for ``kwargs``: the solved plan as plain data, or why there is none.
+
+    A plain ``dict`` until ``manage.result_delta``, which compares two, takes the typed shape.
+    """
+    return dict(_solve_response(g, st, kwargs, required))
+
+
+def _solve_response(
+    g: GameData, st: WorldState, kwargs: Mapping[str, object], required: list[str] | None
+) -> SolveResponse:
     kwargs = dict(kwargs)
     if required and not kwargs.get("required"):
         kwargs["required"] = list(required)
-    objective = kwargs.get("objective", "max_mw")
+    objective = cast("str", kwargs.get("objective", "max_mw"))
     report = build_plan_report(g, st, kwargs, objective=objective)
     prepared = report.prepared
     req = prepared.request
     empty = _empty_summary(st, req)
     errors = _request_errors(req)
     if prepared.failure is not None:
-        return _failure_summary(prepared, errors, empty)
+        return _failure_summary(prepared, prepared.failure, errors, empty)
     sol, bill = prepared.solution, report.bill
-    in_force = set(req.required)
-    paired = sorted(
-        ((_row(g, p, in_force), p) for p in sol.processes),
-        key=lambda rp: (rp[0]["building"], rp[0]["recipe"]),
-    )
+    assert sol is not None and bill is not None, "a plan that did not fail is solved and billed"
+    paired = _rows(g, sol.processes, set(req.required))
     rows = [r for r, _ in paired]
     graph = production_graph(g, paired, sol.exports)
     notes = [*errors, *prepared.notes]
@@ -423,7 +491,7 @@ def solve_summary(
         "headline": f"{objective} over {req.selection.description}",
         "cause": "",
         "notes": notes,
-        "warnings": _warnings(g, report, objective),
+        "warnings": _warnings(g, report, sol, bill, objective),
         "blockers": _blockers(errors, []),
         **empty,
         "machines": machines,
@@ -445,12 +513,12 @@ def solve_summary(
     }
 
 
-def stamp_for(g: GameData, st: WorldState) -> Callable:
+def stamp_for(g: GameData, st: WorldState) -> Stamp:
     """The ``planlog.Stamp`` for pushes read against ``st``: plan_id and selector provenance."""
 
-    def stamp(state) -> dict:
+    def stamp(state: PlanState) -> PlanStamp:
         return {
-            "plan_id": build_scenario(g, st, **state.kwargs()).plan_id,
+            "plan_id": build_scenario(g, st, **cast(PlanKwargs, state.kwargs())).plan_id,
             "provenance": provenance.record(g, st, list(state.args.sources) or None),
         }
 

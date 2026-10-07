@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Annotated
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from .....core.filelock import LockTimeout
 from .....domain.factories import candidates, edits, naming
 from .....domain.factories import select as machine_select
-from .....domain.factories.labels import LabelError, edit_stamp
+from .....domain.factories.labels import Label, LabelError, LabelStore, edit_stamp
 from .....domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
 from .....domain.session import journal
 from .....presenters.text import primitives as render
@@ -27,7 +27,7 @@ def _label_refused(exc: Exception) -> str:
     return f"! {exc}; nothing written"
 
 
-def _find_label(store, name: str):
+def _find_label(store: LabelStore, name: str) -> Label:
     """The label ``name`` names; a ``Refusal`` listing the known ones."""
     label = store.find(name)
     if label is None:
@@ -36,7 +36,7 @@ def _find_label(store, name: str):
     return label
 
 
-def _overlaps(store, machines, name: str) -> list[str]:
+def _overlaps(store: LabelStore, machines: Iterable[str], name: str) -> list[str]:
     """Which OTHER labels already hold the machines about to be named here."""
     return [
         f"overlaps {other!r} on {count} machine(s)"
@@ -111,7 +111,7 @@ def rename_factory(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Rename a factory label. The machines it holds are not touched and nothing re-anchors.
 
@@ -189,9 +189,8 @@ def amend_factory(
     unwanted = machine_select.select_machines(drop, st) if drop else []
 
     alive = set(st.graph.machines())
-    going = set(unwanted) | (
-        {m for m in label.anchors if m not in alive} if prune_missing else set()
-    )
+    gone: set[str] = {m for m in label.anchors if m not in alive} if prune_missing else set()
+    going = set(unwanted) | gone
     try:
         plan = edits.preview_amendment(store, label, wanted, going, alive)
     except LabelError as exc:
@@ -256,7 +255,7 @@ def list_factories(save: str | None = None, world: str | None = None, as_of: AsO
             "Run factory_map to see candidates, then name_factory to persist one.",
         )
     machines = set(st.graph.machines())
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for label in sorted(store.labels, key=lambda x: -len(x.anchors)):
         alive = sorted(set(label.anchors) & machines)
         candidate = candidates.describe(alive, st.graph, st.game, st.projection, "label")

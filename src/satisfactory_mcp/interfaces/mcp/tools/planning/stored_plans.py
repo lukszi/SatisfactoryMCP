@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import time
-from typing import Annotated
+from collections.abc import Sequence
+from typing import Annotated, cast
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from .....domain.planning import siting as siting_mod
 from .....domain.planning.progress.diff_service import plan_progress
-from .....domain.planning.solver.scenario import build_scenario
+from .....domain.planning.solver.scenario import PlanKwargs, build_scenario
 from .....domain.planning.stored import manage
 from .....domain.planning.stored import provenance as prov
 from .....domain.planning.stored.plan_args import PlanLogError
-from .....domain.planning.stored.planlog import PlanLog, factory_words
-from .....domain.planning.stored.store import PLAN_ARGS
+from .....domain.planning.stored.planlog import PlanLog, PlanState, factory_words
+from .....domain.planning.stored.store import PLAN_ARGS, Plan
+from .....domain.planning.stored.views import SelectorRecord
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf, BaseRev, Limit
@@ -33,14 +35,13 @@ from ._requests import find_stored_plan, pinned_plan_name, unknown_plan
 LAST_CHANGE_WIDTH = 36
 
 
-def _arg_text(value) -> str:
+def _arg_text(value: object) -> str:
     """One stored argument as the reader typed it, never as the solver resolved it."""
     if isinstance(value, dict):
-        return ", ".join(
-            f"{k}={v:g}" if isinstance(v, float) else f"{k}={v}" for k, v in value.items()
-        )
+        pairs = cast("dict[str, object]", value).items()
+        return ", ".join(f"{k}={v:g}" if isinstance(v, float) else f"{k}={v}" for k, v in pairs)
     if isinstance(value, list | tuple):
-        return ", ".join(str(v) for v in value)
+        return ", ".join(str(v) for v in cast("Sequence[object]", value))
     return str(value)
 
 
@@ -55,7 +56,7 @@ def _last_change(log: PlanLog, key: str, names: dict[str, str], now: float) -> s
     return "-"
 
 
-def _plan_detail(st, stored) -> str:
+def _plan_detail(st: WorldState, stored: Plan) -> str:
     """One stored plan in full, without solving it.
 
     ``plan_factory plan=<name>`` answers a different question at LP cost: it prints what
@@ -83,7 +84,7 @@ def _plan_detail(st, stored) -> str:
         "# the stored REQUEST -- every argument not listed is at its default\n"
         + render.table(("argument", "value"), [(k, _arg_text(v)) for k, v in stored_args])
     ]
-    field = (stored.provenance or {}).get("selectors") or ()
+    field = cast("list[SelectorRecord]", (stored.provenance or {}).get("selectors") or [])
     if field:
         parts.append(
             "# what each source selector resolved to WHEN SAVED\n"
@@ -93,7 +94,7 @@ def _plan_detail(st, stored) -> str:
                     (
                         e.get("selector", ""),
                         e.get("count", 0),
-                        ",".join(f"{v:g}" for v in e["bbox"]) if e.get("bbox") else "-",
+                        ",".join(f"{v:g}" for v in bbox) if (bbox := e.get("bbox")) else "-",
                     )
                     for e in field
                 ],
@@ -105,7 +106,10 @@ def _plan_detail(st, stored) -> str:
         f"change it with base_rev={stored.rev}; plan_log name={stored.name!r} lists its versions",
     ]
     try:
-        if build_scenario(st.game, st, **stored.kwargs()).plan_id != stored.plan_id:
+        if (
+            build_scenario(st.game, st, **cast(PlanKwargs, stored.kwargs())).plan_id
+            != stored.plan_id
+        ):
             notes.append(
                 "the WORLD has moved since this was saved (an unlock, a freed node, a new "
                 "building), so re-solving it will not reproduce the plan_id above"
@@ -116,7 +120,7 @@ def _plan_detail(st, stored) -> str:
     return render.envelope("\n".join(head), "\n".join(parts), notes)
 
 
-def _sited_cell(stored) -> str:
+def _sited_cell(stored: Plan) -> str:
     """``x,y y<yaw> WxD`` in metres for the plans table, or ``-`` when it is not sited."""
     sit = siting_mod.parse(stored)
     if sit is None:
@@ -127,7 +131,7 @@ def _sited_cell(stored) -> str:
     return sited
 
 
-def _built_cell(st, stored) -> str:
+def _built_cell(st: WorldState, stored: Plan) -> str:
     """``12/16 @oil setup``, ``?`` or ``not placed`` for the plans table."""
     try:
         found = plan_progress(app.game(), st, stored)
@@ -145,7 +149,9 @@ def _built_cell(st, stored) -> str:
     return f"{found.figure().replace(' ', '')}" + (f" @{where}" if where else "")
 
 
-def _plans_table_notes(rows: list[tuple], drifted: bool, unrecorded: list[str]) -> list[str]:
+def _plans_table_notes(
+    rows: list[tuple[object, ...]], drifted: bool, unrecorded: list[str]
+) -> list[str]:
     notes = [
         (
             "'world moved' means the plan is unchanged but the solve inputs are not "
@@ -204,8 +210,8 @@ def list_plans(
     log = world_plan_log(st)
     names = app.recipe_names()
     now = time.time()
-    rows = []
-    unrecorded = []
+    rows: list[tuple[object, ...]] = []
+    unrecorded: list[str] = []
     drifted = False
     for stored in st.plans.plans:
         checked = manage.plan_status(st, stored)
@@ -224,7 +230,8 @@ def list_plans(
                 last,
                 args.get("objective", "max_mw"),
                 args.get("target_item") or "-",
-                render.cut(",".join(args.get("sources") or []), 36) or "whole map",
+                render.cut(",".join(cast("list[str]", args.get("sources") or [])), 36)
+                or "whole map",
                 _built_cell(st, stored),
                 _sited_cell(stored),
                 "; ".join(checked.flags),
@@ -259,7 +266,7 @@ def forget_plan(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Delete a saved plan. Nothing in the world is touched, and plan_log can undo it."""
     st = app.load_world(save, world, as_of)
@@ -293,7 +300,7 @@ def rename_plan(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Rename a saved plan. Nothing is re-solved and nothing else about it changes.
 
@@ -336,14 +343,14 @@ def rename_plan(
     )
 
 
-def _history(log: PlanLog, found, since: int | None, limit: int) -> str:
+def _history(log: PlanLog, found: PlanState, since: int | None, limit: int) -> str:
     """One plan's versions after ``since``, newest first, with what undid or merged each."""
     names = app.recipe_names()
     now = time.time()
     commits = log.commits(found.key)
     undone = manage.undone_by(commits)
     shown = [c for c in reversed(commits) if c.rev > (since or 0)]
-    lines = []
+    lines: list[str] = []
     for commit in shown[:limit]:
         flags = [f"{age(now - commit.ts)} ago"]
         if commit.merged_over:
@@ -379,7 +386,7 @@ def plan_log(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """One plan's versions, newest first: who changed what, from chat or from the page.
 
@@ -412,6 +419,7 @@ def plan_log(
         )
         done = f"undid v{undo}"
     else:
+        assert restore is not None, "undo or restore, checked above"
         pushed, text = write(
             found.name,
             "nothing restored",

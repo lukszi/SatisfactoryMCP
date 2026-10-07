@@ -7,14 +7,19 @@ or version check already guards the read.
 
 from __future__ import annotations
 
-from typing import TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 
 from typing_extensions import TypeAliasType
 
 __all__ = ["JsonArray", "JsonObject", "JsonScalar", "JsonValue"]
 
 JsonScalar: TypeAlias = str | int | float | bool | None
-# A named recursive alias, because pydantic cannot resolve a plain string one in a response model.
-JsonValue = TypeAliasType("JsonValue", "JsonScalar | list[JsonValue] | dict[str, JsonValue]")
+# Named at runtime, because pydantic cannot resolve a plain string alias in a response model.
+# pyright reads the plain alias: its TypeAliasType loses the self-reference when JsonObject is
+# the first name another module evaluates.
+if TYPE_CHECKING:
+    JsonValue: TypeAlias = "JsonScalar | list[JsonValue] | dict[str, JsonValue]"
+else:
+    JsonValue = TypeAliasType("JsonValue", "JsonScalar | list[JsonValue] | dict[str, JsonValue]")
 JsonArray: TypeAlias = list[JsonValue]
 JsonObject: TypeAlias = dict[str, JsonValue]

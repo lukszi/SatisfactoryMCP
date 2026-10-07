@@ -8,12 +8,17 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import TypeVar, cast
 
 from ... import config
-from ...core import filelock, schema
+from ...core import schema
+from ...core.jsontypes import JsonValue
 from ..planning.stored.plan_args import PlanLogError
 from ..planning.stored.planlog import PlanLog
+from . import versioned
+from .views import AskAbout, AskRecord, AskRow, AsksDoc
 
 __all__ = [
     "ABOUT_KINDS",
@@ -51,6 +56,8 @@ _ASK = re.compile(r"\s*ask:(\d+)\s*", re.IGNORECASE)
 _ANSWERED = re.compile(r"\s*ask:(\d+)(?:\s*[:=\-–—]\s*|\s+|$)(.*)", re.IGNORECASE | re.DOTALL)
 _KEY = re.compile(r"[0-9a-f]{8}")
 
+T = TypeVar("T")
+
 
 class AskError(ValueError):
     """An ask request that cannot be honoured, worded for the player."""
@@ -77,7 +84,7 @@ class AskMissing(AskError, KeyError):
 
 
 class AskStale(AskError):
-    def __init__(self, ask: dict) -> None:
+    def __init__(self, ask: AskRecord) -> None:
         super().__init__(f"ask:{ask['n']} changed since you read it")
         self.ask = ask
 
@@ -86,40 +93,43 @@ def path_for(world_id: str) -> Path:
     return config.asks_dir() / f"{config.world_file_stem(world_id)}.json"
 
 
-def _empty() -> dict:
+def _empty() -> AsksDoc:
     return {"schema": SCHEMA, "version": 0, "next": 1, "asks": []}
 
 
-def read(world_id: str) -> dict:
+def read(world_id: str) -> AsksDoc:
     path = path_for(world_id)
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return _empty()
     schema.check(raw, SCHEMA, path)
-    if not isinstance(raw, dict) or not isinstance(raw.get("asks"), list):
+    stored = raw.get("asks") if isinstance(raw, dict) else None
+    if not isinstance(raw, dict) or not isinstance(stored, list):
         return _empty()
     out = _empty()
-    out["version"] = int(raw.get("version") or 0)
-    out["asks"] = [a for a in raw["asks"] if isinstance(a, dict) and isinstance(a.get("n"), int)]
+    out["version"] = versioned.count(raw.get("version"), 0)
+    out["asks"] = [
+        cast(AskRecord, a) for a in stored if isinstance(a, dict) and isinstance(a.get("n"), int)
+    ]
     top = max((a["n"] for a in out["asks"]), default=0)
-    out["next"] = max(int(raw.get("next") or 1), top + 1)
+    out["next"] = max(versioned.count(raw.get("next"), 1), top + 1)
     return out
 
 
-def _locked_update(world_id: str, change):
+def _locked_update(world_id: str, change: Callable[[AsksDoc], tuple[T, bool]]) -> T:
     """Run ``change(data) -> (result, dirty)`` under the file lock; write when dirty."""
-    return filelock.update_versioned_json(path_for(world_id), lambda: read(world_id), change)
+    return versioned.locked_update(path_for(world_id), lambda: read(world_id), change)
 
 
-def parse(text) -> int | None:
+def parse(text: object) -> int | None:
     if not isinstance(text, str):
         return None
     hit = _ASK.fullmatch(text)
     return int(hit.group(1)) if hit else None
 
 
-def parse_answer(text) -> tuple[int, str] | None:
+def parse_answer(text: object) -> tuple[int, str] | None:
     """``"ask:7 the Blender makes the fuel"`` -> ``(7, "the Blender makes the fuel")``; the
     answer is one line of at most ``ANSWER_MAX`` characters, ``""`` when none is given."""
     if not isinstance(text, str):
@@ -133,17 +143,17 @@ def parse_answer(text) -> tuple[int, str] | None:
     return int(hit.group(1)), line
 
 
-def _bump_rev(ask: dict) -> None:
+def _bump_rev(ask: AskRecord) -> None:
     ask["rev"] = int(ask.get("rev") or 1) + 1
 
 
-def state_of(ask: dict) -> str:
+def state_of(ask: AskRecord) -> str:
     if ask.get("answered"):
         return "answered"
     return "seen" if ask.get("seen") else "open"
 
 
-def _question_text(value) -> str:
+def _question_text(value: object) -> str:
     if not isinstance(value, str) or not value.strip():
         raise AskError("an ask needs a question")
     text = value.strip()
@@ -152,7 +162,7 @@ def _question_text(value) -> str:
     return text
 
 
-def _about_field(name: str, value, limit: int, required: bool) -> str:
+def _about_field(name: str, value: object, limit: int, required: bool) -> str:
     if value is None and not required:
         return ""
     if not isinstance(value, str):
@@ -165,13 +175,14 @@ def _about_field(name: str, value, limit: int, required: bool) -> str:
     return text
 
 
-def _validated_about(world_id: str, about) -> dict:
+def _validated_about(world_id: str, about: object) -> AskAbout:
     if not isinstance(about, dict):
         raise AskError(f"about must be an object, not {about!r}")
+    about = cast("dict[str, object]", about)
     kind = about.get("kind")
-    if kind not in ABOUT_KINDS:
+    if not isinstance(kind, str) or kind not in ABOUT_KINDS:
         raise AskError(f"about.kind is one of {', '.join(ABOUT_KINDS)}, not {kind!r}")
-    out = {
+    out: AskAbout = {
         "kind": kind,
         "label": _about_field("label", about.get("label"), LABEL_MAX, True),
         "ref": _about_field("ref", about.get("ref"), REF_MAX, False),
@@ -204,9 +215,10 @@ def _plan_names(world_id: str) -> dict[str, str]:
         return {}
 
 
-def row(ask: dict, names: dict[str, str]) -> dict:
-    about = dict(ask.get("about") or {})
-    plan = about.get("plan")
+def row(ask: AskRecord, names: Mapping[str, str]) -> AskRow:
+    about: Mapping[str, object] = ask.get("about") or {}
+    stored_plan, stored_rev = about.get("plan"), about.get("rev")
+    plan = stored_plan if isinstance(stored_plan, str) else None
     return {
         "n": ask["n"],
         "id": f"ask:{ask['n']}",
@@ -216,7 +228,7 @@ def row(ask: dict, names: dict[str, str]) -> dict:
             "label": str(about.get("label") or ""),
             "ref": str(about.get("ref") or ""),
             "plan": plan,
-            "rev": about.get("rev"),
+            "rev": stored_rev if isinstance(stored_rev, int) else None,
         },
         "state": state_of(ask),
         "rev": int(ask.get("rev") or 1),
@@ -231,20 +243,20 @@ def row(ask: dict, names: dict[str, str]) -> dict:
     }
 
 
-def live(world_id: str) -> list[dict]:
+def live(world_id: str) -> list[AskRow]:
     data = read(world_id)
     names = _plan_names(world_id)
     return [row(a, names) for a in data["asks"] if not a.get("deleted")]
 
 
-def create(world_id: str, text: str, about: dict) -> dict:
+def create(world_id: str, text: str, about: Mapping[str, object]) -> AskRow:
     question = _question_text(text)
     subject = _validated_about(world_id, about)
 
-    def change(data: dict):
+    def change(data: AsksDoc) -> tuple[AskRecord, bool]:
         if sum(1 for a in data["asks"] if not a.get("deleted")) >= MAX_LIVE:
             raise AskError(f"this world already has {MAX_LIVE} asks; delete one first")
-        ask = {
+        ask: AskRecord = {
             "n": data["next"],
             "text": question,
             "about": subject,
@@ -263,7 +275,7 @@ def create(world_id: str, text: str, about: dict) -> dict:
     return row(_locked_update(world_id, change), _plan_names(world_id))
 
 
-def _find(data: dict, n: int) -> dict:
+def _find(data: AsksDoc, n: int) -> AskRecord:
     ask = next((a for a in data["asks"] if a["n"] == n), None)
     if ask is None:
         raise AskMissing(n, top=data["next"] - 1)
@@ -272,14 +284,14 @@ def _find(data: dict, n: int) -> dict:
     return ask
 
 
-def drop(world_id: str, n: int, rev: int) -> dict:
-    def change(data: dict):
+def drop(world_id: str, n: int, rev: int) -> AskRow:
+    def change(data: AsksDoc) -> tuple[AskRecord, bool]:
         ask = _find(data, n)
         if isinstance(rev, bool) or rev != ask.get("rev"):
-            raise AskStale(dict(ask))
+            raise AskStale(ask.copy())
         ask["deleted"] = True
         _bump_rev(ask)
-        return dict(ask), True
+        return ask.copy(), True
 
     return row(_locked_update(world_id, change), _plan_names(world_id))
 
@@ -290,8 +302,9 @@ def mark_seen(world_id: str, ns: list[int], who: str) -> list[int]:
     if not wanted:
         return []
 
-    def change(data: dict):
-        now, fresh = time.time(), []
+    def change(data: AsksDoc) -> tuple[list[int], bool]:
+        now = time.time()
+        fresh: list[int] = []
         for ask in data["asks"]:
             if ask["n"] in wanted and not ask.get("deleted") and state_of(ask) == "open":
                 ask["seen"], ask["seen_by"] = now, who
@@ -311,9 +324,10 @@ def mark_answered(
         return []
     answers = answers or {}
 
-    def change(data: dict):
+    def change(data: AsksDoc) -> tuple[list[int], bool]:
         found = [_find(data, n) for n in dict.fromkeys(ns)]
-        now, fresh = time.time(), []
+        now = time.time()
+        fresh: list[int] = []
         for ask in found:
             line = answers.get(ask["n"], "")
             if ask.get("answered") and (not line or line == ask.get("answer")):

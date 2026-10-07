@@ -8,18 +8,21 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain import advice
 from .....domain.advice import store as hidden_store
+from .....domain.advice.views import HiddenEntry
 from .....domain.session import journal
 from .....domain.world import pin
 from ...serial import (
+    RevBody,
     busy_response,
     error_response,
     newer_schema_response,
@@ -88,10 +91,6 @@ class AdviceHideBody(TypedDict):
     rev: NotRequired[int | None]
 
 
-class AdviceRestoreBody(TypedDict):
-    rev: int
-
-
 class AdviceRestored(TypedDict):
     ok: bool
     id: str
@@ -106,7 +105,7 @@ class AdviceStaleResponse(TypedDict):
     row: AdviceRow | None
 
 
-def _advice_row(adv, state: str, back: bool, rev: int, entry: dict | None) -> AdviceRow:
+def _advice_row(adv, state: str, back: bool, rev: int, entry: HiddenEntry | None) -> AdviceRow:
     by = (entry or {}).get("by") or {}
     return {
         "id": adv.id,
@@ -251,7 +250,7 @@ def hide_advice(
 def restore_advice(
     request: Request,
     adv_id: str,
-    body: Annotated[AdviceRestoreBody, Body()],
+    body: Annotated[RevBody, Body()],
     save: str | None = None,
     world: str | None = None,
 ) -> Any:

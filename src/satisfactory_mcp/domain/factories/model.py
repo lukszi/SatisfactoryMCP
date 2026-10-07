@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from .views import GraphSummary
+
 __all__ = ["PRODUCTION", "Edge", "FactoryGraph", "kind_of"]
 
 #: Substrings identifying a machine that does work, as opposed to logistics or
@@ -67,15 +69,17 @@ class Edge:
 class FactoryGraph:
     """Actors, their class, and the edges between them."""
 
-    cls: dict[str, str] = field(default_factory=dict)
-    material: list[Edge] = field(default_factory=list)
-    power: list[Edge] = field(default_factory=list)
-    transport: list[Edge] = field(default_factory=list)
+    cls: dict[str, str] = field(default_factory=dict[str, str])
+    material: list[Edge] = field(default_factory=list[Edge])
+    power: list[Edge] = field(default_factory=list[Edge])
+    transport: list[Edge] = field(default_factory=list[Edge])
     #: Hypertubes, written into the belts' edge list: kept so a tube stays findable, apart so
     #: no material question can traverse one.
-    hyper: list[Edge] = field(default_factory=list)
+    hyper: list[Edge] = field(default_factory=list[Edge])
 
-    _adj: dict[str, dict[str, list[Edge]]] = field(default_factory=dict, repr=False)
+    _adj: dict[str, dict[str, list[Edge]]] = field(
+        default_factory=dict[str, dict[str, list[Edge]]], repr=False
+    )
 
     # ---- lookups -------------------------------------------------------
 
@@ -100,11 +104,11 @@ class FactoryGraph:
         """Neighbour index for one layer, built lazily and cached."""
         cached = self._adj.get(layer)
         if cached is None:
-            cached = defaultdict(list)
+            built: defaultdict[str, list[Edge]] = defaultdict(list)
             for e in self.edges(layer):
-                cached[e.a].append(e)
-                cached[e.b].append(e)
-            self._adj[layer] = cached
+                built[e.a].append(e)
+                built[e.b].append(e)
+            self._adj[layer] = cached = built
         return cached
 
     def neighbours(self, node: str, layer: str = "material") -> list[str]:
@@ -146,9 +150,11 @@ class FactoryGraph:
         out.sort(key=len, reverse=True)
         return out
 
-    def machine_components(self, layer: str = "material", skip: set[str] | None = None):
+    def machine_components(
+        self, layer: str = "material", skip: set[str] | None = None
+    ) -> list[list[str]]:
         """Components reduced to their machines, dropping any with none."""
-        out = []
+        out: list[list[str]] = []
         for comp in self.components(layer, skip=skip):
             machines = [n for n in comp if self.is_machine(n)]
             if machines:
@@ -159,7 +165,7 @@ class FactoryGraph:
     def towers(self) -> set[str]:
         return {n for n in self.cls if self.kind(n) == "tower"}
 
-    def summary(self) -> dict:
+    def summary(self) -> GraphSummary:
         return {
             "actors": len(self.cls),
             "machines": len(self.machines()),

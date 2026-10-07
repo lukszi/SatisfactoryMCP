@@ -10,14 +10,16 @@ Handler names are operation_ids (wire rule 1).
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....core.saveio.records import instance_leaf
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
-from .....domain.power.report import PowerLedger, starved_cause
+from .....domain.power.report import MachineGroups, PowerLedger, starved_cause
+from .....domain.power.views import GeneratorTotal, PowerReport
 from .....domain.spatial import geo
 from .....domain.world.state import WorldState
 from ...serial import (
@@ -34,8 +36,6 @@ from ...serial import (
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-RECORD_LISTS = ("generators", "machines", "extractors")
 
 
 class Ledger(TypedDict):
@@ -54,12 +54,6 @@ class Ledger(TypedDict):
     paused: int
     biomass_mw: float
     biomass_generators: int
-
-
-class GeneratorGroup(TypedDict):
-    name: str
-    count: int
-    mw: float
 
 
 class StarvedGenerator(TypedDict):
@@ -106,7 +100,7 @@ class CircuitRow(TypedDict):
 
     index: int
     ledger: Ledger
-    generators: list[GeneratorGroup]
+    generators: list[GeneratorTotal]
     starved: list[StarvedGenerator]
     unmodellable: list[str]
     consumers: int
@@ -123,7 +117,7 @@ class CircuitsResponse(TypedDict):
 
     world: Ledger
     paused: int
-    generators: list[GeneratorGroup]
+    generators: list[GeneratorTotal]
     starved: list[StarvedGenerator]
     unmodellable: list[str]
     circuits: list[CircuitRow]
@@ -133,7 +127,7 @@ class CircuitsResponse(TypedDict):
     no_generator: list[MachineRef]
 
 
-def _ledger(report: dict) -> dict:
+def _ledger(report: PowerReport) -> dict:
     return {
         "generation_mw": round(report["generation_mw"], 1),
         "starved_generation_mw": round(report["starved_generation_mw"], 1),
@@ -155,14 +149,14 @@ def _position_m(placed: dict, leaf: str) -> tuple[float | None, float | None]:
     return (cm_to_m(pos[0]), cm_to_m(pos[1])) if pos else (None, None)
 
 
-def _groups(report: dict) -> list[dict]:
+def _groups(report: PowerReport) -> list[dict]:
     return [
         {"name": g["name"], "count": g["count"], "mw": round(g["mw"], 1)}
         for g in sorted(report["by_generator"].values(), key=lambda g: -g["mw"])
     ]
 
 
-def _starved(report: dict, placed: dict) -> list[dict]:
+def _starved(report: PowerReport, placed: dict) -> list[dict]:
     rows = []
     for starved in report["starved_generators"]:
         x, y = _position_m(placed, starved["instance"])
@@ -185,15 +179,16 @@ def _circuit_rows(
 ) -> list[tuple[dict, set[str]]]:
     """Every circuit with a record on it, biggest ledger first, each with its member leaves."""
     graph = st.graph
-    records = {
-        key: {instance_leaf(r["instance"]): r for r in st.projection.get(key) or ()}
-        for key in RECORD_LISTS
-    }
+    machines = {instance_leaf(r["instance"]): r for r in st.projection.get("machines") or ()}
+    extractors = {instance_leaf(r["instance"]): r for r in st.projection.get("extractors") or ()}
+    generators = {instance_leaf(r["instance"]): r for r in st.projection.get("generators") or ()}
     pairs = []
     for component in graph.components("power"):
         members = set(component)
-        sub = {
-            key: [r for leaf, r in records[key].items() if leaf in members] for key in RECORD_LISTS
+        sub: MachineGroups = {
+            "machines": [r for leaf, r in machines.items() if leaf in members],
+            "extractors": [r for leaf, r in extractors.items() if leaf in members],
+            "generators": [r for leaf, r in generators.items() if leaf in members],
         }
         if not any(sub.values()):
             continue

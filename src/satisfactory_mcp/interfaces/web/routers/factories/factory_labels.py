@@ -12,10 +12,11 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....domain.factories import candidates, edits, fed, flowgraph, naming
@@ -35,6 +36,7 @@ from .....domain.world import pin
 from ...serial import (
     Flow,
     MachineSpot,
+    NameCount,
     bbox_m,
     busy_response,
     error_response,
@@ -49,11 +51,6 @@ from ...serial import (
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-
-class Amount(TypedDict):
-    name: str
-    count: int
 
 
 class CandidateRow(TypedDict):
@@ -72,7 +69,7 @@ class CandidateRow(TypedDict):
     unrouted: list[Flow]
     inputs: list[Flow]
     buffers: int
-    buildings: list[Amount]
+    buildings: list[NameCount]
     region: str | None
     centroid_m: tuple[float, float]
     bbox_m: tuple[float, float, float, float] | None

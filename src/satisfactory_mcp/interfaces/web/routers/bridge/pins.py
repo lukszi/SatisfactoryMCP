@@ -9,16 +9,20 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain.session import journal
 from .....domain.session import pins as pin_store
+from .....domain.session.views import PinRecord, PinRef, PinRow
 from ...serial import (
+    Dropped,
+    RevBody,
     busy_response,
     error_response,
     newer_schema_response,
@@ -29,39 +33,6 @@ from ...serial import (
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-
-class PinRef(TypedDict, total=False):
-    """What a pin points at. ``resource`` and ``nodes`` are filled by the server for a field."""
-
-    plan: str
-    recipe: str
-    factory: str
-    machine: str
-    node: str
-    x_m: float
-    y_m: float
-    resource: str
-    nodes: list[str]
-
-
-class PinRow(TypedDict):
-    """One pin as the page shows it. ``selector`` is the canonical text it stands for; a gone
-    pin says why in ``gone_why``; ``x_m``/``y_m`` are null for a pin with no place."""
-
-    n: int
-    id: str
-    kind: str
-    ref: PinRef
-    label: str
-    text: str
-    selector: str
-    x_m: float | None
-    y_m: float | None
-    rev: int
-    created: float
-    gone: bool
-    gone_why: str
 
 
 class PinsResponse(TypedDict):
@@ -82,15 +53,6 @@ class PinCreateBody(TypedDict):
 class PinRenameBody(TypedDict):
     rev: int
     label: str
-
-
-class PinDropBody(TypedDict):
-    rev: int
-
-
-class PinDropped(TypedDict):
-    ok: bool
-    n: int
 
 
 class PinStaleResponse(TypedDict):
@@ -120,11 +82,11 @@ def _refused(st, exc: Exception) -> JSONResponse:
 _ERRORS = (pin_store.PinError, LockTimeout, NewerSchema)
 
 
-def _plan_of(pin: dict) -> str | None:
+def _plan_of(pin: PinRow | PinRecord) -> str | None:
     return (pin.get("ref") or {}).get("plan") if pin["kind"] in ("plan", "process") else None
 
 
-def _journal(st, kind: str, pin: dict, args: dict, text: str) -> None:
+def _journal(st, kind: str, pin: PinRow | PinRecord, args: dict, text: str) -> None:
     journal.append(st.world_id, kind, actor=page_actor(), plan=_plan_of(pin), args=args, text=text)
 
 
@@ -193,13 +155,13 @@ def rename_pin(
 
 @router.delete(
     "/pins/{n}",
-    response_model=PinDropped,
+    response_model=Dropped,
     responses={409: {"model": PinStaleResponse}},
 )
 def drop_pin(
     request: Request,
     n: int,
-    body: Annotated[PinDropBody, Body()],
+    body: Annotated[RevBody, Body()],
     save: str | None = None,
     world: str | None = None,
 ) -> Any:

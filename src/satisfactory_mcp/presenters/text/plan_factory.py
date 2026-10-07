@@ -8,21 +8,30 @@ hundreds of MW, and none of that is visible in the numbers themselves.
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
+from ...domain.planning.progress.diff import solution_of
 from ...domain.planning.readout import payback
 from ...domain.planning.readout.report import PlanFactoryReport
-from ...domain.planning.readout.slice import grid_import_mw, linear_gap_note
+from ...domain.planning.readout.slice import PlanSlice, grid_import_mw, linear_gap_note
 from ...domain.planning.readout.summary import power_view
-from ...domain.planning.solver.model import MW
+from ...domain.planning.siting.record import Siting
+from ...domain.planning.solver.model import MW, ProcessRow
 from ...domain.world.state import WorldState
 from . import primitives as render
 
 __all__ = ["render_plan_factory"]
 
 
-def _clock(row: dict) -> str:
-    if row.get("last_clock") is None:
+def _clock(row: ProcessRow) -> str:
+    last = row.get("last_clock")
+    if last is None:
         return f"{row['clock'] * 100:.4g}%"
-    return f"100%, last {row['last_clock'] * 100:.4g}%"
+    return f"100%, last {last * 100:.4g}%"
+
+
+def _bill(report: PlanFactoryReport) -> PlanSlice:
+    """The bill of a report whose plan solved."""
+    assert report.bill is not None, "the plan did not solve"
+    return report.bill
 
 
 def _water_bound(report: PlanFactoryReport) -> str:
@@ -42,7 +51,7 @@ def _water_bound(report: PlanFactoryReport) -> str:
     )
 
 
-def _water_evidence(report: PlanFactoryReport, site) -> str:
+def _water_evidence(report: PlanFactoryReport, site: Siting | None) -> str:
     """What was actually measured about water at this plan's site, if it has one.
 
     Every branch reports a distance, a level or a share of ground; none reports a capacity.
@@ -90,7 +99,7 @@ def _water_evidence(report: PlanFactoryReport, site) -> str:
     return f"{where}, and MEASURED: {body}{drop}.{coarse}"
 
 
-def _build_rows(report: PlanFactoryReport, limit: int) -> list[tuple]:
+def _build_rows(report: PlanFactoryReport, limit: int) -> list[tuple[object, ...]]:
     """The build table: one row per process, BUILD where its building is not built yet."""
     return [
         (
@@ -101,13 +110,13 @@ def _build_rows(report: PlanFactoryReport, limit: int) -> list[tuple]:
             render.num(p["mw"]),
             "BUILD" if p["building_id"] in report.needed_buildings else "",
         )
-        for p in report.prepared.solution.processes[: render.clamp(limit, default=15)]
+        for p in solution_of(report.prepared).processes[: render.clamp(limit, default=15)]
     ]
 
 
 def _zero_export_notes(report: PlanFactoryReport, objective: str) -> list[str]:
     """A named export coming out at zero, said first: "766 Plastic" otherwise reads as success."""
-    notes = []
+    notes: list[str] = []
     for z in report.zero_exports:
         name = z["name"]
         if z["produced"] > 1e-6:
@@ -137,7 +146,7 @@ def _water_note(report: PlanFactoryReport) -> str:
     n_water = report.water_pumps
     size, block, pier = water["size"], water["block"], water["pier"]
     space = ""
-    if size:
+    if size and block and pier:
         space = (
             f" Each is {size}, so {n_water} of them pack into {block} "
             f"({block.foundations:,} foundations, {block.foundations * 5:,} Concrete), "
@@ -173,10 +182,11 @@ def _water_note(report: PlanFactoryReport) -> str:
 
 def _shard_note(report: PlanFactoryReport) -> str:
     """The power shards the clocks need, against those held and craftable."""
-    bill = report.bill
+    bill = _bill(report)
     if not bill.shard_rows:
         return ""
     shard_budget = report.shard_budget
+    assert shard_budget is not None, "read whenever the plan clocks with shards"
     detail = ", ".join(
         f"{r.machines}x {r.label.split(' on ')[0]} @{r.clock:.0%} = {r.total}"
         for r in bill.shard_rows[:4]
@@ -197,9 +207,9 @@ def _shard_note(report: PlanFactoryReport) -> str:
 
 def _sloop_notes(report: PlanFactoryReport) -> list[str]:
     """Whether somersloops can be slotted at all, and what the plan spent or left empty."""
-    bill = report.bill
+    bill = _bill(report)
     sloops_asked = report.sloops_asked
-    notes = []
+    notes: list[str] = []
     aside = (
         f" A further {bill.unboostable_slots} slot(s) sit in generators and extractors, "
         "which this model cannot production-boost, so they are not counted as capacity."
@@ -227,6 +237,7 @@ def _sloop_notes(report: PlanFactoryReport) -> list[str]:
             for r in bill.sloop_used_rows[:4]
         )
         held = report.sloop_budget
+        assert held is not None, "read whenever the plan slots somersloops"
         # The LP spends against machine-equivalents and the table rounds up to whole
         # machines, so an honest bill can exceed the budget it was solved under.
         over = (
@@ -282,8 +293,8 @@ def _sloop_notes(report: PlanFactoryReport) -> list[str]:
 def _caveat_notes(g: GameData, report: PlanFactoryReport, objective: str) -> list[str]:
     """What the numbers cannot show: free inputs, overclocked clocks, the binding limits."""
     prepared = report.prepared
-    req, sol, bill = prepared.request, prepared.solution, report.bill
-    notes = []
+    req, sol, bill = prepared.request, solution_of(prepared), _bill(report)
+    notes: list[str] = []
     # Supplied items are free here: right for a module, wrong for a whole-plant comparison.
     if req.scenario.raw_caps:
         given = ", ".join(
@@ -360,7 +371,7 @@ def _plan_summary(
     plan_name: str,
 ) -> str:
     """The header: scope and plan id, the headline numbers, exports, raw and sunk."""
-    req, sol, bill = report.prepared.request, report.prepared.solution, report.bill
+    req, sol, bill = report.prepared.request, solution_of(report.prepared), _bill(report)
     summary = "\n".join(
         [
             (
@@ -424,7 +435,7 @@ def render_plan_factory(
             else prepared.failure.notes
         )
         return render.envelope(f"# {prepared.failure.headline}", "", notes)
-    req, sol, bill = prepared.request, prepared.solution, report.bill
+    req, sol, bill = prepared.request, solution_of(prepared), _bill(report)
 
     notes = [
         *_zero_export_notes(report, objective),

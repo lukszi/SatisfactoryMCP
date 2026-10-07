@@ -644,7 +644,7 @@ from `_state`). The page sends `actor` implicitly: the server stamps `Actor("pag
 | `plan_ops` | GET `/api/plans/{key}/ops?since=0` | – | `PlanOpsResponse {key, head, commits: list[CommitBody]}` | 404 |
 | `push_ops` | POST `/api/plans/{key}/ops` | `PushBody {base_rev: int, ops: list[dict], sav: str = ""}` | 200 `PushedResponse` | 400 `InvalidOp`, 404, **409 `OutdatedResponse`**, 410 forgotten, 503 |
 | `push_args` | POST `/api/plans/{key}/args` | `PushArgsBody {base_rev: int, args: dict, sav: str = "", from_entry: str = ""}` | 200 `PushedResponse` | as `push_ops` |
-| `undo_rev` | POST `/api/plans/{key}/undo` | `UndoBody {base_rev: int, rev: int, sav: str = ""}` | 200 `PushedResponse` | 400, 404, 409 `OutdatedResponse` or `{error, already_undone: true, by}`, 503 |
+| `undo_rev` | POST `/api/plans/{key}/undo` | `CommitRefBody {base_rev: int, rev: int, sav: str = ""}` | 200 `PushedResponse` | 400, 404, 409 `OutdatedResponse` or `{error, already_undone: true, by}`, 503 |
 | `solve_plan` | POST `/api/plan/solve` | `SolveBody {args: dict | null = null, key: str | null = null, rev: int | null = null}` (exactly one of `args`, `key`) | 200 `SolveResponse` (an infeasible plan is a 200 with `feasible: false`) | 400, 404 |
 | `put_focus` | PUT `/api/ui/focus` | `FocusBody` (§9 fields except `heartbeat`) | 200 `FocusResponse {ok: true, heartbeat: float}` | 400 |
 | `activity` | GET `/api/activity?since=0&limit=50` | – | `ActivityResponse {now: float, entries: list[ActivityRow]}` | 404 |

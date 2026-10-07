@@ -218,7 +218,7 @@ All handlers declare `response_model`; 409 bodies are declared in `responses=` s
 | `pins` (new, `pins.py`) | GET `/api/pins` | – | `PinsResponse` | 404 save unreadable; 503 |
 | `create_pin` | POST `/api/pins` | `PinCreateBody {kind, ref: PinRef, label?: str}` | 201 `PinCreated`; 200 `PinCreated` with `existing: true` | 400 `PinError` (also 500 live pins reached); 404 object not found; 503 lock/schema |
 | `rename_pin` | PATCH `/api/pins/{n}` | `PinRenameBody {rev: int, label: str}` | 200 `PinRow` | 400; 404 unknown or deleted; **409 `PinStaleResponse`**; 503 |
-| `drop_pin` | DELETE `/api/pins/{n}` | `PinDropBody {rev: int}` | 200 `PinDropped {ok: true, n: int}` | 404; **409 `PinStaleResponse`**; 503 |
+| `drop_pin` | DELETE `/api/pins/{n}` | `RevBody {rev: int}` | 200 `Dropped {ok: true, n: int}` | 404; **409 `PinStaleResponse`**; 503 |
 
 `push_ops` takes an optional `require_item` (an item class id) with a drawer **require**: under
 the plan lock the server adds `remove required R'` for every other required recipe of that item
@@ -274,8 +274,8 @@ class PinsResponse(TypedDict): version: int; pins: list[PinRow]
 class PinCreated(PinRow): existing: bool
 class PinCreateBody(TypedDict): kind: str; ref: PinRef; label: NotRequired[str]
 class PinRenameBody(TypedDict): rev: int; label: str
-class PinDropBody(TypedDict): rev: int
-class PinDropped(TypedDict): ok: bool; n: int
+class RevBody(TypedDict): rev: int
+class Dropped(TypedDict): ok: bool; n: int
 class PinStaleResponse(TypedDict): error: str; stale: bool; pin: PinRow
 ```
 

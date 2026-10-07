@@ -6,7 +6,7 @@ import queue
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future
-from typing import Any, TypeVar
+from typing import TypeVar
 
 __all__ = ["LANES", "run"]
 
@@ -14,7 +14,8 @@ T = TypeVar("T")
 
 LANES = 4
 
-_jobs: queue.SimpleQueue[tuple[Future[Any], Callable[[], Any]]] = queue.SimpleQueue()
+#: Each entry runs one job and settles its future.
+_jobs: queue.SimpleQueue[Callable[[], None]] = queue.SimpleQueue()
 _lock = threading.Lock()
 _lanes: list[threading.Thread] = []
 _here = threading.local()
@@ -23,13 +24,17 @@ _here = threading.local()
 def _lane() -> None:
     _here.lane = True
     while True:
-        future, job = _jobs.get()
-        if not future.set_running_or_notify_cancel():
-            continue
-        try:
-            future.set_result(job())
-        except BaseException as exc:
-            future.set_exception(exc)
+        _jobs.get()()
+
+
+def _settle(future: Future[T], job: Callable[[], T]) -> None:
+    """Run ``job`` into ``future``, unless the caller cancelled it first."""
+    if not future.set_running_or_notify_cancel():
+        return
+    try:
+        future.set_result(job())
+    except BaseException as exc:
+        future.set_exception(exc)
 
 
 def run(job: Callable[[], T]) -> T:
@@ -42,5 +47,5 @@ def run(job: Callable[[], T]) -> T:
             lane.start()
             _lanes.append(lane)
     future: Future[T] = Future()
-    _jobs.put((future, job))
+    _jobs.put(lambda: _settle(future, job))
     return future.result()

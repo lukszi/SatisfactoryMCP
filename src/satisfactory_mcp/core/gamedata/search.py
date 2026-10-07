@@ -52,9 +52,9 @@ class Census:
 
     scanned: int
     total: int = 0
-    by_kind: dict[str, int] = field(default_factory=dict)
-    have: dict[str, int] = field(default_factory=dict)
-    locked: dict[str, int] = field(default_factory=dict)
+    by_kind: dict[str, int] = field(default_factory=dict[str, int])
+    have: dict[str, int] = field(default_factory=dict[str, int])
+    locked: dict[str, int] = field(default_factory=dict[str, int])
     #: FICSMAS recipes matching the query. Hidden by default, never uncounted.
     events: int = 0
 

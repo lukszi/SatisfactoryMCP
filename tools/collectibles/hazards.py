@@ -6,8 +6,9 @@ from __future__ import annotations
 import collections
 import math
 import struct
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import Generic, Literal, NamedTuple, TypeVar
 
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import (
@@ -18,15 +19,28 @@ from satisfactory_mcp.core.gameassets.packages import (
     read_float,
     read_vector_array,
 )
+from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import GAS_PILLAR, HAZARD_RADIUS_CM, NUCLEAR_HOG, Position
-from tools.collectibles.stats import by_count, spread
+from tools.collectibles.rows import CollectibleRow, HazardContext
+from tools.collectibles.stats import by_count, json_object, spread
+
+#: What ``read_hazard`` makes of a map actor.
+HazardKind = Literal[
+    "creature_spawner", "hatcher", "spore_flower", "gas_field", "resource", "damage_volume"
+]
+
+#: What ``hazard_context`` tests a source as.
+SourceKind = Literal["hostile", "spore_flower", "gas_field", "radioactive"]
+
+#: Whatever a ``SpatialIndex`` files under a position.
+Item = TypeVar("Item")
 
 
 @dataclass
 class Hazard:
     """One map actor read for context rather than as a row."""
 
-    kind: str
+    kind: HazardKind
     cls: str
     position: Position
     #: What it is, in game terms: a creature descriptor, or a resource class.
@@ -43,9 +57,9 @@ class Hazard:
 class HazardSource(NamedTuple):
     """One indexed source, as ``hazard_context`` tests it against a collectible."""
 
-    kind: str
+    kind: SourceKind
     label: str
-    count: int
+    creatures: int
     radius: float | None
 
 
@@ -193,7 +207,7 @@ class Radioactivity:
         return bool(package) and package in self.decay
 
 
-class SpatialIndex:
+class SpatialIndex(Generic[Item]):
     """A uniform grid over points, so a neighbour search is linear rather than N*M.
 
     ``near`` looks at the 27 cells around a point, so it finds everything within one cell
@@ -202,9 +216,11 @@ class SpatialIndex:
 
     def __init__(self, cell_cm: float) -> None:
         self.cell = cell_cm
-        self.buckets: dict[tuple[int, int, int], list] = collections.defaultdict(list)
+        self.buckets: dict[tuple[int, int, int], list[tuple[Position, Item]]] = (
+            collections.defaultdict(list)
+        )
 
-    def add(self, position: Position, value) -> None:
+    def add(self, position: Position, value: Item) -> None:
         self.buckets[self._key(position)].append((position, value))
 
     def _key(self, position: Position) -> tuple[int, int, int]:
@@ -214,7 +230,7 @@ class SpatialIndex:
             int(position[2] // self.cell),
         )
 
-    def near(self, position: Position):
+    def near(self, position: Position) -> Iterator[tuple[float, Item]]:
         """``(distance, value)`` for everything in the 27 cells around ``position``."""
         cx, cy, cz = self._key(position)
         for dx in (-1, 0, 1):
@@ -228,25 +244,25 @@ class SpatialIndex:
 class HazardWorld:
     """The hazard sources, resolved and indexed, plus the counts that describe them."""
 
-    index: SpatialIndex
+    index: SpatialIndex[HazardSource]
     spawn_radius_declared: int
     spawn_radius_missing: int
     hostile_placements: int
     passive_placements: int
     unknown_passivity: int
-    species: collections.Counter
+    species: collections.Counter[str]
     spore_flowers: int
     gas_fields: int
     #: class -> every distinct radius its placements declare. Per class because each source
     #: is tested against its own radius, and one kind can be two classes.
-    class_declared_radius_cm: dict[str, dict]
-    spawner_radius_cm: dict[str, float | int | None]
+    class_declared_radius_cm: dict[str, JsonObject]
+    spawner_radius_cm: JsonObject
     #: What the lookup grid is sized to.
     widest_declared_radius_cm: float
     #: What every FGDamageOverTimeVolume deals damage with: the world boundary, not gas.
-    damage_volume_classes: collections.Counter
+    damage_volume_classes: collections.Counter[str]
     #: How far a gas volume's own pillar list reaches; the reporting horizon is sized on it.
-    gas_field_span_cm: dict[str, float | int | None]
+    gas_field_span_cm: JsonObject
     uranium_sources: int
     resource_classes_checked: int
     radioactive_classes: dict[str, float]
@@ -258,12 +274,14 @@ def build_hazards(
 ) -> HazardWorld:
     """Resolve every hazard actor into an indexed source, and count what was resolved."""
     widest = max([HAZARD_RADIUS_CM, *(h.radius for h in sources if h.radius)])
-    grid = SpatialIndex(widest)
-    species: collections.Counter = collections.Counter()
+    grid = SpatialIndex[HazardSource](widest)
+    species: collections.Counter[str] = collections.Counter()
     hostile = passive = unknown = declared = missing = 0
     spore_flowers = gas_fields = uranium = no_resource = 0
-    damage_volumes: collections.Counter = collections.Counter()
-    radii: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    damage_volumes: collections.Counter[str] = collections.Counter()
+    radii: dict[str, collections.Counter[float | None]] = collections.defaultdict(
+        collections.Counter
+    )
     spawner_radii: list[float] = []
     spans: list[float] = []
     for source in sources:
@@ -330,7 +348,9 @@ def build_hazards(
     )
 
 
-def _declared_radius_table(radii: dict[str, collections.Counter]) -> dict[str, dict]:
+def _declared_radius_table(
+    radii: dict[str, collections.Counter[float | None]],
+) -> dict[str, JsonObject]:
     return {
         cls: {
             "placements": sum(seen.values()),
@@ -342,9 +362,9 @@ def _declared_radius_table(radii: dict[str, collections.Counter]) -> dict[str, d
     }
 
 
-def hazard_context(position: Position, hazards: HazardWorld) -> dict:
+def hazard_context(position: Position, hazards: HazardWorld) -> HazardContext:
     """The hazard block for one collectible. Distances are facts; verdicts are not made."""
-    hostiles: collections.Counter = collections.Counter()
+    hostiles: collections.Counter[str] = collections.Counter()
     spawns_here: set[str] = set()
     nearest_hostile: tuple[float, str] | None = None
     gas: tuple[float, str] | None = None
@@ -356,7 +376,7 @@ def hazard_context(position: Position, hazards: HazardWorld) -> dict:
         in_horizon = distance <= HAZARD_RADIUS_CM
         if source.kind == "hostile":
             if in_horizon:
-                hostiles[source.label] += source.count
+                hostiles[source.label] += source.creatures
                 if nearest_hostile is None or distance < nearest_hostile[0]:
                     nearest_hostile = (distance, source.label)
             if source.radius is not None and distance <= source.radius:
@@ -377,7 +397,7 @@ def hazard_context(position: Position, hazards: HazardWorld) -> dict:
                 distance if nearest_uranium is None else min(nearest_uranium, distance)
             )
 
-    out: dict = {}
+    out: HazardContext = {}
     if hostiles:
         out["hostiles_nearby"] = dict(sorted(hostiles.items()))
     if spawns_here:
@@ -396,7 +416,7 @@ def hazard_context(position: Position, hazards: HazardWorld) -> dict:
     return out
 
 
-def hazard_context_meta(hazards: HazardWorld, rows: list[dict]) -> dict:
+def hazard_context_meta(hazards: HazardWorld, rows: list[CollectibleRow]) -> JsonObject:
     """``_meta.hazard_context``: what each hazard key means, its sources, and its reach."""
     return {
         **_hazard_key_meanings(),
@@ -472,7 +492,7 @@ def _hazard_key_meanings() -> dict[str, str]:
     }
 
 
-def _hazard_sources(hazards: HazardWorld) -> dict:
+def _hazard_sources(hazards: HazardWorld) -> JsonObject:
     """The counts and declared radii behind the keys, each with what it can and cannot say."""
     return {
         "hostile_placements": hazards.hostile_placements,
@@ -498,7 +518,7 @@ def _hazard_sources(hazards: HazardWorld) -> dict:
             "spawns_here."
         ),
         "spore_flowers": hazards.spore_flowers,
-        "class_declared_radius_cm": hazards.class_declared_radius_cm,
+        "class_declared_radius_cm": json_object(hazards.class_declared_radius_cm),
         "class_declared_radius_note": (
             "per class, every distinct radius its placements declare and how many "
             "placements there are. Per class because a single number was wrong in "
@@ -536,7 +556,7 @@ def _hazard_sources(hazards: HazardWorld) -> dict:
         ),
         "radioactive_sources_in_the_ground": hazards.uranium_sources,
         "resource_classes_checked_for_radioactivity": hazards.resource_classes_checked,
-        "radioactive_resource_classes": hazards.radioactive_classes,
+        "radioactive_resource_classes": json_object(hazards.radioactive_classes),
         "deposits_with_no_resource_class": hazards.deposits_without_a_resource,
         "deposits_note": (
             "a deposit that does not serialise mOverrideResourceClass holds its "
@@ -546,7 +566,7 @@ def _hazard_sources(hazards: HazardWorld) -> dict:
     }
 
 
-def _rows_touched(rows: list[dict]) -> dict[str, int]:
+def _rows_touched(rows: list[CollectibleRow]) -> JsonObject:
     """How many rows carry each hazard key."""
 
     def _rows_with_hazard_key(key: str) -> int:

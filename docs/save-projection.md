@@ -1090,6 +1090,8 @@ The big tables are interned and positional, because a record per piece would be 
 each carries a `classes` list and rows that hold an index into it. `core/saveio/rows.py` is the
 one reader that decodes them; `core/saveio/extract/` is the one writer. Trailing columns are
 additive, so a short row means "this projection predates the column", never a tear.
+`core/saveio/schema.py` declares the whole projection as types, these rows included, and
+`tests/core/saveio/test_schema.py` holds the committed fixture against them.
 
 **`structures`** — `{classes, instances}`, row `[classIndex, x, y, z, yaw]`. Read out of
 `FGLightweightBuildableSubsystem`'s `actorSpecificInfo`, which is `[version, [classPath,

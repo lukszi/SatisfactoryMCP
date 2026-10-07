@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .health import ACTIONABLE, STATES, HealthReport, MachineHealth, assess
+from .labels import Label
 from .query import FactoryView, build_view
+
+if TYPE_CHECKING:
+    from ..world.state import WorldState
 
 __all__ = ["FactorySweep", "sweep"]
 
@@ -14,7 +19,7 @@ __all__ = ["FactorySweep", "sweep"]
 class FactorySweep:
     """One named factory's ``assess`` and ``build_view``, over its anchors still standing."""
 
-    label: object
+    label: Label
     standing: list[str]
     report: HealthReport
     view: FactoryView
@@ -32,10 +37,10 @@ class FactorySweep:
         )[:limit]
 
 
-def sweep(st) -> list[FactorySweep]:
+def sweep(st: WorldState) -> list[FactorySweep]:
     """Every label of ``st``, most machines needing action first, then lowest mean uptime."""
     alive = set(st.graph.machines())
-    rows = []
+    rows: list[FactorySweep] = []
     for label in st.labels.labels:
         standing = [m for m in label.anchors if m in alive]
         report = assess(label.name, standing, st.game, st.projection, st.graph)

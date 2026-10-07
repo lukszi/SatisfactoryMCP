@@ -261,10 +261,37 @@ colour value, so every colour sits with its owner and its warrant.
 - **`typing.Any` is banned** in `src/` and `tools/` by ruff's TID251. Data crossing a boundary
   (`json.load`, a sidecar, a request body) is `JsonValue` or `JsonObject` from
   `core/jsontypes.py`, narrowed with `isinstance`, or cast once to a TypedDict where a schema or
-  version check already guards the read. `JsonValue` is a named `TypeAliasType` rather than a
-  string alias, because pydantic cannot resolve a string alias inside a response model. The
-  modules that still import `Any` are listed one by one in `[tool.ruff.lint.per-file-ignores]`.
-  The gate fails on an entry that is no longer needed and on a glob, so the list only shrinks.
+  version check already guards the read. At runtime `JsonValue` is a named `TypeAliasType`
+  rather than a string alias, because pydantic cannot resolve a string alias inside a response
+  model. pyright reads the plain recursive alias under `TYPE_CHECKING` instead: pyright 1.1.414
+  loses the `TypeAliasType`'s self-reference when another module evaluates `JsonObject` before
+  `jsontypes` itself, and reports it in `jsontypes.py`. The modules that still import `Any` are
+  listed one by one in `[tool.ruff.lint.per-file-ignores]`. The gate fails on an entry that is
+  no longer needed and on a glob, so the list only shrinks.
+- **The save parser's values.** `pioneersav` decodes every property, container element and
+  trailer field into one `SaveValue` (`pioneersav/values.py`). The extractor reads them as that
+  boundary type and narrows them with `extract/readers.py`'s `to_float`, `to_int` and
+  `as_sequence`, which give the same answer and raise the same error as `float()`, `int()` and
+  indexing. A field the projection carries exactly as the save wrote it is a `cast` to the
+  schema's type.
+- **A seam moves in one step.** A TypedDict is not assignable to a bare `dict`, nor the other
+  way, so a producer cannot type its return while its callers still annotate `dict`. Until they
+  read the schema's types, `saveio.resolve_save` and `load_projection` return `JsonObject`,
+  `ParsedObject.properties` stays loose, and `saveio.rows` takes a `Mapping[str, object]`,
+  which accepts both.
+- **Plan arguments** travel as `Mapping[str, object]`, or `dict[str, object]` where they are
+  built (`PlanArgs.kwargs`, `recall_plan`, `with_overrides`). They become
+  `solver.scenario.PlanKwargs` only where `build_scenario` unpacks them, by a `cast` at that
+  call, and a typed read of one value is a `cast` to the type `build_scenario` declares.
+- **Empty dataclass fields.** `field(default_factory=list)` leaves the element type unknown in
+  strict mode and ruff refuses a `lambda: []`, so a field names its own type:
+  `field(default_factory=list[str])`.
+- **Shapes.** Data with a fixed key set is a TypedDict, or a dataclass when it never leaves
+  the process. The save projection's is `core/saveio/schema.py`: `Projection` and the rows of
+  [save-projection.md](save-projection.md) §6.16, held against the committed fixture. A JSON
+  shape a domain package builds is declared in that package's `views.py`, where the web
+  publishes it from; wire rules 2 and 5 of [web-wire.md](web-wire.md) say why each one is a
+  `typing_extensions.TypedDict` and why two with the same fields are one.
 - **Arrays and stubs.** A numpy array is typed by its dtype through `core/arrays.py`
   (`F32Grid`, `U8Grid`, `BoolMask` and the rest) rather than as a bare `ndarray`. scipy is typed
   by `scipy-stubs`, and pyooz, which ships no types, by the local stub `typings/ooz.pyi`.

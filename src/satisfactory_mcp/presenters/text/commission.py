@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from ...domain.planning.progress.commission_service import CommissionReport
 from ...domain.planning.progress.diff_service import MEASURED_SOURCE, NAMEPLATE_SOURCE
+from ...domain.planning.progress.startup import Commissioning
 from ...domain.power.report import biomass_note
 from ...domain.world.state import WorldState
 from . import primitives as render
@@ -19,9 +20,9 @@ from .diff import built_at_lines
 __all__ = ["render_commission"]
 
 
-def _wave_rows(plan_run) -> list[tuple]:
+def _wave_rows(plan_run: Commissioning) -> list[tuple[object, ...]]:
     """Each wave's summary line, followed by the processes it switches on."""
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for w in plan_run.waves:
         rows.append(
             (
@@ -49,10 +50,16 @@ def _wave_rows(plan_run) -> list[tuple]:
     return rows
 
 
+def _startup(report: CommissionReport) -> Commissioning:
+    """The sequence of a report whose plan solved."""
+    assert report.startup is not None, "the plan did not solve"
+    return report.startup
+
+
 def _headroom_notes(report: CommissionReport) -> list[str]:
     """Which headroom the waves were cut against, and how the other figure compares."""
     power, head, source = report.power, report.headroom_mw, report.headroom_source
-    notes = []
+    notes: list[str] = []
     if source in (NAMEPLATE_SOURCE, MEASURED_SOURCE) and biomass_note(power):
         notes.append(biomass_note(power))
     if source == NAMEPLATE_SOURCE and power["measured_headroom_mw"] > head * 1.2:
@@ -77,7 +84,7 @@ def _headroom_notes(report: CommissionReport) -> list[str]:
 
 def _startup_notes(report: CommissionReport) -> list[str]:
     """How to carry the sequence out safely: build first, switches, waits, cutover risk."""
-    plan_run = report.startup
+    plan_run = _startup(report)
     if not plan_run.ok:
         return []
     notes = [
@@ -143,7 +150,7 @@ def render_commission(
             "",
             [*prepared.failure.notes, "see plan_factory for why"],
         )
-    plan_run = report.startup
+    plan_run = _startup(report)
     head, source = report.headroom_mw, report.headroom_source
 
     rows = _wave_rows(plan_run)

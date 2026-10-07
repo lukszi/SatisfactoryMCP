@@ -10,9 +10,10 @@ is open. ``phase`` and ``harddrives`` read the ``WorldState`` records ``phase_re
 from __future__ import annotations
 
 import re
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....core.gamedata.constants import CAPABILITY_SCHEMATICS
 from .....domain.progression.ladder import SchematicLadder

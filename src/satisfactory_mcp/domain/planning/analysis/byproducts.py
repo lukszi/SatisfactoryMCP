@@ -245,8 +245,8 @@ def _cycle_absorbs(inner: list[Process], members: set[str]) -> tuple[bool, bool]
         )
     )
     return (
-        bool(absorb.success and absorb.fun < -_EPS),
-        bool(create.success and -create.fun > _EPS),
+        bool(absorb.success and absorb.fun is not None and absorb.fun < -_EPS),
+        bool(create.success and create.fun is not None and -create.fun > _EPS),
     )
 
 
@@ -305,7 +305,7 @@ class Blocker:
     outlets: list[Outlet]
     #: False when the item was named by the caller rather than confirmed by a solve.
     confirmed: bool = True
-    fixes: list[Fix] = field(default_factory=list)
+    fixes: list[Fix] = field(default_factory=list[Fix])
     loop: Loop | None = None
     packaging: Outlet | None = None
 

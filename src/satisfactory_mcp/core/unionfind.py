@@ -11,7 +11,7 @@ class UnionFind:
     """Disjoint sets, created on first sight of a key."""
 
     def __init__(self) -> None:
-        self._parent: dict = {}
+        self._parent: dict[Hashable, Hashable] = {}
 
     def find(self, key: Hashable) -> Hashable:
         """The root of ``key``'s set, halving the path on the way up."""

@@ -29,35 +29,35 @@ PYRIGHT_THREADS = 8
 #: it. A number only goes down: lower it when the count falls, and fix new errors instead of
 #: raising it.
 BUDGETS: dict[str, int] = {
-    "src/pioneersav": 2,
+    "src/pioneersav": 0,
     "src/satisfactory_mcp": 0,
     "src/satisfactory_mcp/core": 0,
     "src/satisfactory_mcp/core/gameassets": 0,
-    "src/satisfactory_mcp/core/gamedata": 7,
-    "src/satisfactory_mcp/core/saveio": 5,
+    "src/satisfactory_mcp/core/gamedata": 0,
+    "src/satisfactory_mcp/core/saveio": 3,
     "src/satisfactory_mcp/domain": 0,
-    "src/satisfactory_mcp/domain/advice": 5,
+    "src/satisfactory_mcp/domain/advice": 0,
     "src/satisfactory_mcp/domain/collectibles": 0,
-    "src/satisfactory_mcp/domain/factories": 4,
-    "src/satisfactory_mcp/domain/maps": 1,
-    "src/satisfactory_mcp/domain/planning/analysis": 6,
-    "src/satisfactory_mcp/domain/planning/layout": 16,
-    "src/satisfactory_mcp/domain/planning/progress": 23,
-    "src/satisfactory_mcp/domain/planning/readout": 31,
-    "src/satisfactory_mcp/domain/planning/siting": 13,
-    "src/satisfactory_mcp/domain/planning/solver": 10,
-    "src/satisfactory_mcp/domain/planning/stored": 46,
-    "src/satisfactory_mcp/domain/power": 1,
+    "src/satisfactory_mcp/domain/factories": 0,
+    "src/satisfactory_mcp/domain/maps": 0,
+    "src/satisfactory_mcp/domain/planning/analysis": 0,
+    "src/satisfactory_mcp/domain/planning/layout": 0,
+    "src/satisfactory_mcp/domain/planning/progress": 0,
+    "src/satisfactory_mcp/domain/planning/readout": 0,
+    "src/satisfactory_mcp/domain/planning/siting": 0,
+    "src/satisfactory_mcp/domain/planning/solver": 0,
+    "src/satisfactory_mcp/domain/planning/stored": 0,
+    "src/satisfactory_mcp/domain/power": 0,
     "src/satisfactory_mcp/domain/progression": 0,
-    "src/satisfactory_mcp/domain/session": 4,
+    "src/satisfactory_mcp/domain/session": 0,
     "src/satisfactory_mcp/domain/spatial": 14,
     "src/satisfactory_mcp/domain/spatial/heightfield": 0,
-    "src/satisfactory_mcp/domain/world": 27,
-    "src/satisfactory_mcp/interfaces/mcp": 36,
-    "src/satisfactory_mcp/interfaces/web": 47,
-    "src/satisfactory_mcp/presenters/text": 191,
+    "src/satisfactory_mcp/domain/world": 0,
+    "src/satisfactory_mcp/interfaces/mcp": 0,
+    "src/satisfactory_mcp/interfaces/web": 45,
+    "src/satisfactory_mcp/presenters/text": 0,
     "tools": 0,
-    "tools/collectibles": 7,
+    "tools/collectibles": 4,
     "tools/mapgen/src/mapgen": 0,
     "tools/mapgen/src/mapgen/commands": 2,
     "tools/mapgen/src/mapgen/enhance": 0,
@@ -166,6 +166,32 @@ def _imports_any(path: Path) -> bool:
         if "Any" in names:
             return True
     return False
+
+
+def _typing_typeddicts(path: Path) -> list[int]:
+    """Lines that take ``TypedDict`` from ``typing`` rather than ``typing_extensions``."""
+    found = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom) and node.module == "typing":
+            names = {alias.name for alias in node.names}
+        elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            names = {node.attr} if node.value.id == "typing" else set()
+        else:
+            continue
+        if "TypedDict" in names:
+            found.append(node.lineno)
+    return found
+
+
+def test_every_typed_dict_is_one_pydantic_accepts_on_python_3_11() -> None:
+    """pydantic refuses ``typing.TypedDict`` in a model below 3.12 (docs/web-wire.md, rule 2)."""
+    wrong = [
+        f"{path.relative_to(REPO).as_posix()}:{line}"
+        for path in sorted((REPO / "src").rglob("*.py"))
+        if "node_modules" not in path.parts
+        for line in _typing_typeddicts(path)
+    ]
+    assert not wrong, f"take TypedDict from typing_extensions: {wrong}"
 
 
 def test_the_any_exemptions_only_shrink() -> None:

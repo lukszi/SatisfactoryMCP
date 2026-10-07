@@ -14,13 +14,16 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ....core.gamedata.model import GameData
+from ....core.jsontypes import JsonObject, JsonValue
 from ....core.saveio.records import instance_leaf
 from ...spatial.nodes.selectors import split_spec
+from ...spatial.nodes.table import NodeRecord
 from ..solver.scenario import select_for
+from .views import ProvenanceRecord, SelectorRecord
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ...world.state import WorldState
-    from .store import Plan
+    from .store import StoredPlan
 
 __all__ = [
     "LEAF_CAP",
@@ -42,7 +45,7 @@ LEAF_CAP = 250
 NAME_CAP = 5
 
 
-def _bbox(nodes: list[dict]) -> list[float] | None:
+def _bbox(nodes: list[NodeRecord]) -> list[float] | None:
     """The box these nodes occupy, in METRES -- the form ``bbox:`` selectors take."""
     if not nodes:
         return None
@@ -51,7 +54,7 @@ def _bbox(nodes: list[dict]) -> list[float] | None:
     return [round(min(xs), 2), round(min(ys), 2), round(max(xs), 2), round(max(ys), 2)]
 
 
-def _entry(selector: str, nodes: list[dict]) -> dict:
+def _entry(selector: str, nodes: list[NodeRecord]) -> SelectorRecord:
     leaves = sorted(instance_leaf(n["instance"]) for n in nodes)
     return {
         "selector": selector,
@@ -62,7 +65,7 @@ def _entry(selector: str, nodes: list[dict]) -> dict:
     }
 
 
-def record(game: GameData, state: WorldState, sources: list[str] | None) -> dict:
+def record(game: GameData, state: WorldState, sources: list[str] | None) -> ProvenanceRecord:
     """Resolve ``sources`` selector by selector, as a block to store with the plan.
 
     A spec with no location selector is the whole map, so the block is recorded EMPTY
@@ -70,7 +73,7 @@ def record(game: GameData, state: WorldState, sources: list[str] | None) -> dict
     that predates the check. Filters alone do narrow the map and get their own entry.
     """
     locations, filters = split_spec(sources)
-    entries = []
+    entries: list[SelectorRecord] = []
     if locations:
         for selector in locations:
             sel = select_for(game, state, [selector, *filters])
@@ -81,9 +84,33 @@ def record(game: GameData, state: WorldState, sources: list[str] | None) -> dict
     return {"schema": PROVENANCE_SCHEMA, "selectors": entries}
 
 
-def recorded(plan: Plan) -> bool:
+def recorded(plan: StoredPlan) -> bool:
     """Whether this plan carries a resolved-set record at all."""
-    return isinstance(plan.provenance, dict) and "selectors" in plan.provenance
+    return "selectors" in (plan.provenance or {})
+
+
+def _plan_sources(plan: StoredPlan) -> list[str] | None:
+    """The plan's ``sources`` selectors, or None when it plans over the whole map."""
+    value = plan.kwargs().get("sources")
+    if not isinstance(value, list):
+        return None
+    members: list[object] = value
+    return [str(m) for m in members]
+
+
+def _saved_entries(provenance: JsonObject) -> list[JsonObject]:
+    entries = provenance.get("selectors")
+    return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
+
+
+def _whole(value: JsonValue) -> int:
+    return int(value) if isinstance(value, int | float | str) else 0
+
+
+def _saved_box(value: JsonValue) -> list[float] | None:
+    if not isinstance(value, list):
+        return None
+    return [float(v) for v in value if isinstance(v, int | float)]
 
 
 @dataclass(frozen=True)
@@ -108,7 +135,7 @@ class SelectorDrift:
         return "bbox:" + ",".join(f"{v:g}" for v in self.bbox)
 
 
-def compare(game: GameData, state: WorldState, plan: Plan) -> list[SelectorDrift]:
+def compare(game: GameData, state: WorldState, plan: StoredPlan) -> list[SelectorDrift]:
     """Re-resolve every recorded selector; report only the ones that moved.
 
     Empty means "nothing to say" -- either nothing moved, or the plan carries no record.
@@ -119,11 +146,11 @@ def compare(game: GameData, state: WorldState, plan: Plan) -> list[SelectorDrift
     # Re-resolved by the very function that wrote the record: halves that disagree about
     # how a spec is split would report drift that is really a refactor.
     fresh_by_selector = {
-        e["selector"]: e for e in record(game, state, plan.kwargs().get("sources"))["selectors"]
+        e["selector"]: e for e in record(game, state, _plan_sources(plan))["selectors"]
     }
     out: list[SelectorDrift] = []
-    for entry in plan.provenance.get("selectors") or ():
-        selector = entry.get("selector") or ""
+    for entry in _saved_entries(plan.provenance):
+        selector = str(entry.get("selector") or "")
         fresh = fresh_by_selector.get(selector)
         if fresh is None:
             # The plan's own `sources` no longer contain this selector, so the ARGUMENTS
@@ -131,17 +158,18 @@ def compare(game: GameData, state: WorldState, plan: Plan) -> list[SelectorDrift
             continue
         if fresh["hash"] == entry.get("hash") and fresh["count"] == entry.get("count"):
             continue
-        was = list(entry.get("nodes") or ())
+        nodes = entry.get("nodes")
+        was = [str(n) for n in nodes] if isinstance(nodes, list) else []
         named = len(was) == entry.get("count") and len(fresh["nodes"]) == fresh["count"]
         out.append(
             SelectorDrift(
                 selector=selector,
-                then=int(entry.get("count") or 0),
+                then=_whole(entry.get("count") or 0),
                 now=fresh["count"],
                 gone=tuple(sorted(set(was) - set(fresh["nodes"]))) if named else (),
                 appeared=tuple(sorted(set(fresh["nodes"]) - set(was))) if named else (),
                 named=bool(named),
-                bbox=entry.get("bbox"),
+                bbox=_saved_box(entry.get("bbox")),
             )
         )
     return out
@@ -155,7 +183,7 @@ def _named(leaves: tuple[str, ...]) -> str:
     return f"{shown} (+{extra} more)" if extra > 0 else shown
 
 
-def notes(game: GameData, state: WorldState, plan: Plan) -> list[str]:
+def notes(game: GameData, state: WorldState, plan: StoredPlan) -> list[str]:
     """What to tell the reader on a recall. Empty when the field has not moved."""
     if not recorded(plan):
         return _unrecorded_notes(game, state, plan)
@@ -187,13 +215,13 @@ def notes(game: GameData, state: WorldState, plan: Plan) -> list[str]:
     return out
 
 
-def _unrecorded_notes(game: GameData, state: WorldState, plan: Plan) -> list[str]:
+def _unrecorded_notes(game: GameData, state: WorldState, plan: StoredPlan) -> list[str]:
     """The degraded path: no record, so say that, and say what the selectors mean NOW.
 
     Today's resolution is stated as a bbox because a reader can compare a box to a memory
     and cannot compare a hash.
     """
-    fresh = record(game, state, plan.kwargs().get("sources"))["selectors"]
+    fresh = record(game, state, _plan_sources(plan))["selectors"]
     if not fresh:
         return []  # whole map: no selector that could have changed meaning
     out = [

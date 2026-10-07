@@ -8,12 +8,14 @@ met a null in a field declared ``float`` would fail the whole reply. The handler
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....domain.factories import floors as ffloors
 from .....domain.factories import select as fselect
+from .....domain.factories.views import FloorCounts
 from .....domain.world.state import WorldState
 from ... import terrain
 from ...serial import cm_to_m, error_response, point_m, require_world, xyz_m
@@ -94,19 +96,6 @@ class FloorPlacement(TypedDict):
     y_m: float | None
     z_m: float | None
     above_terrain_m: float | None
-
-
-class FloorCounts(TypedDict):
-    """The shape of the answer before the rows. Nested; see ``FloorReport.counts``."""
-
-    platforms: int
-    bands: int
-    runs: int
-    violations: int
-    #: Keyed by ``ffloors.GROUPS`` and ``ffloors.MEMBERSHIPS``: open maps, so the domain's
-    #: two vocabularies are not restated here.
-    placements: dict[str, int]
-    membership: dict[str, int]
 
 
 class FloorRules(TypedDict):

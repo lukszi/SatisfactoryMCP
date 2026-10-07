@@ -9,13 +9,15 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....domain.factories import candidates
 from .....domain.factories.health import ACTIONABLE, OK, STATES
 from .....domain.factories.sweep import sweep
+from .....domain.factories.views import StateCount
 from .....domain.world.state import WorldState
 from ...serial import bbox_m, cm_to_m, point_m, require_world
 
@@ -24,11 +26,6 @@ __all__ = ["router"]
 router = APIRouter(prefix="/api")
 
 WORST_PER_FACTORY = 8
-
-
-class StateCount(TypedDict):
-    state: str
-    count: int
 
 
 class MachineIssue(TypedDict):

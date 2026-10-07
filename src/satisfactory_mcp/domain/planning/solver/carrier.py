@@ -63,7 +63,7 @@ class TierChoice:
     asked_belt: bool = False
     asked_pipe: bool = False
     #: Populated only when a named tier does not exist; everything above is then unset.
-    errors: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list[str])
 
 
 def resolve_tiers(game: GameData, st: WorldState, belt_tier: str, pipe_tier: str) -> TierChoice:

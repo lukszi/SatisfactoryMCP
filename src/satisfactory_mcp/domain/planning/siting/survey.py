@@ -10,6 +10,7 @@ from .record import Siting
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ...world.state import WorldState
+    from ..solver.model import ProcessRow
 
 
 @dataclass(frozen=True)
@@ -37,7 +38,9 @@ class SiteSurvey:
     standing_total: int
 
 
-def survey(game: GameData, st: WorldState, sit: Siting, processes: list[dict]) -> SiteSurvey | None:
+def survey(
+    game: GameData, st: WorldState, sit: Siting, processes: list[ProcessRow]
+) -> SiteSurvey | None:
     """Count what stands inside the footprint, per building class, against the plan.
 
     ``None`` when the siting has no footprint: an origin alone marks a spot but bounds

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
+from .....core.gamedata.model import GameData
 from .....domain.planning.layout.service import LayoutReport, build_layout_report
+from .....domain.planning.progress.diff import solution_of
 from .....domain.planning.readout import payback, summary
 from .....domain.planning.solver.carrier import resolve_tiers
+from .....domain.planning.solver.prepare import PreparedPlan
+from .....domain.world.state import WorldState
 from .....presenters.text.layout import LAYOUT_VIEWS, render_layout
 from ... import app
 from ...params import (
@@ -27,9 +30,9 @@ from ._plan_log import journal_view
 from ._requests import power_refusal, recall_request, resolve_row_overclock, solve_args
 
 
-def _payback_notes(g, st, prepared) -> list[str]:
+def _payback_notes(g: GameData, st: WorldState, prepared: PreparedPlan) -> list[str]:
     """What the payback horizon would trade on this solve, as notes."""
-    sol = prepared.solution
+    sol = solution_of(prepared)
     draw = sum(-p["mw"] for p in sol.processes if p["mw"] < 0)
     view = summary.power_view(g, st, prepared.request, sol, round(sol.machines_total), draw)
     return payback.trade_text(view)
@@ -89,7 +92,7 @@ def plan_layout(
         str | None,
         Field(description="fit the layout against this factory's existing platform"),
     ] = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Turn a plan into a buildable schematic: blocks, buses and floors.
 
@@ -113,7 +116,7 @@ def plan_layout(
     show = wanted
     st = app.load_world(save, world, as_of)
 
-    row_overclock, refused = resolve_row_overclock(row_overclock)
+    row_choices, refused = resolve_row_overclock(row_overclock)
     if refused:
         return refused
     tiers = resolve_tiers(g, st, belt_tier, pipe_tier)
@@ -149,7 +152,7 @@ def plan_layout(
         payback_hours=payback_hours,
         overclock_last=overclock_last,
         power_price=power_price,
-        row_overclock=row_overclock,
+        row_overclock=row_choices,
     )
     if refused := power_refusal(supplied):
         return refused

@@ -12,7 +12,7 @@ import math
 from ....core.gamedata.model import GameData
 from ..solver.carrier import carrier_for
 from ..solver.graph import chain_depth
-from ..solver.model import MW, Solution
+from ..solver.model import MW, ProcessRow, Solution
 from .head import order_stages_by_head, pump_total
 from .model import (
     FLOOR_HEADROOM_M,
@@ -28,7 +28,7 @@ from .model import (
 __all__ = ["build_layout"]
 
 
-def _split_process(game: GameData, proc: dict, belt_ipm: float, pipe_m3min: float) -> int:
+def _split_process(game: GameData, proc: ProcessRow, belt_ipm: float, pipe_m3min: float) -> int:
     """How many parallel manifolds this process needs.
 
     The binding item wins: if crude needs 3 pipes and the output needs 1 belt, the

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....domain.collectibles.service import collect_view
@@ -36,7 +35,7 @@ def collected_from_world(
     as_of: AsOf = None,
     limit: Limit = 25,
     offset: int = 0,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Map collectibles: how many exist, how many you took, what is left and what is closest.
 

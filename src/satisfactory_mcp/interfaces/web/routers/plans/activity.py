@@ -8,12 +8,14 @@ operation_ids (wire rule 1 of docs/web-wire.md).
 from __future__ import annotations
 
 import time
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired
 
 from fastapi import APIRouter, Body, Request
+from typing_extensions import TypedDict
 
 from .....domain.planning.stored.planlog import PlanLog
 from .....domain.session import focus, journal
+from .....domain.session.views import JournalEntry
 from ...serial import ActorBody, actor_json, error_response, plan_log, require_world
 
 __all__ = ["router"]
@@ -104,7 +106,7 @@ def _commit_rows(log: PlanLog, since: float) -> list[ActivityRow]:
     return rows
 
 
-def _entry_row(entry: dict, names: dict[str, str]) -> ActivityRow:
+def _entry_row(entry: JournalEntry, names: dict[str, str]) -> ActivityRow:
     plan = entry.get("plan")
     return {
         "id": str(entry.get("id") or ""),

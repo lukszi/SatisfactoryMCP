@@ -8,12 +8,11 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-import numpy as np
-
+from ....core.arrays import F64Grid
 from ....core.gamedata.model import GameData
 from .carrier import carrier_for
 from .lp import Columns
-from .model import NEGLIGIBLE_IPM, Process, Scenario
+from .model import NEGLIGIBLE_IPM, LogisticsRow, PaybackPoint, Process, ProcessRow, Scenario
 from .overclock import (
     SpreadableRow,
     horizon_readout,
@@ -22,6 +21,7 @@ from .overclock import (
     payback_curve,
     spreadable,
 )
+from .views import OverclockOption, OverclockPick
 
 __all__ = ["BuildRows", "binding_constraints", "build_rows", "logistics", "solution_warnings"]
 
@@ -32,12 +32,12 @@ _EPS = 1e-7
 class BuildRows:
     """The rows a solve prints, and the totals and readouts that come with them."""
 
-    rows: list[dict] = field(default_factory=list)
+    rows: list[ProcessRow] = field(default_factory=list[ProcessRow])
     machines_total: float = 0.0
     #: ``(label, largest rate)`` of rows left out as negligible; still counted in the total.
-    dropped: list[tuple[str, float]] = field(default_factory=list)
-    payback_curve: list[dict] = field(default_factory=list)
-    overclock: dict = field(default_factory=dict)
+    dropped: list[tuple[str, float]] = field(default_factory=list[tuple[str, float]])
+    payback_curve: list[PaybackPoint] = field(default_factory=list[PaybackPoint])
+    overclock: OverclockPick | None = None
 
 
 class _RowWriter:
@@ -45,19 +45,19 @@ class _RowWriter:
 
     def __init__(self, game: GameData) -> None:
         self.game = game
-        self.rows: list[dict] = []
+        self.rows: list[ProcessRow] = []
         self.machines_total = 0.0
 
     def write(
         self,
         process: Process,
-        built: float,
+        built: int,
         effective_clock: float,
         equivalents: float,
         rate_scale: float,
         listed: bool = True,
         last_clock: float | None = None,
-        option: dict | None = None,
+        option: OverclockOption | None = None,
     ) -> None:
         """One row: ``equivalents`` is the machine count, ``rate_scale`` what scales the rates."""
         exact_mw = built * process.mw_at_full * (effective_clock**process.power_exponent)
@@ -67,13 +67,13 @@ class _RowWriter:
         if not listed:
             return
         buildings = self.game.buildings
-        row = {
+        row: ProcessRow = {
             "pid": process.pid,
             "kind": process.kind,
             "label": process.label,
             "building": buildings[process.building].name
             if process.building in buildings
-            else process.building,
+            else process.building or "",
             "building_id": process.building,
             "recipe": process.recipe,
             "purity": process.purity,
@@ -98,7 +98,7 @@ class _RowWriter:
 
 
 def pool_extractor_modes(
-    processes: list[Process], x: np.ndarray, columns: Columns
+    processes: list[Process], x: F64Grid, columns: Columns
 ) -> dict[str, tuple[float, float]]:
     """Per extractor group, ``(machines, node-units)`` summed over its clock modes (§8.2c)."""
     pooled: dict[str, tuple[float, float]] = {}
@@ -115,7 +115,7 @@ def _fixed_draw(process: Process, built: int, units: float) -> float:
 
 
 def build_rows(
-    scenario: Scenario, processes: list[Process], x: np.ndarray, columns: Columns
+    scenario: Scenario, processes: list[Process], x: F64Grid, columns: Columns
 ) -> BuildRows:
     """Whole machines at a derived clock per column, extractor modes folded, spreadable rows
     read out at the scenario's horizon."""
@@ -188,10 +188,10 @@ def build_rows(
 
 
 def binding_constraints(
-    scenario: Scenario, processes: list[Process], x: np.ndarray, columns: Columns
+    scenario: Scenario, processes: list[Process], x: F64Grid, columns: Columns
 ) -> list[str]:
     """Node caps and raw caps the solve used up, a clock-mode group tested as one (§8.2c)."""
-    binding = []
+    binding: list[str] = []
     group_used: dict[str, float] = {}
     group_cap: dict[str, float] = {}
     for i, process in enumerate(processes):
@@ -217,10 +217,10 @@ def binding_constraints(
 def logistics(
     scenario: Scenario,
     processes: list[Process],
-    x: np.ndarray,
+    x: F64Grid,
     columns: Columns,
     raw_used: dict[str, float] | None = None,
-) -> list[dict]:
+) -> list[LogisticsRow]:
     """Each item's flow and the belt or pipe lines it needs; reported, never constrained (§8.4)."""
     moved: dict[str, float] = dict(raw_used or {})
     for i, process in enumerate(processes):
@@ -231,7 +231,7 @@ def logistics(
             if rate > 0:
                 moved[item] = moved.get(item, 0.0) + rate * count
 
-    out: list[dict] = []
+    out: list[LogisticsRow] = []
     for item, rate in sorted(moved.items(), key=lambda kv: -kv[1]):
         if rate <= _EPS:
             continue
@@ -254,10 +254,10 @@ def logistics(
 def solution_warnings(
     scenario: Scenario,
     processes: list[Process],
-    x: np.ndarray,
+    x: F64Grid,
     columns: Columns,
     dropped: list[tuple[str, float]],
-    flows: list[dict],
+    flows: list[LogisticsRow],
     sunk: dict[str, float],
     grid_draw: float,
 ) -> list[str]:

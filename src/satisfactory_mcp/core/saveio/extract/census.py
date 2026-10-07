@@ -8,7 +8,10 @@ world, so each guard counts its drop and the censuses here say so.
 from __future__ import annotations
 
 import collections
+from collections.abc import Container
+from typing import Final, TypeAlias
 
+from ..schema import Projection
 from .registers import DISMISSED_FACTORY_CLASSES
 
 __all__ = [
@@ -22,7 +25,7 @@ __all__ = [
 ]
 
 #: What a run threw away, keyed by a sentence that reads with a count in front of it.
-Drops = collections.Counter
+Drops: TypeAlias = collections.Counter[str]
 
 #: A broken parser produces many reasons at once, and the first few say so as well as all.
 DROP_REASONS_SHOWN = 6
@@ -34,7 +37,14 @@ CHAIN_NOTES_SHOWN = 5
 UNFILED_CLASSES_SHOWN = 8
 
 #: The record lists carrying a placement yaw.
-_PLACED_RECORD_KEYS = ("machines", "extractors", "generators", "attachments", "storage", "crates")
+_PLACED_RECORD_KEYS: Final = (
+    "machines",
+    "extractors",
+    "generators",
+    "attachments",
+    "storage",
+    "crates",
+)
 
 
 def drop_notes(drops: Drops) -> list[str]:
@@ -46,7 +56,7 @@ def drop_notes(drops: Drops) -> list[str]:
     return notes
 
 
-def unfiled_notes(unfiled: dict[str, str], factoryish) -> list[str]:
+def unfiled_notes(unfiled: dict[str, str], factoryish: Container[str]) -> list[str]:
     """The buildings this run recognised as production and filed nowhere.
 
     ``factoryish`` is every instanceName carrying a productivity monitor or a machine buffer,
@@ -72,7 +82,7 @@ def unfiled_notes(unfiled: dict[str, str], factoryish) -> list[str]:
     ]
 
 
-def null_yaw_note(projection: dict) -> list[str]:
+def null_yaw_note(projection: Projection) -> list[str]:
     """The placements whose rotation would not read, counted off the finished payload.
 
     Off the payload rather than inside ``yaw_of``, so the number is exactly the null yaws a

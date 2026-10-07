@@ -9,12 +9,13 @@ from __future__ import annotations
 import json
 import os
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TypeVar
 
 from . import atomic
+from .jsontypes import JsonObject, JsonValue
 
 __all__ = ["LockTimeout", "held", "update_versioned_json"]
 
@@ -51,7 +52,7 @@ else:
 
 
 @contextmanager
-def held(target: Path, timeout: float = TIMEOUT_S) -> Iterator[None]:
+def held(target: Path, timeout: float = TIMEOUT_S) -> Generator[None, None, None]:
     """Hold the lock for ``target`` for the duration of the block, or raise ``LockTimeout``."""
     lock = target.with_name(target.name + ".lock")
     lock.parent.mkdir(parents=True, exist_ok=True)
@@ -77,8 +78,17 @@ def held(target: Path, timeout: float = TIMEOUT_S) -> Iterator[None]:
         os.close(fd)
 
 
+def _next_version(version: JsonValue) -> JsonValue:
+    """``version + 1``, or the ``TypeError`` that addition raises on a non-number."""
+    if isinstance(version, (int, float)):
+        return version + 1
+    raise TypeError(f"a file version is a {type(version).__name__}, not a number")
+
+
 def update_versioned_json(
-    path: Path, read: Callable[[], dict], change: Callable[[dict], tuple[T, bool]]
+    path: Path,
+    read: Callable[[], JsonObject],
+    change: Callable[[JsonObject], tuple[T, bool]],
 ) -> T:
     """Run ``change(read()) -> (result, dirty)`` under ``path``'s lock; when dirty, bump
     ``version`` and rewrite the file atomically. Returns ``result``."""
@@ -87,6 +97,6 @@ def update_versioned_json(
         data = read()
         result, dirty = change(data)
         if dirty:
-            data["version"] += 1
+            data["version"] = _next_version(data["version"])
             atomic.write_text(path, json.dumps(data, ensure_ascii=False))
     return result

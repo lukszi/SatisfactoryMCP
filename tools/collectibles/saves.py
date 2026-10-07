@@ -7,10 +7,12 @@ import collections
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TypeGuard
 
 from pioneersav import (
     FIRST_MODERN_BODY,
     ActorHeader,
+    ObjectSlice,
     ParseError,
     decompress_body,
     read_body,
@@ -53,18 +55,22 @@ class SaveFacts:
     #: (cell, path leaf) for every map actor this save records as gone.
     destroyed: set[ActorKey]
     #: Cells the save has a level record for, and cells the grid table declares.
-    recorded_cells: set[str] = field(default_factory=set)
-    declared_cells: set[str] = field(default_factory=set)
+    recorded_cells: set[str] = field(default_factory=set[str])
+    declared_cells: set[str] = field(default_factory=set[str])
     #: Every live actor of ANY map-placed class; kept for the newest save only.
-    live_any_class: set[ActorKey] = field(default_factory=set)
+    live_any_class: set[ActorKey] = field(default_factory=set[ActorKey])
     #: flora class -> how many live records of it this save holds.
-    flora_records: collections.Counter = field(default_factory=collections.Counter)
+    flora_records: collections.Counter[str] = field(default_factory=collections.Counter[str])
     #: (flora class, property) -> how many records carry that property at all.
-    flora_property_records: collections.Counter = field(default_factory=collections.Counter)
+    flora_property_records: collections.Counter[tuple[str, str]] = field(
+        default_factory=collections.Counter[tuple[str, str]]
+    )
     #: (flora class, property, value) -> count, for the properties in RESPAWN_PROPERTIES.
-    flora_values: collections.Counter = field(default_factory=collections.Counter)
+    flora_values: collections.Counter[tuple[str, str, int]] = field(
+        default_factory=collections.Counter[tuple[str, str, int]]
+    )
     #: The series whose monotonicity is the respawn test.
-    flora_counter: FloraCounter = field(default_factory=dict)
+    flora_counter: FloraCounter = field(default_factory=dict[ActorKey, tuple[str, int]])
     #: Flora records whose property block would not decode, so missing is not unreadable.
     flora_unreadable: int = 0
 
@@ -131,22 +137,27 @@ def read_save_facts(path: Path, map_classes: set[str], keep_all_classes: bool) -
                 looted = None
                 if cls == DROP_POD_CLASS and properties is not None:
                     looted = bool(properties.get(LOOTED_PROPERTY))
-                facts.live[key] = (cls, tuple(header.position), looted)
+                facts.live[key] = (cls, header.position, looted)
     return facts
 
 
-def _read_properties(inflated: bytes, slot, save_version: int) -> dict | None:
+def _read_properties(
+    inflated: bytes, slot: ObjectSlice, save_version: int
+) -> dict[str, object] | None:
     try:
-        return dict(read_object(inflated, slot, actor=True, save_version=save_version).properties)
+        parsed = read_object(inflated, slot, actor=True, save_version=save_version)
     except ParseError:
         return None
+    return {name: value for name, value in parsed.properties}
 
 
-def _is_count(value) -> bool:
+def _is_count(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _record_flora(facts: SaveFacts, key: ActorKey, cls: str, properties: dict | None) -> None:
+def _record_flora(
+    facts: SaveFacts, key: ActorKey, cls: str, properties: dict[str, object] | None
+) -> None:
     """Tally one probed plant's respawn properties: presence, values and the counter."""
     facts.flora_records[cls] += 1
     if properties is None:

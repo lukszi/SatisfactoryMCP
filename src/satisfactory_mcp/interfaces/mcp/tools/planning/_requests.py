@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from .....domain.planning.stored.plan_args import InvalidOp, PlanArgs
 from .....domain.planning.stored.recall import PLAN_DEFAULTS, expand_plan_pin, recall_plan
+from .....domain.planning.stored.store import Plan
+from .....domain.world.state import WorldState
 from ... import app
 
 #: The power-horizon arguments, checked together before anything is solved.
@@ -17,7 +20,7 @@ class RecalledRequest:
     """A call's solve arguments, laid over the stored plan it named, if any."""
 
     plan: str | None
-    kwargs: dict
+    kwargs: dict[str, object]
     name: str
     notes: list[str]
     objective: str
@@ -27,27 +30,27 @@ def refusal_text(exc: Exception) -> str:
     return exc.args[0] if isinstance(exc, KeyError) and exc.args else str(exc)
 
 
-def plan_pin(st, plan: str | None) -> tuple[str | None, list[str]]:
+def plan_pin(st: WorldState, plan: str | None) -> tuple[str | None, list[str]]:
     """``plan`` with a plan pin swapped for its key, and the echo. Raises ``KeyError``."""
     found, echo = expand_plan_pin(st, plan)
     return found, [echo] if echo else []
 
 
-def pinned_plan_name(st, name: str) -> str:
+def pinned_plan_name(st: WorldState, name: str) -> str:
     """``name`` with a plan pin swapped for its key; a ``Refusal`` for a pin that is not one."""
     try:
-        found, _echo = plan_pin(st, name)
+        found, _echo = expand_plan_pin(st, name)
     except KeyError as exc:
         raise app.Refusal(f"! {exc.args[0]}") from None
     return found
 
 
-def unknown_plan(st, name: str) -> app.Refusal:
+def unknown_plan(st: WorldState, name: str) -> app.Refusal:
     known = ", ".join(x.name for x in st.plans.plans) or "(none)"
     return app.Refusal(f"! no saved plan named {name!r}. Saved: {known}")
 
 
-def find_stored_plan(st, name: str):
+def find_stored_plan(st: WorldState, name: str) -> Plan:
     """The stored plan ``name`` or its pin names; a ``Refusal`` listing the saved ones."""
     name = pinned_plan_name(st, name)
     stored = st.plans.find(name)
@@ -56,14 +59,16 @@ def find_stored_plan(st, name: str):
     return stored
 
 
-def solve_args(**given) -> dict:
+def solve_args(**given: object) -> dict[str, object]:
     """The solve arguments a call supplied, under the names a stored plan keeps them by."""
     unknown = set(given) - set(PLAN_DEFAULTS)
     assert not unknown, f"not stored plan arguments: {sorted(unknown)}"
     return given
 
 
-def recall_request(st, plan: str | None, supplied: dict) -> RecalledRequest:
+def recall_request(
+    st: WorldState, plan: str | None, supplied: Mapping[str, object]
+) -> RecalledRequest:
     """``supplied`` laid over the stored plan ``plan`` names; a ``Refusal`` for an unknown one."""
     try:
         plan, pin_notes = plan_pin(st, plan)
@@ -75,7 +80,7 @@ def recall_request(st, plan: str | None, supplied: dict) -> RecalledRequest:
         kwargs=kwargs,
         name=name,
         notes=[*pin_notes, *notes],
-        objective=kwargs.get("objective") or supplied["objective"],
+        objective=str(kwargs.get("objective") or supplied["objective"]),
     )
 
 
@@ -84,7 +89,7 @@ def resolve_required(entries: list[str] | None) -> tuple[list[str] | None, str]:
     if not entries:
         return None, ""
     recipes = app.game().recipes
-    out = []
+    out: list[str] = []
     for raw in entries:
         text = str(raw).strip()
         if text in recipes:
@@ -105,11 +110,13 @@ def resolve_required(entries: list[str] | None) -> tuple[list[str] | None, str]:
     return out, ""
 
 
-def resolve_row_overclock(rows: dict | None) -> tuple[dict | None, str]:
+def resolve_row_overclock(
+    rows: Mapping[str, str | None] | None,
+) -> tuple[Mapping[str, str | None] | None, str]:
     """``row_overclock`` keyed by recipe class id, as ``required`` resolves, or a refusal."""
     if not rows:
         return rows, ""
-    out = {}
+    out: dict[str, str | None] = {}
     for name, choice in rows.items():
         if choice not in ("last", "spread", "default", None):
             return None, (
@@ -119,6 +126,7 @@ def resolve_row_overclock(rows: dict | None) -> tuple[dict | None, str]:
         ids, refused = resolve_required([name])
         if refused:
             return None, refused.replace("! required:", "! row_overclock:", 1)
+        assert ids is not None, "a name either resolves or is refused"
         out[ids[0]] = choice
     return out, ""
 
@@ -142,7 +150,7 @@ def factory_value(text: str | None) -> str | None:
     return _FACTORY_WORDS.get(text.strip().casefold(), text.strip())
 
 
-def power_refusal(supplied: dict) -> str:
+def power_refusal(supplied: Mapping[str, object]) -> str:
     """Why the power-horizon arguments cannot be stored, or ''."""
     try:
         PlanArgs.from_dict({k: supplied.get(k) for k in POWER_ARG_KEYS})

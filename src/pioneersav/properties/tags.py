@@ -63,14 +63,14 @@ class TypeName:
     """
 
     name: str
-    params: list[TypeName] = field(default_factory=list)
+    params: list[TypeName] = field(default_factory=list["TypeName"])
 
     @property
     def inner(self) -> TypeName:
         """First parameter, or a nameless one, which the readers skip as an unknown type."""
         return self.params[0] if self.params else TypeName("")
 
-    def flat(self) -> list:
+    def flat(self) -> list[str | int]:
         """The tree as ``[name, paramCount, ...]`` in prefix order, which reads back into it."""
         if not self.params:
             return [self.name, 0]

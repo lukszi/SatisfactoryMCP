@@ -9,9 +9,10 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....domain.planning import siting as planning_siting
 from .....domain.planning.progress.diff_service import plan_progress

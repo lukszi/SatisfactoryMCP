@@ -6,9 +6,10 @@ module shadows the stdlib's name only inside this package. Handler names are ope
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
+from typing_extensions import TypedDict
 
 from .....domain.spatial import elevation as spatial_elevation
 from .....domain.spatial import geo, surroundings
@@ -211,7 +212,7 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
     }
 
 
-def _nearest_json(node: dict, game) -> NearestNode:
+def _nearest_json(node: spatial_nodes.MeasuredNode, game) -> NearestNode:
     return {
         **node_identity(node, game),
         "kind": node["kind"],

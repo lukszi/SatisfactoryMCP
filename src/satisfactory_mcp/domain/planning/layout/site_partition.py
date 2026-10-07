@@ -8,11 +8,16 @@ exports; per-machine assignment would break "a machine is in one place".
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ....core.gamedata.model import GameData
 from ..readout.slice import PlanSlice, slice_of
 from ..solver.carrier import carrier_for
+from ..solver.model import ProcessRow
 from ..stored.plan_args import is_power
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ..solver.prepare import PreparedPlan
 
 __all__ = ["Interface", "Site", "SitePlan", "claim_processes", "partition"]
 
@@ -23,7 +28,7 @@ _EPS = 1e-6
 @dataclass
 class Site:
     name: str
-    patterns: list[str] = field(default_factory=list)
+    patterns: list[str] = field(default_factory=list[str])
     slice: PlanSlice | None = None
 
     @property
@@ -49,29 +54,29 @@ class Interface:
 
 @dataclass
 class SitePlan:
-    sites: list[Site] = field(default_factory=list)
-    interfaces: list[Interface] = field(default_factory=list)
+    sites: list[Site] = field(default_factory=list[Site])
+    interfaces: list[Interface] = field(default_factory=list[Interface])
     #: Processes matching no site. Named, never folded into "external": an unassigned
     #: refinery is exactly how a supplier goes missing from a hand reconciliation.
-    unassigned: list[dict] = field(default_factory=list)
+    unassigned: list[ProcessRow] = field(default_factory=list[ProcessRow])
     #: Processes matching more than one site, with the sites that claimed them. A
     #: machine cannot be in two places, and first-wins would hide the ambiguity.
-    contested: list[tuple[str, list[str]]] = field(default_factory=list)
+    contested: list[tuple[str, list[str]]] = field(default_factory=list[tuple[str, list[str]]])
     #: Items some site consumes that no site produces and no extractor supplies.
-    unsupplied: list[tuple[str, str]] = field(default_factory=list)
+    unsupplied: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
     #: Declared sites that matched no process at all, and patterns that matched none. A
     #: site silently coming back empty is how a whole building's flows vanish from the
     #: interface table.
-    empty: list[str] = field(default_factory=list)
-    dead_patterns: list[tuple[str, str]] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
+    empty: list[str] = field(default_factory=list[str])
+    dead_patterns: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
+    notes: list[str] = field(default_factory=list[str])
 
     @property
     def ok(self) -> bool:
         return not (self.unassigned or self.contested or self.unsupplied or self.empty)
 
 
-def _matches(proc: dict, pattern: str) -> bool:
+def _matches(proc: ProcessRow, pattern: str) -> bool:
     """Same widening match as ``exclude_recipes``: label, building name, building id, plus
     MW/power for every generator, since power is a product a site can be defined by.
 
@@ -92,7 +97,9 @@ def _matches(proc: dict, pattern: str) -> bool:
     )
 
 
-def claim_processes(processes: list[dict], spec: dict[str, list[str]]) -> dict[str, list[str]]:
+def claim_processes(
+    processes: list[ProcessRow], spec: dict[str, list[str]]
+) -> dict[str, list[str]]:
     """Which sites claim each process: pid -> owner names, in spec order.
 
     The one matching pass, shared by ``partition`` and by the per-site layout: two matchers
@@ -107,7 +114,7 @@ def claim_processes(processes: list[dict], spec: dict[str, list[str]]) -> dict[s
 
 
 def partition(
-    prepared,
+    prepared: PreparedPlan,
     game: GameData,
     spec: dict[str, list[str]],
 ) -> SitePlan:
@@ -117,11 +124,12 @@ def partition(
     against the process label, its building, or its recipe.
     """
     out = SitePlan()
-    if prepared.solution is None:
+    solution = prepared.solution
+    if solution is None:
         out.notes.append("no solved plan to partition")
         return out
 
-    processes = prepared.solution.processes
+    processes = solution.processes
     claims = claim_processes(processes, spec)
     for proc in processes:
         owners = claims[proc["pid"]]

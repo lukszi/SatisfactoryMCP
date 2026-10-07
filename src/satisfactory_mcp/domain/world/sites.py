@@ -6,25 +6,41 @@ three carries state, and the record list is the census's to hand over.
 
 from __future__ import annotations
 
+from typing_extensions import TypedDict
+
 from ...core.saveio.records import instance_leaf
+from ...core.saveio.schema import BuildableRecord
 from ..spatial import geo
 
-__all__ = ["consumer_z", "infra_points", "near_selector", "sites"]
+__all__ = ["BuiltSite", "consumer_z", "infra_points", "near_selector", "sites"]
 
 
-def infra_points(records: list[dict]) -> list[tuple[float, float]]:
+class BuiltSite(TypedDict):
+    """One cluster of built production buildings; ``centroid`` in whole centimetres."""
+
+    centroid: tuple[int, int, int]
+    grid: str
+    direction: str
+    buildings: dict[str, int]
+    count: int
+    diameter_m: int
+    selector: str
+    instances: list[str]
+
+
+def infra_points(records: list[BuildableRecord]) -> list[tuple[float, float]]:
     """XY of every built production building, for distance-to-infrastructure."""
-    return [(r["pos"][0], r["pos"][1]) for r in records if r.get("pos")]
+    return [(pos[0], pos[1]) for r in records if (pos := r.get("pos"))]
 
 
 def consumer_z(
-    records: list[dict], building_ids: tuple[str, ...] = ("Build_OilRefinery_C",)
+    records: list[BuildableRecord], building_ids: tuple[str, ...] = ("Build_OilRefinery_C",)
 ) -> float | None:
     """Mean altitude of a consumer class, for pipe head-lift sign.
 
     Defaults to refineries because that is what a fluid field usually feeds.
     """
-    zs = [r["pos"][2] for r in records if r.get("pos") and r["cls"] in building_ids]
+    zs = [pos[2] for r in records if (pos := r.get("pos")) and r["cls"] in building_ids]
     return sum(zs) / len(zs) if zs else None
 
 
@@ -38,18 +54,18 @@ def near_selector(centroid_cm: tuple[float, ...], diameter_m: float) -> str:
     return f"near:{x_m},{y_m}@{max(50, round(diameter_m * 0.6))}"
 
 
-def sites(records: list[dict], link_m: float = 300.0) -> list[dict]:
+def sites(records: list[BuildableRecord], link_m: float = 300.0) -> list[BuiltSite]:
     """Cluster built production buildings into named-by-content sites.
 
     ``instances`` holds each member's instance leaf, so a caller can say which sites a
     given machine set stands in.
     """
-    placed = [r for r in records if r.get("pos")]
     points = [
-        {"x": r["pos"][0], "y": r["pos"][1], "z": r["pos"][2], "kind": r["cls"], "rec": r}
-        for r in placed
+        {"x": pos[0], "y": pos[1], "z": pos[2], "kind": r["cls"], "rec": r}
+        for r in records
+        if (pos := r.get("pos"))
     ]
-    out = []
+    out: list[BuiltSite] = []
     for c in geo.cluster(points, link_m=link_m):
         counts: dict[str, int] = {}
         for m in c.members:

@@ -13,12 +13,30 @@ this table's own resolution and nothing else. The file publishes a 256 m grid, w
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, NotRequired
+
+from typing_extensions import TypedDict
 
 from ... import config
 from . import geo
+from .geo import PlacedT
 
-__all__ = ["OFF_MAP", "Label", "RegionMap", "load_regions", "region_rows"]
+if TYPE_CHECKING:
+    from .nodes.table import NodeRecord, NodeTable
+
+__all__ = [
+    "OFF_MAP",
+    "Label",
+    "RegionEntry",
+    "RegionMap",
+    "RegionRow",
+    "RegionSummary",
+    "RegionsMeta",
+    "load_regions",
+    "region_rows",
+]
 
 VOID = "."
 
@@ -38,6 +56,66 @@ CONFIDENCE = {
     "b": "boundary",
     "l": "interior",
 }
+
+
+class RegionEntry(TypedDict):
+    """One region of ``data/region_names.json``: its raster letter and extent, centimetres."""
+
+    letter: str
+    bbox: list[float]
+    centroid: list[float]
+    cells: int
+    area_km2: float
+    grid_cells: list[str]
+    areas: list[str]
+
+
+class RegionSummary(RegionEntry):
+    """A region's entry with its name, where it lies, and the anchor ``label_anchor`` finds."""
+
+    name: str
+    grid: str
+    direction: str
+    anchor: tuple[float, float] | None
+
+
+class RegionRow(TypedDict):
+    """One named region and the nodes it holds; ``anchor`` in centimetres."""
+
+    name: str
+    direction: str
+    grid: str
+    anchor: tuple[float, float]
+    area_km2: float
+    nodes: int
+
+
+class RegionsMeta(TypedDict, total=False):
+    """The keys of the file's ``_meta`` block that are read here."""
+
+    accuracy_m: int
+
+
+class _GridMeta(TypedDict):
+    x0: float
+    y0: float
+    cell: float
+    nx: int
+    ny: int
+    fine_cell: NotRequired[float]
+    fine_nx: NotRequired[int]
+    fine_ny: NotRequired[int]
+
+
+class _RegionFile(TypedDict):
+    _meta: NotRequired[RegionsMeta]
+    grid_meta: _GridMeta
+    legend: dict[str, str]
+    region_grid: list[str]
+    confidence_grid: list[str]
+    fine_grid: NotRequired[list[str]]
+    fine_confidence: NotRequired[list[str]]
+    regions: dict[str, RegionEntry]
 
 
 @dataclass(frozen=True)
@@ -65,8 +143,8 @@ class RegionMap:
     grid: list[str]
     confidence: list[str]
     legend: dict[str, str]
-    regions: dict[str, dict]
-    meta: dict
+    regions: dict[str, RegionEntry]
+    meta: RegionsMeta
     x0_cm: float
     y0_cm: float
     cell_cm: float
@@ -130,13 +208,13 @@ class RegionMap:
             return Label(None, "void", accuracy)
         return Label(self.legend.get(letter), CONFIDENCE.get(code, "boundary"), accuracy)
 
-    def label_for_node(self, node: dict) -> Label:
+    def label_for_node(self, node: Mapping[str, object]) -> Label:
         """Name a resource node, which is to say: name where it stands.
 
         A position lookup and nothing else -- no per-node override table, which a map update
         renaming instances would silently strand anyway.
         """
-        return self.label_for(node["x"], node["y"])
+        return self.label_for(*geo.xy_of(node))
 
     @property
     def accuracy_m(self) -> int:
@@ -161,24 +239,26 @@ class RegionMap:
         hits = [k for k in self.regions if query in k.casefold()]
         return hits[0] if len(hits) == 1 else None
 
-    def nodes_in_region(self, nodes: list[dict], name: str) -> list[dict]:
+    def nodes_in_region(self, nodes: Iterable[PlacedT], name: str) -> list[PlacedT]:
         """Nodes whose label matches ``name``."""
         resolved = self.resolve(name)
         if resolved is None:
             return []
         return [n for n in nodes if self.label_for_node(n).name == resolved]
 
-    def summary(self, name: str) -> dict | None:
+    def summary(self, name: str) -> RegionSummary | None:
         resolved = self.resolve(name)
         if resolved is None:
             return None
-        entry = dict(self.regions[resolved])
+        entry = self.regions[resolved]
         cx, cy = entry["centroid"]
-        entry["name"] = resolved
-        entry["grid"] = geo.grid_cell(cx, cy)
-        entry["direction"] = geo.direction_of(cx, cy)
-        entry["anchor"] = self.label_anchor(resolved)
-        return entry
+        return {
+            **entry,
+            "name": resolved,
+            "grid": geo.grid_cell(cx, cy),
+            "direction": geo.direction_of(cx, cy),
+            "anchor": self.label_anchor(resolved),
+        }
 
     def label_anchor(self, name: str) -> tuple[float, float] | None:
         """A point inside a region that provably belongs to it, in centimetres.
@@ -214,7 +294,9 @@ class RegionMap:
         return (cx, cy) if best is None else (best[1], best[2])
 
 
-def region_rows(node_table, resource_id: str | None, rows: list[dict] | None = None) -> list[dict]:
+def region_rows(
+    node_table: NodeTable, resource_id: str | None, rows: Sequence[NodeRecord] | None = None
+) -> list[RegionRow]:
     """One row per named region, busiest first: anchor (cm), direction, grid, area, nodes.
 
     ``rows`` is the node pool counted, the whole table by default; with ``rid`` only that
@@ -224,9 +306,11 @@ def region_rows(node_table, resource_id: str | None, rows: list[dict] | None = N
     pool = rows if rows is not None else node_table.nodes
     if resource_id:
         pool = [n for n in pool if n["resource"] == resource_id]
-    out = []
+    out: list[RegionRow] = []
     for name in region_map.names():
         info = region_map.summary(name)
+        if info is None:
+            continue
         hits = region_map.nodes_in_region(pool, name)
         if resource_id and not hits:
             continue
@@ -257,7 +341,7 @@ def load_regions() -> RegionMap:
     hit = _MAP.get(key)
     if hit is not None:
         return hit
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload: _RegionFile = json.loads(path.read_text(encoding="utf-8"))
     grid_meta = payload["grid_meta"]
     region_map = RegionMap(
         grid=payload["region_grid"],

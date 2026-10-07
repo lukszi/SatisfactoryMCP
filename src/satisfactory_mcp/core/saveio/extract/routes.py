@@ -8,13 +8,35 @@ from __future__ import annotations
 
 import math
 import sys
+from collections.abc import Callable, Iterable, Sequence
+from typing import TypeAlias
 
+from ..schema import BeltsBlock, PipeNetwork, PipesBlock, Point, RouteRow, SplineSpan
 from .census import CHAIN_NOTES_SHOWN, Drops
 from .interning import Interner
-from .parser import PARSE_ERROR
-from .readers import ref_path, struct_fields
+from .parser import PARSE_ERROR, ParsedObject, SaveValue
+from .readers import as_sequence, ref_path, struct_fields, to_float
 
-__all__ = ["TANGENT_EPS_CM", "belts", "bulge", "conveyor_class", "pipes", "spans"]
+__all__ = [
+    "TANGENT_EPS_CM",
+    "ChainActor",
+    "HeldNetwork",
+    "PipeActor",
+    "belts",
+    "bulge",
+    "conveyor_class",
+    "pipes",
+    "spans",
+]
+
+#: ``(actorPosition, chainActor)`` per conveyor chain.
+ChainActor: TypeAlias = tuple[Sequence[float] | None, ParsedObject]
+#: ``(class, instanceName, actorPosition, mSplineData)`` per pipe.
+PipeActor: TypeAlias = tuple[str, str, Sequence[float] | None, SaveValue]
+#: ``(mPipeNetworkID, fluidClass, [memberPath, ...])`` per pipe network.
+HeldNetwork: TypeAlias = tuple[SaveValue, str | None, list[str | None]]
+#: A spline point as read: ``(location, arriveTangent, leaveTangent)``.
+_RawPoint: TypeAlias = tuple[SaveValue, SaveValue, SaveValue]
 
 #: How far a span may leave its chord, in centimetres, before its tangents are carried: the
 #: control points' own whole-centimetre resolution (§6.16).
@@ -30,7 +52,9 @@ def _length(x: float, y: float, z: float) -> float:
     return math.sqrt(x * x + y * y + z * z)
 
 
-def bulge(p0: list, m0: list, p1: list, m1: list) -> float:
+def bulge(
+    p0: Sequence[float], m0: Sequence[float], p1: Sequence[float], m1: Sequence[float]
+) -> float:
     """An UPPER BOUND, in centimetres, on how far a cubic Hermite span leaves its own chord.
 
     It may only overstate: overstating costs bytes, understating flattens a real bend. The
@@ -76,13 +100,15 @@ def bulge(p0: list, m0: list, p1: list, m1: list) -> float:
     return _HERMITE_PEAK * across + beyond
 
 
-def spans(points: list, tangents: list) -> list:
+def spans(
+    points: list[Point], tangents: list[tuple[list[int], list[int]]]
+) -> list[list[SplineSpan]]:
     """The curve column for one route: ``[[...]]`` to splat onto the row, ``[]`` if straight.
 
     One entry per span, ``0`` where the span is flat by `bulge`; a route with no bend gets no
     column at all, so its row stays byte-identical to schema 14's.
     """
-    columns: list = []
+    columns: list[SplineSpan] = []
     curved = False
     for index in range(len(points) - 1):
         leave, arrive = tangents[index][1], tangents[index + 1][0]
@@ -94,16 +120,22 @@ def spans(points: list, tangents: list) -> list:
     return [columns] if curved else []
 
 
-def _origin(origin) -> tuple[float, float, float] | None:
+def _origin(origin: Sequence[float] | None) -> tuple[float, float, float] | None:
     """An actor position as three floats, or None where it will not read."""
     try:
-        x, y, z = (float(v) for v in origin)
+        x, y, z = (to_float(v) for v in as_sequence(origin))
     except (TypeError, ValueError):
         return None
     return x, y, z
 
 
-def _translated_route(raw_points, origin_xyz, read_point, drops: Drops, point_drop_reason: str):
+def _translated_route(
+    raw_points: Iterable[SaveValue],
+    origin_xyz: tuple[float, float, float],
+    read_point: Callable[[SaveValue], _RawPoint],
+    drops: Drops,
+    point_drop_reason: str,
+) -> tuple[list[Point], list[tuple[list[int], list[int]]]]:
     """``(points, tangents)`` in world centimetres; an unreadable point costs only itself.
 
     ``read_point`` returns a raw ``(location, arrive, leave)``. All three are read and rounded
@@ -115,10 +147,18 @@ def _translated_route(raw_points, origin_xyz, read_point, drops: Drops, point_dr
     tangents: list[tuple[list[int], list[int]]] = []
     for raw in raw_points:
         try:
-            at, arrive, leave = read_point(raw)
+            raw_at, arrive, leave = read_point(raw)
+            location = as_sequence(raw_at)
             # Rounded, not truncated like `structures`: that field's truncation is banked.
-            at = [round(at[0] + origin_x), round(at[1] + origin_y), round(at[2] + origin_z)]
-            pair = ([round(v) for v in arrive], [round(v) for v in leave])
+            at = [
+                round(_coordinate(location[0]) + origin_x),
+                round(_coordinate(location[1]) + origin_y),
+                round(_coordinate(location[2]) + origin_z),
+            ]
+            pair = (
+                [round(_coordinate(v)) for v in as_sequence(arrive)],
+                [round(_coordinate(v)) for v in as_sequence(leave)],
+            )
         except (TypeError, ValueError, IndexError):
             drops[point_drop_reason] += 1
             continue
@@ -127,11 +167,19 @@ def _translated_route(raw_points, origin_xyz, read_point, drops: Drops, point_dr
     return points, tangents
 
 
-def _belt_point(raw):
-    return raw[0], raw[1], raw[2]
+def _coordinate(value: SaveValue) -> float:
+    """A spline coordinate as the number it is, or the ``TypeError`` arithmetic raises."""
+    if isinstance(value, (int, float)):
+        return value
+    raise TypeError(f"a spline coordinate is a {type(value).__name__}, not a number")
 
 
-def _pipe_point(raw):
+def _belt_point(raw: SaveValue) -> _RawPoint:
+    point = as_sequence(raw)
+    return point[0], point[1], point[2]
+
+
+def _pipe_point(raw: SaveValue) -> _RawPoint:
     fields = struct_fields(raw)
     return (
         fields.get("Location"),
@@ -155,14 +203,14 @@ def _report_unreadable_chain(exc: BaseException, notes_so_far: int) -> int:
     return notes_so_far + 1
 
 
-def belts(chains: list, actors: Interner, drops: Drops) -> dict:
+def belts(chains: list[ChainActor], actors: Interner, drops: Drops) -> BeltsBlock:
     """Every conveyor's route, as ``belts`` rows (§6.16).
 
     ``chains`` is ``[(actorPosition, chainActor), ...]``; ``actors`` is the frozen graph table.
     The geometry is in the chain actor's trailing bytes, decoded lazily here.
     """
     classes = Interner()
-    segments: list[list] = []
+    segments: list[RouteRow] = []
     chain_index = 0
     chain_notes = 0
 
@@ -181,7 +229,7 @@ def belts(chains: list, actors: Interner, drops: Drops) -> dict:
             drops["conveyor chain(s) dropped: the actor position would not read"] += 1
             continue
 
-        rows: list[list] = []
+        rows: list[RouteRow] = []
         # Stored output-first: reversed, the rows come out in travel order.
         for segment in reversed(info[2]):
             if not (isinstance(segment, list) and len(segment) >= 3):
@@ -231,7 +279,9 @@ def conveyor_class(path: str) -> str:
     return "_".join(parts) if len(parts) > 1 else ""
 
 
-def pipes(pipe_actors: list, networks: list, actors: Interner, drops: Drops) -> dict:
+def pipes(
+    pipe_actors: list[PipeActor], networks: list[HeldNetwork], actors: Interner, drops: Drops
+) -> PipesBlock:
     """Every fluid pipe's route as ``pipes`` rows, and the fluid each one carries (§6.16).
 
     ``pipe_actors`` is ``[(class, instanceName, actorPosition, mSplineData), ...]`` and
@@ -239,7 +289,7 @@ def pipes(pipe_actors: list, networks: list, actors: Interner, drops: Drops) -> 
     not on a pipe; ``domain/world/flow.py`` infers it.
     """
     network_of: dict[str, int] = {}
-    network_rows: list[dict] = []
+    network_rows: list[PipeNetwork] = []
     for network_id, fluid, members in networks:
         row_index = len(network_rows)
         network_rows.append(
@@ -250,7 +300,7 @@ def pipes(pipe_actors: list, networks: list, actors: Interner, drops: Drops) -> 
                 network_of[member] = row_index
 
     classes = Interner()
-    segments: list[list] = []
+    segments: list[RouteRow] = []
 
     for cls, instance, origin, spline in pipe_actors:
         if not isinstance(spline, list):

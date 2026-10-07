@@ -7,9 +7,10 @@ way. Handler names are operation_ids (wire rule 1 of docs/web-wire.md).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
+from typing_extensions import TypedDict
 
 from .....domain.spatial.places import resolve_place
 from .....domain.world import conduit_search
