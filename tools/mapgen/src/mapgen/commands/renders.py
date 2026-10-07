@@ -13,7 +13,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType
+from typing import cast
 
 import numpy as np
 
@@ -60,6 +60,7 @@ from mapgen.render.light import LightingRun, add_light_flags, claim_scratch, lig
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.rasters import DIRECT_SUBSAMPLES
 from mapgen.terrain.sample import taps_cubic, taps_pchip
+from mapgen.tiles.cutter import TileImaging, load_imaging
 from mapgen.tiles.layer_meta import LayerDraw, RenderFacts, RunRecord, layer_sidecar
 from mapgen.tiles.pyramid import (
     add_worker_flags,
@@ -70,10 +71,11 @@ from mapgen.tiles.pyramid import (
 )
 from mapgen.tiles.recipes import RECIPE_KERNEL_ONLY
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME
+from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
 from satisfactory_mcp.core.gameassets.provenance import changelist
 from satisfactory_mcp.core.gameassets.pyramid import PyramidError
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 from satisfactory_mcp.core.mapprogress import encode_stage
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -92,8 +94,8 @@ class Setup:
     """How a run reads the game and cuts its tiles, and where its raster caches go."""
 
     cache_root: Path
-    decoder: ModuleType
-    image_mod: ModuleType
+    decoder: BlockDecoder
+    image_mod: TileImaging
     versions: dict[str, str]
     cut_workers: int
 
@@ -122,18 +124,6 @@ class Prepared:
     @property
     def painted(self) -> PaintedGround | None:
         return None if self.paint is None else self.paint.ground
-
-
-def load_imaging() -> ModuleType:
-    """Pillow, once ``require_gen`` has shown it is there, with its size limit off.
-
-    The limit is a decompression-bomb rule for images off the internet; an 8192 px sheet is
-    the point here.
-    """
-    from PIL import Image
-
-    Image.MAX_IMAGE_PIXELS = None
-    return Image
 
 
 def main() -> int:
@@ -364,7 +354,7 @@ def _draw_layers(
             style_digest=run.style_digests[layer],
             biome=layer in BIOME_LAYERS,
             measured=measured,
-            shore_optics=SHORE_OPTICS[layer],
+            shore_optics=cast(JsonValue, SHORE_OPTICS[layer]),
             seconds_to_draw=drew,
             draw_threads=threads,
             seconds_to_cut=cut,

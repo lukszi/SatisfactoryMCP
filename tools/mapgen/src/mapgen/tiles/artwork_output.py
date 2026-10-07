@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from types import ModuleType
 from typing import TYPE_CHECKING
 
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.tiles.cutter import TileImaging
 from mapgen.tiles.pyramid import tree_megabytes
 from mapgen.tiles.recipes import ENHANCE_RECIPE, UNNUMBERED_RECIPE
 from satisfactory_mcp.core.gameassets.container import (
@@ -72,7 +72,7 @@ RECIPE_PATH = ("tiles", "enhancement", "recipe")
 
 def install_artwork_trees(
     sheet: Image,
-    image_mod: ModuleType,
+    image_mod: TileImaging,
     out_dir: Path,
     *,
     enhance: Callable[[Path], JsonObject] | None,
@@ -111,17 +111,17 @@ def _tree_text(tree: JsonObject) -> str:
     )
 
 
-def pinned_build(sidecar: Mapping[str, object]) -> str | None:
+def pinned_build(sidecar: Mapping[str, JsonValue]) -> str | None:
     """The build an existing sidecar names, or None if it names none."""
     return read_str_path(sidecar.get("_meta"), PIN_PATH)
 
 
-def pinned_enhanced(sidecar: Mapping[str, object]) -> bool:
+def pinned_enhanced(sidecar: Mapping[str, JsonValue]) -> bool:
     """Whether an existing sidecar's pyramid was cut with ``--enhance``; only literal true."""
     return read_path(sidecar.get("_meta"), ENHANCED_PATH) is True
 
 
-def pinned_recipe(sidecar: Mapping[str, object]) -> int:
+def pinned_recipe(sidecar: Mapping[str, JsonValue]) -> int:
     """Which recipe cut an existing sidecar's pyramid: 0 plain, a bare boolean is recipe 1.
 
     Anything but a positive whole number (``true`` included) falls back to the boolean.
@@ -133,7 +133,7 @@ def pinned_recipe(sidecar: Mapping[str, object]) -> int:
 
 
 def enhancement_downgrades(
-    sidecar: Mapping[str, object], enhance_now: bool, recipe: int = ENHANCE_RECIPE
+    sidecar: Mapping[str, JsonValue], enhance_now: bool, recipe: int = ENHANCE_RECIPE
 ) -> bool:
     """Would this run replace a pyramid with one cut by an earlier recipe? Then it must not.
 
@@ -299,7 +299,7 @@ def _decoders_block(versions: Mapping[str, str]) -> JsonObject:
 
 
 def artwork_provenance(
-    build_raw: Mapping[str, JsonValue], sheet_digest: str, enhanced: bool, size: int
+    build_raw: JsonObject, sheet_digest: str, enhanced: bool, size: int
 ) -> JsonObject:
     """``_meta.provenance`` for the artwork: one input, the sheet, and the cutting recipe."""
     recipe = ENHANCE_RECIPE if enhanced else 0

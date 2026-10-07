@@ -8,7 +8,6 @@ import time
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from types import ModuleType
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -16,7 +15,7 @@ import numpy as np
 from mapgen.common import RENDERS_DIR_NAME
 from mapgen.gamedata.frame import RENDER_2X_PX
 from mapgen.lighting.stage import LIGHT_WORKER_BYTES, LIGHT_WORKER_CAP
-from mapgen.tiles.cutter import CUT_WORKERS, Cutter, Source, Tree
+from mapgen.tiles.cutter import CUT_WORKERS, Cutter, Source, TileImaging, Tree
 from mapgen.tiles.recipes import RECIPE
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_2X_PX,
@@ -103,7 +102,7 @@ def queue_layer(cutter: Cutter, source: Source, directory: Path, text: str) -> t
 
 def install_layer(
     sheet_rgb: np.ndarray,
-    image_mod: ModuleType,
+    image_mod: TileImaging,
     out_dir: Path,
     layer: str,
     workers: int,
@@ -132,7 +131,7 @@ def install_layer(
 
 
 def serial_layer(
-    sheet: Image, image_mod: ModuleType, directory: Path, text: str
+    sheet: Image, image_mod: TileImaging, directory: Path, text: str
 ) -> tuple[JsonObject, JsonObject]:
     """``queue_layer``'s two trees, one tile at a time in this process."""
     stats = install_pyramid(sheet, image_mod, directory, source=text)
@@ -190,7 +189,7 @@ class ParallelCheck:
 
 
 def check_parallel(
-    sheet_rgb: np.ndarray, image_mod: ModuleType, scratch: Path, workers: int
+    sheet_rgb: np.ndarray, image_mod: TileImaging, scratch: Path, workers: int
 ) -> ParallelCheck:
     """Cut one pyramid twice -- serially and in parallel -- and compare every tile's SHA-256.
 

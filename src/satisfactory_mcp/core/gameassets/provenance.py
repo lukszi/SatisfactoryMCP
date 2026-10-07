@@ -186,10 +186,10 @@ def changelist(raw: JsonValue) -> int | None:
 
 def provenance_block(
     game_raw: Mapping[str, JsonValue],
-    inputs: Mapping[str, object],
-    renderer: Mapping[str, object],
-    style: Mapping[str, object],
-) -> dict[str, object]:
+    inputs: JsonObject,
+    renderer: JsonObject,
+    style: JsonObject,
+) -> JsonObject:
     """The ``_meta.provenance`` block every map generator writes (docs/maps_contract.md §3).
 
     ``inputs`` lists only what this map read; each entry carries its own ``cl``.

@@ -15,7 +15,7 @@ import json
 import shutil
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from mapgen.common import LOCAL_DIR, Refusal, base_parser, require_gen
 from mapgen.enhance.levels import ENHANCE_WORK, enhance_levels
@@ -289,7 +289,8 @@ def main() -> int:
     from PIL import Image as image_mod
 
     try:
-        return _cut(args, versions, image_mod)
+        # Pillow sets LANCZOS at import, out of its stubs' sight (tiles.cutter.load_imaging).
+        return _cut(args, versions, cast(ImageModule, image_mod))
     except Refusal as refused:
         print(refused.message)
         return refused.code

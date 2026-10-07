@@ -258,7 +258,7 @@ def band_water_terms(
     reach: np.ndarray | None,
     linear: GridTaps,
     spacing_m: float,
-) -> dict[str, np.ndarray]:
+) -> WaterTerms:
     """Recipe 5's water, and within ``reach`` of the sea the ocean's crossing rule. ``wet``
     rides along for the rivers: past the last wet texel, the edge's blur is no water."""
     old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)
@@ -274,7 +274,7 @@ def band_water_terms(
             WATER_DEPTH_FULL_M,
         )
     terms["wet"] = wet
-    return terms
+    return cast(WaterTerms, terms)
 
 
 def band_grid(sources: GroundSources, top: int, band_rows: int, halo: int) -> BandSampling:
@@ -328,7 +328,7 @@ def band_surface(
         z_m, mesh_weight, mesh_class = composite_meshes(
             z_m,
             np.asarray(sources.meshes.z_cm[rows.band], np.float32),
-            np.asarray(sources.meshes.cls[rows.band]),
+            np.asarray(sources.meshes.cls[rows.band], np.uint8),
             level_m,
             composite_top,
             seabed=seabed,
@@ -345,7 +345,7 @@ def band_surface(
     surface = BandSurface(
         z_m=z_m, missing=missing, weight=weight, rock_seen=rock_seen, top_weight=top_weight,
         water_m=water_m, level_m=level_m, wet=wet, measured=measured, mesh_weight=mesh_weight,
-        mesh_class=mesh_class, water=cast(WaterTerms, water), borrow=_borrow(sources, grid),
+        mesh_class=mesh_class, water=water, borrow=_borrow(sources, grid),
     )  # fmt: skip
     return surface, owed
 

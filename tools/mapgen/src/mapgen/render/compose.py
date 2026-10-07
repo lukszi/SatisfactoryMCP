@@ -27,7 +27,7 @@ from mapgen.lighting.hillshade import (
 from mapgen.palette.painted.band import painted_colours, painted_ndl
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
 from mapgen.palette.relief import ReliefGround, relief_colours
-from mapgen.palette.scene import BandGrid, BandScene, CrownBand, WaterOptics
+from mapgen.palette.scene import BandGrid, BandScene, FloatGrid, SatelliteScene, WaterOptics
 from mapgen.palette.styles import (
     LAYER_PAINTERS,
     NOISE_SEED,
@@ -58,7 +58,7 @@ from mapgen.render.surface import (
     band_grid,
     band_surface,
 )
-from mapgen.terrain.crown_stamp import stamp_crowns
+from mapgen.terrain.crown_stamp import CrownBand, stamp_crowns
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.sample import (
     frame_coordinates,
@@ -96,9 +96,29 @@ BAND_HALO = 8
 _FLAT_SUN = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
 
 #: A style's colours for one band's scene, sRGB 0..255.
-Painter: TypeAlias = Callable[[dict[str, object]], np.ndarray]
+Painter: TypeAlias = Callable[[SatelliteScene], np.ndarray]
 #: How a painter reads a plane of its own grid over a band.
 PlaneReader: TypeAlias = Callable[[np.ndarray], np.ndarray]
+
+
+class _Scene(BandScene, total=False):
+    """A band's scene as it is built: the base, then the keys its layer's painter reads."""
+
+    spacing_m: float
+    unlit: bool
+    shade: FloatGrid
+    slope: FloatGrid
+    biome_rgb: FloatGrid
+    noise: FloatGrid
+    crowns: CrownBand | None
+    ndl: FloatGrid
+    ndl_flat: np.float32
+    rock_weight: FloatGrid
+    mesh_weight: np.ndarray | None
+    mesh_class: np.ndarray | None
+    mesh_family: np.ndarray | None
+    water_optics: WaterOptics | None
+    grid: BandGrid
 
 
 @runtime_checkable
@@ -385,7 +405,7 @@ def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> np.nd
     """One band in the layer's style over its ground, then the void and the falls."""
     rows, z_m = grid.rows, surface.z_m
     y_cm = job.ground.y_cm[rows.lo : rows.hi]
-    scene: BandScene = {
+    scene: _Scene = {
         "z_m": z_m,
         "borrow": surface.borrow,
         "ramp_lo": job.ramp[0],
@@ -411,7 +431,7 @@ def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> np.nd
     return draw_falls(rgb, job.falls, job.layer, job.ground.x_cm, y_cm, z_m, job.ground.spacing_m)
 
 
-def _style_colours(job: LayerJob, grid: BandSampling, scene: BandScene) -> np.ndarray:
+def _style_colours(job: LayerJob, grid: BandSampling, scene: _Scene) -> np.ndarray:
     """A style with a plain painter: the terrain and satellite ramps over the hillshade."""
     assert job.painter is not None
     z_m, spacing_m = scene["z_m"], job.ground.spacing_m
@@ -425,7 +445,7 @@ def _style_colours(job: LayerJob, grid: BandSampling, scene: BandScene) -> np.nd
         scene["biome_rgb"] = biome.astype(np.float32)
         noise = job.satellite.noise
         scene["noise"] = sample_noise(noise, np.arange(lo, hi), job.column_index, job.size)
-    return job.painter(_as_painter_dict(scene))
+    return job.painter(cast(SatelliteScene, scene))
 
 
 def _painted_colours(
@@ -433,7 +453,7 @@ def _painted_colours(
     painted: PaintedInputs,
     grid: BandSampling,
     surface: BandSurface,
-    scene: BandScene,
+    scene: _Scene,
 ) -> np.ndarray:
     """The game-painted style's band: its rock weight, crowns, sun term and water optics."""
     rows, z_m, field = grid.rows, surface.z_m, job.ground.field
@@ -487,7 +507,7 @@ def domed_crowns(
     stamped = stamp_crowns(painted.crowns, x0_cm, y0_cm, step_cm, len(y_cm), len(x_cm))
     dome = stamped["dome_m"] * np.float32(painted.palette["crowns"]["dome_gain"])
     stamped["ndl"] = np.full(dome.shape, _FLAT_SUN) if unlit else sun_dot(dome, spacing_m)
-    return cast(CrownBand, stamped)
+    return stamped
 
 
 def _sampler(taps: GridTaps) -> PlaneReader:
@@ -508,7 +528,7 @@ def _picker(rows: np.ndarray, cols: np.ndarray) -> PlaneReader:
     return pick
 
 
-def _as_painter_dict(scene: BandScene) -> dict[str, object]:
+def _as_painter_dict(scene: _Scene) -> dict[str, object]:
     """The scene as the painters take it, until they take a ``BandScene``: a cast, no copy."""
     return cast("dict[str, object]", scene)
 

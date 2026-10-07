@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from types import ModuleType
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -23,6 +22,7 @@ from mapgen.palette.styles import (
     biome_colour_field,
     biome_lookup,
 )
+from mapgen.tiles.cutter import TileImaging
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.maparea import MAP_AREA_CLASS, MAP_AREA_PATH, NO_MANS_LAND
 from satisfactory_mcp.core.gameassets.packages import ScriptObjects
@@ -59,7 +59,7 @@ def read_biome_inputs(
     store: IoStore,
     scripts: ScriptObjects,
     artwork: Image,
-    image_mod: ModuleType,
+    image_mod: TileImaging,
     build_cl: int | None,
     pyooz_version: str,
 ) -> BiomeInputs:

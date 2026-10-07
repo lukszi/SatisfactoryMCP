@@ -21,13 +21,15 @@ from concurrent.futures import (
 )
 from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
-from types import ModuleType
-from typing import Self, TypeVar
+from typing import TYPE_CHECKING, Protocol, Self, TypeVar, cast
 
 import numpy as np
 
 from mapgen.pools import free_ram_bytes
+from satisfactory_mcp.core.arrays import U8Grid
+from satisfactory_mcp.core.gameassets.imaging import ImageFactory, LanczosFilter
 from satisfactory_mcp.core.gameassets.pyramid import (
+    LevelRecord,
     PyramidError,
     commit_tree,
     encode_tile_row,
@@ -38,12 +40,17 @@ from satisfactory_mcp.core.gameassets.pyramid import (
 )
 from satisfactory_mcp.core.jsontypes import JsonObject
 
+if TYPE_CHECKING:
+    from PIL.Image import Image, Resampling
+
 __all__ = [
     "CUT_WORKERS",
     "Block",
     "Cutter",
     "Source",
+    "TileImaging",
     "Tree",
+    "load_imaging",
     "resample_strip",
     "strip_spans",
 ]
@@ -62,6 +69,27 @@ WORKER_BYTES = 200 << 20
 RAM_RESERVE = 4 << 30
 
 
+class TileImaging(ImageFactory["Image"], LanczosFilter, Protocol):
+    """``PIL.Image`` as the cutters and pyramids use it, handed in rather than imported."""
+
+    @property
+    def Resampling(self) -> type[Resampling]: ...
+
+    def fromarray(self, obj: U8Grid, /) -> Image: ...
+
+
+def load_imaging() -> TileImaging:
+    """Pillow, once ``require_gen`` has shown it is there, with its size limit off.
+
+    The limit is a decompression-bomb rule for images off the internet; an 8192 px sheet is
+    the point here. The cast: Pillow sets ``LANCZOS`` at import, out of its stubs' sight.
+    """
+    from PIL import Image
+
+    Image.MAX_IMAGE_PIXELS = None
+    return cast(TileImaging, Image)
+
+
 def strip_spans(source_px: int, side: int, width: int) -> list[tuple[int, int]]:
     """The output rows ``[r0, r1)`` each resampling strip of a ``side`` level fills."""
     if source_px % side:
@@ -71,7 +99,7 @@ def strip_spans(source_px: int, side: int, width: int) -> list[tuple[int, int]]:
 
 
 def resample_strip(
-    image_mod: ModuleType, src: np.ndarray, out: np.ndarray, r0: int, r1: int
+    image_mod: TileImaging, src: np.ndarray, out: np.ndarray, r0: int, r1: int
 ) -> None:
     """Rows ``[r0, r1)`` of ``src`` Lanczos'd to ``out``'s size, written into ``out``.
 
@@ -195,7 +223,9 @@ class Tree:
 class Cutter:
     """One encode pool and one resampling pool for every tree of a layer."""
 
-    def __init__(self, image_mod: ModuleType, workers: int, threads: int = LANCZOS_THREADS) -> None:
+    def __init__(
+        self, image_mod: TileImaging, workers: int, threads: int = LANCZOS_THREADS
+    ) -> None:
         free = free_ram_bytes()
         if free is not None:
             workers = max(1, min(workers, (free - RAM_RESERVE) // WORKER_BYTES))
@@ -314,7 +344,7 @@ class Cutter:
 
     def install(self, tree: Tree) -> JsonObject:
         """Wait for every tile of ``tree``, then check it and rename it into place."""
-        levels: list[JsonObject] = []
+        levels: list[LevelRecord] = []
         for z in sorted(tree.levels):
             written = sum(future.result() for future in tree.levels[z].result())
             levels.append(level_record(z, written, tree.text, tree.tile_px))

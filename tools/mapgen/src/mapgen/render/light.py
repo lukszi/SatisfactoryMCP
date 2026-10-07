@@ -15,7 +15,7 @@ import traceback
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from types import ModuleType
+from typing import cast
 
 import numpy as np
 
@@ -35,7 +35,7 @@ from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.palette.lightparams import shader_light
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.styles import LAYER_STYLES
-from mapgen.tiles.cutter import Cutter
+from mapgen.tiles.cutter import Cutter, TileImaging
 from mapgen.tiles.pyramid import install_layer, layer_dir, queue_layer
 from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX, install_pyramid
@@ -177,7 +177,7 @@ class LightingRun:
     def install(
         self,
         sheet: U8Grid,
-        image_mod: ModuleType,
+        image_mod: TileImaging,
         out_dir: Path,
         layer: str,
         workers: int,
@@ -213,10 +213,10 @@ class LightingRun:
             self.surface, renders, self.light_workers, self.occluder, self.slabs,
             occluder_layers=crown_layers(),
         )  # fmt: skip
-        done, render = meta["tiles"], meta["render"]
+        done, render = cast(JsonObject, meta["tiles"]), cast(JsonObject, meta["render"])
         print(
             f"  light: {done['count']} tiles over z0..z{done['max_z']} "
-            f"({done['bytes'] / 1e6:.1f} MB) in {render['seconds']}s "
+            f"({cast(int, done['bytes']) / 1e6:.1f} MB) in {render['seconds']}s "
             f"on {render['workers']} workers"
         )
         return meta
@@ -224,7 +224,7 @@ class LightingRun:
     def _install_serially(
         self,
         sheet: U8Grid,
-        image_mod: ModuleType,
+        image_mod: TileImaging,
         out_dir: Path,
         layer: str,
         recipe: int,

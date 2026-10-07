@@ -11,13 +11,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property, partial
 from pathlib import Path
-from typing import TypeAlias
+from typing import TypeAlias, cast
 
-from mapgen.cache import CACHE_SIDECAR_NAME, Plane, cached_raster, raster_cache_stamp
+from mapgen.cache import CACHE_SIDECAR_NAME, DirectStamp, Plane, cached_raster, raster_cache_stamp
 from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.rocks.families import placement_families
 from mapgen.terrain.rasters import (
+    BandRaster,
+    CliffGeometry,
+    RasterStats,
     direct_placements,
     rasterise_direct_band,
     rasterise_top_band,
@@ -28,7 +32,7 @@ from mapgen.terrain.rasters import (
 )
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
     "UNREADABLE_RASTER",
@@ -73,7 +77,7 @@ class LevelSweep:
         return sweep_world(self.store, self.scripts, self.index, classes, self.progress)
 
     @cached_property
-    def geometry(self) -> dict:
+    def geometry(self) -> CliffGeometry:
         """The cliff geometry the field's rocks are rasterised from, read off the sweep."""
         classes = ClassFacts(self.store, self.index)
         got = read_cliff_geometry(
@@ -97,14 +101,14 @@ class RasterGrid:
     progress: bool
 
     @property
-    def stamp(self) -> dict:
+    def stamp(self) -> DirectStamp:
         return raster_cache_stamp(self.size, self.subsamples, self.build)
 
     @property
     def spacing_m(self) -> float:
         return (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / self.size
 
-    def write(self, rasterise_band: Callable[..., object], directory: Path) -> dict:
+    def write(self, rasterise_band: BandRaster, directory: Path) -> RasterStats:
         """Every band rasterised into ``directory`` under this grid's stamp; the stats."""
         return write_banded_raster(
             rasterise_band, directory, self.size, self.subsamples, self.stamp, self.progress
@@ -145,7 +149,8 @@ def direct_raster(
             + (f" with {sampled}x{sampled} sub-samples" if sampled > 1 else "")
         )
         geometry = level.geometry
-        families = placement_families(level.store, level.scripts, level.index, geometry["sweep"])
+        sweep = cast(Sweep, geometry["sweep"])
+        families = placement_families(level.store, level.scripts, level.index, sweep)
         prepared, dropped = direct_placements(geometry["sweep"], geometry["geometry"], families)
         print(f"  {len(prepared)} placements rasterised, dropped {dropped}")
         band = partial(rasterise_direct_band, prepared, geometry["geometry"], with_source=True)
@@ -165,12 +170,12 @@ def direct_raster(
                     "The grid they are pointed at is the only thing this file changes."
                 ),
                 "meshes": geometry["meshes"],
-                "by_source": geometry["by_source"],
+                "by_source": cast(JsonValue, geometry["by_source"]),
                 "source_triangles": geometry["tris"],
                 "triangles_out_of_bounds": geometry["triangles_out_of_bounds"],
                 "placements_rasterised": len(prepared),
-                "placements_dropped": dropped,
-                "raster": stats,
+                "placements_dropped": cast(JsonValue, dropped),
+                "raster": cast(JsonValue, stats),
                 "pyooz_version": pyooz_version,
             }
         }
@@ -196,6 +201,6 @@ def top_raster(level: LevelSweep, cache: Path, grid: RasterGrid) -> tuple[Raster
             f"  top raster: {stats['texels_with_geometry'] / 1e6:.1f} M texels in "
             f"{stats['seconds']}s"
         )
-        return {"top_overlay": {**top_meta, "raster": stats}}
+        return {"top_overlay": cast(JsonValue, {**top_meta, "raster": stats})}
 
     return stamped_raster(cache, grid, "top", "top_overlay", rasterise)

@@ -10,8 +10,8 @@ from numpy.typing import NDArray
 from scipy.ndimage import convolve, gaussian_filter, maximum_filter, uniform_filter
 
 from mapgen.enhance.upscaler import ENHANCE_SCALE
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
-from satisfactory_mcp.core.gameassets.imaging import ImageFactory
+from mapgen.tiles.cutter import TileImaging
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid
 
 if TYPE_CHECKING:
     from PIL import Image
@@ -65,15 +65,10 @@ PRESHARPEN_EDGE = 0.6
 COLOUR_FIX_SIGMA = 6.0
 
 
-class ImageModule(ImageFactory["Image.Image"], Protocol):
+class ImageModule(TileImaging, Protocol):
     """The parts of ``PIL.Image`` the artwork and its enhancement use; passed in, not imported."""
 
-    @property
-    def Resampling(self) -> type[Image.Resampling]: ...
-
     def open(self, fp: Path, /) -> Image.Image: ...
-
-    def fromarray(self, obj: U8Grid, /) -> Image.Image: ...
 
 
 def faint_depth(luma: NDArray[np.floating]) -> F32Grid:

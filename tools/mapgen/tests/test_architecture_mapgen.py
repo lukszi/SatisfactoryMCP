@@ -99,8 +99,7 @@ CEILING_SLACK = 25
 #: The cap on one function or method, and the ones over it, measured on the scripts at
 #: 2d7eaa9 (a pure move keeps every body's length). Shrink-only, same slack.
 FUNCTION_MAX_LINES = 150
-FUNCTION_CEILINGS: dict[str, int] = {
-}
+FUNCTION_CEILINGS: dict[str, int] = {}
 
 #: The entry scripts that became shims, and the ``mapgen`` command each one runs.
 SHIMS: dict[str, str] = {

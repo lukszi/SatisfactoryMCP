@@ -9,6 +9,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 
@@ -21,6 +22,7 @@ from mapgen.cache import (
     TitanPlanes,
 )
 from mapgen.common import Refusal
+from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.water.falls import FALLS_CACHE_DIR_NAME
 from mapgen.palette.water.falls import load_falls
 from mapgen.palette.water.rivers import RiverWater, load_rivers
@@ -65,8 +67,9 @@ def load_extras(
     store, scripts = level.store, level.scripts
     out = RenderExtras()
 
-    def swept_levels() -> dict:
-        return level.sweep
+    def swept_levels() -> Sweep:
+        # sweep_world returns the sweep's dict in Sweep's shape (gamedata.level.sweep).
+        return cast(Sweep, level.sweep)
 
     if meshes:
         maps, mesh_source = mesh_pass(
@@ -75,7 +78,7 @@ def load_extras(
             quiet,
         )  # fmt: skip
         out.meshes = None if maps is None else MeshPlanes(*maps)
-        out.mesh_source = {**mesh_source}
+        out.mesh_source = cast(JsonObject, {**mesh_source})
         out.falls, falls_source = load_falls(cache_root, build, swept_levels, heightfield)
         out.mesh_source.update(falls_source)
         out.readers += ["render_meshes", "waterfalls"]
@@ -89,7 +92,7 @@ def load_extras(
             message = f"the Titan trees raster in {titan_cache} could not be read back"
             raise Refusal(UNREADABLE_RASTER, message + " after writing it")
         out.titan = TitanPlanes(maps[0], maps[1], TITAN_FACTOR, 0, 0)
-        out.titan_source = {**titan_source}
+        out.titan_source = cast(JsonObject, {**titan_source})
     if rivers:
         out.rivers, out.river_meta = load_rivers(cache_root, build, swept_levels, heightfield)
         out.readers.append("river_splines")

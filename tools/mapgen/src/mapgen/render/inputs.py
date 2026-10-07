@@ -11,8 +11,7 @@ import json
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from types import ModuleType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -29,6 +28,7 @@ from mapgen.lighting.borrow import (
 )
 from mapgen.palette.painted.albedo import load_paint_meta
 from mapgen.palette.painted.ground import PaintedGround
+from mapgen.palette.painted.shapes import BiomeGrid
 from mapgen.palette.styles import painted_style
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.perched import WaterSurfaces
@@ -43,6 +43,7 @@ from mapgen.render.surface import DIRECT_LIFT_KNEE_M
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
 from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
 from mapgen.terrain.sample import direct_mask
+from mapgen.tiles.cutter import TileImaging
 from mapgen.tiles.pyramid import check_parallel, layer_dir
 from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
 from mapgen.tiles.rendertext import LEVEL_ONLY_TEXT
@@ -54,6 +55,7 @@ from satisfactory_mcp.core.gameassets.container import (
     paks_dir,
     read_artwork_sheet,
 )
+from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
 from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
 from satisfactory_mcp.core.gameassets.packages import ScriptObjects
 from satisfactory_mcp.core.gameassets.provenance import (
@@ -263,11 +265,13 @@ def rebuilt_lattice(
     if lattice.ground is None:
         return lattice
     heights, ground, fill_meta = rebuild_lattice(field, lattice.ground, store, art_void)
+    seconds = cast(dict[str, float], fill_meta["seconds"])
+    holes, pits = cast(JsonObject, fill_meta["holes"]), cast(JsonObject, fill_meta["pits"])
     print(
-        f"  lattice rebuilt in {sum(fill_meta['seconds'].values()):.0f}s: "
-        f"{fill_meta['share_of_the_field_pct']}; {fill_meta['holes']['holes']} holes "
-        f"filled ({fill_meta['holes']['harmonic_fallback']} harmonic), "
-        f"{fill_meta['pits']['holes']} pits left empty"
+        f"  lattice rebuilt in {sum(seconds.values()):.0f}s: "
+        f"{fill_meta['share_of_the_field_pct']}; {holes['holes']} holes "
+        f"filled ({holes['harmonic_fallback']} harmonic), "
+        f"{pits['holes']} pits left empty"
     )
     return replace(lattice, heights=heights, ground=ground, fill_meta=fill_meta)
 
@@ -314,7 +318,7 @@ def refuse_restyle_gaps(
 
 
 def open_game_inputs(
-    game: Path, decoder: ModuleType, image_mod: ModuleType, pyooz_version: str
+    game: Path, decoder: BlockDecoder, image_mod: TileImaging, pyooz_version: str
 ) -> GameInputs:
     """The installed game's container, its script objects, the artwork sheet and the build."""
     if missing := missing_container(game):
@@ -362,7 +366,7 @@ def water_record(
     source: str,
 ) -> JsonObject:
     """``_meta.render.water`` as every layer says it; the shore's optics are each style's."""
-    shore = None
+    shore: JsonObject | None = None
     if water.reach is not None:
         shore = {
             **water.reach_meta,
@@ -379,14 +383,14 @@ def water_record(
         "edge_blur_m": WATER_EDGE_BLUR_M,
         "edge_blur_px": round(WATER_EDGE_BLUR_M / spacing_m, 3),
         "shore": shore,
-        "perched": water.perched,
+        "perched": cast(JsonValue, water.perched),
         "level_only": LEVEL_ONLY_TEXT if sea is None else sea.meta,
         "rivers": river_meta or None,
     }
 
 
 def check_parallel_cutter(
-    artwork: Image, image_mod: ModuleType, scratch: Path, workers: int
+    artwork: Image, image_mod: TileImaging, scratch: Path, workers: int
 ) -> JsonObject:
     """Cut the artwork serially and in parallel, and refuse the run if the bytes differ.
 
@@ -422,7 +426,9 @@ def prepare_paint(
         )
     started = time.time()
     palette, digest = painted_style(no_titan_trees)
-    ground = PaintedGround(paint_dir, palette, field, biome, list(drawn), oil_nodes())
+    # read_biome's dict carries BiomeGrid's keys (gamedata.ground.biome).
+    grid = cast(BiomeGrid, biome)
+    ground = PaintedGround(paint_dir, palette, field, grid, list(drawn), oil_nodes())
     provenance: JsonObject = {
         "cl": paint_meta.get("cl"),
         "generator_version": paint_meta.get("generator_version"),

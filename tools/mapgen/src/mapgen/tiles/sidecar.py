@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.tiles.recipes import RECIPE, RECIPES
 from satisfactory_mcp.core.gameassets.provenance import read_str_path
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -27,7 +27,7 @@ FIELD_PIN_PATH = ("sources", "heightfield", "game_version_pinned")
 FIELD_BUILD_PATH = ("sources", "game", "game_version_pinned")
 
 
-def pinned_field_build(sidecar: Mapping[str, object]) -> str | None:
+def pinned_field_build(sidecar: Mapping[str, JsonValue]) -> str | None:
     """The heightfield build an existing layer sidecar names, or None if it names none."""
     return read_str_path(sidecar.get("_meta"), FIELD_PIN_PATH)
 
