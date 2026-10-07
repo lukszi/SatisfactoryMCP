@@ -223,7 +223,7 @@ def build_meta(
     }
 
 
-def pinned_build(meta: object) -> str | None:
+def pinned_build(meta: JsonValue) -> str | None:
     """The build an existing sidecar names, or None if it names none."""
     return read_str_path(meta, PIN_PATH)
 
