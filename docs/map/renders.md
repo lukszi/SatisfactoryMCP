@@ -1243,7 +1243,8 @@ own, with no fused multiply-add (`colour.weighted_channels`).
   default BLAS threads to one digest, where scipy's `cg` gave three.
 
 **What it moved** (2026-10-07, build 502094), against the pixel batch's baseline. Until
-game-painted 21, relief and relief dark 8, and terrain and satellite 10, these sums were BLAS's.
+game-painted 20, relief and relief dark 7, and terrain and satellite 9, these sums were BLAS's:
+they share the pixel batch's one bump, as no map was rendered between the two.
 
 - The luminance alone moved no byte: none in the 2048 render (painted, lit, `@2x` and
   unlit), none in the full-size sheet's densest water window, 67 million pixels.
