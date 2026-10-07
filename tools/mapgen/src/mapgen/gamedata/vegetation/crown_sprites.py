@@ -263,7 +263,7 @@ class _DepthRaster(MaxZRaster):
         self.tau = np.asarray(tau, np.float32)
         self.depth = np.zeros(width * height, np.float32)
 
-    def _on_fold(self, texels, sources) -> None:
+    def _on_fold(self, texels: I64Grid, sources: U16Grid) -> None:
         self.depth += np.bincount(
             texels, weights=self.tau[sources], minlength=self.depth.size
         ).astype(np.float32)

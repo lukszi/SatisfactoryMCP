@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from typing import cast
 
 from fastapi import APIRouter, Request
@@ -93,7 +94,7 @@ async def events(request: Request, since: float = 0.0) -> StreamingResponse:
     watcher = request.app.state.watcher
     queue = watcher.subscribe()
 
-    async def stream():
+    async def stream() -> AsyncIterator[bytes]:
         try:
             # The replay, in a fixed order rather than in whatever order the trees were
             # last scanned: a browser reading two events at once should read them the same
