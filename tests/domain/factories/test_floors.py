@@ -554,6 +554,7 @@ def test_platform_indices_are_stable_across_runs(state):
 # ------------------------------------------------------------------ a real save
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(
     not __import__("satisfactory_mcp.config", fromlist=["config"]).saves_root().is_dir(),
     reason="needs a real save directory (set SATISFACTORY_SAVES)",
