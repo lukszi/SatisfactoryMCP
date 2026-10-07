@@ -468,6 +468,29 @@ The direct pass samples at `col + 0.5` on the frame's corner, the pixel centre;
   coverage and smoothed lift as the rocks. These are the visible meshes; planning heights use
   the collision surface instead (section 24).
 
+### Where the lattice stops (2026-10-07)
+
+Inside a formation big enough that no landscape texel survives under it, the lattice knows
+nothing and the field's own fold stands in: the rock is the whole answer, and the painted
+layer colours the pixel as rock by its coverage alone. Elsewhere the rock is composited onto
+the lattice and coloured as rock only where it stands proud of it. Both rules switched at the
+lattice's last texel, a hard edge on the 1 m grid. Every such edge drew a staircase of rock
+colour and a height step, which the hillshade and the light draw as a crease; along the
+landscape's straight east and south edges (x 4064 m, y 3048 m), where the cliff province meets
+the fill, it was a line several hundred metres long in every layer.
+
+`render/lift.py` `lattice_edge` softens that edge over `LATTICE_EDGE_BLUR_M` (2 m) inside the
+lattice: a byte per texel, 255 where the fold stands in, falling to 0 about 6 m in, built once
+a draw. A band blends the lattice's height towards the fold, and the rock's share towards its
+coverage, by it (`render/surface.py` `_direct_regime`). Where the field has no data either,
+the lattice's edge is the void's or a pit's, which the void draws, so it is not softened.
+Past about 6 m from the edge every pixel is the same bits as before.
+
+Left as it is: a step in the field's own heights at that edge. Along y 3048 m the cliff
+texels stand 1.1 m under the fill beside them, because the fill's seam band carries only the
+landscape's residual and never reads rock (section 26); that step still draws a soft crease in
+the hillshade.
+
 ### Known limits
 
 - The artwork borrow still multiplies the drawn map's arch strokes into the shading, so a

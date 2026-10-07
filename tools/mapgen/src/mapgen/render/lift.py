@@ -8,18 +8,54 @@ from __future__ import annotations
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy import ndimage
 
 from mapgen.terrain.measure import SEAM_MID
 from mapgen.terrain.rasters import pixel_coverage
 from mapgen.terrain.sample import Taps
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, FloatGrid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, FloatGrid, U8Grid
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
-__all__ = ["DIRECT_LIFT_KNEE_M", "blend_regimes", "composite_top", "smooth_lift"]
+__all__ = [
+    "DIRECT_LIFT_KNEE_M",
+    "LATTICE_EDGE_BLUR_M",
+    "blend_regimes",
+    "composite_top",
+    "lattice_edge",
+    "smooth_lift",
+]
 
 #: The knee of the smoothed positive part that lets a rock raise the ground and never lower
 #: it, in metres: the field's own hard ``max`` with its corner rounded, so the hillshade draws
 #: no line round a formation's base. It sits at most half the knee above the hard answer.
 DIRECT_LIFT_KNEE_M = 0.25
+
+#: The ground lattice's edge, softened over this many metres inside it: where the lattice
+#: stops, the rocks stand on the field's own fold instead, and the two meet over it.
+LATTICE_EDGE_BLUR_M = 2.0
+
+
+def lattice_edge(
+    lattice: NDArray[np.floating], heights: NDArray[np.number], spacing_m: float
+) -> U8Grid:
+    """How much of each texel the fold stands in for the ground lattice, 0..255: 255 where the
+    lattice knows nothing and the field's ``heights`` do, falling to 0 within about three
+    ``LATTICE_EDGE_BLUR_M`` of that edge. Where both know nothing, the void draws."""
+    have: BoolMask = (np.asarray(lattice) != hf.NODATA) | (np.asarray(heights) == hf.NODATA)
+    share: F32Grid = np.asarray(
+        ndimage.gaussian_filter(
+            have.astype(np.float32), LATTICE_EDGE_BLUR_M / spacing_m, mode="nearest"
+        ),
+        np.float32,
+    )
+    share *= np.float32(2.0)
+    share -= np.float32(1.0)
+    np.clip(share, 0.0, 1.0, out=share)
+    share[~have] = 0.0
+    np.subtract(np.float32(1.0), share, out=share)
+    share *= np.float32(255.0)
+    edge: U8Grid = np.round(share).astype(np.uint8)
+    return edge
 
 
 def smooth_lift(delta_m: FloatGrid) -> FloatGrid:

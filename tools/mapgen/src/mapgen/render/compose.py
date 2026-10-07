@@ -25,6 +25,7 @@ from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater, water_sources
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M
 from mapgen.render.drawpool import PIECE_COLS, bands_held, in_order
+from mapgen.render.lift import lattice_edge
 from mapgen.render.painting import LayerJob, layer_job, paint_band
 from mapgen.render.stencils import band_halo, piece_halo
 from mapgen.render.surface import (
@@ -322,6 +323,8 @@ def _ground_sources(
     art_step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / SHEET_PX
     art_x0_cm = BOUNDS_M["x_min_m"] * 100 + art_step_cm / 2
     art_x = grid_position(x_cm, art_x0_cm, art_step_cm, SHEET_PX)
+    spacing = field.spacing_cm / 100.0
+    edge = None if direct is None else lattice_edge(direct.ground, heights, spacing)
     return GroundSources(
         field=field,
         heights=heights,
@@ -331,6 +334,7 @@ def _ground_sources(
         y_cm=y_cm,
         spacing_m=spacing_m,
         direct=direct,
+        lattice_edge=edge,
         overlay=overlay,
         meshes=meshes,
         water=water,

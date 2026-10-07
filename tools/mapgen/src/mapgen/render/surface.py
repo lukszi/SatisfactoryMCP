@@ -126,8 +126,9 @@ class GroundSources:
     """What every band's ground is sampled from, and the column taps they share, built once.
 
     ``x_cm`` holds the window's pixel centres, ``y_cm`` the whole sheet's; a piece reads its
-    columns of them and of the taps. The bands only read it, so any number of threads may
-    share it.
+    columns of them and of the taps. ``lattice_edge`` is the direct regime's ground lattice
+    softened at its edge (``lift.lattice_edge``). The bands only read it, so any number of
+    threads may share it.
     """
 
     field: hf.Field
@@ -138,6 +139,7 @@ class GroundSources:
     y_cm: F64Grid
     spacing_m: float
     direct: DirectPlanes | None
+    lattice_edge: U8Grid | None
     overlay: TopPlanes | None
     meshes: MeshPlanes | None
     water: WaterPlanes | None
@@ -448,11 +450,15 @@ def _direct_regime(
 ) -> tuple[FloatGrid, BoolMask, F32Grid, FloatGrid, SeamPlanes | None]:
     """The rocks composited onto the lattice under them: ``(z_m, missing, weight, rock_seen,
     seam)``, ``seam`` the output pixels the band measures when it measures. Where that
-    lattice knows nothing the field's fold stands in."""
+    lattice knows nothing the field's fold stands in, and near its edge the two are blended
+    by the lattice's softened edge, so no texel of it draws a step."""
     smooth, linear = grid.smooth, grid.linear
     direct_z, direct_coverage, lattice, subsamples = direct
     ground_dm, ground_missing = sample_surface(lattice, smooth, linear, hf.NODATA)
     base_m = np.where(ground_missing, z_m, ground_dm / np.float32(hf.DM_PER_M))
+    edge = _lattice_edge(sources.lattice_edge, linear)
+    if edge is not None:
+        base_m = np.where(edge > 0.0, base_m + edge * (z_m - base_m), base_m)
     cut = (grid.rows.cut, grid.cols.cut)
     rock = (np.asarray(direct_z[cut], np.float32), np.asarray(direct_coverage[cut]))
     wet_plane = None if sources.water is None else sources.water.wet
@@ -460,12 +466,21 @@ def _direct_regime(
     z_m, missing, weight, switched = blend_regimes(base_m, missing, rock, linear, subsamples, kept)
     rock_lift = np.clip((z_m - base_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     rock_seen = np.where(ground_missing, weight, np.minimum(weight, rock_lift))
+    if edge is not None:
+        rock_seen = np.where(edge > 0.0, rock_seen + edge * (weight - rock_seen), rock_seen)
     seam = None
     if sources.seam is not None or sources.regimes is not None:
         out = (grid.rows.kept, grid.cols.kept)
         delta = (rock[0] / 100.0 - base_m)[out]
         seam = SeamPlanes(z_m[out], switched[out], weight[out], delta)
     return z_m, missing, weight, rock_seen, seam
+
+
+def _lattice_edge(plane: U8Grid | None, linear: GridTaps) -> FloatGrid | None:
+    """The lattice's softened edge on a piece, in [0, 1]; None where the piece reads none."""
+    if plane is None or reads_nothing(plane, linear):
+        return None
+    return np.clip(sample_plain(plane, linear) / np.float32(255.0), 0.0, 1.0)
 
 
 def _regimes_owed(
