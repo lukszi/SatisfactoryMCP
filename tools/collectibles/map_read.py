@@ -7,6 +7,7 @@ import collections
 import time
 from dataclasses import dataclass, field
 
+from satisfactory_mcp.core.collectible_rows import PickupContents, UnlockCost
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.levels import (
     LEVEL_SUFFIX,
@@ -36,7 +37,6 @@ from tools.collectibles.catalog import (
     Position,
 )
 from tools.collectibles.hazards import Hazard, read_hazard
-from tools.collectibles.rows import PickupContents, UnlockCost
 from tools.collectibles.stats import by_count, json_array
 
 #: The classes whose rows carry ``contents``.

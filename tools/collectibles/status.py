@@ -8,6 +8,7 @@ import collections
 import math
 
 from pioneersav import FIRST_MODERN_BODY
+from satisfactory_mcp.core.collectible_rows import MapPlacement, RowState
 from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import (
     CATEGORIES,
@@ -19,7 +20,6 @@ from tools.collectibles.catalog import (
 from tools.collectibles.context import BuildContext, agrees_with_map
 from tools.collectibles.hazards import hazard_context
 from tools.collectibles.map_read import Placement
-from tools.collectibles.rows import CollectibleRow, RowState
 from tools.collectibles.stats import by_count, json_array, spread
 
 
@@ -79,7 +79,7 @@ def _recoverable_by_position(ctx: BuildContext, displaced: list[tuple[ActorKey, 
 
 def build_rows(ctx: BuildContext) -> None:
     """One row per placement, its state the merge ``measure_status`` made."""
-    rows: list[CollectibleRow] = []
+    rows: list[MapPlacement] = []
     for placement in ctx.row_placements:
         key = (placement.cell, placement.instance)
         state: RowState
@@ -89,7 +89,7 @@ def build_rows(ctx: BuildContext) -> None:
             state = "present"
         else:
             state = "unknown"
-        row: CollectibleRow = {
+        row: MapPlacement = {
             "instance": INSTANCE_PREFIX + placement.instance,
             "cell": placement.cell,
             "category": CATEGORIES[placement.cls],

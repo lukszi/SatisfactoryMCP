@@ -6,6 +6,7 @@ from __future__ import annotations
 import collections
 import re
 
+from satisfactory_mcp.core.collectible_rows import MapPlacement
 from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import (
     CATEGORIES,
@@ -19,7 +20,6 @@ from tools.collectibles.catalog import (
 )
 from tools.collectibles.context import BuildContext
 from tools.collectibles.hazards import SpatialIndex
-from tools.collectibles.rows import CollectibleRow
 from tools.collectibles.stats import by_count
 
 
@@ -44,14 +44,14 @@ def measure_pedestals(ctx: BuildContext) -> None:
     ctx.pedestals = pedestals
 
 
-def _row_position(row: CollectibleRow) -> Position:
+def _row_position(row: MapPlacement) -> Position:
     return (row["x"], row["y"], row["z"])
 
 
 def measure_coincident_positions(ctx: BuildContext) -> None:
     """Pairs of rows of one category within a metre: one collectible counted twice, or two."""
-    grids: dict[str, SpatialIndex[CollectibleRow]] = collections.defaultdict(
-        lambda: SpatialIndex[CollectibleRow](POSITION_TOLERANCE_CM)
+    grids: dict[str, SpatialIndex[MapPlacement]] = collections.defaultdict(
+        lambda: SpatialIndex[MapPlacement](POSITION_TOLERANCE_CM)
     )
     for row in ctx.rows:
         grids[row["category"]].add(_row_position(row), row)

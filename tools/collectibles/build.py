@@ -7,6 +7,7 @@ import collections
 from collections.abc import Callable
 
 from pioneersav import FIRST_MODERN_BODY
+from satisfactory_mcp.core.collectible_rows import MapPlacement
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import ScriptObjects
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -27,7 +28,6 @@ from tools.collectibles.map_read import (
     placements_source_meta,
 )
 from tools.collectibles.respawn import measure_durability, measure_flora, respawn_meta
-from tools.collectibles.rows import CollectibleRow
 from tools.collectibles.saves import SaveFacts
 from tools.collectibles.status import (
     build_rows,
@@ -76,7 +76,7 @@ def build(
     readable_saves: list[SaveFacts],
     files_found: int,
     other_levels: list[JsonObject],
-) -> tuple[list[CollectibleRow], JsonObject]:
+) -> tuple[list[MapPlacement], JsonObject]:
     """Turn map placements plus the session's saves into rows and ``_meta``."""
     session_saves = sorted(saves, key=lambda f: (f.ticks, f.play_seconds))
     row_placements = [p for p in world.placements if p.cls in CATEGORIES]

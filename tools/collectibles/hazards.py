@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Generic, Literal, NamedTuple, TypeVar
 
+from satisfactory_mcp.core.collectible_rows import HazardContext, MapPlacement
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import (
     AssetIndex,
@@ -21,7 +22,6 @@ from satisfactory_mcp.core.gameassets.packages import (
 )
 from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import GAS_PILLAR, HAZARD_RADIUS_CM, NUCLEAR_HOG, Position
-from tools.collectibles.rows import CollectibleRow, HazardContext
 from tools.collectibles.stats import by_count, json_object, spread
 
 #: What ``read_hazard`` makes of a map actor.
@@ -416,7 +416,7 @@ def hazard_context(position: Position, hazards: HazardWorld) -> HazardContext:
     return out
 
 
-def hazard_context_meta(hazards: HazardWorld, rows: list[CollectibleRow]) -> JsonObject:
+def hazard_context_meta(hazards: HazardWorld, rows: list[MapPlacement]) -> JsonObject:
     """``_meta.hazard_context``: what each hazard key means, its sources, and its reach."""
     return {
         **_hazard_key_meanings(),
@@ -566,7 +566,7 @@ def _hazard_sources(hazards: HazardWorld) -> JsonObject:
     }
 
 
-def _rows_touched(rows: list[CollectibleRow]) -> JsonObject:
+def _rows_touched(rows: list[MapPlacement]) -> JsonObject:
     """How many rows carry each hazard key."""
 
     def _rows_with_hazard_key(key: str) -> int:

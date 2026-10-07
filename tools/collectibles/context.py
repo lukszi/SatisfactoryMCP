@@ -7,13 +7,13 @@ import collections
 import math
 from dataclasses import dataclass, field
 
+from satisfactory_mcp.core.collectible_rows import MapPlacement
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import ScriptObjects
 from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import POSITION_TOLERANCE_CM, ActorKey, Position
 from tools.collectibles.hazards import HazardWorld
 from tools.collectibles.map_read import MapWorld, Placement
-from tools.collectibles.rows import CollectibleRow
 from tools.collectibles.saves import SaveFacts
 
 
@@ -61,7 +61,7 @@ class BuildContext:
     recoverable: int = field(init=False)
 
     # build_rows
-    rows: list[CollectibleRow] = field(init=False)
+    rows: list[MapPlacement] = field(init=False)
 
     # measure_pedestals
     pedestals: JsonObject = field(init=False)
@@ -90,7 +90,7 @@ class BuildContext:
     # measure_exploration
     collectible_cells: set[str] = field(init=False)
     cells_no_record: set[str] = field(init=False)
-    unknown_rows: list[CollectibleRow] = field(init=False)
+    unknown_rows: list[MapPlacement] = field(init=False)
     unknown_no_record: int = field(init=False)
     observed_map_actors: int = field(init=False)
     map_actors_in_recorded_cells: int = field(init=False)

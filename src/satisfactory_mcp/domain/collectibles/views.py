@@ -9,37 +9,16 @@ from typing import NotRequired
 
 from typing_extensions import TypedDict
 
-from ...core.jsontypes import JsonObject
+from ...core.collectible_rows import HazardContext, PickupContents, UnlockCost
 
 __all__ = [
     "CensusRow",
     "CollectedSummary",
     "LabelledCensusRow",
-    "MapPlacement",
     "NamedActor",
     "NearbyPickup",
     "Placement",
 ]
-
-#: One row of ``data/world_collectibles.json``: a placement the map itself makes.
-MapPlacement = TypedDict(
-    "MapPlacement",
-    {
-        "instance": str,
-        "cell": str,
-        "category": str,
-        "class": str,
-        "x": float,
-        "y": float,
-        "z": float,
-        "state": str,
-        "looted": NotRequired[bool],
-        "unlock_cost": NotRequired[JsonObject],
-        "contents": NotRequired[JsonObject],
-        "hazard": NotRequired[JsonObject],
-        "attached_to": NotRequired[str],
-    },
-)
 
 
 class Placement(TypedDict):
@@ -53,9 +32,9 @@ class Placement(TypedDict):
     collected: bool
     observed: str | None
     looted: bool | None
-    contents: JsonObject | None
-    unlock_cost: JsonObject | None
-    hazard: JsonObject
+    contents: PickupContents | None
+    unlock_cost: UnlockCost | None
+    hazard: HazardContext
     distance_m: NotRequired[float]
 
 

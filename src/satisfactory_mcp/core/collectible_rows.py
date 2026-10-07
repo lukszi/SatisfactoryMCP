@@ -1,8 +1,16 @@
-"""One row of ``data/world_collectibles.json`` and the objects nested in it."""
+"""One row of ``data/world_collectibles.json`` and the objects nested in it.
+
+The generator (``tools/collectibles``) writes it and ``domain.collectibles`` reads it, so the
+shape is declared once, here, where both may import it.
+"""
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, NotRequired
+
+from typing_extensions import TypedDict
+
+__all__ = ["HazardContext", "MapPlacement", "PickupContents", "RowState", "UnlockCost"]
 
 #: What the newest save says about a row; docs/world-collectibles.md defines each.
 RowState = Literal["collected", "present", "unknown"]
@@ -38,9 +46,9 @@ class HazardContext(TypedDict, total=False):
     nearest_nuclear_hog_spawner_cm: float
 
 
-# The functional form, because "class" is a keyword.
-CollectibleRow = TypedDict(
-    "CollectibleRow",
+#: A placement the map itself makes. The functional form, because "class" is a keyword.
+MapPlacement = TypedDict(
+    "MapPlacement",
     {
         "instance": str,
         "cell": str,

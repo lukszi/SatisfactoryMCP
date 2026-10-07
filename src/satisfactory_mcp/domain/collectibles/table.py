@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from ... import config
+from ...core.collectible_rows import MapPlacement
 from ...core.jsontypes import JsonObject, JsonValue
 from ...core.saveio.records import instance_leaf
-from .views import MapPlacement
 
 __all__ = [
     "COLLECTIBLES_FILE",

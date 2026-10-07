@@ -8,10 +8,10 @@ with their hazards, and the degraded save-only answer is a name-prefix guess.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal, cast
+from typing import Literal
 
+from ...core.collectible_rows import HazardContext
 from ...core.gamedata.model import GameData
-from ...core.jsontypes import JsonObject
 from ...domain.collectibles.service import GENERATOR_COMMAND, CollectiblesView, census_rows
 from ...domain.collectibles.table import CollectibleTable
 from ...domain.collectibles.views import CensusRow, CollectedSummary, Placement
@@ -106,21 +106,20 @@ def _map_links(st: WorldState, view: CollectiblesView) -> tuple[str, list[str]]:
     return body, notes
 
 
-def _hazard_tokens(hazard: JsonObject) -> str:
+def _hazard_tokens(hazard: HazardContext) -> str:
     """The hazard block as a few tokens, distances in metres."""
     out: list[str] = []
     if hostiles := hazard.get("hostiles_nearby"):
-        n = sum(cast("dict[str, int]", hostiles).values())
-        nearest = cast("float", hazard.get("nearest_hostile_cm") or 0)
-        out.append(f"hostiles{n}@{nearest / 100:.0f}m")
+        nearest = hazard.get("nearest_hostile_cm") or 0
+        out.append(f"hostiles{sum(hostiles.values())}@{nearest / 100:.0f}m")
     if hazard.get("spawns_here"):
         out.append("spawner")
     if hazard.get("inside_spore_flower_damage_sphere"):
         out.append("spore")
     elif gas := hazard.get("nearest_gas_cm"):
-        out.append(f"gas@{cast('float', gas) / 100:.0f}m")
+        out.append(f"gas@{gas / 100:.0f}m")
     if uranium := hazard.get("nearest_uranium_cm"):
-        out.append(f"uranium@{cast('float', uranium) / 100:.0f}m")
+        out.append(f"uranium@{uranium / 100:.0f}m")
     if hazard.get("nearest_nuclear_hog_spawner_cm"):
         out.append("nuclear-hog")
     return " ".join(out)
@@ -133,14 +132,14 @@ def _holds(row: Placement, g: GameData) -> str:
     the actor after it has given up its hard drive, so quoting the price would offer a player
     something already taken.
     """
-    contents = row.get("contents") or {}
-    if contents.get("item"):
-        return f"{contents.get('count', 0):g} {g.item_name(cast('str', contents['item']))}"
+    contents = row["contents"]
+    if contents is not None and (item := contents["item"]):
+        return f"{contents.get('count', 0):g} {g.item_name(item)}"
     if row.get("looted"):
         return "LOOTED"
-    cost = row.get("unlock_cost") or {}
-    if cost.get("item"):
-        return f"wants {cost.get('amount', 0):g} {g.item_name(cast('str', cost['item']))}"
+    cost = row["unlock_cost"]
+    if cost is not None and (wanted := cost.get("item")):
+        return f"wants {cost.get('amount', 0):g} {g.item_name(wanted)}"
     #: An unlooted pod that does not serialise mUnlockCost holds its class default, which
     #: the map cannot read. Still worth saying it is unlooted.
     return "unlooted, cost unknown" if row.get("looted") is False else ""

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import collections
 
+from satisfactory_mcp.core.collectible_rows import MapPlacement
 from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import (
     CATEGORIES,
@@ -15,7 +16,6 @@ from tools.collectibles.catalog import (
     PLACEMENT_ID_MARK,
 )
 from tools.collectibles.context import BuildContext
-from tools.collectibles.rows import CollectibleRow
 from tools.collectibles.stats import by_count, ranked
 
 
@@ -57,7 +57,7 @@ def _category_entry(ctx: BuildContext, category: str) -> JsonObject:
     return entry
 
 
-def _drop_pod_tally(pods: list[CollectibleRow]) -> JsonObject:
+def _drop_pod_tally(pods: list[MapPlacement]) -> JsonObject:
     costs = [r["unlock_cost"] for r in pods if "unlock_cost" in r]
     return {
         "present_and_looted": sum(1 for r in pods if r.get("looted")),
@@ -68,7 +68,7 @@ def _drop_pod_tally(pods: list[CollectibleRow]) -> JsonObject:
     }
 
 
-def _loot_cache_tally(caches: list[CollectibleRow]) -> JsonObject:
+def _loot_cache_tally(caches: list[MapPlacement]) -> JsonObject:
     items: collections.Counter[str] = collections.Counter()
     total = 0
     for row in caches:
