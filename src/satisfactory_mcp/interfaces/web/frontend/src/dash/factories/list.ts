@@ -19,10 +19,10 @@ import type { FactoryHealthResponse, FactoryHealthRow } from "../../api/shapes";
 
 const factorySort: SortState = { key: "actionable", desc: true };
 
-function sortValue(row: FactoryHealthRow, key: string): number | string {
+function sortValue(row: FactoryHealthRow, key: keyof FactoryHealthRow): number | string {
   if (key === "name") return row.name.toLowerCase();
   if (key === "uptime") return row.uptime === null ? -1 : row.uptime;
-  const value = (row as unknown as Record<string, unknown>)[key];
+  const value: unknown = row[key];
   return typeof value === "number" ? value : 0;
 }
 

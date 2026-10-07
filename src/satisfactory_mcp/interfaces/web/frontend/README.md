@@ -319,9 +319,10 @@ name: the width table, the pixel restyle on zoom and the sink.
 
 `src/map/leaflet-private.d.ts` declares the fields this page hangs off Leaflet objects. It keeps
 two kinds apart on purpose: the page's own marks (`_rank`, `_chevron`, `_labelWeight`, `_floor…`),
-set on objects Leaflet owns to save a WeakMap probe per mark, and four real Leaflet internals
-it deliberately uses (`_handlingClick`, `_update`, `layerId`, `_getBoundsOffset`). The second
-list is what to read before upgrading Leaflet.
+set on objects Leaflet owns to save a WeakMap probe per mark, and six real Leaflet internals
+it deliberately uses (`_handlingClick`, `_update`, `layerId`, `_getBoundsOffset`,
+`_latLngToNewLayerPoint`, `_animatingZoom`). The second list is what to read before upgrading
+Leaflet, so a module reaches an internal through a declaration there, not through a cast.
 
 - **`FloorMark`** is a mark rather than a lookup table because the floor filter walks every
   piece. Its fields are alternatives, one per way a layer is joined; `floors/floors.ts` lists

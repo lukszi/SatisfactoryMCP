@@ -441,10 +441,7 @@ export function makeLitLayer(tileLayerId: string, light: LightHeader, onFail: (w
   function animZoom(event: L.ZoomAnimEvent): void {
     if (!canvas || !drawnCorner) return;
     const scale = map.getZoomScale(event.zoom, drawnZoom);
-    const private_ = map as unknown as {
-      _latLngToNewLayerPoint(at: L.LatLng, zoom: number, centre: L.LatLng): L.Point;
-    };
-    L.DomUtil.setTransform(canvas, private_._latLngToNewLayerPoint(drawnCorner, event.zoom, event.center), scale);
+    L.DomUtil.setTransform(canvas, map._latLngToNewLayerPoint(drawnCorner, event.zoom, event.center), scale);
   }
 
   function start(): void {

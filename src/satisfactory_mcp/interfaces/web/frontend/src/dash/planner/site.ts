@@ -247,7 +247,7 @@ const dragHooks = {
 
 /** Fits the pad, and chat's ghost when it has one, into the part of the map the card leaves. */
 function framePad(p: Pad): void {
-  if ((map as unknown as { _animatingZoom?: boolean })._animatingZoom) {
+  if (map._animatingZoom) {
     map.once("zoomend", function () {
       framePad(p);
     });

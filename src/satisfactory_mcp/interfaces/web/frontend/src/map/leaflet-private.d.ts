@@ -1,8 +1,9 @@
 /* The fields this page hangs off Leaflet objects, declared so that `L` can be typed.
  *
  * The underscore marks are the page's own, optional because only some objects get one;
- * `_handlingClick`, `_update`, `layerId` and `_getBoundsOffset` are Leaflet 1.9.4 internals
- * to check before an upgrade. frontend/README.md, "Leaflet's private fields".
+ * `_handlingClick`, `_update`, `layerId`, `_getBoundsOffset`, `_latLngToNewLayerPoint` and
+ * `_animatingZoom` are Leaflet 1.9.4 internals to check before an upgrade.
+ * frontend/README.md, "Leaflet's private fields".
  */
 
 import type * as L from "leaflet";
@@ -67,6 +68,10 @@ declare module "leaflet" {
 
   interface Map {
     _getBoundsOffset(pxBounds: L.Bounds, maxBounds: L.LatLngBounds, zoom?: number): L.Point;
+    /** Where a latlng lands in the layer pane at a zoom and centre a zoom animation is going to. */
+    _latLngToNewLayerPoint(at: L.LatLng, zoom: number, centre: L.LatLng): L.Point;
+    /** Whether a zoom animation is running. */
+    _animatingZoom?: boolean;
   }
 
   namespace Control {
