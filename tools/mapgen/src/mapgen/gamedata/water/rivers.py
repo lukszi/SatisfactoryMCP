@@ -32,6 +32,9 @@ from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 __all__ = [
     "RIVER_CLASS",
     "RIVER_PLANE_HALF_WIDTH_CM",
+    "RIVER_VOLUME_CLASS",
+    "RIVER_VOLUME_INSIDE",
+    "RIVER_VOLUME_TOP_M",
     "SAMPLE_STEP_M",
     "RibbonPlanes",
     "RiverActor",
@@ -41,6 +44,7 @@ __all__ = [
     "hermite",
     "ribbon_planes",
     "river_actor",
+    "river_volumes",
     "sample_rivers",
 ]
 
@@ -64,6 +68,14 @@ CAP_REACH = 3.0
 RIBBON_REACH_M = 8.0
 
 _OTHER_SURFACES = WATER_SURFACE_CLASSES - {RIVER_CLASS}
+
+#: The volume class that names no material of its own: a lake's, the sea's, or a river's.
+RIVER_VOLUME_CLASS = "FGWaterVolume"
+
+#: Such a volume lying at least this share inside a river's box, with its top within this
+#: many metres of the box's, is the river's own: 56 of the 270 on build 502094.
+RIVER_VOLUME_INSIDE = 0.9
+RIVER_VOLUME_TOP_M = 1.5
 
 
 class RiverActor(TypedDict):
@@ -322,6 +334,31 @@ def ribbon_planes(
         half_m[gr[better], gc[better]] = hw[keep][better]
     u_plane[~np.isfinite(u_plane)] = np.nan
     return {"level_m": level, "u": u_plane, "half_m": half_m}
+
+
+def river_volumes(
+    boxes: Sequence[tuple[str, Sequence[float]]],
+) -> list[tuple[str, Sequence[float]]]:
+    """``boxes`` with each river's own volumes named as its box: a classless volume
+    (``RIVER_VOLUME_CLASS``) at least ``RIVER_VOLUME_INSIDE`` of whose footprint lies inside
+    a river box, its top within ``RIVER_VOLUME_TOP_M`` of that box's. Its top is the river's
+    upper end, as the river box's is, not a lake's surface."""
+    rivers = [box for name, box in boxes if name == RIVER_CLASS]
+    return [
+        (RIVER_CLASS if name == RIVER_VOLUME_CLASS and _inside_a_river(box, rivers) else name, box)
+        for name, box in boxes
+    ]
+
+
+def _inside_a_river(box: Sequence[float], rivers: Sequence[Sequence[float]]) -> bool:
+    x0, y0, _z0, x1, y1, z1 = box
+    area = (x1 - x0) * (y1 - y0)
+    for rx0, ry0, _rz0, rx1, ry1, rz1 in rivers:
+        across = max(0.0, min(x1, rx1) - max(x0, rx0)) * max(0.0, min(y1, ry1) - max(y0, ry0))
+        nested = area > 0 and across >= RIVER_VOLUME_INSIDE * area
+        if nested and abs(z1 - rz1) <= RIVER_VOLUME_TOP_M * 100:
+            return True
+    return False
 
 
 def box_tops(
