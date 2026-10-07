@@ -311,6 +311,8 @@ class LightingRun:
         self.reuse = None
         bake = self._start_bake()
         self.meta = bake.finish(key, on_row=lambda _row: release())
+        # Nothing may hold the terms mapped while the keep moves them.
+        bake.close()
         self._terms.clear()
         if self.kept is not None:
             puts = self.surface.puts()

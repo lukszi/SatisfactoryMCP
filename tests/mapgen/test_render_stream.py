@@ -173,3 +173,10 @@ def test_a_kept_bake_is_read_while_the_bands_match_and_baked_again_from_the_firs
     _streamed(tmp_path / "fresh", 1024, bumped, None)
     assert _digests(tmp_path / "bumped" / "r") == _digests(tmp_path / "fresh" / "r")
     assert _digests(tmp_path / "bumped" / "r") != _digests(tmp_path / "first" / "r")
+
+
+def test_a_block_row_reads_to_its_end_and_twice_the_horizon_s_reach_past_it():
+    block, reads = bake.block_rows(32768)
+    assert block == 4096 and len(reads) == 8
+    assert reads[0] == 4096 + 660 and reads[-2] == 7 * 4096 + 660 and reads[-1] == 32768
+    assert bake.block_rows(2048) == (2048, [2048]), "one block: the bake waits for the draw"
