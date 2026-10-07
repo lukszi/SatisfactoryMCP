@@ -477,6 +477,9 @@ Measured on build 502094: at 2048, 328 pixels in 55 of the painted layer's 85 ti
 to 12 levels; in the full-size windows renders.md section 40 describes, 21,219 pixels
 (0.02%), by up to 76. No other layer and no light tile moved.
 
+The stamps run as a numba kernel, to the same bits, unless `MAPGEN_KERNELS=numpy` (renders.md
+section 41, "The painters").
+
 `palette/painted/ground.py` composites the crowns that stand out of the water last, over water and
 foam, under the highlight shoulder; a crown under the water's surface is drawn in the bed
 instead ("Crowns and the water" below). The `crowns` block of `satellite-painted.json`:

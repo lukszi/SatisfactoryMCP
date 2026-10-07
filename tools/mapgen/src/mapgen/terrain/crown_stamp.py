@@ -3,14 +3,15 @@
 Each tree stamps its species' sprite, turned and scaled, at the mip whose texel is closest
 to the output pixel. Taller crowns are laid over lower ones. A species the render-only mesh
 pass draws is no crown. docs/spatial-and-map.md section 36 describes the planes a band
-returns.
+returns. The stamps run as a numba kernel unless ``mapgen.jit`` selects ``_stamp``, their
+reference (docs/map/renders.md section 41).
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import NotRequired, TypedDict
+from typing import NamedTuple, NotRequired, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
@@ -25,16 +26,19 @@ from mapgen.gamedata.vegetation.crown_sprites import (
     decode_records,
     decode_sprites,
 )
+from mapgen.jit import kernels_on
 from mapgen.terrain.render_meshes import is_render_only_foliage
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid
 
 __all__ = [
     "COVER_TOP_MIN",
     "DOME_SIGMA_M",
     "CrownBand",
     "CrownSet",
+    "MipAtlas",
     "load_crowns",
     "meshed_species",
+    "mip_atlas",
     "sprite_levels",
     "stamp_crowns",
 ]
@@ -60,12 +64,38 @@ class CrownBand(TypedDict):
     ndl: NotRequired[F32Grid]
 
 
+class MipAtlas(NamedTuple):
+    """Every species' mips in one array, as the stamp kernel reads them: ``texels`` holds
+    each mip's texels, rim included, row after row, in float64, which holds any mip exactly;
+    ``mips`` each mip's first texel, height and width; ``first`` each species' finest mip's
+    row of ``mips`` and ``counts`` how many it has."""
+
+    texels: F64Grid
+    mips: I64Grid
+    first: I64Grid
+    counts: I64Grid
+
+
+def mip_atlas(levels: Sequence[Sequence[NDArray[np.floating]]]) -> MipAtlas:
+    """``levels`` (per species, its mips) laid out as one ``MipAtlas``."""
+    every = [level for mips in levels for level in mips]
+    sizes = np.array([level.shape[0] * level.shape[1] for level in every], np.int64)
+    starts = np.cumsum(sizes) - sizes
+    shapes = np.array([level.shape[:2] for level in every], np.int64).reshape(-1, 2)
+    count = np.array([len(mips) for mips in levels], np.int64)
+    channels = every[0].shape[2] if every else 6
+    texels = np.concatenate([level.reshape(-1, channels) for level in every] or
+                            [np.zeros((0, channels))]).astype(np.float64)  # fmt: skip
+    return MipAtlas(texels, np.column_stack([starts, shapes]), np.cumsum(count) - count, count)
+
+
 class CrownSet:
     """Records sorted by y, each tree's reach and crown lift, and every species' mips.
 
     ``mid_cm`` is a species' cover-weighted crown height, where a leaning tree's crown is
     shifted to; ``top_cm`` its highest texel, which orders the stamping. ``names`` are the
-    species' names, as the paint store gives them.
+    species' names, as the paint store gives them. ``atlas()`` lays ``levels`` out for the
+    kernel once, and again only when ``levels`` is replaced by another list.
     """
 
     def __init__(self, records: NDArray[np.void], levels: list[list[F32Grid]],
@@ -79,6 +109,15 @@ class CrownSet:
         self.height_cm = rec["z"] + top_cm[species] * rec["scale_z"] * rec["axis_z"]
         self.reach_cm = reach_cm[species] * rec["scale"] + top_cm[species] * rec["scale_z"] * lean
         self.max_reach_cm = float(self.reach_cm.max()) if len(rec) else 0.0
+        self._atlas: tuple[list[list[F32Grid]], MipAtlas] | None = None
+
+    def atlas(self) -> MipAtlas:
+        """``levels`` as one ``MipAtlas``, kept while ``levels`` is the same list."""
+        held = self._atlas
+        if held is None or held[0] is not self.levels:
+            held = (self.levels, mip_atlas(self.levels))
+            self._atlas = held
+        return held[1]
 
 
 def sprite_levels(sprite: dict, colours: Sequence[Sequence[float] | None]) -> list[F32Grid]:
@@ -186,8 +225,13 @@ def stamp_crowns(crowns: CrownSet, x_cm: F64Grid, y_cm: F64Grid, step_cm: float)
     near = (ys[picked] + reach >= y0_cm) & (ys[picked] - reach <= y_hi)
     near &= (xs + reach >= x0_cm) & (xs - reach <= x0_cm + cols * step_cm)
     picked = picked[near]
-    for i in picked[np.argsort(crowns.height_cm[picked], kind="stable")]:
-        _stamp(crowns, int(i), (x_cm, y_cm), step_cm, (cover, rgb, dome, top))
+    order = picked[np.argsort(crowns.height_cm[picked], kind="stable")]
+    planes = (cover, rgb, dome, top)
+    if kernels_on() and x_cm.dtype == y_cm.dtype == np.float64:
+        _stamp_compiled(crowns, order, (x_cm, y_cm), step_cm, planes)
+    else:
+        for i in order:
+            _stamp(crowns, int(i), (x_cm, y_cm), step_cm, planes)
     return {
         "cover": cover,
         "rgb": rgb,
@@ -240,3 +284,46 @@ def _stamp(crowns: CrownSet, i: int, centres: tuple[F64Grid, F64Grid], step_cm: 
     dome[window][inside] = np.maximum(dome[window][inside], got[:, _DOME] * scale_z)
     rise = np.where(a >= COVER_TOP_MIN, got[:, _TOP] * scale_z * float(tree["axis_z"]), -np.inf)
     top[window][inside] = np.maximum(top[window][inside], float(tree["z"]) + rise)
+
+
+def _stamp_compiled(crowns: CrownSet, order: I64Grid, centres: tuple[F64Grid, F64Grid],
+                    step_cm: float, planes: tuple[F32Grid, F32Grid, F32Grid, F32Grid]) -> None:  # fmt: skip
+    """``_stamp`` for every tree of ``order`` by the kernel, from ``_placements``."""
+    from mapgen.terrain import kernels
+
+    atlas = crowns.atlas()
+    spans, poses = _placements(crowns, order, centres, step_cm, planes[0].shape)
+    kernels.stamp(atlas.texels, atlas.mips, spans, poses, centres, COVER_TOP_MIN, planes)
+
+
+def _placements(crowns: CrownSet, order: I64Grid, centres: tuple[F64Grid, F64Grid],
+                step_cm: float, shape: tuple[int, ...]) -> tuple[I64Grid, F64Grid]:  # fmt: skip
+    """What ``_stamp`` works out per tree before it reads a texel, for the trees of ``order``
+    at once and with the same float64 operations: ``(mip, r0, r1, c0, c1)``, ``mip`` the row
+    of the ``MipAtlas``, and ``(cx, cy, cos, sin, ox * scale, oy * scale, texel, scale_z,
+    axis_z, z)``."""
+    x_cm, y_cm = centres
+    x0_cm, y0_cm = float(x_cm[0]) - step_cm / 2, float(y_cm[0]) - step_cm / 2
+    atlas, rec = crowns.atlas(), crowns.records[order]
+
+    def wide(name: str) -> F64Grid:
+        return rec[name].astype(np.float64)
+
+    reach, lift = crowns.reach_cm[order].astype(np.float64), crowns.lift_cm[order].astype(np.float64)  # fmt: skip
+    species, scale = rec["species"].astype(np.int64), wide("scale")
+    cx, cy = wide("x") + lift * wide("axis_x"), wide("y") + lift * wide("axis_y")
+    c0 = np.maximum(np.floor((cx - reach - x0_cm) / step_cm).astype(np.int64), 0)
+    c1 = np.minimum(np.ceil((cx + reach - x0_cm) / step_cm).astype(np.int64) + 1, shape[1])
+    r0 = np.maximum(np.floor((cy - reach - y0_cm) / step_cm).astype(np.int64), 0)
+    r1 = np.minimum(np.ceil((cy + reach - y0_cm) / step_cm).astype(np.int64) + 1, shape[0])
+    texel_cm = SPRITE_M * 100.0 * scale
+    finest = np.log2(np.maximum(step_cm / texel_cm, 1.0))
+    level = np.clip(np.round(finest), 0, atlas.counts[species] - 1).astype(np.int64)
+    texel = (texel_cm * np.left_shift(1, level)).astype(np.float32)
+    origin = np.asarray(crowns.origins, np.float64).reshape(-1, 2)[species]
+    yaw = np.radians(wide("yaw"))
+    cos, sin = np.cos(yaw).astype(np.float32), np.sin(yaw).astype(np.float32)
+    spans = np.column_stack([atlas.first[species] + level, r0, r1, c0, c1])
+    poses = np.column_stack([cx, cy, cos, sin, origin[:, 0] * scale, origin[:, 1] * scale,
+                             texel, wide("scale_z"), wide("axis_z"), wide("z")])  # fmt: skip
+    return spans, poses.astype(np.float64)

@@ -129,6 +129,10 @@ as the artwork. The main options:
 - `--draw-columns N` draws each band in pieces of N output columns, 512 by default. Narrower
   pieces take less memory a thread, and the tiles are the same bytes at any width up to 16384
   (§40, "Column pieces").
+- `--gpu` runs the light's horizon march and sky view as CUDA kernels. It needs the root
+  project's `gpu` extra (`uv sync --all-extras` installs it) and an NVIDIA driver, and
+  refuses with exit code 2 where either is missing. The tiles are the same bytes (§41, "On
+  the GPU").
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
@@ -165,7 +169,7 @@ be traced to the axis it should move.
 | `common.py` | | Repository root, `data/local`, the default game path, the shared argument parser |
 | `colour.py` | | sRGB, linear light and OKLab, the luminance weights and the flat light |
 | `pools.py` | | What a pool of workers may take: the free memory, and one BLAS thread in each worker |
-| `jit.py` | | The kernel switch: numba-compiled loops, or the numpy they equal bit for bit (`MAPGEN_KERNELS=numpy`) |
+| `jit.py` | | The kernel switch: numba-compiled loops, CUDA kernels (`MAPGEN_KERNELS=cuda`, `--gpu`), or the numpy they equal bit for bit (`MAPGEN_KERNELS=numpy`); a cache file per compiled signature |
 | `cache.py` | | The stamped caches (direct, top, meshes, Titan trees, rivers) and how a raster cache is stored: band store or raw memory maps. The on-disk names and stamps are unchanged. |
 | `bandstore.py` | | The zstd band store: `BandWriter` and the read-only `BandArray` |
 | `commands/renders.py` | | The renders orchestrator: arguments, refusals, stage order |
@@ -208,7 +212,7 @@ be traced to the axis it should move.
 | `terrain/heightfield/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
-| `terrain/kernels.py` | renderer | The resampling gathers compiled by numba |
+| `terrain/kernels.py` | renderer | The resampling gathers and the crown stamps compiled by numba |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid |
 | `terrain/render_meshes.py` | renderer | The render-only meshes and the Titan trees on the output grid |
 | `terrain/crown_stamp.py` | renderer | Tree crowns stamped into a band of the output grid |
@@ -219,6 +223,7 @@ be traced to the axis it should move.
 | `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the drawn surface and one block of its light |
 | `lighting/bake.py` | light | The lighting pyramid baked a row of blocks at a time, as the surface's rows come in |
 | `lighting/kernels.py` | light | The horizon march and the sky view compiled by numba |
+| `lighting/gpu.py`, `gpu.cu` | light | The same two as CUDA kernels, for `--gpu` |
 | `lighting/occluders.py` | light | The canopy-top occluder raster the horizons take |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `palette/styles.py` | style | Palette loading, digests, the colour painters and their height ramp |
@@ -232,8 +237,11 @@ be traced to the axis it should move.
 | `palette/painted/surfaces.py` | style | Rock in its family's colour, the canopy over rock, the render-only meshes |
 | `palette/painted/trees.py` | style | Trees over the painted pixel: the Titan forest and per-tree crowns |
 | `palette/painted/optics.py` | style | What is seen under each wet pixel, the coral carpet |
+| `palette/painted/kernels.py` | style | The colour under the water and its mix, compiled by numba |
 | `palette/painted/water_classes.py` | style | The water-class plane and the swamp-to-ocean blends at mouths |
 | `palette/water/surface.py`, `shore.py` | style | Water drawing, shore optics, foam |
+| `palette/water/wet.py` | style | A band's wet pixels, where the colour under the water is painted |
+| `palette/water/kernels.py` | style | The terrain, satellite and relief styles' water, compiled by numba |
 | `palette/water/open_sea.py` | style | The open sea's bed past the measured one, and the void planes |
 | `palette/water/rivers.py` | style | River water: reconciled with the field's, laid over each band |
 | `palette/water/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |

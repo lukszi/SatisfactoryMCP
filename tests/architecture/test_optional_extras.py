@@ -10,6 +10,7 @@ import sys
 
 from tests.support.import_graph import (
     GEN_EXTRA_ROOTS,
+    GPU_EXTRA_ROOTS,
     PARSER_PKG,
     PKG,
     edges,
@@ -65,6 +66,16 @@ def test_the_gen_extra_is_optional_at_import_time():
         "function that needs them, the way `iostore.oodle_decompress` does:\n"
         + "\n".join(sorted(eager))
     )
+
+
+def test_the_gpu_extra_is_the_generators_alone():
+    """CuPy runs the render's CUDA kernels in ``tools/mapgen``; the package never names it."""
+    found = {
+        (importer, target)
+        for importer, target in edges() | edges(PARSER_PKG)
+        if root_of(target) in GPU_EXTRA_ROOTS
+    }
+    assert not found, "the `gpu` extra is the generators' alone:\n" + _describe(found)
 
 
 def test_gameassets_never_imports_dynamically():

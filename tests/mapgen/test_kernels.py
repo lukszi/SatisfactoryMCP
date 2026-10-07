@@ -13,24 +13,15 @@ from collections.abc import Callable
 
 import numpy as np
 import pytest
-from scipy import ndimage
 
 from mapgen import jit
 from mapgen.lighting import horizon as hz
 from mapgen.terrain import sample as sm
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.paths import REPO_ROOT
+from tests.support.relief import octave_terrain
 
 needs_numba = pytest.mark.skipif(jit._numba() is None, reason="numba is not installed")
-
-
-def _terrain(side: int, seed: int) -> np.ndarray:
-    rng = np.random.default_rng(seed)
-    z = np.full((side, side), 0.37, np.float32)  # off zero: a signed zero is not compared
-    for octave, amp in ((4, 40.0), (16, 8.0), (64, 2.0)):
-        small = rng.standard_normal((octave + 3, octave + 3)).astype(np.float32)
-        z += amp * ndimage.zoom(small, side / octave, order=3)[:side, :side]
-    return z
 
 
 def _both(monkeypatch: pytest.MonkeyPatch, call: Callable[[], object]) -> tuple[object, object]:
@@ -95,6 +86,28 @@ def test_every_kernel_releases_the_gil_and_caches_on_disk():
     for kernel in (light.march, light.sky_view, gathers.separable, gathers.pchip):
         assert kernel.targetoptions["nogil"] is True
         assert not isinstance(kernel._cache, NullCache)
+        assert isinstance(kernel._cache._cache_file, jit.keyed_cache_files())
+
+
+@needs_numba
+def test_two_processes_compiling_at_once_keep_each_signature_s_own_code(tmp_path):
+    """Both read the index before either writes it; the second's index lands last and the
+    first's code after it. numba's numbered files would hand ``b`` the code of ``a``."""
+    from numba.core.caching import IndexDataCacheFile
+
+    files = jit.keyed_cache_files()
+    first, second = (files(str(tmp_path), "kernels.loop-1.py313", "stamp") for _ in range(2))
+    held: list[tuple[str, object]] = []
+    for process in (first, second):
+        process._save_data = lambda name, data: held.append((name, data))
+    first.save(("a",), "code a")
+    second._load_index = dict
+    second.save(("b",), "code b")
+    for name, data in reversed(held):
+        IndexDataCacheFile._save_data(first, name, data)
+    reader = files(str(tmp_path), "kernels.loop-1.py313", "stamp")
+    assert reader.load(("b",)) == "code b"
+    assert reader.load(("a",)) is None, "the lost entry is compiled again, never mistaken"
 
 
 # ---------------------------------------------------------------------------- the light
@@ -106,7 +119,7 @@ HALO = hz.horizon_reach_px(SP)
 @needs_numba
 @pytest.mark.parametrize("az", [0.0, 33.75, 90.0, 191.25, 270.0])
 def test_the_march_is_the_reference_bit_for_bit(monkeypatch, az):
-    z = _terrain(2 * HALO + 70, seed=1)
+    z = octave_terrain(2 * HALO + 70, seed=1)
     lo = np.where(z > 20, z - 4, np.nan).astype(np.float32)
     _same(monkeypatch, lambda: hz.march_horizon(z, HALO, az, SP))
     _same(monkeypatch, lambda: hz.march_horizon(z, HALO, az, SP, slabs=(z - 1, lo, lo + 9)))
@@ -115,15 +128,16 @@ def test_the_march_is_the_reference_bit_for_bit(monkeypatch, az):
 
 @needs_numba
 def test_the_march_reads_slabs_at_their_own_precision(monkeypatch):
-    z = _terrain(2 * HALO + 40, seed=2)
-    lo = np.where(z > 10, z - 2.5, np.nan)
+    z = octave_terrain(2 * HALO + 40, seed=2)
+    lo = np.where(z > 10, z - 2.5, np.nan).astype(np.float64)  # float32 without the cast
     slabs = (z, lo, lo + 4.25)  # float64, as numpy reads them
+    assert lo.dtype == slabs[2].dtype == np.float64
     _same(monkeypatch, lambda: hz.march_horizon(z, HALO, 123.75, SP, slabs=slabs))
 
 
 @needs_numba
 def test_the_march_with_crowns_is_the_reference_bit_for_bit(monkeypatch):
-    z = _terrain(2 * HALO + 50, seed=3)
+    z = octave_terrain(2 * HALO + 50, seed=3)
     occluder = np.where(z > 12, z + 9, np.nan).astype(np.float32)
     _same(monkeypatch, lambda: hz.march_horizon(z, HALO, 45.0, SP, occluder=occluder))
 
@@ -131,7 +145,7 @@ def test_the_march_with_crowns_is_the_reference_bit_for_bit(monkeypatch):
 @needs_numba
 def test_a_halo_short_of_the_march_is_refused(monkeypatch):
     monkeypatch.delenv(jit.KERNEL_SWITCH, raising=False)
-    z = _terrain(2 * HALO + 10, seed=4)
+    z = octave_terrain(2 * HALO + 10, seed=4)
     with pytest.raises(ValueError, match="halo"):
         hz.march_horizon(z, HALO - 3, 90.0, SP)
 
@@ -140,7 +154,7 @@ def test_a_halo_short_of_the_march_is_refused(monkeypatch):
 @pytest.mark.parametrize("spacing", [0.5, 2.0, 100.0])
 def test_the_sky_view_is_the_reference_bit_for_bit(monkeypatch, spacing):
     halo = int(np.ceil(hz.SKY_RADIUS_M / spacing)) + 2
-    z = _terrain(2 * halo + 90, seed=5)
+    z = octave_terrain(2 * halo + 90, seed=5)
     _same(monkeypatch, lambda: hz.sky_view(z, halo, spacing))
     _same(monkeypatch, lambda: hz.sky_view(z[3:-1, 2:-5], halo, spacing))  # a strided view
 

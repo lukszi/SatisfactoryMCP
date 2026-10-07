@@ -45,7 +45,7 @@ the others meet.
 | 38 | [Perched water: a box top that is not the surface (2026-10-05)](map/water.md#38-perched-water-a-box-top-that-is-not-the-surface-2026-10-05) | water.md |
 | 39 | [Compressed raster caches: the zstd band store (2026-10-06)](map/renders.md#39-compressed-raster-caches-the-zstd-band-store-2026-10-06) | renders.md |
 | 40 | [Drawing a layer's bands on threads (2026-10-06)](map/renders.md#40-drawing-a-layers-bands-on-threads-2026-10-06) | renders.md |
-| 41 | [Compiled kernels: the light's march and the sampler's gathers (2026-10-07)](map/renders.md#41-compiled-kernels-the-lights-march-and-the-samplers-gathers-2026-10-07) | renders.md |
+| 41 | [Compiled kernels: the light, the sampler's gathers and the painters (2026-10-07)](map/renders.md#41-compiled-kernels-the-light-the-samplers-gathers-and-the-painters-2026-10-07) | renders.md |
 | 42 | [Cutting the bands as they settle (2026-10-07)](map/renders.md#42-cutting-the-bands-as-they-settle-2026-10-07) | renders.md |
 
 ---

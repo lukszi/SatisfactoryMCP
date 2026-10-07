@@ -14,12 +14,13 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.colour import linear_from_oklab, linear_to_srgb
+from mapgen.jit import kernels_on
 from mapgen.lighting.hillshade import slope_degrees, sun_dot
 from mapgen.palette.scene import FloatGrid, ReliefScene, WaterPlanes, field_heights
 from mapgen.palette.schema import ReliefPalette, ReliefWaterStyle
 from mapgen.palette.styles import area_plane, dry_land_range, ramp_position
-from mapgen.palette.water.shore import wet_mix
-from mapgen.palette.water.wet import WetPixels
+from mapgen.palette.water.shore import WET_MIX_MOST, wet_mix
+from mapgen.palette.water.wet import WetPixels, float32_planes
 from satisfactory_mcp.core.arrays import F16Grid, F32Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -221,6 +222,8 @@ def _water(
     tint = water["depth"] if ground.water is None else sample(ground.water) / np.float32(255.0)
     planes = (water["cover"], water["depth_m"], water["ocean"], tint, lit)
     wet = WetPixels(water["cover"])
+    if kernels_on() and float32_planes(land, *planes):
+        return _water_compiled(land, planes, wet, ground)
     if wet.whole:
         return wet_mix(land, *_water_over(land, planes, ground))
     wet_land = wet.take(land)
@@ -249,3 +252,30 @@ def _water_over(
     colour = colour * (1.0 - edge[..., None]) + ground.stroke * edge[..., None]
     under = land * (1.0 - opacity) + colour * opacity
     return under, np.clip(cover + 0.5 * edge, 0.0, 1.0)[..., None]
+
+
+def _water_compiled(
+    land: F32Grid, planes: tuple[F32Grid, ...], wet: WetPixels, ground: ReliefGround
+) -> F32Grid:
+    """``_water`` by the kernel, on the pixels it works on; the fade's ``exp`` and the stroke's
+    power are worked out here, by numpy, on those pixels."""
+    from mapgen.palette.water import kernels
+
+    cover, depth_m, ocean, tint, lit = planes
+    water_style, shore = ground.palette["water"], ground.palette["shore"]
+    if wet.whole:
+        index, depth, shares = np.arange(cover.size), depth_m.ravel(), cover.ravel()
+    else:
+        index, depth, shares = wet.index, wet.take(depth_m), wet.take(cover)
+    transmit = np.exp(-depth / np.float32(shore["clarity_m"]))
+    shares = np.clip(shares, 0.0, 1.0)
+    # 4 c (1 - c) is +0 at a cover of 0 or 1, and so is its power: worked out elsewhere alone.
+    curve = np.zeros(shares.shape, np.float32)
+    part = (shares != 0.0) & (shares != 1.0)
+    curve[part] = np.clip(4.0 * shares[part] * (1.0 - shares[part]), 0.0, 1.0) ** 1.5
+    knobs = [water_style["lit"], FLAT_LIT, shore["edge_alpha"], water_style["stroke"]]
+    style = (ground.shallow, ground.deep, ground.stroke, np.array(knobs, np.float32))
+    flat = tuple(plane.reshape(-1) for plane in (cover, ocean, tint, lit))
+    out = kernels.relief_water(land.reshape(-1, 3), flat, index, (transmit, curve), wet.whole,
+                               WET_MIX_MOST, style)  # fmt: skip
+    return out.reshape(land.shape)

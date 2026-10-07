@@ -13,7 +13,7 @@ from numpy.typing import NDArray
 
 from mapgen.palette.scene import FloatGrid
 
-__all__ = ["WET_MOST", "WetPixels", "cover_mix"]
+__all__ = ["WET_MOST", "EveryPixel", "WetPixels", "cover_mix", "float32_planes"]
 
 #: Past this share of wet pixels a band's water is painted whole: gathering its planes then
 #: costs more than the dry pixels' arithmetic it saves (about 1.3 times the whole band's on a
@@ -27,6 +27,14 @@ _Key = TypeVar("_Key")
 def cover_mix(land: FloatGrid, under: FloatGrid, cover: FloatGrid) -> FloatGrid:
     """``land * (1 - cover) + under * cover``; ``cover`` has the trailing channel axis."""
     return land * (1.0 - cover) + under * cover
+
+
+def float32_planes(*planes: object) -> bool:
+    """Whether every plane is a float32 array or number, what a water kernel takes; with any
+    other the numpy painter runs, whose float types follow its inputs'."""
+    return all(
+        isinstance(plane, np.ndarray | np.generic) and plane.dtype == np.float32 for plane in planes
+    )
 
 
 class WetPixels:
@@ -76,3 +84,14 @@ class WetPixels:
         out = land.astype(done.dtype, order="C")
         out.reshape(-1, *out.shape[2:])[self.index] = done
         return out
+
+
+class EveryPixel(WetPixels):
+    """Every pixel of a band, in its order: a plane is taken as a flat view where it can be."""
+
+    def __init__(self, shape: tuple[int, ...]) -> None:
+        super().__init__(np.ones(shape, np.float32))
+
+    def take(self, plane: NDArray[_Scalar]) -> NDArray[_Scalar]:
+        """The plane laid flat, its trailing axes kept."""
+        return plane.reshape(-1, *plane.shape[2:])

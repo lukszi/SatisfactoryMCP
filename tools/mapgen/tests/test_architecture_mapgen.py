@@ -25,9 +25,9 @@ PRESETS_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "presets.py
 #: gamedata <- terrain <- lighting <- palette <- render <- commands <- cli, with ``tiles``
 #: (cutting and describing a finished sheet) under render and ``common``,
 #: ``bandstore``, ``cache`` and ``colour`` as leaves under all of them, ``pools`` (free
-#: memory, a worker's BLAS threads) under the units that start pools, and ``jit`` (the numba
-#: switch) under the units with kernels. ``cli`` reaches its commands through ``importlib``
-#: by name, so it statically imports nothing here.
+#: memory, a worker's BLAS threads) under the units that start pools, and ``jit`` (the kernel
+#: switch) under the units with kernels and ``render``, whose draw flags set it. ``cli``
+#: reaches its commands through ``importlib`` by name, so it statically imports nothing here.
 ALLOWED: dict[str, frozenset[str]] = {
     "common": frozenset(),
     "bandstore": frozenset(),
@@ -39,7 +39,7 @@ ALLOWED: dict[str, frozenset[str]] = {
     "terrain": frozenset({"common", "cache", "jit", "gamedata", "terrain"}),
     "lighting": frozenset({"common", "colour", "pools", "jit", "gamedata", "terrain", "lighting"}),
     "palette": frozenset(
-        {"common", "colour", "pools", "cache", "gamedata", "terrain", "lighting", "palette"}
+        {"common", "colour", "pools", "cache", "jit", "gamedata", "terrain", "lighting", "palette"}
     ),
     "tiles": frozenset({"common", "pools", "gamedata", "lighting", "tiles"}),
     "render": frozenset(
@@ -47,6 +47,7 @@ ALLOWED: dict[str, frozenset[str]] = {
             "common",
             "colour",
             "pools",
+            "jit",
             "cache",
             "gamedata",
             "terrain",

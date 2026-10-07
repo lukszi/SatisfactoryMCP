@@ -13,6 +13,7 @@ from collections.abc import Callable, Collection, Generator, Iterable
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import TypeVar
 
+from mapgen.jit import add_gpu_flag
 from mapgen.pools import free_ram_bytes
 from mapgen.render.stencils import piece_halo
 
@@ -149,7 +150,9 @@ def _positive(text: str) -> int:
 
 
 def add_draw_flags(parser: argparse.ArgumentParser) -> None:
-    """``--draw-threads``, how many pieces are drawn at once, and ``--draw-columns``, how wide."""
+    """``--draw-threads``, how many pieces are drawn at once, ``--draw-columns``, how wide, and
+    ``--gpu``, where the kernels that have a CUDA twin run."""
+    add_gpu_flag(parser)
     parser.add_argument(
         "--draw-threads",
         type=int,

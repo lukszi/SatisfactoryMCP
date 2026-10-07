@@ -9,6 +9,7 @@ import sys
 
 from tests.support.import_graph import (
     GEN_EXTRA_ROOTS,
+    GPU_EXTRA_ROOTS,
     PARSER,
     PARSER_PKG,
     PKG,
@@ -223,6 +224,7 @@ def test_the_generators_reach_down_and_nothing_reaches_up_to_them():
         allowed = (
             root in sys.stdlib_module_names
             or root in GEN_EXTRA_ROOTS
+            or root in GPU_EXTRA_ROOTS
             or root in TOOLS_EXTRA_ROOTS
             or covers(target, TOOLS_ALLOWED_PREFIXES)
             or covers(target, TOOLS_EXTRA_PREFIXES)
@@ -230,7 +232,8 @@ def test_the_generators_reach_down_and_nothing_reaches_up_to_them():
         if not allowed:
             stray.append(f"  {importer} -> {target}")
     assert not stray, (
-        "a generator may read the standard library, the `gen` extra, satisfactory_mcp.core "
+        "a generator may read the standard library, the `gen` and `gpu` extras, "
+        "satisfactory_mcp.core "
         "and itself -- anything else either makes the server depend on a generation-time "
         "package or points a generator at a layer above core. Fix the import, or add it to "
         "TOOLS_EXTRA_ROOTS / TOOLS_EXTRA_PREFIXES with the reason:\n" + "\n".join(stray)
