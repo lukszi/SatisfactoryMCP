@@ -1489,8 +1489,8 @@ Left in numpy, measured in the profile:
 
 - `blend_regimes` (0.12 s), `composite_top` (0.13 s) and `composite_meshes` (0.22 s), together
   1.3% of the pass: about 5 ns a pixel, so a kernel would save a few tenths of a second.
-- The colour spaces (`oklab`, `linear_from_oklab`, `linear_to_srgb`), 5.0 s: matrix products
-  in whatever order numpy's BLAS adds them, and cube roots and powers.
+- The colour spaces (`oklab`, `linear_from_oklab`, `linear_to_srgb`), 5.0 s: matrix products,
+  now summed in one fixed order (section 40, "Fixed-order sums"), and cube roots and powers.
 - The relief's shade and slope rock, the satellite's colours, the painted ground's rock and
   meshes, the crowns' light: each a twentieth of the pass or less.
 
@@ -1611,7 +1611,8 @@ one step to the next, which is a different draw.
 
 ### Known limits
 
-- The painters left in numpy above. A kernel for the colour spaces would move last bits.
+- The painters left in numpy above. A kernel for the colour spaces could add its sums in
+  the fixed order, but its cube roots and powers would move last bits.
 - On the GPU, each of a block's 64 marches uploads the block's rasters again, about a third
   of the call; kept on the device for the block they would cost one upload. numpy's
   arctangent after each march costs more than the whole call.
@@ -1671,8 +1672,8 @@ light are the same bytes.
   rows come in, the coarser levels baked from the native ones, and the pyramid renamed into
   place, as in section 29.
 - **The same bytes.** A block reads and writes what it did; only when it runs changes. A
-  band is relit a row at a time with the terms of its own rows, and the luminance's row width
-  (section 40, "Column pieces") is the sheet's, as it was.
+  band is relit a row at a time with the terms of its own rows, and the luminance reads no
+  row width (section 40, "Fixed-order sums").
 
 ### A kept light, read while it matches
 
