@@ -1,6 +1,6 @@
 """The CUDA kernels give the bits of the numpy reference, and ``--gpu`` sets the switch.
 
-docs/map/renders.md section 43. Synthetic fixtures: no install, no field. The kernel tests
+docs/map/renders.md section 41, "On the GPU". Synthetic fixtures: no install, no field. The kernel tests
 skip, saying why, on a machine without numba, CuPy or a CUDA device; the switch, the flag
 and the light's worker count run everywhere.
 """
@@ -71,8 +71,9 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def test_the_flag_sets_the_switch_for_the_run_and_its_processes(monkeypatch):
-    monkeypatch.delenv(jit.KERNEL_SWITCH, raising=False)
-    monkeypatch.setattr(jit, "gpu_problem", lambda: None)
+    monkeypatch.setenv(jit.KERNEL_SWITCH, "")  # recorded, so the flag's setting is undone
+    monkeypatch.delenv(jit.KERNEL_SWITCH)
+    monkeypatch.setattr(jit, "_gpu_problem_apart", lambda: None)
     assert _parser().parse_args([]).gpu is False
     assert jit.KERNEL_SWITCH not in os.environ
     assert _parser().parse_args(["--gpu"]).gpu is True
@@ -81,12 +82,28 @@ def test_the_flag_sets_the_switch_for_the_run_and_its_processes(monkeypatch):
 
 def test_the_flag_is_refused_where_the_kernels_cannot_run(monkeypatch, capsys):
     monkeypatch.setenv(jit.KERNEL_SWITCH, "")
-    monkeypatch.setattr(jit, "gpu_problem", lambda: "no CUDA device")
+    monkeypatch.setattr(jit, "_gpu_problem_apart", lambda: "no CUDA device")
     with pytest.raises(SystemExit) as refused:
         _parser().parse_args(["--gpu"])
     assert refused.value.code == 2
     assert "--gpu: no CUDA device" in capsys.readouterr().err
     assert os.environ[jit.KERNEL_SWITCH] == ""
+
+
+@pytest.mark.usefixtures("device")
+def test_the_flag_probes_the_device_from_a_process_of_its_own():
+    """The run's own process never opens a CUDA context: only its light's processes use one."""
+    code = (
+        "import sys\n"
+        "from mapgen import jit\n"
+        "print(jit._gpu_problem_apart(), 'cupy' in sys.modules)\n"
+    )
+    paths = [str(REPO_ROOT / "src"), str(REPO_ROOT / "tools" / "mapgen" / "src")]
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(paths)}
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                          env=env, timeout=300, check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert done.stdout.strip() == "None False"
 
 
 def test_the_renders_command_takes_the_flag():

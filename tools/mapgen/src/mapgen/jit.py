@@ -3,7 +3,7 @@
 ``MAPGEN_KERNELS=numpy`` runs the numpy reference; ``cuda`` (``renders --gpu``) the CUDA
 kernels where there are some and numba's elsewhere; unset, or any other value, numba's
 wherever it imports. A module of kernels is imported only once its switch says so, so the
-reference never loads numba or CuPy. docs/map/renders.md sections 41 and 43.
+reference never loads numba or CuPy. docs/map/renders.md section 41, "On the GPU".
 """
 
 from __future__ import annotations
@@ -11,10 +11,12 @@ from __future__ import annotations
 import argparse
 import functools
 import hashlib
+import multiprocessing
 import os
 import threading
 import warnings
 from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor
 from importlib import resources
 from types import ModuleType
 from typing import TYPE_CHECKING, TypeVar, cast
@@ -150,7 +152,8 @@ def _cuda_module(package: str, source: str) -> RawModule:
 
 
 def gpu_problem() -> str | None:
-    """Why the CUDA kernels cannot run here, or None: numba, the gpu extra, a device."""
+    """Why the CUDA kernels cannot run here, or None: numba, the gpu extra, a device, and a
+    kernel compiled and loaded on it."""
     if _numba() is None:
         return "the CUDA kernels run beside numba's, which is the gen extra"
     try:
@@ -158,10 +161,20 @@ def gpu_problem() -> str | None:
     except ImportError as exc:
         return f"CuPy does not import ({exc}): install the gpu extra"
     try:
-        found = cupy.cuda.runtime.getDeviceCount()
-    except cupy.cuda.runtime.CUDARuntimeError as exc:
-        return f"no CUDA device: {exc}"
-    return None if found else "no CUDA device"
+        if not cupy.cuda.runtime.getDeviceCount():
+            return "no CUDA device"
+        probe = 'extern "C" __global__ void probe() {}'
+        cupy.RawModule(code=probe, options=CUDA_OPTIONS).get_function("probe")
+    except Exception as exc:  # whatever stops CuPy: no driver, no device, no NVRTC
+        return f"CuPy cannot run a kernel here: {exc}"
+    return None
+
+
+def _gpu_problem_apart() -> str | None:
+    """``gpu_problem`` in a process of its own: this one opens no CUDA context it never uses."""
+    spawn = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=1, mp_context=spawn) as probe:
+        return probe.submit(gpu_problem).result()
 
 
 class _SelectGpu(argparse.Action):
@@ -175,7 +188,7 @@ class _SelectGpu(argparse.Action):
         values: object,
         option_string: str | None = None,
     ) -> None:
-        problem = gpu_problem()
+        problem = _gpu_problem_apart()
         if problem is not None:
             parser.error(f"--gpu: {problem}")
         os.environ[KERNEL_SWITCH] = GPU
