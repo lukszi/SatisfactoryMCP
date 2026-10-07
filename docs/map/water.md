@@ -5,19 +5,16 @@ water. A section number below resolves through the [map's index](../spatial-and-
 
 ## 33. Water by class in the game-painted style (2026-10-05)
 
-Recipe 6 drew every water texel with one set of Beer-Lambert optics, the ones calibrated on
-the Spire Coast sea. Inland that read wrong: rivers came out sea-blue, the swamp a clear blue
-sheet, and sulfur ponds like the sea. The game-painted style now gives each water body a
-class and each class its own optics. The ocean kept its calibrated values; only its deep
-colour has moved since (see "Sea deep and swamp water" below).
+Inland water is not the sea. Drawn with the optics calibrated on the Spire Coast sea, rivers
+come out sea-blue, the swamp a clear blue sheet, and sulfur ponds like the sea. So the
+game-painted style gives each water body a class and each class its own optics.
 
 ### The class plane
 
 `python -m mapgen paint` also writes `water_bodies.json` into the paint store: every water
 actor with a box (class, world box, the materials its export subtree assigns) and every
 root `StaticMeshComponent` whose mesh is under `/HotSpring/`. On build 502094 that is 839
-actors and 101 terraces, and it doubles the paint run to about 50 s because the water boxes
-read mesh bounds. `PAINT_GENERATOR_VERSION` is 3 (with sections 30 to 32 and 36).
+actors and 101 terraces.
 
 `gamedata/water/bodies.py` `classify` turns that into a uint8 plane on the 1 m grid, once per
 render (about 5 s):
@@ -36,9 +33,9 @@ render (about 5 s):
    open sea: water within 1 m of the ocean level that the map's edge reaches through
    channels at least 96 m wide (a 48 m opening on a 4 m grid, kept where it comes within
    three radii of the edge). The swamp's `MI_WaterSwamp_Muddy` boxes are 230 m squares at
-   the sea's level and reach past its coast, to x 3250 against the swamp area's 3040; they
-   painted the open sea mauve in straight steps. A lagoon behind a narrower mouth keeps its
-   box. A box whose top lies under the sea's level claims no water at the sea's level (see
+   the sea's level and reach past its coast, to x 3250 against the swamp area's 3040; without
+   that rule they paint the open sea in straight steps. A lagoon behind a narrower mouth keeps
+   its box. A box whose top lies under the sea's level claims no water at the sea's level (see
    "Lake boxes under the sea" below).
 4. Unclaimed wet texels within 1 m of the ocean level are ocean. That includes the level-only
    water around the frame at about -16.3 m.
@@ -49,27 +46,27 @@ render (about 5 s):
 8. Where swamp meets the ocean inside one body, the plane blends the two
    (`feather_mouths`; see "Swamp mouths" below).
 
-Build 502094: ocean 16.23 M texels, lake 1.20 M, swamp 0.35 M, river 0.38 M, turquoise 53 k,
-hot spring 15 k, sulfur 9.7 k, cave 5.3 k, blue lake 5.2 k; 312 bodies claimed by
-material, 0.28 M texels by the biome fallback. Translucent water has since taken 288 k
-texels from the lake (see "Translucent water" below). Turquoise has since merged into lake; about 2 k
-of its texels went to hot spring instead (see "Lake colours" below). The open sea is 14.92 M texels; it took
-264,581 texels from the swamp and 16 from a river, and nothing from any other class.
-Seeding it from the texels with no ground as well would add 2 k, so the edge alone does.
+Build 502094, when the plane was first built: ocean 16.23 M texels, lake 1.20 M, river 0.38 M,
+swamp 0.35 M, the turquoise lakes 53 k (lake since, below), hot spring 15 k, sulfur 9.7 k, cave
+5.3 k, blue lake 5.2 k; 312 bodies claimed by material, 0.28 M texels by the biome fallback.
+Translucent water has since taken 288 k texels from the lake, and the river boxes give back
+what they claim outside their own bodies. The open sea is 14.92 M texels; it took 264,581 texels from the
+swamp and 16 from a river, and nothing from any other class. Seeding it from the texels with no
+ground as well would add 2 k, so the edge alone does.
 
 The renderer samples the plane bilinearly with the dry taps dropped
 (`terrain/sample.py` `ClassMix`), so a shore pixel takes its water's class rather than half
 of nothing. A pixel whose wet taps agree takes its class's row exactly. A band holding only
-ocean and dry texels takes the recipe 6 path unchanged, and so does a render from a paint store
+ocean and dry texels takes the ocean path unchanged, and so does a render from a paint store
 without `water_bodies.json`; the sidecar's `paint.water_classes` says which happened.
 
 ### River boxes (2026-10-06)
 
 A `BP_River_PROT_C` box is one AABB around a whole river (section 34). Its rectangle reaches
-into the lakes and the sea the river feeds, at their level. Painted like any other box, it
-left a straight-edged block of river colour in them, in the game-painted style only: at
-(-370, -868), (-1033, -366) and (12, -70) among others. Since recipe 7 the ribbons draw the
-river row wherever they speak, so the rectangle added nothing but the seam.
+into the lakes and the sea the river feeds, at their level, and painted like any other box it
+leaves a straight-edged block of river colour in them, as at (-370, -868), (-1033, -366) and
+(12, -70). The ribbons draw the river row wherever they speak, so the rectangle adds nothing
+but the seam.
 
 The boxes still paint in size order, then each river's texels are judged by the body they
 lie in:
@@ -83,21 +80,11 @@ lie in:
 - Anywhere else the river's texels go back to what the other boxes painted under it, or to
   unclaimed. The sidecar's `river_box_texels_given_back` counts them.
 
-Measured on build 502094's reconciled water, on nine 2.5 km tiles with 400 m margins (close
-to a render's counts, not equal to them):
-
-| | Before | After |
-|---|---|---|
-| River texels | 0.277 M | 0.167 M |
-| Straight river edges, runs of 8 m or more (texels) | 3,024 | 681 |
-| The same inside one body | 2,544 | 39 |
-
-The river's texels went to lake (64 k), ocean (40 k), swamp and turquoise (2.8 k each) and
-hot spring (0.8 k); 0.7 k of lake turned river. The 39 are two lake boxes smaller than the
-river box, which keep their class. The rest lie on level steps between two bodies. On the
-field's own planes (`--kernel-only`) the river keeps 0.31 M of 0.38 M texels. On a 3.3 km
-tile the classification takes 0.53 s against 0.29 s, at the same peak memory. The other
-styles draw no class plane and are unchanged; style `satellite-painted` is version 9.
+Measured on nine 2.5 km tiles of build 502094's reconciled water, straight river edges (runs
+of 8 m or more) inside one body fall from 2,544 texels to 39: two lake boxes smaller than the
+river box, which keep their class. The rest lie on level steps between two bodies. The river's
+texels go back to lake, ocean, swamp and hot spring. On the field's own planes
+(`--kernel-only`) the river keeps 0.31 M of 0.38 M texels.
 
 ### Lake boxes under the sea (2026-10-06)
 
@@ -105,22 +92,16 @@ The field's level at a texel is the highest box top over it (section 19), stored
 decimetres. Four lake boxes stand under the sea's level. Two of them reach over water whose
 level is the sea's: the Rocky Desert box at -17.046 m, 5 cm under the sea's -16.994 m
 (x -1,100 to -870, y -1,475 to -1,116), and a box at -17.7 m (x -1,958 to -1,678, y -558 to
--329). The sea's surface stands over both, so the field holds the sea's level there; under the
--17.7 m box, water at the box's own surface would read -17.7. A channel narrower than the open
-sea's 96 m is not open sea, so step 3 let the lake boxes claim it. In the Rocky Desert it drew a
-dark green rectangle in the sea, with straight edges at x -870 and y -1,475.
+-329). The sea's surface stands over both, so the field holds the sea's level there. A channel
+narrower than the open sea's 96 m is not open sea, so step 3 would let the lake boxes claim it,
+and in the Rocky Desert they draw a dark green rectangle in the sea.
 
-A box whose top lies under the ocean level (`OCEAN_LEVEL_M`) now claims no texel whose level
-is within half a decimetre of it (`SEA_ROUNDING_M`, the field's rounding): that water is the
+A box whose top lies under the ocean level (`OCEAN_LEVEL_M`) claims no texel whose level is
+within half a decimetre of it (`SEA_ROUNDING_M`, the field's rounding): that water is the
 sea's. A box under the sea whose water reads its own level keeps it, such as the pond at
 -17.55 m near (3,825, -2,604). Boxes at or above the sea's level, the swamp's at -16.666 m
-among them, are unchanged.
-
-On the field's own planes this turns 46,704 lake texels to ocean, exactly the two boxes'
-sea-level texels, and changes nothing else. Straight class edges inside one body (runs of 8 m
-or more) go from 1,310 to 1,042 map-wide, and from 199 to 0 in the Rocky Desert window. In a
-render of that window the step across the box's old edge goes from 0.062 to 0.010 OKLab.
-Style `satellite-painted` is version 10.
+among them, are unaffected. On the field's own planes this turns 46,704 lake texels to ocean,
+exactly the two boxes' sea-level texels.
 
 ### The optics
 
@@ -153,59 +134,38 @@ from the material), **fit** (fitted to screenshots through a model) or **none**.
 | translucent | #708973 | #708973 | 1.4, 1.4, 1.4 | 0 | screenshot: the Blue Crater from above in 1.0 and 1.1, pooled #718a75. k: game data, the translucent material's opacity ramp (see "Translucent water") |
 
 Targets follow the Spire Coast calibration (section 27): the reference colour times 0.85
-linear for map exposure, OKLab L times 0.95 and chroma times 0.9. Against the references at
-assumed depths, Delta E (OKLab x100): the old mauve swamp row 3.7 at 1 m and 5.2 at 3 m, lake
-1.9 at 2 m and 4.5 at 4 m (with the old jade deep colour). Hue alone (the a, b distance) was
-under 1 for both.
-The river references are a dusk shot at a grazing angle and a stream over white sand. They fix
-only the hue (a, b distance 1 to 3), not the lightness.
+linear for map exposure, OKLab L times 0.95 and chroma times 0.9. The river references are a
+dusk shot at a grazing angle and a stream over white sand. They fix only the hue (a, b
+distance 1 to 3), not the lightness.
 
 ### Lake colours (2026-10-06)
 
-The lake row was calibrated jade throughout, on the wiki's Lake Forest shot. That jade was the
-Lake Forest fog: the `Atmosphere_LakeForest` volume over the 131 m lakes has a noon
-inscattering of #4a7354, Delta E 1.9 from the lake body #56745b, and starts at 0 m. The game's
-lake material (`MM_Lake_01`, single-layer water) absorbs red most and green least and scatters
-nothing, so it has no body colour of its own: shallow water reads green over its bed, and deep
-water reads dark, lit mostly by the sky's reflection. In 1.0 screenshots from above, deep lake
-water reads teal at hue 185 to 199 (the biggest Crater Lakes crater near top-down: #4b6c67),
-and near-shore water green at hue 146 to 165.
+The lake body is jade, calibrated on the wiki's Lake Forest shot, and that jade is the Lake
+Forest fog: the `Atmosphere_LakeForest` volume over the 131 m lakes has a noon inscattering of
+#4a7354, Delta E 1.9 from the lake body #56745b, and starts at 0 m. The game's lake material
+(`MM_Lake_01`, single-layer water) absorbs red most and green least and scatters nothing, so it
+has no body colour of its own: shallow water reads green over its bed, and deep water reads
+dark, lit mostly by the sky's reflection. In 1.0 screenshots from above, deep lake water reads
+teal at hue 185 to 199 (the biggest Crater Lakes crater near top-down: #4b6c67), and near-shore
+water green at hue 146 to 165.
 
-The body stays the jade, which is right near the shore. The deep colour moves from #2c4e3c
-(hue 160) to the teal #375a58 (hue 191); absorption, `deep_tau_m` (6 m) and turbidity are
-unchanged. Drawn through the painted layer's water (tone and exposure included) over each
-window's baked bed, at its depth on the field's own planes, the median Rocky Desert lake texel
-reads:
+So the body stays jade, which is right near the shore, and the deep colour is the teal #375a58
+(hue 191), at `deep_tau_m` 6 m. Drawn through the painted layer's water over each window's
+baked bed, the median Rocky Desert lake texel reads #607763 (hue 149) under 1 m, #4e6d5e (hue
+163) at 2 to 4 m and #385b58 (hue 189) at 15 m and deeper; the Lake Forest, Crater Lakes and
+mesa windows agree within 6 degrees of hue at each depth, but for the mesa's shallows over red
+sand (hue 140 under 1 m).
 
-| Depth | Before | After |
-|---|---|---|
-| 0-1 m | #5f7661 (h147) | #607763 (h149) |
-| 1-2 m | #53715c (h154) | #547260 (h158) |
-| 2-4 m | #4b6a55 (h155) | #4e6d5e (h163) |
-| 4-8 m | #405f4c (h157) | #45655b (h173) |
-| 8-15 m | #3b5a47 (h157) | #41625a (h178) |
-| 15 m and deeper | #2e4f3d (h159) | #385b58 (h189) |
-
-The Lake Forest, Crater Lakes and mesa windows agree within 6 degrees of hue at each depth,
-but for the mesa's shallows over red sand (hue 140 under 1 m). A shallow lake changes little;
-a deep one turns from dark green to teal.
-
-The 14 `MI_Lake_Turquoise_01` lakes on the Desert Spires mesas are lakes too. The instance's
-cooked shader maps are hash-identical to `MM_Lake_01`'s, its deep colour, tint and depth
-switch are not parameters of the master, and no actor sets anything the shader reads: in game
-they render exactly as `MM_Lake_01`. 1.0 screenshots of the big mesa lake at (1950, -1890)
-read green shallows (#526e46) and dark deep water, Delta E 3.2 from the lake body. The
-turquoise class drew it cyan (#44827c at 1 to 2 m); it now draws as a lake (#54725f at 1 to
-2 m, #47675c at 4 to 8 m). The turquoise class is gone.
-
-As lakes, these boxes also fall under step 2's hot-spring rule. The 230.3 m lake by the crash
-site at (1908, -2368) is a 114 m box holding three hot-spring terraces near (1918, -2428), so
-it draws as a hot spring (#5d968f at 2 to 4 m; 2.1 k texels on the field's own planes).
+The 14 `MI_Lake_Turquoise_01` lakes on the Desert Spires mesas are lakes: the instance's cooked
+shader maps are hash-identical to `MM_Lake_01`'s and no actor sets anything the shader reads,
+so in game they render exactly as it does. As lakes, these boxes fall under step 2's
+hot-spring rule: the 230.3 m lake by the crash site at (1908, -2368) is a 114 m box holding
+three hot-spring terraces near (1918, -2428), so it draws as a hot spring (2.1 k texels on the
+field's own planes).
 
 ### Sea deep and swamp water (2026-10-06)
 
-The open sea's deep colour and the swamp's water now come from 1.0 screenshots seen from
-above. Style `satellite-painted` is version 16.
+The open sea's deep colour and the swamp's water come from 1.0 screenshots seen from above.
 
 **One sky term.** Seen from above, deep water in the game is lit mostly by the sky it
 reflects: its materials absorb and scatter little. One sky term for every class, (0.026,
@@ -213,15 +173,15 @@ reflects: its materials absorb and scatter little. One sky term for every class,
 absorption over its bed, fits the 1.0 screenshots of the sea, lakes, rivers and swamp to a
 median Delta E of 5.2, most of it from depths that had to be guessed. Drawn alone it is
 #3c597d. A test that needs no depth, the distance to the nearest point of each class's
-colour-against-depth curve, gives the sea 2.8 against 3.9 for the old row. A reflection per
-material, by its Fresnel term, fits worse (13.2). The palette's own sky term, 0.02 of
-#96bee6, is about a fifteenth of the fitted one. Source: fit.
+colour-against-depth curve, gives the sea 2.8. A reflection per material, by its Fresnel term,
+fits worse (13.2). The palette's own sky term, 0.02 of #96bee6, is about a fifteenth of the
+fitted one. Source: fit.
 
-**The sea.** Only the deep colour moves, from #354e68 to #3c597d; the body, the absorption and
-`deep_tau_m` stay. The full row the fit gives (k 1.69, 0.50, 0.36 per metre, 2.17 times the
-game's absorption, with body and deep both #3c597d) would also draw the 1.0 lagoons blue, at
-hue 228, where the screenshots read teal, so it is not taken. Source: screenshot, measured by
-the method of section 31:
+**The sea.** Its deep colour is #3c597d; the body, the absorption and `deep_tau_m` are the
+Spire Coast fit's. The full row the sky fit gives (k 1.69, 0.50, 0.36 per metre, 2.17 times
+the game's absorption, with body and deep both #3c597d) would also draw the 1.0 lagoons blue,
+at hue 228, where the screenshots read teal, so it is not taken. Source: screenshot, measured
+by the method of section 31:
 
 | Shot | What, light | Reading |
 | --- | --- | --- |
@@ -232,88 +192,62 @@ the method of section 31:
 | [3771500868](https://steamcommunity.com/sharedfiles/filedetails/?id=3771500868) | Spire Coast lagoon, high oblique, clear | #78969e (h 216) |
 
 **The swamp.** `MI_WaterSwamp_Muddy` absorbs about 20 times what the sea does, so swamp water
-is opaque within 0.1 m and near-black from above. The opaque target goes from #7e7372 to
-#302627. Source: screenshot. A 1.0 video from a tower, looking down
+is opaque within 0.1 m and near-black from above. The opaque target is #302627. Source:
+screenshot. A 1.0 video from a tower, looking down
 ([UD_1Rz7xryg](https://www.youtube.com/watch?v=UD_1Rz7xryg&t=170)), reads #332d31, and
 cleared pools in 1.2 ([3743733077](https://steamcommunity.com/sharedfiles/filedetails/?id=3743733077))
 read #2c1f1d; the two pool to #302627.
 
-The old mauve was the swamp's fog. `Atmosphere_Swamp` inscatters #9977c1 (hue 304) at noon,
-at a density of 0.1 against the global 0.02 (source: game data). The wiki and Early Access
-shots the old target came from (#9f8a88, #857475, #7b7472) are lifted and tinted by it.
-Further off in the same video, through more of the fog, the water reads #4f494e. The fogged
-#4d4a4e is the fallback if the near-black ever reads as a hole.
+Shots through more of the swamp's fog read mauve: `Atmosphere_Swamp` inscatters #9977c1 (hue
+304) at noon, at a density of 0.1 against the global 0.02 (source: game data), and lifts and
+tints the wiki and Early Access shots (#9f8a88, #857475, #7b7472). Further off in the same video
+the water reads #4f494e. The fogged #4d4a4e is the fallback if the near-black ever reads as a
+hole.
 
 The swamp class row takes the same colour as its body and its deep colour, so swamp-class
 water outside `Area_Swamp`'s blur, which section 31's opaque colour does not reach, draws
 near-black too: #322a2d, where the sky's 0.02 reflection lifts it a little. A body of
 #302627 less that reflection (#2a180e) would land on the target exactly, but over so dark a
 body a crown sunk 0.3 m in the swamp showed more than in the sea, which murky water must not
-do (`tests/mapgen/test_crowns_over_water.py`). Absorption, `deep_tau_m`, turbidity and the rule
-for which water takes the opaque colour (section 37, "Swamp water") are unchanged.
+do (`tests/mapgen/test_crowns_over_water.py`). Which water takes the opaque colour is
+section 37's rule ("Swamp water").
 
 **Measured.** Drawn by the painted layer's own water code (`band_water_terms`, `class_optics`,
 `underwater`, the tone, then `with_void`) at 1 m on the field's own planes, with the open sea
 laid by `open_sea` from the artwork and the class plane from `classify`. The bed is the bake,
-unlit and uncalibrated, so only the absolute colour of the shallows is approximate. Medians
-of fully wet pixels clear of the void, display sRGB, on the ocean and west coast window at
-(-2515, 645):
+unlit and uncalibrated, so only the absolute colour of the shallows is approximate. Medians of
+fully wet pixels clear of the void, display sRGB: the ocean and west coast window at
+(-2515, 645) draws #5c7f81 at 0.5 to 1 m, #547b81 at 2 to 4 m, #4a6c7f at 8 to 15 m and #3d5b7d
+at 40 m, the open sea (the optics read no deeper). Where the open sea fades into the void the
+colour runs evenly to the page's navy, #3f5c7d at the sea's edge to #233340. Swamp water in the
+swamp at (2343, 291) and at (2554, 608) draws #3e3434 at 0.1 to 0.3 m and #302627 from 1 m.
 
-| Depth, as the optics read it | Before | After | Delta E |
-| --- | --- | --- | --- |
-| 0.5 to 1 m | #5b7f80 | #5c7f81 | 0.2 |
-| 1 to 2 m | #577d80 | #577e82 | 0.4 |
-| 2 to 4 m | #54797d | #547b81 | 0.7 |
-| 4 to 8 m | #4f7279 | #507580 | 1.2 |
-| 8 to 15 m | #476774 | #4a6c7f | 2.1 |
-| 15 to 30 m | #3c586c | #41607e | 3.5 |
-| 40 m, the open sea (the optics read no deeper) | #375169 | #3d5b7d | 4.2 |
-
-The two-colour ocean at (3326, -216), the sea off the swamp at (2554, 608) and the Spire
-lagoon at (16, -2137) agree within two levels per channel. Under 1 m no channel moves by
-more than one level, and a lagoon 1 to 2 m deep moves by 0.4. Where the open sea fades into
-the void, the colour still runs evenly to the page's navy: the median of each tenth of the
-void's cover goes from #3f5c7d at the sea's edge to #233340 (before, #3b566a to #23323f).
-The step between
-neighbouring pixels in the fade is unchanged in the two-colour window: median 0.32, p99 25.8
-against 25.5, the p99 from the lit rim and the land.
-
-Swamp water in the swamp at (2343, 291) and at (2554, 608):
-
-| Depth | Before | After |
-| --- | --- | --- |
-| 0.1 to 0.3 m | #7d706e | #3e3434 |
-| 0.3 to 1 m | #7e7271 | #32292a |
-| 1 to 2 m | #7e7372 | #302627 |
-
-Against the dark colours of the map (Delta E, OKLab x100), the new swamp water (L 0.28, hue
-11) is 16.8 from a pit's black (L 0.11) and 13.7 from its grey lit edge, and 20 from the open
-sea at 40 m (L 0.46). It is 6.2 from the page's navy past the world's edge, and 4.1 from the
-void where the sea fades into it (#1c2b37): the same lightness, the opposite hue. It meets
-only the sea and the land: in these windows the only no-data beside swamp water lies under
-rock, near (3000, 1150). The fogged #4d4a4e would sit 0.8 from a pit's lit edge and 2.5
-from the void's lit edge.
+Against the dark colours of the map (Delta E, OKLab x100), the swamp water (L 0.28, hue 11) is
+16.8 from a pit's black (L 0.11) and 13.7 from its grey lit edge, and 20 from the open sea at
+40 m (L 0.46). It is 6.2 from the page's navy past the world's edge, and 4.1 from the void
+where the sea fades into it (#1c2b37): the same lightness, the opposite hue. It meets only the
+sea and the land: in these windows the only no-data beside swamp water lies under rock, near
+(3000, 1150). The fogged #4d4a4e would sit 0.8 from a pit's lit edge and 2.5 from the void's
+lit edge.
 
 ### Translucent water (2026-10-06)
 
 The Blue Crater's lake is not `MI_Lake_Blue_01`. It is a `BP_TranslucentWater_C`, which
-assigns no material of its own: the blueprint draws `TranslucentWater_Inst`. The map classed
-all 26 of these actors by the biome fallback, as lakes, and drew the Blue Crater #4b6a5d at
-its depth. They now have a class of their own, `translucent`, by actor class (step 1). Style
-`satellite-painted` is version 17, with "Swamp mouths" below.
+assigns no material of its own: the blueprint draws `TranslucentWater_Inst`. By the biome
+fallback all 26 of these actors would be lakes, the Blue Crater a dark green #4b6a5d at its
+depth. So they have a class of their own, `translucent`, by actor class (step 1).
 
-On the field's own planes 14 of the 26 hold water, 288,398 texels, all of which the biome
-fallback had drawn as lake (it fills 1,234 texels now, against 289,632). The Blue Crater is
-110,272 of them, over a flat floor: depth p10, p50 and p90 2.1, 3.9 and 4.0 m. The others
-are a 454 m lake in the Savanna at (533, 968), median depth 5.8 m; two lakes in the Western
-Dune Forest at (-1271, 1705) and (-772, 1631), 4.0 and 12.3 m; a shallow lake in the
-Southern Forest at (481, 2150); and smaller lakes and ponds in the Southern Forest, Titan
-Forest, Red Jungle, Grass Fields, Western Dune Forest and No Man's Land.
+On the field's own planes 14 of the 26 hold water, 288,398 texels. The Blue Crater is 110,272
+of them, over a flat floor: depth p10, p50 and p90 2.1, 3.9 and 4.0 m. The others are a 454 m
+lake in the Savanna at (533, 968), median depth 5.8 m; two lakes in the Western Dune Forest at
+(-1271, 1705) and (-772, 1631), 4.0 and 12.3 m; a shallow lake in the Southern Forest at
+(481, 2150); and smaller lakes and ponds in the Southern Forest, Titan Forest, Red Jungle,
+Grass Fields, Western Dune Forest and No Man's Land.
 
 **The row.** Body and deep colour are both #708973, the colour that draws the pooled target
 #718a75 at the Blue Crater's 3.9 m once the sky's 0.02 reflection is added. At that depth the
 bed adds under 0.2 Delta E, whether it is the bake's WetSand (#816652) or WetSand's calibrated
-target (#b1a09e). Source: screenshot, measured by the method of section 31:
+target (#a29583, section 31's rule). Source: screenshot, measured by the method of section 31:
 
 | Shot | What, light | Reading |
 | --- | --- | --- |
@@ -327,21 +261,9 @@ and 1.4 per metre with the inland floor of 0.35 leaves a tenth of the bed at 1.3
 game data, read as an opacity ramp from the parameter names; the shader graph was not
 decoded. Turbidity is 0, so the inland floor applies.
 
-**Measured.** Drawn as in "Sea deep and swamp water" (the painted layer's water code at 1 m on
-the field's own planes, over the bake), the median Blue Crater texel by depth:
-
-| Depth | Before (lake) | After |
-| --- | --- | --- |
-| 0 to 0.5 m | #6d7763 | #848571 |
-| 0.5 to 1 m | #5d7561 | #7c8874 |
-| 1 to 2 m | #53725f | #758a76 |
-| 2 to 3 m | #4f6e5e | #728a76 |
-| 3 to 3.7 m | #4c6b5d | #718a76 |
-| 3.7 to 4.1 m (38,874 of 53,687 texels drawn) | #4b6a5d | #718a76, Delta E 0.1 from the target |
-
-A render of the window had read #486652. The other translucent water draws the same past 2 m,
-#718a76 to #708973 at every depth: the Savanna lake at 4 to 8 m goes from #46665c to #718a75,
-the deep Western Dune Forest lake at 8 to 15 m from #3d5e59 to #708974.
+**Measured** as in "Sea deep and swamp water", the median Blue Crater texel draws #848571 under
+0.5 m, #758a76 at 1 to 2 m and #718a76 from 3 m, Delta E 0.1 from the target at 3.7 to 4.1 m.
+The other translucent water draws the same past 2 m, #718a76 to #708973 at every depth.
 
 **The two that set their own colours.** Two actors set the blueprint's colour variables. Slot
 2499 at (-1271, 1705), z 2.5 m, sets the primary colour to (0.386, 0.524, 0.583) and the
@@ -363,41 +285,30 @@ decides before the actor class does, so they keep the sulfur row.
 ### Swamp mouths (2026-10-06)
 
 The class plane names one class per texel, and the renderer samples it bilinearly. Where swamp
-met the ocean, the class rows and the swamp's share of section 31's opaque colour both
-switched within one texel. The meeting lines lie on the open sea's 48 m arcs (step 3) and on
-the swamp boxes' straight edges. The step across them was Delta E 5.8 with the old mauve swamp
-and 26.7 with the near-black one.
+meets the ocean, the class rows and the swamp's share of section 31's opaque colour would both
+switch within one texel, a step of Delta E 26.7. The meeting lines lie on the open sea's 48 m
+arcs (step 3) and on the swamp boxes' straight edges.
 
-`feather_mouths` now blends the two. It finds the texels where swamp and ocean are
-8-neighbours at levels within 0.5 m (`BODY_STEP_M`). Within 30 m of that line
-(`MOUTH_FEATHER_M`) each swamp and ocean texel of the same body takes a swamp share: a
-smoothstep from 1 to 0, a half at the line. The distance is counted in steps through water of
-the texel's own class, the 8- and 4-neighbourhood in turn, so the blend never reaches water
-behind a spit; the octagon it draws reaches up to 33 m. Water at another level, such as a pool
-above a fall, is another body and keeps its edge.
+`feather_mouths` blends the two. It finds the texels where swamp and ocean are 8-neighbours at
+levels within 0.5 m (`BODY_STEP_M`). Within 30 m of that line (`MOUTH_FEATHER_M`) each swamp
+and ocean texel of the same body takes a swamp share: a smoothstep from 1 to 0, a half at the
+line. The distance is counted in steps through water of the texel's own class, the 8- and
+4-neighbourhood in turn, so the blend never reaches water behind a spit; the octagon it draws
+reaches up to 33 m. Water at another level, such as a pool above a fall, is another body and
+keeps its edge.
 
 Plane values from `MOUTH_BLEND` (10) on are the blend, in 64 steps (`MOUTH_STEPS`).
 `class_shares` gives each plane value its share of each class. `water_table` mixes the swamp
 and ocean rows by that share, and the swamp's opaque share is the same share, so the class
 optics and the opaque colour fade together. The sidecar's `mouth_blend_texels` counts the blend.
 
-**Measured** on the field's own planes and drawn as above. 78,231 texels blend, all on the
-swamp's sea coast, in 0.5 s on the full grid. The step between neighbouring texels across the
-line, counting only neighbours whose depths agree within 0.25 m:
-
-| Where | Before, max / p99 | After, max / p99 |
-| --- | --- | --- |
-| (2931, 964), 1 m texels, within 2 m of the line | 28.3 / 27.0 | 3.3 / 1.8 |
-| (2931, 316), the same | 27.9 / 27.3 | 4.1 / 1.8 |
-| (2931, 964), 0.25 m pixels, within 2 m of the line | 8.0 / 7.4 | 1.0 / 0.4 |
-| (2931, 316), the same | 7.9 / 7.5 | 1.1 / 0.4 |
-| (2931, 964), 1 m texels, within 40 m of the line | 28.3 / 17.8 | 7.5 / 2.3 |
-| (2931, 316), the same | 27.9 / 11.3 | 7.3 / 2.3 |
-
-The largest steps left are the water's own: a texel 30.6 m deep beside one 1.1 m deep, and the
-swamp's waterline. No texel farther than 33 m from a line changed class, and no drawn colour
-farther than 60 m from one changed at all, at both mouths and over the whole coast at
-(2554, 608). The swamp window at (2343, 291) holds no meeting line and is unchanged.
+**Measured** on the field's own planes and drawn as above: 78,231 texels blend, all on the
+swamp's sea coast, in 0.5 s on the full grid. Across the line, between neighbours whose depths
+agree within 0.25 m, the largest step within 2 m of it is 3.3 to 4.1 Delta E on 1 m texels (p99
+1.8) and 1.0 to 1.1 on 0.25 m pixels (p99 0.4), against 28 without the blend. The largest
+steps left are the water's own: a texel 30.6 m deep beside one 1.1 m deep, and the swamp's
+waterline. No texel farther than 33 m from a line changes class, and no drawn colour farther
+than 60 m from one changes at all.
 
 ### Known limits
 
@@ -450,9 +361,9 @@ Recipe 7 draws every river as a continuous ribbon at its own height. Build 50209
   ground under it, measured per pixel at render time.
 - The `SplineComponent`'s own scale curve has a Z of 46 to 78 on the river sampled. It does
   not reach the spline meshes and its meaning is unknown, so it is not read.
-- The heightfield's water levelled each river on the **actor's boxes**. Their union is one
+- The heightfield's water levels each river on the **actor's boxes**. Their union is one
   AABB around the whole river, rotated and 2.5 m tall, so its top is the highest point of the
-  river plus up to 2.5 m. Inside the ribbons the field's river water stood 1.8 m above the
+  river plus up to 2.5 m. Inside the ribbons the field's river water stands 1.8 m above the
   plane at the median and 49 m at p90.
 
 Measured: 25.6 km of centreline, half width p10/p50/p90 3.4 / 15 / 30 m (max 113 m, at lake
@@ -484,7 +395,7 @@ the nearest centreline piece, measured exactly rather than to the nearest sample
 - **Where two planes overlap, the higher shows**, as seen from above. Past both edges, the
   nearer one in half widths wins. A plane standing more than 8 m over the ground
   (`RIVER_MAX_DEPTH_M`), or over none, gives way to one that does not: the short river over a
-  fall's lip spreads its plane out over the basin 50 m below, and hid the river in it.
+  fall's lip spreads its plane out over the basin 50 m below, and would hide the river in it.
 - The whole map takes about 1 s.
 
 ### Reconciling with the field's water
@@ -516,8 +427,8 @@ Per band, through `RiverWater.over`.
   where a mask ends.
 - **Presence fades** to 0 over 1.5 m inside the plane's edge, over 1.5 m before the 8 m depth
   cut, where the plane hangs 1 to 2 m over other water (`RIVER_OVER_WATER_M`), and on
-  texels beside a jump of more than 0.5 m between neighbours. Such a jump is two planes
-  meeting, and any sampler draws a line along it.
+  texels beside a jump of more than 0.5 m between neighbours (`RIVER_STEP_M`). Such a jump is
+  two planes meeting, and any sampler draws a line along it.
 - **Where a river meets other water, the higher surface shows**; a tie of 5 cm goes to the
   river. At a mouth the river plane dips under the lake or the sea, and the hand-over happens
   where the two levels agree, so the colour is continuous. Past the other water's last wet
@@ -526,11 +437,10 @@ Per band, through `RiverWater.over`.
 - **Optics.** River pixels get the shore optics: the opacity fade and wet darkening in
   terrain and satellite, and the wet band on the banks in every style. Painted water is
   Beer-Lambert, so the bed shows in the shallows.
-- **The pale-path fix.** In the prototype a river 0.2 to 0.9 m deep was mostly the riverbed
-  paint seen through recipe 5's 0.9 m alpha feather. Now the optics read a river at least
-  `shore.river.min_depth_m` (0.6 m) deep once `bank_m` (2.5 m) in from its waterline, a
-  taste setting per palette. At the waterline the true depth is used, so the bank stays soft.
-  The palettes gained the block, so the three style versions went up by one.
+- **No pale path.** A river 0.2 to 0.9 m deep seen through the 0.9 m alpha feather is mostly
+  its bed paint. So the optics read a river at least `shore.river.min_depth_m` (0.6 m) deep
+  once `bank_m` (2.5 m) in from its waterline, a taste setting per palette. At the waterline
+  the true depth is used, so the bank stays soft.
 - **Without rivers** (`--kernel-only`) the water terms are exactly recipe 6's.
 
 ### Cost
@@ -544,9 +454,7 @@ Per band, through `RiverWater.over`.
 - Nothing has been compared against an in-game top-down view of a river. The minimum
   optical depth and the colour are a taste call.
 - Where the 8 m rule cuts a river plane and no other plane speaks, the field's river-box
-  water stays at the box level, as in recipe 6, for section 38 to re-level. The waterfall
-  pool near (-1170, -240) no longer keeps its dark rectangle (section 38, "Boxes over lower
-  water").
+  water stays at the box level, for section 38 to re-level.
 - Steps of more than 0.5 m per metre break the ribbon for a few metres. Those are
   waterfalls, which are a separate item.
 - A section bent more tightly than its half width draws the fan its mesh would.
@@ -554,9 +462,8 @@ Per band, through `RiverWater.over`.
 ## 35. Waterfalls and the first small-mesh batch (2026-10-05)
 
 Two additions to the satellite and game-painted styles. The heightfield is unchanged, and the
-recipe number stays 6. A render records them as two provenance inputs, `waterfalls` (reader
-version 1) and `render_meshes` (now reader version 2), plus each style's palette digest.
-Build 502094.
+recipe number stays 6. A render records them as two provenance inputs, `waterfalls` and
+`render_meshes`, plus each style's palette digest. Build 502094.
 
 ### Where the falls come from
 
@@ -656,17 +563,17 @@ kinds of box break that rule:
 - **A sloped river.** `BP_River_PROT_C` and some `FGWaterVolume` boxes span a whole reach,
   so the box top is the river's upstream end. `BP_River_PROT_2` at (314, -1489) runs north
   down a desert channel from about +18 m to the sea at -17 m. Its box spans -22.8 to
-  +22.0 m, so the whole channel was levelled at +22 m, 39 m above the bed at the mouth.
+  +22.0 m, so the field levels the whole channel at +22 m, 39 m above the bed at the mouth.
 - **A box over another body.** Where one body's axis-aligned box covers part of a lower
   body, the higher top wins. At (831, -353) a 131 m box sits over a lake at 58 m.
 - **A box over its own fall.** At (1784, 559) the 94.8 m lake's `FGWaterVolume` reaches to
   x 1863, over the basin 113 m below, which the swamp's boxes cover at -16.7 m. The ground
   falls 100 m between two neighbouring texels at the lip.
 
-The renderer then drew tens of metres of water. In the painted style that is opaque
+Drawn as the field has it, that is tens of metres of water. In the painted style it is opaque
 Beer-Lambert water blended almost fully to the open-sea colour, in a flat shape with the
 artwork mask's 3.66 m block edges, because the depth feather never fades out on a 40 m
-depth. Every recipe since 2 has drawn it.
+depth.
 
 `palette/water/perched.py` re-levels these bodies before drawing. The field is not changed. It
 runs on the water the rivers left (section 34), and the painted style's water classes
@@ -693,9 +600,9 @@ the usual depth feather, which follows the ground rather than the mask blocks.
 
 ### Water below a drop (2026-10-06)
 
-The test reads a body as one, so at the wide fall the big lake's high banks outvoted the
-basin's ring, and the basin drew at the lake's level, 113 m deep. Where such a body was
-perched, one membrane spanned the drop and ended in a straight hand-over line.
+A body judged as one would let the big lake's high banks outvote the basin's ring at the wide
+fall, and the basin would draw at the lake's level, 113 m deep; one membrane would span the
+drop and end in a straight hand-over line.
 
 - **The cut.** `_below_drops` cuts each body where the ground falls more than 8 m
   (`LIP_DROP_M`) between eight-way neighbours. A part with no ground within 8 m of the level
@@ -707,8 +614,7 @@ perched, one membrane spanned the drop and ended in a straight hand-over line.
   plateau at (-1101, -296)). The drop and the cliffs hold nothing up. The basin under the
   wide fall sits at -17.4 to -16.7 m, the swamp's level.
 - **The rest of the body.** Once re-levelled, that water leaves the body and bounds the rest
-  at its new level. A body with no re-levelled water below a drop is judged byte for byte as
-  before.
+  at its new level. A body with no re-levelled water below a drop is judged as one.
 
 8 m was measured, not derived: at 10 m the plateau stays joined through one 10.0 m step, and
 at 5 m 494 texels draw deeper than at 8 m and 1,454 shallower. The falls records (section 35)
@@ -716,28 +622,17 @@ are not read.
 
 ### Measured (build 502094)
 
-591 bodies stand more than 2 m above a bank; 380 pass the ring test. 168,925 texels
-(0.17 km²) are re-levelled, in about 4 s. Their median depth goes from 18.3 m to 1.1 m, and
-the 90th percentile from 75.8 m to 8.2 m. Merged at 100 m, 38 places lose more than 5 m of
-drawn depth. The largest are at (-822, 201), (-612, 772), (624, -505), (-375, -895),
-(-1227, -278) and (-146, 961). Lakes whose banks stand above their level, the ocean, and
-level-only water are byte-identical.
-
-Water below a drop, measured on a render's planes after the river reconcile: 467 bodies stand
-more than 2 m above a bank, up from 390, and 57 are cut at a drop. 233 bodies are perched,
-up from 186, 47 of them below a drop with 32,791 texels; 115,440 texels are re-levelled, up
-from 94,144. Of the 34,149 texels that move, the median drawn depth goes from 53.9 m to
-1.4 m and the 90th percentile from 112.9 m to 3.4 m. 239 texels end more than 2 m deeper
-and over 5 m deep, most of them box pieces that now take the level of the lake they sit in.
-Bodies with no cut, sloped rivers and the ocean are byte-identical.
+On a render's planes, after the river reconcile and the lower bodies' take-back of "Boxes over
+lower water", 42,550 texels in 455 bodies are re-levelled, in about 4 s. Lakes whose banks
+stand above their level, the ocean, and level-only water are byte-identical.
 
 ### Holes in a lake
 
 The artwork's blue test also reads a lake's deep middle as dry, and the water under an arch
-or bridge it draws across a lake. The field keeps those texels dry, so the renderer drew
-the lake bed there: dark-middle blobs, and in the cliff-ringed lakes near (1980, -1890) a
-straight strip 18 m wide and 220 m long under the arch, and the spokes of the star-shaped
-rock beside it. `wet_holes` fills them after the re-levelling, on the same bodies:
+or bridge it draws across a lake. The field keeps those texels dry, so drawn as it stands a
+lake shows its bed there: dark-middle blobs, and in the cliff-ringed lakes near (1980, -1890) a
+straight strip 18 m wide and 220 m long under the arch, and the spokes of the star-shaped rock
+beside it. `wet_holes` fills them after the re-levelling, on the same bodies:
 
 - **Inside.** The measured water at the body's level, and other inland measured water
   within 2 m of it, closed over gaps up to 24 m wide (`HOLE_BRIDGE_M` 12), with what that
@@ -766,10 +661,9 @@ the water the river reconcile leaves: 38,048 texels in 306 bodies.
 
 ### Boxes over lower water (2026-10-06)
 
-At (-1077, -294), below the fall out of the crater lake at (-1033, -366), every style drew
-the basin as an axis-aligned rectangle about 60 by 130 m: a thin sand rim along straight,
-stair-stepped edges, a dark strip down its west side, and the river around it. v4 drew the
-same rectangle in navy.
+At (-1077, -294), below the fall out of the crater lake at (-1033, -366), the basin drew as an
+axis-aligned rectangle about 60 by 130 m: a thin sand rim along straight, stair-stepped edges,
+a dark strip down its west side, and the river around it.
 
 - **The cause.** The basin floor stands at 100 m and the river below the fall runs over it at
   101 to 105 m. The field levels a texel at the highest box top over it (section 19), and
@@ -788,7 +682,7 @@ same rectangle in navy.
   and this section's membrane over a box piece, which spans from the lower water up to the
   higher banks and drew navy blocks in lakes, as at (-274, -785) and (451, -547).
 
-Four changes, all in the renderer. The field is not changed.
+Four rules, all in the renderer. The field is not changed.
 
 - **A lower body takes its water back** (`gamedata.water.channel.lower_bodies`, in the river
   reconcile after the river boxes' water). Each surface box with a level of its own, lowest
@@ -803,29 +697,18 @@ Four changes, all in the renderer. The field is not changed.
   ribbon's own gaps (its steps, the reach past its edge) stay water. 41,400 texels. A lake
   whose bed stands more than 8 m over a plane running under it, as the crater lake does
   over the river's fan, keeps its level.
-- **A hanging plane gives way** (section 34): the lip's river plane, 50 m over the basin, no
-  longer hides the river in it.
+- **A hanging plane gives way** (section 34): the lip's river plane, 50 m over the basin,
+  does not hide the river in it.
 - **The blur is no water** (section 34, "Drawing"): past the other water's last wet texel,
   away from the sea's reach, the river draws.
 
 Measured in process on the whole field (water stages only, 3.4 GB at peak, the same 4 s for
-the reconcile), with straight runs of at least 16 m along one grid line of the drawn water,
-field and ribbons together, counted where they lie on a surface box's edge, away from the
-sea:
-
-| | before | after |
-| --- | --- | --- |
-| Inland runs on box edges, drawn water (the rim counted before) | 89 runs, 2,378 texels | 33 runs, 855 texels |
-| Every straight run of 16 m and more, drawn water | 955 runs, 38,909 texels | 689 runs, 32,299 texels |
-| Inland runs on box edges, the field's planes alone | 101 runs, 2,837 texels | 44 runs, 1,216 texels |
-| Texels this section re-levels | 115,440 in 233 bodies | 42,550 in 455 bodies |
-
-83,423 texels of the water planes every style draws change, in 42 places merged at 100 m. The swamp,
-Blue Crater, the lake navy blocks, the sulfur pools and the ocean coast draw byte-identical;
-the crater lakes, the desert river at (341, -1542) and Spire Coast change only where a box
-strip or a rim was. Of the ten worst boxes, these went to no run: the basin at (-1144, -287),
-the river under the 235.5 m box at (-764, 668), the lake under the 131.3 m volume at
-(451, -547), the navy block at (-274, -785) and the lake at (-45, -470).
+the reconcile), as straight runs of at least 16 m along one grid line of the drawn water,
+counted where they lie on a surface box's edge, inland: 33 runs (855 texels) in the drawn
+water, field and ribbons together, against 89 (2,378) without these rules, and 44 runs (1,216
+texels) on the field's planes alone. 83,423 texels of the water planes every style draws
+change, in 42 places merged at 100 m; the swamp, the Blue Crater, the sulfur pools and the
+ocean coast draw byte-identical.
 
 ### Known limits
 
