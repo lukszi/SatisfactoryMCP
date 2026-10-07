@@ -394,6 +394,29 @@ neither the ocean's reach nor a river's:
   every wet texel takes at least the tint of a metre of its class's water. A river keeps its
   own floor, 0.6 m once 2.5 m in from its bank (section 34).
 
+### What the water fixes moved (2026-10-07)
+
+Build 502094, against round 2's baseline; this section's rules with section 34's hand-over
+and section 35's falls:
+
+- **The 2048 render**, every level: painted 98,909 lit, 94,135 `@2x` and 98,452 unlit pixels
+  (by up to 155 levels); relief 37,906, 36,321 and 35,881 (165); relief dark 34,225, 32,767 and
+  35,186 (144); satellite 36,559, 35,073 and 36,331 (109); terrain 38,344, 36,581 and 37,645
+  (200). Of the finest painted level's 45,200, 44,758 lie within 30 m of the water as drawn
+  before; the rest along the river ribbons.
+- **The light**: 6.6 million pixels of its horizon tiles move, 438,750 by more than 8 levels,
+  and 16,056 of its normal tiles. The horizons read only the heights, which follow the water:
+  the seabed rule keeps a render-only mesh or leaves it to the bed by the water level
+  (section 27), and water the river reconcile now drops leaves the meshes in a channel standing.
+- **Three windows of the full-size sheet**, unlit: painted 4.69 million of 117 million pixels
+  (by up to 150 levels), relief 1.46 million (62), relief dark 1.34 million (145), satellite
+  1.46 million (66), terrain 1.40 million (113), every one within 30 m of water drawn before
+  or after.
+- **The river reconcile** (section 34): water from river boxes 0.358 to 0.372 km², dropped to
+  the ribbons 0.128 to 0.210 km², re-levelled 0.271 to 0.178 km², taken back by lower bodies
+  0.041 to 0.026 km²; section 38 then re-levels 478 bodies where it did 455, and fills 31,619
+  texels of holes where it did 36,892.
+
 ### Known limits
 
 - The lake, the sea's deep colour and the swamp have been checked against screenshots from
@@ -490,14 +513,22 @@ the nearest centreline piece, measured exactly rather than to the nearest sample
 `palette/water/rivers.py`, once per run, on copies of the field's planes. The field on disk is not
 changed.
 
+- **A river's own volumes are its box** (2026-10-07). A classless `FGWaterVolume` lying at
+  least 90% inside a river's box, its top within 1.5 m of the box's, is the river's physics
+  volume, not a lake's (`river_volumes`; 56 of the 270). Read as a lake's, its top kept the
+  river box's water standing over the ribbon in a straight-edged block, as at the junction at
+  (-1585, -480) and below the fall at (-1891, 320). A lake's own visible box, where it stands
+  at the volume's top, still holds that lake's level.
 - **A wet texel came from a river box** when its level equals that box's top within 5 cm and
-  no other surface box stands as high: 0.358 km².
+  no other surface box stands as high: 0.358 km², 0.372 km² with the volumes.
 - **Under another surface box** (a lake the river AABB overhangs), the texel takes that box's
   level, or goes dry where measured ground stands above it: 0.27 km². The exception is
   inside the ribbon where the plane runs more than 1 m above that box. There the box is a
   lake's AABB reaching over the river's valley, so it is not used.
 - **Anywhere else where the ribbon speaks**, the texel is dropped and the ribbon draws the
-  river: 0.088 km².
+  river: 0.088 km². Beside a step of more than 0.5 m left in the drawn plane, a fall, the
+  ribbon draws nothing, so there the water stays at the higher plane's level and opens no
+  crack at the lip (2026-10-07).
 - **The ribbon speaks** inside its reach, except where the plane stands more than 8 m over
   the ground (`RIVER_MAX_DEPTH_M`) or over no ground. Those are wide sections hanging over a
   waterfall pit or a lake below. Drawn there, they paint fans of water in the air.
