@@ -26,6 +26,7 @@ from numpy.typing import NDArray
 from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.jit import gpu_on
 from mapgen.lighting.horizon import (
     HORIZON_DIRS,
     SKY_RADIUS_M,
@@ -66,6 +67,7 @@ from satisfactory_mcp.core.mapprogress import encode_stage
 
 __all__ = [
     "LIGHT_DIR_NAME",
+    "LIGHT_GPU_BYTES",
     "LIGHT_VERSION",
     "LIGHT_WORKER_BYTES",
     "LIGHT_WORKER_CAP",
@@ -97,6 +99,8 @@ BLOCK_TILES = 16
 #: full-size block with crowns or arches, started with one BLAS thread.
 LIGHT_WORKER_CAP = 16
 LIGHT_WORKER_BYTES = 1_500_000_000
+#: What a light process adds with the CUDA kernels: CuPy and its context, 0.65 GB measured.
+LIGHT_GPU_BYTES = 700_000_000
 
 #: The work files a bake leaves in the surface's directory.
 _FILES = (
@@ -400,7 +404,8 @@ def light_workers(requested: int | None = None) -> int:
     if requested:
         return max(1, requested)
     free = free_ram_bytes()
-    by_ram = LIGHT_WORKER_CAP if free is None else int(free // LIGHT_WORKER_BYTES)
+    each = LIGHT_WORKER_BYTES + (LIGHT_GPU_BYTES if gpu_on() else 0)
+    by_ram = LIGHT_WORKER_CAP if free is None else int(free // each)
     return max(1, min(os.cpu_count() or 1, LIGHT_WORKER_CAP, by_ram))
 
 

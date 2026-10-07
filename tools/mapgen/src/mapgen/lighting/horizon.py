@@ -2,7 +2,8 @@
 
 Rows run south and columns east; an azimuth is compass degrees from north. Why each constant
 has its value: docs/spatial-and-map.md section 29. The march and the sky view run as numba
-kernels unless ``mapgen.jit`` selects this numpy, their reference (section 41).
+kernels, or CUDA ones, unless ``mapgen.jit`` selects this numpy, their reference
+(docs/map/renders.md sections 41 and 43).
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from typing import TYPE_CHECKING, TypeAlias
 import numpy as np
 from numpy.typing import NDArray
 
-from mapgen.jit import kernels_on
+from mapgen.jit import gpu_on, kernels_on
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
 
 if TYPE_CHECKING:
@@ -171,7 +172,12 @@ def _compiled_sky_view(
     ox = [np.cos(theta) * t for theta in thetas for t in steps]
     offsets = _offsets(oy, ox, [True] * len(oy), (SKY_DIRS, len(steps)), halo)
     scale = np.array([np.float32(1.0 / (t * spacing_m)) for t in steps], np.float32)
-    kernels.sky_view(np.ascontiguousarray(z), halo, offsets, scale, out)
+    if gpu_on():
+        from mapgen.lighting import gpu
+
+        gpu.sky_view(np.ascontiguousarray(z), halo, offsets, scale, out)
+    else:
+        kernels.sky_view(np.ascontiguousarray(z), halo, offsets, scale, out)
 
 
 def _offsets(
@@ -311,7 +317,8 @@ def _march(
 def _compiled_march(
     solid: F32Grid, z: F32Grid, halo: int, steps: list[_Step], best: F32Grid, slabs: Slabs | None
 ) -> None:
-    """``_march``'s loop as a kernel, fed the steps it works out."""
+    """``_march``'s loop as a kernel, fed the steps it works out; on the GPU when the switch
+    says so and the slabs are float32."""
     from mapgen.lighting import kernels
 
     bilinear = [sample is _bilinear for sample, _oy, _ox, _scale in steps]
@@ -319,9 +326,15 @@ def _compiled_march(
     offsets = _offsets(oy, ox, bilinear, (len(steps),), halo)
     scale = np.array([s[3] for s in steps], np.float32)
     lo, hi = (np.zeros((1, 1), np.float32),) * 2 if slabs is None else slabs[1:]
-    kernels.march(np.ascontiguousarray(solid), np.ascontiguousarray(z), halo,
-                  np.array(bilinear), offsets, scale, best, np.ascontiguousarray(lo),
-                  np.ascontiguousarray(hi), slabs is not None)  # fmt: skip
+    args = (np.ascontiguousarray(solid), np.ascontiguousarray(z), halo, np.array(bilinear),
+            offsets, scale, best, np.ascontiguousarray(lo), np.ascontiguousarray(hi),
+            slabs is not None)  # fmt: skip
+    if gpu_on() and lo.dtype == hi.dtype == np.float32:
+        from mapgen.lighting import gpu
+
+        gpu.march(*args)
+    else:
+        kernels.march(*args)
 
 
 def _raise_by_slab(best: F32Grid, lo: F32Grid, hi: F32Grid) -> None:

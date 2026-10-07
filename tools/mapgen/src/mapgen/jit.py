@@ -1,26 +1,58 @@
-"""The kernel switch: loops numba compiles, or the numpy code each one reproduces bit for bit.
+"""The kernel switch: loops numba compiles, CUDA kernels, or the numpy each one equals bit for bit.
 
-``MAPGEN_KERNELS=numpy`` runs the numpy reference; unset, or any other value, runs the kernels
-wherever numba imports. A module of kernels is imported only once ``kernels_on()`` says so,
-so the reference never loads numba. docs/map/renders.md section 41.
+``MAPGEN_KERNELS=numpy`` runs the numpy reference; ``cuda`` (``renders --gpu``) the CUDA
+kernels where there are some and numba's elsewhere; unset, or any other value, numba's
+wherever it imports. A module of kernels is imported only once its switch says so, so the
+reference never loads numba or CuPy. docs/map/renders.md sections 41 and 43.
 """
 
 from __future__ import annotations
 
+import argparse
 import functools
 import hashlib
 import os
+import threading
+import warnings
 from collections.abc import Callable
+from importlib import resources
 from types import ModuleType
-from typing import TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
-__all__ = ["KERNEL_SWITCH", "REFERENCE", "helper", "kernel", "kernels_on", "keyed_cache_files"]
+if TYPE_CHECKING:
+    from cupy import RawKernel, RawModule
+
+__all__ = [
+    "CUDA_OPTIONS",
+    "GPU",
+    "KERNEL_SWITCH",
+    "REFERENCE",
+    "add_gpu_flag",
+    "cuda_kernel",
+    "gpu_on",
+    "gpu_problem",
+    "helper",
+    "kernel",
+    "kernels_on",
+    "keyed_cache_files",
+]
 
 KERNEL_SWITCH = "MAPGEN_KERNELS"
 #: The switch's value that selects the numpy reference.
 REFERENCE = "numpy"
+#: The switch's value that selects the CUDA kernels.
+GPU = "cuda"
+
+#: NVRTC's options for every CUDA kernel: no fused multiply-add, and division, square roots
+#: and subnormals as IEEE has them, so each operation rounds as numpy's does.
+CUDA_OPTIONS = ("--fmad=false", "--prec-div=true", "--prec-sqrt=true", "--ftz=false")
+
+# CuPy with NVRTC from its wheel warns that it found no CUDA toolkit, which it does not need.
+warnings.filterwarnings("ignore", "CUDA path could not be detected", UserWarning)
 
 _Loop = TypeVar("_Loop", bound=Callable[..., object])
+
+_compiling = threading.Lock()
 
 
 @functools.cache
@@ -32,10 +64,18 @@ def _numba() -> ModuleType | None:
     return numba
 
 
+def _chosen() -> str:
+    return os.environ.get(KERNEL_SWITCH, "").strip().lower()
+
+
 def kernels_on() -> bool:
     """True unless the switch names the reference or numba does not import."""
-    chosen = os.environ.get(KERNEL_SWITCH, "").strip().lower()
-    return chosen != REFERENCE and _numba() is not None
+    return _chosen() != REFERENCE and _numba() is not None
+
+
+def gpu_on() -> bool:
+    """True when the switch names the CUDA kernels and numba's run beside them."""
+    return _chosen() == GPU and kernels_on()
 
 
 def _compiler() -> ModuleType:
@@ -92,3 +132,66 @@ def keyed_cache_files() -> type:
 def helper(loop: _Loop) -> _Loop:
     """A scalar function the kernels call, compiled into each caller."""
     return cast(_Loop, _compiler().njit(inline="always", error_model="numpy")(loop))
+
+
+def cuda_kernel(package: str, source: str, name: str) -> RawKernel:
+    """The kernel ``name`` of the CUDA file ``source`` in ``package``, compiled once a process
+    with ``CUDA_OPTIONS``; CuPy keeps the compiled code on disk."""
+    with _compiling:
+        return _cuda_module(package, source).get_function(name)
+
+
+@functools.cache
+def _cuda_module(package: str, source: str) -> RawModule:
+    import cupy
+
+    code = resources.files(package).joinpath(source).read_text(encoding="utf-8")
+    return cupy.RawModule(code=code, options=CUDA_OPTIONS)
+
+
+def gpu_problem() -> str | None:
+    """Why the CUDA kernels cannot run here, or None: numba, the gpu extra, a device."""
+    if _numba() is None:
+        return "the CUDA kernels run beside numba's, which is the gen extra"
+    try:
+        import cupy
+    except ImportError as exc:
+        return f"CuPy does not import ({exc}): install the gpu extra"
+    try:
+        found = cupy.cuda.runtime.getDeviceCount()
+    except cupy.cuda.runtime.CUDARuntimeError as exc:
+        return f"no CUDA device: {exc}"
+    return None if found else "no CUDA device"
+
+
+class _SelectGpu(argparse.Action):
+    """``--gpu``: the switch set to ``GPU`` for this process and the light's processes, which
+    inherit it; refused at once where the kernels cannot run."""
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: object,
+        option_string: str | None = None,
+    ) -> None:
+        problem = gpu_problem()
+        if problem is not None:
+            parser.error(f"--gpu: {problem}")
+        os.environ[KERNEL_SWITCH] = GPU
+        setattr(namespace, self.dest, True)
+
+
+def add_gpu_flag(parser: argparse.ArgumentParser) -> None:
+    """``--gpu``: the CUDA kernels where there are some."""
+    parser.add_argument(
+        "--gpu",
+        action=_SelectGpu,
+        nargs=0,
+        default=False,
+        help=(
+            "run the light's horizon march and sky view as CUDA kernels on the GPU: the gpu "
+            f"extra and an NVIDIA driver (the same as {KERNEL_SWITCH}={GPU}). The tiles are the "
+            "same bytes"
+        ),
+    )

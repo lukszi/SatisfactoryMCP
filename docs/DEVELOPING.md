@@ -183,8 +183,8 @@ the OS and keeps the projection small enough to commit; one convenience import w
 undo all three.
 
 `tools/` is a layer above everything: a generator may read the standard library, the `gen`
-extra, `core`, `mapgen` and itself, and no part of the package may read a generator, which is
-not in the wheel. The measured exceptions are numpy, scipy and platformdirs (hard dependencies),
+extra, the `gpu` extra (CuPy, for `mapgen renders --gpu`), `core`, `mapgen` and itself, and no
+part of the package may read a generator, which is not in the wheel, or the `gpu` extra. The measured exceptions are numpy, scipy and platformdirs (hard dependencies),
 `pioneersav` (a one-shot CLI is the caller the subprocess boundary protects, not one it applies
 to) and `domain.spatial`, because the generator that writes the terrain field reads the package
 that reads it, so the two cannot disagree about the format.
@@ -269,7 +269,9 @@ colour value, so every colour sits with its owner and its warrant.
   The gate fails on an entry that is no longer needed and on a glob, so the list only shrinks.
 - **Arrays and stubs.** A numpy array is typed by its dtype through `core/arrays.py`
   (`F32Grid`, `U8Grid`, `BoolMask` and the rest) rather than as a bare `ndarray`. scipy is typed
-  by `scipy-stubs`, and pyooz, which ships no types, by the local stub `typings/ooz.pyi`.
+  by `scipy-stubs`, and pyooz, which ships no types, by the local stub `typings/ooz.pyi`. CuPy
+  ships none either: `typings/cupy/` covers the calls the render's CUDA kernels make, so the
+  gate needs no `gpu` extra.
 - **Platform branches test `sys.platform` itself** (`interfaces/web/childproc.py`): pyright
   narrows on that expression, not on a name that holds its value.
 - **Speed.** One pyright run over the 443 files takes 20 s on one thread. With `--threads 8` it

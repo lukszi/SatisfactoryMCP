@@ -26,6 +26,9 @@ WEB_ROUTERS = WEB / "routers"
 #: caches' codec (``mapgen.bandstore``), and ``numba``, the render's kernels (``mapgen.jit``).
 GEN_EXTRA_ROOTS = frozenset({"ooz", "pyooz", "texture2ddecoder", "PIL", "zstandard", "numba"})
 
+#: The ``gpu`` extra: CuPy, which compiles and runs the render's CUDA kernels (``mapgen.jit``).
+GPU_EXTRA_ROOTS = frozenset({"cupy"})
+
 
 def parse(path: Path) -> ast.Module:
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
