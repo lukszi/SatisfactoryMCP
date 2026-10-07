@@ -138,6 +138,12 @@ def _planes(surface: SpanSurface) -> tuple[F32Grid, F32Grid, F32Grid, F32Grid, F
     return surface.z, surface.solid, surface.lo, surface.hi, surface.tops
 
 
+def _run_arrays(surface: SpanSurface) -> tuple[I64Grid, I64Grid, I64Grid]:
+    """A surface's ``SpanRuns`` as the kernels take them: a plain tuple."""
+    runs = surface.runs
+    return runs.row, runs.start, runs.end
+
+
 def span_block() -> JsonObject:
     """The span model's constants, as the light axis records them."""
     return {
@@ -334,7 +340,7 @@ def _compiled_march(surface: SpanSurface, halo: int, steps: list[SpanStep],
     offsets = kernel_offsets(oy, ox, smooth, (len(steps),), halo)
     per_step = np.array([[s.scale, s.near_m, s.far_m, s.weight] for s in steps], np.float32)
     span_kernels.march_spans(_planes(surface), halo, np.array(smooth), offsets, _quads(oy, ox),
-                             per_step, target, out, rows, tuple(surface.runs))  # fmt: skip
+                             per_step, target, out, rows, _run_arrays(surface))  # fmt: skip
 
 
 def _quads(oy: list[float], ox: list[float]) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
@@ -373,7 +379,7 @@ def sky_view_spans(surface: SpanSurface, halo: int, spacing_m: float,
                              for t, n, f in zip(steps, near_t, far_t, strict=True)], np.float32)  # fmt: skip
         qy, qx = (q.reshape(shape) for q in _quads(oy, ox))
         span_kernels.sky_view_spans(_planes(surface), halo, offsets, (qy, qx), per_step, out,
-                                    (rows, span), tuple(surface.runs))  # fmt: skip
+                                    (rows, span), _run_arrays(surface))  # fmt: skip
         return out
     for a in range(r0, r1, STRIP_ROWS):
         b = min(a + STRIP_ROWS, r1)
