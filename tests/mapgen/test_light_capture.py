@@ -1,21 +1,26 @@
 """The light is one capture whatever layers a run draws, and in whatever order.
 
-Every layer hands the light the surface the seabed rule draws. docs/spatial-and-map.md
-section 29. Synthetic fixtures: no install, no field on disk.
+Every layer hands the light the surface the seabed rule draws, and the crowns cast from the
+paint store whether or not the painted layer is drawn. docs/spatial-and-map.md section 29.
+Synthetic fixtures: no install, no field on disk.
 """
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from mapgen.cache import MeshPlanes
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.ground.paint_store import CROWN_NAME, META_NAME
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import RELIEF_PALETTES
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.render import compose
+from mapgen.render.light import crown_occluder, crown_tops
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -108,3 +113,39 @@ def test_every_layer_hands_the_light_the_same_surface(monkeypatch):
     assert (first.land[rock] > 0.99).all(), "a rock out of the sea is land in it"
     lit = seen["ndl"] != np.float32(np.sin(np.deg2rad(45.0)))
     assert lit.any() and lit[10:30, 50:70].sum() == lit.sum(), "the coral keeps the default sun"
+
+
+def _paint_store(tmp_path, top_dm: np.ndarray, grid: dict) -> None:
+    (tmp_path / CROWN_NAME).write_bytes(hf.encode_i16(top_dm))
+    files = {CROWN_NAME: {"shape": list(top_dm.shape), "kind": "i16"}}
+    meta = {"grid": grid, "files": files}
+    (tmp_path / META_NAME).write_text(json.dumps(meta), encoding="utf-8")
+
+
+def test_the_light_casts_the_store_s_crowns_whether_or_not_painted_is_drawn(tmp_path):
+    grid = {"width": 64, "height": 64, "x0_cm": BOUNDS_M["x_min_m"] * 100.0,
+            "y0_cm": BOUNDS_M["y_min_m"] * 100.0, "spacing_cm": 100.0}  # fmt: skip
+    top_dm = np.full((64, 64), hf.NODATA, np.int16)
+    top_dm[5:9, 6:10] = 250
+    _paint_store(tmp_path, top_dm, grid)
+    painted = SimpleNamespace(meta={"grid": grid}, crown=top_dm.copy())
+
+    from_store = crown_tops(tmp_path, None)
+    from_ground = crown_tops(tmp_path / "unread", painted)
+    assert from_store is not None and from_ground is not None
+    occluders = [
+        crown_occluder(crowns, tmp_path / name, 1024)
+        for crowns, name in ((from_store, "a"), (from_ground, "b"))
+    ]
+    (top_a, cover_a), (top_b, cover_b) = (o for o in occluders if o is not None)
+    assert np.isfinite(top_a).any() and cover_a.any()
+    assert top_a.tobytes() == top_b.tobytes() and cover_a.tobytes() == cover_b.tobytes()
+    del occluders, top_a, cover_a, top_b, cover_b
+
+
+@pytest.mark.parametrize("meta", [None, {"grid": {}, "files": {}}])
+def test_a_run_without_the_store_s_crowns_casts_none(tmp_path, meta):
+    if meta is not None:
+        (tmp_path / META_NAME).write_text(json.dumps(meta), encoding="utf-8")
+    assert crown_tops(tmp_path, None) is None
+    assert crown_tops(tmp_path, SimpleNamespace(meta={"grid": {}}, crown=None)) is None

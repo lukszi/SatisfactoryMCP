@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from types import SimpleNamespace
+from typing import cast
 
 import numpy as np
 import pytest
@@ -16,10 +16,12 @@ import pytest
 from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting import stage
+from mapgen.lighting.occluders import CrownGrid
 from mapgen.lighting.stage import Surface, bake_light, occluder_planes
 from mapgen.render.light import (
     LIGHT_CACHE_DIR_NAME,
     SCRATCH_IN_USE,
+    CrownTops,
     add_light_flags,
     claim_scratch,
     light_run,
@@ -33,10 +35,10 @@ def _args(*argv: str) -> argparse.Namespace:
     return parser.parse_args(list(argv))
 
 
-def _painted() -> SimpleNamespace:
-    grid = {"x0_cm": BOUNDS_M["x_min_m"] * 100.0, "y0_cm": BOUNDS_M["y_min_m"] * 100.0,
-            "spacing_cm": 100.0}  # fmt: skip
-    return SimpleNamespace(crown=np.full((8, 8), 120, np.int16), meta={"grid": grid})
+def _crowns() -> CrownTops:
+    grid: CrownGrid = {"x0_cm": BOUNDS_M["x_min_m"] * 100.0,
+                       "y0_cm": BOUNDS_M["y_min_m"] * 100.0, "spacing_cm": 100.0}  # fmt: skip
+    return CrownTops(np.full((8, 8), 120, np.int16), grid)
 
 
 def test_the_scratch_goes_under_scratch_dir_else_the_cache_dir_else_the_renders(tmp_path):
@@ -71,7 +73,7 @@ def test_the_scratch_of_a_render_still_running_is_refused_and_left_as_it_is(tmp_
 
 
 def test_a_run_that_fails_still_deletes_its_scratch(tmp_path):
-    with pytest.raises(RuntimeError), light_run(tmp_path, 16, _painted()) as run:
+    with pytest.raises(RuntimeError), light_run(tmp_path, 16, _crowns()) as run:
         assert sorted(p.name for p in (tmp_path / LIGHT_CACHE_DIR_NAME).glob("occluder*")) == [
             "occluder.npy",
             "occluder_cover.npy",
@@ -79,12 +81,12 @@ def test_a_run_that_fails_still_deletes_its_scratch(tmp_path):
         run.surface_for().put(0, np.zeros((16, 16), np.float32), np.ones((16, 16), np.float32))
         raise RuntimeError("a layer failed part way")
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
-    with light_run(None, 16, _painted()) as run:
+    with light_run(None, 16, _crowns()) as run:
         assert run is None
 
 
 def test_crowns_that_fail_to_write_leave_no_scratch_behind(tmp_path):
-    broken = SimpleNamespace(crown=np.full((8, 8), 120, np.int16), meta={"grid": {}})
+    broken = CrownTops(np.full((8, 8), 120, np.int16), cast(CrownGrid, {}))
     with pytest.raises(KeyError), light_run(tmp_path, 16, broken):
         pass
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
