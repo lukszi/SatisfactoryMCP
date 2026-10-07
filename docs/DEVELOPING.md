@@ -241,13 +241,16 @@ uv sync --all-extras --all-packages
 uv run pytest -q --cov --cov-report=xml
 if (-not $env:SONAR_HOST_URL) { $env:SONAR_HOST_URL = "http://host.docker.internal:9100" }
 $env:SONAR_TOKEN = (Get-Content "$env:USERPROFILE\.sonar-token" -Raw).Trim()
-docker run --rm -e SONAR_HOST_URL -e SONAR_TOKEN -v "${PWD}:/usr/src" sonarsource/sonar-scanner-cli
+$scm = @(); if (Test-Path .git -PathType Leaf) { $scm = @("-Dsonar.scm.disabled=true") }
+docker run --rm -e SONAR_HOST_URL -e SONAR_TOKEN -v "${PWD}:/usr/src" `
+    sonarsource/sonar-scanner-cli sonar-scanner @scm
 Remove-Item Env:SONAR_TOKEN
 ```
 
 `SONAR_HOST_URL` is the server as the container sees it; set it first to scan against another
 server. `-e NAME` without a value hands the container the variable, so the token never appears
-on a command line.
+on a command line. In a linked git worktree `.git` is a file naming a host path the container
+cannot open, and the scanner aborts on it, so there the scan runs without SCM data.
 
 ## Solver threads
 
