@@ -25,6 +25,7 @@ from ...domain.maps import presets, registry
 from ...domain.maps.jobs import QUEUE_MAX
 from ...domain.maps.views import GeneratorPlan
 from .childproc import Child, kill_tree, launch
+from .tasks import cancel_and_wait
 from .watch.events import KIND_MAPS, WatchEvent
 from .watch.watcher import SaveWatcher
 
@@ -280,11 +281,7 @@ class MapJobRunner:
     async def stop(self) -> None:
         task, self._task = self._task, None
         if task is not None:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+            await cancel_and_wait(task)
         if self.active_run is not None:
             self.active_run.child.close()
 

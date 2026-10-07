@@ -411,7 +411,7 @@ class WorldState:
 
     # ---- what the map placed, and what is left of it ----------------------
 
-    OBSERVED: ClassVar[dict[str, str]] = RemovedActors.OBSERVED
+    UNCOLLECTED_STATES: ClassVar[dict[str, str]] = RemovedActors.UNCOLLECTED_STATES
     REMOVED_GROUPS: ClassVar[tuple[tuple[str, tuple[str, ...], bool], ...]] = (
         RemovedActors.REMOVED_GROUPS
     )

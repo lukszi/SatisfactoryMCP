@@ -272,7 +272,8 @@ def partition_id(tracking: Tracking) -> str:
         [stage.index, [[repr(row.key), row.machines] for row in stage.rows]]
         for stage in tracking.stages
     ]
-    return hashlib.sha1(json.dumps(shape).encode("utf-8")).hexdigest()[:10]
+    digest = hashlib.sha1(json.dumps(shape).encode("utf-8"), usedforsecurity=False)
+    return digest.hexdigest()[:10]
 
 
 def machine_states(report: DiffReport, game: GameData, state: WorldState) -> dict[str, str]:

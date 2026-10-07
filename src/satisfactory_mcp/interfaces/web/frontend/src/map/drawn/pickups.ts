@@ -3,6 +3,7 @@
  * palette audit, so it measures them against the node dots. */
 
 import { code, popup } from "../../kit/dom";
+import { byCodeUnit } from "../../kit/format";
 import { batch, control, registerSection } from "../layercontrol/control";
 import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
@@ -183,7 +184,7 @@ function paintPickups(data: CollectiblesResponse): void {
     if (stale && !byCategory[stale]) state.layers[name]!.clearLayers();
   });
   Object.keys(byCategory)
-    .sort()
+    .sort(byCodeUnit)
     .forEach(function (category) {
       // One toggleable group per category, because "show me every hard drive" and "show
       // me everything" are different questions and the second one is unreadable.
@@ -248,7 +249,7 @@ export function notePickupChoice(event: L.LeafletEvent): void {
     return other !== category;
   });
   if (event.type === "overlayadd") kept.push(category);
-  state.pickups = kept.sort();
+  state.pickups = kept.sort(byCodeUnit);
 }
 
 /** The `pickups=` half of a fragment: the categories to draw, as the whole truth about which

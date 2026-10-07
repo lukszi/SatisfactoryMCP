@@ -18,7 +18,7 @@ SUMMARY_ROWS = 12
 ROW_WIDTH = 160
 SNOOZE_HOURS = 1.0
 _HIDE = re.compile(
-    r"\s*(adv:[0-9a-f]{4,6})(?:\s+(snooze)(?:\s+(\d+(?:\.\d+)?)\s*(h|m|min)?)?)?\s*",
+    r"(adv:[0-9a-f]{4,6})(?:\s+(snooze)(?:\s+(\d+(?:\.\d+)?)\s*(h|m|min)?)?)?",
     re.IGNORECASE,
 )
 
@@ -28,7 +28,7 @@ def parse_hide(raw: object) -> tuple[str, str, float | None] | None:
     or ``"… snooze 30m"`` -> that long. None when it is not one."""
     if not isinstance(raw, str):
         return None
-    hit = _HIDE.fullmatch(raw)
+    hit = _HIDE.fullmatch(raw.strip())
     if hit is None:
         return None
     adv_id = hit.group(1).lower()

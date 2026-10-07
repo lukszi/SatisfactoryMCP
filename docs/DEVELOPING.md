@@ -387,6 +387,20 @@ server. `-e NAME` without a value hands the container the variable, so the token
 on a command line. In a linked git worktree `.git` is a file naming a host path the container
 cannot open, and the scanner aborts on it, so there the scan runs without SCM data.
 
+**Security hotspots reviewed as safe.** The scan flags these for review; each is safe for the
+reason given, so it is marked "Safe" in the scan rather than changed.
+
+| Rule | Where | Why it is safe |
+|---|---|---|
+| S5332 (`http://`) | `config.web_url`, `interfaces/web/guard.refusal` | The web map binds to loopback only (`WEB_HOST = "127.0.0.1"`); the guard compares a request's `Origin` with that same plain-HTTP address. Nothing leaves the machine, so there is nothing for TLS to protect. |
+| S4790 (weak hash) | `pioneersav/header.py`, `domain/advice/advisory.py`, `domain/planning/progress/stages.py` | No hash protects anything. The MD5 is the save format's own body digest, which the game checks; the SHA-1s name advisories and stage plans. Each call passes `usedforsecurity=False`. |
+| S4828 (signals) | `interfaces/web/childproc.py` | `os.kill(pid, 0)` only asks whether a process exists. `kill_tree` ends the generator this server started, or adopted after matching its pid and creation time. |
+| S5852 (regex backtracking) | `core/gamedata/normalize.py` | The input is the game's own Docs file, read from the local install: short description strings and class paths. |
+| S5852 | `domain/collectibles/table.py` (`_GLUED_INDEX`) | Linear: the look-behind admits one start per run of digits. |
+| S5852 | `domain/maps/jobs.py` | The input is the progress lines a map generator of this repository prints. |
+| S5852 | `tools/collectibles/identity.py` | A developer tool over instance names from the game and the saves. |
+| S5852 | frontend `api/client.ts` (`fillPathParam`) | The input is one of the page's own route templates, a constant. |
+
 ## Solver threads
 
 Every `scipy.optimize.milp` and `linprog` call goes through `core/solverlane.run`, which runs it on

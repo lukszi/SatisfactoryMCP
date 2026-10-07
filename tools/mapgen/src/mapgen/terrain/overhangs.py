@@ -55,7 +55,7 @@ def _faces(entry: PreparedPlacement, geometry: Geometry, y_lo: float,
     if not tris.size:
         return
     tri = world[tris]
-    if entry.facing == 0.0:
+    if not entry.facing:
         up = np.zeros(len(tri))
     else:
         up = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])[:, 2] * entry.facing
@@ -109,7 +109,7 @@ def overhang_rasters(prepared: Sequence[PreparedPlacement], geometry: Geometry, 
     floor_raster = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, ceiling=ceiling)
     for entry in prepared:
         for tri, up, _lowest in _faces(entry, geometry, y0_cm, y_hi):
-            facing = (up >= 0) if entry.facing == 0.0 else (up > 0)
+            facing = (up > 0) if entry.facing else (up >= 0)
             if facing.any() and _reaches(tri[facing], counts, floor_raster):
                 floor_raster.add(tri[facing], 1)
     return under, floor_raster.result()[0]

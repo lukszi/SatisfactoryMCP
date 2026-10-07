@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast
+from typing import NoReturn, cast
 
 from typing_extensions import TypedDict
 
@@ -170,12 +170,13 @@ def check(header: SaveHeader, as_of: str | None) -> str:
     save:" and the save that could not be read is the PINNED one.
     """
     current = remember(header)
-    if not as_of:
-        return current
-    want = as_of.strip()
-    if want == current:
-        return current
+    if as_of and as_of.strip() != current:
+        _refuse(as_of.strip(), current, header)
+    return current
 
+
+def _refuse(want: str, current: str, header: SaveHeader) -> NoReturn:
+    """Raise the ``PinRefused`` that says why ``want`` is not the save on disk."""
     here = f"On disk now is {current}, {_describe(header)}."
     if not TOKEN_SHAPE.fullmatch(want):
         raise PinRefused(

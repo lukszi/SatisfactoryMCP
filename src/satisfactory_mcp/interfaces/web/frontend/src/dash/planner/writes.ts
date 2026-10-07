@@ -201,6 +201,12 @@ function adoptPushReply(reply: PushedResponse, undoable: boolean): number {
   return reply.noop ? 0 : reply.rev;
 }
 
+/** A conflict key's field: the key up to its first `[` or `{`. */
+function keyField(key: string): string {
+  const cut = key.search(/[[{]/);
+  return cut < 0 ? key : key.slice(0, cut);
+}
+
 function raiseConflicts(body: Refusal, retry: () => void): void {
   if (!body.outdated || !body.state) {
     fail(body.error || "the server refused this change");
@@ -213,7 +219,7 @@ function raiseConflicts(body: Refusal, retry: () => void): void {
     bench.conflictChips.push({
       id: ++chipSerial,
       gesture: refusal,
-      field: conflict.mine.field || conflict.key.replace(/[[{].*$/, ""),
+      field: conflict.mine.field || keyField(conflict.key),
       who: actorWord(conflict.theirs_actor),
       text: conflict.text,
       retry: retry,

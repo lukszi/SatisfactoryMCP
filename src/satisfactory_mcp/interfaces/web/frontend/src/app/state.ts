@@ -170,7 +170,10 @@ export function parseList(raw: string | undefined): string[] {
     .filter(function (piece) {
       return !!piece;
     })
-    .sort();
+    .sort(function (a, b) {
+      if (a === b) return 0;
+      return a < b ? -1 : 1;
+    });
 }
 
 /** Whether a server timestamp, in seconds, is from after this page opened, within the grace. */

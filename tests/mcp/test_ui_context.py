@@ -546,3 +546,15 @@ def test_the_hide_grammar():
     assert parse_hide("adv:3f9a snooze 30m") == ("adv:3f9a", "snooze", 0.5)
     assert parse_hide("adv:3f9a01 snooze 10h") == ("adv:3f9a01", "snooze", 10.0)
     assert parse_hide("ask:3") is None and parse_hide(3) is None
+    assert parse_hide("adv:3f9a snooze 4 \t") == ("adv:3f9a", "snooze", 4.0)
+
+
+def test_the_hide_grammar_stays_linear_on_long_whitespace():
+    """A run of blanks the grammar cannot place is refused at once, not after O(n^2) tries."""
+    import time
+
+    from satisfactory_mcp.presenters.text.advice import parse_hide
+
+    started = time.perf_counter()
+    assert parse_hide("adv:3f9a snooze 4" + " " * 40_000 + "x") is None
+    assert time.perf_counter() - started < 0.5

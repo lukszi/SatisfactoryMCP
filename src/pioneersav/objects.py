@@ -567,15 +567,21 @@ def _read_level_trailer(
             f"level {name!r} trailer version {version}, expected 52 or 60",
         )
     destroyed = read_destroyed_refs(r, f"level {name!r} trailer", len(r.data))
-    if not versioned_archive:
-        return destroyed
+    if versioned_archive:
+        _read_trailer_archive(r, name, warnings, build_version)
+    return destroyed
+
+
+def _read_trailer_archive(
+    r: Reader, name: str, warnings: list[tuple[int, str]], build_version: int | None
+) -> None:
+    """The trailer's flag, and the archive header it says follows."""
     flag = r.i32()
     expect(flag in (0, 1), r.pos - 4, f"level {name!r} trailer flag {flag}, expected 0 or 1")
     if flag:
         # read, not skipped: nearly every archive header in a body is one of these
         _read_archive_header(r, warnings, build_version)
         _read_custom_versions(r)
-    return destroyed
 
 
 def _read_flat_levels(r: Reader, save_version: int) -> list[Level]:

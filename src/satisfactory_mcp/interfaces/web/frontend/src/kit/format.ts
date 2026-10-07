@@ -184,6 +184,13 @@ export function withDetail(text: string, detail: string | null | undefined): str
   return detail ? text + " · " + detail : text;
 }
 
+/** A sort's compare function in UTF-16 code-unit order, the order of a bare `sort()`: for ids,
+ *  class names and address values, whose order must not depend on the reader's locale. */
+export function byCodeUnit(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
 export function joinWithConjunction(names: string[], last: string): string {
   if (names.length < 2) return names.join("");
   return names.slice(0, -1).join(", ") + " " + last + " " + names[names.length - 1];

@@ -63,7 +63,7 @@ class RemovedActors:
     #: The placement table's ``state`` -> what it means about a placement this save has NOT
     #: collected. ``never_streamed`` is a placement no save has ever loaded, and must never
     #: be presented as standing there.
-    OBSERVED: ClassVar[dict[str, str]] = {
+    UNCOLLECTED_STATES: ClassVar[dict[str, str]] = {
         "present": "standing",
         "unknown": "never_streamed",
         "collected": "gone_in_a_later_save",
@@ -101,7 +101,7 @@ class RemovedActors:
                     "observed": (
                         None
                         if collected or not self.observed
-                        else self.OBSERVED.get(row.get("state") or "")
+                        else self.UNCOLLECTED_STATES.get(row.get("state") or "")
                     ),
                     "looted": row.get("looted"),
                     "contents": row.get("contents"),
@@ -148,7 +148,7 @@ class RemovedActors:
                     "collected": 0,
                     #: Standing but already emptied. Only a drop pod can be both.
                     "looted_and_standing": 0,
-                    **dict.fromkeys((*self.OBSERVED.values(), "unstated"), 0),
+                    **dict.fromkeys((*self.UNCOLLECTED_STATES.values(), "unstated"), 0),
                 },
             )
             if placement["collected"]:

@@ -204,7 +204,8 @@ def snap(
     step = yaw_step(mode)
     yaw = (round(yaw_deg / step) * step) % 360.0
     if mode == "grid8":
-        across, along = (depth_m, width_m) if yaw % 180.0 == 90.0 else (width_m, depth_m)
+        quarter_turned = math.isclose(yaw % 180.0, 90.0)
+        across, along = (depth_m, width_m) if quarter_turned else (width_m, depth_m)
         x = round((x_m - across / 2) / GRID_M) * GRID_M + across / 2
         y = round((y_m - along / 2) / GRID_M) * GRID_M + along / 2
     else:

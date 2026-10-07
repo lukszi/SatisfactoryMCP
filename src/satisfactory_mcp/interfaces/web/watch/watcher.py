@@ -26,6 +26,7 @@ from pathlib import Path
 
 from .... import config
 from ....core.saveio.projection import load_projection
+from ..tasks import cancel_and_wait
 from .events import KIND_NOTES, KIND_SAVE, WatchEvent
 from .tail import LogTail
 
@@ -265,8 +266,4 @@ class SaveWatcher:
         tasks = [t for t in (self._task, self._tail_task) if t is not None]
         self._task = self._tail_task = None
         for task in tasks:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+            await cancel_and_wait(task)

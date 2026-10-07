@@ -271,7 +271,7 @@ def _water_compiled(
     shares = np.clip(shares, 0.0, 1.0)
     # 4 c (1 - c) is +0 at a cover of 0 or 1, and so is its power: worked out elsewhere alone.
     curve = np.zeros(shares.shape, np.float32)
-    part = (shares != 0.0) & (shares != 1.0)
+    part = ~((shares <= 0.0) | (shares >= 1.0))
     curve[part] = np.clip(4.0 * shares[part] * (1.0 - shares[part]), 0.0, 1.0) ** 1.5
     knobs = [water_style["lit"], FLAT_LIT, shore["edge_alpha"], water_style["stroke"]]
     style = (ground.shallow, ground.deep, ground.stroke, np.array(knobs, np.float32))

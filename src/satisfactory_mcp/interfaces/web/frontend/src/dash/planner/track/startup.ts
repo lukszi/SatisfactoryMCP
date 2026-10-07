@@ -21,8 +21,13 @@ const FEEDERS_TITLE = "what the " + WORDS.stages + " stand on";
 
 /** The last four digits of an instance name, enough to tell two same-named extractors apart. */
 function instanceSuffix(instance: string): string {
-  const digits = /(\d+)$/.exec(instance);
-  return digits ? digits[1]!.slice(-4) : instance.slice(-4);
+  let start = instance.length;
+  while (start > 0 && isDigit(instance.charCodeAt(start - 1))) start--;
+  return start < instance.length ? instance.slice(start).slice(-4) : instance.slice(-4);
+}
+
+function isDigit(code: number): boolean {
+  return code >= 48 && code <= 57;
 }
 
 function feederActions(feeder: Feeder): HTMLElement {

@@ -389,7 +389,7 @@ def world_grain(
             shift = np.log10(max(float(np.abs(placement[8:11]).mean()), 1e-9)) / per_bin
             whole, frac = int(np.floor(shift)), shift - np.floor(shift)
             for offset, share in ((whole, 1.0 - frac), (whole + 1, frac)):
-                if share == 0.0:
+                if share <= 0.0:
                     continue
                 if offset >= 0:
                     weight[offset:] += share * base[: count - offset]

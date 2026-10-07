@@ -106,7 +106,7 @@ class PreparedPlacement(NamedTuple):
     matrix: F32Grid
     scale: F32Grid
     offset: F32Grid
-    facing: float
+    facing: int
     y_min_cm: float
     y_max_cm: float
     family: int | None = None
@@ -285,7 +285,7 @@ def direct_placements(sweep: Sweep, geometry: Geometry, families: NDArray[np.int
         low, high = verts.min(0), verts.max(0)
         box = low + corners * (high - low)
         world_y = ((box * scale) @ matrix + offset)[:, 1]
-        facing = windings[mesh] * float(np.sign(scale[0] * scale[1] * scale[2]))
+        facing = int(windings[mesh] * np.sign(scale[0] * scale[1] * scale[2]))
         family = None if families is None else int(families[i])
         prepared.append(PreparedPlacement(mesh, mesh_id, matrix, scale, offset, facing,
                                           float(world_y.min()), float(world_y.max()), family))  # fmt: skip
@@ -336,7 +336,7 @@ def add_placements(raster: MaxZRaster, prepared: Sequence[PreparedPlacement], ge
             continue
         verts, tris = geometry[entry.mesh]
         world = (verts * entry.scale) @ entry.matrix + entry.offset
-        if entry.facing != 0.0:
+        if entry.facing:
             corner = world[tris[:, 0]]
             normals = np.cross(world[tris[:, 1]] - corner, world[tris[:, 2]] - corner)
             tris = tris[(normals[:, 2] * entry.facing) > 0]
@@ -397,7 +397,7 @@ def top_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: 
         if not _on_raster(world):
             dropped["off_raster"] += 1
             continue
-        arches.append(PreparedPlacement(mesh, mesh_id, matrix, scale, offset, 0.0,
+        arches.append(PreparedPlacement(mesh, mesh_id, matrix, scale, offset, 0,
                                         float(world[:, 1].min()), float(world[:, 1].max())))  # fmt: skip
     boulders: dict[str, InstanceSpans] = {}
     for mesh, mats in sweep["foliage"].items():

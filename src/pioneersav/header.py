@@ -43,7 +43,7 @@ def body_hash(data: bytes, body_offset: int) -> tuple[int, int]:
     Reading a save never needs it. Anything that MODIFIES a body and writes it back does:
     without recomputing this, the file carries a digest of bytes it no longer contains.
     """
-    digest = hashlib.md5(data[body_offset:]).digest()
+    digest = hashlib.md5(data[body_offset:], usedforsecurity=False).digest()
     lo = int.from_bytes(digest[:8], "little")
     hi = int.from_bytes(digest[8:], "little")
     return (lo, hi)

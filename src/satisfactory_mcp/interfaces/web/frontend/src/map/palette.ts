@@ -312,12 +312,12 @@ interface Listed {
 
 /** Every listed pair, keyed the way the audit names it, and which list it came from --
  *  because "answered" and "owed" are counted differently. */
-function allowed(): Record<string, Listed> {
+function allowed(discharged: readonly Exception[], standing: readonly Standing[]): Record<string, Listed> {
   const listed: Record<string, Listed> = {};
-  DISCHARGED.forEach(function (entry) {
+  discharged.forEach(function (entry) {
     listed[pairKey(entry.a, entry.b)] = { de: entry.de, owed: false };
   });
-  STANDING.forEach(function (group) {
+  standing.forEach(function (group) {
     group.pairs.forEach(function (pair) {
       listed[pairKey(pair[0], pair[1])] = { de: pair[2], owed: true };
     });
@@ -419,7 +419,7 @@ function reportStandingDebt(pairs: Measured[], known: Record<string, Listed>): v
 
 /** The check itself, run once, in dev, after the whole table has declared. */
 function audit(): void {
-  const known = allowed();
+  const known = allowed(DISCHARGED, STANDING);
   const pairs = crossOwnerPairs();
   checkUnlistedPairs(pairs, known);
   checkListedDrift(pairs, known);

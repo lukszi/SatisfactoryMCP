@@ -2,6 +2,7 @@
 
 import { appendNote } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
+import { byCodeUnit } from "../../kit/format";
 import { amountList, doneFilteredCard, spoilerNote, STOCK, tierProgressBar } from "./cells";
 import { changed, mam, visible, waiting } from "./feeds";
 
@@ -104,7 +105,7 @@ function treeStrip(rows: MamRow[]): HTMLElement {
   });
   const strip = make("div", "dash-tiers");
   Object.keys(trees)
-    .sort()
+    .sort(byCodeUnit)
     .forEach(function (name) {
       strip.appendChild(tierProgressBar(name, trees[name]![0]!, trees[name]![1]!));
     });

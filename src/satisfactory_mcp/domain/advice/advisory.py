@@ -129,7 +129,10 @@ def key_for(kind: str, subject_kind: str, subject: str) -> str:
 
 def ids_for(keys: Iterable[str]) -> dict[str, str]:
     """``adv:`` plus four hex of sha1(key); keys sharing a prefix get six hex each."""
-    digests = {key: hashlib.sha1(key.encode("utf-8")).hexdigest() for key in sorted(set(keys))}
+    digests = {
+        key: hashlib.sha1(key.encode("utf-8"), usedforsecurity=False).hexdigest()
+        for key in sorted(set(keys))
+    }
     prefixes = Counter(digest[:4] for digest in digests.values())
     return {
         key: "adv:" + (digest[:4] if prefixes[digest[:4]] == 1 else digest[:6])

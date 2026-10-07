@@ -4,6 +4,7 @@ import {
   ageShort,
   amount,
   buildingCounts,
+  byCodeUnit,
   bytes,
   coords,
   count,
@@ -136,6 +137,13 @@ describe("places and names", () => {
     expect(withDetail("Constructor", "Iron Plate")).toBe("Constructor · Iron Plate");
     expect(withDetail("Constructor", "")).toBe("Constructor");
     expect(withDetail("Constructor", null)).toBe("Constructor");
+  });
+
+  it("sorts in the code-unit order of a bare sort, whatever the locale", () => {
+    const names = ["b", "Desc_Water_C", "a", "Desc_OreIron_C", "Z", "a"];
+    expect([...names].sort(byCodeUnit)).toEqual([...names].sort());
+    expect(byCodeUnit("a", "a")).toBe(0);
+    expect(byCodeUnit("Z", "a")).toBe(-1);
   });
 
   it("joins names with a conjunction before the last", () => {

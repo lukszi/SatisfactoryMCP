@@ -115,8 +115,8 @@ class SeamCheck:
     @property
     def invisible(self) -> bool:
         """At or under the control's median times SEAM_RATIO_MAX, and zero on flat ground."""
-        flat_worst = max(self.seam_flat, default=0.0)
-        return self.seam_median <= SEAM_RATIO_MAX * self.interior_median and flat_worst == 0.0
+        flat_clean = not any(self.seam_flat)
+        return self.seam_median <= SEAM_RATIO_MAX * self.interior_median and flat_clean
 
     def record(self) -> JsonObject:
         """The sidecar's ``seams`` block."""

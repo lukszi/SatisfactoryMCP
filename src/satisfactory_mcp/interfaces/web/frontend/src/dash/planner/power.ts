@@ -3,7 +3,7 @@
 
 import { button, checkbox, selectBox, slider } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { count, formatNumber, mw, pct } from "../../kit/format";
+import { byCodeUnit, count, formatNumber, mw, pct } from "../../kit/format";
 import { counted } from "../../kit/words";
 import { bench } from "./state";
 import { applyOps } from "./writes";
@@ -155,7 +155,7 @@ function namesOnlyIn(a: Record<string, string>, b: Record<string, string>): stri
     .map(function (id) {
       return a[id]!;
     })
-    .sort();
+    .sort(byCodeUnit);
 }
 
 function switchWords(before: Record<string, string>, after: Record<string, string>): string {

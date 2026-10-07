@@ -7,7 +7,7 @@
  */
 
 import { code, popup } from "../../kit/dom";
-import { regionLine, shortResource } from "../../kit/format";
+import { byCodeUnit, regionLine, shortResource } from "../../kit/format";
 import { registerSection } from "../layercontrol/control";
 import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
@@ -122,7 +122,7 @@ function paintNodes(data: NodesResponse): void {
     if (!stillPresent) state.layers[name]!.clearLayers();
   });
   Object.keys(byResource)
-    .sort()
+    .sort(byCodeUnit)
     .forEach(function (resource) {
       const colour = nodeColour(resource);
       // Slot 0 for every member, so the band's whole ordering is the name: these rows are

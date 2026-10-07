@@ -93,6 +93,12 @@ def measured_share(record: BuildableRecord) -> float | None:
     return (uptime.get("produce_s") or 0.0) / window
 
 
+def _never_ran(record: BuildableRecord) -> bool:
+    """Whether the machine's monitor saw it produce nothing at all; False without a monitor."""
+    share = measured_share(record)
+    return share is not None and share <= 0.0
+
+
 def dry_inputs(game: GameData, record: BuildableRecord) -> tuple[str, ...]:
     """Which of a generator's inputs its fuel inventory has run out of, by item name.
 
@@ -240,7 +246,7 @@ class PowerLedger:
             # The DRY INPUT decides and a zero uptime corroborates: a generator load-follows,
             # and one with no monitor is left alone rather than accused.
             missing = dry_inputs(self.game, generator_record)
-            if missing and measured_share(generator_record) == 0.0:
+            if missing and _never_ran(generator_record):
                 tally.starved.append(
                     {
                         "instance": instance_leaf(generator_record["instance"]),

@@ -118,6 +118,6 @@ function scrubbed(text: string): string {
       return lead + leaf(path);
     })
     .replace(/\s{2,}/g, " ")
-    .replace(/\s+([:,.;)])/g, "$1")
+    .replace(/\s([:,.;)])/g, "$1")
     .trim();
 }
