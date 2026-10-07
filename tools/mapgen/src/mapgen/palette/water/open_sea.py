@@ -10,7 +10,6 @@ from typing import NamedTuple, TypeAlias
 
 import numpy as np
 import scipy.sparse as sp
-import scipy.sparse.linalg as spla
 from numpy.typing import NDArray
 from scipy import ndimage
 
@@ -19,6 +18,7 @@ from mapgen.palette.scene import FloatGrid, WaterPlanes, field_heights, field_wa
 from mapgen.palette.water.geodesic import geodesic_steps
 from mapgen.palette.water.shore import OCEAN_REACH_M
 from mapgen.terrain.fill import cosine_taper, nearest_fill
+from mapgen.terrain.solve import jacobi_cg
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -325,8 +325,7 @@ def membrane(
     lap = _grid_laplacian(free | fixed)
     rhs -= lap[u][:, k] @ out[k]
     a_uu = (lap[u][:, u] + sp.diags(weight)).tocsr()
-    jacobi = sp.diags(1.0 / a_uu.diagonal())
-    out[u], _info = spla.cg(a_uu, rhs, x0=np.full(len(rhs), far), rtol=1e-6, M=jacobi)
+    out[u] = jacobi_cg(a_uu, rhs, np.full(len(rhs), far), rtol=1e-6)
     return out.reshape(values.shape)
 
 

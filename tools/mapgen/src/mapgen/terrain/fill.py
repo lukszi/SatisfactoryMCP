@@ -29,6 +29,7 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import FILL_RASTER_BOX_CM
 from mapgen.gamedata.level.fill_raster import FILL_RASTER_PATH, read_fill_raster
+from mapgen.terrain.solve import jacobi_cg
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -250,8 +251,7 @@ def relax(values: NDArray[np.floating], known: BoolMask, unknown: BoolMask, scal
     lap = _laplacian(known | unknown)
     rhs -= lap[u][:, k] @ out[k]
     a_uu = (lap[u][:, u] + sp.diags(weight)).tocsr()
-    jacobi = sp.diags(1.0 / a_uu.diagonal())
-    out[u], _info = spla.cg(a_uu, rhs, x0=np.full(len(rhs), far), rtol=1e-6, M=jacobi)
+    out[u] = jacobi_cg(a_uu, rhs, np.full(len(rhs), far), rtol=1e-6)
     return out.reshape(values.shape)
 
 

@@ -207,6 +207,7 @@ be traced to the axis it should move.
 | `terrain/heightfield/sidecar_blocks.py` | data | Each layer's sidecar block, per-layer accuracy, the water block |
 | `terrain/heightfield/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
+| `terrain/solve.py` | renderer | Conjugate gradients with fixed-order sums, for the membranes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
 | `terrain/kernels.py` | renderer | The resampling gathers compiled by numba |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid |
