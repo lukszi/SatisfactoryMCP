@@ -181,7 +181,7 @@ export function commitWords(text: string): string {
 
 /** An item or recipe id as the open plan names it, or the id itself. */
 export function displayName(id: string): string {
-  return (bench.plan && bench.plan.names[id]) || id;
+  return bench.plan?.names[id] || id;
 }
 
 let itemNames: string[] = [];

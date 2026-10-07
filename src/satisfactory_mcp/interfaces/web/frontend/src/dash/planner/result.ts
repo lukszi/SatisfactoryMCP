@@ -377,7 +377,7 @@ function planNodes(data: SolveResponse): PlanNode[] {
     const row = n.row ? byId[n.row] : undefined;
     const badges: string[] = [];
     if (row && bench.chatChangedRows[row.id]) badges.push(WORDS.actorChat);
-    if (row && row.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
+    if (row?.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
     const tip = row
       ? row.building + " · " + row.recipe + "\nin: " + ratesText(withoutPower(row.inputs)) + "\nout: " + ratesText(withoutPower(row.outputs))
       : n.label + (n.detail ? " · " + n.detail : "");

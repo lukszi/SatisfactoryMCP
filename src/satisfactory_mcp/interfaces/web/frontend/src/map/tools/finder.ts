@@ -703,7 +703,7 @@ function refresh(): void {
 }
 
 function hideSpoilers(): void {
-  if (!view.open || !view.results || view.results.kind !== "pickups" || settingOn("spoilers")) return;
+  if (!view.open || view.results?.kind !== "pickups" || settingOn("spoilers")) return;
   const rows = view.results.rows as { spoiler?: boolean }[];
   if (!rows.some(function (row) { return row.spoiler; })) return;
   if (view.at || view.ref) {

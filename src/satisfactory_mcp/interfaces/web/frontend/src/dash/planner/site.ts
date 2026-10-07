@@ -93,7 +93,7 @@ onSetting(function () {
 
 function padOf(raw: unknown): Pad | null {
   const siting = raw as { origin_m?: (number | null)[]; yaw_deg?: number; footprint_m?: number[] } | null;
-  if (!siting || !siting.origin_m || siting.origin_m[0] === null || siting.origin_m[1] === null) return null;
+  if (!siting?.origin_m || siting.origin_m[0] === null || siting.origin_m[1] === null) return null;
   const footprint = siting.footprint_m || [0, 0];
   return {
     x_m: Number(siting.origin_m[0]),
@@ -254,7 +254,7 @@ function framePad(p: Pad): void {
     return;
   }
   const bounds = L.latLngBounds(padCorners(p)).pad(1.2);
-  if (site.ghost && site.ghost.key === site.key) bounds.extend(L.latLngBounds(padCorners(site.ghost.pad)));
+  if (site.ghost?.key === site.key) bounds.extend(L.latLngBounds(padCorners(site.ghost.pad)));
   const dash = document.getElementById("dash")!.getBoundingClientRect();
   const box = map.getContainer().getBoundingClientRect();
   const side = dash.left > box.left + 4;
@@ -282,7 +282,7 @@ function beginSiting(): void {
       site.pad = p;
       startPadEdit(p, plan.name, dragHooks, COARSE.matches);
       showNodeLines(data.nodes || []);
-      if (site.ghost && site.ghost.key === key) showGhostPad(site.ghost.pad);
+      if (site.ghost?.key === key) showGhostPad(site.ghost.pad);
       if (!site.framed) {
         site.framed = true;
         framePad(p);
@@ -312,7 +312,7 @@ function syncWithPlan(): void {
   }
   if (site.rev !== plan.rev && !padGestureActive() && !site.confirm) {
     site.rev = plan.rev;
-    if (site.ghost && site.ghost.key === site.key && plan.siting && samePad(padOf(plan.siting), site.ghost.pad)) dropGhost();
+    if (site.ghost?.key === site.key && plan.siting && samePad(padOf(plan.siting), site.ghost.pad)) dropGhost();
     const stored = padOf(plan.siting);
     site.stored = stored;
     if (stored) site.source = footprintSource(plan.siting);
@@ -328,7 +328,7 @@ function feedbackLine(parent: HTMLElement, text: string, tone?: string): void {
 }
 
 function nodeDistanceLine(p: Pad, nodes: SitePreviewResponse["nodes"]): string {
-  if (!nodes || !nodes.length) return "";
+  if (!nodes?.length) return "";
   const byDistance = nodes.map(function (node) {
     return { node: node, distanceM: Math.hypot(node.x_m - p.x_m, node.y_m - p.y_m) };
   });
@@ -462,7 +462,7 @@ function actions(parent: HTMLElement): void {
     move.setAttribute("data-ctl", "site-cross");
     move.disabled = bench.gone || !site.pad;
     row.appendChild(move);
-    const fits = site.lastPreview && site.lastPreview.fits ? site.lastPreview.fits : [];
+    const fits = site.lastPreview?.fits ? site.lastPreview.fits : [];
     fits.forEach(function (fit) {
       row.appendChild(button(WORDS.fitPad(fit.name), function () {
         const p = padOf(fit.value)!;
@@ -492,13 +492,13 @@ function confirmLine(parent: HTMLElement): void {
 
 function ghostLine(parent: HTMLElement): void {
   const seen = site.ghost;
-  if (seen === null || seen.key !== site.key) return;
+  if (seen?.key !== site.key) return;
   const ghost = seen;
   const row = make("div", "site-ghost-line");
   row.appendChild(make("span", "", ghost.who + " is looking at " + wholeNumber(ghost.pad.x_m) + ", " + wholeNumber(ghost.pad.y_m)));
   const use = button("use it", function () {
     site.label = "chat preview";
-    site.sized = !site.stored || ghost.pad.width_m !== site.stored.width_m || ghost.pad.depth_m !== site.stored.depth_m;
+    site.sized = ghost.pad.width_m !== site.stored?.width_m || ghost.pad.depth_m !== site.stored.depth_m;
     const p = ghost.pad;
     movePad(p, false);
     dropGhost();

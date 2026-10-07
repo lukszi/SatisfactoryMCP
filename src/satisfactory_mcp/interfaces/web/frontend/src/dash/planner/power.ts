@@ -115,7 +115,7 @@ function overclockRow(body: HTMLElement, view: Payback | null): void {
   });
   box.title = "a row of 4.2 machines becomes 3 at 100% and 1 at 120%, using 1–2 Power Shards";
   row.appendChild(box);
-  const line = make("span", "plan-sub", overclockWords(view) + (view && view.overclock.inherited ? " · shared default" : ""));
+  const line = make("span", "plan-sub", overclockWords(view) + (view?.overclock.inherited ? " · shared default" : ""));
   line.setAttribute("aria-live", "polite");
   row.appendChild(line);
   if (plan.args.overclock_last !== null) row.appendChild(followDefault("overclock_last"));
@@ -134,7 +134,7 @@ function followDefault(field: "payback_hours" | "overclock_last"): HTMLElement {
 
 function recipeNamesById(data: SolveResponse | null): Record<string, string> {
   const out: Record<string, string> = {};
-  if (data && data.feasible)
+  if (data?.feasible)
     data.rows.forEach(function (r) {
       out[r.recipe_id || r.recipe] = r.recipe;
     });
@@ -217,7 +217,7 @@ export function powerRow(body: HTMLElement): void {
   const view = result && result.feasible && result.power.stops.length ? result.power : null;
   const current = view ? view.hours : plan.args.payback_hours === null ? 0 : plan.args.payback_hours;
   const still = !!view && !view.splits;
-  const tail = view && view.inherited ? " · shared default" : "";
+  const tail = view?.inherited ? " · shared default" : "";
   const line = make("span", "plan-sub plan-power-line", (still ? view!.reason : stopWords(view, current)) + tail);
   line.setAttribute("aria-live", "polite");
   body.classList.add("plan-stack");

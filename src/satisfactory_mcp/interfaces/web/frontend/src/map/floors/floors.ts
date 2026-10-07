@@ -223,7 +223,7 @@ function openFloorView(query: string, body: FloorsResponse, title: string, band?
     query: query,
     platform: platform,
     body: body,
-    title: platform && platform.label ? platform.label : title,
+    title: platform?.label ? platform.label : title,
     message: platform ? "" : body.note || "no floors here",
     turned: [],
     flown: false,
@@ -268,7 +268,7 @@ export function leaveFloors(): void {
 /** Switch storey. Neither the layers nor the map move: one floor of a factory is the same
  *  place as the next one, and re-flying between them would be motion for its own sake. */
 export function pickBand(key: string): void {
-  if (!view || !view.platform || !state.floor) return;
+  if (!view?.platform || !state.floor) return;
   state.floor = { platform: state.floor.platform, band: key };
   applyFilter(view, state.floor);
   showPicker();
@@ -302,8 +302,8 @@ export function applyFloorFragment(asked: string | undefined): boolean {
     leaveFloors();
     return true;
   }
-  if (have && have.platform === want.platform && have.band === want.band) return false;
-  if (have && have.platform === want.platform) {
+  if (have?.platform === want.platform && have.band === want.band) return false;
+  if (have?.platform === want.platform) {
     pickBand(want.band);
     return true;
   }

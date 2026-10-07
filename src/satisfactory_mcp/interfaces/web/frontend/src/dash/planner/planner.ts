@@ -412,7 +412,7 @@ onReload(function () {
 });
 
 export function onNotesEvent(): void {
-  if (trackShowing() && bench.plan && bench.plan.factory) loadTrack();
+  if (trackShowing() && bench.plan?.factory) loadTrack();
 }
 
 /* ------------------------------------------------------------------- keys */

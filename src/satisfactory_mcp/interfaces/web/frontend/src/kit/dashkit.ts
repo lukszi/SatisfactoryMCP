@@ -187,7 +187,7 @@ function sorted<R>(columns: Column<R>[], rows: R[], sort?: SortState): R[] {
   const by = columns.filter(function (c) {
     return c.key === sort.key;
   })[0];
-  if (!by || !by.sort) return rows;
+  if (!by?.sort) return rows;
   const key = by.sort;
   const sign = sort.desc ? -1 : 1;
   return rows.slice().sort(function (a, b) {
@@ -259,7 +259,7 @@ function sortableHeader<R>(column: Column<R>, sortState: SortState, onPick: () =
     th.appendChild(document.createTextNode(column.label));
     th.appendChild(arrow);
   }
-  if (pendingSortFocus && pendingSortFocus.sort === sortState && pendingSortFocus.key === column.key) refocusTarget = th;
+  if (pendingSortFocus?.sort === sortState && pendingSortFocus.key === column.key) refocusTarget = th;
   th.onclick = onPick;
   th.onkeydown = function (event) {
     if (event.key === "Enter" || event.key === " ") {
@@ -290,7 +290,7 @@ function resortAndRefocus<R>(
   const again = refocusTarget as HTMLElement | null;
   pendingSortFocus = null;
   refocusTarget = null;
-  if (again && again.isConnected) again.focus();
+  if (again?.isConnected) again.focus();
   else if (th.isConnected) th.focus();
 }
 

@@ -59,7 +59,7 @@ export function adoptMapRegistry(body: MapsResponse): void {
 
 export function onMapsEvent(event: MapsEvent): void {
   const body = mapRegistry.body;
-  if (!body || event.registry_version !== body.version) {
+  if (event.registry_version !== body?.version) {
     fetchMapRegistry();
     return;
   }

@@ -151,9 +151,9 @@ onAsks(function () {
 
 function reportWriteFailure(reason: unknown, what: string): void {
   const err = reason as StatusError;
-  if (err && err.status === 409) {
+  if (err?.status === 409) {
     const body = err.body as AdviceStaleResponse | undefined;
-    fail((body && body.error) || "that advisory changed since you read it");
+    fail(body?.error || "that advisory changed since you read it");
   } else fail(what + ": " + friendlyError(reason));
   refetchAdvice();
 }
@@ -216,7 +216,7 @@ function closeMenu(focusBack: boolean): void {
 document.addEventListener("click", function (event) {
   if (!view.openMenuKey) return;
   const target = event.target as HTMLElement | null;
-  if (target && target.closest && target.closest(".advice-menu, .advice-split")) return;
+  if (target?.closest?.(".advice-menu, .advice-split")) return;
   closeMenu(false);
 });
 
@@ -294,7 +294,7 @@ function mapAction(advisory: AdviceRow): HTMLElement | null {
     "map",
     function () {
       goToMapThen(function () {
-        if (one && one.instance && one.x_m !== null && one.y_m !== null) {
+        if (one?.instance && one.x_m !== null && one.y_m !== null) {
           showMachine(one.instance, one.name, one.x_m, one.y_m, { layers: layers });
           return;
         }

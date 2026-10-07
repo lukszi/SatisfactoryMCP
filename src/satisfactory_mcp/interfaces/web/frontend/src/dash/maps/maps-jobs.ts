@@ -132,10 +132,10 @@ function queuedJob(job: MapJobBody, card: HTMLElement): void {
 function replaceOffer(job: MapJobBody, card: HTMLElement): void {
   const body = mapRegistry.body;
   const made = job.produces[0];
-  const old = body && body.types.filter(function (type) {
+  const old = body?.types.filter(function (type) {
     return type.id === made;
   })[0];
-  const target = old && old.replaces;
+  const target = old?.replaces;
   if (!body || !made || !target) return;
   const gone = body.types.filter(function (type) {
     return type.id === target;

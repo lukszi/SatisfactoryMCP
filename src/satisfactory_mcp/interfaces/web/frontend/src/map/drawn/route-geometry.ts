@@ -128,7 +128,7 @@ export function routePolyline(
  * steps. */
 export function retessellate(piece: L.Polyline, ppm: number): boolean {
   const route = piece._route;
-  if (!route || !route.curve_m) return false;
+  if (!route?.curve_m) return false;
   const shape = routeLatLngs(route.points_m, route.curve_m, ppm);
   let same = shape.steps.length === route.steps.length;
   for (let i = 0; same && i < shape.steps.length; i++) same = shape.steps[i] === route.steps[i];

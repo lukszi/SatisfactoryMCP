@@ -14,7 +14,7 @@ import { COPY_ATTR, COPY_CLASS } from "./dom";
 import { fail, notify } from "./toast";
 
 export function copyText(text: string): Promise<void> {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
+  if (navigator.clipboard?.writeText) {
     return navigator.clipboard.writeText(text);
   }
   /* The async clipboard needs a secure context. `satisfactory-mcp-web` binds 127.0.0.1,
@@ -40,7 +40,7 @@ export function copyText(text: string): Promise<void> {
 
 function copyFrom(event: Event): void {
   const target = event.target as Element | null;
-  const span = target && target.closest ? target.closest("." + COPY_CLASS) : null;
+  const span = target?.closest ? target.closest("." + COPY_CLASS) : null;
   if (!span) return;
   const text = span.getAttribute(COPY_ATTR) || span.textContent || "";
   // Said out loud both ways: a copy that silently did nothing is worse than no affordance,
@@ -50,7 +50,7 @@ function copyFrom(event: Event): void {
       notify("copied " + text);
     },
     function (error) {
-      fail("could not copy " + text + ": " + String((error && error.message) || error));
+      fail("could not copy " + text + ": " + String(error?.message || error));
     }
   );
 }

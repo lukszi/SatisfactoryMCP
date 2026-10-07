@@ -304,7 +304,7 @@ function headline(card: HTMLElement, found: NodeFindResponse, view: string): voi
     card.appendChild(selectors);
   } else if (found.where) appendNote(card, "near " + found.where);
   if (found.elevation) caveats.push("between " + formatNumber(found.elevation[0], 0) + " and " + formatNumber(found.elevation[1], 0) + " m up");
-  if (found.water && found.water.pumps) {
+  if (found.water?.pumps) {
     caveats.push(
       counted(found.water.pumps, "water pump spot") +
         (found.water.per_pump_m3_min === null ? "" : " · " + formatNumber(found.water.per_pump_m3_min, 1) + " m³/min each") +

@@ -61,17 +61,17 @@ export function selectAndRing(x_m: number, y_m: number, label?: string, stay?: b
 }
 
 export function showPoint(x_m: number, y_m: number, options?: { label?: string; layers?: string[]; stay?: boolean }): void {
-  if (options && options.layers) reveal(options.layers);
-  selectAndRing(x_m, y_m, options && options.label, options && options.stay);
+  if (options?.layers) reveal(options.layers);
+  selectAndRing(x_m, y_m, options?.label, options?.stay);
 }
 
 export function showMachine(instance: string, name: string, x_m: number, y_m: number, options?: { layers?: string[]; stay?: boolean }): void {
-  if (options && options.layers) reveal(options.layers);
-  selectAndRing(x_m, y_m, name, options && options.stay, machineSelection(instance, name, x_m, y_m));
+  if (options?.layers) reveal(options.layers);
+  selectAndRing(x_m, y_m, name, options?.stay, machineSelection(instance, name, x_m, y_m));
 }
 
 export function showBox(bbox_m: BboxM, options?: { layers?: string[] }): void {
-  if (options && options.layers) reveal(options.layers);
+  if (options?.layers) reveal(options.layers);
   const bounds = flyToBuiltArea(bbox_m);
   if (bounds) outline(bounds);
 }

@@ -130,7 +130,7 @@ function targetCard(body: HTMLElement, data: PhaseResponse, target: PhaseRow | n
   else if (!target.outstanding.length) appendNote(card, "nothing outstanding on the target phase");
   else card.appendChild(table(PART_COLUMNS, target.outstanding, { caption: "parts owed to the target phase" }));
   const paid = "delivered so far: " + (data.delivered.length ? amountList(data.delivered) : "nothing");
-  appendNote(card, target && target.trust === "derived" ? paid + "; the amounts owed are a lower bound" : paid);
+  appendNote(card, target?.trust === "derived" ? paid + "; the amounts owed are a lower bound" : paid);
   body.appendChild(card);
 }
 

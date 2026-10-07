@@ -126,7 +126,7 @@ function rowName(row: HTMLElement): string {
 
 function rowOn(row: HTMLElement): boolean {
   const input = row.querySelector("input");
-  return !!(input && input.checked);
+  return !!input?.checked;
 }
 
 /* A control row back to the LayerGroup itself, for the one caller that has to toggle a
@@ -367,7 +367,7 @@ interface FocusMark {
 
 function focusMark(): FocusMark | null {
   const active = document.activeElement as SectionPart | null;
-  return active && active._section ? { key: active._section, part: active._part } : null;
+  return active?._section ? { key: active._section, part: active._part } : null;
 }
 
 let pendingFocus: FocusMark | null = null;
@@ -397,14 +397,14 @@ function decorateControl(): void {
   });
   SECTIONS.forEach(function (section) {
     const members = grouped[section.key];
-    if (!members || !members.length) return;
+    if (!members?.length) return;
     const open = state.panel.sections[section.key];
     members.forEach(function (row) {
       fold(row, !open);
     });
     const head = sectionHead(section, members);
     list!.insertBefore(head, members[0]!);
-    if (focused && focused.key === section.key) {
+    if (focused?.key === section.key) {
       const again = head.querySelector<HTMLElement>(
         focused.part === "box" ? ".layer-section-box" : ".layer-fold"
       );

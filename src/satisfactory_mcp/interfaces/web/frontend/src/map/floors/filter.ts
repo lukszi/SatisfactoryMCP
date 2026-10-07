@@ -125,7 +125,7 @@ export function platformBounds(platform: FloorPlatform): L.LatLngBounds | null {
   const ys: number[] = [];
   snapshot(group).forEach(function (piece) {
     const mark = piece._floor;
-    if (!mark || mark.row === undefined || !rows[mark.row]) return;
+    if (mark?.row === undefined || !rows[mark.row]) return;
     if (mark.x_m === undefined || mark.y_m === undefined) return;
     xs.push(mark.x_m);
     ys.push(mark.y_m);
@@ -220,7 +220,7 @@ function classifyWire(pass: FilterPass, band: FloorBand, mark: FloorMark, span: 
   const fromAnchor = headHere ? anchor[0] : anchor[1];
   const toAnchor = headHere ? anchor[1] : anchor[0];
   const landsOn = bandAtHeight(pass.platform, toAnchor[2]);
-  if (landsOn && landsOn.ordinal === band.ordinal) return KEEP;
+  if (landsOn?.ordinal === band.ordinal) return KEEP;
   return { keep: true, glyph: wireGlyph(pass.platform, from, to, fromAnchor, toAnchor) };
 }
 
@@ -272,7 +272,7 @@ function rebuildGroup(group: L.LayerGroup, kept: L.Layer[], ghosted: L.Path[], g
 /* Rebuilding a group rebuilds its draw order, so the route stacking is put back afterwards: a
  * power casing left on top of its core would hide it. */
 export function applyFilter(view: FilterSource | null, floor: FloorAddress | null): void {
-  if (!view || !view.platform || !floor) return;
+  if (!view?.platform || !floor) return;
   const pass = startFilterPass({ platform: view.platform, body: view.body }, floor);
   withFilterGuard(function () {
     FILTERED.forEach(function (name) {
@@ -302,7 +302,7 @@ export function clearFilter(): void {
   withFilterGuard(function () {
     FILTERED.forEach(function (name) {
       const group = state.layers[name];
-      if (!group || !group._floorAll) return;
+      if (!group?._floorAll) return;
       const all = group._floorAll;
       delete group._floorAll;
       group.clearLayers();

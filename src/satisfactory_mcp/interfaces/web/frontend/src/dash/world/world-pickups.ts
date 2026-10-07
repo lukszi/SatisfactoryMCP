@@ -64,7 +64,7 @@ function censusTable(pickups: CollectiblesResponse): HTMLElement {
   const foreign = !!stale && stale.observed_matches === false;
   const streamedTitle =
     "placed where no save has had them loaded" +
-    (stale && stale.observed_from ? "; read from the saves of " + stale.observed_from : "") +
+    (stale?.observed_from ? "; read from the saves of " + stale.observed_from : "") +
     (foreign ? ", another world, so left out" : "");
   const columns: Column<CensusRow>[] = [
     {

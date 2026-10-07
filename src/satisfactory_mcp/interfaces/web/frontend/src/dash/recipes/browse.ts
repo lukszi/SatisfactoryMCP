@@ -321,7 +321,7 @@ function trackBrowseScroll(): void {
 }
 
 function restoreBrowseScroll(): void {
-  if (!restoring || restoring.dash !== state.dash) return;
+  if (restoring?.dash !== state.dash) return;
   const top = restoring.top;
   restoring = null;
   if (!top) return;

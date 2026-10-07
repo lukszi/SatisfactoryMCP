@@ -37,12 +37,12 @@ function patchSharedSettings(values: Record<string, unknown>, retried: boolean):
     .then(adoptServerSettings)
     .catch(function (reason: StatusError) {
       const stale = reason.status === 409 ? (reason.body as SettingsStaleResponse | undefined) : undefined;
-      if (stale && stale.settings && !retried) {
+      if (stale?.settings && !retried) {
         version = stale.settings.version;
         patchSharedSettings(values, true);
         return;
       }
-      if (stale && stale.settings) adoptServerSettings(stale.settings);
+      if (stale?.settings) adoptServerSettings(stale.settings);
       fail("the shared setting was not saved: " + friendlyError(reason));
     });
 }

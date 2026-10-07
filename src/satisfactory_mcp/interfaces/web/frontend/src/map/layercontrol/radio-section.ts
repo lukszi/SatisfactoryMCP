@@ -118,8 +118,8 @@ export function radioSection<C extends RadioChoice>(config: RadioSectionConfig<C
     const list = outer.querySelector<HTMLElement>(".leaflet-control-layers-list");
     if (!list) return null;
     const key = title + "|" + messageText() + "|" + choices.map(config.rowKey).join(",");
-    if (box && box.parentNode === list && built === key) return box;
-    if (box && box.parentNode) box.parentNode.removeChild(box);
+    if (box?.parentNode === list && built === key) return box;
+    if (box?.parentNode) box.parentNode.removeChild(box);
     built = key;
     box = build(list);
     return box;
@@ -158,7 +158,7 @@ export function radioSection<C extends RadioChoice>(config: RadioSectionConfig<C
     hide: function () {
       choices = [];
       built = "";
-      if (box && box.parentNode) box.parentNode.removeChild(box);
+      if (box?.parentNode) box.parentNode.removeChild(box);
       box = null;
       head = null;
       rows = {};

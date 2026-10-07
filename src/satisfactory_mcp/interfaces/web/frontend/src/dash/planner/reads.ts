@@ -298,7 +298,7 @@ export function pickTab(tab: ResultTab): void {
 
 export function showAlternates(item: string, opener?: string): void {
   const open = bench.alternates;
-  if (open && open.item === item) {
+  if (open?.item === item) {
     if (opener) {
       open.opener = opener;
       open.enter = true;

@@ -38,7 +38,7 @@ export function gameXY(latlng: L.LatLng | L.LatLngLiteral): PointM {
 export function flyToBox(box: BboxM, options?: { maxZoom?: number; padLeft?: number }): void {
   const bounds = boundsOfBbox(box);
   const pad = overlayPad();
-  if (options && options.padLeft !== undefined) pad.topLeft.x = options.padLeft;
+  if (options?.padLeft !== undefined) pad.topLeft.x = options.padLeft;
   map.flyToBounds(bounds, {
     maxZoom: options ? options.maxZoom : undefined,
     paddingTopLeft: pad.topLeft,

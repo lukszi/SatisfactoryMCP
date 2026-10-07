@@ -77,7 +77,7 @@ export function mw(value: number, options?: { signed?: boolean }): string {
     return count(Math.round(magnitude)) + " MW";
   };
   const text = signed(value, say);
-  return options && options.signed ? text : text.replace(/^\+/, "");
+  return options?.signed ? text : text.replace(/^\+/, "");
 }
 
 export function formatNumber(value: number, decimals?: number): string {

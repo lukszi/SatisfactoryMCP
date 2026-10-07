@@ -65,7 +65,7 @@ function settingsLinkHint(text: string): HTMLElement {
 
 function candidates(body: HTMLElement, name: string): void {
   const fetched = cachedFetch<RecipesResponse>("recipes:candidates", `/api/gamedata/recipes?q=${encodeURIComponent(name)}&recipe_kind=all${spoilers()}`);
-  if (!fetched.data || !fetched.data.recipes.length) return;
+  if (!fetched.data?.recipes.length) return;
   const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "recipes with “" + name + "” in the name"));
   recipeTable(card, fetched.data.recipes, { kinds: true, qty: "", sort: "candidates" });

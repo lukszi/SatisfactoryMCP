@@ -30,7 +30,7 @@ const order: SortState = { key: "plan", desc: false };
 
 function builtCell(row: PlanIndexRow): HTMLElement | string {
   const built = planIndex.built[row.key];
-  if (!built || built.rev !== row.rev) return "…";
+  if (built?.rev !== row.rev) return "…";
   if (built.figure === "?") {
     const ask = link(trackDash(row.key, 0), "?");
     ask.title = built.text || "open Track to say which factory this plan is";
@@ -103,7 +103,7 @@ function plansTable(parent: HTMLElement, rows: PlanIndexRow[]): void {
       title: "what stands at the plan's site; ? means Track asks which factory it is, – that the plan has no site",
       sort: function (r) {
         const built = planIndex.built[r.key];
-        return built && built.total ? (built.built || 0) / built.total : -1;
+        return built?.total ? (built.built || 0) / built.total : -1;
       },
       render: builtCell,
     },

@@ -149,8 +149,8 @@ function isPointSelection(s: Selection | null): boolean {
 function followSelection(): void {
   const s = selected();
   if (!s) clearMark();
-  const factory = s && s.kind === "factory" && factoryNamed(s.key) ? s.key : "";
-  const circuitRow = s && s.kind === "circuit" && readings.circuits ? readings.circuits.circuits[+s.key] : undefined;
+  const factory = s?.kind === "factory" && factoryNamed(s.key) ? s.key : "";
+  const circuitRow = s?.kind === "circuit" && readings.circuits ? readings.circuits.circuits[+s.key] : undefined;
   const circuit = circuitRow ? circuitRow.index : -1;
   if (s && isPointSelection(s) && ringedKey !== s.kind + ":" + s.key && s.x_m !== undefined && s.y_m !== undefined) {
     ringAt(s.x_m, s.y_m, s.label, s.kind + ":" + s.key);
@@ -585,7 +585,7 @@ registerFetch<FactoryHealthResponse>({
       select(null);
     }
     const s = selected();
-    if (s && s.kind === "factory" && !factoryNamed(s.key)) select(null);
+    if (s?.kind === "factory" && !factoryNamed(s.key)) select(null);
     followSelection();
     changed();
     if (view.pending) showFactory(view.pending);

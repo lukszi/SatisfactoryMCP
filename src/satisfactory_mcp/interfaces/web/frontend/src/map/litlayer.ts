@@ -48,7 +48,7 @@ export function parseLight(raw: string | null): LightHeader | null {
   if (!raw) return null;
   try {
     const head = JSON.parse(raw) as LightHeader;
-    if (head && head.params && head.model && isFinite(head.max_z) && isFinite(head.unlit_max_z)) return head;
+    if (head?.params && head.model && isFinite(head.max_z) && isFinite(head.unlit_max_z)) return head;
   } catch (ignored) {
     /* a header this page cannot read is a layer drawn the baked way */
   }

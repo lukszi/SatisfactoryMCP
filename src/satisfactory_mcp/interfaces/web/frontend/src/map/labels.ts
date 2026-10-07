@@ -232,8 +232,8 @@ function collectLabelEntries(): Entry[] {
     if (!group || !map.hasLayer(group)) return;
     group.eachLayer(function (layer) {
       const marker = layer as L.Marker;
-      const tip = marker.getTooltip && marker.getTooltip();
-      const node = tip && tip.getElement && tip.getElement();
+      const tip = marker.getTooltip?.();
+      const node = tip?.getElement?.();
       if (node) {
         entries.push({
           node: node,

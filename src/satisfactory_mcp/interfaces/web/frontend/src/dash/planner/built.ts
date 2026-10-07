@@ -184,7 +184,7 @@ function scopePicker(parent: HTMLElement, b: TrackBuiltAt): void {
 
 /** A [map] button that outlines a bounding box with the machines and these nodes' layers shown. */
 export function boxMapButton(bbox: number[] | null | undefined, what: string, nodeNames: string[]): HTMLButtonElement | null {
-  if (!bbox || bbox.length !== 4) return null;
+  if (bbox?.length !== 4) return null;
   const target = bbox as BboxM;
   return button(
     "map",

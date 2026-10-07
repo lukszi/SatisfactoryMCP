@@ -55,7 +55,7 @@ function fillSavePicker(): void {
   newest.textContent = "newest save";
   newest.title = "follow the newest save, refetching as the game writes new ones";
   picker.appendChild(newest);
-  const saves = ((w && w.saves) || []).slice().sort(function (a, b) {
+  const saves = ((w?.saves) || []).slice().sort(function (a, b) {
     return (b.mtime_ns || 0) - (a.mtime_ns || 0);
   });
   saves.forEach(function (s) {

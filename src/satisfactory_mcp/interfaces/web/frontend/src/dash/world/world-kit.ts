@@ -207,7 +207,7 @@ export function textField(
   input.title = opts.title || "press Enter to search";
   input.disabled = !!opts.disabled;
   const draft = drafts[candidate];
-  input.value = draft && draft.base === value ? draft.text : value;
+  input.value = draft?.base === value ? draft.text : value;
   input.setAttribute("data-candidate", candidate);
   function commit(text: string): void {
     if (isRebuilding()) return;

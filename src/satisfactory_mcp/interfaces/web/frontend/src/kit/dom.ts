@@ -89,7 +89,7 @@ export function onAttributeClick(attr: string, handler: (hit: Element, event: Ev
     "click",
     function (event) {
       const target = event.target as Element | null;
-      const hit = target && target.closest ? target.closest("[" + attr + "]") : null;
+      const hit = target?.closest ? target.closest("[" + attr + "]") : null;
       if (!hit) return;
       event.stopPropagation();
       event.preventDefault();
