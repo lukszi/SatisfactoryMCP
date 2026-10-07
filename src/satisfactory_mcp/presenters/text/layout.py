@@ -43,7 +43,7 @@ _SITES_USAGE = (
 )
 
 
-P = TypeVar("P", SitePlan, MaterialsBill, TrunkPlan)
+Payload = TypeVar("Payload", SitePlan, MaterialsBill, TrunkPlan)
 
 
 def _prepared(report: LayoutReport) -> PreparedPlan:
@@ -58,7 +58,7 @@ def _layout(report: LayoutReport) -> Layout:
     return report.layout
 
 
-def _payload(report: LayoutReport, kind: type[P]) -> P:
+def _payload(report: LayoutReport, kind: type[Payload]) -> Payload:
     """The answer to the ``show`` that asked for a ``kind``."""
     payload = report.show_payload
     assert isinstance(payload, kind), f"show answers no {kind.__name__}"
