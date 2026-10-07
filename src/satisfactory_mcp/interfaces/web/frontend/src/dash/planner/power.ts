@@ -40,8 +40,13 @@ function stopAt(view: Payback | null, h: number): Stop | undefined {
     : undefined;
 }
 
+function signOf(n: number): string {
+  if (n > 0) return "+";
+  return n < 0 ? "−" : "";
+}
+
 function signedMachineCount(n: number): string {
-  return (n > 0 ? "+" : n < 0 ? "−" : "") + count(Math.abs(n)) + (Math.abs(n) === 1 ? " machine" : " machines");
+  return signOf(n) + count(Math.abs(n)) + (Math.abs(n) === 1 ? " machine" : " machines");
 }
 
 function stopWords(view: Payback | null, h: number): string {
@@ -215,7 +220,7 @@ export function powerRow(body: HTMLElement): void {
   const plan = bench.plan!;
   const result = bench.result;
   const view = result && result.feasible && result.power.stops.length ? result.power : null;
-  const current = view ? view.hours : plan.args.payback_hours === null ? 0 : plan.args.payback_hours;
+  const current = view ? view.hours : (plan.args.payback_hours ?? 0);
   const still = !!view && !view.splits;
   const tail = view?.inherited ? " · shared default" : "";
   const line = make("span", "plan-sub plan-power-line", (still ? view!.reason : stopWords(view, current)) + tail);

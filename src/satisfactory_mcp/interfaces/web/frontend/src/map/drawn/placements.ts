@@ -120,6 +120,11 @@ const MACHINE_SLOT: Record<(typeof MACHINE_KINDS)[number], number> = {
 export const BLOCKED_COLOUR = declareColours("placements", { blocked: "#ffd000" }).blocked;
 export const STOPPED_COLOUR = declareColours("placements", { stopped: "#d9534f" }).stopped;
 
+function machineOutline(blocked: boolean, stopped: boolean, kindColour: string | undefined): string | undefined {
+  if (blocked) return BLOCKED_COLOUR;
+  return stopped ? STOPPED_COLOUR : kindColour;
+}
+
 export function drawMachines(data: MachinesResponse): void {
   MACHINE_KINDS.forEach(function (kind) {
     const group = clearedLayer(kind, {
@@ -141,7 +146,7 @@ export function drawMachines(data: MachinesResponse): void {
       const stopped = m.actionable && !blocked;
       const idle = stopped || m.state === "paused";
       const piece = L.polygon(footprintCorners(m.x_m, m.y_m!, w, l, m.yaw), {
-        color: blocked ? BLOCKED_COLOUR : stopped ? STOPPED_COLOUR : KIND_COLOUR[kind],
+        color: machineOutline(blocked, stopped, KIND_COLOUR[kind]),
         fillColor: KIND_COLOUR[kind],
         weight: m.actionable ? 3 : 1,
         fillOpacity: idle ? 0.15 : 0.65,
@@ -294,6 +299,11 @@ function storagePopup(s: StorageRow): Row[] {
   return rows;
 }
 
+// A tank by its fill, a box by its item total.
+function holdsAnything(s: StorageRow): boolean {
+  return s.kind === "fluid" ? !!s.fill : !!s.total;
+}
+
 export function drawStorage(data: StorageResponse): void {
   // Off at the whole-world zoom, like the machines and the routes: a world's boxes are a
   // scatter of specks. Near the bottom of the built band, because the row is off by default
@@ -310,7 +320,7 @@ export function drawStorage(data: StorageResponse): void {
       fillColor: colour,
       // An unfilled container is drawn hollow, the same device the machines use for `paused`:
       // an empty box is a place with room in it.
-      fillOpacity: s.kind === "fluid" ? (s.fill ? 0.7 : 0.15) : s.total ? 0.7 : 0.15,
+      fillOpacity: holdsAnything(s) ? 0.7 : 0.15,
     })
       // Wider than the page's other cards, because this one lists item names against counts
       // and a name is not broken across lines. See CONTENTS_POPUP_PX in inventory-grid.ts.

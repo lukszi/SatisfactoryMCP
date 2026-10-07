@@ -671,8 +671,8 @@ export function showRef(ref: string, spot?: { x_m?: number; y_m?: number; label:
     fetchRef(ref);
     return;
   }
-  const x = point ? point.x : spot ? spot.x_m : undefined;
-  const y = point ? point.y : spot ? spot.y_m : undefined;
+  const x = point ? point.x : spot?.x_m;
+  const y = point ? point.y : spot?.y_m;
   if (x === undefined || y === undefined) return;
   openFinder(spot ? spot.label : coords(x, y), "");
   view.at = null;

@@ -146,6 +146,11 @@ function isPointSelection(s: Selection | null): boolean {
   return !!s && (s.kind === "point" || s.kind === "machine");
 }
 
+function selectionBounds(factory: string, circuitRow: CircuitRow | undefined): L.LatLngBounds | null {
+  if (factory) return paddedBounds(factoryNamed(factory)!.bbox_m);
+  return circuitRow ? paddedBounds(circuitRow.bbox_m) : null;
+}
+
 function followSelection(): void {
   const s = selected();
   if (!s) clearMark();
@@ -159,8 +164,7 @@ function followSelection(): void {
   if (factory === view.factory && circuit === view.circuit) return;
   view.factory = factory;
   view.circuit = circuit;
-  const box = factory ? factoryNamed(factory)!.bbox_m : circuitRow ? circuitRow.bbox_m : null;
-  const bounds = box ? paddedBounds(box) : null;
+  const bounds = selectionBounds(factory, circuitRow);
   if (bounds) outline(bounds);
   else if (!isPointSelection(s)) clearMark();
   renderPanel();
@@ -379,6 +383,11 @@ function refList(title: string, rows: Ref[], hint: string): HTMLElement {
   return fold;
 }
 
+function badgeTone(now: Reading, starved: boolean): string {
+  if (now.bad || starved) return " bad";
+  return now.why ? "" : " ok";
+}
+
 function circuitRow(row: CircuitRow): HTMLElement {
   const selected = row.index === view.circuit;
   const led = row.ledger;
@@ -391,8 +400,7 @@ function circuitRow(row: CircuitRow): HTMLElement {
     })
   );
   const now = r.dark ? readGeneration(r) : readHeadroomNow(r);
-  const badgeTone = now.bad || led.starved_generation_mw > 0 ? " bad" : now.why ? "" : " ok";
-  const badge = make("span", "panel-badge" + badgeTone, now.value);
+  const badge = make("span", "panel-badge" + badgeTone(now, led.starved_generation_mw > 0), now.value);
   badge.title = now.why || WORDS.headroomNow;
   head.appendChild(badge);
   item.appendChild(head);

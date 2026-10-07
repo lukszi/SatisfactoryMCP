@@ -108,18 +108,18 @@ function phaseColumns(data: PhaseResponse): Column<PhaseRow>[] {
   ];
 }
 
+function deliverableTile(data: PhaseResponse, target: PhaseRow | null): HTMLElement {
+  if (data.deliverable === null) return tile("deliverable now", "–", "no record for the target phase");
+  if (data.deliverable) return tile("deliverable now", "yes", "every part is in stock");
+  const short = target ? shortParts(target) : 0;
+  return tile("deliverable now", "no", short + " of " + target!.outstanding.length + " parts short");
+}
+
 function elevatorTiles(data: PhaseResponse, target: PhaseRow | null): HTMLElement {
   const tiles = make("div", "dash-tiles");
   tiles.appendChild(tile("current phase", phaseText(data.current_phase) || "–", data.current_phase ? "the last phase delivered" : "no phase in this save"));
   tiles.appendChild(tile("target phase", phaseText(data.target_phase) || "–", data.target_phase ? "where deliveries go" : "no phase in this save"));
-  const short = target ? shortParts(target) : 0;
-  tiles.appendChild(
-    tile(
-      "deliverable now",
-      data.deliverable === null ? "–" : data.deliverable ? "yes" : "no",
-      data.deliverable === null ? "no record for the target phase" : data.deliverable ? "every part is in stock" : short + " of " + target!.outstanding.length + " parts short"
-    )
-  );
+  tiles.appendChild(deliverableTile(data, target));
   return tiles;
 }
 

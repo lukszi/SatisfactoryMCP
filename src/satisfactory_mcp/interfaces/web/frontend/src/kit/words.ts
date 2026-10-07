@@ -140,5 +140,6 @@ export function version(n: number): string {
 }
 
 export function counted(n: number, one: string, many?: string): string {
-  return count(n) + " " + (n === 1 ? one : many === undefined ? one + "s" : many);
+  const noun = n === 1 ? one : (many ?? one + "s");
+  return count(n) + " " + noun;
 }

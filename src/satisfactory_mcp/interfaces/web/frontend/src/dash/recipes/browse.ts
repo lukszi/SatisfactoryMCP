@@ -330,6 +330,17 @@ function restoreBrowseScroll(): void {
   });
 }
 
+function searchPlaceholder(mode: Mode): string {
+  if (mode === "items") return "filter items by name";
+  return mode === "recipes" ? "filter recipes by name" : "filter unlocked recipes";
+}
+
+function renderList(card: HTMLElement, browse: Browse): boolean {
+  if (browse.mode === "items") return renderItems(card, browse);
+  if (browse.mode === "recipes") return renderRecipeSearch(card, browse);
+  return renderUnlocked(card, browse);
+}
+
 /* `arrived`: the address changed since the last draw, so the list's old scroll comes back. */
 export function renderBrowse(body: HTMLElement, subject: string, arrived: boolean): void {
   const browse = parseBrowse(subject);
@@ -337,14 +348,12 @@ export function renderBrowse(body: HTMLElement, subject: string, arrived: boolea
   lastBrowse = state.dash;
   const card = make("section", "dash-card");
   modeBar(card, browse);
-  searchInput.placeholder = browse.mode === "items" ? "filter items by name" : browse.mode === "recipes" ? "filter recipes by name" : "filter unlocked recipes";
+  searchInput.placeholder = searchPlaceholder(browse.mode);
   searchInput.setAttribute("aria-label", searchInput.placeholder);
   if (document.activeElement !== searchInput && searchInput.value !== browse.query) searchInput.value = browse.query;
   card.appendChild(searchInput);
   body.appendChild(card);
-  const drawn =
-    browse.mode === "items" ? renderItems(card, browse) : browse.mode === "recipes" ? renderRecipeSearch(card, browse) : renderUnlocked(card, browse);
-  if (drawn) restoreBrowseScroll();
+  if (renderList(card, browse)) restoreBrowseScroll();
 }
 
 /* The way back from a detail page: the last list of that mode, filters and all. */

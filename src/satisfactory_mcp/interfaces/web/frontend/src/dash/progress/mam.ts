@@ -58,7 +58,8 @@ const MAM_COLUMNS: Column<MamRow>[] = [
     sort: mamStatus,
     render: mamStatus,
     tone: function (research) {
-      return research.status === "READY" ? "ok" : research.status === "TREE SHUT" ? "dash-muted" : "";
+      if (research.status === "READY") return "ok";
+      return research.status === "TREE SHUT" ? "dash-muted" : "";
     },
   },
   {

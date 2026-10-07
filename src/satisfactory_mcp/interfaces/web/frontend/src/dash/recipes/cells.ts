@@ -57,7 +57,8 @@ export function unlockBadge(unlocked: boolean | null): HTMLElement {
 }
 
 function statusRank(unlocked: boolean | null): number {
-  return unlocked === null ? 2 : unlocked ? 0 : 1;
+  if (unlocked === null) return 2;
+  return unlocked ? 0 : 1;
 }
 
 export function statusColumn<R extends { unlocked: boolean | null }>(): Column<R> {

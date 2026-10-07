@@ -91,8 +91,15 @@ function elevationLine(e: Elevation): string {
   return e.terrain_note || "not known here";
 }
 
-function nearestText(n: InspectResponse["nearest"][number]): string {
-  return n.resource_name + " " + n.purity + " · " + metres(n.distance_m) + (n.occupied ? " (occupied)" : n.spoiler ? " (" + WORDS.locked + ")" : "");
+type NearNode = InspectResponse["nearest"][number];
+
+function nearestTag(n: NearNode): string {
+  if (n.occupied) return " (occupied)";
+  return n.spoiler ? " (" + WORDS.locked + ")" : "";
+}
+
+function nearestText(n: NearNode): string {
+  return n.resource_name + " " + n.purity + " · " + metres(n.distance_m) + nearestTag(n);
 }
 
 const PICKUPS_NEAR_M = 500;

@@ -288,8 +288,13 @@ export function hiddenLine(parent: HTMLElement, hidden: number, one: string, man
   settingsLinkNote(parent, counted(hidden, one, many) + " " + WORDS.hiddenBySpoilers + " · ", "");
 }
 
+function regionText(region: Region | null, full?: boolean): string {
+  if (!region) return "off the map";
+  return full ? regionLine(region) : region.name;
+}
+
 export function regionCell(region: Region | null, full?: boolean): HTMLElement {
-  const cell = make("span", "", region ? (full ? regionLine(region) : region.name) : "off the map");
+  const cell = make("span", "", regionText(region, full));
   if (region) cell.title = regionLine(region) + ", good to about " + formatNumber(region.accuracy_m, 0) + " m";
   return cell;
 }
@@ -324,7 +329,8 @@ export function numericColumn<R>(
     title: opts.title,
     sort: function (row) {
       const value = pick(row);
-      return value === null ? (opts.nullsFirst ? -1 : Infinity) : value;
+      if (value !== null) return value;
+      return opts.nullsFirst ? -1 : Infinity;
     },
     render:
       opts.render ||

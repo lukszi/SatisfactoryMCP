@@ -266,6 +266,11 @@ function hintLine(parent: HTMLElement, b: TrackBuiltAt): void {
   parent.appendChild(line);
 }
 
+function progressFigureTitle(b: TrackBuiltAt): string {
+  if (b.built === null) return "not placed, so no progress";
+  return settingChoice("progress") === "percent" ? "show machines instead" : "show percent of the planned rate instead";
+}
+
 /** The built line under the Track headline, with its answers. */
 export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
   if (picking.key !== bench.key) picking = { key: bench.key, open: false };
@@ -274,7 +279,7 @@ export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
   line.setAttribute("data-ctl", "built-line");
   const figure = make("button", "built-figure", progressText(b));
   figure.type = "button";
-  figure.title = b.built === null ? "not placed, so no progress" : settingChoice("progress") === "percent" ? "show machines instead" : "show percent of the planned rate instead";
+  figure.title = progressFigureTitle(b);
   figure.disabled = b.built === null;
   figure.onclick = function (event) {
     event.stopPropagation();

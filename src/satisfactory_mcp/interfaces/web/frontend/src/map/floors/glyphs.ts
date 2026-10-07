@@ -92,6 +92,11 @@ function glyphMarker(at: Point3M, up: boolean): L.Marker {
   });
 }
 
+function connectorName(run: FloorRun): string {
+  if (run.lift) return "conveyor lift";
+  return run.kind === "pipe" ? "pipe riser" : "belt riser";
+}
+
 /* The arrow a belt or pipe connector gets on every floor it touches. The popup names the far
  * end as a FLOOR, because "it goes to floor 4" is the sentence a reader is after. */
 export function connectorGlyph(run: FloorRun, platform: number, band: FloorBand, at: Point3M): L.Marker {
@@ -100,10 +105,7 @@ export function connectorGlyph(run: FloorRun, platform: number, band: FloorBand,
   const marker = glyphMarker(at, up);
   marker.bindPopup(
     popup([
-      [
-        run.lift ? "conveyor lift" : run.kind === "pipe" ? "pipe riser" : "belt riser",
-        up ? "goes up from this floor" : "goes down from this floor",
-      ],
+      [connectorName(run), up ? "goes up from this floor" : "goes down from this floor"],
       ["to", away ? floorName(away) + ", " + deckHeightText(away.top_m) : "no deck: the ground"],
       ["rise", run.rise_m === null ? null : run.rise_m + " m"],
       // A lift is a class; a riser is a run climbing six metres or more, and many lifts are

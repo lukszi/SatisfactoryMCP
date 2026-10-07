@@ -33,7 +33,8 @@ export const control = L.control.layers(
       const rb = b._rank || [9, 0, ""];
       if (ra[0] !== rb[0]) return ra[0] - rb[0];
       if (ra[1] !== rb[1]) return ra[1] - rb[1];
-      return ra[2] < rb[2] ? -1 : ra[2] > rb[2] ? 1 : 0;
+      if (ra[2] < rb[2]) return -1;
+      return ra[2] > rb[2] ? 1 : 0;
     },
   }
 ).addTo(map);

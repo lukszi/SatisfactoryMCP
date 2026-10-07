@@ -37,11 +37,16 @@ function focusTab(planKey: string | null): string {
   return bench.tab === "graph" || bench.tab === "track" || bench.tab === "site" ? bench.tab : "workbench";
 }
 
+function focusView(planner: boolean): string {
+  if (state.dash === "") return "map";
+  return planner ? "planner" : "dashboard";
+}
+
 function focusBody(): Record<string, unknown> {
   const planKey = openPlanKey();
   const planner = planKey !== null;
   return {
-    view: state.dash === "" ? "map" : planner ? "planner" : "dashboard",
+    view: focusView(planner),
     dash: state.dash,
     plan: planner && planKey && bench.key === planKey ? planKey : null,
     rev: planner && planKey && bench.plan ? bench.plan.rev : null,

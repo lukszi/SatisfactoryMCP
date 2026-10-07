@@ -142,6 +142,16 @@ function paintNodes(data: NodesResponse): void {
   raiseNodeDots();
 }
 
+function nodeFillOpacity(n: NodeRow, locked: boolean): number {
+  if (locked) return 0;
+  return n.occupied ? 0.15 : 0.75;
+}
+
+function occupancyText(n: NodeRow, saveUnread: boolean): string {
+  if (n.occupied) return "occupied by " + (n.occupant_name || n.occupant_cls);
+  return saveUnread ? "unknown: the save could not be read" : "no extractor known here";
+}
+
 /* One node: its dot, and a dark ring under it when it is locked. Null `reachable` is "no save
  * read", which is not a claim either way; only false is LOCKED. */
 function nodeDot(n: NodeRow, colour: string, saveUnread: boolean, group: L.LayerGroup): void {
@@ -160,7 +170,7 @@ function nodeDot(n: NodeRow, colour: string, saveUnread: boolean, group: L.Layer
     color: colour,
     weight: n.occupied ? 2 : 1,
     // Locked keeps the ore colour, hollow and dashed: a grey would sink into the ground.
-    fillOpacity: locked ? 0 : n.occupied ? 0.15 : 0.75,
+    fillOpacity: nodeFillOpacity(n, locked),
     dashArray: locked ? "2 3" : undefined,
   }).bindPopup(
     popup([
@@ -175,14 +185,7 @@ function nodeDot(n: NodeRow, colour: string, saveUnread: boolean, group: L.Layer
       // Always present, because the absence of a row cannot be told apart from a
       // broken join -- and "no extractor known" is the join's own honest limit:
       // it resolves extractors targeting a node key, never proves a node free.
-      [
-        "occupancy",
-        n.occupied
-          ? "occupied by " + (n.occupant_name || n.occupant_cls)
-          : saveUnread
-            ? "unknown: the save could not be read"
-            : "no extractor known here",
-      ],
+      ["occupancy", occupancyText(n, saveUnread)],
       ["selector", code("node:" + n.name)],
       ["at", n.x_m + ", " + n.y_m + " m"],
       [

@@ -203,6 +203,12 @@ function recipeFacts(recipe: RecipeDetail, part: boolean): HTMLElement {
   return list;
 }
 
+// What one row of the in and out tables counts.
+function rateUnit(recipe: RecipeDetail): string {
+  if (recipe.kind === "part") return "per min, one machine at 100%";
+  return recipe.kind === "building" ? "per build" : "per craft";
+}
+
 export function renderRecipe(body: HTMLElement, cls: string): void {
   const fetched = cachedFetch<RecipeDetail>("recipes", `/api/gamedata/recipe?recipe=${encodeURIComponent(cls)}${spoilers()}`);
   if (!fetched.data) {
@@ -229,7 +235,7 @@ export function renderRecipe(body: HTMLElement, cls: string): void {
   card.appendChild(recipeFacts(recipe, part));
   body.appendChild(card);
 
-  const unit = part ? "per min, one machine at 100%" : recipe.kind === "building" ? "per build" : "per craft";
+  const unit = rateUnit(recipe);
   [
     { label: "in", rates: recipe.ingredients, linked: true },
     { label: "out", rates: recipe.products, linked: recipe.kind !== "building" },

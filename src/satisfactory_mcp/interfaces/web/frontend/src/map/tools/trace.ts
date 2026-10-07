@@ -55,7 +55,8 @@ function traceCard(): HTMLElement {
 
 function machineRingColour(m: TraceMachine): string {
   const t = stateTone(m.state, m.actionable);
-  return t === "blocked" ? BLOCKED_COLOUR : t === "bad" ? STOPPED_COLOUR : HIGHLIGHT;
+  if (t === "blocked") return BLOCKED_COLOUR;
+  return t === "bad" ? STOPPED_COLOUR : HIGHLIGHT;
 }
 
 function rateText(rows: { item: string; per_min: number }[]): string {

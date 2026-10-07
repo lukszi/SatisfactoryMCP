@@ -310,6 +310,11 @@ function recipesRow(parent: HTMLElement): void {
   addInput(body, "banned-add", "+ ban a recipe or pattern", banOps);
 }
 
+function clockTitle(picked: boolean, only: boolean): string {
+  if (only) return "extractors need at least one clock";
+  return picked ? "stop offering extractors at this clock" : "offer extractors at this clock (above 100% needs power shards)";
+}
+
 function clockToggles(body: HTMLElement): void {
   const chosen = bench.plan!.args.extractor_clocks;
   const offered = chosen.length ? chosen : [1];
@@ -326,7 +331,7 @@ function clockToggles(body: HTMLElement): void {
         applyOps(ops);
       },
       {
-        title: only ? "extractors need at least one clock" : picked ? "stop offering extractors at this clock" : "offer extractors at this clock (above 100% needs power shards)",
+        title: clockTitle(picked, only),
         disabled: only,
       }
     );

@@ -77,14 +77,16 @@ function floorTen(value: number): number {
   return Math.floor(value / 10) * 10;
 }
 
+function headroomTitle(which: string, kept: number, fallback: boolean): string {
+  if (fallback) return "use the save's " + which + " headroom, " + HEADROOM_WHAT[which] + ": the stage headroom setting";
+  if (kept > 0) return "store the " + which + " headroom, " + mw(kept);
+  return "the " + which + " headroom is not above 0 MW in this save";
+}
+
 function headroomButton(parent: HTMLElement, which: string, value: number, stored: number | null): void {
   const fallback = which === stageHeadroom();
   const kept = floorTen(value);
-  const title = fallback
-    ? "use the save's " + which + " headroom, " + HEADROOM_WHAT[which] + ": the stage headroom setting"
-    : kept > 0
-      ? "store the " + which + " headroom, " + mw(kept)
-      : "the " + which + " headroom is not above 0 MW in this save";
+  const title = headroomTitle(which, kept, fallback);
   parent.appendChild(
     toggleButton(
       which + " " + mw(value),

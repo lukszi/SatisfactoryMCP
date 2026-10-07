@@ -88,6 +88,12 @@ function turned(yaw: number, dir: number): number {
   return normaliseYaw((dir > 0 ? Math.floor(k + 1e-6) + 1 : Math.ceil(k - 1e-6) - 1) * step);
 }
 
+/** A key turn: `free` steps YAW_STEP off the lattice, otherwise to the next lattice angle. */
+function keyedYaw(yaw: number, dir: number, free: boolean): number {
+  if (!dir) return yaw;
+  return free ? yaw + dir * YAW_STEP : turned(yaw, dir);
+}
+
 /** The `site_snap` rule; `siting.snap` on the server is the same. */
 export function snap(p: Pad, free: boolean): Pad {
   if (free) return withPlace(p, Math.round(p.x_m * 100) / 100, Math.round(p.y_m * 100) / 100, normaliseYaw(Math.round(p.yaw_deg * 10) / 10));
@@ -207,7 +213,7 @@ function onHandleKeydown(event: KeyboardEvent): void {
     gesture = "keys";
     padBeforeGesture = pad;
   }
-  const yaw = !turn ? pad.yaw_deg : event.shiftKey ? pad.yaw_deg + turn * YAW_STEP : turned(pad.yaw_deg, turn);
+  const yaw = keyedYaw(pad.yaw_deg, turn, event.shiftKey);
   const next = snap(withPlace(pad, pad.x_m + dx, pad.y_m + dy, yaw), event.shiftKey);
   draw(next, true);
   hooks.step(next);

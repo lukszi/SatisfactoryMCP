@@ -98,6 +98,11 @@ function pickupCategory(name: string): string {
  * the same style. See CollectibleRow for what null means. */
 const POD_CATEGORY = "crashed_drop_pod";
 
+function pickupFillOpacity(hollow: boolean, faint: boolean): number {
+  if (hollow) return 0;
+  return faint ? 0.2 : 0.7;
+}
+
 /* A pickup that is still there. Fill is how much is in it, and pods are the only rows that
  * vary: solid is what every other category keeps. A hollow ring is a looted pod, which is what
  * a looted pod is -- the shell still standing with the drive gone. A faint disc is a pod no
@@ -115,7 +120,7 @@ function pickupDot(here: L.LatLngTuple, colour: string, r: CollectibleRow): L.Ci
     color: colour,
     // A 4 px disc with its fill taken away is a smudge at weight 1.
     weight: hollow ? 2 : 1,
-    fillOpacity: hollow ? 0 : faint ? 0.2 : 0.7,
+    fillOpacity: pickupFillOpacity(hollow, faint),
   });
 }
 

@@ -163,7 +163,10 @@ state.map = map;
 
 // Leaflet's `_rebound` without the centring: where the bounds fit, move only an edge that is out.
 function rebound(lo: number, hi: number): number {
-  if (lo + hi > 0) return lo < 0 ? lo : hi < 0 ? -hi : 0;
+  if (lo + hi > 0) {
+    if (lo < 0) return lo;
+    return hi < 0 ? -hi : 0;
+  }
   return Math.max(0, Math.ceil(lo)) - Math.max(0, Math.floor(hi));
 }
 

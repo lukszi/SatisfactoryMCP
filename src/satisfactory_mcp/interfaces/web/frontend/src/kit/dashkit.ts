@@ -227,14 +227,23 @@ function fillTableBody<R>(tbody: HTMLElement, columns: Column<R>[], rows: R[], o
   });
 }
 
+function markSortHeader(th: HTMLElement, sort: SortState | null): void {
+  let ariaSort = "none";
+  let arrowText = "";
+  if (sort) {
+    ariaSort = sort.desc ? "descending" : "ascending";
+    arrowText = sort.desc ? "▼" : "▲";
+  }
+  th.setAttribute("aria-sort", ariaSort);
+  const arrow = th.querySelector(".sort-arrow");
+  if (arrow) arrow.textContent = arrowText;
+}
+
 function markSortHeaders<R>(ths: HTMLElement[], columns: Column<R>[], sort: SortState): void {
   columns.forEach(function (c, i) {
     const th = ths[i];
     if (!th || !c.sort) return;
-    const on = sort.key === c.key;
-    th.setAttribute("aria-sort", on ? (sort.desc ? "descending" : "ascending") : "none");
-    const arrow = th.querySelector(".sort-arrow");
-    if (arrow) arrow.textContent = on ? (sort.desc ? "▼" : "▲") : "";
+    markSortHeader(th, sort.key === c.key ? sort : null);
   });
 }
 

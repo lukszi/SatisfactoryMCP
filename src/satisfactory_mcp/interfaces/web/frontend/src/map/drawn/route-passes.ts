@@ -132,12 +132,9 @@ export function sinkRoutes() {
       // canvas and no part of the stacking question this pass answers.
       if (!(layer instanceof L.Path)) return;
       const piece = layer as L.Path;
-      (piece._chevron
-        ? chevrons
-        : piece instanceof L.Polygon || piece._fixed
-          ? glyphs
-          : runs
-      ).push(piece);
+      if (piece._chevron) chevrons.push(piece);
+      else if (piece instanceof L.Polygon || piece._fixed) glyphs.push(piece);
+      else runs.push(piece);
     });
     // Sunk FIRST is left highest, per the note above, so the chevrons go before the glyphs
     // and the runs: a direction mark under the line it marks would not be a mark.
