@@ -94,7 +94,7 @@ BLOCK_TILES = 16
 #: Light processes at most, and the free memory each one needs: its measured peak on a
 #: full-size block with crowns or arches, started with one BLAS thread.
 LIGHT_WORKER_CAP = 16
-LIGHT_WORKER_BYTES = 1_500_000_000
+LIGHT_WORKER_BYTES = 2_000_000_000
 #: What a light process adds with the CUDA kernels: CuPy and its context, 0.65 GB measured.
 LIGHT_GPU_BYTES = 700_000_000
 

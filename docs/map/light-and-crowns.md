@@ -247,7 +247,7 @@ worker holds more than it needs; none of it moves a byte:
   1 GB of floats. The mean of one direction sums its four pixels as a stacked mean would,
   `(a + b) + (c + d)`, which a test holds.
 - **Workers of its own.** `--light-workers` sets the bake's pool. By default it is one a
-  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 1.5 GB
+  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 2.0 GB
   each (`LIGHT_WORKER_BYTES`, below), counted when the bake starts. On Windows the free
   memory is the lesser of the free RAM and the commit still available
   (`pools.free_ram_bytes`): a process that cannot commit fails with RAM to spare, which
@@ -263,9 +263,10 @@ worker holds more than it needs; none of it moves a byte:
   `OPENBLAS_NUM_THREADS=1` (`pools.one_blas_thread`, set while the pool lives and put back
   after; the parent keeps the BLAS it loaded with), and a worker that imports both commits
   0.04 GB. A full-size block peaks at 1.08 GB working set and 0.98 GB commit, one under arches
-  at 1.36 and 1.04 GB; `LIGHT_WORKER_BYTES` is 1.5 GB, the larger of those with room for a
-  block that has both. The cutter's encoders import no numpy, so their pool needs no such
-  setting (section 17).
+  at 1.36 and 1.04 GB. With the crowns and arches as spans (2026-10-07) a block under crowns
+  peaks at 1.41 GB commit and one with crowns and arches at 1.49 GB; `LIGHT_WORKER_BYTES` is
+  2.0 GB, the larger with room. The cutter's encoders import no numpy, so their pool needs no
+  such setting (section 17).
 
 Measured on synthetic terrain with crowns at the full-size spacing, 4096 px blocks, on the
 16-core reference machine while other jobs ran: one block takes 73 s, 32 s of it the ground's

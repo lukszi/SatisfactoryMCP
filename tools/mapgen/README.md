@@ -122,7 +122,7 @@ claim is refused with its own exit code (§20, "Refusals"). The main options:
   run deletes it however it ends, and the next lit run removes what a killed one left. A
   scratch a render still running holds is refused with exit code 11 (§29, "Scratch").
 - `--light-workers` sets how many processes bake the light. By default it is one a core, at
-  most 16, and no more than the free memory holds at 1.5 GB each, counted when the bake starts
+  most 16, and no more than the free memory holds at 2.0 GB each, counted when the bake starts
   (§29, "The stage"). `--cut-workers` sets how many encode the tiles: by default one a core, at
   most 24, fewer when memory is short, and `1` cuts serially (§17, "Cutting in parallel").
   `--workers N` sets both where its own flag is not given, so older command lines keep their
