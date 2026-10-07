@@ -6,7 +6,8 @@ import { appendNote, error, loading } from "../../kit/dashkit";
 import { count, flow, pct } from "../../kit/format";
 import { showBox } from "../../map/map-highlight";
 import { state } from "../../app/state";
-import { drawGraph, graphCardFrame, GRAPH_HINT, stateLine } from "../graph";
+import { drawGraph, stateLine } from "../graph";
+import { graphCardFrame, GRAPH_HINT } from "../graph-frame";
 import { leaveDashThen, requestRender } from "../actions";
 
 import type { FactoryGraphResponse, GraphNode } from "../../api/shapes";

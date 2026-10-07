@@ -224,7 +224,8 @@ and typing_extensions, both hard dependencies.
 
 **Line caps** (`test_module_caps.py`). No module of the application or the parser passes 850
 lines; routers and MCP tool modules stop at 650, generators outside `tools/mapgen` at 800
-lines and 150 per function. `tools/mapgen/tests/test_architecture_mapgen.py` holds mapgen's
+lines and 150 per function, and the map page's hand-written TypeScript at 600 lines and 150
+per top-level function (the generated `api/schema.d.ts` is not counted). `tools/mapgen/tests/test_architecture_mapgen.py` holds mapgen's
 modules to 600 lines and 150 per function; a command held thin keeps a shrink-only ceiling at
 its measured size. The caps count ruff's formatting, so mapgen keeps `# fmt: skip` to a
 module-level literal table: a skip that packs a signature or a call onto fewer lines is a cap

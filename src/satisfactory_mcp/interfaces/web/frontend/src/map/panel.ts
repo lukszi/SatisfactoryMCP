@@ -7,12 +7,11 @@ import { el, LASSO_ATTR, make, TRACE_ATTR, TRACE_DIR_ATTR } from "../kit/dom";
 import { keepFocus } from "../kit/focus";
 import { showRef } from "./tools/finder";
 import { buildingCounts, count, mw, pct } from "../kit/format";
-import { FACTORY_PICKED, flyToBuiltArea, paddedBounds, prioritiseLabel, reveal } from "./labels";
+import { FACTORY_PICKED, flyToBuiltArea, paddedBounds, prioritiseLabel } from "./labels";
 import { onLayersToggle, setLayersOpen } from "./layercontrol/control";
 import { loadOne } from "../app/load";
 import { flyPadded, NARROW } from "./map";
 import {
-  biomassLine,
   biomassQuery,
   circuitName,
   ledgerBar,
@@ -20,14 +19,13 @@ import {
   ratedCircuit,
   ratedWorld,
   readGeneration,
-  readHeadroomFull,
   readHeadroomNow,
   readMeasuredDraw,
-  whereOf,
 } from "../dash/power-ledger";
+import { badgeTone, ledgerBlock, nameButton, panelNote, refList, showOnMapButton, STARVED_HINT } from "./panel-rows";
 import { registerFetch } from "../app/registry";
 import { onSelect, select, selected } from "../app/selection";
-import { clearMark, isRinged, outline, ringAt, selectAndRing } from "./map-highlight";
+import { clearMark, isRinged, outline, ringAt } from "./map-highlight";
 import { editName, renamingIn } from "../dash/factories/rename";
 import { state } from "../app/state";
 import { notifyVitals, vitals } from "../app/vitals";
@@ -35,16 +33,12 @@ import { actionTone, learnStates, stateTone, statesOf } from "../dash/machine-st
 import { counted, WORDS } from "../kit/words";
 
 import type { IssueGroup } from "../dash/machine-health";
-import type { CircuitRow, CircuitsResponse, FactoryHealthResponse, FactoryHealthRow, MachineRef, StarvedGenerator } from "../api/shapes";
-import type { Rated, Reading } from "../dash/power-ledger";
+import type { CircuitRow, CircuitsResponse, FactoryHealthResponse, FactoryHealthRow } from "../api/shapes";
 import type { Selection } from "../app/selection";
 
 type Tab = "factories" | "power";
 
 const CIRCUIT_ZOOM = 1;
-
-/** How many machines a folded reference list shows; the rest are counted. */
-const REF_ROWS_SHOWN = 40;
 
 const STORE_KEY = "panel";
 
@@ -106,19 +100,6 @@ function setOpen(open: boolean): void {
   renderPanel();
 }
 
-interface Placed {
-  x_m: number;
-  y_m: number;
-}
-
-export function located(row: { x_m: number | null; y_m: number | null }): row is Placed {
-  return row.x_m !== null && row.y_m !== null;
-}
-
-function panelNote(body: HTMLElement, text: string): void {
-  body.appendChild(make("p", "panel-note", text));
-}
-
 function selectFactory(row: FactoryHealthRow, fly: boolean): void {
   view.factory = row.name;
   prioritiseLabel(row.name);
@@ -170,19 +151,6 @@ function followSelection(): void {
   renderPanel();
 }
 
-function showOnMapButton(row: { x_m: number | null; y_m: number | null }, label: string): HTMLElement | null {
-  if (!located(row)) return null;
-  const at = row;
-  return button(
-    "map",
-    function () {
-      reveal(["machines"]);
-      selectAndRing(at.x_m, at.y_m, label);
-    },
-    { map: true, title: "fly the map to it", label: "show " + label + " on the map" }
-  );
-}
-
 function stateChips(row: FactoryHealthRow): HTMLElement {
   const chips = make("div", "panel-chips");
   row.states.forEach(function (s) {
@@ -207,20 +175,6 @@ function issueRow(group: IssueGroup): HTMLElement {
   const go = showOnMapButton(group.issues[0]!, group.what);
   if (go) line.appendChild(go);
   return line;
-}
-
-function nameButton(text: string, expanded: boolean, action: () => void): HTMLElement {
-  const host = make("span", "panel-row-name");
-  const pick = make("button", "panel-pick", text);
-  pick.type = "button";
-  pick.title = text;
-  pick.setAttribute("aria-expanded", String(expanded));
-  pick.onclick = function (event) {
-    event.stopPropagation();
-    action();
-  };
-  host.appendChild(pick);
-  return host;
 }
 
 function factoryRow(row: FactoryHealthRow): HTMLElement {
@@ -330,62 +284,6 @@ function renderFactories(body: HTMLElement): void {
     list.appendChild(factoryRow(row));
   });
   body.appendChild(list);
-}
-
-function ledgerBlock(r: Rated, starved: number): HTMLElement {
-  const box = make("div", "panel-ledger");
-  const grid = make("div", "panel-kv");
-  const pairs: [string, Reading][] = [
-    [WORDS.generation, readGeneration(r)],
-    [WORDS.measuredDraw, readMeasuredDraw(r)],
-    [WORDS.nameplateDraw, { value: mw(r.ledger.draw_mw), bad: false, why: "" }],
-    [WORDS.headroomNow, readHeadroomNow(r)],
-    [WORDS.headroomFull, readHeadroomFull(r)],
-  ];
-  if (starved) pairs.splice(1, 0, ["of it starved", { value: mw(starved), bad: true, why: "" }]);
-  pairs.forEach(function (p) {
-    grid.appendChild(make("span", "panel-k", p[0]));
-    const v = make("span", "panel-v" + (p[1].bad ? " bad" : ""), p[1].value);
-    if (p[1].why) v.title = p[1].why;
-    grid.appendChild(v);
-  });
-  box.appendChild(ledgerBar(r.ledger));
-  box.appendChild(grid);
-  const extra = biomassLine(r.ledger);
-  if (extra) box.appendChild(make("p", "panel-note", extra));
-  return box;
-}
-
-type Ref = MachineRef | StarvedGenerator;
-
-const STARVED_HINT = "input ran dry and produced nothing in its window";
-
-function refList(title: string, rows: Ref[], hint: string): HTMLElement {
-  const fold = make("details", "panel-fold-list");
-  const summary = make("summary", "", title + " (" + rows.length + ")");
-  summary.title = hint;
-  fold.appendChild(summary);
-  const list = make("ul", "panel-issues");
-  rows.slice(0, REF_ROWS_SHOWN).forEach(function (r) {
-    const line = make("li", "panel-issue");
-    const text = make("span", "panel-issue-text");
-    text.appendChild(make("span", "panel-issue-what", r.name));
-    const sub = "missing" in r ? mw(r.mw) + " · " + r.cause : whereOf(r).where;
-    if (sub) text.appendChild(make("span", "panel-issue-cause", sub));
-    line.appendChild(text);
-    const go = showOnMapButton(r, r.name);
-    if (go) line.appendChild(go);
-    list.appendChild(line);
-  });
-  const rest = rows.length - REF_ROWS_SHOWN;
-  if (rest > 0) list.appendChild(make("li", "panel-more", rest + " more"));
-  fold.appendChild(list);
-  return fold;
-}
-
-function badgeTone(now: Reading, starved: boolean): string {
-  if (now.bad || starved) return " bad";
-  return now.why ? "" : " ok";
 }
 
 function circuitRow(row: CircuitRow): HTMLElement {

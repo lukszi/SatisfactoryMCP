@@ -2,33 +2,28 @@
  * and listed in the one map card. See docs/world-finders_contract.md §2.5 and §8. */
 
 import { get, latest } from "../../api/client";
-import { button, link, selectBox, statusChip, subTabs, table, toggleButton } from "../../kit/dashkit";
+import { button, link, selectBox, subTabs, table, toggleButton } from "../../kit/dashkit";
 import { FIND_AT_ATTR, FIND_ATTR, onAttributeClick } from "../../kit/dom";
 import { keepFocus } from "../../kit/focus";
-import { coords, count, formatNumber, metres, perMin } from "../../kit/format";
+import { coords, count } from "../../kit/format";
 import { reveal } from "../labels";
-import { L } from "../leaflet";
-import { boundsOfBbox, FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, latLngOf } from "../map";
+import { flyPadded, flyToPoint, map, latLngOf } from "../map";
 import { cardTitleBar, cardLine, cardToolbar, cardSubject, closeOtherCards, mapCard } from "../mapcard";
-import { knownNodes } from "../drawn/markers";
 import { pickupName } from "../drawn/pickups";
 import { withQuery } from "../../app/nav";
 import {
-  carriesText,
-  fieldLabel,
   fieldSelection,
-  nodeLabel,
-  nodeRate,
   nodeSelection,
   pickupSelection,
   resourceOptions,
-  runLabel,
   runSelection,
   siteSelection,
   worldUrl,
 } from "../../dash/world/world-finds";
 import { makeRoom } from "../panel";
-import { HIGHLIGHT, showPoint } from "../map-highlight";
+import { showPoint } from "../map-highlight";
+import { POINT_ZOOM, clearRings, drawResults, flyToResults, ringPoint, showRings } from "./finder-rings";
+import { resultColumns } from "./finder-table";
 import { onVitals } from "../../app/vitals";
 import { select } from "../../app/selection";
 import { onSetting, settingOn, spoilerFlag } from "../../app/settings";
@@ -37,8 +32,7 @@ import { friendlyError } from "../../kit/toast";
 import { WORDS } from "../../kit/words";
 
 import type { ApiUrl } from "../../api/client";
-import type { Column } from "../../kit/dashkit";
-import type { BboxM } from "../geometry";
+import type { Listed } from "./finder-table";
 import type {
   CollectibleRow,
   CollectiblesResponse,
@@ -66,21 +60,9 @@ const MAX_TABLE_ROWS = 25;
 
 const NEAR_M = 500;
 
-const POINT_ZOOM = 1;
-
-const ALL_ZOOM = 1;
-
-const ALL_PAD = 0.05;
-
 export const CONDUIT_RADIUS_M = "250";
 
 const RADII = ["100", CONDUIT_RADIUS_M, "500", "1000"];
-
-const pane = map.createPane("finder");
-pane.style.zIndex = "445";
-pane.style.pointerEvents = "none";
-const renderer = L.svg({ pane: "finder", padding: 0.5 });
-const group = L.layerGroup();
 
 const view = {
   open: false,
@@ -110,113 +92,6 @@ function finderCard(): HTMLElement {
   return mapCard("finder", "finder", closeFinder);
 }
 
-function ringPoint(at: { x_m: number; y_m: number }, selected: boolean): void {
-  L.circleMarker(latLngOf(at), {
-    radius: selected ? 11 : 7,
-    color: HIGHLIGHT,
-    weight: selected ? 4 : 2,
-    fill: false,
-    renderer: renderer,
-    pane: "finder",
-    interactive: false,
-  }).addTo(group);
-}
-
-function outlineBox(bbox: BboxM): void {
-  L.rectangle(boundsOfBbox(bbox), {
-    color: HIGHLIGHT,
-    weight: 2,
-    dashArray: "6 4",
-    fill: false,
-    renderer: renderer,
-    pane: "finder",
-    interactive: false,
-  }).addTo(group);
-}
-
-function latlngs(run: RunRow): L.LatLngTuple[][] {
-  return run.lines_m.map(function (points) {
-    return points.map(function (point) {
-      return latLngOf(point);
-    });
-  });
-}
-
-function drawRunLine(run: RunRow, selected: boolean): L.Polyline {
-  return L.polyline(latlngs(run), {
-    color: HIGHLIGHT,
-    weight: selected ? 5 : 3,
-    opacity: 0.8,
-    renderer: renderer,
-    pane: "finder",
-    interactive: false,
-  }).addTo(group);
-}
-
-function runBounds(run: RunRow): L.LatLngBounds | null {
-  const points = ([] as L.LatLngTuple[]).concat.apply([], latlngs(run));
-  return points.length ? L.latLngBounds(points) : null;
-}
-
-/** Ring every node a field is made of, which only the drawn node dots know the places of. */
-function ringFieldMembers(field: FoundField): void {
-  const wanted: Record<string, boolean> = {};
-  field.members.forEach(function (leaf) {
-    wanted[leaf] = true;
-  });
-  knownNodes().forEach(function (node) {
-    if (wanted[node.name]) ringPoint(node, false);
-  });
-}
-
-function draw(results: FinderResults, selectedIndex: number): L.LatLngBounds | null {
-  group.clearLayers();
-  let bounds: L.LatLngBounds | null = null;
-  function grow(more: L.LatLngBounds | L.LatLngTuple): void {
-    if (bounds) bounds.extend(more);
-    else bounds = more instanceof L.LatLngBounds ? L.latLngBounds(more.getSouthWest(), more.getNorthEast()) : L.latLngBounds([more, more]);
-  }
-  if (results.kind === "nodes" || results.kind === "pickups" || results.kind === "sites") {
-    (results.rows as { x_m: number; y_m: number }[]).forEach(function (row, i) {
-      ringPoint(row, i === selectedIndex);
-      grow(latLngOf(row));
-    });
-  } else if (results.kind === "fields") {
-    results.rows.forEach(function (field, i) {
-      outlineBox(field.bbox_m);
-      if (i === selectedIndex) ringFieldMembers(field);
-      grow(boundsOfBbox(field.bbox_m));
-    });
-  } else {
-    results.rows.forEach(function (run, i) {
-      drawRunLine(run, i === selectedIndex);
-      const runBox = runBounds(run);
-      if (runBox) grow(runBox);
-    });
-  }
-  if (!map.hasLayer(group)) group.addTo(map);
-  return bounds;
-}
-
-function flyTo(results: FinderResults, selectedIndex: number, bounds: L.LatLngBounds | null): void {
-  const row = selectedIndex >= 0 ? results.rows[selectedIndex] : undefined;
-  if (row && results.kind === "fields") {
-    flyToBox((row as FoundField).bbox_m, { maxZoom: POINT_ZOOM });
-    return;
-  }
-  if (row && results.kind === "runs") {
-    const runBox = runBounds(row as RunRow);
-    if (runBox) flyPadded(runBox.pad(0.2), POINT_ZOOM);
-    return;
-  }
-  if (row) {
-    const at = row as { x_m: number; y_m: number };
-    flyToPoint(latLngOf(at), Math.max(map.getZoom(), POINT_ZOOM));
-    return;
-  }
-  if (bounds) flyPadded(bounds.pad(ALL_PAD), ALL_ZOOM, FIT_SNAP);
-}
-
 function selectionOf(results: FinderResults, i: number): Selection {
   if (results.kind === "nodes") return nodeSelection(results.rows[i]!);
   if (results.kind === "fields") return fieldSelection(results.rows[i]!);
@@ -229,105 +104,11 @@ function selectionOf(results: FinderResults, i: number): Selection {
 function selectResult(i: number): void {
   if (!view.results) return;
   view.selectedIndex = i;
-  const bounds = draw(view.results, i);
+  const bounds = drawResults(view.results, i);
   renderFinder();
-  flyTo(view.results, i, bounds);
+  flyToResults(view.results, i, bounds);
   if (view.results.kind === "pickups") reveal(["pickup: " + view.results.rows[i]!.category]);
   select(selectionOf(view.results, i));
-}
-
-/** One table row of the card: the index of a result. */
-interface Listed {
-  i: number;
-}
-
-function column(key: string, label: string, render: (i: number) => string | HTMLElement, right?: boolean): Column<Listed> {
-  return {
-    key: key,
-    label: label,
-    align: right ? "right" : undefined,
-    className: right ? "dash-nowrap" : undefined,
-    render: function (listed) {
-      return render(listed.i);
-    },
-  };
-}
-
-function columns(results: FinderResults): Column<Listed>[] {
-  if (results.kind === "nodes") {
-    const nodes = results.rows;
-    return [
-      column("node", WORDS.node, function (i) {
-        return nodeLabel(nodes[i]!);
-      }),
-      column("status", "status", function (i) {
-        return statusChip(nodes[i]!.status);
-      }),
-      column("rate", "per min", function (i) {
-        return nodeRate(nodes[i]!);
-      }, true),
-      column("distance", "away", function (i) {
-        return metres(nodes[i]!.distance_m);
-      }, true),
-    ];
-  }
-  if (results.kind === "fields") {
-    const fields = results.rows;
-    return [
-      column("field", WORDS.field, function (i) {
-        return fieldLabel(fields[i]!);
-      }),
-      column("free", WORDS.free, function (i) {
-        return perMin(fields[i]!.free, false);
-      }, true),
-      column("distance", "away", function (i) {
-        return metres(fields[i]!.distance_m);
-      }, true),
-    ];
-  }
-  if (results.kind === "sites") {
-    const sites = results.rows;
-    return [
-      column("rank", "rank", function (i) {
-        return String(sites[i]!.rank);
-      }, true),
-      column("region", "region", function (i) {
-        return sites[i]!.region || "–";
-      }),
-      column("score", "score", function (i) {
-        return formatNumber(sites[i]!.score, 2);
-      }, true),
-    ];
-  }
-  if (results.kind === "runs") {
-    const runs = results.rows;
-    return [
-      column("run", WORDS.run, function (i) {
-        return runLabel(runs[i]!);
-      }),
-      column("carries", "carries", function (i) {
-        return carriesText(runs[i]!);
-      }),
-      column("length", "length", function (i) {
-        return metres(runs[i]!.length_m);
-      }, true),
-      column("distance", "away", function (i) {
-        return metres(runs[i]!.distance_m);
-      }, true),
-    ];
-  }
-  const pickups = results.rows;
-  return [
-    column("pickup", "pickup", function (i) {
-      return pickupName(pickups[i]!.category);
-    }),
-    column("place", "at", function (i) {
-      return coords(pickups[i]!.x_m, pickups[i]!.y_m);
-    }, true),
-    column("distance", "away", function (i) {
-      return metres(pickups[i]!.distance_m);
-    }, true),
-  ];
 }
 
 function renderResultTable(box: HTMLElement, results: FinderResults): void {
@@ -341,7 +122,7 @@ function renderResultTable(box: HTMLElement, results: FinderResults): void {
   const measured = (results.rows as { distance_m?: number | null }[]).some(function (row) {
     return row.distance_m !== null && row.distance_m !== undefined;
   });
-  const shownColumns = columns(results).filter(function (shown) {
+  const shownColumns = resultColumns(results).filter(function (shown) {
     return measured || shown.key !== "distance";
   });
   box.appendChild(
@@ -477,7 +258,7 @@ export function closeFinder(): void {
   view.selectedIndex = -1;
   view.error = "";
   view.busy = false;
-  group.clearLayers();
+  clearRings();
   renderFinder();
   if (!inside) return;
   if (back && back.isConnected && back.getClientRects().length) back.focus({ preventScroll: true });
@@ -585,7 +366,7 @@ function fetchPoint(fit: boolean): void {
       if (reply.groups) view.groups = reply.groups;
       view.results = reply.results;
       view.selectedIndex = -1;
-      const bounds = draw(view.results, -1);
+      const bounds = drawResults(view.results, -1);
       renderFinder();
       if (fit && bounds) flyPadded(bounds.pad(0.15), map.getZoom());
     })
@@ -594,7 +375,7 @@ function fetchPoint(fit: boolean): void {
       view.busy = false;
       view.results = null;
       view.error = friendlyError(err);
-      group.clearLayers();
+      clearRings();
       renderFinder();
     });
 }
@@ -619,9 +400,9 @@ export function showRows(results: FinderResults, title: string, dash: string, se
     return;
   }
   view.selectedIndex = -1;
-  const bounds = draw(results, -1);
+  const bounds = drawResults(results, -1);
   renderFinder();
-  flyTo(results, -1, bounds);
+  flyToResults(results, -1, bounds);
 }
 
 function parsePoint(text: string): { x: number; y: number; r: number } | null {
@@ -679,9 +460,9 @@ export function showRef(ref: string, spot?: { x_m?: number; y_m?: number; label:
   view.at = null;
   view.ref = "";
   view.results = null;
-  group.clearLayers();
+  clearRings();
   ringPoint({ x_m: x, y_m: y }, true);
-  if (!map.hasLayer(group)) group.addTo(map);
+  showRings();
   renderFinder();
   flyToPoint(latLngOf({ x_m: x, y_m: y }), Math.max(map.getZoom(), POINT_ZOOM));
 }
@@ -713,7 +494,7 @@ function hideSpoilers(): void {
   }
   view.results = { kind: view.results.kind, rows: rows.filter(function (row) { return !row.spoiler; }) } as FinderResults;
   view.selectedIndex = -1;
-  draw(view.results, -1);
+  drawResults(view.results, -1);
   renderFinder();
 }
 

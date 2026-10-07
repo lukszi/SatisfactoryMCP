@@ -27,7 +27,7 @@ BUDGETS = [
     (ROOT / "tests", 1.00),
 ]
 FRONTEND = ROOT / "src" / "satisfactory_mcp" / "interfaces" / "web" / "frontend"
-TS_BUDGET = 1.30
+TS_BUDGET = 0.90
 #: Written by openapi-typescript from the server's schema, not by hand.
 TS_GENERATED = {"schema.d.ts"}
 MIN_CODE_LINES = 40  # tiny files are all header; the budget is about essays, not stubs
