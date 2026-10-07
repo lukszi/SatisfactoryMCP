@@ -56,10 +56,7 @@ class ReconciledWater(Protocol):
 
 def field_heights(field: hf.Field) -> I16Grid:
     """The field's height plane in decimetres, which a loaded field always holds."""
-    heights = field.height_dm
-    if heights is None:
-        raise ValueError(f"the field in {field.directory} has no height plane")
-    return heights
+    return field.height_dm
 
 
 def field_water(field: hf.Field) -> tuple[I16Grid, U8Grid]:

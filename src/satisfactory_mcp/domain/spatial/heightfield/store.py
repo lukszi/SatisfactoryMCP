@@ -12,10 +12,11 @@ import time
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 import numpy as np
 
+from ....core.arrays import I16Grid, U8Grid
 from ....core.jsontypes import JsonObject, JsonValue
 from . import cave_masks, collision_pack
 from .codec import DECODERS, RasterGrid, sha256_of
@@ -104,7 +105,8 @@ class PlaneStore:
         height_dm, provenance = self.plane(HEIGHT_NAME), self.plane(PROV_NAME)
         if height_dm is None or provenance is None:
             raise FileNotFoundError("height or provenance plane missing")
-        self.height_dm = height_dm
+        # A plane's dtype follows its name (_plane_shape): ``.u8.z`` is uint8, the rest int16.
+        self.height_dm = cast(I16Grid, height_dm)
         self.provenance_plane = provenance
         self._accuracy = layer_accuracies(meta.get("provenance"))
         # The loaders hold no reference to the store: a cycle would keep its mapped planes
@@ -187,12 +189,12 @@ class PlaneStore:
     def has_top(self) -> bool:
         return self.plane(TOP_NAME) is not None
 
-    def water_raster(self) -> RasterGrid | None:
-        return self.plane(WATER_NAME)
+    def water_raster(self) -> I16Grid | None:
+        return cast("I16Grid | None", self.plane(WATER_NAME))
 
-    def water_quality_raster(self) -> RasterGrid | None:
+    def water_quality_raster(self) -> U8Grid | None:
         """``waterq.u8.z``, or ``None`` for a field written before it existed."""
-        return self.plane(WATER_QUALITY_NAME)
+        return cast("U8Grid | None", self.plane(WATER_QUALITY_NAME))
 
     def density_raster(self) -> RasterGrid | None:
         """``density.u8.z``: source vertices per texel, clamped at 255, zero off the cliff layer.

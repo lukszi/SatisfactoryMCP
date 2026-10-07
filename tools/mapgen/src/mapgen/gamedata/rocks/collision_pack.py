@@ -388,7 +388,7 @@ def _place_instances(
     The cliff pass's culls, except that arches and simple-collision rocks are kept under
     their own kind instead of dropped.
     """
-    from satisfactory_mcp.domain.spatial import rocks
+    from satisfactory_mcp.domain.spatial.heightfield import collision_pack as rocks
 
     meshes, owners = sweep["meshes"], sweep["owners"]
     dropped = {"owner": 0, "excluded_mesh": 0, "no_collision": 0, "oversize": 0}
@@ -473,7 +473,7 @@ def _pack_counts(
     floors: CaveFloors,
     dropped: dict[str, int],
 ) -> PackCounts:
-    from satisfactory_mcp.domain.spatial import rocks
+    from satisfactory_mcp.domain.spatial.heightfield import collision_pack as rocks
 
     have = collision["meshes"]
     kinds = np.bincount(arrays["inst_kind"], minlength=len(rocks.KIND_NAMES))
