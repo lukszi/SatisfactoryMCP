@@ -100,6 +100,11 @@ Planned as 0.2.0.
   a job's disk check counts them. A band in flight takes 0.6 GB more memory when the painted
   layer is drawn with another. The light is baked after the draw, and a job's progress shows
   one draw stage for all the layers.
+- Map generator: the painted and relief styles work out the colour under the water only on
+  the pixels that hold water, where they worked it out for every pixel and kept it on those.
+  On bands a fifth to a half wet that part costs a third to two thirds of what it did, and
+  the three styles' painters 10 to 17% less CPU; a full-size draw on 8 threads, which waits
+  on memory, is no faster by the clock. The tiles are the same bytes.
 - The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
   render of all five layers with the light is budgeted at about 58 minutes, the default two
   layers at about 42.

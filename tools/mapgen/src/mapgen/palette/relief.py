@@ -19,6 +19,7 @@ from mapgen.palette.scene import FloatGrid, ReliefScene, WaterPlanes, field_heig
 from mapgen.palette.schema import ReliefPalette, ReliefWaterStyle
 from mapgen.palette.styles import area_plane, dry_land_range, ramp_position
 from mapgen.palette.water.shore import wet_mix
+from mapgen.palette.water.wet import WetPixels
 from satisfactory_mcp.core.arrays import F16Grid, F32Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -214,24 +215,37 @@ def relief_colours(
 def _water(
     land: FloatGrid, scene: ReliefScene, ground: ReliefGround, sample: TintSample, lit: FloatGrid
 ) -> FloatGrid:
-    """Water over the ground in OKLab: a flat tint by depth, a shore stroke, a sea-edge fade."""
-    water_style, water = ground.palette["water"], scene["water"]
-    shore = ground.palette["shore"]
-    if ground.water is None:
-        tint = water["depth"]
-    else:
-        tint = sample(ground.water) / np.float32(255.0)
+    """Water over the ground in OKLab, worked out on the wet pixels only (``water.wet``): the
+    mix's weight is 0 wherever the cover is."""
+    water = scene["water"]
+    tint = water["depth"] if ground.water is None else sample(ground.water) / np.float32(255.0)
+    planes = (water["cover"], water["depth_m"], water["ocean"], tint, lit)
+    wet = WetPixels(water["cover"])
+    if wet.whole:
+        return wet_mix(land, *_water_over(land, planes, ground))
+    wet_land = wet.take(land)
+    under, weight = _water_over(wet_land, tuple(wet.take(plane) for plane in planes), ground)
+    return wet.mix(land, wet_land, under, weight)
+
+
+def _water_over(
+    land: FloatGrid, planes: tuple[FloatGrid, ...], ground: ReliefGround
+) -> tuple[FloatGrid, FloatGrid]:
+    """A flat tint by depth, a shore stroke and a sea-edge fade over ``land``, per pixel, and
+    the weight it is mixed in by, with the trailing channel axis. ``planes`` is ``(cover,
+    depth_m, ocean, tint, lit)``."""
+    cover, depth_m, ocean, tint, lit = planes
+    water_style, shore = ground.palette["water"], ground.palette["shore"]
     colour = ground.shallow * (1.0 - tint[..., None]) + ground.deep * tint[..., None]
     sunlit = np.float32(water_style["lit"])
     colour[..., 0] *= 1.0 - sunlit + sunlit * lit / FLAT_LIT
-    ocean = water["ocean"]
-    fade = 1.0 - np.exp(-water["depth_m"] / np.float32(shore["clarity_m"]))
+    fade = 1.0 - np.exp(-depth_m / np.float32(shore["clarity_m"]))
     edge_alpha = np.float32(shore["edge_alpha"])
     opacity = (ocean * (edge_alpha + (1.0 - edge_alpha) * fade) + (1.0 - ocean))[..., None]
-    cover = np.clip(water["cover"], 0.0, 1.0)
+    cover = np.clip(cover, 0.0, 1.0)
     edge = (np.clip(4.0 * cover * (1.0 - cover), 0.0, 1.0) ** 1.5) * np.float32(
         water_style["stroke"]
     )
     colour = colour * (1.0 - edge[..., None]) + ground.stroke * edge[..., None]
     under = land * (1.0 - opacity) + colour * opacity
-    return wet_mix(land, under, np.clip(cover + 0.5 * edge, 0.0, 1.0)[..., None])
+    return under, np.clip(cover + 0.5 * edge, 0.0, 1.0)[..., None]
