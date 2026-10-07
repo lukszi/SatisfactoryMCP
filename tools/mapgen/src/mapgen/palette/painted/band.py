@@ -16,7 +16,7 @@ from mapgen.colour import by_luminance, flat_light, linear_from_oklab, linear_to
 from mapgen.lighting.hillshade import FLAT_SUN_DOT, sun_dot
 from mapgen.lighting.model import surface_direct
 from mapgen.palette.painted.calibration import exposure_gain, sampled_rgb
-from mapgen.palette.painted.optics import underwater
+from mapgen.palette.painted.optics import mix_underwater
 from mapgen.palette.painted.shapes import (
     FloatGrid,
     PaintedPalette,
@@ -32,7 +32,7 @@ from mapgen.palette.painted.surfaces import (
 )
 from mapgen.palette.painted.trees import lit_crowns, over_crowns, titan_over
 from mapgen.palette.styles import ramp_position
-from mapgen.palette.water.shore import add_foam, seabed_keeps, wet_band, wet_mix
+from mapgen.palette.water.shore import add_foam, seabed_keeps, wet_band
 from satisfactory_mcp.core.arrays import U8Grid
 
 __all__ = ["painted_colours", "painted_ndl"]
@@ -100,8 +100,7 @@ def _lit_and_wet(
     water, shore = scene["water"], palette["shore"]
     crowns = lit_crowns(scene, ground, sample_rock, exposure)
     lit = wet_band(lit, water, shore.get("wet_band"))
-    under = underwater(g, scene, ground, sample, sample_rock, exposure, crowns)
-    out = wet_mix(lit, under, water["cover"][..., None])
+    out = mix_underwater(lit, g, scene, ground, sample, sample_rock, exposure, crowns)
     stroke = np.float32(shore.get("stroke", 0.0))
     if stroke:
         out = out * (1.0 - stroke * water["edge"][..., None])

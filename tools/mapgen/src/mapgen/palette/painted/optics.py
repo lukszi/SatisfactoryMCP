@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 from scipy import ndimage
@@ -34,17 +35,20 @@ from mapgen.palette.painted.shapes import (
     WaterClassStyle,
 )
 from mapgen.palette.painted.water_classes import class_shares
-from mapgen.palette.water.shore import optical_depth
+from mapgen.palette.water.shore import optical_depth, wet_mix
+from mapgen.palette.water.wet import WetPixels
 from mapgen.terrain.sample import ClassMix, class_taps
 from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
+    "UNDERWATER_TERMS",
     "WATER_TABLE_COLUMNS",
     "base_water",
     "carpet_bed",
     "class_optics",
     "load_carpet",
+    "mix_underwater",
     "opaque_share",
     "underwater",
     "water_table",
@@ -52,6 +56,10 @@ __all__ = [
 
 #: One row per water class: absorption, body, deep colour, deep tau, turbidity, bed tint.
 WATER_TABLE_COLUMNS = (3, 3, 3, 1, 1, 3)
+
+#: The band's water terms ``underwater`` reads: ``mix_underwater`` takes these alone onto the
+#: wet pixels.
+UNDERWATER_TERMS = frozenset({"depth_m", "ocean", "river", "river_below_m"})
 
 _RIVER = WATER_CLASSES.index("river")
 
@@ -232,3 +240,39 @@ def underwater(
             s = (sample_rock(weight) * share)[..., None] * murk
             under = under * (1.0 - s) + colour * s
     return under
+
+
+def mix_underwater(
+    lit: FloatGrid,
+    g: FloatGrid,
+    scene: PaintedScene,
+    ground: PaintedSurface,
+    sample: Sampler,
+    sample_rock: Sampler,
+    exposure: float | np.float32,
+    crowns: CrownLayer | None = None,
+) -> FloatGrid:
+    """``lit`` with ``underwater`` mixed in by the water's cover, worked out on the wet pixels
+    only: it is per pixel, so its bits there are the whole band's (``water.wet``). It reads
+    the scene's heights, water and optics alone, and those are all that is taken."""
+    cover = scene["water"]["cover"]
+    wet = WetPixels(cover)
+    if wet.whole:
+        under = underwater(g, scene, ground, sample, sample_rock, exposure, crowns)
+        return wet_mix(lit, under, cover[..., None])
+    optics = scene.get("water_optics")
+    taken = cast(PaintedScene, {
+        "z_m": wet.take(scene["z_m"]),
+        "water": wet.take_planes(scene["water"], UNDERWATER_TERMS),
+        "water_optics": None if optics is None else wet.take_planes(optics),
+    })  # fmt: skip
+    under = underwater(
+        wet.take(g),
+        taken,
+        ground,
+        lambda plane: wet.take(sample(plane)),
+        lambda plane: wet.take(sample_rock(plane)),
+        exposure,
+        None if crowns is None else cast(CrownLayer, wet.take_planes(crowns)),
+    )
+    return wet.mix(lit, wet.take(lit), under, wet.take(cover)[..., None])

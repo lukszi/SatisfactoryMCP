@@ -17,6 +17,7 @@ from scipy import ndimage
 
 from mapgen.palette.scene import FloatGrid, WaterTerms
 from mapgen.palette.schema import FoamStyle, RiverShoreStyle, ShoreOptics, WetBandStyle
+from mapgen.palette.water.wet import cover_mix
 from mapgen.terrain.render_meshes import MESH_ROCK
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -225,12 +226,8 @@ def blend_where(
 
 
 def wet_mix(land: FloatGrid, under: FloatGrid, cover: FloatGrid) -> FloatGrid:
-    """``land * (1 - cover) + under * cover``; ``cover`` has the trailing channel axis."""
-    return blend_where(cover[..., 0] != 0, WET_MIX_MOST, _mix, land, under, cover)
-
-
-def _mix(land: FloatGrid, under: FloatGrid, cover: FloatGrid) -> FloatGrid:
-    return land * (1.0 - cover) + under * cover
+    """``cover_mix(land, under, cover)``; ``cover`` has the trailing channel axis."""
+    return blend_where(cover[..., 0] != 0, WET_MIX_MOST, cover_mix, land, under, cover)
 
 
 def wet_band(land: FloatGrid, water: WaterTerms, band: WetBandStyle | None) -> FloatGrid:

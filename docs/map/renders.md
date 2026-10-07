@@ -839,8 +839,8 @@ tiles are the same bytes:
 - **Water is mixed where it is.** The terrain and satellite styles (`water_composite`), the
   painted style and the relief styles all end their water with
   `land * (1 - cover) + under * cover`. `wet_mix` works that out only on the pixels whose
-  cover is not 0. The colour under the water is still worked out for every pixel; painting
-  only the wet pixels is the larger step left for later.
+  cover is not 0. The painted and relief styles now also work out the colour under the water
+  on those pixels alone ("Painting only the wet pixels", below).
 
 `blend_where` in `palette/water/shore.py` does the masking for the last two. It gathers the touched
 pixels, blends them with the same expression and writes them over a copy of the input. Past a
@@ -895,6 +895,61 @@ so a full render should save between the two: 10 to 15 minutes of drawing on one
 machine was running other renders, so single runs spread by up to a third; alternating keeps
 that spread out of the comparison. The windowed runs peaked at 8.3 to 8.7 GB either way: a
 masked blend allocates the same output array as the full one, plus the touched pixels.
+
+### Painting only the wet pixels (2026-10-07)
+
+The painted style's colour under the water (`underwater`: the bed through the class optics,
+the seabed carpet, the sunk crowns, the open-sea term and the opaque area water) and the
+relief styles' water (`_water`: the tint, the shore stroke and the sea-edge fade) were worked
+out for every pixel of a band, and the mix then kept them only where the cover is not 0.
+Both are now worked out on those pixels alone (`palette/water/wet.py`, `WetPixels`):
+
+- The band's wet pixels are those whose water cover is not 0, the pixels `wet_mix` already
+  mixed. Their index is taken once a band.
+- Every plane of the band the painter reads is laid out at those pixels along one axis: the
+  ground's colour, the water's terms, the class optics and their shares, the crowns, and
+  what the samplers read (the carpet, the opaque water's weight, the relief's tint). The
+  painter then runs unchanged, on one row of pixels instead of a band. Only those planes are
+  passed, so a painter changed to read another fails rather than mixes the band's shape with
+  the wet pixels'.
+- The mix is worked out on the same pixels and written over a copy of the ground, as
+  `wet_mix` does. A dry pixel keeps the ground's value, which is what the mix gave it.
+- Past `WET_MOST` of the band the water is painted whole, as before: gathering every plane
+  then costs more than the dry pixels' arithmetic it saves.
+
+**Why the bits do not move.** Every step of both painters is per pixel: sums, products,
+`exp`, `clip`, powers, `where`. None mixes neighbours, so a pixel's answer does not depend on
+which other pixels are worked out beside it. The planes keep their dtypes, and numpy works
+the same function on every element of an array whatever its length. The colour space
+conversions after the mix (`linear_from_oklab`, the tone curve) still run on the whole band,
+since a matrix product's summation order may change with the array's shape. The relief's mix
+weight is the cover plus half the shore stroke, and the stroke is 0 wherever the cover is, so
+its wet pixels are the same. The samplers still read the whole band before the wet pixels are
+taken: they belong to the band loop (`render/painting.py`).
+
+**Measured (2026-10-07, build 502094).** Eight full-width bands of the full-size sheet, at rows
+1,024 + 4,096k, were drawn by both versions in one process, alternating, twice each, lit by
+the sun (`--no-light`); four of them were captured unlit, as a lit render draws them, and
+replayed into both versions, whole and in quarters. Every painted, relief and relief-dark
+array is the same bits. The colour under the water alone, its samplers aside, the faster of
+five replays, in milliseconds:
+
+| Band, share wet | painted | relief | relief-dark |
+| --- | --- | --- | --- |
+| row 9,216, 18% | 1,292 → 427 | 667 → 175 | 689 → 170 |
+| row 21,504, 25% | 1,324 → 479 | 569 → 213 | 565 → 217 |
+| row 17,408, 47% | 1,356 → 892 | 614 → 387 | 634 → 395 |
+| row 1,024, 62% | 974 → 792 | 583 → 485 | 598 → 487 |
+
+A piece that is all water costs about 1.3 times as much gathered as whole, which puts
+`WET_MOST` at 3/4. Over the eight bands the whole painters' CPU fell from 69.5 to 62.7 s
+(painted, 10%), 24.7 to 21.7 s (relief, 12%) and 19.4 to 16.0 s (relief-dark, 17%); the
+rest of each painter, the ground and the light, is untouched. The eight bands were 18% to
+64% wet.
+
+Left out: the class optics (`class_optics`) are still mixed for the whole band, in
+`render/painting.py`'s band loop, and the shore terms, the river terms, the wet band and the
+foam stay whole-band work.
 
 ## 39. Compressed raster caches: the zstd band store (2026-10-06)
 
