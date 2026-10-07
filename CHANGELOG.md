@@ -231,6 +231,10 @@ Planned as 0.2.0.
 - Map renders take the sun term from one float32 copy, the live-sun page's own, in place of
   several copies in mixed precision. A few dozen lit pixels of a 2048 map move by one level.
   Every rendered map style is one version up for these fixes.
+- Map renders leave out the land the game's height data has past the world's rim, where the
+  game's own map draws nothing, and draw the void there: a 0.23 km² island south-east of the
+  abyss, a block in the north-east corner, a lobe on the east edge and smaller pieces, 0.57%
+  of the map square in all.
 
 ## [0.1.0] - 2026-09-27
 
