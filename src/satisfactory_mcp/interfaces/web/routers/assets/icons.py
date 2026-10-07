@@ -14,13 +14,12 @@ from __future__ import annotations
 import hashlib
 import re
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from .....domain.maps import registry
-from ...serial import cached_file, error_response, sidecar_meta_block
+from ...serial import cached_file, error_response, json_object, sidecar_meta_block
 
 __all__ = ["ICONS_DIR_NAME", "router"]
 
@@ -61,8 +60,8 @@ def _icons_build() -> str:
     down the endpoint that serves a picture.
     """
     block = sidecar_meta_block(_icons_dir() / ICONS_MANIFEST_NAME)
-    source = block.get("source") if isinstance(block.get("source"), dict) else {}
-    counts = block.get("counts") if isinstance(block.get("counts"), dict) else {}
+    source = json_object(block.get("source"))
+    counts = json_object(block.get("counts"))
     stamp = "|".join(
         [
             str(source.get("game_version_pinned")),
@@ -86,12 +85,15 @@ def icon_path(desc: str) -> Path | None:
 
 #: Explicit, because this route serves GET and HEAD from one handler: FastAPI walks
 #: ``route.methods``, which is a SET, so an implicit id is ``..._get`` or ``..._head`` at
-#: random per interpreter run and the committed schema churns for it.
+#: random per interpreter run and the committed schema churns for it. ``response_model`` is
+#: ``object``, the unconstrained body a picture route has always published.
 OPERATION_ICON = "icon"
 
 
-@router.api_route("/icons/{desc}", methods=["GET", "HEAD"], operation_id=OPERATION_ICON)
-def icon(request: Request, desc: str) -> Any:
+@router.api_route(
+    "/icons/{desc}", methods=["GET", "HEAD"], operation_id=OPERATION_ICON, response_model=object
+)
+def icon(request: Request, desc: str) -> Response:
     """One item descriptor's icon as a PNG, from the reader's own install.
 
     **Absent is the ordinary state, so HEAD answers 204 rather than 404.** A page decides

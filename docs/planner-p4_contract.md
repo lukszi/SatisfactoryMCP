@@ -236,7 +236,7 @@ writes). Newer-schema files are a 503 `{error, newer_schema: true}`.
 | `push_ops` (unchanged route) | POST `/api/plans/{key}/ops` | now also `set headroom_mw` | `PushedResponse` (`state.headroom_mw`) | as P1: 400, 404, **409 `OutdatedResponse`** |
 | `asks` (new, `asks.py`) | GET `/api/asks` | – | `AsksResponse` | 404 save unreadable; 503 |
 | `create_ask` | POST `/api/asks` | `AskCreateBody {text, about}` | 201 `AskRow` | 400 `AskError` (blank, too long, bad about, 200 live); 404 plan in `about` unknown; 503 lock/schema |
-| `drop_ask` | DELETE `/api/asks/{n}` | `AskDropBody {rev}` | 200 `AskDropped {ok, n}` | 404 unknown or deleted; **409 `AskStaleResponse`**; 503 |
+| `drop_ask` | DELETE `/api/asks/{n}` | `RevBody {rev}` | 200 `Dropped {ok, n}` | 404 unknown or deleted; **409 `AskStaleResponse`**; 503 |
 
 `PlanStateBody` gains `headroom_mw: float | None`. Every ask write from the web appends one
 journal entry (§8).
@@ -244,7 +244,7 @@ journal entry (§8).
 ### 5.2 Models (TypedDict)
 
 ```python
-class TrackState(TypedDict): state: str; count: int          # graph.health state, as states.ts StateCount
+class StateCount(TypedDict): state: str; count: int          # graph.health state
 class TrackMachine(TypedDict): instance: str; x_m: float | None; y_m: float | None
 class TrackTarget(TypedDict): node: str; x_m: float | None; y_m: float | None; m: float | None
 class TrackRow(TypedDict):
@@ -258,20 +258,20 @@ class TrackRow(TypedDict):
     verb: str                             # "ok" | "unpause" | "setrecipe" | "build"
     count: int; reuse: int
     running: int | None                   # null when no matched machine is monitored
-    states: list[TrackState]
+    states: list[StateCount]
     new_building: bool; note: str; delta_mw: float
     act: list[TrackMachine]; targets: list[TrackTarget]
     bbox_m: list[float] | None; selectors: str
 class TrackStageRow(TypedDict):
     row: str; label: str; building: str; machines: int; total: int
-    built: int; built_max: int; running: int; states: list[TrackState]
+    built: int; built_max: int; running: int; states: list[StateCount]
     draw_mw: float; generation_mw: float; to_build: int
 class TrackStage(TypedDict):
     index: int; machines: int; built: int; built_max: int; running: int; dark: int
     complete: bool; state: str            # Stage.describe()
     draw_mw: float; generation_mw: float; available_before: float; available_after: float
     fill_s: float; waits_for_fill: bool
-    states: list[TrackState]; rows: list[TrackStageRow]; bbox_m: list[float] | None
+    states: list[StateCount]; rows: list[TrackStageRow]; bbox_m: list[float] | None
 class TrackStartup(TypedDict):
     ok: bool; headroom_mw: float; headroom_source: str
     plant_draw_mw: float; plant_generation_mw: float; minimum_slice_mw: float; warnings: list[str]
@@ -309,8 +309,8 @@ class AskRow(TypedDict):
     copy: str                              # "ask:7 why does this need a Blender?"
 class AsksResponse(TypedDict): version: int; asks: list[AskRow]
 class AskCreateBody(TypedDict): text: str; about: AskAbout
-class AskDropBody(TypedDict): rev: int
-class AskDropped(TypedDict): ok: bool; n: int
+class RevBody(TypedDict): rev: int
+class Dropped(TypedDict): ok: bool; n: int
 class AskStaleResponse(TypedDict): error: str; stale: bool; ask: AskRow
 ```
 

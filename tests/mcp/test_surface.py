@@ -124,7 +124,7 @@ def test_tool_descriptions_stay_short():
 
 #: Every tool description together, in characters: what each session carries before its first
 #: call. A ratchet set when the backstory moved to docs/mcp-surface.md; lower it, never raise it.
-TOOL_DESCRIPTION_BUDGET = 29_925
+TOOL_DESCRIPTION_BUDGET = 29_921
 
 
 def test_tool_descriptions_fit_their_budget():
@@ -450,9 +450,11 @@ def test_no_tool_module_imports_another():
     import pathlib
     import re
 
-    # Asked of the package `server` actually imported, not of a spelled-out path: a stale
-    # literal here would glob an empty directory and pass without checking anything.
-    root = pathlib.Path(srv._tools.__file__).parent
+    # Asked of the imported package, not of a spelled-out path: a stale literal here would
+    # glob an empty directory and pass without checking anything.
+    from satisfactory_mcp.interfaces.mcp import tools
+
+    root = pathlib.Path(tools.__file__).parent
     checked = 0
     for path in root.rglob("*.py"):
         if path.name == "__init__.py":

@@ -14,11 +14,11 @@ import type { MapsResponse, MapTypeBody } from "../../api/shapes";
 /* The id whose label is being edited; "" when none is. */
 let renaming = "";
 
-/* A re-render that needs the heightfield queues its rebuild first; an otherwise current map
- * restyles from a kept raster cache. */
+/* A re-render that needs the heightfield queues its rebuild first, and nothing if that is
+ * refused; an otherwise current map restyles from a kept raster cache. */
 function rerender(row: MapTypeBody): void {
   const pending = row.freshness.rerender;
-  let chain: Promise<void> = Promise.resolve();
+  let chain: Promise<boolean> = Promise.resolve(true);
   if (pending && pending.needs.indexOf("heightfield") >= 0) chain = submit("heightmap", {}, "", null);
   const body = mapRegistry.body;
   const size = row.size_px || 32768;
@@ -33,8 +33,9 @@ function rerender(row: MapTypeBody): void {
           light: !!row.axes.light,
           restyle: !pending && !row.freshness.stale.length && row.freshness.restyle && !!body && body.cached_sizes.indexOf(size) >= 0,
         };
-  chain.then(function () {
-    return submit(row.kind === "artwork" ? "artwork" : "render", options, row.label || "", row.id);
+  chain.then(function (ok) {
+    if (ok) return submit(row.kind === "artwork" ? "artwork" : "render", options, row.label || "", row.id);
+    return false;
   });
 }
 
@@ -91,6 +92,12 @@ function freshnessCell(row: MapTypeBody): HTMLElement {
   return cell;
 }
 
+function rerenderTitle(row: MapTypeBody, body: MapsResponse): string {
+  if (!body.can_generate.ok) return body.can_generate.reason || "";
+  const pending = row.freshness.rerender;
+  return pending ? pending.text : "queue a new map; this one stays until you delete it";
+}
+
 function actionsCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
   const cell = make("div", "maps-actions");
   const key = "delete:" + row.id;
@@ -106,13 +113,12 @@ function actionsCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
     }, { disabled: row.default || row.status !== "ready", title: row.default ? "this is the default" : "open fresh pages on this map" })
   );
   if (row.freshness.rerender || row.freshness.restyle || row.freshness.stale.length) {
-    const pending = row.freshness.rerender;
     cell.appendChild(
       button(row.freshness.stale.length ? "regenerate" : "re-render", function () {
         rerender(row);
       }, {
         disabled: !body.can_generate.ok,
-        title: body.can_generate.ok ? (pending ? pending.text : "queue a new map; this one stays until you delete it") : body.can_generate.reason || "",
+        title: rerenderTitle(row, body),
       })
     );
   }

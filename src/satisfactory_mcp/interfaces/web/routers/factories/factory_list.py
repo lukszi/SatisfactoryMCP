@@ -13,9 +13,9 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
-
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....domain.factories import candidates, naming
 from ...serial import bbox_m, error_response, point_m, regions_or_none, require_world
@@ -73,7 +73,7 @@ def factories(
     save: str | None = None,
     world: str | None = None,
     style: str = naming.DEFAULT_STYLE,
-) -> Any:
+) -> FactoriesResponse | JSONResponse:
     """Named factories and the coherence-scored proposals for the unnamed rest.
 
     Each row carries ``bbox_m`` -- ``[x_min, y_min, x_max, y_max]`` in metres, game axes --
@@ -91,7 +91,7 @@ def factories(
         return error_response(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
     names = naming.proposal_names(st, st.proposals, style, regions_or_none())
     placed = candidates.positions(st.projection)
-    named = [
+    named: list[FactoryRow] = [
         {
             "name": label.name,
             "centroid_m": point_m(label.centroid),
@@ -102,7 +102,7 @@ def factories(
         for label in sorted(st.labels.labels, key=lambda x: -len(x.anchors))
     ]
 
-    proposals = []
+    proposals: list[ProposalRow] = []
     for index, proposal in enumerate(st.proposals):
         if st.labels.covers(proposal.machines):
             continue  # already named by the player; the label speaks for it

@@ -14,15 +14,16 @@ import numpy as np
 import pytest
 
 from mapgen.cache import (
-    DIRECT_CACHE_SIDECAR,
+    CACHE_SIDECAR_NAME,
     DIRECT_COVERAGE_NAME,
     DIRECT_FAMILY_NAME,
     DIRECT_Z_NAME,
     cached_family,
-    direct_cache_stamp,
+    raster_cache_stamp,
 )
-from mapgen.gamedata import rockfamily
-from mapgen.gamedata.bake import (
+from mapgen.colour import srgb_to_linear
+from mapgen.gamedata.frame import BOUNDS_M, ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.ground.bake import (
     BAKE_NAME,
     STAMP_INNER_M,
     STAMP_OUTER_M,
@@ -30,33 +31,25 @@ from mapgen.gamedata.bake import (
     bake_have,
     demorton,
     fit_layer_table,
-    oil_nodes,
     stamp_windows,
 )
-from mapgen.gamedata.frame import BOUNDS_M, ORIGIN_X_CM, ORIGIN_Y_CM
-from mapgen.gamedata.paint import (
-    component_origin,
-)
-from mapgen.gamedata.sweep import first_override
-from mapgen.palette.painted import (
-    PaintedGround,
-    bake_table,
-    canopy_over_rock,
-    painted_colours,
-    patch_stamps,
-    rock_surface,
-    sample_titan,
-    srgb_to_linear,
-    titan_over,
-)
+from mapgen.gamedata.ground.weightmaps import component_origin
+from mapgen.gamedata.level.sweep import first_override
+from mapgen.gamedata.nodes import oil_nodes
+from mapgen.gamedata.rocks import families as rockfamily
+from mapgen.palette.painted.albedo import bake_table, patch_stamps
+from mapgen.palette.painted.band import painted_colours
+from mapgen.palette.painted.ground import PaintedGround
+from mapgen.palette.painted.surfaces import canopy_over_rock, rock_surface
+from mapgen.palette.painted.trees import sample_titan, titan_over
 from mapgen.palette.styles import PAINTED_DIGEST, PAINTED_PALETTE, painted_style
-from mapgen.terrain.rasters import (
+from mapgen.terrain.rasters import direct_placements, rasterise_direct_band
+from mapgen.terrain.rasters_banded import reduce_source
+from mapgen.terrain.render_meshes import (
     TITAN_LEAVES,
     TITAN_TRUNK,
-    direct_placements,
+    PreparedMeshes,
     mesh_pass,
-    rasterise_direct_band,
-    reduce_source,
     titan_class,
 )
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
@@ -157,6 +150,20 @@ def test_a_stamp_takes_the_paint_scaled_to_the_bake_around_it():
     assert replaced == int((ok & (metres <= STAMP_INNER_M)).sum())
 
 
+def test_wet_sand_under_a_stamp_takes_the_wet_sands_ratio_not_the_dry_sands():
+    rgb, node, metres = _stamped()
+    yy, _xx = np.mgrid[0:64, 0:64]
+    wet = yy >= 32
+    wet_bake, wet_paint = (130, 100, 80), srgb_to_linear((150, 140, 125))
+    rgb[wet & (metres > 8)] = wet_bake
+    ok = bake_have(rgb)
+    paint = np.where(wet[..., None], wet_paint, srgb_to_linear(SAND) * np.float32(0.7))
+    weights = [np.where(wet, 0, 255).astype(np.uint8), np.where(wet, 255, 0).astype(np.uint8)]
+    patch_stamps(rgb, ok, paint.astype(np.float32), node, weights)
+    np.testing.assert_allclose(rgb[40, 32], wet_bake, atol=1, err_msg="wet sand, as around it")
+    np.testing.assert_allclose(rgb[24, 32], SAND, atol=1, err_msg="dry sand, as around it")
+
+
 def test_the_painted_ground_patches_a_stamp_in_its_read_only_bake(tmp_path):
     rgb, node, _metres = _stamped()
     (tmp_path / BAKE_NAME).write_bytes(hf.encode_u8(rgb.reshape(64, -1)))
@@ -165,7 +172,7 @@ def test_the_painted_ground_patches_a_stamp_in_its_read_only_bake(tmp_path):
         ground = PaintedGround.__new__(PaintedGround)
         ground.meta = {"files": {BAKE_NAME: {"shape": [64, 64, 3], "kind": "u8"}}}
         ground.palette, ground.source, ground._stamps = {"have_blur_m": 2.0}, {}, stamps
-        albedo, _have, _w = ground._bake(tmp_path, paint.copy(), np.ones((64, 64), bool))
+        albedo, _have, _w = ground._bake(tmp_path, (paint.copy(), np.ones((64, 64), bool)), {})
         assert (albedo[32, 32].max() < 0.1) == dark
     assert ground.source["bake_stamps_patched"]["nodes"] == 1
 
@@ -215,15 +222,13 @@ def test_a_material_walks_its_parents_to_its_cliff_family(monkeypatch):
         "/Game/X/M_Rock": _View(),
         "/Game/X/SM_Rock": _View(imports=["/Game/X/PhysicalMaterial/PM", "/Game/X/Material/MI_C"]),
     }
-    monkeypatch.setattr(rockfamily, "_view", lambda _s, _c, _i, package: chain.get(package))
-    cache: dict = {}
+    monkeypatch.setattr(rockfamily, "open_package", lambda _s, _c, _i, asset: chain.get(asset))
+    resolver = rockfamily.FamilyResolver(None, None, None)
     forest = rockfamily.FAMILIES.index("forest")
-    assert rockfamily.family_of(None, None, None, "/Game/X/CliffFlat_03_Forest", cache) == forest
-    assert rockfamily.family_of(None, None, None, "/Game/X/MI_Rocks_Moss", cache) == 0
-    assert rockfamily.family_of(None, None, None, None, cache) == 0
-    assert (
-        rockfamily.mesh_material(None, None, None, "/Game/X/SM_Rock", {}) == "/Game/X/Material/MI_C"
-    )
+    assert resolver.family_of("/Game/X/CliffFlat_03_Forest") == forest
+    assert resolver.family_of("/Game/X/MI_Rocks_Moss") == 0
+    assert resolver.family_of(None) == 0
+    assert resolver.mesh_material("/Game/X/SM_Rock") == "/Game/X/Material/MI_C"
 
 
 def test_desert_rock_roots_the_desert_family_and_reads_no_cliff_colour(monkeypatch):
@@ -233,26 +238,28 @@ def test_desert_rock_roots_the_desert_family_and_reads_no_cliff_colour(monkeypat
         base + "MI_DesertRock_05": _View(parent=base + "MI_DesertRock"),
         base + "MI_DesertRock": _View(parent="/Game/FactoryGame/World/Environment/Rock/M_Rock"),
     }
-    monkeypatch.setattr(rockfamily, "_view", lambda _s, _c, _i, package: chain.get(package))
+    monkeypatch.setattr(rockfamily, "open_package", lambda _s, _c, _i, asset: chain.get(asset))
     desert = rockfamily.FAMILIES.index("desert")
     for leaf in ("MI_DesertRock_05_Vista", "MI_DesertRock_05", "MI_DesertRock"):
-        assert rockfamily.family_of(None, None, None, base + leaf, {}) == desert
+        assert rockfamily.FamilyResolver(None, None, None).family_of(base + leaf) == desert
     opened: list[str] = []
-    monkeypatch.setattr(rockfamily, "_view", lambda _s, _c, _i, package: opened.append(package))
+    monkeypatch.setattr(rockfamily, "open_package", lambda _s, _c, _i, asset: opened.append(asset))
     sources = rockfamily.family_sources(None, None, None)
     assert "desert" not in sources and "cliff" in sources, "the palette's target colours it"
     assert not any("DesertRock" in package for package in opened)
 
 
 def test_an_override_wins_over_the_mesh_s_own_material(monkeypatch):
-    monkeypatch.setattr(rockfamily, "mesh_material", lambda *a: rockfamily.ROOT_DIR + "Cliff_Sand")
+    monkeypatch.setattr(
+        rockfamily.FamilyResolver, "mesh_material", lambda *a: rockfamily.ROOT_DIR + "Cliff_Sand"
+    )
     sweep = {
         "meshes": ["/Game/Rock/A"],
         "placements": np.zeros((3, 11)),
         "placement_materials": np.array([0, -1, 1], np.int32),
         "materials": [rockfamily.ROOT_DIR + "Cliff_Grass", "/Game/Unknown/MI"],
     }
-    monkeypatch.setattr(rockfamily, "_view", lambda *a: None)
+    monkeypatch.setattr(rockfamily, "open_package", lambda *a: None)
     codes = rockfamily.placement_families(None, None, None, sweep)
     names = [rockfamily.FAMILIES[c] for c in codes]
     assert names == ["grass", "sand", "none"]
@@ -301,8 +308,9 @@ def _rock_ground(flat_top=True):
     top[grass] = (0.1, 0.2, 0.05)
     has[grass] = 1.0 if flat_top else 0.0
     return SimpleNamespace(
-        rock_family=np.full((8, 8), grass, np.uint8), family_tint=tint, family_top=top,
-        family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
+        rock_family=np.full((8, 8), grass, np.uint8), family_rock={}, family_tint=tint,
+        family_top=top, family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
+        family_top_rgb={},
     )  # fmt: skip
 
 
@@ -379,7 +387,7 @@ def test_a_mesh_raster_is_reused_when_its_stamp_matches(tmp_path, capsys):
 
     def build():
         calls.append(1)
-        return {"items": {}, "shapes": {}}, {"placements": {}}
+        return PreparedMeshes({}, {}), {"placements": {}}
 
     maps, source = mesh_pass(tmp_path / "titan.cache", 16, "b1", "titan_trees", build, "t", True)
     assert maps is not None and calls == [1] and "raster" in source["titan_trees"]
@@ -393,19 +401,19 @@ def test_a_mesh_raster_is_reused_when_its_stamp_matches(tmp_path, capsys):
 
 
 def test_the_direct_cache_carries_the_family_reader_and_its_plane(tmp_path):
-    stamp = direct_cache_stamp(8, 1, "build 1")
+    stamp = raster_cache_stamp(8, 1, "build 1")
     assert stamp["families"] == READER_VERSIONS["rock_families"]
     assert READER_VERSIONS["rock_families"] >= 2, "a plane without the desert family is a miss"
     np.zeros((8, 8), np.float32).tofile(tmp_path / DIRECT_Z_NAME)
     np.zeros((8, 8), np.uint8).tofile(tmp_path / DIRECT_COVERAGE_NAME)
-    (tmp_path / DIRECT_CACHE_SIDECAR).write_text(json.dumps(stamp), encoding="utf-8")
+    (tmp_path / CACHE_SIDECAR_NAME).write_text(json.dumps(stamp), encoding="utf-8")
     assert cached_family(tmp_path, stamp) is None, "no plane was written"
     np.full((8, 8), 3, np.uint8).tofile(tmp_path / DIRECT_FAMILY_NAME)
     plane = cached_family(tmp_path, stamp)
     assert plane is not None and int(plane[0, 0]) == 3
     del plane
     old = {k: v for k, v in stamp.items() if k != "families"}
-    (tmp_path / DIRECT_CACHE_SIDECAR).write_text(json.dumps(old), encoding="utf-8")
+    (tmp_path / CACHE_SIDECAR_NAME).write_text(json.dumps(old), encoding="utf-8")
     assert cached_family(tmp_path, stamp) is None, "a cache from before the families is a miss"
 
 
@@ -419,6 +427,7 @@ def test_the_new_readers_are_named_for_the_maps_tab():
 
 def _band_ground(floor):
     palette = copy.deepcopy(PAINTED_PALETTE)
+    palette["shore"].pop("inland", None)  # the opacity floor alone, without the depth floor
     w = palette["water"]
     linear = lambda c: (np.asarray(c, np.float32) / 255) ** 2.2
     return SimpleNamespace(
@@ -431,7 +440,7 @@ def _band_ground(floor):
                "sky": np.zeros(3, np.float32), "deep": linear(w["deep"]),
                "deep_tau_m": np.float32(12.0), "bed": np.float32(0.8),
                "inland_floor": np.float32(floor)},
-        opaque_water=[],
+        opaque_water=[], water_class=None, family_rock={}, crown_ops=[],
     )  # fmt: skip
 
 
@@ -444,7 +453,9 @@ def _shallow_scene(ocean):
         "water": {"cover": np.ones(shape, np.float32), "depth_m": np.full(shape, 0.05, np.float32),
                   "ocean": np.full(shape, ocean, np.float32), "edge": np.zeros(shape, np.float32),
                   "above_m": np.full(shape, np.inf, np.float32),
-                  "below_m": np.full(shape, np.inf, np.float32)},
+                  "below_m": np.full(shape, np.inf, np.float32),
+                  "river": np.zeros(shape, np.float32),
+                  "river_below_m": np.full(shape, np.inf, np.float32)},
     }  # fmt: skip
 
 

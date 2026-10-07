@@ -1,1 +1,1 @@
-"""The light axis: hillshade, sun term and artwork borrow."""
+"""The light axis: sun, hillshade, horizons, crown shadows, the model, its pyramid, the borrow."""

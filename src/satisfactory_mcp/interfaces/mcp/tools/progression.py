@@ -10,6 +10,8 @@ from pydantic import Field
 from ....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock, shards_for_clock
 from ....core.gamedata.model import GameData
 from ....domain.progression.ladder import Rung, SchematicLadder
+from ....domain.progression.views import PhaseRequirements, PhaseRow, ShardBudget
+from ....domain.world.state import WorldState
 from ....presenters.text import primitives as render
 from .. import app
 from ..params import AsOf, Limit
@@ -34,7 +36,7 @@ def _select(
     """One ladder view. ``affordable`` keeps BLOCKED rungs, because their bill IS covered
     and they are the rows whose answer is "go and clear the prerequisite first"; anything a
     ladder knows cannot be STARTED today belongs in ``startable`` instead."""
-    out = []
+    out: list[Rung] = []
     for r in rungs:
         if wanted != "all" and r.done:
             continue
@@ -100,10 +102,12 @@ def phase_requirements(
     )
 
 
-def _phase_rows(g: GameData, req: dict, stock: dict) -> tuple[list[tuple], dict]:
+def _phase_rows(
+    g: GameData, req: PhaseRequirements, stock: dict[str, float]
+) -> tuple[list[tuple[object, ...]], dict[str, dict[str, float]]]:
     """One row per phase against spendable stock, and each phase's shortfall by item."""
-    rows = []
-    short_by_phase = {}
+    rows: list[tuple[object, ...]] = []
+    short_by_phase: dict[str, dict[str, float]] = {}
     for row in req["phases"]:
         outstanding = row["outstanding"]
         ordered = sorted(outstanding.items(), key=lambda kv: -kv[1])
@@ -127,7 +131,7 @@ def _phase_rows(g: GameData, req: dict, stock: dict) -> tuple[list[tuple], dict]
     return rows, short_by_phase
 
 
-def _deliverable(target_row: dict | None, target_short: dict) -> str:
+def _deliverable(target_row: PhaseRow | None, target_short: dict[str, float]) -> str:
     """Whether the target phase could be delivered now, and which kind of row says so."""
     if target_row is None:
         return ""
@@ -144,7 +148,7 @@ def _deliverable(target_row: dict | None, target_short: dict) -> str:
     return deliverable
 
 
-def _phase_notes(req: dict, paid: dict) -> list[str]:
+def _phase_notes(req: PhaseRequirements, paid: dict[str, float]) -> list[str]:
     """Which of the save's two phase records each number comes from, and how far to trust it."""
     notes = [
         (
@@ -241,9 +245,9 @@ def power_shards(
     )
 
 
-def _shard_notes(budget: dict, per_shard: float) -> list[str]:
+def _shard_notes(budget: ShardBudget, per_shard: float) -> list[str]:
     """What the shard budget rests on: the measurement, the slot count, slugs, idle slots."""
-    notes = []
+    notes: list[str] = []
     if not budget["measured"]:
         notes.append(
             "[UNVERIFIED] this projection predates schema 9 and carries no "
@@ -284,7 +288,7 @@ def _shard_notes(budget: dict, per_shard: float) -> list[str]:
     return notes
 
 
-def _shard_plan_note(budget: dict, per_shard: float, machines: int, clock: float) -> str:
+def _shard_plan_note(budget: ShardBudget, per_shard: float, machines: int, clock: float) -> str:
     """Whether ``machines`` at ``clock`` fit the free shards, the craftable ones, or neither."""
     need_each = shards_for_clock(clock, per_shard)
     need = need_each * machines
@@ -368,7 +372,7 @@ def mam_research(
     )
 
 
-def _research_row(st, rung: Rung) -> tuple:
+def _research_row(st: WorldState, rung: Rung) -> tuple[str, ...]:
     cls = rung.schematic.cls
     state = st.research.status(rung)
     if state == "RUNNING":
@@ -384,7 +388,7 @@ def _research_row(st, rung: Rung) -> tuple:
     )
 
 
-def _research_notes(st, n_running: int, n_shut: int) -> list[str]:
+def _research_notes(st: WorldState, n_running: int, n_shut: int) -> list[str]:
     """The reading notes, then one line per capability the MAM has not yet granted."""
     notes = [
         (
@@ -484,9 +488,9 @@ def milestones(
     headers = ["status", "tier", "milestone", "cost", "short by", "unlocks"]
     if show_blocked:
         headers.append("blocked by")
-    rows = []
+    rows: list[list[object]] = []
     for rung in page:
-        row = [
+        row: list[object] = [
             rung.status,
             rung.schematic.tier,
             rung.schematic.name,
@@ -566,7 +570,7 @@ def somersloops(
         for h in holders
         if h["boost"] and h["boost_in_save"] and abs(h["boost"] - h["boost_in_save"]) > 1e-6
     ]
-    notes = []
+    notes: list[str] = []
     if gate is not None:
         bill = ", ".join(f"{r['need']:g} {r['name']}" for r in gate["cost"])
         notes.append(

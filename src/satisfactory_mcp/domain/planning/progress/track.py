@@ -13,15 +13,19 @@ from ....core.saveio.records import instance_leaf
 from ....core.text import ago
 from ...factories.select import SelectorError
 from ...factories.trace import feeder_records
+from ...factories.views import StateCount
 from ...power.report import biomass_note
+from ...power.views import PowerReport
 from ...spatial import nodes as nodes_mod
 from ...spatial.regions import load_regions
 from ...world.state import WorldState
 from ..readout.summary import failure_cause
+from ..siting.record import Siting
 from ..stored.planlog import PlanState
 from . import built as built_mod
-from .diff import CostLine, DiffRow, save_id
+from .diff import CostLine, DiffRow, request_of, save_id
 from .diff_service import DEFAULT_HEADROOM, DiffVsSaveReport, build_diff_report, resolve_headroom
+from .jobs import JobKey
 from .stages import (
     ENERGISED_CAVEAT,
     MONITORED_STATES,
@@ -33,6 +37,20 @@ from .stages import (
     partition_id,
 )
 from .startup import Commissioning
+from .views import (
+    Feeder,
+    FeedersResponse,
+    TrackBuiltAt,
+    TrackCost,
+    TrackMachine,
+    TrackPower,
+    TrackResponse,
+    TrackRow,
+    TrackSite,
+    TrackStage,
+    TrackStartup,
+    TrackTarget,
+)
 
 __all__ = [
     "COST_ROWS",
@@ -87,7 +105,7 @@ def page_text(text: str) -> str:
 
 def page_lines(text: str) -> list[str]:
     """``page_text`` split into one line per sentence, each starting lower case."""
-    out = []
+    out: list[str] = []
     for part in page_text(text).split(". "):
         part = part.strip().rstrip(".")
         if part[:1].isupper() and part[1:2].islower():
@@ -102,7 +120,7 @@ def _whole_metres(value: float) -> str:
     return f"{n if n else 0:,}"
 
 
-def site_line(site) -> str:
+def site_line(site: Siting) -> str:
     """The recorded site in page words: whole metres, degrees and a spaced footprint."""
     where = f"origin x {_whole_metres(site.x_m)} m, y {_whole_metres(site.y_m)} m"
     if site.z_m is not None:
@@ -134,7 +152,7 @@ def save_line(st: WorldState) -> str:
     return " · ".join(parts)
 
 
-def job_id(key: tuple) -> str:
+def job_id(key: JobKey) -> str:
     return "job:" + "|".join(str(k) for k in key)
 
 
@@ -144,7 +162,7 @@ def _cm_to_m(value: float) -> float:
 
 def _positions(st: WorldState) -> dict[str, tuple[float, float]]:
     """Every placed machine's position in metres, by its leaf name."""
-    out = {}
+    out: dict[str, tuple[float, float]] = {}
     for record in st.all_records():
         pos = record.get("pos")
         if pos:
@@ -166,12 +184,12 @@ def _bbox(points: list[tuple[float, float]]) -> list[float] | None:
     return [min(xs), min(ys), max(xs), max(ys)]
 
 
-def _states(counter: Counter) -> list[dict]:
+def _states(counter: Counter[str]) -> list[StateCount]:
     rows = sorted(((s, n) for s, n in counter.items() if n), key=lambda sn: (-sn[1], sn[0]))
     return [{"state": s, "count": n} for s, n in rows]
 
 
-def _machine(name: str, positions: dict) -> dict:
+def _machine(name: str, positions: dict[str, tuple[float, float]]) -> TrackMachine:
     x, y = positions.get(name, (None, None))
     return {"instance": name, "x_m": x, "y_m": y}
 
@@ -183,22 +201,24 @@ def _job_row(
     health: dict[str, str],
     positions: dict[str, tuple[float, float]],
     node_positions: dict[str, tuple[float, float]],
-    stages_by_row: dict[tuple, list[int]],
-) -> dict:
+    stages_by_row: dict[JobKey, list[int]],
+) -> TrackRow:
     """One ``TrackResponse.rows`` entry: a build job, what to do, and where on the map."""
-    kind = row.key[0] if row.key else ""
+    kind = (row.key[0] or "") if row.key else ""
     recipe_id = row.key[2] if kind == "recipe" and len(row.key) > 2 else None
     recipe = g.recipes.get(recipe_id or "")
     states = Counter(health.get(name, "unmonitored") for name in row.have_instances)
     monitored = sum(n for s, n in states.items() if s in MONITORED_STATES)
     act = [_machine(name, positions) for name in row.act_instances[:MAX_LISTED_INSTANCES]]
-    targets = []
+    targets: list[TrackTarget] = []
     for node, metres in row.targets[:MAX_LISTED_INSTANCES]:
         x, y = node_positions.get(node, (None, None))
         targets.append({"node": node, "x_m": x, "y_m": y, "m": round(metres, 1)})
     shown = act or [_machine(name, positions) for name in row.have_instances[:MAX_LISTED_INSTANCES]]
-    points = [(m["x_m"], m["y_m"]) for m in shown if m["x_m"] is not None]
-    points += [(t["x_m"], t["y_m"]) for t in targets if t["x_m"] is not None]
+    points = [(m["x_m"], m["y_m"]) for m in shown if m["x_m"] is not None and m["y_m"] is not None]
+    points += [
+        (t["x_m"], t["y_m"]) for t in targets if t["x_m"] is not None and t["y_m"] is not None
+    ]
     if act:
         selectors = ",".join(f"machine:{m['instance']}" for m in act)
     elif targets:
@@ -236,7 +256,7 @@ def _job_row(
     }
 
 
-def _stage_view(stage: Stage, positions: dict[str, tuple[float, float]]) -> dict:
+def _stage_view(stage: Stage, positions: dict[str, tuple[float, float]]) -> TrackStage:
     points = [positions[name] for row in stage.rows for name in row.instances if name in positions]
     return {
         "index": stage.index,
@@ -277,7 +297,7 @@ def _stage_view(stage: Stage, positions: dict[str, tuple[float, float]]) -> dict
     }
 
 
-def _power(power: dict, biomass: bool) -> dict:
+def _power(power: PowerReport, biomass: bool) -> TrackPower:
     return {
         "generation_mw": round(power.get("generation_mw", 0.0), 2),
         "draw_mw": round(power.get("draw_mw", 0.0), 2),
@@ -287,7 +307,9 @@ def _power(power: dict, biomass: bool) -> dict:
     }
 
 
-def _startup(startup: Commissioning | None, power: dict, stored: PlanState, default: str) -> dict:
+def _startup(
+    startup: Commissioning | None, power: PowerReport, stored: PlanState, default: str
+) -> TrackStartup:
     if startup is None:
         head, source = resolve_headroom(power, stored=stored, default=default)
         return {
@@ -310,8 +332,9 @@ def _startup(startup: Commissioning | None, power: dict, stored: PlanState, defa
     }
 
 
-def built_view(found: built_mod.BuiltAt | None, st: WorldState, stored: PlanState) -> dict:
-    """``TrackResponse.built_at``: where the plan's built machines were found, and progress."""
+def built_view(found: built_mod.BuiltAt | None, st: WorldState, stored: PlanState) -> TrackBuiltAt:
+    """``TrackResponse.built_at``: where the plan's built machines were found, and progress.
+    ``token`` is the web's to fill."""
     if found is None:
         found = built_mod.BuiltAt(mode=built_mod.mode_of(stored.factory))
     return {
@@ -344,10 +367,13 @@ def built_view(found: built_mod.BuiltAt | None, st: WorldState, stored: PlanStat
         "foreign": [f"{n} matching nearby belong to “{name}”" for name, n in found.foreign],
         "node_owner": found.node_owner,
         "labels_version": st.labels.version,
+        "token": "",
     }
 
 
-def _empty_track_view(st: WorldState, stored: PlanState, biomass: bool, default: str) -> dict:
+def _empty_track_view(
+    st: WorldState, stored: PlanState, biomass: bool, default: str
+) -> TrackResponse:
     """The ``TrackResponse`` before anything is solved or matched."""
     power = st.power_report(biomass=biomass)
     return {
@@ -390,9 +416,9 @@ def _empty_track_view(st: WorldState, stored: PlanState, biomass: bool, default:
     }
 
 
-def _stages_by_row(tracking: Tracking | None) -> dict[tuple, list[int]]:
+def _stages_by_row(tracking: Tracking | None) -> dict[JobKey, list[int]]:
     """Each build job's key -> the stages that energise part of it, in stage order."""
-    out: dict[tuple, list[int]] = {}
+    out: dict[JobKey, list[int]] = {}
     for stage in tracking.stages if tracking is not None else ():
         for row in stage.rows:
             out.setdefault(row.key, [])
@@ -401,7 +427,7 @@ def _stages_by_row(tracking: Tracking | None) -> dict[tuple, list[int]]:
     return out
 
 
-def _caveats(rows: list[dict], stages: list[dict], monitored: int) -> list[str]:
+def _caveats(rows: list[TrackRow], stages: list[TrackStage], monitored: int) -> list[str]:
     caveats = [PAGE_ENERGISED]
     ranged = any(r["build_max"] is not None and r["build_max"] != r["build"] for r in rows)
     ranged = ranged or any(s["built_max"] != s["built"] for s in stages)
@@ -412,7 +438,7 @@ def _caveats(rows: list[dict], stages: list[dict], monitored: int) -> list[str]:
     return caveats
 
 
-def _site_view(report: DiffVsSaveReport) -> dict | None:
+def _site_view(report: DiffVsSaveReport) -> TrackSite | None:
     survey = report.site_survey
     if report.site is None or survey is None:
         return None
@@ -426,7 +452,7 @@ def _site_view(report: DiffVsSaveReport) -> dict | None:
     }
 
 
-def _cost_rows(cost: list[CostLine]) -> list[dict]:
+def _cost_rows(cost: list[CostLine]) -> list[TrackCost]:
     return [
         {
             "item": c.item,
@@ -447,7 +473,7 @@ def track_view(
     *,
     biomass: bool = False,
     default: str = DEFAULT_HEADROOM,
-) -> dict:
+) -> TrackResponse:
     """The whole ``TrackResponse`` for one plan version, from one solve. ``default`` is the
     save's headroom (measured or nameplate) a plan with none stored is partitioned against."""
     kwargs = stored.kwargs()
@@ -470,14 +496,13 @@ def track_view(
         return out
 
     prepared = report.prepared
-    if prepared.request is not None:
-        out["plan_id"] = prepared.request.plan_id
+    out["plan_id"] = prepared.request.plan_id
     if prepared.failure is not None:
-        out.update(
-            feasible=False, headline=prepared.failure.headline, cause=failure_cause(prepared)
-        )
+        out["feasible"] = False
+        out["headline"] = prepared.failure.headline
+        out["cause"] = failure_cause(prepared)
         return out
-    out["headline"] = f"{objective} over {prepared.request.selection.description}"
+    out["headline"] = f"{objective} over {request_of(prepared).selection.description}"
     if report.empty or report.diff is None:
         out["empty"] = True
         return out
@@ -499,38 +524,42 @@ def track_view(
         notes.append(f"{left_out:,.0f} MW of biomass burners left out of generation and headroom")
 
     out.update(
-        save_id=diff.save_id,
-        scope_note=(
-            f"only machines in “{found.picked}” count as built, and nodes other factories "
-            "tap are taken"
-            if report.scope_note and found is not None
-            else ""
-        ),
-        drift_note=PAGE_DRIFT if report.drift_note else "",
-        current=tracking.current if tracking is not None and tracking.ok else 0,
-        count=len(stages),
-        partition_id=partition_id(tracking) if tracking is not None else "",
-        stage_text=tracking.headline(brief=True) if tracking is not None and placed else "",
-        to_build=diff.to_build,
-        to_build_max=diff.to_build_max,
-        actionable=sum(1 for r in diff.rows if r.actionable),
-        unpause=sum(r["count"] for r in rows if r["verb"] == "unpause"),
-        setrecipe=sum(r["count"] for r in rows if r["verb"] == "setrecipe"),
-        rows=rows,
-        stages=stages,
-        startup=_startup(report.startup, report.power, stored, default),
-        power=_power(report.power, biomass),
-        cost=_cost_rows(diff.cost),
-        neighbours=[{"label": label, "count": n} for label, n in diff.neighbours],
-        site=_site_view(report),
-        notes=notes,
-        caveats=_caveats(rows, stages, monitored),
-        monitored=monitored,
+        {
+            "save_id": diff.save_id,
+            "scope_note": (
+                f"only machines in “{found.picked}” count as built, and nodes other factories "
+                "tap are taken"
+                if report.scope_note and found is not None
+                else ""
+            ),
+            "drift_note": PAGE_DRIFT if report.drift_note else "",
+            "current": tracking.current if tracking is not None and tracking.ok else 0,
+            "count": len(stages),
+            "partition_id": partition_id(tracking) if tracking is not None else "",
+            "stage_text": (
+                tracking.headline(brief=True) if tracking is not None and placed else ""
+            ),
+            "to_build": diff.to_build,
+            "to_build_max": diff.to_build_max,
+            "actionable": sum(1 for r in diff.rows if r.actionable),
+            "unpause": sum(r["count"] for r in rows if r["verb"] == "unpause"),
+            "setrecipe": sum(r["count"] for r in rows if r["verb"] == "setrecipe"),
+            "rows": rows,
+            "stages": stages,
+            "startup": _startup(report.startup, report.power, stored, default),
+            "power": _power(report.power, biomass),
+            "cost": _cost_rows(diff.cost),
+            "neighbours": [{"label": label, "count": n} for label, n in diff.neighbours],
+            "site": _site_view(report),
+            "notes": notes,
+            "caveats": _caveats(rows, stages, monitored),
+            "monitored": monitored,
+        }
     )
     return out
 
 
-def feeders_view(g: GameData, st: WorldState, *, biomass: bool = False) -> dict:
+def feeders_view(g: GameData, st: WorldState, *, biomass: bool = False) -> FeedersResponse:
     """Built extractors whose output reaches a running generator, largest first.
 
     Extractors feeding the same generators each carry that generation, so the headline is
@@ -543,7 +572,7 @@ def feeders_view(g: GameData, st: WorldState, *, biomass: bool = False) -> dict:
         regions = load_regions()
     except (OSError, ValueError, KeyError):
         regions = None
-    feeders = []
+    feeders: list[Feeder] = []
     for record, name, mw in found:
         pos = record.get("pos")
         feeders.append(

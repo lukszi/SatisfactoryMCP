@@ -19,12 +19,12 @@ import { WORDS } from "../../kit/words";
 import type { NamedResponse, TrackBuiltAt, TrackBuiltCandidate } from "../../api/shapes";
 import type { BboxM } from "../../map/geometry";
 
-var SCOPE_WORLD = "/world";
-var SCOPE_NONE = "/none";
-var CLUSTER_PREFIX = "cluster:";
+const SCOPE_WORLD = "/world";
+const SCOPE_NONE = "/none";
+const CLUSTER_PREFIX = "cluster:";
 
-var naming = { key: "", proposal: -1, name: "", problem: "", busy: false };
-var picking = { key: "", open: false };
+let naming = { key: "", proposal: -1, name: "", problem: "", busy: false };
+let picking = { key: "", open: false };
 
 interface Figures {
   built: number | null;
@@ -184,7 +184,7 @@ function scopePicker(parent: HTMLElement, b: TrackBuiltAt): void {
 
 /** A [map] button that outlines a bounding box with the machines and these nodes' layers shown. */
 export function boxMapButton(bbox: number[] | null | undefined, what: string, nodeNames: string[]): HTMLButtonElement | null {
-  if (!bbox || bbox.length !== 4) return null;
+  if (bbox?.length !== 4) return null;
   const target = bbox as BboxM;
   return button(
     "map",
@@ -242,8 +242,10 @@ function builtLineActions(b: TrackBuiltAt): HTMLElement[] {
   } else if (b.confidence === "no site") {
     out.push(placeButton());
   }
-  const there = b.mode === "world" || b.confidence === "no site" ? null : boxMapButton(top ? top.bbox_m : null, "what counts as built", []);
-  if (there) out.push(there);
+  if (b.mode !== "world" && b.confidence !== "no site") {
+    const there = boxMapButton(top ? top.bbox_m : null, "what counts as built", []);
+    if (there) out.push(there);
+  }
   out.push(change);
   return out;
 }
@@ -266,6 +268,11 @@ function hintLine(parent: HTMLElement, b: TrackBuiltAt): void {
   parent.appendChild(line);
 }
 
+function progressFigureTitle(b: TrackBuiltAt): string {
+  if (b.built === null) return "not placed, so no progress";
+  return settingChoice("progress") === "percent" ? "show machines instead" : "show percent of the planned rate instead";
+}
+
 /** The built line under the Track headline, with its answers. */
 export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
   if (picking.key !== bench.key) picking = { key: bench.key, open: false };
@@ -274,7 +281,7 @@ export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
   line.setAttribute("data-ctl", "built-line");
   const figure = make("button", "built-figure", progressText(b));
   figure.type = "button";
-  figure.title = b.built === null ? "not placed, so no progress" : settingChoice("progress") === "percent" ? "show machines instead" : "show percent of the planned rate instead";
+  figure.title = progressFigureTitle(b);
   figure.disabled = b.built === null;
   figure.onclick = function (event) {
     event.stopPropagation();

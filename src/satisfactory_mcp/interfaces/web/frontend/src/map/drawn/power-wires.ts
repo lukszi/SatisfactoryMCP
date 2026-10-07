@@ -20,23 +20,23 @@ import type { PoleRow, PowerResponse, WireRow } from "../../api/shapes";
 import type { Point3M } from "../geometry";
 
 // The casing under every wire and pole: deep indigo on a light base, near-black on a dark one.
-var CASINGS = declareColours("power", { casing: "#1c1550", "casing dark": "#08060f" });
+const CASINGS = declareColours("power", { casing: "#1c1550", "casing dark": "#08060f" });
 
 function casingColour(): string {
   return byMapTone(CASINGS.casing, CASINGS["casing dark"]);
 }
 
 // The wire's core: violet, the hue this layer has to itself.
-var WIRE_COLOUR = declareColours("power", { wires: "#b8b0f8" }).wires;
+const WIRE_COLOUR = declareColours("power", { wires: "#b8b0f8" }).wires;
 
 // One value step above the wire: the line, and the thing the line ends at.
-var POLE_COLOUR = declareColours("power", { poles: "#d8c8f8" }).poles;
+const POLE_COLOUR = declareColours("power", { poles: "#d8c8f8" }).poles;
 
 /* A pole's disc in PIXELS, not metres: it answers "is there one here", like a node dot, and a
  * true-size pole is a fifth of a pixel at the world view. The steps follow how many wires each
  * kind carries (4, 7, 10), a pixel apart so they can be told apart, with wall sockets smallest.
  * An unknown class gets the Mk1 size: it is still a place where wires end. */
-var POLE_RADIUS_PX: Record<string, number> = {
+const POLE_RADIUS_PX: Record<string, number> = {
   Build_PowerPoleWall_C: 2.5,
   Build_PowerPoleWall_Mk2_C: 2.5,
   Build_PowerPoleWallDouble_Mk2_C: 2.5,
@@ -44,25 +44,25 @@ var POLE_RADIUS_PX: Record<string, number> = {
   Build_PowerPoleMk2_C: 4.2,
   Build_PowerPoleMk3_C: 5.2,
 };
-var POLE_FALLBACK_PX = 3.2;
+const POLE_FALLBACK_PX = 3.2;
 
 /* A Power Tower is a RING, not a bigger disc, because a size already means "more connections":
  * a ring says "structure, seen from above", as a conveyor lift's does. The biggest mark on the
  * layer, because towers carry the long spans the whole-world view is read by. */
-var TOWER_CLASS = "Build_PowerTowerPlatform_C";
-var TOWER_RADIUS_PX = 7.5;
-var TOWER_WEIGHT_PX = 2;
+const TOWER_CLASS = "Build_PowerTowerPlatform_C";
+const TOWER_RADIUS_PX = 7.5;
+const TOWER_WEIGHT_PX = 2;
 
 /* The casing's extra width in SCREEN pixels, so the rim is 1 px a side at every zoom; the zoom
  * pass re-adds it through `_widen`. The same rim widens a tower's ring. */
-var WIRE_CASING_PX = 2;
+const WIRE_CASING_PX = 2;
 
 /* A disc's rim, thinner than a wire's casing: an outline all the way round needs less to read
  * as edged, and 2 px on a 2.5 px wall socket would be a dark dot. */
-var POLE_RIM_PX = 1;
+const POLE_RIM_PX = 1;
 
 /* One opacity for the whole layer, casing and core alike, matching the belts and pipes. */
-var WIRE_OPACITY = 0.85;
+const WIRE_OPACITY = 0.85;
 
 function poleRadius(cls: string | null): number {
   if (cls === TOWER_CLASS) return TOWER_RADIUS_PX;

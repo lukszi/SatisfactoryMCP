@@ -8,16 +8,21 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from types import SimpleNamespace
+from typing import cast
 
 import numpy as np
 import pytest
 
+from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting import stage
-from mapgen.lighting.stage import Surface, bake_light, occluder_planes
-from mapgen.tiles.lit import (
+from mapgen.lighting.bake import bake_light
+from mapgen.lighting.occluders import CrownGrid
+from mapgen.lighting.stage import Surface, occluder_planes
+from mapgen.render.draw.light import (
     LIGHT_CACHE_DIR_NAME,
+    SCRATCH_IN_USE,
+    CrownTops,
     add_light_flags,
     claim_scratch,
     light_run,
@@ -31,10 +36,10 @@ def _args(*argv: str) -> argparse.Namespace:
     return parser.parse_args(list(argv))
 
 
-def _painted() -> SimpleNamespace:
-    grid = {"x0_cm": BOUNDS_M["x_min_m"] * 100.0, "y0_cm": BOUNDS_M["y_min_m"] * 100.0,
-            "spacing_cm": 100.0}  # fmt: skip
-    return SimpleNamespace(crown=np.full((8, 8), 120, np.int16), meta={"grid": grid})
+def _crowns() -> CrownTops:
+    grid: CrownGrid = {"x0_cm": BOUNDS_M["x_min_m"] * 100.0,
+                       "y0_cm": BOUNDS_M["y_min_m"] * 100.0, "spacing_cm": 100.0}  # fmt: skip
+    return CrownTops(np.full((8, 8), 120, np.int16), grid)
 
 
 def test_the_scratch_goes_under_scratch_dir_else_the_cache_dir_else_the_renders(tmp_path):
@@ -61,23 +66,44 @@ def test_a_lit_run_starts_by_emptying_what_a_killed_run_left(tmp_path):
 def test_the_scratch_of_a_render_still_running_is_refused_and_left_as_it_is(tmp_path):
     live = Surface(tmp_path / LIGHT_CACHE_DIR_NAME, 16)
     np.save(live.path("terms"), np.zeros((16, 16, 3), np.uint8))
-    with pytest.raises(SystemExit, match="still running"):
+    with pytest.raises(Refusal, match="still running") as refused:
         claim_scratch(_args(), tmp_path)
+    assert refused.value.code == SCRATCH_IN_USE
     assert live.path("terms").is_file() and live.path("z").is_file()
     live.close()
 
 
 def test_a_run_that_fails_still_deletes_its_scratch(tmp_path):
-    with pytest.raises(RuntimeError), light_run(tmp_path, 16, _painted()) as run:
+    with pytest.raises(RuntimeError), light_run(tmp_path, 16, _crowns()) as run:
         assert sorted(p.name for p in (tmp_path / LIGHT_CACHE_DIR_NAME).glob("occluder*")) == [
             "occluder.npy",
             "occluder_cover.npy",
         ]
-        run.surface_for().put(0, np.zeros((16, 16), np.float32), np.ones((16, 16), np.float32))
+        run.surface.put(0, np.zeros((16, 16), np.float32), np.ones((16, 16), np.float32))
         raise RuntimeError("a layer failed part way")
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
-    with light_run(None, 16, _painted()) as run:
+    with light_run(None, 16, _crowns()) as run:
         assert run is None
+
+
+def test_a_run_that_baked_deletes_its_scratch_crowns_and_all(tmp_path):
+    """The bake holds the crowns' memory maps until it is closed, and Windows deletes no
+    mapped file."""
+    with light_run(tmp_path, 256, _crowns(), workers=1) as run:
+        assert run is not None
+        run.begin(tmp_path / "r")
+        run.surface.put(0, np.zeros((256, 256), np.float32), np.ones((256, 256), np.float32))
+        run.drawn(256)
+        run.finish(lambda: None)
+    assert (tmp_path / "r" / "light" / "meta.json").is_file()
+    assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
+
+
+def test_crowns_that_fail_to_write_leave_no_scratch_behind(tmp_path):
+    broken = CrownTops(np.full((8, 8), 120, np.int16), cast(CrownGrid, {}))
+    with pytest.raises(KeyError), light_run(tmp_path, 16, broken):
+        pass
+    assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
 
 
 def _surface(work: Path, size: int) -> Surface:

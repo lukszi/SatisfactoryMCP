@@ -10,8 +10,9 @@ from .....core.gamedata.unlocks import granted_by_label
 from .....domain.planning.analysis import bom as bom_mod
 from .....domain.planning.analysis import recipe_routes
 from .....domain.planning.analysis.byproducts import analyse
-from .....domain.planning.analysis.sensitivity import sweep_unlocks
+from .....domain.planning.analysis.sensitivity import UnlockDelta, UnlockSweep, sweep_unlocks
 from .....domain.planning.solver.prepare import prepare
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from .....presenters.text.bom import render_bom
 from .....presenters.text.byproducts import render_byproducts
@@ -57,7 +58,7 @@ def explain_byproducts(
         exports=exports,
         export_minimums=export_minimums,
         allow_sinks=allow_sinks,
-        item=app.resolve_item_id(item) if item else None,
+        item=item,
         exclude_recipes=exclude_recipes,
     )
     return render_byproducts(g, report, limit=render.clamp(limit, default=12))
@@ -84,18 +85,18 @@ def compare_recipe_options(
     """
     g = app.game()
     st = app.load_world(save, world, as_of)
-    iid = app.resolve_item_id(item)
-    if iid is None:
-        return f"no item matching {item!r}"
-    result = recipe_routes.compare_routes(
-        g,
-        st,
-        iid,
-        rate=rate,
-        allow_sinks=allow_sinks,
-        outlets=outlets,
-        per_resource=app.resolve_item_id(per_resource) if per_resource else None,
-    )
+    try:
+        result = recipe_routes.compare_routes(
+            g,
+            st,
+            item,
+            rate=rate,
+            allow_sinks=allow_sinks,
+            outlets=outlets,
+            per_resource=per_resource,
+        )
+    except ValueError as exc:
+        return f"! {exc}"
     return render_comparison(result, limit=render.clamp(limit, default=10))
 
 
@@ -138,9 +139,9 @@ def bom(
     return render_bom(result, limit=render.clamp(limit, default=20), offset=max(0, offset))
 
 
-def _drives_offering(st) -> dict[str, int]:
+def _drives_offering(st: WorldState) -> dict[str, int | None]:
     """Recipe class id -> the pending hard drive offering it: claimable today."""
-    on_offer: dict[str, int] = {}
+    on_offer: dict[str, int | None] = {}
     for offer in st.hard_drive_offers:
         for option in offer.options:
             for recipe in option["recipes"]:
@@ -148,7 +149,13 @@ def _drives_offering(st) -> dict[str, int]:
     return on_offer
 
 
-def _unlock_notes(st, sweep, movers, on_offer: dict[str, int], plan: str | None) -> list[str]:
+def _unlock_notes(
+    st: WorldState,
+    sweep: UnlockSweep,
+    movers: list[UnlockDelta],
+    on_offer: dict[str, int | None],
+    plan: str | None,
+) -> list[str]:
     """What the ranking can and cannot claim, and which gains are claimable now."""
     notes = [
         (

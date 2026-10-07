@@ -11,15 +11,19 @@ import { machineSelection, select } from "../app/selection";
 import type { Selection } from "../app/selection";
 import type { BboxM } from "./geometry";
 
-export var HIGHLIGHT = declareColours("map-highlight", { highlight: "#ff4fd8" }).highlight;
+export const HIGHLIGHT = declareColours("map-highlight", { highlight: "#ff4fd8" }).highlight;
 
-var MACHINE_ZOOM = 2;
+const MACHINE_ZOOM = 2;
 
-var highlightLayer = L.layerGroup();
+const highlightLayer = L.layerGroup();
 
 /* The selection key the ring stands on, so a selection that is already ringed is not
  * redrawn. */
-export var ringedKey = "";
+let ringedKey = "";
+
+export function isRinged(key: string): boolean {
+  return ringedKey === key;
+}
 
 export function outline(bounds: L.LatLngBounds): void {
   clearMark();
@@ -61,17 +65,17 @@ export function selectAndRing(x_m: number, y_m: number, label?: string, stay?: b
 }
 
 export function showPoint(x_m: number, y_m: number, options?: { label?: string; layers?: string[]; stay?: boolean }): void {
-  if (options && options.layers) reveal(options.layers);
-  selectAndRing(x_m, y_m, options && options.label, options && options.stay);
+  if (options?.layers) reveal(options.layers);
+  selectAndRing(x_m, y_m, options?.label, options?.stay);
 }
 
 export function showMachine(instance: string, name: string, x_m: number, y_m: number, options?: { layers?: string[]; stay?: boolean }): void {
-  if (options && options.layers) reveal(options.layers);
-  selectAndRing(x_m, y_m, name, options && options.stay, machineSelection(instance, name, x_m, y_m));
+  if (options?.layers) reveal(options.layers);
+  selectAndRing(x_m, y_m, name, options?.stay, machineSelection(instance, name, x_m, y_m));
 }
 
 export function showBox(bbox_m: BboxM, options?: { layers?: string[] }): void {
-  if (options && options.layers) reveal(options.layers);
+  if (options?.layers) reveal(options.layers);
   const bounds = flyToBuiltArea(bbox_m);
   if (bounds) outline(bounds);
 }

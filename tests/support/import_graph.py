@@ -22,9 +22,12 @@ WEB = PKG / "interfaces" / "web"
 WEB_ROUTERS = WEB / "routers"
 
 #: The ``gen`` extra: ``ooz`` (from pyooz), ``texture2ddecoder`` and Pillow, which the
-#: generators need to read the installed game's container, and ``zstandard``, the render
-#: caches' codec (``mapgen.bandstore``).
-GEN_EXTRA_ROOTS = frozenset({"ooz", "pyooz", "texture2ddecoder", "PIL", "zstandard"})
+#: generators need to read the installed game's container, ``zstandard``, the render
+#: caches' codec (``mapgen.bandstore``), and ``numba``, the render's kernels (``mapgen.jit``).
+GEN_EXTRA_ROOTS = frozenset({"ooz", "pyooz", "texture2ddecoder", "PIL", "zstandard", "numba"})
+
+#: The ``gpu`` extra: CuPy, which compiles and runs the render's CUDA kernels (``mapgen.jit``).
+GPU_EXTRA_ROOTS = frozenset({"cupy"})
 
 
 def parse(path: Path) -> ast.Module:

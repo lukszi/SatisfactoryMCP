@@ -48,14 +48,14 @@ export function parseLight(raw: string | null): LightHeader | null {
   if (!raw) return null;
   try {
     const head = JSON.parse(raw) as LightHeader;
-    if (head && head.params && head.model && isFinite(head.max_z) && isFinite(head.unlit_max_z)) return head;
+    if (head?.params && head.model && isFinite(head.max_z) && isFinite(head.unlit_max_z)) return head;
   } catch (ignored) {
     /* a header this page cannot read is a layer drawn the baked way */
   }
   return null;
 }
 
-var probed: boolean | null = null;
+let probed: boolean | null = null;
 
 /** Whether this browser can draw a lit layer at all. */
 export function webglReady(): boolean {
@@ -69,11 +69,11 @@ export function webglReady(): boolean {
   return probed;
 }
 
-var VS = `#version 300 es
+const VS = `#version 300 es
 in vec2 aP; uniform vec4 uRect; uniform vec2 uVP; out vec2 vUV;
 void main(){ vUV=aP; vec2 p=(uRect.xy+aP*uRect.zw)/uVP*2.0-1.0; gl_Position=vec4(p.x,-p.y,0.,1.); }`;
 
-var FS = `#version 300 es
+const FS = `#version 300 es
 precision highp float;
 in vec2 vUV; out vec4 o;
 uniform sampler2D tCol, tNrm, tHz;
@@ -113,14 +113,14 @@ void main(){
   o = uLinear>0.5 ? vec4(l2s(t.r),l2s(t.g),l2s(t.b),1.0) : vec4(clamp(x,0.0,1.0),1.0);
 }`;
 
-var UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm", "uAmb",
+const UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm", "uAmb",
   "uTK", "uTW", "uSoft", "uShadowOn", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1", "uFill", "uRows",
   "uCrownOn", "uCrown"];
-var KINDS = ["unlit", "nrm", "hz"];
-var CACHE_TILES = 120;
-var IN_FLIGHT = 8;
-var FAILS_TO_GIVE_UP = 6;
-var COARSE_LEVELS = 4;
+const KINDS = ["unlit", "nrm", "hz"];
+const CACHE_TILES = 120;
+const IN_FLIGHT = 8;
+const FAILS_TO_GIVE_UP = 6;
+const COARSE_LEVELS = 4;
 
 /** One tile's three textures, and the frame that last drew it. */
 interface CachedTile {
@@ -441,10 +441,7 @@ export function makeLitLayer(tileLayerId: string, light: LightHeader, onFail: (w
   function animZoom(event: L.ZoomAnimEvent): void {
     if (!canvas || !drawnCorner) return;
     const scale = map.getZoomScale(event.zoom, drawnZoom);
-    const private_ = map as unknown as {
-      _latLngToNewLayerPoint(at: L.LatLng, zoom: number, centre: L.LatLng): L.Point;
-    };
-    L.DomUtil.setTransform(canvas, private_._latLngToNewLayerPoint(drawnCorner, event.zoom, event.center), scale);
+    L.DomUtil.setTransform(canvas, map._latLngToNewLayerPoint(drawnCorner, event.zoom, event.center), scale);
   }
 
   function start(): void {

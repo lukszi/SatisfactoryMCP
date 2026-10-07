@@ -6,7 +6,8 @@ import { appendNote, error, loading } from "../../kit/dashkit";
 import { count, flow, pct } from "../../kit/format";
 import { showBox } from "../../map/map-highlight";
 import { state } from "../../app/state";
-import { drawGraph, graphCardFrame, GRAPH_HINT, stateLine } from "../graph";
+import { drawGraph, stateLine } from "../graph";
+import { graphCardFrame, GRAPH_HINT } from "../graph-frame";
 import { leaveDashThen, requestRender } from "../actions";
 
 import type { FactoryGraphResponse, GraphNode } from "../../api/shapes";
@@ -86,7 +87,7 @@ export function openGraph(source: GraphSource, subject: string, title: string, t
     .then(function (data) {
       if (!ticket.fresh()) return;
       graphView.data = data;
-      graphView.drawn = drawGraph(data, nodeTip, showGroupOnMap);
+      graphView.drawn = data.nodes.length ? drawGraph(data, nodeTip, showGroupOnMap) : null;
     })
     .catch(function (failure) {
       if (!ticket.fresh()) return;
@@ -113,6 +114,8 @@ export function renderGraphCard(parent: HTMLElement): void {
     error(card, "the graph", graphView.failure, function () {
       if (again.source) openGraph(again.source, again.subject, again.title, again.token);
     });
+  } else if (data && !data.nodes.length) {
+    appendNote(card, "nothing to draw");
   } else if (graphView.drawn && data) {
     card.appendChild(graphView.drawn);
     const lead = "nameplate rates split over each item's producers by share" + (data.buffers ? " · " + count(data.buffers) + " boxes walked through" : "");

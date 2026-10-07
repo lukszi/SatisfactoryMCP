@@ -8,9 +8,11 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....domain.collectibles import service
 from .....domain.collectibles.service import collect_view
@@ -28,6 +30,9 @@ router = APIRouter(prefix="/api")
 
 
 # ---------------------------------------------------------------- collectibles
+
+
+Mode = Literal["census", "collected", "remaining", "nearest"]
 
 
 class CensusRow(TypedDict):
@@ -64,7 +69,7 @@ class CollectiblesResponse(TypedDict):
     measures no distance.
     """
 
-    mode: Literal["census", "collected", "remaining", "nearest"]
+    mode: Mode
     group: str | None
     rows: list[CollectibleRow]
     counts: dict[str, int]
@@ -86,7 +91,7 @@ def collectibles(
     spoilers: Annotated[int | None, Query(ge=0, le=1)] = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> CollectiblesResponse | JSONResponse:
     """Map placements, filtered exactly the way the MCP tool filters them.
 
     ``collect_view`` owns every refusal -- unknown mode, retired group, and the one that
@@ -119,7 +124,8 @@ def collectibles(
     if hidden:
         counts = service.state_counts(r for r in view.rows or () if r["category"] not in hidden)
     return {
-        "mode": view.mode,
+        # ``collect_view`` refused every other word before it built a view.
+        "mode": cast(Mode, view.mode),
         "group": view.group,
         "rows": rows,
         "counts": counts,

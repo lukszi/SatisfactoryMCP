@@ -10,6 +10,7 @@ import sys
 
 from tests.support.import_graph import (
     GEN_EXTRA_ROOTS,
+    GPU_EXTRA_ROOTS,
     PARSER_PKG,
     PKG,
     edges,
@@ -26,8 +27,8 @@ from tests.support.import_graph import (
 GAMEASSETS = "satisfactory_mcp.core.gameassets"
 
 #: What ``core.gameassets`` may import at module scope besides the stdlib and ``core``:
-#: numpy, a hard dependency of the project rather than an extra.
-GAMEASSETS_HARD_ROOTS = frozenset({"numpy"})
+#: numpy and typing_extensions, hard dependencies of the project rather than extras.
+GAMEASSETS_HARD_ROOTS = frozenset({"numpy", "typing_extensions"})
 
 
 def _gameassets_sources():
@@ -65,6 +66,16 @@ def test_the_gen_extra_is_optional_at_import_time():
         "function that needs them, the way `iostore.oodle_decompress` does:\n"
         + "\n".join(sorted(eager))
     )
+
+
+def test_the_gpu_extra_is_the_generators_alone():
+    """CuPy runs the render's CUDA kernels in ``tools/mapgen``; the package never names it."""
+    found = {
+        (importer, target)
+        for importer, target in edges() | edges(PARSER_PKG)
+        if root_of(target) in GPU_EXTRA_ROOTS
+    }
+    assert not found, "the `gpu` extra is the generators' alone:\n" + _describe(found)
 
 
 def test_gameassets_never_imports_dynamically():
@@ -113,7 +124,8 @@ def test_gameassets_imports_nothing_but_the_stdlib_and_core():
                     stray.append(f"  {name}:{node.lineno} imports {target}")
     assert not stray, (
         "core/gameassets may import the standard library, satisfactory_mcp.core (and "
-        "config), numpy, and the `gen` extra from inside a function -- nothing else, or "
+        "config), numpy, typing_extensions, and the `gen` extra from inside a function -- "
+        "nothing else, or "
         "reading the game's assets stops being something the server can be built without:\n"
         + "\n".join(sorted(stray))
     )

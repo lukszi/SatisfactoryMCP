@@ -162,7 +162,7 @@ def local_map_url(
     off by default, ``show`` is the place the page opens (docs/selectors.md), and ``mode`` a
     base map type id.
     """
-    parts = []
+    parts: list[str] = []
     if world:
         parts.append("world=" + quote(world, safe=""))
     if mode:

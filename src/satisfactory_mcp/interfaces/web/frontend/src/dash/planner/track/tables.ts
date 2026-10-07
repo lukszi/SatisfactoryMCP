@@ -17,9 +17,9 @@ import { counted, TRACK_VERB, WORDS } from "../../../kit/words";
 import type { Column } from "../../../kit/dashkit";
 import type { AskAbout, FocusSelection, TrackCost, TrackResponse, TrackRow, TrackSiteRow, TrackState } from "../../../api/shapes";
 
-export var TRACK_TABLE_NARROW = window.matchMedia("(max-width: 899px)");
+export const TRACK_TABLE_NARROW = window.matchMedia("(max-width: 899px)");
 
-var refocusCtl = "";
+let refocusCtl = "";
 
 TRACK_TABLE_NARROW.addEventListener("change", function () {
   if (bench.tab === "track") changed();

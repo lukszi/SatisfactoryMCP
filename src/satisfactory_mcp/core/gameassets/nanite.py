@@ -45,12 +45,12 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 import numpy as np
+from typing_extensions import TypedDict
 
-if TYPE_CHECKING:
-    from .staticmesh import NaniteResource
+from ..arrays import F32Grid, F64Grid, I32Grid, I64Grid, U8Grid
+from .meshdata import NaniteResource
 
 NANITE_FIXUP_MAGIC = 0x464E
 MAX_CLUSTERS_PER_PAGE_BITS = 8  # 5.4+: max(17-9, 15-9) = 8
@@ -61,6 +61,16 @@ MIN_POSITION_PRECISION = -20  # 5.4+
 
 class DecodeError(Exception):
     pass
+
+
+class DecodedMesh(TypedDict):
+    """One mesh's leaf level in mesh-local centimetres, welded, and what was counted on the way."""
+
+    positions: F32Grid
+    triangles: I64Grid
+    total_clusters: int
+    leaf_clusters: int
+    vertices_before_weld: int
 
 
 # ---------------------------------------------------------------- bit helpers
@@ -104,6 +114,11 @@ def precision_scale(exponent: int) -> float:
 # ---------------------------------------------------------------- structures
 
 
+def _no_rows() -> I64Grid:
+    """A ``(0, 3)`` array: a cluster's vertices and triangles until its page is decoded."""
+    return np.zeros((0, 3), dtype=np.int64)
+
+
 @dataclass
 class Cluster:
     index: int
@@ -120,8 +135,8 @@ class Cluster:
     edge_length: float
     flags: int
     material_encoding: int
-    raw_pos: np.ndarray | None = None  # (num_verts, 3) int64, page-local quantised
-    tris: np.ndarray | None = None  # (num_tris, 3) int32, cluster-local vertex ids
+    raw_pos: I64Grid = field(default_factory=_no_rows)  # (num_verts, 3), page-local quantised
+    tris: I64Grid = field(default_factory=_no_rows)  # (num_tris, 3), cluster-local vertex ids
 
     @property
     def is_leaf(self) -> bool:
@@ -152,8 +167,8 @@ class Page:
     decode_info_offset: int
     disk_header_at: int
     gpu_header_at: int
-    clusters: list[Cluster] = field(default_factory=list)
-    headers: list[ClusterDiskHeader] = field(default_factory=list)
+    clusters: list[Cluster] = field(default_factory=list[Cluster])
+    headers: list[ClusterDiskHeader] = field(default_factory=list[ClusterDiskHeader])
 
 
 # ---------------------------------------------------------------- page reader
@@ -209,7 +224,7 @@ def parse_page_headers(data: bytes, page_index: int) -> tuple[Page, PageReader]:
             f"disk header {disk_header_clusters}"
         )
 
-    headers = []
+    headers: list[ClusterDiskHeader] = []
     for _ in range(num_clusters):
         fields = struct.unpack_from("<9I", data, at)
         at += 36
@@ -424,7 +439,7 @@ def decode_indices(
 
 def vertex_ref_maps(
     reader: PageReader, page: Page, cluster: Cluster, disk_header: ClusterDiskHeader
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[I64Grid, I64Grid]:
     """Split the cluster's vertex slots into 'stored here' and 'a reference to another
     cluster', from a 256-bit per-cluster bitmask."""
     base = page.disk_header_at + page.vertex_ref_bitmask_offset + cluster.index * 32
@@ -453,7 +468,7 @@ def vertex_ref_maps(
 
 def decode_positions(
     reader: PageReader, page: Page, cluster: Cluster, disk_header: ClusterDiskHeader
-) -> np.ndarray:
+) -> I64Grid:
     """The non-referenced vertices' quantised positions.
 
     Stored as a delta stream in low/mid/high byte planes: plane k holds byte k of every
@@ -468,23 +483,15 @@ def decode_positions(
     bytes_per_value = (max(bx, by, bz) + 7) // 8
     count = 3 * num_non_ref
 
-    planes = []
-    for plane_offset, needed in (
-        (disk_header.low_bytes, 1),
-        (disk_header.mid_bytes, 2),
-        (disk_header.high_bytes, 3),
-    ):
-        if bytes_per_value >= needed:
-            at = page.disk_header_at + plane_offset
-            planes.append(np.frombuffer(reader.buf, dtype=np.uint8, count=count, offset=at))
-        else:
-            planes.append(None)
+    def plane(offset: int) -> U8Grid:
+        at = page.disk_header_at + offset
+        return np.frombuffer(reader.buf, dtype=np.uint8, count=count, offset=at)
 
-    packed = planes[0].astype(np.uint32)
-    if planes[1] is not None:
-        packed = packed | (planes[1].astype(np.uint32) << 8)
-    if planes[2] is not None:
-        packed = packed | (planes[2].astype(np.uint32) << 16)
+    packed = plane(disk_header.low_bytes).astype(np.uint32)
+    if bytes_per_value >= 2:
+        packed = packed | (plane(disk_header.mid_bytes).astype(np.uint32) << 8)
+    if bytes_per_value >= 3:
+        packed = packed | (plane(disk_header.high_bytes).astype(np.uint32) << 16)
     packed = packed.reshape(num_non_ref, 3)
 
     # zigzag -> signed delta -> running sum, seeded at each axis' midpoint
@@ -499,11 +506,11 @@ def decode_positions(
 # ---------------------------------------------------------------- driver
 
 
-def decode_page(data: bytes, page_index: int) -> tuple[Page, PageReader, list[np.ndarray]]:
+def decode_page(data: bytes, page_index: int) -> tuple[Page, PageReader, list[I64Grid]]:
     page, reader = parse_page_headers(data, page_index)
     parse_clusters(page, reader)
 
-    ref_maps: list[np.ndarray] = []
+    ref_maps: list[I64Grid] = []
     for cluster in page.clusters:
         disk_header = page.headers[cluster.index]
         decode_indices(reader, page, cluster, disk_header)
@@ -520,7 +527,7 @@ def decode_page(data: bytes, page_index: int) -> tuple[Page, PageReader, list[np
 def resolve_vertex_references(
     pages: list[Page],
     readers: list[PageReader],
-    ref_maps: list[list[np.ndarray]],
+    ref_maps: list[list[I64Grid]],
     page_index: int,
     page_dependencies: list[int],
     deps_start: int,
@@ -558,12 +565,12 @@ def resolve_vertex_references(
             cluster.raw_pos[vertex_index] = src_cluster.raw_pos[src_vertex]
 
 
-def decode_resource(resource: NaniteResource) -> dict:
+def decode_resource(resource: NaniteResource) -> DecodedMesh:
     """Decode every page of one mesh. Returns per-cluster geometry plus the leaf level
     assembled into a single (positions, triangles) pair in mesh local space."""
     pages: list[Page] = []
     readers: list[PageReader] = []
-    ref_maps: list[list[np.ndarray]] = []
+    ref_maps: list[list[I64Grid]] = []
 
     for span in resource.pages:
         page, reader, refs = decode_page(span.data, span.index)
@@ -576,8 +583,8 @@ def decode_resource(resource: NaniteResource) -> dict:
             pages, readers, ref_maps, span.index, resource.page_dependencies, span.deps_start
         )
 
-    leaf_pos: list[np.ndarray] = []
-    leaf_tris: list[np.ndarray] = []
+    leaf_pos: list[F64Grid] = []
+    leaf_tris: list[I64Grid] = []
     total_clusters = 0
     leaf_clusters = 0
     base = 0
@@ -616,7 +623,7 @@ def decode_resource(resource: NaniteResource) -> dict:
 WELD_DECIMALS = 3
 
 
-def weld(positions: np.ndarray, triangles: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def weld(positions: F32Grid, triangles: I64Grid) -> tuple[F32Grid, I64Grid]:
     """Merge the duplicate vertices Nanite leaves at every cluster boundary.
 
     A cluster is a self-contained strip: it carries its own copy of any vertex it shares
@@ -640,7 +647,7 @@ def weld(positions: np.ndarray, triangles: np.ndarray) -> tuple[np.ndarray, np.n
     return positions[first], inverse.reshape(-1)[triangles].astype(np.int64)
 
 
-def boundary_edges(triangles: np.ndarray) -> int:
+def boundary_edges(triangles: I32Grid | I64Grid) -> int:
     """How many edges of this triangle soup are used by exactly one face.
 
     Zero on a closed 2-manifold, and thousands on a decode that got one bit wrong -- which
@@ -658,7 +665,7 @@ def boundary_edges(triangles: np.ndarray) -> int:
     return int((counts == 1).sum())
 
 
-def identity_checks(resource: NaniteResource, decoded: dict) -> list[str]:
+def identity_checks(resource: NaniteResource, decoded: DecodedMesh) -> list[str]:
     """What the mesh says about itself against what came out. Empty means agreement.
 
     Not a summary of the decode: two independent statements in the file -- the resource

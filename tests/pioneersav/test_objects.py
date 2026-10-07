@@ -44,17 +44,12 @@ from pioneersav import (
     ParseError,
     read_body,
 )
-from tests.support.paths import FIXTURES
-
-FIXTURE = FIXTURES / "save_body.bin"
-FIXTURE_V52 = FIXTURES / "save_body_v52.bin"
+from tests.support.paths import committed_fixture
 
 
 @pytest.fixture(scope="module")
 def raw() -> bytes:
-    if not FIXTURE.is_file():
-        pytest.skip("body fixture not committed")
-    return FIXTURE.read_bytes()
+    return committed_fixture("save_body.bin").read_bytes()
 
 
 @pytest.fixture(scope="module")
@@ -64,9 +59,7 @@ def save(raw):
 
 @pytest.fixture(scope="module")
 def raw_v52() -> bytes:
-    if not FIXTURE_V52.is_file():
-        pytest.skip("saveVersion 52 body fixture not committed")
-    return FIXTURE_V52.read_bytes()
+    return committed_fixture("save_body_v52.bin").read_bytes()
 
 
 def _relength(payload: bytes) -> bytes:

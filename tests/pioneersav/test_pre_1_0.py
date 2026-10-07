@@ -62,7 +62,7 @@ from pioneersav import (
 from pioneersav.chunks import OLD_PREAMBLE_BYTES, PREAMBLE_BYTES
 from pioneersav.header import PACKAGE_FILE_TAG
 from pioneersav.save import UNDECODED_TRAILER_CLASSES
-from tests.support.paths import FIXTURES
+from tests.support.paths import committed_fixture
 
 #: The measured tag offset for each old layout, over all 35 files: 12 saves land on 146, 9 on
 #: 159 and 14 on 186. Unlike saveHeaderType 14 -- whose ``save_name`` is variable-length and
@@ -77,17 +77,11 @@ OLD_VERSIONS = (25, 28, 30, 36)
 
 
 def header_fixture(version: int) -> bytes:
-    path = FIXTURES / f"save_header_v{version}.bin"
-    if not path.is_file():
-        pytest.skip(f"pre-1.0 header fixture for saveVersion {version} not committed")
-    return path.read_bytes()
+    return committed_fixture(f"save_header_v{version}.bin").read_bytes()
 
 
 def body_fixture(version: int) -> bytes:
-    path = FIXTURES / f"save_body_v{version}.bin"
-    if not path.is_file():
-        pytest.skip(f"pre-1.0 body fixture for saveVersion {version} not committed")
-    return path.read_bytes()
+    return committed_fixture(f"save_body_v{version}.bin").read_bytes()
 
 
 @pytest.fixture(scope="module")
@@ -103,10 +97,7 @@ def body_v36() -> bytes:
 @pytest.fixture(scope="module")
 def ue4_blocks() -> dict[str, tuple[bytes, ObjectSlice, bool, int]]:
     """Every UE4 property block, keyed by name: ``(raw, slot, is_actor, save_version)``."""
-    path = FIXTURES / "save_properties_ue4.bin"
-    if not path.is_file():
-        pytest.skip("pre-1.0 property fixture not committed")
-    raw = path.read_bytes()
+    raw = committed_fixture("save_properties_ue4.bin").read_bytes()
     r = Reader(raw)
     out = {}
     for _ in range(r.i32()):

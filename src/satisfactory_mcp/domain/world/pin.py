@@ -8,13 +8,36 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import NoReturn, cast
+
+from typing_extensions import TypedDict
 
 from ... import config
 from ...core import atomic
+from ...core.jsontypes import JsonValue
+from ...core.saveio.schema import SaveHeader
 from ...core.text import format_gap, format_local_time, format_playtime
 from .identity import TOKEN_SHAPE, save_token
 
-__all__ = ["LEDGER_MAX", "PinRefused", "check", "ledger_path", "recall", "remember"]
+__all__ = [
+    "LEDGER_MAX",
+    "PinEntry",
+    "PinRefused",
+    "check",
+    "ledger_path",
+    "recall",
+    "remember",
+]
+
+
+class PinEntry(TypedDict):
+    """What the ledger keeps about one minted token: the save it named."""
+
+    world_id: str
+    session_name: str
+    filename: str
+    play_duration_s: int
+    mtime_ns: int
 
 
 class PinRefused(RuntimeError):
@@ -32,15 +55,16 @@ def ledger_path() -> Path:
     return config.cache_dir() / "save-pins.json"
 
 
-def _load() -> dict:
+def _load() -> dict[str, PinEntry]:
     try:
-        raw = json.loads(ledger_path().read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(ledger_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    return raw if isinstance(raw, dict) else {}
+    # The ledger is this module's own file: ``remember`` is the only writer.
+    return cast("dict[str, PinEntry]", raw) if isinstance(raw, dict) else {}
 
 
-def remember(header: dict) -> str:
+def remember(header: SaveHeader) -> str:
     """Record this save under its token, and return the token.
 
     Called on every read, because a pin is recognisable only if the read that MINTED it was
@@ -70,13 +94,13 @@ def remember(header: dict) -> str:
     return token
 
 
-def recall(token: str) -> dict | None:
+def recall(token: str) -> PinEntry | None:
     """What this install recorded about a token, or ``None`` if it never minted one."""
     found = _load().get(token)
     return found if isinstance(found, dict) else None
 
 
-def _describe(entry: dict) -> str:
+def _describe(entry: PinEntry | SaveHeader) -> str:
     """One save as the three facts a reader compares two states on."""
     written = format_local_time(entry.get("mtime_ns"))
     when = f", written {written}" if written else ""
@@ -86,7 +110,7 @@ def _describe(entry: dict) -> str:
     )
 
 
-def _distance(pinned: dict, current: dict) -> str:
+def _distance(pinned: PinEntry, current: SaveHeader) -> str:
     """How far apart two states are, on both axes, unsigned.
 
     Unsigned because the absolute readings are printed either side of this and show the
@@ -103,11 +127,11 @@ def _distance(pinned: dict, current: dict) -> str:
 _WAY_OUT = "Drop as_of= to read the save on disk now, and pin the token that answer prints."
 
 
-def _autosave(entry: dict) -> bool:
+def _autosave(entry: PinEntry) -> bool:
     return "autosave" in (entry.get("filename") or "").lower()
 
 
-def _whether_gone(pinned: dict) -> str:
+def _whether_gone(pinned: PinEntry) -> str:
     """Why the pinned state cannot simply be re-read -- and only where that is TRUE.
 
     An autosave is rewritten in place, so its bytes are very likely gone. A manual save is a
@@ -122,7 +146,7 @@ def _whether_gone(pinned: dict) -> str:
     return "the world has moved on since you pinned it"
 
 
-def _recover(pinned: dict) -> str:
+def _recover(pinned: PinEntry) -> str:
     """The second way out, offered only where it can work.
 
     Re-reading the pinned FILE is the right move for a manual save and closes the loop
@@ -138,7 +162,7 @@ def _recover(pinned: dict) -> str:
     )
 
 
-def check(header: dict, as_of: str | None) -> str:
+def check(header: SaveHeader, as_of: str | None) -> str:
     """Record this read, and enforce ``as_of=`` against it. Returns the current token.
 
     Raises ``PinRefused`` in the four ways a pin can fail, four sentences for four mistakes
@@ -146,12 +170,13 @@ def check(header: dict, as_of: str | None) -> str:
     save:" and the save that could not be read is the PINNED one.
     """
     current = remember(header)
-    if not as_of:
-        return current
-    want = as_of.strip()
-    if want == current:
-        return current
+    if as_of and as_of.strip() != current:
+        _refuse(as_of.strip(), current, header)
+    return current
 
+
+def _refuse(want: str, current: str, header: SaveHeader) -> NoReturn:
+    """Raise the ``PinRefused`` that says why ``want`` is not the save on disk."""
     here = f"On disk now is {current}, {_describe(header)}."
     if not TOKEN_SHAPE.fullmatch(want):
         raise PinRefused(

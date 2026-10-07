@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from .....core.jsontypes import JsonValue
 from .....core.text import hours
 from ..plan_args import ROW_CHOICES
+from ..views import PlanOp
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from .records import Commit
@@ -18,7 +20,13 @@ _recipe_name_source: list[Callable[[], dict[str, str]]] = []
 _POWER_WORDS = ("payback_hours", "overclock_last", "power_price")
 
 
-def _fmt(value) -> str:
+def op_text(op: PlanOp, key: str) -> str:
+    """One of ``op``'s names (its kind, field, item or new name), or "" when it has none."""
+    value = op.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def _fmt(value: object) -> str:
     if value is None:
         return "none"
     if isinstance(value, bool):
@@ -28,20 +36,30 @@ def _fmt(value) -> str:
     return str(value)
 
 
+def _number(value: JsonValue) -> str:
+    return _fmt(float(value)) if isinstance(value, int | float) else _fmt(value)
+
+
+def _choice(value: JsonValue) -> str:
+    """A row's overclock choice in words."""
+    return ROW_CHOICES.get(value, _fmt(value)) if isinstance(value, str) else _fmt(value)
+
+
 def use_recipe_names(source: Callable[[], dict[str, str]] | None) -> None:
     _recipe_name_source[:] = [source] if source is not None else []
 
 
-def _member_name(field_name: str, member) -> str:
+def _member_name(field_name: str, member: JsonValue) -> str:
     if not _recipe_name_source or field_name not in ("banned", "required", "row_overclock"):
         return _fmt(member)
     try:
-        return _recipe_name_source[0]().get(member, _fmt(member))
+        names = _recipe_name_source[0]()
+        return names.get(member, _fmt(member)) if isinstance(member, str) else _fmt(member)
     except Exception:
         return _fmt(member)
 
 
-def factory_words(value) -> str:
+def factory_words(value: object) -> str:
     """A stored ``factory`` value in words."""
     text = str(value or "")
     return {"": "found automatically", "/world": "whole world", "/none": "nothing yet"}.get(
@@ -49,17 +67,19 @@ def factory_words(value) -> str:
     )
 
 
-def _power_words(name: str, value) -> str:
+def _power_words(name: str, value: JsonValue) -> str:
     if name == "payback_hours":
-        return "payback: shared default" if value is None else "payback " + hours(value)
+        if isinstance(value, int | float):
+            return "payback " + hours(value)
+        return "payback: shared default"
     if name == "overclock_last":
         word = "shared default" if value is None else _fmt(value)
         return "overclock last machine: " + word
     return "power price: grid mix" if value is None else f"power price {_fmt(value)} pts/MWh"
 
 
-def describe_op(op: dict) -> str:
-    kind, name = op.get("op"), op.get("field", "")
+def describe_op(op: PlanOp) -> str:
+    kind, name = op_text(op, "op"), op_text(op, "field")
     if kind == "set":
         if name == "notes":
             return "notes changed"
@@ -69,7 +89,7 @@ def describe_op(op: dict) -> str:
             value = op.get("value")
             if value is None:
                 return "startup headroom: save default"
-            return f"startup headroom {_fmt(float(value))} MW"
+            return f"startup headroom {_number(value)} MW"
         if name in _POWER_WORDS:
             return _power_words(name, op.get("value"))
         return f"{name} {_fmt(op.get('was'))}{ARROW}{_fmt(op.get('value'))}"
@@ -77,7 +97,7 @@ def describe_op(op: dict) -> str:
         row = _member_name(name, op.get("item", ""))
         if kind == "del":
             return f"{row}: follows the plan's overclock setting"
-        return f"{row}: {ROW_CHOICES.get(op.get('value'), _fmt(op.get('value')))}"
+        return f"{row}: {_choice(op.get('value'))}"
     if kind in ("put", "del"):
         word = "rate" if name == "export_minimums" else name
         item = op.get("item", "")
@@ -99,7 +119,7 @@ def describe_op(op: dict) -> str:
     return {"create": "created", "forget": "forgotten", "restore": "restored"}.get(kind, "")
 
 
-def _site_words(op: dict) -> str:
+def _site_words(op: PlanOp) -> str:
     """``set at 1,476, -2,098 (Rocky Desert)``, ``moved 1,503 m west, turned 30°``, ``cleared``."""
     from ...siting import record as siting_record
 
@@ -124,7 +144,7 @@ def _region(x_m: float, y_m: float) -> str:
     return f" ({name})" if name else ""
 
 
-def _ops_text(ops: list[dict]) -> str:
+def _ops_text(ops: list[PlanOp]) -> str:
     return " · ".join(t for t in (describe_op(o) for o in ops) if t)
 
 
@@ -136,9 +156,9 @@ def describe_commit(commit: Commit) -> str:
     return f"{head}: {ops or commit.note or 'recorded'}"
 
 
-def conflict_subject(op: dict) -> str:
+def conflict_subject(op: PlanOp) -> str:
     """What a conflict line says both sides touched: ``rate Plastic``, ``site``, ``name``."""
-    kind, name = op["op"], op.get("field", "")
+    kind, name = op["op"], op_text(op, "field")
     if kind in ("put", "del") and name == "row_overclock":
         return f"overclock on {_member_name(name, op['item'])}"
     if kind in ("put", "del"):
@@ -154,20 +174,21 @@ def conflict_subject(op: dict) -> str:
     return "plan"
 
 
-def value_word(op: dict) -> str:
-    if op.get("field") == "row_overclock":
-        return ROW_CHOICES.get(op.get("value"), _fmt(op.get("value")))
-    if op.get("field") in _POWER_WORDS:
-        return _power_words(op["field"], op.get("value")).split(": ")[-1]
-    if op.get("field") == "headroom_mw":
+def value_word(op: PlanOp) -> str:
+    name = op_text(op, "field")
+    if name == "row_overclock":
+        return _choice(op.get("value"))
+    if name in _POWER_WORDS:
+        return _power_words(name, op.get("value")).split(": ")[-1]
+    if name == "headroom_mw":
         value = op.get("value")
-        return "save default" if value is None else f"{_fmt(float(value))} MW"
+        return "save default" if value is None else f"{_number(value)} MW"
     return _fmt(op["value"])
 
 
-def action_words(op: dict) -> str:
+def action_words(op: PlanOp) -> str:
     """What one side of a conflict did, as a verb phrase: ``set 2,000 MW``, ``renamed it "x"``."""
-    kind = op["op"]
+    kind = op_text(op, "op")
     if kind in ("set", "put"):
         return f"set {value_word(op)}"
     if kind == "del" and op.get("field") == "row_overclock":

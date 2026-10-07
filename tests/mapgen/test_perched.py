@@ -6,13 +6,12 @@ docs/spatial-and-map.md section 38. Synthetic fixtures: no install, no field.
 
 from __future__ import annotations
 
-import inspect
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
-from mapgen.palette.perched import (
+from mapgen.palette.water.perched import (
     HOLE_DEPTH_MAX_M,
     LIP_DROP_M,
     PERCHED_EXCESS_M,
@@ -22,10 +21,10 @@ from mapgen.palette.perched import (
     water_surfaces,
     wet_holes,
 )
-from mapgen.palette.rivers import water_sources
-from mapgen.palette.shore import OCEAN_LEVEL_M
-from mapgen.tiles.compose import render_layer
+from mapgen.palette.water.rivers import water_sources
+from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.draw import GROUND_KEYWORDS
 
 ROWS, COLS, MID, HALF_WIDTH = 160, 120, 60, 8
 BOX_TOP_DM = 120
@@ -33,9 +32,9 @@ BOX_TOP_DM = 120
 
 def _field(water_dm, grades, height_dm):
     return SimpleNamespace(
-        _water_raster=lambda: water_dm,
-        _water_quality_raster=lambda: grades,
-        _height_dm=height_dm,
+        water_raster=lambda: water_dm,
+        water_quality_raster=lambda: grades,
+        height_dm=height_dm,
         x0_cm=0.0,
         y0_cm=0.0,
         spacing_cm=100.0,
@@ -208,7 +207,7 @@ def test_the_water_a_render_draws_carries_the_wetted_holes():
     field = _field(water, grades, height)
     reach = (np.zeros(grades.shape, np.uint8), {"ocean_texels": 0, "reach_texels": 0})
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("mapgen.palette.perched.ocean_reach", lambda _field: reach)
+        mp.setattr("mapgen.palette.water.perched.ocean_reach", lambda _field: reach)
         got = water_surfaces(field, False)
     assert (got.grades[parts["middle"]] == hf.WATER_MEASURED).all()
     assert (got.level[parts["middle"]] == 110).all()
@@ -225,7 +224,7 @@ def test_water_the_river_reconcile_dropped_stays_dropped():
 
 
 def test_the_renderer_takes_the_relevelled_raster():
-    assert "water_level" in inspect.signature(render_layer).parameters
+    assert "water_level" in GROUND_KEYWORDS
 
 
 def test_the_rivers_reconciled_water_is_what_gets_relevelled():
@@ -239,7 +238,7 @@ def test_the_rivers_reconciled_water_is_what_gets_relevelled():
     field = _field(water, grades, height)
     reach = (np.zeros((ROWS, COLS), np.uint8), {"ocean_texels": 0, "reach_texels": 0})
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("mapgen.palette.perched.ocean_reach", lambda _field: reach)
+        mp.setattr("mapgen.palette.water.perched.ocean_reach", lambda _field: reach)
         got = water_surfaces(field, False, rivers)
     assert got.grades is kept
     assert (got.level[:100] == hf.NODATA).all(), "dropped river water stays dropped"

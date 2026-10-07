@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Annotated, NamedTuple
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from .....domain.planning.progress.commission_service import build_commission_report
 from .....domain.planning.progress.diff_service import build_diff_report
-from .....domain.planning.progress.stages import partition_id
+from .....domain.planning.progress.stages import Tracking, partition_id
 from .....domain.planning.stored.plan_args import PlanLogError
+from .....domain.planning.stored.planlog import PlanState
+from .....domain.world.state import WorldState
 from .....presenters.text.commission import render_commission
 from .....presenters.text.diff import render_diff
 from ... import app
@@ -24,14 +25,14 @@ class StagePosition(NamedTuple):
 
     partition: str
     current: int
-    count: int
+    stages: int
     rev: int
 
 
 _stages_seen: dict[tuple[str, str], StagePosition] = {}
 
 
-def _stored_plan_state(st, plan: str | None):
+def _stored_plan_state(st: WorldState, plan: str | None) -> PlanState | None:
     """The stored version ``plan`` names, as the plan log holds it, or None."""
     if not plan:
         return None
@@ -52,7 +53,7 @@ def _stage_position_text(current: int, count: int) -> str:
     return f"stage {current} of {count}"
 
 
-def _renumbered(st, stored, tracking) -> str:
+def _renumbered(st: WorldState, stored: PlanState | None, tracking: Tracking | None) -> str:
     """The note that the stages moved since this process last read this plan, or ''."""
     if stored is None or tracking is None:
         return ""
@@ -62,11 +63,11 @@ def _renumbered(st, stored, tracking) -> str:
     _stages_seen[(st.world_id, stored.key)] = now
     if seen is None or seen.partition == now.partition:
         return ""
-    was = _stage_position_text(seen.current, seen.count)
-    was = f"you were in {was}" if seen.count and seen.current else f"before, {was}"
+    was = _stage_position_text(seen.current, seen.stages)
+    was = f"you were in {was}" if seen.stages and seen.current else f"before, {was}"
     return (
         f"the stages changed since you last read this plan (v{seen.rev} -> v{now.rev}): "
-        f"{was}, now {_stage_position_text(now.current, now.count)}"
+        f"{was}, now {_stage_position_text(now.current, now.stages)}"
     )
 
 
@@ -75,7 +76,7 @@ def _shared_power(biomass: bool | None) -> tuple[bool, str, list[str]]:
     head, unread = app.shared_setting("stage_headroom")
     notes = [unread] if unread else []
     biomass, _unread = app.biomass_setting(biomass)
-    return biomass, head, notes
+    return biomass, str(head), notes
 
 
 @app.tool()
@@ -107,12 +108,13 @@ def diff_vs_save(
         Field(description="count this factory as built; also 'auto', 'world' or 'none'"),
     ] = None,
     biomass: Biomass = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """What to change to get from the factory you have to the one plan_factory plans.
 
-    Takes plan_factory's arguments and re-solves; both tools print a plan id hashed over the
-    arguments and the save-derived inputs, so the same id is provably the same plan.
+    Re-solves from the plan_factory arguments it declares; a saved plan (``plan=``) carries
+    the rest. Like plan_factory, it prints a plan id hashed over the arguments and the
+    save-derived inputs, so one id is one plan.
 
     Machines are matched by IDENTITY, never by position: a manufacturer on (building,
     recipe), a generator on its building, an extractor on its node; a machine running
@@ -120,9 +122,9 @@ def diff_vs_save(
     then BUILD -- and the power arithmetic charges only the machines still to place. Where a
     machine cannot be identified (Water Extractors) the answer is a RANGE.
 
-    Recall a stored plan with ``plan=`` and the diff is also grouped by STARTUP STAGE, the
-    partition commission_plan emits; ``stage=<n>`` narrows to one stage's delta and
-    ``stage=0`` asks for the overview without a stored plan, numbered from the arguments.
+    With ``plan=`` the diff is also grouped by STARTUP STAGE, the partition commission_plan
+    emits; ``stage=<n>`` narrows to one stage's delta and ``stage=0`` asks for the overview
+    without a stored plan, numbered from the arguments.
 
     Built and energised differ, and the save proves one direction only: a machine that
     produced in its last 300 s window had power; one that did not may be unpowered, starved,
@@ -213,13 +215,12 @@ def commission_plan(
     offset: int = 0,
     plan: PlanName = None,
     biomass: Biomass = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """In what order to switch a built plant on, without blowing the fuse.
 
     A STARTUP order, not a build order: a machine draws only when it runs, so the whole
-    plant is built first, drawing nothing, and then energised block by block. Nothing here
-    says what to build first.
+    plant is built first, drawing nothing, and then energised block by block.
 
     At every step, energised consumer draw must stay under the headroom plus generation from
     generators already burning fuel; exceeding it blows the fuse and stops the whole grid,
@@ -227,7 +228,7 @@ def commission_plan(
     Generators energise for free, so a wave costs its consumers and its generators' output
     pays for the next wave.
 
-    Takes plan_factory's arguments, or recall a saved plan with ``plan=``.
+    Takes the plan_factory arguments it declares; a saved plan (``plan=``) carries the rest.
     """
     g = app.game()
     st = app.load_world(save, world, as_of)

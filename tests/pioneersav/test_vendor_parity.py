@@ -21,9 +21,8 @@ from pathlib import Path
 import pytest
 
 from tests.support.fanout import fanout_width, in_order
-from tests.support.paths import FIXTURES, REPO_ROOT
+from tests.support.paths import REPO_ROOT, committed_fixture
 
-FIXTURE = FIXTURES / "vendor_parity.json"
 SIDECAR_MODULE = "satisfactory_mcp.core.saveio.extract"
 
 #: Header keys that describe the FILE rather than the world, so they are excluded from the
@@ -143,9 +142,7 @@ def _digest(value) -> str:
 
 @pytest.fixture(scope="module")
 def banked() -> dict:
-    if not FIXTURE.is_file():
-        pytest.skip("vendor parity fixture not committed")
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))
+    return json.loads(committed_fixture("vendor_parity.json").read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")

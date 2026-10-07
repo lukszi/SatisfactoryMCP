@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from satisfactory_mcp.core.arrays import F64Grid, U16Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 #: The synthetic field's grid; not square, so a width/height swap cannot pass.
@@ -93,7 +94,7 @@ def build_field(
     return directory
 
 
-def build_shaped_field(tmp_path: Path, height_m: np.ndarray) -> Path:
+def build_shaped_field(tmp_path: Path, height_m: F64Grid) -> Path:
     """A field of exactly the given heights, all landscape, no water: the shape slope needs."""
     directory = tmp_path / hf.DIR_NAME
     directory.mkdir(parents=True)
@@ -123,7 +124,7 @@ def build_shaped_field(tmp_path: Path, height_m: np.ndarray) -> Path:
     return directory
 
 
-def terrain_raw(z_m: np.ndarray) -> np.ndarray:
+def terrain_raw(z_m: F64Grid) -> U16Grid:
     """Heights in metres as the terrain plane's raw uint16 values."""
     return np.rint((z_m - T_OFFSET) * T_UNITS + T_ZERO).astype(np.uint16)
 

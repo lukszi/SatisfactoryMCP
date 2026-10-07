@@ -15,12 +15,22 @@ no fixed direction without the RATES. On the reference save 365 of 503 pipes res
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import NamedTuple
+from collections.abc import Sequence
+from collections.abc import Set as AbstractSet
+from typing import NamedTuple, TypeAlias
+
+from typing_extensions import TypedDict
 
 from ...core.saveio import rows as saverows
-from .fluid_couplings import coupling_actor_class, fluid_couplings, producer_consumer_classes
+from ...core.saveio.schema import Projection
+from .fluid_couplings import (
+    FluidNode,
+    coupling_actor_class,
+    fluid_couplings,
+    producer_consumer_classes,
+)
 
-__all__ = ["FORWARD", "REVERSE", "UNKNOWN", "pipe_flow"]
+__all__ = ["FORWARD", "REVERSE", "UNKNOWN", "PipeFlow", "pipe_flow"]
 
 #: Along the segment's own point order, against it, and "we will not say".
 FORWARD = "forward"
@@ -56,6 +66,28 @@ BASIS_NETWORK = "propagated"
 BASIS_NONE = "unresolved"
 
 
+class PipeFlow(TypedDict):
+    """One pipe's direction against its stored points, and the evidence it rests on."""
+
+    direction: str
+    basis: str
+
+
+#: A pipe's two ends, ``None`` where the save couples nothing there.
+PipeEnds: TypeAlias = tuple[FluidNode | None, FluidNode | None]
+#: A one-way device as ``(inlet, outlet)``.
+Device: TypeAlias = tuple[FluidNode, FluidNode]
+#: ``("pipe", row)`` or ``("device", index)``: which edge joins two nodes.
+EdgeTag: TypeAlias = tuple[str, int]
+Adjacency: TypeAlias = dict[FluidNode, list[tuple[FluidNode, EdgeTag]]]
+#: A port that faces one way: its node, ``source`` or ``sink``, and its actor index.
+Terminal: TypeAlias = tuple[FluidNode, str, int]
+#: Typed ports per node; a node absent is a node with none.
+PortCount: TypeAlias = defaultdict[FluidNode, int]
+#: An edge at a node: ``pipe`` or ``device``, its index, and whether the node is its first end.
+Incidence: TypeAlias = tuple[str, int, bool]
+
+
 class _PipeGraph(NamedTuple):
     """The plumbing as nodes fluid can stand at, and what joins them.
 
@@ -63,14 +95,14 @@ class _PipeGraph(NamedTuple):
     CONSUMES nothing and so can never orient a pipe.
     """
 
-    pipes: list[tuple[tuple | None, tuple | None]]
-    devices: list[tuple[tuple, tuple]]
-    terminals: list[tuple[tuple, str, int]]
-    adjacency: dict[tuple, list]
-    stores: set
+    pipes: list[PipeEnds]
+    devices: list[Device]
+    terminals: list[Terminal]
+    adjacency: Adjacency
+    stores: set[FluidNode]
 
 
-def _port_kind(name: str, cls: str, producers: set, consumers: set) -> str:
+def _port_kind(name: str, cls: str, producers: set[str], consumers: set[str]) -> str:
     """``source``, ``sink`` or ``any``: the port's own typing first, then the building's."""
     if name.startswith("PipeInputFactory"):
         return "sink"
@@ -85,7 +117,7 @@ def _port_kind(name: str, cls: str, producers: set, consumers: set) -> str:
     return "any"
 
 
-def _build(projection: dict) -> _PipeGraph:
+def _build(projection: Projection) -> _PipeGraph:
     """The plumbing as pipe edges, one-way edges, typed terminals and their adjacency."""
     joins, ports_of, actors, roles = fluid_couplings(
         projection, lambda actor: coupling_actor_class(actor) in _BODIES
@@ -96,9 +128,9 @@ def _build(projection: dict) -> _PipeGraph:
     pipe_actors = {seg.actor_index for seg in segments if seg.actor_index >= 0}
     producers, consumers = producer_consumer_classes(projection)
 
-    devices: list[tuple[tuple, tuple]] = []
-    terminals: list[tuple[tuple, str, int]] = []
-    stores: set = set()
+    devices: list[Device] = []
+    terminals: list[Terminal] = []
+    stores: set[FluidNode] = set()
     for actor, ports in ports_of.items():
         cls = coupling_actor_class(actors[actor]) if 0 <= actor < len(actors) else ""
         if actor in pipe_actors:
@@ -120,18 +152,16 @@ def _build(projection: dict) -> _PipeGraph:
     # One entry per ROW of the table, not per row that decoded: ``/api/pipes`` joins to this
     # list by a segment's position, so a torn row owes it a slot that says "no idea".
     c0, c1 = role_ix.get("PipelineConnection0"), role_ix.get("PipelineConnection1")
-    pipes: list[tuple[tuple | None, tuple | None]] = [(None, None)] * saverows.pipe_segment_count(
-        projection
-    )
+    pipes: list[PipeEnds] = [(None, None)] * saverows.pipe_segment_count(projection)
     for seg in segments:
         actor = seg.actor_index
         ports = ports_of.get(actor, ()) if actor >= 0 else ()
-        pipes[seg.index] = (
-            joins.find((actor, c0)) if c0 in ports else None,
-            joins.find((actor, c1)) if c1 in ports else None,
+        pipes[seg.position] = (
+            joins.find((actor, c0)) if c0 is not None and c0 in ports else None,
+            joins.find((actor, c1)) if c1 is not None and c1 in ports else None,
         )
 
-    adjacency: dict[tuple, list] = defaultdict(list)
+    adjacency: Adjacency = defaultdict(list)
     for i, (n0, n1) in enumerate(pipes):
         if n0 is None or n1 is None:
             continue
@@ -143,7 +173,7 @@ def _build(projection: dict) -> _PipeGraph:
     return _PipeGraph(pipes, devices, terminals, adjacency, stores)
 
 
-def _reach(adjacency: dict, start, without) -> set:
+def _reach(adjacency: Adjacency, start: FluidNode, without: EdgeTag) -> set[FluidNode]:
     """Everything fluid could get to from ``start`` without using edge ``without``."""
     seen = {start}
     stack = [start]
@@ -157,7 +187,9 @@ def _reach(adjacency: dict, start, without) -> set:
     return seen
 
 
-def _settle_by_cuts(pipes, adjacency, source: dict, sink: dict) -> list[int]:
+def _settle_by_cuts(
+    pipes: list[PipeEnds], adjacency: Adjacency, source: PortCount, sink: PortCount
+) -> list[int]:
     """Orient every pipe whose removal leaves producers alone on one side, consumers beyond."""
     total_source, total_sink = sum(source.values()), sum(sink.values())
     settled = [0] * len(pipes)
@@ -176,10 +208,10 @@ def _settle_by_cuts(pipes, adjacency, source: dict, sink: dict) -> list[int]:
     return settled
 
 
-def _forced_edge(rows: list, settled: list[int]) -> tuple[int, bool, int] | None:
+def _forced_edge(rows: list[Incidence], settled: list[int]) -> tuple[int, bool, int] | None:
     """The one unsettled pipe at a bare node, if what arrives there forces its direction."""
     arriving = leaving = 0
-    open_edge = None
+    open_edge: tuple[int, bool] | None = None
     for kind, index, at_first in rows:
         if kind == "device":
             # The device draws fluid out of its inlet node and into its outlet node.
@@ -204,7 +236,12 @@ def _forced_edge(rows: list, settled: list[int]) -> tuple[int, bool, int] | None
 
 
 def _has_receiver(
-    adjacency: dict, far, index: int, wanted: dict, wanted_ports: set, stores
+    adjacency: Adjacency,
+    far: FluidNode,
+    index: int,
+    wanted: PortCount,
+    wanted_ports: set[FluidNode],
+    stores: AbstractSet[FluidNode],
 ) -> bool:
     """Whether the side a pipe would send fluid to can take it: a port, a pump end or a tank.
 
@@ -215,10 +252,16 @@ def _has_receiver(
 
 
 def _settle_by_conservation(
-    settled: list[int], pipes, devices, adjacency, stores, source: dict, sink: dict
+    settled: list[int],
+    pipes: list[PipeEnds],
+    devices: Sequence[Device],
+    adjacency: Adjacency,
+    stores: AbstractSet[FluidNode],
+    source: PortCount,
+    sink: PortCount,
 ) -> None:
     """At a node that is nothing but plumbing what arrives has to leave; run to a fixpoint."""
-    incident: dict[tuple, list] = defaultdict(list)
+    incident: dict[FluidNode, list[Incidence]] = defaultdict(list)
     for i, (n0, n1) in enumerate(pipes):
         if n0 is None or n1 is None:
             continue
@@ -244,25 +287,27 @@ def _settle_by_conservation(
             far = n1 if at_first else n0
             outbound = (direction == 1) == at_first
             wanted, wanted_ports = (sink, inlets) if outbound else (source, outlets)
-            if not _has_receiver(adjacency, far, index, wanted, wanted_ports, stores):
+            if far is None or not _has_receiver(
+                adjacency, far, index, wanted, wanted_ports, stores
+            ):
                 continue
             settled[index] = direction
             changed = True
 
 
 def _solve(
-    pipes,
-    devices,
-    terminals,
-    adjacency,
-    stores=frozenset(),
+    pipes: list[PipeEnds],
+    devices: list[Device],
+    terminals: list[Terminal],
+    adjacency: Adjacency,
+    stores: AbstractSet[FluidNode] = frozenset(),
     *,
-    cuts=True,
-    one_way=True,
-):
+    cuts: bool = True,
+    one_way: bool = True,
+) -> list[int]:
     """Direction per pipe as +1 (points[0] to points[-1]), -1 (the reverse) or 0."""
-    source: dict = defaultdict(int)
-    sink: dict = defaultdict(int)
+    source: PortCount = defaultdict(int)
+    sink: PortCount = defaultdict(int)
     for node, kind, _actor in terminals:
         (source if kind == "source" else sink)[node] += 1
     settled = _settle_by_cuts(pipes, adjacency, source, sink) if cuts else [0] * len(pipes)
@@ -272,7 +317,7 @@ def _solve(
     return settled
 
 
-def pipe_flow(projection: dict) -> list[dict]:
+def pipe_flow(projection: Projection) -> list[PipeFlow]:
     """One ``{"direction", "basis"}`` per pipe segment, in the segments' own order.
 
     ``direction`` is ``forward`` along the segment's stored points, ``reverse`` against them,
@@ -285,7 +330,7 @@ def pipe_flow(projection: dict) -> list[dict]:
 
     port_nodes = {node for node, _kind, _actor in terminals}
     device_nodes = {node for edge in devices for node in edge}
-    out = []
+    out: list[PipeFlow] = []
     for i, (n0, n1) in enumerate(pipes):
         if not settled[i]:
             out.append({"direction": UNKNOWN, "basis": BASIS_NONE})

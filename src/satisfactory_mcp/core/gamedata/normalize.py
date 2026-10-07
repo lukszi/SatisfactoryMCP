@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
+from ..jsontypes import JsonObject, JsonValue
 from .constants import BELT_SPEED_TO_IPM, PURITY_MULT, max_clock
 from .footprint import extract_footprint
 from .loader import DocsDump
@@ -34,17 +35,23 @@ _CLASS_RE = re.compile(r"[\w/\-.]+?\.(\w+_C)\b")
 _FLUID_FORMS = ("RF_LIQUID", "RF_GAS")
 
 
-def _as_bool(raw: object, default: bool = False) -> bool:
+def _text(docs_class: JsonObject, key: str) -> str:
+    """A field the dump writes as a string, such as ``ClassName``; ``""`` when absent."""
+    value = docs_class.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def _as_bool(raw: JsonValue, default: bool = False) -> bool:
     if raw is None or raw == "":
         return default
     return str(raw).strip().lower() == "true"
 
 
-def _as_int(raw: object, default: int = 0) -> int:
+def _as_int(raw: JsonValue, default: int = 0) -> int:
     return int(as_float(raw, default))
 
 
-def _classes_in(raw: object) -> tuple[str, ...]:
+def _classes_in(raw: JsonValue) -> tuple[str, ...]:
     """Extract every ``*_C`` class name from a UE path list.
 
     Tries the struct parser first and falls back to a regex, because a few of these
@@ -89,10 +96,10 @@ def _build_items(dump: DocsDump) -> dict[str, Item]:
     """
     items: dict[str, Item] = {}
     shown = {
-        docs_class["ClassName"]: str(docs_class["mDisplayName"])
+        name: str(docs_class["mDisplayName"])
         for classes in dump.by_native.values()
         for docs_class in classes
-        if docs_class.get("ClassName") and docs_class.get("mDisplayName")
+        if (name := _text(docs_class, "ClassName")) and docs_class.get("mDisplayName")
     }
     for native, classes in dump.by_native.items():
         for docs_class in classes:
@@ -102,7 +109,7 @@ def _build_items(dump: DocsDump) -> dict[str, Item]:
             energy = as_float(docs_class.get("mEnergyValue"))
             if form in _FLUID_FORMS:
                 energy *= 1000  # mEnergyValue is MJ per litre for fluids
-            cls = docs_class["ClassName"]
+            cls = _text(docs_class, "ClassName")
             built = "Build_" + cls[len("Desc_") :] if cls.startswith("Desc_") else ""
             items[cls] = Item(
                 cls=cls,
@@ -143,7 +150,7 @@ def _descriptor_for(build_cls: str, descriptors: dict[str, Item]) -> str | None:
     return None
 
 
-def _fuels(raw: object) -> tuple[Fuel, ...]:
+def _fuels(raw: JsonValue) -> tuple[Fuel, ...]:
     """Parse ``mFuel``, which arrives as real JSON (a list of dicts)."""
     out: list[Fuel] = []
     for entry in as_list(raw if isinstance(raw, (list, dict)) else parse_struct(raw)):
@@ -168,7 +175,7 @@ def _fuels(raw: object) -> tuple[Fuel, ...]:
 _HEAD_LIFT_RE = re.compile(r"Head\s*Lift:\s*([\d.]+)\s*m", re.IGNORECASE)
 
 
-def _stated_head_lift(desc: object) -> float:
+def _stated_head_lift(desc: JsonValue) -> float:
     found = _HEAD_LIFT_RE.search(str(desc or ""))
     return float(found.group(1)) if found else 0.0
 
@@ -190,7 +197,7 @@ def _build_buildings(dump: DocsDump, items: dict[str, Item]) -> dict[str, Buildi
         if not native.startswith("FGBuildable") and native not in _OTHER_BUILDABLES:
             continue
         for docs_class in classes:
-            cls = docs_class.get("ClassName")
+            cls = _text(docs_class, "ClassName")
             if not cls:
                 continue
 
@@ -262,7 +269,7 @@ def _build_buildings(dump: DocsDump, items: dict[str, Item]) -> dict[str, Buildi
     return out
 
 
-def _split_enum(raw: object) -> tuple[str, ...]:
+def _split_enum(raw: JsonValue) -> tuple[str, ...]:
     if not raw:
         return ()
     try:
@@ -285,7 +292,7 @@ def _split_enum(raw: object) -> tuple[str, ...]:
 def _build_schematics(dump: DocsDump) -> dict[str, Schematic]:
     out: dict[str, Schematic] = {}
     for docs_class in dump.classes("FGSchematic"):
-        cls = docs_class.get("ClassName")
+        cls = _text(docs_class, "ClassName")
         if not cls:
             continue
         recipes: list[str] = []
@@ -342,7 +349,7 @@ def _build_schematics(dump: DocsDump) -> dict[str, Schematic]:
 # ------------------------------------------------------------------------- recipes
 
 
-def _flows(raw: object, items: dict[str, Item], duration: float) -> tuple[Flow, ...]:
+def _flows(raw: JsonValue, items: dict[str, Item], duration: float) -> tuple[Flow, ...]:
     out: list[Flow] = []
     for entry in as_list(parse_struct(raw)):
         if not isinstance(entry, dict):
@@ -376,7 +383,7 @@ def _build_recipes(
 
     out: dict[str, Recipe] = {}
     for docs_class in dump.classes("FGRecipe"):
-        cls = docs_class.get("ClassName")
+        cls = _text(docs_class, "ClassName")
         if not cls:
             continue
         duration = as_float(docs_class.get("mManufactoringDuration"))  # typo is in the game data
@@ -436,7 +443,7 @@ def _warn_belt_rates(data: GameData, dump: DocsDump) -> list[str]:
     """Belts state their own rate in prose, so ``BELT_SPEED_TO_IPM`` is self-checking."""
     warnings: list[str] = []
     for entry in dump.classes("FGBuildableConveyorBelt"):
-        belt = data.buildings.get(entry.get("ClassName", ""))
+        belt = data.buildings.get(_text(entry, "ClassName"))
         desc = str(entry.get("mDescription") or "")
         found = re.search(r"(\d[\d\s,]*)\s*(?:items|resources)?\s*per minute", desc, re.IGNORECASE)
         if belt and found:
@@ -451,7 +458,7 @@ def _warn_belt_rates(data: GameData, dump: DocsDump) -> list[str]:
 def _warn_pipe_rates(data: GameData, dump: DocsDump) -> list[str]:
     warnings: list[str] = []
     for entry in dump.classes("FGBuildablePipeline"):
-        pipe = data.buildings.get(entry.get("ClassName", ""))
+        pipe = data.buildings.get(_text(entry, "ClassName"))
         desc = str(entry.get("mDescription") or "")
         found = re.search(r"(\d+)\s*m.{0,4}\s*of fluid per minute", desc, re.IGNORECASE)
         if pipe and found and abs(float(found.group(1)) - pipe.flow_m3_min) > 0.5:
@@ -466,7 +473,7 @@ def _warn_pump_head_lift(data: GameData, dump: DocsDump) -> list[str]:
     ``mDesignPressure``."""
     warnings: list[str] = []
     for entry in dump.classes("FGBuildablePipelinePump"):
-        pump = data.buildings.get(entry.get("ClassName", ""))
+        pump = data.buildings.get(_text(entry, "ClassName"))
         if (
             pump
             and pump.machine_head_lift_m
@@ -485,7 +492,7 @@ def _warn_extractor_rates(data: GameData, dump: DocsDump) -> list[str]:
     warnings: list[str] = []
     for native in ("FGBuildableResourceExtractor", "FGBuildableWaterPump"):
         for entry in dump.classes(native):
-            extractor = data.buildings.get(entry.get("ClassName", ""))
+            extractor = data.buildings.get(_text(entry, "ClassName"))
             desc = str(entry.get("mDescription") or "")
             found = re.search(
                 r"(\d+)\s*(?:resources|m.{0,4} of \w+)\s*per minute", desc, re.IGNORECASE

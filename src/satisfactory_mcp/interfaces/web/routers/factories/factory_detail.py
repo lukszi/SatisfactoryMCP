@@ -9,15 +9,19 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from collections.abc import Callable
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.saveio.records import instance_leaf
 from .....domain.factories import candidates
 from .....domain.factories.query import build_view
 from .....domain.spatial import nodes as nodes_mod
+from .....domain.world.state import WorldState
 from ...serial import (
+    NameCount,
     bbox_m,
     cm_to_m,
     error_response,
@@ -63,11 +67,6 @@ class AspectMachine(TypedDict):
     z_m: float | None
 
 
-class AspectCount(TypedDict):
-    name: str
-    count: int
-
-
 class AspectNode(TypedDict):
     """``left`` is the save's ``mResourcesLeft``, null on an infinite node."""
 
@@ -96,7 +95,7 @@ class AspectIssue(TypedDict):
     machine: str | None
 
 
-def _issue(line: str, building_name) -> AspectIssue:
+def _issue(line: str, building_name: Callable[[str], str]) -> AspectIssue:
     head, sep, rest = line.partition(": ")
     cls, found, _tail = head.rpartition("_C_")
     if not sep or not found:
@@ -116,14 +115,14 @@ class FactoryAspectsResponse(TypedDict):
     power: AspectPower
     balance: list[AspectBalance]
     machines: list[AspectMachine]
-    recipes: list[AspectCount]
-    buildings: list[AspectCount]
+    recipes: list[NameCount]
+    buildings: list[NameCount]
     nodes: list[AspectNode]
     links: list[AspectLink]
     issues: list[AspectIssue]
 
 
-def _label_machines(st, factory: str) -> tuple[str, list[str]] | None:
+def _label_machines(st: WorldState, factory: str) -> tuple[str, list[str]] | None:
     label = next((x for x in st.labels.labels if x.name == factory), None)
     if label is None:
         return None
@@ -144,7 +143,7 @@ def factory_aspects(
     factory: str,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> FactoryAspectsResponse | JSONResponse:
     """What one named factory makes, needs, draws, holds and touches.
 
     Rates are items/min at the saved clocks, nameplate and measured, never blended.
@@ -240,7 +239,7 @@ class SiteRow(TypedDict):
     count: int
     diameter_m: float
     selector: str
-    buildings: list[AspectCount]
+    buildings: list[NameCount]
     mine: int
 
 
@@ -257,7 +256,7 @@ def factory_sites(
     factory: str | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> SitesResponse | JSONResponse:
     """Built production buildings clustered into sites, largest first.
 
     With ``?factory=``, only the sites holding any of that factory's machines, each with
@@ -272,7 +271,7 @@ def factory_sites(
             return error_response(f"no factory named “{factory}” in this world", 404)
         mine = set(found[1])
     sites = st.sites()
-    rows = []
+    rows: list[SiteRow] = []
     for index, site in enumerate(sites):
         held = sum(1 for leaf in site["instances"] if leaf in mine)
         if factory is not None and not held:

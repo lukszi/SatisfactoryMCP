@@ -22,6 +22,19 @@ function milestoneStatus(milestone: MilestoneRow): string {
   return milestone.status.toLowerCase();
 }
 
+function statusTone(milestone: MilestoneRow): string {
+  const status = milestoneStatus(milestone);
+  if (status === "affordable") return "ok";
+  return status.indexOf("locked") === 0 ? "dash-muted" : "";
+}
+
+// The tile a milestone counts towards: any lock is "locked", any blocker is "short".
+function countKey(milestone: MilestoneRow): string {
+  const status = milestoneStatus(milestone);
+  if (status.indexOf("locked") === 0) return "locked";
+  return milestone.status === "BLOCKED" ? "short" : status;
+}
+
 function affordable(rows: MilestoneRow[]): number {
   return rows.filter(function (milestone) {
     return milestoneStatus(milestone) === "affordable";
@@ -74,10 +87,7 @@ const MILESTONE_COLUMNS: Column<MilestoneRow>[] = [
     label: "status",
     sort: milestoneStatus,
     render: milestoneStatus,
-    tone: function (milestone) {
-      const status = milestoneStatus(milestone);
-      return status === "affordable" ? "ok" : status.indexOf("locked") === 0 ? "dash-muted" : "";
-    },
+    tone: statusTone,
   },
   {
     key: "cost",
@@ -121,8 +131,7 @@ export function renderMilestones(body: HTMLElement): void {
   const tiers = visible(full.tiers);
   const counts: Record<string, number> = { affordable: 0, short: 0, done: 0, locked: 0 };
   rows.forEach(function (milestone) {
-    const status = milestoneStatus(milestone);
-    const key = status.indexOf("locked") === 0 ? "locked" : status.indexOf("blocked") === 0 ? "short" : status;
+    const key = countKey(milestone);
     counts[key] = (counts[key] || 0) + 1;
   });
   const tiles = make("div", "dash-tiles");

@@ -8,23 +8,23 @@ import { el } from "./dom";
 /* Long enough to read when six endpoints fail at once, because failures stack into their own
  * rows rather than overwriting each other. A click dismisses one, so the strip is never an
  * undismissable patch of dead map. */
-var FAIL_MS = 12000;
+const FAIL_MS = 12000;
 
 /* Shorter, because a note describes something the reader can already see on the map. Its
  * colour differs from a failure's for the same reason: a note the eye reads as an error is
  * worse than no note. */
-var NOTE_MS = 6000;
+const NOTE_MS = 6000;
 
-var MAX_ROWS = 4;
+const MAX_ROWS = 4;
 
 function toast(message: string, kind: "fail" | "note", ms: number): void {
-  var box = el("err");
-  var rows: Element[] = Array.prototype.slice.call(box.children);
+  const box = el("err");
+  const rows: Element[] = Array.prototype.slice.call(box.children);
   rows.forEach(function (row) {
     // The same message twice is one problem, not two rows.
     if (row.textContent === message) row.remove();
   });
-  var row = document.createElement("div");
+  const row = document.createElement("div");
   row.className = "err-row " + kind;
   row.textContent = message;
   row.title = "click to dismiss";
@@ -40,10 +40,10 @@ function toast(message: string, kind: "fail" | "note", ms: number): void {
 
 export function offer(message: string, label: string, action: () => void): void {
   toast(message, "note", NOTE_MS * 2);
-  var box = el("err");
-  var row = box.lastElementChild;
+  const box = el("err");
+  const row = box.lastElementChild;
   if (!row) return;
-  var button = document.createElement("button");
+  const button = document.createElement("button");
   button.type = "button";
   button.className = "btn";
   button.textContent = label;
@@ -70,8 +70,8 @@ export function friendlyError(error: unknown): string {
   // Read structurally rather than with `instanceof Error`: a rejected fetch that arrives as a
   // DOMException still carries a `message`, and asking about the constructor would start
   // printing "[object DOMException]" instead.
-  var message = (error as { message?: unknown } | null | undefined)?.message;
-  var text = error && message ? String(message) : String(error);
+  const message = (error as { message?: unknown } | null | undefined)?.message;
+  const text = error && message ? String(message) : String(error);
   if (/Failed to fetch|NetworkError|Load failed/i.test(text)) {
     return "the server is not answering; is it still running?";
   }
@@ -83,13 +83,13 @@ export function friendlyError(error: unknown): string {
   return withoutToolHints(scrubbed(text)) || "the server hit an error";
 }
 
-var TOOL = /\b(?:search|trace|list|describe|rank|collected|show|plan|factory|name|amend)_[a-z_]+\b/;
+const TOOL = /\b(?:search|trace|list|describe|rank|collected|show|plan|factory|name|amend)_[a-z_]+\b/;
 
-var NOT_A_PLACE = /^(['"])(.*)\1 does not name a place\b/;
+const NOT_A_PLACE = /^(['"])(.*)\1 does not name a place\b/;
 
 export function withoutToolHints(text: string): string {
-  var line = text.replace(/^!\s*/, "");
-  var place = NOT_A_PLACE.exec(line);
+  const line = text.replace(/^!\s*/, "");
+  const place = NOT_A_PLACE.exec(line);
   if (place) return "“" + place[2] + "” is not a place: try me, x,y, a factory name or node:…";
   return line
     .split(/(?=;\s|,\s*or\s|\s--\s)/)
@@ -101,7 +101,7 @@ export function withoutToolHints(text: string): string {
 }
 
 function leaf(path: string): string {
-  var parts = path.split(/[\\/]+/).filter(function (p) {
+  const parts = path.split(/[\\/]+/).filter(function (p) {
     return p !== "";
   });
   return parts.length ? parts[parts.length - 1]! : "";
@@ -118,6 +118,6 @@ function scrubbed(text: string): string {
       return lead + leaf(path);
     })
     .replace(/\s{2,}/g, " ")
-    .replace(/\s+([:,.;)])/g, "$1")
+    .replace(/\s([:,.;)])/g, "$1")
     .trim();
 }

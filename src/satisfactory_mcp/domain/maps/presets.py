@@ -10,20 +10,33 @@ from __future__ import annotations
 
 import importlib.util
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
+from typing import cast
 
 from ... import config
 from ...core.gameassets.versions import (
-    ARTWORK_RECIPES,
     HEIGHTFIELD_GENERATOR_VERSION,
     RENDER_RECIPE_CURRENT,
     RENDER_RECIPE_KERNEL_ONLY,
-    RENDER_RECIPES,
-    STYLES,
 )
 from ...core.gpu import vulkan_available
+from ...core.jsontypes import is_object_list
 from . import axes as ax
 from . import registry
+from .views import (
+    ArtworkOptions,
+    GeneratorPlan,
+    InputOptions,
+    JobOptions,
+    Layer,
+    MapAxes,
+    MapCanGenerate,
+    MapEntry,
+    MapEstimateResponse,
+    RenderOptions,
+    RenderRecipe,
+)
 
 __all__ = [
     "PRESETS",
@@ -38,9 +51,9 @@ __all__ = [
     "plan",
 ]
 
-RENDER_LAYERS = ("terrain", "satellite", "painted", "relief", "relief-dark")
+RENDER_LAYERS: tuple[Layer, ...] = ("terrain", "satellite", "painted", "relief", "relief-dark")
 #: What a render job draws when it names no layers: the painted one needs the paint input.
-DEFAULT_LAYERS = ("terrain", "satellite")
+DEFAULT_LAYERS: tuple[Layer, ...] = ("terrain", "satellite")
 RENDER_SIZES = (1024, 2048, 4096, 8192, 16384, 32768)
 FULL_PX = 32768
 INPUT_PRESETS = ("heightmap", "caves", "rocks", "paint")
@@ -74,19 +87,29 @@ GEN_MODULES = ("ooz", "texture2ddecoder", "PIL", "zstandard")
 #: never drops under its floor because the triangles are the same at any size.
 RENDER_STAGE_S = {"prep": 30.0, "sweep": 36.0, "direct": 692.0, "top": 119.0}
 #: Per layer, from renders-v7's five lit layers and the 2026-10-06 performance work
-#: (docs/maps_contract.md section 4.3): the draw on 8 threads less lean sampling's 12%, and
-#: the parallel cut of a layer without the light.
-RENDER_LAYER_S = {"draw": 340.0, "cut": 73.0}
+#: (docs/maps_contract.md section 4.3): the parallel cut of a layer without the light.
+RENDER_LAYER_S = {"cut": 73.0}
+#: The draw, one pass over every layer (section 4.3): the ground the layers share, once, and
+#: each layer's colour over it. One layer alone takes 340 s, the draw on 8 threads less lean
+#: sampling's 12%; five take 0.65 of five drawn one by one (2026-10-07).
+RENDER_DRAW_S = {"ground": 150.0, "layer": 190.0}
 #: ``--light``: the lighting bake once, on 16 workers (docs/spatial-and-map.md section 29), and
 #: per layer the unlit tree cut beside the baked one, ``LIGHT_CUT_FACTOR`` times the cut. The
-#: scratch is the light cache while it runs, and the crown occluder a painted layer adds to
-#: it, written once (section 29, "Scratch").
+#: scratch is the light cache while it runs, and the crown occluder the paint store adds to
+#: it whatever the layers, written once (section 29, "Scratch").
 LIGHT_STAGE_S = 830.0
+#: A restyle at a size whose cache keeps a light installs it instead of baking: hard links to
+#: the full-size pyramid's 43,690 files, 6.5 to 9.4 s on the reference machine
+#: (docs/spatial-and-map.md section 29, "Kept light").
+LIGHT_KEPT_S = 10.0
 LIGHT_CUT_FACTOR = 1.8
 LIGHT_KEEP_BYTES = 1_000_000_000
 UNLIT_KEEP_BYTES = 450_000_000
-LIGHT_SCRATCH_BYTES = 14_500_000_000
+LIGHT_SCRATCH_BYTES = 15_570_000_000
 CROWN_SCRATCH_BYTES = 5_370_000_000
+#: The default-sun terms a lit render that keeps its cache moves out of the scratch into
+#: ``light.kept/``, 4 bytes a pixel; the kept tiles are hard links to the map's own.
+KEPT_TERMS_BYTES = 4 * FULL_PX * FULL_PX
 DIRECT_FLOOR_S = 80.0
 TOP_FLOOR_S = 18.0
 RENDER_KEEP_BYTES = 890_000_000
@@ -96,8 +119,10 @@ RENDER_KEEP_FLOOR = 10_000_000
 CACHE_BYTES_FULL = 1_000_000_000
 SPARE_BYTES = 2_000_000_000
 
+#: Seconds and bytes kept of the presets that do not scale: the artwork, plain or upscaled,
+#: and the inputs.
+FIXED_ARTWORK = {"plain": (180.0, 160_000_000), "enhanced": (900.0, 600_000_000)}
 FIXED = {
-    "artwork": {"plain": (180.0, 160_000_000), "enhanced": (900.0, 600_000_000)},
     "heightmap": (900.0, 700_000_000),
     "caves": (120.0, 2_000_000),
     "rocks": (300.0, 60_000_000),
@@ -123,105 +148,127 @@ class DiskShort(PresetError):
     """The disk lacks what the job keeps plus what it needs while running."""
 
 
-def _bool(options: dict, key: str, default: bool) -> bool:
+def _bool(options: Mapping[str, object], key: str, default: bool) -> bool:
     value = options.get(key, default)
     if not isinstance(value, bool):
         raise PresetError(f"{key} is true or false, not {value!r}")
     return value
 
 
-def normalise(preset: str, options: dict | None) -> dict:
+def _render_options(options: Mapping[str, object]) -> RenderOptions:
+    asked_layers = options.get("layers", list(DEFAULT_LAYERS))
+    layers = asked_layers if is_object_list(asked_layers) else []
+    if not layers or any(layer not in RENDER_LAYERS for layer in layers):
+        raise PresetError(f"layers is a non-empty list of {', '.join(RENDER_LAYERS)}")
+    asked_size = options.get("size", FULL_PX)
+    size = next((s for s in RENDER_SIZES if s == asked_size), None)
+    if size is None:
+        raise PresetError(f"size is one of {', '.join(map(str, RENDER_SIZES))}")
+    asked_recipe = options.get("recipe", "current")
+    recipe: RenderRecipe
+    if asked_recipe == "current":
+        recipe = "current"
+    elif asked_recipe == "kernel-only":
+        recipe = "kernel-only"
+    else:
+        raise PresetError("recipe is current or kernel-only")
+    restyle = _bool(options, "restyle", False)
+    if restyle and recipe == "kernel-only":
+        raise PresetError(
+            "a palette-only restyle draws from the raster cache; kernel-only has none"
+        )
+    return {
+        "layers": [layer for layer in RENDER_LAYERS if layer in layers],
+        "size": size,
+        "recipe": recipe,
+        "top": _bool(options, "top", True),
+        "keep_cache": _bool(options, "keep_cache", False),
+        "restyle": restyle,
+        "light": _bool(options, "light", True),
+        "titan_trees": _bool(options, "titan_trees", True),
+    }
+
+
+def _artwork_options(options: Mapping[str, object]) -> ArtworkOptions:
+    enhance = _bool(options, "enhance", False)
+    if enhance and not vulkan_available():
+        raise PresetError("upscaling needs a Vulkan GPU, and none was found at server start")
+    return {"enhance": enhance, "tiles_2x": _bool(options, "tiles_2x", True)}
+
+
+def _input_options(preset: str) -> InputOptions:
+    if preset not in INPUT_PRESETS:
+        raise PresetError(f"no preset “{preset}”; known: {', '.join(PRESETS)}")
+    return {}
+
+
+def normalise(preset: str, options: Mapping[str, object] | None) -> JobOptions:
     """``options`` as the preset takes them, every value checked against its whitelist."""
-    options = dict(options or {})
     if preset == "render":
-        layers = options.get("layers", list(DEFAULT_LAYERS))
-        if (
-            not isinstance(layers, list)
-            or not layers
-            or any(layer not in RENDER_LAYERS for layer in layers)
-        ):
-            raise PresetError(f"layers is a non-empty list of {', '.join(RENDER_LAYERS)}")
-        size = options.get("size", FULL_PX)
-        if size not in RENDER_SIZES:
-            raise PresetError(f"size is one of {', '.join(map(str, RENDER_SIZES))}")
-        recipe = options.get("recipe", "current")
-        if recipe not in ("current", "kernel-only"):
-            raise PresetError("recipe is current or kernel-only")
-        restyle = _bool(options, "restyle", False)
-        if restyle and recipe == "kernel-only":
-            raise PresetError(
-                "a palette-only restyle draws from the raster cache; kernel-only has none"
-            )
-        return {
-            "layers": [layer for layer in RENDER_LAYERS if layer in layers],
-            "size": size,
-            "recipe": recipe,
-            "top": _bool(options, "top", True),
-            "keep_cache": _bool(options, "keep_cache", False),
-            "restyle": restyle,
-            "light": _bool(options, "light", True),
-            "titan_trees": _bool(options, "titan_trees", True),
-        }
+        return _render_options(options or {})
     if preset == "artwork":
-        enhance = _bool(options, "enhance", False)
-        if enhance and not vulkan_available():
-            raise PresetError("upscaling needs a Vulkan GPU, and none was found at server start")
-        return {"enhance": enhance, "tiles_2x": _bool(options, "tiles_2x", True)}
-    if preset in INPUT_PRESETS:
-        return {}
-    raise PresetError(f"no preset “{preset}”; known: {', '.join(PRESETS)}")
+        return _artwork_options(options or {})
+    return _input_options(preset)
 
 
-def _area(size: int) -> float:
+def _area(size: float) -> float:
     return (size / FULL_PX) ** 2
 
 
-def _render_seconds(options: dict) -> dict[str, float]:
+def _render_seconds(options: RenderOptions, cache_hit: bool = False) -> dict[str, float]:
     area = _area(options["size"])
     kernel = options["recipe"] == "kernel-only"
     stages = {"prep": RENDER_STAGE_S["prep"]}
-    if not kernel and not options.get("_cache_hit") and not options.get("restyle"):
+    if not kernel and not cache_hit and not options.get("restyle"):
         stages["sweep"] = RENDER_STAGE_S["sweep"]
         stages["direct"] = max(DIRECT_FLOOR_S, RENDER_STAGE_S["direct"] * area)
         if options["top"]:
             stages["top"] = max(TOP_FLOOR_S, RENDER_STAGE_S["top"] * area)
-    for k, layer in enumerate(options["layers"]):
-        stages[f"draw:{layer}"] = RENDER_LAYER_S["draw"] * area + 2.0
-        if options.get("light") and k == 0:
-            stages["light"] = LIGHT_STAGE_S * area + 2.0
-        cut = RENDER_LAYER_S["cut"] * (LIGHT_CUT_FACTOR if options.get("light") else 1.0)
+    layers = options["layers"]
+    draw = RENDER_DRAW_S["ground"] + RENDER_DRAW_S["layer"] * len(layers)
+    stages["draw"] = draw * area + 2.0
+    if options.get("light"):
+        kept = options.get("restyle") and light_kept(options["size"])
+        stages["light"] = (LIGHT_KEPT_S if kept else LIGHT_STAGE_S) * area + 2.0
+    cut = RENDER_LAYER_S["cut"] * (LIGHT_CUT_FACTOR if options.get("light") else 1.0)
+    for layer in layers:
         stages[f"cut:{layer}"] = cut * area + 2.0
     return stages
 
 
-def stage_plan(preset: str, options: dict) -> dict[str, float]:
-    """The stages a job passes through and the seconds each is expected to take."""
+def stage_plan(preset: str, options: Mapping[str, object]) -> dict[str, float]:
+    """The stages a job passes through and the seconds each is expected to take.
+
+    ``options`` are a job's, as ``normalise`` left them."""
     if preset == "render":
-        return _render_seconds(options)
+        return _render_seconds(cast(RenderOptions, options))
     if preset == "artwork":
-        return {"run": FIXED["artwork"]["enhanced" if options["enhance"] else "plain"][0]}
+        return {"run": FIXED_ARTWORK["enhanced" if options["enhance"] else "plain"][0]}
     return {"run": FIXED[preset][0]}
 
 
-def _scaled_history(preset: str, options: dict) -> float | None:
+def _scaled_history(preset: str, render: RenderOptions | None) -> float | None:
     """The last finished job of the same preset, scaled by area, when there is one."""
     for row in reversed(registry.read()["history"]):
-        if row.get("preset") != preset or not isinstance(row.get("seconds"), int | float):
+        if not isinstance(row, dict):
             continue
-        if preset != "render":
-            return float(row["seconds"])
-        was = row.get("options") or {}
-        if was.get("recipe") != options["recipe"] or not was.get("size"):
+        seconds = row.get("seconds")
+        if row.get("preset") != preset or not isinstance(seconds, int | float):
             continue
-        if any(bool(was.get(key)) != options[key] for key in ("restyle", "light")):
+        if render is None:
+            return float(seconds)
+        was = ax.dict_at(row, "options")
+        size = was.get("size")
+        if was.get("recipe") != render["recipe"] or not isinstance(size, int | float) or not size:
             continue
-        layers = max(1, len(was.get("layers") or []))
-        per_layer = row["seconds"] / layers
-        return (
-            per_layer
-            * len(options["layers"])
-            * max(_area(options["size"]) / _area(was["size"]), 0.05)
-        )
+        if (
+            bool(was.get("restyle")) != render["restyle"]
+            or bool(was.get("light")) != render["light"]
+        ):
+            continue
+        layers = was.get("layers")
+        per_layer = seconds / max(1, len(layers) if isinstance(layers, list) else 0)
+        return per_layer * len(render["layers"]) * max(_area(render["size"]) / _area(size), 0.05)
     return None
 
 
@@ -231,6 +278,8 @@ def cache_dir(size: int) -> Path:
 
 #: The raster caches a palette-only restyle draws from, by their directory names.
 CACHE_PARTS = ("direct.cache", "top.cache", "meshes.cache")
+#: The light a lit render keeps beside them, which a restyle of the same surface installs.
+KEPT_LIGHT_PART = "light.kept"
 
 
 def cache_ready(size: int) -> bool:
@@ -238,33 +287,62 @@ def cache_ready(size: int) -> bool:
     return all((cache_dir(size) / part / "meta.json").is_file() for part in CACHE_PARTS)
 
 
+def light_kept(size: int) -> bool:
+    """Whether a lit render kept its light in the cache at this size."""
+    return (cache_dir(size) / KEPT_LIGHT_PART / "meta.json").is_file()
+
+
 def cached_sizes() -> list[int]:
     return [size for size in RENDER_SIZES if cache_ready(size)]
 
 
-def estimate(preset: str, options: dict) -> dict:
+def keeps_cache(options: RenderOptions) -> bool:
+    """Whether a render job keeps its raster caches, and with the light its terms, for later
+    runs at its size: asked to, a restyle, or a cache of that size already there."""
+    return options["keep_cache"] or options["restyle"] or cache_dir(options["size"]).is_dir()
+
+
+def _keeps_new_light(options: RenderOptions) -> bool:
+    """Whether a lit job leaves a kept light where none is: it keeps its raster caches
+    (``keeps_cache``) or draws the kernel only, which deletes neither."""
+    keeps = keeps_cache(options) or options["recipe"] == "kernel-only"
+    return options["light"] and keeps and not light_kept(options["size"])
+
+
+def _render_cost(options: RenderOptions) -> tuple[float, int, int]:
+    """``(seconds, bytes kept, bytes needed while it runs)`` of one render job."""
+    area = _area(options["size"])
+    cached = cache_ready(options["size"])
+    if options["restyle"] and not cached:
+        raise PresetError(RESTYLE_NEEDS)
+    seconds = sum(_render_seconds(options, cache_hit=cached).values())
+    per_layer = RENDER_KEEP_BYTES + (UNLIT_KEEP_BYTES if options["light"] else 0)
+    keep = len(options["layers"]) * max(RENDER_KEEP_FLOOR, int(per_layer * area))
+    keep += int(LIGHT_KEEP_BYTES * area) if options["light"] else 0
+    transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
+    if options["light"]:
+        transient += int((LIGHT_SCRATCH_BYTES + CROWN_SCRATCH_BYTES) * area)
+    if _keeps_new_light(options):
+        # The terms move out of the scratch, so they are kept rather than needed twice.
+        terms = int(KEPT_TERMS_BYTES * area)
+        keep, transient = keep + terms, transient - terms
+    return seconds, keep, transient
+
+
+def estimate(preset: str, options: Mapping[str, object] | None) -> MapEstimateResponse:
     """``{seconds, keep_bytes, transient_bytes, free_bytes, needs_bytes, ok, reason}``."""
-    options = normalise(preset, options)
-    if preset == "render":
-        area = _area(options["size"])
-        cached = cache_ready(options["size"])
-        if options["restyle"] and not cached:
-            raise PresetError(RESTYLE_NEEDS)
-        seconds = sum(_render_seconds({**options, "_cache_hit": cached}).values())
-        per_layer = RENDER_KEEP_BYTES + (UNLIT_KEEP_BYTES if options["light"] else 0)
-        keep = len(options["layers"]) * max(RENDER_KEEP_FLOOR, int(per_layer * area))
-        keep += int(LIGHT_KEEP_BYTES * area) if options["light"] else 0
-        transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
-        if options["light"]:
-            crowns = CROWN_SCRATCH_BYTES if "painted" in options["layers"] else 0
-            transient += int((LIGHT_SCRATCH_BYTES + crowns) * area)
+    render = _render_options(options or {}) if preset == "render" else None
+    if render is not None:
+        seconds, keep, transient = _render_cost(render)
     elif preset == "artwork":
-        seconds, keep = FIXED["artwork"]["enhanced" if options["enhance"] else "plain"]
+        art = _artwork_options(options or {})
+        seconds, keep = FIXED_ARTWORK["enhanced" if art["enhance"] else "plain"]
         transient = keep
     else:
+        _input_options(preset)
         seconds, keep = FIXED[preset]
         transient = keep
-    measured = _scaled_history(preset, options)
+    measured = _scaled_history(preset, render)
     if measured is not None:
         seconds = measured
     local = registry.local_dir()
@@ -297,7 +375,7 @@ def mapgen_src() -> Path:
     return tools_dir() / "mapgen" / "src"
 
 
-def can_generate() -> dict:
+def can_generate() -> MapCanGenerate:
     """Whether this checkout can run the generators here, each check under a millisecond."""
     gen = all(importlib.util.find_spec(name) is not None for name in GEN_MODULES)
     tools = (mapgen_src() / "mapgen" / "cli.py").is_file()
@@ -327,101 +405,135 @@ def can_generate() -> dict:
     }
 
 
-def _recipe(options: dict) -> int:
-    return (
-        RENDER_RECIPE_KERNEL_ONLY if options["recipe"] == "kernel-only" else RENDER_RECIPE_CURRENT
-    )
-
-
-def _planned_axes(family: str, recipe: int, style: str, cl: int | None, size: int) -> dict:
+def _planned_axes(family: str, recipe: int, style: str, cl: int | None, size: int) -> MapAxes:
     """What a type being built will be, until its sidecar says so itself."""
-    table = RENDER_RECIPES if family == "render" else ARTWORK_RECIPES
+    known = (ax.RENDER_TABLE if family == "render" else ax.ARTWORK_TABLE)[recipe]
+    palette = ax.STYLE_TABLE[style]
     return {
         "game": {"cl": cl},
         "inputs": {"heightfield": {"cl": cl, "generator_version": HEIGHTFIELD_GENERATOR_VERSION}}
         if family == "render"
         else {"artwork_sheet": {"cl": cl}},
-        "renderer": {"family": family, "recipe": recipe, "version": table[recipe]["version"],
-                     "label": table[recipe]["label"], "size_px": size},
-        "style": {"id": style, "version": STYLES[style]["version"], "label": STYLES[style]["label"]},
+        "renderer": {"family": family, "recipe": recipe,
+                     "version": ax.int_or_none(known["version"]),
+                     "label": str(known["label"]), "size_px": size},
+        "style": {"id": style, "version": ax.int_or_none(palette["version"]),
+                  "label": str(palette["label"])},
         "inferred": True,
     }  # fmt: skip
 
 
-def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str]) -> dict:
-    """``{script, argv, produces}`` for one job; ``produces`` maps new type ids to entries."""
-    options = normalise(preset, options)
+def _building(entry: MapEntry, job_id: str, size: int, axes: MapAxes) -> MapEntry:
+    entry["status"] = "building"
+    entry["job"] = job_id
+    entry["size_px"] = size
+    entry["axes"] = axes
+    return entry
+
+
+def _render_plan(
+    options: RenderOptions, job_id: str, cl: int | None, taken: set[str]
+) -> tuple[list[str], dict[str, MapEntry]]:
     local = registry.local_dir()
-    maps = registry.maps_dir()
     game = str(config.game_root())
-    produces: dict[str, dict] = {}
-    if preset == "render":
-        recipe = _recipe(options)
-        if options["restyle"] and not cache_ready(options["size"]):
-            raise PresetError(RESTYLE_NEEDS)
-        argv = [
-            "--game", game,
-            "--field", str(local / "heightmap"),
-            "--out-dir", str(maps),
-            "--renders-name", job_id,
-            "--size", str(options["size"]),
-        ]  # fmt: skip
-        for layer in options["layers"]:
-            argv += ["--layer", layer]
-        if options["recipe"] == "kernel-only":
-            argv.append("--kernel-only")
-        if not options["top"]:
-            argv.append("--no-top")
-        argv.append("--light" if options["light"] else "--no-light")
-        if not options["titan_trees"]:
-            argv.append("--no-titan-trees")
-        if options["keep_cache"] or options["restyle"] or cache_dir(options["size"]).is_dir():
-            argv += ["--cache-dir", str(cache_dir(options["size"])), "--keep-direct"]
-        if options["restyle"]:
-            argv.append("--restyle")
-        for layer in options["layers"]:
-            style = ax.LAYER_STYLE[layer]
-            ident = ax.derive_id(STYLES[style]["label"], recipe, cl, taken | set(produces))
-            entry = registry.new_entry(
-                ident, "render", layer, f"{registry.MAPS_DIR_NAME}/{job_id}/{layer}",
-                "meta.json", "generated",
-            )  # fmt: skip
-            entry.update(status="building", job=job_id, size_px=options["size"])
-            entry["axes"] = _planned_axes("render", recipe, style, cl, options["size"])
-            produces[ident] = entry
-    elif preset == "artwork":
-        recipe = 2 if options["enhance"] else 0
-        ident = ax.derive_id("artwork", recipe, cl, taken)
-        rel = f"{registry.MAPS_DIR_NAME}/{ident}"
-        argv = ["--game", game, "--out-dir", str(local / rel)]
-        if options["enhance"]:
-            argv.append("--enhance")
-        if not options["tiles_2x"]:
-            argv.append("--no-tiles-2x")
-        entry = registry.new_entry(ident, "artwork", "map", rel, "map.json", "generated")
-        entry.update(status="building", job=job_id, size_px=8192)
-        entry["axes"] = _planned_axes("artwork", recipe, "artwork", cl, 8192)
-        produces[ident] = entry
-    elif preset == "paint":
-        argv = ["--game", game, "--out-dir", str(local / "paint")]
+    recipe = (
+        RENDER_RECIPE_KERNEL_ONLY if options["recipe"] == "kernel-only" else RENDER_RECIPE_CURRENT
+    )
+    if options["restyle"] and not cache_ready(options["size"]):
+        raise PresetError(RESTYLE_NEEDS)
+    argv = [
+        "--game", game,
+        "--field", str(local / "heightmap"),
+        "--out-dir", str(registry.maps_dir()),
+        "--renders-name", job_id,
+        "--size", str(options["size"]),
+    ]  # fmt: skip
+    for layer in options["layers"]:
+        argv += ["--layer", layer]
+    if options["recipe"] == "kernel-only":
+        argv.append("--kernel-only")
+    if not options["top"]:
+        argv.append("--no-top")
+    argv.append("--light" if options["light"] else "--no-light")
+    if not options["titan_trees"]:
+        argv.append("--no-titan-trees")
+    if keeps_cache(options):
+        argv += ["--cache-dir", str(cache_dir(options["size"])), "--keep-direct"]
+    if options["restyle"]:
+        argv.append("--restyle")
+    produces: dict[str, MapEntry] = {}
+    for layer in options["layers"]:
+        style = ax.LAYER_STYLE[layer]
+        name = str(ax.STYLE_TABLE[style]["label"])
+        ident = ax.derive_id(name, recipe, cl, taken | set(produces))
+        entry = registry.new_entry(
+            ident, "render", layer, f"{registry.MAPS_DIR_NAME}/{job_id}/{layer}",
+            "meta.json", "generated",
+        )  # fmt: skip
+        axes = _planned_axes("render", recipe, style, cl, options["size"])
+        produces[ident] = _building(entry, job_id, options["size"], axes)
+    return argv, produces
+
+
+def _artwork_plan(
+    options: ArtworkOptions, job_id: str, cl: int | None, taken: set[str]
+) -> tuple[list[str], dict[str, MapEntry]]:
+    local = registry.local_dir()
+    game = str(config.game_root())
+    recipe = 2 if options["enhance"] else 0
+    ident = ax.derive_id("artwork", recipe, cl, taken)
+    rel = f"{registry.MAPS_DIR_NAME}/{ident}"
+    argv = ["--game", game, "--out-dir", str(local / rel)]
+    if options["enhance"]:
+        argv.append("--enhance")
+    if not options["tiles_2x"]:
+        argv.append("--no-tiles-2x")
+    entry = registry.new_entry(ident, "artwork", "map", rel, "map.json", "generated")
+    axes = _planned_axes("artwork", recipe, "artwork", cl, 8192)
+    return argv, {ident: _building(entry, job_id, 8192, axes)}
+
+
+def _input_argv(preset: str) -> list[str]:
+    local = registry.local_dir()
+    game = str(config.game_root())
+    if preset == "paint":
+        return ["--game", game, "--out-dir", str(local / "paint")]
+    argv = ["--game", game, "--force"]
+    if preset == "caves":
+        argv += [
+            "--caves",
+            "--field",
+            str(local / "heightmap"),
+            "--caves-dir",
+            str(local / "caves"),
+        ]
+    elif preset == "rocks":
+        argv += ["--rocks", "--field", str(local / "heightmap")]
     else:
-        argv = ["--game", game, "--force"]
-        if preset == "caves":
-            argv += [
-                "--caves",
-                "--field",
-                str(local / "heightmap"),
-                "--caves-dir",
-                str(local / "caves"),
-            ]
-        elif preset == "rocks":
-            argv += ["--rocks", "--field", str(local / "heightmap")]
-        else:
-            argv += ["--out-dir", str(local / "heightmap")]
+        argv += ["--out-dir", str(local / "heightmap")]
+    return argv
+
+
+def plan(
+    preset: str, options: Mapping[str, object] | None, job_id: str, cl: int | None, taken: set[str]
+) -> GeneratorPlan:
+    """``{script, argv, produces}`` for one job; ``produces`` maps new type ids to entries."""
+    checked: JobOptions
+    if preset == "render":
+        render = _render_options(options or {})
+        argv, produces = _render_plan(render, job_id, cl, taken)
+        checked = render
+    elif preset == "artwork":
+        art = _artwork_options(options or {})
+        argv, produces = _artwork_plan(art, job_id, cl, taken)
+        checked = art
+    else:
+        checked = _input_options(preset)
+        argv, produces = _input_argv(preset), {}
     return {
         "script": SCRIPTS[preset],
         "command": COMMANDS[preset],
         "argv": argv,
         "produces": produces,
-        "options": options,
+        "options": checked,
     }

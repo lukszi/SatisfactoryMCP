@@ -13,14 +13,14 @@ interface Declared {
  * other reader, so in a production build `declareColours` is a function that hands its
  * argument straight back and everything below this line folds out of the bundle -- which is
  * checkable, and checked: the built app.js contains none of the strings in this file. */
-var declared: Declared[] = [];
-var audited = false;
+const declared: Declared[] = [];
+let audited = false;
 
 /* Record a feature's colours and hand them straight back, so that the declaration IS the
  * assignment and there is no second way for a colour to reach the page:
  *
- *   var RESOURCE_COLOUR: Record<string, string> = declareColours("markers", { … });
- *   var STORAGE_COLOUR = declareColours("placements", { storage: "#…" }).storage;
+ *   const RESOURCE_COLOUR: Record<string, string> = declareColours("markers", { … });
+ *   const STORAGE_COLOUR = declareColours("placements", { storage: "#…" }).storage;
  *
  * `owner` is the drawing MODULE, not the layer, because that is the line the check needs.
  * Colours are compared across owners and never within one: a step inside a single family is
@@ -106,7 +106,7 @@ function deltaE(a: string, b: string): number {
 /* dE 15, the house step read off the page rather than a number from a standard: just under the
  * smallest step any deliberate ramp here takes, so two colours from different modules landing
  * as close as a ramp is exactly the thing that gets called out. */
-var MIN_DELTA_E = 15;
+const MIN_DELTA_E = 15;
 
 /** `owner/name`, which is how a colour is named below and in every message the audit prints. */
 function colourKey(owner: string, name: string): string {
@@ -135,7 +135,7 @@ interface Exception {
 /* The pairs a measurement answers: where NEITHER colour can move -- the game's ore tints on one
  * side, the biome grounds and the oldest network families on the other -- each carries the map
  * fact that keeps it from being a confusion, at the distance the audit re-derives every boot. */
-var DISCHARGED: Exception[] = [
+const DISCHARGED: Exception[] = [
   {
     a: "markers/Desc_OreIron_C",
     b: "routes/chevrons",
@@ -230,24 +230,30 @@ var DISCHARGED: Exception[] = [
   },
   /* Dark-tone values, drawn only over a dark base (map-tone.ts), where the belts' steel and a
    * light grey are both chosen to read against near-black ground. Each pair is a different
-   * kind of mark: a 1 px X or a filled disc against a stroked run. docs/frontend_vision.md §19. */
+   * kind of mark: a 1 px X, a filled disc or a stroked run. docs/frontend_vision.md §19. */
   {
-    a: "markers/pickup collected dark",
+    a: "pickups/pickup collected dark",
     b: "routes/belts",
     de: 5.7,
     why: "the dark-tone X over a collected pickup: two crossed 8 px strokes, never a run.",
   },
   {
-    a: "markers/pickup collected dark",
+    a: "pickups/pickup collected dark",
     b: "routes/belt slow",
     de: 8.6,
     why: "as above.",
   },
   {
-    a: "markers/pickup collected dark",
+    a: "pickups/pickup collected dark",
     b: "routes/belt fast",
     de: 10.0,
     why: "as above.",
+  },
+  {
+    a: "pickups/pickup collected dark",
+    b: "markers/coal dark",
+    de: 6.4,
+    why: "the same X against coal's filled disc: two crossed strokes, never a disc.",
   },
   {
     a: "markers/coal dark",
@@ -273,6 +279,14 @@ var DISCHARGED: Exception[] = [
     de: 3.5,
     why: "a 1 px rim either side of a lilac wire against the hole inside a steel ring.",
   },
+  {
+    a: "pickups/pickup collected",
+    b: "markers/locked casing",
+    de: 11.5,
+    why:
+      "the light-tone X against the 3 px ring under a locked node, which always carries the " +
+      "ore's own dashed colour on top: two crossed strokes, never a ring.",
+  },
 ];
 
 /* And the debt: pairs that are under the threshold, that no warrant defends, and that are
@@ -288,7 +302,7 @@ interface Standing {
   pairs: [string, string, number][];
 }
 
-var STANDING: Standing[] = [];
+const STANDING: Standing[] = [];
 
 /** One listed pair: the distance it was written down at, and whether it is owed or answered. */
 interface Listed {
@@ -298,12 +312,12 @@ interface Listed {
 
 /** Every listed pair, keyed the way the audit names it, and which list it came from --
  *  because "answered" and "owed" are counted differently. */
-function allowed(): Record<string, Listed> {
+function allowed(discharged: readonly Exception[], standing: readonly Standing[]): Record<string, Listed> {
   const listed: Record<string, Listed> = {};
-  DISCHARGED.forEach(function (entry) {
+  discharged.forEach(function (entry) {
     listed[pairKey(entry.a, entry.b)] = { de: entry.de, owed: false };
   });
-  STANDING.forEach(function (group) {
+  standing.forEach(function (group) {
     group.pairs.forEach(function (pair) {
       listed[pairKey(pair[0], pair[1])] = { de: pair[2], owed: true };
     });
@@ -405,7 +419,7 @@ function reportStandingDebt(pairs: Measured[], known: Record<string, Listed>): v
 
 /** The check itself, run once, in dev, after the whole table has declared. */
 function audit(): void {
-  const known = allowed();
+  const known = allowed(DISCHARGED, STANDING);
   const pairs = crossOwnerPairs();
   checkUnlistedPairs(pairs, known);
   checkListedDrift(pairs, known);

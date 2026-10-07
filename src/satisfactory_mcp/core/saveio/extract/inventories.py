@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
-from .readers import owner_class, ref_class, struct_fields
+from typing import TYPE_CHECKING, Literal, TypeAlias
+
+from ..schema import (
+    ContainerRecord,
+    CrateKind,
+    CrateRecord,
+    FluidBufferRecord,
+    ItemStack,
+    Position,
+    StorageRecord,
+)
+from .readers import owner_class, ref_class, struct_fields, to_float
 from .registers import (
     CRATE_CLASSES,
     CRATE_KINDS,
@@ -11,7 +22,15 @@ from .registers import (
     STORAGE_OWNER_HINTS,
 )
 
+if TYPE_CHECKING:
+    from .parser import SaveValue
+    from .routes import HeldNetwork
+
 __all__ = [
+    "Bucket",
+    "Contents",
+    "CrateActor",
+    "StorageActor",
     "accumulate_inventory",
     "crate_kind",
     "crates",
@@ -20,8 +39,17 @@ __all__ = [
     "storage",
 ]
 
+#: Which pile of ``inventories`` a stack counts toward.
+Bucket: TypeAlias = Literal["player", "storage", "crate", "machine"]
+#: An inventory component as ``(totals, slotCount)``.
+Contents: TypeAlias = tuple[dict[str, float], int]
+#: ``(class, instanceName, pos, yaw, mFluidBox)`` per container or fluid buffer.
+StorageActor: TypeAlias = "tuple[str, str, Position | None, float | None, SaveValue]"
+#: ``(class, instanceName, pos, yaw, mCrateType)`` per crate.
+CrateActor: TypeAlias = "tuple[str, str, Position | None, float | None, SaveValue]"
 
-def inventory_bucket(instance: str) -> str:
+
+def inventory_bucket(instance: str) -> Bucket:
     """Which pile a stack belongs to -- player, storage, crate or machine -- from the
     component's ``...Build_X_C_123.Role`` instanceName.
 
@@ -42,7 +70,7 @@ def inventory_bucket(instance: str) -> str:
     return "machine"
 
 
-def accumulate_inventory(raw, totals: dict) -> None:
+def accumulate_inventory(raw: SaveValue, totals: dict[str, float]) -> None:
     """Add mInventoryStacks into ``totals`` as {itemClass: count}.
 
     The ``Item`` member is a bare ``[assetPath, int]`` pair, not a keyed struct.
@@ -59,25 +87,28 @@ def accumulate_inventory(raw, totals: dict) -> None:
             totals[item] = totals.get(item, 0) + amount
 
 
-def inventory_totals(stacks) -> dict:
+def inventory_totals(stacks: SaveValue) -> dict[str, float]:
     """mInventoryStacks -> a fresh {itemClass: count}."""
-    totals: dict = {}
+    totals: dict[str, float] = {}
     accumulate_inventory(stacks, totals)
     return totals
 
 
-def _items_biggest_first(totals: dict) -> list[list]:
+def _items_biggest_first(totals: dict[str, float]) -> list[ItemStack]:
     """``[[item, count], ...]``, ties by class, so a popup's top few are the useful few."""
     return [
         [item, amount] for item, amount in sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))
     ]
 
 
-def storage(storage_actors: list, storage_inventories: dict, networks: list) -> list:
+def storage(
+    storage_actors: list[StorageActor],
+    storage_inventories: dict[str, Contents],
+    networks: list[HeldNetwork],
+) -> list[StorageRecord]:
     """Every container and fluid buffer, where it stands, and what is inside it (§6.16).
 
-    ``storage_actors`` is ``[(class, instanceName, pos, yaw, mFluidBox), ...]``,
-    ``storage_inventories`` ``{owner: (totals, slotCount)}`` for every ``StorageInventory``,
+    ``storage_inventories`` is ``{owner: (totals, slotCount)}`` for every ``StorageInventory``,
     and ``networks`` the pipe networks, which name a buffer's fluid.
     """
     fluid_of: dict[str, str | None] = {}
@@ -86,27 +117,40 @@ def storage(storage_actors: list, storage_inventories: dict, networks: list) -> 
             if member:
                 fluid_of[str(member)] = fluid
 
-    rows: list[dict] = []
+    rows: list[StorageRecord] = []
     for cls, instance, pos, yaw, fluid_box in sorted(
         storage_actors, key=lambda actor: (actor[0], str(actor[1]))
     ):
-        row: dict = {"cls": cls, "instance": instance, "pos": pos, "yaw": yaw}
         if cls in FLUID_BUFFER_CLASSES:
-            row["fluid"] = fluid_of.get(str(instance))
             # Cubic metres, not the litres ``inventories`` reports for a fluid stack.
             try:
-                row["stored_m3"] = round(float(fluid_box), 2)
+                stored_m3 = round(to_float(fluid_box), 2)
             except (TypeError, ValueError):
-                row["stored_m3"] = None
+                stored_m3 = None
+            buffer: FluidBufferRecord = {
+                "cls": cls,
+                "instance": instance,
+                "pos": pos,
+                "yaw": yaw,
+                "fluid": fluid_of.get(str(instance)),
+                "stored_m3": stored_m3,
+            }
+            rows.append(buffer)
         else:
             totals, slots = storage_inventories.get(str(instance), ({}, 0))
-            row["items"] = _items_biggest_first(totals)
-            row["slots"] = slots
-        rows.append(row)
+            container: ContainerRecord = {
+                "cls": cls,
+                "instance": instance,
+                "pos": pos,
+                "yaw": yaw,
+                "items": _items_biggest_first(totals),
+                "slots": slots,
+            }
+            rows.append(container)
     return rows
 
 
-def crate_kind(raw) -> str:
+def crate_kind(raw: SaveValue) -> CrateKind:
     """``mCrateType`` as one of ``CRATE_KINDS``' words, defaulting to ``none``.
 
     The parser hands the enum back as ``[enumName, "EFGCrateType::CT_DeathCrate"]``; any
@@ -117,13 +161,15 @@ def crate_kind(raw) -> str:
     return CRATE_KINDS.get(str(raw[1]).rsplit("::", 1)[-1], CRATE_KINDS["CT_None"])
 
 
-def crates(crate_actors: list, inventory_components: dict) -> list:
+def crates(
+    crate_actors: list[CrateActor], inventory_components: dict[str, Contents]
+) -> list[CrateRecord]:
     """Every crate on the ground, its kind, place and contents, sorted by kind then instance.
 
     ``inventory_components`` holds every component named ``Inventory`` in either case; only
     crate owners are looked up, so pawns and drop pods go unclaimed. See §6.13.
     """
-    rows: list[dict] = []
+    rows: list[CrateRecord] = []
     for cls, instance, pos, yaw, raw_type in crate_actors:
         totals, slots = inventory_components.get(str(instance), ({}, 0))
         rows.append(

@@ -11,11 +11,11 @@ import { bench } from "./state";
 
 import type { FocusResponse, FocusSelection } from "../../api/shapes";
 
-var FOCUS_DEBOUNCE_MS = 1000;
-var HEARTBEAT_MS = 15000;
+const FOCUS_DEBOUNCE_MS = 1000;
+const HEARTBEAT_MS = 15000;
 
-var focusTimer = 0;
-var viewSent: string | null = null;
+let focusTimer = 0;
+let viewSent: string | null = null;
 
 function mapSelectionForFocus(): FocusSelection | null {
   const picked = selected();
@@ -37,11 +37,16 @@ function focusTab(planKey: string | null): string {
   return bench.tab === "graph" || bench.tab === "track" || bench.tab === "site" ? bench.tab : "workbench";
 }
 
+function focusView(planner: boolean): string {
+  if (state.dash === "") return "map";
+  return planner ? "planner" : "dashboard";
+}
+
 function focusBody(): Record<string, unknown> {
   const planKey = openPlanKey();
   const planner = planKey !== null;
   return {
-    view: state.dash === "" ? "map" : planner ? "planner" : "dashboard",
+    view: focusView(planner),
     dash: state.dash,
     plan: planner && planKey && bench.key === planKey ? planKey : null,
     rev: planner && planKey && bench.plan ? bench.plan.rev : null,

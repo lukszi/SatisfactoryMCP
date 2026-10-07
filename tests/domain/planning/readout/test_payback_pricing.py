@@ -29,7 +29,7 @@ from satisfactory_mcp.domain.planning.stored.planlog import (
     use_recipe_names,
 )
 from satisfactory_mcp.domain.world.state import WorldState
-from tests.support.reference_world import FIXTURE_WORLD
+from tests.support.reference_world import FIXTURE_WORLD, SPIRE_COAST_NODES
 from tests.support.web import PAGE_ORIGIN, create_plan, push_ops, put_op, set_op
 
 CONSTRUCTOR = "Build_ConstructorMk1_C"
@@ -86,7 +86,7 @@ def test_a_tier_file_from_a_newer_version_is_not_overwritten(game, tier_file):
 
 SPIRE = {
     "objective": "max_mw",
-    "sources": ["region:Spire Coast"],
+    "sources": list(SPIRE_COAST_NODES),
     "exports": ["MW", "Plastic", "Rubber"],
     "export_minimums": {"Plastic": 600.0, "Rubber": 250.0},
     "extractor_clocks": [1.0, 1.5, 2.0, 2.5],

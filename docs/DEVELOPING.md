@@ -9,14 +9,14 @@ Versions, branches and releases are in [releasing.md](releasing.md).
 ## Tests
 
 ```bash
-uv sync --extra dev
+uv sync --all-extras               # the type gate reads the web and gen extras too ("Types")
 uv run pytest -q                   # the default run: needs nothing but this checkout
 uv run pytest -q -m integration    # the other half: needs the game and at least one save
 ```
 
 The default run reads committed fixtures only, so a clone with no game install passes it in
 seconds. The map generators' own tests live in `tools/mapgen/tests/`; their
-[README](../tools/mapgen/README.md) has the command. Frontend checks are `npm run check` (strict `tsc --noEmit`) and `npm run build` in
+[README](../tools/mapgen/README.md) has the command. Frontend checks are `npm run check` (strict `tsc --noEmit`), `npm test` (Vitest) and `npm run build` in
 `src/satisfactory_mcp/interfaces/web/frontend/` —
 [the frontend README](../src/satisfactory_mcp/interfaces/web/frontend/README.md) covers the
 dev loop, the layer modules, and the type story.
@@ -57,7 +57,8 @@ it looks like it does.
 `mcp/`, `web/` (one file per router, in folders named after the router packages),
 `pioneersav/`, `data/` (the committed world tables held
 against the game), `tools/` (the generator scripts and the map job runner), `mapgen/` (the map
-generator's own tests, until they join `tools/mapgen/tests/`), `frontend/` and `architecture/`.
+generator's own tests, until they join `tools/mapgen/tests/`), `frontend/`, `architecture/` and
+`docs/` (every relative link, anchor and section reference in the docs resolves).
 Shared helpers and fixtures live in `tests/support/` and are imported as
 `tests.support.<module>`; a test module never imports another test module or `conftest`, which
 `tests/architecture/test_test_imports.py` enforces. Pytest runs with `--import-mode=importlib`
@@ -67,13 +68,22 @@ and the repository root on `pythonpath`, so two folders may hold files of the sa
 `tmp_path` and clears the cached `config` paths, so plans, labels, the activity journal, pins,
 asks, advice, the page focus and the shared settings are never the reader's; the `user_data`
 fixture is that root. `data_dir` and `cache_dir` are not redirected: a test that needs a
-`data/local` tree builds one.
+`data/local` tree builds one. A module fixture runs before any test's root is in force, so one
+that reads or writes user data (the sensitivity sweep reads the shared settings) wraps itself
+in `tests.support.user_data.private_user_data` over a root of its own.
 
 **Web tests.** A module that drives the app calls `pytest.importorskip("fastapi")` at module
 scope, because the web stack is an optional extra. It gets the app through `client` (the shared
 fixture world), `labelled_client`, `fresh_state_client` (a new world per request),
 `stateless_client`, or `tests.support.web.client_over` for a hand-built world; none reads a
-`.sav`.
+`.sav`. `client_over` reuses its apps within a worker: an app's first request builds the
+schema of every route, about 0.1 s, which once cost the default run 48 s of CPU over 477
+apps; the web tests alone at 4 workers went from 21 s to 13 s. Each use still calls
+`create_app`, which takes a millisecond, and lends a reused app that app's `state` (the two
+loaders, a new save watcher and a new map job runner); on the way out the app gets an empty
+`state` and goes back to the pool. A test that opens a client inside another gets a second
+app. `tests/web/test_app_reuse.py` holds both rules. A test that needs anything else of its
+own on the app, such as `dependency_overrides`, builds its app with `create_app`.
 
 **The reference world.** `tests/fixtures/save_projection.json` is the sidecar projection of one
 real save, named in `tests/support/reference_world.py` and committed because the `.sav` is not.
@@ -99,29 +109,47 @@ selector returned, widened by 1 cm on each edge so that sub-centimetre node posi
 fall out of it. It also holds 17 nodes (8 limestone, 5 iron, 2 copper, 2 raw quartz) that are
 irrelevant to plans maximising power from crude and coal, which is why the hand-verified
 numbers held unchanged. The stored `spire-coast-full` plan keeps its region selector on
-purpose.
+purpose. `SPIRE_COAST_NODES` is the second sanctioned field: the 18 `node:` ids that region
+resolved to when the payback tests were written, frozen so only a node-table change moves them.
 
 **`live` and `state`.** `state` is the committed projection, frozen; `live` is the newest save
 on the machine, for tests that measure the tool's real answer. `live` skips on `SaveError`, so
 a machine with the game and no save reports skips rather than errors. An MCP tool test hands
 the tools its world through `use_world`, which replaces `app.load_world` (docs/mcp-surface.md).
 
-**Speed.** `-n 8` is measured. On a 16-core, 32-thread machine the default set took 5.8 s at 8
-workers, 7.7 s at 16 and 14.3 s at 32, and the integration set 30 s at 8 against 38 s at 32,
-because every worker imports and collects the suite alone. `--dist worksteal` (29.6 s),
-`--dist loadfile` (28.3 s) and `-p no:cacheprovider` were within noise of the default and were
-not adopted. After a hardware change, re-measure `uv run pytest -q -n <k>` and the same with
+**Speed.** `-n 8` is measured. On a 16-core, 32-thread machine with other work holding about a
+tenth of it, the default set (2,668 tests) takes 36 to 39 s at 8 workers and the integration set
+(1,185) a median 28 s, against 43 to 54 s and 31 s before the web apps were reused, the longest
+tests spread and the sensitivity sweep made module-wide. Before the typing gate added its two
+pyright runs, the default set took 134 s serial, 76 s at 2 workers, 42 to 45 s at 4 and 28 s at
+8, 59% of linear at 8. More workers stopped paying long ago: every worker imports and collects
+the suite alone, about 4 s before its first test, and when last counted, 16 and 32 workers were
+slower than 8. `--dist loadfile` and `-p no:cacheprovider` were within noise of the default and
+were not adopted; `--dist worksteal` was too, until the longest tests below were spread over
+it. After a hardware change, re-measure `uv run pytest -q -n <k>` and the same with
 `-m integration` for k in 4, 6, 8, 12, 16 and auto, three samples each.
 
 **The whole-folder tests.** Three integration tests parse every save on the machine (vendor
-parity, trailer arc lengths, lightweight records) and carry the `whole_folder` marker.
-`conftest.py` deals them to the workers first, because xdist deals tests in collection order
-and the longest ones would otherwise start last; that saves about a second per integration run.
-Each fans its saves out through `tests/support/fanout.py` at half the logical CPUs: widths 4,
-8, 16, 24 and 32 measured 43.9, 32.5, 22.6, 25.0 and 24.0 s for the integration set, the second
-thread of a core contending rather than helping. Hoisting them while each fanned out eight wide
-was slower, from oversubscription. `in_order` returns results in submission order, so per-save
-messages and early stops match a serial loop; `SATISFACTORY_TEST_FANOUT` overrides the width.
+parity, trailer arc lengths, lightweight records) and carry the `whole_folder` marker. They
+used to be moved to the front of the collection on the belief that xdist then dealt them to the
+workers first. It does not: the default `--dist load` hands each worker a contiguous run of a
+quarter of its average share, 36 tests of the integration set, so all three landed on the first
+worker and ran back to back, and that worker finished last. The suite now runs
+`--dist worksteal`, which opens by dealing each worker, in turn, an equal run of what is left,
+and later moves the tail of a busy worker's queue to an idle one. `conftest.py` puts each
+whole-folder test at the head of a different worker's opening run (`heads_of_shares` in
+`tests/support/fanout.py`), so the three start together on three workers. Its hook runs last,
+because the split depends on the count `-m` leaves. The default run's two pyright runs in
+`tests/architecture/test_typing.py` carry the `long` marker and are spread the same way: next
+to each other in one worker's run, they ran back to back, 29 s of a 44 s default run.
+
+Each whole-folder test fans its saves out through `tests/support/fanout.py` at a third of the
+logical CPUs, so the three side by side about fill the machine: at 10 the integration set took
+25 s, as at 16, for 50 CPU-seconds less. While they ran one after another, each at half the
+CPUs, widths 4, 8, 16, 24 and 32 measured 43.9, 32.5, 22.6, 25.0 and 24.0 s. Starting them
+apart rather than together, the second and third 36 tests behind the first, measured no better.
+`in_order` returns results in submission order, so per-save messages and early stops match a
+serial loop; `SATISFACTORY_TEST_FANOUT` overrides the width.
 
 **The vendor parity bank.** While `pioneersav` was being written, its acceptance test was a diff
 against the vendored GPL-3.0 parser, leaf for leaf. Deleting that library destroyed the diff, so
@@ -158,7 +186,8 @@ moves the digest.
 ### Architecture rules
 
 `tests/architecture/` holds the rules that read the source rather than run it, standard
-library only, so they pass on a clone with no game, no Node and no web extra. The shared graph
+library only, so they pass on a clone with no game, no Node and no web extra. The one exception
+is the type gate, which runs pyright from the dev extra ("Types" below). The shared graph
 walker is `tests/support/import_graph.py`; every import node at any depth is an edge, so a lazy
 import inside a method body is checked like a top-level one.
 
@@ -180,8 +209,8 @@ the OS and keeps the projection small enough to commit; one convenience import w
 undo all three.
 
 `tools/` is a layer above everything: a generator may read the standard library, the `gen`
-extra, `core`, `mapgen` and itself, and no part of the package may read a generator, which is
-not in the wheel. The measured exceptions are numpy, scipy and platformdirs (hard dependencies),
+extra, the `gpu` extra (CuPy, for `mapgen renders --gpu`), `core`, `mapgen` and itself, and no
+part of the package may read a generator, which is not in the wheel, or the `gpu` extra. The measured exceptions are numpy, scipy and platformdirs (hard dependencies),
 `pioneersav` (a one-shot CLI is the caller the subprocess boundary protects, not one it applies
 to) and `domain.spatial`, because the generator that writes the terrain field reads the package
 that reads it, so the two cannot disagree about the format.
@@ -190,15 +219,21 @@ that reads it, so the two cannot disagree about the format.
 `gen` extra, and optional means optional at import time: a clone without them imports every
 module, runs this suite and serves the map. Only `core.gameassets` may name them, and only from a
 function body. That proof is only as good as the AST, so the package may not use `importlib`,
-`__import__` or `sys.path` either. Besides the standard library and `core` it may import numpy,
-a hard dependency.
+`__import__` or `sys.path` either. Besides the standard library and `core` it may import numpy
+and typing_extensions, both hard dependencies.
 
 **Line caps** (`test_module_caps.py`). No module of the application or the parser passes 850
 lines; routers and MCP tool modules stop at 650, generators outside `tools/mapgen` at 800
-lines and 150 per function. `api.py` was 2,174 lines and `planning.py` 2,615 before they were
+lines and 150 per function, and the map page's hand-written TypeScript at 600 lines and 150
+per top-level function (the generated `api/schema.d.ts` is not counted). `tools/mapgen/tests/test_architecture_mapgen.py` holds mapgen's
+modules to 600 lines and 150 per function; a command held thin keeps a shrink-only ceiling at
+its measured size. The caps count ruff's formatting, so mapgen keeps `# fmt: skip` to a
+module-level literal table: a skip that packs a signature or a call onto fewer lines is a cap
+measured on text ruff would not write. `api.py` was 2,174 lines and `planning.py` 2,615 before they were
 split, and neither got there in one commit, so a cap is what makes "one module per concern" a
-measurement. The largest module, `core/gameassets/staticmesh.py`, sets the general cap: it
-splits only together with `tools/mapgen`, which reaches its names directly.
+measurement. The general cap is what `core/gameassets/staticmesh.py` measured when it was the
+largest module. Its record types have since moved to `meshdata.py`; the readers stay, because
+`tools/mapgen` calls them through the module.
 
 **Routers** (`test_router_registry.py`). A router may import the standard library, FastAPI,
 `config`, `core`, `domain` and the web package's `serial` and `terrain` — never another router
@@ -211,7 +246,9 @@ the tuple's order is the committed schema's path order. Every routed handler dec
 `response_model` or returns a `Response` subclass in its annotation; without one the endpoint's
 `200` is `unknown` in `api/schema.d.ts`, and the page ends up typing it from observed payloads,
 which is how a 438-line hand-written types file with wrong nullability once came about. The four
-byte-serving endpoints are the named exemptions, and an exemption that stops being needed fails.
+byte-serving endpoints declare `response_model=object`, the unconstrained body they have always
+published, and return a `Response`; an exemption list stands for any later one, and an exemption
+that stops being needed fails.
 
 **The page** (`test_frontend_layout.py`). `static/` is build output: gitignored (it embeds
 minified Leaflet, and the repository distributes no build), complete when present, every file
@@ -227,6 +264,145 @@ evaluated first; `registry.ts` imports types only. `palette.ts` holds the colour
 colour value, so every colour sits with its owner and its warrant.
 
 **Prose** (`test_comment_budget.py`): see [comments.md](comments.md), rule 9.
+
+### Types
+
+`tests/architecture/test_typing.py` runs pyright over `src/` and `tools/` under
+`[tool.pyright]` in `pyproject.toml`, in strict mode everywhere, and wants zero errors. Tests
+are outside the type rules.
+
+- **Strict mode, no exceptions.** `typeCheckingMode = "strict"` covers every module; there is
+  no per-package list and no error budget. A comment that would take a line or a file out of
+  the count (`# type: ignore`, `# pyright:`) fails the gate, and so would an unneeded one
+  (`reportUnnecessaryTypeIgnoreComment`).
+- **Two Pythons.** `pythonVersion = "3.13"` is the venv's own Python, because numpy's and
+  scipy-stubs' stubs, as the venv installs them, are written for it: read as 3.11 they turn
+  `Unknown` (numpy's `collections.abc.Buffer`, for one). A second run passes the oldest Python
+  `requires-python` admits as `--pythonversion`, so a standard-library name that arrived later
+  still fails; that run drops only the `reportUnknown*` rules a newer stub trips over.
+  `pythonPlatform = "Windows"` is fixed so that every machine counts alike.
+- **Every signature is typed.** ruff's ANN rules run over `src/` and `tools/`; tests are exempt.
+- **The environment is part of the result.** pyright (`pyright[nodejs]`, which brings its own
+  Node) and `scipy-stubs` are exact pins in the dev extra, because a new checker or stub release
+  changes what it reports. The web and gen extras have to be installed too. The gate first
+  checks the environment against the three extras and fails with `uv sync --all-extras` when it
+  does not match. An import that does not resolve, or a package whose `py.typed` is missing,
+  hides every error behind it, so those rules fail the gate as the environment's fault, with the
+  rebuild to run, before any code error is counted.
+- **A `cast` is counted.** It is a claim the checker takes on trust, so `CAST_BUDGETS` holds the
+  number per area, and the number only goes down: the gate fails on a count above it, and on a
+  count below it with the numbers to write. A file counts toward the longest key that holds it.
+  Type the producer instead; `core/jsontypes.py` has `is_object_dict`, `is_object_list` and
+  `is_object_sequence` to narrow an `object` without one.
+- **A loaded document binds to a boundary type.** `json.load`, `pickle.load` and `tomllib.load`
+  return `Any`, which strict mode does not see, so bound straight to a TypedDict they are an
+  unchecked cast. The gate wants each one assigned to `JsonValue`, `object` or
+  `dict[str, object]`; a check, or one named `cast`, narrows it from there. Going the other way,
+  `to_json` and `to_json_object` copy a typed value into a checked `JsonValue`, and
+  `require_object` and `require_list` narrow one with a `TypeError` for the wrong shape.
+- **`extraPaths` is required.** The venv's editable install points at the main checkout, so in
+  a git worktree pyright would resolve `satisfactory_mcp` to the main checkout's code;
+  `extraPaths = ["src", "tools/mapgen/src", "."]` puts the worktree's own source first. The gate
+  passes the interpreter running the tests as `--pythonpath`.
+- **`typing.Any` is banned** in `src/` and `tools/` by ruff's TID251. Data crossing a boundary
+  (`json.load`, a sidecar, a request body) is `JsonValue` or `JsonObject` from
+  `core/jsontypes.py`, narrowed with `isinstance`, or cast once to a TypedDict where a schema or
+  version check already guards the read. At runtime `JsonValue` is a named `TypeAliasType`
+  rather than a string alias, because pydantic cannot resolve a string alias inside a response
+  model. pyright reads the plain recursive alias under `TYPE_CHECKING` instead: pyright 1.1.414
+  loses the `TypeAliasType`'s self-reference when another module evaluates `JsonObject` before
+  `jsontypes` itself, and reports it in `jsontypes.py`. No module imports `Any` now. One that
+  had to would be named on its own line in `[tool.ruff.lint.per-file-ignores]`; the gate fails
+  on an entry that is no longer needed and on a glob.
+- **The save parser's values.** `pioneersav` decodes every property, container element and
+  trailer field into one `SaveValue` (`pioneersav/values.py`). The extractor reads them as that
+  boundary type and narrows them with `extract/readers.py`'s `to_float`, `to_int` and
+  `as_sequence`, which give the same answer and raise the same error as `float()`, `int()` and
+  indexing. A field the projection carries exactly as the save wrote it is a `cast` to the
+  schema's type.
+- **A seam moves in one step.** A TypedDict is not assignable to a bare `dict`, nor the other
+  way, so a producer cannot type its return while its callers still annotate `dict`. The
+  producer declares the type and every caller reads it in the same change; a `cast` out to a
+  loose type on one side and back on the other hides a mismatch from the checker.
+  `ParsedObject.properties` stays loose, and `saveio.rows` takes a `Mapping[str, object]`,
+  which accepts both.
+- **Plan arguments** travel as `Mapping[str, object]`, or `dict[str, object]` where they are
+  built (`recall_plan`, `with_overrides`). They become `solver.scenario.PlanKwargs`, the type
+  `build_scenario` declares, by one `cast` where every key is already checked: `PlanArgs.kwargs`,
+  `store.Plan.kwargs` and the call in `solver/prepare.py`. A read of one value from a loose
+  mapping narrows it (`plan_args.sources_in` for `sources`) rather than casting it.
+- **Empty dataclass fields.** `field(default_factory=list)` leaves the element type unknown in
+  strict mode and ruff refuses a `lambda: []`, so a field names its own type:
+  `field(default_factory=list[str])`.
+- **Shapes.** Data with a fixed key set is a TypedDict, or a dataclass when it never leaves
+  the process. The save projection's is `core/saveio/schema.py`: `Projection` and the rows of
+  [save-projection.md](save-projection.md) §6.16, held against the committed fixture. A JSON
+  shape a domain package builds is declared in that package's `views.py`, where the web
+  publishes it from; wire rules 2 and 5 of [web-wire.md](web-wire.md) say why each one is a
+  `typing_extensions.TypedDict` and why two with the same fields are one.
+- **A handler says what it returns**: its `response_model`'s TypedDict, `| JSONResponse` where it
+  can refuse. FastAPI reads the `response_model` and never the annotation once one is given, so
+  the annotation changes nothing on the wire and lets pyright check the body. A field published
+  as an open object is `Mapping[str, object]`, which pydantic describes exactly as it did `dict`.
+  Where a domain function still returns a loose `dict`, or a `str` the wire closes into a
+  `Literal`, the handler casts once and says why. A projection list is read guarded:
+  `serial.object_rows` drops a torn row that is not an object and keeps the schema's row type.
+- **Arrays and stubs.** A numpy array is typed by its dtype through `core/arrays.py`
+  (`F32Grid`, `U8Grid`, `BoolMask` and the rest); the gate fails on a bare `ndarray` in an
+  annotation. A plane that float arithmetic produces is a `FloatGrid`, because numpy's stubs
+  widen float32 with a Python float to float64 while the run keeps float32. scipy is typed
+  by `scipy-stubs`, and pyooz, which ships no types, by the local stub `typings/ooz.pyi`. CuPy
+  ships none either: `typings/cupy/` covers the calls the render's CUDA kernels make, so the
+  gate needs no `gpu` extra.
+- **Platform branches test `sys.platform` itself** (`interfaces/web/childproc.py`): pyright
+  narrows on that expression, not on a name that holds its value.
+- **Speed.** One pyright run over 443 files took 20 s on one thread. With `--threads 8` it
+  measured 7 s alone; 12 and 16 threads were no faster. Inside the parallel suite it took 10 s,
+  on one worker. The gate makes two runs, one per Python.
+
+### Code-quality scan
+
+`sonar-project.properties` configures a SonarQube scan; Python coverage comes from
+`coverage.xml` and the frontend's from its `coverage/lcov.info`, so both test runs go first.
+The frontend's `npm test` ends by rewriting `lcov.info`'s source paths with `/`, since a
+Windows run writes `\`, which the Linux scanner container cannot resolve (frontend/README.md,
+"Tests"). The frontend's `test/` and mapgen's `tools/mapgen/tests/` are scanned as tests and
+excluded from the sources.
+The server is a local SonarQube Community container with its own Postgres, kept outside the
+repository (for example a compose file in `%USERPROFILE%\.sonarqube-satisfactory\`) and
+published on host port 9100. From the repository root in PowerShell, with an analysis token in
+`%USERPROFILE%\.sonar-token`:
+
+```powershell
+uv sync --all-extras --all-packages
+uv run pytest -q --cov --cov-report=xml
+npm --prefix src/satisfactory_mcp/interfaces/web/frontend test
+if (-not $env:SONAR_HOST_URL) { $env:SONAR_HOST_URL = "http://host.docker.internal:9100" }
+$env:SONAR_TOKEN = (Get-Content "$env:USERPROFILE\.sonar-token" -Raw).Trim()
+$scm = @(); if (Test-Path .git -PathType Leaf) { $scm = @("-Dsonar.scm.disabled=true") }
+docker run --rm -e SONAR_HOST_URL -e SONAR_TOKEN -v "${PWD}:/usr/src" `
+    sonarsource/sonar-scanner-cli sonar-scanner @scm
+Remove-Item Env:SONAR_TOKEN
+```
+
+`SONAR_HOST_URL` is the server as the container sees it; set it first to scan against another
+server. `-e NAME` without a value hands the container the variable, so the token never appears
+on a command line. In a linked git worktree `.git` is a file naming a host path the container
+cannot open, and the scanner aborts on it, so there the scan runs without SCM data.
+
+**Security hotspots reviewed as safe.** The scan flags these for review; each is safe for the
+reason given, so it is marked "Safe" in the scan rather than changed.
+
+| Rule | Where | Why it is safe |
+|---|---|---|
+| S5332 (`http://`) | `config.web_url`, `interfaces/web/guard.refusal` | The web map binds to loopback only (`WEB_HOST = "127.0.0.1"`); the guard compares a request's `Origin` with that same plain-HTTP address. Nothing leaves the machine, so there is nothing for TLS to protect. |
+| S4790 (weak hash) | `pioneersav/header.py`, `domain/advice/advisory.py`, `domain/planning/progress/stages.py` | No hash protects anything. The MD5 is the save format's own body digest, which the game checks; the SHA-1s name advisories and stage plans. Each call passes `usedforsecurity=False`. |
+| S4828 (signals) | `interfaces/web/childproc.py` | `os.kill(pid, 0)` only asks whether a process exists. `kill_tree` ends the generator this server started, or adopted after matching its pid and creation time. |
+| S5852 (regex backtracking) | `core/gamedata/normalize.py` | The input is the game's own Docs file, read from the local install: short description strings and class paths. |
+| S5852 | `domain/collectibles/table.py` (`_GLUED_INDEX`) | Linear: the look-behind admits one start per run of digits. |
+| S5852 | `domain/maps/jobs.py` | The input is the progress lines a map generator of this repository prints. |
+| S5852 | `tools/collectibles/identity.py` | A developer tool over instance names from the game and the saves. |
+| S5852 | frontend `api/client.ts` (`fillPathParam`) | The input is one of the page's own route templates, a constant. |
 
 ## Solver threads
 
@@ -245,7 +421,7 @@ code calls `solverlane.run` instead of the solver directly.
 You do not need any of this to use the project: every world table the server uses is committed
 under `data/`. The generators exist so the tables can be rebuilt from your own installed game
 after a map update, and so the map's imagery — which is the game's artwork and is therefore
-**never committed** — can be produced locally. They need `uv sync --extra gen` and a
+**never committed** — can be produced locally. They need `uv sync --all-extras` and a
 Satisfactory install. Approximate runtimes on one mid-range machine:
 
 The map generators are one package, `tools/mapgen/`, with one command per output. Install it

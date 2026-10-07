@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
-from .....domain.spatial import caves, geo, heightfield, surroundings
+from .....domain.spatial import elevation, geo, heightfield, surroundings
 from .....domain.spatial import nodes as nodes_mod
 from .....domain.spatial import regions as regions_mod
+from .....domain.spatial.heightfield import cave_masks
+from .....domain.spatial.heightfield.readings import Reading
 from .....domain.spatial.nodes import search as node_search
 from .....domain.spatial.places import PLAYER_WORDS, resolve_place
 from .....presenters.text import primitives as render
@@ -69,9 +70,11 @@ def list_regions(
     )
 
 
-def _terrain_fields(reading, field) -> tuple[list[tuple[str, str]], list[str]]:
+def _terrain_fields(
+    reading: Reading | None, field: heightfield.Field | None
+) -> tuple[list[tuple[str, str | None]], list[str]]:
     """The terrain field's reading at the point, and what it cannot say there."""
-    fields: list[tuple[str, str]] = []
+    fields: list[tuple[str, str | None]] = []
     notes: list[str] = []
     if reading is not None and not reading.height_known:
         fields.append(("terrain_m", "unknown"))
@@ -79,7 +82,7 @@ def _terrain_fields(reading, field) -> tuple[list[tuple[str, str]], list[str]]:
     elif reading is not None:
         accuracy = "" if reading.accuracy_m is None else f", +-{reading.accuracy_m:g}m"
         fields.append(("terrain_m", f"{reading.z_m:.1f} ({reading.source}{accuracy})"))
-        if reading.cave != caves.NONE:
+        if reading.cave != cave_masks.NONE:
             fields.append(("cave", reading.cave_note))
         if reading.ambiguous:
             bare = reading.terrain_z_m
@@ -107,9 +110,11 @@ def _terrain_fields(reading, field) -> tuple[list[tuple[str, str]], list[str]]:
     return fields, notes
 
 
-def _sample_fields(near, reading, radius_m: float) -> tuple[list[tuple[str, str]], list[str]]:
+def _sample_fields(
+    near: elevation.Elevation, reading: Reading | None, radius_m: float
+) -> tuple[list[tuple[str, str | None]], list[str]]:
     """Elevations sampled from what stands nearby: ground and built apart, never averaged."""
-    fields: list[tuple[str, str]] = []
+    fields: list[tuple[str, str | None]] = []
     notes: list[str] = []
     if not near.samples:
         notes.append(
@@ -153,7 +158,9 @@ def _sample_fields(near, reading, radius_m: float) -> tuple[list[tuple[str, str]
     return fields, notes
 
 
-def _conduit_fields(found) -> tuple[list[tuple[str, str]], list[str]]:
+def _conduit_fields(
+    found: surroundings.PointDescription,
+) -> tuple[list[tuple[str, str | None]], list[str]]:
     """Belt and pipe runs through the point, counted against their drawn lines.
 
     Reported even at zero: with a readable save, absence here is absence in the world.
@@ -161,7 +168,7 @@ def _conduit_fields(found) -> tuple[list[tuple[str, str]], list[str]]:
     counted = found.conduits
     if counted is None:
         return [], ["no save read: belts and pipes here are unknown, not absent"]
-    fields = [
+    fields: list[tuple[str, str | None]] = [
         (
             "conduits",
             (
@@ -170,15 +177,15 @@ def _conduit_fields(found) -> tuple[list[tuple[str, str]], list[str]]:
             ),
         )
     ]
-    notes = []
+    notes: list[str] = []
     if counted["belt"] or counted["pipe"]:
         notes.append("search_conduits lists those runs with endpoints, lengths and elevation")
     return fields, notes
 
 
-def _surroundings(found) -> list[tuple[str, str]]:
+def _surroundings(found: surroundings.PointDescription) -> list[tuple[str, str]]:
     g = app.game()
-    out = []
+    out: list[tuple[str, str]] = []
     if found.nearest:
         nearest = found.nearest[0]
         out.append(
@@ -266,7 +273,7 @@ def describe_location(
     # Echoed because `at=` can resolve to somewhere the caller never typed; a bare
     # coordinate resolves to itself, so it is named once.
     here = f"{x / 100:.0f},{y / 100:.0f}"
-    fields = [
+    fields: list[tuple[str, object]] = [
         ("at", here + (f" ({where})" if where and where != here else "")),
         ("region", found.label.describe()),
         ("confidence", found.label.confidence),
@@ -294,7 +301,7 @@ def whereami(
     world: str | None = None,
     as_of: AsOf = None,
     limit: Limit = 8,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Where the player is standing, and what is around them.
 
@@ -311,6 +318,7 @@ def whereami(
     if found.player is None:
         return "no player pawn in this save, so there is no position to report"
     x, y, z = found.player
+    assert found.label is not None, "labelled whenever the player is found"
     nearby = found.nodes
     rows = [
         (
@@ -327,7 +335,7 @@ def whereami(
     notes = [f"use near:me@{radius_m:g} as a source selector to plan around here"]
     notes += found.notes
     field = heightfield.load_field()
-    reading = field.z(x, y, hint_z_cm=z) if field is not None else None
+    reading = field.height_at(x, y, hint_z_cm=z) if field is not None else None
     cave_line = reading.cave_note if reading is not None else None
     if found.nearest_building is not None:
         name, distance = found.nearest_building

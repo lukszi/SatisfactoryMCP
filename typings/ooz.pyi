@@ -1,0 +1,3 @@
+"""pyooz ships a compiled module without types; this covers the one call made of it."""
+
+def decompress(data: bytes, size: int, /) -> bytes: ...

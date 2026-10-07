@@ -11,6 +11,8 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from .jsontypes import JsonObject, JsonValue, as_float, require_list, require_object
+
 __all__ = ["PlanEvent", "StageEvent", "decode", "encode_plan", "encode_stage"]
 
 PLAN_PREFIX = "::plan "
@@ -28,7 +30,7 @@ class PlanEvent:
     steps: tuple[tuple[str, float], ...]
 
 
-def _dumps(body: dict) -> str:
+def _dumps(body: JsonObject) -> str:
     return json.dumps(body, separators=(",", ":"))
 
 
@@ -42,16 +44,24 @@ def encode_plan(steps: Sequence[tuple[str, float]]) -> str:
     return PLAN_PREFIX + _dumps({"steps": [[step, float(s)] for step, s in steps]})
 
 
+def _step(entry: JsonValue) -> tuple[str, float]:
+    """One ``[step, seconds]`` pair of a plan line."""
+    step, seconds = require_list(entry)
+    return str(step), as_float(seconds)
+
+
 def decode(line: str) -> PlanEvent | StageEvent | None:
     """The event a line carries, or ``None`` for a human line or a malformed one."""
     text = line.strip()
     try:
         if text.startswith(STAGE_PREFIX):
-            body = json.loads(text[len(STAGE_PREFIX) :])
-            return StageEvent(str(body["id"]), float(body["done"]))
+            stage: JsonValue = json.loads(text[len(STAGE_PREFIX) :])
+            body = require_object(stage)
+            return StageEvent(str(body["id"]), as_float(body["done"]))
         if text.startswith(PLAN_PREFIX):
-            body = json.loads(text[len(PLAN_PREFIX) :])
-            return PlanEvent(tuple((str(step), float(s)) for step, s in body["steps"]))
+            plan: JsonValue = json.loads(text[len(PLAN_PREFIX) :])
+            steps = [_step(entry) for entry in require_list(require_object(plan)["steps"])]
+            return PlanEvent(tuple(steps))
     except (ValueError, KeyError, TypeError):
         return None
     return None

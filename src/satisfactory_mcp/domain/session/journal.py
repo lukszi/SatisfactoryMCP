@@ -10,10 +10,14 @@ import json
 import os
 import threading
 import time
+from collections.abc import Mapping
 from pathlib import Path
+from typing import cast
 
 from ... import config
+from ...core.jsontypes import JsonObject, JsonValue
 from ..planning.stored.planlog import Actor
+from .views import JournalEntry
 
 __all__ = ["KINDS", "append", "files", "read", "set_writer", "tail", "writer_name"]
 
@@ -29,6 +33,9 @@ KINDS = (
     "label.rename",
     "advice.hide",
     "advice.restore",
+    "pin.add",
+    "pin.edit",
+    "pin.drop",
 )
 MAX_LINE = 1000
 MAX_TEXT = 200
@@ -58,11 +65,11 @@ def files(world_id: str) -> list[Path]:
     return sorted(folder.glob("*.jsonl")) if folder.is_dir() else []
 
 
-def _entries(data: bytes) -> list[dict]:
-    out = []
+def _entries(data: bytes) -> list[JsonObject]:
+    out: list[JsonObject] = []
     for line in data.split(b"\n")[:-1]:
         try:
-            entry = json.loads(line)
+            entry: JsonValue = json.loads(line)
         except ValueError:
             continue
         if isinstance(entry, dict):
@@ -70,12 +77,17 @@ def _entries(data: bytes) -> list[dict]:
     return out
 
 
+def _number(value: JsonValue) -> float:
+    """A stamp or a sequence number as a line wrote it; 0 for none."""
+    return float(value) if isinstance(value, int | float | str) and value else 0.0
+
+
 def _last_seq(path: Path) -> int:
     try:
         entries = _entries(path.read_bytes())
     except FileNotFoundError:
         return 0
-    return max((int(e.get("seq") or 0) for e in entries), default=0)
+    return max((int(_number(e.get("seq"))) for e in entries), default=0)
 
 
 def _drop_torn_tail(path: Path) -> None:
@@ -98,7 +110,7 @@ def _append_line(path: Path, line: bytes) -> None:
         os.fsync(handle.fileno())
 
 
-def _line(entry: dict) -> bytes:
+def _line(entry: JournalEntry) -> bytes:
     return (json.dumps(entry, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
 
 
@@ -111,9 +123,9 @@ def append(
     tool: str = "",
     plan: str | None = None,
     rev: int | None = None,
-    args: dict | None = None,
+    args: Mapping[str, object] | None = None,
     text: str = "",
-) -> dict | None:
+) -> JournalEntry | None:
     writer = _writer
     if not writer:
         return None
@@ -123,7 +135,7 @@ def append(
             if path not in _seq:
                 _seq[path] = _last_seq(path)
             seq = _seq[path] + 1
-            entry = {
+            entry: JournalEntry = {
                 "id": f"{writer}:{seq}",
                 "seq": seq,
                 "ts": time.time(),
@@ -133,7 +145,7 @@ def append(
                 "tool": tool,
                 "plan": plan,
                 "rev": rev,
-                "args": args,
+                "args": None if args is None else dict(args),
                 "text": text[:MAX_TEXT],
             }
             line = _line(entry)
@@ -148,19 +160,21 @@ def append(
         return None
 
 
-def read(world_id: str, since_ts: float = 0.0, limit: int = 200) -> list[dict]:
-    """The newest ``limit`` entries after ``since_ts`` from every writer, oldest first."""
-    out = []
+def read(world_id: str, since_ts: float = 0.0, limit: int = 200) -> list[JournalEntry]:
+    """The newest ``limit`` entries after ``since_ts`` from every writer, oldest first.
+
+    The entries are ``append``'s lines; an older writer's may lack a field."""
+    out: list[JsonObject] = []
     for path in files(world_id):
         try:
-            out += [e for e in _entries(path.read_bytes()) if float(e.get("ts") or 0) > since_ts]
+            out += [e for e in _entries(path.read_bytes()) if _number(e.get("ts")) > since_ts]
         except OSError:
             continue
-    out.sort(key=lambda e: (float(e.get("ts") or 0), str(e.get("id") or "")))
-    return out[-limit:] if limit > 0 else []
+    out.sort(key=lambda e: (_number(e.get("ts")), str(e.get("id") or "")))
+    return cast(list[JournalEntry], out[-limit:] if limit > 0 else [])
 
 
-def tail(path: Path, offset: int) -> tuple[list[dict], int]:
+def tail(path: Path, offset: int) -> tuple[list[JsonObject], int]:
     try:
         size = path.stat().st_size
         if size < offset:

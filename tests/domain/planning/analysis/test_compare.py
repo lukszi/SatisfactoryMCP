@@ -266,6 +266,32 @@ def test_unknown_item_and_bad_arguments_raise(game, state):
         compare_routes(game, state, "Fuel", per_resource="Plastic")
 
 
+@pytest.mark.parametrize(
+    ("kwargs", "refusal"),
+    [
+        ({"per_resource": "Iron Plate"}, "'Iron Plate' is not a raw resource"),
+        ({"per_resource": "Crud Oil"}, "'Crud Oil' is not a raw resource"),
+        ({"rate": 0}, "rate must be positive"),
+    ],
+)
+def test_the_tool_answers_the_domains_refusal_as_text(state, use_world, kwargs, refusal):
+    """The tool once resolved names itself, so a part escaped as a ValueError and a typo
+    priced the default resource without a word."""
+    from satisfactory_mcp import server as srv
+
+    use_world(state)
+    out = srv.compare_recipe_options(item="Fuel", **kwargs)
+    assert out.startswith("! ")
+    assert refusal in out
+
+
+def test_explain_byproducts_says_when_the_focus_item_is_unknown(state, use_world):
+    from satisfactory_mcp import server as srv
+
+    use_world(state)
+    assert "unknown item 'Unobtanium'" in srv.explain_byproducts(item="Unobtanium")
+
+
 # ------------------------------------------------------- context budget
 
 

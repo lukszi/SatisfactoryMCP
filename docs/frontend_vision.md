@@ -885,7 +885,8 @@ me that graph for a detected factory".
 
   Edges are items with apportioned items/min (§9.4). The payload is grouped by recipe: the
   110-machine cluster is 16 nodes and 20 edges.
-- **Drawing.** `frontend/src/dash/graph.ts` is hand SVG with no library.
+- **Drawing.** `frontend/src/dash/graph.ts` is hand SVG with no library; the columns and their
+  order are `dash/graph-ranks.ts`, the zoomable frame and the card `dash/graph-frame.ts`.
   - Inputs sit in the first column. Each group is placed by its longest path from the
     inputs, with cycles cut where the walk meets them. Terminals sit in the last column.
     Three barycentre sweeps order each column.
@@ -907,7 +908,7 @@ me that graph for a detected factory".
     more is off-screen. The frame is as tall as the graph, up to 80% of the window.
     Ctrl+wheel zooms (a plain wheel scrolls the page), dragging pans and a double-click
     fits again.
-  - One card for both callers: `graphCardFrame(heading, shown, toggle)` in `dash/graph.ts`, with one
+  - One card for both callers: `graphCardFrame(heading, shown, toggle)` in `dash/graph-frame.ts`, with one
     **hide graph** toggle per view. The planner draws its plan with the same component
     (planner_vision.md §4.2); power is not an item there. A process's node shows its MW,
     and exported power is a **power** terminal fed by the generators, labelled in MW.
@@ -1523,7 +1524,7 @@ change.
 
 | Mark | Light base | Dark base | Why |
 |---|---|---|---|
-| Collected pickup X (`map/drawn/markers.ts`) | `#2a3147` | `#9aa0a8` | the old `#6b7078` was 2.2–4.5 from the ground on every base. The light value is the colour study's `#30374d` nudged 2.7 to clear the foundations by 16.5 |
+| Collected pickup X (`map/drawn/pickups.ts`) | `#2a3147` | `#9aa0a8` | the old `#6b7078` was 2.2–4.5 from the ground on every base. The light value is the colour study's `#30374d` nudged 2.7 to clear the foundations by 16.5 |
 | Coal node | `#4c4c4c` | `#8c8f96` | near-black coal vanished on the dark relief (2.0) |
 | Power casing | `#1c1550` | `#08060f` | the indigo was 18 from the dark ground |
 | Belts | casing in the lift fill `#0e1116`, 2 px | no casing | mid steel was 4.8 from bare ground on the artwork |

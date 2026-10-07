@@ -1,9 +1,10 @@
 """The comment budget of docs/comments.md, measured per file: prose lines over code lines.
 
 A RATCHET, not an aspiration. Each cap is the highest ratio measured in its tree plus a small
-working margin, so the suite fails the moment a file grows a new essay. They are not the
-numbers docs/comments.md argues for, and lowering a cap is a deliberate second pass over the
-files it would fail, never a constant edited on its own.
+working margin, so the suite fails the moment a file grows a new essay; ``tools/mapgen`` is the
+exception, a fixed 0.60 that overrides ``tools/`` for its files. They are not the numbers
+docs/comments.md argues for, and lowering a cap is a deliberate second pass over the files it
+would fail, never a constant edited on its own.
 """
 
 from __future__ import annotations
@@ -19,13 +20,14 @@ BUDGETS = [
     (ROOT / "src" / "satisfactory_mcp" / "interfaces", 0.80),
     (ROOT / "src" / "satisfactory_mcp" / "presenters", 0.40),
     (ROOT / "tools", 0.65),
+    (ROOT / "tools" / "mapgen", 0.60),
     (ROOT / "src" / "satisfactory_mcp" / "domain", 0.70),
     (ROOT / "src" / "satisfactory_mcp" / "core", 0.95),
     (ROOT / "src" / "pioneersav", 0.95),
     (ROOT / "tests", 1.00),
 ]
 FRONTEND = ROOT / "src" / "satisfactory_mcp" / "interfaces" / "web" / "frontend"
-TS_BUDGET = 1.30
+TS_BUDGET = 0.90
 #: Written by openapi-typescript from the server's schema, not by hand.
 TS_GENERATED = {"schema.d.ts"}
 MIN_CODE_LINES = 40  # tiny files are all header; the budget is about essays, not stubs
@@ -97,11 +99,16 @@ def _typescript_sources() -> list[Path]:
     return [path for path in sources if path.name not in TS_GENERATED and path.is_file()]
 
 
-def _over_budget(
-    counted: Iterable[tuple[Path, tuple[int, int] | None]], budget: float
-) -> Iterator[str]:
-    """``ratio>cap path`` for every counted file of at least MIN_CODE_LINES over ``budget``."""
-    for path, counts in counted:
+def _python_sources() -> Iterator[tuple[Path, float]]:
+    """Every Python file under ``BUDGETS`` with the cap of the deepest tree holding it."""
+    deepest_first = sorted(BUDGETS, key=lambda entry: len(entry[0].parts), reverse=True)
+    for path in sorted({p for root, _ in BUDGETS for p in root.rglob("*.py")}):
+        yield path, next(cap for root, cap in deepest_first if path.is_relative_to(root))
+
+
+def _over_budget(counted: Iterable[tuple[Path, tuple[int, int] | None, float]]) -> Iterator[str]:
+    """``ratio>cap path`` for every counted file of at least MIN_CODE_LINES over its cap."""
+    for path, counts, budget in counted:
         if counts is None:
             continue
         prose, code = counts
@@ -110,12 +117,8 @@ def _over_budget(
 
 
 def test_the_prose_stays_inside_its_budget() -> None:
-    over = [
-        entry
-        for root, budget in BUDGETS
-        for entry in _over_budget(((p, prose_and_code(p)) for p in root.rglob("*.py")), budget)
-    ]
-    over += _over_budget(((p, ts_prose_and_code(p)) for p in _typescript_sources()), TS_BUDGET)
+    over = list(_over_budget((p, prose_and_code(p), cap) for p, cap in _python_sources()))
+    over += _over_budget((p, ts_prose_and_code(p), TS_BUDGET) for p in _typescript_sources())
     over.sort(reverse=True)
     assert not over, (
         f"comment budget: {len(over)} file(s) over (docs/comments.md). "

@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypeAlias
 
-from ..solver.model import MW, Solution
+from ..solver.model import MW, ProcessRow, Solution
 
-__all__ = ["BuildJob", "group_key", "group_processes"]
+__all__ = ["BuildJob", "JobKey", "group_key", "group_processes"]
+
+#: What a plan row is matched on: ``("recipe", building, recipe)``, ``("generator",
+#: building)`` or ``("extractor", building, resource, purity)``.
+JobKey: TypeAlias = tuple[str | None, ...]
 
 
 @dataclass
 class BuildJob:
     """Solution rows that are one build job: the same machine doing the same thing."""
 
-    key: tuple
+    key: JobKey
     kind: str
     building_id: str
     building: str
@@ -30,13 +35,13 @@ class BuildJob:
     depth: int = 0
 
 
-def _resource_of(proc: dict) -> str:
+def _resource_of(proc: ProcessRow) -> str:
     """The single item an extractor column produces."""
     produced = [item for item, rate in proc.get("rates", {}).items() if rate > 0]
     return produced[0] if produced else ""
 
 
-def group_key(proc: dict) -> tuple:
+def group_key(proc: ProcessRow) -> JobKey:
     """The identity a plan row is matched on, as a hashable tuple.
 
     Public because it is the join between the two things this package says about one
@@ -58,7 +63,7 @@ def group_processes(sol: Solution) -> list[BuildJob]:
     Generators on Fuel and 20 on Turbofuel, but that is 196 identical buildings and one
     plumbing decision, not two different machines to place.
     """
-    jobs: dict[tuple, BuildJob] = {}
+    jobs: dict[JobKey, BuildJob] = {}
     for proc in sol.processes:
         key = group_key(proc)
         job = jobs.get(key)

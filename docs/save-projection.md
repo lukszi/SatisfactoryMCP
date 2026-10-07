@@ -435,6 +435,11 @@ settle it. **Every rule below was wrong before it was measured:**
   set but points at an `FGWaterVolume` that is not a purity-table key; that one works fine.
 - **Generators keep a `FuelInventory`, not an `InputInventory`.** Without capturing it a
   starved coal plant shows no evidence either way.
+- **"Inputs not arriving" counts what is missing.** `starved_of` counts each starved
+  machine's cause, so the Black Powder assembler above counts Coal and not Sulfur. A starved
+  generator counts too, so a coal plant without water shows as Water. A biomass burner does
+  not count: every burner is hand-fed (frontend_vision.md §8.7), so an empty one is not a
+  supply fault. Decided 2026-10-06.
 - **A starved input names what feeds it.** One `Feed` row per arriving run of the input's
   medium: `nothing` (no run arrives) and `unfed` (a pipe arrives, and no source anywhere
   reaches its network) are findings; `open` (the save joins the far end to no actor, a
@@ -1085,6 +1090,8 @@ The big tables are interned and positional, because a record per piece would be 
 each carries a `classes` list and rows that hold an index into it. `core/saveio/rows.py` is the
 one reader that decodes them; `core/saveio/extract/` is the one writer. Trailing columns are
 additive, so a short row means "this projection predates the column", never a tear.
+`core/saveio/schema.py` declares the whole projection as types, these rows included, and
+`tests/core/saveio/test_schema.py` holds the committed fixture against them.
 
 **`structures`** — `{classes, instances}`, row `[classIndex, x, y, z, yaw]`. Read out of
 `FGLightweightBuildableSubsystem`'s `actorSpecificInfo`, which is `[version, [classPath,

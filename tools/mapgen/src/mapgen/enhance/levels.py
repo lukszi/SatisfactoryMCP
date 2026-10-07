@@ -1,10 +1,19 @@
-"""The enhanced levels: cut, upscaled, repaired, tiled, and every claim about them re-measured."""
+"""The enhanced levels: cut, upscaled, repaired and tiled; ``checks`` re-measures the claims."""
 
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, NamedTuple, cast
 
+from mapgen.enhance.checks import (
+    SEAM_RATIO_MAX,
+    LowZoomCheck,
+    SeamCheck,
+    low_zoom_residual,
+    seam_check,
+)
 from mapgen.enhance.pixels import (
     COLOUR_FIX_SIGMA,
     FAINT_FEATHER,
@@ -19,6 +28,7 @@ from mapgen.enhance.pixels import (
     PRESHARPEN_ON,
     PRESHARPEN_ROUNDS,
     PRESHARPEN_SIGMA,
+    ImageModule,
     colour_fix,
     hybrid_upscale,
     presharpen,
@@ -29,215 +39,32 @@ from mapgen.enhance.upscaler import (
     ENHANCE_OVERLAP_PX,
     ENHANCE_SCALE,
     ENHANCE_TILE_PX,
-    MissingUpscaler,
+    EnhanceError,
+    Upscaler,
     run_upscaler,
 )
-from mapgen.gamedata.artwork_sheet import line_bytes, mean_abs
 from mapgen.tiles.recipes import ENHANCE_RECIPE, ENHANCE_RECIPES, UNNUMBERED_RECIPE
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_PX,
     cut_square,
     enhanced_top_z,
+    level_record,
     pyramid_top_z,
-    tile_relpath,
 )
+from satisfactory_mcp.core.jsontypes import JsonObject
 
-__all__ = [
-    "CONTROL_COLS",
-    "ENHANCE_WORK",
-    "LOW_ZOOM_SAMPLES",
-    "LOW_ZOOM_STRIDE",
-    "SEAM_RATIO_MAX",
-    "SEAM_ROWS",
-    "enhance_levels",
-    "low_zoom_residual",
-    "seam_check",
-]
+if TYPE_CHECKING:
+    from PIL import Image
+
+__all__ = ["ENHANCE_WORK", "enhance_levels"]
 
 #: Deleted before and after the stage, so a dead run leaves nothing a later one merges in.
 ENHANCE_WORK = "enhance.work"
 
 
-#: Where the seam check reads, in tile rows of the enhanced top level, and the columns its
-#: control averages over. One arbitrary column pair is too noisy a denominator: on quiet
-#: ground it is near zero and any seam divides into it enormously.
-SEAM_ROWS = (32, 64, 96)
-
-
-CONTROL_COLS = (32, 64, 96, 128, 160, 192, 224)
-
-
-#: How much worse than a boundary that is NOT a seam a real seam may read. An edge in the
-#: artwork that lands on a boundary costs the same whether the boundary is a seam or not,
-#: which is why the comparison is against that and not against zero.
-SEAM_RATIO_MAX = 1.5
-
-
-#: Where the low-zoom check samples, in tiles of the original top level. Tiles that are
-#: flat ocean are dropped rather than counted as agreement.
-LOW_ZOOM_STRIDE = 5
-
-
-LOW_ZOOM_SAMPLES = 12
-
-
-def _column(image, x: int) -> bytes:
-    """One pixel column of an image as raw RGB bytes."""
-    return line_bytes(image, (x, 0, x + 1, image.height))
-
-
-def _column_control(image) -> float:
-    """What two adjacent columns of this tile cost, averaged over the whole tile.
-
-    The denominator every ratio below is taken against. One arbitrary column pair is not
-    it: quiet ground gives a control near zero, and dividing by that turns an invisible
-    difference into an enormous number.
-    """
-    return sum(mean_abs(_column(image, c), _column(image, c + 1)) for c in CONTROL_COLS) / len(
-        CONTROL_COLS
-    )
-
-
-def _boundary(dest: Path, image_mod, z: int, x: int, y: int) -> tuple[float, float]:
-    """The across-boundary difference at tile ``(x, y)``, and that tile's own control."""
-    left = image_mod.open(dest / tile_relpath(z, x - 1, y))
-    right = image_mod.open(dest / tile_relpath(z, x, y))
-    edge = mean_abs(_column(left, left.width - 1), _column(right, 0))
-    return round(edge, 4), round(_column_control(right), 4)
-
-
-def _split_boundaries(samples: list[tuple[float, float]]) -> tuple[list[float], list[float]]:
-    """Ratios where the ground has variation, absolute differences where it has none.
-
-    A tile of open ocean has a control of exactly zero, so those samples are reported as
-    raw differences rather than divided into infinities. On one flat colour, anything but
-    zero is a visible line.
-    """
-    live = sorted(round(edge / control, 3) for edge, control in samples if control)
-    flat = sorted(edge for edge, control in samples if not control)
-    return live, flat
-
-
-def seam_check(dest: Path, image_mod, z: int, step: int, span: int) -> dict:
-    """Is any source-tile boundary visible? Measured against boundaries that are not seams.
-
-    A real seam falls every ``step`` tiles of level ``z``, where two separately upscaled
-    source squares meet. The control is the identical statistic at boundaries halfway
-    between them, where the two tiles were cut from ONE upscaled core and there is nothing
-    to stitch -- so whatever this measurement costs when there is no seam is what it costs
-    here, and the only question is whether the seams cost more.
-
-    That control is the whole point. An edge in the artwork that happens to land on a tile
-    boundary reads large whether or not the boundary is a seam, so a bare threshold on the
-    ratio would condemn the map's own coastlines. Comparing like with like does not.
-    """
-    seams, seam_flat = _split_boundaries(
-        [_boundary(dest, image_mod, z, x, y) for x in range(step, span, step) for y in SEAM_ROWS]
-    )
-    interior, interior_flat = _split_boundaries(
-        [
-            _boundary(dest, image_mod, z, x, y)
-            for x in range(step // 2, span, step)
-            for y in SEAM_ROWS
-        ]
-    )
-    seam_median = seams[len(seams) // 2] if seams else 0.0
-    interior_median = interior[len(interior) // 2] if interior else 0.0
-    return {
-        "method": (
-            f"the across-boundary mean per-channel difference over the tile's own "
-            f"adjacent-column difference, at rows {list(SEAM_ROWS)} of z{z}. seam_ratios "
-            f"are the real boundaries -- one every {step} tiles, where two separately "
-            "upscaled squares meet -- and interior_ratios the same statistic halfway "
-            "between them, where one core was simply cut in two."
-        ),
-        "overlap_px": ENHANCE_OVERLAP_PX,
-        "seam_ratios": seams,
-        "interior_ratios": interior,
-        "seam_median": seam_median,
-        "interior_median": interior_median,
-        "seam_worst": max(seams) if seams else 0.0,
-        "interior_worst": max(interior) if interior else 0.0,
-        "on_flat_ground": {
-            "note": (
-                "boundaries whose tile has no column-to-column variation at all -- open "
-                "ocean. No ratio is meaningful there, so these are the raw across-boundary "
-                "differences, and they are the strictest test the sheet has: on one flat "
-                "colour, anything but zero is a line a reader would see."
-            ),
-            "seam_edges": seam_flat,
-            "interior_edges": interior_flat,
-        },
-        "threshold": SEAM_RATIO_MAX,
-        "seams_invisible": (
-            seam_median <= SEAM_RATIO_MAX * interior_median and max(seam_flat, default=0.0) == 0.0
-        ),
-        "reading": (
-            "the seams read at or below what a boundary with no seam in it reads, so the "
-            "stitching contributes nothing a reader could pick out from the map's own "
-            "edges. The overlap is what buys that: the model never sees a tile edge that "
-            "survives into the output."
-        ),
-    }
-
-
-def low_zoom_residual(dest: Path, image_mod, top: int, tile_px: int) -> dict:
-    """Would the low levels look different if they came from the enhanced sheet instead?
-
-    z0..z5 are downscales of the game's own artwork, and the honest question about that
-    choice is whether anybody could tell. So each sampled top-level tile of the artwork is
-    compared against the four enhanced tiles above it, mosaicked and Lanczos'd back down to
-    the same resolution -- literally the two candidate provenances for that one tile --
-    against the same adjacent-column control the seam check uses.
-
-    Tiles whose control is zero are dropped rather than counted: open ocean agrees with
-    everything, and counting it would be padding the answer with tiles that cannot disagree.
-    """
-    span = 1 << top
-    ratios = []
-    for x in range(2, span, LOW_ZOOM_STRIDE):
-        for y in range(2, span, LOW_ZOOM_STRIDE):
-            if len(ratios) >= LOW_ZOOM_SAMPLES:
-                break
-            artwork = image_mod.open(dest / tile_relpath(top, x, y)).convert("RGB")
-            control = _column_control(artwork)
-            if not control:
-                continue
-            mosaic = image_mod.new("RGB", (tile_px * 2, tile_px * 2))
-            for dx in (0, 1):
-                for dy in (0, 1):
-                    child = image_mod.open(dest / tile_relpath(top + 1, 2 * x + dx, 2 * y + dy))
-                    mosaic.paste(child.convert("RGB"), (dx * tile_px, dy * tile_px))
-            back = mosaic.resize((tile_px, tile_px), image_mod.LANCZOS)
-            middle = tile_px // 2
-            difference = mean_abs(_column(artwork, middle), _column(back, middle))
-            ratios.append(round(difference / control, 3))
-    ratios.sort()
-    median = ratios[len(ratios) // 2] if ratios else 0.0
-    return {
-        "method": (
-            f"{len(ratios)} tiles of z{top} as cut from the artwork, differenced against "
-            f"their own four z{top + 1} children mosaicked and Lanczos'd back down to "
-            f"{tile_px} px, over the artwork tile's adjacent-column difference"
-        ),
-        "samples": len(ratios),
-        "ratios": ratios,
-        "median_ratio": median,
-        "levels_from": (
-            f"z0..z{top} are downscales of the game's own artwork; only the levels above "
-            "it, which have no artwork behind them, come from the enhanced pixels"
-        ),
-        "indistinguishable": median <= 1.0,
-        "reading": (
-            "a ratio at or under 1 means the two provenances differ by less than the "
-            "artwork differs from its own next column -- so cutting the low levels from "
-            "the original changes nothing a reader could see, and taking the simple path "
-            "is a measurement rather than a shrug."
-        ),
-    }
-
-
-def _padded_crop(sheet, image_mod, tx: int, ty: int, tile: int, overlap: int):
+def _padded_crop(
+    sheet: Image.Image, image_mod: ImageModule, tx: int, ty: int, tile: int, overlap: int
+) -> Image.Image:
     """One source square plus ``overlap`` px of context on every side.
 
     Off the sheet -- only at its outer border -- the pad is black. Every padded pixel is
@@ -260,18 +87,282 @@ def _padded_crop(sheet, image_mod, tx: int, ty: int, tile: int, overlap: int):
     return crop
 
 
+@dataclass(frozen=True)
+class _Squares:
+    """The sheet as the model's grid: ``grid`` squares a side, each ``tile`` px plus overlap."""
+
+    sheet: Image.Image
+    image_mod: ImageModule
+    grid: int
+    tile: int
+    overlap: int
+
+    def crop(self, tx: int, ty: int) -> Image.Image:
+        return _padded_crop(self.sheet, self.image_mod, tx, ty, self.tile, self.overlap)
+
+    def names(self) -> list[tuple[int, int, str]]:
+        """Each square's column, row and file name, row by row."""
+        grid = range(self.grid)
+        return [(tx, ty, f"t_{tx:02d}_{ty:02d}.png") for ty in grid for tx in grid]
+
+
+class _CutSquares(NamedTuple):
+    seconds: float
+    presharpen_s: float
+    lifted: list[float]
+
+
+class _CutLevels(NamedTuple):
+    written: dict[int, int]
+    coverage: list[float]
+    repair_s: float
+    colour_s: float
+    seconds: float
+
+
+def _cut_source_squares(squares: _Squares, src_dir: Path) -> _CutSquares:
+    """Each source square with its overlap, pre-sharpened, written as the model's input."""
+    started = time.perf_counter()
+    presharpen_s = 0.0
+    lifted: list[float] = []
+    for tx, ty, name in squares.names():
+        crop = squares.crop(tx, ty)
+        mark = time.perf_counter()
+        crop, raised = presharpen(crop, squares.image_mod)
+        presharpen_s += time.perf_counter() - mark
+        lifted.append(raised)
+        crop.save(src_dir / name)
+    seconds = time.perf_counter() - started - presharpen_s
+    count, side = squares.grid**2, squares.tile + 2 * squares.overlap
+    print(
+        f"  enhance: {count} source squares of {side}px "
+        f"({squares.tile} + 2x{squares.overlap} overlap) cut in {seconds:.1f}s"
+    )
+    print(
+        f"  enhance: pre-sharpened in {presharpen_s:.1f}s; that mask covers "
+        f"{sum(lifted) / len(lifted) * 100:.1f}% of the sheet"
+    )
+    return _CutSquares(seconds, presharpen_s, lifted)
+
+
+def _upscale_squares(
+    upscaler: Upscaler, src_dir: Path, up_dir: Path, count: int, scale: int
+) -> float:
+    """Run the binary over every square; its seconds, or EnhanceError for a short run."""
+    started = time.perf_counter()
+    code, log = run_upscaler(upscaler.exe, upscaler.models, src_dir, up_dir, scale)
+    seconds = time.perf_counter() - started
+    produced = sorted(up_dir.glob("*.png"))
+    if code != 0 or len(produced) != count:
+        raise EnhanceError(
+            f"{upscaler.exe} exited {code} after {seconds:.0f}s with "
+            f"{len(produced)} of {count} squares written.\n"
+            f"{log}\n"
+            "The pyramid already installed has not been touched -- this ran inside the "
+            f"staging tree. Nothing here recovers by falling back to Lanczos: re-run "
+            "without --enhance if that is what is wanted, and the sidecar will say so."
+        )
+    print(
+        f"  enhance: {count} squares upscaled {scale}x with {ENHANCE_MODEL} in "
+        f"{seconds:.1f}s ({seconds / count:.2f}s each)"
+    )
+    return seconds
+
+
+def _repair_and_cut_levels(
+    squares: _Squares, up_dir: Path, dest: Path, levels: range, scale: int, tile_px: int
+) -> _CutLevels:
+    """Repair each upscaled square towards its source and cut its core into ``levels``."""
+    started = time.perf_counter()
+    repair_s = colour_s = 0.0
+    core_px = squares.tile * scale
+    margin = squares.overlap * scale
+    enhanced_top = levels.stop - 1
+    written = {z: 0 for z in levels}
+    coverage: list[float] = []
+    image_mod = squares.image_mod
+    for tx, ty, name in squares.names():
+        # The untouched source, never in/: both repairs correct TOWARDS it.
+        source = squares.crop(tx, ty)
+        upscaled = image_mod.open(up_dir / name).convert("RGB")
+        mark = time.perf_counter()
+        blended, covered = hybrid_upscale(source, upscaled, image_mod, scale)
+        repair_s += time.perf_counter() - mark
+        mark = time.perf_counter()
+        # Before the crop: the blur reaches ~25 px into the neighbour, or it seams.
+        fixed = colour_fix(blended, source, image_mod)
+        colour_s += time.perf_counter() - mark
+        core = fixed.crop((margin, margin, margin + core_px, margin + core_px))
+        coverage.append(covered)
+        for z in written:
+            side = core_px >> (enhanced_top - z)
+            lanczos = image_mod.Resampling.LANCZOS
+            piece = core if side == core_px else core.resize((side, side), lanczos)
+            span = side // tile_px
+            written[z] += cut_square(piece, dest, z, tx * span, ty * span, tile_px)
+    seconds = time.perf_counter() - started - repair_s - colour_s
+    count = squares.grid**2
+    print(
+        f"  enhance: faint detail repaired in {repair_s:.1f}s, low frequencies restored in "
+        f"{colour_s:.1f}s ({colour_s / count:.2f}s each)"
+    )
+    return _CutLevels(written, coverage, repair_s, colour_s, seconds)
+
+
+def _report(seams: SeamCheck, low: LowZoomCheck, coverage: list[float]) -> None:
+    top = low.top
+    print(
+        f"  enhance: seams read {seams.seam_median:.2f}x their own control where "
+        f"boundaries that are NOT seams read {seams.interior_median:.2f}x theirs"
+    )
+    print(
+        f"  enhance: the mask covers {sum(coverage) / len(coverage) * 100:.1f}% of the sheet; "
+        f"z{top} from the artwork differs {low.median_ratio:.2f}x its control from the "
+        f"same tile taken out of z{top + 1}"
+    )
+    if not seams.invisible:
+        print(
+            f"  WARNING: the seams read {seams.seam_median:.2f}x their control against "
+            f"{seams.interior_median:.2f}x at boundaries with no seam in them, over the "
+            f"{SEAM_RATIO_MAX}x this file calls invisible. The overlap is not buying enough "
+            "context. The tiles are still written -- _meta.tiles.enhancement says so."
+        )
+
+
+def _enhancement_record(
+    squares: _Squares,
+    upscaler: Upscaler,
+    scale: int,
+    timings: tuple[_CutSquares, float, _CutLevels],
+    checks: tuple[SeamCheck, LowZoomCheck],
+) -> JsonObject:
+    """The sidecar's ``enhancement`` block: the recipe, the binary, each pass, the checks."""
+    cut, upscale_s, levels = timings
+    lifted, coverage = cut.lifted, levels.coverage
+    return {
+        "recipe": ENHANCE_RECIPE,
+        "recipe_name": ENHANCE_RECIPES[ENHANCE_RECIPE],
+        "recipe_history": {str(n): text for n, text in ENHANCE_RECIPES.items()},
+        "recipe_role": (
+            "which pipeline cut the tiles beside this sidecar. The no-silent-downgrade "
+            "guard compares these numbers rather than a boolean, so re-cutting an older "
+            "recipe's tiles with a newer one reads as the upgrade it is; a pyramid whose "
+            "sidecar says enhanced and names no recipe was cut by recipe "
+            f"{UNNUMBERED_RECIPE}."
+        ),
+        "model": ENHANCE_MODEL,
+        "scale": scale,
+        "source_tile_px": squares.tile,
+        "overlap_px": squares.overlap,
+        "source_squares": squares.grid**2,
+        "enhanced_sheet_px": squares.sheet.width * scale,
+        "binary": {
+            "url": upscaler.url,
+            "sha256": upscaler.sha256,
+            "exe": ENHANCE_EXE_NAME,
+            "cached_at": str(upscaler.home),
+            "licence": (
+                "Real-ESRGAN ncnn-Vulkan, BSD-3-Clause, by Xintao Wang et al. A "
+                "prebuilt binary run offline at generation time; not vendored, not a "
+                "dependency of this project, and no part of it is in the output."
+            ),
+        },
+        "presharpen": {
+            "rule": (
+                "input = source * (1 - m) + unsharp(source) * m, m from presharpen_mask "
+                "on the source luma alone, fed to the model in place of the source"
+            ),
+            "rounds": PRESHARPEN_ROUNDS,
+            "sigma_px": PRESHARPEN_SIGMA,
+            "amount": PRESHARPEN_AMOUNT,
+            "window_px": FAINT_WINDOW,
+            "grow_px": FAINT_GROW,
+            "band": [FAINT_LO, PRESHARPEN_HI],
+            "feather_px": FAINT_FEATHER,
+            "mask_on_above": PRESHARPEN_ON,
+            "dilation": (
+                f"one passive round: a pixel joins the mask only if at least "
+                f"{PRESHARPEN_NEIGHBOURS} of its 8 neighbours are already in it"
+            ),
+            "edge_feather_px": PRESHARPEN_EDGE,
+            "mask_coverage": round(sum(lifted) / len(lifted), 4),
+            "why": (
+                "repairing the output cannot put back a stroke the model never drew, and "
+                "a mark 4 to 10 luma below its surroundings is under the model's floor. "
+                "Raising the weak band by about a third on the way IN carries it over, "
+                "and the model keeps some 85% of what it is handed against 79% of a mark "
+                "it half-missed. The band stops at "
+                f"{PRESHARPEN_HI} rather than the repair's {FAINT_HI} because amplifying "
+                "a mid stroke gives the model more contrast to expand, not less."
+            ),
+        },
+        "hybrid": {
+            "rule": (
+                "output = anime * (1 - w) + lanczos * w, w from faint_mask on the "
+                "source luma alone, upsampled bilinearly"
+            ),
+            "window_px": FAINT_WINDOW,
+            "grow_px": FAINT_GROW,
+            "band": [FAINT_LO, FAINT_HI],
+            "feather_px": FAINT_FEATHER,
+            "mask_coverage": round(sum(coverage) / len(coverage), 4),
+            "why": (
+                "the model's one measured defect is expanded contrast: it deepens strong "
+                "strokes and erases the faintest ones. Lanczos is the only candidate "
+                "that keeps weak strokes at full depth, so it is used exactly where they "
+                "are and nowhere else."
+            ),
+        },
+        "colour_fix": {
+            "rule": (
+                "output = out - blur(out, sigma) + blur(lanczos(source), sigma), all "
+                "three channels, at the 4x output's own resolution"
+            ),
+            "sigma_px": COLOUR_FIX_SIGMA,
+            "sigma_measured_in": "pixels of the enhanced output, not of the source",
+            "why": (
+                "the model may decide detail the source does not resolve; it may not "
+                "decide what colour a flat fill is, and it drifts them by up to a whole "
+                "level of the map's own palette. Swapping the low band back halves that "
+                "for no measurable sharpness, which is the largest single improvement "
+                f"the second bake-off round found. Sigma exceeds a stroke's width at "
+                f"{scale}x or the fix would blur back the sharpening it protects."
+            ),
+        },
+        "seams": checks[0].record(),
+        "low_zoom": checks[1].record(),
+        "timings_s": {
+            "cut_source_squares": round(cut.seconds, 2),
+            "presharpen": round(cut.presharpen_s, 2),
+            "upscale": round(upscale_s, 2),
+            "faint_repair": round(levels.repair_s, 2),
+            "colour_fix": round(levels.colour_s, 2),
+            "cut_enhanced_levels": round(levels.seconds, 2),
+            "total": round(
+                cut.seconds
+                + cut.presharpen_s
+                + upscale_s
+                + levels.repair_s
+                + levels.colour_s
+                + levels.seconds,
+                2,
+            ),
+        },
+    }
+
+
 def enhance_levels(
-    sheet,
-    image_mod,
+    sheet: Image.Image,
+    image_mod: ImageModule,
     dest: Path,
-    upscaler: dict,
+    upscaler: Upscaler,
     work: Path,
     *,
     tile_px: int = PYRAMID_TILE_PX,
     source_tile: int = ENHANCE_TILE_PX,
     overlap: int = ENHANCE_OVERLAP_PX,
     scale: int = ENHANCE_SCALE,
-) -> dict:
+) -> JsonObject:
     """Add the upscaled levels to ``dest``, and measure everything the sidecar claims.
 
     The enhanced sheet is never held whole: at 32768 px it would be 3.2 GB of RGB, which is
@@ -288,224 +379,33 @@ def enhance_levels(
     enhanced_top = enhanced_top_z(sheet.width, scale, tile_px)
     grid = sheet.width // source_tile
     if grid * source_tile != sheet.width:
-        raise MissingUpscaler(
+        raise EnhanceError(
             f"a {sheet.width} px sheet does not divide into {source_tile} px squares, so the "
             "upscaler cannot be fed without a partial tile"
         )
     src_dir, up_dir = work / "in", work / "out"
     for directory in (src_dir, up_dir):
         directory.mkdir(parents=True)
-
-    started = time.perf_counter()
-    t_presharpen = 0.0
-    lifted: list[float] = []
-    for ty in range(grid):
-        for tx in range(grid):
-            crop = _padded_crop(sheet, image_mod, tx, ty, source_tile, overlap)
-            mark = time.perf_counter()
-            crop, raised = presharpen(crop, image_mod)
-            t_presharpen += time.perf_counter() - mark
-            lifted.append(raised)
-            crop.save(src_dir / f"t_{tx:02d}_{ty:02d}.png")
-    t_cut = time.perf_counter() - started - t_presharpen
-    print(
-        f"  enhance: {grid * grid} source squares of {source_tile + 2 * overlap}px "
-        f"({source_tile} + 2x{overlap} overlap) cut in {t_cut:.1f}s"
+    squares = _Squares(sheet, image_mod, grid, source_tile, overlap)
+    cut = _cut_source_squares(squares, src_dir)
+    upscale_s = _upscale_squares(upscaler, src_dir, up_dir, grid * grid, scale)
+    enhanced = range(top + 1, enhanced_top + 1)
+    levels = _repair_and_cut_levels(squares, up_dir, dest, enhanced, scale, tile_px)
+    source = (
+        f"the sheet pre-sharpened, upscaled {scale}x by {ENHANCE_MODEL}, faint "
+        "detail restored and low frequencies put back"
     )
-    print(
-        f"  enhance: pre-sharpened in {t_presharpen:.1f}s; that mask covers "
-        f"{sum(lifted) / len(lifted) * 100:.1f}% of the sheet"
-    )
-
-    started = time.perf_counter()
-    code, log = run_upscaler(upscaler["exe"], upscaler["models"], src_dir, up_dir, scale)
-    t_upscale = time.perf_counter() - started
-    produced = sorted(up_dir.glob("*.png"))
-    if code != 0 or len(produced) != grid * grid:
-        raise MissingUpscaler(
-            f"{upscaler['exe']} exited {code} after {t_upscale:.0f}s with "
-            f"{len(produced)} of {grid * grid} squares written.\n"
-            f"{log}\n"
-            "The pyramid already installed has not been touched -- this ran inside the "
-            f"staging tree. Nothing here recovers by falling back to Lanczos: re-run "
-            "without --enhance if that is what is wanted, and the sidecar will say so."
-        )
-    print(
-        f"  enhance: {grid * grid} squares upscaled {scale}x with {ENHANCE_MODEL} in "
-        f"{t_upscale:.1f}s ({t_upscale / (grid * grid):.2f}s each)"
-    )
-
-    started = time.perf_counter()
-    t_repair = t_colour = 0.0
+    records: list[JsonObject] = [
+        cast(JsonObject, level_record(z, written, source, tile_px))
+        for z, written in sorted(levels.written.items())
+    ]
     core_px = source_tile * scale
-    margin = overlap * scale
-    per_level = {z: 0 for z in range(top + 1, enhanced_top + 1)}
-    coverage: list[float] = []
-    for ty in range(grid):
-        for tx in range(grid):
-            # The untouched source, never in/: both repairs correct TOWARDS it.
-            source = _padded_crop(sheet, image_mod, tx, ty, source_tile, overlap)
-            upscaled = image_mod.open(up_dir / f"t_{tx:02d}_{ty:02d}.png").convert("RGB")
-            mark = time.perf_counter()
-            blended, covered = hybrid_upscale(source, upscaled, image_mod, scale)
-            t_repair += time.perf_counter() - mark
-            mark = time.perf_counter()
-            # Before the crop: the blur reaches ~25 px into the neighbour, or it seams.
-            fixed = colour_fix(blended, source, image_mod)
-            t_colour += time.perf_counter() - mark
-            core = fixed.crop((margin, margin, margin + core_px, margin + core_px))
-            coverage.append(covered)
-            for z in per_level:
-                side = core_px >> (enhanced_top - z)
-                piece = core if side == core_px else core.resize((side, side), image_mod.LANCZOS)
-                span = side // tile_px
-                per_level[z] += cut_square(piece, dest, z, tx * span, ty * span, tile_px)
-    t_pyramid = time.perf_counter() - started - t_repair - t_colour
-    print(
-        f"  enhance: faint detail repaired in {t_repair:.1f}s, low frequencies restored in "
-        f"{t_colour:.1f}s ({t_colour / (grid * grid):.2f}s each)"
-    )
-
-    levels = []
-    for z, written in sorted(per_level.items()):
-        side = tile_px << z
-        levels.append(
-            {
-                "z": z,
-                "sheet_px": side,
-                "tiles": (1 << z) ** 2,
-                "bytes": written,
-                "from": (
-                    f"the sheet pre-sharpened, upscaled {scale}x by {ENHANCE_MODEL}, faint "
-                    "detail restored and low frequencies put back"
-                ),
-            }
-        )
-        print(f"  pyramid z{z}: {side}x{side}, {(1 << z) ** 2} tiles, {written / 1e6:.2f} MB")
-
     seams = seam_check(dest, image_mod, enhanced_top, core_px // tile_px, 1 << enhanced_top)
     low = low_zoom_residual(dest, image_mod, top, tile_px)
-    print(
-        f"  enhance: seams read {seams['seam_median']:.2f}x their own control where "
-        f"boundaries that are NOT seams read {seams['interior_median']:.2f}x theirs"
-    )
-    print(
-        f"  enhance: the mask covers {sum(coverage) / len(coverage) * 100:.1f}% of the sheet; "
-        f"z{top} from the artwork differs {low['median_ratio']:.2f}x its control from the "
-        f"same tile taken out of z{top + 1}"
-    )
-    if not seams["seams_invisible"]:
-        print(
-            f"  WARNING: the seams read {seams['seam_median']:.2f}x their control against "
-            f"{seams['interior_median']:.2f}x at boundaries with no seam in them, over the "
-            f"{SEAM_RATIO_MAX}x this file calls invisible. The overlap is not buying enough "
-            "context. The tiles are still written -- _meta.tiles.enhancement says so."
-        )
-
+    _report(seams, low, levels.coverage)
     return {
-        "levels": levels,
-        "enhancement": {
-            "recipe": ENHANCE_RECIPE,
-            "recipe_name": ENHANCE_RECIPES[ENHANCE_RECIPE],
-            "recipe_history": {str(n): text for n, text in ENHANCE_RECIPES.items()},
-            "recipe_role": (
-                "which pipeline cut the tiles beside this sidecar. The no-silent-downgrade "
-                "guard compares these numbers rather than a boolean, so re-cutting an older "
-                "recipe's tiles with a newer one reads as the upgrade it is; a pyramid whose "
-                "sidecar says enhanced and names no recipe was cut by recipe "
-                f"{UNNUMBERED_RECIPE}."
-            ),
-            "model": ENHANCE_MODEL,
-            "scale": scale,
-            "source_tile_px": source_tile,
-            "overlap_px": overlap,
-            "source_squares": grid * grid,
-            "enhanced_sheet_px": sheet.width * scale,
-            "binary": {
-                "url": upscaler["url"],
-                "sha256": upscaler["sha256"],
-                "exe": ENHANCE_EXE_NAME,
-                "cached_at": str(upscaler["home"]),
-                "licence": (
-                    "Real-ESRGAN ncnn-Vulkan, BSD-3-Clause, by Xintao Wang et al. A "
-                    "prebuilt binary run offline at generation time; not vendored, not a "
-                    "dependency of this project, and no part of it is in the output."
-                ),
-            },
-            "presharpen": {
-                "rule": (
-                    "input = source * (1 - m) + unsharp(source) * m, m from presharpen_mask "
-                    "on the source luma alone, fed to the model in place of the source"
-                ),
-                "rounds": PRESHARPEN_ROUNDS,
-                "sigma_px": PRESHARPEN_SIGMA,
-                "amount": PRESHARPEN_AMOUNT,
-                "window_px": FAINT_WINDOW,
-                "grow_px": FAINT_GROW,
-                "band": [FAINT_LO, PRESHARPEN_HI],
-                "feather_px": FAINT_FEATHER,
-                "mask_on_above": PRESHARPEN_ON,
-                "dilation": (
-                    f"one passive round: a pixel joins the mask only if at least "
-                    f"{PRESHARPEN_NEIGHBOURS} of its 8 neighbours are already in it"
-                ),
-                "edge_feather_px": PRESHARPEN_EDGE,
-                "mask_coverage": round(sum(lifted) / len(lifted), 4),
-                "why": (
-                    "repairing the output cannot put back a stroke the model never drew, and "
-                    "a mark 4 to 10 luma below its surroundings is under the model's floor. "
-                    "Raising the weak band by about a third on the way IN carries it over, "
-                    "and the model keeps some 85% of what it is handed against 79% of a mark "
-                    "it half-missed. The band stops at "
-                    f"{PRESHARPEN_HI} rather than the repair's {FAINT_HI} because amplifying "
-                    "a mid stroke gives the model more contrast to expand, not less."
-                ),
-            },
-            "hybrid": {
-                "rule": (
-                    "output = anime * (1 - w) + lanczos * w, w from faint_mask on the "
-                    "source luma alone, upsampled bilinearly"
-                ),
-                "window_px": FAINT_WINDOW,
-                "grow_px": FAINT_GROW,
-                "band": [FAINT_LO, FAINT_HI],
-                "feather_px": FAINT_FEATHER,
-                "mask_coverage": round(sum(coverage) / len(coverage), 4),
-                "why": (
-                    "the model's one measured defect is expanded contrast: it deepens strong "
-                    "strokes and erases the faintest ones. Lanczos is the only candidate "
-                    "that keeps weak strokes at full depth, so it is used exactly where they "
-                    "are and nowhere else."
-                ),
-            },
-            "colour_fix": {
-                "rule": (
-                    "output = out - blur(out, sigma) + blur(lanczos(source), sigma), all "
-                    "three channels, at the 4x output's own resolution"
-                ),
-                "sigma_px": COLOUR_FIX_SIGMA,
-                "sigma_measured_in": "pixels of the enhanced output, not of the source",
-                "why": (
-                    "the model may decide detail the source does not resolve; it may not "
-                    "decide what colour a flat fill is, and it drifts them by up to a whole "
-                    "level of the map's own palette. Swapping the low band back halves that "
-                    "for no measurable sharpness, which is the largest single improvement "
-                    f"the second bake-off round found. Sigma exceeds a stroke's width at "
-                    f"{scale}x or the fix would blur back the sharpening it protects."
-                ),
-            },
-            "seams": seams,
-            "low_zoom": low,
-            "timings_s": {
-                "cut_source_squares": round(t_cut, 2),
-                "presharpen": round(t_presharpen, 2),
-                "upscale": round(t_upscale, 2),
-                "faint_repair": round(t_repair, 2),
-                "colour_fix": round(t_colour, 2),
-                "cut_enhanced_levels": round(t_pyramid, 2),
-                "total": round(
-                    t_cut + t_presharpen + t_upscale + t_repair + t_colour + t_pyramid, 2
-                ),
-            },
-        },
+        "levels": list(records),
+        "enhancement": _enhancement_record(
+            squares, upscaler, scale, (cut, upscale_s, levels), (seams, low)
+        ),
     }

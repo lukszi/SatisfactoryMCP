@@ -12,13 +12,16 @@ from __future__ import annotations
 import itertools
 import math
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
+from ...core.gamedata.model import GameData
 from ...core.saveio import ports
 from ...core.saveio import rows as saverows
+from ...core.saveio.schema import BuildableRecord, PipeNetwork, Projection, StorageRecord
 from ..spatial import geo
-from .flow import BASIS_NONE
+from .flow import BASIS_NONE, PipeFlow
 
 __all__ = [
     "JOINT_M",
@@ -94,9 +97,9 @@ class ConduitRun:
     #: The game's own FGPipeNetwork id, pipes only: two areas touching one network ARE
     #: joined even when no single piece passes near both.
     network: int | None = None
-    via: list[str] = field(default_factory=list)
+    via: list[str] = field(default_factory=list[str])
     #: The polylines (cm) the distance query runs over; one per piece.
-    _lines: list[list[list[float]]] = field(default_factory=list)
+    _lines: list[list[list[float]]] = field(default_factory=list[list[list[float]]])
 
     def midpoint(self) -> tuple[float, float]:
         """The point half way along the drawn line, in centimetres; the mean of the two ends
@@ -173,7 +176,7 @@ _GAUSS = tuple(
 )
 
 
-def _arc_cm(p0: list[float], p1: list[float], m0, m1) -> float:
+def _arc_cm(p0: list[float], p1: list[float], m0: list[float], m1: list[float]) -> float:
     """Arc length of one cubic Hermite span, in the centimetres its inputs are in.
 
     ``Q(t) = h00 p0 + h10 m0 + h01 p1 + h11 m1``, integrated as ``|Q'(t)|`` -- the same
@@ -192,26 +195,23 @@ def _arc_cm(p0: list[float], p1: list[float], m0, m1) -> float:
     return total
 
 
-def _tangents(spans, index: int) -> tuple[list[float], list[float]] | None:
+def _tangents(
+    spans: saverows.SplineSpans | None, index: int
+) -> tuple[list[float], list[float]] | None:
     """One span's ``[leave, arrive]`` pair, or ``None`` where it is straight.
 
-    Read guarded on the same terms as the points beside it -- schema 15 emits the column
-    only for a route that bends, stores ``0`` for a flat span inside a bent one, and a row
-    that will not decode costs its curve rather than the run.
+    Schema 15 emits the column only for a route that bends, and ``saverows`` reads a flat or
+    torn span inside a bent one as ``None``, so a bad span costs its curve rather than the run.
     """
-    if not isinstance(spans, (list, tuple)) or index >= len(spans):
+    if spans is None or index >= len(spans):
         return None
     entry = spans[index]
-    if not isinstance(entry, (list, tuple)) or len(entry) != 6:
+    if entry is None:
         return None
-    try:
-        vals = [float(v) for v in entry]
-    except (TypeError, ValueError):
-        return None
-    return vals[:3], vals[3:]
+    return list(entry[:3]), list(entry[3:])
 
 
-def _length_m(line: list[list[float]], spans=None) -> float:
+def _length_m(line: list[list[float]], spans: saverows.SplineSpans | None = None) -> float:
     """3D drawn length in metres, a riser's vertical leg included: a span with recorded
     tangents is integrated along its spline, one without is its chord."""
     total = 0.0
@@ -226,7 +226,7 @@ def _length_m(line: list[list[float]], spans=None) -> float:
 
 def _mk_label(kind: str, classes: set[str]) -> str:
     """ "belt mk3", or "belt mk1-mk3" for a mixed chain: the tier off the class id."""
-    mks = set()
+    mks: set[int] = set()
     for cls in classes:
         m = _MK.search(cls or "")
         mks.add(int(m.group(1)) if m else 1)
@@ -236,7 +236,7 @@ def _mk_label(kind: str, classes: set[str]) -> str:
     return f"{kind} mk{lo}" if lo == hi else f"{kind} mk{lo}-mk{hi}"
 
 
-def _open_ends(pieces: list) -> tuple[End, End, bool]:
+def _open_ends(pieces: Sequence[saverows.BeltSegment]) -> tuple[End, End, bool]:
     """A chain's two extremities, oriented input->output where the joints prove it.
 
     An extremity is an endpoint no other piece's opposite endpoint sits on (within
@@ -247,8 +247,10 @@ def _open_ends(pieces: list) -> tuple[End, End, bool]:
     starts = [(p.points[0], i) for i, p in enumerate(pieces)]
     ends = [(p.points[-1], i) for i, p in enumerate(pieces)]
 
-    def _open(candidates, others):
-        out = []
+    def _open(
+        candidates: list[tuple[list[float], int]], others: list[tuple[list[float], int]]
+    ) -> list[list[float]]:
+        out: list[list[float]] = []
         for point, i in candidates:
             if not any(
                 j != i and geo.distance_3d_m(point, other) <= JOINT_M for other, j in others
@@ -262,16 +264,20 @@ def _open_ends(pieces: list) -> tuple[End, End, bool]:
         (ax, ay, az), (bx, by, bz) = open_in[0], open_out[0]
         return End(ax, ay, az), End(bx, by, bz), True
     first, last = pieces[0].points[0], pieces[-1].points[-1]
-    return End(*first[:3]), End(*last[:3]), False
+    return _end(first), _end(last), False
 
 
-def _placements(projection: dict, game) -> list[PlugTarget]:
+def _end(point: list[float]) -> End:
+    """An end at a polyline point, nothing yet known to stand there."""
+    return End(point[0], point[1], point[2])
+
+
+def _placements(projection: Projection, game: GameData) -> list[PlugTarget]:
     """Everything an endpoint could plug into."""
-    out = []
+    out: list[PlugTarget] = []
     for key in ("machines", "extractors", "generators", "storage", "attachments"):
-        for record in projection.get(key) or ():
-            if not isinstance(record, dict):
-                continue
+        records: Sequence[BuildableRecord | StorageRecord] = projection.get(key) or ()
+        for record in records:
             pos = record.get("pos")
             if not pos or len(pos) < 3:
                 continue
@@ -294,7 +300,9 @@ def _placements(projection: dict, game) -> list[PlugTarget]:
     return out
 
 
-def _plug(end: End, targets: list[PlugTarget], cells: dict) -> str | None:
+def _plug(
+    end: End, targets: list[PlugTarget], cells: dict[tuple[int, int], list[int]]
+) -> str | None:
     """The nearest placement whose reach covers the endpoint, or None: a geometric guess."""
     best, best_score = None, math.inf
     cx, cy = int(end.x // _PLUG_CELL_CM), int(end.y // _PLUG_CELL_CM)
@@ -310,10 +318,10 @@ def _plug(end: End, targets: list[PlugTarget], cells: dict) -> str | None:
     return best
 
 
-def _belt_runs(projection: dict, game) -> list[ConduitRun]:
+def _belt_runs(projection: Projection, game: GameData) -> list[ConduitRun]:
     """One run per belt chain, its pieces grouped and its open ends oriented."""
     runs: list[ConduitRun] = []
-    by_chain: dict[int, list] = {}
+    by_chain: dict[int, list[saverows.BeltSegment]] = {}
     for seg in saverows.iter_belt_segments(projection):
         by_chain.setdefault(seg.chain, []).append(seg)
     for chain, pieces in by_chain.items():
@@ -346,17 +354,17 @@ def _belt_runs(projection: dict, game) -> list[ConduitRun]:
     return runs
 
 
-def _material_adjacency(projection: dict) -> dict[int, set[int]]:
+def _material_adjacency(projection: Projection) -> dict[int, set[int]]:
     """Actor index to the actor indices it shares a material coupling with; no hypertubes."""
     graph = projection.get("graph") or {}
     roles = graph.get("roles") or []
 
-    def role(index: int) -> str:
+    def role(index: object) -> str:
         return roles[index] if isinstance(index, int) and 0 <= index < len(roles) else ""
 
     adjacency: dict[int, set[int]] = {}
     for edge in graph.get("material") or ():
-        if isinstance(edge, (list, tuple)) and len(edge) >= 2:
+        if len(edge) >= 2:
             if len(edge) >= 4 and ports.is_hypertube_edge(role(edge[2]), role(edge[3])):
                 continue
             try:
@@ -368,10 +376,12 @@ def _material_adjacency(projection: dict) -> dict[int, set[int]]:
     return adjacency
 
 
-def _pipe_runs(projection: dict, game, pipe_flow: list[dict] | None) -> list[ConduitRun]:
+def _pipe_runs(
+    projection: Projection, game: GameData, pipe_flow: list[PipeFlow] | None
+) -> list[ConduitRun]:
     """One run per pipeline piece, ends in flow order where the network resolves one."""
     runs: list[ConduitRun] = []
-    networks = list((projection.get("pipes") or {}).get("networks") or ())
+    networks: list[PipeNetwork] = list((projection.get("pipes") or {}).get("networks") or ())
     actors = (projection.get("graph") or {}).get("actors") or []
     adjacency = _material_adjacency(projection)
     # Conduit geometry classes: a pipe's graph neighbour of one is plumbing continuing.
@@ -379,18 +389,14 @@ def _pipe_runs(projection: dict, game, pipe_flow: list[dict] | None) -> list[Con
         (projection.get("belts") or {}).get("classes") or ()
     )
     for seg in saverows.iter_pipe_segments(projection):
-        entry = networks[seg.network_index] if 0 <= seg.network_index < len(networks) else {}
+        entry = networks[seg.network_index] if 0 <= seg.network_index < len(networks) else None
         fluid = entry.get("fluid") if isinstance(entry, dict) else None
-        flow = (
-            pipe_flow[seg.index]
-            if pipe_flow
-            and 0 <= seg.index < len(pipe_flow)
-            and isinstance(pipe_flow[seg.index], dict)
-            else {}
+        flow: PipeFlow | dict[str, str] = (
+            pipe_flow[seg.position] if pipe_flow and 0 <= seg.position < len(pipe_flow) else {}
         )
         direction = flow.get("direction", "unknown")
         points = seg.points if direction != "reverse" else list(reversed(seg.points))
-        a, b = End(*points[0][:3]), End(*points[-1][:3])
+        a, b = _end(points[0]), _end(points[-1])
         via: list[str] = []
         for neighbour in sorted(adjacency.get(seg.actor_index, ())) if seg.actor_index >= 0 else ():
             leaf = actors[neighbour] if 0 <= neighbour < len(actors) else ""
@@ -405,7 +411,7 @@ def _pipe_runs(projection: dict, game, pipe_flow: list[dict] | None) -> list[Con
         runs.append(
             ConduitRun(
                 kind="pipe",
-                ident=f"pipe:{seg.index}",
+                ident=f"pipe:{seg.position}",
                 label=_mk_label("pipe", {seg.cls} if seg.cls else set()),
                 pieces=1,
                 length_m=_length_m(seg.points, seg.spans),
@@ -425,7 +431,7 @@ def _pipe_runs(projection: dict, game, pipe_flow: list[dict] | None) -> list[Con
     return runs
 
 
-def _plug_ends(runs: list[ConduitRun], projection: dict, game) -> None:
+def _plug_ends(runs: list[ConduitRun], projection: Projection, game: GameData) -> None:
     """Name what stands at each end, and drop a ``via`` an end already names."""
     targets = _placements(projection, game)
     cells: dict[tuple[int, int], list[int]] = {}
@@ -445,10 +451,16 @@ def _joint_key(end: End) -> tuple[int, int, int]:
     return (int(end.x // cell), int(end.y // cell), int(end.z // cell))
 
 
-def _nearest_joint(end: End, run: ConduitRun, joints: dict, owner: dict) -> str | None:
+def _nearest_joint(
+    end: End,
+    run: ConduitRun,
+    joints: dict[tuple[int, int, int], list[End]],
+    owner: dict[int, ConduitRun],
+) -> str | None:
     """The ident of the nearest other run with an end on this one's joint, if any."""
     kx, ky, kz = _joint_key(end)
-    best, best_d = None, JOINT_M
+    best: str | None = None
+    best_d = JOINT_M
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
             for dz in (-1, 0, 1):
@@ -479,7 +491,9 @@ def _link_joints(runs: list[ConduitRun]) -> None:
                 end.plugs = best
 
 
-def build_runs(projection: dict, game, pipe_flow: list[dict] | None = None) -> list[ConduitRun]:
+def build_runs(
+    projection: Projection, game: GameData, pipe_flow: list[PipeFlow] | None = None
+) -> list[ConduitRun]:
     """Every conduit run in a projection, belts grouped by chain, pipes one per piece.
 
     ``pipe_flow`` is ``WorldState.pipe_flow``, positional over the raw pipe table, and orients

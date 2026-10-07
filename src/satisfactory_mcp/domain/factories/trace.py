@@ -10,19 +10,37 @@ measurements.
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
 from ...core.saveio.records import instance_leaf
-from ..world.logistics import side_by_nature
+from ...core.saveio.schema import BuildableRecord, ExtractorRecord
+from ..world.logistics import Link, side_by_nature
 from .select import SelectorError, resolve_factory
 
-__all__ = ["Reached", "Trace", "feeder_records", "live_feeders", "resolve_seeds", "trace"]
+if TYPE_CHECKING:
+    from ..world.state import WorldState
+
+__all__ = [
+    "Feeds",
+    "Reached",
+    "Trace",
+    "feeder_records",
+    "live_feeders",
+    "material_feeds",
+    "resolve_seeds",
+    "trace",
+]
 
 #: Hard stop on the walk, far above the reference save's deepest chain of 72 hops, so a
 #: malformed graph cannot spin.
 MAX_HOPS = 500
+
+#: ``(upstream, downstream, ambiguous)``: ``upstream[x]`` is everything that feeds ``x``.
+Feeds = tuple[dict[str, set[str]], dict[str, set[str]], int]
 
 
 @dataclass
@@ -37,8 +55,8 @@ class Reached:
 @dataclass
 class Trace:
     direction: str
-    seeds: list[str] = field(default_factory=list)
-    reached: list[Reached] = field(default_factory=list)
+    seeds: list[str] = field(default_factory=list[str])
+    reached: list[Reached] = field(default_factory=list[Reached])
     #: Every node visited including belts and pipes, which the report leaves out.
     visited: int = 0
     deepest: int = 0
@@ -48,9 +66,9 @@ class Trace:
     truncated: bool = False
     #: The conduit runs the walk crossed, contracted out of the belt and pipe nodes it
     #: passed through. Empty when no physical graph was supplied.
-    crossed: list = field(default_factory=list)
+    crossed: list[Link] = field(default_factory=list[Link])
     #: Every node visited, logistics included, seeds included.
-    nodes: set[str] = field(default_factory=set)
+    nodes: set[str] = field(default_factory=set[str])
 
     def by_class(self) -> dict[str, list[Reached]]:
         out: dict[str, list[Reached]] = {}
@@ -72,8 +90,9 @@ def _kind(game: GameData, cls: str) -> str | None:
     return None
 
 
-def _classes_by_leaf(state) -> dict[str, str]:
-    return {instance_leaf(r["instance"]): r.get("cls", "") for r in state.all_records()}
+def _cls(records: Mapping[str, BuildableRecord], leaf: str) -> str:
+    record = records.get(leaf)
+    return record.get("cls", "") if record is not None else ""
 
 
 def _side(role: str, cls: str, game: GameData) -> str | None:
@@ -82,15 +101,12 @@ def _side(role: str, cls: str, game: GameData) -> str | None:
     return ports.port_direction(role) or side_by_nature(cls, game)
 
 
-def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, set[str]], int]:
-    """Directed feeds-into maps, plus how many edges stayed ambiguous.
-
-    Returns ``(upstream, downstream, ambiguous)`` where ``upstream[x]`` is everything that
-    feeds ``x``.
-    """
+def material_feeds(state: WorldState, game: GameData) -> Feeds:
+    """Directed feeds-into maps, plus how many edges stayed ambiguous. Built afresh on every
+    call; ``WorldState.feeds`` keeps the answer."""
     graph = state.projection.get("graph") or {}
     roles, actors = graph.get("roles") or [], graph.get("actors") or []
-    cls_of = _classes_by_leaf(state)
+    records = state.records_by_leaf
 
     up: dict[str, set[str]] = {}
     down: dict[str, set[str]] = {}
@@ -100,8 +116,8 @@ def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, se
         if ports.is_hypertube_edge(role_a, role_b):
             continue
         a, b = actors[edge[0]], actors[edge[1]]
-        side_a = _side(role_a, cls_of.get(a, ""), game)
-        side_b = _side(role_b, cls_of.get(b, ""), game)
+        side_a = _side(role_a, _cls(records, a), game)
+        side_b = _side(role_b, _cls(records, b), game)
         if side_a == "out" or side_b == "in":
             pairs = [(a, b)]
         elif side_a == "in" or side_b == "out":
@@ -118,7 +134,7 @@ def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, se
     return up, down, ambiguous
 
 
-def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
+def resolve_seeds(state: WorldState, game: GameData, seed: str) -> tuple[list[str], str]:
     """A seed as machine leaves plus a subject line: an instance (bare or ``machine:``), a
     building, else a factory.
 
@@ -127,7 +143,7 @@ def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
 
     Raises ``SelectorError`` when the text is none of the three.
     """
-    records = {instance_leaf(r["instance"]): r for r in state.all_records()}
+    records = state.records_by_leaf
     what = seed.strip()
     if what.casefold().startswith("label:"):
         wanted = what[len("label:") :].strip()
@@ -158,14 +174,14 @@ def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
     return seeds, f"factory {name!r} ({len(seeds)} machines)"
 
 
-def trace(state, game: GameData, seeds: list[str], direction: str = "up") -> Trace:
+def trace(state: WorldState, game: GameData, seeds: list[str], direction: str = "up") -> Trace:
     """Every machine up- or downstream of ``seeds``, logistics walked through."""
-    up, down, ambiguous = _adjacency(state, game)
+    up, down, ambiguous = state.feeds(game)
     adjacency = up if direction == "up" else down
     out = Trace(direction=direction, seeds=list(seeds), ambiguous=ambiguous)
 
-    cls_of = _classes_by_leaf(state)
-    start = [s for s in seeds if s in cls_of or s in adjacency]
+    records = state.records_by_leaf
+    start = [s for s in seeds if s in records or s in adjacency]
     seen: dict[str, int] = {s: 0 for s in start}
     queue: deque[str] = deque(start)
     while queue:
@@ -185,8 +201,8 @@ def trace(state, game: GameData, seeds: list[str], direction: str = "up") -> Tra
     # The same nodes, contracted rather than re-walked: the traversal above is untouched and
     # this only keeps what it already crossed. Deduplicated by identity, because one run is
     # dozens of nodes.
-    run_of = getattr(getattr(state, "physical", None), "run_of", None) or {}
-    kept: dict[int, object] = {}
+    run_of = state.physical.run_of
+    kept: dict[int, Link] = {}
     for node in seen:
         link = run_of.get(node)
         if link is not None:
@@ -195,7 +211,7 @@ def trace(state, game: GameData, seeds: list[str], direction: str = "up") -> Tra
     for node, hops in seen.items():
         if node in seeds:
             continue
-        cls = cls_of.get(node, "")
+        cls = _cls(records, node)
         kind = _kind(game, cls)
         if kind is None:
             continue  # logistics: traversed, not reported
@@ -212,7 +228,7 @@ def trace(state, game: GameData, seeds: list[str], direction: str = "up") -> Tra
     return out
 
 
-def power_at_risk(state, game: GameData, machines: list[str]) -> tuple[float, int, int]:
+def power_at_risk(state: WorldState, game: GameData, machines: list[str]) -> tuple[float, int, int]:
     """MW of generation that would stop if ``machines`` stopped feeding it.
 
     Returns ``(mw, generators, running)``. Only generators PROVEN to be running are
@@ -223,7 +239,7 @@ def power_at_risk(state, game: GameData, machines: list[str]) -> tuple[float, in
     downstream = trace(state, game, machines, direction="down")
     mw = 0.0
     total = running = 0
-    by_instance = {instance_leaf(r["instance"]): r for r in state.all_records()}
+    by_instance = state.records_by_leaf
     for row in downstream.reached:
         if row.kind != "generator":
             continue
@@ -239,7 +255,7 @@ def power_at_risk(state, game: GameData, machines: list[str]) -> tuple[float, in
     return mw, total, running
 
 
-def live_feeders(g, st, floor_mw: float = 1.0) -> list[tuple[str, float]]:
+def live_feeders(g: GameData, st: WorldState, floor_mw: float = 1.0) -> list[tuple[str, float]]:
     """Built extractors whose output currently reaches a running generator.
 
     Which of the machines already on the ground are load-bearing right now, which a startup
@@ -253,9 +269,11 @@ def live_feeders(g, st, floor_mw: float = 1.0) -> list[tuple[str, float]]:
     ]
 
 
-def feeder_records(g, st, floor_mw: float = 1.0) -> list[tuple[dict, str, float]]:
+def feeder_records(
+    g: GameData, st: WorldState, floor_mw: float = 1.0
+) -> list[tuple[ExtractorRecord, str, float]]:
     """``live_feeders`` as (extractor record, building name, MW), largest first."""
-    out: list[tuple[dict, str, float]] = []
+    out: list[tuple[ExtractorRecord, str, float]] = []
     for record in st.projection.get("extractors", ()):
         instance = instance_leaf(record["instance"])
         mw, _, running = power_at_risk(st, g, [instance])

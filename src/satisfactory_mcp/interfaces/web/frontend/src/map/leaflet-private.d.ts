@@ -1,40 +1,34 @@
 /* The fields this page hangs off Leaflet objects, declared so that `L` can be typed.
  *
  * The underscore marks are the page's own, optional because only some objects get one;
- * `_handlingClick`, `_update`, `layerId` and `_getBoundsOffset` are Leaflet 1.9.4 internals
- * to check before an upgrade. frontend/README.md has the longer note.
+ * `_handlingClick`, `_update`, `layerId`, `_getBoundsOffset`, `_latLngToNewLayerPoint` and
+ * `_animatingZoom` are Leaflet 1.9.4 internals to check before an upgrade.
+ * frontend/README.md, "Leaflet's private fields".
  */
 
 import type * as L from "leaflet";
 import "leaflet";
 
-/* What the floor filter joins one drawn piece by: a mark rather than a lookup table, because
- * the filter walks every piece. The fields are alternatives, one per way a layer is joined;
- * floors/floors.ts lists the joins. */
+/** What the floor filter joins one drawn piece by; the fields are alternatives, one per way a
+ *  layer is joined, and floors/floors.ts lists the joins. */
 export interface FloorMark {
   /** An instance leaf: how a band lists its machines and its belt attachments. */
   id?: string;
   /** A belt CHAIN or a pipe row, and which of the two number spaces it is in. */
   run?: { kind: "belt" | "pipe"; key: number };
-  /** Which piece of the power grid this is: a `wire` (two `ends`, the one kind that can leave a
-   *  floor), a `pole` (one point, placed like storage), or the `casing` drawn under either,
-   *  which gets the same verdict and never a glyph. */
+  /** Which piece of the power grid this is: a wire, a pole, or the casing under either. */
   power?: "wire" | "pole" | "casing";
-  /** The two ends of this piece in game metres, so a connector's glyph can be put on the
-   *  end that is actually on this floor. `[x, y, z]`, the payload's own order. */
+  /** The two ends of this piece in game metres, `[x, y, z]`, as drawn. */
   ends?: [import("./geometry").Point3M, import("./geometry").Point3M];
-  /** Where each wire end COUNTS AS STANDING, against `ends`, where it is drawn: the base of the
-   *  pole it ends at, or the endpoint where no pole is named. Absent means "judge by ends". */
+  /** Where each wire end counts as standing; absent means "judge by ends". */
   anchors?: [import("./geometry").Point3M, import("./geometry").Point3M];
   /** A piece's position in `/api/structures`, which is what `deck_rows` indexes. */
   row?: number;
-  /** Where it stands, in game metres. For storage, which no band lists, and for the
-   *  height a machine occupies above its own deck. */
+  /** Where it stands, in game metres. */
   x_m?: number;
   y_m?: number;
   z_m?: number;
-  /** How tall it is, from the same clearance box as its footprint. Absent where the docs
-   *  dump carries none, which is where no claim about piercing a ceiling can be made. */
+  /** How tall it is, from its clearance box; absent where the docs dump carries none. */
   h_m?: number | null;
 }
 
@@ -45,36 +39,23 @@ declare module "leaflet" {
     _rank?: [number, number, string];
     /** What the floor filter joins this piece by. See FloorMark. */
     _floor?: FloorMark;
-    /** Everything a LayerGroup held before the floor filter took some of it away.
-     *
-     * On the GROUP, not on a piece: the filter replaces a group's contents and leaving is
-     * putting them back. Cleared by `clearedLayer()` along with the contents themselves -- a
-     * snapshot of data that has been refetched is a claim about a world that is gone. */
+    /** On a group: everything it held before the floor filter took some of it away. */
     _floorAll?: L.Layer[];
   }
 
   interface Path {
     /** A direction mark rather than a route: styled by opacity, never by weight. */
     _chevron?: boolean;
-    /** A glyph whose radius is a fixed pixel size rather than one derived from the scale.
-     *
-     * Set on the power poles. Read twice in drawn/route-passes.ts: the zoom restyle leaves such
-     * a piece's radius alone, and sinkRoutes puts it above the runs it terminates. */
+    /** A glyph whose radius is a fixed pixel size; read twice in drawn/route-passes.ts. */
     _fixed?: boolean;
-    /** How this path was drawn before it was ghosted, so unghosting is exact rather than a
-     *  second guess at the drawing module's own options. Its presence IS "this path is
-     *  ghosted right now". See ghost() in floors/glyphs.ts. */
+    /** How this path was drawn before it was ghosted; present while it is ghosted. */
     _floorStyle?: L.PathOptions;
-    /** ...and the CONTENT of the card it carried, so an unghosted machine stops saying what a
-     *  ghost says. The content and not the popup: `bindPopup` REUSES an existing popup when
-     *  handed a string. No function case, because no popup on this page is one. */
+    /** ...and the content of the card it carried before. */
     _floorCard?: string | HTMLElement | null;
     /** Extra stroke width in SCREEN pixels: a casing's fixed rim, re-added at every zoom.
      *  See "Cased lines" in docs/frontend_palette.md. */
     _widen?: number;
-    /** The route this polyline was tessellated FROM, kept so it can be tessellated again at
-     *  another scale: the drawn latlngs are an output and cannot be re-subdivided from
-     *  themselves. See routePolyline and retessellate in drawn/route-geometry.ts. */
+    /** The route this polyline was tessellated from; see drawn/route-geometry.ts. */
     _route?: import("./geometry").RouteShape;
     _occupied?: boolean;
   }
@@ -87,6 +68,10 @@ declare module "leaflet" {
 
   interface Map {
     _getBoundsOffset(pxBounds: L.Bounds, maxBounds: L.LatLngBounds, zoom?: number): L.Point;
+    /** Where a latlng lands in the layer pane at a zoom and centre a zoom animation is going to. */
+    _latLngToNewLayerPoint(at: L.LatLng, zoom: number, centre: L.LatLng): L.Point;
+    /** Whether a zoom animation is running. */
+    _animatingZoom?: boolean;
   }
 
   namespace Control {
@@ -99,11 +84,7 @@ declare module "leaflet" {
   }
 }
 
-/* Leaflet's own "am I on a map", which `@types/leaflet` declares `protected` on `Layer`
- * and this page reads from outside. It cannot go in the augmentation above -- redeclaring a
- * protected member as public is an error -- so it is a view type. `map.hasLayer` is NOT the
- * same question: these layers are inside a LayerGroup, so the map's own registry holds the
- * group and not them. */
+/* Leaflet's own "am I on a map", `protected` in `@types/leaflet`, as a view type. */
 export interface OnMap {
   _map?: L.Map;
 }

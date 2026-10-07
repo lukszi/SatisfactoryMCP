@@ -10,14 +10,14 @@
 import { get } from "../api/client";
 import { code, dataButton, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from "../kit/dom";
 import { pickupPlace } from "../dash/world/world-finds";
-import { coords, count, formatNumber, metres, perMin, regionLine } from "../kit/format";
+import { coords, count, formatNumber, metres, perMin, regionLine, withDetail } from "../kit/format";
 import { L } from "./leaflet";
 import { gameXY, hashFor, map, MAP_SQUARE_M, NARROW } from "./map";
 import { withQuery } from "../app/nav";
 import { pinButtons } from "../chat/pins";
 import { settingOn } from "../app/settings";
 import { friendlyError } from "../kit/toast";
-import { counted, gapText, WORDS } from "../kit/words";
+import { counted, staleText, WORDS } from "../kit/words";
 
 import type { ConduitCount, Elevation, FoundField, InspectResponse, NearPickup } from "../api/shapes";
 import type { PinTarget } from "../chat/pins";
@@ -91,11 +91,18 @@ function elevationLine(e: Elevation): string {
   return e.terrain_note || "not known here";
 }
 
-function nearestText(n: InspectResponse["nearest"][number]): string {
-  return n.resource_name + " " + n.purity + " · " + metres(n.distance_m) + (n.occupied ? " (occupied)" : n.spoiler ? " (" + WORDS.locked + ")" : "");
+type NearNode = InspectResponse["nearest"][number];
+
+function nearestTag(n: NearNode): string {
+  if (n.occupied) return " (occupied)";
+  return n.spoiler ? " (" + WORDS.locked + ")" : "";
 }
 
-var PICKUPS_NEAR_M = 500;
+function nearestText(n: NearNode): string {
+  return n.resource_name + " " + n.purity + " · " + metres(n.distance_m) + nearestTag(n);
+}
+
+const PICKUPS_NEAR_M = 500;
 
 function onSquare(x: number, y: number): boolean {
   return x >= MAP_SQUARE_M.x_min && x <= MAP_SQUARE_M.x_max && y >= MAP_SQUARE_M.y_min && y <= MAP_SQUARE_M.y_max;
@@ -162,7 +169,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   }
   rows.push(["region", regionLine(d.region)]);
   rows.push(["elevation", elevationLine(d.elevation)]);
-  rows.push(["grid", d.grid && onSquare(d.at.x_m, d.at.y_m) ? d.grid + (d.direction ? " · " + d.direction : "") : null]);
+  rows.push(["grid", d.grid && onSquare(d.at.x_m, d.at.y_m) ? withDetail(d.grid, d.direction) : null]);
   if (nearest.length) rows.push(["nearest", nearestText(nearest[0]!)]);
   rows.push(["conduits", d.conduits ? conduitLine(d.conduits) : null]);
   rows.push(["pickups", pickupsWithin(d)]);
@@ -186,7 +193,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   });
   d.stale.forEach(function (t) {
     if (!t.behind && !t.moved && !t.unjoinable) return;
-    more.push(["map data", t.notes.length ? t.notes.join(" ") : WORDS.mapDataBehind + (t.gap ? " (" + gapText(t.gap) + ")" : "")]);
+    more.push(["map data", staleText(t)]);
   });
   // Said out loud rather than left to be inferred: with no save there is no built
   // population and no occupancy, so every node above reads as free whether it is or not.

@@ -274,9 +274,11 @@ records, and a job record still names its `script`.
   raster, so a palette change never turns into a full render. The plan drops the sweep, direct
   and top stages: one full-size layer is prep plus draw and cut, about 7.5 min against about
   29 min for a full two-layer render (§4.3), both without the light. With the light, the
-  default, a restyle bakes it again, budgeted at about 14 min at full size, because the raster
-  cache does not keep it (§8.1). A restyle's history row is kept apart from full renders' when
-  scaling the next estimate.
+  default, a lit render that kept its cache keeps its light beside it (`light.kept/`), and a
+  restyle that draws the same surface installs that light instead of baking it again
+  (spatial-and-map.md §29, "Kept light"). The estimate budgets 10 s at full size for that when
+  `light.kept/meta.json` is in the size's cache, else the bake, about 14 min (§8.1). A
+  restyle's history row is kept apart from full renders' when scaling the next estimate.
 - The one write outside `data/local` is the pre-existing one: `--enhance` downloads the
   upscaler into the user cache folder once; the form says so.
 
@@ -296,15 +298,28 @@ for a missing `gen` extra says to stop satisfactory-mcp first, because uv cannot
 
 A job is refused (507) unless free space covers what it keeps, what it needs while running
 (the raster caches, about 1 GB at 32768 in the zstd band store of spatial-and-map.md §39, and
-with the light its cache, 14.5 GB and 5.4 GB more with the painted layer, all scaled by area)
-and 2 GB more. Checked at the form, at submit and again at start.
+with the light its scratch, 15.6 GB, and the crown occluder's 5.4 GB whatever the layers,
+both scaled by area) and 2 GB more. A lit job that keeps its cache (`--keep-direct`, §4), or
+draws the kernel only, keeps the light's default-sun terms too, 4.3 GB at 32768, when no light
+is kept at its size yet (spatial-and-map.md §29, "Kept light"): they are moved out of the
+scratch into `light.kept/`, so the estimate counts them as kept rather than as scratch, and
+the space it needs is the same. The drawn bands are cut as they settle and never wait on disk
+(§42). Checked at the form, at submit and again at start.
+
+`cache_bytes` on `GET /api/maps` is what `_cache/` holds on its own: every size's raster
+caches and kept light, but not a kept light's tiles, which are hard links to the map's own
+pyramid and count nowhere. `DELETE /api/maps/cache` removes all of it and reports that
+figure as freed.
 
 ### 4.3 Estimates
 
 From the stage seconds of measured full renders, area-scaled, with the direct and top passes
 floored because the triangles are the same at any size: prep 30, sweep 36, direct 692 and
-top 119 (2026-10-05); per layer draw 340 and cut 73, and with the light a bake of 830 once
-and each layer's cut 1.8 times as long (2026-10-06). The 2026-10-06 figures are renders-v7's
+top 119 (2026-10-05); per layer a cut of 73, and with the light a bake of 830 once and each
+layer's cut 1.8 times as long (2026-10-06); the draw, one pass for every layer
+(spatial-and-map.md §40), 150 for the ground the layers share and 190 a layer (2026-10-07).
+One layer alone draws in 340, as before; five drew in 0.65 of the time five layers drawn one
+by one took, on windows of the full-size sheet. The 2026-10-06 figures are renders-v7's
 measured stages carried over the performance work of that day (spatial-and-map.md §17, §26,
 §29 and §40): the draw, 5,810 s for five layers, on 8 threads and less 12% for lean sampling,
 about 1,700 s; the light, 2,903 s, on 16 workers in strips; the cut of five lit layers,
@@ -345,12 +360,16 @@ process pool and killing only the parent orphans its workers.
 ### 5.3 Progress
 
 Read by `domain/maps/jobs.py` `Progress`. A `::stage {"id": "<step>[:<layer>]", "done": f}`
-line (`core/mapprogress.py`) is read first: the renders print one per draw progress line, at
-the start of each layer's draw and after each layer's cut, which covers `painted` too. Every
-other line falls back to the regexes over the human log lines:
+line (`core/mapprogress.py`) is read first. The renders draw every layer in one pass
+(spatial-and-map.md §40) and print `draw` at its start and with each draw progress line, then
+the light's `light`, then `cut:<layer>` before and after each layer's cut, which covers
+`painted` too. The plan's stages follow: `draw`, `light`, then each layer's `cut`, and a
+`pyramid zN:` line counts for the layer being cut. Every other line falls back to the regexes
+over the human log lines:
 `N/4521 packages` and `… rock meshes,` (sweep), `direct.cache: P%`, `top.cache: P%`,
-`drawing <layer> at`, `<layer>: P% of`, `pyramid zN:` (counted against the tree's depth),
-`wrote …/<layer>` and `done in`. Stage weights come from §4.3, so the percentage is of the
+`drawing <layer> at`, `<layer>: P% of` (a log from before the one pass, which drew the layers
+in turn; they drive `draw`), `pyramid zN:` (counted against the tree's depth), `wrote
+…/<layer>` and `done in`. Stage weights come from §4.3, so the percentage is of the
 whole job; the ETA is shown past 3%. A preset whose lines say nothing (artwork, inputs) shows
 elapsed against the estimate. `tests/test_map_runner.py` pins the regexes against a recorded
 full render log (`tests/fixtures/map_render_full.log`).
@@ -480,8 +499,8 @@ max_z, unlit_max_z, params, baked_sun, model}`. `?kind=unlit` serves the unlit c
 immutable. Any other `kind`, or a layer drawn with `--no-light` or before the light existed,
 is a 404. The `render` preset takes `light`, default true since 2026-10-06, and passes
 `--light`, or `--no-light` when it is false. With the light the plan adds a `light` stage
-after the first layer's draw, the unlit and light trees to the estimate's kept bytes, and the
-light cache (§4.2) to its bytes while running. docs/spatial-and-map.md §29 describes the
+after the draw, the unlit and light trees to the estimate's kept bytes, and the light cache
+(§4.2) to its bytes while running. docs/spatial-and-map.md §29 describes the
 light.
 
 ## 9. Verified

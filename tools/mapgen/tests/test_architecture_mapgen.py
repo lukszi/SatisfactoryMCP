@@ -8,8 +8,10 @@ there.
 from __future__ import annotations
 
 import ast
+import io
 import subprocess
 import sys
+import tokenize
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -20,62 +22,87 @@ VERSIONS_PY = REPO / "src" / "satisfactory_mcp" / "core" / "gameassets" / "versi
 AXES_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "axes.py"
 PRESETS_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "presets.py"
 
-#: Who may import whom inside ``mapgen``. A unit is a subpackage or a top-level module.
-#: gamedata <- terrain <- lighting <- palette <- tiles <- pipeline <- cli, with ``common``,
-#: ``bandstore`` and ``cache`` as leaves under all of them, and ``pools`` (free memory, a
-#: worker's BLAS threads) under the units that start pools. ``cli`` reaches its commands
-#: through ``importlib`` by name, so it statically imports nothing here.
+#: Who may import whom inside ``mapgen``. A unit is a subpackage or a top-level module, and
+#: each command module is a unit of its own (``commands.renders``).
+#: gamedata <- terrain <- lighting <- palette <- render <- commands <- cli, with ``tiles``
+#: (cutting and describing a finished sheet) under render and ``common``,
+#: ``bandstore``, ``cache`` and ``colour`` as leaves under all of them, ``pools`` (free
+#: memory, a worker's BLAS threads) under the units that start pools, and ``jit`` (the kernel
+#: switch) under the units with kernels and ``render``, whose light flags set it. ``cli``
+#: reaches its commands through ``importlib`` by name, so it statically imports nothing here.
 ALLOWED: dict[str, frozenset[str]] = {
     "common": frozenset(),
     "bandstore": frozenset(),
     "pools": frozenset(),
+    "colour": frozenset(),
+    "jit": frozenset(),
     "cache": frozenset({"common", "bandstore"}),
-    "compress_cache": frozenset({"common", "bandstore", "cache"}),
-    "gamedata": frozenset({"common", "gamedata"}),
-    "terrain": frozenset({"common", "cache", "gamedata", "terrain"}),
-    "lighting": frozenset({"common", "pools", "gamedata", "terrain", "lighting"}),
+    "gamedata": frozenset({"common", "colour", "gamedata"}),
+    "terrain": frozenset({"common", "cache", "jit", "gamedata", "terrain"}),
+    "lighting": frozenset({"common", "colour", "pools", "jit", "gamedata", "terrain", "lighting"}),
     "palette": frozenset(
-        {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette"}
+        {"common", "colour", "pools", "cache", "jit", "gamedata", "terrain", "lighting", "palette"}
     ),
-    "tiles": frozenset(
-        {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}
+    "tiles": frozenset({"common", "pools", "gamedata", "lighting", "tiles"}),
+    "render": frozenset(
+        {
+            "common",
+            "colour",
+            "pools",
+            "jit",
+            "cache",
+            "gamedata",
+            "terrain",
+            "lighting",
+            "palette",
+            "tiles",
+            "render",
+        }
     ),
-    "heightmap": frozenset({"common", "gamedata", "terrain"}),
     "enhance": frozenset({"common", "gamedata", "tiles", "enhance"}),
-    "artwork": frozenset({"common", "gamedata", "tiles", "enhance"}),
-    "check_fill": frozenset({"common", "cache", "gamedata", "terrain"}),
-    "pipeline": frozenset(
-        {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}
+    "commands.renders": frozenset(
+        {
+            "common",
+            "pools",
+            "cache",
+            "gamedata",
+            "terrain",
+            "lighting",
+            "palette",
+            "tiles",
+            "render",
+        }
     ),
+    "commands.heightmap": frozenset(
+        {"common", "gamedata", "terrain", "commands.caves", "commands.rocks"}
+    ),
+    "commands.caves": frozenset({"common", "gamedata"}),
+    "commands.rocks": frozenset({"common", "gamedata"}),
+    "commands.paint": frozenset({"common", "gamedata"}),
+    "commands.calibrate": frozenset({"common", "gamedata", "palette"}),
+    "commands.artwork": frozenset({"common", "gamedata", "tiles", "enhance"}),
+    "commands.check_fill": frozenset({"common", "cache", "gamedata", "terrain"}),
+    "commands.compress_cache": frozenset({"common", "bandstore", "cache"}),
     "cli": frozenset(),
     "__main__": frozenset({"cli"}),
 }
 
-#: The cap on any module in the package, in physical lines (ARCHITECTURE says 700 for the
-#: flat layout; 800 here because a subpackage module carries its own import block).
-MODULE_MAX_LINES = 800
+#: The cap on any module in the package, in physical lines.
+MODULE_MAX_LINES = 600
 
 #: Modules with their own ceiling at their measured size: over the cap, or a command held
-#: thin under it. Shrink-only: a ceiling may be lowered, never raised, and one more than
-#: ``CEILING_SLACK`` above the file is stale. Measured after the move.
+#: thin under it so the stages stay in their modules. Shrink-only: a ceiling may be lowered,
+#: never raised, and one more than ``CEILING_SLACK`` above the file is stale.
 MODULE_CEILINGS: dict[str, int] = {
-    "gamedata/mesh.py": 825,
-    "pipeline.py": 1013,
-    "heightmap.py": 310,
-    # A thin command, held at its size so the stages stay in their modules.
-    "artwork.py": 298,
+    "commands/renders.py": 336,
+    "commands/heightmap.py": 306,
+    "commands/artwork.py": 296,
 }
 CEILING_SLACK = 25
 
-#: The cap on one function or method, and the ones over it, measured on the scripts at
-#: 2d7eaa9 (a pure move keeps every body's length). Shrink-only, same slack.
+#: The cap on one function or method, and the ones over it. Shrink-only, same slack.
 FUNCTION_MAX_LINES = 150
-FUNCTION_CEILINGS: dict[str, int] = {
-    "pipeline.py::main": 812,
-    "terrain/sidecar.py::build_meta": 156,
-    "artwork.py::main": 119,
-    "enhance/levels.py::enhance_levels": 249,
-}
+FUNCTION_CEILINGS: dict[str, int] = {}
 
 #: The entry scripts that became shims, and the ``mapgen`` command each one runs.
 SHIMS: dict[str, str] = {
@@ -165,9 +192,11 @@ def _imports(node: ast.AST, deferred: bool = False):
 
 
 def _unit(module: str) -> str | None:
-    """``mapgen.terrain.fill`` -> ``terrain``; bare ``mapgen`` -> None."""
+    """``mapgen.terrain.fill`` -> ``terrain``; a command is its own unit, ``commands.paint``."""
     parts = module.split(".")
-    return parts[1] if parts[0] == "mapgen" and len(parts) > 1 else None
+    if parts[0] != "mapgen" or len(parts) < 2:
+        return None
+    return ".".join(parts[1:3]) if parts[1] == "commands" and len(parts) > 2 else parts[1]
 
 
 def _mapgen_edges() -> set[tuple[str, str]]:
@@ -225,7 +254,7 @@ def _first_doc_line(path: Path) -> str | None:
 
 
 def test_mapgen_imports_point_down():
-    """gamedata <- terrain <- lighting <- palette <- tiles <- pipeline <- cli."""
+    """gamedata <- terrain <- lighting <- palette <- render <- commands <- cli."""
     bad = []
     for importer, target in sorted(_mapgen_edges()):
         source, dest = _unit(importer), _unit(target)
@@ -325,6 +354,42 @@ def test_mapgen_modules_stay_under_the_line_cap():
         over
     )
     assert not stale + missing, "stale MODULE_CEILINGS entries:\n" + "\n".join(stale + missing)
+
+
+def _literal_table_ends(tree: ast.Module) -> set[int]:
+    """The last line of every module-level assignment of a literal: a table."""
+    ends = set()
+    for node in tree.body:
+        value = node.value if isinstance(node, (ast.Assign, ast.AnnAssign)) else None
+        if value is None:
+            continue
+        try:
+            ast.literal_eval(value)
+        except ValueError:
+            continue
+        ends.add(node.end_lineno)
+    return ends
+
+
+def test_formatting_is_skipped_only_on_a_literal_table():
+    """``# fmt: skip`` and ``# fmt: off`` keep code packed past what ruff writes, so the line
+    caps would measure unformatted text; only a module-level literal table keeps its layout."""
+    found = []
+    for path in _sources(PKG):
+        source = path.read_text(encoding="utf-8")
+        tables = _literal_table_ends(_tree(path))
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type != tokenize.COMMENT:
+                continue
+            text = token.string.lstrip("#").strip()
+            if text in ("fmt: off", "fmt: on") or (
+                text == "fmt: skip" and token.start[0] not in tables
+            ):
+                found.append(f"  {_rel(path)}:{token.start[0]}: {token.string}")
+    assert not found, (
+        "formatting skipped outside a literal table -- let ruff format it, and split the "
+        "module if it then passes its cap:\n" + "\n".join(found)
+    )
 
 
 def test_no_mapgen_function_grows_past_its_cap():
@@ -444,7 +509,7 @@ def test_the_style_tables_agree_with_versions_styles():
     layers = [row["layer"] for row in rendered.values()]
 
     assert _literal(PKG / "palette" / "styles.py", "LAYER_STYLES") == layer_styles
-    assert list(_literal(PKG / "pipeline.py", "LAYERS")) == layers
+    assert list(_literal(PKG / "commands" / "renders.py", "LAYERS")) == layers
     assert list(_literal(PRESETS_PY, "RENDER_LAYERS")) == layers
     assert _literal(AXES_PY, "LAYER_STYLE") == {row["layer"]: sid for sid, row in styles.items()}
 

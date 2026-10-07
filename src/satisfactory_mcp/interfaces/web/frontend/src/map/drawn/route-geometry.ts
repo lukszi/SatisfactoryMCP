@@ -19,11 +19,11 @@ import type { Point3M, PointM, RouteCurveM, SpanCurveM } from "../geometry";
 
 /* Half a pixel: below this a bend and the line through it land on the same pixels, and the
  * canvas draws no finer than that anyway. */
-var CURVE_TOLERANCE_PX = 0.5;
+const CURVE_TOLERANCE_PX = 0.5;
 
 /* A ceiling, so that the bound on the work does not come from the data. Generous, because
  * almost every span is nearly flat and never comes close to it. */
-var CURVE_MAX_STEPS = 8;
+const CURVE_MAX_STEPS = 8;
 
 /* How far one span's curve can leave the straight line between its ends, in metres.
  *
@@ -128,7 +128,7 @@ export function routePolyline(
  * steps. */
 export function retessellate(piece: L.Polyline, ppm: number): boolean {
   const route = piece._route;
-  if (!route || !route.curve_m) return false;
+  if (!route?.curve_m) return false;
   const shape = routeLatLngs(route.points_m, route.curve_m, ppm);
   let same = shape.steps.length === route.steps.length;
   for (let i = 0; same && i < shape.steps.length; i++) same = shape.steps[i] === route.steps[i];
@@ -156,13 +156,13 @@ export function retessellate(piece: L.Polyline, ppm: number): boolean {
  *
  * Not interactive: a mark that stole its own pipe's popup would make the direction unreadable
  * by making the piece unclickable. */
-var CHEVRON_LENGTH_M = 3;
-var CHEVRON_SPAN_M = 2.4;
-var CHEVRON_SPACING_M = 24;
-var CHEVRON_MIN_RUN_M = 4;
-var CHEVRON_MIN_PX = 5;
+const CHEVRON_LENGTH_M = 3;
+const CHEVRON_SPAN_M = 2.4;
+const CHEVRON_SPACING_M = 24;
+const CHEVRON_MIN_RUN_M = 4;
+const CHEVRON_MIN_PX = 5;
 
-var CHEVRON_OPACITY = 0.7;
+const CHEVRON_OPACITY = 0.7;
 
 export function chevronOpacity(ppm: number): number {
   return CHEVRON_LENGTH_M * ppm >= CHEVRON_MIN_PX ? CHEVRON_OPACITY : 0;

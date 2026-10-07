@@ -92,25 +92,25 @@ def ident_of(rel: str) -> str:
 
 def run_renders(monkeypatch, *argv: str) -> int:
     """``python -m mapgen renders`` with ``argv``; raises ``Passed`` once past the guard."""
-    from mapgen import pipeline
+    from mapgen.commands import renders
 
     def past_the_guard(*_names: str) -> dict:
         raise Passed
 
-    monkeypatch.setattr(pipeline, "require_gen", past_the_guard)
+    monkeypatch.setattr(renders, "require_gen", past_the_guard)
     monkeypatch.setattr(sys, "argv", ["mapgen", *argv])
-    return pipeline.main()
+    return renders.main()
 
 
 @pytest.fixture
 def in_use_local(tmp_path, monkeypatch) -> Path:
     """A ``data/local`` whose ``renders-v4`` holds the registered default map."""
-    from mapgen import pipeline
+    from mapgen.commands import renders
 
     root = tmp_path / "local"
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
     monkeypatch.setattr(registry, "installed_changelist", lambda: 502094)
-    monkeypatch.setattr(pipeline, "LOCAL_DIR", root)
+    monkeypatch.setattr(renders, "LOCAL_DIR", root)
     root.mkdir()
     write_pyramid(root, "map.json", {"_meta": {"generator": "tools/gen_map_image.py"}})
     for layer in ("terrain", "painted"):

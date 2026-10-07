@@ -66,13 +66,13 @@ def test_a_restyle_costs_only_the_draw_and_the_cut(maps_home):
     unlit = {"layers": ["relief"], "restyle": True, "light": False}
     fast = presets.stage_plan("render", presets.normalise("render", unlit))
     assert {"sweep", "direct", "top", "light"} <= set(full)
-    assert set(fast) == {"prep", "draw:relief", "cut:relief"}
+    assert set(fast) == {"prep", "draw", "cut:relief"}
     assert 6 * 60 < sum(fast.values()) < 10 * 60
     assert presets.estimate("render", unlit)["seconds"] < 600
     lit = presets.stage_plan(
         "render", presets.normalise("render", {"layers": ["relief"], "restyle": True})
     )
-    assert set(lit) == {"prep", "draw:relief", "light", "cut:relief"}
+    assert set(lit) == {"prep", "draw", "light", "cut:relief"}
     registry.record_history(
         {"job": "j", "preset": "render", "seconds": 2000,
          "options": {"layers": ["relief"], "size": 32768, "recipe": "current"}}

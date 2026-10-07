@@ -1,8 +1,9 @@
 /* The pickups lying on the ground: one control row per category, the spoiler rows the settings
- * hide, and the `pickups=` half of the address bar. Their colours share the node dots' owner
- * in the palette audit. */
+ * hide, and the `pickups=` half of the address bar. Their colours are their own owner in the
+ * palette audit, so it measures them against the node dots. */
 
 import { code, popup } from "../../kit/dom";
+import { byCodeUnit } from "../../kit/format";
 import { batch, control, registerSection } from "../layercontrol/control";
 import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
@@ -17,16 +18,17 @@ import type { LayerInput } from "../leaflet-private";
 import type { CollectibleRow, CollectiblesResponse } from "../../api/shapes";
 
 // One colour per pickup category, so the category rows do not all draw one teal dot; unlisted
-// categories share the fallback below (docs/frontend_palette.md).
-export var PICKUP_COLOUR: Record<string, string> = declareColours("markers", {
+// categories share the fallback below. The slugs and the mercer sphere are picked against the
+// node dots (docs/frontend_palette.md).
+export const PICKUP_COLOUR: Record<string, string> = declareColours("pickups", {
   somersloop: "#d84378",
-  mercer_sphere: "#b06ae0",
+  mercer_sphere: "#9f87ff",
   hard_drive: "#5468d4",
   loot_cache: "#d8b46e",
   crashed_drop_pod: "#838d3f",
-  power_slug_blue: "#5cc8e8",
-  power_slug_yellow: "#e8d55c",
-  power_slug_purple: "#c85ce8",
+  power_slug_blue: "#81f6ff",
+  power_slug_yellow: "#b4a200",
+  power_slug_purple: "#ed00ff",
   mushroom: "#a8c86e",
   tape_pickup: "#e09a6e",
 });
@@ -34,12 +36,12 @@ export var PICKUP_COLOUR: Record<string, string> = declareColours("markers", {
 /* For the categories the table above does not name, and DECLARED rather than left a bare
  * literal: a stand-in that reaches the screen is a colour on the page and belongs in the
  * comparison. */
-var PICKUP_FALLBACK = declareColours("markers", { "pickup fallback": "#7fd1b9" })[
+const PICKUP_FALLBACK = declareColours("pickups", { "pickup fallback": "#7fd1b9" })[
   "pickup fallback"
 ];
 
 /* The X over a collected pickup: dark on a light base, light on a dark one. */
-var COLLECTED_MARK_COLOURS = declareColours("markers", {
+const COLLECTED_MARK_COLOURS = declareColours("pickups", {
   "pickup collected": "#2a3147",
   "pickup collected dark": "#9aa0a8",
 });
@@ -52,16 +54,16 @@ function collectedMarkColour(): string {
  * category as `/api/collectibles` names it and a row in the control. Named because the
  * fragment speaks the category and the control speaks the row, and three literals is how the
  * two drift apart. The trailing space is load-bearing; see Section.prefix. */
-var PICKUP_PREFIX = "pickup: ";
+const PICKUP_PREFIX = "pickup: ";
 
 /** Each category's own word, from the last census the server sent. */
-var pickupLabels: Record<string, string> = {};
+const pickupLabels: Record<string, string> = {};
 
 /** The categories the spoiler setting hides: rows drawn disabled, with nothing in them. */
-var hiddenPickupCategories: string[] = [];
+let hiddenPickupCategories: string[] = [];
 
 /** The last reply drawn, kept so a setting or a base-map tone can repaint without a fetch. */
-var lastPayload: CollectiblesResponse | null = null;
+let lastPayload: CollectiblesResponse | null = null;
 
 export function pickupName(category: string): string {
   return pickupLabels[category] || category.replace(/_/g, " ");
@@ -72,7 +74,7 @@ export function layerDisplayName(name: string): string {
   return name.indexOf(PICKUP_PREFIX) === 0 ? pickupName(name.slice(PICKUP_PREFIX.length)) : name;
 }
 
-var HIDDEN_TITLE = "not found yet: turn spoilers on in Settings";
+const HIDDEN_TITLE = "not found yet: turn spoilers on in Settings";
 
 export function markHiddenRows(): void {
   const box = control.getContainer();
@@ -95,7 +97,12 @@ function pickupCategory(name: string): string {
 /* The one category whose rows carry `looted`. Every other category sends null there for want
  * of the property, which is not the same claim as a null on a pod, so the two must not reach
  * the same style. See CollectibleRow for what null means. */
-var POD_CATEGORY = "crashed_drop_pod";
+const POD_CATEGORY = "crashed_drop_pod";
+
+function pickupFillOpacity(hollow: boolean, faint: boolean): number {
+  if (hollow) return 0;
+  return faint ? 0.2 : 0.7;
+}
 
 /* A pickup that is still there. Fill is how much is in it, and pods are the only rows that
  * vary: solid is what every other category keeps. A hollow ring is a looted pod, which is what
@@ -114,7 +121,7 @@ function pickupDot(here: L.LatLngTuple, colour: string, r: CollectibleRow): L.Ci
     color: colour,
     // A 4 px disc with its fill taken away is a smudge at weight 1.
     weight: hollow ? 2 : 1,
-    fillOpacity: hollow ? 0 : faint ? 0.2 : 0.7,
+    fillOpacity: pickupFillOpacity(hollow, faint),
   });
 }
 
@@ -177,7 +184,7 @@ function paintPickups(data: CollectiblesResponse): void {
     if (stale && !byCategory[stale]) state.layers[name]!.clearLayers();
   });
   Object.keys(byCategory)
-    .sort()
+    .sort(byCodeUnit)
     .forEach(function (category) {
       // One toggleable group per category, because "show me every hard drive" and "show
       // me everything" are different questions and the second one is unreadable.
@@ -242,7 +249,7 @@ export function notePickupChoice(event: L.LeafletEvent): void {
     return other !== category;
   });
   if (event.type === "overlayadd") kept.push(category);
-  state.pickups = kept.sort();
+  state.pickups = kept.sort(byCodeUnit);
 }
 
 /** The `pickups=` half of a fragment: the categories to draw, as the whole truth about which

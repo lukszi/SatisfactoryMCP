@@ -8,7 +8,9 @@ will otherwise get wrong: the save separates built from energised in one directi
 
 from __future__ import annotations
 
+from ...domain.planning.progress.built import BuiltAt
 from ...domain.planning.progress.diff import NEIGHBOUR_RADIUS_M as DIFF_NEIGHBOUR_M
+from ...domain.planning.progress.diff import DiffReport, solution_of
 from ...domain.planning.progress.diff_service import DiffVsSaveReport
 from ...domain.planning.progress.stages import ENERGISED_CAVEAT, RANGE_CAVEAT, Tracking
 from ...domain.power.report import biomass_note
@@ -23,6 +25,12 @@ COST_ROWS = 5
 
 #: Machine ids named per actionable row: enough to walk to the first few, not a work order.
 ACT_IDS = 3
+
+
+def _diff(report: DiffVsSaveReport) -> DiffReport:
+    """The diff of a report whose plan solved to something."""
+    assert report.diff is not None, "nothing to diff"
+    return report.diff
 
 
 def _stage_overview(tracking: Tracking) -> tuple[str, list[str]]:
@@ -72,7 +80,7 @@ def _stage_detail(tracking: Tracking, index: int, limit: int) -> tuple[str, list
     if stage is None:
         available = ", ".join(f"{s.index}" for s in tracking.stages) or "(none)"
         return "", [f"no stage {index} in this plan; it has stages {available}"]
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for r in stage.rows:
         # The free action belongs to the whole build job, not to this slice of it, so it
         # is not rendered as this stage's verb.
@@ -129,7 +137,7 @@ def _stage_detail(tracking: Tracking, index: int, limit: int) -> tuple[str, list
     return body, notes
 
 
-def built_at_lines(found, plan_name: str = "") -> list[str]:
+def built_at_lines(found: BuiltAt | None, plan_name: str = "") -> list[str]:
     """Where a stored plan's built machines were found, as header lines."""
     if found is None or not hasattr(found, "tool_text"):
         return []
@@ -157,11 +165,17 @@ def built_at_lines(found, plan_name: str = "") -> list[str]:
 
 
 def _stage_answer(
-    st: WorldState, report: DiffVsSaveReport, stage: int, limit: int, objective: str, header_lines
+    st: WorldState,
+    report: DiffVsSaveReport,
+    stage: int,
+    limit: int,
+    objective: str,
+    header_lines: list[str],
 ) -> tuple[str, str, list[str]]:
     """``stage=<n>``: the header, that one stage's body, and its notes (body '' when absent)."""
-    req, diff_report = report.prepared.request, report.diff
-    body, stage_notes = _stage_detail(report.tracking, stage, limit)
+    req, diff_report, tracking = report.prepared.request, _diff(report), report.tracking
+    assert tracking is not None, "a stage was asked for, so the stages were tracked"
+    body, stage_notes = _stage_detail(tracking, stage, limit)
     if not body:
         return (
             f"# no stage {stage} [plan {req.plan_id}/save {diff_report.save_id}]",
@@ -181,9 +195,11 @@ def _stage_answer(
     return header, body, stage_notes
 
 
-def _delta_rows(diff_report, limit: int) -> tuple[list[tuple], list[str], list[str]]:
+def _delta_rows(
+    diff_report: DiffReport, limit: int
+) -> tuple[list[tuple[object, ...]], list[str], list[str]]:
     """The action rows, the free nodes they target, and the machines each action names."""
-    rows = []
+    rows: list[tuple[object, ...]] = []
     targets: list[str] = []
     acts: list[str] = []
     for r in diff_report.rows[: render.clamp(limit, default=20)]:
@@ -222,10 +238,12 @@ def _delta_rows(diff_report, limit: int) -> tuple[list[tuple], list[str], list[s
     return rows, targets, acts
 
 
-def _delta_summary(st: WorldState, report: DiffVsSaveReport, objective: str, header_lines) -> str:
+def _delta_summary(
+    st: WorldState, report: DiffVsSaveReport, objective: str, header_lines: list[str]
+) -> str:
     """The header: the plan and save ids, what is left to place, and the grid now."""
-    req, sol = report.prepared.request, report.prepared.solution
-    diff_report, power = report.diff, report.power
+    req, sol = report.prepared.request, solution_of(report.prepared)
+    diff_report, power = _diff(report), report.power
     to_place = (
         render.num(diff_report.to_build)
         if diff_report.to_build_max == diff_report.to_build
@@ -260,7 +278,7 @@ def _delta_summary(st: WorldState, report: DiffVsSaveReport, objective: str, hea
 
 def _delta_notes(report: DiffVsSaveReport) -> list[str]:
     """What the delta rows cannot say for themselves: ranges, spread, off-100% clocks."""
-    diff_report = report.diff
+    diff_report = _diff(report)
     notes = [*diff_report.notes]
     if biomass_note(report.power):
         notes.append(biomass_note(report.power))
@@ -312,7 +330,7 @@ def _site_survey_block(report: DiffVsSaveReport, limit: int) -> tuple[str, list[
     return block, [note]
 
 
-def _cost_block(diff_report) -> str:
+def _cost_block(diff_report: DiffReport) -> str:
     """The head of the bill for what is left to build, against spendable stock."""
     return (
         "# cost of the build counts. stock is spendable only, never machine buffers."
@@ -328,7 +346,7 @@ def _cost_block(diff_report) -> str:
     )
 
 
-def _order_block(diff_report) -> str:
+def _order_block(diff_report: DiffReport) -> str:
     """The proportional-slices order, for a plan the startup stages do not cover."""
     return (
         "# ORDER: an LP solution is a ray, so any fraction of the plan is itself "
@@ -358,7 +376,7 @@ def render_diff(
             "",
             [*prepared.failure.notes, "see plan_factory for why; there is nothing to change yet"],
         )
-    sol = prepared.solution
+    sol = solution_of(prepared)
     if report.empty:
         # Feasible but empty: the objective walked away from the resource, which an empty
         # table would read as "nothing to do".
@@ -378,7 +396,7 @@ def render_diff(
     plan_notes = [*(plan_notes or [])]
     if report.scope_note:
         plan_notes.append(report.scope_note)
-    diff_report, tracking = report.diff, report.tracking
+    diff_report, tracking = _diff(report), report.tracking
     header_lines = built_at_lines(diff_report.built_at, plan_name)
     if report.drift_note:
         plan_notes.append(report.drift_note)

@@ -64,7 +64,7 @@ function censusTable(pickups: CollectiblesResponse): HTMLElement {
   const foreign = !!stale && stale.observed_matches === false;
   const streamedTitle =
     "placed where no save has had them loaded" +
-    (stale && stale.observed_from ? "; read from the saves of " + stale.observed_from : "") +
+    (stale?.observed_from ? "; read from the saves of " + stale.observed_from : "") +
     (foreign ? ", another world, so left out" : "");
   const columns: Column<CensusRow>[] = [
     {
@@ -204,7 +204,8 @@ export function renderPickups(body: HTMLElement, params: Record<string, string>)
   );
   const rows = pickups.rows;
   if (!rows.length) {
-    empty(card, list === "collected" ? "nothing collected yet" : "no pickup left" + (params.group ? " of this kind" : ""));
+    if (list === "collected") empty(card, "nothing collected yet");
+    else empty(card, "no pickup left" + (params.group ? " of this kind" : ""));
     return;
   }
   const line = make("div", "world-census");

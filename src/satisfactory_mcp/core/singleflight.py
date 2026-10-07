@@ -10,33 +10,37 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Generic, TypeVar
 
 __all__ = ["Singleflight"]
 
+K = TypeVar("K", bound=Hashable)
+V = TypeVar("V")
+
 
 @dataclass
-class _Flight:
+class _Flight(Generic[V]):
     """One in-progress computation. ``done`` is the happens-before edge: the leader writes
-    ``value`` or ``error`` before setting it and no waiter reads either before waiting."""
+    ``value`` or ``error`` before setting it and no waiter reads either before waiting.
+    ``value`` is unset until the leader writes it, and only read once ``error`` is None."""
 
     done: threading.Event = field(default_factory=threading.Event)
-    value: Any = None
+    value: V = field(init=False)
     error: BaseException | None = None
 
 
-class Singleflight:
+class Singleflight(Generic[K, V]):
     """A bounded LRU memo whose concurrent misses on one key collapse into one call."""
 
     def __init__(self, maxsize: int) -> None:
         self._maxsize = maxsize
         self._lock = threading.Lock()
-        self._values: OrderedDict[Any, Any] = OrderedDict()
-        self._flights: dict[Any, _Flight] = {}
+        self._values: OrderedDict[K, V] = OrderedDict()
+        self._flights: dict[K, _Flight[V]] = {}
 
-    def call(self, key: Any, build: Callable[[], Any]) -> Any:
+    def call(self, key: K, build: Callable[[], V]) -> V:
         """``build()``'s answer, shared with whoever is asking right now and never stored.
 
         For a read whose freshness is the whole point, where the only waste is doing it
@@ -46,8 +50,8 @@ class Singleflight:
         return self.get(key, build, refresh=True, store=False)
 
     def get(
-        self, key: Any, build: Callable[[], Any], *, refresh: bool = False, store: bool = True
-    ) -> Any:
+        self, key: K, build: Callable[[], V], *, refresh: bool = False, store: bool = True
+    ) -> V:
         """``build()``'s answer for ``key``, computed once however many threads ask.
 
         ``refresh`` ignores a stored value but still JOINS a flight already in progress:
@@ -67,10 +71,9 @@ class Singleflight:
                 return self._values[key]
             flight = self._flights.get(key)
             leader = flight is None
-            if leader:
+            if flight is None:
                 flight = self._flights[key] = _Flight()
 
-        assert flight is not None
         if not leader:
             flight.done.wait()
             if flight.error is not None:
@@ -95,7 +98,7 @@ class Singleflight:
             flight.done.set()
         return flight.value
 
-    def peek(self, key: Any) -> Any:
+    def peek(self, key: K) -> V | None:
         """The stored value or ``None``, without computing or waiting."""
         with self._lock:
             return self._values.get(key)

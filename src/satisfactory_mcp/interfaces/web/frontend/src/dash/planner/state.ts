@@ -143,7 +143,7 @@ function freshBench(key: string) {
   };
 }
 
-export var bench = Object.assign(
+export const bench = Object.assign(
   { tab: "build list" as ResultTab, versionsOpen: false, partitionByPlan: {} as Record<string, Partition> },
   freshBench("")
 );
@@ -152,14 +152,14 @@ export function resetBench(key: string): void {
   Object.assign(bench, freshBench(key));
 }
 
-export var pendingFocus = { ctl: "", until: 0 };
+export const pendingFocus = { ctl: "", until: 0 };
 
-export var inbox = { card: null as ActivityEvent | null };
+export const inbox = { card: null as ActivityEvent | null };
 
-export var NAME_MAX = 80;
-export var NOTES_MAX = 2000;
+export const NAME_MAX = 80;
+export const NOTES_MAX = 2000;
 
-var benchListeners = createListeners();
+const benchListeners = createListeners();
 
 export function onBench(listener: () => void): void {
   benchListeners.on(listener);
@@ -181,11 +181,11 @@ export function commitWords(text: string): string {
 
 /** An item or recipe id as the open plan names it, or the id itself. */
 export function displayName(id: string): string {
-  return (bench.plan && bench.plan.names[id]) || id;
+  return bench.plan?.names[id] || id;
 }
 
-var itemNames: string[] = [];
-var itemsAsked = false;
+let itemNames: string[] = [];
+let itemsAsked = false;
 
 export function loadItems(): void {
   if (itemsAsked) return;

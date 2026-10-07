@@ -295,7 +295,7 @@ function renderUnlocked(card: HTMLElement, browse: Browse): boolean {
   if (waiting(card, fetched, "the unlocked recipes")) return false;
   const data = fetched.data!;
   const alternates = count(data.alternates_unlocked) + (hidesLocked() ? "" : " of " + count(data.alternates_total)) + " alternates unlocked";
-  appendNote(card, [alternates, counted(data.automatable_total, "automatable recipe") + " in all", savedFrom(data)].join(" · "));
+  appendNote(card, [alternates, counted(data.automatable_total, "automatable recipe") + " unlocked", savedFrom(data)].join(" · "));
   const query = browse.query.toLowerCase();
   const rows = data.recipes.filter(function (recipe) {
     return !query || recipe.name.toLowerCase().indexOf(query) >= 0;
@@ -321,13 +321,24 @@ function trackBrowseScroll(): void {
 }
 
 function restoreBrowseScroll(): void {
-  if (!restoring || restoring.dash !== state.dash) return;
+  if (restoring?.dash !== state.dash) return;
   const top = restoring.top;
   restoring = null;
   if (!top) return;
   window.requestAnimationFrame(function () {
     el("dash").scrollTop = top;
   });
+}
+
+function searchPlaceholder(mode: Mode): string {
+  if (mode === "items") return "filter items by name";
+  return mode === "recipes" ? "filter recipes by name" : "filter unlocked recipes";
+}
+
+function renderList(card: HTMLElement, browse: Browse): boolean {
+  if (browse.mode === "items") return renderItems(card, browse);
+  if (browse.mode === "recipes") return renderRecipeSearch(card, browse);
+  return renderUnlocked(card, browse);
 }
 
 /* `arrived`: the address changed since the last draw, so the list's old scroll comes back. */
@@ -337,14 +348,12 @@ export function renderBrowse(body: HTMLElement, subject: string, arrived: boolea
   lastBrowse = state.dash;
   const card = make("section", "dash-card");
   modeBar(card, browse);
-  searchInput.placeholder = browse.mode === "items" ? "filter items by name" : browse.mode === "recipes" ? "filter recipes by name" : "filter unlocked recipes";
+  searchInput.placeholder = searchPlaceholder(browse.mode);
   searchInput.setAttribute("aria-label", searchInput.placeholder);
   if (document.activeElement !== searchInput && searchInput.value !== browse.query) searchInput.value = browse.query;
   card.appendChild(searchInput);
   body.appendChild(card);
-  const drawn =
-    browse.mode === "items" ? renderItems(card, browse) : browse.mode === "recipes" ? renderRecipeSearch(card, browse) : renderUnlocked(card, browse);
-  if (drawn) restoreBrowseScroll();
+  if (renderList(card, browse)) restoreBrowseScroll();
 }
 
 /* The way back from a detail page: the last list of that mode, filters and all. */

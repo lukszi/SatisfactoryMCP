@@ -13,7 +13,7 @@ from ....core.gamedata.model import Recipe
 from ...world.state import WorldState
 from ..solver.model import Solution
 from ..solver.optimize import solve
-from ..solver.scenario import with_recipes
+from ..solver.scenario import PlanRequest, with_recipes
 
 __all__ = ["UnlockDelta", "UnlockSweep", "sweep_unlocks"]
 
@@ -30,12 +30,12 @@ class UnlockDelta:
     machines_before: float
     machines_after: float
     #: Buildings the recipe needs that this world has not built; the delta assumes them.
-    needs: list[str] = field(default_factory=list)
+    needs: list[str] = field(default_factory=list[str])
     #: Schematics that grant it -- how the player would actually get it.
-    unlocked_by: list[str] = field(default_factory=list)
+    unlocked_by: list[str] = field(default_factory=list[str])
     #: Processes the counterfactual switches ON that the baseline did not use: what the
     #: gain depends on (docs/planning.md §8.5j).
-    activates: list[str] = field(default_factory=list)
+    activates: list[str] = field(default_factory=list[str])
     ok: bool = True
 
     @property
@@ -52,9 +52,9 @@ class UnlockDelta:
 class UnlockSweep:
     objective: str
     baseline: float
-    rows: list[UnlockDelta] = field(default_factory=list)
+    rows: list[UnlockDelta] = field(default_factory=list[UnlockDelta])
     tried: int = 0
-    notes: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list[str])
 
     @property
     def movers(self) -> list[UnlockDelta]:
@@ -79,7 +79,7 @@ def _as_gain(objective: str, value: float) -> float:
 
 
 def sweep_unlocks(
-    request,
+    request: PlanRequest,
     state: WorldState,
     candidates: list[Recipe] | None = None,
 ) -> UnlockSweep:

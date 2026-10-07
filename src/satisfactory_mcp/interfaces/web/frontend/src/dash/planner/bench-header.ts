@@ -12,7 +12,7 @@ import { toggleVersions } from "./reads";
 import { bench, changed, NAME_MAX } from "./state";
 import { dismissStrip, forgetPlan, redoLast, renamePlan, restorePlan, syncStatus, undoLast, undoRev } from "./writes";
 
-var renaming = { on: false, fresh: false };
+const renaming = { on: false, fresh: false };
 
 /** Leaves rename mode without a write, as opening another plan does. */
 export function cancelRename(): void {

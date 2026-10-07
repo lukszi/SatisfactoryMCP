@@ -140,6 +140,7 @@ def test_the_bill_now_charges_the_risers(planned):
     assert not out.startswith("! "), out
     assert "for the fluid risers" in out
     assert "Pipeline Pump" in out
+    assert "used to" not in out
 
 
 def test_the_tool_quotes_a_pump_tier_it_can_build(planned):

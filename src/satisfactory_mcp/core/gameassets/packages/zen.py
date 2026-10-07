@@ -6,12 +6,16 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
+from typing_extensions import TypedDict
+
 from ..iostore import ContainerError, Decompressor, IoStore
 
 __all__ = [
     "BULK_ENTRY_BYTES",
+    "BulkEntry",
     "Package",
     "ScriptObjects",
+    "ZenExport",
     "apply_fname_number",
     "bulk_data_entries",
 ]
@@ -31,13 +35,41 @@ _SUMMARY_WORDS = 15
 BULK_ENTRY_BYTES = 32
 
 
+#: One export of the export map. ``class`` is a keyword, hence the functional form; ``outer``
+#: and ``class`` are packed ``FPackageObjectIndex`` values, and ``public_hash`` is what another
+#: package's import names this export by, unique across the container where a name is not.
+ZenExport = TypedDict(
+    "ZenExport",
+    {
+        "slot": int,
+        "offset": int,
+        "size": int,
+        "name": str,
+        "outer": int,
+        "class": int,
+        "public_hash": int,
+    },
+)
+
+
+class BulkEntry(TypedDict):
+    """One ``FByteBulkData`` of the ``BulkDataMap``: where its payload is, and how it is kept."""
+
+    index: int
+    offset: int
+    duplicate_offset: int
+    size: int
+    flags: int
+    cooked_index: int
+
+
 def _name_batch(blob: bytes, pos: int) -> tuple[list[str], int]:
     """An ``FNameBatch``: count, byte length, hash version, hashes, headers, then strings."""
     count = struct.unpack_from("<I", blob, pos)[0]
     pos += 8 + 8 + 8 * count
     headers = blob[pos : pos + 2 * count]
     pos += 2 * count
-    names = []
+    names: list[str] = []
     for index in range(count):
         header = struct.unpack_from(">H", headers, index * 2)[0]
         length = header & 0x7FFF
@@ -62,7 +94,7 @@ def _fname_numbers(blob: bytes, pos: int, count: int, limit: int) -> list[int]:
     return list(struct.unpack_from(f"<{count}I", blob, pos))
 
 
-def bulk_data_entries(blob: bytes, names_end: int, first_section: int) -> list[dict]:
+def bulk_data_entries(blob: bytes, names_end: int, first_section: int) -> list[BulkEntry]:
     """The Zen header's ``BulkDataMap``, which is what an ``FByteBulkData`` indexes into.
 
     It sits between the name batch and the first section offset the summary names, behind a
@@ -81,7 +113,7 @@ def bulk_data_entries(blob: bytes, names_end: int, first_section: int) -> list[d
         pos += 8
         if size < 0 or pos + size > first_section:
             raise ValueError(f"bulk data map of {size} bytes does not fit before {first_section}")
-        out = []
+        out: list[BulkEntry] = []
         for index in range(size // BULK_ENTRY_BYTES):
             at = pos + index * BULK_ENTRY_BYTES
             offset, duplicate, length, flags = struct.unpack_from("<3QI", blob, at)
@@ -235,8 +267,8 @@ class Package:
             base = f"<kind{kind}:{slot}>"
         return apply_fname_number(base, number)
 
-    def exports(self) -> list[dict]:
-        out = []
+    def exports(self) -> list[ZenExport]:
+        out: list[ZenExport] = []
         for slot in range(self.export_count):
             pos = self.export_offset + slot * self.EXPORT_SIZE
             offset, size = struct.unpack_from("<QQ", self.blob, pos)
@@ -251,18 +283,16 @@ class Package:
                     "name": self.name(name_index, name_number),
                     "outer": outer,
                     "class": class_index,
-                    # What another package's import refers to this export BY. Unique across
-                    # the container, where the package name is not.
                     "public_hash": public_hash,
                 }
             )
         return out
 
-    def body(self, export: dict) -> bytes:
+    def body(self, export: ZenExport) -> bytes:
         start = self.header_size + export["offset"]
         return self.blob[start : start + export["size"]]
 
-    def bulk_entries(self) -> list[dict]:
+    def bulk_entries(self) -> list[BulkEntry]:
         """This package's ``BulkDataMap``: one entry per ``FByteBulkData``, or ``ValueError``.
         An inline entry's payload is ``blob[header_size + offset :][: size]``."""
         return bulk_data_entries(self.blob, self.names_end, self.first_section)

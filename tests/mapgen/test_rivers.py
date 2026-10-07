@@ -12,17 +12,20 @@ import pytest
 
 from mapgen.cache import cached_rivers, river_stamp, write_rivers
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
-from mapgen.gamedata.rivers import (
+from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES, water_box_tops
+from mapgen.gamedata.water.rivers import (
     RIVER_CLASS,
     box_tops,
     hermite,
     ribbon_planes,
+    river_volumes,
     sample_rivers,
 )
-from mapgen.palette.rivers import RiverWater, river_terms
-from mapgen.palette.shore import blend_water, optical_depth, water_composite
 from mapgen.palette.styles import SHORE_OPTICS, WATER_DEEP, WATER_SHALLOW
-from mapgen.palette.water import WATER_DEPTH_FULL_M
+from mapgen.palette.water import rivers as rivers_module
+from mapgen.palette.water.rivers import RIVER_HANDOVER_M, RIVER_TIE_M, RiverWater, river_terms
+from mapgen.palette.water.shore import blend_water, optical_depth, water_composite
+from mapgen.palette.water.surface import WATER_DEPTH_FULL_M
 from mapgen.tiles.recipes import RECIPE
 from satisfactory_mcp.core.gameassets import versions
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -92,9 +95,12 @@ def test_box_tops_split_the_river_boxes_from_every_other_surface():
         ("BP_LakeWater_C", ((X0 + 20) * 100, (Y0 + 20) * 100, 0, (X0 + 40) * 100, (Y0 + 40) * 100, 300)),
         ("BP_WaterFallTool_02_C", ((X0 + 0) * 100, (Y0 + 0) * 100, 0, (X0 + 50) * 100, (Y0 + 50) * 100, 900)),
     ]  # fmt: skip
-    river, other = box_tops(boxes, True, SHAPE), box_tops(boxes, False, SHAPE)
-    assert river[25, 25] == pytest.approx(8.0) and np.isnan(river[35, 35])
+    river, used = water_box_tops(boxes, {RIVER_CLASS}, SHAPE)
+    other, _used = water_box_tops(boxes, WATER_SURFACE_CLASSES - {RIVER_CLASS}, SHAPE)
+    assert river[25, 25] == pytest.approx(8.0) and np.isnan(river[35, 35]) and used == 1
     assert other[25, 25] == pytest.approx(3.0), "a waterfall is not a surface"
+    np.testing.assert_array_equal(box_tops(boxes, True, SHAPE), river)
+    np.testing.assert_array_equal(box_tops(boxes, False, SHAPE), other)
 
 
 def _flat_terms(shape, cover=0.0, depth_m=0.0):
@@ -141,6 +147,71 @@ def test_a_higher_lake_hides_the_river_and_a_lower_one_does_not():
     assert over["depth_m"][0, 0] == pytest.approx(2.5) and over["river"][0, 0] == 1.0
 
 
+def test_a_river_hands_over_to_a_lake_along_a_ramp_not_a_line():
+    """A plane sloping through a lake's level changes from the lake to the river over
+    ``RIVER_HANDOVER_M`` of level, centred on the tie: no line where the two levels cross."""
+    z = np.zeros((4, 200), np.float32)
+    lake = _flat_terms(z.shape, cover=1.0, depth_m=2.0)
+    plane = np.tile(np.linspace(1.0, 3.0, 200, dtype=np.float32), (4, 1))
+    share = river_terms(lake, z, plane, np.ones_like(z), 0.25)["river"][0]
+    delta = plane[0] - 2.0
+    assert (share[delta < -RIVER_TIE_M - RIVER_HANDOVER_M / 2] == 0.0).all()
+    assert (share[delta > -RIVER_TIE_M + RIVER_HANDOVER_M / 2] == 1.0).all()
+    assert (np.diff(share) >= 0).all() and np.abs(np.diff(share)).max() < 0.02, "a ramp"
+
+
+def test_a_joint_between_two_sections_is_one_surface():
+    """Two sections meeting with a step of 1 m are feathered into one sloped surface, so the
+    river is drawn across the joint instead of being cut beside the step."""
+    ground = np.full(SHAPE, 0.0, np.float32)
+    water = np.full(SHAPE, np.nan, np.float32)
+    grades = np.full(SHAPE, hf.WATER_DRY, np.uint8)
+    upper, lower = (
+        _section(10, 80, 60, 3.0, 3.0, 8.0, 8.0),
+        _section(80, 150, 60, 2.0, 2.0, 8.0, 8.0),
+    )
+    step = _river(upper, lower)
+    rivers = RiverWater({"rivers": [step], "boxes": []}, _field(ground, water, grades))
+    level = rivers.level_dm[60, 60:100].astype(int)
+    assert np.abs(np.diff(level)).max() <= 3, "no step left at the joint"
+    assert (rivers.presence[60, 70:90] > 0).all(), "the river is drawn across the joint"
+    assert level[0] == 30 and level[-1] == 20
+    assert rivers.stats["joint_texels_feathered"] > 0
+
+
+def test_over_other_water_a_river_fades_in_from_its_ends():
+    """On land a plane's edge fades over ``RIVER_EDGE_FADE_M``; over a lake its open end and
+    edges fade over ``RIVER_MOUTH_FADE_M``, so a river ending in a lake leaves no square end."""
+    plane = np.zeros((60, 80), bool)
+    plane[20:40, :50] = True
+    lake = np.zeros_like(plane)
+    lake[:, 30:] = True
+    fade = rivers_module._mouth_fade(plane, lake)
+    assert fade[30, 5] == pytest.approx(1.0), "on land the fade is the plane's own"
+    end = fade[30, 36:50]
+    assert end[-1] < 0.2 and (np.diff(end) <= 0).all(), "it fades out towards the open end"
+    assert fade[30, 49] < fade[30, 40] < 1.0
+
+
+def test_water_a_box_leaves_in_a_river_s_channel_ends_in_a_ramp():
+    """Where a box keeps other water standing in a river's channel, that water gives way to
+    the river at its edge and holds its own only ``RIVER_MOUTH_FADE_M`` in, whatever its level."""
+    plane = np.ones((10, 60), bool)
+    other = np.zeros_like(plane)
+    other[:, 20:] = True
+    yields = rivers_module._other_yields(other, plane)
+    row = yields[5]
+    assert (row[:20] == 0.0).all() and row[20] == 1.0 and row[20 + 13] == 0.0
+    assert (np.diff(row[20:]) <= 0).all()
+    z = np.zeros((4, 40), np.float32)
+    deeper = _flat_terms(z.shape, cover=1.0, depth_m=2.0)
+    plane_m = np.full(z.shape, 1.0, np.float32)
+    given = river_terms(deeper, z, plane_m, np.ones_like(z), 0.25, np.ones_like(z))
+    assert given["river"][0, 0] == pytest.approx(1.0), "it gives way at its edge"
+    kept = river_terms(deeper, z, plane_m, np.ones_like(z), 0.25, np.zeros_like(z))
+    assert not kept["river"].any(), "and holds its own inside"
+
+
 def test_a_shallow_river_still_reads_as_water_once_in_from_its_bank():
     z, spacing = _valley(slope=0.02)
     terms = river_terms(
@@ -165,9 +236,9 @@ def test_without_rivers_the_shore_composite_is_unchanged():
 
 def _field(height_m, water_m, grades):
     return SimpleNamespace(
-        _height_dm=np.round(height_m * 10).astype(np.int16),
-        _water_raster=lambda: np.where(np.isnan(water_m), hf.NODATA, np.round(water_m * 10)).astype(np.int16),
-        _water_quality_raster=lambda: grades.astype(np.uint8),
+        height_dm=np.round(height_m * 10).astype(np.int16),
+        water_raster=lambda: np.where(np.isnan(water_m), hf.NODATA, np.round(water_m * 10)).astype(np.int16),
+        water_quality_raster=lambda: grades.astype(np.uint8),
     )  # fmt: skip
 
 
@@ -192,6 +263,35 @@ def test_the_river_boxes_water_is_taken_back_and_lakes_are_relevelled():
     assert rivers.water_dm[100, 120] == 25 and rivers.grades[100, 120] == hf.WATER_MEASURED
     assert rivers.water_dm[10, 10] == 25, "water no river box levelled is untouched"
     assert rivers.stats["rivers"] == 1 and rivers.stats["dropped_km2"] > 0
+
+
+def test_a_volume_inside_a_river_s_box_is_the_river_s_own():
+    """A classless volume nested in a river's box with a top near the box's is the river's
+    own; a lake's volume, or one whose top stands well off the river's, is not."""
+    river = (RIVER_CLASS, (0.0, 0.0, -500.0, 10000.0, 4000.0, 600.0))
+    own = ("FGWaterVolume", (100.0, 100.0, -400.0, 9900.0, 3900.0, 500.0))
+    lake = ("FGWaterVolume", (20000.0, 0.0, 0.0, 30000.0, 4000.0, 500.0))
+    high = ("FGWaterVolume", (100.0, 100.0, 0.0, 9900.0, 3900.0, 900.0))
+    named = river_volumes([river, own, lake, high])
+    assert [name for name, _box in named] == [RIVER_CLASS, RIVER_CLASS, *(["FGWaterVolume"] * 2)]
+    assert named[1][1] == own[1]
+
+
+def test_water_a_river_s_own_volume_levels_is_taken_back_like_its_box():
+    """The river's volume stands 1 m under its box's top. Read as a lake's, the river box's
+    water in the channel was re-levelled onto it and stood there, 4 m over the river; as the
+    river's own it goes where the ribbon draws the river, as the box's water does."""
+    ground = np.full(SHAPE, 4.0, np.float32)
+    ground[50:70, :] = 1.0
+    water = np.full(SHAPE, np.nan, np.float32)
+    water[45:75, 10:150] = 7.0
+    grades = np.where(np.isnan(water), hf.WATER_DRY, hf.WATER_MEASURED)
+    box = [(X0 + 0) * 100, (Y0 + 40) * 100, 0, (X0 + 159) * 100, (Y0 + 115) * 100]
+    boxes = [[RIVER_CLASS, [*box, 700]], ["FGWaterVolume", [*box, 600]]]
+    cached = {"rivers": [_river(_section(10, 150, 60, 2.0, 2.0, 8.0, 8.0))], "boxes": boxes}
+    rivers = RiverWater(cached, _field(ground, water, grades))
+    assert rivers.grades[60, 80] == hf.WATER_DRY, "the volume's water in the channel is gone"
+    assert rivers.presence[60, 80] == 255
 
 
 def test_the_river_cache_is_keyed_on_build_and_reader(tmp_path):

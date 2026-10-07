@@ -32,7 +32,8 @@ def _flat_nrm(shape, nx=0.0):
 
 
 def _crowned_bake(tmp_path, with_crown=True):
-    from mapgen.lighting.stage import Surface, bake_light
+    from mapgen.lighting.bake import bake_light
+    from mapgen.lighting.stage import Surface
 
     size = 512
     surface = Surface(tmp_path / "work", size)
@@ -62,7 +63,7 @@ def test_the_crowns_cast_into_their_own_cells_and_never_into_the_ground_s(tmp_pa
 
 
 def test_only_a_style_that_draws_the_crowns_is_shaded_by_them():
-    from mapgen.tiles.lit import crown_layers
+    from mapgen.render.draw.light import crown_layers
 
     assert crown_layers() == ["painted"]
     assert shader_light("painted")["crowns"] and not shader_light("satellite")["crowns"]
@@ -80,21 +81,20 @@ def test_only_a_style_that_draws_the_crowns_is_shaded_by_them():
     assert shaded.mean() < model.relight(colour, _flat_nrm((8, 8)), None, low, painted).mean() - 10
 
 
-def test_the_baked_copy_takes_the_crown_term_only_for_a_crown_style(tmp_path):
-    from mapgen.lighting.stage import Surface
-    from mapgen.tiles.lit import relight_in_place
+def test_the_baked_copy_takes_the_crown_term_only_for_a_crown_style():
+    from mapgen.render.draw.light import relight_rows
 
-    surface = Surface(tmp_path, 4)
-    surface.land[:] = 255
-    terms = np.zeros((4, 4, 3), np.uint8)
-    terms[..., 0], terms[..., 1], terms[..., 2] = 255, 127, 20
-    np.save(surface.path("terms"), terms)
-    sheets = {layer: np.full((4, 4, 3), 140, np.uint8) for layer in ("terrain", "painted")}
-    for layer, sheet in sheets.items():
-        relight_in_place(sheet, surface, shader_light(layer))
+    land = np.full((4, 4), 255, np.uint8)
+    terms = np.zeros((4, 4, 4), np.uint8)
+    terms[..., 0], terms[..., 1], terms[..., 2], terms[..., 3] = 255, 127, 20, 255
+    colour = np.full((4, 4, 3), 140, np.uint8)
+    sheets = {
+        layer: relight_rows(colour, terms, land, shader_light(layer))
+        for layer in ("terrain", "painted")
+    }
     assert np.abs(sheets["terrain"].astype(int) - 140).max() <= 1
     assert sheets["painted"].max() < 120
-    surface.close()
+    assert (colour == 140).all(), "the unlit rows are left as they were"
 
 
 def _ground_cells(row: np.ndarray) -> np.ndarray:
@@ -159,7 +159,7 @@ def test_the_shader_and_the_python_model_read_the_same_constants():
         assert key in block, key
         assert f"model.{key}" in source, key
     assert "1.0-sh*(1.0-uFill)" in source and "params.crowns" in source
-    assert "1 - shade * (1 - SHADOW_FILL)" in inspect.getsource(model.direct_term)
+    assert "1 - shade * (1 - SHADOW_FILL)" in inspect.getsource(model.shaded_direct)
     assert block["hz_cells"] == 2 * block["crown_cell"] == 2 * hz.HORIZON_DIRS
     assert json.loads(json.dumps(block)) == block
     assert math.isclose(block["shadow_soft_deg"], model.SHADOW_SOFT_DEG)

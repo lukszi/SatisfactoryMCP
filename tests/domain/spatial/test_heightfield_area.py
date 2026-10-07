@@ -22,7 +22,7 @@ from tests.support.heightfields import (
 def _whole_field(field: hf.Field) -> hf.Area:
     last_x = field.x0_cm + (field.width - 1) * field.spacing_cm
     last_y = field.y0_cm + (field.height - 1) * field.spacing_cm
-    return field.window(field.x0_cm, field.y0_cm, last_x, last_y)
+    return field.area(field.x0_cm, field.y0_cm, last_x, last_y)
 
 
 def test_an_area_agrees_with_the_point_reader_texel_for_texel(tmp_path):
@@ -34,7 +34,7 @@ def test_an_area_agrees_with_the_point_reader_texel_for_texel(tmp_path):
     zs, wet, blind = [], 0, 0
     for row in range(field.height):
         for col in range(field.width):
-            reading = field.at(
+            reading = field.texel_reading(
                 field.x0_cm + col * field.spacing_cm, field.y0_cm + row * field.spacing_cm
             )
             if reading is None:
@@ -55,7 +55,7 @@ def test_a_rectangle_off_the_grid_is_all_no_data_and_never_None(tmp_path):
     """Silence about a pad is an answer. ``None`` would make "nothing is known there" and
     "you asked wrong" the same result, and a caller cannot tell those apart afterwards."""
     field = hf.load_field(build_field(tmp_path))
-    area = field.window(500_000.0, 500_000.0, 500_100.0, 500_100.0)
+    area = field.area(500_000.0, 500_000.0, 500_100.0, 500_100.0)
     assert area.nodata_pct == 100.0
     assert area.texels == 0
     assert area.z_range_m is None and area.roughness_m is None
@@ -66,7 +66,7 @@ def test_a_pad_hanging_off_the_edge_reports_the_part_nobody_measured(tmp_path):
     pad 90% off the map would report a confident 0% no-data about its last strip."""
     field = hf.load_field(build_field(tmp_path))
     last_x = FAKE_X0 + (FAKE_W - 1) * FAKE_SPACING
-    area = field.window(last_x - FAKE_SPACING, FAKE_Y0, last_x + 8 * FAKE_SPACING, FAKE_Y0)
+    area = field.area(last_x - FAKE_SPACING, FAKE_Y0, last_x + 8 * FAKE_SPACING, FAKE_Y0)
     assert area.requested_texels == 10
     assert area.texels == 2
     assert area.nodata_pct == pytest.approx(80.0)
@@ -94,7 +94,7 @@ def test_a_big_window_decimates_and_says_so(tmp_path):
     """Decimation cannot see detail finer than its new spacing, so a caller comparing two
     areas has to be able to see that one of them was subsampled."""
     field = hf.load_field(build_shaped_field(tmp_path, np.zeros((400, 400))))
-    whole = field.window(0.0, 0.0, 39_900.0, 39_900.0, max_texels=10_000)
+    whole = field.area(0.0, 0.0, 39_900.0, 39_900.0, max_texels=10_000)
     assert whole.stride == 4
     assert whole.requested_texels == 400 * 400
     assert whole.nodata_pct == pytest.approx(0.0, abs=0.5)

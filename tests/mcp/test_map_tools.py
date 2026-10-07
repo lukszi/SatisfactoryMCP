@@ -33,7 +33,7 @@ def test_settings_lists_the_base_maps_with_the_default_and_what_is_stale(local):
     assert not registry.manifest_path().exists(), "chat reads the registry and never writes it"
 
 
-def test_show_on_map_opens_the_local_link_on_a_named_base_map(local, monkeypatch):
+def test_show_on_map_opens_the_local_link_on_a_named_base_map(local, monkeypatch, game):
     monkeypatch.setattr(app, "load_state", _no_save)
     # The node table is read from the real data dir; only the maps are the scratch tree's.
     monkeypatch.setattr(registry, "local_dir", lambda: local)

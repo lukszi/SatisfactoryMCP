@@ -9,16 +9,11 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from mapgen.palette.calibration import rehome_offshore
-from mapgen.palette.painted import (
-    ROCK_GRID_M,
-    PaintedGround,
-    display_to_ground,
-    land_cells,
-    oklab,
-)
-from mapgen.palette.shore import OCEAN_LEVEL_M
+from mapgen.colour import oklab
+from mapgen.palette.painted.calibration import display_to_ground, rehome_offshore
+from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround, land_cells
 from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 SEA, DESERT, SPIRE = 0, 1, 2
@@ -66,9 +61,9 @@ def _field(land_1m):
     return SimpleNamespace(
         height=land_1m.shape[0],
         width=land_1m.shape[1],
-        _height_dm=np.where(land_1m, 100, -300).astype(np.int16),
-        _water_raster=lambda: np.where(land_1m, hf.NODATA, level).astype(np.int16),
-        _water_quality_raster=lambda: np.where(land_1m, hf.WATER_DRY, hf.WATER_MEASURED).astype(
+        height_dm=np.where(land_1m, 100, -300).astype(np.int16),
+        water_raster=lambda: np.where(land_1m, hf.NODATA, level).astype(np.int16),
+        water_quality_raster=lambda: np.where(land_1m, hf.WATER_DRY, hf.WATER_MEASURED).astype(
             np.uint8
         ),
     )
@@ -113,7 +108,7 @@ def test_an_offshore_rock_beside_a_desert_wears_the_spire_coast_rock_not_the_des
 
 def test_a_field_without_water_planes_keeps_the_area_map_as_it_is():
     index, _land = _coast()
-    field = SimpleNamespace(_water_raster=lambda: None, _water_quality_raster=lambda: None)
+    field = SimpleNamespace(water_raster=lambda: None, water_quality_raster=lambda: None)
     assert land_cells(field, index.shape) is None
     ground = _ground(np.kron(index, np.ones((ROCK_GRID_M, ROCK_GRID_M), np.uint8)), field)
     assert (ground.coarse_index == index).all() and "offshore_cells_rehomed" not in ground.source
@@ -123,10 +118,10 @@ def test_land_is_ground_above_the_sea_and_a_lake_counts_as_land():
     land = np.zeros((8, 8), bool)
     land[:, 4:] = True
     field = _field(land)
-    lake = field._water_raster().copy()
+    lake = field.water_raster().copy()
     lake[:2, 4:] = 500
-    grades = field._water_quality_raster().copy()
+    grades = field.water_quality_raster().copy()
     grades[:2, 4:] = hf.WATER_MEASURED
-    field._water_raster, field._water_quality_raster = (lambda: lake), (lambda: grades)
+    field.water_raster, field.water_quality_raster = (lambda: lake), (lambda: grades)
     got = land_cells(field, (4, 4))
     assert got.tolist() == [[False, False, True, True]] * 4

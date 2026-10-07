@@ -12,34 +12,36 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.cache import cached_mesh_family, cached_meshes, mesh_stamp
-from mapgen.gamedata import rockfamily
-from mapgen.gamedata.crowns import CROWN_RECORD
+from mapgen.cache import MeshPlanes, cached_mesh_family, cached_meshes, mesh_stamp
+from mapgen.colour import oklab
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.palette.calibration import (
+from mapgen.gamedata.rocks import families as rockfamily
+from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD
+from mapgen.palette.painted.calibration import (
     derived_hex,
     display_to_crown,
     display_to_ground,
     display_to_linear,
     with_derived,
 )
-from mapgen.palette.colour import oklab
-from mapgen.palette.painted import ROCK_GRID_M, PaintedGround
+from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
+from mapgen.palette.painted.surfaces import mesh_surface
+from mapgen.palette.painted.trees import crown_lab, crown_layer, over_crowns, species_targets
 from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.palette.surfaces import mesh_surface
-from mapgen.palette.trees import crown_lab, crown_layer, over_crowns, species_targets
-from mapgen.terrain import rasters
-from mapgen.terrain.crowns import CrownSet
-from mapgen.terrain.rasters import (
+from mapgen.render.draw.painting import _band_family
+from mapgen.terrain import render_meshes
+from mapgen.terrain.crown_stamp import CrownSet
+from mapgen.terrain.render_meshes import (
     MESH_CLASS_MASK,
     MESH_CORAL,
     MESH_FAMILY_SHIFT,
     MESH_ROCK,
+    MeshGroup,
+    PreparedMeshes,
     mesh_items,
     mesh_pass,
     rasterise_mesh_band,
 )
-from mapgen.tiles.compose import _band_family
 
 CAL = PAINTED_PALETTE["calibration"]
 STYLE = PAINTED_PALETTE["crowns"]
@@ -65,9 +67,9 @@ def _mesh_ground():
     has = np.zeros(n, np.float32)
     top[FOREST], has[FOREST] = (0.05, 0.08, 0.03), 1.0
     return SimpleNamespace(
-        rock_family=None, family_tint=np.ones((n, 3), np.float32), family_top=top,
-        family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}}, mesh_rgb={},
-        seabed_coral=np.zeros(3, np.float32),
+        rock_family=None, family_rock={}, family_tint=np.ones((n, 3), np.float32),
+        family_top=top, family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
+        mesh_rgb={}, seabed_coral=np.zeros(3, np.float32), family_top_rgb={},
     )  # fmt: skip
 
 
@@ -104,14 +106,14 @@ def test_a_render_only_rock_wears_its_own_family_and_top_layer():
 
 def test_mesh_items_carry_each_rock_s_family_and_leave_coral_alone(monkeypatch):
     shape = (np.array([[0, 0, 0], [100, 0, 0], [0, 100, 0]], np.float32), np.array([[0, 1, 2]]))
-    monkeypatch.setattr(rasters, "read_shape", lambda *a: (shape, "test"))
+    monkeypatch.setattr(render_meshes, "read_shape", lambda *a: (shape, "test"))
     asked: list = []
 
     def worn(_s, _c, _i, mesh, material, _caches):
         asked.append((mesh, material))
         return {"MI_Forest": FOREST, None: GRASS}[material]
 
-    monkeypatch.setattr(rasters, "worn_family", worn)
+    monkeypatch.setattr(render_meshes, "worn_family", worn)
     row = lambda mesh: (mesh, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1)
     sweep = {
         "meshes": [PILLAR, CORAL],
@@ -121,13 +123,13 @@ def test_mesh_items_carry_each_rock_s_family_and_leave_coral_alone(monkeypatch):
         "extra_foliage": {SEA_ROCK: [np.eye(4)]},
     }
     prepared, meta = mesh_items(None, None, None, sweep)
-    codes = prepared["items"][PILLAR][0]
+    codes = prepared.items[PILLAR].codes
     assert (codes & MESH_CLASS_MASK).tolist() == [MESH_ROCK, MESH_ROCK]
     assert (codes >> MESH_FAMILY_SHIFT).tolist() == [FOREST, GRASS], "override, then its own"
-    assert prepared["items"][CORAL][0].tolist() == [MESH_CORAL]
-    assert (prepared["items"][SEA_ROCK][0] >> MESH_FAMILY_SHIFT).tolist() == [GRASS]
+    assert prepared.items[CORAL].codes.tolist() == [MESH_CORAL]
+    assert (prepared.items[SEA_ROCK].codes >> MESH_FAMILY_SHIFT).tolist() == [GRASS]
     assert all(mesh != CORAL for mesh, _m in asked), "coral is not a rock"
-    assert prepared["families"] and meta["rock_families"] == {"forest": 1, "grass": 2}
+    assert prepared.families and meta["rock_families"] == {"forest": 1, "grass": 2}
 
 
 def test_the_band_keeps_each_instance_s_code():
@@ -136,8 +138,8 @@ def test_the_band_keeps_each_instance_s_code():
     mats = np.tile(np.eye(4, dtype=np.float32), (2, 1, 1))
     mats[0, 3, :2], mats[1, 3, :2] = (x0, y0), (x0 + 1000, y0)
     code = np.array([MESH_ROCK | FOREST << MESH_FAMILY_SHIFT, MESH_ROCK], np.uint16)
-    prepared = {"items": {PILLAR: (code, mats, mats[:, 3, 1] - 600, mats[:, 3, 1] + 600)},
-                "shapes": {PILLAR: (verts, np.array([[0, 1, 2], [0, 2, 3]]))}}  # fmt: skip
+    group = MeshGroup(code, mats, mats[:, 3, 1] - 600, mats[:, 3, 1] + 600)
+    prepared = PreparedMeshes({PILLAR: group}, {PILLAR: (verts, np.array([[0, 1, 2], [0, 2, 3]]))})
     z, src = rasterise_mesh_band(prepared, x0, y0, 100.0, 8, 16)
     assert src[2, 2] == code[0] and src[2, 12] == code[1] and src[2, 6] == 0
     assert np.isfinite(z[2, 2]) and not np.isfinite(z[2, 6])
@@ -152,18 +154,19 @@ def test_the_mesh_cache_holds_a_family_plane_and_the_pass_hands_it_on(tmp_path, 
         code[:, cols // 2 :] = MESH_CORAL
         return np.full((rows, cols), 900.0, np.float32), code
 
-    monkeypatch.setattr(rasters, "rasterise_mesh_band", band)
-    build = lambda: ({"items": {}, "shapes": {}, "families": True}, {"instances": {}})
+    monkeypatch.setattr(render_meshes, "rasterise_mesh_band", band)
+    build = lambda: (PreparedMeshes({}, {}, families=True), {"instances": {}})
     maps, _source = mesh_pass(tmp_path, 32, "b1", "render_meshes", build, "m", True)
     assert len(maps) == 3
     z, cls, family = (np.asarray(m[:]) for m in maps)
     assert cls[0, 0] == MESH_ROCK and cls[0, 31] == MESH_CORAL
     assert family[0, 0] == FOREST and family[0, 31] == 0
-    stamp = mesh_stamp(32, "b1", rasters.READER_VERSIONS["render_meshes"])
+    stamp = mesh_stamp(32, "b1", render_meshes.READER_VERSIONS["render_meshes"])
     assert cached_meshes(tmp_path, stamp) is not None
     assert cached_mesh_family(tmp_path, stamp) is not None
-    assert _band_family(maps, slice(0, 2)).shape == (2, 32)
-    assert _band_family(maps[:2], slice(0, 2)) is None and _band_family(None, slice(0, 2)) is None
+    assert _band_family(MeshPlanes(*maps), slice(0, 2)).shape == (2, 32)
+    assert _band_family(MeshPlanes(*maps[:2]), slice(0, 2)) is None
+    assert _band_family(None, slice(0, 2)) is None
     del maps, z, cls, family
 
 
@@ -251,18 +254,22 @@ def _crowns(colours, species, names=NAMES):
 def test_a_species_target_moves_only_that_species_onto_it():
     crowns = _crowns([GREEN, RED, PINK], [0, 1, 1, 2])
     before = [copy.deepcopy(lv) for lv in crowns.levels]
-    measured = species_targets(crowns, STYLE, {"SM_Kapok_03": "#7c4955", "Absent": "#000000"},
-                               PAINTED_PALETTE)  # fmt: skip
+    levels, measured = species_targets(
+        crowns, STYLE, {"SM_Kapok_03": "#7c4955", "Absent": "#000000"}, PAINTED_PALETTE
+    )
     assert (
         set(measured) == {"species@SM_Kapok_03"} and measured["species@SM_Kapok_03"]["trees"] == 2
     )
-    level = crowns.levels[1][0]
+    level = levels[1][0]
     lab = crown_lab(level[1, 1, 1:4] / level[1, 1, 0], STYLE)
     np.testing.assert_allclose(lab, display_to_crown(PAINTED_PALETTE, "#7c4955"), atol=2e-3)
-    assert crowns.levels[1][0][0, 0, 1:4].tolist() == [0.0, 0.0, 0.0], "no cover, no colour"
+    assert levels[1][0][0, 0, 1:4].tolist() == [0.0, 0.0, 0.0], "no cover, no colour"
     for k in (0, 2):
-        for got, want in zip(crowns.levels[k], before[k], strict=True):
+        for got, want in zip(levels[k], before[k], strict=True):
             np.testing.assert_array_equal(got, want)
+    for got, want in zip(crowns.levels, before, strict=True):
+        for got_mip, want_mip in zip(got, want, strict=True):
+            np.testing.assert_array_equal(got_mip, want_mip, err_msg="the crowns stay as they are")
 
 
 def test_the_red_kapok_is_crimson_in_any_area_and_the_green_ones_are_not():
@@ -272,7 +279,8 @@ def test_the_red_kapok_is_crimson_in_any_area_and_the_green_ones_are_not():
     ground.crowns, ground.crown_measured = crowns, {}
     ground.area_names, ground.area_assets = ["Area_JungleSpires"], []
     ground.coarse_index = np.zeros((4, 4), np.uint8)
-    ops = ground._crown_ops(ground.palette["calibration"])
+    ground._calibrate_crowns(ground.palette["calibration"])
+    ops = ground.crown_ops
     assert "species@SM_Kapok_03" in ground.crown_measured
     p = ground.palette
     colours = [crowns.levels[k][0][1, 1, 1:4] for k in range(3)]

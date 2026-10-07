@@ -18,7 +18,7 @@ from mapgen.palette.styles import (
     TERRAIN_PALETTE,
     load_palette,
 )
-from mapgen.terrain.sidecar import GENERATOR_VERSION
+from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
 from mapgen.tiles.artwork_output import artwork_provenance
 from mapgen.tiles.recipes import (
     ENHANCE_RECIPE,
@@ -27,7 +27,7 @@ from mapgen.tiles.recipes import (
     RECIPE_KERNEL_ONLY,
     RECIPES,
 )
-from mapgen.tiles.sidecar import build_sidecar
+from mapgen.tiles.sidecar import build_render_sidecar
 from satisfactory_mcp.core.gameassets import provenance, versions
 from satisfactory_mcp.core.gameassets.versions import CAVES_VERSION
 from satisfactory_mcp.domain.maps import axes as ax
@@ -89,7 +89,7 @@ def test_a_render_sidecar_carries_the_block_and_the_registry_reads_it_back():
          "two_regime": True, "size_px": 4096, "subsamples": 1},
         {"id": "terrain-hypsometric", "version": 1, "label": "terrain", "digest": "sha256:bb"},
     )  # fmt: skip
-    sidecar = build_sidecar(
+    sidecar = build_render_sidecar(
         layer="terrain",
         field_meta={"generator": "tools/gen_world_heightmap.py", "generator_version": 5},
         tiles={"count": 1},

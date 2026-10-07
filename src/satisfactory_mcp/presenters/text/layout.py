@@ -9,14 +9,24 @@ lengths and world coordinates are absent.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TypeVar
 
 from ...core.gamedata.model import GameData
+from ...domain.planning.layout.head import HeadRow
+from ...domain.planning.layout.materials import MaterialsBill
+from ...domain.planning.layout.model import Layout
 from ...domain.planning.layout.service import LayoutReport
+from ...domain.planning.layout.site_partition import SitePlan
+from ...domain.planning.layout.trunks import TrunkPlan
 from ...domain.planning.readout.slice import slice_of
+from ...domain.planning.solver.prepare import PreparedPlan
 from ...domain.world.state import WorldState
 from . import primitives as render
 
-__all__ = ["render_layout"]
+__all__ = ["LAYOUT_VIEWS", "render_layout"]
+
+#: Every ``show`` a layout answers; ``floors`` is the default stack.
+LAYOUT_VIEWS = ("floors", "blocks", "buses", "trunks", "materials", "sites")
 
 #: What ``show='sites'`` needs, said when it was asked for without ``sites=``.
 _SITES_USAGE = (
@@ -33,13 +43,35 @@ _SITES_USAGE = (
 )
 
 
+Payload = TypeVar("Payload", SitePlan, MaterialsBill, TrunkPlan)
+
+
+def _prepared(report: LayoutReport) -> PreparedPlan:
+    """The plan of a report whose carrier tiers resolved."""
+    assert report.prepared is not None, "the carrier tiers did not resolve"
+    return report.prepared
+
+
+def _layout(report: LayoutReport) -> Layout:
+    """The schematic of a report whose plan solved."""
+    assert report.layout is not None, "the plan did not solve"
+    return report.layout
+
+
+def _payload(report: LayoutReport, kind: type[Payload]) -> Payload:
+    """The answer to the ``show`` that asked for a ``kind``."""
+    payload = report.show_payload
+    assert isinstance(payload, kind), f"show answers no {kind.__name__}"
+    return payload
+
+
 def _riser_pumps(report: LayoutReport) -> int:
     """The pipeline pumps the fluid risers need, at least."""
     return sum(row["pumps"] for row in report.climbing)
 
 
 def _blocks_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, list[str]]:
-    layout = report.layout
+    layout = _layout(report)
     rows = [
         (
             b.name[:36],
@@ -73,7 +105,7 @@ def _blocks_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, li
 
 
 def _sites_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, list[str]]:
-    site_plan = report.show_payload
+    site_plan = _payload(report, SitePlan)
     rows = [
         (
             i.source[:14],
@@ -125,7 +157,7 @@ def _sites_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, lis
 
 
 def _materials_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, list[str]]:
-    bill = report.show_payload
+    bill = _payload(report, MaterialsBill)
     rows = [
         (
             line.name[:26],
@@ -172,10 +204,7 @@ def _materials_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str,
     )
     riser_pumps = _riser_pumps(report)
     if riser_pumps:
-        notes.append(
-            f"includes {riser_pumps} {report.pump_name}(s) for the fluid risers -- these "
-            "were missing entirely, so a fluid-heavy plan used to understate its own bill"
-        )
+        notes.append(f"includes {riser_pumps} {report.pump_name}(s) for the fluid risers")
     notes.append(
         "belts and pipes are NOT costed: their cost is per metre and there is no "
         "route, so a length here would be invented. Use show='buses' for line "
@@ -189,9 +218,9 @@ def _materials_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str,
 
 
 def _trunks_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, list[str]]:
-    trunk_plan = report.show_payload
+    trunk_plan = _payload(report, TrunkPlan)
     pump_head, pump_name = report.pump_head_m, report.pump_name
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for i, t in enumerate(trunk_plan.trunks, 1):
         # Head is a FLUID concern only: a belt's climb invites a pump that cannot exist.
         climb = ""
@@ -237,7 +266,7 @@ def _trunks_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, li
 
 
 def _buses_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, list[str]]:
-    layout = report.layout
+    layout = _layout(report)
     rows = [
         (
             b.name[:24],
@@ -261,11 +290,12 @@ def _buses_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, lis
 
 
 def _floors_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, list[str]]:
-    layout = report.layout
+    layout = _layout(report)
     # A site column only when a partition exists: three buildings, each read from its own F0.
     with_site = any(f.site for f in layout.floors)
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for f in layout.floors:
+        row: tuple[object, ...]
         if f.kind == "production":
             contents = ", ".join(
                 f"{b.machines}x {b.label[:22]}"
@@ -308,7 +338,7 @@ def _floors_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, li
     return body, notes
 
 
-#: The table each ``show`` asks for; anything else draws the floors.
+#: The table each ``show`` other than ``floors`` asks for.
 _VIEWS: dict[str, Callable[[GameData, LayoutReport, int], tuple[str, list[str]]]] = {
     "blocks": _blocks_view,
     "sites": _sites_view,
@@ -320,7 +350,7 @@ _VIEWS: dict[str, Callable[[GameData, LayoutReport, int], tuple[str, list[str]]]
 
 def _layout_summary(g: GameData, st: WorldState, report: LayoutReport, objective: str) -> str:
     """The header: the plan's size, its floors and stacks, and the carriers it assumed."""
-    tiers, layout, prepared = report.tiers, report.layout, report.prepared
+    tiers, layout, prepared = report.tiers, _layout(report), _prepared(report)
     production = [f for f in layout.floors if f.kind == "production"]
     logistics = [f for f in layout.floors if f.kind == "logistics"]
     # Under a site partition each building is named with its own stack height.
@@ -364,7 +394,7 @@ def _layout_summary(g: GameData, st: WorldState, report: LayoutReport, objective
 
 def _schematic_notes(g: GameData, st: WorldState, report: LayoutReport) -> list[str]:
     """What every view shares: the tiers assumed, what a schematic is not, what to build."""
-    tiers, layout = report.tiers, report.layout
+    tiers, layout = report.tiers, _layout(report)
     notes = [
         *layout.warnings,
         (
@@ -417,9 +447,9 @@ def _fit_header(report: LayoutReport, body: str) -> tuple[str, list[str]]:
 
 def _riser_notes(report: LayoutReport) -> list[str]:
     """The pumps the risers need, and why fluid head does not order the floors."""
-    notes = []
+    notes: list[str] = []
 
-    def label(row: dict) -> str:
+    def label(row: HeadRow) -> str:
         return f"{row['site']}: {row['item']}" if row.get("site") else row["item"]
 
     pumps_total = _riser_pumps(report)
@@ -461,7 +491,7 @@ def render_layout(
     tiers = report.tiers
     if tiers.errors:
         return render.envelope("# unknown carrier tier", "", tiers.errors)
-    prepared = report.prepared
+    prepared = _prepared(report)
     if prepared.failure:
         suffix = " -- nothing to lay out" if "INFEASIBLE" in prepared.failure.headline else ""
         return render.envelope(

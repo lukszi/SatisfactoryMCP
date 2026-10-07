@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mapgen.gamedata import trees as tr
+from mapgen.gamedata.vegetation import trees as tr
 from mapgen.lighting import horizon as hz
 from mapgen.lighting import occluders as oc
 from mapgen.terrain import rasters
@@ -33,7 +33,7 @@ class _Bounds:
     def __init__(self, table):
         self.table = table
 
-    def of(self, mesh):
+    def extended_bounds(self, mesh):
         return self.table.get(mesh)
 
 
@@ -207,7 +207,7 @@ PAKS = GAME / "FactoryGame" / "Content" / "Paks"
 def test_tree_bounds_from_the_installed_game():
     if not (PAKS / "FactoryGame-Windows.utoc").exists():
         pytest.skip(f"needs the installed game at {GAME}")
-    from mapgen.gamedata.mesh import MeshBounds
+    from mapgen.gamedata.meshes import MeshBounds
     from satisfactory_mcp.core.gameassets.container import open_container
     from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
     from satisfactory_mcp.core.gameassets.packages import AssetIndex, ScriptObjects

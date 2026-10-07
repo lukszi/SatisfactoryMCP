@@ -7,12 +7,12 @@ docs/web-wire.md).
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
-
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock
 from .....core.saveio.records import instance_leaf
+from .....domain.progression.views import SlugRow
 from .....domain.world.state import WorldState
 from ...serial import ItemAmount, item_amounts, require_world, xyz_m
 
@@ -20,8 +20,16 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
 
+
+class PositionXY(TypedDict):
+    """Where a holder stands on the map; spread into its row."""
+
+    x_m: float | None
+    y_m: float | None
+
+
 #: Where a holder the overclock records do not place is drawn: nowhere, said as two nulls.
-NO_POSITION: dict[str, float | None] = {"x_m": None, "y_m": None}
+NO_POSITION: PositionXY = {"x_m": None, "y_m": None}
 
 
 class NamedAmount(TypedDict):
@@ -34,14 +42,6 @@ class PlaceRow(TypedDict):
 
     place: str
     items: list[NamedAmount]
-
-
-class SlugRow(TypedDict):
-    item: str
-    name: str
-    held: float
-    each: float
-    shards: float
 
 
 class ShardHolder(TypedDict):
@@ -73,9 +73,9 @@ class ShardsResponse(TypedDict):
     holders: list[ShardHolder]
 
 
-def _overclock_positions(st: WorldState) -> dict[str, dict[str, float | None]]:
+def _overclock_positions(st: WorldState) -> dict[str, PositionXY]:
     """Instance leaf to map position, for every machine the overclock records carry."""
-    positions = {}
+    positions: dict[str, PositionXY] = {}
     for record in st.overclock.records:
         xyz = xyz_m(record.get("pos"))
         positions[instance_leaf(record.get("instance", ""))] = {
@@ -86,7 +86,9 @@ def _overclock_positions(st: WorldState) -> dict[str, dict[str, float | None]]:
 
 
 @router.get("/progress/shards", response_model=ShardsResponse)
-def progress_shards(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def progress_shards(
+    request: Request, save: str | None = None, world: str | None = None
+) -> ShardsResponse:
     """The ``power_shards`` budget: free, craftable from slugs, committed, and who holds them."""
     st = require_world(request, save, world)
 
@@ -175,7 +177,7 @@ def progress_sloops(
     save: str | None = None,
     world: str | None = None,
     spoilers: bool | None = None,
-) -> Any:
+) -> SloopsResponse:
     """The ``somersloops`` budget: free, slotted and owned, and which machines hold them.
 
     With ``spoilers=0`` a spoiler amplifier research loses its name and bill.

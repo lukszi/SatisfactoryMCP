@@ -30,7 +30,7 @@ import type { FloorMark } from "../leaflet-private";
 
 /* Every layer floor mode filters. `foundations` FIRST: the storage and pole rules need this
  * deck's own 8 m cells, which the deck pieces of the same pass record. */
-var FILTERED = [
+const FILTERED = [
   "foundations",
   "machines",
   "extractors",
@@ -43,11 +43,11 @@ var FILTERED = [
 
 /* Breathing room around a platform, metres: the same pad a factory-label flight uses, so a deck
  * that exactly fills the screen keeps the surroundings that say where it is. */
-var FLOOR_PAD_M = 40;
+const FLOOR_PAD_M = 40;
 
 /* Programmatic layer ticks are not the reader's decisions, and Leaflet fires `overlayadd` for
  * `map.addLayer` exactly as for a click; same flag, same reason, as regions.ts. */
-var applying = false;
+let applying = false;
 
 /** Run `action` with the layer events it causes marked as this mode's, not the reader's. */
 export function withFilterGuard<T>(action: () => T): T {
@@ -94,8 +94,8 @@ interface Verdict {
   glyph?: L.Marker;
 }
 
-var DROP: Verdict = { keep: false };
-var KEEP: Verdict = { keep: true };
+const DROP: Verdict = { keep: false };
+const KEEP: Verdict = { keep: true };
 
 /** Everything a group holds, snapshotted once per redraw so that leaving can put it back. */
 function snapshot(group: L.LayerGroup): L.Layer[] {
@@ -125,7 +125,7 @@ export function platformBounds(platform: FloorPlatform): L.LatLngBounds | null {
   const ys: number[] = [];
   snapshot(group).forEach(function (piece) {
     const mark = piece._floor;
-    if (!mark || mark.row === undefined || !rows[mark.row]) return;
+    if (mark?.row === undefined || !rows[mark.row]) return;
     if (mark.x_m === undefined || mark.y_m === undefined) return;
     xs.push(mark.x_m);
     ys.push(mark.y_m);
@@ -220,7 +220,7 @@ function classifyWire(pass: FilterPass, band: FloorBand, mark: FloorMark, span: 
   const fromAnchor = headHere ? anchor[0] : anchor[1];
   const toAnchor = headHere ? anchor[1] : anchor[0];
   const landsOn = bandAtHeight(pass.platform, toAnchor[2]);
-  if (landsOn && landsOn.ordinal === band.ordinal) return KEEP;
+  if (landsOn?.ordinal === band.ordinal) return KEEP;
   return { keep: true, glyph: wireGlyph(pass.platform, from, to, fromAnchor, toAnchor) };
 }
 
@@ -272,7 +272,7 @@ function rebuildGroup(group: L.LayerGroup, kept: L.Layer[], ghosted: L.Path[], g
 /* Rebuilding a group rebuilds its draw order, so the route stacking is put back afterwards: a
  * power casing left on top of its core would hide it. */
 export function applyFilter(view: FilterSource | null, floor: FloorAddress | null): void {
-  if (!view || !view.platform || !floor) return;
+  if (!view?.platform || !floor) return;
   const pass = startFilterPass({ platform: view.platform, body: view.body }, floor);
   withFilterGuard(function () {
     FILTERED.forEach(function (name) {
@@ -302,7 +302,7 @@ export function clearFilter(): void {
   withFilterGuard(function () {
     FILTERED.forEach(function (name) {
       const group = state.layers[name];
-      if (!group || !group._floorAll) return;
+      if (!group?._floorAll) return;
       const all = group._floorAll;
       delete group._floorAll;
       group.clearLayers();

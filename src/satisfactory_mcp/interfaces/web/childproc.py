@@ -11,11 +11,14 @@ from __future__ import annotations
 import ctypes
 import os
 import subprocess
+import sys
 from ctypes import wintypes
+from typing import IO
 
 __all__ = ["Child", "creation_time", "kill_tree", "launch"]
 
-WINDOWS = os.name == "nt"
+#: POSIX-only calls test ``sys.platform`` itself: pyright narrows on that, not on this name.
+WINDOWS = sys.platform == "win32"
 STILL_ACTIVE = 259
 SYNCHRONIZE = 0x00100000
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -40,7 +43,7 @@ class _MemoryCounters(ctypes.Structure):
     ]
 
 
-def _kernel():
+def _kernel() -> ctypes.WinDLL:
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.OpenProcess.restype = wintypes.HANDLE
     kernel.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
@@ -50,14 +53,14 @@ def _kernel():
     return kernel
 
 
-def _open_process(pid: int):
+def _open_process(pid: int) -> int | None:
     if not WINDOWS or pid <= 0:
         return None
     handle = _kernel().OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     return handle or None
 
 
-def _creation_filetime(handle) -> int | None:
+def _creation_filetime(handle: int) -> int | None:
     times = [wintypes.FILETIME() for _ in range(4)]
     if not _kernel().GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
         return None
@@ -96,7 +99,8 @@ def _descendants(pid: int) -> list[int]:
             more = kernel.Process32Next(snap, ctypes.byref(entry))
     finally:
         kernel.CloseHandle(snap)
-    found, todo = [], list(parents.get(pid, []))
+    found: list[int] = []
+    todo = list(parents.get(pid, []))
     while todo:
         child = todo.pop()
         if child in found or child == pid:
@@ -106,7 +110,7 @@ def _descendants(pid: int) -> list[int]:
     return found
 
 
-def _peak_working_set(handle) -> int | None:
+def _peak_working_set(handle: int) -> int | None:
     counters = _MemoryCounters()
     counters.cb = ctypes.sizeof(counters)
     psapi = ctypes.WinDLL("psapi", use_last_error=True)
@@ -139,7 +143,7 @@ def creation_time(pid: int) -> int | None:
 class Child:
     """One generator process: ours (a ``Popen``) or adopted by pid."""
 
-    def __init__(self, pid: int, popen: subprocess.Popen | None = None) -> None:
+    def __init__(self, pid: int, popen: subprocess.Popen[bytes] | None = None) -> None:
         self.pid = pid
         self.popen = popen
         self.handle = _open_process(pid)
@@ -187,7 +191,7 @@ class Child:
             self.handle = None
 
 
-def launch(command: list[str], log, cwd: str, env: dict[str, str]) -> Child:
+def launch(command: list[str], log: IO[bytes], cwd: str, env: dict[str, str]) -> Child:
     """Start a generator at below-normal priority, its output into ``log``, detached from Ctrl+C."""
     flags = (
         (CREATE_NEW_PROCESS_GROUP | BELOW_NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW)
@@ -204,7 +208,7 @@ def launch(command: list[str], log, cwd: str, env: dict[str, str]) -> Child:
         creationflags=flags,
         start_new_session=not WINDOWS,
     )
-    if not WINDOWS:
+    if sys.platform != "win32":
         try:
             os.setpriority(os.PRIO_PROCESS, popen.pid, 10)
         except (AttributeError, OSError):
@@ -214,7 +218,7 @@ def launch(command: list[str], log, cwd: str, env: dict[str, str]) -> Child:
 
 def kill_tree(pid: int) -> None:
     """End a generator and every worker it started; killing the parent alone orphans them."""
-    if WINDOWS:
+    if sys.platform == "win32":
         subprocess.run(
             ["taskkill", "/T", "/F", "/PID", str(pid)],
             stdin=subprocess.DEVNULL,

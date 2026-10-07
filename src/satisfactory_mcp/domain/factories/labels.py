@@ -8,14 +8,20 @@ the most common thing that happens to one. docs/save-projection.md §6.3 has the
 
 from __future__ import annotations
 
+import hashlib
 import json
-from collections.abc import Iterable, Iterator
+from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from ... import config
 from ...core import atomic, filelock, schema
+from ...core.jsontypes import JsonValue, as_int, require_list, require_object
+from ...core.saveio.schema import SaveHeader
+from .candidates import Candidate
+from .views import LabelDoc, LabelReview
 
 __all__ = [
     "MATCH_THRESHOLD",
@@ -79,12 +85,12 @@ class StaleStore(RuntimeError):
 class Label:
     id: str
     name: str
-    anchors: list[str] = field(default_factory=list)
+    anchors: list[str] = field(default_factory=list[str])
     notes: str = ""
     centroid: tuple[float, float] = (0.0, 0.0)
     #: Building-class counts when last anchored. A fallback hint only, used to
     #: SUGGEST a re-match after a full rebuild, never to match automatically.
-    signature: dict[str, int] = field(default_factory=dict)
+    signature: dict[str, int] = field(default_factory=dict[str, int])
     created: str = ""
     last_matched: str = ""
 
@@ -93,7 +99,7 @@ class Label:
             return 0.0
         return len(set(self.anchors) & machines) / len(self.anchors)
 
-    def to_json(self) -> dict:
+    def to_json(self) -> LabelDoc:
         return {
             "id": self.id,
             "name": self.name,
@@ -106,7 +112,7 @@ class Label:
         }
 
     @staticmethod
-    def from_json(raw: dict) -> Label:
+    def from_json(raw: LabelDoc) -> Label:
         centroid = raw.get("centroid") or [0.0, 0.0]
         return Label(
             id=raw["id"],
@@ -120,7 +126,7 @@ class Label:
         )
 
 
-def edit_stamp(header: dict) -> str:
+def edit_stamp(header: SaveHeader) -> str:
     """The save a label edit is dated by."""
     return str(header.get("save_datetime") or header.get("filename") or "")
 
@@ -142,7 +148,7 @@ class LabelStore:
 
     world_id: str
     session_name: str = ""
-    labels: list[Label] = field(default_factory=list)
+    labels: list[Label] = field(default_factory=list[Label])
     #: Bumped by every write, so a writer can tell the file moved since it read it.
     version: int = 0
 
@@ -155,20 +161,24 @@ class LabelStore:
         path = cls.path_for(world_id)
         if not path.is_file():
             return cls(world_id=world_id, session_name=session_name)
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(path.read_text(encoding="utf-8"))
         schema.check(raw, SCHEMA, path)
+        doc = require_object(raw)
+        stored_world, stored_session = doc.get("world_id"), doc.get("session_name")
+        # Past the schema check, each row is a LabelDoc as ``to_json`` wrote it.
+        rows = [cast(LabelDoc, require_object(x)) for x in require_list(doc.get("labels", []))]
         return cls(
-            world_id=raw.get("world_id", world_id),
-            session_name=raw.get("session_name", session_name),
-            labels=[Label.from_json(x) for x in raw.get("labels", ())],
-            version=int(raw.get("version", 0)),
+            world_id=stored_world if isinstance(stored_world, str) else world_id,
+            session_name=stored_session if isinstance(stored_session, str) else session_name,
+            labels=[Label.from_json(row) for row in rows],
+            version=as_int(doc.get("version", 0)),
         )
 
     @classmethod
     @contextmanager
     def editing(
         cls, world_id: str, session_name: str = "", expect: int | None = None
-    ) -> Iterator[LabelStore]:
+    ) -> Generator[LabelStore, None, None]:
         """The one safe read-modify-write: locked, re-read inside the lock, written on exit.
 
         ``expect`` refuses with ``StaleStore`` when the file is no longer that version.
@@ -199,6 +209,12 @@ class LabelStore:
             ),
             encoding="utf-8",
         )
+
+    def fingerprint(self) -> str:
+        """A digest of the labels as they stand. Not ``version``: that counts one file's
+        writes, so stores with different names can share it (docs/advisors_contract.md §9)."""
+        body = json.dumps([x.to_json() for x in self.labels], sort_keys=True)
+        return hashlib.blake2b(body.encode("utf-8"), digest_size=16).hexdigest()
 
     # ---- mutation ------------------------------------------------------
 
@@ -263,7 +279,7 @@ class LabelStore:
         return wanted
 
     def name(
-        self, name: str, candidate, notes: str = "", when: str = "", create: bool = False
+        self, name: str, candidate: Candidate, notes: str = "", when: str = "", create: bool = False
     ) -> Label:
         """What naming a factory writes: ``put`` plus the candidate's centroid and signature.
 
@@ -318,7 +334,7 @@ class LabelStore:
     def assigned(self) -> set[str]:
         return {m for label in self.labels for m in label.anchors}
 
-    def covers(self, machines, share: float = NAMED_SHARE) -> bool:
+    def covers(self, machines: Iterable[str], share: float = NAMED_SHARE) -> bool:
         """Whether the player has already named this machine set.
 
         The one home for that question. The map, ``propose_factories`` and ``factory_map``
@@ -342,13 +358,13 @@ class LabelStore:
                 return label
         return None
 
-    def review(self, present: set[str]) -> list[dict]:
+    def review(self, present: set[str]) -> list[LabelReview]:
         """What changed since each label was anchored.
 
         Reports rather than acts: a label whose machines are half gone might be a
         rebuild in progress or a dismantled factory, and only the player knows which.
         """
-        out = []
+        out: list[LabelReview] = []
         for label in self.labels:
             anchors = set(label.anchors)
             alive = anchors & present

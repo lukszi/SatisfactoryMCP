@@ -10,14 +10,26 @@ from __future__ import annotations
 
 import json
 import shutil
+import stat
 import time
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 from ... import config
 from ...core import atomic, filelock, schema
+from ...core.jsontypes import JsonObject, JsonValue
 from . import axes as ax
 from . import titles
+from .views import (
+    MapAxes,
+    MapEntry,
+    MapInputsState,
+    MapRegistryDoc,
+    MapsView,
+    MapViewRow,
+    PyramidStats,
+)
 
 __all__ = [
     "LEGACY",
@@ -107,36 +119,43 @@ def has_pyramid(directory: Path) -> bool:
     return (directory / "tiles" / "0" / "0_0.png").is_file()
 
 
-def _pyramid_present(local: Path, entry: dict) -> bool:
+def _pyramid_present(local: Path, entry: MapEntry) -> bool:
     target = _inside(local, entry["dir"])
     if target is None:
         return False
     return has_pyramid(target) or (entry["dir"] == "." and (target / "map.png").is_file())
 
 
-def _tile_stats(sidecar: dict | None) -> dict:
-    """Bytes on disk and pyramid depth of both trees, as the sidecar records them."""
-    one = ax.dict_at(sidecar, "_meta", "tiles")
-    two = ax.dict_at(sidecar, "_meta", "tiles_2x")
-    return {
-        "bytes": (ax.int_or_none(one.get("bytes")) or 0) + (ax.int_or_none(two.get("bytes")) or 0),
-        "max_z": ax.int_or_none(one.get("max_z")),
-        "max_2x_z": ax.int_or_none(two.get("max_z")),
-    }
+def describe_pyramid(local: Path, rel: str, sidecar_name: str, kind: str) -> PyramidStats:
+    """What a pyramid directory's sidecar says: axes, size on disk, depth, when written.
 
-
-def describe_pyramid(local: Path, rel: str, sidecar_name: str, kind: str) -> dict:
-    """What a pyramid directory's sidecar says: axes, size on disk, depth, when written."""
+    Bytes and depth cover both trees, as the sidecar records them."""
     target = local / rel
     sidecar = ax.read_json(target / sidecar_name)
     try:
         created = (target / sidecar_name).stat().st_mtime
     except OSError:
         created = None
-    return {"axes": ax.axes_from_sidecar(sidecar, kind), **_tile_stats(sidecar), "created": created}
+    one = ax.dict_at(sidecar, "_meta", "tiles")
+    two = ax.dict_at(sidecar, "_meta", "tiles_2x")
+    return {
+        "axes": ax.axes_from_sidecar(sidecar, kind),
+        "bytes": (ax.int_or_none(one.get("bytes")) or 0) + (ax.int_or_none(two.get("bytes")) or 0),
+        "max_z": ax.int_or_none(one.get("max_z")),
+        "max_2x_z": ax.int_or_none(two.get("max_z")),
+        "created": created,
+    }
 
 
-def new_entry(ident: str, kind: str, layer: str, rel: str, sidecar: str, origin: str) -> dict:
+def _apply_stats(entry: MapEntry, stats: PyramidStats) -> None:
+    entry["axes"] = stats["axes"]
+    entry["bytes"] = stats["bytes"]
+    entry["max_z"] = stats["max_z"]
+    entry["max_2x_z"] = stats["max_2x_z"]
+    entry["created"] = stats["created"]
+
+
+def new_entry(ident: str, kind: str, layer: str, rel: str, sidecar: str, origin: str) -> MapEntry:
     return {
         "label": None,
         "kind": kind,
@@ -208,7 +227,7 @@ def _candidates(local: Path) -> list[PyramidCandidate]:
     return found
 
 
-def _adopt_into(data: dict, local: Path) -> list[str]:
+def _adopt_into(data: MapRegistryDoc, local: Path) -> list[str]:
     types = data["types"]
     seen = {_resolved(local, entry["dir"]) for entry in types.values()}
     added: list[str] = []
@@ -224,12 +243,12 @@ def _adopt_into(data: dict, local: Path) -> list[str]:
             axes = described["axes"]
             ident = ax.derive_id(
                 ax.style_label(axes),
-                axes.get("renderer", {}).get("recipe"),
+                ax.int_or_none(ax.dict_at(axes, "renderer").get("recipe")),
                 ax.data_changelist(axes),
                 set(types) | RESERVED,
             )
         entry = new_entry(ident, kind, layer, rel, sidecar, "adopted")
-        entry.update(described)
+        _apply_stats(entry, described)
         types[ident] = entry
         added.append(ident)
     if added and data.get("default") is None and "map" in types:
@@ -237,13 +256,13 @@ def _adopt_into(data: dict, local: Path) -> list[str]:
     return added
 
 
-def _fresh() -> dict:
+def _fresh() -> MapRegistryDoc:
     return {"schema": SCHEMA, "version": 0, "default": None, "types": {}, "history": []}
 
 
-def _load_raw(path: Path) -> dict | None:
+def _load_raw(path: Path) -> MapRegistryDoc | None:
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
     except (OSError, ValueError):
@@ -251,31 +270,33 @@ def _load_raw(path: Path) -> dict | None:
     schema.check(raw, SCHEMA, path)
     data = _fresh()
     if isinstance(raw, dict):
-        data["version"] = int(raw.get("version") or 0)
-        data["default"] = raw.get("default") if isinstance(raw.get("default"), str) else None
-        types = raw.get("types") if isinstance(raw.get("types"), dict) else {}
-        for ident, entry in types.items():
+        version, default = raw.get("version"), raw.get("default")
+        data["version"] = int(version) if isinstance(version, int | float) else 0
+        data["default"] = default if isinstance(default, str) else None
+        types = raw.get("types")
+        for ident, entry in (types if isinstance(types, dict) else {}).items():
             if isinstance(entry, dict) and isinstance(entry.get("dir"), str):
-                data["types"][ident] = {**new_entry(ident, "render", "", "", "", ""), **entry}
+                defaults = new_entry(ident, "render", "", "", "", "")
+                data["types"][ident] = cast(MapEntry, {**defaults, **entry})
         history = raw.get("history")
         data["history"] = history if isinstance(history, list) else []
     return data
 
 
-def _write(path: Path, data: dict) -> None:
+def _write(path: Path, data: MapRegistryDoc) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic.write_text(path, json.dumps(data, ensure_ascii=False, indent=1))
 
 
-_cache: dict[str, tuple[object, dict]] = {}
+_cache: dict[str, tuple[tuple[object, ...], MapRegistryDoc]] = {}
 
 
-def read() -> dict:
+def read() -> MapRegistryDoc:
     """The manifest, cached on its stamp. Absent, what ``ensure`` would adopt, unwritten."""
     path = manifest_path()
     try:
         stat = path.stat()
-        stamp: object = (stat.st_mtime_ns, stat.st_size)
+        stamp: tuple[object, ...] = (stat.st_mtime_ns, stat.st_size)
     except OSError:
         try:
             stamp = ("absent", local_dir().stat().st_mtime_ns)
@@ -308,7 +329,7 @@ def ensure() -> list[str]:
     return added
 
 
-def _mutate(change, version: int | None = None) -> dict:
+def _mutate(change: Callable[[MapRegistryDoc], bool], version: int | None = None) -> MapRegistryDoc:
     """Apply ``change(data) -> bool`` under the lock; a moved ``version`` raises ``MapsStale``."""
     path = manifest_path()
     with filelock.held(path):
@@ -325,7 +346,7 @@ def _mutate(change, version: int | None = None) -> dict:
     return data
 
 
-def lookup(ident: str) -> tuple[dict | None, Path | None]:
+def lookup(ident: str) -> tuple[MapEntry | None, Path | None]:
     """A type's manifest entry and its directory; a legacy id answers before it is registered."""
     local = local_dir()
     entry = read()["types"].get(ident)
@@ -349,10 +370,10 @@ def known_ids() -> list[str]:
     return sorted(set(read()["types"]) | set(LEGACY))
 
 
-_axes_cache: dict[str, tuple[tuple[int, int], dict]] = {}
+_axes_cache: dict[str, tuple[tuple[int, int], MapAxes]] = {}
 
 
-def _live_axes(local: Path, entry: dict) -> dict:
+def _live_axes(local: Path, entry: MapEntry) -> MapAxes:
     """The axes the sidecar says NOW, so a retargeted junction is described as what it shows."""
     target = _inside(local, entry["dir"])
     if target is None:
@@ -380,12 +401,12 @@ def installed_changelist() -> int | None:
     return changelist(raw)
 
 
-def view(current: dict | None = None) -> dict:
+def view(current: MapInputsState | None = None) -> MapsView:
     """Every type with its computed status, freshness, name and title, in display order."""
     data = read()
     local = local_dir()
     current = current if current is not None else ax.current_state(local, installed_changelist())
-    rows = []
+    rows: list[MapViewRow] = []
     for ident, entry in data["types"].items():
         axes = _live_axes(local, entry)
         status = entry.get("status") if entry.get("status") in STATUSES else "ready"
@@ -398,6 +419,8 @@ def view(current: dict | None = None) -> dict:
                 "axes": axes,
                 "status": status,
                 "freshness": ax.freshness(axes, current),
+                "name": "",
+                "title": "",
             }
         )
     groups: dict[str, int] = {}
@@ -420,7 +443,8 @@ def view(current: dict | None = None) -> dict:
 
 def unregistered() -> list[str]:
     """Dirs holding a pyramid the manifest does not list: what ``adopt_existing`` would add."""
-    probe = {**_fresh(), "types": {k: dict(v) for k, v in read()["types"].items()}}
+    probe = _fresh()
+    probe["types"] = {k: v.copy() for k, v in read()["types"].items()}
     before = set(probe["types"])
     _adopt_into(probe, local_dir())
     return [probe["types"][k]["dir"] for k in probe["types"] if k not in before]
@@ -429,7 +453,7 @@ def unregistered() -> list[str]:
 def adopt_existing() -> list[str]:
     added: list[str] = []
 
-    def change(data: dict) -> bool:
+    def change(data: MapRegistryDoc) -> bool:
         added.extend(_adopt_into(data, local_dir()))
         return bool(added)
 
@@ -437,7 +461,7 @@ def adopt_existing() -> list[str]:
     return added
 
 
-def _require_entry(data: dict, ident: str) -> dict:
+def _require_entry(data: MapRegistryDoc, ident: str) -> MapEntry:
     entry = data["types"].get(ident)
     if entry is None:
         raise MapsUnknown(f"no map type “{ident}”")
@@ -445,13 +469,16 @@ def _require_entry(data: dict, ident: str) -> dict:
 
 
 def update(
-    ident: str, label: str | None = None, in_switcher: bool | None = None, version=None
-) -> dict:
+    ident: str,
+    label: str | None = None,
+    in_switcher: bool | None = None,
+    version: int | None = None,
+) -> MapRegistryDoc:
     """Rename a type (``""`` clears the label) or show or hide it in the switcher."""
     if label is not None and len(label) > 80:
         raise MapsError("a label is at most 80 characters")
 
-    def change(data: dict) -> bool:
+    def change(data: MapRegistryDoc) -> bool:
         entry = _require_entry(data, ident)
         dirty = False
         if label is not None:
@@ -466,10 +493,10 @@ def update(
     return _mutate(change, version)
 
 
-def set_default(ident: str, version: int | None = None) -> dict:
+def set_default(ident: str, version: int | None = None) -> MapRegistryDoc:
     """The type a fresh page opens on, for every browser; ``plain`` is no imagery."""
 
-    def change(data: dict) -> bool:
+    def change(data: MapRegistryDoc) -> bool:
         if ident != PLAIN:
             entry = _require_entry(data, ident)
             if entry.get("status") != "ready":
@@ -486,7 +513,7 @@ def _trash_target(ident: str) -> Path:
     return maps_dir() / TRASH_DIR_NAME / f"{ident}-{int(time.time() * 1000)}"
 
 
-def _move_to_trash(local: Path, entry: dict, ident: str) -> None:
+def _move_to_trash(local: Path, entry: MapEntry, ident: str) -> None:
     source = _inside(local, entry["dir"])
     if source is None or not source.exists():
         return
@@ -520,7 +547,7 @@ def delete(ident: str, version: int | None = None, busy: frozenset[str] = frozen
     """
     freed = 0
 
-    def change(data: dict) -> bool:
+    def change(data: MapRegistryDoc) -> bool:
         nonlocal freed
         entry = _require_entry(data, ident)
         if data["default"] == ident:
@@ -545,7 +572,7 @@ def delete(ident: str, version: int | None = None, busy: frozenset[str] = frozen
 def discard(ident: str) -> None:
     """Forget a type a job did not finish, moving whatever it wrote to the trash."""
 
-    def change(data: dict) -> bool:
+    def change(data: MapRegistryDoc) -> bool:
         entry = data["types"].pop(ident, None)
         if entry is None:
             return False
@@ -569,10 +596,10 @@ def purge_trash() -> None:
         shutil.rmtree(child, ignore_errors=True)
 
 
-def register(entries: dict[str, dict]) -> dict:
+def register(entries: Mapping[str, MapEntry]) -> MapRegistryDoc:
     """Add types a job is about to write, as ``building``; ids must be new."""
 
-    def change(data: dict) -> bool:
+    def change(data: MapRegistryDoc) -> bool:
         for ident, entry in entries.items():
             if ident in data["types"]:
                 raise MapsRefused(f"map type {ident} already exists")
@@ -586,14 +613,14 @@ def finish(ident: str, job: str) -> bool:
     """Mark a job's type ready from what its sidecar now says; False if its pyramid is absent."""
     ok = False
 
-    def change(data: dict) -> bool:
+    def change(data: MapRegistryDoc) -> bool:
         nonlocal ok
         entry = data["types"].get(ident)
         if entry is None:
             return False
         local = local_dir()
         ok = _pyramid_present(local, entry)
-        entry.update(describe_pyramid(local, entry["dir"], entry["sidecar"], entry["kind"]))
+        _apply_stats(entry, describe_pyramid(local, entry["dir"], entry["sidecar"], entry["kind"]))
         entry["status"] = "ready" if ok else "failed"
         entry["job"] = job
         if data["default"] is None and ok:
@@ -604,8 +631,8 @@ def finish(ident: str, job: str) -> bool:
     return ok
 
 
-def record_history(row: dict) -> None:
-    def change(data: dict) -> bool:
+def record_history(row: JsonObject) -> None:
+    def change(data: MapRegistryDoc) -> bool:
         data["history"] = (data["history"] + [row])[-HISTORY_KEEP:]
         return True
 
@@ -617,7 +644,8 @@ def taken_ids() -> set[str]:
 
 
 def clear_cache() -> int:
-    """Delete the kept render rasters; returns the bytes freed."""
+    """Delete every size's kept raster caches and the light kept beside them; returns the
+    bytes freed."""
     cache = maps_dir() / CACHE_DIR_NAME
     freed = cache_bytes()
     shutil.rmtree(cache, ignore_errors=True)
@@ -625,7 +653,17 @@ def clear_cache() -> int:
 
 
 def cache_bytes() -> int:
+    """The bytes the kept caches hold on their own. A file with another hard link, such as a
+    kept light's tile shared with its map's pyramid, is the map's and frees nothing."""
     cache = maps_dir() / CACHE_DIR_NAME
     if not cache.is_dir():
         return 0
-    return sum(p.stat().st_size for p in cache.rglob("*") if p.is_file())
+    held = 0
+    for path in cache.rglob("*"):
+        try:
+            info = path.stat()
+        except OSError:  # removed by a job while the walk went on
+            continue
+        if stat.S_ISREG(info.st_mode) and info.st_nlink <= 1:
+            held += info.st_size
+    return held

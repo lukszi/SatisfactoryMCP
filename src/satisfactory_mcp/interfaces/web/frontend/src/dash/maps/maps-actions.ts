@@ -43,13 +43,16 @@ export function write(method: "PUT" | "PATCH" | "DELETE" | "POST", path: ApiPath
   });
 }
 
-export function submit(preset: string, options: Record<string, unknown>, label: string, replaces: string | null): Promise<void> {
+/* Resolves false when the job was refused, so a caller can keep what was typed. */
+export function submit(preset: string, options: Record<string, unknown>, label: string, replaces: string | null): Promise<boolean> {
   return send<MapJobResponse>("POST", "/api/maps/jobs", { preset: preset, options: options, label: label || null, replaces: replaces })
     .then(function () {
       fetchMapRegistry();
+      return true;
     })
     .catch(function (reason) {
       fail("the job was not queued: " + friendlyError(reason));
+      return false;
     });
 }
 

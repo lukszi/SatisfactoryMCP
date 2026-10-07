@@ -31,8 +31,18 @@ Planned as 0.2.0.
 - Map generation needs `zstandard`, now in the `gen` extra: stop satisfactory-mcp, then run
   `uv sync --extra gen`. Raster caches kept by an earlier version are still reused;
   `python -m mapgen compress-cache <dir>` shrinks them about 20x.
+- Re-run the paint layers (`python -m mapgen paint`, or *paint* in the Maps tab) before the
+  next painted render: paint layers from an earlier version keep no daylight, and a painted
+  map drawn from them keeps the screenshot colours.
 
 ### Added
+
+- Map generator: `python -m mapgen calibrate` derives the game-painted style's display colours
+  from the game install: the level's noon light and its atmosphere volumes, the baked ground,
+  the textures and the tree crowns, through a model of the game's camera. It writes
+  `targets.derived.json` beside the paint layers; `--check` prints the colours against the
+  screenshot targets and writes nothing. The paint layers keep the light and the volumes from
+  now on.
 
 - Plans are stored as an append-only op log with revisions, merge against the revision a
   writer saw, undo and restore. The MCP planning tools write through it and journal chat
@@ -52,11 +62,18 @@ Planned as 0.2.0.
 
 ### Changed
 
+- Map renders: the game-painted map takes the colours derived from the game install for
+  the targets within reach of their screenshots (sand, grass, wet sand, the canopy, the rock,
+  the desert rock, the forest moss, the coral caps, the desert gravel, the Red Jungle cliffs),
+  for the forest floor, and for the ground layers no screenshot covers (red grass, puddles,
+  the Red Jungle ground, sand cracks, pebbles and rock, soil). A render derives them itself
+  when `targets.derived.json` is missing or from other data. This shares the one version up
+  every rendered map style takes (under "Fixed").
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
   still accepted. With the light a full-size render is budgeted at about 16 minutes more and
-  needs 14.5 GB more scratch space.
+  needs 15.6 GB more scratch space.
 - Map generator: the light's scratch, `light.cache/`, is 5.4 GB smaller at full size with
   the painted layer, because the tree crowns are written once, where the bake reads them.
   `--scratch-dir` moves it off the cache drive. It is still not compressed: nothing reads it
@@ -91,9 +108,80 @@ Planned as 0.2.0.
   seventh of the CPU for about 7% more bytes, and the light's lossless normal tiles at WebP
   effort 2 instead of 4, 2.6 times faster for about 6% more. The tiles decode to the same
   pixels; their files are not the same bytes as before.
+- Map generator: a render draws all its layers in one pass over the bands. Each band's
+  heights, rocks, water and meshes are composed once and every layer's style colours them,
+  where each layer composed them again before; drawing all five layers takes about a third
+  less time (on 8 threads, windows of the full-size sheet: 140 s against 214 s), and the
+  tiles are the same bytes. A band in flight takes 0.6 GB more memory when the painted layer
+  is drawn with another, and a job's progress shows one draw stage for all the layers.
+- Map generator: the painted and relief styles work out the colour under the water only on
+  the pixels that hold water, where they worked it out for every pixel and kept it on those.
+  On bands a fifth to a half wet that part costs a third to two thirds of what it did, and
+  the three styles' painters 10 to 17% less CPU; a full-size draw on 8 threads, which waits
+  on memory, is no faster by the clock. The tiles are the same bytes.
+- Map generator: the light's horizon march and sky view, and the sampler's resampling, run
+  as loops compiled by numba, now in the `gen` extra (`uv sync --extra gen`). A full-size
+  light block's horizons and sky view take about 8 s instead of 91 s, and the five layers'
+  full-size draw about 22% less, about 7 minutes on 8 threads. The tiles are the same bytes.
+  Without numba, or with `MAPGEN_KERNELS=numpy`, the generator runs the numpy code as before.
+  The first run compiles the loops, about 3 s, and keeps them beside the code.
+- Map generator: the tree crowns and the water of every style (the terrain and satellite
+  water, the relief styles' and the painted style's colour under the water) are drawn by
+  numba-compiled loops too. Those painters take a quarter of the time they did, and a
+  full-size draw about a fifth less on one thread; the tiles are the same bytes. The first
+  run compiles them, about 3 s more. Each compiled signature is now kept in a file of its
+  own, so processes compiling at once, such as the test suite's workers, no longer leave a
+  cache that hands one signature another's code.
 - The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
-  render of all five layers with the light is budgeted at about 68 minutes, the default two
-  layers at about 44.
+  render of all five layers with the light is budgeted at about 58 minutes, the default two
+  layers at about 42.
+- Map generator: a lit render that keeps its raster cache keeps its finished light beside it
+  (`light.kept/`: the pyramid's tiles as hard links, and the default-sun terms, 4.3 GB at full
+  size). A palette-only restyle that draws the same surface installs that light instead of
+  baking it again, about 14 minutes less at full size, and the Maps tab budgets it so. The
+  Maps tab's estimate counts those terms in what a job keeps. The light's `meta.json` records
+  the `key` it was baked under; the tiles are the same bytes.
+- Map generator: each band is drawn in pieces of 512 columns, several pieces at once on the
+  draw's threads (`--draw-columns` sets the width). On 8 threads the draw's peak memory falls
+  from about 15 GB to about 2 GB, so free memory no longer cuts the thread count, and the five
+  layers draw in about 30% less time over the densest water of the full-size sheet. The tiles
+  are the same bytes at any piece width (with the fixed-order sums below).
+- Map generator: each band goes on to its layers' tiles as soon as it is drawn, and the light
+  bakes a row of blocks as soon as the surface holds the rows it reads, while the draw goes
+  on. No layer's sheet is held whole, in memory or in a file: a full-size run of five layers
+  needs 16 GB less scratch, and the Maps tab's disk check no longer counts it. The tiles and
+  the light are the same bytes. A light kept before this is baked again once.
+- Map generator: `--gpu` runs the light's horizon march and sky view as CUDA kernels. It
+  needs the new `gpu` extra (CuPy and its NVRTC) and an NVIDIA driver, and a run where they
+  cannot work is refused at once with exit code 12, its own, and the reason on stdout. The
+  CPU path stays the default, and the tiles are the same bytes either way; a full-size light
+  block's ground horizons take about 3 s instead of 8. The bake logs how many of its calls ran
+  on the GPU and how many fell back to the CPU for want of device memory.
+- Map generator: a render whose light scratch another running render holds is refused with
+  exit code 11 and the reason on stdout (it was exit 1 on stderr). The render sidecar's
+  `cliff_geometry.placements_dropped` counts the passable `CliffPillar_03` as `excluded_mesh`
+  (376 placements) instead of under `no_geometry`.
+- Map generator: a pixel's colour channels are summed in one fixed order, elementwise,
+  instead of by BLAS: the luminance under the painted style's tone shoulder, OKLab both ways,
+  the water classes' mouth blends, the crown and layer colour transfers and the artwork's
+  luma; and the rock tops' and coral specks' 3 × 3 mean no longer keeps a running sum. A map
+  is now the same bytes at any width, in any column pieces and on any number of threads, and
+  its colours no longer depend on the BLAS library. Once, about 0.01% of a full-size painted
+  map moves by a level or two, and fewer pixels of the other styles; a 2048 map moves about 500
+  painted pixels in each tile tree, a few dozen relief and about ten terrain and satellite.
+  This shares the one version up every rendered map style takes for the fixes below.
+- Map generator: the open sea's bed is solved by conjugate gradients whose dot products are
+  summed in a fixed order, where scipy's took them from BLAS and its bits followed the
+  number of BLAS threads. The maps are the same bytes, and the solve takes about 2 s less.
+- Map generator (light model 3): arches, rock overhangs
+  and tree crowns cast their shadow where the sun's ray meets them, with light passing
+  beneath, instead of a wall from their foot, a wedge or a streak from the trunk; the sky
+  beside an arch is no longer dimmed as beside a wall. The arches' sub-metre holes are
+  filled and their edges antialiased, and nothing else is. The page's live light shades the
+  new shadows for a sun on the game's own path. The direct and top raster caches gain planes
+  and are rebuilt once, the direct raster taking about 2.4 times as long; a kept light is
+  baked again. The light takes two to three times as long under crowns and arches, and each
+  of its processes counts 2.0 GB instead of 1.5.
 
 ### Deprecated
 
@@ -135,11 +223,20 @@ Planned as 0.2.0.
 - Files written by a newer version are refused, not overwritten; a plan exporting power
   under any spelling stores it as `MW`.
 - `npm run typegen` takes the server port as an argument or from `SATISFACTORY_WEB_PORT`.
+- Stopping the map-job runner or the save watcher no longer swallows a cancellation of the
+  code that is stopping them.
 - `python -m mapgen renders` no longer overwrites a map the registry lists: a run into its
   folder, through a junction or link too, is refused and names it. `--renders-name` writes
   beside it, and `--overwrite-in-use` replaces it anyway.
+- Map generator: a mesh or Titan raster that does not read back after it was written stops
+  the render with exit code 7, where it was dropped while the sidecar still recorded it. A
+  cache the run cannot delete is named. `compress-cache` without the `gen` extra prints the
+  fix instead of a traceback.
 - The Maps tab's render estimate follows the "live sun" box, counts the light cache's
   scratch space against the free disk, and times a lit render only from an earlier lit one.
+- The Maps tab counts a lit job's kept light: its terms, 4.3 GB at full size, among what the
+  job keeps, and its tiles, hard links to the map's own, no longer in the cache's size or in
+  what clearing the cache frees.
 - A render that fails deletes its light scratch too, and the next lit run removes what a
   killed run left. On Windows, a run that would share the scratch of a render already
   drawing is refused at the start, where it used to fail after the slow preparation.
@@ -148,6 +245,70 @@ Planned as 0.2.0.
   or lies inside it, through a junction or link too, is now refused before anything is
   written. Raw planes left by an interrupted run are removed only once they match their
   bands, and the report says whether a cache was converted in place or copied.
+- Full-size (32768) map renders no longer draw a faint line along water edges every 256
+  rows, in every layer and in the live-sun light: each band of rows is now drawn 16 rows
+  past its edges instead of 8, enough for the water edge's blur. Smaller sizes are unchanged.
+- Tree crowns on the game-painted map are placed from each pixel's own centre, so they no
+  longer shift with where a band of rows starts. A few hundred crown pixels of a 2048 map,
+  and 0.02% of a full-size one, change once where a crown's edge decides whether it shows.
+- A lit render's light no longer depends on which layers it draws or in which order. Drawn
+  first, the painted layer put its sea meshes into the light every layer is relit with, and
+  a run without the painted layer baked the light without tree shadows. A full render of
+  every layer is unchanged.
+- Map generator: a triangle wider than 256 texels of a raster was dropped, which left two flat
+  cliff tops open in a full-size render. It is rasterised now. The heightfield generator is
+  version 6 though the field itself is unchanged, so the next render rebuilds its rock caches.
+- Map generator: `CliffPillar_03` was read from the game's unused `Mesh_Old` copy, another
+  shape, and 18 of its 376 placements lost their sand family. Asset paths now match a folder
+  by whole names.
+- A render that read the waterfalls from the game drew overlapping ones in another order than
+  a palette-only restyle, which reads them from the cache: 22 satellite and painted pixels of
+  a full-size map, and 4 at 8192 and 16384, came out one level apart, and the sidecars
+  recorded two digests for the same falls. Both now draw them in the cache's order.
+- Map renders take the sun term from one float32 copy, the live-sun page's own, in place of
+  several copies in mixed precision. A few dozen lit pixels of a 2048 map move by one level.
+- The live-sun light no longer stands a wall at 0 m over the void: where a map has no
+  ground, nothing blocks the sun or the sky, so the rims of pits, the chasm and the southern
+  and eastern coasts are no longer shaded, and no slope runs down into a hole. The light of a
+  full-size map no longer steps along the 4096-pixel grid it is baked in.
+- On the game-painted map's baked light, tree crowns and the Titan forest are lit by their own
+  top, sky and shadows instead of the ground's beneath them, so a ravine under the Titan
+  forest no longer shows through its canopy; the Titan trees cast tree shadows like the other
+  crowns. The live-sun page still lights the canopy by the ground until it gets a canopy
+  tile.
+- Map water: two water boxes meeting inside one sheet of water no longer draw a straight line
+  where their tops differ by up to a metre; the level is feathered over about 12 m. A river
+  hands over to a lake or the sea along a ramp, is drawn across the joints between its
+  sections, and fades out where it ends in other water, instead of drawing panels and square
+  ends. Waterfall foam fades out at the ends of its lip, and on the game-painted map goes
+  under the crowns and the Titan canopy. On the game-painted map, pools a few decimetres
+  deep are drawn as water, a hot-spring terrace tints only the water around it instead of
+  its whole lake, dry patches inside the swamp no longer draw as teal sea, and the swamp's
+  dark water stays off the sea past the landscape's edge.
+- Lit map renders draw the edge of the void, a pit's rim and a coast past the world's edge as
+  the smooth curve the unlit colour has. The light took the void's soft edge and rim as land
+  up to the field's last 1 m texel, so it drew a staircase with a light or dark rim there, and
+  a lone texel with data inside the void as a dark square. The live-sun light pyramid's land
+  weight changes the same way.
+- Map renders no longer draw a step where the ground under the rocks stops: the rock colour
+  and the heights switched at its last 1 m texel, a staircase beside a landscape hole and a
+  line hundreds of metres long along the landscape's east and south edges. They now blend
+  over a few metres.
+- Game-painted map colours: blue palms under a sparse tree crown no longer draw pale grey;
+  the edges of the Red Jungle's and Red Bamboo Fields' ground layers lose their fire-red rims
+  and colour confetti, and forest floor its orange halo; sand and grass on rock tops take
+  their ground's colour instead of near white; hot-spring terraces are cream, not white;
+  arches no longer wear the moss or sand of the cliff below; and wet sand under a crude oil
+  puddle keeps the colour of the wet sand around it.
+- Map renders leave out the land the game's height data has past the world's rim, where the
+  game's own map draws nothing, and draw the void there: a 0.23 km² island south-east of the
+  abyss, a lobe on the east edge and smaller pieces. The open sea beside them moves too, by
+  a level at most a kilometre or more away.
+- The satellite map no longer shows a quilt of 29 m and 7.3 m squares on flat ground: its
+  noise is read smoothly between its cells.
+- Every rendered map style is one version up for the map changes of this release, once:
+  terrain and satellite 9, game-painted 20, relief and relief dark 7. The live-sun light is
+  model 3, so a map baked under model 2 is offered a relight.
 
 ## [0.1.0] - 2026-09-27
 

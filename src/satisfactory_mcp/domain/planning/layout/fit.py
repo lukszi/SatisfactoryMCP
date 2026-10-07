@@ -11,6 +11,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from ....core.saveio.records import instance_leaf
+from ....core.saveio.schema import Projection
+from ...factories.structure import Structures
+from .model import Layout
 
 __all__ = ["FitReport", "assess_fit"]
 
@@ -27,11 +30,11 @@ class FitReport:
     #: Peak-floor foundations the layout needs.
     needs: int = 0
     #: Blocks already standing, and those still to build.
-    standing: list[str] = field(default_factory=list)
-    to_build: list[str] = field(default_factory=list)
+    standing: list[str] = field(default_factory=list[str])
+    to_build: list[str] = field(default_factory=list[str])
     machines_standing: int = 0
     machines_to_build: int = 0
-    notes: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list[str])
 
     @property
     def shortfall(self) -> int:
@@ -59,7 +62,9 @@ class FitReport:
         )
 
 
-def assess_fit(name: str, machines: list[str], layout, structures, projection: dict) -> FitReport:
+def assess_fit(
+    name: str, machines: list[str], layout: Layout, structures: Structures, projection: Projection
+) -> FitReport:
     """Compare a layout against one factory's existing platform and machines."""
     wanted = set(machines)
     report = FitReport(factory=name, machines=len(wanted), needs=layout.foundations)
@@ -83,7 +88,7 @@ def assess_fit(name: str, machines: list[str], layout, structures, projection: d
         )
 
     # What is already there, keyed the way a block is: building class plus recipe.
-    have: Counter = Counter()
+    have: Counter[tuple[str, str | None]] = Counter()
     for record in projection.get("machines", ()):
         if instance_leaf(record["instance"]) in wanted and record.get("recipe"):
             have[(record["cls"], record["recipe"])] += 1

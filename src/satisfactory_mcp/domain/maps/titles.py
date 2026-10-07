@@ -6,9 +6,10 @@ Composed here and nowhere else; docs/maps_contract.md §3.5 is the specification
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 
-from ...core.gameassets.versions import STYLES
 from . import axes as ax
+from .views import MapAxes, MapViewRow
 
 __all__ = ["DEFAULT_MARK", "date_word", "style_name", "titles"]
 
@@ -17,20 +18,20 @@ MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", 
 SHOWN = frozenset({"ready", "missing"})
 
 
-def style_name(axes: dict) -> str:
+def style_name(axes: MapAxes) -> str:
     """The style table's ``name``, the artwork's for any artwork, else the label capitalised."""
     style = ax.dict_at(axes, "style")
     renderer = ax.dict_at(axes, "renderer")
-    known = STYLES.get(str(style.get("id")))
+    known = ax.STYLE_TABLE.get(str(style.get("id")))
     if known is None and renderer.get("family") == "artwork":
-        known = STYLES["artwork"]
+        known = ax.STYLE_TABLE["artwork"]
     if known is not None:
         return str(known["name"])
     label = ax.style_label(axes)
     return label[:1].upper() + label[1:]
 
 
-def date_word(created: float | None, with_time: bool = False) -> str:
+def date_word(created: object, with_time: bool = False) -> str:
     """``6 Oct`` or ``6 Oct 14:05`` in local time; "" when the time is unknown."""
     if not isinstance(created, (int, float)) or isinstance(created, bool):
         return ""
@@ -39,12 +40,12 @@ def date_word(created: float | None, with_time: bool = False) -> str:
     return word + (f" {t.tm_hour:02d}:{t.tm_min:02d}" if with_time else "")
 
 
-def _in_switcher(row: dict, default: str | None) -> bool:
+def _in_switcher(row: MapViewRow, default: str | None) -> bool:
     entry = row["entry"]
     return row["status"] in SHOWN and (bool(entry.get("in_switcher", True)) or row["id"] == default)
 
 
-def titles(rows: list[dict], default: str | None) -> dict[str, str]:
+def titles(rows: Sequence[MapViewRow], default: str | None) -> dict[str, str]:
     """Each view row's title by id: its label, else its style's name, dated beside a twin.
 
     A row is dated when the switcher shows another unlabelled row of the same name; two of

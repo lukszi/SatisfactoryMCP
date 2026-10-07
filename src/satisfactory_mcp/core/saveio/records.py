@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
+from .schema import BuildableRecord, Projection
+
 __all__ = ["MACHINE_GROUPS", "actor_class", "instance_leaf", "iter_machine_records"]
 
 #: The projection keys that hold placed machines, in the order a census reads them.
 MACHINE_GROUPS = ("machines", "extractors", "generators")
 
 
-def instance_leaf(instance) -> str:
+def instance_leaf(instance: object) -> str:
     """The short actor name at the end of an instance path; ``""`` for none."""
     return str(instance or "").rsplit(".", 1)[-1]
 
@@ -28,7 +30,7 @@ def actor_class(actor: str) -> str:
     return actor
 
 
-def iter_machine_records(projection: dict) -> Iterator[tuple[str, str, dict]]:
+def iter_machine_records(projection: Projection) -> Iterator[tuple[str, str, BuildableRecord]]:
     """Every machine, extractor and generator record as ``(group, leaf, record)``."""
     for group in MACHINE_GROUPS:
         for record in projection.get(group, ()):

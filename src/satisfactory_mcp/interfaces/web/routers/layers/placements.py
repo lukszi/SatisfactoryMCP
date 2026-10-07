@@ -6,14 +6,16 @@ docs/web-wire.md "Placements". Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Literal
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....core.gamedata.footprint import FOUNDATION_M
 from .....core.gamedata.model import pretty_class
 from .....core.saveio import rows as saverows
 from .....core.saveio.records import instance_leaf
+from .....core.saveio.schema import BuildableRecord
 from .....domain.factories import health
 from .....domain.world.state import WorldState
 from ...serial import (
@@ -28,8 +30,10 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
 
+MachineKind = Literal["machines", "extractors", "generators"]
+
 #: The three actor lists ``/api/machines`` sends, in wire order.
-MACHINE_KINDS = ("machines", "extractors", "generators")
+MACHINE_KINDS: tuple[MachineKind, ...] = ("machines", "extractors", "generators")
 
 
 # --------------------------------------------------------------------- helpers
@@ -103,7 +107,7 @@ class StructuresResponse(TypedDict):
 
 def _record_row(
     st: WorldState,
-    row: dict,
+    row: BuildableRecord,
     verdicts: dict[str, health.MachineHealth],
     owners: dict[str, str],
 ) -> PlacementRow:
@@ -111,7 +115,8 @@ def _record_row(
     leaf = instance_leaf(row.get("instance", ""))
     verdict = verdicts[leaf]
     footprint = building_footprint(st.game, row.get("cls") or "")
-    recipe_id = row.get("recipe")
+    named = row.get("recipe")
+    recipe_id = named if isinstance(named, str) else None
     recipe = st.game.recipes.get(recipe_id) if recipe_id else None
     return {
         **placement_fields(st.game, row),
@@ -131,7 +136,9 @@ def _record_row(
 
 
 @router.get("/machines", response_model=MachinesResponse)
-def machines(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def machines(
+    request: Request, save: str | None = None, world: str | None = None
+) -> MachinesResponse:
     """Every placed machine, extractor and generator, with the reason it is or is not
     running."""
     st = require_world(request, save, world)
@@ -145,9 +152,14 @@ def machines(request: Request, save: str | None = None, world: str | None = None
     assessed = health.assess("map", leaves, st.game, projection, st.graph)
     verdicts = {verdict.instance: verdict for verdict in assessed.machines}
     owners = {leaf: label.name for label in st.labels.labels for leaf in label.anchors}
+
+    def rows(kind: MachineKind) -> list[PlacementRow]:
+        return [_record_row(st, row, verdicts, owners) for row in projection.get(kind, ())]
+
     return {
-        kind: [_record_row(st, row, verdicts, owners) for row in projection.get(kind, ())]
-        for kind in MACHINE_KINDS
+        "machines": rows("machines"),
+        "extractors": rows("extractors"),
+        "generators": rows("generators"),
     }
 
 
@@ -155,12 +167,14 @@ def machines(request: Request, save: str | None = None, world: str | None = None
 
 
 @router.get("/structures", response_model=StructuresResponse)
-def structures(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def structures(
+    request: Request, save: str | None = None, world: str | None = None
+) -> StructuresResponse:
     """Every lightweight buildable the player placed: foundations, ramps, walls, catwalks,
     one row per piece at its centre, with the grid edge they are built on."""
     st = require_world(request, save, world)
 
-    out = [
+    out: list[StructureRow] = [
         {
             "cls": piece.cls,
             "x_m": cm_to_m(piece.x),

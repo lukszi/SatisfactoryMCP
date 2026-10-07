@@ -10,20 +10,17 @@ import numpy as np
 import pytest
 
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.waterbodies import CLASSES, OCEAN
+from mapgen.gamedata.water.bodies import OCEAN, WATER_CLASSES
 from mapgen.lighting.occluders import sheet_crowns
-from mapgen.palette.painted import (
-    WATER_TABLE_COLUMNS,
-    PaintedGround,
-    painted_colours,
-    water_table,
-)
+from mapgen.palette.painted.band import painted_colours
+from mapgen.palette.painted.ground import PaintedGround
+from mapgen.palette.painted.optics import WATER_TABLE_COLUMNS, water_table
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.terrain.sample import taps_linear
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.map_scenes import class_optics, painted_ground_stub, water_scene
 
-RIVER = CLASSES.index("river")
+RIVER = WATER_CLASSES.index("river")
 
 
 def _ground(plane) -> PaintedGround:
@@ -31,6 +28,7 @@ def _ground(plane) -> PaintedGround:
     ground.water_class = plane
     ground.water_rows = water_table(PAINTED_PALETTE)
     ground.water = {"inland_floor": np.float32(0.35)}
+    ground.opaque_water = []
     return ground
 
 
@@ -85,17 +83,20 @@ def test_sheet_crowns_keeps_a_crown_a_coarse_pixel_would_miss():
 
 
 def test_an_unlit_run_deletes_its_crown_occluder_with_the_light_cache(tmp_path):
-    from types import SimpleNamespace
-
-    from mapgen.tiles.lit import LIGHT_CACHE_DIR_NAME, UnlitRun, crown_occluder
+    from mapgen.render.draw.light import (
+        LIGHT_CACHE_DIR_NAME,
+        CrownTops,
+        LightingRun,
+        crown_occluder,
+    )
 
     grid = {"x0_cm": BOUNDS_M["x_min_m"] * 100.0, "y0_cm": BOUNDS_M["y_min_m"] * 100.0,
             "spacing_cm": 100.0}  # fmt: skip
-    painted = SimpleNamespace(crown=np.full((8, 8), 120, np.int16), meta={"grid": grid})
-    run = UnlitRun(tmp_path, 16, crown_occluder(painted, tmp_path, 16))
+    crowns = CrownTops(np.full((8, 8), 120, np.int16), grid)
+    run = LightingRun(tmp_path, 16, crown_occluder(crowns, tmp_path, 16))
 
     assert (tmp_path / LIGHT_CACHE_DIR_NAME / "occluder.npy").is_file()
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME / "crowns.npy").exists(), "written once"
     run.close()
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
-    assert crown_occluder(SimpleNamespace(), tmp_path, 16) is None
+    assert crown_occluder(None, tmp_path, 16) is None

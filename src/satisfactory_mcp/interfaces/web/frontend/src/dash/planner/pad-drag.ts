@@ -29,34 +29,34 @@ export interface Spot {
   y_m: number;
 }
 
-var GRID_M = 8;
-var YAW_STEP = 15;
-var GRID_YAW_STEP = 90;
-var NUDGE_M = 8;
-var FINE_M = 1;
-var BURST_MS = 600;
-var TURN_REACH = 1.5;
-var PANE = "sitedrag";
+const GRID_M = 8;
+const YAW_STEP = 15;
+const GRID_YAW_STEP = 90;
+const NUDGE_M = 8;
+const FINE_M = 1;
+const BURST_MS = 600;
+const TURN_REACH = 1.5;
+const PANE = "sitedrag";
 
-var pane = map.createPane(PANE);
+const pane = map.createPane(PANE);
 pane.style.zIndex = "640";
 map.getContainer().style.setProperty("--site-pad", PLAN_COLOUR);
 
-var layer = L.layerGroup().addTo(map);
-var ghostLayer = L.layerGroup().addTo(map);
-var outline: L.Polygon | null = null;
-var mover: L.Marker | null = null;
-var turner: L.Marker | null = null;
-var lines: L.Polyline[] = [];
-var spots: Spot[] = [];
-var hooks: Hooks | null = null;
-var pad: Pad | null = null;
-var padBeforeGesture: Pad | null = null;
-var gesture: Gesture = "";
-var aborted = false;
-var burstTimer = 0;
-var cross: HTMLElement | null = null;
-var snapMode = function (): string {
+const layer = L.layerGroup().addTo(map);
+const ghostLayer = L.layerGroup().addTo(map);
+let outline: L.Polygon | null = null;
+let mover: L.Marker | null = null;
+let turner: L.Marker | null = null;
+let lines: L.Polyline[] = [];
+let spots: Spot[] = [];
+let hooks: Hooks | null = null;
+let pad: Pad | null = null;
+let padBeforeGesture: Pad | null = null;
+let gesture: Gesture = "";
+let aborted = false;
+let burstTimer = 0;
+let cross: HTMLElement | null = null;
+let snapMode = function (): string {
   return "fine";
 };
 
@@ -86,6 +86,12 @@ function turned(yaw: number, dir: number): number {
   const step = yawStep();
   const k = yaw / step;
   return normaliseYaw((dir > 0 ? Math.floor(k + 1e-6) + 1 : Math.ceil(k - 1e-6) - 1) * step);
+}
+
+/** A key turn: `free` steps YAW_STEP off the lattice, otherwise to the next lattice angle. */
+function keyedYaw(yaw: number, dir: number, free: boolean): number {
+  if (!dir) return yaw;
+  return free ? yaw + dir * YAW_STEP : turned(yaw, dir);
 }
 
 /** The `site_snap` rule; `siting.snap` on the server is the same. */
@@ -207,7 +213,7 @@ function onHandleKeydown(event: KeyboardEvent): void {
     gesture = "keys";
     padBeforeGesture = pad;
   }
-  const yaw = !turn ? pad.yaw_deg : event.shiftKey ? pad.yaw_deg + turn * YAW_STEP : turned(pad.yaw_deg, turn);
+  const yaw = keyedYaw(pad.yaw_deg, turn, event.shiftKey);
   const next = snap(withPlace(pad, pad.x_m + dx, pad.y_m + dy, yaw), event.shiftKey);
   draw(next, true);
   hooks.step(next);

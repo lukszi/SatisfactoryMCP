@@ -145,12 +145,12 @@ def test_the_site_tokens_are_keyed_by_the_placement_tables_own_category_names():
 def test_every_key_is_a_category_the_generated_table_actually_places():
     """The ratchet against the keys drifting off again, run against the real dataset.
 
-    Untracked, so a fresh clone skips -- and the skip is honest: a failed lookup here would
-    say the categories had been renamed when in fact the file was never generated.
+    The table is tracked, so a missing one fails as a broken checkout rather than reading as
+    categories that were renamed.
     """
     real = config.data_dir() / collectibles_table.COLLECTIBLES_FILE
     if not real.is_file():
-        pytest.skip("needs data/world_collectibles.json (tools/gen_world_collectibles.py)")
+        pytest.fail("data/world_collectibles.json is tracked and missing -- broken checkout?")
     placed = {
         row["category"] for row in json.loads(real.read_text(encoding="utf-8"))["collectibles"]
     }

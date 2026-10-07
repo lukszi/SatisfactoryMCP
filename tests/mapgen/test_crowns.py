@@ -10,12 +10,12 @@ import json
 import numpy as np
 import pytest
 
-from mapgen.gamedata import crowns as data
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
-from mapgen.gamedata.paint import RADIUS_BINS_M, canopy_cover
+from mapgen.gamedata.vegetation import crown_sprites as data
+from mapgen.gamedata.vegetation.trees import RADIUS_BINS_M, canopy_cover
+from mapgen.palette.painted.trees import crown_layer, over_crowns
 from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.palette.trees import crown_layer, over_crowns
-from mapgen.terrain.crowns import crown_band, load_crowns, meshed_species, sprite_levels
+from mapgen.terrain.crown_stamp import load_crowns, meshed_species, sprite_levels, stamp_crowns
 
 LEAF = (0.1, 0.3, 0.05)
 
@@ -47,8 +47,7 @@ def _store(tmp_path, sprites, records, materials):
     species = [
         {"name": f"S{i}", "materials": materials, "sprite": entry} for i, entry in enumerate(index)
     ]
-    meta = {"crowns": {"species": species}, "files": {data.CROWNS_NAME: {}}}
-    return load_crowns(tmp_path, meta)
+    return load_crowns(tmp_path, {"species": species}, {data.CROWNS_NAME})
 
 
 # ----------------------------------------------------------------------- the paint input
@@ -119,6 +118,24 @@ def test_a_mask_is_an_alpha_that_varies_and_names_sort_materials():
     )
 
 
+def test_an_alpha_with_no_leaf_texel_is_no_mask():
+    faint = np.full((4, 4), 0.3, np.float32)
+    assert data.leaf_mask([faint], (4, 4)).all(), "nothing over the leaf threshold: no mask"
+    half = np.tile(np.repeat(np.array([0.0, 1.0], np.float32), 2), (4, 1))
+    assert data.leaf_mask([faint, half], (4, 4)).mean() == 0.5, "the next alpha is the mask"
+
+
+def test_a_measured_opacity_of_zero_is_clear_and_a_missing_one_opaque():
+    clear = {"kind": "leaf", "linear": None, "opacity": 0.0}
+    unknown = {"kind": "leaf", "linear": None, "opacity": None}
+    skipped = {"kind": "skip", "linear": None, "opacity": 0.5}
+    tau = data.optical_depths([clear, unknown, skipped])
+    assert tau.shape == (data.MATERIAL_NONE + 1,) and tau.dtype == np.float32
+    assert tau[0] == 0.0, "a measured opacity of 0 lets everything through"
+    assert tau[1] == pytest.approx(data.TAU_MAX), "no measurement: an opaque card"
+    assert tau[2] == 0.0 and not tau[3:].any()
+
+
 def test_the_canopy_takes_the_measured_radius_scaled_per_tree():
     x, y = ORIGIN_X_CM + 2000.0, ORIGIN_Y_CM + 2000.0
     tree = np.array([_matrix(x, y, 0.0)])
@@ -141,7 +158,8 @@ def _l_sprite():
 
 
 def _band(crowns, step_cm=22.9, size=80, x0=-900.0, y0=-900.0):
-    return crown_band(crowns, x0, y0, step_cm, size, size)
+    centres = (np.arange(size) + 0.5) * step_cm
+    return stamp_crowns(crowns, x0 + centres, y0 + centres, step_cm)
 
 
 def test_a_tree_stamps_its_sprite_turned_by_its_yaw(tmp_path):
@@ -175,9 +193,7 @@ def test_the_taller_crown_is_drawn_over_the_lower_one(tmp_path):
         {"name": "A", "materials": [{"linear": [1.0, 0.0, 0.0]}], "sprite": index[0]},
         {"name": "B", "materials": [{"linear": [0.0, 0.0, 1.0]}], "sprite": index[1]},
     ]
-    crowns = load_crowns(
-        tmp_path, {"crowns": {"species": species}, "files": {data.CROWNS_NAME: {}}}
-    )
+    crowns = load_crowns(tmp_path, {"species": species}, {data.CROWNS_NAME})
     band = _band(crowns)
     centre = band["rgb"][40, 40] / band["cover"][40, 40]
     assert centre[0] > 0.9 and centre[2] < 0.1, "the crown standing 5 m higher is on top"
@@ -193,6 +209,19 @@ def test_a_coarse_sheet_keeps_a_crowns_area(tmp_path):
     assert coarse == pytest.approx(fine, rel=0.2), "the mip average keeps the area"
     assert fine == pytest.approx(6.5 * 0.95, rel=0.1)
     assert len(sprite_levels(sprite, [LEAF])) > 3
+
+
+def test_a_crown_draws_the_same_in_any_band_or_window(tmp_path):
+    step = 7500.0 * 100.0 / 32768
+    records, _ = data.crown_records({"/A": np.array([_matrix(0, 0, 0, 30)])}, ["A"])
+    crowns = _store(tmp_path, [_l_sprite()], records, [{"linear": list(LEAF)}])
+    x, y = (np.arange(-60, 60) + 0.5) * step, (np.arange(-300, 60) + 0.5) * step
+    whole = stamp_crowns(crowns, x, y, step)
+    assert whole["cover"].max() > 0.9
+    for first_row, first_col in ((16, 0), (280, 3), (299, 41)):
+        part = stamp_crowns(crowns, x[first_col:], y[first_row:], step)
+        for name, plane in part.items():
+            np.testing.assert_array_equal(plane, whole[name][first_row:, first_col:], name)
 
 
 def test_a_band_with_no_tree_is_empty(tmp_path):
@@ -220,8 +249,7 @@ def test_a_coral_tree_is_left_to_its_mesh_and_not_drawn_as_a_crown(tmp_path):
         for mesh, entry in zip((coral, tree), index, strict=True)
     ]  # fmt: skip
     assert meshed_species(species).tolist() == [True, False]
-    meta = {"crowns": {"species": species}, "files": {data.CROWNS_NAME: {}}}
-    crowns = load_crowns(tmp_path, meta)
+    crowns = load_crowns(tmp_path, {"species": species}, {data.CROWNS_NAME})
     assert crowns.records["species"].tolist() == [1], "the render-only mesh pass draws coral"
     assert not _band(crowns)["cover"].any(), "no dome stands over the coral's own top"
     assert _band(crowns, x0=4100.0, y0=4100.0)["cover"].max() > 0.9, "the tree is drawn"

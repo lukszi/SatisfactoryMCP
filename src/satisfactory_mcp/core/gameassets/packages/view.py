@@ -5,6 +5,7 @@ from __future__ import annotations
 import collections
 import struct
 
+from ...jsontypes import JsonObject
 from .properties import property_tags, read_float, read_int32
 from .zen import Package, ScriptObjects, apply_fname_number
 
@@ -53,7 +54,7 @@ class PackageView:
         self.level_slots: set[int] = set()
         self._props: dict[int, dict[str, bytes]] = {}
         self._kinds: dict[int, dict[str, str | None]] = {}
-        self._bools: dict[int, dict[str, int]] = {}
+        self._bools: dict[int, dict[str, bool]] = {}
         for export in self.exports:
             slot = export["slot"]
             path = self.object_path(export["class"])
@@ -92,14 +93,14 @@ class PackageView:
     def _parse_properties(self, slot: int) -> None:
         props: dict[str, bytes] = {}
         kinds: dict[str, str | None] = {}
-        bools: dict[str, int] = {}
+        bools: dict[str, bool] = {}
         entries, _end = property_tags(self.pkg.body(self.exports[slot]), self.pkg.names)
-        for name, kind, payload, value in entries:
-            if name is None or name in props:
+        for tag in entries:
+            if tag.name is None or tag.name in props:
                 continue
-            props[name] = payload
-            kinds[name] = kind
-            bools[name] = value
+            props[tag.name] = tag.payload
+            kinds[tag.name] = tag.kind
+            bools[tag.name] = bool(tag.flags)
         self._props[slot] = props
         self._kinds[slot] = kinds
         self._bools[slot] = bools
@@ -118,9 +119,7 @@ class PackageView:
         """A ``BoolProperty``'s value, which lives in the tag rather than the payload."""
         if slot not in self._bools:
             self._parse_properties(slot)
-        if name not in self._bools[slot]:
-            return None
-        return bool(self._bools[slot][name])
+        return self._bools[slot].get(name)
 
     def export_ref(self, payload: bytes) -> int | None:
         """An ``FPackageIndex`` pointing at an export in this same package, or None."""
@@ -169,7 +168,7 @@ class PackageView:
         hashes = self.pkg.imported_public_export_hashes
         return hashes[slot] if slot < len(hashes) else None
 
-    def decode_struct(self, payload: bytes) -> dict:
+    def decode_struct(self, payload: bytes) -> JsonObject:
         """A nested tagged struct as plain values, one level of types deep.
 
         Anything this does not know is kept as ``{"_type": ..., "_raw": hex}`` rather than
@@ -177,8 +176,9 @@ class PackageView:
         all, so its bytes had to survive to be read as an ``FPackageIndex``.
         """
         entries, _end = property_tags(payload, self.pkg.names, 0)
-        out: dict = {}
-        for name, kind, raw, value in entries:
+        out: JsonObject = {}
+        for tag in entries:
+            name, kind, raw = tag.name, tag.kind, tag.payload
             if name is None:
                 continue
             if kind == "StructProperty":
@@ -188,18 +188,18 @@ class PackageView:
                 ref = self.export_ref(raw)
                 out[name] = self.import_path(raw) or (f"export:{ref}" if ref is not None else None)
             elif kind in ("EnumProperty", "NameProperty"):
-                out[name] = self._fname(raw)
+                out[name] = self.read_fname(raw)
             elif kind == "IntProperty":
                 out[name] = read_int32(raw)
             elif kind in ("FloatProperty", "DoubleProperty"):
                 out[name] = read_float(raw)
             elif kind == "BoolProperty":
-                out[name] = bool(value)
+                out[name] = bool(tag.flags)
             else:
                 out[name] = {"_type": kind, "_raw": raw[:32].hex()}
         return out
 
-    def _fname(self, payload: bytes) -> str | None:
+    def read_fname(self, payload: bytes) -> str | None:
         if len(payload) < 8:
             return None
         index, number = struct.unpack_from("<II", payload, 0)

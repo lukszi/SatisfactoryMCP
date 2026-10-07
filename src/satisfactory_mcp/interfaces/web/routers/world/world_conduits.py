@@ -7,20 +7,33 @@ way. Handler names are operation_ids (wire rule 1 of docs/web-wire.md).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
+from .....core.gamedata.model import GameData
 from .....domain.spatial.places import resolve_place
 from .....domain.world import conduit_search
 from .....domain.world import conduits as conduits_mod
-from ...serial import choice_refusal, cm_to_m, error_response, require_world, resource_name
+from ...serial import (
+    choice_refusal,
+    cm_to_m,
+    error_response,
+    game_data,
+    require_world,
+    resource_name,
+)
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api/world")
 
 CONDUIT_VIEWS = ("runs", "networks")
+
+RunKind = Literal["belt", "lift", "pipe"]
+View = Literal["runs", "networks"]
 
 
 class RunEnd(TypedDict):
@@ -34,7 +47,7 @@ class RunRow(TypedDict):
     """One belt chain or pipe piece; ``lines_m`` are the drawn polylines, as trace sends."""
 
     id: str
-    kind: Literal["belt", "lift", "pipe"]
+    kind: RunKind
     label: str
     pieces: int
     length_m: float
@@ -68,7 +81,7 @@ class NetworkRow(TypedDict):
 class ConduitsResponse(TypedDict):
     """``total`` counts every match; ``runs``/``networks`` hold one page of them."""
 
-    view: Literal["runs", "networks"]
+    view: View
     where: str
     where_to: str
     radius_m: float
@@ -87,14 +100,15 @@ class ConduitsResponse(TypedDict):
     age_note: str
 
 
-def _run_end_json(end) -> RunEnd:
+def _run_end_json(end: conduits_mod.End) -> RunEnd:
     return {"x_m": cm_to_m(end.x), "y_m": cm_to_m(end.y), "z_m": cm_to_m(end.z), "plugs": end.plugs}
 
 
-def _run_row(run, origin, game) -> RunRow:
+def _run_row(run: conduits_mod.ConduitRun, origin: tuple[float, float], game: GameData) -> RunRow:
     return {
         "id": run.ident,
-        "kind": run.kind,
+        # A run is a belt, a lift or a pipe: the three words ``conduits`` writes.
+        "kind": cast(RunKind, run.kind),
         "label": run.label,
         "pieces": run.pieces,
         "length_m": round(run.length_m, 1),
@@ -113,7 +127,36 @@ def _run_row(run, origin, game) -> RunRow:
     }
 
 
-def _networks_reply(networks: list, where: str, game, base: dict, page: slice) -> dict:
+def _empty_reply(view: View, radius_m: float, offset: int, age_note: str) -> ConduitsResponse:
+    """A reply with nothing found yet: what both views start from."""
+    return {
+        "view": view,
+        "where": "",
+        "where_to": "",
+        "radius_m": radius_m,
+        "to_radius_m": None,
+        "runs": [],
+        "networks": [],
+        "total": 0,
+        "offset": offset,
+        "belts": 0,
+        "pipes": 0,
+        "belt_m": 0.0,
+        "pipe_m": 0.0,
+        "fluids": [],
+        "bridged": [],
+        "notes": [],
+        "age_note": age_note,
+    }
+
+
+def _networks_reply(
+    networks: list[conduit_search.NetworkView],
+    where: str,
+    game: GameData,
+    base: ConduitsResponse,
+    page: slice,
+) -> ConduitsResponse:
     """Every fluid network, nearest first, one page of them with totals over them all."""
     return {
         **base,
@@ -140,7 +183,13 @@ def _networks_reply(networks: list, where: str, game, base: dict, page: slice) -
     }
 
 
-def _runs_reply(found, game, base: dict, page: slice) -> dict:
+def _runs_reply(
+    found: conduit_search.ConduitSearch,
+    origin: tuple[float, float],
+    game: GameData,
+    base: ConduitsResponse,
+    page: slice,
+) -> ConduitsResponse:
     """The runs a search found, longest first, one page of them with totals over them all."""
     belts, pipes = found.belts, found.pipes
     return {
@@ -148,7 +197,7 @@ def _runs_reply(found, game, base: dict, page: slice) -> dict:
         "where": found.where,
         "where_to": found.where_to,
         "to_radius_m": found.to_radius_m,
-        "runs": [_run_row(run, found.origin, game) for run in found.hits[page]],
+        "runs": [_run_row(run, origin, game) for run in found.hits[page]],
         "total": len(found.hits),
         "belts": len(belts),
         "pipes": len(pipes),
@@ -174,7 +223,7 @@ def world_conduits(
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> ConduitsResponse | JSONResponse:
     """Belt and pipe runs near a place (and ``to`` a second one), or every fluid network.
 
     The runs are ``search_conduits``'s, longest first. ``network`` lists every pipe of one
@@ -190,24 +239,8 @@ def world_conduits(
     if view == "networks" and kind == "belt":
         return error_response("view=networks lists fluid networks; a belt chain belongs to none")
     st = require_world(request, save, world)
-    game = request.app.state.game()
-    base = {
-        "view": view,
-        "where_to": "",
-        "radius_m": radius_m,
-        "to_radius_m": None,
-        "runs": [],
-        "networks": [],
-        "offset": offset,
-        "belts": 0,
-        "pipes": 0,
-        "belt_m": 0.0,
-        "pipe_m": 0.0,
-        "fluids": [],
-        "bridged": [],
-        "notes": [],
-        "age_note": st.age_note,
-    }
+    game = game_data(request)
+    base = _empty_reply("networks" if view == "networks" else "runs", radius_m, offset, st.age_note)
     page = slice(offset, offset + limit)
     if view == "networks":
         try:
@@ -228,4 +261,6 @@ def world_conduits(
     )
     if found.error:
         return error_response(found.error)
-    return _runs_reply(found, game, base, page)
+    # A search that raised no error resolved the place it measures from.
+    assert found.origin is not None
+    return _runs_reply(found, found.origin, game, base, page)

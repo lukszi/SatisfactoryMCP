@@ -13,14 +13,15 @@ from collections.abc import Sequence
 
 #: command -> (module holding ``main()``, arguments put in front of the caller's).
 COMMANDS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "heightmap": ("mapgen.heightmap", ()),
-    "caves": ("mapgen.heightmap", ("--caves",)),
-    "rocks": ("mapgen.heightmap", ("--rocks",)),
-    "renders": ("mapgen.pipeline", ()),
-    "artwork": ("mapgen.artwork", ()),
-    "paint": ("mapgen.gamedata.paint", ()),
-    "check-fill": ("mapgen.check_fill", ()),
-    "compress-cache": ("mapgen.compress_cache", ()),
+    "heightmap": ("mapgen.commands.heightmap", ()),
+    "caves": ("mapgen.commands.heightmap", ("--caves",)),
+    "rocks": ("mapgen.commands.heightmap", ("--rocks",)),
+    "renders": ("mapgen.commands.renders", ()),
+    "artwork": ("mapgen.commands.artwork", ()),
+    "paint": ("mapgen.commands.paint", ()),
+    "calibrate": ("mapgen.commands.calibrate", ()),
+    "check-fill": ("mapgen.commands.check_fill", ()),
+    "compress-cache": ("mapgen.commands.compress_cache", ()),
 }
 
 

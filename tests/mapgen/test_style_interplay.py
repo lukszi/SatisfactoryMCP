@@ -11,9 +11,9 @@ import numpy as np
 import pytest
 
 from mapgen.cache import (
+    CACHE_SIDECAR_NAME,
     DIRECT_CACHE_DIR_NAME,
     MESH_CACHE_DIR_NAME,
-    MESH_CACHE_SIDECAR,
     MESH_CLASS_NAME,
     MESH_Z_NAME,
     TITAN_CACHE_DIR_NAME,
@@ -22,14 +22,16 @@ from mapgen.cache import (
     mesh_stamp,
     restyle_gaps,
 )
+from mapgen.colour import tone as shader_tone
+from mapgen.colour import untone as shader_untone
 from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
-from mapgen.lighting.model import _tone, _untone, apply_terms
+from mapgen.lighting.model import apply_terms
 from mapgen.palette.lightparams import shader_light
-from mapgen.palette.painted import tone
+from mapgen.palette.painted.band import painted_ndl
 from mapgen.palette.relief import FLAT_LIT, _shade
-from mapgen.palette.shore import OCEAN_LEVEL_M, painted_ndl
 from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK
+from mapgen.palette.water.shore import OCEAN_LEVEL_M
+from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from tests.support.map_scenes import relief_ground
 
@@ -53,9 +55,8 @@ def test_the_shader_tone_is_the_painted_style_s_own_and_inverts():
     t = PAINTED_PALETTE["tone"]
     assert (params["tone_knee"], params["tone_white"]) == (t["knee"], t["white"])
     y = np.linspace(0.0, 1.5, 61, dtype=np.float32)
-    np.testing.assert_allclose(_tone(y, t["knee"], t["white"]), tone(y, t["knee"], t["white"]),
-                               atol=1e-6)  # fmt: skip
-    back = _untone(_tone(y, t["knee"], t["white"]), t["knee"], t["white"])
+    shaded = shader_tone(y, t["knee"], t["white"])
+    back = shader_untone(shaded, t["knee"], t["white"])
     np.testing.assert_allclose(back, y, atol=2e-4)
     assert shader_light("relief")["tone_knee"] == 1.0
 
@@ -78,18 +79,17 @@ def _bowl(n=81, sp=0.25, radius_px=30):
     return z, sp, inside.astype(np.float32), kept
 
 
-def test_painted_keeps_the_default_sun_on_a_mesh_only_it_draws_when_another_layer_lit_the_map():
+def test_painted_keeps_the_default_sun_on_a_mesh_only_it_draws_in_the_water():
     z, sp, weight, kept = _bowl()
     sea = np.full(z.shape, OCEAN_LEVEL_M, np.float32)
     flat = np.float32(np.sin(np.radians(SUN_ALTITUDE_DEG)))
-    np.testing.assert_array_equal(painted_ndl(z, sp, False, None, (weight, kept, sea)),
-                                  sun_dot(z, sp))  # fmt: skip
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, object(), (weight, kept, sea)), flat)
+    np.testing.assert_array_equal(painted_ndl(z, sp, False, (weight, kept, sea)), sun_dot(z, sp))
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, (None, None, sea)), flat)
     dry = np.full(z.shape, np.nan, np.float32)
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, None, (weight, kept, dry)), flat)
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, kept, dry)), flat)
     rock = np.where(kept > 0, MESH_ROCK, 0).astype(np.uint8)
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, None, (weight, rock, sea)), flat)
-    got = painted_ndl(z, sp, True, None, (weight, kept, sea))
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, rock, sea)), flat)
+    got = painted_ndl(z, sp, True, (weight, kept, sea))
     assert got[2, 2] == pytest.approx(flat), "the sea around it is the pyramid's"
     north_east, south_west = got[28, 52], got[52, 28]
     assert north_east > flat > south_west, "the noon sun in the south-west lights the far wall"
@@ -98,20 +98,24 @@ def test_painted_keeps_the_default_sun_on_a_mesh_only_it_draws_when_another_laye
 def _write_meshes(folder, stamp):
     folder.mkdir(parents=True)
     size = stamp["size"]
-    (folder / MESH_CACHE_SIDECAR).write_text(json.dumps(stamp), encoding="utf-8")
+    (folder / CACHE_SIDECAR_NAME).write_text(json.dumps(stamp), encoding="utf-8")
     np.zeros((size, size), np.float32).tofile(folder / MESH_Z_NAME)
     np.zeros((size, size), np.uint8).tofile(folder / MESH_CLASS_NAME)
 
 
 def test_a_restyle_needs_the_titan_cache_only_when_it_draws_titan_trees(tmp_path):
-    gaps = restyle_gaps(tmp_path, 64, 1, "b", False, False, True)
+    gaps = restyle_gaps(tmp_path, 64, 1, "b", top=False, meshes=False, titan=True)
     assert gaps == [DIRECT_CACHE_DIR_NAME, TITAN_CACHE_DIR_NAME]
-    assert restyle_gaps(tmp_path, 64, 1, "b", True, True, False) == [
+    assert restyle_gaps(tmp_path, 64, 1, "b", top=True, meshes=True, titan=False) == [
         DIRECT_CACHE_DIR_NAME,
         TOP_CACHE_DIR_NAME,
         MESH_CACHE_DIR_NAME,
     ]
     titan = mesh_stamp(64 // TITAN_FACTOR, "b", READER_VERSIONS["titan_trees"])
     _write_meshes(tmp_path / TITAN_CACHE_DIR_NAME, titan)
-    assert TITAN_CACHE_DIR_NAME not in restyle_gaps(tmp_path, 64, 1, "b", False, False, True)
-    assert TITAN_CACHE_DIR_NAME in restyle_gaps(tmp_path, 64, 1, "other", False, False, True)
+    assert TITAN_CACHE_DIR_NAME not in restyle_gaps(
+        tmp_path, 64, 1, "b", top=False, meshes=False, titan=True
+    )
+    assert TITAN_CACHE_DIR_NAME in restyle_gaps(
+        tmp_path, 64, 1, "other", top=False, meshes=False, titan=True
+    )

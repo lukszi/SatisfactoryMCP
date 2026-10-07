@@ -7,6 +7,9 @@ The reasons and the measurements behind each number are in docs/DEVELOPING.md,
 from __future__ import annotations
 
 import ast
+import re
+from collections.abc import Iterator
+from pathlib import Path
 
 from tests.support.import_graph import (
     PARSER_PKG,
@@ -25,10 +28,46 @@ MODULE_MAX_LINES = 850
 ROUTER_MAX_LINES = 650
 #: A module of the MCP adapter under ``interfaces/mcp``.
 TOOL_MODULE_MAX_LINES = 650
-#: A generator under ``tools/`` outside ``tools/mapgen`` (which holds the same two numbers in
-#: its own suite), and one function in it.
+#: A generator under ``tools/`` outside ``tools/mapgen`` (which holds its own caps in its own
+#: suite), and one function in it.
 GENERATOR_MAX_LINES = 800
 GENERATOR_FUNCTION_MAX_LINES = 150
+#: A hand-written TypeScript module of the map page, and one top-level function in it.
+FRONTEND_MAX_LINES = 600
+FRONTEND_FUNCTION_MAX_LINES = 150
+
+FRONTEND_SRC = PKG / "interfaces" / "web" / "frontend" / "src"
+#: Written by openapi-typescript from the server's schema, not by hand.
+FRONTEND_GENERATED = {"schema.d.ts"}
+
+#: The first line of a top-level function: a declaration, or a function or arrow bound to a
+#: name. Formatted code closes it with a ``}`` at the margin.
+_TS_FUNCTION = re.compile(
+    r"(export )?(default )?(async )?function\b"
+    r"|(export )?(const|let) \w+(: [^=]+)? = (async )?(function\b|\(|\w+ =>)"
+)
+
+
+def _frontend_sources() -> list[Path]:
+    return sorted(p for p in FRONTEND_SRC.rglob("*.ts") if p.name not in FRONTEND_GENERATED)
+
+
+def _ts_functions(lines: list[str]) -> Iterator[tuple[int, int]]:
+    """``(first, last)`` line index of each top-level function with a body.
+
+    The body ends at the first ``}`` on the margin; a margin line that is neither that nor a
+    signature's closing ``)`` means the start was a one-line binding.
+    """
+    for first, line in enumerate(lines):
+        if not _TS_FUNCTION.match(line) or line.rstrip().endswith(";"):
+            continue
+        for last in range(first + 1, len(lines)):
+            text = lines[last]
+            if text.startswith("}"):
+                yield first, last
+                break
+            if text and not text[0].isspace() and not text.startswith(")"):
+                break
 
 
 def _over(paths, cap: int) -> list[str]:
@@ -83,5 +122,32 @@ def test_no_generator_function_grows_past_its_cap():
                     over.append(f"  {path.relative_to(REPO).as_posix()}::{node.name}: {lines}")
     assert not over, (
         f"over the {GENERATOR_FUNCTION_MAX_LINES}-line function cap -- split it rather than "
+        "raise the cap:\n" + "\n".join(over)
+    )
+
+
+def test_no_page_module_grows_past_its_cap():
+    sources = _frontend_sources()
+    assert sources, f"no TypeScript under {FRONTEND_SRC}"
+    over = _over(sources, FRONTEND_MAX_LINES)
+    assert not over, (
+        f"a page module is over {FRONTEND_MAX_LINES} lines -- that is a second concern; give "
+        "it a module of its own beside this one:\n" + "\n".join(over)
+    )
+
+
+def test_no_page_function_grows_past_its_cap():
+    over = []
+    measured = 0
+    for path in _frontend_sources():
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for first, last in _ts_functions(lines):
+            measured += 1
+            if last - first + 1 > FRONTEND_FUNCTION_MAX_LINES:
+                where = f"{path.relative_to(REPO).as_posix()}:{first + 1}"
+                over.append(f"  {where}: {last - first + 1}")
+    assert measured, "no top-level function found -- the pattern no longer reads the page"
+    assert not over, (
+        f"over the {FRONTEND_FUNCTION_MAX_LINES}-line function cap -- split it rather than "
         "raise the cap:\n" + "\n".join(over)
     )

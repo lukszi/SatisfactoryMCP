@@ -10,8 +10,9 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import numpy as np
-from scipy.optimize import LinearConstraint
+from scipy.optimize import Bounds, LinearConstraint
 
+from ....core.arrays import F64Grid
 from .build_table import binding_constraints, build_rows, logistics, solution_warnings
 from .lp import (
     Columns,
@@ -36,7 +37,7 @@ _EPS = 1e-7
 
 
 def _flow_values(
-    x: np.ndarray, items: tuple[str, ...], column: Callable[[int], int]
+    x: F64Grid, items: tuple[str, ...], column: Callable[[int], int]
 ) -> dict[str, float]:
     """``{item: rate}`` for each of ``items`` whose column is above zero, to 4 dp."""
     return {
@@ -70,7 +71,7 @@ def solve(sc: Scenario) -> Solution:
         goal_with_machine_price,
         machine_price_vector(sc, processes, columns),
         constraints,
-        (lower, upper),
+        Bounds(lower, upper),
         integrality_vector(sc, columns),
         sc,
     )

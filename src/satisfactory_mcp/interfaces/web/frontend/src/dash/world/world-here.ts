@@ -3,7 +3,7 @@
 
 import { appendNote, empty, heading, link, pendingNotice } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { coords, count, formatNumber, metres, roundHalfEven } from "../../kit/format";
+import { coords, count, formatNumber, metres, roundHalfEven, withDetail } from "../../kit/format";
 import { loadOne } from "../../app/load";
 import { withQuery } from "../../app/nav";
 import { showPoint } from "../../map/map-highlight";
@@ -34,7 +34,7 @@ function factList(data: HereResponse, player: NonNullable<HereResponse["player"]
   const facts: [string, string | HTMLElement][] = [
     ["position", coords(player.x_m, player.y_m) + ", " + formatNumber(player.z_m, 0) + " m up"],
     ["region", regionCell(data.region, true)],
-    ["grid", data.grid ? data.grid + (data.direction ? " · " + data.direction : "") : "–"],
+    ["grid", data.grid ? withDetail(data.grid, data.direction) : "–"],
     ["nearest building", data.nearest_building ? data.nearest_building.name + ", " + metres(data.nearest_building.distance_m) : "none"],
     ["id", copyCell(roundHalfEven(player.x_m) + "," + roundHalfEven(player.y_m), "copy")],
   ];

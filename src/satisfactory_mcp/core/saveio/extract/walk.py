@@ -1,7 +1,9 @@
 """The object walk that turns one parsed save into the projection dict.
 
 One pass files every object by class. Whatever needs a component written after its owner, or
-a pipe network written after its pipes, is held during the pass and joined in ``finish``.
+a pipe network written after its pipes, is held during the pass and joined in ``finish``. A
+value the projection carries as the save wrote it is passed through as read, and its ``cast``
+names the type the save writes there.
 """
 
 from __future__ import annotations
@@ -9,20 +11,44 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import Final, Literal, NamedTuple, cast
 
 from ..projection import SCHEMA_VERSION
+from ..schema import (
+    Buffers,
+    BuildableRecord,
+    ExtractorRecord,
+    GeneratorRecord,
+    MachineRecord,
+    MaterialEdge,
+    Projection,
+    Uptime,
+)
 from . import census, inventories, power, progression, routes, structures
 from .census import Drops
 from .interning import Interner
-from .parser import header_info, read_full_save
+from .inventories import Contents, CrateActor, StorageActor
+from .parser import (
+    ActorHeader,
+    ComponentHeader,
+    ParsedObject,
+    ParsedSave,
+    SaveValue,
+    header_info,
+    read_full_save,
+)
+from .power import PoleActor, WireSpan
 from .readers import (
+    as_sequence,
     class_from_type_path,
     iter_objects,
+    optional_int,
     position_of,
     properties_of,
     ref_class,
     ref_path,
+    to_float,
+    to_int,
     truthy,
     yaw_of,
 )
@@ -37,15 +63,20 @@ from .registers import (
     POWER_POLE_CLASSES,
     STORAGE_CLASSES,
 )
+from .routes import ChainActor, HeldNetwork, PipeActor
 
 __all__ = ["extract_projection"]
 
 #: The inventory roles that are a machine's own buffers, and the side each one feeds. A
 #: generator has no InputInventory: its intake is FuelInventory.
-_BUFFER_SIDES = {"InputInventory": "in", "OutputInventory": "out", "FuelInventory": "fuel"}
+_BUFFER_SIDES: dict[str, Literal["in", "out", "fuel"]] = {
+    "InputInventory": "in",
+    "OutputInventory": "out",
+    "FuelInventory": "fuel",
+}
 
 #: ``BP_UnlockSubsystem_C`` flags. Written only once true, so ABSENT means not researched.
-_UNLOCK_FLAGS = (
+_UNLOCK_FLAGS: Final = (
     "mIsMapUnlocked",
     "mIsBuildingOverclockUnlocked",
     "mIsBuildingProductionBoostUnlocked",
@@ -53,7 +84,7 @@ _UNLOCK_FLAGS = (
     "mIsBlueprintsUnlocked",
     "mIsCustomizerUnlocked",
 )
-_UNLOCK_COUNTS = ("mNumTotalInventorySlots", "mNumTotalArmEquipmentSlots")
+_UNLOCK_COUNTS: Final = ("mNumTotalInventorySlots", "mNumTotalArmEquipmentSlots")
 
 #: Somersloop runtime property names are UNVERIFIED -- in neither the save nor Docs.json.
 _BOOST_PROPERTIES = ("mProductionBoost", "mCurrentProductionBoost", "mPendingProductionBoost")
@@ -64,12 +95,12 @@ class _Object(NamedTuple):
 
     cls: str
     instance: str
-    header: object
-    obj: object
-    properties: dict
+    header: ActorHeader | ComponentHeader
+    obj: ParsedObject
+    properties: dict[str, SaveValue]
 
 
-def _empty_projection(path: str) -> dict:
+def _empty_projection(path: str) -> Projection:
     """The projection's keys in output order; ``docs/save-projection.md`` describes each."""
     return {
         "schema_version": SCHEMA_VERSION,
@@ -101,12 +132,14 @@ def _empty_projection(path: str) -> dict:
         # Interned, because repeated instanceNames would be megabytes.
         "graph": {"actors": [], "roles": [], "material": [], "power": []},
         "warnings": [],
+        # Counted in ``finish``; the key is here so that it keeps its place, last.
+        "n_objects": 0,
     }
 
 
-def _class_names(refs) -> list[str]:
+def _class_names(refs: SaveValue) -> list[str]:
     """Sorted class names of a reference array; absent means empty."""
-    return sorted(filter(None, (ref_class(ref) for ref in refs or [])))
+    return sorted(filter(None, (ref_class(ref) for ref in as_sequence(refs or []))))
 
 
 def _owner_of(instance: str) -> str:
@@ -114,54 +147,63 @@ def _owner_of(instance: str) -> str:
     return str(instance).rpartition(".")[0]
 
 
-def _contents(stacks) -> tuple[dict, int]:
+def _contents(stacks: SaveValue) -> Contents:
     """An inventory component as ``(totals, slotCount)``."""
-    return inventories.inventory_totals(stacks), len(stacks or [])
+    return inventories.inventory_totals(stacks), len(as_sequence(stacks or []))
 
 
 @dataclass
 class _ProjectionWalk:
     """The accumulators of one pass over a save, and the handler for each kind of object."""
 
-    out: dict
+    out: Projection
     #: Every guard's count of what it skipped, drained into ``warnings`` at the end.
     drops: Drops = field(default_factory=Drops)
     #: instanceName -> class for every actor filed nowhere; the census decides which matter.
-    unfiled: dict[str, str] = field(default_factory=dict)
-    building_counts: dict[str, int] = field(default_factory=dict)
+    unfiled: dict[str, str] = field(default_factory=dict[str, str])
+    building_counts: dict[str, int] = field(default_factory=dict[str, int])
     object_count: int = 0
-    #: (position, actor) per conveyor chain; its trailing bytes decode lazily in ``routes``.
-    chain_actors: list[tuple] = field(default_factory=list)
-    #: (class, instance, position, mSplineData) per pipe, and (id, fluid, members) per network:
-    #: a pipe's fluid comes off a network that may be written after it.
-    pipe_actors: list[tuple] = field(default_factory=list)
-    pipe_networks: list[tuple] = field(default_factory=list)
-    #: (class, instance, pos, yaw, mFluidBox) per container or buffer, and owner -> (totals,
-    #: slotCount) per ``StorageInventory``, a component written after its owner.
-    storage_actors: list[tuple] = field(default_factory=list)
-    storage_inventories: dict[str, tuple] = field(default_factory=dict)
+    #: Per conveyor chain; its trailing bytes decode lazily in ``routes``.
+    chain_actors: list[ChainActor] = field(default_factory=list[ChainActor])
+    #: Per pipe, and per network: a pipe's fluid comes off a network written after it.
+    pipe_actors: list[PipeActor] = field(default_factory=list[PipeActor])
+    pipe_networks: list[HeldNetwork] = field(default_factory=list[HeldNetwork])
+    #: Per container or buffer, and owner -> contents per ``StorageInventory``, a component
+    #: written after its owner.
+    storage_actors: list[StorageActor] = field(default_factory=list[StorageActor])
+    storage_inventories: dict[str, Contents] = field(default_factory=dict[str, Contents])
     #: The same for crates and every component named ``Inventory``.
-    crate_actors: list[tuple] = field(default_factory=list)
-    inventory_components: dict[str, tuple] = field(default_factory=dict)
-    #: (class, instance, pos, yaw) per pole, and wire short name -> its two drawn ends.
-    pole_actors: list[tuple] = field(default_factory=list)
-    wire_geometry: dict[str, tuple] = field(default_factory=dict)
+    crate_actors: list[CrateActor] = field(default_factory=list[CrateActor])
+    inventory_components: dict[str, Contents] = field(default_factory=dict[str, Contents])
+    #: Per pole, and wire short name -> its two drawn ends.
+    pole_actors: list[PoleActor] = field(default_factory=list[PoleActor])
+    wire_geometry: dict[str, WireSpan] = field(default_factory=dict[str, WireSpan])
     #: Every ``Build_`` actor's short name -> (x, y, z), to pair wire ends with actors.
-    actor_positions: dict[str, tuple] = field(default_factory=dict)
+    actor_positions: dict[str, tuple[float, ...]] = field(
+        default_factory=dict[str, tuple[float, ...]]
+    )
     actors: Interner = field(default_factory=Interner)
     roles: Interner = field(default_factory=Interner)
-    uptime: dict[str, dict] = field(default_factory=dict)
-    buffers: dict[str, dict] = field(default_factory=dict)
+    uptime: dict[str, Uptime] = field(default_factory=dict[str, Uptime])
+    buffers: dict[str, Buffers] = field(default_factory=dict[str, Buffers])
     #: owner -> {itemClass: count} slotted into its InventoryPotential.
-    potential_slots: dict[str, dict] = field(default_factory=dict)
-    record_by_instance: dict[str, dict] = field(default_factory=dict)
-    material_edges: list[list[int]] = field(default_factory=list)
-    wire_ends: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+    potential_slots: dict[str, dict[str, float]] = field(
+        default_factory=dict[str, dict[str, float]]
+    )
+    record_by_instance: dict[str, BuildableRecord] = field(
+        default_factory=dict[str, BuildableRecord]
+    )
+    material_edges: list[MaterialEdge] = field(default_factory=list[MaterialEdge])
+    wire_ends: dict[str, list[tuple[str, str]]] = field(
+        default_factory=dict[str, list[tuple[str, str]]]
+    )
 
-    def visit(self, type_path: str, header, obj) -> None:
+    def visit(
+        self, type_path: str, header: ActorHeader | ComponentHeader, obj: ParsedObject
+    ) -> None:
         self.object_count += 1
         properties = properties_of(obj)
-        instance = getattr(header, "instanceName", None) or getattr(obj, "instanceName", "")
+        instance: str = getattr(header, "instanceName", None) or getattr(obj, "instanceName", "")
         seen = _Object(class_from_type_path(type_path), instance, header, obj, properties)
 
         # Components have no typePath, so these run before the empty-class guard.
@@ -192,7 +234,7 @@ class _ProjectionWalk:
 
     # ---- components ----------------------------------------------------
 
-    def _on_inventory_component(self, instance: str, stacks) -> None:
+    def _on_inventory_component(self, instance: str, stacks: SaveValue) -> None:
         bucket = inventories.inventory_bucket(instance)
         inventories.accumulate_inventory(stacks, self.out["inventories"][bucket])
         role = instance.rsplit(".", 1)[-1]
@@ -200,7 +242,7 @@ class _ProjectionWalk:
             # Per ITEM: "is the output backed up" needs the item's stack size.
             self.buffers.setdefault(_owner_of(instance), {})[_BUFFER_SIDES[role]] = {
                 "items": inventories.inventory_totals(stacks),
-                "slots": len(stacks or []),
+                "slots": len(as_sequence(stacks or [])),
             }
         elif role == "StorageInventory":
             # Splitters own one too; `storage` looks up only container owners.
@@ -216,7 +258,7 @@ class _ProjectionWalk:
             if totals:
                 self.potential_slots[_owner_of(instance)] = totals
 
-    def _on_productivity(self, instance: str, properties: dict) -> None:
+    def _on_productivity(self, instance: str, properties: dict[str, SaveValue]) -> None:
         # A fixed 300 s window. ProduceDuration is ABSENT when zero, so missing is a real 0.
         window = properties.get("mLastProductivityMeasurementDuration") or 0.0
         produce = properties.get("mLastProductivityMeasurementProduceDuration", 0.0) or 0.0
@@ -225,14 +267,14 @@ class _ProjectionWalk:
             properties.get("mCurrentProductivityMeasurementProduceDuration", 0.0) or 0.0
         )
         self.uptime[instance] = {
-            "window_s": round(float(window), 2),
-            "produce_s": round(float(produce), 2),
-            "cur_window_s": round(float(current_window), 2),
-            "cur_produce_s": round(float(current_produce), 2),
+            "window_s": round(to_float(window), 2),
+            "produce_s": round(to_float(produce), 2),
+            "cur_window_s": round(to_float(current_window), 2),
+            "cur_produce_s": round(to_float(current_produce), 2),
             "producing": truthy(properties.get("mIsProducing", 0)),
         }
 
-    def _on_connections(self, instance: str, properties: dict) -> None:
+    def _on_connections(self, instance: str, properties: dict[str, SaveValue]) -> None:
         # A connection component is "<...>.Build_X_C_123.Output1": the owner is the
         # second-to-last segment and the connector role, which orients the edge, the last.
         target_path = ref_path(properties.get("mConnectedComponent"))
@@ -245,14 +287,14 @@ class _ProjectionWalk:
                     self.roles.intern(target_path.rsplit(".", 1)[-1]),
                 ]
             )
-        for wire in properties.get("mWires") or []:
+        for wire in as_sequence(properties.get("mWires") or []):
             wire_path = ref_path(wire)
             if wire_path and "." in instance:
                 self.wire_ends.setdefault(wire_path, []).append(
                     (instance.rsplit(".", 2)[-2], instance.rsplit(".", 1)[-1])
                 )
 
-    def _on_wire_geometry(self, instance: str, raw) -> None:
+    def _on_wire_geometry(self, instance: str, raw: SaveValue) -> None:
         # Keyed on the property, so a modded power line is read too. Not a drop when it will
         # not read: the wire keeps its edge and a null row, and older saves lack the property.
         span = power.wire_span(raw)
@@ -261,12 +303,12 @@ class _ProjectionWalk:
 
     # ---- singletons ------------------------------------------------------
 
-    def _on_recipe_manager(self, seen: _Object) -> None:
+    def on_recipe_manager(self, seen: _Object) -> None:
         self.out["progression"]["available_recipes"] = _class_names(
             seen.properties.get("mAvailableRecipes")
         )
 
-    def _on_schematic_manager(self, seen: _Object) -> None:
+    def on_schematic_manager(self, seen: _Object) -> None:
         properties = seen.properties
         self.out["progression"]["purchased_schematics"] = _class_names(
             properties.get("mPurchasedSchematics")
@@ -275,7 +317,7 @@ class _ProjectionWalk:
             properties.get("mLastActiveSchematic")
         )
 
-    def _on_game_phase_manager(self, seen: _Object) -> None:
+    def on_game_phase_manager(self, seen: _Object) -> None:
         properties = seen.properties
         progress = self.out["progression"]
         progress["game_phase"] = ref_class(properties.get("mCurrentGamePhase")) or str(
@@ -292,33 +334,33 @@ class _ProjectionWalk:
             properties.get("mTargetGamePhasePaidOffCosts")
         )
 
-    def _on_research_manager(self, seen: _Object) -> None:
+    def on_research_manager(self, seen: _Object) -> None:
         properties = seen.properties
         research = self.out["research"]
         research["unclaimed_hard_drives"] = progression.hard_drives(
             properties.get("mUnclaimedHardDriveData")
         )
-        research["last_used_hard_drive_id"] = properties.get("mLastUsedHardDriveID")
+        research["last_used_hard_drive_id"] = optional_int(properties.get("mLastUsedHardDriveID"))
         research["unlocked_trees"] = _class_names(properties.get("mUnlockedResearchTrees"))
         research["ongoing"] = progression.ongoing(properties.get("mSavedOngoingResearch"))
 
-    def _on_unlock_subsystem(self, seen: _Object) -> None:
+    def on_unlock_subsystem(self, seen: _Object) -> None:
         flags = self.out["unlock_flags"]
         for name in _UNLOCK_FLAGS:
             if name in seen.properties:
                 flags[name] = truthy(seen.properties[name])
         for name in _UNLOCK_COUNTS:
             if name in seen.properties:
-                flags[name] = seen.properties[name]
+                flags[name] = to_int(seen.properties[name])
 
-    def _on_central_storage(self, seen: _Object) -> None:
+    def on_central_storage(self, seen: _Object) -> None:
         self.out["depot"] = progression.stored_items(seen.properties.get("mStoredItems"))
 
-    def _on_lightweight_subsystem(self, seen: _Object) -> None:
+    def on_lightweight_subsystem(self, seen: _Object) -> None:
         self.out["lightweight_counts"] = structures.lightweight(seen.obj)
         self.out["structures"] = structures.structures(seen.obj, self.drops)
 
-    def _on_pipe_network(self, seen: _Object) -> None:
+    def on_pipe_network(self, seen: _Object) -> None:
         properties = seen.properties
         fluid = ref_class(properties.get("mFluidDescriptor"))
         if fluid:
@@ -329,11 +371,14 @@ class _ProjectionWalk:
             (
                 properties.get("mPipeNetworkID"),
                 fluid,
-                [ref_path(m) for m in properties.get("mFluidIntegrantScriptInterfaces") or []],
+                [
+                    ref_path(m)
+                    for m in as_sequence(properties.get("mFluidIntegrantScriptInterfaces") or [])
+                ],
             )
         )
 
-    def _on_player(self, seen: _Object) -> None:
+    def on_player(self, seen: _Object) -> None:
         self.out["players"].append(
             {
                 "instance": seen.instance,
@@ -349,7 +394,7 @@ class _ProjectionWalk:
         self.building_counts[seen.cls] = self.building_counts.get(seen.cls, 0) + 1
         left = seen.properties.get("mResourcesLeft")
         if left is not None and left != -1:
-            self.out["node_state"][seen.instance] = {"resources_left": left}
+            self.out["node_state"][seen.instance] = {"resources_left": to_int(left)}
 
     def _on_crate(self, seen: _Object) -> None:
         # Not a ``Build_`` actor, so it owes ``building_counts`` nothing.
@@ -401,9 +446,9 @@ class _ProjectionWalk:
         self.record_by_instance[str(instance)] = record
         self._file_record(seen, record, held)
 
-    def _buildable_record(self, seen: _Object) -> dict:
+    def _buildable_record(self, seen: _Object) -> BuildableRecord:
         properties = seen.properties
-        record = {
+        record: BuildableRecord = {
             "cls": seen.cls,
             "instance": seen.instance,
             "pos": position_of(seen.header),
@@ -412,14 +457,14 @@ class _ProjectionWalk:
             "yaw": yaw_of(getattr(seen.header, "rotation", None)),
         }
         if "mCurrentPotential" in properties:
-            record["clock"] = round(float(properties["mCurrentPotential"]), 6)
+            record["clock"] = round(to_float(properties["mCurrentPotential"]), 6)
         if "mPendingPotential" in properties:
-            record["pending_clock"] = round(float(properties["mPendingPotential"]), 6)
+            record["pending_clock"] = round(to_float(properties["mPendingPotential"]), 6)
         if "mIsProductionPaused" in properties:
             record["paused"] = truthy(properties["mIsProductionPaused"])
         for name in _BOOST_PROPERTIES:
             if name in properties:
-                record["production_boost"] = properties[name]
+                record["production_boost"] = to_float(properties[name])
                 record["production_boost_field"] = name
         # Uptime is the actor's own property; buffers are components and come later.
         live = self.uptime.get(str(seen.instance))
@@ -427,17 +472,22 @@ class _ProjectionWalk:
             record["uptime"] = live
         return record
 
-    def _file_record(self, seen: _Object, record: dict, held: bool) -> None:
+    def _file_record(self, seen: _Object, record: BuildableRecord, held: bool) -> None:
+        """File the record under its kind, which adds that kind's own field in place: the
+        record is the same object ``record_by_instance`` holds for ``finish``."""
         cls, properties = seen.cls, seen.properties
         if any(hint in cls for hint in MANUFACTURER_HINTS):
-            record["recipe"] = ref_class(properties.get("mCurrentRecipe"))
-            self.out["machines"].append(record)
+            machine = cast("MachineRecord", record)
+            machine["recipe"] = ref_class(properties.get("mCurrentRecipe"))
+            self.out["machines"].append(machine)
         elif any(hint in cls for hint in EXTRACTOR_HINTS):
-            record["node"] = ref_path(properties.get("mExtractableResource"))
-            self.out["extractors"].append(record)
+            extractor = cast("ExtractorRecord", record)
+            extractor["node"] = ref_path(properties.get("mExtractableResource"))
+            self.out["extractors"].append(extractor)
         elif any(hint in cls for hint in GENERATOR_HINTS):
-            record["fuel"] = ref_class(properties.get("mCurrentFuelClass"))
-            self.out["generators"].append(record)
+            generator = cast("GeneratorRecord", record)
+            generator["fuel"] = ref_class(properties.get("mCurrentFuelClass"))
+            self.out["generators"].append(generator)
         elif any(hint in cls for hint in ATTACHMENT_HINTS):
             self.out["attachments"].append(record)
         elif not held:
@@ -456,7 +506,7 @@ class _ProjectionWalk:
             if record is not None:
                 record["potential_slots"] = slotted
 
-    def finish(self, save) -> None:
+    def finish(self, save: ParsedSave) -> None:
         out = self.out
         self._attach_component_records()
         # Freezes ``actors``: every table after this joins against the snapshot below.
@@ -494,24 +544,25 @@ class _ProjectionWalk:
 
 
 _CLASS_HANDLERS: dict[str, Callable[[_ProjectionWalk, _Object], None]] = {
-    "FGRecipeManager": _ProjectionWalk._on_recipe_manager,
-    "BP_SchematicManager_C": _ProjectionWalk._on_schematic_manager,
-    "BP_GamePhaseManager_C": _ProjectionWalk._on_game_phase_manager,
-    "BP_ResearchManager_C": _ProjectionWalk._on_research_manager,
-    "BP_UnlockSubsystem_C": _ProjectionWalk._on_unlock_subsystem,
-    "FGCentralStorageSubsystem": _ProjectionWalk._on_central_storage,
+    "FGRecipeManager": _ProjectionWalk.on_recipe_manager,
+    "BP_SchematicManager_C": _ProjectionWalk.on_schematic_manager,
+    "BP_GamePhaseManager_C": _ProjectionWalk.on_game_phase_manager,
+    "BP_ResearchManager_C": _ProjectionWalk.on_research_manager,
+    "BP_UnlockSubsystem_C": _ProjectionWalk.on_unlock_subsystem,
+    "FGCentralStorageSubsystem": _ProjectionWalk.on_central_storage,
     # Holds Build_* classes that appear in no actor header.
-    "FGLightweightBuildableSubsystem": _ProjectionWalk._on_lightweight_subsystem,
-    "FGPipeNetwork": _ProjectionWalk._on_pipe_network,
-    "Char_Player_C": _ProjectionWalk._on_player,
+    "FGLightweightBuildableSubsystem": _ProjectionWalk.on_lightweight_subsystem,
+    "FGPipeNetwork": _ProjectionWalk.on_pipe_network,
+    "Char_Player_C": _ProjectionWalk.on_player,
 }
 
 
-def extract_projection(path: str) -> dict:
+def extract_projection(path: str) -> Projection:
     """The JSON projection of the save at ``path``."""
     save = read_full_save(path)
     # stdout is the projection; ``projection._run_sidecar`` folds stderr into ``warnings``.
-    for offset, what in getattr(save, "warnings", None) or []:
+    notes: list[tuple[int, str]] = getattr(save, "warnings", None) or []
+    for offset, what in notes:
         print(f"pioneersav: at body offset {offset}: {what}", file=sys.stderr)
     walk = _ProjectionWalk(out=_empty_projection(path))
     for type_path, header, obj in iter_objects(save):

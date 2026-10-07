@@ -95,7 +95,8 @@ function subjectName(tab: Tab, subject: string): string {
   if (tab === "world") return worldTitle(subject);
   if (tab === "planner") {
     const key = dashParts("planner/" + subject).rest[0] || "";
-    return key ? planTitle(key) || (bench.key === key && bench.plan ? bench.plan.name : "") : "";
+    if (!key) return "";
+    return planTitle(key) || (bench.key === key && bench.plan ? bench.plan.name : "");
   }
   if (tab !== "power" || !subject) return "";
   const circuits = vitals().circuits;

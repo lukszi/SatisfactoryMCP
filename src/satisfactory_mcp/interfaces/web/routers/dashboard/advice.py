@@ -8,18 +8,24 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, NotRequired, TypedDict
+from typing import Annotated, Literal, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
+from .....core.jsontypes import is_object_dict
 from .....core.schema import NewerSchema
 from .....domain import advice
 from .....domain.advice import store as hidden_store
+from .....domain.advice.advisory import Advisory
+from .....domain.advice.views import HiddenEntry
 from .....domain.session import journal
 from .....domain.world import pin
+from .....domain.world.state import WorldState
 from ...serial import (
+    RevBody,
     busy_response,
     error_response,
     newer_schema_response,
@@ -88,10 +94,6 @@ class AdviceHideBody(TypedDict):
     rev: NotRequired[int | None]
 
 
-class AdviceRestoreBody(TypedDict):
-    rev: int
-
-
 class AdviceRestored(TypedDict):
     ok: bool
     id: str
@@ -106,8 +108,17 @@ class AdviceStaleResponse(TypedDict):
     row: AdviceRow | None
 
 
-def _advice_row(adv, state: str, back: bool, rev: int, entry: dict | None) -> AdviceRow:
-    by = (entry or {}).get("by") or {}
+def _actor_kind(by: object) -> str:
+    """The ``kind`` of the actor a hidden entry names, "" where the file says none."""
+    if not is_object_dict(by):
+        return ""
+    return str(by.get("kind") or "")
+
+
+def _advice_row(
+    adv: Advisory, state: str, back: bool, rev: int, entry: HiddenEntry | None
+) -> AdviceRow:
+    by: object = (entry.get("by") if entry is not None else None) or {}
     return {
         "id": adv.id,
         "key": adv.key,
@@ -130,8 +141,10 @@ def _advice_row(adv, state: str, back: bool, rev: int, entry: dict | None) -> Ad
         "state": state,
         "back": back,
         "rev": rev,
-        "until_play_s": (entry or {}).get("until_play_s") if state == "snoozed" else None,
-        "by": str(by.get("kind") or "") if isinstance(by, dict) else "",
+        "until_play_s": (
+            entry.get("until_play_s") if entry is not None and state == "snoozed" else None
+        ),
+        "by": _actor_kind(by),
     }
 
 
@@ -152,14 +165,15 @@ def _row_for_key(cur: advice.Current, key: str) -> AdviceRow | None:
 STORE_NAME = "the hidden advisories"
 
 
-def _refused(st, exc: Exception) -> JSONResponse:
+def _refused(st: WorldState, exc: Exception) -> JSONResponse:
     if isinstance(exc, NewerSchema):
         return newer_schema_response(exc, STORE_NAME)
     if isinstance(exc, LockTimeout):
         return busy_response("advisories", exc)
     if isinstance(exc, hidden_store.AdviceStale):
         row = _row_for_key(advice.current(st), exc.key)
-        return JSONResponse({"error": str(exc), "stale": True, "row": row}, status_code=409)
+        body: AdviceStaleResponse = {"error": str(exc), "stale": True, "row": row}
+        return JSONResponse(body, status_code=409)
     if isinstance(exc, hidden_store.AdviceMissing):
         return error_response(str(exc), 404)
     return error_response(str(exc), 400)
@@ -168,7 +182,7 @@ def _refused(st, exc: Exception) -> JSONResponse:
 _ERRORS = (hidden_store.AdviceError, LockTimeout, NewerSchema)
 
 
-def _quoted_subject(adv) -> str:
+def _quoted_subject(adv: Advisory) -> str:
     return f"“{adv.subject}”" if adv.subject_kind in ("factory", "plan") else adv.subject
 
 
@@ -183,7 +197,7 @@ def advice_list(
     world: str | None = None,
     biomass: Literal["include", "exclude"] | None = None,
     spoilers: int = 0,
-) -> Any:
+) -> AdviceResponse | JSONResponse:
     """Every advisory firing on this save, active and hidden. ``biomass`` overrides the
     shared setting for this read; ``spoilers=1`` counts pickups not found yet."""
     st = require_world(request, save, world)
@@ -213,7 +227,7 @@ def hide_advice(
     save: str | None = None,
     world: str | None = None,
     spoilers: int = 0,
-) -> Any:
+) -> AdviceRow | JSONResponse | None:
     """Dismiss an advisory until it gets worse, or snooze it for hours of play time."""
     st = require_world(request, save, world)
     try:
@@ -236,7 +250,7 @@ def hide_advice(
         return _refused(st, exc)
     what = "dismissed" if mode == "dismiss" else "snoozed"
     text = f"{what} {adv.id} {adv.kind.replace('_', ' ')} {_quoted_subject(adv)}"
-    if mode == "snooze":
+    if mode == "snooze" and hours is not None:
         text += f" for {_play_time_text(float(hours))} of play"
     args = {"id": adv.id, "key": adv.key, "mode": mode}
     journal.append(st.world_id, "advice.hide", actor=page_actor(), args=args, text=text)
@@ -251,10 +265,10 @@ def hide_advice(
 def restore_advice(
     request: Request,
     adv_id: str,
-    body: Annotated[AdviceRestoreBody, Body()],
+    body: Annotated[RevBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> AdviceRestored | JSONResponse:
     """Show a hidden advisory again; a ``rev`` that is not its current one is a 409."""
     st = require_world(request, save, world)
     try:

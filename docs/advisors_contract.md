@@ -124,7 +124,7 @@ write holds `filelock.held` and uses `atomic.write_text`; readers take no lock.
 |---|---|---|---|---|
 | `advice_list` | GET `/api/advice` | `biomass?: include\|exclude` (default: the shared setting), `spoilers?: 0\|1` | `AdviceResponse {save_token, play_s, version, active, hidden}` | 404 save unreadable; 503 `{error, newer_schema: true}` |
 | `hide_advice` | POST `/api/advice/hidden` | `AdviceHideBody {key, mode: dismiss\|snooze, hours?, rev?}`, `?spoilers=` | `AdviceRow` as it now stands | 400 bad hours; 404 key not firing; 409 `AdviceStaleResponse {error, stale, row}`; 422 bad mode; 503 lock or schema |
-| `restore_advice` | DELETE `/api/advice/hidden/{adv_id}` | `AdviceRestoreBody {rev}` | `AdviceRestored {ok, id}` | 404 not firing or not hidden; 409; 503 |
+| `restore_advice` | DELETE `/api/advice/hidden/{adv_id}` | `RevBody {rev}` | `AdviceRestored {ok, id}` | 404 not firing or not hidden; 409; 503 |
 
 - `active` is every row not hidden, ranked; the page applies the caps. `AdviceRow.tone` is
   `blocked`, `mid` or `muted`; `state` is `active`, `dismissed` or `snoozed`; `rev` is the
@@ -203,9 +203,18 @@ Median of 5, main repo `.venv`, the worktree's `src`.
 | `GET /api/advice`, cached | 6–8 ms | – |
 | Chat dismissal → gone from an open page | 0.67 s | ≤ 1 s |
 
-Rows are cached per (projection, game, labels version, plan heads, settings, spoilers) in a
+Rows are cached per (save token, label digest, plan heads, settings, spoilers) in a
 singleflight of eight; the head-lift model per projection. A route and a tool asking at once
 compute once.
+
+- The key holds a digest of the labels, not their `version`. The version counts one file's
+  writes: a world with no labels file and a file written without a version both read 0, and a
+  file deleted or restored by hand repeats a number with other names behind it. Keyed on the
+  version, the rows went on naming factories from the old labels until the next save.
+- The token names a save, not a projection object: a save read again, or a copy a test builds,
+  shares it. So an entry answers only the projection and game data it was computed from, and
+  is replaced for any other.
+- K8's per-plan facts carry the same digest.
 
 ## 10. Verified
 

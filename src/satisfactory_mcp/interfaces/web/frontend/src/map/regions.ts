@@ -14,7 +14,7 @@ import { state } from "../app/state";
 
 import type { RegionsResponse } from "../api/shapes";
 
-var REGION_FILL = 1; // opaque cells, or the shared borders become a grid: see REGION_BLEND.
+const REGION_FILL = 1; // opaque cells, or the shared borders become a grid: see REGION_BLEND.
 
 /* How much of the base map shows through the region fill when BOTH are drawn.
  *
@@ -29,7 +29,7 @@ var REGION_FILL = 1; // opaque cells, or the shared borders become a grid: see R
  * heavier fill turns the dunes to mud, and the near-black canopy of the Northern Forest, where
  * a lighter one leaves the region tint invisible. Region NAMES are unaffected: they are
  * tooltips, and tooltips live in Leaflet's tooltipPane. */
-var REGION_BLEND = 0.45;
+const REGION_BLEND = 0.45;
 
 /* Applied on every layer change, because every path into "both are drawn" is one: a mode
  * switch, a mode's tiles failing back to plain, and the region box being ticked by hand.
@@ -38,7 +38,7 @@ var REGION_BLEND = 0.45;
  * Guarded against its own no-ops rather than debounced. Drawing a world adds thousands of
  * layers to the map, each of which fires this, and the guard turns all but the two that
  * change anything into two property reads. */
-var appliedBlend = "";
+let appliedBlend = "";
 
 export function updateRegionBlend() {
   const pane = map.getPane("regions");
@@ -50,13 +50,13 @@ export function updateRegionBlend() {
 }
 
 /** Whether the player has ticked or unticked the region box; after that, modes leave it be. */
-var playerChoseRegions = false;
+let playerChoseRegions = false;
 
 /** True while this module ticks the box itself: Leaflet reports that exactly like a click. */
-var applyingModeDefault = false;
+let applyingModeDefault = false;
 
 /** False until a mode first applies its default: `drawRegions` ticks the box as it creates it. */
-var modeDefaultsArmed = false;
+let modeDefaultsArmed = false;
 
 /* Whether the region tint is on: the mode's business until the player says otherwise.
  *
@@ -92,7 +92,7 @@ export function noteRegionChoice(event: L.LeafletEvent): void {
  * BLENDED values, painted at full opacity; see REGION_BLEND. Why each is where it is:
  * docs/frontend_palette.md.
  */
-var REGION_COLOUR: Record<string, string> = declareColours("regions", {
+const REGION_COLOUR: Record<string, string> = declareColours("regions", {
   A: "#3e3e3c", // Abyss Cliffs
   B: "#284e5a", // Blue Crater
   C: "#2e5348", // Crater Lakes
@@ -123,7 +123,7 @@ var REGION_COLOUR: Record<string, string> = declareColours("regions", {
  * neighbour's ground, and a name printed there contradicts the same page's right-click
  * inspector.
  */
-var tips: L.Tooltip[] = [];
+let tips: L.Tooltip[] = [];
 
 export function regionLabels(): HTMLElement[] {
   const labels: HTMLElement[] = [];

@@ -415,6 +415,11 @@ function appendFiltersSentence(line: HTMLElement, before: string, after: string)
   line.appendChild(span);
 }
 
+function detectLabel(): string {
+  if (detect.busy) return "detecting…";
+  return detect.data ? "detect again" : "detect";
+}
+
 export function renderDetect(body: HTMLElement): void {
   const data = detect.data;
   const card = make("section", "dash-card");
@@ -422,7 +427,7 @@ export function renderDetect(body: HTMLElement): void {
   bar.appendChild(make("h2", "dash-h", WORDS.unnamedClusters));
   bar.appendChild(
     button(
-      detect.busy ? "detecting…" : data ? "detect again" : "detect",
+      detectLabel(),
       function () {
         runDetect();
       },

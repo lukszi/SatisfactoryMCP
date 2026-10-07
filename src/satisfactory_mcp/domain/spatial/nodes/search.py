@@ -7,10 +7,13 @@ here too: ``NodeSearchResult.notes`` for the tool and ``page_notes`` for the pag
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 from ....core.gamedata.constants import WATER_PUMP
+from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
 from ....core.text import num
 from ...world.sites import near_selector
@@ -20,7 +23,12 @@ from ..places import resolve_place
 from . import extraction as node_extraction
 from . import skew as node_skew
 from . import table as node_table
-from .selectors import Selection, select_nodes
+from .extraction import AnnotatedNode, measure_from
+from .selectors import ResourceResolver, Selection, select_nodes
+from .views import NodeChoices, SiteRow, WaterSummary
+
+if TYPE_CHECKING:
+    from ...world.state import WorldState
 
 __all__ = [
     "STATUSES",
@@ -43,7 +51,7 @@ STATUSES = ("all", "free", "tapped")
 WATER = "Desc_Water_C"
 
 
-def status_of(row: dict) -> str:
+def status_of(row: Mapping[str, object]) -> str:
     if row["tapped"]:
         return "tapped"
     return "free" if row["reachable"] else "locked"
@@ -51,7 +59,7 @@ def status_of(row: dict) -> str:
 
 @dataclass
 class FieldView:
-    members: list[dict]
+    members: list[AnnotatedNode]
     centroid: tuple[float, float, float]
     diameter_m: float
     region: str | None
@@ -85,13 +93,13 @@ class FieldView:
 
 
 def group_into_fields(
-    rows: list[dict],
+    rows: list[AnnotatedNode],
     origin: tuple[float, float] | None = None,
     link_m: float = geo.FIELD_LINK_M,
 ) -> list[FieldView]:
     """Annotated node rows clustered into fields, each placed and totalled."""
     region_map = regions_mod.load_regions()
-    out = []
+    out: list[FieldView] = []
     for cluster in geo.cluster(rows, link_m=link_m):
         cx, cy, _cz = cluster.centroid
         out.append(
@@ -124,18 +132,18 @@ class NodeSearchResult:
     status: str = "all"
     error: str | None = None
     selection: Selection = field(default_factory=Selection)
-    selectors: list[str] = field(default_factory=list)
+    selectors: list[str] = field(default_factory=list[str])
     origin: tuple[float, float] | None = None
     where: str = ""
-    rows: list[dict] = field(default_factory=list)
-    resources: list[str] = field(default_factory=list)
+    rows: list[AnnotatedNode] = field(default_factory=list[AnnotatedNode])
+    resources: list[str] = field(default_factory=list[str])
     unit: str = ""
     total: float = 0.0
     free: float = 0.0
     locked_rate: float = 0.0
     elevation: tuple[float, float] | None = None
-    water: dict | None = None
-    notes: list[str] = field(default_factory=list)
+    water: WaterSummary | None = None
+    notes: list[str] = field(default_factory=list[str])
     skew: node_skew.TableSkew | None = None
     save_read: bool = False
     #: Extractors the save does not join to a node, which makes ``free`` read high.
@@ -166,14 +174,14 @@ class NodeSearchResult:
         return node_skew.drifted_leaf_names(self.skew, [r["instance"] for r in self.rows])
 
 
-def _rate_unit(game, resources: list[str]) -> str:
+def _rate_unit(game: GameData, resources: list[str]) -> str:
     if len(resources) > 1:
         return "mixed"
     item = game.items.get(resources[0]) if resources else None
     return "m3/min" if item is not None and item.is_fluid else "/min"
 
 
-def _water_summary(st, game) -> dict:
+def _water_summary(st: WorldState, game: GameData) -> WaterSummary:
     water_volumes = st.water_volumes()
     pump = game.buildings.get(WATER_PUMP)
     return {
@@ -198,7 +206,7 @@ WATER_BODY_NOTE = (
 )
 
 
-def page_notes(found: NodeSearchResult, st) -> list[str]:
+def page_notes(found: NodeSearchResult, st: WorldState | None) -> list[str]:
     """The tool's notes in the page's words; table age travels as ``stale`` instead."""
     notes = list(found.selection.errors)
     if WATER in found.resources:
@@ -222,7 +230,9 @@ def page_notes(found: NodeSearchResult, st) -> list[str]:
     return notes
 
 
-def _selector_spec(sources, resource, purity, kind) -> list[str]:
+def _selector_spec(
+    sources: list[str] | None, resource: str | None, purity: str | None, kind: str | None
+) -> list[str]:
     """The source selectors plus the plain filter parameters spelled as their terms."""
     spec = list(sources or [])
     for name, value in (("resource", resource), ("purity", purity), ("kind", kind)):
@@ -231,7 +241,7 @@ def _selector_spec(sources, resource, purity, kind) -> list[str]:
     return spec
 
 
-def _filter_by_status(rows: list[dict], status: str) -> list[dict]:
+def _filter_by_status(rows: list[AnnotatedNode], status: str) -> list[AnnotatedNode]:
     if status == "free":
         return [r for r in rows if not r["tapped"]]
     if status == "tapped":
@@ -239,22 +249,34 @@ def _filter_by_status(rows: list[dict], status: str) -> list[dict]:
     return rows
 
 
-def _stamp_distances(rows: list[dict], origin: tuple[float, float] | None) -> None:
-    if origin is not None:
-        for row in rows:
-            row["distance_m"] = geo.distance_m((row["x"], row["y"]), origin)
+def _by_rate(row: AnnotatedNode) -> tuple[float, str]:
+    return -row["rate"], row["instance"]
 
 
-def _sort_for_view(rows: list[dict], view: str) -> None:
+def _ordered_for_view(
+    rows: list[AnnotatedNode], origin: tuple[float, float] | None, view: str
+) -> list[AnnotatedNode]:
+    """The rows in the view's order; measured from ``origin`` when there is one."""
+    if origin is None:
+        if view == "nodes":
+            rows.sort(key=_by_rate)
+        return rows
+    measured = measure_from(rows, origin)
     if view == "nearest":
-        rows.sort(key=lambda r: r["distance_m"])
+        measured.sort(key=lambda r: r["distance_m"])
     elif view == "nodes":
-        rows.sort(key=lambda r: (-r["rate"], r["instance"]))
+        measured.sort(key=_by_rate)
+    return [*measured]
 
 
-def _tool_notes(found: NodeSearchResult, st, game, table) -> list[str]:
+def _tool_notes(
+    found: NodeSearchResult,
+    st: WorldState | None,
+    game: GameData,
+    table: node_table.NodeTable,
+) -> list[str]:
     """The tool's notes; sets ``found.water`` and ``found.skew`` on the way."""
-    notes = []
+    notes: list[str] = []
     if WATER in found.resources:
         notes.append(WATER_NOTE)
         if st is not None:
@@ -279,7 +301,9 @@ def _tool_notes(found: NodeSearchResult, st, game, table) -> list[str]:
     return notes
 
 
-def _fluid_elevation_span(rows: list[dict], resources: list[str], game):
+def _fluid_elevation_span(
+    rows: list[AnnotatedNode], resources: list[str], game: GameData
+) -> tuple[float, float] | None:
     """``(lowest, highest)`` node height in metres when a fluid is among the resources."""
     heights_m = [r["z"] / 100.0 for r in rows if "z" in r]
     if heights_m and any(game.items[r].is_fluid for r in resources if r in game.items):
@@ -288,8 +312,8 @@ def _fluid_elevation_span(rows: list[dict], resources: list[str], game):
 
 
 def find_nodes(
-    st,
-    game,
+    st: WorldState | None,
+    game: GameData,
     *,
     sources: list[str] | None = None,
     resource: str | None = None,
@@ -298,7 +322,7 @@ def find_nodes(
     status: str = "all",
     view: str = "fields",
     near: str | None = None,
-    resolve_resource=None,
+    resolve_resource: ResourceResolver | None = None,
 ) -> NodeSearchResult:
     """The node search behind ``search_resource_nodes`` and ``/api/world/nodes``.
 
@@ -327,9 +351,7 @@ def find_nodes(
     if st is not None:
         found.unmatched_extractors = len(node_extraction.unresolved_extractors(st.projection))
     rows = node_extraction.annotate_for_save(found.selection.nodes, game, st)
-    rows = _filter_by_status(rows, status)
-    _stamp_distances(rows, found.origin)
-    _sort_for_view(rows, view)
+    rows = _ordered_for_view(_filter_by_status(rows, status), found.origin, view)
     found.rows = rows
     if not rows:
         return found
@@ -344,7 +366,7 @@ def find_nodes(
     return found
 
 
-def filter_choices(game) -> dict:
+def filter_choices(game: GameData) -> NodeChoices:
     """Every resource the node table holds, with its node count, and the purities and kinds."""
     table = node_table.load_nodes()
     counts: dict[str, int] = {}
@@ -365,11 +387,11 @@ def filter_choices(game) -> dict:
 class SiteRank:
     resource: str
     selection: Selection
-    rows: list[dict] = field(default_factory=list)
-    scored: list[ranking.SiteScore] = field(default_factory=list)
+    rows: list[AnnotatedNode] = field(default_factory=list[AnnotatedNode])
+    scored: list[ranking.SiteScore] = field(default_factory=list[ranking.SiteScore])
     terrain: bool = False
     consumer_z: float | None = None
-    notes: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list[str])
 
     @property
     def unselected(self) -> bool:
@@ -377,7 +399,11 @@ class SiteRank:
 
 
 def rank_build_sites(
-    st, game, resource: str, sources: list[str] | None = None, resolve_resource=None
+    st: WorldState,
+    game: GameData,
+    resource: str,
+    sources: list[str] | None = None,
+    resolve_resource: ResourceResolver | None = None,
 ) -> SiteRank:
     """Candidate fields of one resource, best first; ``resource`` is a resolved class id."""
     table = node_table.load_nodes()
@@ -402,7 +428,7 @@ def rank_build_sites(
     return out
 
 
-def site_row(score: ranking.SiteScore, region_map=None) -> dict:
+def site_row(score: ranking.SiteScore, region_map: regions_mod.RegionMap | None = None) -> SiteRow:
     """One ranked site as the tool and the page both list it."""
     region_map = region_map or regions_mod.load_regions()
     cx, cy, _cz = score.centroid

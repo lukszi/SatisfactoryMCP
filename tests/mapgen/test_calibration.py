@@ -10,34 +10,28 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.gamedata.paint import LAYERS
-from mapgen.gamedata.rockfamily import FAMILIES
-from mapgen.gamedata.waterbodies import CLASSES
-from mapgen.palette.calibration import scoped_planes
-from mapgen.palette.painted import (
-    ROCK_GRID_M,
-    GroundBake,
-    PaintedGround,
+from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, srgb_to_linear, tone
+from mapgen.gamedata.ground.landscape_albedo import LAYERS
+from mapgen.gamedata.rocks.families import FAMILIES
+from mapgen.gamedata.water.bodies import WATER_CLASSES
+from mapgen.palette.painted.albedo import GroundBake, ground_albedo
+from mapgen.palette.painted.band import painted_colours
+from mapgen.palette.painted.calibration import (
     area_ids,
     display_to_ground,
     display_to_linear,
-    ground_albedo,
-    layer_transfer,
-    linear_from_oklab,
-    linear_to_srgb,
-    oklab,
-    painted_colours,
-    rock_surface,
+    scoped_planes,
     split_weight,
-    srgb_to_linear,
-    tone,
     transfer_op,
 )
+from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
+from mapgen.palette.painted.surfaces import rock_surface
+from mapgen.palette.painted.transfer import by_colour, layer_op, layer_transfer
 from mapgen.palette.styles import PAINTED_PALETTE
 from satisfactory_mcp.core.gameassets import versions
 
 LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)
-SWAMP = CLASSES.index("swamp")
+SWAMP = WATER_CLASSES.index("swamp")
 
 
 def _hex(colour: str) -> np.ndarray:
@@ -103,13 +97,103 @@ def test_the_transfer_puts_a_pure_layer_on_its_target_and_mixes_by_weight():
         "Sand": np.array([[255, 128, 0, 0]], np.uint8),
         "Grass": np.array([[0, 127, 255, 0]], np.uint8),
     }
-    ops = {"Sand": transfer_op(oklab(source), target_lab)}
+    ops = {"Sand": layer_op(oklab(source), target_lab)}
     out = layer_transfer(albedo, weights, ops)
     np.testing.assert_allclose(oklab(out[0, 0]), target_lab, atol=2e-3)
     halfway = (oklab(source) + target_lab) / 2
     assert np.abs(oklab(out[0, 1]) - halfway).max() < 0.01
     np.testing.assert_allclose(out[0, 2], source, atol=1e-5)
     np.testing.assert_allclose(out[0, 3], source, atol=1e-5)
+
+
+def test_a_layer_step_that_widens_chroma_never_multiplies_a_neighbours_colour():
+    grey, red = np.array([0.1, 0.098, 0.096], np.float32), np.array([0.22, 0.07, 0.07], np.float32)
+    target = oklab(grey)
+    target[1:] = [0.016, 0.012]
+    op = layer_op(oklab(grey), target)
+    np.testing.assert_array_equal(op.matrix, np.eye(2, dtype=np.float32), "grey: a shift alone")
+    albedo = np.stack([grey, red, red])[None]
+    weights = {"Cliff": np.array([[255, 180, 0]], np.uint8),
+               "RedJungle": np.array([[0, 75, 255]], np.uint8)}  # fmt: skip
+    out = oklab(layer_transfer(albedo, weights, {"Cliff": op}))
+    np.testing.assert_allclose(out[0, 0], target, atol=2e-3)
+    chroma = np.hypot(out[0, :, 1], out[0, :, 2])
+    assert chroma[1] <= chroma[2] + np.hypot(*op.shift) + 1e-4, "no fire at the layer's edge"
+    widened = transfer_op(oklab(grey), target)[1]
+    assert np.hypot(*widened[0]) > 3.0, "the old step would have tripled the red"
+    chromatic = oklab(np.array([0.3, 0.2, 0.1], np.float32))
+    wide = chromatic.copy()
+    wide[1:] *= 1.8
+    turned = layer_op(chromatic, wide)
+    assert np.hypot(*turned.matrix[0]) == pytest.approx(1.0, abs=1e-5)
+    assert np.hypot(*turned.shift) > 0
+    narrow = chromatic.copy()
+    narrow[1:] *= 0.5
+    assert not layer_op(chromatic, narrow).shift.any(), "a narrowing step is transfer_op's own"
+
+
+def _lch(lightness: float, chroma: float, hue_deg: float) -> np.ndarray:
+    turn = np.radians(hue_deg)
+    return np.array([lightness, chroma * np.cos(turn), chroma * np.sin(turn)], np.float32)
+
+
+def test_a_texel_of_two_layers_lands_between_their_targets_not_in_a_halo():
+    # The Northern Forest's sand (x0.41, +30 deg) and forest floor (x1.81, +19 deg) steps.
+    sand, sand_t = _lch(0.70, 0.0555, 57), _lch(0.67, 0.0227, 87)
+    moss, moss_t = _lch(0.45, 0.0358, 134), _lch(0.54, 0.0647, 153)
+    ops = {"Sand": layer_op(sand, sand_t), "Forest": layer_op(moss, moss_t)}
+    texel = np.clip(linear_from_oklab(sand), 0.0, 1.0)[None, None]
+    c = oklab(texel[0, 0])
+    half = {"Sand": np.array([[128]], np.uint8), "Forest": np.array([[127]], np.uint8)}
+    out = oklab(layer_transfer(texel, half, ops))[0, 0]
+    np.testing.assert_allclose(out, sand_t, atol=2e-3, err_msg="sand's colour: sand, no halo")
+    w = np.array([128, 127], np.float32) / 255
+    plain = c + sum(
+        s * np.array([transfer_op(src, tgt)[0], *((transfer_op(src, tgt)[1] - np.eye(2)) @ c[1:])])
+        for s, (src, tgt) in zip(w, ((sand, sand_t), (moss, moss_t)), strict=True)
+    )
+    assert plain[0] > sand_t[0] + 0.05 and np.hypot(*plain[1:]) > 0.05, "the old bright halo"
+    mid = (sand + moss) / 2
+    between = oklab(layer_transfer(np.clip(linear_from_oklab(mid), 0, 1)[None, None], half, ops))
+    targets = [op.matrix @ op.source[1:] + op.shift for op in ops.values()]
+    blended = sum(s * op.matrix for s, op in zip(w, ops.values(), strict=True))
+    base = sum(s * op.source[1:] for s, op in zip(w, ops.values(), strict=True))
+    want = sum(s * t for s, t in zip(w, targets, strict=True)) + blended @ (mid[1:] - base)
+    np.testing.assert_allclose(between[0, 0, 1:], want, atol=2e-3, err_msg="a mix: between")
+    np.testing.assert_allclose(oklab(layer_transfer(texel, {"Sand": half["Sand"]}, ops))[0, 0],
+                               sand_t, atol=2e-3, err_msg="one layer: its own map")  # fmt: skip
+    other = layer_op(sand, _lch(0.6, 0.04, 70))
+    scopes = {"Sand@1": ops["Sand"], "Sand": other}
+    split = {"Sand@1": half["Sand"], "Sand": half["Forest"]}
+    got = oklab(layer_transfer(texel, split, scopes))[0, 0]
+    want = c[1:].copy()
+    for share, op in zip(w, scopes.values(), strict=True):
+        want += share * ((op.matrix - np.eye(2)) @ c[1:] + op.shift)
+    np.testing.assert_allclose(got[1:], want, atol=2e-4, err_msg="one layer's two scopes blend")
+
+
+def test_the_colour_split_decides_at_even_weights_and_fades_out_with_a_layer():
+    sand, moss = _lch(0.70, 0.0555, 57), _lch(0.45, 0.0358, 134)
+    ops = {
+        "Sand": layer_op(sand, sand),
+        "Forest": layer_op(moss, moss),
+        "Grass": layer_op(moss, moss),
+    }
+    lab = np.tile(sand, (1, 4, 1))
+    share = {"Sand": np.array([[0.5, 0.9, 0.99, 0.4]], np.float32),
+             "Forest": np.array([[0.5, 0.1, 0.01, 0.4]], np.float32),
+             "Grass": np.array([[0.0, 0.0, 0.0, 0.2]], np.float32)}  # fmt: skip
+    got = by_colour(lab, share, ops)
+    total = got["Sand"] + got["Forest"] + got["Grass"]
+    np.testing.assert_allclose(total, [[1.0, 1.0, 1.0, 1.0]], atol=1e-6)
+    assert got["Sand"][0, 0] == pytest.approx(1.0, abs=1e-4), "even weights: the colour decides"
+    held = 0.99
+    fading = 1.0 - (held + 4 * held * (1 - held) * (1.0 - held))
+    assert got["Forest"][0, 2] == pytest.approx(fading, abs=1e-5), "a fading layer: its weight"
+    assert got["Grass"][0, 3] == pytest.approx(0.2), "a third layer keeps its share"
+    alone = {"Sand": np.array([[1.0, 0.7]], np.float32), "Forest": np.zeros((1, 2), np.float32)}
+    kept = by_colour(lab[:, :2], alone, ops)
+    np.testing.assert_array_equal(kept["Sand"], alone["Sand"])
 
 
 def test_a_transfer_op_turns_hue_and_scales_chroma():
@@ -291,6 +375,7 @@ def test_a_desert_family_rock_takes_the_desert_target_in_any_area():
     ground.rock_family = np.array([[desert, 0], [desert, 0]], np.uint8)
     ground.family_tint = np.ones((len(FAMILIES), 3), np.float32)
     ground.family_top = np.zeros((len(FAMILIES), 3), np.float32)
+    ground.family_top_rgb = {}
     ground.family_has_top = np.zeros(len(FAMILIES), np.float32)
     sample = lambda plane: plane[2:4, 6:8]
     area_rock = np.stack([sample(plane) for plane in ground.rock], -1)
@@ -310,7 +395,9 @@ def _water_ground(opaque):
         canopy_rgb=np.zeros(3, np.float32),
         rock=[np.full((1, 2), 0.2, np.float32)] * 3,
         rock_family=None,
+        family_rock={},
         crown=None,
+        crown_ops=[],
         titan=None,
         carpet=None,
         mesh_rgb={},
@@ -327,6 +414,7 @@ def _water_ground(opaque):
         },
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
         opaque_water=opaque,
+        water_class=None,
     )
 
 
@@ -339,6 +427,8 @@ def test_swamp_water_is_its_opaque_colour_and_other_water_is_untouched():
         "above_m": np.full(shape, 99.0, np.float32),
         "below_m": np.full(shape, 99.0, np.float32),
         "ocean": np.zeros(shape, np.float32),
+        "river": np.zeros(shape, np.float32),
+        "river_below_m": np.full(shape, np.inf, np.float32),
     }
     scene = {
         "z_m": np.full(shape, 50.0, np.float32),

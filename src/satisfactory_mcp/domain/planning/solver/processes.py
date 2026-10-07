@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import math
+
 from ....core.gamedata.constants import WATER
 from .model import Process, Scenario
 from .overclock import best_clock
+
+#: The clock mode that runs a machine as built, and the one ``best_clock`` may lower.
+FULL_CLOCK = 1.0
 
 
 def recipe_processes(sc: Scenario) -> list[Process]:
@@ -24,9 +29,10 @@ def recipe_processes(sc: Scenario) -> list[Process]:
             # Every count, not just full or empty: spreading sloops dominates (§8.2f).
             sloop_options = list(range(building.sloop_slots + 1))
         for mode in sc.clocks:
+            at_full = math.isclose(mode, FULL_CLOCK)
             for sloops in sloop_options:
                 clock = mode
-                if mode == 1.0 and not sloops:
+                if at_full and not sloops:
                     clock = best_clock(sc, building, game.recipe_power_mw(recipe, 1.0, 0))
                 boost = building.boost_for(sloops)
                 rates: dict[str, float] = {}
@@ -36,7 +42,7 @@ def recipe_processes(sc: Scenario) -> list[Process]:
                     rates[flow.item] = rates.get(flow.item, 0.0) + flow.per_min * clock * boost
                 mw = -game.recipe_power_mw(recipe, clock, sloops)
                 suffix = ""
-                if mode != 1.0:
+                if not at_full:
                     suffix += f"@{mode:g}"
                 if sloops:
                     suffix += f"+{sloops}sl"

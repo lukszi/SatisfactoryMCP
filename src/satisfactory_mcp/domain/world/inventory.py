@@ -13,6 +13,7 @@ from math import ceil
 from ...core.gamedata.constants import STACK_SIZE
 from ...core.gamedata.model import GameData
 from ...core.saveio.records import instance_leaf
+from ...core.saveio.schema import CrateRecord, InventoriesBlock, Projection, StorageRecord
 
 __all__ = ["BUCKETS", "CRATE_KIND_TEXT", "SPENDABLE", "Holding", "Inventory"]
 
@@ -69,11 +70,11 @@ class Holding:
 class Inventory:
     """Item stacks, joined to the item dump so fluids can be scaled to m3."""
 
-    projection: dict
+    projection: Projection
     game: GameData
 
     @cached_property
-    def sources(self) -> dict[str, dict[str, float]]:
+    def sources(self) -> InventoriesBlock:
         """The raw per-place stacks the sidecar wrote: player, storage, machine -- and,
         from schema 19, crate: the death and dismantle crates lying on the ground, which
         counted into ``machine`` until then. A pre-19 projection simply has no ``crate``
@@ -82,7 +83,9 @@ class Inventory:
 
     def bucket(self, name: str) -> dict[str, float]:
         """One of ``BUCKETS`` as raw stacks; ``depot`` is a top-level projection key."""
-        source = self.projection.get("depot") if name == "depot" else self.sources.get(name)
+        source: dict[str, float] | None = (
+            self.projection.get("depot") if name == "depot" else self.sources.get(name)
+        )
         return source or {}
 
     def stock(self) -> dict[str, float]:
@@ -110,8 +113,8 @@ class Inventory:
         the piles would not sum to ``holdings``."""
         out: dict[str, float] = {}
         for row in self.projection.get("storage") or ():
-            if isinstance(row, dict) and row.get("fluid") and row.get("stored_m3"):
-                out[row["fluid"]] = out.get(row["fluid"], 0.0) + float(row["stored_m3"])
+            if (fluid := row.get("fluid")) and (stored := row.get("stored_m3")):
+                out[fluid] = out.get(fluid, 0.0) + float(stored)
         return out
 
     def machine_buffers(self) -> dict[str, float]:
@@ -158,14 +161,8 @@ class Inventory:
         and how full it is. ``item`` keeps only the places holding that item, a fluid buffer
         answering to the fluid its plumbing claims.
         """
-        rows = [
-            self._holding(row, "storage")
-            for row in self.projection.get("storage") or ()
-            if isinstance(row, dict)
-        ] + [
-            self._holding(row, "crate")
-            for row in self.projection.get("crates") or ()
-            if isinstance(row, dict)
+        rows = [self._holding(row, "storage") for row in self.projection.get("storage") or ()] + [
+            self._holding(row, "crate") for row in self.projection.get("crates") or ()
         ]
         if item is not None:
             rows = [h for h in rows if h.amount_of(item)]
@@ -176,17 +173,13 @@ class Inventory:
         it = self.game.items.get(item)
         return amount / 1000.0 if it is not None and it.is_fluid else amount
 
-    def _holding(self, row: dict, source: str) -> Holding:
+    def _holding(self, row: StorageRecord | CrateRecord, source: str) -> Holding:
         """One projection row as a `Holding`, with whatever fullness can be measured."""
         cls = str(row.get("cls") or "")
         pos = row.get("pos")
-        common = {
-            "source": source,
-            "cls": cls,
-            "instance": instance_leaf(row.get("instance", "")),
-            "pos": (float(pos[0]), float(pos[1]), float(pos[2])) if pos and len(pos) >= 3 else None,
-            "slots": row.get("slots"),
-        }
+        instance = instance_leaf(row.get("instance", ""))
+        where = (float(pos[0]), float(pos[1]), float(pos[2])) if pos and len(pos) >= 3 else None
+        slots: int | None = row.get("slots")
         building = self.game.buildings.get(cls)
         if "stored_m3" in row:
             # Already m3 in the projection, unlike every other stack here, and a bare float
@@ -195,31 +188,34 @@ class Inventory:
             capacity = getattr(building, "storage_capacity_m3", 0.0) if building else 0.0
             fluid = row.get("fluid")
             return Holding(
+                source=source,
                 kind="fluid",
+                cls=cls,
+                instance=instance,
+                pos=where,
                 items=((fluid, stored),) if fluid else (),
                 total=stored,
+                slots=slots,
                 capacity_m3=capacity or None,
                 fill=stored / capacity if capacity else None,
                 fluid=fluid,
-                **common,
             )
 
-        items = tuple(
-            (str(e[0]), float(e[1]))
-            for e in row.get("items") or ()
-            if isinstance(e, (list, tuple)) and len(e) >= 2
-        )
+        items = tuple((str(e[0]), float(e[1])) for e in row.get("items") or () if len(e) >= 2)
         items = tuple(sorted(items, key=lambda e: -e[1]))
         used = self._slots_used(items)
-        slots = common["slots"]
         return Holding(
+            source=source,
             kind="solid",
+            cls=cls,
+            instance=instance,
+            pos=where,
             items=items,
             total=sum(n for _, n in items),
+            slots=slots,
             slots_used=used,
             fill=used / slots if used is not None and slots else None,
             crate_kind=str(row.get("kind") or "none") if source == "crate" else None,
-            **common,
         )
 
     def _slots_used(self, items: tuple[tuple[str, float], ...]) -> int | None:

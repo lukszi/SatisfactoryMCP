@@ -16,8 +16,10 @@ hard box falls back to the union of its soft ones rather than reporting no size 
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 
+from ..jsontypes import JsonObject, JsonValue
 from .uestruct import as_float, as_list, parse_struct
 
 __all__ = ["FOUNDATION_M", "Footprint", "Packed", "extract_footprint"]
@@ -119,7 +121,7 @@ class Packed:
         return f"{self.columns}x{self.rows} = {self.width_m:,.0f}x{self.depth_m:,.0f}m"
 
 
-def _rotate(q: dict, v: tuple[float, float, float]) -> tuple[float, float, float]:
+def _rotate(q: JsonObject, v: tuple[float, float, float]) -> tuple[float, float, float]:
     """Rotate a vector by a quaternion (x, y, z, w).
 
     v' = v + 2 * cross(q_xyz, cross(q_xyz, v) + w*v)
@@ -140,13 +142,13 @@ def _rotate(q: dict, v: tuple[float, float, float]) -> tuple[float, float, float
     )
 
 
-def _corners(box_min: dict, box_max: dict) -> list[tuple[float, float, float]]:
+def _corners(box_min: JsonObject, box_max: JsonObject) -> list[tuple[float, float, float]]:
     x0, y0, z0 = (as_float(box_min.get(k)) for k in ("X", "Y", "Z"))
     x1, y1, z1 = (as_float(box_max.get(k)) for k in ("X", "Y", "Z"))
     return [(x, y, z) for x in (x0, x1) for y in (y0, y1) for z in (z0, z1)]
 
 
-def extract_footprint(raw: object) -> Footprint | None:
+def extract_footprint(raw: JsonValue) -> Footprint | None:
     """Union AABB of a building's own clearance boxes, in metres. Hard boxes when the
     buildable has any, otherwise its soft ones -- see the module docstring."""
     entries = [
@@ -162,7 +164,7 @@ def extract_footprint(raw: object) -> Footprint | None:
     return hard if hard is not None else _union(entries)
 
 
-def _union(entries) -> Footprint | None:
+def _union(entries: Iterable[JsonObject]) -> Footprint | None:
     """Axis-aligned union of transformed clearance boxes, or None for no boxes."""
     low_cm = [float("inf")] * 3
     high_cm = [float("-inf")] * 3

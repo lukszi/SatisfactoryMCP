@@ -12,26 +12,25 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from mapgen.colour import oklab
+from mapgen.commands.renders import LAYERS
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.paint import (
+from mapgen.gamedata.ground.landscape_albedo import layer_albedo
+from mapgen.gamedata.ground.paint_store import META_NAME
+from mapgen.gamedata.ground.weightmaps import (
     component_origin,
-    layer_albedo,
-    place,
+    place_component_layers,
     weightmap_channels,
 )
+from mapgen.gamedata.water.bodies import WATER_BODIES_NAME
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
 from mapgen.palette import styles
-from mapgen.palette.painted import layer_table, mix_layers, oklab, seam_blend
-from mapgen.palette.shore import (
-    OCEAN_LEVEL_M,
-    OCEAN_REACH_M,
-    add_foam,
-    blend_water,
-    composite_meshes,
-    ocean_reach,
-    shore_terms,
-    water_composite,
-    wet_band,
+from mapgen.palette.painted.albedo import (
+    layer_table,
+    load_paint_meta,
+    load_water_bodies,
+    mix_layers,
+    seam_blend,
 )
 from mapgen.palette.styles import (
     LAYER_STYLES,
@@ -44,9 +43,22 @@ from mapgen.palette.styles import (
     WATER_SHALLOW,
     load_palette,
 )
-from mapgen.palette.water import WATER_DEPTH_FULL_M, water_over
-from mapgen.pipeline import LAYERS
-from mapgen.terrain.rasters import (
+from mapgen.palette.water.shore import (
+    OCEAN_LEVEL_M,
+    OCEAN_REACH_M,
+    add_foam,
+    blend_water,
+    composite_meshes,
+    inland_cover,
+    ocean_reach,
+    optical_depth,
+    shore_terms,
+    water_composite,
+    wet_band,
+)
+from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_over
+from mapgen.render.ground.lift import composite_top
+from mapgen.terrain.render_meshes import (
     MESH_CORAL,
     MESH_ROCK,
     MESH_SHELL,
@@ -55,7 +67,6 @@ from mapgen.terrain.rasters import (
     mesh_class,
 )
 from mapgen.terrain.sample import sample_plain, taps_footprint, taps_linear
-from mapgen.tiles.compose import composite_top
 from mapgen.tiles.recipes import RECIPE
 from satisfactory_mcp.core.gameassets import provenance, versions
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -93,12 +104,12 @@ def test_a_steep_shore_is_still_one_pixel_and_a_flat_one_does_not_blow_up():
 
 def _field(water_dm, grades, height_dm):
     return SimpleNamespace(
-        _water_raster=lambda: water_dm,
-        _water_quality_raster=lambda: grades,
+        water_raster=lambda: water_dm,
+        water_quality_raster=lambda: grades,
         height=water_dm.shape[0],
         width=water_dm.shape[1],
         spacing_cm=100.0,
-        _height_dm=height_dm,
+        height_dm=height_dm,
     )
 
 
@@ -222,8 +233,8 @@ def test_components_land_on_the_heightfield_grid_and_clip_at_its_edge():
     assert (row, col) == (3750, 3247), "section origin 508 is world (0, 0)"
     planes: dict = {}
     weight = np.full((128, 128), 255, np.uint8)
-    place(planes, -10, 90, {"Sand_LayerInfo": weight}, 200)
-    place(planes, 0, 0, {"LandscapeVisibilityLayerInfo": weight}, 200)
+    place_component_layers(planes, -10, 90, {"Sand_LayerInfo": weight}, 200)
+    place_component_layers(planes, 0, 0, {"LandscapeVisibilityLayerInfo": weight}, 200)
     assert set(planes) == {"Sand_LayerInfo"}, "visibility carries no colour"
     sand = planes["Sand_LayerInfo"]
     assert sand[:118, 90:200].all() and not sand[118:].any() and not sand[:, :90].any()
@@ -268,6 +279,18 @@ def test_a_solid_component_edge_is_blended_and_a_smooth_one_is_left_alone():
     smooth = np.tile(np.linspace(0.1, 0.5, 128, dtype=np.float32)[None, :, None], (64, 1, 3))
     same, none = seam_blend(smooth, [(0, 0), (0, 64)], 64, palette)
     assert none == 0 and np.allclose(same, smooth)
+
+
+def test_a_store_whose_files_hold_no_json_object_is_no_store_or_refused(tmp_path):
+    assert load_paint_meta(tmp_path) is None, "no meta.json"
+    (tmp_path / META_NAME).write_text("[1, 2]", encoding="utf-8")
+    assert load_paint_meta(tmp_path) is None, "a meta.json that is no object"
+    (tmp_path / META_NAME).write_text(json.dumps({"files": {WATER_BODIES_NAME: {}}}), "utf-8")
+    meta = load_paint_meta(tmp_path)
+    assert meta is not None
+    (tmp_path / WATER_BODIES_NAME).write_text("[]", encoding="utf-8")
+    with pytest.raises(TypeError, match="holds no JSON object"):
+        load_water_bodies(tmp_path, meta)
 
 
 # ----------------------------------------------------------------------- the style file
@@ -366,14 +389,15 @@ def test_a_trail_narrower_than_the_pixel_is_drawn_at_every_phase_not_as_dots():
 
 
 def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkeypatch):
-    from mapgen.tiles import compose
+    from mapgen.render.draw import painting
+    from tests.support.draw import render_layer
 
     n = 400  # texels over the frame, 18.75 m each
     spacing_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / n
     height = np.full((n, n), 100, np.int16)
     field = SimpleNamespace(
-        _height_dm=height, _prov=np.ones((n, n), np.uint8), _water_raster=lambda: None,
-        _water_quality_raster=lambda: None, x0_cm=BOUNDS_M["x_min_m"] * 100 + spacing_cm / 2,
+        height_dm=height, provenance_plane=np.ones((n, n), np.uint8), water_raster=lambda: None,
+        water_quality_raster=lambda: None, x0_cm=BOUNDS_M["x_min_m"] * 100 + spacing_cm / 2,
         y0_cm=BOUNDS_M["y_min_m"] * 100 + spacing_cm / 2, spacing_cm=spacing_cm, width=n, height=n,
     )  # fmt: skip
     stripes = np.tile((np.arange(n) % 4 == 0).astype(np.float32), (n, 1))
@@ -383,14 +407,37 @@ def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkey
         seen.setdefault(len(scene["z_m"][0]), []).append(sample(stripes))
         return np.zeros(scene["z_m"].shape + (3,), np.float32)
 
-    monkeypatch.setattr(compose, "painted_colours", grab)
+    monkeypatch.setattr(painting, "painted_colours", grab)
     ground = SimpleNamespace(rock=[np.zeros((n // 4, n // 4), np.float32)], crowns=None,
                              water_optics=lambda taps, river=None: None)  # fmt: skip
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
-    biome = {"width": 1, "area": np.zeros((1, 1), np.uint8)}
     for size in (n // 4, n):
-        compose.render_layer("painted", field, None, biome, borrow, size, False,
+        render_layer("painted", field, None, 1, borrow, size, False,
                              height_dm=height.astype(np.float32), painted=ground)  # fmt: skip
     coarse, fine = (np.concatenate(seen[size]) for size in (n // 4, n))
     assert np.allclose(coarse[2:-2, 2:-2], 0.25, atol=1e-5), "four texels a pixel: their mean"
     assert set(np.unique(fine[2:-2, 2:-2]).round(4)) <= {0.0, 1.0}, "a texel a pixel: as before"
+
+
+def test_a_pool_a_few_decimetres_deep_is_drawn_as_water():
+    """Inland field water covers its pixel once ``edge_m`` deep and reads at least
+    ``min_depth_m`` deep, where the depth feather leaves a 0.3 m pool mostly its bed. The
+    sea's reach and the rivers keep their own rules."""
+    inland = PAINTED_PALETTE["shore"]["inland"]
+    zero = np.zeros((1, 5), np.float32)
+    depth = np.array([[0.0, 0.1, 0.3, 0.6, 3.0]], np.float32)
+    water = blend_water(None, np.clip(depth / 0.9, 0.0, 1.0), depth / WATER_DEPTH_FULL_M,
+                        None, WATER_DEPTH_FULL_M)  # fmt: skip
+    water["wet"] = zero + 1.0
+    covered = inland_cover(water, inland)
+    cover = covered["cover"][0]
+    assert cover[0] == 0.0 and cover[2] == 1.0
+    assert cover[1] == pytest.approx(0.1 / inland["edge_m"], rel=1e-5)
+    seen = optical_depth(covered, None, inland)[0]
+    assert (seen[:4] == inland["min_depth_m"]).all() and seen[4] == pytest.approx(3.0)
+    sea = {**water, "ocean": zero + 1.0}
+    assert np.array_equal(inland_cover(sea, inland)["cover"], sea["cover"])
+    assert np.array_equal(optical_depth(sea, None, inland), sea["depth_m"])
+    river = {**water, "river": zero + 1.0}
+    assert np.array_equal(inland_cover(river, inland)["cover"], river["cover"])
+    assert inland_cover(water, None) is water

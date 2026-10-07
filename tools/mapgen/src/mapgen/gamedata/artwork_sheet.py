@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-import json
+from typing import TYPE_CHECKING, TypedDict, cast
+
+import numpy as np
 
 from mapgen.common import ROOT
+from mapgen.gamedata.ground.biome import CalibrationImaging
+from mapgen.gamedata.nodes import NODE_TABLE, load_static_nodes
 from satisfactory_mcp.core.gameassets.container import (
     SHEET_PX,
     SLICES,
@@ -12,13 +16,20 @@ from satisfactory_mcp.core.gameassets.container import (
     UBULK_BYTES,
     read_slice,
 )
+from satisfactory_mcp.core.gameassets.imaging import BlockDecoder, ImageFactory
+from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.textures import decode_bc1_rgba
+from satisfactory_mcp.core.jsontypes import JsonObject
+
+if TYPE_CHECKING:
+    from PIL.Image import Image
 
 __all__ = [
     "CALIBRATION_PX",
     "OCEAN_TOLERANCE",
     "SWEEP_M",
     "SWEEP_STEP_M",
+    "SeamLayout",
     "calibrate",
     "decode_slices",
     "line_bytes",
@@ -28,16 +39,12 @@ __all__ = [
     "stitch_sheet",
 ]
 
+#: The size of the sheet's copy the pin is checked on.
+CALIBRATION_PX = 1024
 #: The sweep resolution is what bounds the claim: a pin that survives +-300 m in 50 m steps
 #: is right to about 100 m, and no better than that.
-CALIBRATION_PX = 1024
-
-
 SWEEP_M = 300
-
-
 SWEEP_STEP_M = 50
-
 
 #: How close a sampled pixel must be to the corner colour to count as open ocean. Land on
 #: this map is beige-to-green, so 12 sits in the wide gap between "the same flat colour"
@@ -45,15 +52,27 @@ SWEEP_STEP_M = 50
 OCEAN_TOLERANCE = 12.0
 
 
-#: Two scanlines 100 rows apart inside one tile: what two pieces of map that do NOT abut
-#: look like, which is the control a seam has to beat.
+#: Two adjacent scanlines inside one tile, what a continuous map costs; and two 100 rows
+#: apart, what two pieces of map that do NOT abut look like: the control a seam has to beat.
 CONTROL_NEAR = (2000, 2001)
-
-
 CONTROL_FAR = (2000, 2100)
 
 
-def line_bytes(tile, box: tuple[int, int, int, int]) -> bytes:
+class SeamLayout(TypedDict):
+    """``seam_residuals``: each seam under both readings of the slice names, the controls, and
+    whether the chosen reading holds."""
+
+    reading: str
+    seams: dict[str, float]
+    seams_under_the_other_reading: dict[str, float]
+    controls_inside_one_tile: dict[str, float]
+    worst_seam: float
+    worst_seam_under_the_other_reading: float
+    layout_holds: bool
+    verdict: str
+
+
+def line_bytes(tile: Image, box: tuple[int, int, int, int]) -> bytes:
     """One row or column of a tile as raw RGB bytes -- three per pixel, in order."""
     return tile.crop(box).convert("RGB").tobytes()
 
@@ -62,7 +81,7 @@ def mean_abs(left: bytes, right: bytes) -> float:
     return round(sum(abs(a - b) for a, b in zip(left, right, strict=True)) / len(left), 4)
 
 
-def _seams(nw, ne, sw, se) -> dict[str, float]:
+def _seams(nw: Image, ne: Image, sw: Image, se: Image) -> dict[str, float]:
     """The four abutting-edge residuals of one 2x2 arrangement of the slices."""
     right_edge = (TILE_PX - 1, 0, TILE_PX, TILE_PX)
     left_edge = (0, 0, 1, TILE_PX)
@@ -76,7 +95,7 @@ def _seams(nw, ne, sw, se) -> dict[str, float]:
     }
 
 
-def seam_residuals(tiles: dict) -> dict:
+def seam_residuals(tiles: dict[str, Image]) -> SeamLayout:
     """Mean per-channel difference across each seam, against the alternative and controls.
 
     This is what proves ``Map_<col>-<row>``. The other reading of the name -- ``<row>-<col>``,
@@ -119,9 +138,11 @@ def seam_residuals(tiles: dict) -> dict:
     }
 
 
-def decode_slices(store, decoder, image_mod) -> dict:
+def decode_slices(
+    store: IoStore, decoder: BlockDecoder, image_mod: ImageFactory[Image]
+) -> dict[str, Image]:
     """Mip 0 of every slice, BC1-decoded, keyed by slice name."""
-    tiles = {}
+    tiles: dict[str, Image] = {}
     for name in SLICES:
         raw = read_slice(store, name)
         tiles[name] = decode_bc1_rgba(decoder, image_mod, raw, TILE_PX)
@@ -132,7 +153,7 @@ def decode_slices(store, decoder, image_mod) -> dict:
     return tiles
 
 
-def stitch_sheet(tiles: dict, image_mod):
+def stitch_sheet(tiles: dict[str, Image], image_mod: ImageFactory[Image]) -> tuple[Image, str]:
     """The slices pasted 2x2 into one sheet, ``tiles`` emptied. Returns (sheet, alpha note)."""
     sheet = image_mod.new("RGBA", (SHEET_PX, SHEET_PX))
     for name in SLICES:
@@ -141,7 +162,7 @@ def stitch_sheet(tiles: dict, image_mod):
     tiles.clear()
 
     # Whether alpha says anything is measured: uniformly opaque alpha is a third of the file.
-    alpha_min, alpha_max = sheet.getextrema()[3]
+    alpha_min, alpha_max = cast("tuple[tuple[int, int], ...]", sheet.getextrema())[3]
     if alpha_min == 255:
         sheet = sheet.convert("RGB")
         alpha_note = "alpha was 255 everywhere and was dropped; the PNG is RGB"
@@ -151,7 +172,7 @@ def stitch_sheet(tiles: dict, image_mod):
     return sheet, alpha_note
 
 
-def calibrate(sheet, image_mod, bounds: dict[str, float]) -> dict:
+def calibrate(sheet: Image, image_mod: CalibrationImaging, bounds: dict[str, float]) -> JsonObject:
     """Project the static node table onto the sheet and sweep the pin for a better one.
 
     Nodes stand on land, so a pin that is right puts as few of them as possible on the flat
@@ -159,29 +180,25 @@ def calibrate(sheet, image_mod, bounds: dict[str, float]) -> dict:
     any pin -- this map's shoreline is drawn rather than sampled -- so the verdict is not
     "zero" but "nothing beyond one sweep step does better".
     """
-    table = ROOT / "data" / "world_resource_nodes.json"
-    if not table.is_file():
-        return {"skipped": f"{table.relative_to(ROOT)} is not present, so the pin is unchecked"}
-    nodes = json.loads(table.read_text(encoding="utf-8"))["nodes"]
-    small = sheet.resize((CALIBRATION_PX, CALIBRATION_PX), image_mod.LANCZOS).convert("RGB")
-    px = small.load()
-    ocean = px[8, 8]  # the extreme corner of the sheet is open sea on every reading
+    if not NODE_TABLE.is_file():
+        return {
+            "skipped": f"{NODE_TABLE.relative_to(ROOT)} is not present, so the pin is unchecked"
+        }
+    nodes = load_static_nodes()
+    lanczos = image_mod.Resampling.LANCZOS
+    small = sheet.resize((CALIBRATION_PX, CALIBRATION_PX), lanczos).convert("RGB")
+    pixels = np.asarray(small, dtype=np.int16)
+    ocean = pixels[8, 8]  # the extreme corner of the sheet is open sea on every reading
 
     def on_ocean(dx_m: float, dy_m: float) -> int:
         x0 = (bounds["x_min_m"] + dx_m) * 100.0
         x1 = (bounds["x_max_m"] + dx_m) * 100.0
         y0 = (bounds["y_min_m"] + dy_m) * 100.0
         y1 = (bounds["y_max_m"] + dy_m) * 100.0
-        count = 0
-        for node in nodes:
-            u = int((node["x"] - x0) / (x1 - x0) * CALIBRATION_PX)
-            v = int((node["y"] - y0) / (y1 - y0) * CALIBRATION_PX)
-            u = min(max(u, 0), CALIBRATION_PX - 1)
-            v = min(max(v, 0), CALIBRATION_PX - 1)
-            here = px[u, v]
-            if sum(abs(a - b) for a, b in zip(here, ocean, strict=True)) / 3.0 < OCEAN_TOLERANCE:
-                count += 1
-        return count
+        u = ((nodes.x_cm - x0) / (x1 - x0) * CALIBRATION_PX).astype(np.int64)
+        v = ((nodes.y_cm - y0) / (y1 - y0) * CALIBRATION_PX).astype(np.int64)
+        here = pixels[np.clip(v, 0, CALIBRATION_PX - 1), np.clip(u, 0, CALIBRATION_PX - 1)]
+        return int((np.abs(here - ocean).sum(axis=1) / 3.0 < OCEAN_TOLERANCE).sum())
 
     steps = range(-SWEEP_M, SWEEP_M + 1, SWEEP_STEP_M)
     at_pin = on_ocean(0, 0)
@@ -194,11 +211,11 @@ def calibrate(sheet, image_mod, bounds: dict[str, float]) -> dict:
     off_by_m = max(abs(best[1]), abs(best[2]))
     return {
         "method": (
-            f"{len(nodes)} static resource nodes from data/world_resource_nodes.json "
+            f"{len(nodes.x_cm)} static resource nodes from data/world_resource_nodes.json "
             f"projected onto a {CALIBRATION_PX}px copy of the sheet and counted against the "
             "flat open-ocean colour. Nodes stand on land, so fewer is better."
         ),
-        "nodes_projected": len(nodes),
+        "nodes_projected": len(nodes.x_cm),
         "nodes_on_open_ocean_at_the_pin": at_pin,
         "sweep": f"+-{SWEEP_M} m in {SWEEP_STEP_M} m steps, both axes",
         "best_shift_m": {"dx": best[1], "dy": best[2]},
@@ -217,16 +234,18 @@ def calibrate(sheet, image_mod, bounds: dict[str, float]) -> dict:
     }
 
 
-def report_calibration(calibration: dict) -> None:
+def report_calibration(calibration: JsonObject) -> None:
     """Print what ``calibrate`` found, and warn when the pin no longer holds."""
     if "skipped" in calibration:
         print(f"  calibration skipped: {calibration['skipped']}")
         return
+    shift = calibration["best_shift_m"]
+    dx, dy = (shift["dx"], shift["dy"]) if isinstance(shift, dict) else (0, 0)
     print(
         f"  calibration: {calibration['nodes_on_open_ocean_at_the_pin']} of "
         f"{calibration['nodes_projected']} nodes stand on open ocean at the pin; best "
         f"shift over {calibration['sweep']} is "
-        f"{calibration['best_shift_m']['dx']:+d}, {calibration['best_shift_m']['dy']:+d} m "
+        f"{dx:+d}, {dy:+d} m "
         f"at {calibration['nodes_on_open_ocean_at_the_best_shift']} -- the pin holds to "
         f"{calibration['accuracy_m']} m"
     )

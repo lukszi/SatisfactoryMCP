@@ -22,7 +22,7 @@ import type { Row } from "../../kit/dom";
 import type { PlanSiting, PlansResponse } from "../../api/shapes";
 
 // Green, which nothing built spends; measured in docs/frontend_palette.md.
-export var PLAN_COLOUR = declareColours("plans", { plans: "#4ec22e" }).plans;
+export const PLAN_COLOUR = declareColours("plans", { plans: "#4ec22e" }).plans;
 
 /* One pad's card. `source` is the row that decides whether the outline is worth trusting to
  * the metre: a footprint the player measured, against the square `plan_layout` budgeted from

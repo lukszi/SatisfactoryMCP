@@ -25,12 +25,13 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from mapgen.cache import (
-    DIRECT_CACHE_SIDECAR,
+    CACHE_SIDECAR_NAME,
     DIRECT_COVERAGE_NAME,
     DIRECT_Z_NAME,
-    cached_direct,
-    direct_cache_stamp,
+    cached_raster,
+    raster_cache_stamp,
 )
+from mapgen.commands.renders import LAYERS
 from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME
 from mapgen.enhance.pixels import (
     COLOUR_FIX_SIGMA,
@@ -55,7 +56,9 @@ from mapgen.enhance.upscaler import (
     ENHANCE_URL,
 )
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_2X_PX, RENDER_PX
-from mapgen.gamedata.mesh import EXCLUDED_OWNERS
+from mapgen.gamedata.meshes import CookedMesh
+from mapgen.gamedata.placements import EXCLUDED_MESHES, EXCLUDED_OWNERS
+from mapgen.gamedata.rocks.cliffs import rasterise_cliffs
 from mapgen.lighting.hillshade import (
     SHADE_FLOOR,
     SHADE_RANGE,
@@ -73,14 +76,14 @@ from mapgen.palette.styles import (
     terrain_colours,
     with_sea,
 )
-from mapgen.palette.water import (
+from mapgen.palette.water.surface import (
     WATER_EDGE_M,
     water_alpha,
     water_depth_fraction,
     water_over,
     water_planes,
 )
-from mapgen.pipeline import LAYERS
+from mapgen.render.ground.lift import DIRECT_LIFT_KNEE_M, blend_regimes, composite_top
 from mapgen.terrain.fill import (
     SOURCE_HOLE,
     SOURCE_NONE,
@@ -92,13 +95,15 @@ from mapgen.terrain.fill import (
 )
 from mapgen.terrain.measure import SEAM_MID, SEAM_SWITCH_CEILING, RegimeCoverage, SeamTrace
 from mapgen.terrain.rasters import (
+    PreparedPlacement,
+    TopItems,
     direct_placements,
-    pixel_coverage,
     rasterise_direct_band,
-    rasterise_top_band,
-    reduce_direct,
 )
-from mapgen.terrain.sample import direct_weight, sample_surface, taps_cubic, taps_linear, taps_pchip
+from mapgen.terrain.rasters_banded import pixel_coverage, reduce_direct
+from mapgen.terrain.render_meshes import InstanceSpans
+from mapgen.terrain.sample import direct_mask, sample_surface, taps_cubic, taps_linear, taps_pchip
+from mapgen.terrain.top_raster import rasterise_top_band
 from mapgen.tiles import artwork_output
 from mapgen.tiles import sidecar as render_sidecar
 from mapgen.tiles.artwork_output import (
@@ -109,7 +114,6 @@ from mapgen.tiles.artwork_output import (
     pinned_enhanced,
     pinned_recipe,
 )
-from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, blend_regimes, composite_top
 from mapgen.tiles.recipes import ENHANCE_RECIPE, ENHANCE_RECIPES, UNNUMBERED_RECIPE
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, pinned_field_build
 from satisfactory_mcp import config
@@ -170,7 +174,7 @@ def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, mon
     assert pyramid_top_z(RENDER_PX, PYRAMID_TILE_2X_PX) == 6
 
     pin = "buildVersion 495413 (engine branch ++FactoryGame+rel-main-1.2.0), the installed build"
-    sidecar = render_sidecar.build_sidecar(
+    sidecar = render_sidecar.build_render_sidecar(
         layer="terrain",
         field_meta={
             "generator": "tools/gen_world_heightmap.py",
@@ -315,13 +319,13 @@ def test_water_whose_depth_was_never_measured_is_still_drawn_as_water():
     # And a field with no quality byte at all falls back to the comparison rather than
     # reading missing as dry -- which is all such a field can say.
     class _Old:
-        _height_dm = numpy.array([[0, 0], [0, 0]], numpy.int16)
-        _prov = numpy.zeros((2, 2), numpy.uint8)
+        height_dm = numpy.array([[0, 0], [0, 0]], numpy.int16)
+        provenance_plane = numpy.zeros((2, 2), numpy.uint8)
 
-        def _water_raster(self):
+        def water_raster(self):
             return numpy.array([[5, hf.NODATA], [5, 5]], numpy.int16)
 
-        def _water_quality_raster(self):
+        def water_quality_raster(self):
             return None
 
     plane, measured, note = water_planes(_Old())
@@ -338,20 +342,24 @@ class _Field:
     """
 
     spacing_cm = 100.0
+    terrain_grid = None
 
     def __init__(self, height_dm, prov, density=None):
-        self._height_dm = numpy.asarray(height_dm, numpy.int16)
-        self._prov = numpy.asarray(prov, numpy.uint8)
+        self.height_dm = numpy.asarray(height_dm, numpy.int16)
+        self.provenance_plane = numpy.asarray(prov, numpy.uint8)
         self._density = None if density is None else numpy.asarray(density, numpy.uint8)
-        self.height, self.width = self._height_dm.shape
+        self.height, self.width = self.height_dm.shape
         self.x0_cm = self.y0_cm = 0.0
 
     def density_raster(self):
         return self._density
 
+    def plane(self, _name):
+        return None
+
 
 def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent():
-    """``direct_weight``: the rule scales with the output texel, and absent is not zero.
+    """``direct_mask``: the rule scales with the output texel, and absent is not zero.
 
     Two claims, and the second one is the one that could ship a wrong picture quietly. The
     rule is "one source vertex under an output texel", so halving the texel quadruples the
@@ -367,8 +375,8 @@ def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent(
     prov = numpy.full((41, 41), hf.PROV_CLIFF_DIRECT, numpy.uint8)
     field = _Field(numpy.zeros((41, 41), numpy.int16), prov, density)
 
-    coarse, coarse_meta = direct_weight(field, 0.4578)  # a z6 texel
-    fine, fine_meta = direct_weight(field, 0.2289)  # a z7 texel
+    coarse, coarse_meta = direct_mask(field, 0.4578)  # a z6 texel
+    fine, fine_meta = direct_mask(field, 0.2289)  # a z7 texel
     assert coarse_meta["density_min_per_field_texel"] == pytest.approx(4.77, abs=0.01)
     assert fine_meta["density_min_per_field_texel"] == pytest.approx(19.09, abs=0.01)
     # Ten vertices is enough for a z6 texel and not for a z7 one, from the same plane.
@@ -379,7 +387,7 @@ def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent(
     assert set(numpy.unique(coarse)) == {0, 255}
     assert coarse[20, 20] == 255 and coarse[20, 27] == 0
 
-    absent, absent_meta = direct_weight(_Field(field._height_dm, prov), 0.2289)
+    absent, absent_meta = direct_mask(_Field(field.height_dm, prov), 0.2289)
     assert absent is None and hf.DENSITY_NAME in absent_meta["absent"]
 
 
@@ -401,13 +409,9 @@ def test_the_rocks_are_composited_onto_the_lattice_and_can_only_raise_it():
     z_cm = numpy.full((size, size), 5000.0, numpy.float32)
     z_cm[:, : size // 2] = 20000.0
     coverage = numpy.ones((size, size), numpy.uint8)
-    taps = (
-        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
-        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
-    )
     missing = numpy.zeros((size, size), bool)
 
-    z_m, still_missing, w, switched = blend_regimes(ground, missing, (z_cm, coverage), taps, 1)
+    z_m, still_missing, w, switched = blend_regimes(ground, missing, (z_cm, coverage), 1)
     assert 0.0 <= w.min() and w.max() <= 1.0, "a coverage outside [0, 1] is not a coverage"
     assert z_m[:, 0] == pytest.approx(200.0, abs=0.2), "the rock stands where it stands"
     assert z_m[:, -1] == pytest.approx(100.0, abs=0.2), "and never digs below the ground"
@@ -429,9 +433,9 @@ def test_the_rocks_are_composited_onto_the_lattice_and_can_only_raise_it():
     # and the pixel stops being no-data; where neither has anything, it stays so.
     blank = numpy.ones((size, size), bool)
     none = numpy.zeros((size, size), numpy.uint8)
-    z_m, still_missing, w, _switch = blend_regimes(ground, blank, (z_cm, coverage), taps, 1)
+    z_m, still_missing, w, _switch = blend_regimes(ground, blank, (z_cm, coverage), 1)
     assert z_m[:, 0] == pytest.approx(200.0) and not still_missing.any()
-    _z, all_missing, _w, _s = blend_regimes(ground, blank, (z_cm, none), taps, 1)
+    _z, all_missing, _w, _s = blend_regimes(ground, blank, (z_cm, none), 1)
     assert all_missing.all()
 
 
@@ -478,13 +482,9 @@ def test_a_rock_pixel_is_its_own_triangle_and_never_leaks_across_the_silhouette(
     coverage = numpy.zeros((size, size), numpy.uint8)
     z_cm[2, 2], z_cm[2, 3] = 5000.0, 4100.0
     coverage[2, 2] = coverage[2, 3] = 1
-    taps = (
-        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
-        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
-    )
     ground = numpy.full((size, size), 10.0, numpy.float32)
     blank = numpy.zeros((size, size), bool)
-    z_m, _missing, w, _s = blend_regimes(ground, blank, (z_cm, coverage), taps, 1)
+    z_m, _missing, w, _s = blend_regimes(ground, blank, (z_cm, coverage), 1)
     assert z_m[2, 2] == pytest.approx(50.0, abs=1e-3) and z_m[2, 3] == pytest.approx(41.0, abs=1e-3)
     assert (z_m[coverage == 0] == 10.0).all(), "no neighbour borrows a rock height"
     assert set(numpy.unique(w)) == {0.0, 1.0}
@@ -571,7 +571,7 @@ def _fill_fixture():
 
 
 def test_the_fill_is_rebuilt_from_the_raster_and_meets_the_landscape_without_a_step():
-    """``map_fill.fill_field`` on a fixture whose truth is known everywhere.
+    """``terrain.fill.fill_field`` on a fixture whose truth is known everywhere.
 
     The rebuilt fill beats the stored nearest texel, the seam column jumps by about what the
     truth does, and the hole is filled close to the hidden surface.
@@ -725,7 +725,7 @@ def test_the_regime_table_counts_by_province_and_reports_the_unbucketed_weight()
 
 
 def test_a_direct_cache_from_another_render_is_rebuilt_rather_than_drawn_from(tmp_path):
-    """``cached_direct``: three keys, and a mismatch on any of them is a different picture.
+    """``cached_raster``: three keys, and a mismatch on any of them is a different picture.
 
     The raster is written once and read by both layers, which is the only reason it is on
     disk at all -- so the question a reader has is whether the bytes under this run's
@@ -733,21 +733,21 @@ def test_a_direct_cache_from_another_render_is_rebuilt_rather_than_drawn_from(tm
     else is last week's rocks, and the answer to that is to rasterise again rather than to
     draw them.
     """
-    stamp = direct_cache_stamp(8, 1, "build 495413")
+    stamp = raster_cache_stamp(8, 1, "build 495413")
     tmp_path.mkdir(parents=True, exist_ok=True)
     numpy.zeros((8, 8), numpy.float32).tofile(tmp_path / DIRECT_Z_NAME)
     numpy.zeros((8, 8), numpy.uint8).tofile(tmp_path / DIRECT_COVERAGE_NAME)
-    (tmp_path / DIRECT_CACHE_SIDECAR).write_text(
+    (tmp_path / CACHE_SIDECAR_NAME).write_text(
         json.dumps({**stamp, "seconds": 1.0}), encoding="utf-8"
     )
-    assert cached_direct(tmp_path, stamp) is not None
+    assert cached_raster(tmp_path, stamp) is not None
     for other in (
-        direct_cache_stamp(16, 1, "build 495413"),
-        direct_cache_stamp(8, 2, "build 495413"),
-        direct_cache_stamp(8, 1, "build 500000"),
+        raster_cache_stamp(16, 1, "build 495413"),
+        raster_cache_stamp(8, 2, "build 495413"),
+        raster_cache_stamp(8, 1, "build 500000"),
     ):
-        assert cached_direct(tmp_path, other) is None
-    assert cached_direct(tmp_path / "nowhere", stamp) is None
+        assert cached_raster(tmp_path, other) is None
+    assert cached_raster(tmp_path / "nowhere", stamp) is None
 
 
 def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(tmp_path):
@@ -793,7 +793,7 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
     }
     prepared, dropped = direct_placements(sweep, geometry)
     assert len(prepared) == 1
-    assert dropped == {"owner": 1, "no_geometry": 1, "arch": 1, "oversize": 1}
+    assert dropped == {"owner": 1, "excluded_mesh": 0, "no_geometry": 1, "arch": 1, "oversize": 1}
 
     # And it rasterises onto the frame's own grid at the frame's own spacing. A 1 m slab
     # placed 10 m east of the frame's western edge covers exactly the z7 texels whose own
@@ -813,16 +813,47 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
     assert z_cm[coverage > 0] == pytest.approx(500.0)
 
 
+def test_the_direct_pass_drops_what_the_field_drops_and_counts_it_the_same():
+    """``direct_placements`` against the field's ``rasterise_cliffs``: the same rows culled,
+    under the same counters, a rock excluded by name included."""
+    verts = numpy.array([[0, 0, 500], [100, 0, 500], [100, 100, 500], [0, 100, 500]], numpy.float32)
+    tris = numpy.array([[0, 1, 2], [0, 2, 3]], numpy.int64)
+    rock = "/World/Environment/Rock/"
+    excluded = rock + next(iter(EXCLUDED_MESHES))
+    geometry = {
+        rock + "Slab": (verts, tris),
+        rock + "Arc_Slab": (verts, tris),
+        excluded: (verts, tris),
+    }
+    x0, y0 = BOUNDS_M["x_min_m"] * 100, BOUNDS_M["y_min_m"] * 100
+    place = lambda mesh, owner, x, s=1.0: (mesh, owner, x0 + x, y0 + 1000, 0, 0, 0, 0, s, s, s)
+    sweep = {
+        "meshes": [rock + "Slab", rock + "Arc_Slab", rock + "Missing", excluded],
+        "owners": ["RockActor_C", next(iter(EXCLUDED_OWNERS))],
+        "placements": numpy.array(
+            [place(0, 0, 1000), place(0, 1, 2000), place(1, 0, 3000), place(2, 0, 4000),
+             place(3, 0, 5000), place(0, 0, 6000, 1e4)], numpy.float64),
+    }  # fmt: skip
+    prepared, dropped = direct_placements(sweep, geometry)
+    frame = {"width": 128, "height": 32, "x0_cm": x0, "y0_cm": y0, "scale_cm": 100.0}
+    bounds = (verts.min(0) - 1, verts.max(0) + 1)
+    cooked = {m: CookedMesh(*g, *bounds) for m, g in geometry.items()}
+    field = rasterise_cliffs(sweep, cooked, frame, False)
+    want = {"owner": 1, "excluded_mesh": 1, "no_geometry": 1, "arch": 1, "oversize": 1}
+    assert dropped == field["dropped"] == want
+    assert [entry.mesh for entry in prepared] == [rock + "Slab"] and field["placements_used"] == 1
+
+
 class _TerrainField(_Field):
     """``_Field`` plus a bare-landscape plane on its own grid, one row and column in."""
 
     def __init__(self, height_dm, prov, raw):
         super().__init__(height_dm, prov)
         self._raw = numpy.asarray(raw, numpy.uint16)
-        self._terrain_grid = {"zero": 32768.0, "units_per_m": 128.0, "offset_m": 1.0}
-        self._terrain_grid.update(row_off=1, col_off=1)
+        self.terrain_grid = {"zero": 32768.0, "units_per_m": 128.0, "offset_m": 1.0}
+        self.terrain_grid.update(row_off=1, col_off=1)
 
-    def _plane(self, name):
+    def plane(self, name):
         return self._raw if name == hf.TERRAIN_NAME else None
 
 
@@ -881,24 +912,23 @@ def test_the_top_overlay_raises_the_ground_smoothly_and_lands_on_pixel_centres()
     up = numpy.array([[0, 1, 2], [0, 2, 3]], numpy.int64)
     matrix = numpy.eye(4, dtype=numpy.float32)
     matrix[3, :3] = (1000.0, 0.0, 0.0)
-    items = {
-        "arches": [
-            (
-                "Arc",
-                0,
-                numpy.eye(3, dtype=numpy.float32),
-                numpy.ones(3, numpy.float32),
-                numpy.array([3000.0, 0.0, 200.0], numpy.float32),
-                0.0,
-                0.0,
-                100.0,
-            )
-        ],
-        "boulders": {"Boulder": (matrix[None], numpy.array([-200.0]), numpy.array([200.0]))},
-        "shapes": {"Arc": (flat, up[:, ::-1].copy()), "Boulder": (flat, up)},
-    }
+    arch = PreparedPlacement(
+        "Arc",
+        0,
+        numpy.eye(3, dtype=numpy.float32),
+        numpy.ones(3, numpy.float32),
+        numpy.array([3000.0, 0.0, 200.0], numpy.float32),
+        0.0,
+        0.0,
+        100.0,
+    )
+    items = TopItems(
+        [arch],
+        {"Boulder": InstanceSpans(matrix[None], numpy.array([-200.0]), numpy.array([200.0]))},
+        {"Arc": (flat, up[:, ::-1].copy()), "Boulder": (flat, up)},
+    )
     band = rasterise_top_band(items, 0.0, 0.0, step_cm, 4, 160, 1)
-    z_cm, cover = reduce_direct(band, 4, 160, 1)
+    z_cm, cover = reduce_direct(band.top, 4, 160, 1)
     first = int(numpy.ceil(1000.0 / step_cm - 0.5))
     last = int(numpy.ceil(1100.0 / step_cm - 0.5))
     assert cover[:, first:last].all() and not cover[:, last : last + 2].any()
@@ -1021,7 +1051,7 @@ def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
     has to walk past rather than trip over.
     """
     pin = "buildVersion 495413 (engine branch ++FactoryGame+rel-main-1.2.0), the installed build"
-    sidecar = artwork_output.build_sidecar(
+    sidecar = artwork_output.build_artwork_sidecar(
         build_pin=pin,
         build_raw={"Changelist": 495413, "BranchName": "++FactoryGame+rel-main-1.2.0"},
         image={"file": IMAGE_NAME, "width_px": SHEET_PX},
@@ -1130,7 +1160,7 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
     local.mkdir()
     fake_pyramid(local, max_z=0)  # something for the probe to answer about
 
-    with_dense = artwork_output.build_sidecar(
+    with_dense = artwork_output.build_artwork_sidecar(
         **common,
         tiles_2x={
             "tile_px": PYRAMID_TILE_2X_PX,
@@ -1148,7 +1178,7 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
 
     # ...and the same run with the tree skipped writes no key, which is what makes the
     # endpoint fall back rather than advertise a depth for a directory that is not there.
-    without = artwork_output.build_sidecar(**common, tiles_2x=None)
+    without = artwork_output.build_artwork_sidecar(**common, tiles_2x=None)
     assert "tiles_2x" not in without["_meta"]
     (local / web_tiles.MAP_BOUNDS_NAME).write_text(json.dumps(without), encoding="utf-8")
     bare = web_tiles._map_pyramid()
@@ -1427,11 +1457,11 @@ def test_an_enhanced_pyramid_is_not_quietly_replaced_by_a_plain_one(tmp_path):
         "colour_fix": {"sigma_px": COLOUR_FIX_SIGMA},
         "timings_s": {"upscale": 66.7, "colour_fix": 320.4, "total": 400.0},
     }
-    sharp = artwork_output.build_sidecar(
+    sharp = artwork_output.build_artwork_sidecar(
         tiles={"tile_px": 256, "max_z": 7, "enhanced": True, "enhancement": enhancement},
         **common,
     )
-    plain = artwork_output.build_sidecar(
+    plain = artwork_output.build_artwork_sidecar(
         tiles={"tile_px": 256, "max_z": 5, "enhanced": False}, **common
     )
 
@@ -1468,7 +1498,9 @@ def test_an_enhanced_pyramid_is_not_quietly_replaced_by_a_plain_one(tmp_path):
 
     # The recipe survives the same round trip, and a sidecar from before recipes existed
     # reads as the one pipeline the bare boolean can have meant.
-    older = json.loads(json.dumps(artwork_output.build_sidecar(tiles={"enhanced": True}, **common)))
+    older = json.loads(
+        json.dumps(artwork_output.build_artwork_sidecar(tiles={"enhanced": True}, **common))
+    )
     assert pinned_recipe(read_back) == ENHANCE_RECIPE
     assert pinned_recipe(older) == UNNUMBERED_RECIPE == 1
     assert pinned_recipe(plain) == 0

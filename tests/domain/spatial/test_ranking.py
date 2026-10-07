@@ -92,7 +92,7 @@ class _FakeTerrain:
     def __init__(self):
         self.asked = []
 
-    def window(self, x0_cm, y0_cm, x1_cm, y1_cm, max_texels=1_000_000):
+    def area(self, x0_cm, y0_cm, x1_cm, y1_cm, max_texels=1_000_000):
         self.asked.append((x0_cm, y0_cm, x1_cm, y1_cm))
         steep = (x0_cm + x1_cm) / 2 >= 0
         return hf.Area(
@@ -149,8 +149,8 @@ def test_an_unmeasured_pad_does_not_outrank_a_measured_one():
     unmapped, and both are inventions."""
 
     class _Partial(_FakeTerrain):
-        def window(self, x0_cm, y0_cm, x1_cm, y1_cm, max_texels=1_000_000):
-            area = super().window(x0_cm, y0_cm, x1_cm, y1_cm, max_texels)
+        def area(self, x0_cm, y0_cm, x1_cm, y1_cm, max_texels=1_000_000):
+            area = super().area(x0_cm, y0_cm, x1_cm, y1_cm, max_texels)
             if x0_cm > 100_000:
                 return hf.Area(
                     x0_cm=x0_cm,

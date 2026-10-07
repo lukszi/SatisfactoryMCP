@@ -165,6 +165,6 @@ export function renderMaps(body: HTMLElement): void {
 }
 
 onMapRegistry(function (listed) {
-  if (listed || !jobHost || !jobHost.isConnected || !tabBody || !tabBody.isConnected) return;
+  if (listed || !jobHost || !jobHost.isConnected || !tabBody?.isConnected) return;
   drawJobs(jobHost);
 });

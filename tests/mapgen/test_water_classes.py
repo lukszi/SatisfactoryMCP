@@ -11,39 +11,42 @@ from types import SimpleNamespace
 import numpy as np
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.waterbodies import (
+from mapgen.gamedata.water.bodies import (
     ACTOR_CLASS,
     BODY_STEP_M,
-    CLASSES,
     HOT_SPRING_BOX_MAX_M,
     MATERIAL_CLASS,
-    MOUTH_BLEND,
-    MOUTH_FEATHER_M,
-    MOUTH_STEPS,
     OCEAN,
     SWAMP,
     WATER_BODIES_NAME,
+    WATER_CLASSES,
     body_class,
-    class_shares,
     classify,
-    feather_mouths,
     level_bodies,
     open_sea,
+    spring_terraces,
 )
-from mapgen.palette.optics import class_optics as plane_optics
-from mapgen.palette.painted import (
-    WATER_TABLE_COLUMNS,
-    PaintedGround,
-    load_water_bodies,
-    painted_colours,
-    water_table,
+from mapgen.palette.painted.albedo import load_water_bodies
+from mapgen.palette.painted.band import painted_colours
+from mapgen.palette.painted.ground import PaintedGround
+from mapgen.palette.painted.optics import WATER_TABLE_COLUMNS, water_table
+from mapgen.palette.painted.optics import class_optics as plane_optics
+from mapgen.palette.painted.water_classes import (
+    MOUTH_BLEND,
+    MOUTH_FEATHER_M,
+    MOUTH_STEPS,
+    SPRING_BLEND,
+    SPRING_REACH_M,
+    SPRING_STEPS,
+    class_shares,
+    feather_mouths,
+    fill_dry,
+    tint_springs,
 )
-from mapgen.palette.shore import OCEAN_LEVEL_M
 from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.terrain.sample import ClassMix, class_taps, taps_linear
 from tests.support.map_scenes import CLASS_ID, class_optics, painted_ground_stub, water_scene
-
-NO_SPRINGS = np.zeros((0, 3))
 
 
 def _box(c0, r0, c1, r1, z_m):
@@ -57,25 +60,21 @@ def _box(c0, r0, c1, r1, z_m):
 
 
 def test_the_material_names_the_class():
-    box = _box(0, 0, 10, 10, 100.0)
-    assert body_class("BP_Water_C", ["MI_WaterSwamp_Muddy"], box, NO_SPRINGS) == "swamp"
-    assert body_class("BP_Water_C", ["SulfurPond_Inst"], box, NO_SPRINGS) == "sulfur"
-    assert body_class("BP_River_PROT_C", ["MI_SLW_River_Base_01"], box, NO_SPRINGS) == "river"
-    assert body_class("BP_Water_C", ["MI_Lake_Turquoise_01"], box, NO_SPRINGS) == "lake"
-    assert body_class("FGWaterVolume", [], box, NO_SPRINGS) is None
-    assert set(MATERIAL_CLASS.values()) <= set(CLASSES)
+    assert body_class("BP_Water_C", ["MI_WaterSwamp_Muddy"]) == "swamp"
+    assert body_class("BP_Water_C", ["SulfurPond_Inst"]) == "sulfur"
+    assert body_class("BP_River_PROT_C", ["MI_SLW_River_Base_01"]) == "river"
+    assert body_class("BP_Water_C", ["MI_Lake_Turquoise_01"]) == "lake"
+    assert body_class("FGWaterVolume", []) is None
+    assert set(MATERIAL_CLASS.values()) <= set(WATER_CLASSES)
 
 
 def test_translucent_water_is_its_own_class_and_a_known_material_still_wins():
     """The Blue Crater is a ``BP_TranslucentWater_C``, which names no material; the sulfur
     ponds are ``BP_Water_C`` with ``SulfurPond_Inst`` and keep their row."""
-    box = _box(0, 0, 10, 10, 100.0)
-    assert body_class("BP_TranslucentWater_C", [], box, NO_SPRINGS) == "translucent"
-    assert body_class("BP_TranslucentWater_C", ["SulfurPond_Inst"], box, NO_SPRINGS) == "sulfur"
-    assert body_class("BP_Water_C", ["SulfurPond_Inst"], box, NO_SPRINGS) == "sulfur"
-    assert set(ACTOR_CLASS.values()) <= set(CLASSES)
-    spring = np.array([[box[0] + 500, box[1] + 500, 100 * 100.0]])
-    assert body_class("BP_TranslucentWater_C", [], box, spring) == "translucent"
+    assert body_class("BP_TranslucentWater_C", []) == "translucent"
+    assert body_class("BP_TranslucentWater_C", ["SulfurPond_Inst"]) == "sulfur"
+    assert body_class("BP_Water_C", ["SulfurPond_Inst"]) == "sulfur"
+    assert set(ACTOR_CLASS.values()) <= set(WATER_CLASSES)
 
 
 def test_a_translucent_box_claims_its_water_instead_of_the_lake_fallback():
@@ -90,15 +89,40 @@ def test_a_translucent_box_claims_its_water_instead_of_the_lake_fallback():
     assert counts["bodies_claimed"] == 3 and counts["classes"]["translucent"] == 25
 
 
-def test_a_small_lake_holding_a_terrace_is_a_hot_spring_and_a_big_one_is_not():
+def test_a_terrace_in_a_small_lake_counts_and_one_in_a_big_lake_does_not():
     small = _box(0, 0, 40, 40, 100.0)
-    spring = np.array([[small[0] + 500, small[1] + 500, 100 * 100.0]])
-    assert body_class("BP_Water_C", ["MM_Lake_01"], small, spring) == "hot_spring"
+    spring = [small[0] + 500, small[1] + 500, 100 * 100.0]
+    lake = ["BP_Water_C", small, ["MM_Lake_01"]]
+    found = spring_terraces({"actors": [lake], "hot_springs": [spring]})
+    np.testing.assert_allclose(found, [[spring[0], spring[1], 99.0, 101.0]])
     side = int(HOT_SPRING_BOX_MAX_M) + 10
-    big = _box(0, 0, side, side, 100.0)
-    assert body_class("BP_Water_C", ["MM_Lake_01"], big, spring) == "lake"
-    far = spring + [[0, 0, -5000]]
-    assert body_class("BP_Water_C", ["MM_Lake_01"], small, far) == "lake"
+    big = ["BP_Water_C", _box(0, 0, side, side, 100.0), ["MM_Lake_01"]]
+    assert not len(spring_terraces({"actors": [big], "hot_springs": [spring]}))
+    far = [spring[0], spring[1], spring[2] - 5000]
+    assert not len(spring_terraces({"actors": [lake], "hot_springs": [far]}))
+    river = ["BP_River_PROT_C", small, ["MI_SLW_River_Base_01"]]
+    assert not len(spring_terraces({"actors": [river], "hot_springs": [spring]}))
+
+
+def test_a_terrace_tints_its_lake_around_it_and_not_the_whole_lake():
+    """A hot-spring terrace in a lake takes its tint to the water around its root only,
+    feathered into the lake: the 150 m lake it stands in stays a lake."""
+    plane = np.full((160, 160), CLASS_ID["lake"], np.uint8)
+    plane[:, :20] = CLASS_ID["river"]
+    level = np.full(plane.shape, 100.0, np.float32)
+    row, col = 80, 80
+    terrace = np.array([[ORIGIN_X_CM + col * SPACING_CM, ORIGIN_Y_CM + row * SPACING_CM,
+                         99.0, 101.0]])  # fmt: skip
+    tinted = tint_springs(plane, level, terrace)
+    near, far = SPRING_REACH_M
+    share = class_shares()[plane, CLASS_ID["hot_spring"]]
+    assert plane[row, col] == CLASS_ID["hot_spring"] and share[row, col + int(near) - 1] == 1.0
+    assert (np.diff(share[row, col : col + int(far) + 2]) <= 0).all(), "it fades outwards"
+    assert share[row, col + int(far) + 1] == 0.0 and (plane[:, :20] == CLASS_ID["river"]).all()
+    assert (plane[0, 20:] == CLASS_ID["lake"]).all(), "the lake past the terrace stays a lake"
+    assert tinted == int((share > 0).sum())
+    high = np.full(plane.shape, CLASS_ID["lake"], np.uint8)
+    assert not tint_springs(high, level + 5.0, terrace), "water off the terrace's box is not"
 
 
 def _world():
@@ -347,12 +371,45 @@ def test_swamp_blends_into_the_ocean_across_the_line_they_meet_on():
     assert (plane[60:140, 100 - reach : 100 + reach] >= MOUTH_BLEND).mean() > 0.9
 
 
+def test_over_the_void_the_ocean_takes_no_swamp_and_the_blend_lies_on_the_swamp_side():
+    """The artwork's sea past the landscape is no swamp's: where swamp meets it the swamp
+    fades out towards the line from its own side."""
+    plane, level = _mouth()
+    void = np.zeros(plane.shape, bool)
+    void[:, 100:] = True
+    feather_mouths(plane, level, void)
+    share = class_shares()[plane, SWAMP]
+    assert (share[:, 100:] == 0.0).all(), "no swamp over the void"
+    row, reach = share[100, :100], int(MOUTH_FEATHER_M)
+    assert row[99] < 0.05 and row[: 100 - reach - 1].min() == 1.0
+    assert (np.diff(row[100 - reach - 1 :]) <= 0).all(), "the swamp fades towards the line"
+
+
+def test_dry_texels_beside_water_take_its_class():
+    """A dry hole in the swamp, which the sea's crossing rule may draw as water, is swamp, not
+    the ocean the sampler falls back to; dry ground past the reach stays dry."""
+    plane = np.full((40, 40), CLASS_ID["swamp"], np.uint8)
+    plane[10:14, 10:14] = 0
+    plane[:, 25:] = 0
+    plane[:, 38:] = CLASS_ID["lake"]
+    filled = fill_dry(plane, 4)
+    assert (plane[10:14, 10:14] == CLASS_ID["swamp"]).all()
+    assert (plane[:, 25:29] == CLASS_ID["swamp"]).all()
+    assert (plane[:, 34:38] == CLASS_ID["lake"]).all()
+    assert (plane[:, 29:34] == 0).all(), "past the reach of both"
+    assert filled == 16 + 40 * 8
+
+
 def test_a_blend_draws_the_mix_of_the_swamp_and_ocean_rows():
     table = class_shares()
-    assert table.shape == (MOUTH_BLEND + MOUTH_STEPS, len(CLASSES))
-    np.testing.assert_array_equal(table[:MOUTH_BLEND], np.eye(MOUTH_BLEND, len(CLASSES)))
+    assert table.shape == (SPRING_BLEND + SPRING_STEPS, len(WATER_CLASSES))
+    assert SPRING_BLEND == MOUTH_BLEND + MOUTH_STEPS
+    np.testing.assert_array_equal(table[:MOUTH_BLEND], np.eye(MOUTH_BLEND, len(WATER_CLASSES)))
     np.testing.assert_allclose(table.sum(1), 1.0)
-    assert (np.diff(table[MOUTH_BLEND:, SWAMP]) > 0).all()
+    assert (np.diff(table[MOUTH_BLEND:SPRING_BLEND, SWAMP]) > 0).all()
+    assert (np.diff(table[SPRING_BLEND:, CLASS_ID["hot_spring"]]) > 0).all()
+    np.testing.assert_allclose(table[SPRING_BLEND:, [CLASS_ID["lake"], CLASS_ID["hot_spring"]]]
+                               .sum(1), 1.0)  # fmt: skip
     rows = water_table(PAINTED_PALETTE)
     k = MOUTH_BLEND + MOUTH_STEPS // 4
     plane = np.full((2, 2), k, np.uint8)
@@ -376,7 +433,7 @@ def test_a_uniform_pixel_takes_its_row_exactly_and_dry_taps_do_not_dilute():
     plane = np.zeros((4, 4), np.uint8)
     plane[:, 2:] = CLASS_ID["swamp"]
     plane[2:, :2] = CLASS_ID["river"]
-    table = np.arange(len(CLASSES) * 2, dtype=np.float32).reshape(-1, 2) + 0.1
+    table = np.arange(len(WATER_CLASSES) * 2, dtype=np.float32).reshape(-1, 2) + 0.1
     mix = ClassMix(class_taps(plane, _taps([0.0, 0.5, 2.5], [2.5, 1.5, 0.2], plane.shape)), OCEAN)
     rows = mix.of(table)
     np.testing.assert_array_equal(rows[0, 0], table[CLASS_ID["swamp"]])
@@ -393,9 +450,9 @@ def test_a_uniform_pixel_takes_its_row_exactly_and_dry_taps_do_not_dilute():
 
 def test_every_inland_class_has_optics_and_a_missing_one_draws_as_the_ocean():
     classes = PAINTED_PALETTE["water_classes"]
-    assert set(CLASSES[2:]) <= set(classes)
+    assert set(WATER_CLASSES[2:]) <= set(classes)
     table = water_table(PAINTED_PALETTE)
-    assert table.shape == (MOUTH_BLEND + MOUTH_STEPS, sum(WATER_TABLE_COLUMNS))
+    assert table.shape == (SPRING_BLEND + SPRING_STEPS, sum(WATER_TABLE_COLUMNS))
     bare = {k: v for k, v in PAINTED_PALETTE.items() if k != "water_classes"}
     np.testing.assert_array_equal(water_table(bare)[CLASS_ID["swamp"]], table[OCEAN])
     swamp = classes["swamp"]
@@ -433,7 +490,9 @@ def test_the_classes_are_read_off_the_water_as_drawn_not_the_fields_box_levels()
     shape = (4, 6)
     dry = np.full(shape, hf.NODATA, np.int16)
     field = SimpleNamespace(
-        _water_raster=lambda: dry, _water_quality_raster=lambda: np.zeros(shape, np.uint8)
+        water_raster=lambda: dry,
+        water_quality_raster=lambda: np.zeros(shape, np.uint8),
+        height_dm=None,
     )
     ground = object.__new__(PaintedGround)
     ground.water_class, ground.source = None, {}

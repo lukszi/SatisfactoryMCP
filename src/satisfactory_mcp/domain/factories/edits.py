@@ -12,6 +12,7 @@ from pathlib import Path
 from ...core.filelock import LockTimeout
 from ..planning.stored.plan_args import PlanLogError
 from ..planning.stored.planlog import Actor, PlanLog
+from .candidates import Candidate
 from .labels import Label, LabelStore, UnknownLabel
 
 __all__ = [
@@ -52,7 +53,7 @@ def name_factory(
     world_id: str,
     session: str,
     name: str,
-    candidate,
+    candidate: Candidate,
     notes: str = "",
     when: str = "",
     create: bool = False,
@@ -192,7 +193,7 @@ def amend(
     name: str,
     add: list[str],
     drop: set[str],
-    candidate=None,
+    candidate: Candidate | None = None,
     notes: str = "",
     when: str = "",
     expect: int | None = None,

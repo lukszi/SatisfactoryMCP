@@ -23,7 +23,7 @@ import type { MapsEvent } from "./map-types";
 import type { ActivityEvent, PlansEvent } from "../dash/planner/state";
 
 /* Activity kinds that change a list the page and chat share, and the refetch each one owes. */
-var REFETCH_BY_KIND: [string, () => void][] = [
+const REFETCH_BY_KIND: [string, () => void][] = [
   ["pin.", refetchPins],
   ["ask.", refetchAsks],
   ["advice.", refetchAdvice],
@@ -54,7 +54,7 @@ function parsed<T>(event: MessageEvent): T | null {
 
 /* Every activity entry reaches every listener once, live or replayed after a reconnect. A
  * replay can hold several finds; only the newest may move the page, the older ones are history. */
-var dispatched: Record<string, boolean> = {};
+const dispatched: Record<string, boolean> = {};
 
 function dispatchActivity(entries: ActivityEvent[]): void {
   const fresh = entries.filter(function (entry) {

@@ -1,6 +1,7 @@
 """What a pool of workers may take: the memory free now, and a numpy without a BLAS pool.
 
-docs/spatial-and-map.md sections 17, 29 ("Strips, memory and workers") and 40.
+docs/map/renders.md sections 17 and 40, and docs/map/light-and-crowns.md section 29 ("Strips,
+memory and workers").
 """
 
 from __future__ import annotations
@@ -8,7 +9,7 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 __all__ = ["ONE_BLAS_THREAD", "free_ram_bytes", "one_blas_thread"]
@@ -51,7 +52,7 @@ def free_ram_bytes() -> int | None:
 
 
 @contextmanager
-def one_blas_thread() -> Iterator[None]:
+def one_blas_thread() -> Generator[None, None, None]:
     """``ONE_BLAS_THREAD`` for the processes started inside; the values before come back.
 
     This process keeps the BLAS pool it loaded with.

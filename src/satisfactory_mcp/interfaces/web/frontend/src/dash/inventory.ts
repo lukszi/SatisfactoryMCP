@@ -4,7 +4,7 @@
 import { crateLabel } from "../map/drawn/crates";
 import { appendNote, button, capRows, checkbox, empty, heading, link, pendingNotice, selectBox, table, tile } from "../kit/dashkit";
 import { make } from "../kit/dom";
-import { amount, count, formatNumber, pct, regionLine } from "../kit/format";
+import { amount, byCodeUnit, count, formatNumber, pct, regionLine } from "../kit/format";
 import { loadOne } from "../app/load";
 import { writeHash } from "../map/map";
 import { dashParts, go } from "../app/nav";
@@ -86,7 +86,7 @@ function buildMatcher(data: StockResponse): Matcher {
     .map(function (name) {
       return names[name]!;
     })
-    .sort();
+    .sort(byCodeUnit);
   return {
     active: true,
     exact: exact,

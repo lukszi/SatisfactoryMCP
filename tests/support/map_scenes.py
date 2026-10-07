@@ -6,14 +6,15 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from mapgen.gamedata.waterbodies import CLASSES
-from mapgen.palette.painted import WATER_TABLE_COLUMNS, srgb_to_linear, water_table
+from mapgen.colour import srgb_to_linear
+from mapgen.gamedata.water.bodies import WATER_CLASSES
+from mapgen.palette.painted.optics import WATER_TABLE_COLUMNS, water_table
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import PAINTED_PALETTE, RELIEF_PALETTES
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 #: Water class name to its row in the class table.
-CLASS_ID = {name: i for i, name in enumerate(CLASSES)}
+CLASS_ID = {name: i for i, name in enumerate(WATER_CLASSES)}
 
 
 def stub_field(height_m: np.ndarray, water_m: np.ndarray | None = None, grades=None):
@@ -22,9 +23,9 @@ def stub_field(height_m: np.ndarray, water_m: np.ndarray | None = None, grades=N
     water = None if water_m is None else (water_m * hf.DM_PER_M).astype(np.int16)
     rows, cols = height.shape
     return SimpleNamespace(
-        _height_dm=height,
-        _water_raster=lambda: water,
-        _water_quality_raster=lambda: grades,
+        height_dm=height,
+        water_raster=lambda: water,
+        water_quality_raster=lambda: grades,
         spacing_cm=100.0,
         width=cols,
         height=rows,
@@ -51,7 +52,9 @@ def painted_ground_stub(n: int) -> SimpleNamespace:
         canopy_rgb=np.zeros(3, np.float32),
         rock=rock,
         rock_family=None,
+        family_rock={},
         crown=None,
+        crown_ops=[],
         titan=None,
         carpet=None,
         mesh_rgb={},
@@ -64,9 +67,11 @@ def painted_ground_stub(n: int) -> SimpleNamespace:
             "deep_tau_m": np.float32(water["deep_tau_m"]),
             "bed": np.float32(water["bed_wet"]),
             "inland_floor": np.float32(water.get("inland_floor", 0.0)),
+            "opaque_tau_m": np.float32(water["opaque_tau_m"]),
         },
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
         opaque_water=[],
+        water_class=None,
     )
 
 
@@ -81,6 +86,8 @@ def water_scene(n: int, optics=None) -> dict:
         "ocean": zero,
         "above_m": zero + 10,
         "below_m": zero + 10,
+        "river": zero,
+        "river_below_m": zero + np.inf,
     }
     return {
         "z_m": zero + 5,

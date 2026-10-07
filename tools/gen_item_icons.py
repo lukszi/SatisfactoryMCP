@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, TypeAlias, TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
@@ -25,7 +26,9 @@ for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
 
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
 from satisfactory_mcp.core.gameassets.container import CONTAINER, paks_dir
+from satisfactory_mcp.core.gameassets.imaging import BlockDecoder, ImageFactory, ImageT
 from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
+from satisfactory_mcp.core.gameassets.packages import BulkEntry
 from satisfactory_mcp.core.gameassets.provenance import (
     InstallNotFound,
     install_directory,
@@ -42,7 +45,11 @@ from satisfactory_mcp.core.gameassets.textures import (
     inline_chain_side,
     raw_mip_sizes,
 )
-from satisfactory_mcp.core.gamedata.loader import load_docs
+from satisfactory_mcp.core.gamedata.loader import DocsDump, load_docs
+from satisfactory_mcp.core.jsontypes import JsonValue
+
+if TYPE_CHECKING:
+    from PIL.Image import Image, Resampling
 
 #: Derived from ``--game``: the icons and the class names that point at them must come
 #: from ONE install, and a ``SATISFACTORY_DOCS`` pointing elsewhere would mix two builds.
@@ -93,6 +100,101 @@ MANIFEST_NAME = "manifest.json"
 #: about where the pin lives.
 BUILD_PIN_PATH = ("_meta", "source", "game_version_pinned")
 
+#: One decoded icon: the image, the side it was cooked at, and its pixel format.
+DecodedIcon: TypeAlias = tuple[ImageT, int, str]
+
+
+class PackageHeader(Protocol):
+    """A parsed package as the icon reader uses it."""
+
+    @property
+    def names(self) -> list[str]: ...
+
+    @property
+    def header_size(self) -> int: ...
+
+    def bulk_entries(self) -> list[BulkEntry]: ...
+
+
+class PackageModule(Protocol):
+    """``core.gameassets.packages``, handed in so that a test can stand one in."""
+
+    def Package(self, blob: bytes, /) -> PackageHeader: ...
+
+
+class IconImaging(ImageFactory["Image"], Protocol):
+    """``PIL.Image`` as this file uses it: the readers' factory, and the resize filter."""
+
+    @property
+    def Resampling(self) -> type[Resampling]: ...
+
+
+class IconEntry(TypedDict):
+    """One written icon in the manifest."""
+
+    file: str
+    source_px: int
+    source_format: str
+    bytes: int
+
+
+class Unresolved(TypedDict):
+    """A class with no icon written, and why."""
+
+    kind: str
+    detail: str
+
+
+class IconCounts(TypedDict):
+    """The manifest's ``counts``."""
+
+    item_classes: int
+    icons_written: int
+    unresolved: int
+    bytes: int
+    written_px: int
+    source_px: dict[str, int]
+    seconds: float
+    decoders: dict[str, str]
+
+
+class DocsSource(TypedDict):
+    """The docs dump the class names came from."""
+
+    path: str
+    sha256: str
+    bytes: int
+
+
+class ManifestSource(TypedDict):
+    """Which install the icons were cut from, and how; the staleness guard reads the pin."""
+
+    game_version_pinned: str
+    game_build_string: str | None
+    container: str
+    docs: DocsSource
+    icon_field: str
+    pixel_formats: list[str]
+    note: str
+
+
+class ManifestMeta(TypedDict):
+    """The manifest's ``_meta``."""
+
+    generator: str
+    generated_utc: str
+    source: ManifestSource
+    counts: IconCounts
+    staleness: str
+
+
+class IconManifest(TypedDict):
+    """``manifest.json``: the icons a client may ask for, and the classes left without one."""
+
+    _meta: ManifestMeta
+    icons: dict[str, IconEntry]
+    unresolved: dict[str, Unresolved]
+
 
 def chain_length(px: int, is_bc3: bool) -> int:
     """Total bytes of the ``.ubulk`` chain for one square side, in BC3 or in raw BGRA.
@@ -131,10 +233,10 @@ def container_stem(icon: str) -> str | None:
     return MOUNT + match.group(1).replace("/Game/", "", 1)
 
 
-def icon_classes(dump) -> list[tuple[str, str]]:
+def icon_classes(dump: DocsDump) -> list[tuple[str, str]]:
     """``[(class name, icon asset path), ...]`` from a loaded docs dump, sorted so a manifest
     diff is readable. Classes with no icon keep an empty path and are counted by the caller."""
-    out = []
+    out: list[tuple[str, str]] = []
     for classes in dump.by_native.values():
         for entry in classes:
             if FORM_FIELD not in entry or "ClassName" not in entry:
@@ -153,7 +255,7 @@ def path_index(store: IoStore) -> dict[str, str]:
     return {path.lower(): path for path in store.paths.values()}
 
 
-def pixel_format(package_names) -> str | None:
+def pixel_format(package_names: list[str]) -> str | None:
     """The ``PF_`` constant in a package's name table, or ``None`` if it holds none of ours.
 
     The format the asset states, never one inferred from a length, which is what keeps the
@@ -163,14 +265,23 @@ def pixel_format(package_names) -> str | None:
     return found[0] if len(found) == 1 else None
 
 
-def _decode_mip0(decoder, image_mod, raw: bytes, px: int, is_bc3: bool):
+def _decode_mip0(
+    decoder: BlockDecoder, image_mod: ImageFactory[ImageT], raw: bytes, px: int, is_bc3: bool
+) -> ImageT:
     """Mip 0's bytes as an RGBA image, through the decoder for its format."""
     if is_bc3:
         return decode_bc3_rgba(decoder, image_mod, raw, px)
     return decode_bgra8_rgba(image_mod, raw, px)
 
 
-def decode_bulk_icon(package_mod, decoder, image_mod, blob: bytes, bulk: bytes, layouts: dict):
+def decode_bulk_icon(
+    package_mod: PackageModule,
+    decoder: BlockDecoder,
+    image_mod: ImageFactory[ImageT],
+    blob: bytes,
+    bulk: bytes,
+    layouts: dict[tuple[str, int], int],
+) -> tuple[DecodedIcon[ImageT] | None, str | None]:
     """``((image, source side, pixel format), None)`` for one icon, or ``(None, reason)``.
 
     The three refusals are counted and named in the manifest rather than raised, because
@@ -189,7 +300,12 @@ def decode_bulk_icon(package_mod, decoder, image_mod, blob: bytes, bulk: bytes, 
     return (_decode_mip0(decoder, image_mod, bulk[:mip0], px, is_bc3), px, fmt), None
 
 
-def decode_inline_icon(package_mod, decoder, image_mod, blob: bytes):
+def decode_inline_icon(
+    package_mod: PackageModule,
+    decoder: BlockDecoder,
+    image_mod: ImageFactory[ImageT],
+    blob: bytes,
+) -> tuple[DecodedIcon[ImageT] | None, str | None]:
     """The same contract as :func:`decode_bulk_icon`, for a texture with no ``.ubulk`` at all.
 
     Three of the 747 icons cook their whole mip chain inline in the ``.uasset``. The Zen
@@ -227,7 +343,7 @@ def decode_inline_icon(package_mod, decoder, image_mod, blob: bytes):
     return (_decode_mip0(decoder, image_mod, raw, px, is_bc3), px, fmt), None
 
 
-def to_png(image_mod, image, px: int, want: int) -> bytes:
+def to_png(image_mod: IconImaging, image: Image, px: int, want: int) -> bytes:
     """One decoded level as PNG bytes at ``want`` px, resampled only when it has to be.
 
     A level already at the wanted size is returned untouched rather than round-tripped
@@ -247,13 +363,21 @@ def to_png(image_mod, image, px: int, want: int) -> bytes:
 def pinned_build(out_dir: Path) -> str | None:
     """The build the icons already on disk say they were cut from, or ``None``."""
     try:
-        existing = json.loads((out_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
+        existing: JsonValue = json.loads((out_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         return None
     return read_str_path(existing, BUILD_PIN_PATH)
 
 
-def build_manifest(*, pin: str, branch: str | None, docs, entries: dict, unresolved: dict, stats):
+def build_manifest(
+    *,
+    pin: str,
+    branch: str | None,
+    docs: DocsDump,
+    entries: dict[str, IconEntry],
+    unresolved: dict[str, Unresolved],
+    stats: IconCounts,
+) -> IconManifest:
     """The sidecar: what a reader needs to know before trusting a directory of pictures.
 
     ``source`` says which install these came out of, down to the docs dump's sha256, and is
@@ -304,11 +428,11 @@ def build_manifest(*, pin: str, branch: str | None, docs, entries: dict, unresol
 class IconCut:
     """What one pass over the item classes produced: files, manifest entries, refusals."""
 
-    payload: dict[str, bytes] = field(default_factory=dict)
-    entries: dict[str, dict] = field(default_factory=dict)
-    unresolved: dict[str, dict] = field(default_factory=dict)
+    payload: dict[str, bytes] = field(default_factory=dict[str, bytes])
+    entries: dict[str, IconEntry] = field(default_factory=dict[str, IconEntry])
+    unresolved: dict[str, Unresolved] = field(default_factory=dict[str, Unresolved])
     #: Source side in px -> how many icons came from a texture that size.
-    sides: dict[int, int] = field(default_factory=dict)
+    sides: dict[int, int] = field(default_factory=dict[int, int])
 
 
 def cut_icons(
@@ -316,9 +440,9 @@ def cut_icons(
     classes: list[tuple[str, str]],
     want_px: int,
     *,
-    package_mod,
-    decoder,
-    image_mod,
+    package_mod: PackageModule,
+    decoder: BlockDecoder,
+    image_mod: IconImaging,
     quiet: bool,
     started: float,
 ) -> IconCut:
@@ -459,7 +583,7 @@ def main() -> int:
         quiet=args.quiet,
         started=started,
     )
-    stats = {
+    stats: IconCounts = {
         "item_classes": len(classes),
         "icons_written": len(cut.entries),
         "unresolved": len(cut.unresolved),
@@ -483,7 +607,7 @@ def main() -> int:
     return 0
 
 
-def print_summary(out_dir: Path, cut: IconCut, stats: dict) -> None:
+def print_summary(out_dir: Path, cut: IconCut, stats: IconCounts) -> None:
     px = stats["written_px"]
     print(
         f"wrote {out_dir}  {len(cut.entries)} icons at {px}x{px} "

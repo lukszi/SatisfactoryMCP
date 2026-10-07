@@ -2,72 +2,62 @@
 
 from __future__ import annotations
 
+from typing import TypeAlias
+
 import numpy as np
+from numpy.typing import NDArray
 from scipy import ndimage
 
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "SEAM_MID",
     "SEAM_NEAR_TEXELS",
     "SEAM_PURE",
-    "SEAM_RATIO_MAX",
     "SEAM_SAME_SURFACE_M",
     "SEAM_SAMPLE_MAX_PER_BAND",
     "SEAM_SWITCH_CEILING",
+    "RegimeCounts",
     "RegimeCoverage",
+    "SeamMeasure",
     "SeamTrace",
+    "measured_lines",
 ]
 
-#: The p99 second difference at the seam over the pure regimes, as a ratio; "at the seam"
-#: is the whole blend (tools/mapgen/README.md, "Design notes").
+#: The hard switch ``SeamTrace`` reads against takes the direct answer at this weight and up.
 SEAM_MID = 0.5
+#: A direct weight within this of 0 or 1 is one regime alone; between them, the blend.
 SEAM_PURE = 0.02
-SEAM_RATIO_MAX = 1.5
-
 #: What a hard switch reads: an identity, not a bound.
 SEAM_SWITCH_CEILING = 1.0
-
+#: Two surfaces this close are the same ground, for the "surfaces agree" pools.
 SEAM_SAME_SURFACE_M = 0.5
-
 #: How far from a crossing the pool is gathered, in output texels (7.3 m at z7).
 SEAM_NEAR_TEXELS = 32
-
 #: How many texels of each pool one band contributes. A systematic sample rather than the
 #: whole pool, whose percentile moves in the fourth decimal over tens of millions of texels.
 SEAM_SAMPLE_MAX_PER_BAND = 200_000
 
-
-# --------------------------------------------------------------------------------------
-# The seam, measured along a line rather than at a probe.
-# --------------------------------------------------------------------------------------
+#: One band's ``SeamTrace.measure``: its rows, and each pool's thinned values.
+SeamMeasure: TypeAlias = tuple[int, list[tuple[str, F32Grid]]]
+#: One band's ``RegimeCoverage.measure``: per province, its four regime counts and weight.
+RegimeCounts: TypeAlias = list[tuple[int, list[int], float]]
 
 
 class SeamTrace:
-    """Second differences of the drawn height at the join, and what they can be read against.
+    """Second differences of the drawn height along every row, pooled by the regime weights.
 
-    A trace rather than probes: probes are sparse relative to a seam, and a ridge one texel
-    wide along a density contour is invisible to all of them. What is measured is
-    ``|d2z/dx2|`` along every row of every band over the whole square, with each 3-texel
-    stencil sorted by the weights under all three of its texels.
-
-    **Read the ratios against the switch, not against the pure regimes.** This file
-    composites a rock onto a lattice by the rock's own coverage, so the join IS the rock's
-    silhouette -- a real cliff edge, where enormous curvature is the correct answer, and the
-    pure-regime ratio reads 138 on the shipped render with every bit of that terrain.
-    Restricting the comparison to where the two surfaces agree only moves the join to the
-    rock's base, which is also real. The hard ``max`` over the same texels is the one
-    reference that is not the terrain, and it is not a gate either: a convex blend cannot be
-    rougher than the switch between its own extreme points, so the number says how much of
-    that ceiling the fade spends (0.5 on the shipped render).
-
-    The smoothness itself is guaranteed by the arithmetic rather than by this statistic:
-    ``blend_regimes`` is a convex combination in the pixel's coverage, plus a positive part
-    smoothed by ``DIRECT_LIFT_KNEE_M``.
+    A trace rather than probes, which miss a ridge one texel wide along a density contour.
+    Each 3-texel stencil is pooled by the weights under all three of its texels. Read it
+    against the hard switch, not the pure regimes: the join is the rock's own silhouette, and
+    ``blend_regimes``' arithmetic, not this statistic, is what keeps it smooth (the sidecar's
+    ``reading``; docs/map/renders.md section 20).
     """
 
     def __init__(self) -> None:
-        self.pools: dict[str, list[np.ndarray]] = {
+        self.pools: dict[str, list[F32Grid]] = {
             "seam": [],
             "switch": [],
             "pure_direct": [],
@@ -78,7 +68,7 @@ class SeamTrace:
         self.rows = 0
 
     @staticmethod
-    def _thin(values: np.ndarray) -> np.ndarray:
+    def _thin(values: NDArray[np.floating]) -> F32Grid:
         """A systematic sample of a pool, so the whole sheet costs a bounded number of MB.
 
         Every k-th value of a selection already in raster order, which for a percentile is a
@@ -87,21 +77,35 @@ class SeamTrace:
         stride = max(1, values.size // SEAM_SAMPLE_MAX_PER_BAND)
         return values[::stride].astype(np.float32)
 
-    def add(self, z_m, z_switched, w, spacing_m: float, delta=None) -> None:
+    def add(
+        self,
+        z_m: F32Grid,
+        z_switched: F32Grid,
+        w: F32Grid,
+        spacing_m: float,
+        delta: F32Grid | None = None,
+    ) -> None:
         self.merge(self.measure(z_m, z_switched, w, spacing_m, delta))
 
-    def merge(self, measured: tuple) -> None:
+    def merge(self, measured: SeamMeasure) -> None:
         """Pool one band's ``measure``; bands merged in sheet order pool what ``add`` would."""
         rows, kept = measured
         self.rows += rows
         for name, values in kept:
             self.pools[name].append(values)
 
-    def measure(self, z_m, z_switched, w, spacing_m: float, delta=None) -> tuple:
+    def measure(
+        self,
+        z_m: F32Grid,
+        z_switched: F32Grid,
+        w: F32Grid,
+        spacing_m: float,
+        delta: F32Grid | None = None,
+    ) -> SeamMeasure:
         """One band's rows and thinned pools, touching nothing shared: safe on any thread."""
-        kept: list[tuple[str, np.ndarray]] = []
+        kept: list[tuple[str, F32Grid]] = []
 
-        def keep(name: str, curvature: np.ndarray, mask: np.ndarray) -> None:
+        def keep(name: str, curvature: NDArray[np.floating], mask: BoolMask) -> None:
             if mask.any():
                 kept.append((name, self._thin(curvature[mask])))
 
@@ -130,7 +134,7 @@ class SeamTrace:
         keep("pure_same_surface", blended, near & same & ~at_seam)
         return z_m.shape[0], kept
 
-    def result(self) -> dict:
+    def result(self) -> JsonObject:
         pooled = {
             name: (np.concatenate(values) if values else np.zeros(0, np.float32))
             for name, values in self.pools.items()
@@ -139,7 +143,8 @@ class SeamTrace:
             name: float(np.percentile(values, 99)) if values.size else None
             for name, values in pooled.items()
         }
-        if p99["seam"] is None or not p99["switch"]:
+        seam, switch = p99["seam"], p99["switch"]
+        if seam is None or not switch:
             return {
                 "measured": False,
                 "why": (
@@ -148,11 +153,12 @@ class SeamTrace:
                 ),
             }
 
-        def ratio(over: str) -> float | None:
-            return None if not p99[over] else round(p99["seam"] / p99[over], 4)
+        def ratio(over: float | None) -> float | None:
+            return None if not over else round(seam / over, 4)
 
-        reference = [p99["pure_direct"], p99["pure_kernel"]]
-        beside = max([v for v in reference if v is not None], default=None)
+        beside = max(
+            [v for v in (p99["pure_direct"], p99["pure_kernel"]) if v is not None], default=None
+        )
         return {
             "measured": True,
             "method": (
@@ -168,10 +174,10 @@ class SeamTrace:
             "p99_curvature": {
                 name: (None if value is None else round(value, 5)) for name, value in p99.items()
             },
-            "share_of_a_hard_switch": ratio("switch"),
+            "share_of_a_hard_switch": ratio(switch),
             "share_of_a_hard_switch_ceiling": SEAM_SWITCH_CEILING,
-            "against_the_pure_regimes": (None if not beside else round(p99["seam"] / beside, 4)),
-            "against_the_terrain_where_the_surfaces_agree": ratio("pure_same_surface"),
+            "against_the_pure_regimes": ratio(beside),
+            "against_the_terrain_where_the_surfaces_agree": ratio(p99["pure_same_surface"]),
             "surfaces_agree_within_m": SEAM_SAME_SURFACE_M,
             "reading": (
                 "share_of_a_hard_switch is the number to read and it is a DESCRIPTION, not a "
@@ -192,25 +198,21 @@ class SeamTrace:
 class RegimeCoverage:
     """How much of the sheet each regime drew, per province of the field underneath it.
 
-    Counted rather than argued, because "the geometry answers this pixel" is a claim about
-    how much of a picture. The provinces are the field's own, sampled nearest at output
-    resolution: a province is a name and the average of two names is not one.
-
-    The direct bucket is **split by the density plane**, which is all that plane does here.
-    It does not decide whether the triangles are drawn -- the rock's own coverage of the
-    pixel decides that -- it decides what the drawn answer IS: a texel a source vertex landed
-    in is a measurement, and one the rasteriser reached across a triangle wider than itself
-    is a facet. The sidecar says which is which rather than letting a reader assume.
+    Provinces are sampled nearest: a province is a name, and two names do not average. The
+    direct bucket is split by the density plane into measurements and facets, which is all
+    that plane decides (docs/map/renders.md section 20).
     """
+
+    NAMES = ("direct_measured", "direct_facet", "faded", "kernel")
 
     def __init__(self) -> None:
         self.counts: dict[int, list[int]] = {}
         self.weight: dict[int, float] = {}
 
-    def add(self, prov: np.ndarray, w: np.ndarray, measured: np.ndarray) -> None:
+    def add(self, prov: NDArray[np.integer], w: F32Grid, measured: BoolMask) -> None:
         self.merge(self.measure(prov, w, measured))
 
-    def merge(self, measured: list) -> None:
+    def merge(self, measured: RegimeCounts) -> None:
         """Add one band's ``measure``; bands merged in sheet order sum what ``add`` would."""
         for key, counts, weight in measured:
             row = self.counts.setdefault(key, [0, 0, 0, 0])
@@ -219,14 +221,14 @@ class RegimeCoverage:
             self.weight[key] = self.weight.get(key, 0.0) + weight
 
     @staticmethod
-    def measure(prov: np.ndarray, w: np.ndarray, measured: np.ndarray) -> list:
+    def measure(prov: NDArray[np.integer], w: F32Grid, measured: BoolMask) -> RegimeCounts:
         """One band's counts and weight per province, touching nothing shared."""
         regime = np.where(
             w >= 1.0 - SEAM_PURE,
             np.where(measured, 0, 1),
             np.where(w > SEAM_PURE, 2, 3),
         )
-        out = []
+        out: RegimeCounts = []
         for value in np.unique(prov):
             here = prov == value
             picked = regime[here]
@@ -234,11 +236,19 @@ class RegimeCoverage:
             out.append((int(value), counts, float(w[here].sum())))
         return out
 
-    NAMES = ("direct_measured", "direct_facet", "faded", "kernel")
-
-    def result(self) -> dict:
+    def result(self) -> JsonObject:
         total = sum(sum(row) for row in self.counts.values()) or 1
-        out = {
+        provinces: JsonObject = {}
+        for value, row in sorted(self.counts.items()):
+            name = hf.PROV_NAMES.get(value, f"layer {value}")
+            here = sum(row) or 1
+            provinces[name] = {
+                **{key: round(100 * row[i] / total, 4) for i, key in enumerate(self.NAMES)},
+                "province_pct_of_sheet": round(100 * here / total, 4),
+                "mean_w": round(self.weight.get(value, 0.0) / here, 5),
+            }
+        pooled = [sum(row[i] for row in self.counts.values()) for i in range(4)]
+        return {
             "definition": (
                 f"direct: coverage >= {1 - SEAM_PURE}, split by density.u8.z into the texels "
                 "a source vertex landed in (a measurement) and the texels the rasteriser "
@@ -248,19 +258,25 @@ class RegimeCoverage:
                 "is the unbucketed answer: how much of the height over that province the "
                 "rasterised rocks contributed, averaged."
             ),
-            "per_province_pct_of_sheet": {},
+            "per_province_pct_of_sheet": provinces,
+            "sheet_pct": {
+                **{key: round(100 * pooled[i] / total, 4) for i, key in enumerate(self.NAMES)},
+                "mean_w": round(sum(self.weight.values()) / total, 5),
+            },
         }
-        for value, row in sorted(self.counts.items()):
-            name = hf.PROV_NAMES.get(value, f"layer {value}")
-            here = sum(row) or 1
-            out["per_province_pct_of_sheet"][name] = {
-                **{key: round(100 * row[i] / total, 4) for i, key in enumerate(self.NAMES)},
-                "province_pct_of_sheet": round(100 * here / total, 4),
-                "mean_w": round(self.weight.get(value, 0.0) / here, 5),
-            }
-        pooled = [sum(row[i] for row in self.counts.values()) for i in range(4)]
-        out["sheet_pct"] = {
-            **{key: round(100 * pooled[i] / total, 4) for i, key in enumerate(self.NAMES)},
-            "mean_w": round(sum(self.weight.values()) / total, 5),
-        }
-        return out
+
+
+def measured_lines(trace: JsonObject, regimes: JsonObject) -> list[str]:
+    """The run's report of a ``SeamTrace`` and a ``RegimeCoverage`` result."""
+    lines: list[str] = []
+    curvature = trace.get("p99_curvature")
+    if trace.get("measured") and isinstance(curvature, dict):
+        lines.append(
+            f"  seam trace: p99 |d2z/dx2| {curvature['seam']} over the "
+            f"blend against {curvature['switch']} for the hard max on "
+            f"the same texels -- the fade spends "
+            f"{trace['share_of_a_hard_switch']} of that ceiling; against the terrain "
+            f"beside the join it reads {trace['against_the_pure_regimes']}, which is "
+            "the design's own reference and is measuring the silhouette"
+        )
+    return [*lines, f"  regimes: {regimes['sheet_pct']}"]

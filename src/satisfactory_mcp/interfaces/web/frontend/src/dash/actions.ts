@@ -4,7 +4,8 @@
 import { button } from "../kit/dashkit";
 import { el, make } from "../kit/dom";
 import { writeHash } from "../map/map";
-import { located, showFactory } from "../map/panel";
+import { showFactory } from "../map/panel";
+import { located } from "../map/panel-rows";
 import { showMachine, showPoint } from "../map/map-highlight";
 import { pushDash } from "../app/nav";
 import { vitals } from "../app/vitals";

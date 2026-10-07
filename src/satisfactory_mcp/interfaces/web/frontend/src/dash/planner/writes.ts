@@ -14,12 +14,12 @@ import type { Op, PlansEvent, Refusal } from "./state";
 
 type WritePath = "/api/plans/{key}/ops" | "/api/plans/{key}/args" | "/api/plans/{key}/undo" | "/api/plans/{key}/restore";
 
-var NAME_RETRIES = 20;
+const NAME_RETRIES = 20;
 
-var inflight = 0;
-var refusalSerial = 0;
-var chipSerial = 0;
-var chain: Promise<void> = Promise.resolve();
+let inflight = 0;
+let refusalSerial = 0;
+let chipSerial = 0;
+let chain: Promise<void> = Promise.resolve();
 
 function queue(task: () => Promise<void> | void): void {
   chain = chain.then(task).catch(function (error) {
@@ -81,7 +81,7 @@ function loadOwnUndoStack(key: string): Promise<void> {
 
 function adopt(plan: PlanStateBody): void {
   if (bench.plan && plan.rev < bench.plan.rev) return;
-  const moved = !bench.plan || bench.plan.rev !== plan.rev;
+  const moved = bench.plan?.rev !== plan.rev;
   bench.plan = plan;
   bench.gone = plan.forgotten;
   changed();
@@ -141,11 +141,11 @@ function deltaForStrip(): void {
     ) - 1;
   const to = plan.rev;
   const have = bench.othersDelta;
-  if (from < 1 || (have && have.from_rev === from && have.to_rev === to)) return;
+  if (from < 1 || (have?.from_rev === from && have.to_rev === to)) return;
   const key = bench.key;
   delta(key, from, to)
     .then(function (d) {
-      if (bench.key !== key || !bench.plan || bench.plan.rev !== to || !bench.othersCommits.length) return;
+      if (bench.key !== key || bench.plan?.rev !== to || !bench.othersCommits.length) return;
       bench.othersDelta = d;
       bench.chatChangedRows = chatTouched(d);
       changed();
@@ -201,6 +201,12 @@ function adoptPushReply(reply: PushedResponse, undoable: boolean): number {
   return reply.noop ? 0 : reply.rev;
 }
 
+/** A conflict key's field: the key up to its first `[` or `{`. */
+function keyField(key: string): string {
+  const cut = key.search(/[[{]/);
+  return cut < 0 ? key : key.slice(0, cut);
+}
+
 function raiseConflicts(body: Refusal, retry: () => void): void {
   if (!body.outdated || !body.state) {
     fail(body.error || "the server refused this change");
@@ -213,7 +219,7 @@ function raiseConflicts(body: Refusal, retry: () => void): void {
     bench.conflictChips.push({
       id: ++chipSerial,
       gesture: refusal,
-      field: conflict.mine.field || conflict.key.replace(/[[{].*$/, ""),
+      field: conflict.mine.field || keyField(conflict.key),
       who: actorWord(conflict.theirs_actor),
       text: conflict.text,
       retry: retry,

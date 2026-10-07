@@ -13,11 +13,13 @@ is read out of there and none is restated here, because a refresh changes all of
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
+from ....core.jsontypes import JsonObject, JsonValue
 from ....core.saveio.records import instance_leaf
 from . import table as node_table
+from .views import TableAge
 
 __all__ = [
     "TableSkew",
@@ -125,7 +127,26 @@ class TableSkew:
         )
 
 
-def _pin_and_drift(positions: dict) -> tuple[dict | None, dict | None]:
+def _object(value: JsonValue) -> JsonObject:
+    """``value`` when it is a JSON object, else an empty one."""
+    return value if isinstance(value, dict) else {}
+
+
+def _number(value: JsonValue) -> float:
+    """``float(value or 0.0)``, as the artifact's numbers are read."""
+    if not value:
+        return 0.0
+    if isinstance(value, list | dict):
+        raise TypeError(f"not a number: {value!r}")
+    return float(value)
+
+
+def _names(value: JsonValue) -> list[str]:
+    """The strings of a JSON list of instance names; nothing for null."""
+    return [name for name in value if isinstance(name, str)] if isinstance(value, list) else []
+
+
+def _pin_and_drift(positions: JsonObject) -> tuple[JsonObject | None, JsonObject | None]:
     """Which comparison the table MATCHES, and which one it lags.
 
     Chosen by what each block measured and never by its key: a block whose worst delta is
@@ -133,14 +154,14 @@ def _pin_and_drift(positions: dict) -> tuple[dict | None, dict | None]:
     this table IS. Keying off block names would make this stop reporting the day the
     generator renames one.
     """
-    pin: dict | None = None
-    drift: dict | None = None
+    pin: JsonObject | None = None
+    drift: JsonObject | None = None
     worst_seen = -1.0
     for block in positions.values():
         if not isinstance(block, dict):
             continue
-        floor = float(block.get("rounding_floor_cm") or 0.0)
-        worst = float(block.get("max_position_delta_cm") or 0.0)
+        floor = _number(block.get("rounding_floor_cm"))
+        worst = _number(block.get("max_position_delta_cm"))
         only_in = [k for k in block if k.startswith("rows_only_in")]
         if worst > floor or any(block.get(k) for k in only_in):
             if worst > worst_seen:
@@ -150,13 +171,15 @@ def _pin_and_drift(positions: dict) -> tuple[dict | None, dict | None]:
     return pin, drift
 
 
-def _save_versions(header: dict | None) -> dict[str, int]:
+def _save_versions(header: Mapping[str, object] | None) -> dict[str, int]:
     """The version markers a save header states, by header field."""
-    return {
-        field: header[field]
-        for _marker, field in _VERSION_MARKERS
-        if isinstance((header or {}).get(field), int)
-    }
+    stated = header or {}
+    out: dict[str, int] = {}
+    for _marker, field in _VERSION_MARKERS:
+        value = stated.get(field)
+        if isinstance(value, int):
+            out[field] = value
+    return out
 
 
 def _save_is_affected(save: dict[str, int], pin: dict[str, int], against: dict[str, int]) -> bool:
@@ -170,7 +193,7 @@ def _save_is_affected(save: dict[str, int], pin: dict[str, int], against: dict[s
     return newer or at_drift_build
 
 
-def _forced_rename(drift: dict, unjoinable: tuple[str, ...]) -> dict[str, str]:
+def _forced_rename(drift: JsonObject, unjoinable: tuple[str, ...]) -> dict[str, str]:
     """Table name -> the newer build's name, only where the pairing is forced.
 
     Two lists of names are not a mapping: with one name on each side and a recorded
@@ -180,7 +203,7 @@ def _forced_rename(drift: dict, unjoinable: tuple[str, ...]) -> dict[str, str]:
         name
         for key in drift
         if key.startswith("rows_only_in") and key != "rows_only_in_this_table"
-        for name in (drift.get(key) or ())
+        for name in _names(drift.get(key))
     ]
     if (
         len(unjoinable) == 1
@@ -191,22 +214,32 @@ def _forced_rename(drift: dict, unjoinable: tuple[str, ...]) -> dict[str, str]:
     return {}
 
 
-def _moves_are_vertical(rows: list[dict], moved_cm: dict, dz_cm: dict, floor: float) -> bool:
+def _moves_are_vertical(
+    instances: list[str], moved_cm: dict[str, float], dz_cm: dict[str, float], floor: float
+) -> bool:
     """Whether every recorded move is z alone: a delta the row's own dz cannot account for
     is horizontal, and then x,y no longer lands on the right node."""
-    return bool(rows) and all(
-        abs(dz_cm.get(r["instance"], 0.0)) >= moved_cm[r["instance"]] - floor for r in rows
-    )
+    return bool(instances) and all(abs(dz_cm.get(i, 0.0)) >= moved_cm[i] - floor for i in instances)
 
 
-def skew_from_meta(meta: dict, header: dict | None) -> TableSkew | None:
+def _drifted_rows(drift: JsonObject) -> list[tuple[str, JsonObject]]:
+    """The rows past the rounding floor that name their instance, by that instance."""
+    rows = drift.get("rows_past_the_rounding_floor")
+    return [
+        (instance, row)
+        for row in (rows if isinstance(rows, list) else [])
+        if isinstance(row, dict) and isinstance(instance := row.get("instance"), str) and instance
+    ]
+
+
+def skew_from_meta(meta: JsonObject, header: Mapping[str, object] | None) -> TableSkew | None:
     """The recorded skew, but only when ``header`` names a build past the table's pin.
 
     Returns ``None`` when there is nothing to say: the artifact records no drift (which
     is what a refresh produces), the save is on the pinned build or older, or the save
     names no version at all. Silence is the default, so a matching build costs nothing.
     """
-    positions = ((meta.get("cross_validation") or {}).get("positions")) or {}
+    positions = _object(_object(meta.get("cross_validation")).get("positions"))
     pin_block, drift = _pin_and_drift(positions)
     if drift is None:
         return None
@@ -217,11 +250,11 @@ def skew_from_meta(meta: dict, header: dict | None) -> TableSkew | None:
     if not save or not _save_is_affected(save, pin, against):
         return None
 
-    rows = [r for r in (drift.get("rows_past_the_rounding_floor") or ()) if r.get("instance")]
-    floor = float(drift.get("rounding_floor_cm") or 0.0)
-    moved_cm = {r["instance"]: float(r["delta_cm"]) for r in rows if r.get("delta_cm") is not None}
-    dz_cm = {r["instance"]: float(r["dz_cm"]) for r in rows if r.get("dz_cm") is not None}
-    unjoinable = tuple(drift.get("rows_only_in_this_table") or ())
+    rows = _drifted_rows(drift)
+    floor = _number(drift.get("rounding_floor_cm"))
+    moved_cm = {i: _number(r["delta_cm"]) for i, r in rows if r.get("delta_cm") is not None}
+    dz_cm = {i: _number(r["dz_cm"]) for i, r in rows if r.get("dz_cm") is not None}
+    unjoinable = tuple(_names(drift.get("rows_only_in_this_table")))
     renamed_moved_cm = drift.get("renamed_row_moved_cm")
 
     skew = TableSkew(
@@ -232,8 +265,8 @@ def skew_from_meta(meta: dict, header: dict | None) -> TableSkew | None:
         dz_cm=dz_cm,
         unjoinable=unjoinable,
         renamed_to=_forced_rename(drift, unjoinable),
-        renamed_moved_cm=float(renamed_moved_cm) if renamed_moved_cm is not None else None,
-        vertical_only=_moves_are_vertical(rows, moved_cm, dz_cm, floor),
+        renamed_moved_cm=_number(renamed_moved_cm) if renamed_moved_cm is not None else None,
+        vertical_only=_moves_are_vertical([i for i, _row in rows], moved_cm, dz_cm, floor),
         resource_and_purity_verified=drift.get("purity_mismatches") == []
         and drift.get("resource_mismatches") == [],
     )
@@ -241,7 +274,7 @@ def skew_from_meta(meta: dict, header: dict | None) -> TableSkew | None:
 
 
 def skew_for_save(
-    header: dict | None, table: node_table.NodeTable | None = None
+    header: Mapping[str, object] | None, table: node_table.NodeTable | None = None
 ) -> TableSkew | None:
     """``skew_from_meta`` against the shipped table. ``None`` when there is nothing to say."""
     return skew_from_meta((table if table is not None else node_table.load_nodes()).meta, header)
@@ -306,7 +339,7 @@ def identity_notes(skew: TableSkew | None, instances: Iterable[str] | None = Non
     """
     if skew is None:
         return []
-    out = []
+    out: list[str] = []
     for inst in skew.scope(instances).unjoinable:
         new = skew.renamed_to.get(inst)
         moved = skew.renamed_moved_cm
@@ -348,10 +381,10 @@ def drifted_leaf_names(skew: TableSkew | None, instances: Iterable[str] | None =
 
 
 def table_age(
-    header: dict | None,
+    header: Mapping[str, object] | None,
     table: node_table.NodeTable | None = None,
     instances: Iterable[str] | None = None,
-) -> dict | None:
+) -> TableAge | None:
     """The node table's age against this save, scoped to ``instances``; ``None`` when current."""
     skew = skew_for_save(header, table)
     if skew is None:

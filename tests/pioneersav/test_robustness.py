@@ -33,9 +33,7 @@ import zlib
 import pytest
 
 from pioneersav import CHUNK_TAG, ObjectSlice, ParseError, read_info_bytes, read_object
-from tests.support.paths import FIXTURES
-
-HEADER_FIXTURE = FIXTURES / "save_header.bin"
+from tests.support.paths import committed_fixture
 
 
 def _string(text: str) -> bytes:
@@ -94,7 +92,7 @@ def test_a_deeply_nested_property_list_is_refused_rather_than_overflowing_the_st
 
     If this regresses, the symptom is not a wrong answer. It is that the one exception type
     the sidecar catches stops being the only one a bad file can raise, which is the whole
-    argument of ``savparse/errors.py``.
+    argument of ``pioneersav/errors.py``.
     """
     payload = _nested_structs(600)
     with pytest.raises(ParseError) as exc:
@@ -192,9 +190,7 @@ def test_a_file_truncated_to_exactly_its_header_is_refused_at_the_header():
     reads like a corrupt save rather than a file the game has only begun writing. That message
     is what a player sees next to the file's name in ``--list``.
     """
-    if not HEADER_FIXTURE.is_file():
-        pytest.skip("header fixture not committed")
-    raw = HEADER_FIXTURE.read_bytes()
+    raw = committed_fixture("save_header.bin").read_bytes()
     body_offset = read_info_bytes(raw).body_offset
     with pytest.raises(ParseError) as exc:
         read_info_bytes(raw[:body_offset])
@@ -211,10 +207,8 @@ def test_a_chunk_preamble_that_contradicts_its_own_maximum_is_refused():
     changes, all eight of the max-size bytes. The value is 131072 on all 9,125 chunks of all
     31 readable saves, but requiring the constant would refuse a save the day the game picks a
     different block size, so what is checked is the contradiction: a maximum smaller than the
-    sizes written beside it.
+    uncompressed size written beside it.
     """
-    if not HEADER_FIXTURE.is_file():
-        pytest.skip("header fixture not committed")
     from pioneersav import decompress_body
 
     plain = b"body bytes that do not matter, only their length does" * 4
@@ -248,12 +242,9 @@ def test_a_body_region_with_no_chunks_at_all_says_so():
 
 # ----------------------------------------------------- what the sidecar SAYS about all this
 
-# Everything above pins the parser's refusals. These two pin the only surface anything else
-# ever sees them through: ``extract.main`` is what the projection layer runs as a subprocess,
-# and its whole contract is two things -- the exit code, and a single JSON object on STDOUT.
-# Called in-process rather than through ``subprocess``: the contract is `argv in, exit code
-# and stdout out`, and spawning an interpreter to check it would add a second thing that can
-# fail (the environment) to a test about neither.
+# Everything above pins the parser's refusals; these two pin the surface the projection layer
+# sees them through, ``extract.main``: an exit code and one JSON object on stdout. Called
+# in-process, since a subprocess would add the environment as a second thing that can fail.
 
 
 def _run_cli(argv: list[str]) -> tuple[int, str]:
@@ -284,10 +275,8 @@ def test_a_torn_save_leaves_the_cli_saying_parse_error_on_stdout(tmp_path):
     the bug (``{"error": "RecursionError"}`` -- true, useless, no offset), which is exactly
     what ``error == "parse_error"`` below rules out.
     """
-    if not HEADER_FIXTURE.is_file():
-        pytest.skip("header fixture not committed")
     torn = tmp_path / "Han Solo_autosave_0.sav"
-    torn.write_bytes(HEADER_FIXTURE.read_bytes()[:40])
+    torn.write_bytes(committed_fixture("save_header.bin").read_bytes()[:40])
 
     code, printed = _run_cli([str(torn)])
     assert code == 1

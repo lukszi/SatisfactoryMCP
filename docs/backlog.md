@@ -65,6 +65,7 @@ All closed. These produced a false belief in the reader, so nothing outranked th
 | 9c | `mam_research` said cost was checked against "carried, crates and the Dimensional Depot" when schema 19 deliberately took crates OUT of spendable stock. Both the tool note and the same stale sentence in `save-projection.md` now say storage containers, and name what does not count. | `a0a2ec9` |
 | 9d | `mam_research` ignored `research["unlocked_trees"]` and `research["ongoing"]`, so a node in an unopened tree read `READY` and research already underway read `todo`. Now `TREE SHUT` and `RUNNING {n}s`, both excluded from `startable=`. | `a0a2ec9` |
 | 9e | `trace_upstream` carried `Trace.ambiguous` and `Trace.truncated` and reported a possibly over-counted, depth-truncated walk as complete. Both print, and a truncated walk says it is a FLOOR. | `43fac87` |
+| 9f | `search_resource_nodes` read every oil node at twice its rate, a pure node 480 m³/min where an Oil Extractor gives 240: `node_rate` filtered extractors by `mAllowedResources`, which is empty on every miner, so Miner Mk.3 out-bid the extractor on crude. It filters by `mAllowedResourceForms` now, which the dump's cycle fields and the wiki's Crude Oil table confirm at 100% and 250%; the LP and `plan_layout` were always right. The rule is spatial-and-map.md §7.2c. | `486314d` |
 
 ## P1 — instructions the client could not follow, and dead ends
 
@@ -440,6 +441,27 @@ already be smaller than remembered.
 conversation and neither has a written specification. **Write down what each would claim, and
 what save evidence supports it, before either is built.** Filed so they are not lost, not
 because they are ready.
+
+### One tagged-property walk
+
+**56 — Two walks over the same tagged-property streams.** The cooked game packages are read by
+two walks in `core/gameassets/packages/properties.py`. `tagged_properties` reads the tag the way
+UE 5.4 writes it: after `Size` comes a flag byte that says whether an array index, a GUID or an
+extension block follows, and the stream ends at a `None` name wherever the package keeps it. The
+map's curves, its atmosphere volumes and the sweep's tag dictionaries use it. `property_tags` is
+older and reads none of those blocks: it keeps the flag byte as a `BoolProperty` value, and it
+stops only at a `None` that is the package's name 0. The water actors, the mesh, material and
+ground-layer reads, the map area, the static-mesh reader and `PackageView` still use it, and
+the generators' outputs were made with it.
+
+Measured on 2026-10-07 over every level the sweep opens: the two walks disagree on 273,266 of
+422,929 streams, nearly all of them a `None` at a name index other than 0 (which the old walk
+does not take as the end) or an indexed tag. Moving the heightmap's water reads to
+the new walk changes the generator's water outputs, so it is a re-baseline with its own gate
+run rather than a refactor. The curves and the volumes read identically under both walks, and
+the sweep's tag dictionaries match the old `flagged_tags` on all 182,947 streams, which is why
+those moved and the rest did not. **Switch the remaining callers in one change, compare the
+water outputs before and after, and delete `property_tags` once nothing calls it.**
 
 ## Not doing, and why
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+from .iostore import IoStore
 from .packages import PackageView, ScriptObjects, property_tags
 
 __all__ = [
@@ -111,7 +112,7 @@ class MapAreaError(Exception):
     expected and what was found, because the only response is to go and look at the asset."""
 
 
-def read_map_areas(store, scripts: ScriptObjects) -> MapAreas:
+def read_map_areas(store: IoStore, scripts: ScriptObjects) -> MapAreas:
     """Decode the map-area texture and resolve every palette index to one area asset. A shape
     that is not the known one means the asset was re-cooked, i.e. the game changed, and every
     check below refuses rather than decoding whatever is there."""
@@ -152,7 +153,7 @@ def read_map_areas(store, scripts: ScriptObjects) -> MapAreas:
 
     palette_raw = props["mColorPalette"]
     entries = struct.unpack_from("<i", palette_raw, 0)[0]
-    palette = tuple(tuple(palette_raw[4 + i * 4 : 8 + i * 4]) for i in range(entries))  # type: ignore[arg-type]
+    palette = tuple(struct.unpack_from("<4B", palette_raw, 4 + i * 4) for i in range(entries))
 
     areas, boxes = _colour_to_area(store, view, props["mColorToArea"])
     if len(areas) != entries:
@@ -170,7 +171,7 @@ def read_map_areas(store, scripts: ScriptObjects) -> MapAreas:
 
 
 def _colour_to_area(
-    store, view: PackageView, blob: bytes
+    store: IoStore, view: PackageView, blob: bytes
 ) -> tuple[tuple[Area | None, ...], tuple[tuple[int, int, int, int], ...]]:
     """``mColorToArea`` -> one :class:`Area` per palette index, plus each index's extent.
 
@@ -185,7 +186,7 @@ def _colour_to_area(
     pos = 4
     for index in range(count):
         tags, end = property_tags(blob, view.pkg.names, pos)
-        fields = {name: payload for name, _kind, payload, _value in tags}
+        fields = {tag.name: tag.payload for tag in tags}
         if "MapArea" not in fields:
             raise MapAreaError(
                 "an mColorToArea entry carries no MapArea reference -- the struct this reader "
@@ -206,17 +207,16 @@ def _colour_to_area(
                     "The areas moved, or one of them is no longer where the texture looks."
                 )
             areas.append(area)
-        boxes.append(
-            tuple(  # type: ignore[arg-type]
-                struct.unpack("<i", fields[key])[0] if key in fields else 0
-                for key in ("MinX", "MinY", "MaxX", "MaxY")
-            )
+        min_x, min_y, max_x, max_y = (
+            struct.unpack("<i", fields[key])[0] if key in fields else 0
+            for key in ("MinX", "MinY", "MaxX", "MaxY")
         )
+        boxes.append((min_x, min_y, max_x, max_y))
         pos = end
     return tuple(areas), tuple(boxes)
 
 
-def _areas_by_export_hash(store, scripts: ScriptObjects | None) -> dict[int, Area]:
+def _areas_by_export_hash(store: IoStore, scripts: ScriptObjects | None) -> dict[int, Area]:
     """Every ``Area_*`` asset beside the texture, keyed by the hash an import names it by.
 
     By ``PublicExportHash``, never by package name: this build ships thirty-five ``Area_*``
@@ -276,7 +276,7 @@ def _display_name(view: PackageView) -> tuple[str | None, str | None]:
     return None, None
 
 
-def _view(store, path: str, scripts: ScriptObjects | None) -> PackageView:
+def _view(store: IoStore, path: str, scripts: ScriptObjects | None) -> PackageView:
     if path not in store.by_path:
         raise MapAreaError(
             f"{path} is not in the container. The map areas moved or were renamed, which "

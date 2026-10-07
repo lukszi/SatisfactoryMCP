@@ -15,16 +15,12 @@ from __future__ import annotations
 import pytest
 
 from pioneersav import PACKAGE_FILE_TAG, Reader, body_hash, check_body_hash, read_info_bytes
-from tests.support.paths import FIXTURES
-
-FIXTURE = FIXTURES / "save_header.bin"
+from tests.support.paths import committed_fixture
 
 
 @pytest.fixture(scope="module")
 def raw() -> bytes:
-    if not FIXTURE.is_file():
-        pytest.skip("header fixture not committed")
-    return FIXTURE.read_bytes()
+    return committed_fixture("save_header.bin").read_bytes()
 
 
 @pytest.fixture(scope="module")

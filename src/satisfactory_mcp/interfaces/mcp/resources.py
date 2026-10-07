@@ -36,7 +36,7 @@ def docs_summary() -> str:
                 ("warnings", len(g.warnings)),
             ]
         ),
-        notes=app.integrity_notes({}, g) + list(app.stale_artifact_notes()),
+        notes=app.integrity_notes(None, g) + list(app.stale_artifact_notes()),
     )
 
 

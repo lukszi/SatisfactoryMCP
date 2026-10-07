@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -19,7 +20,7 @@ import pytest
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.maps import jobs as store
 from satisfactory_mcp.domain.maps import presets, registry
-from satisfactory_mcp.interfaces.web import childproc
+from satisfactory_mcp.interfaces.web import childproc, mapjobs
 from satisfactory_mcp.interfaces.web.mapjobs import MapJobRunner
 from satisfactory_mcp.interfaces.web.watch.events import KIND_MAPS
 from satisfactory_mcp.interfaces.web.watch.watcher import SaveWatcher
@@ -130,6 +131,76 @@ def test_one_runs_at_a_time_and_the_queue_holds_four(env, monkeypatch):
     assert not (registry.maps_dir() / first["id"] / "terrain").exists()
 
 
+class _HeldChild:
+    """A spawned generator that runs until it is killed."""
+
+    pid, created = 4242, 1
+
+    def __init__(self) -> None:
+        self.killed = self.closed = False
+
+    def exit_code(self) -> int | None:
+        return 1 if self.killed else None
+
+    def peak_rss(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.parametrize(
+    ("held_at", "replied", "spawns"),
+    [("estimate", "cancelled", False), ("spawn", "cancelled", True), ("save", "running", True)],
+)
+def test_a_cancel_during_the_launch_stops_the_generator(env, monkeypatch, held_at, replied, spawns):
+    """Wherever the launch is waiting, a cancel keeps the child from starting or kills it."""
+    entered, release = threading.Event(), threading.Event()
+    child, spawned, killed = _HeldChild(), [], []
+    runner = MapJobRunner(SaveWatcher(root=env, notes=()))
+    job = runner.submit("render", PREVIEW, None, None)
+
+    def kill(pid: int) -> None:
+        killed.append(pid)
+        child.killed = True
+
+    def spawn(record: dict) -> _HeldChild:
+        spawned.append(record["id"])
+        return child
+
+    monkeypatch.setattr(mapjobs, "kill_tree", kill)
+    monkeypatch.setattr(runner, "_spawn", spawn)
+    owner, name = {"estimate": (presets, "estimate"), "spawn": (runner, "_spawn"),
+                   "save": (store, "save")}[held_at]  # fmt: skip
+    step = getattr(owner, name)
+
+    def held(*args):
+        if held_at != "save" or args[0]["status"] == "running":
+            entered.set()
+            assert release.wait(10)
+        return step(*args)
+
+    monkeypatch.setattr(owner, name, held)
+
+    async def main() -> str:
+        launch = asyncio.create_task(runner._launch(job))
+        assert await asyncio.to_thread(entered.wait, 10)
+        status = (await runner.cancel(job["id"]))["status"]
+        release.set()
+        await launch
+        if runner.active_run is not None:
+            await asyncio.wait_for(runner._watch(runner.active_run), timeout=10)
+        return status
+
+    assert _run(main()) == replied
+    assert job["status"] == "cancelled" and runner.active_run is None
+    assert spawned == ([job["id"]] if spawns else [])
+    assert killed == ([child.pid] if spawns else []) and child.closed is spawns
+    assert job["produces"][0] not in registry.read()["types"]
+    on_disk = json.loads((store.jobs_dir() / f"{job['id']}.json").read_text(encoding="utf-8"))
+    assert on_disk["status"] == "cancelled"
+
+
 def test_a_failing_generator_leaves_a_failed_job_and_no_type(env, monkeypatch):
     monkeypatch.setenv("FAKE_FAIL", "1")
 
@@ -207,6 +278,8 @@ def test_every_preset_writes_only_under_data_local(env):
 
 
 def test_progress_reads_a_recorded_full_render_log():
+    """A log from before the one pass, without stage lines: it drew the layers in turn, and its
+    first layer's draw drives the pass's stage."""
     lines = (FIXTURES / "map_render_full.log").read_text(encoding="utf-8")
     options = presets.normalise("render", {"size": 32768, "light": False})
     progress = store.Progress(presets.stage_plan("render", options), 32768)
@@ -215,15 +288,42 @@ def test_progress_reads_a_recorded_full_render_log():
         progress.feed(line)
         seen.append((progress.stage, round(progress.fraction_done() or 0, 3)))
     stages = [stage for stage, _ in seen]
-    for wanted in ("sweep", "direct", "top", "draw:terrain", "cut:terrain", "draw:satellite",
-                   "cut:satellite"):  # fmt: skip
+    for wanted in ("sweep", "direct", "top", "draw", "cut:terrain", "cut:satellite"):
         assert wanted in stages, wanted
     pcts = [pct for _, pct in seen]
     assert pcts == sorted(pcts), "progress never runs backwards"
     assert progress.finished and progress.fraction_done() == 1.0
-    halfway = dict(seen)["draw:terrain"]
-    assert 0.4 < halfway < 0.8
+    halfway = dict(seen)["draw"]
+    assert 0.5 < halfway < 0.9
     assert progress.eta(100.0) is None
+
+
+def test_the_one_pass_draws_every_layer_then_bakes_then_cuts_each():
+    from satisfactory_mcp.core import mapprogress
+
+    options = presets.normalise("render", {"layers": ["terrain", "painted"], "size": 1024})
+    plan = presets.stage_plan("render", options)
+    assert list(plan) == ["prep", "sweep", "direct", "top", "draw", "light", "cut:terrain",
+                          "cut:painted"]  # fmt: skip
+    progress = store.Progress(plan, size=1024)
+    seen = []
+    for line in (
+        mapprogress.encode_stage("draw", 0.0),
+        mapprogress.encode_stage("draw", 0.5),
+        mapprogress.encode_stage("light", 0.5),
+        mapprogress.encode_stage("cut:terrain", 0.0),
+        "  pyramid z0: 256x256, 1 tiles, 0.10 MB",
+        mapprogress.encode_stage("cut:terrain", 1.0),
+        mapprogress.encode_stage("cut:painted", 0.0),
+        "  pyramid z0: 256x256, 1 tiles, 0.10 MB",
+    ):
+        progress.feed(line)
+        seen.append((progress.stage, progress.fraction))
+        if progress.stage == "draw":
+            assert progress.stage_words() == "drawing terrain, painted"
+    assert [stage for stage, _ in seen] == ["draw", "draw", "light", "cut:terrain", "cut:terrain",
+                                            "cut:terrain", "cut:painted", "cut:painted"]  # fmt: skip
+    assert seen[4][1] > 0 and seen[7][1] > 0, "the pyramid lines count for the layer being cut"
 
 
 def test_stage_lines_drive_progress_where_the_regexes_cannot():

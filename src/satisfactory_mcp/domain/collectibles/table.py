@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from typing import cast
 
 from ... import config
+from ...core.collectible_rows import MapPlacement
+from ...core.jsontypes import JsonObject, JsonValue
 from ...core.saveio.records import instance_leaf
 
 __all__ = [
@@ -49,6 +52,11 @@ def name_stem(leaf: str) -> str:
     return _GLUED_INDEX.sub("", removed_actor_class(leaf))
 
 
+def as_object(value: JsonValue) -> JsonObject:
+    """``value`` when it is a JSON object, else an empty one."""
+    return value if isinstance(value, dict) else {}
+
+
 @dataclass
 class CollectibleTable:
     """The map's own collectible placements: ``data/world_collectibles.json``.
@@ -58,10 +66,14 @@ class CollectibleTable:
     table is never a source of state -- that split is what makes both halves honest.
     """
 
-    rows: list[dict]
-    meta: dict
-    by_key: dict[tuple[str, str], dict] = field(default_factory=dict, repr=False)
-    by_category: dict[str, list[dict]] = field(default_factory=dict, repr=False)
+    rows: list[MapPlacement]
+    meta: JsonObject
+    by_key: dict[tuple[str, str], MapPlacement] = field(
+        default_factory=dict[tuple[str, str], MapPlacement], repr=False
+    )
+    by_category: dict[str, list[MapPlacement]] = field(
+        default_factory=dict[str, list[MapPlacement]], repr=False
+    )
 
     def __post_init__(self) -> None:
         for row in self.rows:
@@ -78,8 +90,9 @@ class CollectibleTable:
         """Category names, most-placed first."""
         return sorted(self.by_category, key=lambda c: (-len(self.by_category[c]), c))
 
-    def info(self, category: str) -> dict:
-        return ((self.meta.get("totals") or {}).get("by_category") or {}).get(category, {})
+    def info(self, category: str) -> JsonObject:
+        totals = as_object(self.meta.get("totals"))
+        return as_object(as_object(totals.get("by_category")).get(category))
 
     def cls_of(self, category: str) -> str:
         rows = self.by_category.get(category) or []
@@ -105,8 +118,8 @@ class CollectibleTable:
         AttachParent pairs all 298 Mercer shrines 1:1 with a sphere. Summing categories
         therefore over-counts artifacts by the number of shrines.
         """
-        pedestals = (self.meta.get("totals") or {}).get("pedestals") or {}
-        parents = (pedestals.get(category) or {}).get("parent_category") or {}
+        pedestals = as_object(as_object(self.meta.get("totals")).get("pedestals"))
+        parents = as_object(as_object(pedestals.get(category)).get("parent_category"))
         return next(iter(parents), None)
 
     def excluded_reason(self, stem: str) -> str | None:
@@ -116,7 +129,7 @@ class CollectibleTable:
         one: ``BP_DebrisActor`` is the stem of three, and the counter glued onto a name is
         not evidence about which. Naming all three still answers "is this a collectible".
         """
-        excluded = self.meta.get("excluded") or {}
+        excluded = as_object(self.meta.get("excluded"))
         entry = excluded.get(f"{stem}_C")
         if isinstance(entry, dict):
             return str(entry.get("why"))
@@ -127,9 +140,8 @@ class CollectibleTable:
 
     @property
     def build(self) -> str:
-        return str(
-            ((self.meta.get("source") or {}).get("placements") or {}).get("game_build") or "?"
-        )
+        source = as_object(self.meta.get("source"))
+        return str(as_object(source.get("placements")).get("game_build") or "?")
 
 
 COLLECTIBLES_FILE = "world_collectibles.json"
@@ -144,7 +156,7 @@ _TABLE: dict[tuple[str, int], CollectibleTable] = {}
 class CollectiblesUnreadable(Exception):
     """The table is THERE and will not parse -- a different fact from "not generated".
 
-    Absent is the ordinary state of a fresh clone, and the answer is "run the generator".
+    Absent is a checkout that lost the committed file, and the answer is "run the generator".
     Corrupt is a half-written file or an interrupted run, and the answer is "delete it and
     run the generator", which nobody can act on if the two arrive as one.
     """
@@ -153,8 +165,8 @@ class CollectiblesUnreadable(Exception):
 def load_collectibles(*, strict: bool = False) -> CollectibleTable | None:
     """The map's placement table, or ``None`` when it has not been generated.
 
-    ``None`` rather than an exception: the file is untracked, so a fresh clone does not
-    have one, and every caller degrades to the save-only census instead of failing. What
+    ``None`` rather than an exception: the file is committed, but a checkout without it
+    still works, since every caller degrades to the save-only census instead of failing. What
     is lost without it is everything the save cannot know by itself -- how many of each
     kind exist, where they are, and therefore what remains.
 
@@ -171,7 +183,7 @@ def load_collectibles(*, strict: bool = False) -> CollectibleTable | None:
         hit = _TABLE.get(key)
         if hit is not None:
             return hit
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload: JsonValue = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         # ``ValueError`` covers ``JSONDecodeError`` and the numeric parse errors a truncated
         # file produces. Named rather than caught broadly, so a bug here still raises.
@@ -180,12 +192,15 @@ def load_collectibles(*, strict: bool = False) -> CollectibleTable | None:
         return None
     # A JSON file that is not an object at all is corrupt, not empty, and this function is
     # only allowed to answer ``None`` or raise ``CollectiblesUnreadable``.
-    rows = payload.get("collectibles") or [] if isinstance(payload, dict) else []
+    document = as_object(payload)
+    rows = document.get("collectibles") or []
     if not rows:
         if strict:
             raise CollectiblesUnreadable(f"{path} exists but lists no collectibles")
         return None
-    table = CollectibleTable(rows=rows, meta=payload.get("_meta") or {})
+    table = CollectibleTable(
+        rows=cast(list[MapPlacement], rows), meta=as_object(document.get("_meta"))
+    )
     _TABLE.clear()
     _TABLE[key] = table
     return table

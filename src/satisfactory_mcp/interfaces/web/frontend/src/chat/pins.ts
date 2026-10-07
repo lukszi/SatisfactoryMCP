@@ -24,16 +24,16 @@ export interface PinTarget {
   text: string;
 }
 
-export var LABEL_MAX = 80;
+export const LABEL_MAX = 80;
 
-var PINS_PATH: ApiPath = "/api/pins";
-var PIN_PATH: ApiPath = "/api/pins/{n}";
-var KIND_ATTR = "data-pin-kind";
-var REF_ATTR = "data-pin-ref";
-var PIN_ZOOM = 1;
+const PINS_PATH: ApiPath = "/api/pins";
+const PIN_PATH: ApiPath = "/api/pins/{n}";
+const KIND_ATTR = "data-pin-kind";
+const REF_ATTR = "data-pin-ref";
+const PIN_ZOOM = 1;
 
-var markers: Record<number, L.Marker> = {};
-var store = liveStore<PinsResponse, PinRow>(
+let markers: Record<number, L.Marker> = {};
+const store = liveStore<PinsResponse, PinRow>(
   PINS_PATH,
   function (data) {
     return data.pins;
@@ -42,9 +42,9 @@ var store = liveStore<PinsResponse, PinRow>(
   drawPins
 );
 
-export var onPins = store.on;
-export var pinStore = store.read;
-export var refetchPins = store.refetch;
+export const onPins = store.on;
+export const pinStore = store.read;
+export const refetchPins = store.refetch;
 
 export function livePins(): PinRow[] {
   const data = pinStore().data;

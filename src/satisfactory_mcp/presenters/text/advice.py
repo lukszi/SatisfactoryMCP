@@ -18,17 +18,17 @@ SUMMARY_ROWS = 12
 ROW_WIDTH = 160
 SNOOZE_HOURS = 1.0
 _HIDE = re.compile(
-    r"\s*(adv:[0-9a-f]{4,6})(?:\s+(snooze)(?:\s+(\d+(?:\.\d+)?)\s*(h|m|min)?)?)?\s*",
+    r"(adv:[0-9a-f]{4,6})(?:\s+(snooze)(?:\s+(\d+(?:\.\d+)?)\s*(h|m|min)?)?)?",
     re.IGNORECASE,
 )
 
 
-def parse_hide(raw) -> tuple[str, str, float | None] | None:
+def parse_hide(raw: object) -> tuple[str, str, float | None] | None:
     """``"adv:3f9a"`` -> dismiss; ``"adv:3f9a snooze"`` -> 1 h of play; ``"… snooze 4h"``
     or ``"… snooze 30m"`` -> that long. None when it is not one."""
     if not isinstance(raw, str):
         return None
-    hit = _HIDE.fullmatch(raw)
+    hit = _HIDE.fullmatch(raw.strip())
     if hit is None:
         return None
     adv_id = hit.group(1).lower()
@@ -67,7 +67,7 @@ def summary_block(cur: Current) -> str:
     """``world_summary``'s ``worth a look`` block: every active row, at most twelve."""
     if not cur.active:
         return "## worth a look\nnothing" + (f" ({len(cur.hidden)} hidden)" if cur.hidden else "")
-    rows = []
+    rows: list[str] = []
     for adv, back, _rev in cur.active[:SUMMARY_ROWS]:
         subject = f"“{adv.subject}”" if adv.subject_kind in ("factory", "plan") else adv.subject
         again = " (back: worse than when hidden)" if back else ""

@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, TypeAlias
 
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
@@ -18,6 +19,12 @@ from ...core.saveio.records import actor_class
 from ..world.logistics import PhysicalGraph
 from .health import ACTIONABLE, assess
 from .query import FactoryView
+
+if TYPE_CHECKING:
+    from ..world.state import WorldState
+
+#: Per ``(group key, item)``: the groups or terminal kinds that output reaches.
+Reach: TypeAlias = dict[tuple[str, str], set[str]]
 
 __all__ = [
     "BUFFER",
@@ -112,12 +119,12 @@ class Group:
     key: str
     building: str
     recipe: str
-    machines: list[str] = field(default_factory=list)
-    clocks: list[float] = field(default_factory=list)
+    machines: list[str] = field(default_factory=list[str])
+    clocks: list[float] = field(default_factory=list[float])
     makes: dict[str, float] = field(default_factory=lambda: defaultdict(float))
     uses: dict[str, float] = field(default_factory=lambda: defaultdict(float))
-    states: Counter = field(default_factory=Counter)
-    health: Counter = field(default_factory=Counter)
+    states: Counter[str] = field(default_factory=Counter[str])
+    health: Counter[str] = field(default_factory=Counter[str])
 
 
 @dataclass(frozen=True)
@@ -130,18 +137,18 @@ class FlowEdge:
 
 @dataclass
 class FlowGraph:
-    groups: dict[str, Group] = field(default_factory=dict)
-    edges: list[FlowEdge] = field(default_factory=list)
+    groups: dict[str, Group] = field(default_factory=dict[str, Group])
+    edges: list[FlowEdge] = field(default_factory=list[FlowEdge])
     #: item -> product | sunk | intermediate | unrouted | input
-    roles: dict[str, str] = field(default_factory=dict)
+    roles: dict[str, str] = field(default_factory=dict[str, str])
     #: item -> the terminal kinds any of its output reaches
-    destinations: dict[str, set[str]] = field(default_factory=dict)
-    produced: dict[str, float] = field(default_factory=dict)
-    consumed: dict[str, float] = field(default_factory=dict)
+    destinations: dict[str, set[str]] = field(default_factory=dict[str, set[str]])
+    produced: dict[str, float] = field(default_factory=dict[str, float])
+    consumed: dict[str, float] = field(default_factory=dict[str, float])
     #: Boxes and tanks the walk passed through because something drains them.
-    buffers: set[str] = field(default_factory=set)
+    buffers: set[str] = field(default_factory=set[str])
     #: terminal kind -> how many distinct actors of that kind were reached
-    terminals: Counter = field(default_factory=Counter)
+    terminals: Counter[str] = field(default_factory=Counter[str])
 
     def listed(self, role: str) -> list[tuple[str, float]]:
         side = self.consumed if role == "input" else self.produced
@@ -154,7 +161,9 @@ def _medium(game: GameData, item: str) -> str:
     return ports.PIPE if found is not None and found.is_fluid else ports.CONVEYOR
 
 
-def _group_machines(out: FlowGraph, state, game: GameData, view: FactoryView) -> dict[str, str]:
+def _group_machines(
+    out: FlowGraph, state: WorldState, game: GameData, view: FactoryView
+) -> dict[str, str]:
     """Fill ``out.groups`` by building and recipe; returns each machine's group key."""
     inside = sorted(row.instance for row in view.machines)
     report = assess(view.name, inside, game, state.projection, state.graph)
@@ -189,7 +198,13 @@ def _group_machines(out: FlowGraph, state, game: GameData, view: FactoryView) ->
     return group_of
 
 
-def _walk_outputs(out: FlowGraph, state, game: GameData, view: FactoryView, group_of: dict):
+def _walk_outputs(
+    out: FlowGraph,
+    state: WorldState,
+    game: GameData,
+    view: FactoryView,
+    group_of: dict[str, str],
+) -> tuple[Reach, Reach, set[str]]:
     """Where every group's outputs go: ``(reach, kinds, used_inside)``.
 
     ``reach`` maps (group, item) to the groups inside that use it, ``kinds`` to the terminal
@@ -197,8 +212,8 @@ def _walk_outputs(out: FlowGraph, state, game: GameData, view: FactoryView, grou
     """
     inside = {row.instance for row in view.machines}
     physical = state.physical
-    reach: dict[tuple[str, str], set[str]] = defaultdict(set)
-    kinds: dict[tuple[str, str], set[str]] = defaultdict(set)
+    reach: Reach = defaultdict(set)
+    kinds: Reach = defaultdict(set)
     medium_cache: dict[str, str] = {}
     terminal_actors: dict[str, set[str]] = defaultdict(set)
     used_inside: set[str] = set()
@@ -224,7 +239,7 @@ def _walk_outputs(out: FlowGraph, state, game: GameData, view: FactoryView, grou
     return reach, kinds, used_inside
 
 
-def _apportion(out: FlowGraph, reach: dict, kinds: dict) -> None:
+def _apportion(out: FlowGraph, reach: Reach, kinds: Reach) -> None:
     """Share each group's demand over the groups that reach it, then its surplus over the
     terminal kinds it reaches; an unmet demand comes ``in:`` from outside."""
     allotted: dict[tuple[str, str], float] = defaultdict(float)
@@ -250,9 +265,9 @@ def _apportion(out: FlowGraph, reach: dict, kinds: dict) -> None:
             out.edges.append(FlowEdge(producer, kind, item, each))
 
 
-def _item_roles(out: FlowGraph, kinds: dict, used_inside: set[str]) -> None:
+def _item_roles(out: FlowGraph, kinds: Reach, used_inside: set[str]) -> None:
     for item in set(out.produced) | set(out.consumed):
-        where = set().union(*(kinds.get((producer, item), set()) for producer in out.groups))
+        where = set[str]().union(*(kinds.get((producer, item), set()) for producer in out.groups))
         out.destinations[item] = where
         if item not in out.produced:
             out.roles[item] = "input"
@@ -266,7 +281,7 @@ def _item_roles(out: FlowGraph, kinds: dict, used_inside: set[str]) -> None:
             out.roles[item] = "unrouted"
 
 
-def build(state, game: GameData, view: FactoryView) -> FlowGraph:
+def build(state: WorldState, game: GameData, view: FactoryView) -> FlowGraph:
     """The recipe-group graph of ``view``'s machines, with item roles and apportioned rates."""
     out = FlowGraph()
     group_of = _group_machines(out, state, game, view)

@@ -5,17 +5,20 @@ plan and journals the look (docs/planner-p3_contract.md §6.1)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Annotated
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....core.gamedata import search
+from ....core.gamedata.model import Building, GameData
 from ....core.gamedata.unlocks import granted_by_label
 from ....domain.planning.analysis import swaps
+from ....domain.planning.analysis.views import SwapOption
 from ....domain.planning.stored.planlog import PlanLog
 from ....domain.planning.stored.recall import expand_plan_pin
 from ....domain.session import journal
+from ....domain.world.state import WorldState
 from ....presenters.text import primitives as render
 from ....presenters.text.search import item_flows, render_search
 from .. import app
@@ -37,13 +40,18 @@ def _no_save_note(reason: str | None) -> str:
 def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
     """Find items by name. Returns form, energy and sink points."""
     hits = search.find_items(app.game(), query)
-    page = hits[offset : offset + render.clamp(limit)]
+    window = render.page(limit, offset)
+    page = window.of(hits)
     rows = [
         (i.name, "fluid" if i.is_fluid else "solid", render.num(i.energy_mj), i.sink_points)
         for i in page
     ]
     body = render.table(
-        ("item", "form", "MJ", "sink_pts"), rows, total=len(hits), offset=offset, limit=limit
+        ("item", "form", "MJ", "sink_pts"),
+        rows,
+        total=len(hits),
+        offset=window.start,
+        limit=window.size,
     )
     footer = render.ids_footer((i.name, i.cls) for i in page)
     return render.envelope(f"# {len(hits)} item(s) matching {query!r}", body + "\n" + footer)
@@ -85,7 +93,7 @@ def recipe_detail(recipe_id: str) -> str:
     return "\n".join(lines)
 
 
-def _delta_cells(option: dict) -> list[str]:
+def _delta_cells(option: SwapOption) -> list[str]:
     delta = option["delta"]
     if delta is None:
         return ["-", "-", "-"]
@@ -95,7 +103,14 @@ def _delta_cells(option: dict) -> list[str]:
     return [f"{delta['machines']:+d}", f"{delta['mw_draw']:+g}", raw or "0"]
 
 
-def _alternates_in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -> str:
+def _alternates_in_plan(
+    g: GameData,
+    st: WorldState,
+    iid: str,
+    plan: str,
+    include_locked: bool,
+    ctx: app.ToolContext | None,
+) -> str:
     """The alternates table against a stored plan: status and deltas per recipe."""
     try:
         key, echo = expand_plan_pin(st, plan)
@@ -107,7 +122,7 @@ def _alternates_in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -
         return f"! no saved plan named {plan!r}. Saved: {known}"
     state = PlanLog(st.world_id).state(stored.key)
     result = swaps.swap_deltas(g, st, state, iid, spoilers=include_locked)
-    rows = []
+    rows: list[list[str]] = []
     for option in result["options"]:
         r = g.recipes[option["recipe_id"]]
         status = option["status"]
@@ -163,7 +178,7 @@ def alternates_for_item(
         str | None,
         Field(description="a stored plan: add what requiring each recipe would change in it"),
     ] = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Every automatable recipe that makes an item, alternates first.
 
@@ -186,7 +201,7 @@ def alternates_for_item(
     shown = [r for r in producers if include_locked or have is None or r.cls in have]
     # Only when something is locked; otherwise the column is a row of blanks.
     granted = have is not None and any(r.cls not in have for r in shown)
-    rows = []
+    rows: list[list[str]] = []
     for r in shown:
         status = "-" if have is None else ("HAVE" if r.cls in have else "LOCKED")
         b = g.machine(r)
@@ -305,7 +320,7 @@ _ARCH_TOKENS = ("Foundation", "Ramp", "Wall", "Pillar", "Beam", "Stair", "Walkwa
 
 #: Which buildings each ``building_kind`` lists. Pumps are logistics: they move fluid, and
 #: their head lift is the number a fluid plan needs.
-_BUILDING_KINDS = {
+_BUILDING_KINDS: dict[str, Callable[[Building], bool]] = {
     "production": lambda b: b.is_manufacturer,
     "extractor": lambda b: b.is_extractor,
     "generator": lambda b: b.is_generator,
@@ -320,7 +335,7 @@ _BUILDING_KINDS = {
 }
 
 
-def _building_detail(b) -> str:
+def _building_detail(b: Building) -> str:
     """The one figure that says what a building does: its rate, its output or its lift."""
     if b.is_extractor and b.base_extract_rate:
         return f"{render.num(b.extract_rate('normal'))}/min @normal"
@@ -370,7 +385,8 @@ def list_buildings(
     # note says which save could not be read and why.
     st, save_error = app.load_world_or_none(save, world, as_of)
     unlocked, built = (st.unlocked_building_ids, st.built_counts) if st is not None else (None, {})
-    want = _BUILDING_KINDS.get((building_kind or "").strip().casefold())
+    chosen_kind = (building_kind or "").strip().casefold()
+    want = _BUILDING_KINDS.get(chosen_kind)
     if want is None:
         return (
             f"! unknown building_kind {building_kind!r}. "
@@ -379,7 +395,7 @@ def list_buildings(
     picks = sorted((b for b in g.buildings.values() if want(b)), key=lambda b: b.name)
     window = render.page(limit, offset, default=25)
     page = window.of(picks)
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for b in page:
         fp = b.footprint
         have = "" if unlocked is None else ("HAVE" if b.cls in unlocked else "LOCKED")
@@ -404,11 +420,10 @@ def list_buildings(
             "so a row of N machines needs somewhat fewer than N x found"
         )
     ]
-    if unlocked is not None and building_kind == "logistics" and st is not None:
-        belt, pipe = st.best_belt(), st.best_pipe()
+    if unlocked is not None and chosen_kind == "logistics" and st is not None:
+        best = [carrier for carrier in (st.best_belt(), st.best_pipe()) if carrier is not None]
         chosen = (
-            ", ".join(f"{g.buildings[c].name} ({v:g})" for c, v in (belt, pipe) if c)
-            or "none unlocked"
+            ", ".join(f"{g.buildings[c].name} ({v:g})" for c, v in best if c) or "none unlocked"
         )
         notes.append(
             f"planning defaults to the fastest UNLOCKED tier: {chosen}. A tier assumed "

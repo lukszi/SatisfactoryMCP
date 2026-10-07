@@ -139,7 +139,7 @@ def test_an_end_inside_a_machines_footprint_names_the_machine(game):
 #: axis, each tangent along its own axis at three times the quarter-circle control offset.
 _ELBOW_P0 = [0.0, 0.0, 0.0]
 _ELBOW_P1 = [2000.0, 2000.0, 0.0]
-_ELBOW_SPAN = [0.0, 3313.7, 0.0, 3313.7, 0.0, 0.0]
+_ELBOW_SPAN = (0.0, 3313.7, 0.0, 3313.7, 0.0, 0.0)
 
 
 def _tessellated_m(p0, p1, span, steps: int = 8192) -> float:
@@ -172,9 +172,10 @@ def test_a_span_with_no_recorded_tangents_stays_its_chord():
     projection older than 15 has no column at all."""
     line = [[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [2000.0, 0.0, 0.0]]
     assert conduits._length_m(line) == pytest.approx(20.0)
-    assert conduits._length_m(line, [0, 0]) == pytest.approx(20.0)
-    # A torn row costs its curve, never the run.
-    assert conduits._length_m(line, ["nonsense", [1, 2]]) == pytest.approx(20.0)
+    # ``saverows`` reads a flat span and a torn one alike as ``None``.
+    assert conduits._length_m(line, [None, None]) == pytest.approx(20.0)
+    # A column shorter than the route costs its missing spans' curve, never the run.
+    assert conduits._length_m(line, [None]) == pytest.approx(20.0)
 
 
 def test_the_fixture_world_gains_length_where_it_bends(game, projection):

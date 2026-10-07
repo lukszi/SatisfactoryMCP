@@ -9,18 +9,21 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
-from mapgen.gamedata.rockfamily import FAMILIES
-from mapgen.palette.calibration import display_to_ground
-from mapgen.palette.colour import oklab
-from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.palette.surfaces import (
+from mapgen.colour import oklab
+from mapgen.gamedata.rocks.families import FAMILIES
+from mapgen.palette.painted.calibration import display_to_ground
+from mapgen.palette.painted.surfaces import (
     family_tables,
-    patch_noise,
+    family_targets,
+    layer_tops,
     rock_surface,
     top_cover,
     top_targets,
 )
+from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.terrain.sample import patch_noise
 
 RULE = PAINTED_PALETTE["rock_top"]
 PATCHES = RULE["patches"]
@@ -35,8 +38,8 @@ def _ground(rule=RULE):
     has = np.zeros(n, np.float32)
     top[FOREST], has[FOREST] = MOSS, 1.0
     return SimpleNamespace(
-        rock_family=None, family_tint=np.ones((n, 3), np.float32), family_top=top,
-        family_has_top=has, palette={"rock_top": rule},
+        rock_family=None, family_rock={}, family_tint=np.ones((n, 3), np.float32),
+        family_top=top, family_has_top=has, palette={"rock_top": rule}, family_top_rgb={},
     )  # fmt: skip
 
 
@@ -144,6 +147,54 @@ def test_the_forest_top_takes_its_display_target_and_the_rest_keep_their_texture
     keep = [k for k in range(len(FAMILIES)) if k != FOREST]
     np.testing.assert_array_equal(top[keep], raw[keep])
     np.testing.assert_array_equal(top_targets(raw, {}, PAINTED_PALETTE), raw)
+
+
+def test_a_target_naming_no_rock_family_is_refused_by_name():
+    raw = np.zeros((len(FAMILIES), 3), np.float32)
+    with pytest.raises(ValueError, match=r"calibration\.tops names 'mossy', which is not"):
+        top_targets(raw, {"mossy": "#505936"}, PAINTED_PALETTE)
+    lab, codes = np.zeros((4, 4, 3), np.float32), np.zeros((4, 4), np.uint8)
+    with pytest.raises(ValueError, match=r"calibration\.families names 'mossy', which is not"):
+        family_targets(lab, codes, {"mossy": "#505936"}, PAINTED_PALETTE, 1)
+
+
+def test_a_top_of_a_paint_layers_texture_wears_that_layers_target_where_it_stands():
+    tiles = "/Game/FactoryGame/World/Environment/Landscape/Texture/Tiles/"
+    families = {name: {"top": [0.56, 0.45, 0.33], "top_texture": tiles + path}
+                for name, path in (("sand", "Sand/TX_Sand_BC"), ("grass", "Grass/TX_Grass_Far"),
+                                   ("redgrass", "GrassRed/TX_GrassRed_01_Alb"),
+                                   ("forest", "Forest/TX_Forest_Far_01_Alb"))}  # fmt: skip
+    desert = np.array([[0.0, 1.0], [0.0, 1.0]], np.float32)
+    area = lambda keys: desert if "Area_DuneDesert" in keys else np.zeros_like(desert)
+    tops = layer_tops(families, PAINTED_PALETTE, area)
+    sand = FAMILIES.index("sand")
+    assert set(tops) == {sand, GRASS}, "the forest has its own target, red grass none"
+    planes = np.stack(tops[sand], -1)[0]
+    for k, hex_colour in ((0, "#d5cbb6"), (1, "#c4ab8b")):
+        np.testing.assert_allclose(oklab(planes[k]), display_to_ground(PAINTED_PALETTE, hex_colour),
+                                   atol=2e-3)  # fmt: skip
+    ground = _ground({"up": RULE["up"]})
+    ground.family_has_top[sand], ground.family_top_rgb = 1.0, tops
+    scene = {"z_m": np.zeros((2, 2), np.float32), "grid": (slice(0, 2), 0, 2, 0, 2, 0.5)}
+    rock = np.full((2, 2, 3), 0.3, np.float32)
+    out = rock_surface(rock, scene, ground, lambda plane: plane, np.full((2, 2), sand, np.uint8))
+    np.testing.assert_allclose(out[0], planes, atol=1e-6)
+
+
+def test_an_arch_over_a_cliff_wears_the_area_rock_not_the_cliffs_family():
+    ground = _ground({"up": RULE["up"]})
+    ground.rock_family = np.full((2, 3), FOREST, np.uint8)
+    rock = np.full((2, 3, 3), 0.3, np.float32)
+    scene = {"z_m": np.zeros((2, 3), np.float32), "grid": (slice(0, 2), 0, 2, 0, 3, 0.5),
+             "top_weight": np.array([[0.0, 0.5, 1.0]] * 2, np.float32)}  # fmt: skip
+    out = rock_surface(rock, scene, ground)
+    np.testing.assert_allclose(out[0, 0], MOSS, atol=1e-6)
+    np.testing.assert_allclose(out[0, 1], (np.float32(MOSS) + 0.3) / 2, atol=1e-6)
+    np.testing.assert_allclose(out[0, 2], 0.3, atol=1e-6)
+    del scene["top_weight"]
+    np.testing.assert_allclose(
+        rock_surface(rock, scene, ground)[0], np.tile(MOSS, (3, 1)), atol=1e-6
+    )
 
 
 def test_the_family_tables_take_the_tops_from_the_palette():

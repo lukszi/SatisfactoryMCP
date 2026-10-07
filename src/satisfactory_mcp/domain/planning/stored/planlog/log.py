@@ -12,13 +12,19 @@ import logging
 import os
 import secrets
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
+
+from typing_extensions import TypedDict
 
 from .....core import atomic, filelock, schema
+from .....core.jsontypes import JsonValue, require_object
 from ..plan_args import PLAN_SCALARS, InvalidOp, PlanArgs, checked_text
 from ..store import Plan, PlanStore, find_by_name
+from ..views import PlanOp, PlanStamp, PlanStateRecord
 from . import migrate as migration
 from .ops import (
     apply,
@@ -49,6 +55,7 @@ from .records import (
     Pushed,
     Stamp,
     UnknownPlan,
+    json_copy,
 )
 
 SNAPSHOT_EVERY = 50
@@ -56,15 +63,26 @@ SNAPSHOT_EVERY = 50
 _log = logging.getLogger(__name__)
 
 
+class _Snapshot(TypedDict):
+    """``snap/<rev>.json`` as read back: one plan's state at ``rev``."""
+
+    schema: int
+    key: str
+    rev: int
+    ts: float
+    state: PlanStateRecord
+
+
 def _read_commits(path: Path) -> list[Commit]:
     try:
         data = path.read_bytes()
     except FileNotFoundError:
         return []
-    out = []
+    out: list[Commit] = []
     for line in data.split(b"\n")[:-1]:
         try:
-            commit = Commit.from_dict(json.loads(line))
+            stored: JsonValue = json.loads(line)
+            commit = Commit.from_dict(require_object(stored))
         except (ValueError, KeyError, TypeError):
             continue
         if commit.rev == len(out) + 1:
@@ -113,7 +131,7 @@ def _as_plan(state: PlanState) -> Plan:
     return plan
 
 
-def _find_conflicts(mine: list[dict], against: list[Commit]) -> list[Conflict]:
+def _find_conflicts(mine: list[PlanOp], against: list[Commit]) -> list[Conflict]:
     """Every pair of my op and a commit's op that clash, in the order a refusal lists them."""
     conflicts: list[Conflict] = []
     for op in mine:
@@ -127,10 +145,11 @@ def _find_conflicts(mine: list[dict], against: list[Commit]) -> list[Conflict]:
 
 
 def _apply_ops(
-    work: PlanState, mine: list[dict], since: list[Commit]
-) -> tuple[list[dict], list[dict]]:
+    work: PlanState, mine: list[PlanOp], since: list[Commit]
+) -> tuple[list[PlanOp], list[PlanOp]]:
     """Apply ``mine`` to ``work`` in order: (applied, each with its ``was``; dropped no-ops)."""
-    applied, dropped = [], []
+    applied: list[PlanOp] = []
+    dropped: list[PlanOp] = []
     restored = any(t.get("op") == "restore" for c in since for t in c.ops)
     for op in mine:
         if is_noop(work, op) or (op["op"] == "restore" and restored and not work.forgotten):
@@ -149,7 +168,7 @@ class PlanView:
 
     world_id: str
     session_name: str = ""
-    plans: list[Plan] = field(default_factory=list)
+    plans: list[Plan] = field(default_factory=list[Plan])
 
     def find(self, name: str) -> Plan | None:
         by_key = [p for p in self.plans if p.key == name.strip().lower()]
@@ -172,13 +191,13 @@ class PlanLog:
     def _ops(self, key: str) -> Path:
         return self.root / key / "ops.jsonl"
 
-    def _world_lock(self):
+    def world_lock(self) -> AbstractContextManager[None]:
         return filelock.held(self.root / "world")
 
-    def _plan_lock(self, key: str):
+    def _plan_lock(self, key: str) -> AbstractContextManager[None]:
         return filelock.held(self._ops(key))
 
-    def _fresh_key(self) -> str:
+    def fresh_key(self) -> str:
         key = secrets.token_hex(4)
         while (self.root / key).exists():
             key = secrets.token_hex(4)
@@ -222,8 +241,11 @@ class PlanLog:
         revs = sorted((int(p.stem) for p in snaps.glob("*.json") if p.stem.isdigit()), reverse=True)
         for snap in (r for r in revs if r <= rev):
             try:
-                raw = json.loads((snaps / f"{snap}.json").read_text(encoding="utf-8"))
-                schema.check(raw, SCHEMA, snaps / f"{snap}.json")
+                path = snaps / f"{snap}.json"
+                loaded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
+                schema.check(loaded, SCHEMA, path)
+                # Past the schema check, a snapshot is what ``_snapshot`` wrote.
+                raw = cast(_Snapshot, require_object(loaded))
                 if raw.get("rev") != snap or raw.get("key") != key:
                     continue
                 return PlanState.from_dict(raw["state"], key=key, rev=snap)
@@ -232,7 +254,7 @@ class PlanLog:
         return None
 
     def heads(self, include_forgotten: bool = False) -> list[PlanState]:
-        rows = []
+        rows: list[tuple[float, str, PlanState]] = []
         for key in self.keys():
             commits = _read_commits(self._ops(key))
             if not commits:
@@ -258,7 +280,7 @@ class PlanLog:
     def view(self) -> PlanView:
         return PlanView(self.world_id, self.session_name, [_as_plan(s) for s in self.heads()])
 
-    def _taken(self, name: str, key: str | None = None) -> bool:
+    def taken(self, name: str, key: str | None = None) -> bool:
         wanted = name.strip().casefold()
         return any(s.key != key and s.name.casefold() == wanted for s in self.heads())
 
@@ -268,7 +290,7 @@ class PlanLog:
         wanted = checked_text("name", name).strip()
         if not wanted:
             raise InvalidOp("a plan name cannot be blank")
-        if self._taken(wanted, key):
+        if self.taken(wanted, key):
             raise NameTaken(wanted)
         return wanted
 
@@ -290,15 +312,15 @@ class PlanLog:
     def create(
         self,
         name: str,
-        args: dict,
+        args: PlanArgs | Mapping[str, object],
         *,
         actor: Actor,
         sav: str = "",
         notes: str = "",
         factory: str = "",
-        siting: dict | None = None,
+        siting: Mapping[str, object] | None = None,
         plan_id: str = "",
-        provenance: dict | None = None,
+        provenance: Mapping[str, object] | None = None,
         created: str = "",
         note: str = "",
     ) -> Pushed:
@@ -311,21 +333,21 @@ class PlanLog:
             factory=checked_text("factory", factory),
             created=checked_text("created", created),
             plan_id=checked_text("plan_id", plan_id),
-            provenance=copy.deepcopy(provenance or {}),
-            siting=copy.deepcopy(siting or {}),
+            provenance=json_copy(provenance or {}),
+            siting=json_copy(siting or {}),
             args=args if isinstance(args, PlanArgs) else PlanArgs.from_dict(args),
         )
         self.root.mkdir(parents=True, exist_ok=True)
-        with self._world_lock():
-            if self._taken(wanted):
+        with self.world_lock():
+            if self.taken(wanted):
                 raise NameTaken(wanted)
-            return self._create_locked(self._fresh_key(), state, actor, sav, note)
+            return self.create_locked(self.fresh_key(), state, actor, sav, note)
 
-    def _create_locked(
+    def create_locked(
         self, key: str, state: PlanState, actor: Actor, sav: str, note: str
     ) -> Pushed:
         state.key = key
-        op = {"op": "create", "name": state.name, "state": state.body()}
+        op: PlanOp = {"op": "create", "name": state.name, "state": json_copy(state.body())}
         commit = Commit(rev=1, base_rev=0, ts=_now(), actor=actor, sav=sav, ops=[op], note=note)
         (self.root / key).mkdir(parents=True, exist_ok=True)
         with self._plan_lock(key):
@@ -346,14 +368,14 @@ class PlanLog:
     def push(
         self,
         key: str,
-        base_rev: int,
-        ops: list[dict],
+        base_rev: int | None,
+        ops: Sequence[Mapping[str, object]],
         *,
         actor: Actor,
         sav: str = "",
         stamp: Stamp | None = None,
         note: str = "",
-        extend: Callable[[PlanState], list[dict]] | None = None,
+        extend: Callable[[PlanState], Sequence[Mapping[str, object]]] | None = None,
     ) -> Pushed:
         """``extend`` adds ops worked out from the head under the plan lock; they merge by
         M1 like the rest, so one that clashes with a commit since ``base_rev`` refuses."""
@@ -378,27 +400,28 @@ class PlanLog:
     def push_args(
         self,
         key: str,
-        base_rev: int,
-        args: dict,
+        base_rev: int | None,
+        args: Mapping[str, object],
         *,
         actor: Actor,
         sav: str = "",
-        extra: list[dict] | None = None,
+        extra: Sequence[Mapping[str, object]] | None = None,
         stamp: Stamp | None = None,
         note: str = "",
     ) -> Pushed:
         base = self.state(key, self._valid_base(key, base_rev))
-        ops = diff_args(base.args, args, partial=False) + list(extra or ())
+        ops: list[Mapping[str, object]] = [*diff_args(base.args, args, partial=False)]
+        ops += extra or ()
         return self.push(key, base_rev, ops, actor=actor, sav=sav, stamp=stamp, note=note)
 
-    def _valid_base(self, key: str, base_rev) -> int:
+    def _valid_base(self, key: str, base_rev: object) -> int:
         return self._valid_base_in(self._all(key), base_rev)
 
     def undo(
         self,
         key: str,
-        base_rev: int,
-        rev: int,
+        base_rev: int | None,
+        rev: int | None,
         *,
         actor: Actor,
         sav: str = "",
@@ -434,7 +457,7 @@ class PlanLog:
     def restore_to(
         self,
         key: str,
-        base_rev: int,
+        base_rev: int | None,
         rev: int,
         *,
         actor: Actor,
@@ -471,7 +494,9 @@ class PlanLog:
 
         return self._locked(True, key, run)
 
-    def push_at_head(self, key: str, ops: list[dict], *, actor: Actor, note: str = "") -> Pushed:
+    def push_at_head(
+        self, key: str, ops: Sequence[Mapping[str, object]], *, actor: Actor, note: str = ""
+    ) -> Pushed:
         mine = [canonical_op(op) for op in ops]
 
         def run(current: list[Commit]) -> Pushed:
@@ -492,7 +517,7 @@ class PlanLog:
     def _locked(self, world: bool, key: str, run: Callable[[list[Commit]], Pushed]) -> Pushed:
         self._all(key)
         if world:
-            with self._world_lock(), self._plan_lock(key):
+            with self.world_lock(), self._plan_lock(key):
                 return run(self._all(key))
         with self._plan_lock(key):
             return run(self._all(key))
@@ -502,8 +527,8 @@ class PlanLog:
         key: str,
         commits: list[Commit],
         *,
-        base_rev,
-        mine: list[dict],
+        base_rev: object,
+        mine: list[PlanOp],
         actor: Actor,
         sav: str,
         stamp: Stamp | None,
@@ -512,22 +537,23 @@ class PlanLog:
         window: set[int] | None = None,
     ) -> Pushed:
         head_rev = commits[-1].rev
-        base_rev = self._valid_base_in(commits, base_rev)
-        base_state = self._state(key, commits, base_rev)
+        base = self._valid_base_in(commits, base_rev)
+        base_state = self._state(key, commits, base)
         if base_state.forgotten and not any(op["op"] == "restore" for op in mine):
             forgot = max(
-                c.rev for c in commits[:base_rev] if any(o.get("op") == "forget" for o in c.ops)
+                c.rev for c in commits[:base] if any(o.get("op") == "forget" for o in c.ops)
             )
             raise Forgotten(key, forgot)
-        since = commits[base_rev:]
+        since = commits[base:]
         if undoes is None:
             against = since
         else:
-            against = [c for c in commits[undoes:] if c.rev not in window]
+            ignored = window or set()
+            against = [c for c in commits[undoes:] if c.rev not in ignored]
         conflicts = _find_conflicts(mine, against)
         head = self._state(key, commits)
         if conflicts:
-            raise Outdated(head_rev, base_rev, since, conflicts, head)
+            raise Outdated(head_rev, base, since, conflicts, head)
 
         work = copy.deepcopy(head)
         applied, dropped = _apply_ops(work, mine, since)
@@ -535,7 +561,7 @@ class PlanLog:
             return Pushed(
                 key=key,
                 rev=head_rev,
-                base_rev=base_rev,
+                base_rev=base,
                 applied=[],
                 dropped=dropped,
                 merged_over=[],
@@ -543,7 +569,7 @@ class PlanLog:
                 noop=True,
                 state=head,
             )
-        if needs_world_lock(applied) and not work.forgotten and self._taken(work.name, key):
+        if needs_world_lock(applied) and not work.forgotten and self.taken(work.name, key):
             raise NameTaken(work.name)
         applied += self._stamped(work, stamp)
         for op in applied:
@@ -553,7 +579,7 @@ class PlanLog:
         merged = [c.rev for c in since]
         commit = Commit(
             rev=work.rev,
-            base_rev=base_rev,
+            base_rev=base,
             ts=_now(),
             actor=actor,
             sav=sav,
@@ -568,7 +594,7 @@ class PlanLog:
         return Pushed(
             key=key,
             rev=work.rev,
-            base_rev=base_rev,
+            base_rev=base,
             applied=applied,
             dropped=dropped,
             merged_over=merged,
@@ -578,7 +604,7 @@ class PlanLog:
         )
 
     @staticmethod
-    def _valid_base_in(commits: list[Commit], base_rev) -> int:
+    def _valid_base_in(commits: list[Commit], base_rev: object) -> int:
         head = commits[-1].rev
         if base_rev is None:
             raise BaseRevRequired(head)
@@ -589,19 +615,20 @@ class PlanLog:
         return base_rev
 
     @staticmethod
-    def _stamped(work: PlanState, stamp: Stamp | None) -> list[dict]:
+    def _stamped(work: PlanState, stamp: Stamp | None) -> list[PlanOp]:
         if stamp is None:
             return []
         try:
-            got = stamp(copy.deepcopy(work)) or {}
+            got: PlanStamp = stamp(copy.deepcopy(work)) or {}
         except Exception:
             _log.warning("could not stamp plan %s; its plan_id is cleared", work.key, exc_info=True)
             got = {"plan_id": ""}
-        out = []
+        values: dict[str, object] = dict(got)
+        out: list[PlanOp] = []
         for name in ("plan_id", "provenance"):
-            if name in got and got[name] != getattr(work, name):
+            if name in values and values[name] != getattr(work, name):
                 try:
-                    out.append(canonical_op({"op": "record", "field": name, "value": got[name]}))
+                    out.append(canonical_op({"op": "record", "field": name, "value": values[name]}))
                 except InvalidOp:
                     continue
         return out

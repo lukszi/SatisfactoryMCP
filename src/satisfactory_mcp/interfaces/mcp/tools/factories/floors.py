@@ -13,6 +13,7 @@ from pydantic import Field
 
 from .....domain.factories import floors as ffloors
 from .....domain.spatial import heightfield
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf, Limit
@@ -21,7 +22,7 @@ from ...params import AsOf, Limit
 DECK_KINDS = 3
 
 
-def _classes(st) -> dict[str, str]:
+def _classes(st: WorldState) -> dict[str, str]:
     """Instance leaf -> building class, for the ids a band lists its machines by.
 
     Read off the projection rather than off ``report.placements``: a narrowed report keeps
@@ -29,14 +30,17 @@ def _classes(st) -> dict[str, str]:
     ASSIGNED to its deck, and a machine on the very edge can be one and not the other.
     """
     out: dict[str, str] = {}
-    for key in ("machines", "extractors", "generators"):
-        for record in st.projection.get(key) or ():
-            if isinstance(record, dict):
-                out[str(record.get("instance", "")).rsplit(".", 1)[-1]] = record.get("cls") or ""
+    projection = st.projection
+    for record in [
+        *(projection.get("machines") or ()),
+        *(projection.get("extractors") or ()),
+        *(projection.get("generators") or ()),
+    ]:
+        out[str(record.get("instance", "")).rsplit(".", 1)[-1]] = record.get("cls") or ""
     return out
 
 
-def _what_stands(st, classes: dict[str, str], instances: list[str]) -> str:
+def _what_stands(st: WorldState, classes: dict[str, str], instances: list[str]) -> str:
     """What those machines are, biggest kind first."""
     counts: dict[str, int] = {}
     for leaf in instances:
@@ -48,8 +52,10 @@ def _what_stands(st, classes: dict[str, str], instances: list[str]) -> str:
     return render.capped(kinds, DECK_KINDS, more=", +{n} more") or "-"
 
 
-def _band_rows(st, classes: dict[str, str], platform: ffloors.Platform) -> list[tuple]:
-    rows = []
+def _band_rows(
+    st: WorldState, classes: dict[str, str], platform: ffloors.Platform
+) -> list[tuple[object, ...]]:
+    rows: list[tuple[object, ...]] = []
     for band in platform.bands:
         rows.append(
             (
@@ -66,7 +72,14 @@ def _band_rows(st, classes: dict[str, str], platform: ffloors.Platform) -> list[
     return rows
 
 
-def _one_platform(st, report, header: str, notes: list[str], window: render.Page, limit) -> str:
+def _one_platform(
+    st: WorldState,
+    report: ffloors.FloorReport,
+    header: str,
+    notes: list[str],
+    window: render.Page,
+    limit: int,
+) -> str:
     """A single platform, floor by floor."""
     one = report.platforms[0]
     cx, cy = one.centre_cm
@@ -103,7 +116,9 @@ def _one_platform(st, report, header: str, notes: list[str], window: render.Page
     )
 
 
-def _platform_list(report, header: str, notes: list[str], window: render.Page, limit) -> str:
+def _platform_list(
+    report: ffloors.FloorReport, header: str, notes: list[str], window: render.Page, limit: int
+) -> str:
     """Every platform that has a floor, largest first; helper pads are only counted."""
     pads = [p for p in report.platforms if not p.bands]
     ordered = sorted((p for p in report.platforms if p.bands), key=lambda p: -p.cells)
@@ -113,7 +128,7 @@ def _platform_list(report, header: str, notes: list[str], window: render.Page, l
             f"foundation pieces, and the largest is {max(p.cells for p in pads)} tile(s). "
             "Not listed"
         )
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for one in window.of(ordered):
         cx, cy = one.centre_cm
         tops = [b.top_cm / 100 for b in one.bands]

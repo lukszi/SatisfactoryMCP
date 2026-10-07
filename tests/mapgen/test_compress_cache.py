@@ -15,12 +15,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mapgen import cli, compress_cache
+from mapgen import cli
 from mapgen.bandstore import BandArray
 from mapgen.cache import (
     BANDS_SUFFIX,
+    CACHE_SIDECAR_NAME,
     DIRECT_CACHE_DIR_NAME,
-    DIRECT_CACHE_SIDECAR,
     DIRECT_COVERAGE_NAME,
     DIRECT_FAMILY_NAME,
     DIRECT_Z_NAME,
@@ -28,15 +28,17 @@ from mapgen.cache import (
     STORAGE_BANDS,
     STORAGE_RAW,
     TOP_CACHE_DIR_NAME,
-    cached_direct,
-    direct_cache_stamp,
+    cached_raster,
+    raster_cache_stamp,
 )
-from mapgen.compress_cache import Refused, compress
+from mapgen.commands import compress_cache
+from mapgen.commands.compress_cache import compress
+from mapgen.common import Refusal
 
 pytest.importorskip("zstandard")
 
 SIZE = 600
-STAMP = direct_cache_stamp(SIZE, 1, "b1")
+STAMP = raster_cache_stamp(SIZE, 1, "b1")
 DIRECT = (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME, DIRECT_FAMILY_NAME)
 NOTHING = "Nothing converted"
 
@@ -44,7 +46,7 @@ NOTHING = "Nothing converted"
 def raw_cache(folder: Path, seed: int = 0, names=DIRECT) -> dict[str, bytes]:
     folder.mkdir(parents=True, exist_ok=True)
     sidecar = {**STAMP, "storage": STORAGE_RAW}
-    (folder / DIRECT_CACHE_SIDECAR).write_text(json.dumps(sidecar), encoding="utf-8")
+    (folder / CACHE_SIDECAR_NAME).write_text(json.dumps(sidecar), encoding="utf-8")
     rng = np.random.default_rng(seed)
     for name in names:
         (rng.random((SIZE, SIZE)) * 200).astype(PLANE_DTYPES[name]).tofile(folder / name)
@@ -161,7 +163,7 @@ def test_compress_refuses_a_target_on_its_source(tmp_path):
     kept, before = kept_folder(tmp_path)
     cache = kept / DIRECT_CACHE_DIR_NAME
     for target in (cache, kept, cache / "copy"):
-        with pytest.raises(Refused, match="the source"):
+        with pytest.raises(Refusal, match="the source"):
             compress(cache, target)
     assert {c: files(c) for c in before} == before
 
@@ -171,7 +173,7 @@ def test_a_target_holding_raw_planes_is_not_overwritten(tmp_path):
     raw_cache(source)
     other = tmp_path / "b" / DIRECT_CACHE_DIR_NAME
     before = raw_cache(other, seed=1)
-    with pytest.raises(Refused, match="raw planes"):
+    with pytest.raises(Refusal, match="raw planes"):
         compress(source, other)
     assert files(other) == before
 
@@ -196,7 +198,7 @@ def test_the_report_says_where_the_bands_went_and_what_was_removed(tmp_path, mon
                for line in out.splitlines())  # fmt: skip
     for cache, was in before.items():
         assert not any((cache / name).exists() for name in DIRECT)
-        planes = cached_direct(cache, STAMP)
+        planes = cached_raster(cache, STAMP)
         assert np.asarray(planes[0]).tobytes() == was[DIRECT_Z_NAME]
         assert files(cache).keys() == files(out_dir / cache.name).keys()
         del planes
@@ -261,17 +263,17 @@ def test_a_raw_plane_that_cannot_go_is_reported_and_goes_on_the_next_run(
     assert code == 1, out
     assert "converted in place" in out and f"raw {DIRECT_Z_NAME} kept" in out, out
     assert "held by another process" in out and "untouched" not in out
-    sidecar = json.loads((cache / DIRECT_CACHE_SIDECAR).read_text("utf-8"))
+    sidecar = json.loads((cache / CACHE_SIDECAR_NAME).read_text("utf-8"))
     assert sidecar["storage"] == STORAGE_BANDS
     assert sorted(p.name for p in cache.iterdir() if p.suffix != BANDS_SUFFIX) == sorted(
-        [DIRECT_CACHE_SIDECAR, DIRECT_Z_NAME]
+        [CACHE_SIDECAR_NAME, DIRECT_Z_NAME]
     )
 
     monkeypatch.setattr(Path, "unlink", unlink)
     code, out = run(monkeypatch, capsys, cache)
     assert code == 0 and "already in the band store" in out and "removed" in out, out
     assert not (cache / DIRECT_Z_NAME).exists()
-    planes = cached_direct(cache, STAMP)
+    planes = cached_raster(cache, STAMP)
     assert np.asarray(planes[0]).tobytes() == before[DIRECT_Z_NAME]
     del planes
 
@@ -292,7 +294,7 @@ def test_an_interrupted_run_s_raw_planes_go_once_each_matches_its_bands(tmp_path
     done = compress(cache)
     assert done["already"] and sorted(done["removed"]) == sorted(DIRECT) and not done["kept"]
     assert not any((cache / name).exists() for name in DIRECT)
-    planes = (*cached_direct(cache, STAMP),)
+    planes = (*cached_raster(cache, STAMP),)
     assert [np.asarray(p).tobytes() for p in planes] == [before[n] for n in DIRECT[:2]]
     del planes
 
@@ -333,7 +335,7 @@ def test_a_plane_left_under_its_probe_name_stops_the_conversion(tmp_path):
     raw_cache(cache)
     (cache / DIRECT_FAMILY_NAME).rename(cache / (DIRECT_FAMILY_NAME + ".probe"))
     before = files(cache)
-    with pytest.raises(Refused, match="rename it back"):
+    with pytest.raises(Refusal, match="rename it back"):
         compress(cache)
     assert files(cache) == before
 
@@ -348,15 +350,15 @@ def test_band_files_beside_a_raw_cache_never_outlive_the_conversion(tmp_path):
     target = tmp_path / "out" / DIRECT_CACHE_DIR_NAME
     target.mkdir(parents=True)
     (target / (DIRECT_FAMILY_NAME + BANDS_SUFFIX)).write_bytes(b"from an older --to")
-    (target / DIRECT_CACHE_SIDECAR).write_text("{}", encoding="utf-8")
+    (target / CACHE_SIDECAR_NAME).write_text("{}", encoding="utf-8")
 
     assert compress(source, target)["planes"] == list(DIRECT[:2])
     assert files(source) == before
-    want = sorted([DIRECT_CACHE_SIDECAR] + [n + BANDS_SUFFIX for n in DIRECT[:2]])
+    want = sorted([CACHE_SIDECAR_NAME] + [n + BANDS_SUFFIX for n in DIRECT[:2]])
     assert sorted(files(target)) == want
 
     assert compress(source)["planes"] == list(DIRECT[:2])
     assert sorted(files(source)) == want
-    z = cached_direct(source, STAMP)[0]
+    z = cached_raster(source, STAMP)[0]
     assert np.asarray(z).tobytes() == before[DIRECT_Z_NAME]
     del z

@@ -11,7 +11,7 @@ interface Marked extends Event {
   _onLayer?: boolean;
 }
 
-var pointOwners: Record<string, boolean> = {};
+const pointOwners: Record<string, boolean> = {};
 
 /** A planner context that wants empty clicks as points claims them here, by name. */
 export function clicksPickPoints(owner: string, on: boolean): void {

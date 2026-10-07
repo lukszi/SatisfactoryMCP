@@ -3,24 +3,24 @@
 
 import { button, chip, copyButton, error, idChip, loading, subTabs, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { count, flow, mw, pct } from "../../kit/format";
-import { drawGraph, graphCardFrame, GRAPH_HINT, setPicked } from "../graph";
-import { vitals } from "../../app/vitals";
+import { count, mw, pct, withDetail } from "../../kit/format";
+import { drawGraph, setPicked } from "../graph";
+import { graphCardFrame, GRAPH_HINT } from "../graph-frame";
 import { recipesButton, renderAlternates } from "./alternates";
 import { askButton, openAsksAbout } from "../../chat/asks";
 import { pickTab } from "./reads";
 import { bench, changed, pendingFocus } from "./state";
-import { applyOps, banOps, undoRev } from "./writes";
+import { applyOps, banOps } from "./writes";
 import { rowOverclock } from "./power";
 import { renderSite } from "./site";
 import { renderTrack } from "./track/track";
+import { ratesText, resultSummaryCard, withoutPower } from "./result-summary";
 import { processPinsByRecipe, createPin } from "../../chat/pins";
-import { headroom } from "../power-ledger";
 import { WORDS } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
 import type { GraphNodeShape } from "../graph";
-import type { FocusSelection, Ledger, PlanGraphNode, SolveRate, SolveResponse, SolveRow } from "../../api/shapes";
+import type { FocusSelection, PlanGraphNode, SolveResponse, SolveRow } from "../../api/shapes";
 import type { ResultTab } from "./state";
 
 interface PlanNode extends GraphNodeShape {
@@ -29,21 +29,14 @@ interface PlanNode extends GraphNodeShape {
   item: string | null;
 }
 
-interface BudgetRow {
-  label: string;
-  now: number;
-  after: number | null;
-}
-
 // The graph is drawn again only when its data, badges or flashes change; scroll and focus are kept.
-var graphCache = { data: null as SolveResponse | null, key: "", frame: null as HTMLElement | null, x: 0, y: 0, focus: "" };
-var flashed: Record<string, number> = {};
-var order: SortState = { key: "building", desc: false };
+const graphCache = { data: null as SolveResponse | null, key: "", frame: null as HTMLElement | null, x: 0, y: 0, focus: "" };
+const flashed: Record<string, number> = {};
+const order: SortState = { key: "building", desc: false };
 
-var POWER = "MW";
-var FLASH_MS = 4000;
-var WIDE = window.matchMedia("(min-width: 1280px)");
-var TABS: { id: ResultTab; label: string }[] = [
+const FLASH_MS = 4000;
+const WIDE = window.matchMedia("(min-width: 1280px)");
+const TABS: { id: ResultTab; label: string }[] = [
   { id: "build list", label: "build list" },
   { id: "graph", label: "graph" },
   { id: "track", label: WORDS.track },
@@ -63,121 +56,6 @@ function clockCell(row: SolveRow, live: boolean): string | HTMLElement {
   cell.appendChild(make("span", "", clockText(row)));
   cell.appendChild(pick);
   return cell;
-}
-
-function ratesText(rows: SolveRate[]): string {
-  return (
-    rows
-      .map(function (r) {
-        return r.item === POWER ? mw(r.per_min) : flow(r.item, r.per_min);
-      })
-      .join(", ") || "–"
-  );
-}
-
-function withoutPower(rows: SolveRate[]): SolveRate[] {
-  return rows.filter(function (r) {
-    return r.item !== POWER;
-  });
-}
-
-function resultFactsText(data: SolveResponse): string {
-  const net = data.mw_net;
-  const parts = [
-    count(data.machines) + " machines in " + count(data.processes) + " processes",
-    "draw " + (data.mw_draw === null ? "–" : mw(data.mw_draw)),
-    "generation " + (data.mw_generated === null ? "–" : mw(data.mw_generated)),
-    "net " + (net === null ? "–" : headroom(net)) + (data.grid_import ? ", from the grid" : ", self-powered"),
-    "exports " + ratesText(data.exports),
-  ];
-  if (data.shards) parts.push(count(data.shards) + " power shards");
-  if (data.sloops_used) parts.push(count(data.sloops_used) + " somersloops");
-  return parts.join(" · ");
-}
-
-function powerBudgetTable(parent: HTMLElement, data: SolveResponse): void {
-  const ledger: Ledger | null = vitals().circuits ? vitals().circuits!.world : null;
-  if (!ledger) {
-    if (vitals().circuitsError) error(parent, "the grid figures", vitals().circuitsError);
-    else loading(parent, "grid figures");
-    return;
-  }
-  const net = data.mw_net;
-  const rows: BudgetRow[] = [
-    { label: WORDS.headroomNow, now: ledger.measured_headroom_mw, after: net === null ? null : ledger.measured_headroom_mw + net },
-    { label: WORDS.headroomFull, now: ledger.headroom_mw, after: net === null ? null : ledger.headroom_mw + net },
-  ];
-  const columns: Column<BudgetRow>[] = [
-    {
-      key: "grid",
-      label: "grid",
-      render: function (r) {
-        return r.label;
-      },
-    },
-    {
-      key: "now",
-      label: "today",
-      align: "right",
-      render: function (r) {
-        return headroom(r.now);
-      },
-      tone: function (r) {
-        return r.now < 0 ? "bad" : "";
-      },
-    },
-    {
-      key: "after",
-      label: "with this plan",
-      align: "right",
-      render: function (r) {
-        return r.after === null ? "–" : headroom(r.after);
-      },
-      tone: function (r) {
-        return r.after !== null && r.after < 0 ? "bad" : "";
-      },
-    },
-  ];
-  const box = make("div", "plan-budget");
-  box.appendChild(table(columns, rows, { caption: "power budget" }));
-  parent.appendChild(box);
-}
-
-function undoButton(parent: HTMLElement): void {
-  const plan = bench.plan;
-  if (!plan || plan.rev <= 1 || bench.gone) return;
-  const head = plan.rev;
-  parent.appendChild(
-    button(
-      "undo v" + head,
-      function () {
-        undoRev(head);
-      },
-      { title: "undo the change that made this plan unsolvable, as a new version" }
-    )
-  );
-}
-
-function resultSummaryCard(parent: HTMLElement, data: SolveResponse, rev: number, live: boolean): void {
-  const card = make("section", "dash-card");
-  const title = make("div", "dash-title");
-  title.appendChild(make("h2", "dash-h", "result · v" + rev));
-  const waiting = live && bench.solvingRev && bench.solvingRev !== rev;
-  if (waiting) title.appendChild(make("span", "plan-status", "solving v" + bench.solvingRev + "…"));
-  card.appendChild(title);
-  const body = make("div", waiting ? "plan-stale" : "");
-  card.appendChild(body);
-  if (!data.feasible) {
-    body.appendChild(make("p", "plan-headline bad", "not solvable: " + data.cause));
-    if (live) undoButton(body);
-  } else {
-    body.appendChild(make("p", "plan-facts", resultFactsText(data)));
-  }
-  data.warnings.forEach(function (w) {
-    body.appendChild(make("p", "plan-warning", w));
-  });
-  if (data.feasible && live) powerBudgetTable(body, data);
-  parent.appendChild(card);
 }
 
 function mainItem(data: SolveResponse, row: SolveRow): string | null {
@@ -377,10 +255,10 @@ function planNodes(data: SolveResponse): PlanNode[] {
     const row = n.row ? byId[n.row] : undefined;
     const badges: string[] = [];
     if (row && bench.chatChangedRows[row.id]) badges.push(WORDS.actorChat);
-    if (row && row.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
+    if (row?.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
     const tip = row
       ? row.building + " · " + row.recipe + "\nin: " + ratesText(withoutPower(row.inputs)) + "\nout: " + ratesText(withoutPower(row.outputs))
-      : n.label + (n.detail ? " · " + n.detail : "");
+      : withDetail(n.label, n.detail);
     return {
       id: n.id,
       kind: n.kind,

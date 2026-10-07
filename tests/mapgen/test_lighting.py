@@ -14,18 +14,14 @@ import numpy as np
 import pytest
 
 from mapgen.lighting import horizon as hz
-from mapgen.lighting.hillshade import (
-    SHADE_FLOOR,
-    SHADE_RANGE,
-    artwork_detail,
-    flat_shade,
-    hillshade,
-)
+from mapgen.lighting.borrow import artwork_detail
+from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, flat_shade, hillshade
 from mapgen.lighting.model import (
     SHADOW_FLOOR,
     apply_terms,
     direct_term,
     light_axis,
+    light_params,
     model_block,
     relight,
     surface_direct,
@@ -81,7 +77,7 @@ def test_flat_ground_sees_all_the_sky_and_faces_straight_up():
     )
 
 
-def test_an_occluder_casts_and_a_floating_slab_casts_only_where_nothing_shows_beneath():
+def test_an_occluder_casts_into_the_horizon():
     n, halo, sp = 240, 80, 2.0
     z = np.zeros((n, n), np.float32)
     occluder = np.full((n, n), np.nan, np.float32)
@@ -89,14 +85,6 @@ def test_an_occluder_casts_and_a_floating_slab_casts_only_where_nothing_shows_be
     plain = hz.march_horizon(z, halo, 90.0, sp)
     treed = hz.march_horizon(z, halo, 90.0, sp, occluder=occluder)
     assert plain.max() == 0.0 and treed[20, 30] > 10.0
-    lo = np.full((n, n), np.nan, np.float32)
-    hi = np.full((n, n), np.nan, np.float32)
-    lo[90:110, 120:125], hi[90:110, 120:125] = 12.0, 15.0
-    arch = hz.march_horizon(z, halo, 90.0, sp, slabs=(z, lo, hi))
-    assert arch[20, 30] == 0.0
-    lo[90:110, 120:125] = 0.0
-    rock = hz.march_horizon(z, halo, 90.0, sp, slabs=(z, lo, hi))
-    assert rock[20, 30] > 10.0
 
 
 def _nrm(z, sp, svf=1.0, land=1.0):
@@ -173,24 +161,41 @@ def test_the_light_axis_is_versioned_and_digested():
     assert shader_light("painted")["space"] == "linear"
 
 
+@pytest.mark.parametrize("layer", ["painted", "terrain"])
+def test_a_light_block_reads_as_the_params_it_holds(layer):
+    block = shader_light(layer)
+    assert light_params(block) == block
+    assert light_params(json.loads(json.dumps(block))) == block, "a sidecar's copy reads the same"
+    for key, wrong in (("space", "hsv"), ("ambient", "0.5"), ("sky", [1.0, "1"])):
+        with pytest.raises(TypeError, match=key):
+            light_params({**block, key: wrong})
+
+
 def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
     from PIL import Image
 
-    from mapgen.lighting.stage import Surface, bake_light
-    from mapgen.tiles.lit import UNLIT_DIR_NAME, UnlitRun
+    from mapgen.lighting.bake import bake_light
+    from mapgen.lighting.stage import Surface
+    from mapgen.render.draw.light import UNLIT_DIR_NAME, LightingRun
+    from mapgen.render.draw.stream import RenderStream
+    from mapgen.tiles.cutter import TileStream
 
     size = 512
-    run = UnlitRun(tmp_path / "cache", size)
-    surface = run.surface_for()
-    assert run.surface_for() is None  # only the first layer captures
+    run = LightingRun(tmp_path / "cache", size)
+    surface = run.surface
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
     z = (40 * np.exp(-((xx - 256) ** 2 + (yy - 256) ** 2) / 4000.0)).astype(np.float32)
     land = np.ones((size, size), np.float32)
     land[:, :64] = 0.0
-    for top in range(0, size, 128):
-        surface.put(top, z[top : top + 128], land[top : top + 128])
     sheet = np.full((size, size, 3), 128, np.uint8)
-    stats, _dense, _ = run.install(sheet, Image, tmp_path / "out", "terrain", 1, 6, "r")
+    with TileStream(Image, 1) as cutter:
+        stream = RenderStream(cutter, ("terrain",), (tmp_path / "out", "r"), size, 6, run)
+        for top in range(0, size, 128):
+            surface.put(top, z[top : top + 128], land[top : top + 128])
+            stream.put(top, {"terrain": sheet[top : top + 128]})
+        stream.finish()
+        trees = stream.install("terrain")
+    stats = trees.tiles
     root = tmp_path / "out" / "r"
     meta = json.loads((root / "light" / "meta.json").read_text(encoding="utf-8"))["_meta"]
     assert meta["tiles"]["max_z"] == 1 and meta["tiles"]["count"] == 5
@@ -208,7 +213,7 @@ def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
     baked = np.asarray(Image.open(root / "terrain" / "tiles" / "1" / "0_0.png"))
     assert baked[20, 20].tolist() == [128, 128, 128]  # water: unlit either way
     sidecar = {"_meta": {"provenance": {}}}
-    run.decorate(sidecar, "terrain")
+    run.decorate(sidecar, "terrain", trees.unlit)
     assert sidecar["_meta"]["light"]["dir"] == "../light"
     assert sidecar["_meta"]["provenance"]["light"]["id"] == "sun"
     run.close()

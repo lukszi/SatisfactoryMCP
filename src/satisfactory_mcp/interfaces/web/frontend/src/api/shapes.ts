@@ -199,7 +199,7 @@ export type NameTakenResponse = Body<"NameTakenResponse">;
 
 /* ------------------------------------------ /api/plan/solve, /api/ui/focus, /api/activity */
 
-export type SolveRate = Schema["SolveRate"];
+export type SolveRate = Schema["ItemRate"];
 export type SolveRow = Schema["SolveRow"];
 export type SolveResponse = Body<"SolveResponse">;
 export type FocusSelection = Schema["Selection"];
@@ -227,13 +227,13 @@ export type PinRef = Schema["PinRef"];
 export type PinRow = Schema["PinRow"];
 export type PinsResponse = Body<"PinsResponse">;
 export type PinCreated = Body<"PinCreated">;
-export type PinDropped = Body<"PinDropped">;
+export type PinDropped = Body<"Dropped">;
 export type PinStaleResponse = Body<"PinStaleResponse">;
 
 /* ------------------------------------- /api/plan/track, /api/plan/feeders, /api/asks */
 
 export type SitePreviewResponse = Body<"SitePreviewResponse">;
-export type TrackState = Schema["TrackState"];
+export type TrackState = Schema["StateCount"];
 export type TrackMachine = Schema["TrackMachine"];
 export type TrackTarget = Schema["TrackTarget"];
 export type TrackRow = Schema["TrackRow"];
@@ -256,8 +256,8 @@ export type AskAbout = Schema["AskAbout"];
 export type AskRow = Schema["AskRow"];
 export type AsksResponse = Body<"AsksResponse">;
 export type AskCreateBody = Schema["AskCreateBody"];
-export type AskDropBody = Schema["AskDropBody"];
-export type AskDropped = Body<"AskDropped">;
+export type AskDropBody = Schema["RevBody"];
+export type AskDropped = Body<"Dropped">;
 export type AskStaleResponse = Body<"AskStaleResponse">;
 
 /* ---------------------------------------------------------------- /api/advice */
@@ -308,7 +308,7 @@ export type TraceResponse = Body<"TraceResponse">;
 
 export type AspectBalance = Schema["AspectBalance"];
 export type AspectMachine = Schema["AspectMachine"];
-export type AspectCount = Schema["AspectCount"];
+export type AspectCount = Schema["NameCount"];
 export type AspectNode = Schema["AspectNode"];
 export type AspectLink = Schema["AspectLink"];
 export type FactoryAspectsResponse = Body<"FactoryAspectsResponse">;

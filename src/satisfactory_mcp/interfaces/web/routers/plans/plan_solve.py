@@ -8,17 +8,21 @@ Handler names are operation_ids (wire rule 1 of docs/web-wire.md).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, NotRequired
 
 from fastapi import APIRouter, Body, Request
+from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.gamedata.search import resolve_item
 from .....domain.planning.analysis import swaps
+from .....domain.planning.analysis.views import PlanAlternatesResponse
 from .....domain.planning.readout import summary
+from .....domain.planning.readout.views import SolveResponse
 from .....domain.planning.stored import manage
 from .....domain.planning.stored.plan_args import InvalidOp, PlanArgs
+from .....domain.planning.stored.views import DeltaRow, RowChange
 from ...serial import (
-    PlanOpBody,
     check_plan_key,
     error_response,
     plan_log,
@@ -31,227 +35,12 @@ __all__ = ["router"]
 router = APIRouter(prefix="/api")
 
 
-class SolveRate(TypedDict):
-    item: str
-    per_min: float
-
-
-class OverclockOption(TypedDict):
-    """A row's two builds: ``machines`` with the last at ``last_clock`` for ``shards``, or
-    ``spread_machines`` at ``spread_clock``. ``pinned`` is the row's own choice ("last",
-    "spread") or null to follow the plan; ``applied`` says the overclocked build is the one
-    listed. ``without``: no shards were left; ``unused``: it costs more than spreading."""
-
-    pinned: str | None
-    applied: bool
-    machines: int
-    last_clock: float
-    shards: int
-    extra_mw: float
-    spread_machines: int
-    spread_clock: float
-    without: bool
-    unused: bool
-
-
-class SolveRow(TypedDict):
-    """One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws.
-    ``last_clock`` is set when every machine but the last runs at 100% (overclock-last), and
-    ``overclock_option`` on every row that could run that way.
-
-    ``id`` is the join key for the graph, pins and chat badges; ``depth`` its chain depth."""
-
-    id: str
-    depth: int
-    building: str
-    recipe: str
-    recipe_id: str | None
-    item: str | None
-    machines: int
-    clock: float
-    last_clock: float | None
-    overclock_option: OverclockOption | None
-    mw: float
-    inputs: list[SolveRate]
-    outputs: list[SolveRate]
-    required: bool
-
-
-class PlanGraphNode(TypedDict):
-    """``kind`` is process, input or export; ``item`` is a class id, null for power."""
-
-    id: str
-    kind: str
-    label: str
-    detail: str
-    rank: int
-    row: str | None
-    item: str | None
-
-
-class PlanGraphEdge(TypedDict):
-    source: str
-    target: str
-    item: str
-    per_min: float
-    text: str | None
-
-
-class PlanGraph(TypedDict):
-    nodes: list[PlanGraphNode]
-    edges: list[PlanGraphEdge]
-
-
-class BuildAmount(TypedDict):
-    item: str
-    amount: float
-
-
-class PaybackStop(TypedDict):
-    """The plan at one payback horizon, same recipes. ``extra_machines``, ``saved_mw``,
-    ``cost``, ``area_m2`` and ``points`` are against the plain build (0 h, no overclock);
-    ``cost`` is what the extra machines take to build and ``points`` their build points.
-    ``average_payback_h`` is null when nothing is saved."""
-
-    hours: float
-    machines: int
-    mw_draw: float
-    extra_machines: int
-    saved_mw: float
-    cost: list[BuildAmount]
-    area_m2: float
-    points: int
-    average_payback_h: float | None
-    shards: int
-
-
-class PowerSource(TypedDict):
-    """One source of the grid mix: running MW and its price in points per MWh."""
-
-    source: str
-    mw: float
-    price: float
-
-
-class OverclockRow(TypedDict):
-    label: str
-    building: str
-    machines: int
-    instead: int
-    last_clock: float
-    shards: int
-    extra_mw: float
-    pinned: str | None
-    applied: bool
-
-
-class RowName(TypedDict):
-    label: str
-    building: str
-
-
-class OverclockView(TypedDict):
-    """The overclock-last pick at the plan's horizon, made whether or not ``on``; the totals
-    are what the switch builds when on. ``without`` ran short of shards; ``unused`` would cost
-    more than spreading. ``pinned_last``/``pinned_spread`` count rows with their own choice."""
-
-    on: bool
-    inherited: bool
-    rows: list[OverclockRow]
-    shards: int
-    machines_saved: int
-    extra_mw: float
-    without: list[RowName]
-    unused: list[RowName]
-    pinned_last: int
-    pinned_spread: int
-    shards_free: float | None
-    shards_craftable: float | None
-
-
-class PaybackView(TypedDict):
-    """``hours`` is the plan's horizon, ``inherited`` when it follows the shared default.
-    ``price`` is points per MWh from ``price_source`` (grid mix or plan). ``splits`` is false
-    when no stop changes a row, with ``reason``; ``stops`` is empty when nothing solved."""
-
-    hours: float
-    inherited: bool
-    default_hours: float
-    price: float
-    price_source: str
-    mix: list[PowerSource]
-    splits: bool
-    reason: str
-    stops: list[PaybackStop]
-    overclock: OverclockView
-
-
-class SolveResponse(TypedDict):
-    """A solve's facts. Infeasible is a 200 with ``feasible: false`` and a player ``cause``."""
-
-    feasible: bool
-    headline: str
-    cause: str
-    plan_id: str
-    notes: list[str]
-    warnings: list[str]
-    machines: int
-    processes: int
-    mw_draw: float | None
-    mw_generated: float | None
-    mw_net: float | None
-    grid_import: bool
-    exports: list[SolveRate]
-    inputs: list[SolveRate]
-    rows: list[SolveRow]
-    graph: PlanGraph
-    shards: int | None
-    sloops_used: int
-    power: PaybackView
-    blockers: list[str]
-    token: str
-
-
 class SolveBody(TypedDict):
     """Exactly one of ``args`` (a request) and ``key`` (a stored plan, at ``rev`` or its head)."""
 
-    args: NotRequired[dict | None]
+    args: NotRequired[dict[str, object] | None]
     key: NotRequired[str | None]
     rev: NotRequired[int | None]
-
-
-class DeltaRow(TypedDict):
-    """One building's machine count or one raw input's rate, before and after."""
-
-    name: str
-    before: float
-    after: float
-    delta: float
-
-
-class RowChange(TypedDict):
-    """A process row joined on ``SolveRow.id``; ``change`` is added, removed or changed."""
-
-    id: str
-    label: str
-    change: str
-    machines_before: int
-    machines_after: int
-    clock_before: float
-    clock_after: float
-
-
-class ResultDelta(TypedDict):
-    """Two solves compared. ``comparable`` is false when either side is not solvable."""
-
-    comparable: bool
-    machines: int
-    mw_draw: float
-    mw_net: float
-    buildings: list[DeltaRow]
-    inputs: list[DeltaRow]
-    rows: list[RowChange]
-    text: str
 
 
 class DeltaResponse(TypedDict):
@@ -277,52 +66,13 @@ class AlternatesBody(TypedDict):
     item: str
 
 
-class SwapOption(TypedDict):
-    """One recipe for the item. ``status`` is in use, required, banned, available or locked;
-    ``delta`` is null when ``solved`` is false (locked, or banned by a pattern)."""
-
-    recipe_id: str
-    name: str
-    alternate: bool
-    machine: str | None
-    unlocked: bool | None
-    spoiler: bool
-    granted_by: list[str]
-    status: str
-    in_use: bool
-    required: bool
-    banned: bool
-    banned_by: str | None
-    solved: bool
-    delta: ResultDelta | None
-    require_ops: list[PlanOpBody]
-    ban_ops: list[PlanOpBody]
-    free_ops: list[PlanOpBody]
-
-
-class PlanAlternatesResponse(TypedDict):
-    """Every recipe for one item with what requiring it changes in the plan at ``rev``."""
-
-    key: str
-    rev: int
-    item: str
-    name: str
-    head_feasible: bool
-    head_machines: int
-    head_mw_draw: float | None
-    head_mw_net: float | None
-    options: list[SwapOption]
-    hidden: int
-    text: str
-
-
 @router.post("/plan/solve", response_model=SolveResponse)
 def solve_plan(
     request: Request,
     body: Annotated[SolveBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> SolveResponse | JSONResponse:
     """Solve a request or a stored version against this save; nothing is written."""
     args, key = body.get("args"), body.get("key")
     if (args is None) == (key is None):
@@ -350,7 +100,7 @@ def plan_delta(
     to_rev: int | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> DeltaResponse | JSONResponse:
     """The result deltas between two versions of one plan, both re-solved against this save."""
     check_plan_key(key)
     st = require_world(request, save, world)
@@ -374,7 +124,7 @@ def plan_alternates(
     save: str | None = None,
     world: str | None = None,
     spoilers: bool | None = None,
-) -> Any:
+) -> PlanAlternatesResponse | JSONResponse:
     """Every recipe making ``item``, each with what requiring it would change in the plan."""
     key = body["key"]
     check_plan_key(key)

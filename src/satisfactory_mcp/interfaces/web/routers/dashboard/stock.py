@@ -9,13 +9,26 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from math import hypot
-from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
+from .....core.gamedata.model import GameData
+from .....domain.spatial.regions import RegionMap
 from .....domain.world.inventory import CRATE_KIND_TEXT, Holding
-from ...serial import Region, cm_to_m, region_json, regions_or_none, require_world, xyz_m
+from .....domain.world.state import WorldState
+from ...serial import (
+    ItemAmount,
+    PlayerPosition,
+    Region,
+    cm_to_m,
+    region_json,
+    regions_or_none,
+    require_world,
+    xyz_m,
+)
 
 __all__ = ["router"]
 
@@ -36,12 +49,6 @@ class StockPile(TypedDict):
     crates: float
 
 
-class PlaceItem(TypedDict):
-    item: str
-    name: str
-    amount: float
-
-
 class StockPlace(TypedDict):
     """A container, fluid buffer or crate. ``source`` is ``storage`` or ``crate``."""
 
@@ -55,7 +62,7 @@ class StockPlace(TypedDict):
     z_m: float | None
     region: Region | None
     distance_m: float | None
-    items: list[PlaceItem]
+    items: list[ItemAmount]
     total: float
     slots: int | None
     slots_used: int | None
@@ -74,23 +81,22 @@ class StockCensus(TypedDict):
     deaths: int
 
 
-class StockPlayer(TypedDict):
-    x_m: float | None
-    y_m: float | None
-    z_m: float | None
-
-
 class StockResponse(TypedDict):
     items: list[StockPile]
     places: list[StockPlace]
     census: StockCensus
-    player: StockPlayer
+    player: PlayerPosition
 
 
-def _place(st, region_map, player_xy, holding: Holding) -> StockPlace:
+def _place(
+    st: WorldState,
+    region_map: RegionMap | None,
+    player_xy: tuple[float, float, float] | None,
+    holding: Holding,
+) -> StockPlace:
     game = st.game
-    region = None
-    distance = None
+    region: Region | None = None
+    distance: float | None = None
     pos = holding.pos
     if pos is not None:
         if region_map is not None:
@@ -122,7 +128,7 @@ def _place(st, region_map, player_xy, holding: Holding) -> StockPlace:
     }
 
 
-def _pile_row(game, item: str, piles: dict) -> StockPile:
+def _pile_row(game: GameData, item: str, piles: Mapping[str, float]) -> StockPile:
     return {
         "item": item,
         "name": game.item_name(item),
@@ -137,7 +143,7 @@ def _pile_row(game, item: str, piles: dict) -> StockPile:
 
 
 @router.get("/stock", response_model=StockResponse)
-def stock(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def stock(request: Request, save: str | None = None, world: str | None = None) -> StockResponse:
     """Every item held, split into piles, and every place holding something, biggest first."""
     st = require_world(request, save, world)
 

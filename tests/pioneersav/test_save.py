@@ -31,10 +31,8 @@ from pioneersav import CHUNK_TAG, ParseError, read_full_save_bytes, read_info_by
 from satisfactory_mcp.core.saveio.extract import parser as extract_parser
 from satisfactory_mcp.core.saveio.extract.census import Drops
 from satisfactory_mcp.core.saveio.extract.structures import lightweight, structures
-from tests.support.paths import FIXTURES, REPO_ROOT
+from tests.support.paths import REPO_ROOT, committed_fixture
 
-HEADER_FIXTURE = FIXTURES / "save_header.bin"
-BODY_FIXTURE = FIXTURES / "save_body.bin"
 EXTRACT_PACKAGE = REPO_ROOT / "src" / "satisfactory_mcp" / "core" / "saveio" / "extract"
 
 #: The chunk size the game writes on every save seen. Reproduced rather than shortened so
@@ -69,9 +67,7 @@ def _chunk_stream(body: bytes) -> bytes:
 
 @pytest.fixture(scope="module")
 def header_prefix() -> bytes:
-    if not HEADER_FIXTURE.is_file():
-        pytest.skip("header fixture not committed")
-    raw = HEADER_FIXTURE.read_bytes()
+    raw = committed_fixture("save_header.bin").read_bytes()
     # Exactly up to where the compressed body starts -- the fixture is a 2 KiB file prefix,
     # so it carries some of the real first chunk, which must not be left in front of ours.
     return raw[: read_info_bytes(raw).body_offset]
@@ -79,9 +75,7 @@ def header_prefix() -> bytes:
 
 @pytest.fixture(scope="module")
 def body() -> bytes:
-    if not BODY_FIXTURE.is_file():
-        pytest.skip("body fixture not committed")
-    return BODY_FIXTURE.read_bytes()
+    return committed_fixture("save_body.bin").read_bytes()
 
 
 @pytest.fixture(scope="module")

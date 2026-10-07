@@ -9,23 +9,28 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from mapgen.cache import DirectPlanes
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.water import VOID_ARTWORK_LUMA_MAX, artwork_planes
+from mapgen.gamedata.water.channel import VOID_ARTWORK_LUMA_MAX, artwork_planes
 from mapgen.palette.relief import water_tint_plane
-from mapgen.palette.rivers import water_sources
-from mapgen.palette.shore import OCEAN_LEVEL_M, composite_meshes
 from mapgen.palette.styles import RELIEF_PALETTES, SEA_RGB, with_void
-from mapgen.palette.water import (
+from mapgen.palette.water.open_sea import (
     OPEN_SEA_BLEND_M,
     OPEN_SEA_DEPTH_M,
     OPEN_SEA_SETTLE_M,
     OPEN_SEA_TONE_DEPTH_M,
+    membrane,
     open_sea,
 )
-from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, pits, relax
-from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK, MESH_SHELL
-from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, composite_top, render_layer
+from mapgen.palette.water.rivers import water_sources
+from mapgen.palette.water.shore import OCEAN_LEVEL_M, composite_meshes
+from mapgen.render.ground.lift import DIRECT_LIFT_KNEE_M, composite_top
+from mapgen.terrain.emptied import pit_mask
+from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field
+from mapgen.terrain.harmonic import relax
+from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.draw import render_layer
 
 OCEAN_DM = round(OCEAN_LEVEL_M * hf.DM_PER_M)
 
@@ -33,10 +38,12 @@ OCEAN_DM = round(OCEAN_LEVEL_M * hf.DM_PER_M)
 def _field(height_dm, water_dm, grades, spacing_cm=100.0):
     rows, cols = height_dm.shape
     return SimpleNamespace(
-        _height_dm=height_dm,
-        _prov=np.where(height_dm == hf.NODATA, hf.PROV_NODATA, hf.PROV_LANDSCAPE).astype(np.uint8),
-        _water_raster=lambda: water_dm,
-        _water_quality_raster=lambda: grades,
+        height_dm=height_dm,
+        provenance_plane=np.where(height_dm == hf.NODATA, hf.PROV_NODATA, hf.PROV_LANDSCAPE).astype(
+            np.uint8
+        ),
+        water_raster=lambda: water_dm,
+        water_quality_raster=lambda: grades,
         x0_cm=BOUNDS_M["x_min_m"] * 100,
         y0_cm=BOUNDS_M["y_min_m"] * 100,
         spacing_cm=spacing_cm,
@@ -92,7 +99,7 @@ def test_an_interior_hole_drawn_as_a_pit_is_left_empty():
     void[10:20, 10:20] = True
     void[12:15, 30:40] = True
     void[:, 55:] = True
-    got = pits(nodata, void)
+    got = pit_mask(nodata, void)
     assert got[10:20, 10:20].all()
     assert not got[30:40, 30:40].any() and not got[:, 55:].any()
 
@@ -106,7 +113,7 @@ def test_a_floor_the_artwork_draws_as_void_is_a_pit_wherever_it_lies():
     floor[20:30, 50:55] = True  # a floor at the void past the edge
     void = np.zeros_like(nodata)
     void[10:20, 10:20] = void[:, 50:] = True
-    got = pits(nodata, void, floor)
+    got = pit_mask(nodata, void, floor)
     assert got[10:20, 10:20].all() and got[20:30, 50:55].all()
     assert not got[30:40, 30:40].any() and not got[:, 55:].any()
 
@@ -156,6 +163,19 @@ def test_the_membrane_settles_towards_the_far_value_over_its_scale():
     assert got[0] == 10.0 and abs(got[-1] - 50.0) < 0.1
     assert np.all(np.diff(got) > 0), "deeper with distance, never a step back"
     assert abs((50.0 - got[20]) / 40.0 - np.exp(-1.0)) < 0.05
+
+
+def test_relax_with_a_pull_is_the_open_sea_s_membrane_to_the_bit():
+    """``relax`` takes the pull and target ``membrane`` has, so the two can become one."""
+    rng = np.random.default_rng(5)
+    values = rng.random((24, 24)) * 10
+    known = np.zeros(values.shape, bool)
+    known[:, :3] = True
+    pull = np.where(rng.random(values.shape) < 0.3, 0.05, 0.0)
+    target = rng.random(values.shape) * 20
+    for args in ((), (pull, target)):
+        got = relax(values, known, ~known, 6.0, 30.0, *args)
+        assert np.array_equal(got, membrane(values, known, ~known, 6.0, 30.0, *args))
 
 
 def _sea(height, water, grades, art=None):
@@ -422,9 +442,8 @@ def test_a_layer_draws_the_artwork_s_sea_and_the_void_past_the_data():
     heights = height.astype(np.float32)
     sea = open_sea(field, (heights, None), None, art, OCEAN_LEVEL_M)
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
-    biome = {"width": 1, "area": np.zeros((1, 1), np.uint8)}
-    old = render_layer("terrain", field, None, biome, borrow, n, False)
-    new = render_layer("terrain", field, None, biome, borrow, n, False, heights, sea=sea)
+    old = render_layer("terrain", field, None, 1, borrow, n, False)
+    new = render_layer("terrain", field, None, 1, borrow, n, False, heights, sea=sea)
     navy = np.all(np.abs(new.astype(np.float32) - SEA_RGB) <= 1, axis=-1)
     assert np.all(np.abs(old[:, 45:].astype(np.float32) - SEA_RGB) <= 1), "before: all navy"
     assert not navy[4:28, 45:].any(), "the artwork's sea is drawn as sea"
@@ -441,6 +460,30 @@ class _Surface:
     def put(self, row, z_m, land, columns=slice(None)):
         self.z[row : row + len(z_m), columns] = z_m
         self.land[row : row + len(z_m), columns] = land
+
+
+def test_the_land_weight_fades_with_the_void_as_drawn_not_at_the_data_s_edge():
+    """A void edge stepped on a coarse field: the light's land weight is the ground's share
+    of each drawn pixel, so it falls with the void's cover instead of stepping from 1 to 0
+    at the last pixel with data, and the light draws no staircase there."""
+    n, size = 150, 600  # 50 m texels, four output pixels to a texel
+    step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / n
+    rows, cols = np.mgrid[0:n, 0:n]
+    height = np.where(cols > 90 + rows // 3, hf.NODATA, 300).astype(np.int16)
+    water = np.full((n, n), hf.NODATA, np.int16)
+    field = _field(height, water, np.zeros((n, n), np.uint8), step_cm)
+    heights = height.astype(np.float32)
+    sea = open_sea(field, (heights, None), None, np.zeros((n, n), bool), OCEAN_LEVEL_M)
+    borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
+    surface = _Surface(size)
+    render_layer("terrain", field, None, 1, borrow, size, False, heights, sea=sea,
+                 surface=surface)  # fmt: skip
+    land = surface.land
+    assert (land[:, :300] > 0.999).all() and (land[:, 560:] == 0.0).all()
+    assert np.abs(np.diff(land, axis=1)).max() <= 0.3, "no step from land to void"
+    assert np.all(np.diff(land, axis=1) <= 1e-6), "it only falls towards the void"
+    fading = (land > 0.01) & (land < 0.99)
+    assert fading.sum(axis=1).min() >= 2, "every row fades over the void's soft edge"
 
 
 def test_a_rock_under_the_sea_s_level_is_the_void_s_where_the_sea_fades_into_it():
@@ -460,14 +503,13 @@ def test_a_rock_under_the_sea_s_level_is_the_void_s_where_the_sea_fades_into_it(
     ground = heights.copy()
     sea = open_sea(field, (heights, ground), None, art, OCEAN_LEVEL_M)
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
-    biome = {"width": 1, "area": np.zeros((1, 1), np.uint8)}
 
     def draw(top_m):
         rock = np.zeros((n, n), np.uint8)
         rock[480:530, 200:] = top_m is not None
-        direct = (np.full((n, n), (top_m or 0) * 100.0, np.float32), rock, ground, 1)
+        direct = DirectPlanes(np.full((n, n), (top_m or 0) * 100.0, np.float32), rock, ground, 1)
         surface = _Surface(n)
-        rgb = render_layer("terrain", field, None, biome, borrow, n, False, heights,
+        rgb = render_layer("terrain", field, None, 1, borrow, n, False, heights,
                            direct=direct, sea=sea, surface=surface)  # fmt: skip
         return rgb[490:520].astype(np.int16), surface.z[490:520], surface.land[490:520]
 
@@ -483,6 +525,7 @@ def test_a_rock_under_the_sea_s_level_is_the_void_s_where_the_sea_fades_into_it(
     assert np.all((z_deep - z)[fade] <= ((1 - cover) * lift)[fade] + 1e-3), "it fades with it"
     covered = void | (cover >= 0.5)
     assert np.abs(rgb_deep - rgb).max(axis=-1)[covered].max() <= 1, "drawn as if it were not"
-    assert np.array_equal(z_deep[void], z[void]) and not land_deep[void].any(), "no land to light"
+    same = np.array_equal(z_deep[void], z[void], equal_nan=True)
+    assert same and not land_deep[void].any(), "no land to light"
     assert (land_high[void] > 0.99).all(), "a rock out of the sea still stands in the void"
     assert (np.abs(rgb_high - rgb).max(axis=-1)[void] > 20).all()

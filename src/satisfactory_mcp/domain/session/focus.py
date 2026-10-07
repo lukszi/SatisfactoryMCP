@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 from ... import config
 from ...core import atomic
+from ...core.jsontypes import JsonObject, JsonValue, is_object_dict
+from .views import FocusDoc, FocusSelection
 
 __all__ = [
     "FOLLOW",
@@ -39,7 +42,7 @@ def path_for(world_id: str) -> Path:
     return config.ui_dir() / f"{config.world_file_stem(world_id)}.json"
 
 
-def _text(focus: dict, name: str, default: str = "") -> str:
+def _text(focus: Mapping[str, object], name: str, default: str = "") -> str:
     value = focus.get(name, default)
     if value is None:
         return default
@@ -48,14 +51,14 @@ def _text(focus: dict, name: str, default: str = "") -> str:
     return value
 
 
-def _choice(focus: dict, name: str, allowed: tuple[str, ...], default: str) -> str:
+def _choice(focus: Mapping[str, object], name: str, allowed: tuple[str, ...], default: str) -> str:
     value = _text(focus, name, default) or default
     if value not in allowed:
         raise InvalidFocus(f"{name} must be one of {', '.join(allowed)}, not {value!r}")
     return value
 
 
-def _rev(focus: dict) -> int | None:
+def _rev(focus: Mapping[str, object]) -> int | None:
     value = focus.get("rev")
     if value is None:
         return None
@@ -64,18 +67,23 @@ def _rev(focus: dict) -> int | None:
     return value
 
 
-def _selection(focus: dict) -> dict | None:
+def _selection(focus: Mapping[str, object]) -> FocusSelection | None:
     value = focus.get("selection")
     if value is None:
         return None
-    if not isinstance(value, dict):
+    if not is_object_dict(value):
         raise InvalidFocus(f"selection must be an object or null, not {value!r}")
-    return {name: _text(value, name) for name in ("kind", "label", "ref")}
+    picked = value
+    return {
+        "kind": _text(picked, "kind"),
+        "label": _text(picked, "label"),
+        "ref": _text(picked, "ref"),
+    }
 
 
-def _clean(focus: dict) -> dict:
+def _clean(focus: object) -> FocusDoc:
     """The stored shape of ``focus``, every field present; raises ``InvalidFocus``."""
-    if not isinstance(focus, dict):
+    if not is_object_dict(focus):
         raise InvalidFocus(f"focus must be an object, not {focus!r}")
     return {
         "schema": SCHEMA,
@@ -91,7 +99,7 @@ def _clean(focus: dict) -> dict:
     }
 
 
-def write(world_id: str, focus: dict) -> dict:
+def write(world_id: str, focus: Mapping[str, object]) -> FocusDoc:
     out = _clean(focus)
     out["heartbeat"] = time.time()
     path = path_for(world_id)
@@ -100,19 +108,22 @@ def write(world_id: str, focus: dict) -> dict:
     return out
 
 
-def read(world_id: str) -> dict | None:
+def read(world_id: str) -> JsonObject | None:
     try:
-        raw = json.loads(path_for(world_id).read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(path_for(world_id).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return raw if isinstance(raw, dict) else None
 
 
-def is_open(focus: dict | None, now: float | None = None) -> bool:
+def is_open(focus: Mapping[str, object] | None, now: float | None = None) -> bool:
     if not focus:
         return False
+    stamp = focus.get("heartbeat") or 0.0
+    if not isinstance(stamp, int | float | str):
+        return False
     try:
-        beat = float(focus.get("heartbeat") or 0.0)
-    except (TypeError, ValueError):
+        beat = float(stamp)
+    except ValueError:
         return False
     return (time.time() if now is None else now) - beat <= OPEN_WITHIN_S

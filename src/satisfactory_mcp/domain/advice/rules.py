@@ -8,9 +8,12 @@ a score.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable, Sequence
 from dataclasses import replace
+from typing import TYPE_CHECKING, cast
 
 from ...core.saveio.records import instance_leaf, iter_machine_records
+from ...core.saveio.schema import BuildableRecord, ExtractorRecord
 from ...core.singleflight import Singleflight
 from ...core.text import ellipsize, plural
 from ..factories import health
@@ -18,11 +21,16 @@ from ..planning.progress.diff_service import diff_in_scope
 from ..planning.solver.prepare import prepare
 from ..planning.stored import manage
 from ..planning.stored.plan_args import PlanLogError
-from ..planning.stored.planlog import PlanLog
+from ..planning.stored.planlog import PlanLog, PlanState
 from ..spatial import nodes as nodes_mod
 from ..spatial import regions, surroundings
-from ..world.headlift import head_lift
+from ..world.headlift import HeadLift, head_lift
 from .advisory import SEVERITY, SPOTS_SENT, TEXT_MAX, TOOL_MAX, Advisory, Spot, ids_for, key_for
+
+if TYPE_CHECKING:
+    from ...core.gamedata.model import GameData
+    from ...core.saveio.schema import Projection
+    from ..world.state import WorldState
 
 __all__ = ["HEADROOM_SHARE", "RuleContext", "compute", "plan_heads", "with_ids"]
 
@@ -34,7 +42,9 @@ RARE_FIRST = ("somersloop", "mercer_sphere", "power_slug_purple", "power_slug_ye
 #: Recipe depth of an item no recipe reaches; sorts it after every real one.
 UNKNOWN_DEPTH = 99
 #: The head-lift model per projection; the entry holds the projection, the key is its id().
-_HEAD_LIFT_CACHE = Singleflight(maxsize=3)
+_HEAD_LIFT_CACHE: Singleflight[tuple[int, int], tuple[Projection, GameData, HeadLift]] = (
+    Singleflight(maxsize=3)
+)
 
 STORAGE_CLASS_PREFIXES = (
     "Build_StorageContainer",
@@ -70,13 +80,17 @@ def _mw(value: float) -> str:
     return f"{value:,.0f}"
 
 
+#: A subject: ``("factory", name)`` or ``("region", name)``.
+Subject = tuple[str, str]
+
+
 class RuleContext:
     """What every rule reads: one world-wide ``assess``, owners, positions and depths."""
 
-    def __init__(self, st) -> None:
+    def __init__(self, st: WorldState) -> None:
         self.st = st
         self.game = st.game
-        self.records: dict[str, tuple[str, dict]] = {}
+        self.records: dict[str, tuple[str, BuildableRecord]] = {}
         for group, leaf, record in iter_machine_records(st.projection):
             self.records[leaf] = (group, record)
         lift = _HEAD_LIFT_CACHE.get(
@@ -95,20 +109,29 @@ class RuleContext:
         self._depth: dict[str, int] = {}
         self._by_name = {self.game.item_name(c): c for c in self.game.items}
 
+    def record(self, leaf: str) -> BuildableRecord | None:
+        held = self.records.get(leaf)
+        return held[1] if held else None
+
+    def cls_of(self, leaf: str) -> str | None:
+        record = self.record(leaf)
+        return record.get("cls") if record else None
+
     def spot(self, leaf: str) -> Spot:
-        group_record = self.records.get(leaf)
-        record = group_record[1] if group_record else {}
-        pos = record.get("pos")
-        name = self.game.building_name(record.get("cls")) or str(record.get("cls") or "machine")
+        record = self.record(leaf)
+        pos = record.get("pos") if record else None
+        cls = self.cls_of(leaf)
+        name = self.game.building_name(cls) or str(cls or "machine")
         if not pos:
             return Spot(leaf, name, None, None)
         return Spot(leaf, name, round(pos[0] / 100.0, 1), round(pos[1] / 100.0, 1))
 
-    def subject(self, leaf: str) -> tuple[str, str]:
+    def subject(self, leaf: str) -> Subject:
         if leaf in self.owner:
             return "factory", self.owner[leaf]
         if leaf not in self._region:
-            pos = (self.records.get(leaf, ("", {}))[1]).get("pos")
+            record = self.record(leaf)
+            pos = record.get("pos") if record else None
             name = self.regions.label_for(pos[0], pos[1]).name if pos else None
             self._region[leaf] = name or "no region"
         return "region", self._region[leaf]
@@ -120,7 +143,7 @@ class RuleContext:
             return UNKNOWN_DEPTH
         return self._depth_of(cls, set())
 
-    def _depth_of(self, cls: str, seen: set) -> int:
+    def _depth_of(self, cls: str, seen: set[str]) -> int:
         if cls in self._depth:
             return self._depth[cls]
         item = self.game.items.get(cls)
@@ -130,7 +153,7 @@ class RuleContext:
         if cls in seen:
             return UNKNOWN_DEPTH
         seen.add(cls)
-        best = None
+        best: int | None = None
         for recipe in self.game.recipes.values():
             if (
                 recipe.kind != "part"
@@ -158,7 +181,7 @@ def _where(subject_kind: str, subject: str) -> str:
 
 def _machines_phrase(ctx: RuleContext, leaves: list[str]) -> str:
     """``3 Foundries`` when the machines share a building, else ``3 machines``."""
-    classes = {(ctx.records.get(m, ("", {}))[1]).get("cls") for m in leaves}
+    classes = {ctx.cls_of(m) for m in leaves}
     count = len(leaves)
     if len(classes) == 1:
         name = ctx.game.building_name(next(iter(classes))) or "machine"
@@ -166,7 +189,7 @@ def _machines_phrase(ctx: RuleContext, leaves: list[str]) -> str:
     return f"{count} {plural('machine', count)}"
 
 
-def _bbox(spots) -> tuple[float, float, float, float] | None:
+def _bbox(spots: Sequence[Spot]) -> tuple[float, float, float, float] | None:
     xs = [s.x_m for s in spots if s.x_m is not None]
     ys = [s.y_m for s in spots if s.y_m is not None]
     if not xs:
@@ -174,7 +197,9 @@ def _bbox(spots) -> tuple[float, float, float, float] | None:
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def _health_call(subject_kind: str, subject: str, bbox) -> str:
+def _health_call(
+    subject_kind: str, subject: str, bbox: tuple[float, float, float, float] | None
+) -> str:
     if subject_kind == "factory":
         return f'factory_health factory="{subject}"'
     if bbox is None:
@@ -192,9 +217,9 @@ def _row(
     text: str,
     tool_text: str,
     weight: float,
-    members: list[str] = (),
-    spots: list[Spot] | None = None,
-    lines: list[str] = (),
+    members: Sequence[str] = (),
+    spots: Sequence[Spot] | None = None,
+    lines: Sequence[str] = (),
     next_call: str,
     seed: str | None = None,
     reveal: tuple[str, ...] = ("machines",),
@@ -251,8 +276,8 @@ def _box_fed(machine: health.MachineHealth) -> bool:
     )
 
 
-def _grouped(ctx: RuleContext, leaves) -> dict[tuple[str, str], list[str]]:
-    out: dict[tuple[str, str], list[str]] = {}
+def _grouped(ctx: RuleContext, leaves: Iterable[str]) -> dict[Subject, list[str]]:
+    out: dict[Subject, list[str]] = {}
     for leaf in leaves:
         out.setdefault(ctx.subject(leaf), []).append(leaf)
     return out
@@ -265,7 +290,9 @@ def _missing_items_rawest_first(
     return sorted(counts, key=lambda item: (ctx.depth(item), -counts[item], item))
 
 
-def _split_starved(ctx: RuleContext) -> tuple[list, list, list]:
+def _split_starved(
+    ctx: RuleContext,
+) -> tuple[list[health.MachineHealth], list[health.MachineHealth], list[health.MachineHealth]]:
     """Starved non-generators as ``(unconnected, box-fed only, other starved)``."""
     starved = [
         m
@@ -278,8 +305,12 @@ def _split_starved(ctx: RuleContext) -> tuple[list, list, list]:
     return unconnected, box_fed_only, other_starved
 
 
-def _unconnected_rows(ctx: RuleContext, unconnected: list, by_leaf: dict) -> list[Advisory]:
-    rows = []
+def _unconnected_rows(
+    ctx: RuleContext,
+    unconnected: list[health.MachineHealth],
+    by_leaf: dict[str, health.MachineHealth],
+) -> list[Advisory]:
+    rows: list[Advisory] = []
     grouped = _grouped(ctx, [m.instance for m in unconnected])
     for (subject_kind, subject), leaves in sorted(grouped.items()):
         machines = [by_leaf[leaf] for leaf in leaves]
@@ -305,8 +336,12 @@ def _unconnected_rows(ctx: RuleContext, unconnected: list, by_leaf: dict) -> lis
     return rows
 
 
-def _box_empty_rows(ctx: RuleContext, box_fed_only: list, by_leaf: dict) -> list[Advisory]:
-    rows = []
+def _box_empty_rows(
+    ctx: RuleContext,
+    box_fed_only: list[health.MachineHealth],
+    by_leaf: dict[str, health.MachineHealth],
+) -> list[Advisory]:
+    rows: list[Advisory] = []
     grouped = _grouped(ctx, [m.instance for m in box_fed_only])
     for (subject_kind, subject), leaves in sorted(grouped.items()):
         who = _machines_phrase(ctx, leaves)
@@ -334,9 +369,9 @@ def _box_empty_rows(ctx: RuleContext, box_fed_only: list, by_leaf: dict) -> list
     return rows
 
 
-def _blocked_by_item(ctx: RuleContext) -> dict[str, Counter]:
+def _blocked_by_item(ctx: RuleContext) -> dict[str, Counter[Subject]]:
     """Blocked machines per item they hold, counted by subject."""
-    blocked: dict[str, Counter] = {}
+    blocked: dict[str, Counter[Subject]] = {}
     for machine in ctx.report.machines:
         if machine.state == "blocked":
             for item in machine.cause:
@@ -344,8 +379,12 @@ def _blocked_by_item(ctx: RuleContext) -> dict[str, Counter]:
     return blocked
 
 
-def _starved_rows(ctx: RuleContext, other_starved: list, by_leaf: dict) -> list[Advisory]:
-    rows = []
+def _starved_rows(
+    ctx: RuleContext,
+    other_starved: list[health.MachineHealth],
+    by_leaf: dict[str, health.MachineHealth],
+) -> list[Advisory]:
+    rows: list[Advisory] = []
     blocked = _blocked_by_item(ctx)
     grouped = _grouped(ctx, [m.instance for m in other_starved])
     for (subject_kind, subject), leaves in sorted(grouped.items()):
@@ -354,7 +393,7 @@ def _starved_rows(ctx: RuleContext, other_starved: list, by_leaf: dict) -> list[
         items = _missing_items_rawest_first(ctx, machines)
         seed_item = items[0]
         blocking_item = next(
-            (item for item in items if blocked.get(item, {}).get(here_key)), seed_item
+            (item for item in items if item in blocked and blocked[item][here_key]), seed_item
         )
         blocked_by_subject = blocked.get(blocking_item, Counter())
         here = blocked_by_subject.get(here_key, 0)
@@ -368,7 +407,7 @@ def _starved_rows(ctx: RuleContext, other_starved: list, by_leaf: dict) -> list[
         if len(text) > TEXT_MAX:
             text = f"{who} {where} {verb} of {_short_list(items, 1)}{tail}"
         seed = next(m.instance for m in machines if seed_item in {_cause_item(c) for c in m.cause})
-        lines = []
+        lines: list[str] = []
         if here or elsewhere:
             parts = [f"{here} here"] if here else []
             parts += [f"{s[1]} {n}" for s, n in elsewhere]
@@ -407,7 +446,7 @@ def _starved_rows(ctx: RuleContext, other_starved: list, by_leaf: dict) -> list[
 
 def _state_rows(ctx: RuleContext) -> list[Advisory]:
     """The ``dead node`` and ``no recipe`` rows, one per subject."""
-    rows = []
+    rows: list[Advisory] = []
     for state, kind, words in (
         ("dead node", "dead_node", ("stands on no node", "stand on no node")),
         ("no recipe", "no_recipe", ("has no recipe", "have no recipe")),
@@ -449,10 +488,15 @@ def _machine_rows(ctx: RuleContext, box_fed: bool) -> list[Advisory]:
     return rows
 
 
-def _underclock(ctx: RuleContext, other_starved):
+def _underclock(
+    ctx: RuleContext, other_starved: list[health.MachineHealth]
+) -> tuple[list[health.MachineHealth], list[Advisory]]:
     """K6: an extractor below 100 % in a named factory where a machine starves of its item."""
-    resource = {instance_leaf(n["instance"]): n["resource"] for n in nodes_mod.load_nodes().nodes}
-    rows, taken = [], set()
+    resource: dict[str, str] = {
+        instance_leaf(n["instance"]): n["resource"] for n in nodes_mod.load_nodes().nodes
+    }
+    rows: list[Advisory] = []
+    taken: set[str] = set()
     found: dict[str, list[tuple[str, set[str]]]] = {}
     for leaf, (group, record) in ctx.records.items():
         if group != "extractors" or float(record.get("clock") or 1.0) >= FULL_CLOCK:
@@ -462,12 +506,12 @@ def _underclock(ctx: RuleContext, other_starved):
             continue
         out = ((record.get("buffers") or {}).get("out") or {}).get("items") or {}
         made = {ctx.game.item_name(c) for c in out}
-        node = resource.get(instance_leaf(record.get("node") or ""))
+        node = resource.get(instance_leaf(cast(ExtractorRecord, record).get("node") or ""))
         if node:
             made.add(ctx.game.item_name(node))
         found.setdefault(factory, []).append((leaf, made))
     for factory, extractors in sorted(found.items()):
-        made = set().union(*(m for _, m in extractors))
+        made = set[str]().union(*(m for _, m in extractors))
         hungry = [
             m
             for m in other_starved
@@ -510,11 +554,12 @@ def _underclock(ctx: RuleContext, other_starved):
 
 def _power(ctx: RuleContext, biomass: bool, headroom: str) -> list[Advisory]:
     report = ctx.st.power_report(biomass=biomass)
-    out = []
+    out: list[Advisory] = []
     starved = report["starved_generators"]
     unwired = report["unwired_consumers"]
     if starved or unwired:
-        parts, members = [], []
+        parts: list[str] = []
+        members: list[str] = []
         if starved:
             count = len(starved)
             parts.append(
@@ -571,12 +616,12 @@ def _power(ctx: RuleContext, biomass: bool, headroom: str) -> list[Advisory]:
     return out
 
 
-#: (world, plan key, rev, save token, labels version) -> (failure, drift flags, node owner).
-_PLANS: dict[tuple, tuple[str, list[str], str]] = {}
+#: (world, plan key, rev, save token, label digest) -> (failure, drift flags, node owner).
+_PLANS: dict[tuple[object, ...], tuple[str, list[str], str]] = {}
 _PLANS_MAX = 256
 
 
-def plan_heads(st) -> list:
+def plan_heads(st: WorldState) -> list[PlanState]:
     """The world's live plan heads; none when the plan log cannot be read."""
     try:
         return PlanLog(st.world_id, st.session_name).heads()
@@ -584,13 +629,13 @@ def plan_heads(st) -> list:
         return []
 
 
-def _plan_facts(st, state) -> tuple[str, list[str], str]:
+def _plan_facts(st: WorldState, state: PlanState) -> tuple[str, list[str], str]:
     status = manage.plan_status(st, state)
     drift = [f for f in status.flags if f.startswith("field ")]
     if status.broken:
         return status.flags[-1], drift, ""
     prepared = prepare(st.game, st, state.kwargs(), diagnose=False)
-    if prepared.failure:
+    if prepared.failure or prepared.solution is None:
         return "it no longer solves", drift, ""
     if not prepared.solution.processes:
         return "", drift, ""
@@ -599,17 +644,18 @@ def _plan_facts(st, state) -> tuple[str, list[str], str]:
     return "", drift, (built.node_owner if built is not None else "")
 
 
-def _plans(st) -> list[Advisory]:
-    out = []
+def _plans(st: WorldState) -> list[Advisory]:
+    out: list[Advisory] = []
+    labels = st.labels.fingerprint()
     for state in plan_heads(st):
-        key = (st.world_id, state.key, state.rev, st.token, st.labels.version)
+        key = (st.world_id, state.key, state.rev, st.token, labels)
         facts = _PLANS.get(key)
         if facts is None:
             if len(_PLANS) >= _PLANS_MAX:
                 _PLANS.clear()
             facts = _PLANS[key] = _plan_facts(st, state)
         failure, drift, owner = facts
-        lines = []
+        lines: list[str] = []
         for flag in drift:
             then, _, now = flag[len("field ") :].partition("->")
             lines.append(f"a source selector found {then} nodes when saved, {now} now")
@@ -643,7 +689,7 @@ def _singular(label: str) -> str:
     return label.removesuffix("s")
 
 
-def _pickups(st, spoilers: bool) -> list[Advisory]:
+def _pickups(st: WorldState, spoilers: bool) -> list[Advisory]:
     me = st.player_position()
     if me is None:
         return []
@@ -663,7 +709,7 @@ def _pickups(st, spoilers: bool) -> list[Advisory]:
     count = len(near)
     reach = f"{surroundings.PICKUP_REACH_M:.0f} m"
     lead = f"{count} {plural('pickup', count)} within {reach} of where you saved"
-    text = f"{lead} · {_singular(pick['label'])} {pick['distance_m']:.0f} m"
+    text = f"{lead} · {_singular(pick['label'])} {pick.get('distance_m', 0.0):.0f} m"
     kinds = Counter(_singular(r["label"]) for r in near)
     spots = [
         Spot(
@@ -687,13 +733,13 @@ def _pickups(st, spoilers: bool) -> list[Advisory]:
             spots=spots,
             next_call="collected_from_world show=nearest near=me",
             reveal=tuple(sorted({f"pickup: {r['category']}" for r in near})),
-            source="surroundings._pickups_near",
+            source="surroundings.pickups_near",
         )
     ]
 
 
 def compute(
-    st,
+    st: WorldState,
     *,
     biomass: bool = False,
     headroom: str = "measured",
@@ -707,7 +753,7 @@ def compute(
     return sorted(rows, key=Advisory.rank)
 
 
-def with_ids(rows: list[Advisory], extra_keys=()) -> list[Advisory]:
+def with_ids(rows: list[Advisory], extra_keys: Iterable[str] = ()) -> list[Advisory]:
     """``rows`` with their ids; ``extra_keys`` (stored keys not firing) join the assignment."""
     ids = ids_for([r.key for r in rows] + list(extra_keys))
     return [replace(r, id=ids[r.key]) for r in rows]

@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from ...core.saveio.records import instance_leaf
+from ...core.saveio.schema import RemovedBlock
 from ..spatial import geo
-from .table import CollectibleTable, name_stem, removed_actor_class
+from .table import CollectibleTable, as_object, name_stem, removed_actor_class
+from .views import CensusRow, CollectedSummary, NamedActor, Placement
 
 __all__ = ["RemovedActors", "observed_session"]
 
@@ -17,7 +20,14 @@ def observed_session(table: CollectibleTable | None) -> str | None:
     """The session whose saves the table's seen/unseen states were read from."""
     if table is None:
         return None
-    return ((table.meta.get("source") or {}).get("status") or {}).get("session") or None
+    status = as_object(as_object(table.meta.get("source")).get("status"))
+    session = status.get("session")
+    return session if isinstance(session, str) and session else None
+
+
+def _destroyed(removed: RemovedBlock) -> list[tuple[int, str]]:
+    """``(cell index, instance name)`` of every destroyed record."""
+    return [(int(ix), str(leaf)) for ix, leaf in removed.get("instances") or []]
 
 
 @dataclass
@@ -29,10 +39,14 @@ class RemovedActors:
     name-prefix census and says so.
     """
 
-    projection: dict
+    projection: Mapping[str, object]
     table: CollectibleTable | None
     #: False when the table's seen/unseen states were read from another world's saves.
     observed: bool = True
+
+    @property
+    def _removed(self) -> RemovedBlock:
+        return cast(RemovedBlock, self.projection.get("removed") or {})
 
     @cached_property
     def destroyed_keys(self) -> frozenset[tuple[str, str]]:
@@ -40,23 +54,24 @@ class RemovedActors:
 
         The pair, never the bare name, for the reason ``CollectibleTable.by_key`` gives.
         """
-        removed = self.projection.get("removed") or {}
-        cells: list[str] = removed.get("cells") or []
+        removed = self._removed
+        cells = removed.get("cells") or []
         return frozenset(
-            (cells[ix] if 0 <= ix < len(cells) else "", leaf)
-            for ix, leaf in removed.get("instances") or []
+            (cells[ix] if 0 <= ix < len(cells) else "", leaf) for ix, leaf in _destroyed(removed)
         )
 
     #: The placement table's ``state`` -> what it means about a placement this save has NOT
     #: collected. ``never_streamed`` is a placement no save has ever loaded, and must never
     #: be presented as standing there.
-    OBSERVED: ClassVar[dict[str, str]] = {
+    UNCOLLECTED_STATES: ClassVar[dict[str, str]] = {
         "present": "standing",
         "unknown": "never_streamed",
         "collected": "gone_in_a_later_save",
     }
 
-    def placements(self, category: str | None = None, remaining_only: bool = False) -> list[dict]:
+    def placements(
+        self, category: str | None = None, remaining_only: bool = False
+    ) -> list[Placement]:
         """Map placements annotated with what THIS save says about each one.
 
         ``collected`` is exact and about the loaded save. ``observed`` is the one field that
@@ -68,7 +83,7 @@ class RemovedActors:
             return []
         gone = self.destroyed_keys
         source = table.by_category.get(category, []) if category else table.rows
-        out: list[dict] = []
+        out: list[Placement] = []
         for row in source:
             name = instance_leaf(row["instance"])
             collected = (row["cell"], name) in gone
@@ -86,7 +101,7 @@ class RemovedActors:
                     "observed": (
                         None
                         if collected or not self.observed
-                        else self.OBSERVED.get(row.get("state") or "")
+                        else self.UNCOLLECTED_STATES.get(row.get("state") or "")
                     ),
                     "looted": row.get("looted"),
                     "contents": row.get("contents"),
@@ -98,7 +113,7 @@ class RemovedActors:
 
     def nearest_placements(
         self, origin: tuple[float, float], category: str | None = None
-    ) -> list[dict]:
+    ) -> list[Placement]:
         """Remaining placements, nearest first, each with a planar distance in metres.
 
         Only remaining ones, since the question is "where do I go and get one". Planar,
@@ -108,10 +123,10 @@ class RemovedActors:
         rows = self.placements(category, remaining_only=True)
         for row in rows:
             row["distance_m"] = geo.distance_m((row["pos"][0], row["pos"][1]), origin)
-        rows.sort(key=lambda r: r["distance_m"])
+        rows.sort(key=lambda r: r.get("distance_m", 0.0))
         return rows
 
-    def collectible_census(self) -> list[dict]:
+    def collectible_census(self) -> list[CensusRow]:
         """Per category: what the map placed, what this save collected, and what is left.
 
         ``placed`` is the map's own count and ``collected`` this save's own destroyed list,
@@ -125,7 +140,7 @@ class RemovedActors:
         table = self.table
         if table is None:
             return []
-        tally: dict[str, dict] = {}
+        tally: dict[str, dict[str, int]] = {}
         for placement in self.placements():
             counted = tally.setdefault(
                 placement["category"],
@@ -133,7 +148,7 @@ class RemovedActors:
                     "collected": 0,
                     #: Standing but already emptied. Only a drop pod can be both.
                     "looted_and_standing": 0,
-                    **dict.fromkeys((*self.OBSERVED.values(), "unstated"), 0),
+                    **dict.fromkeys((*self.UNCOLLECTED_STATES.values(), "unstated"), 0),
                 },
             )
             if placement["collected"]:
@@ -145,7 +160,7 @@ class RemovedActors:
             if placement["looted"]:
                 counted["looted_and_standing"] += 1
 
-        rows: list[dict] = []
+        rows: list[CensusRow] = []
         for category in table.categories:
             counted = tally[category]
             placed = len(table.by_category[category])
@@ -157,7 +172,12 @@ class RemovedActors:
                     "placed": placed,
                     #: None, not placed-minus-zero, when a collection would leave no record.
                     "remaining": (placed - counted["collected"]) if tracked else None,
-                    **counted,
+                    "collected": counted["collected"],
+                    "looted_and_standing": counted["looted_and_standing"],
+                    "standing": counted["standing"],
+                    "never_streamed": counted["never_streamed"],
+                    "gone_in_a_later_save": counted["gone_in_a_later_save"],
+                    "unstated": counted["unstated"],
                     "state_tracked": tracked,
                     "pedestal_of": table.pedestal_of(category),
                     "note": table.note_for(category),
@@ -165,19 +185,19 @@ class RemovedActors:
             )
         return rows
 
-    def collected_summary(self, group: str | None = None) -> dict:
+    def collected_summary(self, group: str | None = None) -> CollectedSummary:
         """What this save records as collected off the map, resolved against the map itself.
 
         The destroyed list IS the collected list (save-projection.md §6.11), and only the
         join to the placement table by ``(cell, name)`` gives an entry a class. Without the
         table this degrades to the name-prefix census under ``source: "save-only"``.
         """
-        removed = self.projection.get("removed") or {}
-        cells: list[str] = removed.get("cells") or []
-        instances: list = removed.get("instances") or []
-        counts: dict[str, int] = removed.get("counts") or {}
+        removed = self._removed
+        cells = removed.get("cells") or []
+        instances = _destroyed(removed)
+        counts = removed.get("counts") or {}
         table = self.table
-        out: dict = {
+        out: CollectedSummary = {
             #: Every destroyed record, including the classes the map table does not track.
             "total": len(instances) or sum(counts.values()),
             "cells": len(cells),
@@ -212,8 +232,12 @@ class RemovedActors:
         return out
 
     def _removed_by_name(
-        self, out: dict, instances: list, cells: list[str], group: str | None
-    ) -> dict:
+        self,
+        out: CollectedSummary,
+        instances: list[tuple[int, str]],
+        cells: list[str],
+        group: str | None,
+    ) -> CollectedSummary:
         """The census the save can build on its own: counts by name prefix, and wrong.
 
         A fresh clone has no placement table, and "collected 889 things" is still worth
@@ -239,11 +263,12 @@ class RemovedActors:
             out["error"] = f"unknown group {group!r}; known: {known}"
             return out
         out["group"] = group
-        out["actors"] = [
+        actors: list[NamedActor] = [
             {"name": leaf, "cell": cells[ix] if 0 <= ix < len(cells) else "", "pos": None}
             for ix, leaf in instances
             if self.removed_group(leaf) == group
         ]
+        out["actors"] = actors
         return out
 
     #: The name-only fallback when the placement table is absent: ``(label, prefixes,

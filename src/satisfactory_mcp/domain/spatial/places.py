@@ -7,8 +7,17 @@ them. The grammar it implements is written out in `docs/selectors.md`.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, TypeAlias
+
 from ...core.saveio.records import instance_leaf, iter_machine_records
 from . import geo, nodes
+
+if TYPE_CHECKING:
+    from ..factories.labels import Label
+    from ..world.state import WorldState
+
+#: A place in centimetres, and what it resolved FROM.
+Place: TypeAlias = tuple[tuple[float, float], str]
 
 #: The conduit-run spelling this project settles on, everywhere: ``chain:<n>`` for a belt
 #: chain and ``pipe:<n>`` for a pipeline piece, which is the ident ``search_conduits``
@@ -85,13 +94,13 @@ def _retired(spec: str) -> str:
     return ""
 
 
-def player_xy(st) -> tuple[float, float] | None:
+def player_xy(st: WorldState | None) -> tuple[float, float] | None:
     """Player XY for the near:me selector, or None if the save has no pawn."""
     here = st.player_position() if st else None
     return (here[0], here[1]) if here else None
 
 
-def hub_xy(st) -> tuple[float, float] | None:
+def hub_xy(st: WorldState | None) -> tuple[float, float] | None:
     """The HUB's position in centimetres, off its built-in storage or burners."""
     if st is None:
         return None
@@ -103,7 +112,7 @@ def hub_xy(st) -> tuple[float, float] | None:
     return None
 
 
-def _run_origin(st, text: str) -> tuple[tuple[float, float], str]:
+def _run_origin(st: WorldState | None, text: str) -> Place:
     """Centre on a belt chain or pipe piece, by the ident ``search_conduits`` prints.
 
     Its MIDPOINT, so a radius around it reaches both ways along the run; the answer names
@@ -118,7 +127,7 @@ def _run_origin(st, text: str) -> tuple[tuple[float, float], str]:
     raise ValueError(f"no conduit run called {text!r}; search_conduits lists the ids it takes")
 
 
-def _slab_origin(st, text: str) -> tuple[tuple[float, float], str]:
+def _slab_origin(st: WorldState | None, text: str) -> Place:
     """Centre on a foundation platform, by the index ``factory_map show=slabs`` prints.
 
     The tile MEAN the slab carries, not its bbox centre: an L-shaped platform's bbox
@@ -144,7 +153,7 @@ def _slab_origin(st, text: str) -> tuple[tuple[float, float], str]:
     )
 
 
-def _node_origin(text: str) -> tuple[tuple[float, float], str]:
+def _node_origin(text: str) -> Place:
     """Centre on one resource node, by the id ``search_resource_nodes`` prints.
 
     Map data rather than save data, so this is the one place kind that resolves with no
@@ -159,18 +168,18 @@ def _node_origin(text: str) -> tuple[tuple[float, float], str]:
     raise ValueError(f"no resource node called {want!r}; search_resource_nodes lists the ids")
 
 
-def _machine_origin(st, text: str) -> tuple[tuple[float, float], str]:
+def _machine_origin(st: WorldState | None, text: str) -> Place:
     """Centre on one standing machine; the leaf and the full instance path both match."""
     if st is None:
         raise ValueError(f"{text!r} names a machine, which needs a readable save")
     want = instance_leaf(text.partition(":")[2].strip())
     for _group, leaf, record in iter_machine_records(st.projection):
-        if record.get("pos") and leaf == want:
-            return (record["pos"][0], record["pos"][1]), f"machine:{want}"
+        if (pos := record.get("pos")) and leaf == want:
+            return (pos[0], pos[1]), f"machine:{want}"
     raise ValueError(f"no machine called {want!r} in this save")
 
 
-def _plan_origin(st, text: str) -> tuple[tuple[float, float], str]:
+def _plan_origin(st: WorldState | None, text: str) -> Place:
     """Centre on a stored plan's recorded site, which only a sited plan has."""
     # Imported here because planning.siting imports this module: the plan record is
     # parsed in one place, and that place is above this one.
@@ -192,7 +201,7 @@ def _plan_origin(st, text: str) -> tuple[tuple[float, float], str]:
     return (sited.x_m * 100.0, sited.y_m * 100.0), f"plan {stored.name!r} site ({sited.describe()})"
 
 
-def resolve_place(st, near: str) -> tuple[tuple[float, float], str]:
+def resolve_place(st: WorldState | None, near: str) -> Place:
     """Resolve a place to a point in centimetres, paired with what it resolved FROM.
 
     A factory name is the useful one now that factories exist -- "nearest coal to the
@@ -237,7 +246,7 @@ def resolve_place(st, near: str) -> tuple[tuple[float, float], str]:
         if hub is None:
             raise ValueError("this save has no HUB, so 'hub' cannot be resolved")
         return hub, "the HUB"
-    if label is None:
+    if st is None or label is None:
         known = ", ".join(x.name for x in st.labels.labels) if st else ""
         raise ValueError(
             f"{near!r} does not name a place. {PLACE_GRAMMAR}"
@@ -249,7 +258,7 @@ def resolve_place(st, near: str) -> tuple[tuple[float, float], str]:
     return centre, label.name
 
 
-def _pin_origin(st, text: str) -> tuple[tuple[float, float], str]:
+def _pin_origin(st: WorldState | None, text: str) -> Place:
     from ..session import pins
 
     n = pins.parse(text)
@@ -261,12 +270,12 @@ def _pin_origin(st, text: str) -> tuple[tuple[float, float], str]:
         raise ValueError(str(exc)) from None
 
 
-def label_centre(st, label) -> tuple[float, float] | None:
+def label_centre(st: WorldState, label: Label) -> tuple[float, float] | None:
     """The centroid of a label's standing machines in centimetres, or None when none stand."""
     pos = {
-        leaf: record["pos"]
+        leaf: here
         for _group, leaf, record in iter_machine_records(st.projection)
-        if record.get("pos")
+        if (here := record.get("pos"))
     }
-    points = [pos[m][:2] for m in label.anchors if m in pos]
+    points = [(pos[m][0], pos[m][1]) for m in label.anchors if m in pos]
     return geo.centroid(points) if points else None

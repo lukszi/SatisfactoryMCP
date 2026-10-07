@@ -9,16 +9,20 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain.session import asks as ask_store
 from .....domain.session import journal
+from .....domain.session.views import AskAbout, AskRow
 from ...serial import (
+    Dropped,
+    RevBody,
     busy_response,
     error_response,
     newer_schema_response,
@@ -31,37 +35,6 @@ __all__ = ["router"]
 router = APIRouter(prefix="/api")
 
 
-class AskAbout(TypedDict):
-    """What an ask is about: ``kind`` is plan, process, stage, item or pin; ``plan`` a plan key."""
-
-    kind: str
-    label: str
-    ref: str
-    plan: NotRequired[str | None]
-    rev: NotRequired[int | None]
-
-
-class AskRow(TypedDict):
-    """One ask. ``state`` is open, seen or answered; ``answer`` is the one line chat left
-    with it ("" for none); ``copy`` is what the page puts on the clipboard; ``plan_name`` is
-    ``about.plan`` resolved when read."""
-
-    n: int
-    id: str
-    text: str
-    about: AskAbout
-    state: str
-    rev: int
-    created: float
-    seen: float | None
-    seen_by: str
-    answered: float | None
-    answered_by: str
-    answer: str
-    plan_name: str | None
-    copy: str
-
-
 class AsksResponse(TypedDict):
     version: int
     asks: list[AskRow]
@@ -70,15 +43,6 @@ class AsksResponse(TypedDict):
 class AskCreateBody(TypedDict):
     text: str
     about: AskAbout
-
-
-class AskDropBody(TypedDict):
-    rev: int
-
-
-class AskDropped(TypedDict):
-    ok: bool
-    n: int
 
 
 class AskStaleResponse(TypedDict):
@@ -98,8 +62,16 @@ def _refused(world_id: str, exc: Exception) -> JSONResponse:
     if isinstance(exc, LockTimeout):
         return busy_response("asks", exc)
     if isinstance(exc, ask_store.AskStale):
-        names = {r["about"]["plan"]: r["plan_name"] for r in ask_store.live(world_id)}
-        body = {"error": str(exc), "stale": True, "ask": ask_store.row(exc.ask, names)}
+        names = {
+            plan: name
+            for r in ask_store.live(world_id)
+            if (plan := r["about"].get("plan")) and (name := r["plan_name"]) is not None
+        }
+        body: AskStaleResponse = {
+            "error": str(exc),
+            "stale": True,
+            "ask": ask_store.row(exc.ask, names),
+        }
         return JSONResponse(body, status_code=409)
     if isinstance(exc, ask_store.AskMissing | ask_store.AboutMissing):
         return error_response(str(exc), 404)
@@ -109,7 +81,7 @@ def _refused(world_id: str, exc: Exception) -> JSONResponse:
 _ERRORS = (ask_store.AskError, LockTimeout, NewerSchema)
 
 
-def _journal(world_id: str, kind: str, ask: dict, text: str) -> None:
+def _journal(world_id: str, kind: str, ask: AskRow, text: str) -> None:
     about = ask["about"]
     journal.append(
         world_id,
@@ -123,7 +95,9 @@ def _journal(world_id: str, kind: str, ask: dict, text: str) -> None:
 
 
 @router.get("/asks", response_model=AsksResponse)
-def asks(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def asks(
+    request: Request, save: str | None = None, world: str | None = None
+) -> AsksResponse | JSONResponse:
     """Every live ask of this world, ascending by number, answered ones included."""
     st = require_world(request, save, world)
     try:
@@ -140,7 +114,7 @@ def create_ask(
     body: Annotated[AskCreateBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> AskRow | JSONResponse:
     """Queue one question for chat; the player pastes its ``copy`` into chat."""
     st = require_world(request, save, world)
     try:
@@ -153,16 +127,16 @@ def create_ask(
 
 @router.delete(
     "/asks/{n}",
-    response_model=AskDropped,
+    response_model=Dropped,
     responses={409: {"model": AskStaleResponse}},
 )
 def drop_ask(
     request: Request,
     n: int,
-    body: Annotated[AskDropBody, Body()],
+    body: Annotated[RevBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> Dropped | JSONResponse:
     """Delete one ask, refused with a 409 when ``rev`` is not its current one."""
     st = require_world(request, save, world)
     try:

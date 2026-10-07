@@ -12,7 +12,7 @@ import { showRows } from "../../map/tools/finder";
 import { dashParts, subjectQuery, withQuery } from "../../app/nav";
 import { select } from "../../app/selection";
 import { state } from "../../app/state";
-import { counted, gapText, WORDS } from "../../kit/words";
+import { counted, staleText, WORDS } from "../../kit/words";
 import { leaveDashThen, requestRender } from "../actions";
 
 import type { ApiError, ApiUrl } from "../../api/client";
@@ -207,7 +207,7 @@ export function textField(
   input.title = opts.title || "press Enter to search";
   input.disabled = !!opts.disabled;
   const draft = drafts[candidate];
-  input.value = draft && draft.base === value ? draft.text : value;
+  input.value = draft?.base === value ? draft.text : value;
   input.setAttribute("data-candidate", candidate);
   function commit(text: string): void {
     if (isRebuilding()) return;
@@ -273,11 +273,6 @@ export function showAllToggle(card: HTMLElement, grid: HTMLElement, rows: number
   });
 }
 
-export function staleText(age: TableAge): string {
-  if (age.notes.length) return age.notes.join(" ");
-  return WORDS.mapDataBehind + (age.gap ? " (" + gapText(age.gap) + ")" : "");
-}
-
 export function staleLine(parent: HTMLElement, age: TableAge | null): void {
   if (!age || (!age.behind && !age.moved && !age.unjoinable)) return;
   appendNote(parent, staleText(age));
@@ -288,8 +283,13 @@ export function hiddenLine(parent: HTMLElement, hidden: number, one: string, man
   settingsLinkNote(parent, counted(hidden, one, many) + " " + WORDS.hiddenBySpoilers + " · ", "");
 }
 
+function regionText(region: Region | null, full?: boolean): string {
+  if (!region) return "off the map";
+  return full ? regionLine(region) : region.name;
+}
+
 export function regionCell(region: Region | null, full?: boolean): HTMLElement {
-  const cell = make("span", "", region ? (full ? regionLine(region) : region.name) : "off the map");
+  const cell = make("span", "", regionText(region, full));
   if (region) cell.title = regionLine(region) + ", good to about " + formatNumber(region.accuracy_m, 0) + " m";
   return cell;
 }
@@ -324,7 +324,8 @@ export function numericColumn<R>(
     title: opts.title,
     sort: function (row) {
       const value = pick(row);
-      return value === null ? (opts.nullsFirst ? -1 : Infinity) : value;
+      if (value !== null) return value;
+      return opts.nullsFirst ? -1 : Infinity;
     },
     render:
       opts.render ||

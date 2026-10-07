@@ -4,6 +4,12 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# Code-quality scan output: coverage data and report, and the scanner's work directory.
+.coverage
+.coverage.*
+coverage.xml
+.scannerwork/
+
 # Agent worktrees: git repos of their own, never part of this one.
 .claude/worktrees/
 

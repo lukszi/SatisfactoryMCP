@@ -37,7 +37,7 @@ export function factoryAddress(subject: string, known?: (name: string) => boolea
   const cut = subject.lastIndexOf("/");
   if (cut > 0) {
     const tail = subject.slice(cut + 1);
-    if (isAspect(tail) && !(known && known(subject))) return { name: subject.slice(0, cut), aspect: tail };
+    if (isAspect(tail) && !known?.(subject)) return { name: subject.slice(0, cut), aspect: tail };
   }
   return { name: subject, aspect: "" };
 }

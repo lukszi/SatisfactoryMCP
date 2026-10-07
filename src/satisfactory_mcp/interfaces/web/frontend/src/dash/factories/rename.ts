@@ -26,7 +26,7 @@ export type Refusal = "stale" | "name_taken" | "pin" | "bad" | "";
 
 export function labelRefusal(error: unknown): Refusal {
   const e = error as StatusError | null;
-  if (!e || !e.status) return "";
+  if (!e?.status) return "";
   if (e.status === 400) return "bad";
   if (e.status !== 409) return "";
   const body = (e.body || {}) as Partial<LabelRefused>;
@@ -114,7 +114,7 @@ export function editName(
     if (closed) return;
     closed = true;
     saving = true;
-    if (open && open.input === input) open = null;
+    if (open?.input === input) open = null;
     if (!reply && input.parentNode === host) {
       host.textContent = "";
       kept.forEach(function (node) {

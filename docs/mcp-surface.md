@@ -16,6 +16,18 @@ testing contract. Section numbers are continuous with the rest of the spec;
 > benefit (580 → 1,136 bytes on the real Plastic response). Enforced by the shared decorator
 > `app.tool`.
 
+> **An argument a tool does not declare is refused, on every tool.** FastMCP validates a call
+> against a model that ignores unknown keys, so `diff_vs_save`, `commission_plan`,
+> `rank_unlocks` and `plan_layout` dropped the `plan_factory` arguments they lack (`sloops`,
+> `required`, `supplied`, …) and answered for a different plant without a word. A misspelt
+> optional argument went the same way. `app.StrictFastMCP.call_tool` compares the names with
+> the tool's published schema before the tool runs and answers
+> `! <tool> does not take x=; nothing ran.`, with the declared name it resembles, and on a
+> tool that takes `plan=` the way to carry a stored plan argument: save it with
+> `plan_factory(save_as=)`, then pass `plan=`. It overrides FastMCP's own `call_tool`, so
+> `tests/mcp/test_undeclared_arguments.py` drives a real client session: an mcp upgrade that
+> routes calls past the override fails there.
+
 ### 10.1 Tools
 
 **Game data:** `search_items`, `search_recipes`, `recipe_detail`, `alternates_for_item`, `list_buildings`
@@ -191,7 +203,7 @@ eight speculative calls, and at the end of them still no way to say the list was
 was specific and correct: *"if some Tier 7-9 building eats rubber, I'd have missed it."*
 
 **A parameter on `search_recipes`, not a new tool**, for the same reason `search_resource_nodes` took a
-`mode` instead of splitting ([§7.2a](spatial-and-map.md#72a-node-lookup--one-tool-three-modes)): the body is ~90 % shared —
+`show` instead of splitting ([§7.2a](spatial-and-map.md#72a-node-lookup--one-tool-three-views)): the body is ~90 % shared —
 filter, sort, page, render, HAVE/LOCKED — and only the predicate differs. §10.3's rule against duplicate
 surfaces applies with more force here, since a `consumers_of_item` tool would sit directly beside
 `alternates_for_item` and make tool selection worse. `produces=` comes along free and is the only way to
@@ -310,6 +322,10 @@ These rules hold it together, each with a test:
   patches that one function, rather than patching each tool module.
 - **A refusal is an answer.** `app.tool` registers a text tool and returns a raised
   `Refusal`'s text, or a selector error as `! …`, as the tool's reply.
+- **A tool's context is `app.ToolContext`.** FastMCP finds the parameter that receives its
+  `Context` by the annotation and leaves it out of the schema. `ToolContext` is `Context`
+  itself at runtime and its parametrised form only to the type checker, so that lookup, and
+  every published schema, stay exactly as they were.
 
 The move was mechanical — every tool body is byte-identical — but two classes of breakage
 were invisible to the linter and only showed at runtime: relative imports written for the
@@ -619,8 +635,8 @@ forgotten plan is found here too, so `undo=<the forget>` brings it back.
 
 **Who wrote it.** A chat write carries `Actor("chat", clientInfo.name, pid)`: the client name
 is what the MCP client sent at `initialize` (`claude-code` reads as "Claude Code", `claude-ai`
-as "Claude Desktop"), read through the `ctx: Context` FastMCP injects and never shows in a
-schema. Called as a plain function (tests, scripts) the client is blank and reads as "chat".
+as "Claude Desktop"), read through the `ctx: app.ToolContext` FastMCP injects and never shows in
+a schema. Called as a plain function (tests, scripts) the client is blank and reads as "chat".
 
 **The activity journal** (`domain/session/journal.py`, contract §8) holds what is not a plan
 edit: `plan.solve` for a `plan_factory` without `save_as` (the page offers it as a from-chat
@@ -916,6 +932,8 @@ why there is no resident daemon.
   server and every CLI invocation, and giving each worker its own would have replaced a 0.10 s
   warm load with a 3.17 s parse, eight times over.
 
-Deps: `mcp[cli]>=1.28`, `pydantic>=2.13`, `platformdirs`, `scipy>=1.11`, `numpy`; dev `pytest`,
-`pytest-cov`, `pytest-xdist>=3.6,<4`, `ruff`. `requires-python = ">=3.11"`.
+Deps: `mcp[cli]>=1.28`, `pydantic>=2.13`, `platformdirs`, `scipy>=1.11`, `numpy`,
+`typing-extensions>=4.6`; dev `pytest`, `pytest-cov`, `pytest-xdist>=3.6,<4`, `ruff`,
+`pyright[nodejs]` and `scipy-stubs` (exact pins, docs/DEVELOPING.md "Types").
+`requires-python = ">=3.11"`.
 

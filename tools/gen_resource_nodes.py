@@ -12,9 +12,14 @@ writing, so the two committed artifacts cannot drift apart.
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
+
+if TYPE_CHECKING:
+    from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,9 +29,47 @@ INSTANCE_PREFIX = "Persistent_Level:PersistentLevel."
 FRACKING_SATELLITE_CLASS = "BP_FrackingSatellite_C"
 FRACKING_CORE_CLASS = "BP_FrackingCore_C"
 
+NodeKind = Literal["node", "well_sat", "geyser"]
+
+# The functional form, because "class" is a keyword. ``core`` is on the satellites only.
+WorldNode = TypedDict(
+    "WorldNode",
+    {
+        "id": str,
+        "class": str,
+        "resource": str | None,
+        "purity": str,
+        "x": float,
+        "y": float,
+        "z": float,
+        "core": NotRequired[str],
+    },
+)
+
+
+class WorldTableMeta(TypedDict, total=False):
+    """The fields of the world table's ``_meta`` that this table carries forward."""
+
+    generated: str
+    game_version_pinned: str
+
+
+class ResourceNodeRow(TypedDict):
+    """One row of ``data/resource_nodes.json``."""
+
+    instance: str
+    resource: str | None
+    purity: str
+    kind: NodeKind
+    x: float
+    y: float
+    z: float
+    well_core: str | None
+
+
 #: A well satellite yields half a plain node's rate AND needs a Pressurizer on its parent
 #: core, so conflating the two with a plain node overstates a field by 2x.
-_KINDS = {
+_KINDS: dict[str, NodeKind] = {
     "BP_ResourceNode_C": "node",
     FRACKING_SATELLITE_CLASS: "well_sat",
     "BP_ResourceNodeGeyser_C": "geyser",
@@ -48,20 +91,24 @@ _PURITIES = {"impure", "normal", "pure"}
 ROUNDING_FLOOR_CM = math.sqrt(3) / 2 * 0.01
 
 
-def load_world_node_table() -> tuple[list[dict], dict]:
+def load_world_node_table() -> tuple[list[WorldNode], WorldTableMeta]:
     """The rows and ``_meta`` of ``data/world_resource_nodes.json``, or exit naming its generator."""
     path = ROOT / "data" / "world_resource_nodes.json"
     if not path.is_file():
         raise SystemExit(
             f"{path} missing -- run: uv run --extra gen python tools/gen_world_resource_nodes.py"
         )
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    return payload["nodes"], payload["_meta"]
+    payload: JsonValue = json.loads(path.read_text(encoding="utf-8"))
+    nodes = payload.get("nodes") if isinstance(payload, dict) else None
+    meta = payload.get("_meta") if isinstance(payload, dict) else None
+    if not isinstance(nodes, list) or not isinstance(meta, dict):
+        raise SystemExit(f"{path} holds no node list and _meta object -- regenerate it")
+    return cast("list[WorldNode]", nodes), cast(WorldTableMeta, meta)
 
 
-def project_nodes(world: list[dict]) -> tuple[list[dict], int]:
+def project_nodes(world: list[WorldNode]) -> tuple[list[ResourceNodeRow], int]:
     """The served rows, in world-table order, and how many fracking cores the table holds."""
-    nodes: list[dict] = []
+    nodes: list[ResourceNodeRow] = []
     core_ids: set[str] = set()
     unknown_purity: list[str] = []
     for entry in world:
@@ -87,7 +134,9 @@ def project_nodes(world: list[dict]) -> tuple[list[dict], int]:
                 "x": round(float(entry["x"]), 2),
                 "y": round(float(entry["y"]), 2),
                 "z": round(float(entry["z"]), 2),
-                "well_core": INSTANCE_PREFIX + entry["core"] if kind == "well_sat" else None,
+                "well_core": INSTANCE_PREFIX + entry["core"]
+                if kind == "well_sat" and "core" in entry
+                else None,
             }
         )
 
@@ -98,7 +147,7 @@ def project_nodes(world: list[dict]) -> tuple[list[dict], int]:
     return nodes, len(core_ids)
 
 
-def check_well_links_by_position(world: list[dict]) -> dict:
+def check_well_links_by_position(world: list[WorldNode]) -> JsonObject:
     """Re-derive the well grouping from positions and compare with the ``mCore`` link.
 
     Returns the distance distribution and the ambiguity margin: satellites sit in a tight
@@ -107,7 +156,7 @@ def check_well_links_by_position(world: list[dict]) -> dict:
     """
     pos = {e["id"]: (e["x"], e["y"], e["z"]) for e in world}
     cores = [e["id"] for e in world if e["class"] == FRACKING_CORE_CLASS]
-    sat_core = {e["id"]: e["core"] for e in world if e["class"] == FRACKING_SATELLITE_CLASS}
+    sat_core = {e["id"]: e.get("core", "") for e in world if e["class"] == FRACKING_SATELLITE_CLASS}
     missing = sorted(s for s, c in sat_core.items() if not c)
     if missing:
         raise SystemExit(f"{len(missing)} satellite(s) carry no core link: {missing}")
@@ -144,7 +193,9 @@ def check_well_links_by_position(world: list[dict]) -> dict:
     }
 
 
-def check_projection(nodes: list[dict], world: list[dict], world_meta: dict) -> dict:
+def check_projection(
+    nodes: list[ResourceNodeRow], world: list[WorldNode], world_meta: WorldTableMeta
+) -> JsonObject:
     """Every emitted row against the source file: the projection cannot drift silently.
 
     The returned block is shaped the way ``domain/spatial/nodes/`` reads a positions
@@ -158,7 +209,7 @@ def check_projection(nodes: list[dict], world: list[dict], world_meta: dict) -> 
         raise SystemExit(
             f"projection and source disagree on the row set: {only_here} vs {only_source}"
         )
-    deltas = []
+    deltas: list[float] = []
     for name, row in emitted.items():
         src = by_id[name]
         if row["purity"] != src["purity"]:
@@ -187,7 +238,9 @@ def check_projection(nodes: list[dict], world: list[dict], world_meta: dict) -> 
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    # No options: the parse is what makes --help print instead of regenerating the table.
+    argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0]).parse_args(argv)
     world, world_meta = load_world_node_table()
     nodes, core_count = project_nodes(world)
     geometry = check_well_links_by_position(world)
@@ -214,13 +267,13 @@ def main() -> int:
 
 def build_meta(
     *,
-    nodes: list[dict],
+    nodes: list[ResourceNodeRow],
     by_kind: dict[str, int],
     core_count: int,
-    geometry: dict,
-    projection: dict,
-    world_meta: dict,
-) -> dict:
+    geometry: JsonObject,
+    projection: JsonObject,
+    world_meta: WorldTableMeta,
+) -> JsonObject:
     """The table's ``_meta``: its source, the cross-checks this run made, and the exclusions."""
     return {
         "description": "Static resource node table: type, purity, world position.",
@@ -276,7 +329,7 @@ def build_meta(
         ),
         "join_key": "instance (matches save actor instanceName exactly)",
         "count": len(nodes),
-        "by_kind": by_kind,
+        "by_kind": dict(by_kind),
         "fracking_cores": core_count,
         "purity_multiplier": {"impure": 0.5, "normal": 1.0, "pure": 2.0},
         "units": "centimetres; north is -Y, east is +X, up is +Z",
@@ -285,15 +338,16 @@ def build_meta(
 
 def print_summary(
     dest: Path,
-    nodes: list[dict],
+    nodes: list[ResourceNodeRow],
     by_kind: dict[str, int],
     core_count: int,
-    geometry: dict,
-    projection: dict,
+    geometry: JsonObject,
+    projection: JsonObject,
 ) -> None:
     print(f"wrote {dest.relative_to(ROOT)}  {len(nodes)} nodes  {dest.stat().st_size} B")
     print("by kind:", by_kind)
     d = geometry["distance_to_own_core_cm"]
+    assert isinstance(d, dict)
     print(
         f"well links: {geometry['satellites_checked']} satellites over {core_count} cores, "
         f"nearest-core agrees {geometry['nearest_core_agrees']}/{geometry['satellites_checked']}, "

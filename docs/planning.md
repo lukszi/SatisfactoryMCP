@@ -216,7 +216,7 @@ whole-map `max_mw` takes **all 200** and wants 246 — raising the cap to 400 bu
 nowhere near it. So the number was load-bearing on exactly the plans that never mentioned
 it, and the 30-pump warning threshold never fired for the ones that did.
 
-The terrain field (`Field.window`, `Field.nearest_water`) does **not** replace it. Submerged
+The terrain field (`Field.area`, `Field.nearest_water`) does **not** replace it. Submerged
 area is not an extractor count: shoreline geometry, clearance and overlap are level data no
 raster here carries, and deriving a count from `submerged_pct` is precisely the
 confidently-wrong answer this project exists to avoid. What the field replaces is the
@@ -346,6 +346,26 @@ you hold 22 free + 407 craftable = 429 -- affordable after crafting slugs
 The arithmetic is easy to get wrong by hand and was: a shard raises the **maximum** clock by
 0.5, so 150% costs one and only 250% costs three. Assuming three apiece gave 192 where the
 answer is 109.
+
+**Slugs are latent shards.** A shard pool counted only from crafted Power Shards
+understates what a player can overclock with. On the reference save the Dimensional
+Depot holds **93 Blue, 58 Yellow and 39 Purple slugs — 404 shards — against 22 already
+crafted**, a 19x understatement.
+
+The 1/2/5 ratios are *derived*, never listed: `GameData.slug_yields()` reads every
+single-ingredient part recipe that produces a Power Shard, which is exactly
+`Power Shard (1)`, `(2)` and `(5)`. Restricting to one ingredient also excludes
+`Synthetic Power Shard`, which makes shards from Time Crystal, Dark Matter Crystal,
+Quartz and Photonic Matter — a production chain, not something lying in a crate.
+
+`craftable` is reported **apart from** `free`, because crafting is a manual step:
+folding it in would produce a number the player reads as available now. The
+affordability check uses both — "SHORT by 158, but 404 more are craftable from slugs you
+already hold".
+
+Slugs are found wherever `stock()` looks: carried, in crates, or in the Depot. The output
+also names *where*, since "is that the Depot?" is otherwise a question the player has to
+ask.
 
 **Somersloops are reported, never spent**, and only where they do something. Generators and
 extractors carry slots with `can_boost = False`, so `boost_for` correctly returns 1.0 — the
@@ -1375,6 +1395,13 @@ table growing 300 rows.
 produced inside the last complete 300 s window; one that did not may be idle for a dozen
 reasons, and charging it would inflate the risk of touching a line that is already dead.
 
+**The feeds-into maps are built once per world state.** Building them reads all 11,664
+material edges, ~12 ms on the reference save. `live_feeders` traces once per extractor and
+the candidates list once per proposal, and each trace used to rebuild them: `live_feeders`
+over the 70 extractors took 1.6 s, and takes 37 ms now. `WorldState.feeds` keeps the maps
+with the game data they were built from, and a new state, which is what a new save gives,
+builds its own.
+
 ### 8.6 Diff vs save — what to actually change
 
 `plan_factory` says what the factory should be. `diff_vs_save` says what to do about it. The hard part
@@ -1472,7 +1499,9 @@ there would otherwise be no way to target a single recipe whose name is a substr
 **A pattern matching nothing is reported, never ignored.** A silently dropped ban returns a plan happily
 using the recipe the user forbade, which is worse than refusing because it looks like compliance. The
 `plan_id` also covers the recipe set, so a banned-recipe plan cannot be confused with an unbanned one by
-`diff_vs_save`.
+`diff_vs_save`. A banned generator or extractor process is not a recipe, so the banned processes are
+hashed as well, but only when there are any (decided 2026-10-06). A plan without one keeps its id. A
+stored plan with one gets a new id, and reads as "world moved" once, until its next push.
 
 Worked example on the reference save — max MW from Spire Coast with 300 plastic and 300 rubber required:
 

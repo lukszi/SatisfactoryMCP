@@ -26,6 +26,7 @@ from pathlib import Path
 
 from .... import config
 from ....core.saveio.projection import load_projection
+from ..tasks import cancel_and_wait
 from .events import KIND_NOTES, KIND_SAVE, WatchEvent
 from .tail import LogTail
 
@@ -106,10 +107,10 @@ class SaveWatcher:
         self.tail_interval = tail_interval
         self.log_tail = LogTail()
         self._warming: threading.Thread | None = None
-        self._subscribers: set[asyncio.Queue] = set()
-        self._dropped: set[asyncio.Queue] = set()
-        self._task: asyncio.Task | None = None
-        self._tail_task: asyncio.Task | None = None
+        self._subscribers: set[asyncio.Queue[WatchEvent]] = set()
+        self._dropped: set[asyncio.Queue[WatchEvent]] = set()
+        self._task: asyncio.Task[None] | None = None
+        self._tail_task: asyncio.Task[None] | None = None
         #: The newest event of each kind, replayed to every new subscriber.
         self.latest: dict[str, WatchEvent] = {}
         #: Polls that raised in a row, zeroed by any poll that gets through: "the watcher is
@@ -118,16 +119,16 @@ class SaveWatcher:
 
     # ---- subscription ---------------------------------------------------
 
-    def subscribe(self) -> asyncio.Queue:
-        q: asyncio.Queue = asyncio.Queue(maxsize=QUEUE_MAX)
+    def subscribe(self) -> asyncio.Queue[WatchEvent]:
+        q: asyncio.Queue[WatchEvent] = asyncio.Queue(maxsize=QUEUE_MAX)
         self._subscribers.add(q)
         return q
 
-    def unsubscribe(self, q: asyncio.Queue) -> None:
+    def unsubscribe(self, q: asyncio.Queue[WatchEvent]) -> None:
         self._subscribers.discard(q)
         self._dropped.discard(q)
 
-    def was_dropped(self, q: asyncio.Queue) -> bool:
+    def was_dropped(self, q: asyncio.Queue[WatchEvent]) -> bool:
         """Whether ``q`` overflowed and was dropped: its stream ends so the browser resyncs."""
         return q in self._dropped
 
@@ -265,8 +266,4 @@ class SaveWatcher:
         tasks = [t for t in (self._task, self._tail_task) if t is not None]
         self._task = self._tail_task = None
         for task in tasks:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+            await cancel_and_wait(task)

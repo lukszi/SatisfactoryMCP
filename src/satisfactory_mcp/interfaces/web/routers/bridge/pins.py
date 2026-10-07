@@ -9,16 +9,22 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NotRequired, TypedDict
+from collections.abc import Mapping
+from typing import Annotated, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain.session import journal
 from .....domain.session import pins as pin_store
+from .....domain.session.views import PinRecord, PinRef, PinRow
+from .....domain.world.state import WorldState
 from ...serial import (
+    Dropped,
+    RevBody,
     busy_response,
     error_response,
     newer_schema_response,
@@ -29,39 +35,6 @@ from ...serial import (
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-
-class PinRef(TypedDict, total=False):
-    """What a pin points at. ``resource`` and ``nodes`` are filled by the server for a field."""
-
-    plan: str
-    recipe: str
-    factory: str
-    machine: str
-    node: str
-    x_m: float
-    y_m: float
-    resource: str
-    nodes: list[str]
-
-
-class PinRow(TypedDict):
-    """One pin as the page shows it. ``selector`` is the canonical text it stands for; a gone
-    pin says why in ``gone_why``; ``x_m``/``y_m`` are null for a pin with no place."""
-
-    n: int
-    id: str
-    kind: str
-    ref: PinRef
-    label: str
-    text: str
-    selector: str
-    x_m: float | None
-    y_m: float | None
-    rev: int
-    created: float
-    gone: bool
-    gone_why: str
 
 
 class PinsResponse(TypedDict):
@@ -84,15 +57,6 @@ class PinRenameBody(TypedDict):
     label: str
 
 
-class PinDropBody(TypedDict):
-    rev: int
-
-
-class PinDropped(TypedDict):
-    ok: bool
-    n: int
-
-
 class PinStaleResponse(TypedDict):
     """The 409 of a pin write: nothing was written; ``pin`` is the row as it stands."""
 
@@ -104,13 +68,17 @@ class PinStaleResponse(TypedDict):
 STORE_NAME = "the pins"
 
 
-def _refused(st, exc: Exception) -> JSONResponse:
+def _refused(st: WorldState, exc: Exception) -> JSONResponse:
     if isinstance(exc, NewerSchema):
         return newer_schema_response(exc, STORE_NAME)
     if isinstance(exc, LockTimeout):
         return busy_response("pins", exc)
     if isinstance(exc, pin_store.PinStale):
-        body = {"error": str(exc), "stale": True, "pin": pin_store.row(st, exc.pin)}
+        body: PinStaleResponse = {
+            "error": str(exc),
+            "stale": True,
+            "pin": pin_store.row(st, exc.pin),
+        }
         return JSONResponse(body, status_code=409)
     if isinstance(exc, pin_store.PinMissing | pin_store.ObjectMissing):
         return error_response(str(exc), 404)
@@ -120,16 +88,20 @@ def _refused(st, exc: Exception) -> JSONResponse:
 _ERRORS = (pin_store.PinError, LockTimeout, NewerSchema)
 
 
-def _plan_of(pin: dict) -> str | None:
+def _plan_of(pin: PinRow | PinRecord) -> str | None:
     return (pin.get("ref") or {}).get("plan") if pin["kind"] in ("plan", "process") else None
 
 
-def _journal(st, kind: str, pin: dict, args: dict, text: str) -> None:
+def _journal(
+    st: WorldState, kind: str, pin: PinRow | PinRecord, args: Mapping[str, object], text: str
+) -> None:
     journal.append(st.world_id, kind, actor=page_actor(), plan=_plan_of(pin), args=args, text=text)
 
 
 @router.get("/pins", response_model=PinsResponse)
-def pins(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def pins(
+    request: Request, save: str | None = None, world: str | None = None
+) -> PinsResponse | JSONResponse:
     """Every live pin of this world, ascending by number, gone ones included and marked."""
     st = require_world(request, save, world)
     try:
@@ -151,7 +123,7 @@ def create_pin(
     body: Annotated[PinCreateBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> PinCreated | JSONResponse:
     """Pin an object; pinning one that already has a live pin returns that pin with a 200."""
     st = require_world(request, save, world)
     try:
@@ -161,7 +133,8 @@ def create_pin(
     except _ERRORS as exc:
         return _refused(st, exc)
     if existing:
-        return JSONResponse({**pin, "existing": True}, status_code=200)
+        found: PinCreated = {**pin, "existing": True}
+        return JSONResponse(found, status_code=200)
     args = {"n": pin["n"], "kind": pin["kind"]}
     _journal(st, "pin.add", pin, args, f"pinned {pin['id']} {pin['text']}")
     return {**pin, "existing": False}
@@ -178,7 +151,7 @@ def rename_pin(
     body: Annotated[PinRenameBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> PinRow | JSONResponse:
     """A new label for one pin, refused with a 409 when ``rev`` is not the pin's current one."""
     st = require_world(request, save, world)
     try:
@@ -193,16 +166,16 @@ def rename_pin(
 
 @router.delete(
     "/pins/{n}",
-    response_model=PinDropped,
+    response_model=Dropped,
     responses={409: {"model": PinStaleResponse}},
 )
 def drop_pin(
     request: Request,
     n: int,
-    body: Annotated[PinDropBody, Body()],
+    body: Annotated[RevBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> Dropped | JSONResponse:
     """Delete one pin. Not undoable, and its number is never given out again."""
     st = require_world(request, save, world)
     try:

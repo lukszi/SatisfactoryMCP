@@ -16,6 +16,9 @@ dependencies = [
     "platformdirs>=4.0",
     "scipy>=1.11",
     "numpy>=1.26",
+    # TypeAliasType for core.jsontypes (typing has it only from 3.12); TypeIs for saveio.rows,
+    # which typing_extensions has from 4.10.
+    "typing-extensions>=4.10",
 ]
 
 [project.scripts]
@@ -23,7 +26,18 @@ satisfactory-mcp = "satisfactory_mcp.server:main"
 satisfactory-mcp-web = "satisfactory_mcp.interfaces.web.__main__:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov", "pytest-xdist>=3.6,<4", "ruff"]
+# pyright and the stubs are exact pins: tests/architecture/test_typing.py holds per-package error
+# counts, and a new checker or stub release moves them (docs/DEVELOPING.md, "Types").
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "pytest-xdist>=3.6,<4",
+    "ruff",
+    "pyright[nodejs]==1.1.414",
+    # scipy 1.18 and its stubs need Python 3.12; the lock gives 3.11 scipy 1.17.
+    "scipy-stubs==1.18.1.1; python_version >= '3.12'",
+    "scipy-stubs==1.17.1.5; python_version < '3.12'",
+]
 # The web interface is optional on purpose: the MCP server is the product, and a
 # stdio server has no business pulling in an ASGI stack. interfaces/web is the only
 # place allowed to import these, which tests/architecture/test_import_direction.py enforces.
@@ -38,8 +52,24 @@ web = ["fastapi>=0.115", "uvicorn>=0.30"]
 # BYTES the generators write and a silent upgrade would be a silent redraw: they are the
 # versions every previous run of every generator used, recorded off those runs' environments.
 # zstandard is the render caches' codec (docs/spatial-and-map.md section 39), pinned the
-# same way because it decides the bytes of a kept cache.
-gen = ["pyooz==0.0.8", "texture2ddecoder==1.0.6", "pillow==12.3.0", "zstandard==0.25.0"]
+# same way because it decides the bytes of a kept cache. numba compiles the render's loop
+# kernels (mapgen.jit); pinned because each kernel is proven equal to its numpy reference bit
+# for bit, and a new compiler would need that proof again.
+gen = [
+    "pyooz==0.0.8",
+    "texture2ddecoder==1.0.6",
+    "pillow==12.3.0",
+    "zstandard==0.25.0",
+    "numba==0.68.0",
+]
+# The renders' CUDA kernels behind `mapgen renders --gpu` (mapgen.jit): CuPy compiles them with
+# NVRTC, which the second package brings, so the NVIDIA driver is all a machine needs besides.
+# Pinned like numba: each kernel is proven equal to its numpy reference bit for bit. Only
+# Windows and Linux on x86-64 have the wheels.
+gpu = [
+    "cupy-cuda12x==14.2.0; platform_machine == 'AMD64' or platform_machine == 'x86_64'",
+    "nvidia-cuda-nvrtc-cu12==12.9.86; platform_machine == 'AMD64' or platform_machine == 'x86_64'",
+]
 
 [tool.uv.workspace]
 # The map generators: not shipped in the wheel below, run as `python -m mapgen <command>`.
@@ -70,10 +100,39 @@ pythonpath = [".", "tools/mapgen/src"]
 markers = [
     "integration: requires the real game install / save files",
     "whole_folder: walks every .sav on the machine; the longest tests in the suite",
+    "long: one of the longest default tests; started first, on a worker of its own",
 ]
-# Why the default run deselects integration, and why eight workers: docs/DEVELOPING.md,
-# "Test suite".
-addopts = ["-m", "not integration", "-n", "8", "--import-mode=importlib"]
+# Why the default run deselects integration, why eight workers and why work stealing:
+# docs/DEVELOPING.md, "Test suite".
+addopts = ["-m", "not integration", "-n", "8", "--dist", "worksteal", "--import-mode=importlib"]
+
+[tool.pyright]
+# The gate and its ratchet: docs/DEVELOPING.md, "Types".
+include = ["src", "tools"]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "src/satisfactory_mcp/interfaces/web/frontend",
+    "tools/mapgen/tests",
+]
+# Required: the venv's editable install points at the main checkout, so without "src" first a
+# worktree checks the main checkout's code.
+extraPaths = ["src", "tools/mapgen/src", "."]
+stubPath = "typings"
+# The venv's own Python, because numpy's and scipy-stubs' stubs, as the venv installs them, are
+# written for it: read as 3.11 they turn Unknown. The gate checks the oldest Python too.
+pythonVersion = "3.13"
+# Fixed rather than the host's, so the gate's counts are the same on every machine.
+pythonPlatform = "Windows"
+typeCheckingMode = "strict"
+reportUnnecessaryTypeIgnoreComment = "error"
+
+[tool.coverage.run]
+source = ["src", "tools"]
+omit = ["tools/mapgen/tests/*"]
+# Paths in coverage.xml relative to the root, so a scanner in a container can map them.
+relative_files = true
 
 [tool.ruff]
 line-length = 100
@@ -101,7 +160,10 @@ target-version = "py311"
 # `importorskip` line -- test_web_api.py's 12 became one file per router, so the number
 # grew with the number of web test modules while the exempt pattern stayed two globs and a
 # name. Nothing outside those two cases has ever been exempted.
-extend-select = ["E402"]
+#
+# TID251 bans `typing.Any` in src and tools, and ANN asks every signature there for its types:
+# docs/DEVELOPING.md, "Types".
+extend-select = ["E402", "TID251", "ANN"]
 ignore = [
     # Broad excepts are deliberate at the save boundary: autosaves are rewritten in
     # place every ~5 minutes, so a parse can tear mid-write, and the vendored parser
@@ -133,6 +195,14 @@ ignore = [
 "tools/*.py" = ["E402"]
 "tests/web/**/*.py" = ["E402"]
 "tests/mapgen/test_generators.py" = ["E402"]
+# Tests are outside the typing rules. No module of src or tools imports typing.Any: one that had
+# to would be named here on its own line, never by a glob (tests/architecture/test_typing.py).
+"tests/**/*.py" = ["TID251", "ANN"]
+"tools/mapgen/tests/**/*.py" = ["ANN"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.Any".msg = "JsonValue or JsonObject from satisfactory_mcp.core.jsontypes at a boundary, a real type elsewhere"
+"typing_extensions.Any".msg = "JsonValue or JsonObject from satisfactory_mcp.core.jsontypes at a boundary, a real type elsewhere"
 
 [tool.ruff.lint.isort]
 # Stated rather than inferred. isort decides first-party by resolving the dotted name on

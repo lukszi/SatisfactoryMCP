@@ -8,15 +8,21 @@ into place, so a reader meets a whole tree or no tree.
 
 This cutter is serial and the reference. The renders cut through ``mapgen.tiles.cutter``,
 which stages and commits through ``stage_tree`` and ``commit_tree`` here and writes the same
-bytes (docs/spatial-and-map.md section 17, "Cutting in parallel").
+bytes (docs/map/renders.md sections 17 and 42).
 """
 
 from __future__ import annotations
 
 import shutil
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
+from typing_extensions import TypedDict
+
+from ..jsontypes import JsonArray, JsonObject, as_int, require_list, require_object
+from .imaging import LanczosFilter, PngOptions, TileImage
 from .provenance import RETIRED_SUFFIX, STAGING_SUFFIX
 
 #: The directory a pyramid lives in, and the square a browser fetches. Deliberately not
@@ -49,7 +55,12 @@ DEFAULT_UPSCALE = 4
 
 #: How a tile is deflated: zlib level 6, the same pixels as ``optimize=True`` for an eighth of
 #: its CPU and a few percent more bytes (docs/spatial-and-map.md section 17, "Deflate level").
-TILE_PNG = {"format": "PNG", "compress_level": 6}
+TILE_PNG: PngOptions = {"format": "PNG", "compress_level": 6}
+
+#: One level of a cut, as the pyramid record lists it. The functional form: "from" is a keyword.
+LevelRecord = TypedDict(
+    "LevelRecord", {"z": int, "sheet_px": int, "tiles": int, "bytes": int, "from": str}
+)
 
 
 class PyramidError(Exception):
@@ -90,7 +101,7 @@ def tile_relpath(z: int, x: int, y: int) -> str:
     return f"{z}/{x}_{y}.png"
 
 
-def cut_square(piece, dest: Path, z: int, ox: int, oy: int, tile_px: int) -> int:
+def cut_square(piece: TileImage, dest: Path, z: int, ox: int, oy: int, tile_px: int) -> int:
     """Slice one square image into ``dest/{z}/{x}_{y}.png``, starting at tile ``(ox, oy)``.
 
     Returns the bytes written, which the caller sums into the level record a reader checks the
@@ -109,7 +120,8 @@ def cut_square(piece, dest: Path, z: int, ox: int, oy: int, tile_px: int) -> int
 
 
 def encode_tile_row(job: tuple[str, int, int, int, str, int]) -> int:
-    """One row of RGB tiles out of a level in a ``shared_memory`` block, deflated to PNG.
+    """Row ``row`` of RGB tiles of level ``z``, out of a ``shared_memory`` block that holds
+    just that row, deflated to PNG.
 
     The parallel cutter's encoder, run in a spawned process: argument-shaped so it pickles,
     and free of numpy, whose thread pool would commit most of a gigabyte in every encoder.
@@ -122,9 +134,12 @@ def encode_tile_row(job: tuple[str, int, int, int, str, int]) -> int:
     name, width, z, row, dest, tile_px = job
     block = SharedMemory(name=name)
     try:
-        start, length = row * tile_px * width * 3, tile_px * width * 3
-        with block.buf[start : start + length] as raw:
-            strip = Image.frombuffer("RGB", (width, tile_px), raw, "raw", "RGB", 0, 1)
+        if block.buf is None:
+            raise PyramidError(f"the shared row {name} is closed")
+        with block.buf[: tile_px * width * 3] as raw:
+            # Pillow reads any buffer, but its stub admits only bytes and array interfaces.
+            data = cast("bytes", raw)
+            strip = Image.frombuffer("RGB", (width, tile_px), data, "raw", "RGB", 0, 1)
         written = 0
         for x in range(width // tile_px):
             path = Path(dest) / tile_relpath(z, x, row)
@@ -136,7 +151,7 @@ def encode_tile_row(job: tuple[str, int, int, int, str, int]) -> int:
         block.close()
 
 
-def level_record(z: int, written: int, source: str, tile_px: int = PYRAMID_TILE_PX) -> dict:
+def level_record(z: int, written: int, source: str, tile_px: int = PYRAMID_TILE_PX) -> LevelRecord:
     """One level's entry in the record, printed as it is made."""
     side, tiles = tile_px << z, (1 << z) ** 2
     print(f"  pyramid z{z}: {side}x{side}, {tiles} tiles, {written / 1e6:.2f} MB")
@@ -144,20 +159,20 @@ def level_record(z: int, written: int, source: str, tile_px: int = PYRAMID_TILE_
 
 
 def cut_pyramid(
-    sheet,
-    image_mod,
+    sheet: TileImage,
+    image_mod: LanczosFilter,
     dest: Path,
     tile_px: int = PYRAMID_TILE_PX,
     source: str = DEFAULT_LEVEL_SOURCE,
     dir_name: str = TILES_DIR_NAME,
-) -> dict:
+) -> JsonObject:
     """Cut ``sheet`` into ``dest/{z}/{x}_{y}.png`` for every level, and say what it wrote.
 
     ``--enhance`` adds levels ABOVE this top out of upscaled pixels and does not touch these:
     a level with real pixels behind it has no business being drawn from invented ones.
     """
     top = pyramid_top_z(sheet.width, tile_px)
-    levels = []
+    levels: list[LevelRecord] = []
     for z in range(top + 1):
         side = tile_px << z
         level = sheet if side == sheet.width else sheet.resize((side, side), image_mod.LANCZOS)
@@ -165,7 +180,13 @@ def cut_pyramid(
     return pyramid_record(levels, tile_px, 1, dir_name)
 
 
-def pyramid_record(levels: list[dict], tile_px: int, workers: int, dir_name: str) -> dict:
+def _level_json(level: LevelRecord) -> JsonObject:
+    return {key: level[key] for key in ("z", "sheet_px", "tiles", "bytes", "from")}
+
+
+def pyramid_record(
+    levels: list[LevelRecord], tile_px: int, workers: int, dir_name: str
+) -> JsonObject:
     """What a cut wrote, ``levels`` in z order: the block a sidecar carries."""
     return {
         "layout": f"{dir_name}/{{z}}/{{x}}_{{y}}.png",
@@ -174,7 +195,7 @@ def pyramid_record(levels: list[dict], tile_px: int, workers: int, dir_name: str
         "enhanced": False,
         "count": sum(level["tiles"] for level in levels),
         "bytes": sum(level["bytes"] for level in levels),
-        "levels": levels,
+        "levels": [_level_json(level) for level in levels],
         "workers": workers,
         "role": (
             "the same sheet at one resolution per zoom, so the page fetches the pixels it "
@@ -190,31 +211,35 @@ def pyramid_record(levels: list[dict], tile_px: int, workers: int, dir_name: str
     }
 
 
-def merge_enhanced(stats: dict, extra: dict) -> dict:
+def merge_enhanced(stats: JsonObject, extra: JsonObject) -> JsonObject:
     """Fold the enhanced levels into the pyramid record the sidecar carries. ``count`` and
     ``bytes`` are re-summed rather than added to, so the number ``install_pyramid`` checks the
     tree against stays derived from the list a reader would count themselves."""
-    levels = stats["levels"] + extra["levels"]
+    levels: JsonArray = require_list(stats["levels"]) + require_list(extra["levels"])
+
+    def total(key: str) -> int:
+        return sum(as_int(require_object(level)[key]) for level in levels)
+
     return {
         **stats,
-        "max_z": max(level["z"] for level in levels),
+        "max_z": max(as_int(require_object(level)["z"]) for level in levels),
         "enhanced": True,
-        "count": sum(level["tiles"] for level in levels),
-        "bytes": sum(level["bytes"] for level in levels),
+        "count": total("tiles"),
+        "bytes": total("bytes"),
         "levels": levels,
         "enhancement": extra["enhancement"],
     }
 
 
 def install_pyramid(
-    sheet,
-    image_mod,
+    sheet: TileImage,
+    image_mod: LanczosFilter,
     out_dir: Path,
     tile_px: int = PYRAMID_TILE_PX,
-    enhance=None,
+    enhance: Callable[[Path], JsonObject] | None = None,
     source: str = DEFAULT_LEVEL_SOURCE,
     dir_name: str = TILES_DIR_NAME,
-) -> dict:
+) -> JsonObject:
     """Cut the pyramid into staging, then rename it over any older one.
 
     ``enhance`` runs INSIDE the staging window: the GPU stage is the part most likely to fail,
@@ -239,7 +264,7 @@ def stage_tree(out_dir: Path, dir_name: str) -> Path:
     return staging
 
 
-def commit_tree(stats: dict, out_dir: Path, dir_name: str) -> dict:
+def commit_tree(stats: JsonObject, out_dir: Path, dir_name: str) -> JsonObject:
     """Check the staged tree against its own count, then swap it in; ``stats`` says how.
 
     A previous tree is moved aside first (Windows will not rename onto a non-empty directory)

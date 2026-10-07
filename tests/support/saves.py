@@ -10,7 +10,7 @@ from pioneersav import ParseError, Reader, read_trailer
 from pioneersav.trailers import CONVEYOR_CHAIN
 from satisfactory_mcp import config
 from satisfactory_mcp.core.saveio.extract.interning import Interner
-from tests.support.paths import FIXTURES
+from tests.support.paths import committed_fixture
 
 #: Records that carry a placed building's own transform.
 PLACED = ("machines", "extractors", "generators")
@@ -57,10 +57,7 @@ def trailer_chains() -> list:
     The container is an int32 count, then per entry a length-prefixed class path, an int32
     length and that many bytes (``tests/pioneersav/test_trailers.py``).
     """
-    path = FIXTURES / "save_trailers.bin"
-    if not path.is_file():
-        pytest.skip("trailer fixture not committed")
-    reader = Reader(path.read_bytes())
+    reader = Reader(committed_fixture("save_trailers.bin").read_bytes())
     chains = []
     for _ in range(reader.i32()):
         cls = reader.string()

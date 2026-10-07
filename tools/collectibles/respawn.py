@@ -5,10 +5,15 @@ from __future__ import annotations
 
 import collections
 import itertools
+from typing import TypeAlias
 
+from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import CATEGORIES, RESPAWN_PROBE, RESPAWN_PROPERTIES, ActorKey
 from tools.collectibles.context import BuildContext, agrees_with_map
-from tools.collectibles.stats import by_count
+from tools.collectibles.stats import by_count, json_object
+
+#: Per plant class: how its respawn counter moved, one count per move.
+CounterMoves: TypeAlias = collections.Counter[str]
 
 
 def _map_class(ctx: BuildContext, key: ActorKey) -> str:
@@ -21,7 +26,7 @@ def measure_durability(ctx: BuildContext) -> None:
     Only consecutive saves of the same build are compared for the first: a build that
     re-issues instance names makes a key vanish without anything coming back.
     """
-    left_the_list: collections.Counter = collections.Counter()
+    left_the_list: collections.Counter[str] = collections.Counter()
     pairs_compared = pairs_skipped = 0
     for older, newer in itertools.pairwise(ctx.session_saves):
         if older.build_version != newer.build_version:
@@ -30,7 +35,7 @@ def measure_durability(ctx: BuildContext) -> None:
         pairs_compared += 1
         for key in older.destroyed - newer.destroyed:
             left_the_list[_map_class(ctx, key)] += 1
-    destroyed_observations: collections.Counter = collections.Counter()
+    destroyed_observations: collections.Counter[str] = collections.Counter()
     for save in ctx.session_saves:
         for key in save.destroyed:
             destroyed_observations[_map_class(ctx, key)] += 1
@@ -53,10 +58,10 @@ def _measure_destroyed_then_live(ctx: BuildContext) -> None:
     the map's position would falsify the premise. The position gate is what tells a
     player-dropped crate sharing a bare name from a resurrection."""
     first_destroyed: dict[ActorKey, int] = {}
-    revived: collections.Counter = collections.Counter()
-    revived_displaced: collections.Counter = collections.Counter()
-    coexisting: collections.Counter = collections.Counter()
-    coexisting_by_version: collections.Counter = collections.Counter()
+    revived: collections.Counter[str] = collections.Counter()
+    revived_displaced: collections.Counter[str] = collections.Counter()
+    coexisting: collections.Counter[str] = collections.Counter()
+    coexisting_by_version: collections.Counter[int] = collections.Counter()
     for index, save in enumerate(ctx.session_saves):
         # One save naming a key both ways is the game's own migration, not a respawn.
         for key in save.destroyed & save.live.keys():
@@ -86,9 +91,9 @@ def _measure_destroyed_then_live(ctx: BuildContext) -> None:
 def measure_flora(ctx: BuildContext) -> None:
     """The respawn properties of the probed plants: a class that carries no ``mNumRespawns``
     at all has no respawn machinery, which is structural rather than inferred."""
-    flora_records: collections.Counter = collections.Counter()
-    flora_props: collections.Counter = collections.Counter()
-    flora_values: collections.Counter = collections.Counter()
+    flora_records: collections.Counter[str] = collections.Counter()
+    flora_props: collections.Counter[tuple[str, str]] = collections.Counter()
+    flora_values: collections.Counter[tuple[str, str, int]] = collections.Counter()
     flora_unreadable = 0
     for save in ctx.session_saves:
         flora_records.update(save.flora_records)
@@ -97,13 +102,13 @@ def measure_flora(ctx: BuildContext) -> None:
         flora_unreadable += save.flora_unreadable
     first, rose, fell, incomparable = _respawn_counter_moves(ctx)
 
-    flora: dict[str, dict] = {}
+    flora: dict[str, JsonObject] = {}
     for cls in sorted(RESPAWN_PROBE):
-        values: dict[str, dict[str, int]] = {}
+        values: JsonObject = {}
         for name in RESPAWN_PROPERTIES:
             mine = {v: n for (c, p, v), n in flora_values.items() if c == cls and p == name}
             values[name] = {str(v): mine[v] for v in sorted(mine)}
-        respawns = [int(v) for v in values["mNumRespawns"]]
+        respawns = [v for c, p, v in flora_values if c == cls and p == "mNumRespawns"]
         flora[cls] = {
             "placed_by_the_map": ctx.world.class_counts.get(cls, 0),
             "live_records_over_the_saves_used": flora_records.get(cls, 0),
@@ -128,13 +133,13 @@ def measure_flora(ctx: BuildContext) -> None:
 
 def _respawn_counter_moves(
     ctx: BuildContext,
-) -> tuple[collections.Counter, collections.Counter, collections.Counter, collections.Counter]:
+) -> tuple[CounterMoves, CounterMoves, CounterMoves, CounterMoves]:
     """Per plant class: first sightings of a counter, and how it moved between saves of one
     build. A fall is the move that would contradict the model."""
-    first: collections.Counter = collections.Counter()
-    rose: collections.Counter = collections.Counter()
-    fell: collections.Counter = collections.Counter()
-    incomparable: collections.Counter = collections.Counter()
+    first: CounterMoves = collections.Counter()
+    rose: CounterMoves = collections.Counter()
+    fell: CounterMoves = collections.Counter()
+    incomparable: CounterMoves = collections.Counter()
     seen: dict[ActorKey, tuple[int, int]] = {}
     for save in ctx.session_saves:
         for key, (cls, value) in save.flora_counter.items():
@@ -151,7 +156,7 @@ def _respawn_counter_moves(
     return first, rose, fell, incomparable
 
 
-def respawn_meta(ctx: BuildContext) -> dict:
+def respawn_meta(ctx: BuildContext) -> JsonObject:
     """``_meta.respawn``: the durability test and the flora probe."""
     return {
         "what": (
@@ -226,7 +231,7 @@ def respawn_meta(ctx: BuildContext) -> dict:
                 "rows_destroyed_then_live_again are what survives it."
             ),
         },
-        "flora": ctx.flora,
+        "flora": json_object(ctx.flora),
         "flora_note": (
             "the three harvestable plants, probed on every live record in every save of the "
             "session used. "

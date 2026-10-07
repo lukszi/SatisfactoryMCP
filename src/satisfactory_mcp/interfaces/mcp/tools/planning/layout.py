@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
+from .....core.gamedata.model import GameData
 from .....domain.planning.layout.service import LayoutReport, build_layout_report
+from .....domain.planning.progress.diff import solution_of
 from .....domain.planning.readout import payback, summary
 from .....domain.planning.solver.carrier import resolve_tiers
-from .....presenters.text.layout import render_layout
+from .....domain.planning.solver.prepare import PreparedPlan
+from .....domain.world.state import WorldState
+from .....presenters.text.layout import LAYOUT_VIEWS, render_layout
 from ... import app
 from ...params import (
     AsOf,
@@ -27,9 +30,9 @@ from ._plan_log import journal_view
 from ._requests import power_refusal, recall_request, resolve_row_overclock, solve_args
 
 
-def _payback_notes(g, st, prepared) -> list[str]:
+def _payback_notes(g: GameData, st: WorldState, prepared: PreparedPlan) -> list[str]:
     """What the payback horizon would trade on this solve, as notes."""
-    sol = prepared.solution
+    sol = solution_of(prepared)
     draw = sum(-p["mw"] for p in sol.processes if p["mw"] < 0)
     view = summary.power_view(g, st, prepared.request, sol, round(sol.machines_total), draw)
     return payback.trade_text(view)
@@ -42,9 +45,7 @@ def plan_layout(
     sources: list[str] | None = None,
     exports: list[str] | None = None,
     export_minimums: dict[str, float] | None = None,
-    show: Annotated[
-        str, Field(description="floors | blocks | buses | trunks | materials | sites")
-    ] = "floors",
+    show: Annotated[str, Field(description=" | ".join(LAYOUT_VIEWS))] = "floors",
     detail: Annotated[str | None, Field(description="retired -- write show= instead")] = None,
     only_free_nodes: bool = False,
     allow_sinks: bool = True,
@@ -91,15 +92,15 @@ def plan_layout(
         str | None,
         Field(description="fit the layout against this factory's existing platform"),
     ] = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Turn a plan into a buildable schematic: blocks, buses and floors.
 
-    Same arguments as plan_factory, plus ``show``: "floors" (default, the stack), "blocks"
-    (every module with its size and rates), "buses" (item flows), "trunks" (which resource
-    nodes share each pipe or belt run into the site), "materials" (what the whole thing
-    costs to build, machines plus deck), or "sites" (cut the plan into named modules and
-    report what crosses between them).
+    The plan_factory arguments it declares (a saved plan, ``plan=``, carries the rest), plus
+    ``show``: "floors" (default, the stack), "blocks" (every module, its size and rates),
+    "buses" (item flows), "trunks" (which nodes share each pipe or belt run in), "materials"
+    (build cost, machines plus deck), or "sites" (the plan cut into named modules, and what
+    crosses between them).
 
     A SCHEMATIC, not a blueprint: modules, connections, floor assignment and a space budget,
     but no world coordinates or belt routing -- there is no terrain data to place them on.
@@ -109,9 +110,13 @@ def plan_layout(
     g = app.game()
     if gone := app.retired(("detail", detail, "show")):
         return gone
+    wanted = show.strip().casefold()
+    if wanted not in LAYOUT_VIEWS:
+        return f"! unknown show {show!r}. Choose from: {', '.join(LAYOUT_VIEWS)}"
+    show = wanted
     st = app.load_world(save, world, as_of)
 
-    row_overclock, refused = resolve_row_overclock(row_overclock)
+    row_choices, refused = resolve_row_overclock(row_overclock)
     if refused:
         return refused
     tiers = resolve_tiers(g, st, belt_tier, pipe_tier)
@@ -147,7 +152,7 @@ def plan_layout(
         payback_hours=payback_hours,
         overclock_last=overclock_last,
         power_price=power_price,
-        row_overclock=row_overclock,
+        row_overclock=row_choices,
     )
     if refused := power_refusal(supplied):
         return refused

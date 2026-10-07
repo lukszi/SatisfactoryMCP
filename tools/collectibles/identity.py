@@ -6,6 +6,8 @@ from __future__ import annotations
 import collections
 import re
 
+from satisfactory_mcp.core.collectible_rows import MapPlacement
+from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import (
     CATEGORIES,
     GLUED_WAT,
@@ -14,6 +16,7 @@ from tools.collectibles.catalog import (
     PLACEMENT_ID_MARK,
     POSITION_TOLERANCE_CM,
     ActorKey,
+    Position,
 )
 from tools.collectibles.context import BuildContext
 from tools.collectibles.hazards import SpatialIndex
@@ -22,8 +25,8 @@ from tools.collectibles.stats import by_count
 
 def measure_pedestals(ctx: BuildContext) -> None:
     """Check that a shrine's AttachParent pairs it 1:1 with the artifact it carries."""
-    pedestals: dict[str, dict] = {}
-    row_category = {row["instance"]: row["category"] for row in ctx.rows}
+    pedestals: JsonObject = {}
+    row_category: dict[str | None, str] = {row["instance"]: row["category"] for row in ctx.rows}
     for category in ("mercer_shrine", "somersloop_shrine"):
         mine = [r for r in ctx.rows if r["category"] == category]
         parents = [r.get("attached_to") for r in mine]
@@ -41,19 +44,19 @@ def measure_pedestals(ctx: BuildContext) -> None:
     ctx.pedestals = pedestals
 
 
-def _row_position(row: dict) -> tuple[float, float, float]:
+def _row_position(row: MapPlacement) -> Position:
     return (row["x"], row["y"], row["z"])
 
 
 def measure_coincident_positions(ctx: BuildContext) -> None:
     """Pairs of rows of one category within a metre: one collectible counted twice, or two."""
-    grids: dict[str, SpatialIndex] = collections.defaultdict(
-        lambda: SpatialIndex(POSITION_TOLERANCE_CM)
+    grids: dict[str, SpatialIndex[MapPlacement]] = collections.defaultdict(
+        lambda: SpatialIndex[MapPlacement](POSITION_TOLERANCE_CM)
     )
     for row in ctx.rows:
         grids[row["category"]].add(_row_position(row), row)
     coincident_pairs: set[tuple[ActorKey, ActorKey]] = set()
-    coincident_by_category: collections.Counter = collections.Counter()
+    coincident_by_category: collections.Counter[str] = collections.Counter()
     coincident_states_differ = 0
     coincident_both_have_a_placement_id = 0
     for row in ctx.rows:
@@ -105,7 +108,7 @@ def measure_naming(ctx: BuildContext) -> None:
             prefix_rule_wrong += 1
     # Against every map-placed class too: a name can point at a class this file never emits.
     all_stems = {cls.removesuffix("_C"): cls for cls in ctx.world.class_counts}
-    rows_by_foreign_stem: collections.Counter = collections.Counter()
+    rows_by_foreign_stem: collections.Counter[str] = collections.Counter()
     for placement in ctx.row_placements:
         guess = _name_stem_class(placement.instance, all_stems)
         if guess is not None and guess != placement.cls:
@@ -140,7 +143,7 @@ def measure_naming(ctx: BuildContext) -> None:
     )
 
 
-def identity_meta(ctx: BuildContext) -> dict:
+def identity_meta(ctx: BuildContext) -> JsonObject:
     """``_meta.identity``: the key, its uniqueness, and the rows that sit on top of each other."""
     return {
         "key": "(cell, instance)",
@@ -178,16 +181,16 @@ def identity_meta(ctx: BuildContext) -> dict:
             "hand-placed ones. with_the_map_s_own_placement_id is reported per category "
             "so a consumer filtering on the suffix can see what that filter would cost."
         ),
-        "rows_within_1m_of_another_row_in_the_same_category": ctx.coincident_pair_count,
-        "rows_within_1m_of_another_row_by_category": by_count(ctx.coincident_by_category),
+        "coincident_pairs_in_the_same_category": ctx.coincident_pair_count,
+        "coincident_pairs_by_category": by_count(ctx.coincident_by_category),
         "coincident_pairs_the_saves_hold_a_record_for_both_of": ctx.coincident_both_recorded,
         "coincident_pairs_where_both_carry_a_placement_id": (
             ctx.coincident_both_have_a_placement_id
         ),
         "coincident_pairs_the_saves_give_different_states": ctx.coincident_states_differ,
         "coincident_note": (
-            "pairs, not rows, and a question rather than an error: two rows of one "
-            "category within a metre of each other COULD be one physical collectible "
+            "a pair is two rows of one category within a metre of each other, and a "
+            "question rather than an error: such a pair COULD be one physical collectible "
             "emitted twice. For every artefact class the count is 0, which is the result "
             "worth having. It is not 0 for the mushroom, which is what a mushroom is -- "
             "they grow in clumps. What settles those pairs is identity, not distance, and "
@@ -206,7 +209,7 @@ def identity_meta(ctx: BuildContext) -> dict:
     }
 
 
-def naming_meta(ctx: BuildContext) -> dict:
+def naming_meta(ctx: BuildContext) -> JsonObject:
     """``_meta.naming``: what a consumer may and may not infer from an instance name."""
     return {
         "what": (

@@ -49,11 +49,11 @@ def test_the_field_answers_with_the_layer_that_answered_and_its_measured_accurac
     assert (field.width, field.height) == (FAKE_W, FAKE_H)
     assert field.build == "buildVersion 495413, a test"
 
-    landscape = field.at(FAKE_X0, FAKE_Y0)
+    landscape = field.texel_reading(FAKE_X0, FAKE_Y0)
     assert (landscape.z_m, landscape.source, landscape.accuracy_m) == (12.3, "landscape", 0.205)
-    cliff = field.at(FAKE_X0 + 3 * FAKE_SPACING, FAKE_Y0 + FAKE_SPACING)
+    cliff = field.texel_reading(FAKE_X0 + 3 * FAKE_SPACING, FAKE_Y0 + FAKE_SPACING)
     assert (cliff.z_m, cliff.source, cliff.accuracy_m) == (245.6, "cliff", 0.21)
-    fill = field.at(FAKE_X0, FAKE_Y0 + 2 * FAKE_SPACING)
+    fill = field.texel_reading(FAKE_X0, FAKE_Y0 + 2 * FAKE_SPACING)
     assert (fill.z_m, fill.source, fill.accuracy_m) == (-7.8, "fill", 3.897)
 
 
@@ -65,8 +65,8 @@ def test_the_two_cliff_values_are_one_layer_split_by_how_the_texel_was_answered(
     behind it.
     """
     field = hf.load_field(build_field(tmp_path, density=True))
-    interpolated = field.at(FAKE_X0 + 6 * FAKE_SPACING, FAKE_Y0 + FAKE_SPACING)
-    direct = field.at(FAKE_X0, FAKE_Y0 + FAKE_SPACING)
+    interpolated = field.texel_reading(FAKE_X0 + 6 * FAKE_SPACING, FAKE_Y0 + FAKE_SPACING)
+    direct = field.texel_reading(FAKE_X0, FAKE_Y0 + FAKE_SPACING)
     assert interpolated.provenance == hf.PROV_CLIFF
     assert direct.provenance == hf.PROV_CLIFF_DIRECT
     assert direct.source == "cliff, direct"
@@ -93,9 +93,11 @@ def test_a_no_data_texel_and_an_off_grid_point_are_both_silence(tmp_path):
     which is the whole reason the sentinel is -32768 rather than 0.
     """
     field = hf.load_field(build_field(tmp_path))
-    assert field.at(FAKE_X0, FAKE_Y0 + 3 * FAKE_SPACING) is None, "no-data read as a height"
-    assert field.at(FAKE_X0 - 10 * FAKE_SPACING, FAKE_Y0) is None, "off the west edge"
-    assert field.at(FAKE_X0, FAKE_Y0 + 40 * FAKE_SPACING) is None, "off the south edge"
+    assert field.texel_reading(FAKE_X0, FAKE_Y0 + 3 * FAKE_SPACING) is None, (
+        "no-data read as a height"
+    )
+    assert field.texel_reading(FAKE_X0 - 10 * FAKE_SPACING, FAKE_Y0) is None, "off the west edge"
+    assert field.texel_reading(FAKE_X0, FAKE_Y0 + 40 * FAKE_SPACING) is None, "off the south edge"
 
 
 def test_the_last_column_answers_and_the_one_past_it_does_not(tmp_path):
@@ -107,7 +109,7 @@ def test_the_last_column_answers_and_the_one_past_it_does_not(tmp_path):
     to ``width - 1`` and the fencepost is one character. Mutating the comparison leaves the
     whole module green today.
 
-    What it would cost is not an exception. ``_height_dm`` is a numpy array and ``[row, width]``
+    What it would cost is not an exception. ``height_dm`` is a numpy array and ``[row, width]``
     raises, but the FIRST thing an out-of-range column does on a C-ordered raster is nothing
     visible at all in the row direction, and the failure a reader would see is the map's east
     edge answering with the west edge of the row below. So the pair is asserted directly: the
@@ -119,12 +121,14 @@ def test_the_last_column_answers_and_the_one_past_it_does_not(tmp_path):
     east = FAKE_X0 + (FAKE_W - 1) * FAKE_SPACING
 
     assert field.texel(east, FAKE_Y0) == (0, FAKE_W - 1), "the last column is not addressable"
-    last = field.at(east, FAKE_Y0)
+    last = field.texel_reading(east, FAKE_Y0)
     assert last is not None, "the last column reads as off the grid"
     assert (last.z_m, last.source) == (12.3, "landscape")
 
     assert field.texel(east + FAKE_SPACING, FAKE_Y0) is None, "one column past the east edge"
-    assert field.at(east + FAKE_SPACING, FAKE_Y0) is None, "off the east edge read as a height"
+    assert field.texel_reading(east + FAKE_SPACING, FAKE_Y0) is None, (
+        "off the east edge read as a height"
+    )
 
     # ...and the same fencepost on the other axis, for the same reason: the two bounds are one
     # ``and`` apart and a test that pins only one of them pins neither against a copy-paste.
@@ -159,10 +163,10 @@ def test_the_mapped_cache_matches_the_in_memory_decode(tmp_path):
     mapped = hf.Field(_meta(directory), directory)
     plain = hf.Field(_meta(directory), directory, cache=False)
     assert mapped.cache_events[hf.HEIGHT_NAME] == "mapped"
-    assert isinstance(mapped._height_dm, np.memmap)
+    assert isinstance(mapped.height_dm, np.memmap)
     for name in (hf.HEIGHT_NAME, hf.PROV_NAME, hf.TERRAIN_NAME, hf.TOP_NAME):
-        assert np.array_equal(mapped._plane(name), plain._plane(name)), name
-    assert mapped.z(125.0, 100.0) == plain.z(125.0, 100.0)
+        assert np.array_equal(mapped.plane(name), plain.plane(name)), name
+    assert mapped.height_at(125.0, 100.0) == plain.height_at(125.0, 100.0)
 
 
 def _bump_mtime(path: Path) -> None:
@@ -178,7 +182,7 @@ def test_a_changed_source_invalidates_the_cache(tmp_path):
     _bump_mtime(directory / hf.HEIGHT_NAME)
     again = hf.Field(_meta(directory), directory)
     assert again.cache_events[hf.HEIGHT_NAME] == "written"
-    assert np.array_equal(again._height_dm, changed)
+    assert np.array_equal(again.height_dm, changed)
 
 
 def test_a_new_generator_version_invalidates_the_cache(tmp_path):
@@ -200,4 +204,4 @@ def test_a_cache_that_cannot_be_written_falls_back_to_decoding(tmp_path):
     (directory / hf.CACHE_DIR_NAME).write_text("not a directory", encoding="utf-8")
     field = hf.Field(_meta(directory), directory)
     assert field.cache_events[hf.HEIGHT_NAME] == "failed, decoded"
-    assert field.z(125.0, 100.0).z_m == pytest.approx(1.25)
+    assert field.height_at(125.0, 100.0).z_m == pytest.approx(1.25)

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import math
 
+from .imaging import BlockDecoder, ImageFactory, ImageT
+
 #: Bytes per 4x4 block. BC1 (``PF_DXT1``) spends 8 and carries at most one bit of alpha; BC3
 #: (``PF_DXT5``) spends 16, the extra eight being an interpolated alpha block. Same grid, same
 #: chain, so one arithmetic serves both and only this number changes.
@@ -82,17 +84,21 @@ def inline_chain_side(
     return side
 
 
-def decode_bc1_rgba(decoder, image_mod, raw: bytes, px: int):
+def decode_bc1_rgba(
+    decoder: BlockDecoder, image_mod: ImageFactory[ImageT], raw: bytes, px: int
+) -> ImageT:
     """One square BC1 level as an image."""
     return image_mod.frombytes("RGBA", (px, px), decoder.decode_bc1(raw, px, px), "raw", "BGRA")
 
 
-def decode_bc3_rgba(decoder, image_mod, raw: bytes, px: int):
+def decode_bc3_rgba(
+    decoder: BlockDecoder, image_mod: ImageFactory[ImageT], raw: bytes, px: int
+) -> ImageT:
     """One square BC3 level as an image."""
     return image_mod.frombytes("RGBA", (px, px), decoder.decode_bc3(raw, px, px), "raw", "BGRA")
 
 
-def decode_bgra8_rgba(image_mod, raw: bytes, px: int):
+def decode_bgra8_rgba(image_mod: ImageFactory[ImageT], raw: bytes, px: int) -> ImageT:
     """One square ``PF_B8G8R8A8`` level as an image, taking no decoder because it is already
     texels. 113 of the game's 747 item icons are cooked uncompressed, four bytes a texel."""
     return image_mod.frombytes("RGBA", (px, px), raw, "raw", "BGRA")

@@ -7,10 +7,15 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 from ....core.gamedata.constants import shards_for_clock
 from ....core.gamedata.model import Building
-from .model import PAYBACK_STOPS, Process, Scenario
+from .model import PAYBACK_STOPS, PaybackPoint, Process, Scenario
+from .views import OverclockOption, OverclockPick, OverclockRow, RowName
+
+#: ``(machines, last clock, shards)``: a row built with every machine but the last at 100%.
+LastPick: TypeAlias = tuple[int, float, int]
 
 #: A row this close to whole machines has no fraction for the last machine to carry.
 _WHOLE = 1e-4
@@ -75,6 +80,10 @@ class SpreadableRow:
     def draw(self) -> float:
         return max(0.0, -self.process.mw_at_full)
 
+    @property
+    def building_name(self) -> str:
+        return self.building.name if self.building is not None else ""
+
     def power(self, machines: int) -> float:
         return machines * self.draw * (self.units / machines) ** self.process.power_exponent
 
@@ -84,7 +93,7 @@ class SpreadableRow:
         high = max(low, math.floor(self.units / floor + 1e-9))
         return max(low, min(high, math.ceil(self.units / clock - 1e-9)))
 
-    def overclock_last_option(self, per_shard: float) -> tuple[int, float, int] | None:
+    def overclock_last_option(self, per_shard: float) -> LastPick | None:
         """``(machines, last clock, shards)`` with every machine but the last at 100%."""
         building = self.building
         machines = math.floor(self.units + _WHOLE)
@@ -104,15 +113,15 @@ class _HorizonReadout:
     """Every spreadable row read out at one horizon, by row index."""
 
     #: ``(machines, draw)`` of the cheapest spread, one per row.
-    spread: list[tuple[int, float]] = field(default_factory=list)
-    #: ``(machines, last clock, shards)`` for the rows built overclock-last.
-    picks: dict[int, tuple[int, float, int]] = field(default_factory=dict)
+    spread: list[tuple[int, float]] = field(default_factory=list[tuple[int, float]])
+    #: The rows built overclock-last.
+    picks: dict[int, LastPick] = field(default_factory=dict[int, LastPick])
     #: Rows whose pick the shard budget could not cover.
-    without: list[int] = field(default_factory=list)
+    without: list[int] = field(default_factory=list[int])
     #: Rows where overclocking the last machine costs more than it saves.
-    unused: list[int] = field(default_factory=list)
+    unused: list[int] = field(default_factory=list[int])
     #: Every row's overclock-last candidate, picked or not.
-    options: dict[int, tuple[int, float, int]] = field(default_factory=dict)
+    options: dict[int, LastPick] = field(default_factory=dict[int, LastPick])
 
 
 def _pinned(sc: Scenario, row: SpreadableRow) -> str | None:
@@ -137,7 +146,9 @@ def horizon_readout(
     ``last`` takes its shards first whatever it costs; one set to ``spread`` is never picked."""
     per_mw = hours * sc.power_price
     readout = _HorizonReadout()
-    forced, candidates = [], []
+    # (saving per shard, row, machines, last clock, shards)
+    forced: list[tuple[float, int, int, float, int]] = []
+    candidates: list[tuple[float, int, int, float, int]] = []
     for i, row in enumerate(rows):
         points = sc.build_points.get(row.process.building or "", 0.0)
         clock = 1.0
@@ -176,7 +187,9 @@ def horizon_readout(
     return readout
 
 
-def overclock_option(sc: Scenario, row: SpreadableRow, i: int, readout: _HorizonReadout) -> dict:
+def overclock_option(
+    sc: Scenario, row: SpreadableRow, i: int, readout: _HorizonReadout
+) -> OverclockOption:
     """A row's two builds, for the per-row choice: one fewer with the last overclocked, or
     the spread; ``applied`` says which is built."""
     machines, top, shards = readout.options[i]
@@ -195,26 +208,22 @@ def overclock_option(sc: Scenario, row: SpreadableRow, i: int, readout: _Horizon
     }
 
 
-def _row_names(rows: list[SpreadableRow], indexes: list[int]) -> list[dict]:
-    return [
-        {
-            "label": rows[i].process.label,
-            "building": rows[i].building.name if rows[i].building is not None else "",
-        }
-        for i in indexes
-    ]
+def _row_names(rows: list[SpreadableRow], indexes: list[int]) -> list[RowName]:
+    return [{"label": rows[i].process.label, "building": rows[i].building_name} for i in indexes]
 
 
-def overclock_view(sc: Scenario, rows: list[SpreadableRow], readout: _HorizonReadout) -> dict:
+def overclock_view(
+    sc: Scenario, rows: list[SpreadableRow], readout: _HorizonReadout
+) -> OverclockPick:
     """``Solution.overclock``: the rows picked at this horizon, and the ones left out."""
-    picked = []
+    picked: list[OverclockRow] = []
     for i, (machines, top, shards) in sorted(readout.picks.items()):
         row = rows[i]
         spread, power = readout.spread[i]
         picked.append(
             {
                 "label": row.process.label,
-                "building": row.building.name if row.building is not None else "",
+                "building": row.building_name,
                 "machines": machines,
                 "instead": spread,
                 "last_clock": round(top, 6),
@@ -239,15 +248,18 @@ def overclock_view(sc: Scenario, rows: list[SpreadableRow], readout: _HorizonRea
 
 
 def payback_curve(
-    sc: Scenario, fixed: tuple[float, float], rows: list[SpreadableRow], per_shard: float
-) -> list[dict]:
+    sc: Scenario, fixed: tuple[int, float], rows: list[SpreadableRow], per_shard: float
+) -> list[PaybackPoint]:
     """One readout per stop, plus ``plain``: 0 h with no overclock, what stops compare to."""
     machines_fixed, draw_fixed = fixed
-    out = []
-    stops = [(h, sc.overclock_last) for h in sorted({*PAYBACK_STOPS, float(sc.payback_hours)})]
+    out: list[PaybackPoint] = []
+    stops: list[tuple[float, bool | None]] = [
+        (h, sc.overclock_last) for h in sorted({*PAYBACK_STOPS, float(sc.payback_hours)})
+    ]
     for hours, overclock_last_on in [*stops, (0.0, None)]:
         readout = horizon_readout(sc, rows, hours, per_shard)
-        machines, draw, buildings = machines_fixed, draw_fixed, {}
+        machines, draw = machines_fixed, draw_fixed
+        buildings: dict[str, int] = {}
         shards = 0
         for i, row in enumerate(rows):
             count, power = readout.spread[i]
@@ -257,7 +269,9 @@ def payback_curve(
                 shards += used
             machines += count
             draw += power
-            buildings[row.process.building] = buildings.get(row.process.building, 0) + count
+            # A spreadable row is a recipe row, which always names its building.
+            building = row.process.building or ""
+            buildings[building] = buildings.get(building, 0) + count
         out.append(
             {
                 "hours": hours,
