@@ -27,6 +27,7 @@ from mapgen.lighting.borrow import (
     coarse_province,
 )
 from mapgen.palette.painted.albedo import load_paint_meta
+from mapgen.palette.painted.derive.palette import calibrated_palette
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.painted.shapes import BiomeGrid
 from mapgen.palette.styles import painted_style
@@ -429,6 +430,8 @@ def prepare_paint(
         )
     started = time.time()
     palette, digest = painted_style(no_titan_trees)
+    palette, digest, derived = calibrated_palette(palette, digest, paint_dir, (biome, list(drawn)),
+                                                  field)  # fmt: skip
     ground = PaintedGround(paint_dir, palette, field, biome, list(drawn), oil_nodes())
     provenance: JsonObject = {
         "cl": paint_meta.get("cl"),
@@ -441,6 +444,7 @@ def prepare_paint(
         "generator_version": paint_meta.get("generator_version"),
         "digest": paint_meta.get("digest"),
         **ground.provenance(),
+        "derived_targets": derived,
         "seconds_to_prepare": round(time.time() - started, 1),
     }
     print(f"  paint layers prepared in {time.time() - started:.0f}s")

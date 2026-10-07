@@ -54,6 +54,10 @@ screenshot measured by the method below, or derived by a rule from another targe
 | Forest and the canopy | #558653 | screenshot |
 | Rock outside every area entry | #85816c | screenshot |
 
+With a paint store from generator 4 on, a render takes the keys the palette's
+`calibration.derived_keys` lists from the game install instead ("Targets derived from the game
+install" below), these six among them.
+
 #### Wet sand by rule (2026-10-06)
 
 In the game the wet sand is the sand multiplied by `WetSand_Color`: the bake's Sand times
@@ -440,16 +444,148 @@ lands within 0.1 to 1.2 ΔE of its targets, Grass Fields grass 2.0, desert sand 
 1.7, the Cliff layer 1.4, the craters' CoralRock 1.3 and the shell plates 0.0. What is left on
 the layers is mostly the biome tint, which is added after the transfer.
 
+### Targets derived from the game install (2026-10-07)
+
+`python -m mapgen calibrate` derives a display colour for every calibration key from the
+game's own data, through a model of the game's camera, and writes them to
+`targets.derived.json` beside the paint store. A palette names the keys a render takes from
+there in `calibration.derived_keys`; every other key keeps its screenshot target. Code:
+`palette/painted/derive/` (`camera.py`, `scene.py`, `rules.py`, `targets.py`, `palette.py`),
+`commands/calibrate.py`, and the readers in `gamedata/level/curves.py` and `lighting.py`.
+
+**Inputs.** The paint store, from generator 4 on, keeps three more blocks in its `meta.json`,
+read by the same level walk:
+
+| Block | What | Read from |
+| --- | --- | --- |
+| `lighting` | the sun's colour and lux at noon, its pitch, the sky's luminance factor, the auto-exposure | `Persistent_Level`: `BP_Sky_Sphere_C.mSunLightColorCurve` and `mSunIntensity` at 12:00, `LightSource_0`'s `RelativeRotation` pitch, `SkyAtmosphereComponent.SkyLuminanceFactor`, `GlobalPostProcess`'s `AutoExposureBias`, `LowPercent`, `HighPercent`, `MinBrightness` and `MaxBrightness` |
+| `atmosphere_volumes` | every `FGAtmosphereVolume` that overrides the sun or the grade: its `mPriority`, each enabled curve at noon, and its brush seen from above (the convex hull of its `BodySetup`'s convex vertices, world metres) | the levels the walk reads |
+| `mesh_materials` | the shell materials' mean linear colour under their masks | `MI_Bigshell_01`, `PlateauShell_Inst`, `SmallShell_Inst` |
+
+Build 502094: the sun (1.000, 0.928, 0.714) at 3.14 lux, 59.49° up; the sky factor (1.127,
+1.127, 1.300); bias +1.5 EV over the 75 to 95% band. Three volumes: the Dune Desert
+(priority 3: sun (1.000, 0.880, 0.658) and a warm grade), its Southern Oasis (priority 4) and
+a cave test volume (priority 7). A volume's sun is 4 lux; the model leaves the brighter sun to
+the auto-exposure and takes only its colour and grade. The command also reads the install's
+area map and the heightfield's water, to scope the area entries on the painter's 4 m grid,
+rehomed offshore as in "Area targets" above.
+
+**The camera model.** A flat, lit patch of albedo `a` is measured as
+
+    measured = discount(OKLab(filmic(grade(E · a · I))))
+    I = sun lux / π · sun colour · (sin(elevation) · T_atm + sky · SkyLuminanceFactor)
+    E = 0.18 · 2^bias / mean luminance of the 75–95% band of the lit bake
+
+- `filmic` is UE5's default film curve (slope 0.88, toe 0.55, shoulder 0.26, black 0, white
+  0.04), with its blue correction 0.6 and gamut expansion 1, in AP1.
+- `T_atm` and `sky` are the engine's default SkyAtmosphere, single scattering, integrated
+  numerically: 0.931, 0.848, 0.730 and 0.024, 0.044, 0.082 at 59.5°.
+- `grade` is a volume's `ColorCorrectAll` gains only (shadows under luma 0.09, highlights from
+  0.5). Its gamma, contrast and saturation are 1 on this build; the command names any that
+  is not.
+- `discount` is the screenshot method's own measurement (L ×0.95 capped at 0.86, C ×0.9), so
+  a derived colour and a screenshot target are measured alike.
+- `E` is 2.8067 on build 502094, over 2.24 million lit bake texels at 4 m.
+
+Every product is written out in a fixed order. The model has no fitted parameter.
+
+**The light of a key.** Each sample a key is measured on (a texel, or a tree) takes the
+highest-priority volume whose hull holds it, else the level's light; the key takes the light
+most of its samples took (at most 20,000 samples, drawn with a fixed seed). A key with no
+place, such as a texture mean, takes the level's light. The desert rock takes the Dune
+Desert's: most of its placements stand inside that volume.
+
+**The rules.**
+
+| Kind | Keys | Albedo |
+| --- | --- | --- |
+| bake median | layers, derived layers, area layers | the OKLab median of the bake over the layer's pure texels (at least 0.7 of the blend, at least 50) in the key's scope: inside an area entry's areas, or outside every entry that targets the layer |
+| paint table | an untargeted layer with too few pure texels | the layer's texture mean times its material vector |
+| cliff texture × tint | `rock`, an area's rock | the mean of `Cliff_Macro_Alb_02` and `Cliff_Detail_Alb` times the cliff family's `Color Tint` |
+| sand-rock | `families.desert`, an area rock wearing its target | the DesertRock paint-table entry, `TX_SandRock_Alb_01` times `Sand Rock BaseColor`; `MI_DesertRock` has no albedo texture of its own |
+| top texture | `tops` | the family's far albedo mean |
+| crowns | `canopy`, `crowns`, `species` | the weighted median of the trees' top-down sprite colours (cover × scale²); the canopy takes only crowns within 20 to 40° of the forest floor texture's hue and leaves out the keyed species and the blue palms |
+| material texture | `meshes.coral`, an area's shells | the materials' base-colour means under their masks |
+| none | water, seabed coral | the game's water absorbs but does not scatter, so its colour is the sky, the clouds and the fog, which the cooked assets do not expose |
+
+**Results on build 502094.** ΔE is OKLab ×100 against the screenshot target; `*` marks the
+keys `derived_keys` lists.
+
+| Key | Derived | Screenshot | ΔE | Light |
+| --- | --- | --- | ---: | --- |
+| * layers.Sand | #d7c1a2 | #d5cbb6 | 3.0 | global |
+| layers.SandRipples | #d98d64 | #ca784f | 6.0 | Dune Desert |
+| * layers.Grass | #7f8d4e | #83986e | 4.4 | global |
+| * layers.Forest | #484d26 | (the canopy's #558653) | 17.3 | global |
+| * derived.WetSand | #b38c61 | #a29583 | 4.7 | global |
+| * canopy | #5e8136 | #558653 | 3.2 | global |
+| * rock | #897758 | #85816c | 3.2 | global |
+| * families.desert | #c38761 | #ae8271 | 4.5 | Dune Desert |
+| * tops.forest | #54662b | #505936 | 4.7 | global |
+| * meshes.coral | #9f7e75 | #99868e | 3.6 | global |
+| crowns.blue_palm | #bec7c1 | #3d627d | 34.6 | global |
+| species.SM_Kapok_03 | #ad4a37 | #7c4955 | 10.3 | global |
+| desert entry: Sand | #d7c3a5 | #c4ab8b | 7.2 | global |
+| desert entry: WetSand | #b48d61 | #987b61 | 7.1 | global |
+| * desert entry: Gravel | #9e896f | #8f8373 | 3.1 | global |
+| * desert rock entry | #c38761 | #ae8271 | 4.5 | Dune Desert |
+| * Grass Fields etc.: rock | #897758 | #7e7868 | 2.6 | global |
+| Grass Fields: Grass | #7d8f50 | #9dad70 | 10.0 | global |
+| * Red Jungle: Cliff | #7c6f5b | #877e6e | 4.9 | global |
+| * Red Jungle: rock | #897758 | #877e6e | 3.0 | global |
+| crater: CoralRock | #82838e | #6c7386 | 5.8 | global |
+| Blue Crater: shell | #7b705b | #747b85 | 6.0 | global |
+
+The layers no key targets get a derived colour too: GrassRed #c09872, Puddles #624f37,
+RedJungle #ae6451, SandCracks #d1845c (Dune Desert light), SandPebbles #bfaa85, SandRock
+#bd7551 (Dune Desert light) and Soil #896e4e, all from the bake; DesertRock and PurpleForest
+have no pure texels and fall back to their paint-table entries.
+
+**Which keys take the derived colour.** Those within ΔE 5 of their screenshot target, the
+desert rock under the Dune Desert's light, the Forest floor (it had no screenshot target, only
+the canopy's as a stand-in), and the seven layers with no target at all. The rest keep their
+screenshot: the blue palms (the leaf texture is a pale blue-grey and the model has no foliage
+sky term), the red Kapok (no subsurface light), every water colour, and the keys between 5 and
+10 until the in-game checks their verdicts list are done. A render with derived colours
+carries the merged palette's digest, so a different install's derivation is a different style.
+
+**The file and the run.** `targets.derived.json` holds each key's colour with its rule, light,
+light shares, albedo, assets and sample count, and a stamp: the paint store's digest, the
+digest of the area map on the 4 m grid, the calibration block's digest without
+`derived_keys`, and the model version. A render reads the file while its stamp holds and
+derives in its own run otherwise, about 6 s; a store from before generator 4 keeps every
+screenshot target and the sidecar says why (`sources.paint.derived_targets`). The command
+reads the install and writes nothing but the file; `--check` prints the table and writes
+nothing.
+
+**Tests.** `tests/fixtures/calibration_screenshots.json` keeps the screenshot targets with
+their sources. A scored key must lie within ΔE 8 of its target, or within its own tolerance,
+its measured distance plus 1 (Grass Fields grass 11, the red Kapok 11.5); the blue palms are
+not scored. The integration test checks them on a real store with `E` within 2% of 2.81.
+
+**Limits.**
+
+- Not checked against an engine render: the film curve and the exposure follow UE's source,
+  and E = 2.81 against a free fit of 2.87 may be partly luck.
+- Noon only, and single scattering only. The volumes are voted by their hull in plan at the
+  ground; the game blends them by camera position and `mBlendDistance`.
+- No local exposure: metering on the view a screenshot sees would bring the Grass Fields
+  grass from ΔE 9.9 to 2.5 but the crater's CoralRock from 5.8 to 17.0, and the view's
+  footprint would be a free parameter.
+- SandCracks (L 0.685) stays lighter than the screenshot SandRipples (L 0.653), though the bake
+  has it darker; deriving SandRipples too (L 0.712) would restore the bake's order.
+- The Dune Desert volume's hull also covers the western mesas and 40% of the Spire Coast.
+
 ### Known limits
 
-- No target, for want of a clean reference: SandRock (Dune Desert and Spire Coast),
-  SandPebbles, SandCracks, DesertRock, Soil (forest floor, swamp mud, Titan Forest),
+- No screenshot target, for want of a clean reference: SandRock (Dune Desert and Spire
+  Coast), SandPebbles, SandCracks, DesertRock, Soil (forest floor, swamp mud, Titan Forest),
   Puddles, the Red Jungle and Red Bamboo ground (RedJungle_LayerInfo, also in Crater Lakes),
-  red grass, the jungle floor sand, the swamp canopy, the Abyss Cliffs Cliff layer, gravel
-  outside the deserts, and the moss on the Titan Forest formations.
-- Forest_LayerInfo still takes the canopy target, which makes the bare forest floor a
-  vivid treetop green. The two references for the floor disagree by 35° in hue, so it has
-  no target of its own yet.
+  red grass, the Forest floor, the jungle floor sand, the swamp canopy, the Abyss Cliffs Cliff
+  layer, gravel outside the deserts, and the moss on the Titan Forest formations. The layers
+  among them take their derived colour where the store has daylight ("Targets derived from
+  the game install"); without it, Forest_LayerInfo takes the canopy target, a vivid treetop
+  green, and the others keep the bake's colour.
 - The Grass Fields grass target comes from one place, seen in four v1.1 shots; the biome
   is inferred from the flowers. Grass elsewhere keeps the global target.
 - The patches of the top layer are a rule, not the game's mask, which is cooked into

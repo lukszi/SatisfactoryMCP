@@ -47,6 +47,7 @@ estimate assumes before a job of that kind has run once.
 | `caves` | `gen_world_heightmap.py --caves` | `data/local/caves/` (`caves.npz`, `meta.json`) | sweep 6 s; budget 2 min |
 | `rocks` | `gen_world_heightmap.py --rocks` | `rocks.npz` and `rocks.json` beside the field in `data/local/heightmap/` | 24 s; budget 5 min |
 | `paint` | `gen_paint_layers.py` | `data/local/paint/` (113 MB) | 2 min on a loaded machine; budget 2.5 min |
+| `calibrate` | | `data/local/paint/targets.derived.json` | 5 s |
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
 | `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 68 min for all five layers and 44 min for two |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
@@ -83,7 +84,19 @@ tints and top layers, and the seabed coral carpet's cover and top. It also write
 `water_bodies.json` (every water actor's box and materials and the hot-spring terraces) and
 the tree crowns: a top-down sprite per tree species, a record per tree (position, yaw, scale,
 lean, species) and the crown top on the 1 m grid. Only the `painted` render layer reads them.
-§27 lists the files; see also §30 to §33 and §36.
+From generator 4 its `meta.json` also keeps the level's noon light, the atmosphere volumes and
+the shell colours that `calibrate` reads. §27 lists the files; see also §30 to §33 and §36.
+
+### calibrate
+
+Derives a display colour for every key of the game-painted palette's `calibration` block from
+the paint layers, the install's area map and the heightfield's water, through a model of the
+game's camera, and writes `targets.derived.json` beside the paint layers (`--out` elsewhere).
+It never writes the install. `--check` prints each colour against the screenshot target and
+writes nothing. A paint store from before generator 4 is refused with exit code 2. A render
+takes the keys the palette's `derived_keys` lists from that file, or derives them itself when
+the file is missing or was derived from other data. See §31, "Targets derived from the game
+install".
 
 ### artwork
 
@@ -186,6 +199,7 @@ be traced to the axis it should move.
 | `commands/heightmap.py` | data | The heightmap command: arguments, refusals, stage order; `--caves` and `--rocks` go to the next row |
 | `commands/caves.py`, `rocks.py` | data | The cave masks and the rock collision pack, written beside a field |
 | `commands/paint.py` | data | The paint command: one level walk into the paint-layer store |
+| `commands/calibrate.py` | | The calibrate command: display targets derived from the paint store |
 | `commands/artwork.py` | data | The artwork command: arguments, stage order, refusals |
 | `commands/check_fill.py` | | The check-fill command |
 | `commands/compress_cache.py` | | The compress-cache command |
@@ -200,6 +214,8 @@ be traced to the axis it should move.
 | `gamedata/level/sweep.py` | data | The level sweep: foliage, water actors, landscape components; `world_levels`, and instances to world (`quat_axes`, `instances_to_world`) |
 | `gamedata/level/landscape.py` | data | The landscape frame and its seam offsets |
 | `gamedata/level/fill_raster.py` | data | `HeightData_Test`, the interface raster that fills outside the landscape |
+| `gamedata/level/curves.py` | data | Property tags with their array index, and `FRichCurve` keys and evaluation |
+| `gamedata/level/lighting.py` | data | The persistent level's noon light and the atmosphere volumes that override it |
 | `gamedata/rocks/cliffs.py` | data | The field's cliff and top rasters |
 | `gamedata/rocks/families.py` | data | Rock material families (the cliff layers and desert rock): `FamilyResolver`, per placement, tint and top layer |
 | `gamedata/rocks/collision_pack.py`, `caves.py` | data | The rock collision pack (`rock_pack_arrays`, `encode_rock_pack`), the cave masks |
@@ -249,6 +265,9 @@ be traced to the axis it should move.
 | `palette/painted/shapes.py` | style | The painted style's palette, band, paint-store and ground types |
 | `palette/painted/albedo.py` | style | The paint store mixed into a ground albedo, and the bake patched over it |
 | `palette/painted/calibration.py` | style | Colour calibration: display targets taken back to ground colour |
+| `palette/painted/derive/camera.py` | style | The camera model: UE5's film curve, the default sky, the exposure, the screenshot discount |
+| `palette/painted/derive/scene.py`, `rules.py` | style | The paint store on the 4 m grid, and the rule that derives each calibration key |
+| `palette/painted/derive/targets.py`, `palette.py` | style | The light vote, the derived colours, `targets.derived.json`, and the palette a render wears them in |
 | `palette/painted/surfaces.py` | style | Rock in its family's colour, the canopy over rock, the render-only meshes |
 | `palette/painted/trees.py` | style | Trees over the painted pixel: the Titan forest and per-tree crowns |
 | `palette/painted/optics.py` | style | What is seen under each wet pixel, the coral carpet |

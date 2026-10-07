@@ -89,7 +89,7 @@ material") and with `CliffPillar_03` read from its own package rather than `Mesh
 | `crowns.rec.z`, `crowns.sprites.z`, `crown.i16.z` | One record per tree, one sprite per species, and the crown top on the 1 m grid | 36 |
 | `carpet.u8.z`, `carpet_top.i16.z` | The seabed coral carpet's cover and top | 32 |
 | `water_bodies.json` | Every water actor's box and materials, and the hot-spring terraces | 33 |
-| `meta.json` | `generator_version`, `cl`, the game pin, file sha256s and `digest`; each layer's linear albedo (texture mean times `FG_Landscape_Inst` vector) and its refit to the bake, the rock families' tints and top layers, the crowns, the carpet and the component origins | |
+| `meta.json` | `generator_version`, `cl`, the game pin, file sha256s and `digest`; each layer's linear albedo (texture mean times `FG_Landscape_Inst` vector) and its refit to the bake, the rock families' tints and top layers, the crowns, the carpet and the component origins; from generator 4, the level's noon light, the atmosphere volumes and the shell colours that calibrate reads (§31) | |
 
 The layer-to-texture pairing is by name (`LAYERS` in the command), because the cooked material
 graph that wires them is stripped. Extracted planes reproduce the prototype's painted raster to
