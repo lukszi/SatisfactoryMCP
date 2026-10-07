@@ -396,6 +396,18 @@ share, slope and sky: the same follow-up as the arches' live light.
 
 These changes are light model 3 and `LIGHT_VERSION` 2.
 
+**Measured** at 2048 against round 2's baseline (2026-10-07, build 502094). The unlit trees
+of terrain, satellite and both relief styles keep every pixel; painted's moves 89,570, the
+Titan trees drawn flat. The lit trees of the four styles that draw no crowns move 129,058 to
+151,071 pixels each, by up to 137 levels beside the void's coasts and pits and by a few along
+shadow edges across the map, where the default sun is now taken at pixel centres. Painted's
+moves 1,110,430, by up to 78, over its forests. The full-size windows drawn unlit (section 40)
+move only in painted, under the Titan trees: 4.29 million of the strip's 33.6 million pixels
+and 11.7 million of the water window's 67.1 million, by up to 94. In full-size windows lit
+by the bake at 0.229 m/px the void's
+rim at (761.7, 2332.7) loses its wall shadow, the Titan forest at (1769.7, -10.0) its ravine,
+and the sky view's step at the block edge of row 12288 goes.
+
 ### Hooks
 
 `bake_light` takes two optional rasters on the sheet's grid, both of which only cast:
