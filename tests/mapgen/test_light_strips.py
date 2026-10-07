@@ -18,7 +18,7 @@ import pytest
 from scipy import ndimage
 
 from mapgen import pools
-from mapgen.lighting import bake, light_tiles, model, stage
+from mapgen.lighting import bake, light_tiles, model, span_bake, spans, stage
 from mapgen.lighting import horizon as hz
 from mapgen.lighting.bake import bake_light
 from mapgen.lighting.stage import Surface
@@ -34,25 +34,21 @@ def _terrain(side: int, seed: int = 1) -> np.ndarray:
     return z
 
 
-def _march_whole(solid, zc, halo, az_deg, spacing_m, fade, best, slabs=None):
+def _march_whole(solid, zc, halo, az_deg, spacing_m, fade, best):
     r0, r1, c0, c1 = halo, solid.shape[0] - halo, halo, solid.shape[1] - halo
     az = np.deg2rad(az_deg)
     dr, dc = -np.cos(az), np.sin(az)
     rise = np.empty(zc.shape, np.float32)
-    for t in hz._steps(fade[1] / spacing_m, hz.FINE_M / spacing_m):
+    for t in hz.step_lengths(fade[1] / spacing_m, hz.FINE_M / spacing_m):
         d = t * spacing_m
         w = hz.fade_weight(d, fade)
         if w <= 0:
             break
         scale = np.float32(w / d)
-        sample = hz._bilinear if t < hz.BILINEAR_PX else hz._nearest
+        sample = hz.bilinear if t < hz.BILINEAR_PX else hz.nearest
         np.subtract(sample(solid, r0, r1, c0, c1, dr * t, dc * t), zc, out=rise)
         rise *= scale
         np.maximum(best, rise, out=best)
-        if slabs is not None:
-            lo = sample(slabs[1], r0, r1, c0, c1, dr * t, dc * t)
-            hi = sample(slabs[2], r0, r1, c0, c1, dr * t, dc * t)
-            hz._raise_by_slab(best, (lo - zc) * scale, (hi - zc) * scale)
 
 
 def _sky_whole(z, halo, spacing_m, radius_m=hz.SKY_RADIUS_M):
@@ -64,7 +60,7 @@ def _sky_whole(z, halo, spacing_m, radius_m=hz.SKY_RADIUS_M):
         theta = 2 * np.pi * k / hz.SKY_DIRS
         best = np.zeros(zc.shape, np.float32)
         for t in np.geomspace(1.0, reach, hz.SKY_STEPS):
-            zz = hz._bilinear(z, r0, r1, c0, c1, np.sin(theta) * t, np.cos(theta) * t)
+            zz = hz.bilinear(z, r0, r1, c0, c1, np.sin(theta) * t, np.cos(theta) * t)
             np.maximum(best, (zz - zc) * np.float32(1.0 / (t * spacing_m)), out=best)
         acc += best / np.sqrt(1.0 + best * best)
     return (1.0 - acc / hz.SKY_DIRS).astype(np.float32)
@@ -75,12 +71,10 @@ def test_the_march_in_strips_is_the_whole_array_march_bit_for_bit(az):
     sp, halo = 1.0, hz.horizon_reach_px(1.0)
     z = _terrain(2 * halo + hz.STRIP_ROWS * 2 + 23)  # a ragged last strip
     core = (slice(halo, z.shape[0] - halo),) * 2
-    lo = np.where(z > 20, z - 4, np.nan).astype(np.float32)
-    cases = ((hz.FADE_M, None), (hz.OCCLUDER_FADE_M, None), (hz.FADE_M, (z, lo, lo + 9)))
-    for fade, slabs in cases:
+    for fade in (hz.FADE_M, hz.OCCLUDER_FADE_M):
         want = np.zeros(z[core].shape, np.float32)
-        _march_whole(z, z[core], halo, az, sp, fade, want, slabs)
-        assert hz._march(z, z, halo, az, sp, fade, slabs).tobytes() == want.tobytes()
+        _march_whole(z, z[core], halo, az, sp, fade, want)
+        assert hz._march(z, z, halo, az, sp, fade).tobytes() == want.tobytes()
 
 
 def test_the_sky_view_in_strips_is_the_whole_array_one_bit_for_bit():
@@ -111,32 +105,48 @@ SP = 5.0
 
 
 def _block_inputs(side=96):
+    """A block's heights, its halo, and spans: an arch deck over a third of it, and crowns."""
     halo = hz.horizon_reach_px(SP)
     z = _terrain(side + 2 * halo, seed=3)
-    crowns = (z + np.where(z > 5, 6.0, 0.0).astype(np.float32), z)
-    lo = np.where(z > 15, z - 3, np.nan).astype(np.float32)
-    return z, halo, (z, lo, lo + 7), crowns
+    lo = np.where(z > 15, z + 3, np.nan).astype(np.float32)
+    lift = np.where(z > 5, 6.0, 0.0).astype(np.float32)
+    crown_lo = np.where(lift > 0, z + spans.CROWN_UNDERSIDE * lift, np.nan).astype(np.float32)
+    crowns = spans.span_surface(z + lift, z, crown_lo, np.where(lift > 0, z + lift, np.nan))
+    ground = spans.span_surface(np.fmax(z, lo + 7), z, lo, lo + 7)
+    return z, halo, span_bake.BlockSpans(ground, crowns)
 
 
 def test_a_block_s_horizons_a_direction_at_a_time_are_the_stacked_ones():
-    zh, halo, slabs, crowns = _block_inputs()
+    zh, halo, block = _block_inputs()
     m = zh.shape[0] - 2 * halo
-    ground = hz.faded_horizons(zh, halo, SP, None, slabs)
-    over = hz.crown_horizons(crowns[0], halo, SP, crowns[1])
-    stack = np.concatenate([ground, np.where(over > ground, over, np.float32(0.0))])
-    hz_u8, hq, sun = stage._bake_horizons(zh, halo, SP, crowns, slabs, m, True)
-    assert hz_u8.tobytes() == hz.encode_horizon(stack).tobytes()
+    cells = sorted(span_bake.horizon_cells(zh, halo, SP, block), key=lambda cell: cell[0])
+    assert [k for k, _deg, _bands in cells] == list(range(model.HZ_CELLS))
+    stack = np.stack([deg for _k, deg, _bands in cells])
+    found = stage._bake_horizons(zh, halo, SP, block, m, True)
+    assert found.atlas.tobytes() == hz.encode_horizon(stack).tobytes()
     scale = light_tiles.HZ_LINEAR_SCALE
     want_hq = np.round(np.clip(light_tiles.downsample(np.moveaxis(stack, 0, -1)), 0, 90) * scale)
-    assert hq.tobytes() == want_hq.astype(np.uint8).tobytes()
+    assert found.quarter.tobytes() == want_hq.astype(np.uint8).tobytes()
+    assert set(found.bands) == set(model.sun_cells(DEFAULT_SUN[0]))
     nrm = np.random.default_rng(7).integers(0, 256, (2 * m, 2 * m, 4), dtype=np.uint8)
     for crowned in (False, True):
         want = model.direct_term(nrm, stack, DEFAULT_SUN, crowns=crowned)
-        assert model.direct_term(nrm, sun, DEFAULT_SUN, crowns=crowned).tobytes() == want.tobytes()
+        got = model.direct_term(nrm, found.sun, DEFAULT_SUN, crowns=crowned)
+        assert got.tobytes() == want.tobytes()
+
+
+def test_without_spans_a_block_bakes_the_plain_march():
+    zh, halo, _block = _block_inputs()
+    m = zh.shape[0] - 2 * halo
+    found = stage._bake_horizons(zh, halo, SP, span_bake.BlockSpans(None, None), m, True)
+    ground = hz.faded_horizons(zh, halo, SP)
+    assert found.atlas[: model.HORIZON_DIRS].tobytes() == hz.encode_horizon(ground).tobytes()
+    assert not found.atlas[model.HORIZON_DIRS :].any()
+    assert not any(bands.seen.any() for bands in found.bands.values())
 
 
 def test_the_default_sun_reads_only_its_four_cells_and_water_bakes_zero():
-    zh, halo, _slabs, _crowns = _block_inputs()
+    zh, halo, block = _block_inputs()
     m = zh.shape[0] - 2 * halo
     keep = model.sun_cells(DEFAULT_SUN[0])
     assert len(set(keep)) == 4 and all(k >= model.HORIZON_DIRS for k in keep[2:])
@@ -145,14 +155,16 @@ def test_the_default_sun_reads_only_its_four_cells_and_water_bakes_zero():
         sparse[k] = np.full((m, m), 10.0 + k, np.float32)
     nrm = np.full((m, m, 4), 200, np.uint8)
     assert model.direct_term(nrm, sparse, DEFAULT_SUN, crowns=True).shape == (m, m)
-    hz_u8, hq, sun = stage._bake_horizons(zh, halo, SP, None, None, m, False)
-    assert not hz_u8.any() and not hq.any() and not any(plane.any() for plane in sun)
+    found = stage._bake_horizons(zh, halo, SP, block, m, False)
+    assert not found.atlas.any() and not found.quarter.any() and not found.bands
+    assert not any(plane.any() for plane in found.sun)
 
 
 def test_without_crowns_the_crown_cells_stay_zero():
-    zh, halo, slabs, _crowns = _block_inputs()
+    zh, halo, block = _block_inputs()
     m = zh.shape[0] - 2 * halo
-    hz_u8, hq, _sun = stage._bake_horizons(zh, halo, SP, None, slabs, m, True)
+    found = stage._bake_horizons(zh, halo, SP, block._replace(crowns=None), m, True)
+    hz_u8, hq = found.atlas, found.quarter
     assert hz_u8[: model.HORIZON_DIRS].any() and not hz_u8[model.HORIZON_DIRS :].any()
     assert not hq[..., model.HORIZON_DIRS :].any()
 

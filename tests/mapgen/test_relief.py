@@ -15,7 +15,9 @@ from mapgen.cache import (
     DIRECT_COVERAGE_NAME,
     DIRECT_Z_NAME,
     MESH_CACHE_DIR_NAME,
+    PLANE_DTYPES,
     TOP_CACHE_DIR_NAME,
+    TOP_PLANE_NAMES,
     mesh_stamp,
     missing_caches,
     raster_cache_stamp,
@@ -145,8 +147,10 @@ def test_a_restyle_names_every_cache_it_cannot_use(tmp_path):
         folder = tmp_path / name
         folder.mkdir()
         (folder / CACHE_SIDECAR_NAME).write_text(json.dumps(stamp), encoding="utf-8")
-        np.zeros((64, 64), np.float32).tofile(folder / DIRECT_Z_NAME)
-        np.zeros((64, 64), np.uint8).tofile(folder / DIRECT_COVERAGE_NAME)
+        planes = TOP_PLANE_NAMES if name == TOP_CACHE_DIR_NAME else (DIRECT_Z_NAME,
+                                                                     DIRECT_COVERAGE_NAME)  # fmt: skip
+        for plane in planes:
+            np.zeros((64, 64), PLANE_DTYPES[plane]).tofile(folder / plane)
     assert missing_caches(tmp_path, stamp, meshes, top=True, meshes=False) == []
     assert missing_caches(tmp_path, stamp, meshes, top=True, meshes=True) == [MESH_CACHE_DIR_NAME]
     other = raster_cache_stamp(128, 1, "build 1")

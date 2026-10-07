@@ -35,8 +35,9 @@ from mapgen.lighting.horizon import (
     SKY_RADIUS_M,
     decode_horizon,
 )
+from mapgen.lighting.spans import span_block
 from mapgen.lighting.sun import DEFAULT_SUN, NOON_HOUR, Sun, sun_vector
-from satisfactory_mcp.core.arrays import F32Grid, U8Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.versions import LIGHTS
 from satisfactory_mcp.core.jsontypes import JsonObject
 
@@ -148,6 +149,7 @@ def model_block() -> JsonObject:
             "crowns' where they stand above the ground's, else 0"
         ),
         "nrm_encoding": "RGBA: east and south normal as (v + 1) / 2, sky view, land weight",
+        "spans": span_block(),
     }
 
 
@@ -186,13 +188,20 @@ def sun_cells(az: float) -> tuple[int, int, int, int]:
 
 
 def direct_term(
-    nrm_u8: U8Grid, hz_deg: Horizons | None, sun: Sun, shadows: bool = True, crowns: bool = False
+    nrm_u8: U8Grid,
+    hz_deg: Horizons | None,
+    sun: Sun,
+    shadows: bool = True,
+    crowns: bool = False,
+    filtered: tuple[BoolMask, F32Grid] | None = None,
 ) -> F32Grid:
     """``ndl * (1 - shadow * (1 - fill)) / sin(max(el, 35))`` per pixel.
 
     ``hz_deg`` is ``(cells, h, w)``: the ground's ``HORIZON_DIRS`` horizons, then, when
     ``crowns`` and the atlas has them, the crowns', which shade where they stand higher. A
-    sequence of as many planes does too; only the ``sun_cells`` are read.
+    sequence of as many planes does too; only the ``sun_cells`` are read. ``filtered`` is
+    ``(use, shade)`` on the normals' grid: where ``use``, the shadow is ``shade``, filtered
+    per cell beside a span (``span_bake.default_shade``), not read off the horizon.
     """
     az, el = sun
     nx = nrm_u8[..., 0].astype(np.float32) / 127.5 - 1
@@ -208,6 +217,8 @@ def direct_term(
         if hz.shape != ndl.shape:
             hz = ndimage.zoom(hz, np.array(ndl.shape) / np.array(hz.shape), order=1)
         shade = np.clip((hz - el) / SHADOW_SOFT_DEG + 0.5, 0, 1)
+        if filtered is not None:
+            shade = np.where(filtered[0], filtered[1], shade)
     return (ndl * (1 - shade * (1 - SHADOW_FILL)) * _sun_gain(el)).astype(np.float32)
 
 

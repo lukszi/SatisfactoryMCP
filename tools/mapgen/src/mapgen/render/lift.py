@@ -9,12 +9,14 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 
+from mapgen.palette.water.open_sea import OpenSea
+from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.terrain.measure import SEAM_MID
 from mapgen.terrain.rasters import pixel_coverage
-from mapgen.terrain.sample import Taps
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, FloatGrid
+from mapgen.terrain.sample import Taps, reads_nothing, sample_coverage, sample_plain
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, FloatGrid, U8Grid
 
-__all__ = ["DIRECT_LIFT_KNEE_M", "blend_regimes", "composite_top", "smooth_lift"]
+__all__ = ["DIRECT_LIFT_KNEE_M", "blend_regimes", "composite_top", "rock_kept", "smooth_lift"]
 
 #: The knee of the smoothed positive part that lets a rock raise the ground and never lower
 #: it, in metres: the field's own hard ``max`` with its corner rounded, so the hillshade draws
@@ -72,3 +74,27 @@ def blend_regimes(
         w,
         switched.astype(np.float32),
     )
+
+
+def rock_kept(
+    z_rock_cm: F32Grid,
+    missing: BoolMask,
+    linear: Taps,
+    wet_plane: U8Grid | None,
+    sea: OpenSea | None,
+) -> F32Grid | None:
+    """The share of its coverage a rock keeps under the void; None without the open sea.
+
+    Out of the sea a rock keeps all of it; under the sea's level none on no data, else what
+    the void's cover leaves of the wet share. The open sea always comes with its wet plane.
+    """
+    if sea is None:
+        return None
+    above = np.clip(z_rock_cm / np.float32(100.0) - np.float32(OCEAN_LEVEL_M) + 0.5, 0.0, 1.0)
+    if reads_nothing(sea.void.cover, linear):
+        under = np.where(missing, np.float32(1.0), np.float32(0.0))
+    else:
+        assert wet_plane is not None
+        cover = np.clip(sample_plain(sea.void.cover, linear) / np.float32(255.0), 0.0, 1.0)
+        under = np.where(missing, np.float32(1.0), cover * sample_coverage(wet_plane, linear))
+    return (1.0 - (1.0 - above) * under).astype(np.float32)

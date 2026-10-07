@@ -150,9 +150,7 @@ def test_a_light_process_with_the_gpu_counts_its_cuda_memory(monkeypatch):
 @pytest.mark.parametrize("az", [0.0, 33.75, 90.0, 191.25, 270.0])
 def test_the_march_is_the_reference_bit_for_bit(monkeypatch, az):
     z = octave_terrain(2 * HALO + 70, seed=1)
-    lo = np.where(z > 20, z - 4, np.nan).astype(np.float32)
     _same(monkeypatch, lambda: hz.march_horizon(z, HALO, az, SP))
-    _same(monkeypatch, lambda: hz.march_horizon(z, HALO, az, SP, slabs=(z - 1, lo, lo + 9)))
     _same(monkeypatch, lambda: hz.crown_horizon(z + 3, HALO, az, SP, z))
 
 
@@ -173,17 +171,6 @@ def test_rows_and_columns_off_the_block_size_are_marched_whole(monkeypatch):
 
 
 @pytest.mark.usefixtures("device")
-def test_float64_slabs_are_marched_by_numba(monkeypatch):
-    from mapgen.lighting import gpu
-
-    z = octave_terrain(2 * HALO + 40, seed=2)
-    lo = np.where(z > 10, z - 2.5, np.nan).astype(np.float64)
-    slabs = (z, lo, lo + 4.25)
-    monkeypatch.setattr(gpu, "_march", _refused)
-    _same(monkeypatch, lambda: hz.march_horizon(z, HALO, 123.75, SP, slabs=slabs))
-
-
-@pytest.mark.usefixtures("device")
 def test_a_march_the_device_has_no_memory_for_runs_numba(monkeypatch):
     from mapgen.lighting import gpu
 
@@ -192,10 +179,6 @@ def test_a_march_the_device_has_no_memory_for_runs_numba(monkeypatch):
     monkeypatch.setattr(gpu, "_sky_view", _out_of_memory)
     _same(monkeypatch, lambda: hz.march_horizon(z, HALO, 210.0, SP))
     _same(monkeypatch, lambda: hz.sky_view(z, 12, SP))
-
-
-def _refused(*_args: object) -> None:
-    raise AssertionError("a float64 slab reached the GPU")
 
 
 def _out_of_memory(*_args: object) -> None:

@@ -11,10 +11,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import struct
 import threading
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple, TypeAlias
@@ -25,28 +26,28 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
-from mapgen.lighting.horizon import (
-    HORIZON_DIRS,
-    Slabs,
-    crown_horizon,
-    crown_surface,
-    encode_horizon,
-    march_horizon,
-    normals,
-    sky_view,
-)
+from mapgen.lighting.horizon import encode_horizon, normals, sky_view
 from mapgen.lighting.light_tiles import (
     HZ_LINEAR_SCALE,
     downsample,
     encode_tiles,
     level_layout,
     normal_byte,
-    optional_array,
     padded_window,
     tile_jobs,
     work_array,
 )
 from mapgen.lighting.model import DIRECT_SCALE, HZ_CELLS, direct_term, light_axis, sun_cells
+from mapgen.lighting.slabs import SLAB_DIR_NAME, SlabPlanes, SlabStore
+from mapgen.lighting.span_bake import (
+    BlockSpans,
+    block_spans,
+    default_shade,
+    full_resolution,
+    horizon_cells,
+    plain_bands,
+)
+from mapgen.lighting.spans import Bands, SpanSurface, sky_view_spans
 from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.pools import free_ram_bytes
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
@@ -81,7 +82,7 @@ LIGHT_DIR_NAME = "light"
 
 #: The bake's own version. Bump it when the bake writes other bytes from the same surface,
 #: casters and model, so no run reuses a light the old bake wrote.
-LIGHT_VERSION = 1
+LIGHT_VERSION = 2
 
 #: Rows of a plane hashed at a time.
 DIGEST_ROWS = 1024
@@ -96,15 +97,12 @@ LIGHT_WORKER_BYTES = 1_500_000_000
 #: What a light process adds with the CUDA kernels: CuPy and its context, 0.65 GB measured.
 LIGHT_GPU_BYTES = 700_000_000
 
-#: The work files a bake leaves in the surface's directory.
+#: The work files a bake leaves in the surface's directory, beside its ``SlabStore``.
 _FILES = (
     "z",
     "land",
     "occluder",
     "occluder_cover",
-    "slab_ground",
-    "slab_lo",
-    "slab_hi",
     "terms",
     "zh",
     "landh",
@@ -117,9 +115,6 @@ Occluder: TypeAlias = F32Grid | tuple[F32Grid, U8Grid | None]
 
 #: Rows, then columns, of the sheet: ``(r0, r1, c0, c1)``.
 _Window: TypeAlias = tuple[int, int, int, int]
-
-#: The crowns stood on the drawn surface and on the solid ground, at half resolution.
-_CrownSurfaces: TypeAlias = tuple[F32Grid, F32Grid | None]
 
 
 @dataclass(frozen=True)
@@ -152,7 +147,8 @@ class Place(NamedTuple):
 
 
 class Surface:
-    """The drawn surface, band by band: heights in metres and the land weight as a byte.
+    """The drawn surface, band by band: heights in metres and the land weight as a byte, and
+    the floating geometry over it in a ``SlabStore``.
 
     Each ``put`` is hashed as it is stored, on the thread that drew it; ``digest`` folds those
     in row order. ``terms`` is where the bake's default-sun terms for this surface are.
@@ -169,6 +165,7 @@ class Surface:
         self.land: np.memmap[tuple[int, ...], np.dtype[np.uint8]] = np.lib.format.open_memmap(
             directory / "land.npy", "w+", np.uint8, (size, size)
         )
+        self.slabs = SlabStore(directory / SLAB_DIR_NAME)
         self.terms = self.path("terms")
         self._puts: dict[Place, bytes] = {}
         self._lock = threading.Lock()
@@ -179,6 +176,7 @@ class Surface:
         z_m: NDArray[np.floating],
         land: NDArray[np.floating],
         columns: slice = slice(None),
+        slabs: SlabPlanes | None = None,
     ) -> None:
         z = np.ascontiguousarray(z_m, np.float32)
         dry = np.ascontiguousarray(np.round(np.clip(land, 0, 1) * 255), np.uint8)
@@ -187,6 +185,8 @@ class Surface:
         digest = hashlib.sha256(z)
         digest.update(dry)
         c0, c1, _step = columns.indices(self.size)
+        if slabs is not None:
+            digest.update(self.slabs.put(row, c0, slabs))
         with self._lock:
             self._puts[Place(row, z.shape[0], c0, c1)] = digest.digest()
 
@@ -215,66 +215,28 @@ class Surface:
         del self.z, self.land
 
 
-def _crown_surfaces(
-    work: Path, window: _Window, z_window: F32Grid, ground_window: F32Grid | None
-) -> _CrownSurfaces | None:
-    """The crowns stood on the surface and on the solid ground, at half resolution, or None."""
-    occluder = optional_array(work, "occluder", np.float32)
-    if occluder is None:
-        return None
-    top = padded_window(occluder, *window, np.nan)
-    cover = optional_array(work, "occluder_cover", np.uint8)
-    share = None if cover is None else padded_window(cover, *window, 0.0) / np.float32(255.0)
-    on_z = downsample(crown_surface(z_window, top, share))
-    if ground_window is None:
-        return on_z, None
-    return on_z, downsample(crown_surface(ground_window, top, share))
-
-
-def _half_surfaces(
-    work: Path, window: _Window, march: bool
-) -> tuple[F32Grid, _CrownSurfaces | None, Slabs | None]:
+def _half_surfaces(work: Path, window: _Window, march: bool) -> tuple[F32Grid, BlockSpans]:
     """The block's heights at half resolution, and what casts on them when it marches."""
     z_window = padded_window(work_array(work, "z", np.float32, "r"), *window)
     z_half = downsample(z_window)
     if not march:
-        return z_half, None, None
-    ground, lo, hi = (optional_array(work, f"slab_{k}", np.float32) for k in ("ground", "lo", "hi"))
-    slabs = ground_window = None
-    if ground is not None and lo is not None and hi is not None:
-        ground_window = padded_window(ground, *window)
-        slabs = (downsample(ground_window),
-                 downsample(padded_window(lo, *window, np.nan), how=np.nanmin),
-                 downsample(padded_window(hi, *window, np.nan), how=np.nanmax))  # fmt: skip
-    return z_half, _crown_surfaces(work, window, z_window, ground_window), slabs
+        return z_half, BlockSpans(None, None)
+    return z_half, block_spans(work, window, z_window, z_half, SlabStore(work / SLAB_DIR_NAME))
 
 
-def _horizon_cells(
-    z_half: F32Grid,
-    halo: int,
-    spacing_m: float,
-    crowns: _CrownSurfaces | None,
-    slabs: Slabs | None,
-) -> Iterator[tuple[int, F32Grid]]:
-    """Each direction's ground cell, then its crown cell where the crowns stand above it."""
-    for k in range(HORIZON_DIRS):
-        az = k * 360.0 / HORIZON_DIRS
-        ground = march_horizon(z_half, halo, az, spacing_m, None, slabs)
-        yield k, ground
-        if crowns is not None:
-            over = crown_horizon(crowns[0], halo, az, spacing_m, crowns[1])
-            yield HORIZON_DIRS + k, np.where(over > ground, over, np.float32(0.0))
+class _Horizons(NamedTuple):
+    """A block's horizons as baked: the atlas bytes, the coarser levels' source, the default
+    sun's cells in degrees, and the bands those cells were marched with."""
+
+    atlas: U8Grid
+    quarter: U8Grid
+    sun: list[F32Grid]
+    bands: dict[int, Bands]
 
 
 def _bake_horizons(
-    z_half: F32Grid,
-    halo: int,
-    spacing_m: float,
-    crowns: _CrownSurfaces | None,
-    slabs: Slabs | None,
-    half_px: int,
-    march: bool,
-) -> tuple[U8Grid, U8Grid, list[F32Grid]]:
+    z_half: F32Grid, halo: int, spacing_m: float, spans: BlockSpans, half_px: int, march: bool
+) -> _Horizons:
     """The atlas bytes, the coarser levels' source and the default sun's planes, a cell at a time.
 
     No ``(cells, half_px, half_px)`` float stack: each cell is encoded as it is marched.
@@ -282,14 +244,50 @@ def _bake_horizons(
     hz_u8 = np.zeros((HZ_CELLS, half_px, half_px), np.uint8)
     horizon_quarter = np.zeros((half_px // 2, half_px // 2, HZ_CELLS), np.uint8)
     sun = [np.zeros((half_px, half_px), np.float32)] * HZ_CELLS
+    bands: dict[int, Bands] = {}
     keep = sun_cells(DEFAULT_SUN[0])
-    cells = _horizon_cells(z_half, halo, spacing_m, crowns, slabs) if march else iter(())
-    for k, deg in cells:
+    cells = horizon_cells(z_half, halo, spacing_m, spans) if march else iter(())
+    for k, deg, marched in cells:
         hz_u8[k] = encode_horizon(deg)
         horizon_quarter[..., k] = np.round(np.clip(downsample(deg), 0, 90) * HZ_LINEAR_SCALE)
         if k in keep:
             sun[k] = deg
-    return hz_u8, horizon_quarter, sun
+            bands[k] = plain_bands(deg) if marched is None else marched
+    return _Horizons(hz_u8, horizon_quarter, sun, bands)
+
+
+def _sky_view(z_half: F32Grid, halo: int, sky: int, spacing_m: float, spans: BlockSpans) -> F32Grid:
+    """The block's sky view at half resolution, with the arches' and overhangs' spans."""
+    rows, cols = (slice(halo - sky, side - halo + sky) for side in z_half.shape[:2])
+    if spans.ground is None:
+        return sky_view(z_half[rows, cols], sky, spacing_m)
+    cut = SpanSurface(*(plane[rows, cols] for plane in spans.ground))
+    return sky_view_spans(cut, sky, spacing_m)
+
+
+def _normals(work: Path, ring: _Window, spacing_m: float) -> tuple[F32Grid, F32Grid]:
+    """The block's normals; beside a span, the solid surface's, so the span's edge draws no
+    rim on the ground beside it."""
+    z_ring = padded_window(work_array(work, "z", np.float32, "r"), *ring)
+    nx, ny = normals(z_ring, spacing_m)
+    solid, floats = SlabStore(work / SLAB_DIR_NAME).full(ring, z_ring)
+    if not floats.any():
+        return nx, ny
+    sx, sy = normals(solid, spacing_m)
+    core = floats[1:-1, 1:-1]
+    return np.where(core, nx, sx), np.where(core, ny, sy)
+
+
+def _default_terms(nrm: U8Grid, horizons: _Horizons, crowned: bool) -> F32Grid:
+    """The direct term at the default sun; beside a span, shaded per cell (``default_shade``)."""
+    filtered = None
+    found = default_shade(horizons.bands, DEFAULT_SUN, crowned) if horizons.bands else None
+    if found is not None:
+        shape = (nrm.shape[0], nrm.shape[1])
+        use, shade = found
+        filtered = (full_resolution(use.astype(np.float32), shape) > 0,
+                    full_resolution(shade, shape))  # fmt: skip
+    return direct_term(nrm, horizons.sun, DEFAULT_SUN, crowns=crowned, filtered=filtered)
 
 
 def bake_block(job: BlockJob) -> BlockDone:
@@ -301,32 +299,27 @@ def bake_block(job: BlockJob) -> BlockDone:
     land = work_array(work, "land", np.uint8, "r")
     land_core = np.asarray(land[r0 : r0 + block_px, c0 : c0 + block_px])
     march = not (job.skip_water and not land_core.any())
-    z_half, crowns, slabs = _half_surfaces(work, window, march)
-    hz_u8, horizon_quarter, sun = _bake_horizons(
-        z_half, halo, half_m, crowns, slabs, half_px, march
-    )
-    del crowns, slabs
-    sky = job.sky_halo
-    rows, cols = (slice(halo - sky, side - halo + sky) for side in z_half.shape[:2])
-    sky_view_half = sky_view(z_half[rows, cols], sky, half_m)
-    ring = (r0 - 1, r0 + block_px + 1, c0 - 1, c0 + block_px + 1)
-    z_ring = padded_window(work_array(work, "z", np.float32, "r"), *ring)
-    nx, ny = normals(z_ring, spacing_m)
+    z_half, spans = _half_surfaces(work, window, march)
+    horizons = _bake_horizons(z_half, halo, half_m, spans, half_px, march)
+    sky_view_half = _sky_view(z_half, halo, job.sky_halo, half_m, spans)
+    del spans
+    nx, ny = _normals(work, (r0 - 1, r0 + block_px + 1, c0 - 1, c0 + block_px + 1), spacing_m)
     svf = np.clip(ndimage.zoom(sky_view_half, 2, order=1, mode="nearest", grid_mode=True), 0, 1)
     nrm = np.stack(
         [normal_byte(nx), normal_byte(ny), np.round(svf * 255).astype(np.uint8), land_core], -1
     )
     del nx, ny, svf
     t = PYRAMID_TILE_PX
-    hz_bytes = encode_tiles(tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, hz_u8))
-    del hz_u8
+    hz_bytes = encode_tiles(tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas))
     terms = work_array(work, "terms", np.uint8)
     terms[r0 : r0 + block_px, c0 : c0 + block_px, 0] = nrm[..., 2]
     for k, crowned in ((1, False), (2, True)):
-        direct = direct_term(nrm, sun, DEFAULT_SUN, crowns=crowned)
+        direct = _default_terms(nrm, horizons, crowned)
         terms[r0 : r0 + block_px, c0 : c0 + block_px, k] = np.clip(
             np.round(direct * DIRECT_SCALE), 0, 255
         )
+    horizon_quarter = horizons.quarter
+    del horizons
     h0, w0 = r0 // 2, c0 // 2
     core = z_half[halo:-halo, halo:-halo]
     half = (slice(h0, h0 + half_px), slice(w0, w0 + half_px))
@@ -388,14 +381,11 @@ def plane_digest(plane: NDArray[np.number] | None) -> str | None:
     return "sha256:" + digest.hexdigest()
 
 
-def cast_digests(occluder: Occluder | None, slabs: Slabs | None) -> JsonObject:
-    """What casts on the surface in a bake, digested: the crown tops and cover, the slabs."""
+def cast_digests(occluder: Occluder | None) -> JsonObject:
+    """What casts on the surface in a bake besides it, digested: the crown tops and cover.
+    The slabs are the surface's own, digested with it."""
     top, cover = occluder if isinstance(occluder, tuple) else (occluder, None)
-    return {
-        "occluder": plane_digest(top),
-        "occluder_cover": plane_digest(cover),
-        "slabs": None if slabs is None else [plane_digest(plane) for plane in slabs],
-    }
+    return {"occluder": plane_digest(top), "occluder_cover": plane_digest(cover)}
 
 
 def light_key(
@@ -430,3 +420,4 @@ def discard(surface: Surface) -> None:
             surface.path(name).unlink()
         except OSError:
             pass
+    shutil.rmtree(surface.slabs.directory, ignore_errors=True)

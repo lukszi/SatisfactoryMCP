@@ -77,7 +77,7 @@ def test_flat_ground_sees_all_the_sky_and_faces_straight_up():
     )
 
 
-def test_an_occluder_casts_and_a_floating_slab_casts_only_where_nothing_shows_beneath():
+def test_an_occluder_casts_into_the_horizon():
     n, halo, sp = 240, 80, 2.0
     z = np.zeros((n, n), np.float32)
     occluder = np.full((n, n), np.nan, np.float32)
@@ -85,14 +85,6 @@ def test_an_occluder_casts_and_a_floating_slab_casts_only_where_nothing_shows_be
     plain = hz.march_horizon(z, halo, 90.0, sp)
     treed = hz.march_horizon(z, halo, 90.0, sp, occluder=occluder)
     assert plain.max() == 0.0 and treed[20, 30] > 10.0
-    lo = np.full((n, n), np.nan, np.float32)
-    hi = np.full((n, n), np.nan, np.float32)
-    lo[90:110, 120:125], hi[90:110, 120:125] = 12.0, 15.0
-    arch = hz.march_horizon(z, halo, 90.0, sp, slabs=(z, lo, hi))
-    assert arch[20, 30] == 0.0
-    lo[90:110, 120:125] = 0.0
-    rock = hz.march_horizon(z, halo, 90.0, sp, slabs=(z, lo, hi))
-    assert rock[20, 30] > 10.0
 
 
 def _nrm(z, sp, svf=1.0, land=1.0):

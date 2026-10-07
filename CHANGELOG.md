@@ -154,6 +154,13 @@ Planned as 0.2.0.
 - Map generator: the open sea's bed is solved by conjugate gradients whose dot products are
   summed in a fixed order, where scipy's took them from BLAS and its bits followed the
   number of BLAS threads. The maps are the same bytes, and the solve takes about 2 s less.
+- Map generator (recipe 8, light model 3): arches, rock overhangs and tree crowns cast their
+  shadow where the sun's ray meets them, with light passing beneath, instead of a wall from
+  their foot, a wedge or a streak from the trunk; the sky beside an arch is no longer dimmed
+  as beside a wall. The arches' sub-metre holes are filled and their edges antialiased, and
+  nothing else is. The page's live light shades the new shadows for a sun on the game's own
+  path. The direct and top raster caches gain planes and are rebuilt once, about 15 minutes
+  at full size; a kept light is baked again.
 
 ### Deprecated
 

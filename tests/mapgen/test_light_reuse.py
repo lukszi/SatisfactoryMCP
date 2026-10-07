@@ -31,7 +31,10 @@ from mapgen.tiles.cutter import TileStream
 SIZE = 512
 
 #: The digest of ``_pinned_bake`` at each ``LIGHT_VERSION``.
-BAKE_PINS = {1: "sha256:a3ab7907b3b9572f99b2d05344d4b5c2022e26057a88babf5536424bc68745b6"}
+BAKE_PINS = {
+    1: "sha256:a3ab7907b3b9572f99b2d05344d4b5c2022e26057a88babf5536424bc68745b6",
+    2: "sha256:834b9b5b3568f6d2ddf782bbcadfbb3019a605e224e6e5223b94dbba04ec13ef",
+}
 
 Planes = tuple[np.ndarray, np.ndarray]
 
@@ -219,7 +222,7 @@ def test_a_run_without_a_cache_root_keeps_nothing_and_writes_the_key(tmp_path):
     key = json.loads((tmp_path / "out" / "light" / "meta.json").read_text("utf-8"))["_meta"]["key"]
     assert key["light_version"] == LIGHT_VERSION and key["size_px"] == SIZE
     assert key["surface"] == _digest(tmp_path / "digest", _planes())
-    assert key["occluder"] is None and key["slabs"] is None and key["occluder_layers"] == []
+    assert key["occluder"] is None and key["occluder_layers"] == []
     assert not list(tmp_path.rglob(KEPT_LIGHT_DIR_NAME))
 
 

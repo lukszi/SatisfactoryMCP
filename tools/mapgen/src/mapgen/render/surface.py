@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import NamedTuple, Protocol, TypeAlias, cast
 
 import numpy as np
@@ -19,18 +20,19 @@ from numpy.typing import NDArray
 
 from mapgen.cache import DirectPlanes, MeshPlanes, TopPlanes
 from mapgen.lighting.borrow import BORROW_CLAMP, BORROW_GAIN
+from mapgen.lighting.slabs import SlabPlanes
 from mapgen.palette.scene import WaterTerms
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater
 from mapgen.palette.water.shore import (
     MESH_FULL_LIFT_M,
-    OCEAN_LEVEL_M,
     blend_water,
     composite_meshes,
     shore_terms,
 )
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_alpha, water_depth_fraction
-from mapgen.render.lift import blend_regimes, composite_top
+from mapgen.render.floating import FieldPiece, FloatSources, band_slabs, piece_slabs
+from mapgen.render.lift import blend_regimes, composite_top, rock_kept
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.sample import (
     AxisTaps,
@@ -113,9 +115,11 @@ class RegimeSources(NamedTuple):
 
 
 class LightCapture(Protocol):
-    """Where the drawn heights and land weight go for the light bake (``lighting.stage``)."""
+    """Where the drawn heights and land weight go for the light bake (``lighting.stage``),
+    with what floats over them."""
 
-    def put(self, row: int, z_m: FloatGrid, land: FloatGrid, columns: slice = ..., /) -> None:
+    def put(self, row: int, z_m: FloatGrid, land: FloatGrid, columns: slice = ...,
+            slabs: SlabPlanes | None = ..., /) -> None:  # fmt: skip
         """Rows from ``row`` on, over ``columns`` of the sheet."""
         ...
 
@@ -241,11 +245,12 @@ class SeamPlanes(NamedTuple):
 
 
 class LightPlanes(NamedTuple):
-    """What the light captures of the output: the heights under the seabed rule, and the
-    land weight."""
+    """What the light captures of the output: the heights under the seabed rule, the land
+    weight, and what floats over them, None where nothing does."""
 
     z_m: F32Grid
     land: F32Grid
+    slabs: SlabPlanes | None = None
 
 
 class PieceOwed(NamedTuple):
@@ -316,20 +321,22 @@ def band_surfaces(
     rows, cols, smooth, linear = grid.rows, grid.cols, grid.smooth, grid.linear
     z_dm, missing = sample_surface(sources.heights, smooth, linear, hf.NODATA)
     z_m = z_dm / np.float32(hf.DM_PER_M)
+    field = FieldPiece(z_m, missing, None)
     weight = rock_seen = seam = None
     if sources.direct is not None:
-        z_m, missing, weight, rock_seen, seam = _direct_regime(
+        z_m, missing, weight, rock_seen, seam, base_m = _direct_regime(
             sources, sources.direct, grid, z_m, missing
         )
+        field = field._replace(base_m=base_m)
     top_weight = None
     if sources.overlay is not None:
-        top_z, top_coverage, top_subsamples = sources.overlay
+        top = sources.overlay
         below = z_m
         z_m = composite_top(
             z_m,
-            np.asarray(top_z[rows.cut, cols.cut], np.float32),
-            np.asarray(top_coverage[rows.cut, cols.cut]),
-            top_subsamples,
+            np.asarray(top.z[rows.cut, cols.cut], np.float32),
+            np.asarray(top.coverage[rows.cut, cols.cut]),
+            top.subsamples,
         )
         top_weight = np.clip((z_m - below) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     water_m, level_m, wet, measured = _sample_water_surface(
@@ -356,8 +363,19 @@ def band_surfaces(
     light = None
     if sources.capture is not None:
         lit = surfaces[True]
-        light = _light_planes(grid, lit.z_m, missing, lit.water)
+        floating = piece_slabs(_float_sources(sources, grid), field, lit.z_m, level_m)
+        light = _light_planes(grid, lit.z_m, missing, lit.water, floating)
     return {seabed: surfaces[seabed] for seabed in seabeds}, PieceOwed(seam, light)
+
+
+def _float_sources(sources: GroundSources, grid: BandSampling) -> FloatSources:
+    """What ``piece_slabs`` composes a piece's solid surface from."""
+    wet = None if sources.water is None else sources.water.wet
+    return FloatSources(
+        direct=sources.direct, overlay=sources.overlay, meshes=sources.meshes,
+        cut=(grid.rows.cut, grid.cols.cut), kept=(grid.rows.kept, grid.cols.kept),
+        linear=grid.linear, keep_rock=partial(rock_kept, wet_plane=wet, sea=sources.sea),
+    )  # fmt: skip
 
 
 def settle_band(sources: GroundSources, rows: Span, pieces: Sequence[PieceOwed]) -> list[Owed]:
@@ -370,8 +388,13 @@ def settle_band(sources: GroundSources, rows: Span, pieces: Sequence[PieceOwed])
     window = sources.window
     lights = [piece.light for piece in pieces if piece.light is not None]
     if sources.capture is not None and lights:
-        z_m, land = (np.concatenate(planes, axis=1) for planes in zip(*lights, strict=True))
-        sources.capture.put(rows.start, z_m, land, slice(window.c0, window.c1))
+        z_m = np.concatenate([light.z_m for light in lights], axis=1)
+        land = np.concatenate([light.land for light in lights], axis=1)
+        columns, slabs = slice(window.c0, window.c1), band_slabs(lights)
+        if slabs is None:
+            sources.capture.put(rows.start, z_m, land, columns)
+        else:
+            sources.capture.put(rows.start, z_m, land, columns, slabs)
     seams = [piece.seam for piece in pieces if piece.seam is not None]
     if not seams:
         return []
@@ -430,12 +453,17 @@ def _water_terms(
 
 
 def _light_planes(
-    grid: BandSampling, z_m: FloatGrid, missing: BoolMask, water: WaterTerms
+    grid: BandSampling,
+    z_m: FloatGrid,
+    missing: BoolMask,
+    water: WaterTerms,
+    slabs: SlabPlanes | None,
 ) -> LightPlanes:
-    """The piece's output pixels for the light stage: the heights and the land weight."""
+    """The piece's output pixels for the light stage: the heights, the land weight, and what
+    floats over them (``render/floating.py``), cut to them already."""
     kept = (grid.rows.kept, grid.cols.kept)
     dry = np.where(missing, 0.0, 1.0 - water["cover"])
-    return LightPlanes(z_m[kept], dry[kept])
+    return LightPlanes(z_m[kept], dry[kept], slabs)
 
 
 def _direct_regime(
@@ -444,19 +472,21 @@ def _direct_regime(
     grid: BandSampling,
     z_m: FloatGrid,
     missing: BoolMask,
-) -> tuple[FloatGrid, BoolMask, F32Grid, FloatGrid, SeamPlanes | None]:
+) -> tuple[FloatGrid, BoolMask, F32Grid, FloatGrid, SeamPlanes | None, FloatGrid]:
     """The rocks composited onto the lattice under them: ``(z_m, missing, weight, rock_seen,
-    seam)``, ``seam`` the output pixels the band measures when it measures. Where that
-    lattice knows nothing the field's fold stands in."""
+    seam, base_m)``, ``seam`` the output pixels the band measures when it measures and
+    ``base_m`` the ground the rocks stand on. Where that lattice knows nothing the field's
+    fold stands in."""
     smooth, linear = grid.smooth, grid.linear
-    direct_z, direct_coverage, lattice, subsamples = direct
-    ground_dm, ground_missing = sample_surface(lattice, smooth, linear, hf.NODATA)
+    ground_dm, ground_missing = sample_surface(direct.ground, smooth, linear, hf.NODATA)
     base_m = np.where(ground_missing, z_m, ground_dm / np.float32(hf.DM_PER_M))
     cut = (grid.rows.cut, grid.cols.cut)
-    rock = (np.asarray(direct_z[cut], np.float32), np.asarray(direct_coverage[cut]))
+    rock = (np.asarray(direct.z[cut], np.float32), np.asarray(direct.coverage[cut]))
     wet_plane = None if sources.water is None else sources.water.wet
-    kept = _rock_kept(rock[0], missing, wet_plane, sources.sea, linear)
-    z_m, missing, weight, switched = blend_regimes(base_m, missing, rock, linear, subsamples, kept)
+    kept = rock_kept(rock[0], missing, linear, wet_plane, sources.sea)
+    z_m, missing, weight, switched = blend_regimes(
+        base_m, missing, rock, linear, direct.subsamples, kept
+    )
     rock_lift = np.clip((z_m - base_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     rock_seen = np.where(ground_missing, weight, np.minimum(weight, rock_lift))
     seam = None
@@ -464,7 +494,7 @@ def _direct_regime(
         out = (grid.rows.kept, grid.cols.kept)
         delta = (rock[0] / 100.0 - base_m)[out]
         seam = SeamPlanes(z_m[out], switched[out], weight[out], delta)
-    return z_m, missing, weight, rock_seen, seam
+    return z_m, missing, weight, rock_seen, seam, base_m
 
 
 def _regimes_owed(
@@ -521,27 +551,3 @@ def _sample_water_surface(
         land = 1.0 - sample_plain(sea.void.cover, linear) / np.float32(255.0)
         wet = np.clip(wet / np.maximum(land, np.float32(1e-3)), 0.0, 1.0)
     return water_m, level_m, wet, np.clip(measured, 0.0, 1.0)
-
-
-def _rock_kept(
-    z_rock_cm: F32Grid,
-    missing: BoolMask,
-    wet_plane: U8Grid | None,
-    sea: OpenSea | None,
-    linear: GridTaps,
-) -> F32Grid | None:
-    """The share of its coverage a rock keeps under the void; None without the open sea.
-
-    Out of the sea a rock keeps all of it; under the sea's level none on no data, else what
-    the void's cover leaves of the wet share. The open sea always comes with its wet plane.
-    """
-    if sea is None:
-        return None
-    above = np.clip(z_rock_cm / np.float32(100.0) - np.float32(OCEAN_LEVEL_M) + 0.5, 0.0, 1.0)
-    if reads_nothing(sea.void.cover, linear):
-        under = np.where(missing, np.float32(1.0), np.float32(0.0))
-    else:
-        assert wet_plane is not None
-        cover = np.clip(sample_plain(sea.void.cover, linear) / np.float32(255.0), 0.0, 1.0)
-        under = np.where(missing, np.float32(1.0), cover * sample_coverage(wet_plane, linear))
-    return (1.0 - (1.0 - above) * under).astype(np.float32)

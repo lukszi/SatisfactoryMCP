@@ -17,7 +17,7 @@ from numpy.typing import NDArray
 from mapgen.jit import helper, kernel
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid
 
-__all__ = ["Offsets", "march", "sky_view"]
+__all__ = ["Offsets", "bilinear_row", "march", "raise_nan", "raise_row", "sky_view"]
 
 _ZERO = np.float32(0.0)
 _ONE = np.float32(1.0)
@@ -30,14 +30,14 @@ _Row: TypeAlias = NDArray[np.floating]
 
 
 @helper
-def _raise(top: np.floating, rise: np.floating) -> np.floating:
+def raise_nan(top: np.floating, rise: np.floating) -> np.floating:
     """``np.maximum(top, rise)``: NaN when either is."""
     larger = rise if not rise <= top else top
     return top if np.isnan(top) else larger
 
 
 @helper
-def _bilinear_row(
+def bilinear_row(
     out: _Row, z: _Row, r: int, c: int,
     fy: np.float32, fx: np.float32, gy: np.float32, gx: np.float32,
 ) -> None:  # fmt: skip
@@ -50,53 +50,34 @@ def _bilinear_row(
 
 
 @helper
-def _raise_row(top: _Row, near: _Row, sample: _Row, k: np.float32) -> None:
+def raise_row(top: _Row, near: _Row, sample: _Row, k: np.float32) -> None:
     """One step of ``horizon._march`` along a row: ``top = max(top, (sample - near) * k)``."""
     for j in range(top.shape[0]):
-        top[j] = _raise(top[j], (sample[j] - near[j]) * k)
-
-
-@helper
-def _slab_row(top: _Row, near: _Row, lo: _Row, hi: _Row, k: np.float32) -> None:
-    """``horizon._raise_by_slab`` along a row."""
-    for j in range(top.shape[0]):
-        low, high = (lo[j] - near[j]) * k, (hi[j] - near[j]) * k
-        if np.isfinite(low) and low <= top[j]:
-            top[j] = _raise(top[j], high)
+        top[j] = raise_nan(top[j], (sample[j] - near[j]) * k)
 
 
 @kernel
 def march(
     solid: F32Grid, z: F32Grid, halo: int, bilinear: BoolMask, offsets: Offsets,
-    scale: F32Grid, best: F32Grid, lo: _Row, hi: _Row, slabbed: bool,
+    scale: F32Grid, best: F32Grid,
 ) -> None:  # fmt: skip
     """``horizon._march`` over every row of ``best``, which is raised in place.
 
-    ``z`` holds the receivers, ``solid`` what blocks; ``lo`` and ``hi`` are read only when
-    ``slabbed``, at their own dtype as numpy reads them.
+    ``z`` holds the receivers, ``solid`` what blocks.
     """
     iy, ix, fy, fx, gy, gx = offsets
     rows, cols = best.shape
     sample = np.empty(cols, np.float32)
-    low, high = np.empty(cols, lo.dtype), np.empty(cols, hi.dtype)
     for i in range(rows):
         r = halo + i
         near, top = z[r, halo : halo + cols], best[i]
         for s in range(scale.shape[0]):
             sr, sc = r + iy[s], halo + ix[s]
             if bilinear[s]:
-                _bilinear_row(sample, solid, sr, sc, fy[s], fx[s], gy[s], gx[s])
-                _raise_row(top, near, sample, scale[s])
+                bilinear_row(sample, solid, sr, sc, fy[s], fx[s], gy[s], gx[s])
+                raise_row(top, near, sample, scale[s])
             else:
-                _raise_row(top, near, solid[sr, sc : sc + cols], scale[s])
-            if not slabbed:
-                continue
-            if bilinear[s]:
-                _bilinear_row(low, lo, sr, sc, fy[s], fx[s], gy[s], gx[s])
-                _bilinear_row(high, hi, sr, sc, fy[s], fx[s], gy[s], gx[s])
-                _slab_row(top, near, low, high, scale[s])
-            else:
-                _slab_row(top, near, lo[sr, sc : sc + cols], hi[sr, sc : sc + cols], scale[s])
+                raise_row(top, near, solid[sr, sc : sc + cols], scale[s])
 
 
 @kernel
@@ -115,9 +96,9 @@ def sky_view(z: F32Grid, halo: int, offsets: Offsets, scale: F32Grid, out: F32Gr
         for d in range(dirs):
             best[:] = _ZERO
             for s in range(steps):
-                _bilinear_row(sample, z, r + iy[d, s], halo + ix[d, s],
+                bilinear_row(sample, z, r + iy[d, s], halo + ix[d, s],
                               fy[d, s], fx[d, s], gy[d, s], gx[d, s])  # fmt: skip
-                _raise_row(best, near, sample, scale[s])
+                raise_row(best, near, sample, scale[s])
             for j in range(cols):
                 acc[j] += best[j] / np.sqrt(_ONE + best[j] * best[j])
         for j in range(cols):

@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.lighting.horizon import SKY_RADIUS_M, Slabs, horizon_reach_px
+from mapgen.lighting.horizon import SKY_RADIUS_M, horizon_reach_px
 from mapgen.lighting.light_tiles import level_strips
 from mapgen.lighting.model import light_axis
 from mapgen.lighting.stage import (
@@ -65,7 +65,6 @@ def bake_light(
     out_dir: Path,
     workers: int | None,
     occluder: Occluder | None = None,
-    slabs: Slabs | None = None,
     progress: bool = True,
     occluder_layers: Sequence[str] = (),
     key: JsonObject | None = None,
@@ -74,7 +73,7 @@ def bake_light(
 
     ``LightBake`` with every block row at once: its arguments are this function's.
     """
-    bake = LightBake(surface, out_dir, workers, occluder, slabs, occluder_layers)
+    bake = LightBake(surface, out_dir, workers, occluder, occluder_layers)
     try:
         return bake.finish(key, progress)
     finally:
@@ -89,9 +88,8 @@ class LightBake:
     ``workers`` None is ``light_workers()``, counted when the first row is queued. ``occluder``
     is an optional crown-top raster on the sheet's grid, metres, NaN where empty, or ``(top,
     cover)`` with the covered share as a byte; it casts into the crown horizons that
-    ``occluder_layers`` read. ``slabs`` is an optional ``(ground, min_z, max_z)`` for geometry
-    with open space beneath it (arches): the surface without it, and its underside and top.
-    Both only cast. An occluder made by ``occluder_planes`` in the surface's directory is
+    ``occluder_layers`` read, and only casts. The arches and overhangs come with the surface,
+    in its ``SlabStore``. An occluder made by ``occluder_planes`` in the surface's directory is
     read where it is, not copied.
     """
 
@@ -101,18 +99,15 @@ class LightBake:
         out_dir: Path,
         workers: int | None = None,
         occluder: Occluder | None = None,
-        slabs: Slabs | None = None,
         occluder_layers: Sequence[str] = (),
     ) -> None:
         self.surface, self.requested = surface, workers
-        self.occluder, self.slabs, self.occluder_layers = occluder, slabs, occluder_layers
+        self.occluder, self.occluder_layers = occluder, occluder_layers
         size, work, spacing_m = surface.size, surface.directory, surface.spacing_m
         allocate_work_arrays(work, size)
         crown_top, crown_cover = occluder if isinstance(occluder, tuple) else (occluder, None)
         save_work_array(work, "occluder", crown_top)
         save_work_array(work, "occluder_cover", crown_cover, np.uint8)
-        for name, raster in zip(("ground", "lo", "hi"), slabs or (), strict=False):
-            save_work_array(work, f"slab_{name}", raster)
         self.top = int(np.log2(size // PYRAMID_TILE_PX))
         self.root = out_dir / LIGHT_DIR_NAME
         self.staging = self.root / (TILES_DIR_NAME + STAGING_SUFFIX)
@@ -184,8 +179,7 @@ class LightBake:
         place; returns its sidecar's ``_meta``. ``key`` is the bake's ``light_key``, made
         here when None; ``on_row`` runs as each block row is in, in order."""
         if key is None:
-            key = light_key(self.surface, cast_digests(self.occluder, self.slabs),
-                            self.occluder_layers)  # fmt: skip
+            key = light_key(self.surface, cast_digests(self.occluder), self.occluder_layers)
         with self._lock:
             self.progress = progress
             if progress and self.done:
@@ -241,7 +235,7 @@ class LightBake:
                 "seconds_native": round(native_s, 1),
                 "seconds": round(time.time() - self.started, 1),
                 "occluder": occluder is not None,
-                "slabs": self.slabs is not None,
+                "slab_tiles": len(list(self.surface.slabs.directory.glob("*.npy"))),
             },
         }
         (root / "meta.json").write_text(json.dumps({"_meta": meta}, indent=1), encoding="utf-8")
@@ -253,4 +247,4 @@ class LightBake:
         if self.pool is not None:
             self.pool.shutdown(wait=True, cancel_futures=True)
             self.pool = None
-        self.occluder = self.slabs = None
+        self.occluder = None

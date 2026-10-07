@@ -368,7 +368,7 @@ def _regime_sources(
 def _band_planes(draw: DrawPass) -> list[HeldPlane]:
     """The band stores among the rasters the pass reads a band at a time."""
     ground = draw.ground
-    planes: list[object] = [*(ground.direct or ())[:2], *(ground.overlay or ())[:2]]
+    planes: list[object] = [*(ground.direct or ()), *(ground.overlay or ())]
     planes += [*(ground.meshes or ())]
     for job in draw.jobs:
         if job.painted is not None:
