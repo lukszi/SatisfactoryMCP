@@ -551,8 +551,8 @@ carries the merged palette's digest, so a different install's derivation is a di
 
 **The file and the run.** `targets.derived.json` holds each key's colour with its rule, light,
 light shares, albedo, assets and sample count, and a stamp: the paint store's digest, the
-digest of the area map on the 4 m grid, the calibration block's digest without
-`derived_keys`, and the model version. A render reads the file while its stamp holds and
+digest of the area map on the 4 m grid, the calibration block's digest without its `about`
+and `derived_keys`, and the model version. A render reads the file while its stamp holds and
 derives in its own run otherwise, about 6 s; a store from before generator 4 keeps every
 screenshot target and the sidecar says why (`sources.paint.derived_targets`). The command
 reads the install and writes nothing but the file; `--check` prints the table and writes
