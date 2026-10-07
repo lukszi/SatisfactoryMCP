@@ -39,7 +39,9 @@ def test_a_neutral_stays_neutral_and_a_ramp_stays_in_order():
 
 def test_the_default_sky_is_pinned():
     np.testing.assert_allclose(
-        atmosphere.sun_transmittance(59.5), [0.931192810375, 0.848208311258, 0.730035441295], rtol=1e-9
+        atmosphere.sun_transmittance(59.5),
+        [0.931192810375, 0.848208311258, 0.730035441295],
+        rtol=1e-9,
     )
     np.testing.assert_allclose(
         atmosphere.sky_irradiance(59.5), [0.024073644309, 0.044318029284, 0.081888076753], rtol=1e-9

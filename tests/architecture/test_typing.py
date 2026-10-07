@@ -69,7 +69,7 @@ CAST_BUDGETS: dict[str, int] = {
     "src/satisfactory_mcp/interfaces": 16,
     "src/satisfactory_mcp/presenters": 0,
     "tools": 2,
-    "tools/mapgen/src/mapgen": 28,
+    "tools/mapgen/src/mapgen": 27,
 }
 
 #: The ruff rule that bans ``typing.Any``, and the per-file-ignore that exempts the tests.
