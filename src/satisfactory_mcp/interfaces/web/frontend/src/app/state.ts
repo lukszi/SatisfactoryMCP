@@ -79,16 +79,16 @@ export interface PageState {
   saveMovedOn: boolean;
 }
 
-var FRAGMENT_KEYS = ["world", "save", "floor", "mode", "pickups", "dash", "show", "z", "c"];
-var OPEN_GRACE_MS = 2000;
+const FRAGMENT_KEYS = ["world", "save", "floor", "mode", "pickups", "dash", "show", "z", "c"];
+const OPEN_GRACE_MS = 2000;
 
 /* The selection lives in the URL fragment so a reload, a bookmark or a pasted link lands on the
  * same world, save, layers and viewport. Read before `state` is built, because the boot values
  * below are half of it. */
-export var BOOT_GARBLED: string[] = [];
-export var BOOT: Record<string, string> = parseHash(location.hash, BOOT_GARBLED);
+export const BOOT_GARBLED: string[] = [];
+export const BOOT: Record<string, string> = parseHash(location.hash, BOOT_GARBLED);
 
-export var state: PageState = {
+export const state: PageState = {
   world: "",
   save: "",
   worlds: [],

@@ -19,12 +19,12 @@ import { WORDS } from "../../kit/words";
 import type { NamedResponse, TrackBuiltAt, TrackBuiltCandidate } from "../../api/shapes";
 import type { BboxM } from "../../map/geometry";
 
-var SCOPE_WORLD = "/world";
-var SCOPE_NONE = "/none";
-var CLUSTER_PREFIX = "cluster:";
+const SCOPE_WORLD = "/world";
+const SCOPE_NONE = "/none";
+const CLUSTER_PREFIX = "cluster:";
 
-var naming = { key: "", proposal: -1, name: "", problem: "", busy: false };
-var picking = { key: "", open: false };
+let naming = { key: "", proposal: -1, name: "", problem: "", busy: false };
+let picking = { key: "", open: false };
 
 interface Figures {
   built: number | null;

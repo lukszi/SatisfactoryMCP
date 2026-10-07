@@ -11,13 +11,13 @@ import { WORDS } from "../../../kit/words";
 
 import type { TrackResponse } from "../../../api/shapes";
 
-var HEADROOM_MAX = 1000000;
-var HEADROOM_WHAT: Record<string, string> = {
+const HEADROOM_MAX = 1000000;
+const HEADROOM_WHAT: Record<string, string> = {
   measured: "what the grid has free now",
   nameplate: "generation minus every built machine running at once",
 };
 
-var headroomProblem = { key: "", text: "", raw: "" };
+let headroomProblem = { key: "", text: "", raw: "" };
 
 function setHeadroom(value: number | null): void {
   const plan = bench.plan;

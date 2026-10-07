@@ -14,7 +14,7 @@ import type { Column } from "../../kit/dashkit";
 import type { DeltaRow, PlanOpBody, SwapOption } from "../../api/shapes";
 import type { Op } from "./state";
 
-var NONE = "–";
+const NONE = "–";
 
 /** The [recipes] button that opens the drawer for `item`; `where` tells its openers apart. */
 export function recipesButton(item: string, name: string, where: string): HTMLButtonElement {

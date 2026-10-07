@@ -15,10 +15,10 @@ export interface MapsEvent {
   registry_version: number;
 }
 
-export var mapRegistry: { body: MapsResponse | null; failed: string } = { body: null, failed: "" };
+export const mapRegistry: { body: MapsResponse | null; failed: string } = { body: null, failed: "" };
 
 /* Told on every change; `listed` is true when the TYPES changed, false for job progress. */
-var registryListeners = createListeners<[boolean]>();
+const registryListeners = createListeners<[boolean]>();
 
 export function onMapRegistry(listener: (listed: boolean) => void): void {
   registryListeners.on(listener);
@@ -28,7 +28,7 @@ function notifyListeners(listed: boolean): void {
   registryListeners.emit(listed);
 }
 
-var inflight: Promise<MapsResponse | null> | null = null;
+let inflight: Promise<MapsResponse | null> | null = null;
 
 export function fetchMapRegistry(): Promise<MapsResponse | null> {
   if (inflight) return inflight;

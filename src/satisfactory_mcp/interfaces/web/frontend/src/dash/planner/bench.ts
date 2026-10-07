@@ -14,13 +14,13 @@ import { counted, OBJECTIVES } from "../../kit/words";
 import type { FocusSelection } from "../../api/shapes";
 import type { Op } from "./state";
 
-var CLOCKS = [1, 1.5, 2, 2.5];
-var BENCH_FIELDS = ["objective", "export_minimums", "target_item", "exports", "sources", "required", "banned", "water_extractors", "sloops", "extractor_clocks", "payback_hours", "overclock_last", "power_price", "notes"];
-var POWER_ITEM_PATTERN = /^(mw|power|__mw__)$/i;
+const CLOCKS = [1, 1.5, 2, 2.5];
+const BENCH_FIELDS = ["objective", "export_minimums", "target_item", "exports", "sources", "required", "banned", "water_extractors", "sloops", "extractor_clocks", "payback_hours", "overclock_last", "power_price", "notes"];
+const POWER_ITEM_PATTERN = /^(mw|power|__mw__)$/i;
 
-var fieldErrors: Record<string, string> = {};
-var rejectedRaw: Record<string, string> = {};
-var renderedPlanKey = "";
+let fieldErrors: Record<string, string> = {};
+let rejectedRaw: Record<string, string> = {};
+let renderedPlanKey = "";
 
 /** Marks a control's value as refused; `raw` is kept to show again after the redraw. */
 function markInvalid(ctl: string, text: string, raw?: string): void {

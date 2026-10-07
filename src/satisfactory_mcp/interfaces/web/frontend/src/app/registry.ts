@@ -74,7 +74,7 @@ export interface Fetcher<T extends ApiError> {
  * pointing /api/nodes at the pickup drawer is a compile error. */
 export type Registered = Fetcher<ApiError>;
 
-var entries: Registered[] = [];
+const entries: Registered[] = [];
 
 export function registerFetch<T extends ApiError>(fetcher: Fetcher<T>): void {
   if (import.meta.env.DEV) {

@@ -10,7 +10,7 @@ import { ASK_STATE, counted } from "../kit/words";
 import type { Column, SortState } from "../kit/dashkit";
 import type { AskRow } from "../api/shapes";
 
-var order: SortState = { key: "ask", desc: true };
+const order: SortState = { key: "ask", desc: true };
 
 function stateChip(ask: AskRow): HTMLElement {
   if (ask.state === "answered" && ask.answered !== null) {

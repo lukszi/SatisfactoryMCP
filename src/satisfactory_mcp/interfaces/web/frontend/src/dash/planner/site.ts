@@ -39,11 +39,11 @@ import type { ApiUrl } from "../../api/client";
 import type { SitePreviewResponse } from "../../api/shapes";
 import type { Pad } from "./pad-drag";
 
-var PREVIEW = "/api/plan/site-preview";
-var GAP_MIN_MS = 120;
-var GAP_MAX_MS = 400;
-var GAP_PER_RTT = 3;
-var COARSE = window.matchMedia("(pointer: coarse)");
+const PREVIEW = "/api/plan/site-preview";
+const GAP_MIN_MS = 120;
+const GAP_MAX_MS = 400;
+const GAP_PER_RTT = 3;
+const COARSE = window.matchMedia("(pointer: coarse)");
 
 interface Confirm {
   pad: Pad;
@@ -56,7 +56,7 @@ interface Ghost {
   who: string;
 }
 
-var site = {
+const site = {
   key: "",
   rev: 0,
   stored: null as Pad | null,
@@ -73,18 +73,18 @@ var site = {
   framed: false,
 };
 
-var card = make("section", "dash-card site-card");
-var feedback = make("div", "site-lines");
-var inflight = false;
-var pending: Pad | null = null;
-var sentAt = 0;
-var rtt = 40;
-var pumpTimer = 0;
+const card = make("section", "dash-card site-card");
+const feedback = make("div", "site-lines");
+let inflight = false;
+let pending: Pad | null = null;
+let sentAt = 0;
+let rtt = 40;
+let pumpTimer = 0;
 
 useSnap(function () {
   return settingChoice("siteSnap") || "fine";
 });
-var snapWas = settingChoice("siteSnap");
+let snapWas = settingChoice("siteSnap");
 onSetting(function () {
   if (settingChoice("siteSnap") === snapWas) return;
   snapWas = settingChoice("siteSnap");
@@ -231,7 +231,7 @@ function commitPad(p: Pad, how: string): void {
     });
 }
 
-var dragHooks = {
+const dragHooks = {
   step: function (p: Pad) {
     site.pad = p;
     site.note = "";
@@ -341,7 +341,7 @@ function nodeDistanceLine(p: Pad, nodes: SitePreviewResponse["nodes"]): string {
 }
 
 // Only the first preview of a pad carries its nodes; later ones are measured against those.
-var firstNodes: SitePreviewResponse["nodes"] = null;
+let firstNodes: SitePreviewResponse["nodes"] = null;
 
 function terrainLines(t: NonNullable<SitePreviewResponse["terrain"]>): void {
   feedbackLine(feedback, "ground " + t.z_min_m + "…" + t.z_max_m + " m · slope " + (t.slope_mean_deg || 0) + "° (p90 " + (t.slope_p90_deg || 0) + "°) · rough " + (t.roughness_m || 0) + " m · " + (t.submerged_pct < 1 ? t.submerged_pct : Math.round(t.submerged_pct)) + " % under water");
@@ -424,7 +424,7 @@ function numberField(label: string, ctl: string, val: number, apply: (n: number)
   return wrap;
 }
 
-var fields = make("div", "site-fields");
+const fields = make("div", "site-fields");
 
 function applyTypedEdit(change: (p: Pad) => Pad): void {
   if (!site.pad || padGestureActive()) return;
@@ -510,7 +510,7 @@ function ghostLine(parent: HTMLElement): void {
   parent.appendChild(row);
 }
 
-var headline = make("span", "dash-sub");
+const headline = make("span", "dash-sub");
 
 function paintHead(): void {
   const p = site.pad;

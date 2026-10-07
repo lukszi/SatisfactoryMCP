@@ -11,11 +11,11 @@ import { bench } from "./state";
 
 import type { FocusResponse, FocusSelection } from "../../api/shapes";
 
-var FOCUS_DEBOUNCE_MS = 1000;
-var HEARTBEAT_MS = 15000;
+const FOCUS_DEBOUNCE_MS = 1000;
+const HEARTBEAT_MS = 15000;
 
-var focusTimer = 0;
-var viewSent: string | null = null;
+let focusTimer = 0;
+let viewSent: string | null = null;
 
 function mapSelectionForFocus(): FocusSelection | null {
   const picked = selected();

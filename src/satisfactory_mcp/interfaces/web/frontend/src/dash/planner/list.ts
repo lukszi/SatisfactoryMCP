@@ -20,13 +20,13 @@ import { OBJECTIVES } from "../../kit/words";
 import type { Column, SortState } from "../../kit/dashkit";
 import type { PlanIndexRow } from "../../api/shapes";
 
-var newPlan = {
+const newPlan = {
   creating: false,
   draft: { item: "", rate: "" },
   problem: "",
 };
 
-var order: SortState = { key: "plan", desc: false };
+const order: SortState = { key: "plan", desc: false };
 
 function builtCell(row: PlanIndexRow): HTMLElement | string {
   const built = planIndex.built[row.key];

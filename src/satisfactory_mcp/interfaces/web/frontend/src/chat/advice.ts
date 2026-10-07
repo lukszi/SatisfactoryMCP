@@ -18,23 +18,23 @@ import { ADVICE_WORD, WORDS } from "../kit/words";
 import type { ApiError, ApiPath, StatusError } from "../api/client";
 import type { AdviceResponse, AdviceRestored, AdviceRow, AdviceStaleResponse } from "../api/shapes";
 
-var VISIBLE = 5;
-var PER_KIND = 3;
-var SNOOZES: [number | null, string][] = [
+const VISIBLE = 5;
+const PER_KIND = 3;
+const SNOOZES: [number | null, string][] = [
   [0.5, "30 min"],
   [1, "1 h"],
   [4, "4 h"],
   [10, "10 h"],
   [null, "until it gets worse"],
 ];
-var PATH: ApiPath = "/api/advice";
-var HIDE: ApiPath = "/api/advice/hidden";
-var RESTORE: ApiPath = "/api/advice/hidden/{adv_id}";
-var SEEN_KEY = "advice.seen";
-var ASK_PREFIX = "ask:adv-";
-var TRACED = ["unconnected", "starved", "underclock", "box_empty"];
+const PATH: ApiPath = "/api/advice";
+const HIDE: ApiPath = "/api/advice/hidden";
+const RESTORE: ApiPath = "/api/advice/hidden/{adv_id}";
+const SEEN_KEY = "advice.seen";
+const ASK_PREFIX = "ask:adv-";
+const TRACED = ["unconnected", "starved", "underclock", "box_empty"];
 
-var view = {
+const view = {
   data: null as AdviceResponse | null,
   loadError: "",
   world: "",
@@ -46,7 +46,7 @@ var view = {
   focusMenuOnRender: false,
   writingKeys: {} as Record<string, boolean>,
 };
-var adviceListeners = createListeners();
+const adviceListeners = createListeners();
 
 export function onAdvice(listener: () => void): void {
   adviceListeners.on(listener);
@@ -140,7 +140,7 @@ registerFetch<AdviceResponse>({
 
 onSetting(refetchAdvice);
 
-var askBarWasOurs = false;
+let askBarWasOurs = false;
 onAsks(function () {
   const ours = askBarOwnerId().indexOf(ASK_PREFIX) === 0;
   if (ours || askBarWasOurs) notifyAdviceListeners();

@@ -48,7 +48,7 @@ function wireSearchToggle(): void {
 /* A failure leaves a statement, not a blank that reads as "everything is fine, there is just
  * nothing here". Tooltip included: the previous world's power figures hovering over the words
  * "could not be read" is worse than the blank, because it is an answer. */
-var UNREADABLE = "this world's save could not be read";
+const UNREADABLE = "this world's save could not be read";
 
 registerFetch<SummaryResponse>({
   wave: "live",

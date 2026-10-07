@@ -15,10 +15,10 @@ type Stop = Payback["stops"][number];
 type OverclockOption = NonNullable<SolveRow["overclock_option"]>;
 
 /* The recipes before a slider release, kept until the re-solve lands (F5a). */
-var switched = { key: "", from: -1, before: {} as Record<string, string>, rev: 0, text: "" };
+let switched = { key: "", from: -1, before: {} as Record<string, string>, rev: 0, text: "" };
 
-var PAYBACK_HOURS = [0, 1, 2, 5, 10, 20, 50, 100];
-var PAYBACK_LABELS = PAYBACK_HOURS.map(hours);
+const PAYBACK_HOURS = [0, 1, 2, 5, 10, 20, 50, 100];
+const PAYBACK_LABELS = PAYBACK_HOURS.map(hours);
 
 export function hours(h: number): string {
   return formatNumber(h, 1) + " h";

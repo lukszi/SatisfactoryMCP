@@ -33,7 +33,7 @@ export interface Amount extends Base {
 
 export type Setting = Switch | Choice | Amount;
 
-export var SETTINGS: Setting[] = [
+export const SETTINGS: Setting[] = [
   {
     kind: "switch",
     key: "spoilers",
@@ -193,17 +193,17 @@ export var SETTINGS: Setting[] = [
   },
 ];
 
-var STORE_KEY = "settings";
+const STORE_KEY = "settings";
 
-var NOTICE_KEY = "spoilers-off-notice";
+const NOTICE_KEY = "spoilers-off-notice";
 
-var values: Record<string, boolean | string | number> = {};
+let values: Record<string, boolean | string | number> = {};
 
-var settingListeners = createListeners();
+const settingListeners = createListeners();
 
 type Changes = Record<string, boolean | string | number | null>;
 
-var sharedWriter: ((changes: Changes) => void) | null = null;
+let sharedWriter: ((changes: Changes) => void) | null = null;
 
 function valid(s: Setting, value: unknown): boolean {
   if (s.kind === "switch") return typeof value === "boolean";

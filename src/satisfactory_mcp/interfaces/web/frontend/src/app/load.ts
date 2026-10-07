@@ -98,7 +98,7 @@ function markSwitching(on: boolean): void {
   else L.DomUtil.removeClass(container, "busy");
 }
 
-var reloadListeners = createListeners();
+const reloadListeners = createListeners();
 
 export function onReload(listener: () => void): void {
   reloadListeners.on(listener);

@@ -36,14 +36,14 @@ interface BudgetRow {
 }
 
 // The graph is drawn again only when its data, badges or flashes change; scroll and focus are kept.
-var graphCache = { data: null as SolveResponse | null, key: "", frame: null as HTMLElement | null, x: 0, y: 0, focus: "" };
-var flashed: Record<string, number> = {};
-var order: SortState = { key: "building", desc: false };
+const graphCache = { data: null as SolveResponse | null, key: "", frame: null as HTMLElement | null, x: 0, y: 0, focus: "" };
+const flashed: Record<string, number> = {};
+const order: SortState = { key: "building", desc: false };
 
-var POWER = "MW";
-var FLASH_MS = 4000;
-var WIDE = window.matchMedia("(min-width: 1280px)");
-var TABS: { id: ResultTab; label: string }[] = [
+const POWER = "MW";
+const FLASH_MS = 4000;
+const WIDE = window.matchMedia("(min-width: 1280px)");
+const TABS: { id: ResultTab; label: string }[] = [
   { id: "build list", label: "build list" },
   { id: "graph", label: "graph" },
   { id: "track", label: WORDS.track },

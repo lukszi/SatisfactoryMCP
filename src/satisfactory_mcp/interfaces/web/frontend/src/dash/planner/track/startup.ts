@@ -15,9 +15,9 @@ import { WORDS } from "../../../kit/words";
 import type { Column } from "../../../kit/dashkit";
 import type { Feeder, TrackResponse } from "../../../api/shapes";
 
-export var STARTUP_CTL = "track-startup";
+export const STARTUP_CTL = "track-startup";
 
-var FEEDERS_TITLE = "what the " + WORDS.stages + " stand on";
+const FEEDERS_TITLE = "what the " + WORDS.stages + " stand on";
 
 /** The last four digits of an instance name, enough to tell two same-named extractors apart. */
 function instanceSuffix(instance: string): string {

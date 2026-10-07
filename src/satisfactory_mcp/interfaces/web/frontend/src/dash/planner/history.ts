@@ -17,15 +17,15 @@ import { counted, objectiveText, WORDS } from "../../kit/words";
 import type { Column } from "../../kit/dashkit";
 import type { ActivityResponse, ActivityRow, FocusSelection, VersionRow } from "../../api/shapes";
 
-var ACTIVITY_LIMIT = 50;
+const ACTIVITY_LIMIT = 50;
 
-var activity = {
+const activity = {
   world: "",
   data: null as ActivityResponse | null,
   error: "",
   filter: "all",
 };
-var activitySeq = 0;
+let activitySeq = 0;
 
 function planDash(key: string, rev?: number): string {
   return "planner/" + key + (rev ? "/v" + rev : "");

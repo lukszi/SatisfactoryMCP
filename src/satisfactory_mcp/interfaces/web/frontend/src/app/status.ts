@@ -24,7 +24,7 @@ import { counted, WORDS } from "../kit/words";
 
 import type { Selection } from "./selection";
 
-var KIND_WORD = {
+const KIND_WORD = {
   factory: WORDS.factory,
   circuit: "circuit",
   machine: "machine",

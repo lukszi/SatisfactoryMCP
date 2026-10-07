@@ -29,34 +29,34 @@ export interface Spot {
   y_m: number;
 }
 
-var GRID_M = 8;
-var YAW_STEP = 15;
-var GRID_YAW_STEP = 90;
-var NUDGE_M = 8;
-var FINE_M = 1;
-var BURST_MS = 600;
-var TURN_REACH = 1.5;
-var PANE = "sitedrag";
+const GRID_M = 8;
+const YAW_STEP = 15;
+const GRID_YAW_STEP = 90;
+const NUDGE_M = 8;
+const FINE_M = 1;
+const BURST_MS = 600;
+const TURN_REACH = 1.5;
+const PANE = "sitedrag";
 
-var pane = map.createPane(PANE);
+const pane = map.createPane(PANE);
 pane.style.zIndex = "640";
 map.getContainer().style.setProperty("--site-pad", PLAN_COLOUR);
 
-var layer = L.layerGroup().addTo(map);
-var ghostLayer = L.layerGroup().addTo(map);
-var outline: L.Polygon | null = null;
-var mover: L.Marker | null = null;
-var turner: L.Marker | null = null;
-var lines: L.Polyline[] = [];
-var spots: Spot[] = [];
-var hooks: Hooks | null = null;
-var pad: Pad | null = null;
-var padBeforeGesture: Pad | null = null;
-var gesture: Gesture = "";
-var aborted = false;
-var burstTimer = 0;
-var cross: HTMLElement | null = null;
-var snapMode = function (): string {
+const layer = L.layerGroup().addTo(map);
+const ghostLayer = L.layerGroup().addTo(map);
+let outline: L.Polygon | null = null;
+let mover: L.Marker | null = null;
+let turner: L.Marker | null = null;
+let lines: L.Polyline[] = [];
+let spots: Spot[] = [];
+let hooks: Hooks | null = null;
+let pad: Pad | null = null;
+let padBeforeGesture: Pad | null = null;
+let gesture: Gesture = "";
+let aborted = false;
+let burstTimer = 0;
+let cross: HTMLElement | null = null;
+let snapMode = function (): string {
   return "fine";
 };
 

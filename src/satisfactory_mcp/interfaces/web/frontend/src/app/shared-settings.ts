@@ -9,10 +9,10 @@ import { fail, friendlyError, notify } from "../kit/toast";
 import type { ApiPath, StatusError } from "../api/client";
 import type { SettingsResponse, SettingsStaleResponse } from "../api/shapes";
 
-var SETTINGS_PATH: ApiPath = "/api/settings";
-var PUSHED_KEY = "shared-settings-pushed";
+const SETTINGS_PATH: ApiPath = "/api/settings";
+const PUSHED_KEY = "shared-settings-pushed";
 
-var version: number | null = null;
+let version: number | null = null;
 
 function adoptServerSettings(body: SettingsResponse): void {
   if (version !== null && body.version < version) return;
