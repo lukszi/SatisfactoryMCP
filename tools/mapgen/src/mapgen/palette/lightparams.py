@@ -8,9 +8,7 @@ their shadows (``crowns``). docs/spatial-and-map.md section 29.
 
 from __future__ import annotations
 
-import math
-
-from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, SUN_ALTITUDE_DEG
+from mapgen.lighting.hillshade import FLAT_SHADE, SHADE_FLOOR
 from mapgen.palette.styles import PAINTED_PALETTE
 from satisfactory_mcp.core.jsontypes import JsonObject
 
@@ -33,10 +31,9 @@ def shader_light(layer: str) -> JsonObject:
             "tone_white": float(palette["tone"]["white"]),
             "crowns": True,
         }
-    flat = SHADE_FLOOR + SHADE_RANGE * math.sin(math.radians(SUN_ALTITUDE_DEG))
     return {
         "space": "srgb",
-        "ambient": round(SHADE_FLOOR / flat, 6),
+        "ambient": round(SHADE_FLOOR / FLAT_SHADE, 6),
         "sky": [1.0, 1.0, 1.0],
         "sun": [1.0, 1.0, 1.0],
         "tone_knee": 1.0,
