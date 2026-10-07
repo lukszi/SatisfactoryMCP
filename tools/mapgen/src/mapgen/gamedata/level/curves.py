@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import NamedTuple
 
-from satisfactory_mcp.core.gameassets.packages import PropertyTag, property_tags
+from satisfactory_mcp.core.gameassets.packages import PropertyTag, tagged_properties
 
 __all__ = [
     "CurveKey",
@@ -66,7 +66,7 @@ def tag_floats(tag: PropertyTag) -> tuple[float, ...] | None:
 def _rich_curve(payload: bytes, names: list[str]) -> RichCurve:
     keys: list[CurveKey] = []
     default: float | None = None
-    for tag in property_tags(payload, names, 0)[0]:
+    for tag in tagged_properties(payload, names, 0)[0]:
         if tag.name == "Keys" and len(tag.payload) >= 4:
             count = struct.unpack_from("<i", tag.payload)[0]
             size = (len(tag.payload) - 4) // count if count > 0 else 0
@@ -82,7 +82,7 @@ def _rich_curve(payload: bytes, names: list[str]) -> RichCurve:
 def runtime_curves(payload: bytes, names: list[str]) -> list[RichCurve]:
     """A ``RuntimeFloatCurve`` as one curve, a ``RuntimeCurveLinearColor`` as four (RGBA)."""
     curves: dict[int, RichCurve] = {}
-    for tag in property_tags(payload, names, 0)[0]:
+    for tag in tagged_properties(payload, names, 0)[0]:
         if tag.name in ("ColorCurves", "EditorCurveData"):
             curves[tag.array_index] = _rich_curve(tag.payload, names)
     empty = RichCurve((), None)

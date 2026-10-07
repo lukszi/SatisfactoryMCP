@@ -17,9 +17,9 @@ from satisfactory_mcp.core.gameassets.packages import (
     PackageView,
     PropertyTag,
     class_name_of,
-    property_tags,
     quat_rotate,
     root_component,
+    tagged_properties,
     world_transform,
 )
 
@@ -111,7 +111,7 @@ def _noon(tag: PropertyTag, names: list[str], channels: int) -> list[float] | No
 
 
 def _export_tags(view: PackageView, slot: int) -> list[PropertyTag]:
-    return property_tags(view.pkg.body(view.exports[slot]), view.pkg.names, 1)[0]
+    return tagged_properties(view.pkg.body(view.exports[slot]), view.pkg.names, 1)[0]
 
 
 def _sky(view: PackageView, slot: int, found: _Found) -> None:
@@ -135,7 +135,7 @@ def _exposure(view: PackageView, slot: int, found: _Found) -> None:
     for tag in _export_tags(view, slot):
         if tag.name != "Settings":
             continue
-        for inner in property_tags(tag.payload, view.pkg.names, 0)[0]:
+        for inner in tagged_properties(tag.payload, view.pkg.names, 0)[0]:
             value = tag_float(inner)
             if inner.name in AUTO_EXPOSURE and value is not None:
                 found.exposure[AUTO_EXPOSURE[inner.name]] = value
@@ -228,11 +228,11 @@ def _convex_vertices(view: PackageView, body: int) -> list[tuple[float, float, f
     names = view.pkg.names
     for agg in (t for t in _export_tags(view, body) if t.name == "AggGeom"):
         for elems in (
-            t for t in property_tags(agg.payload, names, 0)[0] if t.name == "ConvexElems"
+            t for t in tagged_properties(agg.payload, names, 0)[0] if t.name == "ConvexElems"
         ):
             pos = 4
             for _ in range(struct.unpack_from("<i", elems.payload)[0]):
-                element, pos = property_tags(elems.payload, names, pos)
+                element, pos = tagged_properties(elems.payload, names, pos)
                 for data in (t.payload for t in element if t.name == "VertexData"):
                     count = struct.unpack_from("<i", data)[0]
                     if len(data) >= 4 + 24 * count:

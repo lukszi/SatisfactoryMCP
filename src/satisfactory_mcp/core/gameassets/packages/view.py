@@ -100,7 +100,7 @@ class PackageView:
                 continue
             props[tag.name] = tag.payload
             kinds[tag.name] = tag.kind
-            bools[tag.name] = tag.true
+            bools[tag.name] = bool(tag.flags)
         self._props[slot] = props
         self._kinds[slot] = kinds
         self._bools[slot] = bools
@@ -194,7 +194,7 @@ class PackageView:
             elif kind in ("FloatProperty", "DoubleProperty"):
                 out[name] = read_float(raw)
             elif kind == "BoolProperty":
-                out[name] = tag.true
+                out[name] = bool(tag.flags)
             else:
                 out[name] = {"_type": kind, "_raw": raw[:32].hex()}
         return out

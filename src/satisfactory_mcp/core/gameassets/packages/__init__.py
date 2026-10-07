@@ -18,6 +18,7 @@ from .properties import (
     read_int32,
     read_triple,
     read_vector_array,
+    tagged_properties,
 )
 from .transforms import (
     Quat,
@@ -71,5 +72,6 @@ __all__ = [
     "read_vector_array",
     "root_component",
     "rotator_to_quat",
+    "tagged_properties",
     "world_transform",
 ]

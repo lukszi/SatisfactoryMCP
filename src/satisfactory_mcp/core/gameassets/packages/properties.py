@@ -15,6 +15,7 @@ __all__ = [
     "read_triple",
     "read_vector_array",
     "relative_transform",
+    "tagged_properties",
 ]
 
 #: An ``FVector`` or ``FRotator``: three components, whichever width they were cooked at.
@@ -61,14 +62,50 @@ def _skip_property_type(body: bytes, names: list[str], pos: int) -> tuple[int, s
 
 
 def property_tags(body: bytes, names: list[str], pos: int = 1) -> tuple[list[PropertyTag], int]:
+    """Walk a tagged-property stream the way the generators' outputs were made: each tag's
+    payload, with the byte after ``Size`` kept as its flags; and the offset after it.
+
+    This walk reads no array index, GUID or extension block, and stops only at a ``None``
+    that is the package's name 0. ``tagged_properties`` reads both; switching a generator
+    over moves its output (docs/backlog.md, "One tagged-property walk"). An export body
+    starts one byte in and a nested struct payload starts at 0, which is what *pos* is for;
+    the end offset comes back so a ``TArray<FStruct>`` can walk element by element. A
+    malformed run stops the walk rather than raising -- a truncated tail costs one actor's
+    transform, a raise costs the whole package.
+    """
+    out: list[PropertyTag] = []
+    limit = len(body)
+    while pos + 8 <= limit:
+        name_index, name_number = struct.unpack_from("<II", body, pos)
+        if name_index == 0 and name_number == 0:  # the None that terminates the stream
+            pos += 8
+            break
+        slot = name_index & 0x3FFFFFFF
+        name = names[slot] if (name_index >> 30) == 0 and slot < len(names) else None
+        pos += 8
+        try:
+            pos, kind = _skip_property_type(body, names, pos)
+        except (struct.error, IndexError, RecursionError):
+            break
+        if pos + 5 > limit:
+            break
+        size = struct.unpack_from("<I", body, pos)[0]
+        value_byte = body[pos + 4]
+        pos += 5  # uint32 size, then the flag byte
+        if size > limit - pos + 1:
+            break
+        out.append(PropertyTag(name, kind, body[pos : pos + size], value_byte, 0))
+        pos += size
+    return out, pos
+
+
+def tagged_properties(body: bytes, names: list[str], pos: int = 1) -> tuple[list[PropertyTag], int]:
     """Walk a tagged-property stream to its ``None``; return its tags and the offset after it.
 
     After ``Size`` comes the flag byte, which says whether an array index, a GUID or an
-    extension block follows before the payload, and holds a ``BoolProperty``'s value. An
-    export body starts one byte in and a nested struct payload starts at 0, which is what *pos*
-    is for; the end offset comes back so a ``TArray<FStruct>`` can walk element by element. A
-    malformed run stops the walk rather than raising -- a truncated tail costs one actor's
-    transform, a raise costs the whole package.
+    extension block follows before the payload, and holds a ``BoolProperty``'s value. The
+    stream ends at a ``None`` name, wherever the package keeps it. *pos* and a malformed run
+    are as ``property_tags`` has them.
     """
     out: list[PropertyTag] = []
     limit = len(body)

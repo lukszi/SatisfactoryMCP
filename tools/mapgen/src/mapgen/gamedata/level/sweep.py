@@ -26,6 +26,7 @@ from satisfactory_mcp.core.gameassets.packages import (
     quat_rotate,
     read_int32,
     root_component,
+    tagged_properties,
     world_transform,
 )
 
@@ -140,7 +141,7 @@ def instances_to_world(
 def tag_payloads(body: bytes, names: list[str], pos: int = 1) -> tuple[dict[str, bytes], int]:
     """Top-level ``{name: payload}`` of a tag stream, and the offset after it. The elements of
     a fixed-size array past the first are left out."""
-    tags, end = property_tags(body, names, pos)
+    tags, end = tagged_properties(body, names, pos)
     return {tag.name: tag.payload for tag in tags if tag.name and tag.array_index == 0}, end
 
 
