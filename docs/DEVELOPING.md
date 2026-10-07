@@ -360,14 +360,16 @@ are outside the type rules.
 ### Code-quality scan
 
 `sonar-project.properties` configures a SonarQube scan; Python coverage comes from
-`coverage.xml`, so the test run goes first. The server is a local SonarQube Community container
-with its own Postgres, kept outside the repository (for example a compose file in
-`%USERPROFILE%\.sonarqube-satisfactory\`) and published on host port 9100. From the repository
-root in PowerShell, with an analysis token in `%USERPROFILE%\.sonar-token`:
+`coverage.xml` and the frontend's from its `coverage/lcov.info`, so both test runs go first.
+The server is a local SonarQube Community container with its own Postgres, kept outside the
+repository (for example a compose file in `%USERPROFILE%\.sonarqube-satisfactory\`) and
+published on host port 9100. From the repository root in PowerShell, with an analysis token in
+`%USERPROFILE%\.sonar-token`:
 
 ```powershell
 uv sync --all-extras --all-packages
 uv run pytest -q --cov --cov-report=xml
+npm --prefix src/satisfactory_mcp/interfaces/web/frontend test
 if (-not $env:SONAR_HOST_URL) { $env:SONAR_HOST_URL = "http://host.docker.internal:9100" }
 $env:SONAR_TOKEN = (Get-Content "$env:USERPROFILE\.sonar-token" -Raw).Trim()
 $scm = @(); if (Test-Path .git -PathType Leaf) { $scm = @("-Dsonar.scm.disabled=true") }
