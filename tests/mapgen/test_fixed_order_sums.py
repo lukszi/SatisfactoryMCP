@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -24,10 +25,17 @@ from mapgen.colour import (
     through_matrix,
     tone,
 )
+from mapgen.gamedata.frame import RENDER_PX
 from mapgen.palette.painted import band as painted_band
+from mapgen.palette.painted.ground import ROCK_GRID_M
 from mapgen.palette.painted.surfaces import _mean3x3
 from mapgen.palette.relief import relief_colours
-from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.palette.styles import PAINTED_PALETTE, RELIEF_PALETTES
+from mapgen.render import compose
+from mapgen.render.drawpool import PIECE_COLS
+from mapgen.terrain.sample import frame_coordinates
+from satisfactory_mcp.core.gameassets.container import SHEET_PX
+from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.map_scenes import painted_ground_stub, relief_ground
 
 MAPGEN = Path(colour.__file__).parent
@@ -201,6 +209,66 @@ def test_the_relief_band_is_the_same_bytes_whole_and_in_pieces_on_threads():
 
 def _same(plane):
     return plane
+
+
+#: One short band of the full-size sheet, ``WIDE`` columns: ``(r0, r1, c0, c1)``.
+WIDE_WINDOW = (40 * compose.BAND_ROWS, 40 * compose.BAND_ROWS + 24, 8_000, 8_000 + WIDE)
+
+
+def _wide_field() -> SimpleNamespace:
+    """Hills round a lake on 1 m texels under ``WIDE_WINDOW``, and 16 m round it."""
+    x_cm, y_cm = frame_coordinates(RENDER_PX)
+    r0, r1, c0, c1 = WIDE_WINDOW
+    step_cm, margin_cm = 100.0, 1600.0
+    x0, y0 = x_cm[c0] - margin_cm, y_cm[r0] - margin_cm
+    rows = int((y_cm[r1 - 1] + margin_cm - y0) / step_cm) + 1
+    cols = int((x_cm[c1 - 1] + margin_cm - x0) / step_cm) + 1
+    y_m, x_m = np.mgrid[0:rows, 0:cols] * step_cm / 100.0
+    height_m = 3.0 * np.sin(y_m / 7.1) * np.cos(x_m / 5.3) + 0.6 * np.sin(x_m / 1.7)
+    height = np.round(height_m * hf.DM_PER_M).astype(np.int16)
+    level = np.full(height.shape, 5, np.int16)
+    grades = np.where(height < level, hf.WATER_MEASURED, hf.WATER_DRY).astype(np.uint8)
+    return SimpleNamespace(
+        height_dm=height, provenance_plane=np.ones(height.shape, np.uint8),
+        water_raster=lambda: level, water_quality_raster=lambda: grades,
+        x0_cm=x0, y0_cm=y0, spacing_cm=step_cm, width=cols, height=rows,
+    )  # fmt: skip
+
+
+def _wide_painted(field: SimpleNamespace) -> SimpleNamespace:
+    """The painted ground on the field's grid: bright albedo, so the tone shoulder works."""
+    ground = painted_ground_stub(1)
+    rng = np.random.default_rng(4)
+    shape = (field.height, field.width)
+    ground.albedo = [rng.uniform(0.3, 0.95, shape).astype(np.float32) for _ in range(3)]
+    ground.canopy = np.zeros(shape, np.float32)
+    rock = (field.height // ROCK_GRID_M + 1, field.width // ROCK_GRID_M + 1)
+    ground.rock = [np.full(rock, v, np.float32) for v in (0.3, 0.25, 0.2)]
+    ground.crowns = None
+    ground.water_optics = lambda _taps, _river=None: None
+    return ground
+
+
+def test_a_pass_wider_than_16384_columns_is_the_same_bytes_in_pieces_of_any_width():
+    """``--draw-columns`` past the width OpenBLAS changed its order at, and under it."""
+    field = _wide_field()
+    borrow = (np.broadcast_to(np.int8(0), (SHEET_PX, SHEET_PX)), np.zeros_like(field.height_dm))
+    layers = ("terrain", "satellite", "painted", "relief", "relief-dark")
+    reliefs = {layer: relief_ground(layer) for layer in RELIEF_PALETTES}
+    drawn = {}
+    for columns, threads in ((WIDE, 1), (16_385, 2), (PIECE_COLS, 4)):
+        sheets = compose.render_layers(
+            layers, field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, RENDER_PX, False,
+            window=WIDE_WINDOW, painted=_wide_painted(field), relief=reliefs, threads=threads,
+            columns=columns,
+        )  # fmt: skip
+        drawn[columns] = {layer: _bits(sheet) for layer, sheet in sheets.items()}
+        if columns == WIDE:
+            shown = luminance(srgb_to_linear(sheets["painted"].astype(np.float32)))
+            assert (shown > PAINTED_PALETTE["tone"]["knee"]).any(), "the shoulder is drawn"
+    whole = drawn.pop(WIDE)
+    for columns, sheets in drawn.items():
+        assert sheets == whole, columns
 
 
 def test_the_three_by_three_mean_is_scipy_s_where_its_running_sum_is_exact():
