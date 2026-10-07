@@ -52,6 +52,7 @@ __all__ = [
     "scoped_planes",
     "split_weight",
     "transfer_op",
+    "turned",
     "weighted_median",
     "with_derived",
 ]
@@ -136,9 +137,14 @@ def layer_transfer(
             d_l += w * np.float32(step)
             m += w[..., None, None] * (matrix - np.eye(2, dtype=np.float32))
         lab[..., 0] += d_l
-        lab[..., 1:] = np.einsum("...ij,...j->...i", m, lab[..., 1:])
+        lab[..., 1:] = turned(lab[..., 1], lab[..., 2], m)
         out[block] = np.clip(linear_from_oklab(lab), 0.0, 1.0)
     return out
+
+
+def turned(a: FloatGrid, b: FloatGrid, matrix: FloatGrid) -> FloatGrid:
+    """``(a, b)`` through a 2 x 2 matrix, or a plane of them, each row summed as written."""
+    return np.stack([a * matrix[..., i, 0] + b * matrix[..., i, 1] for i in range(2)], -1)
 
 
 def median_lab(colours: FloatGrid) -> FloatGrid:

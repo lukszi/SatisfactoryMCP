@@ -1,8 +1,8 @@
 """Colour spaces every unit shares: sRGB, linear light and OKLab, the tone curve, the flat light.
 
 Björn Ottosson's OKLab matrices. A leaf, so the lighting model and the painters read one copy.
-The luminance is summed elementwise in one fixed order, never by BLAS (docs/map/renders.md
-section 42).
+Every sum of a pixel's channels is elementwise in one fixed order, never BLAS
+(docs/map/renders.md section 42).
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ __all__ = [
     "sky_sun_light",
     "srgb_to_linear",
     "srgb_unit_to_linear",
+    "through_matrix",
     "tone",
     "unit_luminance",
     "untone",
@@ -61,8 +62,23 @@ _M2 = np.array(
     ],
     np.float32,
 )
-_M1_INV: F32Grid = np.linalg.inv(_M1).astype(np.float32)
-_M2_INV: F32Grid = np.linalg.inv(_M2).astype(np.float32)
+#: Their float32 inverses, as LAPACK gave them, written out so no library computes them.
+_M1_INV = np.array(
+    [
+        [4.076742, -3.307712, 0.23096998],
+        [-1.2684381, 2.6097577, -0.3413194],
+        [-0.0041960552, -0.7034187, 1.7076147],
+    ],
+    np.float32,
+)
+_M2_INV = np.array(
+    [
+        [1.0, 0.39633778, 0.21580376],
+        [1.0, -0.105561346, -0.06385417],
+        [1.0, -0.089484185, -1.2914855],
+    ],
+    np.float32,
+)
 
 #: Rec. 709 luminance weights.
 LUMA: F32Grid = np.array([0.2126, 0.7152, 0.0722], np.float32)
@@ -82,6 +98,32 @@ def weighted_channels(c: NDArray[np.floating], weights: F32Grid) -> NDArray[np.f
 def luminance(c: NDArray[np.floating]) -> NDArray[np.floating]:
     """The Rec. 709 luminance of linear colour ``c``, in ``c``'s float type."""
     return weighted_channels(c, LUMA)
+
+
+def _planes(c: NDArray[np.floating]) -> NDArray[np.floating]:
+    """Channels first, contiguous: the products below then read whole planes."""
+    return np.moveaxis(c, -1, 0).copy()
+
+
+def _mixed(planes: NDArray[np.floating], matrix: F32Grid) -> NDArray[np.floating]:
+    """Each row of ``matrix`` over the channel planes, summed as ``weighted_channels`` does."""
+    out = np.empty(planes.shape, np.result_type(planes, matrix))
+    term = np.empty(planes.shape[1:], out.dtype)
+    for i, row in enumerate(matrix):
+        total = out[i, ...]
+        np.multiply(planes[0, ...], row[0], out=total)
+        total += np.multiply(planes[1, ...], row[1], out=term)
+        total += np.multiply(planes[2, ...], row[2], out=term)
+    return out
+
+
+def _interleaved(planes: NDArray[np.floating]) -> NDArray[np.floating]:
+    return np.ascontiguousarray(np.moveaxis(planes, 0, -1))
+
+
+def through_matrix(c: NDArray[np.floating], matrix: F32Grid) -> NDArray[np.floating]:
+    """``c @ matrix.T`` without BLAS: each output channel a ``weighted_channels`` of a row."""
+    return _interleaved(_mixed(_planes(c), matrix))
 
 
 def srgb_unit_to_linear(c: NDArray[np.floating]) -> NDArray[np.floating]:
@@ -107,13 +149,13 @@ def linear_to_srgb(values: Colours) -> F32Grid:
 
 
 def oklab(linear: Colours) -> F32Grid:
-    cone: F32Grid = np.cbrt(np.asarray(linear, np.float32) @ _M1.T)
-    return cone @ _M2.T
+    cone = np.cbrt(_mixed(_planes(np.asarray(linear, np.float32)), _M1))
+    return _interleaved(_mixed(cone, _M2)).astype(np.float32, copy=False)
 
 
 def linear_from_oklab(lab: Colours) -> F32Grid:
-    cone: F32Grid = (np.asarray(lab, np.float32) @ _M2_INV.T) ** 3
-    return cone @ _M1_INV.T
+    cone = _mixed(_planes(np.asarray(lab, np.float32)), _M2_INV) ** 3
+    return _interleaved(_mixed(cone, _M1_INV)).astype(np.float32, copy=False)
 
 
 def unit_luminance(colour: Colours) -> F32Grid:
