@@ -151,10 +151,10 @@ STYLES: dict[str, Style] = {
                         "version": 8, "tone": "light"},
     "satellite-painted": {"label": "game-painted", "name": "Painted", "layer": "painted",
                           "version": 20, "tone": "light"},
-    "relief-muted": {"label": "relief", "name": "Relief", "layer": "relief", "version": 6,
+    "relief-muted": {"label": "relief", "name": "Relief", "layer": "relief", "version": 7,
                      "tone": "light"},
     "relief-night": {"label": "relief dark", "name": "Relief (dark)", "layer": "relief-dark",
-                     "version": 6, "tone": "dark"},
+                     "version": 7, "tone": "dark"},
     "artwork": {"label": "artwork", "name": "Game map", "layer": "map", "version": 1,
                 "tone": "light"},
 }  # fmt: skip
