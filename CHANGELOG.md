@@ -31,8 +31,18 @@ Planned as 0.2.0.
 - Map generation needs `zstandard`, now in the `gen` extra: stop satisfactory-mcp, then run
   `uv sync --extra gen`. Raster caches kept by an earlier version are still reused;
   `python -m mapgen compress-cache <dir>` shrinks them about 20x.
+- Re-run the paint layers (`python -m mapgen paint`, or *paint* in the Maps tab) before the
+  next painted render: paint layers from an earlier version keep no daylight, and a painted
+  map drawn from them keeps the screenshot colours.
 
 ### Added
+
+- Map generator: `python -m mapgen calibrate` derives the game-painted style's display colours
+  from the game install: the level's noon light and its atmosphere volumes, the baked ground,
+  the textures and the tree crowns, through a model of the game's camera. It writes
+  `targets.derived.json` beside the paint layers; `--check` prints the colours against the
+  screenshot targets and writes nothing. The paint layers keep the light and the volumes from
+  now on.
 
 - Plans are stored as an append-only op log with revisions, merge against the revision a
   writer saw, undo and restore. The MCP planning tools write through it and journal chat
@@ -52,6 +62,13 @@ Planned as 0.2.0.
 
 ### Changed
 
+- Map renders: the game-painted map takes the colours derived from the game install for
+  the targets within reach of their screenshots (sand, grass, wet sand, the canopy, the rock,
+  the desert rock, the forest moss, the coral caps, the desert gravel, the Red Jungle cliffs),
+  for the forest floor, and for the ground layers no screenshot covers (red grass, puddles,
+  the Red Jungle ground, sand cracks, pebbles and rock, soil). A render derives them itself
+  when `targets.derived.json` is missing or from other data. The game-painted style is one
+  version up.
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is

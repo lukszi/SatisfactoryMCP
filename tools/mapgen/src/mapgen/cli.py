@@ -19,6 +19,7 @@ COMMANDS: dict[str, tuple[str, tuple[str, ...]]] = {
     "renders": ("mapgen.commands.renders", ()),
     "artwork": ("mapgen.commands.artwork", ()),
     "paint": ("mapgen.commands.paint", ()),
+    "calibrate": ("mapgen.commands.calibrate", ()),
     "check-fill": ("mapgen.commands.check_fill", ()),
     "compress-cache": ("mapgen.commands.compress_cache", ()),
 }

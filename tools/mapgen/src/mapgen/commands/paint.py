@@ -58,6 +58,12 @@ from mapgen.gamedata.ground.weightmaps import (
     place_component_layers,
 )
 from mapgen.gamedata.install import GameReader, open_game
+from mapgen.gamedata.level.lighting import (
+    VOLUME_CLASS,
+    AtmosphereVolume,
+    level_volumes,
+    persistent_lighting,
+)
 from mapgen.gamedata.level.sweep import FOLIAGE_CLASSES, LEVEL_DIR, LEVEL_SUFFIX, foliage_instances
 from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.vegetation import crown_sprites
@@ -76,7 +82,7 @@ from satisfactory_mcp.core.gameassets.provenance import (
     sha256_hex,
 )
 from satisfactory_mcp.core.gameassets.versions import PAINT_GENERATOR_VERSION
-from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, to_json
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -96,6 +102,13 @@ GENERATOR_VERSION = PAINT_GENERATOR_VERSION
 #: Packages walked between progress lines.
 _PROGRESS_EVERY = 500
 
+#: The shell meshes' materials, whose mean colours calibrate reads.
+SHELL_MATERIALS = (
+    "/Game/FactoryGame/World/Environment/Foliage/Coral/BigShell/Materials/MI_Bigshell_01",
+    "/Game/FactoryGame/World/Environment/Foliage/Coral/PlateauShell/Materials/PlateauShell_Inst",
+    "/Game/FactoryGame/World/Environment/Foliage/Coral/SmallShell/Materials/SmallShell_Inst",
+)
+
 
 @dataclass
 class PaintSweep:
@@ -108,6 +121,7 @@ class PaintSweep:
         default_factory=lambda: WaterBodies(actors=[], hot_springs=[])
     )
     carpet: dict[str, F32Grid] = field(default_factory=dict[str, F32Grid])
+    volumes: list[AtmosphereVolume] = field(default_factory=list[AtmosphereVolume])
     unreadable: int = 0
     failed_packages: int = 0
     seconds: float = 0.0
@@ -201,6 +215,8 @@ def sweep_paint_levels(
                     into.setdefault(instances[0], []).append(instances[1].astype(np.float32))
         if meshes is not None:
             collect_water_bodies(view, game.classes, meshes, found.water_bodies)
+        if VOLUME_CLASS in classes_here:
+            found.volumes += level_volumes(view, path.rsplit("/", 1)[-1], game.classes)
         if progress and index % _PROGRESS_EVERY == 0:
             print(
                 f"  {index}/{total} packages, {len(found.origins)} components, "
@@ -345,6 +361,7 @@ class _StoreParts:
     crowns: JsonObject
     tree_counts: dict[str, int]
     carpet: JsonObject
+    daylight: JsonObject
 
 
 def _paint_meta(
@@ -386,8 +403,28 @@ def _paint_meta(
         "bake": parts.satellite.bake,
         "rock_families": dict(parts.satellite.rock_families),
         "carpet": parts.carpet,
+        **parts.daylight,
         "counts": {"unreadable": found.unreadable, "failed_packages": found.failed_packages},
         "seconds": round(time.time() - started, 1),
+    }
+
+
+def _daylight(game: GameReader, decoder: ModuleType, volumes: list[AtmosphereVolume]) -> JsonObject:
+    """The level's noon light, the atmosphere volumes and the shell materials' colours."""
+    lighting, missing = persistent_lighting(game)
+    if lighting is None:
+        print(f"  no daylight in the persistent level: {', '.join(missing)} unread")
+
+    def texture_rgba(path: str) -> U8Grid:
+        asset = path.split(".")[0].removeprefix("/Game/FactoryGame/")
+        return decode_texture(game, decoder, asset, 256, channels=4)
+
+    shells = {p: crown_sprites.material_colour(game, p, texture_rgba) for p in SHELL_MATERIALS}
+    print(f"  daylight {'read' if lighting else 'missing'}, {len(volumes)} atmosphere volumes")
+    return {
+        "lighting": to_json(lighting),
+        "atmosphere_volumes": to_json(volumes),
+        "mesh_materials": to_json(shells),
     }
 
 
@@ -453,7 +490,10 @@ def main() -> int:
             (carpet_blobs, carpet_files),
         ]
     )  # fmt: skip
-    parts = _StoreParts(found, textures, satellite, layers, crown_meta, tree_counts, carpet_meta)
+    daylight = _daylight(game, decoder, found.volumes)
+    parts = _StoreParts(
+        found, textures, satellite, layers, crown_meta, tree_counts, carpet_meta, daylight
+    )
     meta = _paint_meta((pin, raw, versions.get("pyooz")), files, parts, started)
     payload[META_NAME] = json.dumps(meta, indent=1).encode("utf-8")
     written = install_directory(out_dir, payload)
