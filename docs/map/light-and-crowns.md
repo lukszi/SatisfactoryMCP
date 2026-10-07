@@ -236,7 +236,8 @@ order, whatever layers the pass draws: the surface the seabed rule draws (below,
 capture"). The surface is baked in blocks of 16 × 16 native tiles, each with a 150 m halo,
 and a process pool computes per block (`lighting/stage.py` `bake_block`): the ground's
 horizons and the crowns' at half resolution, sky view, normals, the native tiles, and the
-light at the default sun for the baked copy, once with the crowns and once without. A block
+light at the default sun for the baked copy, once for the ground alone and once with the
+crowns and their canopy's own light (below, "The canopy's own light"). A block
 whose core is all water skips the horizon march. A row of blocks is queued as soon as the
 surface holds every row it reads, while the pass is still drawing (`lighting/bake.py`,
 section 42). Each band of a layer goes to `unlit/` at once and, once the terms of its rows
@@ -297,8 +298,12 @@ worker holds more than it needs; none of it moves a byte:
   0.04 GB. A full-size block peaks at 1.08 GB working set and 0.98 GB commit, one under arches
   at 1.36 and 1.04 GB. With the crowns and arches as spans (2026-10-07) a block under crowns
   peaks at 1.44 GB commit and one with crowns and arches at 1.50 GB; `LIGHT_WORKER_BYTES` is
-  2.0 GB, the larger with room. The cutter's encoders import no numpy, so their pool needs no
-  such setting (section 17).
+  2.0 GB, the larger with room. The default sun's terms are made 512 rows at a time
+  (`stage.TERM_ROWS`), to the same bytes, so the canopy's own light adds nothing measurable:
+  before the spans, with crowns over half of it a block peaked at 1.13 and 1.09 GB, against
+  1.14 and 1.02 before the canopy, and at 1.30 and 1.26 GB with a hole of no data across it
+  (2026-10-07). The cutter's encoders import no numpy, so their pool needs no such setting
+  (section 17).
 
 Measured on synthetic terrain with crowns at the full-size spacing, 4096 px blocks, on the
 16-core reference machine while other jobs ran: one block takes 73 s, 32 s of it the ground's
@@ -333,8 +338,8 @@ colour pyramid again.
 
 ### Scratch
 
-While the run lasts, `light.cache/` holds 13.5 bytes a pixel, 14.5 GB at full
-size: the surface (heights 4, land 1), the default-sun terms (3), and the bake's
+While the run lasts, `light.cache/` holds 14.5 bytes a pixel, 15.6 GB at full
+size: the surface (heights 4, land 1), the default-sun terms (4), and the bake's
 half-resolution heights, land and sky view (1.5) and quarter-resolution horizons (4). With
 a paint store the crown tops and cover add 5, 5.4 GB, whatever layers the run draws. The Maps tab's estimate counts them
 as `presets.LIGHT_SCRATCH_BYTES` and `CROWN_SCRATCH_BYTES`, scaled by area; tests hold both to
@@ -416,7 +421,7 @@ the renders.
 | File | What |
 | --- | --- |
 | `tiles/` | The pyramid's tiles: a hard link to each installed one, or a copy where the cache and the renders are on different volumes |
-| `terms.npy` | The default-sun terms, 3 bytes a pixel (3.2 GB at 32768), moved out of the scratch: a rename on one volume |
+| `terms.npy` | The default-sun terms, 4 bytes a pixel (4.3 GB at 32768), moved out of the scratch: a rename on one volume |
 | `surface.json` | Where each band of the surface went and its digest, which a later run reads while it draws (section 42) |
 | `meta.json` | The bake's `meta.json`, key included. It is removed first and written last, so a keep cut short is never read |
 
@@ -455,6 +460,96 @@ hashing and the keep cost nothing measurable; the restyle 208.2 s, of which 12.9
 bake on 2 workers, and 191.7 s. Every tile and sidecar of the two restyles is the same but
 the light's `key`. At full size the bake a restyle skips is about 830 s.
 
+### Edges of the light (2026-10-07)
+
+**No data.** The capture stores NaN where the draw has no height at all, the void the
+painters draw there (`render/surface.py` `_light_planes`; the land weight there was 0
+already). The bake takes it as open (`lighting/holes.py`):
+
+- a half-resolution pixel averages only its pixels that have a height;
+- for the march and the sky view a hole stands at `OPEN_M`, 10 km down, so nothing in it
+  blocks the sun or the sky;
+- a pixel of a hole takes the horizons, the spans' bands, the sky view and the height of the
+  nearest pixel that has one, in its block and the ring past it, so the planes the page and
+  the default sun interpolate hold no ramp toward a hole; the spans' receivers and solid
+  surface open the same way (`stage._opened_spans`).
+
+Before, a hole was captured as a plane at 0 m, the height the sampler gives a pixel with
+nothing under it. Wherever the ground beside a hole lies lower, that plane stood as a wall
+and shaded the rim of the pits, the chasm and the southern and eastern coasts (sweep class
+7, auto #2). A test holds that a flat floor at -50 m beside a hole bakes the bytes of the
+same floor with no hole, where the 0 m plane shaded it.
+
+**Normals beside a hole.** A pixel beside a hole takes the slope toward its side that has
+a height, and a hole stands flat (`horizon.normals`). Before, the slope ran down to the
+0 m plane and drew a lit or dark line along every rim.
+
+**Block seams.** Each block marches and takes the sky view one half-resolution pixel past
+its edge, and brings the sky view and the default sun's horizon to full resolution from
+those, at pixel centres (`light_tiles.upsampled`); the per-cell shade beside a span (above,
+"Arches as spans") comes up the same way. Before, the sky view was clamped at a block's
+edge and the default sun's horizon stretched corner to corner across the block (`zoom`
+without grid mode), so the light stepped along the 4096 px grid of a full-size render
+(auto #8). A bake in blocks now writes the bytes of a bake in one block, which a test
+holds; on the test's ridges the old crowned direct term differed by up to 86 levels between
+the two.
+
+**Not the light's: landscape holes.** The lit crease lines at landscape holes (auto #6,
+three lines of about 200 m) are steps in the drawn surface, which the normals draw
+faithfully. The ground lattice (`terrain/fill.py` `terrain_lattice`) takes the landscape's
+own heights where the landscape has a sample and the decimetre field in its holes, and the
+two disagree: at (-1144.3, 2409.7) the landscape stands at -50.281 m and the field beside
+it at -50.1 m, and 6.6 cm of that survives the interpolation as a one-pixel step. The other
+two lines are seams between provenance codes 4 and 5. They want the lattice blended across
+the hole's edge.
+
+### The canopy's own light (2026-10-07)
+
+The painted layer lays the tree crowns and the Titan trees over the ground, and its baked
+light was the ground's: a crown took the Lambert term, sky view and horizon of the ground
+beneath it, so a ravine under the Titan forest showed through the canopy (sweep class 6,
+auto #5). The crown occluder's canopy now has a light of its own, baked at the default sun
+into the painted layer's terms (`lighting/canopy.py` `block_canopy` and `canopy_rows`):
+
+- **Where:** the occluder's covered share of each pixel, where its top stands above the drawn
+  surface (a crown under it the painter hides). The Titan trees join the paint store's crowns
+  in the occluder where the painted layer draws them (`render/light.py` `titan_crowns`):
+  their top where it stands higher, and the larger cover. So they cast into the crown cells
+  as the crowns do.
+- **Its slope:** the occluder's top smoothed over its own pixels by `DOME_SIGMA_M` (0.75 m),
+  with 0.35 of its relief (`CANOPY_RELIEF`), as the painted crowns' own lit domes take it
+  (`dome_gain`; a test holds the two to the painter's); flat where no canopy is. The crown
+  plane steps by metres between neighbouring trees, and at its full relief a forest drew as a
+  mottle of dark crescents.
+- **Its horizon:** the crowns' horizon received on the canopy top, whole: the crowns' span
+  march with its band folded in at the sun path's elevation (`span_bake.horizon_cells`, the
+  cell's `whole`), not the larger of it and the ground's horizon measured under the canopy.
+- **Its sky:** the sky view of the crowns stood on the surface.
+- The painted layer's direct term and sky view are the ground's blended toward the canopy's
+  by its share. The terms gain a fourth byte, the painted sky view (`stage.TERMS`), and
+  `relight_rows` reads the third and fourth for a style that draws the crowns.
+- **Drawn unlit, the Titan trees stand flat** (`palette/painted/trees.py` `titan_over`), as
+  the crowns do. Before, the unlit colour kept the style's own north-west hillshade on
+  them, under the light. Painted style 21.
+
+Only the baked copy has it. The page's shader still lights the canopy with the ground's
+normal and sky view and the larger of the two horizons, until a tile carries the canopy's
+share, slope and sky: the same follow-up as the arches' live light.
+
+These changes are light model 3 and `LIGHT_VERSION` 2.
+
+**Measured** at 2048 against round 2's baseline (2026-10-07, build 502094). The unlit trees
+of terrain, satellite and both relief styles keep every pixel; painted's moves 89,570, the
+Titan trees drawn flat. The lit trees of the four styles that draw no crowns move 129,058 to
+151,071 pixels each, by up to 137 levels beside the void's coasts and pits and by a few along
+shadow edges across the map, where the default sun is now taken at pixel centres. Painted's
+moves 1,110,430, by up to 78, over its forests. The full-size windows drawn unlit (section 40)
+move only in painted, under the Titan trees: 4.29 million of the strip's 33.6 million pixels
+and 11.7 million of the water window's 67.1 million, by up to 94. In full-size windows lit
+by the bake at 0.229 m/px the void's
+rim at (761.7, 2332.7) loses its wall shadow, the Titan forest at (1769.7, -10.0) its ravine,
+and the sky view's step at the block edge of row 12288 goes.
+
 ### Hooks
 
 `bake_light` takes an optional `occluder` on the sheet's grid, which only casts: the crown tops
@@ -487,8 +582,10 @@ button moves the sun for the visit; Settings keeps the default.
 - The sun in the fragment, so a link carries it.
 - Faint diagonal bands at low sun from the q75 horizon encoding and the direction
   interpolation.
-- A crown top takes the ground's horizon measured on the ground under it, not on its top, so
-  in a valley a crown is shaded by terrain a little longer than it would be.
+- On the page a crown still takes the ground's normal and sky view, and the ground's horizon
+  measured under it where that is higher; the baked copy lights it by its own top (above,
+  "The canopy's own light").
+- The lattice seams at landscape holes (above, "Edges of the light").
 - Whether the satellite style draws the tree crowns, and so reads their shadows.
 - A land weight for the crowns over water, read by the painted layer only, so they take the
   live light and a tree's shadow can fall on the water.
@@ -595,8 +692,8 @@ has no tree.
   the river split's lit tops #3e5579. The wiki's Rocky Desert and Spire Coast shots show blue
   palms in both biomes, so they stay blue everywhere.
 - A crown is lit by the fixed north-west sun of the painted style. The live sun shading takes
-  the crown tops as its occluder (section 29); the crown domes are not yet in its normal
-  pyramid.
+  the crown tops as its occluder (section 29), and the baked default sun lights them by
+  their own top ("The canopy's own light"); the page's normal pyramid has the ground's only.
 - Lean moves a crown; it does not foreshorten it.
 - `SM_Trunk_01` (6,933 logs and stumps) draws as small bark sprites.
 

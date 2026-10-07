@@ -60,7 +60,9 @@ __all__ = [
     "light_params",
     "model_block",
     "relight",
+    "shaded_direct",
     "sun_cells",
+    "sun_horizon",
     "surface_direct",
 ]
 
@@ -203,6 +205,28 @@ def direct_term(
     ``(use, shade)`` on the normals' grid: where ``use``, the shadow is ``shade``, filtered
     per cell beside a span (``span_bake.default_shade``), not read off the horizon.
     """
+    hz = None
+    if shadows and hz_deg is not None:
+        hz = sun_horizon(hz_deg, sun[0], crowns)
+        shape = nrm_u8.shape[:2]
+        if hz.shape != shape:
+            hz = ndimage.zoom(hz, np.array(shape) / np.array(hz.shape), order=1)
+    return shaded_direct(nrm_u8, hz, sun, filtered)
+
+
+def sun_horizon(hz_deg: Horizons, az: float, crowns: bool = False) -> F32Grid:
+    """The horizon toward ``az``; with ``crowns`` and crown cells, the crowns' where higher."""
+    hz = _toward(hz_deg, az)
+    if crowns and len(hz_deg) >= HZ_CELLS:
+        hz = np.maximum(hz, _toward(hz_deg, az, HORIZON_DIRS))
+    return hz
+
+
+def shaded_direct(
+    nrm_u8: U8Grid, hz: F32Grid | None, sun: Sun, filtered: tuple[BoolMask, F32Grid] | None = None
+) -> F32Grid:
+    """``direct_term`` for the horizon toward the sun on the normals' own grid, None for none,
+    and ``filtered`` on that grid too."""
     az, el = sun
     nx = nrm_u8[..., 0].astype(np.float32) / 127.5 - 1
     ny = nrm_u8[..., 1].astype(np.float32) / 127.5 - 1
@@ -210,12 +234,7 @@ def direct_term(
     lx, ly, lz = sun_vector(az, el)
     ndl = np.maximum(nx * lx + ny * ly + nz * lz, 0.0)
     shade = np.zeros_like(ndl)
-    if shadows and hz_deg is not None:
-        hz = _toward(hz_deg, az)
-        if crowns and len(hz_deg) >= HZ_CELLS:
-            hz = np.maximum(hz, _toward(hz_deg, az, HORIZON_DIRS))
-        if hz.shape != ndl.shape:
-            hz = ndimage.zoom(hz, np.array(ndl.shape) / np.array(hz.shape), order=1)
+    if hz is not None:
         shade = np.clip((hz - el) / SHADOW_SOFT_DEG + 0.5, 0, 1)
         if filtered is not None:
             shade = np.where(filtered[0], filtered[1], shade)

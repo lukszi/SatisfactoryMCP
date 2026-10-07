@@ -119,20 +119,23 @@ def _block_inputs(side=96):
 def test_a_block_s_horizons_a_direction_at_a_time_are_the_stacked_ones():
     zh, halo, block = _block_inputs()
     m = zh.shape[0] - 2 * halo
-    cells = sorted(span_bake.horizon_cells(zh, halo, SP, block), key=lambda cell: cell[0])
-    assert [k for k, _deg, _bands in cells] == list(range(model.HZ_CELLS))
-    stack = np.stack([deg for _k, deg, _bands in cells])
+    cells = sorted(span_bake.horizon_cells(zh, halo, SP, block), key=lambda cell: cell.k)
+    assert [cell.k for cell in cells] == list(range(model.HZ_CELLS))
+    stack = np.stack([cell.deg for cell in cells])
     found = stage._bake_horizons(zh, halo, SP, block, m, True)
     assert found.atlas.tobytes() == hz.encode_horizon(stack).tobytes()
     scale = light_tiles.HZ_LINEAR_SCALE
     want_hq = np.round(np.clip(light_tiles.downsample(np.moveaxis(stack, 0, -1)), 0, 90) * scale)
     assert found.quarter.tobytes() == want_hq.astype(np.uint8).tobytes()
     assert set(found.bands) == span_bake.shade_cells(DEFAULT_SUN[0]) == {20, 52}
-    nrm = np.random.default_rng(7).integers(0, 256, (2 * m, 2 * m, 4), dtype=np.uint8)
-    for crowned in (False, True):
-        want = model.direct_term(nrm, stack, DEFAULT_SUN, crowns=crowned)
-        got = model.direct_term(nrm, found.sun, DEFAULT_SUN, crowns=crowned)
-        assert got.tobytes() == want.tobytes()
+    ringed = sorted(span_bake.horizon_cells(zh, halo - 1, SP, block), key=lambda cell: cell.k)
+    rings = np.stack([cell.deg for cell in ringed])
+    assert rings[:, 1:-1, 1:-1].tobytes() == stack.tobytes(), "a pixel's march is its own"
+    for k in model.sun_cells(DEFAULT_SUN[0]):
+        assert found.sun[k].tobytes() == rings[k].tobytes(), "the default sun keeps the ring"
+    for k in model.sun_cells(DEFAULT_SUN[0])[:2]:
+        whole = ringed[model.HORIZON_DIRS + k].whole
+        assert found.canopy[k].tobytes() == whole.tobytes(), "the canopy keeps its whole horizon"
 
 
 def test_without_spans_a_block_bakes_the_plain_march():

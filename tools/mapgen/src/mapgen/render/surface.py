@@ -459,11 +459,12 @@ def _light_planes(
     water: WaterTerms,
     slabs: SlabPlanes | None,
 ) -> LightPlanes:
-    """The piece's output pixels for the light stage: the heights, the land weight, and what
-    floats over them (``render/floating.py``), cut to them already."""
+    """The piece's output pixels for the light stage: the heights, NaN where no data is drawn
+    (``lighting/holes.py``), the land weight, and what floats over them
+    (``render/floating.py``), cut to them already."""
     kept = (grid.rows.kept, grid.cols.kept)
     dry = np.where(missing, 0.0, 1.0 - water["cover"])
-    return LightPlanes(z_m[kept], dry[kept], slabs)
+    return LightPlanes(np.where(missing, np.float32(np.nan), z_m)[kept], dry[kept], slabs)
 
 
 def _direct_regime(

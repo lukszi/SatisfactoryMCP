@@ -184,7 +184,7 @@ def test_the_light_casts_the_store_s_crowns_whether_or_not_painted_is_drawn(tmp_
     top_dm = np.full((64, 64), hf.NODATA, np.int16)
     top_dm[5:9, 6:10] = 250
     _paint_store(tmp_path, top_dm, grid)
-    painted = SimpleNamespace(meta={"grid": grid}, crown=top_dm.copy())
+    painted = SimpleNamespace(meta={"grid": grid}, crown=top_dm.copy(), titan=None)
 
     from_store = crown_tops(tmp_path, None)
     from_ground = crown_tops(tmp_path / "unread", painted)
@@ -204,4 +204,4 @@ def test_a_run_without_the_store_s_crowns_casts_none(tmp_path, meta):
     if meta is not None:
         (tmp_path / META_NAME).write_text(json.dumps(meta), encoding="utf-8")
     assert crown_tops(tmp_path, None) is None
-    assert crown_tops(tmp_path, SimpleNamespace(meta={"grid": {}}, crown=None)) is None
+    assert crown_tops(tmp_path, SimpleNamespace(meta={"grid": {}}, crown=None, titan=None)) is None

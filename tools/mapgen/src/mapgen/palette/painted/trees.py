@@ -306,7 +306,8 @@ def titan_colours(palette: PaintedPalette) -> dict[int, FloatGrid]:
 
 
 def titan_over(out: FloatGrid, scene: PaintedScene, ground: PaintedSurface) -> FloatGrid:
-    """The Titan trees over the finished pixel at the style's opacity; 0 turns them off."""
+    """The Titan trees over the finished pixel at the style's opacity; 0 turns them off.
+    Drawn unlit they stand flat, as the crowns do: the light lights them by their own top."""
     palette = ground.palette
     style: TitanTreesStyle = palette.get("titan_trees") or {}
     opacity = np.float32(style.get("opacity", 0.0))
@@ -323,8 +324,9 @@ def titan_over(out: FloatGrid, scene: PaintedScene, ground: PaintedSurface) -> F
     for which, rgb in ground.titan_rgb.items():
         albedo = np.where((cls == which)[..., None], rgb, albedo)
     exposure = exposure_gain(palette)
-    light = flat_light(palette, sun_dot(surface, spacing_m), scene["ndl_flat"])
-    lit = albedo * light * exposure
+    flat = scene["ndl_flat"]
+    ndl = np.full(surface.shape, flat) if scene.get("unlit") else sun_dot(surface, spacing_m)
+    lit = albedo * flat_light(palette, ndl, flat) * exposure
     alpha = (opacity * np.clip(above, 0.0, 1.0))[..., None]
     return out * (1.0 - alpha) + lit * alpha
 

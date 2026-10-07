@@ -18,6 +18,7 @@ from typing import Literal, Protocol, TypeAlias, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy import ndimage
 
 from mapgen.lighting.horizon import encode_horizon, normals
 from mapgen.lighting.model import HZ_CELLS
@@ -41,7 +42,9 @@ __all__ = [
     "normal_byte",
     "optional_array",
     "padded_window",
+    "ring_rows",
     "tile_jobs",
+    "upsampled",
     "work_array",
 ]
 
@@ -89,6 +92,19 @@ def downsample(a: NDArray[np.floating], f: int = 2, how: Reducer = np.mean) -> N
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)  # an all-NaN cell is empty, not an error
         return how(a[: h * f, : w * f].reshape(h, f, w, f, *a.shape[2:]), axis=(1, 3))
+
+
+def upsampled(ringed: NDArray[np.floating]) -> F32Grid:
+    """A half-resolution plane with a ring of one pixel past each edge at full resolution, each
+    pixel interpolated from the four half-resolution pixels around its centre."""
+    plane = np.asarray(ringed, np.float32)
+    full: F32Grid = ndimage.zoom(plane, 2, order=1, mode="nearest", grid_mode=True)
+    return full[2:-2, 2:-2]
+
+
+def ring_rows(ringed: NDArray[np.floating], rows: slice) -> NDArray[np.floating]:
+    """The half-resolution rows, ring included, that ``upsampled`` reads for ``rows``."""
+    return ringed[rows.start // 2 : rows.stop // 2 + 2]
 
 
 def normal_byte(component: F32Grid) -> U8Grid:

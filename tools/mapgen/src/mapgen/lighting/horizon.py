@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mapgen.jit import gpu_on, kernels_on
-from satisfactory_mcp.core.arrays import F32Grid, U8Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 
 if TYPE_CHECKING:
     from mapgen.lighting.kernels import Offsets
@@ -111,12 +111,43 @@ def step_lengths(max_px: float, fine_px: float, growth: float = STEP_GROWTH) -> 
 
 
 def normals(z: NDArray[np.floating], spacing_m: float) -> tuple[F32Grid, F32Grid]:
-    """East and south components of the unit normal, for ``z`` with a one-pixel margin."""
+    """East and south components of the unit normal, for ``z`` with a one-pixel margin.
+
+    NaN is no data: beside it a pixel takes the difference toward its side that has a height,
+    and a pixel with neither side, or no height of its own, stands flat.
+    """
     plane: _Plane = np.asarray(z, np.float32)
+    holes = np.isnan(plane)
+    if holes.any():
+        plane = np.asarray(np.where(holes, np.float32(0.0), plane), np.float32)
     d_south, d_east = np.gradient(plane, spacing_m)
     d_south, d_east = d_south[1:-1, 1:-1], d_east[1:-1, 1:-1]
+    if holes.any():
+        d_south = _beside_holes(plane, holes, 0, d_south, spacing_m)
+        d_east = _beside_holes(plane, holes, 1, d_east, spacing_m)
     inv = 1.0 / np.sqrt(d_east * d_east + d_south * d_south + 1.0)
     return (-d_east * inv).astype(np.float32), (-d_south * inv).astype(np.float32)
+
+
+def _beside_holes(
+    plane: F32Grid, holes: BoolMask, axis: int, central: F32Grid, spacing_m: float
+) -> F32Grid:
+    """The core's slope along ``axis``: ``central`` where both neighbours have a height, else
+    the one-sided difference toward the one that has, else 0, and 0 on a hole."""
+    inner, before, after = slice(1, -1), slice(None, -2), slice(2, None)
+    core = (inner, inner)
+    back, ahead = (
+        ((before, inner), (after, inner)) if axis == 0 else ((inner, before), (inner, after))
+    )
+    has_back, has_ahead, here = ~holes[back], ~holes[ahead], plane[core]
+    step = np.float32(spacing_m)
+    one_sided = np.where(
+        has_ahead,
+        (plane[ahead] - here) / step,
+        np.where(has_back, (here - plane[back]) / step, np.float32(0.0)),
+    )
+    slope = np.where(has_back & has_ahead, central, one_sided)
+    return np.where(holes[core], np.float32(0.0), slope).astype(np.float32)
 
 
 def _split(offset: float) -> tuple[int, np.float32]:

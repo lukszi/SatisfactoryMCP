@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
-from numpy.typing import NDArray
 from scipy import ndimage
 
+from mapgen.lighting.holes import Holes, fill_holes, half_heights
 from mapgen.lighting.horizon import (
     FADE_M,
     HORIZON_DIRS,
@@ -41,11 +41,11 @@ from satisfactory_mcp.core.arrays import BoolMask, F32Grid
 
 __all__ = [
     "BlockSpans",
+    "Cell",
     "band_cover",
     "block_spans",
     "cell_shade",
     "default_shade",
-    "full_resolution",
     "horizon_cells",
     "path_horizon",
     "plain_bands",
@@ -77,7 +77,7 @@ def _crown_rows(z: F32Grid, top: F32Grid, share: F32Grid | None,
     lo = np.where(over, z + CROWN_UNDERSIDE * lift, nan).astype(np.float32)
     hi = np.where(over, rec, nan).astype(np.float32)
     cells = slice(row // 2, (row + z.shape[0]) // 2)
-    out[0][cells] = downsample(rec)
+    out[0][cells] = half_heights(rec)
     out[1][cells] = downsample(lo, how=np.nanmin)
     out[2][cells] = downsample(hi, how=np.nanmax)
 
@@ -150,24 +150,46 @@ def path_horizon(bands: Bands, el: float) -> F32Grid:
     return np.where(cover > 0, np.maximum(hz, folded), hz).astype(np.float32)
 
 
-def horizon_cells(z_half: F32Grid, halo: int, spacing_m: float,
-                  spans: BlockSpans) -> Iterator[tuple[int, F32Grid, Bands | None]]:  # fmt: skip
+class Cell(NamedTuple):
+    """An atlas cell as marched: its index, its degrees as the atlas stores them, the bands it
+    was made from (None for a plain march), and the horizon it was cut from: for a crown cell
+    the crowns' whole, received on the canopy top."""
+
+    k: int
+    deg: F32Grid
+    bands: Bands | None
+    whole: F32Grid
+
+
+def _filled(bands: Bands, holes: Holes | None) -> Bands:
+    """``bands`` with each hole given its nearest pixel's (``holes.fill_holes``)."""
+    if holes is None:
+        return bands
+    seen = fill_holes(bands.seen.astype(np.float32), holes, 0.0) > 0
+    nan = float("nan")
+    return Bands(fill_holes(bands.horizon, holes, 0.0), fill_holes(bands.lo, holes, nan),
+                 fill_holes(bands.hi, holes, nan), seen)  # fmt: skip
+
+
+def horizon_cells(z_half: F32Grid, halo: int, spacing_m: float, spans: BlockSpans,
+                  holes: Holes | None = None) -> Iterator[Cell]:  # fmt: skip
     """Each direction's ground cell, then its crown cell where the crowns stand above it, as
-    the atlas stores them, with the bands they were made from (None for a plain march)."""
+    the atlas stores them (``Cell``). A hole (``lighting/holes.py``) takes the cells of the
+    pixel nearest it."""
     for k in range(HORIZON_DIRS):
         az = k * 360.0 / HORIZON_DIRS
         el = path_elevation(az)
         ground: Bands | None = None
         if spans.ground is None:
-            cell = march_horizon(z_half, halo, az, spacing_m)
+            cell = fill_holes(march_horizon(z_half, halo, az, spacing_m), holes, 0.0)
         else:
-            ground = march_spans(spans.ground, halo, az, spacing_m, FADE_M)
+            ground = _filled(march_spans(spans.ground, halo, az, spacing_m, FADE_M), holes)
             cell = path_horizon(ground, el)
-        yield k, cell, ground
+        yield Cell(k, cell, ground, cell)
         if spans.crowns is not None:
-            crowns = march_spans(spans.crowns, halo, az, spacing_m, OCCLUDER_FADE_M)
+            crowns = _filled(march_spans(spans.crowns, halo, az, spacing_m, OCCLUDER_FADE_M), holes)
             over = path_horizon(crowns, el)
-            yield HORIZON_DIRS + k, np.where(over > cell, over, np.float32(0.0)), crowns
+            yield Cell(HORIZON_DIRS + k, np.where(over > cell, over, np.float32(0.0)), crowns, over)
 
 
 def _weighted(az: float) -> list[tuple[int, np.float32]]:
@@ -212,10 +234,3 @@ def default_shade(
     assert shade is not None
     use: BoolMask = ndimage.binary_dilation(seen, iterations=1)
     return use, shade.astype(np.float32)
-
-
-def full_resolution(plane: NDArray[np.floating], shape: tuple[int, int]) -> F32Grid:
-    """A half-resolution plane brought to ``shape`` as ``model.direct_term`` brings a horizon."""
-    zoomed = ndimage.zoom(np.asarray(plane, np.float32), np.array(shape) / np.array(plane.shape),
-                          order=1)  # fmt: skip
-    return np.asarray(zoomed, np.float32)

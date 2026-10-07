@@ -85,8 +85,8 @@ def test_the_baked_copy_takes_the_crown_term_only_for_a_crown_style():
     from mapgen.render.light import relight_rows
 
     land = np.full((4, 4), 255, np.uint8)
-    terms = np.zeros((4, 4, 3), np.uint8)
-    terms[..., 0], terms[..., 1], terms[..., 2] = 255, 127, 20
+    terms = np.zeros((4, 4, 4), np.uint8)
+    terms[..., 0], terms[..., 1], terms[..., 2], terms[..., 3] = 255, 127, 20, 255
     colour = np.full((4, 4, 3), 140, np.uint8)
     sheets = {
         layer: relight_rows(colour, terms, land, shader_light(layer))
@@ -159,7 +159,7 @@ def test_the_shader_and_the_python_model_read_the_same_constants():
         assert key in block, key
         assert f"model.{key}" in source, key
     assert "1.0-sh*(1.0-uFill)" in source and "params.crowns" in source
-    assert "1 - shade * (1 - SHADOW_FILL)" in inspect.getsource(model.direct_term)
+    assert "1 - shade * (1 - SHADOW_FILL)" in inspect.getsource(model.shaded_direct)
     assert block["hz_cells"] == 2 * block["crown_cell"] == 2 * hz.HORIZON_DIRS
     assert json.loads(json.dumps(block)) == block
     assert math.isclose(block["shadow_soft_deg"], model.SHADOW_SOFT_DEG)

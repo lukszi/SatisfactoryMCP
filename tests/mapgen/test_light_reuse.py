@@ -31,10 +31,7 @@ from mapgen.tiles.cutter import TileStream
 SIZE = 512
 
 #: The digest of ``_pinned_bake`` at each ``LIGHT_VERSION``.
-BAKE_PINS = {
-    1: "sha256:a3ab7907b3b9572f99b2d05344d4b5c2022e26057a88babf5536424bc68745b6",
-    2: "sha256:5fe983c6945b422582d9682e80911f31b49bb315d872214819479f7a83798fe2",
-}
+BAKE_PINS = {2: "sha256:191e3e7b848ce88fba0f1ffa4f1325b2d49c0840789c4a5381d5298d00a2e5fd"}
 
 Planes = tuple[np.ndarray, np.ndarray]
 
@@ -257,11 +254,19 @@ def test_the_surface_stores_the_bytes_it_stored_before_it_was_digested(tmp_path)
     surface.close()
 
 
+def _pinned_planes() -> Planes:
+    """``_planes`` under a 200 m scarp, which casts at the default sun, and a hole of no data."""
+    z, land = _planes()
+    z[:, :200] += 200.0
+    z[400:440, 300:360], land[400:440, 300:360] = np.nan, 0.0
+    return z, land
+
+
 def _pinned_bake(tmp_path: Path) -> str:
     """The bake's byte planes and lossless tiles for one fixed surface and crown."""
     surface = Surface(tmp_path / "work", SIZE)
-    _put(surface, _planes())
-    bake_light(surface, tmp_path / "out", 1, _occluder(), progress=False,
+    _put(surface, _pinned_planes())
+    bake_light(surface, tmp_path / "out", 1, _occluder(400.0), progress=False,
                occluder_layers=["painted"])  # fmt: skip
     digest = hashlib.sha256()
     for name in ("terms", "svfh", "landh", "hzq"):
