@@ -14,7 +14,6 @@ import dataclasses
 import json
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from mapgen.commands.caves import write_caves
 from mapgen.commands.rocks import write_rocks
@@ -29,9 +28,10 @@ from mapgen.gamedata.rocks.cliffs import rasterise_cliffs, rasterise_top
 from mapgen.gamedata.rocks.collision_pack import encode_rock_pack
 from mapgen.gamedata.water.channel import artwork_water_mask, water_surface
 from mapgen.terrain.heightfield import field, sidecar, sidecar_blocks, validate
+from mapgen.terrain.heightfield.field import FieldLayers
+from mapgen.terrain.heightfield.validate import FieldValidation, TerrainCheck, WaterChecks
 from satisfactory_mcp.core.arrays import I16Grid
 from satisfactory_mcp.core.gameassets.container import paks_dir
-from satisfactory_mcp.core.gameassets.imaging import BlockDecoder, ImageFactory
 from satisfactory_mcp.core.gameassets.provenance import (
     InstallNotFound,
     install_directory,
@@ -40,9 +40,6 @@ from satisfactory_mcp.core.gameassets.provenance import (
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import caves
 from satisfactory_mcp.domain.spatial import heightfield as hf
-
-if TYPE_CHECKING:
-    from PIL.Image import Image
 
 
 @dataclasses.dataclass
@@ -162,7 +159,7 @@ def _cliffs(run: _Run, sweep: dict, frame: dict) -> tuple[dict, dict]:
     return meshes, cliffs
 
 
-def _compose(run: _Run, frame: dict, cliffs: dict) -> field.FieldLayers:
+def _compose(run: _Run, frame: dict, cliffs: dict) -> FieldLayers:
     """The fill raster decoded, and the three layers fused onto the output grid."""
     started = time.time()
     fill_cm, fill_valid = read_fill_raster(run.reader.store)
@@ -175,9 +172,7 @@ def _compose(run: _Run, frame: dict, cliffs: dict) -> field.FieldLayers:
     return fused
 
 
-def _top(
-    run: _Run, sweep: dict, frame: dict, fused: field.FieldLayers
-) -> tuple[dict, I16Grid, int]:
+def _top(run: _Run, sweep: dict, frame: dict, fused: FieldLayers) -> tuple[dict, I16Grid, int]:
     """Arches and foliage boulders, folded over the field into the ``top`` plane."""
     print("rasterising arches and foliage boulders for the top plane")
     top = rasterise_top(sweep, frame, run.reader, run.loud)
@@ -190,17 +185,14 @@ def _top(
     return top, top_dm, top_raised
 
 
-def _water(
-    run: _Run,
-    sweep: dict,
-    fused: field.FieldLayers,
-    decoder: BlockDecoder,
-    image_mod: ImageFactory[Image],
-) -> tuple[dict, validate.WaterChecks]:
+def _water(run: _Run, sweep: dict, fused: FieldLayers) -> tuple[dict, WaterChecks]:
     """The water channel, refused unless it passes its own four gates."""
+    import texture2ddecoder
+    from PIL import Image
+
     print("classifying the map artwork's water and levelling it on the water volumes")
     started = time.time()
-    mask = artwork_water_mask(run.reader.store, decoder, image_mod)
+    mask = artwork_water_mask(run.reader.store, texture2ddecoder, Image)
     water = water_surface(mask, sweep["water"], fused["height_dm"], fused["prov"])
     water_checks = validate.validate_water(water, mask, sweep["water"])
     run.timed("water", started)
@@ -213,9 +205,7 @@ def _water(
     return water, water_checks
 
 
-def _validate(
-    run: _Run, frame: dict, fused: field.FieldLayers
-) -> tuple[validate.FieldValidation, validate.TerrainCheck]:
+def _validate(run: _Run, frame: dict, fused: FieldLayers) -> tuple[FieldValidation, TerrainCheck]:
     """The field on the node table, and the bare terrain on the landscape's nodes."""
     started = time.time()
     validation = validate.validate_field(fused["height_dm"], fused["prov"])
@@ -250,15 +240,12 @@ def build_field(
     decoders: dict[str, str],
 ) -> int:
     """Every stage of the field, then its planes, sidecar and collision pack written."""
-    import texture2ddecoder
-    from PIL import Image
-
     run = _Run(reader, not args.quiet)
     sweep, frame = _landscape(run)
     meshes, cliffs = _cliffs(run, sweep, frame)
     fused = _compose(run, frame, cliffs)
     top, top_dm, top_raised = _top(run, sweep, frame, fused)
-    water, water_checks = _water(run, sweep, fused, texture2ddecoder, Image)
+    water, water_checks = _water(run, sweep, fused)
     validation, terrain_check = _validate(run, frame, fused)
     started = time.time()
     payload = field.encode_planes(fused, water, frame, top_dm)
