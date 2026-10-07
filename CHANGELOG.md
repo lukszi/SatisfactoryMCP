@@ -231,6 +231,16 @@ Planned as 0.2.0.
 - Map renders take the sun term from one float32 copy, the live-sun page's own, in place of
   several copies in mixed precision. A few dozen lit pixels of a 2048 map move by one level.
   Every rendered map style is one version up for these fixes.
+- Map water: two water boxes meeting inside one sheet of water no longer draw a straight line
+  where their tops differ by up to a metre; the level is feathered over about 12 m. A river
+  hands over to a lake or the sea along a ramp, is drawn across the joints between its
+  sections, and fades out where it ends in other water, instead of drawing panels and square
+  ends. Waterfall foam fades out at the ends of its lip, and on the game-painted map goes
+  under the crowns and the Titan canopy. On the game-painted map, pools a few decimetres
+  deep are drawn as water, a hot-spring terrace tints only the water around it instead of
+  its whole lake, dry patches inside the swamp no longer draw as teal sea, and the swamp's
+  dark water stays off the sea past the landscape's edge. Every rendered map style is one
+  version up: terrain and satellite 10, game-painted 21, relief and relief dark 8.
 
 ## [0.1.0] - 2026-09-27
 
