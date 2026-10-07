@@ -93,7 +93,6 @@ class RockFamilyEntry(TypedDict, total=False):
     tint: list[float] | None
     top_texture: str | None
     top: list[float] | None
-    top_texture: str | None
 
 
 class PaintGrid(TypedDict):
