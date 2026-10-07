@@ -46,6 +46,7 @@ __all__ = [
     "FallRecord",
     "cached_falls",
     "fall_from_modules",
+    "in_lip_order",
     "load_or_sweep_falls",
     "read_fall",
     "write_falls",
@@ -199,9 +200,14 @@ def _metres(value: JsonValue) -> float:
     return float(value) if isinstance(value, (int, float)) else 0.0
 
 
+def in_lip_order(falls: Sequence[JsonObject]) -> list[JsonObject]:
+    """The records by lip position, the order they are cached, digested and drawn in."""
+    return sorted(falls, key=lambda f: (_metres(f["x"]), _metres(f["y"]), _metres(f["z"])))
+
+
 def write_falls(path: Path, falls: Sequence[JsonObject], stamp: ReaderStamp) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    ordered = sorted(falls, key=lambda f: (_metres(f["x"]), _metres(f["y"]), _metres(f["z"])))
+    ordered = in_lip_order(falls)
     path.write_text(json.dumps({**stamp, "falls": ordered}, indent=0), encoding="utf-8")
 
 
@@ -225,7 +231,10 @@ def cached_falls(path: Path, stamp: ReaderStamp) -> list[JsonObject] | None:
 def load_or_sweep_falls(
     cache_root: Path, build: str | None, sweep_once: Callable[[], Sweep]
 ) -> tuple[list[JsonObject], dict[str, JsonObject]]:
-    """The falls from this build's cache, else from ``sweep_once()``, and what the sidecar says."""
+    """The falls from this build's cache, else from ``sweep_once()``, and what the sidecar says.
+
+    Either way in lip order: overlapping falls blend in the order they are drawn.
+    """
     path = cache_root / FALLS_CACHE_DIR_NAME / FALLS_CACHE_NAME
     stamp: ReaderStamp = {
         "game_version_pinned": build,
@@ -234,7 +243,7 @@ def load_or_sweep_falls(
     falls = cached_falls(path, stamp)
     reused = falls is not None
     if falls is None:
-        falls = [f for f in sweep_once().get("actors", ()) if _is_fall(f)]
+        falls = in_lip_order([f for f in sweep_once().get("actors", ()) if _is_fall(f)])
         write_falls(path, falls, stamp)
     print(f"  {len(falls)} waterfalls" + (f", reused from {path}" if reused else ""))
     meta: JsonObject = {
