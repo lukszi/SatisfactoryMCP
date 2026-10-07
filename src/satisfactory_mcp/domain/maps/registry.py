@@ -643,7 +643,8 @@ def taken_ids() -> set[str]:
 
 
 def clear_cache() -> int:
-    """Delete the kept render rasters; returns the bytes freed."""
+    """Delete every size's kept raster caches and the light kept beside them; returns the
+    bytes freed."""
     cache = maps_dir() / CACHE_DIR_NAME
     freed = cache_bytes()
     shutil.rmtree(cache, ignore_errors=True)
@@ -651,6 +652,8 @@ def clear_cache() -> int:
 
 
 def cache_bytes() -> int:
+    """What ``_cache/`` holds: every size's raster caches and kept light (``light.kept/``),
+    whose tiles, hard links to a render's, count in full."""
     cache = maps_dir() / CACHE_DIR_NAME
     if not cache.is_dir():
         return 0

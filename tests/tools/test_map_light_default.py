@@ -98,6 +98,43 @@ def test_the_light_scratch_is_the_light_cache_the_stage_allocates(tmp_path):
     assert written == pytest.approx(expected, rel=0.01)
 
 
+def test_the_kept_terms_are_the_terms_the_stage_allocates(tmp_path):
+    size = 512
+    allocate_work_arrays(tmp_path, size)
+    expected = presets.KEPT_LIGHT_BYTES * (size / presets.FULL_PX) ** 2
+    assert (tmp_path / "terms.npy").stat().st_size == pytest.approx(expected, rel=0.01)
+
+
+def test_a_lit_job_that_keeps_its_light_counts_the_kept_terms(in_use_local):
+    terms = int(presets.KEPT_LIGHT_BYTES * (2048 / presets.FULL_PX) ** 2)
+    lit = {"layers": ["terrain"], "size": 2048}
+    plain = presets.estimate("render", lit)
+    for keeps in ({"keep_cache": True}, {"recipe": "kernel-only"}):
+        kept = presets.estimate("render", {**lit, **keeps})
+        assert kept["keep_bytes"] - plain["keep_bytes"] == terms, keeps
+        assert kept["needs_bytes"] == plain["needs_bytes"], "moved out of the scratch, not copied"
+    dark = {**lit, "light": False}
+    dark_kept = presets.estimate("render", {**dark, "keep_cache": True})
+    assert dark_kept["keep_bytes"] == presets.estimate("render", dark)["keep_bytes"]
+    keep_cache(2048, parts=(presets.KEPT_LIGHT_PART,))
+    replaced = presets.estimate("render", {**lit, "keep_cache": True})
+    assert replaced["keep_bytes"] == plain["keep_bytes"], "a kept light is replaced in place"
+
+
+def test_the_cache_counts_and_clears_the_light_kept_beside_the_rasters(in_use_local):
+    keep_cache(2048)
+    rasters = registry.cache_bytes()
+    kept = presets.cache_dir(2048) / presets.KEPT_LIGHT_PART
+    (kept / "tiles" / "0").mkdir(parents=True)
+    (kept / "tiles" / "0" / "0.webp").write_bytes(b"t" * 10)
+    (kept / "terms.npy").write_bytes(b"\0" * 300)
+    (kept / "meta.json").write_text("{}", encoding="utf-8")
+    assert presets.light_kept(2048)
+    assert registry.cache_bytes() == rasters + 312
+    assert registry.clear_cache() == rasters + 312
+    assert registry.cache_bytes() == 0 and not presets.light_kept(2048)
+
+
 def test_the_bands_are_cut_as_they_settle_so_more_layers_need_no_more_scratch(in_use_local):
     dark = {"size": 2048, "light": False}
     every = presets.estimate("render", {**dark, "layers": list(presets.RENDER_LAYERS)})

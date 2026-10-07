@@ -107,6 +107,9 @@ LIGHT_KEEP_BYTES = 1_000_000_000
 UNLIT_KEEP_BYTES = 450_000_000
 LIGHT_SCRATCH_BYTES = 14_500_000_000
 CROWN_SCRATCH_BYTES = 5_370_000_000
+#: The default-sun terms a lit render keeps beside its raster caches, 3 bytes a pixel, moved
+#: out of the light's scratch; the kept tiles are hard links (section 29, "Kept light").
+KEPT_LIGHT_BYTES = 3 * FULL_PX * FULL_PX
 DIRECT_FLOOR_S = 80.0
 TOP_FLOOR_S = 18.0
 RENDER_KEEP_BYTES = 890_000_000
@@ -293,6 +296,15 @@ def cached_sizes() -> list[int]:
     return [size for size in RENDER_SIZES if cache_ready(size)]
 
 
+def _keeps_new_light(options: RenderOptions) -> bool:
+    """Whether a lit job leaves a kept light where none is: it keeps its raster caches
+    (``_render_plan``'s ``--keep-direct``) or draws the kernel only, which deletes neither."""
+    size = options["size"]
+    keeps = options["keep_cache"] or options["restyle"] or cache_dir(size).is_dir()
+    keeps = keeps or options["recipe"] == "kernel-only"
+    return options["light"] and keeps and not light_kept(size)
+
+
 def _render_cost(options: RenderOptions) -> tuple[float, int, int]:
     """``(seconds, bytes kept, bytes needed while it runs)`` of one render job."""
     area = _area(options["size"])
@@ -306,6 +318,10 @@ def _render_cost(options: RenderOptions) -> tuple[float, int, int]:
     transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
     if options["light"]:
         transient += int((LIGHT_SCRATCH_BYTES + CROWN_SCRATCH_BYTES) * area)
+    if _keeps_new_light(options):
+        # The terms move out of the scratch, so they are kept rather than needed twice.
+        keep += int(KEPT_LIGHT_BYTES * area)
+        transient -= int(KEPT_LIGHT_BYTES * area)
     return seconds, keep, transient
 
 

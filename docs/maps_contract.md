@@ -298,8 +298,17 @@ for a missing `gen` extra says to stop satisfactory-mcp first, because uv cannot
 
 A job is refused (507) unless free space covers what it keeps, what it needs while running
 (the raster caches, about 1 GB at 32768 in the zstd band store of spatial-and-map.md §39, and
-with the light its cache, 14.5 GB and 5.4 GB more with the painted layer, both scaled by area)
-and 2 GB more. The drawn bands are cut as they settle and never wait on disk (§42). Checked at the form, at submit and again at start.
+with the light its cache, 14.5 GB, and 5.4 GB more for the tree crowns wherever there is a
+paint store, whatever the layers; all scaled by area) and 2 GB more. What a lit job keeps
+includes the light it keeps beside its raster caches (spatial-and-map.md §29, "Kept light"),
+3.2 GB of default-sun terms at 32768, when it keeps those caches or draws the kernel only and
+no light is kept at its size yet; the terms move out of the light's cache, so they come off
+what it needs while running. The drawn bands are cut as they settle and never wait on disk
+(§42). Checked at the form, at submit and again at start.
+
+`cache_bytes` on `GET /api/maps` is all of `_cache/`: every size's raster caches and kept
+light, whose tiles, hard links to a render's, count in full. `DELETE /api/maps/cache` removes
+all of it.
 
 ### 4.3 Estimates
 
