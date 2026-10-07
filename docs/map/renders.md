@@ -1632,7 +1632,7 @@ of satellite, relief and relief-dark fell from about 3 s to about 1 s, painted f
 - `tests/mapgen/test_kernels.py` compares every kernel with its reference byte for byte:
   five azimuths, slabs with holes, float64 slabs, crowns, three sky spacings and a strided
   view; four source types, three tap kinds and two scales for the gathers; PCHIP on integer
-  and float sources; float64 weights.
+  and float sources; float64 weights; a column piece against the same columns of whole rows.
 - The full-size light block above came out the same bytes both ways.
 
 ### Known limits

@@ -193,6 +193,29 @@ def test_pchip_is_the_reference_bit_for_bit(monkeypatch, dtype, scale):
     _same(monkeypatch, lambda: sm.sample_surface(raster, smooth, linear, hf.NODATA))
 
 
+def _piece(taps, columns: slice):
+    parts = tuple(part[..., columns] for part in taps)
+    return sm.PchipTaps(*parts) if isinstance(taps, sm.PchipTaps) else parts
+
+
+@needs_numba
+@pytest.mark.parametrize("kind", ["pchip", "cubic"])
+def test_a_column_piece_is_the_whole_rows_columns_with_the_kernels(monkeypatch, kind):
+    """A piece's gathers read its block cut to its columns (section 40) and index into it."""
+    raster, columns = _rasters()["i16"], slice(300, 428)
+    (rows, cols), (linear_rows, linear_cols) = _taps(kind, 1.3), _taps("linear", 1.3)
+
+    def draw(smooth_cols, flat_cols):
+        return sm.sample_surface(raster, (rows, smooth_cols), (linear_rows, flat_cols), hf.NODATA)
+
+    def piece():
+        return draw(_piece(cols, columns), _piece(linear_cols, columns))
+
+    _same(monkeypatch, piece)
+    whole = draw(cols, linear_cols)
+    assert _bits(piece()) == _bits(tuple(part[:, columns] for part in whole))
+
+
 @needs_numba
 def test_float64_weights_round_after_every_tap_as_numpy_does(monkeypatch):
     raster = _rasters()["f32"]
