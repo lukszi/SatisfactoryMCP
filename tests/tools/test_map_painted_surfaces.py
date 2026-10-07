@@ -452,7 +452,9 @@ def _shallow_scene(ocean):
         "water": {"cover": np.ones(shape, np.float32), "depth_m": np.full(shape, 0.05, np.float32),
                   "ocean": np.full(shape, ocean, np.float32), "edge": np.zeros(shape, np.float32),
                   "above_m": np.full(shape, np.inf, np.float32),
-                  "below_m": np.full(shape, np.inf, np.float32)},
+                  "below_m": np.full(shape, np.inf, np.float32),
+                  "river": np.zeros(shape, np.float32),
+                  "river_below_m": np.full(shape, np.inf, np.float32)},
     }  # fmt: skip
 
 

@@ -273,9 +273,16 @@ def _water_compiled(
     curve = np.zeros(shares.shape, np.float32)
     part = ~((shares <= 0.0) | (shares >= 1.0))
     curve[part] = np.clip(4.0 * shares[part] * (1.0 - shares[part]), 0.0, 1.0) ** 1.5
-    knobs = [water_style["lit"], FLAT_LIT, shore["edge_alpha"], water_style["stroke"]]
-    style = (ground.shallow, ground.deep, ground.stroke, np.array(knobs, np.float32))
-    flat = tuple(plane.reshape(-1) for plane in (cover, ocean, tint, lit))
-    out = kernels.relief_water(land.reshape(-1, 3), flat, index, (transmit, curve), wet.whole,
-                               WET_MIX_MOST, style)  # fmt: skip
+    knobs = kernels.ReliefKnobs(
+        sunlit=np.float32(water_style["lit"]),
+        flat_lit=np.float32(FLAT_LIT),
+        edge_alpha=np.float32(shore["edge_alpha"]),
+        stroke_weight=np.float32(water_style["stroke"]),
+    )
+    style = kernels.ReliefStyle(ground.shallow, ground.deep, ground.stroke, knobs)
+    flat = kernels.ReliefPlanes(*(plane.reshape(-1) for plane in (cover, ocean, tint, lit)))
+    terms = kernels.ReliefTerms(transmit, curve)
+    out = kernels.relief_water(
+        land.reshape(-1, 3), flat, index, terms, wet.whole, WET_MIX_MOST, style
+    )
     return out.reshape(land.shape)

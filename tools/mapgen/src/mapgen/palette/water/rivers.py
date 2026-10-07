@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypeAlias, TypedDict, cast
+from typing import NamedTuple, TypeAlias, TypedDict, cast
 
 import numpy as np
 from scipy import ndimage
@@ -126,12 +126,12 @@ class RiverWater:
             draws = speaks & (across <= 1.0) & ~steps & (level > ground)
         drawn, joints = feather_steps(level, zone & np.isfinite(level), RIVER_JOINTS)
         lips = _beside_a_step(drawn)
-        tops = (river_top, other_top, boxes)
+        tops = _Tops(river_top, other_top, boxes)
         self.water_dm: I16Grid
         self.grades: U8Grid
         self.stats: JsonObject
         self.water_dm, self.grades, self.stats = _reconcile(
-            field, ground, (speaks, valley, draws, lips), (level, drawn), tops
+            field, ground, _Ribbon(speaks, valley, draws, lips), _Planes(level, drawn), tops
         )
         del valley, draws
         fade *= _below_other(drawn, self.water_dm, self.grades) * ~lips
@@ -208,27 +208,45 @@ def _length_m(samples: RiverSamples) -> float:
     return float(step[samples["section"][1:] == samples["section"][:-1]].sum())
 
 
+class _Ribbon(NamedTuple):
+    """Where the ribbon reaches: where it speaks (its reach, minus where the plane hangs too
+    far over the ground); the valley, where the ground stands at most ``RIVER_MAX_DEPTH_M``
+    over the plane; where it covers the texel; and the lips, beside a step of the drawn plane."""
+
+    speaks: BoolMask
+    valley: BoolMask
+    draws: BoolMask
+    lips: BoolMask
+
+
+class _Planes(NamedTuple):
+    """The ribbon's level plane as read, and as drawn with its joints feathered."""
+
+    read: F32Grid
+    drawn: F32Grid
+
+
+class _Tops(NamedTuple):
+    """The tops of the river boxes and of every other water box, and the boxes."""
+
+    river: F32Grid
+    other: F32Grid
+    boxes: Boxes
+
+
 def _reconcile(
-    field: hf.Field,
-    ground: FloatGrid,
-    ribbon: tuple[BoolMask, BoolMask, BoolMask, BoolMask],
-    planes: tuple[F32Grid, F32Grid],
-    tops: tuple[F32Grid, F32Grid, Boxes],
+    field: hf.Field, ground: FloatGrid, ribbon: _Ribbon, planes: _Planes, tops: _Tops
 ) -> tuple[I16Grid, U8Grid, JsonObject]:
     """The field's water planes with every texel a river box levelled taken back.
 
     A texel under another water box (a lake the river's AABB overhangs) takes that box's
     level, or goes dry where the ground stands above it, unless the ribbon speaks there and
     runs above that level: then the box is a lake's AABB reaching over the river's valley.
-    Any other where the ribbon speaks (its reach, minus where the plane hangs too far over the
-    ground) is dropped: the ribbon draws the river there; but beside a fall in the drawn
-    plane, where the ribbon draws nothing, the water stays at the plane's level above the
-    lip. Then a lower body takes back the box tops over it
-    (``gamedata.water.channel.lower_bodies``). ``ribbon`` is ``(speaks, valley, draws,
-    lips)``: ``valley`` where the ground stands at most ``RIVER_MAX_DEPTH_M`` over the plane,
-    ``draws`` where the ribbon covers the texel, ``lips`` beside a step of the drawn plane.
-    ``planes`` is ``(plane, drawn)``, the plane as read and as drawn. Water in the valley more
-    than that above the plane is a higher body's box over the river (``_over_the_river``).
+    Any other where the ribbon speaks is dropped: the ribbon draws the river there; but
+    beside a fall in the drawn plane, where the ribbon draws nothing, the water stays at the
+    plane's level above the lip. Then a lower body takes back the box tops over it
+    (``gamedata.water.channel.lower_bodies``). Water in the valley more than that above the
+    plane is a higher body's box over the river (``_over_the_river``).
     """
     speaks, valley, draws, lips = ribbon
     plane_m, drawn = planes

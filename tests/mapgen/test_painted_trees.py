@@ -28,6 +28,7 @@ from mapgen.palette.painted.calibration import (
 )
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.painted.optics import class_optics, opaque_share, underwater, water_table
+from mapgen.palette.painted.shapes import UnderwaterScene
 from mapgen.palette.painted.surfaces import family_tables, mesh_surface, rock_surface, sunk_specks
 from mapgen.palette.painted.trees import (
     CANOPY_GREY,
@@ -221,7 +222,7 @@ def _ground(opaque):
 def test_ocean_inside_the_swamp_area_keeps_the_sea():
     shape = (1, 2)
     water = {"depth_m": np.full(shape, 3.0, np.float32), "ocean": np.ones(shape, np.float32)}
-    scene = {"water": water, "water_optics": None}
+    scene = UnderwaterScene(np.zeros(shape, np.float32), water, None)
     mud = np.array([0.4, 0.2, 0.2], np.float32)
     opaque = [(np.ones(shape, np.float32), mud, SWAMP)]
     g = np.full((*shape, 3), 0.2, np.float32)
@@ -229,7 +230,7 @@ def test_ocean_inside_the_swamp_area_keeps_the_sea():
     sea = underwater(g, scene, _ground(opaque), same, same, np.float32(1.0))
     np.testing.assert_allclose(sea, underwater(g, scene, _ground([]), same, same, 1.0))
     optics = {**_ground([]).water, "share": {SWAMP: np.array([[1.0, 0.0]], np.float32)}}
-    swamp = underwater(g, dict(scene, water_optics=optics), _ground(opaque), same, same, 1.0)
+    swamp = underwater(g, scene._replace(water_optics=optics), _ground(opaque), same, same, 1.0)
     np.testing.assert_allclose(swamp[0, 0], mud, atol=1e-3)
     np.testing.assert_allclose(swamp[0, 1], sea[0, 1], atol=1e-6)
 
@@ -338,7 +339,8 @@ def test_the_painted_band_draws_with_the_whole_chain():
     scene = {"z_m": zero, "borrow": zero + 1, "ndl": zero + 0.7, "ndl_flat": np.float32(0.7),
              "rock_weight": zero,
              "water": {"cover": np.array([[0.0, 1.0]], np.float32), "depth_m": zero + 1.0,
-                       "ocean": zero + 1, "edge": zero, "above_m": zero + 9, "below_m": zero + 9}}  # fmt: skip
+                       "ocean": zero + 1, "edge": zero, "above_m": zero + 9, "below_m": zero + 9,
+                       "river": zero, "river_below_m": zero + np.inf}}  # fmt: skip
     out = painted_colours(scene, ground, lambda a: a, lambda a: a)
     assert out.shape == (1, 2, 3) and not np.allclose(out[0, 0], out[0, 1])
     assert SPRITE_M > 0

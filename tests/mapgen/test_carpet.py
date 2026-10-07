@@ -20,6 +20,7 @@ from mapgen.gamedata.vegetation.carpet import (
     is_carpet,
 )
 from mapgen.palette.painted.optics import carpet_bed, load_carpet
+from mapgen.palette.painted.shapes import UnderwaterScene
 from mapgen.palette.styles import PAINTED_PALETTE
 from satisfactory_mcp.core.gameassets import versions
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -132,10 +133,11 @@ def _ground(cover, top_m):
 
 def test_the_carpet_shows_through_shallow_water_and_fades_with_depth():
     ground = _ground(255, [-17.5, -18.5, -16.5, -17.5])
-    scene = {
-        "z_m": np.full((1, 4), -18.4, np.float32),
-        "water": {"depth_m": np.array([[1.4, 1.4, 1.4, 0.0]], np.float32)},
-    }
+    scene = UnderwaterScene(
+        np.full((1, 4), -18.4, np.float32),
+        {"depth_m": np.array([[1.4, 1.4, 1.4, 0.0]], np.float32)},
+        None,
+    )
     under = np.full((1, 4, 3), 0.1, np.float32)
     out = carpet_bed(under, scene, ground, lambda plane: plane.astype(np.float32))
     colour = srgb_to_linear(CARPET["colour"])

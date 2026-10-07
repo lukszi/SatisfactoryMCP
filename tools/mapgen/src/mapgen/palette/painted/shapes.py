@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 from mapgen.cache import Plane, TitanPlanes
 from mapgen.gamedata.level.lighting import AtmosphereVolume, LevelLighting
 from mapgen.gamedata.vegetation.crown_sprites import CrownsBlock, MaterialColour
-from mapgen.palette.scene import BandGrid, BandScene, BandTaps, WaterTerms
+from mapgen.palette.scene import BandGrid, BandScene, BandTaps, UnderwaterWater, WaterTerms
 from mapgen.palette.schema import (
     CalibrationArea,
     CalibrationStyle,
@@ -59,6 +59,7 @@ __all__ = [
     "UnderwaterScene",
     "WaterBase",
     "WaterClassStyle",
+    "WetOptics",
 ]
 
 # -- the paint store -----------------------------------------------------------------------
@@ -213,12 +214,26 @@ class PaintedScene(BandScene):
     unlit: NotRequired[bool]
 
 
-class UnderwaterScene(TypedDict):
+class WetOptics(TypedDict):
+    """``ClassOptics`` at the wet pixels, less the colours the kernel reads of the band in
+    place (tint, body and deep)."""
+
+    k: F32Grid
+    sky: F32Grid
+    deep_tau_m: F32Grid | np.float32
+    bed: np.float32
+    inland_floor: np.float32
+    opaque_tau_m: np.float32
+    turbidity: F32Grid
+    share: NotRequired[dict[int, F32Grid]]
+
+
+class UnderwaterScene(NamedTuple):
     """What the colour under the water reads of a band (``optics.underwater``): its heights,
     water and optics, so the wet pixels' own planes can stand in for the band's."""
 
     z_m: FloatGrid
-    water: BandWater
+    water: UnderwaterWater
     water_optics: ClassOptics | None
 
 

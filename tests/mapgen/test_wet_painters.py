@@ -11,6 +11,7 @@ import pytest
 
 from mapgen.palette.painted import band as painted_band
 from mapgen.palette.painted.optics import mix_underwater, underwater
+from mapgen.palette.painted.shapes import UnderwaterScene
 from mapgen.palette.relief import relief_colours
 from mapgen.palette.water import wet
 from mapgen.palette.water.shore import wet_mix
@@ -51,7 +52,8 @@ def test_painted_water_on_the_wet_pixels_is_the_whole_band_s(monkeypatch, path, 
     g = rng.random((*SHAPE, 3)).astype(np.float32)
     lit = rng.random((*SHAPE, 3)).astype(np.float32)
     exposure = np.float32(1.3)
-    whole = underwater(g, scene, ground, _same, _same, exposure, crowns)
+    seen = UnderwaterScene(scene["z_m"], scene["water"], scene["water_optics"])
+    whole = underwater(g, seen, ground, _same, _same, exposure, crowns)
     want = wet_mix(lit, whole, scene["water"]["cover"][..., None])
     got = mix_underwater(lit, g, scene, ground, _same, _same, exposure, crowns)
     assert _bits(got) == _bits(want)
@@ -66,7 +68,7 @@ def test_the_painted_band_draws_the_same_bits_either_way(monkeypatch):
     cover = np.where(rng.random(n) < 0.5, 0.0, rng.random(n)).astype(np.float32)
     water = {"depth_m": rng.uniform(0.0, 4.0, n).astype(np.float32), "cover": cover,
              "edge": zero, "ocean": (cover > 0.5).astype(np.float32), "above_m": zero + 1.0,
-             "below_m": zero + 0.5}  # fmt: skip
+             "below_m": zero + 0.5, "river": zero, "river_below_m": zero + np.inf}  # fmt: skip
     scene = {"z_m": zero - 17.5, "borrow": zero + 1.0, "ndl": zero + 0.8,
              "ndl_flat": np.float32(1.0), "rock_weight": zero, "mesh_weight": None,
              "water": water, "water_optics": None}  # fmt: skip

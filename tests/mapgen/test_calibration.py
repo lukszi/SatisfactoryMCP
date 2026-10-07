@@ -427,6 +427,8 @@ def test_swamp_water_is_its_opaque_colour_and_other_water_is_untouched():
         "above_m": np.full(shape, 99.0, np.float32),
         "below_m": np.full(shape, 99.0, np.float32),
         "ocean": np.zeros(shape, np.float32),
+        "river": np.zeros(shape, np.float32),
+        "river_below_m": np.full(shape, np.inf, np.float32),
     }
     scene = {
         "z_m": np.full(shape, 50.0, np.float32),

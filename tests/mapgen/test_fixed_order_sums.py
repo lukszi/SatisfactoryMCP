@@ -152,7 +152,7 @@ def _painted_band():
     water = {"depth_m": rng.uniform(0.0, 4.0, shape).astype(np.float32), "cover": cover,
              "edge": rng.random(shape).astype(np.float32) * 0.2,
              "ocean": (cover > 0.5).astype(np.float32), "above_m": zero + 1.0,
-             "below_m": zero + 0.5}  # fmt: skip
+             "below_m": zero + 0.5, "river": zero, "river_below_m": zero + np.inf}  # fmt: skip
     scene = {"z_m": rng.uniform(-20.0, 80.0, shape).astype(np.float32),
              "borrow": rng.uniform(0.8, 1.2, shape).astype(np.float32),
              "ndl": rng.uniform(0.5, 1.6, shape).astype(np.float32), "ndl_flat": f32(1.0),

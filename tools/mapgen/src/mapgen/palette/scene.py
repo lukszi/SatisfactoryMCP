@@ -18,6 +18,7 @@ __all__ = [
     "ReliefScene",
     "SatelliteScene",
     "ShadedScene",
+    "UnderwaterWater",
     "WaterPlanes",
     "WaterTerms",
     "field_heights",
@@ -82,6 +83,16 @@ class WaterTerms(TypedDict):
     river: FloatGrid
     river_below_m: FloatGrid
     wet: NotRequired[FloatGrid]
+
+
+class UnderwaterWater(TypedDict):
+    """The water terms the optics read under the surface: the depth, the ocean's reach, and
+    the river's share with how far in from its bank. A band's ``WaterTerms`` pass as these."""
+
+    depth_m: FloatGrid
+    ocean: FloatGrid
+    river: FloatGrid
+    river_below_m: FloatGrid
 
 
 class BandScene(TypedDict):

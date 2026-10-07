@@ -10,13 +10,13 @@ spatial-and-map.md section 27 has the measurements behind every constant here.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 import numpy as np
 from scipy import ndimage
 
 from mapgen.jit import kernels_on
-from mapgen.palette.scene import FloatGrid, WaterTerms
+from mapgen.palette.scene import FloatGrid, UnderwaterWater, WaterTerms
 from mapgen.palette.schema import (
     FoamStyle,
     InlandShoreStyle,
@@ -199,8 +199,8 @@ def water_composite(
     faint line over the shallowest water.
     """
     if kernels_on():
-        shading = (shade, shade_floor, shade_range)
-        compiled = _composite_compiled(land, water, shading, optics, (shallow, deep))
+        colours = _WaterColours(shallow, deep, shade, shade_floor, shade_range)
+        compiled = _composite_compiled(land, water, colours, optics)
         if compiled is not None:
             return compiled
     land = wet_band(land, water, optics.get("wet_band"))
@@ -220,40 +220,61 @@ def water_composite(
     return add_foam(rgb, water, optics.get("foam"), np.float32(255.0))
 
 
+class _WaterColours(NamedTuple):
+    """The water's shallow and deep colours, and the hillshade they are lit by with its
+    floor and range."""
+
+    shallow: F32Grid
+    deep: F32Grid
+    shade: FloatGrid
+    shade_floor: float
+    shade_range: float
+
+
 def _composite_compiled(
-    land: F32Grid,
-    water: WaterTerms,
-    shading: tuple[FloatGrid, float, float],
-    optics: ShoreOptics,
-    colours: tuple[F32Grid, F32Grid],
+    land: F32Grid, water: WaterTerms, colours: _WaterColours, optics: ShoreOptics
 ) -> F32Grid | None:
     """``water_composite`` by the kernel; the fade's ``exp`` is worked out here, by numpy.
     It reads the planes the style reads, no others. None, for the numpy painter, where one of
     them is not float32."""
     from mapgen.palette.water import kernels
 
-    shade, floor, spread = shading
     band, foam = optics.get("wet_band") or {}, optics.get("foam") or {}
     band_m, strength = band.get("m") or 0.0, foam.get("strength") or 0.0
     stroke = optics.get("stroke", 0.0)
     # The cover stands in for a plane the style does not read, which the kernel leaves unread.
     cover = water["cover"]
-    above = water["above_m"] if band_m else cover
-    edge = water["edge"] if stroke else cover
-    below = water["below_m"] if strength else cover
-    banks = water.get("banks", water["ocean"])
-    planes = (cover, water["depth"], banks, shade, above, edge, water["depth_m"], below,
-              water["ocean"])  # fmt: skip
+    planes = kernels.CompositePlanes(
+        cover=cover,
+        depth=water["depth"],
+        banks=water.get("banks", water["ocean"]),
+        shade=colours.shade,
+        above_m=water["above_m"] if band_m else cover,
+        edge=water["edge"] if stroke else cover,
+        depth_m=water["depth_m"],
+        below_m=water["below_m"] if strength else cover,
+        ocean=water["ocean"],
+    )
     depth = optical_depth(water, optics.get("river"), optics.get("inland"))
     transmit = np.exp(-depth / np.float32(optics["clarity_m"]))
-    if not float32_planes(land, *colours, *planes, transmit):
+    if not float32_planes(land, colours.shallow, colours.deep, *planes, transmit):
         return None
     tint = np.asarray(band["tint"] if band_m else (1.0, 1.0, 1.0), np.float32)
     froth = (foam["max_depth_m"], foam["width_m"]) if strength else (1.0, 1.0)
     white = np.float32(255.0) * np.float32(foam.get("white", 1.0))
-    knobs = [band_m, optics["edge_alpha"], optics["wet_darken"], floor, spread, stroke, strength,
-             *froth, white]  # fmt: skip
-    style = (*colours, tint, np.array(knobs, np.float32))
+    knobs = kernels.CompositeKnobs(
+        band_m=np.float32(band_m),
+        edge_alpha=np.float32(optics["edge_alpha"]),
+        wet_darken=np.float32(optics["wet_darken"]),
+        shade_floor=np.float32(colours.shade_floor),
+        shade_range=np.float32(colours.shade_range),
+        stroke=np.float32(stroke),
+        foam=np.float32(strength),
+        foam_depth_m=np.float32(froth[0]),
+        foam_width_m=np.float32(froth[1]),
+        foam_white=white,
+    )
+    style = kernels.CompositeStyle(colours.shallow, colours.deep, tint, knobs)
     return kernels.water_composite(land, planes, transmit, WET_MIX_MOST, style)
 
 
@@ -290,7 +311,7 @@ def wet_band(land: FloatGrid, water: WaterTerms, band: WetBandStyle | None) -> F
 
 
 def optical_depth(
-    water: WaterTerms, river: RiverShoreStyle | None, inland: InlandShoreStyle | None = None
+    water: UnderwaterWater, river: RiverShoreStyle | None, inland: InlandShoreStyle | None = None
 ) -> FloatGrid:
     """The depth the optics see: a river reads at least ``min_depth_m`` deep once ``bank_m``
     in from its waterline, so a shallow bed does not draw it as a pale path; inland field
@@ -318,7 +339,7 @@ def inland_cover(water: WaterTerms, inland: InlandShoreStyle | None) -> WaterTer
     return {**water, "cover": np.maximum(water["cover"], floor)}
 
 
-def _inland_share(water: WaterTerms) -> FloatGrid:
+def _inland_share(water: UnderwaterWater) -> FloatGrid:
     """The share of each pixel's water that is neither the ocean's reach nor a river's."""
     river = water["river"] if "river" in water else np.float32(0.0)
     return (1.0 - water["ocean"]) * (1.0 - river)

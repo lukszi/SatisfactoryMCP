@@ -8,21 +8,101 @@ handed in. Imported only when ``mapgen.jit.kernels_on()``. docs/map/renders.md s
 
 from __future__ import annotations
 
-from typing import TypeAlias
+from typing import NamedTuple
 
 import numpy as np
 
 from mapgen.jit import helper, kernel
 from satisfactory_mcp.core.arrays import F32Grid, I64Grid
 
-__all__ = ["relief_water", "water_composite"]
+__all__ = [
+    "CompositeKnobs",
+    "CompositePlanes",
+    "CompositeStyle",
+    "ReliefKnobs",
+    "ReliefPlanes",
+    "ReliefStyle",
+    "ReliefTerms",
+    "relief_water",
+    "water_composite",
+]
 
 _ZERO = np.float32(0.0)
 _HALF = np.float32(0.5)
 _ONE = np.float32(1.0)
 
-#: The ``(H, W)`` planes of a band a kernel reads.
-Planes: TypeAlias = tuple[F32Grid, ...]
+
+class ReliefPlanes(NamedTuple):
+    """The band's planes ``relief_water`` reads, laid flat."""
+
+    cover: F32Grid
+    ocean: F32Grid
+    tint: F32Grid
+    lit: F32Grid
+
+
+class ReliefTerms(NamedTuple):
+    """Worked out by numpy at the pixels the kernel works on: ``exp(-depth_m / clarity)``
+    and the stroke's ``clip(4 c (1 - c)) ** 1.5``."""
+
+    transmit: F32Grid
+    curve: F32Grid
+
+
+class ReliefKnobs(NamedTuple):
+    """The relief water's numbers, float32."""
+
+    sunlit: np.float32
+    flat_lit: np.float32
+    edge_alpha: np.float32
+    stroke_weight: np.float32
+
+
+class ReliefStyle(NamedTuple):
+    """The relief water's colours and numbers."""
+
+    shallow: F32Grid
+    deep: F32Grid
+    stroke: F32Grid
+    knobs: ReliefKnobs
+
+
+class CompositePlanes(NamedTuple):
+    """The ``(H, W)`` planes of a band ``water_composite`` reads."""
+
+    cover: F32Grid
+    depth: F32Grid
+    banks: F32Grid
+    shade: F32Grid
+    above_m: F32Grid
+    edge: F32Grid
+    depth_m: F32Grid
+    below_m: F32Grid
+    ocean: F32Grid
+
+
+class CompositeKnobs(NamedTuple):
+    """The shore's numbers, float32. A band, stroke or foam strength of 0 is none."""
+
+    band_m: np.float32
+    edge_alpha: np.float32
+    wet_darken: np.float32
+    shade_floor: np.float32
+    shade_range: np.float32
+    stroke: np.float32
+    foam: np.float32
+    foam_depth_m: np.float32
+    foam_width_m: np.float32
+    foam_white: np.float32
+
+
+class CompositeStyle(NamedTuple):
+    """The shore's colours and numbers."""
+
+    shallow: F32Grid
+    deep: F32Grid
+    band_tint: F32Grid
+    knobs: CompositeKnobs
 
 
 @helper
@@ -37,22 +117,22 @@ def _clip(x: np.float32) -> np.float32:
 
 @kernel
 def relief_water(
-    land: F32Grid, planes: Planes, index: I64Grid, terms: Planes, whole: bool, most: float,
-    style: Planes,
-) -> F32Grid:  # fmt: skip
+    land: F32Grid,
+    planes: ReliefPlanes,
+    index: I64Grid,
+    terms: ReliefTerms,
+    whole: bool,
+    most: float,
+    style: ReliefStyle,
+) -> F32Grid:
     """``relief._water`` on the pixels ``index`` of a band laid flat: ``land`` (pixels by 3)
-    with the water mixed in.
-
-    ``planes`` is ``(cover, ocean, tint, lit)``, flat too, ``terms`` ``exp(-depth_m /
-    clarity)`` and ``clip(4 c (1 - c)) ** 1.5`` at ``index``, ``style`` ``(shallow, deep,
-    stroke, knobs)`` with ``knobs`` ``(sunlit, FLAT_LIT, edge_alpha, stroke weight)``.
-    ``whole``: ``index`` is every pixel, mixed as ``shore.wet_mix`` does past ``most`` of
-    them touched.
+    with the water mixed in. ``terms`` are at ``index``. ``whole``: ``index`` is every pixel,
+    mixed as ``shore.wet_mix`` does past ``most`` of them touched.
     """
     cover, ocean, tint, lit = planes
     transmit, curve = terms
     shallow, deep, stroke, knobs = style
-    sunlit, flat_lit, edge_alpha, stroke_weight = knobs[0], knobs[1], knobs[2], knobs[3]
+    sunlit, flat_lit, edge_alpha, stroke_weight = knobs
     out = land.copy()
     unders = np.empty((index.shape[0], 3), np.float32)
     weights = np.empty(index.shape[0], np.float32)
@@ -83,20 +163,17 @@ def relief_water(
 
 @kernel
 def water_composite(
-    land: F32Grid, planes: Planes, transmit: F32Grid, most: float, style: Planes,
-) -> F32Grid:  # fmt: skip
-    """``shore.water_composite`` over a band: sRGB 0..255.
-
-    ``planes`` is ``(cover, depth, banks, shade, above_m, edge, depth_m, below_m, ocean)``,
-    ``transmit`` ``exp(-optical depth / clarity)``. ``style`` is ``(shallow, deep, band tint,
-    knobs)``, ``knobs`` ``(band m, edge_alpha, wet_darken, shade floor, shade range, stroke,
-    foam strength, foam max depth, foam width, foam white)``; a band m, stroke or foam
-    strength of 0 is none.
+    land: F32Grid, planes: CompositePlanes, transmit: F32Grid, most: float, style: CompositeStyle
+) -> F32Grid:
+    """``shore.water_composite`` over a band: sRGB 0..255. ``transmit`` is
+    ``exp(-optical depth / clarity)``.
     """
     cover, depth, banks, shade, above_m, edge, depth_m, below_m, ocean = planes
     shallow, deep, band_tint, knobs = style
-    band_m, edge_alpha, wet_darken, floor, spread = knobs[0], knobs[1], knobs[2], knobs[3], knobs[4]
-    stroke, foam, foam_depth, foam_width, white = knobs[5], knobs[6], knobs[7], knobs[8], knobs[9]
+    band_m, edge_alpha, wet_darken = knobs.band_m, knobs.edge_alpha, knobs.wet_darken
+    floor, spread, stroke = knobs.shade_floor, knobs.shade_range, knobs.stroke
+    foam, foam_depth, foam_width = knobs.foam, knobs.foam_depth_m, knobs.foam_width_m
+    white = knobs.foam_white
     rows, cols = cover.shape
     touched = 0
     for r in range(rows):

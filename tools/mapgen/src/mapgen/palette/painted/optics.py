@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TypeAlias
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 from scipy import ndimage
@@ -23,7 +23,6 @@ from mapgen.jit import kernels_on
 from mapgen.palette.painted.albedo import paint_plane
 from mapgen.palette.painted.shapes import (
     BandTaps,
-    BandWater,
     Carpet,
     ClassOptics,
     CrownLayer,
@@ -36,13 +35,18 @@ from mapgen.palette.painted.shapes import (
     UnderwaterScene,
     WaterBase,
     WaterClassStyle,
+    WetOptics,
 )
 from mapgen.palette.painted.water_classes import class_shares
+from mapgen.palette.scene import UnderwaterWater
 from mapgen.palette.water.shore import WET_MIX_MOST, optical_depth, wet_mix
 from mapgen.palette.water.wet import EveryPixel, WetPixels, float32_planes
 from mapgen.terrain.sample import ClassMix, class_taps
-from satisfactory_mcp.core.arrays import U8Grid
+from satisfactory_mcp.core.arrays import F32Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
+
+if TYPE_CHECKING:
+    from mapgen.palette.painted.kernels import BandColours, CarpetTerms, OpaqueTerms, SunkTerms
 
 __all__ = [
     "UNDERWATER_TERMS",
@@ -62,7 +66,7 @@ WATER_TABLE_COLUMNS = (3, 3, 3, 1, 1, 3)
 
 #: The band's water terms ``underwater`` reads: ``mix_underwater`` takes these alone onto the
 #: wet pixels.
-UNDERWATER_TERMS = frozenset({"depth_m", "ocean", "river", "river_below_m"})
+UNDERWATER_TERMS: frozenset[str] = UnderwaterWater.__required_keys__
 
 _RIVER = WATER_CLASSES.index("river")
 
@@ -150,7 +154,7 @@ def class_optics(
 
 
 def opaque_share(
-    cid: int, optics: ClassOptics | None, water: BandWater, classified: bool
+    cid: int, optics: ClassOptics | WetOptics | None, water: UnderwaterWater, classified: bool
 ) -> FloatGrid | None:
     """How much of each pixel's water is class ``cid``; None where the band has none.
 
@@ -191,9 +195,9 @@ def carpet_bed(
     style, carpet, water = ground.palette.get("carpet"), ground.carpet, ground.water
     if style is None or carpet is None:
         return under
-    depth = scene["water"]["depth_m"]
+    depth = scene.water["depth_m"]
     top = sample(carpet[1])
-    above = np.clip(scene["z_m"] + depth - top, 0.0, None) * np.float32(style["depth_scale"])
+    above = np.clip(scene.z_m + depth - top, 0.0, None) * np.float32(style["depth_scale"])
     cover = sample(carpet[0]) / np.float32(255.0) * np.float32(style["strength"])
     cover = np.where(depth > 0.0, np.clip(cover, 0.0, 1.0), 0.0)[..., None]
     transmit = np.exp(-water["k"] * above[..., None])
@@ -214,8 +218,7 @@ def underwater(
     """The colour under the water surface: the bed through the class's optics, the carpet,
     the ``crowns`` under the surface, the open-sea term, and the opaque area water where its
     class is."""
-    water = scene["water"]
-    optics = scene.get("water_optics")
+    water, optics = scene.water, scene.water_optics
     w = optics or ground.water
     depth = _optical_depth(water, ground)[..., None]
     floor = w["inland_floor"] * (1.0 - water["ocean"])[..., None]
@@ -233,7 +236,7 @@ def underwater(
     if crowns is not None:
         sunk = (crowns["alpha"] * crowns["sunk"])[..., None]
         if sunk.any():
-            above = np.maximum(scene["z_m"] + water["depth_m"] - crowns["top_m"], 0.0)[..., None]
+            above = np.maximum(scene.z_m + water["depth_m"] - crowns["top_m"], 0.0)[..., None]
             under = under * (1.0 - sunk) + through(crowns["colour"], above) * sunk
     open_sea = 1.0 - np.exp(-depth / w["deep_tau_m"])
     under = under * (1.0 - open_sea) + w["deep"] * open_sea
@@ -249,10 +252,46 @@ def underwater(
     return under
 
 
-def _optical_depth(water: BandWater, ground: PaintedSurface) -> FloatGrid:
+def _optical_depth(water: UnderwaterWater, ground: PaintedSurface) -> FloatGrid:
     """The depth the optics see, with the palette's river and inland floors."""
     shore = ground.palette["shore"]
     return optical_depth(water, shore.get("river"), shore.get("inland"))
+
+
+def _wet_water(pixels: WetPixels, water: UnderwaterWater) -> UnderwaterWater:
+    """The water terms ``underwater`` reads (``UNDERWATER_TERMS``), at ``pixels``."""
+    return {
+        "depth_m": pixels.take_band(water["depth_m"]),
+        "ocean": pixels.take_band(water["ocean"]),
+        "river": pixels.take_band(water["river"]),
+        "river_below_m": pixels.take_band(water["river_below_m"]),
+    }
+
+
+def _wet_optics(pixels: WetPixels, optics: ClassOptics) -> WetOptics:
+    """``optics`` at ``pixels``, less the colours the kernel reads of the band in place."""
+    tau = optics["deep_tau_m"]
+    taken: WetOptics = {
+        "k": pixels.take_band(optics["k"]),
+        "sky": pixels.take_band(optics["sky"]),
+        "deep_tau_m": tau if isinstance(tau, np.generic) else pixels.take_band(tau),
+        "bed": optics["bed"],
+        "inland_floor": optics["inland_floor"],
+        "opaque_tau_m": optics["opaque_tau_m"],
+        "turbidity": pixels.take_band(optics["turbidity"]),
+    }
+    if "share" in optics:
+        taken["share"] = {cid: pixels.take_band(p) for cid, p in optics["share"].items()}
+    return taken
+
+
+class _Reads(NamedTuple):
+    """How the painter samples the paint store and the rock grid onto the band, and the
+    exposure it lights the ground with."""
+
+    sample: Sampler
+    sample_rock: Sampler
+    exposure: float | np.float32
 
 
 def mix_underwater(
@@ -271,19 +310,20 @@ def mix_underwater(
     cover = scene["water"]["cover"]
     wet = WetPixels(cover)
     if kernels_on() and float32_planes(lit, g, exposure):
-        compiled = _mix_compiled(lit, g, (scene, ground), (sample, sample_rock, exposure), crowns,
-                                 wet)  # fmt: skip
+        reads = _Reads(sample, sample_rock, exposure)
+        compiled = _mix_compiled(lit, g, scene, ground, reads, crowns, wet)
         if compiled is not None:
             return compiled
-    if wet.whole:
-        under = underwater(g, scene, ground, sample, sample_rock, exposure, crowns)
-        return wet_mix(lit, under, cover[..., None])
     optics = scene.get("water_optics")
-    taken: UnderwaterScene = {
-        "z_m": wet.take(scene["z_m"]),
-        "water": wet.take_planes(scene["water"], UNDERWATER_TERMS),
-        "water_optics": None if optics is None else wet.take_planes(optics),
-    }
+    if wet.whole:
+        whole = UnderwaterScene(scene["z_m"], scene["water"], optics)
+        under = underwater(g, whole, ground, sample, sample_rock, exposure, crowns)
+        return wet_mix(lit, under, cover[..., None])
+    taken = UnderwaterScene(
+        wet.take(scene["z_m"]),
+        _wet_water(wet, scene["water"]),
+        None if optics is None else wet.take_planes(optics),
+    )
     under = underwater(
         wet.take(g),
         taken,
@@ -296,15 +336,20 @@ def mix_underwater(
     return wet.mix(lit, wet.take(lit), under, wet.take(cover)[..., None])
 
 
-#: A kernel's planes: arrays of the pixels it works on, and colours.
-_Terms: TypeAlias = tuple[FloatGrid, ...]
+class _Heights(NamedTuple):
+    """The band's scene, whose heights are read only where they are needed, and the water's
+    depth at the pixels the mix reads."""
+
+    scene: PaintedScene
+    depth_m: FloatGrid
 
 
 def _mix_compiled(
     lit: FloatGrid,
     g: FloatGrid,
-    surface: tuple[PaintedScene, PaintedSurface],
-    reads: tuple[Sampler, Sampler, float | np.float32],
+    scene: PaintedScene,
+    ground: PaintedSurface,
+    reads: _Reads,
     crowns: CrownLayer | None,
     wet: WetPixels,
 ) -> FloatGrid | None:
@@ -313,42 +358,49 @@ def _mix_compiled(
     the numpy painter, where a plane they read is not float32."""
     from mapgen.palette.painted import kernels
 
-    scene, ground = surface
-    sample, sample_rock, exposure = reads
     pixels = EveryPixel(wet.shape) if wet.whole else wet
-    water = pixels.take_planes(scene["water"], UNDERWATER_TERMS)
+    water = _wet_water(pixels, scene["water"])
     optics = scene.get("water_optics")
-    in_place = ("tint", "body", "deep")
-    taken = None if optics is None else pixels.take_planes(
-        optics, [key for key in optics if key not in in_place])  # fmt: skip
+    taken = None if optics is None else _wet_optics(pixels, optics)
     w = taken or ground.water
     depth = _optical_depth(water, ground)[..., None]
     floor = w["inland_floor"] * (1.0 - water["ocean"])[..., None]
     if "turbidity" in w:
         floor = np.maximum(floor, w["turbidity"])
-    wet_terms = (np.exp(-w["k"] * depth), (1.0 - floor)[:, 0],
-                 np.exp(-depth / w["deep_tau_m"])[:, 0])  # fmt: skip
-    heights = (scene, water["depth_m"])  # the heights are read only where they are needed
-    carpet = _carpet_terms(pixels, heights, ground, sample)
-    sunk = _sunk_terms(pixels, heights, crowns, w["k"])
-    murky = (sample_rock, w.get("opaque_tau_m"))
-    opaque = _opaque_terms(pixels, (depth, water, taken), ground, murky)
+    wet_terms = kernels.WetTerms(
+        bed_e=np.exp(-w["k"] * depth),
+        keep=(1.0 - floor)[:, 0],
+        open_e=np.exp(-depth / w["deep_tau_m"])[:, 0],
+    )
+    heights = _Heights(scene, water["depth_m"])
+    extras = kernels.UnderwaterExtras(
+        carpet=_carpet_terms(pixels, heights, ground, reads.sample),
+        sunk=_sunk_terms(pixels, heights, crowns, w["k"]),
+        opaque=_opaque_terms(pixels, _Murk(depth, water, taken), ground, reads.sample_rock),
+    )
     band = _band_terms(g, scene, crowns, ground.water if optics is None else optics)
-    knobs = (exposure, w["bed"], w["sky"])
-    if not float32_planes(*band, *wet_terms, *carpet, *sunk, *opaque, *knobs):
+    knobs = kernels.UnderwaterKnobs(np.float32(reads.exposure), w["bed"], w["sky"])
+    if not float32_planes(*band, *wet_terms, *(term for part in extras for term in part), *knobs):
         return None
-    flags = (len(carpet[1]) > 0, len(sunk[1]) > 0, len(opaque[1]) > 0, wet.whole)
-    out = kernels.underwater(lit.reshape(-1, 3), pixels.index, band, wet_terms,
-                             (carpet, sunk, opaque), np.hstack(knobs, dtype=np.float32), flags,
-                             WET_MIX_MOST)  # fmt: skip
+    flags = kernels.UnderwaterFlags(
+        carpet=len(extras.carpet.cover) > 0,
+        crowns=len(extras.sunk.share) > 0,
+        opaque=len(extras.opaque.shares) > 0,
+        whole=wet.whole,
+    )
+    out = kernels.underwater(
+        lit.reshape(-1, 3), pixels.index, band, wet_terms, extras, knobs, flags, WET_MIX_MOST
+    )
     return out.reshape(lit.shape)
 
 
 def _band_terms(
     g: FloatGrid, scene: PaintedScene, crowns: CrownLayer | None, optics: WaterBase | ClassOptics
-) -> _Terms:
+) -> BandColours:
     """What the kernel reads of the band in place, laid flat: ``g``, the cover, the optics'
     tint, body and deep colour (a colour for every pixel where they are one), the crowns'."""
+    from mapgen.palette.painted import kernels
+
     size = g.shape[0] * g.shape[1]
 
     def flat(plane: FloatGrid) -> FloatGrid:
@@ -358,68 +410,82 @@ def _band_terms(
 
     tint = optics["tint"] if "turbidity" in optics else np.ones(3, np.float32)
     crown = np.zeros((0, 3), np.float32) if crowns is None else flat(crowns["colour"])
-    colours = (flat(tint), flat(optics["body"]), flat(optics["deep"]), crown)
-    return flat(g), flat(scene["water"]["cover"]), *colours
+    return kernels.BandColours(
+        g=flat(g),
+        cover=flat(scene["water"]["cover"]),
+        tint=flat(tint),
+        body=flat(optics["body"]),
+        deep=flat(optics["deep"]),
+        crown_rgb=crown,
+    )
 
 
 def _carpet_terms(
-    pixels: WetPixels,
-    heights: tuple[PaintedScene, FloatGrid],
-    ground: PaintedSurface,
-    sample: Sampler,
-) -> _Terms:
+    pixels: WetPixels, heights: _Heights, ground: PaintedSurface, sample: Sampler
+) -> CarpetTerms:
     """``carpet_bed``'s ``exp``, cover, colour and the ocean's body and sky; no pixels
     without the carpet."""
+    from mapgen.palette.painted import kernels
+
     style, carpet, water = ground.palette.get("carpet"), ground.carpet, ground.water
     if style is None or carpet is None:
-        return (np.zeros((0, 3), np.float32), np.zeros(0, np.float32),
-                *(np.zeros(3, np.float32) for _ in range(3)))  # fmt: skip
-    scene, depth = heights
-    z_m = pixels.take(scene["z_m"])
+        colour = (np.zeros(3, np.float32) for _ in range(3))
+        return kernels.CarpetTerms(np.zeros((0, 3), np.float32), np.zeros(0, np.float32), *colour)
+    depth = heights.depth_m
+    z_m = pixels.take(heights.scene["z_m"])
     top = pixels.take(sample(carpet[1]))
     above = np.clip(z_m + depth - top, 0.0, None) * np.float32(style["depth_scale"])
     cover = pixels.take(sample(carpet[0])) / np.float32(255.0) * np.float32(style["strength"])
     cover = np.where(depth > 0.0, np.clip(cover, 0.0, 1.0), 0.0)
     transmit = np.exp(-water["k"] * above[..., None])
-    return transmit, cover, srgb_to_linear(style["colour"]), water["body"], water["sky"]
+    rgb = srgb_to_linear(style["colour"])
+    return kernels.CarpetTerms(transmit, cover, rgb, water["body"], water["sky"])
 
 
 def _sunk_terms(
-    pixels: WetPixels, heights: tuple[PaintedScene, FloatGrid], crowns: CrownLayer | None,
-    k: FloatGrid,
-) -> _Terms:  # fmt: skip
+    pixels: WetPixels, heights: _Heights, crowns: CrownLayer | None, k: F32Grid
+) -> SunkTerms:
     """The sunk crowns' ``exp`` and share; no pixels where none is sunk."""
+    from mapgen.palette.painted import kernels
+
     sunk = None if crowns is None else pixels.take(crowns["alpha"]) * pixels.take(crowns["sunk"])
     if crowns is None or sunk is None or not sunk.any():
-        return np.zeros((0, 3), np.float32), np.zeros(0, np.float32)
-    scene, depth = heights
-    z_m = pixels.take(scene["z_m"])
-    above = np.maximum(z_m + depth - pixels.take(crowns["top_m"]), 0.0)[..., None]
-    return np.exp(-k * above), sunk
+        return kernels.SunkTerms(np.zeros((0, 3), np.float32), np.zeros(0, np.float32))
+    z_m = pixels.take(heights.scene["z_m"])
+    above = np.maximum(z_m + heights.depth_m - pixels.take(crowns["top_m"]), 0.0)[..., None]
+    return kernels.SunkTerms(np.exp(-k * above), sunk)
+
+
+class _Murk(NamedTuple):
+    """What the opaque water reads at the pixels the mix reads: the optical depth, the
+    water's terms and the optics, whose class shares say where each class is."""
+
+    depth: FloatGrid
+    water: UnderwaterWater
+    optics: WetOptics | None
 
 
 def _opaque_terms(
-    pixels: WetPixels,
-    water: tuple[FloatGrid, BandWater, ClassOptics | None],
-    ground: PaintedSurface,
-    reads: tuple[Sampler, FloatGrid | np.float32 | None],
-) -> _Terms:
+    pixels: WetPixels, murk: _Murk, ground: PaintedSurface, sample_rock: Sampler
+) -> OpaqueTerms:
     """The opaque water's ``exp``, and per class with a share its sampled weight times that
     share and its colour; no classes without any."""
-    depth, band_water, optics = water
-    sample_rock, tau = reads
+    from mapgen.palette.painted import kernels
+
     shares: list[FloatGrid] = []
     colours: list[FloatGrid] = []
-    murk = np.zeros(0, np.float32)
+    murk_e = np.zeros(0, np.float32)
     if ground.opaque_water:
+        tau = (murk.optics or ground.water).get("opaque_tau_m")
         assert tau is not None, "the opaque water comes with its depth scale"
-        murk = np.exp(-depth / tau)[:, 0]
+        murk_e = np.exp(-murk.depth / tau)[:, 0]
         classified = ground.water_class is not None
         for weight, colour, cid in ground.opaque_water:
-            share = opaque_share(cid, optics, band_water, classified)
+            share = opaque_share(cid, murk.optics, murk.water, classified)
             if share is not None:
                 shares.append(pixels.take(sample_rock(weight)) * share)
                 colours.append(colour)
     if not shares:
-        return murk, np.zeros((0, 0), np.float32), np.zeros((0, 3), np.float32)
-    return murk, np.stack(shares), np.stack(colours)
+        none = np.zeros((0, 0), np.float32), np.zeros((0, 3), np.float32)
+        return kernels.OpaqueTerms(murk_e, *none)
+    return kernels.OpaqueTerms(murk_e, np.stack(shares), np.stack(colours))

@@ -67,6 +67,7 @@ def painted_ground_stub(n: int) -> SimpleNamespace:
             "deep_tau_m": np.float32(water["deep_tau_m"]),
             "bed": np.float32(water["bed_wet"]),
             "inland_floor": np.float32(water.get("inland_floor", 0.0)),
+            "opaque_tau_m": np.float32(water["opaque_tau_m"]),
         },
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
         opaque_water=[],
@@ -85,6 +86,8 @@ def water_scene(n: int, optics=None) -> dict:
         "ocean": zero,
         "above_m": zero + 10,
         "below_m": zero + 10,
+        "river": zero,
+        "river_below_m": zero + np.inf,
     }
     return {
         "z_m": zero + 5,

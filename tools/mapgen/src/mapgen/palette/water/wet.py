@@ -5,7 +5,7 @@ docs/map/renders.md section 26, "Painting only the wet pixels".
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
+from collections.abc import Mapping
 from typing import TypeGuard, TypeVar, cast
 
 import numpy as np
@@ -69,13 +69,15 @@ class WetPixels:
         """The plane's values at the wet pixels, its trailing axes kept."""
         return np.take(plane.reshape(-1, *plane.shape[2:]), self.index, axis=0)
 
-    def take_planes(self, planes: _Planes, keys: Collection[str] | None = None) -> _Planes:
-        """``planes`` with the band's planes taken, in nested mappings too; with ``keys``,
-        only those of its keys, so a read of any other fails rather than mixes shapes. The
-        type is ``planes``': a taken plane keeps its dtype, and its shape is not typed."""
-        taken = {
-            key: self._taken(value) for key, value in planes.items() if keys is None or key in keys
-        }
+    def take_band(self, plane: NDArray[_Scalar]) -> NDArray[_Scalar]:
+        """``take`` for one of the band's planes; any other array (a colour) as it is."""
+        return self.take(plane) if plane.shape[:2] == self.shape else plane
+
+    def take_planes(self, planes: _Planes) -> _Planes:
+        """``planes`` with the band's planes taken, in nested mappings too. Every key is kept,
+        so the type is ``planes``': a taken plane keeps its dtype, and its shape is not typed.
+        A subset of the keys is built by its reader, under a type of its own."""
+        taken = {key: self._taken(value) for key, value in planes.items()}
         return cast(_Planes, taken)
 
     def _taken(self, value: object) -> object:

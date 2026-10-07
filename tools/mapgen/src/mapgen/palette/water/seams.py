@@ -113,8 +113,8 @@ def feather_steps(level: F32Grid, valid: BoolMask, feather: SeamFeather) -> tupl
     for window in windows_around(marks, feather.reach):
         part, seams = valid[window], marks[window]
         free = seams | (geodesic_steps(seams, part, feather.reach) <= feather.reach)
-        held = part & ndimage.binary_dilation(free, _CROSS)
-        solved = _membrane(level[window], (held, free, seams), feather)
+        domain = part & ndimage.binary_dilation(free, _CROSS)
+        solved = _membrane(level[window], _Masks(domain, free, seams), feather)
         moved = free & (solved != level[window])
         out[window][moved] = solved[moved]
         changed += int(moved.sum())
@@ -143,15 +143,22 @@ def windows_around(marks: BoolMask, reach: int, cell: int = 64) -> Iterator[tupl
         )
 
 
-def _membrane(
-    level: F32Grid, masks: tuple[BoolMask, BoolMask, BoolMask], feather: SeamFeather
-) -> F32Grid:
+class _Masks(NamedTuple):
+    """Where a membrane is solved: its domain (the free texels and the ring that holds them),
+    the free texels, and the seams."""
+
+    domain: BoolMask
+    free: BoolMask
+    seams: BoolMask
+
+
+def _membrane(level: F32Grid, masks: _Masks, feather: SeamFeather) -> F32Grid:
     """``level`` on ``free`` replaced by the screened membrane ``feather_steps`` describes;
-    the rest of ``valid`` holds it in place. ``masks`` is ``(valid, free, seams)``."""
-    valid, free, seams = masks
+    the rest of the domain holds it in place."""
+    valid, free = masks.domain, masks.free
     index = np.full(level.shape, -1, np.int64)
     index[valid] = np.arange(int(valid.sum()))
-    src, dst = _joins(level, (valid, seams), index, feather)
+    src, dst = _joins(level, masks, index, feather)
     count = int(valid.sum())
     adjacency = sp.coo_matrix((np.ones(len(src)), (src, dst)), shape=(count, count))
     adjacency = (adjacency + adjacency.T).tocsr()
@@ -181,12 +188,11 @@ def _held_neighbours(src: I64Grid, dst: I64Grid, unknown: BoolMask, values: F64G
 
 
 def _joins(
-    level: F32Grid, masks: tuple[BoolMask, BoolMask], index: I64Grid, feather: SeamFeather
+    level: F32Grid, masks: _Masks, index: I64Grid, feather: SeamFeather
 ) -> tuple[I64Grid, I64Grid]:
-    """The 4-neighbour pairs of ``valid`` the membrane joins, as ``index`` numbers them: levels
-    at most ``run_m`` apart, or both beside a seam and at most ``high_m`` apart. ``masks`` is
-    ``(valid, seams)``."""
-    valid, seams = masks
+    """The 4-neighbour pairs of the domain the membrane joins, as ``index`` numbers them:
+    levels at most ``run_m`` apart, or both beside a seam and at most ``high_m`` apart."""
+    valid, seams = masks.domain, masks.seams
     src: list[I64Grid] = []
     dst: list[I64Grid] = []
     for a, b in _PAIRS:
