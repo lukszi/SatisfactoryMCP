@@ -1,14 +1,19 @@
 """The lighting stage: the surface a render drew, baked into the lighting pyramid.
 
 Native tiles are baked in blocks with their own halo, on a pool of light processes; the
-coarser levels and the tile format are ``light_tiles``. docs/spatial-and-map.md section 29.
+coarser levels and the tile format are ``light_tiles``. A bake is keyed on what it reads
+(``light_key``), so a run that draws the same surface reuses it (``render/kept_light.py``).
+docs/spatial-and-map.md section 29.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
+import struct
+import threading
 import time
 from collections.abc import Iterator, Sequence
 from concurrent.futures import ProcessPoolExecutor
@@ -61,18 +66,30 @@ from satisfactory_mcp.core.mapprogress import encode_stage
 
 __all__ = [
     "LIGHT_DIR_NAME",
+    "LIGHT_VERSION",
     "LIGHT_WORKER_BYTES",
     "LIGHT_WORKER_CAP",
     "Occluder",
     "Surface",
     "bake_light",
+    "cast_digests",
     "default_terms",
     "discard",
+    "light_key",
     "light_workers",
     "occluder_planes",
+    "plane_digest",
 ]
 
 LIGHT_DIR_NAME = "light"
+
+#: The bake's own version. Bump it when the bake writes other bytes from the same surface,
+#: casters and model, so no run reuses a light the old bake wrote.
+LIGHT_VERSION = 1
+
+#: Rows of a plane hashed at a time.
+DIGEST_ROWS = 1024
+
 #: Native tiles per block edge; a block is computed with its own halo.
 BLOCK_TILES = 16
 
@@ -128,7 +145,11 @@ class _BlockDone(NamedTuple):
 
 
 class Surface:
-    """The drawn surface, band by band: heights in metres and the land weight as a byte."""
+    """The drawn surface, band by band: heights in metres and the land weight as a byte.
+
+    Each ``put`` is hashed as it is stored, on the thread that drew it; ``digest`` folds those
+    in row order. ``terms`` is where the bake's default-sun terms for this surface are.
+    """
 
     def __init__(self, directory: Path, size: int) -> None:
         directory.mkdir(parents=True, exist_ok=True)
@@ -141,6 +162,9 @@ class Surface:
         self.land: np.memmap[tuple[int, ...], np.dtype[np.uint8]] = np.lib.format.open_memmap(
             directory / "land.npy", "w+", np.uint8, (size, size)
         )
+        self.terms = self.path("terms")
+        self._puts: dict[tuple[int, int, int, int], bytes] = {}
+        self._lock = threading.Lock()
 
     def put(
         self,
@@ -149,8 +173,23 @@ class Surface:
         land: NDArray[np.floating],
         columns: slice = slice(None),
     ) -> None:
-        self.z[row : row + z_m.shape[0], columns] = z_m
-        self.land[row : row + z_m.shape[0], columns] = np.round(np.clip(land, 0, 1) * 255)
+        z = np.ascontiguousarray(z_m, np.float32)
+        dry = np.ascontiguousarray(np.round(np.clip(land, 0, 1) * 255), np.uint8)
+        self.z[row : row + z.shape[0], columns] = z
+        self.land[row : row + z.shape[0], columns] = dry
+        digest = hashlib.sha256(z)
+        digest.update(dry)
+        c0, c1, _step = columns.indices(self.size)
+        with self._lock:
+            self._puts[(row, z.shape[0], c0, c1)] = digest.digest()
+
+    def digest(self) -> str:
+        """Every ``put`` so far, its place and its bytes, in row order."""
+        fold = hashlib.sha256(struct.pack("<q", self.size))
+        with self._lock:
+            for place in sorted(self._puts):
+                fold.update(struct.pack("<4q", *place) + self._puts[place])
+        return "sha256:" + fold.hexdigest()
 
     def flush(self) -> None:
         self.z.flush()
@@ -315,6 +354,47 @@ def _save_optional_array(
         np.save(path, np.asarray(raster, dtype))
 
 
+def plane_digest(plane: NDArray[np.number] | None) -> str | None:
+    """A plane's type, shape and bytes, read ``DIGEST_ROWS`` rows at a time; None for None."""
+    if plane is None:
+        return None
+    digest = hashlib.sha256(f"{plane.dtype.str}{plane.shape}".encode())
+    for top in range(0, plane.shape[0], DIGEST_ROWS):
+        digest.update(np.ascontiguousarray(plane[top : top + DIGEST_ROWS]))
+    return "sha256:" + digest.hexdigest()
+
+
+def cast_digests(occluder: Occluder | None, slabs: Slabs | None) -> JsonObject:
+    """What casts on the surface in a bake, digested: the crown tops and cover, the slabs."""
+    top, cover = occluder if isinstance(occluder, tuple) else (occluder, None)
+    return {
+        "occluder": plane_digest(top),
+        "occluder_cover": plane_digest(cover),
+        "slabs": None if slabs is None else [plane_digest(plane) for plane in slabs],
+    }
+
+
+def light_key(
+    surface: Surface, casts: JsonObject, occluder_layers: Sequence[str] = ()
+) -> JsonObject:
+    """What a bake reads: the drawn surface, ``cast_digests``, the size, the light model and
+    ``LIGHT_VERSION``. Two bakes under one ``digest`` write the same pyramid and terms."""
+    key: JsonObject = {
+        "light_version": LIGHT_VERSION,
+        "model": _json_digest(light_axis()),
+        "size_px": surface.size,
+        "occluder_layers": list(occluder_layers) if casts["occluder"] is not None else [],
+        "surface": surface.digest(),
+        **casts,
+    }
+    return {**key, "digest": _json_digest(key)}
+
+
+def _json_digest(value: JsonObject) -> str:
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return "sha256:" + hashlib.sha256(canonical).hexdigest()
+
+
 def light_workers(requested: int | None = None) -> int:
     """``requested``, else one a core up to ``LIGHT_WORKER_CAP`` that the free RAM holds."""
     if requested:
@@ -332,6 +412,7 @@ def bake_light(
     slabs: Slabs | None = None,
     progress: bool = True,
     occluder_layers: Sequence[str] = (),
+    key: JsonObject | None = None,
 ) -> JsonObject:
     """Write ``out_dir/light/`` from a captured surface; returns its sidecar's ``_meta``.
 
@@ -341,10 +422,12 @@ def bake_light(
     ``occluder_layers`` read. ``slabs`` is an optional ``(ground, min_z, max_z)`` for geometry
     with open space beneath it (arches): the surface without it, and its underside and top.
     Both only cast. An occluder made by ``occluder_planes`` in the surface's directory is
-    read where it is, not copied.
+    read where it is, not copied. ``key`` is the bake's ``light_key``, made here when None.
     """
     started = time.time()
     workers = light_workers(workers)
+    if key is None:
+        key = light_key(surface, cast_digests(occluder, slabs), occluder_layers)
     surface.flush()
     size, work = surface.size, surface.directory
     spacing_m = surface.spacing_m
@@ -397,6 +480,7 @@ def bake_light(
             **light_axis(),
             "occluder_layers": list(occluder_layers) if occluder is not None else [],
         },
+        "key": key,
         "tiles": {
             "tile_px": PYRAMID_TILE_PX,
             "hz_tile_px": PYRAMID_TILE_PX // 2,
@@ -424,7 +508,7 @@ def bake_light(
 
 def default_terms(surface: Surface) -> U8Grid:
     """``(svf, direct, direct with crowns)`` at the default sun, bytes on the sheet's grid."""
-    return work_array(surface.directory, "terms", np.uint8, "r")
+    return work_array(surface.terms.parent, surface.terms.stem, np.uint8, "r")
 
 
 def discard(surface: Surface) -> None:

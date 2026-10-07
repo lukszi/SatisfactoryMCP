@@ -12,6 +12,7 @@ import argparse
 import pytest
 
 from mapgen.lighting.stage import Surface, _allocate_work_arrays, occluder_planes
+from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME
 from mapgen.render.sheets import SheetFiles
 from satisfactory_mcp.domain.maps import presets, registry
 from tests.support.map_jobs import Passed, keep_cache, run_renders
@@ -69,6 +70,23 @@ def test_the_estimate_counts_the_light_cache_and_its_crowns_for_any_layers(in_us
         dark = presets.estimate("render", {"layers": layers, "size": 2048, "light": False})
         assert lit["transient_bytes"] - dark["transient_bytes"] >= int(scratch * area)
         assert lit["keep_bytes"] > dark["keep_bytes"] and lit["seconds"] > dark["seconds"]
+
+
+def test_a_restyle_that_finds_a_kept_light_is_budgeted_no_bake(in_use_local):
+    assert presets.KEPT_LIGHT_PART == KEPT_LIGHT_DIR_NAME
+    size, area = 2048, (2048 / presets.FULL_PX) ** 2
+    keep_cache(size)
+    restyle = {"layers": ["terrain"], "size": size, "restyle": True}
+    baked = presets.estimate("render", restyle)["seconds"]
+    full = presets.estimate("render", {"layers": ["terrain"], "size": size})["seconds"]
+    keep_cache(size, parts=(presets.KEPT_LIGHT_PART,))
+    assert presets.light_kept(size)
+    kept = presets.estimate("render", restyle)["seconds"]
+    saved = (presets.LIGHT_STAGE_S - presets.LIGHT_KEPT_S) * area
+    assert baked - kept == pytest.approx(saved, abs=1)
+    assert presets.estimate("render", {"layers": ["terrain"], "size": size})["seconds"] == full
+    plan = presets.stage_plan("render", presets.normalise("render", restyle))
+    assert plan["light"] == pytest.approx(presets.LIGHT_KEPT_S * area + 2.0)
 
 
 def test_the_light_scratch_is_the_light_cache_the_stage_allocates(tmp_path):

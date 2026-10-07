@@ -165,7 +165,7 @@ def _render(
     root, sheets = scratch
     crowns = None if root is None else crown_tops(args.paint_dir, run.painted)
     try:
-        with light_run(root, args.size, crowns, light_workers) as light:
+        with light_run(root, args.size, crowns, light_workers, setup.cache_root) as light:
             started = time.time()
             _draw_layers(args, layers, run, light, setup, sheets)
     finally:
@@ -443,7 +443,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--keep-direct",
         action="store_true",
-        help="leave the direct.cache/ and top.cache/ rasters behind so the next run reuses them",
+        help="leave the raster caches and the baked light behind so the next run reuses them",
     )
     parser.add_argument(
         "--cache-dir",

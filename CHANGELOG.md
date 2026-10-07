@@ -103,6 +103,11 @@ Planned as 0.2.0.
 - The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
   render of all five layers with the light is budgeted at about 58 minutes, the default two
   layers at about 42.
+- Map generator: a lit render that keeps its raster cache keeps its finished light beside it
+  (`light.kept/`: the pyramid's tiles as hard links, and the default-sun terms, 3.2 GB at full
+  size). A palette-only restyle that draws the same surface installs that light instead of
+  baking it again, about 14 minutes less at full size, and the Maps tab budgets it so. The
+  light's `meta.json` records the `key` it was baked under; the tiles are the same bytes.
 
 ### Deprecated
 

@@ -233,9 +233,10 @@ A full render spends most of its time on geometry that does not depend on the pa
 the rock pass, the arch-and-boulder pass and the render-only mesh pass. `--restyle` draws only
 from the caches a render kept with `--cache-dir` and `--keep-direct`, and exits 9 when one is
 missing or was cut for another size, sub-sampling or build, so a palette change never turns into
-a full render. The caches are kept afterwards. The job preset is `restyle` on a render
-(maps_contract.md §4). Since section 39 the kept caches are a zstd band store, about 0.9 GB at
-full size against 18.5 GB raw; a raw cache kept before then is still drawn from.
+a full render. The caches are kept afterwards. A lit restyle installs the light the render
+kept instead of baking it again (section 29, "Kept light"). The job preset is `restyle` on a
+render (maps_contract.md §4). Since section 39 the kept caches are a zstd band store, about
+0.9 GB at full size against 18.5 GB raw; a raw cache kept before then is still drawn from.
 
 Measured at `--size 1024` on 2026-10-05, with other renders running on the machine: the run that
 built the caches (terrain only) took 8 min 41 s, most of it the sweep, the rock pass and the mesh
