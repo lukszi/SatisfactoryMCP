@@ -81,23 +81,20 @@ ALLOWED: dict[str, frozenset[str]] = {
     "__main__": frozenset({"cli"}),
 }
 
-#: The cap on any module in the package, in physical lines (ARCHITECTURE says 700 for the
-#: flat layout; 800 here because a subpackage module carries its own import block).
-MODULE_MAX_LINES = 800
+#: The cap on any module in the package, in physical lines.
+MODULE_MAX_LINES = 600
 
 #: Modules with their own ceiling at their measured size: over the cap, or a command held
-#: thin under it. Shrink-only: a ceiling may be lowered, never raised, and one more than
-#: ``CEILING_SLACK`` above the file is stale. Measured after the move.
+#: thin under it so the stages stay in their modules. Shrink-only: a ceiling may be lowered,
+#: never raised, and one more than ``CEILING_SLACK`` above the file is stale.
 MODULE_CEILINGS: dict[str, int] = {
-    "commands/renders.py": 530,
-    "commands/heightmap.py": 310,
-    # A thin command, held at its size so the stages stay in their modules.
-    "commands/artwork.py": 297,
+    "commands/renders.py": 520,
+    "commands/heightmap.py": 309,
+    "commands/artwork.py": 296,
 }
 CEILING_SLACK = 25
 
-#: The cap on one function or method, and the ones over it, measured on the scripts at
-#: 2d7eaa9 (a pure move keeps every body's length). Shrink-only, same slack.
+#: The cap on one function or method, and the ones over it. Shrink-only, same slack.
 FUNCTION_MAX_LINES = 150
 FUNCTION_CEILINGS: dict[str, int] = {}
 
