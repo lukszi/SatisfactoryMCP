@@ -16,7 +16,7 @@ from typing import NamedTuple
 import numpy as np
 from numpy.typing import NDArray
 
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid
+from satisfactory_mcp.core.arrays import F32Grid
 
 __all__ = ["SLAB_DIR_NAME", "SLAB_TILE_PX", "HalfSlabs", "SlabPlanes", "SlabStore"]
 
