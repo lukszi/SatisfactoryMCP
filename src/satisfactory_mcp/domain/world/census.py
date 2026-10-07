@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from ...core.gamedata.constants import BUILDING_CLASS_ALIASES
 from ...core.gamedata.model import GameData
-from ...core.saveio.records import MACHINE_GROUPS
+from ...core.saveio.records import MACHINE_GROUPS, instance_leaf
 from ...core.saveio.schema import BuildableRecord, MachineRecord, Projection
 
 if TYPE_CHECKING:
@@ -82,3 +82,8 @@ class BuildCensus:
 
     def all_records(self) -> list[BuildableRecord]:
         return [record for group in MACHINE_GROUPS for record in self.projection.get(group, ())]
+
+    @cached_property
+    def by_leaf(self) -> dict[str, BuildableRecord]:
+        """``all_records`` by short instance name; of two records sharing one, the later."""
+        return {instance_leaf(r["instance"]): r for r in self.all_records()}
