@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
-from typing import TypedDict
+
+from typing_extensions import TypedDict
 
 from ..iostore import ContainerError, Decompressor, IoStore
 

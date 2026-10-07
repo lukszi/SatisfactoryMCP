@@ -193,8 +193,8 @@ that reads it, so the two cannot disagree about the format.
 `gen` extra, and optional means optional at import time: a clone without them imports every
 module, runs this suite and serves the map. Only `core.gameassets` may name them, and only from a
 function body. That proof is only as good as the AST, so the package may not use `importlib`,
-`__import__` or `sys.path` either. Besides the standard library and `core` it may import numpy,
-a hard dependency.
+`__import__` or `sys.path` either. Besides the standard library and `core` it may import numpy
+and typing_extensions, both hard dependencies.
 
 **Line caps** (`test_module_caps.py`). No module of the application or the parser passes 850
 lines; routers and MCP tool modules stop at 650, generators outside `tools/mapgen` at 800

@@ -17,7 +17,9 @@ import shutil
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import cast
+
+from typing_extensions import TypedDict
 
 from .imaging import LanczosFilter, PngOptions, TileImage
 from .provenance import RETIRED_SUFFIX, STAGING_SUFFIX

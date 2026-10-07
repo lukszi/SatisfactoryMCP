@@ -45,9 +45,9 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
-from typing import TypedDict
 
 import numpy as np
+from typing_extensions import TypedDict
 
 from ..arrays import F32Grid, F64Grid, I32Grid, I64Grid, U8Grid
 from .meshdata import NaniteResource

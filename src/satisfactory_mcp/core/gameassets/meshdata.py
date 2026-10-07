@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, NamedTuple, Required, TypeAlias, TypedDict
+from typing import Literal, NamedTuple, Required, TypeAlias
+
+from typing_extensions import TypedDict
 
 from ..arrays import F32Grid, I32Grid
 

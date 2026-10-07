@@ -26,8 +26,8 @@ from tests.support.import_graph import (
 GAMEASSETS = "satisfactory_mcp.core.gameassets"
 
 #: What ``core.gameassets`` may import at module scope besides the stdlib and ``core``:
-#: numpy, a hard dependency of the project rather than an extra.
-GAMEASSETS_HARD_ROOTS = frozenset({"numpy"})
+#: numpy and typing_extensions, hard dependencies of the project rather than extras.
+GAMEASSETS_HARD_ROOTS = frozenset({"numpy", "typing_extensions"})
 
 
 def _gameassets_sources():
@@ -113,7 +113,8 @@ def test_gameassets_imports_nothing_but_the_stdlib_and_core():
                     stray.append(f"  {name}:{node.lineno} imports {target}")
     assert not stray, (
         "core/gameassets may import the standard library, satisfactory_mcp.core (and "
-        "config), numpy, and the `gen` extra from inside a function -- nothing else, or "
+        "config), numpy, typing_extensions, and the `gen` extra from inside a function -- "
+        "nothing else, or "
         "reading the game's assets stops being something the server can be built without:\n"
         + "\n".join(sorted(stray))
     )
