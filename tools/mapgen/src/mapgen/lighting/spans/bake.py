@@ -66,8 +66,9 @@ class BlockSpans(NamedTuple):
     crowns: SpanSurface | None
 
 
-def _crown_rows(z: F32Grid, top: F32Grid, share: F32Grid | None,
-                out: tuple[F32Grid, F32Grid, F32Grid], row: int) -> None:  # fmt: skip
+def _crown_rows(
+    z: F32Grid, top: F32Grid, share: F32Grid | None, out: tuple[F32Grid, F32Grid, F32Grid], row: int
+) -> None:
     """Rows of the window from ``row`` on: the crowns stood on ``z`` (the receivers), and their
     underside and top where they stand above it, at half resolution, into ``out``."""
     rec = crown_surface(z, top, share)
@@ -82,8 +83,9 @@ def _crown_rows(z: F32Grid, top: F32Grid, share: F32Grid | None,
     out[2][cells] = downsample(hi, how=np.nanmax)
 
 
-def _crowns(work: Path, window: _Window, z_window: F32Grid, z_half: F32Grid,
-            solid: F32Grid) -> SpanSurface | None:  # fmt: skip
+def _crowns(
+    work: Path, window: _Window, z_window: F32Grid, z_half: F32Grid, solid: F32Grid
+) -> SpanSurface | None:
     """The crowns of the window as spans over ``solid`` (half resolution), or None. Rows off
     the sheet hold none."""
     occluder = optional_array(work, "occluder", np.float32)
@@ -105,8 +107,9 @@ def _crowns(work: Path, window: _Window, z_window: F32Grid, z_half: F32Grid,
     return span_surface(receivers, solid, lo, hi)
 
 
-def block_spans(work: Path, window: _Window, z_window: F32Grid, z_half: F32Grid,
-                slabs: SlabStore) -> BlockSpans:  # fmt: skip
+def block_spans(
+    work: Path, window: _Window, z_window: F32Grid, z_half: F32Grid, slabs: SlabStore
+) -> BlockSpans:
     """The spans that cast on a block whose window is ``window``, at half resolution."""
     found = slabs.half(window, z_half)
     ground = None if found is None else span_surface(z_half, found.solid, found.lo, found.hi)
@@ -167,12 +170,17 @@ def _filled(bands: Bands, holes: Holes | None) -> Bands:
         return bands
     seen = fill_holes(bands.seen.astype(np.float32), holes, 0.0) > 0
     nan = float("nan")
-    return Bands(fill_holes(bands.horizon, holes, 0.0), fill_holes(bands.lo, holes, nan),
-                 fill_holes(bands.hi, holes, nan), seen)  # fmt: skip
+    return Bands(
+        fill_holes(bands.horizon, holes, 0.0),
+        fill_holes(bands.lo, holes, nan),
+        fill_holes(bands.hi, holes, nan),
+        seen,
+    )
 
 
-def horizon_cells(z_half: F32Grid, halo: int, spacing_m: float, spans: BlockSpans,
-                  holes: Holes | None = None) -> Iterator[Cell]:  # fmt: skip
+def horizon_cells(
+    z_half: F32Grid, halo: int, spacing_m: float, spans: BlockSpans, holes: Holes | None = None
+) -> Iterator[Cell]:
     """Each direction's ground cell, then its crown cell where the crowns stand above it, as
     the atlas stores them (``Cell``). A hole (``lighting/spans/holes.py``) takes the cells of the
     pixel nearest it."""

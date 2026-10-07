@@ -1,7 +1,7 @@
 """No data in the captured surface: the void, which the light takes as open.
 
-The capture stores NaN where the draw has no height (``render/ground/surface.py``). Nothing there
-blocks the sun or the sky, and a pixel over it takes the light of the nearest pixel that
+The capture stores NaN where the draw has no height (``render/ground/surface.py``). Nothing
+there blocks the sun or the sky, and a pixel over it takes the light of the nearest pixel that
 has a height. docs/map/light-and-crowns.md section 29, "Edges of the light".
 """
 

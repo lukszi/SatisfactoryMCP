@@ -270,14 +270,16 @@ def plane_writer(directory: Path, name: str, size: int, band_rows: int) -> BandW
 
 
 def band_spans(size: int, band_rows: int) -> Iterator[tuple[int, int]]:
-    """``(top, bottom)`` of each band of ``band_rows`` rows, top to bottom; the last may be short."""
+    """``(top, bottom)`` of each band of ``band_rows`` rows, top to bottom; the last may be
+    short."""
     for top in range(0, size, band_rows):
         yield top, min(top + band_rows, size)
 
 
 @contextmanager
-def rewrite_planes(directory: Path, names: Sequence[str], size: int, band_rows: int, *,
-                   clear: Iterable[str] = ()) -> Generator[list[BandWriter]]:  # fmt: skip
+def rewrite_planes(
+    directory: Path, names: Sequence[str], size: int, band_rows: int, *, clear: Iterable[str] = ()
+) -> Generator[list[BandWriter]]:
     """Writers for a cache's ``names``, committed together when the block ends cleanly.
 
     The sidecar goes first, and every plane named in ``names`` or ``clear`` in either storage,
@@ -304,8 +306,12 @@ def write_sidecar(path: Path, recorded: Mapping[str, object], indent: int | None
         raise
 
 
-def write_rivers(directory: Path, stamp: ReaderStamp, rivers: Sequence[Mapping[str, object]],
-                 boxes: Iterable[tuple[str, Iterable[float]]]) -> dict[str, object]:  # fmt: skip
+def write_rivers(
+    directory: Path,
+    stamp: ReaderStamp,
+    rivers: Sequence[Mapping[str, object]],
+    boxes: Iterable[tuple[str, Iterable[float]]],
+) -> dict[str, object]:
     """``rivers.json``: the river splines and the water boxes, as ``[name, [x0..z1]]`` pairs."""
     payload: dict[str, object] = {
         "stamp": stamp,
@@ -320,12 +326,21 @@ def write_rivers(directory: Path, stamp: ReaderStamp, rivers: Sequence[Mapping[s
 # --------------------------------------------------------------------------- reading
 
 
-def open_plane(directory: Path, name: str, size: int, storage: str,
-               on_corrupt: Callable[[], None] | None = None) -> Plane:  # fmt: skip
+def open_plane(
+    directory: Path,
+    name: str,
+    size: int,
+    storage: str,
+    on_corrupt: Callable[[], None] | None = None,
+) -> Plane:
     """One plane, read-only: a ``BandArray`` in the band store, else the raw memory map."""
     if storage == STORAGE_BANDS:
-        return BandArray(plane_file(directory, name, storage), (size, size), PLANE_DTYPES[name],
-                         on_corrupt=on_corrupt)  # fmt: skip
+        return BandArray(
+            plane_file(directory, name, storage),
+            (size, size),
+            PLANE_DTYPES[name],
+            on_corrupt=on_corrupt,
+        )
     return np.memmap(directory / name, PLANE_DTYPES[name], "r", shape=(size, size))
 
 
@@ -349,8 +364,9 @@ def read_sidecar(path: Path, stamp: Mapping[str, object]) -> JsonObject | None:
     return recorded if recorded.get("storage", STORAGE_RAW) in STORAGES else None
 
 
-def _planes(directory: Path, stamp: DirectStamp | MeshStamp,
-            names: tuple[str, ...]) -> tuple[Plane, ...] | None:  # fmt: skip
+def _planes(
+    directory: Path, stamp: DirectStamp | MeshStamp, names: tuple[str, ...]
+) -> tuple[Plane, ...] | None:
     """The named planes if the sidecar carries ``stamp``; a corrupt band unstamps the cache."""
     recorded = read_sidecar(directory / CACHE_SIDECAR_NAME, stamp)
     if recorded is None:
@@ -375,7 +391,8 @@ def _single(found: tuple[Plane, ...] | None) -> Plane | None:
 
 
 def cached_raster(directory: Path, stamp: DirectStamp) -> tuple[Plane, Plane] | None:
-    """The cached raster's ``(z, coverage)`` planes, read-only, or ``None`` if it is not this one."""
+    """The cached raster's ``(z, coverage)`` planes, read-only, or ``None`` if it is not this
+    one."""
     return _pair(_planes(directory, stamp, (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME)))
 
 
@@ -411,7 +428,8 @@ def cached_mesh_family(directory: Path, stamp: MeshStamp) -> Plane | None:
 
 
 def cached_rivers(directory: Path, stamp: ReaderStamp) -> JsonObject | None:
-    """``write_rivers``' ``{"stamp", "rivers", "boxes"}`` if the cache is this one, else ``None``."""
+    """``write_rivers``' ``{"stamp", "rivers", "boxes"}`` if the cache is this one, else
+    ``None``."""
     recorded = _read_json(directory / RIVER_CACHE_NAME)
     if not isinstance(recorded, dict):
         return None
@@ -421,8 +439,15 @@ def cached_rivers(directory: Path, stamp: ReaderStamp) -> JsonObject | None:
     return recorded
 
 
-def missing_caches(root: Path, stamp: DirectStamp, meshes_stamp: MeshStamp, *, top: bool,
-                   meshes: bool, titan_stamp: MeshStamp | None = None) -> list[str]:  # fmt: skip
+def missing_caches(
+    root: Path,
+    stamp: DirectStamp,
+    meshes_stamp: MeshStamp,
+    *,
+    top: bool,
+    meshes: bool,
+    titan_stamp: MeshStamp | None = None,
+) -> list[str]:
     """The cache directories under ``root`` a palette-only run needs and cannot use."""
     found: dict[str, object] = {
         DIRECT_CACHE_DIR_NAME: cached_raster(root / DIRECT_CACHE_DIR_NAME, stamp)
@@ -436,8 +461,16 @@ def missing_caches(root: Path, stamp: DirectStamp, meshes_stamp: MeshStamp, *, t
     return [name for name, planes in found.items() if planes is None]
 
 
-def restyle_gaps(root: Path, size: int, subsamples: int, build: str | None, *, top: bool,
-                 meshes: bool, titan: bool) -> list[str]:  # fmt: skip
+def restyle_gaps(
+    root: Path,
+    size: int,
+    subsamples: int,
+    build: str | None,
+    *,
+    top: bool,
+    meshes: bool,
+    titan: bool,
+) -> list[str]:
     """``missing_caches`` for a run at ``size``; ``titan`` when it draws the Titan trees."""
     mesh_key = mesh_stamp(size, build, READER_VERSIONS["render_meshes"])
     titan_key = mesh_stamp(size // TITAN_FACTOR, build, READER_VERSIONS["titan_trees"])

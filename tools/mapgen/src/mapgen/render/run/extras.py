@@ -70,10 +70,14 @@ def load_extras(
 
     if meshes:
         maps, mesh_source = mesh_pass(
-            cache_root / MESH_CACHE_DIR_NAME, size, build, "render_meshes",
-            lambda: mesh_items(store, scripts, level.index, level.sweep), "render-only meshes",
+            cache_root / MESH_CACHE_DIR_NAME,
+            size,
+            build,
+            "render_meshes",
+            lambda: mesh_items(store, scripts, level.index, level.sweep),
+            "render-only meshes",
             quiet,
-        )  # fmt: skip
+        )
         out.meshes = MeshPlanes(*maps)
         out.mesh_source = to_json_object(mesh_source)
         out.falls, falls_source = load_falls(cache_root, build, swept_levels, heightfield)
@@ -82,9 +86,14 @@ def load_extras(
     if titan:
         titan_cache = cache_root / TITAN_CACHE_DIR_NAME
         maps, titan_source = mesh_pass(
-            titan_cache, size // TITAN_FACTOR, build, "titan_trees",
-            lambda: titan_items(store, scripts, level.index, level.sweep), "Titan trees", quiet,
-        )  # fmt: skip
+            titan_cache,
+            size // TITAN_FACTOR,
+            build,
+            "titan_trees",
+            lambda: titan_items(store, scripts, level.index, level.sweep),
+            "Titan trees",
+            quiet,
+        )
         out.titan = TitanPlanes(maps[0], maps[1], TITAN_FACTOR, 0, 0)
         out.titan_source = to_json_object(titan_source)
     if rivers:

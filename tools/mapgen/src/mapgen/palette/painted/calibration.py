@@ -124,7 +124,8 @@ def median_lab(colours: FloatGrid) -> FloatGrid:
 def area_ids(
     area_names: Sequence[str], assets: Sequence[str | None], keys: Collection[str]
 ) -> list[int]:
-    """Biome raster indices whose area stem (``Area_crater``) or asset (``Area_crater_1``) is listed."""
+    """Biome raster indices whose area stem (``Area_crater``) or asset (``Area_crater_1``) is
+    listed."""
     return [
         i
         for i, name in enumerate(area_names)
@@ -194,12 +195,16 @@ def with_derived(cal: CalibrationStyle) -> CalibrationStyle:
     rules = cal.get("derived", {})
 
     def scope(layers: dict[str, str]) -> dict[str, str]:
-        found = {name: derived_hex(layers[rule["from"]], rule) for name, rule in rules.items()
-                 if rule["from"] in layers and name not in layers}  # fmt: skip
+        found = {
+            name: derived_hex(layers[rule["from"]], rule)
+            for name, rule in rules.items()
+            if rule["from"] in layers and name not in layers
+        }
         return {**layers, **found}
 
-    areas: list[CalibrationArea] = [{**e, "layers": scope(e["layers"])} if "layers" in e else e
-                               for e in cal.get("areas", [])]  # fmt: skip
+    areas: list[CalibrationArea] = [
+        {**e, "layers": scope(e["layers"])} if "layers" in e else e for e in cal.get("areas", [])
+    ]
     return {**cal, "layers": scope(cal.get("layers", {})), "areas": areas}
 
 

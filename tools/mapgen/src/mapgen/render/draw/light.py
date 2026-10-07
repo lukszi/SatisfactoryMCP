@@ -262,9 +262,12 @@ class LightingRun:
                 raise RuntimeError("a light run bakes into the renders it began with")
             print("baking the lighting pyramid as the bands come in", flush=True)
             self.bake = LightBake(
-                self.surface, self.renders, self.light_workers, self.occluder,
+                self.surface,
+                self.renders,
+                self.light_workers,
+                self.occluder,
                 occluder_layers=crown_layers(),
-            )  # fmt: skip
+            )
         return self.bake
 
     def drawn(self, rows: int) -> None:
@@ -409,9 +412,12 @@ def light_run(
     try:
         # No local holds the occluder: its memory maps must go with the run's.
         run = LightingRun(
-            root, size, crown_occluder(crowns, root, size), light_workers=workers,
+            root,
+            size,
+            crown_occluder(crowns, root, size),
+            light_workers=workers,
             cache_root=cache_root,
-        )  # fmt: skip
+        )
         yield run
     except BaseException as exc:
         # The failed frames hold the scratch's memory maps, which Windows will not delete.

@@ -2,7 +2,8 @@
 
     python -m mapgen renders [--layer painted] [--size 2048] [--restyle] ...
 
-What each layer is, and why: docs/map/renders.md sections 17, 20, 25, 26 and 40, docs/map/painted.md sections 27 and 28 and docs/map/light-and-crowns.md section 29.
+What each layer is, and why: docs/map/renders.md sections 17, 20, 25, 26 and 40,
+docs/map/painted.md sections 27 and 28, and docs/map/light-and-crowns.md section 29.
 """
 
 from __future__ import annotations

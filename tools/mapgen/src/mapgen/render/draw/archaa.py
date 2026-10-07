@@ -78,9 +78,15 @@ class _Edges:
         self.edge = self.range >= np.maximum(_THRESHOLD_MIN, high * _THRESHOLD)
 
 
-def _search(lum: F32Grid, ys: I64Grid, xs: I64Grid, along: tuple[I64Grid, I64Grid],
-            across: tuple[I64Grid, I64Grid], level: F32Grid,
-            gradient: F32Grid) -> tuple[dict[int, F32Grid], dict[int, F32Grid]]:  # fmt: skip
+def _search(
+    lum: F32Grid,
+    ys: I64Grid,
+    xs: I64Grid,
+    along: tuple[I64Grid, I64Grid],
+    across: tuple[I64Grid, I64Grid],
+    level: F32Grid,
+    gradient: F32Grid,
+) -> tuple[dict[int, F32Grid], dict[int, F32Grid]]:
     """The end-of-edge search both ways: how far each edge runs, and the luma where it ends."""
     h, w = lum.shape
     (ay, ax), (py, px) = along, across
@@ -124,9 +130,11 @@ def fxaa(rgb_u8: U8Grid, rows: slice) -> U8Grid:
         )
         contrast = np.clip(np.abs(average - m) / np.maximum(found.range[ys, xs], 1e-6), 0, 1)
         sub = ((np.float32(-2.0) * contrast + np.float32(3.0)) * contrast * contrast) ** 2 * _SUBPIX
-        horizontal = (np.abs(-2 * west + nw + sw) + 2 * np.abs(-2 * m + n + s)
-                      + np.abs(-2 * east + ne + se)) >= (np.abs(-2 * n + nw + ne)
-                      + 2 * np.abs(-2 * m + west + east) + np.abs(-2 * s + sw + se))  # fmt: skip
+        horizontal = (
+            np.abs(-2 * west + nw + sw) + 2 * np.abs(-2 * m + n + s) + np.abs(-2 * east + ne + se)
+        ) >= (
+            np.abs(-2 * n + nw + ne) + 2 * np.abs(-2 * m + west + east) + np.abs(-2 * s + sw + se)
+        )
         l1, l2 = np.where(horizontal, n, west), np.where(horizontal, s, east)
         g1, g2 = l1 - m, l2 - m
         first = np.abs(g1) >= np.abs(g2)

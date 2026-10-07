@@ -430,8 +430,9 @@ def prepare_paint(
         )
     started = time.time()
     palette, digest = painted_style(no_titan_trees)
-    palette, digest, derived = calibrated_palette(palette, digest, paint_dir, (biome, list(drawn)),
-                                                  field)  # fmt: skip
+    palette, digest, derived = calibrated_palette(
+        palette, digest, paint_dir, (biome, list(drawn)), field
+    )
     ground = PaintedGround(paint_dir, palette, field, biome, list(drawn), oil_nodes())
     provenance: JsonObject = {
         "cl": paint_meta.get("cl"),

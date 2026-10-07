@@ -492,8 +492,9 @@ def optical_depths(slots: Sequence[MaterialColour]) -> F32Grid:
     return np.array(depths + [0.0] * (MATERIAL_NONE + 1 - len(slots)), np.float32)
 
 
-def _species_entry(mesh: str, found: SpeciesMesh, slots: Sequence[MaterialColour],
-                   sprite: CrownSprite) -> CrownSpecies:  # fmt: skip
+def _species_entry(
+    mesh: str, found: SpeciesMesh, slots: Sequence[MaterialColour], sprite: CrownSprite
+) -> CrownSpecies:
     materials: list[CrownMaterial] = [
         {"path": p, "kind": s["kind"], "linear": s["linear"], "opacity": s["opacity"]}
         for p, s in zip(found.materials, slots, strict=True)

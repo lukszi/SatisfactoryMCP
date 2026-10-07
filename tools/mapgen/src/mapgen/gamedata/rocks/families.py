@@ -3,7 +3,8 @@
 A cliff mesh is placed with an override material whose parent chain ends in one of the
 ``Cliff_<Layer>`` instances: that instance names the ground texture laid over the rock's
 up-facing faces, and the chain carries the cliff's ``Color Tint``. A desert rock mesh wears
-an ``MI_DesertRock_*`` instance of ``MI_DesertRock``. docs/map/painted.md section 30 and docs/map/calibration.md section 31 have the measurements.
+an ``MI_DesertRock_*`` instance of ``MI_DesertRock``. docs/map/painted.md section 30 and
+docs/map/calibration.md section 31 have the measurements.
 """
 
 from __future__ import annotations
@@ -36,8 +37,16 @@ __all__ = [
 
 #: Family codes, as the direct raster's family plane stores them. 0 is "no family".
 FAMILIES = (
-    "none", "cliff", "forest", "grass", "redgrass", "sand", "wetsand", "redjungle", "desert",
-)  # fmt: skip
+    "none",
+    "cliff",
+    "forest",
+    "grass",
+    "redgrass",
+    "sand",
+    "wetsand",
+    "redjungle",
+    "desert",
+)
 
 #: The material instances that root a family, by leaf name.
 FAMILY_ROOTS = {

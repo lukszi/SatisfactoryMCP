@@ -300,9 +300,15 @@ def terrain_colours(scene: ShadedScene) -> FloatGrid:
     height = np.clip((z_m - ramp_lo) / max(ramp_hi - ramp_lo, 1e-6), 0.0, 1.0)
     land = ramp(height, RAMP_STOPS) * (scene["shade"] * scene["borrow"])[..., None]
     return water_composite(
-        land, scene["water"], scene["shade"], TERRAIN_SHORE, WATER_SHALLOW, WATER_DEEP,
-        WATER_SHADE_FLOOR, WATER_SHADE_RANGE,
-    )  # fmt: skip
+        land,
+        scene["water"],
+        scene["shade"],
+        TERRAIN_SHORE,
+        WATER_SHALLOW,
+        WATER_DEEP,
+        WATER_SHADE_FLOOR,
+        WATER_SHADE_RANGE,
+    )
 
 
 def satellite_colours(scene: SatelliteScene) -> FloatGrid:
@@ -320,9 +326,15 @@ def satellite_colours(scene: SatelliteScene) -> FloatGrid:
     rgb = rgb * (1 - lift) + HIGH_RGB * lift
     land = rgb * scene["noise"][..., None] * (scene["shade"] * scene["borrow"])[..., None]
     return water_composite(
-        land, scene["water"], scene["shade"], SATELLITE_SHORE, SATELLITE_WATER_SHALLOW,
-        SATELLITE_WATER_DEEP, WATER_SHADE_FLOOR, WATER_SHADE_RANGE,
-    )  # fmt: skip
+        land,
+        scene["water"],
+        scene["shade"],
+        SATELLITE_SHORE,
+        SATELLITE_WATER_SHALLOW,
+        SATELLITE_WATER_DEEP,
+        WATER_SHADE_FLOOR,
+        WATER_SHADE_RANGE,
+    )
 
 
 def with_sea(rgb: FloatGrid, missing: BoolMask) -> FloatGrid:

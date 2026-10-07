@@ -347,8 +347,15 @@ def _compiled_march(
     oy, ox = [s[1] for s in steps], [s[2] for s in steps]
     offsets = kernel_offsets(oy, ox, smooth, (len(steps),), halo)
     scale = np.array([s[3] for s in steps], np.float32)
-    args = (np.ascontiguousarray(solid), np.ascontiguousarray(z), halo, np.array(smooth),
-            offsets, scale, best)  # fmt: skip
+    args = (
+        np.ascontiguousarray(solid),
+        np.ascontiguousarray(z),
+        halo,
+        np.array(smooth),
+        offsets,
+        scale,
+        best,
+    )
     if gpu_on():
         from mapgen.lighting import gpu
 

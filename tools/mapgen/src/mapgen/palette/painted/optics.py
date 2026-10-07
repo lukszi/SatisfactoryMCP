@@ -3,8 +3,10 @@
 Beer-Lambert over the bed (section 27), the class plane and each class's own optics (section
 33), the seabed carpet (section 32), the crowns under the surface (section 36) and the
 calibrated opaque water of an area (section 31), gated by the class it names.
-docs/map/calibration.md section 31, docs/map/painted.md section 32, docs/map/water.md section 33, docs/map/light-and-crowns.md section 36 and docs/spatial-and-map.md section 37. The mix runs as a numba kernel unless
-``mapgen.jit`` selects this numpy, its reference (docs/map/renders.md section 41).
+docs/map/calibration.md section 31, docs/map/painted.md section 32, docs/map/water.md section
+33, docs/map/light-and-crowns.md section 36 and docs/spatial-and-map.md section 37. The mix runs
+as a numba kernel unless ``mapgen.jit`` selects this numpy, its reference (docs/map/renders.md
+section 41).
 """
 
 from __future__ import annotations
@@ -143,8 +145,15 @@ def class_optics(
         mixed += ribbon[..., None] * (rows[_RIVER] - mixed)
     parts = np.split(mixed, np.cumsum(WATER_TABLE_COLUMNS)[:-1], axis=-1)
     k, body, deep, tau, turbidity, tint = parts
-    optics: ClassOptics = {**base, "k": k, "body": body, "deep": deep, "deep_tau_m": tau,
-                           "turbidity": turbidity, "tint": tint}  # fmt: skip
+    optics: ClassOptics = {
+        **base,
+        "k": k,
+        "body": body,
+        "deep": deep,
+        "deep_tau_m": tau,
+        "turbidity": turbidity,
+        "tint": tint,
+    }
     if shares:
         got = mix.of(class_shares()[:, list(shares)])
         if ribbon is not None:

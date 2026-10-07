@@ -251,8 +251,10 @@ def _refine(
     x, y, z, hw = samples["x"], samples["y"], samples["z"], samples["hw"]
     section, cap = samples["section"], samples["cap"]
     first = np.flatnonzero(np.r_[True, section[1:] != section[:-1]])
-    ends = (np.repeat(first, np.diff(np.r_[first, len(x)])),
-            np.repeat(np.r_[first[1:] - 1, len(x) - 1], np.diff(np.r_[first, len(x)])))  # fmt: skip
+    ends = (
+        np.repeat(first, np.diff(np.r_[first, len(x)])),
+        np.repeat(np.r_[first[1:] - 1, len(x) - 1], np.diff(np.r_[first, len(x)])),
+    )
     best = np.full(px.shape, np.inf)
     level = np.zeros(px.shape)
     half = np.zeros(px.shape)

@@ -98,10 +98,9 @@ from mapgen.terrain.rasters import (
     PreparedPlacement,
     TopItems,
     direct_placements,
-    pixel_coverage,
     rasterise_direct_band,
-    reduce_direct,
 )
+from mapgen.terrain.rasters_banded import pixel_coverage, reduce_direct
 from mapgen.terrain.render_meshes import InstanceSpans
 from mapgen.terrain.sample import direct_mask, sample_surface, taps_cubic, taps_linear, taps_pchip
 from mapgen.terrain.top_raster import rasterise_top_band

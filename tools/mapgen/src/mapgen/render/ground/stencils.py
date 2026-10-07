@@ -1,7 +1,7 @@
 """How far the steps of a band's draw read past the pixel they write, and the halos that hold them.
 
-``render/draw/compose.py`` draws the layers 256 rows at a time, each band ``BAND_HALO`` rows past its
-edges, and each band in column pieces ``PIECE_HALO`` columns past theirs, cropped after. A
+``render/draw/compose.py`` draws the layers 256 rows at a time, each band ``BAND_HALO`` rows past
+its edges, and each band in column pieces ``PIECE_HALO`` columns past theirs, cropped after. A
 step that reads its neighbours, a gradient, a blur or a mean, draws what the whole sheet would
 only while all it reads lies within the halo. docs/map/renders.md section 40.
 """

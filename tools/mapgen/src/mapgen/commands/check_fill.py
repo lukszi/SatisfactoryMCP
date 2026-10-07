@@ -36,13 +36,12 @@ from mapgen.gamedata.level.fill_raster import FILL_RASTER_PX, read_fill_raster
 from mapgen.terrain.fill import (
     blend_seam,
     fill_from_raster,
-    fill_holes,
     ground_lattice,
-    nearest_fill,
     raster_positions,
     reconstruct_raster,
     terrain_lattice,
 )
+from mapgen.terrain.harmonic import fill_holes, nearest_fill
 from mapgen.terrain.heightfield.field import FILL_HORIZONTAL_M, FILL_VERTICAL_M
 from mapgen.terrain.sample import (
     AxisTaps,
@@ -137,8 +136,9 @@ def nearest_index(position: F64Grid) -> NDArray[np.integer]:
     return np.clip(np.round(position).astype(int), 0, FILL_RASTER_PX - 1)
 
 
-def check_fill(field: hf.Field, land: F32Grid, raster_m: F64Grid, raster_valid: BoolMask,
-               rebuilt_m: F32Grid) -> dict[str, object]:  # fmt: skip
+def check_fill(
+    field: hf.Field, land: F32Grid, raster_m: F64Grid, raster_valid: BoolMask, rebuilt_m: F32Grid
+) -> dict[str, object]:
     """Median absolute error of the fill reading on held-out dry landscape."""
     prov = np.asarray(field.provenance_plane)
     wet = np.asarray(field.water_quality_raster()) > 0
@@ -180,8 +180,9 @@ def seam_jump(out: NDArray[np.floating], truth: F64Grid) -> float:
     return float(np.median(np.abs(step - true_step)))
 
 
-def check_seam(field: hf.Field, land: F32Grid, raster_m: F64Grid, raster_valid: BoolMask,
-               rebuilt_m: F32Grid) -> dict[str, object]:  # fmt: skip
+def check_seam(
+    field: hf.Field, land: F32Grid, raster_m: F64Grid, raster_valid: BoolMask, rebuilt_m: F32Grid
+) -> dict[str, object]:
     """The jump at a fake seam through dry landscape, before and after the band."""
     prov = np.asarray(field.provenance_plane)
     wet = np.asarray(field.water_quality_raster()) > 0
@@ -284,8 +285,9 @@ def check_holes(field: hf.Field, land: F32Grid) -> dict[str, object]:
     }
 
 
-def cell_overshoot(lattice: F32Grid, row_positions: F64Grid, col_positions: F64Grid,
-                   values: F32Grid) -> tuple[F32Grid, BoolMask]:  # fmt: skip
+def cell_overshoot(
+    lattice: F32Grid, row_positions: F64Grid, col_positions: F64Grid, values: F32Grid
+) -> tuple[F32Grid, BoolMask]:
     """How far each sample lies outside its own 2x2 vertex cell, and where all four exist."""
     r = np.clip(np.floor(row_positions).astype(int), 0, lattice.shape[0] - 2)[:, None]
     c = np.clip(np.floor(col_positions).astype(int), 0, lattice.shape[1] - 2)[None, :]
@@ -294,8 +296,12 @@ def cell_overshoot(lattice: F32Grid, row_positions: F64Grid, col_positions: F64G
     return over, (corners != hf.NODATA).all(0)
 
 
-def _score_kernel(lattice: F32Grid, kernel: Callable[[F64Grid, int], AxisTaps],
-                  row_positions: F64Grid, col_positions: F64Grid) -> SamplerScore:  # fmt: skip
+def _score_kernel(
+    lattice: F32Grid,
+    kernel: Callable[[F64Grid, int], AxisTaps],
+    row_positions: F64Grid,
+    col_positions: F64Grid,
+) -> SamplerScore:
     """One kernel on one crop: at the 1 m vertices against the lattice, and at the pixels
     against each sample's own cell."""
     rows, cols = lattice.shape

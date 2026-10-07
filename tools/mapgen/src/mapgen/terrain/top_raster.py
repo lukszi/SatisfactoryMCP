@@ -23,14 +23,8 @@ from mapgen.cache import (
 from mapgen.gamedata.maxz_raster import MaxZRaster
 from mapgen.terrain.archfill import column_pieces, fill_arch_holes
 from mapgen.terrain.overhangs import SAME_SURFACE_CM
-from mapgen.terrain.rasters import (
-    TOP_FOLIAGE_BATCH,
-    BandPlanes,
-    TopItems,
-    add_placements,
-    placed,
-    reduce_direct,
-)
+from mapgen.terrain.rasters import TOP_FOLIAGE_BATCH, TopItems, add_placements, placed
+from mapgen.terrain.rasters_banded import BandPlanes, reduce_direct
 from satisfactory_mcp.core.arrays import F32Grid
 
 __all__ = [
@@ -62,8 +56,9 @@ class TopBand(NamedTuple):
     under: F32Grid
 
 
-def arch_rasters(items: TopItems, origin: tuple[float, float, float], rows: int, cols: int,
-                 row0: int = 0) -> tuple[F32Grid, F32Grid]:  # fmt: skip
+def arch_rasters(
+    items: TopItems, origin: tuple[float, float, float], rows: int, cols: int, row0: int = 0
+) -> tuple[F32Grid, F32Grid]:
     """The arches' top and underside over ``rows`` from ``row0`` of the grid whose first
     texel is ``origin`` (x, y, step in cm), NaN where none.
 
@@ -79,8 +74,9 @@ def arch_rasters(items: TopItems, origin: tuple[float, float, float], rows: int,
     add_placements(high, items.arches, items.shapes, y_lo, y_hi)
     top = high.result()[0]
     ceiling = np.where(np.isfinite(top), top - np.float32(SAME_SURFACE_CM), -np.inf)
-    below = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0,
-                       ceiling=ceiling.astype(np.float32))  # fmt: skip
+    below = MaxZRaster(
+        cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0, ceiling=ceiling.astype(np.float32)
+    )
     for entry in items.arches:
         found = placed(entry, items.shapes, y_lo, y_hi)
         if found is not None:
@@ -91,8 +87,9 @@ def arch_rasters(items: TopItems, origin: tuple[float, float, float], rows: int,
     return top, np.where(np.isfinite(under), under, -low.result()[0]).astype(np.float32)
 
 
-def _boulders(items: TopItems, x0_cm: float, y0_cm: float, step_cm: float, rows: int,
-              cols: int) -> F32Grid:  # fmt: skip
+def _boulders(
+    items: TopItems, x0_cm: float, y0_cm: float, step_cm: float, rows: int, cols: int
+) -> F32Grid:
     raster = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5)
     y_hi = y0_cm + rows * step_cm
     for mesh, group in items.boulders.items():
@@ -114,8 +111,15 @@ def _filled(top: F32Grid, under: F32Grid, spacing_m: float) -> tuple[F32Grid, F3
     return top, under
 
 
-def rasterise_top_band(items: TopItems, x0_cm: float, y0_cm: float, scale_cm: float, rows: int,
-                       cols: int, subsamples: int) -> TopBand:  # fmt: skip
+def rasterise_top_band(
+    items: TopItems,
+    x0_cm: float,
+    y0_cm: float,
+    scale_cm: float,
+    rows: int,
+    cols: int,
+    subsamples: int,
+) -> TopBand:
     """One band of arches and boulders on the render's pixel centres, sub-sampled.
 
     The arches are drawn ``FILL_HALO_M`` past the band's edges for the fill, on the band's
@@ -125,16 +129,24 @@ def rasterise_top_band(items: TopItems, x0_cm: float, y0_cm: float, scale_cm: fl
     spacing_m = step / 100.0
     halo = int(np.ceil(FILL_HALO_M / spacing_m))
     sub_rows, sub_cols = rows * subsamples, cols * subsamples
-    top, under = arch_rasters(items, (x0_cm, y0_cm, step), sub_rows + 2 * halo, sub_cols,
-                              row0=-halo)  # fmt: skip
+    top, under = arch_rasters(
+        items, (x0_cm, y0_cm, step), sub_rows + 2 * halo, sub_cols, row0=-halo
+    )
     top, under = _filled(top, under, spacing_m)
     top, under = top[halo : halo + sub_rows], under[halo : halo + sub_rows]
     solid = _boulders(items, x0_cm, y0_cm, step, sub_rows, sub_cols)
     return TopBand(np.fmax(top, solid), solid, under)
 
 
-def rasterise_top_planes(items: TopItems, x0_cm: float, y0_cm: float, scale_cm: float,
-                         rows: int, cols: int, subsamples: int) -> BandPlanes:  # fmt: skip
+def rasterise_top_planes(
+    items: TopItems,
+    x0_cm: float,
+    y0_cm: float,
+    scale_cm: float,
+    rows: int,
+    cols: int,
+    subsamples: int,
+) -> BandPlanes:
     """One band of the top cache: ``rasterise_top_band`` folded onto the output grid."""
     band = rasterise_top_band(items, x0_cm, y0_cm, scale_cm, rows, cols, subsamples)
     return top_band_planes(band, rows, cols, subsamples)

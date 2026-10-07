@@ -17,7 +17,8 @@ from mapgen.gamedata.water.bodies import OCEAN_BAND_M
 from mapgen.palette.scene import FloatGrid, WaterPlanes, field_heights, field_water
 from mapgen.palette.water.geodesic import geodesic_steps
 from mapgen.palette.water.shore import OCEAN_REACH_M
-from mapgen.terrain.fill import cosine_taper, nearest_fill
+from mapgen.terrain.fill import cosine_taper
+from mapgen.terrain.harmonic import nearest_fill
 from mapgen.terrain.solve import jacobi_cg
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -309,7 +310,7 @@ def membrane(
     Fixed on ``fixed``, settling towards ``far`` over about ``scale`` cells and drawn
     towards ``target`` by ``pull``, per cell in 1 / cells squared, when both are given;
     anything else is outside. A pull that changes from cell to cell bends the membrane's
-    slope but never breaks it, as a fixed cell's edge does. ``terrain.fill.relax`` with no
+    slope but never breaks it, as a fixed cell's edge does. ``terrain.harmonic.relax`` with no
     pull.
     """
     out = values.astype(np.float64).ravel().copy()

@@ -116,10 +116,12 @@ class Scene:
         """The trees standing in the listed areas."""
         grid, index = self.meta["grid"], self.areas.cells
         cell = grid["spacing_cm"] * STRIDE
-        rows = np.clip(((self.records["y"] - grid["y0_cm"]) // cell).astype(np.int64), 0,
-                       index.shape[0] - 1)  # fmt: skip
-        cols = np.clip(((self.records["x"] - grid["x0_cm"]) // cell).astype(np.int64), 0,
-                       index.shape[1] - 1)  # fmt: skip
+        rows = np.clip(
+            ((self.records["y"] - grid["y0_cm"]) // cell).astype(np.int64), 0, index.shape[0] - 1
+        )
+        cols = np.clip(
+            ((self.records["x"] - grid["x0_cm"]) // cell).astype(np.int64), 0, index.shape[1] - 1
+        )
         wanted = area_ids(self.areas.names, self.areas.assets, keys)
         return np.isin(index[rows, cols], wanted)
 
@@ -148,8 +150,9 @@ def _species(entry: CrownSpecies, sprite: DecodedSprite) -> Species:
     total = float(cover.sum())
     paths = [m["path"] or "" for m in entry["materials"]]
     linear = {m["path"] or "": m["linear"] for m in entry["materials"] if m["linear"] is not None}
-    return Species(entry["name"], entry["mesh"], paths, linear, rgb / max(total, 1e-6),
-                   total * SPRITE_M**2)  # fmt: skip
+    return Species(
+        entry["name"], entry["mesh"], paths, linear, rgb / max(total, 1e-6), total * SPRITE_M**2
+    )
 
 
 def _trees(paint_dir: Path, meta: PaintMeta) -> tuple[list[Species], npt.NDArray[np.void]]:

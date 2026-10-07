@@ -156,13 +156,17 @@ def _recorded_size(cache: Path) -> tuple[JsonObject, int]:
         recorded = require_object(loaded)
         size = as_int(recorded["size"])
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        raise Refusal(REFUSED, f"no readable {CACHE_SIDECAR_NAME} naming a size: still being "
-                               f"written, or not a raster cache ({exc})") from exc  # fmt: skip
+        raise Refusal(
+            REFUSED,
+            f"no readable {CACHE_SIDECAR_NAME} naming a size: still being "
+            f"written, or not a raster cache ({exc})",
+        ) from exc
     return recorded, size
 
 
-def _check_raw(cache: Path, target: Path | None, size: int, storage: object,
-               names: list[str]) -> None:  # fmt: skip
+def _check_raw(
+    cache: Path, target: Path | None, size: int, storage: object, names: list[str]
+) -> None:
     """Refuse a raw cache this command cannot convert, or one a render holds open."""
     if storage != STORAGE_RAW or not names:
         raise Refusal(
@@ -187,8 +191,11 @@ def compress(cache: Path, target: Path | None = None) -> AlreadyBanded | Convert
     storage = recorded.get("storage", STORAGE_RAW)
     names = [name for name in PLANE_DTYPES if (cache / name).is_file()]
     if probed := [n for n in PLANE_DTYPES if (cache / (n + ".probe")).is_file()]:
-        raise Refusal(REFUSED, f"{probed[0]}.probe is a plane an interrupted open-file check "
-                               f"renamed; rename it back to {probed[0]}")  # fmt: skip
+        raise Refusal(
+            REFUSED,
+            f"{probed[0]}.probe is a plane an interrupted open-file check "
+            f"renamed; rename it back to {probed[0]}",
+        )
     if storage == STORAGE_BANDS:
         if target is not None:
             raise Refusal(REFUSED, "already in the band store")
@@ -213,10 +220,13 @@ def compress(cache: Path, target: Path | None = None) -> AlreadyBanded | Convert
             path.unlink(missing_ok=True)
         raise
     done: Converted = {
-        "planes": names, "in_place": target is None, "target": out, "band_bytes": band_bytes,
+        "planes": names,
+        "in_place": target is None,
+        "target": out,
+        "band_bytes": band_bytes,
         "raw_bytes": sum(size * size * PLANE_DTYPES[n].itemsize for n in names),
         "seconds": round(time.time() - started, 1),
-    }  # fmt: skip
+    }
     if target is None:
         dropped = _drop_raw(cache, names)
         done["removed"], done["kept"] = dropped["removed"], dropped["kept"]
@@ -227,11 +237,15 @@ def _report(cache: Path, done: AlreadyBanded | Converted) -> str:
     if "already" in done:
         line = f"{cache}: already in the band store"
         if done["removed"]:
-            line += (f"; raw {', '.join(done['removed'])} left by an interrupted run removed, "
-                     "each matched to its bands first")  # fmt: skip
+            line += (
+                f"; raw {', '.join(done['removed'])} left by an interrupted run removed, "
+                "each matched to its bands first"
+            )
     else:
-        sizes = (f"{done['raw_bytes'] / 1e6:,.1f} MB raw to {done['band_bytes'] / 1e6:,.1f} MB "
-                 f"in {done['seconds']} s, every band read back")  # fmt: skip
+        sizes = (
+            f"{done['raw_bytes'] / 1e6:,.1f} MB raw to {done['band_bytes'] / 1e6:,.1f} MB "
+            f"in {done['seconds']} s, every band read back"
+        )
         if not done["in_place"]:
             line = f"{cache}: written to {done['target']}, {sizes}; the source untouched"
         elif not done.get("kept"):
@@ -246,8 +260,10 @@ def _report(cache: Path, done: AlreadyBanded | Converted) -> str:
 def _refusal(source: Path, to: Path, caches: Iterable[Path], targets: Iterable[Path]) -> str | None:
     pairs = [(source, to)] + [(cache, target) for target in targets for cache in caches]
     on = next(filter(None, (_clash(cache, target) for cache, target in pairs)), None)
-    return on and (f"--to: {on}. Nothing converted: give --to a folder outside the source, or "
-                   "leave it out to convert in place.")  # fmt: skip
+    return on and (
+        f"--to: {on}. Nothing converted: give --to a folder outside the source, or "
+        "leave it out to convert in place."
+    )
 
 
 def _targets(caches: list[Path], source: Path, to: Path | None) -> dict[Path, Path | None]:
@@ -260,8 +276,9 @@ def _targets(caches: list[Path], source: Path, to: Path | None) -> dict[Path, Pa
 def main() -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("dir", type=Path, help="a raster cache, or a folder of them")
-    parser.add_argument("--to", type=Path,
-                        help="write the band store here, outside dir, and leave dir alone")  # fmt: skip
+    parser.add_argument(
+        "--to", type=Path, help="write the band store here, outside dir, and leave dir alone"
+    )
     args = parser.parse_args()
     source: Path = args.dir
     to: Path | None = args.to

@@ -27,7 +27,7 @@ from mapgen.palette.scene import (
     field_water,
 )
 from mapgen.palette.water.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
-from mapgen.terrain.fill import harmonic_fill
+from mapgen.terrain.harmonic import harmonic_fill
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf

@@ -32,8 +32,9 @@ _Runs: TypeAlias = tuple[I64Grid, I64Grid, I64Grid]
 
 
 @helper
-def _higher(low: np.float32, high: np.float32, lo: F32Grid, hi: F32Grid, r: int,
-            c: int) -> tuple[np.float32, np.float32]:  # fmt: skip
+def _higher(
+    low: np.float32, high: np.float32, lo: F32Grid, hi: F32Grid, r: int, c: int
+) -> tuple[np.float32, np.float32]:
     """``(low, high)``, or pixel ``[r, c]``'s span where its top is higher."""
     top = hi[r, c]
     if top > high or (np.isnan(high) and not np.isnan(top)):
@@ -71,8 +72,9 @@ def _sample(z: F32Grid, r: int, c: int, smooth: bool, frac: NDArray[np.float32])
 
 
 @helper
-def _tangents(low: np.float32, high: np.float32, near: np.float32, near_m: np.float32,
-              far_m: np.float32) -> tuple[np.float32, np.float32]:  # fmt: skip
+def _tangents(
+    low: np.float32, high: np.float32, near: np.float32, near_m: np.float32, far_m: np.float32
+) -> tuple[np.float32, np.float32]:
     """``spans._tangents`` at one pixel."""
     dl, dh = low - near, high - near
     tl = dl / far_m if dl > 0 else dl / near_m
@@ -98,8 +100,14 @@ def _near_spans(counts: I64Grid, r: int, reach: int) -> bool:
 
 
 @helper
-def _into_band(j: int, tl: np.float32, th: np.float32, weight: np.float32,
-               band: tuple[F32Grid, F32Grid], target: tuple[np.float32, np.float32]) -> None:  # fmt: skip
+def _into_band(
+    j: int,
+    tl: np.float32,
+    th: np.float32,
+    weight: np.float32,
+    band: tuple[F32Grid, F32Grid],
+    target: tuple[np.float32, np.float32],
+) -> None:
     """``spans._span_step``'s band update for a sample that floats, at core column ``j``."""
     lo, hi = band
     te, gap = target
@@ -121,10 +129,17 @@ def _run_columns(runs: _Runs, qc: int, cols: int, run: int) -> tuple[int, int]:
 
 @kernel
 def march_spans(
-    surface: _Surface, halo: int, smooth: BoolMask, offsets: Offsets, quads: tuple[I64Grid, I64Grid],
-    per_step: F32Grid, target: tuple[np.float32, np.float32],
-    out: tuple[F32Grid, F32Grid, F32Grid, BoolMask], rows: tuple[I64Grid, int], runs: _Runs,
-) -> None:  # fmt: skip
+    surface: _Surface,
+    halo: int,
+    smooth: BoolMask,
+    offsets: Offsets,
+    quads: tuple[I64Grid, I64Grid],
+    per_step: F32Grid,
+    target: tuple[np.float32, np.float32],
+    out: tuple[F32Grid, F32Grid, F32Grid, BoolMask],
+    rows: tuple[I64Grid, int],
+    runs: _Runs,
+) -> None:
     """``spans.march_spans``' loop over every row of the core; ``out`` is raised in place.
 
     ``per_step`` holds each step's scale, stretch near and far end, and fade weight;
@@ -175,9 +190,15 @@ def march_spans(
 
 @kernel
 def sky_view_spans(
-    surface: _Surface, halo: int, offsets: Offsets, quads: tuple[I64Grid, I64Grid],
-    per_step: F32Grid, out: F32Grid, rows: tuple[I64Grid, int], runs: _Runs,
-) -> None:  # fmt: skip
+    surface: _Surface,
+    halo: int,
+    offsets: Offsets,
+    quads: tuple[I64Grid, I64Grid],
+    per_step: F32Grid,
+    out: F32Grid,
+    rows: tuple[I64Grid, int],
+    runs: _Runs,
+) -> None:
     """``spans.sky_view_spans``' loop over every row of ``out``: offsets are ``(dirs, steps)``,
     ``per_step`` each step's scale and stretch near and far end; ``runs`` as ``march_spans``."""
     z, solid, lo_p, hi_p, tops = surface
@@ -203,8 +224,16 @@ def sky_view_spans(
             hi[:] = np.float32(-np.inf)
             for s in range(steps):
                 scale, near_m, far_m = per_step[s, 0], per_step[s, 1], per_step[s, 2]
-                bilinear_row(sample, solid, r + iy[d, s], halo + ix[d, s],
-                             fy[d, s], fx[d, s], gy[d, s], gx[d, s])  # fmt: skip
+                bilinear_row(
+                    sample,
+                    solid,
+                    r + iy[d, s],
+                    halo + ix[d, s],
+                    fy[d, s],
+                    fx[d, s],
+                    gy[d, s],
+                    gx[d, s],
+                )
                 raise_row(best, near, sample, scale)
                 if not spans:
                     continue

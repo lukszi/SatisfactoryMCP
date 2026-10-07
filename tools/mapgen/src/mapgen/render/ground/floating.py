@@ -57,8 +57,9 @@ def _arches(overlay: TopPlanes | None, cut: tuple[slice, slice]) -> BoolMask | N
     return covered
 
 
-def _overhangs(direct: DirectPlanes | None, cut: tuple[slice, slice],
-               base_m: FloatGrid | None) -> BoolMask | None:  # fmt: skip
+def _overhangs(
+    direct: DirectPlanes | None, cut: tuple[slice, slice], base_m: FloatGrid | None
+) -> BoolMask | None:
     """Where a rock's underside clears its floor and the ground."""
     if direct is None or direct.under is None or direct.floor is None or base_m is None:
         return None
@@ -70,8 +71,9 @@ def _overhangs(direct: DirectPlanes | None, cut: tuple[slice, slice],
     return floats
 
 
-def _solid(sources: FloatSources, field: FieldPiece, rocks: BoolMask | None,
-           level_m: FloatGrid) -> FloatGrid:  # fmt: skip
+def _solid(
+    sources: FloatSources, field: FieldPiece, rocks: BoolMask | None, level_m: FloatGrid
+) -> FloatGrid:
     """The piece drawn as the light's seabed rule draws it, with the floating rocks set down
     on their floor and only the boulders of the top raster."""
     cut, z, missing = sources.cut, field.z_m, field.missing
@@ -84,25 +86,31 @@ def _solid(sources: FloatSources, field: FieldPiece, rocks: BoolMask | None,
             rock_z = np.where(rocks, np.nan_to_num(floor), rock_z).astype(np.float32)
             cover = np.where(rocks & ~np.isfinite(floor), 0, cover).astype(cover.dtype)
         keep = sources.keep_rock(rock_z, missing, sources.linear)
-        z = blend_regimes(field.base_m, missing, (rock_z, cover),
-                          direct.subsamples, keep)[0]  # fmt: skip
+        z = blend_regimes(field.base_m, missing, (rock_z, cover), direct.subsamples, keep)[0]
     top = sources.overlay
     if top is not None:
         boulders, cover_b = top.z, top.coverage
         if top.solid_z is not None and top.solid_coverage is not None:
             boulders, cover_b = top.solid_z, top.solid_coverage
-        z = composite_top(z, np.asarray(boulders[cut], np.float32), np.asarray(cover_b[cut]),
-                          top.subsamples)  # fmt: skip
+        z = composite_top(
+            z, np.asarray(boulders[cut], np.float32), np.asarray(cover_b[cut]), top.subsamples
+        )
     if sources.meshes is not None:
         meshes = sources.meshes
-        z = composite_meshes(z, np.asarray(meshes.z_cm[cut], np.float32),
-                             np.asarray(meshes.cls[cut], np.uint8), level_m, composite_top,
-                             seabed=True)[0]  # fmt: skip
+        z = composite_meshes(
+            z,
+            np.asarray(meshes.z_cm[cut], np.float32),
+            np.asarray(meshes.cls[cut], np.uint8),
+            level_m,
+            composite_top,
+            seabed=True,
+        )[0]
     return z
 
 
-def piece_slabs(sources: FloatSources, field: FieldPiece, drawn: FloatGrid,
-                level_m: FloatGrid) -> SlabPlanes | None:  # fmt: skip
+def piece_slabs(
+    sources: FloatSources, field: FieldPiece, drawn: FloatGrid, level_m: FloatGrid
+) -> SlabPlanes | None:
     """What floats over the piece's output pixels, or None where nothing does there.
 
     ``drawn`` is the surface the light captures; the solid is it wherever nothing floats.

@@ -121,8 +121,9 @@ class SheetRows:
 
     def _resample(self, level: Level, end: int) -> U8Grid:
         top = level.reads_from()
-        out = resample_rows(self.image_mod, self._window(top), top, self.px, level.side,
-                            level.done, end)  # fmt: skip
+        out = resample_rows(
+            self.image_mod, self._window(top), top, self.px, level.side, level.done, end
+        )
         level.done = end
         return out
 

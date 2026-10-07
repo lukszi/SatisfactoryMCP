@@ -91,8 +91,9 @@ def mip_atlas(levels: Sequence[Sequence[NDArray[np.floating]]]) -> MipAtlas:
     shapes = np.array([level.shape[:2] for level in every], np.int64).reshape(-1, 2)
     count = np.array([len(mips) for mips in levels], np.int64)
     channels = every[0].shape[2] if every else 6
-    texels = np.concatenate([level.reshape(-1, channels) for level in every] or
-                            [np.zeros((0, channels))]).astype(np.float64)  # fmt: skip
+    texels = np.concatenate(
+        [level.reshape(-1, channels) for level in every] or [np.zeros((0, channels))]
+    ).astype(np.float64)
     return MipAtlas(texels, np.column_stack([starts, shapes]), np.cumsum(count) - count, count)
 
 
@@ -105,9 +106,16 @@ class CrownSet:
     kernel once, and again only when ``levels`` is replaced by another list.
     """
 
-    def __init__(self, records: NDArray[np.void], levels: list[list[F32Grid]],
-                 origins: list[tuple[float, float]], reach_cm: F32Grid, mid_cm: F32Grid,
-                 top_cm: F32Grid, names: Sequence[str] = ()) -> None:  # fmt: skip
+    def __init__(
+        self,
+        records: NDArray[np.void],
+        levels: list[list[F32Grid]],
+        origins: list[tuple[float, float]],
+        reach_cm: F32Grid,
+        mid_cm: F32Grid,
+        top_cm: F32Grid,
+        names: Sequence[str] = (),
+    ) -> None:
         self.records = records[np.argsort(records["y"], kind="stable")]
         self.levels, self.origins, self.names = levels, origins, list(names)
         species, rec = self.records["species"], self.records
@@ -194,13 +202,19 @@ def load_crowns(
         far = np.hypot(x0 + (xs + 0.5) * step, y0 + (ys + 0.5) * step)
         reach.append(float(far.max()) + 2 * step if len(far) else 0.0)
     return CrownSet(
-        records, levels, origins, np.array(reach, np.float32), np.array(mid, np.float32),
-        np.array(high, np.float32), [entry.get("name", "") for entry in species],
-    )  # fmt: skip
+        records,
+        levels,
+        origins,
+        np.array(reach, np.float32),
+        np.array(mid, np.float32),
+        np.array(high, np.float32),
+        [entry.get("name", "") for entry in species],
+    )
 
 
-def _bilinear(level: F32Grid, u: NDArray[np.floating],
-              v: NDArray[np.floating]) -> NDArray[np.floating]:  # fmt: skip
+def _bilinear(
+    level: F32Grid, u: NDArray[np.floating], v: NDArray[np.floating]
+) -> NDArray[np.floating]:
     """A zero-bordered mip sampled at texel coordinates ``(u, v)`` inside its rim."""
     w = level.shape[1]
     flat = level.reshape(-1, level.shape[2])
@@ -252,8 +266,13 @@ def stamp_crowns(crowns: CrownSet, x_cm: F64Grid, y_cm: F64Grid, step_cm: float)
     }
 
 
-def _stamp(crowns: CrownSet, i: int, centres: tuple[F64Grid, F64Grid], step_cm: float,
-           planes: tuple[F32Grid, F32Grid, F32Grid, F32Grid]) -> None:  # fmt: skip
+def _stamp(
+    crowns: CrownSet,
+    i: int,
+    centres: tuple[F64Grid, F64Grid],
+    step_cm: float,
+    planes: tuple[F32Grid, F32Grid, F32Grid, F32Grid],
+) -> None:
     cover, rgb, dome, top = planes
     rows, cols = cover.shape
     x_cm, y_cm = centres
@@ -299,8 +318,13 @@ def _stamp(crowns: CrownSet, i: int, centres: tuple[F64Grid, F64Grid], step_cm: 
     top[window][inside] = np.maximum(top[window][inside], float(tree["z"]) + rise)
 
 
-def _stamp_compiled(crowns: CrownSet, order: I64Grid, centres: tuple[F64Grid, F64Grid],
-                    step_cm: float, planes: tuple[F32Grid, F32Grid, F32Grid, F32Grid]) -> None:  # fmt: skip
+def _stamp_compiled(
+    crowns: CrownSet,
+    order: I64Grid,
+    centres: tuple[F64Grid, F64Grid],
+    step_cm: float,
+    planes: tuple[F32Grid, F32Grid, F32Grid, F32Grid],
+) -> None:
     """``_stamp`` for every tree of ``order`` by the kernel, from ``_placements``."""
     from mapgen.terrain import kernels
 
@@ -309,8 +333,13 @@ def _stamp_compiled(crowns: CrownSet, order: I64Grid, centres: tuple[F64Grid, F6
     kernels.stamp(atlas.texels, atlas.mips, spans, poses, centres, COVER_TOP_MIN, planes)
 
 
-def _placements(crowns: CrownSet, order: I64Grid, centres: tuple[F64Grid, F64Grid],
-                step_cm: float, shape: tuple[int, ...]) -> tuple[I64Grid, F64Grid]:  # fmt: skip
+def _placements(
+    crowns: CrownSet,
+    order: I64Grid,
+    centres: tuple[F64Grid, F64Grid],
+    step_cm: float,
+    shape: tuple[int, ...],
+) -> tuple[I64Grid, F64Grid]:
     """What ``_stamp`` works out per tree before it reads a texel, for the trees of ``order``
     at once and with the same float64 operations: ``(mip, r0, r1, c0, c1)``, ``mip`` the row
     of the ``MipAtlas``, and ``(cx, cy, cos, sin, ox * scale, oy * scale, texel, scale_z,
@@ -322,7 +351,10 @@ def _placements(crowns: CrownSet, order: I64Grid, centres: tuple[F64Grid, F64Gri
     def wide(name: str) -> F64Grid:
         return rec[name].astype(np.float64)
 
-    reach, lift = crowns.reach_cm[order].astype(np.float64), crowns.lift_cm[order].astype(np.float64)  # fmt: skip
+    reach, lift = (
+        crowns.reach_cm[order].astype(np.float64),
+        crowns.lift_cm[order].astype(np.float64),
+    )
     species, scale = rec["species"].astype(np.int64), wide("scale")
     cx, cy = wide("x") + lift * wide("axis_x"), wide("y") + lift * wide("axis_y")
     c0 = np.maximum(np.floor((cx - reach - x0_cm) / step_cm).astype(np.int64), 0)
@@ -337,6 +369,18 @@ def _placements(crowns: CrownSet, order: I64Grid, centres: tuple[F64Grid, F64Gri
     yaw = np.radians(wide("yaw"))
     cos, sin = np.cos(yaw).astype(np.float32), np.sin(yaw).astype(np.float32)
     spans = np.column_stack([atlas.first[species] + level, r0, r1, c0, c1])
-    poses = np.column_stack([cx, cy, cos, sin, origin[:, 0] * scale, origin[:, 1] * scale,
-                             texel, wide("scale_z"), wide("axis_z"), wide("z")])  # fmt: skip
+    poses = np.column_stack(
+        [
+            cx,
+            cy,
+            cos,
+            sin,
+            origin[:, 0] * scale,
+            origin[:, 1] * scale,
+            texel,
+            wide("scale_z"),
+            wide("axis_z"),
+            wide("z"),
+        ]
+    )
     return spans, poses.astype(np.float64)

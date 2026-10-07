@@ -15,14 +15,8 @@ import numpy as np
 
 from mapgen.cache import DIRECT_FLOOR_NAME, DIRECT_UNDER_NAME
 from mapgen.gamedata.maxz_raster import MaxZRaster
-from mapgen.terrain.rasters import (
-    BandPlanes,
-    Geometry,
-    PreparedPlacement,
-    fold_band,
-    placed,
-    rasterise_direct_band,
-)
+from mapgen.terrain.rasters import Geometry, PreparedPlacement, placed, rasterise_direct_band
+from mapgen.terrain.rasters_banded import BandPlanes, fold_band
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, FloatGrid
 
 __all__ = [
@@ -43,8 +37,9 @@ UNDERSIDE_RISE_CM = 100.0
 OVERHANG_CLEAR_M = 2.0
 
 
-def _faces(entry: PreparedPlacement, geometry: Geometry, y_lo: float,
-           y_hi: float) -> Iterator[tuple[FloatGrid, FloatGrid, float]]:  # fmt: skip
+def _faces(
+    entry: PreparedPlacement, geometry: Geometry, y_lo: float, y_hi: float
+) -> Iterator[tuple[FloatGrid, FloatGrid, float]]:
     """A placement's triangles reaching ``[y_lo, y_hi]``, world cm, with each one's upward
     normal (its sign the facing, 0 where the winding is unknown) and the placement's lowest Z."""
     found = placed(entry, geometry, y_lo, y_hi)
@@ -79,8 +74,12 @@ def _reaches(entry_tri: FloatGrid, counts: F64Grid, raster: MaxZRaster) -> bool:
     return bool(counts[r1, c1] - counts[r0, c1] - counts[r1, c0] + counts[r0, c0] > 0)
 
 
-def overhang_rasters(prepared: Sequence[PreparedPlacement], geometry: Geometry, top: F32Grid,
-                     grid: tuple[float, float, float]) -> tuple[F32Grid, F32Grid]:  # fmt: skip
+def overhang_rasters(
+    prepared: Sequence[PreparedPlacement],
+    geometry: Geometry,
+    top: F32Grid,
+    grid: tuple[float, float, float],
+) -> tuple[F32Grid, F32Grid]:
     """``(under, floor)`` over the grid of ``top`` (the upward faces' max-Z, cm), NaN where none.
 
     ``under`` is the highest downward face below the top that rises ``UNDERSIDE_RISE_CM``
@@ -131,12 +130,20 @@ def reduce_floor(sub: F32Grid, rows: int, cols: int, subsamples: int) -> F32Grid
     return np.where(have, highest, np.nan).astype(np.float32)
 
 
-def rasterise_direct_planes(prepared: Sequence[PreparedPlacement], geometry: Geometry,
-                            x0_cm: float, y0_cm: float, scale_cm: float, rows: int, cols: int,
-                            subsamples: int) -> BandPlanes:  # fmt: skip
+def rasterise_direct_planes(
+    prepared: Sequence[PreparedPlacement],
+    geometry: Geometry,
+    x0_cm: float,
+    y0_cm: float,
+    scale_cm: float,
+    rows: int,
+    cols: int,
+    subsamples: int,
+) -> BandPlanes:
     """One band of the direct cache: ``rasterise_direct_band``'s planes, and the overhangs'."""
-    sub_z, sub_source = rasterise_direct_band(prepared, geometry, x0_cm, y0_cm, scale_cm, rows,
-                                              cols, subsamples, with_source=True)  # fmt: skip
+    sub_z, sub_source = rasterise_direct_band(
+        prepared, geometry, x0_cm, y0_cm, scale_cm, rows, cols, subsamples, with_source=True
+    )
     planes = fold_band((sub_z, sub_source), rows, cols, subsamples)
     step = scale_cm / subsamples
     under, floor = overhang_rasters(prepared, geometry, sub_z, (x0_cm, y0_cm, step))

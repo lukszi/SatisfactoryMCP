@@ -45,11 +45,15 @@ SHELLS = ("MI_Bigshell_01", "PlateauShell_Inst", "SmallShell_Inst")
 DESERT_ROCK_LIGHT = "Atmosphere_DuneDesert"
 
 _GAME = "/Game/FactoryGame/"
-_BAKE = (f"{_GAME}Map/GameLevel01/Persistent_Level: LandscapeStreamingProxy_*_BaseColor "
-         "(HLOD virtual texture, mip 0)")  # fmt: skip
+_BAKE = (
+    f"{_GAME}Map/GameLevel01/Persistent_Level: LandscapeStreamingProxy_*_BaseColor "
+    "(HLOD virtual texture, mip 0)"
+)
 _WEIGHTS = "LandscapeComponent weightmaps of every /GameLevel01/ level"
-_WATER = ("water: the game's water absorbs but does not scatter, so its colour is the sky, "
-          "clouds and fog, which the cooked assets do not expose")  # fmt: skip
+_WATER = (
+    "water: the game's water absorbs but does not scatter, so its colour is the sky, "
+    "clouds and fog, which the cooked assets do not expose"
+)
 
 _Where = tuple[F64Grid, F64Grid] | None
 
@@ -92,9 +96,15 @@ def bake_layer(s: Scene, key: str, layer: str, scope: BoolMask) -> Derivation:
         return Derivation(key, error=f"{count} pure texels in scope (< {MIN_TEXELS})")
     lab = np.median(oklab(np.clip(s.bake_linear[pure], 1e-7, None)), axis=0)
     rule = f"bake median over pure {layer} texels (weight >= {PURE_SHARE} of the blend)"
-    return Derivation(key, "bake median", rule, linear_from_oklab(lab).astype(np.float64),
-                      s.where(pure), assets=[_BAKE, f"{_WEIGHTS}: {layer}"],
-                      samples=f"{count} texels at {s.meta['grid']['spacing_cm'] * STRIDE / 100:g} m")  # fmt: skip
+    return Derivation(
+        key,
+        "bake median",
+        rule,
+        linear_from_oklab(lab).astype(np.float64),
+        s.where(pure),
+        assets=[_BAKE, f"{_WEIGHTS}: {layer}"],
+        samples=f"{count} texels at {s.meta['grid']['spacing_cm'] * STRIDE / 100:g} m",
+    )
 
 
 def layer_table(s: Scene, key: str, layer: str) -> Derivation:
@@ -124,12 +134,16 @@ def cliff_rock(s: Scene, key: str, family: str, scope: BoolMask | None) -> Deriv
     if not tint:
         return Derivation(key, error=f"the {family} family has no Color Tint")
     mean = np.mean([means[t] for t in ROCK_TEXTURES], axis=0)
-    return Derivation(key, "cliff texture x tint",
-                      f"mean of {', '.join(ROCK_TEXTURES)} x {family} family Color Tint",
-                      mean * np.asarray(tint), None if scope is None else s.where(scope),
-                      assets=[_GAME + TEXTURES[t] for t in ROCK_TEXTURES]
-                      + [f"{source.get('material')} vector 'Color Tint'"],
-                      params={"texture_mean_linear": _rounded(mean), "Color Tint": list(tint)})  # fmt: skip
+    return Derivation(
+        key,
+        "cliff texture x tint",
+        f"mean of {', '.join(ROCK_TEXTURES)} x {family} family Color Tint",
+        mean * np.asarray(tint),
+        None if scope is None else s.where(scope),
+        assets=[_GAME + TEXTURES[t] for t in ROCK_TEXTURES]
+        + [f"{source.get('material')} vector 'Color Tint'"],
+        params={"texture_mean_linear": _rounded(mean), "Color Tint": list(tint)},
+    )
 
 
 def family_rock(s: Scene, key: str, family: str, scope: BoolMask | None) -> Derivation:
@@ -150,10 +164,14 @@ def family_top(s: Scene, key: str, family: str) -> Derivation:
     top = source.get("top")
     if not top:
         return Derivation(key, error=f"the {family} family overrides no top texture")
-    return Derivation(key, "top texture", f"{family} family top layer: mean of its far albedo",
-                      np.asarray(top, np.float64),
-                      assets=[f"{source.get('material')} 'Far Albedo' = {source.get('top_texture')}"],
-                      params={"texture_mean_linear": list(top)})  # fmt: skip
+    return Derivation(
+        key,
+        "top texture",
+        f"{family} family top layer: mean of its far albedo",
+        np.asarray(top, np.float64),
+        assets=[f"{source.get('material')} 'Far Albedo' = {source.get('top_texture')}"],
+        params={"texture_mean_linear": list(top)},
+    )
 
 
 def _crowns(s: Scene, key: str, keep: BoolMask, gate: F64Grid | None = None) -> Derivation:
@@ -183,8 +201,10 @@ def species(s: Scene, key: str, names: Sequence[str]) -> Derivation:
     ids = [i for i, t in enumerate(s.species) if any(n in t.name for n in names)]
     found = _crowns(s, key, np.isin(s.records["species"], ids) & ~s.meshed[s.records["species"]])
     found.kind = "species crowns"
-    found.rule = (f"crown colour of {', '.join(s.species[i].name for i in ids)}: each visible "
-                  "slot's albedo under its leaf mask, cover-weighted")  # fmt: skip
+    found.rule = (
+        f"crown colour of {', '.join(s.species[i].name for i in ids)}: each visible "
+        "slot's albedo under its leaf mask, cover-weighted"
+    )
     found.assets = [s.species[i].mesh for i in ids]
     return found
 
@@ -218,9 +238,14 @@ def material(s: Scene, key: str, names: Sequence[str], label: str) -> Derivation
             found[path] = entry["linear"]
     if not found:
         return Derivation(key, error=f"no readable albedo for {label}")
-    return Derivation(key, "material texture", f"{label}: base-colour texture mean, linear",
-                      np.mean(list(found.values()), axis=0), assets=sorted(found),
-                      params={p.rsplit("/", 1)[-1]: _rounded(c) for p, c in found.items()})  # fmt: skip
+    return Derivation(
+        key,
+        "material texture",
+        f"{label}: base-colour texture mean, linear",
+        np.mean(list(found.values()), axis=0),
+        assets=sorted(found),
+        params={p.rsplit("/", 1)[-1]: _rounded(c) for p, c in found.items()},
+    )
 
 
 # -- the entry table ---------------------------------------------------------------------------
@@ -244,8 +269,10 @@ def _global_rows(s: Scene, cal: CalibrationStyle) -> list[Derivation]:
 
     claimed = [*cal.get("species", {}), BLUE_PALM]
     rows = [bake_layer(s, f"layers.{n}", n, outside(n)) for n in cal["layers"]]
-    rows += [bake_layer(s, f"derived.{n}", n, outside(rule["from"]))
-             for n, rule in cal.get("derived", {}).items()]  # fmt: skip
+    rows += [
+        bake_layer(s, f"derived.{n}", n, outside(rule["from"]))
+        for n, rule in cal.get("derived", {}).items()
+    ]
     if "canopy" in cal:
         rows.append(canopy(s, "canopy", claimed))
     if "rock" in cal:
@@ -273,9 +300,11 @@ def _area_rows(s: Scene, cal: CalibrationStyle, entry: CalibrationArea) -> list[
     layers = entry.get("layers", {})
     for layer in layers:
         rows.append(bake_layer(s, f"{scope}.layers.{layer}", layer, mask))
-        rows += [bake_layer(s, f"{scope}.derived.{name}", name, mask)
-                 for name, rule in cal.get("derived", {}).items()
-                 if rule["from"] == layer and name not in layers]  # fmt: skip
+        rows += [
+            bake_layer(s, f"{scope}.derived.{name}", name, mask)
+            for name, rule in cal.get("derived", {}).items()
+            if rule["from"] == layer and name not in layers
+        ]
     if "rock" in entry:
         family = families.get(entry["rock"])
         if family:

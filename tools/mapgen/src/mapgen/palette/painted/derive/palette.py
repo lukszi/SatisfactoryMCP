@@ -56,6 +56,10 @@ def calibrated_palette(
     merged, applied = with_targets(palette, hexes)
     kept: list[JsonValue] = [key for key in keys if key not in applied]
     print(f"  {len(applied)} derived targets from {source}; {len(kept)} kept their screenshot")
-    block: JsonObject = {"source": source, "applied": {k: hexes[k] for k in applied},
-                         "kept": kept, "stamp": stamp}  # fmt: skip
+    block: JsonObject = {
+        "source": source,
+        "applied": {k: hexes[k] for k in applied},
+        "kept": kept,
+        "stamp": stamp,
+    }
     return merged, palette_digest(merged), block

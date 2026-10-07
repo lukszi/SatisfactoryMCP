@@ -180,9 +180,11 @@ def draw_falls(
         return rgb
     xs, ys = np.asarray(x_cm, np.float64) / 100, np.asarray(y_cm, np.float64) / 100
     reach = (
-        falls[:, _HALF_WIDTH] * (1.0 + style["soft"]) + falls[:, _TOP_LEN] + style["spread"][2]
+        falls[:, _HALF_WIDTH] * (1.0 + style["soft"])
+        + falls[:, _TOP_LEN]
+        + style["spread"][2]
         + 3 * style["pool_radius"][2]
-    )  # fmt: skip
+    )
     near = (
         (falls[:, _X] + reach >= xs.min())
         & (falls[:, _X] - reach <= xs.max())

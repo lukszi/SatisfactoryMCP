@@ -1,5 +1,6 @@
 """What stands on the painted ground: rock in its family's colour, the canopy over rock, and
-the render-only meshes. docs/map/painted.md sections 27 and 30 and docs/map/calibration.md section 31.
+the render-only meshes. docs/map/painted.md sections 27 and 30 and docs/map/calibration.md
+section 31.
 """
 
 from __future__ import annotations
@@ -214,8 +215,12 @@ def top_cover(scene: PaintedScene, ground: PaintedSurface, code: U8Grid) -> Floa
     if patches is None or not seen.any():
         return weight
     rows, cols = np.nonzero(seen)
-    noise = patch_noise((c0 + cols + 0.5) * spacing_m, (lo + rows + 0.5) * spacing_m,
-                        patches["octaves_m"], patches["seed"])  # fmt: skip
+    noise = patch_noise(
+        (c0 + cols + 0.5) * spacing_m,
+        (lo + rows + 0.5) * spacing_m,
+        patches["octaves_m"],
+        patches["seed"],
+    )
     level = noise + patches["flat_gain"] * (_ramp(nz, patches["flat"])[seen] - 1.0)
     weight[seen] *= np.clip((level - patches["level"]) / patches["soft"] + 0.5, 0.0, 1.0)
     return weight

@@ -239,11 +239,13 @@ be traced to the axis it should move.
 | `terrain/heightfield/sidecar_blocks.py` | data | Each layer's sidecar block, per-layer accuracy, the water block |
 | `terrain/heightfield/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes, pits |
+| `terrain/harmonic.py` | renderer | Fills over a mask: nearest, harmonic and biharmonic, the screened membrane, the hole fill |
 | `terrain/emptied.py` | renderer | Where the rebuilt lattice is left empty because the artwork draws void: its pits, and the fill past its rim |
 | `terrain/solve.py` | renderer | Conjugate gradients with fixed-order sums, for the membranes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
 | `terrain/kernels.py` | renderer | The resampling gathers and the crown stamps compiled by numba |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid |
+| `terrain/rasters_banded.py` | renderer | A banded raster: each band folded onto the output grid and written to its cache |
 | `terrain/top_raster.py`, `archfill.py` | renderer | The top raster with the arches apart (top, underside) and the boulders alone; the arches' sub-metre holes filled |
 | `terrain/overhangs.py` | renderer | Under each rock's top, its overhang's underside and the floor beneath it |
 | `terrain/render_meshes.py` | renderer | The render-only meshes and the Titan trees on the output grid |

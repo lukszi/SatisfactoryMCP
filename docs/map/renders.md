@@ -1415,7 +1415,7 @@ were the same at every thread count.
   halves, each level the second half onto the first, elementwise, an odd last term carried
   on. The order follows the length alone, so the answer is the same bits at any thread count
   and in any library; a numba or GPU port adds in the same pairs. `relax` in
-  `terrain/fill.py` uses it too.
+  `terrain/harmonic.py` uses it too.
 - Its answer lies within 1.4e-13 m of scipy's at 24 threads, nearer than scipy's own at 1 and
   24 threads (3.2e-13 m), and converges in the same 1,059 steps to the same tolerance. The
   bed is written into the float32 lattice, which rounds both answers alike: the heights,
@@ -1424,7 +1424,7 @@ were the same at every thread count.
 - It is faster: 4.5 s against scipy's 6.6 s at 24 threads and 4.9 s at one, best of three
   on the captured system, as it reuses its scratch arrays. The membrane is solved once a
   render, at any size.
-- The other sparse solves, `spsolve` in `terrain/fill.py` (the seam band, the holes and the
+- The other sparse solves, `spsolve` in `terrain/harmonic.py` (the seam band, the holes and the
   perched water: 159 systems a run, up to 55,000 cells), gave the same bits at 1, 4 and 24
   threads, every one of them.
 

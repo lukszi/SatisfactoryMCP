@@ -26,7 +26,8 @@ from mapgen.palette.water.rivers import water_sources
 from mapgen.palette.water.shore import OCEAN_LEVEL_M, composite_meshes
 from mapgen.render.ground.lift import DIRECT_LIFT_KNEE_M, composite_top
 from mapgen.terrain.emptied import pit_mask
-from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, relax
+from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field
+from mapgen.terrain.harmonic import relax
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.draw import render_layer

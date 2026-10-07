@@ -66,6 +66,9 @@ def oil_nodes(table: Path = NODE_TABLE) -> F64Grid:
         nodes = node_rows(table)
     except (OSError, ValueError, KeyError, TypeError):
         nodes = []
-    found = [(n["x"] / 100.0, n["y"] / 100.0) for n in nodes
-             if (n.get("class"), n.get("resource")) == OIL_NODE]  # fmt: skip
+    found = [
+        (n["x"] / 100.0, n["y"] / 100.0)
+        for n in nodes
+        if (n.get("class"), n.get("resource")) == OIL_NODE
+    ]
     return np.asarray(found, np.float64).reshape(-1, 2)

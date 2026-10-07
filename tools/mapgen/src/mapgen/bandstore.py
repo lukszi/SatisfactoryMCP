@@ -73,8 +73,14 @@ def _is_axis_key(part: object) -> bool:
 class BandWriter:
     """Writes a plane top to bottom, ``band_rows`` at a time; ``close`` commits it to disk."""
 
-    def __init__(self, path: Path | str, shape: tuple[int, int], dtype: DTypeLike,
-                 band_rows: int = BAND_ROWS, level: int = ZSTD_LEVEL) -> None:  # fmt: skip
+    def __init__(
+        self,
+        path: Path | str,
+        shape: tuple[int, int],
+        dtype: DTypeLike,
+        band_rows: int = BAND_ROWS,
+        level: int = ZSTD_LEVEL,
+    ) -> None:
         import zstandard
 
         self.path = Path(path)
@@ -143,9 +149,14 @@ class BandArray:
 
     ndim = 2
 
-    def __init__(self, path: Path | str, shape: tuple[int, int], dtype: DTypeLike,
-                 keep: int = CACHED_BANDS,
-                 on_corrupt: Callable[[], None] | None = None) -> None:  # fmt: skip
+    def __init__(
+        self,
+        path: Path | str,
+        shape: tuple[int, int],
+        dtype: DTypeLike,
+        keep: int = CACHED_BANDS,
+        on_corrupt: Callable[[], None] | None = None,
+    ) -> None:
         import zstandard
 
         self.path = Path(path)

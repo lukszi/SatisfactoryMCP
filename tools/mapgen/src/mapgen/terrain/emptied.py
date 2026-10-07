@@ -63,8 +63,9 @@ def pit_mask(nodata: BoolMask, void: BoolMask, floor: BoolMask | None = None) ->
     return keep[labels] & (floor | ~edge[labels])
 
 
-def pits(height_dm: NDArray[np.number], empty: BoolMask,
-         void: BoolMask | None) -> tuple[BoolMask, BoolMask]:  # fmt: skip
+def pits(
+    height_dm: NDArray[np.number], empty: BoolMask, void: BoolMask | None
+) -> tuple[BoolMask, BoolMask]:
     """The pits the artwork draws as void among the ``empty`` texels and the ground below
     ``PIT_FLOOR_M``, and that ground."""
     floor = ~empty & (height_dm <= np.float32(PIT_FLOOR_M * hf.DM_PER_M))

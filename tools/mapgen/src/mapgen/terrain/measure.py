@@ -77,8 +77,14 @@ class SeamTrace:
         stride = max(1, values.size // SEAM_SAMPLE_MAX_PER_BAND)
         return values[::stride].astype(np.float32)
 
-    def add(self, z_m: F32Grid, z_switched: F32Grid, w: F32Grid, spacing_m: float,
-            delta: F32Grid | None = None) -> None:  # fmt: skip
+    def add(
+        self,
+        z_m: F32Grid,
+        z_switched: F32Grid,
+        w: F32Grid,
+        spacing_m: float,
+        delta: F32Grid | None = None,
+    ) -> None:
         self.merge(self.measure(z_m, z_switched, w, spacing_m, delta))
 
     def merge(self, measured: SeamMeasure) -> None:
@@ -88,8 +94,14 @@ class SeamTrace:
         for name, values in kept:
             self.pools[name].append(values)
 
-    def measure(self, z_m: F32Grid, z_switched: F32Grid, w: F32Grid, spacing_m: float,
-                delta: F32Grid | None = None) -> SeamMeasure:  # fmt: skip
+    def measure(
+        self,
+        z_m: F32Grid,
+        z_switched: F32Grid,
+        w: F32Grid,
+        spacing_m: float,
+        delta: F32Grid | None = None,
+    ) -> SeamMeasure:
         """One band's rows and thinned pools, touching nothing shared: safe on any thread."""
         kept: list[tuple[str, F32Grid]] = []
 
@@ -144,8 +156,9 @@ class SeamTrace:
         def ratio(over: float | None) -> float | None:
             return None if not over else round(seam / over, 4)
 
-        beside = max([v for v in (p99["pure_direct"], p99["pure_kernel"]) if v is not None],
-                     default=None)  # fmt: skip
+        beside = max(
+            [v for v in (p99["pure_direct"], p99["pure_kernel"]) if v is not None], default=None
+        )
         return {
             "measured": True,
             "method": (

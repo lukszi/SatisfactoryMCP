@@ -171,17 +171,35 @@ def persistent_lighting(game: GameReader) -> tuple[LevelLighting | None, list[st
         return None, [PERSISTENT_LEVEL]
     f = _read_level(PackageView(game.store.read_path(path), game.scripts))
     e = f.exposure
-    missing = [n for n, v in (("sun colour", f.sun_colour), ("sun lux", f.sun_lux),
-                              ("sun pitch", f.sun_pitch_deg), ("sky luminance factor", f.sky))
-               if v is None] + [n for n in AUTO_EXPOSURE.values() if n not in e]  # fmt: skip
+    missing = [
+        n
+        for n, v in (
+            ("sun colour", f.sun_colour),
+            ("sun lux", f.sun_lux),
+            ("sun pitch", f.sun_pitch_deg),
+            ("sky luminance factor", f.sky),
+        )
+        if v is None
+    ] + [n for n in AUTO_EXPOSURE.values() if n not in e]
     if missing or f.sun_colour is None or f.sun_lux is None or f.sun_pitch_deg is None:
         return None, missing
-    exposure: AutoExposure = {"bias_ev": e["bias_ev"], "low_pct": e["low_pct"],
-                              "high_pct": e["high_pct"], "min_brightness": e["min_brightness"],
-                              "max_brightness": e["max_brightness"]}  # fmt: skip
-    return {"level": PERSISTENT_LEVEL, "noon_h": NOON_H, "sun_colour": f.sun_colour,
-            "sun_lux": f.sun_lux, "sun_pitch_deg": f.sun_pitch_deg, "day_seconds": f.day_seconds,
-            "sky_luminance_factor": f.sky or [], "auto_exposure": exposure}, []  # fmt: skip
+    exposure: AutoExposure = {
+        "bias_ev": e["bias_ev"],
+        "low_pct": e["low_pct"],
+        "high_pct": e["high_pct"],
+        "min_brightness": e["min_brightness"],
+        "max_brightness": e["max_brightness"],
+    }
+    return {
+        "level": PERSISTENT_LEVEL,
+        "noon_h": NOON_H,
+        "sun_colour": f.sun_colour,
+        "sun_lux": f.sun_lux,
+        "sun_pitch_deg": f.sun_pitch_deg,
+        "day_seconds": f.day_seconds,
+        "sky_luminance_factor": f.sky or [],
+        "auto_exposure": exposure,
+    }, []
 
 
 def convex_hull_xy(points: list[tuple[float, float]]) -> list[list[float]]:
@@ -260,8 +278,14 @@ def _atmosphere_volume(
     xs, ys, zs = (sorted(p[k] / 100.0 for p in points) for k in range(3))
     hull = convex_hull_xy([(round(p[0] / 100.0, 2), round(p[1] / 100.0, 2)) for p in points])
     box = [round(v, 2) for v in (xs[0], xs[-1], ys[0], ys[-1], zs[0], zs[-1])]
-    return {"name": view.exports[slot]["name"], "level": level, "priority": priority,
-            "noon": noon, "box_m": box, "hull_xy_m": hull}  # fmt: skip
+    return {
+        "name": view.exports[slot]["name"],
+        "level": level,
+        "priority": priority,
+        "noon": noon,
+        "box_m": box,
+        "hull_xy_m": hull,
+    }
 
 
 def level_volumes(view: PackageView, level: str, classes: ClassFacts) -> list[AtmosphereVolume]:

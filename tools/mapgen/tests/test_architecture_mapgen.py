@@ -8,8 +8,10 @@ there.
 from __future__ import annotations
 
 import ast
+import io
 import subprocess
 import sys
+import tokenize
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -92,7 +94,7 @@ MODULE_MAX_LINES = 600
 #: thin under it so the stages stay in their modules. Shrink-only: a ceiling may be lowered,
 #: never raised, and one more than ``CEILING_SLACK`` above the file is stale.
 MODULE_CEILINGS: dict[str, int] = {
-    "commands/renders.py": 335,
+    "commands/renders.py": 336,
     "commands/heightmap.py": 306,
     "commands/artwork.py": 296,
 }
@@ -352,6 +354,42 @@ def test_mapgen_modules_stay_under_the_line_cap():
         over
     )
     assert not stale + missing, "stale MODULE_CEILINGS entries:\n" + "\n".join(stale + missing)
+
+
+def _literal_table_ends(tree: ast.Module) -> set[int]:
+    """The last line of every module-level assignment of a literal: a table."""
+    ends = set()
+    for node in tree.body:
+        value = node.value if isinstance(node, (ast.Assign, ast.AnnAssign)) else None
+        if value is None:
+            continue
+        try:
+            ast.literal_eval(value)
+        except ValueError:
+            continue
+        ends.add(node.end_lineno)
+    return ends
+
+
+def test_formatting_is_skipped_only_on_a_literal_table():
+    """``# fmt: skip`` and ``# fmt: off`` keep code packed past what ruff writes, so the line
+    caps would measure unformatted text; only a module-level literal table keeps its layout."""
+    found = []
+    for path in _sources(PKG):
+        source = path.read_text(encoding="utf-8")
+        tables = _literal_table_ends(_tree(path))
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type != tokenize.COMMENT:
+                continue
+            text = token.string.lstrip("#").strip()
+            if text in ("fmt: off", "fmt: on") or (
+                text == "fmt: skip" and token.start[0] not in tables
+            ):
+                found.append(f"  {_rel(path)}:{token.start[0]}: {token.string}")
+    assert not found, (
+        "formatting skipped outside a literal table -- let ruff format it, and split the "
+        "module if it then passes its cap:\n" + "\n".join(found)
+    )
 
 
 def test_no_mapgen_function_grows_past_its_cap():

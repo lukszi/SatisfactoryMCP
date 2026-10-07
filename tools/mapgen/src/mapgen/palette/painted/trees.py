@@ -1,6 +1,7 @@
 """Trees laid over the finished painted pixel: the Titan forest's raster and per-tree crowns,
 the crowns moved onto the species targets, the canopy targets and the named crown targets;
-a crown under the water's surface goes to the bed instead. docs/map/painted.md section 30, docs/map/calibration.md section 31 and docs/map/light-and-crowns.md section 36.
+a crown under the water's surface goes to the bed instead. docs/map/painted.md section 30,
+docs/map/calibration.md section 31 and docs/map/light-and-crowns.md section 36.
 """
 
 from __future__ import annotations
@@ -176,8 +177,11 @@ def crown_ops(
         source = weighted_median(lab[inside], (weight * gate)[inside])
         step, matrix = transfer_op(source, target)
         ops.append(np.array([step, *matrix.ravel(), *hue], np.float32))
-        measured[f"crowns@{i}"] = {"trees": int(inside.sum()), "dL": round(step, 4),
-                                   "chroma_scale": round(float(np.hypot(*matrix[0])), 3)}  # fmt: skip
+        measured[f"crowns@{i}"] = {
+            "trees": int(inside.sum()),
+            "dL": round(step, 4),
+            "chroma_scale": round(float(np.hypot(*matrix[0])), 3),
+        }
     return ops, measured
 
 
@@ -197,9 +201,11 @@ def species_targets(
         target = display_to_crown(palette, hex_colour)
         step, matrix = transfer_op(crown_lab(colours[k], style), target)
         levels[k] = [_moved_level(level, step, matrix, style) for level in levels[k]]
-        measured[f"species@{name}"] = {"trees": int((crowns.records["species"] == k).sum()),
-                                       "dL": round(step, 4),
-                                       "chroma_scale": round(float(np.hypot(*matrix[0])), 3)}  # fmt: skip
+        measured[f"species@{name}"] = {
+            "trees": int((crowns.records["species"] == k).sum()),
+            "dL": round(step, 4),
+            "chroma_scale": round(float(np.hypot(*matrix[0])), 3),
+        }
     return levels, measured
 
 
@@ -217,8 +223,9 @@ def named_targets(
     measured: JsonObject = {}
     for name, hex_colour in targets.get("crowns", {}).items():
         target = display_to_crown(palette, hex_colour)
-        (op,), named = crown_ops(crowns, style, cells, [(None, target)],
-                                 targets["min_texels"], TARGET_GREY, levels)  # fmt: skip
+        (op,), named = crown_ops(
+            crowns, style, cells, [(None, target)], targets["min_texels"], TARGET_GREY, levels
+        )
         if op is None:
             continue
         gates = hue_gate(crown_lab(species_colours(levels)[0], style), op[5:7], TARGET_GREY)
@@ -407,8 +414,12 @@ def crown_layer(
     low, high = style["shade_clamp"]
     shade = np.clip(crowns["ndl"] / scene["ndl_flat"], low, high)
     light = sky_sun_light(palette["sky"], palette["sun"], np.float32(ambient), shade)
-    return {"alpha": np.clip(cover, 0.0, 1.0) * np.float32(style["opacity"]) * seen,
-            "colour": colour * light * exposure, "top_m": top_m, "sunk": sunk}  # fmt: skip
+    return {
+        "alpha": np.clip(cover, 0.0, 1.0) * np.float32(style["opacity"]) * seen,
+        "colour": colour * light * exposure,
+        "top_m": top_m,
+        "sunk": sunk,
+    }
 
 
 def lit_crowns(

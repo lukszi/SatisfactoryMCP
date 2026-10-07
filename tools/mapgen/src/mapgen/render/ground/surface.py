@@ -119,8 +119,15 @@ class LightCapture(Protocol):
     """Where the drawn heights and land weight go for the light bake (``lighting.stage``),
     with what floats over them."""
 
-    def put(self, row: int, z_m: FloatGrid, land: FloatGrid, columns: slice = ...,
-            slabs: SlabPlanes | None = ..., /) -> None:  # fmt: skip
+    def put(
+        self,
+        row: int,
+        z_m: FloatGrid,
+        land: FloatGrid,
+        columns: slice = ...,
+        slabs: SlabPlanes | None = ...,
+        /,
+    ) -> None:
         """Rows from ``row`` on, over ``columns`` of the sheet."""
         ...
 
@@ -359,13 +366,24 @@ def band_surfaces(
         lifted, mesh_weight, mesh_class = z_m, None, None
         if sources.meshes is not None:
             lifted, mesh_weight, mesh_class = _meshes(sources.meshes, grid, z_m, level_m, seabed)
-        surfaces[seabed] = _read_only(BandSurface(
-            z_m=lifted, missing=missing, weight=weight, rock_seen=rock_seen,
-            top_weight=top_weight, water_m=water_m, level_m=level_m, wet=wet, measured=measured,
-            mesh_weight=mesh_weight, mesh_class=mesh_class,
-            water=_water_terms(sources, linear, lifted, planes), borrow=borrow,
-            void=drawn_void(missing, sources.sea, linear, weight, lifted),
-        ))  # fmt: skip
+        surfaces[seabed] = _read_only(
+            BandSurface(
+                z_m=lifted,
+                missing=missing,
+                weight=weight,
+                rock_seen=rock_seen,
+                top_weight=top_weight,
+                water_m=water_m,
+                level_m=level_m,
+                wet=wet,
+                measured=measured,
+                mesh_weight=mesh_weight,
+                mesh_class=mesh_class,
+                water=_water_terms(sources, linear, lifted, planes),
+                borrow=borrow,
+                void=drawn_void(missing, sources.sea, linear, weight, lifted),
+            )
+        )
     light = None
     if sources.capture is not None:
         lit = surfaces[True]
@@ -378,10 +396,14 @@ def _float_sources(sources: GroundSources, grid: BandSampling) -> FloatSources:
     """What ``piece_slabs`` composes a piece's solid surface from."""
     wet = None if sources.water is None else sources.water.wet
     return FloatSources(
-        direct=sources.direct, overlay=sources.overlay, meshes=sources.meshes,
-        cut=(grid.rows.cut, grid.cols.cut), kept=(grid.rows.kept, grid.cols.kept),
-        linear=grid.linear, keep_rock=partial(rock_kept, wet_plane=wet, sea=sources.sea),
-    )  # fmt: skip
+        direct=sources.direct,
+        overlay=sources.overlay,
+        meshes=sources.meshes,
+        cut=(grid.rows.cut, grid.cols.cut),
+        kept=(grid.rows.kept, grid.cols.kept),
+        linear=grid.linear,
+        keep_rock=partial(rock_kept, wet_plane=wet, sea=sources.sea),
+    )
 
 
 def settle_band(sources: GroundSources, rows: Span, pieces: Sequence[PieceOwed]) -> list[Owed]:
@@ -460,8 +482,8 @@ def _water_terms(
 
 def _light_planes(grid: BandSampling, lit: BandSurface, slabs: SlabPlanes | None) -> LightPlanes:
     """The piece's output pixels for the light stage: the heights, NaN where no data is drawn
-    (``lighting/spans/holes.py``), the land weight (``render/ground/void.py``), and what floats over them
-    (``render/ground/floating.py``), cut to them already."""
+    (``lighting/spans/holes.py``), the land weight (``render/ground/void.py``), and what floats
+    over them (``render/ground/floating.py``), cut to them already."""
     kept = (grid.rows.kept, grid.cols.kept)
     land = land_weight(lit.missing, lit.water["cover"], lit.void)
     z_m = np.where(lit.missing, np.float32(np.nan), lit.z_m)

@@ -397,7 +397,10 @@ def load_rivers(
         cached = write_rivers(cache_dir, stamp, sweep["rivers"], sweep["water"])
     # The stamp matched, or the sweep was just written: the cache has its shape.
     rivers = RiverWater(cast(RiverCache, cached), field)
-    source: JsonObject = {**rivers.stats, "cache": "reused" if reused else "swept",
-                          "seconds": round(time.time() - started, 1)}  # fmt: skip
+    source: JsonObject = {
+        **rivers.stats,
+        "cache": "reused" if reused else "swept",
+        "seconds": round(time.time() - started, 1),
+    }
     print(f"  rivers: {source}")
     return rivers, source

@@ -13,7 +13,7 @@ from scipy import ndimage
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.terrain.measure import SEAM_MID
-from mapgen.terrain.rasters import pixel_coverage
+from mapgen.terrain.rasters_banded import pixel_coverage
 from mapgen.terrain.sample import Taps, reads_nothing, sample_coverage, sample_plain
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, FloatGrid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf

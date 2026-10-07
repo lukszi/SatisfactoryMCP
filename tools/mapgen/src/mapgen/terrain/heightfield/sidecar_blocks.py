@@ -102,8 +102,13 @@ def describe_files(payload: dict[str, bytes], frame: LandscapeFrame) -> dict[str
     }
 
 
-def add_planes(meta: dict[str, object], frame: LandscapeFrame, terrain_check: TerrainCheck, top: TopOverlay,
-               top_raised: int) -> None:  # fmt: skip
+def add_planes(
+    meta: dict[str, object],
+    frame: LandscapeFrame,
+    terrain_check: TerrainCheck,
+    top: TopOverlay,
+    top_raised: int,
+) -> None:
     """The ``planes``, ``terrain_grid`` and ``top`` blocks, appended after ``build_meta``'s."""
     meta["planes"] = {
         "ground": hf.HEIGHT_NAME,
@@ -119,7 +124,9 @@ def add_planes(meta: dict[str, object], frame: LandscapeFrame, terrain_check: Te
         "zero": LANDSCAPE_ZERO,
         "units_per_m": LANDSCAPE_PER_UNIT * 100.0 / LANDSCAPE_SCALE_CM,
         "offset_m": frame["origin_z_cm"] / 100.0,
-        "georeference": "x_cm = x0_cm + col*spacing_cm; z_m = (raw - zero) / units_per_m + offset_m",
+        "georeference": (
+            "x_cm = x0_cm + col*spacing_cm; z_m = (raw - zero) / units_per_m + offset_m"
+        ),
         "seam_disagreements": frame["seam_disagreements"],
         "seam_rule": "stitched in sweep order; a later component overwrites the shared edge",
         "validation": terrain_check,
@@ -326,8 +333,9 @@ _LAYER_NOTES = {
 }
 
 
-def _layer_accuracy(measured: ErrorStats, pooled: ErrorStats,
-                    vertical: float, cliff: bool) -> tuple[float | None, str]:  # fmt: skip
+def _layer_accuracy(
+    measured: ErrorStats, pooled: ErrorStats, vertical: float, cliff: bool
+) -> tuple[float | None, str]:
     """A layer's accuracy and where it came from: measured on its own nodes, on the cliff
     province whole, or its own vertical step."""
     if measured["n"] >= ACCURACY_MIN_SAMPLES:

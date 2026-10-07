@@ -43,7 +43,8 @@ from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.painted.surfaces import canopy_over_rock, rock_surface
 from mapgen.palette.painted.trees import sample_titan, titan_over
 from mapgen.palette.styles import PAINTED_DIGEST, PAINTED_PALETTE, painted_style
-from mapgen.terrain.rasters import direct_placements, rasterise_direct_band, reduce_source
+from mapgen.terrain.rasters import direct_placements, rasterise_direct_band
+from mapgen.terrain.rasters_banded import reduce_source
 from mapgen.terrain.render_meshes import (
     TITAN_LEAVES,
     TITAN_TRUNK,

@@ -85,8 +85,9 @@ def fill_raster_indices() -> tuple[NDArray[np.integer], NDArray[np.integer]]:
     return bi, bj
 
 
-def compose_field(frame: LandscapeFrame, cliffs: CliffRaster, baseline_cm: NDArray[np.floating],
-                  valid: BoolMask) -> FieldLayers:  # fmt: skip
+def compose_field(
+    frame: LandscapeFrame, cliffs: CliffRaster, baseline_cm: NDArray[np.floating], valid: BoolMask
+) -> FieldLayers:
     """Fuse the layers into the output grid: fill, then landscape, then cliff over both.
 
     The fill is everywhere the interface raster says anything, so it goes down first and is
@@ -164,8 +165,9 @@ def report_field(field: FieldLayers) -> None:
     )
 
 
-def encode_planes(field: FieldLayers, water: WaterSurface, frame: LandscapeFrame,
-                  top_dm: I16Grid) -> dict[str, bytes]:  # fmt: skip
+def encode_planes(
+    field: FieldLayers, water: WaterSurface, frame: LandscapeFrame, top_dm: I16Grid
+) -> dict[str, bytes]:
     """Every plane of the field, encoded with the shipped codec, keyed by file name."""
     water_dm = np.where(
         np.isfinite(water["level_m"]),

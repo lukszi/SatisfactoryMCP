@@ -113,8 +113,9 @@ def tint_springs(plane: U8Grid, level_m: FloatGrid, terraces: F64Grid) -> int:
         t = np.clip((far - metres) / (far - near), 0.0, 1.0)
         share = t * t * (3.0 - 2.0 * t)
         part = plane[rows, cols]
-        held = np.where(part == HOT_SPRING, 1.0, (part.astype(np.float64) - SPRING_BLEND + 0.5)
-                        / SPRING_STEPS)  # fmt: skip
+        held = np.where(
+            part == HOT_SPRING, 1.0, (part.astype(np.float64) - SPRING_BLEND + 0.5) / SPRING_STEPS
+        )
         mine = (part == LAKE) | (part == HOT_SPRING) | (part >= SPRING_BLEND)
         with np.errstate(invalid="ignore"):
             level = level_m[rows, cols]

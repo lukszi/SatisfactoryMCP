@@ -30,9 +30,14 @@ _Weights: TypeAlias = NDArray[np.floating]
 
 @kernel
 def separable(
-    slab: NDArray[np.generic], nodata: int, holes: bool, weigh: bool, low: int,
-    rows: tuple[I64Grid, _Weights], cols: tuple[I64Grid, _Weights],
-) -> tuple[F32Grid, F32Grid]:  # fmt: skip
+    slab: NDArray[np.generic],
+    nodata: int,
+    holes: bool,
+    weigh: bool,
+    low: int,
+    rows: tuple[I64Grid, _Weights],
+    cols: tuple[I64Grid, _Weights],
+) -> tuple[F32Grid, F32Grid]:
     """``sample.resample`` on the source rows ``slab`` (from ``low``): ``(sum, weight)``.
 
     ``holes`` says ``nodata`` marks texels without a value; ``weigh`` false leaves the weight
@@ -101,9 +106,12 @@ def _hermite(
 
 @kernel
 def pchip(
-    slab: NDArray[np.generic], nodata: int, low: int,
-    rows: tuple[I64Grid, F32Grid], cols: tuple[I64Grid, F32Grid],
-) -> tuple[F32Grid, BoolMask]:  # fmt: skip
+    slab: NDArray[np.generic],
+    nodata: int,
+    low: int,
+    rows: tuple[I64Grid, F32Grid],
+    cols: tuple[I64Grid, F32Grid],
+) -> tuple[F32Grid, BoolMask]:
     """``sample.resample_pchip`` on the source rows ``slab`` from ``low``: ``(values, whole)``."""
     (row_index, row_t), (col_index, col_t) = rows, cols
     width = col_index.shape[1]
@@ -113,8 +121,13 @@ def pchip(
         for j in range(width):
             t0, t1 = slab[r, col_index[0, j]], slab[r, col_index[1, j]]
             t2, t3 = slab[r, col_index[2, j]], slab[r, col_index[3, j]]
-            across[r, j] = _hermite(_value(t0, nodata), _value(t1, nodata), _value(t2, nodata),
-                                    _value(t3, nodata), col_t[j])  # fmt: skip
+            across[r, j] = _hermite(
+                _value(t0, nodata),
+                _value(t1, nodata),
+                _value(t2, nodata),
+                _value(t3, nodata),
+                col_t[j],
+            )
             across_whole[r, j] = t0 != nodata and t1 != nodata and t2 != nodata and t3 != nodata
     total = np.empty((row_index.shape[1], width), np.float32)
     whole_out = np.empty((row_index.shape[1], width), np.bool_)
@@ -124,8 +137,12 @@ def pchip(
         t = row_t[i]
         for j in range(width):
             total[i, j] = _hermite(across[r0, j], across[r1, j], across[r2, j], across[r3, j], t)
-            whole_out[i, j] = (across_whole[r0, j] and across_whole[r1, j]
-                               and across_whole[r2, j] and across_whole[r3, j])  # fmt: skip
+            whole_out[i, j] = (
+                across_whole[r0, j]
+                and across_whole[r1, j]
+                and across_whole[r2, j]
+                and across_whole[r3, j]
+            )
     return total, whole_out
 
 
@@ -147,8 +164,9 @@ def raise_nan(top: np.floating, rise: np.floating) -> np.floating:
 
 
 @helper
-def _mip_bilinear(texels: F64Grid, first: int, width: int, x: float, y: float,
-                  out: F64Grid) -> None:  # fmt: skip
+def _mip_bilinear(
+    texels: F64Grid, first: int, width: int, x: float, y: float, out: F64Grid
+) -> None:
     """``crown_stamp._bilinear`` at one point of the mip whose texels start at ``first``:
     ``x, y`` are its texel coordinates plus a half, ``width`` its row with the rim."""
     x0, y0 = np.floor(x), np.floor(y)
@@ -163,10 +181,14 @@ def _mip_bilinear(texels: F64Grid, first: int, width: int, x: float, y: float,
 
 @kernel
 def stamp(
-    texels: F64Grid, mips: I64Grid, spans: I64Grid, poses: F64Grid,
-    centres: tuple[F64Grid, F64Grid], seen_from: float,
+    texels: F64Grid,
+    mips: I64Grid,
+    spans: I64Grid,
+    poses: F64Grid,
+    centres: tuple[F64Grid, F64Grid],
+    seen_from: float,
     planes: tuple[F32Grid, F32Grid, F32Grid, F32Grid],
-) -> None:  # fmt: skip
+) -> None:
     """``crown_stamp._stamp`` for each tree in turn, into ``planes`` (cover, rgb, dome, top).
 
     ``texels`` and ``mips`` are a ``crown_stamp.MipAtlas``'s. Per tree, ``spans`` is ``(mip,

@@ -4,8 +4,8 @@ Ground colour is the game's baked landscape colour where it has one (the store's
 ``GroundBake`` handed in), else the paint layers' weights times each layer's albedo, tinted by
 the PigmentMap; each layer moved onto its calibrated target; the biome's median off the
 landscape; rock on a coarse grid in its area's or its family's colour. Every number is in
-``palette/palettes/satellite-painted.json``; docs/map/painted.md sections 27, 30 and 32 and docs/map/calibration.md section 31.
-``band.py`` draws it a band at a time.
+``palette/palettes/satellite-painted.json``; docs/map/painted.md sections 27, 30 and 32 and
+docs/map/calibration.md section 31. ``band.py`` draws it a band at a time.
 """
 
 from __future__ import annotations

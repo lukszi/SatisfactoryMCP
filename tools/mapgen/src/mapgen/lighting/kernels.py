@@ -32,9 +32,15 @@ _Row: TypeAlias = NDArray[np.floating]
 
 @helper
 def bilinear_row(
-    out: _Row, z: _Row, r: int, c: int,
-    fy: np.float32, fx: np.float32, gy: np.float32, gx: np.float32,
-) -> None:  # fmt: skip
+    out: _Row,
+    z: _Row,
+    r: int,
+    c: int,
+    fy: np.float32,
+    fx: np.float32,
+    gy: np.float32,
+    gx: np.float32,
+) -> None:
     """``horizon._bilinear`` along one row: ``z`` read from ``[r, c]`` down and right."""
     n = out.shape[0]
     a, b = z[r, c : c + n], z[r, c + 1 : c + 1 + n]
@@ -52,9 +58,14 @@ def raise_row(top: _Row, near: _Row, sample: _Row, k: np.float32) -> None:
 
 @kernel
 def march(
-    solid: F32Grid, z: F32Grid, halo: int, bilinear: BoolMask, offsets: Offsets,
-    scale: F32Grid, best: F32Grid,
-) -> None:  # fmt: skip
+    solid: F32Grid,
+    z: F32Grid,
+    halo: int,
+    bilinear: BoolMask,
+    offsets: Offsets,
+    scale: F32Grid,
+    best: F32Grid,
+) -> None:
     """``horizon._march`` over every row of ``best``, which is raised in place.
 
     ``z`` holds the receivers, ``solid`` what blocks.
@@ -90,8 +101,9 @@ def sky_view(z: F32Grid, halo: int, offsets: Offsets, scale: F32Grid, out: F32Gr
         for d in range(dirs):
             best[:] = _ZERO
             for s in range(steps):
-                bilinear_row(sample, z, r + iy[d, s], halo + ix[d, s],
-                              fy[d, s], fx[d, s], gy[d, s], gx[d, s])  # fmt: skip
+                bilinear_row(
+                    sample, z, r + iy[d, s], halo + ix[d, s], fy[d, s], fx[d, s], gy[d, s], gx[d, s]
+                )
                 raise_row(best, near, sample, scale[s])
             for j in range(cols):
                 acc[j] += best[j] / np.sqrt(_ONE + best[j] * best[j])

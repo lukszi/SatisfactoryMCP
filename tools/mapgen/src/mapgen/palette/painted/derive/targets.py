@@ -93,13 +93,18 @@ def _rgb(values: Sequence[float]) -> tuple[float, float, float]:
     return float(values[0]), float(values[1]), float(values[2])
 
 
-def _lights(lighting: LevelLighting, volumes: Sequence[AtmosphereVolume]) -> tuple[
-    dict[str, Light], list[str]
-]:  # fmt: skip
+def _lights(
+    lighting: LevelLighting, volumes: Sequence[AtmosphereVolume]
+) -> tuple[dict[str, Light], list[str]]:
     """The level's light and each volume's: its sun colour and grade, its brighter sun left
     to auto-exposure."""
-    base = Light(GLOBAL, _rgb(lighting["sun_colour"]), lighting["sun_lux"],
-                 -lighting["sun_pitch_deg"], _rgb(lighting["sky_luminance_factor"]))  # fmt: skip
+    base = Light(
+        GLOBAL,
+        _rgb(lighting["sun_colour"]),
+        lighting["sun_lux"],
+        -lighting["sun_pitch_deg"],
+        _rgb(lighting["sky_luminance_factor"]),
+    )
     lights: dict[str, Light] = {GLOBAL: base}
     notes: list[str] = []
     for volume in volumes:
@@ -108,13 +113,17 @@ def _lights(lighting: LevelLighting, volumes: Sequence[AtmosphereVolume]) -> tup
         if any(k in noon for k in _GAINS):
             shadows, mids, highs = (_rgb(noon.get(k, [1.0, 1.0, 1.0])) for k in _GAINS)
             gains = (shadows, mids, highs)
-        notes += [f"{volume['name']}: {k} {noon[k]} is not modelled" for k in _UNMODELLED
-                  if k in noon and not np.allclose(noon[k], 1.0)]  # fmt: skip
+        notes += [
+            f"{volume['name']}: {k} {noon[k]} is not modelled"
+            for k in _UNMODELLED
+            if k in noon and not np.allclose(noon[k], 1.0)
+        ]
         sun = (
             _rgb(noon["mSunLightColorCurve"]) if "mSunLightColorCurve" in noon else base.sun_colour
         )
-        lights[volume["name"]] = Light(volume["name"], sun, base.sun_lux, base.elevation_deg,
-                                       base.sky_luminance_factor, gains)  # fmt: skip
+        lights[volume["name"]] = Light(
+            volume["name"], sun, base.sun_lux, base.elevation_deg, base.sky_luminance_factor, gains
+        )
     return lights, notes
 
 
@@ -127,9 +136,9 @@ def _in_hull(x: F64Grid, y: F64Grid, hull: Sequence[Sequence[float]]) -> BoolMas
     return inside
 
 
-def vote(where: tuple[F64Grid, F64Grid] | None, volumes: Sequence[AtmosphereVolume]) -> dict[
-    str, float
-]:  # fmt: skip
+def vote(
+    where: tuple[F64Grid, F64Grid] | None, volumes: Sequence[AtmosphereVolume]
+) -> dict[str, float]:
     """Each sample takes the highest-priority volume whose brush holds it, else the level's
     light; every light's share, largest first."""
     if where is None or len(where[0]) == 0:
@@ -157,8 +166,12 @@ def derive(scene: Scene, cal: CalibrationStyle) -> Derived:
     volumes = scene.meta.get("atmosphere_volumes", [])
     lights, notes = _lights(lighting, volumes)
     ae = lighting["auto_exposure"]
-    e, band = exposure(scene.bake_linear[scene.have], lights[GLOBAL], ae["bias_ev"],
-                       (ae["low_pct"], ae["high_pct"]))  # fmt: skip
+    e, band = exposure(
+        scene.bake_linear[scene.have],
+        lights[GLOBAL],
+        ae["bias_ev"],
+        (ae["low_pct"], ae["high_pct"]),
+    )
     found: list[Target] = []
     rows = [(row, True) for row in entries(scene, cal)]
     rows += [(row, False) for row in untargeted_layers(scene, cal)]
@@ -179,8 +192,12 @@ def stamp_of(paint_digest: str | None, areas_digest: str, cal: CalibrationStyle)
     """What a derivation depends on: the store, the area map, the calibration block (not its
     prose, nor which keys wear the result), the model."""
     block: dict[str, object] = {k: v for k, v in cal.items() if k not in ("about", "derived_keys")}
-    return {"paint_digest": paint_digest, "areas_digest": areas_digest,
-            "calibration_digest": palette_digest(block), "model_version": MODEL_VERSION}  # fmt: skip
+    return {
+        "paint_digest": paint_digest,
+        "areas_digest": areas_digest,
+        "calibration_digest": palette_digest(block),
+        "model_version": MODEL_VERSION,
+    }
 
 
 def _target_json(t: Target) -> JsonObject:
@@ -201,11 +218,14 @@ def _target_json(t: Target) -> JsonObject:
 def targets_json(derived: Derived, stamp: JsonObject, build: int | None) -> JsonObject:
     """``targets.derived.json``: every key's derived colour with its rule, the stamp, the model."""
     lights: JsonObject = {
-        name: {"sun_colour": list(light.sun_colour), "sun_lux": light.sun_lux,
-               "elevation_deg": round(light.elevation_deg, 3),
-               "gains": None if light.gains is None else [list(g) for g in light.gains]}
+        name: {
+            "sun_colour": list(light.sun_colour),
+            "sun_lux": light.sun_lux,
+            "elevation_deg": round(light.elevation_deg, 3),
+            "gains": None if light.gains is None else [list(g) for g in light.gains],
+        }
         for name, light in derived.lights.items()
-    }  # fmt: skip
+    }
     targets: JsonObject = {t.key: _target_json(t) for t in derived.targets if t.targeted}
     untargeted: JsonObject = {t.key: _target_json(t) for t in derived.targets if not t.targeted}
     return {

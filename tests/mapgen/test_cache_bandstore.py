@@ -40,7 +40,7 @@ from mapgen.commands.compress_cache import compress
 from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.terrain import render_meshes
-from mapgen.terrain.rasters import reduce_direct, reduce_source, write_banded_raster
+from mapgen.terrain.rasters_banded import reduce_direct, reduce_source, write_banded_raster
 from mapgen.terrain.render_meshes import PreparedMeshes, mesh_pass, rasterise_meshes
 
 pytest.importorskip("zstandard")

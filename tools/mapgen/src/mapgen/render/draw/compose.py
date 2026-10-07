@@ -1,9 +1,9 @@
 """The band loop that draws a run's layers in one pass: each band in column pieces, each
 piece's ground once, then every layer's colour over it.
 
-The pieces run on threads (``render/draw/drawpool.py``). ``render/ground/surface.py`` composes a piece's
-ground and settles each band once its pieces are in, and ``render/draw/painting.py`` colours a
-piece in each layer's style.
+The pieces run on threads (``render/draw/drawpool.py``). ``render/ground/surface.py`` composes
+a piece's ground and settles each band once its pieces are in, and ``render/draw/painting.py``
+colours a piece in each layer's style.
 """
 
 from __future__ import annotations

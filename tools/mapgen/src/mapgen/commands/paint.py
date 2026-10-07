@@ -255,12 +255,14 @@ def crown_payload(
             {"kind": "records", "count": len(built.records), "dtype": record_fields},
         ),
         crown_sprites.SPRITES_NAME: (
-            sprite_blob, {"kind": "sprites", "texel_m": crown_sprites.SPRITE_M}
+            sprite_blob,
+            {"kind": "sprites", "texel_m": crown_sprites.SPRITE_M},
         ),
         crown_sprites.CROWN_TOP_NAME: (
-            hf.encode_i16(top_dm), {"shape": [GRID, GRID], "kind": "i16", "unit": "dm", "role": "crown top"}
+            hf.encode_i16(top_dm),
+            {"shape": [GRID, GRID], "kind": "i16", "unit": "dm", "role": "crown top"},
         ),
-    }  # fmt: skip
+    }
     for entry, sprite in zip(built.species, sprite_index, strict=True):
         entry["sprite"] = sprite
     radii = {e["mesh"]: e["radius_m"] for e in built.species}
@@ -284,9 +286,12 @@ def _texture_inputs(game: GameReader, decoder: ModuleType) -> TextureInputs:
     """The landscape material's vectors, every listed texture's mean, and the pigment map."""
     material = PackageView(game.store.read_path(GAME_ROOT + MATERIAL + ".uasset"), game.scripts)
     means = {
-        name: srgb_to_linear(decode_texture(game, decoder, asset, 512)).reshape(-1, 3).mean(0).tolist()
+        name: srgb_to_linear(decode_texture(game, decoder, asset, 512))
+        .reshape(-1, 3)
+        .mean(0)
+        .tolist()
         for name, asset in TEXTURES.items()
-    }  # fmt: skip
+    }
     pigment = decode_texture(game, decoder, PIGMENT, PIGMENT_MAX_PX)
     return TextureInputs(material_vectors(material), means, pigment)
 
@@ -477,19 +482,40 @@ def main() -> int:
     carpet_blobs, carpet_files, carpet_meta = write_carpet(found.carpet, game, GRID)
     payload, files = _store_payload(
         [
-            ({n: blob for n, (blob, _e) in crown_files.items()},
-             {n: entry for n, (_b, entry) in crown_files.items()}),
+            (
+                {n: blob for n, (blob, _e) in crown_files.items()},
+                {n: entry for n, (_b, entry) in crown_files.items()},
+            ),
             _plane_files(found, canopy),
             (satellite.payload, satellite.files),
-            ({PIGMENT_NAME: hf.encode_u8(textures.pigment.reshape(textures.pigment.shape[0], -1))},
-             {PIGMENT_NAME: {"shape": list(textures.pigment.shape), "kind": "u8", "srgb": True,
-                             "placement": "the render frame, texel centres"}}),
-            ({WATER_BODIES_NAME: json.dumps(bodies, separators=(",", ":")).encode("utf-8")},
-             {WATER_BODIES_NAME: {"kind": "json", "actors": len(bodies["actors"]),
-                                  "hot_springs": len(bodies["hot_springs"])}}),
+            (
+                {
+                    PIGMENT_NAME: hf.encode_u8(
+                        textures.pigment.reshape(textures.pigment.shape[0], -1)
+                    )
+                },
+                {
+                    PIGMENT_NAME: {
+                        "shape": list(textures.pigment.shape),
+                        "kind": "u8",
+                        "srgb": True,
+                        "placement": "the render frame, texel centres",
+                    }
+                },
+            ),
+            (
+                {WATER_BODIES_NAME: json.dumps(bodies, separators=(",", ":")).encode("utf-8")},
+                {
+                    WATER_BODIES_NAME: {
+                        "kind": "json",
+                        "actors": len(bodies["actors"]),
+                        "hot_springs": len(bodies["hot_springs"]),
+                    }
+                },
+            ),
             (carpet_blobs, carpet_files),
         ]
-    )  # fmt: skip
+    )
     daylight = _daylight(game, decoder, found.volumes)
     parts = _StoreParts(
         found, textures, satellite, layers, crown_meta, tree_counts, carpet_meta, daylight

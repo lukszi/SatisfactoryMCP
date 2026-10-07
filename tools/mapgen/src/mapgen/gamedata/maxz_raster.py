@@ -152,8 +152,16 @@ class MaxZRaster:
         for size in _BUCKETS:
             pick = (span <= size) & (span > (size // 2 if size > 1 else 0))
             if pick.any():
-                self._scan(fx[pick], fy[pick], z[pick], box_col0[pick], box_row0[pick], size,
-                           size, source_id)  # fmt: skip
+                self._scan(
+                    fx[pick],
+                    fy[pick],
+                    z[pick],
+                    box_col0[pick],
+                    box_row0[pick],
+                    size,
+                    size,
+                    source_id,
+                )
         wide = np.flatnonzero(span > MAX_SPAN)
         if wide.size:
             box = np.stack([box_col0, box_row0, box_col1, box_row1], axis=1)[wide]
@@ -161,9 +169,14 @@ class MaxZRaster:
         if self._pending_count > RASTER_FLUSH:
             self.fold_heights()
 
-    def _add_wide(self, fx: NDArray[np.floating], fy: NDArray[np.floating],
-                  z: NDArray[np.floating], box: NDArray[np.floating],
-                  source_id: int) -> None:  # fmt: skip
+    def _add_wide(
+        self,
+        fx: NDArray[np.floating],
+        fy: NDArray[np.floating],
+        z: NDArray[np.floating],
+        box: NDArray[np.floating],
+        source_id: int,
+    ) -> None:
         """Scan each wide triangle's box, clipped to the raster, in tiles of ``MAX_SPAN``.
 
         A tile tests the same sample points against the same triangle as one unbounded
@@ -185,18 +198,26 @@ class MaxZRaster:
         owner, corner = np.concatenate(owners), np.concatenate(corners)
         for start in range(0, len(owner), _WIDE_TILES):
             pick, at = owner[start : start + _WIDE_TILES], corner[start : start + _WIDE_TILES]
-            self._scan(fx[pick], fy[pick], z[pick], at[:, 0], at[:, 1], tile_w, tile_h,
-                       source_id)  # fmt: skip
+            self._scan(fx[pick], fy[pick], z[pick], at[:, 0], at[:, 1], tile_w, tile_h, source_id)
             if self._pending_count > RASTER_FLUSH:
                 self.fold_heights()
 
-    def _scan(self, fx: NDArray[np.floating], fy: NDArray[np.floating],
-              z: NDArray[np.floating], col0: NDArray[np.floating], row0: NDArray[np.floating],
-              cols: int, rows: int, source_id: int) -> None:  # fmt: skip
+    def _scan(
+        self,
+        fx: NDArray[np.floating],
+        fy: NDArray[np.floating],
+        z: NDArray[np.floating],
+        col0: NDArray[np.floating],
+        row0: NDArray[np.floating],
+        cols: int,
+        rows: int,
+        source_id: int,
+    ) -> None:
         """Buffer the sample points of a ``cols + 1`` by ``rows + 1`` grid from each
         ``(col0, row0)`` that fall inside that row's triangle."""
-        ox, oy = np.meshgrid(np.arange(cols + 1, dtype=np.float32),
-                             np.arange(rows + 1, dtype=np.float32))  # fmt: skip
+        ox, oy = np.meshgrid(
+            np.arange(cols + 1, dtype=np.float32), np.arange(rows + 1, dtype=np.float32)
+        )
         gx = col0[:, None] + ox.ravel()[None, :] + self.sample
         gy = row0[:, None] + oy.ravel()[None, :] + self.sample
         ax, ay = fx[:, 0][:, None], fy[:, 0][:, None]

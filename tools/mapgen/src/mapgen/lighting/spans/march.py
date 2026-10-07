@@ -188,13 +188,23 @@ def span_steps(az_deg: float, spacing_m: float, fade: Fade) -> list[SpanStep]:
     out: list[SpanStep] = []
     for k, (sample, oy, ox, scale) in enumerate(march_steps(az_deg, spacing_m, fade)):
         weight = np.float32(fade_weight(ts[k] * spacing_m, fade))
-        out.append(SpanStep(sample, oy, ox, scale, np.float32(near[k] * spacing_m),
-                            np.float32(far[k] * spacing_m), weight))  # fmt: skip
+        out.append(
+            SpanStep(
+                sample,
+                oy,
+                ox,
+                scale,
+                np.float32(near[k] * spacing_m),
+                np.float32(far[k] * spacing_m),
+                weight,
+            )
+        )
     return out
 
 
-def _quad(surface: SpanSurface, rows: tuple[int, int], cols: tuple[int, int], oy: float,
-          ox: float) -> tuple[F32Grid, F32Grid]:  # fmt: skip
+def _quad(
+    surface: SpanSurface, rows: tuple[int, int], cols: tuple[int, int], oy: float, ox: float
+) -> tuple[F32Grid, F32Grid]:
     """Of the four pixels around the sample, as ``bilinear`` reads them, the span whose top is
     highest, reaching down over those of the others it overlaps: its underside and top, NaN
     where none floats. A thin span is never stepped over on a diagonal, one object's pixels
@@ -219,8 +229,9 @@ def _quad(surface: SpanSurface, rows: tuple[int, int], cols: tuple[int, int], oy
     return low, high
 
 
-def _tangents(lo: F32Grid, hi: F32Grid, near: F32Grid, near_m: np.float32,
-              far_m: np.float32) -> tuple[F32Grid, F32Grid]:  # fmt: skip
+def _tangents(
+    lo: F32Grid, hi: F32Grid, near: F32Grid, near_m: np.float32, far_m: np.float32
+) -> tuple[F32Grid, F32Grid]:
     """The tangents a span sample blocks over the whole stretch of ray it stands for: its
     underside seen from the stretch's far end when above the receiver, its top from the near."""
     dl, dh = lo - near, hi - near
@@ -246,8 +257,9 @@ class _Strip(NamedTuple):
     seen: BoolMask
 
 
-def _span_step(surface: SpanSurface, strip: _Strip, step: SpanStep,
-               target: tuple[np.float32, np.float32]) -> None:  # fmt: skip
+def _span_step(
+    surface: SpanSurface, strip: _Strip, step: SpanStep, target: tuple[np.float32, np.float32]
+) -> None:
     """One step's span samples over a strip: merged into the horizon, or into the band."""
     (a, b), (c0, c1) = strip.rows, strip.cols
     low, high = _quad(surface, strip.rows, strip.cols, step.oy, step.ox)
@@ -297,8 +309,9 @@ def _finish(best: F32Grid, lo: F32Grid, hi: F32Grid) -> tuple[F32Grid, F32Grid, 
     return _degrees(best), band_lo, band_hi
 
 
-def march_spans(surface: SpanSurface, halo: int, az_deg: float, spacing_m: float,
-                fade: Fade = FADE_M) -> Bands:  # fmt: skip
+def march_spans(
+    surface: SpanSurface, halo: int, az_deg: float, spacing_m: float, fade: Fade = FADE_M
+) -> Bands:
     """The faded horizon toward ``az_deg`` over ``surface.solid`` with the spans in it, and the
     one band floating above it that is nearest the sun path's elevation there.
 
@@ -326,8 +339,9 @@ def march_spans(surface: SpanSurface, halo: int, az_deg: float, spacing_m: float
             spans_near = rows[min(b + reach, len(rows) - 1)] > rows[max(a - reach, 0)]
             rise = np.empty(strip.near.shape, np.float32)
             for step in steps:
-                np.subtract(step.sample(surface.solid, a, b, c0, c1, step.oy, step.ox),
-                            strip.near, out=rise)  # fmt: skip
+                np.subtract(
+                    step.sample(surface.solid, a, b, c0, c1, step.oy, step.ox), strip.near, out=rise
+                )
                 rise *= step.scale
                 np.maximum(strip.best, rise, out=strip.best)
                 if spans_near:
@@ -336,10 +350,14 @@ def march_spans(surface: SpanSurface, halo: int, az_deg: float, spacing_m: float
     return Bands(horizon, band_lo, band_hi, seen)
 
 
-def _compiled_march(surface: SpanSurface, halo: int, steps: list[SpanStep],
-                    target: tuple[np.float32, np.float32],
-                    out: tuple[F32Grid, F32Grid, F32Grid, BoolMask],
-                    rows: tuple[NDArray[np.int64], int]) -> None:  # fmt: skip
+def _compiled_march(
+    surface: SpanSurface,
+    halo: int,
+    steps: list[SpanStep],
+    target: tuple[np.float32, np.float32],
+    out: tuple[F32Grid, F32Grid, F32Grid, BoolMask],
+    rows: tuple[NDArray[np.int64], int],
+) -> None:
     """``march_spans``' loop as a kernel, fed the steps it works out."""
     from mapgen.lighting.spans import kernels as span_kernels
 
@@ -347,18 +365,31 @@ def _compiled_march(surface: SpanSurface, halo: int, steps: list[SpanStep],
     oy, ox = [s.oy for s in steps], [s.ox for s in steps]
     offsets = kernel_offsets(oy, ox, smooth, (len(steps),), halo)
     per_step = np.array([[s.scale, s.near_m, s.far_m, s.weight] for s in steps], np.float32)
-    span_kernels.march_spans(_planes(surface), halo, np.array(smooth), offsets, _quads(oy, ox),
-                             per_step, target, out, rows, _run_arrays(surface))  # fmt: skip
+    span_kernels.march_spans(
+        _planes(surface),
+        halo,
+        np.array(smooth),
+        offsets,
+        _quads(oy, ox),
+        per_step,
+        target,
+        out,
+        rows,
+        _run_arrays(surface),
+    )
 
 
 def _quads(oy: list[float], ox: list[float]) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
     """Each sample's whole-pixel offsets to the four pixels ``_quad`` reads."""
-    return (np.floor(np.array(oy, np.float64)).astype(np.int64),
-            np.floor(np.array(ox, np.float64)).astype(np.int64))  # fmt: skip
+    return (
+        np.floor(np.array(oy, np.float64)).astype(np.int64),
+        np.floor(np.array(ox, np.float64)).astype(np.int64),
+    )
 
 
-def sky_view_spans(surface: SpanSurface, halo: int, spacing_m: float,
-                   radius_m: float = SKY_RADIUS_M) -> F32Grid:  # fmt: skip
+def sky_view_spans(
+    surface: SpanSurface, halo: int, spacing_m: float, radius_m: float = SKY_RADIUS_M
+) -> F32Grid:
     """``horizon.sky_view`` over the solid surface with the spans: a span that reaches down to
     the horizon raises it, one floating above it costs ``sin(hi) - sin(lo)`` of the sky.
 
@@ -382,24 +413,46 @@ def sky_view_spans(surface: SpanSurface, halo: int, spacing_m: float,
         ox = [np.cos(theta) * t for theta in thetas for t in steps]
         shape = (SKY_DIRS, len(steps))
         offsets = kernel_offsets(oy, ox, [True] * len(oy), shape, halo)
-        per_step = np.array([[np.float32(1.0 / (t * spacing_m)), np.float32(n * spacing_m),
-                              np.float32(f * spacing_m)]
-                             for t, n, f in zip(steps, near_t, far_t, strict=True)], np.float32)  # fmt: skip
+        per_step = np.array(
+            [
+                [
+                    np.float32(1.0 / (t * spacing_m)),
+                    np.float32(n * spacing_m),
+                    np.float32(f * spacing_m),
+                ]
+                for t, n, f in zip(steps, near_t, far_t, strict=True)
+            ],
+            np.float32,
+        )
         qy, qx = (q.reshape(shape) for q in _quads(oy, ox))
-        span_kernels.sky_view_spans(_planes(surface), halo, offsets, (qy, qx), per_step, out,
-                                    (rows, span), _run_arrays(surface))  # fmt: skip
+        span_kernels.sky_view_spans(
+            _planes(surface),
+            halo,
+            offsets,
+            (qy, qx),
+            per_step,
+            out,
+            (rows, span),
+            _run_arrays(surface),
+        )
         return out
     for a in range(r0, r1, STRIP_ROWS):
         b = min(a + STRIP_ROWS, r1)
         spans_near = rows[min(b + span, len(rows) - 1)] > rows[max(a - span, 0)]
-        out[a - r0 : b - r0] = _sky_strip(surface, (a, b), (c0, c1), spacing_m,
-                                          (steps, near_t, far_t), spans_near)  # fmt: skip
+        out[a - r0 : b - r0] = _sky_strip(
+            surface, (a, b), (c0, c1), spacing_m, (steps, near_t, far_t), spans_near
+        )
     return out
 
 
-def _sky_strip(surface: SpanSurface, rows: tuple[int, int], cols: tuple[int, int],
-               spacing_m: float, steps: tuple[F64Grid, F64Grid, F64Grid],
-               spans_near: bool) -> F32Grid:  # fmt: skip
+def _sky_strip(
+    surface: SpanSurface,
+    rows: tuple[int, int],
+    cols: tuple[int, int],
+    spacing_m: float,
+    steps: tuple[F64Grid, F64Grid, F64Grid],
+    spans_near: bool,
+) -> F32Grid:
     """One strip of ``sky_view_spans``."""
     (a, b), (c0, c1) = rows, cols
     zc = surface.z[a:b, c0:c1]

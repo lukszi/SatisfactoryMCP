@@ -198,8 +198,9 @@ def _placement_matrix(row: F64Grid) -> F64Grid:
     return matrix
 
 
-def read_shape(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
-               mesh: str) -> tuple[Shape | None, str]:  # fmt: skip
+def read_shape(
+    store: IoStore, scripts: ScriptObjects, index: AssetIndex, mesh: str
+) -> tuple[Shape | None, str]:
     """The finest geometry a mesh ships, falling back to its collision hull, or ``None``."""
     package = index.path_for(mesh)
     if not package:
@@ -218,8 +219,9 @@ def read_shape(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
     return hull, "hull" if hull is not None else "none"
 
 
-def titan_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
-                sweep: Sweep) -> tuple[PreparedMeshes, JsonObject]:  # fmt: skip
+def titan_items(
+    store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep
+) -> tuple[PreparedMeshes, JsonObject]:
     """The Titan trees' placements in ``rasterise_mesh_band``'s format, at their finest mesh."""
     meshes = sweep["meshes"]
     groups: dict[str, list[F64Grid]] = {}
@@ -242,8 +244,13 @@ def titan_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
     return PreparedMeshes(items, shapes), {"placements": counts, "sources": sources}
 
 
-def _mesh_groups(store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep,
-                 shapes: Mapping[str, Shape]) -> dict[str, tuple[list[F64Grid], list[int]]]:  # fmt: skip
+def _mesh_groups(
+    store: IoStore,
+    scripts: ScriptObjects,
+    index: AssetIndex,
+    sweep: Sweep,
+    shapes: Mapping[str, Shape],
+) -> dict[str, tuple[list[F64Grid], list[int]]]:
     """Per render-only mesh, its instances' matrices and source codes: the class, and for a
     rock the family its placement wears (``worn_family``), shifted above it."""
     meshes = sweep["meshes"]
@@ -270,8 +277,9 @@ def _mesh_groups(store: IoStore, scripts: ScriptObjects, index: AssetIndex, swee
     return groups
 
 
-def mesh_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
-               sweep: Sweep) -> tuple[PreparedMeshes, JsonObject]:  # fmt: skip
+def mesh_items(
+    store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep
+) -> tuple[PreparedMeshes, JsonObject]:
     """Every render-only placement and foliage instance, grouped by mesh with their codes."""
     started = time.time()
     meshes = sweep["meshes"]
@@ -294,8 +302,10 @@ def mesh_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
     counts = {MESH_CLASS_NAMES[c]: 0 for c in MESH_CLASS_NAMES}
     families = dict.fromkeys(FAMILIES, 0)
     for mesh, (mats, codes) in _mesh_groups(store, scripts, index, sweep, shapes).items():
-        group = MeshGroup(np.asarray(codes, np.uint16),
-                          *instance_y_spans(shapes[mesh][0], np.asarray(mats, np.float32)))  # fmt: skip
+        group = MeshGroup(
+            np.asarray(codes, np.uint16),
+            *instance_y_spans(shapes[mesh][0], np.asarray(mats, np.float32)),
+        )
         items[mesh] = group
         counts[MESH_CLASS_NAMES[mesh_class(mesh)]] += len(group.mats)
         if mesh_class(mesh) == MESH_ROCK:
@@ -310,8 +320,9 @@ def mesh_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex,
     }
 
 
-def rasterise_mesh_band(prepared: PreparedMeshes, x0_cm: float, y0_cm: float, scale_cm: float,
-                        rows: int, cols: int) -> tuple[F32Grid, U8Grid]:  # fmt: skip
+def rasterise_mesh_band(
+    prepared: PreparedMeshes, x0_cm: float, y0_cm: float, scale_cm: float, rows: int, cols: int
+) -> tuple[F32Grid, U8Grid]:
     """One band: max-Z in world cm (nan where empty) and the source code of the winning mesh,
     its class or, per instance, its class and rock family (``MESH_FAMILY_SHIFT``)."""
     raster = MaxZRaster(cols, rows, x0_cm, y0_cm, scale_cm, sample=0.5)
@@ -332,9 +343,14 @@ def rasterise_mesh_band(prepared: PreparedMeshes, x0_cm: float, y0_cm: float, sc
     return z, np.where(np.isfinite(z), src, 0).astype(np.uint8)
 
 
-def rasterise_meshes(prepared: PreparedMeshes, directory: Path, stamp: MeshStamp,
-                     bounds_m: Mapping[str, float], band_rows: int,
-                     progress: bool) -> MeshRasterStats:  # fmt: skip
+def rasterise_meshes(
+    prepared: PreparedMeshes,
+    directory: Path,
+    stamp: MeshStamp,
+    bounds_m: Mapping[str, float],
+    band_rows: int,
+    progress: bool,
+) -> MeshRasterStats:
     """Rasterise the render-only meshes into the render's grid, banded, onto disk: the class
     plane, and the family plane when the items carry families."""
     size = stamp["size"]
@@ -359,15 +375,25 @@ def rasterise_meshes(prepared: PreparedMeshes, directory: Path, stamp: MeshStamp
                     f"{time.time() - started:5.1f}s",
                     flush=True,
                 )
-    stats: MeshRasterStats = {**stamp, "storage": STORAGE_BANDS, "texels": covered,
-                              "seconds": round(time.time() - started, 1)}  # fmt: skip
+    stats: MeshRasterStats = {
+        **stamp,
+        "storage": STORAGE_BANDS,
+        "texels": covered,
+        "seconds": round(time.time() - started, 1),
+    }
     write_sidecar(directory / CACHE_SIDECAR_NAME, stats)
     return stats
 
 
-def mesh_pass(cache: Path, size: int, build: str | None, reader: str,
-              build_items: Callable[[], tuple[PreparedMeshes, JsonObject]], label: str,
-              quiet: bool) -> tuple[MeshMaps, dict[str, object]]:  # fmt: skip
+def mesh_pass(
+    cache: Path,
+    size: int,
+    build: str | None,
+    reader: str,
+    build_items: Callable[[], tuple[PreparedMeshes, JsonObject]],
+    label: str,
+    quiet: bool,
+) -> tuple[MeshMaps, dict[str, object]]:
     """A mesh raster of ``size`` px in ``cache``, reused when its stamp matches.
 
     ``build_items`` returns ``(prepared, meta)`` for ``rasterise_meshes``. Returns the
@@ -388,8 +414,10 @@ def mesh_pass(cache: Path, size: int, build: str | None, reader: str,
     print(f"  {label} raster: {stats['texels'] / 1e6:.2f} M texels in {stats['seconds']}s")
     maps = cached_meshes(cache, stamp)
     if maps is None:
-        raise Refusal(RASTER_UNREADABLE,
-                      f"the {label} raster in {cache} could not be read back after writing it")  # fmt: skip
+        raise Refusal(
+            RASTER_UNREADABLE,
+            f"the {label} raster in {cache} could not be read back after writing it",
+        )
     return _with_family(cache, stamp, maps), {reader: {**meta, "raster": stats}}
 
 

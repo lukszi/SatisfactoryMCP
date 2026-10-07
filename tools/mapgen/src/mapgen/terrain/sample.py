@@ -223,8 +223,9 @@ def pchip_slope(left: F32Grid, right: F32Grid) -> F32Grid:
     return np.where(agree, 2.0 * left * right / total, np.float32(0.0)).astype(np.float32)
 
 
-def pchip_1d(p0: F32Grid, p1: F32Grid, p2: F32Grid, p3: F32Grid,
-             t: F32Grid) -> NDArray[np.floating]:  # fmt: skip
+def pchip_1d(
+    p0: F32Grid, p1: F32Grid, p2: F32Grid, p3: F32Grid, t: F32Grid
+) -> NDArray[np.floating]:
     """Cubic Hermite between ``p1`` and ``p2``; never leaves ``[min, max]`` of the two."""
     middle = p2 - p1
     d1 = pchip_slope(p1 - p0, middle)
@@ -268,8 +269,9 @@ def _axis(index: I64Grid, weight: NDArray[np.floating]) -> tuple[I64Grid, NDArra
     return np.ascontiguousarray(index), np.ascontiguousarray(weight)
 
 
-def resample_pchip(raster: Plane, rows: PchipTaps, cols: PchipTaps,
-                   nodata: int) -> tuple[F32Grid, BoolMask]:  # fmt: skip
+def resample_pchip(
+    raster: Plane, rows: PchipTaps, cols: PchipTaps, nodata: int
+) -> tuple[F32Grid, BoolMask]:
     """Separable PCHIP onto the output grid. Returns ``(values, whole)``.
 
     x first over the contiguous slab of source rows, then y, as ``resample`` does.
@@ -292,8 +294,9 @@ def resample_pchip(raster: Plane, rows: PchipTaps, cols: PchipTaps,
     return total.astype(np.float32), whole
 
 
-def resample(raster: Plane, rows: AxisTaps, cols: AxisTaps,
-             nodata: int | None) -> tuple[F32Grid, F32Grid]:  # fmt: skip
+def resample(
+    raster: Plane, rows: AxisTaps, cols: AxisTaps, nodata: int | None
+) -> tuple[F32Grid, F32Grid]:
     """Separable interpolation of ``raster`` onto the output grid. Returns (sum, weight).
 
     Separable, and in that order: the output rows a band needs come from one CONTIGUOUS run
@@ -314,8 +317,9 @@ def resample(raster: Plane, rows: AxisTaps, cols: AxisTaps,
 
         holes = nodata is not None
         rows_in, cols_in = _axis(row_index, row_weight), _axis(col_index, col_weight)
-        return kernels.separable(_contiguous(slab), nodata if holes else 0, holes, True, low,
-                                 rows_in, cols_in)  # fmt: skip
+        return kernels.separable(
+            _contiguous(slab), nodata if holes else 0, holes, True, low, rows_in, cols_in
+        )
     values = slab.astype(np.float32)
     known = None if nodata is None else (slab != nodata).astype(np.float32)
     if known is not None:
@@ -339,8 +343,9 @@ def resample(raster: Plane, rows: AxisTaps, cols: AxisTaps,
     return total, total_weight
 
 
-def sample_surface(raster: Plane, smooth_taps: Taps | tuple[PchipTaps, PchipTaps], linear: Taps,
-                   nodata: int) -> tuple[F32Grid, BoolMask]:  # fmt: skip
+def sample_surface(
+    raster: Plane, smooth_taps: Taps | tuple[PchipTaps, PchipTaps], linear: Taps, nodata: int
+) -> tuple[F32Grid, BoolMask]:
     """A height raster on the output grid: the smooth kernel inside the data, bilinear at its edge.
 
     Returns ``(values, missing)``. ``smooth_taps`` is a ``(rows, cols)`` pair of
@@ -453,8 +458,12 @@ class ClassMix:
         return out
 
 
-def sample_noise(fields: Iterable[tuple[F32Grid, float]], rows: NDArray[np.integer],
-                 cols: NDArray[np.integer], size: int) -> F32Grid:  # fmt: skip
+def sample_noise(
+    fields: Iterable[tuple[F32Grid, float]],
+    rows: NDArray[np.integer],
+    cols: NDArray[np.integer],
+    size: int,
+) -> F32Grid:
     """The octaves added up at these output pixels, as a multiplier around 1. Each octave is
     read between its texel centres with smoothstep weights, wrapping, so its cells do not show
     as blocks (docs/map/renders.md section 17, "The noise, read between its cells")."""
@@ -468,8 +477,9 @@ def sample_noise(fields: Iterable[tuple[F32Grid, float]], rows: NDArray[np.integ
     return out
 
 
-def _noise_taps(index: NDArray[np.integer], side: int,
-                size: int) -> tuple[I64Grid, I64Grid, F32Grid]:  # fmt: skip
+def _noise_taps(
+    index: NDArray[np.integer], side: int, size: int
+) -> tuple[I64Grid, I64Grid, F32Grid]:
     """The two noise texels around each output pixel along one axis, wrapped, and the far
     one's smoothstep weight."""
     position = (index.astype(np.float64) + 0.5) * side / size - 0.5
@@ -495,8 +505,9 @@ def _lattice(i: I64Grid, j: I64Grid, seed: int) -> F32Grid:
     return (h >> np.uint64(40)).astype(np.float32) / np.float32(1 << 24)
 
 
-def patch_noise(x_m: ArrayLike, y_m: ArrayLike, octaves: Sequence[Sequence[float]],
-                seed: int) -> F32Grid:  # fmt: skip
+def patch_noise(
+    x_m: ArrayLike, y_m: ArrayLike, octaves: Sequence[Sequence[float]], seed: int
+) -> F32Grid:
     """Value noise in [0, 1] at points in metres from the frame's corner: per octave
     ``(wavelength m, amount)`` a hashed lattice blended by smoothstep, mixed by amount. The
     lattice is hashed once over the points' extent and its corners gathered from it."""

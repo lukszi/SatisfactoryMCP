@@ -31,9 +31,14 @@ _calls: Counter[str] = Counter()
 
 
 def march(
-    solid: F32Grid, z: F32Grid, halo: int, bilinear: BoolMask, offsets: Offsets,
-    scale: F32Grid, best: F32Grid,
-) -> None:  # fmt: skip
+    solid: F32Grid,
+    z: F32Grid,
+    halo: int,
+    bilinear: BoolMask,
+    offsets: Offsets,
+    scale: F32Grid,
+    best: F32Grid,
+) -> None:
     """``kernels.march``: ``best`` raised in place. Every array C-ordered."""
     try:
         _march(solid, z, halo, bilinear, offsets, scale, best)
@@ -71,19 +76,33 @@ def _device() -> str:
 
 
 def _march(
-    solid: F32Grid, z: F32Grid, halo: int, bilinear: BoolMask, offsets: Offsets,
-    scale: F32Grid, best: F32Grid,
-) -> None:  # fmt: skip
+    solid: F32Grid,
+    z: F32Grid,
+    halo: int,
+    bilinear: BoolMask,
+    offsets: Offsets,
+    scale: F32Grid,
+    best: F32Grid,
+) -> None:
     run = cuda_kernel(*_SOURCE, "march")
     on_solid = cp.asarray(solid)
     on_z = on_solid if z is solid else cp.asarray(z)
     on_best = cp.asarray(best)
     rows, cols = best.shape
     args = (
-        on_solid, np.int64(solid.shape[1]), on_z, np.int64(z.shape[1]), np.int32(halo),
-        cp.asarray(np.ascontiguousarray(bilinear, np.bool_)), *_steps(offsets), cp.asarray(scale),
-        np.int32(scale.shape[0]), on_best, np.int32(rows), np.int32(cols),
-    )  # fmt: skip
+        on_solid,
+        np.int64(solid.shape[1]),
+        on_z,
+        np.int64(z.shape[1]),
+        np.int32(halo),
+        cp.asarray(np.ascontiguousarray(bilinear, np.bool_)),
+        *_steps(offsets),
+        cp.asarray(scale),
+        np.int32(scale.shape[0]),
+        on_best,
+        np.int32(rows),
+        np.int32(cols),
+    )
     run(*_grid(rows, cols), args)
     best[...] = on_best.get()
 
@@ -94,9 +113,17 @@ def _sky_view(z: F32Grid, halo: int, offsets: Offsets, scale: F32Grid, out: F32G
     rows, cols = out.shape
     on_out = cp.empty((rows, cols), np.float32)
     args = (
-        cp.asarray(z), np.int64(z.shape[1]), np.int32(halo), *_steps(offsets), cp.asarray(scale),
-        np.int32(dirs), np.int32(steps), on_out, np.int32(rows), np.int32(cols),
-    )  # fmt: skip
+        cp.asarray(z),
+        np.int64(z.shape[1]),
+        np.int32(halo),
+        *_steps(offsets),
+        cp.asarray(scale),
+        np.int32(dirs),
+        np.int32(steps),
+        on_out,
+        np.int32(rows),
+        np.int32(cols),
+    )
     run(*_grid(rows, cols), args)
     out[...] = on_out.get()
 

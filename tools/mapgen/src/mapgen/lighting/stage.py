@@ -373,8 +373,9 @@ def bake_block(job: BlockJob) -> BlockDone:
     canopy_sky = None
     if spans.crowns is not None:
         rows, cols = _sky_rows(z_half, halo, job.sky_halo)
-        canopy_sky = fill_holes(sky_view(spans.crowns.z[rows, cols], job.sky_halo, half_m),
-                                holes, 1.0)  # fmt: skip
+        canopy_sky = fill_holes(
+            sky_view(spans.crowns.z[rows, cols], job.sky_halo, half_m), holes, 1.0
+        )
     del spans
     nx, ny = _normals(work, (r0 - 1, r0 + block_px + 1, c0 - 1, c0 + block_px + 1), spacing_m)
     svf = np.clip(upsampled(sky_ringed), 0, 1)

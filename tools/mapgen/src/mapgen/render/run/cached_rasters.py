@@ -29,14 +29,16 @@ from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.rocks.families import placement_families
 from mapgen.terrain.overhangs import rasterise_direct_planes
 from mapgen.terrain.rasters import (
-    TOP_RASTER_ROLE,
-    BandRaster,
     CliffGeometry,
-    RasterStats,
     direct_placements,
     read_cliff_geometry,
     sweep_world,
     top_items,
+)
+from mapgen.terrain.rasters_banded import (
+    TOP_RASTER_ROLE,
+    BandRaster,
+    RasterStats,
     write_banded_raster,
 )
 from mapgen.terrain.top_raster import rasterise_top_planes
@@ -138,9 +140,14 @@ class RasterGrid:
         """Every band rasterised into ``directory`` under this grid's stamp; the stats."""
         roles = {} if role is None else {"role": role}
         return write_banded_raster(
-            rasterise_band, directory, self.size, self.subsamples, self.stamp, self.progress,
+            rasterise_band,
+            directory,
+            self.size,
+            self.subsamples,
+            self.stamp,
+            self.progress,
             **roles,
-        )  # fmt: skip
+        )
 
 
 def stamped_raster(
@@ -220,8 +227,9 @@ def direct_raster(
             }
         }
 
-    return stamped_raster(cache, ("direct", "cliff_geometry"), rasterise,
-                          partial(_direct_planes, cache, grid.stamp))  # fmt: skip
+    return stamped_raster(
+        cache, ("direct", "cliff_geometry"), rasterise, partial(_direct_planes, cache, grid.stamp)
+    )
 
 
 def top_raster(level: LevelSweep, cache: Path, grid: RasterGrid) -> tuple[TopPlanes, JsonObject]:
@@ -244,5 +252,9 @@ def top_raster(level: LevelSweep, cache: Path, grid: RasterGrid) -> tuple[TopPla
         )
         return {"top_overlay": cast(JsonValue, {**top_meta, "raster": stats})}
 
-    return stamped_raster(cache, ("top", "top_overlay"), rasterise,
-                          partial(cached_top, cache, grid.stamp, grid.subsamples))  # fmt: skip
+    return stamped_raster(
+        cache,
+        ("top", "top_overlay"),
+        rasterise,
+        partial(cached_top, cache, grid.stamp, grid.subsamples),
+    )

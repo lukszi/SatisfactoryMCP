@@ -198,8 +198,9 @@ def validate_terrain(frame: LandscapeFrame, prov: U8Grid) -> TerrainCheck:
     }
 
 
-def _ocean_level(level_m: NDArray[np.floating], wet: BoolMask, mask: BoolMask,
-                 boxes: WaterBoxes) -> OceanLevel:  # fmt: skip
+def _ocean_level(
+    level_m: NDArray[np.floating], wet: BoolMask, mask: BoolMask, boxes: WaterBoxes
+) -> OceanLevel:
     """The largest drawn body's level against the median top of the ocean-spline boxes."""
     tops = [box[5] / 100.0 for name, box in boxes if name == WATER_OCEAN_CLASS]
     labelled, count = ndimage.label(mask, structure=np.ones((3, 3), bool))
