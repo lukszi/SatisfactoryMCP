@@ -164,6 +164,9 @@ Planned as 0.2.0.
 - Map generator: `CliffPillar_03` was read from the game's unused `Mesh_Old` copy, another
   shape, and 18 of its 376 placements lost their sand family. Asset paths now match a folder
   by whole names.
+- Map renders take the sun term from one float32 copy, the live-sun page's own, in place of
+  several copies in mixed precision. A few dozen lit pixels of a 2048 map move by one level.
+  Every rendered map style is one version up for these fixes.
 
 ## [0.1.0] - 2026-09-27
 
