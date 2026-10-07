@@ -356,6 +356,14 @@ lowest top first, each over the ones below. A band returns cover, cover-weighted
 dome height and the highest crown top in world cm; `stamp_crowns(...)["top_cm"]` is the crown
 height raster on any render grid.
 
+A pixel is placed on a sprite from its own centre on the sheet, so a crown draws the same
+whichever band or window holds it (2026-10-07). Before, the offset was counted in float32
+from the band's first row, and a band starting elsewhere moved the crowns in the last bits:
+with the band halo widened from 8 to 16 rows (renders.md section 40), 0.48% of the crown
+values of a 2048 sheet and 0.46% of 12 full-size bands changed: the cover by up to 3e-5,
+the top by up to 0.17 cm. Placing them from the pixel centres moved the crowns once, in the
+same last bits.
+
 `palette/painted/ground.py` composites the crowns that stand out of the water last, over water and
 foam, under the highlight shoulder; a crown under the water's surface is drawn in the bed
 instead ("Crowns and the water" below). The `crowns` block of `satellite-painted.json`:

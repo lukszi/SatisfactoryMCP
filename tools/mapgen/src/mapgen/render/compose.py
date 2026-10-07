@@ -494,17 +494,15 @@ def _painted_colours(
 
 def domed_crowns(
     painted: PaintedGround,
-    x_cm: np.ndarray,
-    y_cm: np.ndarray,
+    x_cm: F64Grid,
+    y_cm: F64Grid,
     spacing_m: float,
     unlit: bool = False,
 ) -> CrownBand | None:
     """The crowns over these pixel centres, with their domes lit by the shared sun."""
     if painted.crowns is None:
         return None
-    step_cm = spacing_m * 100.0
-    x0_cm, y0_cm = x_cm[0] - step_cm / 2, y_cm[0] - step_cm / 2
-    stamped = stamp_crowns(painted.crowns, x0_cm, y0_cm, step_cm, len(y_cm), len(x_cm))
+    stamped = stamp_crowns(painted.crowns, x_cm, y_cm, spacing_m * 100.0)
     dome = stamped["dome_m"] * np.float32(painted.palette["crowns"]["dome_gain"])
     stamped["ndl"] = np.full(dome.shape, _FLAT_SUN) if unlit else sun_dot(dome, spacing_m)
     return stamped

@@ -26,7 +26,7 @@ from mapgen.gamedata.vegetation.crown_sprites import (
     decode_sprites,
 )
 from mapgen.terrain.render_meshes import is_render_only_foliage
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid
 
 __all__ = [
     "COVER_TOP_MIN",
@@ -162,14 +162,17 @@ def _bilinear(level: F32Grid, u: NDArray[np.floating],
     return top * (1 - fy) + bottom * fy
 
 
-def stamp_crowns(crowns: CrownSet, x0_cm: float, y0_cm: float, step_cm: float, rows: int,
-                 cols: int) -> CrownBand:  # fmt: skip
-    """One band of crowns on pixel centres: cover, linear colour, dome height, top.
+def stamp_crowns(crowns: CrownSet, x_cm: F64Grid, y_cm: F64Grid, step_cm: float) -> CrownBand:
+    """One band of crowns on the pixel centres ``x_cm`` by ``y_cm``, world cm ``step_cm``
+    apart: cover, linear colour, dome height, top.
 
     ``cover`` and ``rgb`` are composited front over back, tallest last; ``dome_m`` is the
     highest crown's smoothed height above its own base, for the light; ``top_cm`` is the
-    highest crown top in world cm, ``nan`` where none stands.
+    highest crown top in world cm, ``nan`` where none stands. Each pixel is placed on a
+    sprite from its own centre, so a crown draws the same in any band or window.
     """
+    rows, cols = len(y_cm), len(x_cm)
+    x0_cm, y0_cm = float(x_cm[0]) - step_cm / 2, float(y_cm[0]) - step_cm / 2
     cover = np.zeros((rows, cols), np.float32)
     rgb = np.zeros((rows, cols, 3), np.float32)
     dome = np.zeros((rows, cols), np.float32)
@@ -184,7 +187,7 @@ def stamp_crowns(crowns: CrownSet, x0_cm: float, y0_cm: float, step_cm: float, r
     near &= (xs + reach >= x0_cm) & (xs - reach <= x0_cm + cols * step_cm)
     picked = picked[near]
     for i in picked[np.argsort(crowns.height_cm[picked], kind="stable")]:
-        _stamp(crowns, int(i), x0_cm, y0_cm, step_cm, (cover, rgb, dome, top))
+        _stamp(crowns, int(i), (x_cm, y_cm), step_cm, (cover, rgb, dome, top))
     return {
         "cover": cover,
         "rgb": rgb,
@@ -193,10 +196,12 @@ def stamp_crowns(crowns: CrownSet, x0_cm: float, y0_cm: float, step_cm: float, r
     }
 
 
-def _stamp(crowns: CrownSet, i: int, x0_cm: float, y0_cm: float, step_cm: float,
+def _stamp(crowns: CrownSet, i: int, centres: tuple[F64Grid, F64Grid], step_cm: float,
            planes: tuple[F32Grid, F32Grid, F32Grid, F32Grid]) -> None:  # fmt: skip
     cover, rgb, dome, top = planes
     rows, cols = cover.shape
+    x_cm, y_cm = centres
+    x0_cm, y0_cm = float(x_cm[0]) - step_cm / 2, float(y_cm[0]) - step_cm / 2
     tree = crowns.records[i]
     reach_cm, lift_cm = float(crowns.reach_cm[i]), float(crowns.lift_cm[i])
     species = int(tree["species"])
@@ -215,8 +220,8 @@ def _stamp(crowns: CrownSet, i: int, x0_cm: float, y0_cm: float, step_cm: float,
     level = levels[mip_level]
     texel = np.float32(texel_cm * (1 << mip_level))
     ox, oy = crowns.origins[species]
-    px = (x0_cm - cx + (np.arange(c0, c1, dtype=np.float32) + 0.5) * step_cm)[None, :]
-    py = (y0_cm - cy + (np.arange(r0, r1, dtype=np.float32) + 0.5) * step_cm)[:, None]
+    px = (x_cm[c0:c1] - cx)[None, :]
+    py = (y_cm[r0:r1] - cy)[:, None]
     yaw = np.radians(float(tree["yaw"]))
     cos, sin = np.float32(np.cos(yaw)), np.float32(np.sin(yaw))
     u = (cos * px + sin * py - ox * scale) / texel
