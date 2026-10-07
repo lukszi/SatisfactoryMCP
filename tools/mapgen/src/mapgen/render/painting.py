@@ -37,7 +37,6 @@ from mapgen.palette.styles import (
 )
 from mapgen.palette.water.falls import draw_falls
 from mapgen.palette.water.open_sea import OpenSea
-from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.render.surface import (
     AxisTaps,
     BandSampling,
@@ -46,10 +45,10 @@ from mapgen.render.surface import (
     GroundSources,
     cut_taps,
 )
+from mapgen.render.void import DrawnVoid
 from mapgen.terrain.crown_stamp import LitCrowns, stamp_crowns
 from mapgen.terrain.sample import (
     grid_position,
-    reads_nothing,
     sample_noise,
     sample_plain,
     taps_footprint,
@@ -192,8 +191,7 @@ def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> Float
         )
     else:
         rgb = _style_colours(job, grid, scene)
-    sea = job.ground.sea
-    rgb = _void(rgb, surface.missing, sea, grid.linear, surface.weight, z_m)
+    rgb = _void(rgb, surface.missing, job.ground.sea, surface.void)
     spacing_m = job.ground.spacing_m
     return draw_falls(rgb, job.falls, job.layer, grid.x_cm, y_cm, z_m, spacing_m, hidden)
 
@@ -310,24 +308,12 @@ def _band_family(meshes: MeshPlanes | None, cut: tuple[slice, slice]) -> U8Grid 
 
 
 def _void(
-    rgb: FloatGrid,
-    missing: BoolMask,
-    sea: OpenSea | None,
-    linear: GridTaps,
-    rock: F32Grid | None,
-    z_m: FloatGrid,
+    rgb: FloatGrid, missing: BoolMask, sea: OpenSea | None, void: DrawnVoid | None
 ) -> FloatGrid:
-    """A finished band under the void: no data at all, and the open sea's void planes with
-    the cover and rim kept off the rocks a pixel's ``rock`` coverage holds where they stand
-    out of the sea; without the open sea, no data only, in the page's sea."""
+    """A finished band under the void: the open sea's void as the ground drew it
+    (``render/void.py``); without the open sea, no data only, in the page's sea."""
     if sea is None:
         return with_sea(rgb, missing)
-    if not missing.any() and all(reads_nothing(p, linear) for p in (sea.void.cover, sea.void.rim)):
+    if void is None:
         return rgb.astype(np.result_type(rgb, np.float32), copy=False)
-    cover, falloff, pit, rim = (sample_plain(p, linear) / np.float32(255.0) for p in sea.void)
-    if rock is not None:
-        # A rock deep in the void, under the sea's level, is the void's, as the artwork has it.
-        standing = rock * np.clip(z_m - np.float32(OCEAN_LEVEL_M) + 0.5, 0.0, 1.0)
-        cover, rim = cover * (1.0 - standing), rim * (1.0 - standing)
-    cover = np.where(missing, np.float32(1.0), np.clip(cover, 0.0, 1.0))
-    return with_void(rgb, cover, falloff, pit, rim)
+    return with_void(rgb, *void)

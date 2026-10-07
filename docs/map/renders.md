@@ -474,6 +474,36 @@ The direct pass samples at `col + 0.5` on the frame's corner, the pixel centre;
   coverage and smoothed lift as the rocks. These are the visible meshes; planning heights use
   the collision surface instead (section 24).
 
+### Where the lattice stops (2026-10-07)
+
+Inside a formation big enough that no landscape texel survives under it, the lattice knows
+nothing and the field's own fold stands in: the rock is the whole answer, and the painted
+layer colours the pixel as rock by its coverage alone. Elsewhere the rock is composited onto
+the lattice and coloured as rock only where it stands proud of it. Both rules switched at the
+lattice's last texel, a hard edge on the 1 m grid. Every such edge drew a staircase of rock
+colour and a height step, which the hillshade and the light draw as a crease; along the
+landscape's straight east and south edges (x 4064 m, y 3048 m), where the cliff province meets
+the fill, it was a line several hundred metres long in every layer.
+
+`render/lift.py` `lattice_edge` softens that edge over `LATTICE_EDGE_BLUR_M` (2 m) inside the
+lattice: a byte per texel, 255 where the fold stands in, falling to 0 about 6 m in, built once
+a draw. A band blends the lattice's height towards the fold, and the rock's share towards its
+coverage, by it (`render/surface.py` `_direct_regime`). Where the field has no data either,
+the lattice's edge is the void's or a pit's, which the void draws, so it is not softened.
+Past about 6 m from the edge every pixel is the same bits as before.
+
+Measured (2026-10-07, build 502094): at 2048 the unlit tiles of each layer move in 21 to 23 of
+85 tiles, 699 (relief) to 1,808 (painted) pixels, 20 of the terrain's by more than 15 levels.
+On full-size windows the east line at x 4064 m falls from a mean step of 2.9 levels across one
+column of the painted layer to 0.2, its neighbours' being 0.1, and the heights' curvature there
+from 0.31 to 0.06; along y 3048 m the painted step falls from 2.8 to 0.3. The three windows of
+section 40 hold no lattice edge and draw the same bytes.
+
+Left as it is: a step in the field's own heights at that edge. Along y 3048 m the cliff
+texels stand 1.1 m under the fill beside them, because the fill's seam band carries only the
+landscape's residual and never reads rock (section 26); that step still draws a soft crease in
+the hillshade.
+
 ### Known limits
 
 - The artwork borrow still multiplies the drawn map's arch strokes into the shading, so a
@@ -612,7 +642,8 @@ void past the world's edge, and others as sea; and the pits were filled flat. Wh
   the same way: a light rim, then from the artwork's grey to black in a pit, and from a lit
   tone of the page's navy (#424f5a) to the navy itself past the edge. The void is softened
   over 2 m, and a pixel shared by sea and void counts its water against the part that is not
-  void, so the void's edge is never drawn as land.
+  void, so the void's edge is never drawn as land. The light fades out with the void as it is
+  drawn (section 29, "The land weight").
 - **The sea fades into the void.** Beside the open sea the bed runs on under the void, and
   the void's cover rises from 0 at its edge to 1 over the same falloff, with no lit edge and
   no rim. A pixel takes its sea share from the ocean around it, Gaussian-weighted, so a coast
@@ -668,7 +699,8 @@ The band loop skips arithmetic whose answer it already has, and the tiles are th
   the piece's columns ("Column pieces", section 40): when they are all zero the sample is 0.0
   everywhere, so it is not worked out.
 - **The void is drawn where it is.** Where its cover and rim are both 0, `with_void`'s blend
-  gives back the pixel, so only the pixels under one of them are blended. A piece with no void
+  gives back the pixel, so only the pixels under one of them are blended. The four planes are
+  sampled once a piece for every layer and the light (`render/void.py`). A piece with no void
   under it and no pixel without data returns before the void's four planes are sampled, and
   `_sample_water_surface` and `_rock_kept` skip the cover there too.
 - **Water is mixed where it is.** The terrain and satellite styles (`water_composite`), the

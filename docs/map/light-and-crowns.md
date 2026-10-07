@@ -55,8 +55,9 @@ divided by the same expression for flat ground in the open, so flat ground at an
 - **Shadow floor.** The light passes through a soft maximum with 0.36 at a knee of 0.1
   (`SHADOW_FLOOR`, `SHADOW_FLOOR_KNEE`), so the darkest light lands at 0.36 to 0.40 instead of
   the 0.2 the bare model reaches in a shadowed gully.
-- **Water** stays unlit: the land weight (one minus the water cover) blends the light out,
-  from the tree crowns over it too (section 36, "Crowns and the water").
+- **Water and the void** stay unlit: the land weight, the ground's share of each drawn pixel
+  (below, "The land weight"), blends the light out, from the tree crowns over the water too
+  (section 36, "Crowns and the water").
 - **Per style.** The painted style lights in linear light with its own ambient, sky and sun
   colours; the shader undoes and reapplies the luminance tone curve of section 31
   (`tone_knee`, `tone_white`). Terrain, satellite and both relief styles multiply into sRGB,
@@ -227,6 +228,31 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
 Coarser levels are computed from the coarser surface, not by averaging encoded tiles: normals
 from the downsampled heights, sky view and horizons by mean. The tile format, the work files
 and the coarser levels are `lighting/light_tiles.py`'s.
+
+### The land weight (2026-10-07)
+
+The land weight is the share of each drawn pixel that is the ground, and so the share the light
+lights: `(1 - water cover) * (1 - void cover) * (1 - void rim)`. The void's cover and rim are
+the ones every layer draws (`render/void.py`), worked out once a piece for the surface the light
+captures. The void is not water: its cover is not added to the water's, and the water's own
+drawing does not change.
+
+Before, the land weight was one minus the water cover, and 0 only where none of a pixel's
+bilinear taps has data. The void's edge is softened over 2 m and its rim lies over the field's
+last texels, but the light took those pixels as land; and where the data stops the drawn heights
+drop to 0 m, so a pixel beside that edge was lit at a near-vertical normal. Every void edge and
+every coast past the world's edge drew, lit, a staircase of the field's 1 m texels with a light
+or dark rim, and a lone texel with data inside the void a dark square; unlit, both were a smooth
+curve. Now the light fades out with the ground under the void's soft edge, so the lit edge is
+the unlit one. The heights the light marches are unchanged: the 0 m plane under no data still
+casts (Open).
+
+**Measured** (2026-10-07, build 502094). On 27 full-size windows, 14 of them at void edges, the
+unlit sheets are the same bytes and the land weight moves only within a few metres of the void.
+At 2048, all five layers, with the lattice's softened edge of section 25 beside it: the lit
+tiles of each layer move in 31 of 85 tiles, 34,148 to 36,901 pixels, at most 73 levels in
+the painted layer and 121 to 124 in the others; the light's normal tiles move in 31 of 85,
+25,223 pixels, and its lossy horizon atlases in 25.
 
 ### The stage
 
@@ -435,8 +461,8 @@ there, the run links the tiles into `<renders>/light/` through the usual staging
 writes the kept `meta.json` there, and relights each layer from the kept terms. A run into
 the folder that already holds that bake leaves it untouched. Anything else bakes and replaces
 the kept light. A palette change keeps the key. A change to the drawn heights or to the water
-cover the land weight comes from (a new field, build, raster cache or seabed rule) changes
-the surface, so the light is baked again. The digest is known only once the draw is done,
+or void cover the land weight comes from (a new field, build, raster cache or seabed rule)
+changes the surface, so the light is baked again. The digest is known only once the draw is done,
 so while it draws a run reads the kept terms as long as its bands match the kept bake's
 (section 42, "A kept light, read while it matches").
 
@@ -589,6 +615,9 @@ button moves the sun for the visit; Settings keeps the default.
 - Whether the satellite style draws the tree crowns, and so reads their shadows.
 - A land weight for the crowns over water, read by the painted layer only, so they take the
   live light and a tree's shadow can fall on the water.
+- The horizon march reads the 0 m the heights drop to under no data as ground, so a void edge
+  beside low ground casts a wall's shadow on it ("The land weight" fades the light at the
+  edge itself, not the shadow it throws further in).
 - Sun colour along the day, and whether the artwork style gets any light at all.
 
 ## 36. Tree crowns (2026-10-05)
@@ -730,8 +759,8 @@ A river under bamboo is hidden by the crowns, as from above in the game; it show
 canopy is open. The Titan trees are laid over the water and stand tens of metres out of it;
 they keep their 0.8 opacity everywhere (section 30).
 
-**The light.** The lighting stage leaves water unlit: its land weight is one minus the water
-cover (section 29), and the one pyramid serves every layer, of which only the painted one
+**The light.** The lighting stage leaves water unlit: its land weight falls with the water
+cover (section 29, "The land weight"), and the one pyramid serves every layer, of which only the painted one
 draws crowns. So in a render with the light a crown over water keeps the flat light it was
 drawn with: no live shading, no shadow from its neighbours. No tree shadow falls on water,
 neither on its surface nor on its bed, and a render without the light draws no cast shadow

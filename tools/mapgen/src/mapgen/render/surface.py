@@ -33,6 +33,7 @@ from mapgen.palette.water.shore import (
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_alpha, water_depth_fraction
 from mapgen.render.floating import FieldPiece, FloatSources, band_slabs, piece_slabs
 from mapgen.render.lift import blend_regimes, composite_top, rock_kept
+from mapgen.render.void import DrawnVoid, drawn_void, land_weight
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.sample import (
     AxisTaps,
@@ -129,8 +130,9 @@ class GroundSources:
     """What every band's ground is sampled from, and the column taps they share, built once.
 
     ``x_cm`` holds the window's pixel centres, ``y_cm`` the whole sheet's; a piece reads its
-    columns of them and of the taps. The bands only read it, so any number of threads may
-    share it.
+    columns of them and of the taps. ``lattice_edge`` is the direct regime's ground lattice
+    softened at its edge (``lift.lattice_edge``). The bands only read it, so any number of
+    threads may share it.
     """
 
     field: hf.Field
@@ -141,6 +143,7 @@ class GroundSources:
     y_cm: F64Grid
     spacing_m: float
     direct: DirectPlanes | None
+    lattice_edge: U8Grid | None
     overlay: TopPlanes | None
     meshes: MeshPlanes | None
     water: WaterPlanes | None
@@ -216,7 +219,8 @@ class BandSurface:
 
     ``weight`` is the rock's coverage and ``rock_seen`` how much of it stands proud, both None
     without the direct regime; ``top_weight`` the overlay's lift; ``level_m`` the water level,
-    NaN where there is none.
+    NaN where there is none; ``void`` the open sea's void as every layer draws it, None where
+    it draws none.
     """
 
     z_m: FloatGrid
@@ -232,6 +236,7 @@ class BandSurface:
     mesh_class: U8Grid | None
     water: WaterTerms
     borrow: FloatGrid
+    void: DrawnVoid | None
 
 
 class SeamPlanes(NamedTuple):
@@ -359,12 +364,13 @@ def band_surfaces(
             top_weight=top_weight, water_m=water_m, level_m=level_m, wet=wet, measured=measured,
             mesh_weight=mesh_weight, mesh_class=mesh_class,
             water=_water_terms(sources, linear, lifted, planes), borrow=borrow,
+            void=drawn_void(missing, sources.sea, linear, weight, lifted),
         ))  # fmt: skip
     light = None
     if sources.capture is not None:
         lit = surfaces[True]
         floating = piece_slabs(_float_sources(sources, grid), field, lit.z_m, level_m)
-        light = _light_planes(grid, lit.z_m, missing, lit.water, floating)
+        light = _light_planes(grid, lit, floating)
     return {seabed: surfaces[seabed] for seabed in seabeds}, PieceOwed(seam, light)
 
 
@@ -413,7 +419,7 @@ def settle_band(sources: GroundSources, rows: Span, pieces: Sequence[PieceOwed])
 def _read_only(surface: BandSurface) -> BandSurface:
     """``surface`` with its arrays and its water's marked read-only, so no layer's painter
     changes what the next one reads."""
-    planes = [*vars(surface).values(), *surface.water.values()]
+    planes = [*vars(surface).values(), *surface.water.values(), *(surface.void or ())]
     for plane in planes:
         if isinstance(plane, np.ndarray):
             plane.flags.writeable = False
@@ -452,19 +458,14 @@ def _water_terms(
     return water
 
 
-def _light_planes(
-    grid: BandSampling,
-    z_m: FloatGrid,
-    missing: BoolMask,
-    water: WaterTerms,
-    slabs: SlabPlanes | None,
-) -> LightPlanes:
+def _light_planes(grid: BandSampling, lit: BandSurface, slabs: SlabPlanes | None) -> LightPlanes:
     """The piece's output pixels for the light stage: the heights, NaN where no data is drawn
-    (``lighting/holes.py``), the land weight, and what floats over them
+    (``lighting/holes.py``), the land weight (``render/void.py``), and what floats over them
     (``render/floating.py``), cut to them already."""
     kept = (grid.rows.kept, grid.cols.kept)
-    dry = np.where(missing, 0.0, 1.0 - water["cover"])
-    return LightPlanes(np.where(missing, np.float32(np.nan), z_m)[kept], dry[kept], slabs)
+    land = land_weight(lit.missing, lit.water["cover"], lit.void)
+    z_m = np.where(lit.missing, np.float32(np.nan), lit.z_m)
+    return LightPlanes(z_m[kept], land[kept], slabs)
 
 
 def _direct_regime(
@@ -477,10 +478,14 @@ def _direct_regime(
     """The rocks composited onto the lattice under them: ``(z_m, missing, weight, rock_seen,
     seam, base_m)``, ``seam`` the output pixels the band measures when it measures and
     ``base_m`` the ground the rocks stand on. Where that lattice knows nothing the field's
-    fold stands in."""
+    fold stands in, and near its edge the two are blended by the lattice's softened edge, so
+    no texel of it draws a step."""
     smooth, linear = grid.smooth, grid.linear
     ground_dm, ground_missing = sample_surface(direct.ground, smooth, linear, hf.NODATA)
     base_m = np.where(ground_missing, z_m, ground_dm / np.float32(hf.DM_PER_M))
+    edge = _lattice_edge(sources.lattice_edge, linear)
+    if edge is not None:
+        base_m = np.where(edge > 0.0, base_m + edge * (z_m - base_m), base_m)
     cut = (grid.rows.cut, grid.cols.cut)
     rock = (np.asarray(direct.z[cut], np.float32), np.asarray(direct.coverage[cut]))
     wet_plane = None if sources.water is None else sources.water.wet
@@ -490,12 +495,21 @@ def _direct_regime(
     )
     rock_lift = np.clip((z_m - base_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     rock_seen = np.where(ground_missing, weight, np.minimum(weight, rock_lift))
+    if edge is not None:
+        rock_seen = np.where(edge > 0.0, rock_seen + edge * (weight - rock_seen), rock_seen)
     seam = None
     if sources.seam is not None or sources.regimes is not None:
         out = (grid.rows.kept, grid.cols.kept)
         delta = (rock[0] / 100.0 - base_m)[out]
         seam = SeamPlanes(z_m[out], switched[out], weight[out], delta)
     return z_m, missing, weight, rock_seen, seam, base_m
+
+
+def _lattice_edge(plane: U8Grid | None, linear: GridTaps) -> FloatGrid | None:
+    """The lattice's softened edge on a piece, in [0, 1]; None where the piece reads none."""
+    if plane is None or reads_nothing(plane, linear):
+        return None
+    return np.clip(sample_plain(plane, linear) / np.float32(255.0), 0.0, 1.0)
 
 
 def _regimes_owed(

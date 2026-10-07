@@ -460,6 +460,30 @@ class _Surface:
         self.land[row : row + len(z_m), columns] = land
 
 
+def test_the_land_weight_fades_with_the_void_as_drawn_not_at_the_data_s_edge():
+    """A void edge stepped on a coarse field: the light's land weight is the ground's share
+    of each drawn pixel, so it falls with the void's cover instead of stepping from 1 to 0
+    at the last pixel with data, and the light draws no staircase there."""
+    n, size = 150, 600  # 50 m texels, four output pixels to a texel
+    step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / n
+    rows, cols = np.mgrid[0:n, 0:n]
+    height = np.where(cols > 90 + rows // 3, hf.NODATA, 300).astype(np.int16)
+    water = np.full((n, n), hf.NODATA, np.int16)
+    field = _field(height, water, np.zeros((n, n), np.uint8), step_cm)
+    heights = height.astype(np.float32)
+    sea = open_sea(field, (heights, None), None, np.zeros((n, n), bool), OCEAN_LEVEL_M)
+    borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
+    surface = _Surface(size)
+    render_layer("terrain", field, None, 1, borrow, size, False, heights, sea=sea,
+                 surface=surface)  # fmt: skip
+    land = surface.land
+    assert (land[:, :300] > 0.999).all() and (land[:, 560:] == 0.0).all()
+    assert np.abs(np.diff(land, axis=1)).max() <= 0.3, "no step from land to void"
+    assert np.all(np.diff(land, axis=1) <= 1e-6), "it only falls towards the void"
+    fading = (land > 0.01) & (land < 0.99)
+    assert fading.sum(axis=1).min() >= 2, "every row fades over the void's soft edge"
+
+
 def test_a_rock_under_the_sea_s_level_is_the_void_s_where_the_sea_fades_into_it():
     """A rock strip from the open sea into the void: drawn under the sea, gone under the void."""
     n, step_cm = 750, 1000.0  # 10 m texels, one per output pixel

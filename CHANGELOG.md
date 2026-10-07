@@ -259,6 +259,15 @@ Planned as 0.2.0.
   its whole lake, dry patches inside the swamp no longer draw as teal sea, and the swamp's
   dark water stays off the sea past the landscape's edge. Every rendered map style is one
   version up: terrain and satellite 10, game-painted 21, relief and relief dark 8.
+- Lit map renders draw the edge of the void, a pit's rim and a coast past the world's edge as
+  the smooth curve the unlit colour has. The light took the void's soft edge and rim as land
+  up to the field's last 1 m texel, so it drew a staircase with a light or dark rim there, and
+  a lone texel with data inside the void as a dark square. The live-sun light pyramid's land
+  weight changes the same way.
+- Map renders no longer draw a step where the ground under the rocks stops: the rock colour
+  and the heights switched at its last 1 m texel, a staircase beside a landscape hole and a
+  line hundreds of metres long along the landscape's east and south edges. They now blend
+  over a few metres. Every rendered map style is one more version up for these two.
 
 ## [0.1.0] - 2026-09-27
 
