@@ -67,8 +67,8 @@ Planned as 0.2.0.
   the desert rock, the forest moss, the coral caps, the desert gravel, the Red Jungle cliffs),
   for the forest floor, and for the ground layers no screenshot covers (red grass, puddles,
   the Red Jungle ground, sand cracks, pebbles and rock, soil). A render derives them itself
-  when `targets.derived.json` is missing or from other data. The game-painted style is one
-  version up.
+  when `targets.derived.json` is missing or from other data. This shares the one version up
+  every rendered map style takes (under "Fixed").
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
@@ -173,7 +173,7 @@ Planned as 0.2.0.
 - Map generator: the open sea's bed is solved by conjugate gradients whose dot products are
   summed in a fixed order, where scipy's took them from BLAS and its bits followed the
   number of BLAS threads. The maps are the same bytes, and the solve takes about 2 s less.
-- Map generator (every rendered style one version up, light model 3): arches, rock overhangs
+- Map generator (light model 3): arches, rock overhangs
   and tree crowns cast their shadow where the sun's ray meets them, with light passing
   beneath, instead of a wall from their foot, a wedge or a streak from the trunk; the sky
   beside an arch is no longer dimmed as beside a wall. The arches' sub-metre holes are
@@ -232,7 +232,7 @@ Planned as 0.2.0.
   fix instead of a traceback.
 - The Maps tab's render estimate follows the "live sun" box, counts the light cache's
   scratch space against the free disk, and times a lit render only from an earlier lit one.
-- The Maps tab counts a lit job's kept light: its terms, 3.2 GB at full size, among what the
+- The Maps tab counts a lit job's kept light: its terms, 4.3 GB at full size, among what the
   job keeps, and its tiles, hard links to the map's own, no longer in the cache's size or in
   what clearing the cache frees.
 - A render that fails deletes its light scratch too, and the next lit run removes what a
@@ -265,16 +265,15 @@ Planned as 0.2.0.
   recorded two digests for the same falls. Both now draw them in the cache's order.
 - Map renders take the sun term from one float32 copy, the live-sun page's own, in place of
   several copies in mixed precision. A few dozen lit pixels of a 2048 map move by one level.
-  Every rendered map style is one version up for these fixes.
 - The live-sun light no longer stands a wall at 0 m over the void: where a map has no
   ground, nothing blocks the sun or the sky, so the rims of pits, the chasm and the southern
   and eastern coasts are no longer shaded, and no slope runs down into a hole. The light of a
-  full-size map no longer steps along the 4096-pixel grid it is baked in. Light model 3.
+  full-size map no longer steps along the 4096-pixel grid it is baked in.
 - On the game-painted map's baked light, tree crowns and the Titan forest are lit by their own
   top, sky and shadows instead of the ground's beneath them, so a ravine under the Titan
   forest no longer shows through its canopy; the Titan trees cast tree shadows like the other
   crowns. The live-sun page still lights the canopy by the ground until it gets a canopy
-  tile. Game-painted style 21.
+  tile.
 - Map water: two water boxes meeting inside one sheet of water no longer draw a straight line
   where their tops differ by up to a metre; the level is feathered over about 12 m. A river
   hands over to a lake or the sea along a ramp, is drawn across the joints between its
@@ -283,8 +282,7 @@ Planned as 0.2.0.
   under the crowns and the Titan canopy. On the game-painted map, pools a few decimetres
   deep are drawn as water, a hot-spring terrace tints only the water around it instead of
   its whole lake, dry patches inside the swamp no longer draw as teal sea, and the swamp's
-  dark water stays off the sea past the landscape's edge. Every rendered map style is one
-  version up: terrain and satellite 10, game-painted 21, relief and relief dark 8.
+  dark water stays off the sea past the landscape's edge.
 - Lit map renders draw the edge of the void, a pit's rim and a coast past the world's edge as
   the smooth curve the unlit colour has. The light took the void's soft edge and rim as land
   up to the field's last 1 m texel, so it drew a staircase with a light or dark rim there, and
@@ -293,21 +291,22 @@ Planned as 0.2.0.
 - Map renders no longer draw a step where the ground under the rocks stops: the rock colour
   and the heights switched at its last 1 m texel, a staircase beside a landscape hole and a
   line hundreds of metres long along the landscape's east and south edges. They now blend
-  over a few metres. Every rendered map style is one more version up for these two.
+  over a few metres.
 - Game-painted map colours: blue palms under a sparse tree crown no longer draw pale grey;
   the edges of the Red Jungle's and Red Bamboo Fields' ground layers lose their fire-red rims
   and colour confetti, and forest floor its orange halo; sand and grass on rock tops take
   their ground's colour instead of near white; hot-spring terraces are cream, not white;
   arches no longer wear the moss or sand of the cliff below; and wet sand under a crude oil
-  puddle keeps the colour of the wet sand around it. The game-painted style is one version
-  up.
+  puddle keeps the colour of the wet sand around it.
 - Map renders leave out the land the game's height data has past the world's rim, where the
   game's own map draws nothing, and draw the void there: a 0.23 km² island south-east of the
   abyss, a lobe on the east edge and smaller pieces. The open sea beside them moves too, by
   a level at most a kilometre or more away.
 - The satellite map no longer shows a quilt of 29 m and 7.3 m squares on flat ground: its
-  noise is read smoothly between its cells. Every rendered map style is one version up for
-  these two fixes.
+  noise is read smoothly between its cells.
+- Every rendered map style is one version up for the map changes of this release, once:
+  terrain and satellite 9, game-painted 20, relief and relief dark 7. The live-sun light is
+  model 3, so a map baked under model 2 is offered a relight.
 
 ## [0.1.0] - 2026-09-27
 

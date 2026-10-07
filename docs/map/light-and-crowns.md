@@ -556,7 +556,7 @@ into the painted layer's terms (`lighting/canopy.py` `block_canopy` and `canopy_
   `relight_rows` reads the third and fourth for a style that draws the crowns.
 - **Drawn unlit, the Titan trees stand flat** (`palette/painted/trees.py` `titan_over`), as
   the crowns do. Before, the unlit colour kept the style's own north-west hillshade on
-  them, under the light. Painted style 21.
+  them, under the light. Painted style 20, round 2's one bump.
 
 Only the baked copy has it. The page's shader still lights the canopy with the ground's
 normal and sky view and the larger of the two horizons, until a tile carries the canopy's

@@ -84,7 +84,7 @@ fifth and sixth renders under a contrast stretch: those drew the 45° north-west
 the colour, and its stronger shading hid them. The seventh draws the satellite layer unlit
 under the live sun (section 29), whose high noon sun leaves a flat nearly flat, so the
 blocks stood out. Each pixel still reads the noise at its own place in the sheet, so a band,
-a piece or a thread count cannot move it. Since satellite 10.
+a piece or a thread count cannot move it. Since satellite 9, round 2's one bump.
 
 ### Layers on the serving side
 
@@ -537,8 +537,9 @@ Recipe 7 keeps its number and draws the arches as spans: the top raster keeps th
 and the boulders apart and fills the sub-metre holes their open mesh edges leave, the direct
 raster finds the rock overhangs, and each layer's arches are antialiased by FXAA, nothing else.
 In the light the arches, the overhangs and the crowns cast where the sun's ray meets them. The
-rendered styles each go one version up (terrain and satellite 10, painted 21, both reliefs 8)
-and the live sun is light model 3. Both are light-and-crowns.md section 29, "Arches as spans".
+rendered styles share round 2's one version up (terrain and satellite 9, painted 20, both
+reliefs 7) and the live sun is light model 3. Both are light-and-crowns.md section 29, "Arches
+as spans".
 
 ## 26. Rebuilt base data and a PCHIP sampler: recipe 5 (2026-10-05)
 
@@ -724,7 +725,7 @@ before anything is rebuilt, as it leaves a pit (`SOURCE_RIM`, under
 `two_regime.fill_rebuild.past_the_rim` in the sidecar). The render then draws it as the
 void past the world's edge, with the lit edge and rim line of the section above where it
 meets the land, and the sea fading into it where it meets the sea. Since terrain and
-satellite 10, game-painted 21, and relief and relief dark 8.
+satellite 9, game-painted 20, and relief and relief dark 7, round 2's one bump.
 
 - **The void past the rim** is the artwork's void (`artwork_planes`) that outlasts an
   erosion of 4 texels (`RIM_CORE_TEXELS`) and reaches the grid's edge, grown back through
