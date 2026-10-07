@@ -119,6 +119,13 @@ def keyed_cache_files() -> type:
     from numba.core.caching import IndexDataCacheFile
 
     class KeyedCacheFiles(IndexDataCacheFile):
+        if TYPE_CHECKING:  # numba's own methods, unannotated, as this class calls them
+            _index_name: str
+
+            def _load_index(self) -> dict[object, str]: ...
+            def _save_index(self, overloads: dict[object, str]) -> None: ...
+            def _save_data(self, name: str, data: object) -> None: ...
+
         def save(self, key: object, data: object) -> None:
             digest = hashlib.sha256(repr(key).encode("utf-8")).hexdigest()[:24]
             name = self._index_name.removesuffix(".nbi") + f".{digest}.nbc"

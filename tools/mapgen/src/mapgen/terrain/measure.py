@@ -255,7 +255,7 @@ class RegimeCoverage:
 
 def measured_lines(trace: JsonObject, regimes: JsonObject) -> list[str]:
     """The run's report of a ``SeamTrace`` and a ``RegimeCoverage`` result."""
-    lines = []
+    lines: list[str] = []
     curvature = trace.get("p99_curvature")
     if trace.get("measured") and isinstance(curvature, dict):
         lines.append(

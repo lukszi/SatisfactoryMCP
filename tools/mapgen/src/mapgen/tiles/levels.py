@@ -39,7 +39,7 @@ def strip_rows(source_px: int, side: int) -> int:
 
 
 def resample_rows(
-    image_mod: TileImaging, window: np.ndarray, first: int, px: int, side: int, r0: int, r1: int
+    image_mod: TileImaging, window: U8Grid, first: int, px: int, side: int, r0: int, r1: int
 ) -> U8Grid:
     """Rows ``[r0, r1)`` of a ``px`` sheet Lanczos'd to ``side``, from ``window``, the sheet's
     rows from ``first`` on: the bytes of those rows of a resize of the whole sheet.
@@ -126,7 +126,7 @@ class SheetRows:
         level.done = end
         return out
 
-    def _window(self, top: int) -> np.ndarray:
+    def _window(self, top: int) -> U8Grid:
         """The kept rows from ``top`` on: a view when one run of rows holds them."""
         parts = [(first, rows) for first, rows in self.kept if first + rows.shape[0] > top]
         if parts[0][0] > top:

@@ -21,7 +21,7 @@ __all__ = ["WET_MOST", "EveryPixel", "WetPixels", "cover_mix", "float32_planes"]
 WET_MOST = 0.75
 
 _Scalar = TypeVar("_Scalar", bound=np.generic)
-_Key = TypeVar("_Key")
+_Planes = TypeVar("_Planes", bound=Mapping[str, object])
 
 
 def cover_mix(land: FloatGrid, under: FloatGrid, cover: FloatGrid) -> FloatGrid:
@@ -32,9 +32,20 @@ def cover_mix(land: FloatGrid, under: FloatGrid, cover: FloatGrid) -> FloatGrid:
 def float32_planes(*planes: object) -> bool:
     """Whether every plane is a float32 array or number, what a water kernel takes; with any
     other the numpy painter runs, whose float types follow its inputs'."""
-    return all(
-        isinstance(plane, np.ndarray | np.generic) and plane.dtype == np.float32 for plane in planes
-    )
+    return all(_is_numeric(plane) and plane.dtype == np.float32 for plane in planes)
+
+
+def _is_numeric(value: object) -> TypeGuard[NDArray[np.generic] | np.generic]:
+    return isinstance(value, np.ndarray | np.generic)
+
+
+def _is_array(value: object) -> TypeGuard[NDArray[np.generic]]:
+    return isinstance(value, np.ndarray)
+
+
+def _is_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
+    """Whether ``value`` is a mapping; its keys are a scene's names, which are strings."""
+    return isinstance(value, Mapping)
 
 
 class WetPixels:
@@ -52,26 +63,26 @@ class WetPixels:
 
     def owns(self, plane: object) -> TypeGuard[NDArray[np.generic]]:
         """Whether ``plane`` is one of the band's, rather than a colour or a number."""
-        return isinstance(plane, np.ndarray) and plane.shape[:2] == self.shape
+        return _is_array(plane) and plane.shape[:2] == self.shape
 
     def take(self, plane: NDArray[_Scalar]) -> NDArray[_Scalar]:
         """The plane's values at the wet pixels, its trailing axes kept."""
         return np.take(plane.reshape(-1, *plane.shape[2:]), self.index, axis=0)
 
-    def take_planes(
-        self, planes: Mapping[_Key, object], keys: Collection[_Key] | None = None
-    ) -> dict[_Key, object]:
+    def take_planes(self, planes: _Planes, keys: Collection[str] | None = None) -> _Planes:
         """``planes`` with the band's planes taken, in nested mappings too; with ``keys``,
-        only those of its keys, so a read of any other fails rather than mixes shapes."""
-        return {
+        only those of its keys, so a read of any other fails rather than mixes shapes. The
+        type is ``planes``': a taken plane keeps its dtype, and its shape is not typed."""
+        taken = {
             key: self._taken(value) for key, value in planes.items() if keys is None or key in keys
         }
+        return cast(_Planes, taken)
 
     def _taken(self, value: object) -> object:
         if self.owns(value):
             return self.take(value)
-        if isinstance(value, Mapping):
-            return self.take_planes(cast("Mapping[object, object]", value))
+        if _is_mapping(value):
+            return self.take_planes(value)
         return value
 
     def mix(

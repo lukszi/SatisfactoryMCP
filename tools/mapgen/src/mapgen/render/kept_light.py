@@ -13,7 +13,7 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import NamedTuple, cast
+from typing import NamedTuple
 
 from mapgen.cache import write_sidecar
 from mapgen.lighting.stage import LIGHT_DIR_NAME, Place
@@ -23,7 +23,13 @@ from satisfactory_mcp.core.gameassets.pyramid import (
     TILES_DIR_NAME,
     swap_into_place,
 )
-from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
+from satisfactory_mcp.core.jsontypes import (
+    JsonObject,
+    JsonValue,
+    as_int,
+    require_list,
+    require_object,
+)
 
 __all__ = ["KEPT_LIGHT_DIR_NAME", "KeptBake", "KeptLight"]
 
@@ -68,8 +74,10 @@ class KeptLight:
         if not (self.directory / TILES_DIR_NAME).is_dir() or _casts(kept) != _casts(key):
             return None
         try:
-            puts = json.loads((self.directory / SURFACE_NAME).read_text(encoding="utf-8"))
-            bands = [(Place(*place), digest) for *place, digest in puts["puts"]]
+            puts: JsonValue = json.loads(
+                (self.directory / SURFACE_NAME).read_text(encoding="utf-8")
+            )
+            bands = [_band(row) for row in require_list(require_object(puts)["puts"])]
         except (OSError, ValueError, TypeError, KeyError):
             return None
         return KeptBake(meta, bands)
@@ -79,7 +87,7 @@ class KeptLight:
         ``_meta`` it is installed under."""
         root = renders / LIGHT_DIR_NAME
         installed = _read_meta(root / META_NAME)
-        if installed is not None and _same_key(installed, cast(JsonObject, meta["key"])):
+        if installed is not None and _same_key(installed, require_object(meta["key"])):
             return installed
         staging = root / (TILES_DIR_NAME + STAGING_SUFFIX)
         shutil.rmtree(staging, ignore_errors=True)
@@ -87,7 +95,7 @@ class KeptLight:
         how = swap_into_place(
             staging, root / TILES_DIR_NAME, root / (TILES_DIR_NAME + RETIRED_SUFFIX)
         )
-        meta = {**meta, "tiles": {**cast(JsonObject, meta["tiles"]), "installed_by": how}}
+        meta = {**meta, "tiles": {**require_object(meta["tiles"]), "installed_by": how}}
         write_sidecar(root / META_NAME, {"_meta": meta})
         return meta
 
@@ -119,10 +127,19 @@ class KeptLight:
 
 def _read_meta(path: Path) -> JsonObject | None:
     try:
-        meta = json.loads(path.read_text(encoding="utf-8")).get("_meta")
-    except (OSError, ValueError, AttributeError):
+        recorded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return None
+    meta = recorded.get("_meta") if isinstance(recorded, dict) else None
     return meta if isinstance(meta, dict) else None
+
+
+def _band(row: JsonValue) -> tuple[Place, str]:
+    """One ``[row, rows, c0, c1, digest]`` of ``surface.json``; ``TypeError`` if it is not."""
+    values = require_list(row)
+    if len(values) != 5 or not isinstance(values[4], str):
+        raise TypeError(f"not a band of the kept surface: {values}")
+    return Place(*(as_int(value) for value in values[:4])), values[4]
 
 
 def _same_key(meta: JsonObject, key: JsonObject) -> bool:

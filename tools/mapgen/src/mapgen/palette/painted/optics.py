@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TypeAlias, cast
+from typing import TypeAlias
 
 import numpy as np
 from scipy import ndimage
@@ -33,6 +33,7 @@ from mapgen.palette.painted.shapes import (
     PaintedSurface,
     PaintMeta,
     Sampler,
+    UnderwaterScene,
     WaterBase,
     WaterClassStyle,
 )
@@ -180,7 +181,7 @@ def load_carpet(paint_dir: Path, meta: PaintMeta, palette: PaintedPalette) -> Ca
 
 
 def carpet_bed(
-    under: FloatGrid, scene: PaintedScene, ground: PaintedSurface, sample: Sampler
+    under: FloatGrid, scene: UnderwaterScene, ground: PaintedSurface, sample: Sampler
 ) -> FloatGrid:
     """``under`` with the seabed carpet seen through the water above its own top."""
     style, carpet, water = ground.palette.get("carpet"), ground.carpet, ground.water
@@ -199,7 +200,7 @@ def carpet_bed(
 
 def underwater(
     g: FloatGrid,
-    scene: PaintedScene,
+    scene: UnderwaterScene,
     ground: PaintedSurface,
     sample: Sampler,
     sample_rock: Sampler,
@@ -268,11 +269,11 @@ def mix_underwater(
         under = underwater(g, scene, ground, sample, sample_rock, exposure, crowns)
         return wet_mix(lit, under, cover[..., None])
     optics = scene.get("water_optics")
-    taken = cast(PaintedScene, {
+    taken: UnderwaterScene = {
         "z_m": wet.take(scene["z_m"]),
         "water": wet.take_planes(scene["water"], UNDERWATER_TERMS),
         "water_optics": None if optics is None else wet.take_planes(optics),
-    })  # fmt: skip
+    }
     under = underwater(
         wet.take(g),
         taken,
@@ -280,7 +281,7 @@ def mix_underwater(
         lambda plane: wet.take(sample(plane)),
         lambda plane: wet.take(sample_rock(plane)),
         exposure,
-        None if crowns is None else cast(CrownLayer, wet.take_planes(crowns)),
+        None if crowns is None else wet.take_planes(crowns),
     )
     return wet.mix(lit, wet.take(lit), under, wet.take(cover)[..., None])
 
@@ -305,11 +306,11 @@ def _mix_compiled(
     scene, ground = surface
     sample, sample_rock, exposure = reads
     pixels = EveryPixel(wet.shape) if wet.whole else wet
-    water = cast(BandWater, pixels.take_planes(scene["water"], UNDERWATER_TERMS))
+    water = pixels.take_planes(scene["water"], UNDERWATER_TERMS)
     optics = scene.get("water_optics")
     in_place = ("tint", "body", "deep")
-    taken = None if optics is None else cast(ClassOptics, pixels.take_planes(
-        optics, [key for key in optics if key not in in_place]))  # fmt: skip
+    taken = None if optics is None else pixels.take_planes(
+        optics, [key for key in optics if key not in in_place])  # fmt: skip
     w = taken or ground.water
     depth = optical_depth(water, ground.palette["shore"].get("river"))[..., None]
     floor = w["inland_floor"] * (1.0 - water["ocean"])[..., None]
