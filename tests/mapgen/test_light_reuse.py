@@ -33,7 +33,7 @@ SIZE = 512
 #: The digest of ``_pinned_bake`` at each ``LIGHT_VERSION``.
 BAKE_PINS = {
     1: "sha256:a3ab7907b3b9572f99b2d05344d4b5c2022e26057a88babf5536424bc68745b6",
-    2: "sha256:834b9b5b3568f6d2ddf782bbcadfbb3019a605e224e6e5223b94dbba04ec13ef",
+    2: "sha256:84d0ec30c193892e4c5de03ae904c2d3ccedf8900b166a8f91c836c0e41c9482",
 }
 
 Planes = tuple[np.ndarray, np.ndarray]

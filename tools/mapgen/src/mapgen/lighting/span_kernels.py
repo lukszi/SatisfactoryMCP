@@ -32,31 +32,21 @@ _Runs: TypeAlias = tuple[I64Grid, I64Grid, I64Grid]
 
 
 @helper
-def _fmin(a: np.float32, b: np.float32) -> np.float32:
-    """``np.fmin``: the other where one is NaN."""
-    if np.isnan(a):
-        return b
-    if np.isnan(b):
-        return a
-    return min(a, b)
+def _higher(low: np.float32, high: np.float32, lo: F32Grid, hi: F32Grid, r: int,
+            c: int) -> tuple[np.float32, np.float32]:  # fmt: skip
+    """``(low, high)``, or pixel ``[r, c]``'s span where its top is higher."""
+    top = hi[r, c]
+    if top > high or (np.isnan(high) and not np.isnan(top)):
+        return lo[r, c], top
+    return low, high
 
 
 @helper
-def _fmax(a: np.float32, b: np.float32) -> np.float32:
-    """``np.fmax``: the other where one is NaN."""
-    if np.isnan(a):
-        return b
-    if np.isnan(b):
-        return a
-    return max(a, b)
-
-
-@helper
-def _quad(p: F32Grid, r: int, c: int, lowest: bool) -> np.float32:
+def _quad(lo: F32Grid, hi: F32Grid, r: int, c: int) -> tuple[np.float32, np.float32]:
     """``spans._quad`` at one pixel: the four pixels from ``[r, c]`` down and right."""
-    if lowest:
-        return _fmin(_fmin(p[r, c], p[r, c + 1]), _fmin(p[r + 1, c], p[r + 1, c + 1]))
-    return _fmax(_fmax(p[r, c], p[r, c + 1]), _fmax(p[r + 1, c], p[r + 1, c + 1]))
+    low, high = _higher(lo[r, c], hi[r, c], lo, hi, r, c + 1)
+    low, high = _higher(low, high, lo, hi, r + 1, c)
+    return _higher(low, high, lo, hi, r + 1, c + 1)
 
 
 @helper
@@ -162,8 +152,7 @@ def march_spans(
             for run in range(runs[0][qr], runs[0][qr + 1]):
                 a, b = _run_columns(runs, qr, qc, cols, run)
                 for j in range(a, b):
-                    low = _quad(lo_p, qr, qc + j, True)
-                    high = _quad(hi_p, qr, qc + j, False)
+                    low, high = _quad(lo_p, hi_p, qr, qc + j)
                     tl, th = _tangents(low, high, near[j], near_m, far_m)
                     seen[i, j] = True
                     if tl * weight <= top[j]:
@@ -213,8 +202,7 @@ def sky_view_spans(
                 for run in range(runs[0][qr], runs[0][qr + 1]):
                     a, b = _run_columns(runs, qr, qc, cols, run)
                     for j in range(a, b):
-                        low = _quad(lo_p, qr, qc + j, True)
-                        high = _quad(hi_p, qr, qc + j, False)
+                        low, high = _quad(lo_p, hi_p, qr, qc + j)
                         tl, th = _tangents(low, high, near[j], near_m, far_m)
                         if tl <= best[j]:
                             exact = _sample(tops, r + iy[d, s], halo + ix[d, s] + j, True, frac)

@@ -100,6 +100,21 @@ def test_without_spans_the_march_and_the_sky_view_are_the_plain_ones():
     assert spans.sky_view_spans(surface, sky, SP).tobytes() == hz.sky_view(z, sky, SP).tobytes()
 
 
+def test_a_low_slab_beside_a_high_deck_is_never_read_as_one_span():
+    col = HALO + 100
+    z = np.zeros((N, N), np.float32)
+    lo = np.full((N, N), np.nan, np.float32)
+    hi = np.full((N, N), np.nan, np.float32)
+    lo[:, col : col + 10], hi[:, col : col + 10] = 1.0, 2.0  # a slab at the receivers' feet
+    lo[:, col + 10 : col + 14], hi[:, col + 10 : col + 14] = 30.0, 34.0  # a deck beside it
+    surface = spans.span_surface(np.fmax(z, np.nan_to_num(hi)), z, lo, hi)
+    low, high = spans._quad(surface, (60, 61), (col + 9, col + 10), 0.0, 0.0)
+    assert (low[0, 0], high[0, 0]) == (30.0, 34.0)
+    bands = spans.march_spans(surface, HALO, EAST, SP)
+    on_slab = (60, col - HALO + 5)
+    assert bands.horizon[on_slab] < 45.0, "the deck floats over the slab: no wall from it"
+
+
 def test_the_runs_are_the_columns_whose_four_pixels_hold_a_span():
     rng = np.random.default_rng(5)
     z = np.zeros((40, 50), np.float32)
@@ -220,6 +235,13 @@ def test_the_slab_store_keeps_only_tiles_with_a_slab_and_reads_them_back(tmp_pat
     stood[56:312, 40:552] = z - 1
     assert (half.solid[floating] == downsample(stood)[floating]).all()
     assert (half.solid[~floating] == downsample(z_window)[~floating]).all()
+    two = SlabStore(tmp_path / "two")
+    stacked = SlabPlanes(np.zeros((256, 256), np.float32), np.full((256, 256), np.nan, np.float32),
+                         np.full((256, 256), np.nan, np.float32))  # fmt: skip
+    stacked.lo[0, 0], stacked.hi[0, 0], stacked.lo[1, 1], stacked.hi[1, 1] = 1.0, 2.0, 30.0, 34.0
+    two.put(0, 0, stacked)
+    cell = two.half((0, 256, 0, 256), np.zeros((128, 128), np.float32))
+    assert cell is not None and (cell.lo[0, 0], cell.hi[0, 0]) == (30.0, 34.0)
     found = store.full(window, z_window)
     assert found is not None
     solid, under = found

@@ -195,17 +195,24 @@ def span_steps(az_deg: float, spacing_m: float, fade: Fade) -> list[SpanStep]:
     return out
 
 
-def _quad(p: F32Grid, rows: tuple[int, int], cols: tuple[int, int], oy: float, ox: float,
-          lowest: bool) -> F32Grid:  # fmt: skip
-    """The lowest or highest of the four pixels around the sample, NaN ignored, as
-    ``bilinear`` reads them: a thin span is never stepped over on a diagonal."""
+def _quad(surface: SpanSurface, rows: tuple[int, int], cols: tuple[int, int], oy: float,
+          ox: float) -> tuple[F32Grid, F32Grid]:  # fmt: skip
+    """Of the four pixels around the sample, as ``bilinear`` reads them, the span whose top is
+    highest: its underside and top, NaN where none floats. A thin span is never stepped over
+    on a diagonal, and two spans side by side are never read as one."""
     (a, b), (c0, c1) = rows, cols
     iy, ix = int(np.floor(oy)), int(np.floor(ox))
-    pick = np.fmin if lowest else np.fmax
-    w, e = p[a + iy : b + iy, c0 + ix : c1 + ix], p[a + iy : b + iy, c0 + ix + 1 : c1 + ix + 1]
-    s = p[a + iy + 1 : b + iy + 1, c0 + ix : c1 + ix]
-    x = p[a + iy + 1 : b + iy + 1, c0 + ix + 1 : c1 + ix + 1]
-    return pick(pick(w, e), pick(s, x))
+
+    def at(p: F32Grid, dy: int, dx: int) -> F32Grid:
+        return p[a + iy + dy : b + iy + dy, c0 + ix + dx : c1 + ix + dx]
+
+    low, high = at(surface.lo, 0, 0), at(surface.hi, 0, 0)
+    for dy, dx in ((0, 1), (1, 0), (1, 1)):
+        top = at(surface.hi, dy, dx)
+        take = (top > high) | (np.isnan(high) & ~np.isnan(top))
+        low = np.where(take, at(surface.lo, dy, dx), low)
+        high = np.where(take, top, high)
+    return low, high
 
 
 def _tangents(lo: F32Grid, hi: F32Grid, near: F32Grid, near_m: np.float32,
@@ -239,11 +246,10 @@ def _span_step(surface: SpanSurface, strip: _Strip, step: SpanStep,
                target: tuple[np.float32, np.float32]) -> None:  # fmt: skip
     """One step's span samples over a strip: merged into the horizon, or into the band."""
     (a, b), (c0, c1) = strip.rows, strip.cols
-    low = _quad(surface.lo, strip.rows, strip.cols, step.oy, step.ox, lowest=True)
+    low, high = _quad(surface, strip.rows, strip.cols, step.oy, step.ox)
     found = np.isfinite(low)
     if not found.any():
         return
-    high = _quad(surface.hi, strip.rows, strip.cols, step.oy, step.ox, lowest=False)
     tl, th = _tangents(low, high, strip.near, step.near_m, step.far_m)
     strip.seen[...] |= found
     best = strip.best
@@ -276,11 +282,10 @@ def _degrees(t: NDArray[np.floating]) -> F32Grid:
     return np.degrees(np.arctan(t)).astype(np.float32)
 
 
-def _finish(
-    best: F32Grid, lo: F32Grid, hi: F32Grid, gap: np.float32
-) -> tuple[F32Grid, F32Grid, F32Grid]:
-    """A band ending within a sun disc above the horizon joins it; the rest float. Degrees."""
-    late = np.isfinite(lo) & (lo <= best + gap)
+def _finish(best: F32Grid, lo: F32Grid, hi: F32Grid) -> tuple[F32Grid, F32Grid, F32Grid]:
+    """A band reaching down to the horizon joins it; the rest float, however narrow the sky
+    beneath them, which the shade reads as the sun disc's share. Degrees."""
+    late = np.isfinite(lo) & (lo <= best)
     np.maximum(best, np.where(late, hi, best), out=best)
     floating = np.isfinite(lo) & ~late
     nan = np.float32(np.nan)
@@ -324,7 +329,7 @@ def march_spans(surface: SpanSurface, halo: int, az_deg: float, spacing_m: float
                 np.maximum(strip.best, rise, out=strip.best)
                 if spans_near:
                     _span_step(surface, strip, step, target)
-    horizon, band_lo, band_hi = _finish(best, lo, hi, target[1])
+    horizon, band_lo, band_hi = _finish(best, lo, hi)
     return Bands(horizon, band_lo, band_hi, seen)
 
 
@@ -408,11 +413,10 @@ def _sky_strip(surface: SpanSurface, rows: tuple[int, int], cols: tuple[int, int
             np.maximum(best, (zz - zc) * scale, out=best)
             if not spans_near:
                 continue
-            low = _quad(surface.lo, rows, cols, oy, ox, lowest=True)
+            low, high = _quad(surface, rows, cols, oy, ox)
             found = np.isfinite(low)
             if not found.any():
                 continue
-            high = _quad(surface.hi, rows, cols, oy, ox, lowest=False)
             near_m, far_m = np.float32(near_t * spacing_m), np.float32(far_t * spacing_m)
             tl, th = _tangents(low, high, zc, near_m, far_m)
             merge = found & (tl <= best)

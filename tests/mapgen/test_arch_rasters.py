@@ -146,6 +146,17 @@ def test_the_top_raster_keeps_the_arch_s_underside_and_the_boulders_apart():
     assert np.isnan(band.under[on_rock])
 
 
+def test_under_a_deck_that_crosses_another_the_underside_is_its_own():
+    upper = _box(0, 1000, 0, 1000, 3000, 3200)
+    lower = _box(0, 1000, 0, 1000, 800, 1000)
+    open_deck = _box(1200, 1500, 0, 1000, 900, 1000, bottom=False)
+    band = rasterise_top_band(_items([upper, lower, open_deck]), 0.0, 0.0, STEP_CM, 32, 80, 1)
+    crossing, shell = (_px(5), _px(5)), (_px(5), _px(13))
+    assert band.top[crossing] == pytest.approx(3200.0)
+    assert band.under[crossing] == pytest.approx(3000.0), "not the lower deck's 800"
+    assert band.under[shell] == pytest.approx(1000.0), "no surface below: the lowest, itself"
+
+
 def _deck(hole):
     top = np.full((40, 80), 1000.0, np.float32)
     top[hole] = np.nan

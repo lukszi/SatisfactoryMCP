@@ -1,6 +1,7 @@
 """The top raster: arches and foliage boulders on the render's grid, the arches kept apart.
 
-The arches are rasterised twice, their top (max-Z) and their underside (min-Z), and the holes
+The arches are rasterised for their top (max-Z) and their underside (the next surface down,
+else min-Z), and the holes
 their open mesh edges leave are filled (``terrain/archfill.py``); the boulders alone are the
 surface the arches stand over. docs/map/light-and-crowns.md section 29, "Arches as spans".
 """
@@ -21,6 +22,7 @@ from mapgen.cache import (
 )
 from mapgen.gamedata.maxz_raster import MaxZRaster
 from mapgen.terrain.archfill import fill_arch_holes
+from mapgen.terrain.overhangs import SAME_SURFACE_CM
 from mapgen.terrain.rasters import (
     TOP_FOLIAGE_BATCH,
     BandPlanes,
@@ -64,14 +66,20 @@ def arch_rasters(items: TopItems, origin: tuple[float, float, float], rows: int,
     """The arches' top and underside over ``rows`` from ``row0`` of the grid whose first
     texel is ``origin`` (x, y, step in cm), NaN where none.
 
-    The top is ``add_placements``' raster of the arches; the underside rasterises the same
-    triangles upside down, so the highest of them there is the lowest here.
+    The top is ``add_placements``' raster of the arches. The underside is the highest arch
+    surface ``SAME_SURFACE_CM`` or more below it: under a deck that crosses another, its own
+    underside, never the lower deck's. Where none is, it is the lowest surface, the same
+    triangles rasterised upside down.
     """
     x0_cm, y0_cm, step_cm = origin
     high = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0)
     low = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0)
     y_lo, y_hi = y0_cm + row0 * step_cm, y0_cm + (row0 + rows) * step_cm
     add_placements(high, items.arches, items.shapes, y_lo, y_hi)
+    top = high.result()[0]
+    ceiling = np.where(np.isfinite(top), top - np.float32(SAME_SURFACE_CM), -np.inf)
+    below = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0,
+                       ceiling=ceiling.astype(np.float32))  # fmt: skip
     for entry in items.arches:
         if entry.y_max_cm < y_lo or entry.y_min_cm > y_hi:
             continue
@@ -81,7 +89,9 @@ def arch_rasters(items: TopItems, origin: tuple[float, float, float], rows: int,
         tris = tris[(ty.max(1) >= y_lo) & (ty.min(1) <= y_hi)]
         if tris.size:
             low.add(world[tris] * np.array([1.0, 1.0, -1.0], world.dtype), entry.mesh_id + 1)
-    return high.result()[0], -low.result()[0]
+            below.add(world[tris], entry.mesh_id + 1)
+    under = below.result()[0]
+    return top, np.where(np.isfinite(under), under, -low.result()[0]).astype(np.float32)
 
 
 def _boulders(items: TopItems, x0_cm: float, y0_cm: float, step_cm: float, rows: int,

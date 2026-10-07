@@ -9,7 +9,6 @@ docs/map/light-and-crowns.md section 29, "Arches as spans".
 from __future__ import annotations
 
 import hashlib
-import warnings
 from pathlib import Path
 from typing import NamedTuple
 
@@ -35,23 +34,33 @@ class SlabPlanes(NamedTuple):
 
 
 class HalfSlabs(NamedTuple):
-    """A window's slabs at half resolution: the solid surface (2 x 2 mean), the lowest
-    underside and the highest top of each cell, NaN where nothing floats."""
+    """A window's slabs at half resolution: the solid surface (2 x 2 mean), and the underside
+    and top of each cell's highest span, NaN where nothing floats."""
 
     solid: F32Grid
     lo: F32Grid
     hi: F32Grid
 
 
-def _down(a: NDArray[np.floating], how: str) -> F32Grid:
+def _cells(a: NDArray[np.floating]) -> NDArray[np.floating]:
+    """``a`` as half-resolution cells of four: ``(h, w, 4)``, row by row within a cell."""
     h, w = a.shape[0] // 2, a.shape[1] // 2
-    cells = a[: 2 * h, : 2 * w].reshape(h, 2, w, 2)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)  # an all-NaN cell is empty
-        if how == "mean":
-            return np.mean(cells, axis=(1, 3)).astype(np.float32)
-        reduce = np.nanmin if how == "min" else np.nanmax
-        return reduce(cells, axis=(1, 3)).astype(np.float32)
+    return a[: 2 * h, : 2 * w].reshape(h, 2, w, 2).transpose(0, 2, 1, 3).reshape(h, w, 4)
+
+
+def _highest(lo: F32Grid, hi: F32Grid) -> tuple[F32Grid, F32Grid]:
+    """Per cell of four, the span whose top is highest (the first of equals): two spans side
+    by side are never read as one. NaN where none floats."""
+    tops = _cells(hi)
+    pick = np.argmax(np.where(np.isnan(tops), -np.inf, tops), axis=-1)[..., None]
+    low = np.take_along_axis(_cells(lo), pick, axis=-1)[..., 0]
+    high = np.take_along_axis(tops, pick, axis=-1)[..., 0]
+    return low.astype(np.float32), high.astype(np.float32)
+
+
+def _mean(a: NDArray[np.floating]) -> F32Grid:
+    h, w = a.shape[0] // 2, a.shape[1] // 2
+    return np.mean(a[: 2 * h, : 2 * w].reshape(h, 2, w, 2), axis=(1, 3)).astype(np.float32)
 
 
 class SlabStore:
@@ -105,10 +114,9 @@ class SlabStore:
             b0, b1 = max(col, c0), min(col + stack.shape[2], c1)
             part = stack[:, a0 - row : a1 - row, b0 - col : b1 - col]
             cells = (slice((a0 - r0) // 2, (a1 - r0) // 2), slice((b0 - c0) // 2, (b1 - c0) // 2))
-            lo[cells] = _down(part[1], "min")
-            hi[cells] = _down(part[2], "max")
+            lo[cells], hi[cells] = _highest(part[1], part[2])
             floats = np.isfinite(lo[cells])
-            solid[cells] = np.where(floats, _down(part[0], "mean"), solid[cells])
+            solid[cells] = np.where(floats, _mean(part[0]), solid[cells])
         return HalfSlabs(solid, lo, hi)
 
     def full(self, window: tuple[int, int, int, int], z: F32Grid) -> tuple[F32Grid, F32Grid] | None:
