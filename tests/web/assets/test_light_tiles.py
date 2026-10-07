@@ -117,7 +117,7 @@ def test_a_light_dir_outside_data_local_is_never_followed(client, tmp_path, monk
     assert client.get("/api/maptiles/terrain/0/0/0?kind=nrm").status_code == 404
 
 
-def test_the_render_preset_bakes_live_light_by_default_and_names_it():
+def test_the_render_preset_bakes_live_light_by_default_and_names_it(game):
     from satisfactory_mcp.domain.maps import axes, presets
 
     options = presets.normalise("render", {"size": 1024})
