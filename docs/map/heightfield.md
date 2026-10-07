@@ -9,13 +9,10 @@ files they are the map's ([the document set](../../DESIGN.md#the-document-set)).
 
 ## 19. The water channel, rebuilt out of the game's own water (2026-07-30)
 
-The heightmap's fifth stage used to be a flatness detector over the 2048 px interface raster.
-It found **20.4%** of the sheet as water against the artwork's 39.0% — 46.7% recall overall,
-**35.8% over Spire Coast** — and invented plateau lakes on flat mesas. The failures were
-structural rather than tunable: the raster's quantisation step is 3.9 m and the water it was
-asked to find is 2.1 m deep, a river is a metre of water in a groove it cannot resolve at all,
-and over the fill province the "terrain" the detector compared against **is** the water
-surface, so the depth it needed was identically zero.
+The water channel is not detected from the terrain: a flatness detector over the 2048 px
+interface raster found 35.8% of the Spire Coast's water and invented plateau lakes on flat
+mesas, because a river is a metre of water in a groove that raster cannot resolve, and over
+the fill province the raster holds the water surface itself.
 
 **Two sources, each asked only what it knows.** The four `SlicedMap` BC1 slices are the game's
 own drawing of its own world and its water is drawn blue, so `B - R >= 25` gives the plan
@@ -27,11 +24,12 @@ plane-backed blueprints whose cooked instance names no mesh, `WaterPlane`'s own
 `ExtendedBounds` (215) — each taken to world space through the composed `AttachParent` chain
 eight corners at a time, because 486 of them are rotated. **A box's top is the surface**: the
 save's 23 water extractors all sit inside a volume and stand on its box top to within
-**0.005 cm**.
+**0.005 cm**. One gate joins them: where the ground was measured at 1 m and stands at or above
+that level there is no water. That is a rock in a lake, and it takes 0.04 km² off the
+artwork's mask on build 495413.
 
-The channel goes from **9.589 km² to 18.248 km²**, against the artwork's 18.288. Spire Coast
-recall goes from 35.8% to **99.85%**, the invented plateau lakes are gone, and the ocean sits
-at −16.994 m, which is where all 31 ocean-spline boxes put it.
+The channel covers **18.248 km²**, against the artwork's 18.288. Spire Coast recall is
+**99.85%**, and the ocean sits at −16.994 m, which is where all 31 ocean-spline boxes put it.
 
 ### The level is per texel, not per body
 
@@ -48,61 +46,51 @@ of drawn water no box stands over at all.
 
 A level and a **depth** are different claims. The level comes from a box and is good to
 centimetres wherever there is water; the depth is that level minus the ground, and over the
-fill layer the ground is a 3.9 m raster that routinely rounds *above* a sea surface 17 m down.
-So the field gained a fourth raster — `0` dry, `1` water with a depth measured against 1 m
-terrain, `2` water whose level is known and whose depth is not — and 7.39 km² of the 18.25
-takes value 2.
+fill layer the ground is the interface raster, which holds the sea's own surface there, to
+within 0.7 m, rather than a bed. So `waterq.u8.z` says which: `0` dry, `1` water with a depth
+measured against 1 m terrain, `2` water whose level is known and whose depth is not. 7.39 km²
+of the 18.25 takes value 2.
 
-**Nothing may decide submersion with `water_m > z_m` any more.** That test reads the open
-ocean as dry, and it is what `Reading.submerged` used to do; it now asks the quality byte and
-falls back to the comparison only for a field written before that byte existed. `Reading.
-water_depth_m` is `None` where the depth is unknown rather than `max(…, 0)`, and the inspector
-prints the reason instead of a plausible `0 m deep`.
+**Nothing may decide submersion with `water_m > z_m`.** That test reads the open ocean as dry:
+3.572 km² of the 18.248. `Reading.submerged` asks the quality byte and falls back to the
+comparison only for a field written before that byte existed. `Reading.water_depth_m` is
+`None` where the depth is unknown rather than `max(…, 0)`, and the inspector prints the reason
+instead of a plausible `0 m deep`.
 
-The same rule binds `tools/gen_map_renders.py`, which reads the rasters directly, and
-**2026-07-31 it does**: submersion is the coverage of `waterq.u8.z != 0` sampled onto the
-output grid, the depth feather applies only to the share whose depth was measured, and a
-level-only texel is drawn at full alpha. Measured on the shipped field, the comparison it
-replaced read **3.572 km² of ocean out of 18.248 as dry** — that is what used to be missing
-from both renders.
+The renders, which read the rasters directly, obey the same rule: submersion is the coverage
+of `waterq.u8.z != 0` sampled onto the output grid, the depth feather applies only to the
+share whose depth was measured, and a level-only texel is drawn at full alpha. Level-only
+water is the ocean: 95.2% of it stands over the fill province and 98% of its surface levels
+lie in a 0.7 m band around the ocean's own −16.99 m. Running the depth ramp on
+`water_m − z_m` there would paint it the pale green of an ankle-deep sheet, so the renders
+subtract a drawn bed instead, continued from the measured one beside it (section 26); only
+`--kernel-only` and level-only water away from the ocean's level keep the deep end of the
+ramp.
 
-Level-only water is also tinted at the **deep** end of the ramp rather than the shallow one,
-and that is a measurement rather than a preference: 95.2% of it stands over the fill province
-and 98% of its surface levels lie in a 0.7 m band around the ocean's own −16.99 m. It is the
-ocean. Running the ramp on `water_m − z_m` there would paint it the pale green of an
-ankle-deep sheet, because the number being subtracted is a 3.9 m raster's rounding error.
-Since 2026-10-05 the renders subtract a drawn bed instead, continued from the measured one
-beside it (section 26); only `--kernel-only` and level-only water away from the ocean's level
-keep the deep tint.
-
-One thing the channel still cannot fix: beyond the landscape's own extent the field has no
-height *and* no water volume, so those texels stay no-data in the field. The renders used to
-paint them the page's `--sea`, and against bright water that edge drew straight lines across
-the sea. Since 2026-10-05 the renders draw them as the artwork does instead: its water as
-the open sea over a drawn bed, the rest as the void (section 26, "The open sea, the void and
-the pits"). The field itself is unchanged.
+Beyond the landscape's own extent the field has no height *and* no water volume, so those
+texels stay no-data in the field. The renders draw them as the artwork does: its water as the
+open sea over a drawn bed, the rest as the void (section 26, "The open sea, the void and the
+pits").
 
 ### Four gates, each aimed at a specific silent failure
 
 Dry-node false positives over 1% mean the colour classifier drifted or the sheet moved.
 Spire Coast recall under 95%, measured against the artwork over the `Spire Coast` cells of
-`data/region_names.json` — the game's own map areas, so still not this pipeline marking its own
-homework, and a sharper stencil than the wiki trace it replaced — means the region that exposed
-the old detector is being missed again. That stencil is a good deal smaller than it was, so the
-0.48% / 99.85% / 0.000 m / 0.0001% below are the last run's numbers over the old one and the next
-run re-measures them. An ocean
+`data/region_names.json` (the game's own map areas, so not this pipeline marking its own
+homework), means the region that exposed the old detector is being missed again. An ocean
 level more than 0.5 m from the median ocean-spline box top means the level is coming from the
 wrong volumes. And artwork water standing over no box at all, past 1%, means the mask and the
 volumes have stopped describing the same world, which is what a misregistration looks like
-from here. The run refuses to write if any of them fails. On build 495413 they measure
-0.48%, 99.85%, 0.000 m and 0.0001%.
+from here. The run refuses to write if any of them fails. On build 495413 they measured
+0.48%, 99.85%, 0.000 m and 0.0001%, the recall over the wiki-traced Spire Coast cells the
+region table had then; every run re-measures them.
 
 ## 22. Terrain z: three surfaces, a mapped cache, and the site's height (2026-10-05)
 
 The game ships its terrain in the cooked `LandscapeComponent`s: 2289 components of 128x128
-uint16 samples, 1 m apart, 7.8 mm vertical. `tools/gen_world_heightmap.py` has always fused
-them with the rock meshes and the 2048 px interface raster into `height.i16.z`. Generator v4
-writes two more planes beside it and changes nothing in the existing five.
+uint16 samples, 1 m apart, 7.8 mm vertical. `mapgen heightmap` fuses them with the rock
+meshes and the 2048 px interface raster into `height.i16.z`, and writes two more surfaces
+beside it.
 
 | Surface | File | What it is |
 | --- | --- | --- |
@@ -113,10 +101,48 @@ writes two more planes beside it and changes nothing in the existing five.
 **Ground stays the default** because it wins on every independent ground-truth set; `terrain`
 alone puts a factory under a mesa, and folding arches into `ground` puts it on a roof.
 
+### The planes on disk
+
+`data/local/heightmap/` holds the field. Every plane but `terrain.u16.z` is on one grid,
+vertex-aligned: a texel's value belongs to that point exactly, so a reader rounds to the
+nearest vertex. `x_cm = -324700 + col*100`, `y_cm = -375000 + row*100`, row 0 north.
+`meta.json` records that georeference, the planes' files and sha256s, and every source block
+below, per run.
+
+| File | What it holds |
+| --- | --- |
+| `height.i16.z` | World Z in int16 decimetres, row-delta coded and zlib'd; -32768 is no data |
+| `prov.u8.z` | Which layer answered: 0 no data, 1 landscape, 3 fill, 4 cliff interpolated, 5 cliff direct (a source vertex lies in the texel). A reader that knows only 4 reads 5 as cliff; `PROV_CLIFF_VALUES` holds both |
+| `density.u8.z` | Source vertices per texel, clamped at 255, zero outside the cliff layer |
+| `water.i16.z` | The water surface's Z (section 19), same grid and no-data value |
+| `waterq.u8.z` | 0 dry, 1 depth measured, 2 depth unknowable (section 19) |
+| `terrain.u16.z`, `top.i16.z` | The two surfaces in the table above |
+| `meta.json` | The georeference, the files, the sources, the accuracy each layer was measured to |
+
+**The sources.** The landscape is the cooked components. The **fill**, outside the landscape
+frame only, is the interface raster `HeightData_Test`, decoded from float16 by a fit against
+the 626 static nodes. Its no-data rule is a decoded height, not `raw > 0`: the blank value
+decodes to about -522.8 m, and the naive test leaks 138,481 texels of blank into the field as
+a false sea floor. The **cliff** layer folds the rock meshes max-Z onto the grid, each at the
+finest geometry it ships: the Nanite leaf, else LOD 0, else the cooked collision hull, over
+the set of meshes the hull defines. At the placement transform their median world triangle
+edges are 0.48 m, 1.33 m and 2.43 m. Over the whole layer, placement-weighted, the hull-built
+field measured 2.48 m and the Nanite field 0.48 m, eleven times the triangles; 73% of cliff
+texels hold a source vertex, which is what `prov` 5 and `density.u8.z` record. The two
+alternatives are refused for numbers kept in the sidecar's `sources.cliffs`: a Nanite-only
+layer loses the 25 rock meshes with no Nanite resource (sea rocks, corals, part of the cave
+set), about 365,000 texels; and the 120 meshes with no cooked hull are cave pillars, holes and
+floors, roofs that cost 1.66 points of the share within 0.25 m and 10.9 m of p90 on 839,506
+foliage probes.
+
+The server's reader is three layers in `domain/spatial/heightfield/`: `PlaneStore` opens the
+planes and the georeference, `FieldAreas` answers rectangle queries (`area`, `nearest_water`),
+and `Field` answers point lookups.
+
 ### Reading a point
 
-`Field.z(x_cm, y_cm, surface=..., hint_z_cm=None)` reads bilinear over the four vertices
-around the point. Two guards keep a blend from inventing ground: a no-data vertex, or four
+`Field.height_at(x_cm, y_cm, *, surface=..., hint_z_cm=None)` reads bilinear over the four
+vertices around the point. Two guards keep a blend from inventing ground: a no-data vertex, or four
 vertices spanning more than 2 m (a cliff edge), hand the answer to the heaviest valid vertex.
 On landscape texels the ground reading is replaced by the terrain plane's value when the two
 agree within 0.1 m, which is the decimetre rounding of the same sample.
@@ -134,11 +160,11 @@ pivot, not terrain. The cooked collision is the same 1 m grid at mip 0 (2,289 co
 `CollisionSizeQuads` 127, scale 1.0), and no Nanite, virtual-texture or displacement data
 exists, so nothing finer than 1 m horizontal and 7.8 mm vertical is in the game files.
 
-The rock and top rasters are sampled at the vertex, where the reader puts every value.
-Generator v4 sampled them at the texel centre, half a metre east and south of where they
-were read. On the save truth, v5 moves the bilinear `ground` median from 0.088 m to 0.052 m
-on cliff (prov 4) and from 0.161 m to 0.097 m on cliff direct (prov 5); landscape is unchanged
-and the roof tail (p90 about 50-90 m) does not move, because that is which surface, not where.
+The rock and top rasters are sampled at the vertex, where the reader puts every value, since
+generator v5. Sampled at the texel centre, half a metre east and south, the bilinear `ground`
+median on the save truth was 0.088 m against 0.052 m on cliff (prov 4) and 0.161 m against
+0.097 m on cliff direct (prov 5). The roof tail (p90 about 50-90 m) does not move, because
+that is which surface, not where.
 
 Every reading carries `terrain_z_m` (the bare landscape under the point) and `ambiguous`:
 ground more than 2 m above terrain, or rock over a landscape hole, so the answer may be a
@@ -177,11 +203,11 @@ file. A stored z is kept when a pad is resized in place; a moved pad is read aga
 
 | Lookup | All: median | All: p95 | Within 1 m | Landscape: median |
 | --- | --- | --- | --- | --- |
-| nearest vertex (`at`, before) | 0.084 m | 83.3 m | 81.7% | 0.058 m |
-| bilinear `ground` with refine | 0.055 m | 83.2 m | 81.9% | 0.024 m |
-| `terrain` alone | 0.119 m | 122.5 m | 61.9% | 0.024 m |
-| hint = truth z (oracle) | 0.045 m | 43.3 m | 88.5% | 0.024 m |
-| bilinear `ground`, generator v5 | 0.041 m | 83.0 m | 82.1% | 0.024 m |
+| nearest vertex | 0.084 m | 83.3 m | 81.7% | 0.058 m |
+| bilinear `ground` with refine, generator v4 | 0.055 m | 83.2 m | 81.9% | 0.024 m |
+| `terrain` alone, v4 | 0.119 m | 122.5 m | 61.9% | 0.024 m |
+| hint = truth z (oracle), v4 | 0.045 m | 43.3 m | 88.5% | 0.024 m |
+| bilinear `ground` with refine, generator v5 | 0.041 m | 83.0 m | 82.1% | 0.024 m |
 
 The tail is which surface is meant, never resolution. No one- or two-valued plane can hold
 a cave floor; section 23 flags where one is missing, and section 24 reads every surface on rock
@@ -196,7 +222,7 @@ surface as a cave point's height.
 
 ### The masks
 
-`tools/gen_world_heightmap.py --caves` sweeps the world once (6 s on build 502094) and writes
+`python -m mapgen caves` sweeps the world once (6 s on build 502094) and writes
 `data/local/caves/`: `caves.npz` (330 kB) and `meta.json`. It is its own directory, so a field
 can be regenerated or swapped without it. It reads the field at `--field` (default
 `data/local/heightmap/`), refuses to replace an existing directory without `--force`, and is
@@ -227,7 +253,7 @@ changes (checked at most once a second). No masks means `none` everywhere.
 
 ### Where it shows
 
-One line, from `caves.note`. Under `inside` the surface is named as the surface, never as the
+One line, from `cave_masks.note`. Under `inside` the surface is named as the surface, never as the
 answer: "in a cave: ground height unknown here (the surface above is 233 m)". Under `below`:
 "a cave lies under this point: the height given is the surface, not the cave floor". No
 ceiling is ever printed; nothing measured supports one.
@@ -262,7 +288,7 @@ Section 24 adds cave floors where a hint exists.
 
 ## 24. Rock heights from the collision surface (2026-10-05)
 
-Two surfaces, two jobs. The map draws the visible rock (the Nanite surface, `gen_map_renders`).
+Two surfaces, two jobs. The map draws the visible rock (the Nanite surface, `mapgen renders`).
 Every programmatic height reads the **collision** surface, the one the player and the build gun
 stand on: the siting z, `describe_location`, `whereami`, the inspector. The two differ by more
 than 0.5 m on 12.5% of rock-top, and by more than that at cliff edges, where a 1 m raster of
@@ -270,7 +296,7 @@ either smears.
 
 ### The collision pack
 
-`tools/gen_world_heightmap.py --rocks` adds `rocks.npz` and `rocks.json` to the field at
+`python -m mapgen rocks` adds `rocks.npz` and `rocks.json` to the field at
 `--field` (default `data/local/heightmap/`) and touches nothing else there; a full run writes
 them with the planes. It refuses a field cut from another build, and an existing pack without
 `--force`. On build 502094: 24 s, 15.4 MB.
@@ -291,8 +317,8 @@ records the counts.
 
 ### The index
 
-`rocks.RockIndex` cuts the pack into 64 m world tiles the first time a point in one is asked
-about: the placements whose box overlaps, transformed to world, kept per triangle where the
+`collision_pack.RockIndex` (`domain/spatial/heightfield/`) cuts the pack into 64 m world
+tiles the first time a point in one is asked about: the placements whose box overlaps, transformed to world, kept per triangle where the
 triangle's plan overlaps the tile, flagged up-facing from the winding and the placement's
 handedness (an open shell counts both ways), and binned into 1 m cells. Tiles live in an LRU
 of 64 MB, about 35 dense cliff tiles. `hits(x, y)` intersects the vertical line with the cell's
@@ -304,7 +330,7 @@ The planes keep every job they had; the pack only answers on rock.
 
 - **Landscape** (no cliff vertex in the point's quad, no hint, `ground`): the fast path of
   section 22, untouched.
-- **Rock, `top`, or any hint:** `Field.collision` reads the hits. `ground` is the highest of the
+- **Rock, `top`, or any hint:** `Field.collision_surfaces` reads the hits. `ground` is the highest of the
   landscape (on the engine's triangles) and the up-facing `rock` hits; `top` the highest of
   every up-facing hit; every other up-facing hit is a `floor`. Without a hint the answer is
   `ground`, and `ambiguous` keeps its meaning: more than 2 m over the landscape.
@@ -347,7 +373,7 @@ every plane.
   5 cm of the visible surface (median 1.8 cm, collision 23 cm). Creature drops go the other way
   (5 of 6 closer to collision). Too few to overturn the decision; worth an in-game check.
 
-Timings on the reference machine, `Field.z` end to end: landscape 27 µs median (unchanged);
-rock warm 62 µs median, 75 µs p95 (24 µs before); `hits` alone 26 µs. A tile's first touch
+Timings on the reference machine, `Field.height_at` end to end: landscape 27 µs median; rock
+warm 62 µs median, 75 µs p95 (24 µs from the planes alone); `hits` alone 26 µs. A tile's first touch
 costs 22 ms median, 37 ms p95 in a dense cliff area (1.9 MB a tile), 9 ms median over scattered
 points. Loading the pack takes 0.1 s and 25 MB.
