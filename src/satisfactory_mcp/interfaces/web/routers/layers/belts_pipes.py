@@ -16,7 +16,7 @@ from .....core.saveio import rows as saverows
 from .....core.saveio.schema import PipeNetwork
 from .....domain.world.flow import PipeFlow
 from .....domain.world.state import WorldState
-from ...serial import cm_to_m, object_rows, placement_fields, require_world
+from ...serial import PlacementFields, cm_to_m, object_rows, placement_fields, require_world
 
 __all__ = ["router"]
 
@@ -69,23 +69,13 @@ class BeltRow(TypedDict):
     curve_m: RouteCurveM
 
 
-class AttachmentRow(TypedDict):
+class AttachmentRow(PlacementFields):
     """A splitter or a merger: a piece of the belt network, drawn by the belt layer.
 
     ``cls`` and ``name`` are not nullable: an attachment is an actor record. The coordinates
     are null where the transform did not decode, ``yaw`` where the projection predates schema
     12, and ``w_m``/``l_m`` for a class the dump has no entry for.
     """
-
-    instance_leaf: str
-    cls: str
-    name: str
-    x_m: float | None
-    y_m: float | None
-    z_m: float | None
-    yaw: float | None
-    w_m: float | None
-    l_m: float | None
 
 
 class BeltsResponse(TypedDict):

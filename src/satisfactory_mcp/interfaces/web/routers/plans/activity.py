@@ -16,7 +16,7 @@ from typing_extensions import TypedDict
 
 from .....domain.planning.stored.planlog import PlanLog
 from .....domain.session import focus, journal
-from .....domain.session.views import JournalEntry
+from .....domain.session.views import FocusSelection, JournalEntry
 from ...serial import ActorBody, actor_json, error_response, plan_log, require_world
 
 __all__ = ["router"]
@@ -24,10 +24,8 @@ __all__ = ["router"]
 router = APIRouter(prefix="/api")
 
 
-class Selection(TypedDict):
-    kind: str
-    label: str
-    ref: str
+class Selection(FocusSelection):
+    pass
 
 
 class FocusBody(TypedDict):

@@ -15,6 +15,7 @@ import argparse
 import importlib
 import sys
 from pathlib import Path
+from typing import TypedDict
 
 #: The repository checkout: tools/mapgen/src/mapgen/common.py is four levels below it.
 ROOT = Path(__file__).resolve().parents[4]
@@ -89,6 +90,13 @@ def _installed_version(distribution: str) -> str:
         return version(distribution)
     except Exception:
         return "unknown"
+
+
+class ReaderStamp(TypedDict):
+    """What a cache read off the game must agree with to be read: the build and the reader."""
+
+    game_version_pinned: str | None
+    reader_version: int
 
 
 class Refusal(Exception):

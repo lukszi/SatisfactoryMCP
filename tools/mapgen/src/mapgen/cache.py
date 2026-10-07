@@ -19,7 +19,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mapgen.bandstore import BandArray, BandWriter
-from mapgen.common import RENDERS_DIR_NAME
+from mapgen.common import RENDERS_DIR_NAME, ReaderStamp
 from satisfactory_mcp.core.arrays import F32Grid
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
@@ -155,13 +155,6 @@ class MeshStamp(TypedDict):
     reader_version: int
 
 
-class RiverStamp(TypedDict):
-    """``river_stamp``: the river cache's key."""
-
-    game_version_pinned: str | None
-    reader_version: int
-
-
 #: A mesh raster as ``mesh_pass`` hands it on: ``(z cm, class)``, and the family plane when
 #: the cache has one. ``MeshPlanes`` names the same once its readers take it.
 MeshMaps: TypeAlias = tuple[Plane, Plane] | tuple[Plane, Plane, Plane]
@@ -199,7 +192,7 @@ def mesh_stamp(size: int, build: str | None, reader_version: int) -> MeshStamp:
     return {"size": int(size), "game_version_pinned": build, "reader_version": int(reader_version)}
 
 
-def river_stamp(build: str | None, reader_version: int) -> RiverStamp:
+def river_stamp(build: str | None, reader_version: int) -> ReaderStamp:
     return {"game_version_pinned": build, "reader_version": int(reader_version)}
 
 
@@ -274,7 +267,7 @@ def write_sidecar(path: Path, recorded: Mapping[str, object], indent: int | None
         raise
 
 
-def write_rivers(directory: Path, stamp: RiverStamp, rivers: Sequence[Mapping[str, object]],
+def write_rivers(directory: Path, stamp: ReaderStamp, rivers: Sequence[Mapping[str, object]],
                  boxes: Iterable[tuple[str, Iterable[float]]]) -> dict[str, object]:  # fmt: skip
     """``rivers.json``: the river splines and the water boxes, as ``[name, [x0..z1]]`` pairs."""
     payload: dict[str, object] = {
@@ -366,7 +359,7 @@ def cached_mesh_family(directory: Path, stamp: MeshStamp) -> Plane | None:
     return _single(_planes(directory, stamp, (MESH_FAMILY_NAME,)))
 
 
-def cached_rivers(directory: Path, stamp: RiverStamp) -> JsonObject | None:
+def cached_rivers(directory: Path, stamp: ReaderStamp) -> JsonObject | None:
     """``write_rivers``' ``{"stamp", "rivers", "boxes"}`` if the cache is this one, else ``None``."""
     recorded = _read_json(directory / RIVER_CACHE_NAME)
     if not isinstance(recorded, dict):

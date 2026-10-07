@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import cast
 
 import numpy as np
 
 from mapgen.gamedata.level.sweep import Sweep
-from mapgen.gamedata.water.falls import load_or_sweep_falls
+from mapgen.gamedata.water.falls import FallRecord, load_or_sweep_falls
 from mapgen.palette.scene import FloatGrid, field_heights
 from mapgen.palette.schema import FallsStyle
 from mapgen.palette.styles import PAINTED_PALETTE, SATELLITE_PALETTE
@@ -25,7 +25,6 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 __all__ = [
     "FALL_STYLES",
     "MIN_DROP_M",
-    "FallRecord",
     "draw_falls",
     "load_falls",
     "prepare_falls",
@@ -53,20 +52,6 @@ _ACROSS = (-0.4, -0.2, 0.0, 0.2, 0.4)
 #: The columns of a drawable fall's row (``prepare_falls``), in order: the lip, the unit
 #: vectors along and out of it, its half width and top length, the landing and the base.
 _X, _Y, _HALF_WIDTH, _TOP_LEN = 0, 1, 7, 8
-
-
-class FallRecord(TypedDict):
-    """One waterfall as the sweep records it: the lip, its directions and size, the splashes."""
-
-    x: float
-    y: float
-    z: float
-    along: list[float]
-    out: list[float]
-    width_m: float
-    height_m: float
-    top_len_m: float
-    splash: list[list[float]]
 
 
 def _surface_at(field: hf.Field, x_m: F64Grid, y_m: F64Grid) -> tuple[F64Grid, F64Grid]:
