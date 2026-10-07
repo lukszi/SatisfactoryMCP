@@ -66,6 +66,25 @@ twice: over 0.9 m of depth (`WATER_EDGE_M`), which handles a beach, and by a 0.7
 depth band to blend in. The blur is in metres, so the sheet's size does not change how much
 ground it means.
 
+### The noise, read between its cells (2026-10-07)
+
+The two octaves are fields of 256 and 1024 texels over the 7500 m square, so their cells are
+29.3 m and 7.3 m. `terrain/sample.py` `sample_noise` read them nearest, so every cell was a
+flat square with a step at its edge: a quilt of 29 m and 7.3 m blocks on every flat of the
+satellite layer, steps of about 1 to 2% in brightness (sweep class 10, auto #4). Each octave is
+now read between its texel centres, wrapping, with smoothstep weights: the value at a cell's
+centre is the field's, and the slope is continuous across its edge, so no cell edge draws a
+line. The fields, their seed and their amounts are unchanged; the spread of the noise moves by
+a few percent.
+
+Nothing changed in the noise between the sixth and the seventh render. The archived crops
+of the Dune Desert (`render-archive/biome-dune-desert`) show the same 29 m blocks in the
+fifth and sixth renders under a contrast stretch: those drew the 45° north-west hillshade into
+the colour, and its stronger shading hid them. The seventh draws the satellite layer unlit
+under the live sun (section 29), whose high noon sun leaves a flat nearly flat, so the
+blocks stood out. Each pixel still reads the noise at its own place in the sheet, so a band,
+a piece or a thread count cannot move it. Since satellite 10.
+
 ### Layers on the serving side
 
 * **`/api/maptiles/{z}/{x}/{y}` is an alias for `map`.** Not a redirect and not a
