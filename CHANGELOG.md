@@ -122,7 +122,8 @@ Planned as 0.2.0.
   (`light.kept/`: the pyramid's tiles as hard links, and the default-sun terms, 3.2 GB at full
   size). A palette-only restyle that draws the same surface installs that light instead of
   baking it again, about 14 minutes less at full size, and the Maps tab budgets it so. The
-  light's `meta.json` records the `key` it was baked under; the tiles are the same bytes.
+  Maps tab's estimate counts those terms in what a job keeps. The light's `meta.json` records
+  the `key` it was baked under; the tiles are the same bytes.
 - Map generator: each band is drawn in pieces of 512 columns, several pieces at once on the
   draw's threads (`--draw-columns` sets the width). On 8 threads the draw's peak memory falls
   from about 15 GB to about 2 GB, so free memory no longer cuts the thread count, and the five
@@ -135,9 +136,9 @@ Planned as 0.2.0.
   the light are the same bytes. A light kept before this is baked again once.
 - Map generator: `--gpu` runs the light's horizon march and sky view as CUDA kernels. It
   needs the new `gpu` extra (CuPy and its NVRTC) and an NVIDIA driver, and a run where they
-  cannot work is refused at once with exit code 2. The CPU path stays the default, and the
-  tiles are the same bytes either way; a full-size light block's ground horizons take about
-  3 s instead of 8.
+  cannot work is refused at once with exit code 12, its own, and the reason on stdout. The
+  CPU path stays the default, and the tiles are the same bytes either way; a full-size light
+  block's ground horizons take about 3 s instead of 8.
 - Map generator: a render whose light scratch another running render holds is refused with
   exit code 11 and the reason on stdout (it was exit 1 on stderr). The render sidecar's
   `cliff_geometry.placements_dropped` counts the passable `CliffPillar_03` as `excluded_mesh`

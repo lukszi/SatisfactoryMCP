@@ -395,7 +395,6 @@ it writes. The codes are constants beside the stage that raises them.
 | Exit | Constant | When |
 | --- | --- | --- |
 | 1 | `render/inputs.NO_CONTAINER` | the game's container is not at `--game` |
-| 2 | `jit.add_gpu_flag` | `--gpu` and the CUDA kernels cannot run here: numba, CuPy or a device is missing (section 41, "On the GPU") |
 | 3 | `render/inputs.STALE_LAYER` | a layer folder holds tiles this run cannot show were drawn from the field on disk; `--force` replaces them |
 | 4 | `render/inputs.NO_FIELD` | there is no heightfield |
 | 5 | `render/inputs.PARALLEL_MISMATCH` | `--check-parallel` found the parallel cutter's bytes differ from the serial one's |
@@ -405,6 +404,7 @@ it writes. The codes are constants beside the stage that raises them.
 | 9 | `render/inputs.RESTYLE_MISS` | `--restyle` and a kept raster cache is missing or was cut for another size, sub-sampling or build |
 | 10 | `render/inuse.IN_USE` | the output folder holds a map type the server's registry lists; `--overwrite-in-use` writes anyway |
 | 11 | `render/light.SCRATCH_IN_USE` | the light's scratch is held open by a render still running (section 29, "Scratch") |
+| 12 | `jit.GPU_UNAVAILABLE` | `--gpu` and the CUDA kernels cannot run here: numba, CuPy or a device is missing (section 41, "On the GPU"); not 2, which argparse gives a usage error |
 | 1 | `commands/renders.CUT_FAILED` | the tiles could not be cut into place |
 
 A raster cache carries the size, the sub-sampling and the build it was rasterised for, so a
@@ -750,11 +750,11 @@ kernels on the same pixels (section 41, "The painters").
 The render's raster caches (`direct.cache`, `top.cache`, `meshes.cache`, `titan.cache`) are a
 zstd band store, 0.93 GB at 32768 against 18.5 GB as raw memory maps, which the render reads
 directly: nothing is inflated back to a raw file first. Each plane is written once, top to
-bottom in 256-row bands, and every layer then reads it top to bottom again, rows
-`[top - 8, top + 264)` per band. Two other reads exist: the family plane's strided row
-gather, once per run, and the Titan raster's half-resolution window. Nothing reads them at
-random. The planes round-trip bit for bit, so the tiles are the same bytes as from a raw
-cache.
+bottom in 256-row bands, and the draw's one pass (section 40, "One pass for every layer")
+then reads it top to bottom again, once for all the layers, rows `[top - 16, top + 272)` per
+band (section 40, "The halo"). Two other reads exist: the family plane's strided row gather,
+once per run, and the Titan raster's half-resolution window. Nothing reads them at random.
+The planes round-trip bit for bit, so the tiles are the same bytes as from a raw cache.
 
 ### Measured (2026-10-06, the renders-v5 caches, build 502094)
 
@@ -802,19 +802,20 @@ raw cache. `cached_raster`, `cached_family` and `cached_meshes` go through it, a
 trees through `cached_meshes`.
 
 - `BandArray` decodes a band when it is first asked for and keeps the last three. A band
-  loop read spans three bands at most, in order, so each band is decoded once per layer.
-  A layer drawn on threads (section 40) shares each `BandArray` between them: a lock covers
-  the cache and the decoder, one per plane, and while the layer is drawn the plane keeps
-  `2 × threads + 2` bands, the bands in flight and a halo band either side.
+  loop read spans three bands at most, in order, so each band is decoded once a run, for
+  every layer the pass draws. The pass's threads (section 40) share each `BandArray`: a lock
+  covers the cache and the decoder, one per plane, and while the pass is drawn the plane
+  keeps the bands its pieces in flight span and a halo band either side (section 40, "The
+  band stores").
 - It takes a row, a row slice, or an integer array of rows, then any column index. The
   family gather is decoded band by band. Results are read-only, as the memory maps' were.
   Asked for as a whole array it decodes into a new one, so `__array__(copy=False)` raises
   `ValueError`: there is no view to share.
 - It opens the file for each band and holds no handle between reads. Clearing the cache
   through `DELETE /api/maps/cache` is refused while a job runs, so no reader loses a file.
-- At 32768 this costs about 10 s more CPU per layer, and about 0.45 GB more memory for three
-  decoded bands of each plane: 96 MB for a float32 plane. It saves about 2 min of reading
-  from a cold disk.
+- At 32768 this costs about 10 s more CPU a run, which reads the planes once, and about
+  0.45 GB more memory for three decoded bands of each plane: 96 MB for a float32 plane. It
+  saves about 2 min of reading from a cold disk.
 
 ### A damaged cache
 
@@ -1234,10 +1235,13 @@ own, with no fused multiply-add (`colour.weighted_channels`).
   reference, bit for bit; pinned bits for colours whose fused orders round elsewhere; the
   tone shoulder and OKLab both ways at 33,000 columns, whole and in pieces of 32,768, 16,385
   and 7 on 1 and 4 threads; a painted band 16,500 pixels long and a relief band drawn whole
-  and in pieces; the 3 × 3 mean against scipy; and that no `@`, `dot`, `matmul`, `einsum`,
-  `tensordot`, `inv`, `solve` or `cg` is left in `colour.py`, `render/`, `palette/`,
-  `lighting/` and `terrain/sample.py` but the open sea's membrane, whose `@` is a sparse
-  product (below). The two band tests fail with the old luminance.
+  and in pieces; a pass of all five layers over a band of the full-size sheet 16,500 columns
+  wide, drawn whole and in pieces of 16,385 and 512 (`--draw-columns`) to the same bytes; the
+  3 × 3 mean against scipy; and that no `@`, `dot`, `matmul`, `einsum`, `tensordot`, `inv`,
+  `solve` or `cg` is left in `colour.py`, `render/`, `palette/`, `lighting/` and
+  `terrain/sample.py` but the open sea's membrane, whose `@` is a sparse product (below). The
+  two band tests fail with the old luminance. The pass does not: rounded to bytes, the old
+  order moved about one pixel in 10^8 (11 of the full-size sheet's, "Column pieces" above).
   `tests/mapgen/test_fixed_solve.py`: `fixed_sum` against its order one Python float at a
   time, `jacobi_cg` against scipy's `cg`, and a membrane solved in processes at 1, 4 and the
   default BLAS threads to one digest, where scipy's `cg` gave three.
@@ -1544,8 +1548,9 @@ bytes either way.
 - **The switch.** `--gpu` sets `MAPGEN_KERNELS=cuda`, which the light's processes inherit;
   setting it by hand does the same. `jit.gpu_on()` says CUDA where the switch says `cuda`
   and numba's kernels are on. `--gpu` checks at once, in under a second, that numba and CuPy
-  import and that a kernel compiles and loads on a device, and refuses with exit code 2 and
-  the reason when one does not: a run never finds out at its light. The reference and
+  import and that a kernel compiles and loads on a device, and refuses with exit code 12
+  and the reason on stdout when one does not (section 20, "Refusals"): a run never finds out
+  at its light. The reference and
   numba's path never import CuPy; a test holds that.
 - **What it needs.** The `gpu` extra: CuPy (`cupy-cuda12x`) and NVRTC from
   `nvidia-cuda-nvrtc-cu12`, both pinned, on Windows or Linux on x86-64, and an NVIDIA
