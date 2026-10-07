@@ -161,6 +161,7 @@ be traced to the axis it should move.
 | `common.py` | | Repository root, `data/local`, the default game path, the shared argument parser |
 | `colour.py` | | sRGB, linear light and OKLab, the luminance weights and the flat light |
 | `pools.py` | | What a pool of workers may take: the free memory, and one BLAS thread in each worker |
+| `jit.py` | | The kernel switch: numba-compiled loops, or the numpy they equal bit for bit (`MAPGEN_KERNELS=numpy`) |
 | `cache.py` | | The stamped caches (direct, top, meshes, Titan trees, rivers) and how a raster cache is stored: band store or raw memory maps. The on-disk names and stamps are unchanged. |
 | `bandstore.py` | | The zstd band store: `BandWriter` and the read-only `BandArray` |
 | `commands/renders.py` | | The renders orchestrator: arguments, refusals, stage order |
@@ -203,6 +204,7 @@ be traced to the axis it should move.
 | `terrain/heightfield/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
+| `terrain/kernels.py` | renderer | The resampling gathers compiled by numba |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid |
 | `terrain/render_meshes.py` | renderer | The render-only meshes and the Titan trees on the output grid |
 | `terrain/crown_stamp.py` | renderer | Tree crowns stamped into a band of the output grid |
@@ -211,6 +213,7 @@ be traced to the axis it should move.
 | `lighting/borrow.py` | light | The artwork borrow and its sidecar record |
 | `lighting/sun.py`, `model.py` | light | The game's sun path and default; the live-light model and its reference |
 | `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the stage that writes the lighting pyramid |
+| `lighting/kernels.py` | light | The horizon march and the sky view compiled by numba |
 | `lighting/occluders.py` | light | The canopy-top occluder raster the horizons take |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `palette/styles.py` | style | Palette loading, digests, the colour painters and their height ramp |

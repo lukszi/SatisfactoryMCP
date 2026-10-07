@@ -1,7 +1,7 @@
 """Every relative link, anchor and section reference in the docs resolves.
 
 Section numbers are the spec's: DESIGN.md, "The document set", says which file holds which,
-and the map's §17 to §40 resolve through the index in docs/spatial-and-map.md. Anchors are
+and the map's §17 to §41 resolve through the index in docs/spatial-and-map.md. Anchors are
 GitHub's heading slugs, so a renamed heading breaks every link to it.
 """
 
@@ -21,7 +21,7 @@ from tests.support.paths import REPO_ROOT
 DOCS = REPO_ROOT / "docs"
 DESIGN = REPO_ROOT / "DESIGN.md"
 MAP_INDEX = DOCS / "spatial-and-map.md"
-MAP_INDEX_TITLE = "Sections 17 to 40: the map"
+MAP_INDEX_TITLE = "Sections 17 to 41: the map"
 #: The documents DESIGN.md's table gives section numbers to, the map's folder aside.
 SPEC_DOCS = [
     DESIGN,

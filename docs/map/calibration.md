@@ -1,7 +1,7 @@
 # Colour calibration of the game-painted style
 
 Section 31 of the [design spec](../../DESIGN.md): the targets the game-painted style is calibrated to,
-and how they were measured. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-40-the-map).
+and how they were measured. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-41-the-map).
 
 ## 31. Colour calibration of the game-painted style (2026-10-05)
 

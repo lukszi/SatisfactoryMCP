@@ -2,7 +2,7 @@
 
 Sections 29 and 36 of the [design spec](../../DESIGN.md): the lighting pyramid the page relights, and
 the tree crowns drawn on the painted layer and cast into it. A section number below
-resolves through the [map's index](../spatial-and-map.md#sections-17-to-40-the-map).
+resolves through the [map's index](../spatial-and-map.md#sections-17-to-41-the-map).
 
 ## 29. Live sun light (2026-10-05)
 

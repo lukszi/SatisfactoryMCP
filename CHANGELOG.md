@@ -91,6 +91,12 @@ Planned as 0.2.0.
   seventh of the CPU for about 7% more bytes, and the light's lossless normal tiles at WebP
   effort 2 instead of 4, 2.6 times faster for about 6% more. The tiles decode to the same
   pixels; their files are not the same bytes as before.
+- Map generator: the light's horizon march and sky view, and the sampler's resampling, run
+  as loops compiled by numba, now in the `gen` extra (`uv sync --extra gen`). A full-size
+  light block's horizons and sky view take about 8 s instead of 91 s, and the five layers'
+  full-size draw about 22% less, about 7 minutes on 8 threads. The tiles are the same bytes.
+  Without numba, or with `MAPGEN_KERNELS=numpy`, the generator runs the numpy code as before.
+  The first run compiles the loops, about 3 s, and keeps them beside the code.
 - The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
   render of all five layers with the light is budgeted at about 68 minutes, the default two
   layers at about 44.
