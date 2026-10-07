@@ -9,12 +9,17 @@ and 31 have the measurements.
 
 from __future__ import annotations
 
-import struct
+from typing import TypedDict
 
 import numpy as np
 
-from mapgen.gamedata.placements import placement_material
-from satisfactory_mcp.core.gameassets.packages import PackageView, property_tags
+from mapgen.gamedata.install import open_package
+from mapgen.gamedata.level.sweep import Sweep
+from mapgen.gamedata.materials import material_parent, texture_parameters, vector_parameters
+from mapgen.gamedata.placements import PLACEMENT_MESH, placement_material
+from satisfactory_mcp.core.arrays import U8Grid
+from satisfactory_mcp.core.gameassets.iostore import IoStore
+from satisfactory_mcp.core.gameassets.packages import AssetIndex, ScriptObjects
 
 __all__ = [
     "FAMILIES",
@@ -23,11 +28,9 @@ __all__ = [
     "TARGET_ONLY",
     "TINT_PARAMETER",
     "TOP_TEXTURE_PARAMETERS",
-    "family_of",
+    "FamilyResolver",
+    "FamilySource",
     "family_sources",
-    "material_params",
-    "material_parent",
-    "mesh_material",
     "placement_families",
     "worn_family",
 ]
@@ -57,123 +60,120 @@ TOP_TEXTURE_PARAMETERS = ("Far Albedo", "Albedo")
 MAX_CHAIN = 8
 
 
-def material_params(view) -> tuple[dict[str, tuple], dict[str, str]]:
-    """A material instance's vector and texture parameters, by parameter name."""
-    props = view.props(0)
-    vectors: dict[str, tuple] = {}
-    textures: dict[str, str] = {}
-    for key, out in (("VectorParameterValues", vectors), ("TextureParameterValues", textures)):
-        payload = props.get(key, b"")
-        count = struct.unpack_from("<I", payload, 0)[0] if len(payload) >= 4 else 0
-        pos = 4
-        for _ in range(count):
-            tags, pos = property_tags(payload, view.pkg.names, pos)
-            name, value = None, None
-            for tag, kind, raw, _v in tags:
-                if tag == "ParameterInfo" and kind == "StructProperty":
-                    inner, _end = property_tags(raw, view.pkg.names, 0)
-                    name = next(
-                        (view.read_fname(r) for k, ik, r, _iv in inner if k == "Name"), name
-                    )
-                elif tag == "ParameterValue" and len(raw) == 16 and key.startswith("Vector"):
-                    value = tuple(float(v) for v in struct.unpack("<4f", raw)[:3])
-                elif tag == "ParameterValue" and key.startswith("Texture"):
-                    value = view.import_path(raw)
-            if name and value:
-                out[name] = value
-    return vectors, textures
+class FamilySource(TypedDict):
+    """Where a cliff family's colours come from: its root material, tint and top texture."""
+
+    material: str
+    tint: tuple[float, float, float] | None
+    top_texture: str | None
 
 
-def material_parent(view) -> str | None:
-    """The ``Parent`` a material instance names, or ``None`` for a base material."""
-    raw = view.props(0).get("Parent")
-    return view.import_path(raw) if raw else None
+class FamilyResolver:
+    """The family a mesh or material wears, each package read once per resolver.
 
+    ``by_mesh`` (a mesh's own first material) and ``by_material`` (a material's family
+    code) are the caches; a caller may pass its own to keep them across resolvers.
+    """
 
-def _view(store, scripts, index, package: str):
-    path = index.path_for(package)
-    if not path:
-        return None
-    try:
-        return PackageView(store.read_path(path), scripts)
-    except Exception:  # an unreadable material is a rock with no family, not a failed run
-        return None
+    def __init__(
+        self,
+        store: IoStore,
+        scripts: ScriptObjects,
+        index: AssetIndex,
+        by_mesh: dict[str, str | None] | None = None,
+        by_material: dict[str, int] | None = None,
+    ) -> None:
+        self.store, self.scripts, self.index = store, scripts, index
+        self.by_mesh: dict[str, str | None] = {} if by_mesh is None else by_mesh
+        self.by_material: dict[str, int] = {} if by_material is None else by_material
 
+    def family_of(self, material: str | None) -> int:
+        """The family code a material belongs to, by walking its parents to a family root."""
+        if not material:
+            return 0
+        if material in self.by_material:
+            return self.by_material[material]
+        code, current = 0, material
+        for _ in range(MAX_CHAIN):
+            leaf = current.rsplit("/", 1)[-1]
+            if leaf in FAMILY_ROOTS:
+                code = FAMILIES.index(FAMILY_ROOTS[leaf])
+                break
+            view = open_package(self.store, self.scripts, self.index, current)
+            parent = material_parent(view) if view is not None else None
+            if not parent:
+                break
+            current = parent
+        self.by_material[material] = code
+        return code
 
-def family_of(store, scripts, index, material: str | None, cache: dict) -> int:
-    """The family code a material belongs to, by walking its parents to a family root."""
-    if not material:
-        return 0
-    if material in cache:
-        return cache[material]
-    code, current = 0, material
-    for _ in range(MAX_CHAIN):
-        leaf = current.rsplit("/", 1)[-1]
-        if leaf in FAMILY_ROOTS:
-            code = FAMILIES.index(FAMILY_ROOTS[leaf])
-            break
-        view = _view(store, scripts, index, current)
-        current = material_parent(view) if view is not None else None
-        if not current:
-            break
-    cache[material] = code
-    return code
-
-
-def mesh_material(store, scripts, index, mesh: str, cache: dict) -> str | None:
-    """A mesh's own first material, which a placement without an override wears."""
-    if mesh not in cache:
-        view = _view(store, scripts, index, mesh)
-        found = None
-        if view is not None:
-            found = next(
-                (
-                    p
-                    for p in view.pkg.imported_packages
-                    if "/Material" in p and "PhysicalMaterial" not in p
-                ),
-                None,
+    def mesh_material(self, mesh: str) -> str | None:
+        """A mesh's own first material, which a placement without an override wears."""
+        if mesh not in self.by_mesh:
+            view = open_package(self.store, self.scripts, self.index, mesh)
+            imported = view.pkg.imported_packages if view is not None else []
+            self.by_mesh[mesh] = next(
+                (p for p in imported if "/Material" in p and "PhysicalMaterial" not in p), None
             )
-        cache[mesh] = found
-    return cache[mesh]
+        return self.by_mesh[mesh]
+
+    def worn_family(self, mesh: str, material: str | None) -> int:
+        """The family a mesh wears: its placement's override ``material``, else its own."""
+        return self.family_of(material if material is not None else self.mesh_material(mesh))
 
 
-def worn_family(store, scripts, index, mesh: str, material: str | None, caches: tuple) -> int:
-    """The family a mesh wears: its placement's override ``material``, else its own first one.
-    ``caches`` is ``(by mesh, by material)``, two dicts kept across calls."""
-    if material is None:
-        material = mesh_material(store, scripts, index, mesh, caches[0])
-    return family_of(store, scripts, index, material, caches[1])
+def worn_family(
+    store: IoStore,
+    scripts: ScriptObjects,
+    index: AssetIndex,
+    mesh: str,
+    material: str | None,
+    caches: tuple[dict[str, str | None], dict[str, int]],
+) -> int:
+    """``FamilyResolver.worn_family`` over ``caches``, ``(by mesh, by material)``, which the
+    caller keeps across calls."""
+    return FamilyResolver(store, scripts, index, *caches).worn_family(mesh, material)
 
 
-def placement_families(store, scripts, index, sweep: dict) -> np.ndarray:
+def placement_families(
+    store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep
+) -> U8Grid:
     """One family code per row of ``sweep["placements"]``."""
     meshes, rows = sweep["meshes"], sweep["placements"]
-    caches: tuple[dict, dict] = ({}, {})
+    resolver = FamilyResolver(store, scripts, index)
     codes = np.zeros(len(rows), np.uint8)
     for i, row in enumerate(rows):
-        material = placement_material(sweep, i)
-        codes[i] = worn_family(store, scripts, index, meshes[int(row[0])], material, caches)
+        mesh = meshes[int(row[PLACEMENT_MESH])]
+        codes[i] = resolver.worn_family(mesh, placement_material(sweep, i))
     return codes
 
 
-def family_sources(store, scripts, index) -> dict[str, dict]:
+def family_sources(
+    store: IoStore, scripts: ScriptObjects, index: AssetIndex
+) -> dict[str, FamilySource]:
     """Per family: its ``Color Tint`` (the nearest one up the chain) and top-layer texture."""
-    out: dict[str, dict] = {}
+    out: dict[str, FamilySource] = {}
     for leaf, family in FAMILY_ROOTS.items():
         if family in TARGET_ONLY:
             continue
-        tint, top, current = None, None, ROOT_DIR + leaf
+        tint: tuple[float, float, float] | None = None
+        top: str | None = None
+        current = ROOT_DIR + leaf
         for _ in range(MAX_CHAIN):
-            view = _view(store, scripts, index, current)
+            view = open_package(store, scripts, index, current)
             if view is None:
                 break
-            vectors, textures = material_params(view)
-            tint = tint or vectors.get(TINT_PARAMETER)
+            tint = tint or _rgb(vector_parameters(view).get(TINT_PARAMETER))
             if current.endswith("/" + leaf):
+                textures = {name: path for name, path in texture_parameters(view).items() if path}
                 top = next((textures[p] for p in TOP_TEXTURE_PARAMETERS if p in textures), None)
-            current = material_parent(view)
-            if not current or tint is not None:
+            parent = material_parent(view)
+            if not parent or tint is not None:
                 break
+            current = parent
         out[family] = {"material": ROOT_DIR + leaf, "tint": tint, "top_texture": top}
     return out
+
+
+def _rgb(vector: tuple[float, float, float, float] | None) -> tuple[float, float, float] | None:
+    return None if vector is None else (vector[0], vector[1], vector[2])

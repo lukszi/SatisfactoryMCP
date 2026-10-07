@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterable, Sequence
+from typing import NamedTuple, TypedDict
 
 import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U16Grid
 
 __all__ = [
     "LANDSCAPE_COMPONENT_QUADS",
@@ -19,7 +22,9 @@ __all__ = [
     "LANDSCAPE_ZERO",
     "SEAM_DISAGREEMENT_MAX",
     "TRANSFORM_TOLERANCE",
+    "LandscapeFrame",
     "drop_offsets",
+    "grass_data_heights",
     "landscape_frame",
 ]
 
@@ -52,7 +57,43 @@ LANDSCAPE_COMPONENT_QUADS = LANDSCAPE_N - 1
 SEAM_DISAGREEMENT_MAX = 100
 
 
-def grass_data_heights(tail: bytes) -> np.ndarray | None:
+class LandscapeFrame(TypedDict):
+    """What ``landscape_frame`` returns: the stitched raster, its georeference, its holes."""
+
+    raw: U16Grid
+    seam_disagreements: int
+    z_cm: F32Grid
+    good: BoolMask
+    width: int
+    height: int
+    x0_cm: float
+    y0_cm: float
+    scale_cm: float
+    origin_z_cm: float
+    components: int
+    coverage: float
+    hole_texels: int
+    hole_blobs: int
+
+
+class _ProxyTransform(NamedTuple):
+    origin_x: float
+    origin_y: float
+    origin_z: float
+    scale_x: float
+    scale_y: float
+    scale_z: float
+
+
+class _Stitched(NamedTuple):
+    raw: U16Grid
+    covered: BoolMask
+    seam_disagreements: int
+    min_x: int
+    min_y: int
+
+
+def grass_data_heights(tail: bytes) -> U16Grid | None:
     """The ``128*128`` uint16 height samples out of a ``LandscapeComponent``'s tail.
 
     Past the property tags the export carries a bool, a GUID and a float, then the
@@ -75,45 +116,34 @@ def grass_data_heights(tail: bytes) -> np.ndarray | None:
     return np.frombuffer(tail, dtype="<u2", count=num, offset=pos).reshape(LANDSCAPE_N, LANDSCAPE_N)
 
 
-def landscape_frame(sweep: dict) -> dict:
-    """Stitch the components into one raster and pin it to the world. Nothing resampled.
-
-    That the proxies all state the same origin, scale and Z offset is checked rather than
-    assumed: a build that split the landscape into frames with different transforms would
-    otherwise stitch into a plausible, wrong field.
-    """
-    components = sweep["components"]
-    proxies = sweep["proxies"]
-    if not components or not proxies:
+def _agreed(values: Iterable[float], label: str) -> float:
+    """The one value every proxy states, to a thousandth; a refusal when they disagree."""
+    distinct = sorted({round(v, 3) for v in values})
+    if len(distinct) != 1:
         raise SystemExit(
-            "no LandscapeComponent or no LandscapeStreamingProxy was found in "
-            f"{sweep['packages']} packages. The landscape moved or was renamed, which means "
-            "the game changed; nothing here can be trusted until that is looked at."
+            f"the landscape proxies disagree about {label}: {distinct[:6]}. This file "
+            "stitches one frame with one transform, and cannot stitch several."
         )
+    return distinct[0]
 
-    def _one(values, label: str) -> float:
-        distinct = sorted({round(v, 3) for v in values})
-        if len(distinct) != 1:
-            raise SystemExit(
-                f"the landscape proxies disagree about {label}: {distinct[:6]}. This file "
-                "stitches one frame with one transform, and cannot stitch several."
-            )
-        return distinct[0]
 
-    origin_x = _one((p[0] for p in proxies), "their world origin in X")
-    origin_y = _one((p[1] for p in proxies), "their world origin in Y")
-    origin_z = _one((p[2] for p in proxies), "their Z offset")
-    scale_x = _one((p[3] for p in proxies), "their X scale")
-    scale_y = _one((p[4] for p in proxies), "their Y scale")
-    scale_z = _one((p[5] for p in proxies), "their Z scale")
-
+def _proxy_transform(proxies: Sequence[Sequence[float]]) -> _ProxyTransform:
+    """The proxies' shared origin, Z offset and scale, checked against the encoding."""
+    found = _ProxyTransform(
+        _agreed((p[0] for p in proxies), "their world origin in X"),
+        _agreed((p[1] for p in proxies), "their world origin in Y"),
+        _agreed((p[2] for p in proxies), "their Z offset"),
+        _agreed((p[3] for p in proxies), "their X scale"),
+        _agreed((p[4] for p in proxies), "their Y scale"),
+        _agreed((p[5] for p in proxies), "their Z scale"),
+    )
     for measured, expected, label in (
-        (scale_x, LANDSCAPE_SCALE_CM, "X scale"),
-        (scale_y, LANDSCAPE_SCALE_CM, "Y scale"),
-        (scale_z, LANDSCAPE_SCALE_CM, "Z scale"),
-        (origin_z, LANDSCAPE_ORIGIN_Z_CM, "Z offset"),
-        (origin_x, LANDSCAPE_SECTION_ORIGIN, "section origin in X"),
-        (origin_y, LANDSCAPE_SECTION_ORIGIN, "section origin in Y"),
+        (found.scale_x, LANDSCAPE_SCALE_CM, "X scale"),
+        (found.scale_y, LANDSCAPE_SCALE_CM, "Y scale"),
+        (found.scale_z, LANDSCAPE_SCALE_CM, "Z scale"),
+        (found.origin_z, LANDSCAPE_ORIGIN_Z_CM, "Z offset"),
+        (found.origin_x, LANDSCAPE_SECTION_ORIGIN, "section origin in X"),
+        (found.origin_y, LANDSCAPE_SECTION_ORIGIN, "section origin in Y"),
     ):
         if abs(measured - expected) > TRANSFORM_TOLERANCE:
             raise SystemExit(
@@ -121,7 +151,11 @@ def landscape_frame(sweep: dict) -> dict:
                 "measured against. The height encoding depends on it, so decoding anyway "
                 "would produce a field that is wrong by a factor rather than by an offset."
             )
+    return found
 
+
+def _stitch(components: Sequence[tuple[int, int, U16Grid]]) -> _Stitched:
+    """The components dropped onto one raster by section base, shared edges compared."""
     xs = [c[0] for c in components]
     ys = [c[1] for c in components]
     min_x, min_y = min(xs), min(ys)
@@ -138,7 +172,6 @@ def landscape_frame(sweep: dict) -> dict:
         )
     width = max(xs) + LANDSCAPE_N - min_x
     height = max(ys) + LANDSCAPE_N - min_y
-
     raw = np.zeros((height, width), dtype="<u2")
     covered = np.zeros((height, width), dtype=bool)
     seam_disagreements = 0
@@ -154,6 +187,28 @@ def landscape_frame(sweep: dict) -> dict:
             f"components, against at most {SEAM_DISAGREEMENT_MAX}. The GrassData read is "
             "off, or the cook stopped keeping it in step with the heights."
         )
+    return _Stitched(raw, covered, seam_disagreements, min_x, min_y)
+
+
+def landscape_frame(sweep: dict) -> dict:
+    """Stitch the components into one raster and pin it to the world. Nothing resampled.
+
+    That the proxies all state the same origin, scale and Z offset is checked rather than
+    assumed: a build that split the landscape into frames with different transforms would
+    otherwise stitch into a plausible, wrong field. Returns ``LandscapeFrame``'s shape.
+    """
+    components = sweep["components"]
+    proxies = sweep["proxies"]
+    if not components or not proxies:
+        raise SystemExit(
+            "no LandscapeComponent or no LandscapeStreamingProxy was found in "
+            f"{sweep['packages']} packages. The landscape moved or was renamed, which means "
+            "the game changed; nothing here can be trusted until that is looked at."
+        )
+    transform = _proxy_transform(proxies)
+    stitched = _stitch(components)
+    raw, covered = stitched.raw, stitched.covered
+    height, width = raw.shape
 
     # raw == 0 inside a component that IS present is a landscape hole -- a cave mouth or a
     # deliberately cut-out section -- not a height of -255 m. Left as no data for the cliff
@@ -162,19 +217,21 @@ def landscape_frame(sweep: dict) -> dict:
     good = covered & ~hole
     _labelled, blobs = ndimage.label(hole)
 
-    z_cm = (raw.astype(np.float32) - LANDSCAPE_ZERO) / LANDSCAPE_PER_UNIT * scale_z + origin_z
+    z_cm = (
+        raw.astype(np.float32) - LANDSCAPE_ZERO
+    ) / LANDSCAPE_PER_UNIT * transform.scale_z + transform.origin_z
     raw[~covered] = 0
     return {
         "raw": raw,
-        "seam_disagreements": seam_disagreements,
+        "seam_disagreements": stitched.seam_disagreements,
         "z_cm": z_cm,
         "good": good,
         "width": width,
         "height": height,
-        "x0_cm": (min_x - origin_x) * scale_x,
-        "y0_cm": (min_y - origin_y) * scale_y,
-        "scale_cm": scale_x,
-        "origin_z_cm": origin_z,
+        "x0_cm": (stitched.min_x - transform.origin_x) * transform.scale_x,
+        "y0_cm": (stitched.min_y - transform.origin_y) * transform.scale_y,
+        "scale_cm": transform.scale_x,
+        "origin_z_cm": transform.origin_z,
         "components": len(components),
         "coverage": float(covered.mean()),
         "hole_texels": int(hole.sum()),

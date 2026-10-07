@@ -126,6 +126,10 @@ strict = [
     "tools/gen_paint_layers.py",
     "tools/gen_world_collectibles.py",
     "tools/gen_world_heightmap.py",
+    "tools/mapgen/src/mapgen/gamedata/install.py",
+    "tools/mapgen/src/mapgen/gamedata/nodes.py",
+    "tools/mapgen/src/mapgen/gamedata/placements.py",
+    "tools/mapgen/src/mapgen/gamedata/rocks/families.py",
 ]
 reportUnnecessaryTypeIgnoreComment = "error"
 

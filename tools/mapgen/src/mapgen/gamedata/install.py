@@ -7,9 +7,14 @@ from pathlib import Path
 
 from satisfactory_mcp.core.gameassets.container import CONTAINER, open_container, paks_dir
 from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
-from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
+from satisfactory_mcp.core.gameassets.packages import (
+    AssetIndex,
+    ClassFacts,
+    PackageView,
+    ScriptObjects,
+)
 
-__all__ = ["GameReader", "missing_container", "open_game"]
+__all__ = ["GameReader", "missing_container", "open_game", "open_package"]
 
 
 @dataclass(frozen=True)
@@ -36,3 +41,17 @@ def open_game(game: Path) -> GameReader:
     scripts = ScriptObjects(paks_dir(game), oodle_decompress)
     index = AssetIndex(store)
     return GameReader(store, scripts, index, ClassFacts(store, index))
+
+
+def open_package(
+    store: IoStore, scripts: ScriptObjects, index: AssetIndex, asset: str
+) -> PackageView | None:
+    """The package an asset path names, or ``None`` when the container has none or it is
+    unreadable: a missing answer to the caller, never a failed run."""
+    path = index.path_for(asset)
+    if not path:
+        return None
+    try:
+        return PackageView(store.read_path(path), scripts)
+    except Exception:
+        return None

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import time
@@ -22,6 +23,7 @@ from mapgen.gamedata.rocks.caves import (
 )
 from satisfactory_mcp.core.gameassets.provenance import install_directory, sha256_hex
 from satisfactory_mcp.core.gameassets.versions import CAVES_VERSION
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import caves
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -30,44 +32,9 @@ __all__ = [
 ]
 
 
-def write_caves(args, build_pin: str, build_raw) -> int:
-    """``--caves``: sweep the world for the two cave signals and write ``--caves-dir``."""
-    out_dir: Path = args.caves_dir
-    if out_dir.exists() and not args.force:
-        print(f"{out_dir} already exists. Pass --force to replace it.")
-        return 3
-    field = hf.load_field(args.field, cache=False)
-    if field is None:
-        print(
-            f"no terrain field at {args.field}: the cave markers are kept only where they "
-            "stand under the ground, which needs one. Run this tool without --caves first."
-        )
-        return 4
-    if (missing := missing_container(args.game)) is not None:
-        print(missing)
-        return 1
-    started = time.time()
-    reader = open_game(args.game)
-    store, scripts, classes = reader.store, reader.scripts, reader.classes
-    print("sweeping the world for cave sound volumes and cave decoration")
-    found = sweep_caves(store, scripts, classes, not args.quiet)
-    arrays, counts = build_caves(found, field.height_dm)
-    seconds = round(time.time() - started, 1)
-    for name, value in counts.items():
-        print(f"  {name:>22}: {value}")
-    buffer = io.BytesIO()
-    np.savez_compressed(buffer, **arrays)
-    meta = {
-        "description": (
-            "Where caves are under this world's single-valued terrain field: a safety flag, "
-            "not a floor. Cut from the reader's own install by "
-            "tools/gen_world_heightmap.py --caves; never committed."
-        ),
-        "generator": "tools/gen_world_heightmap.py --caves",
-        "caves_version": CAVES_VERSION,
-        "transcribed": datetime.now(UTC).strftime("%Y-%m-%d"),
-        "sources": {"game": {"game_version_pinned": build_pin, "build_raw": build_raw}},
-        "field": {"directory": field.directory.name, "build": field.build},
+def _layout() -> JsonObject:
+    """The sidecar blocks that say how ``caves.npz`` is laid out: its grid, bits and hulls."""
+    return {
         "grid": {
             "width": CAVE_MASK_PX,
             "height": CAVE_MASK_PX,
@@ -88,6 +55,47 @@ def write_caves(args, build_pin: str, build_raw) -> int:
             "planes (n, 4) as nx, ny, nz, d in cm, outward: inside where n.p + d <= 0; "
             "starts (hulls + 1) slices planes per hull; boxes (hulls, 6) min and max xyz"
         ),
+    }
+
+
+def write_caves(args: argparse.Namespace, build_pin: str, build_raw: JsonObject) -> int:
+    """``--caves``: sweep the world for the two cave signals and write ``--caves-dir``."""
+    out_dir: Path = args.caves_dir
+    if out_dir.exists() and not args.force:
+        print(f"{out_dir} already exists. Pass --force to replace it.")
+        return 3
+    field = hf.load_field(args.field, cache=False)
+    if field is None or field.height_dm is None:
+        print(
+            f"no terrain field at {args.field}: the cave markers are kept only where they "
+            "stand under the ground, which needs one. Run this tool without --caves first."
+        )
+        return 4
+    if (missing := missing_container(args.game)) is not None:
+        print(missing)
+        return 1
+    started = time.time()
+    reader = open_game(args.game)
+    print("sweeping the world for cave sound volumes and cave decoration")
+    found = sweep_caves(reader, not args.quiet)
+    arrays, counts = build_caves(found, field.height_dm)
+    seconds = round(time.time() - started, 1)
+    for name, value in counts.items():
+        print(f"  {name:>22}: {value}")
+    buffer = io.BytesIO()
+    np.savez_compressed(buffer, **arrays)
+    meta: JsonObject = {
+        "description": (
+            "Where caves are under this world's single-valued terrain field: a safety flag, "
+            "not a floor. Cut from the reader's own install by "
+            "tools/gen_world_heightmap.py --caves; never committed."
+        ),
+        "generator": "tools/gen_world_heightmap.py --caves",
+        "caves_version": CAVES_VERSION,
+        "transcribed": datetime.now(UTC).strftime("%Y-%m-%d"),
+        "sources": {"game": {"game_version_pinned": build_pin, "build_raw": build_raw}},
+        "field": {"directory": field.directory.name, "build": field.build},
+        **_layout(),
         "counts": counts,
         "seconds": seconds,
         "digest": sha256_hex(buffer.getvalue()),

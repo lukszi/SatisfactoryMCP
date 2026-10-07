@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from satisfactory_mcp.core.arrays import BoolMask, F16Grid, F32Grid
+from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.textures import raw_mip_sizes
 
 __all__ = [
@@ -37,25 +39,22 @@ FILL_RASTER_BYTES = sum(size for _px, size in FILL_RASTER_MIPS)
 FILL_RASTER_SCALE_CM_PER_RAW = 99364.40751843198
 FILL_RASTER_OFFSET_CM = -52282.12831764497
 
-#: The fill's no-data test, and the trap in it. ``raw == 0`` is the blank value and decodes
-#: to -522.8 m; the world's own floor is -255 m. Anything below this is the raster's blank
-#: tail, not sea bed, and testing ``raw > 0`` instead leaks 138,481 texels of it into the
-#: field as a false sea floor. A decoded height, so it cannot be read as a raw one.
+#: The fill's no-data test: a DECODED height at or under this is the raster's blank tail,
+#: below the world's -255 m floor. Never ``raw > 0``, which lets the blank value through;
+#: ``sidecar_blocks.fill_source`` records what that leaks.
 FILL_FLOOR_CM = -26000.0
 
 
-def decode_fill_raster(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def decode_fill_raster(values: F16Grid) -> tuple[F32Grid, BoolMask]:
     """The interface raster's float16 texels to world centimetres, and where it says anything.
 
-    Split out from the read so the rule is a pure function a test can hold. The no-data test
-    is on the DECODED height against ``FILL_FLOOR_CM``: ``raw > 0`` looks equivalent and is
-    not, because the blank value is ``raw == 0`` and it decodes to about -522 m.
+    Split out from the read so the rule, ``FILL_FLOOR_CM``, is a pure function a test can hold.
     """
     z_cm = values.astype(np.float32) * FILL_RASTER_SCALE_CM_PER_RAW + FILL_RASTER_OFFSET_CM
     return z_cm, z_cm > FILL_FLOOR_CM
 
 
-def read_fill_raster(store) -> tuple[np.ndarray, np.ndarray]:
+def read_fill_raster(store: IoStore) -> tuple[F32Grid, BoolMask]:
     """``HeightData_Test`` as world centimetres, with the mask of where it says anything.
 
     The length check is the integrity check: 2048 down to 128 at two bytes a texel is one
