@@ -75,7 +75,8 @@ The game-painted style keeps the rule above and colours the meshes itself.
 **The heightfield is unchanged.** `CliffPillar_03` stays excluded there because it is passable
 in game: the map draws what the artwork draws, and height lookups keep reading the walkable
 ground. The provenance input is `render_meshes`, reader version 1 (2 since section 35, 3
-since the rocks' family plane of section 31, "The Spire Coast rock from its own material").
+since the rocks' family plane of section 31, "The Spire Coast rock from its own material", 4
+since `CliffPillar_03` is read from its own package rather than `Mesh_Old`).
 
 ### The paint input
 
