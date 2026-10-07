@@ -13,6 +13,7 @@ import time
 import pytest
 
 from satisfactory_mcp import server as srv
+from satisfactory_mcp.domain.factories.labels import LabelStore
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.session import asks, journal
 from satisfactory_mcp.interfaces.mcp import app
@@ -28,9 +29,11 @@ class _World:
     world_id = WORLD
     age_note = "test world"
 
-    def __init__(self) -> None:
+    def __init__(self, game) -> None:
         self.header: dict = {"session_name": "Spire"}
         self.session_name = "Spire"
+        self.game = game
+        self.labels = LabelStore.load(WORLD, "Spire")
 
     @property
     def plans(self):
@@ -38,8 +41,8 @@ class _World:
 
 
 @pytest.fixture
-def ctx(user_data, monkeypatch, use_world):
-    use_world(_World)
+def ctx(user_data, monkeypatch, use_world, game):
+    use_world(lambda: _World(game))
     monkeypatch.setattr(app, "save_token", lambda st: "sav:3f2a91c0aa11")
     monkeypatch.setattr(page_context, "_cursor", {})
     monkeypatch.setattr(page_context, "_page_focus", lambda world_id: (None, False))

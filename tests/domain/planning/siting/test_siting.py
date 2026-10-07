@@ -20,6 +20,7 @@ import pytest
 
 from satisfactory_mcp.domain.planning import siting as siting_mod
 from satisfactory_mcp.domain.planning.siting import Siting
+from satisfactory_mcp.domain.planning.stored import recall as recall_mod
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.stored.recall import PLAN_DEFAULTS, recall_plan
 from satisfactory_mcp.domain.planning.stored.store import Plan, PlanStore
@@ -162,8 +163,17 @@ def test_a_mangled_siting_reads_as_not_sited():
 
 
 class _FakeState:
+    game = None
+
     def __init__(self, plans):
         self.plans = plans
+
+
+@pytest.fixture(autouse=True)
+def _no_field_check(monkeypatch):
+    """``_FakeState`` holds plans and no game data, so the recall's selector check, which
+    test_provenance covers, is stubbed out."""
+    monkeypatch.setattr(recall_mod.prov, "notes", lambda game, st, plan: [])
 
 
 def test_recall_prints_the_siting():

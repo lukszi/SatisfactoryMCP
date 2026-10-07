@@ -760,8 +760,8 @@ def floor_decomposition(
 
     platforms = _bands_of(tops)
     index = _index_decks(platforms, tops)
-    placements = _assign(projection, getattr(st, "game", None), index, platforms, terrain_field)
-    runs, violations = _classify_runs(projection, getattr(st, "game", None), index)
+    placements = _assign(projection, st.game, index, platforms, terrain_field)
+    runs, violations = _classify_runs(projection, st.game, index)
     _name_platforms(st, platforms, placements)
 
     report = FloorReport(

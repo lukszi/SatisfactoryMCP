@@ -192,7 +192,7 @@ def trace(state: WorldState, game: GameData, seeds: list[str], direction: str = 
     # The same nodes, contracted rather than re-walked: the traversal above is untouched and
     # this only keeps what it already crossed. Deduplicated by identity, because one run is
     # dozens of nodes.
-    run_of: dict[str, Link] = getattr(getattr(state, "physical", None), "run_of", None) or {}
+    run_of = state.physical.run_of
     kept: dict[int, Link] = {}
     for node in seen:
         link = run_of.get(node)

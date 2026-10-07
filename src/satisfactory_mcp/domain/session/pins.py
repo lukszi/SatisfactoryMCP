@@ -207,8 +207,8 @@ class _World:
         self._nodes: dict[str, NodeRecord] | None = None
 
     @property
-    def game(self) -> GameData | None:
-        return getattr(self.st, "game", None)
+    def game(self) -> GameData:
+        return self.st.game
 
     def plans(self) -> dict[str, PlanState]:
         if self._plans is None:
@@ -224,9 +224,8 @@ class _World:
 
     def machines(self) -> dict[str, BuildableRecord]:
         if self._machines is None:
-            records = self.st.all_records() if getattr(self.st, "projection", None) else []
-            rows = cast("list[BuildableRecord]", records)
-            self._machines = {instance_leaf(r.get("instance")): r for r in rows}
+            records = self.st.all_records() if self.st.projection else []
+            self._machines = {instance_leaf(r.get("instance")): r for r in records}
         return self._machines
 
     def nodes(self) -> dict[str, NodeRecord]:
@@ -240,38 +239,24 @@ class _World:
         return self.nodes().get(instance_leaf(text.removeprefix("node:").strip()))
 
     def label(self, name: str) -> Label | None:
-        store = getattr(self.st, "labels", None)
         wanted = name.strip().casefold()
-        for label in getattr(store, "labels", None) or ():
+        for label in self.st.labels.labels:
             if label.name.casefold() == wanted:
                 return label
         return None
 
     def item(self, cls: str) -> str:
-        game = self.game
-        if game is None:
-            return cls
-        try:
-            return game.item_name(cls) if cls in game.items else cls
-        except AttributeError:
-            return cls
+        return self.game.item_name(cls) if cls in self.game.items else cls
 
     def recipe(self, rid: str) -> tuple[str, str]:
-        game = self.game
-        recipe = game.recipes.get(rid) if game is not None else None
-        if game is None or recipe is None:
+        recipe = self.game.recipes.get(rid)
+        if recipe is None:
             return rid, ""
-        building = game.machine(recipe)
+        building = self.game.machine(recipe)
         return recipe.name, building.name if building else ""
 
     def building(self, cls: str) -> str:
-        game = self.game
-        if game is None:
-            return cls
-        try:
-            return game.building_name(cls) or cls
-        except AttributeError:
-            return cls
+        return self.game.building_name(cls) or cls
 
 
 def _metres(pos: object) -> tuple[float, float]:
@@ -321,7 +306,7 @@ def _normalise_plan_or_process(world: _World, kind: str, ref: RawRef) -> _Normal
         return {"plan": state.key}, None
     rid = _text_ref(ref, "recipe")
     game = world.game
-    if game is None or rid not in game.recipes:
+    if rid not in game.recipes:
         raise ObjectMissing(f"no recipe “{rid}”")
     if not _in_plan(world.st, state, rid):
         name = game.recipes[rid].name
@@ -608,19 +593,18 @@ def _echo(n: int, info: PinDescription, label: str) -> str:
     return f"pin:{n} = {info['selector']} ({shown}{info['what']})".replace(" ()", "")
 
 
-def _usable(st: object, n: int) -> tuple[PinRecord, PinDescription]:
+def _usable(st: WorldState | None, n: int) -> tuple[PinRecord, PinDescription]:
     """Pin ``n`` and its words; ``st`` is the world state a caller holds, or ``None``."""
-    world_id: str | None = getattr(st, "world_id", None)
-    if st is None or not world_id:
+    if st is None or not st.world_id:
         raise PinError(f"pin:{n} needs a readable save to resolve")
-    pin = _live_pin(read(world_id), n)
-    info = _describe(_World(cast("WorldState", st)), pin)
+    pin = _live_pin(read(st.world_id), n)
+    info = _describe(_World(st), pin)
     if info["gone_why"]:
         raise PinError(f"pin:{n} is gone: {info['gone_why']}")
     return pin, info
 
 
-def position(st: object, n: int) -> tuple[tuple[float, float], str]:
+def position(st: WorldState | None, n: int) -> tuple[tuple[float, float], str]:
     """Where pin ``n`` stands, in save centimetres, and its echo; ``PinError`` when nowhere."""
     pin, info = _usable(st, n)
     kind = pin["kind"]
@@ -634,7 +618,7 @@ def position(st: object, n: int) -> tuple[tuple[float, float], str]:
     return (x_m * 100.0, y_m * 100.0), _echo(n, info, pin.get("label", ""))
 
 
-def selector_terms(st: object, n: int, grammar: str) -> tuple[list[str], str]:
+def selector_terms(st: WorldState | None, n: int, grammar: str) -> tuple[list[str], str]:
     """The selector terms pin ``n`` stands for in ``grammar``, and its echo (contract §7)."""
     pin, info = _usable(st, n)
     kind = pin["kind"]
@@ -658,7 +642,7 @@ def selector_terms(st: object, n: int, grammar: str) -> tuple[list[str], str]:
     return out, _echo(n, info, pin.get("label", ""))
 
 
-def _near(st: object, member: str) -> tuple[str, str] | None:
+def _near(st: WorldState | None, member: str) -> tuple[str, str] | None:
     head, _, body = member.partition(":")
     if head.strip().casefold() != "near" or "@" not in body:
         return None
@@ -670,7 +654,9 @@ def _near(st: object, member: str) -> tuple[str, str] | None:
     return f"near:{x / 100.0:g},{y / 100.0:g}@{radius.strip()}", echo
 
 
-def expand(st: object, field: str, members: Sequence[M]) -> tuple[list[M | str], list[str]]:
+def expand(
+    st: WorldState | None, field: str, members: Sequence[M]
+) -> tuple[list[M | str], list[str]]:
     """``members`` of a stored field with every pin swapped for what it stands for, and the
     echoes; a stored plan never holds a ``pin:`` (contract §7.2)."""
     out: list[M | str] = []
@@ -698,7 +684,7 @@ def expand(st: object, field: str, members: Sequence[M]) -> tuple[list[M | str],
 
 
 def expand_args(
-    st: object, args: Mapping[str, object] | None
+    st: WorldState | None, args: Mapping[str, object] | None
 ) -> tuple[dict[str, object], list[str]]:
     """``expand`` over every pin-taking field of a plan's arguments."""
     out = dict(args or {})
@@ -712,7 +698,7 @@ def expand_args(
 
 
 def expand_ops(
-    st: object, ops: Sequence[Mapping[str, object]]
+    st: WorldState | None, ops: Sequence[Mapping[str, object]]
 ) -> tuple[list[dict[str, object]], list[str]]:
     """``expand`` over the members ``add`` ops bring into a pin-taking field."""
     out: list[dict[str, object]] = []

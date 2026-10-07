@@ -113,17 +113,13 @@ def recall_plan(
 def _field_notes(st: WorldState, stored: StoredPlan, merged: Mapping[str, object]) -> list[str]:
     """Whether the stored selectors still mean what they meant. See ``provenance``.
 
-    Two conditions buy silence, and both are the right kind. A caller who passed
-    ``sources`` this call is not planning over the stored field at all, so a note about it
-    would describe a plan that is not being run. And a state with no game data attached
-    cannot resolve a selector -- the test doubles in this suite are exactly that -- so
-    there is nothing to compare and nothing to claim.
+    A caller who passed ``sources`` this call is not planning over the stored field at all,
+    so a note about it would describe a plan that is not being run.
     """
-    game = getattr(st, "game", None)
-    if game is None or merged.get("sources") != stored.kwargs().get("sources"):
+    if merged.get("sources") != stored.kwargs().get("sources"):
         return []
     try:
-        return prov.notes(game, st, stored)
+        return prov.notes(st.game, st, stored)
     except FileNotFoundError:
         # The node or region table is not on this machine. The solve is about to fail on
         # the same missing file with a better message; a recall must not pre-empt it with
