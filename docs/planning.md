@@ -216,7 +216,7 @@ whole-map `max_mw` takes **all 200** and wants 246 — raising the cap to 400 bu
 nowhere near it. So the number was load-bearing on exactly the plans that never mentioned
 it, and the 30-pump warning threshold never fired for the ones that did.
 
-The terrain field (`Field.window`, `Field.nearest_water`) does **not** replace it. Submerged
+The terrain field (`Field.area`, `Field.nearest_water`) does **not** replace it. Submerged
 area is not an extractor count: shoreline geometry, clearance and overlap are level data no
 raster here carries, and deriving a count from `submerged_pct` is precisely the
 confidently-wrong answer this project exists to avoid. What the field replaces is the

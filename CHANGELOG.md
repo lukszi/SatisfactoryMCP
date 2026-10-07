@@ -133,6 +133,10 @@ Planned as 0.2.0.
   render and windows of the full-size sheet are the same bytes; on the whole full-size sheet
   11 of the painted layer's pixels move by one level, because its luminance is now summed as
   every narrower draw sums it.
+- Map generator: a render whose light scratch another running render holds is refused with
+  exit code 11 and the reason on stdout (it was exit 1 on stderr). The render sidecar's
+  `cliff_geometry.placements_dropped` counts the passable `CliffPillar_03` as `excluded_mesh`
+  (376 placements) instead of under `no_geometry`.
 
 ### Deprecated
 
@@ -177,6 +181,10 @@ Planned as 0.2.0.
 - `python -m mapgen renders` no longer overwrites a map the registry lists: a run into its
   folder, through a junction or link too, is refused and names it. `--renders-name` writes
   beside it, and `--overwrite-in-use` replaces it anyway.
+- Map generator: a mesh or Titan raster that does not read back after it was written stops
+  the render with exit code 7, where it was dropped while the sidecar still recorded it. A
+  cache the run cannot delete is named. `compress-cache` without the `gen` extra prints the
+  fix instead of a traceback.
 - The Maps tab's render estimate follows the "live sun" box, counts the light cache's
   scratch space against the free disk, and times a lit render only from an earlier lit one.
 - A render that fails deletes its light scratch too, and the next lit run removes what a

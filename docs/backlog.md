@@ -65,6 +65,7 @@ All closed. These produced a false belief in the reader, so nothing outranked th
 | 9c | `mam_research` said cost was checked against "carried, crates and the Dimensional Depot" when schema 19 deliberately took crates OUT of spendable stock. Both the tool note and the same stale sentence in `save-projection.md` now say storage containers, and name what does not count. | `a0a2ec9` |
 | 9d | `mam_research` ignored `research["unlocked_trees"]` and `research["ongoing"]`, so a node in an unopened tree read `READY` and research already underway read `todo`. Now `TREE SHUT` and `RUNNING {n}s`, both excluded from `startable=`. | `a0a2ec9` |
 | 9e | `trace_upstream` carried `Trace.ambiguous` and `Trace.truncated` and reported a possibly over-counted, depth-truncated walk as complete. Both print, and a truncated walk says it is a FLOOR. | `43fac87` |
+| 9f | `search_resource_nodes` read every oil node at twice its rate, a pure node 480 m³/min where an Oil Extractor gives 240: `node_rate` filtered extractors by `mAllowedResources`, which is empty on every miner, so Miner Mk.3 out-bid the extractor on crude. It filters by `mAllowedResourceForms` now, which the dump's cycle fields and the wiki's Crude Oil table confirm at 100% and 250%; the LP and `plan_layout` were always right. The rule is spatial-and-map.md §7.2c. | `486314d` |
 
 ## P1 — instructions the client could not follow, and dead ends
 
