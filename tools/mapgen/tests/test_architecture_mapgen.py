@@ -89,7 +89,7 @@ MODULE_MAX_LINES = 800
 #: thin under it. Shrink-only: a ceiling may be lowered, never raised, and one more than
 #: ``CEILING_SLACK`` above the file is stale. Measured after the move.
 MODULE_CEILINGS: dict[str, int] = {
-    "commands/renders.py": 1013,
+    "commands/renders.py": 530,
     "commands/heightmap.py": 310,
     # A thin command, held at its size so the stages stay in their modules.
     "commands/artwork.py": 297,
@@ -100,7 +100,6 @@ CEILING_SLACK = 25
 #: 2d7eaa9 (a pure move keeps every body's length). Shrink-only, same slack.
 FUNCTION_MAX_LINES = 150
 FUNCTION_CEILINGS: dict[str, int] = {
-    "commands/renders.py::main": 812,
 }
 
 #: The entry scripts that became shims, and the ``mapgen`` command each one runs.

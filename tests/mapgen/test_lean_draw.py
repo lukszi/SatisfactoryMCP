@@ -20,7 +20,8 @@ from mapgen.palette.styles import (
 )
 from mapgen.palette.water.open_sea import VoidPlanes
 from mapgen.palette.water.shore import wet_mix
-from mapgen.render import compose
+from mapgen.render import compose, surface
+from mapgen.render.surface import WaterPlanes
 from mapgen.terrain.sample import (
     reads_nothing,
     resample,
@@ -171,17 +172,18 @@ def test_the_void_helpers_skip_only_what_reads_as_zero(monkeypatch, void_rows, m
     z_m = rng.uniform(-40.0, 20.0, shape).astype(np.float32)
     wet_plane = (rng.random(SOURCE) < 0.5).astype(np.uint8)
     water = np.where(wet_plane > 0, -170, hf.NODATA).astype(np.int16)
-    planes = (water, wet_plane, wet_plane, sea)
+    planes = WaterPlanes(water, wet_plane, wet_plane)
 
     def run():
         return (
             compose._void(rgb, missing, sea, linear, rock, z_m),
-            compose._rock_kept(z_m * 100.0, missing, (wet_plane, sea), linear),
-            compose._sample_water_surface(z_m, planes, smooth, linear),
+            surface._rock_kept(z_m * 100.0, missing, wet_plane, sea, linear),
+            surface._sample_water_surface(z_m, planes, sea, smooth, linear),
         )
 
     lean = run()
     monkeypatch.setattr(compose, "reads_nothing", _always_read)
+    monkeypatch.setattr(surface, "reads_nothing", _always_read)
     full = run()
     for got, want in zip(lean[:2] + lean[2], full[:2] + full[2], strict=True):
         assert _bits(got) == _bits(want)

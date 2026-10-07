@@ -1,4 +1,4 @@
-"""Draw two base-map layers of this world out of the 1 m heightfield and the game's biomes.
+"""Draw the rendered base-map layers of this world from the 1 m heightfield and the game's data.
 
 A shim for ``python -m mapgen renders``, which holds the code (tools/mapgen). The path
 stays because the registry, the provenance strings and the docs name it.

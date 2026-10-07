@@ -11,13 +11,16 @@ from __future__ import annotations
 import argparse
 import shutil
 import time
-from collections.abc import Iterator
+import traceback
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 
 from mapgen.cache import held_open
+from mapgen.common import Refusal
 from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import sheet_crowns
 from mapgen.lighting.stage import (
@@ -30,15 +33,20 @@ from mapgen.lighting.stage import (
 )
 from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.palette.lightparams import shader_light
+from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.styles import LAYER_STYLES
 from mapgen.tiles.cutter import Cutter
 from mapgen.tiles.pyramid import install_layer, layer_dir, queue_layer
+from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX, install_pyramid
+from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
     "LIGHT_CACHE_DIR_NAME",
+    "SCRATCH_IN_USE",
     "UNLIT_DIR_NAME",
     "LightingRun",
+    "Occluder",
     "add_light_flags",
     "claim_scratch",
     "crown_layers",
@@ -50,6 +58,12 @@ __all__ = [
 UNLIT_DIR_NAME = "unlit"
 LIGHT_CACHE_DIR_NAME = "light.cache"
 RELIGHT_ROWS = 512
+
+#: Exit code of a run whose light scratch a render still running holds open.
+SCRATCH_IN_USE = 11
+
+#: The crowns the light bake casts: their tops in metres and the share of a pixel covered.
+Occluder = tuple[np.ndarray, np.ndarray]
 
 
 def add_light_flags(parser: argparse.ArgumentParser) -> None:
@@ -84,19 +98,20 @@ def claim_scratch(args: argparse.Namespace, renders: Path) -> Path | None:
     """
     if not args.light:
         return None
-    root = args.scratch_dir or args.cache_dir or renders
+    root: Path = args.scratch_dir or args.cache_dir or renders
     directory = root / LIGHT_CACHE_DIR_NAME
     surface = directory / "z.npy"
     if surface.is_file() and held_open([surface]):
-        raise SystemExit(
+        raise Refusal(
+            SCRATCH_IN_USE,
             f"{directory} is the light scratch of a render still running. Wait for it to "
-            "finish, or pass --scratch-dir with another directory."
+            "finish, or pass --scratch-dir with another directory.",
         )
     shutil.rmtree(directory, ignore_errors=True)
     return root
 
 
-def relight_in_place(sheet: np.ndarray, surface: Surface, params: dict) -> None:
+def relight_in_place(sheet: U8Grid, surface: Surface, params: JsonObject) -> None:
     """Light an unlit sheet by the default sun, a band of rows at a time.
 
     A style that draws the crowns (``params["crowns"]``) takes the direct term with their
@@ -118,16 +133,15 @@ def crown_layers() -> list[str]:
     return [layer for layer in LAYER_STYLES if shader_light(layer).get("crowns")]
 
 
-def crown_occluder(painted, cache_root: Path, size: int):
+def crown_occluder(painted: PaintedGround | None, scratch_root: Path, size: int) -> Occluder | None:
     """The painted ground's crown tops and cover, written where the bake reads its occluder.
 
     None without them. The stage reads these files in place: there is no second copy.
     """
-    crown = getattr(painted, "crown", None)
-    if crown is None:
+    if painted is None or painted.crown is None:
         return None
-    top, cover = occluder_planes(cache_root / LIGHT_CACHE_DIR_NAME, size)
-    return sheet_crowns(crown, painted.meta["grid"], size, top, cover), cover
+    top, cover = occluder_planes(scratch_root / LIGHT_CACHE_DIR_NAME, size)
+    return sheet_crowns(painted.crown, painted.meta["grid"], size, top, cover), cover
 
 
 class LightingRun:
@@ -138,14 +152,20 @@ class LightingRun:
     ``install``'s own ``workers`` encode the tiles.
     """
 
-    def __init__(self, cache_root: Path, size: int, occluder=None, slabs=None,
-                 light_workers: int | None = None) -> None:  # fmt: skip
-        self.surface = Surface(cache_root / LIGHT_CACHE_DIR_NAME, size)
+    def __init__(
+        self,
+        scratch_root: Path,
+        size: int,
+        occluder: Occluder | None = None,
+        slabs: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+        light_workers: int | None = None,
+    ) -> None:
+        self.surface = Surface(scratch_root / LIGHT_CACHE_DIR_NAME, size)
         self.occluder, self.slabs = occluder, slabs
         self.light_workers = light_workers
         self.captured = False
-        self.meta: dict | None = None
-        self.unlit: dict[str, dict] = {}
+        self.meta: JsonObject | None = None
+        self.unlit: dict[str, JsonObject] = {}
 
     def surface_for(self) -> Surface | None:
         """The surface to capture into: only the first layer draws it, all draw the same."""
@@ -154,27 +174,25 @@ class LightingRun:
         self.captured = True
         return self.surface
 
-    def install(self, sheet, image_mod, out_dir: Path, layer: str, workers: int, recipe: int,
-                name: str) -> tuple[dict, dict, float]:  # fmt: skip
+    def install(
+        self,
+        sheet: U8Grid,
+        image_mod: ModuleType,
+        out_dir: Path,
+        layer: str,
+        workers: int,
+        recipe: int,
+        renders_name: str,
+    ) -> tuple[JsonObject, JsonObject, float]:
         """``install_layer``'s contract, plus ``unlit/``; the first call bakes the light.
 
         Above one worker the unlit tree encodes while the sheet is relit, from its own copy.
         """
         if self.meta is None:
-            print("baking the lighting pyramid", flush=True)
-            self.meta = bake_light(
-                self.surface, out_dir / name, self.light_workers, self.occluder, self.slabs,
-                occluder_layers=crown_layers(),
-            )  # fmt: skip
-            done, render = self.meta["tiles"], self.meta["render"]
-            print(
-                f"  light: {done['count']} tiles over z0..z{done['max_z']} "
-                f"({done['bytes'] / 1e6:.1f} MB) in {render['seconds']}s "
-                f"on {render['workers']} workers"
-            )
+            self.meta = self._bake(out_dir / renders_name)
         if workers <= 1:
-            return self._install_serially(sheet, image_mod, out_dir, layer, recipe, name)
-        directory = layer_dir(out_dir, layer, name)
+            return self._install_serially(sheet, image_mod, out_dir, layer, recipe, renders_name)
+        directory = layer_dir(out_dir, layer, renders_name)
         directory.mkdir(parents=True, exist_ok=True)
         started = time.time()
         with Cutter(image_mod, workers) as cutter:
@@ -184,14 +202,35 @@ class LightingRun:
             relight_in_place(sheet, self.surface, shader_light(layer))
             with cutter.publish(sheet) as lit:
                 text = f"tools/gen_map_renders.py, {layer} recipe {recipe}, Lanczos"
-                trees = queue_layer(cutter, lit, directory, text)
+                tiles, dense = queue_layer(cutter, lit, directory, text)
             self.unlit[layer] = cutter.install(first)
-            stats, dense = (cutter.install(tree) for tree in trees)
-        return stats, dense, time.time() - started
+            stats, dense_stats = cutter.install(tiles), cutter.install(dense)
+        return stats, dense_stats, time.time() - started
 
-    def _install_serially(self, sheet, image_mod, out_dir: Path, layer: str, recipe: int,
-                          name: str) -> tuple[dict, dict, float]:  # fmt: skip
-        directory = layer_dir(out_dir, layer, name)
+    def _bake(self, renders: Path) -> JsonObject:
+        print("baking the lighting pyramid", flush=True)
+        meta = bake_light(
+            self.surface, renders, self.light_workers, self.occluder, self.slabs,
+            occluder_layers=crown_layers(),
+        )  # fmt: skip
+        done, render = meta["tiles"], meta["render"]
+        print(
+            f"  light: {done['count']} tiles over z0..z{done['max_z']} "
+            f"({done['bytes'] / 1e6:.1f} MB) in {render['seconds']}s "
+            f"on {render['workers']} workers"
+        )
+        return meta
+
+    def _install_serially(
+        self,
+        sheet: U8Grid,
+        image_mod: ModuleType,
+        out_dir: Path,
+        layer: str,
+        recipe: int,
+        renders_name: str,
+    ) -> tuple[JsonObject, JsonObject, float]:
+        directory = layer_dir(out_dir, layer, renders_name)
         directory.mkdir(parents=True, exist_ok=True)
         started = time.time()
         source = f"tools/gen_map_renders.py, {layer} unlit, Lanczos"
@@ -200,12 +239,16 @@ class LightingRun:
             dir_name=UNLIT_DIR_NAME,
         )  # fmt: skip
         relight_in_place(sheet, self.surface, shader_light(layer))
-        stats, dense, _cut = install_layer(sheet, image_mod, out_dir, layer, 1, recipe, name)
+        stats, dense, _cut = install_layer(
+            sheet, image_mod, out_dir, layer, 1, recipe, renders_name
+        )
         return stats, dense, time.time() - started
 
-    def decorate(self, sidecar: dict, layer: str) -> None:
+    def decorate(self, sidecar: JsonObject, layer: str) -> None:
         """Name the lighting pyramid and the shader's style fields in a layer's sidecar."""
         meta = sidecar["_meta"]
+        if not isinstance(meta, dict):
+            return
         meta["light"] = {
             "dir": f"../{LIGHT_DIR_NAME}",
             "unlit_dir": UNLIT_DIR_NAME,
@@ -217,8 +260,9 @@ class LightingRun:
                 "relights with the lighting pyramid in dir, for any sun"
             ),
         }
-        if isinstance(meta.get("provenance"), dict) and self.meta is not None:
-            meta["provenance"]["light"] = self.meta["light"]
+        provenance = meta.get("provenance")
+        if isinstance(provenance, dict) and self.meta is not None:
+            provenance["light"] = self.meta["light"]
 
     def close(self) -> None:
         # The occluder is a memory map in the light cache; Windows will not delete it while open.
@@ -229,14 +273,24 @@ class LightingRun:
 
 
 @contextmanager
-def light_run(root: Path | None, size: int, painted,
-              workers: int | None = None) -> Iterator[LightingRun | None]:  # fmt: skip
-    """The run's light stage in ``root``, crowns first, closed however the run ends; or None."""
+def light_run(
+    root: Path | None, size: int, painted: PaintedGround | None, workers: int | None = None
+) -> Generator[LightingRun | None, None, None]:
+    """The run's light stage in ``root``, crowns first, its scratch deleted however the run
+    ends, the crowns' and the surface's failures included; or None without the light."""
+    if root is None:
+        yield None
+        return
     run = None
-    if root is not None:
-        run = LightingRun(root, size, crown_occluder(painted, root, size), light_workers=workers)
     try:
+        run = LightingRun(root, size, crown_occluder(painted, root, size), light_workers=workers)
         yield run
+    except BaseException as exc:
+        # The failed frames hold the scratch's memory maps, which Windows will not delete.
+        traceback.clear_frames(exc.__traceback__)
+        raise
     finally:
         if run is not None:
             run.close()
+        else:
+            shutil.rmtree(root / LIGHT_CACHE_DIR_NAME, ignore_errors=True)

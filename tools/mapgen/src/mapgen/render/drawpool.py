@@ -8,8 +8,8 @@ from __future__ import annotations
 import argparse
 import os
 from collections import deque
-from collections.abc import Callable, Iterable, Iterator
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Generator, Iterable
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import TypeVar
 
 from mapgen.pools import free_ram_bytes
@@ -65,7 +65,7 @@ def bands_held(threads: int) -> int:
     return AHEAD * threads + 2
 
 
-def in_order(fn: Callable[[T], R], items: Iterable[T], threads: int) -> Iterator[R]:
+def in_order(fn: Callable[[T], R], items: Iterable[T], threads: int) -> Generator[R, None, None]:
     """``fn`` over ``items`` on ``threads`` threads, the results yielded in the items' order.
 
     At most ``AHEAD * threads`` items are submitted past the one waited on. On one thread it
@@ -75,7 +75,7 @@ def in_order(fn: Callable[[T], R], items: Iterable[T], threads: int) -> Iterator
     if threads <= 1:
         yield from map(fn, items)
         return
-    pending: deque = deque()
+    pending: deque[Future[R]] = deque()
     with ThreadPoolExecutor(max_workers=threads, thread_name_prefix="draw") as pool:
         try:
             for item in items:

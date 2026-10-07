@@ -83,7 +83,7 @@ from mapgen.palette.water.surface import (
     water_over,
     water_planes,
 )
-from mapgen.render.compose import DIRECT_LIFT_KNEE_M, blend_regimes, composite_top
+from mapgen.render.surface import DIRECT_LIFT_KNEE_M, blend_regimes, composite_top
 from mapgen.terrain.fill import (
     SOURCE_HOLE,
     SOURCE_NONE,

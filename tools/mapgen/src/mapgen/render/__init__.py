@@ -1,1 +1,1 @@
-"""Drawing a renders run: the band loop and its pool, the extras, the light, the guard."""
+"""A renders run: its inputs and rasters, each band's ground and colour, extras, light."""

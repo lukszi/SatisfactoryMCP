@@ -1,196 +1,134 @@
-"""Draw two base-map layers of this world out of the 1 m heightfield and the game's biomes.
+"""Draw the rendered base-map layers of this world from the 1 m heightfield and the game's data.
 
-    uv run --extra gen python tools/gen_map_renders.py
+    python -m mapgen renders [--layer painted] [--size 2048] [--restyle] ...
 
-``tools/gen_map_image.py`` cuts the game's own drawn map into ``data/local/tiles/``; this
-file adds two layers drawn rather than found. **terrain** is a hypsometric ramp under a
-north-west hillshade with water tinted by its own depth; **satellite** is the same relief
-coloured from the game's own per-pixel biome raster through a palette designed to look like
-imagery. Both are 32768x32768 on the **same frame as the artwork sheet** -- x [-3247, 4253]
-m, y [-3750, 3750] m -- and cut into the same 256 px pyramid, so the page's tile grid, CRS
-and bounds are untouched and a layer is a change of picture and nothing else.
-
-The height under a pixel comes from two regimes and a cross-fade between them. Where
-``density.u8.z`` says at least one source vertex landed in the ground under an output texel,
-the cliff geometry is rasterised into this grid at 0.229 m -- by ``gen_world_heightmap.py``'s
-own sweep, mesh decode, cull rules and ``MaxZRaster``, imported and called here so the only
-thing that differs is the grid they are pointed at. Everywhere else, which is the great
-majority of the sheet, a PCHIP kernel over the 1 m lattice answers. The join is a blend
-and never a switch: the hillshade is a function of the derivative, so a hard switch between
-a rasterised surface and a C1 interpolant would draw the density plane's own boundaries into
-the relief as ridges. ``SeamTrace`` measures that along the seam on every run. The lattice
-under the kernel takes its landscape from ``terrain.u16.z`` at 7.8 mm and its fill and holes
-from ``tools/map_fill.py``, and the arches and foliage boulders of ``top.i16.z`` are
-rasterised the same way and composited last (docs/spatial-and-map.md sections 25 and 26).
-
-The frame and the artwork slices come from ``tools/gen_map_image.py``, which measured them;
-the codec from ``domain.spatial.heightfield``, the pyramid cutter from
-``core.gameassets.pyramid``, and the biome decode from ``core.gameassets.maparea``, which
-``tools/gen_region_names.py`` reads too. Nothing about any of them is re-decided here,
-because three pyramids that retype each other's corners are three pyramids that disagree
-about where the world is.
-
-Everything is written under gitignored ``data/local/renders/<layer>/``:
-``tiles/{z}/{x}_{y}.png`` for z0..z7, ``tiles@2x/{z}/{x}_{y}.png`` for z0..z5, and a
-``meta.json`` the web API reads. Four pins are refused on rather than overwritten -- a field
-whose sidecar names another build, a field that is not there, a field with no density plane,
-and a direct cache rasterised for another size or build. ``ooz``, ``texture2ddecoder`` and
-Pillow are the project's ``gen`` extra and are imported inside the functions that need them,
-so a machine without the extra still imports every module and runs the test suite.
-
-The heightfield and the biome raster are derived from Coffee Stain's cooked assets, read out
-of the reader's own install. The colours are this file's, and nothing here is committed,
-uploaded or redistributed.
+What each layer is, and why: docs/spatial-and-map.md sections 17, 20, 25 to 29 and 40.
 """
 
 from __future__ import annotations
 
+import argparse
+import gc
 import json
-import shutil
 import time
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 
 from mapgen.cache import (
-    CACHE_SIDECAR_NAME,
     DIRECT_CACHE_DIR_NAME,
     TOP_CACHE_DIR_NAME,
+    DirectPlanes,
+    TopPlanes,
     cached_family,
-    cached_raster,
-    direct_cache_dir,
-    raster_cache_stamp,
-    restyle_gaps,
-    top_cache_dir,
 )
-from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, base_parser, require_gen
+from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, Refusal, base_parser, require_gen
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
-from mapgen.gamedata.ground.biome import calibrate_biome, read_biome, region_table_is_current
 from mapgen.gamedata.ground.paint_store import PAINT_DIR
-from mapgen.gamedata.nodes import oil_nodes
-from mapgen.gamedata.rocks.families import placement_families
 from mapgen.gamedata.water.channel import artwork_planes
-from mapgen.lighting.borrow import (
-    BORROW_DETAIL_SIGMA_PX,
-    BORROW_FEATHER_M,
-    artwork_detail,
-    borrow_metadata,
-    coarse_province,
-)
-from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, SUN_ALTITUDE_DEG, SUN_AZIMUTH_DEG
-from mapgen.palette.painted.albedo import load_paint_meta
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.relief import ReliefGround
-from mapgen.palette.styles import (
-    BIOME_BLEND_TEXELS,
-    BIOME_COLOURS,
-    LAYER_STYLES,
-    NO_MANS_LAND_RGB,
-    RELIEF_PALETTES,
-    SHORE_OPTICS,
-    STYLE_DIGESTS,
-    UNKNOWN_BIOME_RGB,
-    biome_colour_field,
-    biome_lookup,
-    painted_style,
-)
-from mapgen.palette.water.surface import (
-    WATER_DEPTH_FULL_M,
-    WATER_EDGE_BLUR_M,
-    WATER_EDGE_M,
-    drawn_water,
-    water_planes,
-)
-from mapgen.render.compose import DIRECT_LIFT_KNEE_M, render_layer
+from mapgen.palette.styles import LAYER_STYLES, RELIEF_PALETTES, SHORE_OPTICS, STYLE_DIGESTS
+from mapgen.palette.water.open_sea import OpenSea
+from mapgen.palette.water.perched import WaterSurfaces
+from mapgen.palette.water.surface import drawn_water
+from mapgen.render.biome_inputs import BiomeInputs, read_biome_inputs
+from mapgen.render.cached_rasters import LevelSweep, RasterGrid, direct_raster, top_raster
+from mapgen.render.compose import render_layer
 from mapgen.render.drawpool import add_draw_flags, draw_threads
-from mapgen.render.extras import RUN_CACHE_DIRS, load_extras
-from mapgen.render.inuse import IN_USE, add_in_use_flag, in_use_refusal
-from mapgen.render.light import add_light_flags, claim_scratch, light_run
-from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
-from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
-from mapgen.terrain.measure import RegimeCoverage, SeamTrace
-from mapgen.terrain.rasters import (
-    DIRECT_SUBSAMPLES,
-    direct_placements,
-    rasterise_direct_band,
-    rasterise_top_band,
-    read_cliff_geometry,
-    sweep_world,
-    top_items,
-    write_banded_raster,
+from mapgen.render.extras import RenderExtras, load_extras, remove_run_caches
+from mapgen.render.inputs import (
+    Lattice,
+    PaintInputs,
+    artwork_borrow,
+    check_parallel_cutter,
+    field_input,
+    field_lattice,
+    field_water_source,
+    load_field,
+    open_game_inputs,
+    prepare_paint,
+    rebuilt_lattice,
+    refuse_restyle_gaps,
+    refuse_stale_layers,
+    water_record,
 )
-from mapgen.terrain.sample import direct_mask, taps_cubic, taps_pchip
+from mapgen.render.inuse import IN_USE, add_in_use_flag, in_use_refusal
+from mapgen.render.light import LightingRun, add_light_flags, claim_scratch, light_run
+from mapgen.terrain.measure import RegimeCoverage, SeamTrace
+from mapgen.terrain.rasters import DIRECT_SUBSAMPLES
+from mapgen.terrain.sample import taps_cubic, taps_pchip
+from mapgen.tiles.layer_meta import LayerDraw, RenderFacts, RunRecord, layer_sidecar
 from mapgen.tiles.pyramid import (
     add_worker_flags,
-    check_parallel,
     install_layer,
     layer_dir,
     pool_sizes,
+    tree_megabytes,
 )
-from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
-from mapgen.tiles.rendertext import COMPOSITION_TEXT, LEVEL_ONLY_TEXT, Z7_TEXT, sampling_text
-from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, build_render_sidecar, pinned_field_build
-from satisfactory_mcp.core.gameassets.container import (
-    SHEET_PX,
-    SLICES,
-    open_container,
-    read_artwork_sheet,
-)
-from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
-from satisfactory_mcp.core.gameassets.maparea import (
-    MAP_AREA_CLASS,
-    MAP_AREA_PATH,
-    NO_MANS_LAND,
-)
-from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
-from satisfactory_mcp.core.gameassets.provenance import (
-    InstallNotFound,
-    changelist,
-    installed_build,
-    provenance_block,
-    sha256_hex,
-)
-from satisfactory_mcp.core.gameassets.pyramid import TILES_DIR_NAME, PyramidError
-from satisfactory_mcp.core.gameassets.versions import (
-    READER_VERSIONS,
-    RENDER_RECIPES,
-    STYLES,
-)
+from mapgen.tiles.recipes import RECIPE_KERNEL_ONLY
+from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME
+from satisfactory_mcp.core.gameassets.provenance import changelist
+from satisfactory_mcp.core.gameassets.pyramid import PyramidError
+from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.core.mapprogress import encode_stage
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
-
-@dataclass(frozen=True)
-class Step:
-    id: str
-    cached: bool
-    est_s: float
-
-
-@dataclass(frozen=True)
-class Plan:
-    layers: tuple[str, ...]
-    size: int
-    steps: tuple[Step, ...]
-
-
-#: The layers this file draws, in the order they are cut; ``--layer`` restricts it.
+#: The layers this command draws, in the order they are cut; ``--layer`` restricts it.
 LAYERS = ("terrain", "satellite", "painted", "relief", "relief-dark")
 
 #: The layers coloured from the biome raster, which is read only when one of them is drawn.
 BIOME_LAYERS = ("satellite", "painted", "relief")
 
-#: Exit code of ``--restyle`` when the kept raster cache does not cover the run.
-RESTYLE_MISS = 9
+#: Exit code of a run whose tiles could not be cut into place.
+CUT_FAILED = 1
 
 
-def load_imaging():
-    """Pillow, once ``require_gen`` has shown it is there.
+@dataclass(frozen=True)
+class Setup:
+    """How a run reads the game and cuts its tiles, and where its raster caches go."""
 
-    The size limit goes off because Pillow's default guard is a decompression-bomb rule for
-    images off the internet, and here an 8192 px sheet is the point.
+    cache_root: Path
+    decoder: ModuleType
+    image_mod: ModuleType
+    versions: dict[str, str]
+    cut_workers: int
+
+
+@dataclass(frozen=True)
+class Prepared:
+    """What every layer of a run is drawn from, and what its sidecars say alike.
+
+    It holds the raster caches' memory maps: the run lets it go before removing them.
+    """
+
+    field: hf.Field
+    lattice: Lattice
+    borrow: tuple[np.ndarray, np.ndarray]
+    biome: BiomeInputs
+    paint: PaintInputs | None
+    direct: DirectPlanes | None
+    top: TopPlanes | None
+    extras: RenderExtras
+    water: WaterSurfaces
+    sea: OpenSea | None
+    relief: dict[str, ReliefGround]
+    style_digests: dict[str, str]
+    record: RunRecord
+
+    @property
+    def painted(self) -> PaintedGround | None:
+        return None if self.paint is None else self.paint.ground
+
+
+def load_imaging() -> ModuleType:
+    """Pillow, once ``require_gen`` has shown it is there, with its size limit off.
+
+    The limit is a decompression-bomb rule for images off the internet; an 8192 px sheet is
+    the point here.
     """
     from PIL import Image
 
@@ -199,7 +137,279 @@ def load_imaging():
 
 
 def main() -> int:
-    parser = base_parser(__doc__.splitlines()[0])
+    args = build_parser().parse_args()
+    layers: tuple[str, ...] = tuple(dict.fromkeys(args.layer)) if args.layer else LAYERS
+    renders: Path = args.out_dir / args.renders_name
+    if refusal := in_use_refusal(LOCAL_DIR, renders, args.overwrite_in_use):
+        print(refusal)
+        return IN_USE
+    cache_root: Path = args.cache_dir or renders
+    try:
+        scratch = claim_scratch(args, renders)
+        versions = require_gen("ooz", "texture2ddecoder", "PIL.Image", "zstandard")
+        started = _render(args, layers, scratch, (cache_root, versions))
+    except Refusal as refusal:
+        print(refusal.message)
+        return refusal.code
+    if not (args.kernel_only or args.keep_direct or args.restyle):
+        gc.collect()
+        for directory in remove_run_caches(cache_root):
+            print(f"could not remove {directory}: a file in it is still open")
+    print(f"done in {time.time() - started:.0f}s")
+    print("none of it is committed: data/local/ is gitignored and stays that way.")
+    return 0
+
+
+def _render(
+    args: argparse.Namespace,
+    layers: tuple[str, ...],
+    scratch: Path | None,
+    caching: tuple[Path, dict[str, str]],
+) -> float:
+    """Prepare the run, then draw and cut every layer; when the drawing started.
+
+    ``scratch`` is the light's, None without it; ``caching`` the raster caches' root and the
+    ``gen`` extra's versions.
+    """
+    import texture2ddecoder as decoder
+
+    light_workers, cut_workers = pool_sizes(args)
+    cache_root, versions = caching
+    setup = Setup(cache_root, decoder, load_imaging(), versions, cut_workers)
+    run = _prepare(args, layers, setup)
+    with light_run(scratch, args.size, run.painted, light_workers) as light:
+        started = time.time()
+        _draw_layers(args, layers, run, light, setup)
+    return started
+
+
+def _prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> Prepared:
+    """Every stage before the first layer is drawn, in the order the run reports them."""
+    cache_root, image_mod, versions = setup.cache_root, setup.image_mod, setup.versions
+    field = load_field(args.field)
+    spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / args.size
+    lattice = field_lattice(field, spacing_m, args.kernel_only)
+    if not args.force:
+        refuse_stale_layers(args.out_dir, args.renders_name, layers, field.build)
+    grid = RasterGrid(args.size, args.direct_subsamples, field.build, not args.quiet)
+    if args.restyle and lattice.measured_plane is not None:
+        titan = "painted" in layers and not args.no_titan_trees
+        refuse_restyle_gaps(
+            cache_root, grid, top=not args.no_top, meshes=not args.no_meshes, titan=titan
+        )
+    game = open_game_inputs(args.game, setup.decoder, image_mod, versions["pyooz"])
+    inputs = {
+        "heightfield": field_input(field, args.kernel_only),
+        "artwork_sheet": game.artwork_input(),
+    }
+    borrow = artwork_borrow(game.artwork, field)
+    water_source = field_water_source(field)
+    art_water, art_void = (None, None) if args.kernel_only else artwork_planes(game.artwork)
+    lattice = rebuilt_lattice(lattice, field, game.store, art_void)
+    parallel_check = None
+    if args.check_parallel:
+        scratch = args.out_dir / "parallel.check"
+        workers = setup.cut_workers
+        parallel_check = check_parallel_cutter(game.artwork, image_mod, scratch, workers)
+    biome = BiomeInputs()
+    if any(layer in BIOME_LAYERS for layer in layers):
+        biome = read_biome_inputs(
+            game.store, game.scripts, game.artwork, image_mod, game.build_cl, versions["pyooz"]
+        )
+        inputs["biome_raster"] = biome.provenance or {}
+    style_digests = dict(STYLE_DIGESTS)
+    paint = None
+    if "painted" in layers:
+        paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, biome.raster or {},
+                              biome.drawn)  # fmt: skip
+        inputs["paint"], style_digests["painted"] = paint.provenance, paint.digest
+    level = LevelSweep(game.store, game.scripts, not args.quiet)
+    direct, top, raster_sources = _rasters(args, setup, lattice, (level, grid), paint, inputs)
+    two_regime = lattice.measured_plane is not None
+    extras = load_extras(
+        cache_root, args.size, field.build, level, field,
+        meshes=two_regime and not args.no_meshes,
+        titan=two_regime and paint is not None and not args.no_titan_trees,
+        rivers=not args.kernel_only, quiet=args.quiet,
+    )  # fmt: skip
+    if extras.titan is not None and paint is not None:
+        paint.ground.attach_titan(extras.titan)
+    for name in extras.readers:
+        inputs[name] = {"cl": changelist(field.build), "reader_version": READER_VERSIONS[name]}
+    water, sea, planes = drawn_water(
+        field, args.kernel_only, extras.rivers, (lattice.heights, lattice.ground), art_water
+    )
+    if paint is not None:
+        paint.block["water_classes"] = paint.ground.classify_water(field, planes)
+    relief = {
+        layer: ReliefGround(
+            RELIEF_PALETTES[layer][0], field, biome.raster, list(biome.drawn), planes,
+            lattice.heights,
+        )
+        for layer in layers
+        if layer in RELIEF_PALETTES
+    }  # fmt: skip
+    facts = RenderFacts(
+        size=args.size,
+        spacing_m=spacing_m,
+        subsamples=args.direct_subsamples,
+        two_regime=direct is not None,
+        composition=lattice.composition(top_overlay=top is not None),
+        water=water_record(water, sea, extras.river_meta, spacing_m, water_source),
+        cut_workers=setup.cut_workers,
+        parallel_check=parallel_check,
+        pillow_version=versions["pillow"],
+    )
+    record = RunRecord(
+        render=facts,
+        recipe=lattice.recipe,
+        kernel_only=args.kernel_only,
+        field_meta=field.meta,
+        build_raw=game.build_raw,
+        inputs=inputs,
+        sources={**borrow.source, **raster_sources, **extras.mesh_source},
+        biome_source=biome.source,
+        paint_source={} if paint is None else {"paint": paint.block, **extras.titan_source},
+    )
+    return Prepared(
+        field, lattice, borrow.planes, biome, paint, direct, top, extras, water, sea, relief,
+        style_digests, record,
+    )  # fmt: skip
+
+
+def _rasters(
+    args: argparse.Namespace,
+    setup: Setup,
+    lattice: Lattice,
+    rasters: tuple[LevelSweep, RasterGrid],
+    paint: PaintInputs | None,
+    inputs: dict[str, JsonObject],
+) -> tuple[DirectPlanes | None, TopPlanes | None, JsonObject]:
+    """The rocks and the top overlay at the render's own spacing, and their sidecar blocks.
+
+    ``rasters`` is the level sweep and the grid. None for ``--kernel-only``, which opens no
+    geometry.
+    """
+    if lattice.measured_plane is None or lattice.ground is None:
+        return None, None, {}
+    level, grid = rasters
+    cache = setup.cache_root / DIRECT_CACHE_DIR_NAME
+    (rock_z, rock_coverage), sources = direct_raster(level, cache, grid, setup.versions["pyooz"])
+    direct = DirectPlanes(rock_z, rock_coverage, lattice.ground, args.direct_subsamples)
+    inputs["cliff_geometry"] = {
+        "cl": changelist(grid.build),
+        "reader_version": READER_VERSIONS["cliff_geometry"],
+    }
+    if paint is not None:
+        paint.ground.attach_families(cached_family(cache, grid.stamp))
+        for name in ("rock_families",) + (() if args.no_titan_trees else ("titan_trees",)):
+            inputs[name] = {**inputs["cliff_geometry"], "reader_version": READER_VERSIONS[name]}
+    top = None
+    if not args.no_top:
+        top_cache = setup.cache_root / TOP_CACHE_DIR_NAME
+        (top_z, top_coverage), top_source = top_raster(level, top_cache, grid)
+        top = TopPlanes(top_z, top_coverage, args.direct_subsamples)
+        sources = {**sources, **top_source}
+    return direct, top, sources
+
+
+def _draw_layers(
+    args: argparse.Namespace,
+    layers: tuple[str, ...],
+    run: Prepared,
+    light: LightingRun | None,
+    setup: Setup,
+) -> None:
+    """Draw each layer, cut it into place, and write its sidecar beside it."""
+    two_regime = run.direct is not None
+    seam = SeamTrace() if two_regime else None
+    regimes = RegimeCoverage() if two_regime else None
+    measured: JsonObject = {}
+    for layer in layers:
+        threads = draw_threads(args.draw_threads, layer, args.size)
+        print(f"drawing {layer} at {args.size}x{args.size} on {threads} thread(s)")
+        print(encode_stage(f"draw:{layer}", 0.0), flush=True)
+        started = time.time()
+        sheet = render_layer(
+            layer, run.field, run.biome.rgb, run.biome.width, run.borrow, args.size,
+            not args.quiet,
+            height_dm=run.lattice.heights, direct=run.direct,
+            measured_plane_u8=run.lattice.measured_plane, overlay=run.top,
+            kernel=taps_cubic if args.kernel_only else taps_pchip, meshes=run.extras.meshes,
+            falls=run.extras.falls, reach=run.water.reach, water_level=run.water.level,
+            sea=run.sea, painted=run.painted if layer == "painted" else None,
+            rivers=run.extras.rivers, relief=run.relief.get(layer),
+            # Every layer draws the same surface: measured on the first, quoted for all.
+            seam=seam if not measured else None, regimes=regimes if not measured else None,
+            unlit=light is not None, surface=light.surface_for() if light else None,
+            threads=threads,
+        )  # fmt: skip
+        drew = time.time() - started
+        if seam is not None and regimes is not None and not measured:
+            measured = {"seam_trace": seam.result(), "regimes": regimes.result()}
+            _report_measured(measured)
+        install = light.install if light else install_layer
+        try:
+            stats, dense, cut = install(
+                sheet, setup.image_mod, args.out_dir, layer, setup.cut_workers, run.record.recipe,
+                args.renders_name,
+            )  # fmt: skip
+        except PyramidError as exc:
+            raise Refusal(CUT_FAILED, str(exc)) from exc
+        del sheet
+        stats["game_version_pinned"] = dense["game_version_pinned"] = run.field.build
+        draw = LayerDraw(
+            layer=layer,
+            style_id=LAYER_STYLES[layer],
+            style_digest=run.style_digests[layer],
+            biome=layer in BIOME_LAYERS,
+            measured=measured,
+            shore_optics=SHORE_OPTICS[layer],
+            seconds_to_draw=drew,
+            draw_threads=threads,
+            seconds_to_cut=cut,
+        )
+        sidecar = layer_sidecar(run.record, draw, stats, dense)
+        if light is not None:
+            light.decorate(sidecar, layer)
+        directory = layer_dir(args.out_dir, layer, args.renders_name)
+        (directory / RENDER_SIDECAR_NAME).write_text(
+            json.dumps(sidecar, indent=1), encoding="utf-8"
+        )
+        print(
+            f"wrote {directory}  {_tree_text(stats, 'tiles')} plus {_tree_text(dense, '@2x')}  "
+            f"(drew {drew:.0f}s, cut {cut:.0f}s)"
+        )
+        print(encode_stage(f"cut:{layer}", 1.0), flush=True)
+
+
+def _tree_text(tree: JsonObject, noun: str) -> str:
+    """``N <noun> over z0..zM (S MB)`` for a tile tree an install recorded."""
+    return f"{tree['count']} {noun} over z0..z{tree['max_z']} ({tree_megabytes(tree):.1f} MB)"
+
+
+def _report_measured(measured: JsonObject) -> None:
+    """The seam trace and the regime table, as the first layer measured them."""
+    trace = measured["seam_trace"]
+    if isinstance(trace, dict) and trace.get("measured"):
+        curvature = trace["p99_curvature"]
+        assert isinstance(curvature, dict)
+        print(
+            f"  seam trace: p99 |d2z/dx2| {curvature['seam']} over the "
+            f"blend against {curvature['switch']} for the hard max on "
+            f"the same texels -- the fade spends "
+            f"{trace['share_of_a_hard_switch']} of that ceiling; against the terrain "
+            f"beside the join it reads {trace['against_the_pure_regimes']}, which is "
+            "the design's own reference and is measuring the silhouette"
+        )
+    regimes = measured["regimes"]
+    if isinstance(regimes, dict):
+        print(f"  regimes: {regimes['sheet_pct']}")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The command's flags: what to draw, where, and which stages to keep or skip."""
+    parser = base_parser((__doc__ or "").splitlines()[0])
     parser.add_argument(
         "--field",
         type=Path,
@@ -226,8 +436,9 @@ def main() -> int:
         choices=[RENDER_PX >> shift for shift in range(6)],
         help=(
             f"square edge of each render (default {RENDER_PX}, which is 0.229 m to the "
-            "pixel -- see the module docstring for what that is and is not a claim about). "
-            f"{RENDER_PX >> 4} and {RENDER_PX >> 5} are previews: minutes, not half an hour"
+            "pixel; docs/spatial-and-map.md section 20 says what that is and is not a claim "
+            f"about). {RENDER_PX >> 4} and {RENDER_PX >> 5} are previews: minutes, not half an "
+            "hour"
         ),
     )
     parser.add_argument(
@@ -316,681 +527,4 @@ def main() -> int:
     add_draw_flags(parser)
     parser.add_argument("--quiet", action="store_true", help="no per-band progress lines")
     add_in_use_flag(parser)
-    args = parser.parse_args()
-
-    layers = tuple(dict.fromkeys(args.layer)) if args.layer else LAYERS
-    light_workers, cut_workers = pool_sizes(args)
-    renders = args.out_dir / args.renders_name
-    if refusal := in_use_refusal(LOCAL_DIR, renders, args.overwrite_in_use):
-        print(refusal)
-        return IN_USE
-    scratch = claim_scratch(args, renders)
-
-    versions = require_gen("ooz", "texture2ddecoder", "PIL.Image", "zstandard")
-    pillow_version, pyooz_version = versions["pillow"], versions["pyooz"]
-    import texture2ddecoder as decoder
-
-    image_mod = load_imaging()
-
-    field = hf.load_field(args.field)
-    if field is None:
-        print(
-            f"no heightfield at {args.field}. That field is the one input this file cannot "
-            "invent -- every pixel of both layers is a height off it -- so there is nothing "
-            "to draw. Write it first:\n"
-            "    uv run --extra gen python tools/gen_world_heightmap.py\n"
-            "It reads your own installed game and writes to the same gitignored directory."
-        )
-        return 4
-    field_meta = field.meta
-    field_build = field.build
-    print(
-        f"field: {field.width}x{field.height} at {field.spacing_cm / 100:g} m, build {field_build}"
-    )
-
-    spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / args.size
-    direct_mask_plane, direct_mask_meta = (
-        (None, {}) if args.kernel_only else direct_mask(field, spacing_m)
-    )
-    if direct_mask_plane is None and not args.kernel_only:
-        print(
-            f"this field carries no {hf.DENSITY_NAME}, so it cannot say which of its texels "
-            "are measurements and which are the cliff rasteriser interpolating across a "
-            "triangle wider than a texel. That plane is the only thing the two-regime "
-            f"sampler switches on, so recipe {RECIPE} has nothing to draw. Cut a field with "
-            f"generator version {GENERATOR_VERSION} or later:\n"
-            "    uv run --extra gen python tools/gen_world_heightmap.py --force\n"
-            "or pass --kernel-only to draw the single-regime picture and say so in the "
-            "sidecar."
-        )
-        return 6
-    if direct_mask_plane is not None:
-        print(
-            f"  a measurement where {direct_mask_meta['rule']} -- "
-            f"{direct_mask_meta['qualifying_share_of_the_field']}% of the field, "
-            f"{direct_mask_meta['qualifying_share_of_the_cliff_province']}% of its cliff "
-            "province. Provenance, not a gate: the rocks are drawn wherever they cover a "
-            "pixel"
-        )
-    recipe = RECIPE_KERNEL_ONLY if args.kernel_only else RECIPE
-    heights = None if args.kernel_only else field.height_dm.astype(np.float32)
-    if heights is None:
-        print(f"  --kernel-only: drawing recipe {recipe}, the picture before the two regimes")
-    ground, ground_meta = (None, {}) if heights is None else ground_lattice(field, heights)
-    terrain_meta: dict = {}
-    if ground is not None:
-        ground, terrain_meta = terrain_lattice(field, ground)
-        if "absent" in terrain_meta:
-            print(f"  {terrain_meta['absent']}")
-        else:
-            print(
-                f"  landscape from {hf.TERRAIN_NAME}: {terrain_meta['landscape_texels']} texels "
-                f"plus {terrain_meta['under_cliff_texels']} under the cliff province"
-            )
-        print(
-            f"  the lattice under the rocks: {ground_meta['lattice_share_of_the_field']}% of "
-            f"the field, with {ground_meta['removed_share_of_the_field']}% of it -- the cliff "
-            "province -- taken out so the rocks are composited over the ground rather than "
-            "over their own 1 m fold"
-        )
-
-    out_dir: Path = args.out_dir
-    if not args.force:
-        for layer in layers:
-            sidecar_path = layer_dir(out_dir, layer, args.renders_name) / RENDER_SIDECAR_NAME
-            if not (layer_dir(out_dir, layer, args.renders_name) / TILES_DIR_NAME).is_dir():
-                continue
-            try:
-                existing = json.loads(sidecar_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError, TypeError):
-                existing = {}
-            pinned = pinned_field_build(existing if isinstance(existing, dict) else {})
-            if pinned != field_build:
-                print(
-                    f"{layer_dir(out_dir, layer, args.renders_name)} already holds a {layer} pyramid and this "
-                    "run cannot show it was drawn from the field now on disk.\n"
-                    f"  field on disk: {field_build}\n"
-                    f"  those tiles:   {pinned or 'no meta.json, or no build recorded in it'}\n"
-                    "A render from another build is a picture of another world's terrain, "
-                    "and drift is announced rather than overwritten. Pass --force to "
-                    "replace it anyway."
-                )
-                return 3
-    if args.restyle and direct_mask_plane is not None:
-        root = args.cache_dir or out_dir / args.renders_name
-        titan = "painted" in layers and not args.no_titan_trees
-        gaps = restyle_gaps(root, args.size, args.direct_subsamples, field_build,
-                            top=not args.no_top, meshes=not args.no_meshes,
-                            titan=titan)  # fmt: skip
-        if gaps:
-            print(f"--restyle: {', '.join(gaps)} under {root} is missing or for another size "
-                  "or build. Draw once with --cache-dir and --keep-direct to keep it.")  # fmt: skip
-            return RESTYLE_MISS
-
-    # ---- the artwork sheet, which every layer now needs ------------------------------
-    paks = args.game / "FactoryGame" / "Content" / "Paks"
-    if not (paks / "FactoryGame-Windows.utoc").exists():
-        print(f"no FactoryGame-Windows.utoc under {paks}")
-        return 1
-    print(f"reading the game's own assets from {paks} with pyooz {pyooz_version}")
-    store = open_container(args.game)
-    scripts = ScriptObjects(paks, oodle_decompress)
-    artwork = read_artwork_sheet(store, decoder, image_mod)
-    try:
-        _pin, game_raw = installed_build(args.game)
-    except (InstallNotFound, OSError, ValueError):
-        game_raw = {}
-    game_cl = changelist(game_raw)
-    inputs = {
-        "heightfield": {
-            "cl": changelist(field_build),
-            "generator_version": field_meta.get("generator_version"),
-            "planes": ["height", "prov", "water", "waterq"]
-            + ([] if args.kernel_only else ["density", "terrain"]),
-            "digest": field_meta.get("digest"),
-        },
-        "artwork_sheet": {
-            "cl": game_cl,
-            "reader_version": READER_VERSIONS["artwork_sheet"],
-            "digest": sha256_hex(np.ascontiguousarray(np.asarray(artwork, np.uint8)).data),
-        },
-    }
-    detail, detail_meta = artwork_detail(artwork)
-    print(
-        f"  artwork sheet {SHEET_PX}x{SHEET_PX} from {len(SLICES)} BC1 slices; luminance "
-        f"high pass at sigma {BORROW_DETAIL_SIGMA_PX} px, std {detail_meta['measured_std']}"
-    )
-    province, province_meta = coarse_province(field)
-    print(
-        f"  coarse provenance ({', '.join(province_meta['provinces'])}) is "
-        f"{province_meta['share_of_the_field']}% of the field, feathered "
-        f"{BORROW_FEATHER_M:g} m"
-    )
-    borrow = (detail, province)
-    _wet_plane, _measured_plane, water_source = water_planes(field)
-    print(f"  water: {water_source}")
-    fill_meta: dict = {}
-    art_water, art_void = (None, None) if args.kernel_only else artwork_planes(artwork)
-    if ground is not None:
-        heights, ground, fill_meta = rebuild_lattice(field, ground, store, art_void)
-        print(
-            f"  lattice rebuilt in {sum(fill_meta['seconds'].values()):.0f}s: "
-            f"{fill_meta['share_of_the_field_pct']}; {fill_meta['holes']['holes']} holes "
-            f"filled ({fill_meta['holes']['harmonic_fallback']} harmonic), "
-            f"{fill_meta['pits']['holes']} pits left empty"
-        )
-
-    # The check cuts the ARTWORK: a real picture with real entropy, so the PNGs are real
-    # PNGs rather than a run-length of one colour that compares equal whatever happened.
-    parallel_check = None
-    if args.check_parallel:
-        parallel_check = check_parallel(
-            np.asarray(artwork, np.uint8), image_mod, out_dir / "parallel.check", cut_workers
-        )
-        print(
-            f"  parallel cutter: z0..z{parallel_check['levels'][-1]}, {parallel_check['tiles']} "
-            f"tiles, {parallel_check['seconds_serial']}s serial vs "
-            f"{parallel_check['seconds_parallel']}s on {cut_workers} workers "
-            f"({parallel_check['speedup']}x) -- byte-identical: "
-            f"{parallel_check['byte_identical']}"
-        )
-        if not parallel_check["byte_identical"]:
-            print(
-                "  the parallel cutter does not reproduce the serial one's bytes. That is "
-                "the one thing it promises, so nothing is written: "
-                + ", ".join(parallel_check["differing_tiles"])
-            )
-            return 5
-
-    # ---- the biome raster ------------------------------------------------------------
-    biome = None
-    drawn: list[str] = []
-    if any(layer in BIOME_LAYERS for layer in layers):
-        biome = read_biome(store, scripts)
-        print(
-            f"  {biome['width']}x{biome['width']} palette indices, "
-            f"{len(biome['palette'])} entries, {len(biome['distinct_areas'])} named areas"
-        )
-        calibration = calibrate_biome(biome, artwork, image_mod)
-        print(
-            f"  calibration: edge ratio {calibration['edge_ratio_at_the_pin']} at the pin "
-            f"against {calibration['edge_ratio_at_the_best_rival_shift']} for the best "
-            f"shift and {calibration['edge_ratio_at_other_scales']} at other scales -- "
-            f"margin {calibration['margin_over_the_best_rival']}x over "
-            f"{calibration['sweep']}"
-        )
-        if not calibration["pin_holds"]:
-            print(
-                "  WARNING: the pin no longer beats its rivals by the required margin. "
-                "The biome texture moved, or the artwork sheet did. The layer is still "
-                "drawn -- it is the corners that are in question -- and _meta says so."
-            )
-        agreement = region_table_is_current(biome)
-        if "skipped" in agreement:
-            print(f"  region table: {agreement['skipped']}")
-        else:
-            print(
-                f"  region table: {agreement['cells_agreeing']} of "
-                f"{agreement['cells_compared']} committed cells match this raster "
-                f"({agreement['agreement_pct']}%)"
-            )
-            if not agreement["table_is_current"]:
-                print(
-                    "  WARNING: data/region_names.json is no longer this asset's own "
-                    "downsample, so it was cut from a different build. Re-run:\n"
-                    "      uv run --extra gen python tools/gen_region_names.py"
-                )
-        table, drawn = biome_lookup(biome)
-        inputs["biome_raster"] = {
-            "cl": game_cl,
-            "reader_version": READER_VERSIONS["biome_raster"],
-            "digest": sha256_hex(
-                np.ascontiguousarray(biome["area"]).data,
-                json.dumps(biome["assets_by_index"]).encode("utf-8"),
-            ),
-        }
-        biome_rgb = biome_colour_field(biome, table)
-        biome_source = {
-            "biome_raster": {
-                "name": "/Game/"
-                + MAP_AREA_PATH.split("/FactoryGame/Content/")[1].rsplit(".", 1)[0],
-                "class": MAP_AREA_CLASS,
-                "licence": (
-                    "Coffee Stain Studios' own asset, read out of the reader's installed "
-                    "copy of the game. Not committed, not redistributed, and served to "
-                    "localhost only."
-                ),
-                "derivation": (
-                    f"mAreaData, {biome['width']}x{biome['width']} palette indices; "
-                    "mColorToArea resolves each index to a UFGMapArea object"
-                ),
-                "areas": biome["distinct_areas"],
-                "shipped_palette_rgba": [list(entry) for entry in biome["palette"]],
-                "shipped_palette_role": (
-                    "the game's own UI legend -- flat primaries, cyan, magenta, white. "
-                    "Decoded for the record and NOT drawn: see palette below, which is this "
-                    "file's own and was written to look like imagery."
-                ),
-                "palette": {name: list(BIOME_COLOURS[name]) for name in sorted(BIOME_COLOURS)},
-                "palette_blend_texels": BIOME_BLEND_TEXELS,
-                "palette_fallback": {
-                    NO_MANS_LAND: list(NO_MANS_LAND_RGB),
-                    "an area this file has no colour for": list(UNKNOWN_BIOME_RGB),
-                },
-                "index_to_area": {str(i): name for i, name in enumerate(drawn)},
-                "index_to_asset": {str(i): name for i, name in enumerate(biome["assets_by_index"])},
-                "calibration": calibration,
-                "region_table_check": agreement,
-                "pyooz_version": pyooz_version,
-            }
-        }
-    else:
-        biome_rgb, biome_source = None, {}
-
-    painted = None
-    paint_source: dict = {}
-    if "painted" in layers:
-        paint_meta = load_paint_meta(args.paint_dir)
-        if paint_meta is None:
-            print(
-                f"no paint layers at {args.paint_dir}, which the painted layer is coloured "
-                "from. Extract them once from the installed game:\n"
-                "    uv run --extra gen python tools/gen_paint_layers.py"
-            )
-            return 8
-        started = time.time()
-        palette, STYLE_DIGESTS["painted"] = painted_style(args.no_titan_trees)
-        painted = PaintedGround(args.paint_dir, palette, field, biome, list(drawn), oil_nodes())
-        inputs["paint"] = {
-            "cl": paint_meta.get("cl"),
-            "generator_version": paint_meta.get("generator_version"),
-            "digest": paint_meta.get("digest"),
-        }
-        paint_source = {
-            "paint": {
-                "name": f"data/local/{args.paint_dir.name}/",
-                "generator": paint_meta.get("generator"),
-                "generator_version": paint_meta.get("generator_version"),
-                "digest": paint_meta.get("digest"),
-                **painted.provenance(),
-                "seconds_to_prepare": round(time.time() - started, 1),
-            }
-        }
-        print(f"  paint layers prepared in {time.time() - started:.0f}s")
-
-    # ---- the cliff geometry and the top overlay, rasterised into this render's own grid
-    direct = top = None
-    direct_source: dict = {}
-    top_source: dict = {}
-    loaded: dict = {}
-
-    def sweep_once() -> tuple:
-        if "sweep" not in loaded:
-            index = AssetIndex(store)
-            loaded["index"] = index
-            loaded["sweep"] = sweep_world(
-                store, scripts, index, ClassFacts(store, index), not args.quiet
-            )
-        return loaded["index"], loaded["sweep"]
-
-    def geometry_once() -> dict:
-        if "geometry" not in loaded:
-            index, sweep = sweep_once()
-            loaded["geometry"] = read_cliff_geometry(
-                store, scripts, index, ClassFacts(store, index), not args.quiet, sweep
-            )
-            got = loaded["geometry"]
-            print(
-                f"  {got['meshes']} rock meshes, {got['tris'] / 1e6:.2f} M triangles "
-                f"{got['by_source']}, swept in {got['seconds_sweep']}s and decoded "
-                f"in {got['seconds_decode']}s"
-            )
-        return loaded["geometry"]
-
-    if direct_mask_plane is not None:
-        cache = (
-            args.cache_dir / DIRECT_CACHE_DIR_NAME
-            if args.cache_dir
-            else direct_cache_dir(out_dir, args.renders_name)
-        )
-        stamp = raster_cache_stamp(args.size, args.direct_subsamples, field_build)
-        maps = cached_raster(cache, stamp)
-        if maps is None:
-            print(
-                f"decoding the cliff geometry and rasterising it at {spacing_m:.4f} m"
-                + (
-                    f" with {args.direct_subsamples}x{args.direct_subsamples} sub-samples"
-                    if args.direct_subsamples > 1
-                    else ""
-                )
-            )
-            geometry = geometry_once()
-            families = placement_families(store, scripts, loaded["index"], geometry["sweep"])
-            prepared, dropped = direct_placements(geometry["sweep"], geometry["geometry"], families)
-            print(f"  {len(prepared)} placements rasterised, dropped {dropped}")
-            cache_stats = write_banded_raster(
-                partial(rasterise_direct_band, prepared, geometry["geometry"], with_source=True),
-                cache,
-                args.size,
-                args.direct_subsamples,
-                stamp,
-                not args.quiet,
-            )
-            print(
-                f"  direct raster: {cache_stats['texels_with_geometry'] / 1e6:.1f} M texels "
-                f"({cache_stats['share_of_the_sheet']}% of the sheet) in "
-                f"{cache_stats['seconds']}s"
-            )
-            direct_source = {
-                "cliff_geometry": {
-                    "name": "the same placed rock meshes tools/gen_world_heightmap.py folds "
-                    "into the 1 m field, decoded here a second time",
-                    "licence": (
-                        "Coffee Stain Studios' own cooked assets, read out of the reader's "
-                        "installed copy of the game. Nothing is committed, redistributed or "
-                        "served past localhost."
-                    ),
-                    "decoder": (
-                        "tools/gen_world_heightmap.py's own sweep_levels, read_mesh_geometry, "
-                        "rotation_matrix, winding_sign and MaxZRaster, imported and called. "
-                        "The grid they are pointed at is the only thing this file changes."
-                    ),
-                    "meshes": geometry["meshes"],
-                    "by_source": geometry["by_source"],
-                    "source_triangles": geometry["tris"],
-                    "triangles_out_of_bounds": geometry["triangles_out_of_bounds"],
-                    "placements_rasterised": len(prepared),
-                    "placements_dropped": dropped,
-                    "raster": cache_stats,
-                    "pyooz_version": pyooz_version,
-                }
-            }
-            maps = cached_raster(cache, stamp)
-            del prepared
-        else:
-            print(f"reusing the direct raster already in {cache}")
-            direct_source = {
-                "cliff_geometry": {
-                    "reused": json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
-                }
-            }
-        if maps is None:
-            print(f"the direct raster in {cache} could not be read back after writing it")
-            return 7
-        direct = (maps[0], maps[1], ground, args.direct_subsamples)
-        inputs["cliff_geometry"] = {
-            "cl": changelist(stamp["game_version_pinned"]),
-            "reader_version": READER_VERSIONS["cliff_geometry"],
-        }
-        if painted is not None:
-            painted.attach_families(cached_family(cache, stamp))
-            for name in ("rock_families",) + (() if args.no_titan_trees else ("titan_trees",)):
-                inputs[name] = dict(inputs["cliff_geometry"], reader_version=READER_VERSIONS[name])
-
-        if not args.no_top:
-            top_cache = (
-                args.cache_dir / TOP_CACHE_DIR_NAME
-                if args.cache_dir
-                else top_cache_dir(out_dir, args.renders_name)
-            )
-            top_maps = cached_raster(top_cache, stamp)
-            if top_maps is None:
-                print(f"rasterising the arches and foliage boulders at {spacing_m:.4f} m")
-                geometry = geometry_once()
-                items, top_meta = top_items(
-                    store, scripts, loaded["index"], geometry["sweep"], geometry["geometry"]
-                )
-                print(
-                    f"  {top_meta['arch_placements']} arches, "
-                    f"{top_meta['foliage_instances']} boulders {top_meta['foliage_sources']}"
-                )
-                top_stats = write_banded_raster(
-                    partial(rasterise_top_band, items),
-                    top_cache,
-                    args.size,
-                    args.direct_subsamples,
-                    stamp,
-                    not args.quiet,
-                )
-                print(
-                    f"  top raster: {top_stats['texels_with_geometry'] / 1e6:.1f} M texels in "
-                    f"{top_stats['seconds']}s"
-                )
-                top_source = {"top_overlay": {**top_meta, "raster": top_stats}}
-                del items
-                top_maps = cached_raster(top_cache, stamp)
-            else:
-                print(f"reusing the top raster already in {top_cache}")
-                top_source = {
-                    "top_overlay": {
-                        "reused": json.loads(
-                            (top_cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8")
-                        )
-                    }
-                }
-            if top_maps is None:
-                print(f"the top raster in {top_cache} could not be read back after writing it")
-                return 7
-            top = (top_maps[0], top_maps[1], args.direct_subsamples)
-
-    cache_root = args.cache_dir or out_dir / args.renders_name
-    extras = load_extras(
-        cache_root, args.size, field_build, store, scripts, sweep_once, field,
-        meshes=direct_mask_plane is not None and not args.no_meshes,
-        titan=direct_mask_plane is not None and painted is not None and not args.no_titan_trees,
-        rivers=not args.kernel_only, quiet=args.quiet,
-    )  # fmt: skip
-    meshes, mesh_source = extras.meshes, extras.mesh_source
-    if extras.titan is not None:
-        painted.attach_titan(extras.titan)
-        paint_source.update(extras.titan_source)
-    for name in extras.readers:
-        inputs[name] = {"cl": changelist(field_build), "reader_version": READER_VERSIONS[name]}
-    lattice = (heights, ground)
-    water, sea, planes = drawn_water(field, args.kernel_only, extras.rivers, lattice, art_water)
-    if painted is not None:
-        paint_source["paint"]["water_classes"] = painted.classify_water(field, planes)
-    relief = {
-        layer: ReliefGround(RELIEF_PALETTES[layer][0], field, biome, list(drawn), planes, heights)
-        for layer in layers
-        if layer in RELIEF_PALETTES
-    }
-    loaded.clear()
-
-    # ---- draw and cut ----------------------------------------------------------------
-    borrow_source = borrow_metadata(detail_meta, province_meta)
-    with light_run(scratch, args.size, painted, light_workers) as light:
-        total_started = time.time()
-        seam = SeamTrace() if direct is not None else None
-        regimes = RegimeCoverage() if direct is not None else None
-        measured: dict = {}
-        for layer in layers:
-            threads = draw_threads(args.draw_threads, layer, args.size)
-            print(f"drawing {layer} at {args.size}x{args.size} on {threads} thread(s)")
-            print(encode_stage(f"draw:{layer}", 0.0), flush=True)
-            started = time.time()
-            sheet = render_layer(
-                layer,
-                field,
-                biome_rgb,
-                biome or {"width": 1, "area": np.zeros((1, 1), np.uint8)},
-                borrow,
-                args.size,
-                not args.quiet,
-                height_dm=heights,
-                direct=direct,
-                measured_plane_u8=direct_mask_plane,
-                overlay=top,
-                kernel=taps_cubic if args.kernel_only else taps_pchip,
-                meshes=meshes,
-                falls=extras.falls,
-                reach=water.reach,
-                water_level=water.level,
-                sea=sea,
-                painted=painted if layer == "painted" else None,
-                rivers=extras.rivers,
-                relief=relief.get(layer),
-                # Both layers draw the identical surface, so the seam and the regime table are
-                # measured on the first one and quoted for both.
-                seam=seam if not measured else None,
-                regimes=regimes if not measured else None,
-                unlit=light is not None,
-                surface=light.surface_for() if light else None,
-                threads=threads,
-            )
-            drew = time.time() - started
-            if seam is not None and not measured:
-                measured = {"seam_trace": seam.result(), "regimes": regimes.result()}
-                trace = measured["seam_trace"]
-                if trace.get("measured"):
-                    print(
-                        f"  seam trace: p99 |d2z/dx2| {trace['p99_curvature']['seam']} over the "
-                        f"blend against {trace['p99_curvature']['switch']} for the hard max on "
-                        f"the same texels -- the fade spends "
-                        f"{trace['share_of_a_hard_switch']} of that ceiling; against the terrain "
-                        f"beside the join it reads {trace['against_the_pure_regimes']}, which is "
-                        "the design's own reference and is measuring the silhouette"
-                    )
-                print(f"  regimes: {measured['regimes']['sheet_pct']}")
-            try:
-                stats, dense, cut = (light.install if light else install_layer)(
-                    sheet, image_mod, out_dir, layer, cut_workers, recipe, args.renders_name
-                )
-            except PyramidError as exc:
-                print(exc)
-                return 1
-            del sheet
-            stats["game_version_pinned"] = field_build
-            dense["game_version_pinned"] = field_build
-            render = {
-                "width_px": args.size,
-                "height_px": args.size,
-                "metres_per_pixel": round(spacing_m, 4),
-                "sampling": sampling_text(spacing_m, direct is not None),
-                "two_regime": {
-                    "enabled": direct is not None,
-                    "subsamples_per_axis": args.direct_subsamples if direct is not None else None,
-                    "silhouette_antialiasing": (
-                        "none: a pixel is rock where a triangle covers its centre, at the "
-                        "triangle's own height, and ground where none does. Rock heights are "
-                        "never blurred across a silhouette"
-                    )
-                    if args.direct_subsamples == 1
-                    else (
-                        f"{args.direct_subsamples}x{args.direct_subsamples} sub-samples per output "
-                        "texel, box-folded"
-                    ),
-                    "composition": COMPOSITION_TEXT,
-                    "ground_lattice": ground_meta,
-                    "terrain_lattice": terrain_meta,
-                    "top_overlay": top is not None,
-                    "measurement_rule": direct_mask_meta,
-                    "lift_knee_m": DIRECT_LIFT_KNEE_M,
-                    "fill_rebuild": fill_meta,
-                    **measured,
-                },
-                "z7": Z7_TEXT if args.size >= RENDER_PX else None,
-                "hillshade": (
-                    f"sun at azimuth {SUN_AZIMUTH_DEG} deg, altitude {SUN_ALTITUDE_DEG} deg, "
-                    f"shade in [{SHADE_FLOOR}, {SHADE_FLOOR + SHADE_RANGE}], computed at the "
-                    "output's own spacing"
-                ),
-                "water": {
-                    "source": water_source,
-                    "depth_ramp_m": WATER_DEPTH_FULL_M,
-                    "edge_feather_m": WATER_EDGE_M,
-                    "edge_blur_m": WATER_EDGE_BLUR_M,
-                    "edge_blur_px": round(WATER_EDGE_BLUR_M / spacing_m, 3),
-                    "shore": (
-                        {
-                            **water.reach_meta,
-                            "rule": (
-                                "within reach_m of measured ocean water, coverage is the drawn "
-                                "surface crossing level_m, antialiased to one pixel; elsewhere "
-                                "recipe 5's rule"
-                            ),
-                            "optics": SHORE_OPTICS[layer],
-                        }
-                        if water.reach is not None
-                        else None
-                    ),
-                    "perched": water.perched,
-                    "level_only": LEVEL_ONLY_TEXT if sea is None else sea.meta,
-                    "rivers": extras.river_meta or None,
-                },
-                "seconds_to_draw": round(drew, 1),
-                "draw_threads": threads,
-                "seconds_to_cut": round(cut, 1),
-                "cut_workers": cut_workers,
-                **({"parallel_cutter_check": parallel_check} if parallel_check else {}),
-                "imaging": {"name": "pillow", "version": pillow_version},
-            }
-            style_id = LAYER_STYLES[layer]
-            recipe_row = RENDER_RECIPES[recipe]
-            sidecar = build_render_sidecar(
-                layer=layer,
-                recipe=recipe,
-                field_meta=field_meta,
-                tiles=stats,
-                tiles_2x=dense,
-                render=render,
-                provenance=provenance_block(
-                    game_raw,
-                    {
-                        key: value
-                        for key, value in inputs.items()
-                        if (key != "biome_raster" or layer in BIOME_LAYERS)
-                        and (
-                            key not in ("paint", "rock_families", "titan_trees")
-                            or layer == "painted"
-                        )
-                    },
-                    {
-                        "family": "render",
-                        "recipe": recipe,
-                        "version": recipe_row["version"],
-                        "label": recipe_row["label"],
-                        "sampler": "catmull-rom" if args.kernel_only else recipe_row["sampler"],
-                        "two_regime": direct is not None,
-                        "size_px": args.size,
-                        "subsamples": args.direct_subsamples,
-                    },
-                    {
-                        "id": style_id,
-                        "version": STYLES[style_id]["version"],
-                        "label": STYLES[style_id]["label"],
-                        "digest": STYLE_DIGESTS[layer],
-                        "tone": STYLES[style_id]["tone"],
-                    },
-                ),
-                extra={
-                    **borrow_source,
-                    **direct_source,
-                    **top_source,
-                    **mesh_source,
-                    **(biome_source if layer in BIOME_LAYERS else {}),
-                    **(paint_source if layer == "painted" else {}),
-                },
-            )
-            if light is not None:
-                light.decorate(sidecar, layer)
-            path = layer_dir(out_dir, layer, args.renders_name) / RENDER_SIDECAR_NAME
-            path.write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
-            print(
-                f"wrote {layer_dir(out_dir, layer, args.renders_name)}  {stats['count']} tiles over "
-                f"z0..z{stats['max_z']} ({stats['bytes'] / 1e6:.1f} MB) plus {dense['count']} "
-                f"@2x over z0..z{dense['max_z']} ({dense['bytes'] / 1e6:.1f} MB)  "
-                f"(drew {drew:.0f}s, cut {cut:.0f}s)"
-            )
-            print(encode_stage(f"cut:{layer}", 1.0), flush=True)
-        if direct is not None:
-            # Let the memory maps go before removing the files under them: on Windows an open
-            # mapping refuses the unlink outright.
-            direct = maps = top = top_maps = meshes = painted = None
-            if not (args.keep_direct or args.restyle):
-                for kept in RUN_CACHE_DIRS:
-                    root = args.cache_dir or out_dir / args.renders_name
-                    shutil.rmtree(root / kept, ignore_errors=True)
-    print(f"done in {time.time() - total_started:.0f}s")
-    print("none of it is committed: data/local/ is gitignored and stays that way.")
-    return 0
+    return parser

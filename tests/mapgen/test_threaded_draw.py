@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from mapgen.bandstore import BandArray, BandWriter
+from mapgen.cache import DirectPlanes, TopPlanes
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.palette.water.open_sea import open_sea
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
@@ -77,8 +78,8 @@ def _scene(tmp_path):
         field=field,
         heights=heights,
         sea=sea,
-        direct=(stored["rock_z"], stored["rock_cov"], heights.copy(), 1),
-        overlay=(stored["top_z"], stored["top_cov"], 1),
+        direct=DirectPlanes(stored["rock_z"], stored["rock_cov"], heights.copy(), 1),
+        overlay=TopPlanes(stored["top_z"], stored["top_cov"], 1),
         measured=(rng.random((N, N)) < 0.5).astype(np.uint8) * 255,
         stores=list(stored.values()),
     )
@@ -96,9 +97,8 @@ class _Surface:
 def _draw(scene, layer, threads):
     seam, regimes, surface = SeamTrace(), RegimeCoverage(), _Surface()
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
-    biome = {"width": 1, "area": np.zeros((1, 1), np.uint8)}
     rgb = render_layer(
-        layer, scene.field, np.full((1, 1, 3), 90.0, np.float32), biome, borrow, N, False,
+        layer, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
         scene.heights, direct=scene.direct, seam=seam, regimes=regimes,
         measured_plane_u8=scene.measured, overlay=scene.overlay, sea=scene.sea, unlit=True,
         surface=surface, threads=threads,

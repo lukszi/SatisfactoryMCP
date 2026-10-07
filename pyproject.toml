@@ -126,6 +126,7 @@ strict = [
     "tools/gen_paint_layers.py",
     "tools/gen_world_collectibles.py",
     "tools/gen_world_heightmap.py",
+    "tools/mapgen/src/mapgen/common.py",
     "tools/mapgen/src/mapgen/gamedata/ground/paint_store.py",
     "tools/mapgen/src/mapgen/gamedata/install.py",
     "tools/mapgen/src/mapgen/gamedata/nodes.py",
@@ -135,6 +136,9 @@ strict = [
     "tools/mapgen/src/mapgen/palette/painted/shapes.py",
     "tools/mapgen/src/mapgen/palette/scene.py",
     "tools/mapgen/src/mapgen/palette/schema.py",
+    "tools/mapgen/src/mapgen/render/drawpool.py",
+    "tools/mapgen/src/mapgen/tiles/recipes.py",
+    "tools/mapgen/src/mapgen/tiles/rendertext.py",
 ]
 reportUnnecessaryTypeIgnoreComment = "error"
 
