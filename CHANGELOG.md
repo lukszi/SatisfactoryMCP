@@ -148,6 +148,12 @@ Planned as 0.2.0.
   or lies inside it, through a junction or link too, is now refused before anything is
   written. Raw planes left by an interrupted run are removed only once they match their
   bands, and the report says whether a cache was converted in place or copied.
+- Full-size (32768) map renders no longer draw a faint line along water edges every 256
+  rows, in every layer and in the live-sun light: each band of rows is now drawn 16 rows
+  past its edges instead of 8, enough for the water edge's blur. Smaller sizes are unchanged.
+- Tree crowns on the game-painted map are placed from each pixel's own centre, so they no
+  longer shift with where a band of rows starts. A few hundred crown pixels of a 2048 map,
+  and 0.02% of a full-size one, change once where a crown's edge decides whether it shows.
 
 ## [0.1.0] - 2026-09-27
 

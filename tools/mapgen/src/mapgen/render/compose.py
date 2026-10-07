@@ -43,6 +43,7 @@ from mapgen.palette.water.rivers import RiverWater, water_sources
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M
 from mapgen.render.drawpool import bands_held, in_order
+from mapgen.render.stencils import band_halo
 from mapgen.render.surface import (
     AxisTaps,
     BandSampling,
@@ -87,10 +88,9 @@ __all__ = [
 #: Rows of the output drawn at a time: 256 rows of 32768 is 34 MB of float32 an array.
 BAND_ROWS = 256
 
-#: The rows each band is drawn beyond its edges and cropped after, so no stencil (the
-#: hillshade's gradient, the water edge's blur) sees a band edge. Too small for the widest
-#: kernel and the render draws a seam every 256 rows (docs/spatial-and-map.md section 40).
-BAND_HALO = 8
+#: The rows each band is drawn beyond its edges and cropped after, so no stencil sees a band
+#: edge: the widest reach at the largest size, from ``render/stencils.py``.
+BAND_HALO = band_halo()
 
 #: The flat ground's sun term, ``n.L`` of the default sun on level ground.
 _FLAT_SUN = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
@@ -494,17 +494,15 @@ def _painted_colours(
 
 def domed_crowns(
     painted: PaintedGround,
-    x_cm: np.ndarray,
-    y_cm: np.ndarray,
+    x_cm: F64Grid,
+    y_cm: F64Grid,
     spacing_m: float,
     unlit: bool = False,
 ) -> CrownBand | None:
     """The crowns over these pixel centres, with their domes lit by the shared sun."""
     if painted.crowns is None:
         return None
-    step_cm = spacing_m * 100.0
-    x0_cm, y0_cm = x_cm[0] - step_cm / 2, y_cm[0] - step_cm / 2
-    stamped = stamp_crowns(painted.crowns, x0_cm, y0_cm, step_cm, len(y_cm), len(x_cm))
+    stamped = stamp_crowns(painted.crowns, x_cm, y_cm, spacing_m * 100.0)
     dome = stamped["dome_m"] * np.float32(painted.palette["crowns"]["dome_gain"])
     stamped["ndl"] = np.full(dome.shape, _FLAT_SUN) if unlit else sun_dot(dome, spacing_m)
     return stamped

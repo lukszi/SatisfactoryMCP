@@ -159,7 +159,8 @@ def _l_sprite():
 
 
 def _band(crowns, step_cm=22.9, size=80, x0=-900.0, y0=-900.0):
-    return stamp_crowns(crowns, x0, y0, step_cm, size, size)
+    centres = (np.arange(size) + 0.5) * step_cm
+    return stamp_crowns(crowns, x0 + centres, y0 + centres, step_cm)
 
 
 def test_a_tree_stamps_its_sprite_turned_by_its_yaw(tmp_path):
@@ -211,6 +212,19 @@ def test_a_coarse_sheet_keeps_a_crowns_area(tmp_path):
     assert coarse == pytest.approx(fine, rel=0.2), "the mip average keeps the area"
     assert fine == pytest.approx(6.5 * 0.95, rel=0.1)
     assert len(sprite_levels(sprite, [LEAF])) > 3
+
+
+def test_a_crown_draws_the_same_in_any_band_or_window(tmp_path):
+    step = 7500.0 * 100.0 / 32768
+    records, _ = data.crown_records({"/A": np.array([_matrix(0, 0, 0, 30)])}, ["A"])
+    crowns = _store(tmp_path, [_l_sprite()], records, [{"linear": list(LEAF)}])
+    x, y = (np.arange(-60, 60) + 0.5) * step, (np.arange(-300, 60) + 0.5) * step
+    whole = stamp_crowns(crowns, x, y, step)
+    assert whole["cover"].max() > 0.9
+    for first_row, first_col in ((16, 0), (280, 3), (299, 41)):
+        part = stamp_crowns(crowns, x[first_col:], y[first_row:], step)
+        for name, plane in part.items():
+            np.testing.assert_array_equal(plane, whole[name][first_row:, first_col:], name)
 
 
 def test_a_band_with_no_tree_is_empty(tmp_path):

@@ -139,6 +139,7 @@ strict = [
     "tools/mapgen/src/mapgen/palette/scene.py",
     "tools/mapgen/src/mapgen/palette/schema.py",
     "tools/mapgen/src/mapgen/render/drawpool.py",
+    "tools/mapgen/src/mapgen/render/stencils.py",
     "tools/mapgen/src/mapgen/tiles/recipes.py",
     "tools/mapgen/src/mapgen/tiles/rendertext.py",
 ]

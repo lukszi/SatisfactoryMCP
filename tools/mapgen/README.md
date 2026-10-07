@@ -232,6 +232,7 @@ be traced to the axis it should move.
 | `palette/water/perched.py` | style | Water levels re-read from the shoreline where a box top is not the surface |
 | `render/compose.py` | | The band loop that draws a layer |
 | `render/drawpool.py` | | How many threads draw a layer's bands, and the pool that keeps their order |
+| `render/stencils.py` | | How far each step of a band's draw reads its neighbours, and the band halo that holds them |
 | `render/extras.py` | | What a run loads beside the field: meshes, falls, Titan trees and rivers |
 | `render/light.py` | | Installing a layer drawn unlit: `unlit/` and the default-sun copy |
 | `render/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
@@ -261,7 +262,8 @@ here.
 
 `render_layer` draws a sheet 256 rows at a time; at 32768 a whole-sheet float32 intermediate
 is four gigabytes. Each band carries `BAND_HALO` rows either side and crops them, because a
-one-sided difference at every band edge would draw a line across the world. `direct` is the
+one-sided difference at every band edge would draw a line across the world; the halo is the
+widest reach in `render/stencils.py` (docs/map/renders.md section 40). `direct` is the
 rock raster's two planes with the ground lattice and the sub-sampling, and `overlay` the
 arch-and-boulder pair; without them the picture is one regime. `seam` and `regimes` are the
 measuring accumulators, passed for the first layer only since every layer draws one surface.

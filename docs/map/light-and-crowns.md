@@ -356,6 +356,21 @@ lowest top first, each over the ones below. A band returns cover, cover-weighted
 dome height and the highest crown top in world cm; `stamp_crowns(...)["top_cm"]` is the crown
 height raster on any render grid.
 
+A pixel is placed on a sprite from its own centre on the sheet, so a crown draws the same
+whichever band or window holds it (2026-10-07). Before, the offset was counted in float32
+from the band's corner, up to 0.03 cm off along a full-size row, and a band starting
+elsewhere moved the crowns: with the band halo widened from 8 to 16 rows (renders.md section
+40), 0.48% of the crown values of a 2048 sheet and 0.46% of 12 full-size bands changed, the
+cover by up to 3e-5 and the top by up to 0.17 cm.
+
+Placing the pixels from their centres moved the cover of one full-width, full-size band by up
+to 0.0024 and the dome by up to 5 cm. The top is the highest one among the crowns whose cover
+reaches `COVER_TOP_MIN`, so where a cover crosses 0.25 the top passes to another crown, by
+up to 17 m, at 53 pixels of that band, and there the crown flips between drawn and hidden.
+Measured on build 502094: at 2048, 328 pixels in 55 of the painted layer's 85 tiles, by up
+to 12 levels; in the full-size windows renders.md section 40 describes, 21,219 pixels
+(0.02%), by up to 76. No other layer and no light tile moved.
+
 `palette/painted/ground.py` composites the crowns that stand out of the water last, over water and
 foam, under the highlight shoulder; a crown under the water's surface is drawn in the bed
 instead ("Crowns and the water" below). The `crowns` block of `satellite-painted.json`:
