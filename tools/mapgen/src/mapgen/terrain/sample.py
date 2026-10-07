@@ -436,7 +436,7 @@ def _lattice(i: I64Grid, j: I64Grid, seed: int) -> F32Grid:
     return (h >> np.uint64(40)).astype(np.float32) / np.float32(1 << 24)
 
 
-def patch_noise(x_m: ArrayLike, y_m: ArrayLike, octaves: Sequence[tuple[float, float]],
+def patch_noise(x_m: ArrayLike, y_m: ArrayLike, octaves: Sequence[Sequence[float]],
                 seed: int) -> F32Grid:  # fmt: skip
     """Value noise in [0, 1] at points in metres from the frame's corner: per octave
     ``(wavelength m, amount)`` a hashed lattice blended by smoothstep, mixed by amount. The

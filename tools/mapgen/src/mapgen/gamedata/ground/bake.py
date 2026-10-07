@@ -99,7 +99,7 @@ def bake_cell_origin(gx: int, gy: int) -> tuple[int, int]:
     return row, col
 
 
-def bake_have(rgb: U8Grid) -> BoolMask:
+def bake_have(rgb: npt.NDArray[np.integer]) -> BoolMask:
     """Where the bake says anything: covered and not one of its black holes."""
     return rgb.astype(np.uint16).sum(-1) >= 3
 

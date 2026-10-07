@@ -38,7 +38,7 @@ from mapgen.palette.painted.shapes import (
     Sampler,
     TitanTreesStyle,
 )
-from mapgen.palette.styles import CrownStyle
+from mapgen.palette.schema import CrownStyle
 from mapgen.terrain.crown_stamp import CrownSet
 from mapgen.terrain.render_meshes import TITAN_LEAVES, TITAN_TRUNK
 from satisfactory_mcp.core.arrays import I64Grid
@@ -269,7 +269,7 @@ def sample_titan(
     c_lo, c_hi = max(int(np.floor(fc[0])), 0), min(int(np.floor(fc[-1])) + 2, cls.shape[1])
     if r_lo >= r_hi or c_lo >= c_hi:
         return None
-    cut = np.asarray(cls[r_lo:r_hi, c_lo:c_hi])
+    cut = np.asarray(cls[r_lo:r_hi, c_lo:c_hi], np.uint8)
     if not cut.any():
         return None
     height = np.asarray(z_cm[r_lo:r_hi, c_lo:c_hi], np.float32) / np.float32(100.0)

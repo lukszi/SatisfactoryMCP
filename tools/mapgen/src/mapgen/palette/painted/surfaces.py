@@ -97,7 +97,7 @@ def family_cells(plane: Plane, shape: tuple[int, int], step_m: float) -> U8Grid:
         np.clip(np.floor(np.arange(n) * step_m * size / span_m), 0, size - 1).astype(int)
         for n, size in zip(shape, plane.shape, strict=True)
     ]
-    return np.asarray(plane[picks[0]][:, picks[1]])
+    return np.asarray(plane[picks[0]][:, picks[1]], np.uint8)
 
 
 def family_targets(
@@ -182,7 +182,7 @@ def rock_surface(
     if code is not None:
         code = np.asarray(code)
     elif ground.rock_family is not None:
-        code = np.asarray(ground.rock_family[scene["grid"][0]])
+        code = np.asarray(ground.rock_family[scene["grid"][0]], np.uint8)
     else:
         return rock_rgb
     for which, planes in ground.family_rock.items():

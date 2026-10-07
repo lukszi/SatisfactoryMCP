@@ -137,7 +137,7 @@ class PaintedGround:
         self,
         paint_dir: Path,
         palette: Mapping[str, object],
-        field: FieldPlanes,
+        field: hf.Field,
         biome: BiomeGrid,
         area_names: list[str],
         stamps: F64Grid | None = None,
