@@ -124,15 +124,19 @@ def test_a_block_s_horizons_a_direction_at_a_time_are_the_stacked_ones():
     ground = hz.faded_horizons(zh, halo, SP, None, slabs)
     over = hz.crown_horizons(crowns[0], halo, SP, crowns[1])
     stack = np.concatenate([ground, np.where(over > ground, over, np.float32(0.0))])
-    hz_u8, hq, sun = stage._bake_horizons(zh, halo, SP, crowns, slabs, m, True)
+    hz_u8, hq, sun, canopy = stage._bake_horizons(zh, halo, SP, (crowns, slabs), m, True)
     assert hz_u8.tobytes() == hz.encode_horizon(stack).tobytes()
     scale = light_tiles.HZ_LINEAR_SCALE
     want_hq = np.round(np.clip(light_tiles.downsample(np.moveaxis(stack, 0, -1)), 0, 90) * scale)
     assert hq.tobytes() == want_hq.astype(np.uint8).tobytes()
-    nrm = np.random.default_rng(7).integers(0, 256, (2 * m, 2 * m, 4), dtype=np.uint8)
-    for crowned in (False, True):
-        want = model.direct_term(nrm, stack, DEFAULT_SUN, crowns=crowned)
-        assert model.direct_term(nrm, sun, DEFAULT_SUN, crowns=crowned).tobytes() == want.tobytes()
+    ground = hz.faded_horizons(zh, halo - 1, SP, None, slabs)
+    over = hz.crown_horizons(crowns[0], halo - 1, SP, crowns[1])
+    ringed = np.concatenate([ground, np.where(over > ground, over, np.float32(0.0))])
+    assert ringed[:, 1:-1, 1:-1].tobytes() == stack.tobytes(), "a pixel's march is its own"
+    for k in model.sun_cells(DEFAULT_SUN[0]):
+        assert sun[k].tobytes() == ringed[k].tobytes(), "the default sun keeps the ring"
+    for k in model.sun_cells(DEFAULT_SUN[0])[:2]:
+        assert canopy[k].tobytes() == over[k].tobytes(), "the canopy keeps its whole horizon"
 
 
 def test_the_default_sun_reads_only_its_four_cells_and_water_bakes_zero():
@@ -145,14 +149,14 @@ def test_the_default_sun_reads_only_its_four_cells_and_water_bakes_zero():
         sparse[k] = np.full((m, m), 10.0 + k, np.float32)
     nrm = np.full((m, m, 4), 200, np.uint8)
     assert model.direct_term(nrm, sparse, DEFAULT_SUN, crowns=True).shape == (m, m)
-    hz_u8, hq, sun = stage._bake_horizons(zh, halo, SP, None, None, m, False)
+    hz_u8, hq, sun, _canopy = stage._bake_horizons(zh, halo, SP, (None, None), m, False)
     assert not hz_u8.any() and not hq.any() and not any(plane.any() for plane in sun)
 
 
 def test_without_crowns_the_crown_cells_stay_zero():
     zh, halo, slabs, _crowns = _block_inputs()
     m = zh.shape[0] - 2 * halo
-    hz_u8, hq, _sun = stage._bake_horizons(zh, halo, SP, None, slabs, m, True)
+    hz_u8, hq, _sun, _canopy = stage._bake_horizons(zh, halo, SP, (None, slabs), m, True)
     assert hz_u8[: model.HORIZON_DIRS].any() and not hz_u8[model.HORIZON_DIRS :].any()
     assert not hq[..., model.HORIZON_DIRS :].any()
 

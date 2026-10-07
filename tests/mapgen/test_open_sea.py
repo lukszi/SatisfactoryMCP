@@ -499,6 +499,7 @@ def test_a_rock_under_the_sea_s_level_is_the_void_s_where_the_sea_fades_into_it(
     assert np.all((z_deep - z)[fade] <= ((1 - cover) * lift)[fade] + 1e-3), "it fades with it"
     covered = void | (cover >= 0.5)
     assert np.abs(rgb_deep - rgb).max(axis=-1)[covered].max() <= 1, "drawn as if it were not"
-    assert np.array_equal(z_deep[void], z[void]) and not land_deep[void].any(), "no land to light"
+    same = np.array_equal(z_deep[void], z[void], equal_nan=True)
+    assert same and not land_deep[void].any(), "no land to light"
     assert (land_high[void] > 0.99).all(), "a rock out of the sea still stands in the void"
     assert (np.abs(rgb_high - rgb).max(axis=-1)[void] > 20).all()

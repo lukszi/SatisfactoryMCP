@@ -199,6 +199,7 @@ class PaintedScene(BandScene):
     mesh_family: U8Grid | None
     water_optics: ClassOptics | None
     grid: BandGrid
+    unlit: NotRequired[bool]
 
 
 class UnderwaterScene(TypedDict):

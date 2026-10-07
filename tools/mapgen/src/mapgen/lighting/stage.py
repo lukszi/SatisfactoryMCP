@@ -25,6 +25,13 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
+from mapgen.lighting.canopy import (
+    CanopyLight,
+    blend_canopy,
+    canopy_normal_bytes,
+    smoothing_margin,
+)
+from mapgen.lighting.holes import Holes, fill_holes, find_holes, half_heights, opened
 from mapgen.lighting.horizon import (
     HORIZON_DIRS,
     Slabs,
@@ -46,7 +53,14 @@ from mapgen.lighting.light_tiles import (
     tile_jobs,
     work_array,
 )
-from mapgen.lighting.model import DIRECT_SCALE, HZ_CELLS, direct_term, light_axis, sun_cells
+from mapgen.lighting.model import (
+    DIRECT_SCALE,
+    HZ_CELLS,
+    light_axis,
+    shaded_direct,
+    sun_cells,
+    sun_horizon,
+)
 from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.pools import free_ram_bytes
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
@@ -60,6 +74,7 @@ __all__ = [
     "LIGHT_VERSION",
     "LIGHT_WORKER_BYTES",
     "LIGHT_WORKER_CAP",
+    "TERMS",
     "BlockDone",
     "BlockJob",
     "Occluder",
@@ -81,13 +96,21 @@ LIGHT_DIR_NAME = "light"
 
 #: The bake's own version. Bump it when the bake writes other bytes from the same surface,
 #: casters and model, so no run reuses a light the old bake wrote.
-LIGHT_VERSION = 1
+LIGHT_VERSION = 2
 
 #: Rows of a plane hashed at a time.
 DIGEST_ROWS = 1024
 
 #: Native tiles per block edge; a block is computed with its own halo.
 BLOCK_TILES = 16
+
+#: The default sun's terms a pixel: sky view, the ground's direct term, then the painted
+#: layer's direct term and sky view, crowned and with its canopy's own light.
+TERMS = 4
+
+#: A block's rows whose default-sun terms are made at a time, so its full-resolution planes
+#: stay small beside the block's own.
+TERM_ROWS = 512
 
 #: Light processes at most, and the free memory each one needs: its measured peak on a
 #: full-size block with crowns or arches, started with one BLAS thread.
@@ -225,10 +248,10 @@ def _crown_surfaces(
     top = padded_window(occluder, *window, np.nan)
     cover = optional_array(work, "occluder_cover", np.uint8)
     share = None if cover is None else padded_window(cover, *window, 0.0) / np.float32(255.0)
-    on_z = downsample(crown_surface(z_window, top, share))
+    on_z = half_heights(crown_surface(z_window, top, share))
     if ground_window is None:
         return on_z, None
-    return on_z, downsample(crown_surface(ground_window, top, share))
+    return on_z, half_heights(crown_surface(ground_window, top, share))
 
 
 def _half_surfaces(
@@ -236,7 +259,7 @@ def _half_surfaces(
 ) -> tuple[F32Grid, _CrownSurfaces | None, Slabs | None]:
     """The block's heights at half resolution, and what casts on them when it marches."""
     z_window = padded_window(work_array(work, "z", np.float32, "r"), *window)
-    z_half = downsample(z_window)
+    z_half = half_heights(z_window)
     if not march:
         return z_half, None, None
     ground, lo, hi = (optional_array(work, f"slab_{k}", np.float32) for k in ("ground", "lo", "hi"))
@@ -249,47 +272,87 @@ def _half_surfaces(
     return z_half, _crown_surfaces(work, window, z_window, ground_window), slabs
 
 
+def _opened_surfaces(
+    z_half: F32Grid, crowns: _CrownSurfaces | None, slabs: Slabs | None
+) -> tuple[F32Grid, _CrownSurfaces | None, Slabs | None]:
+    """What the march and the sky view read with every hole open (``holes.opened``)."""
+    open_crowns = None if crowns is None else (
+        opened(crowns[0]), None if crowns[1] is None else opened(crowns[1])
+    )  # fmt: skip
+    open_slabs = None if slabs is None else (opened(slabs[0]), slabs[1], slabs[2])
+    return opened(z_half), open_crowns, open_slabs
+
+
 def _horizon_cells(
     z_half: F32Grid,
     halo: int,
     spacing_m: float,
-    crowns: _CrownSurfaces | None,
-    slabs: Slabs | None,
-) -> Iterator[tuple[int, F32Grid]]:
-    """Each direction's ground cell, then its crown cell where the crowns stand above it."""
+    casts: tuple[_CrownSurfaces | None, Slabs | None],
+    holes: Holes | None,
+) -> Iterator[tuple[int, F32Grid, F32Grid]]:
+    """Each direction's ground cell, then its crown cell where the crowns stand above it, each
+    with the horizon it was cut from: the crowns' whole, received on the canopy top.
+
+    ``casts`` is the crowns and the slabs; a hole takes the cells of the pixel nearest it.
+    """
+    crowns, slabs = casts
     for k in range(HORIZON_DIRS):
         az = k * 360.0 / HORIZON_DIRS
-        ground = march_horizon(z_half, halo, az, spacing_m, None, slabs)
-        yield k, ground
+        ground = fill_holes(march_horizon(z_half, halo, az, spacing_m, None, slabs), holes, 0.0)
+        yield k, ground, ground
         if crowns is not None:
             over = crown_horizon(crowns[0], halo, az, spacing_m, crowns[1])
-            yield HORIZON_DIRS + k, np.where(over > ground, over, np.float32(0.0))
+            over = fill_holes(over, holes, 0.0)
+            yield HORIZON_DIRS + k, np.where(over > ground, over, np.float32(0.0)), over
+
+
+class BakedHorizons(NamedTuple):
+    """A block's horizons: the atlas bytes, the coarser levels' source, the default sun's
+    cells and, by direction, the canopy's own horizon toward it; the last two with a ring."""
+
+    atlas: U8Grid
+    quarter: U8Grid
+    sun: list[F32Grid]
+    canopy: list[F32Grid]
 
 
 def _bake_horizons(
     z_half: F32Grid,
     halo: int,
     spacing_m: float,
-    crowns: _CrownSurfaces | None,
-    slabs: Slabs | None,
+    casts: tuple[_CrownSurfaces | None, Slabs | None],
     half_px: int,
     march: bool,
-) -> tuple[U8Grid, U8Grid, list[F32Grid]]:
+    holes: Holes | None = None,
+) -> BakedHorizons:
     """The atlas bytes, the coarser levels' source and the default sun's planes, a cell at a time.
 
-    No ``(cells, half_px, half_px)`` float stack: each cell is encoded as it is marched.
+    No ``(cells, half_px, half_px)`` float stack: each cell is encoded as it is marched. The
+    march takes a pixel more on each side, which only the default sun's planes keep, so they
+    upsample from their neighbours past the block's edge (``_upsampled``).
     """
     hz_u8 = np.zeros((HZ_CELLS, half_px, half_px), np.uint8)
     horizon_quarter = np.zeros((half_px // 2, half_px // 2, HZ_CELLS), np.uint8)
-    sun = [np.zeros((half_px, half_px), np.float32)] * HZ_CELLS
+    sun = [np.zeros((half_px + 2, half_px + 2), np.float32)] * HZ_CELLS
+    canopy = sun[:HORIZON_DIRS]
     keep = sun_cells(DEFAULT_SUN[0])
-    cells = _horizon_cells(z_half, halo, spacing_m, crowns, slabs) if march else iter(())
-    for k, deg in cells:
+    cells = _horizon_cells(z_half, halo - 1, spacing_m, casts, holes) if march else iter(())
+    for k, ringed, whole in cells:
+        deg = ringed[1:-1, 1:-1]
         hz_u8[k] = encode_horizon(deg)
         horizon_quarter[..., k] = np.round(np.clip(downsample(deg), 0, 90) * HZ_LINEAR_SCALE)
         if k in keep:
-            sun[k] = deg
-    return hz_u8, horizon_quarter, sun
+            sun[k] = ringed
+            if k >= HORIZON_DIRS:
+                canopy[k - HORIZON_DIRS] = whole
+    return BakedHorizons(hz_u8, horizon_quarter, sun, canopy)
+
+
+def _upsampled(ringed: F32Grid) -> F32Grid:
+    """A half-resolution plane with a ring of one pixel past each edge at full resolution, each
+    pixel interpolated from the four half-resolution pixels around its centre."""
+    full: F32Grid = ndimage.zoom(ringed, 2, order=1, mode="nearest", grid_mode=True)
+    return full[2:-2, 2:-2]
 
 
 def bake_block(job: BlockJob) -> BlockDone:
@@ -302,46 +365,120 @@ def bake_block(job: BlockJob) -> BlockDone:
     land_core = np.asarray(land[r0 : r0 + block_px, c0 : c0 + block_px])
     march = not (job.skip_water and not land_core.any())
     z_half, crowns, slabs = _half_surfaces(work, window, march)
-    hz_u8, horizon_quarter, sun = _bake_horizons(
-        z_half, halo, half_m, crowns, slabs, half_px, march
+    holes = find_holes(z_half[halo - 1 : 1 - halo, halo - 1 : 1 - halo])
+    if holes is not None:
+        z_half, crowns, slabs = _opened_surfaces(z_half, crowns, slabs)
+    atlas, horizon_quarter, sun, canopy_cells = _bake_horizons(
+        z_half, halo, half_m, (crowns, slabs), half_px, march, holes
     )
-    del crowns, slabs
     sky = job.sky_halo
-    rows, cols = (slice(halo - sky, side - halo + sky) for side in z_half.shape[:2])
-    sky_view_half = sky_view(z_half[rows, cols], sky, half_m)
+    rows, cols = (slice(halo - sky - 1, side - halo + sky + 1) for side in z_half.shape[:2])
+    sky_ringed = fill_holes(sky_view(z_half[rows, cols], sky, half_m), holes, 1.0)
+    canopy_sky = None
+    if crowns is not None:
+        canopy_sky = fill_holes(sky_view(crowns[0][rows, cols], sky, half_m), holes, 1.0)
+    del crowns, slabs
     ring = (r0 - 1, r0 + block_px + 1, c0 - 1, c0 + block_px + 1)
     z_ring = padded_window(work_array(work, "z", np.float32, "r"), *ring)
     nx, ny = normals(z_ring, spacing_m)
-    svf = np.clip(ndimage.zoom(sky_view_half, 2, order=1, mode="nearest", grid_mode=True), 0, 1)
+    svf = np.clip(_upsampled(sky_ringed), 0, 1)
     nrm = np.stack(
         [normal_byte(nx), normal_byte(ny), np.round(svf * 255).astype(np.uint8), land_core], -1
     )
     del nx, ny, svf
     t = PYRAMID_TILE_PX
-    hz_bytes = encode_tiles(tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, hz_u8))
-    del hz_u8
-    terms = work_array(work, "terms", np.uint8)
-    terms[r0 : r0 + block_px, c0 : c0 + block_px, 0] = nrm[..., 2]
-    for k, crowned in ((1, False), (2, True)):
-        direct = direct_term(nrm, sun, DEFAULT_SUN, crowns=crowned)
-        terms[r0 : r0 + block_px, c0 : c0 + block_px, k] = np.clip(
-            np.round(direct * DIRECT_SCALE), 0, 255
-        )
+    hz_bytes = encode_tiles(tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, atlas))
+    del atlas
+    canopy = None if canopy_sky is None else _canopy(work, job, canopy_cells, canopy_sky)
+    _default_terms(work, job, nrm, sun, canopy)
+    del canopy
     h0, w0 = r0 // 2, c0 // 2
-    core = z_half[halo:-halo, halo:-halo]
+    ringed = fill_holes(z_half[halo - 1 : 1 - halo, halo - 1 : 1 - halo], holes, 0.0)
     half = (slice(h0, h0 + half_px), slice(w0, w0 + half_px))
-    work_array(work, "zh", np.float32)[half] = core
+    work_array(work, "zh", np.float32)[half] = ringed[1:-1, 1:-1]
     work_array(work, "landh", np.uint8)[half] = np.round(downsample(land_core.astype(np.float32)))
-    work_array(work, "svfh", np.uint8)[half] = np.round(np.clip(sky_view_half, 0, 1) * 255)
+    work_array(work, "svfh", np.uint8)[half] = np.round(np.clip(sky_ringed[1:-1, 1:-1], 0, 1) * 255)
     quarter = (slice(h0 // 2, (h0 + half_px) // 2), slice(w0 // 2, (w0 + half_px) // 2))
     work_array(work, "hzq", np.uint8)[quarter] = horizon_quarter
     tiles = (nrm.shape[0] // t) * (nrm.shape[1] // t)
     return BlockDone(tiles, hz_bytes, time.time() - started)
 
 
+class _Canopy(NamedTuple):
+    """What the canopy's own light reads: its top and cover planes, and its horizon toward
+    the default sun and its sky view at half resolution, with a ring."""
+
+    top: NDArray[np.float32]
+    cover: NDArray[np.uint8] | None
+    horizon: F32Grid
+    sky: F32Grid
+
+
+def _canopy(work: Path, job: BlockJob, cells: list[F32Grid], sky: F32Grid) -> _Canopy | None:
+    """The block's canopy, None without an occluder or where none stands in the block;
+    ``cells`` are its horizons by direction, as ``_bake_horizons`` keeps them."""
+    r0, c0, n = job.block
+    top = optional_array(work, "occluder", np.float32)
+    if top is None:
+        return None
+    cover = optional_array(work, "occluder_cover", np.uint8)
+    core = (slice(r0, r0 + n), slice(c0, c0 + n))
+    there = np.isfinite(top[core]) if cover is None else np.asarray(cover[core]) > 0
+    if not there.any():
+        return None
+    return _Canopy(top, cover, sun_horizon(cells, DEFAULT_SUN[0]), sky)
+
+
+def _canopy_rows(canopy: _Canopy, job: BlockJob, rows: slice) -> CanopyLight:
+    """The canopy's light on ``rows`` of the block: its share of each pixel, its direct term
+    under its own smoothed top and horizons, and its sky view."""
+    r0, c0, n = job.block
+    a, b = r0 + rows.start, r0 + rows.stop
+    if canopy.cover is None:
+        share = np.isfinite(canopy.top[a:b, c0 : c0 + n]).astype(np.float32)
+    else:
+        share = np.asarray(canopy.cover[a:b, c0 : c0 + n], np.float32) / np.float32(255.0)
+    margin = smoothing_margin(job.spacing_m)
+    reach = margin + 1
+    top = padded_window(canopy.top, a - reach, b + reach, c0 - reach, c0 + n + reach, np.nan)
+    slope = canopy_normal_bytes(top, margin, job.spacing_m)
+    direct = shaded_direct(slope, _upsampled(_ring_rows(canopy.horizon, rows)), DEFAULT_SUN)
+    sky = np.clip(_upsampled(_ring_rows(canopy.sky, rows)), 0, 1)
+    return CanopyLight(share, direct, sky)
+
+
+def _ring_rows(ringed: F32Grid, rows: slice) -> F32Grid:
+    """The half-resolution rows, ring included, that ``_upsampled`` reads for ``rows``."""
+    return ringed[rows.start // 2 : rows.stop // 2 + 2]
+
+
+def _default_terms(
+    work: Path, job: BlockJob, nrm: U8Grid, sun: list[F32Grid], canopy: _Canopy | None
+) -> None:
+    """The block's terms at the default sun, ``TERM_ROWS`` at a time: the sky view and the
+    ground's direct term, then the painted layer's, crowned and with the canopy's own light,
+    and its sky view."""
+    r0, c0, n = job.block
+    terms = work_array(work, "terms", np.uint8)
+    horizons = {crowned: sun_horizon(sun, DEFAULT_SUN[0], crowned) for crowned in (False, True)}
+    for start in range(0, n, TERM_ROWS):
+        rows = slice(start, min(start + TERM_ROWS, n))
+        out = terms[r0 + rows.start : r0 + rows.stop, c0 : c0 + n]
+        part = nrm[rows]
+        out[..., 0] = out[..., 3] = part[..., 2]
+        for k, crowned in ((1, False), (2, True)):
+            horizon = _upsampled(_ring_rows(horizons[crowned], rows))
+            direct = shaded_direct(part, horizon, DEFAULT_SUN)
+            if crowned and canopy is not None:
+                open_sky = part[..., 2].astype(np.float32) / np.float32(255.0)
+                direct, open_sky = blend_canopy(direct, open_sky, _canopy_rows(canopy, job, rows))
+                out[..., 3] = np.round(np.clip(open_sky, 0, 1) * 255)
+            out[..., k] = np.clip(np.round(direct * DIRECT_SCALE), 0, 255)
+
+
 def allocate_work_arrays(work: Path, size: int) -> None:
     """The bake's work files in ``work``: the terms and the coarser levels' sources."""
-    layout = (("terms", np.uint8, (size, size, 3)), *level_layout(size // 2))
+    layout = (("terms", np.uint8, (size, size, TERMS)), *level_layout(size // 2))
     for name, dtype, shape in layout:
         np.lib.format.open_memmap(work / f"{name}.npy", "w+", dtype, shape).flush()
 
@@ -420,7 +557,7 @@ def _json_digest(value: JsonObject) -> str:
 
 
 def default_terms(surface: Surface) -> U8Grid:
-    """``(svf, direct, direct with crowns)`` at the default sun, bytes on the sheet's grid."""
+    """The ``TERMS`` at the default sun, bytes on the sheet's grid."""
     return work_array(surface.terms.parent, surface.terms.stem, np.uint8, "r")
 
 

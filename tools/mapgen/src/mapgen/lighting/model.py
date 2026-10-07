@@ -59,7 +59,9 @@ __all__ = [
     "light_params",
     "model_block",
     "relight",
+    "shaded_direct",
     "sun_cells",
+    "sun_horizon",
     "surface_direct",
 ]
 
@@ -194,6 +196,25 @@ def direct_term(
     ``crowns`` and the atlas has them, the crowns', which shade where they stand higher. A
     sequence of as many planes does too; only the ``sun_cells`` are read.
     """
+    hz = None
+    if shadows and hz_deg is not None:
+        hz = sun_horizon(hz_deg, sun[0], crowns)
+        shape = nrm_u8.shape[:2]
+        if hz.shape != shape:
+            hz = ndimage.zoom(hz, np.array(shape) / np.array(hz.shape), order=1)
+    return shaded_direct(nrm_u8, hz, sun)
+
+
+def sun_horizon(hz_deg: Horizons, az: float, crowns: bool = False) -> F32Grid:
+    """The horizon toward ``az``; with ``crowns`` and crown cells, the crowns' where higher."""
+    hz = _toward(hz_deg, az)
+    if crowns and len(hz_deg) >= HZ_CELLS:
+        hz = np.maximum(hz, _toward(hz_deg, az, HORIZON_DIRS))
+    return hz
+
+
+def shaded_direct(nrm_u8: U8Grid, hz: F32Grid | None, sun: Sun) -> F32Grid:
+    """``direct_term`` for the horizon toward the sun on the normals' own grid, None for none."""
     az, el = sun
     nx = nrm_u8[..., 0].astype(np.float32) / 127.5 - 1
     ny = nrm_u8[..., 1].astype(np.float32) / 127.5 - 1
@@ -201,12 +222,7 @@ def direct_term(
     lx, ly, lz = sun_vector(az, el)
     ndl = np.maximum(nx * lx + ny * ly + nz * lz, 0.0)
     shade = np.zeros_like(ndl)
-    if shadows and hz_deg is not None:
-        hz = _toward(hz_deg, az)
-        if crowns and len(hz_deg) >= HZ_CELLS:
-            hz = np.maximum(hz, _toward(hz_deg, az, HORIZON_DIRS))
-        if hz.shape != ndl.shape:
-            hz = ndimage.zoom(hz, np.array(ndl.shape) / np.array(hz.shape), order=1)
+    if hz is not None:
         shade = np.clip((hz - el) / SHADOW_SOFT_DEG + 0.5, 0, 1)
     return (ndl * (1 - shade * (1 - SHADOW_FILL)) * _sun_gain(el)).astype(np.float32)
 

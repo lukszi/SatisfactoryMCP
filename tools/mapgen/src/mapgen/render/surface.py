@@ -432,10 +432,11 @@ def _water_terms(
 def _light_planes(
     grid: BandSampling, z_m: FloatGrid, missing: BoolMask, water: WaterTerms
 ) -> LightPlanes:
-    """The piece's output pixels for the light stage: the heights and the land weight."""
+    """The piece's output pixels for the light stage: the heights, NaN where no data is drawn
+    (``lighting/holes.py``), and the land weight."""
     kept = (grid.rows.kept, grid.cols.kept)
     dry = np.where(missing, 0.0, 1.0 - water["cover"])
-    return LightPlanes(z_m[kept], dry[kept])
+    return LightPlanes(np.where(missing, np.float32(np.nan), z_m)[kept], dry[kept])
 
 
 def _direct_regime(

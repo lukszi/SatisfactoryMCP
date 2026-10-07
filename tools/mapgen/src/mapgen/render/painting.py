@@ -249,6 +249,7 @@ def _painted_colours(
         "mesh_family": _band_family(job.ground.meshes, (rows.cut, cols.cut)),
         "water_optics": ground.water_optics(grid.linear, surface.water.get("river")),
         "grid": BandGrid((rows.cut, cols.cut), rows.lo, rows.hi, cols.lo, cols.hi, spacing_m),
+        "unlit": job.unlit,
     }
     paint: GridTaps = (
         taps_footprint(grid.field_y, painted.footprint, field.height),
