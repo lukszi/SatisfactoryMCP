@@ -1,22 +1,43 @@
 """The palettes and the two drawn layers' colour painters.
 
-Each style is a JSON file in ``palettes/``; the constants below are read out of them at import.
+Each style is a JSON file in ``palettes/``, refused at import unless it has its style's shape
+(``palette.schema``); the constants below are read out of them.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Required, TypedDict
+from typing import cast
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy import ndimage
 
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
+from mapgen.palette.scene import (
+    FloatGrid,
+    SatelliteScene,
+    ShadedScene,
+    field_heights,
+)
+from mapgen.palette.schema import (
+    PaintedPalette,
+    Palette,
+    ReliefPalette,
+    SatellitePalette,
+    ShoreOptics,
+    ShoreStyle,
+    TerrainPalette,
+    TitanTreesStyle,
+    checked,
+)
 from mapgen.palette.water.shore import blend_where, water_composite
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
-from satisfactory_mcp.core.jsontypes import JsonArray, JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -61,13 +82,7 @@ __all__ = [
     "VOID_RIM_RGB",
     "WATER_DEEP",
     "WATER_SHALLOW",
-    "CalibrationStyle",
-    "CrownStyle",
-    "PaintedPalette",
-    "PaintedWaterStyle",
-    "RockTopStyle",
-    "ShoreStyle",
-    "ToneStyle",
+    "area_plane",
     "biome_colour_field",
     "biome_index",
     "biome_lookup",
@@ -85,105 +100,6 @@ __all__ = [
     "with_void",
 ]
 
-
-class CrownStyle(TypedDict):
-    """``crowns``: whether and how the painted style draws each tree's crown."""
-
-    draw: bool
-    canopy_kept: float
-    opacity: float
-    darkening: float
-    chroma: float
-    waterline_m: float
-    dome_gain: float
-    shade_clamp: list[float]
-    hidden_below_m: float
-
-
-class ShoreStyle(TypedDict, total=False):
-    """``shore``: the coast's clarity, edge and stroke, and its river, wet band and foam."""
-
-    clarity_m: float
-    edge_alpha: float
-    wet_darken: float
-    stroke: float
-    river: JsonObject
-    wet_band: JsonObject
-    foam: JsonObject
-
-
-class PaintedWaterStyle(TypedDict):
-    """The painted style's ``water``: the Beer-Lambert model and the ocean's own rows."""
-
-    model: str
-    k_per_m: list[float]
-    body: list[float]
-    surface_r: float
-    sky: list[float]
-    deep: list[float]
-    deep_tau_m: float
-    bed_wet: float
-    inland_floor: float
-    opaque_tau_m: float
-
-
-class RockTopStyle(TypedDict):
-    """``rock_top``: the up-facing ramp a family's top layer takes, and its patches."""
-
-    up: list[float]
-    patches: JsonObject
-
-
-class ToneStyle(TypedDict):
-    """``tone``: the painted style's exposure shoulder."""
-
-    gain: float
-    knee: float
-    white: float
-
-
-class CalibrationStyle(TypedDict, total=False):
-    """``calibration``: the display targets per layer, family, top, mesh, crown and area."""
-
-    about: str
-    pure_share: float
-    min_texels: int
-    area_blur_m: float
-    layers: JsonObject
-    derived: JsonObject
-    canopy: str
-    rock: str
-    rock_keeps_exposure: bool
-    families: JsonObject
-    tops: JsonObject
-    meshes: JsonObject
-    crowns: JsonObject
-    species: JsonObject
-    areas: JsonArray
-
-
-class PaintedPalette(TypedDict, total=False):
-    """The painted style's palette file: its scalars and the blocks its painters read."""
-
-    id: Required[str]
-    about: Required[str]
-    ambient: float
-    sky: list[float]
-    sun: list[float]
-    exposure: float
-    chroma_gain: float
-    ramp_lo_pct: float
-    ramp_hi_pct: float
-    ramp_equalised: float
-    crowns: CrownStyle
-    shore: ShoreStyle
-    water: PaintedWaterStyle
-    water_classes: JsonObject
-    rock_top: RockTopStyle
-    tone: ToneStyle
-    calibration: CalibrationStyle
-
-
 #: The palettes are files, one per style id, and a style's digest is the hash of its file's
 #: canonical JSON, so an edit without a version bump still reads as a different style.
 PALETTE_DIR = Path(__file__).resolve().parent / "palettes"
@@ -196,23 +112,31 @@ LAYER_STYLES = {
 }
 
 
-def palette_digest(palette: dict) -> str:
+def palette_digest(palette: Mapping[str, object]) -> str:
     """The digest of a palette: the sha256 of its canonical JSON."""
     canonical = json.dumps(palette, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return sha256_hex(canonical)
 
 
-def load_palette(style: str) -> tuple[dict, str]:
-    """One palette file and its digest."""
-    palette = json.loads((PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8"))
+def load_palette(style: str) -> tuple[JsonObject, str]:
+    """One palette file as read, and its digest."""
+    palette: JsonObject = json.loads((PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8"))
     return palette, palette_digest(palette)
 
 
-TERRAIN_PALETTE, TERRAIN_DIGEST = load_palette(LAYER_STYLES["terrain"])
-SATELLITE_PALETTE, SATELLITE_DIGEST = load_palette(LAYER_STYLES["satellite"])
-PAINTED_PALETTE, PAINTED_DIGEST = load_palette(LAYER_STYLES["painted"])
+def _layer_palette(shape: type[Palette], layer: str) -> tuple[Palette, str]:
+    """A layer's palette, refused unless it has ``shape``, and its digest."""
+    palette, digest = load_palette(LAYER_STYLES[layer])
+    return checked(shape, palette, LAYER_STYLES[layer]), digest
+
+
+TERRAIN_PALETTE, TERRAIN_DIGEST = _layer_palette(TerrainPalette, "terrain")
+SATELLITE_PALETTE, SATELLITE_DIGEST = _layer_palette(SatellitePalette, "satellite")
+PAINTED_PALETTE, PAINTED_DIGEST = _layer_palette(PaintedPalette, "painted")
 #: The relief layers share one painter (``palette.relief``), one palette each.
-RELIEF_PALETTES = {layer: load_palette(LAYER_STYLES[layer]) for layer in ("relief", "relief-dark")}
+RELIEF_PALETTES = {
+    layer: _layer_palette(ReliefPalette, layer) for layer in ("relief", "relief-dark")
+}
 STYLE_DIGESTS = {
     "terrain": TERRAIN_DIGEST,
     "satellite": SATELLITE_DIGEST,
@@ -221,21 +145,24 @@ STYLE_DIGESTS = {
 }
 
 
-def painted_style(no_titan_trees: bool) -> tuple[dict, str]:
+def painted_style(no_titan_trees: bool) -> tuple[dict[str, object], str]:
     """The painted palette and its digest, with the Titan trees switched off on request."""
     if not no_titan_trees:
-        return PAINTED_PALETTE, PAINTED_DIGEST
-    trees = {**PAINTED_PALETTE["titan_trees"], "opacity": 0}
-    palette = {**PAINTED_PALETTE, "titan_trees": trees}
+        return cast(dict[str, object], PAINTED_PALETTE), PAINTED_DIGEST
+    trees: TitanTreesStyle = {**PAINTED_PALETTE["titan_trees"], "opacity": 0}
+    palette: dict[str, object] = {**PAINTED_PALETTE, "titan_trees": trees}
     return palette, palette_digest(palette)
 
 
 #: The ocean shore's optics per style (recipe 6): opacity at the line, depth fade, wet ground.
-TERRAIN_SHORE = TERRAIN_PALETTE["shore"]
-SATELLITE_SHORE = SATELLITE_PALETTE["shore"]
-SHORE_OPTICS = {"terrain": TERRAIN_SHORE, "satellite": SATELLITE_SHORE,
-                "painted": PAINTED_PALETTE["shore"],
-                **{layer: palette["shore"] for layer, (palette, _d) in RELIEF_PALETTES.items()}}  # fmt: skip
+TERRAIN_SHORE: ShoreOptics = TERRAIN_PALETTE["shore"]
+SATELLITE_SHORE: ShoreOptics = SATELLITE_PALETTE["shore"]
+SHORE_OPTICS: dict[str, ShoreStyle] = {
+    "terrain": TERRAIN_SHORE,
+    "satellite": SATELLITE_SHORE,
+    "painted": PAINTED_PALETTE["shore"],
+    **{layer: palette["shore"] for layer, (palette, _digest) in RELIEF_PALETTES.items()},
+}
 
 #: The ramp's height band, as land percentiles: one spire must not flatten it.
 RAMP_LO_PCT = float(TERRAIN_PALETTE["ramp_lo_pct"])
@@ -299,31 +226,32 @@ NOISE_OCTAVES = tuple(
 NOISE_SMOOTH = 1.0
 
 
-def biome_colour_field(biome: dict, table: np.ndarray) -> np.ndarray:
-    """The raster's indices turned into colour, then blurred so no boundary is a line.
+def area_plane(biome: Mapping[str, object]) -> NDArray[np.integer]:
+    """The biome raster's (``gamedata.ground.biome.read_biome``) plane of area indices."""
+    return np.asarray(biome["area"])
 
-    Done once at the raster's own 4096, one channel at a time -- a Gaussian over three
-    float32 channels of that square at once is 200 MB held for no reason -- and kept as
-    uint8, which is 50 MB and all the precision a colour has.
 
-    The blur is what makes this a picture rather than a choropleth: the game's areas meet
-    along a mathematical line, and drawn straight that line is the most conspicuous thing on
-    the render.
+def biome_colour_field(biome: Mapping[str, object], table: F32Grid) -> U8Grid:
+    """The raster's indices turned into colour, then blurred so no area boundary is a line.
+
+    Done once at the raster's own 4096, one channel at a time, and kept as uint8.
     """
-    field = np.empty(biome["area"].shape + (3,), np.uint8)
+    area = area_plane(biome)
+    field = np.empty(area.shape + (3,), np.uint8)
     for channel in range(3):
         blurred = ndimage.gaussian_filter(
-            table[:, channel][biome["area"]], BIOME_BLEND_TEXELS, mode="nearest"
+            table[:, channel][area], BIOME_BLEND_TEXELS, mode="nearest"
         )
         field[..., channel] = np.clip(blurred, 0, 255).astype(np.uint8)
     return field
 
 
-def biome_lookup(biome: dict) -> tuple[np.ndarray, list[str]]:
+def biome_lookup(biome: Mapping[str, object]) -> tuple[F32Grid, list[str]]:
     """Per palette index: its RGB in the designed palette, and the name it was drawn as."""
-    rgb = np.zeros((len(biome["names"]), 3), np.float32)
-    drawn = []
-    for index, name in enumerate(biome["names"]):
+    names = cast(list[str | None], biome["names"])
+    rgb = np.zeros((len(names), 3), np.float32)
+    drawn: list[str] = []
+    for index, name in enumerate(names):
         if name in BIOME_COLOURS:
             colour = BIOME_COLOURS[name]
             drawn.append(name)
@@ -337,7 +265,7 @@ def biome_lookup(biome: dict) -> tuple[np.ndarray, list[str]]:
     return rgb, drawn
 
 
-def ramp(values: np.ndarray, stops: np.ndarray) -> np.ndarray:
+def ramp(values: FloatGrid, stops: F32Grid) -> FloatGrid:
     """Linear interpolation along a colour ramp, ``values`` in [0, 1]."""
     position = np.clip(values, 0.0, 1.0) * (len(stops) - 1)
     low = np.clip(np.floor(position), 0, len(stops) - 2).astype(np.int64)
@@ -345,26 +273,20 @@ def ramp(values: np.ndarray, stops: np.ndarray) -> np.ndarray:
     return stops[low] * (1 - fraction) + stops[low + 1] * fraction
 
 
-def noise_fields(rng_seed: int) -> list[tuple[np.ndarray, float]]:
-    """The value-noise octaves, made once and sampled by world position afterwards.
-
-    Noise generated per band would put a different random field on either side of every band
-    boundary and draw 31 horizontal seams across the world.
-    """
+def noise_fields(rng_seed: int) -> list[tuple[F32Grid, float]]:
+    """The value-noise octaves, made once and sampled by world position afterwards, so no
+    band boundary draws a seam."""
     rng = np.random.default_rng(rng_seed)
-    fields = []
+    fields: list[tuple[F32Grid, float]] = []
     for size, amount in NOISE_OCTAVES:
         field = rng.standard_normal((size, size), dtype=np.float32)
         fields.append((ndimage.gaussian_filter(field, NOISE_SMOOTH, mode="wrap"), amount))
     return fields
 
 
-def biome_index(coordinate: np.ndarray, lo_m: float, hi_m: float, width: int) -> np.ndarray:
-    """Which biome texel a run of world coordinates falls in. Nearest, and never in between.
-
-    An area index is a name: the average of "desert" and "forest" is whichever unrelated area
-    happens to sit between their numbers in a palette nobody ordered.
-    """
+def biome_index(coordinate: FloatGrid, lo_m: float, hi_m: float, width: int) -> I64Grid:
+    """Which biome texel a run of world coordinates falls in. Nearest, and never in between:
+    an area index is a name, and the average of two names is a third, unrelated area."""
     position = (coordinate - lo_m * 100) / ((hi_m - lo_m) * 100) * width
     return np.clip(position.astype(np.int64), 0, width - 1)
 
@@ -374,7 +296,7 @@ def biome_index(coordinate: np.ndarray, lo_m: float, hi_m: float, width: int) ->
 # --------------------------------------------------------------------------------------
 
 
-def terrain_colours(scene: dict) -> np.ndarray:
+def terrain_colours(scene: ShadedScene) -> FloatGrid:
     """The approved preview at full resolution: ramp, shade, borrowed detail, then water.
 
     ``borrow`` is the artwork's own light multiplied in over the provinces where the field
@@ -389,7 +311,7 @@ def terrain_colours(scene: dict) -> np.ndarray:
     )  # fmt: skip
 
 
-def satellite_colours(scene: dict) -> np.ndarray:
+def satellite_colours(scene: SatelliteScene) -> FloatGrid:
     """Ground colour from the biome, then rock, then altitude, then light, then water.
 
     In that order: the biome says what grows there, the slope overrules it because nothing
@@ -409,41 +331,52 @@ def satellite_colours(scene: dict) -> np.ndarray:
     )  # fmt: skip
 
 
-def with_sea(rgb: np.ndarray, missing: np.ndarray) -> np.ndarray:
+def with_sea(rgb: FloatGrid, missing: BoolMask) -> FloatGrid:
     """No data in the page's own sea colour, whatever the style."""
     return np.where(missing[..., None], SEA_RGB, rgb)
 
 
-def with_void(rgb: np.ndarray, cover: np.ndarray, falloff=None, pit=None, rim=None):
+def with_void(
+    rgb: FloatGrid,
+    cover: FloatGrid,
+    falloff: FloatGrid | None = None,
+    pit: FloatGrid | None = None,
+    rim: FloatGrid | None = None,
+) -> FloatGrid:
     """The void past the world's edge and in its pits, each plane in [0, 1] and the same
     whatever the style. ``cover`` is how much of a pixel the void hides. Past the edge it is
     the page's own sea colour, so the map's edge draws no border; a pit is black. Both are lit
     at their edge and darken over ``falloff``, 0 at the edge, with a light ``rim`` round them;
     without those planes, all of it is the page's sea."""
     weight = cover[..., None]
-    if falloff is None:
+    if falloff is None or pit is None or rim is None:
         return rgb * (1.0 - weight) + SEA_RGB * weight
     planes = (weight, falloff[..., None], pit[..., None], rim[..., None])
     return blend_where((cover != 0) | (rim != 0), VOID_MOST, _void_blend, rgb, *planes)
 
 
-def _void_blend(rgb, weight, deep, hole, line):
+def _void_blend(
+    rgb: FloatGrid, weight: FloatGrid, deep: FloatGrid, hole: FloatGrid, line: FloatGrid
+) -> FloatGrid:
     edge = VOID_EDGE_RGB * (1.0 - hole) + PIT_EDGE_RGB * hole
     colour = edge * (1.0 - deep) + (SEA_RGB * (1.0 - hole) + PIT_RGB * hole) * deep
     return (rgb * (1.0 - weight) + colour * weight) * (1.0 - line) + VOID_RIM_RGB * line
 
 
-LAYER_PAINTERS = {"terrain": terrain_colours, "satellite": satellite_colours}
+#: The painters ``render.compose`` calls by the layer's name.
+LAYER_PAINTERS: dict[str, Callable[[SatelliteScene], FloatGrid]] = {
+    "terrain": terrain_colours,
+    "satellite": satellite_colours,
+}
 
 
-def ramp_range(field) -> tuple[float, float]:
+def ramp_range(field: hf.Field) -> tuple[float, float]:
     """The height band the ramp is stretched over, from the field itself.
 
-    Sampled every fourth texel in each direction: 3.5 million heights is far more than a
-    percentile needs and a sixteenth of the arithmetic, and the answer moves by less than a
-    decimetre either way.
+    Sampled every fourth texel in each direction: a sixteenth of the arithmetic, and the
+    answer moves by less than a decimetre either way.
     """
-    sample = field.height_dm[::4, ::4]
+    sample = field_heights(field)[::4, ::4]
     land = sample[sample != hf.NODATA].astype(np.float32) / hf.DM_PER_M
     return (
         float(np.percentile(land, RAMP_LO_PCT)),
@@ -451,16 +384,18 @@ def ramp_range(field) -> tuple[float, float]:
     )
 
 
-def ramp_position(height_m, lo_m: float, hi_m: float, cdf_m: np.ndarray, equalised: float):
+def ramp_position(
+    height_m: FloatGrid, lo_m: float, hi_m: float, cdf_m: F32Grid, equalised: float
+) -> F32Grid:
     """Ground height to [0, 1] over dry land: part linear in metres, part equal-area."""
     linear = np.clip((height_m - lo_m) / max(hi_m - lo_m, 1e-6), 0.0, 1.0)
     quantile = np.interp(height_m, cdf_m, np.linspace(0.0, 1.0, len(cdf_m)))
     return ((1.0 - equalised) * linear + equalised * quantile).astype(np.float32)
 
 
-def dry_land_range(field, lo_pct: float, hi_pct: float) -> tuple[float, float, np.ndarray]:
+def dry_land_range(field: hf.Field, lo_pct: float, hi_pct: float) -> tuple[float, float, F32Grid]:
     """The ramp's height range and CDF, over dry land only (waterq dry, height known)."""
-    height = field.height_dm[::4, ::4]
+    height = field_heights(field)[::4, ::4]
     grades = field.water_quality_raster()
     dry = height != hf.NODATA
     if grades is not None:

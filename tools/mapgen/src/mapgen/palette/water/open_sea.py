@@ -6,16 +6,21 @@ Its constants: docs/spatial-and-map.md section 26.
 from __future__ import annotations
 
 import time
-from typing import NamedTuple
+from typing import NamedTuple, TypeAlias
 
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
+from numpy.typing import NDArray
 from scipy import ndimage
 
 from mapgen.gamedata.water.bodies import OCEAN_BAND_M
+from mapgen.palette.scene import FloatGrid, WaterPlanes, field_heights, field_water
+from mapgen.palette.water.geodesic import geodesic_steps
 from mapgen.palette.water.shore import OCEAN_REACH_M
 from mapgen.terrain.fill import cosine_taper, nearest_fill
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I16Grid, U8Grid
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -31,12 +36,16 @@ __all__ = [
     "VOID_FALLOFF_M",
     "VOID_RIM",
     "VOID_STRIP_M",
+    "Lattice",
     "OpenSea",
     "VoidPlanes",
     "membrane",
     "open_sea",
     "void_planes",
 ]
+
+#: The run's ``(heights_dm, ground_dm)`` in float decimetres; ``--kernel-only`` has neither.
+Lattice: TypeAlias = tuple[FloatGrid | None, FloatGrid | None]
 
 
 #: How deep the open sea reads far from any measured bed: the game's own unsculpted ocean
@@ -84,16 +93,35 @@ VOID_RIM = 0.85
 #: void past the world's edge is sea.
 VOID_STRIP_M = 8.0
 
+#: The sidecar's statement of the rule, in the names of the values recorded beside it.
+_OPEN_SEA_RULE = (
+    "no-data texels the artwork draws as water are the open sea at level_m, the "
+    "rest the void. Under the open sea and level-only water at the ocean's level "
+    "(within band_m) a bed is drawn, a screened Poisson membrane on a cell_m grid: "
+    "fixed on the measured bed past blend_m and at a dry coast (stored ground "
+    "coast_above_m over the band's top; dry ground at or under it joins the sea, and "
+    "so does such ground in a gap at most strip_m wide between the sea and the void "
+    "past the world's edge), "
+    "held to the measured bed over blend_pull_m within blend_m, drawn to the depth of "
+    "the artwork's water tone (tone_depth_m) over tone_pull_m, settling to deep_m "
+    "over about settle_m; the measured bed is laid back over it across blend_m, so "
+    "the bed is continuous in value and slope. The water's depth is read off it. "
+    "The void is a pit where its no data does not reach the field's edge, else the "
+    "void past the world's edge; beside the open sea the sea fades into it over "
+    "falloff_m, elsewhere its edge is lit, rimmed and darkens over falloff_m. Drawing "
+    "support, not a measurement"
+)
+
 
 class VoidPlanes(NamedTuple):
     """The void as drawn, each 0..255 on the field's grid. ``cover`` is how much of a texel the
     void hides; ``falloff`` how far into it the texel is, 0 at a lit edge; ``pit`` whether it
     is a pit in the land rather than the void past the world's edge; ``rim`` its edge line."""
 
-    cover: np.ndarray
-    falloff: np.ndarray
-    pit: np.ndarray
-    rim: np.ndarray
+    cover: U8Grid
+    falloff: U8Grid
+    pit: U8Grid
+    rim: U8Grid
 
 
 class OpenSea(NamedTuple):
@@ -103,17 +131,23 @@ class OpenSea(NamedTuple):
     read off the bed ``open_sea`` laid under it. ``void`` is the void's ``VoidPlanes``.
     """
 
-    level: np.ndarray
-    grades: np.ndarray
+    level: I16Grid
+    grades: U8Grid
     void: VoidPlanes
-    meta: dict
+    meta: JsonObject
 
     @property
-    def planes(self) -> tuple:
+    def planes(self) -> WaterPlanes:
         return self.level, self.grades
 
 
-def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> OpenSea:
+def open_sea(
+    field: hf.Field,
+    lattice: Lattice,
+    planes: WaterPlanes | None,
+    artwork_water: U8Grid,
+    ocean_level_m: float,
+) -> OpenSea:
     """The open sea and the void, with the open sea's bed written into ``lattice``.
 
     ``lattice`` is the run's ``(heights_dm, ground_dm)``, changed in place; ``planes`` is
@@ -128,20 +162,16 @@ def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> Ope
     """
     started = time.time()
     heights_dm, ground_dm = lattice
-    level, grades = planes or (field.water_raster(), field.water_quality_raster())
+    level, grades = planes if planes is not None else field_water(field)
+    if heights_dm is None or grades is None:
+        raise ValueError("the open sea needs the run's heights and the water's quality plane")
     tones = np.asarray(artwork_water, np.uint8)
     nodata = heights_dm == hf.NODATA
     sea = nodata & ((tones > 0) | (grades != hf.WATER_DRY))
     level_m = level / np.float32(hf.DM_PER_M)
     ocean = (level != hf.NODATA) & (np.abs(level_m - ocean_level_m) <= OCEAN_BAND_M)
     unknown = (ocean & (grades == hf.WATER_LEVEL_ONLY)) | (sea & (grades == hf.WATER_DRY))
-    # Read against the field's own heights: the rebuilt fill stands a metre above them.
-    top = (ocean_level_m + OCEAN_BAND_M) * hf.DM_PER_M
-    stored = np.asarray(field.height_dm)
-    beside = (grades == hf.WATER_DRY) & ~nodata & ndimage.binary_dilation(unknown, iterations=3)
-    coast = beside & (stored >= top + COAST_ABOVE_M * hf.DM_PER_M)
-    sunken = (grades == hf.WATER_DRY) & ~nodata & (stored <= top) & (stored != hf.NODATA)
-    low = beside & sunken
+    coast, sunken, low = _dry_beside(field, grades, nodata, unknown, ocean_level_m)
     added = low | (sea & (grades == hf.WATER_DRY))
     unknown |= added
     measured = ocean & (grades == hf.WATER_MEASURED) & ~nodata
@@ -156,36 +186,16 @@ def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> Ope
     unknown |= fringe | strip
     level = np.where(added, np.int16(round(ocean_level_m * hf.DM_PER_M)), level).astype(np.int16)
     level_m = np.where(added, np.float32(ocean_level_m), level_m)
-    seeds = measured | coast
-    surface = np.where(coast, np.float32(ocean_level_m), level_m)
-    depth = np.where(seeds, surface - heights_dm / np.float32(hf.DM_PER_M), 0.0)
     tone = np.where(unknown, tones, 0).astype(np.uint8)
-    depth, blended = _settled(depth.astype(np.float32), (seeds, measured, unknown), tone, step_m)
-    drawn = unknown | blended
-    bed = (level_m[drawn] - depth[drawn]) * np.float32(hf.DM_PER_M)
-    del level_m, surface, depth
+    masks = (coast, measured, unknown)
+    drawn, bed, blended = _bed(heights_dm, level_m, masks, tone, step_m, ocean_level_m)
+    del level_m
     for plane in (heights_dm, ground_dm):
         if plane is not None:
             plane[drawn] = bed
     grades = np.where(unknown, np.uint8(hf.WATER_MEASURED), grades).astype(np.uint8)
-    meta = {
-        "rule": (
-            "no-data texels the artwork draws as water are the open sea at level_m, the "
-            "rest the void. Under the open sea and level-only water at the ocean's level "
-            "(within band_m) a bed is drawn, a screened Poisson membrane on a cell_m grid: "
-            "fixed on the measured bed past blend_m and at a dry coast (stored ground "
-            "coast_above_m over the band's top; dry ground at or under it joins the sea, and "
-            "so does such ground in a gap at most strip_m wide between the sea and the void "
-            "past the world's edge), "
-            "held to the measured bed over blend_pull_m within blend_m, drawn to the depth of "
-            "the artwork's water tone (tone_depth_m) over tone_pull_m, settling to deep_m "
-            "over about settle_m; the measured bed is laid back over it across blend_m, so "
-            "the bed is continuous in value and slope. The water's depth is read off it. "
-            "The void is a pit where its no data does not reach the field's edge, else the "
-            "void past the world's edge; beside the open sea the sea fades into it over "
-            "falloff_m, elsewhere its edge is lit, rimmed and darkens over falloff_m. Drawing "
-            "support, not a measurement"
-        ),
+    meta: JsonObject = {
+        "rule": _OPEN_SEA_RULE,
         "level_m": ocean_level_m,
         "band_m": OCEAN_BAND_M,
         "deep_m": OPEN_SEA_DEPTH_M,
@@ -213,7 +223,46 @@ def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> Ope
     return OpenSea(level, grades, void, meta)
 
 
-def void_planes(empty, wet, step_m: float) -> tuple[VoidPlanes, np.ndarray]:
+def _dry_beside(
+    field: hf.Field, grades: U8Grid, nodata: BoolMask, unknown: BoolMask, ocean_level_m: float
+) -> tuple[BoolMask, BoolMask, BoolMask]:
+    """``(coast, sunken, low)``: dry ground beside ``unknown`` the bed rises to, dry ground at
+    or under the top of the ocean's band, and the sunken ground beside, which joins the sea."""
+    # Read against the field's own heights: the rebuilt fill stands a metre above them.
+    top = (ocean_level_m + OCEAN_BAND_M) * hf.DM_PER_M
+    stored = np.asarray(field_heights(field))
+    beside = (grades == hf.WATER_DRY) & ~nodata & ndimage.binary_dilation(unknown, iterations=3)
+    coast = beside & (stored >= top + COAST_ABOVE_M * hf.DM_PER_M)
+    sunken = (grades == hf.WATER_DRY) & ~nodata & (stored <= top) & (stored != hf.NODATA)
+    return coast, sunken, beside & sunken
+
+
+def _bed(
+    heights_dm: FloatGrid,
+    level_m: FloatGrid,
+    masks: tuple[BoolMask, BoolMask, BoolMask],
+    tone: U8Grid,
+    step_m: float,
+    ocean_level_m: float,
+) -> tuple[BoolMask, FloatGrid, BoolMask]:
+    """``(drawn, bed_dm, blended)``: the texels the open sea's bed is drawn under, its height
+    there, and the measured texels it blended into.
+
+    ``masks`` is ``(coast, measured, unknown)``: the bed is seeded on the measured bed and at
+    the coast, whose surface is ``ocean_level_m``, and drawn under ``unknown`` (``_settled``).
+    """
+    coast, measured, unknown = masks
+    seeds = measured | coast
+    surface = np.where(coast, np.float32(ocean_level_m), level_m)
+    depth = np.where(seeds, surface - heights_dm / np.float32(hf.DM_PER_M), 0.0)
+    depth, blended = _settled(depth.astype(np.float32), (seeds, measured, unknown), tone, step_m)
+    drawn = unknown | blended
+    return drawn, (level_m[drawn] - depth[drawn]) * np.float32(hf.DM_PER_M), blended
+
+
+def void_planes(
+    empty: tuple[BoolMask, BoolMask], wet: BoolMask, step_m: float
+) -> tuple[VoidPlanes, BoolMask]:
     """The void's ``VoidPlanes``, and its fringe: the void the open sea is drawn under.
 
     ``empty`` is ``(void, nodata)``: a pit is void not joined to the field's edge through
@@ -246,13 +295,22 @@ def void_planes(empty, wet, step_m: float) -> tuple[VoidPlanes, np.ndarray]:
     return VoidPlanes(cover, falloff, pit.astype(np.uint8) * np.uint8(255), rim), fringe
 
 
-def membrane(values, fixed, free, scale: float, far: float, pull=None, target=None):
+def membrane(
+    values: FloatGrid,
+    fixed: BoolMask,
+    free: BoolMask,
+    scale: float,
+    far: float,
+    pull: FloatGrid | None = None,
+    target: FloatGrid | None = None,
+) -> F64Grid:
     """``values`` with ``free`` replaced by a screened membrane, float64.
 
     Fixed on ``fixed``, settling towards ``far`` over about ``scale`` cells and drawn
-    towards ``target`` by ``pull``, per cell in 1 / cells squared; anything else is outside.
-    A pull that changes from cell to cell bends the membrane's slope but never breaks it, as
-    a fixed cell's edge does. ``terrain.fill.relax`` with no pull.
+    towards ``target`` by ``pull``, per cell in 1 / cells squared, when both are given;
+    anything else is outside. A pull that changes from cell to cell bends the membrane's
+    slope but never breaks it, as a fixed cell's edge does. ``terrain.fill.relax`` with no
+    pull.
     """
     out = values.astype(np.float64).ravel().copy()
     u, k = free.ravel(), fixed.ravel()
@@ -261,7 +319,7 @@ def membrane(values, fixed, free, scale: float, far: float, pull=None, target=No
     screen = 1.0 / (scale * scale)
     weight = np.full(int(u.sum()), screen)
     rhs = np.full(len(weight), screen * far)
-    if pull is not None:
+    if pull is not None and target is not None:
         weight += pull.ravel()[u]
         rhs += pull.ravel()[u] * target.ravel()[u]
     lap = _grid_laplacian(free | fixed)
@@ -272,7 +330,9 @@ def membrane(values, fixed, free, scale: float, far: float, pull=None, target=No
     return out.reshape(values.shape)
 
 
-def _settled(depth_m, masks, tone, step_m: float):
+def _settled(
+    depth_m: F32Grid, masks: tuple[BoolMask, BoolMask, BoolMask], tone: U8Grid, step_m: float
+) -> tuple[FloatGrid, BoolMask]:
     """``open_sea``'s depth in metres, and the measured texels it blended.
 
     ``masks`` is ``(seeds, measured, unknown)``, ``tone`` the artwork's tone on ``unknown``.
@@ -308,7 +368,7 @@ def _settled(depth_m, masks, tone, step_m: float):
     return np.where(seeds, keep * depth_m + (1.0 - keep) * fine, fine), blended
 
 
-def _under_the_sea(ocean, low, step_m: float) -> np.ndarray:
+def _under_the_sea(ocean: BoolMask, low: BoolMask, step_m: float) -> BoolMask:
     """``low`` ground within the shore rule's ``OCEAN_REACH_M`` of ``ocean``, which that rule
     draws as sea, to the open sea's cells. Low ground further inland is land."""
     rows, cols = ocean.shape
@@ -319,7 +379,7 @@ def _under_the_sea(ocean, low, step_m: float) -> np.ndarray:
     return low & near[:rows, :cols]
 
 
-def _void_strip(sea, sunken, edge, step_m: float) -> np.ndarray:
+def _void_strip(sea: BoolMask, sunken: BoolMask, edge: BoolMask, step_m: float) -> BoolMask:
     """``sunken`` ground in a gap at most ``VOID_STRIP_M`` wide between ``sea`` and ``edge``,
     the void past the world's edge, measured through that ground: the strip which, drawn as
     land, was a dotted line along the void."""
@@ -336,30 +396,18 @@ def _void_strip(sea, sunken, edge, step_m: float) -> np.ndarray:
             rs = slice(max(r - reach, 0), min(r + tile + reach, rows))
             cs = slice(max(c - reach, 0), min(c + tile + reach, cols))
             through = band[rs, cs]
-            gap = _steps(sea[rs, cs], reach, through).astype(np.int16)
-            gap += _steps(edge[rs, cs], reach, through)
+            gap = geodesic_steps(sea[rs, cs], through, reach)
+            gap += geodesic_steps(edge[rs, cs], through, reach)
             top, left = r - rs.start, c - cs.start
             got = (through & (gap <= reach))[top : top + tile, left : left + tile]
             out[r : r + tile, c : c + tile] = got
     return out
 
 
-def _steps(seed, limit: int, through) -> np.ndarray:
-    """Steps from ``seed`` through ``through``, 4-connected, as uint8; 255 past ``limit``."""
-    out = np.full(seed.shape, 255, np.uint8)
-    reached = seed.copy()
-    out[reached] = 0
-    for step in range(1, limit + 1):
-        grown = ndimage.binary_dilation(reached, mask=through)
-        out[grown & ~reached] = step
-        reached = grown
-    return out
-
-
-def _grid_laplacian(active: np.ndarray) -> sp.csr_matrix:
+def _grid_laplacian(active: BoolMask) -> sp.csr_matrix:
     """The 4-neighbour graph Laplacian of the grid restricted to ``active``."""
     h, w = active.shape
-    idx = np.arange(h * w).reshape(h, w)
+    idx = np.arange(h * w, dtype=np.int64).reshape(h, w)
     right = active[:, :-1] & active[:, 1:]
     down = active[:-1, :] & active[1:, :]
     a = np.concatenate([idx[:, :-1][right], idx[:-1, :][down]])
@@ -369,7 +417,7 @@ def _grid_laplacian(active: np.ndarray) -> sp.csr_matrix:
     return (sp.diags(np.asarray(adj.sum(axis=1)).ravel()) - adj).tocsr()
 
 
-def _cells(plane: np.ndarray) -> np.ndarray:
+def _cells(plane: NDArray[np.bool_ | np.floating]) -> F32Grid:
     """``plane`` summed over the open sea's ``OPEN_SEA_CELL`` square cells, float32."""
     cell, (rows, cols) = OPEN_SEA_CELL, plane.shape
     pad = ((0, -rows % cell), (0, -cols % cell))
@@ -377,13 +425,13 @@ def _cells(plane: np.ndarray) -> np.ndarray:
     return np.pad(plane, pad).reshape(shape).sum(axis=(1, 3), dtype=np.float32)
 
 
-def _fine(coarse: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+def _fine(coarse: FloatGrid, shape: tuple[int, ...]) -> F32Grid:
     """A cell grid read back on the 1 m grid, linearly, float32."""
     zoom = OPEN_SEA_CELL
     fine = ndimage.zoom(coarse.astype(np.float32), zoom, order=1, mode="nearest", grid_mode=True)
     return fine[: shape[0], : shape[1]]
 
 
-def _u8(plane: np.ndarray) -> np.ndarray:
+def _u8(plane: FloatGrid) -> U8Grid:
     """A share in [0, 1] as 0..255."""
     return np.clip(plane * np.float32(255.0) + np.float32(0.5), 0, 255).astype(np.uint8)

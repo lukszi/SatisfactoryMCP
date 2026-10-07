@@ -24,7 +24,7 @@ from mapgen.commands.renders import BIOME_LAYERS, LAYERS
 from mapgen.palette.painted.ground import oklab, srgb_to_linear
 from mapgen.palette.relief import (
     LUT_STEPS,
-    lch,
+    oklab_from_lch,
     ramp_lut,
     relief_colours,
     water_tint_plane,
@@ -120,7 +120,7 @@ def test_water_covers_the_ground_in_the_style_s_own_colours():
     ground.water = None
     got = relief_colours(scene, ground, _identity, _identity)
     lab = oklab(srgb_to_linear(got[4, 4]))
-    assert np.allclose(lab, lch(ground.palette["water"]["shallow_lch"]), atol=0.01)
+    assert np.allclose(lab, oklab_from_lch(ground.palette["water"]["shallow_lch"]), atol=0.01)
 
 
 def test_biome_tints_move_the_ground_towards_the_biome():
