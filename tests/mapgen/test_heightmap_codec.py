@@ -17,7 +17,7 @@ from mapgen.gamedata.level.fill_raster import (
     FILL_RASTER_SCALE_CM_PER_RAW,
     decode_fill_raster,
 )
-from mapgen.gamedata.maxz_raster import MaxZRaster
+from mapgen.gamedata.maxz_raster import MAX_SPAN, MaxZRaster
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 
@@ -198,6 +198,29 @@ def test_the_rock_raster_samples_at_the_vertex_the_reader_reads():
     at_centre = MaxZRaster(10, 10, 0.0, 0.0, 100.0, sample=0.5)
     at_centre.add(tri, 1)
     assert at_centre.result()[0][2, 3] == pytest.approx(350.0)
+
+
+def test_a_triangle_wider_than_the_widest_bucket_is_rasterised_not_dropped():
+    # z = x over a box four times MAX_SPAN across, so it is scanned in tiles.
+    span = 4 * MAX_SPAN * 100.0
+    tri = np.array([[[0.0, 0.0, 0.0], [span, 0.0, span], [0.0, span, 0.0]]])
+    raster = MaxZRaster(300, 200, 0.0, 0.0, 100.0)
+    raster.add(tri, 7)
+    z, source, _density = raster.result()
+    assert np.isfinite(z).all() and (source == 7).all()
+    assert np.allclose(z, np.arange(300, dtype=np.float32)[None, :] * 100.0)
+
+
+def test_a_wide_triangle_reaching_off_the_raster_covers_exactly_its_inside():
+    # The edge x + y = 250 texels crosses the raster; the far corners lie thousands of
+    # texels off it. A texel centre is inside when c + r + 1 <= 250.
+    tri = np.array([[[-2e5, 2.25e5, 5.0], [2.25e5, -2e5, 5.0], [-2e5, -2e5, 5.0]]])
+    raster = MaxZRaster(300, 200, 0.0, 0.0, 100.0, sample=0.5)
+    raster.add(tri, 1)
+    z = raster.result()[0]
+    rows, cols = np.mgrid[0:200, 0:300]
+    assert np.array_equal(np.isfinite(z), cols + rows <= 249)
+    assert np.allclose(z[np.isfinite(z)], 5.0)
 
 
 def test_a_source_vertex_counts_for_the_texel_whose_sample_is_nearest():
