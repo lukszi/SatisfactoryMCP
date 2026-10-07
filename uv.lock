@@ -1383,7 +1383,7 @@ requires-dist = [
     { name = "scipy-stubs", marker = "python_full_version >= '3.12' and extra == 'dev'", specifier = "==1.18.1.1" },
     { name = "scipy-stubs", marker = "python_full_version < '3.12' and extra == 'dev'", specifier = "==1.17.1.5" },
     { name = "texture2ddecoder", marker = "extra == 'gen'", specifier = "==1.0.6" },
-    { name = "typing-extensions", specifier = ">=4.6" },
+    { name = "typing-extensions", specifier = ">=4.10" },
     { name = "uvicorn", marker = "extra == 'web'", specifier = ">=0.30" },
     { name = "zstandard", marker = "extra == 'gen'", specifier = "==0.25.0" },
 ]
