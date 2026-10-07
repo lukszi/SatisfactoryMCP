@@ -238,6 +238,18 @@ def _pchip_taps(values: Sequence[F32Grid], t: F32Grid) -> NDArray[np.floating]:
     return pchip_1d(values[0], values[1], values[2], values[3], t)
 
 
+def _slab(
+    raster: Plane, row_index: I64Grid, col_index: I64Grid
+) -> tuple[NDArray[np.generic], int, I64Grid]:
+    """The block of ``raster`` the taps read: the run of rows between their first and last,
+    cut to the columns likewise. Returns it, its first row, and the column taps into it."""
+    low, left = int(row_index.min()), int(col_index.min())
+    block: NDArray[np.generic] = raster[
+        low : int(row_index.max()) + 1, left : int(col_index.max()) + 1
+    ]
+    return block, low, col_index - left
+
+
 def resample_pchip(raster: Plane, rows: PchipTaps, cols: PchipTaps,
                    nodata: int) -> tuple[F32Grid, BoolMask]:  # fmt: skip
     """Separable PCHIP onto the output grid. Returns ``(values, whole)``.
@@ -246,8 +258,7 @@ def resample_pchip(raster: Plane, rows: PchipTaps, cols: PchipTaps,
     ``whole`` is true where all sixteen texels under the stencil have a value.
     """
     (row_index, row_t), (col_index, col_t) = rows, cols
-    low, high = int(row_index.min()), int(row_index.max())
-    slab = raster[low : high + 1]
+    slab, low, col_index = _slab(raster, row_index, col_index)
     known = slab != nodata
     values = np.where(known, slab, 0).astype(np.float32)
     across = _pchip_taps([values[:, col_index[tap]] for tap in range(4)], col_t[None, :])
@@ -263,10 +274,10 @@ def resample(raster: Plane, rows: AxisTaps, cols: AxisTaps,
     """Separable interpolation of ``raster`` onto the output grid. Returns (sum, weight).
 
     Separable, and in that order: the output rows a band needs come from one CONTIGUOUS run
-    of source rows, so the row axis is a slice and only the column axis is a gather.
-    Interpolating in x first over that short slab and in y second over the result is four
-    gathers of the small array and four of the large one, against sixteen of the large one
-    if the 4x4 stencil were evaluated directly.
+    of source rows, so the row axis is a slice, cut to the columns the taps read, and only the
+    column axis is a gather. Interpolating in x first over that short slab and in y second
+    over the result is four gathers of the small array and four of the large one, against
+    sixteen of the large one if the 4x4 stencil were evaluated directly.
 
     The no-data bookkeeping rides along: every tap is multiplied by whether its texel had a
     value, and the weights come back separately, so the caller can tell a whole stencil
@@ -274,8 +285,7 @@ def resample(raster: Plane, rows: AxisTaps, cols: AxisTaps,
     the raster has no holes -- a category coverage plane -- and skips it.
     """
     (row_index, row_weight), (col_index, col_weight) = rows, cols
-    low, high = int(row_index.min()), int(row_index.max())
-    slab = raster[low : high + 1]
+    slab, low, col_index = _slab(raster, row_index, col_index)
     values = slab.astype(np.float32)
     known = None if nodata is None else (slab != nodata).astype(np.float32)
     if known is not None:
@@ -321,9 +331,9 @@ def sample_surface(raster: Plane, smooth_taps: Taps | tuple[PchipTaps, PchipTaps
 
 
 def reads_nothing(raster: Plane, taps: Taps) -> bool:
-    """True when every texel under these taps' rows is zero, so any sample of it is 0.0."""
-    (row_index, _weight), _cols = taps
-    return not raster[int(row_index.min()) : int(row_index.max()) + 1].any()
+    """True when every texel these taps read is zero, so any sample of it is 0.0."""
+    (row_index, _rows), (col_index, _cols) = taps
+    return not _slab(raster, row_index, col_index)[0].any()
 
 
 def sample_plain(raster: Plane, taps: Taps) -> F32Grid:
@@ -338,10 +348,10 @@ def sample_plain(raster: Plane, taps: Taps) -> F32Grid:
     """
     (row_index, row_weight), (col_index, col_weight) = taps
     shape = (row_index.shape[1], col_index.shape[1])
-    if reads_nothing(raster, taps):
+    slab, low, col_index = _slab(raster, row_index, col_index)
+    if not slab.any():
         return np.zeros(shape, np.float32)
-    low = int(row_index.min())
-    values = raster[low : int(row_index.max()) + 1].astype(np.float32)
+    values = slab.astype(np.float32)
     across = np.zeros((values.shape[0], shape[1]), np.float32)
     for tap in range(col_index.shape[0]):
         across += col_weight[tap] * values[:, col_index[tap]]

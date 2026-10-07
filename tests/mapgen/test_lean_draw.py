@@ -89,7 +89,10 @@ def test_a_band_over_nothing_but_zeros_reads_nothing(kind):
     got = sample_plain(raster, taps)
     assert _bits(got) == _bits(resample(raster, *taps, None)[0])
     assert not np.signbit(got).any()
-    raster[rows.max(), -1] = 1.0
+    cols = taps[1][0]
+    raster[rows.max(), cols.max() + 1 :] = 1.0
+    assert reads_nothing(raster, taps), "a texel no tap reads is not read"
+    raster[rows.max(), cols.max()] = 1.0
     assert not reads_nothing(raster, taps)
 
 
