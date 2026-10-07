@@ -6,12 +6,15 @@ module shadows the stdlib's name only inside this package. Handler names are ope
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
+from .....core.gamedata.model import GameData
 from .....domain.spatial import elevation as spatial_elevation
-from .....domain.spatial import geo, surroundings
+from .....domain.spatial import geo, heightfield, surroundings
 from .....domain.spatial import nodes as spatial_nodes
 from .....domain.spatial import regions as spatial_regions
 from .....domain.spatial.heightfield import cave_masks
@@ -22,14 +25,15 @@ from ...serial import (
     FoundField,
     Region,
     TableAge,
+    cm_to_m,
     collectible_json,
     error_response,
     found_field_json,
+    game_data,
     node_identity,
     region_json,
     stale_tables,
     world_state,
-    xyz_m,
 )
 
 __all__ = ["INSPECT_NEAREST", "INSPECT_RADIUS_M", "router"]
@@ -50,6 +54,9 @@ class InspectAt(TypedDict):
     y_m: float
 
 
+CaveWord = Literal["none", "below", "inside"]
+
+
 class Elevation(TypedDict):
     """One probe: four labelled answers, and the reason for every number it declines to give.
 
@@ -63,7 +70,7 @@ class Elevation(TypedDict):
     terrain_accuracy_m: float | None
     terrain_bare_m: float | None
     terrain_ambiguous: bool
-    terrain_cave: Literal["none", "below", "inside"]
+    terrain_cave: CaveWord
     terrain_cave_note: str | None
     terrain_water_m: float | None
     terrain_water_depth_m: float | None
@@ -156,7 +163,7 @@ def _fill_note(near: spatial_elevation.Elevation) -> str | None:
     return None
 
 
-def _terrain_notes(probe: Any) -> tuple[str | None, str | None]:
+def _terrain_notes(probe: heightfield.Reading | None) -> tuple[str | None, str | None]:
     """``(terrain_note, cave_note)``: why the field gave no height, and the cave line."""
     if probe is None:
         no_data = (
@@ -170,7 +177,7 @@ def _terrain_notes(probe: Any) -> tuple[str | None, str | None]:
     return None, probe.cave_note
 
 
-def _water_note(probe: Any) -> str | None:
+def _water_note(probe: heightfield.Reading | None) -> str | None:
     """Why a submerged point has no water depth: its ground is too coarse to subtract from."""
     if probe is None or not probe.submerged or probe.water_depth_m is not None:
         return None
@@ -211,12 +218,14 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
     }
 
 
-def _nearest_json(node: dict, game) -> NearestNode:
+def _nearest_json(node: spatial_nodes.MeasuredNode, game: GameData) -> NearestNode:
     return {
         **node_identity(node, game),
         "kind": node["kind"],
         "purity": node["purity"],
-        **xyz_m((node["x"], node["y"], node["z"])),
+        "x_m": cm_to_m(node["x"]),
+        "y_m": cm_to_m(node["y"]),
+        "z_m": cm_to_m(node["z"]),
         "occupied": node["tapped"],
         "occupant_cls": node["tapped_by"],
         "distance_m": node["distance_m"],
@@ -232,7 +241,7 @@ def inspect(
     radius_m: Annotated[float, Query(ge=1, le=2000)] = INSPECT_RADIUS_M,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> InspectResponse | JSONResponse:
     """What is at a coordinate: region, measured ground, nodes, fields, conduits, pickups.
 
     ``radius_m`` is the elevation reach; a save that will not load still gets an answer.
@@ -250,14 +259,15 @@ def inspect(
     except Exception as exc:
         save_error = f"could not read save: {exc}"
 
-    game = request.app.state.game()
+    game = game_data(request)
     x, y = x_m * 100.0, y_m * 100.0
     found = surroundings.describe_point(st, game, x, y, radius_m, terrain_field=terrain.field())
     nearest = found.nearest
-    stale = []
+    stale: list[TableAge] = []
     if st is not None:
         stale = stale_tables(st, table, [node["instance"] for node in nearest])
     counted = found.conduits
+    pickups = found.pickups
     return {
         "at": {"x_m": round(x_m, 1), "y_m": round(y_m, 1)},
         "region": region_json(found.label),
@@ -265,11 +275,17 @@ def inspect(
         "nearest": [_nearest_json(node, game) for node in nearest],
         "grid": geo.grid_cell(x, y),
         "direction": geo.direction_of(x, y),
-        "conduits": None if counted is None else {**counted, "radius_m": found.conduit_radius_m},
+        "conduits": (
+            None
+            if counted is None
+            else {
+                "belt": counted["belt"],
+                "pipe": counted["pipe"],
+                "radius_m": found.conduit_radius_m,
+            }
+        ),
         "fields": [found_field_json(f, game) for f in found.fields],
-        "pickups": [
-            {**collectible_json(p, p["spoiler"]), "label": p["label"]} for p in found.pickups
-        ],
+        "pickups": [{**collectible_json(p, p["spoiler"]), "label": p["label"]} for p in pickups],
         "pickups_within": found.pickups_total,
         "pickups_within_spoilers": found.pickups_spoilers,
         "stale": stale,

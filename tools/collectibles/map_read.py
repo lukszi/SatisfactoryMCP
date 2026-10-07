@@ -7,6 +7,7 @@ import collections
 import time
 from dataclasses import dataclass, field
 
+from satisfactory_mcp.core.collectible_rows import PickupContents, UnlockCost
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.levels import (
     LEVEL_SUFFIX,
@@ -23,6 +24,7 @@ from satisfactory_mcp.core.gameassets.packages import (
     root_component,
     world_transform,
 )
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 from tools.collectibles.catalog import (
     CATEGORIES,
     DROP_POD_CLASS,
@@ -35,7 +37,10 @@ from tools.collectibles.catalog import (
     Position,
 )
 from tools.collectibles.hazards import Hazard, read_hazard
-from tools.collectibles.stats import by_count
+from tools.collectibles.stats import by_count, json_array
+
+#: The classes whose rows carry ``contents``.
+_PICKUPS = (LOOT_CACHE_CLASS, MUSHROOM_CLASS)
 
 
 @dataclass
@@ -49,7 +54,8 @@ class Placement:
     position: Position
     attached_to: str | None
     #: Class-specific facts read off this very actor: a cache's contents, a pod's cost.
-    detail: dict = field(default_factory=dict)
+    contents: PickupContents | None = None
+    unlock_cost: UnlockCost | None = None
 
 
 @dataclass
@@ -57,16 +63,16 @@ class MapWorld:
     placements: list[Placement]
     hazards: list[Hazard]
     #: class name -> how many the map places, over EVERY actor class in the world level.
-    class_counts: collections.Counter
+    class_counts: collections.Counter[str]
     #: The same, restricted to blueprint (``/Game/``) classes: what a prefix walk can see.
-    game_class_counts: collections.Counter
+    game_class_counts: collections.Counter[str]
     #: (cell, instance) -> class, over every map-placed actor and not only the emitted ones.
     class_by_key: dict[ActorKey, str]
     #: Instance names carrying the map's own _UAID_ placement id, and how many are distinct.
     placement_id_names: int
     placement_id_names_distinct: int
     #: class -> how many of its actors reuse an instance name another actor already has.
-    name_repeats_by_class: collections.Counter
+    name_repeats_by_class: collections.Counter[str]
     actor_count: int
     distinct_keys: int
     distinct_names: int
@@ -74,9 +80,9 @@ class MapWorld:
     packages_read: int
     packages_without_a_level: int
     #: Exception type -> how many world packages raised it and were skipped whole.
-    packages_failed: collections.Counter
+    packages_failed: collections.Counter[str]
     #: Why an actor of a row or hazard class got no position, by reason and class.
-    actors_without_transform: collections.Counter
+    actors_without_transform: collections.Counter[str]
     unresolved_script_classes: int
     seconds: float
 
@@ -85,14 +91,14 @@ class MapWorld:
 class _ActorCensus:
     """The class histogram and the identity counts, over every map-placed actor."""
 
-    class_counts: collections.Counter = field(default_factory=collections.Counter)
-    game_class_counts: collections.Counter = field(default_factory=collections.Counter)
-    class_by_key: dict[ActorKey, str] = field(default_factory=dict)
+    class_counts: collections.Counter[str] = field(default_factory=collections.Counter[str])
+    game_class_counts: collections.Counter[str] = field(default_factory=collections.Counter[str])
+    class_by_key: dict[ActorKey, str] = field(default_factory=dict[ActorKey, str])
     classes_by_name: dict[str, set[str]] = field(
-        default_factory=lambda: collections.defaultdict(set)
+        default_factory=lambda: collections.defaultdict[str, set[str]](set)
     )
-    name_repeats: collections.Counter = field(default_factory=collections.Counter)
-    placement_id_names: list[str] = field(default_factory=list)
+    name_repeats: collections.Counter[str] = field(default_factory=collections.Counter[str])
+    placement_id_names: list[str] = field(default_factory=list[str])
     unresolved_scripts: int = 0
 
     def count(self, cell: str, instance: str, cls: str, class_path: str | None) -> None:
@@ -109,8 +115,14 @@ class _ActorCensus:
             self.placement_id_names.append(instance)
 
 
-def _pickup_contents(view: PackageView, actor: int) -> dict | None:
-    """``mPickupItems`` -> what the cache holds.
+def _int_or_none(value: JsonValue) -> int | None:
+    """An ``IntProperty`` as ``decode_struct`` gives it: an int, or None where unreadable."""
+    return value if isinstance(value, int) else None
+
+
+def _pickup_contents(view: PackageView, actor: int) -> PickupContents | None:
+    """``mPickupItems`` -> what the cache holds. A pickup whose contents will not read is still
+    a row, counted as ``placed`` minus ``contents_read`` in its category's tally.
 
     ``FInventoryItem`` has no tagged members: its payload starts with an ``int32 ItemClass``
     that is an ``FPackageIndex`` into the import map, so the item class is read through it.
@@ -118,14 +130,15 @@ def _pickup_contents(view: PackageView, actor: int) -> dict | None:
     payload = view.props(actor).get("mPickupItems")
     if payload is None:
         return None
-    fields = view.decode_struct(payload)
+    fields: JsonObject = view.decode_struct(payload)
     item = fields.get("Item")
+    raw_hex = item.get("_raw") if isinstance(item, dict) else None
     path = None
-    if isinstance(item, dict) and "_raw" in item:
-        raw = bytes.fromhex(item["_raw"])
+    if isinstance(raw_hex, str):
+        raw = bytes.fromhex(raw_hex)
         if len(raw) >= 4:
             path = view.import_path(raw[0:4])
-    count = fields.get("NumItems")
+    count = _int_or_none(fields.get("NumItems"))
     if path is None and count is None:
         return None
     return {
@@ -135,7 +148,7 @@ def _pickup_contents(view: PackageView, actor: int) -> dict | None:
     }
 
 
-def _pod_unlock_cost(view: PackageView, actor: int) -> dict | None:
+def _pod_unlock_cost(view: PackageView, actor: int) -> UnlockCost | None:
     """``mUnlockCost`` -> ``{cost_type, item, amount, power_mw}``.
 
     ``cost_type`` is null where the pod does not serialise it: the class default is a third
@@ -144,32 +157,18 @@ def _pod_unlock_cost(view: PackageView, actor: int) -> dict | None:
     payload = view.props(actor).get("mUnlockCost")
     if payload is None:
         return None
-    fields = view.decode_struct(payload)
+    fields: JsonObject = view.decode_struct(payload)
     item_cost = fields.get("ItemCost")
-    out: dict = {"cost_type": fields.get("CostType")}
+    cost_type = fields.get("CostType")
+    out: UnlockCost = {"cost_type": cost_type if isinstance(cost_type, str) else None}
     if isinstance(item_cost, dict) and "_raw" not in item_cost:
         path = item_cost.get("ItemClass")
         out["item"] = class_name_of(path) if isinstance(path, str) else None
-        out["amount"] = item_cost.get("Amount")
+        out["amount"] = _int_or_none(item_cost.get("Amount"))
     power = fields.get("PowerConsumption")
-    if power:
+    if isinstance(power, int | float) and power:
         out["power_mw"] = round(power, 3)
     return out
-
-
-def _placement_detail(view: PackageView, slot: int, cls: str) -> dict:
-    """A row's class-specific fields. A pickup whose contents will not read is still a row,
-    counted as ``placed`` minus ``contents_read`` in its category's tally."""
-    detail: dict = {}
-    if cls in (LOOT_CACHE_CLASS, MUSHROOM_CLASS):
-        contents = _pickup_contents(view, slot)
-        if contents is not None:
-            detail["contents"] = contents
-    if cls == DROP_POD_CLASS:
-        cost = _pod_unlock_cost(view, slot)
-        if cost is not None:
-            detail["unlock_cost"] = cost
-    return detail
 
 
 def read_map(store: IoStore, scripts: ScriptObjects, progress: bool = True) -> MapWorld:
@@ -183,8 +182,8 @@ def read_map(store: IoStore, scripts: ScriptObjects, progress: bool = True) -> M
     census = _ActorCensus()
     placements: list[Placement] = []
     hazards: list[Hazard] = []
-    packages_failed: collections.Counter = collections.Counter()
-    without_transform: collections.Counter = collections.Counter()
+    packages_failed: collections.Counter[str] = collections.Counter()
+    without_transform: collections.Counter[str] = collections.Counter()
     no_level = 0
     started = time.time()
 
@@ -222,7 +221,6 @@ def read_map(store: IoStore, scripts: ScriptObjects, progress: bool = True) -> M
                 without_transform[f"unresolvable attach chain: {cls}"] += 1
                 continue
             if is_row:
-                detail = _placement_detail(view, slot, cls)
                 placements.append(
                     Placement(
                         instance=instance,
@@ -233,7 +231,8 @@ def read_map(store: IoStore, scripts: ScriptObjects, progress: bool = True) -> M
                         else str(class_path),
                         position=transform[0],
                         attached_to=view.exports[parent]["name"] if parent is not None else None,
-                        detail=detail,
+                        contents=_pickup_contents(view, slot) if cls in _PICKUPS else None,
+                        unlock_cost=_pod_unlock_cost(view, slot) if cls == DROP_POD_CLASS else None,
                     )
                 )
             if is_hazard:
@@ -269,17 +268,17 @@ def read_map(store: IoStore, scripts: ScriptObjects, progress: bool = True) -> M
     )
 
 
-def read_other_levels(store: IoStore, scripts: ScriptObjects) -> list[dict]:
+def read_other_levels(store: IoStore, scripts: ScriptObjects) -> list[JsonObject]:
     """Every ``.umap`` outside the world level, walked with the same actor rule.
 
     A collectible placed by another level would otherwise be missing with nothing to show,
     so each one reports how many actors of an emitted class it places.
     """
-    out: list[dict] = []
+    out: list[JsonObject] = []
     for path in sorted(
         p for p in store.by_path if p.endswith(LEVEL_SUFFIX) and WORLD_LEVEL_DIR not in p
     ):
-        entry: dict = {"package": path.rsplit("/", 1)[-1]}
+        entry: JsonObject = {"package": path.rsplit("/", 1)[-1]}
         try:
             view = PackageView(store.read_path(path), scripts)
             actors = [
@@ -301,9 +300,9 @@ def read_other_levels(store: IoStore, scripts: ScriptObjects) -> list[dict]:
     return out
 
 
-def class_census_meta(world: MapWorld) -> dict:
+def class_census_meta(world: MapWorld) -> JsonObject:
     """``_meta.class_census``: the narrow regression guard for a pickup class gone missing."""
-    census = {
+    census: JsonObject = {
         cls: {
             "placed_by_the_map": count,
             "native_class": cls not in world.game_class_counts,
@@ -343,8 +342,8 @@ def placements_source_meta(
     *,
     game_build: str | None,
     pyooz_version: str,
-    other_levels: list[dict],
-) -> dict:
+    other_levels: list[JsonObject],
+) -> JsonObject:
     """``_meta.source.placements``: the container, the walk and the decompressor."""
     return {
         "kind": "the game's own cooked map assets, read from the installed game",
@@ -370,7 +369,7 @@ def placements_source_meta(
         "map_actors_placed": world.actor_count,
         "actor_classes_placed": len(world.class_counts),
         "level_read": WORLD_LEVEL_DIR,
-        "other_levels_in_the_container": other_levels,
+        "other_levels_in_the_container": json_array(other_levels),
         "other_levels_note": (
             "that the level above is the whole world was once a sentence in the "
             "source; it is this list instead. Every other .umap the container holds "

@@ -8,7 +8,9 @@ stand-in can satisfy as well as the real modules do.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol, Self, TypedDict, TypeVar
+from typing import Protocol, Self, TypeVar
+
+from typing_extensions import TypedDict
 
 __all__ = [
     "BlockDecoder",

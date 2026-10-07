@@ -25,8 +25,9 @@ from tests.support.import_graph import (
 
 WEB_APP_PY = WEB / "app.py"
 
-#: What a router module may import beyond the standard library.
-ROUTER_ALLOWED_ROOTS = frozenset({"fastapi", "starlette"})
+#: What a router module may import beyond the standard library; ``typing_extensions`` for the
+#: ``TypedDict`` pydantic accepts on every supported Python.
+ROUTER_ALLOWED_ROOTS = frozenset({"fastapi", "starlette", "typing_extensions"})
 
 #: The two packages a relative import traverses, allowed exactly and never as a prefix, so
 #: ``from .. import app`` still fails on its second edge.
@@ -66,12 +67,7 @@ RESPONSE_CLASSES = frozenset(
 )
 
 #: GET handlers allowed to publish no response schema, by function name, with the reason.
-RESPONSE_MODEL_EXEMPT: dict[str, str] = {
-    "mapimage": "serves a PNG, a 204 or a 404 -- there is no JSON body to describe",
-    "maptiles": "serves a tile, a 204 or a 404 -- there is no JSON body to describe",
-    "maptiles_layer": "serves a tile, a 204 or a 404 -- there is no JSON body to describe",
-    "icon": "serves a PNG, a 204 or a 404 -- there is no JSON body to describe",
-}
+RESPONSE_MODEL_EXEMPT: dict[str, str] = {}
 
 WRITE_VERBS = frozenset({"post", "put", "patch", "delete"})
 
@@ -162,7 +158,8 @@ def test_a_router_sees_the_domain_and_its_own_two_helpers_and_nothing_else():
                 if not allowed:
                     stray.append(f"  {name}:{node.lineno} imports {target}")
     assert not stray, (
-        "a router may import the standard library, fastapi/starlette, config/core/domain "
+        "a router may import the standard library, fastapi/starlette, typing_extensions, "
+        "config/core/domain "
         "and the web package's own serial and terrain -- never another router, never app, "
         "never a presenter. Whatever is shared belongs in the serial package:\n"
         + "\n".join(sorted(stray))

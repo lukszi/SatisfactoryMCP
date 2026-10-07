@@ -17,8 +17,7 @@ from typing import Final, Literal
 import numpy as np
 
 from ....core.arrays import BoolMask, F64Grid, I64Grid, U8Grid
-from ....core.jsontypes import JsonObject
-from .meta import json_float, json_int, json_object
+from ....core.jsontypes import JsonObject, JsonValue, as_float, as_int, require_object
 
 __all__ = [
     "BELOW",
@@ -81,11 +80,11 @@ class CaveGrid:
     @classmethod
     def from_meta(cls, grid: JsonObject) -> CaveGrid:
         return cls(
-            x0_cm=json_float(grid["x0_cm"]),
-            y0_cm=json_float(grid["y0_cm"]),
-            cell_cm=json_float(grid["cell_cm"]),
-            width=json_int(grid["width"]),
-            height=json_int(grid["height"]),
+            x0_cm=as_float(grid["x0_cm"]),
+            y0_cm=as_float(grid["y0_cm"]),
+            cell_cm=as_float(grid["cell_cm"]),
+            width=as_int(grid["width"]),
+            height=as_int(grid["height"]),
         )
 
 
@@ -165,8 +164,9 @@ class Caves:
 def load_caves(directory: Path) -> Caves | None:
     """The cave masks in ``directory``, or ``None`` where there are none or they do not parse."""
     try:
-        meta = json_object(json.loads((directory / META_NAME).read_text(encoding="utf-8")))
-        grid = CaveGrid.from_meta(json_object(meta["grid"]))
+        loaded: JsonValue = json.loads((directory / META_NAME).read_text(encoding="utf-8"))
+        meta = require_object(loaded)
+        grid = CaveGrid.from_meta(require_object(meta["grid"]))
         with np.load(directory / DATA_NAME, allow_pickle=False) as data:
             caves = Caves(
                 grid=grid,

@@ -9,14 +9,18 @@ docs/save-projection.md §6.2d and docs/plumbing.md §24.5 hold the rules and th
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 
 from ...core.gamedata.constants import STACK_SIZE
-from ...core.gamedata.model import GameData
+from ...core.gamedata.model import GameData, Recipe
 from ...core.saveio import ports
 from ...core.saveio.records import actor_class, iter_machine_records
+from ...core.saveio.schema import BuildableRecord, Projection
 from ..power.report import BIOMASS_BURNERS, NO_FUEL, dry_input_classes, dry_inputs
-from ..world.logistics import BASIS_UNKNOWN
+from ..world.headlift import HeadLift
+from ..world.logistics import BASIS_UNKNOWN, PhysicalGraph
+from .model import FactoryGraph
 
 __all__ = [
     "ACTIONABLE",
@@ -128,19 +132,19 @@ class MachineHealth:
 @dataclass
 class HealthReport:
     name: str
-    machines: list[MachineHealth] = field(default_factory=list)
-    by_state: Counter = field(default_factory=Counter)
+    machines: list[MachineHealth] = field(default_factory=list[MachineHealth])
+    by_state: Counter[str] = field(default_factory=Counter[str])
     #: item name -> how many machines are blocked on it / starved of it; a starved generator
     #: counts, a hand-fed biomass burner does not.
-    blocked_on: Counter = field(default_factory=Counter)
-    starved_of: Counter = field(default_factory=Counter)
+    blocked_on: Counter[str] = field(default_factory=Counter[str])
+    starved_of: Counter[str] = field(default_factory=Counter[str])
     #: Machines no generator can reach over the wires: no power edge at all, or wired to a
     #: circuit no generator stands on. Lists rather than states because both cut across all
     #: nine; both empty when no graph was supplied.
-    unwired: list[str] = field(default_factory=list)
-    no_generator: list[str] = field(default_factory=list)
+    unwired: list[str] = field(default_factory=list[str])
+    no_generator: list[str] = field(default_factory=list[str])
     #: Generators on no wire: capacity nothing can draw, kept out of ``unwired``.
-    unwired_generators: list[str] = field(default_factory=list)
+    unwired_generators: list[str] = field(default_factory=list[str])
 
     @property
     def monitored(self) -> list[MachineHealth]:
@@ -148,7 +152,7 @@ class HealthReport:
 
     @property
     def mean_uptime(self) -> float | None:
-        seen = [m.uptime for m in self.monitored]
+        seen = [m.uptime for m in self.machines if m.uptime is not None]
         return sum(seen) / len(seen) if seen else None
 
     def worst(self, limit: int = 10) -> list[MachineHealth]:
@@ -164,11 +168,13 @@ def _stack_limit(game: GameData, item_cls: str) -> int:
     return STACK_SIZE.get(getattr(item, "stack_size", ""), 0)
 
 
-def _input_items(record: dict) -> dict:
+def _input_items(record: BuildableRecord) -> dict[str, float]:
     return ((record.get("buffers") or {}).get("in") or {}).get("items") or {}
 
 
-def _buffer_state(game: GameData, record: dict, recipe) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _buffer_state(
+    game: GameData, record: BuildableRecord, recipe: Recipe | None
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Returns (items backed up in the output, ingredients missing from the input).
 
     Starvation is **a required ingredient at zero**, not an empty input, and an ABSENT intake
@@ -207,11 +213,11 @@ class _Conduits:
     fact only for a medium this graph resolves somewhere, and a blind spot everywhere else.
     """
 
-    graph: object
-    media: frozenset
+    graph: PhysicalGraph
+    media: frozenset[str]
 
     @classmethod
-    def of(cls, physical, actors) -> _Conduits:
+    def of(cls, physical: PhysicalGraph, actors: Iterable[str]) -> _Conduits:
         return cls(physical, frozenset(link.medium for a in actors for link in physical.feeds(a)))
 
     def may_arrive(self, actor: str, medium: str) -> bool:
@@ -226,7 +232,14 @@ class _Conduits:
         return any(link.medium == medium for link in self.graph.feeds(actor))
 
 
-def _cut_off(leaf: str, record: dict, recipe, game: GameData, conduits, head_lift) -> bool:
+def _cut_off(
+    leaf: str,
+    record: BuildableRecord,
+    recipe: Recipe | None,
+    game: GameData,
+    conduits: _Conduits | None,
+    head_lift: HeadLift | None,
+) -> bool:
     """Whether every required ingredient at zero can reach this machine from nowhere.
 
     Rung (1) in BOTH its forms, asked of a machine with no productivity window: no run of
@@ -245,13 +258,13 @@ def _cut_off(leaf: str, record: dict, recipe, game: GameData, conduits, head_lif
 
 def _classify(
     group: str,
-    record: dict,
+    record: BuildableRecord,
     game: GameData,
     unpowered_reason: str,
     leaf: str,
-    conduits,
-    head_lift=None,
-):
+    conduits: _Conduits | None,
+    head_lift: HeadLift | None = None,
+) -> tuple[str, tuple[str, ...], float | None, Recipe | None]:
     """One record's ``(state, cause, uptime, recipe)``, on the ladder in the module docstring."""
     recipe = game.recipes.get(record.get("recipe") or "")
     live = record.get("uptime") or {}
@@ -290,7 +303,7 @@ def _classify(
     return state, tuple(cause), uptime, recipe
 
 
-def _generator_reach(graph, sources: set[str]) -> set[str] | None:
+def _generator_reach(graph: FactoryGraph, sources: set[str]) -> set[str] | None:
     """Every actor some generator reaches over the power wires, or ``None`` for no sources.
 
     ``None`` because a projection with no generator at all says something about the save, not
@@ -310,7 +323,7 @@ def _generator_reach(graph, sources: set[str]) -> set[str] | None:
     return seen
 
 
-def _makes(record: dict, item_cls: str, game: GameData) -> bool:
+def _makes(record: BuildableRecord, item_cls: str, game: GameData) -> bool:
     """Whether this record is KNOWN to put ``item_cls`` on a belt or pipe: its recipe's
     products, or for an extractor what sits in its output buffer."""
     recipe = game.recipes.get(record.get("recipe") or "")
@@ -320,7 +333,7 @@ def _makes(record: dict, item_cls: str, game: GameData) -> bool:
     return item_cls in out
 
 
-def _rung(leaf: str, item_cls: str, found: list[Feed], head_lift) -> str:
+def _rung(leaf: str, item_cls: str, found: list[Feed], head_lift: HeadLift | None) -> str:
     """Which rung of the manual's ladder one missing FLUID stops at -- plumbing.md §24.5."""
     if all(row.verdict in (NOTHING, OPEN) for row in found):
         return CONNECTION
@@ -339,9 +352,9 @@ def _feed_rows(
     leaf: str,
     missing_items: list[tuple[str, str]],
     game: GameData,
-    physical,
-    far_health,
-    head_lift,
+    physical: PhysicalGraph,
+    far_health: Callable[[str], tuple[BuildableRecord | None, str]],
+    head_lift: HeadLift | None,
 ) -> tuple[Feed, ...]:
     """One hop back from each missing ingredient of one starved machine, and its rung.
 
@@ -384,7 +397,9 @@ def _feed_rows(
     return tuple(rows)
 
 
-def _missing_classes(record: dict, recipe, game: GameData) -> list[tuple[str, str]]:
+def _missing_classes(
+    record: BuildableRecord, recipe: Recipe | None, game: GameData
+) -> list[tuple[str, str]]:
     """What a starved record has run out of, as ``(item class, item name)``: the classes
     `_buffer_state` leaves out, because a feeder has to be looked up by class."""
     if recipe is not None:
@@ -408,10 +423,10 @@ def assess(
     name: str,
     machines: list[str],
     game: GameData,
-    projection: dict,
-    graph=None,
-    physical=None,
-    head_lift=None,
+    projection: Projection,
+    graph: FactoryGraph | None = None,
+    physical: PhysicalGraph | None = None,
+    head_lift: HeadLift | None = None,
 ) -> HealthReport:
     """Classify every machine of ``machines``; extractors and generators too, when monitored.
 
@@ -425,7 +440,7 @@ def assess(
 
     # Every machine-like record in the world: a starved machine's feeder is routinely outside
     # the factory asked about, and every generator anywhere is a power source.
-    records_by_leaf: dict[str, tuple[str, dict]] = {}
+    records_by_leaf: dict[str, tuple[str, BuildableRecord]] = {}
     for group, leaf, record in iter_machine_records(projection):
         records_by_leaf[leaf] = (group, record)
 
@@ -446,7 +461,7 @@ def assess(
             return NO_WIRE
         return NO_GENERATOR if reached is not None and actor not in reached else ""
 
-    def far_health(actor: str) -> tuple[dict | None, str]:
+    def far_health(actor: str) -> tuple[BuildableRecord | None, str]:
         found = records_by_leaf.get(actor)
         if found is None:
             return None, ""
@@ -485,8 +500,10 @@ def assess(
             for item in entry.cause:
                 report.blocked_on[item] += 1
         elif state == "starved" and record.get("cls") not in BIOMASS_BURNERS:
-            # The missing items as ``cause`` names them, before `_with_rungs` annotates them.
+            # The missing items as ``cause`` names them, before `_with_rungs` annotates them;
+            # NO_FUEL is a state, not an item.
             for item in cause:
-                report.starved_of[item] += 1
+                if item != NO_FUEL:
+                    report.starved_of[item] += 1
 
     return report

@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Annotated, NamedTuple
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from .....core.filelock import LockTimeout
+from .....core.jsontypes import is_object_dict, is_object_list
 from .....domain.planning import siting as siting_mod
 from .....domain.planning.readout.report import PlanFactoryReport, build_plan_report
+from .....domain.planning.siting.record import Siting
 from .....domain.planning.stored import provenance as prov
-from .....domain.planning.stored.plan_args import InvalidOp, PlanArgs, PlanLogError
-from .....domain.planning.stored.planlog import PlanLog, Pushed
+from .....domain.planning.stored.plan_args import InvalidOp, PlanArgs, PlanLogError, sources_in
+from .....domain.planning.stored.planlog import PlanLog, PlanState, Pushed
 from .....domain.planning.stored.recall import UNSAVED_OVERRIDE, overrides_of, with_overrides
+from .....domain.planning.stored.store import Plan
+from .....domain.planning.stored.views import ProvenanceRecord
 from .....domain.session import journal, pins
+from .....domain.world.state import WorldState
 from .....presenters.text.plan_factory import render_plan_factory
 from ... import app
 from ...params import (
@@ -62,7 +67,7 @@ class SaveRequest:
 
     name: str
     base_rev: int | None
-    existing: object | None
+    existing: Plan | PlanState | None
     meta: PlanMeta
     logistics_items: list[str] | None
     site_at: str | None
@@ -80,12 +85,18 @@ class PinnedArgs(NamedTuple):
     notes: list[str]
 
 
-def _plan_by_live_name(st, name: str):
+def _plan_by_live_name(st: WorldState, name: str) -> Plan | None:
     wanted = name.strip().casefold()
     return next((p for p in st.plans.plans if p.name.casefold() == wanted), None)
 
 
-def _canonical_pins(st, plan, sources, required, exclude_recipes) -> PinnedArgs:
+def _canonical_pins(
+    st: WorldState,
+    plan: str | None,
+    sources: list[str] | None,
+    required: list[str] | None,
+    exclude_recipes: list[str] | None,
+) -> PinnedArgs:
     """Every pin in the pinnable arguments resolved, with its echo; else a ``Refusal``."""
     try:
         plan, notes = plan_pin(st, plan)
@@ -101,7 +112,9 @@ def _canonical_pins(st, plan, sources, required, exclude_recipes) -> PinnedArgs:
     return PinnedArgs(plan, sources, required, exclude_recipes, notes)
 
 
-def _journal_args(plan_kwargs: dict, logistics_items: list[str] | None) -> dict | None:
+def _journal_args(
+    plan_kwargs: Mapping[str, object], logistics_items: list[str] | None
+) -> dict[str, object] | None:
     """The solve's arguments as the journal stores them: only those off their default."""
     raw = {k: v for k, v in plan_kwargs.items() if v is not None}
     if logistics_items:
@@ -114,19 +127,27 @@ def _journal_args(plan_kwargs: dict, logistics_items: list[str] | None) -> dict 
     return {k: v for k, v in args.to_dict().items() if v != blank[k]}
 
 
-def _solve_text(plan_kwargs: dict, feasible: bool, recalled) -> str:
+def _solve_text(plan_kwargs: Mapping[str, object], feasible: bool, recalled: Plan | None) -> str:
     """One line for the journal: what was solved for, and whether it solved."""
-    rates = plan_kwargs.get("export_minimums") or {}
-    if rates:
+    rates = plan_kwargs.get("export_minimums")
+    if is_object_dict(rates) and rates:
         what = ", ".join(f"{k} {v:g}/min" for k, v in rates.items())
     else:
-        what = plan_kwargs.get("target_item") or ", ".join(plan_kwargs.get("exports") or ["MW"])
+        exports = plan_kwargs.get("exports")
+        named = [str(e) for e in exports] if is_object_list(exports) and exports else ["MW"]
+        what = plan_kwargs.get("target_item") or ", ".join(named)
     objective = plan_kwargs.get("objective") or "max_mw"
     on = f' plan "{recalled.name}" v{recalled.rev}:' if recalled is not None else ""
     return f"{'solved' if feasible else 'infeasible:'}{on} {what} ({objective})"
 
 
-def _journal_solve(st, ctx, request: RecalledRequest, logistics_items, feasible: bool) -> None:
+def _journal_solve(
+    st: WorldState,
+    ctx: app.ToolContext | None,
+    request: RecalledRequest,
+    logistics_items: list[str] | None,
+    feasible: bool,
+) -> None:
     """Journal a solve nothing was saved from, so a page following chat sees it."""
     stored = st.plans.find(request.plan) if request.plan else None
     kept = logistics_items
@@ -145,7 +166,17 @@ def _journal_solve(st, ctx, request: RecalledRequest, logistics_items, feasible:
     )
 
 
-def _save_new(st, name, plan_kwargs, logistics, meta: PlanMeta, field, plan_id, sit, ctx) -> Pushed:
+def _save_new(
+    st: WorldState,
+    name: str,
+    plan_kwargs: Mapping[str, object],
+    logistics: list[str] | None,
+    meta: PlanMeta,
+    field: ProvenanceRecord,
+    plan_id: str,
+    sit: Siting | None,
+    ctx: app.ToolContext | None,
+) -> Pushed:
     args = dict(plan_kwargs)
     if logistics:
         args["logistics_items"] = list(logistics)
@@ -163,7 +194,9 @@ def _save_new(st, name, plan_kwargs, logistics, meta: PlanMeta, field, plan_id, 
     )
 
 
-def _save_target(st, save_as: str, base_rev):
+def _save_target(
+    st: WorldState, save_as: str, base_rev: int | None
+) -> tuple[Plan | PlanState | None, str]:
     """The stored plan ``save_as`` writes over, or None for a new one; or a refusal.
 
     A live name wins. Failing that, with ``base_rev``, the plan that carried that name at
@@ -174,11 +207,11 @@ def _save_target(st, save_as: str, base_rev):
         return live, ""
     log = world_plan_log(st)
     wanted = save_as.strip().casefold()
-    hits = []
+    hits: list[PlanState] = []
     for state in log.heads(include_forgotten=True):
         if state.key == wanted and not state.forgotten:
             return state, ""
-        if not isinstance(base_rev, int) or not 1 <= base_rev <= state.rev:
+        if not 1 <= base_rev <= state.rev:
             continue
         try:
             then = log.state(state.key, base_rev)
@@ -196,13 +229,22 @@ def _save_target(st, save_as: str, base_rev):
 
 
 def _save_over(
-    st, existing, base_rev, plan_kwargs, logistics, meta: PlanMeta, sit, ctx, overrides=None
-):
+    st: WorldState,
+    existing: Plan | PlanState,
+    base_rev: int | None,
+    plan_kwargs: Mapping[str, object],
+    logistics: list[str] | None,
+    meta: PlanMeta,
+    sit: Siting | None,
+    ctx: app.ToolContext | None,
+    overrides: Mapping[str, object] | None = None,
+) -> tuple[Pushed | None, str]:
     """Write the request over ``existing`` at ``base_rev``; ``overrides`` merges a recall."""
     log = world_plan_log(st)
 
     def push() -> Pushed:
         base = log.state(existing.key, base_rev)
+        args: dict[str, object]
         if overrides is None:
             args = dict(plan_kwargs)
         else:
@@ -210,7 +252,9 @@ def _save_over(
         args["logistics_items"] = (
             list(logistics) if logistics is not None else list(base.args.logistics_items)
         )
-        extra = [{"op": "set", "field": "notes", "value": meta.notes}] if meta.notes else []
+        extra: list[Mapping[str, object]] = (
+            [{"op": "set", "field": "notes", "value": meta.notes}] if meta.notes else []
+        )
         extra += (
             [{"op": "set", "field": "factory", "value": meta.factory}]
             if meta.factory is not None
@@ -231,12 +275,12 @@ def _save_over(
 
 
 def _store_request(
-    st,
+    st: WorldState,
     save: SaveRequest,
     report: PlanFactoryReport,
     request: RecalledRequest,
-    supplied: dict,
-    ctx,
+    supplied: Mapping[str, object],
+    ctx: app.ToolContext | None,
 ) -> tuple[str, str]:
     """Store the solved request under ``save.name``: the sentence saying so, and any tail.
 
@@ -247,8 +291,8 @@ def _store_request(
     plan_id = report.prepared.request.plan_id
     # What the selectors resolved to, stored WITH the request: plan_id moves when the world
     # does, never when a selector starts meaning a different part of the map.
-    field = prov.record(g, st, request.kwargs.get("sources"))
-    sit = None
+    field = prov.record(g, st, sources_in(request.kwargs))
+    sit: Siting | None = None
     if save.site_at:
         try:
             sit = siting_mod.build_siting(
@@ -375,7 +419,7 @@ def plan_factory(
         str,
         Field(description="site footprint 'WxD' in metres; blank = the layout's own square"),
     ] = "",
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Optimise a factory with an LP over this world's unlocked recipes.
 
@@ -449,7 +493,7 @@ def plan_factory(
     required_ids, refused = resolve_required(pinned.required)
     if refused:
         return refused
-    row_overclock, refused = resolve_row_overclock(row_overclock)
+    row_choices, refused = resolve_row_overclock(row_overclock)
     if refused:
         return refused
 
@@ -460,13 +504,14 @@ def plan_factory(
         return needs_base(existing.name, existing.rev, "nothing saved")
     if (
         plan
+        and save_as
         and existing is not None
         and plan.strip().casefold() == save_as.strip().casefold()
         and st.plans.find(existing.key) is not None
     ):
         plan = existing.key
 
-    supplied = solve_args(
+    given = solve_args(
         objective=objective,
         target_item=target_item,
         sources=pinned.sources,
@@ -487,11 +532,11 @@ def plan_factory(
         payback_hours=payback_hours,
         overclock_last=overclock_last,
         power_price=power_price,
-        row_overclock=row_overclock,
+        row_overclock=row_choices,
     )
-    if refused := power_refusal(supplied):
+    if refused := power_refusal(given):
         return refused
-    request = recall_request(st, plan, supplied)
+    request = recall_request(st, plan, given)
 
     # Its own pair, never written back over the arguments: a recalled plan's site is
     # measured here, and re-saving that plan must not turn its stored yaw and z into the
@@ -522,7 +567,7 @@ def plan_factory(
             site_yaw_deg=site_yaw_deg,
             site_footprint=site_footprint,
         )
-        save_note, tail = _store_request(st, save_request, report, request, supplied, ctx)
+        save_note, tail = _store_request(st, save_request, report, request, given, ctx)
     elif site_at:
         save_note = (
             "site_at was measured but not RECORDED: a siting lives on a STORED plan. Pass "

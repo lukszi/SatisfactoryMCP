@@ -16,13 +16,16 @@ from .....domain.factories.health import (
     RUNGS,
     STATES,
     UNFED,
+    Feed,
     HealthReport,
+    MachineHealth,
     assess,
 )
 from .....domain.factories.select import resolve_factory
 from .....domain.factories.sweep import sweep
 from .....domain.world import headlift
 from .....domain.world.plumbing import throttled_buffers, unwired_pumps
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf, Limit
@@ -47,7 +50,7 @@ def _health_headline(report: HealthReport) -> str:
     return head + (" -- " + ", ".join(parts) if parts else "")
 
 
-def _feed_row(machine, feed) -> tuple:
+def _feed_row(machine: MachineHealth, feed: Feed) -> tuple[str, ...]:
     """One starved input and the run that should be bringing it.
 
     The not-fed verdicts read differently on purpose: nothing arriving is a finding and so is
@@ -68,7 +71,7 @@ def _feed_row(machine, feed) -> tuple:
     return (machine.instance, feed.item, arrives, far, feed.far_state)
 
 
-def _plumbing_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
+def _plumbing_sections(st: WorldState, window: render.Page) -> tuple[list[str], list[str]]:
     """The world-wide plumbing faults: starved buffers, head-lift crests, dark pumps.
 
     World-wide here and nowhere else, because a buffer and a pump belong to no machine set.
@@ -78,7 +81,7 @@ def _plumbing_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
     return buffer_chunks + head_chunks, buffer_notes + head_notes + _pump_notes(st)
 
 
-def _buffer_section(st, window: render.Page) -> tuple[list[str], list[str]]:
+def _buffer_section(st: WorldState, window: render.Page) -> tuple[list[str], list[str]]:
     """Fluid buffers holding too little to output at the rate they take in."""
     chunks: list[str] = []
     notes: list[str] = []
@@ -108,7 +111,7 @@ def _buffer_section(st, window: render.Page) -> tuple[list[str], list[str]]:
     return chunks, notes
 
 
-def _head_lift_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
+def _head_lift_sections(st: WorldState, window: render.Page) -> tuple[list[str], list[str]]:
     """Crests above the head lift behind them, lines riding a buffer's head, unfed ports."""
     chunks: list[str] = []
     notes: list[str] = []
@@ -182,7 +185,7 @@ def _head_lift_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
     return chunks, notes
 
 
-def _pump_notes(st) -> list[str]:
+def _pump_notes(st: WorldState) -> list[str]:
     """Pipeline pumps on no wire, and those coupled to no pipe that went unchecked."""
     notes: list[str] = []
     dark, unseen = unwired_pumps(st.projection, st.graph)
@@ -200,11 +203,12 @@ def _pump_notes(st) -> list[str]:
     return notes
 
 
-def _sweep_report(st, window: render.Page) -> str:
+def _sweep_report(st: WorldState, window: render.Page) -> str:
     """Every named factory's uptime and state counts, then the world-wide plumbing."""
     if not st.labels.labels:
         return "! nothing named yet -- run propose_factories, then name_factory"
-    rows, notes = [], []
+    rows: list[tuple[object, ...]] = []
+    notes: list[str] = []
     blocked_total = 0
     dark_total = 0
     for swept in sweep(st):
@@ -272,7 +276,7 @@ def _sweep_report(st, window: render.Page) -> str:
     )
 
 
-def _feed_notes(supply: list[tuple]) -> list[str]:
+def _feed_notes(supply: list[tuple[MachineHealth, Feed]]) -> list[str]:
     """What the feed table can and cannot say, and which rung each missing fluid reached."""
     notes = [
         (
@@ -327,7 +331,7 @@ def _feed_notes(supply: list[tuple]) -> list[str]:
 
 def _state_notes(report: HealthReport) -> list[str]:
     """One note per state that needs explaining, and per unpowered group of machines."""
-    notes = []
+    notes: list[str] = []
     if report.by_state["blocked"]:
         notes.append(
             f"{report.by_state['blocked']} blocked: output stack full, so its consumer "
@@ -370,7 +374,7 @@ def _state_notes(report: HealthReport) -> list[str]:
     return notes
 
 
-def _factory_report(st, name: str, machines: list[str], window: render.Page) -> str:
+def _factory_report(st: WorldState, name: str, machines: list[str], window: render.Page) -> str:
     """One factory: what needs attention, what backs up or never arrives, and why."""
     heads = headlift.head_lift(st.projection, st.game, st.graph)
     report = assess(name, machines, st.game, st.projection, st.graph, st.physical, heads)
@@ -445,7 +449,7 @@ def _factory_report(st, name: str, machines: list[str], window: render.Page) -> 
             )
         )
 
-    notes = []
+    notes: list[str] = []
     if crests:
         notes.append(
             "a pump placed BEFORE the crest is the fix and a second one after it would add "

@@ -16,7 +16,7 @@ import traceback
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import NamedTuple, cast
+from typing import NamedTuple, TypeAlias
 
 import numpy as np
 
@@ -24,6 +24,7 @@ from mapgen.cache import held_open
 from mapgen.common import Refusal
 from mapgen.gamedata.ground.paint_store import CROWN_NAME
 from mapgen.lighting.bake import LightBake, block_rows
+from mapgen.lighting.horizon import Slabs
 from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import CrownGrid, sheet_crowns
 from mapgen.lighting.stage import (
@@ -41,8 +42,8 @@ from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.painted.shapes import PaintPlane
 from mapgen.palette.styles import LAYER_STYLES
 from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME, KeptBake, KeptLight
-from satisfactory_mcp.core.arrays import U8Grid
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.arrays import F32Grid, U8Grid
+from satisfactory_mcp.core.jsontypes import JsonObject, as_float, require_object
 from satisfactory_mcp.core.mapprogress import encode_stage
 
 __all__ = [
@@ -71,7 +72,7 @@ RELIGHT_ROWS = 64
 SCRATCH_IN_USE = 11
 
 #: The crowns the light bake casts: their tops in metres and the share of a pixel covered.
-Occluder = tuple[np.ndarray, np.ndarray]
+Occluder: TypeAlias = tuple[F32Grid, U8Grid]
 
 #: Where a block row's terms are read from: the kept bake's, or this run's bake.
 KEPT, BAKED = "kept", "baked"
@@ -197,7 +198,7 @@ class LightingRun:
         scratch_root: Path,
         size: int,
         occluder: Occluder | None = None,
-        slabs: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+        slabs: Slabs | None = None,
         light_workers: int | None = None,
         cache_root: Path | None = None,
     ) -> None:
@@ -214,7 +215,7 @@ class LightingRun:
         self.matched = self.matched_rows = 0
         self.block, self.reads = block_rows(size)
         self.served: list[str | None] = [None] * len(self.reads)
-        self._terms: dict[str, np.ndarray] = {}
+        self._terms: dict[str, U8Grid] = {}
 
     def begin(self, renders: Path) -> None:
         """Before the draw: read a kept bake that may be this surface's, else start baking."""
@@ -317,10 +318,10 @@ class LightingRun:
         if self.kept is not None:
             puts = self.surface.puts()
             self.surface.terms = self.kept.keep(self.meta, renders, self.surface.terms, puts)
-        done, render = cast(JsonObject, self.meta["tiles"]), cast(JsonObject, self.meta["render"])
+        done, render = require_object(self.meta["tiles"]), require_object(self.meta["render"])
         print(
             f"  light: {done['count']} tiles over z0..z{done['max_z']} "
-            f"({cast(int, done['bytes']) / 1e6:.1f} MB) in {render['seconds']}s "
+            f"({as_float(done['bytes']) / 1e6:.1f} MB) in {render['seconds']}s "
             f"on {render['workers']} workers"
         )
 

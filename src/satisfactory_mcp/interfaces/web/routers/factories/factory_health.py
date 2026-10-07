@@ -9,26 +9,21 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
-
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....domain.factories import candidates
-from .....domain.factories.health import ACTIONABLE, OK, STATES
-from .....domain.factories.sweep import sweep
+from .....domain.factories.health import ACTIONABLE, OK, STATES, MachineHealth
+from .....domain.factories.sweep import FactorySweep, sweep
+from .....domain.factories.views import StateCount
 from .....domain.world.state import WorldState
-from ...serial import bbox_m, cm_to_m, point_m, require_world
+from ...serial import Placed, bbox_m, cm_to_m, point_m, require_world
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
 
 WORST_PER_FACTORY = 8
-
-
-class StateCount(TypedDict):
-    state: str
-    count: int
 
 
 class MachineIssue(TypedDict):
@@ -79,7 +74,7 @@ class FactoryHealthResponse(TypedDict):
     factories: list[FactoryHealthRow]
 
 
-def _issue_row(st: WorldState, placed: dict, machine: Any) -> dict:
+def _issue_row(st: WorldState, placed: Placed, machine: MachineHealth) -> MachineIssue:
     at = placed.get(machine.instance)
     return {
         "instance": machine.instance,
@@ -92,7 +87,9 @@ def _issue_row(st: WorldState, placed: dict, machine: Any) -> dict:
     }
 
 
-def _factory_row(st: WorldState, swept: Any, placed: dict, review: dict[str, str]) -> dict:
+def _factory_row(
+    st: WorldState, swept: FactorySweep, placed: Placed, review: dict[str, str]
+) -> FactoryHealthRow:
     """One named factory's sweep: its extent, uptime, states and worst machines."""
     label, standing, report, view = swept.label, swept.standing, swept.report, swept.view
     mean = report.mean_uptime
@@ -124,7 +121,9 @@ def _factory_row(st: WorldState, swept: Any, placed: dict, review: dict[str, str
 
 
 @router.get("/factories/health", response_model=FactoryHealthResponse)
-def factory_health(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def factory_health(
+    request: Request, save: str | None = None, world: str | None = None
+) -> FactoryHealthResponse:
     """Uptime, states and the worst machines of every named factory, worst factory first."""
     st = require_world(request, save, world)
 

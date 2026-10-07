@@ -71,7 +71,7 @@ class LevelSweep:
         return AssetIndex(self.store)
 
     @cached_property
-    def sweep(self) -> dict:
+    def sweep(self) -> Sweep:
         """The placements, foliage, trees and water actors of every level."""
         classes = ClassFacts(self.store, self.index)
         return sweep_world(self.store, self.scripts, self.index, classes, self.progress)
@@ -129,7 +129,7 @@ def stamped_raster(
         maps = cached_raster(cache, grid.stamp)
     else:
         print(f"reusing the {label} raster already in {cache}")
-        reused = json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
+        reused: JsonValue = json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
         source: JsonObject = {key: {"reused": reused}}
     if maps is None:
         message = f"the {label} raster in {cache} could not be read back after writing it"
@@ -149,8 +149,7 @@ def direct_raster(
             + (f" with {sampled}x{sampled} sub-samples" if sampled > 1 else "")
         )
         geometry = level.geometry
-        sweep = cast(Sweep, geometry["sweep"])
-        families = placement_families(level.store, level.scripts, level.index, sweep)
+        families = placement_families(level.store, level.scripts, level.index, geometry["sweep"])
         prepared, dropped = direct_placements(geometry["sweep"], geometry["geometry"], families)
         print(f"  {len(prepared)} placements rasterised, dropped {dropped}")
         band = partial(rasterise_direct_band, prepared, geometry["geometry"], with_source=True)

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from ....core.gamedata.model import GameData
 from ....domain.planning.analysis import advisor
+from ....domain.progression.harddrives import HardDriveOption
 from ....presenters.text import primitives as render
 from ....presenters.text.search import item_flows
 from .. import app
@@ -19,7 +21,7 @@ POOL_RULE = (
 _GRANT_CHARS = 90
 
 
-def _grants(option: dict, game) -> str:
+def _grants(option: HardDriveOption, game: GameData) -> str:
     """What an option offers: what its recipes make, and in what.
 
     The schematic's name is already the recipe's name; what it makes and where is the part
@@ -29,7 +31,7 @@ def _grants(option: dict, game) -> str:
         return f"+{option['slots']} inventory slots"
     if not option["recipes"]:
         return "nothing new"
-    out = []
+    out: list[str] = []
     for r in option["recipes"]:
         made = item_flows(game, r.products)
         machine = game.machine(r)
@@ -54,7 +56,7 @@ def list_pending_hard_drive_choices(
     g = st.game
     offers = st.hard_drive_offers
     window = render.page(limit, offset, default=25)
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for offer in window.of(offers):
         options = [f"{opt['name']} ({_grants(opt, g)})" for opt in offer.options]
         rows.append((offer.hard_drive_id, offer.rerolls_left, " | ".join(options)))
@@ -110,7 +112,7 @@ def advise_hard_drive_pick(
         return f"no unclaimed hard drive with id {hard_drive_id}"
     advice = results[0]
 
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for option in advice["options"]:
         deltas = option["deltas"]
         rows.append(

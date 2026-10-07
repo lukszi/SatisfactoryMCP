@@ -39,7 +39,7 @@ from mapgen.palette.water.surface import (
     water_planes,
 )
 from mapgen.render.cached_rasters import RasterGrid
-from mapgen.render.surface import DIRECT_LIFT_KNEE_M
+from mapgen.render.lift import DIRECT_LIFT_KNEE_M
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
 from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
 from mapgen.terrain.sample import direct_mask
@@ -48,6 +48,7 @@ from mapgen.tiles.pyramid import check_parallel, layer_dir
 from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
 from mapgen.tiles.rendertext import LEVEL_ONLY_TEXT
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, pinned_field_build
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I8Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import (
     SHEET_PX,
     SLICES,
@@ -117,10 +118,10 @@ class Lattice:
     """
 
     recipe: int
-    measured_plane: np.ndarray | None
+    measured_plane: U8Grid | None
     measurement_rule: JsonObject
-    heights: np.ndarray | None
-    ground: np.ndarray | None
+    heights: F32Grid | None
+    ground: F32Grid | None
     ground_meta: JsonObject
     terrain_meta: JsonObject
     fill_meta: JsonObject
@@ -161,12 +162,12 @@ class GameInputs:
 class ArtworkBorrow:
     """The artwork's shading the coarse provinces borrow: ``(detail, province)`` and its record."""
 
-    detail: np.ndarray
-    province: np.ndarray
+    detail: I8Grid
+    province: U8Grid
     source: JsonObject
 
     @property
-    def planes(self) -> tuple[np.ndarray, np.ndarray]:
+    def planes(self) -> tuple[I8Grid, U8Grid]:
         return self.detail, self.province
 
 
@@ -186,7 +187,7 @@ class PaintInputs:
 def load_field(path: Path) -> hf.Field:
     """The heightfield the render is drawn from; a run without one is refused."""
     field = hf.load_field(path)
-    if field is None or field.height_dm is None:
+    if field is None:
         raise Refusal(
             NO_FIELD,
             f"no heightfield at {path}. That field is the one input this file cannot "
@@ -236,7 +237,7 @@ def field_lattice(field: hf.Field, spacing_m: float, kernel_only: bool) -> Latti
             "pixel"
         )
     recipe = RECIPE_KERNEL_ONLY if kernel_only else RECIPE
-    if kernel_only or field.height_dm is None:
+    if kernel_only:
         print(f"  --kernel-only: drawing recipe {recipe}, the picture before the two regimes")
         return Lattice(recipe, measured_plane, rule, None, None, {}, {}, {})
     heights = field.height_dm.astype(np.float32)
@@ -259,7 +260,7 @@ def field_lattice(field: hf.Field, spacing_m: float, kernel_only: bool) -> Latti
 
 
 def rebuilt_lattice(
-    lattice: Lattice, field: hf.Field, store: IoStore, art_void: np.ndarray | None
+    lattice: Lattice, field: hf.Field, store: IoStore, art_void: BoolMask | None
 ) -> Lattice:
     """The lattice with its fill re-read and its holes filled; ``--kernel-only`` as it was."""
     if lattice.ground is None:
@@ -285,7 +286,9 @@ def refuse_stale_layers(
         if not (directory / TILES_DIR_NAME).is_dir():
             continue
         try:
-            existing = json.loads((directory / RENDER_SIDECAR_NAME).read_text(encoding="utf-8"))
+            existing: JsonValue = json.loads(
+                (directory / RENDER_SIDECAR_NAME).read_text(encoding="utf-8")
+            )
         except (OSError, ValueError, TypeError):
             existing = {}
         pinned = pinned_field_build(existing if isinstance(existing, dict) else {})
@@ -413,7 +416,7 @@ def check_parallel_cutter(
 
 
 def prepare_paint(
-    paint_dir: Path, no_titan_trees: bool, field: hf.Field, biome: dict, drawn: list[str]
+    paint_dir: Path, no_titan_trees: bool, field: hf.Field, biome: BiomeGrid, drawn: list[str]
 ) -> PaintInputs:
     """The painted layer's ground from the paint store; a run without the store is refused."""
     paint_meta = load_paint_meta(paint_dir)
@@ -426,9 +429,7 @@ def prepare_paint(
         )
     started = time.time()
     palette, digest = painted_style(no_titan_trees)
-    # read_biome's dict carries BiomeGrid's keys (gamedata.ground.biome).
-    grid = cast(BiomeGrid, biome)
-    ground = PaintedGround(paint_dir, palette, field, grid, list(drawn), oil_nodes())
+    ground = PaintedGround(paint_dir, palette, field, biome, list(drawn), oil_nodes())
     provenance: JsonObject = {
         "cl": paint_meta.get("cl"),
         "generator_version": paint_meta.get("generator_version"),

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
@@ -21,6 +21,10 @@ from mapgen.gamedata.placements import (
     placement_transform,
 )
 from satisfactory_mcp.core.arrays import F32Grid, I64Grid, U32Grid
+
+if TYPE_CHECKING:
+    from mapgen.gamedata.level.landscape import LandscapeFrame
+    from mapgen.gamedata.level.sweep import Sweep
 
 __all__ = [
     "CliffRaster",
@@ -57,15 +61,15 @@ class TopOverlay(TypedDict):
     seconds: float
 
 
-def _frame_raster(frame: dict) -> MaxZRaster:
+def _frame_raster(frame: LandscapeFrame) -> MaxZRaster:
     return MaxZRaster(
         frame["width"], frame["height"], frame["x0_cm"], frame["y0_cm"], frame["scale_cm"]
     )
 
 
 def rasterise_cliffs(
-    sweep: dict, geometry: dict[str, CookedMesh], frame: dict, progress: bool = True
-) -> dict:
+    sweep: Sweep, geometry: dict[str, CookedMesh], frame: LandscapeFrame, progress: bool = True
+) -> CliffRaster:
     """Transform, cull and rasterise every placed rock into a 1 m max-Z overlay, in cm.
 
     Culling, in the order it costs least: ``cliff_cull``'s placement culls, then the
@@ -139,7 +143,9 @@ def _up_facing(world: NDArray[np.floating], tris: I64Grid, facing: float) -> I64
     return tris[(normals[:, 2] * facing) > 0]
 
 
-def rasterise_top(sweep: dict, frame: dict, reader: GameReader, progress: bool = True) -> dict:
+def rasterise_top(
+    sweep: Sweep, frame: LandscapeFrame, reader: GameReader, progress: bool = True
+) -> TopOverlay:
     """Arches and foliage boulders as a 1 m max-Z overlay, from their collision trimeshes.
 
     These are what the ground deliberately leaves out: an arch is a roof over buildable

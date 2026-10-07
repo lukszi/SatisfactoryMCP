@@ -8,12 +8,13 @@ met a null in a field declared ``float`` would fail the whole reply. The handler
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
-
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....domain.factories import floors as ffloors
 from .....domain.factories import select as fselect
+from .....domain.factories.views import FloorCounts
 from .....domain.world.state import WorldState
 from ... import terrain
 from ...serial import cm_to_m, error_response, point_m, require_world, xyz_m
@@ -96,19 +97,6 @@ class FloorPlacement(TypedDict):
     above_terrain_m: float | None
 
 
-class FloorCounts(TypedDict):
-    """The shape of the answer before the rows. Nested; see ``FloorReport.counts``."""
-
-    platforms: int
-    bands: int
-    runs: int
-    violations: int
-    #: Keyed by ``ffloors.GROUPS`` and ``ffloors.MEMBERSHIPS``: open maps, so the domain's
-    #: two vocabularies are not restated here.
-    placements: dict[str, int]
-    membership: dict[str, int]
-
-
 class FloorRules(TypedDict):
     """The thresholds the answer was produced with, in the units the answer is in."""
 
@@ -166,8 +154,8 @@ def _platform_json(platform: ffloors.Platform) -> FloorPlatform:
         "cells": platform.cells,
         "pieces": platform.pieces,
         "area_m2": round(platform.area_m2, 1),
-        "centre_m": point_m(platform.centre_cm),
-        "extent_m": point_m(platform.extent_cm),
+        "centre_m": [*point_m(platform.centre_cm)],
+        "extent_m": [*point_m(platform.extent_cm)],
         "clean": round(platform.clean, 4),
         "label": platform.label,
         "slab": platform.slab,
@@ -199,7 +187,7 @@ def _placement_json(st: WorldState, placement: ffloors.Placement) -> FloorPlacem
     return {
         "instance_leaf": placement.instance,
         "cls": placement.cls,
-        "name": st.game.building_name(placement.cls),
+        "name": st.game.building_name(placement.cls) or placement.cls,
         "kind": placement.kind,
         **xyz_m(placement.pos_cm),
         "above_terrain_m": (
@@ -215,7 +203,7 @@ def floors_view(
     platform: int | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> FloorsResponse | JSONResponse:
     """What is built, one storey at a time: platforms, their floors, the runs between them
     and what stands on no floor, narrowed by ``?factory=`` or ``?platform=``."""
     st = require_world(request, save, world)

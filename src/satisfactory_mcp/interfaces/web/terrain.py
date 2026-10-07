@@ -13,7 +13,7 @@ from ...domain.spatial import heightfield as spatial_heightfield
 __all__ = ["field"]
 
 
-def field():
+def field() -> spatial_heightfield.Field | None:
     """The extracted 1 m heightfield, or ``None`` on a machine that has none.
 
     The raster is derived from the reader's own cooked game assets, so this repository ships

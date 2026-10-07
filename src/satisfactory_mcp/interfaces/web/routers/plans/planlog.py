@@ -12,13 +12,16 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any, NotRequired, TypedDict
+from collections.abc import Callable, Mapping, Sequence
+from typing import Annotated, NotRequired, cast
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
 from .....core.gamedata.model import GameData
+from .....core.jsontypes import JsonObject
 from .....domain.planning.analysis import swaps
 from .....domain.planning.readout import summary
 from .....domain.planning.stored import manage
@@ -34,6 +37,7 @@ from .....domain.planning.stored.planlog import (
     Pushed,
     UnknownPlan,
 )
+from .....domain.planning.stored.views import PlanArgsBody, PlanOp, PlanStamp
 from .....domain.session import journal, pins
 from .....domain.world import pin
 from .....domain.world.state import WorldState
@@ -73,35 +77,6 @@ class CommitBody(TypedDict):
     text: str
 
 
-class PlanArgsBody(TypedDict):
-    """The whole solve request, every field present at its default when unset (contract §2)."""
-
-    objective: str
-    target_item: str | None
-    sources: list[str]
-    exports: list[str]
-    export_minimums: dict[str, float]
-    only_free_nodes: bool
-    allow_sinks: bool
-    clocks: list[float]
-    extractor_clocks: list[float]
-    machine_cost_mw: float
-    banned: list[str]
-    required: list[str]
-    only_recipes: list[str]
-    water_extractors: int | None
-    sloops: int
-    belt_ipm: float | None
-    pipe_m3min: float | None
-    recycle_once: list[str]
-    supplied: dict[str, float]
-    logistics_items: list[str]
-    payback_hours: float | None
-    overclock_last: bool | None
-    power_price: float | None
-    row_overclock: dict[str, str]
-
-
 class PlanStateBody(TypedDict):
     """A plan at ``rev``. ``head`` is the newest rev and ``text`` the head commit's words."""
 
@@ -113,12 +88,18 @@ class PlanStateBody(TypedDict):
     factory: str
     created: str
     plan_id: str
-    siting: dict | None
+    siting: Mapping[str, object] | None
     args: PlanArgsBody
     headroom_mw: float | None
     names: dict[str, str]
     head: int
     text: str
+
+
+class PlanStateReply(PlanStateBody):
+    """A plan at ``rev`` with its ``provenance``, which a 409 body sends and a 200 drops."""
+
+    provenance: JsonObject
 
 
 class PushedResponse(TypedDict):
@@ -170,7 +151,7 @@ class NameTakenResponse(TypedDict):
 
 class CreatePlanBody(TypedDict):
     name: str
-    args: dict
+    args: dict[str, object]
     from_entry: NotRequired[str]
 
 
@@ -185,25 +166,21 @@ class PushBody(TypedDict):
     removes every other required recipe for it that the head holds (contract C3)."""
 
     base_rev: int
-    ops: list[dict]
+    ops: list[dict[str, object]]
     sav: NotRequired[str]
     require_item: NotRequired[str | None]
 
 
 class PushArgsBody(TypedDict):
     base_rev: int
-    args: dict
+    args: dict[str, object]
     sav: NotRequired[str]
     from_entry: NotRequired[str]
 
 
-class UndoBody(TypedDict):
-    base_rev: int
-    rev: int
-    sav: NotRequired[str]
+class CommitRefBody(TypedDict):
+    """A push that names one earlier commit ``rev``: to undo it, or to restore the plan to it."""
 
-
-class RestoreBody(TypedDict):
     base_rev: int
     rev: int
     sav: NotRequired[str]
@@ -236,7 +213,15 @@ class VersionsResponse(TypedDict):
     versions: list[VersionRow]
 
 
-def _save_token(st, given: str | None) -> str:
+class _Version(TypedDict):
+    """One row of ``manage.versions``."""
+
+    commit: Commit
+    undone_by: int | None
+    restores: int | None
+
+
+def _save_token(st: WorldState, given: str | None) -> str:
     """The save token a write is stamped with: the page's own, else the loaded save's."""
     if given:
         return given
@@ -250,11 +235,28 @@ def _chat_solve_note(from_entry: str | None) -> str:
     return f"applied chat solve {from_entry}" if from_entry else ""
 
 
+def _ops(ops: list[PlanOp]) -> list[PlanOpBody]:
+    """The log's ops, which are JSON of the shape ``PlanOpBody`` declares."""
+    return cast("list[PlanOpBody]", ops)
+
+
 def _commit_body(commit: Commit) -> CommitBody:
-    return {**commit.to_dict(), "actor": actor_json(commit.actor), "text": commit.text()}
+    record = commit.to_dict()
+    return {
+        "rev": record["rev"],
+        "base_rev": record["base_rev"],
+        "ts": record["ts"],
+        "actor": actor_json(commit.actor),
+        "sav": record["sav"],
+        "ops": _ops(record["ops"]),
+        "merged_over": record["merged_over"],
+        "undoes": record["undoes"],
+        "note": record["note"],
+        "text": commit.text(),
+    }
 
 
-def _version_row(row: dict) -> VersionRow:
+def _version_row(row: _Version) -> VersionRow:
     commit = row["commit"]
     return {
         "rev": commit.rev,
@@ -269,11 +271,22 @@ def _version_row(row: dict) -> VersionRow:
     }
 
 
-def _state_body(log: PlanLog, state: PlanState, game: GameData) -> PlanStateBody:
+def _state_body(log: PlanLog, state: PlanState, game: GameData) -> PlanStateReply:
+    """``PlanState.to_dict`` with the head's rev and words, in the record's key order."""
     head = log.commits(state.key)[-1]
     return {
-        **state.to_dict(),
+        "key": state.key,
+        "rev": state.rev,
+        "name": state.name,
+        "forgotten": state.forgotten,
+        "notes": state.notes,
+        "factory": state.factory,
+        "created": state.created,
+        "plan_id": state.plan_id,
+        "provenance": state.provenance,
         "siting": state.siting or None,
+        "args": state.args.to_dict(),
+        "headroom_mw": state.headroom_mw,
         "names": summary.names_for(game, state.args),
         "head": head.rev,
         "text": head.text(),
@@ -287,8 +300,8 @@ def _pushed(log: PlanLog, pushed: Pushed, game: GameData) -> PushedResponse:
         "base_rev": pushed.base_rev,
         "noop": pushed.noop,
         "merged_over": list(pushed.merged_over),
-        "applied": pushed.applied,
-        "dropped": pushed.dropped,
+        "applied": _ops(pushed.applied),
+        "dropped": _ops(pushed.dropped),
         "others": [_commit_body(c) for c in pushed.others],
         "text": pushed.text(pushed.state.name),
         "state": _state_body(log, pushed.state, game),
@@ -303,7 +316,15 @@ def _outdated(log: PlanLog, exc: Outdated, game: GameData) -> JSONResponse:
         "base_rev": exc.base_rev,
         "since": [_commit_body(c) for c in exc.since],
         "conflicts": [
-            {**c.to_dict(), "theirs_actor": actor_json(c.theirs_actor)} for c in exc.conflicts
+            {
+                "key": c.key,
+                "mine": cast(PlanOpBody, c.mine),
+                "theirs": cast(PlanOpBody, c.theirs),
+                "theirs_rev": c.theirs_rev,
+                "theirs_actor": actor_json(c.theirs_actor),
+                "text": c.text(),
+            }
+            for c in exc.conflicts
         ],
         "state": _state_body(log, exc.state, game),
     }
@@ -314,7 +335,7 @@ def _refused(log: PlanLog, exc: Exception, game: GameData) -> JSONResponse:
     if isinstance(exc, Outdated):
         return _outdated(log, exc, game)
     if isinstance(exc, AlreadyUndone):
-        body = {"error": str(exc), "already_undone": True, "by": exc.by}
+        body: AlreadyUndoneResponse = {"error": str(exc), "already_undone": True, "by": exc.by}
         return JSONResponse(body, status_code=409)
     if isinstance(exc, Forgotten):
         return error_response(str(exc), 410)
@@ -328,7 +349,7 @@ def _refused(log: PlanLog, exc: Exception, game: GameData) -> JSONResponse:
 _ERRORS = (PlanLogError, LockTimeout)
 
 
-def _journal_rejection(st, key: str, sav: str, exc: Exception) -> None:
+def _journal_rejection(st: WorldState, key: str, sav: str, exc: Exception) -> None:
     """Journal a push refused as outdated, with the conflicts that refused it."""
     if isinstance(exc, Outdated):
         journal.append(
@@ -340,6 +361,11 @@ def _journal_rejection(st, key: str, sav: str, exc: Exception) -> None:
             rev=exc.head,
             text="; ".join(c.text() for c in exc.conflicts),
         )
+
+
+def _name_taken(exc: NameTaken) -> JSONResponse:
+    body: NameTakenResponse = {"error": str(exc), "name_taken": True}
+    return JSONResponse(body, status_code=409)
 
 
 def _world_and_log(
@@ -362,7 +388,7 @@ def create_plan(
     body: Annotated[CreatePlanBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> PushedResponse | JSONResponse:
     """A new plan at v1, stamped against the save this request read."""
     st = require_world(request, save, world)
     log = plan_log(st)
@@ -379,18 +405,18 @@ def create_plan(
             _logger.warning(
                 "could not stamp new plan %r; saved unstamped", body["name"], exc_info=True
             )
-            stamped = {"plan_id": "", "provenance": {}}
+            stamped: PlanStamp = {"plan_id": "", "provenance": {}}
         pushed = log.create(
             body["name"],
             args,
             actor=page_actor(),
             sav=_save_token(st, None),
-            plan_id=stamped["plan_id"],
-            provenance=stamped["provenance"],
+            plan_id=stamped.get("plan_id", ""),
+            provenance=stamped.get("provenance", {}),
             note=_chat_solve_note(body.get("from_entry")),
         )
     except NameTaken as exc:
-        return JSONResponse({"error": str(exc), "name_taken": True}, status_code=409)
+        return _name_taken(exc)
     except _ERRORS as exc:
         return _refused(log, exc, st.game)
     return _pushed(log, pushed, st.game)
@@ -403,7 +429,7 @@ def plan_state(
     rev: int | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> PlanStateBody:
     """A plan at ``rev`` (the head when omitted), forgotten plans included."""
     st, log = _world_and_log(request, key, save, world)
     return _state_body(log, require_plan(log, key, rev), st.game)
@@ -416,7 +442,7 @@ def plan_ops(
     since: int = 0,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> PlanOpsResponse:
     """Every commit after ``since``, oldest first."""
     _, log = _world_and_log(request, key, save, world)
     try:
@@ -438,7 +464,7 @@ def push_ops(
     body: Annotated[PushBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> PushedResponse | JSONResponse:
     """One gesture as one commit, merged onto the head by rule M1 or refused whole."""
     st, log = _world_and_log(request, key, save, world)
     sav = _save_token(st, body.get("sav"))
@@ -446,13 +472,10 @@ def push_ops(
         ops, _said = pins.expand_ops(st, body["ops"])
     except pins.PinError as exc:
         return error_response(str(exc), 400)
-    item = body.get("require_item")
-    extend = None
-    if item:
-        game = st.game
-
-        def extend(head):
-            return swaps.replaced_required(game, head, item, ops)
+    item, game = body.get("require_item"), st.game
+    extend: Callable[[PlanState], Sequence[Mapping[str, object]]] | None = (
+        (lambda head: swaps.replaced_required(game, head, item, ops)) if item else None
+    )
 
     try:
         pushed = log.push(
@@ -481,7 +504,7 @@ def push_args(
     body: Annotated[PushArgsBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> PushedResponse | JSONResponse:
     """A whole request, diffed against ``base_rev`` and merged: how a chat solve is applied."""
     st, log = _world_and_log(request, key, save, world)
     sav = _save_token(st, body.get("sav"))
@@ -513,10 +536,10 @@ def push_args(
 def undo_rev(
     request: Request,
     key: str,
-    body: Annotated[UndoBody, Body()],
+    body: Annotated[CommitRefBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> PushedResponse | JSONResponse:
     """The inverse of commit ``rev`` as a new commit; redo is the undo of that undo."""
     st, log = _world_and_log(request, key, save, world)
     sav = _save_token(st, body.get("sav"))
@@ -543,10 +566,10 @@ def undo_rev(
 def restore_rev(
     request: Request,
     key: str,
-    body: Annotated[RestoreBody, Body()],
+    body: Annotated[CommitRefBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> PushedResponse | JSONResponse:
     """A new commit that makes the head equal ``rev`` again: never a rewind."""
     st, log = _world_and_log(request, key, save, world)
     sav = _save_token(st, body.get("sav"))
@@ -560,7 +583,7 @@ def restore_rev(
             stamp=summary.stamp_for(st.game, st),
         )
     except NameTaken as exc:
-        return JSONResponse({"error": str(exc), "name_taken": True}, status_code=409)
+        return _name_taken(exc)
     except _ERRORS as exc:
         _journal_rejection(st, key, sav, exc)
         return _refused(log, exc, st.game)
@@ -579,7 +602,7 @@ def duplicate_plan(
     body: Annotated[DuplicateBody, Body()],
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> PushedResponse | JSONResponse:
     """A new plan at v1 equal to this one at ``rev`` (the head when omitted)."""
     st, log = _world_and_log(request, key, save, world)
     rev = body.get("rev")
@@ -600,7 +623,7 @@ def duplicate_plan(
             stamp=summary.stamp_for(st.game, st),
         )
     except NameTaken as exc:
-        return JSONResponse({"error": str(exc), "name_taken": True}, status_code=409)
+        return _name_taken(exc)
     except _ERRORS as exc:
         return _refused(log, exc, st.game)
     return _pushed(log, pushed, st.game)
@@ -612,11 +635,12 @@ def plan_versions(
     key: str,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> VersionsResponse:
     """Every version of one plan, newest first, with what undid or restored what."""
     _, log = _world_and_log(request, key, save, world)
     head = require_plan(log, key)
-    rows = manage.versions(log, key)
+    # ``manage.versions`` types its rows loosely; each holds a commit and two revs or nulls.
+    rows = cast("list[_Version]", manage.versions(log, key))
     return {
         "key": key,
         "name": head.name,

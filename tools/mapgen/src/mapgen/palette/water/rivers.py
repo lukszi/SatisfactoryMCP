@@ -18,7 +18,13 @@ import numpy as np
 from mapgen.cache import RIVER_CACHE_DIR_NAME, cached_rivers, river_stamp, write_rivers
 from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.water.channel import lower_bodies
-from mapgen.gamedata.water.rivers import RiverActor, box_tops, ribbon_planes, sample_rivers
+from mapgen.gamedata.water.rivers import (
+    RiverActor,
+    RiverSamples,
+    box_tops,
+    ribbon_planes,
+    sample_rivers,
+)
 from mapgen.palette.scene import BandTaps, FloatGrid, WaterTerms, field_heights, field_water
 from mapgen.palette.water.shore import OCEAN_LEVEL_M, shore_terms
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_planes
@@ -149,7 +155,7 @@ def _below_other(level: F32Grid, water_dm: I16Grid, grades: U8Grid) -> FloatGrid
     return np.clip(2.0 - excess / RIVER_OVER_WATER_M, 0.0, 1.0)
 
 
-def _length_m(samples: dict[str, np.ndarray]) -> float:
+def _length_m(samples: RiverSamples) -> float:
     step = np.hypot(np.diff(samples["x"]), np.diff(samples["y"]))
     return float(step[samples["section"][1:] == samples["section"][:-1]].sum())
 

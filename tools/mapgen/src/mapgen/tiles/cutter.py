@@ -27,6 +27,7 @@ from mapgen.tiles.imaging import TileImaging
 from mapgen.tiles.levels import SheetRows
 from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import (
+    LevelRecord,
     PyramidError,
     commit_tree,
     encode_tile_row,
@@ -332,7 +333,7 @@ class TileStream:
 
     def _commit(self, tree: _Tree) -> JsonObject:
         spec = tree.spec
-        levels = []
+        levels: list[LevelRecord] = []
         for z in range(tree.top_z + 1):
             written = sum(future.result() for future in tree.rows[z])
             levels.append(level_record(z, written, spec.text, spec.tile_px))

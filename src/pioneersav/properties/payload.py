@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..errors import expect
 from ..objects import ObjectSlice
 from ..reader import Reader
 from ..references import ObjectReference, read_reference, read_references
+from ..values import Properties, PropertyTypes, SaveValue
 from ..versions import FIRST_MODERN_BODY, FIRST_UE5_OBJECT_VERSION
 from .decoder import PropertyDecoder
 
@@ -30,22 +32,22 @@ class ParsedObject:
     version: int
     #: Actors only: the object this one hangs off, and its component children.
     parent_reference: ObjectReference | None = None
-    child_references: list[ObjectReference] = field(default_factory=list)
-    properties: list[list] = field(default_factory=list)
-    property_types: list[list] = field(default_factory=list)
+    child_references: list[ObjectReference] = field(default_factory=list[ObjectReference])
+    properties: Properties = field(default_factory=list[list[SaveValue]])
+    property_types: PropertyTypes = field(default_factory=PropertyTypes)
     #: Absolute span of everything after the terminator: the plain trailer, plus class-specific
     #: data on some actors, which ``pioneersav.save`` arranges to decode.
     extra_offset: int = 0
     extra_length: int = 0
     #: The trailing class-specific bytes, decoded on first access to ``actorSpecificInfo``.
-    actor_specific_info: list | None = None
+    actor_specific_info: list[SaveValue] | None = None
     #: Zero-argument decoder for the trailing bytes, set where the class is known; else ``None``.
-    decode_trailer: object | None = None
+    decode_trailer: Callable[[], list[SaveValue]] | None = None
     #: Anything skipped rather than understood, as ``(offset, what)``.
-    warnings: list[tuple[int, str]] = field(default_factory=list)
+    warnings: list[tuple[int, str]] = field(default_factory=list[tuple[int, str]])
 
     @property
-    def actorSpecificInfo(self) -> list | None:
+    def actorSpecificInfo(self) -> list[SaveValue] | None:
         """The trailing class-specific bytes, decoded on first access.
 
         ``None``, never ``[]``, when no reader knows the class: an empty list would pass for a

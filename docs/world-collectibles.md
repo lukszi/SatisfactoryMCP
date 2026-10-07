@@ -150,6 +150,7 @@ by offset for the drop pods and the probed plants only. The game drops a 105-byt
 | Module | Holds |
 | --- | --- |
 | `catalog.py`, `catalog.toml` | which class is a row, the category notes and the exclusions (data); the shared constants |
+| `stats.py` | how `_meta` carries numbers: a distance spread, a count table, typed values as JSON |
 | `map_read.py` | the map walk; `_meta.source.placements` and `_meta.class_census` |
 | `saves.py` | one save's facts |
 | `hazards.py` | hazard sources, the per-row hazard block, `_meta.hazard_context` |
@@ -160,6 +161,9 @@ by offset for the drop pods and the probed plants only. The game drops a 105-byt
 | `totals.py` | per-category tallies and the accounting |
 | `build.py` | the measurement order and the `_meta` key order |
 | `report.py`, `command.py` | the console summary, and the command itself |
+
+The shape of a row and of the objects nested in it is `satisfactory_mcp.core.collectible_rows`,
+which the generator writes and `domain.collectibles` reads.
 
 Each `_meta` block is built beside the measurement it reports. The measurements run in the fixed
 order `build.MEASUREMENTS` gives, because each may read what an earlier one left on the context.

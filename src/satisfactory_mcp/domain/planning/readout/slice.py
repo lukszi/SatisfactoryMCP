@@ -8,9 +8,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ....core.gamedata.constants import AWESOME_SINK_MW, shards_for_clock
 from ....core.gamedata.model import GameData
+from ..solver.model import ProcessRow, Solution
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ..solver.prepare import PreparedPlan
 
 __all__ = ["PlanSlice", "ShardRow", "SloopRow", "grid_import_mw", "linear_gap_note", "slice_of"]
 
@@ -46,7 +51,7 @@ class PlanSlice:
     """Totals over some -- or all -- of a solved plan's processes."""
 
     label: str = ""
-    processes: list[dict] = field(default_factory=list)
+    processes: list[ProcessRow] = field(default_factory=list[ProcessRow])
     machines: int = 0
     #: Exact power, split. draw is a POSITIVE number.
     draw_mw: float = 0.0
@@ -56,12 +61,12 @@ class PlanSlice:
     #: Charged to the plan as a whole; 0 on a partial slice, which cannot attribute it.
     sink_mw: float = 0.0
     #: Net per-minute rate per item across these processes.
-    flows: dict[str, float] = field(default_factory=dict)
-    shard_rows: list[ShardRow] = field(default_factory=list)
+    flows: dict[str, float] = field(default_factory=dict[str, float])
+    shard_rows: list[ShardRow] = field(default_factory=list[ShardRow])
     #: EMPTY boostable slots -- capacity the plan did not use.
-    sloop_rows: list[SloopRow] = field(default_factory=list)
+    sloop_rows: list[SloopRow] = field(default_factory=list[SloopRow])
     #: Slots the plan actually fills: a bill, kept apart from the suggestion above (§8.2f).
-    sloop_used_rows: list[SloopRow] = field(default_factory=list)
+    sloop_used_rows: list[SloopRow] = field(default_factory=list[SloopRow])
     #: Slots on buildings this model cannot production-boost (generators, extractors).
     #: Counted separately so they are never advertised as a doubling.
     unboostable_slots: int = 0
@@ -94,9 +99,9 @@ class PlanSlice:
 
 
 def slice_of(
-    prepared,
+    prepared: PreparedPlan,
     game: GameData,
-    keep: Callable[[dict], bool] | None = None,
+    keep: Callable[[ProcessRow], bool] | None = None,
     label: str = "",
 ) -> PlanSlice:
     """Total a solved plan, or the part of it ``keep`` accepts.
@@ -170,13 +175,13 @@ def slice_of(
     return out
 
 
-def grid_import_mw(solution, bill: PlanSlice) -> float:
+def grid_import_mw(solution: Solution, bill: PlanSlice) -> float:
     """What a plan takes from the existing grid at its exact draw: 0 unless the solve
     imports at all, since a power plant exporting MW may not import."""
     return max(0.0, -bill.net_mw) if solution.grid_import_mw > 0 else 0.0
 
 
-def linear_gap_note(solution, bill: PlanSlice) -> str:
+def linear_gap_note(solution: Solution, bill: PlanSlice) -> str:
     """The solver's linear power figure beside the exact one, where they differ by 0.1 MW."""
     gap = bill.net_mw - solution.net_mw
     if abs(gap) < 0.1:

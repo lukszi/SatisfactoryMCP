@@ -14,7 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mapgen.gamedata.install import GameReader
-from mapgen.gamedata.level.sweep import flagged_tags, quat_axes, world_levels
+from mapgen.gamedata.level.sweep import Sweep, flagged_tags, quat_axes, world_levels
 from mapgen.gamedata.meshes import ROCK_DIRS, clamp_triangles, winding_sign
 from mapgen.gamedata.placements import (
     EXCLUDED_MESHES,
@@ -29,7 +29,12 @@ from mapgen.gamedata.placements import (
 )
 from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I8Grid, I32Grid, I64Grid, U8Grid
 from satisfactory_mcp.core.gameassets import staticmesh
-from satisfactory_mcp.core.gameassets.packages import PackageView, class_name_of, world_transform
+from satisfactory_mcp.core.gameassets.packages import (
+    PackageView,
+    ZenExport,
+    class_name_of,
+    world_transform,
+)
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.core.jsontypes import JsonObject
 
@@ -146,7 +151,7 @@ def is_pack_mesh(mesh: str) -> bool:
     return any(d in mesh for d in ROCK_DIRS) or is_arch(mesh)
 
 
-def _body_setup(view: PackageView) -> dict[str, int] | None:
+def _body_setup(view: PackageView) -> ZenExport | None:
     return next(
         (e for e in view.exports if class_name_of(view.class_of.get(e["slot"])) == "BodySetup"),
         None,
@@ -233,7 +238,7 @@ def simple_collision(view: PackageView, agg: bytes) -> tuple[F32Grid, I64Grid] |
     return np.concatenate(verts).astype(np.float32), np.concatenate(tris).astype(np.int64)
 
 
-def collision_mesh(view: PackageView, export: dict[str, int]) -> tuple[CollisionMesh | None, str]:
+def collision_mesh(view: PackageView, export: ZenExport) -> tuple[CollisionMesh | None, str]:
     """The collision a mesh's ``BodySetup`` gives the player, as ``(mesh, why)``.
 
     Complex-as-simple meshes collide with their cooked trimesh, which is render LOD
@@ -355,10 +360,10 @@ def sweep_cave_floors(reader: GameReader) -> CaveFloors:
 class _PackMeshes:
     """The pack's meshes in order, each once, with the instances that place them."""
 
-    verts: list[F32Grid] = field(default_factory=list)
-    tris: list[I32Grid] = field(default_factory=list)
-    winding: list[float] = field(default_factory=list)
-    instances: list[_Instance] = field(default_factory=list)
+    verts: list[F32Grid] = field(default_factory=list[F32Grid])
+    tris: list[I32Grid] = field(default_factory=list[I32Grid])
+    winding: list[float] = field(default_factory=list[float])
+    instances: list[_Instance] = field(default_factory=list[_Instance])
 
     def add(self, verts: F32Grid, tris: NDArray[np.integer], winding: float) -> int:
         self.verts.append(verts.astype(np.float32))
@@ -381,7 +386,7 @@ class _PackMeshes:
 
 
 def _place_instances(
-    sweep: dict, have: dict[str, CollisionMesh], mesh_ids: dict[str, int], pack: _PackMeshes
+    sweep: Sweep, have: dict[str, CollisionMesh], mesh_ids: dict[str, int], pack: _PackMeshes
 ) -> dict[str, int]:
     """Add the placements and foliage boulders the pack keeps; what it dropped, by why.
 
@@ -427,7 +432,7 @@ def _place_instances(
 
 
 def rock_pack_arrays(
-    sweep: dict, collision: CollisionMeshes, floors: CaveFloors
+    sweep: Sweep, collision: CollisionMeshes, floors: CaveFloors
 ) -> tuple[RockPackArrays, PackCounts]:
     """The arrays of ``rocks.npz`` and the counts its sidecar records.
 
@@ -507,7 +512,7 @@ def _pack_counts(
 
 
 def encode_rock_pack(
-    reader: GameReader, sweep: dict, build_pin: str, build_raw: JsonObject
+    reader: GameReader, sweep: Sweep, build_pin: str, build_raw: JsonObject
 ) -> dict[str, bytes]:
     """``rocks.npz`` and ``rocks.json`` as bytes, ready for the field's directory."""
     from satisfactory_mcp.domain.spatial.heightfield import collision_pack as rocks
@@ -518,7 +523,20 @@ def encode_rock_pack(
     floors = sweep_cave_floors(reader)
     arrays, counts = rock_pack_arrays(sweep, collision, floors)
     buffer = io.BytesIO()
-    np.savez_compressed(buffer, **arrays)
+    np.savez_compressed(
+        buffer,
+        mesh_verts=arrays["mesh_verts"],
+        mesh_vstart=arrays["mesh_vstart"],
+        mesh_tris=arrays["mesh_tris"],
+        mesh_tstart=arrays["mesh_tstart"],
+        mesh_winding=arrays["mesh_winding"],
+        inst_mesh=arrays["inst_mesh"],
+        inst_kind=arrays["inst_kind"],
+        inst_matrix=arrays["inst_matrix"],
+        inst_origin=arrays["inst_origin"],
+        inst_lo=arrays["inst_lo"],
+        inst_hi=arrays["inst_hi"],
+    )
     meta = {
         "description": (
             "The collision surface of every placed rock, arch, foliage boulder and cave "

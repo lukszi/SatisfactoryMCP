@@ -8,7 +8,9 @@ can be misread as a throughput. See ``core.gamedata.search`` for the census rule
 
 from __future__ import annotations
 
-from ...core.gamedata.model import GameData, Recipe
+from collections.abc import Iterable
+
+from ...core.gamedata.model import Flow, GameData, Recipe
 from ...core.gamedata.search import KINDS, Census, Hit
 from ...core.gamedata.unlocks import granted_by_label
 from . import primitives as render
@@ -31,7 +33,7 @@ def _machine(game: GameData, r: Recipe) -> str:
     return b.name if b else "-"
 
 
-def item_flows(game: GameData, parts, *, per_craft: bool = False) -> str:
+def item_flows(game: GameData, parts: Iterable[Flow], *, per_craft: bool = False) -> str:
     """A recipe's ingredients or products as ``30 Crude Oil + 20 Water``, per minute by
     default, or per craft for the recipes that do not run in a machine."""
     return render.flows(
@@ -43,7 +45,7 @@ def _census_header(census: Census, subject: str) -> str:
     """The completeness claim, and the evidence for it, in one line."""
     if not census.total:
         return f"# no recipe {subject} (searched all {census.scanned} recipes)"
-    parts = []
+    parts: list[str] = []
     for kind in KINDS:
         n = census.by_kind.get(kind, 0)
         if not n:
@@ -121,7 +123,7 @@ def render_search(
     if show_granted:
         headers.append("granted by")
 
-    rows = []
+    rows: list[list[str]] = []
     for h in page:
         r = h.recipe
         row = [r.name, _machine(game, r)]

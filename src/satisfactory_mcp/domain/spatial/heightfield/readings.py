@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, TypedDict
+from typing import Literal
 
 import numpy as np
+from typing_extensions import TypedDict
 
 from ....core.arrays import BoolMask, F32Grid
 from . import cave_masks, collision_pack

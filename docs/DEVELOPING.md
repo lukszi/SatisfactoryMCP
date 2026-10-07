@@ -193,8 +193,8 @@ that reads it, so the two cannot disagree about the format.
 `gen` extra, and optional means optional at import time: a clone without them imports every
 module, runs this suite and serves the map. Only `core.gameassets` may name them, and only from a
 function body. That proof is only as good as the AST, so the package may not use `importlib`,
-`__import__` or `sys.path` either. Besides the standard library and `core` it may import numpy,
-a hard dependency.
+`__import__` or `sys.path` either. Besides the standard library and `core` it may import numpy
+and typing_extensions, both hard dependencies.
 
 **Line caps** (`test_module_caps.py`). No module of the application or the parser passes 850
 lines; routers and MCP tool modules stop at 650, generators outside `tools/mapgen` at 800
@@ -217,7 +217,9 @@ the tuple's order is the committed schema's path order. Every routed handler dec
 `response_model` or returns a `Response` subclass in its annotation; without one the endpoint's
 `200` is `unknown` in `api/schema.d.ts`, and the page ends up typing it from observed payloads,
 which is how a 438-line hand-written types file with wrong nullability once came about. The four
-byte-serving endpoints are the named exemptions, and an exemption that stops being needed fails.
+byte-serving endpoints declare `response_model=object`, the unconstrained body they have always
+published, and return a `Response`; an exemption list stands for any later one, and an exemption
+that stops being needed fails.
 
 **The page** (`test_frontend_layout.py`). `static/` is build output: gitignored (it embeds
 minified Leaflet, and the repository distributes no build), complete when present, every file
@@ -236,26 +238,39 @@ colour value, so every colour sits with its owner and its warrant.
 
 ### Types
 
-`tests/architecture/test_typing.py` runs pyright once over `src/` and `tools/` under
-`[tool.pyright]` in `pyproject.toml` and holds each package's error count to its entry in
-`BUDGETS`. Tests are outside the type rules.
+`tests/architecture/test_typing.py` runs pyright over `src/` and `tools/` under
+`[tool.pyright]` in `pyproject.toml`, in strict mode everywhere, and wants zero errors. Tests
+are outside the type rules.
 
-- **The floor is `standard` mode** for every package. A package or module that reaches zero
-  errors in strict mode joins the `strict` list in the config, and from then on the gate wants
-  zero there. When every package has joined, `typeCheckingMode` becomes `strict` and the list
-  and the budgets go.
-- **A budget only moves down.** The gate fails on a count above its budget, and the remedy is
-  to fix the error, not to raise the number. It also fails on a count below its budget and
-  prints the numbers to write, so the table always holds today's counts and a fix in one place
-  cannot quietly pay for a new error in another. A file counts toward the longest key that holds
-  it.
-- **The environment is part of the count.** pyright (`pyright[nodejs]`, which brings its own
+- **Strict mode, no exceptions.** `typeCheckingMode = "strict"` covers every module; there is
+  no per-package list and no error budget. A comment that would take a line or a file out of
+  the count (`# type: ignore`, `# pyright:`) fails the gate, and so would an unneeded one
+  (`reportUnnecessaryTypeIgnoreComment`).
+- **Two Pythons.** `pythonVersion = "3.13"` is the venv's own Python, because numpy's and
+  scipy-stubs' stubs, as the venv installs them, are written for it: read as 3.11 they turn
+  `Unknown` (numpy's `collections.abc.Buffer`, for one). A second run passes the oldest Python
+  `requires-python` admits as `--pythonversion`, so a standard-library name that arrived later
+  still fails; that run drops only the `reportUnknown*` rules a newer stub trips over.
+  `pythonPlatform = "Windows"` is fixed so that every machine counts alike.
+- **Every signature is typed.** ruff's ANN rules run over `src/` and `tools/`; tests are exempt.
+- **The environment is part of the result.** pyright (`pyright[nodejs]`, which brings its own
   Node) and `scipy-stubs` are exact pins in the dev extra, because a new checker or stub release
-  moves the counts. The web and gen extras have to be installed too: an unresolved import is an
-  error of its own and hides every error behind it. So the gate first checks the environment
-  against the three extras and fails with `uv sync --all-extras` when it does not match. It
-  checks against `pythonVersion = "3.11"`, the oldest Python the project supports, with
-  `pythonPlatform = "Windows"` fixed so that every machine counts alike.
+  changes what it reports. The web and gen extras have to be installed too. The gate first
+  checks the environment against the three extras and fails with `uv sync --all-extras` when it
+  does not match. An import that does not resolve, or a package whose `py.typed` is missing,
+  hides every error behind it, so those rules fail the gate as the environment's fault, with the
+  rebuild to run, before any code error is counted.
+- **A `cast` is counted.** It is a claim the checker takes on trust, so `CAST_BUDGETS` holds the
+  number per area, and the number only goes down: the gate fails on a count above it, and on a
+  count below it with the numbers to write. A file counts toward the longest key that holds it.
+  Type the producer instead; `core/jsontypes.py` has `is_object_dict`, `is_object_list` and
+  `is_object_sequence` to narrow an `object` without one.
+- **A loaded document binds to a boundary type.** `json.load`, `pickle.load` and `tomllib.load`
+  return `Any`, which strict mode does not see, so bound straight to a TypedDict they are an
+  unchecked cast. The gate wants each one assigned to `JsonValue`, `object` or
+  `dict[str, object]`; a check, or one named `cast`, narrows it from there. Going the other way,
+  `to_json` and `to_json_object` copy a typed value into a checked `JsonValue`, and
+  `require_object` and `require_list` narrow one with a `TypeError` for the wrong shape.
 - **`extraPaths` is required.** The venv's editable install points at the main checkout, so in
   a git worktree pyright would resolve `satisfactory_mcp` to the main checkout's code;
   `extraPaths = ["src", "tools/mapgen/src", "."]` puts the worktree's own source first. The gate
@@ -263,20 +278,58 @@ colour value, so every colour sits with its owner and its warrant.
 - **`typing.Any` is banned** in `src/` and `tools/` by ruff's TID251. Data crossing a boundary
   (`json.load`, a sidecar, a request body) is `JsonValue` or `JsonObject` from
   `core/jsontypes.py`, narrowed with `isinstance`, or cast once to a TypedDict where a schema or
-  version check already guards the read. `JsonValue` is a named `TypeAliasType` rather than a
-  string alias, because pydantic cannot resolve a string alias inside a response model. The
-  modules that still import `Any` are listed one by one in `[tool.ruff.lint.per-file-ignores]`.
-  The gate fails on an entry that is no longer needed and on a glob, so the list only shrinks.
+  version check already guards the read. At runtime `JsonValue` is a named `TypeAliasType`
+  rather than a string alias, because pydantic cannot resolve a string alias inside a response
+  model. pyright reads the plain recursive alias under `TYPE_CHECKING` instead: pyright 1.1.414
+  loses the `TypeAliasType`'s self-reference when another module evaluates `JsonObject` before
+  `jsontypes` itself, and reports it in `jsontypes.py`. No module imports `Any` now. One that
+  had to would be named on its own line in `[tool.ruff.lint.per-file-ignores]`; the gate fails
+  on an entry that is no longer needed and on a glob.
+- **The save parser's values.** `pioneersav` decodes every property, container element and
+  trailer field into one `SaveValue` (`pioneersav/values.py`). The extractor reads them as that
+  boundary type and narrows them with `extract/readers.py`'s `to_float`, `to_int` and
+  `as_sequence`, which give the same answer and raise the same error as `float()`, `int()` and
+  indexing. A field the projection carries exactly as the save wrote it is a `cast` to the
+  schema's type.
+- **A seam moves in one step.** A TypedDict is not assignable to a bare `dict`, nor the other
+  way, so a producer cannot type its return while its callers still annotate `dict`. The
+  producer declares the type and every caller reads it in the same change; a `cast` out to a
+  loose type on one side and back on the other hides a mismatch from the checker.
+  `ParsedObject.properties` stays loose, and `saveio.rows` takes a `Mapping[str, object]`,
+  which accepts both.
+- **Plan arguments** travel as `Mapping[str, object]`, or `dict[str, object]` where they are
+  built (`recall_plan`, `with_overrides`). They become `solver.scenario.PlanKwargs`, the type
+  `build_scenario` declares, by one `cast` where every key is already checked: `PlanArgs.kwargs`,
+  `store.Plan.kwargs` and the call in `solver/prepare.py`. A read of one value from a loose
+  mapping narrows it (`plan_args.sources_in` for `sources`) rather than casting it.
+- **Empty dataclass fields.** `field(default_factory=list)` leaves the element type unknown in
+  strict mode and ruff refuses a `lambda: []`, so a field names its own type:
+  `field(default_factory=list[str])`.
+- **Shapes.** Data with a fixed key set is a TypedDict, or a dataclass when it never leaves
+  the process. The save projection's is `core/saveio/schema.py`: `Projection` and the rows of
+  [save-projection.md](save-projection.md) §6.16, held against the committed fixture. A JSON
+  shape a domain package builds is declared in that package's `views.py`, where the web
+  publishes it from; wire rules 2 and 5 of [web-wire.md](web-wire.md) say why each one is a
+  `typing_extensions.TypedDict` and why two with the same fields are one.
+- **A handler says what it returns**: its `response_model`'s TypedDict, `| JSONResponse` where it
+  can refuse. FastAPI reads the `response_model` and never the annotation once one is given, so
+  the annotation changes nothing on the wire and lets pyright check the body. A field published
+  as an open object is `Mapping[str, object]`, which pydantic describes exactly as it did `dict`.
+  Where a domain function still returns a loose `dict`, or a `str` the wire closes into a
+  `Literal`, the handler casts once and says why. A projection list is read guarded:
+  `serial.object_rows` drops a torn row that is not an object and keeps the schema's row type.
 - **Arrays and stubs.** A numpy array is typed by its dtype through `core/arrays.py`
-  (`F32Grid`, `U8Grid`, `BoolMask` and the rest) rather than as a bare `ndarray`. scipy is typed
+  (`F32Grid`, `U8Grid`, `BoolMask` and the rest); the gate fails on a bare `ndarray` in an
+  annotation. A plane that float arithmetic produces is a `FloatGrid`, because numpy's stubs
+  widen float32 with a Python float to float64 while the run keeps float32. scipy is typed
   by `scipy-stubs`, and pyooz, which ships no types, by the local stub `typings/ooz.pyi`. CuPy
   ships none either: `typings/cupy/` covers the calls the render's CUDA kernels make, so the
   gate needs no `gpu` extra.
 - **Platform branches test `sys.platform` itself** (`interfaces/web/childproc.py`): pyright
   narrows on that expression, not on a name that holds its value.
-- **Speed.** One pyright run over the 443 files takes 20 s on one thread. With `--threads 8` it
+- **Speed.** One pyright run over 443 files took 20 s on one thread. With `--threads 8` it
   measured 7 s alone; 12 and 16 threads were no faster. Inside the parallel suite it took 10 s,
-  on one worker.
+  on one worker. The gate makes two runs, one per Python.
 
 ## Solver threads
 

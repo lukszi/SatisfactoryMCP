@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from .....core.filelock import LockTimeout
 from .....domain.planning.readout import summary
@@ -16,10 +16,13 @@ from .....domain.planning.stored.planlog import (
     Outdated,
     PlanLog,
     Pushed,
+    Stamp,
     describe_commit,
     describe_op,
 )
+from .....domain.planning.stored.views import PlanOp
 from .....domain.session import journal
+from .....domain.world.state import WorldState
 from ... import app
 
 BUSY = "! plans are busy (another writer held the lock 10 s); nothing written"
@@ -37,20 +40,25 @@ def age(seconds: float) -> str:
     return f"{s // 86400}d"
 
 
-def world_plan_log(st) -> PlanLog:
+def world_plan_log(st: WorldState) -> PlanLog:
     return PlanLog(st.world_id, st.session_name)
 
 
-def _with_recipe_names(ops: list[dict], names: dict[str, str]) -> list[dict]:
-    out = []
+def _with_recipe_names(ops: list[PlanOp], names: dict[str, str]) -> list[PlanOp]:
+    out: list[PlanOp] = []
     for op in ops:
-        if op.get("field") in ("banned", "required") and op.get("member") in names:
-            op = {**op, "member": names[op["member"]]}
+        member = op.get("member")
+        if (
+            op.get("field") in ("banned", "required")
+            and isinstance(member, str)
+            and member in names
+        ):
+            op = {**op, "member": names[member]}
         out.append(op)
     return out
 
 
-def ops_text(ops: list[dict], names: dict[str, str]) -> str:
+def ops_text(ops: list[PlanOp], names: dict[str, str]) -> str:
     return " · ".join(t for t in (describe_op(o) for o in _with_recipe_names(ops, names)) if t)
 
 
@@ -89,12 +97,18 @@ def write(name: str, nothing: str, push: Callable[[], Pushed]) -> tuple[Pushed |
     return pushed, pushed.text(pushed.state.name or name)
 
 
-def head_stamper(st) -> Callable:
+def head_stamper(st: WorldState) -> Stamp:
     """What the store records on the new head: its solve-input hash and resolved field."""
     return summary.stamp_for(app.game(), st)
 
 
-def journal_view(st, plan: str | None, tool: str, ctx, args: dict | None = None) -> None:
+def journal_view(
+    st: WorldState,
+    plan: str | None,
+    tool: str,
+    ctx: app.ToolContext | None,
+    args: Mapping[str, object] | None = None,
+) -> None:
     if not plan:
         return
     stored = st.plans.find(plan)

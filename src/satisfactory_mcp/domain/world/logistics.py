@@ -12,12 +12,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
 from ...core.saveio import rows as saverows
 from ...core.saveio.records import actor_class
+from ...core.saveio.schema import Projection
 from ...core.unionfind import UnionFind
+
+#: Per run root, the actor indices of the nodes at its ends and the port roles they meet it by.
+Boundary: TypeAlias = dict[int, dict[int, list[str]]]
 
 __all__ = [
     "BASIS_UNKNOWN",
@@ -79,16 +84,16 @@ class PhysicalGraph:
     a machine has to be visible from it.
     """
 
-    links: list[Link] = field(default_factory=list)
+    links: list[Link] = field(default_factory=list[Link])
     inbound: dict[str, list[Link]] = field(default_factory=lambda: defaultdict(list))
     outbound: dict[str, list[Link]] = field(default_factory=lambda: defaultdict(list))
-    dangling: list[Link] = field(default_factory=list)
+    dangling: list[Link] = field(default_factory=list[Link])
     undirected: int = 0
     #: Runs joined to no node at all: conduit floating in the world, both ends open.
     orphan_runs: int = 0
     #: Every conduit actor, to the link its run contracted to. What turns a walk over the
     #: raw graph back into the runs it crossed. An orphan run's pieces are absent.
-    run_of: dict[str, Link] = field(default_factory=dict)
+    run_of: dict[str, Link] = field(default_factory=dict[str, Link])
 
     def feeds(self, actor: str) -> list[Link]:
         """Every link that delivers to ``actor``, undirected runs included."""
@@ -115,7 +120,14 @@ def _named_side(roles: list[str]) -> str | None:
     return next((ports.port_direction(r) for r in roles if ports.port_direction(r)), None)
 
 
-def _contract_conduits(projection: dict, actors: list[str], roles: list[str]):
+def _run_root(joins: UnionFind[int], piece: int) -> int:
+    """The root piece of ``piece``'s run."""
+    return joins.find(piece)
+
+
+def _contract_conduits(
+    projection: Projection, actors: list[str], roles: list[str]
+) -> tuple[dict[int, list[int]], Boundary]:
     """Conduit pieces joined into runs: ``(pieces by run root, nodes and roles at each run)``.
 
     A conduit is a piece with geometry in one of the polyline tables and no behaviour of its
@@ -130,14 +142,12 @@ def _contract_conduits(projection: dict, actors: list[str], roles: list[str]):
     )
     is_conduit = [actor_class(a) in conduit_classes for a in actors]
 
-    joins = UnionFind()
+    joins = UnionFind[int]()
     edges: list[tuple[int, int, str, str]] = []
     for edge in (projection.get("graph") or {}).get("material") or ():
-        if not isinstance(edge, (list, tuple)) or len(edge) < 4:
+        if len(edge) < 4:
             continue
         a, b = edge[0], edge[1]
-        if not (isinstance(a, int) and isinstance(b, int)):
-            continue
         if not (0 <= a < len(actors) and 0 <= b < len(actors)):
             continue
         role_a, role_b = role_at(edge[2]), role_at(edge[3])
@@ -150,24 +160,24 @@ def _contract_conduits(projection: dict, actors: list[str], roles: list[str]):
     runs: dict[int, list[int]] = defaultdict(list)
     for i, conduit in enumerate(is_conduit):
         if conduit:
-            runs[joins.find(i)].append(i)
-    boundary: dict[int, dict[int, list[str]]] = defaultdict(lambda: defaultdict(list))
+            runs[_run_root(joins, i)].append(i)
+    boundary: Boundary = defaultdict(lambda: defaultdict(list))
     for a, b, role_a, role_b in edges:
         if is_conduit[a] and not is_conduit[b]:
-            boundary[joins.find(a)][b].append(role_b)
+            boundary[_run_root(joins, a)][b].append(role_b)
         elif is_conduit[b] and not is_conduit[a]:
-            boundary[joins.find(b)][a].append(role_a)
+            boundary[_run_root(joins, b)][a].append(role_a)
     return runs, boundary
 
 
-def _run_numbers(projection: dict) -> dict[int, int]:
+def _run_numbers(projection: Projection) -> dict[int, int]:
     """Every conduit piece's actor index to its run number: a pipe's row, a belt's chain.
 
     Keyed by the actor index both tables carry, the save's own identity for the piece rather
     than a nearest match; save-projection.md §6.15.
     """
     numbers: dict[int, int] = {
-        seg.actor_index: seg.index
+        seg.actor_index: seg.position
         for seg in saverows.iter_pipe_segments(projection)
         if seg.actor_index >= 0
     }
@@ -187,7 +197,14 @@ def _run_ident(pieces: list[int], numbers: dict[int, int], medium: str) -> str:
     return f"{prefix}:{min(found)}" if found else ""
 
 
-def _dangling_link(attached: dict, actors, game, medium: str, pieces: int, ident: str) -> Link:
+def _dangling_link(
+    attached: dict[int, list[str]],
+    actors: list[str],
+    game: GameData,
+    medium: str,
+    pieces: int,
+    ident: str,
+) -> Link:
     """A run with one known end: its SOURCE where the run leaves it, its TARGET where the run
     arrives, so "leaves and reaches nothing" and "arrives from nothing" stay apart."""
     ((node, node_roles),) = attached.items()
@@ -206,7 +223,14 @@ def _dangling_link(attached: dict, actors, game, medium: str, pieces: int, ident
     )
 
 
-def _joined_link(attached: dict, actors, game, medium: str, pieces: int, ident: str) -> Link:
+def _joined_link(
+    attached: dict[int, list[str]],
+    actors: list[str],
+    game: GameData,
+    medium: str,
+    pieces: int,
+    ident: str,
+) -> Link:
     """A run between two nodes, oriented by their port roles, else by their natures."""
     (node_a, roles_a), (node_b, roles_b) = attached.items()
     side_a, side_b = _named_side(roles_a), _named_side(roles_b)
@@ -250,7 +274,7 @@ def _index_link(graph: PhysicalGraph, link: Link) -> None:
         graph.inbound[link.source].append(link)
 
 
-def build_physical_graph(projection: dict, game: GameData) -> PhysicalGraph:
+def build_physical_graph(projection: Projection, game: GameData) -> PhysicalGraph:
     """Contract every belt and pipe run in a projection into node-to-node links.
 
     Splitters, mergers, junctions, pumps and valves stay as NODES rather than being walked

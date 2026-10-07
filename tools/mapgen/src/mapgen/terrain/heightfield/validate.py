@@ -3,9 +3,8 @@ the accuracy each layer was measured to have."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
-from typing import NamedTuple, NotRequired, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, NamedTuple, NotRequired, TypeAlias, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
@@ -14,9 +13,13 @@ from scipy import ndimage
 from mapgen.common import ROOT
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM, sample_grid
 from mapgen.gamedata.ground.biome import region_mask
-from mapgen.gamedata.nodes import NODE_TABLE
+from mapgen.gamedata.nodes import NODE_TABLE, load_static_nodes
 from satisfactory_mcp.core.arrays import BoolMask, F64Grid, I16Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
+
+if TYPE_CHECKING:
+    from mapgen.gamedata.level.landscape import LandscapeFrame
+    from mapgen.gamedata.water.channel import WaterSurface
 
 __all__ = [
     "ACCURACY_MIN_SAMPLES",
@@ -161,11 +164,8 @@ class _Nodes(NamedTuple):
 
 
 def _static_nodes() -> _Nodes:
-    nodes = json.loads(NODE_TABLE.read_text(encoding="utf-8"))["nodes"]
-    x = np.array([n["x"] for n in nodes], float)
-    y = np.array([n["y"] for n in nodes], float)
-    z = np.array([n["z"] for n in nodes], float) / 100.0
-    return _Nodes(len(nodes), x, y, z)
+    nodes = load_static_nodes()
+    return _Nodes(len(nodes.x_cm), nodes.x_cm, nodes.y_cm, nodes.z_m)
 
 
 def _grid_index(x_cm: F64Grid, y_cm: F64Grid) -> tuple[NDArray[np.integer], NDArray[np.integer]]:
@@ -179,7 +179,7 @@ def _node_table_path() -> str:
     return str(NODE_TABLE.relative_to(ROOT)).replace("\\", "/")
 
 
-def validate_terrain(frame: dict, prov: U8Grid) -> TerrainCheck:
+def validate_terrain(frame: LandscapeFrame, prov: U8Grid) -> TerrainCheck:
     """The bare terrain against the nodes standing on the landscape layer."""
     nodes = _static_nodes()
     x, y, z = nodes.x_cm, nodes.y_cm, nodes.z_m
@@ -230,7 +230,7 @@ def _ocean_level(level_m: NDArray[np.floating], wet: BoolMask, mask: BoolMask,
     }
 
 
-def validate_water(surface: dict, mask: BoolMask, boxes: WaterBoxes) -> WaterChecks:
+def validate_water(surface: WaterSurface, mask: BoolMask, boxes: WaterBoxes) -> WaterChecks:
     """The four gates, each measured against something this stage did not make.
 
     Returns every number whether it passes or not; ``main`` decides what to do about it. A
@@ -286,6 +286,21 @@ def validate_water(surface: dict, mask: BoolMask, boxes: WaterBoxes) -> WaterChe
     }
 
 
+def field_gate_failure(whole: ErrorStats) -> str | None:
+    """Why the field fails the node table's trimmed-RMS gate, or ``None`` when it passes."""
+    trim = whole.get("trim90_rms_m")
+    if trim is None:
+        return "no node of the table landed on the field. Refusing to write."
+    if trim <= VALIDATION_TRIM_RMS_MAX_M:
+        return None
+    return (
+        f"trimmed RMS is {trim:.3f} m against a gate of {VALIDATION_TRIM_RMS_MAX_M} m. "
+        "Something in the decode moved: the workflow that proved this pipeline measured "
+        "0.368 m, and a field this far out would be a plausible-looking raster that is "
+        "quietly metres wrong. Refusing to write."
+    )
+
+
 def water_gate_failures(checks: WaterChecks) -> list[str]:
     """Which of the four gates did not pass, as sentences. Empty means write the field."""
     failures: list[str] = []
@@ -328,7 +343,7 @@ def water_gate_failures(checks: WaterChecks) -> list[str]:
     return failures
 
 
-def report_water(water: dict, checks: WaterChecks) -> None:
+def report_water(water: WaterSurface, checks: WaterChecks) -> None:
     """The water channel's summary and its four gates, one progress line each."""
     print(
         f"  artwork water {water['artwork_texels'] / 1e6:.3f} km2 over "

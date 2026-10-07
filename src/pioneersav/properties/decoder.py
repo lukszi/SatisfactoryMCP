@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from ..errors import ParseError, expect
 from ..reader import Reader
 from ..references import read_reference, read_soft_reference
+from ..values import Properties, PropertyTypes, SaveValue
 from ..versions import FIRST_MODERN_BODY, FIRST_UE5_OBJECT_VERSION
 from .structs import (
     NATIVE_STRUCTS,
@@ -36,7 +39,7 @@ _MAX_NESTING = 32
 #: Types whose payload is one fixed-width value with no framing, read the same way as a tagged
 #: property, an array element or a map key. No 16-bit reader: none has met real bytes, and an
 #: unknown type is skipped with a warning. ``Int8Property`` yields raw ``bytes``.
-SCALAR_READERS = {
+SCALAR_READERS: dict[str, Callable[[Reader], SaveValue]] = {
     "IntProperty": Reader.i32,
     "Int64Property": Reader.i64,
     "UInt64Property": Reader.u64,
@@ -80,7 +83,7 @@ class PropertyDecoder:
 
     # -- the list ---------------------------------------------------------
 
-    def property_list(self, limit: int) -> tuple[list[list], list[list]]:
+    def property_list(self, limit: int) -> tuple[Properties, PropertyTypes]:
         """Read tags until the ``"None"`` terminator, refusing to run past ``limit``, the end of
         the enclosing block or struct.
 
@@ -97,11 +100,11 @@ class PropertyDecoder:
         finally:
             self.depth -= 1
 
-    def _property_list(self, limit: int) -> tuple[list[list], list[list]]:
+    def _property_list(self, limit: int) -> tuple[Properties, PropertyTypes]:
         """The loop itself, split out so the depth guard can wrap it."""
         r = self.r
-        values: list[list] = []
-        types: list[list] = []
+        values: Properties = []
+        types: PropertyTypes = []
         while True:
             expect(
                 r.pos < limit,
@@ -131,7 +134,7 @@ class PropertyDecoder:
 
     # -- one property -----------------------------------------------------
 
-    def read_value(self, tag: PropertyTag, end: int):
+    def read_value(self, tag: PropertyTag, end: int) -> SaveValue:
         """Dispatch on the type name. ``end`` is where the payload must stop."""
         r = self.r
         name = tag.type.name
@@ -162,7 +165,7 @@ class PropertyDecoder:
             return self.read_text(end)
         return self.skip_unknown(f"property type {name!r}", end)
 
-    def skip_unknown(self, what: str, end: int):
+    def skip_unknown(self, what: str, end: int) -> None:
         """Skip forwards to the declared ``end`` with a warning: the escape hatch the design
         rests on. Never backwards, which would fabricate a container's later elements."""
         r = self.r
@@ -177,7 +180,7 @@ class PropertyDecoder:
         self.warnings.append((r.pos, f"skipped {end - r.pos} bytes: {what}"))
         r.pos = end
 
-    def first_exact_fit(self, what: str, end: int, *decoders):
+    def first_exact_fit(self, what: str, end: int, *decoders: Callable[[], SaveValue]) -> SaveValue:
         """Try each reading in turn; keep the first that lands exactly on the declared ``end``.
 
         Pass the narrowest reading first: a wrong narrow one fails at once, a permissive one
@@ -208,7 +211,7 @@ class PropertyDecoder:
         inner = tag.type.inner.name
         return inner if inner and inner != TERMINATOR else None
 
-    def byte_value(self, tag: PropertyTag):
+    def byte_value(self, tag: PropertyTag) -> list[SaveValue]:
         """``[enumName, value]``: ``[None, 2]`` for a plain byte, ``['EGamePhase',
         'EGP_MidGame']`` for an enum; readers take ``[-1]`` off either."""
         enum = self.enum_name(tag)
@@ -218,7 +221,7 @@ class PropertyDecoder:
 
     def read_struct(
         self, struct_type: TypeName, *, native_hint: bool, end: int, exact: bool = False
-    ):
+    ) -> SaveValue:
         """A struct: raw numbers if its NAME is in ``NATIVE_STRUCTS``, else a property list.
         ``exact`` means ``end`` is this struct's own declared end, which lets the size referee
         ``InventoryItem`` and turn an unknown non-list struct into a skip (savparse-notes.md).
@@ -275,7 +278,7 @@ class PropertyDecoder:
             f"{what} declares {removed} removed entries; a saved container has no removal list",
         )
 
-    def read_array(self, tag: PropertyTag, end: int):
+    def read_array(self, tag: PropertyTag, end: int) -> SaveValue:
         """``i32 count`` then the elements, untagged: their type is the array's own parameter."""
         r = self.r
         count = self._read_element_count(f"array {tag.name!r}", end)
@@ -299,7 +302,7 @@ class PropertyDecoder:
             return [self.read_text(end) for _ in range(count)]
         return self.skip_unknown(f"array of {inner.name!r}", end)
 
-    def read_struct_array(self, tag: PropertyTag, count: int, end: int):
+    def read_struct_array(self, tag: PropertyTag, count: int, end: int) -> SaveValue:
         """The elements of a struct array. Version 36/52 opens the payload with a full property
         tag, the only place it names the struct, so that tag is read rather than skipped."""
         r = self.r
@@ -321,7 +324,7 @@ class PropertyDecoder:
             return self.skip_unknown(f"array of self-serialising {struct_type.name!r}", end)
         return [self.read_struct(struct_type, native_hint=native, end=end) for _ in range(count)]
 
-    def read_set(self, tag: PropertyTag, end: int):
+    def read_set(self, tag: PropertyTag, end: int) -> SaveValue:
         """``i32 removed, i32 count`` then the elements, reported as ``[type, values]``. A
         nonzero removal count is refused rather than skipped, so the day one appears says so."""
         inner = tag.type.inner
@@ -338,7 +341,7 @@ class PropertyDecoder:
             )
         return self._read_set_as_array(tag, inner, end)
 
-    def _read_set_unframed(self, tag: PropertyTag, inner: TypeName, end: int):
+    def _read_set_unframed(self, tag: PropertyTag, inner: TypeName, end: int) -> list[SaveValue]:
         """A set whose elements are written back to back, without the struct-array header the
         version-36/52 array reading expects."""
         self._expect_no_removals(f"set {tag.name!r}")
@@ -347,7 +350,7 @@ class PropertyDecoder:
         label = inner.inner.name or inner.name
         return [label, [self.read_untagged(inner, end) for _ in range(count)]]
 
-    def _read_set_as_array(self, tag: PropertyTag, inner: TypeName, end: int):
+    def _read_set_as_array(self, tag: PropertyTag, inner: TypeName, end: int) -> list[SaveValue]:
         """The set's elements read as an array of its element type."""
         self._expect_no_removals(f"set {tag.name!r}")
         values = self.read_array(
@@ -355,7 +358,7 @@ class PropertyDecoder:
         )
         return [inner.name, values]
 
-    def read_map(self, tag: PropertyTag, end: int):
+    def read_map(self, tag: PropertyTag, end: int) -> SaveValue:
         """``i32 removed, i32 count`` then untagged key/value pairs, reported as
         ``[[k, v], ...]``, each side typed by the map's own parameters."""
         r = self.r
@@ -380,18 +383,18 @@ class PropertyDecoder:
 
     def _read_map_entries(
         self, tag: PropertyTag, key_type: TypeName, value_type: TypeName, end: int
-    ):
+    ) -> list[SaveValue]:
         """The map's pairs, read with the given key type."""
         self._expect_no_removals(f"map {tag.name!r}")
         count = self._read_element_count(f"map {tag.name!r}", end)
-        entries = []
+        entries: list[SaveValue] = []
         for _ in range(count):
             key = self.read_untagged(key_type, end)
             value = self.read_untagged(value_type, end)
             entries.append([key, value])
         return entries
 
-    def read_untagged(self, type_name: TypeName, end: int):
+    def read_untagged(self, type_name: TypeName, end: int) -> SaveValue:
         """One untagged map key, map value or set element of a known type.
 
         Never pass the map's flags byte on: it is set when either side serialises itself.
@@ -414,7 +417,7 @@ class PropertyDecoder:
 
     # -- text -------------------------------------------------------------
 
-    def read_text(self, end: int):
+    def read_text(self, end: int) -> list[SaveValue]:
         """FText, reported as ``[flags, historyType, hasCultureInvariant, string]``.
 
         Only history 0xFF, a plain typed string, is decoded; any other is skipped through

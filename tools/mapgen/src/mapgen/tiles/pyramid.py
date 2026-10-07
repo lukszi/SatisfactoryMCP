@@ -9,14 +9,13 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
-import numpy as np
-
 from mapgen.common import RENDERS_DIR_NAME
 from mapgen.gamedata.frame import RENDER_2X_PX
 from mapgen.lighting.stage import LIGHT_WORKER_BYTES, LIGHT_WORKER_CAP
 from mapgen.tiles.cutter import CUT_WORKERS, TileStream, TreeSpec
 from mapgen.tiles.imaging import TileImaging
 from mapgen.tiles.recipes import RECIPE
+from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_2X_PX,
     PYRAMID_TILE_PX,
@@ -142,7 +141,7 @@ class ParallelCheck:
 
 
 def check_parallel(
-    sheet_rgb: np.ndarray, image_mod: TileImaging, scratch: Path, workers: int
+    sheet_rgb: U8Grid, image_mod: TileImaging, scratch: Path, workers: int
 ) -> ParallelCheck:
     """Cut one pyramid twice -- serially and in parallel -- and compare every tile's SHA-256.
 

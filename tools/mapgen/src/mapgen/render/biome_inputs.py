@@ -13,7 +13,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from mapgen.gamedata.ground.biome import calibrate_biome, read_biome, region_table_is_current
+from mapgen.gamedata.ground.biome import (
+    BiomeRaster,
+    calibrate_biome,
+    read_biome,
+    region_table_is_current,
+)
 from mapgen.palette.styles import (
     BIOME_BLEND_TEXELS,
     BIOME_COLOURS,
@@ -23,12 +28,13 @@ from mapgen.palette.styles import (
     biome_lookup,
 )
 from mapgen.tiles.imaging import TileImaging
+from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.maparea import MAP_AREA_CLASS, MAP_AREA_PATH, NO_MANS_LAND
 from satisfactory_mcp.core.gameassets.packages import ScriptObjects
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 if TYPE_CHECKING:
     from PIL.Image import Image
@@ -43,16 +49,16 @@ class BiomeInputs:
     Empty when no biome layer is drawn: ``raster`` None, and a one-texel ``width``.
     """
 
-    raster: dict | None = None
-    drawn: list[str] = field(default_factory=list)
-    rgb: np.ndarray | None = None
-    source: JsonObject = field(default_factory=dict)
+    raster: BiomeRaster | None = None
+    drawn: list[str] = field(default_factory=list[str])
+    rgb: U8Grid | None = None
+    source: JsonObject = field(default_factory=dict[str, JsonValue])
     provenance: JsonObject | None = None
 
     @property
     def width(self) -> int:
         """Texels across the raster, which the band loop indexes its columns by."""
-        return 1 if self.raster is None else int(self.raster["width"])
+        return 1 if self.raster is None else self.raster["width"]
 
 
 def read_biome_inputs(
@@ -120,7 +126,7 @@ def _print_agreement(agreement: JsonObject) -> None:
 
 
 def _biome_source(
-    biome: dict,
+    biome: BiomeRaster,
     drawn: list[str],
     calibration: JsonObject,
     agreement: JsonObject,
@@ -141,18 +147,18 @@ def _biome_source(
                 f"mAreaData, {biome['width']}x{biome['width']} palette indices; "
                 "mColorToArea resolves each index to a UFGMapArea object"
             ),
-            "areas": biome["distinct_areas"],
-            "shipped_palette_rgba": [list(entry) for entry in biome["palette"]],
+            "areas": [area for area in biome["distinct_areas"]],
+            "shipped_palette_rgba": [[c for c in entry] for entry in biome["palette"]],
             "shipped_palette_role": (
                 "the game's own UI legend -- flat primaries, cyan, magenta, white. "
                 "Decoded for the record and NOT drawn: see palette below, which is this "
                 "file's own and was written to look like imagery."
             ),
-            "palette": {name: list(BIOME_COLOURS[name]) for name in sorted(BIOME_COLOURS)},
+            "palette": {name: [c for c in BIOME_COLOURS[name]] for name in sorted(BIOME_COLOURS)},
             "palette_blend_texels": BIOME_BLEND_TEXELS,
             "palette_fallback": {
-                NO_MANS_LAND: list(NO_MANS_LAND_RGB),
-                "an area this file has no colour for": list(UNKNOWN_BIOME_RGB),
+                NO_MANS_LAND: [c for c in NO_MANS_LAND_RGB],
+                "an area this file has no colour for": [c for c in UNKNOWN_BIOME_RGB],
             },
             "index_to_area": {str(i): name for i, name in enumerate(drawn)},
             "index_to_asset": {str(i): name for i, name in enumerate(biome["assets_by_index"])},

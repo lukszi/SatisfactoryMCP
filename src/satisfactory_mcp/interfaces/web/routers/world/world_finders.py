@@ -9,10 +9,14 @@ rule 1 of docs/web-wire.md).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, TypedDict
+from collections.abc import Callable
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
+from .....core.gamedata.model import GameData
 from .....core.gamedata.search import resolve_item
 from .....core.text import ago
 from .....domain.spatial import geo, ranking, surroundings
@@ -20,6 +24,8 @@ from .....domain.spatial import nodes as spatial_nodes
 from .....domain.spatial import regions as spatial_regions
 from .....domain.spatial.nodes import search as node_search
 from .....domain.spatial.nodes import table as node_table
+from .....domain.spatial.nodes.views import NodeChoices, SiteRow
+from .....domain.world.state import WorldState
 from ...serial import (
     FoundField,
     Region,
@@ -28,6 +34,7 @@ from ...serial import (
     cm_to_m,
     error_response,
     found_field_json,
+    game_data,
     node_identity,
     point_m,
     region_json,
@@ -35,7 +42,6 @@ from ...serial import (
     resource_name,
     stale_tables,
     world_state,
-    xyz_m,
 )
 
 __all__ = ["router"]
@@ -43,6 +49,8 @@ __all__ = ["router"]
 router = APIRouter(prefix="/api/world")
 
 PAGE_VIEWS = ("nodes", "fields")
+
+NodeStatus = Literal["free", "tapped", "locked"]
 
 
 class FoundNode(TypedDict):
@@ -64,7 +72,7 @@ class FoundNode(TypedDict):
     z_m: float
     grid: str
     rate: float
-    status: Literal["free", "tapped", "locked"]
+    status: NodeStatus
     occupant: str | None
     occupant_off: bool | None
     region: Region | None
@@ -78,18 +86,6 @@ class WaterBlock(TypedDict):
     pumps: int
     per_pump_m3_min: float | None
     sea_level_m: float | None
-
-
-class ResourceChoice(TypedDict):
-    id: str
-    name: str
-    nodes: int
-
-
-class NodeChoices(TypedDict):
-    resources: list[ResourceChoice]
-    purities: list[str]
-    kinds: list[str]
 
 
 class NodeFindResponse(TypedDict):
@@ -188,8 +184,15 @@ class RegionTableResponse(TypedDict):
     accuracy_m: int
 
 
-def _found_node(node: dict, game, region_map, drifted: set[str]) -> FoundNode:
-    status = node_search.status_of(node)
+def _found_node(
+    node: spatial_nodes.AnnotatedNode,
+    game: GameData,
+    region_map: spatial_regions.RegionMap,
+    drifted: set[str],
+) -> FoundNode:
+    # ``status_of`` answers in these three words.
+    status = cast(NodeStatus, node_search.status_of(node))
+    distance = node.get("distance_m")
     cls = node.get("tapped_by")
     occupant = None
     if cls:
@@ -201,20 +204,22 @@ def _found_node(node: dict, game, region_map, drifted: set[str]) -> FoundNode:
         **identity,
         "purity": node["purity"],
         "kind": node["kind"],
-        **xyz_m((node["x"], node["y"], node["z"])),
+        "x_m": cm_to_m(node["x"]),
+        "y_m": cm_to_m(node["y"]),
+        "z_m": cm_to_m(node["z"]),
         "grid": node["grid"],
         "rate": round(node["rate"], 2),
         "status": status,
         "occupant": occupant,
         "occupant_off": bool(node.get("tapped_paused")) if cls else None,
         "region": region_json(region_map.label_for_node(node)),
-        "distance_m": node.get("distance_m"),
+        "distance_m": distance if isinstance(distance, (int, float)) else None,
         "moved": identity["name"] in drifted,
         "spoiler": status == "locked",
     }
 
 
-def _ranked_site_json(rank: int, site: dict) -> RankedSite:
+def _ranked_site_json(rank: int, site: SiteRow) -> RankedSite:
     return {
         "rank": rank,
         "score": site["score"],
@@ -235,7 +240,7 @@ def _ranked_site_json(rank: int, site: dict) -> RankedSite:
     }
 
 
-def _resolver(game):
+def _resolver(game: GameData) -> Callable[[str], str | None]:
     return lambda query: resolve_item(game, query)
 
 
@@ -251,7 +256,7 @@ def world_nodes(
     near: str | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> NodeFindResponse | JSONResponse:
     """Resource nodes as ``search_resource_nodes`` finds them: nodes or fields.
 
     ``resource`` is a name or class id; ``purity`` and ``kind`` take ``all`` for no filter;
@@ -260,7 +265,7 @@ def world_nodes(
     by it. Locked nodes stay in, flagged ``spoiler``; the page fades them. A save that will
     not load still answers from the node table, with ``save_error`` set.
     """
-    game = request.app.state.game()
+    game = game_data(request)
     view = view.strip().casefold()
     status = status.strip().casefold()
     refusal = (
@@ -281,8 +286,8 @@ def world_nodes(
     except FileNotFoundError as exc:
         return error_response(str(exc), 404)
 
-    st = None
-    save_error = None
+    st: WorldState | None = None
+    save_error: str | None = None
     try:
         st = world_state(request, save, world)
     except Exception as exc:
@@ -309,7 +314,7 @@ def world_nodes(
     water = found.water
     fields_view = view == "fields"
     return {
-        "view": view,
+        "view": "fields" if fields_view else "nodes",
         "description": found.description,
         "selectors": found.selectors,
         "where": found.where,
@@ -326,9 +331,16 @@ def world_nodes(
         "free": round(found.free, 2),
         "unit": found.unit,
         "elevation": found.elevation,
-        "water": None
-        if water is None
-        else {k: water[k] for k in ("bodies", "pumps", "per_pump_m3_min", "sea_level_m")},
+        "water": (
+            None
+            if water is None
+            else {
+                "bodies": water["bodies"],
+                "pumps": water["pumps"],
+                "per_pump_m3_min": water["per_pump_m3_min"],
+                "sea_level_m": water["sea_level_m"],
+            }
+        ),
         "choices": node_search.filter_choices(game),
         "notes": node_search.page_notes(found, st),
         "stale": spatial_nodes.table_age(
@@ -346,9 +358,9 @@ def world_sites(
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> RankedSitesResponse | JSONResponse:
     """Candidate fields for one resource, best first, as ``rank_build_sites`` ranks them."""
-    game = request.app.state.game()
+    game = game_data(request)
     resource_id = resolve_item(game, resource)
     if resource_id is None:
         return error_response(f"unknown resource {resource!r}")
@@ -383,10 +395,10 @@ def world_here(
     radius_m: Annotated[float, Query(ge=1, le=5000)] = 500.0,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> HereResponse:
     """Where the player stands and the nodes around them, as ``whereami`` answers it."""
     st = require_world(request, save, world)
-    game = request.app.state.game()
+    game = game_data(request)
     found = surroundings.player_surroundings(st, game, radius_m)
     rows = found.nodes
     instances = [node["instance"] for node in rows]
@@ -399,7 +411,11 @@ def world_here(
         "age_note": st.age_note,
         "written_ago": ago(st.header.get("mtime_ns")),
         "save_token": st.token,
-        "player": None if player is None else xyz_m(player),
+        "player": (
+            None
+            if player is None
+            else {"x_m": cm_to_m(player[0]), "y_m": cm_to_m(player[1]), "z_m": cm_to_m(player[2])}
+        ),
         "region": region_json(found.label) if found.label else None,
         "grid": None if player is None else geo.grid_cell(player[0], player[1]),
         "direction": None if player is None else geo.direction_of(player[0], player[1]),
@@ -420,9 +436,9 @@ def world_regions(
     resource: str | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> RegionTableResponse | JSONResponse:
     """Named regions with their node counts, as ``list_regions`` lists them."""
-    game = request.app.state.game()
+    game = game_data(request)
     resource_id = resolve_item(game, resource) if resource else None
     if resource and resource_id is None:
         return error_response(f"unknown resource {resource!r}")

@@ -8,12 +8,15 @@ because the caller that renders is not always the caller that decides.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
+from ..spatial.nodes.views import TableAge
 from ..spatial.places import resolve_place
 from ..world.state import WorldState
 from .removed import observed_session
 from .table import CollectiblesUnreadable, CollectibleTable, load_collectibles
+from .views import CensusRow, CollectedSummary, LabelledCensusRow, Placement
 
 __all__ = [
     "GENERATOR_COMMAND",
@@ -64,6 +67,10 @@ RETIRED_GROUPS: dict[str, str] = {
 }
 
 
+def _no_summary() -> CollectedSummary:
+    return {"total": 0, "cells": 0, "source": ""}
+
+
 @dataclass
 class CollectiblesView:
     """Which placements answer the question, and everything needed to say why."""
@@ -74,18 +81,18 @@ class CollectiblesView:
     group: str | None = None
     #: A refusal, already carrying its leading ``!``. Nothing else on the view is populated.
     error: str | None = None
-    removed: dict = field(default_factory=dict)
+    removed: CollectedSummary = field(default_factory=_no_summary)
     #: ``None`` when ``data/world_collectibles.json`` has never been generated.
     table: CollectibleTable | None = None
     #: Listing rows, sorted for the mode and distance-annotated when mode=nearest. ``None``
     #: for the census, which counts off ``removed`` instead.
-    rows: list[dict] | None = None
+    rows: list[Placement] | None = None
     #: Pedestal rows dropped from an unfiltered listing.
     hidden: int = 0
     #: Every category that is the base another one stands on.
-    pedestals: list[str] = field(default_factory=list)
+    pedestals: list[str] = field(default_factory=list[str])
     #: Observed state -> how many listing rows are in it.
-    counts: dict[str, int] = field(default_factory=dict)
+    counts: dict[str, int] = field(default_factory=dict[str, int])
     #: Where distances are measured from, in centimetres, and what to call it.
     origin: tuple[float, float] | None = None
     where: str = ""
@@ -97,7 +104,9 @@ def _refusal(mode: str, group: str | None, error: str) -> CollectiblesView:
     return CollectiblesView(mode=mode, group=group, error=error)
 
 
-def _resolve_group(group: str | None, table) -> tuple[str | None, str | None]:
+def _resolve_group(
+    group: str | None, table: CollectibleTable | None
+) -> tuple[str | None, str | None]:
     """``(group, refusal)``: the name folded, and a retired bucket renamed where the map has
     the same thing under a new name and refused where it does not."""
     if not group:
@@ -112,30 +121,27 @@ def _resolve_group(group: str | None, table) -> tuple[str | None, str | None]:
     return group, None
 
 
-def _nearest_origin(st, near: str | None) -> tuple[tuple[float, float] | None, str, str | None]:
-    """``(origin, where, refusal)``: ``near`` resolved, else the player's own position."""
+def _nearest_origin(st: WorldState, near: str | None) -> tuple[tuple[float, float], str] | str:
+    """``(origin, where)``: ``near`` resolved, else the player's own position; or a refusal."""
     if near:
         try:
-            origin, where = resolve_place(st, near)
+            return resolve_place(st, near)
         except ValueError as exc:
-            return None, "", f"! {exc}"
-        return origin, where, None
+            return f"! {exc}"
     here = st.player_position()
     if here is None:
         return (
-            None,
-            "",
-            (
-                "! the 'nearest' view needs an origin and this save has no player pawn: "
-                "pass near='x,y' in metres or a named factory"
-            ),
+            "! the 'nearest' view needs an origin and this save has no player pawn: "
+            "pass near='x,y' in metres or a named factory"
         )
-    return (here[0], here[1]), "you", None
+    return (here[0], here[1]), "you"
 
 
-def _listing_rows(st, mode: str, group: str | None, origin) -> list[dict]:
-    """The placements one listing mode shows, in its order."""
-    if mode == "nearest":
+def _listing_rows(
+    st: WorldState, mode: str, group: str | None, origin: tuple[float, float] | None
+) -> list[Placement]:
+    """The placements one listing mode shows, in its order; ``origin`` is nearest's."""
+    if mode == "nearest" and origin is not None:
         return st.nearest_placements(origin, group)
     if mode == "remaining":
         rows = st.placements(group, remaining_only=True)
@@ -145,7 +151,9 @@ def _listing_rows(st, mode: str, group: str | None, origin) -> list[dict]:
     return rows
 
 
-def _without_pedestals(rows: list[dict], table, group: str | None):
+def _without_pedestals(
+    rows: list[Placement], table: CollectibleTable, group: str | None
+) -> tuple[list[Placement], list[str], int]:
     """``(rows, pedestals, hidden)``: a shrine row dropped from an unfiltered listing, where
     it would double-count the artifact standing on it; ``group='mercer_shrine'`` keeps them."""
     pedestals = sorted({c for c in table.by_category if table.pedestal_of(c)})
@@ -155,7 +163,7 @@ def _without_pedestals(rows: list[dict], table, group: str | None):
     return kept, pedestals, len(rows) - len(kept)
 
 
-def state_counts(rows) -> dict[str, int]:
+def state_counts(rows: Iterable[Placement]) -> dict[str, int]:
     """Listing rows by observed state, ``collected`` first and ``unstated`` for the unknown."""
     counts: dict[str, int] = {}
     for row in rows:
@@ -224,11 +232,13 @@ def collect_view(
     if table is None or wanted == "census":
         return view
 
-    origin, where = None, ""
+    origin: tuple[float, float] | None = None
+    where = ""
     if wanted == "nearest":
-        origin, where, refused = _nearest_origin(st, near)
-        if refused:
-            return _refusal(wanted, group, refused)
+        found_origin = _nearest_origin(st, near)
+        if isinstance(found_origin, str):
+            return _refusal(wanted, group, found_origin)
+        origin, where = found_origin
     rows, view.pedestals, view.hidden = _without_pedestals(
         _listing_rows(st, wanted, group, origin), table, group
     )
@@ -264,11 +274,11 @@ def label(category: str) -> str:
     return LABELS.get(category) or category.replace("_", " ")
 
 
-def is_spoiler(category: str, found_categories) -> bool:
+def is_spoiler(category: str, found_categories: Iterable[str]) -> bool:
     return category not in NEVER_SPOILER and category not in found_categories
 
 
-def found(st, census: list[dict] | None = None) -> list[str]:
+def found(st: WorldState, census: Sequence[CensusRow] | None = None) -> list[str]:
     """Categories this save has collected at least one of."""
     if census is not None:
         return sorted(r["category"] for r in census if r["collected"])
@@ -278,7 +288,7 @@ def found(st, census: list[dict] | None = None) -> list[str]:
     return sorted({table.by_key[k]["category"] for k in st.destroyed_keys if k in table.by_key})
 
 
-def census_rows(st) -> list[dict]:
+def census_rows(st: WorldState) -> list[LabelledCensusRow]:
     """The per-category census, each row carrying its label and its spoiler flag."""
     rows = st.collectible_census()
     have = set(found(st, rows))
@@ -291,7 +301,7 @@ def census_rows(st) -> list[dict]:
 _CL = re.compile(r"CL-(\d+)")
 
 
-def table_age(st) -> dict | None:
+def table_age(st: WorldState) -> TableAge | None:
     """The collectible table's age against this save; ``None`` without a table."""
     table = st.collectibles
     if table is None:
@@ -299,11 +309,11 @@ def table_age(st) -> dict | None:
     match = _CL.search(table.build)
     cut = int(match.group(1)) if match else None
     build = st.header.get("build_version")
-    behind = isinstance(build, int) and cut is not None and build > cut
+    behind = cut is not None and (build or 0) > cut
     session = observed_session(table)
     name = st.header.get("session_name")
     matches = None if not session or not name else session == name
-    notes = []
+    notes: list[str] = []
     if behind:
         notes.append(
             f"the pickup table predates this save's game update (build {cut} vs {build}): "

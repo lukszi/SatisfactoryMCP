@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 
+from ...core.saveio.schema import PlayerRecord, Projection, SaveHeader
 from ...core.text import ago, format_local_time
 
 __all__ = ["TOKEN_HEX", "TOKEN_PREFIX", "TOKEN_SHAPE", "SaveIdentity", "save_token"]
@@ -24,7 +25,7 @@ TOKEN_HEX = 12
 TOKEN_SHAPE = re.compile(rf"{re.escape(TOKEN_PREFIX)}[0-9a-f]{{{TOKEN_HEX}}}")
 
 
-def save_token(header: dict) -> str:
+def save_token(header: SaveHeader) -> str:
     """A short, stable name for ONE world state, from the save's own header.
 
     Not the filename, which autosaves recycle, and unlike ``timeline.row_key`` neither
@@ -46,10 +47,10 @@ def save_token(header: dict) -> str:
 class SaveIdentity:
     """The save's header, the key everything else hangs off, and the pawns in it."""
 
-    projection: dict
+    projection: Projection
 
     @property
-    def header(self) -> dict:
+    def header(self) -> SaveHeader:
         return self.projection.get("header", {})
 
     @property
@@ -90,7 +91,7 @@ class SaveIdentity:
         return note
 
     @cached_property
-    def players(self) -> list[dict]:
+    def players(self) -> list[PlayerRecord]:
         """Player pawns with positions.
 
         Read from Char_Player_C, never BP_PlayerState_C: the state actor sits at the
@@ -107,6 +108,8 @@ class SaveIdentity:
         if not self.players:
             return None
         armed = [p for p in self.players if p.get("has_build_gun")]
-        pick = (armed or self.players)[0]
-        x, y, z = pick["pos"]
+        pos = (armed or self.players)[0]["pos"]
+        if not pos:
+            return None
+        x, y, z = pos
         return (float(x), float(y), float(z))

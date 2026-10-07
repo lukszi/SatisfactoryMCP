@@ -8,7 +8,7 @@ available" or "stale"; docs/maps_contract.md §3 has the rules.
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing_extensions import TypedDict
 
 __all__ = [
     "ARTWORK_RECIPES",

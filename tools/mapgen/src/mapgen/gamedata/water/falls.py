@@ -14,6 +14,7 @@ from typing import NotRequired, TypedDict, TypeGuard
 
 import numpy as np
 
+from mapgen.common import ReaderStamp
 from mapgen.gamedata.level.sweep import Sweep, flagged_tags, instance_matrices
 from satisfactory_mcp.core.arrays import F64Grid
 from satisfactory_mcp.core.gameassets.packages import (
@@ -43,7 +44,6 @@ __all__ = [
     "TOP_COMPONENT",
     "TOP_MODULE_LENGTH_CM",
     "FallRecord",
-    "FallsStamp",
     "cached_falls",
     "fall_from_modules",
     "load_or_sweep_falls",
@@ -82,13 +82,6 @@ class FallRecord(TypedDict):
     top_len_m: float
     splash: list[list[float]]
     actor: NotRequired[str]
-
-
-class FallsStamp(TypedDict):
-    """What a falls cache must agree with to be read: the build and the reader."""
-
-    game_version_pinned: str | None
-    reader_version: int
 
 
 def _axes(quat: Quat) -> F64Grid:
@@ -147,6 +140,7 @@ def fall_from_modules(
     if top is not None and len(top):
         top_len = float(np.median(TOP_MODULE_LENGTH_CM * np.linalg.norm(top[:, 1, :3], axis=1)))
     splashes: list[list[float]] = []
+    m: F64Grid
     for m in splash if splash is not None else ():
         r = SPLASH_MODULE_RADIUS_CM * max(np.linalg.norm(m[0, :3]), np.linalg.norm(m[1, :3]))
         splashes.append([round(float(v) / 100, 2) for v in (*m[3, :3], r)])
@@ -205,7 +199,7 @@ def _metres(value: JsonValue) -> float:
     return float(value) if isinstance(value, (int, float)) else 0.0
 
 
-def write_falls(path: Path, falls: Sequence[JsonObject], stamp: FallsStamp) -> None:
+def write_falls(path: Path, falls: Sequence[JsonObject], stamp: ReaderStamp) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     ordered = sorted(falls, key=lambda f: (_metres(f["x"]), _metres(f["y"]), _metres(f["z"])))
     path.write_text(json.dumps({**stamp, "falls": ordered}, indent=0), encoding="utf-8")
@@ -216,7 +210,7 @@ def _is_fall(actor: object) -> TypeGuard[JsonObject]:
     return isinstance(actor, dict) and "width_m" in actor
 
 
-def cached_falls(path: Path, stamp: FallsStamp) -> list[JsonObject] | None:
+def cached_falls(path: Path, stamp: ReaderStamp) -> list[JsonObject] | None:
     """The records at ``path`` if they were read from this build by this reader."""
     try:
         recorded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
@@ -233,7 +227,7 @@ def load_or_sweep_falls(
 ) -> tuple[list[JsonObject], dict[str, JsonObject]]:
     """The falls from this build's cache, else from ``sweep_once()``, and what the sidecar says."""
     path = cache_root / FALLS_CACHE_DIR_NAME / FALLS_CACHE_NAME
-    stamp: FallsStamp = {
+    stamp: ReaderStamp = {
         "game_version_pinned": build,
         "reader_version": READER_VERSIONS["waterfalls"],
     }

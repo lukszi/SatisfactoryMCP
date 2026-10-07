@@ -14,6 +14,7 @@ import pytest
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
+from satisfactory_mcp.domain.world.state import WorldState
 from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
@@ -82,6 +83,15 @@ def test_list_buildings_names_the_planning_default(game):
     out = srv.list_buildings(building_kind="logistics")
     assert "fastest UNLOCKED tier" in out
     assert "Pipeline Mk.2" in out
+
+
+def test_list_buildings_answers_before_any_pipe_is_unlocked(game, monkeypatch):
+    """An early save has a belt and no pipe yet; the missing tier once failed the call."""
+    monkeypatch.setattr(WorldState, "best_pipe", lambda self: None)
+    out = srv.list_buildings(building_kind="logistics")
+    line = next(x for x in out.splitlines() if "fastest UNLOCKED tier" in x)
+    assert "Conveyor Belt" in line
+    assert "Pipeline" not in line
 
 
 def test_plan_layout_says_which_carriers_it_used(game):

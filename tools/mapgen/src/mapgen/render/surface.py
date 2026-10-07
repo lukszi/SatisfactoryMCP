@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import NamedTuple, Protocol, TypeAlias, cast
 
 import numpy as np
+from numpy.typing import NDArray
 
 from mapgen.cache import DirectPlanes, MeshPlanes, TopPlanes
 from mapgen.lighting.borrow import BORROW_CLAMP, BORROW_GAIN
@@ -29,9 +30,10 @@ from mapgen.palette.water.shore import (
     shore_terms,
 )
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_alpha, water_depth_fraction
-from mapgen.terrain.measure import SEAM_MID, RegimeCoverage, SeamTrace
-from mapgen.terrain.rasters import pixel_coverage
+from mapgen.render.lift import blend_regimes, composite_top
+from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.sample import (
+    AxisTaps,
     PchipTaps,
     grid_position,
     reads_nothing,
@@ -40,12 +42,20 @@ from mapgen.terrain.sample import (
     sample_surface,
     taps_linear,
 )
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid
+from satisfactory_mcp.core.arrays import (
+    BoolMask,
+    F32Grid,
+    F64Grid,
+    FloatGrid,
+    I8Grid,
+    I16Grid,
+    I64Grid,
+    U8Grid,
+)
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
-    "DIRECT_LIFT_KNEE_M",
     "AxisTaps",
     "BandSampling",
     "BandSurface",
@@ -64,25 +74,15 @@ __all__ = [
     "band_grid",
     "band_surfaces",
     "band_water_terms",
-    "blend_regimes",
-    "composite_top",
     "cut_taps",
     "settle_band",
-    "smooth_lift",
     "span",
 ]
 
-#: The knee of the smoothed positive part that lets a rock raise the ground and never lower
-#: it, in metres: the field's own hard ``max`` with its corner rounded, so the hillshade draws
-#: no line round a formation's base. It sits at most half the knee above the hard answer.
-DIRECT_LIFT_KNEE_M = 0.25
-
-#: One axis of sampling taps: the indices and their weights (or PCHIP's cell fractions).
-AxisTaps: TypeAlias = tuple[np.ndarray, np.ndarray]
 #: A band's taps: its rows' and its columns'.
 GridTaps: TypeAlias = tuple[AxisTaps, AxisTaps]
 #: How a height raster's taps are built along one axis: ``taps_pchip`` or ``taps_cubic``.
-Kernel: TypeAlias = Callable[[np.ndarray, int], AxisTaps]
+Kernel: TypeAlias = Callable[[F64Grid, int], AxisTaps]
 #: A band's measurement owed to an accumulator, merged in band order: ``(merge, value)``.
 Owed: TypeAlias = tuple[Callable[..., None], object]
 
@@ -99,23 +99,23 @@ class Window(NamedTuple):
 class WaterPlanes(NamedTuple):
     """The water a band samples on the field's grid: its level and the wet and measured planes."""
 
-    level: np.ndarray
-    wet: np.ndarray
-    measured: np.ndarray
+    level: I16Grid
+    wet: U8Grid
+    measured: U8Grid
 
 
 class RegimeSources(NamedTuple):
     """The regime table's accumulator and the field planes it reads on the field's grid."""
 
     coverage: RegimeCoverage
-    measured: np.ndarray
-    provenance: np.ndarray
+    measured: U8Grid
+    provenance: NDArray[np.integer]
 
 
 class LightCapture(Protocol):
     """Where the drawn heights and land weight go for the light bake (``lighting.stage``)."""
 
-    def put(self, row: int, z_m: np.ndarray, land: np.ndarray, columns: slice = ..., /) -> None:
+    def put(self, row: int, z_m: FloatGrid, land: FloatGrid, columns: slice = ..., /) -> None:
         """Rows from ``row`` on, over ``columns`` of the sheet."""
         ...
 
@@ -130,7 +130,7 @@ class GroundSources:
     """
 
     field: hf.Field
-    heights: np.ndarray
+    heights: I16Grid | F32Grid
     kernel: Kernel
     window: Window
     x_cm: F64Grid
@@ -143,9 +143,9 @@ class GroundSources:
     sea: OpenSea | None
     seam: SeamTrace | None
     regimes: RegimeSources | None
-    borrow: tuple[np.ndarray, np.ndarray]
+    borrow: tuple[I8Grid, U8Grid]
     blur_px: float
-    reach: np.ndarray | None
+    reach: U8Grid | None
     rivers: RiverWater | None
     capture: LightCapture | None
     cols_smooth: AxisTaps
@@ -215,19 +215,19 @@ class BandSurface:
     NaN where there is none.
     """
 
-    z_m: np.ndarray
+    z_m: FloatGrid
     missing: BoolMask
-    weight: np.ndarray | None
-    rock_seen: np.ndarray | None
-    top_weight: np.ndarray | None
-    water_m: np.ndarray
-    level_m: np.ndarray
-    wet: np.ndarray
-    measured: np.ndarray
-    mesh_weight: np.ndarray | None
-    mesh_class: np.ndarray | None
+    weight: F32Grid | None
+    rock_seen: FloatGrid | None
+    top_weight: FloatGrid | None
+    water_m: FloatGrid
+    level_m: FloatGrid
+    wet: FloatGrid
+    measured: FloatGrid
+    mesh_weight: FloatGrid | None
+    mesh_class: U8Grid | None
     water: WaterTerms
-    borrow: np.ndarray
+    borrow: FloatGrid
 
 
 class SeamPlanes(NamedTuple):
@@ -256,65 +256,13 @@ class PieceOwed(NamedTuple):
     light: LightPlanes | None
 
 
-def smooth_lift(delta_m: np.ndarray) -> np.ndarray:
-    """The raise-only rule: ``max(delta, 0)`` with its corner rounded by the knee."""
-    knee = np.float32(DIRECT_LIFT_KNEE_M)
-    return 0.5 * (delta_m + np.sqrt(delta_m * delta_m + knee * knee))
-
-
-def composite_top(
-    z_m: np.ndarray, top_z_cm: np.ndarray, top_coverage: np.ndarray, subsamples: int = 1
-) -> np.ndarray:
-    """``z_m`` raised by the top raster through the same coverage and smoothed lift as rocks."""
-    w = np.clip(pixel_coverage(top_coverage, subsamples), 0.0, 1.0)
-    delta = top_z_cm / np.float32(100.0) - z_m
-    return (z_m + w * smooth_lift(delta)).astype(np.float32)
-
-
-def blend_regimes(
-    base_m: np.ndarray,
-    missing: BoolMask,
-    direct: tuple[np.ndarray, np.ndarray],
-    linear: GridTaps,
-    subsamples: int,
-    keep: np.ndarray | None = None,
-) -> tuple[np.ndarray, BoolMask, np.ndarray, np.ndarray]:
-    """The two-regime height and what it was made of: ``(z_m, missing, w, switched)``.
-
-    The field's own composition rule at the render's spacing: ``z = base + w * lift(z_rock -
-    base)``, with ``w`` the direct raster's coverage of the pixel (scaled by ``keep``, the
-    share the void leaves a rock under the sea) and ``lift`` the smoothed positive part.
-    Where the lattice knows nothing, the caller passes the field's own fold as ``base_m``.
-    ``switched`` is the hard switch the seam trace measures the blend against.
-    """
-    z_cm, coverage = direct
-    fraction = pixel_coverage(coverage, subsamples)
-    if keep is not None:
-        fraction = fraction * keep
-    w = np.clip(fraction, 0.0, 1.0).astype(np.float32)
-    z_direct_m = z_cm / np.float32(100.0)
-    z_m = base_m + w * smooth_lift(z_direct_m - base_m)
-    # A rock off the edge of the landscape is the whole answer: a switch, on an edge the
-    # render already draws hard.
-    only_rock = missing & (fraction > 0.0)
-    z_m = np.where(only_rock, z_direct_m, z_m)
-    w = np.where(only_rock, np.float32(1.0), w)
-    switched = np.where(w >= SEAM_MID, np.maximum(z_direct_m, base_m), base_m)
-    return (
-        z_m.astype(np.float32),
-        missing & (fraction <= 0.0),
-        w,
-        switched.astype(np.float32),
-    )
-
-
 def band_water_terms(
-    z_m: np.ndarray,
-    water_m: np.ndarray,
-    wet: np.ndarray,
-    measured: np.ndarray,
+    z_m: FloatGrid,
+    water_m: FloatGrid,
+    wet: FloatGrid,
+    measured: FloatGrid,
     blur_px: float,
-    reach: np.ndarray | None,
+    reach: U8Grid | None,
     linear: GridTaps,
     spacing_m: float,
 ) -> WaterTerms:
@@ -388,7 +336,9 @@ def band_surfaces(
         z_m, sources.water, sources.sea, smooth, linear
     )
     planes, borrow = (water_m, wet, measured), _borrow(sources, grid)
-    rules = set(seabeds) | ({True} if sources.capture is not None else set())
+    rules = set(seabeds)
+    if sources.capture is not None:
+        rules.add(True)
     surfaces: dict[bool, BandSurface] = {}
     for seabed in rules:
         if sources.meshes is None and surfaces:
@@ -448,8 +398,8 @@ def _read_only(surface: BandSurface) -> BandSurface:
 
 
 def _meshes(
-    meshes: MeshPlanes, grid: BandSampling, z_m: np.ndarray, level_m: np.ndarray, seabed: bool
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    meshes: MeshPlanes, grid: BandSampling, z_m: FloatGrid, level_m: FloatGrid, seabed: bool
+) -> tuple[FloatGrid, FloatGrid, U8Grid]:
     """The piece's ground raised by its render-only meshes: ``(z_m, weight, kept class)``."""
     cut = (grid.rows.cut, grid.cols.cut)
     return composite_meshes(
@@ -465,8 +415,8 @@ def _meshes(
 def _water_terms(
     sources: GroundSources,
     linear: GridTaps,
-    z_m: np.ndarray,
-    planes: tuple[np.ndarray, np.ndarray, np.ndarray],
+    z_m: FloatGrid,
+    planes: tuple[FloatGrid, FloatGrid, FloatGrid],
 ) -> WaterTerms:
     """The band's water over ``z_m``, the rivers' laid over it; ``planes`` is ``(water_m, wet,
     measured)``."""
@@ -480,7 +430,7 @@ def _water_terms(
 
 
 def _light_planes(
-    grid: BandSampling, z_m: np.ndarray, missing: BoolMask, water: WaterTerms
+    grid: BandSampling, z_m: FloatGrid, missing: BoolMask, water: WaterTerms
 ) -> LightPlanes:
     """The piece's output pixels for the light stage: the heights and the land weight."""
     kept = (grid.rows.kept, grid.cols.kept)
@@ -492,9 +442,9 @@ def _direct_regime(
     sources: GroundSources,
     direct: DirectPlanes,
     grid: BandSampling,
-    z_m: np.ndarray,
+    z_m: FloatGrid,
     missing: BoolMask,
-) -> tuple[np.ndarray, BoolMask, np.ndarray, np.ndarray, SeamPlanes | None]:
+) -> tuple[FloatGrid, BoolMask, F32Grid, FloatGrid, SeamPlanes | None]:
     """The rocks composited onto the lattice under them: ``(z_m, missing, weight, rock_seen,
     seam)``, ``seam`` the output pixels the band measures when it measures. Where that
     lattice knows nothing the field's fold stands in."""
@@ -518,7 +468,7 @@ def _direct_regime(
 
 
 def _regimes_owed(
-    sources: GroundSources, regimes: RegimeSources, rows: Span, weight: np.ndarray
+    sources: GroundSources, regimes: RegimeSources, rows: Span, weight: F32Grid
 ) -> Owed:
     """The regime table's count of this band's output rows, read on the field's nearest texel."""
     field = sources.field
@@ -536,7 +486,7 @@ def _regimes_owed(
     return regimes.coverage.merge, counted
 
 
-def _borrow(sources: GroundSources, grid: BandSampling) -> np.ndarray:
+def _borrow(sources: GroundSources, grid: BandSampling) -> FloatGrid:
     """The artwork's shading borrowed where the field's province is coarse, clamped."""
     detail, province = sources.borrow
     y_cm = sources.y_cm[grid.rows.lo : grid.rows.hi]
@@ -548,12 +498,12 @@ def _borrow(sources: GroundSources, grid: BandSampling) -> np.ndarray:
 
 
 def _sample_water_surface(
-    z_m: np.ndarray,
+    z_m: FloatGrid,
     water: WaterPlanes | None,
     sea: OpenSea | None,
     smooth: GridTaps,
     linear: GridTaps,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[FloatGrid, FloatGrid, FloatGrid, FloatGrid]:
     """One band's water surface, level (NaN where none), wet cover and measured share.
 
     With the open sea, the wet cover counts only the share of a pixel that is not void, so
@@ -574,12 +524,12 @@ def _sample_water_surface(
 
 
 def _rock_kept(
-    z_rock_cm: np.ndarray,
+    z_rock_cm: F32Grid,
     missing: BoolMask,
-    wet_plane: np.ndarray | None,
+    wet_plane: U8Grid | None,
     sea: OpenSea | None,
     linear: GridTaps,
-) -> np.ndarray | None:
+) -> F32Grid | None:
     """The share of its coverage a rock keeps under the void; None without the open sea.
 
     Out of the sea a rock keeps all of it; under the sea's level none on no data, else what

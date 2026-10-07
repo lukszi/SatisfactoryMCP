@@ -71,7 +71,7 @@ class SchematicLadder:
         """
         done = self.unlocks.purchased_schematic_ids
         stock = self.inventory.stock()
-        out = []
+        out: list[Rung] = []
         for schematic in sorted(
             self.game.schematics.values(), key=lambda schematic: schematic.name.casefold()
         ):

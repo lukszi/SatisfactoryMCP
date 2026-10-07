@@ -248,6 +248,7 @@ be traced to the axis it should move.
 | `palette/water/perched.py` | style | Water levels re-read from the shoreline where a box top is not the surface |
 | `render/compose.py` | | The band loop that draws every layer of a run in one pass |
 | `render/surface.py` | | One band's ground, composed once for all the layers |
+| `render/lift.py` | | The raise-only lift by which rocks and the top raster raise the ground |
 | `render/painting.py` | | One band coloured in one layer's style over that ground |
 | `render/stream.py` | | Each settled band handed to its layers' tile trees, the lit ones once the light has its rows |
 | `render/drawpool.py` | | How many threads draw a pass's bands, and the pool that keeps their order |

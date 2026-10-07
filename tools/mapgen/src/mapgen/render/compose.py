@@ -43,7 +43,7 @@ from mapgen.render.surface import (
 )
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.sample import frame_coordinates, grid_position, taps_linear, taps_pchip
-from satisfactory_mcp.core.arrays import U8Grid
+from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I8Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.core.mapprogress import encode_stage
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -115,28 +115,28 @@ class DrawPass:
 def render_layers(
     layers: Sequence[str],
     field: hf.Field,
-    biome_rgb: np.ndarray | None,
+    biome_rgb: U8Grid | None,
     biome_width: int,
-    borrow: tuple[np.ndarray, np.ndarray],
+    borrow: tuple[I8Grid, U8Grid],
     size: int,
     progress: bool,
-    height_dm: np.ndarray | None = None,
+    height_dm: F32Grid | None = None,
     direct: DirectPlanes | None = None,
     seam: SeamTrace | None = None,
     regimes: RegimeCoverage | None = None,
-    measured_plane_u8: np.ndarray | None = None,
+    measured_plane_u8: U8Grid | None = None,
     overlay: TopPlanes | None = None,
     kernel: Kernel | None = None,
     meshes: MeshPlanes | None = None,
-    falls: np.ndarray | None = None,
-    reach: np.ndarray | None = None,
+    falls: F64Grid | None = None,
+    reach: U8Grid | None = None,
     painted: PaintedGround | None = None,
     window: tuple[int, int, int, int] | None = None,
     rivers: RiverWater | None = None,
     relief: Mapping[str, ReliefGround] | None = None,
     unlit: bool = False,
     surface: LightCapture | None = None,
-    water_level: np.ndarray | None = None,
+    water_level: I16Grid | None = None,
     sea: OpenSea | None = None,
     threads: int = 1,
     bands: BandSink | None = None,
@@ -184,28 +184,28 @@ def render_layers(
 def render_layer(
     layer: str,
     field: hf.Field,
-    biome_rgb: np.ndarray | None,
+    biome_rgb: U8Grid | None,
     biome_width: int,
-    borrow: tuple[np.ndarray, np.ndarray],
+    borrow: tuple[I8Grid, U8Grid],
     size: int,
     progress: bool,
-    height_dm: np.ndarray | None = None,
+    height_dm: F32Grid | None = None,
     direct: DirectPlanes | None = None,
     seam: SeamTrace | None = None,
     regimes: RegimeCoverage | None = None,
-    measured_plane_u8: np.ndarray | None = None,
+    measured_plane_u8: U8Grid | None = None,
     overlay: TopPlanes | None = None,
     kernel: Kernel | None = None,
     meshes: MeshPlanes | None = None,
-    falls: np.ndarray | None = None,
-    reach: np.ndarray | None = None,
+    falls: F64Grid | None = None,
+    reach: U8Grid | None = None,
     painted: PaintedGround | None = None,
     window: tuple[int, int, int, int] | None = None,
     rivers: RiverWater | None = None,
     relief: ReliefGround | None = None,
     unlit: bool = False,
     surface: LightCapture | None = None,
-    water_level: np.ndarray | None = None,
+    water_level: I16Grid | None = None,
     sea: OpenSea | None = None,
     threads: int = 1,
     columns: int = PIECE_COLS,
@@ -291,26 +291,24 @@ def _ground_sources(
     field: hf.Field,
     window: Window,
     size: int,
-    borrow: tuple[np.ndarray, np.ndarray],
+    borrow: tuple[I8Grid, U8Grid],
     *,
-    height_dm: np.ndarray | None,
+    height_dm: F32Grid | None,
     direct: DirectPlanes | None,
     seam: SeamTrace | None,
     regimes: RegimeCoverage | None,
-    measured_plane_u8: np.ndarray | None,
+    measured_plane_u8: U8Grid | None,
     overlay: TopPlanes | None,
     kernel: Kernel | None,
     meshes: MeshPlanes | None,
-    reach: np.ndarray | None,
+    reach: U8Grid | None,
     rivers: RiverWater | None,
     surface: LightCapture | None,
-    water_level: np.ndarray | None,
+    water_level: I16Grid | None,
     sea: OpenSea | None,
 ) -> GroundSources:
     """What the bands sample their ground from, with the column taps they share."""
-    heights = field.height_dm if height_dm is None else height_dm
-    if heights is None:
-        raise ValueError("a field without its height plane has nothing to draw")
+    heights: I16Grid | F32Grid = field.height_dm if height_dm is None else height_dm
     kernel = taps_pchip if kernel is None else kernel
     x_cm, y_cm = frame_coordinates(size)
     x_cm = x_cm[window.c0 : window.c1]
@@ -357,15 +355,14 @@ def _ground_sources(
 
 
 def _regime_sources(
-    field: hf.Field, regimes: RegimeCoverage | None, measured_plane_u8: np.ndarray | None
+    field: hf.Field, regimes: RegimeCoverage | None, measured_plane_u8: U8Grid | None
 ) -> RegimeSources | None:
     """The regime table with the planes it reads; it needs the measurement plane."""
     if regimes is None:
         return None
-    provenance = field.provenance_plane
-    if measured_plane_u8 is None or provenance is None:
+    if measured_plane_u8 is None:
         raise ValueError("the regime table reads the measurement and provenance planes")
-    return RegimeSources(regimes, measured_plane_u8, provenance)
+    return RegimeSources(regimes, measured_plane_u8, field.provenance_plane)
 
 
 def _band_planes(draw: DrawPass) -> list[HeldPlane]:

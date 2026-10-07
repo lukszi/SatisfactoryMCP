@@ -10,16 +10,33 @@ import re
 import tomllib
 from pathlib import Path
 
-_CATALOG = tomllib.loads(Path(__file__).with_name("catalog.toml").read_text(encoding="utf-8"))
+from satisfactory_mcp.core.jsontypes import is_object_dict
+
+_CATALOG: dict[str, object] = tomllib.loads(
+    Path(__file__).with_name("catalog.toml").read_text(encoding="utf-8")
+)
+
+
+def _strings(name: str) -> dict[str, str]:
+    """The catalog's ``[name]`` table, refused unless every value is a string."""
+    table = _CATALOG[name]
+    if not is_object_dict(table):
+        raise TypeError(f"catalog.toml [{name}] is not a table")
+    pairs = table
+    out = {key: value for key, value in pairs.items() if isinstance(value, str)}
+    if len(out) != len(pairs):
+        raise TypeError(f"catalog.toml [{name}] holds a value that is not a string")
+    return out
+
 
 #: Map actor class -> the category this table reports.
-CATEGORIES: dict[str, str] = _CATALOG["categories"]
+CATEGORIES = _strings("categories")
 
 #: Category -> the note carried into ``_meta.totals.by_category``.
-CATEGORY_NOTES: dict[str, str] = _CATALOG["category_notes"]
+CATEGORY_NOTES = _strings("category_notes")
 
 #: Map-placed class left out on purpose -> why, reported with its count in ``_meta.excluded``.
-EXCLUDED: dict[str, str] = _CATALOG["excluded"]
+EXCLUDED = _strings("excluded")
 
 #: ``(cell, instance)``: the one key unique over every map-placed actor.
 ActorKey = tuple[str, str]

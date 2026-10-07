@@ -322,6 +322,10 @@ These rules hold it together, each with a test:
   patches that one function, rather than patching each tool module.
 - **A refusal is an answer.** `app.tool` registers a text tool and returns a raised
   `Refusal`'s text, or a selector error as `! …`, as the tool's reply.
+- **A tool's context is `app.ToolContext`.** FastMCP finds the parameter that receives its
+  `Context` by the annotation and leaves it out of the schema. `ToolContext` is `Context`
+  itself at runtime and its parametrised form only to the type checker, so that lookup, and
+  every published schema, stay exactly as they were.
 
 The move was mechanical — every tool body is byte-identical — but two classes of breakage
 were invisible to the linter and only showed at runtime: relative imports written for the
@@ -631,8 +635,8 @@ forgotten plan is found here too, so `undo=<the forget>` brings it back.
 
 **Who wrote it.** A chat write carries `Actor("chat", clientInfo.name, pid)`: the client name
 is what the MCP client sent at `initialize` (`claude-code` reads as "Claude Code", `claude-ai`
-as "Claude Desktop"), read through the `ctx: Context` FastMCP injects and never shows in a
-schema. Called as a plain function (tests, scripts) the client is blank and reads as "chat".
+as "Claude Desktop"), read through the `ctx: app.ToolContext` FastMCP injects and never shows in
+a schema. Called as a plain function (tests, scripts) the client is blank and reads as "chat".
 
 **The activity journal** (`domain/session/journal.py`, contract §8) holds what is not a plan
 edit: `plan.solve` for a `plan_factory` without `save_as` (the page offers it as a from-chat

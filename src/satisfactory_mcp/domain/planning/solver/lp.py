@@ -8,9 +8,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.optimize import LinearConstraint, milp
+from scipy.optimize import Bounds, LinearConstraint, milp
 
 from ....core import solverlane
+from ....core.arrays import F64Grid, U8Grid
 from ....core.gamedata.constants import AWESOME_SINK_MW
 from .model import MW, Process, Scenario, Solution
 from .overclock import machine_price_mw
@@ -88,7 +89,7 @@ def _sinkable(scenario: Scenario, item_id: str) -> bool:
     return bool(item and item.sinkable)
 
 
-def balance_rows(processes: list[Process], columns: Columns) -> list[np.ndarray]:
+def balance_rows(processes: list[Process], columns: Columns) -> list[F64Grid]:
     """One equality row per item: process nets, plus raw in and export and sink out."""
     items = sorted({item for process in processes for item in process.rates})
     balanced = items + [i for i in columns.raw_items if i not in items]
@@ -96,7 +97,7 @@ def balance_rows(processes: list[Process], columns: Columns) -> list[np.ndarray]
     balanced += [
         i for i in columns.export_items if i != MW and i not in items and i not in columns.raw_items
     ]
-    rows: list[np.ndarray] = []
+    rows: list[F64Grid] = []
     for item in balanced:
         row = np.zeros(columns.size)
         for i, process in enumerate(processes):
@@ -111,7 +112,7 @@ def balance_rows(processes: list[Process], columns: Columns) -> list[np.ndarray]
     return rows
 
 
-def power_row(scenario: Scenario, processes: list[Process], columns: Columns) -> np.ndarray:
+def power_row(scenario: Scenario, processes: list[Process], columns: Columns) -> F64Grid:
     """The ``MW`` balance: machines and sinks draw, generators and the grid supply."""
     row = np.zeros(columns.size)
     for i, process in enumerate(processes):
@@ -127,27 +128,28 @@ def power_row(scenario: Scenario, processes: list[Process], columns: Columns) ->
 
 def bounds_and_group_caps(
     scenario: Scenario, processes: list[Process], columns: Columns
-) -> tuple[np.ndarray, np.ndarray, list[LinearConstraint]]:
+) -> tuple[F64Grid, F64Grid, list[LinearConstraint]]:
     """Lower and upper bounds per column, and one shared cap per group of clock modes."""
     lower = np.zeros(columns.size)
     upper = np.full(columns.size, np.inf)
-    grouped: dict[str, list[int]] = {}
+    # Per group, ``(column, cap)`` of each clock mode.
+    grouped: dict[str, list[tuple[int, float]]] = {}
     for i, process in enumerate(processes):
         if process.max_count is None:
             continue
         if process.group is None:
             upper[columns.process(i)] = process.max_count
         else:
-            grouped.setdefault(process.group, []).append(i)
+            grouped.setdefault(process.group, []).append((i, process.max_count))
     # The modes of a group are the same machines, so they share one cap (§8.9).
     group_caps: list[LinearConstraint] = []
     for members in grouped.values():
-        cap = min(processes[i].max_count for i in members)
+        cap = min(count for _, count in members)
         if len(members) == 1:
-            upper[columns.process(members[0])] = cap
+            upper[columns.process(members[0][0])] = cap
             continue
         row = np.zeros(columns.size)
-        for i in members:
+        for i, _ in members:
             row[columns.process(i)] = 1.0
             upper[columns.process(i)] = cap
         group_caps.append(LinearConstraint(row, -np.inf, cap))
@@ -214,8 +216,8 @@ def max_machines_row(scenario: Scenario, columns: Columns) -> LinearConstraint |
     return LinearConstraint(row, -np.inf, scenario.max_machines)
 
 
-def integrality_vector(scenario: Scenario, columns: Columns) -> np.ndarray:
-    integrality = np.zeros(columns.size)
+def integrality_vector(scenario: Scenario, columns: Columns) -> U8Grid:
+    integrality = np.zeros(columns.size, dtype=np.uint8)
     if scenario.integral:
         for i in range(columns.n_processes):
             integrality[columns.process(i)] = 1
@@ -224,7 +226,7 @@ def integrality_vector(scenario: Scenario, columns: Columns) -> np.ndarray:
 
 def goal_vector(
     scenario: Scenario, processes: list[Process], columns: Columns
-) -> np.ndarray | Solution:
+) -> F64Grid | Solution:
     """Phase 1's objective, minimised, or an infeasible Solution naming what is missing."""
     goal = np.zeros(columns.size)
     if scenario.objective == "max_mw":
@@ -261,8 +263,8 @@ def goal_vector(
 
 
 def price_machines_for_power(
-    goal: np.ndarray, scenario: Scenario, processes: list[Process], columns: Columns
-) -> np.ndarray:
+    goal: F64Grid, scenario: Scenario, processes: list[Process], columns: Columns
+) -> F64Grid:
     """``goal`` with each machine priced in MW when the objective is power (§8.4)."""
     priced = goal.copy()
     if scenario.objective in ("max_mw", "min_power"):
@@ -271,9 +273,7 @@ def price_machines_for_power(
     return priced
 
 
-def machine_price_vector(
-    scenario: Scenario, processes: list[Process], columns: Columns
-) -> np.ndarray:
+def machine_price_vector(scenario: Scenario, processes: list[Process], columns: Columns) -> F64Grid:
     """Phase 2's cost per machine: 1 each, or build points plus running power at a horizon."""
     machine_cost = np.zeros(columns.size)
     per_mw = scenario.payback_hours * scenario.power_price
@@ -288,13 +288,13 @@ def machine_price_vector(
 
 
 def solve_two_phase(
-    objective: np.ndarray,
-    machine_cost: np.ndarray,
+    objective: F64Grid,
+    machine_cost: F64Grid,
     constraints: list[LinearConstraint],
-    bounds: tuple[np.ndarray, np.ndarray],
-    integrality: np.ndarray,
+    bounds: Bounds,
+    integrality: U8Grid,
     scenario: Scenario,
-) -> tuple[np.ndarray, list[str]] | Solution:
+) -> tuple[F64Grid, list[str]] | Solution:
     """Optimise ``objective``, then pin it and minimise ``machine_cost`` (§8.1).
 
     Returns the column values and any warning, or an infeasible Solution when phase 1 fails.

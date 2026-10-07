@@ -6,22 +6,33 @@ docs/web-wire.md "Power lines". Handler names are operation_ids.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Literal
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
+from .....core.jsontypes import is_object_sequence
 from .....core.saveio import rows as saverows
 from .....core.saveio.records import instance_leaf
+from .....core.saveio.schema import PowerEdge, Projection
 from .....domain.spatial import geo
 from .....domain.world.state import WorldState
-from ...serial import cm_to_m, require_world, yaw_deg
+from ...serial import cm_to_m, object_rows, require_world, yaw_deg
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
 
+NamedList = Literal["machines", "extractors", "generators", "attachments", "storage"]
+
 #: The record lists a wire end can be named from; a pole comes in through its actor index.
-NAMED_RECORD_LISTS = ("machines", "extractors", "generators", "attachments", "storage")
+NAMED_RECORD_LISTS: tuple[NamedList, ...] = (
+    "machines",
+    "extractors",
+    "generators",
+    "attachments",
+    "storage",
+)
 
 
 class PoleRow(TypedDict):
@@ -71,18 +82,23 @@ class PowerResponse(TypedDict):
     edge_count: int
 
 
-def _power_names(st: WorldState) -> dict[str, str]:
+def _graph(projection: Projection) -> tuple[list[str], list[PowerEdge]]:
+    """The interned actors and the power edges that index them; empty where there is no graph."""
+    graph = projection.get("graph")
+    if not graph:
+        return [], []
+    return graph.get("actors") or [], graph.get("power") or []
+
+
+def _power_names(st: WorldState, actors: list[str]) -> dict[str, str]:
     """Actor identity to display name, for every actor this projection can name.
 
     Built once per request rather than per wire. An end on an actor no record list carries is
     left out, so its wire says null rather than a guess.
     """
-    actors = st.projection.get("graph", {}).get("actors") or []
     names: dict[str, str] = {}
     for key in NAMED_RECORD_LISTS:
-        for row in st.projection.get(key) or ():
-            if not isinstance(row, dict):
-                continue
+        for row in object_rows(st.projection.get(key)):
             name = st.game.building_name(row.get("cls"))
             if name:
                 names[instance_leaf(row.get("instance", ""))] = name
@@ -94,52 +110,70 @@ def _power_names(st: WorldState) -> dict[str, str]:
     return names
 
 
-def _degrees(edges: list) -> dict[int, int]:
+def _ends(edge: object) -> tuple[int | None, int | None]:
+    """An edge's two actor indices, ``None`` where a torn row gives none."""
+    if not is_object_sequence(edge):
+        return None, None
+    values = edge
+    if len(values) < 2:
+        return None, None
+    a, b = values[0], values[1]
+    return (a if isinstance(a, int) else None), (b if isinstance(b, int) else None)
+
+
+def _degrees(edges: list[PowerEdge]) -> dict[int, int]:
     """How many power edges touch each actor index, counted once over the edge list."""
     degree: dict[int, int] = {}
     for edge in edges:
-        if isinstance(edge, (list, tuple)) and len(edge) >= 2:
-            for end in edge[:2]:
-                if isinstance(end, int):
-                    degree[end] = degree.get(end, 0) + 1
+        for end in _ends(edge):
+            if end is not None:
+                degree[end] = degree.get(end, 0) + 1
     return degree
 
 
-def _wire_row(wire: Any, edges: list, actors: list, named: dict, pole_at: dict) -> dict:
+def _xyz_m(point: list[float]) -> tuple[float, float, float]:
+    return cm_to_m(point[0]), cm_to_m(point[1]), cm_to_m(point[2])
+
+
+def _wire_row(
+    wire: saverows.Wire,
+    edges: list[PowerEdge],
+    actors: list[str],
+    named: dict[str, str],
+    pole_at: dict[int, int],
+) -> WireRow:
     """One wire's span, with both ends named and their poles read off the same edge."""
-    edge = edges[wire.index] if wire.index < len(edges) else None
-    pair = edge[:2] if isinstance(edge, (list, tuple)) and len(edge) >= 2 else (None, None)
+    pair = _ends(edges[wire.position] if wire.position < len(edges) else None)
     ends = [
-        named.get(str(actors[end])) if isinstance(end, int) and 0 <= end < len(actors) else None
+        named.get(str(actors[end])) if end is not None and 0 <= end < len(actors) else None
         for end in pair
     ]
     return {
-        "a_m": [cm_to_m(v) for v in wire.a],
-        "b_m": [cm_to_m(v) for v in wire.b],
+        "a_m": _xyz_m(wire.a),
+        "b_m": _xyz_m(wire.b),
         "from": ends[0],
         "to": ends[1],
-        "a_pole": pole_at.get(pair[0]) if isinstance(pair[0], int) else None,
-        "b_pole": pole_at.get(pair[1]) if isinstance(pair[1], int) else None,
+        "a_pole": pole_at.get(pair[0]) if pair[0] is not None else None,
+        "b_pole": pole_at.get(pair[1]) if pair[1] is not None else None,
         "span_m": round(geo.distance_3d_m(wire.a, wire.b), 1),
     }
 
 
 @router.get("/power", response_model=PowerResponse)
-def power(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def power(request: Request, save: str | None = None, world: str | None = None) -> PowerResponse:
     """Every power pole and tower, and the span of every wire between them, each end
     placed at its connector and named where the save names it."""
     st = require_world(request, save, world)
 
     projection = st.projection
-    actors = projection.get("graph", {}).get("actors") or []
-    edges = projection.get("graph", {}).get("power") or []
-    named = _power_names(st)
+    actors, edges = _graph(projection)
+    named = _power_names(st, actors)
     degree = _degrees(edges)
 
     # One decode serves both the rows sent and the index the wire join reads, so the two
     # cannot be counted off different rows.
     pole_rows = list(saverows.iter_power_poles(projection))
-    poles = [
+    poles: list[PoleRow] = [
         {
             "cls": pole.cls,
             "name": st.game.building_name(pole.cls),

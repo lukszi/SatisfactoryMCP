@@ -42,7 +42,7 @@ def read_reference(r: Reader) -> ObjectReference:
     return ObjectReference(r.string(), r.string())
 
 
-def read_soft_reference(r: Reader) -> list:
+def read_soft_reference(r: Reader) -> list[ObjectReference | str]:
     """FSoftObjectPath: a package name, an asset name, and a sub-path.
 
     THREE strings, not two, which is what distinguishes it from ``ObjectProperty``: read as a

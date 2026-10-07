@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import typing
 from collections.abc import Mapping
-from typing import Literal, TypedDict, TypeVar, cast
+from typing import Literal, NotRequired, TypedDict, TypeVar, cast
 
 from mapgen.gamedata.rocks.families import FAMILIES
+from satisfactory_mcp.core.jsontypes import is_object_dict, is_object_list
 
 __all__ = [
     "CalibrationArea",
@@ -291,7 +292,7 @@ class RockTopStyle(TypedDict):
     """``rock_top``: the up-facing ramp a family's top layer takes, and its patches."""
 
     up: list[float]
-    patches: RockPatchesStyle
+    patches: NotRequired[RockPatchesStyle]
 
 
 class TitanTreesStyle(TypedDict):
@@ -401,7 +402,7 @@ class PaintedPalette(TypedDict):
     ground: str
     rock_top: RockTopStyle
     titan_trees: TitanTreesStyle
-    carpet: CarpetStyle
+    carpet: NotRequired[CarpetStyle]
     tone: ToneStyle
     calibration: CalibrationStyle
 
@@ -463,12 +464,12 @@ def _fits_block(shape: type, value: object, where: str) -> None:
 
 
 def _as_list(value: object, where: str) -> list[object]:
-    if not isinstance(value, list):
+    if not is_object_list(value):
         raise PaletteError(f"{where}: {value!r} is not a list")
-    return cast(list[object], value)
+    return value
 
 
 def _as_dict(value: object, where: str) -> dict[str, object]:
-    if not isinstance(value, dict):
+    if not is_object_dict(value):
         raise PaletteError(f"{where}: {value!r} is not an object")
-    return cast(dict[str, object], value)
+    return value

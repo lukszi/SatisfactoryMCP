@@ -9,14 +9,16 @@ script as well.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import cast
 
 from ....core.gamedata.model import GameData
 from ...world.state import WorldState
 from ..analysis import supply
 from .model import Solution
 from .optimize import free_lunch_audit, solve
-from .scenario import PlanRequest, build_scenario
+from .scenario import PlanKwargs, PlanRequest, build_scenario
 
 __all__ = ["PlanFailure", "PreparedPlan", "prepare"]
 
@@ -26,19 +28,20 @@ class PlanFailure:
     """Why a plan could not be produced, in the caller's own words."""
 
     headline: str
-    notes: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list[str])
 
 
 @dataclass
 class PreparedPlan:
-    """A solved plan, or the reason there is not one."""
+    """A solved plan, or the reason there is not one: ``solution`` is None exactly when
+    ``failure`` is set."""
 
-    request: PlanRequest | None = None
+    request: PlanRequest
     solution: Solution | None = None
     #: Name of the saved plan this came from, empty if the arguments were given directly.
     plan_name: str = ""
     #: Recall and override notices, plus anything the solve wants to say.
-    notes: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list[str])
     failure: PlanFailure | None = None
     #: free_lunch_audit result, only when the caller asked for it.
     audit_ok: bool = True
@@ -52,7 +55,7 @@ class PreparedPlan:
 def prepare(
     game: GameData,
     state: WorldState,
-    plan_kwargs: dict,
+    plan_kwargs: Mapping[str, object],
     *,
     objective_label: str = "",
     audit: bool = False,
@@ -76,7 +79,11 @@ def prepare(
     from .scenario import EXPORT_HELP
 
     request = build_scenario(
-        game, state, **plan_kwargs, site_at=site_at, site_footprint=site_footprint
+        game,
+        state,
+        **cast(PlanKwargs, plan_kwargs),
+        site_at=site_at,
+        site_footprint=site_footprint,
     )
     prepared = PreparedPlan(request=request)
 

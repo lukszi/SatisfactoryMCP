@@ -10,13 +10,21 @@ own cell area. docs/parked.md §16b has the measurements behind every constant h
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, TypeAlias
 
+from ...core.gamedata.model import GameData
 from ...core.saveio import rows as saverows
 from ...core.saveio.records import instance_leaf
+from ...core.saveio.schema import BuildableRecord, Projection
 from .select import resolve_factory
 from .structure import TILE_CM
+from .views import FloorCounts
+
+if TYPE_CHECKING:
+    from ..spatial.heightfield import Field
+    from ..world.state import WorldState
 
 __all__ = [
     "BAND_EPS_CM",
@@ -119,6 +127,9 @@ NO_FOUNDATIONS_NOTE = (
     "on a deck here, so there are no floors to recover"
 )
 
+#: An 8 m grid cell, ``cell_of``'s answer.
+Cell: TypeAlias = tuple[int, int]
+
 
 # ------------------------------------------------------------------ the pieces
 
@@ -139,7 +150,7 @@ class BeltChain(NamedTuple):
     chain: int
     is_lift: bool
     pieces: int
-    points: list
+    points: list[list[float]]
 
 
 @dataclass(frozen=True)
@@ -153,6 +164,10 @@ class Deck:
     @property
     def key(self) -> tuple[int, int]:
         return (self.platform, self.ordinal)
+
+
+#: Per 8 m cell, the decks with a foundation in it, low to high.
+DeckIndex: TypeAlias = dict[Cell, list[Deck]]
 
 
 @dataclass
@@ -169,11 +184,11 @@ class Band:
     #: a mezzanine rather than a storey, and a reader is told so rather than shown a
     #: six-cell ledge in the same voice as a 218-cell deck.
     share: float = 1.0
-    machines: list[str] = field(default_factory=list)
-    attachments: list[str] = field(default_factory=list)
+    machines: list[str] = field(default_factory=list[str])
+    attachments: list[str] = field(default_factory=list[str])
     #: Which pieces of the ``structures`` table this deck is made of, by POSITION in it.
     #: That is the only name a lightweight buildable has; ``foundation_tops`` says why.
-    rows: list[int] = field(default_factory=list)
+    rows: list[int] = field(default_factory=list[int])
 
     @property
     def minor(self) -> bool:
@@ -200,8 +215,8 @@ class Platform:
     extent_cm: tuple[float, float]
     #: The 8 m cells themselves, kept because narrowing to one platform is a question about
     #: its footprint and answering it any other way means flood-filling twice.
-    cell_set: set[tuple[int, int]] = field(default_factory=set, repr=False)
-    bands: list[Band] = field(default_factory=list)
+    cell_set: set[Cell] = field(default_factory=set[Cell], repr=False)
+    bands: list[Band] = field(default_factory=list[Band])
     #: Fraction of this platform's pieces within ``BAND_EPS_CM`` of one of its own bands --
     #: the premise of the whole feature, per platform rather than averaged away.
     clean: float = 1.0
@@ -251,7 +266,7 @@ class Run:
     #: The 8 m cells the two ends sit over. Kept for narrowing, which is a question about
     #: footprint rather than about membership -- a terrain pipe running UNDER the deck
     #: being asked about belongs in that answer and has no deck to be found by.
-    end_cells: tuple[tuple[int, int], ...] = ()
+    end_cells: tuple[Cell, ...] = ()
 
     @property
     def riser(self) -> bool:
@@ -267,12 +282,12 @@ class Run:
 class FloorReport:
     """Everything one decomposition found. Empty with a ``note`` when it found nothing."""
 
-    platforms: list[Platform] = field(default_factory=list)
-    placements: list[Placement] = field(default_factory=list)
-    runs: list[Run] = field(default_factory=list)
+    platforms: list[Platform] = field(default_factory=list[Platform])
+    placements: list[Placement] = field(default_factory=list[Placement])
+    runs: list[Run] = field(default_factory=list[Run])
     #: Belt chains that rise ``RISER_CM`` or more and still land both ends on one band.
     #: Empty on every save tested; ``_violations`` says what an entry means.
-    violations: list[Run] = field(default_factory=list)
+    violations: list[Run] = field(default_factory=list[Run])
     #: Why there is nothing to report, when there is nothing to report.
     note: str | None = None
     #: Whether a terrain field was offered. Without one, ``terrain`` is not a group anybody
@@ -295,7 +310,7 @@ class FloorReport:
     def connectors(self) -> list[Run]:
         return self.runs_of("connector")
 
-    def counts(self) -> dict:
+    def counts(self) -> FloorCounts:
         """The shape of the answer before the rows.
 
         Nested rather than flat because ``terrain`` is both a placement group and a run
@@ -339,7 +354,8 @@ def _flood(cells: set[tuple[int, int]]) -> list[set[tuple[int, int]]]:
     for start in sorted(cells):
         if start in seen:
             continue
-        stack, component = [start], set()
+        stack = [start]
+        component: set[Cell] = set()
         seen.add(start)
         while stack:
             cx, cy = stack.pop()
@@ -371,7 +387,7 @@ def _single_linkage(values: list[float], tol: float) -> list[list[float]]:
     return clusters
 
 
-def foundation_tops(projection: dict) -> list[FoundationTop]:
+def foundation_tops(projection: Projection) -> list[FoundationTop]:
     """Every foundation piece and the surface a machine stands on, in centimetres.
 
     ``top_cm`` is ``z + thickness/2``, because a lightweight's stored Z is its vertical
@@ -459,14 +475,14 @@ def _bands_of(tops: list[FoundationTop]) -> list[Platform]:
     return platforms
 
 
-def _index_decks(platforms: list[Platform], tops: list[FoundationTop]) -> dict:
+def _index_decks(platforms: list[Platform], tops: list[FoundationTop]) -> DeckIndex:
     """An 8 m cell to the decks with a foundation in it, low to high.
 
     Per cell rather than per platform bounding box, so a machine standing over a HOLE in a
     deck is not assigned to a floor that is not under it.
     """
     by_cell = _tops_by_cell(tops)
-    index: dict[tuple[int, int], list[Deck]] = defaultdict(list)
+    index: DeckIndex = defaultdict(list)
     for platform in platforms:
         members = [i for cell in sorted(platform.cell_set) for i in by_cell[cell]]
         for band in platform.bands:
@@ -477,7 +493,7 @@ def _index_decks(platforms: list[Platform], tops: list[FoundationTop]) -> dict:
     return {cell: sorted(set(decks), key=lambda d: d.top_cm) for cell, decks in index.items()}
 
 
-def _deck_under(index: dict, x: float, y: float, z: float, slack: float) -> Deck | None:
+def _deck_under(index: DeckIndex, x: float, y: float, z: float, slack: float) -> Deck | None:
     """The highest band top at or just above ``z``, in this cell or one next to it."""
     cx, cy = cell_of(x, y)
     best: Deck | None = None
@@ -492,7 +508,7 @@ def _deck_under(index: dict, x: float, y: float, z: float, slack: float) -> Deck
 # ------------------------------------------------------------- what stands where
 
 
-def _is_exempt(game, cls: str) -> bool:
+def _is_exempt(game: GameData | None, cls: str) -> bool:
     """True for the two families that stand on a node or on water rather than on a deck.
 
     ``False`` for a class the dump has no entry for, which is the same refusal
@@ -503,12 +519,11 @@ def _is_exempt(game, cls: str) -> bool:
     return building is not None and building.native in EXEMPT_NATIVES
 
 
-def _records(projection: dict):
+def _records(projection: Projection) -> Iterator[tuple[str, str, str, tuple[float, float, float]]]:
     """Every placed thing the floors have an opinion about, with which list it came from."""
     for kind in ("machines", "extractors", "generators", "attachments"):
-        for record in projection.get(kind, ()) or ():
-            if not isinstance(record, dict):
-                continue
+        records: Sequence[BuildableRecord] = projection.get(kind, ()) or ()
+        for record in records:
             pos = record.get("pos")
             if not pos or len(pos) < 3:
                 continue
@@ -519,7 +534,13 @@ def _records(projection: dict):
             yield kind, record.get("cls") or "", str(record.get("instance") or ""), point
 
 
-def _assign(projection, game, index, platforms, terrain_field) -> list[Placement]:
+def _assign(
+    projection: Projection,
+    game: GameData | None,
+    index: DeckIndex,
+    platforms: list[Platform],
+    terrain_field: Field | None,
+) -> list[Placement]:
     """Put every placed thing on a band, or say which of the three other things it is."""
     by_key = {(p.index, b.ordinal): b for p in platforms for b in p.bands}
     out: list[Placement] = []
@@ -568,7 +589,7 @@ def _assign(projection, game, index, platforms, terrain_field) -> list[Placement
 # ------------------------------------------------------------------- the runs
 
 
-def belt_runs(projection: dict, game=None) -> list[BeltChain]:
+def belt_runs(projection: Projection, game: GameData | None = None) -> list[BeltChain]:
     """One ``BeltChain`` per belt CHAIN, in travel order.
 
     The grouping that has to happen before any vertical reasoning: consecutive pieces of a
@@ -576,13 +597,13 @@ def belt_runs(projection: dict, game=None) -> list[BeltChain]:
     """
     # Resolved once per belt CLASS rather than once per piece: thousands share a handful.
     lift_of: dict[int, bool] = {}
-    chains: dict[int, list[tuple[int, list]]] = defaultdict(list)
+    chains: dict[int, list[tuple[int, list[list[float]]]]] = defaultdict(list)
     for segment in saverows.iter_belt_segments(projection):
         if segment.class_index not in lift_of:
-            building = game.buildings.get(segment.cls) if game is not None else None
+            building = game.buildings.get(segment.cls or "") if game is not None else None
             lift_of[segment.class_index] = building is not None and building.native == LIFT_NATIVE
         chains[segment.chain].append((segment.class_index, segment.points))
-    out = []
+    out: list[BeltChain] = []
     for chain in sorted(chains):
         pieces = chains[chain]
         points = [p for _index, part in pieces for p in part]
@@ -591,18 +612,20 @@ def belt_runs(projection: dict, game=None) -> list[BeltChain]:
     return out
 
 
-def pipe_runs(projection: dict) -> list[tuple[int, list]]:
+def pipe_runs(projection: Projection) -> list[tuple[int, list[list[float]]]]:
     """``(index, points)`` per pipe. A pipe's spline IS its run -- there is nothing to join.
 
     ``index`` is the position in ``pipes["segments"]``, which is the same positional key
     ``domain.world.flow`` hands back and ``/api/pipes`` emits rows in.
     """
-    return [(segment.index, segment.points) for segment in saverows.iter_pipe_segments(projection)]
+    return [
+        (segment.position, segment.points) for segment in saverows.iter_pipe_segments(projection)
+    ]
 
 
 def _run_over_decks(
-    index: dict,
-    points: list,
+    index: DeckIndex,
+    points: list[list[float]],
     slack: float,
     *,
     kind: str,
@@ -633,7 +656,9 @@ def _run_over_decks(
     )
 
 
-def _classify_runs(projection, game, index) -> tuple[list[Run], list[Run]]:
+def _classify_runs(
+    projection: Projection, game: GameData | None, index: DeckIndex
+) -> tuple[list[Run], list[Run]]:
     """Every belt chain and pipe as a ``Run``, and the risers among them that break the rule."""
     runs: list[Run] = []
     for belt in belt_runs(projection, game):
@@ -669,7 +694,7 @@ def _violations(runs: list[Run]) -> list[Run]:
 # ------------------------------------------------------------------- the naming
 
 
-def _name_platforms(st, platforms, placements) -> None:
+def _name_platforms(st: WorldState, platforms: list[Platform], placements: list[Placement]) -> None:
     """Hang the player's own words on a platform, without letting them decide anything.
 
     A slab is the sharpest signal for what the player calls one factory and the worst
@@ -680,8 +705,8 @@ def _name_platforms(st, platforms, placements) -> None:
         slabs = st.structures.slab_of
     except Exception:  # pragma: no cover - a missing store must not cost the decomposition
         return
-    votes: dict[int, Counter] = defaultdict(Counter)
-    slab_votes: dict[int, Counter] = defaultdict(Counter)
+    votes: dict[int, Counter[str]] = defaultdict(Counter)
+    slab_votes: dict[int, Counter[int]] = defaultdict(Counter)
     for placement in placements:
         if placement.deck is None or placement.kind == "attachments":
             continue
@@ -704,11 +729,11 @@ def _name_platforms(st, platforms, placements) -> None:
 
 
 def floor_decomposition(
-    st,
+    st: WorldState,
     *,
     platform: int | None = None,
     label: str | None = None,
-    terrain_field=None,
+    terrain_field: Field | None = None,
 ) -> FloorReport:
     """Decompose a world -- or one platform of it -- into floors.
 
@@ -722,7 +747,7 @@ def floor_decomposition(
     band is measured against the ground and grouped ``terrain``; without one it is
     ``off-deck``, which is the weaker claim and is labelled as the weaker claim.
     """
-    projection = getattr(st, "projection", None) or {}
+    projection = st.projection or {}
     payload = projection.get("structures")
     if not payload or not (payload.get("instances") or ()):
         return FloorReport(note=TOO_OLD_NOTE)
@@ -733,8 +758,8 @@ def floor_decomposition(
 
     platforms = _bands_of(tops)
     index = _index_decks(platforms, tops)
-    placements = _assign(projection, getattr(st, "game", None), index, platforms, terrain_field)
-    runs, violations = _classify_runs(projection, getattr(st, "game", None), index)
+    placements = _assign(projection, st.game, index, platforms, terrain_field)
+    runs, violations = _classify_runs(projection, st.game, index)
     _name_platforms(st, platforms, placements)
 
     report = FloorReport(
@@ -749,7 +774,9 @@ def floor_decomposition(
     return _narrow(report, st, platform, label)
 
 
-def _narrow(report: FloorReport, st, platform: int | None, label: str | None) -> FloorReport:
+def _narrow(
+    report: FloorReport, st: WorldState, platform: int | None, label: str | None
+) -> FloorReport:
     """Keep only the platforms asked for, and everything standing on their footprint.
 
     One rule, applied to placements and runs alike: a thing is in the view when an 8 m cell

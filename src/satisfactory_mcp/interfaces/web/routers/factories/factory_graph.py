@@ -9,9 +9,10 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple, TypedDict
+from typing import NamedTuple
 
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....domain.factories import candidates, flowgraph
 from .....domain.factories.query import build_view
@@ -20,7 +21,9 @@ from .....domain.world import pin
 from .....domain.world.state import WorldState
 from ...serial import (
     Flow,
+    FlowEdge,
     MachineSpot,
+    Placed,
     RequestRefused,
     bbox_m,
     flow_edges_json,
@@ -55,21 +58,12 @@ class GraphNode(TypedDict):
     bbox_m: tuple[float, float, float, float] | None
 
 
-class GraphEdge(TypedDict):
-    """``per_min`` is null where an output reaches a terminal with no surplus to apportion."""
-
-    source: str
-    target: str
-    item: str
-    per_min: float | None
-
-
 class FactoryGraphResponse(TypedDict):
     title: str
     token: str
     buffers: int
     nodes: list[GraphNode]
-    edges: list[GraphEdge]
+    edges: list[FlowEdge]
 
 
 TERMINAL_LABELS = {
@@ -80,7 +74,7 @@ TERMINAL_LABELS = {
 }
 
 
-def _plain_node(key: str, kind: str, label: str, detail: str) -> dict:
+def _plain_node(key: str, kind: str, label: str, detail: str) -> GraphNode:
     """An input or terminal node: a label and a line, and none of a group's counts."""
     return {
         "id": key,
@@ -98,7 +92,9 @@ def _plain_node(key: str, kind: str, label: str, detail: str) -> dict:
     }
 
 
-def _group_node(flow_graph: flowgraph.FlowGraph, group: Any, placed: dict) -> dict:
+def _group_node(
+    flow_graph: flowgraph.FlowGraph, group: flowgraph.Group, placed: Placed
+) -> GraphNode:
     """One recipe group: its machines' mean clock, what it makes, its states and its box."""
     clocks = group.clocks
     return {
@@ -137,6 +133,7 @@ def _picked_machines(
         if label is None:
             raise RequestRefused(f"no factory named “{factory}” in this world", 404)
         return PickedMachines(st, standing_anchors(st, label), label.name)
+    assert candidate is not None  # exactly one of the two is set, and it is not ``factory``
     if not token:
         raise RequestRefused("candidate= needs the token= it was detected at", 400)
     try:
@@ -159,7 +156,7 @@ def factory_graph(
     token: str | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> FactoryGraphResponse:
     """The recipe-group production graph of a named factory, or of a detected candidate.
 
     A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
@@ -201,7 +198,7 @@ def factory_machines(
     token: str | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> FactoryMachinesResponse:
     """Where each standing machine of a named factory, or of a detected candidate, stands."""
     st, machines, title = _picked_machines(request, factory, candidate, token, save, world)
     return {

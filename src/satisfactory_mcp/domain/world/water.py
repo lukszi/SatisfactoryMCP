@@ -12,13 +12,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from typing_extensions import TypedDict
+
 from ...core.saveio.records import instance_leaf
+from ...core.saveio.schema import ExtractorRecord, Projection
 from ..spatial import heightfield as hf
 
 __all__ = [
     "SITE_PAD_M",
     "WATER_SEARCH_M",
     "SiteWater",
+    "WaterVolumes",
     "site_water",
     "water_volumes",
 ]
@@ -36,20 +40,29 @@ WATER_SEARCH_M = 500.0
 SEA_TOLERANCE_M = 1.0
 
 
-def water_volumes(projection: dict) -> dict:
+class WaterVolumes(TypedDict):
+    """Water Extractors per water volume leaf, most pumps first, and the sea level they read."""
+
+    volumes: dict[str, int]
+    pumps: int
+    sea_level_m: float | None
+    sea_level_span_m: float | None
+
+
+def water_volumes(projection: Projection) -> WaterVolumes:
     """Water Extractors grouped by the body of water they draw from, plus sea level.
 
     A pump's ``node`` names its ``FGWaterVolume``: the volume's shape is not in the save,
     its identity is, and the pumps' own heights measure sea level (save-projection.md §6.10).
     """
-    groups: dict[str, list[dict]] = {}
+    groups: dict[str, list[ExtractorRecord]] = {}
     heights_m: list[float] = []
     for extractor in projection.get("extractors", ()):
         if extractor["cls"] != "Build_WaterPump_C":
             continue
         groups.setdefault(extractor.get("node") or "(unresolved)", []).append(extractor)
-        if extractor.get("pos"):
-            heights_m.append(extractor["pos"][2] / 100.0)
+        if pos := extractor.get("pos"):
+            heights_m.append(pos[2] / 100.0)
     return {
         "volumes": {
             instance_leaf(volume): len(pumps)
@@ -119,7 +132,7 @@ class SiteWater:
 
 
 def site_water(
-    projection: dict,
+    projection: Projection,
     x_m: float,
     y_m: float,
     width_m: float = SITE_PAD_M,

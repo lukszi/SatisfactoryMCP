@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
+from .....core.gamedata.model import GameData
 from .....domain.spatial.places import resolve_place
 from .....domain.world import conduit_search
 from .....domain.world import conduits as conduits_mod
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf, Limit
@@ -36,7 +37,9 @@ RUN_NOTES = (
 )
 
 
-def _networks_view(g, st, origin: tuple[float, float], where: str, limit, offset: int) -> str:
+def _networks_view(
+    g: GameData, st: WorldState, origin: tuple[float, float], where: str, limit: int, offset: int
+) -> str:
     """One row per fluid network in the world: what it carries, and what it ends on.
 
     A run is one placed pipe; a NETWORK is the connected plumbing system it belongs to,
@@ -58,7 +61,7 @@ def _networks_view(g, st, origin: tuple[float, float], where: str, limit, offset
         for view in window.of(order)
     ]
 
-    named = [r for r in (st.projection.get("pipe_networks") or ()) if isinstance(r, dict)]
+    named = st.projection.get("pipe_networks") or []
     notes = [
         (
             "a network is ONE connected plumbing system: everything on it shares a fluid "
@@ -92,11 +95,11 @@ def _networks_view(g, st, origin: tuple[float, float], where: str, limit, offset
     )
 
 
-def _end_xyz(end) -> str:
+def _end_xyz(end: conduits_mod.End) -> str:
     return f"{end.x / 100:.0f},{end.y / 100:.0f},{end.z / 100:.0f}"
 
 
-def _run_row(g, run) -> tuple:
+def _run_row(g: GameData, run: conduits_mod.ConduitRun) -> tuple[object, ...]:
     joiner = "->" if run.directed else "--"
     connects = f"{(run.a.plugs or '?')[:22]} {joiner} {(run.b.plugs or '?')[:22]}"
     if run.via:
@@ -118,7 +121,16 @@ def _run_row(g, run) -> tuple:
     )
 
 
-def _runs_view(g, st, found, want, network, radius_m: float, limit, offset: int) -> str:
+def _runs_view(
+    g: GameData,
+    st: WorldState,
+    found: conduit_search.ConduitSearch,
+    want: str | None,
+    network: int | None,
+    radius_m: float,
+    limit: int,
+    offset: int,
+) -> str:
     """The runs a search found, longest first, with both ends and what stands at each."""
     hits, belts, pipes = found.hits, found.belts, found.pipes
     label = f"{want} run(s)" if want else "conduit run(s)"
@@ -197,7 +209,7 @@ def search_conduits(
     limit: Limit = 12,
     offset: int = 0,
     kind: Annotated[str | None, Field(description="retired -- write conduit_kind= instead")] = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Belt and pipe runs near a point or between two areas: ends, length, elevation.
 

@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import NamedTuple, NotRequired, TypedDict
+from typing import NamedTuple, NotRequired, TypedDict, cast
 
 import numpy as np
 
 from mapgen.common import ROOT
 from satisfactory_mcp.core.arrays import F64Grid
+from satisfactory_mcp.core.jsontypes import JsonValue, require_list, require_object
 
 __all__ = [
     "NODE_TABLE",
     "OIL_NODE",
     "StaticNodes",
     "load_static_nodes",
+    "node_rows",
     "oil_nodes",
 ]
 
@@ -41,9 +43,16 @@ class StaticNodes(NamedTuple):
     z_m: F64Grid
 
 
+def node_rows(table: Path = NODE_TABLE) -> list[NodeRow]:
+    """The table's ``nodes``, each a ``NodeRow`` as tools/gen_world_resource_nodes.py wrote it."""
+    loaded: JsonValue = json.loads(table.read_text(encoding="utf-8"))
+    rows = require_list(require_object(loaded)["nodes"])
+    return [cast(NodeRow, require_object(row)) for row in rows]
+
+
 def load_static_nodes(table: Path = NODE_TABLE) -> StaticNodes:
     """The node table's positions, in table order."""
-    nodes: list[NodeRow] = json.loads(table.read_text(encoding="utf-8"))["nodes"]
+    nodes = node_rows(table)
     return StaticNodes(
         np.array([n["x"] for n in nodes], float),
         np.array([n["y"] for n in nodes], float),
@@ -53,10 +62,9 @@ def load_static_nodes(table: Path = NODE_TABLE) -> StaticNodes:
 
 def oil_nodes(table: Path = NODE_TABLE) -> F64Grid:
     """``(n, 2)`` world metres of every crude oil node in the table; none without one."""
-    nodes: list[NodeRow]
     try:
-        nodes = json.loads(table.read_text(encoding="utf-8"))["nodes"]
-    except (OSError, ValueError, KeyError):
+        nodes = node_rows(table)
+    except (OSError, ValueError, KeyError, TypeError):
         nodes = []
     found = [(n["x"] / 100.0, n["y"] / 100.0) for n in nodes
              if (n.get("class"), n.get("resource")) == OIL_NODE]  # fmt: skip

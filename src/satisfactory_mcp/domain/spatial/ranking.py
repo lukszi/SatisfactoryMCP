@@ -19,12 +19,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from typing_extensions import TypedDict
+
 from ...core.gamedata.constants import PURITY_MULT
 from . import geo
-from .heightfield import Field
-from .nodes.extraction import untapped_rate
+from .heightfield import Area, Field
+from .nodes.extraction import AnnotatedNode, untapped_rate
 
-__all__ = ["SITE_PAD_M", "WEIGHTS", "SiteScore", "rank_sites"]
+__all__ = ["SITE_PAD_M", "WEIGHTS", "PadTerms", "SiteRaw", "SiteScore", "rank_sites"]
 
 #: Default weights. Throughput dominates; spread and distance are real but secondary
 #: costs; purity is a tiebreak because a pure node needs fewer machines for the same
@@ -47,12 +49,34 @@ WEIGHTS = {
 SITE_PAD_M = 200.0
 
 
+class PadTerms(TypedDict):
+    """The ground under a site's pad, as raw measurements; all null with no terrain field."""
+
+    pad_roughness_m: float | None
+    pad_slope_deg: float | None
+    pad_z_range_m: float | None
+    pad_submerged_pct: float | None
+    pad_nodata_pct: float | None
+
+
+class SiteRaw(PadTerms):
+    """Every raw component of a site's score, before normalising."""
+
+    untapped_rate: float
+    total_rate: float
+    nodes: int
+    spread_m: float
+    distance_to_infra_m: float | None
+    purity_quality: float
+    altitude_vs_consumer_m: float | None
+
+
 @dataclass
 class SiteScore:
-    cluster: geo.Cluster
+    cluster: geo.Cluster[AnnotatedNode]
     score: float
-    raw: dict[str, float] = field(default_factory=dict)
-    normalised: dict[str, float] = field(default_factory=dict)
+    raw: SiteRaw
+    normalised: dict[str, float] = field(default_factory=dict[str, float])
 
     @property
     def centroid(self) -> tuple[float, float, float]:
@@ -70,7 +94,7 @@ def _normalise(values: list[float]) -> list[float]:
     return [(v - lo) / (hi - lo) for v in values]
 
 
-def _purity_quality(cluster: geo.Cluster) -> float:
+def _purity_quality(cluster: geo.Cluster[AnnotatedNode]) -> float:
     """Mean purity multiplier scaled to 0..1 (impure 0.25, normal 0.5, pure 1.0)."""
     members = cluster.members
     if not members:
@@ -79,14 +103,18 @@ def _purity_quality(cluster: geo.Cluster) -> float:
     return (total / len(members)) / 2.0
 
 
-def _distance_to_infra_m(cluster: geo.Cluster, infra: list[tuple[float, float]]) -> float | None:
+def _distance_to_infra_m(
+    cluster: geo.Cluster[AnnotatedNode], infra: list[tuple[float, float]]
+) -> float | None:
     if not infra:
         return None
     cx, cy, _ = cluster.centroid
     return min(geo.distance_m((cx, cy), p) for p in infra)
 
 
-def _altitude_delta_m(cluster: geo.Cluster, consumer_z: float | None) -> float | None:
+def _altitude_delta_m(
+    cluster: geo.Cluster[AnnotatedNode], consumer_z: float | None
+) -> float | None:
     """Height of the field above the consumer, in metres.
 
     The sign matters and is easy to get backwards: a field 268 m ABOVE the refineries
@@ -99,7 +127,7 @@ def _altitude_delta_m(cluster: geo.Cluster, consumer_z: float | None) -> float |
     return (cz - consumer_z) / 100.0
 
 
-def _pad(cluster: geo.Cluster, terrain: Field | None):
+def _pad(cluster: geo.Cluster[AnnotatedNode], terrain: Field | None) -> Area | None:
     """The terrain over ``SITE_PAD_M`` of ground at the centroid, or ``None`` with no field.
 
     ``None`` is the normal case: the heightfield is cut from the reader's own game install
@@ -112,7 +140,7 @@ def _pad(cluster: geo.Cluster, terrain: Field | None):
     return terrain.area(cx - half, cy - half, cx + half, cy + half)
 
 
-def _pad_raw(area) -> dict[str, float | None]:
+def _pad_raw(area: Area | None) -> PadTerms:
     """The terrain facts as raw columns. Every one is a measurement, never a verdict."""
     if area is None:
         return {
@@ -147,7 +175,7 @@ def _fill_unknown_roughness(roughness: list[float | None]) -> list[float]:
 
 
 def rank_sites(
-    clusters: list[geo.Cluster],
+    clusters: list[geo.Cluster[AnnotatedNode]],
     infra: list[tuple[float, float]] | None = None,
     consumer_z: float | None = None,
     weights: dict[str, float] | None = None,
@@ -187,6 +215,7 @@ def rank_sites(
             "roughness": normalised_roughness[i],
         }
         score = sum(weights[k] * normalised[k] for k in normalised)
+        to_infra_m = distance[i]
         out.append(
             SiteScore(
                 cluster=cluster,
@@ -196,7 +225,7 @@ def rank_sites(
                     "total_rate": round(sum(m.get("rate", 0.0) for m in cluster.members), 2),
                     "nodes": cluster.size,
                     "spread_m": round(spread[i], 1),
-                    "distance_to_infra_m": (None if distance[i] is None else round(distance[i], 1)),
+                    "distance_to_infra_m": None if to_infra_m is None else round(to_infra_m, 1),
                     "purity_quality": round(purity[i], 3),
                     "altitude_vs_consumer_m": _altitude_delta_m(cluster, consumer_z),
                     **_pad_raw(pads[i]),

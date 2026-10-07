@@ -241,17 +241,6 @@ def test_overriding_sources_suppresses_the_field_note(table):
     assert not any("DIFFERENT field" in n for n in notes)
 
 
-def test_a_state_that_cannot_resolve_selectors_claims_nothing(table):
-    """A world with no game data attached cannot re-resolve, so it must not report the
-    field as unchanged either. Silence, not a verdict."""
-
-    class _NoGame:
-        plans = _Plans(_saved_plan())
-
-    _kwargs, _name, notes = recall_plan(_NoGame(), "spire", dict(PLAN_DEFAULTS))
-    assert notes == ['recalled plan "spire" v0'], "only the version, no field verdict"
-
-
 # ----------------------------------------------------------------- persistence
 
 

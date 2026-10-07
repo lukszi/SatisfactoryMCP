@@ -17,7 +17,7 @@ import numpy.typing as npt
 
 from mapgen.gamedata.ground.landscape_albedo import srgb_unit_to_linear
 from mapgen.gamedata.install import GameReader
-from mapgen.gamedata.materials import material_parameters, mesh_materials
+from mapgen.gamedata.materials import MaterialParameters, material_parameters, mesh_materials
 from mapgen.gamedata.maxz_raster import MaxZRaster
 from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I64Grid, U8Grid, U16Grid
 from satisfactory_mcp.core.gameassets import staticmesh
@@ -97,6 +97,25 @@ class CrownSpecies(TypedDict, total=False):
     top_m: Required[float]
     instances: int
     sprite: SpriteIndex
+
+
+class DecodedSprite(SpriteIndex):
+    """A sprite read back out of the blob: where it sat, and its three planes."""
+
+    cover: U8Grid
+    top_cm: U16Grid
+    slot: U8Grid
+
+
+class CrownsBlock(TypedDict):
+    """The paint store's ``crowns`` block: every species, and what was skipped and counted."""
+
+    species: list[CrownSpecies]
+    skipped: dict[str, str]
+    instances: int
+    tilt_max_deg: float
+    top_texels: int
+    seconds: float
 
 
 class CrownSprite(TypedDict):
@@ -263,7 +282,7 @@ class _DepthRaster(MaxZRaster):
         self.tau = np.asarray(tau, np.float32)
         self.depth = np.zeros(width * height, np.float32)
 
-    def _on_fold(self, texels, sources) -> None:
+    def _on_fold(self, texels: I64Grid, sources: U16Grid) -> None:
         self.depth += np.bincount(
             texels, weights=self.tau[sources], minlength=self.depth.size
         ).astype(np.float32)
@@ -336,10 +355,10 @@ def encode_sprites(sprites: Sequence[CrownSprite]) -> tuple[bytes, list[SpriteIn
     return zlib.compress(b"".join(chunks), 6), index
 
 
-def decode_sprites(blob: bytes, index: Sequence[SpriteIndex]) -> list[dict]:
+def decode_sprites(blob: bytes, index: Sequence[SpriteIndex]) -> list[DecodedSprite]:
     """Each sprite back out of the blob: its index entry with its three planes added."""
     raw = zlib.decompress(blob)
-    out: list[dict] = []
+    out: list[DecodedSprite] = []
     for entry in index:
         h, w, at = entry["height"], entry["width"], entry["offset"]
         n = h * w
@@ -401,32 +420,21 @@ def leaf_mask(alphas: Sequence[F32Grid], shape: tuple[int, int]) -> F32Grid:
     return np.ones(shape, np.float32)
 
 
-def _parameter_chain(game: GameReader, path: str) -> list[Mapping[str, object]]:
+def _parameter_chain(game: GameReader, path: str) -> list[MaterialParameters]:
     """The material instance's parameters, then its parents', at most four deep."""
-    chain: list[Mapping[str, object]] = []
+    chain: list[MaterialParameters] = []
     view_path: str | None = path
     for _ in range(4):
         package = game.index.path_for(view_path) if view_path else None
         if not package:
             break
         try:
-            params: Mapping[str, object] = material_parameters(
-                PackageView(game.store.read_path(package), game.scripts)
-            )
+            params = material_parameters(PackageView(game.store.read_path(package), game.scripts))
         except Exception:  # an unreadable parent ends the chain
             break
         chain.append(params)
-        parent = params["parent"]
-        view_path = parent if isinstance(parent, str) else None
+        view_path = params["parent"]
     return chain
-
-
-def _named(params: Mapping[str, object], kind: str) -> dict[str, object]:
-    """One kind of a material's parameters (``scalar``, ``vector``, ``texture``) by name."""
-    found = params.get(kind)
-    if not isinstance(found, Mapping):
-        return {}
-    return {name: value for name, value in found.items() if isinstance(name, str)}
 
 
 def material_colour(game: GameReader, path: str, texture_rgba: TextureReader) -> MaterialColour:
@@ -440,7 +448,7 @@ def material_colour(game: GameReader, path: str, texture_rgba: TextureReader) ->
     entry: MaterialColour = {"kind": kind, "linear": None, "opacity": None}
     if entry["kind"] == "skip":
         return entry
-    textures = [_named(p, "texture") for p in chain]
+    textures = [p["texture"] for p in chain]
     param = next((n for t in textures for n in ALBEDO_PARAMS if n in t), None)
     if param is None:
         return entry
@@ -459,12 +467,7 @@ def material_colour(game: GameReader, path: str, texture_rgba: TextureReader) ->
     mask = leaf_mask(alphas, (rgba.shape[0], rgba.shape[1]))
     linear = srgb_unit_to_linear(rgba[..., :3])
     mean = (linear * mask[..., None]).sum((0, 1)) / max(float(mask.sum()), 1.0)
-    scalar = {
-        k: float(v)
-        for p in reversed(chain)
-        for k, v in _named(p, "scalar").items()
-        if isinstance(v, (int, float))
-    }
+    scalar = {k: v for p in reversed(chain) for k, v in p["scalar"].items()}
     mean = mean * scalar.get("Brightness", 1.0)
     lum = float(mean @ np.array([0.2126, 0.7152, 0.0722]))
     mean = np.clip(lum + (mean - lum) * scalar.get("Saturation", 1.0), 0.0, 1.0)

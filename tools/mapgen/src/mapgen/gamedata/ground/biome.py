@@ -14,7 +14,7 @@ from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.core.gameassets.imaging import ImageFactory
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND, MapAreaError, read_map_areas
-from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, require_object
 
 if TYPE_CHECKING:
     from PIL import Image
@@ -93,7 +93,24 @@ CALIBRATION_MARGIN = 1.15
 REGION_TABLE = ROOT / "data" / "region_names.json"
 
 
-def read_biome(store: IoStore, scripts: ScriptObjects) -> dict:
+class BiomeSquare(TypedDict):
+    """The map-area raster as a square of indices, which is all the pin is scored on."""
+
+    width: int
+    area: U8Grid
+
+
+class BiomeRaster(BiomeSquare):
+    """``read_biome``: the index square, the game's legend, and each index's area."""
+
+    palette: list[tuple[int, int, int, int]]
+    names: list[str | None]
+    assets_by_index: list[str | None]
+    assets: list[str]
+    distinct_areas: list[str]
+
+
+def read_biome(store: IoStore, scripts: ScriptObjects) -> BiomeRaster:
     """The map-area raster as a renderer wants it: a numpy square and a name per index.
 
     The decode, the shape checks and the index -> ``Area_*`` resolution are
@@ -113,7 +130,7 @@ def read_biome(store: IoStore, scripts: ScriptObjects) -> dict:
     return {
         "width": areas.width,
         "area": raster,
-        "palette": [tuple(entry) for entry in areas.palette],
+        "palette": list(areas.palette),
         "names": names,
         # The exact asset per index, beside the stem: the staleness check reads a name map
         # keyed by asset, and ``Area_crater_1`` and ``Area_crater_2`` are one stem.
@@ -174,7 +191,9 @@ def _edge_strength(sheet: Image.Image, image_mod: CalibrationImaging) -> F32Grid
     return np.hypot(gx, gy)
 
 
-def calibrate_biome(biome: dict, sheet: Image.Image, image_mod: CalibrationImaging) -> JsonObject:
+def calibrate_biome(
+    biome: BiomeSquare, sheet: Image.Image, image_mod: CalibrationImaging
+) -> JsonObject:
     """Score the pin by the artwork's own edges, and sweep for one that beats it.
 
     The statistic is the ratio of the sheet's mean edge strength ON the biome raster's area
@@ -245,7 +264,9 @@ def _region_table() -> RegionTable | None:
     """``data/region_names.json``, or ``None`` when it is not there."""
     if not REGION_TABLE.is_file():
         return None
-    return cast(RegionTable, json.loads(REGION_TABLE.read_text(encoding="utf-8")))
+    loaded: JsonValue = json.loads(REGION_TABLE.read_text(encoding="utf-8"))
+    # Written by tools/gen_region_names.py, which checks the shape before it writes.
+    return cast(RegionTable, require_object(loaded))
 
 
 def _cell_texels(
@@ -264,7 +285,7 @@ def _cell_texels(
     return slice(v[0], v[1]), slice(u[0], u[1])
 
 
-def region_table_is_current(biome: dict) -> JsonObject:
+def region_table_is_current(biome: BiomeRaster) -> JsonObject:
     """Is the committed 256 m region table still this raster's own majority downsample?
 
     ``data/region_names.json`` is derived from THIS asset by ``tools/gen_region_names.py``,

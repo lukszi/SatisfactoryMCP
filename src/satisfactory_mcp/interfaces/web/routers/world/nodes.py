@@ -5,13 +5,22 @@ What the join can and cannot say: docs/web-wire.md "Nodes". Handler names are op
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
-
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from .....domain.spatial import nodes as spatial_nodes
 from .....domain.spatial import regions as spatial_regions
-from ...serial import Region, error_response, node_identity, region_json, world_state, xyz_m
+from .....domain.spatial.nodes.extraction import Occupant
+from ...serial import (
+    Region,
+    cm_to_m,
+    error_response,
+    game_data,
+    node_identity,
+    region_json,
+    world_state,
+)
 
 __all__ = ["router"]
 
@@ -70,7 +79,7 @@ def nodes(
     resource: str | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> NodesResponse | JSONResponse:
     """The resource node table, joined to what this save has built on it; a save that will
     not load still gets the table, with ``save_error`` saying what the join lost."""
     try:
@@ -80,7 +89,7 @@ def nodes(
         return error_response(str(exc), 404)
 
     save_error: str | None = None
-    taken: dict = {}
+    taken: dict[str, Occupant] = {}
     unlocked: set[str] | None = None
     try:
         st = world_state(request, save, world)
@@ -89,7 +98,7 @@ def nodes(
     except Exception as exc:
         save_error = f"could not read save: {exc}"
 
-    game = request.app.state.game()
+    game = game_data(request)
     rows = table.by_resource(resource) if resource else table.nodes
     out: list[NodeRow] = []
     for node in rows:
@@ -101,7 +110,9 @@ def nodes(
                 **node_identity(node, game),
                 "kind": node["kind"],
                 "purity": node["purity"],
-                **xyz_m((node["x"], node["y"], node["z"])),
+                "x_m": cm_to_m(node["x"]),
+                "y_m": cm_to_m(node["y"]),
+                "z_m": cm_to_m(node["z"]),
                 "occupied": held is not None,
                 "occupant_cls": occupant,
                 "occupant_name": game.building_name(occupant),

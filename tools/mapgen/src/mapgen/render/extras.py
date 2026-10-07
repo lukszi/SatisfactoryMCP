@@ -9,9 +9,6 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
-
-import numpy as np
 
 from mapgen.cache import (
     CACHE_DIR_NAMES,
@@ -21,15 +18,15 @@ from mapgen.cache import (
     MeshPlanes,
     TitanPlanes,
 )
-from mapgen.common import Refusal
 from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.water.falls import FALLS_CACHE_DIR_NAME
 from mapgen.palette.water.falls import load_falls
 from mapgen.palette.water.rivers import RiverWater, load_rivers
-from mapgen.render.cached_rasters import UNREADABLE_RASTER, LevelSweep
+from mapgen.render.cached_rasters import LevelSweep
 from mapgen.render.kept_light import KEPT_LIGHT_DIR_NAME
 from mapgen.terrain.render_meshes import mesh_items, mesh_pass, titan_items
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.arrays import F64Grid
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, to_json_object
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = ["RUN_CACHE_DIRS", "RenderExtras", "load_extras", "remove_run_caches"]
@@ -43,13 +40,13 @@ class RenderExtras:
     """The extras a run draws, each with the block its sidecar records, and their readers."""
 
     meshes: MeshPlanes | None = None
-    falls: np.ndarray | None = None
+    falls: F64Grid | None = None
     titan: TitanPlanes | None = None
     rivers: RiverWater | None = None
-    mesh_source: JsonObject = field(default_factory=dict)
-    titan_source: JsonObject = field(default_factory=dict)
-    river_meta: JsonObject = field(default_factory=dict)
-    readers: list[str] = field(default_factory=list)
+    mesh_source: JsonObject = field(default_factory=dict[str, JsonValue])
+    titan_source: JsonObject = field(default_factory=dict[str, JsonValue])
+    river_meta: JsonObject = field(default_factory=dict[str, JsonValue])
+    readers: list[str] = field(default_factory=list[str])
 
 
 def load_extras(
@@ -69,8 +66,7 @@ def load_extras(
     out = RenderExtras()
 
     def swept_levels() -> Sweep:
-        # sweep_world returns the sweep's dict in Sweep's shape (gamedata.level.sweep).
-        return cast(Sweep, level.sweep)
+        return level.sweep
 
     if meshes:
         maps, mesh_source = mesh_pass(
@@ -78,8 +74,8 @@ def load_extras(
             lambda: mesh_items(store, scripts, level.index, level.sweep), "render-only meshes",
             quiet,
         )  # fmt: skip
-        out.meshes = None if maps is None else MeshPlanes(*maps)
-        out.mesh_source = cast(JsonObject, {**mesh_source})
+        out.meshes = MeshPlanes(*maps)
+        out.mesh_source = to_json_object(mesh_source)
         out.falls, falls_source = load_falls(cache_root, build, swept_levels, heightfield)
         out.mesh_source.update(falls_source)
         out.readers += ["render_meshes", "waterfalls"]
@@ -89,11 +85,8 @@ def load_extras(
             titan_cache, size // TITAN_FACTOR, build, "titan_trees",
             lambda: titan_items(store, scripts, level.index, level.sweep), "Titan trees", quiet,
         )  # fmt: skip
-        if maps is None:
-            message = f"the Titan trees raster in {titan_cache} could not be read back"
-            raise Refusal(UNREADABLE_RASTER, message + " after writing it")
         out.titan = TitanPlanes(maps[0], maps[1], TITAN_FACTOR, 0, 0)
-        out.titan_source = cast(JsonObject, {**titan_source})
+        out.titan_source = to_json_object(titan_source)
     if rivers:
         out.rivers, out.river_meta = load_rivers(cache_root, build, swept_levels, heightfield)
         out.readers.append("river_splines")

@@ -2011,11 +2011,6 @@ export interface components {
             /** Hidden */
             hidden: components["schemas"]["AdviceRow"][];
         };
-        /** AdviceRestoreBody */
-        AdviceRestoreBody: {
-            /** Rev */
-            rev: number;
-        };
         /** AdviceRestored */
         AdviceRestored: {
             /** Ok */
@@ -2179,13 +2174,6 @@ export interface components {
             /** Version */
             version: number;
         };
-        /** Amount */
-        Amount: {
-            /** Name */
-            name: string;
-            /** Count */
-            count: number;
-        };
         /**
          * AskAbout
          * @description What an ask is about: ``kind`` is plan, process, stage, item or pin; ``plan`` a plan key.
@@ -2207,18 +2195,6 @@ export interface components {
             /** Text */
             text: string;
             about: components["schemas"]["AskAbout"];
-        };
-        /** AskDropBody */
-        AskDropBody: {
-            /** Rev */
-            rev: number;
-        };
-        /** AskDropped */
-        AskDropped: {
-            /** Ok */
-            ok: boolean;
-            /** N */
-            n: number;
         };
         /**
          * AskRow
@@ -2294,13 +2270,6 @@ export interface components {
             unmonitored_made: number;
             /** Unmonitored Used */
             unmonitored_used: number;
-        };
-        /** AspectCount */
-        AspectCount: {
-            /** Name */
-            name: string;
-            /** Count */
-            count: number;
         };
         /**
          * AspectIssue
@@ -2516,7 +2485,7 @@ export interface components {
             /** Buffers */
             buffers: number;
             /** Buildings */
-            buildings: components["schemas"]["Amount"][];
+            buildings: components["schemas"]["NameCount"][];
             /** Region */
             region: string | null;
             /** Centroid M */
@@ -2638,7 +2607,7 @@ export interface components {
             index: number;
             ledger: components["schemas"]["Ledger"];
             /** Generators */
-            generators: components["schemas"]["GeneratorGroup"][];
+            generators: components["schemas"]["GeneratorTotal"][];
             /** Starved */
             starved: components["schemas"]["StarvedGenerator"][];
             /** Unmodellable */
@@ -2674,7 +2643,7 @@ export interface components {
             /** Paused */
             paused: number;
             /** Generators */
-            generators: components["schemas"]["GeneratorGroup"][];
+            generators: components["schemas"]["GeneratorTotal"][];
             /** Starved */
             starved: components["schemas"]["StarvedGenerator"][];
             /** Unmodellable */
@@ -2798,6 +2767,18 @@ export interface components {
             text: string;
         };
         /**
+         * CommitRefBody
+         * @description A push that names one earlier commit ``rev``: to undo it, or to restore the plan to it.
+         */
+        CommitRefBody: {
+            /** Base Rev */
+            base_rev: number;
+            /** Rev */
+            rev: number;
+            /** Sav */
+            sav?: string;
+        };
+        /**
          * ConduitCount
          * @description Runs passing within ``radius_m`` of the point, lifts counted as belts.
          */
@@ -2865,18 +2846,6 @@ export interface components {
             text: string;
         };
         /**
-         * CrateItem
-         * @description One kind of thing in a crate, resolved to a display name by the server.
-         */
-        CrateItem: {
-            /** Cls */
-            cls: string;
-            /** Name */
-            name: string;
-            /** Count */
-            count: number;
-        };
-        /**
          * CrateRow
          * @description One crate: what kind it is, where it is, and what is inside it.
          *
@@ -2903,7 +2872,7 @@ export interface components {
             /** Yaw */
             yaw: number | null;
             /** Items */
-            items: components["schemas"]["CrateItem"][];
+            items: components["schemas"]["StoredItem"][];
             /** More */
             more: number;
             /** Item Kinds */
@@ -3007,6 +2976,16 @@ export interface components {
             /** Options */
             options: components["schemas"]["DriveOption"][];
         };
+        /**
+         * Dropped
+         * @description A delete that landed: ``n`` is the number it freed, never given out again.
+         */
+        Dropped: {
+            /** Ok */
+            ok: boolean;
+            /** N */
+            n: number;
+        };
         /** DuplicateBody */
         DuplicateBody: {
             /** Rev */
@@ -3107,9 +3086,9 @@ export interface components {
             /** Machines */
             machines: components["schemas"]["AspectMachine"][];
             /** Recipes */
-            recipes: components["schemas"]["AspectCount"][];
+            recipes: components["schemas"]["NameCount"][];
             /** Buildings */
-            buildings: components["schemas"]["AspectCount"][];
+            buildings: components["schemas"]["NameCount"][];
             /** Nodes */
             nodes: components["schemas"]["AspectNode"][];
             /** Links */
@@ -3128,7 +3107,7 @@ export interface components {
             /** Nodes */
             nodes: components["schemas"]["GraphNode"][];
             /** Edges */
-            edges: components["schemas"]["GraphEdge"][];
+            edges: components["schemas"]["FlowEdge"][];
         };
         /**
          * FactoryHealthResponse
@@ -3473,6 +3452,22 @@ export interface components {
             /** To */
             to: string[];
         };
+        /**
+         * FlowEdge
+         * @description Group to group, ``in:<item>`` for supply from outside the set, or a terminal
+         *     (``storage``, ``export``, ``sink``, ``nowhere``). ``per_min`` is null where an output
+         *     reaches a terminal with no surplus to apportion.
+         */
+        FlowEdge: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number | null;
+        };
         /** FocusBody */
         FocusBody: {
             /** View */
@@ -3610,18 +3605,9 @@ export interface components {
             /** Spoiler */
             spoiler: boolean;
         };
-        /** GeneratorGroup */
-        GeneratorGroup: {
-            /** Name */
-            name: string;
-            /** Count */
-            count: number;
-            /** Mw */
-            mw: number;
-        };
         /**
          * GeneratorTotal
-         * @description One generator class, counted and summed. A value of ``PowerSummary.by_generator``.
+         * @description One generator class, counted and summed: a value of ``PowerReport.by_generator``.
          */
         GeneratorTotal: {
             /** Name */
@@ -3641,20 +3627,6 @@ export interface components {
             machine: string | null;
             /** Products */
             products: components["schemas"]["ItemAmount"][];
-        };
-        /**
-         * GraphEdge
-         * @description ``per_min`` is null where an output reaches a terminal with no surplus to apportion.
-         */
-        GraphEdge: {
-            /** Source */
-            source: string;
-            /** Target */
-            target: string;
-            /** Item */
-            item: string;
-            /** Per Min */
-            per_min: number | null;
         };
         /**
          * GraphNode
@@ -3818,6 +3790,13 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** ItemRate */
+        ItemRate: {
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number;
+        };
         /** ItemRow */
         ItemRow: {
             /** Cls */
@@ -3838,6 +3817,9 @@ export interface components {
             /** Items */
             items: components["schemas"]["ItemRow"][];
         };
+        JsonValue: string | number | boolean | components["schemas"]["JsonValue"][] | {
+            [key: string]: components["schemas"]["JsonValue"];
+        } | null;
         /**
          * LabelErrorResponse
          * @description A label write refused before it reached the store: a bad name (400) or a save, proposal
@@ -4419,6 +4401,13 @@ export interface components {
             /** Milestones */
             milestones: components["schemas"]["MilestoneRow"][];
         };
+        /** NameCount */
+        NameCount: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+        };
         /** NameTakenResponse */
         NameTakenResponse: {
             /** Error */
@@ -4880,18 +4869,6 @@ export interface components {
             /** Existing */
             existing: boolean;
         };
-        /** PinDropBody */
-        PinDropBody: {
-            /** Rev */
-            rev: number;
-        };
-        /** PinDropped */
-        PinDropped: {
-            /** Ok */
-            ok: boolean;
-            /** N */
-            n: number;
-        };
         /**
          * PinRef
          * @description What a pin points at. ``resource`` and ``nodes`` are filled by the server for a field.
@@ -5039,15 +5016,6 @@ export interface components {
             networks: number;
             /** Directed */
             directed: number;
-        };
-        /** PlaceItem */
-        PlaceItem: {
-            /** Item */
-            item: string;
-            /** Name */
-            name: string;
-            /** Amount */
-            amount: number;
         };
         /**
          * PlaceRow
@@ -5329,16 +5297,13 @@ export interface components {
             op?: string;
             /** Field */
             field?: string;
-            /** Value */
-            value?: unknown;
+            value?: components["schemas"]["JsonValue"];
             /** Item */
             item?: string;
-            /** Member */
-            member?: unknown;
+            member?: components["schemas"]["JsonValue"];
             /** Name */
             name?: string;
-            /** Was */
-            was?: unknown;
+            was?: components["schemas"]["JsonValue"];
         };
         /** PlanOpsResponse */
         PlanOpsResponse: {
@@ -5488,6 +5453,63 @@ export interface components {
             connections: number;
         };
         /**
+         * PowerReport
+         * @description Generation capacity, draw both nameplate and measured, and what each leaves out.
+         *
+         *     Declaration order is the order ``PowerLedger.power_report`` returns them in; what each
+         *     figure can claim is save-projection §6.1a. ``utilisation`` is never null: it is
+         *     ``measured / draw``, and ``1.0`` when nothing draws at all -- a factory with nothing built
+         *     is fully utilised in the only sense the ratio has.
+         */
+        PowerReport: {
+            /** Generation Mw */
+            generation_mw: number;
+            /** Draw Mw */
+            draw_mw: number;
+            /** Headroom Mw */
+            headroom_mw: number;
+            /** Measured Draw Mw */
+            measured_draw_mw: number;
+            /** Measured Headroom Mw */
+            measured_headroom_mw: number;
+            /** Monitored */
+            monitored: number;
+            /** Unmonitored */
+            unmonitored: number;
+            /** Paused Consumers */
+            paused_consumers: number;
+            /** Utilisation */
+            utilisation: number;
+            /** By Generator */
+            by_generator: {
+                [key: string]: components["schemas"]["GeneratorTotal"];
+            };
+            /** Unmodellable */
+            unmodellable: string[];
+            /** Paused Count */
+            paused_count: number;
+            /** Starved Generators */
+            starved_generators: components["schemas"]["StarvedEntry"][];
+            /** Starved Generation Mw */
+            starved_generation_mw: number;
+            /** Unwired Generators */
+            unwired_generators: number;
+            /** Unwired Generation Mw */
+            unwired_generation_mw: number;
+            /** Unwired Consumers */
+            unwired_consumers: number;
+            /** Unwired Draw Mw */
+            unwired_draw_mw: number;
+            /** Unwired Paused */
+            unwired_paused: number;
+            /** Biomass Counted */
+            biomass_counted: boolean;
+            /** Biomass Generators */
+            biomass_generators: number;
+            /** Biomass Mw */
+            biomass_mw: number;
+        };
+        /**
          * PowerResponse
          * @description The two lists and the three counts.
          *
@@ -5520,49 +5542,8 @@ export interface components {
             price: number;
         };
         /**
-         * PowerSummary
-         * @description The scalar fields of ``WorldState.power_report()`` the page can use.
-         *
-         *     Declaration order is the order ``domain/power/report.py`` returns them in. The domain
-         *     also returns the starved-generator list, which rule 3 drops here: it is a text-surface
-         *     answer and the page has no place for it.
-         *
-         *     ``utilisation`` is never null: it is ``measured / draw``, and ``1.0`` when nothing draws
-         *     at all -- a factory with nothing built is fully utilised in the only sense the ratio has.
-         */
-        PowerSummary: {
-            /** Generation Mw */
-            generation_mw: number;
-            /** Draw Mw */
-            draw_mw: number;
-            /** Headroom Mw */
-            headroom_mw: number;
-            /** Measured Draw Mw */
-            measured_draw_mw: number;
-            /** Measured Headroom Mw */
-            measured_headroom_mw: number;
-            /** Monitored */
-            monitored: number;
-            /** Unmonitored */
-            unmonitored: number;
-            /** Utilisation */
-            utilisation: number;
-            /** By Generator */
-            by_generator: {
-                [key: string]: components["schemas"]["GeneratorTotal"];
-            };
-            /** Unmodellable */
-            unmodellable: string[];
-            /** Paused Count */
-            paused_count: number;
-            /** Biomass Generators */
-            biomass_generators: number;
-            /** Biomass Mw */
-            biomass_mw: number;
-        };
-        /**
          * ProgressionSummary
-         * @description ``WorldState.progression()`` verbatim, on the same terms as ``PowerSummary``.
+         * @description ``WorldState.progression()`` verbatim, on the same terms as ``PowerReport``.
          *
          *     ``game_phase`` and ``target_phase`` are ``null`` on the pre-1.0 saves that carry no
          *     phase at all; ``highest_complete_tier`` is ``null`` when not one tier is finished, which
@@ -5976,15 +5957,6 @@ export interface components {
             /** Nodes */
             nodes: number;
         };
-        /** RestoreBody */
-        RestoreBody: {
-            /** Base Rev */
-            base_rev: number;
-            /** Rev */
-            rev: number;
-            /** Sav */
-            sav?: string;
-        };
         /**
          * ResultDelta
          * @description Two solves compared. ``comparable`` is false when either side is not solvable.
@@ -6006,6 +5978,14 @@ export interface components {
             rows: components["schemas"]["RowChange"][];
             /** Text */
             text: string;
+        };
+        /**
+         * RevBody
+         * @description A write that names the ``rev`` it read, and nothing else.
+         */
+        RevBody: {
+            /** Rev */
+            rev: number;
         };
         /**
          * RowChange
@@ -6088,6 +6068,38 @@ export interface components {
                 number,
                 number
             ][][];
+        };
+        /**
+         * SaveHeader
+         * @description The save header the sidecar reads, and the file's own path, size and write time.
+         */
+        SaveHeader: {
+            /** Path */
+            path: string;
+            /** Filename */
+            filename: string;
+            /** Session Name */
+            session_name: string;
+            /** Save Identifier */
+            save_identifier: string;
+            /** Save Header Version */
+            save_header_version: number;
+            /** Save Version */
+            save_version: number;
+            /** Build Version */
+            build_version: number;
+            /** Play Duration S */
+            play_duration_s: number;
+            /** Save Datetime Ticks */
+            save_datetime_ticks: number;
+            /** Is Modded */
+            is_modded: boolean;
+            /** Is Creative */
+            is_creative: boolean;
+            /** Mtime Ns */
+            mtime_ns: number;
+            /** Size */
+            size: number;
         };
         /**
          * SaveRow
@@ -6435,7 +6447,7 @@ export interface components {
             /** Selector */
             selector: string;
             /** Buildings */
-            buildings: components["schemas"]["AspectCount"][];
+            buildings: components["schemas"]["NameCount"][];
             /** Mine */
             mine: number;
         };
@@ -6598,13 +6610,6 @@ export interface components {
             /** Rev */
             rev?: number | null;
         };
-        /** SolveRate */
-        SolveRate: {
-            /** Item */
-            item: string;
-            /** Per Min */
-            per_min: number;
-        };
         /**
          * SolveResponse
          * @description A solve's facts. Infeasible is a 200 with ``feasible: false`` and a player ``cause``.
@@ -6635,9 +6640,9 @@ export interface components {
             /** Grid Import */
             grid_import: boolean;
             /** Exports */
-            exports: components["schemas"]["SolveRate"][];
+            exports: components["schemas"]["ItemRate"][];
             /** Inputs */
-            inputs: components["schemas"]["SolveRate"][];
+            inputs: components["schemas"]["ItemRate"][];
             /** Rows */
             rows: components["schemas"]["SolveRow"][];
             graph: components["schemas"]["PlanGraph"];
@@ -6682,11 +6687,25 @@ export interface components {
             /** Mw */
             mw: number;
             /** Inputs */
-            inputs: components["schemas"]["SolveRate"][];
+            inputs: components["schemas"]["ItemRate"][];
             /** Outputs */
-            outputs: components["schemas"]["SolveRate"][];
+            outputs: components["schemas"]["ItemRate"][];
             /** Required */
             required: boolean;
+        };
+        /**
+         * StarvedEntry
+         * @description A generator out of an input it burns, and idle for it; ``missing`` names the inputs.
+         */
+        StarvedEntry: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string;
+            /** Mw */
+            mw: number;
+            /** Missing */
+            missing: string[];
         };
         /**
          * StarvedGenerator
@@ -6779,7 +6798,7 @@ export interface components {
             /** Distance M */
             distance_m: number | null;
             /** Items */
-            items: components["schemas"]["PlaceItem"][];
+            items: components["schemas"]["ItemAmount"][];
             /** Total */
             total: number;
             /** Slots */
@@ -6795,15 +6814,6 @@ export interface components {
             /** Crate Kind Text */
             crate_kind_text: string | null;
         };
-        /** StockPlayer */
-        StockPlayer: {
-            /** X M */
-            x_m: number | null;
-            /** Y M */
-            y_m: number | null;
-            /** Z M */
-            z_m: number | null;
-        };
         /** StockResponse */
         StockResponse: {
             /** Items */
@@ -6811,7 +6821,7 @@ export interface components {
             /** Places */
             places: components["schemas"]["StockPlace"][];
             census: components["schemas"]["StockCensus"];
-            player: components["schemas"]["StockPlayer"];
+            player: components["schemas"]["PlayerPosition"];
         };
         /**
          * StorageFluid
@@ -6918,7 +6928,7 @@ export interface components {
         };
         /**
          * StoredItem
-         * @description One kind of thing in a container, resolved to a display name by the server.
+         * @description One kind of thing in a container or a crate, resolved to a display name.
          */
         StoredItem: {
             /** Cls */
@@ -6964,22 +6974,18 @@ export interface components {
          * SummaryResponse
          * @description What ``/api/summary`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
          *
-         *     ``header`` is the save header the sidecar read, forwarded whole and typed as the open map
-         *     it is: the key set is the SIDECAR's contract, and spelling it out here would delete any
-         *     fourteenth key the parser learns to read. ``power`` and ``progression`` are the opposite
-         *     case and are spelled out in full, because each is a literal ``return {...}`` in the
-         *     domain with a fixed key set.
+         *     ``header`` is the save header the sidecar read, whole: its key set is the sidecar's
+         *     contract, ``SaveHeader`` in ``core/saveio/schema.py``, so a key the parser learns to read
+         *     is added there and reaches this reply. ``power`` and ``progression`` are the domain's
+         *     answers verbatim.
          */
         SummaryResponse: {
-            /** Header */
-            header: {
-                [key: string]: unknown;
-            };
+            header: components["schemas"]["SaveHeader"];
             /** Save Token */
             save_token: string;
             /** Age Note */
             age_note: string;
-            power: components["schemas"]["PowerSummary"];
+            power: components["schemas"]["PowerReport"];
             progression: components["schemas"]["ProgressionSummary"];
             player: components["schemas"]["PlayerPosition"];
         };
@@ -7062,21 +7068,6 @@ export interface components {
             /** Spoiler */
             spoiler: boolean;
         };
-        /**
-         * TraceEdge
-         * @description Group to group, ``in:<item>`` for supply from outside the traced set, or a terminal
-         *     (``storage``, ``export``, ``sink``, ``nowhere``). ``per_min`` null: nothing to share.
-         */
-        TraceEdge: {
-            /** Source */
-            source: string;
-            /** Target */
-            target: string;
-            /** Item */
-            item: string;
-            /** Per Min */
-            per_min: number | null;
-        };
         /** TraceGroup */
         TraceGroup: {
             /** Id */
@@ -7094,7 +7085,7 @@ export interface components {
             /** Stopped */
             stopped: number;
             /** Makes */
-            makes: components["schemas"]["TraceRate"][];
+            makes: components["schemas"]["ItemRate"][];
         };
         /**
          * TraceMachine
@@ -7116,9 +7107,9 @@ export interface components {
             /** Recipe */
             recipe: string | null;
             /** Makes */
-            makes: components["schemas"]["TraceRate"][];
+            makes: components["schemas"]["ItemRate"][];
             /** Uses */
-            uses: components["schemas"]["TraceRate"][];
+            uses: components["schemas"]["ItemRate"][];
             /** State */
             state: string;
             /** Actionable */
@@ -7127,13 +7118,6 @@ export interface components {
             x_m: number | null;
             /** Y M */
             y_m: number | null;
-        };
-        /** TraceRate */
-        TraceRate: {
-            /** Item */
-            item: string;
-            /** Per Min */
-            per_min: number;
         };
         /**
          * TraceResponse
@@ -7169,7 +7153,7 @@ export interface components {
                 number
             ] | null;
             /** Items */
-            items: components["schemas"]["TraceRate"][];
+            items: components["schemas"]["ItemRate"][];
             /** Machines */
             machines: components["schemas"]["TraceMachine"][];
             /** Runs */
@@ -7177,7 +7161,7 @@ export interface components {
             /** Groups */
             groups: components["schemas"]["TraceGroup"][];
             /** Edges */
-            edges: components["schemas"]["TraceEdge"][];
+            edges: components["schemas"]["FlowEdge"][];
         };
         /**
          * TraceRun
@@ -7428,7 +7412,7 @@ export interface components {
             /** Running */
             running: number | null;
             /** States */
-            states: components["schemas"]["TrackState"][];
+            states: components["schemas"]["StateCount"][];
             /** New Building */
             new_building: boolean;
             /** Note */
@@ -7498,7 +7482,7 @@ export interface components {
             /** Waits For Fill */
             waits_for_fill: boolean;
             /** States */
-            states: components["schemas"]["TrackState"][];
+            states: components["schemas"]["StateCount"][];
             /** Rows */
             rows: components["schemas"]["TrackStageRow"][];
             /** Bbox M */
@@ -7523,7 +7507,7 @@ export interface components {
             /** Running */
             running: number | null;
             /** States */
-            states: components["schemas"]["TrackState"][];
+            states: components["schemas"]["StateCount"][];
             /** Draw Mw */
             draw_mw: number;
             /** Generation Mw */
@@ -7548,13 +7532,6 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
-        /** TrackState */
-        TrackState: {
-            /** State */
-            state: string;
-            /** Count */
-            count: number;
-        };
         /** TrackTarget */
         TrackTarget: {
             /** Node */
@@ -7565,15 +7542,6 @@ export interface components {
             y_m: number | null;
             /** M */
             m: number | null;
-        };
-        /** UndoBody */
-        UndoBody: {
-            /** Base Rev */
-            base_rev: number;
-            /** Rev */
-            rev: number;
-            /** Sav */
-            sav?: string;
         };
         /**
          * UnlockedResponse
@@ -9514,7 +9482,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UndoBody"];
+                "application/json": components["schemas"]["CommitRefBody"];
             };
         };
         responses: {
@@ -9561,7 +9529,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RestoreBody"];
+                "application/json": components["schemas"]["CommitRefBody"];
             };
         };
         responses: {
@@ -10288,7 +10256,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PinDropBody"];
+                "application/json": components["schemas"]["RevBody"];
             };
         };
         responses: {
@@ -10298,7 +10266,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PinDropped"];
+                    "application/json": components["schemas"]["Dropped"];
                 };
             };
             /** @description Conflict */
@@ -10450,7 +10418,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AskDropBody"];
+                "application/json": components["schemas"]["RevBody"];
             };
         };
         responses: {
@@ -10460,7 +10428,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AskDropped"];
+                    "application/json": components["schemas"]["Dropped"];
                 };
             };
             /** @description Conflict */
@@ -10821,7 +10789,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AdviceRestoreBody"];
+                "application/json": components["schemas"]["RevBody"];
             };
         };
         responses: {

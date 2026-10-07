@@ -350,7 +350,7 @@ def _settle_rivers(
     places = ndimage.find_objects(labels)
     given_back = 0
     for found in found_in:
-        window = places[found - 1]
+        window = places[int(found) - 1]
         part = labels[window] == found
         body = level_bodies(part, level_m[window])
         cls, order = plane[window], rank[window]

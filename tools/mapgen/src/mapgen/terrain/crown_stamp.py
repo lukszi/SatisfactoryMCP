@@ -9,9 +9,9 @@ reference (docs/map/renders.md section 41).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Container, Sequence
 from pathlib import Path
-from typing import NamedTuple, NotRequired, TypedDict
+from typing import NamedTuple, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
@@ -22,7 +22,9 @@ from mapgen.gamedata.vegetation.crown_sprites import (
     MATERIAL_NONE,
     SPRITE_M,
     SPRITES_NAME,
+    CrownsBlock,
     CrownSpecies,
+    DecodedSprite,
     decode_records,
     decode_sprites,
 )
@@ -35,6 +37,7 @@ __all__ = [
     "DOME_SIGMA_M",
     "CrownBand",
     "CrownSet",
+    "LitCrowns",
     "MipAtlas",
     "load_crowns",
     "meshed_species",
@@ -54,14 +57,18 @@ _FALLBACK_RGB = (0.05, 0.08, 0.03)
 
 
 class CrownBand(TypedDict):
-    """The crowns stamped over a band: cover, linear colour, dome and top; the painter adds
-    the dome's sun."""
+    """The crowns stamped over a band: cover, linear colour, dome and top."""
 
     cover: F32Grid
     rgb: F32Grid
     dome_m: F32Grid
     top_cm: F32Grid
-    ndl: NotRequired[F32Grid]
+
+
+class LitCrowns(CrownBand):
+    """A band's crowns with their domes lit: ``ndl`` is the dome's sun term."""
+
+    ndl: F32Grid
 
 
 class MipAtlas(NamedTuple):
@@ -120,13 +127,15 @@ class CrownSet:
         return held[1]
 
 
-def sprite_levels(sprite: dict, colours: Sequence[Sequence[float] | None]) -> list[F32Grid]:
+def sprite_levels(
+    sprite: DecodedSprite, colours: Sequence[Sequence[float] | None]
+) -> list[F32Grid]:
     """One species' mips: level 0 at ``SPRITE_M``, each next one twice as coarse."""
     cover = sprite["cover"].astype(np.float32) / 255.0
     slot = sprite["slot"]
     rgb = np.zeros((*cover.shape, 3), np.float32)
     fallback = np.array(next((c for c in colours if c is not None), _FALLBACK_RGB))
-    for k in np.unique(slot):
+    for k in map(int, np.unique(slot)):
         if k == MATERIAL_NONE:
             continue
         colour = colours[k] if k < len(colours) and colours[k] is not None else fallback
@@ -150,19 +159,22 @@ def meshed_species(species: list[CrownSpecies]) -> BoolMask:
     return np.array([is_render_only_foliage(e.get("mesh", "")) for e in species], bool)
 
 
-def load_crowns(paint_dir: Path, meta: dict) -> CrownSet | None:
+def load_crowns(
+    paint_dir: Path, block: CrownsBlock | None, files: Container[str]
+) -> CrownSet | None:
     """The crowns of a paint store, or ``None`` for a store written before they existed.
 
-    The trees of a ``meshed_species`` are left out: their mesh is drawn, lit by its own top.
+    ``block`` and ``files`` are the store's ``crowns`` block and its file names. The trees
+    of a ``meshed_species`` are left out: their mesh is drawn, lit by its own top.
     """
-    block = meta.get("crowns")
-    if not block or CROWNS_NAME not in meta.get("files", {}):
+    if not block or CROWNS_NAME not in files:
         return None
     records = decode_records((paint_dir / CROWNS_NAME).read_bytes())
     species = block["species"]
     records = records[~meshed_species(species)[records["species"]]]
     sprites = decode_sprites(
-        (paint_dir / SPRITES_NAME).read_bytes(), [entry["sprite"] for entry in species]
+        (paint_dir / SPRITES_NAME).read_bytes(),
+        [entry["sprite"] for entry in species if "sprite" in entry],
     )
     levels: list[list[F32Grid]] = []
     origins: list[tuple[float, float]] = []
@@ -260,7 +272,8 @@ def _stamp(crowns: CrownSet, i: int, centres: tuple[F64Grid, F64Grid], step_cm: 
     if c0 >= c1 or r0 >= r1:
         return
     texel_cm = SPRITE_M * 100.0 * scale
-    mip_level = int(np.clip(np.round(np.log2(max(step_cm / texel_cm, 1.0))), 0, len(levels) - 1))
+    log_ratio = float(np.log2(max(step_cm / texel_cm, 1.0)))
+    mip_level = int(np.clip(np.round(log_ratio), 0, len(levels) - 1))
     level = levels[mip_level]
     texel = np.float32(texel_cm * (1 << mip_level))
     ox, oy = crowns.origins[species]

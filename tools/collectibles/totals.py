@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import collections
 
+from satisfactory_mcp.core.collectible_rows import MapPlacement
+from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.catalog import (
     CATEGORIES,
     CATEGORY_NOTES,
@@ -14,7 +16,7 @@ from tools.collectibles.catalog import (
     PLACEMENT_ID_MARK,
 )
 from tools.collectibles.context import BuildContext
-from tools.collectibles.stats import by_count
+from tools.collectibles.stats import by_count, ranked
 
 
 def measure_per_category(ctx: BuildContext) -> None:
@@ -24,10 +26,10 @@ def measure_per_category(ctx: BuildContext) -> None:
     }
 
 
-def _category_entry(ctx: BuildContext, category: str) -> dict:
+def _category_entry(ctx: BuildContext, category: str) -> JsonObject:
     mine = [r for r in ctx.rows if r["category"] == category]
     placements = [p for p in ctx.row_placements if CATEGORIES[p.cls] == category]
-    entry = {
+    entry: JsonObject = {
         "placed": len(mine),
         "collected": sum(1 for r in mine if r["state"] == "collected"),
         "present": sum(1 for r in mine if r["state"] == "present"),
@@ -55,28 +57,28 @@ def _category_entry(ctx: BuildContext, category: str) -> dict:
     return entry
 
 
-def _drop_pod_tally(pods: list[dict]) -> dict:
+def _drop_pod_tally(pods: list[MapPlacement]) -> JsonObject:
+    costs = [r["unlock_cost"] for r in pods if "unlock_cost" in r]
     return {
         "present_and_looted": sum(1 for r in pods if r.get("looted")),
-        "unlock_cost_serialised": sum(1 for r in pods if "unlock_cost" in r),
-        "unlock_cost_with_an_item": sum(1 for r in pods if r.get("unlock_cost", {}).get("amount")),
-        "unlock_cost_with_a_power_figure": sum(
-            1 for r in pods if r.get("unlock_cost", {}).get("power_mw")
-        ),
-        "unlock_cost_type_unserialised": sum(
-            1 for r in pods if "unlock_cost" in r and r["unlock_cost"]["cost_type"] is None
-        ),
+        "unlock_cost_serialised": len(costs),
+        "unlock_cost_with_an_item": sum(1 for cost in costs if cost.get("amount")),
+        "unlock_cost_with_a_power_figure": sum(1 for cost in costs if cost.get("power_mw")),
+        "unlock_cost_type_unserialised": sum(1 for cost in costs if cost["cost_type"] is None),
     }
 
 
-def _loot_cache_tally(caches: list[dict]) -> dict:
-    items: collections.Counter = collections.Counter()
+def _loot_cache_tally(caches: list[MapPlacement]) -> JsonObject:
+    items: collections.Counter[str] = collections.Counter()
     total = 0
     for row in caches:
-        contents = row.get("contents") or {}
-        if contents.get("item"):
-            items[contents["item"]] += contents.get("count") or 0
-            total += contents.get("count") or 0
+        contents = row.get("contents")
+        if contents is None:
+            continue
+        item, count = contents["item"], contents["count"] or 0
+        if item:
+            items[item] += count
+            total += count
     return {
         "contents_read": sum(1 for r in caches if r.get("contents")),
         "distinct_item_types": len(items),
@@ -87,36 +89,34 @@ def _loot_cache_tally(caches: list[dict]) -> dict:
 
 def measure_accounting(ctx: BuildContext) -> None:
     """Bucket every class the map places that is not a row: excluded, or not classified."""
-    excluded = {
-        cls: {"placed_by_the_map": ctx.world.class_counts.get(cls, 0), "why": why}
-        for cls, why in EXCLUDED.items()
-    }
+    excluded = {cls: (ctx.world.class_counts.get(cls, 0), why) for cls, why in EXCLUDED.items()}
     # Matched rather than listed, so a new numbered pillar is excluded with its count.
     for cls, count in ctx.world.class_counts.items():
         if GAS_PILLAR.match(cls):
-            excluded[cls] = {
-                "placed_by_the_map": count,
-                "why": (
+            excluded[cls] = (
+                count,
+                (
                     "part of a gas field, and scenery rather than a pickup. Its position "
                     "feeds hazard.nearest_gas_cm; it declares no radius of its own, so no "
                     "containment test is derived from it."
                 ),
-            }
+            )
     # From the excluded dict, not EXCLUDED: the pillars join it by pattern above, and a class
     # must land in exactly one bucket.
-    ctx.unclassified = by_count(
-        collections.Counter(
-            {
-                cls: count
-                for cls, count in ctx.world.class_counts.items()
-                if cls not in CATEGORIES and cls not in excluded
-            }
-        )
+    ctx.unclassified = collections.Counter(
+        {
+            cls: count
+            for cls, count in ctx.world.class_counts.items()
+            if cls not in CATEGORIES and cls not in excluded
+        }
     )
-    ctx.excluded = excluded
+    ctx.excluded = {
+        cls: {"placed_by_the_map": placed, "why": why} for cls, (placed, why) in excluded.items()
+    }
+    ctx.excluded_placements = sum(placed for placed, _why in excluded.values())
 
 
-def totals_meta(ctx: BuildContext) -> dict:
+def totals_meta(ctx: BuildContext) -> JsonObject:
     """``_meta.totals``: the per-category table and the pedestal pairing."""
     return {
         "denominator": (
@@ -146,10 +146,10 @@ def totals_meta(ctx: BuildContext) -> dict:
     }
 
 
-def accounting_meta(ctx: BuildContext) -> dict:
+def accounting_meta(ctx: BuildContext) -> JsonObject:
     """``accounting``, ``excluded`` and ``not_classified``, with their notes, in ``_meta``'s
     order: every actor the map places, in exactly one of three buckets."""
-    largest = ", ".join(f"{cls} ({count})" for cls, count in list(ctx.unclassified.items())[:5])
+    largest = ", ".join(f"{cls} ({count})" for cls, count in ranked(ctx.unclassified)[:5])
     return {
         "accounting": {
             "what": (
@@ -160,11 +160,9 @@ def accounting_meta(ctx: BuildContext) -> dict:
             ),
             "map_actors_in_gamelevel01": ctx.world.actor_count,
             "emitted_as_rows": len(ctx.rows),
-            "excluded_on_purpose": sum(e["placed_by_the_map"] for e in ctx.excluded.values()),
+            "excluded_on_purpose": ctx.excluded_placements,
             "not_classified": sum(ctx.unclassified.values()),
-            "adds_up": len(ctx.rows)
-            + sum(e["placed_by_the_map"] for e in ctx.excluded.values())
-            + sum(ctx.unclassified.values())
+            "adds_up": len(ctx.rows) + ctx.excluded_placements + sum(ctx.unclassified.values())
             == ctx.world.actor_count,
         },
         "excluded": ctx.excluded,
@@ -175,7 +173,7 @@ def accounting_meta(ctx: BuildContext) -> dict:
             "this list and the rows is in not_classified with its count, and class_census is "
             "the check that specifically covers pickups."
         ),
-        "not_classified": ctx.unclassified,
+        "not_classified": by_count(ctx.unclassified),
         "not_classified_note": (
             "every remaining actor class the packages under source.placements.level_read "
             "place, native and blueprint alike, with counts. What that buys is bounded and "

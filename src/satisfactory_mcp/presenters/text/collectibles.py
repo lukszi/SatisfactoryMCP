@@ -7,11 +7,25 @@ with their hazards, and the degraded save-only answer is a name-prefix guess.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Literal
+
+from ...core.collectible_rows import HazardContext
+from ...core.gamedata.model import GameData
 from ...domain.collectibles.service import GENERATOR_COMMAND, CollectiblesView, census_rows
+from ...domain.collectibles.table import CollectibleTable
+from ...domain.collectibles.views import CensusRow, CollectedSummary, Placement
 from ...domain.spatial import geo, maplink
+from ...domain.world.state import WorldState
 from . import primitives as render
 
 __all__ = ["render_collectibles"]
+
+
+def _table(view: CollectiblesView) -> CollectibleTable:
+    """The map table of a view that is not the save-only census."""
+    assert view.table is not None, "no map table"
+    return view.table
 
 
 def _scope(view: CollectiblesView) -> tuple[list[str], list[tuple[float, float]]]:
@@ -22,7 +36,7 @@ def _scope(view: CollectiblesView) -> tuple[list[str], list[tuple[float, float]]
     drop out of an unfiltered answer on the same grounds the listing drops them: a shrine
     layer would draw a second marker a metre from the sphere.
     """
-    table = view.table
+    table = _table(view)
     if view.group:
         cats = [view.group]
     elif view.rows:
@@ -34,7 +48,7 @@ def _scope(view: CollectiblesView) -> tuple[list[str], list[tuple[float, float]]
     return cats, [(r["x"], r["y"]) for c in cats for r in table.by_category.get(c, ())]
 
 
-def _map_links(st, view: CollectiblesView) -> tuple[str, list[str]]:
+def _map_links(st: WorldState, view: CollectiblesView) -> tuple[str, list[str]]:
     """Both map links for the placements this answer is about, the local one first.
 
     Local first and unconditional because it is the only one of the two that knows what THIS
@@ -92,47 +106,53 @@ def _map_links(st, view: CollectiblesView) -> tuple[str, list[str]]:
     return body, notes
 
 
-def _hazard_tokens(hazard: dict) -> str:
+def _hazard_tokens(hazard: HazardContext) -> str:
     """The hazard block as a few tokens, distances in metres."""
-    out = []
-    if hazard.get("hostiles_nearby"):
-        n = sum(hazard["hostiles_nearby"].values())
-        out.append(f"hostiles{n}@{(hazard.get('nearest_hostile_cm') or 0) / 100:.0f}m")
+    out: list[str] = []
+    if hostiles := hazard.get("hostiles_nearby"):
+        nearest = hazard.get("nearest_hostile_cm") or 0
+        out.append(f"hostiles{sum(hostiles.values())}@{nearest / 100:.0f}m")
     if hazard.get("spawns_here"):
         out.append("spawner")
     if hazard.get("inside_spore_flower_damage_sphere"):
         out.append("spore")
-    elif hazard.get("nearest_gas_cm"):
-        out.append(f"gas@{hazard['nearest_gas_cm'] / 100:.0f}m")
-    if hazard.get("nearest_uranium_cm"):
-        out.append(f"uranium@{hazard['nearest_uranium_cm'] / 100:.0f}m")
+    elif gas := hazard.get("nearest_gas_cm"):
+        out.append(f"gas@{gas / 100:.0f}m")
+    if uranium := hazard.get("nearest_uranium_cm"):
+        out.append(f"uranium@{uranium / 100:.0f}m")
     if hazard.get("nearest_nuclear_hog_spawner_cm"):
         out.append("nuclear-hog")
     return " ".join(out)
 
 
-def _holds(row: dict, g) -> str:
+def _holds(row: Placement, g: GameData) -> str:
     """What is in this one, where the map records it.
 
     A looted drop pod is reported as LOOTED and nothing else: its ``mUnlockCost`` is still on
     the actor after it has given up its hard drive, so quoting the price would offer a player
     something already taken.
     """
-    contents = row.get("contents") or {}
-    if contents.get("item"):
-        return f"{contents.get('count', 0):g} {g.item_name(contents['item'])}"
+    contents = row["contents"]
+    if contents is not None and (item := contents["item"]):
+        return f"{contents.get('count', 0):g} {g.item_name(item)}"
     if row.get("looted"):
         return "LOOTED"
-    cost = row.get("unlock_cost") or {}
-    if cost.get("item"):
-        return f"wants {cost.get('amount', 0):g} {g.item_name(cost['item'])}"
+    cost = row["unlock_cost"]
+    if cost is not None and (wanted := cost.get("item")):
+        return f"wants {cost.get('amount', 0):g} {g.item_name(wanted)}"
     #: An unlooted pod that does not serialise mUnlockCost holds its class default, which
     #: the map cannot read. Still worth saying it is unlooted.
     return "unlooted, cost unknown" if row.get("looted") is False else ""
 
 
+def _metres_away(row: Placement) -> str:
+    """A nearest row's distance: the service measures every row of that mode."""
+    assert "distance_m" in row, "a nearest row without its distance"
+    return f"{row['distance_m']:.0f}m"
+
+
 def _placement_table(
-    rows: list[dict], g, distance: bool, total: int, limit: int, offset: int
+    rows: Sequence[Placement], g: GameData, distance: bool, total: int, limit: int, offset: int
 ) -> str:
     """One row per placement, with the empty optional columns dropped.
 
@@ -147,7 +167,7 @@ def _placement_table(
         (
             r["category"],
             r["name"],
-            *((f"{r['distance_m']:.0f}m",) if distance else ()),
+            *((_metres_away(r),) if distance else ()),
             r["observed"] or ("collected" if r["collected"] else "-"),
             geo.grid_cell(r["pos"][0], r["pos"][1]),
             f"{int(r['pos'][0] / 100)},{int(r['pos'][1] / 100)}",
@@ -172,7 +192,7 @@ def _placement_table(
 #: Census columns beyond the four every save has, rendered only when some row is non-zero:
 #: ``gone_later`` needs an older save than the newest on disk, and ``unstated`` needs a table
 #: newer than this code. Neither is dropped from the arithmetic when it is hidden.
-_CONDITIONAL_COLUMNS: tuple[tuple[str, str], ...] = (
+_CONDITIONAL_COLUMNS: tuple[tuple[Literal["gone_in_a_later_save", "unstated"], str], ...] = (
     ("gone_in_a_later_save", "gone_later"),
     ("unstated", "unstated"),
 )
@@ -183,12 +203,18 @@ _CONDITIONAL_COLUMNS: tuple[tuple[str, str], ...] = (
 _FIRST_WORLD_PARTITION_SAVE = 52
 
 
-def _predates_world_partition(st) -> bool:
+def _predates_world_partition(st: WorldState) -> bool:
     version = st.header.get("save_version")
     return bool(version) and version < _FIRST_WORLD_PARTITION_SAVE
 
 
-def _census_notes(st, census: list[dict], removed: dict, table, group) -> list[str]:
+def _census_notes(
+    st: WorldState,
+    census: Sequence[CensusRow],
+    removed: CollectedSummary,
+    table: CollectibleTable,
+    group: str | None,
+) -> list[str]:
     """How to read the census: what each column is, and the rows it cannot speak for."""
     notes = [
         (
@@ -229,9 +255,9 @@ def _census_notes(st, census: list[dict], removed: dict, table, group) -> list[s
             "-- only a dismantled one is destroyed -- so its remaining is not a count of "
             f"hard drives left. Use show='remaining' group='{pods['category']}' to see which"
         )
-    if removed["unresolved"]:
+    if unresolved := removed.get("unresolved", 0):
         notes.append(
-            f"{removed['unresolved']} of the {removed['total']} destroyed records join no "
+            f"{unresolved} of the {removed['total']} destroyed records join no "
             "placement: either a class the map table excludes on purpose (crash-site "
             "scenery, regrowing berry and nut bushes, resource nodes) or an actor the map "
             "never placed -- which is what a pickup the PLAYER dropped is, and it shares its "
@@ -248,9 +274,12 @@ def _census_notes(st, census: list[dict], removed: dict, table, group) -> list[s
     return notes
 
 
-def _unresolved_stems_table(removed: dict, table, window: render.Page) -> str:
+def _unresolved_stems_table(
+    removed: CollectedSummary, table: CollectibleTable, window: render.Page
+) -> str:
     """The destroyed records that join no placement, by name stem, with why."""
-    stems = [(k, v, table.excluded_reason(k) or "") for k, v in removed["unresolved_stems"].items()]
+    unjoined = removed.get("unresolved_stems", {})
+    stems = [(k, v, table.excluded_reason(k) or "") for k, v in unjoined.items()]
     return render.table(
         ("name_stem", "destroyed", "why the map table has no row for it"),
         [(k, v, why[:96]) for k, v, why in window.of(stems)],
@@ -260,16 +289,16 @@ def _unresolved_stems_table(removed: dict, table, window: render.Page) -> str:
     )
 
 
-def _census(st, view: CollectiblesView, limit: int, offset: int) -> str:
+def _census(st: WorldState, view: CollectiblesView, limit: int, offset: int) -> str:
     """The per-category table: placed, collected, remaining, and how much is observed.
 
     ``group`` narrows the table to one category and takes its notes with it; the summary line
     stays whole-world.
     """
-    removed, table, group = view.removed, view.table, view.group
+    removed, table, group = view.removed, _table(view), view.group
     census = [r for r in census_rows(st) if group is None or r["category"] == group]
     extra = [(key, head) for key, head in _CONDITIONAL_COLUMNS if any(r[key] for r in census)]
-    rows = [
+    rows: list[tuple[object, ...]] = [
         (
             row["category"],
             row["placed"],
@@ -310,9 +339,9 @@ def _census(st, view: CollectiblesView, limit: int, offset: int) -> str:
         # unscoped total is how one gets read as the other.
         + render.kv(
             [
-                ("whole_world_collected", removed["resolved"]),
+                ("whole_world_collected", removed.get("resolved", 0)),
                 ("destroyed_records", removed["total"]),
-                ("unresolved", removed["unresolved"]),
+                ("unresolved", removed.get("unresolved", 0)),
                 ("save_cells", removed["cells"]),
                 ("showing", group or "every category"),
             ]
@@ -322,17 +351,17 @@ def _census(st, view: CollectiblesView, limit: int, offset: int) -> str:
     )
 
 
-def _listing(st, view: CollectiblesView, limit: int, offset: int) -> str:
+def _listing(st: WorldState, view: CollectiblesView, limit: int, offset: int) -> str:
     """Individual placements: collected, remaining, or remaining by distance."""
     g = st.game
-    table, group, mode = view.table, view.group, view.mode
+    table, group, mode = _table(view), view.group, view.mode
     rows, origin, where = view.rows or [], view.origin, view.where
     pedestals, hidden, counts = view.pedestals, view.hidden, view.counts
 
     window = render.page(limit, offset, default=25)
     page = window.of(rows)
 
-    notes = []
+    notes: list[str] = []
     if mode == "collected":
         notes.append(
             "these are gone -- the coordinates say where they WERE. The map is the only "
@@ -385,7 +414,7 @@ def _listing(st, view: CollectiblesView, limit: int, offset: int) -> str:
     )
 
 
-def _save_only(st, view: CollectiblesView, limit: int, offset: int) -> str:
+def _save_only(st: WorldState, view: CollectiblesView, limit: int, offset: int) -> str:
     """The census a save can build alone: collected counts by name prefix, and wrong.
 
     Reached only when ``data/world_collectibles.json`` is absent, which a fresh clone is,
@@ -417,10 +446,10 @@ def _save_only(st, view: CollectiblesView, limit: int, offset: int) -> str:
             "which on a map reads as 'you have taken them all'"
         ),
     ]
-    if removed.get("other"):
+    if other := removed.get("other"):
         notes.append(
             "'other' is classes no prefix matched, reported rather than dropped: "
-            + ", ".join(f"{k} {v}" for k, v in list(removed["other"].items())[:6])
+            + ", ".join(f"{k} {v}" for k, v in list(other.items())[:6])
         )
     if not removed["total"]:
         notes.append(
@@ -429,16 +458,19 @@ def _save_only(st, view: CollectiblesView, limit: int, offset: int) -> str:
         )
 
     body = [
-        render.table(("group", "collected"), [(k, str(v)) for k, v in removed["groups"].items()])
+        render.table(
+            ("group", "collected"), [(k, str(v)) for k, v in removed.get("groups", {}).items()]
+        )
     ]
     if group is not None:
         window = render.page(limit, offset, default=25)
-        rows = [(a["name"], a["cell"]) for a in window.of(removed["actors"])]
+        actors = removed.get("actors", [])
+        rows = [(a["name"], a["cell"]) for a in window.of(actors)]
         body.append(
             render.table(
                 ("actor", "cell"),
                 rows,
-                total=len(removed["actors"]),
+                total=len(actors),
                 offset=window.start,
                 limit=window.size,
             )
@@ -451,7 +483,7 @@ def _save_only(st, view: CollectiblesView, limit: int, offset: int) -> str:
     )
 
 
-def render_collectibles(st, view: CollectiblesView, limit: int, offset: int = 0) -> str:
+def render_collectibles(st: WorldState, view: CollectiblesView, limit: int, offset: int = 0) -> str:
     """The one entry point: a refusal, the degraded census, the census, or a listing."""
     if view.error:
         return view.error

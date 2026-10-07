@@ -16,8 +16,9 @@ dependencies = [
     "platformdirs>=4.0",
     "scipy>=1.11",
     "numpy>=1.26",
-    # TypeAliasType for core.jsontypes; typing has it only from Python 3.12.
-    "typing-extensions>=4.6",
+    # TypeAliasType for core.jsontypes (typing has it only from 3.12); TypeIs for saveio.rows,
+    # which typing_extensions has from 4.10.
+    "typing-extensions>=4.10",
 ]
 
 [project.scripts]
@@ -118,47 +119,12 @@ exclude = [
 # worktree checks the main checkout's code.
 extraPaths = ["src", "tools/mapgen/src", "."]
 stubPath = "typings"
-pythonVersion = "3.11"
+# The venv's own Python, because numpy's and scipy-stubs' stubs, as the venv installs them, are
+# written for it: read as 3.11 they turn Unknown. The gate checks the oldest Python too.
+pythonVersion = "3.13"
 # Fixed rather than the host's, so the gate's counts are the same on every machine.
 pythonPlatform = "Windows"
-typeCheckingMode = "standard"
-# A package or module joins this list when it reaches zero strict errors.
-strict = [
-    "src/satisfactory_mcp/core/arrays.py",
-    "src/satisfactory_mcp/core/gameassets/__init__.py",
-    "src/satisfactory_mcp/core/gameassets/container.py",
-    "src/satisfactory_mcp/core/gameassets/imaging.py",
-    "src/satisfactory_mcp/core/gameassets/iostore.py",
-    "src/satisfactory_mcp/core/gameassets/levels.py",
-    "src/satisfactory_mcp/core/gameassets/meshdata.py",
-    "src/satisfactory_mcp/core/gameassets/packages/__init__.py",
-    "src/satisfactory_mcp/core/gameassets/packages/properties.py",
-    "src/satisfactory_mcp/core/gameassets/textures.py",
-    "src/satisfactory_mcp/core/gameassets/versions.py",
-    "src/satisfactory_mcp/core/jsontypes.py",
-    "src/satisfactory_mcp/domain/spatial/heightfield/__init__.py",
-    "src/satisfactory_mcp/domain/spatial/heightfield/planes.py",
-    "tools/check_map_fill.py",
-    "tools/gen_map_image.py",
-    "tools/gen_map_renders.py",
-    "tools/gen_paint_layers.py",
-    "tools/gen_world_collectibles.py",
-    "tools/gen_world_heightmap.py",
-    "tools/mapgen/src/mapgen/common.py",
-    "tools/mapgen/src/mapgen/gamedata/ground/paint_store.py",
-    "tools/mapgen/src/mapgen/gamedata/install.py",
-    "tools/mapgen/src/mapgen/gamedata/nodes.py",
-    "tools/mapgen/src/mapgen/gamedata/placements.py",
-    "tools/mapgen/src/mapgen/gamedata/rocks/families.py",
-    "tools/mapgen/src/mapgen/lighting/sun.py",
-    "tools/mapgen/src/mapgen/palette/painted/shapes.py",
-    "tools/mapgen/src/mapgen/palette/scene.py",
-    "tools/mapgen/src/mapgen/palette/schema.py",
-    "tools/mapgen/src/mapgen/render/drawpool.py",
-    "tools/mapgen/src/mapgen/render/stencils.py",
-    "tools/mapgen/src/mapgen/tiles/recipes.py",
-    "tools/mapgen/src/mapgen/tiles/rendertext.py",
-]
+typeCheckingMode = "strict"
 reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.ruff]
@@ -188,8 +154,9 @@ target-version = "py311"
 # grew with the number of web test modules while the exempt pattern stayed two globs and a
 # name. Nothing outside those two cases has ever been exempted.
 #
-# TID251 bans `typing.Any` in src and tools: docs/DEVELOPING.md, "Types".
-extend-select = ["E402", "TID251"]
+# TID251 bans `typing.Any` in src and tools, and ANN asks every signature there for its types:
+# docs/DEVELOPING.md, "Types".
+extend-select = ["E402", "TID251", "ANN"]
 ignore = [
     # Broad excepts are deliberate at the save boundary: autosaves are rewritten in
     # place every ~5 minutes, so a parse can tear mid-write, and the vendored parser
@@ -221,57 +188,10 @@ ignore = [
 "tools/*.py" = ["E402"]
 "tests/web/**/*.py" = ["E402"]
 "tests/mapgen/test_generators.py" = ["E402"]
-# Tests are outside the typing rules.
-"tests/**/*.py" = ["TID251"]
-# The modules that still import typing.Any. The list only shrinks, and a line no longer needed
-# fails tests/architecture/test_typing.py.
-"src/satisfactory_mcp/core/saveio/rows.py" = ["TID251"]
-"src/satisfactory_mcp/core/singleflight.py" = ["TID251"]
-"src/satisfactory_mcp/core/solverlane.py" = ["TID251"]
-"src/satisfactory_mcp/domain/planning/siting/ground.py" = ["TID251"]
-"src/satisfactory_mcp/domain/planning/siting/resolve.py" = ["TID251"]
-"src/satisfactory_mcp/domain/world/state.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/assets/icons.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/assets/maps.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/assets/tiles.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/bridge/asks.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/bridge/pins.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/bridge/settings.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/codex/gamedata.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/codex/search.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/dashboard/advice.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/dashboard/power_circuits.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/dashboard/progress_boosts.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/dashboard/progress_unlocks.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/dashboard/stock.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/factory_detail.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/factory_graph.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/factory_health.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/factory_labels.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/factory_list.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/trace.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/belts_pipes.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/crates.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/floors.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/placements.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/power_lines.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/storage.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/activity.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/plan_index.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/plan_site.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/plan_solve.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/plan_track.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/planlog.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/collectibles.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/inspect.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/nodes.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/regions.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/world_conduits.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/world_finders.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/worlds.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/serial/responses.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/serial/shapes.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/serial/units.py" = ["TID251"]
+# Tests are outside the typing rules. No module of src or tools imports typing.Any: one that had
+# to would be named here on its own line, never by a glob (tests/architecture/test_typing.py).
+"tests/**/*.py" = ["TID251", "ANN"]
+"tools/mapgen/tests/**/*.py" = ["ANN"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "typing.Any".msg = "JsonValue or JsonObject from satisfactory_mcp.core.jsontypes at a boundary, a real type elsewhere"

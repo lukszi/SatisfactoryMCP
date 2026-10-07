@@ -39,7 +39,7 @@ def render_comparison(comparison: RouteComparison, limit: int = 10) -> str:
     headers += ["byproduct", "with"]
     n_cols = len(headers)
 
-    rows = []
+    rows: list[list[str]] = []
     for r in comparison.routes[: render.clamp(limit)]:
         if not r.ok:
             rows.append(

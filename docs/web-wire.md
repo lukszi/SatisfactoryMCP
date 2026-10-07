@@ -7,17 +7,21 @@ routers point at this file instead of re-telling them.
    `{function_name}_{path}_{method}` and `frontend/src/api/schema.d.ts` is generated from
    it — renaming a handler churns the committed schema.
 2. **Declaration order is wire order** for every `TypedDict` a `response_model` names: the
-   keys are emitted in the order they are declared.
+   keys are emitted in the order they are declared. Each one is `typing_extensions.TypedDict`,
+   because pydantic refuses `typing.TypedDict` in a model below Python 3.12 and the project
+   supports 3.11; `tests/architecture/test_typing.py` holds every module to it.
 3. **A `response_model` FILTERS.** Keys the model does not declare are dropped from the
    response; a handler may build more than it sends. This is load-bearing — several
    endpoints deliberately send a subset of what the domain returns.
 4. **Numeric types rewrite wire bytes.** Declaring `float` where the value is an int
    validates `15` into `15.0` on the wire, and vice versa fails validation. Match the real
    type of the value.
-5. **A router never imports another router.** Shared shapes live in the `serial` package
-   (`serial/shapes.py`) only when one function builds them for more than one router; two
-   shapes that merely look alike stay separate. Enforced by
-   `tests/architecture/test_router_registry.py`.
+5. **A router never imports another router**, enforced by
+   `tests/architecture/test_router_registry.py`. A shape the domain builds is declared in
+   that domain package's `views.py` and the routers import it from there; a shape that more
+   than one router builds lives in the `serial` package (`serial/shapes.py`). Two shapes with
+   the same fields are one shape under one name, since a second copy is a second component in
+   `api/schema.d.ts` that can drift from the first; `tests/web/test_openapi.py` fails on twins.
 6. **Regenerate, never hand-edit** `api/schema.d.ts`: throwaway server on a port in
    8920–8999, then `npm run typegen -- <port>` (`scripts/typegen.mjs`: `openapi-typescript`
    against that port, then `scripts/stamp-schema.mjs`). Without an argument it reads
@@ -362,10 +366,11 @@ written. A create of an object that already has a live pin is a **200** with `ex
 rather than a 201. A pins file from a newer version is a 503 `{error, newer_schema: true}`
 naming the pins, not the path. Pin numbers are never reused.
 
-`PlanOpBody` lives in `serial` because two routers publish it (`planlog` for pushes,
-`plan_solve` for the ops an alternates option would push). The alternates route's reply is
-named `PlanAlternatesResponse` because `routers/codex/gamedata.py` already publishes an
-`AlternatesResponse` and two models with one name would rename both in `api/schema.d.ts`.
+`PlanOpBody` lives in `domain/planning/stored/views.py`, beside the ops the plan log holds;
+`planlog` publishes it for pushes and `plan_solve` for the ops an alternates option would
+push. Its `value`, `member` and `was` are any JSON (`JsonValue`). The alternates route's
+reply is named `PlanAlternatesResponse` because `routers/codex/gamedata.py` already publishes
+an `AlternatesResponse` and two models with one name would rename both in `api/schema.d.ts`.
 
 `Flow`, `MachineSpot` and their builders `flow_json` and `machine_spots` live in `serial`
 because `routers/factories/factory_labels.py` (candidates, amend) and `routers/factories/factory_graph.py` (`/api/factories/graph`,

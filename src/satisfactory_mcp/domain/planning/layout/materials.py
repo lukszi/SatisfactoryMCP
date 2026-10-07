@@ -7,15 +7,32 @@ costs belts or pipes, which have no route here (docs/planning.md §8.5f).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+
+from typing_extensions import TypedDict
 
 from ....core.gamedata.model import GameData
 
-__all__ = ["BuildingCost", "MaterialLine", "MaterialsBill", "build_materials", "cost_of"]
+__all__ = [
+    "BuildingCost",
+    "MachineCount",
+    "MaterialLine",
+    "MaterialsBill",
+    "build_materials",
+    "cost_of",
+]
 
 #: The 8 m x 8 m foundation the layout counts in. `build_layout` reports whole tiles of
 #: this size, so this is the class its foundation totals are priced at.
 FOUNDATION_ID = "Build_Foundation_8x1_01_C"
+
+
+class MachineCount(TypedDict):
+    """What the bill reads from a solution row: whole machines of one building class."""
+
+    building_id: str | None
+    machines: int
 
 
 @dataclass
@@ -24,7 +41,7 @@ class BuildingCost:
     name: str
     count: int
     #: item id -> total for ``count`` of them.
-    parts: dict[str, float] = field(default_factory=dict)
+    parts: dict[str, float] = field(default_factory=dict[str, float])
     #: True when the dump carries no build recipe for this class, so the cost is
     #: genuinely unknown rather than zero.
     unpriced: bool = False
@@ -41,7 +58,7 @@ class MaterialLine:
     needed: float
     held: float = 0.0
     #: Building names that want this part, largest contribution first.
-    wanted_by: list[str] = field(default_factory=list)
+    wanted_by: list[str] = field(default_factory=list[str])
 
     @property
     def short(self) -> float:
@@ -54,14 +71,14 @@ class MaterialLine:
 
 @dataclass
 class MaterialsBill:
-    lines: list[MaterialLine] = field(default_factory=list)
-    buildings: list[BuildingCost] = field(default_factory=list)
+    lines: list[MaterialLine] = field(default_factory=list[MaterialLine])
+    buildings: list[BuildingCost] = field(default_factory=list[BuildingCost])
     machines: int = 0
     foundations: int = 0
     #: Building classes needed whose build cost is not in the dump. Named rather than
     #: dropped: a bill silently missing a building reads as complete.
-    unpriced: list[str] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
+    unpriced: list[str] = field(default_factory=list[str])
+    notes: list[str] = field(default_factory=list[str])
 
     @property
     def affordable(self) -> bool:
@@ -90,7 +107,7 @@ def cost_of(game: GameData, building_id: str, count: int) -> BuildingCost:
 
 def build_materials(
     game: GameData,
-    processes: list[dict],
+    processes: Sequence[MachineCount],
     stock: dict[str, float] | None = None,
     foundations: int = 0,
 ) -> MaterialsBill:

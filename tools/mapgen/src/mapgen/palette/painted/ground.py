@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping
 from pathlib import Path
-from typing import TypeAlias, cast
+from typing import TypeAlias
 
 import numpy as np
 from scipy import ndimage
@@ -136,7 +136,7 @@ class PaintedGround:
     def __init__(
         self,
         paint_dir: Path,
-        palette: Mapping[str, object],
+        palette: PaintedPalette,
         field: hf.Field,
         biome: BiomeGrid,
         area_names: list[str],
@@ -147,15 +147,14 @@ class PaintedGround:
         if meta is None:
             raise FileNotFoundError(f"no paint store at {paint_dir}")
         self.meta = meta
-        # The palette file's JSON; styles.painted_style hands it over untyped.
-        self.palette: PaintedPalette = cast(PaintedPalette, palette)
+        self.palette = palette
         self.source: JsonObject = {}
         self._stamps = stamps
         rows, cols = meta["grid"]["height"], meta["grid"]["width"]
         albedo, have, weights, seam_texels = self._paint_albedo(paint_dir, bake, (rows, cols))
         index = biome_grid(biome, rows, cols)
         self.area_names = area_names
-        self.area_assets: list[str] = list(biome.get("assets_by_index") or [])
+        self.area_assets = list(biome["assets_by_index"])
         self.coarse_index = self._coarse_areas(index, field)
         albedo = self._calibrate(albedo, weights)
         del weights
@@ -295,7 +294,7 @@ class PaintedGround:
         self.canopy: PaintPlane = paint_plane(paint_dir, meta, CANOPY_NAME)
         drawn = palette.get("crowns", {}).get("draw", False)
         self.crowns: CrownSet | None = (
-            load_crowns(paint_dir, cast("dict[str, object]", meta)) if drawn else None
+            load_crowns(paint_dir, meta.get("crowns"), meta["files"]) if drawn else None
         )
         self.crown: PaintPlane | None = (
             paint_plane(paint_dir, meta, CROWN_NAME) if CROWN_NAME in meta["files"] else None
@@ -364,8 +363,8 @@ class PaintedGround:
         if not self.palette.get("crowns", {}).get("draw"):
             return "not drawn by this palette"
         block = self.meta.get("crowns")
-        species = None if block is None else block.get("species")
-        if self.crowns is None or not isinstance(species, list):
+        species = None if block is None else block["species"]
+        if self.crowns is None or species is None:
             return "not in this paint store"
         return {
             "species": len(species),
@@ -407,9 +406,9 @@ class PaintedGround:
         texture = srgb_to_linear(paint_plane(paint_dir, self.meta, PIGMENT_NAME))
         side = texture.shape[0]
         coords = (np.arange(rows, dtype=np.float32) + 0.5) * side / rows - 0.5
-        rr, cc = np.meshgrid(
-            coords, (np.arange(cols, dtype=np.float32) + 0.5) * side / cols - 0.5, indexing="ij"
-        )
+        across = (np.arange(cols, dtype=np.float32) + 0.5) * side / cols - 0.5
+        rr = np.broadcast_to(coords[:, None], (rows, cols))
+        cc = np.broadcast_to(across[None, :], (rows, cols))
         for k in range(3):
             tint = ndimage.map_coordinates(texture[..., k], [rr, cc], order=1, mode="nearest")
             albedo[..., k] *= (1.0 - strength) + strength * tint

@@ -7,13 +7,22 @@ docs/advisors_contract.md is the specification.
 
 from __future__ import annotations
 
+from collections.abc import Hashable, Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ...core.schema import NewerSchema
 from ...core.singleflight import Singleflight
 from .. import settings
 from . import advisory, rules, store
 from .advisory import KINDS, PER_KIND, SEVERITIES, TONE, VISIBLE, WORDS, Advisory, Spot
+from .store import Active, Hidden
+from .views import AdviceOptions
+
+if TYPE_CHECKING:
+    from ...core.gamedata.model import GameData
+    from ...core.saveio.schema import Projection
+    from ..world.state import WorldState
 
 __all__ = [
     "KINDS",
@@ -34,7 +43,7 @@ __all__ = [
 
 #: (projection, game, labels version, plan heads, options) -> ranked rows. The projection and
 #: game are held by the entry: the key is their ``id()``.
-_ROWS = Singleflight(maxsize=8)
+_ROWS: Singleflight[Hashable, tuple[Projection, GameData, list[Advisory]]] = Singleflight(maxsize=8)
 
 
 @dataclass
@@ -42,8 +51,8 @@ class Current:
     """One read: every firing row, which are active, which are hidden, and the play clock."""
 
     items: list[Advisory]
-    active: list[tuple[Advisory, bool, int]]
-    hidden: list[tuple[Advisory, dict]]
+    active: list[Active]
+    hidden: list[Hidden]
     version: int
     play_s: float
     notes: list[str]
@@ -52,21 +61,26 @@ class Current:
         return next((a for a in self.items if a.id == adv_id), None)
 
 
-def options(biomass: bool | None = None, headroom: str | None = None) -> tuple[dict, list[str]]:
+def options(
+    biomass: bool | None = None, headroom: str | None = None
+) -> tuple[AdviceOptions, list[str]]:
     """The shared settings the pass reads, and a note per one that could not be read."""
-    out, notes = {}, []
+    notes: list[str] = []
+    values: Mapping[str, settings.SettingValue]
     try:
         values = settings.read()["values"]
     except (NewerSchema, OSError) as exc:
         values = {k: s.default for k, s in settings.SPECS.items()}
         notes.append(f"shared settings unreadable, defaults used: {exc}")
-    out["biomass"] = bool(values["biomass"]) if biomass is None else biomass
-    out["headroom"] = str(values["stage_headroom"]) if headroom is None else headroom
-    out["box_fed"] = bool(values["advice_box_fed"])
+    out: AdviceOptions = {
+        "biomass": bool(values["biomass"]) if biomass is None else biomass,
+        "headroom": str(values["stage_headroom"]) if headroom is None else headroom,
+        "box_fed": bool(values["advice_box_fed"]),
+    }
     return out, notes
 
 
-def _rows(st, opts: dict, spoilers: bool) -> list[Advisory]:
+def _rows(st: WorldState, opts: AdviceOptions, spoilers: bool) -> list[Advisory]:
     key = (
         id(st.projection),
         id(st.game),
@@ -82,7 +96,11 @@ def _rows(st, opts: dict, spoilers: bool) -> list[Advisory]:
 
 
 def current(
-    st, *, biomass: bool | None = None, headroom: str | None = None, spoilers: bool = False
+    st: WorldState,
+    *,
+    biomass: bool | None = None,
+    headroom: str | None = None,
+    spoilers: bool = False,
 ) -> Current:
     """What fires on ``st`` with this world's hidden entries applied. ``NewerSchema`` when the
     store is from a newer version."""

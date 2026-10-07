@@ -35,8 +35,8 @@ class Block:
     clock: float
     part: int  # 1-based index within a split group
     parts: int  # how many blocks the process was split into
-    inputs: dict[str, float] = field(default_factory=dict)
-    outputs: dict[str, float] = field(default_factory=dict)
+    inputs: dict[str, float] = field(default_factory=dict[str, float])
+    outputs: dict[str, float] = field(default_factory=dict[str, float])
     stage: int = 0
     #: Per-MACHINE dimensions, which is what the build table prints as "each(m)".
     width_m: float = 0.0
@@ -74,8 +74,8 @@ class Bus:
     carrier: str  # belt | pipe
     unit: str
     lines: int
-    producers: list[str] = field(default_factory=list)
-    consumers: list[str] = field(default_factory=list)
+    producers: list[str] = field(default_factory=list[str])
+    consumers: list[str] = field(default_factory=list[str])
     from_stage: int = 0
     to_stage: int = 0
     external: bool = False  # enters or leaves the site
@@ -87,8 +87,8 @@ class Floor:
     kind: str  # production | logistics
     stage: int | None
     height_m: float
-    blocks: list[Block] = field(default_factory=list)
-    buses: list[Bus] = field(default_factory=list)
+    blocks: list[Block] = field(default_factory=list[Block])
+    buses: list[Bus] = field(default_factory=list[Bus])
     #: Which declared site this floor belongs to, set when floors are stacked per site;
     #: empty outside a site partition.
     site: str = ""
@@ -107,7 +107,7 @@ class Layout:
     blocks: list[Block]
     buses: list[Bus]
     floors: list[Floor]
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list[str])
 
     @property
     def foundations(self) -> int:

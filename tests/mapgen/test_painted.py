@@ -55,7 +55,7 @@ from mapgen.palette.water.shore import (
     wet_band,
 )
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_over
-from mapgen.render.surface import composite_top
+from mapgen.render.lift import composite_top
 from mapgen.terrain.render_meshes import (
     MESH_CORAL,
     MESH_ROCK,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import struct
 from collections.abc import Iterable, Sequence
-from typing import NamedTuple, TypedDict
+from typing import NamedTuple, TypeAlias, TypedDict
 
 import numpy as np
 from scipy import ndimage
@@ -23,6 +23,8 @@ __all__ = [
     "SEAM_DISAGREEMENT_MAX",
     "TRANSFORM_TOLERANCE",
     "LandscapeFrame",
+    "LandscapeSweep",
+    "Proxy",
     "drop_offsets",
     "grass_data_heights",
     "landscape_frame",
@@ -55,6 +57,18 @@ LANDSCAPE_COMPONENT_QUADS = LANDSCAPE_N - 1
 #: Shared edge samples on which two components' GrassData disagree. 46 on build 502094;
 #: far more means the stitch is reading something other than heights.
 SEAM_DISAGREEMENT_MAX = 100
+
+
+#: A landscape proxy's ``(origin x, origin y, z offset, scale x, scale y, scale z)``.
+Proxy: TypeAlias = tuple[float, float, float, float, float, float]
+
+
+class LandscapeSweep(TypedDict):
+    """What the stitch reads of ``sweep_levels``' record."""
+
+    packages: int
+    components: list[tuple[int, int, U16Grid]]
+    proxies: list[Proxy]
 
 
 class LandscapeFrame(TypedDict):
@@ -190,12 +204,12 @@ def _stitch(components: Sequence[tuple[int, int, U16Grid]]) -> _Stitched:
     return _Stitched(raw, covered, seam_disagreements, min_x, min_y)
 
 
-def landscape_frame(sweep: dict) -> dict:
+def landscape_frame(sweep: LandscapeSweep) -> LandscapeFrame:
     """Stitch the components into one raster and pin it to the world. Nothing resampled.
 
     That the proxies all state the same origin, scale and Z offset is checked rather than
     assumed: a build that split the landscape into frames with different transforms would
-    otherwise stitch into a plausible, wrong field. Returns ``LandscapeFrame``'s shape.
+    otherwise stitch into a plausible, wrong field.
     """
     components = sweep["components"]
     proxies = sweep["proxies"]
@@ -239,7 +253,7 @@ def landscape_frame(sweep: dict) -> dict:
     }
 
 
-def drop_offsets(frame: dict) -> tuple[int, int]:
+def drop_offsets(frame: LandscapeFrame) -> tuple[int, int]:
     """Where the landscape frame lands in the output grid, in whole texels.
 
     Asserted rather than rounded into: the landscape is a 1 m grid and so is the output, so

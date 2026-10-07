@@ -36,6 +36,7 @@ from .zen import (
     BulkEntry,
     Package,
     ScriptObjects,
+    ZenExport,
     apply_fname_number,
     bulk_data_entries,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "ScriptObjects",
     "Transform",
     "Vec3",
+    "ZenExport",
     "apply_fname_number",
     "bulk_data_entries",
     "class_name_of",

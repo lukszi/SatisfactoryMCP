@@ -15,8 +15,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-import numpy as np
-
 from mapgen.cache import (
     DIRECT_CACHE_DIR_NAME,
     TOP_CACHE_DIR_NAME,
@@ -67,6 +65,7 @@ from mapgen.tiles.layer_meta import LayerDraw, RenderFacts, RunRecord, layer_sid
 from mapgen.tiles.pyramid import add_worker_flags, layer_dir, pool_sizes, tree_text
 from mapgen.tiles.recipes import RECIPE_KERNEL_ONLY
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME
+from satisfactory_mcp.core.arrays import I8Grid, U8Grid
 from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
 from satisfactory_mcp.core.gameassets.provenance import changelist
 from satisfactory_mcp.core.gameassets.pyramid import PyramidError
@@ -105,7 +104,7 @@ class Prepared:
 
     field: hf.Field
     lattice: Lattice
-    borrow: tuple[np.ndarray, np.ndarray]
+    borrow: tuple[I8Grid, U8Grid]
     biome: BiomeInputs
     paint: PaintInputs | None
     direct: DirectPlanes | None
@@ -208,8 +207,8 @@ def _prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) ->
         inputs["biome_raster"] = biome.provenance or {}
     style_digests = dict(STYLE_DIGESTS)
     paint = None
-    if "painted" in layers:
-        paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, biome.raster or {},
+    if "painted" in layers and biome.raster is not None:
+        paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, biome.raster,
                               biome.drawn)  # fmt: skip
         inputs["paint"], style_digests["painted"] = paint.provenance, paint.digest
     level = LevelSweep(game.store, game.scripts, not args.quiet)

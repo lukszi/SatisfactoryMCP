@@ -6,12 +6,15 @@ docs/plan_log.md, "The merge, in detail" and "Undo", has the rules these impleme
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping, Sequence
 
+from .....core.jsontypes import JsonValue, is_object_dict
 from ..plan_args import (
     KINDS,
     PLAN_SCALARS,
     SCALAR_CHECK,
     InvalidOp,
+    Member,
     PlanArgs,
     canonical_power,
     checked_map_key,
@@ -19,17 +22,25 @@ from ..plan_args import (
     checked_member,
     member_key,
 )
-from .records import Commit, PlanState
+from ..views import PlanOp
+from .records import Commit, PlanState, json_copy
+from .wording import op_text
 
 
-def merge_key(op: dict) -> str | None:
-    kind, name = op.get("op"), op.get("field", "")
+def _member(op: PlanOp) -> Member:
+    """An ``add`` or ``remove`` op's member: a name, or a clock in the clock fields."""
+    value = op.get("member")
+    return value if isinstance(value, str | int | float) else str(value)
+
+
+def merge_key(op: PlanOp) -> str | None:
+    kind, name = op.get("op"), op_text(op, "field")
     if kind == "set":
         return name
     if kind in ("put", "del"):
         return f"{name}[{canonical_power(name, op.get('item'))}]"
     if kind in ("add", "remove"):
-        return f"{name}{{{member_key(name, op.get('member'))}}}"
+        return f"{name}{{{member_key(name, _member(op))}}}"
     if kind == "site":
         return "site"
     if kind == "rename":
@@ -42,8 +53,16 @@ def merge_key(op: dict) -> str | None:
 _INVERSE_KIND = {"add": "remove", "remove": "add", "forget": "restore", "restore": "forget"}
 
 
-def _inverse_one(op: dict) -> dict | None:
-    kind = op["op"]
+def created_state(op: PlanOp) -> PlanOp:
+    """The state a ``create`` op carries; ``KeyError`` when it carries none."""
+    state = op.get("state")
+    if not isinstance(state, dict):
+        raise KeyError("state")
+    return state
+
+
+def _inverse_one(op: PlanOp) -> PlanOp | None:
+    kind = op_text(op, "op")
     if kind == "set":
         return {"op": "set", "field": op["field"], "value": op.get("was")}
     if kind == "put":
@@ -65,51 +84,56 @@ def _inverse_one(op: dict) -> dict | None:
     return None
 
 
-def inverse(ops: list[dict]) -> list[dict]:
+def inverse(ops: Sequence[PlanOp]) -> list[PlanOp]:
     """The ops that take a state back over ``ops``, in reverse order; records are skipped."""
     return [inv for inv in (_inverse_one(op) for op in reversed(ops)) if inv is not None]
 
 
-def _canonical_site(value) -> dict:
+def _canonical_site(value: object) -> PlanOp:
     from ...siting import normalise_record
 
     if value is None:
         return {"op": "site", "value": None}
     try:
-        return {"op": "site", "value": normalise_record(value)}
+        return {"op": "site", "value": json_copy(normalise_record(value))}
     except ValueError as exc:
         raise InvalidOp(str(exc)) from None
 
 
-def _canonical_record(name, value) -> dict:
-    if name not in ("plan_id", "provenance"):
-        raise InvalidOp(f"record does not apply to {name!r}")
-    if name == "plan_id" and not isinstance(value, str):
-        raise InvalidOp("plan_id must be text")
-    if name == "provenance" and not isinstance(value, dict):
-        raise InvalidOp("provenance must be an object")
-    return {"op": "record", "field": name, "value": copy.deepcopy(value)}
+def _canonical_record(name: object, value: object) -> PlanOp:
+    if name == "plan_id":
+        if not isinstance(value, str):
+            raise InvalidOp("plan_id must be text")
+        return {"op": "record", "field": "plan_id", "value": value}
+    if name == "provenance":
+        if not is_object_dict(value):
+            raise InvalidOp("provenance must be an object")
+        return {"op": "record", "field": "provenance", "value": json_copy(value)}
+    raise InvalidOp(f"record does not apply to {name!r}")
 
 
-def canonical_op(op: dict) -> dict:
+def canonical_op(op: Mapping[str, object]) -> PlanOp:
     """A canonical copy of a writer's op, type-checked; ``was`` is the store's to fill."""
     if not isinstance(op, dict):
         raise InvalidOp(f"an op must be an object, not {op!r}")
     kind = op.get("op")
     name = op.get("field")
+    if not isinstance(kind, str):
+        raise InvalidOp(f"unknown op {kind!r}")
     if kind == "set":
-        if name not in SCALAR_CHECK:
+        if not isinstance(name, str) or name not in SCALAR_CHECK:
             raise InvalidOp(f"set does not apply to {name!r}")
         return {"op": "set", "field": name, "value": SCALAR_CHECK[name](name, op.get("value"))}
     if kind in ("put", "del"):
-        if KINDS.get(name) != "map":
+        if not isinstance(name, str) or KINDS.get(name) != "map":
             raise InvalidOp(f"{kind} does not apply to {name!r}")
-        out = {"op": kind, "field": name, "item": checked_map_key(name, op.get("item"))}
+        item = checked_map_key(name, op.get("item"))
+        out: PlanOp = {"op": kind, "field": name, "item": item}
         if kind == "put":
-            out["value"] = checked_map_value(name, out["item"], op.get("value"))
+            out["value"] = checked_map_value(name, item, op.get("value"))
         return out
     if kind in ("add", "remove"):
-        if KINDS.get(name) != "set":
+        if not isinstance(name, str) or KINDS.get(name) != "set":
             raise InvalidOp(f"{kind} does not apply to {name!r}")
         return {"op": kind, "field": name, "member": checked_member(name, op.get("member"))}
     if kind == "site":
@@ -128,14 +152,14 @@ def canonical_op(op: dict) -> dict:
     raise InvalidOp(f"unknown op {kind!r}")
 
 
-def _current(state: PlanState, op: dict):
-    kind, name = op["op"], op.get("field")
+def _current(state: PlanState, op: PlanOp) -> JsonValue:
+    kind, name = op["op"], op_text(op, "field")
     if kind == "set":
         return getattr(state, name) if name in PLAN_SCALARS else getattr(state.args, name)
     if kind in ("put", "del"):
         return getattr(state.args, name).get(canonical_power(name, op["item"]))
     if kind in ("add", "remove"):
-        wanted = member_key(name, op["member"])
+        wanted = member_key(name, _member(op))
         return any(member_key(name, m) == wanted for m in getattr(state.args, name))
     if kind == "site":
         return copy.deepcopy(state.siting) or None
@@ -148,14 +172,14 @@ def _current(state: PlanState, op: dict):
     return None
 
 
-def is_noop(state: PlanState, op: dict) -> bool:
+def is_noop(state: PlanState, op: PlanOp) -> bool:
     kind, now = op["op"], _current(state, op)
     if kind in ("set", "put", "record"):
         return now == op["value"]
     if kind == "del":
         return now is None
     if kind == "add":
-        return now
+        return bool(now)
     if kind == "remove":
         return not now
     if kind == "site":
@@ -165,8 +189,8 @@ def is_noop(state: PlanState, op: dict) -> bool:
     return False
 
 
-def apply(state: PlanState, op: dict) -> None:
-    kind, name = op["op"], op.get("field")
+def apply(state: PlanState, op: PlanOp) -> None:
+    kind, name = op["op"], op_text(op, "field")
     if kind == "set":
         setattr(state if name in PLAN_SCALARS else state.args, name, copy.deepcopy(op["value"]))
     elif kind == "put":
@@ -177,20 +201,21 @@ def apply(state: PlanState, op: dict) -> None:
         if not _current(state, op):
             getattr(state.args, name).append(canonical_power(name, op["member"]))
     elif kind == "remove":
-        wanted = member_key(name, op["member"])
+        wanted = member_key(name, _member(op))
         kept = [m for m in getattr(state.args, name) if member_key(name, m) != wanted]
         setattr(state.args, name, kept)
     elif kind == "site":
-        state.siting = copy.deepcopy(op.get("value")) or {}
+        value = op.get("value")
+        state.siting = copy.deepcopy(value) if isinstance(value, dict) else {}
     elif kind == "rename":
-        state.name = op["name"]
+        state.name = op_text(op, "name")
     elif kind in ("forget", "restore"):
         state.forgotten = kind == "forget"
     elif kind == "record":
         setattr(state, name, copy.deepcopy(op["value"]))
 
 
-def with_was(state: PlanState, op: dict) -> dict:
+def with_was(state: PlanState, op: PlanOp) -> PlanOp:
     out = dict(op)
     if op["op"] in ("set", "put", "del", "site"):
         out["was"] = _current(state, op)
@@ -199,20 +224,20 @@ def with_was(state: PlanState, op: dict) -> dict:
     return out
 
 
-def check_lifecycle(work: PlanState, op: dict) -> None:
+def check_lifecycle(work: PlanState, op: PlanOp) -> None:
     if op["op"] == "forget" and work.forgotten:
         raise InvalidOp("the plan is already forgotten")
     if op["op"] == "restore" and not work.forgotten:
         raise InvalidOp("the plan is not forgotten")
 
 
-def _value(op: dict):
+def _value(op: PlanOp) -> JsonValue:
     if op["op"] == "rename":
         return op["name"]
     return op.get("value")
 
 
-def clash(mine: dict, theirs: dict) -> str | None:
+def clash(mine: PlanOp, theirs: PlanOp) -> str | None:
     """``"conflict"``, ``"same"`` (mine is already applied) or None, per contract §4.1."""
     mk, tk = merge_key(mine), merge_key(theirs)
     if mk is None or tk is None:
@@ -222,7 +247,7 @@ def clash(mine: dict, theirs: dict) -> str | None:
     if (
         mine["op"] == "add"
         and theirs["op"] == "add"
-        and {mine["field"], theirs["field"]} == {"required", "banned"}
+        and {op_text(mine, "field"), op_text(theirs, "field")} == {"required", "banned"}
         and mine["member"] == theirs["member"]
     ):
         return "conflict"
@@ -235,23 +260,53 @@ def clash(mine: dict, theirs: dict) -> str | None:
     return "same"
 
 
-def needs_world_lock(ops: list[dict]) -> bool:
+def needs_world_lock(ops: Sequence[PlanOp]) -> bool:
     """Whether ``ops`` can clash on a name across plans, and so need the world lock."""
     return any(op.get("op") in ("rename", "restore") for op in ops)
 
 
-def _target_args(new: dict) -> tuple[PlanArgs, set[str]]:
+def _target_args(new: Mapping[str, object]) -> tuple[PlanArgs, set[str]]:
     """``new`` as checked arguments, and which fields it names (``exclude_recipes`` as banned)."""
     raw = {k: v for k, v in dict(new).items() if k in KINDS or k == "exclude_recipes"}
     present = {("banned" if k == "exclude_recipes" else k) for k in raw}
     return PlanArgs.from_dict(raw), present
 
 
-def diff_args(base: PlanArgs | dict, new: dict, partial: bool = False) -> list[dict]:
+def _set_ops(name: str, before: list[Member], after: list[Member]) -> list[PlanOp]:
+    """``add`` and ``remove`` ops that turn one set field into another."""
+    had = {member_key(name, m) for m in before}
+    has = {member_key(name, m) for m in after}
+    added: list[PlanOp] = [
+        {"op": "add", "field": name, "member": m} for m in after if member_key(name, m) not in had
+    ]
+    removed: list[PlanOp] = [
+        {"op": "remove", "field": name, "member": m}
+        for m in before
+        if member_key(name, m) not in has
+    ]
+    return added + removed
+
+
+def _map_ops(name: str, before: dict[str, Member], after: dict[str, Member]) -> list[PlanOp]:
+    """``put`` and ``del`` ops that turn one map field into another."""
+    put: list[PlanOp] = [
+        {"op": "put", "field": name, "item": k, "value": v}
+        for k, v in after.items()
+        if before.get(k) != v
+    ]
+    deleted: list[PlanOp] = [
+        {"op": "del", "field": name, "item": k} for k in before if k not in after
+    ]
+    return put + deleted
+
+
+def diff_args(
+    base: PlanArgs | Mapping[str, object], new: Mapping[str, object], partial: bool = False
+) -> list[PlanOp]:
     """Ops that turn ``base`` into ``new``; with ``partial`` only fields ``new`` names count."""
     old = base if isinstance(base, PlanArgs) else PlanArgs.from_dict(base)
     target, present = _target_args(new)
-    ops: list[dict] = []
+    ops: list[PlanOp] = []
     for name, kind in KINDS.items():
         if partial and name not in present:
             continue
@@ -260,25 +315,9 @@ def diff_args(base: PlanArgs | dict, new: dict, partial: bool = False) -> list[d
             if before != after:
                 ops.append({"op": "set", "field": name, "value": after})
         elif kind == "set":
-            had = {member_key(name, m) for m in before}
-            has = {member_key(name, m) for m in after}
-            ops += [
-                {"op": "add", "field": name, "member": m}
-                for m in after
-                if member_key(name, m) not in had
-            ]
-            ops += [
-                {"op": "remove", "field": name, "member": m}
-                for m in before
-                if member_key(name, m) not in has
-            ]
+            ops += _set_ops(name, before, after)
         else:
-            ops += [
-                {"op": "put", "field": name, "item": k, "value": v}
-                for k, v in after.items()
-                if before.get(k) != v
-            ]
-            ops += [{"op": "del", "field": name, "item": k} for k in before if k not in after]
+            ops += _map_ops(name, before, after)
     return ops
 
 
@@ -286,7 +325,7 @@ def replay(state: PlanState | None, commits: list[Commit], key: str) -> PlanStat
     for commit in commits:
         for op in commit.ops:
             if op.get("op") == "create":
-                state = PlanState.from_dict(op["state"], key=key, rev=commit.rev)
+                state = PlanState.from_dict(created_state(op), key=key, rev=commit.rev)
                 state.key = key
             elif state is not None:
                 apply(state, op)

@@ -11,10 +11,13 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 from ...core.saveio import rows as saverows
 from ...core.saveio.records import iter_machine_records
+from ...core.saveio.schema import Projection
 from ...core.unionfind import UnionFind
+from .views import StructureSummary
 
 __all__ = [
     "LINK_XY",
@@ -48,6 +51,11 @@ TILE_CM = 800.0
 _BRIDGE = ("Ramp", "Stair", "Wall")
 _FOUNDATION = ("Foundation", "Platform")
 
+#: A piece's ``(x, y, z)`` in centimetres.
+Point3: TypeAlias = tuple[float, float, float]
+#: Piece indices by the ``TILE_CM`` cell they stand in.
+Cells: TypeAlias = dict[tuple[int, int], list[int]]
+
 
 @dataclass
 class Slab:
@@ -74,8 +82,8 @@ class Slab:
 class Structures:
     """Slabs, and which slab each machine stands on."""
 
-    slabs: list[Slab] = field(default_factory=list)
-    slab_of: dict[str, int] = field(default_factory=dict)
+    slabs: list[Slab] = field(default_factory=list[Slab])
+    slab_of: dict[str, int] = field(default_factory=dict[str, int])
 
     def machines_on(self, index: int) -> list[str]:
         return sorted(m for m, s in self.slab_of.items() if s == index)
@@ -88,7 +96,7 @@ class Structures:
             by_slab[index].append(machine)
         return sorted((sorted(v) for v in by_slab.values()), key=len, reverse=True)
 
-    def summary(self) -> dict:
+    def summary(self) -> StructureSummary:
         return {
             "slabs": len(self.slabs),
             "tiles": sum(s.tiles for s in self.slabs),
@@ -96,14 +104,14 @@ class Structures:
         }
 
 
-def _grid(points: list[tuple[float, float, float]]) -> dict[tuple[int, int], list[int]]:
-    cells: dict[tuple[int, int], list[int]] = defaultdict(list)
+def _grid(points: list[Point3]) -> Cells:
+    cells: Cells = defaultdict(list)
     for i, p in enumerate(points):
         cells[(int(p[0] // TILE_CM), int(p[1] // TILE_CM))].append(i)
     return cells
 
 
-def _neighbourhood(cells: dict, cx: int, cy: int) -> list[int]:
+def _neighbourhood(cells: Cells, cx: int, cy: int) -> list[int]:
     out: list[int] = []
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
@@ -111,10 +119,10 @@ def _neighbourhood(cells: dict, cx: int, cy: int) -> list[int]:
     return out
 
 
-def _split_pieces(projection: dict) -> tuple[list, list]:
+def _split_pieces(projection: Projection) -> tuple[list[Point3], list[Point3]]:
     """``(foundation tiles, bridging pieces)`` as ``(x, y, z)`` in cm."""
-    tiles: list[tuple[float, float, float]] = []
-    walkways: list[tuple[float, float, float]] = []
+    tiles: list[Point3] = []
+    walkways: list[Point3] = []
     for piece in saverows.iter_structures(projection):
         # ``""`` for a class index the table cannot resolve: a piece with no name is neither.
         cls = piece.cls or ""
@@ -126,10 +134,10 @@ def _split_pieces(projection: dict) -> tuple[list, list]:
     return tiles, walkways
 
 
-def _union_pieces(nodes: list, link_xy: float, link_z: float) -> UnionFind:
+def _union_pieces(nodes: list[Point3], link_xy: float, link_z: float) -> UnionFind[int]:
     """Join every pair of pieces touching face to face, or stacked within ``link_z``."""
     cells = _grid(nodes)
-    union = UnionFind()
+    union = UnionFind[int]()
     for (cx, cy), members in cells.items():
         near = _neighbourhood(cells, cx, cy)
         for i in members:
@@ -145,9 +153,9 @@ def _union_pieces(nodes: list, link_xy: float, link_z: float) -> UnionFind:
     return union
 
 
-def _slabs_of(tiles: list, union: UnionFind) -> tuple[list[Slab], dict[int, int]]:
+def _slabs_of(tiles: list[Point3], union: UnionFind[int]) -> tuple[list[Slab], dict[int, int]]:
     """The slabs, largest first, and each tile's slab index."""
-    grouped: dict = defaultdict(list)
+    grouped: dict[int, list[int]] = defaultdict(list)
     for i in range(len(tiles)):
         grouped[union.find(i)].append(i)
     slabs: list[Slab] = []
@@ -172,7 +180,9 @@ def _slabs_of(tiles: list, union: UnionFind) -> tuple[list[Slab], dict[int, int]
     return slabs, tile_slab
 
 
-def _assign_machines(projection: dict, tiles: list, tile_slab: dict[int, int]) -> dict[str, int]:
+def _assign_machines(
+    projection: Projection, tiles: list[Point3], tile_slab: dict[int, int]
+) -> dict[str, int]:
     """Each machine's slab: the nearest tile UNDER it, so an upper-floor machine does not
     claim the ground-level slab it happens to sit above."""
     tile_cells = _grid(tiles)
@@ -182,7 +192,8 @@ def _assign_machines(projection: dict, tiles: list, tile_slab: dict[int, int]) -
         if not pos:
             continue
         cx, cy = int(pos[0] // TILE_CM), int(pos[1] // TILE_CM)
-        best, best_d = None, STAND_ON
+        best: int | None = None
+        best_d = STAND_ON
         for i in _neighbourhood(tile_cells, cx, cy):
             tile = tiles[i]
             if not (-STAND_ON <= pos[2] - tile[2] <= MAX_TILE_BELOW_CM):
@@ -196,7 +207,7 @@ def _assign_machines(projection: dict, tiles: list, tile_slab: dict[int, int]) -
 
 
 def build_structures(
-    projection: dict,
+    projection: Projection,
     link_xy: float = LINK_XY,
     link_z: float = LINK_Z,
 ) -> Structures:

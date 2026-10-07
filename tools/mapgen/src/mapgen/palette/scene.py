@@ -5,35 +5,24 @@ from __future__ import annotations
 
 from typing import NamedTuple, NotRequired, Protocol, TypeAlias, TypedDict
 
-import numpy as np
-from numpy.typing import NDArray
-
 from mapgen.terrain.sample import Taps
-from satisfactory_mcp.core.arrays import I16Grid, U8Grid
+from satisfactory_mcp.core.arrays import FloatGrid, I16Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "BandGrid",
     "BandScene",
     "BandTaps",
-    "CrownBand",
-    "CrownLayer",
     "FloatGrid",
-    "PaintedScene",
     "ReconciledWater",
     "ReliefScene",
     "SatelliteScene",
     "ShadedScene",
-    "WaterOptics",
     "WaterPlanes",
     "WaterTerms",
     "field_heights",
     "field_water",
 ]
-
-#: A float plane of either width: numpy's stubs widen float32 arithmetic to float64, so a
-#: painter's planes are typed by kind rather than by width.
-FloatGrid: TypeAlias = NDArray[np.floating]
 
 #: The water a run draws: the level plane in decimetres and its quality grades, which a field
 #: written before the quality byte lacks.
@@ -95,37 +84,6 @@ class WaterTerms(TypedDict):
     wet: NotRequired[FloatGrid]
 
 
-class CrownBand(TypedDict, total=False):
-    """The crowns stamped over a band: cover, linear colour, dome and top, and the dome's sun."""
-
-    cover: FloatGrid
-    rgb: FloatGrid
-    dome_m: FloatGrid
-    top_cm: FloatGrid
-    ndl: FloatGrid
-
-
-class CrownLayer(TypedDict):
-    """The crowns lit and ready to lay over the pixel: alpha, colour, top and sunk share."""
-
-    alpha: FloatGrid
-    colour: FloatGrid
-    top_m: FloatGrid
-    sunk: FloatGrid
-
-
-class WaterOptics(TypedDict, total=False):
-    """Per-pixel water optics of the painted style's classes, and the class shares asked for."""
-
-    k: FloatGrid
-    body: FloatGrid
-    deep: FloatGrid
-    deep_tau_m: FloatGrid
-    turbidity: FloatGrid
-    tint: FloatGrid
-    share: dict[int, FloatGrid]
-
-
 class BandScene(TypedDict):
     """One band as every painter reads it: heights, the borrowed light, the ramp, the water."""
 
@@ -155,17 +113,3 @@ class ReliefScene(BandScene):
 
     spacing_m: float
     unlit: NotRequired[bool]
-
-
-class PaintedScene(BandScene):
-    """A band of the painted style: its crowns, sun term, rock and mesh weights and optics."""
-
-    crowns: CrownBand | None
-    ndl: FloatGrid
-    ndl_flat: np.float32
-    rock_weight: FloatGrid
-    mesh_weight: FloatGrid | None
-    mesh_class: U8Grid | None
-    mesh_family: U8Grid | None
-    water_optics: WaterOptics | None
-    grid: BandGrid

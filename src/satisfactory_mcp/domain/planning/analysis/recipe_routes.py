@@ -10,11 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import NamedTuple
 
+from typing_extensions import TypedDict, Unpack
+
 from ....core.gamedata.constants import UNLIMITED_RATE, WATER
 from ....core.gamedata.model import GameData, Recipe
 from ....core.gamedata.search import resolve_item
 from ...world.state import WorldState
-from ..solver.model import Scenario, Solution
+from ..solver.model import ProcessRow, Scenario, Solution
 from ..solver.optimize import solve
 from ..solver.scenario import ChainScenario, chain_scenario
 
@@ -56,7 +58,7 @@ class Route:
     #: Target output for PROBE_RATE of the primary resource. The headline.
     yield_per_probe: float = 0.0
     per_unit: float = 0.0  # primary resource consumed per unit of target
-    raw_per_unit: dict[str, float] = field(default_factory=dict)
+    raw_per_unit: dict[str, float] = field(default_factory=dict[str, float])
     machines: int = 0
     #: Fewest whole buildings for the same output, ignoring raw.
     machines_floor: int = 0
@@ -65,10 +67,10 @@ class Route:
     #: Net MW per unit of the primary resource once the output is burnt in the best
     #: unlocked generator. None when the target is not a fuel.
     power_yield: float | None = None
-    byproducts: list[Byproduct] = field(default_factory=list)
-    build_first: list[str] = field(default_factory=list)
-    upstream: list[str] = field(default_factory=list)
-    upstream_ids: list[str] = field(default_factory=list)
+    byproducts: list[Byproduct] = field(default_factory=list[Byproduct])
+    build_first: list[str] = field(default_factory=list[str])
+    upstream: list[str] = field(default_factory=list[str])
+    upstream_ids: list[str] = field(default_factory=list[str])
     note: str = ""
 
     @property
@@ -90,7 +92,7 @@ class RouteComparison:
     generator_water_m3_min: float = 0.0
     allow_sinks: bool = True
     outlets: tuple[str, ...] = ()
-    notes: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list[str])
     solves: int = 0
 
     @property
@@ -102,6 +104,14 @@ class _Generator(NamedTuple):
     cls: str | None
     mw_per_unit: float
     water_per_unit: float
+
+
+class _RouteOverrides(TypedDict, total=False):
+    """The Scenario fields one route's solves set on top of the chain."""
+
+    objective: str
+    raw_caps: dict[str, float]
+    export_minimums: dict[str, float]
 
 
 def short_recipe_name(name: str) -> str:
@@ -139,18 +149,19 @@ def _unlocked_producers(
     game: GameData, state: WorldState, target: str, scenario: Scenario, max_routes: int
 ) -> tuple[list[Recipe], bool]:
     """Part recipes making ``target`` this save can run, by name, and whether more were cut."""
+    available = scenario.buildings_available
     producers = [
         r
         for r in game.producers_of(target, "part")
         if r.cls in state.available_recipe_ids
-        and (r.machine is None or r.machine in scenario.buildings_available)
+        and (r.machine is None or available is None or r.machine in available)
     ]
     producers.sort(key=lambda r: r.name)
     return producers[:max_routes], len(producers) > max_routes
 
 
 def _route_scenario(
-    chain: ChainScenario, recipe_id: str, rivals: set[str], **overrides
+    chain: ChainScenario, recipe_id: str, rivals: set[str], **overrides: Unpack[_RouteOverrides]
 ) -> Scenario:
     """The chain with every rival producer deleted but ``recipe_id``: one route, never a blend."""
     return replace(
@@ -231,6 +242,16 @@ def _byproducts(game: GameData, sol: Solution, target: str) -> list[Byproduct]:
     return out
 
 
+def _unbuilt(game: GameData, state: WorldState, rows: list[ProcessRow]) -> list[str]:
+    """Names of the buildings ``rows`` use that this world has never built."""
+    names: set[str] = set()
+    for row in rows:
+        building_id = row["building_id"]
+        if building_id in game.buildings and state.built(building_id) == 0:
+            names.add(game.buildings[building_id].name)
+    return sorted(names)
+
+
 def _solve_route(
     game: GameData,
     state: WorldState,
@@ -245,7 +266,7 @@ def _solve_route(
 ) -> tuple[Route, int]:
     """One route from its floor solve: the headline probe, then the buildable plan pinned
     under it. Returns the route and how many solves it took."""
-    target = chain.scenario.target_item
+    target = chain.target
     route = Route(recipe=producer.cls, name=producer.name, status="infeasible")
     if not floor.ok:
         missing = _unreachable_inputs(
@@ -304,14 +325,8 @@ def _solve_route(
         if row["recipe"] != producer.cls
     ]
     route.upstream = [short_recipe_name(row["label"]) for row in rest]
-    route.upstream_ids = [row["recipe"] for row in rest if row["recipe"]]
-    route.build_first = sorted(
-        {
-            game.buildings[row["building_id"]].name
-            for row in best.processes
-            if row["building_id"] in game.buildings and state.built(row["building_id"]) == 0
-        }
-    )
+    route.upstream_ids = [rid for row in rest if (rid := row["recipe"])]
+    route.build_first = _unbuilt(game, state, best.processes)
     if generator.mw_per_unit:
         # The LP's linear draw keeps this scale-free; whole machines would round with rate.
         route.power_yield = (rate * generator.mw_per_unit + best.net_mw) / (rate * route.per_unit)

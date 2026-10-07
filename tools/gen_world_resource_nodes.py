@@ -46,6 +46,7 @@ from satisfactory_mcp.core.gameassets.packages import (
     ClassFacts,
     PackageView,
     ScriptObjects,
+    ZenExport,
     class_name_of,
     root_component,
     world_transform,
@@ -311,7 +312,7 @@ def read_rows(view: PackageView, classes: ClassFacts) -> list[WorldNode]:
 def _read_node_row(
     view: PackageView,
     classes: ClassFacts,
-    export: dict,
+    export: ZenExport,
     cls: str,
     core_names: dict[int, str],
     problems: list[str],

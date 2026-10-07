@@ -124,7 +124,7 @@ write holds `filelock.held` and uses `atomic.write_text`; readers take no lock.
 |---|---|---|---|---|
 | `advice_list` | GET `/api/advice` | `biomass?: include\|exclude` (default: the shared setting), `spoilers?: 0\|1` | `AdviceResponse {save_token, play_s, version, active, hidden}` | 404 save unreadable; 503 `{error, newer_schema: true}` |
 | `hide_advice` | POST `/api/advice/hidden` | `AdviceHideBody {key, mode: dismiss\|snooze, hours?, rev?}`, `?spoilers=` | `AdviceRow` as it now stands | 400 bad hours; 404 key not firing; 409 `AdviceStaleResponse {error, stale, row}`; 422 bad mode; 503 lock or schema |
-| `restore_advice` | DELETE `/api/advice/hidden/{adv_id}` | `AdviceRestoreBody {rev}` | `AdviceRestored {ok, id}` | 404 not firing or not hidden; 409; 503 |
+| `restore_advice` | DELETE `/api/advice/hidden/{adv_id}` | `RevBody {rev}` | `AdviceRestored {ok, id}` | 404 not firing or not hidden; 409; 503 |
 
 - `active` is every row not hidden, ranked; the page applies the caps. `AdviceRow.tone` is
   `blocked`, `mid` or `muted`; `state` is `active`, `dismissed` or `snoozed`; `rev` is the

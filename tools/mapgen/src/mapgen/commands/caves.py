@@ -65,7 +65,7 @@ def write_caves(args: argparse.Namespace, build_pin: str, build_raw: JsonObject)
         print(f"{out_dir} already exists. Pass --force to replace it.")
         return 3
     field = hf.load_field(args.field, cache=False)
-    if field is None or field.height_dm is None:
+    if field is None:
         print(
             f"no terrain field at {args.field}: the cave markers are kept only where they "
             "stand under the ground, which needs one. Run this tool without --caves first."
@@ -83,7 +83,13 @@ def write_caves(args: argparse.Namespace, build_pin: str, build_raw: JsonObject)
     for name, value in counts.items():
         print(f"  {name:>22}: {value}")
     buffer = io.BytesIO()
-    np.savez_compressed(buffer, **arrays)
+    np.savez_compressed(
+        buffer,
+        mask=arrays["mask"],
+        planes=arrays["planes"],
+        starts=arrays["starts"],
+        boxes=arrays["boxes"],
+    )
     meta: JsonObject = {
         "description": (
             "Where caves are under this world's single-valued terrain field: a safety flag, "

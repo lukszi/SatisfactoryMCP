@@ -10,7 +10,8 @@ from collections.abc import Mapping
 from urllib.parse import urlsplit
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from starlette.middleware.base import RequestResponseEndpoint
 
 __all__ = ["READS", "guard", "refusal"]
 
@@ -59,7 +60,7 @@ def refusal(method: str, headers: Mapping[str, str], server: tuple[str, int] | N
     return None
 
 
-async def guard(request: Request, call_next):
+async def guard(request: Request, call_next: RequestResponseEndpoint) -> Response:
     said = refusal(request.method, request.headers, request.scope.get("server"))
     if said:
         return JSONResponse({"error": said}, status_code=403)

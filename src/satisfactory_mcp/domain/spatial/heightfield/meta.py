@@ -6,15 +6,12 @@ which every loader in this package reads as "no data here".
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing_extensions import TypedDict
 
-from ....core.jsontypes import JsonObject, JsonValue
+from ....core.jsontypes import JsonObject, JsonValue, as_float, as_int, require_object
 
 __all__ = [
     "TerrainGrid",
-    "json_float",
-    "json_int",
-    "json_object",
     "layer_accuracies",
     "pinned_build",
     "read_terrain_grid",
@@ -43,24 +40,6 @@ class TerrainGrid(TypedDict):
     row_off: int | None
 
 
-def json_object(value: JsonValue) -> JsonObject:
-    if not isinstance(value, dict):
-        raise TypeError(f"expected a JSON object, got {type(value).__name__}")
-    return value
-
-
-def json_float(value: JsonValue) -> float:
-    if value is None or isinstance(value, (dict, list)):
-        raise TypeError(f"expected a number, got {type(value).__name__}")
-    return float(value)
-
-
-def json_int(value: JsonValue) -> int:
-    if value is None or isinstance(value, (dict, list)):
-        raise TypeError(f"expected a number, got {type(value).__name__}")
-    return int(value)
-
-
 def pinned_build(meta: JsonObject) -> str | None:
     """The game build a generator recorded under ``sources.game``, or ``None``."""
     sources = meta.get("sources")
@@ -74,10 +53,10 @@ def layer_accuracies(provenance: JsonValue) -> dict[int, float | None]:
     if not provenance:
         return {}
     accuracies: dict[int, float | None] = {}
-    for key, entry in json_object(provenance).items():
+    for key, entry in require_object(provenance).items():
         if not key.lstrip("-").isdigit():
             continue
-        accuracy = json_object(entry).get("accuracy_m")
+        accuracy = require_object(entry).get("accuracy_m")
         accuracies[int(key)] = accuracy if isinstance(accuracy, (int, float)) else None
     return accuracies
 
@@ -89,12 +68,12 @@ def read_terrain_grid(
     if not isinstance(raw, dict):
         return None
     try:
-        width, height = json_int(raw["width"]), json_int(raw["height"])
-        tx0_cm, ty0_cm = json_float(raw["x0_cm"]), json_float(raw["y0_cm"])
-        tspacing_cm = json_float(raw["spacing_cm"])
-        zero = json_float(raw.get("zero", LANDSCAPE_ZERO))
-        units_per_m = json_float(raw.get("units_per_m", LANDSCAPE_UNITS_PER_M))
-        offset_m = json_float(raw.get("offset_m", LANDSCAPE_OFFSET_M))
+        width, height = as_int(raw["width"]), as_int(raw["height"])
+        tx0_cm, ty0_cm = as_float(raw["x0_cm"]), as_float(raw["y0_cm"])
+        tspacing_cm = as_float(raw["spacing_cm"])
+        zero = as_float(raw.get("zero", LANDSCAPE_ZERO))
+        units_per_m = as_float(raw.get("units_per_m", LANDSCAPE_UNITS_PER_M))
+        offset_m = as_float(raw.get("offset_m", LANDSCAPE_OFFSET_M))
     except (KeyError, TypeError, ValueError):
         return None
     dc = (tx0_cm - x0_cm) / spacing_cm

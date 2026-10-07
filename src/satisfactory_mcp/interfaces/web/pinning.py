@@ -6,8 +6,9 @@ docs/frontend_vision.md §16 has the rule; ``domain/world/pin.py`` has the check
 from __future__ import annotations
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
+from starlette.middleware.base import RequestResponseEndpoint
 
 from ...domain.world import pin
 from .guard import READS
@@ -17,7 +18,7 @@ __all__ = ["STALE", "pinning"]
 STALE = "the save changed since this page read it; refresh to read the new one"
 
 
-async def pinning(request: Request, call_next):
+async def pinning(request: Request, call_next: RequestResponseEndpoint) -> Response:
     params = request.query_params
     as_of = params.get("as_of")
     if not as_of or request.method not in READS or not request.url.path.startswith("/api/"):

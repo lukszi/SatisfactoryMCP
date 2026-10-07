@@ -146,7 +146,9 @@ def median_lab(colours: FloatGrid) -> FloatGrid:
     return np.median(oklab(np.clip(colours, 1e-7, None)), axis=0)
 
 
-def area_ids(area_names: Sequence[str], assets: Sequence[str], keys: Collection[str]) -> list[int]:
+def area_ids(
+    area_names: Sequence[str], assets: Sequence[str | None], keys: Collection[str]
+) -> list[int]:
     """Biome raster indices whose area stem (``Area_crater``) or asset (``Area_crater_1``) is listed."""
     return [
         i

@@ -10,9 +10,12 @@ malformed trailer raises inside the caller rather than at the save boundary.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from .errors import ParseError
 from .reader import Reader
 from .references import read_reference
+from .values import SaveValue
 
 __all__ = ["TRAILER_READERS", "read_trailer"]
 
@@ -22,7 +25,7 @@ CIRCUIT_SUBSYSTEM = "/Game/FactoryGame/-Shared/Blueprint/BP_CircuitSubsystem.BP_
 PLAYER_STATE = "/Game/FactoryGame/Character/Player/BP_PlayerState.BP_PlayerState_C"
 
 
-def _read_chain(r: Reader, end: int) -> list:
+def _read_chain(r: Reader, end: int) -> list[SaveValue]:
     """A conveyor chain: the belts it spans, their splines, and the items on it.
 
     The projection's ``belts`` key comes from the spline geometry; nothing reads the items::
@@ -58,7 +61,7 @@ def _read_chain(r: Reader, end: int) -> list:
     chain record, explained``.
     """
     first_belt, last_belt = read_reference(r), read_reference(r)
-    segments = []
+    segments: list[SaveValue] = []
     for _ in range(_read_count(r, end, 24, "chain segments")):
         owner, belt = read_reference(r), read_reference(r)
         points = [
@@ -77,7 +80,7 @@ def _read_chain(r: Reader, end: int) -> list:
     return [first_belt, last_belt, segments, chain, items]
 
 
-def _read_power_line(r: Reader, end: int) -> list:
+def _read_power_line(r: Reader, end: int) -> list[SaveValue]:
     """The two power connections a line joins.
 
     Nothing reads this -- the projection's power graph comes from the connection components'
@@ -87,14 +90,14 @@ def _read_power_line(r: Reader, end: int) -> list:
     return [read_reference(r), read_reference(r)]
 
 
-def _read_circuit_subsystem(r: Reader, end: int) -> list:
+def _read_circuit_subsystem(r: Reader, end: int) -> list[SaveValue]:
     """Every power circuit in the world, as ``(id, reference)`` pairs. The id is the same
     number the circuit's own ``mCircuitID`` property carries.
     """
     return [[r.i32(), read_reference(r)] for _ in range(_read_count(r, end, 12, "power circuits"))]
 
 
-def _read_player_state(r: Reader, end: int) -> list:
+def _read_player_state(r: Reader, end: int) -> list[SaveValue]:
     """The player's account id.
 
     A ``uint8`` of unknown meaning, then a one-byte id type, then a length-prefixed blob of 8
@@ -125,7 +128,7 @@ def _read_count(r: Reader, end: int, min_record_bytes: int, what: str) -> int:
 #: Which classes this module can read, by the ``typePath`` their actor header carries. The
 #: ``RepSize`` variants are the same actor with another replication budget and the identical
 #: record.
-TRAILER_READERS = {
+TRAILER_READERS: dict[str, Callable[[Reader, int], list[SaveValue]]] = {
     CONVEYOR_CHAIN: _read_chain,
     f"{CONVEYOR_CHAIN}_RepSizeMedium": _read_chain,
     f"{CONVEYOR_CHAIN}_RepSizeLarge": _read_chain,
@@ -137,7 +140,7 @@ TRAILER_READERS = {
 }
 
 
-def read_trailer(class_path: str, body: bytes, offset: int, length: int) -> list:
+def read_trailer(class_path: str, body: bytes, offset: int, length: int) -> list[SaveValue]:
     """Decode one actor's trailing bytes. ``offset``/``length`` span the 4-byte trailer too.
 
     Refuses to return a short read: the reader must land exactly on the end the object

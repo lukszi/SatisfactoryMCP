@@ -203,7 +203,7 @@ def test_the_pin_bodies_reach_the_published_schema(fresh_state_client):
     post = schema["paths"]["/api/pins"]["post"]
     assert {"200", "201"} <= set(post["responses"])
     names = schema["components"]["schemas"]
-    for name in ("PinRow", "PinRef", "PinsResponse", "PinCreated", "PinDropped"):
+    for name in ("PinRow", "PinRef", "PinsResponse", "PinCreated", "Dropped", "RevBody"):
         assert name in names, name
     ops = {
         op["operationId"].split("_api_")[0]

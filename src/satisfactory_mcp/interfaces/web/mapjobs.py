@@ -13,15 +13,68 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Mapping
+from typing import Literal, cast
+
+from typing_extensions import TypedDict
 
 from ... import config
+from ...core.jsontypes import JsonObject
 from ...domain.maps import jobs as store
 from ...domain.maps import presets, registry
 from ...domain.maps.jobs import QUEUE_MAX
+from ...domain.maps.views import GeneratorPlan
 from .childproc import Child, kill_tree, launch
 from .watch.events import KIND_MAPS, WatchEvent
+from .watch.watcher import SaveWatcher
 
-__all__ = ["MapJobRunner"]
+__all__ = ["JobStatus", "MapJobRecord", "MapJobRunner", "MapJobView"]
+
+JobStatus = Literal["queued", "running", "done", "failed", "cancelled", "interrupted"]
+
+
+class MapJobRecord(TypedDict):
+    """A generation job as its file records it; ``options`` are the preset's, normalised."""
+
+    id: str
+    preset: str
+    options: Mapping[str, object]
+    label: str | None
+    script: str
+    command: str
+    argv: list[str]
+    produces: list[str]
+    replaces: str | None
+    status: JobStatus
+    created: float
+    started: float | None
+    ended: float | None
+    pid: int | None
+    pid_created: int | None
+    exit_code: int | None
+    stage: str
+    stage_words: str
+    pct: float | None
+    eta_s: int | None
+    peak_rss: int | None
+    error_line: str | None
+    last_line: str | None
+    estimate_s: int | None
+
+
+class MapJobView(MapJobRecord):
+    """A job as a page reads it: the record and how long it has run."""
+
+    elapsed_s: float | None
+
+
+class MapsEventData(TypedDict):
+    """A ``maps`` event: the job that moved, if one did, the queue and the registry version."""
+
+    job: MapJobView | None
+    queued: list[str]
+    registry_version: int
+
 
 log = logging.getLogger(__name__)
 
@@ -47,9 +100,9 @@ def _new_job_record(
     preset: str,
     label: str | None,
     replaces: str | None,
-    plan: dict,
+    plan: GeneratorPlan,
     estimate_s: int,
-) -> dict:
+) -> MapJobRecord:
     """A freshly queued job as the job file records it, before anything has run."""
     return {
         "id": ident,
@@ -82,14 +135,15 @@ def _new_job_record(
 class ActiveRun:
     """The job being run now, and what has been read of its log."""
 
-    def __init__(self, job: dict, child: Child) -> None:
+    def __init__(self, job: MapJobRecord, child: Child) -> None:
         self.job = job
         self.child = child
         self.offset = 0
         self.partial = b""
         self.cancelled = False
         stages = presets.stage_plan(job["preset"], job["options"])
-        self.progress = store.Progress(stages, job["options"].get("size"))
+        size = job["options"].get("size")
+        self.progress = store.Progress(stages, size if isinstance(size, int) else None)
         self.published = 0.0
         self.stage = ""
 
@@ -97,14 +151,16 @@ class ActiveRun:
 class MapJobRunner:
     """Queue, run, watch and report map generation jobs for one web process."""
 
-    def __init__(self, watcher, recover: bool = False, python: str | None = None) -> None:
+    def __init__(
+        self, watcher: SaveWatcher, recover: bool = False, python: str | None = None
+    ) -> None:
         self.watcher = watcher
         self.recover = recover
         self.python = python or sys.executable
-        self.jobs: dict[str, dict] = {}
+        self.jobs: dict[str, MapJobRecord] = {}
         self.active_run: ActiveRun | None = None
         self._wake: asyncio.Event | None = None
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
 
     # ---- views ------------------------------------------------------------
 
@@ -112,16 +168,16 @@ class MapJobRunner:
         """Whether a generator process is running for this runner now."""
         return self.active_run is not None
 
-    def queued(self) -> list[dict]:
+    def queued(self) -> list[MapJobRecord]:
         return [j for j in self.jobs.values() if j["status"] == "queued"]
 
-    def view(self, job: dict) -> dict:
+    def view(self, job: MapJobRecord) -> MapJobView:
         now = time.time()
         started, ended = job.get("started"), job.get("ended")
         elapsed = ((ended or now) - started) if started else None
         return {**job, "elapsed_s": round(elapsed, 1) if elapsed is not None else None}
 
-    def snapshot(self) -> list[dict]:
+    def snapshot(self) -> list[MapJobView]:
         """Running and queued jobs, then the last ten finished ones, newest first."""
         active = [self.view(j) for j in self.jobs.values() if j["status"] in store.ACTIVE]
         active.sort(key=lambda j: (j["status"] != "running", j.get("created") or 0))
@@ -135,13 +191,13 @@ class MapJobRunner:
         for job in self.jobs.values():
             if job["status"] in store.ACTIVE:
                 held.update(job.get("produces") or [])
-                if job.get("replaces"):
-                    held.add(job["replaces"])
+                if replaces := job.get("replaces"):
+                    held.add(replaces)
         return frozenset(held)
 
-    def announce(self, job: dict | None = None) -> None:
+    def announce(self, job: MapJobRecord | None = None) -> None:
         """Tell every page: this job moved, or the registry did."""
-        data = {
+        data: MapsEventData = {
             "job": self.view(job) if job else None,
             "queued": [j["id"] for j in self.queued()],
             "registry_version": registry.read()["version"],
@@ -151,7 +207,13 @@ class MapJobRunner:
 
     # ---- requests ---------------------------------------------------------
 
-    def submit(self, preset: str, options: dict, label: str | None, replaces: str | None) -> dict:
+    def submit(
+        self,
+        preset: str,
+        options: Mapping[str, object],
+        label: str | None,
+        replaces: str | None,
+    ) -> MapJobRecord:
         """Queue a job; a ``PresetError`` (``QueueFull``, ``DiskShort``) says why not."""
         if len(self.queued()) >= QUEUE_MAX:
             raise presets.QueueFull(
@@ -160,17 +222,17 @@ class MapJobRunner:
         checked = presets.can_generate()
         if not checked["ok"]:
             raise presets.PresetError(checked["reason"])
-        options = presets.normalise(preset, options)
+        normalised = presets.normalise(preset, options)
         if preset == "render" and not checked["heightfield"]:
             raise presets.PresetError("render maps need the heightfield first")
         if replaces is not None and replaces not in registry.read()["types"]:
             raise registry.MapsUnknown(f"no map type “{replaces}” to replace")
-        cost = presets.estimate(preset, options)
+        cost = presets.estimate(preset, normalised)
         if not cost["ok"]:
             raise presets.DiskShort(cost["reason"])
         ident = store.new_id()
         plan = presets.plan(
-            preset, options, ident, registry.installed_changelist(), registry.taken_ids()
+            preset, normalised, ident, registry.installed_changelist(), registry.taken_ids()
         )
         if label:
             for entry in plan["produces"].values():
@@ -185,7 +247,7 @@ class MapJobRunner:
             self._wake.set()
         return job
 
-    async def cancel(self, ident: str) -> dict:
+    async def cancel(self, ident: str) -> MapJobRecord:
         """Cancel the running job (its process tree is killed) or take a queued one off."""
         job = self.jobs.get(ident)
         if job is None:
@@ -201,7 +263,8 @@ class MapJobRunner:
             and self.active_run.job is job
         ):
             self.active_run.cancelled = True
-            await asyncio.to_thread(kill_tree, job["pid"])
+            # The run's child is the job's ``pid``: launched as it, or adopted by it.
+            await asyncio.to_thread(kill_tree, self.active_run.child.pid)
         return job
 
     # ---- the loop ---------------------------------------------------------
@@ -229,11 +292,15 @@ class MapJobRunner:
         """Re-adopt a generator a previous server left running; mark the rest interrupted."""
         registry.ensure()
         registry.purge_trash()
-        for job in store.load_all():
-            self.jobs[job["id"]] = job
+        # The files this runner wrote, read back as it wrote them.
+        for job in cast("list[MapJobRecord]", store.load_all()):
+            pid, created = job.get("pid"), job.get("pid_created")
+            self.jobs[str(job["id"])] = job
             if job["status"] != "running":
                 continue
-            child = Child.adopt(int(job.get("pid") or 0), job.get("pid_created"))
+            child = Child.adopt(
+                pid if isinstance(pid, int) else 0, created if isinstance(created, int) else None
+            )
             if child is not None and self.active_run is None:
                 self.active_run = ActiveRun(job, child)
                 log.info("re-adopted map job %s (pid %s)", job["id"], job["pid"])
@@ -262,7 +329,7 @@ class MapJobRunner:
                 log.warning("map job runner failed a step; carrying on", exc_info=True)
                 await asyncio.sleep(1.0)
 
-    async def _launch(self, job: dict) -> None:
+    async def _launch(self, job: MapJobRecord) -> None:
         """Start a queued job; a cancel during any await here leaves no generator running."""
         cost = await asyncio.to_thread(presets.estimate, job["preset"], job["options"])
         if job["status"] != "queued":
@@ -276,13 +343,16 @@ class MapJobRunner:
             await asyncio.to_thread(kill_tree, child.pid)
             child.close()
             return
-        job.update(status="running", started=time.time(), pid=child.pid, pid_created=child.created)
+        job["status"] = "running"
+        job["started"] = time.time()
+        job["pid"] = child.pid
+        job["pid_created"] = child.created
         job["stage_words"] = "starting"
         self.active_run = ActiveRun(job, child)
         await asyncio.to_thread(store.save, job)
         self.announce(job)
 
-    def _spawn(self, job: dict) -> Child:
+    def _spawn(self, job: MapJobRecord) -> Child:
         name = job.get("command") or presets.COMMANDS[job["preset"]]
         command = [self.python, "-u", "-m", "mapgen", name, *job["argv"]]
         path = store.log_path(job["id"])
@@ -331,6 +401,7 @@ class MapJobRunner:
                     run.progress.feed(run.partial.decode("utf-8", "replace"))
                 run.child.close()
                 self.active_run = None
+                status: JobStatus
                 if run.cancelled:
                     status = "cancelled"
                 elif code == 0:
@@ -345,18 +416,23 @@ class MapJobRunner:
                 self.announce(job)
             await asyncio.sleep(TICK_S)
 
-    async def _finish_and_announce(self, job: dict, status: str, code: int | None) -> None:
+    async def _finish_and_announce(
+        self, job: MapJobRecord, status: JobStatus, code: int | None
+    ) -> None:
         """Record the outcome off the loop, then show the final state and announce it at once.
 
         Waiters poll ``status``; it must not turn final before the save and the event.
         """
-        job.update(await asyncio.to_thread(self._record_outcome, dict(job), status, code))
+        job.update(await asyncio.to_thread(self._record_outcome, job.copy(), status, code))
         self.announce(job)
 
-    def _record_outcome(self, job: dict, status: str, code: int | None) -> dict:
+    def _record_outcome(
+        self, job: MapJobRecord, status: JobStatus, code: int | None
+    ) -> MapJobRecord:
         """Record how a job ended and register or discard what it wrote; blocking, unannounced."""
+        ended = time.time()
         job["exit_code"] = code
-        job["ended"] = time.time()
+        job["ended"] = ended
         if status == "done":
             missing = [i for i in job.get("produces") or [] if not registry.finish(i, job["id"])]
             if missing:
@@ -368,10 +444,11 @@ class MapJobRunner:
                     {
                         "job": job["id"],
                         "preset": job["preset"],
-                        "options": job["options"],
-                        "seconds": round(job["ended"] - (job.get("started") or job["ended"])),
+                        # JSON as the job file holds it: the preset's normalised options.
+                        "options": cast(JsonObject, job["options"]),
+                        "seconds": round(ended - (job.get("started") or ended)),
                         "peak_rss": job.get("peak_rss"),
-                        "ended": job["ended"],
+                        "ended": ended,
                     }
                 )
         if status != "done":

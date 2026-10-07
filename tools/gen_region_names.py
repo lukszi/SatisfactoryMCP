@@ -15,7 +15,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import NotRequired, TypedDict
+from typing import TypedDict
 
 import numpy as np
 
@@ -28,7 +28,7 @@ for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
 # three artifacts cannot drift into three opinions about where the world is.
 from mapgen.common import base_parser, require_gen
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.ground.biome import CalibrationImaging, calibrate_biome
+from mapgen.gamedata.ground.biome import BiomeSquare, CalibrationImaging, calibrate_biome
 from satisfactory_mcp.core.arrays import F64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import (
     CONTAINER,
@@ -53,7 +53,7 @@ from satisfactory_mcp.core.gameassets.provenance import (
     installed_build_from_exe,
     read_path,
 )
-from satisfactory_mcp.core.jsontypes import JsonArray, JsonObject
+from satisfactory_mcp.core.jsontypes import JsonArray, JsonObject, JsonValue, as_float
 from satisfactory_mcp.domain.spatial import geo
 
 DEST = ROOT / "data" / "region_names.json"
@@ -172,21 +172,19 @@ KNOWN_LIMITATIONS: JsonArray = [
 ]
 
 
-class PositionedRow(TypedDict):
-    x: float
-    y: float
-    category: NotRequired[str]
-
-
-def load_positioned_rows(name: str, key: str) -> list[PositionedRow]:
+def load_positioned_rows(name: str, key: str) -> list[JsonObject]:
     """The ``key`` rows of a committed ``data/`` table, each of which must carry x and y."""
     path = ROOT / "data" / name
     if not path.exists():
         raise SystemExit(f"{path.relative_to(ROOT)} missing -- the land mask needs it")
-    rows: list[PositionedRow] = json.loads(path.read_text(encoding="utf-8"))[key]
+    loaded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
+    table = loaded.get(key) if isinstance(loaded, dict) else None
+    if not isinstance(table, list):
+        raise SystemExit(f"{name} holds no {key} list -- regenerate it")
+    rows = [row for row in table if isinstance(row, dict)]
     missing = [r for r in rows if "x" not in r or "y" not in r]
-    if missing:
-        raise SystemExit(f"{name}: {len(missing)} of {len(rows)} {key} carry no x/y")
+    if missing or len(rows) != len(table):
+        raise SystemExit(f"{name}: {len(table) - len(rows) + len(missing)} {key} carry no x/y")
     return rows
 
 
@@ -199,12 +197,12 @@ def reference_points() -> tuple[F64Grid, dict[str, int]]:
     pts: list[tuple[float, float]] = []
     counts: dict[str, int] = {}
     nodes = load_positioned_rows("world_resource_nodes.json", "nodes")
-    pts.extend((node["x"], node["y"]) for node in nodes)
+    pts.extend((as_float(node["x"]), as_float(node["y"])) for node in nodes)
     counts["resource_nodes"] = len(nodes)
     for row in load_positioned_rows("world_collectibles.json", "collectibles"):
         category = row.get("category")
         if category in LAND_MASK_CATEGORIES:
-            pts.append((row["x"], row["y"]))
+            pts.append((as_float(row["x"]), as_float(row["y"])))
             counts[category] = counts.get(category, 0) + 1
     for category in LAND_MASK_CATEGORIES:
         if category not in counts:
@@ -478,7 +476,7 @@ def check_existing_pin(dest: Path, build_pin: str) -> bool:
     another world's coastline, so the refusal is printed and False returned.
     """
     try:
-        existing = json.loads(dest.read_text(encoding="utf-8"))
+        existing: JsonValue = json.loads(dest.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         existing = {}
     pinned = read_path(existing, ("_meta", "game_version_pinned"))
@@ -521,7 +519,7 @@ def calibrate_pin(
 ) -> JsonObject | None:
     """The raster's pin to the map square, re-measured rather than inherited; None, with the
     reason printed, when it no longer holds by the required margin."""
-    biome = {"width": areas.width, "area": raster}
+    biome: BiomeSquare = {"width": areas.width, "area": raster}
     artwork = read_artwork_sheet(store, decoder, image_mod)
     calibration = calibrate_biome(biome, artwork, image_mod)
     print(

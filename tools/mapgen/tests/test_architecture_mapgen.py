@@ -92,7 +92,7 @@ MODULE_MAX_LINES = 600
 #: never raised, and one more than ``CEILING_SLACK`` above the file is stale.
 MODULE_CEILINGS: dict[str, int] = {
     "commands/renders.py": 503,
-    "commands/heightmap.py": 309,
+    "commands/heightmap.py": 306,
     "commands/artwork.py": 296,
 }
 CEILING_SLACK = 25

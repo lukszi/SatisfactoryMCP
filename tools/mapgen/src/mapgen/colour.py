@@ -12,6 +12,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from satisfactory_mcp.core.arrays import F32Grid
+from satisfactory_mcp.core.jsontypes import is_object_list
 
 __all__ = [
     "LUMA",
@@ -152,9 +153,9 @@ def number_at(block: Mapping[str, object], key: str) -> float:
 def colour_at(block: Mapping[str, object], key: str) -> list[float]:
     """A palette's or a light block's colour, a list of numbers, read as JSON holds it."""
     value = block[key]
-    items: list[object] = value if isinstance(value, list) else []
+    items = value if is_object_list(value) else []
     channels = [float(c) for c in items if isinstance(c, int | float)]
-    if not isinstance(value, list) or len(channels) != len(items):
+    if not is_object_list(value) or len(channels) != len(items):
         raise TypeError(f"{key} is {value!r}, not a colour")
     return channels
 

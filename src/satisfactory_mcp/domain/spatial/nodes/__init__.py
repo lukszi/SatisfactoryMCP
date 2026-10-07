@@ -1,10 +1,13 @@
 """Resource nodes: the static table, its game-version skew, and what the save taps."""
 
 from .extraction import (
+    AnnotatedNode,
+    MeasuredNode,
     annotate,
     annotate_for_save,
     blocking_buildings,
     can_extract,
+    measure_from,
     node_rate,
     occupancy_by_node,
     reachable,
@@ -25,6 +28,7 @@ from .table import (
     EXTRACTOR_FOR_KIND,
     GEYSER_CONSUMER,
     SUPPORT_BUILDINGS_FOR_KIND,
+    NodeRecord,
     NodeTable,
     load_nodes,
 )
@@ -33,6 +37,9 @@ __all__ = [
     "EXTRACTOR_FOR_KIND",
     "GEYSER_CONSUMER",
     "SUPPORT_BUILDINGS_FOR_KIND",
+    "AnnotatedNode",
+    "MeasuredNode",
+    "NodeRecord",
     "NodeTable",
     "TableSkew",
     "annotate",
@@ -42,6 +49,7 @@ __all__ = [
     "drifted_leaf_names",
     "identity_notes",
     "load_nodes",
+    "measure_from",
     "node_rate",
     "occupancy_by_node",
     "position_notes",

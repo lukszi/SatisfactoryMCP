@@ -12,13 +12,30 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
+
+from typing_extensions import TypedDict
 
 from ... import config
 from ...core import atomic
+from ...core.jsontypes import JsonValue
 from ...core.saveio import projection as proj
+from ...core.saveio.schema import SaveHeader
 from ...core.text import format_playtime
 
-__all__ = ["INDEX_SCHEMA", "Timeline", "build_row", "load_timeline", "row_key", "save_row"]
+if TYPE_CHECKING:
+    from .state import WorldState
+
+__all__ = [
+    "INDEX_SCHEMA",
+    "Timeline",
+    "TimelineDelta",
+    "TimelineRow",
+    "build_row",
+    "load_timeline",
+    "row_key",
+    "save_row",
+]
 
 #: Bumped when a row gains or corrects a field. Part of the row key, so an old row misses
 #: rather than being served thin. Separate from the projection's schema, which is ALSO in the
@@ -27,7 +44,52 @@ __all__ = ["INDEX_SCHEMA", "Timeline", "build_row", "load_timeline", "row_key", 
 INDEX_SCHEMA = 2
 
 
-def row_key(header: dict) -> str:
+class TimelinePhase(TypedDict):
+    game_phase: str | None
+    highest_complete_tier: int | None
+    purchased_schematics: int
+
+
+class TimelineRow(TypedDict):
+    """One save's index row, as ``build_row`` writes it and the index file keeps it."""
+
+    key: str
+    index_schema: int
+    projection_schema: int
+    world_id: str
+    filename: str
+    play_duration_s: int
+    mtime_ns: int
+    save_version: int
+    build_version: int
+    counts: dict[str, int]
+    #: ``installed_mw``, ``drawn_mw`` and ``measured_mw``; compared key by key.
+    power: dict[str, float]
+    phase: TimelinePhase
+    stock: dict[str, float]
+    sites: dict[str, int]
+
+
+#: ``Timeline.changed_since``'s answer; ``from`` is a keyword, hence the call form. Each
+#: ``counts`` entry is ``(then, now, change)``, each ``sites`` entry ``(then, now)``.
+TimelineDelta = TypedDict(
+    "TimelineDelta",
+    {
+        "from": str,
+        "to": str,
+        "played_s": int,
+        "wall_clock_s": float,
+        "counts": dict[str, tuple[int, int, int]],
+        "power": dict[str, tuple[float, float, float]],
+        "phase": tuple[TimelinePhase, TimelinePhase],
+        "sites": dict[str, tuple[int, int]],
+        "builds_crossed": list[int],
+        "window": str,
+    },
+)
+
+
+def row_key(header: SaveHeader) -> str:
     """Identity of one save, as a world state rather than as a file.
 
     ``mtime_ns`` and ``size`` are what separate two states that share a filename: the game
@@ -51,7 +113,7 @@ def row_key(header: dict) -> str:
 _STOCK_ITEMS = 30
 
 
-def build_row(state) -> dict:
+def build_row(state: WorldState) -> TimelineRow:
     """The index row for one ``WorldState``. Costs ~40 ms once the save is parsed."""
     header = state.projection.get("header") or {}
     projection = state.projection
@@ -107,7 +169,7 @@ class Timeline:
     """The rows this machine can still see for one world, oldest first."""
 
     world_id: str
-    rows: list[dict]
+    rows: list[TimelineRow]
 
     def __post_init__(self) -> None:
         self.rows.sort(key=lambda r: (r.get("play_duration_s") or 0, r.get("mtime_ns") or 0))
@@ -137,12 +199,12 @@ class Timeline:
             )
         return note
 
-    def at(self, filename: str) -> dict | None:
+    def at(self, filename: str) -> TimelineRow | None:
         """The NEWEST row with this filename. A rotating autosave name has several."""
         rows = [r for r in self.rows if r.get("filename") == filename]
         return rows[-1] if rows else None
 
-    def changed_since(self, anchor: dict) -> dict:
+    def changed_since(self, anchor: TimelineRow) -> TimelineDelta:
         """Aggregate change from ``anchor`` to the newest row, on both axes."""
         last = self.rows[-1]
         crossed = sorted(
@@ -181,21 +243,24 @@ class Timeline:
 def load_timeline(world_id: str) -> Timeline:
     """Rows cached for this world. Rows keyed by a stale schema are dropped on read."""
     index_path = _index_path(world_id)
-    rows: list[dict] = []
+    rows: list[TimelineRow] = []
     if index_path.is_file():
         try:
-            rows = [
-                r
-                for r in json.loads(index_path.read_text(encoding="utf-8"))
-                if r.get("index_schema") == INDEX_SCHEMA
-                and r.get("projection_schema") == proj.SCHEMA_VERSION
-            ]
+            stored: JsonValue = json.loads(index_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            rows = []
+            stored = []
+        # A row whose two schemas match is one ``save_row`` wrote at those schemas.
+        rows = [
+            cast(TimelineRow, r)
+            for r in (stored if isinstance(stored, list) else [])
+            if isinstance(r, dict)
+            and r.get("index_schema") == INDEX_SCHEMA
+            and r.get("projection_schema") == proj.SCHEMA_VERSION
+        ]
     return Timeline(world_id=world_id, rows=rows)
 
 
-def save_row(timeline: Timeline, row: dict) -> Timeline:
+def save_row(timeline: Timeline, row: TimelineRow) -> Timeline:
     """Merge one row in and write the index. Best-effort, like every other cache here."""
     rows = [r for r in timeline.rows if r["key"] != row["key"]]
     rows.append(row)

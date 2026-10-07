@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .....core import atomic, schema
+from .....core.jsontypes import JsonValue, as_float
 from ..plan_args import PlanArgs
 from ..store import PLAN_ARGS, Plan, PlanStore
 from .records import SCHEMA, Actor, PlanState
@@ -39,7 +40,7 @@ def _backup(log: PlanLog, legacy: Path, version: str) -> Path:
 
 def _check_marker(marker: Path) -> None:
     try:
-        raw = json.loads(marker.read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(marker.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return
     schema.check(raw, SCHEMA, marker)
@@ -48,14 +49,14 @@ def _check_marker(marker: Path) -> None:
 def _unique_name(log: PlanLog, name: str) -> str:
     """``name``, or ``name (2)``, ``name (3)`` … when a live plan already holds it."""
     unique, n = name, 2
-    while log._taken(unique):
+    while log.taken(unique):
         unique, n = f"{name} ({n})", n + 1
     return unique
 
 
 def _legacy_plan_state(plan: Plan, name: str) -> PlanState:
     """A legacy plan as a v1 state; arguments that fail their check are kept in the notes."""
-    refused: list = []
+    refused: list[tuple[str, object]] = []
     args = PlanArgs.from_dict(
         {k: v for k, v in (plan.args or {}).items() if k in PLAN_ARGS}, lenient=refused
     )
@@ -107,7 +108,7 @@ def migrate(log: PlanLog) -> dict[str, str]:
         _warn_if_newer(log.world_id, legacy, marker)
         return {}
     log.root.mkdir(parents=True, exist_ok=True)
-    with log._world_lock():
+    with log.world_lock():
         if marker.is_file():
             return {}
         old = PlanStore.load(log.world_id, log.session_name)
@@ -125,7 +126,7 @@ def migrate(log: PlanLog) -> dict[str, str]:
                 continue
             unique = _unique_name(log, name)
             state = _legacy_plan_state(plan, unique)
-            log._create_locked(log._fresh_key(), state, actor, "", f"migrated from {legacy.name}")
+            log.create_locked(log.fresh_key(), state, actor, "", f"migrated from {legacy.name}")
             keys[unique] = state.key
         _write_marker(marker, version, legacy, keys)
     return keys
@@ -135,9 +136,11 @@ def _warn_if_newer(world_id: str, legacy: Path, marker: Path) -> None:
     if world_id in _warned:
         return
     try:
-        at = float(json.loads(marker.read_text(encoding="utf-8")).get("at") or 0)
-        newer = legacy.stat().st_mtime > at
-    except (OSError, ValueError, AttributeError):
+        marked: JsonValue = json.loads(marker.read_text(encoding="utf-8"))
+        if not isinstance(marked, dict):
+            return
+        newer = legacy.stat().st_mtime > as_float(marked.get("at") or 0)
+    except (OSError, ValueError):
         return
     if newer:
         _warned.add(world_id)

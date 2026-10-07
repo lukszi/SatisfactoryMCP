@@ -15,9 +15,14 @@ carries the accuracy measured for the layer that answered, and is never averaged
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ...core.saveio import rows as saverows
 from . import geo, heightfield
+
+if TYPE_CHECKING:
+    from ..world.state import WorldState
+    from .nodes.table import NodeTable
 
 __all__ = ["Elevation", "Sample", "probe", "sample_points"]
 
@@ -52,7 +57,7 @@ class Elevation:
     x: float
     y: float
     radius_m: float
-    samples: list[Sample] = field(default_factory=list)
+    samples: list[Sample] = field(default_factory=list[Sample])
     terrain: heightfield.Reading | None = None
 
     @property
@@ -111,20 +116,23 @@ class Elevation:
         ground_m, built_m = self.ground_m, self.built_m
         if len(ground_m) < MIN_GROUND_SAMPLES or not built_m:
             return None
-        return self.median_of(built_m) - self.median_of(ground_m)
+        built, ground = self.median_of(built_m), self.median_of(ground_m)
+        if built is None or ground is None:
+            return None
+        return built - ground
 
 
-def sample_points(node_table=None, state=None) -> list[Sample]:
+def sample_points(
+    node_table: NodeTable | None = None, state: WorldState | None = None
+) -> list[Sample]:
     """Every point whose elevation is known, from whatever sources are available.
 
     ``state`` is optional: without a save only the node table contributes, which still
     covers the whole map, so unexplored ground gets an answer too.
     """
     out: list[Sample] = []
-    for n in getattr(node_table, "nodes", ()) or ():
-        z = n.get("z")
-        if z is not None:
-            out.append(Sample("node", n["x"], n["y"], float(z)))
+    for n in node_table.nodes if node_table is not None else ():
+        out.append(Sample("node", n["x"], n["y"], float(n["z"])))
     if state is None:
         return out
 

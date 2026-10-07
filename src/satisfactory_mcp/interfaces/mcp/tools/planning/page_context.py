@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Annotated, NamedTuple
+from typing import Annotated, NamedTuple, cast
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from .....core.filelock import LockTimeout
@@ -18,6 +18,8 @@ from .....domain.advice import store as advice_store
 from .....domain.planning.stored.plan_args import PlanLogError
 from .....domain.planning.stored.planlog import Actor, Commit, PlanLog
 from .....domain.session import asks, focus, journal, pins
+from .....domain.session.views import AskRow, FocusDoc, PinRow
+from .....domain.world.state import WorldState
 from .....presenters.text import advice as advice_text
 from .....presenters.text import primitives as render
 from ... import app
@@ -44,9 +46,10 @@ class LastLook(NamedTuple):
 _cursor: dict[str, LastLook] = {}
 
 
-def _page_focus(world_id: str) -> tuple[dict | None, bool]:
-    """What the page last said it had open, and whether its heartbeat is fresh."""
-    found = focus.read(world_id)
+def _page_focus(world_id: str) -> tuple[FocusDoc | None, bool]:
+    """What the page last said it had open, as ``focus.write`` shaped it, and whether its
+    heartbeat is fresh."""
+    found = cast("FocusDoc | None", focus.read(world_id))
     return found, focus.is_open(found)
 
 
@@ -54,7 +57,7 @@ def _short_token(token: str) -> str:
     return token[:8] + "…" if len(token) > 8 else token
 
 
-def _head_line(st, page: dict | None, is_open: bool) -> str:
+def _head_line(st: WorldState, page: FocusDoc | None, is_open: bool) -> str:
     """Whether the page is open, which world, and whether it reads the save chat reads."""
     shown_world = st.session_name or st.world_id
     if page is None:
@@ -73,7 +76,7 @@ def _head_line(st, page: dict | None, is_open: bool) -> str:
     return head
 
 
-def _pin_text(pin: dict) -> str:
+def _pin_text(pin: PinRow) -> str:
     text = f"{pin['id']} {pin['text']}"
     if pin["label"]:
         text += f" “{pin['label']}”"
@@ -82,7 +85,7 @@ def _pin_text(pin: dict) -> str:
     return render.cut(text, CONTEXT_PIN_WIDTH)
 
 
-def _pins_line(rows: list[dict]) -> str:
+def _pins_line(rows: list[PinRow]) -> str:
     if not rows:
         return "pins: none"
     shown = sorted(rows, key=lambda p: p["n"])[-CONTEXT_PINS:]
@@ -92,7 +95,7 @@ def _pins_line(rows: list[dict]) -> str:
     return line
 
 
-def _selected_pin(page: dict, rows: list[dict]) -> str:
+def _selected_pin(page: FocusDoc, rows: list[PinRow]) -> str:
     """`` (pin:N)`` when the page's selection is a pinned thing, else ''."""
     picked = page.get("selection")
     if not isinstance(picked, dict) or not picked.get("kind") or not picked.get("label"):
@@ -101,7 +104,7 @@ def _selected_pin(page: dict, rows: list[dict]) -> str:
     return f" ({found['id']})" if found else ""
 
 
-def _focus_line(page: dict, log: PlanLog) -> str:
+def _focus_line(page: FocusDoc, log: PlanLog) -> str:
     """The page's view, plan and version, tab and selection, as one line."""
     parts = [str(page.get("view") or "?")]
     if page.get("plan"):
@@ -131,7 +134,7 @@ def _focus_line(page: dict, log: PlanLog) -> str:
 
 def _plan_news(
     log: PlanLog, cursor: LastLook | None, names: dict[str, str], my_pid: int
-) -> tuple[list[str], dict]:
+) -> tuple[list[str], dict[str, int]]:
     """Plan versions others wrote since ``cursor``, a line per plan; and every plan's head."""
     heads = {s.key: s for s in log.heads(include_forgotten=True)}
     fresh: list[tuple[str, Commit]] = []
@@ -143,7 +146,7 @@ def _plan_news(
     by_plan: dict[str, list[Commit]] = {}
     for key, commit in fresh:
         by_plan.setdefault(key, []).append(commit)
-    lines = []
+    lines: list[str] = []
     order = sorted(by_plan, key=lambda k: by_plan[k][-1].ts, reverse=True)
     for key in order[:CONTEXT_PLANS]:
         commits = sorted(by_plan[key], key=lambda c: c.rev)
@@ -167,21 +170,24 @@ def _quoted(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _ask_text(row: dict, adv_ids: dict[str, str] | None = None) -> str:
+def _ask_text(row: AskRow, adv_ids: dict[str, str] | None = None) -> str:
     about = row["about"]
+    ids = adv_ids or {}
     text = f"{row['id']} {_quoted(row['text'])} about {about['kind']} {_quoted(about['label'])}"
-    if about["kind"] == "advice" and (adv_ids or {}).get(about["ref"]):
-        text += f" ({adv_ids[about['ref']]})"
+    if about["kind"] == "advice" and ids.get(about["ref"]):
+        text += f" ({ids[about['ref']]})"
     if row["plan_name"] and about["kind"] != "plan":
         text += f" in {_quoted(row['plan_name'])}"
-    if about.get("rev"):
-        text += f" v{about['rev']}"
+    if rev := about.get("rev"):
+        text += f" v{rev}"
     if row["state"] == "seen":
         text += " (seen)"
     return render.cut(text, CONTEXT_ASK_WIDTH)
 
 
-def _asks_lines(world_id: str, who: str, chat, adv_ids: dict[str, str] | None = None) -> list[str]:
+def _asks_lines(
+    world_id: str, who: str, chat: Actor, adv_ids: dict[str, str] | None = None
+) -> list[str]:
     """The ``asks`` line and its hint, marking every listed open ask seen."""
     try:
         waiting = [r for r in asks.live(world_id) if r["state"] in ("open", "seen")]
@@ -215,9 +221,11 @@ def _asks_lines(world_id: str, who: str, chat, adv_ids: dict[str, str] | None = 
     return [line, hint]
 
 
-def _mark_answered(world_id: str, answered: list[str], who: str, chat) -> list[str]:
+def _mark_answered(world_id: str, answered: list[str], who: str, chat: Actor) -> list[str]:
     """Mark ``answered`` asks done; the ``marked answered`` line and one line per refusal."""
-    lines, wanted, said = [], [], {}
+    lines: list[str] = []
+    wanted: list[int] = []
+    said: dict[int, str] = {}
     try:
         data = asks.read(world_id)
     except NewerSchema as exc:
@@ -226,17 +234,18 @@ def _mark_answered(world_id: str, answered: list[str], who: str, chat) -> list[s
     by_n = {a["n"]: a for a in data["asks"]}
     for raw in answered:
         hit = asks.parse_answer(raw)
-        n = hit[0] if hit else None
-        if n is None:
+        if hit is None:
             lines.append(f"! {raw!r} is not an ask id (ask:N)")
-        elif n not in by_n:
+            continue
+        n, answer = hit
+        if n not in by_n:
             lines.append(f"! {asks.AskMissing(n, top=top)}")
         elif by_n[n].get("deleted"):
             lines.append(f"! {asks.AskMissing(n, deleted=True)}")
         else:
             wanted.append(n)
-            if hit[1]:
-                said[n] = hit[1]
+            if answer:
+                said[n] = answer
     try:
         asks.mark_answered(world_id, wanted, who, said)
     except asks.AskMissing as exc:
@@ -256,9 +265,10 @@ def _mark_answered(world_id: str, answered: list[str], who: str, chat) -> list[s
     return lines
 
 
-def _hide_advice(st, dismissed: list[str], chat) -> list[str]:
+def _hide_advice(st: WorldState, dismissed: list[str], chat: Actor) -> list[str]:
     """Hide the advisories chat was asked to; one line for what was hidden, one per refusal."""
-    lines, done = [], []
+    lines: list[str] = []
+    done: list[str] = []
     try:
         cur = advice.current(st)
     except NewerSchema as exc:
@@ -301,7 +311,7 @@ def _hide_advice(st, dismissed: list[str], chat) -> list[str]:
     return lines
 
 
-def _advice_lines(st) -> tuple[list[str], dict[str, str]]:
+def _advice_lines(st: WorldState) -> tuple[list[str], dict[str, str]]:
     """The ``advice`` line and its hint, and every advisory key's id for the asks line."""
     try:
         cur = advice.current(st)
@@ -310,7 +320,7 @@ def _advice_lines(st) -> tuple[list[str], dict[str, str]]:
     return advice_text.context_lines(cur), {a.key: a.id for a in cur.items}
 
 
-def _journal_who(raw: dict | None) -> str:
+def _journal_who(raw: Mapping[str, object] | None) -> str:
     who = Actor.from_dict(raw)
     return f"{who.display()} (other session)" if who.kind == "chat" else who.display()
 
@@ -323,7 +333,7 @@ def _journal_news(world_id: str, cursor: LastLook | None, my_pid: int) -> tuple[
     theirs = [e for e in entries if int((e.get("actor") or {}).get("pid") or 0) != my_pid]
     if cursor is None:
         theirs = theirs[-FIRST_LOOK_ENTRIES:]
-    lines = []
+    lines: list[str] = []
     if len(theirs) > CONTEXT_JOURNAL:
         lines.append(f"  · journal: (+{len(theirs) - CONTEXT_JOURNAL} earlier)")
     for entry in theirs[-CONTEXT_JOURNAL:]:
@@ -372,7 +382,7 @@ def ui_context(
         list[str] | None,
         Field(description='adv: ids to hide on the page; "adv:3f9a snooze" hides for 1 h of play'),
     ] = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """What the web page has open, and what changed in plans since this session last looked.
 
@@ -394,6 +404,7 @@ def ui_context(
         lines += _mark_answered(world_id, list(answered), chat.display(), chat)
     if dismissed:
         lines += _hide_advice(st, list(dismissed), chat)
+    pin_rows: list[PinRow] = []
     try:
         pin_rows = pins.live(st)
         pin_line = _pins_line(pin_rows)

@@ -13,6 +13,8 @@ import json
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, NamedTuple
 
+from typing_extensions import TypedDict
+
 from ....core.gamedata.constants import (
     UNLIMITED_RATE,
     WATER_EXTRACTOR_CAP_ASSUMED,
@@ -29,6 +31,7 @@ from ..stored.plan_args import inherits_default, is_power
 from . import prices as prices_mod
 from .model import MW, Scenario
 from .processes import build_processes
+from .views import PowerSource
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ...world.state import WorldState
@@ -36,7 +39,10 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type check
 __all__ = [
     "EXPORT_HELP",
     "ChainScenario",
+    "PaybackInfo",
+    "PlanKwargs",
     "PlanRequest",
+    "ShardStock",
     "build_scenario",
     "chain_scenario",
     "select_for",
@@ -58,6 +64,70 @@ _EXTRACTOR_PREFERENCE = (
     "Build_MinerMk2_C",
     "Build_MinerMk1_C",
 )
+
+
+class PlanKwargs(TypedDict, total=False):
+    """``build_scenario``'s arguments as a plan holds them: only the ones it sets."""
+
+    objective: str
+    target_item: str | None
+    sources: list[str] | None
+    exports: list[str] | None
+    export_minimums: dict[str, float] | None
+    only_free_nodes: bool
+    allow_sinks: bool
+    clocks: list[float] | None
+    extractor_clocks: list[float] | None
+    machine_cost_mw: float
+    belt_ipm: float | None
+    pipe_m3min: float | None
+    exclude_recipes: list[str] | None
+    only_recipes: list[str] | None
+    water_extractors: int | None
+    sloops: int
+    recycle_once: list[str] | None
+    supplied: dict[str, float] | None
+    required: list[str] | None
+    payback_hours: float | str | None
+    overclock_last: bool | str | None
+    power_price: float | str | None
+    row_overclock: dict[str, str] | None
+
+
+class PaybackInfo(TypedDict):
+    """How a plan's horizon, price and overclock switch were resolved (contract §6)."""
+
+    inherited: bool
+    default_hours: float
+    price_source: str
+    mix: list[PowerSource]
+    overclock_inherited: bool
+
+
+class ShardStock(TypedDict):
+    """Power Shards overclock-last may spend: ``free`` in hand, ``craftable`` from slugs."""
+
+    free: float
+    craftable: float
+
+
+class _PaybackFields(TypedDict):
+    """The Scenario fields a plan's horizon sets."""
+
+    payback_hours: float
+    power_price: float
+    build_points: dict[str, float]
+    overclock_last: bool
+    overclock_shards: float | None
+    row_overclock: dict[str, str]
+
+
+class _Shared(NamedTuple):
+    """The shared settings a plan's horizon follows when it sets none of its own."""
+
+    payback_hours: float
+    overclock_last: bool
+    biomass: bool
 
 
 def _export_token(game: GameData, name: str) -> tuple[str | None, str | None]:
@@ -97,36 +167,40 @@ class PlanRequest:
     scenario: Scenario
     selection: Selection
     #: In-scope nodes annotated with tapped/tapped_by/reachable; the diff's exact match.
-    node_rows: list[dict]
+    node_rows: list[nodes_mod.AnnotatedNode]
     plan_id: str
+    #: How the horizon, price and overclock switch were resolved.
+    payback: PaybackInfo
     #: Recipes removed by exclude_recipes, and patterns that matched nothing (§8.8).
-    excluded: list[str] = field(default_factory=list)
-    recipe_errors: list[str] = field(default_factory=list)
+    excluded: list[str] = field(default_factory=list[str])
+    recipe_errors: list[str] = field(default_factory=list[str])
     #: Export, minimum and supplied tokens that resolve to no item, dropped and reported.
-    export_errors: list[str] = field(default_factory=list)
+    export_errors: list[str] = field(default_factory=list[str])
     #: Every in-scope node before the reachable/tapped filters, so a missing raw is
     #: explainable (docs/planning.md §8.2a).
-    scoped_nodes: list[dict] = field(default_factory=list)
+    scoped_nodes: list[nodes_mod.AnnotatedNode] = field(
+        default_factory=list[nodes_mod.AnnotatedNode]
+    )
     only_free_nodes: bool = False
     #: Recipe ids ``required`` put in force, after the refusals (contract §6).
-    required: list[str] = field(default_factory=list)
+    required: list[str] = field(default_factory=list[str])
     #: Where this plan stands, resolved; outside ``plan_id`` because nothing here enters the LP.
     site: siting_mod.Siting | None = None
     #: A ``site_at`` that would not resolve: reported, never raised.
-    site_errors: list[str] = field(default_factory=list)
-    #: How the horizon, price and overclock switch were resolved: ``inherited``,
-    #: ``default_hours``, ``price_source``, ``mix``, ``overclock_inherited``, ``shards``.
-    payback: dict = field(default_factory=dict)
+    site_errors: list[str] = field(default_factory=list[str])
 
 
-def _shared_settings() -> dict:
+def _shared_settings() -> _Shared:
     try:
-        return settings.read()["values"]
+        values = settings.read()["values"]
     except Exception:
-        return {k: spec.default for k, spec in settings.SPECS.items()}
+        values = {k: spec.default for k, spec in settings.SPECS.items()}
+    return _Shared(
+        float(values["payback_hours"]), bool(values["overclock_last"]), bool(values["biomass"])
+    )
 
 
-def shard_stock(state) -> dict:
+def shard_stock(state: WorldState) -> ShardStock:
     """Power Shards overclock-last may spend: ``free`` in hand plus ``craftable`` from slugs
     in hand whose shard recipe this save has unlocked (contract §5)."""
     budget = state.shard_budget()
@@ -145,24 +219,34 @@ def shard_stock(state) -> dict:
     return {"free": budget["free"], "craftable": craftable}
 
 
-def _payback_fields(state, hours, overclock, price, rows: dict) -> tuple[dict, dict]:
+def _payback_fields(
+    state: WorldState,
+    hours: float | str | None,
+    overclock: bool | str | None,
+    price: float | str | None,
+    rows: dict[str, str],
+) -> tuple[_PaybackFields, PaybackInfo]:
     """Scenario fields for the horizon, and how each was resolved (contract §6)."""
     shared = _shared_settings()
-    resolved_hours = float(shared["payback_hours"] if inherits_default(hours) else hours)
-    overclock_last_on = bool(shared["overclock_last"] if inherits_default(overclock) else overclock)
-    prices = prices_mod.prices_for(state, bool(shared["biomass"]))
+    resolved_hours = (
+        shared.payback_hours if hours is None or inherits_default(hours) else float(hours)
+    )
+    overclock_last_on = bool(shared.overclock_last if inherits_default(overclock) else overclock)
+    prices = prices_mod.prices_for(state, shared.biomass)
     stock = shard_stock(state) if overclock_last_on or "last" in rows.values() else None
-    fields = {
+    fields: _PaybackFields = {
         "payback_hours": resolved_hours,
-        "power_price": prices.power_price if inherits_default(price) else float(price),
+        "power_price": (
+            prices.power_price if price is None or inherits_default(price) else float(price)
+        ),
         "build_points": prices.build_points,
         "overclock_last": overclock_last_on,
         "overclock_shards": stock["free"] + stock["craftable"] if stock else None,
         "row_overclock": rows,
     }
-    info = {
+    info: PaybackInfo = {
         "inherited": inherits_default(hours),
-        "default_hours": float(shared["payback_hours"]),
+        "default_hours": shared.payback_hours,
         "price_source": "grid mix" if inherits_default(price) else "plan",
         "mix": prices.grid_mix,
         "overclock_inherited": inherits_default(overclock),
@@ -182,7 +266,7 @@ def _resolve_exports(
             errors.append(f"exports: {err}")
             continue
         export_ids.append(resolved)
-    minimums = {}
+    minimums: dict[str, float] = {}
     for name, value in (export_minimums or {}).items():
         resolved, err = _export_token(game, name)
         if resolved is None:
@@ -209,7 +293,10 @@ def _supplied_caps(
 
 
 def _extractor_census(
-    game: GameData, state: WorldState, node_rows: list[dict], water_extractors: int | None
+    game: GameData,
+    state: WorldState,
+    node_rows: list[nodes_mod.AnnotatedNode],
+    water_extractors: int | None,
 ) -> dict[tuple[str, str, str], int]:
     """Nodes per ``(extractor, resource, purity)``, each tapped by the best unlocked extractor."""
     extractor_counts: dict[tuple[str, str, str], int] = {}
@@ -292,7 +379,9 @@ def _recipe_pool(
     return _RecipePool(recipes, unlocked, excluded, in_force)
 
 
-def _recycle_once_pids(scenario: Scenario, patterns: list[str], errors: list[str]) -> frozenset:
+def _recycle_once_pids(
+    scenario: Scenario, patterns: list[str], errors: list[str]
+) -> frozenset[str]:
     """Pids whose label matches a ``recycle_once`` pattern, as exclude_recipes widens."""
     processes = build_processes(scenario)
     wanted: set[str] = set()
@@ -422,6 +511,7 @@ def build_scenario(
         selection=selection,
         node_rows=node_rows,
         plan_id=_plan_id(scenario, only_free_nodes, pool.required),
+        payback=payback_info,
         excluded=sorted(set(excluded)),
         recipe_errors=recipe_errors,
         export_errors=export_errors,
@@ -430,7 +520,6 @@ def build_scenario(
         site=site,
         site_errors=site_errors,
         required=pool.required,
-        payback=payback_info,
     )
 
 
@@ -471,7 +560,7 @@ def _plan_id(sc: Scenario, only_free_nodes: bool, required: list[str] | None = N
     The save's mtime is excluded: a rotating autosave that changed nothing relevant must
     yield the SAME id, or the id stops meaning "same plan" and starts meaning "same second".
     """
-    fields: dict = {"required": sorted(required)} if required else {}
+    fields: dict[str, object] = {"required": sorted(required)} if required else {}
     if sc.payback_hours > 0:
         fields["payback_hours"] = sc.payback_hours
         fields["power_price"] = round(sc.power_price, 1)
@@ -553,6 +642,8 @@ class ChainScenario:
 
     request: PlanRequest
     scenario: Scenario
+    #: The item id the chain makes, ``scenario.target_item``.
+    target: str
     #: Every resource but the target, at ``UNLIMITED_RATE``.
     raw_caps: dict[str, float]
     #: The outlets as given, each resolved to an item id where one matches.
@@ -594,7 +685,9 @@ def chain_scenario(
         allow_sinks=allow_sinks,
         grid_import_mw=UNLIMITED_RATE,
     )
-    return ChainScenario(request=request, scenario=scenario, raw_caps=raw_caps, outlets=outlet_ids)
+    return ChainScenario(
+        request=request, scenario=scenario, target=target, raw_caps=raw_caps, outlets=outlet_ids
+    )
 
 
 def with_recipes(scenario: Scenario, recipe_ids: list[str]) -> Scenario:

@@ -9,15 +9,15 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
-
 from fastapi import APIRouter, Request
+from typing_extensions import TypedDict
 
 from .....domain.planning import siting as planning_siting
 from .....domain.planning.progress.diff_service import plan_progress
 from .....domain.planning.stored import manage
-from .....domain.planning.stored.planlog import PlanLog
+from .....domain.planning.stored.planlog import PlanLog, PlanState
 from .....domain.world import pin
+from .....domain.world.state import WorldState
 from ...serial import ActorBody, actor_json, plan_log, require_world
 
 __all__ = ["router"]
@@ -92,7 +92,7 @@ class PlansResponse(TypedDict):
     index: list[PlanIndexRow]
 
 
-def _index(log: PlanLog, st) -> list[PlanIndexRow]:
+def _index(log: PlanLog, st: WorldState) -> list[PlanIndexRow]:
     rows: list[PlanIndexRow] = []
     for state in log.heads():
         status = manage.plan_status(st, state)
@@ -123,7 +123,7 @@ def _index(log: PlanLog, st) -> list[PlanIndexRow]:
 
 
 @router.get("/plans", response_model=PlansResponse)
-def plans(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def plans(request: Request, save: str | None = None, world: str | None = None) -> PlansResponse:
     """Every stored plan that has been sited, as the rectangle it claims.
 
     A world with plans and no sitings answers ``{"plans": [], "stored": 3}``, which is why
@@ -136,14 +136,14 @@ def plans(request: Request, save: str | None = None, world: str | None = None) -
     """
     st = require_world(request, save, world)
 
-    rows = []
+    rows: list[PlanSiting] = []
     for plan in st.plans.plans:
         sit = planning_siting.parse(plan)
         if sit is None or not sit.has_footprint:
             continue
         rows.append(
             {
-                "key": getattr(plan, "key", ""),
+                "key": plan.key,
                 "name": plan.name,
                 "x_m": sit.x_m,
                 "y_m": sit.y_m,
@@ -188,11 +188,11 @@ class PlansBuiltResponse(TypedDict):
 
 #: (world, plan key, rev, save token, labels version) -> row. Every part of the answer's
 #: input is in the key, so an entry is never stale, only unused.
-_BUILT: dict[tuple, PlanBuiltRow] = {}
+_BUILT: dict[tuple[str, str, int, str, int], PlanBuiltRow] = {}
 _BUILT_MAX = 256
 
 
-def _built_row(st, state) -> PlanBuiltRow:
+def _built_row(st: WorldState, state: PlanState) -> PlanBuiltRow:
     found = plan_progress(st.game, st, state)
     if found is None:
         return {
@@ -224,13 +224,15 @@ def _built_row(st, state) -> PlanBuiltRow:
 
 
 @router.get("/plan/built", response_model=PlansBuiltResponse)
-def plans_built(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def plans_built(
+    request: Request, save: str | None = None, world: str | None = None
+) -> PlansBuiltResponse:
     """Every live plan's built progress, for the Planner's list: a solve per plan, cached
     per plan version, save and factory names."""
     st = require_world(request, save, world)
     token = pin.check(st.header, None)
     log = plan_log(st)
-    rows = []
+    rows: list[PlanBuiltRow] = []
     for state in log.heads():
         key = (st.world_id, state.key, state.rev, token, st.labels.version)
         row = _BUILT.get(key)

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -31,7 +32,7 @@ router = APIRouter(prefix="/api")
 #: The last ``save`` event's token, memoised on the event that produced it. The stream
 #: replays the newest event of each kind to every new subscriber, so without this each
 #: reconnecting browser costs a fresh header scan for a write they all share.
-_MEMO: tuple[tuple[str, float] | None, str | None] = (None, None)
+_memo: tuple[tuple[str, float] | None, str | None] = (None, None)
 
 
 # --------------------------------------------------------------------- events
@@ -55,17 +56,18 @@ async def _payload(event: WatchEvent) -> str:
     child process (~90 ms): a stream that cannot name it sends ``null`` and goes on saying
     that a write happened, which is the half a browser acts on.
     """
-    global _MEMO
+    global _memo
     body = event.as_dict()
     if event.kind != KIND_SAVE:
         return json.dumps(body)
     key = (event.filename, event.mtime)
-    if _MEMO[0] != key:
+    if _memo[0] != key:
         try:
-            _MEMO = (key, pin.remember(await asyncio.to_thread(proj.resolve_save, event.filename)))
+            header = await asyncio.to_thread(proj.resolve_save, event.filename)
+            _memo = (key, pin.remember(header))
         except Exception:
-            _MEMO = (key, None)
-    return json.dumps({**body, "save_token": _MEMO[1]})
+            _memo = (key, None)
+    return json.dumps({**body, "save_token": _memo[1]})
 
 
 def _history(event: WatchEvent, since: float) -> bool:
@@ -90,7 +92,7 @@ async def events(request: Request, since: float = 0.0) -> StreamingResponse:
     watcher = request.app.state.watcher
     queue = watcher.subscribe()
 
-    async def stream():
+    async def stream() -> AsyncIterator[bytes]:
         try:
             # The replay, in a fixed order rather than in whatever order the trees were
             # last scanned: a browser reading two events at once should read them the same

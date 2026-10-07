@@ -7,9 +7,6 @@ Titan trees over it all. docs/spatial-and-map.md sections 27, 30 to 32 and 36.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import cast
-
 import numpy as np
 
 from mapgen.colour import by_luminance, flat_light, linear_from_oklab, linear_to_srgb, oklab, tone
@@ -39,16 +36,14 @@ __all__ = ["painted_colours", "painted_ndl"]
 
 
 def painted_colours(
-    scene: Mapping[str, object], ground: PaintedSurface, sample: Sampler, sample_rock: Sampler
+    scene: PaintedScene, ground: PaintedSurface, sample: Sampler, sample_rock: Sampler
 ) -> FloatGrid:
     """One band of the painted layer, sRGB 0..255.
 
     ``sample(plane)`` resamples a 1 m plane onto the band, ``sample_rock(plane)`` a plane of
     the coarse rock grid.
     """
-    # render.painting builds the scene as a plain dict.
-    given = cast(PaintedScene, scene)
-    band: PaintedScene = {**given, "water": sunk_specks(given)}
+    band: PaintedScene = {**scene, "water": sunk_specks(scene)}
     g = _ground_colour(band, ground, sample, sample_rock)
     out = _lit_and_wet(g, band, ground, sample, sample_rock)
     return _toned(out, ground.palette)
@@ -93,7 +88,7 @@ def _lit_and_wet(
     borrow = scene["borrow"]
     damp = np.float32(palette["borrow_ink_damp"])
     borrow = np.where(borrow < 1.0, 1.0 + (borrow - 1.0) * damp, borrow)
-    light = flat_light(cast("dict[str, object]", palette), scene["ndl"], scene["ndl_flat"])
+    light = flat_light(palette, scene["ndl"], scene["ndl_flat"])
     exposure = exposure_gain(palette)
     lit = g * light * (exposure * borrow)[..., None]
 
