@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, srgb_to_linear
+from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, srgb_to_linear, tone
 from mapgen.gamedata.ground.landscape_albedo import LAYERS
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.gamedata.water.bodies import WATER_CLASSES
@@ -23,7 +23,6 @@ from mapgen.palette.painted.calibration import (
     layer_transfer,
     scoped_planes,
     split_weight,
-    tone,
     transfer_op,
 )
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround

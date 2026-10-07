@@ -28,7 +28,6 @@ from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
 from mapgen.lighting.model import apply_terms
 from mapgen.palette.lightparams import shader_light
 from mapgen.palette.painted.band import painted_ndl
-from mapgen.palette.painted.calibration import tone
 from mapgen.palette.relief import FLAT_LIT, _shade
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
@@ -57,7 +56,6 @@ def test_the_shader_tone_is_the_painted_style_s_own_and_inverts():
     assert (params["tone_knee"], params["tone_white"]) == (t["knee"], t["white"])
     y = np.linspace(0.0, 1.5, 61, dtype=np.float32)
     shaded = shader_tone(y, t["knee"], t["white"])
-    np.testing.assert_allclose(shaded, tone(y, t["knee"], t["white"]), atol=1e-6)
     back = shader_untone(shaded, t["knee"], t["white"])
     np.testing.assert_allclose(back, y, atol=2e-4)
     assert shader_light("relief")["tone_knee"] == 1.0

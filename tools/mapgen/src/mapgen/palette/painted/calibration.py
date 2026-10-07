@@ -1,7 +1,8 @@
 """Colour calibration of the game-painted style: display targets taken back to ground colour.
 
-The tone curve, the inverse pipeline from a display sRGB target to ground OKLab, the per-layer
-transfer, the targets derived by rule and the area scoping. docs/spatial-and-map.md section 31.
+The inverse pipeline from a display sRGB target back through the shader's tone to ground OKLab,
+the per-layer transfer, the targets derived by rule and the area scoping.
+docs/spatial-and-map.md section 31.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from mapgen.colour import (
     linear_to_srgb,
     oklab,
     srgb_to_linear,
+    tone,
     unit_luminance,
 )
 from mapgen.palette.painted.shapes import (
@@ -50,7 +52,6 @@ __all__ = [
     "sampled_rgb",
     "scoped_planes",
     "split_weight",
-    "tone",
     "transfer_op",
     "weighted_median",
     "with_derived",
@@ -58,16 +59,6 @@ __all__ = [
 
 #: A colour transfer: the lightness step and the (a, b) matrix, chroma scale times hue turn.
 Transfer: TypeAlias = tuple[float, FloatGrid]
-
-
-def tone(luminance: npt.ArrayLike, knee: float, white: float) -> FloatGrid:
-    """Identity below ``knee``; above it a Reinhard shoulder that takes ``white`` to 1."""
-    y = np.asarray(luminance, np.float32)
-    span = np.float32(1.0 - knee)
-    x = np.maximum(y - knee, 0.0) / span
-    top = np.float32((white - knee) / span)
-    shoulder = knee + span * x * (1.0 + x / (top * top)) / (1.0 + x)
-    return np.where(y > knee, shoulder, y).astype(np.float32)
 
 
 def exposure_gain(palette: PaintedPalette) -> np.float32:
