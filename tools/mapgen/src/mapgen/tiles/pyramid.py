@@ -38,6 +38,7 @@ __all__ = [
     "pool_sizes",
     "queue_layer",
     "tree_megabytes",
+    "tree_text",
 ]
 
 
@@ -87,6 +88,11 @@ def tree_megabytes(tree: JsonObject) -> float:
     """The megabytes a tile tree's install record says it wrote."""
     size = tree.get("bytes")
     return size / 1e6 if isinstance(size, int | float) else 0.0
+
+
+def tree_text(tree: JsonObject, noun: str) -> str:
+    """``N <noun> over z0..zM (S MB)`` for a tile tree an install recorded."""
+    return f"{tree['count']} {noun} over z0..z{tree['max_z']} ({tree_megabytes(tree):.1f} MB)"
 
 
 def queue_layer(cutter: Cutter, source: Source, directory: Path, text: str) -> tuple[Tree, Tree]:

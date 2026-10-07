@@ -187,8 +187,7 @@ def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
 
     size = 512
     run = LightingRun(tmp_path / "cache", size)
-    surface = run.surface_for()
-    assert run.surface_for() is None  # only the first layer captures
+    surface = run.surface
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
     z = (40 * np.exp(-((xx - 256) ** 2 + (yy - 256) ** 2) / 4000.0)).astype(np.float32)
     land = np.ones((size, size), np.float32)

@@ -36,7 +36,7 @@ from mapgen.palette.water.perched import WaterSurfaces
 from mapgen.palette.water.surface import drawn_water
 from mapgen.render.biome_inputs import BiomeInputs, read_biome_inputs
 from mapgen.render.cached_rasters import LevelSweep, RasterGrid, direct_raster, top_raster
-from mapgen.render.compose import render_layer
+from mapgen.render.compose import DRAW_STAGE, render_layers
 from mapgen.render.drawpool import add_draw_flags, draw_threads
 from mapgen.render.extras import RenderExtras, load_extras, remove_run_caches
 from mapgen.render.inputs import (
@@ -57,20 +57,16 @@ from mapgen.render.inputs import (
 )
 from mapgen.render.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.render.light import LightingRun, add_light_flags, claim_scratch, crown_tops, light_run
-from mapgen.terrain.measure import RegimeCoverage, SeamTrace
+from mapgen.render.sheets import SheetFiles, claim_sheets
+from mapgen.terrain.measure import RegimeCoverage, SeamTrace, measured_lines
 from mapgen.terrain.rasters import DIRECT_SUBSAMPLES
 from mapgen.terrain.sample import taps_cubic, taps_pchip
 from mapgen.tiles.cutter import TileImaging, load_imaging
 from mapgen.tiles.layer_meta import LayerDraw, RenderFacts, RunRecord, layer_sidecar
-from mapgen.tiles.pyramid import (
-    add_worker_flags,
-    install_layer,
-    layer_dir,
-    pool_sizes,
-    tree_megabytes,
-)
+from mapgen.tiles.pyramid import add_worker_flags, install_layer, layer_dir, pool_sizes, tree_text
 from mapgen.tiles.recipes import RECIPE_KERNEL_ONLY
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME
+from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
 from satisfactory_mcp.core.gameassets.provenance import changelist
 from satisfactory_mcp.core.gameassets.pyramid import PyramidError
@@ -135,7 +131,7 @@ def main() -> int:
         return IN_USE
     cache_root: Path = args.cache_dir or renders
     try:
-        scratch = claim_scratch(args, renders)
+        scratch = claim_scratch(args, renders), claim_sheets(args, renders)
         versions = require_gen("ooz", "texture2ddecoder", "PIL.Image", "zstandard")
         started = _render(args, layers, scratch, (cache_root, versions))
     except Refusal as refusal:
@@ -153,23 +149,27 @@ def main() -> int:
 def _render(
     args: argparse.Namespace,
     layers: tuple[str, ...],
-    scratch: Path | None,
+    scratch: tuple[Path | None, SheetFiles],
     caching: tuple[Path, dict[str, str]],
 ) -> float:
     """Prepare the run, then draw and cut every layer; when the drawing started.
 
-    ``scratch`` is the light's, None without it; ``caching`` the raster caches' root and the
-    ``gen`` extra's versions.
+    ``scratch`` is the light's root, None without it, and the sheets'; ``caching`` the raster
+    caches' root and the ``gen`` extra's versions.
     """
     import texture2ddecoder as decoder
 
     light_workers, cut_workers = pool_sizes(args)
     setup = Setup(caching[0], decoder, load_imaging(), caching[1], cut_workers)
     run = _prepare(args, layers, setup)
-    crowns = None if scratch is None else crown_tops(args.paint_dir, run.painted)
-    with light_run(scratch, args.size, crowns, light_workers) as light:
-        started = time.time()
-        _draw_layers(args, layers, run, light, setup)
+    root, sheets = scratch
+    crowns = None if root is None else crown_tops(args.paint_dir, run.painted)
+    try:
+        with light_run(root, args.size, crowns, light_workers) as light:
+            started = time.time()
+            _draw_layers(args, layers, run, light, setup, sheets)
+    finally:
+        sheets.close()
     return started
 
 
@@ -309,92 +309,81 @@ def _draw_layers(
     run: Prepared,
     light: LightingRun | None,
     setup: Setup,
+    sheets: SheetFiles,
 ) -> None:
-    """Draw each layer, cut it into place, and write its sidecar beside it."""
+    """Draw every layer in one pass, then cut each into place with its sidecar beside it."""
     two_regime = run.direct is not None
     seam = SeamTrace() if two_regime else None
     regimes = RegimeCoverage() if two_regime else None
+    threads = draw_threads(args.draw_threads, layers, args.size)
+    print(f"drawing {', '.join(layers)} at {args.size}x{args.size} on {threads} thread(s)")
+    print(encode_stage(DRAW_STAGE, 0.0), flush=True)
+    started = time.time()
+    drawn = render_layers(
+        layers, run.field, run.biome.rgb, run.biome.width, run.borrow, args.size,
+        not args.quiet,
+        height_dm=run.lattice.heights, direct=run.direct,
+        measured_plane_u8=run.lattice.measured_plane, overlay=run.top,
+        kernel=taps_cubic if args.kernel_only else taps_pchip, meshes=run.extras.meshes,
+        falls=run.extras.falls, reach=run.water.reach, water_level=run.water.level,
+        sea=run.sea, painted=run.painted, rivers=run.extras.rivers, relief=run.relief,
+        seam=seam, regimes=regimes, unlit=light is not None,
+        surface=light.surface if light else None, threads=threads, sheets=sheets,
+    )  # fmt: skip
+    timing = (time.time() - started, threads)
     measured: JsonObject = {}
+    if seam is not None and regimes is not None:
+        trace, table = seam.result(), regimes.result()
+        measured = {"seam_trace": trace, "regimes": table}
+        print("\n".join(measured_lines(trace, table)))
+    if light is not None:
+        light.bake(args.out_dir / args.renders_name)
     for layer in layers:
-        threads = draw_threads(args.draw_threads, layer, args.size)
-        print(f"drawing {layer} at {args.size}x{args.size} on {threads} thread(s)")
-        print(encode_stage(f"draw:{layer}", 0.0), flush=True)
-        started = time.time()
-        sheet = render_layer(
-            layer, run.field, run.biome.rgb, run.biome.width, run.borrow, args.size,
-            not args.quiet,
-            height_dm=run.lattice.heights, direct=run.direct,
-            measured_plane_u8=run.lattice.measured_plane, overlay=run.top,
-            kernel=taps_cubic if args.kernel_only else taps_pchip, meshes=run.extras.meshes,
-            falls=run.extras.falls, reach=run.water.reach, water_level=run.water.level,
-            sea=run.sea, painted=run.painted if layer == "painted" else None,
-            rivers=run.extras.rivers, relief=run.relief.get(layer),
-            # Every layer draws the same surface: measured on the first, quoted for all.
-            seam=seam if not measured else None, regimes=regimes if not measured else None,
-            unlit=light is not None, surface=light.surface_for() if light else None,
-            threads=threads,
+        print(encode_stage(f"cut:{layer}", 0.0), flush=True)
+        _install(args, layer, drawn.pop(layer), (run, light, setup), measured, timing)
+        sheets.release(layer)
+
+
+def _install(
+    args: argparse.Namespace,
+    layer: str,
+    sheet: U8Grid,
+    context: tuple[Prepared, LightingRun | None, Setup],
+    measured: JsonObject,
+    timing: tuple[float, int],
+) -> None:
+    """Cut one drawn layer into place and write its sidecar; ``timing`` is the pass's
+    seconds and threads, which every layer of the pass records."""
+    run, light, setup = context
+    install = light.install if light else install_layer
+    try:
+        stats, dense, cut = install(
+            sheet, setup.image_mod, args.out_dir, layer, setup.cut_workers, run.record.recipe,
+            args.renders_name,
         )  # fmt: skip
-        drew = time.time() - started
-        if seam is not None and regimes is not None and not measured:
-            measured = {"seam_trace": seam.result(), "regimes": regimes.result()}
-            _report_measured(measured)
-        install = light.install if light else install_layer
-        try:
-            stats, dense, cut = install(
-                sheet, setup.image_mod, args.out_dir, layer, setup.cut_workers, run.record.recipe,
-                args.renders_name,
-            )  # fmt: skip
-        except PyramidError as exc:
-            raise Refusal(CUT_FAILED, str(exc)) from exc
-        del sheet
-        stats["game_version_pinned"] = dense["game_version_pinned"] = run.field.build
-        draw = LayerDraw(
-            layer=layer,
-            style_id=LAYER_STYLES[layer],
-            style_digest=run.style_digests[layer],
-            biome=layer in BIOME_LAYERS,
-            measured=measured,
-            shore_optics=cast(JsonValue, SHORE_OPTICS[layer]),
-            seconds_to_draw=drew,
-            draw_threads=threads,
-            seconds_to_cut=cut,
-        )
-        sidecar = layer_sidecar(run.record, draw, stats, dense)
-        if light is not None:
-            light.decorate(sidecar, layer)
-        directory = layer_dir(args.out_dir, layer, args.renders_name)
-        (directory / RENDER_SIDECAR_NAME).write_text(
-            json.dumps(sidecar, indent=1), encoding="utf-8"
-        )
-        print(
-            f"wrote {directory}  {_tree_text(stats, 'tiles')} plus {_tree_text(dense, '@2x')}  "
-            f"(drew {drew:.0f}s, cut {cut:.0f}s)"
-        )
-        print(encode_stage(f"cut:{layer}", 1.0), flush=True)
-
-
-def _tree_text(tree: JsonObject, noun: str) -> str:
-    """``N <noun> over z0..zM (S MB)`` for a tile tree an install recorded."""
-    return f"{tree['count']} {noun} over z0..z{tree['max_z']} ({tree_megabytes(tree):.1f} MB)"
-
-
-def _report_measured(measured: JsonObject) -> None:
-    """The seam trace and the regime table, as the first layer measured them."""
-    trace = measured["seam_trace"]
-    if isinstance(trace, dict) and trace.get("measured"):
-        curvature = trace["p99_curvature"]
-        assert isinstance(curvature, dict)
-        print(
-            f"  seam trace: p99 |d2z/dx2| {curvature['seam']} over the "
-            f"blend against {curvature['switch']} for the hard max on "
-            f"the same texels -- the fade spends "
-            f"{trace['share_of_a_hard_switch']} of that ceiling; against the terrain "
-            f"beside the join it reads {trace['against_the_pure_regimes']}, which is "
-            "the design's own reference and is measuring the silhouette"
-        )
-    regimes = measured["regimes"]
-    if isinstance(regimes, dict):
-        print(f"  regimes: {regimes['sheet_pct']}")
+    except PyramidError as exc:
+        raise Refusal(CUT_FAILED, str(exc)) from exc
+    del sheet
+    stats["game_version_pinned"] = dense["game_version_pinned"] = run.field.build
+    draw = LayerDraw(
+        layer=layer,
+        style_id=LAYER_STYLES[layer],
+        style_digest=run.style_digests[layer],
+        biome=layer in BIOME_LAYERS,
+        measured=measured,
+        shore_optics=cast(JsonValue, SHORE_OPTICS[layer]),
+        seconds_to_draw=timing[0],
+        draw_threads=timing[1],
+        seconds_to_cut=cut,
+    )
+    sidecar = layer_sidecar(run.record, draw, stats, dense)
+    if light is not None:
+        light.decorate(sidecar, layer)
+    directory = layer_dir(args.out_dir, layer, args.renders_name)
+    (directory / RENDER_SIDECAR_NAME).write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
+    trees = f"{tree_text(stats, 'tiles')} plus {tree_text(dense, '@2x')}"
+    print(f"wrote {directory}  {trees}  (cut {cut:.0f}s)")
+    print(encode_stage(f"cut:{layer}", 1.0), flush=True)
 
 
 def build_parser() -> argparse.ArgumentParser:

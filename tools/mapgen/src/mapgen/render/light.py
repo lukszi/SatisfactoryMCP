@@ -58,6 +58,7 @@ __all__ = [
     "crown_tops",
     "light_run",
     "relight_in_place",
+    "scratch_root",
 ]
 
 UNLIT_DIR_NAME = "unlit"
@@ -95,11 +96,18 @@ def add_light_flags(parser: argparse.ArgumentParser) -> None:
         type=Path,
         default=None,
         help=(
-            f"where the light's {LIGHT_CACHE_DIR_NAME}/ lives while the run lasts (default: "
-            "--cache-dir, else beside the renders). Nothing reads it after the run, which "
-            "deletes it; at full size it takes about 20 GB, so a fast local disk helps"
+            f"where the light's {LIGHT_CACHE_DIR_NAME}/ and the drawn sheets' sheets.cache/ "
+            "live while the run lasts (default: --cache-dir, else beside the renders). Nothing "
+            "reads them after the run, which deletes them; at full size the light takes about "
+            "20 GB and the sheets 3.2 GB a layer, so a fast local disk helps"
         ),
     )
+
+
+def scratch_root(args: argparse.Namespace, renders: Path) -> Path:
+    """Where a run's scratch goes: ``--scratch-dir``, else ``--cache-dir``, else ``renders``."""
+    root: Path = args.scratch_dir or args.cache_dir or renders
+    return root
 
 
 def claim_scratch(args: argparse.Namespace, renders: Path) -> Path | None:
@@ -110,7 +118,7 @@ def claim_scratch(args: argparse.Namespace, renders: Path) -> Path | None:
     """
     if not args.light:
         return None
-    root: Path = args.scratch_dir or args.cache_dir or renders
+    root = scratch_root(args, renders)
     directory = root / LIGHT_CACHE_DIR_NAME
     surface = directory / "z.npy"
     if surface.is_file() and held_open([surface]):
@@ -170,8 +178,8 @@ def crown_occluder(crowns: CrownTops | None, scratch_root: Path, size: int) -> O
 
 
 class LightingRun:
-    """The default ``--light`` run: the surface the first layer captures, which every layer
-    captures alike, the light bake, and each layer's ``unlit/`` and relit installs.
+    """The default ``--light`` run: the surface the draw's one pass captures, the light bake,
+    and each layer's ``unlit/`` and relit installs.
 
     ``light_workers`` bake the light, None counting them from the cores and free memory;
     ``install``'s own ``workers`` encode the tiles.
@@ -188,16 +196,8 @@ class LightingRun:
         self.surface = Surface(scratch_root / LIGHT_CACHE_DIR_NAME, size)
         self.occluder, self.slabs = occluder, slabs
         self.light_workers = light_workers
-        self.captured = False
         self.meta: JsonObject | None = None
         self.unlit: dict[str, JsonObject] = {}
-
-    def surface_for(self) -> Surface | None:
-        """The surface to capture into: only the first layer draws it, any layer the same."""
-        if self.captured:
-            return None
-        self.captured = True
-        return self.surface
 
     def install(
         self,
@@ -209,12 +209,11 @@ class LightingRun:
         recipe: int,
         renders_name: str,
     ) -> tuple[JsonObject, JsonObject, float]:
-        """``install_layer``'s contract, plus ``unlit/``; the first call bakes the light.
+        """``install_layer``'s contract, plus ``unlit/``; the light is baked first if it is not.
 
         Above one worker the unlit tree encodes while the sheet is relit, from its own copy.
         """
-        if self.meta is None:
-            self.meta = self._bake(out_dir / renders_name)
+        self.bake(out_dir / renders_name)
         if workers <= 1:
             return self._install_serially(sheet, image_mod, out_dir, layer, recipe, renders_name)
         directory = layer_dir(out_dir, layer, renders_name)
@@ -231,6 +230,11 @@ class LightingRun:
             self.unlit[layer] = cutter.install(first)
             stats, dense_stats = cutter.install(tiles), cutter.install(dense)
         return stats, dense_stats, time.time() - started
+
+    def bake(self, renders: Path) -> None:
+        """Bake the lighting pyramid from the captured surface into ``renders``, once."""
+        if self.meta is None:
+            self.meta = self._bake(renders)
 
     def _bake(self, renders: Path) -> JsonObject:
         print("baking the lighting pyramid", flush=True)

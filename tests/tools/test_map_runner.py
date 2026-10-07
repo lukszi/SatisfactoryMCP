@@ -278,6 +278,8 @@ def test_every_preset_writes_only_under_data_local(env):
 
 
 def test_progress_reads_a_recorded_full_render_log():
+    """A log from before the one pass, without stage lines: it drew the layers in turn, and its
+    first layer's draw drives the pass's stage."""
     lines = (FIXTURES / "map_render_full.log").read_text(encoding="utf-8")
     options = presets.normalise("render", {"size": 32768, "light": False})
     progress = store.Progress(presets.stage_plan("render", options), 32768)
@@ -286,15 +288,42 @@ def test_progress_reads_a_recorded_full_render_log():
         progress.feed(line)
         seen.append((progress.stage, round(progress.fraction_done() or 0, 3)))
     stages = [stage for stage, _ in seen]
-    for wanted in ("sweep", "direct", "top", "draw:terrain", "cut:terrain", "draw:satellite",
-                   "cut:satellite"):  # fmt: skip
+    for wanted in ("sweep", "direct", "top", "draw", "cut:terrain", "cut:satellite"):
         assert wanted in stages, wanted
     pcts = [pct for _, pct in seen]
     assert pcts == sorted(pcts), "progress never runs backwards"
     assert progress.finished and progress.fraction_done() == 1.0
-    halfway = dict(seen)["draw:terrain"]
-    assert 0.4 < halfway < 0.8
+    halfway = dict(seen)["draw"]
+    assert 0.5 < halfway < 0.9
     assert progress.eta(100.0) is None
+
+
+def test_the_one_pass_draws_every_layer_then_bakes_then_cuts_each():
+    from satisfactory_mcp.core import mapprogress
+
+    options = presets.normalise("render", {"layers": ["terrain", "painted"], "size": 1024})
+    plan = presets.stage_plan("render", options)
+    assert list(plan) == ["prep", "sweep", "direct", "top", "draw", "light", "cut:terrain",
+                          "cut:painted"]  # fmt: skip
+    progress = store.Progress(plan, size=1024)
+    seen = []
+    for line in (
+        mapprogress.encode_stage("draw", 0.0),
+        mapprogress.encode_stage("draw", 0.5),
+        mapprogress.encode_stage("light", 0.5),
+        mapprogress.encode_stage("cut:terrain", 0.0),
+        "  pyramid z0: 256x256, 1 tiles, 0.10 MB",
+        mapprogress.encode_stage("cut:terrain", 1.0),
+        mapprogress.encode_stage("cut:painted", 0.0),
+        "  pyramid z0: 256x256, 1 tiles, 0.10 MB",
+    ):
+        progress.feed(line)
+        seen.append((progress.stage, progress.fraction))
+        if progress.stage == "draw":
+            assert progress.stage_words() == "drawing terrain, painted"
+    assert [stage for stage, _ in seen] == ["draw", "draw", "light", "cut:terrain", "cut:terrain",
+                                            "cut:terrain", "cut:painted", "cut:painted"]  # fmt: skip
+    assert seen[4][1] > 0 and seen[7][1] > 0, "the pyramid lines count for the layer being cut"
 
 
 def test_stage_lines_drive_progress_where_the_regexes_cannot():

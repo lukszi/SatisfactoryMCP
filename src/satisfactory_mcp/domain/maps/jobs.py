@@ -123,6 +123,11 @@ class Progress:
         self.cuts = 0
         self.finished = False
 
+    def _draw_stage(self, layer: str) -> str:
+        """A layer's draw in the plan: its own stage, or the one pass that draws every layer."""
+        own = f"draw:{layer}"
+        return own if own in self.weights else "draw"
+
     def _enter(self, stage: str, fraction: float = 0.0) -> None:
         if stage not in self.weights:
             return
@@ -135,7 +140,7 @@ class Progress:
         event = mapprogress.decode(line)
         if isinstance(event, mapprogress.StageEvent):
             kind, _, layer = event.id.partition(":")
-            if kind == "draw" and layer != self.layer:
+            if kind in ("draw", "cut") and layer != self.layer:
                 self.layer, self.cuts = layer, 0
             self._enter(event.id, event.done)
         elif event is not None:
@@ -156,9 +161,9 @@ class Progress:
             self._enter("top", float(m.group(1)) / 100)
         elif m := DRAW_START.search(line):
             self.layer, self.cuts = m.group(1), 0
-            self._enter(f"draw:{self.layer}")
+            self._enter(self._draw_stage(self.layer))
         elif m := DRAW.search(line):
-            self._enter(f"draw:{m.group(1)}", float(m.group(2)) / 100)
+            self._enter(self._draw_stage(m.group(1)), float(m.group(2)) / 100)
         elif CUT.search(line) and self.layer:
             self.cuts += 1
             self._enter(f"cut:{self.layer}", self.cuts / max(1, cut_lines(self.size)))
@@ -189,7 +194,8 @@ class Progress:
                  "run": "running"}  # fmt: skip
         kind, _, layer = self.stage.partition(":")
         if kind == "draw":
-            return f"drawing {layer}"
+            cut = [stage.partition(":")[2] for stage in self.order if stage.startswith("cut:")]
+            return f"drawing {layer or ', '.join(cut) or 'the layers'}"
         if kind == "cut":
             return f"cutting {layer} tiles"
         return names.get(self.stage, self.stage)

@@ -74,9 +74,14 @@ GEN_MODULES = ("ooz", "texture2ddecoder", "PIL", "zstandard")
 #: never drops under its floor because the triangles are the same at any size.
 RENDER_STAGE_S = {"prep": 30.0, "sweep": 36.0, "direct": 692.0, "top": 119.0}
 #: Per layer, from renders-v7's five lit layers and the 2026-10-06 performance work
-#: (docs/maps_contract.md section 4.3): the draw on 8 threads less lean sampling's 12%, and
-#: the parallel cut of a layer without the light.
-RENDER_LAYER_S = {"draw": 340.0, "cut": 73.0}
+#: (docs/maps_contract.md section 4.3): the parallel cut of a layer without the light.
+RENDER_LAYER_S = {"cut": 73.0}
+#: The draw, one pass over every layer (section 4.3): the ground the layers share, once, and
+#: each layer's colour over it. One layer alone takes 340 s, the draw on 8 threads less lean
+#: sampling's 12%.
+RENDER_DRAW_S = {"ground": 150.0, "layer": 190.0}
+#: A layer's drawn sheet, held in the run's scratch until it is cut: 3 bytes a pixel.
+SHEET_SCRATCH_BYTES = 3 * 32768 * 32768
 #: ``--light``: the lighting bake once, on 16 workers (docs/spatial-and-map.md section 29), and
 #: per layer the unlit tree cut beside the baked one, ``LIGHT_CUT_FACTOR`` times the cut. The
 #: scratch is the light cache while it runs, and the crown occluder the paint store adds to
@@ -185,11 +190,13 @@ def _render_seconds(options: dict) -> dict[str, float]:
         stages["direct"] = max(DIRECT_FLOOR_S, RENDER_STAGE_S["direct"] * area)
         if options["top"]:
             stages["top"] = max(TOP_FLOOR_S, RENDER_STAGE_S["top"] * area)
-    for k, layer in enumerate(options["layers"]):
-        stages[f"draw:{layer}"] = RENDER_LAYER_S["draw"] * area + 2.0
-        if options.get("light") and k == 0:
-            stages["light"] = LIGHT_STAGE_S * area + 2.0
-        cut = RENDER_LAYER_S["cut"] * (LIGHT_CUT_FACTOR if options.get("light") else 1.0)
+    layers = options["layers"]
+    draw = RENDER_DRAW_S["ground"] + RENDER_DRAW_S["layer"] * len(layers)
+    stages["draw"] = draw * area + 2.0
+    if options.get("light"):
+        stages["light"] = LIGHT_STAGE_S * area + 2.0
+    cut = RENDER_LAYER_S["cut"] * (LIGHT_CUT_FACTOR if options.get("light") else 1.0)
+    for layer in layers:
         stages[f"cut:{layer}"] = cut * area + 2.0
     return stages
 
@@ -255,6 +262,7 @@ def estimate(preset: str, options: dict) -> dict:
         keep = len(options["layers"]) * max(RENDER_KEEP_FLOOR, int(per_layer * area))
         keep += int(LIGHT_KEEP_BYTES * area) if options["light"] else 0
         transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
+        transient += int(SHEET_SCRATCH_BYTES * area) * len(options["layers"])
         if options["light"]:
             transient += int((LIGHT_SCRATCH_BYTES + CROWN_SCRATCH_BYTES) * area)
     elif preset == "artwork":

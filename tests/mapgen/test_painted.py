@@ -387,7 +387,7 @@ def test_a_trail_narrower_than_the_pixel_is_drawn_at_every_phase_not_as_dots():
 
 
 def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkeypatch):
-    from mapgen.render import compose
+    from mapgen.render import compose, painting
 
     n = 400  # texels over the frame, 18.75 m each
     spacing_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / n
@@ -404,7 +404,7 @@ def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkey
         seen.setdefault(len(scene["z_m"][0]), []).append(sample(stripes))
         return np.zeros(scene["z_m"].shape + (3,), np.float32)
 
-    monkeypatch.setattr(compose, "painted_colours", grab)
+    monkeypatch.setattr(painting, "painted_colours", grab)
     ground = SimpleNamespace(rock=[np.zeros((n // 4, n // 4), np.float32)], crowns=None,
                              water_optics=lambda taps, river=None: None)  # fmt: skip
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))

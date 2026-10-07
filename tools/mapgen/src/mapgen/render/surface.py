@@ -1,14 +1,14 @@
 """One band's ground as every layer draws it: heights, rocks, overlay, meshes, water, borrow.
 
-``band_grid`` places a band's rows on the field's lattice and ``band_surface`` composes the
-ground there. Only the meshes' seabed depends on the layer, so one surface can serve every
-layer drawn from it, and the light captures the seabed's whichever layer draws it
-(docs/spatial-and-map.md sections 20, 25, 29 and 40).
+``band_grid`` places a band's rows on the field's lattice and ``band_surfaces`` composes the
+ground there. Only the meshes' seabed depends on the layer, so one surface serves every
+layer that draws the seabed and a second one the painted layer, and the light captures the
+seabed's whichever layers are drawn (docs/spatial-and-map.md sections 20, 25, 29 and 40).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from typing import NamedTuple, Protocol, TypeAlias, cast
 
@@ -56,7 +56,7 @@ __all__ = [
     "WaterPlanes",
     "Window",
     "band_grid",
-    "band_surface",
+    "band_surfaces",
     "band_water_terms",
     "blend_regimes",
     "composite_top",
@@ -293,14 +293,17 @@ def band_grid(sources: GroundSources, top: int, band_rows: int, halo: int) -> Ba
     )
 
 
-def band_surface(
-    sources: GroundSources, grid: BandSampling, seabed: bool
-) -> tuple[BandSurface, list[Owed]]:
-    """One band's ground, and the seam and regime measurements it owes, merged in band order.
+def band_surfaces(
+    sources: GroundSources, grid: BandSampling, seabeds: Collection[bool]
+) -> tuple[dict[bool, BandSurface], list[Owed]]:
+    """One band's ground under each seabed rule in ``seabeds``, and the seam and regime
+    measurements it owes, merged in band order.
 
-    ``seabed`` leaves the meshes in the water to the seabed (``shore.composite_meshes``). With
-    a capture, the heights and land weight drawn under the seabed rule go to the light stage,
-    whatever ``seabed`` the layer draws with.
+    Only the meshes depend on the rule: a seabed rule leaves the meshes in the water to the
+    seabed (``shore.composite_meshes``). The rest is composed once, and the meshes and the
+    water over them once per rule; without meshes both rules are one surface. With a capture,
+    the heights and land weight drawn under the seabed rule go to the light stage, whatever
+    rules the layers draw with. The arrays are read-only: every layer's painter reads them.
     """
     rows, smooth, linear = grid.rows, grid.smooth, grid.linear
     z_dm, missing = sample_surface(sources.heights, smooth, linear, hf.NODATA)
@@ -325,24 +328,36 @@ def band_surface(
     water_m, level_m, wet, measured = _sample_water_surface(
         z_m, sources.water, sources.sea, smooth, linear
     )
-    planes = (water_m, wet, measured)
-    under = z_m
-    mesh_weight = mesh_class = None
-    if sources.meshes is not None:
-        z_m, mesh_weight, mesh_class = _meshes(sources.meshes, rows, under, level_m, seabed)
-    water = _water_terms(sources, linear, z_m, planes)
+    planes, borrow = (water_m, wet, measured), _borrow(sources, grid)
+    rules = set(seabeds) | ({True} if sources.capture is not None else set())
+    surfaces: dict[bool, BandSurface] = {}
+    for seabed in rules:
+        if sources.meshes is None and surfaces:
+            surfaces[seabed] = next(iter(surfaces.values()))
+            continue
+        lifted, mesh_weight, mesh_class = z_m, None, None
+        if sources.meshes is not None:
+            lifted, mesh_weight, mesh_class = _meshes(sources.meshes, rows, z_m, level_m, seabed)
+        surfaces[seabed] = _read_only(BandSurface(
+            z_m=lifted, missing=missing, weight=weight, rock_seen=rock_seen,
+            top_weight=top_weight, water_m=water_m, level_m=level_m, wet=wet, measured=measured,
+            mesh_weight=mesh_weight, mesh_class=mesh_class,
+            water=_water_terms(sources, linear, lifted, planes), borrow=borrow,
+        ))  # fmt: skip
     if sources.capture is not None:
-        lit_z, lit_water = z_m, water
-        if not seabed and sources.meshes is not None:
-            lit_z = _meshes(sources.meshes, rows, under, level_m, True)[0]
-            lit_water = _water_terms(sources, linear, lit_z, planes)
-        _capture(sources.capture, sources.window, rows, lit_z, missing, lit_water)
-    surface = BandSurface(
-        z_m=z_m, missing=missing, weight=weight, rock_seen=rock_seen, top_weight=top_weight,
-        water_m=water_m, level_m=level_m, wet=wet, measured=measured, mesh_weight=mesh_weight,
-        mesh_class=mesh_class, water=water, borrow=_borrow(sources, grid),
-    )  # fmt: skip
-    return surface, owed
+        lit = surfaces[True]
+        _capture(sources.capture, sources.window, rows, lit.z_m, missing, lit.water)
+    return {seabed: surfaces[seabed] for seabed in seabeds}, owed
+
+
+def _read_only(surface: BandSurface) -> BandSurface:
+    """``surface`` with its arrays and its water's marked read-only, so no layer's painter
+    changes what the next one reads."""
+    planes = [*vars(surface).values(), *surface.water.values()]
+    for plane in planes:
+        if isinstance(plane, np.ndarray):
+            plane.flags.writeable = False
+    return surface
 
 
 def _meshes(

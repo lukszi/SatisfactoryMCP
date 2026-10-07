@@ -23,6 +23,7 @@ __all__ = [
     "RegimeCoverage",
     "SeamMeasure",
     "SeamTrace",
+    "measured_lines",
 ]
 
 #: The hard switch ``SeamTrace`` reads against takes the direct answer at this weight and up.
@@ -250,3 +251,19 @@ class RegimeCoverage:
                 "mean_w": round(sum(self.weight.values()) / total, 5),
             },
         }
+
+
+def measured_lines(trace: JsonObject, regimes: JsonObject) -> list[str]:
+    """The run's report of a ``SeamTrace`` and a ``RegimeCoverage`` result."""
+    lines = []
+    curvature = trace.get("p99_curvature")
+    if trace.get("measured") and isinstance(curvature, dict):
+        lines.append(
+            f"  seam trace: p99 |d2z/dx2| {curvature['seam']} over the "
+            f"blend against {curvature['switch']} for the hard max on "
+            f"the same texels -- the fade spends "
+            f"{trace['share_of_a_hard_switch']} of that ceiling; against the terrain "
+            f"beside the join it reads {trace['against_the_pure_regimes']}, which is "
+            "the design's own reference and is measuring the silhouette"
+        )
+    return [*lines, f"  regimes: {regimes['sheet_pct']}"]

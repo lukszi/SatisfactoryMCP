@@ -1,6 +1,7 @@
-"""The light stage's scratch: one run's, its crowns written once, deleted however it ends.
+"""The light stage's scratch: one run's, its crowns written once, deleted however it ends;
+and the drawn sheets' beside it.
 
-docs/spatial-and-map.md section 29, "Scratch". Synthetic fixtures throughout.
+docs/spatial-and-map.md sections 29, "Scratch", and 40. Synthetic fixtures throughout.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from mapgen.render.light import (
     claim_scratch,
     light_run,
 )
+from mapgen.render.sheets import SHEETS_DIR_NAME, claim_sheets
 
 
 def _args(*argv: str) -> argparse.Namespace:
@@ -72,13 +74,42 @@ def test_the_scratch_of_a_render_still_running_is_refused_and_left_as_it_is(tmp_
     live.close()
 
 
+def test_the_sheets_are_files_beside_the_light_s_scratch_made_when_drawn(tmp_path):
+    scratch = tmp_path / "s"
+    sheets = claim_sheets(_args("--no-light", "--scratch-dir", str(scratch)), tmp_path / "r")
+    directory = scratch / SHEETS_DIR_NAME
+    assert not directory.exists(), "nothing is written before a sheet is drawn"
+    sheet = sheets("terrain", (16, 32, 3))
+    sheet[:] = 9
+    sheet.flush()
+    assert (np.load(directory / "terrain.npy") == 9).all()
+    del sheet
+    sheets.release("terrain")
+    assert not (directory / "terrain.npy").exists()
+    sheets.close()
+    assert not directory.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="only Windows refuses to rename an open file")
+def test_the_sheets_of_a_render_still_running_are_refused_and_left_as_they_are(tmp_path):
+    live = claim_sheets(_args(), tmp_path)
+    sheet = live("painted", (8, 8, 3))
+    with pytest.raises(Refusal, match="still running") as refused:
+        claim_sheets(_args(), tmp_path)
+    assert refused.value.code == SCRATCH_IN_USE
+    assert (tmp_path / SHEETS_DIR_NAME / "painted.npy").is_file()
+    del sheet
+    assert claim_sheets(_args(), tmp_path).directory == tmp_path / SHEETS_DIR_NAME
+    assert not (tmp_path / SHEETS_DIR_NAME).exists(), "a dead run's sheets are emptied"
+
+
 def test_a_run_that_fails_still_deletes_its_scratch(tmp_path):
     with pytest.raises(RuntimeError), light_run(tmp_path, 16, _crowns()) as run:
         assert sorted(p.name for p in (tmp_path / LIGHT_CACHE_DIR_NAME).glob("occluder*")) == [
             "occluder.npy",
             "occluder_cover.npy",
         ]
-        run.surface_for().put(0, np.zeros((16, 16), np.float32), np.ones((16, 16), np.float32))
+        run.surface.put(0, np.zeros((16, 16), np.float32), np.ones((16, 16), np.float32))
         raise RuntimeError("a layer failed part way")
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
     with light_run(None, 16, _crowns()) as run:

@@ -19,7 +19,7 @@ from mapgen.gamedata.ground.paint_store import CROWN_NAME, META_NAME
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import RELIEF_PALETTES
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
-from mapgen.render import compose
+from mapgen.render import compose, painting
 from mapgen.render.light import crown_occluder, crown_tops
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -98,7 +98,7 @@ def test_every_layer_hands_the_light_the_same_surface(monkeypatch):
         seen["z_m"], seen["ndl"] = scene["z_m"].copy(), scene["ndl"].copy()
         return np.zeros(scene["z_m"].shape + (3,), np.float32)
 
-    monkeypatch.setattr(compose, "painted_colours", painter)
+    monkeypatch.setattr(painting, "painted_colours", painter)
     scene = _scene()
     captured = {layer: _draw(scene, layer) for layer in LAYERS}
     first = captured["terrain"]
@@ -113,6 +113,36 @@ def test_every_layer_hands_the_light_the_same_surface(monkeypatch):
     assert (first.land[rock] > 0.99).all(), "a rock out of the sea is land in it"
     lit = seen["ndl"] != np.float32(np.sin(np.deg2rad(45.0)))
     assert lit.any() and lit[10:30, 50:70].sum() == lit.sum(), "the coral keeps the default sun"
+
+
+def test_one_pass_draws_every_layer_as_alone_painted_over_its_own_meshes(monkeypatch):
+    def painter(scene, ground, sample, sample_rock):
+        rgb = np.stack([scene["z_m"], scene["water"]["cover"] * 200, scene["ndl"] * 100], -1)
+        return rgb.astype(np.float32)
+
+    monkeypatch.setattr(painting, "painted_colours", painter)
+    scene = _scene()
+    borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
+    reliefs = {layer: ReliefGround(RELIEF_PALETTES[layer][0], scene.field, None, [])
+               for layer in LAYERS if layer in RELIEF_PALETTES}  # fmt: skip
+    surface = _Surface()
+    drawn = compose.render_layers(
+        LAYERS, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
+        scene.heights, meshes=scene.meshes, unlit=True, surface=surface,
+        painted=_painted_ground(), relief=reliefs,
+    )  # fmt: skip
+    for layer in LAYERS:
+        alone = compose.render_layer(
+            layer, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
+            scene.heights, meshes=scene.meshes, unlit=True,
+            painted=_painted_ground() if layer == "painted" else None, relief=reliefs.get(layer),
+        )  # fmt: skip
+        assert drawn[layer].tobytes() == alone.tobytes(), layer
+    coral = (slice(12, 28), slice(52, 68))
+    assert (drawn["painted"][coral] != drawn["terrain"][coral]).any(), "two grounds, not one"
+    first = _draw(scene, "terrain")
+    assert surface.z.tobytes() == first.z.tobytes(), "the pass captures the seabed rule"
+    assert surface.land.tobytes() == first.land.tobytes()
 
 
 def _paint_store(tmp_path, top_dm: np.ndarray, grid: dict) -> None:
