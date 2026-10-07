@@ -2,7 +2,7 @@
 
 Sections 29 and 36 of the [design spec](../../DESIGN.md): the lighting pyramid the page relights, and
 the tree crowns drawn on the painted layer and cast into it. A section number below
-resolves through the [map's index](../spatial-and-map.md#sections-17-to-41-the-map).
+resolves through the [map's index](../spatial-and-map.md#sections-17-to-42-the-map).
 
 ## 29. Live sun light (2026-10-05)
 
@@ -93,17 +93,18 @@ from the downsampled heights, sky view and horizons by mean.
 ### The stage
 
 The one pass that draws every layer (section 40) hands its heights and land weight to a
-`Surface` (two memory maps in the light's scratch, 5.4 GB at 32768), each band its own rows
-from whichever thread drew it, once, whatever layers the pass draws: the surface the seabed
-rule draws (below, "One capture"). After the pass,
-`lighting/stage.py` cuts the sheet into blocks of 16 × 16 native tiles, each with a 150 m
-halo, and a process pool computes per block: the ground's horizons and the crowns' at half
-resolution, sky view, normals, the native tiles, and the light at the default sun for the
-baked copy, once with the crowns and once without. A block whose core is all water skips the
-horizon march. Each layer then queues `unlit/` from a copy of the sheet, is lit in place by
-the default sun with its own term while that tree encodes (`render/light.py`: the crowns' only
-for a style that draws them), and queues `tiles/` and `tiles@2x/`. All three go through one
-encode pool and are renamed into place in that order (section 17, "Cutting in parallel").
+`Surface` (two memory maps in the light's scratch, 5.4 GB at 32768), each band once, in
+order, whatever layers the pass draws: the surface the seabed rule draws (below, "One
+capture"). The surface is baked in blocks of 16 × 16 native tiles, each with a 150 m halo,
+and a process pool computes per block (`lighting/stage.py` `bake_block`): the ground's
+horizons and the crowns' at half resolution, sky view, normals, the native tiles, and the
+light at the default sun for the baked copy, once with the crowns and once without. A block
+whose core is all water skips the horizon march. A row of blocks is queued as soon as the
+surface holds every row it reads, while the pass is still drawing (`lighting/bake.py`,
+section 42). Each band of a layer goes to `unlit/` at once and, once the terms of its rows
+are in, is lit by the default sun with its own term (`render/light.py` `relight_rows`: the
+crowns' only for a style that draws them) and goes to `tiles/` and `tiles@2x/`. The three
+trees are renamed into place in that order (section 17, "Cutting in parallel").
 
 **One capture (2026-10-07).** The light does not depend on which layers a run draws, or in
 which order. Until this date it did, in two ways:
@@ -251,9 +252,9 @@ size and traffic while the run lasts, not of reuse.
 
 | Planes | Written | Read |
 | --- | --- | --- |
-| `z`, `land` | By the draw pass, a band of rows at a time, each band hashed as it is stored | By the bake, one block of 16 × 16 tiles at a time with its halo (`land` without one); `land` again by each layer's default-sun copy, 512 rows at a time |
+| `z`, `land` | By the draw pass, a band of rows at a time, each band hashed as it is stored | By the bake, one block of 16 × 16 tiles at a time with its halo (`land` without one); `land` again for each lit band, a band at a time |
 | `occluder`, `occluder_cover` | By `crown_occluder`, 256 rows at a time, then hashed once | By the bake, a block with its halo |
-| `terms` | By the bake's processes, a block each, then moved to the kept light | By each layer's default-sun copy, 512 rows at a time |
+| `terms` | By the bake's processes, a block each, then moved to the kept light | For each lit band, a band at a time, once its row of blocks is baked |
 | `zh`, `landh`, `svfh`, `hzq` | By the bake's processes, a block each | By each coarser level, a strip of rows at a time; each level replaces them with its own |
 
 Until 2026-10-06 the crowns went to `crowns.npy` and `crown_cover.npy` and the bake copied
@@ -327,6 +328,7 @@ the renders.
 | --- | --- |
 | `tiles/` | The pyramid's tiles: a hard link to each installed one, or a copy where the cache and the renders are on different volumes |
 | `terms.npy` | The default-sun terms, 3 bytes a pixel (3.2 GB at 32768), moved out of the scratch: a rename on one volume |
+| `surface.json` | Where each band of the surface went and its digest, which a later run reads while it draws (section 42) |
 | `meta.json` | The bake's `meta.json`, key included. It is removed first and written last, so a keep cut short is never read |
 
 It goes with the raster caches: a run that keeps none (no `--keep-direct`, `--restyle` or
@@ -340,7 +342,9 @@ writes the kept `meta.json` there, and relights each layer from the kept terms. 
 the folder that already holds that bake leaves it untouched. Anything else bakes and replaces
 the kept light. A palette change keeps the key. A change to the drawn heights or to the water
 cover the land weight comes from (a new field, build, raster cache or seabed rule) changes
-the surface, so the light is baked again.
+the surface, so the light is baked again. The digest is known only once the draw is done,
+so while it draws a run reads the kept terms as long as its bands match the kept bake's
+(section 42, "A kept light, read while it matches").
 
 **Cost.** The hashing reads what the run holds in memory already: each band on its draw
 thread (SHA-256 runs at about 2.8 GB/s a core; the surface is 5.4 GB at 32768) and the crowns

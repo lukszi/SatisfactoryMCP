@@ -1,10 +1,10 @@
 # Space, and the map drawn on it
 
 Part of the [SatisfactoryMcp design spec](../DESIGN.md) — §7 is the coordinate frame, the region
-layer and the selector language every spatial and planning tool shares; §17 to §41 are the web
+layer and the selector language every spatial and planning tool shares; §17 to §42 are the web
 map, from its base layers and the page that picks one to the heightfield, the drawn renders,
 their styles, water, light and caches. Those live in [docs/map/](map/) under the numbers they
-were given, and the [index below](#sections-17-to-41-the-map) says which file holds each.
+were given, and the [index below](#sections-17-to-42-the-map) says which file holds each.
 Section numbers are continuous with the rest of the spec; [DESIGN.md](../DESIGN.md) indexes it.
 
 The dated sections name the generator files as they were when each section was written. Since
@@ -13,7 +13,7 @@ The dated sections name the generator files as they were when each section was w
 [README](../tools/mapgen/README.md) names the command behind each old script and has the package
 map.
 
-## Sections 17 to 41: the map
+## Sections 17 to 42: the map
 
 One file per part of the pipeline. A reference to `spatial-and-map.md` section NN, in a
 document or in a docstring, resolves through this table. §37 stays here, because it is where
@@ -46,6 +46,7 @@ the others meet.
 | 39 | [Compressed raster caches: the zstd band store (2026-10-06)](map/renders.md#39-compressed-raster-caches-the-zstd-band-store-2026-10-06) | renders.md |
 | 40 | [Drawing a layer's bands on threads (2026-10-06)](map/renders.md#40-drawing-a-layers-bands-on-threads-2026-10-06) | renders.md |
 | 41 | [Compiled kernels: the light's march and the sampler's gathers (2026-10-07)](map/renders.md#41-compiled-kernels-the-lights-march-and-the-samplers-gathers-2026-10-07) | renders.md |
+| 42 | [Cutting the bands as they settle (2026-10-07)](map/renders.md#42-cutting-the-bands-as-they-settle-2026-10-07) | renders.md |
 
 ---
 

@@ -216,7 +216,8 @@ be traced to the axis it should move.
 | `lighting/hillshade.py` | light | Hillshade and sun term |
 | `lighting/borrow.py` | light | The artwork borrow and its sidecar record |
 | `lighting/sun.py`, `model.py` | light | The game's sun path and default; the live-light model and its reference |
-| `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the stage that writes the lighting pyramid |
+| `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the drawn surface and one block of its light |
+| `lighting/bake.py` | light | The lighting pyramid baked a row of blocks at a time, as the surface's rows come in |
 | `lighting/kernels.py` | light | The horizon march and the sky view compiled by numba |
 | `lighting/occluders.py` | light | The canopy-top occluder raster the horizons take |
 | `lighting/lights/` | light | Light files (empty for now) |
@@ -240,14 +241,16 @@ be traced to the axis it should move.
 | `render/compose.py` | | The band loop that draws every layer of a run in one pass |
 | `render/surface.py` | | One band's ground, composed once for all the layers |
 | `render/painting.py` | | One band coloured in one layer's style over that ground |
-| `render/sheets.py` | | The drawn sheets as memory-mapped files until each layer is cut |
+| `render/stream.py` | | Each settled band handed to its layers' tile trees, the lit ones once the light has its rows |
 | `render/drawpool.py` | | How many threads draw a pass's bands, and the pool that keeps their order |
 | `render/stencils.py` | | How far each step of a band's draw reads its neighbours, and the band halo that holds them |
 | `render/extras.py` | | What a run loads beside the field: meshes, falls, Titan trees and rivers |
-| `render/light.py` | | Installing a layer drawn unlit: `unlit/` and the default-sun copy |
+| `render/light.py` | | A run drawn unlit: the light baked as the bands come in, a kept light read while it matches, the default-sun relight |
 | `render/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
-| `tiles/pyramid.py` | | Installing a layer and cutting its pyramid; the worker flags |
-| `tiles/cutter.py` | | The parallel cutter: a layer's tile trees through one encode pool |
+| `tiles/pyramid.py` | | A layer's tile trees, the worker flags, the parallel cutter's self-check |
+| `tiles/cutter.py` | | The parallel cutter: every tree of a run cut as its sheets' rows come in, through one encode pool |
+| `tiles/levels.py` | | A sheet's pyramid levels resampled in strips as its rows arrive |
+| `tiles/imaging.py` | | Pillow as the cutters and pyramids use it |
 | `tiles/sidecar.py` | | The render sidecar |
 | `tiles/recipes.py` | | The recipe numbers and their words, renders and artwork |
 | `tiles/rendertext.py` | | The render sidecar's sampling, composition, z7 and level-only text |
@@ -283,9 +286,10 @@ which measure the one ground once. `meshes` is the render-only mesh raster, `rea
 where the ocean's crossing rule applies (`None` keeps recipe 5's water). `painted` and
 `relief` (by layer) are the prepared grounds of those styles, built once per run. `falls` are
 the prepared waterfalls and `rivers` the `RiverWater` whose ribbons replace the field's river
-water. `window` draws part of the sheet, which is how crops are compared. `sheets` makes each
-layer's sheet: in memory by default, and memory-mapped files in the run's scratch from the
-renders command (`render/sheets.py`). Each band is drawn in pieces of `columns` output
+water. `window` draws part of the sheet, which is how crops are compared. `bands` takes each
+band once it is settled, in order, and then no sheet is kept: the renders command cuts the
+bands into their tiles as they come (`render/stream.py`, docs/map/renders.md section 42);
+without it the sheets come back in memory. Each band is drawn in pieces of `columns` output
 columns, and `threads` draws that many pieces at once to the same bytes
 (`render/drawpool.py`, `--draw-columns`, `--draw-threads`): the pieces share the pass's
 inputs read-only and each writes its own pixels; each band, once its pieces are in, hands
