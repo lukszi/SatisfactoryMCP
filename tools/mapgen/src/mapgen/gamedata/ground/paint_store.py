@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from mapgen.common import LOCAL_DIR
-from mapgen.gamedata.vegetation import crown_sprites as crown_data
+from mapgen.gamedata.frame import GRID_PX
+from mapgen.gamedata.vegetation.crown_sprites import CROWN_TOP_NAME
 
 __all__ = [
     "CANOPY_NAME",
@@ -21,13 +22,13 @@ __all__ = [
 PAINT_DIR_NAME = "paint"
 META_NAME = "meta.json"
 CANOPY_NAME = "canopy.u8.z"
-CROWN_NAME = crown_data.CROWN_TOP_NAME
+CROWN_NAME = CROWN_TOP_NAME
 PIGMENT_NAME = "pigment.rgb.u8.z"
 WEIGHT_PREFIX = "w."
 WEIGHT_SUFFIX = ".u8.z"
 
-#: The output grid: the heightfield's, 1 m, vertex-aligned on the render frame.
-GRID = 7500
+#: The store's grid: the heightfield's, 1 m, vertex-aligned on the render frame.
+GRID = GRID_PX
 
-#: Where the painted style's paint layers live: an extracted input, tools/gen_paint_layers.py.
-PAINT_DIR = LOCAL_DIR / "paint"
+#: Where the paint command writes the store, and where the painted style reads it.
+PAINT_DIR = LOCAL_DIR / PAINT_DIR_NAME

@@ -9,18 +9,34 @@ from __future__ import annotations
 
 import math
 import struct
+from collections.abc import Iterable, Sequence
+from typing import TypeAlias, TypedDict
 
 import numpy as np
+import numpy.typing as npt
 from scipy import ndimage
 
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES
-from satisfactory_mcp.core.gameassets.packages import class_name_of, quat_rotate, world_transform
+from mapgen.gamedata.meshes import MeshBounds
+from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES, water_box_tops
+from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I32Grid, I64Grid
+from satisfactory_mcp.core.gameassets.packages import (
+    ClassFacts,
+    PackageView,
+    class_name_of,
+    quat_rotate,
+    world_transform,
+)
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
     "RIVER_CLASS",
     "RIVER_PLANE_HALF_WIDTH_CM",
     "SAMPLE_STEP_M",
+    "RibbonPlanes",
+    "RiverActor",
+    "RiverRecord",
+    "RiverSamples",
     "box_tops",
     "hermite",
     "ribbon_planes",
@@ -47,33 +63,65 @@ CAP_REACH = 3.0
 #: Extra metres past the plane's edge the ribbon planes are filled to.
 RIBBON_REACH_M = 8.0
 
+_OTHER_SURFACES = WATER_SURFACE_CLASSES - {RIVER_CLASS}
 
-def _doubles(struct_value, count: int) -> tuple[float, ...] | None:
-    if not isinstance(struct_value, dict) or "_raw" not in struct_value:
+
+class RiverActor(TypedDict):
+    """One river actor: its name, its plane meshes, and a row per section (``_section``)."""
+
+    actor: str
+    meshes: list[str]
+    sections: list[list[float]]
+
+
+#: ``river_actor``'s record as the level sweep collects it: a ``RiverActor``.
+RiverRecord: TypeAlias = dict[str, str | list[str] | list[list[float]]]
+
+#: Centreline samples in metres, one row each: ``x``, ``y``, ``z``, ``hw`` (float64),
+#: ``river`` and ``section`` (int32), and ``cap``, the outward direction at open ends.
+RiverSamples: TypeAlias = dict[str, F64Grid | I32Grid]
+
+
+class RibbonPlanes(TypedDict):
+    """The ribbons on a grid: the plane's height, its half width, and distance over it."""
+
+    level_m: F32Grid
+    u: F32Grid
+    half_m: F32Grid
+
+
+def _doubles(value: JsonValue | None, count: int) -> tuple[float, ...] | None:
+    if not isinstance(value, dict):
         return None
-    raw = bytes.fromhex(struct_value["_raw"])
+    hex_bytes = value.get("_raw")
+    if not isinstance(hex_bytes, str):
+        return None
+    raw = bytes.fromhex(hex_bytes)
     return struct.unpack(f"<{count}d", raw[: 8 * count]) if len(raw) >= 8 * count else None
 
 
-def _section(view, slot: int, classes, half_width_cm: float) -> list[float] | None:
+def _section(
+    view: PackageView, slot: int, classes: ClassFacts, half_width_cm: float
+) -> list[float] | None:
     """One spline-mesh section in world cm: p0, t0, p1, t1 and the half width at each end."""
     params = view.props(slot).get("SplineParams")
     if not params:
         return None
-    d = view.decode_struct(params)
-    p0, p1 = _doubles(d.get("StartPos"), 3), _doubles(d.get("EndPos"), 3)
+    decoded: JsonObject = view.decode_struct(params)
+    p0, p1 = _doubles(decoded.get("StartPos"), 3), _doubles(decoded.get("EndPos"), 3)
     if p0 is None or p1 is None:
         return None
-    t0 = _doubles(d.get("StartTangent"), 3) or (0.0, 0.0, 0.0)
-    t1 = _doubles(d.get("EndTangent"), 3) or (0.0, 0.0, 0.0)
-    s0 = _doubles(d.get("StartScale"), 2) or (1.0, 1.0)
-    s1 = _doubles(d.get("EndScale"), 2) or (1.0, 1.0)
-    transform, _parent = world_transform(view, slot, classes)
+    t0 = _doubles(decoded.get("StartTangent"), 3) or (0.0, 0.0, 0.0)
+    t1 = _doubles(decoded.get("EndTangent"), 3) or (0.0, 0.0, 0.0)
+    s0 = _doubles(decoded.get("StartScale"), 2) or (1.0, 1.0)
+    s1 = _doubles(decoded.get("EndScale"), 2) or (1.0, 1.0)
+    transform: tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]] | None
+    transform = world_transform(view, slot, classes)[0]
     if transform is None:
         return None
     loc, quat, scale = transform
 
-    def turn(v):
+    def turn(v: Sequence[float]) -> tuple[float, float, float]:
         return quat_rotate(quat, (v[0] * scale[0], v[1] * scale[1], v[2] * scale[2]))
 
     row: list[float] = []
@@ -84,25 +132,31 @@ def _section(view, slot: int, classes, half_width_cm: float) -> list[float] | No
     return [*row, s0[0] * across, s1[0] * across]
 
 
-def river_actor(view, actor: int, classes, meshes) -> dict:
+def river_actor(
+    view: PackageView, actor: int, classes: ClassFacts, meshes: MeshBounds
+) -> RiverRecord:
     """Every river-plane section under one river actor, in curve order where it can tell."""
-    sections, mesh_names = [], set()
+    sections: list[list[float]] = []
+    mesh_names: set[str] = set()
     for slot in view.children.get(actor, []):
         if class_name_of(view.class_of.get(slot)) != "SplineMeshComponent":
             continue
         props = view.props(slot)
         mesh = view.import_path(props["StaticMesh"]) if "StaticMesh" in props else None
         bounds = meshes.extended_bounds(mesh) if mesh else None
-        half = bounds[1][1] if bounds else RIVER_PLANE_HALF_WIDTH_CM
+        half: float = bounds[1][1] if bounds else RIVER_PLANE_HALF_WIDTH_CM
         row = _section(view, slot, classes, half)
         if row is not None:
             sections.append([round(v, 2) for v in row])
             mesh_names.add((mesh or "?").rsplit("/", 1)[-1])
-    return {"actor": view.exports[actor]["name"], "meshes": sorted(mesh_names),
-            "sections": sections}  # fmt: skip
+    return {
+        "actor": view.exports[actor]["name"],
+        "meshes": sorted(mesh_names),
+        "sections": sections,
+    }
 
 
-def hermite(rows: np.ndarray, s: np.ndarray) -> np.ndarray:
+def hermite(rows: F64Grid, s: F64Grid) -> F64Grid:
     """Points on each section's cubic at parameters ``s``: ``(len(rows), len(s), 3)``."""
     s = s[None, :, None]
     p0, t0, p1, t1 = (rows[:, None, k : k + 3] for k in (0, 3, 6, 9))
@@ -114,14 +168,15 @@ def hermite(rows: np.ndarray, s: np.ndarray) -> np.ndarray:
     )
 
 
-def sample_rivers(rivers: list[dict], step_m: float = SAMPLE_STEP_M) -> dict[str, np.ndarray]:
+def sample_rivers(rivers: Sequence[RiverActor], step_m: float = SAMPLE_STEP_M) -> RiverSamples:
     """Centreline samples in metres: x, y, z, half width, which river and section, and at an
     open end of a river (a section end no other section continues) the outward direction."""
-    out: dict[str, list] = {k: [] for k in ("x", "y", "z", "hw", "river", "section")}
+    out: dict[str, list[npt.NDArray[np.float64]]] = {k: [] for k in ("x", "y", "z", "hw")}
+    ids: dict[str, list[I32Grid]] = {"river": [], "section": []}
     section_id = 0
     for river_id, river in enumerate(rivers):
-        for row in river["sections"]:
-            row = np.asarray(row, np.float64)
+        for section in river["sections"]:
+            row = np.asarray(section, np.float64)
             chord_m = math.dist(row[0:3], row[6:9]) / 100.0
             n = max(2, math.ceil(chord_m / step_m) + 1)
             s = np.linspace(0.0, 1.0, n)
@@ -129,20 +184,25 @@ def sample_rivers(rivers: list[dict], step_m: float = SAMPLE_STEP_M) -> dict[str
             for k, axis in enumerate("xyz"):
                 out[axis].append(points[:, k])
             out["hw"].append(((1 - s) * row[12] + s * row[13]) / 100.0)
-            out["river"].append(np.full(n, river_id, np.int32))
-            out["section"].append(np.full(n, section_id, np.int32))
+            ids["river"].append(np.full(n, river_id, np.int32))
+            ids["section"].append(np.full(n, section_id, np.int32))
             section_id += 1
-    empty = {"river": np.int32, "section": np.int32}
-    samples = {
-        k: np.concatenate(v) if v else np.zeros(0, empty.get(k, np.float64)) for k, v in out.items()
+    floats = {k: np.concatenate(v) if v else np.zeros(0, np.float64) for k, v in out.items()}
+    ints = {k: np.concatenate(v) if v else np.zeros(0, np.int32) for k, v in ids.items()}
+    x, y, section = floats["x"], floats["y"], ints["section"]
+    return {
+        "x": x,
+        "y": y,
+        "z": floats["z"],
+        "hw": floats["hw"],
+        "river": ints["river"],
+        "section": section,
+        "cap": _open_ends(x, y, ints["river"], section),
     }
-    samples["cap"] = _open_ends(samples)
-    return samples
 
 
-def _open_ends(samples: dict) -> np.ndarray:
+def _open_ends(x: F64Grid, y: F64Grid, river_ids: I32Grid, section: I32Grid) -> F64Grid:
     """``(n, 2)``: the outward unit direction at each open section end, zero elsewhere."""
-    x, y, section = samples["x"], samples["y"], samples["section"]
     cap = np.zeros((len(x), 2))
     if not len(x):
         return cap
@@ -151,7 +211,7 @@ def _open_ends(samples: dict) -> np.ndarray:
     ends = np.r_[first, last]
     inner = np.r_[first + 1, last - 1]
     points = np.stack([x[ends], y[ends]], 1)
-    river = samples["river"][ends]
+    river = river_ids[ends]
     for k, (end, toward) in enumerate(zip(ends, inner, strict=True)):
         gap = np.hypot(*(points - points[k]).T)
         gap[k] = np.inf
@@ -162,11 +222,22 @@ def _open_ends(samples: dict) -> np.ndarray:
     return cap
 
 
-def _refine(samples, rows, cols, start, x0_m, y0_m, spacing_m):
-    """Exact distance to the nearest centreline piece near each texel's nearest sample."""
-    px = x0_m + cols * spacing_m
-    py = y0_m + rows * spacing_m
-    x, y, z, hw, section, cap = (samples[k] for k in ("x", "y", "z", "hw", "section", "cap"))
+def _refine(
+    samples: RiverSamples,
+    pixel: tuple[I64Grid, I64Grid],
+    start: I64Grid,
+    origin_m: tuple[float, float],
+    spacing_m: float,
+) -> tuple[F64Grid, F64Grid, F64Grid]:
+    """Exact distance to the nearest centreline piece near each texel's nearest sample.
+
+    ``pixel`` is the texels' ``(rows, cols)`` and ``start`` each one's nearest sample.
+    """
+    rows, cols = pixel
+    px = origin_m[0] + cols * spacing_m
+    py = origin_m[1] + rows * spacing_m
+    x, y, z, hw = samples["x"], samples["y"], samples["z"], samples["hw"]
+    section, cap = samples["section"], samples["cap"]
     first = np.flatnonzero(np.r_[True, section[1:] != section[:-1]])
     ends = (np.repeat(first, np.diff(np.r_[first, len(x)])),
             np.repeat(np.r_[first[1:] - 1, len(x) - 1], np.diff(np.r_[first, len(x)])))  # fmt: skip
@@ -197,8 +268,11 @@ def _refine(samples, rows, cols, start, x0_m, y0_m, spacing_m):
 
 
 def ribbon_planes(
-    samples: dict, reach_m: float = RIBBON_REACH_M, shape=(GRID_PX, GRID_PX), hang=None
-) -> dict[str, np.ndarray]:
+    samples: RiverSamples,
+    reach_m: float = RIBBON_REACH_M,
+    shape: tuple[int, int] = (GRID_PX, GRID_PX),
+    hang: tuple[F32Grid | F64Grid, float] | None = None,
+) -> RibbonPlanes:
     """The ribbons on the 1 m grid: the plane's height, its half width, and ``u``.
 
     ``u`` is distance from the centreline over the half width, 1 at the plane's edge. All
@@ -230,7 +304,7 @@ def ribbon_planes(
         dist, (ir, ic) = ndimage.distance_transform_edt(nearest < 0, return_indices=True)
         wr, wc = np.nonzero(dist <= margin)
         start = nearest[ir[wr, wc], ic[wr, wc]]
-        u, z, hw = _refine(samples, wr + r0, wc + c0, start, x0_m, y0_m, spacing_m)
+        u, z, hw = _refine(samples, (wr + r0, wc + c0), start, (x0_m, y0_m), spacing_m)
         keep = u * hw <= hw + reach_m
         gr, gc = wr[keep] + r0, wc[keep] + c0
         u_new, u_old = u[keep], u_plane[gr, gc]
@@ -250,19 +324,13 @@ def ribbon_planes(
     return {"level_m": level, "u": u_plane, "half_m": half_m}
 
 
-def box_tops(boxes: list, river: bool, shape=(GRID_PX, GRID_PX)) -> np.ndarray:
-    """The highest top of the river boxes (or of every other surface box) over each texel, m."""
-    tops = np.full(shape, np.nan, np.float32)
-    for name, box in boxes:
-        if name not in WATER_SURFACE_CLASSES or (name == RIVER_CLASS) != river:
-            continue
-        x0, y0, _z0, x1, y1, z1 = box
-        col0 = max(0, math.ceil((x0 - ORIGIN_X_CM) / SPACING_CM))
-        col1 = min(shape[1], math.floor((x1 - ORIGIN_X_CM) / SPACING_CM) + 1)
-        row0 = max(0, math.ceil((y0 - ORIGIN_Y_CM) / SPACING_CM))
-        row1 = min(shape[0], math.floor((y1 - ORIGIN_Y_CM) / SPACING_CM) + 1)
-        if col1 <= col0 or row1 <= row0:
-            continue
-        window = tops[row0:row1, col0:col1]
-        np.fmax(window, np.float32(z1 / 100.0), out=window)
-    return tops
+def box_tops(
+    boxes: Iterable[tuple[str, Sequence[float]]],
+    river: bool,
+    shape: tuple[int, int] = (GRID_PX, GRID_PX),
+) -> F32Grid:
+    """The highest top of the river boxes (or of every other surface box) over each texel, m.
+
+    ``water_box_tops`` with one of two class sets, for ``palette.water.rivers``.
+    """
+    return water_box_tops(boxes, {RIVER_CLASS} if river else _OTHER_SURFACES, shape)[0]

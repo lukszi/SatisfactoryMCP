@@ -119,6 +119,24 @@ def test_a_mask_is_an_alpha_that_varies_and_names_sort_materials():
     )
 
 
+def test_an_alpha_with_no_leaf_texel_is_no_mask():
+    faint = np.full((4, 4), 0.3, np.float32)
+    assert data.leaf_mask([faint], (4, 4)).all(), "nothing over the leaf threshold: no mask"
+    half = np.tile(np.repeat(np.array([0.0, 1.0], np.float32), 2), (4, 1))
+    assert data.leaf_mask([faint, half], (4, 4)).mean() == 0.5, "the next alpha is the mask"
+
+
+def test_a_measured_opacity_of_zero_is_clear_and_a_missing_one_opaque():
+    clear = {"kind": "leaf", "linear": None, "opacity": 0.0}
+    unknown = {"kind": "leaf", "linear": None, "opacity": None}
+    skipped = {"kind": "skip", "linear": None, "opacity": 0.5}
+    tau = data.optical_depths([clear, unknown, skipped])
+    assert tau.shape == (data.MATERIAL_NONE + 1,) and tau.dtype == np.float32
+    assert tau[0] == 0.0, "a measured opacity of 0 lets everything through"
+    assert tau[1] == pytest.approx(data.TAU_MAX), "no measurement: an opaque card"
+    assert tau[2] == 0.0 and not tau[3:].any()
+
+
 def test_the_canopy_takes_the_measured_radius_scaled_per_tree():
     x, y = ORIGIN_X_CM + 2000.0, ORIGIN_Y_CM + 2000.0
     tree = np.array([_matrix(x, y, 0.0)])

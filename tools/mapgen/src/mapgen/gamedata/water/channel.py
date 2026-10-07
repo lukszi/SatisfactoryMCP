@@ -1,19 +1,37 @@
-"""The field's water channel: the artwork's plan shape levelled on the water volumes, and
-the sidecar block that records how."""
+"""The field's water channel: the artwork's plan shape, levelled on the water volumes."""
 
 from __future__ import annotations
 
-import math
+from collections.abc import Iterable, Sequence
+from types import ModuleType
+from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
+import numpy.typing as npt
 from scipy import ndimage
 
-from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES
+from mapgen.gamedata.frame import GRID_PX
+from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES, box_texels, water_box_tops
 from mapgen.gamedata.water.rivers import RIVER_CLASS
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I16Grid, I32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import SHEET_PX, SLICES, TILE_PX, read_slice
 from satisfactory_mcp.core.gameassets.textures import decode_bc1_rgba
 from satisfactory_mcp.domain.spatial import heightfield as hf
+
+if TYPE_CHECKING:
+    from satisfactory_mcp.core.gameassets.iostore import IoStore
+
+__all__ = [
+    "LOWER_BODY_STEP_M",
+    "VOID_ARTWORK_LUMA_MAX",
+    "WATER_ARTWORK_BANDS",
+    "WATER_ARTWORK_BLUE_OVER_RED",
+    "SurfaceValue",
+    "artwork_planes",
+    "artwork_water_mask",
+    "lower_bodies",
+    "water_surface",
+]
 
 #: The artwork classifier: blue minus red on the game's own map sheet, one threshold. The
 #: histogram is bimodal with nothing between the modes, and at this value it called 3 of the
@@ -34,8 +52,16 @@ _ROWS_AT_ONCE = 500
 #: A box top more than this under a texel's level is another, lower body (§38).
 LOWER_BODY_STEP_M = 2.0
 
+#: One value of ``water_surface``'s result: the level and quality planes, or a tally.
+SurfaceValue: TypeAlias = F32Grid | U8Grid | int | float | None
 
-def artwork_planes(sheet) -> tuple[np.ndarray, np.ndarray]:
+
+def _grid_index() -> I32Grid:
+    """The artwork sheet's pixel nearest each 1 m texel, along one axis."""
+    return np.clip((np.arange(GRID_PX) * SHEET_PX / GRID_PX).astype(np.int32), 0, SHEET_PX - 1)
+
+
+def artwork_planes(sheet: npt.ArrayLike) -> tuple[U8Grid, BoolMask]:
     """The decoded artwork sheet on this file's 1 m grid: ``(water, void)``.
 
     ``water`` is ``artwork_water_mask``'s classifier as a uint8 band: 0 where dry, else 1 for
@@ -44,7 +70,7 @@ def artwork_planes(sheet) -> tuple[np.ndarray, np.ndarray]:
     as that function.
     """
     pixels = np.asarray(sheet, np.uint8)
-    index = np.clip((np.arange(GRID_PX) * SHEET_PX / GRID_PX).astype(np.int32), 0, SHEET_PX - 1)
+    index = _grid_index()
     water = np.zeros((GRID_PX, GRID_PX), np.uint8)
     void = np.zeros((GRID_PX, GRID_PX), bool)
     for start in range(0, GRID_PX, _ROWS_AT_ONCE):
@@ -57,7 +83,7 @@ def artwork_planes(sheet) -> tuple[np.ndarray, np.ndarray]:
     return water, void
 
 
-def artwork_water_mask(store, decoder, image_mod) -> np.ndarray:
+def artwork_water_mask(store: IoStore, decoder: ModuleType, image_mod: ModuleType) -> BoolMask:
     """The game's own map artwork, classified into water, on this file's 1 m grid.
 
     ``B - R``, because the artwork's water is the only blue thing on it: terrain, cliffs,
@@ -65,54 +91,30 @@ def artwork_water_mask(store, decoder, image_mod) -> np.ndarray:
     8192 px over the same 7500 m box is 0.92 m to the pixel and interpolating a hard-edged
     mask would only invent a soft one.
 
-    The slices come from the container through ``tools/gen_map_image.py``'s reader, not from
-    ``map.png``, so this stage does not depend on that generator having been run.
+    The slices come from the container through ``core.gameassets.container.read_slice``, not
+    from ``map.png``, so this stage does not depend on that generator having been run.
     """
     sheet = np.zeros((SHEET_PX, SHEET_PX), dtype=bool)
     for name in SLICES:
         raw = read_slice(store, name)
-        pixels = np.asarray(decode_bc1_rgba(decoder, image_mod, raw, TILE_PX).convert("RGB"))
+        image = decode_bc1_rgba(decoder, image_mod, raw, TILE_PX).convert("RGB")
+        pixels: U8Grid = np.asarray(image)
         blue_over_red = pixels[:, :, 2].astype(np.int16) - pixels[:, :, 0].astype(np.int16)
         col, row = (int(v) for v in name.split("_")[1].split("-"))
         sheet[row * TILE_PX : (row + 1) * TILE_PX, col * TILE_PX : (col + 1) * TILE_PX] = (
             blue_over_red >= WATER_ARTWORK_BLUE_OVER_RED
         )
-    index = np.clip((np.arange(GRID_PX) * SHEET_PX / GRID_PX).astype(np.int32), 0, SHEET_PX - 1)
+    index = _grid_index()
     return sheet[index][:, index]
 
 
-def water_box_tops(boxes: list[tuple[str, tuple[float, ...]]]) -> tuple[np.ndarray, int]:
-    """The highest surface-class box top standing over each texel, in metres, or ``nan``.
-
-    A box's top IS the surface of the volume it bounds, so where several overlap in plan the
-    highest is the one visible from above. The save's 23 water extractors all sit inside a
-    volume and every one of them stands on its box's top to within 0.005 cm.
-    """
-    tops = np.full((GRID_PX, GRID_PX), np.nan, np.float32)
-    used = 0
-    for name, box in boxes:
-        texels = _box_texels(box, tops.shape) if name in WATER_SURFACE_CLASSES else None
-        if texels is None:
-            continue
-        used += 1
-        window = tops[texels]
-        top = np.float32(box[5] / 100.0)
-        np.maximum(window, top, out=window, where=np.isfinite(window))
-        window[~np.isfinite(window)] = top
-    return tops, used
-
-
-def _box_texels(box, shape) -> tuple[slice, slice] | None:
-    """The texels a box covers, vertex-aligned: a texel's own point lies inside it."""
-    x0, y0, _z0, x1, y1, _z1 = box
-    col0 = max(0, math.ceil((x0 - ORIGIN_X_CM) / SPACING_CM))
-    col1 = min(shape[1], math.floor((x1 - ORIGIN_X_CM) / SPACING_CM) + 1)
-    row0 = max(0, math.ceil((y0 - ORIGIN_Y_CM) / SPACING_CM))
-    row1 = min(shape[0], math.floor((y1 - ORIGIN_Y_CM) / SPACING_CM) + 1)
-    return None if col1 <= col0 or row1 <= row0 else (slice(row0, row1), slice(col0, col1))
-
-
-def lower_bodies(level_dm, grades, height_dm, boxes, ocean_m: float) -> tuple[np.ndarray, int]:
+def lower_bodies(
+    level_dm: I16Grid,
+    grades: U8Grid,
+    height_dm: I16Grid,
+    boxes: Iterable[tuple[str, Sequence[float]]],
+    ocean_m: float,
+) -> tuple[I16Grid, int]:
     """``level_dm`` with the higher box tops over a lower body given back to it, and how many.
 
     The field levels a texel at the highest box top over it, so inside the rectangle where a
@@ -130,7 +132,7 @@ def lower_bodies(level_dm, grades, height_dm, boxes, ocean_m: float) -> tuple[np
     taken = 0
     for box in sorted((box for name, box in boxes if name in levelled), key=lambda b: b[5]):
         top = int(np.round(np.float32(box[5] / 100.0) * hf.DM_PER_M))
-        texels = _box_texels(box, out.shape)
+        texels = box_texels(box, (out.shape[0], out.shape[1]))
         if texels is None or abs(top - ocean_m * hf.DM_PER_M) <= hf.DM_PER_M:
             continue
         level = out[texels]
@@ -146,17 +148,17 @@ def lower_bodies(level_dm, grades, height_dm, boxes, ocean_m: float) -> tuple[np
     return out, taken
 
 
-def water_surface(mask: np.ndarray, boxes: list, height_dm: np.ndarray, prov: np.ndarray) -> dict:
+def water_surface(
+    mask: BoolMask,
+    boxes: Iterable[tuple[str, Sequence[float]]],
+    height_dm: I16Grid,
+    prov: U8Grid,
+) -> dict[str, SurfaceValue]:
     """The artwork's plan shape given the water volumes' level, and what is left unknown.
 
-    The level of a wet texel is the highest box top over it; where nothing covers it -- 17
-    texels of 18.3 million on build 495413 -- the median of its own drawn body's covered
-    tops stands in, and a body with no box anywhere is dropped rather than guessed at. Then
-    the one gate: where the ground was measured at 1 m and stands above that level there is
-    no water, which is a rock in a lake and takes 0.04 km2 off the mask. Where the ground is
-    the fill layer or nothing at all no such test is possible in either direction, so the
-    texel is water whose depth this file does not know, and ``waterq.u8.z`` says that rather
-    than a subtraction implying it.
+    A wet texel's level is the highest box top over it, else its drawn body's median covered
+    top; a body no box reaches is dropped. Ground measured at 1 m at or above the level is no
+    water. Over the fill layer the depth is unknown, and ``waterq.u8.z`` says so (§19).
     """
     tops, used = water_box_tops(boxes)
     covered = np.isfinite(tops)

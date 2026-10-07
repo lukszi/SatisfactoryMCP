@@ -15,7 +15,11 @@ import pytest
 from mapgen.commands.renders import LAYERS
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.ground.landscape_albedo import layer_albedo
-from mapgen.gamedata.ground.weightmaps import component_origin, place, weightmap_channels
+from mapgen.gamedata.ground.weightmaps import (
+    component_origin,
+    place_component_layers,
+    weightmap_channels,
+)
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
 from mapgen.palette import styles
 from mapgen.palette.painted.albedo import layer_table, mix_layers, seam_blend
@@ -219,8 +223,8 @@ def test_components_land_on_the_heightfield_grid_and_clip_at_its_edge():
     assert (row, col) == (3750, 3247), "section origin 508 is world (0, 0)"
     planes: dict = {}
     weight = np.full((128, 128), 255, np.uint8)
-    place(planes, -10, 90, {"Sand_LayerInfo": weight}, 200)
-    place(planes, 0, 0, {"LandscapeVisibilityLayerInfo": weight}, 200)
+    place_component_layers(planes, -10, 90, {"Sand_LayerInfo": weight}, 200)
+    place_component_layers(planes, 0, 0, {"LandscapeVisibilityLayerInfo": weight}, 200)
     assert set(planes) == {"Sand_LayerInfo"}, "visibility carries no colour"
     sand = planes["Sand_LayerInfo"]
     assert sand[:118, 90:200].all() and not sand[118:].any() and not sand[:, :90].any()

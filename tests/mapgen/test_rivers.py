@@ -12,6 +12,7 @@ import pytest
 
 from mapgen.cache import cached_rivers, river_stamp, write_rivers
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES, water_box_tops
 from mapgen.gamedata.water.rivers import (
     RIVER_CLASS,
     box_tops,
@@ -92,9 +93,12 @@ def test_box_tops_split_the_river_boxes_from_every_other_surface():
         ("BP_LakeWater_C", ((X0 + 20) * 100, (Y0 + 20) * 100, 0, (X0 + 40) * 100, (Y0 + 40) * 100, 300)),
         ("BP_WaterFallTool_02_C", ((X0 + 0) * 100, (Y0 + 0) * 100, 0, (X0 + 50) * 100, (Y0 + 50) * 100, 900)),
     ]  # fmt: skip
-    river, other = box_tops(boxes, True, SHAPE), box_tops(boxes, False, SHAPE)
-    assert river[25, 25] == pytest.approx(8.0) and np.isnan(river[35, 35])
+    river, used = water_box_tops(boxes, {RIVER_CLASS}, SHAPE)
+    other, _used = water_box_tops(boxes, WATER_SURFACE_CLASSES - {RIVER_CLASS}, SHAPE)
+    assert river[25, 25] == pytest.approx(8.0) and np.isnan(river[35, 35]) and used == 1
     assert other[25, 25] == pytest.approx(3.0), "a waterfall is not a surface"
+    np.testing.assert_array_equal(box_tops(boxes, True, SHAPE), river)
+    np.testing.assert_array_equal(box_tops(boxes, False, SHAPE), other)
 
 
 def _flat_terms(shape, cover=0.0, depth_m=0.0):
