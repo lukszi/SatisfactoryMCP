@@ -14,7 +14,7 @@ import numpy.typing as npt
 from numpy.typing import NDArray
 
 from mapgen.cache import TitanPlanes
-from mapgen.colour import flat_light, linear_from_oklab, oklab, srgb_to_linear, unit_luminance
+from mapgen.colour import flat_light, linear_from_oklab, oklab, sky_sun_light, srgb_to_linear
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.vegetation.crown_sprites import SPRITE_M
 from mapgen.lighting.hillshade import sun_dot
@@ -357,10 +357,7 @@ def crown_layer(
     colour = np.clip(linear_from_oklab(lab), 0.0, 1.0)
     low, high = style["shade_clamp"]
     shade = np.clip(crowns["ndl"] / scene["ndl_flat"], low, high)
-    light = (
-        ambient * unit_luminance(palette["sky"])
-        + (1 - ambient) * unit_luminance(palette["sun"]) * shade[..., None]
-    )
+    light = sky_sun_light(palette["sky"], palette["sun"], np.float32(ambient), shade)
     return {"alpha": np.clip(cover, 0.0, 1.0) * np.float32(style["opacity"]) * seen,
             "colour": colour * light * exposure, "top_m": top_m, "sunk": sunk}  # fmt: skip
 

@@ -19,9 +19,9 @@ from mapgen.colour import (
     linear_from_oklab,
     linear_to_srgb,
     oklab,
+    sky_sun_light,
     srgb_to_linear,
     tone,
-    unit_luminance,
 )
 from mapgen.palette.painted.shapes import (
     CalibrationArea,
@@ -44,7 +44,6 @@ __all__ = [
     "display_to_ground",
     "display_to_linear",
     "exposure_gain",
-    "flat_ground_light",
     "hex_rgb",
     "layer_transfer",
     "median_lab",
@@ -64,12 +63,6 @@ Transfer: TypeAlias = tuple[float, FloatGrid]
 def exposure_gain(palette: PaintedPalette) -> np.float32:
     """The linear gain before the tone: the style's exposure times the tone's gain."""
     return np.float32(palette["exposure"] * palette["tone"]["gain"])
-
-
-def flat_ground_light(palette: PaintedPalette) -> FloatGrid:
-    """The flat-ground sky-and-sun light as a colour of unit luminance per term."""
-    a = np.float32(palette["ambient"])
-    return a * unit_luminance(palette["sky"]) + (1 - a) * unit_luminance(palette["sun"])
 
 
 def hex_rgb(hex_colour: str) -> list[int]:
@@ -96,7 +89,8 @@ def display_to_linear(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
 def display_to_ground(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
     """A display sRGB target back through flat light, exposure, tone and chroma: OKLab."""
     rgb = display_to_linear(palette, hex_colour) / exposure_gain(palette)
-    lab = oklab(rgb / flat_ground_light(palette))
+    flat = sky_sun_light(palette["sky"], palette["sun"], np.float32(palette["ambient"]))
+    lab = oklab(rgb / flat)
     lab[0] -= np.float32(palette["altitude_lift"] * 0.5)
     lab[1:] /= np.float32(palette["chroma_gain"])
     return lab
