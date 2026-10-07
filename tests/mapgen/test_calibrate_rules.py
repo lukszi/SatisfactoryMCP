@@ -213,3 +213,17 @@ def test_a_curve_holds_its_ends_and_steps_lines_and_bends_between_keys():
 def test_the_brush_hull_runs_counter_clockwise():
     hull = convex_hull_xy([(0.0, 0.0), (2.0, 0.0), (1.0, 1.0), (2.0, 2.0), (0.0, 2.0)])
     assert hull == [[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]]
+
+
+def test_the_command_refuses_a_missing_store_and_one_without_daylight(
+    tmp_path, monkeypatch, capsys
+):
+    from mapgen.commands import calibrate
+
+    monkeypatch.setattr("sys.argv", ["calibrate", "--paint-dir", str(tmp_path / "none")])
+    assert calibrate.main() == calibrate.NO_STORE
+    old = write_store(tmp_path / "old", daylight=False)
+    monkeypatch.setattr("sys.argv", ["calibrate", "--paint-dir", str(old)])
+    assert calibrate.main() == calibrate.NO_DAYLIGHT
+    assert "re-run" in capsys.readouterr().out
+    assert not (old / TARGETS_NAME).exists()

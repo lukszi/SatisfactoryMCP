@@ -70,8 +70,8 @@ def report(derived: Derived, cal: CalibrationStyle) -> list[str]:
         now = held if isinstance(held, str) else None
         gap = f"{delta_e(lab_of_hex(t.hex), lab_of_hex(now)):5.1f}" if t.hex and now else "     "
         mark = "*" if t.key in wanted else " "
-        shown = t.hex or f"-  {t.rule.error}"
-        lines.append(f"{mark} {t.key:70s} {shown:8s} {now or '-':8s} {gap}  {t.light}")
+        why = f"  ({t.rule.error})" if t.rule.error else ""
+        lines.append(f"{mark} {t.key:70s} {t.hex or '-':8s} {now or '-':8s} {gap}  {t.light}{why}")
     return lines
 
 
@@ -83,6 +83,9 @@ def main() -> int:
     if meta is None:
         print(f"no paint store at {paint_dir}: run `python -m mapgen paint` first")
         return NO_STORE
+    if not meta.get("lighting"):
+        print(f"the paint store at {paint_dir} keeps no daylight: re-run `python -m mapgen paint`")
+        return NO_DAYLIGHT
     if out.resolve().is_relative_to(Path(args.game).resolve()):
         print(f"{out} is inside the game install, which this command never writes")
         return NO_STORE
