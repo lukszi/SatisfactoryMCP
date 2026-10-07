@@ -176,8 +176,9 @@ def derive(scene: Scene, cal: CalibrationStyle) -> Derived:
 
 
 def stamp_of(paint_digest: str | None, areas_digest: str, cal: CalibrationStyle) -> JsonObject:
-    """What a derivation depends on: the store, the area map, the calibration block, the model."""
-    block: dict[str, object] = {k: v for k, v in cal.items() if k != "derived_keys"}
+    """What a derivation depends on: the store, the area map, the calibration block (not its
+    prose, nor which keys wear the result), the model."""
+    block: dict[str, object] = {k: v for k, v in cal.items() if k not in ("about", "derived_keys")}
     return {"paint_digest": paint_digest, "areas_digest": areas_digest,
             "calibration_digest": palette_digest(block), "model_version": MODEL_VERSION}  # fmt: skip
 

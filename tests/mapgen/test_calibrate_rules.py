@@ -189,10 +189,11 @@ def test_the_file_is_read_when_its_stamp_holds_and_derived_again_when_not(store)
     assert block["source"] == "derived in this run" and again == derived
 
 
-def test_the_stamp_ignores_which_keys_wear_the_derived_colours():
+def test_the_stamp_ignores_the_prose_and_which_keys_wear_the_derived_colours():
     cal = copy.deepcopy(CALIBRATION)
     before = stamp_of("s", "a", cal)
     cal["derived_keys"] = ["canopy"]
+    cal["about"] = "reworded"
     assert stamp_of("s", "a", cal) == before
     cal["layers"] = {}
     assert stamp_of("s", "a", cal) != before
