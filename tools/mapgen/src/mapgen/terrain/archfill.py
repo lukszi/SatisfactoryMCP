@@ -21,6 +21,7 @@ __all__ = [
     "FILL_RADIUS_M",
     "FilledArches",
     "between",
+    "column_pieces",
     "fill_arch_holes",
     "specks",
 ]
@@ -118,3 +119,16 @@ def fill_arch_holes(top_cm: F32Grid, under_cm: F32Grid, spacing_m: float) -> Fil
     top = np.where(fill, _neighbour_mean(top_cm, cover, fill), top_cm).astype(np.float32)
     under = np.where(fill, _neighbour_mean(under_cm, cover, fill), under_cm).astype(np.float32)
     return FilledArches(top, np.minimum(under, top), fill)
+
+
+def column_pieces(cover: BoolMask, margin: int) -> list[tuple[int, int]]:
+    """Column ranges holding ``cover``, with ``margin`` columns either side, merged where they
+    meet: the pieces of a band an arch pass works on."""
+    out: list[tuple[int, int]] = []
+    for col in np.flatnonzero(cover.any(axis=0)):
+        lo, hi = max(int(col) - margin, 0), min(int(col) + margin + 1, cover.shape[1])
+        if out and lo <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], hi))
+        else:
+            out.append((lo, hi))
+    return out

@@ -42,7 +42,7 @@ from mapgen.terrain.render_meshes import (
     instance_y_spans,
     is_render_only_foliage,
 )
-from satisfactory_mcp.core.arrays import F32Grid, I64Grid, U8Grid, U16Grid
+from satisfactory_mcp.core.arrays import F32Grid, FloatGrid, I64Grid, U8Grid, U16Grid
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
 
@@ -63,6 +63,7 @@ __all__ = [
     "direct_placements",
     "fold_band",
     "pixel_coverage",
+    "placed",
     "rasterise_direct_band",
     "read_cliff_geometry",
     "reduce_direct",
@@ -332,21 +333,31 @@ def add_placements(raster: MaxZRaster, prepared: Sequence[PreparedPlacement], ge
     The source id is an entry's family when it has one, else its mesh id plus one.
     """
     for entry in prepared:
-        if entry.y_max_cm < y_lo or entry.y_min_cm > y_hi:
+        found = placed(entry, geometry, y_lo, y_hi)
+        if found is None:
             continue
-        verts, tris = geometry[entry.mesh]
-        world = (verts * entry.scale) @ entry.matrix + entry.offset
+        world, tris = found
         if entry.facing:
             corner = world[tris[:, 0]]
             normals = np.cross(world[tris[:, 1]] - corner, world[tris[:, 2]] - corner)
             tris = tris[(normals[:, 2] * entry.facing) > 0]
             if not tris.size:
                 continue
-        ty = world[:, 1][tris]
-        tris = tris[(ty.max(1) >= y_lo) & (ty.min(1) <= y_hi)]
-        if not tris.size:
-            continue
         raster.add(world[tris], entry.mesh_id + 1 if entry.family is None else entry.family)
+
+
+def placed(
+    entry: PreparedPlacement, geometry: Geometry, y_lo: float, y_hi: float
+) -> tuple[FloatGrid, I64Grid] | None:
+    """A placement's vertices in world cm and its triangles whose Y interval reaches
+    ``[y_lo, y_hi]``; None where none does."""
+    if entry.y_max_cm < y_lo or entry.y_min_cm > y_hi:
+        return None
+    verts, tris = geometry[entry.mesh]
+    world = (verts * entry.scale) @ entry.matrix + entry.offset
+    ty = world[:, 1][tris]
+    tris = tris[(ty.max(1) >= y_lo) & (ty.min(1) <= y_hi)]
+    return (world, tris) if tris.size else None
 
 
 def top_items(store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep,

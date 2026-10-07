@@ -13,6 +13,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy import ndimage
 
+from mapgen.terrain.archfill import column_pieces
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid, U8Grid
 
 __all__ = ["FXAA_HALO", "FXAA_REACH", "MASK_DILATE_PX", "arch_fxaa", "arch_mask", "fxaa"]
@@ -146,18 +147,6 @@ def fxaa(rgb_u8: U8Grid, rows: slice) -> U8Grid:
     return np.clip(out * np.float32(255.0) + np.float32(0.5), 0, 255).astype(np.uint8)
 
 
-def _pieces(mask: BoolMask) -> list[tuple[int, int]]:
-    """Column ranges holding ``mask``, with ``_PIECE_MARGIN`` columns either side, merged."""
-    out: list[tuple[int, int]] = []
-    for col in np.flatnonzero(mask.any(axis=0)):
-        lo, hi = max(int(col) - _PIECE_MARGIN, 0), min(int(col) + _PIECE_MARGIN + 1, mask.shape[1])
-        if out and lo <= out[-1][1]:
-            out[-1] = (out[-1][0], max(out[-1][1], hi))
-        else:
-            out.append((lo, hi))
-    return out
-
-
 def arch_fxaa(rgb: U8Grid, cover: NDArray[np.generic], rows: slice) -> U8Grid:
     """``rows`` of ``rgb`` with FXAA kept inside the arches' grown coverage; ``cover`` is the
     arches' coverage over every row of ``rgb``, which holds ``FXAA_HALO`` rows of the band's
@@ -165,7 +154,7 @@ def arch_fxaa(rgb: U8Grid, cover: NDArray[np.generic], rows: slice) -> U8Grid:
     mask = arch_mask(cover)
     core = np.array(rgb[rows])
     keep = mask[rows]
-    for c0, c1 in _pieces(keep):
+    for c0, c1 in column_pieces(keep, _PIECE_MARGIN):
         filtered = fxaa(np.ascontiguousarray(rgb[:, c0:c1]), rows)
         inside = keep[:, c0:c1]
         core[:, c0:c1][inside] = filtered[inside]

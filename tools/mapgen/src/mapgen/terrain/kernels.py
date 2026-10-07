@@ -18,7 +18,7 @@ from numpy.typing import NDArray
 from mapgen.jit import helper, kernel
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid
 
-__all__ = ["pchip", "separable", "stamp"]
+__all__ = ["clip_unit", "pchip", "raise_nan", "separable", "stamp"]
 
 _ZERO = np.float32(0.0)
 _ONE = np.float32(1.0)
@@ -130,19 +130,20 @@ def pchip(
 
 
 @helper
-def _clip_unit(x: float) -> float:
-    """``np.clip(x, 0.0, 1.0)``: NaN stays NaN."""
+def clip_unit(x: np.floating) -> np.floating:
+    """``np.clip(x, 0.0, 1.0)`` in ``x``'s precision: NaN stays NaN."""
     if np.isnan(x):
         return x
-    if x <= 0.0:
-        return 0.0
-    return min(1.0, x)
+    if x <= _ZERO:
+        return _ZERO
+    return min(_ONE, x)
 
 
 @helper
-def _larger(a: float, b: float) -> float:
-    """``np.maximum(a, b)``: NaN when either is."""
-    return a if a >= b or np.isnan(a) else b
+def raise_nan(top: np.floating, rise: np.floating) -> np.floating:
+    """``np.maximum(top, rise)``: NaN when either is. ``gpu.cu``'s ``raise_to`` is its twin."""
+    larger = rise if not rise <= top else top
+    return top if np.isnan(top) else larger
 
 
 @helper
@@ -190,11 +191,11 @@ def stamp(
                 if not (-0.5 < u < width - 2 + 0.5 and -0.5 < v < height - 2 + 0.5):
                     continue
                 _mip_bilinear(texels, first, width, u + 0.5, v + 0.5, got)
-                a = _clip_unit(got[0])
+                a = clip_unit(got[0])
                 keep = 1.0 - a
                 cover[r, c] = a + cover[r, c] * keep
                 for k in range(3):
                     rgb[r, c, k] = got[1 + k] + rgb[r, c, k] * keep
-                dome[r, c] = _larger(dome[r, c], got[4] * scale_z)
+                dome[r, c] = raise_nan(dome[r, c], got[4] * scale_z)
                 rise = got[5] * scale_z * axis_z if a >= seen_from else -np.inf
-                top[r, c] = _larger(top[r, c], z + rise)
+                top[r, c] = raise_nan(top[r, c], z + rise)

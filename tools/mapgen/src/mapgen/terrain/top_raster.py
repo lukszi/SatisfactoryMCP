@@ -21,16 +21,17 @@ from mapgen.cache import (
     TOP_SOLID_Z_NAME,
 )
 from mapgen.gamedata.maxz_raster import MaxZRaster
-from mapgen.terrain.archfill import fill_arch_holes
+from mapgen.terrain.archfill import column_pieces, fill_arch_holes
 from mapgen.terrain.overhangs import SAME_SURFACE_CM
 from mapgen.terrain.rasters import (
     TOP_FOLIAGE_BATCH,
     BandPlanes,
     TopItems,
     add_placements,
+    placed,
     reduce_direct,
 )
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid
+from satisfactory_mcp.core.arrays import F32Grid
 
 __all__ = [
     "FILL_HALO_M",
@@ -81,13 +82,9 @@ def arch_rasters(items: TopItems, origin: tuple[float, float, float], rows: int,
     below = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0,
                        ceiling=ceiling.astype(np.float32))  # fmt: skip
     for entry in items.arches:
-        if entry.y_max_cm < y_lo or entry.y_min_cm > y_hi:
-            continue
-        verts, tris = items.shapes[entry.mesh]
-        world = (verts * entry.scale) @ entry.matrix + entry.offset
-        ty = world[:, 1][tris]
-        tris = tris[(ty.max(1) >= y_lo) & (ty.min(1) <= y_hi)]
-        if tris.size:
+        found = placed(entry, items.shapes, y_lo, y_hi)
+        if found is not None:
+            world, tris = found
             low.add(world[tris] * np.array([1.0, 1.0, -1.0], world.dtype), entry.mesh_id + 1)
             below.add(world[tris], entry.mesh_id + 1)
     under = below.result()[0]
@@ -108,25 +105,10 @@ def _boulders(items: TopItems, x0_cm: float, y0_cm: float, step_cm: float, rows:
     return raster.result()[0]
 
 
-def _pieces(cover: BoolMask, gap: int) -> list[tuple[int, int]]:
-    """Column ranges holding cover, with ``gap`` columns of margin, merged when they meet."""
-    cols = np.flatnonzero(cover.any(axis=0))
-    if not cols.size:
-        return []
-    out: list[tuple[int, int]] = []
-    for col in cols:
-        lo, hi = max(int(col) - gap, 0), min(int(col) + gap + 1, cover.shape[1])
-        if out and lo <= out[-1][1]:
-            out[-1] = (out[-1][0], max(out[-1][1], hi))
-        else:
-            out.append((lo, hi))
-    return out
-
-
 def _filled(top: F32Grid, under: F32Grid, spacing_m: float) -> tuple[F32Grid, F32Grid]:
     """The fill run on each column piece that holds an arch; the same as on the whole band."""
     top, under = top.copy(), under.copy()
-    for c0, c1 in _pieces(np.isfinite(top), int(np.ceil(_PIECE_GAP_M / spacing_m))):
+    for c0, c1 in column_pieces(np.isfinite(top), int(np.ceil(_PIECE_GAP_M / spacing_m))):
         got = fill_arch_holes(top[:, c0:c1], under[:, c0:c1], spacing_m)
         top[:, c0:c1], under[:, c0:c1] = got.top, got.under
     return top, under

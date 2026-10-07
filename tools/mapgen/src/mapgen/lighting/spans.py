@@ -276,7 +276,7 @@ def _span_step(surface: SpanSurface, strip: _Strip, step: SpanStep,
     strip.hi[...] = np.where(overlap, np.maximum(strip.hi, sh), np.where(take, sh, strip.hi))
 
 
-def _rows_with_spans(lo: F32Grid, reach: int) -> NDArray[np.int64]:
+def _rows_with_spans(lo: F32Grid) -> NDArray[np.int64]:
     """Per row, how many rows up to it hold a span: a row range's count in two reads."""
     return np.concatenate([[0], np.cumsum(np.isfinite(lo).any(axis=1))]).astype(np.int64)
 
@@ -315,7 +315,7 @@ def march_spans(surface: SpanSurface, halo: int, az_deg: float, spacing_m: float
     steps = span_steps(az_deg, spacing_m, fade)
     target = _target(az_deg)
     reach = int(np.ceil(max((abs(s.oy) for s in steps), default=0.0))) + 2
-    rows = _rows_with_spans(surface.lo, reach)
+    rows = _rows_with_spans(surface.lo)
     if kernels_on():
         _compiled_march(surface, halo, steps, target, (best, lo, hi, seen), (rows, reach))
     else:
@@ -373,7 +373,7 @@ def sky_view_spans(surface: SpanSurface, halo: int, spacing_m: float,
     steps = np.geomspace(1.0, reach, SKY_STEPS)
     near_t, far_t = _stretches(steps)
     span = int(np.ceil(reach)) + 2
-    rows = _rows_with_spans(surface.lo, span)
+    rows = _rows_with_spans(surface.lo)
     if kernels_on():
         from mapgen.lighting import span_kernels
 

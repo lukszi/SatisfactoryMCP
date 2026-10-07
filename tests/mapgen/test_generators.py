@@ -410,13 +410,9 @@ def test_the_rocks_are_composited_onto_the_lattice_and_can_only_raise_it():
     z_cm = numpy.full((size, size), 5000.0, numpy.float32)
     z_cm[:, : size // 2] = 20000.0
     coverage = numpy.ones((size, size), numpy.uint8)
-    taps = (
-        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
-        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
-    )
     missing = numpy.zeros((size, size), bool)
 
-    z_m, still_missing, w, switched = blend_regimes(ground, missing, (z_cm, coverage), taps, 1)
+    z_m, still_missing, w, switched = blend_regimes(ground, missing, (z_cm, coverage), 1)
     assert 0.0 <= w.min() and w.max() <= 1.0, "a coverage outside [0, 1] is not a coverage"
     assert z_m[:, 0] == pytest.approx(200.0, abs=0.2), "the rock stands where it stands"
     assert z_m[:, -1] == pytest.approx(100.0, abs=0.2), "and never digs below the ground"
@@ -438,9 +434,9 @@ def test_the_rocks_are_composited_onto_the_lattice_and_can_only_raise_it():
     # and the pixel stops being no-data; where neither has anything, it stays so.
     blank = numpy.ones((size, size), bool)
     none = numpy.zeros((size, size), numpy.uint8)
-    z_m, still_missing, w, _switch = blend_regimes(ground, blank, (z_cm, coverage), taps, 1)
+    z_m, still_missing, w, _switch = blend_regimes(ground, blank, (z_cm, coverage), 1)
     assert z_m[:, 0] == pytest.approx(200.0) and not still_missing.any()
-    _z, all_missing, _w, _s = blend_regimes(ground, blank, (z_cm, none), taps, 1)
+    _z, all_missing, _w, _s = blend_regimes(ground, blank, (z_cm, none), 1)
     assert all_missing.all()
 
 
@@ -487,13 +483,9 @@ def test_a_rock_pixel_is_its_own_triangle_and_never_leaks_across_the_silhouette(
     coverage = numpy.zeros((size, size), numpy.uint8)
     z_cm[2, 2], z_cm[2, 3] = 5000.0, 4100.0
     coverage[2, 2] = coverage[2, 3] = 1
-    taps = (
-        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
-        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
-    )
     ground = numpy.full((size, size), 10.0, numpy.float32)
     blank = numpy.zeros((size, size), bool)
-    z_m, _missing, w, _s = blend_regimes(ground, blank, (z_cm, coverage), taps, 1)
+    z_m, _missing, w, _s = blend_regimes(ground, blank, (z_cm, coverage), 1)
     assert z_m[2, 2] == pytest.approx(50.0, abs=1e-3) and z_m[2, 3] == pytest.approx(41.0, abs=1e-3)
     assert (z_m[coverage == 0] == 10.0).all(), "no neighbour borrows a rock height"
     assert set(numpy.unique(w)) == {0.0, 1.0}

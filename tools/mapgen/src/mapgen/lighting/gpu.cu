@@ -3,7 +3,7 @@
 // in the same order. docs/map/renders.md section 41, "On the GPU".
 
 __device__ float raise_to(float top, float rise) {
-    // np.maximum(top, rise) as kernels._raise has it: NaN when either is.
+    // np.maximum(top, rise) as terrain.kernels.raise_nan has it: NaN when either is.
     float larger = !(rise <= top) ? rise : top;
     return isnan(top) ? top : larger;
 }

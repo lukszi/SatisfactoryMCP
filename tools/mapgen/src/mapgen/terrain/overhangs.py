@@ -20,9 +20,10 @@ from mapgen.terrain.rasters import (
     Geometry,
     PreparedPlacement,
     fold_band,
+    placed,
     rasterise_direct_band,
 )
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, FloatGrid
 
 __all__ = [
     "OVERHANG_CLEAR_M",
@@ -43,17 +44,13 @@ OVERHANG_CLEAR_M = 2.0
 
 
 def _faces(entry: PreparedPlacement, geometry: Geometry, y_lo: float,
-           y_hi: float) -> Iterator[tuple[F64Grid, F64Grid, float]]:  # fmt: skip
+           y_hi: float) -> Iterator[tuple[FloatGrid, FloatGrid, float]]:  # fmt: skip
     """A placement's triangles reaching ``[y_lo, y_hi]``, world cm, with each one's upward
     normal (its sign the facing, 0 where the winding is unknown) and the placement's lowest Z."""
-    if entry.y_max_cm < y_lo or entry.y_min_cm > y_hi:
+    found = placed(entry, geometry, y_lo, y_hi)
+    if found is None:
         return
-    verts, tris = geometry[entry.mesh]
-    world = (verts * entry.scale) @ entry.matrix + entry.offset
-    ty = world[:, 1][tris]
-    tris = tris[(ty.max(1) >= y_lo) & (ty.min(1) <= y_hi)]
-    if not tris.size:
-        return
+    world, tris = found
     tri = world[tris]
     if not entry.facing:
         up = np.zeros(len(tri))
@@ -69,7 +66,7 @@ def _box_count(mask: BoolMask) -> F64Grid:
     return counts
 
 
-def _reaches(entry_tri: F64Grid, counts: F64Grid, raster: MaxZRaster) -> bool:
+def _reaches(entry_tri: FloatGrid, counts: F64Grid, raster: MaxZRaster) -> bool:
     """Whether the triangles' box over ``raster``'s grid holds a texel the box sum counts."""
     fx = (entry_tri[:, :, 0] - raster.origin_x_cm) / raster.scale
     fy = (entry_tri[:, :, 1] - raster.origin_y_cm) / raster.scale

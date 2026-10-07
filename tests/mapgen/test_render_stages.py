@@ -14,7 +14,7 @@ import pytest
 from mapgen.cache import MESH_CACHE_DIR_NAME
 from mapgen.common import Refusal
 from mapgen.render import cached_rasters
-from mapgen.render.cached_rasters import UNREADABLE_RASTER, LevelSweep, RasterGrid, stamped_raster
+from mapgen.render.cached_rasters import UNREADABLE_RASTER, LevelSweep, stamped_raster
 from mapgen.render.extras import RUN_CACHE_DIRS, remove_run_caches
 from mapgen.tiles.layer_meta import (
     LayerDraw,
@@ -46,19 +46,17 @@ def test_the_levels_are_swept_once_whatever_asks_first(monkeypatch):
 
 
 def test_a_raster_that_will_not_read_back_refuses_the_run(tmp_path):
-    grid = RasterGrid(64, 1, "b1", False)
     written = []
     with pytest.raises(Refusal, match="could not be read back") as refused:
-        stamped_raster(tmp_path, grid, ("direct", "cliff_geometry"),
+        stamped_raster(tmp_path, ("direct", "cliff_geometry"),
                        lambda: written.append(1) or {}, lambda: None)  # fmt: skip
     assert refused.value.code == UNREADABLE_RASTER and written == [1]
 
 
 def test_a_cached_raster_is_quoted_and_not_rasterised(tmp_path):
-    grid = RasterGrid(64, 1, "b1", False)
     (tmp_path / "meta.json").write_text('{"size": 64}', encoding="utf-8")
     planes = (np.zeros((64, 64), np.float32), np.zeros((64, 64), np.uint8))
-    maps, source = stamped_raster(tmp_path, grid, ("top", "top_overlay"), pytest.fail,
+    maps, source = stamped_raster(tmp_path, ("top", "top_overlay"), pytest.fail,
                                   lambda: planes)  # fmt: skip
     assert maps == planes and source == {"top_overlay": {"reused": {"size": 64}}}
 

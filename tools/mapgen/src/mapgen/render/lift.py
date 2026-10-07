@@ -80,7 +80,6 @@ def blend_regimes(
     base_m: FloatGrid,
     missing: BoolMask,
     direct: tuple[F32Grid, NDArray[np.generic]],
-    linear: Taps,
     subsamples: int,
     keep: F32Grid | None = None,
 ) -> tuple[F32Grid, BoolMask, F32Grid, F32Grid]:

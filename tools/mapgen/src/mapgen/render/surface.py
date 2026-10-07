@@ -491,7 +491,7 @@ def _direct_regime(
     wet_plane = None if sources.water is None else sources.water.wet
     kept = rock_kept(rock[0], missing, linear, wet_plane, sources.sea)
     z_m, missing, weight, switched = blend_regimes(
-        base_m, missing, rock, linear, direct.subsamples, kept
+        base_m, missing, rock, direct.subsamples, kept
     )
     rock_lift = np.clip((z_m - base_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     rock_seen = np.where(ground_missing, weight, np.minimum(weight, rock_lift))

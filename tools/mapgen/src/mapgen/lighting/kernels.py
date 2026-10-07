@@ -15,9 +15,10 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mapgen.jit import helper, kernel
+from mapgen.terrain.kernels import raise_nan
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid
 
-__all__ = ["Offsets", "bilinear_row", "march", "raise_nan", "raise_row", "sky_view"]
+__all__ = ["Offsets", "bilinear_row", "march", "raise_row", "sky_view"]
 
 _ZERO = np.float32(0.0)
 _ONE = np.float32(1.0)
@@ -27,13 +28,6 @@ _ONE = np.float32(1.0)
 Offsets: TypeAlias = tuple[I64Grid, I64Grid, F32Grid, F32Grid, F32Grid, F32Grid]
 
 _Row: TypeAlias = NDArray[np.floating]
-
-
-@helper
-def raise_nan(top: np.floating, rise: np.floating) -> np.floating:
-    """``np.maximum(top, rise)``: NaN when either is."""
-    larger = rise if not rise <= top else top
-    return top if np.isnan(top) else larger
 
 
 @helper

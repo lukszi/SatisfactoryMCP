@@ -221,7 +221,7 @@ def test_the_slab_store_keeps_only_tiles_with_a_slab_and_reads_them_back(tmp_pat
     slabs = SlabPlanes(z - 1, lo, lo + 2)
     store = SlabStore(tmp_path / "slabs")
     store.put(256, 0, slabs)
-    assert [p.name for p in (tmp_path / "slabs").glob("*.npy")] == ["256_256.npy"]
+    assert [p.name for p in (tmp_path / "slabs").glob("*.npy")] == ["256_256_256x256.npy"]
     window = (200, 600, -40, 560)
     z_window = np.zeros((400, 600), np.float32)
     z_window[56:312, 40:552] = z
@@ -250,3 +250,14 @@ def test_the_slab_store_keeps_only_tiles_with_a_slab_and_reads_them_back(tmp_pat
     assert (under[floats] == 5.0).all()
     assert store.half((0, 128, 0, 128), np.zeros((64, 64), np.float32)) is None
     assert store.full((0, 128, 0, 128), np.zeros((128, 128), np.float32)) is None
+
+
+def test_a_slab_tile_reaches_as_far_down_as_the_rows_it_was_put_with(tmp_path):
+    """A put taller than a tile is wide is read whole: its rows, not the tile width."""
+    tall = 384
+    lo = np.full((tall, 64), np.nan, np.float32)
+    lo[300:310, 10:20] = 5.0
+    store = SlabStore(tmp_path / "slabs")
+    store.put(0, 0, SlabPlanes(np.zeros(lo.shape, np.float32), lo, lo + 2))
+    found = store.full((288, 320, 0, 64), np.zeros((32, 64), np.float32))
+    assert found is not None and np.isfinite(found[1]).sum() == 100

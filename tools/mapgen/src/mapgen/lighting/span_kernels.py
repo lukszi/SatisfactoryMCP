@@ -16,7 +16,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mapgen.jit import helper, kernel
-from mapgen.lighting.kernels import Offsets, bilinear_row, raise_nan, raise_row
+from mapgen.lighting.kernels import Offsets, bilinear_row, raise_row
+from mapgen.terrain.kernels import raise_nan
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid
 
 __all__ = ["march_spans", "sky_view_spans"]
@@ -112,8 +113,8 @@ def _into_band(j: int, tl: np.float32, th: np.float32, weight: np.float32,
 
 
 @helper
-def _run_columns(runs: _Runs, qr: int, qc: int, cols: int, run: int) -> tuple[int, int]:
-    """Run ``run`` of quad row ``qr`` as core columns, clipped to ``[0, cols)``."""
+def _run_columns(runs: _Runs, qc: int, cols: int, run: int) -> tuple[int, int]:
+    """Run ``run`` as core columns from quad column ``qc``, clipped to ``[0, cols)``."""
     _row, start, end = runs
     return max(start[run] - qc, 0), min(end[run] - qc, cols)
 
@@ -160,7 +161,7 @@ def march_spans(
             frac[0], frac[1], frac[2], frac[3] = fy[s], fx[s], gy[s], gx[s]
             qr, qc = r + qy[s], halo + qx[s]
             for run in range(runs[0][qr], runs[0][qr + 1]):
-                a, b = _run_columns(runs, qr, qc, cols, run)
+                a, b = _run_columns(runs, qc, cols, run)
                 for j in range(a, b):
                     low, high = _quad(lo_p, hi_p, qr, qc + j)
                     tl, th = _tangents(low, high, near[j], near_m, far_m)
@@ -210,7 +211,7 @@ def sky_view_spans(
                 frac[0], frac[1], frac[2], frac[3] = fy[d, s], fx[d, s], gy[d, s], gx[d, s]
                 qr, qc = r + qy[d, s], halo + qx[d, s]
                 for run in range(runs[0][qr], runs[0][qr + 1]):
-                    a, b = _run_columns(runs, qr, qc, cols, run)
+                    a, b = _run_columns(runs, qc, cols, run)
                     for j in range(a, b):
                         low, high = _quad(lo_p, hi_p, qr, qc + j)
                         tl, th = _tangents(low, high, near[j], near_m, far_m)

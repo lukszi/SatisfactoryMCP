@@ -12,7 +12,8 @@ from typing import NamedTuple
 
 import numpy as np
 
-from mapgen.jit import helper, kernel
+from mapgen.jit import kernel
+from mapgen.terrain.kernels import clip_unit
 from satisfactory_mcp.core.arrays import F32Grid, I64Grid
 
 __all__ = [
@@ -105,16 +106,6 @@ class CompositeStyle(NamedTuple):
     knobs: CompositeKnobs
 
 
-@helper
-def _clip(x: np.float32) -> np.float32:
-    """``np.clip(x, 0.0, 1.0)`` on a float32: NaN stays NaN."""
-    if np.isnan(x):
-        return x
-    if x <= _ZERO:
-        return _ZERO
-    return min(_ONE, x)
-
-
 @kernel
 def relief_water(
     land: F32Grid,
@@ -150,7 +141,7 @@ def relief_water(
         for k in range(3):
             shown = colour[k] * (_ONE - edge) + stroke[k] * edge
             unders[i, k] = land[p, k] * (_ONE - opacity) + shown * opacity
-        weights[i] = _clip(_clip(cover[p]) + _HALF * edge)
+        weights[i] = clip_unit(clip_unit(cover[p]) + _HALF * edge)
         touched += weights[i] != _ZERO
     every = not whole or touched > most * index.shape[0]
     for i in range(index.shape[0]):
@@ -189,7 +180,7 @@ def water_composite(
             for k in range(3):
                 banded[k] = land[r, c, k]
             if band_m != _ZERO:
-                reach = _clip(_ONE - above_m[r, c] / band_m)
+                reach = clip_unit(_ONE - above_m[r, c] / band_m)
                 weight = reach * reach * bank
                 for k in range(3):
                     banded[k] = banded[k] * (_ONE - weight + weight * band_tint[k])
@@ -204,8 +195,8 @@ def water_composite(
             mixed = every or cover[r, c] != _ZERO
             keep, foam_weight = _ONE - cover[r, c], _ZERO
             if foam != _ZERO:
-                shallow_m = _clip(_ONE - depth_m[r, c] / foam_depth)
-                shallow_m = shallow_m * _clip(_ONE - below_m[r, c] / foam_width)
+                shallow_m = clip_unit(_ONE - depth_m[r, c] / foam_depth)
+                shallow_m = shallow_m * clip_unit(_ONE - below_m[r, c] / foam_width)
                 foam_weight = foam * shallow_m * cover[r, c] * ocean[r, c]
             for k in range(3):
                 value = banded[k] * keep + under[k] * cover[r, c] if mixed else banded[k]

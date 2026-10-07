@@ -145,7 +145,6 @@ class RasterGrid:
 
 def stamped_raster(
     cache: Path,
-    grid: RasterGrid,
     names: tuple[str, str],
     rasterise: Callable[[], JsonObject],
     read: Callable[[], _Read | None],
@@ -221,7 +220,7 @@ def direct_raster(
             }
         }
 
-    return stamped_raster(cache, grid, ("direct", "cliff_geometry"), rasterise,
+    return stamped_raster(cache, ("direct", "cliff_geometry"), rasterise,
                           partial(_direct_planes, cache, grid.stamp))  # fmt: skip
 
 
@@ -245,5 +244,5 @@ def top_raster(level: LevelSweep, cache: Path, grid: RasterGrid) -> tuple[TopPla
         )
         return {"top_overlay": cast(JsonValue, {**top_meta, "raster": stats})}
 
-    return stamped_raster(cache, grid, ("top", "top_overlay"), rasterise,
+    return stamped_raster(cache, ("top", "top_overlay"), rasterise,
                           partial(cached_top, cache, grid.stamp, grid.subsamples))  # fmt: skip

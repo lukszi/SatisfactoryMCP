@@ -84,7 +84,7 @@ def _solid(sources: FloatSources, field: FieldPiece, rocks: BoolMask | None,
             rock_z = np.where(rocks, np.nan_to_num(floor), rock_z).astype(np.float32)
             cover = np.where(rocks & ~np.isfinite(floor), 0, cover).astype(cover.dtype)
         keep = sources.keep_rock(rock_z, missing, sources.linear)
-        z = blend_regimes(field.base_m, missing, (rock_z, cover), sources.linear,
+        z = blend_regimes(field.base_m, missing, (rock_z, cover),
                           direct.subsamples, keep)[0]  # fmt: skip
     top = sources.overlay
     if top is not None:
