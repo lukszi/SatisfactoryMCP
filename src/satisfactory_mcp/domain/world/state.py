@@ -9,7 +9,7 @@ delegates; it is the context every other domain package takes as an argument.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, TypeVar, cast
@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from ..factories.labels import LabelStore
     from ..factories.model import FactoryGraph
     from ..factories.structure import Structures
+    from ..factories.trace import Feeds
     from ..planning.stored.planlog import PlanView
     from .conduits import ConduitRun
     from .logistics import PhysicalGraph
@@ -79,6 +80,10 @@ class WorldState:
 
     projection: Projection
     game: GameData
+    #: ``feeds``' last answer, and the game data it was built with.
+    _feeds: tuple[GameData, Feeds] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def derived(self, name: str, build: Callable[[], _View]) -> _View:
         """A view shared by every state over this same projection and game data.
@@ -227,6 +232,16 @@ class WorldState:
 
         return self.derived("physical", lambda: build_physical_graph(self.projection, self.game))
 
+    def feeds(self, game: GameData) -> Feeds:
+        """Which machine feeds which, the graph every trace walks: ~12 ms, once per state and
+        game data rather than once per trace (docs/planning.md §8.5n)."""
+        from ..factories.trace import material_feeds
+
+        held = self._feeds
+        if held is None or held[0] is not game:
+            held = self._feeds = (game, material_feeds(self, game))
+        return held[1]
+
     @cached_property
     def structures(self) -> Structures:
         """Foundation slabs -- what was physically built as one platform. ~85 ms."""
@@ -322,6 +337,10 @@ class WorldState:
 
     def all_records(self) -> list[BuildableRecord]:
         return self.census.all_records()
+
+    @property
+    def records_by_leaf(self) -> dict[str, BuildableRecord]:
+        return self.census.by_leaf
 
     # ---- power ---------------------------------------------------------
 

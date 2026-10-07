@@ -1395,6 +1395,13 @@ table growing 300 rows.
 produced inside the last complete 300 s window; one that did not may be idle for a dozen
 reasons, and charging it would inflate the risk of touching a line that is already dead.
 
+**The feeds-into maps are built once per world state.** Building them reads all 11,664
+material edges, ~12 ms on the reference save. `live_feeders` traces once per extractor and
+the candidates list once per proposal, and each trace used to rebuild them: `live_feeders`
+over the 70 extractors took 1.6 s, and takes 37 ms now. `WorldState.feeds` keeps the maps
+with the game data they were built from, and a new state, which is what a new save gives,
+builds its own.
+
 ### 8.6 Diff vs save — what to actually change
 
 `plan_factory` says what the factory should be. `diff_vs_save` says what to do about it. The hard part

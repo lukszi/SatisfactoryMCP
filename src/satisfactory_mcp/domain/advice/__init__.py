@@ -41,8 +41,8 @@ __all__ = [
     "store",
 ]
 
-#: (projection, game, labels version, plan heads, options) -> ranked rows. The projection and
-#: game are held by the entry: the key is their ``id()``.
+#: (save token, label digest, plan heads, options, spoilers) -> the projection and game data the
+#: rows were computed from, and the ranked rows. A hit counts only for those very two objects.
 _ROWS: Singleflight[Hashable, tuple[Projection, GameData, list[Advisory]]] = Singleflight(maxsize=8)
 
 
@@ -82,17 +82,23 @@ def options(
 
 def _rows(st: WorldState, opts: AdviceOptions, spoilers: bool) -> list[Advisory]:
     key = (
-        id(st.projection),
-        id(st.game),
-        st.labels.version,
+        st.token,
+        st.labels.fingerprint(),
         tuple(sorted((state.key, state.rev) for state in rules.plan_heads(st))),
         tuple(sorted(opts.items())),
         spoilers,
     )
-    held = _ROWS.get(
-        key, lambda: (st.projection, st.game, rules.compute(st, spoilers=spoilers, **opts))
-    )
-    return held[2]
+
+    def build() -> tuple[Projection, GameData, list[Advisory]]:
+        return st.projection, st.game, rules.compute(st, spoilers=spoilers, **opts)
+
+    # A token can name two projections (a re-read save, a copy): the second pass replaces an
+    # entry built from the other one, and a flight for the other one is not this answer.
+    for refresh in (False, True):
+        projection, game, rows = _ROWS.get(key, build, refresh=refresh)
+        if projection is st.projection and game is st.game:
+            return rows
+    return build()[2]
 
 
 def current(

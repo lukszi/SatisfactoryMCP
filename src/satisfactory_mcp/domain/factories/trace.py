@@ -10,24 +10,37 @@ measurements.
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
 from ...core.saveio.records import instance_leaf
-from ...core.saveio.schema import ExtractorRecord
+from ...core.saveio.schema import BuildableRecord, ExtractorRecord
 from ..world.logistics import Link, side_by_nature
 from .select import SelectorError, resolve_factory
 
 if TYPE_CHECKING:
     from ..world.state import WorldState
 
-__all__ = ["Reached", "Trace", "feeder_records", "live_feeders", "resolve_seeds", "trace"]
+__all__ = [
+    "Feeds",
+    "Reached",
+    "Trace",
+    "feeder_records",
+    "live_feeders",
+    "material_feeds",
+    "resolve_seeds",
+    "trace",
+]
 
 #: Hard stop on the walk, far above the reference save's deepest chain of 72 hops, so a
 #: malformed graph cannot spin.
 MAX_HOPS = 500
+
+#: ``(upstream, downstream, ambiguous)``: ``upstream[x]`` is everything that feeds ``x``.
+Feeds = tuple[dict[str, set[str]], dict[str, set[str]], int]
 
 
 @dataclass
@@ -77,8 +90,9 @@ def _kind(game: GameData, cls: str) -> str | None:
     return None
 
 
-def _classes_by_leaf(state: WorldState) -> dict[str, str]:
-    return {instance_leaf(r["instance"]): r.get("cls", "") for r in state.all_records()}
+def _cls(records: Mapping[str, BuildableRecord], leaf: str) -> str:
+    record = records.get(leaf)
+    return record.get("cls", "") if record is not None else ""
 
 
 def _side(role: str, cls: str, game: GameData) -> str | None:
@@ -87,17 +101,12 @@ def _side(role: str, cls: str, game: GameData) -> str | None:
     return ports.port_direction(role) or side_by_nature(cls, game)
 
 
-def _adjacency(
-    state: WorldState, game: GameData
-) -> tuple[dict[str, set[str]], dict[str, set[str]], int]:
-    """Directed feeds-into maps, plus how many edges stayed ambiguous.
-
-    Returns ``(upstream, downstream, ambiguous)`` where ``upstream[x]`` is everything that
-    feeds ``x``.
-    """
+def material_feeds(state: WorldState, game: GameData) -> Feeds:
+    """Directed feeds-into maps, plus how many edges stayed ambiguous. Built afresh on every
+    call; ``WorldState.feeds`` keeps the answer."""
     graph = state.projection.get("graph") or {}
     roles, actors = graph.get("roles") or [], graph.get("actors") or []
-    cls_of = _classes_by_leaf(state)
+    records = state.records_by_leaf
 
     up: dict[str, set[str]] = {}
     down: dict[str, set[str]] = {}
@@ -107,8 +116,8 @@ def _adjacency(
         if ports.is_hypertube_edge(role_a, role_b):
             continue
         a, b = actors[edge[0]], actors[edge[1]]
-        side_a = _side(role_a, cls_of.get(a, ""), game)
-        side_b = _side(role_b, cls_of.get(b, ""), game)
+        side_a = _side(role_a, _cls(records, a), game)
+        side_b = _side(role_b, _cls(records, b), game)
         if side_a == "out" or side_b == "in":
             pairs = [(a, b)]
         elif side_a == "in" or side_b == "out":
@@ -134,7 +143,7 @@ def resolve_seeds(state: WorldState, game: GameData, seed: str) -> tuple[list[st
 
     Raises ``SelectorError`` when the text is none of the three.
     """
-    records = {instance_leaf(r["instance"]): r for r in state.all_records()}
+    records = state.records_by_leaf
     what = seed.strip()
     if what.casefold().startswith("label:"):
         wanted = what[len("label:") :].strip()
@@ -167,12 +176,12 @@ def resolve_seeds(state: WorldState, game: GameData, seed: str) -> tuple[list[st
 
 def trace(state: WorldState, game: GameData, seeds: list[str], direction: str = "up") -> Trace:
     """Every machine up- or downstream of ``seeds``, logistics walked through."""
-    up, down, ambiguous = _adjacency(state, game)
+    up, down, ambiguous = state.feeds(game)
     adjacency = up if direction == "up" else down
     out = Trace(direction=direction, seeds=list(seeds), ambiguous=ambiguous)
 
-    cls_of = _classes_by_leaf(state)
-    start = [s for s in seeds if s in cls_of or s in adjacency]
+    records = state.records_by_leaf
+    start = [s for s in seeds if s in records or s in adjacency]
     seen: dict[str, int] = {s: 0 for s in start}
     queue: deque[str] = deque(start)
     while queue:
@@ -202,7 +211,7 @@ def trace(state: WorldState, game: GameData, seeds: list[str], direction: str = 
     for node, hops in seen.items():
         if node in seeds:
             continue
-        cls = cls_of.get(node, "")
+        cls = _cls(records, node)
         kind = _kind(game, cls)
         if kind is None:
             continue  # logistics: traversed, not reported
@@ -230,7 +239,7 @@ def power_at_risk(state: WorldState, game: GameData, machines: list[str]) -> tup
     downstream = trace(state, game, machines, direction="down")
     mw = 0.0
     total = running = 0
-    by_instance = {instance_leaf(r["instance"]): r for r in state.all_records()}
+    by_instance = state.records_by_leaf
     for row in downstream.reached:
         if row.kind != "generator":
             continue
