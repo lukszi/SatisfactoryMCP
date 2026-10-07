@@ -12,22 +12,25 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-from typing import Annotated, Any, Literal, NotRequired
+from collections.abc import Mapping
+from typing import Annotated, Literal, NotRequired, cast
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
-from .....core.gameassets.versions import PLAIN_TONE, STYLES
+from .....core.gameassets.versions import PLAIN_TONE
 from .....core.schema import NewerSchema
 from .....domain.maps import axes as ax
 from .....domain.maps import jobs as job_store
 from .....domain.maps import presets, registry
+from .....domain.maps.axes import Tone
 from .....domain.maps.views import (
     MapCanGenerate,
     MapEstimateResponse,
     MapFreshness,
+    MapInputNow,
     MapJobOptions,
     MapViewRow,
 )
@@ -40,7 +43,6 @@ router = APIRouter(prefix="/api")
 Status = Literal["building", "ready", "failed", "missing"]
 JobStatus = Literal["queued", "running", "done", "failed", "cancelled", "interrupted"]
 Preset = Literal["render", "artwork", "heightmap", "caves", "rocks", "paint"]
-Tone = Literal["light", "dark"]
 
 
 class MapTypeBody(TypedDict):
@@ -68,7 +70,7 @@ class MapTypeBody(TypedDict):
     replaces: str | None
     job: str | None
     freshness: MapFreshness
-    axes: dict[str, Any]
+    axes: Mapping[str, object]
 
 
 class MapJobBody(TypedDict):
@@ -76,7 +78,7 @@ class MapJobBody(TypedDict):
 
     id: str
     preset: str
-    options: dict[str, Any]
+    options: Mapping[str, object]
     label: str | None
     produces: list[str]
     replaces: str | None
@@ -185,8 +187,9 @@ class MapCacheResponse(TypedDict):
     freed_bytes: int
 
 
-def _type_json(row: MapViewRow, default: str | None) -> dict:
+def _type_json(row: MapViewRow, default: str | None) -> MapTypeBody:
     entry, axes = row["entry"], row["axes"]
+    drawn = ax.dict_at(axes, "renderer").get("size_px")
     return {
         "id": row["id"],
         "label": entry.get("label"),
@@ -198,12 +201,13 @@ def _type_json(row: MapViewRow, default: str | None) -> dict:
         "kind": entry.get("kind") or "render",
         "layer": entry.get("layer") or "",
         "tone": ax.style_tone(axes),
-        "size_px": ax.dict_at(axes, "renderer").get("size_px") or entry.get("size_px"),
+        "size_px": (drawn if isinstance(drawn, int) else None) or entry.get("size_px"),
         "dir": entry["dir"],
         "bytes": int(entry.get("bytes") or 0),
         "max_z": entry.get("max_z"),
         "created": entry.get("created"),
-        "status": row["status"],
+        # ``registry.view`` sets one of these four.
+        "status": cast(Status, row["status"]),
         "origin": entry.get("origin") or "adopted",
         "in_switcher": bool(entry.get("in_switcher", True)),
         "default": row["id"] == default,
@@ -214,7 +218,36 @@ def _type_json(row: MapViewRow, default: str | None) -> dict:
     }
 
 
-def _maps_json(request: Request) -> dict:
+def _input_json(name: str, now: MapInputNow | None) -> MapInputBody:
+    transcribed = now["transcribed"] if now is not None else None
+    return {
+        "name": name,
+        "present": now is not None,
+        "version": now["version"] if now is not None else None,
+        "cl": now["cl"] if now is not None else None,
+        "transcribed": transcribed if isinstance(transcribed, str) else None,
+    }
+
+
+def _tone(word: object) -> Tone:
+    return "dark" if word == "dark" else "light"
+
+
+def _styles() -> list[MapStyleBody]:
+    """The render styles the generate form offers, from the version table."""
+    return [
+        {
+            "layer": str(row["layer"]),
+            "style": sid,
+            "label": str(row["label"]),
+            "tone": _tone(row["tone"]),
+        }
+        for sid, row in ax.STYLE_TABLE.items()
+        if row["layer"] in presets.RENDER_LAYERS
+    ]
+
+
+def _maps_json(request: Request) -> MapsResponse:
     view = registry.view()
     runner = request.app.state.mapjobs
     local = registry.local_dir()
@@ -223,16 +256,7 @@ def _maps_json(request: Request) -> dict:
     except OSError:
         free = 0
     types = [_type_json(row, view["default"]) for row in view["types"]]
-    inputs = [
-        {
-            "name": name,
-            "present": now is not None,
-            "version": (now or {}).get("version"),
-            "cl": (now or {}).get("cl"),
-            "transcribed": (now or {}).get("transcribed"),
-        }
-        for name, now in view["current"]["inputs"].items()
-    ]
+    inputs = [_input_json(name, now) for name, now in view["current"]["inputs"].items()]
     return {
         "version": view["version"],
         "default": view["default"],
@@ -249,13 +273,9 @@ def _maps_json(request: Request) -> dict:
         "unregistered": registry.unregistered(),
         "queue_max": job_store.QUEUE_MAX,
         "sizes": list(presets.RENDER_SIZES),
-        "styles": [
-            {"layer": row["layer"], "style": sid, "label": row["label"], "tone": row["tone"]}
-            for sid, row in STYLES.items()
-            if row["layer"] in presets.RENDER_LAYERS
-        ],
+        "styles": _styles(),
         "cached_sizes": presets.cached_sizes(),
-        "plain_tone": PLAIN_TONE,
+        "plain_tone": _tone(PLAIN_TONE),
     }
 
 
@@ -268,7 +288,7 @@ def newer_map_list(exc: NewerSchema) -> JSONResponse:
 
 def _refused(exc: Exception) -> JSONResponse:
     if isinstance(exc, registry.MapsStale):
-        body = {"error": str(exc), "stale": True, "version": exc.current}
+        body: MapsStaleResponse = {"error": str(exc), "stale": True, "version": exc.current}
         return JSONResponse(body, status_code=409)
     if isinstance(exc, registry.MapsUnknown):
         return error_response(str(exc), 404)
@@ -284,13 +304,13 @@ def _refused(exc: Exception) -> JSONResponse:
 WRITE_REFUSALS = (registry.MapsError, NewerSchema, LockTimeout)
 
 
-async def _after_write(request: Request) -> dict:
+async def _after_write(request: Request) -> MapsResponse:
     request.app.state.mapjobs.announce()
     return await asyncio.to_thread(_maps_json, request)
 
 
 @router.get("/maps", response_model=MapsResponse)
-async def maps_index(request: Request) -> Any:
+async def maps_index(request: Request) -> MapsResponse | JSONResponse:
     """Every base-map type with its computed freshness, the jobs, and whether generation can run."""
     try:
         return await asyncio.to_thread(_maps_json, request)
@@ -310,9 +330,9 @@ def map_estimate(
     light: bool = True,
     enhance: bool = False,
     tiles_2x: bool = True,
-) -> Any:
+) -> MapEstimateResponse | JSONResponse:
     """What a job with these options would cost, and whether the disk has room for it now."""
-    options = {
+    options: dict[str, object] = {
         "layers": [layer for layer in layers.split(",") if layer],
         "size": size,
         "recipe": recipe,
@@ -336,7 +356,9 @@ def map_estimate(
     response_model=MapsResponse,
     responses={409: {"model": MapsStaleResponse}},
 )
-async def default_map(request: Request, body: Annotated[MapDefaultBody, Body()]) -> Any:
+async def default_map(
+    request: Request, body: Annotated[MapDefaultBody, Body()]
+) -> MapsResponse | JSONResponse:
     """Set the type every fresh page opens on, for every browser on this machine."""
     try:
         await asyncio.to_thread(registry.set_default, body["id"], body.get("version"))
@@ -346,7 +368,7 @@ async def default_map(request: Request, body: Annotated[MapDefaultBody, Body()])
 
 
 @router.post("/maps/adopt", response_model=MapsResponse)
-async def adopt_maps(request: Request) -> Any:
+async def adopt_maps(request: Request) -> MapsResponse | JSONResponse:
     """Register pyramids lying under ``data/local`` that the list does not know, where they lie."""
     try:
         await asyncio.to_thread(registry.adopt_existing)
@@ -356,7 +378,7 @@ async def adopt_maps(request: Request) -> Any:
 
 
 @router.delete("/maps/cache", response_model=MapCacheResponse)
-async def clear_map_cache(request: Request) -> Any:
+async def clear_map_cache(request: Request) -> MapCacheResponse | JSONResponse:
     """Delete the rasters kept for fast re-renders; refused while a job is running."""
     if request.app.state.mapjobs.is_running():
         return error_response(
@@ -373,7 +395,7 @@ async def clear_map_cache(request: Request) -> Any:
     response_model=MapJobResponse,
     responses={409: {"model": MapsStaleResponse}},
 )
-async def start_map_job(request: Request, body: Annotated[MapJobRequest, Body()]) -> Any:
+async def start_map_job(request: Request, body: Annotated[MapJobRequest, Body()]) -> JSONResponse:
     """Queue a generation job. 409 when the queue is full, 507 when the disk is short."""
     runner = request.app.state.mapjobs
     try:
@@ -393,7 +415,7 @@ async def start_map_job(request: Request, body: Annotated[MapJobRequest, Body()]
 
 
 @router.get("/maps/jobs/{job}", response_model=MapJobDetailResponse)
-async def map_job(request: Request, job: str) -> Any:
+async def map_job(request: Request, job: str) -> MapJobDetailResponse | JSONResponse:
     """One job and the end of its log."""
     found = request.app.state.mapjobs.jobs.get(job)
     if found is None:
@@ -403,7 +425,7 @@ async def map_job(request: Request, job: str) -> Any:
 
 
 @router.delete("/maps/jobs/{job}", response_model=MapJobResponse)
-async def cancel_map_job(request: Request, job: str) -> Any:
+async def cancel_map_job(request: Request, job: str) -> MapJobResponse | JSONResponse:
     """Cancel a running job, its partial output going to the trash, or take a queued one off."""
     runner = request.app.state.mapjobs
     try:
@@ -418,7 +440,9 @@ async def cancel_map_job(request: Request, job: str) -> Any:
     response_model=MapsResponse,
     responses={409: {"model": MapsStaleResponse}},
 )
-async def change_map(request: Request, ident: str, body: Annotated[MapPatchBody, Body()]) -> Any:
+async def change_map(
+    request: Request, ident: str, body: Annotated[MapPatchBody, Body()]
+) -> MapsResponse | JSONResponse:
     """Rename a type or show or hide it in the map's switcher."""
     try:
         await asyncio.to_thread(
@@ -434,7 +458,9 @@ async def change_map(request: Request, ident: str, body: Annotated[MapPatchBody,
     response_model=MapsResponse,
     responses={409: {"model": MapsStaleResponse}},
 )
-async def delete_map(request: Request, ident: str, version: int | None = None) -> Any:
+async def delete_map(
+    request: Request, ident: str, version: int | None = None
+) -> MapsResponse | JSONResponse:
     """Move a type's files to the trash and forget it. Refuses the default (409)."""
     busy = request.app.state.mapjobs.busy_ids()
     try:

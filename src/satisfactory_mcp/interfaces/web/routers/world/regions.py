@@ -8,8 +8,6 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
@@ -58,8 +56,18 @@ class RegionsResponse(TypedDict):
     regions: dict[str, RegionExtent]
 
 
+def _extent(region_map: spatial_regions.RegionMap, name: str) -> RegionExtent:
+    entry = region_map.regions[name]
+    x0, y0, x1, y1 = entry["bbox"]
+    return {
+        "centroid_m": point_m(entry["centroid"]),
+        "bbox_m": (cm_to_m(x0), cm_to_m(y0), cm_to_m(x1), cm_to_m(y1)),
+        "label_m": point_m(region_map.label_anchor(name) or entry["centroid"]),
+    }
+
+
 @router.get("/regions", response_model=RegionsResponse)
-def regions() -> Any:
+def regions() -> JSONResponse:
     """The biome raster: a 30x30 character grid, its legend, and each region's extent.
 
     No ``?save``/``?world``: this is the world's own geography, identical for every save,
@@ -78,19 +86,12 @@ def regions() -> Any:
     except FileNotFoundError as exc:
         return error_response(str(exc), 404)
 
-    payload = {
+    payload: RegionsResponse = {
         "grid": list(region_map.grid),
         "legend": dict(region_map.legend),
         "cell_m": cm_to_m(region_map.cell_cm),
         "x0_m": cm_to_m(region_map.x0_cm),
         "y0_m": cm_to_m(region_map.y0_cm),
-        "regions": {
-            name: {
-                "centroid_m": point_m(entry["centroid"]),
-                "bbox_m": [cm_to_m(v) for v in entry["bbox"]],
-                "label_m": point_m(region_map.label_anchor(name) or entry["centroid"]),
-            }
-            for name, entry in region_map.regions.items()
-        },
+        "regions": {name: _extent(region_map, name) for name in region_map.regions},
     }
     return JSONResponse(payload, headers={"Cache-Control": "max-age=3600"})

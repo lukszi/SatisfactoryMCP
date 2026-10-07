@@ -10,14 +10,14 @@ is open. ``phase`` and ``harddrives`` read the ``WorldState`` records ``phase_re
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
 from .....core.gamedata.constants import CAPABILITY_SCHEMATICS
-from .....domain.progression.ladder import SchematicLadder
+from .....domain.progression.ladder import Rung, SchematicLadder
 from .....domain.progression.phases import opened_tier, opening_phase, phase_number
+from .....domain.world.state import WorldState
 from ...serial import ItemAmount, item_amounts, machine_name, require_world
 
 __all__ = ["router"]
@@ -59,12 +59,30 @@ class MilestonesResponse(TypedDict):
     milestones: list[MilestoneRow]
 
 
-def _highest_reached_tier(rows: list[dict[str, Any]]) -> int:
+def _highest_reached_tier(rungs: list[Rung]) -> int:
     """The highest tier with a finished milestone, else the lowest tier there is."""
-    done = [r["tier"] for r in rows if r["status"] == "DONE"]
+    done = [r.schematic.tier for r in rungs if r.status == "DONE"]
     if done:
         return max(done)
-    return min((r["tier"] for r in rows), default=0)
+    return min((r.schematic.tier for r in rungs), default=0)
+
+
+def _milestone_row(st: WorldState, rung: Rung, opened: int | None, top: int) -> MilestoneRow:
+    """One milestone; it ``opens_at`` a phase when its tier is not open yet."""
+    game, schematic = st.game, rung.schematic
+    shut = opened is not None and schematic.tier > opened and rung.status != "DONE"
+    return {
+        "cls": schematic.cls,
+        "tier": schematic.tier,
+        "name": schematic.name,
+        "status": rung.status,
+        "cost": item_amounts(game, ((f.item, f.amount) for f in schematic.cost)),
+        "short": item_amounts(game, ((m.item, round(m.short_by, 1)) for m in rung.missing)),
+        "unlocks": len(st.unlocks.schematic_recipes(schematic)),
+        "blocked_by": list(rung.blocked_by),
+        "opens_at": opening_phase(schematic.tier) if shut else None,
+        "spoiler": schematic.tier > top,
+    }
 
 
 @router.get("/progress/milestones", response_model=MilestonesResponse)
@@ -73,7 +91,7 @@ def progress_milestones(
     save: str | None = None,
     world: str | None = None,
     spoilers: bool | None = None,
-) -> Any:
+) -> MilestonesResponse:
     """Every HUB milestone with its bill, what stock is short of it, and what it unlocks.
 
     A tier above both the highest one with a finished milestone and the highest one the
@@ -81,41 +99,23 @@ def progress_milestones(
     """
     st = require_world(request, save, world)
 
-    game = st.game
-    ladder = SchematicLadder(game=game, unlocks=st.unlocks, inventory=st.inventory)
+    ladder = SchematicLadder(game=st.game, unlocks=st.unlocks, inventory=st.inventory)
     rungs = sorted(
         ladder.rungs("EST_Milestone"), key=lambda r: (r.schematic.tier, r.schematic.name)
     )
 
     tiers: dict[int, list[int]] = {}
-    rows = []
     for rung in rungs:
-        schematic = rung.schematic
-        tally = tiers.setdefault(schematic.tier, [0, 0])
+        tally = tiers.setdefault(rung.schematic.tier, [0, 0])
         tally[0] += rung.done
         tally[1] += 1
-        rows.append(
-            {
-                "cls": schematic.cls,
-                "tier": schematic.tier,
-                "name": schematic.name,
-                "status": rung.status,
-                "cost": item_amounts(game, ((f.item, f.amount) for f in schematic.cost)),
-                "short": item_amounts(game, ((m.item, round(m.short_by, 1)) for m in rung.missing)),
-                "unlocks": len(st.unlocks.schematic_recipes(schematic)),
-                "blocked_by": list(rung.blocked_by),
-            }
-        )
 
     progression = st.progression()
     opened = opened_tier(progression["game_phase"])
-    reached = _highest_reached_tier(rows)
+    reached = _highest_reached_tier(rungs)
     top = reached if opened is None else max(reached, opened)
-    for row in rows:
-        shut = opened is not None and row["tier"] > opened and row["status"] != "DONE"
-        row["opens_at"] = opening_phase(row["tier"]) if shut else None
-        row["spoiler"] = row["tier"] > top
-    tier_rows = [
+    rows = [_milestone_row(st, rung, opened, top) for rung in rungs]
+    tier_rows: list[TierRow] = [
         {"tier": tier, "done": done, "total": total, "spoiler": tier > top}
         for tier, (done, total) in sorted(tiers.items())
     ]
@@ -177,7 +177,7 @@ def progress_mam(
     save: str | None = None,
     world: str | None = None,
     spoilers: bool | None = None,
-) -> Any:
+) -> MamResponse:
     """Every MAM node with the ``mam_research`` status, bill and shortfall.
 
     A node or capability in a tree not opened yet is a spoiler.
@@ -187,7 +187,7 @@ def progress_mam(
     research = st.research
     gates = {v: k for k, v in CAPABILITY_SCHEMATICS.items()}
     ladder = SchematicLadder(game=st.game, unlocks=st.unlocks, inventory=st.inventory)
-    rows = []
+    rows: list[MamRow] = []
     for rung in ladder.rungs("EST_MAM"):
         schematic = rung.schematic
         running = research.ongoing.get(schematic.cls)
@@ -210,7 +210,7 @@ def progress_mam(
             }
         )
 
-    capabilities = []
+    capabilities: list[CapabilityRow] = []
     for name, cls in CAPABILITY_SCHEMATICS.items():
         schematic = st.game.schematics.get(cls)
         shut = research.tree_locked(cls)
@@ -264,7 +264,7 @@ def progress_phase(
     save: str | None = None,
     world: str | None = None,
     spoilers: bool | None = None,
-) -> Any:
+) -> PhaseResponse:
     """The Space Elevator record ``phase_requirements`` reads, joined to spendable stock.
 
     A phase numbered past the target phase is a spoiler, and every phase is one on a save
@@ -275,10 +275,10 @@ def progress_phase(
     requirements = st.phase_requirements()
     stock = st.stock()
     target = phase_number(requirements["target_phase"])
-    phases = []
-    deliverable = None
+    phases: list[PhaseRow] = []
+    deliverable: bool | None = None
     for row in requirements["phases"]:
-        items = []
+        items: list[HaveRow] = []
         for item, need in sorted(row["outstanding"].items(), key=lambda kv: -kv[1]):
             have = float(stock.get(item, 0.0))
             items.append(
@@ -344,16 +344,18 @@ class HardDrivesResponse(TypedDict):
 
 
 @router.get("/progress/harddrives", response_model=HardDrivesResponse)
-def progress_harddrives(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def progress_harddrives(
+    request: Request, save: str | None = None, world: str | None = None
+) -> HardDrivesResponse:
     """``list_pending_hard_drive_choices``: each unclaimed drive's two options and rerolls."""
     st = require_world(request, save, world)
 
     game = st.game
-    drives = []
+    drives: list[DriveRow] = []
     for offer in st.hard_drive_offers:
-        options = []
+        options: list[DriveOption] = []
         for opt in offer.options:
-            recipes = []
+            recipes: list[GrantedRecipe] = []
             for recipe in opt["recipes"]:
                 recipes.append(
                     {

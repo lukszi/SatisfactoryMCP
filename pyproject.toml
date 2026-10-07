@@ -203,6 +203,35 @@ strict = [
     "src/satisfactory_mcp/domain/world/timeline.py",
     "src/satisfactory_mcp/domain/world/water.py",
     "src/satisfactory_mcp/interfaces/mcp",
+    "src/satisfactory_mcp/interfaces/web/__init__.py",
+    "src/satisfactory_mcp/interfaces/web/__main__.py",
+    "src/satisfactory_mcp/interfaces/web/app.py",
+    "src/satisfactory_mcp/interfaces/web/childproc.py",
+    "src/satisfactory_mcp/interfaces/web/guard.py",
+    "src/satisfactory_mcp/interfaces/web/mapjobs.py",
+    "src/satisfactory_mcp/interfaces/web/pinning.py",
+    "src/satisfactory_mcp/interfaces/web/routers/__init__.py",
+    "src/satisfactory_mcp/interfaces/web/routers/assets",
+    "src/satisfactory_mcp/interfaces/web/routers/bridge",
+    "src/satisfactory_mcp/interfaces/web/routers/codex",
+    "src/satisfactory_mcp/interfaces/web/routers/dashboard",
+    "src/satisfactory_mcp/interfaces/web/routers/factories",
+    "src/satisfactory_mcp/interfaces/web/routers/layers",
+    "src/satisfactory_mcp/interfaces/web/routers/plans/__init__.py",
+    "src/satisfactory_mcp/interfaces/web/routers/plans/activity.py",
+    "src/satisfactory_mcp/interfaces/web/routers/plans/plan_index.py",
+    "src/satisfactory_mcp/interfaces/web/routers/plans/plan_track.py",
+    "src/satisfactory_mcp/interfaces/web/routers/plans/planlog.py",
+    "src/satisfactory_mcp/interfaces/web/routers/world/__init__.py",
+    "src/satisfactory_mcp/interfaces/web/routers/world/collectibles.py",
+    "src/satisfactory_mcp/interfaces/web/routers/world/nodes.py",
+    "src/satisfactory_mcp/interfaces/web/routers/world/regions.py",
+    "src/satisfactory_mcp/interfaces/web/routers/world/world_conduits.py",
+    "src/satisfactory_mcp/interfaces/web/routers/world/world_finders.py",
+    "src/satisfactory_mcp/interfaces/web/routers/world/worlds.py",
+    "src/satisfactory_mcp/interfaces/web/serial",
+    "src/satisfactory_mcp/interfaces/web/terrain.py",
+    "src/satisfactory_mcp/interfaces/web/watch",
     "src/satisfactory_mcp/presenters",
     "tools/check_map_fill.py",
     "tools/gen_map_image.py",
@@ -290,47 +319,6 @@ ignore = [
 "tests/**/*.py" = ["TID251"]
 # The modules that still import typing.Any. The list only shrinks, and a line no longer needed
 # fails tests/architecture/test_typing.py.
-"src/satisfactory_mcp/interfaces/web/routers/assets/icons.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/assets/maps.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/assets/tiles.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/bridge/asks.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/bridge/pins.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/bridge/settings.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/codex/gamedata.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/codex/search.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/dashboard/advice.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/dashboard/power_circuits.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/dashboard/progress_boosts.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/dashboard/progress_unlocks.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/dashboard/stock.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/factory_detail.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/factory_graph.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/factory_health.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/factory_labels.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/factory_list.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/factories/trace.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/belts_pipes.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/crates.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/floors.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/placements.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/power_lines.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/layers/storage.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/activity.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/plan_index.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/plan_site.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/plan_solve.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/plan_track.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/plans/planlog.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/collectibles.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/inspect.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/nodes.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/regions.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/world_conduits.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/world_finders.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/routers/world/worlds.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/serial/responses.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/serial/shapes.py" = ["TID251"]
-"src/satisfactory_mcp/interfaces/web/serial/units.py" = ["TID251"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "typing.Any".msg = "JsonValue or JsonObject from satisfactory_mcp.core.jsontypes at a boundary, a real type elsewhere"

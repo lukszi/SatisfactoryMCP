@@ -10,7 +10,6 @@ Handler names are operation_ids (wire rule 1).
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
 
 from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
@@ -21,9 +20,11 @@ from .....domain.factories.health import assess
 from .....domain.power.report import MachineGroups, PowerLedger, starved_cause
 from .....domain.power.views import GeneratorTotal, PowerReport
 from .....domain.spatial import geo
+from .....domain.spatial.regions import RegionMap
 from .....domain.world.state import WorldState
 from ...serial import (
     Biomass,
+    Placed,
     Region,
     bbox_m,
     cm_to_m,
@@ -127,7 +128,7 @@ class CircuitsResponse(TypedDict):
     no_generator: list[MachineRef]
 
 
-def _ledger(report: PowerReport) -> dict:
+def _ledger(report: PowerReport) -> Ledger:
     return {
         "generation_mw": round(report["generation_mw"], 1),
         "starved_generation_mw": round(report["starved_generation_mw"], 1),
@@ -144,20 +145,20 @@ def _ledger(report: PowerReport) -> dict:
     }
 
 
-def _position_m(placed: dict, leaf: str) -> tuple[float | None, float | None]:
+def _position_m(placed: Placed, leaf: str) -> tuple[float | None, float | None]:
     pos = placed.get(leaf)
     return (cm_to_m(pos[0]), cm_to_m(pos[1])) if pos else (None, None)
 
 
-def _groups(report: PowerReport) -> list[dict]:
+def _groups(report: PowerReport) -> list[GeneratorTotal]:
     return [
         {"name": g["name"], "count": g["count"], "mw": round(g["mw"], 1)}
         for g in sorted(report["by_generator"].values(), key=lambda g: -g["mw"])
     ]
 
 
-def _starved(report: PowerReport, placed: dict) -> list[dict]:
-    rows = []
+def _starved(report: PowerReport, placed: Placed) -> list[StarvedGenerator]:
+    rows: list[StarvedGenerator] = []
     for starved in report["starved_generators"]:
         x, y = _position_m(placed, starved["instance"])
         rows.append(
@@ -175,14 +176,14 @@ def _starved(report: PowerReport, placed: dict) -> list[dict]:
 
 
 def _circuit_rows(
-    st: WorldState, placed: dict, label_of: dict[str, str], counted: bool
-) -> list[tuple[dict, set[str]]]:
+    st: WorldState, placed: Placed, label_of: dict[str, str], counted: bool
+) -> list[tuple[CircuitRow, set[str]]]:
     """Every circuit with a record on it, biggest ledger first, each with its member leaves."""
     graph = st.graph
     machines = {instance_leaf(r["instance"]): r for r in st.projection.get("machines") or ()}
     extractors = {instance_leaf(r["instance"]): r for r in st.projection.get("extractors") or ()}
     generators = {instance_leaf(r["instance"]): r for r in st.projection.get("generators") or ()}
-    pairs = []
+    pairs: list[tuple[CircuitRow, set[str]]] = []
     for component in graph.components("power"):
         members = set(component)
         sub: MachineGroups = {
@@ -197,7 +198,7 @@ def _circuit_rows(
         points = [placed[leaf][:2] for leaf in standing]
         centre = geo.centroid(points)
         named = Counter(label_of[leaf] for leaf in standing if leaf in label_of)
-        row = {
+        row: CircuitRow = {
             "index": 0,
             "ledger": _ledger(report),
             "generators": _groups(report),
@@ -219,7 +220,7 @@ def _circuit_rows(
     return pairs
 
 
-def _circuit_index(pairs: list[tuple[dict, set[str]]]) -> dict[str, int]:
+def _circuit_index(pairs: list[tuple[CircuitRow, set[str]]]) -> dict[str, int]:
     """Member leaf to the ``index`` of the circuit it stands on."""
     return {leaf: row["index"] for row, members in pairs for leaf in members}
 
@@ -227,13 +228,13 @@ def _circuit_index(pairs: list[tuple[dict, set[str]]]) -> dict[str, int]:
 def _machine_refs(
     st: WorldState,
     leaves: list[str],
-    placed: dict,
+    placed: Placed,
     circuit_of: dict[str, int],
     label_of: dict[str, str],
-    region_map,
-) -> list[dict]:
+    region_map: RegionMap | None,
+) -> list[MachineRef]:
     """Machines by leaf, sorted, with the circuit, factory and region each stands in."""
-    refs = []
+    refs: list[MachineRef] = []
     for leaf in sorted(leaves):
         x, y = _position_m(placed, leaf)
         cls = st.graph.cls.get(leaf, "")
@@ -262,7 +263,7 @@ def power_circuits(
     save: str | None = None,
     world: str | None = None,
     biomass: Biomass = "exclude",
-) -> Any:
+) -> CircuitsResponse:
     """Generation against draw, nameplate and measured, for the world and for each circuit.
 
     ``unwired`` and ``no_generator`` are ``assess``'s two lists over every machine in the

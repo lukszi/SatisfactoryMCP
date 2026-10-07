@@ -6,14 +6,14 @@ docs/web-wire.md "Storage". Handler names are operation_ids.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
 from .....core.saveio.schema import StorageRecord
 from .....domain.world.state import WorldState
-from ...serial import StoredItem, contents_json, placement_fields, require_world
+from ...serial import StoredItem, contents_json, object_rows, placement_fields, require_world
 
 __all__ = ["router"]
 
@@ -108,14 +108,12 @@ def _storage_row(st: WorldState, row: StorageRecord) -> StorageSolid | StorageFl
 
 
 @router.get("/storage", response_model=StorageResponse)
-def storage(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def storage(request: Request, save: str | None = None, world: str | None = None) -> StorageResponse:
     """Every storage container and fluid buffer the player built, and what is inside each
     one; never the splitters and mergers, whose few items are in transit."""
     st = require_world(request, save, world)
 
-    rows = [
-        _storage_row(st, row) for row in st.projection.get("storage") or () if isinstance(row, dict)
-    ]
+    rows = [_storage_row(st, row) for row in object_rows(st.projection.get("storage"))]
     solids = [r for r in rows if r["kind"] == "solid"]
     return {
         "storage": rows,

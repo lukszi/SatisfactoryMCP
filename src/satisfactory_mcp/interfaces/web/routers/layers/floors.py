@@ -8,9 +8,8 @@ met a null in a field declared ``float`` would fail the whole reply. The handler
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....domain.factories import floors as ffloors
@@ -155,8 +154,8 @@ def _platform_json(platform: ffloors.Platform) -> FloorPlatform:
         "cells": platform.cells,
         "pieces": platform.pieces,
         "area_m2": round(platform.area_m2, 1),
-        "centre_m": point_m(platform.centre_cm),
-        "extent_m": point_m(platform.extent_cm),
+        "centre_m": [*point_m(platform.centre_cm)],
+        "extent_m": [*point_m(platform.extent_cm)],
         "clean": round(platform.clean, 4),
         "label": platform.label,
         "slab": platform.slab,
@@ -188,7 +187,7 @@ def _placement_json(st: WorldState, placement: ffloors.Placement) -> FloorPlacem
     return {
         "instance_leaf": placement.instance,
         "cls": placement.cls,
-        "name": st.game.building_name(placement.cls),
+        "name": st.game.building_name(placement.cls) or placement.cls,
         "kind": placement.kind,
         **xyz_m(placement.pos_cm),
         "above_terrain_m": (
@@ -204,7 +203,7 @@ def floors_view(
     platform: int | None = None,
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> FloorsResponse | JSONResponse:
     """What is built, one storey at a time: platforms, their floors, the runs between them
     and what stands on no floor, narrowed by ``?factory=`` or ``?platform=``."""
     st = require_world(request, save, world)

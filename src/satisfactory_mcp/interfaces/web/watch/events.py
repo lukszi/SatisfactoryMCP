@@ -5,6 +5,7 @@ The names and their data are listed in docs/web-wire.md ("The event stream").
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 __all__ = [
@@ -52,9 +53,9 @@ class WatchEvent:
     kind: str
     filename: str
     mtime: float
-    data: dict | None = field(default=None, compare=False)
+    data: Mapping[str, object] | None = field(default=None, compare=False)
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, object]:
         if self.data is not None:
             return dict(self.data)
         return {"filename": self.filename, "mtime": self.mtime}

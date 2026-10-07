@@ -9,9 +9,10 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 from .....domain.planning.progress import track
 from .....domain.planning.progress.views import FeedersResponse, TrackResponse
@@ -32,7 +33,7 @@ def plan_track(
     headroom: Literal["measured", "nameplate"] = "measured",
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> TrackResponse | JSONResponse:
     """One plan version (the head when ``rev`` is omitted) diffed and staged against this save.
     ``headroom`` is the save's figure a plan with no stored headroom is staged against."""
     check_plan_key(key)
@@ -52,7 +53,7 @@ def plan_feeders(
     biomass: Biomass = "exclude",
     save: str | None = None,
     world: str | None = None,
-) -> Any:
+) -> FeedersResponse:
     """Built extractors whose output reaches a running generator: what startup waves stand on."""
     st = require_world(request, save, world)
     return track.feeders_view(st.game, st, biomass=biomass == "include")

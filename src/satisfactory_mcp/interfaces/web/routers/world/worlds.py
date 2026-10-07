@@ -9,10 +9,8 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from typing import Any
-
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....core.saveio import projection as proj
@@ -90,18 +88,20 @@ class WorldsResponse(TypedDict):
 
 
 @router.get("/worlds", response_model=WorldsResponse)
-def worlds() -> Any:
+def worlds() -> WorldsResponse | JSONResponse:
     """Every world the save directory holds, newest first."""
     try:
         found, unsupported = proj.list_worlds()
     except Exception as exc:
         return error_response(f"could not scan saves: {exc}", 404)
-    rows = []
+    rows: list[WorldRow] = []
     for w in found:
         newest = w.newest
         rows.append(
             {
-                **asdict(w),
+                "world_id": w.world_id,
+                "session_name": w.session_name,
+                "saves": list(w.saves),
                 "mtime": newest.get("mtime_ns", 0) / 1e9,
                 "newest_filename": newest.get("filename"),
                 "play_duration_s": w.max_play_duration_s,
@@ -139,7 +139,7 @@ def summary(
     save: str | None = None,
     world: str | None = None,
     biomass: Biomass = "exclude",
-) -> Any:
+) -> SummaryResponse:
     st = require_world(request, save, world)
     return {
         "header": st.header,

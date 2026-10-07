@@ -10,14 +10,14 @@ dependency of the HTTP server.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 
@@ -74,7 +74,7 @@ async def _request_refused(request: Request, exc: RequestRefused) -> JSONRespons
     return JSONResponse({"error": exc.message}, status_code=exc.status)
 
 
-async def _api_http_error(request: Request, exc: HTTPException):
+async def _api_http_error(request: Request, exc: HTTPException) -> Response:
     """The API's ``{"error"}`` body for a path or method no route serves; the page keeps its own."""
     if not request.url.path.startswith("/api/"):
         return await http_exception_handler(request, exc)
@@ -112,12 +112,14 @@ def create_app(
     process-wide and so must not leak out of a test into the tool tests that follow it.
     """
     load_game = game_loader or _load_game_data
-    load_world_state = state_loader or (
-        lambda save=None, world=None: load_state(load_game(), save, world)
-    )
+
+    def load_saved_state(save: str | None = None, world: str | None = None) -> WorldState:
+        return load_state(load_game(), save, world)
+
+    load_world_state = state_loader or load_saved_state
 
     @asynccontextmanager
-    async def lifespan(instance: FastAPI):
+    async def lifespan(instance: FastAPI) -> AsyncGenerator[None, None]:
         if served:
             journal.set_writer("web")
             planlog.use_recipe_names(_recipe_names(load_game))
@@ -147,9 +149,9 @@ def create_app(
     instance.state.mapjobs = MapJobRunner(instance.state.watcher, recover=served)
     instance.middleware("http")(pinning)
     instance.middleware("http")(guard)
-    instance.add_exception_handler(NewerSchema, _newer_schema)
-    instance.add_exception_handler(RequestRefused, _request_refused)
-    instance.add_exception_handler(HTTPException, _api_http_error)
+    instance.exception_handler(NewerSchema)(_newer_schema)
+    instance.exception_handler(RequestRefused)(_request_refused)
+    instance.exception_handler(HTTPException)(_api_http_error)
     # The whole JSON surface, in one loop over one tuple: there is no second include, so
     # ``ALL_ROUTERS`` alone decides registration order. See its declaration.
     for router in ALL_ROUTERS:
