@@ -56,10 +56,11 @@ def kernel(loop: _Loop) -> _Loop:
     kept in a file named by the signature (``keyed_cache_files``).
     """
     compiled = _compiler().njit(cache=True, nogil=True, error_model="numpy")(loop)
-    cache = compiled._cache
-    files = cache._cache_file
-    base = files._index_name.removesuffix(".nbi")
-    cache._cache_file = keyed_cache_files()(files._cache_path, base, files._source_stamp)
+    cache = getattr(compiled, "_cache", None)  # none under NUMBA_DISABLE_JIT
+    files = getattr(cache, "_cache_file", None)  # none where numba caches nothing
+    if cache is not None and files is not None:
+        base = files._index_name.removesuffix(".nbi")
+        cache._cache_file = keyed_cache_files()(files._cache_path, base, files._source_stamp)
     return cast(_Loop, compiled)
 
 
