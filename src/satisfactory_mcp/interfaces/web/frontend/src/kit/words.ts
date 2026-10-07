@@ -3,7 +3,7 @@
 
 import { count } from "./format";
 
-export var WORDS = {
+export const WORDS = {
   needAction: "need action",
   notRunning: "not running",
   powerProblems: "power problems",
@@ -68,22 +68,22 @@ export var WORDS = {
   },
 } as const;
 
-export var NODE_KIND: Record<string, string> = { node: "node", well_sat: "well satellite", geyser: "geyser" };
+export const NODE_KIND: Record<string, string> = { node: "node", well_sat: "well satellite", geyser: "geyser" };
 
-export var TRACK_VERB: Record<string, string> = {
+export const TRACK_VERB: Record<string, string> = {
   ok: "–",
   unpause: "unpause",
   setrecipe: "set recipe",
   build: "build",
 };
 
-export var ASK_STATE: Record<string, string> = {
+export const ASK_STATE: Record<string, string> = {
   open: "waiting for chat",
   seen: "seen by chat",
   answered: "answered",
 };
 
-export var ASK_KIND: Record<string, string> = {
+export const ASK_KIND: Record<string, string> = {
   plan: "plan",
   process: "process",
   stage: "stage",
@@ -92,7 +92,7 @@ export var ASK_KIND: Record<string, string> = {
   advice: "advisory",
 };
 
-export var ADVICE_WORD: Record<string, string> = {
+export const ADVICE_WORD: Record<string, string> = {
   unconnected: "unconnected",
   dead_node: "no node",
   starved: "starved",
@@ -105,7 +105,7 @@ export var ADVICE_WORD: Record<string, string> = {
   box_empty: "box empty",
 };
 
-export var PIN_KIND: Record<string, string> = {
+export const PIN_KIND: Record<string, string> = {
   plan: "plan",
   process: "process",
   machine: "machine",
@@ -115,7 +115,7 @@ export var PIN_KIND: Record<string, string> = {
   point: "point",
 };
 
-export var OBJECTIVES: Record<string, string> = {
+export const OBJECTIVES: Record<string, string> = {
   max_mw: "max MW",
   max_item: "max item",
   min_raw: "min raw",
@@ -129,7 +129,7 @@ export function objectiveText(text: string): string {
   });
 }
 
-export var RECIPE_KIND: Record<string, string> = { part: "machine", building: "building", manual: "crafted" };
+export const RECIPE_KIND: Record<string, string> = { part: "machine", building: "building", manual: "crafted" };
 
 export function gapText(gap: string): string {
   return gap.replace(/buildVersion/g, "build").replace(/saveVersion/g, "save format").replace("->", "→");

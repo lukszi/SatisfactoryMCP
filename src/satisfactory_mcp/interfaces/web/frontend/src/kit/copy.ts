@@ -20,14 +20,14 @@ export function copyText(text: string): Promise<void> {
   /* The async clipboard needs a secure context. `satisfactory-mcp-web` binds 127.0.0.1,
    * which is one, so reaching this branch means the page came through a proxy -- and the
    * deprecated call still works there. */
-  var pad = document.createElement("textarea");
+  const pad = document.createElement("textarea");
   pad.value = text;
   pad.setAttribute("readonly", "");
   pad.style.position = "fixed";
   pad.style.opacity = "0";
   document.body.appendChild(pad);
   pad.select();
-  var copied = false;
+  let copied = false;
   try {
     copied = document.execCommand("copy");
   } catch (ignored) {
@@ -39,10 +39,10 @@ export function copyText(text: string): Promise<void> {
 }
 
 function copyFrom(event: Event): void {
-  var target = event.target as Element | null;
-  var span = target && target.closest ? target.closest("." + COPY_CLASS) : null;
+  const target = event.target as Element | null;
+  const span = target && target.closest ? target.closest("." + COPY_CLASS) : null;
   if (!span) return;
-  var text = span.getAttribute(COPY_ATTR) || span.textContent || "";
+  const text = span.getAttribute(COPY_ATTR) || span.textContent || "";
   // Said out loud both ways: a copy that silently did nothing is worse than no affordance,
   // because the reader pastes whatever was in the clipboard before.
   copyText(text).then(
@@ -58,7 +58,7 @@ function copyFrom(event: Event): void {
 export function listenForCopies(): void {
   document.addEventListener("click", copyFrom);
   document.addEventListener("keydown", function (event) {
-    var target = event.target as Element | null;
+    const target = event.target as Element | null;
     if (event.key !== "Enter" || !target || target.tagName === "BUTTON" || !target.classList.contains(COPY_CLASS)) return;
     event.preventDefault();
     copyFrom(event);
