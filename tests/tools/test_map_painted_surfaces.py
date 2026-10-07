@@ -149,6 +149,20 @@ def test_a_stamp_takes_the_paint_scaled_to_the_bake_around_it():
     assert replaced == int((ok & (metres <= STAMP_INNER_M)).sum())
 
 
+def test_wet_sand_under_a_stamp_takes_the_wet_sands_ratio_not_the_dry_sands():
+    rgb, node, metres = _stamped()
+    yy, _xx = np.mgrid[0:64, 0:64]
+    wet = yy >= 32
+    wet_bake, wet_paint = (130, 100, 80), srgb_to_linear((150, 140, 125))
+    rgb[wet & (metres > 8)] = wet_bake
+    ok = bake_have(rgb)
+    paint = np.where(wet[..., None], wet_paint, srgb_to_linear(SAND) * np.float32(0.7))
+    weights = [np.where(wet, 0, 255).astype(np.uint8), np.where(wet, 255, 0).astype(np.uint8)]
+    patch_stamps(rgb, ok, paint.astype(np.float32), node, weights)
+    np.testing.assert_allclose(rgb[40, 32], wet_bake, atol=1, err_msg="wet sand, as around it")
+    np.testing.assert_allclose(rgb[24, 32], SAND, atol=1, err_msg="dry sand, as around it")
+
+
 def test_the_painted_ground_patches_a_stamp_in_its_read_only_bake(tmp_path):
     rgb, node, _metres = _stamped()
     (tmp_path / BAKE_NAME).write_bytes(hf.encode_u8(rgb.reshape(64, -1)))
@@ -157,7 +171,7 @@ def test_the_painted_ground_patches_a_stamp_in_its_read_only_bake(tmp_path):
         ground = PaintedGround.__new__(PaintedGround)
         ground.meta = {"files": {BAKE_NAME: {"shape": [64, 64, 3], "kind": "u8"}}}
         ground.palette, ground.source, ground._stamps = {"have_blur_m": 2.0}, {}, stamps
-        albedo, _have, _w = ground._bake(tmp_path, paint.copy(), np.ones((64, 64), bool))
+        albedo, _have, _w = ground._bake(tmp_path, (paint.copy(), np.ones((64, 64), bool)), {})
         assert (albedo[32, 32].max() < 0.1) == dark
     assert ground.source["bake_stamps_patched"]["nodes"] == 1
 
@@ -295,6 +309,7 @@ def _rock_ground(flat_top=True):
     return SimpleNamespace(
         rock_family=np.full((8, 8), grass, np.uint8), family_rock={}, family_tint=tint,
         family_top=top, family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
+        family_top_rgb={},
     )  # fmt: skip
 
 

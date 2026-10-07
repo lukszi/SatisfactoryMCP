@@ -69,7 +69,7 @@ def _mesh_ground():
     return SimpleNamespace(
         rock_family=None, family_rock={}, family_tint=np.ones((n, 3), np.float32),
         family_top=top, family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
-        mesh_rgb={}, seabed_coral=np.zeros(3, np.float32),
+        mesh_rgb={}, seabed_coral=np.zeros(3, np.float32), family_top_rgb={},
     )  # fmt: skip
 
 

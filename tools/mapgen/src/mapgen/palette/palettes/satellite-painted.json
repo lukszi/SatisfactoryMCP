@@ -517,7 +517,8 @@
   },
   "meshes": {
    "coral": "#99868e",
-   "coral_seabed": "#5f8899"
+   "coral_seabed": "#5f8899",
+   "terrace": "#ccbea8"
   },
   "crowns": {
    "blue_palm": "#3d627d"

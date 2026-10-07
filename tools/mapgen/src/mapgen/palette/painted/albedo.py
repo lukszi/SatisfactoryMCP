@@ -22,6 +22,7 @@ from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
+    "STAMP_LAYER_MIN",
     "GroundBake",
     "bake_table",
     "ground_albedo",
@@ -34,6 +35,9 @@ __all__ = [
     "patch_stamps",
     "seam_blend",
 ]
+
+#: The ring texels a layer must lead before a stamp's patch takes that layer's own ratio.
+STAMP_LAYER_MIN = 20
 
 
 def load_paint_meta(paint_dir: Path) -> PaintMeta | None:
@@ -145,10 +149,19 @@ class GroundBake:
         return cls(linear, np.asarray(have, bool) & (rgb.astype(np.uint16).sum(-1) >= 3))
 
 
-def patch_stamps(rgb: PaintPlane, ok: BoolMask, paint: FloatGrid, nodes_m: F64Grid) -> int:
+def patch_stamps(
+    rgb: PaintPlane,
+    ok: BoolMask,
+    paint: FloatGrid,
+    nodes_m: F64Grid,
+    weights: Sequence[PaintPlane] = (),
+) -> int:
     """Over each node's stamp, in place on the sRGB bake ``rgb`` where ``ok``: the linear paint
-    mix scaled by the median ratio of bake to paint on the ring where the bake comes back
-    (``stamp_windows``). Returns the texels replaced outright."""
+    mix scaled to the bake on the ring where the bake comes back (``stamp_windows``). The scale
+    is the median ratio of bake to paint over the ring's texels of the same leading layer of
+    ``weights`` where it has ``STAMP_LAYER_MIN`` of them, else over the whole ring, so wet sand
+    painted under the stamp takes the wet sand's ratio and not the dry sand's around it.
+    Returns the texels replaced outright."""
     replaced = 0
     for window, keep in stamp_windows(nodes_m, rgb.shape[:2]):
         bake, mix, have = srgb_to_linear(rgb[window]), paint[window], ok[window]
@@ -156,12 +169,29 @@ def patch_stamps(rgb: PaintPlane, ok: BoolMask, paint: FloatGrid, nodes_m: F64Gr
         ratio = np.ones(3, np.float32)
         if ring.sum() >= STAMP_RING_MIN:
             ratio = np.median(bake[ring] / mix[ring], axis=0)
+        scale = np.broadcast_to(ratio, mix.shape)
+        if weights and ring.sum() >= STAMP_RING_MIN:
+            scale = _layer_ratios(np.stack([w[window] for w in weights]), bake, mix, ring, scale)
         k = keep[..., None]
-        patched = np.round(linear_to_srgb(bake * k + np.clip(mix * ratio, 0.0, 1.0) * (1 - k)))
+        patched = np.round(linear_to_srgb(bake * k + np.clip(mix * scale, 0.0, 1.0) * (1 - k)))
         write = (have & (keep < 1))[..., None]
         rgb[window] = np.where(write, patched, rgb[window]).astype(np.uint8)
         replaced += int((have & (keep == 0)).sum())
     return replaced
+
+
+def _layer_ratios(
+    weights: PaintPlane, bake: FloatGrid, mix: FloatGrid, ring: BoolMask, ratio: FloatGrid
+) -> FloatGrid:
+    """``ratio`` per texel, replaced by its leading layer's own ratio on the ring where that
+    layer leads at least ``STAMP_LAYER_MIN`` of the ring's texels."""
+    lead = np.argmax(weights, axis=0)
+    out = np.array(ratio, np.float32)
+    for layer in np.unique(lead[ring]):
+        own = ring & (lead == layer)
+        if own.sum() >= STAMP_LAYER_MIN:
+            out[lead == layer] = np.median(bake[own] / mix[own], axis=0)
+    return out
 
 
 def ground_albedo(

@@ -268,6 +268,13 @@ Planned as 0.2.0.
   and the heights switched at its last 1 m texel, a staircase beside a landscape hole and a
   line hundreds of metres long along the landscape's east and south edges. They now blend
   over a few metres. Every rendered map style is one more version up for these two.
+- Game-painted map colours: blue palms under a sparse tree crown no longer draw pale grey;
+  the edges of the Red Jungle's and Red Bamboo Fields' ground layers lose their fire-red rims
+  and colour confetti, and forest floor its orange halo; sand and grass on rock tops take
+  their ground's colour instead of near white; hot-spring terraces are cream, not white;
+  arches no longer wear the moss or sand of the cliff below; and wet sand under a crude oil
+  puddle keeps the colour of the wet sand around it. The game-painted style is one version
+  up.
 
 ## [0.1.0] - 2026-09-27
 

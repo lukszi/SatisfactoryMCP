@@ -40,12 +40,10 @@ from mapgen.palette.painted.calibration import (
     area_ids,
     display_to_ground,
     display_to_linear,
-    layer_transfer,
     median_lab,
     rehome_offshore,
     scoped_planes,
     split_weight,
-    transfer_op,
     with_derived,
 )
 from mapgen.palette.painted.optics import base_water, class_optics, load_carpet, water_table
@@ -66,7 +64,13 @@ from mapgen.palette.painted.shapes import (
     Ramp,
     WaterBase,
 )
-from mapgen.palette.painted.surfaces import family_cells, family_tables, family_targets
+from mapgen.palette.painted.surfaces import (
+    family_cells,
+    family_tables,
+    family_targets,
+    layer_tops,
+)
+from mapgen.palette.painted.transfer import LayerOp, layer_op, layer_transfer
 from mapgen.palette.painted.trees import crown_calibration, titan_colours
 from mapgen.palette.painted.water_classes import water_classes
 from mapgen.palette.styles import dry_land_range
@@ -285,7 +289,7 @@ class PaintedGround:
             albedo = self._pigment(paint_dir, albedo, *shape)
         albedo, seam_texels = seam_blend(albedo, meta["components"], meta["component_px"], palette)
         if baked and bake is None:
-            albedo, have, self.bake_weight = self._bake(paint_dir, albedo, have)
+            albedo, have, self.bake_weight = self._bake(paint_dir, (albedo, have), weights)
         else:
             blur = palette["have_blur_m"]
             albedo, have, self.bake_weight = ground_albedo(albedo, have, bake, blur)
@@ -293,7 +297,7 @@ class PaintedGround:
 
     def _trees(self, paint_dir: Path) -> None:
         """The canopy share, the crowns when the palette draws them, the crown tops, and the
-        rock families' tints and tops."""
+        rock families' tints and tops, a top in its paint layer's target (``layer_tops``)."""
         meta, palette = self.meta, self.palette
         self.canopy: PaintPlane = paint_plane(paint_dir, meta, CANOPY_NAME)
         drawn = palette.get("crowns", {}).get("draw", False)
@@ -303,9 +307,9 @@ class PaintedGround:
         self.crown: PaintPlane | None = (
             paint_plane(paint_dir, meta, CROWN_NAME) if CROWN_NAME in meta["files"] else None
         )
-        self.family_tint, self.family_top, self.family_has_top = family_tables(
-            meta.get("rock_families") or {}, palette
-        )
+        families = meta.get("rock_families") or {}
+        self.family_tint, self.family_top, self.family_has_top = family_tables(families, palette)
+        self.family_top_rgb = layer_tops(families, palette, self._area_weight)
 
     def _mesh_colours(self) -> dict[str, FloatGrid]:
         """Each render-only mesh's linear colour: the palette's, or its calibration target."""
@@ -379,19 +383,21 @@ class PaintedGround:
         }
 
     def _bake(
-        self, paint_dir: Path, albedo: FloatGrid, have: BoolMask
+        self, paint_dir: Path, mix: tuple[FloatGrid, BoolMask], weights: Mapping[str, PaintPlane]
     ) -> tuple[FloatGrid, BoolMask, FloatGrid]:
-        """The bake where it exists, feathered over ``have_blur_m`` into the paint mix.
+        """The bake where it exists, feathered over ``have_blur_m`` into the paint mix ``mix``
+        (albedo, have).
 
         A hole the bake encloses is ground the game hides, so its paint (one solid layer per
         component) is dropped and the biome fallback draws there instead. A node's stamp is
-        patched over first (``patch_stamps``).
+        patched over first (``patch_stamps``), by the ratio of the layers ``weights`` gives it.
         """
+        albedo, have = mix
         rgb = paint_plane(paint_dir, self.meta, BAKE_NAME)
         ok = bake_have(rgb)
         if self._stamps is not None:
             rgb = np.array(rgb)
-            texels = patch_stamps(rgb, ok, albedo, self._stamps)
+            texels = patch_stamps(rgb, ok, albedo, self._stamps, list(weights.values()))
             self.source["bake_stamps_patched"] = {"nodes": len(self._stamps), "texels": texels}
         soft = ndimage.gaussian_filter(ok.astype(np.float32), self.palette["have_blur_m"])
         w = (np.clip(soft * 2.0 - 1.0, 0.0, 1.0) * ok).astype(np.float32)
@@ -502,14 +508,14 @@ class PaintedGround:
             if name in weights:
                 outside = ~scoped[name] if name in scoped else np.ones(total.shape, bool)
                 jobs.append((name, name, hex_colour, outside))
-        ops: dict[str, tuple[float, FloatGrid]] = {}
+        ops: dict[str, LayerOp] = {}
         self.calibration: JsonObject = {}
         for key, name, hex_colour, where in jobs:
             pure = (weights[name][sample] >= cal["pure_share"] * np.maximum(total, 1.0)) & where
             if pure.sum() < cal["min_texels"]:
                 continue
             source = median_lab(flat[pure])
-            ops[key] = transfer_op(source, display_to_ground(self.palette, hex_colour))
+            ops[key] = layer_op(source, display_to_ground(self.palette, hex_colour))
             self.calibration[key] = {"texels": int(pure.sum()), "dL": round(ops[key][0], 4)}
         return layer_transfer(albedo, split, ops) if ops else albedo
 
