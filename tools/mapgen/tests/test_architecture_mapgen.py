@@ -92,7 +92,7 @@ MODULE_MAX_LINES = 600
 #: thin under it so the stages stay in their modules. Shrink-only: a ceiling may be lowered,
 #: never raised, and one more than ``CEILING_SLACK`` above the file is stale.
 MODULE_CEILINGS: dict[str, int] = {
-    "commands/renders.py": 503,
+    "commands/renders.py": 329,
     "commands/heightmap.py": 306,
     "commands/artwork.py": 296,
 }

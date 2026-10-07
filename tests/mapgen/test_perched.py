@@ -6,7 +6,6 @@ docs/spatial-and-map.md section 38. Synthetic fixtures: no install, no field.
 
 from __future__ import annotations
 
-import inspect
 from types import SimpleNamespace
 
 import numpy as np
@@ -24,8 +23,8 @@ from mapgen.palette.water.perched import (
 )
 from mapgen.palette.water.rivers import water_sources
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
-from mapgen.render.compose import render_layer
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.draw import GROUND_KEYWORDS
 
 ROWS, COLS, MID, HALF_WIDTH = 160, 120, 60, 8
 BOX_TOP_DM = 120
@@ -225,7 +224,7 @@ def test_water_the_river_reconcile_dropped_stays_dropped():
 
 
 def test_the_renderer_takes_the_relevelled_raster():
-    assert "water_level" in inspect.signature(render_layer).parameters
+    assert "water_level" in GROUND_KEYWORDS
 
 
 def test_the_rivers_reconciled_water_is_what_gets_relevelled():

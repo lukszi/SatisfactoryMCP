@@ -86,8 +86,8 @@ __all__ = [
 GridTaps: TypeAlias = tuple[AxisTaps, AxisTaps]
 #: How a height raster's taps are built along one axis: ``taps_pchip`` or ``taps_cubic``.
 Kernel: TypeAlias = Callable[[F64Grid, int], AxisTaps]
-#: A band's measurement owed to an accumulator, merged in band order: ``(merge, value)``.
-Owed: TypeAlias = tuple[Callable[..., None], object]
+#: A band's measurement owed to an accumulator: its merge, called in band order.
+Owed: TypeAlias = Callable[[], None]
 
 
 class Window(NamedTuple):
@@ -410,7 +410,7 @@ def settle_band(sources: GroundSources, rows: Span, pieces: Sequence[PieceOwed])
         measured = sources.seam.measure(
             seam.z_m, seam.switched, seam.weight, sources.spacing_m, seam.delta
         )
-        owed.append((sources.seam.merge, measured))
+        owed.append(partial(sources.seam.merge, measured))
     if sources.regimes is not None:
         owed.append(_regimes_owed(sources, sources.regimes, rows, seam.weight))
     return owed
@@ -528,7 +528,7 @@ def _regimes_owed(
     counted = regimes.coverage.measure(
         regimes.provenance[picked], weight, regimes.measured[picked] > 0
     )
-    return regimes.coverage.merge, counted
+    return partial(regimes.coverage.merge, counted)
 
 
 def _borrow(sources: GroundSources, grid: BandSampling) -> FloatGrid:

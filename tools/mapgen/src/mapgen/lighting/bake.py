@@ -34,7 +34,7 @@ from mapgen.lighting.stage import (
     Surface,
     allocate_work_arrays,
     bake_block,
-    cast_digests,
+    caster_digests,
     light_key,
     light_workers,
     save_work_array,
@@ -194,7 +194,7 @@ class LightBake:
         place; returns its sidecar's ``_meta``. ``key`` is the bake's ``light_key``, made
         here when None; ``on_row`` runs as each block row is in, in order."""
         if key is None:
-            key = light_key(self.surface, cast_digests(self.occluder), self.occluder_layers)
+            key = light_key(self.surface, caster_digests(self.occluder), self.occluder_layers)
         with self._lock:
             self.progress = progress
             if progress and self.done:

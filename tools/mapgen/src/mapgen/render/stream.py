@@ -28,7 +28,7 @@ from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX
 from satisfactory_mcp.core.jsontypes import JsonObject
 
-__all__ = ["LayerTrees", "RenderStream"]
+__all__ = ["LayerTrees", "RenderOut", "RenderStream"]
 
 #: A band of a layer waiting for its turn: its first row and its rows.
 _Band: TypeAlias = tuple[int, U8Grid]
@@ -46,6 +46,20 @@ class LayerTrees(NamedTuple):
     seconds: float
 
 
+class RenderOut(NamedTuple):
+    """Where a run's layers go: ``out_dir/renders_name/<layer>/``."""
+
+    out_dir: Path
+    renders_name: str
+
+
+class _Lane(NamedTuple):
+    """A layer's sheet a band goes to: its first, or with the light its relit one."""
+
+    layer: str
+    relit: bool
+
+
 class RenderStream:
     """Every layer of a pass cut as its bands settle: its trees staged now, under
     ``out_dir/renders_name/<layer>/``, and each band handed to them by ``put``.
@@ -57,7 +71,7 @@ class RenderStream:
         self,
         cutter: TileStream,
         layers: tuple[str, ...],
-        out: tuple[Path, str],
+        out: RenderOut,
         size: int,
         recipe: int,
         light: LightingRun | None,
@@ -69,7 +83,7 @@ class RenderStream:
         self.unlit: dict[str, Sheet] = {}
         self.first: dict[str, deque[_Band]] = {}
         self.waiting: dict[str, deque[_Band]] = {}
-        self.tails: dict[tuple[str, bool], U8Grid | None] = {}
+        self.tails: dict[_Lane, U8Grid | None] = {}
         for layer in layers:
             directory = layer_dir(out_dir, layer, renders_name)
             directory.mkdir(parents=True, exist_ok=True)
@@ -116,12 +130,12 @@ class RenderStream:
         end = min(stop + FXAA_HALO, self.size)
         return (len(queue) > 1 or stop >= self.size) and ahead >= end
 
-    def _antialias(self, key: tuple[str, bool], queue: deque[_Band]) -> _Halo | None:
+    def _pop_with_halo(self, lane: _Lane, queue: deque[_Band]) -> _Halo | None:
         """The head of ``queue``, popped: what its arches are antialiased with (its neighbours'
         rows and the arches' coverage), or None for a band no arch is near. Its tail is kept."""
         top, rgb = queue.popleft()
         stop = top + rgb.shape[0]
-        before, self.tails[key] = self.tails.get(key), rgb[-FXAA_HALO:]
+        before, self.tails[lane] = self.tails.get(lane), rgb[-FXAA_HALO:]
         found = self._cover(top, stop)
         if found is None:
             return None
@@ -137,21 +151,21 @@ class RenderStream:
         sheet = self.unlit[layer] if self.light is not None else self.lit[layer]
         while queue and self._halo_ready(queue, self.size):
             rgb = queue[0][1]
-            halo = self._antialias((layer, False), queue)
+            halo = self._pop_with_halo(_Lane(layer, relit=False), queue)
             self.cutter.put(sheet, rgb, None if halo is None else partial(_with_halo, halo=halo))
 
     def _release(self) -> None:
         """Every waiting band whose rows' terms are in, relit on its lit sheet's lane."""
         if self.light is None:
             return
-        ready = self.light.ready()
+        ready = self.light.collect()
         for layer, waiting in self.waiting.items():
             params = shader_light(layer)
             while waiting and waiting[0][0] + waiting[0][1].shape[0] <= ready:
                 if not self._halo_ready(waiting, ready):
                     break
                 top, rgb = waiting[0]
-                halo = self._antialias((layer, True), waiting)
+                halo = self._pop_with_halo(_Lane(layer, relit=True), waiting)
                 rows = (top - _rows(halo, "head"), top + rgb.shape[0] + _rows(halo, "tail"))
                 terms, land = _terms(self.light, *rows)
                 relight: Transform = partial(relight_rows, terms=terms, land=land, params=params)

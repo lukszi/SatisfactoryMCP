@@ -62,11 +62,8 @@ def _scene():
 def _rock_seen(field, heights, direct):
     """How much of each pixel the painted layer draws as rock, over the whole sheet."""
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
-    sources = compose._ground_sources(
-        field, Window(0, N, 0, N), N, borrow, height_dm=heights, direct=direct, seam=None,
-        regimes=None, measured_plane_u8=None, overlay=None, kernel=None, meshes=None,
-        reach=None, rivers=None, surface=None, water_level=None, sea=None,
-    )  # fmt: skip
+    inputs = compose.GroundInputs(height_dm=heights, direct=direct)
+    sources = compose._ground_sources(field, Window(0, N, 0, N), N, borrow, inputs)
     grid = band_grid(sources, span(0, N, (0, N), 0), span(0, N, (0, N), 0))
     surfaces, _owed = band_surfaces(sources, grid, {False})
     seen = surfaces[False].rock_seen

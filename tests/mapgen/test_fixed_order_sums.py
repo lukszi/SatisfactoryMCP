@@ -36,6 +36,7 @@ from mapgen.render.drawpool import PIECE_COLS
 from mapgen.terrain.sample import frame_coordinates
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.draw import draw_layers
 from tests.support.map_scenes import painted_ground_stub, relief_ground
 
 MAPGEN = Path(colour.__file__).parent
@@ -257,7 +258,7 @@ def test_a_pass_wider_than_16384_columns_is_the_same_bytes_in_pieces_of_any_widt
     reliefs = {layer: relief_ground(layer) for layer in RELIEF_PALETTES}
     drawn = {}
     for columns, threads in ((WIDE, 1), (16_385, 2), (PIECE_COLS, 4)):
-        sheets = compose.render_layers(
+        sheets = draw_layers(
             layers, field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, RENDER_PX, False,
             window=WIDE_WINDOW, painted=_wide_painted(field), relief=reliefs, threads=threads,
             columns=columns,

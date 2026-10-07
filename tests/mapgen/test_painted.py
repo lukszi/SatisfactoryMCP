@@ -389,7 +389,8 @@ def test_a_trail_narrower_than_the_pixel_is_drawn_at_every_phase_not_as_dots():
 
 
 def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkeypatch):
-    from mapgen.render import compose, painting
+    from mapgen.render import painting
+    from tests.support.draw import render_layer
 
     n = 400  # texels over the frame, 18.75 m each
     spacing_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / n
@@ -411,7 +412,7 @@ def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkey
                              water_optics=lambda taps, river=None: None)  # fmt: skip
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
     for size in (n // 4, n):
-        compose.render_layer("painted", field, None, 1, borrow, size, False,
+        render_layer("painted", field, None, 1, borrow, size, False,
                              height_dm=height.astype(np.float32), painted=ground)  # fmt: skip
     coarse, fine = (np.concatenate(seen[size]) for size in (n // 4, n))
     assert np.allclose(coarse[2:-2, 2:-2], 0.25, atol=1e-5), "four texels a pixel: their mean"

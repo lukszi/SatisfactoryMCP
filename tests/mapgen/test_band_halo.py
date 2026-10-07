@@ -28,6 +28,7 @@ from mapgen.terrain.render_meshes import MESH_CORAL
 from mapgen.terrain.sample import frame_coordinates
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.draw import render_layer
 
 #: Every size ``mapgen renders --size`` takes.
 SIZES = [RENDER_PX >> shift for shift in range(6)]
@@ -235,7 +236,7 @@ def _drawn(
 ) -> tuple[np.ndarray, _Capture]:
     capture = _Capture()
     borrow = (np.broadcast_to(np.int8(0), (SHEET_PX, SHEET_PX)), np.zeros_like(field.height_dm))
-    rgb = compose.render_layer(
+    rgb = render_layer(
         layer, field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, RENDER_PX, False,
         window=WINDOW, surface=capture, columns=columns,
     )  # fmt: skip

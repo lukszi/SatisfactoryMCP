@@ -23,7 +23,7 @@ from mapgen.palette.water.open_sea import open_sea
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.pools import free_ram_bytes
 from mapgen.render import compose, drawpool
-from mapgen.render.compose import BAND_ROWS, render_layer, render_layers
+from mapgen.render.compose import BAND_ROWS
 from mapgen.render.drawpool import (
     AHEAD,
     PIECE_COLS,
@@ -34,6 +34,7 @@ from mapgen.render.drawpool import (
 )
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.draw import draw_layers, render_layer
 
 #: Six bands, the last one short, one 1 m-scaled texel per output pixel.
 N = 5 * BAND_ROWS + 100
@@ -142,7 +143,7 @@ def test_one_pass_draws_each_layer_as_it_draws_alone_and_measures_once(tmp_path)
         for layer, band in rows.items():
             parts[layer].append(band)
 
-    kept = render_layers(
+    kept = draw_layers(
         ("terrain", "satellite"), scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow,
         N, False, scene.heights, direct=scene.direct, seam=seam, regimes=regimes,
         measured_plane_u8=scene.measured, overlay=scene.overlay, sea=scene.sea, unlit=True,
@@ -158,9 +159,9 @@ def test_one_pass_draws_each_layer_as_it_draws_alone_and_measures_once(tmp_path)
         assert surface.z.tobytes() == alone_surface.z.tobytes()
         assert surface.land.tobytes() == alone_surface.land.tobytes()
     with pytest.raises(ValueError, match="once"):
-        render_layers(("terrain", "terrain"), scene.field, None, 1, borrow, N, False)
+        draw_layers(("terrain", "terrain"), scene.field, None, 1, borrow, N, False)
     with pytest.raises(ValueError, match="painted"):
-        render_layers(("terrain",), scene.field, None, 1, borrow, N, False, painted=object())
+        draw_layers(("terrain",), scene.field, None, 1, borrow, N, False, painted=object())
 
 
 def test_the_bands_settle_in_order_whatever_order_their_pieces_finish(tmp_path, monkeypatch):

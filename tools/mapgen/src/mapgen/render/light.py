@@ -28,8 +28,12 @@ from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import CrownGrid, sheet_crowns
 from mapgen.lighting.stage import (
     LIGHT_DIR_NAME,
+    TERM_CROWNED_DIRECT,
+    TERM_CROWNED_SKY,
+    TERM_DIRECT,
+    TERM_SKY,
     Surface,
-    cast_digests,
+    caster_digests,
     discard,
     light_key,
     occluder_planes,
@@ -148,7 +152,8 @@ def relight_rows(rgb: U8Grid, terms: U8Grid, land: U8Grid, params: JsonObject) -
     A style that draws the crowns (``params["crowns"]``) takes the terms with their shadows
     and the canopy's own light (``stage.TERMS``); every other style the ground's alone.
     """
-    which, sky = (2, 3) if params.get("crowns") else (1, 0)
+    crowned = (TERM_CROWNED_DIRECT, TERM_CROWNED_SKY)
+    which, sky = crowned if params.get("crowns") else (TERM_DIRECT, TERM_SKY)
     out = np.empty_like(rgb)
     for top in range(0, rgb.shape[0], RELIGHT_ROWS):
         rows = slice(top, top + RELIGHT_ROWS)
@@ -231,7 +236,7 @@ class LightingRun:
         self.surface = Surface(scratch_root / LIGHT_CACHE_DIR_NAME, size)
         self.occluder = occluder
         # Hashed now, while the planes sheet_crowns just wrote are still in memory.
-        self.casts = cast_digests(occluder)
+        self.casts = caster_digests(occluder)
         self.light_workers = light_workers
         self.kept = None if cache_root is None else KeptLight(cache_root / KEPT_LIGHT_DIR_NAME)
         self.meta: JsonObject | None = None
@@ -297,8 +302,9 @@ class LightingRun:
         if not same:
             self.reuse = None
 
-    def ready(self) -> int:
-        """The rows whose terms are in, from the top: a run of block rows read or baked."""
+    def collect(self) -> int:
+        """Collect the block rows the bake has finished, and return the rows whose terms are
+        in, from the top: a run of block rows read or baked."""
         for row in range(len(self.reads)):
             if self.served[row] is None and self.bake is not None and row in self.bake.rows:
                 future = self.bake.rows[row]

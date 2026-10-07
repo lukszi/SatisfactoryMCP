@@ -24,12 +24,12 @@ from mapgen.palette.water.open_sea import (
 )
 from mapgen.palette.water.rivers import water_sources
 from mapgen.palette.water.shore import OCEAN_LEVEL_M, composite_meshes
-from mapgen.render.compose import render_layer
 from mapgen.render.lift import DIRECT_LIFT_KNEE_M, composite_top
 from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, relax
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from mapgen.terrain.void import pit_mask
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.draw import render_layer
 
 OCEAN_DM = round(OCEAN_LEVEL_M * hf.DM_PER_M)
 

@@ -11,6 +11,7 @@ from numpy.typing import NDArray
 from scipy import ndimage
 
 from satisfactory_mcp.core.arrays import BoolMask
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "PIT_FLOOR_M",
@@ -66,7 +67,7 @@ def pits(height_dm: NDArray[np.number], empty: BoolMask,
          void: BoolMask | None) -> tuple[BoolMask, BoolMask]:  # fmt: skip
     """The pits the artwork draws as void among the ``empty`` texels and the ground below
     ``PIT_FLOOR_M``, and that ground."""
-    floor = ~empty & (height_dm <= np.float32(PIT_FLOOR_M * 10.0))
+    floor = ~empty & (height_dm <= np.float32(PIT_FLOOR_M * hf.DM_PER_M))
     pit = np.zeros(empty.shape, bool) if void is None else pit_mask(empty, void, floor)
     return pit, floor
 

@@ -56,7 +56,7 @@ __all__ = [
     "PIECE_HALO",
     "BandSink",
     "DrawPass",
-    "render_layer",
+    "GroundInputs",
     "render_layers",
 ]
 
@@ -86,6 +86,33 @@ class HeldPlane(Protocol):
     def holding(self, bands: int) -> AbstractContextManager[object]:
         """Keep at least ``bands`` decoded while the block runs."""
         ...
+
+
+@dataclass(frozen=True)
+class GroundInputs:
+    """What a pass composes its ground from besides the field, and where the bands report.
+
+    ``height_dm`` is the rebuilt lattice (the field's own heights without it) and ``kernel``
+    the column taps' kernel (PCHIP without it). ``direct``, ``overlay`` and ``meshes`` are the
+    run's rasters, ``measured_plane_u8`` the measurement plane the regime table reads, and
+    ``reach``, ``rivers``, ``water_level`` and ``sea`` its water: ``sea``'s planes replace
+    ``water_level``'s. ``seam`` and ``regimes`` take the bands' measurements and ``surface``
+    their light, in band order.
+    """
+
+    height_dm: F32Grid | None = None
+    kernel: Kernel | None = None
+    direct: DirectPlanes | None = None
+    overlay: TopPlanes | None = None
+    meshes: MeshPlanes | None = None
+    measured_plane_u8: U8Grid | None = None
+    reach: U8Grid | None = None
+    rivers: RiverWater | None = None
+    water_level: I16Grid | None = None
+    sea: OpenSea | None = None
+    seam: SeamTrace | None = None
+    regimes: RegimeCoverage | None = None
+    surface: LightCapture | None = None
 
 
 @dataclass(frozen=True)
@@ -121,24 +148,13 @@ def render_layers(
     borrow: tuple[I8Grid, U8Grid],
     size: int,
     progress: bool,
-    height_dm: F32Grid | None = None,
-    direct: DirectPlanes | None = None,
-    seam: SeamTrace | None = None,
-    regimes: RegimeCoverage | None = None,
-    measured_plane_u8: U8Grid | None = None,
-    overlay: TopPlanes | None = None,
-    kernel: Kernel | None = None,
-    meshes: MeshPlanes | None = None,
+    ground: GroundInputs | None = None,
+    *,
     falls: F64Grid | None = None,
-    reach: U8Grid | None = None,
     painted: PaintedGround | None = None,
-    window: tuple[int, int, int, int] | None = None,
-    rivers: RiverWater | None = None,
     relief: Mapping[str, ReliefGround] | None = None,
+    window: tuple[int, int, int, int] | None = None,
     unlit: bool = False,
-    surface: LightCapture | None = None,
-    water_level: I16Grid | None = None,
-    sea: OpenSea | None = None,
     threads: int = 1,
     bands: BandSink | None = None,
     columns: int = PIECE_COLS,
@@ -150,11 +166,10 @@ def render_layers(
 
     ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. ``painted`` is
     the painted layer's ground and ``relief`` each relief layer's. ``unlit`` draws the sun
-    term flat; ``surface`` receives the heights and land weight the seabed rule draws, once,
-    whatever the layers. ``sea`` is the run's ``OpenSea``, whose water planes replace
-    ``water_level``'s. ``threads`` pieces are drawn at once, to the same bytes at any count
-    and any width; ``surface``, ``seam``, ``regimes`` and ``bands`` take the bands in order.
-    The rest: docs/spatial-and-map.md sections 20, 25, 40 and 42.
+    term flat; the ground's ``surface`` receives the heights and land weight the seabed rule
+    draws, once, whatever the layers. ``threads`` pieces are drawn at once, to the same bytes
+    at any count and any width; ``bands`` takes the bands in order. The rest:
+    docs/spatial-and-map.md sections 20, 25, 40 and 42.
     """
     if not layers or len(set(layers)) != len(layers):
         raise ValueError(f"a pass draws each of its layers once: {list(layers)}")
@@ -163,63 +178,27 @@ def render_layers(
     if columns < 1:
         raise ValueError(f"a piece draws at least one column, not {columns}")
     box = Window(*(window or (0, size, 0, size)))
-    ground = _ground_sources(
-        field, box, size, borrow,
-        height_dm=height_dm, direct=direct, seam=seam, regimes=regimes,
-        measured_plane_u8=measured_plane_u8, overlay=overlay, kernel=kernel, meshes=meshes,
-        reach=reach, rivers=rivers, surface=surface, water_level=water_level, sea=sea,
-    )  # fmt: skip
+    sources = _ground_sources(field, box, size, borrow, ground or GroundInputs())
     reliefs = relief or {}
     jobs = tuple(
-        layer_job(layer, ground, size, biome_rgb, biome_width,
-                  painted if layer == "painted" else None, reliefs.get(layer), falls, unlit)
+        layer_job(
+            layer,
+            sources,
+            size,
+            biome_rgb,
+            biome_width,
+            painted if layer == "painted" else None,
+            reliefs.get(layer),
+            falls,
+            unlit,
+        )
         for layer in layers
-    )  # fmt: skip
+    )
     shape = (box.r1 - box.r0, box.c1 - box.c0, 3)
     out = {} if bands is not None else {layer: np.empty(shape, np.uint8) for layer in layers}
-    _draw(DrawPass(ground, jobs, columns), _Bands(box, layers, out, bands), size, progress,
-          threads)  # fmt: skip
+    draw = DrawPass(sources, jobs, columns)
+    _draw(draw, _Bands(box, layers, out, bands), size, progress, threads)
     return out
-
-
-def render_layer(
-    layer: str,
-    field: hf.Field,
-    biome_rgb: U8Grid | None,
-    biome_width: int,
-    borrow: tuple[I8Grid, U8Grid],
-    size: int,
-    progress: bool,
-    height_dm: F32Grid | None = None,
-    direct: DirectPlanes | None = None,
-    seam: SeamTrace | None = None,
-    regimes: RegimeCoverage | None = None,
-    measured_plane_u8: U8Grid | None = None,
-    overlay: TopPlanes | None = None,
-    kernel: Kernel | None = None,
-    meshes: MeshPlanes | None = None,
-    falls: F64Grid | None = None,
-    reach: U8Grid | None = None,
-    painted: PaintedGround | None = None,
-    window: tuple[int, int, int, int] | None = None,
-    rivers: RiverWater | None = None,
-    relief: ReliefGround | None = None,
-    unlit: bool = False,
-    surface: LightCapture | None = None,
-    water_level: I16Grid | None = None,
-    sea: OpenSea | None = None,
-    threads: int = 1,
-    columns: int = PIECE_COLS,
-) -> U8Grid:
-    """One layer alone, in memory: ``render_layers`` with that layer and its own ``relief``."""
-    return render_layers(
-        (layer,), field, biome_rgb, biome_width, borrow, size, progress,
-        height_dm=height_dm, direct=direct, seam=seam, regimes=regimes,
-        measured_plane_u8=measured_plane_u8, overlay=overlay, kernel=kernel, meshes=meshes,
-        falls=falls, reach=reach, painted=painted, window=window, rivers=rivers,
-        relief=None if relief is None else {layer: relief}, unlit=unlit, surface=surface,
-        water_level=water_level, sea=sea, threads=threads, columns=columns,
-    )[layer]  # fmt: skip
 
 
 class _Bands:
@@ -274,8 +253,8 @@ def _draw(draw: DrawPass, bands: _Bands, size: int, progress: bool, threads: int
             band.append(measured)
             if len(band) < len(lefts):
                 continue
-            for merge, value in settle_band(draw.ground, draw.rows(top), band):
-                merge(value)
+            for merge in settle_band(draw.ground, draw.rows(top), band):
+                merge()
             band = []
             bands.settled(top)
             if progress and (top // BAND_ROWS) % 16 == 0:
@@ -289,33 +268,17 @@ def _draw(draw: DrawPass, bands: _Bands, size: int, progress: bool, threads: int
 
 
 def _ground_sources(
-    field: hf.Field,
-    window: Window,
-    size: int,
-    borrow: tuple[I8Grid, U8Grid],
-    *,
-    height_dm: F32Grid | None,
-    direct: DirectPlanes | None,
-    seam: SeamTrace | None,
-    regimes: RegimeCoverage | None,
-    measured_plane_u8: U8Grid | None,
-    overlay: TopPlanes | None,
-    kernel: Kernel | None,
-    meshes: MeshPlanes | None,
-    reach: U8Grid | None,
-    rivers: RiverWater | None,
-    surface: LightCapture | None,
-    water_level: I16Grid | None,
-    sea: OpenSea | None,
+    field: hf.Field, window: Window, size: int, borrow: tuple[I8Grid, U8Grid], inputs: GroundInputs
 ) -> GroundSources:
     """What the bands sample their ground from, with the column taps they share."""
-    heights: I16Grid | F32Grid = field.height_dm if height_dm is None else height_dm
-    kernel = taps_pchip if kernel is None else kernel
+    heights: I16Grid | F32Grid = field.height_dm if inputs.height_dm is None else inputs.height_dm
+    kernel = taps_pchip if inputs.kernel is None else inputs.kernel
     x_cm, y_cm = frame_coordinates(size)
     x_cm = x_cm[window.c0 : window.c1]
     spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
-    drawn, grades = (water_level, None) if sea is None else sea.planes
-    level, wet, measured = water_sources(field, rivers, drawn, grades)
+    sea, direct = inputs.sea, inputs.direct
+    drawn, grades = (inputs.water_level, None) if sea is None else sea.planes
+    level, wet, measured = water_sources(field, inputs.rivers, drawn, grades)
     water = None
     if level is not None and wet is not None and measured is not None:
         water = WaterPlanes(level, wet, measured)
@@ -335,17 +298,17 @@ def _ground_sources(
         spacing_m=spacing_m,
         direct=direct,
         lattice_edge=edge,
-        overlay=overlay,
-        meshes=meshes,
+        overlay=inputs.overlay,
+        meshes=inputs.meshes,
         water=water,
         sea=sea,
-        seam=seam,
-        regimes=_regime_sources(field, regimes, measured_plane_u8),
+        seam=inputs.seam,
+        regimes=_regime_sources(field, inputs.regimes, inputs.measured_plane_u8),
         borrow=borrow,
         blur_px=WATER_EDGE_BLUR_M / spacing_m,
-        reach=reach,
-        rivers=rivers,
-        capture=surface,
+        reach=inputs.reach,
+        rivers=inputs.rivers,
+        capture=inputs.surface,
         cols_smooth=kernel(field_x, field.width),
         cols_linear=taps_linear(field_x, field.width),
         art_cols=taps_linear(art_x, SHEET_PX),
@@ -377,10 +340,7 @@ def _band_planes(draw: DrawPass) -> list[HeldPlane]:
     for job in draw.jobs:
         if job.painted is not None:
             painted = job.painted.ground
-            planes += [
-                getattr(painted, "rock_family", None),
-                *(getattr(painted, "titan", None) or ())[:2],
-            ]
+            planes += [painted.rock_family, *(painted.titan or ())[:2]]
     return [plane for plane in planes if isinstance(plane, HeldPlane)]
 
 

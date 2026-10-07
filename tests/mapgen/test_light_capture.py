@@ -19,10 +19,11 @@ from mapgen.gamedata.ground.paint_store import CROWN_NAME, META_NAME
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import RELIEF_PALETTES
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
-from mapgen.render import compose, painting
+from mapgen.render import painting
 from mapgen.render.light import crown_occluder, crown_tops
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.draw import draw_layers, render_layer
 
 #: One band of output, one texel of the field a pixel.
 N = 96
@@ -74,7 +75,8 @@ def _scene() -> SimpleNamespace:
 def _painted_ground() -> SimpleNamespace:
     """The parts of the painted ground ``render_layer`` reads before the painter."""
     rock = [np.zeros((N // 4, N // 4), np.float32)]
-    return SimpleNamespace(rock=rock, crowns=None, water_optics=lambda taps, river=None: None)
+    return SimpleNamespace(rock=rock, rock_family=None, titan=None, crowns=None,
+                           water_optics=lambda taps, river=None: None)  # fmt: skip
 
 
 def _draw(scene, layer: str) -> _Surface:
@@ -83,7 +85,7 @@ def _draw(scene, layer: str) -> _Surface:
     relief = None
     if layer in RELIEF_PALETTES:
         relief = ReliefGround(RELIEF_PALETTES[layer][0], scene.field, None, [])
-    compose.render_layer(
+    render_layer(
         layer, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
         scene.heights, meshes=scene.meshes, unlit=True, surface=surface,
         painted=_painted_ground() if layer == "painted" else None, relief=relief,
@@ -126,13 +128,13 @@ def test_one_pass_draws_every_layer_as_alone_painted_over_its_own_meshes(monkeyp
     reliefs = {layer: ReliefGround(RELIEF_PALETTES[layer][0], scene.field, None, [])
                for layer in LAYERS if layer in RELIEF_PALETTES}  # fmt: skip
     surface = _Surface()
-    drawn = compose.render_layers(
+    drawn = draw_layers(
         LAYERS, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
         scene.heights, meshes=scene.meshes, unlit=True, surface=surface,
         painted=_painted_ground(), relief=reliefs,
     )  # fmt: skip
     for layer in LAYERS:
-        alone = compose.render_layer(
+        alone = render_layer(
             layer, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
             scene.heights, meshes=scene.meshes, unlit=True,
             painted=_painted_ground() if layer == "painted" else None, relief=reliefs.get(layer),
@@ -158,7 +160,7 @@ def test_a_pass_in_column_pieces_draws_and_captures_what_whole_rows_do(monkeypat
     drawn = {}
     for columns in (N, 23, 7):
         surface = _Surface()
-        sheets = compose.render_layers(
+        sheets = draw_layers(
             LAYERS, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
             scene.heights, meshes=scene.meshes, unlit=True, surface=surface,
             painted=_painted_ground(), relief=reliefs, threads=3, columns=columns,

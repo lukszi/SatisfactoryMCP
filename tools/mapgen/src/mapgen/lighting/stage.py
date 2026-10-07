@@ -73,6 +73,10 @@ __all__ = [
     "LIGHT_WORKER_BYTES",
     "LIGHT_WORKER_CAP",
     "TERMS",
+    "TERM_CROWNED_DIRECT",
+    "TERM_CROWNED_SKY",
+    "TERM_DIRECT",
+    "TERM_SKY",
     "BlockDone",
     "BlockJob",
     "Occluder",
@@ -80,7 +84,7 @@ __all__ = [
     "Surface",
     "allocate_work_arrays",
     "bake_block",
-    "cast_digests",
+    "caster_digests",
     "default_terms",
     "discard",
     "light_key",
@@ -102,9 +106,10 @@ DIGEST_ROWS = 1024
 #: Native tiles per block edge; a block is computed with its own halo.
 BLOCK_TILES = 16
 
-#: The default sun's terms a pixel: sky view, the ground's direct term, then the painted
-#: layer's direct term and sky view, crowned and with its canopy's own light.
+#: The default sun's terms a pixel, by channel: sky view, the ground's direct term, then the
+#: painted layer's direct term and sky view, crowned and with its canopy's own light.
 TERMS = 4
+TERM_SKY, TERM_DIRECT, TERM_CROWNED_DIRECT, TERM_CROWNED_SKY = range(TERMS)
 
 #: A block's rows whose default-sun terms are made at a time, so its full-resolution planes
 #: stay small beside the block's own.
@@ -432,15 +437,15 @@ def _default_terms(
         rows = slice(start, min(start + TERM_ROWS, n))
         out = terms[r0 + rows.start : r0 + rows.stop, c0 : c0 + n]
         part = nrm[rows]
-        out[..., 0] = out[..., 3] = part[..., 2]
-        for k, crowned in ((1, False), (2, True)):
+        out[..., TERM_SKY] = out[..., TERM_CROWNED_SKY] = part[..., 2]
+        for k, crowned in ((TERM_DIRECT, False), (TERM_CROWNED_DIRECT, True)):
             horizon = upsampled(ring_rows(ringed[crowned], rows))
             direct = shaded_direct(part, horizon, DEFAULT_SUN, _filtered(shades, crowned, rows))
             if crowned and canopy is not None:
                 light = canopy_rows(canopy, job.block, job.spacing_m, rows)
                 open_sky = part[..., 2].astype(np.float32) / np.float32(255.0)
                 direct, open_sky = blend_canopy(direct, open_sky, light)
-                out[..., 3] = np.round(np.clip(open_sky, 0, 1) * 255)
+                out[..., TERM_CROWNED_SKY] = np.round(np.clip(open_sky, 0, 1) * 255)
             out[..., k] = np.clip(np.round(direct * DIRECT_SCALE), 0, 255)
 
 
@@ -493,7 +498,7 @@ def plane_digest(plane: NDArray[np.number] | None) -> str | None:
     return "sha256:" + digest.hexdigest()
 
 
-def cast_digests(occluder: Occluder | None) -> JsonObject:
+def caster_digests(occluder: Occluder | None) -> JsonObject:
     """What casts on the surface in a bake besides it, digested: the crown tops and cover.
     The slabs are the surface's own, digested with it."""
     top, cover = occluder if isinstance(occluder, tuple) else (occluder, None)
@@ -503,7 +508,7 @@ def cast_digests(occluder: Occluder | None) -> JsonObject:
 def light_key(
     surface: Surface, casts: JsonObject, occluder_layers: Sequence[str] = ()
 ) -> JsonObject:
-    """What a bake reads: the drawn surface, ``cast_digests``, the size, the light model and
+    """What a bake reads: the drawn surface, ``caster_digests``, the size, the light model and
     ``LIGHT_VERSION``. Two bakes under one ``digest`` write the same pyramid and terms."""
     key: JsonObject = {
         "light_version": LIGHT_VERSION,

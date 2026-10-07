@@ -11,65 +11,30 @@ import argparse
 import gc
 import json
 import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
-from mapgen.cache import (
-    DIRECT_CACHE_DIR_NAME,
-    TOP_CACHE_DIR_NAME,
-    DirectPlanes,
-    TopPlanes,
-    cached_family,
-)
 from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, Refusal, base_parser, require_gen
-from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
+from mapgen.gamedata.frame import RENDER_PX
 from mapgen.gamedata.ground.paint_store import PAINT_DIR
-from mapgen.gamedata.water.channel import artwork_planes
-from mapgen.palette.painted.ground import PaintedGround
-from mapgen.palette.relief import ReliefGround
-from mapgen.palette.styles import LAYER_STYLES, RELIEF_PALETTES, SHORE_OPTICS, STYLE_DIGESTS
-from mapgen.palette.water.open_sea import OpenSea
-from mapgen.palette.water.perched import WaterSurfaces
-from mapgen.palette.water.surface import drawn_water
-from mapgen.render.biome_inputs import BiomeInputs, read_biome_inputs
-from mapgen.render.cached_rasters import LevelSweep, RasterGrid, direct_raster, top_raster
-from mapgen.render.compose import DRAW_STAGE, render_layers
+from mapgen.palette.styles import LAYER_STYLES, SHORE_OPTICS
+from mapgen.render.compose import DRAW_STAGE, GroundInputs, render_layers
 from mapgen.render.drawpool import add_draw_flags, draw_threads
-from mapgen.render.extras import RenderExtras, load_extras, remove_run_caches
-from mapgen.render.inputs import (
-    Lattice,
-    PaintInputs,
-    artwork_borrow,
-    check_parallel_cutter,
-    field_input,
-    field_lattice,
-    field_water_source,
-    load_field,
-    open_game_inputs,
-    prepare_paint,
-    rebuilt_lattice,
-    refuse_restyle_gaps,
-    refuse_stale_layers,
-    water_record,
-)
+from mapgen.render.extras import remove_run_caches
 from mapgen.render.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.render.light import LightingRun, add_light_flags, claim_scratch, crown_tops, light_run
-from mapgen.render.stream import RenderStream
+from mapgen.render.prepare import BIOME_LAYERS, Prepared, Setup, prepare
+from mapgen.render.stream import RenderOut, RenderStream
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace, measured_lines
 from mapgen.terrain.rasters import DIRECT_SUBSAMPLES
 from mapgen.terrain.sample import taps_cubic, taps_pchip
 from mapgen.tiles.cutter import TileStream
-from mapgen.tiles.imaging import TileImaging, load_imaging
-from mapgen.tiles.layer_meta import LayerDraw, RenderFacts, RunRecord, layer_sidecar
+from mapgen.tiles.imaging import load_imaging
+from mapgen.tiles.layer_meta import LayerDraw, layer_sidecar
 from mapgen.tiles.pyramid import add_worker_flags, layer_dir, pool_sizes, tree_text
 from mapgen.tiles.recipes import RECIPE_KERNEL_ONLY
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME
-from satisfactory_mcp.core.arrays import I8Grid, U8Grid
-from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
-from satisfactory_mcp.core.gameassets.provenance import changelist
 from satisfactory_mcp.core.gameassets.pyramid import PyramidError
-from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 from satisfactory_mcp.core.mapprogress import encode_stage
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -77,48 +42,8 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 #: The layers this command draws, in the order they are cut; ``--layer`` restricts it.
 LAYERS = ("terrain", "satellite", "painted", "relief", "relief-dark")
 
-#: The layers coloured from the biome raster, which is read only when one of them is drawn.
-BIOME_LAYERS = ("satellite", "painted", "relief")
-
 #: Exit code of a run whose tiles could not be cut into place.
 CUT_FAILED = 1
-
-
-@dataclass(frozen=True)
-class Setup:
-    """How a run reads the game and cuts its tiles, and where its raster caches go."""
-
-    cache_root: Path
-    decoder: BlockDecoder
-    image_mod: TileImaging
-    versions: dict[str, str]
-    cut_workers: int
-
-
-@dataclass(frozen=True)
-class Prepared:
-    """What every layer of a run is drawn from, and what its sidecars say alike.
-
-    It holds the raster caches' memory maps: the run lets it go before removing them.
-    """
-
-    field: hf.Field
-    lattice: Lattice
-    borrow: tuple[I8Grid, U8Grid]
-    biome: BiomeInputs
-    paint: PaintInputs | None
-    direct: DirectPlanes | None
-    top: TopPlanes | None
-    extras: RenderExtras
-    water: WaterSurfaces
-    sea: OpenSea | None
-    relief: dict[str, ReliefGround]
-    style_digests: dict[str, str]
-    record: RunRecord
-
-    @property
-    def painted(self) -> PaintedGround | None:
-        return None if self.paint is None else self.paint.ground
 
 
 def main() -> int:
@@ -132,7 +57,7 @@ def main() -> int:
     try:
         root = claim_scratch(args, renders)
         versions = require_gen("ooz", "texture2ddecoder", "PIL.Image", "zstandard")
-        started = _render(args, layers, root, (cache_root, versions))
+        started = _render(args, layers, root, cache_root, versions)
     except Refusal as refusal:
         print(refusal.message)
         return refusal.code
@@ -149,18 +74,19 @@ def _render(
     args: argparse.Namespace,
     layers: tuple[str, ...],
     root: Path | None,
-    caching: tuple[Path, dict[str, str]],
+    cache_root: Path,
+    versions: dict[str, str],
 ) -> float:
     """Prepare the run, then draw and cut every layer; when the drawing started.
 
-    ``root`` is the light's scratch, None without it; ``caching`` the raster caches' root
-    and the ``gen`` extra's versions.
+    ``root`` is the light's scratch, None without it; ``cache_root`` the raster caches' root,
+    and ``versions`` the ``gen`` extra's.
     """
     import texture2ddecoder as decoder
 
     light_workers, cut_workers = pool_sizes(args)
-    setup = Setup(caching[0], decoder, load_imaging(), caching[1], cut_workers)
-    run = _prepare(args, layers, setup)
+    setup = Setup(cache_root, decoder, load_imaging(), versions, cut_workers)
+    run = prepare(args, layers, setup)
     crowns = None if root is None else crown_tops(args.paint_dir, run.painted)
     with (
         light_run(root, args.size, crowns, light_workers, setup.cache_root) as light,
@@ -169,135 +95,6 @@ def _render(
         started = time.time()
         _draw_layers(args, layers, run, light, cutter)
     return started
-
-
-def _prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> Prepared:
-    """Every stage before the first layer is drawn, in the order the run reports them."""
-    cache_root, image_mod, versions = setup.cache_root, setup.image_mod, setup.versions
-    field = load_field(args.field)
-    spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / args.size
-    lattice = field_lattice(field, spacing_m, args.kernel_only)
-    if not args.force:
-        refuse_stale_layers(args.out_dir, args.renders_name, layers, field.build)
-    grid = RasterGrid(args.size, args.direct_subsamples, field.build, not args.quiet)
-    if args.restyle and lattice.measured_plane is not None:
-        titan = "painted" in layers and not args.no_titan_trees
-        refuse_restyle_gaps(
-            cache_root, grid, top=not args.no_top, meshes=not args.no_meshes, titan=titan
-        )
-    game = open_game_inputs(args.game, setup.decoder, image_mod, versions["pyooz"])
-    inputs = {
-        "heightfield": field_input(field, args.kernel_only),
-        "artwork_sheet": game.artwork_input(),
-    }
-    borrow = artwork_borrow(game.artwork, field)
-    water_source = field_water_source(field)
-    art_water, art_void = (None, None) if args.kernel_only else artwork_planes(game.artwork)
-    lattice = rebuilt_lattice(lattice, field, game.store, art_void)
-    parallel_check = None
-    if args.check_parallel:
-        scratch = args.out_dir / "parallel.check"
-        workers = setup.cut_workers
-        parallel_check = check_parallel_cutter(game.artwork, image_mod, scratch, workers)
-    biome = BiomeInputs()
-    if any(layer in BIOME_LAYERS for layer in layers):
-        biome = read_biome_inputs(
-            game.store, game.scripts, game.artwork, image_mod, game.build_cl, versions["pyooz"]
-        )
-        inputs["biome_raster"] = biome.provenance or {}
-    style_digests = dict(STYLE_DIGESTS)
-    paint = None
-    if "painted" in layers and biome.raster is not None:
-        paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, biome.raster,
-                              biome.drawn)  # fmt: skip
-        inputs["paint"], style_digests["painted"] = paint.provenance, paint.digest
-    level = LevelSweep(game.store, game.scripts, not args.quiet)
-    direct, top, raster_sources = _rasters(args, setup, lattice, (level, grid), paint, inputs)
-    two_regime = lattice.measured_plane is not None
-    extras = load_extras(
-        cache_root, args.size, field.build, level, field,
-        meshes=two_regime and not args.no_meshes,
-        titan=two_regime and paint is not None and not args.no_titan_trees,
-        rivers=not args.kernel_only, quiet=args.quiet,
-    )  # fmt: skip
-    if extras.titan is not None and paint is not None:
-        paint.ground.attach_titan(extras.titan)
-    for name in extras.readers:
-        inputs[name] = {"cl": changelist(field.build), "reader_version": READER_VERSIONS[name]}
-    water, sea, planes = drawn_water(
-        field, args.kernel_only, extras.rivers, (lattice.heights, lattice.ground), art_water
-    )
-    if paint is not None:
-        paint.block["water_classes"] = paint.ground.classify_water(field, planes)
-    relief = {
-        layer: ReliefGround(
-            RELIEF_PALETTES[layer][0], field, biome.raster, list(biome.drawn), planes,
-            lattice.heights,
-        )
-        for layer in layers
-        if layer in RELIEF_PALETTES
-    }  # fmt: skip
-    facts = RenderFacts(
-        size=args.size,
-        spacing_m=spacing_m,
-        subsamples=args.direct_subsamples,
-        two_regime=direct is not None,
-        composition=lattice.composition(top_overlay=top is not None),
-        water=water_record(water, sea, extras.river_meta, spacing_m, water_source),
-        cut_workers=setup.cut_workers,
-        parallel_check=parallel_check,
-        pillow_version=versions["pillow"],
-    )
-    record = RunRecord(
-        render=facts,
-        recipe=lattice.recipe,
-        kernel_only=args.kernel_only,
-        field_meta=field.meta,
-        build_raw=game.build_raw,
-        inputs=inputs,
-        sources={**borrow.source, **raster_sources, **extras.mesh_source},
-        biome_source=biome.source,
-        paint_source={} if paint is None else {"paint": paint.block, **extras.titan_source},
-    )
-    return Prepared(
-        field, lattice, borrow.planes, biome, paint, direct, top, extras, water, sea, relief,
-        style_digests, record,
-    )  # fmt: skip
-
-
-def _rasters(
-    args: argparse.Namespace,
-    setup: Setup,
-    lattice: Lattice,
-    rasters: tuple[LevelSweep, RasterGrid],
-    paint: PaintInputs | None,
-    inputs: dict[str, JsonObject],
-) -> tuple[DirectPlanes | None, TopPlanes | None, JsonObject]:
-    """The rocks and the top overlay at the render's own spacing, and their sidecar blocks.
-
-    ``rasters`` is the level sweep and the grid. None for ``--kernel-only``, which opens no
-    geometry.
-    """
-    if lattice.measured_plane is None or lattice.ground is None:
-        return None, None, {}
-    level, grid = rasters
-    cache = setup.cache_root / DIRECT_CACHE_DIR_NAME
-    rock, sources = direct_raster(level, cache, grid, setup.versions["pyooz"])
-    direct = DirectPlanes(rock.z, rock.coverage, lattice.ground, args.direct_subsamples,
-                          rock.under, rock.floor)  # fmt: skip
-    inputs["cliff_geometry"] = {
-        "cl": changelist(grid.build),
-        "reader_version": READER_VERSIONS["cliff_geometry"],
-    }
-    if paint is not None:
-        paint.ground.attach_families(cached_family(cache, grid.stamp))
-        for name in ("rock_families",) + (() if args.no_titan_trees else ("titan_trees",)):
-            inputs[name] = {**inputs["cliff_geometry"], "reader_version": READER_VERSIONS[name]}
-    top = None
-    if not args.no_top:
-        top, top_source = top_raster(level, setup.cache_root / TOP_CACHE_DIR_NAME, grid)
-        sources = {**sources, **top_source}
-    return direct, top, sources
 
 
 def _draw_layers(
@@ -317,41 +114,71 @@ def _draw_layers(
     print(encode_stage(DRAW_STAGE, 0.0), flush=True)
     started = time.time()
     arches = None if run.top is None else run.top.arch_coverage
-    stream = RenderStream(cutter, layers, (args.out_dir, args.renders_name), args.size,
-                          run.record.recipe, light, arches)  # fmt: skip
+    out = RenderOut(args.out_dir, args.renders_name)
+    stream = RenderStream(cutter, layers, out, args.size, run.record.recipe, light, arches)
+    ground = GroundInputs(
+        height_dm=run.lattice.heights,
+        kernel=taps_cubic if args.kernel_only else taps_pchip,
+        direct=run.direct,
+        overlay=run.top,
+        meshes=run.extras.meshes,
+        measured_plane_u8=run.lattice.measured_plane,
+        reach=run.water.reach,
+        rivers=run.extras.rivers,
+        water_level=run.water.level,
+        sea=run.sea,
+        seam=seam,
+        regimes=regimes,
+        surface=light.surface if light else None,
+    )
     render_layers(
-        layers, run.field, run.biome.rgb, run.biome.width, run.borrow, args.size,
-        not args.quiet, height_dm=run.lattice.heights, direct=run.direct,
-        measured_plane_u8=run.lattice.measured_plane, overlay=run.top,
-        kernel=taps_cubic if args.kernel_only else taps_pchip, meshes=run.extras.meshes,
-        falls=run.extras.falls, reach=run.water.reach, water_level=run.water.level,
-        sea=run.sea, painted=run.painted, rivers=run.extras.rivers, relief=run.relief,
-        seam=seam, regimes=regimes, unlit=light is not None, columns=args.draw_columns,
-        surface=light.surface if light else None, threads=threads, bands=stream.put,
-    )  # fmt: skip
-    timing = (time.time() - started, threads)
+        layers,
+        run.field,
+        run.biome.rgb,
+        run.biome.width,
+        run.borrow,
+        args.size,
+        not args.quiet,
+        ground,
+        falls=run.extras.falls,
+        painted=run.painted,
+        relief=run.relief,
+        unlit=light is not None,
+        threads=threads,
+        bands=stream.put,
+        columns=args.draw_columns,
+    )
+    seconds = time.time() - started
     measured: JsonObject = {}
     if seam is not None and regimes is not None:
         trace, table = seam.result(), regimes.result()
         measured = {"seam_trace": trace, "regimes": table}
         print("\n".join(measured_lines(trace, table)))
     stream.finish()
+    done = _Pass(measured, seconds, threads)
     for layer in layers:
         print(encode_stage(f"cut:{layer}", 0.0), flush=True)
-        _install(args, layer, stream, (run, light), measured, timing)
+        _install(args, layer, stream, run, light, done)
+
+
+class _Pass(NamedTuple):
+    """What every layer's sidecar says alike of the pass: its measurements, and the seconds
+    and threads it drew in."""
+
+    measured: JsonObject
+    seconds: float
+    threads: int
 
 
 def _install(
     args: argparse.Namespace,
     layer: str,
     stream: RenderStream,
-    context: tuple[Prepared, LightingRun | None],
-    measured: JsonObject,
-    timing: tuple[float, int],
+    run: Prepared,
+    light: LightingRun | None,
+    done: _Pass,
 ) -> None:
-    """Install one layer's trees and write its sidecar; ``timing`` is the pass's seconds and
-    threads, which every layer of the pass records."""
-    run, light = context
+    """Install one layer's trees and write its sidecar."""
     try:
         trees = stream.install(layer)
     except PyramidError as exc:
@@ -363,10 +190,10 @@ def _install(
         style_id=LAYER_STYLES[layer],
         style_digest=run.style_digests[layer],
         biome=layer in BIOME_LAYERS,
-        measured=measured,
+        measured=done.measured,
         shore_optics=cast(JsonValue, SHORE_OPTICS[layer]),
-        seconds_to_draw=timing[0],
-        draw_threads=timing[1],
+        seconds_to_draw=done.seconds,
+        draw_threads=done.threads,
         seconds_to_cut=cut,
     )
     sidecar = layer_sidecar(run.record, draw, stats, dense)
