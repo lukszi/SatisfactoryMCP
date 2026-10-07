@@ -81,7 +81,7 @@ rather than the one a game session is running against.
 | `src/chat/` | what the page and chat share: advice, asks, pins and the store behind them |
 | `vite.config.ts` | where the build writes, the banner it stamps, the licence it copies out of `node_modules/leaflet/`, the dev proxy |
 | `node-fs.d.ts` | the one Node module the config imports, declared by hand instead of installing `@types/node` |
-| `scripts/` | `typegen.mjs` regenerates the schema; `stamp-schema.mjs` re-applies its provenance header |
+| `scripts/` | `typegen.mjs` regenerates the schema; `stamp-schema.mjs` re-applies its provenance header; `lcov-posix.mjs` writes the coverage report's paths with `/` |
 | `test/`, `vitest.config.ts` | the unit tests, one file per module under the same path as in `src/`, and how `npm test` runs them |
 
 Four things about the graph are deliberate and easy to undo by accident.
@@ -173,7 +173,10 @@ source, and a test file is not part of the page.
 
 Coverage spans every module under `src/`, tested or not, and is written to `coverage/lcov.info`
 (untracked) with paths relative to the repository root, which is how Sonar's
-`sonar.javascript.lcov.reportPaths` resolves them. `tests/frontend/test_format_ts.py` stays: it
+`sonar.javascript.lcov.reportPaths` resolves them. Vitest writes those paths with `\` on
+Windows, which the Linux scanner container cannot resolve, so `npm test`'s `posttest` step
+(`scripts/lcov-posix.mjs`) rewrites them with `/`. It runs only after a passing run. Sonar
+scans `test/` as tests, not as page source. `tests/frontend/test_format_ts.py` stays: it
 holds `format.ts` to the Python tools' own rounding, a comparison only the Python side can make.
 
 ## Types
