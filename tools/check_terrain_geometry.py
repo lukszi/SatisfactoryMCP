@@ -519,8 +519,6 @@ def load_probes(
             points = points[np.load(foliage_mask)]
         probes["foliage"] = points
     provenance = field.provenance_plane
-    if provenance is None:
-        raise SystemExit("the shipped field has no provenance plane")
     province: dict[str, BoolMask] = {}
     for name, pts in probes.items():
         row, col, _on_grid = world_to_texel(pts[:, 0], pts[:, 1])

@@ -47,8 +47,7 @@ def _store(tmp_path, sprites, records, materials):
     species = [
         {"name": f"S{i}", "materials": materials, "sprite": entry} for i, entry in enumerate(index)
     ]
-    meta = {"crowns": {"species": species}, "files": {data.CROWNS_NAME: {}}}
-    return load_crowns(tmp_path, meta)
+    return load_crowns(tmp_path, {"species": species}, {data.CROWNS_NAME})
 
 
 # ----------------------------------------------------------------------- the paint input
@@ -193,9 +192,7 @@ def test_the_taller_crown_is_drawn_over_the_lower_one(tmp_path):
         {"name": "A", "materials": [{"linear": [1.0, 0.0, 0.0]}], "sprite": index[0]},
         {"name": "B", "materials": [{"linear": [0.0, 0.0, 1.0]}], "sprite": index[1]},
     ]
-    crowns = load_crowns(
-        tmp_path, {"crowns": {"species": species}, "files": {data.CROWNS_NAME: {}}}
-    )
+    crowns = load_crowns(tmp_path, {"species": species}, {data.CROWNS_NAME})
     band = _band(crowns)
     centre = band["rgb"][40, 40] / band["cover"][40, 40]
     assert centre[0] > 0.9 and centre[2] < 0.1, "the crown standing 5 m higher is on top"
@@ -238,8 +235,7 @@ def test_a_coral_tree_is_left_to_its_mesh_and_not_drawn_as_a_crown(tmp_path):
         for mesh, entry in zip((coral, tree), index, strict=True)
     ]  # fmt: skip
     assert meshed_species(species).tolist() == [True, False]
-    meta = {"crowns": {"species": species}, "files": {data.CROWNS_NAME: {}}}
-    crowns = load_crowns(tmp_path, meta)
+    crowns = load_crowns(tmp_path, {"species": species}, {data.CROWNS_NAME})
     assert crowns.records["species"].tolist() == [1], "the render-only mesh pass draws coral"
     assert not _band(crowns)["cover"].any(), "no dome stands over the coral's own top"
     assert _band(crowns, x0=4100.0, y0=4100.0)["cover"].max() > 0.9, "the tree is drawn"

@@ -7,14 +7,13 @@ Each style is a JSON file in ``palettes/``, refused at import unless it has its 
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
 
 import numpy as np
-from numpy.typing import NDArray
 from scipy import ndimage
 
+from mapgen.gamedata.ground.biome import BiomeRaster
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
 from mapgen.palette.scene import (
     FloatGrid,
@@ -47,7 +46,6 @@ __all__ = [
     "HIGH_LIFT",
     "HIGH_LO_M",
     "HIGH_RGB",
-    "LAYER_PAINTERS",
     "LAYER_STYLES",
     "NOISE_OCTAVES",
     "NOISE_SEED",
@@ -58,6 +56,7 @@ __all__ = [
     "PALETTE_DIR",
     "PIT_EDGE_RGB",
     "PIT_RGB",
+    "PLAIN_LAYERS",
     "RAMP_HI_PCT",
     "RAMP_LO_PCT",
     "RAMP_STOPS",
@@ -82,7 +81,6 @@ __all__ = [
     "VOID_RIM_RGB",
     "WATER_DEEP",
     "WATER_SHALLOW",
-    "area_plane",
     "biome_colour_field",
     "biome_index",
     "biome_lookup",
@@ -146,12 +144,12 @@ STYLE_DIGESTS = {
 }
 
 
-def painted_style(no_titan_trees: bool) -> tuple[dict[str, object], str]:
+def painted_style(no_titan_trees: bool) -> tuple[PaintedPalette, str]:
     """The painted palette and its digest, with the Titan trees switched off on request."""
     if not no_titan_trees:
-        return cast(dict[str, object], PAINTED_PALETTE), PAINTED_DIGEST
+        return PAINTED_PALETTE, PAINTED_DIGEST
     trees: TitanTreesStyle = {**PAINTED_PALETTE["titan_trees"], "opacity": 0}
-    palette: dict[str, object] = {**PAINTED_PALETTE, "titan_trees": trees}
+    palette: PaintedPalette = {**PAINTED_PALETTE, "titan_trees": trees}
     return palette, palette_digest(palette)
 
 
@@ -227,17 +225,12 @@ NOISE_OCTAVES = tuple(
 NOISE_SMOOTH = 1.0
 
 
-def area_plane(biome: Mapping[str, object]) -> NDArray[np.integer]:
-    """The biome raster's (``gamedata.ground.biome.read_biome``) plane of area indices."""
-    return np.asarray(biome["area"])
-
-
-def biome_colour_field(biome: Mapping[str, object], table: F32Grid) -> U8Grid:
+def biome_colour_field(biome: BiomeRaster, table: F32Grid) -> U8Grid:
     """The raster's indices turned into colour, then blurred so no area boundary is a line.
 
     Done once at the raster's own 4096, one channel at a time, and kept as uint8.
     """
-    area = area_plane(biome)
+    area = biome["area"]
     field = np.empty(area.shape + (3,), np.uint8)
     for channel in range(3):
         blurred = ndimage.gaussian_filter(
@@ -247,9 +240,9 @@ def biome_colour_field(biome: Mapping[str, object], table: F32Grid) -> U8Grid:
     return field
 
 
-def biome_lookup(biome: Mapping[str, object]) -> tuple[F32Grid, list[str]]:
+def biome_lookup(biome: BiomeRaster) -> tuple[F32Grid, list[str]]:
     """Per palette index: its RGB in the designed palette, and the name it was drawn as."""
-    names = cast(list[str | None], biome["names"])
+    names = biome["names"]
     rgb = np.zeros((len(names), 3), np.float32)
     drawn: list[str] = []
     for index, name in enumerate(names):
@@ -364,11 +357,8 @@ def _void_blend(
     return (rgb * (1.0 - weight) + colour * weight) * (1.0 - line) + VOID_RIM_RGB * line
 
 
-#: The painters ``render.compose`` calls by the layer's name.
-LAYER_PAINTERS: dict[str, Callable[[SatelliteScene], FloatGrid]] = {
-    "terrain": terrain_colours,
-    "satellite": satellite_colours,
-}
+#: The layers ``render.compose`` draws with ``terrain_colours`` or ``satellite_colours``.
+PLAIN_LAYERS = frozenset({"terrain", "satellite"})
 
 
 def ramp_range(field: hf.Field) -> tuple[float, float]:

@@ -16,15 +16,11 @@ __all__ = [
     "BandGrid",
     "BandScene",
     "BandTaps",
-    "CrownBand",
-    "CrownLayer",
     "FloatGrid",
-    "PaintedScene",
     "ReconciledWater",
     "ReliefScene",
     "SatelliteScene",
     "ShadedScene",
-    "WaterOptics",
     "WaterPlanes",
     "WaterTerms",
     "field_heights",
@@ -94,37 +90,6 @@ class WaterTerms(TypedDict):
     wet: NotRequired[FloatGrid]
 
 
-class CrownBand(TypedDict, total=False):
-    """The crowns stamped over a band: cover, linear colour, dome and top, and the dome's sun."""
-
-    cover: FloatGrid
-    rgb: FloatGrid
-    dome_m: FloatGrid
-    top_cm: FloatGrid
-    ndl: FloatGrid
-
-
-class CrownLayer(TypedDict):
-    """The crowns lit and ready to lay over the pixel: alpha, colour, top and sunk share."""
-
-    alpha: FloatGrid
-    colour: FloatGrid
-    top_m: FloatGrid
-    sunk: FloatGrid
-
-
-class WaterOptics(TypedDict, total=False):
-    """Per-pixel water optics of the painted style's classes, and the class shares asked for."""
-
-    k: FloatGrid
-    body: FloatGrid
-    deep: FloatGrid
-    deep_tau_m: FloatGrid
-    turbidity: FloatGrid
-    tint: FloatGrid
-    share: dict[int, FloatGrid]
-
-
 class BandScene(TypedDict):
     """One band as every painter reads it: heights, the borrowed light, the ramp, the water."""
 
@@ -154,17 +119,3 @@ class ReliefScene(BandScene):
 
     spacing_m: float
     unlit: NotRequired[bool]
-
-
-class PaintedScene(BandScene):
-    """A band of the painted style: its crowns, sun term, rock and mesh weights and optics."""
-
-    crowns: CrownBand | None
-    ndl: FloatGrid
-    ndl_flat: np.float32
-    rock_weight: FloatGrid
-    mesh_weight: FloatGrid | None
-    mesh_class: U8Grid | None
-    mesh_family: U8Grid | None
-    water_optics: WaterOptics | None
-    grid: BandGrid

@@ -108,7 +108,7 @@ def srgb_to_linear(values: npt.ArrayLike) -> F64Grid:
 
 def material_vectors(view: PackageView) -> dict[str, tuple[float, ...]]:
     """The material instance's ``VectorParameterValues`` as ``{name: (r, g, b)}``."""
-    vectors: Mapping[str, Sequence[float]] = material_parameters(view)["vector"]
+    vectors = material_parameters(view)["vector"]
     return {name: tuple(value[:3]) for name, value in vectors.items()}
 
 

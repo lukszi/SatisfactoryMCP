@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypedDict, cast
 
 import numpy as np
 
@@ -29,6 +29,7 @@ __all__ = [
     "OCEAN_TOLERANCE",
     "SWEEP_M",
     "SWEEP_STEP_M",
+    "SeamLayout",
     "calibrate",
     "decode_slices",
     "line_bytes",
@@ -57,6 +58,20 @@ CONTROL_NEAR = (2000, 2001)
 CONTROL_FAR = (2000, 2100)
 
 
+class SeamLayout(TypedDict):
+    """``seam_residuals``: each seam under both readings of the slice names, the controls, and
+    whether the chosen reading holds."""
+
+    reading: str
+    seams: dict[str, float]
+    seams_under_the_other_reading: dict[str, float]
+    controls_inside_one_tile: dict[str, float]
+    worst_seam: float
+    worst_seam_under_the_other_reading: float
+    layout_holds: bool
+    verdict: str
+
+
 def line_bytes(tile: Image, box: tuple[int, int, int, int]) -> bytes:
     """One row or column of a tile as raw RGB bytes -- three per pixel, in order."""
     return tile.crop(box).convert("RGB").tobytes()
@@ -80,7 +95,7 @@ def _seams(nw: Image, ne: Image, sw: Image, se: Image) -> dict[str, float]:
     }
 
 
-def seam_residuals(tiles: dict[str, Image]) -> dict:
+def seam_residuals(tiles: dict[str, Image]) -> SeamLayout:
     """Mean per-channel difference across each seam, against the alternative and controls.
 
     This is what proves ``Map_<col>-<row>``. The other reading of the name -- ``<row>-<col>``,

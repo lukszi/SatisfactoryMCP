@@ -7,6 +7,7 @@ TypedDict where a schema or version check already guards the read.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, TypeAlias
 
 from typing_extensions import TypeAliasType, TypeIs
@@ -22,6 +23,8 @@ __all__ = [
     "is_object_list",
     "require_list",
     "require_object",
+    "to_json",
+    "to_json_object",
 ]
 
 JsonScalar: TypeAlias = str | int | float | bool | None
@@ -45,6 +48,36 @@ def is_object_dict(value: object) -> TypeIs[dict[str, object]]:
 def is_object_list(value: object) -> TypeIs[list[object]]:
     """Whether a value read as ``object`` is a list."""
     return isinstance(value, list)
+
+
+def _is_sequence(value: object) -> TypeIs[list[object] | tuple[object, ...]]:
+    return isinstance(value, list | tuple)
+
+
+def _is_mapping(value: object) -> TypeIs[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
+def to_json(value: object) -> JsonValue:
+    """``value`` as the JSON it writes as, checked and copied: a TypedDict becomes an object, a
+    tuple an array. ``TypeError`` for anything ``json.dumps`` would refuse."""
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if _is_sequence(value):
+        return [to_json(item) for item in value]
+    if _is_mapping(value):
+        out: JsonObject = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError(f"a JSON object's key is a string, not {key!r}")
+            out[key] = to_json(item)
+        return out
+    raise TypeError(f"{type(value).__name__} is not JSON")
+
+
+def to_json_object(record: Mapping[str, object]) -> JsonObject:
+    """A record, such as a TypedDict, as the JSON object it writes as; see ``to_json``."""
+    return require_object(to_json(record))
 
 
 def require_object(value: JsonValue) -> JsonObject:

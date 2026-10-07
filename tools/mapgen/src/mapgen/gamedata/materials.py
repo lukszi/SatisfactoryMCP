@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import struct
-from typing import TypeAlias
+from typing import TypeAlias, TypedDict
 
 from satisfactory_mcp.core.gameassets.packages import PackageView, ZenExport, property_tags
 
 __all__ = [
+    "MaterialParameters",
     "Vector4",
     "material_parameters",
     "material_parent",
@@ -19,6 +20,15 @@ __all__ = [
 
 #: A ``VectorParameterValues`` entry: a linear colour, RGBA.
 Vector4: TypeAlias = tuple[float, float, float, float]
+
+
+class MaterialParameters(TypedDict):
+    """A material instance's own parameters by kind, and the parent it names."""
+
+    scalar: dict[str, float]
+    vector: dict[str, Vector4]
+    texture: dict[str, str | None]
+    parent: str | None
 
 
 def mesh_materials(view: PackageView, export: ZenExport) -> list[str | None]:
@@ -95,7 +105,7 @@ def material_parent(view: PackageView) -> str | None:
     return view.import_path(raw) if raw else None
 
 
-def material_parameters(view: PackageView) -> dict:
+def material_parameters(view: PackageView) -> MaterialParameters:
     """A material instance's own scalar, vector and texture parameters, and its parent."""
     return {
         "scalar": scalar_parameters(view),

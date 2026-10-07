@@ -78,7 +78,7 @@ def _grid_index() -> I32Grid:
     return np.clip((np.arange(GRID_PX) * SHEET_PX / GRID_PX).astype(np.int32), 0, SHEET_PX - 1)
 
 
-def artwork_planes(sheet: npt.ArrayLike) -> tuple[U8Grid, BoolMask]:
+def artwork_planes(sheet: Image | npt.ArrayLike) -> tuple[U8Grid, BoolMask]:
     """The decoded artwork sheet on this file's 1 m grid: ``(water, void)``.
 
     ``water`` is ``artwork_water_mask``'s classifier as a uint8 band: 0 where dry, else 1 for

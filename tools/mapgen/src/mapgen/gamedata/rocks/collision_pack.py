@@ -360,10 +360,10 @@ def sweep_cave_floors(reader: GameReader) -> CaveFloors:
 class _PackMeshes:
     """The pack's meshes in order, each once, with the instances that place them."""
 
-    verts: list[F32Grid] = field(default_factory=list)
-    tris: list[I32Grid] = field(default_factory=list)
-    winding: list[float] = field(default_factory=list)
-    instances: list[_Instance] = field(default_factory=list)
+    verts: list[F32Grid] = field(default_factory=list[F32Grid])
+    tris: list[I32Grid] = field(default_factory=list[I32Grid])
+    winding: list[float] = field(default_factory=list[float])
+    instances: list[_Instance] = field(default_factory=list[_Instance])
 
     def add(self, verts: F32Grid, tris: NDArray[np.integer], winding: float) -> int:
         self.verts.append(verts.astype(np.float32))
@@ -523,7 +523,20 @@ def encode_rock_pack(
     floors = sweep_cave_floors(reader)
     arrays, counts = rock_pack_arrays(sweep, collision, floors)
     buffer = io.BytesIO()
-    np.savez_compressed(buffer, **arrays)
+    np.savez_compressed(
+        buffer,
+        mesh_verts=arrays["mesh_verts"],
+        mesh_vstart=arrays["mesh_vstart"],
+        mesh_tris=arrays["mesh_tris"],
+        mesh_tstart=arrays["mesh_tstart"],
+        mesh_winding=arrays["mesh_winding"],
+        inst_mesh=arrays["inst_mesh"],
+        inst_kind=arrays["inst_kind"],
+        inst_matrix=arrays["inst_matrix"],
+        inst_origin=arrays["inst_origin"],
+        inst_lo=arrays["inst_lo"],
+        inst_hi=arrays["inst_hi"],
+    )
     meta = {
         "description": (
             "The collision surface of every placed rock, arch, foliage boulder and cave "

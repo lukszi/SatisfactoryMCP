@@ -316,24 +316,28 @@ class _Harvest:
     meshes: MeshBounds
     classes: ClassFacts
     extra_foliage: Callable[[str], bool] | None
-    components: list[tuple[int, int, U16Grid]] = field(default_factory=list)
-    proxies: list[Proxy] = field(default_factory=list)
+    components: list[tuple[int, int, U16Grid]] = field(
+        default_factory=list[tuple[int, int, U16Grid]]
+    )
+    proxies: list[Proxy] = field(default_factory=list[Proxy])
     #: (mesh id, owner id, x, y, z, pitch, yaw, roll, sx, sy, sz)
-    placements: list[tuple[float, ...]] = field(default_factory=list)
-    mesh_ids: dict[str, int] = field(default_factory=dict)
-    owner_ids: dict[str, int] = field(default_factory=dict)
+    placements: list[tuple[float, ...]] = field(default_factory=list[tuple[float, ...]])
+    mesh_ids: dict[str, int] = field(default_factory=dict[str, int])
+    owner_ids: dict[str, int] = field(default_factory=dict[str, int])
     #: Each placement's first override material, an index into ``material_ids``; -1 for none.
-    chosen: list[int] = field(default_factory=list)
-    material_ids: dict[str, int] = field(default_factory=dict)
+    chosen: list[int] = field(default_factory=list[int])
+    material_ids: dict[str, int] = field(default_factory=dict[str, int])
     #: (class name, (x0, y0, z0, x1, y1, z1)) in world centimetres, for the water stage.
-    water: list[tuple[str, tuple[float, ...]]] = field(default_factory=list)
-    water_actors: dict[str, int] = field(default_factory=dict)
-    water_boxless: list[tuple[str, str, str]] = field(default_factory=list)
-    box_sources: dict[str, int] = field(default_factory=dict)
-    rivers: list[RiverRecord] = field(default_factory=list)
-    foliage: dict[str, list[F64Grid]] = field(default_factory=dict)
-    extra: dict[str, list[F64Grid]] = field(default_factory=dict)
-    actors: list[object] = field(default_factory=list)
+    water: list[tuple[str, tuple[float, ...]]] = field(
+        default_factory=list[tuple[str, tuple[float, ...]]]
+    )
+    water_actors: dict[str, int] = field(default_factory=dict[str, int])
+    water_boxless: list[tuple[str, str, str]] = field(default_factory=list[tuple[str, str, str]])
+    box_sources: dict[str, int] = field(default_factory=dict[str, int])
+    rivers: list[RiverRecord] = field(default_factory=list[RiverRecord])
+    foliage: dict[str, list[F64Grid]] = field(default_factory=dict[str, list[F64Grid]])
+    extra: dict[str, list[F64Grid]] = field(default_factory=dict[str, list[F64Grid]])
+    actors: list[object] = field(default_factory=list[object])
     malformed: int = 0
 
     def add(

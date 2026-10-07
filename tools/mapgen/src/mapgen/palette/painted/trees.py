@@ -7,7 +7,7 @@ a crown under the water's surface goes to the bed instead. docs/spatial-and-map.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import NamedTuple, TypeAlias, cast
+from typing import NamedTuple, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -30,7 +30,6 @@ from mapgen.palette.painted.shapes import (
     CalibrationStyle,
     CrownLayer,
     CrownOp,
-    CrownTerms,
     FloatGrid,
     PaintedPalette,
     PaintedScene,
@@ -39,7 +38,7 @@ from mapgen.palette.painted.shapes import (
     TitanTreesStyle,
 )
 from mapgen.palette.schema import CrownStyle
-from mapgen.terrain.crown_stamp import CrownSet
+from mapgen.terrain.crown_stamp import CrownSet, LitCrowns
 from mapgen.terrain.render_meshes import TITAN_LEAVES, TITAN_TRUNK
 from satisfactory_mcp.core.arrays import I64Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -323,15 +322,14 @@ def titan_over(out: FloatGrid, scene: PaintedScene, ground: PaintedSurface) -> F
     for which, rgb in ground.titan_rgb.items():
         albedo = np.where((cls == which)[..., None], rgb, albedo)
     exposure = exposure_gain(palette)
-    light = flat_light(cast("dict[str, object]", palette), sun_dot(surface, spacing_m),
-                       scene["ndl_flat"])  # fmt: skip
+    light = flat_light(palette, sun_dot(surface, spacing_m), scene["ndl_flat"])
     lit = albedo * light * exposure
     alpha = (opacity * np.clip(above, 0.0, 1.0))[..., None]
     return out * (1.0 - alpha) + lit * alpha
 
 
 def crown_layer(
-    crowns: CrownTerms,
+    crowns: LitCrowns,
     scene: PaintedScene,
     palette: PaintedPalette,
     ambient: float | np.float32,

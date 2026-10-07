@@ -7,17 +7,18 @@ is in the style's palette file; docs/spatial-and-map.md section 28 explains them
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from typing import TypeAlias, cast
+from collections.abc import Callable, Sequence
+from typing import TypeAlias
 
 import numpy as np
 from scipy import ndimage
 
 from mapgen.colour import linear_from_oklab, linear_to_srgb
+from mapgen.gamedata.ground.biome import BiomeRaster
 from mapgen.lighting.hillshade import slope_degrees
 from mapgen.palette.scene import FloatGrid, ReliefScene, WaterPlanes, field_heights
 from mapgen.palette.schema import ReliefPalette, ReliefWaterStyle
-from mapgen.palette.styles import area_plane, dry_land_range, ramp_position
+from mapgen.palette.styles import dry_land_range, ramp_position
 from mapgen.palette.water.shore import wet_mix
 from satisfactory_mcp.core.arrays import F16Grid, F32Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -101,7 +102,7 @@ def water_tint_plane(
 
 
 def _biome_planes(
-    palette: ReliefPalette, biome: Mapping[str, object], area_names: list[str]
+    palette: ReliefPalette, biome: BiomeRaster, area_names: list[str]
 ) -> F16Grid | None:
     """``(dL·w, a·w, b·w, w)`` per biome texel, blurred like the satellite's biome colours."""
     tints = palette["biome_tints"]
@@ -112,7 +113,7 @@ def _biome_planes(
         dl, chroma, hue, weight = tints.get(name, palette["biome_fallback"])
         a, b = oklab_from_lch([0.0, chroma, hue])[1:]
         table[index] = (dl * weight, a * weight, b * weight, weight)
-    area = area_plane(biome)
+    area = biome["area"]
     planes = np.empty((*area.shape, 4), np.float16)
     sigma = float(palette["biome_blend_texels"])
     for k in range(4):
@@ -127,7 +128,7 @@ class ReliefGround:
         self,
         palette: ReliefPalette,
         field: hf.Field,
-        biome: Mapping[str, object] | None,
+        biome: BiomeRaster | None,
         area_names: list[str],
         water: WaterPlanes | None = None,
         ground: FloatGrid | None = None,
@@ -200,11 +201,10 @@ def _slope_rock(
 
 
 def relief_colours(
-    band: Mapping[str, object], ground: ReliefGround, sample: TintSample, sample_biome: BiomeSample
+    scene: ReliefScene, ground: ReliefGround, sample: TintSample, sample_biome: BiomeSample
 ) -> FloatGrid:
-    """One band (a ``ReliefScene``), sRGB 0..255. ``sample(plane)`` resamples a 1 m plane onto
-    the band and ``sample_biome(plane)`` picks the biome raster's texel under each pixel."""
-    scene = cast(ReliefScene, band)
+    """One band, sRGB 0..255. ``sample(plane)`` resamples a 1 m plane onto the band and
+    ``sample_biome(plane)`` picks the biome raster's texel under each pixel."""
     palette, z_m, spacing_m = ground.palette, scene["z_m"], scene["spacing_m"]
     lo, hi, cdf = ground.ramp
     position = np.nan_to_num(ramp_position(z_m, lo, hi, cdf, palette["ramp_equalised"]))

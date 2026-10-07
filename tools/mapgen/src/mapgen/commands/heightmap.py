@@ -48,7 +48,7 @@ class _Run:
 
     reader: GameReader
     loud: bool
-    timings: dict[str, float] = dataclasses.field(default_factory=dict)
+    timings: dict[str, float] = dataclasses.field(default_factory=dict[str, float])
 
     def timed(self, stage: str, started: float) -> None:
         self.timings[stage] = round(time.time() - started, 1)

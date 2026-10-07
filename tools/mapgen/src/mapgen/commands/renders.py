@@ -209,8 +209,8 @@ def _prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) ->
         inputs["biome_raster"] = biome.provenance or {}
     style_digests = dict(STYLE_DIGESTS)
     paint = None
-    if "painted" in layers:
-        paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, biome.raster or {},
+    if "painted" in layers and biome.raster is not None:
+        paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, biome.raster,
                               biome.drawn)  # fmt: skip
         inputs["paint"], style_digests["painted"] = paint.provenance, paint.digest
     level = LevelSweep(game.store, game.scripts, not args.quiet)

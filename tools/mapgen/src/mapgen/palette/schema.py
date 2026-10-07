@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import typing
 from collections.abc import Mapping
-from typing import Literal, TypedDict, TypeVar, cast
+from typing import Literal, NotRequired, TypedDict, TypeVar, cast
 
 from mapgen.gamedata.rocks.families import FAMILIES
 
@@ -291,7 +291,7 @@ class RockTopStyle(TypedDict):
     """``rock_top``: the up-facing ramp a family's top layer takes, and its patches."""
 
     up: list[float]
-    patches: RockPatchesStyle
+    patches: NotRequired[RockPatchesStyle]
 
 
 class TitanTreesStyle(TypedDict):
@@ -401,7 +401,7 @@ class PaintedPalette(TypedDict):
     ground: str
     rock_top: RockTopStyle
     titan_trees: TitanTreesStyle
-    carpet: CarpetStyle
+    carpet: NotRequired[CarpetStyle]
     tone: ToneStyle
     calibration: CalibrationStyle
 

@@ -82,9 +82,9 @@ class CaveArrays(TypedDict):
 
 @dataclass
 class _HullBits:
-    planes: list[F64Grid] = field(default_factory=list)
+    planes: list[F64Grid] = field(default_factory=list[F64Grid])
     starts: list[int] = field(default_factory=lambda: [0])
-    boxes: list[F64Grid] = field(default_factory=list)
+    boxes: list[F64Grid] = field(default_factory=list[F64Grid])
     degenerate: int = 0
 
 

@@ -28,6 +28,7 @@ from mapgen.enhance.upscaler import (
     ready_upscaler,
 )
 from mapgen.gamedata.artwork_sheet import (
+    SeamLayout,
     calibrate,
     decode_slices,
     report_calibration,
@@ -51,7 +52,7 @@ from mapgen.tiles.recipes import ENHANCE_RECIPE, ENHANCE_RECIPES
 from satisfactory_mcp.core.gameassets.container import SHEET_PX, open_container
 from satisfactory_mcp.core.gameassets.provenance import InstallNotFound, installed_build, sha256_hex
 from satisfactory_mcp.core.gameassets.pyramid import TILES_2X_DIR_NAME, TILES_DIR_NAME, PyramidError
-from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, to_json_object
 
 if TYPE_CHECKING:
     from PIL import Image
@@ -179,7 +180,7 @@ def _prove_upscaler(args: argparse.Namespace) -> Upscaler:
 
 def _read_sheet(
     game: Path, pyooz_version: str, image_mod: ImageModule
-) -> tuple[Image.Image, JsonObject, str]:
+) -> tuple[Image.Image, SeamLayout, str]:
     """The four map slices decoded, their layout proved, stitched: (sheet, layout, alpha)."""
     import texture2ddecoder as decoder
 
@@ -266,7 +267,7 @@ def _cut(args: argparse.Namespace, versions: dict[str, str], image_mod: ImageMod
         build_raw=build_raw,
         image=image_block(args.size, written, sheet.mode, alpha_note),
         integrity=integrity_block(),
-        layout=layout,
+        layout=to_json_object(layout),
         calibration=calibration,
         versions=versions,
         tiles=tiles,

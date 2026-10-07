@@ -147,6 +147,7 @@ def fall_from_modules(
     if top is not None and len(top):
         top_len = float(np.median(TOP_MODULE_LENGTH_CM * np.linalg.norm(top[:, 1, :3], axis=1)))
     splashes: list[list[float]] = []
+    m: F64Grid
     for m in splash if splash is not None else ():
         r = SPLASH_MODULE_RADIUS_CM * max(np.linalg.norm(m[0, :3]), np.linalg.norm(m[1, :3]))
         splashes.append([round(float(v) / 100, 2) for v in (*m[3, :3], r)])

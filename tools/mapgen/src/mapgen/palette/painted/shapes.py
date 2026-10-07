@@ -9,7 +9,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mapgen.cache import Plane, TitanPlanes
-from mapgen.palette.scene import BandGrid, BandTaps, WaterTerms
+from mapgen.gamedata.vegetation.crown_sprites import CrownsBlock
+from mapgen.palette.scene import BandGrid, BandScene, BandTaps, WaterTerms
 from mapgen.palette.schema import (
     CalibrationArea,
     CalibrationStyle,
@@ -21,9 +22,8 @@ from mapgen.palette.schema import (
     TitanTreesStyle,
     WaterClassStyle,
 )
-from mapgen.terrain.crown_stamp import CrownSet
+from mapgen.terrain.crown_stamp import CrownSet, LitCrowns
 from satisfactory_mcp.core.arrays import F16Grid, F32Grid, I16Grid, U8Grid
-from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
     "AlbedoTable",
@@ -38,7 +38,6 @@ __all__ = [
     "ColourPlanes",
     "CrownLayer",
     "CrownOp",
-    "CrownTerms",
     "DerivedLayer",
     "FieldPlanes",
     "FloatGrid",
@@ -110,7 +109,7 @@ class PaintMeta(TypedDict):
     components: list[list[int]]
     component_px: int
     rock_families: NotRequired[dict[str, RockFamilyEntry]]
-    crowns: NotRequired[JsonObject]
+    crowns: NotRequired[CrownsBlock]
     generator: NotRequired[str]
     generator_version: NotRequired[int]
     cl: NotRequired[int]
@@ -122,7 +121,7 @@ class BiomeGrid(TypedDict):
 
     width: int
     area: U8Grid
-    assets_by_index: NotRequired[list[str]]
+    assets_by_index: list[str | None]
 
 
 class FieldPlanes(Protocol):
@@ -149,8 +148,6 @@ class FieldPlanes(Protocol):
 FloatGrid: TypeAlias = NDArray[np.floating]
 #: A band's water terms by name, one plane each (``palette.water``'s).
 BandWater: TypeAlias = WaterTerms
-#: The crowns stamped over a band by name, one plane each (``render.compose.domed_crowns``).
-CrownTerms: TypeAlias = dict[str, F32Grid]
 #: A plane of the paint store or the rock grid, sampled onto a band's pixels.
 Sampler: TypeAlias = Callable[[NDArray[np.generic]], F32Grid]
 #: A colour as one value per channel, or as one coarse plane per channel the band samples.
@@ -191,19 +188,15 @@ class CrownLayer(TypedDict):
     sunk: FloatGrid
 
 
-class PaintedScene(TypedDict):
-    """One band as the painted style draws it (``render.compose``)."""
+class PaintedScene(BandScene):
+    """One band as the painted style draws it (``render.compose``): the shared scene, then
+    its crowns, sun term, rock and mesh weights and water optics."""
 
-    z_m: F32Grid
-    borrow: F32Grid
-    ramp_lo: float
-    ramp_hi: float
-    water: BandWater
-    crowns: CrownTerms | None
-    ndl: F32Grid
+    crowns: LitCrowns | None
+    ndl: FloatGrid
     ndl_flat: np.float32
-    rock_weight: F32Grid
-    mesh_weight: F32Grid | None
+    rock_weight: FloatGrid
+    mesh_weight: FloatGrid | None
     mesh_class: U8Grid | None
     mesh_family: U8Grid | None
     water_optics: ClassOptics | None
