@@ -103,6 +103,13 @@ Planned as 0.2.0.
 - The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
   render of all five layers with the light is budgeted at about 58 minutes, the default two
   layers at about 42.
+- Map generator: each band is drawn in pieces of 512 columns, several pieces at once on the
+  draw's threads (`--draw-columns` sets the width). On 8 threads the draw's peak memory falls
+  from about 15 GB to about 2 GB, so free memory no longer cuts the thread count, and the five
+  layers draw in about 30% less time over the densest water of the full-size sheet. The 2048
+  render and windows of the full-size sheet are the same bytes; on the whole full-size sheet
+  11 of the painted layer's pixels move by one level, because its luminance is now summed as
+  every narrower draw sums it.
 
 ### Deprecated
 
