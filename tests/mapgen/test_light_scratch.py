@@ -86,6 +86,19 @@ def test_a_run_that_fails_still_deletes_its_scratch(tmp_path):
         assert run is None
 
 
+def test_a_run_that_baked_deletes_its_scratch_crowns_and_all(tmp_path):
+    """The bake holds the crowns' memory maps until it is closed, and Windows deletes no
+    mapped file."""
+    with light_run(tmp_path, 256, _crowns(), workers=1) as run:
+        assert run is not None
+        run.begin(tmp_path / "r")
+        run.surface.put(0, np.zeros((256, 256), np.float32), np.ones((256, 256), np.float32))
+        run.drawn(256)
+        run.finish(lambda: None)
+    assert (tmp_path / "r" / "light" / "meta.json").is_file()
+    assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
+
+
 def test_crowns_that_fail_to_write_leave_no_scratch_behind(tmp_path):
     broken = CrownTops(np.full((8, 8), 120, np.int16), cast(CrownGrid, {}))
     with pytest.raises(KeyError), light_run(tmp_path, 16, broken):

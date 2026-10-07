@@ -248,7 +248,9 @@ class LightBake:
         return meta
 
     def close(self) -> None:
-        """Stop the light processes, cancelling the blocks not yet started."""
+        """Stop the light processes, cancelling the blocks not yet started, and let go of
+        what casts: the crowns may be memory maps of the scratch."""
         if self.pool is not None:
             self.pool.shutdown(wait=True, cancel_futures=True)
             self.pool = None
+        self.occluder = self.slabs = None

@@ -350,6 +350,7 @@ class LightingRun:
         # a mapped file.
         if self.bake is not None:
             self.bake.close()
+        self.bake = None
         self._terms.clear()
         self.occluder = None
         self.surface.close()
