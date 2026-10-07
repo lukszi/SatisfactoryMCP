@@ -232,6 +232,7 @@ be traced to the axis it should move.
 | `palette/water/perched.py` | style | Water levels re-read from the shoreline where a box top is not the surface |
 | `render/compose.py` | | The band loop that draws a layer |
 | `render/drawpool.py` | | How many threads draw a layer's bands, and the pool that keeps their order |
+| `render/stencils.py` | | How far each step of a band's draw reads its neighbours, and the band halo that holds them |
 | `render/extras.py` | | What a run loads beside the field: meshes, falls, Titan trees and rivers |
 | `render/light.py` | | Installing a layer drawn unlit: `unlit/` and the default-sun copy |
 | `render/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
