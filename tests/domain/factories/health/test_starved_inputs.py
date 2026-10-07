@@ -152,6 +152,19 @@ def test_a_starved_generator_counts_and_a_hand_fed_burner_does_not(game):
     assert report.starved_of == Counter({"Water": 1})
 
 
+def test_a_never_fuelled_generator_is_not_an_input_not_arriving(game):
+    """An empty hopper with no fuel class names no item: its ``(no fuel)`` cause is a state."""
+    report = assess_records(
+        game,
+        generators=[
+            _generator("Build_GeneratorCoal_C_112", "", {}),
+            _generator("Build_GeneratorFuel_C_113", "", {}),
+        ],
+    )
+    assert state_of(report, "Build_GeneratorCoal_C_112") == "starved"
+    assert report.starved_of == Counter()
+
+
 def test_a_feeder_that_provably_makes_the_item_is_marked(game):
     """Which of two arriving belts brings the ingots is not in the save; which far end can
     produce them at all is."""

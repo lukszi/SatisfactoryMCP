@@ -500,8 +500,10 @@ def assess(
             for item in entry.cause:
                 report.blocked_on[item] += 1
         elif state == "starved" and record.get("cls") not in BIOMASS_BURNERS:
-            # The missing items as ``cause`` names them, before `_with_rungs` annotates them.
+            # The missing items as ``cause`` names them, before `_with_rungs` annotates them;
+            # NO_FUEL is a state, not an item.
             for item in cause:
-                report.starved_of[item] += 1
+                if item != NO_FUEL:
+                    report.starved_of[item] += 1
 
     return report
