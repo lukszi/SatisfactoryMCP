@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import TypeAlias, cast
+from typing import TypeAlias
 
 from ....core.gamedata.model import GameData
 from ...world.state import WorldState
 from ..readout.views import ItemRate, SolveResponse, SolveRow
-from ..solver.scenario import PlanKwargs, build_scenario
+from ..solver.scenario import build_scenario
 from . import provenance as prov
 from .plan_args import InvalidOp
 from .planlog import Actor, Commit, NameTaken, PlanLog, Pushed, Stamp
@@ -35,8 +35,6 @@ COPY_TRIES = 50
 MINUS = "−"
 _EPS = 1e-6
 
-#: ``readout.summary.solve_summary``'s result, which still returns a plain dict.
-Solved: TypeAlias = SolveResponse | dict
 #: One ``versions`` row: the commit, the rev that undid it and the rev a restore brought back.
 VersionRow: TypeAlias = dict[str, Commit | int | None]
 
@@ -56,7 +54,7 @@ def plan_status(st: WorldState, plan: StoredPlan, g: GameData | None = None) -> 
     out = PlanStatus()
     try:
         g = st.game if g is None else g
-        if build_scenario(g, st, **cast(PlanKwargs, plan.kwargs())).plan_id != plan.plan_id:
+        if build_scenario(g, st, **plan.kwargs()).plan_id != plan.plan_id:
             out.flags.append("world moved")
         for drift in prov.compare(g, st, plan):
             out.flags.append(f"field {drift.then}->{drift.now}")
@@ -148,11 +146,11 @@ def _num(value: float, dp: int = 1) -> str:
     return ("+" if value > 0 else MINUS if value < 0 else "") + text
 
 
-def _solve_rows(summary: Solved) -> list[SolveRow]:
+def _solve_rows(summary: SolveResponse) -> list[SolveRow]:
     return summary.get("rows") or []
 
 
-def _machines(summary: Solved) -> dict[str, int]:
+def _machines(summary: SolveResponse) -> dict[str, int]:
     out: dict[str, int] = {}
     for row in _solve_rows(summary):
         out[row["building"]] = out.get(row["building"], 0) + int(row["machines"])
@@ -181,7 +179,7 @@ def _changes(
 _CHANGE_ORDER = {"added": 0, "changed": 1, "removed": 2}
 
 
-def row_changes(before: Solved, after: Solved) -> list[RowChange]:
+def row_changes(before: SolveResponse, after: SolveResponse) -> list[RowChange]:
     """Process rows added, removed or changed between two solves, joined on ``SolveRow.id``."""
     was = {r["id"]: r for r in _solve_rows(before) if r.get("id")}
     now = {r["id"]: r for r in _solve_rows(after) if r.get("id")}
@@ -216,7 +214,7 @@ def row_changes(before: Solved, after: Solved) -> list[RowChange]:
     return sorted(out, key=lambda r: (_CHANGE_ORDER[r["change"]], r["label"], r["id"]))
 
 
-def result_delta(before: Solved, after: Solved) -> ResultDelta:
+def result_delta(before: SolveResponse, after: SolveResponse) -> ResultDelta:
     """How two ``summary.solve_summary`` results differ: machines, MW, raw inputs and rows.
 
     Facts only. When either side is not solvable, only that is said: the counts of an

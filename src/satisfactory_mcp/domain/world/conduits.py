@@ -278,8 +278,6 @@ def _placements(projection: Projection, game: GameData) -> list[PlugTarget]:
     for key in ("machines", "extractors", "generators", "storage", "attachments"):
         records: Sequence[BuildableRecord | StorageRecord] = projection.get(key) or ()
         for record in records:
-            if not isinstance(record, dict):
-                continue
             pos = record.get("pos")
             if not pos or len(pos) < 3:
                 continue
@@ -366,7 +364,7 @@ def _material_adjacency(projection: Projection) -> dict[int, set[int]]:
 
     adjacency: dict[int, set[int]] = {}
     for edge in graph.get("material") or ():
-        if isinstance(edge, (list, tuple)) and len(edge) >= 2:
+        if len(edge) >= 2:
             if len(edge) >= 4 and ports.is_hypertube_edge(role(edge[2]), role(edge[3])):
                 continue
             try:
@@ -394,11 +392,7 @@ def _pipe_runs(
         entry = networks[seg.network_index] if 0 <= seg.network_index < len(networks) else None
         fluid = entry.get("fluid") if isinstance(entry, dict) else None
         flow: PipeFlow | dict[str, str] = (
-            pipe_flow[seg.position]
-            if pipe_flow
-            and 0 <= seg.position < len(pipe_flow)
-            and isinstance(pipe_flow[seg.position], dict)
-            else {}
+            pipe_flow[seg.position] if pipe_flow and 0 <= seg.position < len(pipe_flow) else {}
         )
         direction = flow.get("direction", "unknown")
         points = seg.points if direction != "reverse" else list(reversed(seg.points))

@@ -113,11 +113,7 @@ class Inventory:
         the piles would not sum to ``holdings``."""
         out: dict[str, float] = {}
         for row in self.projection.get("storage") or ():
-            if (
-                isinstance(row, dict)
-                and (fluid := row.get("fluid"))
-                and (stored := row.get("stored_m3"))
-            ):
+            if (fluid := row.get("fluid")) and (stored := row.get("stored_m3")):
                 out[fluid] = out.get(fluid, 0.0) + float(stored)
         return out
 
@@ -165,14 +161,8 @@ class Inventory:
         and how full it is. ``item`` keeps only the places holding that item, a fluid buffer
         answering to the fluid its plumbing claims.
         """
-        rows = [
-            self._holding(row, "storage")
-            for row in self.projection.get("storage") or ()
-            if isinstance(row, dict)
-        ] + [
-            self._holding(row, "crate")
-            for row in self.projection.get("crates") or ()
-            if isinstance(row, dict)
+        rows = [self._holding(row, "storage") for row in self.projection.get("storage") or ()] + [
+            self._holding(row, "crate") for row in self.projection.get("crates") or ()
         ]
         if item is not None:
             rows = [h for h in rows if h.amount_of(item)]
@@ -211,11 +201,7 @@ class Inventory:
                 fluid=fluid,
             )
 
-        items = tuple(
-            (str(e[0]), float(e[1]))
-            for e in row.get("items") or ()
-            if isinstance(e, (list, tuple)) and len(e) >= 2
-        )
+        items = tuple((str(e[0]), float(e[1])) for e in row.get("items") or () if len(e) >= 2)
         items = tuple(sorted(items, key=lambda e: -e[1]))
         used = self._slots_used(items)
         return Holding(

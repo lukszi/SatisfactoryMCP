@@ -15,7 +15,7 @@ from .domain.planning import siting
 from .domain.planning.stored import planlog
 from .domain.planning.stored.recall import PLAN_DEFAULTS
 from .domain.session import journal
-from .interfaces.mcp import tools as _tools  # noqa: F401 -- importing it registers every tool
+from .interfaces.mcp import tools as _registers_every_tool
 from .interfaces.mcp.app import game, mcp, recipe_names
 from .interfaces.mcp.params import Limit
 from .interfaces.mcp.prompts import design_factory, pick_hard_drive, plan_power_plant
@@ -84,6 +84,8 @@ from .interfaces.mcp.tools.world import (
     unlocked_recipes,
     world_summary,
 )
+
+del _registers_every_tool
 
 __all__ = [
     "GRAPH_INDEX_WARNING",

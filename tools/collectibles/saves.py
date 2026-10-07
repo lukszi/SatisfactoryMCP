@@ -148,7 +148,7 @@ def _read_properties(
         parsed = read_object(inflated, slot, actor=True, save_version=save_version)
     except ParseError:
         return None
-    return {name: value for name, value in parsed.properties}
+    return {name: value for name, value in parsed.properties if isinstance(name, str)}
 
 
 def _is_count(value: object) -> TypeGuard[int]:

@@ -524,8 +524,6 @@ def _records(projection: Projection) -> Iterator[tuple[str, str, str, tuple[floa
     for kind in ("machines", "extractors", "generators", "attachments"):
         records: Sequence[BuildableRecord] = projection.get(kind, ()) or ()
         for record in records:
-            if not isinstance(record, dict):
-                continue
             pos = record.get("pos")
             if not pos or len(pos) < 3:
                 continue

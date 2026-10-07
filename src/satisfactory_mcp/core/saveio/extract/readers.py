@@ -94,8 +94,7 @@ def ref_class(value: object) -> str | None:
 def properties_of(obj: ParsedObject) -> dict[str, SaveValue]:
     """properties is a list of [name, value] pairs; absent means empty."""
     out: dict[str, SaveValue] = {}
-    pairs: list[list[SaveValue]] = getattr(obj, "properties", None) or []
-    for entry in pairs:
+    for entry in obj.properties:
         try:
             name, value = entry[0], entry[1]
         except (IndexError, TypeError):

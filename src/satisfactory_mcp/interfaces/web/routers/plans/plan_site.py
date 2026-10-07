@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from typing import Literal, cast
+from typing import Literal
 
 from fastapi import APIRouter, Request
 
@@ -92,18 +92,14 @@ def plan_site_preview(
         field, unread = terrain.field(), False
     except MemoryError:
         field, unread = None, True
-    # ``preview`` documents its plain dict as this shape.
-    out = cast(
-        SitePreviewResponse,
-        site_preview.preview(
-            st.game,
-            st,
-            session,
-            sit,
-            terrain=field,
-            terrain_cap=0 if full else site_preview.DRAG_TEXELS,
-            include_static=first,
-        ),
+    out = site_preview.preview(
+        st.game,
+        st,
+        session,
+        sit,
+        terrain=field,
+        terrain_cap=0 if full else site_preview.DRAG_TEXELS,
+        include_static=first,
     )
     if unread and out["in_map"]:
         out["terrain_note"] = site_preview.NOT_READ

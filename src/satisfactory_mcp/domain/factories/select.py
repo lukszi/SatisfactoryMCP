@@ -151,8 +151,6 @@ def _resolve(
         return _indexed(graph.machine_components("material"), value, "line")
     if kind == "slab":
         structures = st.structures
-        if structures is None:
-            raise SelectorError("slab: needs the structure layer; re-read the save")
         # The slab's OWN index, as factory_map prints it: slabs are numbered by tile count,
         # and a list ordered by machine count would silently return a different platform.
         index = _parse_index(value, "slab", len(structures.slabs))
@@ -161,8 +159,6 @@ def _resolve(
         return set(structures.machines_on(index))
     if kind == "proposal":
         proposals = st.proposals
-        if proposals is None:
-            raise SelectorError("proposal: needs the proposal list; re-read the save")
         return set(proposals[_parse_index(value, "proposal", len(proposals))].machines)
     if kind == "label":
         store = st.labels

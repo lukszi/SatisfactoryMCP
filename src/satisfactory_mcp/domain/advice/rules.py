@@ -24,10 +24,12 @@ from ..planning.stored.plan_args import PlanLogError
 from ..planning.stored.planlog import PlanLog, PlanState
 from ..spatial import nodes as nodes_mod
 from ..spatial import regions, surroundings
-from ..world.headlift import head_lift
+from ..world.headlift import HeadLift, head_lift
 from .advisory import SEVERITY, SPOTS_SENT, TEXT_MAX, TOOL_MAX, Advisory, Spot, ids_for, key_for
 
 if TYPE_CHECKING:
+    from ...core.gamedata.model import GameData
+    from ...core.saveio.schema import Projection
     from ..world.state import WorldState
 
 __all__ = ["HEADROOM_SHARE", "RuleContext", "compute", "plan_heads", "with_ids"]
@@ -40,7 +42,9 @@ RARE_FIRST = ("somersloop", "mercer_sphere", "power_slug_purple", "power_slug_ye
 #: Recipe depth of an item no recipe reaches; sorts it after every real one.
 UNKNOWN_DEPTH = 99
 #: The head-lift model per projection; the entry holds the projection, the key is its id().
-_HEAD_LIFT_CACHE = Singleflight(maxsize=3)
+_HEAD_LIFT_CACHE: Singleflight[tuple[int, int], tuple[Projection, GameData, HeadLift]] = (
+    Singleflight(maxsize=3)
+)
 
 STORAGE_CLASS_PREFIXES = (
     "Build_StorageContainer",
@@ -88,7 +92,7 @@ class RuleContext:
         self.game = st.game
         self.records: dict[str, tuple[str, BuildableRecord]] = {}
         for group, leaf, record in iter_machine_records(st.projection):
-            self.records[leaf] = (group, cast(BuildableRecord, record))
+            self.records[leaf] = (group, record)
         lift = _HEAD_LIFT_CACHE.get(
             (id(st.projection), id(self.game)),
             lambda: (st.projection, self.game, head_lift(st.projection, self.game, st.graph)),
@@ -389,7 +393,7 @@ def _starved_rows(
         items = _missing_items_rawest_first(ctx, machines)
         seed_item = items[0]
         blocking_item = next(
-            (item for item in items if blocked.get(item, {}).get(here_key)), seed_item
+            (item for item in items if item in blocked and blocked[item][here_key]), seed_item
         )
         blocked_by_subject = blocked.get(blocking_item, Counter())
         here = blocked_by_subject.get(here_key, 0)
@@ -704,7 +708,7 @@ def _pickups(st: WorldState, spoilers: bool) -> list[Advisory]:
     count = len(near)
     reach = f"{surroundings.PICKUP_REACH_M:.0f} m"
     lead = f"{count} {plural('pickup', count)} within {reach} of where you saved"
-    text = f"{lead} · {_singular(pick['label'])} {pick['distance_m']:.0f} m"
+    text = f"{lead} · {_singular(pick['label'])} {pick.get('distance_m', 0.0):.0f} m"
     kinds = Counter(_singular(r["label"]) for r in near)
     spots = [
         Spot(

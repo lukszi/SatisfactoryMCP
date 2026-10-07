@@ -12,9 +12,10 @@ from ....core.gamedata import search
 from ....core.gamedata.model import GameData, Recipe
 from ....core.gamedata.search import match_recipes
 from ....core.gamedata.unlocks import granted_by
-from ....core.jsontypes import JsonObject
+from ....core.jsontypes import JsonObject, is_object_list
 from ...world.state import WorldState
 from ..readout import summary
+from ..solver.scenario import PlanKwargs
 from ..stored import manage
 from ..stored.plan_args import PlanArgs
 from ..stored.planlog import PlanState
@@ -99,12 +100,13 @@ def replaced_required(
     ]
 
 
-def _applied(args: PlanArgs, ops: list[PlanOpBody]) -> dict:
+def _applied(args: PlanArgs, ops: list[PlanOpBody]) -> PlanKwargs:
     """``args`` with each set op applied, as solve arguments."""
-    raw = args.to_dict()
+    raw: dict[str, object] = dict(args.to_dict())
     for op in ops:
         field, member = op.get("field", ""), op.get("member")
-        members = list(raw[field])
+        current = raw[field]
+        members: list[object] = list(current) if is_object_list(current) else []
         if op.get("op") == "add":
             if member not in members:
                 members.append(member)

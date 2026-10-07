@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, TypeVar
+from typing import TYPE_CHECKING, ClassVar, TypeVar, cast
 
 from ...core.gamedata.model import GameData, Recipe
 from ...core.saveio import projection as proj
@@ -68,7 +68,9 @@ _View = TypeVar("_View")
 #: being paid per request per layer. Six names times three projections, matching the
 #: projection memo's own depth, and ~7 MB of views per projection on the reference world
 #: beside its own ~13 MB.
-_DERIVED = Singleflight(maxsize=18)
+_DERIVED: Singleflight[tuple[int, int, str], tuple[Projection, GameData, object]] = Singleflight(
+    maxsize=18
+)
 
 
 @dataclass
@@ -78,7 +80,7 @@ class WorldState:
     projection: Projection
     game: GameData
 
-    def _derived(self, name: str, build: Callable[[], _View]) -> _View:
+    def derived(self, name: str, build: Callable[[], _View]) -> _View:
         """A view shared by every state over this same projection and game data.
 
         Only for views that are pure functions of that pair and that no caller mutates: two
@@ -91,7 +93,8 @@ class WorldState:
         the key is their ``id()``, and a freed object's address is reused.
         """
         key = (id(self.projection), id(self.game), name)
-        return _DERIVED.get(key, lambda: (self.projection, self.game, build()))[2]
+        # The entry under ``name`` is what this same ``build`` made.
+        return cast(_View, _DERIVED.get(key, lambda: (self.projection, self.game, build()))[2])
 
     # ---- facets ---------------------------------------------------------
     #
@@ -197,13 +200,13 @@ class WorldState:
         """
         from ..factories.build import build_graph
 
-        return self._derived("graph", lambda: build_graph(self.projection))
+        return self.derived("graph", lambda: build_graph(self.projection))
 
     @cached_property
     def pipe_flow(self) -> list[world_flow.PipeFlow]:
         """Which way each pipe carries fluid, ~13 ms. It walks the plumbing once per pipe,
         and every caller wants the whole answer rather than one row."""
-        return self._derived("pipe_flow", lambda: world_flow.pipe_flow(self.projection))
+        return self.derived("pipe_flow", lambda: world_flow.pipe_flow(self.projection))
 
     @cached_property
     def conduit_runs(self) -> list[ConduitRun]:
@@ -211,7 +214,7 @@ class WorldState:
         conduit search both want the whole set."""
         from . import conduits
 
-        return self._derived(
+        return self.derived(
             "conduit_runs",
             lambda: conduits.build_runs(self.projection, self.game, self.pipe_flow),
         )
@@ -222,21 +225,21 @@ class WorldState:
         the upstream walk both want the whole contraction."""
         from .logistics import build_physical_graph
 
-        return self._derived("physical", lambda: build_physical_graph(self.projection, self.game))
+        return self.derived("physical", lambda: build_physical_graph(self.projection, self.game))
 
     @cached_property
     def structures(self) -> Structures:
         """Foundation slabs -- what was physically built as one platform. ~85 ms."""
         from ..factories.structure import build_structures
 
-        return self._derived("structures", lambda: build_structures(self.projection))
+        return self.derived("structures", lambda: build_structures(self.projection))
 
     @cached_property
     def proposals(self) -> list[Proposal]:
         """Coherence-scored factory proposals. ~0.5 s, the most expensive view here."""
         from ..factories.cohere import propose
 
-        return self._derived(
+        return self.derived(
             "proposals",
             lambda: propose(self.graph, self.game, self.projection, self.structures),
         )

@@ -308,7 +308,7 @@ def _preview_base(
         "content_bbox_m": [v / 100 for v in geo.CONTENT_BBOX] if include_static else None,
         "failure": sess.failure,
     }
-    if include_static and sess.prepared.request is not None:
+    if include_static:
         out["nodes"] = []
     return out
 
@@ -344,8 +344,6 @@ def _trunk_rows(
 
 def _chosen_nodes(g: GameData, sess: PreviewSession, chosen: set[str]) -> list[SitePreviewNode]:
     request = sess.prepared.request
-    if request is None:
-        return []
     return [
         {
             "instance": instance_leaf(r["instance"]),

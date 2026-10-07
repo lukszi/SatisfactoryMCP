@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, TypeVar
 
+from ....core.jsontypes import is_object_dict
 from .. import siting as siting_mod
 from . import provenance as prov
 from .plan_args import PLAN_DEFAULTS
@@ -23,7 +24,7 @@ _Plan = TypeVar("_Plan", bound=str | None)
 
 
 def _rows(value: object) -> Mapping[str, object]:
-    return value if isinstance(value, dict) else {}
+    return value if is_object_dict(value) else {}
 
 
 def merge_rows(stored: object, given: object) -> dict[str, object] | None:

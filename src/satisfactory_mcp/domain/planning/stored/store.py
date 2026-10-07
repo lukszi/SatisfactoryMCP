@@ -14,7 +14,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Protocol, Required, TypeVar, cast
+from typing import TYPE_CHECKING, Protocol, Required, TypeVar, cast
 
 from typing_extensions import TypedDict
 
@@ -22,6 +22,9 @@ from .... import config
 from ....core import schema
 from ....core.jsontypes import JsonObject, JsonValue, as_int, require_list, require_object
 from .plan_args import PLAN_ARGS
+
+if TYPE_CHECKING:
+    from ..solver.scenario import PlanKwargs
 
 __all__ = ["PLAN_ARGS", "SCHEMA", "Plan", "PlanStore", "StoredPlan", "find_by_name"]
 
@@ -45,7 +48,7 @@ class StoredPlan(Protocol):
     @property
     def siting(self) -> JsonObject: ...
 
-    def kwargs(self) -> dict[str, object]: ...
+    def kwargs(self) -> PlanKwargs: ...
 
 
 def find_by_name(items: list[_Item], name_of: Callable[[_Item], str], needle: str) -> _Item | None:
@@ -77,9 +80,10 @@ class Plan:
     key: str = ""
     rev: int = 0
 
-    def kwargs(self) -> dict[str, object]:
+    def kwargs(self) -> PlanKwargs:
         """Stored arguments, filtered to those a planning call still accepts."""
-        return {k: v for k, v in self.args.items() if k in PLAN_ARGS}
+        # A legacy file's values as it stored them; the migration checks each one.
+        return cast("PlanKwargs", {k: v for k, v in self.args.items() if k in PLAN_ARGS})
 
 
 _FIELDS = frozenset(f.name for f in fields(Plan))

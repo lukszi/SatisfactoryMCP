@@ -10,7 +10,7 @@ from pydantic import Field
 
 from .....domain.planning import siting as siting_mod
 from .....domain.planning.progress.diff_service import plan_progress
-from .....domain.planning.solver.scenario import PlanKwargs, build_scenario
+from .....domain.planning.solver.scenario import build_scenario
 from .....domain.planning.stored import manage
 from .....domain.planning.stored import provenance as prov
 from .....domain.planning.stored.plan_args import PlanLogError
@@ -106,10 +106,7 @@ def _plan_detail(st: WorldState, stored: Plan) -> str:
         f"change it with base_rev={stored.rev}; plan_log name={stored.name!r} lists its versions",
     ]
     try:
-        if (
-            build_scenario(st.game, st, **cast(PlanKwargs, stored.kwargs())).plan_id
-            != stored.plan_id
-        ):
+        if build_scenario(st.game, st, **stored.kwargs()).plan_id != stored.plan_id:
             notes.append(
                 "the WORLD has moved since this was saved (an unlock, a freed node, a new "
                 "building), so re-solving it will not reproduce the plan_id above"

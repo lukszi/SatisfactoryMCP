@@ -51,7 +51,7 @@ def fluid_couplings(projection: Projection, is_body: Callable[[str], bool]) -> F
     joins = UnionFind[FluidNode]()
     ports_of: dict[int, set[int]] = defaultdict(set)
     for edge in graph.get("material") or ():
-        if not isinstance(edge, (list, tuple)) or len(edge) < 4:
+        if len(edge) < 4:
             continue
         a, b, role_a, role_b = edge[0], edge[1], edge[2], edge[3]
         if role_a not in fluid_roles or role_b not in fluid_roles:
@@ -72,6 +72,6 @@ def producer_consumer_classes(projection: Projection) -> tuple[set[str], set[str
 
     They settle a building whose one port carries the generic ``FGPipeConnectionFactory``.
     """
-    producers = {r.get("cls") for r in projection.get("extractors") or () if isinstance(r, dict)}
-    consumers = {r.get("cls") for r in projection.get("generators") or () if isinstance(r, dict)}
+    producers = {r.get("cls") for r in projection.get("extractors") or ()}
+    consumers = {r.get("cls") for r in projection.get("generators") or ()}
     return producers, consumers

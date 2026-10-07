@@ -8,7 +8,7 @@ Handler names are operation_ids (wire rule 1 of docs/web-wire.md).
 
 from __future__ import annotations
 
-from typing import Annotated, NotRequired, cast
+from typing import Annotated, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
@@ -87,11 +87,9 @@ def solve_plan(
         except InvalidOp as exc:
             return error_response(str(exc), 400)
     try:
-        solved = summary.solve_summary(st.game, st, kwargs)
+        return summary.solve_summary(st.game, st, kwargs)
     except ValueError as exc:
         return error_response(str(exc), 400)
-    # ``solve_summary`` documents its plain dict as this shape.
-    return cast(SolveResponse, solved)
 
 
 @router.get("/plan/delta", response_model=DeltaResponse)

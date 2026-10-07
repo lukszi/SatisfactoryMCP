@@ -9,7 +9,7 @@ from ..errors import expect
 from ..objects import ObjectSlice
 from ..reader import Reader
 from ..references import ObjectReference, read_reference, read_references
-from ..values import PropertyTypes, SaveValue
+from ..values import Properties, PropertyTypes, SaveValue
 from ..versions import FIRST_MODERN_BODY, FIRST_UE5_OBJECT_VERSION
 from .decoder import PropertyDecoder
 
@@ -33,7 +33,7 @@ class ParsedObject:
     #: Actors only: the object this one hangs off, and its component children.
     parent_reference: ObjectReference | None = None
     child_references: list[ObjectReference] = field(default_factory=list[ObjectReference])
-    properties: list[list] = field(default_factory=list)
+    properties: Properties = field(default_factory=list[list[SaveValue]])
     property_types: PropertyTypes = field(default_factory=PropertyTypes)
     #: Absolute span of everything after the terminator: the plain trailer, plus class-specific
     #: data on some actors, which ``pioneersav.save`` arranges to decode.

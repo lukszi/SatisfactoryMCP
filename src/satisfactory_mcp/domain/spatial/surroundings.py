@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from ...core.gamedata.model import GameData
 from ..collectibles import service as collectibles
+from ..collectibles.views import NearbyPickup, Placement
 from ..world import conduits as conduits_mod
 from . import elevation, geo, heightfield
 from . import nodes as nodes_mod
@@ -127,7 +128,8 @@ def _fields_near(
     return [found for _distance_m, found in reached]
 
 
-def pickups_near(st: WorldState, x: float, y: float) -> list[dict]:
+def pickups_near(st: WorldState, x: float, y: float) -> list[NearbyPickup]:
+    """The remaining placements within ``PICKUP_REACH_M`` of ``(x, y)`` cm, nearest first."""
     table = st.collectibles
     if table is None:
         return []
@@ -139,20 +141,25 @@ def pickups_near(st: WorldState, x: float, y: float) -> list[dict]:
         if c not in pedestals
         and any(abs(r["x"] - x) <= reach and abs(r["y"] - y) <= reach for r in rows)
     ]
-    out = []
+    near: list[tuple[float, Placement]] = []
     for category in close:
         for r in st.placements(category, remaining_only=True):
-            r["distance_m"] = geo.distance_m((r["pos"][0], r["pos"][1]), (x, y))
-            if r["distance_m"] <= PICKUP_REACH_M:
-                out.append(r)
-    if not out:
-        return out
-    out.sort(key=lambda r: r["distance_m"])
+            distance_m = geo.distance_m((r["pos"][0], r["pos"][1]), (x, y))
+            if distance_m <= PICKUP_REACH_M:
+                near.append((distance_m, r))
+    if not near:
+        return []
+    near.sort(key=lambda pair: pair[0])
     have = set(collectibles.found(st))
-    for r in out:
-        r["label"] = collectibles.label(r["category"])
-        r["spoiler"] = collectibles.is_spoiler(r["category"], have)
-    return out
+    return [
+        {
+            **r,
+            "distance_m": distance_m,
+            "label": collectibles.label(r["category"]),
+            "spoiler": collectibles.is_spoiler(r["category"], have),
+        }
+        for distance_m, r in near
+    ]
 
 
 @dataclass
@@ -167,7 +174,7 @@ class PointDescription:
     nearest: list[MeasuredNode]
     fields: list[node_search.FieldView]
     fields_total: int
-    pickups: list[dict]
+    pickups: list[NearbyPickup]
     pickups_total: int | None
     pickups_spoilers: int
     skew: nodes_mod.TableSkew | None

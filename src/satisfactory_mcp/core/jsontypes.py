@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeAlias
 
-from typing_extensions import TypeAliasType
+from typing_extensions import TypeAliasType, TypeIs
 
 __all__ = [
     "JsonArray",
@@ -18,6 +18,8 @@ __all__ = [
     "JsonValue",
     "as_float",
     "as_int",
+    "is_object_dict",
+    "is_object_list",
     "require_list",
     "require_object",
 ]
@@ -32,6 +34,17 @@ else:
     JsonValue = TypeAliasType("JsonValue", "JsonScalar | list[JsonValue] | dict[str, JsonValue]")
 JsonArray: TypeAlias = list[JsonValue]
 JsonObject: TypeAlias = dict[str, JsonValue]
+
+
+def is_object_dict(value: object) -> TypeIs[dict[str, object]]:
+    """Whether a value read as ``object`` is a dict; its keys are taken to be strings, as
+    every boundary this project reads (JSON, the plan log, a request body) writes them."""
+    return isinstance(value, dict)
+
+
+def is_object_list(value: object) -> TypeIs[list[object]]:
+    """Whether a value read as ``object`` is a list."""
+    return isinstance(value, list)
 
 
 def require_object(value: JsonValue) -> JsonObject:

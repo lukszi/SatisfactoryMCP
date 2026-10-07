@@ -248,7 +248,6 @@ def _build(projection: Projection, game: GameData, powered: set[str]) -> _Plumbi
     fluid_of = {
         i: row.get("fluid")
         for i, row in enumerate((projection.get("pipes") or {}).get("networks") or ())
-        if isinstance(row, dict)
     }
     gas = {
         i
@@ -261,11 +260,7 @@ def _build(projection: Projection, game: GameData, powered: set[str]) -> _Plumbi
     out.fluid_of = {node: fluid_of.get(ix) for node, ix in network_of.items()}
 
     producers, consumers = producer_consumer_classes(projection)
-    tank_rows = {
-        instance_leaf(r.get("instance", "")): r
-        for r in projection.get("storage") or ()
-        if isinstance(r, dict)
-    }
+    tank_rows = {instance_leaf(r.get("instance", "")): r for r in projection.get("storage") or ()}
 
     for actor, held in ports.items():
         if not (0 <= actor < len(actors)):

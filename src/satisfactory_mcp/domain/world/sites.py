@@ -54,13 +54,23 @@ def near_selector(centroid_cm: tuple[float, ...], diameter_m: float) -> str:
     return f"near:{x_m},{y_m}@{max(50, round(diameter_m * 0.6))}"
 
 
+class _SitePoint(TypedDict):
+    """A record as ``geo.cluster`` places it."""
+
+    x: float
+    y: float
+    z: float
+    kind: str
+    rec: BuildableRecord
+
+
 def sites(records: list[BuildableRecord], link_m: float = 300.0) -> list[BuiltSite]:
     """Cluster built production buildings into named-by-content sites.
 
     ``instances`` holds each member's instance leaf, so a caller can say which sites a
     given machine set stands in.
     """
-    points = [
+    points: list[_SitePoint] = [
         {"x": pos[0], "y": pos[1], "z": pos[2], "kind": r["cls"], "rec": r}
         for r in records
         if (pos := r.get("pos"))

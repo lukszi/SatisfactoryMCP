@@ -17,6 +17,7 @@ __all__ = [
     "LabelledCensusRow",
     "MapPlacement",
     "NamedActor",
+    "NearbyPickup",
     "Placement",
 ]
 
@@ -56,6 +57,14 @@ class Placement(TypedDict):
     unlock_cost: JsonObject | None
     hazard: JsonObject
     distance_m: NotRequired[float]
+
+
+class NearbyPickup(Placement):
+    """A placement within reach of a point, with its category's word and whether naming it
+    spoils the game; ``distance_m`` is always set."""
+
+    label: str
+    spoiler: bool
 
 
 class CensusRow(TypedDict):

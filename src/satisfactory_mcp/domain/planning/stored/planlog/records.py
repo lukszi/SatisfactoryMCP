@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from .....core.jsontypes import JsonObject, JsonValue
 from ..plan_args import InvalidOp, PlanArgs, PlanLogError, checked_headroom, legacy_hours
@@ -17,6 +17,10 @@ from ..views import (
     PlanStamp,
     PlanStateRecord,
 )
+
+if TYPE_CHECKING:
+    from ...solver.scenario import PlanKwargs
+
 from .wording import (
     action_words,
     conflict_subject,
@@ -94,7 +98,7 @@ class PlanState:
     args: PlanArgs = field(default_factory=PlanArgs)
     headroom_mw: float | None = None
 
-    def kwargs(self) -> dict[str, object]:
+    def kwargs(self) -> PlanKwargs:
         return self.args.kwargs()
 
     def to_dict(self) -> PlanStateRecord:

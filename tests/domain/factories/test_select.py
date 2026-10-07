@@ -181,8 +181,6 @@ def test_proposal_selector_reports_a_bad_index():
     graph = build_graph(slab_projection())
     with pytest.raises(SelectorError, match="out of range"):
         select_machines(["proposal:9"], SelectorWorld(graph, proposals=[Proposal(machines=["a"])]))
-    with pytest.raises(SelectorError, match="needs the proposal list"):
-        select_machines(["proposal:0"], SelectorWorld(graph))
 
 
 def test_index_selectors_are_documented_as_volatile():

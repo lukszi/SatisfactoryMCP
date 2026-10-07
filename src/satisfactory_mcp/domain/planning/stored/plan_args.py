@@ -10,9 +10,12 @@ import json
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, fields
-from typing import TypeAlias, TypeGuard, TypeVar
+from typing import TYPE_CHECKING, TypeAlias, TypeGuard, TypeVar, cast
 
 from .views import PlanArgsBody
+
+if TYPE_CHECKING:
+    from ..solver.scenario import PlanKwargs
 
 __all__ = [
     "FACTORY_SENTINELS",
@@ -329,7 +332,7 @@ class PlanArgs:
         out = cls()
         for name in KINDS:
             value = given.get(name)
-            if value is None or (isinstance(value, list | tuple | dict) and not value):
+            if value is None or _empty_container(value):
                 continue
             try:
                 setattr(out, name, _check_field(name, value))
@@ -367,7 +370,7 @@ class PlanArgs:
             "row_overclock": dict(self.row_overclock),
         }
 
-    def kwargs(self) -> dict[str, object]:
+    def kwargs(self) -> PlanKwargs:
         """The non-default fields as ``build_scenario``'s keyword arguments."""
         blank = PlanArgs()
         out: dict[str, object] = {}
@@ -376,10 +379,17 @@ class PlanArgs:
             if name in _NOT_SOLVE_ARGS or value == getattr(blank, name):
                 continue
             out[KWARG_NAME.get(name, name)] = copy.deepcopy(value)
-        return out
+        # Every key is a field ``_check_field`` held to its kind, renamed as the solve spells it.
+        return cast("PlanKwargs", out)
 
 
 KINDS: dict[str, str] = {f.name: f.metadata["kind"] for f in fields(PlanArgs)}
+
+
+def _empty_container(value: object) -> bool:
+    """``[]``, ``()`` or ``{}``: what a field holds when it says nothing."""
+    return isinstance(value, list | tuple | dict) and not value
+
 
 #: Stored with the plan for ``plan_factory``'s report, but not an argument of the solve.
 _NOT_SOLVE_ARGS = frozenset({"logistics_items"})

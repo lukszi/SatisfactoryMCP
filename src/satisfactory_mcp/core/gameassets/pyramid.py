@@ -21,6 +21,7 @@ from typing import cast
 
 from typing_extensions import TypedDict
 
+from ..jsontypes import JsonArray, JsonObject, as_int, require_list, require_object
 from .imaging import LanczosFilter, PngOptions, TileImage
 from .provenance import RETIRED_SUFFIX, STAGING_SUFFIX
 
@@ -164,7 +165,7 @@ def cut_pyramid(
     tile_px: int = PYRAMID_TILE_PX,
     source: str = DEFAULT_LEVEL_SOURCE,
     dir_name: str = TILES_DIR_NAME,
-) -> dict:
+) -> JsonObject:
     """Cut ``sheet`` into ``dest/{z}/{x}_{y}.png`` for every level, and say what it wrote.
 
     ``--enhance`` adds levels ABOVE this top out of upscaled pixels and does not touch these:
@@ -179,7 +180,13 @@ def cut_pyramid(
     return pyramid_record(levels, tile_px, 1, dir_name)
 
 
-def pyramid_record(levels: list[LevelRecord], tile_px: int, workers: int, dir_name: str) -> dict:
+def _level_json(level: LevelRecord) -> JsonObject:
+    return {key: level[key] for key in ("z", "sheet_px", "tiles", "bytes", "from")}
+
+
+def pyramid_record(
+    levels: list[LevelRecord], tile_px: int, workers: int, dir_name: str
+) -> JsonObject:
     """What a cut wrote, ``levels`` in z order: the block a sidecar carries."""
     return {
         "layout": f"{dir_name}/{{z}}/{{x}}_{{y}}.png",
@@ -188,7 +195,7 @@ def pyramid_record(levels: list[LevelRecord], tile_px: int, workers: int, dir_na
         "enhanced": False,
         "count": sum(level["tiles"] for level in levels),
         "bytes": sum(level["bytes"] for level in levels),
-        "levels": levels,
+        "levels": [_level_json(level) for level in levels],
         "workers": workers,
         "role": (
             "the same sheet at one resolution per zoom, so the page fetches the pixels it "
@@ -204,17 +211,21 @@ def pyramid_record(levels: list[LevelRecord], tile_px: int, workers: int, dir_na
     }
 
 
-def merge_enhanced(stats: dict, extra: dict) -> dict:
+def merge_enhanced(stats: JsonObject, extra: JsonObject) -> JsonObject:
     """Fold the enhanced levels into the pyramid record the sidecar carries. ``count`` and
     ``bytes`` are re-summed rather than added to, so the number ``install_pyramid`` checks the
     tree against stays derived from the list a reader would count themselves."""
-    levels = stats["levels"] + extra["levels"]
+    levels: JsonArray = require_list(stats["levels"]) + require_list(extra["levels"])
+
+    def total(key: str) -> int:
+        return sum(as_int(require_object(level)[key]) for level in levels)
+
     return {
         **stats,
-        "max_z": max(level["z"] for level in levels),
+        "max_z": max(as_int(require_object(level)["z"]) for level in levels),
         "enhanced": True,
-        "count": sum(level["tiles"] for level in levels),
-        "bytes": sum(level["bytes"] for level in levels),
+        "count": total("tiles"),
+        "bytes": total("bytes"),
         "levels": levels,
         "enhancement": extra["enhancement"],
     }
@@ -225,10 +236,10 @@ def install_pyramid(
     image_mod: LanczosFilter,
     out_dir: Path,
     tile_px: int = PYRAMID_TILE_PX,
-    enhance: Callable[[Path], dict] | None = None,
+    enhance: Callable[[Path], JsonObject] | None = None,
     source: str = DEFAULT_LEVEL_SOURCE,
     dir_name: str = TILES_DIR_NAME,
-) -> dict:
+) -> JsonObject:
     """Cut the pyramid into staging, then rename it over any older one.
 
     ``enhance`` runs INSIDE the staging window: the GPU stage is the part most likely to fail,
@@ -253,7 +264,7 @@ def stage_tree(out_dir: Path, dir_name: str) -> Path:
     return staging
 
 
-def commit_tree(stats: dict, out_dir: Path, dir_name: str) -> dict:
+def commit_tree(stats: JsonObject, out_dir: Path, dir_name: str) -> JsonObject:
     """Check the staged tree against its own count, then swap it in; ``stats`` says how.
 
     A previous tree is moved aside first (Windows will not rename onto a non-empty directory)

@@ -21,7 +21,7 @@ from ...world.state import WorldState
 from ..solver.graph import chain_depth_of_rates
 from ..solver.model import MW, ProcessRow, Solution
 from ..solver.prepare import PlanFailure, PreparedPlan
-from ..solver.scenario import PlanKwargs, PlanRequest, build_scenario, shard_stock
+from ..solver.scenario import PlanRequest, build_scenario, shard_stock
 from ..stored import provenance
 from . import payback
 from .report import PlanFactoryReport, build_plan_report
@@ -287,7 +287,7 @@ def names_for(g: GameData, args: PlanArgs) -> dict[str, str]:
         recipe = g.recipes.get(member)
         if recipe is not None:
             out[member] = recipe.name
-    wanted = [m for m in args.sources if isinstance(m, str) and m.startswith("node:")]
+    wanted = [m for m in args.sources if m.startswith("node:")]
     if wanted:
         table = nodes_mod.load_nodes().by_instance()
         table.update({instance_leaf(k): n for k, n in table.items()})
@@ -453,12 +453,9 @@ def _failure_summary(
 
 def solve_summary(
     g: GameData, st: WorldState, kwargs: Mapping[str, object], required: list[str] | None = None
-) -> dict:
-    """``SolveResponse`` for ``kwargs``: the solved plan as plain data, or why there is none.
-
-    A plain ``dict`` until ``manage.result_delta``, which compares two, takes the typed shape.
-    """
-    return dict(_solve_response(g, st, kwargs, required))
+) -> SolveResponse:
+    """``SolveResponse`` for ``kwargs``: the solved plan as plain data, or why there is none."""
+    return _solve_response(g, st, kwargs, required)
 
 
 def _solve_response(
@@ -518,7 +515,7 @@ def stamp_for(g: GameData, st: WorldState) -> Stamp:
 
     def stamp(state: PlanState) -> PlanStamp:
         return {
-            "plan_id": build_scenario(g, st, **cast(PlanKwargs, state.kwargs())).plan_id,
+            "plan_id": build_scenario(g, st, **state.kwargs()).plan_id,
             "provenance": provenance.record(g, st, list(state.args.sources) or None),
         }
 

@@ -265,4 +265,4 @@ def prices_for(state: WorldState, biomass: bool) -> Prices:
         price, mix = grid_mix(g, state.projection, state.power.wired, biomass)
         return Prices(build_points=points, tiers=tiers, power_price=price, grid_mix=mix)
 
-    return state._derived(f"prices:{bool(biomass)}", build)
+    return state.derived(f"prices:{bool(biomass)}", build)

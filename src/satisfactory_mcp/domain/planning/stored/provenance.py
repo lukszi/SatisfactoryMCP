@@ -92,10 +92,7 @@ def recorded(plan: StoredPlan) -> bool:
 def _plan_sources(plan: StoredPlan) -> list[str] | None:
     """The plan's ``sources`` selectors, or None when it plans over the whole map."""
     value = plan.kwargs().get("sources")
-    if not isinstance(value, list):
-        return None
-    members: list[object] = value
-    return [str(m) for m in members]
+    return [str(m) for m in value] if isinstance(value, list) else None
 
 
 def _saved_entries(provenance: JsonObject) -> list[JsonObject]:

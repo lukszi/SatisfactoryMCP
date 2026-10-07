@@ -309,7 +309,7 @@ def table_age(st: WorldState) -> TableAge | None:
     match = _CL.search(table.build)
     cut = int(match.group(1)) if match else None
     build = st.header.get("build_version")
-    behind = isinstance(build, int) and cut is not None and build > cut
+    behind = cut is not None and (build or 0) > cut
     session = observed_session(table)
     name = st.header.get("session_name")
     matches = None if not session or not name else session == name

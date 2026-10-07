@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import cast
 
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
@@ -478,7 +477,7 @@ def track_view(
     """The whole ``TrackResponse`` for one plan version, from one solve. ``default`` is the
     save's headroom (measured or nameplate) a plan with none stored is partitioned against."""
     kwargs = stored.kwargs()
-    objective = cast("str", kwargs.get("objective") or stored.args.objective)
+    objective = kwargs.get("objective") or stored.args.objective
     out = _empty_track_view(st, stored, biomass, default)
     try:
         report = build_diff_report(
@@ -497,8 +496,7 @@ def track_view(
         return out
 
     prepared = report.prepared
-    if prepared.request is not None:
-        out["plan_id"] = prepared.request.plan_id
+    out["plan_id"] = prepared.request.plan_id
     if prepared.failure is not None:
         out["feasible"] = False
         out["headline"] = prepared.failure.headline

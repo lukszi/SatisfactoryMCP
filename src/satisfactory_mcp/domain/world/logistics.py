@@ -145,11 +145,9 @@ def _contract_conduits(
     joins = UnionFind[int]()
     edges: list[tuple[int, int, str, str]] = []
     for edge in (projection.get("graph") or {}).get("material") or ():
-        if not isinstance(edge, (list, tuple)) or len(edge) < 4:
+        if len(edge) < 4:
             continue
         a, b = edge[0], edge[1]
-        if not (isinstance(a, int) and isinstance(b, int)):
-            continue
         if not (0 <= a < len(actors) and 0 <= b < len(actors)):
             continue
         role_a, role_b = role_at(edge[2]), role_at(edge[3])

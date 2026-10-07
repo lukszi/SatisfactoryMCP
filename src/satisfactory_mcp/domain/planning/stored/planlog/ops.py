@@ -8,7 +8,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Mapping, Sequence
 
-from .....core.jsontypes import JsonValue
+from .....core.jsontypes import JsonValue, is_object_dict
 from ..plan_args import (
     KINDS,
     PLAN_SCALARS,
@@ -106,10 +106,9 @@ def _canonical_record(name: object, value: object) -> PlanOp:
             raise InvalidOp("plan_id must be text")
         return {"op": "record", "field": "plan_id", "value": value}
     if name == "provenance":
-        if not isinstance(value, dict):
+        if not is_object_dict(value):
             raise InvalidOp("provenance must be an object")
-        record: Mapping[str, object] = value
-        return {"op": "record", "field": "provenance", "value": json_copy(record)}
+        return {"op": "record", "field": "provenance", "value": json_copy(value)}
     raise InvalidOp(f"record does not apply to {name!r}")
 
 

@@ -7,7 +7,7 @@ docs/advisors_contract.md is the specification.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Hashable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -20,6 +20,8 @@ from .store import Active, Hidden
 from .views import AdviceOptions
 
 if TYPE_CHECKING:
+    from ...core.gamedata.model import GameData
+    from ...core.saveio.schema import Projection
     from ..world.state import WorldState
 
 __all__ = [
@@ -41,7 +43,7 @@ __all__ = [
 
 #: (projection, game, labels version, plan heads, options) -> ranked rows. The projection and
 #: game are held by the entry: the key is their ``id()``.
-_ROWS = Singleflight(maxsize=8)
+_ROWS: Singleflight[Hashable, tuple[Projection, GameData, list[Advisory]]] = Singleflight(maxsize=8)
 
 
 @dataclass

@@ -6,14 +6,13 @@ module shadows the stdlib's name only inside this package. Handler names are ope
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, cast
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....core.gamedata.model import GameData
-from .....domain.collectibles.views import Placement
 from .....domain.spatial import elevation as spatial_elevation
 from .....domain.spatial import geo, heightfield, surroundings
 from .....domain.spatial import nodes as spatial_nodes
@@ -122,13 +121,6 @@ class NearPickup(CollectibleRow):
     """A remaining placement within 500 m, with the category's one word."""
 
     label: str
-
-
-class _Pickup(Placement):
-    """A row of ``surroundings.pickups_near``: a placement, labelled and judged a spoiler."""
-
-    label: str
-    spoiler: bool
 
 
 class InspectResponse(TypedDict):
@@ -275,8 +267,7 @@ def inspect(
     if st is not None:
         stale = stale_tables(st, table, [node["instance"] for node in nearest])
     counted = found.conduits
-    # The rows ``pickups_near`` labels and judges, which its signature leaves untyped.
-    pickups = cast("list[_Pickup]", found.pickups)
+    pickups = found.pickups
     return {
         "at": {"x_m": round(x_m, 1), "y_m": round(y_m, 1)},
         "region": region_json(found.label),
