@@ -20,13 +20,13 @@ no generated renders shows, and the mode the biome tint is designed for.
 not the panes, not one data overlay, not the region blend's rule. That is the serving design
 of §17 on the client: same frame, same tile size, same grid, so the client changes one path
 segment. The one per-mode difference is depth: `maxNativeZoom` comes from that layer's own
-`X-Map-Tile-Max-Z` (one level less when the client fetches @2x tiles), and Leaflet upscales
-past it.
+`X-Map-Tile-Max-Z`, or `X-Map-Tile-2x-Max-Z` when the client fetches @2x tiles, and Leaflet
+upscales past it.
 
 ### The rule that replaced the auto-untick
 
-A switch happens on every mode change, so a heuristic that unticks the region box when a
-render arrives would throw away a choice the reader made in between. So it is a rule about
+A render "arrives" on every switch between modes, so a heuristic that unticks the region box
+when one arrives would throw away a choice the reader made in between. So it is a rule about
 states: **the region tint defaults OFF under any imagery mode and ON under plain, and a
 reader's own tick of that box wins for the rest of the session.** The default is what the page
 does when it has not been told, not what it does instead of being told.

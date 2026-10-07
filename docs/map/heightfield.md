@@ -24,8 +24,8 @@ plane-backed blueprints whose cooked instance names no mesh, `WaterPlane`'s own
 `ExtendedBounds` (215) — each taken to world space through the composed `AttachParent` chain
 eight corners at a time, because 486 of them are rotated. **A box's top is the surface**: the
 save's 23 water extractors all sit inside a volume and stand on its box top to within
-**0.005 cm**. One gate joins them: where the ground was measured at 1 m and stands at or above
-that level there is no water. That is a rock in a lake, and it takes 0.04 km² off the
+**0.005 cm**. The two meet in one gate: where the ground was measured at 1 m and stands at or
+above the level there is no water. That is a rock in a lake, and it takes 0.04 km² off the
 artwork's mask on build 495413.
 
 The channel covers **18.248 km²**, against the artwork's 18.288. Spire Coast recall is
