@@ -8,7 +8,6 @@ from collections.abc import Mapping, Sequence
 
 import numpy as np
 import numpy.typing as npt
-from scipy import ndimage
 
 from mapgen.cache import Plane
 from mapgen.colour import linear_from_oklab
@@ -143,9 +142,23 @@ def top_targets(
     return table
 
 
+def _mean3x3(a: FloatGrid) -> FloatGrid:
+    """scipy's ``uniform_filter(a, 3)`` without its running sum, which drifts with where a
+    row starts: down the rows, then along them, each mean of three taps summed in float64 in
+    one order and rounded to ``a``'s type. Past the edge the edge texel stands in."""
+    out = a
+    for axis in (0, 1):
+        n = out.shape[axis]
+        pad = [(1, 1) if k == axis else (0, 0) for k in range(out.ndim)]
+        wide = np.pad(out, pad, mode="edge").astype(np.float64)
+        before, here, after = (np.take(wide, np.arange(k, k + n), axis) for k in range(3))
+        out = (((before + here) + after) / 3.0).astype(a.dtype)
+    return out
+
+
 def _ramp(nz: FloatGrid, lo_hi: Sequence[float]) -> FloatGrid:
     lo, hi = lo_hi
-    return ndimage.uniform_filter(np.clip((nz - lo) / (hi - lo), 0.0, 1.0), 3)
+    return _mean3x3(np.clip((nz - lo) / (hi - lo), 0.0, 1.0))
 
 
 def top_cover(scene: PaintedScene, ground: PaintedSurface, code: U8Grid) -> FloatGrid:
@@ -231,12 +244,12 @@ def sunk_specks(scene: PaintedScene) -> BandWater:
     if not coral.any():
         return water
     cover = water["cover"]
-    around = (ndimage.uniform_filter(cover, 3, mode="nearest") * 9 - cover) / 8
+    around = (_mean3x3(cover) * 9 - cover) / 8
     speck = coral & (around >= SPECK_WATER)
     if not speck.any():
         return water
     wet_depth = cover * water["depth_m"]
-    deep = (ndimage.uniform_filter(wet_depth, 3, mode="nearest") * 9 - wet_depth) / 8
+    deep = (_mean3x3(wet_depth) * 9 - wet_depth) / 8
     return {
         **water,
         "cover": np.where(speck, np.float32(1.0), cover),

@@ -15,9 +15,9 @@ import numpy.typing as npt
 from scipy import ndimage
 
 from mapgen.colour import (
-    LUMA,
     linear_from_oklab,
     linear_to_srgb,
+    luminance,
     oklab,
     sky_sun_light,
     srgb_to_linear,
@@ -52,6 +52,7 @@ __all__ = [
     "scoped_planes",
     "split_weight",
     "transfer_op",
+    "turned",
     "weighted_median",
     "with_derived",
 ]
@@ -80,7 +81,7 @@ def display_to_linear(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
     """A display sRGB colour back through the tone: the linear colour the tone maps onto it."""
     rgb = srgb_to_linear(hex_rgb(hex_colour))
     curve = palette["tone"]
-    y = float(rgb @ LUMA)
+    y = float(luminance(rgb))
     grid = np.linspace(0.0, curve["white"], 4097, dtype=np.float32)
     y0 = float(np.interp(min(y, 0.999), tone(grid, curve["knee"], curve["white"]), grid))
     return rgb * np.float32(y0 / max(y, 1e-6))
@@ -136,9 +137,14 @@ def layer_transfer(
             d_l += w * np.float32(step)
             m += w[..., None, None] * (matrix - np.eye(2, dtype=np.float32))
         lab[..., 0] += d_l
-        lab[..., 1:] = np.einsum("...ij,...j->...i", m, lab[..., 1:])
+        lab[..., 1:] = turned(lab[..., 1], lab[..., 2], m)
         out[block] = np.clip(linear_from_oklab(lab), 0.0, 1.0)
     return out
+
+
+def turned(a: FloatGrid, b: FloatGrid, matrix: FloatGrid) -> FloatGrid:
+    """``(a, b)`` through a 2 x 2 matrix, or a plane of them, each row summed as written."""
+    return np.stack([a * matrix[..., i, 0] + b * matrix[..., i, 1] for i in range(2)], -1)
 
 
 def median_lab(colours: FloatGrid) -> FloatGrid:

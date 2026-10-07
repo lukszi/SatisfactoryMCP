@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, TypedDict
 import numpy as np
 from scipy import ndimage
 
+from mapgen.colour import weighted_channels
 from mapgen.gamedata.frame import BOUNDS_M
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I8Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
@@ -56,6 +57,9 @@ BORROW_CLAMP = (0.74, 1.26)
 #: Rec. 601 luma: the artwork's light crosses, its colour never does.
 BORROW_LUMA: F32Grid = np.array([0.299, 0.587, 0.114], np.float32)
 
+#: Sheet rows summed into luma at a time, so the float copy of the sheet stays small.
+_LUMA_ROWS = 1024
+
 
 class ProvinceBorrow(TypedDict):
     """Where the borrow applies: the coarse provinces, their share of the field, the feather."""
@@ -84,8 +88,11 @@ def artwork_detail(sheet: U8Grid | Image.Image) -> tuple[I8Grid, JsonObject]:
     ``BORROW_INK_PX``, dark or light: the ink. The scale stays the spread of the sheet as
     drawn, so the shading lends as much as it did with the ink in.
     """
-    rgb = np.asarray(sheet, np.float32)
-    luma = rgb @ BORROW_LUMA
+    rgb = np.asarray(sheet)
+    luma = np.empty(rgb.shape[:2], np.float32)
+    for top in range(0, len(luma), _LUMA_ROWS):
+        rows = slice(top, top + _LUMA_ROWS)
+        luma[rows] = weighted_channels(rgb[rows].astype(np.float32), BORROW_LUMA)
     spread = float(_high_pass(luma).std())
     if BORROW_INK_PX > 1:
         disk = _disk(BORROW_INK_PX)

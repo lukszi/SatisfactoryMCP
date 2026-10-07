@@ -1153,24 +1153,11 @@ bands at a time, where they drew one band each before.
   layer of a pass with its meshes included; and each stencil's reach along a row, measured by
   moving one column, is its entry in the registry.
 
-**One step reads its row's width: the painted layer's luminance.** The painted layer's tone
-shoulder reads each pixel's luminance, `colour @ LUMA` in `colour.by_luminance`, and numpy
-hands that product to OpenBLAS a row at a time. With this machine's numpy 2.5.1 and its
-OpenBLAS 0.3.33, a float32 row of up to 16,384 columns sums each pixel's three products in
-one fused order, and a longer row in another, so the last bit of a pixel's luminance followed
-the width it was drawn at; the last `width mod 8` columns of a short row take a third order.
-A piece is never wider than 16,384 columns with the default width, and its tail columns fall
-in its halo or at the row's own end, so a piece takes a short row's order wherever the whole
-row did. The full-size sheet's rows are 32,768 wide, so there a pixel's luminance can now
-differ in its last bit from the whole-row draw's: under the shoulder (a linear luminance
-above 0.6) that is about a hundred-thousandth of a level, which moves a byte only on a
-rounding edge. Measured on the whole full-size sheet, drawn unlit as a lit render draws it:
-the painted layer in pieces, against the same pieces with the luminance summed as the long
-rows sum it, differs in 11 of its 1,073,741,824 pixels, scattered, each by one level. Every
-window of the sheet up to 16,384 columns wide, and every sheet of 16384 and below, already
-took the short rows' order, so the full-size sheet now draws as they do. The other steps were
-checked the same way and read no width: the 3 × 3 matrices of OKLab, every elementwise
-function the draw calls, and float64 products, at every width and offset tried.
+**One step read its row's width: the painted layer's luminance.** Its tone shoulder summed
+each pixel's luminance with BLAS, in an order that followed the row's width, so the pieces
+moved 11 of the full-size sheet's 1,073,741,824 painted pixels by one level against whole
+rows. Every sum of a pixel's channels is now elementwise in one fixed order ("Fixed-order
+sums" below), the same at any width.
 
 **Cutting the samplers to the piece.** `terrain.sample` read a band's whole rows of a field
 plane and converted them to float32 before it gathered the columns its taps read, once a
@@ -1205,6 +1192,112 @@ in whole rows. The slab is now cut to the columns the taps read as well (`_slab`
   of 14.0, 2.4, 1.2 and 1.0 GB. On a full-width strip of 4 bands one thread took 82.9 s whole
   and 61.4 s in pieces of 512. 512 is the default: the fastest on 8 threads, in half the
   memory of 2048.
+
+### Fixed-order sums (2026-10-07)
+
+A pixel's colour sums depend only on its own channels, never on the width of the array it is
+drawn in, the piece, the thread or the BLAS library. Every sum of a pixel's colour channels in
+the draw and the paint is written out, elementwise, in one order:
+`(c0 w0 + c1 w1) + c2 w2`, each product and each sum rounded to the input's float type on its
+own, with no fused multiply-add (`colour.weighted_channels`).
+
+- **What was BLAS.** numpy hands `@` to BLAS, and OpenBLAS sums a pixel's three products with
+  fused multiply-adds in an order its kernel picks. For the luminance (`colour @ LUMA`, a
+  matrix-vector product per row) that order followed the row's width: up to 16,384 float32
+  columns one order, longer rows another, the last `width mod 8` columns a third. For the
+  3 × 3 OKLab matrices it was one fused chain at every width on this machine, but still the
+  kernel's choice: another BLAS, version or processor rounds differently, and a numba or GPU
+  kernel could match it only by copying BLAS.
+- **What is written out.** `colour.luminance` (the tone shoulder in `by_luminance`, the
+  relight of linear-light styles and `unit_luminance`), `colour.through_matrix` and OKLab both
+  ways (each output channel one `weighted_channels` of a matrix row, on contiguous channel
+  planes), the water table's mouth blends (class by class, in class order), the crown and
+  layer transfers' 2 × 2 turns (`calibration.turned`, where the layer transfer had numpy's
+  `einsum`) and the artwork borrow's Rec. 601 luma.
+  The OKLab inverse matrices are written out as the float32 values LAPACK gave, so no library
+  computes them at import.
+- **Float32 stays.** The order makes the result exact and repeatable; float64 would not, by
+  itself, and would cost twice the memory of every colour plane a band holds.
+- **The 3 × 3 mean.** scipy's `uniform_filter` keeps a running sum along each row, so where a
+  row's values span many orders of magnitude, a water cover's Gaussian tail say, a pixel's
+  mean followed where its row or piece began. The rock tops' ramp and the coral specks now
+  take `surfaces._mean3x3`: three taps summed in float64 in one order per axis and rounded
+  to the input's type, which is scipy's result wherever its running sum was exact.
+- **Porting it.** numba without `fastmath` keeps each multiply and add apart; its weights must
+  be float32 constants, since a Python float promotes the product to float64. CUDA contracts
+  `a * b + c` into a fused multiply-add by default (nvcc `--fmad=true`, NVVM `-fma=1`), so a
+  GPU kernel compiles with `--fmad=false`, or writes the products as `__fmul_rn` and the sums
+  as `__fadd_rn`, which are never contracted; with IEEE division and square root and no
+  flush-to-zero, as without `--use_fast_math`. OKLab's cube root and cube are transcendental
+  calls, outside what this fixes ("Not covered" below).
+- **Tested.** `tests/mapgen/test_fixed_order_sums.py`: the sums against a one-scalar-at-a-time
+  reference, bit for bit; pinned bits for colours whose fused orders round elsewhere; the
+  tone shoulder and OKLab both ways at 33,000 columns, whole and in pieces of 32,768, 16,385
+  and 7 on 1 and 4 threads; a painted band 16,500 pixels long and a relief band drawn whole
+  and in pieces; the 3 × 3 mean against scipy; and that no `@`, `dot`, `matmul`, `einsum`,
+  `tensordot`, `inv`, `solve` or `cg` is left in `colour.py`, `render/`, `palette/`,
+  `lighting/` and `terrain/sample.py` but the open sea's membrane, whose `@` is a sparse
+  product (below). The two band tests fail with the old luminance.
+  `tests/mapgen/test_fixed_solve.py`: `fixed_sum` against its order one Python float at a
+  time, `jacobi_cg` against scipy's `cg`, and a membrane solved in processes at 1, 4 and the
+  default BLAS threads to one digest, where scipy's `cg` gave three.
+
+**What it moved** (2026-10-07, build 502094), against the pixel batch's baseline. Until
+game-painted 21, relief and relief dark 8, and terrain and satellite 10, these sums were BLAS's.
+
+- The luminance alone moved no byte: none in the 2048 render (painted, lit, `@2x` and
+  unlit), none in the full-size sheet's densest water window, 67 million pixels.
+- All of it, in the 2048 render over every level: painted 517 lit, 503 `@2x` and 540 unlit
+  pixels, the lit ones by up to 2 levels; relief 63, 61 and 90; relief dark 43, 43 and 37;
+  terrain 12, 12 and 13; satellite 9, 9 and 12; the light's tiles none. Terrain and
+  satellite move only through the borrow's luma.
+- Three windows of the full-size sheet, unlit, 117 million pixels: painted 10,059, relief
+  1,579, relief dark 921, terrain 375 and satellite 327, each by one level. Scaled by area,
+  the whole sheet moves about 80,000 to 120,000 painted pixels (about 0.01%), 15,000 relief,
+  9,000 relief dark and 3,000 to 5,000 each of terrain and satellite.
+- Time: per call on one BLAS thread OKLab costs about a quarter more, its cube root
+  dominating either way. Drawn in one process, alternating, two bands of 16,384 columns on 2
+  threads took 13.4 s with the sums written out against 15.1 and 15.6 s with BLAS.
+
+**The open sea's membrane.** `palette/water/open_sea.py` `membrane` solved its 579,602 cells
+with scipy's `cg`, and the answer's bits followed OpenBLAS's thread count, which defaults to
+the machine's cores (24 here, OpenBLAS's cap). Traced step by step at 1, 4 and 24 threads, the
+first iteration's vectors were the same bits: the sparse product (scipy's own loop), the
+Jacobi step and the updates are elementwise or single-threaded. What differed was every
+reduction `cg` hands to BLAS: `np.linalg.norm(b)` (and so the stopping tolerance), the
+residual's norm, `r . z` and `p . q`, because OpenBLAS splits a long dot product over its
+threads and adds the parts in another grouping. From the second iteration on the steps
+differed, and the answers ended up to 3e-13 m apart. numpy's own sums of the same products
+were the same at every thread count.
+
+- `terrain/solve.py` `jacobi_cg` is scipy's loop step for step, its stopping rule and its
+  first guess included, with every dot product and norm a `fixed_sum`: the products added by
+  halves, each level the second half onto the first, elementwise, an odd last term carried
+  on. The order follows the length alone, so the answer is the same bits at any thread count
+  and in any library; a numba or GPU port adds in the same pairs. `relax` in
+  `terrain/fill.py` uses it too.
+- Its answer lies within 1.4e-13 m of scipy's at 24 threads, nearer than scipy's own at 1 and
+  24 threads (3.2e-13 m), and converges in the same 1,059 steps to the same tolerance. The
+  bed is written into the float32 lattice, which rounds both answers alike: the heights,
+  the ground and the water planes were the same bytes with either solver at 1 and at 24
+  threads, so no map changes.
+- It is faster: 4.5 s against scipy's 6.6 s at 24 threads and 4.9 s at one, best of three
+  on the captured system, as it reuses its scratch arrays. The membrane is solved once a
+  render, at any size.
+- The other sparse solves, `spsolve` in `terrain/fill.py` (the seam band, the holes and the
+  perched water: 159 systems a run, up to 55,000 cells), gave the same bits at 1, 4 and 24
+  threads, every one of them.
+
+Not covered:
+
+- **Transcendental functions.** numpy's float32 `cbrt`, `power` and `exp` take the processor's
+  vector paths, which differ between processors (AVX-512 against AVX2). They are elementwise
+  and read no width, checked at every width and offset when the pieces came, but they are not
+  the same on every machine.
+- **Filters and rasters.** scipy's Gaussian filters sum each output pixel's taps directly, the
+  same in a piece with its halo; how their C build rounds is the build's. The cliff, mesh and
+  crown rasterisers transform vertices with float64 `@`; they write the raster caches, not the
+  draw.
 
 ### Known limits
 

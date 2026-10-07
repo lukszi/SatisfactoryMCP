@@ -84,7 +84,7 @@ def base_water(palette: PaintedPalette) -> WaterBase:
 
 def water_table(palette: PaintedPalette) -> FloatGrid:
     """A row of linear optics per class plane value; a class the palette leaves out draws as
-    the ocean, a mouth blend mixes its classes' rows by ``class_shares``."""
+    the ocean, a mouth blend mixes its classes' rows by ``class_shares``, class by class."""
     water = palette["water"]
     ocean: WaterClassStyle = {
         "k_per_m": water["k_per_m"],
@@ -110,7 +110,11 @@ def water_table(palette: PaintedPalette) -> FloatGrid:
                 *entry["bed_tint"],
             ]
         )
-    return class_shares() @ np.asarray(rows, np.float32)
+    shares, table = class_shares(), np.asarray(rows, np.float32)
+    mixed = shares[:, :1] * table[0]
+    for k in range(1, len(table)):
+        mixed = mixed + shares[:, k : k + 1] * table[k]
+    return mixed
 
 
 def class_optics(

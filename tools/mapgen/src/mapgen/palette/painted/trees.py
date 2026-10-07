@@ -24,6 +24,7 @@ from mapgen.palette.painted.calibration import (
     sampled_rgb,
     scoped_planes,
     transfer_op,
+    turned,
     weighted_median,
 )
 from mapgen.palette.painted.shapes import (
@@ -206,7 +207,7 @@ def _moved_level(level: FloatGrid, step: float, matrix: FloatGrid, style: CrownS
     cover = level[..., :1]
     lab = crown_lab(level[..., 1:4] / np.maximum(cover, np.float32(1e-6)), style)
     lab[..., 0] += np.float32(step)
-    lab[..., 1:] = lab[..., 1:] @ matrix.T / np.float32(style["chroma"])
+    lab[..., 1:] = turned(lab[..., 1], lab[..., 2], matrix) / np.float32(style["chroma"])
     moved = np.clip(linear_from_oklab(lab), 0.0, None) / np.float32(style["darkening"])
     out = level.copy()
     out[..., 1:4] = np.where(cover > 0, moved * cover, 0.0)

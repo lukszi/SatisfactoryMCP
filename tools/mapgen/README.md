@@ -135,8 +135,8 @@ claim is refused with its own exit code (§20, "Refusals"). The main options:
   cores, and fewer when free memory holds fewer pieces in flight; `1` draws them in turn. The
   tiles are the same bytes either way (§40).
 - `--draw-columns N` draws each band in pieces of N output columns, 512 by default. Narrower
-  pieces take less memory a thread, and the tiles are the same bytes at any width up to 16384
-  (§40, "Column pieces").
+  pieces take less memory a thread, and the tiles are the same bytes at any width (§40,
+  "Column pieces" and "Fixed-order sums").
 - `--gpu` runs the light's horizon march and sky view as CUDA kernels. It needs the root
   project's `gpu` extra (`uv sync --all-extras` installs it) and an NVIDIA driver, and
   refuses with exit code 2 where either is missing. The tiles are the same bytes (§41, "On
@@ -221,6 +221,7 @@ be traced to the axis it should move.
 | `terrain/heightfield/sidecar_blocks.py` | data | Each layer's sidecar block, per-layer accuracy, the water block |
 | `terrain/heightfield/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes, pits |
+| `terrain/solve.py` | renderer | Conjugate gradients with fixed-order sums, for the membranes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
 | `terrain/kernels.py` | renderer | The resampling gathers and the crown stamps compiled by numba |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid |

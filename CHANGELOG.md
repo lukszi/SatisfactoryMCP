@@ -126,10 +126,8 @@ Planned as 0.2.0.
 - Map generator: each band is drawn in pieces of 512 columns, several pieces at once on the
   draw's threads (`--draw-columns` sets the width). On 8 threads the draw's peak memory falls
   from about 15 GB to about 2 GB, so free memory no longer cuts the thread count, and the five
-  layers draw in about 30% less time over the densest water of the full-size sheet. The 2048
-  render and windows of the full-size sheet are the same bytes; on the whole full-size sheet
-  11 of the painted layer's pixels move by one level, because its luminance is now summed as
-  every narrower draw sums it.
+  layers draw in about 30% less time over the densest water of the full-size sheet. The tiles
+  are the same bytes at any piece width (with the fixed-order sums below).
 - Map generator: each band goes on to its layers' tiles as soon as it is drawn, and the light
   bakes a row of blocks as soon as the surface holds the rows it reads, while the draw goes
   on. No layer's sheet is held whole, in memory or in a file: a full-size run of five layers
@@ -144,6 +142,18 @@ Planned as 0.2.0.
   exit code 11 and the reason on stdout (it was exit 1 on stderr). The render sidecar's
   `cliff_geometry.placements_dropped` counts the passable `CliffPillar_03` as `excluded_mesh`
   (376 placements) instead of under `no_geometry`.
+- Map generator: a pixel's colour channels are summed in one fixed order, elementwise,
+  instead of by BLAS: the luminance under the painted style's tone shoulder, OKLab both ways,
+  the water classes' mouth blends, the crown and layer colour transfers and the artwork's
+  luma; and the rock tops' and coral specks' 3 × 3 mean no longer keeps a running sum. A map
+  is now the same bytes at any width, in any column pieces and on any number of threads, and
+  its colours no longer depend on the BLAS library. Once, about 0.01% of a full-size painted
+  map moves by a level or two, and fewer pixels of the other styles; a 2048 map moves about 500
+  painted pixels in each tile tree, a few dozen relief and about ten terrain and satellite.
+  Every rendered map style is one version up.
+- Map generator: the open sea's bed is solved by conjugate gradients whose dot products are
+  summed in a fixed order, where scipy's took them from BLAS and its bits followed the
+  number of BLAS threads. The maps are the same bytes, and the solve takes about 2 s less.
 
 ### Deprecated
 
