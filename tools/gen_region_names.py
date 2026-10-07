@@ -28,7 +28,7 @@ for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
 # three artifacts cannot drift into three opinions about where the world is.
 from mapgen.common import base_parser, require_gen
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.ground.biome import calibrate_biome
+from mapgen.gamedata.ground.biome import CalibrationImaging, calibrate_biome
 from satisfactory_mcp.core.arrays import F64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import (
     CONTAINER,
@@ -36,7 +36,7 @@ from satisfactory_mcp.core.gameassets.container import (
     paks_dir,
     read_artwork_sheet,
 )
-from satisfactory_mcp.core.gameassets.imaging import BlockDecoder, ImageFactory, ImageT
+from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
 from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
 from satisfactory_mcp.core.gameassets.maparea import (
     MAP_AREA_CLASS,
@@ -517,7 +517,7 @@ def calibrate_pin(
     areas: MapAreas,
     raster: U8Grid,
     decoder: BlockDecoder,
-    image_mod: ImageFactory[ImageT],
+    image_mod: CalibrationImaging,
 ) -> JsonObject | None:
     """The raster's pin to the map square, re-measured rather than inherited; None, with the
     reason printed, when it no longer holds by the required margin."""

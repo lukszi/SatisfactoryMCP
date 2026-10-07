@@ -14,7 +14,7 @@ import dataclasses
 import json
 import time
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING
 
 from mapgen.commands.caves import write_caves
 from mapgen.commands.rocks import write_rocks
@@ -31,6 +31,7 @@ from mapgen.gamedata.water.channel import artwork_water_mask, water_surface
 from mapgen.terrain.heightfield import field, sidecar, sidecar_blocks, validate
 from satisfactory_mcp.core.arrays import I16Grid
 from satisfactory_mcp.core.gameassets.container import paks_dir
+from satisfactory_mcp.core.gameassets.imaging import BlockDecoder, ImageFactory
 from satisfactory_mcp.core.gameassets.provenance import (
     InstallNotFound,
     install_directory,
@@ -39,6 +40,9 @@ from satisfactory_mcp.core.gameassets.provenance import (
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import caves
 from satisfactory_mcp.domain.spatial import heightfield as hf
+
+if TYPE_CHECKING:
+    from PIL.Image import Image
 
 
 @dataclasses.dataclass
@@ -187,7 +191,11 @@ def _top(
 
 
 def _water(
-    run: _Run, sweep: dict, fused: field.FieldLayers, decoder: ModuleType, image_mod: ModuleType
+    run: _Run,
+    sweep: dict,
+    fused: field.FieldLayers,
+    decoder: BlockDecoder,
+    image_mod: ImageFactory[Image],
 ) -> tuple[dict, validate.WaterChecks]:
     """The water channel, refused unless it passes its own four gates."""
     print("classifying the map artwork's water and levelling it on the water volumes")

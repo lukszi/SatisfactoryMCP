@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from types import ModuleType
 from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
@@ -15,10 +14,13 @@ from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES, box_texels, wate
 from mapgen.gamedata.water.rivers import RIVER_CLASS
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I16Grid, I32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import SHEET_PX, SLICES, TILE_PX, read_slice
+from satisfactory_mcp.core.gameassets.imaging import BlockDecoder, ImageFactory
 from satisfactory_mcp.core.gameassets.textures import decode_bc1_rgba
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 if TYPE_CHECKING:
+    from PIL.Image import Image
+
     from satisfactory_mcp.core.gameassets.iostore import IoStore
 
 __all__ = [
@@ -83,7 +85,9 @@ def artwork_planes(sheet: npt.ArrayLike) -> tuple[U8Grid, BoolMask]:
     return water, void
 
 
-def artwork_water_mask(store: IoStore, decoder: ModuleType, image_mod: ModuleType) -> BoolMask:
+def artwork_water_mask(
+    store: IoStore, decoder: BlockDecoder, image_mod: ImageFactory[Image]
+) -> BoolMask:
     """The game's own map artwork, classified into water, on this file's 1 m grid.
 
     ``B - R``, because the artwork's water is the only blue thing on it: terrain, cliffs,

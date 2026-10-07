@@ -13,7 +13,7 @@ import numpy as np
 from mapgen.gamedata.level.landscape import grass_data_heights
 from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.water.actors import is_water_class, water_actor_box
-from mapgen.gamedata.water.rivers import RIVER_CLASS, river_actor
+from mapgen.gamedata.water.rivers import RIVER_CLASS, RiverRecord, river_actor
 from satisfactory_mcp.core.arrays import F64Grid, I32Grid, U16Grid
 from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels
@@ -75,7 +75,7 @@ class Sweep(TypedDict):
     water_actors: dict[str, int]
     water_boxless: list[tuple[str, str, str]]
     water_box_sources: dict[str, int]
-    rivers: list[dict[str, object]]
+    rivers: list[RiverRecord]
     foliage: dict[str, F64Grid]
     extra_foliage: dict[str, F64Grid]
     actors: list[object]
@@ -332,7 +332,7 @@ class _Harvest:
     water_actors: dict[str, int] = field(default_factory=dict)
     water_boxless: list[tuple[str, str, str]] = field(default_factory=list)
     box_sources: dict[str, int] = field(default_factory=dict)
-    rivers: list[dict[str, object]] = field(default_factory=list)
+    rivers: list[RiverRecord] = field(default_factory=list)
     foliage: dict[str, list[F64Grid]] = field(default_factory=dict)
     extra: dict[str, list[F64Grid]] = field(default_factory=dict)
     actors: list[object] = field(default_factory=list)

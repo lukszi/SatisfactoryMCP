@@ -20,7 +20,12 @@ from mapgen.gamedata.ground.landscape_albedo import srgb_unit_to_linear
 from mapgen.gamedata.install import GameReader
 from mapgen.gamedata.level.landscape import LANDSCAPE_SECTION_ORIGIN
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, U8Grid
-from satisfactory_mcp.core.gameassets.packages import PackageView, class_name_of, property_tags
+from satisfactory_mcp.core.gameassets.packages import (
+    BulkEntry,
+    PackageView,
+    class_name_of,
+    property_tags,
+)
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
@@ -118,7 +123,7 @@ def stamp_windows(
         yield (slice(r0, r1), slice(c0, c1)), smoothstep(t).astype(np.float32)
 
 
-def _mip0_entry(body: bytes, entries: Sequence[Mapping[str, int]], want: int) -> int | None:
+def _mip0_entry(body: bytes, entries: Sequence[BulkEntry], want: int) -> int | None:
     """The bulk index of a cell's mip-0 chunk: the export names it by index somewhere in its
     body, and the chunk's size and flags single it out."""
     for at in range(len(body) - 3):
@@ -132,7 +137,7 @@ def _mip0_entry(body: bytes, entries: Sequence[Mapping[str, int]], want: int) ->
 def _mip0(
     view: PackageView,
     export: dict[str, object],
-    entries: Sequence[Mapping[str, int]],
+    entries: Sequence[BulkEntry],
     ubulk: bytes,
     decoder: ModuleType,
 ) -> U8Grid | None:

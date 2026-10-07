@@ -11,7 +11,12 @@ import numpy as np
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.level.landscape import LANDSCAPE_SECTION_ORIGIN
 from satisfactory_mcp.core.arrays import U8Grid
-from satisfactory_mcp.core.gameassets.packages import PackageView, class_name_of, property_tags
+from satisfactory_mcp.core.gameassets.packages import (
+    BulkEntry,
+    PackageView,
+    class_name_of,
+    property_tags,
+)
 
 __all__ = [
     "IGNORED",
@@ -82,7 +87,7 @@ def weightmap_textures(view: PackageView, ubulk: bytes) -> dict[int, U8Grid]:
     Bulk entries are grouped per owning export (an inline entry continues the group before
     it); owners and groups pair up in export offset order, which is checked by count.
     """
-    groups: list[list[dict[str, int]]] = []
+    groups: list[list[BulkEntry]] = []
     for entry in view.pkg.bulk_entries():
         if not entry["flags"] & _INLINE_BULK:
             groups.append([entry])

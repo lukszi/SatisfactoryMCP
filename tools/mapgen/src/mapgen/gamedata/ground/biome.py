@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import json
-from types import ModuleType
-from typing import TYPE_CHECKING, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Protocol, TypeAlias, TypedDict, cast
 
 import numpy as np
 from scipy import ndimage
@@ -13,6 +12,7 @@ from mapgen.common import ROOT
 from mapgen.gamedata.frame import BOUNDS_M, GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
+from satisfactory_mcp.core.gameassets.imaging import ImageFactory
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND, MapAreaError, read_map_areas
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
@@ -29,6 +29,7 @@ __all__ = [
     "CALIBRATION_SHIFT_M",
     "CALIBRATION_STEP_M",
     "REGION_TABLE",
+    "CalibrationImaging",
     "boundary_mask",
     "calibrate_biome",
     "pinned_box",
@@ -60,6 +61,14 @@ class RegionTable(TypedDict):
     grid_meta: RegionGridMeta
     legend: dict[str, str]
     region_grid: list[str]
+
+
+class CalibrationImaging(ImageFactory["Image.Image"], Protocol):
+    """``PIL.Image`` as a pin calibration uses it: the sheet reader's factory, and the filter
+    the sheet is shrunk with."""
+
+    @property
+    def Resampling(self) -> type[Image.Resampling]: ...
 
 
 # --------------------------------------------------------------------------------------
@@ -155,17 +164,17 @@ def pinned_box(dx_cm: float, dy_cm: float, scale: float) -> Box:
     return (cx + dx_cm - half, cx + dx_cm + half, cy + dy_cm - half, cy + dy_cm + half)
 
 
-def _edge_strength(sheet: Image.Image, image_mod: ModuleType) -> F32Grid:
+def _edge_strength(sheet: Image.Image, image_mod: CalibrationImaging) -> F32Grid:
     """The sheet's grey edge strength at ``CALIBRATION_PX``."""
     grey = np.asarray(
-        sheet.convert("L").resize((CALIBRATION_PX, CALIBRATION_PX), image_mod.LANCZOS),
+        sheet.convert("L").resize((CALIBRATION_PX, CALIBRATION_PX), image_mod.Resampling.LANCZOS),
         np.float32,
     )
     gy, gx = np.gradient(ndimage.gaussian_filter(grey, 1.0))
     return np.hypot(gx, gy)
 
 
-def calibrate_biome(biome: dict, sheet: Image.Image, image_mod: ModuleType) -> JsonObject:
+def calibrate_biome(biome: dict, sheet: Image.Image, image_mod: CalibrationImaging) -> JsonObject:
     """Score the pin by the artwork's own edges, and sweep for one that beats it.
 
     The statistic is the ratio of the sheet's mean edge strength ON the biome raster's area

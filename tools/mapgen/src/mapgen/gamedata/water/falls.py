@@ -19,6 +19,8 @@ from satisfactory_mcp.core.arrays import F64Grid
 from satisfactory_mcp.core.gameassets.packages import (
     ClassFacts,
     PackageView,
+    Quat,
+    Transform,
     class_name_of,
     compose,
     local_transform,
@@ -89,12 +91,12 @@ class FallsStamp(TypedDict):
     reader_version: int
 
 
-def _axes(quat: tuple[float, ...]) -> F64Grid:
+def _axes(quat: Quat) -> F64Grid:
     return np.stack([np.array(quat_rotate(quat, tuple(a))) for a in np.eye(3)])
 
 
 def _instances(
-    view: PackageView, slot: int, root_tf: tuple[tuple[float, ...], ...], classes: ClassFacts
+    view: PackageView, slot: int, root_tf: Transform, classes: ClassFacts
 ) -> F64Grid | None:
     """An instanced component's matrices in world space, rows as UE's (scaled axes, origin)."""
     body = view.pkg.body(view.exports[slot])
@@ -103,7 +105,7 @@ def _instances(
     if mats is None:
         return None
     # Attached through the class template, so the instance names no parent of its own.
-    tf: tuple[tuple[float, ...], ...] | None
+    tf: Transform | None
     if "AttachParent" in view.props(slot):
         tf = world_transform(view, slot, classes)[0]
     else:
@@ -168,7 +170,7 @@ def read_fall(
     if class_name_of(class_path) != FALL_CLASS:
         return None
     root = root_component(view, slot)
-    root_tf: tuple[tuple[float, ...], ...] | None
+    root_tf: Transform | None
     root_tf = world_transform(view, root, classes)[0] if root is not None else None
     if root_tf is None:
         return None
