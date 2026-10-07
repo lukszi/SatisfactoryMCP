@@ -68,7 +68,9 @@ and the repository root on `pythonpath`, so two folders may hold files of the sa
 `tmp_path` and clears the cached `config` paths, so plans, labels, the activity journal, pins,
 asks, advice, the page focus and the shared settings are never the reader's; the `user_data`
 fixture is that root. `data_dir` and `cache_dir` are not redirected: a test that needs a
-`data/local` tree builds one.
+`data/local` tree builds one. A module fixture runs before any test's root is in force, so one
+that reads or writes user data (the sensitivity sweep reads the shared settings) wraps itself
+in `tests.support.user_data.private_user_data` over a root of its own.
 
 **Web tests.** A module that drives the app calls `pytest.importorskip("fastapi")` at module
 scope, because the web stack is an optional extra. It gets the app through `client` (the shared

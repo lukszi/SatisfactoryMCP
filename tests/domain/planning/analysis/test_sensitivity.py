@@ -16,15 +16,23 @@ from satisfactory_mcp import server as srv
 from satisfactory_mcp.core.gamedata.unlocks import SOURCE_OF_TYPE
 from satisfactory_mcp.domain.planning.analysis.sensitivity import sweep_unlocks
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
-from tests.support.reference_world import REFERENCE_MAX_MW_ARGS
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.reference_world import FIXTURE_WORLD, REFERENCE_MAX_MW_ARGS, SPIRE_COAST_FULL
+from tests.support.user_data import private_user_data
 
 # The fixture world, not the newest save: the measured answer names the Blender it lacked.
 pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("planned")]
 
 
-@pytest.fixture
-def sweep(game, planned):
-    return sweep_unlocks(build_scenario(game, planned, **REFERENCE_MAX_MW_ARGS), planned)
+@pytest.fixture(scope="module")
+def sweep(game, projection, tmp_path_factory):
+    """One sweep for the module, over the world ``planned`` builds, in a user data root of its
+    own: no test's private root is in force yet while a module fixture runs."""
+    with private_user_data(tmp_path_factory.mktemp("sweep") / "user"):
+        PlanLog(FIXTURE_WORLD).create("spire-coast-full", SPIRE_COAST_FULL, actor=Actor("chat"))
+        world = WorldState(projection=projection, game=game)
+        return sweep_unlocks(build_scenario(game, world, **REFERENCE_MAX_MW_ARGS), world)
 
 
 # ------------------------------------------------------------ the sweep

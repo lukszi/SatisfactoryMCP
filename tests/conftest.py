@@ -19,23 +19,11 @@ from satisfactory_mcp.domain.world.state import WorldState
 from tests.support.map_jobs import in_use_local, local, runner  # noqa: F401  (fixtures)
 from tests.support.paths import FIXTURES
 from tests.support.reference_world import FIXTURE_SAVE, FIXTURE_WORLD, SPIRE_COAST_FULL
+from tests.support.user_data import private_user_data
 from tests.support.web import client_over
 
 #: Marks the tests that parse every save on the machine; they are dealt to workers first.
 WHOLE_FOLDER = "whole_folder"
-
-#: The ``config`` paths under the user data root, each cached after its first call. Held as
-#: the functions themselves, so a test that patches one cannot hide its cache from a clear.
-USER_DATA_PATHS = (
-    config.plans_dir,
-    config.labels_dir,
-    config.activity_dir,
-    config.ui_dir,
-    config.pins_dir,
-    config.asks_dir,
-    config.advice_dir,
-    config.settings_path,
-)
 
 
 def pytest_collection_modifyitems(items):
@@ -54,22 +42,11 @@ def _docs_available() -> bool:
         return False
 
 
-def _clear_user_data_caches() -> None:
-    for cached in USER_DATA_PATHS:
-        cached.cache_clear()
-
-
 @pytest.fixture(autouse=True)
 def _private_user_data(tmp_path):
-    """Every store a test writes lives under its own ``tmp_path``, never the reader's.
-
-    Its own patch rather than ``monkeypatch``, so a test's ``monkeypatch.undo()`` keeps it.
-    """
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setenv("SATISFACTORY_USER_DATA", str(tmp_path / "user"))
-        _clear_user_data_caches()
+    """Every store a test writes lives under its own ``tmp_path``, never the reader's."""
+    with private_user_data(tmp_path / "user"):
         yield
-    _clear_user_data_caches()
 
 
 @pytest.fixture
