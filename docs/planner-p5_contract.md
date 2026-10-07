@@ -150,7 +150,7 @@ confirm, since it moves the pad onto what is built.
 | `x_m y_m yaw_deg w_m d_m source sited` | The pad asked about; `source` is the footprint's, `sited` whether the plan has a site |
 | `in_map in_content region` | Map square (hard edge), playable box (warning), region label |
 | `z_m z_note` | The provider's ground height (§6), else null and `terrain height: pending` |
-| `terrain terrain_note` | `Field.window` over the pad's box: z min/median/max, slope, roughness, submerged %, stride, and water distance and drop; `no terrain field on this machine` or `terrain not read` |
+| `terrain terrain_note` | `Field.area` over the pad's box: z min/median/max, slope, roughness, submerged %, stride, and water distance and drop; `no terrain field on this machine` or `terrain not read` |
 | `slabs on_pad planned` | Foundation slabs the pad meets; the class census on the pad against the plan |
 | `trunks placeless` | `plan_trunks` toward the pad: `run_m` node to node, **`to_site_m`** the leg to the pad, `lift_m` the last node over the pad's ground, `pumps` for pipes |
 | `built now` | `built.detect` + diff + stages with the pad **here**, and at the stored site |

@@ -658,7 +658,7 @@ Status comes from the `list_plans` logic (moved to the domain, G2): `build_scena
 | Feature | Behaviour | Data | Constraint |
 |---|---|---|---|
 | Pad | Dashed outline (exists), now with move/rotate/resize handles, 8 m snap, 15° with Shift | siting | Same maths as `siting.contains_cm` / `footprintCorners` |
-| Pad preview | Census and terrain while dragging, ~4/s | `GET /api/site/survey` | Time `Field.window` first |
+| Pad preview | Census and terrain while dragging, ~4/s | `GET /api/site/survey` | Time `Field.area` first |
 | Candidate fields | **Numbered pins** sized by untapped rate; popup shows every raw term and the weights | `GET /api/sites/rank` | A heat raster needs a colour ramp: Q12 |
 | Whole-bill siting | One pin set per raw input + a "nearest field per input" table | G9 | A second table, not folded into the score (roadmap §2.1) |
 | In-scope nodes | Free / tapped by the right extractor / tapped by the wrong one | `PlanRequest.node_rows` | The LP picks counts, not nodes |
@@ -737,7 +737,7 @@ siting. Plans are addressed by a stable `key`, so a rename is just an op.
 | `/api/ui/focus` | PUT (debounced, + heartbeat) | new | ms | W |
 | `/api/activity` | GET (since, actor) | plan logs + journal, merged | ms | – |
 | `/api/events` | SSE (exists) | + `plans`, `labels`, `activity` | – | – |
-| `/api/site/survey` | GET | `siting.survey` + `Field.window` | **measure** | – |
+| `/api/site/survey` | GET | `siting.survey` + `Field.area` | **measure** | – |
 | `/api/sites/rank` | GET | `rank_build_sites` body → domain (G2) | measure | – |
 | `/api/select/nodes` | GET | `select_for` + `annotate` | < 5 ms | – |
 | `/api/gamedata/alternates` | GET | `alternates_for_item` domain | ms | – |
