@@ -315,19 +315,18 @@ def _draw_layers(
     two_regime = run.direct is not None
     seam = SeamTrace() if two_regime else None
     regimes = RegimeCoverage() if two_regime else None
-    threads = draw_threads(args.draw_threads, layers, args.size)
+    threads = draw_threads(args.draw_threads, layers, args.size, columns=args.draw_columns)
     print(f"drawing {', '.join(layers)} at {args.size}x{args.size} on {threads} thread(s)")
     print(encode_stage(DRAW_STAGE, 0.0), flush=True)
     started = time.time()
     drawn = render_layers(
         layers, run.field, run.biome.rgb, run.biome.width, run.borrow, args.size,
-        not args.quiet,
-        height_dm=run.lattice.heights, direct=run.direct,
+        not args.quiet, height_dm=run.lattice.heights, direct=run.direct,
         measured_plane_u8=run.lattice.measured_plane, overlay=run.top,
         kernel=taps_cubic if args.kernel_only else taps_pchip, meshes=run.extras.meshes,
         falls=run.extras.falls, reach=run.water.reach, water_level=run.water.level,
         sea=run.sea, painted=run.painted, rivers=run.extras.rivers, relief=run.relief,
-        seam=seam, regimes=regimes, unlit=light is not None,
+        seam=seam, regimes=regimes, unlit=light is not None, columns=args.draw_columns,
         surface=light.surface if light else None, threads=threads, sheets=sheets,
     )  # fmt: skip
     timing = (time.time() - started, threads)

@@ -1,7 +1,9 @@
-"""A band coloured in one layer's style, over the ground every layer of the pass shares.
+"""A piece of a band coloured in one layer's style, over the ground every layer of the pass
+shares.
 
-``layer_job`` builds what a layer's bands read, once; ``paint_band`` colours one band of it
-over a ``render/surface.py`` ground, then the void and the falls.
+``layer_job`` builds what a layer's bands read, once, over the window's columns;
+``paint_band`` colours one piece of a band of it over a ``render/surface.py`` ground, then
+the void and the falls, reading the piece's own columns of the job.
 """
 
 from __future__ import annotations
@@ -31,7 +33,14 @@ from mapgen.palette.styles import (
 from mapgen.palette.water.falls import draw_falls
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
-from mapgen.render.surface import AxisTaps, BandSampling, BandSurface, GridTaps, GroundSources
+from mapgen.render.surface import (
+    AxisTaps,
+    BandSampling,
+    BandSurface,
+    GridTaps,
+    GroundSources,
+    cut_taps,
+)
 from mapgen.terrain.crown_stamp import CrownBand, stamp_crowns
 from mapgen.terrain.sample import (
     grid_position,
@@ -99,7 +108,8 @@ class PaintedInputs:
 class LayerJob:
     """One layer's half of a draw: what its painter reads, built once, over the pass's ground.
 
-    The bands only read it, so any number of threads may share it.
+    The column arrays and taps span the window; a piece reads its own columns of them. The
+    pieces only read it, so any number of threads may share it.
     """
 
     layer: str
@@ -181,7 +191,7 @@ def _painted_inputs(
 
 
 def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> np.ndarray:
-    """One band in the layer's style over its ground, then the void and the falls."""
+    """One piece of a band in the layer's style over its ground, then the void and the falls."""
     rows, z_m = grid.rows, surface.z_m
     y_cm = job.ground.y_cm[rows.lo : rows.hi]
     scene: _Scene = {
@@ -201,13 +211,13 @@ def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> np.nd
             _as_painter_dict(scene),
             job.relief,
             _sampler(grid.linear),
-            _picker(biome_rows, job.biome_cols),
+            _picker(biome_rows, job.biome_cols[grid.cols.cut]),
         )
     else:
         rgb = _style_colours(job, grid, scene)
     sea = job.ground.sea
     rgb = _void(rgb, surface.missing, sea, grid.linear, surface.weight, z_m)
-    return draw_falls(rgb, job.falls, job.layer, job.ground.x_cm, y_cm, z_m, job.ground.spacing_m)
+    return draw_falls(rgb, job.falls, job.layer, grid.x_cm, y_cm, z_m, job.ground.spacing_m)
 
 
 def _style_colours(job: LayerJob, grid: BandSampling, scene: _Scene) -> np.ndarray:
@@ -216,14 +226,14 @@ def _style_colours(job: LayerJob, grid: BandSampling, scene: _Scene) -> np.ndarr
     z_m, spacing_m = scene["z_m"], job.ground.spacing_m
     scene["shade"] = flat_shade(z_m.shape) if job.unlit else hillshade(z_m, spacing_m)
     if job.satellite is not None:
-        lo, hi = grid.rows.lo, grid.rows.hi
+        lo, hi, cut = grid.rows.lo, grid.rows.hi, grid.cols.cut
         y_cm = job.ground.y_cm[lo:hi]
         scene["slope"] = slope_degrees(z_m, spacing_m)
         biome_rows = biome_index(y_cm, BOUNDS_M["y_min_m"], BOUNDS_M["y_max_m"], job.biome_width)
-        biome = job.satellite.biome_rgb[np.ix_(biome_rows, job.biome_cols)]
+        biome = job.satellite.biome_rgb[np.ix_(biome_rows, job.biome_cols[cut])]
         scene["biome_rgb"] = biome.astype(np.float32)
         noise = job.satellite.noise
-        scene["noise"] = sample_noise(noise, np.arange(lo, hi), job.column_index, job.size)
+        scene["noise"] = sample_noise(noise, np.arange(lo, hi), job.column_index[cut], job.size)
     return job.painter(cast(SatelliteScene, scene))
 
 
@@ -235,8 +245,8 @@ def _painted_colours(
     scene: _Scene,
 ) -> np.ndarray:
     """The game-painted style's band: its rock weight, crowns, sun term and water optics."""
-    rows, z_m, field = grid.rows, surface.z_m, job.ground.field
-    window, spacing_m = job.ground.window, job.ground.spacing_m
+    rows, cols, z_m, field = grid.rows, grid.cols, surface.z_m, job.ground.field
+    spacing_m = job.ground.spacing_m
     y_cm = job.ground.y_cm[rows.lo : rows.hi]
     rock_rows = taps_linear(
         grid_position(y_cm, field.y0_cm, painted.rock_step, painted.rock_h), painted.rock_h
@@ -247,22 +257,22 @@ def _painted_colours(
     if surface.top_weight is not None:
         rock_weight = np.maximum(rock_weight, surface.top_weight)
     ground = painted.ground
-    scene["crowns"] = domed_crowns(ground, job.ground.x_cm, y_cm, spacing_m, job.unlit)
+    scene["crowns"] = domed_crowns(ground, grid.x_cm, y_cm, spacing_m, job.unlit)
     meshes = (surface.mesh_weight, surface.mesh_class, surface.level_m)
     scene["ndl"] = painted_ndl(z_m, spacing_m, job.unlit, meshes)
     scene["ndl_flat"] = _FLAT_SUN
     scene["rock_weight"] = rock_weight
     scene["mesh_weight"] = surface.mesh_weight
     scene["mesh_class"] = surface.mesh_class
-    scene["mesh_family"] = _band_family(job.ground.meshes, rows.band)
+    scene["mesh_family"] = _band_family(job.ground.meshes, (rows.cut, cols.cut))
     optics = ground.water_optics(grid.linear, surface.water.get("river"))
     scene["water_optics"] = cast("WaterOptics | None", optics)
-    scene["grid"] = BandGrid(rows.band, rows.lo, rows.hi, window.c0, window.c1, spacing_m)
+    scene["grid"] = BandGrid((rows.cut, cols.cut), rows.lo, rows.hi, cols.lo, cols.hi, spacing_m)
     paint: GridTaps = (
         taps_footprint(grid.field_y, painted.footprint, field.height),
-        painted.paint_cols,
+        cut_taps(painted.paint_cols, cols.cut),
     )
-    rock: GridTaps = (rock_rows, painted.rock_cols)
+    rock: GridTaps = (rock_rows, cut_taps(painted.rock_cols, cols.cut))
     return painted_colours(
         _as_painter_dict(scene),
         ground,
@@ -310,9 +320,9 @@ def _as_painter_dict(scene: _Scene) -> dict[str, object]:
     return cast("dict[str, object]", scene)
 
 
-def _band_family(meshes: MeshPlanes | None, band: slice) -> np.ndarray | None:
-    """The render-only meshes' rock family on this band; None for a cache without the plane."""
-    return None if meshes is None or meshes.family is None else np.asarray(meshes.family[band])
+def _band_family(meshes: MeshPlanes | None, cut: tuple[slice, slice]) -> np.ndarray | None:
+    """The render-only meshes' rock family on this piece; None for a cache without the plane."""
+    return None if meshes is None or meshes.family is None else np.asarray(meshes.family[cut])
 
 
 def _void(

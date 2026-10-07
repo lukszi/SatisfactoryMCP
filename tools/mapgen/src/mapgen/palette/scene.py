@@ -68,9 +68,10 @@ def field_water(field: hf.Field) -> tuple[I16Grid, U8Grid]:
 
 
 class BandGrid(NamedTuple):
-    """Where a band sits: its rows of the sheet with halo, its columns, and the pixel size."""
+    """Where a band's piece sits: its rows and columns, halos included, in a raster cut to
+    the window (``band``) and of the sheet, and the pixel size."""
 
-    band: slice
+    band: tuple[slice, slice]
     lo: int
     hi: int
     c0: int

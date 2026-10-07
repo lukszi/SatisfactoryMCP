@@ -1,8 +1,9 @@
-"""The band loop that draws a run's layers in one pass: each band's ground once, then every
-layer's colour over it.
+"""The band loop that draws a run's layers in one pass: each band in column pieces, each
+piece's ground once, then every layer's colour over it.
 
-The bands run on threads (``render/drawpool.py``). ``render/surface.py`` composes a band's
-ground and ``render/painting.py`` colours it in each layer's style.
+The pieces run on threads (``render/drawpool.py``). ``render/surface.py`` composes a piece's
+ground and settles each band once its pieces are in, and ``render/painting.py`` colours a
+piece in each layer's style.
 """
 
 from __future__ import annotations
@@ -23,19 +24,22 @@ from mapgen.palette.relief import ReliefGround
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater, water_sources
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M
-from mapgen.render.drawpool import bands_held, in_order
+from mapgen.render.drawpool import PIECE_COLS, bands_held, in_order
 from mapgen.render.painting import LayerJob, layer_job, paint_band
-from mapgen.render.stencils import band_halo
+from mapgen.render.stencils import band_halo, piece_halo
 from mapgen.render.surface import (
     GroundSources,
     Kernel,
     LightCapture,
-    Owed,
+    PieceOwed,
     RegimeSources,
+    Span,
     WaterPlanes,
     Window,
     band_grid,
     band_surfaces,
+    settle_band,
+    span,
 )
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.sample import frame_coordinates, grid_position, taps_linear, taps_pchip
@@ -48,6 +52,7 @@ __all__ = [
     "BAND_HALO",
     "BAND_ROWS",
     "DRAW_STAGE",
+    "PIECE_HALO",
     "DrawPass",
     "SheetMaker",
     "render_layer",
@@ -60,6 +65,10 @@ BAND_ROWS = 256
 #: The rows each band is drawn beyond its edges and cropped after, so no stencil sees a band
 #: edge: the widest reach at the largest size, from ``render/stencils.py``.
 BAND_HALO = band_halo()
+
+#: The columns each piece of a band is drawn beyond its edges and cropped after: the widest
+#: reach along a row of the stencils a piece draws.
+PIECE_HALO = piece_halo()
 
 #: The progress stage of the pass, which draws every layer at once.
 DRAW_STAGE = "draw"
@@ -79,15 +88,27 @@ class HeldPlane(Protocol):
 
 @dataclass(frozen=True)
 class DrawPass:
-    """One pass over the bands: the ground every layer shares, and each layer's job."""
+    """One pass over the bands: the ground every layer shares, each layer's job, and the
+    output columns of a band's pieces."""
 
     ground: GroundSources
     jobs: tuple[LayerJob, ...]
+    columns: int
 
     @property
     def seabeds(self) -> frozenset[bool]:
         """The seabed rules the layers draw the meshes in the water by."""
         return frozenset(job.seabed for job in self.jobs)
+
+    def rows(self, top: int) -> Span:
+        """The band from row ``top``, with its halo."""
+        window = self.ground.window
+        return span(top, BAND_ROWS, (window.r0, window.r1), BAND_HALO)
+
+    def cols(self, left: int) -> Span:
+        """The piece from column ``left``, with its halo."""
+        window = self.ground.window
+        return span(left, self.columns, (window.c0, window.c1), PIECE_HALO)
 
 
 def render_layers(
@@ -118,23 +139,26 @@ def render_layers(
     sea: OpenSea | None = None,
     threads: int = 1,
     sheets: SheetMaker | None = None,
+    columns: int = PIECE_COLS,
 ) -> dict[str, U8Grid]:
-    """Every layer of ``layers`` drawn in one pass over the bands, each band's ground composed
-    once for all of them. Returns each layer's ``(rows, cols, 3)`` uint8 sheet, made by
-    ``sheets`` (in memory when None).
+    """Every layer of ``layers`` drawn in one pass over the bands, each band in pieces of
+    ``columns`` output columns whose ground is composed once for all of them. Returns each
+    layer's ``(rows, cols, 3)`` uint8 sheet, made by ``sheets`` (in memory when None).
 
     ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. ``painted`` is
     the painted layer's ground and ``relief`` each relief layer's. ``unlit`` draws the sun
     term flat; ``surface`` receives the heights and land weight the seabed rule draws, once,
     whatever the layers. ``sea`` is the run's ``OpenSea``, whose water planes replace
-    ``water_level``'s. ``threads`` bands are drawn at once, to the same bytes; ``seam`` and
-    ``regimes`` take the bands in order. The rest: docs/spatial-and-map.md sections 20, 25 and
-    40.
+    ``water_level``'s. ``threads`` pieces are drawn at once, to the same bytes at any count
+    and any width up to 16384; ``surface``, ``seam`` and ``regimes`` take the bands in order.
+    The rest: docs/spatial-and-map.md sections 20, 25 and 40.
     """
     if not layers or len(set(layers)) != len(layers):
         raise ValueError(f"a pass draws each of its layers once: {list(layers)}")
     if painted is not None and "painted" not in layers:
         raise ValueError("the painted ground is the painted layer's, and only its")
+    if columns < 1:
+        raise ValueError(f"a piece draws at least one column, not {columns}")
     box = Window(*(window or (0, size, 0, size)))
     ground = _ground_sources(
         field, box, size, borrow,
@@ -151,7 +175,7 @@ def render_layers(
     shape = (box.r1 - box.r0, box.c1 - box.c0, 3)
     make = sheets or _in_memory
     out = {layer: make(layer, shape) for layer in layers}
-    _draw(DrawPass(ground, jobs), out, size, progress, threads)
+    _draw(DrawPass(ground, jobs, columns), out, size, progress, threads)
     return out
 
 
@@ -182,6 +206,7 @@ def render_layer(
     water_level: np.ndarray | None = None,
     sea: OpenSea | None = None,
     threads: int = 1,
+    columns: int = PIECE_COLS,
 ) -> U8Grid:
     """One layer alone, in memory: ``render_layers`` with that layer and its own ``relief``."""
     return render_layers(
@@ -190,7 +215,7 @@ def render_layer(
         measured_plane_u8=measured_plane_u8, overlay=overlay, kernel=kernel, meshes=meshes,
         falls=falls, reach=reach, painted=painted, window=window, rivers=rivers,
         relief=None if relief is None else {layer: relief}, unlit=unlit, surface=surface,
-        water_level=water_level, sea=sea, threads=threads,
+        water_level=water_level, sea=sea, threads=threads, columns=columns,
     )[layer]  # fmt: skip
 
 
@@ -201,19 +226,26 @@ def _in_memory(_layer: str, shape: tuple[int, int, int]) -> U8Grid:
 def _draw(
     draw: DrawPass, sheets: dict[str, U8Grid], size: int, progress: bool, threads: int
 ) -> None:
-    """The pass's bands into ``sheets`` on ``threads``, their measurements merged in order."""
+    """The pass's pieces into ``sheets`` on ``threads``, band by band; each band, once its
+    pieces are in, settled in order: its light captured and its measurements merged."""
     box = draw.ground.window
-    tops = range(box.r0, box.r1, BAND_ROWS)
-    threads = max(1, min(threads, len(tops)))
+    lefts = range(box.c0, box.c1, draw.columns)
+    pieces = [(top, left) for top in range(box.r0, box.r1, BAND_ROWS) for left in lefts]
+    threads = max(1, min(threads, len(pieces)))
     started = time.time()
     with ExitStack() as stores:
         for plane in _band_planes(draw) if threads > 1 else ():
-            stores.enter_context(plane.holding(bands_held(threads)))
-        band = partial(_draw_band, draw, sheets)
-        owed = stores.enter_context(closing(in_order(band, tops, threads)))
-        for top, measured in zip(tops, owed, strict=True):
-            for merge, value in measured:
+            stores.enter_context(plane.holding(bands_held(threads, len(lefts))))
+        piece = partial(_draw_piece, draw, sheets)
+        owed = stores.enter_context(closing(in_order(piece, pieces, threads)))
+        band: list[PieceOwed] = []
+        for (top, _left), measured in zip(pieces, owed, strict=True):
+            band.append(measured)
+            if len(band) < len(lefts):
+                continue
+            for merge, value in settle_band(draw.ground, draw.rows(top), band):
                 merge(value)
+            band = []
             if progress and (top // BAND_ROWS) % 16 == 0:
                 done = (min(top + BAND_ROWS, box.r1) - box.r0) / (box.r1 - box.r0)
                 print(
@@ -320,15 +352,16 @@ def _band_planes(draw: DrawPass) -> list[HeldPlane]:
     return [plane for plane in planes if isinstance(plane, HeldPlane)]
 
 
-def _draw_band(draw: DrawPass, sheets: dict[str, U8Grid], top: int) -> list[Owed]:
-    """Rows ``[top, top + BAND_ROWS)`` of every layer's sheet, all over one ground, and the
-    ``(merge, measured)`` pairs the caller merges in band order. Nothing shared is written
-    but those rows and the capture."""
-    grid = band_grid(draw.ground, top, BAND_ROWS, BAND_HALO)
+def _draw_piece(draw: DrawPass, sheets: dict[str, U8Grid], at: tuple[int, int]) -> PieceOwed:
+    """The piece at ``(top, left)`` of every layer's sheet, all over one ground, and what it
+    owes its band. Nothing shared is written but its own pixels of the sheets."""
+    top, left = at
+    grid = band_grid(draw.ground, draw.rows(top), draw.cols(left))
     surfaces, owed = band_surfaces(draw.ground, grid, draw.seabeds)
-    rows, r0 = grid.rows, draw.ground.window.r0
+    rows, cols, box = grid.rows, grid.cols, draw.ground.window
+    out = (slice(rows.start - box.r0, rows.stop - box.r0),
+           slice(cols.start - box.c0, cols.stop - box.c0))  # fmt: skip
     for job in draw.jobs:
         rgb = paint_band(job, grid, surfaces[job.seabed])
-        out = sheets[job.layer]
-        out[rows.top - r0 : rows.bottom - r0] = np.clip(rgb[rows.kept], 0, 255).astype(np.uint8)
+        sheets[job.layer][out] = np.clip(rgb[rows.kept, cols.kept], 0, 255).astype(np.uint8)
     return owed

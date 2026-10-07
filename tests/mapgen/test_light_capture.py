@@ -145,6 +145,32 @@ def test_one_pass_draws_every_layer_as_alone_painted_over_its_own_meshes(monkeyp
     assert surface.land.tobytes() == first.land.tobytes()
 
 
+def test_a_pass_in_column_pieces_draws_and_captures_what_whole_rows_do(monkeypatch):
+    def painter(scene, ground, sample, sample_rock):
+        rgb = np.stack([scene["z_m"], scene["water"]["cover"] * 200, scene["ndl"] * 100], -1)
+        return rgb.astype(np.float32)
+
+    monkeypatch.setattr(painting, "painted_colours", painter)
+    scene = _scene()
+    borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
+    reliefs = {layer: ReliefGround(RELIEF_PALETTES[layer][0], scene.field, None, [])
+               for layer in LAYERS if layer in RELIEF_PALETTES}  # fmt: skip
+    drawn = {}
+    for columns in (N, 23, 7):
+        surface = _Surface()
+        sheets = compose.render_layers(
+            LAYERS, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
+            scene.heights, meshes=scene.meshes, unlit=True, surface=surface,
+            painted=_painted_ground(), relief=reliefs, threads=3, columns=columns,
+        )  # fmt: skip
+        drawn[columns] = ({layer: sheet.tobytes() for layer, sheet in sheets.items()}, surface)
+    whole, whole_surface = drawn.pop(N)
+    for columns, (sheets, surface) in drawn.items():
+        assert sheets == whole, columns
+        assert surface.z.tobytes() == whole_surface.z.tobytes(), columns
+        assert surface.land.tobytes() == whole_surface.land.tobytes(), columns
+
+
 def _paint_store(tmp_path, top_dm: np.ndarray, grid: dict) -> None:
     (tmp_path / CROWN_NAME).write_bytes(hf.encode_i16(top_dm))
     files = {CROWN_NAME: {"shape": list(top_dm.shape), "kind": "i16"}}

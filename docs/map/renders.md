@@ -829,12 +829,13 @@ tiles are the same bytes:
   presence: 40 planes a band in the painted layer. It called `resample`, which also sums the
   stencil's weights for the no-data bookkeeping, a second gather and multiply per tap that
   nothing read. It now sums the values alone, in `resample`'s order, from the same zeroed
-  accumulators. `reads_nothing` checks the texels under the band's rows first: when they are
-  all zero the sample is 0.0 everywhere, so it is not worked out.
+  accumulators. `reads_nothing` checks the texels the taps read first, the band's rows cut to
+  the piece's columns ("Column pieces", section 40): when they are all zero the sample is 0.0
+  everywhere, so it is not worked out.
 - **The void is drawn where it is.** `with_void` blended every pixel of the band. Where its
   cover and rim are both 0 the blend gives back the pixel, so only the pixels under one of
-  them are blended. A band with no void under its rows and no pixel without data returns
-  before the void's four planes are sampled, and `_sample_water_surface` and `_rock_kept` skip the
+  them are blended. A piece with no void under it and no pixel without data returns before
+  the void's four planes are sampled, and `_sample_water_surface` and `_rock_kept` skip the
   cover there too.
 - **Water is mixed where it is.** The terrain and satellite styles (`water_composite`), the
   painted style and the relief styles all end their water with
@@ -1144,23 +1145,24 @@ bytes.
 ### What runs where
 
 - **The bands are unchanged:** 256 rows, with `BAND_HALO` rows either side, cropped ("The
-  halo" below). A band on a thread computes exactly what it computed in turn; only when it
-  runs changes. 128-row bands were tried in the research and changed pixels, so the band and
-  block geometry stay.
+  halo" below). Each band is drawn in column pieces ("Column pieces" below), and a piece on a
+  thread computes exactly what it computed in turn; only when it runs changes. 128-row bands
+  were tried in the research and changed pixels, so the band and block geometry stay.
 - `render_layers` builds what every band shares, once, before any band starts: the ground's
   sources (`_ground_sources`: the arguments, the column taps, the water planes) and each
-  layer's job (`painting.layer_job`: its painter's inputs, the satellite noise). The bands
+  layer's job (`painting.layer_job`: its painter's inputs, the satellite noise). The pieces
   only read them.
-- `_draw_band` writes its own rows of every layer's sheet and its own rows of the light's
-  `Surface` (section 29). From a band's thread nothing else shared is written.
-- **The seam trace and the regime table** are measured per band on the band's thread
-  (`SeamTrace.measure`, `RegimeCoverage.measure`, which touch nothing shared) and merged by
-  the caller in band order (`merge`). The pools, the float sums and the order the provinces
-  are first seen in are the serial loop's, so the sidecar's numbers are too. `add` is
+- `_draw_piece` writes its own pixels of every layer's sheet. From a piece's thread nothing
+  else shared is written.
+- **Each band is settled in order** on the caller's thread once its last piece is in
+  (`surface.settle_band`): its rows of the light's `Surface` (section 29) are written, and the
+  seam trace and the regime table measure it (`SeamTrace.measure`, `RegimeCoverage.measure`)
+  and are merged (`merge`). The pools, the float sums and the order the provinces are first
+  seen in are the serial loop's, so the sidecar's numbers are too. `add` is
   `merge(measure(...))`.
-- `tiles/drawpool.in_order` runs the pool. Results come back in band order, at most
-  `2 × threads` bands are submitted past the one being waited on, and a failure is raised
-  when its band's turn comes, after the bands not yet started are cancelled and the running
+- `render/drawpool.in_order` runs the pool. Results come back in order, at most
+  `2 × threads` pieces are submitted past the one being waited on, and a failure is raised
+  when its piece's turn comes, after the pieces not yet started are cancelled and the running
   ones have finished. On one thread it is a plain loop on the caller's thread: the serial
   path.
 
@@ -1210,38 +1212,45 @@ runs, the halo at 8 against 16:
   the same water cover and moves in the same rows.
 - The peak commit of the windowed draws on 2 threads stayed at 12.1 to 12.5 GB.
 
-The column pieces of the performance plan read the same table: every stencil but the seam
-trace reaches as far along a row as across rows.
+The column pieces read the same table ("Column pieces" below): every stencil but the seam
+trace reaches as far along a row as across rows, which the tests measure too by moving one
+column, so `PIECE_HALO` is 16 columns. The seam trace reads a band only once its pieces are
+put together, so no piece edge cuts it (`Stencil.pieces`).
 
 ### The band stores
 
 The draw's threads share each `BandArray` (section 39). Its cache and its zstd decoder are
 not safe to use from two threads at once, so a lock covers both: one lock per plane, so two
 planes decode at once and one plane decodes one band at a time. While a pass is drawn on N
-threads, each plane keeps `2N + 2` decoded bands (`bands_held`), because the bands in flight
-span that many stored bands with their halos. The count drops back to three when the pass
-is done. At 32768 one stored band of every plane the painted layer reads comes to about
-160 MB, so on 8 threads it holds about 2.9 GB of decoded bands; the other layers read fewer
-planes, about 125 MB a band.
+threads, each plane keeps the decoded bands that the `2N` pieces in flight span, and one more
+either side for the halos (`bands_held`). The count drops back to three when the pass is
+done. Every piece of a band reads the band's columns it needs out of the same decoded bands,
+cutting them before they are joined (`BandArray._span`), so a piece copies its own columns
+only. At 32768 a band is 64 pieces, so 8 threads hold 4 decoded bands where they held 18
+before the pieces; at 2048 a band is 4 pieces, and they hold 7. One stored band of every
+plane the painted layer reads comes to about 160 MB at 32768, and about 125 MB for the other
+layers.
 
 ### How many threads
 
 `--draw-threads N`; by default 8 (`DRAW_THREADS`), and no more than the machine has cores.
 Before the pass the count is cut to what free memory holds: the free memory, less one sheet
-(3 bytes a pixel; the sheets are files, "One pass for every layer" below) and 2 GiB, over the
-peak one band in flight takes. The free memory is the
-one `mapgen/pools.py` reads for the light bake and the cutter too. On Windows it is the
+(3 bytes a pixel; the sheets are files, "One pass for every layer" below) and 2 GiB, must
+hold the pieces in flight and the decoded bands they read (`pass_bytes`). The free memory is
+the one `mapgen/pools.py` reads for the light bake and the cutter too. On Windows it is the
 lesser of the free physical memory and the commit left, because an array commits its
 whole size when it is allocated: with other work running, the commit ran out at 17 GB while
-37 GB of RAM stood free, and an allocation failed. One more band in flight costs about
-1.9 GB, and 3.4 GB for the painted layer, at 32768 wide, scaled by the width: the working set
-measured at 1, 4 and 8 threads below, so the decoded bands it keeps are counted too. The
-performance plan had estimated 1.4 and 2.9 GB. A pass paints its layers in turn over one
-ground, so a band of it costs its dearest layer's, and 0.6 GB more (`SEABED_BYTES`) for the
-second ground of a pass that draws the painted layer and another (`band_bytes`). With nothing
-else running, a 64 GB machine draws every layer on 8 threads. `1` draws the bands in turn.
-The run prints the count, and every layer's `meta.json` records it as `render.draw_threads`,
-beside `cut_workers`.
+37 GB of RAM stood free, and an allocation failed. One more piece in flight of the default
+512 columns costs about 0.045 GB, and 0.08 GB for the painted layer, scaled by the piece's
+width (`PIECE_BYTES`); a pass paints its layers in turn over one ground, so a piece of it
+costs its dearest layer's, and 0.015 GB more (`SEABED_BYTES`) for the second ground of a pass
+that draws the painted layer and another (`piece_bytes`). The decoded bands come on top,
+about 160 MB a band with the painted layer and 125 MB without at 32768 wide ("The band
+stores"). Those figures come from the peak commit of windowed draws at 1 and 8 threads
+("Column pieces" below); before the pieces, one more band in flight cost 1.9 to 4 GB at full
+width. Memory no longer holds the default back on any machine that can hold a sheet. `1`
+draws the pieces in turn. The run prints the count, and every layer's `meta.json` records it
+as `render.draw_threads`, beside `cut_workers`.
 
 ### What the threads share, audited
 
@@ -1249,12 +1258,12 @@ beside `cut_workers`.
 | --- | --- |
 | The heights, lattices, water and void planes, and the rasters | Read only: numpy arrays, `r` memory maps, or band stores whose bands are read-only |
 | The field | Its planes are decoded when it loads; the water planes are read in `_ground_sources`, before any band |
-| A band's ground | Its own band's only. Every layer's painter reads it, and its arrays are read-only, so a painter that wrote to one would fail rather than change what the next layer reads |
+| A piece's ground | Its own piece's only. Every layer's painter reads it, and its arrays are read-only, so a painter that wrote to one would fail rather than change what the next layer reads |
 | `PaintedGround`, `ReliefGround`, `RiverWater`, `OpenSea` | Built before the draw. The crowns' calibrated sprites, the water classes and the family targets are written in setup, never by a band |
 | Random numbers | The satellite noise comes from a seeded generator, once per run in `layer_job`; the moss patches hash each pixel's position |
 | numpy's error state | Per thread since numpy 2; the band code sets no warnings filters, which are process-wide |
 | Palettes and colour tables | Module constants, read only |
-| The sheets and the light's surface | Each band writes only its own rows |
+| The sheets and the light's surface | Each piece writes only its own pixels of the sheets; the caller's thread writes the light's surface, a band at a time in order |
 
 ### The GIL
 
@@ -1405,11 +1414,100 @@ ground once (`render/surface.py` `band_surfaces`) before every layer's painter c
   copied out for the cutter in 0.29 s either way; with 43 GB free nothing reached the disk
   before it was deleted.
 
+### Column pieces (2026-10-07)
+
+A band of the full-size sheet is 288 rows by 32,768 columns with its halo, 38 MB an array of
+float32, and its draw makes hundreds of such arrays, each far larger than the processor's
+caches and each a fresh allocation the system pages in. Each band is now drawn in pieces of
+`--draw-columns` output columns (`PIECE_COLS`, 512 by default), each `PIECE_HALO` columns
+past its edges either side and cropped after, as the bands are across rows ("The halo"
+above): 288 by 544, 0.6 MB an array. The pieces are the pool's items, in band order: a
+full-size band is 64 of them, a 2048 band 4, and the threads draw the pieces of one or two
+bands at a time, where they drew one band each before.
+
+- **What a piece reads.** The window's column taps and pixel centres, the layer jobs'
+  column data (the biome columns, the painted ground's rock and footprint taps) and the
+  rasters a band reads by rows (the direct, top and mesh rasters and the painted ground's
+  rock families) are cut to the piece's columns. The painters' `BandGrid` carries the
+  piece's place on the sheet, which the Titan trees and the rock tops' patches read, and its
+  `band` is the piece's rows and columns of a raster cut to the window.
+- **What waits for the band.** The light's surface, the seam trace and the regime table take
+  a whole band at a time: each piece hands its output pixels of the planes they read
+  (`PieceOwed`), and the caller joins a band's pieces in column order once the last is in
+  (`settle_band`). The seam trace's second differences, its 32-texel neighbourhood and its
+  thinning, and the regime table's float sums, see the band as they did, so the sidecars'
+  numbers are the same, and the seam trace needs no halo of its own.
+- **Nothing is computed from a piece's extent.** Every step but the stencils is a function
+  of a pixel's own place: the samplers gather by column, the noise and the moss patches hash
+  positions, the crowns and the waterfalls are placed from each pixel's centre, and the void
+  and the wet-pixel shortcuts decide per piece only to skip work that would leave a pixel as
+  it was.
+- **Tested equal.** Synthetic sheets drawn in pieces of 7 to 500 columns on 1 to 64 threads
+  give the bytes, the light's surface and the seam and regime numbers of whole rows, every
+  layer of a pass with its meshes included; and each stencil's reach along a row, measured by
+  moving one column, is its entry in the registry.
+
+**One step reads its row's width: the painted layer's luminance.** The painted layer's tone
+shoulder reads each pixel's luminance, `colour @ LUMA` in `colour.by_luminance`, and numpy
+hands that product to OpenBLAS a row at a time. With this machine's numpy 2.5.1 and its
+OpenBLAS 0.3.33, a float32 row of up to 16,384 columns sums each pixel's three products in
+one fused order, and a longer row in another, so the last bit of a pixel's luminance followed
+the width it was drawn at; the last `width mod 8` columns of a short row take a third order.
+A piece is never wider than 16,384 columns with the default width, and its tail columns fall
+in its halo or at the row's own end, so a piece takes a short row's order wherever the whole
+row did. The full-size sheet's rows are 32,768 wide, so there a pixel's luminance can now
+differ in its last bit from the whole-row draw's: under the shoulder (a linear luminance
+above 0.6) that is about a hundred-thousandth of a level, which moves a byte only on a
+rounding edge. Measured on the whole full-size sheet, drawn unlit as a lit render draws it:
+the painted layer in pieces, against the same pieces with the luminance summed as the long
+rows sum it, differs in 11 of its 1,073,741,824 pixels, scattered, each by one level. Every
+window of the sheet up to 16,384 columns wide, and every sheet of 16384 and below, already
+took the short rows' order, so the full-size sheet now draws as they do. The other steps were
+checked the same way and read no width: the 3 × 3 matrices of OKLab, every elementwise
+function the draw calls, and float64 products, at every width and offset tried.
+
+**Cutting the samplers to the piece.** `terrain.sample` read a band's whole rows of a field
+plane and converted them to float32 before it gathered the columns its taps read, once a
+call. In pieces that work repeats for every piece: at 2048 a band spans about 1,050 of the
+field's 7,500-texel rows, and four pieces of 512 drew the 2048 sheet in 24.4 s against 18.0 s
+in whole rows. The slab is now cut to the columns the taps read as well (`_slab`), and
+`reads_nothing` looks only at those texels; the samples are the same bits.
+
+**Measured** (2026-10-07, build 502094), each run alone on the machine:
+
+- The 2048 render, all five layers, lit: every tile, light tile and sidecar has the content
+  it had before the pieces, at the default width and in pieces of 256 columns. The draw took
+  15.6 s against 18.0 s, and the run's CPU 493 s against 574 s.
+- Three windows of the full-size sheet, every layer, unlit, on 8 threads: every array is
+  byte-identical to the draw before the pieces, as it was in pieces of 2048 on 2 threads.
+  Seconds against the one pass in whole rows, and the peak commit of the pass over the
+  process's own:
+
+  | Window | Whole rows | Pieces of 512 | Ratio | Peak commit, GB |
+  | --- | --- | --- | --- | --- |
+  | 16 bands over the densest water edges, half the width | 68.2 | 47.0 | 0.69 | 15.8 to 2.1 |
+  | A full-width strip of 4 bands | 40.6 | 21.3 | 0.53 | 15.1 to 1.7 |
+  | The first two bands, full width | 25.9 | 8.6 | 0.33 | 6.5 to 1.1 |
+
+  The strip and the first bands gain most because whole rows drew them on as many threads as
+  they had bands, 4 and 2; the water window kept all 8 busy either way, so its ratio is the
+  one a full render sees. The run's CPU, its preparation included, fell from 785 to 530 s,
+  and its peak commit from 21.1 to 8.6 GB.
+- Piece widths against each other, before the samplers were cut, on 8 bands of the water
+  window at 16,384 columns: on one thread whole rows took 96.2 s, pieces of 2048 92.0 s, of
+  512 77.7 s and of 256 76.0 s; on 8 threads 36.1, 31.8, 30.2 and 33.2 s, with peak commits
+  of 14.0, 2.4, 1.2 and 1.0 GB. On a full-width strip of 4 bands one thread took 82.9 s whole
+  and 61.4 s in pieces of 512. 512 is the default: the fastest on 8 threads, in half the
+  memory of 2048.
+
 ### Known limits
 
 - More threads than 8 drew little faster, and relief slower: the bands wait on memory, not
-  on cores.
-- The decoded bands the threads need, and the bands in flight, are memory the serial loop
+  on cores. In pieces, 16 threads drew a full-width strip in the time 8 did.
+- Pieces drew a band 1.2 to 1.35 times faster on one core than whole rows, short of the twice
+  the performance plan had hoped for: much of a band's time is per-pixel arithmetic and
+  gathers from the field, which a piece's size does not change.
+- The decoded bands the threads need, and the pieces in flight, are memory the serial loop
   did not take; the thread count is cut to fit, and `--draw-threads` lowers it further.
 - The pass holds every layer's sheet until that layer is cut, in files: 3.2 GB a layer at
   full size. Cutting the tiles as the bands finish would drop them, which is the streaming

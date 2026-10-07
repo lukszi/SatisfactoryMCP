@@ -113,6 +113,13 @@ Planned as 0.2.0.
   size). A palette-only restyle that draws the same surface installs that light instead of
   baking it again, about 14 minutes less at full size, and the Maps tab budgets it so. The
   light's `meta.json` records the `key` it was baked under; the tiles are the same bytes.
+- Map generator: each band is drawn in pieces of 512 columns, several pieces at once on the
+  draw's threads (`--draw-columns` sets the width). On 8 threads the draw's peak memory falls
+  from about 15 GB to about 2 GB, so free memory no longer cuts the thread count, and the five
+  layers draw in about 30% less time over the densest water of the full-size sheet. The 2048
+  render and windows of the full-size sheet are the same bytes; on the whole full-size sheet
+  11 of the painted layer's pixels move by one level, because its luminance is now summed as
+  every narrower draw sums it.
 
 ### Deprecated
 
