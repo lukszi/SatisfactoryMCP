@@ -130,10 +130,10 @@ def coarse_province(field: hf.Field) -> tuple[U8Grid, ProvinceBorrow]:
         "share_of_the_field": round(100 * share, 2),
         "feather_m": BORROW_FEATHER_M,
         "role": (
-            "1 where the field's own province is coarser than the artwork -- rasterised "
-            "collision hulls, or a 3.9 m block raster -- 0 over the landscape layer, which "
-            "is continuous geometry and keeps shading of its own, and a Gaussian ramp "
-            "between them so the provenance byte is never itself drawn"
+            "1 where the field's own province is coarser than the artwork -- rock and cliff "
+            "meshes rasterised at 1 m, or the 3.66 m interface raster -- 0 over the "
+            "landscape layer, which is continuous geometry and keeps shading of its own, and "
+            "a Gaussian ramp between them so the provenance byte is never itself drawn"
         ),
     }
 
@@ -160,11 +160,11 @@ def borrow_metadata(detail_meta: JsonObject, province_meta: ProvinceBorrow) -> J
             "clamp": list(BORROW_CLAMP),
             "reading": (
                 "the field is one resolution but not one accuracy. Over the landscape "
-                "province -- 45.3% of it -- the geometry is continuous and its own shading "
-                "is the best there is, so nothing is borrowed. Over cliff and fill it is "
-                "rasterised hulls and 3.9 m blocks, which is why those provinces read as "
-                "melted wax when drawn from the field alone, and the artwork drew the same "
-                "ground at 0.92 m."
+                "province the geometry is continuous and its own shading is the best there "
+                "is, so nothing is borrowed. The fill is the 3.66 m interface raster, which "
+                "reads as melted wax when drawn from the field alone; the artwork drew the "
+                "same ground at 0.92 m. The cliff province is rock meshes rasterised at 1 m "
+                "and is borrowed over too, at the gain picked on the older hull-built field."
             ),
         }
     }
