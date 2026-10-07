@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import stat
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -651,7 +652,17 @@ def clear_cache() -> int:
 
 
 def cache_bytes() -> int:
+    """The bytes the kept caches hold on their own. A file with another hard link, such as a
+    kept light's tile shared with its map's pyramid, is the map's and frees nothing."""
     cache = maps_dir() / CACHE_DIR_NAME
     if not cache.is_dir():
         return 0
-    return sum(p.stat().st_size for p in cache.rglob("*") if p.is_file())
+    held = 0
+    for path in cache.rglob("*"):
+        try:
+            info = path.stat()
+        except OSError:  # removed by a job while the walk went on
+            continue
+        if stat.S_ISREG(info.st_mode) and info.st_nlink <= 1:
+            held += info.st_size
+    return held

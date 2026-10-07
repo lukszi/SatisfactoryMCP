@@ -107,6 +107,9 @@ LIGHT_KEEP_BYTES = 1_000_000_000
 UNLIT_KEEP_BYTES = 450_000_000
 LIGHT_SCRATCH_BYTES = 14_500_000_000
 CROWN_SCRATCH_BYTES = 5_370_000_000
+#: The default-sun terms a lit render that keeps its cache moves out of the scratch into
+#: ``light.kept/``, 3 bytes a pixel; the kept tiles are hard links to the map's own.
+KEPT_TERMS_BYTES = 3 * FULL_PX * FULL_PX
 DIRECT_FLOOR_S = 80.0
 TOP_FLOOR_S = 18.0
 RENDER_KEEP_BYTES = 890_000_000
@@ -293,6 +296,12 @@ def cached_sizes() -> list[int]:
     return [size for size in RENDER_SIZES if cache_ready(size)]
 
 
+def keeps_cache(options: RenderOptions) -> bool:
+    """Whether a render job keeps its raster caches, and with the light its terms, for later
+    runs at its size: asked to, a restyle, or a cache of that size already there."""
+    return options["keep_cache"] or options["restyle"] or cache_dir(options["size"]).is_dir()
+
+
 def _render_cost(options: RenderOptions) -> tuple[float, int, int]:
     """``(seconds, bytes kept, bytes needed while it runs)`` of one render job."""
     area = _area(options["size"])
@@ -306,6 +315,9 @@ def _render_cost(options: RenderOptions) -> tuple[float, int, int]:
     transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
     if options["light"]:
         transient += int((LIGHT_SCRATCH_BYTES + CROWN_SCRATCH_BYTES) * area)
+        if keeps_cache(options):
+            terms = int(KEPT_TERMS_BYTES * area)
+            keep, transient = keep + terms, transient - terms
     return seconds, keep, transient
 
 
@@ -437,7 +449,7 @@ def _render_plan(
     argv.append("--light" if options["light"] else "--no-light")
     if not options["titan_trees"]:
         argv.append("--no-titan-trees")
-    if options["keep_cache"] or options["restyle"] or cache_dir(options["size"]).is_dir():
+    if keeps_cache(options):
         argv += ["--cache-dir", str(cache_dir(options["size"])), "--keep-direct"]
     if options["restyle"]:
         argv.append("--restyle")

@@ -71,6 +71,20 @@ def test_the_estimate_counts_the_light_cache_and_its_crowns_for_any_layers(in_us
         assert lit["keep_bytes"] > dark["keep_bytes"] and lit["seconds"] > dark["seconds"]
 
 
+def test_a_lit_render_that_keeps_its_cache_counts_its_kept_terms_as_kept(in_use_local):
+    """The terms move out of the scratch into ``light.kept/``: kept, and no more space at the
+    peak."""
+    terms = int(presets.KEPT_TERMS_BYTES * (2048 / presets.FULL_PX) ** 2)
+    drop = presets.estimate("render", {"layers": ["terrain"], "size": 2048})
+    keep = presets.estimate("render", {"layers": ["terrain"], "size": 2048, "keep_cache": True})
+    assert keep["keep_bytes"] - drop["keep_bytes"] == terms
+    assert keep["transient_bytes"] == drop["transient_bytes"] - terms
+    assert keep["needs_bytes"] == drop["needs_bytes"]
+    dark = {"layers": ["terrain"], "size": 2048, "light": False}
+    kept, dropped = (presets.estimate("render", {**dark, "keep_cache": k}) for k in (True, False))
+    assert kept["keep_bytes"] == dropped["keep_bytes"], "no light, no terms"
+
+
 def test_a_restyle_that_finds_a_kept_light_is_budgeted_no_bake(in_use_local):
     assert presets.KEPT_LIGHT_PART == KEPT_LIGHT_DIR_NAME
     size, area = 2048, (2048 / presets.FULL_PX) ** 2

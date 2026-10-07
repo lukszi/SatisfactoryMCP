@@ -141,3 +141,17 @@ def test_an_emptied_set_folder_goes_and_a_linked_one_stays(local):
     assert not (local / "renders-v1").exists()
     assert (local / "renders").exists(), "the link to the newest set is never removed"
     assert (local / "renders-v2" / "terrain").is_dir()
+
+
+def test_the_cache_counts_and_frees_only_the_bytes_it_holds_alone(local):
+    """A kept light's tiles are hard links to its map's: the map holds them, not the cache."""
+    kept = registry.maps_dir() / registry.CACHE_DIR_NAME / "2048" / "light.kept"
+    (kept / "tiles").mkdir(parents=True)
+    (kept / "terms.npy").write_bytes(b"t" * 300)
+    tile = local / "maps" / "j1" / "light" / "tiles" / "0.webp"
+    tile.parent.mkdir(parents=True)
+    tile.write_bytes(b"w" * 50)
+    (kept / "tiles" / "0.webp").hardlink_to(tile)
+    assert registry.cache_bytes() == 300
+    assert registry.clear_cache() == 300
+    assert not kept.exists() and tile.read_bytes() == b"w" * 50
