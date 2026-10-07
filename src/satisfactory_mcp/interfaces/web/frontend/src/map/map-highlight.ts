@@ -19,7 +19,11 @@ const highlightLayer = L.layerGroup();
 
 /* The selection key the ring stands on, so a selection that is already ringed is not
  * redrawn. */
-export let ringedKey = "";
+let ringedKey = "";
+
+export function isRinged(key: string): boolean {
+  return ringedKey === key;
+}
 
 export function outline(bounds: L.LatLngBounds): void {
   clearMark();

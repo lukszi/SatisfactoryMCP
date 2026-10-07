@@ -27,7 +27,7 @@ import {
 } from "../dash/power-ledger";
 import { registerFetch } from "../app/registry";
 import { onSelect, select, selected } from "../app/selection";
-import { clearMark, outline, ringAt, ringedKey, selectAndRing } from "./map-highlight";
+import { clearMark, isRinged, outline, ringAt, selectAndRing } from "./map-highlight";
 import { editName, renamingIn } from "../dash/factories/rename";
 import { state } from "../app/state";
 import { notifyVitals, vitals } from "../app/vitals";
@@ -157,7 +157,7 @@ function followSelection(): void {
   const factory = s?.kind === "factory" && factoryNamed(s.key) ? s.key : "";
   const circuitRow = s?.kind === "circuit" && readings.circuits ? readings.circuits.circuits[+s.key] : undefined;
   const circuit = circuitRow ? circuitRow.index : -1;
-  if (s && isPointSelection(s) && ringedKey !== s.kind + ":" + s.key && s.x_m !== undefined && s.y_m !== undefined) {
+  if (s && isPointSelection(s) && !isRinged(s.kind + ":" + s.key) && s.x_m !== undefined && s.y_m !== undefined) {
     ringAt(s.x_m, s.y_m, s.label, s.kind + ":" + s.key);
   }
   if (s && !factory && !circuitRow && !isPointSelection(s)) return;
