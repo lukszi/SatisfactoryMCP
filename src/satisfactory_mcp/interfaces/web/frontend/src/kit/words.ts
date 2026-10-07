@@ -3,7 +3,9 @@
 
 import { count } from "./format";
 
-export var WORDS = {
+import type { TableAge } from "../api/shapes";
+
+export const WORDS = {
   needAction: "need action",
   notRunning: "not running",
   powerProblems: "power problems",
@@ -68,22 +70,22 @@ export var WORDS = {
   },
 } as const;
 
-export var NODE_KIND: Record<string, string> = { node: "node", well_sat: "well satellite", geyser: "geyser" };
+export const NODE_KIND: Record<string, string> = { node: "node", well_sat: "well satellite", geyser: "geyser" };
 
-export var TRACK_VERB: Record<string, string> = {
+export const TRACK_VERB: Record<string, string> = {
   ok: "–",
   unpause: "unpause",
   setrecipe: "set recipe",
   build: "build",
 };
 
-export var ASK_STATE: Record<string, string> = {
+export const ASK_STATE: Record<string, string> = {
   open: "waiting for chat",
   seen: "seen by chat",
   answered: "answered",
 };
 
-export var ASK_KIND: Record<string, string> = {
+export const ASK_KIND: Record<string, string> = {
   plan: "plan",
   process: "process",
   stage: "stage",
@@ -92,7 +94,7 @@ export var ASK_KIND: Record<string, string> = {
   advice: "advisory",
 };
 
-export var ADVICE_WORD: Record<string, string> = {
+export const ADVICE_WORD: Record<string, string> = {
   unconnected: "unconnected",
   dead_node: "no node",
   starved: "starved",
@@ -105,7 +107,7 @@ export var ADVICE_WORD: Record<string, string> = {
   box_empty: "box empty",
 };
 
-export var PIN_KIND: Record<string, string> = {
+export const PIN_KIND: Record<string, string> = {
   plan: "plan",
   process: "process",
   machine: "machine",
@@ -115,7 +117,7 @@ export var PIN_KIND: Record<string, string> = {
   point: "point",
 };
 
-export var OBJECTIVES: Record<string, string> = {
+export const OBJECTIVES: Record<string, string> = {
   max_mw: "max MW",
   max_item: "max item",
   min_raw: "min raw",
@@ -129,10 +131,16 @@ export function objectiveText(text: string): string {
   });
 }
 
-export var RECIPE_KIND: Record<string, string> = { part: "machine", building: "building", manual: "crafted" };
+export const RECIPE_KIND: Record<string, string> = { part: "machine", building: "building", manual: "crafted" };
 
 export function gapText(gap: string): string {
   return gap.replace(/buildVersion/g, "build").replace(/saveVersion/g, "save format").replace("->", "→");
+}
+
+/** Why a map-data table is behind the save: its own notes, else the version gap. */
+export function staleText(age: TableAge): string {
+  if (age.notes.length) return age.notes.join(" ");
+  return WORDS.mapDataBehind + (age.gap ? " (" + gapText(age.gap) + ")" : "");
 }
 
 export function version(n: number): string {
@@ -140,5 +148,6 @@ export function version(n: number): string {
 }
 
 export function counted(n: number, one: string, many?: string): string {
-  return count(n) + " " + (n === 1 ? one : many === undefined ? one + "s" : many);
+  const noun = n === 1 ? one : (many ?? one + "s");
+  return count(n) + " " + noun;
 }

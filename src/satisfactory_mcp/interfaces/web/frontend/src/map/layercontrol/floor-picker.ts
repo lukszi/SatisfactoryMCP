@@ -23,13 +23,13 @@ export interface FloorChoice {
   note: string;
 }
 
-var FLOOR_SECTION = "floors";
+const FLOOR_SECTION = "floors";
 
 /** What to say instead of rows when there are none. The API's own sentence, never a blank. */
-var floorMessage = "";
+let floorMessage = "";
 
-var pickFloor: (key: string) => void = function () {};
-var leaveFloor: () => void = function () {};
+let pickFloor: (key: string) => void = function () {};
+let leaveFloor: () => void = function () {};
 
 export function onFloorPick(pick: (key: string) => void): void {
   pickFloor = pick;
@@ -39,7 +39,7 @@ export function onFloorExit(leave: () => void): void {
   leaveFloor = leave;
 }
 
-var floors = radioSection<FloorChoice>({
+const floors = radioSection<FloorChoice>({
   sectionKey: FLOOR_SECTION,
   groupName: "floor-band",
   ariaLabel: "floor",

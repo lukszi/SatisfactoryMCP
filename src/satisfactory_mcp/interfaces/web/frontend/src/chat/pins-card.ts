@@ -10,9 +10,9 @@ import { counted, PIN_KIND } from "../kit/words";
 import type { Column, SortState } from "../kit/dashkit";
 import type { AskAbout, PinRow } from "../api/shapes";
 
-var editing = { pinNumber: 0, fresh: false };
-var order: SortState = { key: "pin", desc: false };
-var showAllPins = false;
+const editing = { pinNumber: 0, fresh: false };
+const order: SortState = { key: "pin", desc: false };
+let showAllPins = false;
 
 function labelCell(pin: PinRow, redraw: () => void): HTMLElement | string {
   if (editing.pinNumber !== pin.n) return pin.label || "–";

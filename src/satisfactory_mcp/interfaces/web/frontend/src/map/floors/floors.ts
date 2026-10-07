@@ -45,7 +45,7 @@ import type { FloorChoice } from "../layercontrol/floor-picker";
 
 /* How close the flight to a platform may get: the factory-label flight's limit, for the same
  * reason as the padding in filter.ts. */
-var FLOOR_MAX_ZOOM = 1;
+const FLOOR_MAX_ZOOM = 1;
 
 /** One floor mode session: what was asked for, what came back, and what it changed. */
 interface FloorView {
@@ -66,7 +66,7 @@ interface FloorView {
   flown: boolean;
 }
 
-var view: FloorView | null = null;
+let view: FloorView | null = null;
 
 /** Whether the page is currently slicing a factory. */
 export function inFloorMode(): boolean {
@@ -223,7 +223,7 @@ function openFloorView(query: string, body: FloorsResponse, title: string, band?
     query: query,
     platform: platform,
     body: body,
-    title: platform && platform.label ? platform.label : title,
+    title: platform?.label ? platform.label : title,
     message: platform ? "" : body.note || "no floors here",
     turned: [],
     flown: false,
@@ -268,7 +268,7 @@ export function leaveFloors(): void {
 /** Switch storey. Neither the layers nor the map move: one floor of a factory is the same
  *  place as the next one, and re-flying between them would be motion for its own sake. */
 export function pickBand(key: string): void {
-  if (!view || !view.platform || !state.floor) return;
+  if (!view?.platform || !state.floor) return;
   state.floor = { platform: state.floor.platform, band: key };
   applyFilter(view, state.floor);
   showPicker();
@@ -302,8 +302,8 @@ export function applyFloorFragment(asked: string | undefined): boolean {
     leaveFloors();
     return true;
   }
-  if (have && have.platform === want.platform && have.band === want.band) return false;
-  if (have && have.platform === want.platform) {
+  if (have?.platform === want.platform && have.band === want.band) return false;
+  if (have?.platform === want.platform) {
     pickBand(want.band);
     return true;
   }

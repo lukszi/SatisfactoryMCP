@@ -13,7 +13,7 @@ export function renderRecipes(body: HTMLElement, subject: string, rerender: () =
   const arrived = rendered !== state.dash;
   rendered = state.dash;
   const detail = detailOf(subject);
-  if (detail && detail.kind === "item") renderItem(body, detail.id);
+  if (detail?.kind === "item") renderItem(body, detail.id);
   else if (detail) renderRecipe(body, detail.id);
   else renderBrowse(body, subject, arrived);
 }

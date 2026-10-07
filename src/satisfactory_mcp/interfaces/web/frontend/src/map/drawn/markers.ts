@@ -53,7 +53,7 @@ export function raiseNodeDots() {
 
 // The in-game item tints, as hex strings rather than game assets: the one family that cannot
 // move when the audit objects (docs/frontend_palette.md).
-export var RESOURCE_COLOUR: Record<string, string> = declareColours("markers", {
+export const RESOURCE_COLOUR: Record<string, string> = declareColours("markers", {
   Desc_OreIron_C: "#c8b6a6",
   Desc_OreCopper_C: "#e08a4b",
   Desc_Stone_C: "#cfcfcf",
@@ -73,12 +73,12 @@ export var RESOURCE_COLOUR: Record<string, string> = declareColours("markers", {
 /* How big a node dot is, in pixels, by purity -- the grammar POLE_RADIUS_PX in power-wires.ts calls
  * "is there one here": a fixed size, because the question a dot answers is whether there is a
  * node, not how much room it takes up. */
-var PURITY_RADIUS: Record<string, number> = { impure: 3, normal: 4.5, pure: 6 };
+const PURITY_RADIUS: Record<string, number> = { impure: 3, normal: 4.5, pure: 6 };
 
 /* Tone values (docs/frontend_vision.md §19). On a dark base near-black coal vanishes, so it
  * turns light grey. A locked dot keeps its ore colour, hollow and dashed, on a dark ring: at 35%
  * opacity it was invisible on every base. */
-var TONED = declareColours("markers", { "coal dark": "#8c8f96", "locked casing": "#262040" });
+const TONED = declareColours("markers", { "coal dark": "#8c8f96", "locked casing": "#262040" });
 
 function nodeColour(resource: string): string {
   if (resource === "Desc_Coal_C") return byMapTone(RESOURCE_COLOUR[resource]!, TONED["coal dark"]);
@@ -86,7 +86,7 @@ function nodeColour(resource: string): string {
 }
 
 /** The last reply drawn, kept so a setting or a base-map tone can repaint without a fetch. */
-var lastPayload: NodesResponse | null = null;
+let lastPayload: NodesResponse | null = null;
 
 export function knownNodes(): NodeRow[] {
   return lastPayload ? lastPayload.nodes : [];
@@ -142,6 +142,16 @@ function paintNodes(data: NodesResponse): void {
   raiseNodeDots();
 }
 
+function nodeFillOpacity(n: NodeRow, locked: boolean): number {
+  if (locked) return 0;
+  return n.occupied ? 0.15 : 0.75;
+}
+
+function occupancyText(n: NodeRow, saveUnread: boolean): string {
+  if (n.occupied) return "occupied by " + (n.occupant_name || n.occupant_cls);
+  return saveUnread ? "unknown: the save could not be read" : "no extractor known here";
+}
+
 /* One node: its dot, and a dark ring under it when it is locked. Null `reachable` is "no save
  * read", which is not a claim either way; only false is LOCKED. */
 function nodeDot(n: NodeRow, colour: string, saveUnread: boolean, group: L.LayerGroup): void {
@@ -160,7 +170,7 @@ function nodeDot(n: NodeRow, colour: string, saveUnread: boolean, group: L.Layer
     color: colour,
     weight: n.occupied ? 2 : 1,
     // Locked keeps the ore colour, hollow and dashed: a grey would sink into the ground.
-    fillOpacity: locked ? 0 : n.occupied ? 0.15 : 0.75,
+    fillOpacity: nodeFillOpacity(n, locked),
     dashArray: locked ? "2 3" : undefined,
   }).bindPopup(
     popup([
@@ -175,14 +185,7 @@ function nodeDot(n: NodeRow, colour: string, saveUnread: boolean, group: L.Layer
       // Always present, because the absence of a row cannot be told apart from a
       // broken join -- and "no extractor known" is the join's own honest limit:
       // it resolves extractors targeting a node key, never proves a node free.
-      [
-        "occupancy",
-        n.occupied
-          ? "occupied by " + (n.occupant_name || n.occupant_cls)
-          : saveUnread
-            ? "unknown: the save could not be read"
-            : "no extractor known here",
-      ],
+      ["occupancy", occupancyText(n, saveUnread)],
       ["selector", code("node:" + n.name)],
       ["at", n.x_m + ", " + n.y_m + " m"],
       [
@@ -234,7 +237,7 @@ registerFetch<NodesResponse>({
 
 /* Near-white and warm, the one thing on the page that is not a colour ABOUT anything: it is
  * not an ore, not a tier and not a biome, so it is the value nothing else on the map spends. */
-var PLAYER_COLOUR = declareColours("markers", { player: "#f5f0e8" }).player;
+const PLAYER_COLOUR = declareColours("markers", { player: "#f5f0e8" }).player;
 
 /* The player's last known position: the map's only you-are-here, and the reference every
  * "is this near me" judgement needs. Ring-styled so it reads as a position, not a node.

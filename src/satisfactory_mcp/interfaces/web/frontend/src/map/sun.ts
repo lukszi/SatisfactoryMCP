@@ -16,14 +16,14 @@ export interface Sun {
   sky: boolean;
 }
 
-export var NOON_HOUR = 11.87;
-export var FIRST_HOUR = 6.25;
-export var LAST_HOUR = 17.5;
-export var MAP_NW: [number, number] = [315, 45];
-export var MIN_ELEVATION_DEG = 3;
+export const NOON_HOUR = 11.87;
+export const FIRST_HOUR = 6.25;
+export const LAST_HOUR = 17.5;
+export const MAP_NW: [number, number] = [315, 45];
+export const MIN_ELEVATION_DEG = 3;
 
 /** The times of day the control offers as buttons, and the Settings default can name. */
-export var SUN_PRESETS: { key: string; label: string; hour: number }[] = [
+export const SUN_PRESETS: { key: string; label: string; hour: number }[] = [
   { key: "noon", label: "noon", hour: NOON_HOUR },
   { key: "09:00", label: "09:00", hour: 9 },
   { key: "16:00", label: "16:00", hour: 16 },
@@ -55,8 +55,8 @@ function timesCol(m: Matrix, v: number[]): number[] {
   });
 }
 
-var AXIS = rotator(0, 45, 25);
-var LIGHT = (function () {
+const AXIS = rotator(0, 45, 25);
+const LIGHT = (function () {
   const light = timesCol(AXIS, rotator(55, 190, 0)[0]!);
   const length = Math.hypot(light[0]!, light[1]!, light[2]!);
   return light.map(function (component) {
@@ -102,8 +102,8 @@ function presetPlace(key: string): Place {
 
 /* Where the map control put the sun for this visit; null follows Settings. Shadows and sky are
  * settings either way, so the control's toggles are remembered like any other. */
-var override: Place | null = null;
-var listeners = createListeners<[Sun]>();
+let override: Place | null = null;
+const listeners = createListeners<[Sun]>();
 
 export function currentSun(): Sun {
   const at = override || presetPlace(settingChoice("sunTime") || "noon");
@@ -125,7 +125,7 @@ function tell(): void {
   listeners.emit(currentSun());
 }
 
-export var onSun = listeners.on;
+export const onSun = listeners.on;
 
 /** Move the sun for this visit; Settings keeps the default. */
 export function placeSun(azimuthDeg: number, elevationDeg: number, hour: number | null): void {

@@ -23,13 +23,13 @@ export interface ModeChoice {
 
 /* Who to tell when a radio is picked. ONE owner rather than a list: "which picture is the base
  * map" has a single answer applied in a single place, and a second listener could only disagree. */
-var pickMode: (key: string) => void = function () {};
+let pickMode: (key: string) => void = function () {};
 
 export function onModePick(pick: (key: string) => void): void {
   pickMode = pick;
 }
 
-var modes = radioSection<ModeChoice>({
+const modes = radioSection<ModeChoice>({
   sectionKey: "modes",
   groupName: "basemap-mode",
   ariaLabel: "base map",

@@ -55,17 +55,17 @@ function isPyramid(spec: ModeSpec): spec is PyramidSpec {
 }
 
 /** Which tool writes each painter's pyramids, for the tooltip of one that is not there. */
-var GENERATORS: Record<string, string> = {
+const GENERATORS: Record<string, string> = {
   map: "tools/gen_map_image.py, which cuts it out of the installed game",
   terrain: "tools/gen_map_renders.py, from the 1 m heightfield in data/local/heightmap/",
   satellite: "tools/gen_map_renders.py, from the heightfield and the game's own biome raster",
 };
 
 /** The id the artwork has always had in the registry, and the page's old name for it. */
-var ARTWORK = "map";
-var ALIASES: Record<string, string> = { artwork: ARTWORK };
+const ARTWORK = "map";
+const ALIASES: Record<string, string> = { artwork: ARTWORK };
 
-var PLAIN: ModeSpec = {
+const PLAIN: ModeSpec = {
   key: "plain",
   typeId: null,
   label: "plain",
@@ -81,13 +81,13 @@ function legacy(key: string, label: string, about: string): ModeSpec {
 
 /* What the switcher offers before the registry answers, or when it cannot: the three names the
  * page had before there was a registry, which the server still serves unregistered. */
-var LEGACY: ModeSpec[] = [
+const LEGACY: ModeSpec[] = [
   legacy(ARTWORK, "artwork", "the game's own map artwork"),
   legacy("terrain", "terrain", "a hypsometric relief map of this world, drawn from its own heightfield"),
   legacy("satellite", "satellite", "the same relief, coloured from the game's own biome raster"),
 ];
 
-var MODES: ModeSpec[] = LEGACY.concat([PLAIN]);
+let MODES: ModeSpec[] = LEGACY.concat([PLAIN]);
 
 function specOf(row: MapTypeBody): ModeSpec {
   return {
@@ -152,7 +152,7 @@ export function servableMode(raw: string | undefined): BaseMode | null {
  *
  * A key that is not here is a mode whose pyramid is not on disk -- or one whose tiles turned
  * out not to draw, which `modeFailed` treats as the same thing. */
-var layerFactories: Partial<Record<BaseMode, () => BaseLayer>> = {};
+let layerFactories: Partial<Record<BaseMode, () => BaseLayer>> = {};
 
 /** A built base layer, and whether it is lit live (which is what shows the sun control). */
 interface BaseLayer {
@@ -161,13 +161,13 @@ interface BaseLayer {
 }
 
 /** Why a mode cannot be picked, when the reason is not simply "never generated". */
-var refusals: Partial<Record<BaseMode, string>> = {};
+let refusals: Partial<Record<BaseMode, string>> = {};
 
 /** The one layer the active mode has on the map, so a switch can take it off again. */
-var baseLayer: L.Layer | null = null;
+let baseLayer: L.Layer | null = null;
 
 /** The modes whose live light failed, drawn with their baked light instead, and why. */
-var litOff: Partial<Record<BaseMode, string>> = {};
+const litOff: Partial<Record<BaseMode, string>> = {};
 
 function specFor(key: string): ModeSpec | null {
   let found: ModeSpec | null = null;
@@ -224,7 +224,7 @@ interface PyramidOptions extends L.TileLayerOptions {
  * It also decides which DENSITY each level gets: `?px=` rides on the levels the dense tree
  * reaches and is dropped past its top, so a hi-DPI display keeps zooming into the deep 1x
  * levels instead of stopping where the dense tree does. */
-var PyramidLayer = L.TileLayer.extend({
+const PyramidLayer = L.TileLayer.extend({
   getTileUrl: function (this: L.TileLayer, coords: L.Coords) {
     // Asserted rather than defaulted: this layer is only ever constructed below, with a
     // zoomOffset, and `|| 0` here would be a silently different grid rather than a fix.
@@ -316,7 +316,8 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
   if (tag) query.push("v=" + encodeURIComponent(tag));
   const url =
     tilePath(spec.typeId, "{z}", "{x}", "{y}") + (query.length ? "?" + query.join("&") : "");
-  const denseQuery = dense ? (query.length ? "&" : "?") + "px=" + densePx : "";
+  const separator = query.length ? "&" : "?";
+  const denseQuery = dense ? separator + "px=" + densePx : "";
   const bounds = boundsOfBbox(b);
   const light = parseLight(response.headers.get("X-Map-Light"));
 
@@ -495,8 +496,8 @@ function probeAll(specs: ModeSpec[]): Promise<void> {
   });
 }
 
-var booted = false;
-var readyBefore: Record<string, boolean> = {};
+let booted = false;
+let readyBefore: Record<string, boolean> = {};
 
 function readyIds(): Record<string, boolean> {
   const out: Record<string, boolean> = {};

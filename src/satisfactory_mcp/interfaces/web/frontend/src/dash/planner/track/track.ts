@@ -19,13 +19,19 @@ import { counted, WORDS } from "../../../kit/words";
 import type { Column } from "../../../kit/dashkit";
 import type { FocusSelection, TrackResponse, TrackStage } from "../../../api/shapes";
 
+function headlineText(d: TrackResponse): string {
+  if (d.scope_error) return "";
+  if (d.stage_text) return d.stage_text;
+  return d.count ? "" : "no startup order fits " + mw(d.startup.headroom_mw) + " of headroom";
+}
+
 function trackHeadline(parent: HTMLElement, d: TrackResponse, asked: number): void {
   const card = make("section", "dash-card");
   const title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", WORDS.track + " · v" + d.rev));
   if (asked) title.appendChild(make("span", "plan-status", "tracking v" + asked + "…"));
   card.appendChild(title);
-  const text = d.scope_error ? "" : d.stage_text || (d.count ? "" : "no startup order fits " + mw(d.startup.headroom_mw) + " of headroom");
+  const text = headlineText(d);
   if (text) card.appendChild(make("p", "plan-headline", text));
   builtLine(card, d.built_at);
   const facts = [d.written_ago ? "save written " + d.written_ago : "as of the save shown in the header"];

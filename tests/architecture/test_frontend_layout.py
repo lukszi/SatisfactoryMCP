@@ -229,10 +229,10 @@ def test_the_page_and_the_registry_agree_on_the_old_base_map_names():
         and isinstance(node.value, ast.Dict)
     )
     tiles = FRONTEND_TILES_TS.read_text(encoding="utf-8")
-    artwork = re.search(r'var ARTWORK = "([^"]+)";', tiles)
+    artwork = re.search(r'const ARTWORK = "([^"]+)";', tiles)
     assert artwork, "tiles.ts no longer names the artwork's registry id"
     assert artwork.group(1) == legacy[0], (artwork.group(1), legacy)
-    assert re.search(r"var ALIASES[^=]*= \{ artwork: ARTWORK \}", tiles), (
+    assert re.search(r"const ALIASES[^=]*= \{ artwork: ARTWORK \}", tiles), (
         "the artwork alias is gone"
     )
     offered = re.findall(r'legacy\((ARTWORK|"[a-z]+")', tiles)

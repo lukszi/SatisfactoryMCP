@@ -99,7 +99,7 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
     recoverFromConflict: function (reason) {
       const err = reason as StatusError;
       const body = err && (err.body as Record<string, unknown> | undefined);
-      const row = err && err.status === 409 && body ? (body[conflictRowField] as R | undefined) : undefined;
+      const row = err?.status === 409 && body ? (body[conflictRowField] as R | undefined) : undefined;
       if (row) {
         replace(row);
         return row;

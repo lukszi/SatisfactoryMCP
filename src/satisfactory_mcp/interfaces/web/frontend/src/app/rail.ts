@@ -5,7 +5,7 @@
 import { link } from "../kit/dashkit";
 import { el, make } from "../kit/dom";
 
-var OPEN_CLASS = "rail-drawer-open";
+const OPEN_CLASS = "rail-drawer-open";
 
 function isOpen(): boolean {
   return el("rail").classList.contains(OPEN_CLASS);

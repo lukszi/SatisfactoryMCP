@@ -43,7 +43,7 @@ export interface Stack {
  * map than it has to. This number is arithmetic: at 380 the value cell fits SEVEN 38 px tiles
  * to a row, and eight would need 424 px and start covering the thing that was clicked.
  */
-export var CONTENTS_POPUP_PX = 380;
+export const CONTENTS_POPUP_PX = 380;
 
 /* One tile: the picture, the quantity over its bottom-right corner, and the name underneath
  * all of it -- literally. `.item-abbr` sits in the tile the whole time and is revealed when

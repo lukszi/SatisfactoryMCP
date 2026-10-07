@@ -24,7 +24,7 @@ import { counted, WORDS } from "../kit/words";
 
 import type { Selection } from "./selection";
 
-var KIND_WORD = {
+const KIND_WORD = {
   factory: WORDS.factory,
   circuit: "circuit",
   machine: "machine",
@@ -51,10 +51,17 @@ function fly(s: Selection): void {
   });
 }
 
+// The dashboard page that shows a selection, or "" when no page does.
+function dashPageOf(s: Selection): string {
+  if (s.kind === "factory") return "factories/" + s.key;
+  if (s.kind === "circuit") return "power/" + (+s.key + 1);
+  return "";
+}
+
 function selectionPart(s: Selection): HTMLElement {
   const part = make("span", "status-sel");
   part.appendChild(make("span", "status-k", "selected " + KIND_WORD[s.kind]));
-  const dash = s.kind === "factory" ? "factories/" + s.key : s.kind === "circuit" ? "power/" + (+s.key + 1) : "";
+  const dash = dashPageOf(s);
   const name = dash && dash !== state.dash ? link(dash, s.label, "status-name") : make("span", "status-name", s.label);
   name.title = s.label;
   part.appendChild(name);

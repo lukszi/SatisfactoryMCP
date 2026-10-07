@@ -17,15 +17,15 @@ import { counted, objectiveText, WORDS } from "../../kit/words";
 import type { Column } from "../../kit/dashkit";
 import type { ActivityResponse, ActivityRow, FocusSelection, VersionRow } from "../../api/shapes";
 
-var ACTIVITY_LIMIT = 50;
+const ACTIVITY_LIMIT = 50;
 
-var activity = {
+const activity = {
   world: "",
   data: null as ActivityResponse | null,
   error: "",
   filter: "all",
 };
-var activitySeq = 0;
+let activitySeq = 0;
 
 function planDash(key: string, rev?: number): string {
   return "planner/" + key + (rev ? "/v" + rev : "");
@@ -93,7 +93,7 @@ export function renderVersions(parent: HTMLElement): void {
   card.appendChild(make("h2", "dash-h", "versions"));
   const data = bench.versions;
   if (bench.versionsError) error(card, "the versions", bench.versionsError);
-  else if (!data || data.key !== bench.key) loading(card, "versions");
+  else if (data?.key !== bench.key) loading(card, "versions");
   else {
     const head = data.head;
     const columns: Column<VersionRow>[] = [
@@ -184,7 +184,7 @@ export function renderRevisionView(parent: HTMLElement, select: (s: FocusSelecti
   else if (!shown) loading(card, "v" + rev);
   else {
     card.appendChild(make("p", "", (shown.name !== plan.name ? "named “" + shown.name + "” · " : "") + describeArgs(shown.args as unknown as Record<string, unknown>)));
-    if (bench.viewedDelta && bench.viewedDelta.from_rev === rev) {
+    if (bench.viewedDelta?.from_rev === rev) {
       card.appendChild(make("p", "dash-note", "result from v" + rev + " to v" + bench.viewedDelta.to_rev + ": " + bench.viewedDelta.text));
     }
   }

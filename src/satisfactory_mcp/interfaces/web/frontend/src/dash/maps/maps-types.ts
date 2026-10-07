@@ -92,6 +92,12 @@ function freshnessCell(row: MapTypeBody): HTMLElement {
   return cell;
 }
 
+function rerenderTitle(row: MapTypeBody, body: MapsResponse): string {
+  if (!body.can_generate.ok) return body.can_generate.reason || "";
+  const pending = row.freshness.rerender;
+  return pending ? pending.text : "queue a new map; this one stays until you delete it";
+}
+
 function actionsCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
   const cell = make("div", "maps-actions");
   const key = "delete:" + row.id;
@@ -107,13 +113,12 @@ function actionsCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
     }, { disabled: row.default || row.status !== "ready", title: row.default ? "this is the default" : "open fresh pages on this map" })
   );
   if (row.freshness.rerender || row.freshness.restyle || row.freshness.stale.length) {
-    const pending = row.freshness.rerender;
     cell.appendChild(
       button(row.freshness.stale.length ? "regenerate" : "re-render", function () {
         rerender(row);
       }, {
         disabled: !body.can_generate.ok,
-        title: body.can_generate.ok ? (pending ? pending.text : "queue a new map; this one stays until you delete it") : body.can_generate.reason || "",
+        title: rerenderTitle(row, body),
       })
     );
   }

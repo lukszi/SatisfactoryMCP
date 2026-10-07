@@ -26,13 +26,13 @@ import type { CrateRow, CratesResponse } from "../../api/shapes";
 
 // Spring green, far from every ground so a small glyph is found at world zoom
 // (docs/frontend_palette.md).
-var CRATE_COLOUR = declareColours("crates", { crates: "#3fcc94" }).crates;
+const CRATE_COLOUR = declareColours("crates", { crates: "#3fcc94" }).crates;
 
 /* The glyph's box, in screen PIXELS, for the reason power-wires.ts gives for its poles: the
  * question a crate mark answers is "is there one here", not "does this fit", and a true-size
  * 2 m prop is a fraction of a pixel at the world view. About the size of the floor connectors'
  * arrows, the page's other fixed glyph that has to be CLICKED rather than merely seen. */
-var CRATE_PX = 13;
+const CRATE_PX = 13;
 
 /* Three kinds, and the glyph tells apart the one distinction a reader scans a map for.
  *

@@ -3,7 +3,7 @@
 
 import { button, chip, copyButton, error, idChip, loading, subTabs, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { count, flow, mw, pct } from "../../kit/format";
+import { count, flow, mw, pct, withDetail } from "../../kit/format";
 import { drawGraph, graphCardFrame, GRAPH_HINT, setPicked } from "../graph";
 import { vitals } from "../../app/vitals";
 import { recipesButton, renderAlternates } from "./alternates";
@@ -36,14 +36,14 @@ interface BudgetRow {
 }
 
 // The graph is drawn again only when its data, badges or flashes change; scroll and focus are kept.
-var graphCache = { data: null as SolveResponse | null, key: "", frame: null as HTMLElement | null, x: 0, y: 0, focus: "" };
-var flashed: Record<string, number> = {};
-var order: SortState = { key: "building", desc: false };
+const graphCache = { data: null as SolveResponse | null, key: "", frame: null as HTMLElement | null, x: 0, y: 0, focus: "" };
+const flashed: Record<string, number> = {};
+const order: SortState = { key: "building", desc: false };
 
-var POWER = "MW";
-var FLASH_MS = 4000;
-var WIDE = window.matchMedia("(min-width: 1280px)");
-var TABS: { id: ResultTab; label: string }[] = [
+const POWER = "MW";
+const FLASH_MS = 4000;
+const WIDE = window.matchMedia("(min-width: 1280px)");
+const TABS: { id: ResultTab; label: string }[] = [
   { id: "build list", label: "build list" },
   { id: "graph", label: "graph" },
   { id: "track", label: WORDS.track },
@@ -377,10 +377,10 @@ function planNodes(data: SolveResponse): PlanNode[] {
     const row = n.row ? byId[n.row] : undefined;
     const badges: string[] = [];
     if (row && bench.chatChangedRows[row.id]) badges.push(WORDS.actorChat);
-    if (row && row.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
+    if (row?.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
     const tip = row
       ? row.building + " · " + row.recipe + "\nin: " + ratesText(withoutPower(row.inputs)) + "\nout: " + ratesText(withoutPower(row.outputs))
-      : n.label + (n.detail ? " · " + n.detail : "");
+      : withDetail(n.label, n.detail);
     return {
       id: n.id,
       kind: n.kind,

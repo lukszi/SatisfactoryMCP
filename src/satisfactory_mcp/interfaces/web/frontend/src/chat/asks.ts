@@ -12,24 +12,24 @@ import { ASK_KIND, WORDS } from "../kit/words";
 import type { ApiError, ApiPath, StatusError } from "../api/client";
 import type { AskAbout, AskDropped, AskRow, AsksResponse, AskStaleResponse } from "../api/shapes";
 
-export var ASK_MAX = 200;
+export const ASK_MAX = 200;
 
-var LABEL_MAX = 120;
-var REF_MAX = 200;
-var ASKS_PATH: ApiPath = "/api/asks";
-var ASK_PATH: ApiPath = "/api/asks/{n}";
-var TEXT_CTL = "ask-text";
+const LABEL_MAX = 120;
+const REF_MAX = 200;
+const ASKS_PATH: ApiPath = "/api/asks";
+const ASK_PATH: ApiPath = "/api/asks/{n}";
+const TEXT_CTL = "ask-text";
 
-var store = liveStore<AsksResponse, AskRow>(ASKS_PATH, function (data) {
+const store = liveStore<AsksResponse, AskRow>(ASKS_PATH, function (data) {
   return data.asks;
 }, "ask");
-var bar = { about: null as AskAbout | null, ownerId: "", text: "", validationError: "", focusInputOnRender: false, returnFocusTo: "", busy: false };
+const bar = { about: null as AskAbout | null, ownerId: "", text: "", validationError: "", focusInputOnRender: false, returnFocusTo: "", busy: false };
 
-export var onAsks = store.on;
-export var askStore = store.read;
-export var refetchAsks = store.refetch;
-export var loadAsks = store.load;
-var notifyAskListeners = store.notify;
+export const onAsks = store.on;
+export const askStore = store.read;
+export const refetchAsks = store.refetch;
+export const loadAsks = store.load;
+const notifyAskListeners = store.notify;
 
 export function liveAsks(): AskRow[] {
   const data = askStore().data;

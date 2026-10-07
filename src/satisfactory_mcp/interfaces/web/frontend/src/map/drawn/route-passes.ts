@@ -31,14 +31,14 @@ import { chevronOpacity, retessellate } from "./route-geometry";
  * popup nobody can open. Partitioned on the mark rather than on draw order, because draw order
  * is power-wires.ts's business and this rule is not.
  */
-export var ROUTE_LAYERS = ["belts", "pipes", "power"] as const;
+export const ROUTE_LAYERS = ["belts", "pipes", "power"] as const;
 
 type RouteLayer = (typeof ROUTE_LAYERS)[number];
 
 /* What each route layer is worth in metres, and the one place the three differ. Each is a
  * CONSTANT rather than a field, because the save carries a centre line and no width: a belt is
  * the game's 2 m whatever its tier, a pipe its 1.3 m bore, a wire 0.2 m. */
-export var ROUTE_WIDTH_M: Record<RouteLayer, number> = {
+export const ROUTE_WIDTH_M: Record<RouteLayer, number> = {
   belts: 2,
   pipes: 1.3,
   power: 0.2,
@@ -47,19 +47,19 @@ export var ROUTE_WIDTH_M: Record<RouteLayer, number> = {
 /* The width below which a stroked line stops being drawn at all. One hairline for every
  * network: a statement about lines, not belts, or the networks would fade out at different
  * zooms and the page would invent a difference the world does not have. */
-var ROUTE_MIN_PX = 1.5;
+const ROUTE_MIN_PX = 1.5;
 
 /* Where a layer's width stops falling, for the layers whose answer is not ROUTE_MIN_PX. The
  * wires are on at the whole-world view, where 1.5 px over the artwork barely shows; 2.5 px is
  * above 0.2 m at every zoom this map has, so a wire is a MARK sized to be seen, like the pole
  * at its end. */
-export var ROUTE_FLOOR_PX: Partial<Record<RouteLayer, number>> = {
+export const ROUTE_FLOOR_PX: Partial<Record<RouteLayer, number>> = {
   power: 2.5,
 };
 
 /* A lift is a belt seen end-on, so its ring is that circle: radius half the belt width,
  * floored a little higher than a line, because a ring has to enclose something to read as one. */
-var LIFT_MIN_RADIUS_PX = 2;
+const LIFT_MIN_RADIUS_PX = 2;
 
 /** A route's stroke width in pixels, from its width in the world. Shared by every first draw
  *  and the zoom pass, so a layer never changes thickness the first time the map moves. Without
@@ -132,12 +132,9 @@ export function sinkRoutes() {
       // canvas and no part of the stacking question this pass answers.
       if (!(layer instanceof L.Path)) return;
       const piece = layer as L.Path;
-      (piece._chevron
-        ? chevrons
-        : piece instanceof L.Polygon || piece._fixed
-          ? glyphs
-          : runs
-      ).push(piece);
+      if (piece._chevron) chevrons.push(piece);
+      else if (piece instanceof L.Polygon || piece._fixed) glyphs.push(piece);
+      else runs.push(piece);
     });
     // Sunk FIRST is left highest, per the note above, so the chevrons go before the glyphs
     // and the runs: a direction mark under the line it marks would not be a mark.

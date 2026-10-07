@@ -35,7 +35,7 @@ export function regionLine(region: Region | null | undefined): string {
  * so the header can omit the segment instead of printing "phase " and a hole. */
 export function phaseText(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  var match = /^GP_(.+)_Phase_(\d+)$/.exec(raw);
+  const match = /^GP_(.+)_Phase_(\d+)$/.exec(raw);
   if (match) return match[1]!.replace(/_/g, " ") + " phase " + match[2];
   return raw;
 }
@@ -50,15 +50,15 @@ export function metres(value: number | null | undefined, decimals?: number): str
 
 /* Half to even on the exact decimal expansion, matching Python's round() on the server. */
 export function roundHalfEven(value: number, decimals?: number): number {
-  var places = decimals || 0;
+  const places = decimals || 0;
   if (!isFinite(value) || Math.abs(value) >= 1e15) return Math.round(value);
-  var exact = Math.abs(value).toFixed(100);
-  var point = exact.indexOf(".");
-  var whole = Number(exact.slice(0, point) + exact.slice(point + 1, point + 1 + places));
-  var rest = exact.slice(point + 1 + places);
-  var first = rest.charAt(0);
+  const exact = Math.abs(value).toFixed(100);
+  const point = exact.indexOf(".");
+  let whole = Number(exact.slice(0, point) + exact.slice(point + 1, point + 1 + places));
+  const rest = exact.slice(point + 1 + places);
+  const first = rest.charAt(0);
   if (first > "5" || (first === "5" && (/[1-9]/.test(rest.slice(1)) || whole % 2 === 1))) whole += 1;
-  var out = whole / Math.pow(10, places);
+  const out = whole / Math.pow(10, places);
   return (value < 0 ? -out : out) + 0;
 }
 
@@ -67,17 +67,17 @@ export function coords(x: number, y: number): string {
 }
 
 export function signed(value: number, say: (magnitude: number) => string): string {
-  var text = say(Math.abs(value));
+  const text = say(Math.abs(value));
   if (text === say(0)) return text;
   return (value < 0 ? "-" : "+") + text;
 }
 
 export function mw(value: number, options?: { signed?: boolean }): string {
-  var say = function (magnitude: number): string {
+  const say = function (magnitude: number): string {
     return count(Math.round(magnitude)) + " MW";
   };
-  var text = signed(value, say);
-  return options && options.signed ? text : text.replace(/^\+/, "");
+  const text = signed(value, say);
+  return options?.signed ? text : text.replace(/^\+/, "");
 }
 
 export function formatNumber(value: number, decimals?: number): string {
@@ -118,7 +118,7 @@ export function buildingCounts(
   limit?: number,
   formatCount?: (n: number) => string
 ): string {
-  var shown = limit === undefined ? entries : entries.slice(0, limit);
+  const shown = limit === undefined ? entries : entries.slice(0, limit);
   return shown
     .map(function (entry) {
       return (formatCount ? formatCount(entry.count) : String(entry.count)) + "× " + entry.name;
@@ -128,10 +128,10 @@ export function buildingCounts(
 
 /* How many rows share each key, most first; ties keep the order the keys were first seen. */
 export function tallyBy<R>(rows: R[], key: (row: R) => string): { name: string; count: number }[] {
-  var counts = new Map<string, { name: string; count: number }>();
+  const counts = new Map<string, { name: string; count: number }>();
   rows.forEach(function (row) {
-    var name = key(row);
-    var entry = counts.get(name);
+    const name = key(row);
+    let entry = counts.get(name);
     if (!entry) {
       entry = { name: name, count: 0 };
       counts.set(name, entry);
@@ -148,7 +148,7 @@ export function nowSeconds(): number {
 }
 
 export function ageShort(ts: number): string {
-  var s = Math.max(0, Math.round(nowSeconds() - ts));
+  const s = Math.max(0, Math.round(nowSeconds() - ts));
   if (s < 60) return s + "s";
   if (s < 3600) return Math.round(s / 60) + "m";
   if (s < 86400) return Math.round(s / 3600) + "h";
@@ -156,7 +156,7 @@ export function ageShort(ts: number): string {
 }
 
 export function bytes(n: number | null | undefined): string {
-  var value = n || 0;
+  const value = n || 0;
   if (value >= 1e9) return (value / 1e9).toFixed(1) + " GB";
   if (value >= 1e6) return Math.round(value / 1e6) + " MB";
   if (value >= 1e3) return Math.round(value / 1e3) + " kB";
@@ -164,7 +164,7 @@ export function bytes(n: number | null | undefined): string {
 }
 
 export function duration(seconds: number | null | undefined): string {
-  var s = Math.max(0, Math.round(seconds || 0));
+  const s = Math.max(0, Math.round(seconds || 0));
   if (s < 90) return s + " s";
   if (s < 5400) return Math.round(s / 60) + " min";
   return (s / 3600).toFixed(1) + " h";
@@ -172,11 +172,16 @@ export function duration(seconds: number | null | undefined): string {
 
 export function isoDate(ts: number | null | undefined): string {
   if (!ts) return "–";
-  var d = new Date(ts * 1000);
-  var pad = function (n: number) {
+  const d = new Date(ts * 1000);
+  const pad = function (n: number) {
     return (n < 10 ? "0" : "") + n;
   };
   return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+
+/** "text · detail", or the text alone when there is no detail. */
+export function withDetail(text: string, detail: string | null | undefined): string {
+  return detail ? text + " · " + detail : text;
 }
 
 export function joinWithConjunction(names: string[], last: string): string {

@@ -44,14 +44,14 @@ export function html(markup: string): Markup {
 /** The class a copyable span carries, and the attribute holding what a click puts on the
  *  clipboard. Declared with the writer rather than with the listener in copy.ts, because
  *  copy.ts reaches toast.ts, which reaches this file -- the other way round is a ring. */
-export var COPY_CLASS = "copyable";
-export var COPY_ATTR = "data-copy";
+export const COPY_CLASS = "copyable";
+export const COPY_ATTR = "data-copy";
 
 /* A selector, and a click that copies it -- every one of these exists to be pasted into an
  * MCP tool call. The exact text is repeated into `data-copy` so that what gets copied is
  * this string and not whatever the cell ends up rendering. The listener is in copy.ts. */
 export function code(text: unknown, shown?: string): Markup {
-  var value = esc(text);
+  const value = esc(text);
   return html(
     '<code class="' +
       COPY_CLASS +
@@ -67,16 +67,16 @@ export function code(text: unknown, shown?: string): Markup {
   );
 }
 
-export var TRACE_ATTR = "data-trace";
-export var TRACE_DIR_ATTR = "data-trace-dir";
-export var LASSO_ATTR = "data-lasso";
-export var FIND_ATTR = "data-find";
-export var FIND_AT_ATTR = "data-find-at";
+export const TRACE_ATTR = "data-trace";
+export const TRACE_DIR_ATTR = "data-trace-dir";
+export const LASSO_ATTR = "data-lasso";
+export const FIND_ATTR = "data-find";
+export const FIND_AT_ATTR = "data-find-at";
 
 /* A popup button for a delegated listener, as markup: every attribute value and the text are
  * escaped, because a popup is a string until Leaflet opens it. */
 export function dataButton(attrs: Record<string, string>, text: string, title: string): string {
-  var pairs = Object.keys(attrs).map(function (name) {
+  const pairs = Object.keys(attrs).map(function (name) {
     return name + '="' + esc(attrs[name]) + '"';
   });
   return '<button type="button" class="btn" ' + pairs.join(" ") + ' title="' + esc(title) + '">' + esc(text) + "</button>";
@@ -88,8 +88,8 @@ export function onAttributeClick(attr: string, handler: (hit: Element, event: Ev
   document.addEventListener(
     "click",
     function (event) {
-      var target = event.target as Element | null;
-      var hit = target && target.closest ? target.closest("[" + attr + "]") : null;
+      const target = event.target as Element | null;
+      const hit = target?.closest ? target.closest("[" + attr + "]") : null;
       if (!hit) return;
       event.stopPropagation();
       event.preventDefault();
@@ -101,7 +101,7 @@ export function onAttributeClick(attr: string, handler: (hit: Element, event: Ev
 
 export function traceButtons(seed: string): Markup {
   function button(dir: string, text: string, title: string): string {
-    var attrs: Record<string, string> = {};
+    const attrs: Record<string, string> = {};
     attrs[TRACE_ATTR] = seed;
     attrs[TRACE_DIR_ATTR] = dir;
     return dataButton(attrs, text, title);
@@ -127,8 +127,8 @@ export function popup(pairs: Row[]): string {
         return p[1] !== null && p[1] !== undefined && p[1] !== "";
       })
       .map(function (p) {
-        var cell = p[1];
-        var value = cell && (cell as Markup).html !== undefined ? (cell as Markup).html : esc(cell);
+        const cell = p[1];
+        const value = cell && (cell as Markup).html !== undefined ? (cell as Markup).html : esc(cell);
         return '<tr><td class="popup-key">' + esc(p[0]) + "</td><td>" + value + "</td></tr>";
       })
       .join("") +
@@ -141,7 +141,7 @@ export function make<K extends keyof HTMLElementTagNameMap>(
   className?: string,
   text?: string | number
 ): HTMLElementTagNameMap[K] {
-  var node = document.createElement(tag);
+  const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = String(text);
   return node;

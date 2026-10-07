@@ -18,13 +18,13 @@ interface Hit {
   dash: string;
 }
 
-var DEBOUNCE_MS = 150;
+const DEBOUNCE_MS = 150;
 
-var timer = 0;
-var hits: Hit[] = [];
-var activeIndex = -1;
-var answeredQuery = "";
-var openFirstHitFor = "";
+let timer = 0;
+let hits: Hit[] = [];
+let activeIndex = -1;
+let answeredQuery = "";
+let openFirstHitFor = "";
 
 function input(): HTMLInputElement {
   return el<HTMLInputElement>("search-q");

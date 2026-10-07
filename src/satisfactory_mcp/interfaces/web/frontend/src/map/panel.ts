@@ -27,7 +27,7 @@ import {
 } from "../dash/power-ledger";
 import { registerFetch } from "../app/registry";
 import { onSelect, select, selected } from "../app/selection";
-import { clearMark, outline, ringAt, ringedKey, selectAndRing } from "./map-highlight";
+import { clearMark, isRinged, outline, ringAt, selectAndRing } from "./map-highlight";
 import { editName, renamingIn } from "../dash/factories/rename";
 import { state } from "../app/state";
 import { notifyVitals, vitals } from "../app/vitals";
@@ -41,18 +41,18 @@ import type { Selection } from "../app/selection";
 
 type Tab = "factories" | "power";
 
-var CIRCUIT_ZOOM = 1;
+const CIRCUIT_ZOOM = 1;
 
 /** How many machines a folded reference list shows; the rest are counted. */
-var REF_ROWS_SHOWN = 40;
+const REF_ROWS_SHOWN = 40;
 
-var STORE_KEY = "panel";
+const STORE_KEY = "panel";
 
-var HEALTH_PATH = "/api/factories/health" as const;
+const HEALTH_PATH = "/api/factories/health" as const;
 
-var CIRCUITS_PATH = "/api/power/circuits" as const;
+const CIRCUITS_PATH = "/api/power/circuits" as const;
 
-var view = {
+const view = {
   open: !NARROW.matches,
   tab: "factories" as Tab,
   factory: "",
@@ -60,10 +60,10 @@ var view = {
   pending: "",
 };
 
-var readings = vitals();
+const readings = vitals();
 
 /** Set when a render was skipped because a rename was being typed; the rename renders after. */
-var renderDeferred = false;
+let renderDeferred = false;
 
 function changed(): void {
   renderPanel();
@@ -146,21 +146,25 @@ function isPointSelection(s: Selection | null): boolean {
   return !!s && (s.kind === "point" || s.kind === "machine");
 }
 
+function selectionBounds(factory: string, circuitRow: CircuitRow | undefined): L.LatLngBounds | null {
+  if (factory) return paddedBounds(factoryNamed(factory)!.bbox_m);
+  return circuitRow ? paddedBounds(circuitRow.bbox_m) : null;
+}
+
 function followSelection(): void {
   const s = selected();
   if (!s) clearMark();
-  const factory = s && s.kind === "factory" && factoryNamed(s.key) ? s.key : "";
-  const circuitRow = s && s.kind === "circuit" && readings.circuits ? readings.circuits.circuits[+s.key] : undefined;
+  const factory = s?.kind === "factory" && factoryNamed(s.key) ? s.key : "";
+  const circuitRow = s?.kind === "circuit" && readings.circuits ? readings.circuits.circuits[+s.key] : undefined;
   const circuit = circuitRow ? circuitRow.index : -1;
-  if (s && isPointSelection(s) && ringedKey !== s.kind + ":" + s.key && s.x_m !== undefined && s.y_m !== undefined) {
+  if (s && isPointSelection(s) && !isRinged(s.kind + ":" + s.key) && s.x_m !== undefined && s.y_m !== undefined) {
     ringAt(s.x_m, s.y_m, s.label, s.kind + ":" + s.key);
   }
   if (s && !factory && !circuitRow && !isPointSelection(s)) return;
   if (factory === view.factory && circuit === view.circuit) return;
   view.factory = factory;
   view.circuit = circuit;
-  const box = factory ? factoryNamed(factory)!.bbox_m : circuitRow ? circuitRow.bbox_m : null;
-  const bounds = box ? paddedBounds(box) : null;
+  const bounds = selectionBounds(factory, circuitRow);
   if (bounds) outline(bounds);
   else if (!isPointSelection(s)) clearMark();
   renderPanel();
@@ -354,7 +358,7 @@ function ledgerBlock(r: Rated, starved: number): HTMLElement {
 
 type Ref = MachineRef | StarvedGenerator;
 
-var STARVED_HINT = "input ran dry and produced nothing in its window";
+const STARVED_HINT = "input ran dry and produced nothing in its window";
 
 function refList(title: string, rows: Ref[], hint: string): HTMLElement {
   const fold = make("details", "panel-fold-list");
@@ -379,6 +383,11 @@ function refList(title: string, rows: Ref[], hint: string): HTMLElement {
   return fold;
 }
 
+function badgeTone(now: Reading, starved: boolean): string {
+  if (now.bad || starved) return " bad";
+  return now.why ? "" : " ok";
+}
+
 function circuitRow(row: CircuitRow): HTMLElement {
   const selected = row.index === view.circuit;
   const led = row.ledger;
@@ -391,8 +400,7 @@ function circuitRow(row: CircuitRow): HTMLElement {
     })
   );
   const now = r.dark ? readGeneration(r) : readHeadroomNow(r);
-  const badgeTone = now.bad || led.starved_generation_mw > 0 ? " bad" : now.why ? "" : " ok";
-  const badge = make("span", "panel-badge" + badgeTone, now.value);
+  const badge = make("span", "panel-badge" + badgeTone(now, led.starved_generation_mw > 0), now.value);
   badge.title = now.why || WORDS.headroomNow;
   head.appendChild(badge);
   item.appendChild(head);
@@ -585,7 +593,7 @@ registerFetch<FactoryHealthResponse>({
       select(null);
     }
     const s = selected();
-    if (s && s.kind === "factory" && !factoryNamed(s.key)) select(null);
+    if (s?.kind === "factory" && !factoryNamed(s.key)) select(null);
     followSelection();
     changed();
     if (view.pending) showFactory(view.pending);

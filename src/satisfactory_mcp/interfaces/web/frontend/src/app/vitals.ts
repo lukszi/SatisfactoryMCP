@@ -12,9 +12,9 @@ export interface Vitals {
   circuitsError: string;
 }
 
-var store: Vitals = { health: null, healthError: "", circuits: null, circuitsError: "" };
+const store: Vitals = { health: null, healthError: "", circuits: null, circuitsError: "" };
 
-var changed = createListeners();
+const changed = createListeners();
 
 export function vitals(): Vitals {
   return store;

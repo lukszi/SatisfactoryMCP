@@ -8,14 +8,14 @@ import { changed } from "./state";
 
 import type { PlanBuiltRow, PlansBuiltResponse, PlansResponse } from "../../api/shapes";
 
-export var planIndex = {
+export const planIndex = {
   world: "",
   data: null as PlansResponse | null,
   built: {} as Record<string, PlanBuiltRow>,
   error: "",
 };
 
-var seq = 0;
+let seq = 0;
 
 export function loadList(): void {
   const mine = ++seq;

@@ -4,7 +4,7 @@
 import { get, latest } from "../../api/client";
 import { button, chip, table, toggleButton } from "../../kit/dashkit";
 import { code, esc, make, onAttributeClick, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "../../kit/dom";
-import { count, perMin } from "../../kit/format";
+import { count, perMin, withDetail } from "../../kit/format";
 import { L } from "../leaflet";
 import { boundsOfBbox, flyPadded, latLngOf, map } from "../map";
 import { cardLine, cardSectionHeading, cardSubject, cardTitleBar, closeOtherCards, mapCard } from "../mapcard";
@@ -27,19 +27,19 @@ type TraceItem = TraceResponse["items"][number];
 type TraceEdge = TraceResponse["edges"][number];
 
 /** How many rows each table in the card lists; the rest are counted. */
-var MAX_TABLE_ROWS = 10;
+const MAX_TABLE_ROWS = 10;
 
-var TRACE_MAX_ZOOM = 2;
+const TRACE_MAX_ZOOM = 2;
 
-var RATE_TITLE = "nameplate rate at each machine's clock";
+const RATE_TITLE = "nameplate rate at each machine's clock";
 
-var pane = map.createPane("trace");
+const pane = map.createPane("trace");
 pane.style.zIndex = "450";
 pane.style.pointerEvents = "none";
-var renderer = L.svg({ pane: "trace", padding: 0.5 });
-var group = L.layerGroup();
+const renderer = L.svg({ pane: "trace", padding: 0.5 });
+const group = L.layerGroup();
 
-var view = {
+const view = {
   seed: "",
   direction: "up" as Direction,
   world: "",
@@ -55,7 +55,8 @@ function traceCard(): HTMLElement {
 
 function machineRingColour(m: TraceMachine): string {
   const t = stateTone(m.state, m.actionable);
-  return t === "blocked" ? BLOCKED_COLOUR : t === "bad" ? STOPPED_COLOUR : HIGHLIGHT;
+  if (t === "blocked") return BLOCKED_COLOUR;
+  return t === "bad" ? STOPPED_COLOUR : HIGHLIGHT;
 }
 
 function rateText(rows: { item: string; per_min: number }[]): string {
@@ -222,7 +223,7 @@ function render(): void {
     return;
   }
   const only = data.seeds === 1 ? data.machines.filter(function (m) { return m.seed; })[0] : undefined;
-  cardSubject(box, only ? only.name + (only.recipe ? " · " + only.recipe : "") : data.subject);
+  cardSubject(box, only ? withDetail(only.name, only.recipe) : data.subject);
   if (data.truncated) {
     cardLine(box, "the walk stopped at its hop limit: this is a floor, more lies beyond it", "blocked");
   }
@@ -322,7 +323,7 @@ export function startTrace(seed: string, direction: Direction): void {
 }
 
 /** The debounce on a vitals-driven refetch. */
-var refreshTimer = 0;
+let refreshTimer = 0;
 
 function refresh(): void {
   if (!view.seed) return;

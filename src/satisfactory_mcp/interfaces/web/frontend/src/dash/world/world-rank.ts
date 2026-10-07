@@ -113,7 +113,7 @@ function factories(): [string, string][] {
 
 function selectedPoint(): string {
   const selection = selected();
-  if (!selection || selection.x_m === undefined || selection.y_m === undefined) return "";
+  if (selection?.x_m === undefined || selection.y_m === undefined) return "";
   return Math.round(selection.x_m) + "," + Math.round(selection.y_m);
 }
 

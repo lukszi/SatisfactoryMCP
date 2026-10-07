@@ -65,7 +65,7 @@ function settingsLinkHint(text: string): HTMLElement {
 
 function candidates(body: HTMLElement, name: string): void {
   const fetched = cachedFetch<RecipesResponse>("recipes:candidates", `/api/gamedata/recipes?q=${encodeURIComponent(name)}&recipe_kind=all${spoilers()}`);
-  if (!fetched.data || !fetched.data.recipes.length) return;
+  if (!fetched.data?.recipes.length) return;
   const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "recipes with “" + name + "” in the name"));
   recipeTable(card, fetched.data.recipes, { kinds: true, qty: "", sort: "candidates" });
@@ -129,6 +129,11 @@ function usedByCard(body: HTMLElement, cls: string): void {
   body.appendChild(used);
 }
 
+function energyFact(item: AlternatesResponse): string {
+  if (!item.energy_mj) return "";
+  return formatNumber(item.energy_mj) + " MJ" + (item.fluid ? " per m³" : " each");
+}
+
 export function renderItem(body: HTMLElement, cls: string): void {
   const fetched = cachedFetch<AlternatesResponse>("recipes", `/api/gamedata/alternates?item=${encodeURIComponent(cls)}${spoilers()}`);
   if (!fetched.data) {
@@ -145,7 +150,7 @@ export function renderItem(body: HTMLElement, cls: string): void {
   }
   detailHeader(body, "items", data.name, data.item, data.fluid ? "fluid" : "solid");
   const facts = [
-    data.energy_mj ? formatNumber(data.energy_mj) + " MJ" + (data.fluid ? " per m³" : " each") : "",
+    energyFact(data),
     data.sink_points ? count(data.sink_points) + " sink points" : "",
   ].filter(Boolean);
   if (facts.length) appendNote(body, facts.join(" · "));
@@ -181,17 +186,18 @@ function rateTable(box: HTMLElement, rates: Rate[], part: boolean, linked: boole
   box.appendChild(table(columns, rates));
 }
 
+function powerText(recipe: RecipeDetail): string {
+  const range = recipe.power_range_mw;
+  if (!range) return formatNumber(recipe.power_mw) + " MW";
+  return formatNumber(range[0]) + "–" + formatNumber(range[1]) + " MW, " + formatNumber(recipe.power_mw) + " MW average";
+}
+
 function recipeFacts(recipe: RecipeDetail, part: boolean): HTMLElement {
   const facts: [string, string][] = part
     ? [
         ["machine", recipe.machine || "–"],
         ["cycle", formatNumber(recipe.duration_s, 2) + " s"],
-        [
-          "power",
-          recipe.power_range_mw
-            ? formatNumber(recipe.power_range_mw[0]) + "–" + formatNumber(recipe.power_range_mw[1]) + " MW, " + formatNumber(recipe.power_mw) + " MW average"
-            : formatNumber(recipe.power_mw) + " MW",
-        ],
+        ["power", powerText(recipe)],
       ]
     : [];
   facts.push(["granted by", recipe.granted_by.join("; ") || "no known unlock"]);
@@ -201,6 +207,12 @@ function recipeFacts(recipe: RecipeDetail, part: boolean): HTMLElement {
     list.appendChild(make("dd", "", fact[1]));
   });
   return list;
+}
+
+// What one row of the in and out tables counts.
+function rateUnit(recipe: RecipeDetail): string {
+  if (recipe.kind === "part") return "per min, one machine at 100%";
+  return recipe.kind === "building" ? "per build" : "per craft";
 }
 
 export function renderRecipe(body: HTMLElement, cls: string): void {
@@ -229,7 +241,7 @@ export function renderRecipe(body: HTMLElement, cls: string): void {
   card.appendChild(recipeFacts(recipe, part));
   body.appendChild(card);
 
-  const unit = part ? "per min, one machine at 100%" : recipe.kind === "building" ? "per build" : "per craft";
+  const unit = rateUnit(recipe);
   [
     { label: "in", rates: recipe.ingredients, linked: true },
     { label: "out", rates: recipe.products, linked: recipe.kind !== "building" },

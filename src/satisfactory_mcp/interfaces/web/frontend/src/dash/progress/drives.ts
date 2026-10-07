@@ -38,7 +38,8 @@ const DRIVE_COLUMNS: Column<OptionRow>[] = [
     label: "drive",
     align: "right",
     render: function (row) {
-      return row.first ? (row.drive.hard_drive_id === null ? "?" : row.drive.hard_drive_id) : "";
+      if (!row.first) return "";
+      return row.drive.hard_drive_id ?? "?";
     },
   },
   {

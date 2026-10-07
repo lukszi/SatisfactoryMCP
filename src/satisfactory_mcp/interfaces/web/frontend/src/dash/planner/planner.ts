@@ -32,20 +32,20 @@ import type { ActivityResponse, FocusSelection, PlansResponse } from "../../api/
 import type { PlannerAddress } from "./address";
 import type { ActivityEvent, PlansEvent } from "./state";
 
-var FORM_FIELD = /^(INPUT|TEXTAREA|SELECT)$/;
+const FORM_FIELD = /^(INPUT|TEXTAREA|SELECT)$/;
 
-var root = make("div", "plan-root");
-var mountedKey: string | null = null;
-var heldActions: Array<() => void> = [];
-var drawPending = false;
-var seenActivityIds: Record<string, boolean> = {};
-var lastActivityTs = 0;
-var drawTimer = 0;
-var pointerDown = false;
-var refocusCtl = "";
-var lastFocusSignature = "";
-var focusStartupPending = false;
-var stageToReveal = 0;
+const root = make("div", "plan-root");
+let mountedKey: string | null = null;
+let heldActions: Array<() => void> = [];
+let drawPending = false;
+const seenActivityIds: Record<string, boolean> = {};
+let lastActivityTs = 0;
+let drawTimer = 0;
+let pointerDown = false;
+let refocusCtl = "";
+let lastFocusSignature = "";
+let focusStartupPending = false;
+let stageToReveal = 0;
 
 /** One chat activity the page may follow, and whether the follow setting only offers it. */
 interface Followed {
@@ -412,7 +412,7 @@ onReload(function () {
 });
 
 export function onNotesEvent(): void {
-  if (trackShowing() && bench.plan && bench.plan.factory) loadTrack();
+  if (trackShowing() && bench.plan?.factory) loadTrack();
 }
 
 /* ------------------------------------------------------------------- keys */

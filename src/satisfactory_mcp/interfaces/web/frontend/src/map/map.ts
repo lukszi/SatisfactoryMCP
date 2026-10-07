@@ -14,10 +14,10 @@ import { BOOT, pinnedFilename, state } from "../app/state";
 
 import type { BboxM, Point3M, PointM } from "./geometry";
 
-var BOUND = 5000; // metres; the playable world is ~7 km across, so this frames it loosely.
+const BOUND = 5000; // metres; the playable world is ~7 km across, so this frames it loosely.
 
 // The whole-world framing every load starts from.
-export var HOME_VIEW: { centre: L.LatLngTuple; zoom: number } = { centre: [0, 0], zoom: -3 };
+export const HOME_VIEW: { centre: L.LatLngTuple; zoom: number } = { centre: [0, 0], zoom: -3 };
 
 /** A point in game metres, plotted the page's one way round. See the note above. */
 export function latLngOf(point: { x_m: number; y_m: number } | PointM | Point3M): L.LatLngTuple {
@@ -38,7 +38,7 @@ export function gameXY(latlng: L.LatLng | L.LatLngLiteral): PointM {
 export function flyToBox(box: BboxM, options?: { maxZoom?: number; padLeft?: number }): void {
   const bounds = boundsOfBbox(box);
   const pad = overlayPad();
-  if (options && options.padLeft !== undefined) pad.topLeft.x = options.padLeft;
+  if (options?.padLeft !== undefined) pad.topLeft.x = options.padLeft;
   map.flyToBounds(bounds, {
     maxZoom: options ? options.maxZoom : undefined,
     paddingTopLeft: pad.topLeft,
@@ -46,11 +46,11 @@ export function flyToBox(box: BboxM, options?: { maxZoom?: number; padLeft?: num
   });
 }
 
-export var NARROW = window.matchMedia("(max-width: 699px)");
+export const NARROW = window.matchMedia("(max-width: 699px)");
 
-var GAP_PX = 12;
+const GAP_PX = 12;
 
-var SHEET_SHARE = 0.9;
+const SHEET_SHARE = 0.9;
 
 function shown(id: string): DOMRect | null {
   const node = document.getElementById(id);
@@ -80,8 +80,8 @@ export function overlayPad(): { topLeft: L.Point; bottomRight: L.Point } {
   return { topLeft: topLeft, bottomRight: bottomRight };
 }
 
-var POPUP_TOP_LEFT = L.point(GAP_PX, GAP_PX);
-var POPUP_BOTTOM_RIGHT = L.point(GAP_PX, GAP_PX);
+const POPUP_TOP_LEFT = L.point(GAP_PX, GAP_PX);
+const POPUP_BOTTOM_RIGHT = L.point(GAP_PX, GAP_PX);
 
 L.Popup.mergeOptions({ autoPanPaddingTopLeft: POPUP_TOP_LEFT, autoPanPaddingBottomRight: POPUP_BOTTOM_RIGHT });
 
@@ -105,7 +105,7 @@ export function flyToPoint(at: L.LatLngTuple, zoom: number): void {
   flyPadded(L.latLngBounds([at, at]), zoom);
 }
 
-export var FIT_SNAP = 0.25;
+export const FIT_SNAP = 0.25;
 
 export function fitWorld(): void {
   const pad = overlayPad();
@@ -122,10 +122,10 @@ export function fitWorld(): void {
  * numbers set the map's pixel unit below, and they are the same square the server pins by
  * default -- a render pinned anywhere else is drawn as one overlay instead (see
  * loadMapImage in tiles.ts), because the tile grid below is anchored on THIS square. */
-export var MAP_SQUARE_M = { x_min: -3247, x_max: 4253, y_min: -3750, y_max: 3750 };
-export var MAP_SHEET_PX = 8192;
-var MAP_M_PER_SHEET = MAP_SQUARE_M.x_max - MAP_SQUARE_M.x_min; // 7500 m, and square.
-var MAP_PX_PER_M = MAP_SHEET_PX / MAP_M_PER_SHEET; // 1.0923 sheet pixels to the metre.
+export const MAP_SQUARE_M = { x_min: -3247, x_max: 4253, y_min: -3750, y_max: 3750 };
+export const MAP_SHEET_PX = 8192;
+const MAP_M_PER_SHEET = MAP_SQUARE_M.x_max - MAP_SQUARE_M.x_min; // 7500 m, and square.
+const MAP_PX_PER_M = MAP_SHEET_PX / MAP_M_PER_SHEET; // 1.0923 sheet pixels to the metre.
 
 /* CRS.Simple with one change: a pixel is a pixel OF THE MAP SHEET, not a metre.
  *
@@ -138,7 +138,7 @@ var MAP_PX_PER_M = MAP_SHEET_PX / MAP_M_PER_SHEET; // 1.0923 sheet pixels to the
  * makes zoom 0 exactly one screen pixel per sheet pixel, which is also what makes Leaflet's
  * own choice of tile level the right one -- at map zoom Z it draws level Z + 5, whose
  * 256 * 2^(Z+5) pixels are precisely the 8192 * 2^Z the view has room for. */
-var CRS_SHEET_PX = L.extend({}, L.CRS.Simple, {
+const CRS_SHEET_PX = L.extend({}, L.CRS.Simple, {
   transformation: new L.Transformation(
     MAP_PX_PER_M,
     -MAP_SQUARE_M.x_min * MAP_PX_PER_M,
@@ -147,7 +147,7 @@ var CRS_SHEET_PX = L.extend({}, L.CRS.Simple, {
   ),
 });
 
-export var map = L.map("map", {
+export const map = L.map("map", {
   crs: CRS_SHEET_PX,
   preferCanvas: true, // thousands of markers: canvas, not one SVG node each.
   minZoom: -6,
@@ -163,7 +163,10 @@ state.map = map;
 
 // Leaflet's `_rebound` without the centring: where the bounds fit, move only an edge that is out.
 function rebound(lo: number, hi: number): number {
-  if (lo + hi > 0) return lo < 0 ? lo : hi < 0 ? -hi : 0;
+  if (lo + hi > 0) {
+    if (lo < 0) return lo;
+    return hi < 0 ? -hi : 0;
+  }
   return Math.max(0, Math.ceil(lo)) - Math.max(0, Math.floor(hi));
 }
 
@@ -273,7 +276,7 @@ export function writeHash(): void {
  * (fragment.ts) can tell the page's own handwriting from a human's -- which is also what a
  * Back button onto a fragment already applied looks like. The STRING is compared rather than
  * four re-parsed fields, because writeHash is the only thing that produces this spelling. */
-var wrote = "";
+let wrote = "";
 
 export function writtenHash(): string {
   return wrote;

@@ -25,6 +25,15 @@ const PROGRESS_SECTIONS: [string, string][] = [
   ["sloops", "Somersloops"],
 ];
 
+// The space elevator's headline; null while the phase is unread.
+function elevatorHeadline(): string | null {
+  const phaseData = phase.data;
+  if (!phaseData) return null;
+  if (phaseData.deliverable === null) return "no target";
+  if (phaseData.deliverable) return "deliverable";
+  return shortParts(targetRow(phaseData)!) + " parts short";
+}
+
 /* One line linking each other section, with its headline, under the milestones. */
 function nextUp(body: HTMLElement): void {
   const line = make("p", "dash-note");
@@ -35,13 +44,7 @@ function nextUp(body: HTMLElement): void {
     span.appendChild(link(dash, text));
     parts.push(span);
   };
-  const phaseData = phase.data;
-  const target = phaseData ? targetRow(phaseData) : null;
-  add(
-    "progress/elevator",
-    "space elevator",
-    phaseData ? (phaseData.deliverable === null ? "no target" : phaseData.deliverable ? "deliverable" : shortParts(target!) + " parts short") : null
-  );
+  add("progress/elevator", "space elevator", elevatorHeadline());
   const mamData = mam.data;
   if (mamData) {
     const rows = visible(mamData.research);

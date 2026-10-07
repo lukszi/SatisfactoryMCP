@@ -15,13 +15,13 @@ import type { ApiPath, ApiUrl } from "../../api/client";
 import type { DeltaResponse, FeedersResponse, PlanAlternatesResponse, PlanStateBody, SolveResponse, TrackResponse, VersionsResponse } from "../../api/shapes";
 import type { FeedersView, Partition, ResultTab } from "./state";
 
-var ALTERNATES: ApiPath = "/api/plan/alternates";
-var TRACK: ApiPath = "/api/plan/track";
-var FEEDERS: ApiPath = "/api/plan/feeders";
-var LOOKBACK_REVS = 20;
+const ALTERNATES: ApiPath = "/api/plan/alternates";
+const TRACK: ApiPath = "/api/plan/track";
+const FEEDERS: ApiPath = "/api/plan/feeders";
+const LOOKBACK_REVS = 20;
 
-var solveSeq = 0;
-var solved: Record<string, SolveResponse> = {};
+let solveSeq = 0;
+let solved: Record<string, SolveResponse> = {};
 
 /** The save token the head was solved against, or "" before a result. */
 export function saveToken(): string {
@@ -298,7 +298,7 @@ export function pickTab(tab: ResultTab): void {
 
 export function showAlternates(item: string, opener?: string): void {
   const open = bench.alternates;
-  if (open && open.item === item) {
+  if (open?.item === item) {
     if (opener) {
       open.opener = opener;
       open.enter = true;

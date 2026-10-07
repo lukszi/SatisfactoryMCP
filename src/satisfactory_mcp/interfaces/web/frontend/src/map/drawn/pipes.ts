@@ -26,12 +26,12 @@ import type { PipeFlowBasis, PipeRow, PipesResponse } from "../../api/shapes";
 import type { Point3M } from "../geometry";
 
 // Oxide: warm where the belts are cool (docs/frontend_palette.md). The middle tone is the swatch.
-var PIPE_COLOUR = declareColours("routes", { pipes: "#7d221a" }).pipes;
+const PIPE_COLOUR = declareColours("routes", { pipes: "#7d221a" }).pipes;
 
 // The two tiers, one value step either side of PIPE_COLOUR.
-var PIPE_TIER = declareColours("routes", { "pipe mk1": "#690e06", "pipe mk2": "#91362e" });
-var PIPE_MK1 = PIPE_TIER["pipe mk1"];
-var PIPE_MK2 = PIPE_TIER["pipe mk2"];
+const PIPE_TIER = declareColours("routes", { "pipe mk1": "#690e06", "pipe mk2": "#91362e" });
+const PIPE_MK1 = PIPE_TIER["pipe mk1"];
+const PIPE_MK2 = PIPE_TIER["pipe mk2"];
 
 /* Tier as value, the belts' banding: `flow_m3_min` is the dump's own figure for the class --
  * 300 on Mk1, 600 on Mk2 -- so this bands a measurement rather than parsing "MK2" out of a
@@ -55,9 +55,9 @@ function pipeWeight(ppm: number): number {
  * basis nobody thought about falling through a default and being printed as a claim about the
  * network. `unresolved` is a real key for the pipes the network does not settle -- one in a
  * loop, or a trunk with producers and consumers on both sides. */
-var PIPE_FLOW_UNKNOWN = "not recorded, and the network does not imply it";
+const PIPE_FLOW_UNKNOWN = "not recorded, and the network does not imply it";
 
-var PIPE_FLOW_BASIS: Record<PipeFlowBasis, string> = {
+const PIPE_FLOW_BASIS: Record<PipeFlowBasis, string> = {
   "machine port": "→ a typed machine port at one end",
   pump: "→ pump orientation",
   propagated: "→ inferred from the network",
@@ -93,8 +93,8 @@ function pipePopup(pipe: PipeRow, first: Point3M, last: Point3M): string {
 
 /* A chevron's stroke: a fixed pixel width, in a pale cream far above every pipe tone, so the
  * mark reads on the line it sits on. Not interactive, or it would steal its pipe's popup. */
-var CHEVRON_WEIGHT_PX = 1.5;
-var CHEVRON_COLOUR = declareColours("routes", { chevrons: "#e8cbb4" }).chevrons;
+const CHEVRON_WEIGHT_PX = 1.5;
+const CHEVRON_COLOUR = declareColours("routes", { chevrons: "#e8cbb4" }).chevrons;
 
 /** One pipe's direction marks, joined to the floor filter by the pipe's key and NO ends, so a
  *  mark is kept exactly when its pipe is and never earns a connector arrow. */

@@ -14,7 +14,7 @@ import type { Column } from "../../kit/dashkit";
 import type { DeltaRow, PlanOpBody, SwapOption } from "../../api/shapes";
 import type { Op } from "./state";
 
-var NONE = "–";
+const NONE = "–";
 
 /** The [recipes] button that opens the drawer for `item`; `where` tells its openers apart. */
 export function recipesButton(item: string, name: string, where: string): HTMLButtonElement {
@@ -91,7 +91,7 @@ function alternatesCurrent(): boolean {
 
 /* A burst of clicks lands one version: an option acts only once the drawer is current again. */
 function applyIfCurrent(list: Op[], requires?: boolean): void {
-  if (alternatesCurrent()) applyOps(list, requires && bench.alternates && bench.alternates.data ? bench.alternates.data.item : undefined);
+  if (alternatesCurrent()) applyOps(list, requires && bench.alternates?.data ? bench.alternates.data.item : undefined);
 }
 
 function optionActions(option: SwapOption): HTMLElement {
@@ -111,7 +111,7 @@ function optionActions(option: SwapOption): HTMLElement {
         function () {
           applyIfCurrent(require, true);
         },
-        { title: "make every " + (bench.alternates && bench.alternates.data ? bench.alternates.data.name : "unit") + " in this plan with " + option.name, label: "require " + option.name }
+        { title: "make every " + (bench.alternates?.data ? bench.alternates.data.name : "unit") + " in this plan with " + option.name, label: "require " + option.name }
       )
     );
   }

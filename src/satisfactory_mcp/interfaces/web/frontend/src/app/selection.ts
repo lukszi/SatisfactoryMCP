@@ -14,9 +14,9 @@ export interface Selection {
   ref?: string;
 }
 
-var KINDS: SelectionKind[] = ["factory", "circuit", "machine", "point", "node", "field", "conduit", "pickup"];
+const KINDS: SelectionKind[] = ["factory", "circuit", "machine", "point", "node", "field", "conduit", "pickup"];
 
-var STORE_KEY = "selection";
+const STORE_KEY = "selection";
 
 function parse(text: string | null): Selection | null {
   try {
@@ -51,9 +51,9 @@ function remember(s: Selection | null): void {
   }
 }
 
-var current: Selection | null = recall();
+let current: Selection | null = recall();
 
-var selectListeners = createListeners();
+const selectListeners = createListeners();
 
 function same(a: Selection | null, b: Selection | null): boolean {
   if (!a || !b) return a === b;
