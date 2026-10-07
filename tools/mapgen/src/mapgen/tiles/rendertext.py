@@ -23,7 +23,7 @@ def sampling_text(spacing_m: float, two_regime: bool) -> str:
         "the field's own composition rule, at this render's spacing. KERNEL: "
         "tensor-product PCHIP (Fritsch-Butland slopes: exact at the 1 m vertices, "
         "never outside a cell's own range) over the LANDSCAPE AND FILL lattices, "
-        "rebuilt by tools/map_fill.py -- the cliff province taken out, because "
+        "rebuilt by mapgen.terrain.fill -- the cliff province taken out, because "
         "interpolating the composed field reconstructs its own 1 m fold and a rim reconstructed from "
         "a fold is a 1 m staircase at any output resolution -- falling back to "
         "bilinear where the 4x4 stencil straddles no data and to nothing where no "
