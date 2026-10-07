@@ -235,6 +235,9 @@ Planned as 0.2.0.
   game's own map draws nothing, and draw the void there: a 0.23 km² island south-east of the
   abyss, a block in the north-east corner, a lobe on the east edge and smaller pieces, 0.57%
   of the map square in all.
+- The satellite map no longer shows a quilt of 29 m and 7.3 m squares on flat ground: its
+  noise is read smoothly between its cells. Every rendered map style is one version up for
+  these two fixes.
 
 ## [0.1.0] - 2026-09-27
 
