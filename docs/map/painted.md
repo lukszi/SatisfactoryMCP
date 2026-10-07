@@ -337,9 +337,10 @@ of a paint layer").
 An arch or boulder of the top pass lifted over a cliff is not that cliff, but the family plane
 under it is the cliff's: the direct pass alone stamps it. So a rock pixel takes the area's
 rock, with no family tint or top, by the overlay's lift over the surface below it (the band's
-`top_weight`, full from `MESH_FULL_LIFT_M`). Before, a root beam over the Northern Forest's
-coast at (-117, -1580) wore the sand family's top in a cream stripe and the forest family's
-moss further on, and the arches of the Titan Forest at (1400, -560) their cliffs' moss.
+`top_weight`, full from `MESH_FULL_LIFT_M`). The seventh render drew a root beam over the
+Northern Forest's coast at (-122, -1580) with the sand family's top as a cream stripe and the
+forest family's moss further on, and arches of the Titan Forest at (1400, -560) with their
+cliffs' moss.
 
 The rock targets of section 31 are measured on rock that already wears the common tint, so
 only a family's departure from it is applied (`palette/painted/surfaces.py` `family_tables`).
