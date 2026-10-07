@@ -7,13 +7,13 @@ ground and ``paint_band`` colours it in the layer's style.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
 from contextlib import AbstractContextManager, ExitStack, closing
 from dataclasses import dataclass
 from functools import partial
-from typing import Protocol, TypeAlias, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import numpy as np
+from numpy.typing import NDArray
 
 from mapgen.cache import DirectPlanes, MeshPlanes, TopPlanes
 from mapgen.gamedata.frame import BOUNDS_M
@@ -26,8 +26,8 @@ from mapgen.lighting.hillshade import (
 )
 from mapgen.palette.painted.band import painted_colours, painted_ndl
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
-from mapgen.palette.painted.shapes import PaintedScene
-from mapgen.palette.relief import ReliefGround, relief_colours
+from mapgen.palette.painted.shapes import PaintedScene, Sampler
+from mapgen.palette.relief import BiomeSample, ReliefGround, relief_colours
 from mapgen.palette.scene import BandGrid, BandScene, ReliefScene, ShadedScene
 from mapgen.palette.styles import (
     NOISE_SEED,
@@ -73,7 +73,17 @@ from mapgen.terrain.sample import (
     taps_linear,
     taps_pchip,
 )
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid, U8Grid
+from satisfactory_mcp.core.arrays import (
+    BoolMask,
+    F16Grid,
+    F32Grid,
+    F64Grid,
+    FloatGrid,
+    I8Grid,
+    I16Grid,
+    I64Grid,
+    U8Grid,
+)
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.core.mapprogress import encode_stage
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -98,9 +108,6 @@ BAND_HALO = 8
 #: The flat ground's sun term, ``n.L`` of the default sun on level ground.
 _FLAT_SUN = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
 
-#: How a painter reads a plane of its own grid over a band.
-PlaneReader: TypeAlias = Callable[[np.ndarray], np.ndarray]
-
 
 @runtime_checkable
 class HeldPlane(Protocol):
@@ -115,8 +122,8 @@ class HeldPlane(Protocol):
 class SatelliteInputs:
     """What the satellite style adds: the biome colours and the noise octaves."""
 
-    biome_rgb: np.ndarray
-    noise: list[tuple[np.ndarray, float]]
+    biome_rgb: U8Grid
+    noise: list[tuple[F32Grid, float]]
 
 
 @dataclass(frozen=True)
@@ -149,34 +156,34 @@ class LayerJob:
     satellite: SatelliteInputs | None
     painted: PaintedInputs | None
     relief: ReliefGround | None
-    falls: np.ndarray | None
+    falls: F64Grid | None
 
 
 def render_layer(
     layer: str,
     field: hf.Field,
-    biome_rgb: np.ndarray | None,
+    biome_rgb: U8Grid | None,
     biome_width: int,
-    borrow: tuple[np.ndarray, np.ndarray],
+    borrow: tuple[I8Grid, U8Grid],
     size: int,
     progress: bool,
-    height_dm: np.ndarray | None = None,
+    height_dm: F32Grid | None = None,
     direct: DirectPlanes | None = None,
     seam: SeamTrace | None = None,
     regimes: RegimeCoverage | None = None,
-    measured_plane_u8: np.ndarray | None = None,
+    measured_plane_u8: U8Grid | None = None,
     overlay: TopPlanes | None = None,
     kernel: Kernel | None = None,
     meshes: MeshPlanes | None = None,
-    falls: np.ndarray | None = None,
-    reach: np.ndarray | None = None,
+    falls: F64Grid | None = None,
+    reach: U8Grid | None = None,
     painted: PaintedGround | None = None,
     window: tuple[int, int, int, int] | None = None,
     rivers: RiverWater | None = None,
     relief: ReliefGround | None = None,
     unlit: bool = False,
     surface: LightCapture | None = None,
-    water_level: np.ndarray | None = None,
+    water_level: I16Grid | None = None,
     sea: OpenSea | None = None,
     threads: int = 1,
 ) -> U8Grid:
@@ -221,24 +228,24 @@ def _ground_sources(
     field: hf.Field,
     window: Window,
     size: int,
-    borrow: tuple[np.ndarray, np.ndarray],
+    borrow: tuple[I8Grid, U8Grid],
     *,
-    height_dm: np.ndarray | None,
+    height_dm: F32Grid | None,
     direct: DirectPlanes | None,
     seam: SeamTrace | None,
     regimes: RegimeCoverage | None,
-    measured_plane_u8: np.ndarray | None,
+    measured_plane_u8: U8Grid | None,
     overlay: TopPlanes | None,
     kernel: Kernel | None,
     meshes: MeshPlanes | None,
-    reach: np.ndarray | None,
+    reach: U8Grid | None,
     rivers: RiverWater | None,
     surface: LightCapture | None,
-    water_level: np.ndarray | None,
+    water_level: I16Grid | None,
     sea: OpenSea | None,
 ) -> GroundSources:
     """What a layer's bands sample their ground from, with the column taps they share."""
-    heights = field.height_dm if height_dm is None else height_dm
+    heights: I16Grid | F32Grid = field.height_dm if height_dm is None else height_dm
     kernel = taps_pchip if kernel is None else kernel
     x_cm, y_cm = frame_coordinates(size)
     x_cm = x_cm[window.c0 : window.c1]
@@ -285,7 +292,7 @@ def _ground_sources(
 
 
 def _regime_sources(
-    field: hf.Field, regimes: RegimeCoverage | None, measured_plane_u8: np.ndarray | None
+    field: hf.Field, regimes: RegimeCoverage | None, measured_plane_u8: U8Grid | None
 ) -> RegimeSources | None:
     """The regime table with the planes it reads; it needs the measurement plane."""
     if regimes is None:
@@ -299,11 +306,11 @@ def _layer_job(
     layer: str,
     ground: GroundSources,
     size: int,
-    biome_rgb: np.ndarray | None,
+    biome_rgb: U8Grid | None,
     biome_width: int,
     painted: PaintedGround | None,
     relief: ReliefGround | None,
-    falls: np.ndarray | None,
+    falls: F64Grid | None,
     unlit: bool,
 ) -> LayerJob:
     """The layer's own half of a draw: its style's inputs and the columns it reads them on."""
@@ -376,7 +383,7 @@ def _draw_band(job: LayerJob, out: U8Grid, top: int) -> list[Owed]:
     return owed
 
 
-def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> np.ndarray:
+def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> FloatGrid:
     """One band in the layer's style over its ground, then the void and the falls."""
     rows, z_m = grid.rows, surface.z_m
     y_cm = job.ground.y_cm[rows.lo : rows.hi]
@@ -405,7 +412,7 @@ def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> np.nd
     return draw_falls(rgb, job.falls, job.layer, job.ground.x_cm, y_cm, z_m, job.ground.spacing_m)
 
 
-def _style_colours(job: LayerJob, grid: BandSampling, scene: BandScene) -> np.ndarray:
+def _style_colours(job: LayerJob, grid: BandSampling, scene: BandScene) -> FloatGrid:
     """A style with a plain painter: the terrain and satellite ramps over the hillshade."""
     z_m, spacing_m = scene["z_m"], job.ground.spacing_m
     shade = flat_shade(z_m.shape) if job.unlit else hillshade(z_m, spacing_m)
@@ -434,7 +441,7 @@ def _painted_colours(
     grid: BandSampling,
     surface: BandSurface,
     scene: BandScene,
-) -> np.ndarray:
+) -> FloatGrid:
     """The game-painted style's band: its rock weight, crowns, sun term and water optics."""
     rows, z_m, field = grid.rows, surface.z_m, job.ground.field
     window, spacing_m = job.ground.window, job.ground.spacing_m
@@ -477,8 +484,8 @@ def _painted_colours(
 
 def domed_crowns(
     painted: PaintedGround,
-    x_cm: np.ndarray,
-    y_cm: np.ndarray,
+    x_cm: F64Grid,
+    y_cm: F64Grid,
     spacing_m: float,
     unlit: bool = False,
 ) -> LitCrowns | None:
@@ -493,37 +500,41 @@ def domed_crowns(
     return {**stamped, "ndl": ndl}
 
 
-def _sampler(taps: GridTaps) -> PlaneReader:
+def _sampler(taps: GridTaps) -> Sampler:
     """A plane interpolated at ``taps``: the painters' way to read the field's grids."""
 
-    def sample(plane: np.ndarray) -> np.ndarray:
+    def sample(plane: NDArray[np.generic]) -> F32Grid:
         return sample_plain(plane, taps)
 
     return sample
 
 
-def _picker(rows: np.ndarray, cols: np.ndarray) -> PlaneReader:
+def _picker(rows: I64Grid, cols: I64Grid) -> BiomeSample:
     """A plane's texels at ``rows`` by ``cols``: the biome raster read nearest."""
 
-    def pick(plane: np.ndarray) -> np.ndarray:
+    def pick(plane: F16Grid) -> F16Grid:
         return plane[np.ix_(rows, cols)]
 
     return pick
 
 
-def _band_family(meshes: MeshPlanes | None, band: slice) -> np.ndarray | None:
+def _band_family(meshes: MeshPlanes | None, band: slice) -> U8Grid | None:
     """The render-only meshes' rock family on this band; None for a cache without the plane."""
-    return None if meshes is None or meshes.family is None else np.asarray(meshes.family[band])
+    return (
+        None
+        if meshes is None or meshes.family is None
+        else np.asarray(meshes.family[band], np.uint8)
+    )
 
 
 def _void(
-    rgb: np.ndarray,
+    rgb: FloatGrid,
     missing: BoolMask,
     sea: OpenSea | None,
     linear: GridTaps,
     rock: F32Grid | None,
-    z_m: np.ndarray,
-) -> np.ndarray:
+    z_m: FloatGrid,
+) -> FloatGrid:
     """A finished band under the void: no data at all, and the open sea's void planes with
     the cover and rim kept off the rocks a pixel's ``rock`` coverage holds where they stand
     out of the sea; without the open sea, no data only, in the page's sea."""

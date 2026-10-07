@@ -10,13 +10,12 @@ from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from mapgen.common import RENDERS_DIR_NAME
 from mapgen.gamedata.frame import RENDER_2X_PX
 from mapgen.lighting.stage import LIGHT_WORKER_BYTES, LIGHT_WORKER_CAP
 from mapgen.tiles.cutter import CUT_WORKERS, Cutter, Source, TileImaging, Tree
 from mapgen.tiles.recipes import RECIPE
+from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_2X_PX,
     PYRAMID_TILE_PX,
@@ -101,7 +100,7 @@ def queue_layer(cutter: Cutter, source: Source, directory: Path, text: str) -> t
 
 
 def install_layer(
-    sheet_rgb: np.ndarray,
+    sheet_rgb: U8Grid,
     image_mod: TileImaging,
     out_dir: Path,
     layer: str,
@@ -189,7 +188,7 @@ class ParallelCheck:
 
 
 def check_parallel(
-    sheet_rgb: np.ndarray, image_mod: TileImaging, scratch: Path, workers: int
+    sheet_rgb: U8Grid, image_mod: TileImaging, scratch: Path, workers: int
 ) -> ParallelCheck:
     """Cut one pyramid twice -- serially and in parallel -- and compare every tile's SHA-256.
 

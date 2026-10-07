@@ -98,9 +98,7 @@ def strip_spans(source_px: int, side: int, width: int) -> list[tuple[int, int]]:
     return [(r0, min(r0 + rows, side)) for r0 in range(0, side, rows)]
 
 
-def resample_strip(
-    image_mod: TileImaging, src: np.ndarray, out: np.ndarray, r0: int, r1: int
-) -> None:
+def resample_strip(image_mod: TileImaging, src: U8Grid, out: U8Grid, r0: int, r1: int) -> None:
     """Rows ``[r0, r1)`` of ``src`` Lanczos'd to ``out``'s size, written into ``out``.
 
     The pixels a resize of the whole sheet gives: Pillow's taps for a row depend only on its
@@ -127,14 +125,14 @@ class Block:
     def __init__(self, shape: tuple[int, int, int]) -> None:
         self.shape = shape
         self.shm = SharedMemory(create=True, size=int(np.prod(shape)))
-        self.array: np.ndarray | None = np.ndarray(shape, np.uint8, buffer=self.shm.buf)
+        self.array: U8Grid | None = np.ndarray(shape, np.uint8, buffer=self.shm.buf)
         self.ready: Future[Block] = Future()
         self.freed = False
         self._holds = 1
         self._lock = threading.Lock()
 
     @property
-    def pixels(self) -> np.ndarray:
+    def pixels(self) -> U8Grid:
         """The level's pixels, while the block is held."""
         if self.array is None:
             raise RuntimeError("a freed block was read")
@@ -264,7 +262,7 @@ class Cutter:
         self.blocks.append(block)
         return block
 
-    def publish(self, sheet: np.ndarray) -> Source:
+    def publish(self, sheet: U8Grid) -> Source:
         """A copy of ``sheet`` the encoders read; ``sheet`` is the caller's again on return."""
         block = self._block(sheet.shape)
         np.copyto(block.pixels, sheet)

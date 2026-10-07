@@ -23,7 +23,7 @@ from mapgen.palette.schema import (
     WaterClassStyle,
 )
 from mapgen.terrain.crown_stamp import CrownSet, LitCrowns
-from satisfactory_mcp.core.arrays import F16Grid, F32Grid, I16Grid, U8Grid
+from satisfactory_mcp.core.arrays import F16Grid, F32Grid, FloatGrid, I16Grid, U8Grid
 
 __all__ = [
     "AlbedoTable",
@@ -143,9 +143,6 @@ class FieldPlanes(Protocol):
 
 # -- a band --------------------------------------------------------------------------------
 
-#: A float plane as the painters compute it: float32 at run time, but numpy's stubs type a
-#: python float operand's promotion as float64, so a signature names the kind, not the width.
-FloatGrid: TypeAlias = NDArray[np.floating]
 #: A band's water terms by name, one plane each (``palette.water``'s).
 BandWater: TypeAlias = WaterTerms
 #: A plane of the paint store or the rock grid, sampled onto a band's pixels.

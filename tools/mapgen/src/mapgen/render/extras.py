@@ -10,8 +10,6 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import numpy as np
-
 from mapgen.cache import (
     CACHE_DIR_NAMES,
     MESH_CACHE_DIR_NAME,
@@ -26,6 +24,7 @@ from mapgen.palette.water.falls import load_falls
 from mapgen.palette.water.rivers import RiverWater, load_rivers
 from mapgen.render.cached_rasters import LevelSweep
 from mapgen.terrain.render_meshes import mesh_items, mesh_pass, titan_items
+from satisfactory_mcp.core.arrays import F64Grid
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, to_json_object
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -40,7 +39,7 @@ class RenderExtras:
     """The extras a run draws, each with the block its sidecar records, and their readers."""
 
     meshes: MeshPlanes | None = None
-    falls: np.ndarray | None = None
+    falls: F64Grid | None = None
     titan: TitanPlanes | None = None
     rivers: RiverWater | None = None
     mesh_source: JsonObject = field(default_factory=dict[str, JsonValue])

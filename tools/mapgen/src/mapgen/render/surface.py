@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import NamedTuple, Protocol, TypeAlias, cast
 
 import numpy as np
+from numpy.typing import NDArray
 
 from mapgen.cache import DirectPlanes, MeshPlanes, TopPlanes
 from mapgen.lighting.borrow import BORROW_CLAMP, BORROW_GAIN
@@ -29,6 +30,7 @@ from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_alpha, water_
 from mapgen.terrain.measure import SEAM_MID, RegimeCoverage, SeamTrace
 from mapgen.terrain.rasters import pixel_coverage
 from mapgen.terrain.sample import (
+    AxisTaps,
     grid_position,
     reads_nothing,
     sample_coverage,
@@ -36,7 +38,16 @@ from mapgen.terrain.sample import (
     sample_surface,
     taps_linear,
 )
-from satisfactory_mcp.core.arrays import BoolMask, F64Grid, I64Grid
+from satisfactory_mcp.core.arrays import (
+    BoolMask,
+    F32Grid,
+    F64Grid,
+    FloatGrid,
+    I8Grid,
+    I16Grid,
+    I64Grid,
+    U8Grid,
+)
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -67,12 +78,10 @@ __all__ = [
 #: no line round a formation's base. It sits at most half the knee above the hard answer.
 DIRECT_LIFT_KNEE_M = 0.25
 
-#: One axis of sampling taps: the indices and their weights (or PCHIP's cell fractions).
-AxisTaps: TypeAlias = tuple[np.ndarray, np.ndarray]
 #: A band's taps: its rows' and its columns'.
 GridTaps: TypeAlias = tuple[AxisTaps, AxisTaps]
 #: How a height raster's taps are built along one axis: ``taps_pchip`` or ``taps_cubic``.
-Kernel: TypeAlias = Callable[[np.ndarray, int], AxisTaps]
+Kernel: TypeAlias = Callable[[F64Grid, int], AxisTaps]
 #: A band's measurement owed to an accumulator, merged in band order: ``(merge, value)``.
 Owed: TypeAlias = tuple[Callable[..., None], object]
 
@@ -89,23 +98,23 @@ class Window(NamedTuple):
 class WaterPlanes(NamedTuple):
     """The water a band samples on the field's grid: its level and the wet and measured planes."""
 
-    level: np.ndarray
-    wet: np.ndarray
-    measured: np.ndarray
+    level: I16Grid
+    wet: U8Grid
+    measured: U8Grid
 
 
 class RegimeSources(NamedTuple):
     """The regime table's accumulator and the field planes it reads on the field's grid."""
 
     coverage: RegimeCoverage
-    measured: np.ndarray
-    provenance: np.ndarray
+    measured: U8Grid
+    provenance: NDArray[np.integer]
 
 
 class LightCapture(Protocol):
     """Where the drawn heights and land weight go for the light bake (``lighting.stage``)."""
 
-    def put(self, row: int, z_m: np.ndarray, land: np.ndarray, columns: slice = ..., /) -> None:
+    def put(self, row: int, z_m: FloatGrid, land: FloatGrid, columns: slice = ..., /) -> None:
         """Rows from ``row`` on, over ``columns`` of the sheet."""
         ...
 
@@ -119,7 +128,7 @@ class GroundSources:
     """
 
     field: hf.Field
-    heights: np.ndarray
+    heights: I16Grid | F32Grid
     kernel: Kernel
     window: Window
     x_cm: F64Grid
@@ -132,9 +141,9 @@ class GroundSources:
     sea: OpenSea | None
     seam: SeamTrace | None
     regimes: RegimeSources | None
-    borrow: tuple[np.ndarray, np.ndarray]
+    borrow: tuple[I8Grid, U8Grid]
     blur_px: float
-    reach: np.ndarray | None
+    reach: U8Grid | None
     rivers: RiverWater | None
     capture: LightCapture | None
     cols_smooth: AxisTaps
@@ -182,30 +191,30 @@ class BandSurface:
     NaN where there is none.
     """
 
-    z_m: np.ndarray
+    z_m: FloatGrid
     missing: BoolMask
-    weight: np.ndarray | None
-    rock_seen: np.ndarray | None
-    top_weight: np.ndarray | None
-    water_m: np.ndarray
-    level_m: np.ndarray
-    wet: np.ndarray
-    measured: np.ndarray
-    mesh_weight: np.ndarray | None
-    mesh_class: np.ndarray | None
+    weight: F32Grid | None
+    rock_seen: FloatGrid | None
+    top_weight: FloatGrid | None
+    water_m: FloatGrid
+    level_m: FloatGrid
+    wet: FloatGrid
+    measured: FloatGrid
+    mesh_weight: FloatGrid | None
+    mesh_class: U8Grid | None
     water: WaterTerms
-    borrow: np.ndarray
+    borrow: FloatGrid
 
 
-def smooth_lift(delta_m: np.ndarray) -> np.ndarray:
+def smooth_lift(delta_m: FloatGrid) -> FloatGrid:
     """The raise-only rule: ``max(delta, 0)`` with its corner rounded by the knee."""
     knee = np.float32(DIRECT_LIFT_KNEE_M)
     return 0.5 * (delta_m + np.sqrt(delta_m * delta_m + knee * knee))
 
 
 def composite_top(
-    z_m: np.ndarray, top_z_cm: np.ndarray, top_coverage: np.ndarray, subsamples: int = 1
-) -> np.ndarray:
+    z_m: FloatGrid, top_z_cm: FloatGrid, top_coverage: NDArray[np.generic], subsamples: int = 1
+) -> F32Grid:
     """``z_m`` raised by the top raster through the same coverage and smoothed lift as rocks."""
     w = np.clip(pixel_coverage(top_coverage, subsamples), 0.0, 1.0)
     delta = top_z_cm / np.float32(100.0) - z_m
@@ -213,13 +222,13 @@ def composite_top(
 
 
 def blend_regimes(
-    base_m: np.ndarray,
+    base_m: FloatGrid,
     missing: BoolMask,
-    direct: tuple[np.ndarray, np.ndarray],
+    direct: tuple[F32Grid, NDArray[np.generic]],
     linear: GridTaps,
     subsamples: int,
-    keep: np.ndarray | None = None,
-) -> tuple[np.ndarray, BoolMask, np.ndarray, np.ndarray]:
+    keep: F32Grid | None = None,
+) -> tuple[F32Grid, BoolMask, F32Grid, F32Grid]:
     """The two-regime height and what it was made of: ``(z_m, missing, w, switched)``.
 
     The field's own composition rule at the render's spacing: ``z = base + w * lift(z_rock -
@@ -250,12 +259,12 @@ def blend_regimes(
 
 
 def band_water_terms(
-    z_m: np.ndarray,
-    water_m: np.ndarray,
-    wet: np.ndarray,
-    measured: np.ndarray,
+    z_m: FloatGrid,
+    water_m: FloatGrid,
+    wet: FloatGrid,
+    measured: FloatGrid,
     blur_px: float,
-    reach: np.ndarray | None,
+    reach: U8Grid | None,
     linear: GridTaps,
     spacing_m: float,
 ) -> WaterTerms:
@@ -354,9 +363,9 @@ def _direct_regime(
     sources: GroundSources,
     direct: DirectPlanes,
     grid: BandSampling,
-    z_m: np.ndarray,
+    z_m: FloatGrid,
     missing: BoolMask,
-) -> tuple[np.ndarray, BoolMask, np.ndarray, np.ndarray, list[Owed]]:
+) -> tuple[FloatGrid, BoolMask, F32Grid, FloatGrid, list[Owed]]:
     """The rocks composited onto the lattice under them: ``(z_m, missing, weight, rock_seen,
     owed)``. Where that lattice knows nothing the field's fold stands in."""
     rows, smooth, linear = grid.rows, grid.smooth, grid.linear
@@ -383,7 +392,7 @@ def _direct_regime(
 
 
 def _regimes_owed(
-    sources: GroundSources, regimes: RegimeSources, rows: BandRows, weight: np.ndarray
+    sources: GroundSources, regimes: RegimeSources, rows: BandRows, weight: F32Grid
 ) -> Owed:
     """The regime table's count of this band's output rows, read on the field's nearest texel."""
     field = sources.field
@@ -401,7 +410,7 @@ def _regimes_owed(
     return regimes.coverage.merge, counted
 
 
-def _borrow(sources: GroundSources, grid: BandSampling) -> np.ndarray:
+def _borrow(sources: GroundSources, grid: BandSampling) -> FloatGrid:
     """The artwork's shading borrowed where the field's province is coarse, clamped."""
     detail, province = sources.borrow
     y_cm = sources.y_cm[grid.rows.lo : grid.rows.hi]
@@ -413,12 +422,12 @@ def _borrow(sources: GroundSources, grid: BandSampling) -> np.ndarray:
 
 
 def _sample_water_surface(
-    z_m: np.ndarray,
+    z_m: FloatGrid,
     water: WaterPlanes | None,
     sea: OpenSea | None,
     smooth: GridTaps,
     linear: GridTaps,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[FloatGrid, FloatGrid, FloatGrid, FloatGrid]:
     """One band's water surface, level (NaN where none), wet cover and measured share.
 
     With the open sea, the wet cover counts only the share of a pixel that is not void, so
@@ -439,12 +448,12 @@ def _sample_water_surface(
 
 
 def _rock_kept(
-    z_rock_cm: np.ndarray,
+    z_rock_cm: F32Grid,
     missing: BoolMask,
-    wet_plane: np.ndarray | None,
+    wet_plane: U8Grid | None,
     sea: OpenSea | None,
     linear: GridTaps,
-) -> np.ndarray | None:
+) -> F32Grid | None:
     """The share of its coverage a rock keeps under the void; None without the open sea.
 
     Out of the sea a rock keeps all of it; under the sea's level none on no data, else what

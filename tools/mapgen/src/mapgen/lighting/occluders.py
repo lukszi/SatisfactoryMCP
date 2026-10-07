@@ -15,7 +15,7 @@ from numpy.typing import NDArray
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.vegetation.trees import TreeTable
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, FloatGrid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -41,10 +41,9 @@ class CrownGrid(TypedDict):
 
 
 #: Float64 at run time; numpy's stubs only know they are floating.
-_Floats: TypeAlias = NDArray[np.floating]
 
 #: A box's texel edges along one axis: where each sheet pixel's box starts, and where it ends.
-_BoxEdges: TypeAlias = tuple[_Floats, _Floats]
+_BoxEdges: TypeAlias = tuple[FloatGrid, FloatGrid]
 
 
 def canopy_top(
@@ -73,7 +72,7 @@ def canopy_top(
     return out
 
 
-def _running_sum_at(running: _Floats, x: _Floats, axis: int) -> _Floats:
+def _running_sum_at(running: FloatGrid, x: FloatGrid, axis: int) -> FloatGrid:
     """A running sum read at fractional corner positions ``x`` along ``axis``, linearly."""
     i = np.minimum(np.floor(x).astype(np.int64), running.shape[axis] - 2)
     t = (x - i).astype(np.float64)
@@ -82,13 +81,13 @@ def _running_sum_at(running: _Floats, x: _Floats, axis: int) -> _Floats:
     return lo * (1.0 - t) + hi * t
 
 
-def _running_sum(a: _Floats, axis: int) -> _Floats:
+def _running_sum(a: FloatGrid, axis: int) -> FloatGrid:
     pad = [(0, 0), (0, 0)]
     pad[axis] = (1, 0)
     return np.pad(np.cumsum(a, axis=axis, dtype=np.float64), pad)
 
 
-def _box_sums(slab: NDArray[np.floating] | BoolMask, rows: _BoxEdges, cols: _BoxEdges) -> _Floats:
+def _box_sums(slab: NDArray[np.floating] | BoolMask, rows: _BoxEdges, cols: _BoxEdges) -> FloatGrid:
     """Each sheet pixel's sum over its box of ``slab``: texel edges ``(lo, hi)`` per axis."""
     (r_lo, r_hi), (c_lo, c_hi) = rows, cols
     across = _running_sum(np.asarray(slab, np.float64), 1)
@@ -96,7 +95,7 @@ def _box_sums(slab: NDArray[np.floating] | BoolMask, rows: _BoxEdges, cols: _Box
     return _running_sum_at(down, r_hi, 0) - _running_sum_at(down, r_lo, 0)
 
 
-def _box_edges(position: _Floats, width: float, n: int) -> _BoxEdges:
+def _box_edges(position: FloatGrid, width: float, n: int) -> _BoxEdges:
     """The texel-edge coordinates of a box ``width`` wide on each centre, inside the plane."""
     edge = position + 0.5
     return np.clip(edge - width / 2, 0, n), np.clip(edge + width / 2, 0, n)

@@ -16,6 +16,7 @@ __all__ = [
     "F16Grid",
     "F32Grid",
     "F64Grid",
+    "FloatGrid",
     "I8Grid",
     "I16Grid",
     "I32Grid",
@@ -38,3 +39,6 @@ U8Grid: TypeAlias = NDArray[np.uint8]
 U16Grid: TypeAlias = NDArray[np.uint16]
 U32Grid: TypeAlias = NDArray[np.uint32]
 U64Grid: TypeAlias = NDArray[np.uint64]
+#: A float plane of either width: numpy's stubs widen float32 arithmetic with a Python float
+#: to float64, so a plane computed that way is typed by kind rather than by width.
+FloatGrid: TypeAlias = NDArray[np.floating]

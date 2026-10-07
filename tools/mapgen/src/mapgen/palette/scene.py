@@ -5,11 +5,8 @@ from __future__ import annotations
 
 from typing import NamedTuple, NotRequired, Protocol, TypeAlias, TypedDict
 
-import numpy as np
-from numpy.typing import NDArray
-
 from mapgen.terrain.sample import Taps
-from satisfactory_mcp.core.arrays import I16Grid, U8Grid
+from satisfactory_mcp.core.arrays import FloatGrid, I16Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -26,10 +23,6 @@ __all__ = [
     "field_heights",
     "field_water",
 ]
-
-#: A float plane of either width: numpy's stubs widen float32 arithmetic to float64, so a
-#: painter's planes are typed by kind rather than by width.
-FloatGrid: TypeAlias = NDArray[np.floating]
 
 #: The water a run draws: the level plane in decimetres and its quality grades, which a field
 #: written before the quality byte lacks.

@@ -15,8 +15,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-import numpy as np
-
 from mapgen.cache import (
     DIRECT_CACHE_DIR_NAME,
     TOP_CACHE_DIR_NAME,
@@ -71,6 +69,7 @@ from mapgen.tiles.pyramid import (
 )
 from mapgen.tiles.recipes import RECIPE_KERNEL_ONLY
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME
+from satisfactory_mcp.core.arrays import I8Grid, U8Grid
 from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
 from satisfactory_mcp.core.gameassets.provenance import changelist
 from satisfactory_mcp.core.gameassets.pyramid import PyramidError
@@ -109,7 +108,7 @@ class Prepared:
 
     field: hf.Field
     lattice: Lattice
-    borrow: tuple[np.ndarray, np.ndarray]
+    borrow: tuple[I8Grid, U8Grid]
     biome: BiomeInputs
     paint: PaintInputs | None
     direct: DirectPlanes | None

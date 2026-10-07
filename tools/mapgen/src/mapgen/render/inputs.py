@@ -48,6 +48,7 @@ from mapgen.tiles.pyramid import check_parallel, layer_dir
 from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
 from mapgen.tiles.rendertext import LEVEL_ONLY_TEXT
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, pinned_field_build
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I8Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import (
     SHEET_PX,
     SLICES,
@@ -117,10 +118,10 @@ class Lattice:
     """
 
     recipe: int
-    measured_plane: np.ndarray | None
+    measured_plane: U8Grid | None
     measurement_rule: JsonObject
-    heights: np.ndarray | None
-    ground: np.ndarray | None
+    heights: F32Grid | None
+    ground: F32Grid | None
     ground_meta: JsonObject
     terrain_meta: JsonObject
     fill_meta: JsonObject
@@ -161,12 +162,12 @@ class GameInputs:
 class ArtworkBorrow:
     """The artwork's shading the coarse provinces borrow: ``(detail, province)`` and its record."""
 
-    detail: np.ndarray
-    province: np.ndarray
+    detail: I8Grid
+    province: U8Grid
     source: JsonObject
 
     @property
-    def planes(self) -> tuple[np.ndarray, np.ndarray]:
+    def planes(self) -> tuple[I8Grid, U8Grid]:
         return self.detail, self.province
 
 
@@ -259,7 +260,7 @@ def field_lattice(field: hf.Field, spacing_m: float, kernel_only: bool) -> Latti
 
 
 def rebuilt_lattice(
-    lattice: Lattice, field: hf.Field, store: IoStore, art_void: np.ndarray | None
+    lattice: Lattice, field: hf.Field, store: IoStore, art_void: BoolMask | None
 ) -> Lattice:
     """The lattice with its fill re-read and its holes filled; ``--kernel-only`` as it was."""
     if lattice.ground is None:

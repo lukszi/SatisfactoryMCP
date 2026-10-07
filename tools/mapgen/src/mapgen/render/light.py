@@ -15,12 +15,13 @@ import traceback
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import cast
+from typing import TypeAlias, cast
 
 import numpy as np
 
 from mapgen.cache import held_open
 from mapgen.common import Refusal
+from mapgen.lighting.horizon import Slabs
 from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import sheet_crowns
 from mapgen.lighting.stage import (
@@ -37,7 +38,7 @@ from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.styles import LAYER_STYLES
 from mapgen.tiles.cutter import Cutter, TileImaging
 from mapgen.tiles.pyramid import install_layer, layer_dir, queue_layer
-from satisfactory_mcp.core.arrays import U8Grid
+from satisfactory_mcp.core.arrays import F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX, install_pyramid
 from satisfactory_mcp.core.jsontypes import JsonObject
 
@@ -63,7 +64,7 @@ RELIGHT_ROWS = 512
 SCRATCH_IN_USE = 11
 
 #: The crowns the light bake casts: their tops in metres and the share of a pixel covered.
-Occluder = tuple[np.ndarray, np.ndarray]
+Occluder: TypeAlias = tuple[F32Grid, U8Grid]
 
 
 def add_light_flags(parser: argparse.ArgumentParser) -> None:
@@ -157,7 +158,7 @@ class LightingRun:
         scratch_root: Path,
         size: int,
         occluder: Occluder | None = None,
-        slabs: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+        slabs: Slabs | None = None,
         light_workers: int | None = None,
     ) -> None:
         self.surface = Surface(scratch_root / LIGHT_CACHE_DIR_NAME, size)
