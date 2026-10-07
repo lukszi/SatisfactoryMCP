@@ -4,6 +4,7 @@
 import { button, checkbox, selectBox, slider } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, formatNumber, mw, pct } from "../../kit/format";
+import { counted } from "../../kit/words";
 import { bench } from "./state";
 import { applyOps } from "./writes";
 
@@ -69,7 +70,7 @@ type OverclockRow = Payback["overclock"]["rows"][number];
 
 function shardWords(oc: Payback["overclock"], shards: number): string {
   const hand = oc.shards_free === null ? "" : formatNumber(oc.shards_free, 0) + " in hand + " + formatNumber(oc.shards_craftable || 0, 0) + " craftable";
-  return count(shards) + (shards === 1 ? " shard" : " shards") + (hand ? " (" + hand + ")" : "");
+  return counted(shards, "shard") + (hand ? " (" + hand + ")" : "");
 }
 
 function overclockTally(oc: Payback["overclock"], rows: OverclockRow[], stock: boolean): string {
@@ -81,7 +82,7 @@ function overclockTally(oc: Payback["overclock"], rows: OverclockRow[], stock: b
     saved += r.instead - r.machines;
     extra += r.extra_mw;
   });
-  const bill = stock ? shardWords(oc, shards) : count(shards) + (shards === 1 ? " shard" : " shards");
+  const bill = stock ? shardWords(oc, shards) : counted(shards, "shard");
   return [signedMachineCount(-saved), "+" + mw(extra), bill].join(" · ");
 }
 

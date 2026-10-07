@@ -626,7 +626,8 @@ export function showRows(results: FinderResults, title: string, dash: string, se
 
 function parsePoint(text: string): { x: number; y: number; r: number } | null {
   const match = /^(?:near:)?(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(?:@(\d+(?:\.\d+)?))?$/.exec(text.trim());
-  return match ? { x: +match[1]!, y: +match[2]!, r: match[3] ? +match[3] : 0 } : null;
+  if (!match) return null;
+  return { x: +match[1]!, y: +match[2]!, r: match[3] ? +match[3] : 0 };
 }
 
 function fetchRef(ref: string): void {

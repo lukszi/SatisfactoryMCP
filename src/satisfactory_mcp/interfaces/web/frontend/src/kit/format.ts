@@ -179,6 +179,11 @@ export function isoDate(ts: number | null | undefined): string {
   return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 }
 
+/** "text · detail", or the text alone when there is no detail. */
+export function withDetail(text: string, detail: string | null | undefined): string {
+  return detail ? text + " · " + detail : text;
+}
+
 export function joinWithConjunction(names: string[], last: string): string {
   if (names.length < 2) return names.join("");
   return names.slice(0, -1).join(", ") + " " + last + " " + names[names.length - 1];

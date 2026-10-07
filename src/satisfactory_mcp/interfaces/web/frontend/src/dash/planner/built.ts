@@ -242,8 +242,10 @@ function builtLineActions(b: TrackBuiltAt): HTMLElement[] {
   } else if (b.confidence === "no site") {
     out.push(placeButton());
   }
-  const there = b.mode === "world" || b.confidence === "no site" ? null : boxMapButton(top ? top.bbox_m : null, "what counts as built", []);
-  if (there) out.push(there);
+  if (b.mode !== "world" && b.confidence !== "no site") {
+    const there = boxMapButton(top ? top.bbox_m : null, "what counts as built", []);
+    if (there) out.push(there);
+  }
   out.push(change);
   return out;
 }

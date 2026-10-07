@@ -240,8 +240,13 @@ function renderFlows(body: HTMLElement, data: FactoryAspectsResponse): void {
   appendNote(
     section,
     count(data.producing_now) + " of " + count(data.producers) + " producing machines were mid-cycle when the save was written" +
-      (data.unmonitored_producers ? " · " + counted(data.unmonitored_producers, "machine") + (data.unmonitored_producers === 1 ? " keeps" : " keep") + " no monitor, so measured is a floor" : "")
+      unmonitoredNote(data.unmonitored_producers)
   );
+}
+
+function unmonitoredNote(unmonitored: number): string {
+  if (!unmonitored) return "";
+  return " · " + counted(unmonitored, "machine") + (unmonitored === 1 ? " keeps" : " keep") + " no monitor, so measured is a floor";
 }
 
 function countTable(parent: HTMLElement, title: string, rows: AspectCount[], what: string): void {

@@ -82,7 +82,8 @@ function fillSavePicker(): void {
   picker.onchange = function () {
     state.save = picker.value;
     const chosen = picker.selectedOptions[0];
-    reload(state.save ? "opening " + (chosen ? chosen.textContent : "save") + "…" : "back to the newest save…");
+    if (!state.save) reload("back to the newest save…");
+    else reload("opening " + (chosen ? chosen.textContent : "save") + "…");
   };
 }
 

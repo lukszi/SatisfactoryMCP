@@ -129,6 +129,11 @@ function usedByCard(body: HTMLElement, cls: string): void {
   body.appendChild(used);
 }
 
+function energyFact(item: AlternatesResponse): string {
+  if (!item.energy_mj) return "";
+  return formatNumber(item.energy_mj) + " MJ" + (item.fluid ? " per m³" : " each");
+}
+
 export function renderItem(body: HTMLElement, cls: string): void {
   const fetched = cachedFetch<AlternatesResponse>("recipes", `/api/gamedata/alternates?item=${encodeURIComponent(cls)}${spoilers()}`);
   if (!fetched.data) {
@@ -145,7 +150,7 @@ export function renderItem(body: HTMLElement, cls: string): void {
   }
   detailHeader(body, "items", data.name, data.item, data.fluid ? "fluid" : "solid");
   const facts = [
-    data.energy_mj ? formatNumber(data.energy_mj) + " MJ" + (data.fluid ? " per m³" : " each") : "",
+    energyFact(data),
     data.sink_points ? count(data.sink_points) + " sink points" : "",
   ].filter(Boolean);
   if (facts.length) appendNote(body, facts.join(" · "));
@@ -181,17 +186,18 @@ function rateTable(box: HTMLElement, rates: Rate[], part: boolean, linked: boole
   box.appendChild(table(columns, rates));
 }
 
+function powerText(recipe: RecipeDetail): string {
+  const range = recipe.power_range_mw;
+  if (!range) return formatNumber(recipe.power_mw) + " MW";
+  return formatNumber(range[0]) + "–" + formatNumber(range[1]) + " MW, " + formatNumber(recipe.power_mw) + " MW average";
+}
+
 function recipeFacts(recipe: RecipeDetail, part: boolean): HTMLElement {
   const facts: [string, string][] = part
     ? [
         ["machine", recipe.machine || "–"],
         ["cycle", formatNumber(recipe.duration_s, 2) + " s"],
-        [
-          "power",
-          recipe.power_range_mw
-            ? formatNumber(recipe.power_range_mw[0]) + "–" + formatNumber(recipe.power_range_mw[1]) + " MW, " + formatNumber(recipe.power_mw) + " MW average"
-            : formatNumber(recipe.power_mw) + " MW",
-        ],
+        ["power", powerText(recipe)],
       ]
     : [];
   facts.push(["granted by", recipe.granted_by.join("; ") || "no known unlock"]);

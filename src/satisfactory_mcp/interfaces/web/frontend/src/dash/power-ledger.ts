@@ -162,6 +162,13 @@ export function ledgerBar(ledger: Figures, legend?: boolean): HTMLElement {
   return wrap;
 }
 
+// The first three factories on a circuit, and how many more there are.
+function factoriesOn(row: CircuitRow): string {
+  const more = row.factory_count > 3 ? " +" + (row.factory_count - 3) : "";
+  return row.factories.slice(0, 3).join(", ") + more;
+}
+
 export function circuitName(row: CircuitRow): string {
-  return "circuit " + (row.index + 1) + (row.factories.length ? " · " + row.factories.slice(0, 3).join(", ") + (row.factory_count > 3 ? " +" + (row.factory_count - 3) : "") : "");
+  const name = "circuit " + (row.index + 1);
+  return row.factories.length ? name + " · " + factoriesOn(row) : name;
 }

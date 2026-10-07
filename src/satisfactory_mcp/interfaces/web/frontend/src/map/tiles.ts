@@ -316,7 +316,8 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
   if (tag) query.push("v=" + encodeURIComponent(tag));
   const url =
     tilePath(spec.typeId, "{z}", "{x}", "{y}") + (query.length ? "?" + query.join("&") : "");
-  const denseQuery = dense ? (query.length ? "&" : "?") + "px=" + densePx : "";
+  const separator = query.length ? "&" : "?";
+  const denseQuery = dense ? separator + "px=" + densePx : "";
   const bounds = boundsOfBbox(b);
   const light = parseLight(response.headers.get("X-Map-Light"));
 

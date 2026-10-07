@@ -3,7 +3,7 @@
 
 import { button, chip, copyButton, error, idChip, loading, subTabs, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { count, flow, mw, pct } from "../../kit/format";
+import { count, flow, mw, pct, withDetail } from "../../kit/format";
 import { drawGraph, graphCardFrame, GRAPH_HINT, setPicked } from "../graph";
 import { vitals } from "../../app/vitals";
 import { recipesButton, renderAlternates } from "./alternates";
@@ -380,7 +380,7 @@ function planNodes(data: SolveResponse): PlanNode[] {
     if (row?.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
     const tip = row
       ? row.building + " · " + row.recipe + "\nin: " + ratesText(withoutPower(row.inputs)) + "\nout: " + ratesText(withoutPower(row.outputs))
-      : n.label + (n.detail ? " · " + n.detail : "");
+      : withDetail(n.label, n.detail);
     return {
       id: n.id,
       kind: n.kind,

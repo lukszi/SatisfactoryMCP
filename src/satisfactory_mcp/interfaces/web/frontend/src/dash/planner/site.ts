@@ -512,9 +512,13 @@ function ghostLine(parent: HTMLElement): void {
 
 const headline = make("span", "dash-sub");
 
+function padText(p: Pad): string {
+  const place = wholeNumber(p.x_m) + ", " + wholeNumber(p.y_m) + " · " + wholeNumber(p.yaw_deg) + "° · " + wholeNumber(p.width_m) + " × " + wholeNumber(p.depth_m) + " m";
+  return site.stored ? place : place + " · not placed yet";
+}
+
 function paintHead(): void {
-  const p = site.pad;
-  headline.textContent = p ? wholeNumber(p.x_m) + ", " + wholeNumber(p.y_m) + " · " + wholeNumber(p.yaw_deg) + "° · " + wholeNumber(p.width_m) + " × " + wholeNumber(p.depth_m) + " m" + (site.stored ? "" : " · not placed yet") : "";
+  headline.textContent = site.pad ? padText(site.pad) : "";
 }
 
 function paint(): void {

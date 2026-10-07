@@ -204,7 +204,8 @@ export function renderPickups(body: HTMLElement, params: Record<string, string>)
   );
   const rows = pickups.rows;
   if (!rows.length) {
-    empty(card, list === "collected" ? "nothing collected yet" : "no pickup left" + (params.group ? " of this kind" : ""));
+    if (list === "collected") empty(card, "nothing collected yet");
+    else empty(card, "no pickup left" + (params.group ? " of this kind" : ""));
     return;
   }
   const line = make("div", "world-census");

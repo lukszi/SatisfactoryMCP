@@ -4,7 +4,7 @@
 import { get, latest } from "../../api/client";
 import { button, chip, table, toggleButton } from "../../kit/dashkit";
 import { code, esc, make, onAttributeClick, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "../../kit/dom";
-import { count, perMin } from "../../kit/format";
+import { count, perMin, withDetail } from "../../kit/format";
 import { L } from "../leaflet";
 import { boundsOfBbox, flyPadded, latLngOf, map } from "../map";
 import { cardLine, cardSectionHeading, cardSubject, cardTitleBar, closeOtherCards, mapCard } from "../mapcard";
@@ -223,7 +223,7 @@ function render(): void {
     return;
   }
   const only = data.seeds === 1 ? data.machines.filter(function (m) { return m.seed; })[0] : undefined;
-  cardSubject(box, only ? only.name + (only.recipe ? " · " + only.recipe : "") : data.subject);
+  cardSubject(box, only ? withDetail(only.name, only.recipe) : data.subject);
   if (data.truncated) {
     cardLine(box, "the walk stopped at its hop limit: this is a floor, more lies beyond it", "blocked");
   }

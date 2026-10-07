@@ -12,7 +12,7 @@ import { showRows } from "../../map/tools/finder";
 import { dashParts, subjectQuery, withQuery } from "../../app/nav";
 import { select } from "../../app/selection";
 import { state } from "../../app/state";
-import { counted, gapText, WORDS } from "../../kit/words";
+import { counted, staleText, WORDS } from "../../kit/words";
 import { leaveDashThen, requestRender } from "../actions";
 
 import type { ApiError, ApiUrl } from "../../api/client";
@@ -271,11 +271,6 @@ export function showAllToggle(card: HTMLElement, grid: HTMLElement, rows: number
   capRows(card, grid, rows, SHOWN, "show all " + counted(rows, noun), !!uncapped[key], function () {
     uncapped[key] = true;
   });
-}
-
-export function staleText(age: TableAge): string {
-  if (age.notes.length) return age.notes.join(" ");
-  return WORDS.mapDataBehind + (age.gap ? " (" + gapText(age.gap) + ")" : "");
 }
 
 export function staleLine(parent: HTMLElement, age: TableAge | null): void {

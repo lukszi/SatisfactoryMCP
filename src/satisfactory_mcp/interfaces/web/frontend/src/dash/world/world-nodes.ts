@@ -8,7 +8,7 @@ import { fieldLabel, fieldSelection, nodeLabel, nodeRate, nodeSelection, resourc
 import { formatNumber, metres, perMin } from "../../kit/format";
 import { isSelected } from "../../app/selection";
 import { state } from "../../app/state";
-import { counted, NODE_KIND, WORDS } from "../../kit/words";
+import { counted, NODE_KIND, staleText, WORDS } from "../../kit/words";
 import { mapButton } from "../actions";
 import {
   copyCell,
@@ -23,7 +23,6 @@ import {
   selectField,
   showAllToggle,
   staleLine,
-  staleText,
   textField,
   waiting,
   want,
@@ -118,7 +117,8 @@ export function nodeTable(rows: FoundNode[], near: boolean, stale?: TableAge | n
       key: "occupant",
       label: "extractor",
       render: function (node) {
-        return node.occupant ? node.occupant + (node.occupant_off ? " (off)" : "") : "–";
+        if (!node.occupant) return "–";
+        return node.occupant + (node.occupant_off ? " (off)" : "");
       },
     },
     {

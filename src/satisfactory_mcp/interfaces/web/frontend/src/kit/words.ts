@@ -3,6 +3,8 @@
 
 import { count } from "./format";
 
+import type { TableAge } from "../api/shapes";
+
 export const WORDS = {
   needAction: "need action",
   notRunning: "not running",
@@ -133,6 +135,12 @@ export const RECIPE_KIND: Record<string, string> = { part: "machine", building: 
 
 export function gapText(gap: string): string {
   return gap.replace(/buildVersion/g, "build").replace(/saveVersion/g, "save format").replace("->", "→");
+}
+
+/** Why a map-data table is behind the save: its own notes, else the version gap. */
+export function staleText(age: TableAge): string {
+  if (age.notes.length) return age.notes.join(" ");
+  return WORDS.mapDataBehind + (age.gap ? " (" + gapText(age.gap) + ")" : "");
 }
 
 export function version(n: number): string {
