@@ -1438,6 +1438,8 @@ another signature's code; that race is why each signature now has a file of its 
   each window's two draws the same, also with the kernels compiled from an empty cache while
   a G1 compiled them in another process.
 - The A/B above: 1,152 calls on real bands of the full-size sheet, the same bits both ways.
+- G1 at 8192, with the kernels and the light on the GPU against `MAPGEN_KERNELS=numpy`: all
+  18,085 tiles the same bytes ("On the GPU" below, "Checked").
 - `tests/mapgen/test_paint_kernels.py` compares each painter kernel with its reference byte
   for byte: trees of three species at every scale, yaw and lean over three sheet sizes and
   windows that cut them, mips replaced after a stamp; the plain styles' water with and
@@ -1462,9 +1464,10 @@ bytes either way.
 - **The log.** Nothing a run writes says where its light was marched: the light's
   `meta.json` and the sidecars are a numba run's, timings apart. So each light process counts
   its march and sky-view calls by where they ran (`gpu.ran`), each block hands its count back
-  with its tiles, and a `--gpu` bake prints the sum once its block rows are in:
-  `light: horizon and sky-view calls 2,112 on NVIDIA GeForce RTX 3080; 0 ran on numba, the
-  device out of memory`. A run without `--gpu` prints no such line.
+  with its tiles, and a `--gpu` bake prints the sum once its block rows are in. At 2048, one
+  block of 32 ground and 32 crown horizons and a sky view: `light: horizon and sky-view calls
+  65 on NVIDIA GeForce RTX 3080; 0 ran on numba, the device out of memory`. A run without
+  `--gpu` prints no such line.
 - **What it needs.** The `gpu` extra: CuPy (`cupy-cuda12x`) and NVRTC from
   `nvidia-cuda-nvrtc-cu12`, both pinned, on Windows or Linux on x86-64, and an NVIDIA
   driver. No CUDA toolkit. CuPy compiles `lighting/gpu.cu` once a process and keeps the
@@ -1527,6 +1530,14 @@ one step to the next, which is a different draw.
   kept light brought after it ("Kept light", section 29). The `--gpu` run's light process was
   seen on the device. At 2048 the light is one small block, and it took 12.4 s against 12.8 s:
   the march gains at full size.
+- G1 at 8192 (2026-10-07), where the light is 2 × 2 blocks, baked a block row at a time as
+  the bands come in (section 42): `MAPGEN_KERNELS=numpy` against `--gpu`, that is numba's
+  painters and sampler and the CUDA light: all 18,085 tiles the same bytes, the light's 2,730
+  among them, and the six sidecars the same apart from their timings. The `--gpu` run logged
+  `light: horizon and sky-view calls 260 on NVIDIA GeForce RTX 3080; 0 ran on numba, the
+  device out of memory`, 65 a block. 2048 bakes one block and G2 draws unlit, so this is the
+  check over several blocks; the full-size light's 64 blocks are first checked by the full
+  render after the round.
 
 ### Known limits
 

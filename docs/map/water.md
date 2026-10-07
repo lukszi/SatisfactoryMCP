@@ -493,7 +493,11 @@ another, so the order moves pixels. Until 2026-10-07 a run that swept them drew 
 sweep's order and only the cache was sorted. Drawn on the field's surface, the two orders
 differ in 22 pixels of the satellite and of the painted layer at full size, each by one level
 (4 at 16384 and at 8192, none at 2048), so a palette-only restyle did not equal the full run
-it followed, and the two recorded different `waterfalls.digest`s for the same 191 records. The 8
+it followed, and the two recorded different `waterfalls.digest`s for the same 191 records.
+Both now record the cache's, `sha256:7badef35…` on build 502094, where a full run recorded
+`sha256:bf3ae0ac…`; no 2048 tile moved. At 8192 a restyle from the cache a full run kept
+(the light it kept installed, the numba kernels against that run's numpy) gives all 18,085
+tiles the same bytes as that run, light included. The 8
 `SM_WaterfallMesh_01` and the one `Waterfall_Top_01` are backdrop meshes outside the playable
 area and are not read.
 
