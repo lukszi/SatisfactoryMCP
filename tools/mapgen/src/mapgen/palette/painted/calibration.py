@@ -7,7 +7,7 @@ docs/spatial-and-map.md section 31.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Sequence
 from typing import TypeAlias
 
 import numpy as np
@@ -45,7 +45,6 @@ __all__ = [
     "display_to_linear",
     "exposure_gain",
     "hex_rgb",
-    "layer_transfer",
     "median_lab",
     "rehome_offshore",
     "sampled_rgb",
@@ -110,36 +109,6 @@ def transfer_op(source_lab: npt.ArrayLike, target_lab: npt.ArrayLike) -> Transfe
     scale = np.clip(np.hypot(t[1], t[2]) / max(np.hypot(s[1], s[2]), 1e-4), 0.25, 4.0)
     turn = np.arctan2(t[2], t[1]) - np.arctan2(s[2], s[1])
     return float(t[0] - s[0]), chroma_turn(turn, scale)
-
-
-def layer_transfer(
-    albedo: FloatGrid,
-    weights: Mapping[str, PaintPlane],
-    ops: Mapping[str, Transfer],
-    rows_per_block: int = 512,
-) -> FloatGrid:
-    """Each texel moved by its layers' ops, mixed by their normalised weights."""
-    out = np.empty_like(albedo)
-    for start in range(0, albedo.shape[0], rows_per_block):
-        block = slice(start, start + rows_per_block)
-        total = np.zeros(albedo[block].shape[:2], np.float32)
-        for weight in weights.values():
-            total += weight[block]
-        total = np.maximum(total, np.float32(1e-6))
-        lab = oklab(np.clip(albedo[block], 1e-7, None))
-        d_l = np.zeros(lab.shape[:2], np.float32)
-        m = np.zeros((*lab.shape[:2], 2, 2), np.float32)
-        m[..., 0, 0] = m[..., 1, 1] = 1.0
-        for name, (step, matrix) in ops.items():
-            if name not in weights:
-                continue
-            w = weights[name][block] / total
-            d_l += w * np.float32(step)
-            m += w[..., None, None] * (matrix - np.eye(2, dtype=np.float32))
-        lab[..., 0] += d_l
-        lab[..., 1:] = turned(lab[..., 1], lab[..., 2], m)
-        out[block] = np.clip(linear_from_oklab(lab), 0.0, 1.0)
-    return out
 
 
 def turned(a: FloatGrid, b: FloatGrid, matrix: FloatGrid) -> FloatGrid:

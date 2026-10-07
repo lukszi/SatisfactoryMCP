@@ -138,43 +138,40 @@ def _crown_ground(crowns):
     return ground
 
 
-def test_blue_palms_take_their_own_target_and_keep_their_saturation():
+def test_blue_palms_take_their_own_target_by_species_even_under_a_sparse_crown():
     pink, neutral = (0.44, 0.08, 0.11), (0.2, 0.2, 0.2)
     colours = [GREEN, pink, PALM, BALLOON, neutral]
     crowns = _crowns(colours, np.repeat(np.arange(5), 10), [0.0] * 50)
     ground = _crown_ground(crowns)
     ground._calibrate_crowns(ground.palette["calibration"])
     ops = ground.crown_ops
-    assert [grey for _op, grey in ops] == [CANOPY_GREY, TARGET_GREY]
+    assert [grey for _op, grey in ops] == [CANOPY_GREY], "a named target moves the mips"
     assert ground.crown_measured["crowns@blue_palm"]["trees"] == 10, "the palms alone"
-    shape = (1, len(colours))
+    moved = [level[0][0, 0, 1:4] for level in ground.crowns.levels]
+    for k in (0, 1, 3, 4):
+        np.testing.assert_array_equal(moved[k], np.float32(colours[k]), err_msg=f"crown {k}")
+    amber = np.array([0.33869, 0.23403, 0.12035], np.float32)
+    seen = [moved[2], 0.5 * amber + 0.5 * moved[2], 0.5 * amber + 0.5 * np.float32(PALM)]
+    shape = (1, len(seen))
     terms = {"cover": np.ones(shape, np.float32), "top_cm": np.full(shape, 1500.0, np.float32),
-             "rgb": np.array([colours], np.float32), "ndl": np.full(shape, 0.7, np.float32)}  # fmt: skip
+             "rgb": np.array([seen], np.float32), "ndl": np.full(shape, 0.7, np.float32)}  # fmt: skip
     scene = {"z_m": np.zeros(shape, np.float32), "ndl_flat": np.float32(0.7),
              "water": {"cover": np.zeros(shape, np.float32),
                        "depth_m": np.zeros(shape, np.float32)}}  # fmt: skip
     p = ground.palette
     exposure = np.float32(p["exposure"] * p["tone"]["gain"])
-    under = np.zeros((*shape, 3), np.float32)
-
-    def draw(taken):
-        layer = crown_layer(terms, scene, p, np.float32(p["ambient"]), exposure, taken)
-        return over_crowns(under, layer)
-
-    canopy_only, both = draw(ops[:1]), draw(ops)
-    for k in (0, 1, 3, 4):
-        np.testing.assert_array_equal(both[0, k], canopy_only[0, k], err_msg=f"crown {k}")
-    target = p["calibration"]["crowns"]["blue_palm"]
-    want = display_to_linear(p, target)
-    np.testing.assert_allclose(both[0, 2], want, rtol=2e-3, err_msg="the palm on its target")
-    before, after = oklab(canopy_only[0, 2]), oklab(both[0, 2])
-    saturation = [np.hypot(*lab[1:]) / lab[0] for lab in (before, after)]
-    assert saturation[1] > 2.0 * saturation[0], "saturated, not powder blue"
-    assert after[0] < before[0] - 0.15, "mid blue, not near-white"
-    assert linear_to_srgb(both[0, 2]).max() < 160
+    layer = crown_layer(terms, scene, p, np.float32(p["ambient"]), exposure, ops)
+    drawn = over_crowns(np.zeros((*shape, 3), np.float32), layer)
+    want = display_to_linear(p, p["calibration"]["crowns"]["blue_palm"])
+    np.testing.assert_allclose(drawn[0, 0], want, rtol=2e-3, err_msg="the palm on its target")
+    assert linear_to_srgb(drawn[0, 0]).max() < 160, "mid blue, not powder blue"
+    through, before = oklab(drawn[0, 1]), oklab(drawn[0, 2])
+    assert through[0] < before[0] - 0.08, "seen through amber twigs, not the pale palm"
     balloon = crown_lab(np.array(BALLOON, np.float32), STYLE)
-    assert hue_gate(balloon, ops[1][0][5:7], CANOPY_GREY) > 0.5, "the palms' hue"
-    assert hue_gate(balloon, ops[1][0][5:7], TARGET_GREY) == 0.0, "but a near-grey"
+    target = display_to_crown(p, p["calibration"]["crowns"]["blue_palm"])
+    hue = target[1:] / np.hypot(*target[1:])
+    assert hue_gate(balloon, hue, CANOPY_GREY) > 0.5, "the palms' hue"
+    assert hue_gate(balloon, hue, TARGET_GREY) == 0.0, "but a near-grey"
 
 
 def test_scoped_planes_and_the_weighted_median_take_any_width():
@@ -252,7 +249,8 @@ def test_rock_keeps_its_target_under_the_common_tint_and_a_family_keeps_its_depa
     assert has[names.index("grass")] == 1.0 and has[names.index("cliff")] == 0.0
     ground = SimpleNamespace(rock_family=np.full((4, 4), names.index("cliff"), np.uint8),
                              family_rock={}, family_tint=ratio, family_top=top,
-                             family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}})  # fmt: skip
+                             family_top_rgb={}, family_has_top=has,
+                             palette={"rock_top": {"up": [0.6, 0.85]}})  # fmt: skip
     rock = np.full((4, 4, 3), 0.3, np.float32)
     scene = {"z_m": np.zeros((4, 4), np.float32), "grid": (slice(0, 4), 0, 4, 0, 4, 1.0)}
     np.testing.assert_allclose(rock_surface(rock, scene, ground), rock, atol=1e-6)

@@ -244,6 +244,7 @@ def _painted_colours(
         "ndl": painted_ndl(z_m, spacing_m, job.unlit, meshes),
         "ndl_flat": _FLAT_SUN,
         "rock_weight": rock_weight,
+        "top_weight": surface.top_weight,
         "mesh_weight": surface.mesh_weight,
         "mesh_class": surface.mesh_class,
         "mesh_family": _band_family(job.ground.meshes, (rows.cut, cols.cut)),

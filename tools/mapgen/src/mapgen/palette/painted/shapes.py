@@ -85,10 +85,12 @@ class AlbedoTable(TypedDict):
 
 
 class RockFamilyEntry(TypedDict, total=False):
-    """One rock family of the store: its tint and, where it has one, its top layer's colour."""
+    """One rock family of the store: its tint and, where it has one, its top layer's colour
+    and texture."""
 
     tint: list[float] | None
     top: list[float] | None
+    top_texture: str | None
 
 
 class PaintGrid(TypedDict):
@@ -188,12 +190,14 @@ class CrownLayer(TypedDict):
 
 class PaintedScene(BandScene):
     """One band as the painted style draws it (``render.painting``): the shared scene, then
-    its crowns, sun term, rock and mesh weights and water optics."""
+    its crowns, sun term, rock and mesh weights, the arches' and boulders' lift over the
+    cliffs, and water optics."""
 
     crowns: LitCrowns | None
     ndl: FloatGrid
     ndl_flat: np.float32
     rock_weight: FloatGrid
+    top_weight: NotRequired[FloatGrid | None]
     mesh_weight: FloatGrid | None
     mesh_class: U8Grid | None
     mesh_family: U8Grid | None
@@ -243,6 +247,7 @@ class PaintedSurface(Protocol):
     family_rock: dict[int, list[F32Grid]]
     family_tint: F32Grid
     family_top: F32Grid
+    family_top_rgb: dict[int, ColourPlanes]
     family_has_top: F32Grid
     mesh_rgb: dict[int, ColourPlanes]
     seabed_coral: F32Grid

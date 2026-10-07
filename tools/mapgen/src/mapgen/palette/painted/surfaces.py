@@ -4,7 +4,7 @@ the render-only meshes. docs/spatial-and-map.md sections 27, 30 and 31.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 
 import numpy as np
 import numpy.typing as npt
@@ -13,9 +13,15 @@ from mapgen.cache import Plane
 from mapgen.colour import linear_from_oklab
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.rocks.families import FAMILIES
-from mapgen.palette.painted.calibration import display_to_ground, sampled_rgb
+from mapgen.palette.painted.calibration import (
+    display_to_ground,
+    sampled_rgb,
+    scoped_planes,
+    with_derived,
+)
 from mapgen.palette.painted.shapes import (
     BandWater,
+    ColourPlanes,
     FloatGrid,
     PaintedPalette,
     PaintedScene,
@@ -36,6 +42,7 @@ __all__ = [
     "family_code",
     "family_tables",
     "family_targets",
+    "layer_tops",
     "mesh_surface",
     "rock_surface",
     "sunk_specks",
@@ -142,6 +149,38 @@ def top_targets(
     return table
 
 
+def layer_tops(
+    families: Mapping[str, RockFamilyEntry],
+    palette: PaintedPalette,
+    area_weight: Callable[[Collection[str]], FloatGrid],
+) -> dict[int, ColourPlanes]:
+    """By family code, the top of each family whose top texture is a paint layer's (its tile
+    folder names the layer), in that layer's display target and scoped by area as the layer
+    is: one colour, or three planes on the rock grid. A family with a top target of its own
+    (``calibration.tops``), or whose layer has no target, keeps ``family_tables``' top."""
+    cal = with_derived(palette["calibration"])
+    tops: dict[int, ColourPlanes] = {}
+    for name, entry in families.items():
+        texture, top = entry.get("top_texture"), entry.get("top")
+        if name not in FAMILIES or not texture or not top or name in cal.get("tops", {}):
+            continue
+        layer = f"{texture.rsplit('/', 2)[-2]}_LayerInfo"
+        scoped: list[tuple[FloatGrid, FloatGrid]] = []
+        for area in cal.get("areas", []):
+            if (hex_colour := area.get("layers", {}).get(layer)) is not None:
+                scoped.append((area_weight(area["areas"]), _ground_rgb(palette, hex_colour)))
+        known = cal["layers"].get(layer)
+        if known is None and not scoped:
+            continue
+        default = _ground_rgb(palette, known) if known else np.asarray(top, np.float32)
+        tops[FAMILIES.index(name)] = scoped_planes(default, scoped)
+    return tops
+
+
+def _ground_rgb(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
+    return np.clip(linear_from_oklab(display_to_ground(palette, hex_colour)), 0.0, 1.0)
+
+
 def _mean3x3(a: FloatGrid) -> FloatGrid:
     """scipy's ``uniform_filter(a, 3)`` without its running sum, which drifts with where a
     row starts: down the rows, then along them, each mean of three taps summed in float64 in
@@ -191,11 +230,15 @@ def rock_surface(
 ) -> FloatGrid:
     """Rock in its family's colour: the family's own target where it has one, else the area's
     rock in the family's tint, with the family's top layer on its up-facing faces (``top_cover``).
-    ``code`` is the family per pixel; the direct pass's family plane on this band when None."""
+    ``code`` is the family per pixel; the direct pass's family plane on this band when None,
+    which an arch or boulder lifted over the cliff (``scene["top_weight"]``) does not wear: by
+    its lift it takes the area's rock."""
+    area_rock, lifted = rock_rgb, None
     if code is not None:
         code = np.asarray(code)
     elif ground.rock_family is not None:
         code = np.asarray(ground.rock_family[scene["grid"][0]], np.uint8)
+        lifted = scene.get("top_weight")
     else:
         return rock_rgb
     for which, planes in ground.family_rock.items():
@@ -204,7 +247,15 @@ def rock_surface(
             rock_rgb = np.where(hit, sampled_rgb(planes, sample_rock), rock_rgb)
     rgb = rock_rgb * ground.family_tint[code]
     weight = top_cover(scene, ground, code)[..., None]
-    return rgb * (1.0 - weight) + ground.family_top[code] * weight
+    top = ground.family_top[code]
+    for which, planes in ground.family_top_rgb.items():
+        hit = (code == which)[..., None]
+        if hit.any():
+            top = np.where(hit, sampled_rgb(planes, sample_rock), top)
+    out = rgb * (1.0 - weight) + top * weight
+    if lifted is None or not lifted.any():
+        return out
+    return out + (area_rock - out) * lifted[..., None]
 
 
 def canopy_over_rock(

@@ -8,8 +8,8 @@ and how they were measured. A section number below resolves through the [map's i
 The painted style is calibrated against in-game screenshots: first the Spire Coast, the Dune
 Desert, the Western Beaches and the Eastern Dune Forest, then a second pass over the biomes
 those left out (see "Area targets"). Code: `palette/painted/ground.py` builds the ground once
-per run and `band.py` draws each band, with `calibration.py`, `trees.py` (crowns), `optics.py`
-(water) and `surfaces.py` (rock and meshes). Numbers: the `tone` and `calibration` blocks of
+per run and `band.py` draws each band, with `calibration.py`, `transfer.py` (the layers onto
+their targets), `trees.py` (crowns), `optics.py` (water) and `surfaces.py` (rock and meshes). Numbers: the `tone` and `calibration` blocks of
 `palette/palettes/satellite-painted.json`.
 
 ### The ground albedo source
@@ -108,6 +108,40 @@ that median to the target has three parts: a lightness offset, a chroma scale (c
 0.25 to 4) and a hue turn. Each texel moves by its layers' steps, mixed by their normalised
 weights. Because the transfer measures its own source, the same targets work on the bake
 and on the paint table.
+
+**The blend at a layer's edge** (2026-10-07, `palette/painted/transfer.py`). A texel at a
+layer's edge carries part of that layer's weight but much of the colour of the layer beside
+it, and every layer's step acted on all of that colour. Two things followed:
+
+- A step that scaled chroma up multiplied the neighbour's colour. In the Red Jungle and the
+  Red Bamboo Fields the `Cliff_LayerInfo` source is near grey (chroma 0.005) and its target
+  scaled chroma x3.95 with a 31° turn: every edge with the red `RedJungle_LayerInfo` drew a
+  fire-red rim, and the bake's grey noise turned into coloured confetti.
+- The bake draws a forest patch's edge sharper than the weight maps blur it, so a texel with
+  the sand's colour can carry half a forest floor's weight. The forest floor's step (L +0.09,
+  x1.81) then lifted that sand, and the sand's own (L -0.03, chroma x0.41) reached it only by
+  half: a bright orange halo round every forest patch on sand.
+
+So `layer_op` never widens chroma: a step whose scale would pass one turns the hue only and
+adds the chroma it lacks as a shift, `target - turn(source)`, and the source still lands on
+its target. Around a source under chroma 0.02 (`GREY_SOURCE_CHROMA`), which has no hue to
+turn, the step is that shift alone. A narrowing step is unchanged. On build 502094 four steps
+widened: the forest floor (x1.81), the desert gravel (x1.27, grey source), Grass Fields grass
+(x1.05) and the red areas' cliff layer (x3.95, grey source); their pure texels keep their
+spread instead of growing it.
+
+Where calibrated layers of two paint layers share a texel, `layer_transfer` splits the summed
+weight of its two largest again by where its colour lies between their source medians in
+OKLab, `u`, 0 at one and 1 at the other, clipped (`by_colour`). The colour decides by
+`4 w_i w_j / (w_i + w_j)^2`: all of it where the two weights are even, none where one of them
+fades out, so the split stays continuous where a layer's weight ends. The sand-coloured texel
+under half a forest floor's weight is then sand, and a colour halfway is half of each. It
+then adds, for each two of them,
+`w_i w_j / W (A_i - A_j)(s_i - s_j)`, with `A` an op's matrix, `s` its source median and `W`
+their summed share, so a mix lands on `sum w t` plus the blended matrix applied to its
+departure from `sum w s`: between the targets. A texel of one calibrated layer beside
+uncalibrated ones, or of two scopes of one layer (`Sand_LayerInfo@0` and `Sand_LayerInfo`),
+is moved by its weights alone, as before.
 
 ### Area targets
 
@@ -311,7 +345,17 @@ cliffs by the direct pass's family plane, and on the render-only rocks by their 
 **The forest top.** `calibration.tops` names a display target for a family's top, made a
 ground colour as the other display targets are (`top_targets`, applied by `family_tables`).
 Only the forest family has one, #505936, from the Spire Coast boxes of the target table
-above. The grass, red grass and sand tops keep their textures' means, in the same patches.
+above.
+
+**A top made of a paint layer** (2026-10-07, `surfaces.layer_tops`). The sand, grass and red
+grass tops are textures of the landscape's own tiles, `Tiles/<Layer>/`, so the folder names
+the paint layer they are. Such a top wears that layer's display target, scoped by area as the
+layer is, on the rock grid: the sand top #d5cbb6, and #c4ab8b in the deserts and the Savanna;
+the grass top #83986e, and #9dad70 in the Grass Fields. A layer with no target leaves its top
+the texture's mean, as red grass is. A texture mean is brighter than the bake the gain was
+fitted on: the sand top's (linear 0.56, 0.45, 0.33) drew near white (#fce1c1 to #ffe7ca) in
+patches over the desert and beach rock of the Rocky Desert, the Dune Desert's edge and the
+Northern Forest's sand cliffs.
 
 **Measured** as in "The land rules, measured", on windows 280 m across. The pixels are
 forest-family rock facing up (`nz` above 0.85), clear of water, crowns and canopy, with the
@@ -361,6 +405,9 @@ pixels carry a top, and 1.0 s where 10 to 26% do: 55 to 133 s over the sheet's 1
   takes) wear their own material's colour: the mean of their BaseColor textures in linear
   light is 0.08 to 0.11 neutral grey, kept as the albedo sRGB (88, 85, 83). Their materials
   also carry a cyan emissive, not drawn. The Blue Crater keeps its #747b85 target.
+- **Hot-spring terraces** are #ccbea8 on the map, a display target (`calibration.meshes`).
+  Kept as an albedo, the exposure and gain drew them near white (#fbe6c8) as islets in the
+  Rocky Desert lakes and in the Southern Forest's spring at (895, 2215).
 
 ### Crowns
 
@@ -387,10 +434,16 @@ crowns instead (`palette/painted/trees.py` `crown_ops`, applied in `crown_layer`
   it moves the crowns of that hue wherever they grow. Its gate opens only past the grey line:
   none under chroma 0.02, all from 0.025 (`TARGET_GREY`). The canopy gate keeps its ramp from
   0 (`CANOPY_GREY`), which the Orange palms at 0.020 sit on. So the near-grey balloon tree
-  `SM_BalloonTree_02_T` (chroma 0.012, the palms' hue) keeps its colour, as do its crown edges
-  against the purple tree (0.016 to 0.019). Each op is gated on the crown's colour before any
-  op; the canopy and palm gates do not overlap. The blue palms' target is #3d627d: 3,332
-  trees, step -0.285 and ×1.51 (sidecar `crowns@blue_palm`).
+  `SM_BalloonTree_02_T` (chroma 0.012, the palms' hue) keeps its colour. The blue palms'
+  target is #3d627d: 3,332 trees, step -0.285 and ×1.51 (sidecar `crowns@blue_palm`).
+- **By species, not by pixel** (2026-10-07, `named_targets`). The gate reads each species'
+  own colour, and the species' mips move by the share it opens, before the canopy op is
+  measured. Gated per pixel, a palm under a sparser, taller crown failed it: `AmberTree_01`'s
+  branch cards (opacity 0.18; one at scale 2.4 at (-2212, -1374) reaches 34 m) lie over the
+  palms at cover 0.3 to 0.5,
+  their mix has chroma 0.006 to 0.01, so the gate closed and the palm drew its pale texture
+  colour #acccd9, grey under the amber. Moved in its mips, the palm is blue before any crown
+  is laid over it, and the amber over it darkens it instead.
 - **Species targets.** `calibration.species` names a target per tree species, for a colour
   that belongs to the tree rather than to the place. `species_targets` (`trees.py`) returns
   every species' sprite mips with each named species moved, every texel, from its own colour
@@ -454,9 +507,9 @@ the layers is mostly the biome tint, which is added after the transfer.
   is inferred from the flowers. Grass elsewhere keeps the global target.
 - The patches of the top layer are a rule, not the game's mask, which is cooked into
   `CliffTopMaterial` ("Moss in patches"). Only the forest top has a colour measured from
-  screenshots; the grass, red grass and sand tops keep their texture means, in the same
-  patches. The `_WetSand` instances' top layer is the cooked master's default and is not
-  drawn; whether it shows in game is unchecked.
+  screenshots; the sand and grass tops wear their layers' targets and the red grass top its
+  texture's mean, in the same patches. The `_WetSand` instances' top layer is the cooked
+  master's default and is not drawn; whether it shows in game is unchecked.
 - The red Kapok is crimson wherever it grows, the Rocky Desert and the Red Bamboo Fields
   included, by the Red Jungle's references. Its crowns there were not measured from above.
 - On a beach whose paint has no WetSand above the drawn sea, as at the north beach, the

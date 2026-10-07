@@ -58,6 +58,7 @@ __all__ = [
     "hue_gate",
     "lit_crowns",
     "moved_crowns",
+    "named_targets",
     "over_crowns",
     "sample_titan",
     "species_colours",
@@ -202,6 +203,34 @@ def species_targets(
     return levels, measured
 
 
+def named_targets(
+    crowns: CrownSet,
+    palette: PaintedPalette,
+    targets: CalibrationStyle,
+    cells: tuple[I64Grid, I64Grid],
+    levels: list[list[FloatGrid]],
+) -> tuple[list[list[FloatGrid]], JsonObject]:
+    """``levels`` with each named crown target moved into the mips of the species its gate
+    opens for, by that share, and what was measured. The gate reads each species' own colour,
+    so a crown seen through another species' sparse one keeps its target."""
+    style = palette["crowns"]
+    measured: JsonObject = {}
+    for name, hex_colour in targets.get("crowns", {}).items():
+        target = display_to_crown(palette, hex_colour)
+        (op,), named = crown_ops(crowns, style, cells, [(None, target)],
+                                 targets["min_texels"], TARGET_GREY, levels)  # fmt: skip
+        if op is None:
+            continue
+        gates = hue_gate(crown_lab(species_colours(levels)[0], style), op[5:7], TARGET_GREY)
+        matrix = op[1:5].reshape(2, 2)
+        for k in np.nonzero(gates > 0)[0]:
+            g = gates[k]
+            share = np.eye(2, dtype=np.float32) + g * (matrix - np.eye(2, dtype=np.float32))
+            levels[k] = [_moved_level(level, float(g * op[0]), share, style) for level in levels[k]]
+        measured[f"crowns@{name}"] = named["crowns@0"]
+    return levels, measured
+
+
 def _moved_level(level: FloatGrid, step: float, matrix: FloatGrid, style: CrownStyle) -> FloatGrid:
     """One mip with each texel's colour moved by a transfer in the crown's OKLab."""
     cover = level[..., :1]
@@ -221,8 +250,9 @@ def crown_calibration(
     grid: tuple[tuple[int, int], float],
     area_weight: Callable[[Sequence[str]], FloatGrid],
 ) -> CrownCalibration:
-    """The species targets (``species_targets``), then the canopy targets' op (one op, or seven
-    coarse planes), then one map-wide op per named crown target, all measured on the moved mips.
+    """The species targets (``species_targets``) and the named crown targets
+    (``named_targets``), both moved into the species' mips, then the canopy targets' op (one
+    op, or seven coarse planes) measured on the moved mips.
 
     ``grid`` is the scope planes' ``(shape, step cm)``, ``area_weight(keys)`` an area entry's
     plane on it. An area entry's trees move to its canopy target, the rest to the global one.
@@ -239,21 +269,15 @@ def crown_calibration(
     if "canopy" in targets:
         scopes.append((None, display_to_crown(palette, targets["canopy"])))
     levels, moved = species_targets(crowns, style, targets.get("species", {}), palette)
+    levels, named = named_targets(crowns, palette, targets, (rows, cols), levels)
     ops, measured = crown_ops(
         crowns, style, (rows, cols), scopes, targets["min_texels"], levels=levels
     )
-    found: JsonObject = {**measured, **moved}
+    found: JsonObject = {**measured, **moved, **named}
     default = ops[-1] if "canopy" in targets and ops[-1] is not None else IDENTITY_OP
     scoped = [(w, op) for (w, _t), op in zip(scopes, ops, strict=True) if w is not None]
     taken = [(w, op) for w, op in scoped if op is not None]
     out: list[CrownOp] = [(scoped_planes(default, taken), CANOPY_GREY)]
-    for name, hex_colour in targets.get("crowns", {}).items():
-        target = display_to_crown(palette, hex_colour)
-        (op,), named = crown_ops(crowns, style, (rows, cols), [(None, target)],
-                                 targets["min_texels"], TARGET_GREY, levels)  # fmt: skip
-        if op is not None:
-            out.append((op, TARGET_GREY))
-            found[f"crowns@{name}"] = named["crowns@0"]
     return CrownCalibration(out, found, levels)
 
 

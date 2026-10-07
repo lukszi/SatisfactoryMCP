@@ -289,7 +289,19 @@ its node, and past 9 m the bake is back to its usual distance from the paint mix
 The painted ground patches each stamp before the bake is blended (`palette/painted/albedo.py`
 `patch_stamps`). Within 11 m of a crude oil node (`STAMP_INNER_M`) the bake takes the paint
 mix, scaled to the bake by the median per-texel ratio of bake to paint on the ring out to 15 m
-(`STAMP_OUTER_M`). Across that ring it hands back to the bake by a smoothstep. The nodes come
+(`STAMP_OUTER_M`). Across that ring it hands back to the bake by a smoothstep.
+
+The ratio is the leading paint layer's own where that layer leads at least 20 of the ring's
+texels (`STAMP_LAYER_MIN`), else the whole ring's (2026-10-07). The game paints wet sand
+under and around most oil puddles. On the west coast node at (-2450, 906) the ring is mostly
+dry sand, whose ratio (1.01, 1.28, 1.27) turned the wet sand under the stamp grey-green, a
+grey disc inside the brown wet sand that reaches past the stamp; with the wet sand's own ratio
+the patch is the wet sand around it.
+
+The grey and blue-grey discs at some ore nodes, such as the copper node at (3817, -2683) and
+the stone node at (-371, 2015), are no stamp: they are the `Cliff_LayerInfo` and gravel the
+landscape paints under the node, in the paint layers and the bake alike, and the node's own
+mesh, which covers them in game, is not drawn. They are kept as game data. The nodes come
 from `data/world_resource_nodes.json` (`gamedata/nodes.py` `oil_nodes`). The bake keeps its
 weight there, so the biome tint stays off, as it is around the node. 10,011 texels are replaced
 and 8,635 blended; the sidecar records `paint.bake_stamps_patched`. In the Spire Coast window at
@@ -319,7 +331,15 @@ median tint of all families, then blended to the top layer by an up-facing ramp 
 surface's normal, `nz` from 0.60 to 0.85, boxed over 3 pixels. That ramp is a guess: the
 `CliffTopMaterial` function is not decoded. The top lies in patches inside that ramp, and the
 forest top wears a display target in place of its texture's mean (section 31, "Moss in
-patches").
+patches"); the sand and grass tops wear their paint layers' targets (section 31, "A top made
+of a paint layer").
+
+An arch or boulder of the top pass lifted over a cliff is not that cliff, but the family plane
+under it is the cliff's: the direct pass alone stamps it. So a rock pixel takes the area's
+rock, with no family tint or top, by the overlay's lift over the surface below it (the band's
+`top_weight`, full from `MESH_FULL_LIFT_M`). Before, a root beam over the Northern Forest's
+coast at (-117, -1580) wore the sand family's top in a cream stripe and the forest family's
+moss further on, and the arches of the Titan Forest at (1400, -560) their cliffs' moss.
 
 The rock targets of section 31 are measured on rock that already wears the common tint, so
 only a family's departure from it is applied (`palette/painted/surfaces.py` `family_tables`).
@@ -360,7 +380,7 @@ always keeps that much of its body colour. The sea is unchanged. A water class's
 ### Known limits
 
 - Nothing here has been compared with an in-game top-down view.
-- The up-facing ramp is a guess, and grass tops come out a little light.
+- The up-facing ramp is a guess.
 - The Titan crowns over water let the water's blue through at 0.8 opacity.
 
 ## 32. The seabed coral carpet (2026-10-05)
