@@ -356,7 +356,11 @@ run writes the same 1,125 tiles to the byte, the light's 170 among them, and the
 sidecars but for the light's new `key`. A full run that kept its caches, then a restyle from
 them into a new folder, as the Maps tab runs one: the restyle installed the kept light, baked
 nothing, and wrote the same 1,125 tiles to the byte. A plain full run and that pair read the
-same surface digest.
+same surface digest, drawn on 4 threads and on 8. Timed alone on the reference machine, the
+same pair before the change and after it: the full run took 482.5 s and 477.0 s, so the
+hashing and the keep cost nothing measurable; the restyle 208.2 s, of which 12.9 s was the
+bake on 2 workers, and 191.7 s. Every tile and sidecar of the two restyles is the same but
+the light's `key`. At full size the bake a restyle skips is about 830 s.
 
 ### Hooks
 
