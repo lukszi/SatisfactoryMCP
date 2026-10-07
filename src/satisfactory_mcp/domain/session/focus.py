@@ -10,11 +10,10 @@ import json
 import time
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
 
 from ... import config
 from ...core import atomic
-from ...core.jsontypes import JsonObject, JsonValue
+from ...core.jsontypes import JsonObject, JsonValue, is_object_dict
 from .views import FocusDoc, FocusSelection
 
 __all__ = [
@@ -72,9 +71,9 @@ def _selection(focus: Mapping[str, object]) -> FocusSelection | None:
     value = focus.get("selection")
     if value is None:
         return None
-    if not isinstance(value, dict):
+    if not is_object_dict(value):
         raise InvalidFocus(f"selection must be an object or null, not {value!r}")
-    picked = cast("dict[str, object]", value)
+    picked = value
     return {
         "kind": _text(picked, "kind"),
         "label": _text(picked, "label"),
@@ -84,9 +83,8 @@ def _selection(focus: Mapping[str, object]) -> FocusSelection | None:
 
 def _clean(focus: object) -> FocusDoc:
     """The stored shape of ``focus``, every field present; raises ``InvalidFocus``."""
-    if not isinstance(focus, dict):
+    if not is_object_dict(focus):
         raise InvalidFocus(f"focus must be an object, not {focus!r}")
-    focus = cast("dict[str, object]", focus)
     return {
         "schema": SCHEMA,
         "heartbeat": 0.0,

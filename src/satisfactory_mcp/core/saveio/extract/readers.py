@@ -21,6 +21,8 @@ __all__ = [
     "as_sequence",
     "class_from_type_path",
     "iter_objects",
+    "optional_float",
+    "optional_int",
     "owner_class",
     "position_of",
     "properties_of",
@@ -56,6 +58,16 @@ def to_int(value: SaveValue) -> int:
         "int() argument must be a string, a bytes-like object or a real number, "
         f"not '{type(value).__name__}'"
     )
+
+
+def optional_int(value: SaveValue | None) -> int | None:
+    """``to_int(value)``, with an absent value ``None``."""
+    return None if value is None else to_int(value)
+
+
+def optional_float(value: SaveValue | None) -> float | None:
+    """``to_float(value)``, with an absent value ``None``."""
+    return None if value is None else to_float(value)
 
 
 def as_sequence(value: SaveValue) -> Sequence[SaveValue]:

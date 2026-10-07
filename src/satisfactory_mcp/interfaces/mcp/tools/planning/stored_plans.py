@@ -3,20 +3,19 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Sequence
-from typing import Annotated, cast
+from typing import Annotated
 
 from pydantic import Field
 
+from .....core.jsontypes import is_object_dict, is_object_sequence
 from .....domain.planning import siting as siting_mod
 from .....domain.planning.progress.diff_service import plan_progress
 from .....domain.planning.solver.scenario import build_scenario
 from .....domain.planning.stored import manage
 from .....domain.planning.stored import provenance as prov
-from .....domain.planning.stored.plan_args import PlanLogError
+from .....domain.planning.stored.plan_args import PlanLogError, sources_in
 from .....domain.planning.stored.planlog import PlanLog, PlanState, factory_words
 from .....domain.planning.stored.store import PLAN_ARGS, Plan
-from .....domain.planning.stored.views import SelectorRecord
 from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from ... import app
@@ -37,11 +36,11 @@ LAST_CHANGE_WIDTH = 36
 
 def _arg_text(value: object) -> str:
     """One stored argument as the reader typed it, never as the solver resolved it."""
-    if isinstance(value, dict):
-        pairs = cast("dict[str, object]", value).items()
+    if is_object_dict(value):
+        pairs = value.items()
         return ", ".join(f"{k}={v:g}" if isinstance(v, float) else f"{k}={v}" for k, v in pairs)
-    if isinstance(value, list | tuple):
-        return ", ".join(str(v) for v in cast("Sequence[object]", value))
+    if is_object_sequence(value):
+        return ", ".join(str(v) for v in value)
     return str(value)
 
 
@@ -84,7 +83,7 @@ def _plan_detail(st: WorldState, stored: Plan) -> str:
         "# the stored REQUEST -- every argument not listed is at its default\n"
         + render.table(("argument", "value"), [(k, _arg_text(v)) for k, v in stored_args])
     ]
-    field = cast("list[SelectorRecord]", (stored.provenance or {}).get("selectors") or [])
+    field = prov.saved_entries(stored.provenance or {})
     if field:
         parts.append(
             "# what each source selector resolved to WHEN SAVED\n"
@@ -93,8 +92,10 @@ def _plan_detail(st: WorldState, stored: Plan) -> str:
                 [
                     (
                         e.get("selector", ""),
-                        e.get("count", 0),
-                        ",".join(f"{v:g}" for v in bbox) if (bbox := e.get("bbox")) else "-",
+                        prov.saved_count(e.get("count", 0)),
+                        ",".join(f"{v:g}" for v in box)
+                        if (box := prov.saved_box(e.get("bbox")))
+                        else "-",
                     )
                     for e in field
                 ],
@@ -227,8 +228,7 @@ def list_plans(
                 last,
                 args.get("objective", "max_mw"),
                 args.get("target_item") or "-",
-                render.cut(",".join(cast("list[str]", args.get("sources") or [])), 36)
-                or "whole map",
+                render.cut(",".join(sources_in(args) or []), 36) or "whole map",
                 _built_cell(st, stored),
                 _sited_cell(stored),
                 "; ".join(checked.flags),

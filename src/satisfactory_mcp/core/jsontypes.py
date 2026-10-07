@@ -21,6 +21,7 @@ __all__ = [
     "as_int",
     "is_object_dict",
     "is_object_list",
+    "is_object_sequence",
     "require_list",
     "require_object",
     "to_json",
@@ -50,7 +51,8 @@ def is_object_list(value: object) -> TypeIs[list[object]]:
     return isinstance(value, list)
 
 
-def _is_sequence(value: object) -> TypeIs[list[object] | tuple[object, ...]]:
+def is_object_sequence(value: object) -> TypeIs[list[object] | tuple[object, ...]]:
+    """Whether ``value`` is a list or a tuple, members unchecked."""
     return isinstance(value, list | tuple)
 
 
@@ -63,7 +65,7 @@ def to_json(value: object) -> JsonValue:
     tuple an array. ``TypeError`` for anything ``json.dumps`` would refuse."""
     if value is None or isinstance(value, str | int | float | bool):
         return value
-    if _is_sequence(value):
+    if is_object_sequence(value):
         return [to_json(item) for item in value]
     if _is_mapping(value):
         out: JsonObject = {}

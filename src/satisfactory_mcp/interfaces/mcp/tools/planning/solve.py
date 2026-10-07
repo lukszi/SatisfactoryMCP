@@ -4,16 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, NamedTuple, cast
+from typing import Annotated, NamedTuple
 
 from pydantic import Field
 
 from .....core.filelock import LockTimeout
+from .....core.jsontypes import is_object_dict, is_object_list
 from .....domain.planning import siting as siting_mod
 from .....domain.planning.readout.report import PlanFactoryReport, build_plan_report
 from .....domain.planning.siting.record import Siting
 from .....domain.planning.stored import provenance as prov
-from .....domain.planning.stored.plan_args import InvalidOp, PlanArgs, PlanLogError
+from .....domain.planning.stored.plan_args import InvalidOp, PlanArgs, PlanLogError, sources_in
 from .....domain.planning.stored.planlog import PlanLog, PlanState, Pushed
 from .....domain.planning.stored.recall import UNSAVED_OVERRIDE, overrides_of, with_overrides
 from .....domain.planning.stored.store import Plan
@@ -128,12 +129,13 @@ def _journal_args(
 
 def _solve_text(plan_kwargs: Mapping[str, object], feasible: bool, recalled: Plan | None) -> str:
     """One line for the journal: what was solved for, and whether it solved."""
-    rates = cast("dict[str, float]", plan_kwargs.get("export_minimums") or {})
-    if rates:
+    rates = plan_kwargs.get("export_minimums")
+    if is_object_dict(rates) and rates:
         what = ", ".join(f"{k} {v:g}/min" for k, v in rates.items())
     else:
-        exports = cast("list[str]", plan_kwargs.get("exports") or ["MW"])
-        what = plan_kwargs.get("target_item") or ", ".join(exports)
+        exports = plan_kwargs.get("exports")
+        named = [str(e) for e in exports] if is_object_list(exports) and exports else ["MW"]
+        what = plan_kwargs.get("target_item") or ", ".join(named)
     objective = plan_kwargs.get("objective") or "max_mw"
     on = f' plan "{recalled.name}" v{recalled.rev}:' if recalled is not None else ""
     return f"{'solved' if feasible else 'infeasible:'}{on} {what} ({objective})"
@@ -289,7 +291,7 @@ def _store_request(
     plan_id = report.prepared.request.plan_id
     # What the selectors resolved to, stored WITH the request: plan_id moves when the world
     # does, never when a selector starts meaning a different part of the map.
-    field = prov.record(g, st, cast("list[str] | None", request.kwargs.get("sources")))
+    field = prov.record(g, st, sources_in(request.kwargs))
     sit: Siting | None = None
     if save.site_at:
         try:

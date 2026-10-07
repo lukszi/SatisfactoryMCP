@@ -19,6 +19,7 @@ from ....core.saveio.records import instance_leaf
 from ...spatial.nodes.selectors import split_spec
 from ...spatial.nodes.table import NodeRecord
 from ..solver.scenario import select_for
+from .plan_args import sources_in
 from .views import ProvenanceRecord, SelectorRecord
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
@@ -91,20 +92,22 @@ def recorded(plan: StoredPlan) -> bool:
 
 def _plan_sources(plan: StoredPlan) -> list[str] | None:
     """The plan's ``sources`` selectors, or None when it plans over the whole map."""
-    value = plan.kwargs().get("sources")
-    return [str(m) for m in value] if isinstance(value, list) else None
+    return sources_in(plan.kwargs())
 
 
-def _saved_entries(provenance: JsonObject) -> list[JsonObject]:
+def saved_entries(provenance: JsonObject) -> list[JsonObject]:
+    """The record's ``selectors`` entries, each a JSON object."""
     entries = provenance.get("selectors")
     return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
 
 
-def _whole(value: JsonValue) -> int:
+def saved_count(value: JsonValue) -> int:
+    """An entry's count as a whole number; 0 for one that is no number."""
     return int(value) if isinstance(value, int | float | str) else 0
 
 
-def _saved_box(value: JsonValue) -> list[float] | None:
+def saved_box(value: JsonValue) -> list[float] | None:
+    """An entry's ``bbox`` in metres, or ``None`` where it has none."""
     if not isinstance(value, list):
         return None
     return [float(v) for v in value if isinstance(v, int | float)]
@@ -146,7 +149,7 @@ def compare(game: GameData, state: WorldState, plan: StoredPlan) -> list[Selecto
         e["selector"]: e for e in record(game, state, _plan_sources(plan))["selectors"]
     }
     out: list[SelectorDrift] = []
-    for entry in _saved_entries(plan.provenance):
+    for entry in saved_entries(plan.provenance):
         selector = str(entry.get("selector") or "")
         fresh = fresh_by_selector.get(selector)
         if fresh is None:
@@ -161,12 +164,12 @@ def compare(game: GameData, state: WorldState, plan: StoredPlan) -> list[Selecto
         out.append(
             SelectorDrift(
                 selector=selector,
-                then=_whole(entry.get("count") or 0),
+                then=saved_count(entry.get("count") or 0),
                 now=fresh["count"],
                 gone=tuple(sorted(set(was) - set(fresh["nodes"]))) if named else (),
                 appeared=tuple(sorted(set(fresh["nodes"]) - set(was))) if named else (),
                 named=bool(named),
-                bbox=_saved_box(entry.get("bbox")),
+                bbox=saved_box(entry.get("bbox")),
             )
         )
     return out

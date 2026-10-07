@@ -42,11 +42,13 @@ from .readers import (
     as_sequence,
     class_from_type_path,
     iter_objects,
+    optional_int,
     position_of,
     properties_of,
     ref_class,
     ref_path,
     to_float,
+    to_int,
     truthy,
     yaw_of,
 )
@@ -338,9 +340,7 @@ class _ProjectionWalk:
         research["unclaimed_hard_drives"] = progression.hard_drives(
             properties.get("mUnclaimedHardDriveData")
         )
-        research["last_used_hard_drive_id"] = cast(
-            "int | None", properties.get("mLastUsedHardDriveID")
-        )
+        research["last_used_hard_drive_id"] = optional_int(properties.get("mLastUsedHardDriveID"))
         research["unlocked_trees"] = _class_names(properties.get("mUnlockedResearchTrees"))
         research["ongoing"] = progression.ongoing(properties.get("mSavedOngoingResearch"))
 
@@ -351,7 +351,7 @@ class _ProjectionWalk:
                 flags[name] = truthy(seen.properties[name])
         for name in _UNLOCK_COUNTS:
             if name in seen.properties:
-                flags[name] = cast("int", seen.properties[name])
+                flags[name] = to_int(seen.properties[name])
 
     def on_central_storage(self, seen: _Object) -> None:
         self.out["depot"] = progression.stored_items(seen.properties.get("mStoredItems"))
@@ -394,7 +394,7 @@ class _ProjectionWalk:
         self.building_counts[seen.cls] = self.building_counts.get(seen.cls, 0) + 1
         left = seen.properties.get("mResourcesLeft")
         if left is not None and left != -1:
-            self.out["node_state"][seen.instance] = {"resources_left": cast("int", left)}
+            self.out["node_state"][seen.instance] = {"resources_left": to_int(left)}
 
     def _on_crate(self, seen: _Object) -> None:
         # Not a ``Build_`` actor, so it owes ``building_counts`` nothing.
@@ -464,7 +464,7 @@ class _ProjectionWalk:
             record["paused"] = truthy(properties["mIsProductionPaused"])
         for name in _BOOST_PROPERTIES:
             if name in properties:
-                record["production_boost"] = cast("float", properties[name])
+                record["production_boost"] = to_float(properties[name])
                 record["production_boost_field"] = name
         # Uptime is the actor's own property; buffers are components and come later.
         live = self.uptime.get(str(seen.instance))

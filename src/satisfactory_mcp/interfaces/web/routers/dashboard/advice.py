@@ -8,13 +8,14 @@ Handler names are operation_ids; wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, NotRequired, cast
+from typing import Annotated, Literal, NotRequired
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
+from .....core.jsontypes import is_object_dict
 from .....core.schema import NewerSchema
 from .....domain import advice
 from .....domain.advice import store as hidden_store
@@ -109,9 +110,9 @@ class AdviceStaleResponse(TypedDict):
 
 def _actor_kind(by: object) -> str:
     """The ``kind`` of the actor a hidden entry names, "" where the file says none."""
-    if not isinstance(by, dict):
+    if not is_object_dict(by):
         return ""
-    return str(cast("dict[str, object]", by).get("kind") or "")
+    return str(by.get("kind") or "")
 
 
 def _advice_row(

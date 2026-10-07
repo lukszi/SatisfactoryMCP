@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from typing import Literal, TypeAlias, TypeVar, cast
 
 from typing_extensions import TypedDict
 
 from ....core.gamedata.footprint import Footprint
 from ....core.gamedata.model import GameData, Recipe, pretty_class
-from ....core.jsontypes import JsonValue
+from ....core.jsontypes import JsonValue, is_object_sequence
 from ....core.saveio.records import instance_leaf
 from ....core.saveio.schema import (
     BuildableRecord,
@@ -511,7 +511,7 @@ class StoredItem(TypedDict):
 
 def _is_stack(entry: object) -> bool:
     """An ``[item, count]`` pair; anything else in a torn projection is skipped."""
-    return isinstance(entry, (list, tuple)) and len(cast("Sequence[object]", entry)) >= 2
+    return is_object_sequence(entry) and len(entry) >= 2
 
 
 class ContentsFields(TypedDict):

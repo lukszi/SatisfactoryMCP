@@ -21,6 +21,7 @@ from ...core.gameassets.versions import (
     RENDER_RECIPE_KERNEL_ONLY,
 )
 from ...core.gpu import vulkan_available
+from ...core.jsontypes import is_object_list
 from . import axes as ax
 from . import registry
 from .views import (
@@ -146,7 +147,7 @@ def _bool(options: Mapping[str, object], key: str, default: bool) -> bool:
 
 def _render_options(options: Mapping[str, object]) -> RenderOptions:
     asked_layers = options.get("layers", list(DEFAULT_LAYERS))
-    layers = cast("list[object]", asked_layers) if isinstance(asked_layers, list) else []
+    layers = asked_layers if is_object_list(asked_layers) else []
     if not layers or any(layer not in RENDER_LAYERS for layer in layers):
         raise PresetError(f"layers is a non-empty list of {', '.join(RENDER_LAYERS)}")
     asked_size = options.get("size", FULL_PX)

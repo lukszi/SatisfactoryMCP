@@ -9,7 +9,8 @@ from __future__ import annotations
 import re
 import tomllib
 from pathlib import Path
-from typing import cast
+
+from satisfactory_mcp.core.jsontypes import is_object_dict
 
 _CATALOG: dict[str, object] = tomllib.loads(
     Path(__file__).with_name("catalog.toml").read_text(encoding="utf-8")
@@ -19,9 +20,9 @@ _CATALOG: dict[str, object] = tomllib.loads(
 def _strings(name: str) -> dict[str, str]:
     """The catalog's ``[name]`` table, refused unless every value is a string."""
     table = _CATALOG[name]
-    if not isinstance(table, dict):
+    if not is_object_dict(table):
         raise TypeError(f"catalog.toml [{name}] is not a table")
-    pairs = cast("dict[str, object]", table)
+    pairs = table
     out = {key: value for key, value in pairs.items() if isinstance(value, str)}
     if len(out) != len(pairs):
         raise TypeError(f"catalog.toml [{name}] holds a value that is not a string")

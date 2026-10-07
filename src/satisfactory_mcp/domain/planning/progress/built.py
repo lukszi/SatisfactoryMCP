@@ -12,7 +12,7 @@ import math
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, NamedTuple
 
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
@@ -24,6 +24,7 @@ from ...spatial.places import parse_near, resolve_place
 from ...world.state import WorldState
 from .. import siting as siting_mod
 from ..solver.prepare import PreparedPlan
+from ..stored.plan_args import sources_in
 from ..stored.planlog import PlanState
 from ..stored.store import Plan
 from .diff import DiffReport, DiffRow, machine_rate, request_of, solution_of
@@ -234,11 +235,7 @@ def search_area(
         centre = (sit.x_m * 100.0, sit.y_m * 100.0)
         return SearchArea("circle", ((*centre, radius),), words=f"{radius:,.0f} m around its site")
     args = stored.args
-    raw = (
-        cast("Iterable[object] | None", args.get("sources"))
-        if isinstance(args, dict)
-        else args.sources
-    )
+    raw = sources_in(args) if isinstance(args, dict) else args.sources
     sources = [str(s).strip() for s in (raw or [])]
     near = [s for s in sources if s.casefold().startswith("near:")]
     if near and len(near) == len(sources):

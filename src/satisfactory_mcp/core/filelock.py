@@ -14,12 +14,22 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TypeVar
 
-from . import atomic
-from .jsontypes import JsonObject, JsonValue
+from typing_extensions import TypedDict
 
-__all__ = ["LockTimeout", "held", "update_versioned_json"]
+from . import atomic
+
+__all__ = ["LockTimeout", "VersionedDoc", "held", "update_versioned_json"]
 
 T = TypeVar("T")
+
+
+class VersionedDoc(TypedDict):
+    """A JSON document whose ``version`` counts its writes."""
+
+    version: int
+
+
+Doc = TypeVar("Doc", bound=VersionedDoc)
 
 TIMEOUT_S = 10.0
 
@@ -78,17 +88,17 @@ def held(target: Path, timeout: float = TIMEOUT_S) -> Generator[None, None, None
         os.close(fd)
 
 
-def _next_version(version: JsonValue) -> JsonValue:
-    """``version + 1``, or the ``TypeError`` that addition raises on a non-number."""
+def _next_version(version: object) -> int:
+    """``version + 1``, or a ``TypeError`` for a version that is no number."""
     if isinstance(version, (int, float)):
-        return version + 1
+        return int(version) + 1
     raise TypeError(f"a file version is a {type(version).__name__}, not a number")
 
 
 def update_versioned_json(
     path: Path,
-    read: Callable[[], JsonObject],
-    change: Callable[[JsonObject], tuple[T, bool]],
+    read: Callable[[], Doc],
+    change: Callable[[Doc], tuple[T, bool]],
 ) -> T:
     """Run ``change(read()) -> (result, dirty)`` under ``path``'s lock; when dirty, bump
     ``version`` and rewrite the file atomically. Returns ``result``."""

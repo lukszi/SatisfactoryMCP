@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from importlib import metadata
 from pathlib import Path
-from typing import cast
+
+from .jsontypes import is_object_dict
 
 __all__ = ["NewerSchema", "check", "writer_version"]
 
@@ -25,9 +26,9 @@ class NewerSchema(RuntimeError):
 
 def check(raw: object, known: int, path: Path | str) -> None:
     """Raise ``NewerSchema`` when ``raw["schema"]`` is above ``known``; absent means old."""
-    if not isinstance(raw, dict):
+    if not is_object_dict(raw):
         return
-    found = cast("dict[object, object]", raw).get("schema")
+    found = raw.get("schema")
     if isinstance(found, bool) or not isinstance(found, int):
         return
     if found > known:

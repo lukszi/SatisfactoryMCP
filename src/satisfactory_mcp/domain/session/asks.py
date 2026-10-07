@@ -14,7 +14,7 @@ from typing import TypeVar, cast
 
 from ... import config
 from ...core import schema
-from ...core.jsontypes import JsonValue
+from ...core.jsontypes import JsonValue, is_object_dict
 from ..planning.stored.plan_args import PlanLogError
 from ..planning.stored.planlog import PlanLog
 from . import versioned
@@ -176,9 +176,8 @@ def _about_field(name: str, value: object, limit: int, required: bool) -> str:
 
 
 def _validated_about(world_id: str, about: object) -> AskAbout:
-    if not isinstance(about, dict):
+    if not is_object_dict(about):
         raise AskError(f"about must be an object, not {about!r}")
-    about = cast("dict[str, object]", about)
     kind = about.get("kind")
     if not isinstance(kind, str) or kind not in ABOUT_KINDS:
         raise AskError(f"about.kind is one of {', '.join(ABOUT_KINDS)}, not {kind!r}")

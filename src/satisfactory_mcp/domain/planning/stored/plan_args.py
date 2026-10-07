@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, TypeAlias, TypeGuard, TypeVar, cast
 
+from ....core.jsontypes import is_object_list
 from .views import PlanArgsBody
 
 if TYPE_CHECKING:
@@ -384,6 +385,12 @@ class PlanArgs:
 
 
 KINDS: dict[str, str] = {f.name: f.metadata["kind"] for f in fields(PlanArgs)}
+
+
+def sources_in(kwargs: Mapping[str, object]) -> list[str] | None:
+    """The ``sources`` selectors plan arguments name, or ``None`` for the whole map."""
+    value = kwargs.get("sources")
+    return [str(member) for member in value] if is_object_list(value) else None
 
 
 def _empty_container(value: object) -> bool:

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, TypeVar, cast
 
 from ... import config
 from ...core import schema
-from ...core.jsontypes import JsonValue
+from ...core.jsontypes import JsonValue, is_object_dict, is_object_list
 from ...core.saveio.records import instance_leaf
 from ...core.saveio.schema import BuildableRecord
 from ..planning.stored.plan_args import PlanLogError
@@ -181,6 +181,12 @@ def _text_ref(ref: Mapping[str, object], name: str) -> str:
     return value.strip()
 
 
+def _texts(ref: Mapping[str, object], name: str) -> list[str]:
+    """``ref[name]``'s strings; an absent or torn list is none."""
+    value = ref.get(name)
+    return [item for item in value if isinstance(item, str)] if is_object_list(value) else []
+
+
 def _number(ref: Mapping[str, object], name: str) -> float:
     value = ref.get(name)
     if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
@@ -259,13 +265,12 @@ class _World:
         return self.game.building_name(cls) or cls
 
 
-def _metres(pos: object) -> tuple[float, float]:
+def _metres(pos: Sequence[float]) -> tuple[float, float]:
     """A position in centimetres, as a record or a node holds it, in metres to one decimal."""
-    point = cast("Sequence[float]", pos)
-    return round(float(point[0]) / 100.0, 1), round(float(point[1]) / 100.0, 1)
+    return round(float(pos[0]) / 100.0, 1), round(float(pos[1]) / 100.0, 1)
 
 
-def _field(world: _World, node: NodeRecord) -> tuple[list[str], object]:
+def _field(world: _World, node: NodeRecord) -> tuple[list[str], tuple[float, float]]:
     same = [n for n in world.nodes().values() if n["resource"] == node["resource"]]
     for group in geo.cluster(same, link_m=FIELD_LINK_M):
         if any(m["instance"] == node["instance"] for m in group.members):
@@ -328,9 +333,10 @@ def _normalise_factory(world: _World, kind: str, ref: RawRef) -> _Normalised:
 def _normalise_machine(world: _World, kind: str, ref: RawRef) -> _Normalised:
     inst = instance_leaf(_text_ref(ref, "machine"))
     record = world.machines().get(inst)
-    if record is None or not record.get("pos"):
+    pos = None if record is None else record.get("pos")
+    if not pos:
         raise ObjectMissing(f"no machine “{inst}” in this save")
-    return {"machine": inst}, _metres(record["pos"])
+    return {"machine": inst}, _metres(pos)
 
 
 def _normalise_node_or_field(world: _World, kind: str, ref: RawRef) -> _Normalised:
@@ -365,9 +371,9 @@ _NORMALISERS: dict[str, Callable[[_World, str, RawRef], _Normalised]] = {
 
 
 def _normalise(world: _World, kind: str, ref: object) -> _Normalised:
-    if not isinstance(ref, dict):
+    if not is_object_dict(ref):
         raise PinError(f"ref must be an object, not {ref!r}")
-    return _NORMALISERS[kind](world, kind, cast("dict[str, object]", ref))
+    return _NORMALISERS[kind](world, kind, ref)
 
 
 def _identity(kind: str, ref: RawRef) -> tuple[object, ...]:
@@ -376,12 +382,12 @@ def _identity(kind: str, ref: RawRef) -> tuple[object, ...]:
     if kind == "process":
         return (kind, ref["plan"], ref["recipe"])
     if kind == "factory":
-        return (kind, cast(str, ref["factory"]).casefold())
+        return (kind, _text_ref(ref, "factory").casefold())
     if kind in ("machine", "node"):
         return (kind, ref[kind])
     if kind == "field":
-        return (kind, ref["resource"], tuple(sorted(cast("list[str]", ref["nodes"]))))
-    return (kind, round(cast(float, ref["x_m"]), 1), round(cast(float, ref["y_m"]), 1))
+        return (kind, ref["resource"], tuple(sorted(_texts(ref, "nodes"))))
+    return (kind, round(_number(ref, "x_m"), 1), round(_number(ref, "y_m"), 1))
 
 
 def create(
@@ -630,15 +636,15 @@ def selector_terms(st: WorldState | None, n: int, grammar: str) -> tuple[list[st
     if kind == "node":
         out = [f"node:{ref['node']}"]
     elif kind == "field":
-        out = [f"node:{m}" for m in cast("list[str]", ref.get("nodes") or ())]
+        out = [f"node:{m}" for m in _texts(ref, "nodes")]
     elif kind == "machine":
         out = [f"machine:{ref['machine']}"]
     elif kind == "factory":
         out = [f"label:{ref['factory']}"]
     elif kind == "plan":
-        out = [cast(str, ref["plan"])]
+        out = [_text_ref(ref, "plan")]
     else:
-        out = [cast(str, ref["recipe"])]
+        out = [_text_ref(ref, "recipe")]
     return out, _echo(n, info, pin.get("label", ""))
 
 
@@ -691,8 +697,8 @@ def expand_args(
     echoes: list[str] = []
     for name in ("sources", *_RECIPE_FIELDS):
         value = out.get(name)
-        if isinstance(value, list | tuple) and value:
-            out[name], said = expand(st, name, list(cast("Sequence[object]", value)))
+        if is_object_list(value) and value:
+            out[name], said = expand(st, name, value)
             echoes += said
     return out, echoes
 

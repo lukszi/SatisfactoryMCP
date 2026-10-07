@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import TypeVar
 
 from ...core import filelock
-from ...core.jsontypes import JsonObject, JsonValue
+from ...core.jsontypes import JsonValue
 
 __all__ = ["count", "locked_update"]
 
-Doc = TypeVar("Doc", bound=Mapping[str, object])
+Doc = TypeVar("Doc", bound=filelock.VersionedDoc)
 T = TypeVar("T")
 
 
@@ -25,10 +25,4 @@ def locked_update(
 ) -> T:
     """Run ``change(read()) -> (result, dirty)`` under ``path``'s lock; write when dirty."""
 
-    def load() -> JsonObject:
-        return cast(JsonObject, read())
-
-    def apply(data: JsonObject) -> tuple[T, bool]:
-        return change(cast(Doc, data))
-
-    return filelock.update_versioned_json(path, load, apply)
+    return filelock.update_versioned_json(path, read, change)

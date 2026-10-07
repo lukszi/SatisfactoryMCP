@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from typing_extensions import TypedDict
 
@@ -464,7 +464,8 @@ def _solve_response(
     kwargs = dict(kwargs)
     if required and not kwargs.get("required"):
         kwargs["required"] = list(required)
-    objective = cast("str", kwargs.get("objective", "max_mw"))
+    asked = kwargs.get("objective", "max_mw")
+    objective = asked if isinstance(asked, str) else "max_mw"
     report = build_plan_report(g, st, kwargs, objective=objective)
     prepared = report.prepared
     req = prepared.request

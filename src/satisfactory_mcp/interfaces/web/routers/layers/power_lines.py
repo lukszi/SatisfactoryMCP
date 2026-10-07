@@ -6,12 +6,12 @@ docs/web-wire.md "Power lines". Handler names are operation_ids.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Literal, cast
+from typing import Literal
 
 from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
+from .....core.jsontypes import is_object_sequence
 from .....core.saveio import rows as saverows
 from .....core.saveio.records import instance_leaf
 from .....core.saveio.schema import PowerEdge, Projection
@@ -112,9 +112,9 @@ def _power_names(st: WorldState, actors: list[str]) -> dict[str, str]:
 
 def _ends(edge: object) -> tuple[int | None, int | None]:
     """An edge's two actor indices, ``None`` where a torn row gives none."""
-    if not isinstance(edge, (list, tuple)):
+    if not is_object_sequence(edge):
         return None, None
-    values = cast("Sequence[object]", edge)
+    values = edge
     if len(values) < 2:
         return None, None
     a, b = values[0], values[1]

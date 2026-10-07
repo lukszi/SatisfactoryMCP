@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import cast
 
 from typing_extensions import TypedDict
 
@@ -218,7 +217,8 @@ def build_plan_report(
     report.bill = bill = slice_of(prepared, g)
     if bill.shard_rows:
         report.shard_budget = st.shard_budget()
-    report.sloops_asked = int(cast("int | None", plan_kwargs.get("sloops")) or 0)
+    sloops = plan_kwargs.get("sloops")
+    report.sloops_asked = int(sloops) if isinstance(sloops, int | float) else 0
     # Reported rather than refused: planning ahead of the research is legitimate.
     if report.sloops_asked:
         report.sloop_gate = st.research_gate("production_boost")

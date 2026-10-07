@@ -6,10 +6,17 @@ A field the projection carries as the save wrote it is passed through as read, a
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ..schema import HardDrive, OngoingResearch
-from .readers import as_sequence, ref_class, struct_fields
+from .readers import (
+    as_sequence,
+    optional_float,
+    optional_int,
+    ref_class,
+    struct_fields,
+    to_int,
+)
 
 if TYPE_CHECKING:
     from .parser import SaveValue
@@ -59,7 +66,7 @@ def cost_amounts(raw: SaveValue) -> dict[str, float]:
         fields = struct_fields(entry)
         item = ref_class(fields.get("ItemClass"))
         if item:
-            out[item] = cast("float", fields.get("Amount", 0))
+            out[item] = to_int(fields.get("Amount", 0))
     return out
 
 
@@ -75,9 +82,9 @@ def hard_drives(raw: SaveValue) -> list[HardDrive]:
         rewards = [ref_class(reward) for reward in as_sequence(fields.get("PendingRewards") or [])]
         out.append(
             {
-                "hard_drive_id": cast("int | None", fields.get("HardDriveID")),
+                "hard_drive_id": optional_int(fields.get("HardDriveID")),
                 "options": [reward for reward in rewards if reward],
-                "rerolls_executed": cast("int", fields.get("PendingRewardsRerollsExecuted", 0)),
+                "rerolls_executed": to_int(fields.get("PendingRewardsRerollsExecuted", 0)),
             }
         )
     return out
@@ -92,7 +99,7 @@ def ongoing(raw: SaveValue) -> list[OngoingResearch]:
         out.append(
             {
                 "schematic": ref_class(inner.get("Schematic")),
-                "seconds_left": cast("float | None", fields.get("ResearchCompleteTimestamp")),
+                "seconds_left": optional_float(fields.get("ResearchCompleteTimestamp")),
                 "fields_seen": sorted(fields),
             }
         )
