@@ -56,7 +56,7 @@ Planned as 0.2.0.
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
   still accepted. With the light a full-size render is budgeted at about 16 minutes more and
-  needs 14.5 GB more scratch space.
+  needs 15.6 GB more scratch space.
 - Map generator: the light's scratch, `light.cache/`, is 5.4 GB smaller at full size with
   the painted layer, because the tree crowns are written once, where the bake reads them.
   `--scratch-dir` moves it off the cache drive. It is still not compressed: nothing reads it
@@ -119,7 +119,7 @@ Planned as 0.2.0.
   render of all five layers with the light is budgeted at about 58 minutes, the default two
   layers at about 42.
 - Map generator: a lit render that keeps its raster cache keeps its finished light beside it
-  (`light.kept/`: the pyramid's tiles as hard links, and the default-sun terms, 3.2 GB at full
+  (`light.kept/`: the pyramid's tiles as hard links, and the default-sun terms, 4.3 GB at full
   size). A palette-only restyle that draws the same surface installs that light instead of
   baking it again, about 14 minutes less at full size, and the Maps tab budgets it so. The
   light's `meta.json` records the `key` it was baked under; the tiles are the same bytes.
@@ -231,6 +231,15 @@ Planned as 0.2.0.
 - Map renders take the sun term from one float32 copy, the live-sun page's own, in place of
   several copies in mixed precision. A few dozen lit pixels of a 2048 map move by one level.
   Every rendered map style is one version up for these fixes.
+- The live-sun light no longer stands a wall at 0 m over the void: where a map has no
+  ground, nothing blocks the sun or the sky, so the rims of pits, the chasm and the southern
+  and eastern coasts are no longer shaded, and no slope runs down into a hole. The light of a
+  full-size map no longer steps along the 4096-pixel grid it is baked in. Light model 3.
+- On the game-painted map's baked light, tree crowns and the Titan forest are lit by their own
+  top, sky and shadows instead of the ground's beneath them, so a ravine under the Titan
+  forest no longer shows through its canopy; the Titan trees cast tree shadows like the other
+  crowns. The live-sun page still lights the canopy by the ground until it gets a canopy
+  tile. Game-painted style 21.
 
 ## [0.1.0] - 2026-09-27
 

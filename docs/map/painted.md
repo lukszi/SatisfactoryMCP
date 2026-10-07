@@ -341,7 +341,8 @@ drawn the soft canopy is off, and the crowns' own "hidden under a higher surface
 are StaticMeshActors the sweep already lists. `titan_items` picks them and the mesh rasteriser
 draws them at twice the render's pixel into `titan.cache` (stamp: half the size, the build, the
 `titan_trees` reader). The painter samples that raster bilinearly, lights the crowns by their
-own relief, and lays them over the finished pixel, water included, at `titan_trees.opacity`
+own relief (drawn unlit, flat: the light lights them by their own top, section 29, "The
+canopy's own light"), and lays them over the finished pixel, water included, at `titan_trees.opacity`
 (0.8), leaves sRGB (77, 90, 48), trunks (99, 88, 81). They cover about 0.9 km² of ground that
 was mostly drawn bare. They are exposed like everything else, by `exposure` times `tone.gain`.
 

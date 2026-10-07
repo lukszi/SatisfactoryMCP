@@ -144,7 +144,7 @@ claim is refused with its own exit code (§20, "Refusals"). The main options:
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
-`compress-cache` converts it. The light cache adds 14.5 GB while the run lasts, and 5.4 GB
+`compress-cache` converts it. The light cache adds 15.6 GB while the run lasts, and 5.4 GB
 more with the painted layer; the run deletes it (§29, "Scratch"). A cache the run cannot
 delete at its end is named: "could not remove <dir>: a file in it is still open". See §25 to
 §27 and §39, and [maps_contract.md](../../docs/maps_contract.md) for how the server registers
