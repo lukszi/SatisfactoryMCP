@@ -59,6 +59,31 @@ def test_a_bake_in_blocks_writes_the_bytes_of_one_block(tmp_path, monkeypatch):
     assert four_tiles == one_tiles
 
 
+def _blocks_at_1_m(tmp: Path, blocks: list[tuple[int, int, int]]) -> np.ndarray:
+    """The terms of a 512 px surface at 1 m baked in ``blocks``: at that spacing the sky view
+    reaches 10 px, where the sheet's own spacing reaches none."""
+    yy, xx = np.mgrid[0:SIZE, 0:SIZE].astype(np.float32)
+    z = (12 * np.sin(xx / 9.0) * np.cos(yy / 11.0) + 3 * np.sin(yy / 4.0)).astype(np.float32)
+    surface = Surface(tmp / "work", SIZE)
+    surface.put(0, z, np.ones((SIZE, SIZE), np.float32))
+    surface.close()
+    stage.allocate_work_arrays(tmp / "work", SIZE)
+    for block in blocks:
+        stage.bake_block(stage.BlockJob(str(tmp / "work"), str(tmp / "tiles"), 1, 1.0,
+                                        hz.horizon_reach_px(2.0),
+                                        int(np.ceil(hz.SKY_RADIUS_M / 2.0)) + 2, True, block))  # fmt: skip
+    return np.array(work_array(tmp / "work", "terms", np.uint8, "r"))
+
+
+def test_the_sky_view_across_a_block_edge_is_the_bytes_of_one_block(tmp_path):
+    one = _blocks_at_1_m(tmp_path / "one", [(0, 0, SIZE)])
+    half = SIZE // 2
+    quarters = [(r, c, half) for r in (0, half) for c in (0, half)]
+    four = _blocks_at_1_m(tmp_path / "four", quarters)
+    assert np.ptp(one[..., 0]) > 50, "the sky view varies"
+    assert four.tobytes() == one.tobytes()
+
+
 def _hole(z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """``z`` with no data south-west of the middle, where the default sun stands."""
     z, land = z.copy(), np.ones((SIZE, SIZE), np.float32)
