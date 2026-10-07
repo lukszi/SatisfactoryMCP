@@ -123,19 +123,18 @@ def painted_ndl(
     z_m: FloatGrid,
     spacing_m: float,
     unlit: bool,
-    surface: object | None,
     meshes: tuple[FloatGrid | None, U8Grid | None, FloatGrid],
 ) -> FloatGrid:
     """The painted style's sun term, ``n.L`` against the flat ``sin 45``: the north-west
     hillshade when lit, flat when unlit. Unlit, a sea mesh only this style draws keeps the
-    default sun on its top while another layer captures the light (``surface`` None).
+    default sun on its top: the light, captured under the seabed rule, has water there.
     ``meshes`` is ``(weight, kept class, water level)``.
     """
     if not unlit:
         return sun_dot(z_m, spacing_m)
     flat = np.full(z_m.shape, FLAT_SUN_DOT, np.float32)
     weight, kept, level = meshes
-    if surface is not None or weight is None or kept is None:
+    if weight is None or kept is None:
         return flat
     sea = np.where((kept > 0) & ~seabed_keeps(kept, z_m, level), weight, np.float32(0.0))
     return flat * (1.0 + sea * (surface_direct(z_m, spacing_m) - 1.0))
