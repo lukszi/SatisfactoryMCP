@@ -7,9 +7,8 @@ their styles, water, light and caches. Those live in [docs/map/](map/) under the
 were given, and the [index below](#sections-17-to-40-the-map) says which file holds each.
 Section numbers are continuous with the rest of the spec; [DESIGN.md](../DESIGN.md) indexes it.
 
-The dated sections name the generator files as they were when each section was written. Since
-2026-10-05 the map generators are one package, `tools/mapgen/`, run as
-`python -m mapgen <command>`; the old entry scripts are thin shims that keep their paths. Its
+The map generators are one package, `tools/mapgen/`, run as `python -m mapgen <command>`; the
+old entry scripts are thin shims that keep their paths. Its
 [README](../tools/mapgen/README.md) names the command behind each old script and has the package
 map.
 
@@ -120,9 +119,9 @@ world objects looked up in the grid against the raster itself: 256 m mislabels *
 for twice the accuracy and was refused. The 256 m pair is what `/api/regions` serves, so the payload
 and the frontend did not move.
 
-The corners are **measured, not stated in the asset** — see the biome-raster section below — and
-every run re-measures them and refuses to write if the pin stops holding (1.9692 against 1.333 on
-build 495413).
+The corners are **measured, not stated in the asset** (section 17, "The game ships biome
+geometry after all"), and every run re-measures them and refuses to write if the pin stops
+holding (1.9692 against 1.333 on build 495413).
 
 What the change cost, measured against the retired trace before it was deleted: **454 of the 900
 cells changed name**, 287 of them to No Man's Land. The largest single move is Spire Coast, where the
@@ -204,47 +203,13 @@ the resource markers.
 
 ### 7.2c A miner is never valid on a liquid node
 
-`search_resource_nodes` reported **every oil node at double its real rate** — a pure node
-read 480 m³/min where an Oil Extractor gives 240.
-
-`node_rate` picks the best extractor for the node's kind, filtered by `mAllowedResources`.
-That field is only populated when `mOnlyAllowCertainResources` is **True**, which is
-`False` on every miner — so miners looked unrestricted, and Miner Mk.3 (base 240) out-bid
-the Oil Extractor (base 120) on crude.
-
-`mAllowedResourceForms` is the field that actually encodes it, and it was **already parsed
-and simply never consulted**:
-
-| building | `mAllowedResourceForms` | `mOnlyAllowCertainResources` |
-|---|---|---|
-| Miner Mk1/2/3 | `RF_SOLID` | False → `mAllowedResources` empty |
-| Oil / Water Extractor | `RF_LIQUID` | True |
-| Resource Well Extractor | `RF_LIQUID, RF_GAS` | True |
-
-Corrected: oil reads 60/120/240 by purity, confirmed **three independent ways**.
-
-1. Our building model, `extract_rate(purity, clock)`.
-2. The dump's own cycle fields — `mItemsPerCycle / mExtractCycleTime × 60`, litres to m³
-   for fluids — which reproduces every parsed `base_extract_rate` exactly, including the
-   Oil Extractor's 2000 L/s → 120 m³/min.
-3. The wiki's Crude Oil "Resource acquisition" table (supplied by the user; the site is
-   behind a Cloudflare 403 to automated fetches):
-
-| node purity | m³/min at 100% | m³/min at 250% |
-|---|---|---|
-| Impure | 60 | 150 |
-| Normal | 120 | 300 |
-| Pure | 240 | 600 |
-
-All three agree cell-for-cell, and `node_rate` now joins them; before the fix it
-disagreed with all three by exactly 2×. Tests pin both the derivation and the published
-table, including the **250% column** — that is the figure a plan is actually built
-against, and a pure node overclocked is 600 m³/min, not 1,200.
-
-**Only the node search was affected.** `extractor_processes` builds its columns from
-`building.extract_rate(purity, clock)` with the actual building, so the LP and
-`plan_layout` were always right — which is how the discrepancy was spotted: the same world
-read 480 in one tool and 240 in the other.
+`node_rate` picks the best extractor for a node's kind by `mAllowedResourceForms`: miners are
+`RF_SOLID`, the Oil and Water Extractors `RF_LIQUID`, the Resource Well Extractor `RF_LIQUID,
+RF_GAS`. `mAllowedResources` cannot decide it: it is filled only where
+`mOnlyAllowCertainResources` is True, which no miner sets, so every miner would look
+unrestricted. Crude oil reads 60/120/240 m³/min by purity at 100% and 150/300/600 at 250%, and
+tests pin the derivation and the wiki's table both. The defect this closed is
+[backlog.md](backlog.md) item 9f.
 
 ### 7.2d The point inspector
 
@@ -305,9 +270,9 @@ pixel, these rules decide.
 | Inland water opacity | Section 31's `inland_floor` (0.35) and a water class's `turbidity` (section 33) both say how much body colour inland water keeps. The larger applies, never both, so the swamp (0.45) keeps its own and the lake (0.1) gets the floor. The ocean row has turbidity 0 and draws exactly as before. |
 | Swamp water | Section 31's opaque swamp colour is applied last, over whatever the swamp class's optics (section 33) drew, so its 0.3 m tau decides everywhere but the very edge. It goes only on the swamp class's share of a pixel's water: ocean inside `Area_Swamp` keeps the sea. Which texels the swamp class claims is section 33's rule. |
 | River ribbons | A pixel's share of ribbon water (section 34) takes the `river` class's optics, whatever the class plane says under it. The class plane was built from the field's water, which the ribbon partly replaces. |
-| Crown tops | One producer: the measured tops of section 36 write `crown.i16.z`. Section 30's estimate from the radius is gone. Section 30's trees-over-rock reads the same plane. |
+| Crown tops | One producer: the measured tops of section 36 write `crown.i16.z`, and section 30's trees-over-rock reads the same plane. |
 | Canopy over rock | With crowns drawn the soft canopy is off (`canopy_kept` 0), so section 30's rule draws nothing and the crowns' own "hidden under a higher surface" test decides. |
-| Canopy targets | Section 31's species targets (the red Kapok) move their species' crowns first, wherever they grow; then the canopy target moves the crowns of section 36, the step taken by the crowns near the target's hue, so a crown a species target moved is gated by its new colour. The soft canopy they used to colour stays off. Its named crown targets (the blue palms) move the crowns of their own hue wherever they grow, gated apart from the canopy target. |
+| Canopy targets | Section 31's species targets (the red Kapok) move their species' crowns first, wherever they grow; then the canopy target moves the crowns of section 36, the step taken by the crowns near the target's hue, so a crown a species target moved is gated by its new colour. Its named crown targets (the blue palms) move the crowns of their own hue wherever they grow, gated apart from the canopy target. |
 | Rock family and rock target | Section 31's rock targets are set first; section 30's family tint goes on relative to the families' median, so a common tint leaves rock on target. A family with a target of its own (desert rock, section 31's "Rock by mesh family") takes it over the area's rock. A render-only rock wears its own family from the mesh cache's family plane, tint, target and top layer, as a cliff does; one with no family takes the area's rock. |
 | Coral, carpet and water | Section 32's carpet and section 31's seabed coral are both bed colours under the water. A coral speck standing in water is drawn as that water with the coral as its bed. |
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
