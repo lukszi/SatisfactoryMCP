@@ -198,7 +198,9 @@ a hard dependency.
 
 **Line caps** (`test_module_caps.py`). No module of the application or the parser passes 850
 lines; routers and MCP tool modules stop at 650, generators outside `tools/mapgen` at 800
-lines and 150 per function. `api.py` was 2,174 lines and `planning.py` 2,615 before they were
+lines and 150 per function. `tools/mapgen/tests/test_architecture_mapgen.py` holds mapgen's
+modules to 600 lines and 150 per function; a command held thin keeps a shrink-only ceiling at
+its measured size. `api.py` was 2,174 lines and `planning.py` 2,615 before they were
 split, and neither got there in one commit, so a cap is what makes "one module per concern" a
 measurement. The general cap is what `core/gameassets/staticmesh.py` measured when it was the
 largest module. Its record types have since moved to `meshdata.py`; the readers stay, because
