@@ -107,9 +107,9 @@ LIGHT_KEEP_BYTES = 1_000_000_000
 UNLIT_KEEP_BYTES = 450_000_000
 LIGHT_SCRATCH_BYTES = 15_570_000_000
 CROWN_SCRATCH_BYTES = 5_370_000_000
-#: The default-sun terms a lit render keeps beside its raster caches, 4 bytes a pixel, moved
-#: out of the light's scratch; the kept tiles are hard links (section 29, "Kept light").
-KEPT_LIGHT_BYTES = 4 * FULL_PX * FULL_PX
+#: The default-sun terms a lit render that keeps its cache moves out of the scratch into
+#: ``light.kept/``, 4 bytes a pixel; the kept tiles are hard links to the map's own.
+KEPT_TERMS_BYTES = 4 * FULL_PX * FULL_PX
 DIRECT_FLOOR_S = 80.0
 TOP_FLOOR_S = 18.0
 RENDER_KEEP_BYTES = 890_000_000
@@ -296,13 +296,17 @@ def cached_sizes() -> list[int]:
     return [size for size in RENDER_SIZES if cache_ready(size)]
 
 
+def keeps_cache(options: RenderOptions) -> bool:
+    """Whether a render job keeps its raster caches, and with the light its terms, for later
+    runs at its size: asked to, a restyle, or a cache of that size already there."""
+    return options["keep_cache"] or options["restyle"] or cache_dir(options["size"]).is_dir()
+
+
 def _keeps_new_light(options: RenderOptions) -> bool:
     """Whether a lit job leaves a kept light where none is: it keeps its raster caches
-    (``_render_plan``'s ``--keep-direct``) or draws the kernel only, which deletes neither."""
-    size = options["size"]
-    keeps = options["keep_cache"] or options["restyle"] or cache_dir(size).is_dir()
-    keeps = keeps or options["recipe"] == "kernel-only"
-    return options["light"] and keeps and not light_kept(size)
+    (``keeps_cache``) or draws the kernel only, which deletes neither."""
+    keeps = keeps_cache(options) or options["recipe"] == "kernel-only"
+    return options["light"] and keeps and not light_kept(options["size"])
 
 
 def _render_cost(options: RenderOptions) -> tuple[float, int, int]:
@@ -320,8 +324,8 @@ def _render_cost(options: RenderOptions) -> tuple[float, int, int]:
         transient += int((LIGHT_SCRATCH_BYTES + CROWN_SCRATCH_BYTES) * area)
     if _keeps_new_light(options):
         # The terms move out of the scratch, so they are kept rather than needed twice.
-        keep += int(KEPT_LIGHT_BYTES * area)
-        transient -= int(KEPT_LIGHT_BYTES * area)
+        terms = int(KEPT_TERMS_BYTES * area)
+        keep, transient = keep + terms, transient - terms
     return seconds, keep, transient
 
 
@@ -453,7 +457,7 @@ def _render_plan(
     argv.append("--light" if options["light"] else "--no-light")
     if not options["titan_trees"]:
         argv.append("--no-titan-trees")
-    if options["keep_cache"] or options["restyle"] or cache_dir(options["size"]).is_dir():
+    if keeps_cache(options):
         argv += ["--cache-dir", str(cache_dir(options["size"])), "--keep-direct"]
     if options["restyle"]:
         argv.append("--restyle")

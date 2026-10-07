@@ -89,6 +89,20 @@ def test_the_falls_are_cached_per_build_and_reader(tmp_path):
     assert meta["waterfalls"]["reader_version"] == versions.READER_VERSIONS["waterfalls"]
 
 
+def test_a_sweep_draws_and_digests_the_falls_in_the_order_the_cache_keeps(tmp_path):
+    """Overlapping falls blend in turn, so a run that sweeps draws what a restyle draws."""
+    swept = [{"x": float(x), "y": 0.0, "z": 1.0, "width_m": 4.0} for x in (3, -2, 7, 0)]
+
+    def sweep_once():
+        return {"actors": swept}
+
+    fresh, meta = load_or_sweep_falls(tmp_path, "502094", sweep_once)
+    assert [f["x"] for f in fresh] == [-2.0, 0.0, 3.0, 7.0]
+    cached, again = load_or_sweep_falls(tmp_path, "502094", sweep_once)
+    assert again["waterfalls"]["reused"] and cached == fresh
+    assert again["waterfalls"]["digest"] == meta["waterfalls"]["digest"]
+
+
 def test_the_reader_only_answers_for_the_waterfall_tool():
     assert waterfalls.read_fall(None, 0, "/Game/X/BP_Something", None) is None
 

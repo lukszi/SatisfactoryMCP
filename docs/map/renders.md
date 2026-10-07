@@ -424,8 +424,10 @@ it writes. The codes are constants beside the stage that raises them.
 | 9 | `render/inputs.RESTYLE_MISS` | `--restyle` and a kept raster cache is missing or was cut for another size, sub-sampling or build |
 | 10 | `render/inuse.IN_USE` | the output folder holds a map type the server's registry lists; `--overwrite-in-use` writes anyway |
 | 11 | `render/light.SCRATCH_IN_USE` | the light's scratch is held open by a render still running (section 29, "Scratch") |
-| 12 | `jit.GPU_UNAVAILABLE` | `--gpu` and the CUDA kernels cannot run here: numba, CuPy or a device is missing (section 41, "On the GPU"); not 2, which argparse gives a usage error |
+| 12 | `jit.NO_GPU` | `--gpu` and the CUDA kernels cannot run here: numba, CuPy or a device is missing (section 41, "On the GPU") |
 | 1 | `commands/renders.CUT_FAILED` | the tiles could not be cut into place |
+
+Exit code 2 is argparse's, for a command line it cannot parse.
 
 A raster cache carries the size, the sub-sampling and the build it was rasterised for, so a
 cache from another render is rebuilt, not refused. `--kernel-only` is the honest way to draw
@@ -881,9 +883,10 @@ zstd band store, 0.93 GB at 32768 against 18.5 GB as raw memory maps, which the 
 directly: nothing is inflated back to a raw file first. Each plane is written once, top to
 bottom in 256-row bands, and the draw's one pass (section 40, "One pass for every layer")
 then reads it top to bottom again, once for all the layers, rows `[top - 16, top + 272)` per
-band (section 40, "The halo"). Two other reads exist: the family plane's strided row gather,
-once per run, and the Titan raster's half-resolution window. Nothing reads them at random.
-The planes round-trip bit for bit, so the tiles are the same bytes as from a raw cache.
+band (section 40, "The halo"), which the band's column pieces cut to their columns. Two other
+reads exist: the family plane's strided row gather, once per run, and the Titan raster's
+half-resolution window. Nothing reads them at random. The planes round-trip bit for bit, so
+the tiles are the same bytes as from a raw cache.
 
 ### Measured (2026-10-06, the renders-v5 caches, build 502094)
 
@@ -1028,8 +1031,10 @@ reading 18.5 GB from a hard disk; that is an estimate from the read rates above,
 ## 40. Drawing a layer's bands on threads (2026-10-06)
 
 A band is bound by memory bandwidth more than by arithmetic: nearly every step allocates a
-fresh band-sized array. So `render_layer` runs a layer's 256-row bands on a pool of threads,
-several at once, and the tiles are the same bytes as one band after another.
+fresh band-sized array. So `render_layers` runs the 256-row bands on a pool of threads,
+several at once, in one pass for all the run's layers ("One pass for every layer" below) and
+in column pieces ("Column pieces" below), and the tiles are the same bytes as one band after
+another.
 
 ### What runs where
 
@@ -1665,6 +1670,8 @@ another signature's code; that race is why each signature now has a file of its 
   each window's two draws the same, also with the kernels compiled from an empty cache while
   a G1 compiled them in another process.
 - The A/B above: 1,152 calls on real bands of the full-size sheet, the same bits both ways.
+- G1 at 8192, with the kernels and the light on the GPU against `MAPGEN_KERNELS=numpy`: all
+  18,085 tiles the same bytes ("On the GPU" below, "Checked").
 - `tests/mapgen/test_paint_kernels.py` compares each painter kernel with its reference byte
   for byte: trees of three species at every scale, yaw and lean over three sheet sizes and
   windows that cut them, mips replaced after a stamp; the plain styles' water with and
@@ -1683,9 +1690,18 @@ bytes either way.
   setting it by hand does the same. `jit.gpu_on()` says CUDA where the switch says `cuda`
   and numba's kernels are on. `--gpu` checks at once, in under a second, that numba and CuPy
   import and that a kernel compiles and loads on a device, and refuses with exit code 12
-  and the reason on stdout when one does not (section 20, "Refusals"): a run never finds out
-  at its light. The reference and
-  numba's path never import CuPy; a test holds that.
+  (`jit.NO_GPU`) and the reason on stdout when one does not (section 20, "Refusals"): a run
+  never finds out at its light. It was argparse's exit code 2 until 2026-10-07, which a
+  wrapper could not tell from a bad command line. The reference and numba's path never import
+  CuPy; a test holds that.
+- **The log.** Nothing a run writes says where its light was marched: the light's
+  `meta.json` and the sidecars are a numba run's, timings apart. So each light process counts
+  its march and sky-view calls by where they ran (`gpu.ran`), each block hands its count back
+  with its tiles, and a `--gpu` bake prints the sum once its block rows are in. At 2048, one
+  block of 32 ground and 32 crown horizons and a sky view: `light: horizon and sky-view calls
+  65 on NVIDIA GeForce RTX 3080; 0 ran on numba, the device out of memory` (measured before
+  the crowns became spans, which numba marches; below, "Spans"). A run without `--gpu` prints
+  no such line.
 - **What it needs.** The `gpu` extra: CuPy (`cupy-cuda12x`) and NVRTC from
   `nvidia-cuda-nvrtc-cu12`, both pinned, on Windows or Linux on x86-64, and an NVIDIA
   driver. No CUDA toolkit. CuPy compiles `lighting/gpu.cu` once a process and keeps the
@@ -1739,15 +1755,24 @@ one step to the next, which is a different draw.
 
 - `tests/mapgen/test_gpu_kernels.py` compares the CUDA march and sky view with the reference
   byte for byte on the cases of `test_kernels.py`, plus a block whose width is not a whole
-  number of thread blocks and a device out of memory. It also holds the
-  switch, the flag and its refusal, the light's worker count, and that CuPy loads only under
-  `cuda`. On a machine without numba, CuPy or a device the kernel tests skip and say which.
+  number of thread blocks and a device out of memory. It also holds the switch, the flag and
+  its refusal, the light's worker count, the count of where each call ran and the bake's
+  line, and that CuPy loads only under `cuda`. On a machine without numba, CuPy or a device
+  the kernel tests skip and say which.
 - G1 at 2048 (all five layers, lit), with `--gpu` and without, side by side: all 1,125 tiles
   the same bytes as each other and as the pixel-batch baseline, and the six sidecars the same
   apart from their timings. Against that baseline both also add the light's `key`, which the
   kept light brought after it ("Kept light", section 29). The `--gpu` run's light process was
   seen on the device. At 2048 the light is one small block, and it took 12.4 s against 12.8 s:
   the march gains at full size.
+- G1 at 8192 (2026-10-07), where the light is 2 × 2 blocks, baked a block row at a time as
+  the bands come in (section 42): `MAPGEN_KERNELS=numpy` against `--gpu`, that is numba's
+  painters and sampler and the CUDA light: all 18,085 tiles the same bytes, the light's 2,730
+  among them, and the six sidecars the same apart from their timings. The `--gpu` run logged
+  `light: horizon and sky-view calls 260 on NVIDIA GeForce RTX 3080; 0 ran on numba, the
+  device out of memory`, 65 a block. 2048 bakes one block and G2 draws unlit, so this is the
+  check over several blocks; the full-size light's 64 blocks are first checked by the full
+  render after the round.
 
 ### Known limits
 

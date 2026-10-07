@@ -1,4 +1,5 @@
-"""The CUDA kernels give the bits of the numpy reference, and ``--gpu`` sets the switch.
+"""The CUDA kernels give the bits of the numpy reference, ``--gpu`` sets the switch, and a bake
+logs where its calls ran.
 
 docs/map/renders.md section 41, "On the GPU". Synthetic fixtures: no install, no field. The kernel tests
 skip, saying why, on a machine without numba, CuPy or a CUDA device; the switch, the flag
@@ -90,7 +91,7 @@ def test_the_flag_is_refused_where_the_kernels_cannot_run(monkeypatch, capsys):
     for parser in (_parser(), build_parser()):
         with pytest.raises(SystemExit) as refused:
             parser.parse_args(["--gpu"])
-        assert refused.value.code == jit.GPU_UNAVAILABLE
+        assert refused.value.code == jit.NO_GPU
         assert "--gpu: no CUDA device" in capsys.readouterr().out
         assert os.environ[jit.KERNEL_SWITCH] == ""
 
@@ -105,8 +106,8 @@ def test_the_refusal_table_holds_each_code_and_the_gpu_s_is_its_own():
             found = importlib.import_module("mapgen." + module.replace("/", "."))
             assert getattr(found, name) == int(code), f"{module}.{name}"
             codes.append(int(code))
-    assert codes.count(jit.GPU_UNAVAILABLE) == 1 and len(codes) > 10
-    assert jit.GPU_UNAVAILABLE != 2, "argparse exits 2 on a usage error"
+    assert codes.count(jit.NO_GPU) == 1 and len(codes) > 10
+    assert jit.NO_GPU != 2, "argparse exits 2 on a usage error"
 
 
 @pytest.mark.usefixtures("device")
@@ -198,6 +199,32 @@ def test_a_march_the_device_has_no_memory_for_runs_numba(monkeypatch):
     monkeypatch.setattr(gpu, "_sky_view", _out_of_memory)
     _same(monkeypatch, lambda: hz.march_horizon(z, HALO, 210.0, SP))
     _same(monkeypatch, lambda: hz.sky_view(z, 12, SP))
+
+
+@pytest.mark.usefixtures("device")
+def test_each_call_is_counted_where_it_ran(monkeypatch):
+    from mapgen.lighting import gpu
+
+    z = octave_terrain(2 * HALO + 30, seed=8)
+    gpu.ran()
+    _same(monkeypatch, lambda: hz.sky_view(z, 12, SP))
+    on_device = gpu.ran()
+    assert on_device and jit.ON_NUMBA not in on_device
+    assert gpu.ran() == {}, "read once"
+    monkeypatch.setattr(gpu, "_sky_view", _out_of_memory)
+    _same(monkeypatch, lambda: hz.sky_view(z, 12, SP))
+    assert gpu.ran() == {jit.ON_NUMBA: sum(on_device.values())}
+
+
+def test_a_gpu_bake_logs_where_its_calls_ran():
+    from mapgen.lighting.bake import gpu_calls_line
+    from mapgen.lighting.stage import BlockDone
+
+    done = [BlockDone(1, 0, 0.0, {"RTX": 3}), BlockDone(1, 0, 0.0, {"RTX": 2, jit.ON_NUMBA: 1})]
+    assert gpu_calls_line(done) == (
+        "light: horizon and sky-view calls 5 on RTX; 1 ran on numba, the device out of memory"
+    )
+    assert "calls none on CUDA; 0 ran" in gpu_calls_line([BlockDone(1, 0, 0.0, {})])
 
 
 def _out_of_memory(*_args: object) -> None:

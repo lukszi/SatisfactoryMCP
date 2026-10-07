@@ -155,7 +155,8 @@ Planned as 0.2.0.
   needs the new `gpu` extra (CuPy and its NVRTC) and an NVIDIA driver, and a run where they
   cannot work is refused at once with exit code 12, its own, and the reason on stdout. The
   CPU path stays the default, and the tiles are the same bytes either way; a full-size light
-  block's ground horizons take about 3 s instead of 8.
+  block's ground horizons take about 3 s instead of 8. The bake logs how many of its calls ran
+  on the GPU and how many fell back to the CPU for want of device memory.
 - Map generator: a render whose light scratch another running render holds is refused with
   exit code 11 and the reason on stdout (it was exit 1 on stderr). The render sidecar's
   `cliff_geometry.placements_dropped` counts the passable `CliffPillar_03` as `excluded_mesh`
@@ -231,6 +232,9 @@ Planned as 0.2.0.
   fix instead of a traceback.
 - The Maps tab's render estimate follows the "live sun" box, counts the light cache's
   scratch space against the free disk, and times a lit render only from an earlier lit one.
+- The Maps tab counts a lit job's kept light: its terms, 3.2 GB at full size, among what the
+  job keeps, and its tiles, hard links to the map's own, no longer in the cache's size or in
+  what clearing the cache frees.
 - A render that fails deletes its light scratch too, and the next lit run removes what a
   killed run left. On Windows, a run that would share the scratch of a render already
   drawing is refused at the start, where it used to fail after the slow preparation.
@@ -255,6 +259,10 @@ Planned as 0.2.0.
 - Map generator: `CliffPillar_03` was read from the game's unused `Mesh_Old` copy, another
   shape, and 18 of its 376 placements lost their sand family. Asset paths now match a folder
   by whole names.
+- A render that read the waterfalls from the game drew overlapping ones in another order than
+  a palette-only restyle, which reads them from the cache: 22 satellite and painted pixels of
+  a full-size map, and 4 at 8192 and 16384, came out one level apart, and the sidecars
+  recorded two digests for the same falls. Both now draw them in the cache's order.
 - Map renders take the sun term from one float32 copy, the live-sun page's own, in place of
   several copies in mixed precision. A few dozen lit pixels of a 2048 map move by one level.
   Every rendered map style is one version up for these fixes.

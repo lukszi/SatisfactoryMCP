@@ -27,8 +27,9 @@ if TYPE_CHECKING:
 __all__ = [
     "CUDA_OPTIONS",
     "GPU",
-    "GPU_UNAVAILABLE",
     "KERNEL_SWITCH",
+    "NO_GPU",
+    "ON_NUMBA",
     "REFERENCE",
     "add_gpu_flag",
     "cuda_kernel",
@@ -45,8 +46,10 @@ KERNEL_SWITCH = "MAPGEN_KERNELS"
 REFERENCE = "numpy"
 #: The switch's value that selects the CUDA kernels.
 GPU = "cuda"
-#: Exit code of a ``--gpu`` the CUDA kernels cannot run under: not argparse's 2.
-GPU_UNAVAILABLE = 12
+#: Where a CUDA kernel's call is counted when the device had no memory for it and numba ran it.
+ON_NUMBA = "numba"
+#: Exit code of a run whose ``--gpu`` cannot run here: not argparse's 2.
+NO_GPU = 12
 
 #: NVRTC's options for every CUDA kernel: no fused multiply-add, and division, square roots
 #: and subnormals as IEEE has them, so each operation rounds as numpy's does.
@@ -189,8 +192,8 @@ def _gpu_problem_apart() -> str | None:
 
 class _SelectGpu(argparse.Action):
     """``--gpu``: the switch set to ``GPU`` for this process and the light's processes, which
-    inherit it; refused at once with ``GPU_UNAVAILABLE`` and the reason on stdout where the
-    kernels cannot run."""
+    inherit it; refused at once with ``NO_GPU`` and the reason on stdout where the kernels
+    cannot run."""
 
     def __call__(
         self,
@@ -202,7 +205,7 @@ class _SelectGpu(argparse.Action):
         problem = _gpu_problem_apart()
         if problem is not None:
             print(f"--gpu: {problem}", flush=True)
-            raise SystemExit(GPU_UNAVAILABLE)
+            raise SystemExit(NO_GPU)
         os.environ[KERNEL_SWITCH] = GPU
         setattr(namespace, self.dest, True)
 

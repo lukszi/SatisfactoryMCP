@@ -152,18 +152,18 @@ claim is refused with its own exit code (§20, "Refusals"). The main options:
   "Column pieces" and "Fixed-order sums").
 - `--gpu` runs the light's horizon march and sky view as CUDA kernels. It needs the root
   project's `gpu` extra (`uv sync --all-extras` installs it) and an NVIDIA driver, and
-  refuses with exit code 12 where either is missing. The tiles are the same bytes (§41, "On
-  the GPU").
+  refuses with exit code 12 where either is missing. The bake's log says where its calls
+  ran. The tiles are the same bytes (§41, "On the GPU").
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
-`compress-cache` converts it. A lit run that keeps them keeps its light beside them: 4.3 GB
-of default-sun terms, and the light's tiles as hard links (§29, "Kept light"). The light
-cache adds 15.6 GB while the run lasts, and 5.4 GB more for the tree crowns wherever there is
-a paint store, whatever layers the run draws; the run deletes it (§29, "Scratch"). A cache
-the run cannot delete at its end is named: "could not remove <dir>: a file in it is still
-open". See §25 to §27 and §39, and [maps_contract.md](../../docs/maps_contract.md) for how the
-server registers the result.
+`compress-cache` converts it. The light's scratch adds 15.6 GB while the run lasts, and the
+crown occluder 5.4 GB more wherever there is a paint store, whatever layers the run draws; the
+run deletes it (§29, "Scratch"). With `--keep-direct` the light's default-sun terms, 4.3 GB,
+stay in `light.kept/` beside the caches, and its tiles as hard links (§29, "Kept light"). A
+cache the run cannot delete at its end is named: "could not remove <dir>: a file in it is
+still open". See §25 to §27 and §39, and [maps_contract.md](../../docs/maps_contract.md) for
+how the server registers the result.
 
 ### check-fill
 

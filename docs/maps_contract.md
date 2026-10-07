@@ -298,17 +298,18 @@ for a missing `gen` extra says to stop satisfactory-mcp first, because uv cannot
 
 A job is refused (507) unless free space covers what it keeps, what it needs while running
 (the raster caches, about 1 GB at 32768 in the zstd band store of spatial-and-map.md §39, and
-with the light its cache, 15.6 GB, and 5.4 GB more for the tree crowns wherever there is a
-paint store, whatever the layers; all scaled by area) and 2 GB more. What a lit job keeps
-includes the light it keeps beside its raster caches (spatial-and-map.md §29, "Kept light"),
-4.3 GB of default-sun terms at 32768, when it keeps those caches or draws the kernel only and
-no light is kept at its size yet; the terms move out of the light's cache, so they come off
-what it needs while running. The drawn bands are cut as they settle and never wait on disk
+with the light its scratch, 15.6 GB, and the crown occluder's 5.4 GB whatever the layers,
+both scaled by area) and 2 GB more. A lit job that keeps its cache (`--keep-direct`, §4), or
+draws the kernel only, keeps the light's default-sun terms too, 4.3 GB at 32768, when no light
+is kept at its size yet (spatial-and-map.md §29, "Kept light"): they are moved out of the
+scratch into `light.kept/`, so the estimate counts them as kept rather than as scratch, and
+the space it needs is the same. The drawn bands are cut as they settle and never wait on disk
 (§42). Checked at the form, at submit and again at start.
 
-`cache_bytes` on `GET /api/maps` is all of `_cache/`: every size's raster caches and kept
-light, whose tiles, hard links to a render's, count in full. `DELETE /api/maps/cache` removes
-all of it.
+`cache_bytes` on `GET /api/maps` is what `_cache/` holds on its own: every size's raster
+caches and kept light, but not a kept light's tiles, which are hard links to the map's own
+pyramid and count nowhere. `DELETE /api/maps/cache` removes all of it and reports that
+figure as freed.
 
 ### 4.3 Estimates
 
