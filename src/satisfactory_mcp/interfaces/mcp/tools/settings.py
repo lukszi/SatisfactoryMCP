@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....core.filelock import LockTimeout
@@ -17,7 +16,7 @@ from ....presenters.text import primitives as render
 from .. import app
 
 
-def _word(value) -> str:
+def _word(value: object) -> str:
     if isinstance(value, bool):
         return "on" if value else "off"
     return f"{value:g}" if isinstance(value, float) else str(value)
@@ -37,7 +36,7 @@ def _maps_line() -> str:
         view = maps.view()
     except Exception as exc:
         return f"# base maps: unreadable ({exc})"
-    shown = []
+    shown: list[str] = []
     for row in view["types"]:
         if row["status"] != "ready":
             continue
@@ -77,7 +76,7 @@ def settings(
         dict[str, str | bool | float | None] | None,
         Field(description='settings to change, e.g. {"stage_headroom": "nameplate"}; null resets'),
     ] = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """The settings the page and chat share. Change one only when the user asks you to.
 

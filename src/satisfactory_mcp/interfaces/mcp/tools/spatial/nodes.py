@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, cast
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
+from .....core.gamedata.model import GameData
 from .....domain.spatial import ranking as ranking_mod
 from .....domain.spatial import regions as regions_mod
+from .....domain.spatial.nodes import AnnotatedNode, MeasuredNode
 from .....domain.spatial.nodes import search as node_search
-from .....domain.spatial.nodes.selectors import SELECTOR_HELP
+from .....domain.spatial.nodes.selectors import SELECTOR_HELP, Selection
 from .....domain.spatial.nodes.views import WaterSummary
+from .....domain.spatial.regions import RegionMap
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf, Limit
@@ -21,7 +24,7 @@ PAGE_RADIUS_MIN_M = 500.0
 PAGE_RADIUS_MAX_M = 5000.0
 
 
-def _occupant(row: dict, g) -> str:
+def _occupant(row: AnnotatedNode, g: GameData) -> str:
     """The extractor standing on a node, at its clock. ``-`` where none does.
 
     A node whose miner is switched off still reads ``tapped``, and the difference between
@@ -39,18 +42,28 @@ def _occupant(row: dict, g) -> str:
     return " ".join(parts)
 
 
-def _status_cell(row: dict) -> str:
+def _status_cell(row: AnnotatedNode) -> str:
     status = node_search.status_of(row)
     return {"locked": "LOCKED"}.get(status, status)
 
 
-def _follow_nodes(st, ctx, view, resource, purity, kind, status, near, where) -> None:
+def _follow_nodes(
+    st: WorldState,
+    ctx: app.ToolContext | None,
+    view: str,
+    resource: str | None,
+    purity: str | None,
+    kind: str | None,
+    status: str,
+    near: str | None,
+    where: str,
+) -> None:
     """Journal the search, so a page following chat opens the same nodes view."""
 
     def given(value: str | None) -> str | None:
         return None if not value or value.strip().casefold() == "all" else value
 
-    resource_id = app.resolve_item_id(resource) if given(resource) else None
+    resource_id = app.resolve_item_id(asked) if (asked := given(resource)) else None
     name = app.game().item_name(resource_id) if resource_id else "every"
     shown = "fields" if view == "fields" else "nodes"
     app.journal_world_find(
@@ -69,6 +82,11 @@ def _follow_nodes(st, ctx, view, resource, purity, kind, status, near, where) ->
     )
 
 
+def _distance_cell(row: AnnotatedNode) -> str:
+    """A row's distance: ``find_nodes`` measures every row once it has an origin."""
+    return f"{cast(MeasuredNode, row)['distance_m']:.0f}m"
+
+
 def _fits_page_radius_slider(radius: str) -> bool:
     try:
         return PAGE_RADIUS_MIN_M <= float(radius) <= PAGE_RADIUS_MAX_M
@@ -76,9 +94,9 @@ def _fits_page_radius_slider(radius: str) -> bool:
         return False
 
 
-def _rank_pane(sources: list[str] | None) -> dict:
+def _rank_pane(sources: list[str] | None) -> dict[str, object]:
     """The rank pane's settings, when ``sources`` says no more than it can."""
-    out: dict = {}
+    out: dict[str, object] = {}
     for term in sources or []:
         head, _, body = term.partition(":")
         head = head.strip().casefold()
@@ -92,7 +110,13 @@ def _rank_pane(sources: list[str] | None) -> dict:
     return out
 
 
-def _node_table(found, g, all_rows, regions, window: render.Page) -> tuple[str, list[str]]:
+def _node_table(
+    found: node_search.NodeSearchResult,
+    g: GameData,
+    all_rows: list[AnnotatedNode],
+    regions: RegionMap,
+    window: render.Page,
+) -> tuple[str, list[str]]:
     """One row per node, by yield or by distance, and what its columns mean."""
     mixed = found.mixed
     show_distance = found.origin is not None
@@ -100,11 +124,7 @@ def _node_table(found, g, all_rows, regions, window: render.Page) -> tuple[str, 
         (
             r["instance"].rsplit(".", 1)[-1],
             g.item_name(r["resource"]) if mixed else r["purity"],
-            *(
-                (f"{r['distance_m']:.0f}m",)
-                if show_distance
-                else (r["purity"] if mixed else r["kind"],)
-            ),
+            *((_distance_cell(r),) if show_distance else (r["purity"] if mixed else r["kind"],)),
             r["grid"],
             f"{int(r['x'] / 100)},{int(r['y'] / 100)}",
             f"{r['z'] / 100:.0f}",
@@ -138,7 +158,7 @@ def _node_table(found, g, all_rows, regions, window: render.Page) -> tuple[str, 
     return body, notes
 
 
-def _field_table(found, window: render.Page) -> str:
+def _field_table(found: node_search.NodeSearchResult, window: render.Page) -> str:
     """One row per field: nodes clustered within 200 m, ranked by yield."""
     clusters = found.fields
     field_rows = [
@@ -177,6 +197,7 @@ def _open_water_block(water: WaterSummary) -> str:
     """The water no node carries: bodies drawn from, pumps on each, the sea level."""
     level = water["sea_level_m"]
     per_pump = water["per_pump_m3_min"]
+    bodies = sorted(water["bodies"].items(), key=lambda kv: -kv[1])
     return (
         "## open water\n"
         + render.kv(
@@ -195,7 +216,7 @@ def _open_water_block(water: WaterSummary) -> str:
         + "\n"
         + render.table(
             ("body", "pumps"),
-            sorted(water["bodies"].items(), key=lambda kv: -kv[1]),
+            bodies,
             total=len(water["bodies"]),
         )
     )
@@ -223,7 +244,7 @@ def search_resource_nodes(
     as_of: AsOf = None,
     limit: Limit = 25,
     offset: int = 0,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Resource nodes, in one of three views.
 
@@ -324,7 +345,7 @@ def search_resource_nodes(
     )
 
 
-def _site_notes(ranked, selection) -> list[str]:
+def _site_notes(ranked: node_search.SiteRank, selection: Selection) -> list[str]:
     """How the score is weighted, and what the terrain columns can and cannot claim."""
     notes = [*selection.errors]
     notes.append(
@@ -363,7 +384,7 @@ def rank_build_sites(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Rank candidate fields for a new extraction site, best first.
 
@@ -414,7 +435,7 @@ def rank_build_sites(
 
     regions = regions_mod.load_regions()
     unit = "m3/min" if g.items[resource_id].is_fluid else "/min"
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for scored_site in scored[:shown]:
         site = node_search.site_row(scored_site, regions)
         alt = site["alt_m"]

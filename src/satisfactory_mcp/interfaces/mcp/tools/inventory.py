@@ -9,9 +9,12 @@ from typing import Annotated
 
 from pydantic import Field
 
+from ....core.gamedata.model import GameData
 from ....domain.spatial import regions as regions_mod
 from ....domain.spatial.places import resolve_place
+from ....domain.spatial.regions import RegionMap
 from ....domain.world.inventory import CRATE_KIND_TEXT, Holding
+from ....domain.world.state import WorldState
 from ....presenters.text import primitives as render
 from .. import app
 from ..params import AsOf, Limit
@@ -21,7 +24,7 @@ from ..params import AsOf, Limit
 CONTENTS_KINDS = 3
 
 
-def _place(regions, holding: Holding) -> tuple[str, str]:
+def _place(regions: RegionMap, holding: Holding) -> tuple[str, str]:
     """A holding's region name and its coordinate in metres, both as printable cells."""
     if holding.pos is None:
         return "-", "-"
@@ -29,7 +32,7 @@ def _place(regions, holding: Holding) -> tuple[str, str]:
     return regions.label_for(x, y).name or regions_mod.OFF_MAP, f"{x / 100:.0f},{y / 100:.0f}"
 
 
-def _contents(game, holding: Holding, kinds: int = CONTENTS_KINDS) -> str:
+def _contents(game: GameData, holding: Holding, kinds: int = CONTENTS_KINDS) -> str:
     held = [f"{render.num(n)} {game.item_name(i)}" for i, n in holding.items]
     return render.capped(held, kinds, more=", +{n} more") or "-"
 
@@ -45,7 +48,14 @@ def _fullness(holding: Holding) -> tuple[str, str]:
     return fill, f"{holding.slots_used}/{holding.slots}"
 
 
-def _stock_totals(st, breakdown: dict, wanted, window: render.Page, limit, notes) -> str:
+def _stock_totals(
+    st: WorldState,
+    breakdown: dict[str, dict[str, float]],
+    wanted: str | None,
+    window: render.Page,
+    limit: int,
+    notes: list[str],
+) -> str:
     """One row per item: spendable, and where the rest of it sits."""
     g = st.game
     rows = sorted(
@@ -80,13 +90,20 @@ def _stock_totals(st, breakdown: dict, wanted, window: render.Page, limit, notes
     )
 
 
-def _stock_places(st, breakdown: dict, wanted, window: render.Page, limit, notes) -> str:
+def _stock_places(
+    st: WorldState,
+    breakdown: dict[str, dict[str, float]],
+    wanted: str | None,
+    window: render.Page,
+    limit: int,
+    notes: list[str],
+) -> str:
     """One row per container or crate holding the item, or holding anything at all."""
     g = st.game
     regions = regions_mod.load_regions()
     holdings = st.inventory.holdings(wanted)
     headers = ("amount" if wanted is not None else "holds", "place", "region", "x,y(m)", "source")
-    rows = []
+    rows: list[tuple[str, ...]] = []
     for h in window.of(holdings):
         region, at = _place(regions, h)
         rows.append(
@@ -99,7 +116,7 @@ def _stock_places(st, breakdown: dict, wanted, window: render.Page, limit, notes
             )
         )
 
-    total = breakdown.get(wanted, {}) if wanted is not None else {}
+    total: dict[str, float] = breakdown.get(wanted, {}) if wanted is not None else {}
     summary = f"# {st.age_note}\n# " + (
         render.kv(
             [
@@ -153,7 +170,7 @@ def stock(
     st = app.load_world(save, world, as_of)
     g = st.game
 
-    wanted = None
+    wanted: str | None = None
     if item is not None:
         wanted = app.resolve_item_id(item)
         if wanted is None:
@@ -218,7 +235,7 @@ def storage(
     st = app.load_world(save, world, as_of)
     g = st.game
 
-    wanted = None
+    wanted: str | None = None
     if item is not None:
         wanted = app.resolve_item_id(item)
         if wanted is None:
@@ -229,7 +246,8 @@ def storage(
     if want_kind not in (None, "solid", "fluid"):
         return f"! unknown container_kind {container_kind!r}. Choose from: solid, fluid, all"
 
-    origin, at = None, ""
+    origin: tuple[float, float] | None = None
+    at = ""
     if near is not None:
         try:
             origin, at = resolve_place(st, near)
@@ -259,7 +277,14 @@ def storage(
     )
 
 
-def _shown_containers(containers, want_kind, wanted, empty: bool, origin, radius_m: float):
+def _shown_containers(
+    containers: list[Holding],
+    want_kind: str | None,
+    wanted: str | None,
+    empty: bool,
+    origin: tuple[float, float] | None,
+    radius_m: float,
+) -> list[Holding]:
     """The containers the filters keep: kind, item (fullest first), non-empty, in reach."""
     hits = [h for h in containers if want_kind is None or h.kind == want_kind]
     if wanted is not None:
@@ -278,7 +303,7 @@ def _shown_containers(containers, want_kind, wanted, empty: bool, origin, radius
     return hits
 
 
-def _storage_summary(st, containers, shown: int, scope: str) -> str:
+def _storage_summary(st: WorldState, containers: list[Holding], shown: int, scope: str) -> str:
     solids = [h for h in containers if h.kind == "solid"]
     fluids = [h for h in containers if h.kind == "fluid"]
     return (
@@ -292,7 +317,7 @@ def _storage_summary(st, containers, shown: int, scope: str) -> str:
     )
 
 
-def _container_row(g, regions, holding) -> tuple:
+def _container_row(g: GameData, regions: RegionMap, holding: Holding) -> tuple[str, ...]:
     region, where = _place(regions, holding)
     fill, used = _fullness(holding)
     return (
@@ -305,7 +330,7 @@ def _container_row(g, regions, holding) -> tuple:
     )
 
 
-def _storage_notes(containers, hits, empty: bool) -> list[str]:
+def _storage_notes(containers: list[Holding], hits: list[Holding], empty: bool) -> list[str]:
     notes = [
         (
             "fill is used slots over slots for a container (each item at its own stack size) "
@@ -353,7 +378,7 @@ def crates(
     holdings = [h for h in st.inventory.holdings() if h.source == "crate"]
     regions = regions_mod.load_regions()
     window = render.page(limit, offset, default=25)
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for h in window.of(holdings):
         region, at = _place(regions, h)
         z = "-" if h.pos is None else f"{h.pos[2] / 100:.0f}"

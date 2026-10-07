@@ -8,8 +8,12 @@ from pydantic import Field
 
 from .....domain.factories import candidates, cohere, naming
 from .....domain.factories import select as machine_select
+from .....domain.factories.candidates import Candidate
+from .....domain.factories.labels import LabelStore
 from .....domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from .....domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
+from .....domain.factories.structure import Slab, Structures
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf, Limit
@@ -25,7 +29,7 @@ CANDIDATE_COLUMNS = ("src", "n", "x,y(m)", "spread", "named", "labels", "makes")
 FACTORY_MAP_VIEWS = ("candidates", "named", "slabs", "unlabelled", "all")
 
 
-def _z_range(slab) -> str:
+def _z_range(slab: Slab) -> str:
     """A slab's elevation in metres -- both ends of it where they differ.
 
     A platform poured over three storeys stands at both heights, and a plan that reads only
@@ -35,7 +39,7 @@ def _z_range(slab) -> str:
     return f"{lo:.0f}" if round(lo) == round(hi) else f"{lo:.0f}..{hi:.0f}"
 
 
-def _slab_shape(slab) -> tuple:
+def _slab_shape(slab: Slab) -> tuple[str, str, int]:
     """Bounding box, elevation and storeys -- what a build plan needs past the centre."""
     return (
         (
@@ -47,7 +51,7 @@ def _slab_shape(slab) -> tuple:
     )
 
 
-def _empty_platform(select: list[str], structures) -> str:
+def _empty_platform(select: list[str], structures: Structures) -> str:
     """The platform a lone ``slab:`` term names, when nothing stands on it yet.
 
     An empty string when the selector is anything else, so the caller's own "matched no
@@ -77,8 +81,10 @@ def _empty_platform(select: list[str], structures) -> str:
     )
 
 
-def _candidate_row(st, candidate, store, labelled: set[str]) -> tuple:
-    named = {store.label_for(m).name for m in candidate.machines if store.label_for(m)}
+def _candidate_row(
+    st: WorldState, candidate: Candidate, store: LabelStore, labelled: set[str]
+) -> tuple[object, ...]:
+    named = {lbl.name for m in candidate.machines if (lbl := store.label_for(m))}
     covered = sum(1 for m in candidate.machines if m in labelled)
     return (
         candidate.source,
@@ -91,10 +97,10 @@ def _candidate_row(st, candidate, store, labelled: set[str]) -> tuple:
     )
 
 
-def _named_section(st, machines: set[str]) -> tuple[list[str], list[str]]:
+def _named_section(st: WorldState, machines: set[str]) -> tuple[list[str], list[str]]:
     """The labelled factories with how much of each still stands, and their review notes."""
     store = st.labels
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for label in sorted(store.labels, key=lambda x: -len(x.anchors)):
         alive = set(label.anchors) & machines
         candidate = candidates.describe(sorted(alive), st.graph, st.game, st.projection, "label")
@@ -120,11 +126,17 @@ def _named_section(st, machines: set[str]) -> tuple[list[str], list[str]]:
     return chunks, notes
 
 
-def _candidate_sections(st, islands, belts, labelled: set[str], window: render.Page) -> list[str]:
+def _candidate_sections(
+    st: WorldState,
+    islands: list[Candidate],
+    belts: list[Candidate],
+    labelled: set[str],
+    window: render.Page,
+) -> list[str]:
     """Power islands, then the belt components no label covers yet."""
     store = st.labels
     fresh = [c for c in belts if not store.covers(c.machines)]
-    out = []
+    out: list[str] = []
     for title, found in (
         ("## power islands (bases)", islands),
         ("## belt components (lines), unnamed first", fresh),
@@ -139,7 +151,7 @@ def _candidate_sections(st, islands, belts, labelled: set[str], window: render.P
     return out
 
 
-def _bare_platforms_section(structures, window: render.Page) -> tuple[str, list]:
+def _bare_platforms_section(structures: Structures, window: render.Page) -> tuple[str, list[Slab]]:
     """The platforms no machine stands on, and the listed ones shown on this page."""
     occupied = set(structures.slab_of.values())
     bare = [s for s in structures.slabs if s.index not in occupied]
@@ -174,11 +186,13 @@ def _bare_platforms_section(structures, window: render.Page) -> tuple[str, list]
     return f"{header}\n{body}", window.of(listed)
 
 
-def _slab_sections(st, machines: set[str], window: render.Page) -> tuple[list[str], list[str]]:
+def _slab_sections(
+    st: WorldState, machines: set[str], window: render.Page
+) -> tuple[list[str], list[str]]:
     """Foundation slabs carrying machines, the bare platforms beside them, and their notes."""
     structures, store = st.structures, st.labels
     groups = structures.groups()
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for group in window.of(groups):
         index = structures.slab_of[group[0]]
         slab = structures.slabs[index]
@@ -221,7 +235,7 @@ def _slab_sections(st, machines: set[str], window: render.Page) -> tuple[list[st
     )
     bare_table, bare_shown = _bare_platforms_section(structures, window)
 
-    notes = []
+    notes: list[str] = []
     shown = [structures.slabs[structures.slab_of[g[0]]] for g in window.of(groups)] + bare_shown
     if shown:
         notes.append(
@@ -243,7 +257,7 @@ def _slab_sections(st, machines: set[str], window: render.Page) -> tuple[list[st
     return [slabs_table, bare_table], notes
 
 
-def _unlabelled_section(st, labelled: set[str]) -> list[str]:
+def _unlabelled_section(st: WorldState, labelled: set[str]) -> list[str]:
     """What no label covers, by what it makes."""
     loose = candidates.unassigned(st.graph, labelled)
     if not loose:
@@ -344,7 +358,7 @@ def propose_factories(
         else cohere.propose(st.graph, st.game, st.projection, st.structures, max_span_m=max_span_m)
     )
     window = render.page(limit, offset)
-    rows = []
+    rows: list[tuple[object, ...]] = []
     shown = 0
     suggested = naming.proposal_names(st, proposals)
     for k, proposal in enumerate(proposals):

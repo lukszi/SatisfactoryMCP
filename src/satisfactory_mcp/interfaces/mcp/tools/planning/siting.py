@@ -5,13 +5,17 @@ from __future__ import annotations
 import dataclasses
 from typing import Annotated
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
+from .....core.gamedata.model import GameData
+from .....core.jsontypes import JsonObject
 from .....domain.planning import siting as siting_mod
 from .....domain.planning.siting import preview as site_preview
+from .....domain.planning.solver.model import Solution
 from .....domain.planning.stored.planlog import PlanLog, Pushed
+from .....domain.planning.stored.store import Plan
 from .....domain.spatial import heightfield, maplink, regions
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from .....presenters.text.site_preview import render_site_preview
 from ... import app
@@ -49,7 +53,7 @@ def site_plan(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
-    ctx: Context | None = None,
+    ctx: app.ToolContext | None = None,
 ) -> str:
     """Record, update or clear WHERE a stored plan stands. Nothing is re-solved.
 
@@ -70,7 +74,7 @@ def site_plan(
     st = app.load_world(save, world, as_of)
     stored = find_stored_plan(st, plan)
 
-    def push(value: dict | None, nothing: str) -> tuple[Pushed | None, str]:
+    def push(value: JsonObject | None, nothing: str) -> tuple[Pushed | None, str]:
         return write(
             stored.name,
             nothing,
@@ -109,6 +113,7 @@ def site_plan(
         if at:
             sit = _siting_at(g, st, stored, existing, at, yaw_deg, footprint, when=when)
         else:
+            assert existing is not None, "a plan with no siting needs at=, refused above"
             width, depth, source = existing.width_m, existing.depth_m, existing.source
             if footprint:
                 width, depth = siting_mod.parse_footprint(footprint)
@@ -162,33 +167,54 @@ def site_plan(
     )
 
 
-def _siting_at(g, st, stored, existing, at: str, yaw_deg, footprint: str, **extra):
+def _siting_at(
+    g: GameData,
+    st: WorldState,
+    stored: Plan,
+    existing: siting_mod.Siting | None,
+    at: str,
+    yaw_deg: float | None,
+    footprint: str,
+    *,
+    when: str = "",
+    solution: Solution | None = None,
+) -> siting_mod.Siting:
     """A siting at ``at``, keeping the stored yaw and footprint where the call left them out."""
-    keep = existing is not None and existing.has_footprint
+    kept = existing if existing is not None and existing.has_footprint else None
     return siting_mod.build_siting(
         g,
         st,
         at=at,
         yaw_deg=yaw_deg if yaw_deg is not None else (existing.yaw_deg if existing else 0.0),
-        footprint=footprint or (f"{existing.width_m:g}x{existing.depth_m:g}" if keep else ""),
+        footprint=footprint or (f"{kept.width_m:g}x{kept.depth_m:g}" if kept else ""),
         plan_kwargs=stored.kwargs(),
-        **extra,
+        when=when,
+        solution=solution,
     )
 
 
 def _snapped(sit: siting_mod.Siting) -> siting_mod.Siting:
     """``sit`` on the shared ``site_snap`` lattice, as the page's drag places pads."""
     mode, _note = app.shared_setting("site_snap")
-    x, y, yaw = siting_mod.snap(sit.x_m, sit.y_m, sit.yaw_deg, sit.width_m, sit.depth_m, mode)
+    x, y, yaw = siting_mod.snap(sit.x_m, sit.y_m, sit.yaw_deg, sit.width_m, sit.depth_m, str(mode))
     return dataclasses.replace(sit, x_m=x, y_m=y, yaw_deg=yaw)
 
 
-def _site_preview(g, st, stored, existing, at: str, yaw_deg, footprint: str, ctx) -> str:
+def _site_preview(
+    g: GameData,
+    st: WorldState,
+    stored: Plan,
+    existing: siting_mod.Siting | None,
+    at: str,
+    yaw_deg: float | None,
+    footprint: str,
+    ctx: app.ToolContext | None,
+) -> str:
     """``site_plan(preview=True)``: the page's preview in words, and a ghost pad there."""
     state = world_plan_log(st).state(stored.key)
     biomass, _unread = app.shared_setting("biomass")
     headroom, _unread = app.shared_setting("stage_headroom")
-    sess = site_preview.open_session(g, st, state, biomass=biomass, default=headroom)
+    sess = site_preview.open_session(g, st, state, biomass=bool(biomass), default=str(headroom))
     try:
         if at:
             solution = sess.prepared.solution if not sess.failure else None

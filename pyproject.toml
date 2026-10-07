@@ -190,6 +190,8 @@ strict = [
     "src/satisfactory_mcp/domain/world/plumbing.py",
     "src/satisfactory_mcp/domain/world/timeline.py",
     "src/satisfactory_mcp/domain/world/water.py",
+    "src/satisfactory_mcp/interfaces/mcp",
+    "src/satisfactory_mcp/presenters",
 ]
 reportUnnecessaryTypeIgnoreComment = "error"
 

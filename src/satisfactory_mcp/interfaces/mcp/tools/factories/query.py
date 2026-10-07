@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Annotated
+from collections.abc import Callable, Iterable
+from typing import Annotated, TypeAlias
 
 from pydantic import Field
 
+from .....core.gamedata.model import GameData
 from .....domain.factories.query import ASPECTS as QUERY_ASPECTS
-from .....domain.factories.query import build_view
+from .....domain.factories.query import FactoryView, build_view
 from .....domain.factories.select import resolve_factory
 from .....domain.spatial import nodes as nodes_mod
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf, Limit
@@ -21,8 +23,11 @@ FLOW_ASPECTS = frozenset({"summary", "balance", "outputs", "inputs", "internal"}
 
 FLOW_COLUMNS = ("item", "per min", "per min (measured)", "no monitor")
 
+#: Renders one aspect of a factory as a titled section.
+Section: TypeAlias = Callable[[FactoryView, GameData, render.Page], str]
 
-def _measured_cells(view, item: str, side: str) -> tuple[str, str]:
+
+def _measured_cells(view: FactoryView, item: str, side: str) -> tuple[str, str]:
     """The measured rate for one item, and the nameplate rate no monitor can see.
 
     "?" rather than 0 when nothing readable touches the item that way: unknown and
@@ -36,9 +41,9 @@ def _measured_cells(view, item: str, side: str) -> tuple[str, str]:
     )
 
 
-def _brief(view, pairs, side: str) -> str:
+def _brief(view: FactoryView, pairs: Iterable[tuple[str, float]], side: str) -> str:
     """``Iron Plate 30/min (measured 12), ...`` for the summary's makes/needs/keeps lines."""
-    out = []
+    out: list[str] = []
     for item, rate in pairs:
         flow = view.flows[item]
         seen = (
@@ -50,7 +55,7 @@ def _brief(view, pairs, side: str) -> str:
     return ", ".join(out) or "-"
 
 
-def _summary_section(view, g, window: render.Page) -> str:
+def _summary_section(view: FactoryView, g: GameData, window: render.Page) -> str:
     head = render.kv(
         [
             ("machines", view.size),
@@ -68,7 +73,7 @@ def _summary_section(view, g, window: render.Page) -> str:
     return f"## summary\n{head}\nmakes: {makes}\nneeds: {needs}\nkeeps: {keeps}"
 
 
-def _balance_section(view, g, window: render.Page) -> str:
+def _balance_section(view: FactoryView, g: GameData, window: render.Page) -> str:
     rows = [
         (
             r["item"],
@@ -85,11 +90,11 @@ def _balance_section(view, g, window: render.Page) -> str:
     )
 
 
-def _flow_section(aspect: str) -> Callable:
+def _flow_section(aspect: str) -> Section:
     """The ``outputs`` or ``inputs`` section: net surplus, or net deficit."""
     side = "produced" if aspect == "outputs" else "consumed"
 
-    def section(view, g, window: render.Page) -> str:
+    def section(view: FactoryView, g: GameData, window: render.Page) -> str:
         data = view.outputs() if aspect == "outputs" else view.inputs()
         rows = [(k, render.num(v), *_measured_cells(view, k, side)) for k, v in window.of(data)]
         return f"## {aspect}\n" + render.table(
@@ -99,7 +104,7 @@ def _flow_section(aspect: str) -> Callable:
     return section
 
 
-def _internal_section(view, g, window: render.Page) -> str:
+def _internal_section(view: FactoryView, g: GameData, window: render.Page) -> str:
     data = view.internal()
     body = (
         render.table(
@@ -119,7 +124,7 @@ def _internal_section(view, g, window: render.Page) -> str:
     )
 
 
-def _machines_section(view, g, window: render.Page) -> str:
+def _machines_section(view: FactoryView, g: GameData, window: render.Page) -> str:
     rows = [
         (
             m.instance,
@@ -136,18 +141,18 @@ def _machines_section(view, g, window: render.Page) -> str:
     )
 
 
-def _recipes_section(view, g, window: render.Page) -> str:
+def _recipes_section(view: FactoryView, g: GameData, window: render.Page) -> str:
     return "## recipes\n" + render.paged_table(
         ("recipe", "machines"), view.recipes.most_common(), window
     )
 
 
-def _buildings_section(view, g, window: render.Page) -> str:
+def _buildings_section(view: FactoryView, g: GameData, window: render.Page) -> str:
     rows = [(g.building_name(cls) or cls, count) for cls, count in view.buildings.most_common()]
     return "## buildings\n" + render.paged_table(("building", "count"), rows, window)
 
 
-def _power_section(view, g, window: render.Page) -> str:
+def _power_section(view: FactoryView, g: GameData, window: render.Page) -> str:
     return "## power\n" + render.kv(
         [
             ("draw (nameplate)", f"{view.draw_mw:.1f} MW"),
@@ -159,7 +164,7 @@ def _power_section(view, g, window: render.Page) -> str:
     )
 
 
-def _nodes_section(view, g, window: render.Page) -> str:
+def _nodes_section(view: FactoryView, g: GameData, window: render.Page) -> str:
     rows = [
         (
             node,
@@ -180,7 +185,7 @@ def _nodes_section(view, g, window: render.Page) -> str:
     )
 
 
-def _links_section(view, g, window: render.Page) -> str:
+def _links_section(view: FactoryView, g: GameData, window: render.Page) -> str:
     return (
         "## material links across the boundary\n"
         "# machines reached on the far side, not an edge count -- asymmetric by\n"
@@ -194,13 +199,13 @@ def _links_section(view, g, window: render.Page) -> str:
     )
 
 
-def _issues_section(view, g, window: render.Page) -> str:
+def _issues_section(view: FactoryView, g: GameData, window: render.Page) -> str:
     body = render.bullets(window.of(view.issues)) if view.issues else "none"
     return f"## issues ({len(view.issues)})\n{body}"
 
 
 #: One section renderer per aspect, in the vocabulary ``show`` takes.
-_ASPECT_SECTIONS: dict[str, Callable] = {
+_ASPECT_SECTIONS: dict[str, Section] = {
     "summary": _summary_section,
     "balance": _balance_section,
     "outputs": _flow_section("outputs"),
@@ -216,7 +221,7 @@ _ASPECT_SECTIONS: dict[str, Callable] = {
 }
 
 
-def _query_notes(st, view, asked: list[str]) -> list[str]:
+def _query_notes(st: WorldState, view: FactoryView, asked: list[str]) -> list[str]:
     """What the answer's numbers mean: node identity, the measured window, unlabelled links."""
     # Identity only: this tool quotes no coordinate, so a renamed node is its one exposure.
     notes = list(

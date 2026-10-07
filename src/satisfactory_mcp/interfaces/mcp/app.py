@@ -11,8 +11,10 @@ import functools
 import os
 from collections.abc import Callable, Mapping, Sequence
 from functools import lru_cache
+from typing import TYPE_CHECKING, ParamSpec, TypeAlias
 
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.session import ServerSession
 from mcp.types import ContentBlock, TextContent
 
 from ... import config
@@ -32,6 +34,14 @@ from ...domain.session import journal
 from ...domain.world import pin
 from ...domain.world.state import WorldState, load_state
 from ...presenters.text import primitives as render
+
+# The context a tool asks for; bare at runtime, where FastMCP reads it (docs/mcp-surface.md).
+if TYPE_CHECKING:
+    ToolContext: TypeAlias = Context[ServerSession, object, object]
+else:
+    ToolContext = Context
+
+P = ParamSpec("P")
 
 INSTRUCTIONS = (
     "Plans are versioned: read one (list_plans name=) and pass its version as base_rev when "
@@ -93,16 +103,16 @@ class Refusal(Exception):
     """A tool's answer that ends the call early; ``tool`` returns its text verbatim."""
 
 
-def tool(**kwargs) -> Callable[[Callable[..., str]], Callable[..., str]]:
+def tool() -> Callable[[Callable[P, str]], Callable[P, str]]:
     """Register a text tool on ``mcp``, answering a ``Refusal`` or ``SelectorError`` as text.
 
     ``structured_output=False`` because a ``-> str`` tool otherwise echoes its whole payload
     into ``structuredContent`` (docs/mcp-surface.md §10).
     """
 
-    def register(fn: Callable[..., str]) -> Callable[..., str]:
+    def register(fn: Callable[P, str]) -> Callable[P, str]:
         @functools.wraps(fn)
-        def answer(*args, **kw) -> str:
+        def answer(*args: P.args, **kw: P.kwargs) -> str:
             try:
                 return fn(*args, **kw)
             except Refusal as exc:
@@ -110,13 +120,13 @@ def tool(**kwargs) -> Callable[[Callable[..., str]], Callable[..., str]]:
             except SelectorError as exc:
                 return f"! {exc}"
 
-        mcp.tool(structured_output=False, **kwargs)(answer)
+        mcp.tool(structured_output=False)(answer)
         return answer
 
     return register
 
 
-def shared_setting(key: str) -> tuple[object, str]:
+def shared_setting(key: str) -> tuple[settings.SettingValue, str]:
     """A shared setting's value, and a note when the file could not be read (the default)."""
     try:
         return settings.value(key), ""
@@ -128,7 +138,8 @@ def biomass_setting(biomass: bool | None) -> tuple[bool, str]:
     """``biomass`` as the caller gave it, else the shared setting and its unread note."""
     if biomass is not None:
         return biomass, ""
-    return shared_setting("biomass")
+    stored, note = shared_setting("biomass")
+    return bool(stored), note
 
 
 @lru_cache(maxsize=1)
@@ -167,7 +178,7 @@ def load_world_or_none(
         return None, str(exc.__cause__ if exc.__cause__ is not None else exc)
 
 
-def save_token(st) -> str:
+def save_token(st: WorldState) -> str:
     """The token naming ``st``'s world state, or '' when it carries none."""
     try:
         return st.token
@@ -175,17 +186,24 @@ def save_token(st) -> str:
         return ""
 
 
-def actor(ctx: Context | None) -> Actor:
+def actor(ctx: ToolContext | None) -> Actor:
     """Who is writing: this process, as the client named itself at ``initialize``."""
     try:
-        client = ctx.session.client_params.clientInfo.name or ""
+        # ``session`` raises ValueError outside a request.
+        params = ctx.session.client_params if ctx is not None else None
+        client = (params.clientInfo.name or "") if params is not None else ""
     except (AttributeError, ValueError):
         client = ""
     return Actor("chat", client, os.getpid())
 
 
 def journal_world_find(
-    st, ctx: Context | None, tool: str, view: str, params: dict, text: str
+    st: WorldState,
+    ctx: ToolContext | None,
+    tool: str,
+    view: str,
+    params: Mapping[str, object],
+    text: str,
 ) -> None:
     """Journal a finder call, so a page that follows chat opens the same World view."""
     kept = {k: str(v) for k, v in params.items() if v not in (None, "")}
@@ -249,7 +267,7 @@ def integrity_notes(projection: Projection | None, data: GameData) -> list[str]:
     Both channels collect drift instead of raising, which is only a good trade while somebody
     is told: unread, a game update reads as a quietly smaller world. ``None`` is no save.
     """
-    notes = []
+    notes: list[str] = []
     for channel, found in (
         ("this save", list(projection.get("warnings") or []) if projection else []),
         ("the game's own data", list(data.warnings)),

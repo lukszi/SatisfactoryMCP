@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from ...core.text import plural
 from ...domain.planning.siting.preview import WATER_SEARCH_M
+from ...domain.planning.siting.views import SitePreviewResponse
 
 __all__ = ["render_site_preview"]
 
 
-def _terrain_lines(out: dict) -> list[str]:
+def _terrain_lines(out: SitePreviewResponse) -> list[str]:
     t = out["terrain"]
     if t is None:
         return [f"terrain: {out['terrain_note']}"]
@@ -37,7 +38,7 @@ def _terrain_lines(out: dict) -> list[str]:
     return lines
 
 
-def _plan_lines(out: dict) -> list[str]:
+def _plan_lines(out: SitePreviewResponse) -> list[str]:
     on_pad = f"{out['on_pad']} {plural('machine', out['on_pad'])}"
     lines = [f"on the pad now: {on_pad} (plan: {out['planned']}), by class only"]
     if out["trunks"]:
@@ -66,7 +67,7 @@ def _plan_lines(out: dict) -> list[str]:
     return lines
 
 
-def render_site_preview(out: dict) -> str:
+def render_site_preview(out: SitePreviewResponse) -> str:
     """The preview ``site_preview.preview`` returned, one section a line."""
     lines = [f"where: {out['region'] or 'off any named region'}"]
     if not out["in_map"]:

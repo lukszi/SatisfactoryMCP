@@ -15,9 +15,11 @@ restated per formatter:
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from typing import NamedTuple
+from typing import NamedTuple, TypeVar, overload
 
 from ...core.text import num, plural
+
+T = TypeVar("T")
 
 __all__ = [
     "NARROW_HINT",
@@ -171,7 +173,11 @@ class Page(NamedTuple):
     end: int
     size: int
 
-    def of(self, rows: Sequence) -> Sequence:
+    @overload
+    def of(self, rows: list[T]) -> list[T]: ...
+    @overload
+    def of(self, rows: Sequence[T]) -> Sequence[T]: ...
+    def of(self, rows: Sequence[T]) -> Sequence[T]:
         return rows[self.start : self.end]
 
 
@@ -183,7 +189,7 @@ def page(limit: int | None, offset: int, default: int = 10) -> Page:
 
 
 def paged_table(
-    headers: Sequence[str], rows: Sequence, window: Page, total: int | None = None
+    headers: Sequence[str], rows: Sequence[Sequence[object]], window: Page, total: int | None = None
 ) -> str:
     """``table`` over the rows ``window`` selects, counting ``total`` (default: all rows)."""
     return table(

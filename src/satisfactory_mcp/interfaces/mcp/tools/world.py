@@ -19,7 +19,7 @@ from .. import app
 from ..params import AsOf, Biomass, Limit
 
 
-def _generator_rows(power: PowerReport) -> list[tuple]:
+def _generator_rows(power: PowerReport) -> list[tuple[object, ...]]:
     """One row per generator kind, biggest output first."""
     return [
         (v["name"], v["count"], render.num(v["mw"]))
@@ -40,7 +40,7 @@ def list_worlds() -> str:
         return f"could not scan saves: {exc}"
     if not worlds and not unsupported:
         return f"no saves found under {config.saves_root()}"
-    rows = []
+    rows: list[tuple[object, ...]] = []
     autosave_newest = False
     for w in worlds:
         newest = w.newest
@@ -56,7 +56,7 @@ def list_worlds() -> str:
                 w.world_id,
             )
         )
-    notes = []
+    notes: list[str] = []
     if autosave_newest:
         notes.append(
             "a newest file above is an autosave -- the game writes autosaves "
@@ -162,9 +162,7 @@ def unlocked_recipes(
     picks = st.unlocked_alternates if only_alternates else st.unlocked_recipes("part")
     picks = sorted(picks, key=lambda r: r.name)
     window = render.page(limit, offset, default=25)
-    rows = [
-        (r.name, st.game.machine(r).name if st.game.machine(r) else "-") for r in window.of(picks)
-    ]
+    rows = [(r.name, b.name if (b := st.game.machine(r)) else "-") for r in window.of(picks)]
     return render.envelope(
         f"# {st.age_note}\n"
         f"# {len(st.unlocked_alternates)} of {len(st.game.alternates())} alternates unlocked; "
@@ -271,7 +269,7 @@ def factory_sites(
     g = st.game
     sites = st.sites()
     window = render.page(limit, offset)
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for site in window.of(sites):
         top = sorted(site["buildings"].items(), key=lambda kv: -kv[1])[:4]
         x_m, y_m, z_m = (int(v / 100) for v in site["centroid"])

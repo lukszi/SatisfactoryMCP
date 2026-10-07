@@ -6,8 +6,11 @@ from typing import Annotated
 
 from pydantic import Field
 
+from .....core.gamedata.model import GameData
 from .....core.saveio import ports
-from .....domain.factories.trace import power_at_risk, resolve_seeds, trace
+from .....domain.factories.trace import Trace, power_at_risk, resolve_seeds, trace
+from .....domain.world.logistics import Link
+from .....domain.world.state import WorldState
 from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf, Limit
@@ -16,7 +19,7 @@ from ...params import AsOf, Limit
 VIA_NAMED = 6
 
 
-def _via(crossed: list) -> str:
+def _via(crossed: list[Link]) -> str:
     """The route a trace took, as runs rather than as the hundreds of nodes they contract.
 
     Named in the order the walk met them, so the sample is the near end of the chain rather
@@ -39,7 +42,9 @@ def _via(crossed: list) -> str:
     return out
 
 
-def _trace_notes(st, g, result, seeds, via: str) -> list[str]:
+def _trace_notes(
+    st: WorldState, g: GameData, result: Trace, seeds: list[str], via: str
+) -> list[str]:
     """How far the walk went, how direction was decided, and what power hangs off it."""
     notes = [
         (
@@ -116,7 +121,7 @@ def trace_upstream(
         return f"! unknown direction {direction!r}. Choose from: up, down"
     result = trace(st, g, seeds, way)
 
-    rows = []
+    rows: list[tuple[object, ...]] = []
     for name, group in sorted(result.by_class().items(), key=lambda kv: -len(kv[1])):
         hops = [r.hops for r in group]
         rows.append(
