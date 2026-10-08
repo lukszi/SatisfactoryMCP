@@ -41,6 +41,8 @@ export interface LightHeader {
     shadow_fill?: number;
     hz_cells?: number;
     crown_cell?: number;
+    /* Absent on a pyramid baked before each cell had a border of its edge texels. */
+    hz_gutter?: number;
   };
 }
 
@@ -79,14 +81,14 @@ in vec2 vUV; out vec4 o;
 uniform sampler2D tCol, tNrm, tHz;
 uniform vec3 uL, uSky, uSun, uF;
 uniform float uEl, uInvNorm, uAmb, uTK, uTW, uSoft, uShadowOn, uSkyOn, uW, uFloor, uKnee, uLinear;
-uniform float uFill, uRows, uCrownOn;
+uniform float uFill, uRows, uCrownOn, uGut, uIn;
 uniform int uI0, uI1, uCrown;
 float s2l(float c){ return c<=0.04045? c/12.92 : pow((c+0.055)/1.055,2.4); }
 float l2s(float c){ c=clamp(c,0.0,1.0); return c<=0.0031308? c*12.92 : 1.055*pow(c,1.0/2.4)-0.055; }
 float hz(int i){
   vec2 cell=vec2(float(i%8), float(i/8));
   vec2 uv=clamp(vUV, vec2(0.5/128.0), vec2(1.0-0.5/128.0));
-  float q=texture(tHz,(cell+uv)*vec2(0.125,1.0/uRows)).r;
+  float q=texture(tHz,(cell+uGut+uv*uIn)*vec2(0.125,1.0/uRows)).r;
   return q*q*90.0;
 }
 float horizon(){
@@ -115,7 +117,9 @@ void main(){
 
 const UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm", "uAmb",
   "uTK", "uTW", "uSoft", "uShadowOn", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1", "uFill", "uRows",
-  "uCrownOn", "uCrown"];
+  "uCrownOn", "uCrown", "uGut", "uIn"];
+/** A horizon cell's own texels a side; the pyramid's `hz_gutter` borders it. */
+const HZ_CELL_PX = 128;
 const KINDS = ["unlit", "nrm", "hz"];
 const CACHE_TILES = 120;
 const IN_FLIGHT = 8;
@@ -307,6 +311,9 @@ function uploadLightUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, lig
   gl.uniform1f(uniforms.uRows!, Math.ceil((model.hz_cells || model.dirs) / 8));
   gl.uniform1i(uniforms.uCrown!, model.crown_cell || 0);
   gl.uniform1f(uniforms.uCrownOn!, params.crowns && model.crown_cell ? 1 : 0);
+  const stride = HZ_CELL_PX + 2 * (model.hz_gutter || 0);
+  gl.uniform1f(uniforms.uGut!, (model.hz_gutter || 0) / stride);
+  gl.uniform1f(uniforms.uIn!, HZ_CELL_PX / stride);
 }
 
 /* The uniforms that follow the sun: its direction, the normalisation, and which two of the

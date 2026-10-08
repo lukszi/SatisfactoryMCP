@@ -30,8 +30,8 @@ from mapgen.tiles.cutter import TileStream
 
 SIZE = 512
 
-#: The digest of ``_pinned_bake`` at each ``LIGHT_VERSION``.
-BAKE_PINS = {2: "sha256:191e3e7b848ce88fba0f1ffa4f1325b2d49c0840789c4a5381d5298d00a2e5fd"}
+#: The digest of ``_pinned_bake`` at each ``LIGHT_VERSION`` since it read the horizon tiles.
+BAKE_PINS = {3: "sha256:230fc6638a0e4470e89f8382186f24974292c48f1306d0492f58028feac1dc68"}
 
 Planes = tuple[np.ndarray, np.ndarray]
 
@@ -263,7 +263,7 @@ def _pinned_planes() -> Planes:
 
 
 def _pinned_bake(tmp_path: Path) -> str:
-    """The bake's byte planes and lossless tiles for one fixed surface and crown."""
+    """The bake's byte planes and its tiles' pixels for one fixed surface and crown."""
     surface = Surface(tmp_path / "work", SIZE)
     _put(surface, _pinned_planes())
     bake_light(surface, tmp_path / "out", 1, _occluder(400.0), progress=False,
@@ -271,7 +271,7 @@ def _pinned_bake(tmp_path: Path) -> str:
     digest = hashlib.sha256()
     for name in ("terms", "svfh", "landh", "hzq"):
         digest.update(np.ascontiguousarray(work_array(surface.directory, name, np.uint8, "r")))
-    for tile in sorted((tmp_path / "out" / "light" / "tiles").rglob("*.nrm.webp")):
+    for tile in sorted((tmp_path / "out" / "light" / "tiles").rglob("*.webp")):
         with Image.open(tile) as image:
             digest.update(np.asarray(image.convert("RGBA")).tobytes())
     surface.close()

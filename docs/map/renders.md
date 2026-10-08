@@ -1720,6 +1720,11 @@ bytes either way.
   every reader of a horizon rounds it to a byte, where the two agree.
 - **Spans** take numba's span march: the CUDA march is the plain one, which a block with no
   span in its window runs.
+- **The coarser levels' refold** (`lighting/refold.cu`, 2026-10-08, section 29 "Coarser
+  levels") runs on the device too, a thread a texel and direction, in the light processes. The
+  run's own process refolds the coarser levels with the numpy reference, the same bits, so it
+  still opens no CUDA context. There is no numba twin: off the GPU the reference runs, and a
+  device out of memory falls back to it.
 - **Memory.** A call uploads its rasters and the steps, marches, reads the result back and
   hands the device memory back. One the device has no memory for runs numba's kernel, with
   the same bits. A light process with the GPU imports CuPy and opens a CUDA context: 0.65 GB
