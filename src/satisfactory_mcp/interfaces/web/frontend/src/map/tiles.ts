@@ -12,8 +12,9 @@
 
 import { tilePath } from "../api/client";
 import { onModePick, showModes } from "./layercontrol/mode-picker";
+import { showParts } from "./layercontrol/part-picker";
 import { L } from "./leaflet";
-import { makeLitLayer, parseLight, webglReady } from "./litlayer";
+import { castsTreeShadows, makeLitLayer, parseLight, webglReady } from "./litlayer";
 import { fetchMapRegistry, mapTypeAxes, mapRegistry, onMapRegistry, staleReasons, staleLabel } from "../app/map-types";
 import { boundsOfBbox, MAP_SHEET_PX, MAP_SQUARE_M, map, writeHash } from "./map";
 import { applyRegionDefaultForMode, updateRegionBlend } from "./regions";
@@ -27,6 +28,7 @@ import type { BboxM } from "./geometry";
 import type { ModeChoice } from "./layercontrol/mode-picker";
 import type { MapTone } from "./map-tone";
 import type { BaseMode } from "../app/state";
+import type { LightControls } from "./suncontrol";
 
 /** One base-map mode: a radio in the control, and at most one layer on the map. */
 interface ModeSpec {
@@ -154,10 +156,10 @@ export function servableMode(raw: string | undefined): BaseMode | null {
  * out not to draw, which `modeFailed` treats as the same thing. */
 let layerFactories: Partial<Record<BaseMode, () => BaseLayer>> = {};
 
-/** A built base layer, and whether it is lit live (which is what shows the sun control). */
+/** A built base layer, and its light's controls: null for a layer without a light. */
 interface BaseLayer {
   layer: L.Layer;
-  lit: boolean;
+  light: LightControls | null;
 }
 
 /** Why a mode cannot be picked, when the reason is not simply "never generated". */
@@ -322,6 +324,7 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
   const light = parseLight(response.headers.get("X-Map-Light"));
 
   return function (): BaseLayer {
+    const trees = !!light && castsTreeShadows(light);
     if (light && webglReady() && !litOff[spec.key]) {
       try {
         const lit = makeLitLayer(spec.typeId, light, function (why) {
@@ -330,7 +333,7 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
           fail(spec.label + ": " + why + "; showing it with the default sun baked in");
           if (state.mode === spec.key) showBaseMode(spec.key, false);
         });
-        return { layer: lit, lit: true };
+        return { layer: lit, light: { trees: trees, off: "" } };
       } catch (ignored) {
         litOff[spec.key] = "WebGL would not start";
       }
@@ -364,7 +367,8 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
         spec.label + " tiles: the pyramid is there but a tile would not load; showing plain instead"
       );
     });
-    return { layer: tiles, lit: false };
+    const off = "live light off: " + (litOff[spec.key] || "needs WebGL2");
+    return { layer: tiles, light: light ? { trees: trees, off: off } : null };
   };
 }
 
@@ -384,7 +388,7 @@ function overlayMaker(spec: ModeSpec, response: Response): () => BaseLayer {
         "map image: data/local/map.png exists but could not be decoded; showing plain instead"
       );
     });
-    return { layer: image, lit: false };
+    return { layer: image, light: null };
   };
 }
 
@@ -457,14 +461,15 @@ function showBaseMode(key: BaseMode, recordInHash: boolean): void {
     baseLayer = null;
   }
   const factory = layerFactories[mode];
-  let lit = false;
+  let light: LightControls | null = null;
   if (factory) {
     const built = factory();
     baseLayer = built.layer;
-    lit = built.lit;
+    light = built.light;
     baseLayer.addTo(map);
   }
-  showSunControl(lit);
+  showSunControl(light);
+  showParts(light ? light.off : null);
   state.mode = mode;
   state.imagery = !!baseLayer;
   setMapTone(toneOf(mode));

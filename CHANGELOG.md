@@ -59,6 +59,13 @@ Planned as 0.2.0.
 - Map generator: the render's raster caches are stored compressed, 0.93 GB instead of
   18.5 GB at full size, and read without inflating; the tiles are the same bytes.
   `python -m mapgen compress-cache` converts caches kept before.
+- Web map: a map drawn with live light gets a *shade* checkbox under the base-map radios; off,
+  the map shows its flat colour. The sun panel splits *shadows* into *terrain shadows* and
+  *tree shadows* (the second only on a map that draws the trees) and adds a *hillshade only*
+  button: the relief with no cast shadows and no sky light. All are kept in Settings → map.
+  The light's controls show on every map that has a light, greyed with the reason where it is
+  drawn baked, such as without WebGL2. Tree shadows with terrain shadows off miss the ones that
+  fall inside terrain shade, until a later render stores them.
 
 ### Changed
 

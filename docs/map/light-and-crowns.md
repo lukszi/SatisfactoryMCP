@@ -597,15 +597,46 @@ The z0 probe's `X-Map-Light` header carries the shader's numbers; the layer's `p
 switches the crown cells on, and a pyramid without `hz_cells` reads as the old 8 × 4 atlas
 with no fill. A test holds the shader to the Python model's constants. Without WebGL2, or when the
 context or the tiles fail, the layer falls back to the baked `tiles/` with a toast. Settings →
-map holds the default sun (game noon, 09:00, 16:00 or map north-west) and the shadow and sky
-switches. The sun button on the map opens a time-of-day slider on the game's path, the
-presets, the switches and, under "advanced", a free compass with azimuth and elevation. The
-button moves the sun for the visit; Settings keeps the default.
+map holds the default sun (game noon, 09:00, 16:00 or map north-west) and four switches:
+
+| Setting | Label | Uniform | Off |
+| --- | --- | --- | --- |
+| `mapShade` | shade | `uLightOn` | the light is 1 everywhere: the unlit colour as it is |
+| `sunShadows` | terrain shadows | `uGroundSh` | the ground's horizon cells are not read: rocks, cliffs, arches and overhangs |
+| `sunTreeShadows` | tree shadows | `uCrownSh` | the crown cells are not read; only a layer with `params.crowns` has the switch |
+| `sunSky` | sky light | `uSkyOn` | the sky view is 1 |
+
+The shader takes the horizon as `max(uGroundSh · ground, crown)`, the crown term only while
+`uCrownSh`, and scales the shadow by `max(uGroundSh, uCrownSh)`, so both off casts none and both
+on is the picture from before the split. The sun button on the map opens a time-of-day slider on
+the game's path, the presets, the three shadow and sky switches, a "hillshade only" button
+(both shadows and the sky off, the shade on, the sun where it is) and, under "advanced", a free
+compass with azimuth and elevation. The button moves the sun for the visit; Settings keeps the
+default. The shade is a checkbox under the base-map radios instead ([page.md](page.md) §18),
+because with it off the sun button has nothing to move: the button greys out and says why.
+
+The controls show only on a base map whose probe carries `X-Map-Light`. Where the layer is
+drawn with its baked light instead, without WebGL2 or after a failure, they show greyed out
+with the reason as their tooltip.
+
+**Tree shadows without terrain shadows are incomplete.** The bake stores a crown cell only
+where the crowns' horizon stands above the ground's (`lighting/spans/bake.py`,
+`horizon_cells`), which the shader's `max` makes exact while both are on. With terrain shadows
+off, a tree's shadow that falls where a terrain shadow would also fall reads a crown cell of 0
+and is missing: the ground there is lit, with no other artefact. Elsewhere the tree shadows are
+exact, because where the terrain does not shade, the crowns' horizon is either stored or below
+the sun. The sun panel says so in a line under the switches while that mix is set. Storing the
+crown cell always removes the gap; that changes the light's bytes, so it waits for the next
+full render.
 
 ### Open
 
 - The spans' bands on the page, so a sun off the game's path shades them too.
-- The sun in the fragment, so a link carries it.
+- The sun in the fragment, so a link carries it, and the shade and shadow switches with it.
+- The crown cell stored always, so tree shadows without terrain shadows are complete (above,
+  "The page").
+- With the shade off the page still fetches the normal and horizon tiles it no longer reads,
+  four fifths or more of a tile's bytes; skipping them needs a cache per kind.
 - Faint diagonal bands at low sun from the q75 horizon encoding and the direction
   interpolation.
 - On the page a crown still takes the ground's normal and sky view, and the ground's horizon
