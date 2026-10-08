@@ -102,6 +102,7 @@ __all__ = [
     "inside_fraction",
     "load_nanite",
     "lod0_buffers",
+    "lod0_surface",
     "page_table_problems",
     "parse_render_data",
     "render_tail",
@@ -139,6 +140,9 @@ Bounds: TypeAlias = tuple[F64Grid, F64Grid]
 
 #: LOD 0 as ``(positions, triangles, max vertex)``.
 Lod0: TypeAlias = tuple[F32Grid, I64Grid, int]
+
+#: LOD 0's surface: ``(first UV set (n, 2), vertex normals (n, 3))``.
+LodSurface: TypeAlias = tuple[F32Grid, F32Grid]
 
 
 class MeshRow(TypedDict, total=False):
@@ -260,14 +264,19 @@ def _serialize_buffers(cur: Cursor, lod: Lod) -> None:
         )
 
     tangent_strip = cur.u8(), cur.u8()
-    cur.i32()  # NumTexCoords
+    uv_sets = cur.i32()
     vertex_count = cur.i32()
     cur.skip(8)  # bUseFullPrecisionUVs, bUseHighPrecisionTangentBasis
     if vertex_count != lod.vertices:
         raise ParseError(f"tangent buffer has {vertex_count} vertices, positions {lod.vertices}")
     if not tangent_strip[0] & 2:
-        cur.bulk_array()  # tangents
-        cur.bulk_array()  # texcoords
+        lod.tangent_stride, tangents, lod.tangents_at = cur.bulk_array()
+        lod.uv_stride, uvs, lod.uvs_at = cur.bulk_array()
+        # recorded only where both agree with the positions; the walk never fails on them
+        if tangents != lod.vertices or uvs != lod.vertices * uv_sets:
+            lod.tangent_stride = lod.uv_stride = 0
+        else:
+            lod.uv_sets = uv_sets
 
     colour_strip = cur.u8(), cur.u8()
     cur.skip(4)  # Stride
@@ -521,6 +530,25 @@ def lod0_buffers(tail: bytes, parsed: RenderData) -> Lod0 | None:
         -1, 3
     )
     return verts.reshape(-1, 3), indices.astype(np.int64), lod.max_vertex
+
+
+def lod0_surface(tail: bytes, parsed: RenderData) -> LodSurface | None:
+    """LOD0's first UV set and its vertex normals, or None where the walk did not find them.
+
+    A texcoord is two float32 (full precision) or two float16; a normal is the second packed
+    basis vector, four int8 (or int16 at high precision) over 127 (32767).
+    """
+    lod = parsed["lods"][0]
+    n = lod.vertices
+    if not lod.uv_sets or lod.uv_stride not in (4, 8) or lod.tangent_stride not in (8, 16):
+        return None
+    uv_dtype = "<f4" if lod.uv_stride == 8 else "<f2"
+    uvs = np.frombuffer(tail, uv_dtype, count=2 * n * lod.uv_sets, offset=lod.uvs_at)
+    uvs = uvs.reshape(n, lod.uv_sets, 2)[:, 0].astype(np.float32)
+    basis_dtype, top = ("<i2", 32767.0) if lod.tangent_stride == 16 else ("i1", 127.0)
+    basis = np.frombuffer(tail, basis_dtype, count=8 * n, offset=lod.tangents_at).reshape(n, 2, 4)
+    normals = (basis[:, 1, :3].astype(np.float32) / np.float32(top)).astype(np.float32)
+    return uvs, normals
 
 
 def _lod0_by_search(tail: bytes) -> Lod0 | None:

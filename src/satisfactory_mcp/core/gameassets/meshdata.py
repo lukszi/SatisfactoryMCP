@@ -48,6 +48,11 @@ class Lod:
     index_bytes: int = 0
     index_32bit: bool = False
     indices_at: int = 0
+    tangent_stride: int = 0
+    tangents_at: int = 0
+    uv_sets: int = 0
+    uv_stride: int = 0
+    uvs_at: int = 0
     start: int = 0
     end: int = 0
 
