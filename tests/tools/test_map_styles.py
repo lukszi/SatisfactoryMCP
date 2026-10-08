@@ -45,6 +45,7 @@ def test_the_generate_form_can_ask_for_every_style_and_no_retired_one(maps_home)
     for retired in RETIRED_STYLES.values():
         with pytest.raises(presets.PresetError, match="layers is"):
             presets.normalise("render", {"layers": [retired["layer"]], "size": 1024})
+    assert presets.normalise("render", {})["layers"] == ["terrain", "painted"], "the default"
 
 
 def test_a_restyle_is_refused_until_a_full_render_kept_the_cache(maps_home):

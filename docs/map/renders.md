@@ -42,6 +42,9 @@ The map keeps three drawn layers: `terrain`, `painted`, shown as "Satellite", an
   options only the light palette set (biome tints, the three suns, the shore stroke), and the
   terrain style's water keeps the wet band and the foam only the satellite set; the tests
   draw them with palettes of their own.
+- **Default:** a job or an estimate that names no layers draws terrain and painted, and the
+  Maps tab ticks both. Where the paint input is missing the page queues it first, so the
+  default render works on a fresh install (maps_contract.md §6.2).
 - **Ids and names:** the layer ids, map-type ids and cache tags are unchanged; only the names
   moved, `STYLES[id].name` in `core/gameassets/versions.py`. Maps already drawn in the two
   styles stay registered, listed and served until deleted, named from `RETIRED_STYLES`:

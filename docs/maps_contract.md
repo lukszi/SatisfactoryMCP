@@ -251,7 +251,7 @@ from a whitelist and every path is chosen by the server.
 
 | Preset | Command | Options |
 |---|---|---|
-| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] --light\|--no-light [--no-titan-trees] [--cache-dir data/local/maps/_cache/<S> --keep-direct] [--restyle]` | `layers` ⊆ terrain, painted, relief-dark (default terrain; a retired layer is refused); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `light` (default true, §8.1); `titan_trees`; `keep_cache`; `restyle` |
+| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] --light\|--no-light [--no-titan-trees] [--cache-dir data/local/maps/_cache/<S> --keep-direct] [--restyle]` | `layers` ⊆ terrain, painted, relief-dark (default terrain and painted; a retired layer is refused); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `light` (default true, §8.1); `titan_trees`; `keep_cache`; `restyle` |
 | `artwork` | `gen_map_image.py --game G --out-dir data/local/maps/<id> [--enhance] [--no-tiles-2x]` | `enhance` (only with a Vulkan GPU), `tiles_2x` |
 | `heightmap` | `gen_world_heightmap.py --game G --force --out-dir data/local/heightmap` | — |
 | `caves` | `… --caves --field … --caves-dir data/local/caves --force` | — |
@@ -424,17 +424,20 @@ rather than `settings.json` (shared-settings.md §1 says why).
    one red chip, with the error line and the log. A progress event redraws only this card, so
    the form keeps what was typed.
 3. **Generate a map** (folded unless there are no types): what (render, artwork, heightfield
-   inputs); one box per style from `styles` (its tone as the title); size slider (preview 1024 …
-   full 32768); arches and boulders; recipe; keep the raster cache; "palette only" when that size
-   is in `cached_sizes`; for artwork the GPU upscale with its download note, or a line saying no
-   Vulkan GPU was found; an optional name; the
+   inputs); one box per style from `styles` (its tone as the title), terrain and painted ticked;
+   size slider (preview 1024 … full 32768); arches and boulders; recipe; keep the raster cache;
+   "palette only" when that size is in `cached_sizes`; for artwork the GPU upscale with its
+   download note, or a line saying no Vulkan GPU was found; an optional name; the
    estimate line, live; **generate**, or **queue** while a job runs, disabled with the reason as
-   its title.
+   its title. A render with the painted layer and no `paint` input (`inputs[].present`) queues
+   the `paint` preset first and the render behind it, and the estimate line says so, so the
+   default works on a fresh install.
 4. **Map types**: a 64 px z0 thumbnail that opens the map on the type, the title (§3.5), id
    chip, a "default" chip, the technical name and size and folder, built date, size, the amber
    stale chip and its reason, neutral re-render and palette chips, then **set as default**,
-   **re-render** / **regenerate** (queues the heightfield first when the offer needs it, and the
-   render with `replaces`; not on a map whose layer `styles` does not list, a retired one),
+   **re-render** / **regenerate** (queues the heightfield first when the offer needs it, the
+   `paint` input for a painted map when it is missing, and the render with `replaces`; not on
+   a map whose layer `styles` does not list, a retired one),
    **rename** (inline), **in switcher**, **delete** (inline "delete X?
    size · delete · keep", disabled on the default). Rows stack under 600 px.
 5. **Inputs** (folded): heightfield, caves, rocks, paint, each with version, build and date,

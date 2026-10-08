@@ -52,8 +52,9 @@ __all__ = [
 ]
 
 RENDER_LAYERS: tuple[Layer, ...] = ("terrain", "painted", "relief-dark")
-#: What a render job draws when it names no layers: the painted one needs the paint input.
-DEFAULT_LAYERS: tuple[Layer, ...] = ("terrain",)
+#: What a render job draws when it names no layers. The painted one needs the paint input,
+#: which the page queues first where it is missing.
+DEFAULT_LAYERS: tuple[Layer, ...] = ("terrain", "painted")
 RENDER_SIZES = (1024, 2048, 4096, 8192, 16384, 32768)
 FULL_PX = 32768
 INPUT_PRESETS = ("heightmap", "caves", "rocks", "paint")

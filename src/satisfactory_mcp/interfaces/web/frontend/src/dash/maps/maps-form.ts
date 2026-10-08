@@ -7,14 +7,14 @@ import { make } from "../../kit/dom";
 import { bytes, duration } from "../../kit/format";
 import { friendlyError } from "../../kit/toast";
 import { mapRegistry } from "../../app/map-types";
-import { redraw, submit } from "./maps-actions";
+import { paintFirst, redraw, submit, submitRender } from "./maps-actions";
 
 import type { MapEstimateResponse, MapsResponse } from "../../api/shapes";
 
 const form = {
   preset: "render",
   input: "heightmap",
-  layers: { terrain: true } as Record<string, boolean>,
+  layers: { terrain: true, painted: true } as Record<string, boolean>,
   size: 4096,
   top: true,
   light: true,
@@ -87,11 +87,12 @@ function updateEstimate(line: HTMLElement, go: HTMLButtonElement, body: MapsResp
   go.disabled = !!blocked;
   go.title = blocked;
   line.textContent = "estimating…";
+  const paint = form.preset === "render" && paintFirst(body, formOptions().layers as string[]) ? " · the paint layers are built first, a few minutes more" : "";
   get<MapEstimateResponse>(("/api/maps/estimate?" + estimateQuery()) as "/api/maps/estimate")
     .then(function (cost) {
       if (serial !== estimateSerial) return;
       line.textContent =
-        "≈ " + duration(cost.seconds) + (cost.measured ? " (from the last run)" : "") + " · keeps " + bytes(cost.keep_bytes) + " · needs " + bytes(cost.needs_bytes) + " free while running · " + bytes(cost.free_bytes) + " free";
+        "≈ " + duration(cost.seconds) + (cost.measured ? " (from the last run)" : "") + " · keeps " + bytes(cost.keep_bytes) + " · needs " + bytes(cost.needs_bytes) + " free while running · " + bytes(cost.free_bytes) + " free" + paint;
       line.classList.toggle("maps-short", !cost.ok);
       if (!cost.ok && !blocked) {
         go.disabled = true;
@@ -267,7 +268,8 @@ export function renderForm(parent: HTMLElement, body: MapsResponse): void {
   const estimate = make("p", "dash-note maps-estimate", "");
   const go = button(running ? "queue" : "generate", function () {
     go.disabled = true;
-    submit(presetName(), formOptions(), form.label, null).then(function (ok) {
+    const queued = form.preset === "render" ? submitRender(body, formOptions(), form.label, null) : submit(presetName(), formOptions(), form.label, null);
+    queued.then(function (ok) {
       if (ok) form.label = "";
       else redraw();
     });

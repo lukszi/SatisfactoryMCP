@@ -64,6 +64,8 @@ Planned as 0.2.0.
 
 - Map names: the game-painted map is now called "Satellite" and the dark relief "Relief".
   Their ids, links and the saved default are unchanged.
+- Map renders: a render that names no layers draws terrain and Satellite, and the Maps tab
+  ticks both. Without paint layers the Maps tab builds them first.
 - Map renders: the game-painted map takes the colours derived from the game install for
   the targets within reach of their screenshots (sand, grass, wet sand, the canopy, the rock,
   the desert rock, the forest moss, the coral caps, the desert gravel, the Red Jungle cliffs),

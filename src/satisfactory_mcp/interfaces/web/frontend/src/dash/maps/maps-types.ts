@@ -7,15 +7,15 @@ import { bytes, isoDate } from "../../kit/format";
 import { mapTypeAxes, mapRegistry, staleReasons, staleLabel } from "../../app/map-types";
 import { requestBaseMode } from "../../map/tiles";
 import { leaveDashThen } from "../actions";
-import { confirmingOn, inlineConfirm, openConfirm, redraw, refused, submit, write } from "./maps-actions";
+import { confirmingOn, inlineConfirm, openConfirm, redraw, refused, submit, submitRender, write } from "./maps-actions";
 
 import type { MapsResponse, MapTypeBody } from "../../api/shapes";
 
 /* The id whose label is being edited; "" when none is. */
 let renaming = "";
 
-/* A re-render that needs the heightfield queues its rebuild first, and nothing if that is
- * refused; an otherwise current map restyles from a kept raster cache. */
+/* A re-render that needs the heightfield, or the missing paint input, queues it first, and
+ * nothing if that is refused; an otherwise current map restyles from a kept raster cache. */
 function rerender(row: MapTypeBody): void {
   const pending = row.freshness.rerender;
   let chain: Promise<boolean> = Promise.resolve(true);
@@ -34,8 +34,9 @@ function rerender(row: MapTypeBody): void {
           restyle: !pending && !row.freshness.stale.length && row.freshness.restyle && !!body && body.cached_sizes.indexOf(size) >= 0,
         };
   chain.then(function (ok) {
-    if (ok) return submit(row.kind === "artwork" ? "artwork" : "render", options, row.label || "", row.id);
-    return false;
+    if (!ok) return false;
+    if (row.kind === "artwork") return submit("artwork", options, row.label || "", row.id);
+    return body ? submitRender(body, options, row.label || "", row.id) : submit("render", options, row.label || "", row.id);
   });
 }
 

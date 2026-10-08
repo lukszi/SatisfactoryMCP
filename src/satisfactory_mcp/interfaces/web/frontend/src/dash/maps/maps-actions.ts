@@ -43,6 +43,26 @@ export function write(method: "PUT" | "PATCH" | "DELETE" | "POST", path: ApiPath
   });
 }
 
+/* Whether a render of these layers needs the paint input built first: the painted layer is
+ * drawn from it, and a render without it is refused. */
+export function paintFirst(body: MapsResponse, layers: string[]): boolean {
+  return (
+    layers.indexOf("painted") >= 0 &&
+    !body.inputs.some(function (row) {
+      return row.name === "paint" && row.present;
+    })
+  );
+}
+
+/* Queues the paint input first when `paintFirst` says so, then the render; false when either
+ * was refused. A queued render waits behind the paint job. */
+export function submitRender(body: MapsResponse, options: Record<string, unknown>, label: string, replaces: string | null): Promise<boolean> {
+  const first = paintFirst(body, options.layers as string[]) ? submit("paint", {}, "", null) : Promise.resolve(true);
+  return first.then(function (ok) {
+    return ok ? submit("render", options, label, replaces) : false;
+  });
+}
+
 /* Resolves false when the job was refused, so a caller can keep what was typed. */
 export function submit(preset: string, options: Record<string, unknown>, label: string, replaces: string | null): Promise<boolean> {
   return send<MapJobResponse>("POST", "/api/maps/jobs", { preset: preset, options: options, label: label || null, replaces: replaces })
