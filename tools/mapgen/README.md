@@ -47,6 +47,7 @@ estimate assumes before a job of that kind has run once.
 | `caves` | `gen_world_heightmap.py --caves` | `data/local/caves/` (`caves.npz`, `meta.json`) | sweep 6 s; budget 2 min |
 | `rocks` | `gen_world_heightmap.py --rocks` | `rocks.npz` and `rocks.json` beside the field in `data/local/heightmap/` | 24 s; budget 5 min |
 | `paint` | `gen_paint_layers.py` | `data/local/paint/` (113 MB) | 2 min on a loaded machine; budget 2.5 min |
+| `crown-sprites` | | `data/local/crown-sprites/` (`atlas.npz`, `meta.json`, 4 MB) | 18 s on the CPU |
 | `calibrate` | | `data/local/paint/targets.derived.json` | 5 s |
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
 | `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 58 min for all five layers and 42 min for two, from measured stages ([maps_contract.md](../../docs/maps_contract.md) §4.3); a whole run is measured at the next full render |
@@ -86,6 +87,17 @@ the tree crowns: a top-down sprite per tree species, a record per tree (position
 lean, species) and the crown top on the 1 m grid. Only the `painted` render layer reads them.
 From generator 4 its `meta.json` also keeps the level's noon light, the atmosphere volumes and
 the shell colours that `calibrate` reads. §27 lists the files; see also §30 to §33 and §36.
+
+### crown-sprites
+
+Builds a top-down sprite of every tree species the paint store lists, in colour, normal and
+alpha at 0.125 m. A species whose octahedral billboard holds a fine enough top view takes
+that view; every other species is rasterised from its mesh with its leaf and bark textures.
+It reads the species from `--paint-dir` (default `data/local/paint/`, so `paint` runs first)
+and writes `--out-dir` (default `data/local/crown-sprites/`). A cache whose stamp matches the
+build is kept unless `--force`; `--species NAME` builds only the named ones. `--gpu` runs the
+raster's per-sample fill as a CUDA kernel, with the same bytes. No render reads the cache
+yet. See §36, "Crown sprites".
 
 ### calibrate
 
@@ -201,6 +213,7 @@ be traced to the axis it should move.
 | `commands/heightmap.py` | data | The heightmap command: arguments, refusals, stage order; `--caves` and `--rocks` go to the next row |
 | `commands/caves.py`, `rocks.py` | data | The cave masks and the rock collision pack, written beside a field |
 | `commands/paint.py` | data | The paint command: one level walk into the paint-layer store |
+| `commands/crown_sprites.py` | data | The crown-sprites command: every paint store species' sprite into the sprite cache |
 | `commands/calibrate.py` | | The calibrate command: display targets derived from the paint store |
 | `commands/artwork.py` | data | The artwork command: arguments, stage order, refusals |
 | `commands/check_fill.py` | | The check-fill command |
@@ -229,6 +242,13 @@ be traced to the axis it should move.
 | `gamedata/vegetation/trees.py` | data | Tree instances as crowns: species bounds, instance scale, the tree table, canopy cover |
 | `gamedata/vegetation/crown_sprites.py` | data | Tree crown sprites from LOD 0, tree records, the crown top plane |
 | `gamedata/vegetation/carpet.py` | data | The seabed coral carpet's harvest and planes, written by the paint command |
+| `gamedata/vegetation/tree_surface.py` | data | A tree mesh's LOD 0 with UVs and normals, and each slot's albedo and leaf mask as the sprite raster samples them |
+| `gamedata/vegetation/billboards.py` | data | A species' billboard material (octahedral, impostor, SpeedTree) and the octahedral atlas's top view |
+| `sprites/raster.py` | data | The crown sprite raster: triangle setup, bins, the per-sample hits gathered into colour, normal, alpha and top |
+| `sprites/fill.py`, `gpu.py`, `fill.cu` | data | The raster's per-sample fill: the numpy reference and its CUDA twin, bit for bit |
+| `sprites/align.py` | data | An octahedral top view laid on the mesh footprint: the turn, the pivot, the frame width rules, the normal's halves |
+| `sprites/build.py` | data | One species' sprite: the raster, or the top view where it is usable, and what was measured |
+| `sprites/store.py` | data | The sprite cache: mip chains packed in one atlas, its records, stamp, reader and writer |
 | `gamedata/ground/paint_store.py` | data | The paint-layer store's folder and file names |
 | `gamedata/ground/weightmaps.py` | data | The landscape's paint weightmaps, placed on the 1 m grid |
 | `gamedata/ground/landscape_albedo.py` | data | The paint layers' textures and albedo, the rock families' colours, and the 0–1 sRGB transfer (`srgb_unit_to_linear`) |

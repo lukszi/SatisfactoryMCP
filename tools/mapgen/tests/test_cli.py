@@ -17,6 +17,7 @@ def test_commands_are_the_documented_set():
         "renders",
         "artwork",
         "paint",
+        "crown-sprites",
         "calibrate",
         "check-fill",
         "compress-cache",

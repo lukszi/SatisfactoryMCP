@@ -98,6 +98,7 @@ READER_VERSIONS = {
     "biome_raster": 1,
     "artwork_sheet": 1,
     "cliff_geometry": HEIGHTFIELD_GENERATOR_VERSION,
+    "crown_sprites": 1,
     "render_meshes": 4,
     "river_splines": 1,
     "rock_families": 3,
