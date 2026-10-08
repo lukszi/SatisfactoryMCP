@@ -25,6 +25,7 @@ from mapgen.render.draw.light import (
     LightingRun,
     add_light_flags,
     claim_scratch,
+    crown_layers,
     crown_tops,
     light_run,
 )
@@ -113,16 +114,15 @@ def _draw_layers(
 ) -> None:
     """Draw every layer in one pass, each band cut as it settles; then install each layer's
     trees with its sidecar beside them."""
-    two_regime = run.direct is not None
-    seam = SeamTrace() if two_regime else None
-    regimes = RegimeCoverage() if two_regime else None
+    seam, regimes = (SeamTrace(), RegimeCoverage()) if run.direct is not None else (None, None)
     threads = draw_threads(args.draw_threads, layers, args.size, columns=args.draw_columns)
     print(f"drawing {', '.join(layers)} at {args.size}x{args.size} on {threads} thread(s)")
     print(encode_stage(DRAW_STAGE, 0.0), flush=True)
     started = time.time()
     arches = None if run.top is None else run.top.arch_coverage
     out = RenderOut(args.out_dir, args.renders_name)
-    stream = RenderStream(cutter, layers, out, args.size, run.record.recipe, light, arches)
+    split = tuple(layer for layer in layers if layer in crown_layers()) if light else ()
+    stream = RenderStream(cutter, layers, out, args.size, run.record.recipe, light, arches, split)
     ground = GroundInputs(
         height_dm=run.lattice.heights,
         kernel=taps_cubic if args.kernel_only else taps_pchip,
@@ -153,6 +153,7 @@ def _draw_layers(
         threads=threads,
         bands=stream.put,
         columns=args.draw_columns,
+        split=split,
     )
     seconds = time.time() - started
     measured: JsonObject = {}
@@ -204,7 +205,7 @@ def _install(
     )
     sidecar = layer_sidecar(run.record, draw, stats, dense)
     if light is not None:
-        light.decorate(sidecar, layer, trees.unlit)
+        light.decorate(sidecar, layer, trees.unlit, trees.trees)
     directory = layer_dir(args.out_dir, layer, args.renders_name)
     (directory / RENDER_SIDECAR_NAME).write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
     trees = f"{tree_text(stats, 'tiles')} plus {tree_text(dense, '@2x')}"

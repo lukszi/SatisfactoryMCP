@@ -54,6 +54,7 @@ from satisfactory_mcp.core.mapprogress import encode_stage
 __all__ = [
     "LIGHT_CACHE_DIR_NAME",
     "SCRATCH_IN_USE",
+    "TREES_DIR_NAME",
     "UNLIT_DIR_NAME",
     "CrownTops",
     "LightingRun",
@@ -70,6 +71,8 @@ __all__ = [
 ]
 
 UNLIT_DIR_NAME = "unlit"
+#: The trees of a layer drawn apart at them, laid over ``unlit/``, its ground, by the page.
+TREES_DIR_NAME = "trees"
 LIGHT_CACHE_DIR_NAME = "light.cache"
 #: Rows relit at a time: each row is lit on its own, so only the memory it takes changes.
 RELIGHT_ROWS = 64
@@ -370,13 +373,19 @@ class LightingRun:
             f"on {render['workers']} workers"
         )
 
-    def decorate(self, sidecar: JsonObject, layer: str, unlit: JsonObject | None) -> None:
-        """Name the lighting pyramid, ``unlit/`` and the shader's style fields in a layer's
-        sidecar."""
+    def decorate(
+        self,
+        sidecar: JsonObject,
+        layer: str,
+        unlit: JsonObject | None,
+        trees: JsonObject | None = None,
+    ) -> None:
+        """Name the lighting pyramid, ``unlit/``, ``trees/`` for a layer drawn apart at its
+        trees, and the shader's style fields in a layer's sidecar."""
         meta = sidecar["_meta"]
         if not isinstance(meta, dict):
             return
-        meta["light"] = {
+        block: JsonObject = {
             "dir": f"../{LIGHT_DIR_NAME}",
             "unlit_dir": UNLIT_DIR_NAME,
             "unlit_tiles": unlit,
@@ -387,6 +396,14 @@ class LightingRun:
                 "relights with the lighting pyramid in dir, for any sun"
             ),
         }
+        if trees is not None:
+            block["trees_dir"], block["trees_tiles"] = TREES_DIR_NAME, trees
+            block["role"] = (
+                "tiles/ and tiles@2x/ are lit by baked_sun; unlit/ is the ground without the "
+                "trees and trees/ the trees over it, which the page relights with the lighting "
+                "pyramid in dir, for any sun"
+            )
+        meta["light"] = block
         provenance = meta.get("provenance")
         if isinstance(provenance, dict) and self.meta is not None:
             provenance["light"] = self.meta["light"]

@@ -2,9 +2,11 @@
 
 With the light, each band goes to its layer's ``unlit/`` at once and waits for the default
 sun's terms of its rows (``render/draw/light.py``); then it is relit on the cutter's lanes and
-goes to ``tiles/`` and ``tiles@2x/``. Without it, the band is the lit colour and goes there
-at once. A band near an arch waits for the next band's first rows, so the arches' FXAA reads
-past its edges (``render/draw/archaa.py``). docs/map/renders.md section 42.
+goes to ``tiles/`` and ``tiles@2x/``. A layer drawn apart at its trees sends its ground to
+``unlit/`` instead and its trees to ``trees/``. Without the light, the band is the lit colour
+and goes to ``tiles/`` at once. A band near an arch waits for the next band's first rows, so
+the arches' FXAA reads past its edges (``render/draw/archaa.py``). docs/map/renders.md section
+42.
 """
 
 from __future__ import annotations
@@ -22,8 +24,10 @@ from mapgen.cache import Plane
 from mapgen.jit import gpu_on
 from mapgen.palette.lightparams import shader_light
 from mapgen.render.draw.archaa import FXAA_HALO, arch_fxaa
-from mapgen.render.draw.light import UNLIT_DIR_NAME, LightingRun, relight_rows
+from mapgen.render.draw.light import TREES_DIR_NAME, UNLIT_DIR_NAME, LightingRun, relight_rows
+from mapgen.render.draw.painting import TreeSplit
 from mapgen.tiles.cutter import Sheet, TileStream, TreeSpec
+from mapgen.tiles.formats import GROUND_TILES, TREES_TILES
 from mapgen.tiles.pyramid import layer_dir, lit_trees
 from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX
@@ -39,12 +43,14 @@ Transform: TypeAlias = Callable[[U8Grid], U8Grid]
 
 class LayerTrees(NamedTuple):
     """What a layer's cut installed: ``tiles/``, ``tiles@2x/``, ``unlit/`` (None without the
-    light), and the seconds it waited for them after the draw."""
+    light), the seconds it waited for them after the draw, and ``trees/`` for a layer drawn
+    apart at its trees."""
 
     tiles: JsonObject
     dense: JsonObject
     unlit: JsonObject | None
     seconds: float
+    trees: JsonObject | None = None
 
 
 class RenderOut(NamedTuple):
@@ -66,6 +72,7 @@ class RenderStream:
     ``out_dir/renders_name/<layer>/``, and each band handed to them by ``put``.
 
     ``arches`` is the arches' coverage on the sheet; a band near one is antialiased there.
+    ``split`` names the layers whose bands come apart at their trees, which needs the light.
     """
 
     def __init__(
@@ -77,11 +84,15 @@ class RenderStream:
         recipe: int,
         light: LightingRun | None,
         arches: Plane | None = None,
+        split: tuple[str, ...] = (),
     ) -> None:
         out_dir, renders_name = out
+        if split and (light is None or not set(split) <= set(layers)):
+            raise ValueError(f"only layers of a run with the light come apart: {list(split)}")
         self.cutter, self.light, self.size, self.arches = cutter, light, size, arches
         self.lit: dict[str, Sheet] = {}
         self.unlit: dict[str, Sheet] = {}
+        self.trees: dict[str, Sheet] = {}
         self.first: dict[str, deque[_Band]] = {}
         self.waiting: dict[str, deque[_Band]] = {}
         self.tails: dict[_Lane, U8Grid | None] = {}
@@ -94,19 +105,31 @@ class RenderStream:
             self.first[layer] = deque()
             if light is not None:
                 text = f"tools/gen_map_renders.py, {layer} unlit, Lanczos"
-                unlit = TreeSpec(UNLIT_DIR_NAME, PYRAMID_TILE_PX, text)
+                unlit = TreeSpec(UNLIT_DIR_NAME, PYRAMID_TILE_PX, text, GROUND_TILES)
                 self.unlit[layer] = cutter.sheet(directory, size, [unlit])
                 self.waiting[layer] = deque()
+            if layer in split:
+                text = f"tools/gen_map_renders.py, {layer} trees, Lanczos premultiplied"
+                trees = TreeSpec(TREES_DIR_NAME, PYRAMID_TILE_PX, text, TREES_TILES)
+                self.trees[layer] = cutter.sheet(directory, size, [trees])
         if light is not None:
             light.begin(out_dir / renders_name)
 
-    def put(self, top: int, bands: dict[str, U8Grid]) -> None:
-        """The band from row ``top`` of every layer, settled: the draw's ``BandSink``."""
+    def put(
+        self, top: int, bands: dict[str, U8Grid], split: dict[str, TreeSplit] | None = None
+    ) -> None:
+        """The band from row ``top`` of every layer, settled, with the parts of the layers
+        drawn apart: the draw's ``BandSink``."""
         stop = top
         for layer, rgb in bands.items():
             stop = top + rgb.shape[0]
-            self.first[layer].append((top, rgb))
+            parts = (split or {}).get(layer)
+            if (parts is None) == (layer in self.trees):
+                raise ValueError(f"the {layer} band comes apart at its trees, or whole, as staged")
+            self.first[layer].append((top, rgb if parts is None else parts.ground))
             self._release_first(layer)
+            if parts is not None:
+                self.cutter.put(self.trees[layer], parts.trees)
             if self.light is not None:
                 self.waiting[layer].append((top, rgb))
         if self.light is not None:
@@ -184,17 +207,19 @@ class RenderStream:
                 raise RuntimeError(f"bands of {left} never had their light")
 
     def install(self, layer: str) -> LayerTrees:
-        """Wait for ``layer``'s trees, then rename each into place: ``unlit/``, ``tiles/``,
-        ``tiles@2x/``. After the last layer's, a ``--gpu`` run logs where its calls ran."""
+        """Wait for ``layer``'s trees, then rename each into place: ``unlit/``, ``trees/``,
+        ``tiles/``, ``tiles@2x/``. After the last layer's, a ``--gpu`` run logs where its calls
+        ran."""
         started = time.time()
         unlit = self.cutter.install(self.unlit[layer])[0] if self.light is not None else None
+        trees = self.cutter.install(self.trees[layer])[0] if layer in self.trees else None
         tiles, dense = self.cutter.install(self.lit[layer])
         self.installed.add(layer)
         if gpu_on() and self.installed == set(self.lit):
             from mapgen.render.gpu.device import calls_line, ran
 
             print(calls_line(ran()), flush=True)
-        return LayerTrees(tiles, dense, unlit, time.time() - started)
+        return LayerTrees(tiles, dense, unlit, time.time() - started, trees)
 
 
 class _Halo(NamedTuple):

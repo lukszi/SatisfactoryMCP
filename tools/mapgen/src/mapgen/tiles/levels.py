@@ -89,10 +89,13 @@ class Level:
 
 class SheetRows:
     """A square sheet arriving a run of rows at a time, in order, and the levels of ``sides``
-    resampled from it as their strips' rows come in."""
+    resampled from it as their strips' rows come in. A sheet of 4 ``channels`` is RGBA, which
+    Pillow resamples premultiplied."""
 
-    def __init__(self, image_mod: TileImaging, px: int, sides: Iterable[int]) -> None:
-        self.image_mod, self.px = image_mod, px
+    def __init__(
+        self, image_mod: TileImaging, px: int, sides: Iterable[int], channels: int = 3
+    ) -> None:
+        self.image_mod, self.px, self.channels = image_mod, px, channels
         self.levels = [Level(px, side) for side in sorted(set(sides), reverse=True)]
         if any(level.side >= px for level in self.levels):
             raise PyramidError(f"a level of a {px} px sheet is smaller than the sheet")
@@ -107,8 +110,10 @@ class SheetRows:
     def add(self, rows: U8Grid) -> Iterator[tuple[int, U8Grid]]:
         """Take the next ``rows``; yield ``(side, rows)``: these rows as the sheet's own
         (``side`` is ``px``), then each level's strips that can now be computed, in order."""
-        if rows.ndim != 3 or rows.shape[1:] != (self.px, 3):
-            raise ValueError(f"rows of a {self.px} px sheet are ({self.px}, 3), not {rows.shape}")
+        if rows.ndim != 3 or rows.shape[1:] != (self.px, self.channels):
+            raise ValueError(
+                f"rows of a {self.px} px sheet are ({self.px}, {self.channels}), not {rows.shape}"
+            )
         if self.have + rows.shape[0] > self.px:
             raise ValueError(f"rows past the end of a {self.px} px sheet")
         self.kept.append((self.have, rows))
