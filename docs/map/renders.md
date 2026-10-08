@@ -33,7 +33,7 @@ The map keeps three drawn layers: `terrain`, `painted`, shown as "Satellite", an
 - **Removed:** both palettes, the satellite painter (`satellite_colours`, the noise and its
   sampler, the blurred biome colour field), both layers from `mapgen renders --layer`, the
   generate presets and their estimates, the server's layer list and the page's switcher and
-  form. A job naming either layer is refused (400).
+  form. A job or an estimate naming either layer is refused.
 - **Kept:** the biome raster is still read, its pin still scored against the artwork and the
   region table still checked, whenever the painted layer is drawn: it gives each area its
   tint and calibration targets (`area_names` in `gamedata/ground/biome.py` names each index).
