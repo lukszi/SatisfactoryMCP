@@ -31,6 +31,7 @@ from mapgen.lighting.horizon import HORIZON_DIRS, encode_horizon, normals, sky_v
 from mapgen.lighting.lanes import device_lane
 from mapgen.lighting.light_tiles import (
     TileSet,
+    detail_window,
     downsample,
     encode_linear,
     folded_tiles,
@@ -40,6 +41,7 @@ from mapgen.lighting.light_tiles import (
     ring_rows,
     tile_jobs,
     upsampled,
+    with_detail,
     work_array,
 )
 from mapgen.lighting.model import (
@@ -137,6 +139,7 @@ _FILES = (
     "landh",
     "svfh",
     "hzq",
+    "detail",
 )
 
 #: The crown tops on the sheet's grid, metres, or the tops and the covered share as a byte.
@@ -187,8 +190,9 @@ class Place(NamedTuple):
 
 
 class Surface:
-    """The drawn surface, band by band: heights in metres and the land weight as a byte, and
-    the floating geometry over it in a ``SlabStore``.
+    """The drawn surface, band by band: heights in metres and the land weight as a byte, the
+    floating geometry over it in a ``SlabStore``, and the ground's detail normal, made with
+    the first ``put`` that has one (``light_tiles.with_detail``).
 
     Each ``put`` is hashed as it is stored, on the thread that drew it; ``digest`` folds those
     in row order. ``terms`` is where the bake's default-sun terms for this surface are.
@@ -207,6 +211,7 @@ class Surface:
         )
         self.slabs = SlabStore(directory / SLAB_DIR_NAME)
         self.terms = self.path("terms")
+        self.detail: np.memmap[tuple[int, ...], np.dtype[np.int8]] | None = None
         self._puts: dict[Place, bytes] = {}
         self._lock = threading.Lock()
 
@@ -217,6 +222,8 @@ class Surface:
         land: NDArray[np.floating],
         columns: slice = slice(None),
         slabs: SlabPlanes | None = None,
+        *,
+        detail: NDArray[np.int8] | None = None,
     ) -> None:
         z = np.ascontiguousarray(z_m, np.float32)
         dry = np.ascontiguousarray(np.round(np.clip(land, 0, 1) * 255), np.uint8)
@@ -227,8 +234,19 @@ class Surface:
         c0, c1, _step = columns.indices(self.size)
         if slabs is not None:
             digest.update(self.slabs.put(row, c0, slabs))
+        if detail is not None:
+            bumps = np.ascontiguousarray(detail, np.int8)
+            self._detail()[row : row + z.shape[0], columns] = bumps
+            digest.update(bumps)
         with self._lock:
             self._puts[Place(row, z.shape[0], c0, c1)] = digest.digest()
+
+    def _detail(self) -> np.memmap[tuple[int, ...], np.dtype[np.int8]]:
+        with self._lock:
+            if self.detail is None:
+                shape = (self.size, self.size, 2)
+                self.detail = np.lib.format.open_memmap(self.path("detail"), "w+", np.int8, shape)
+            return self.detail
 
     def puts(self) -> list[tuple[Place, str]]:
         """Every ``put`` so far in row order: where it went, and its bytes' digest."""
@@ -244,8 +262,9 @@ class Surface:
         return "sha256:" + fold.hexdigest()
 
     def flush(self) -> None:
-        self.z.flush()
-        self.land.flush()
+        for plane in (self.z, self.land, self.detail):
+            if plane is not None:
+                plane.flush()
 
     def path(self, name: str) -> Path:
         return self.directory / f"{name}.npy"
@@ -253,6 +272,7 @@ class Surface:
     def close(self) -> None:
         self.flush()
         del self.z, self.land
+        self.detail = None
 
 
 def _half_surfaces(work: Path, window: _Window, march: bool) -> tuple[F32Grid, BlockSpans]:
@@ -411,6 +431,7 @@ def bake_block(job: BlockJob) -> BlockDone:
             )
     del spans
     nx, ny = _normals(work, (r0 - 1, r0 + block_px + 1, c0 - 1, c0 + block_px + 1), spacing_m)
+    nx, ny = with_detail(nx, ny, detail_window(work, r0, c0, block_px))
     svf = np.clip(upsampled(sky_ringed), 0, 1)
     nrm = np.stack(
         [normal_byte(nx), normal_byte(ny), np.round(svf * 255).astype(np.uint8), land_core], -1

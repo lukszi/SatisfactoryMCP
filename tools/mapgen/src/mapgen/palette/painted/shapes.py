@@ -24,6 +24,7 @@ from mapgen.palette.schema import (
     WaterClassStyle,
 )
 from mapgen.terrain.crown_stamp import CrownSet, LitCrowns
+from mapgen.terrain.ground_detail.reference import GroundDetail
 from satisfactory_mcp.core.arrays import F16Grid, F32Grid, FloatGrid, I16Grid, U8Grid
 
 __all__ = [
@@ -199,7 +200,7 @@ class CrownLayer(TypedDict):
 class PaintedScene(BandScene):
     """One band as the painted style draws it (``render.draw.painting``): the shared scene, then
     its crowns, sun term, rock and mesh weights, the arches' and boulders' lift over the
-    cliffs, and water optics."""
+    cliffs, water optics, and the ground's detail under the bake."""
 
     crowns: LitCrowns | None
     ndl: FloatGrid
@@ -212,6 +213,7 @@ class PaintedScene(BandScene):
     water_optics: ClassOptics | None
     grid: BandGrid
     unlit: NotRequired[bool]
+    detail: NotRequired[GroundDetail | None]
 
 
 class WetOptics(TypedDict):

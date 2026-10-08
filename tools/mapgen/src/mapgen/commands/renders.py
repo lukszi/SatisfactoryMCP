@@ -137,6 +137,7 @@ def _draw_layers(
         seam=seam,
         regimes=regimes,
         surface=light.surface if light else None,
+        textures=run.textures,
     )
     render_layers(
         layers,

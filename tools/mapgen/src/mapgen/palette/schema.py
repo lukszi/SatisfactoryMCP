@@ -20,6 +20,7 @@ __all__ = [
     "DerivedLayer",
     "FallsStyle",
     "FoamStyle",
+    "GroundDetailStyle",
     "InlandShoreStyle",
     "PaintedPalette",
     "PaintedWaterStyle",
@@ -302,6 +303,14 @@ class CarpetStyle(TypedDict):
     gain: float
 
 
+class GroundDetailStyle(TypedDict):
+    """``ground_detail``: how much of the landscape textures' detail under the bake the
+    painted ground takes, 1 as the textures have it."""
+
+    about: str
+    strength: float
+
+
 class ToneStyle(TypedDict):
     """``tone``: the painted style's exposure shoulder."""
 
@@ -392,6 +401,7 @@ class PaintedPalette(TypedDict):
     water_classes: WaterClassesStyle
     falls: FallsStyle
     ground: str
+    ground_detail: NotRequired[GroundDetailStyle]
     rock_top: RockTopStyle
     titan_trees: TitanTreesStyle
     carpet: NotRequired[CarpetStyle]

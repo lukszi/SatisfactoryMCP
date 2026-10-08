@@ -35,13 +35,14 @@ from mapgen.render.ground.surface import (
     PieceOwed,
     RegimeSources,
     Span,
-    WaterPlanes,
     Window,
     band_grid,
     band_surfaces,
     settle_band,
     span,
 )
+from mapgen.render.ground.water_sample import WaterPlanes
+from mapgen.terrain.ground_detail.textures import DetailTextures
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.sample import frame_coordinates, grid_position, taps_linear, taps_pchip
 from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I8Grid, I16Grid, U8Grid
@@ -97,7 +98,8 @@ class GroundInputs:
     run's rasters, ``measured_plane_u8`` the measurement plane the regime table reads, and
     ``reach``, ``rivers``, ``water_level`` and ``sea`` its water: ``sea``'s planes replace
     ``water_level``'s. ``seam`` and ``regimes`` take the bands' measurements and ``surface``
-    their light, in band order.
+    their light, in band order. ``textures`` are the landscape layers' own, for the ground's
+    detail under the bake.
     """
 
     height_dm: F32Grid | None = None
@@ -113,6 +115,7 @@ class GroundInputs:
     seam: SeamTrace | None = None
     regimes: RegimeCoverage | None = None
     surface: LightCapture | None = None
+    textures: DetailTextures | None = None
 
 
 @dataclass(frozen=True)
@@ -315,6 +318,7 @@ def _ground_sources(
         prov_cols=np.clip(
             np.round((x_cm - field.x0_cm) / field.spacing_cm).astype(np.int64), 0, field.width - 1
         ),
+        textures=inputs.textures,
     )
 
 
