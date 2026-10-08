@@ -170,8 +170,8 @@ on the page (their underside and top per direction in a texture of their own, re
 by the shader) are a later step; nothing here needs to change for it.
 
 A folded band sits inside the shader's 6° soft edge, which is about 10 steps of the atlas's
-byte at the path's elevations, so the tile that holds one is stored lossless (below,
-"Horizon tiles, lossless where a band folds"), and a coarser level averages the shade it
+byte at the path's elevations, so the tile that holds one is stored at a higher quality
+(below, "Horizon tiles at q95 where a band folds"), and a coarser level averages the shade it
 reads, not the degrees (below, "Coarser levels").
 
 **FXAA on the arches** (`render/draw/archaa.py`). Their silhouettes stair-step at the pixel. FXAA
@@ -225,7 +225,7 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
 | Where | What |
 | --- | --- |
 | `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land |
-| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | An 8 × 8 grey atlas of 128 px cells at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 px a side), `255 · sqrt(deg / 90)`: cells 0–31 the ground's horizons, cells 32–63 the crowns' where they stand above the ground's, else 0; a span's band folded in at the sun path's elevation (above, "Arches as spans"). WebP lossless where a band is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles, lossless where a band folds") |
+| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | An 8 × 8 grey atlas of 128 px cells at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 px a side), `255 · sqrt(deg / 90)`: cells 0–31 the ground's horizons, cells 32–63 the crowns' where they stand above the ground's, else 0; a span's band folded in at the sun path's elevation (above, "Arches as spans"). WebP q95 where a band is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles at q95 where a band folds") |
 | `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), the `key` the bake was made under (below, "Kept light"), tile counts, timings |
 | `<layer>/unlit/` | The unlit colour, 1x only |
 | `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun: what a page without WebGL, and every older reader, draws |
@@ -345,9 +345,8 @@ So the light at 32768 is about 1,060 s on 8 workers and 830 s on 16, assuming ev
 marches.
 
 **Normal tiles at WebP method 2 (2026-10-06).** The lossless `.nrm.webp` tiles are written
-at effort 2 (`light_tiles.NRM_METHOD`) instead of 4, as the lossless horizon atlases are
-since 2026-10-08; the lossy ones keep 4. Lossless at
-any effort, so the pixels are the same and only the file differs: on 200 z7 normal tiles,
+at effort 2 (`light_tiles.NRM_METHOD`) instead of 4; the lossy horizon atlases keep 4.
+Lossless at any effort, so the pixels are the same and only the file differs: on 200 z7 normal tiles,
 13.7 ms a tile instead of 35.0 (2.6×) for 5.7% more bytes. The normal tiles are about a third
 of the light pyramid's bytes, which grows about 2%. The owner chose the trade on 2026-10-06.
 
@@ -363,15 +362,15 @@ one pixel.
 0.48° (p99 2.9°) at 1.44 times the bytes. With the 6° edge the two relight the abyss crop at
 16:00 the same to the eye, so q75 stayed, until the folded bands of the spans: a band sits
 inside the soft edge, where those errors are the whole shade. Since 2026-10-08 a tile with a
-folded band is lossless and every other one q90, each cell in a border of its own edge
-(below, "Horizon tiles and coarser levels").
+folded band is q95 and every other one q90, each cell in a border of its own edge (below,
+"Horizon tiles and coarser levels").
 
 **Bytes.** The steepest 2 km box writes 78 KB of lighting per z7 tile, so a full map is at
 most about 1.3 GB at z7 and less in practice, because open water compresses to almost
 nothing. The crown cells are 0 wherever no crown stands above the ground's horizon; at 2048
 they take the light pyramid from 18.8 to 24.2 MB. The unlit colour adds about half the
 colour pyramid again. A full-size light was 2.38 GB under the spans with q75 horizons, and
-is 5.56 GB since its folded tiles are lossless (below, "Horizon tiles and coarser levels").
+is 4.06 GB with its folded tiles at q95 (below, "Horizon tiles and coarser levels").
 
 ### Scratch
 
@@ -599,33 +598,43 @@ The page's shadows of arches, overhangs and crowns came out blotchy and blocky, 
 bars along tile edges and thin shadows broken into dashes from z6 out; the baked copy had
 none of it. Three causes, all in the horizon tiles, none in the shader's arithmetic.
 
-**Horizon tiles, lossless where a band folds.** A folded band is stored inside the 6° soft
+**Horizon tiles at q95 where a band folds.** A folded band is stored inside the 6° soft
 edge at the path's elevation (above, "The atlas"), about 10 steps of the byte there, and WebP
 q75 moved those bytes by enough to swing the shade from lit to shaded: under the arches of
 a full-size render the page's shade was off by 0.48 at the 95th percentile. A tile that
-holds a folded band is now stored lossless, a coarser tile when any tile beneath it holds one
-(`light_tiles.exact_tiles`, `BlockDone.exact`), and every other tile at q90, whose shadows
-are the terrain's own soft horizon. The light's `meta.json` counts the lossless atlases as
-`tiles.hz_lossless`. At 2048 a tile is 0.9 km across and 79 of the 85 hold a fold: the
-horizon tiles take 35.7 MB where q75 took 19.2 (all lossless 36.2, all q90 with the border
-27.8).
+holds a folded band is now stored at q95 (`light_tiles.HZ_FOLDED_QUALITY`), a coarser tile
+when any tile beneath it holds one (`light_tiles.folded_tiles`, `BlockDone.folded`), and
+every other tile at q90 (`HZ_QUALITY`), whose shadows are the terrain's own soft horizon.
+The light's `meta.json` counts the folded atlases as `tiles.hz_folded`. At 2048 a tile is
+0.9 km across and 79 of the 85 hold a fold.
 
 **Measured at full size** (2026-10-08, the v8 surface, build 502094; each encoding of the
-same atlases, lossless ones decoded and encoded again). 12,856 of the 21,845 tiles hold a
-fold, 9,360 of the 16,384 at z7: arches, overhangs and, mostly, crowns. The normal tiles stay
-0.88 GB.
+same atlases). 12,856 of the 21,845 tiles hold a fold, 9,360 of the 16,384 at z7: arches,
+overhangs and, mostly, crowns. The normal tiles stay 0.88 GB.
 
 | Horizon tiles | z7 | z0–z6 | All | Against q75 |
 | --- | --- | --- | --- | --- |
 | q75, no border (before) | 0.97 GB | 0.56 GB | 1.53 GB | |
 | q75, border | 1.06 GB | 0.59 GB | 1.66 GB | +0.12 GB |
 | q90, border | 1.66 GB | 0.90 GB | 2.56 GB | +1.03 GB |
-| lossless where folded, else q90 (this bake) | 3.17 GB | 1.51 GB | 4.68 GB | +3.15 GB |
+| q95 where folded, else q90 (chosen) | 2.07 GB | 1.10 GB | 3.17 GB | +1.64 GB |
+| lossless where folded, else q90 | 3.17 GB | 1.51 GB | 4.68 GB | +3.15 GB |
 | lossless | 3.40 GB | 1.57 GB | 4.97 GB | +3.44 GB |
 
-The light took 1,035 s on 16 workers, the native levels 908 s. On 480 folded z7 tiles, the
-page's shade inside the soft edge is off by, at the 95th percentile: q75 0.50, q90 0.27,
-q95 0.18, q100 0.10, lossless 0; q95 takes 0.64 and q100 0.82 of the lossless bytes.
+On 480 folded z7 tiles, the page's shade inside the soft edge is off by, at the 95th
+percentile: q75 0.50, q90 0.27, q95 0.18, q100 0.10, lossless 0. q95 takes 0.64 of the
+lossless bytes and q100 0.82, which put lossless and q100 over the 2.5 GB the owner allowed
+the light to grow; q95 was chosen on 2026-10-08. The light took 1,035 s on 16 workers, the
+native levels 908 s.
+
+**The v8 light at q95 was transcoded, not baked again.** It was baked with the folded tiles
+lossless (`LIGHT_VERSION` 3), and a lossless atlas decodes to the exact bytes the bake
+encoded, so each was encoded again with `light_tiles.hz_webp` at q95; the q90 and normal
+tiles were copied, and `meta.json` was rewritten as the bake writes it: `light_version` 4,
+the key's digest, `tiles.bytes`, `tiles.hz_bytes` and `tiles.hz_folded`. A version 3 bake so
+transcoded is a fresh version 4 bake of the same surface byte for byte, its `meta.json` the
+same text apart from the bake's two timings (a 2048 surface of ridges, a hole and crowns in
+one corner: 170 tiles, 15 of them folded).
 
 **The cells' border.** The atlas packs its 64 cells edge to edge, and a lossy codec smears
 each cell's neighbour two or three texels into it, which the shader's clamp to the cell
@@ -651,8 +660,9 @@ without a device).
 
 **No data past a block's edge** is opened too (above, "Edges of the light").
 
-All of it changes the light's bytes, so `LIGHT_VERSION` is 3 and a kept light is baked again;
-the pinned bake's digest now covers its horizon tiles as well.
+All of it changes the light's bytes, so `LIGHT_VERSION` is 4 (3 stored the folded tiles
+lossless and was never shipped) and a kept light is baked again; the pinned bake's digest now
+covers its horizon tiles as well.
 
 ### Hooks
 
