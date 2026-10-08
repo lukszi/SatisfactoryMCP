@@ -314,8 +314,10 @@ figure as freed.
 ### 4.3 Estimates
 
 From the stage seconds of measured full renders, area-scaled, with the direct and top passes
-floored because the triangles are the same at any size: prep 30, sweep 36, direct 692 and
-top 119 (2026-10-05); per layer a cut of 73, and with the light a bake of 830 once and each
+floored because the triangles are the same at any size: prep 30 (2026-10-05); sweep 33,
+direct 39 and top 174, floored at 35 and 88 as measured at 2048, from a cold render of all
+five layers with the raster passes compiled and on threads (2026-10-08, spatial-and-map.md
+§41, "The raster passes"); per layer a cut of 73, and with the light a bake of 830 once and each
 layer's cut 1.8 times as long (2026-10-06); the draw, one pass for every layer
 (spatial-and-map.md §40), 150 for the ground the layers share and 190 a layer (2026-10-07).
 One layer alone draws in 340, as before; five drew in 0.65 of the time five layers drawn one

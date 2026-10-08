@@ -9,15 +9,23 @@ shape: docs/map/light-and-crowns.md section 29, "Arches as spans".
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
 from mapgen.cache import DIRECT_FLOOR_NAME, DIRECT_UNDER_NAME
-from mapgen.gamedata.maxz_raster import MaxZRaster
-from mapgen.terrain.rasters import Geometry, PreparedPlacement, placed, rasterise_direct_band
+from mapgen.terrain.maxz.faces import extent
+from mapgen.terrain.maxz.raster import max_z_raster
+from mapgen.terrain.rasters import (
+    Geometry,
+    PlacedFaces,
+    PreparedPlacement,
+    band_placements,
+    draw_up,
+    placement_world,
+)
 from mapgen.terrain.rasters_banded import BandPlanes, fold_band
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, FloatGrid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, FloatGrid, I32Grid, I64Grid
 
 __all__ = [
     "OVERHANG_CLEAR_M",
@@ -37,23 +45,6 @@ UNDERSIDE_RISE_CM = 100.0
 OVERHANG_CLEAR_M = 2.0
 
 
-def _faces(
-    entry: PreparedPlacement, geometry: Geometry, y_lo: float, y_hi: float
-) -> Iterator[tuple[FloatGrid, FloatGrid, float]]:
-    """A placement's triangles reaching ``[y_lo, y_hi]``, world cm, with each one's upward
-    normal (its sign the facing, 0 where the winding is unknown) and the placement's lowest Z."""
-    found = placed(entry, geometry, y_lo, y_hi)
-    if found is None:
-        return
-    world, tris = found
-    tri = world[tris]
-    if not entry.facing:
-        up = np.zeros(len(tri))
-    else:
-        up = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])[:, 2] * entry.facing
-    yield tri, up, float(world[:, 2].min())
-
-
 def _box_count(mask: BoolMask) -> F64Grid:
     """The running count of ``mask`` over rows and columns, padded: a box sum in four reads."""
     counts = np.zeros((mask.shape[0] + 1, mask.shape[1] + 1), np.float64)
@@ -61,12 +52,17 @@ def _box_count(mask: BoolMask) -> F64Grid:
     return counts
 
 
-def _reaches(entry_tri: FloatGrid, counts: F64Grid, raster: MaxZRaster) -> bool:
-    """Whether the triangles' box over ``raster``'s grid holds a texel the box sum counts."""
-    fx = (entry_tri[:, :, 0] - raster.origin_x_cm) / raster.scale
-    fy = (entry_tri[:, :, 1] - raster.origin_y_cm) / raster.scale
-    c0, c1 = int(np.floor(fx.min())) - 1, int(np.ceil(fx.max())) + 2
-    r0, r1 = int(np.floor(fy.min())) - 1, int(np.ceil(fy.max())) + 2
+def _reaches(
+    world: FloatGrid,
+    tris: I64Grid,
+    rows: I32Grid,
+    counts: F64Grid,
+    grid: tuple[float, float, float],
+) -> bool:
+    """Whether the triangles' box over the grid holds a texel the box sum counts."""
+    x_lo, x_hi, y_lo, y_hi = extent(world, tris, rows, grid)
+    c0, c1 = int(np.floor(x_lo)) - 1, int(np.ceil(x_hi)) + 2
+    r0, r1 = int(np.floor(y_lo)) - 1, int(np.ceil(y_hi)) + 2
     r0, c0 = max(r0, 0), max(c0, 0)
     r1, c1 = min(r1, counts.shape[0] - 1), min(c1, counts.shape[1] - 1)
     if r0 >= r1 or c0 >= c1:
@@ -86,28 +82,41 @@ def overhang_rasters(
     over its placement's lowest point; ``floor`` the highest upward face below the top, read
     only for placements that reach a texel with an ``under``.
     """
+    y_hi = grid[1] + top.shape[0] * grid[2]
+    placed = list(band_placements(prepared, geometry, grid[1], y_hi, UNDERSIDE_RISE_CM))
+    return _overhangs(placed, geometry, top, grid)
+
+
+def _overhangs(
+    placed: Sequence[PlacedFaces],
+    geometry: Geometry,
+    top: F32Grid,
+    grid: tuple[float, float, float],
+) -> tuple[F32Grid, F32Grid]:
+    """``overhang_rasters`` of the placements over the band, already sorted into faces."""
     x0_cm, y0_cm, step_cm = grid
     rows, cols = top.shape
     ceiling = np.where(np.isfinite(top), top - np.float32(SAME_SURFACE_CM), -np.inf)
     ceiling = ceiling.astype(np.float32)
-    y_hi = y0_cm + rows * step_cm
-    under_raster = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, ceiling=ceiling)
-    for entry in prepared:
-        for tri, up, lowest in _faces(entry, geometry, y0_cm, y_hi):
-            down = (up < 0) & (tri[:, :, 2].max(1) > lowest + UNDERSIDE_RISE_CM)
-            if down.any():
-                under_raster.add(tri[down], 1)
+    under_raster = max_z_raster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, ceiling=ceiling)
+    for item in placed:
+        if item.faces.down.size:
+            world = placement_world(item.entry, geometry)
+            under_raster.add_indexed(world, geometry[item.entry.mesh][1], 1, item.faces.down)
     under = under_raster.result()[0]
+    del under_raster
     floor = np.full(top.shape, np.nan, np.float32)
     if not np.isfinite(under).any():
         return under, floor
     counts = _box_count(np.isfinite(under))
-    floor_raster = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, ceiling=ceiling)
-    for entry in prepared:
-        for tri, up, _lowest in _faces(entry, geometry, y0_cm, y_hi):
-            facing = (up > 0) if entry.facing else (up >= 0)
-            if facing.any() and _reaches(tri[facing], counts, floor_raster):
-                floor_raster.add(tri[facing], 1)
+    floor_raster = max_z_raster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, ceiling=ceiling)
+    for item in placed:
+        up, tris = item.faces.up, geometry[item.entry.mesh][1]
+        if not up.size:
+            continue
+        world = placement_world(item.entry, geometry)
+        if _reaches(world, tris, up, counts, grid):
+            floor_raster.add_indexed(world, tris, 1, up)
     return under, floor_raster.result()[0]
 
 
@@ -140,13 +149,24 @@ def rasterise_direct_planes(
     cols: int,
     subsamples: int,
 ) -> BandPlanes:
-    """One band of the direct cache: ``rasterise_direct_band``'s planes, and the overhangs'."""
-    sub_z, sub_source = rasterise_direct_band(
-        prepared, geometry, x0_cm, y0_cm, scale_cm, rows, cols, subsamples, with_source=True
-    )
-    planes = fold_band((sub_z, sub_source), rows, cols, subsamples)
+    """One band of the direct cache: ``rasterise_direct_band``'s planes, and the overhangs'.
+
+    Each placement over the band is sorted into faces once for the three passes, top,
+    underside and floor; again for the overhangs only where sub-sampling moves the band's
+    lower edge.
+    """
+    y_hi = y0_cm + rows * scale_cm
+    placed = list(band_placements(prepared, geometry, y0_cm, y_hi, UNDERSIDE_RISE_CM))
     step = scale_cm / subsamples
-    under, floor = overhang_rasters(prepared, geometry, sub_z, (x0_cm, y0_cm, step))
+    raster = max_z_raster(cols * subsamples, rows * subsamples, x0_cm, y0_cm, step, sample=0.5)
+    draw_up(raster, placed, geometry)
+    sub_z, sub_source, _density = raster.result()
+    del raster
+    planes = fold_band((sub_z, sub_source), rows, cols, subsamples)
+    sub_hi = y0_cm + rows * subsamples * step
+    if sub_hi != y_hi:
+        placed = list(band_placements(prepared, geometry, y0_cm, sub_hi, UNDERSIDE_RISE_CM))
+    under, floor = _overhangs(placed, geometry, sub_z, (x0_cm, y0_cm, step))
     planes[DIRECT_UNDER_NAME] = reduce_under(under, rows, cols, subsamples)
     planes[DIRECT_FLOOR_NAME] = reduce_floor(floor, rows, cols, subsamples)
     return planes
