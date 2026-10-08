@@ -192,20 +192,20 @@ def test_the_mesh_cache_holds_a_family_plane_and_the_pass_hands_it_on(tmp_path, 
 
 # ----------------------------------------------------------------------- wet sand by rule
 
-RULE = {"from": "Sand_LayerInfo", "lightness": 0.8, "chroma": 1.0, "hue_deg": -10.0}
+RULE = {"from": "Sand_LayerInfo", "lightness": 0.8, "chroma": 1.15, "hue_deg": -10.0}
 
 
 def test_wet_sand_is_a_rule_on_the_sand_target_not_a_hex():
     assert "WetSand_LayerInfo" not in CAL["layers"]
     assert CAL["derived"]["WetSand_LayerInfo"] == RULE
-    assert derived_hex("#d5cbb6", RULE) == "#a29583"
-    assert derived_hex("#c4ab8b", RULE) == "#987b61", "the deserts' sand"
+    assert derived_hex("#d5cbb6", RULE) == "#a4947f"
+    assert derived_hex("#c4ab8b", RULE) == "#9b7a5b", "the deserts' sand"
     assert derived_hex("#d5cbb6", {}) == "#d5cbb6"
 
 
 def test_the_rule_reaches_every_scope_with_a_sand_target_and_no_other():
     cal = with_derived(CAL)
-    assert cal["layers"]["WetSand_LayerInfo"] == "#a29583"
+    assert cal["layers"]["WetSand_LayerInfo"] == "#a4947f"
     for before, after in zip(CAL["areas"], cal["areas"], strict=True):
         sand = before.get("layers", {}).get("Sand_LayerInfo")
         if sand is None:
@@ -234,7 +234,7 @@ def test_wet_sand_lands_on_its_rule_in_each_scope():
     weights["Sand_LayerInfo"][:16] = weights["WetSand_LayerInfo"][16:] = 255
     out = ground._calibrate(albedo, weights)
     p = ground.palette
-    for (r, c), want in (((24, 5), "#987b61"), ((24, 25), "#a29583"), ((5, 25), "#d5cbb6")):
+    for (r, c), want in (((24, 5), "#9b7a5b"), ((24, 25), "#a4947f"), ((5, 25), "#d5cbb6")):
         np.testing.assert_allclose(oklab(out[r, c]), display_to_ground(p, want), atol=2e-3)
     assert {"WetSand_LayerInfo@0", "WetSand_LayerInfo"} <= set(ground.calibration)
 

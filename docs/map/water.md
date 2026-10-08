@@ -126,7 +126,7 @@ from the material), **fit** (fitted to screenshots through a model) or **none**.
 
 | Class | Body | Deep | k (r, g, b) /m | Turbidity | Source |
 |---|---|---|---|---|---|
-| ocean (the `water` block) | #577f7e | #3c597d | 4.08, 3.53, 3.53 | 0 | fit: body and k on Spire Coast screenshots (section 27). Deep: screenshot, the 1.0 open sea from above (see "Sea deep and swamp water") |
+| ocean (the `water` block) | #5fa9a9 | #3c597d | 4.59, 3.97, 7.27 | 0 | fit: body, k and a deep tau of 3.9 m on the 1.0 sea screenshots by depth band (see "The sea by depth band"). Deep: screenshot, the 1.0 open sea from above (see "Sea deep and swamp water") |
 | river | #4f7d78 | #2e5054 | 2.4, 1.6, 1.6 | 0 | screenshot: hue from the wiki's Rocky Desert river; clear, so the bed shows |
 | lake | #56745b | #375a58 | 3.0, 2.2, 2.6 | 0.1 | screenshot: body jade near the shore; deep teal from 1.0 top-down screenshots (see "Lake colours") |
 | lake_blue | #4a8494 | #22485a | 3.4, 1.0, 0.75 | 0 | game data: `MI_Lake_Blue_01` absorption (0.52, 0.15, 0.11) |
@@ -179,8 +179,8 @@ colour-against-depth curve, gives the sea 2.8. A reflection per material, by its
 fits worse (13.2). The palette's own sky term, 0.02 of #96bee6, is about a fifteenth of the
 fitted one. Source: fit.
 
-**The sea.** Its deep colour is #3c597d; the body, the absorption and `deep_tau_m` are the
-Spire Coast fit's. The full row the sky fit gives (k 1.69, 0.50, 0.36 per metre, 2.17 times
+**The sea.** Its deep colour is #3c597d; the body, the absorption and `deep_tau_m` are fitted
+to the readings below ("The sea by depth band"). The full row the sky fit gives (k 1.69, 0.50, 0.36 per metre, 2.17 times
 the game's absorption, with body and deep both #3c597d) would also draw the 1.0 lagoons blue,
 at hue 228, where the screenshots read teal, so it is not taken. Source: screenshot, measured
 by the method of section 31:
@@ -192,6 +192,25 @@ by the method of section 31:
 | [3755331272](https://steamcommunity.com/sharedfiles/filedetails/?id=3755331272) | 1.2.3, sand-bar islands, clear | channel #4b6f88, far deep #4a5d7e |
 | [3552323039](https://steamcommunity.com/sharedfiles/filedetails/?id=3552323039) | lagoon over sand and coral, high angle, clear | bed showing #6ca0a7, open #3d6f7a |
 | [3771500868](https://steamcommunity.com/sharedfiles/filedetails/?id=3771500868) | Spire Coast lagoon, high oblique, clear | #78969e (h 216) |
+
+**The sea by depth band (2026-10-09).** The first sea row, k (4.08, 3.53, 3.53), body
+#577f7e and a 12 m tau, was fitted to Spire Coast patches at depths matched by guess. Against
+the readings above it drew the shallows too dark (L 0.57 to 0.59 against 0.65 to 0.67) and
+the lagoons too teal (h 210 to 228 at 3 to 8 m against h 214 to 240). No reading has a known
+depth, so each is matched to the nearest colour the row draws inside the band its shot shows:
+the bed showing and the Spire lagoon 0.2 to 1.5 m, the lagoon, channel and open water 2 to
+8 m, the deep 20 to 60 m, over the wet sand target as bed (both rules, #a68c72 and #a4947f).
+k, the body and the tau are free, the deep colour stays #3c597d. The fit: k (4.59, 3.97, 7.27)
+per metre, body #5fa9a9, tau 3.9 m; every reading within ΔE 2.5, mean 1.4, where the first
+row's mean was 3.4 (shallows 9.3 and 6.9). It draws #739aa2 at 0.25 m, #5b9da3 at 1 m,
+#4c7e90 at 4 m, #426884 at 8 m and #3d5c7e at 15 m. The body stands in for what the model
+leaves out, the sky's reflection off the surface and the light the water scatters; a row with
+the game's own absorption (0.78, 0.23, 0.166) lets the bed through to 2 m and draws the
+shallows tan (h 75 to 96 at 0.25 to 0.5 m), which only the Update 8 editor footage shows.
+On the 2048 sheet this row and the day's other colour changes (section 31: coral caps, wet
+sand; section 27: area tints) move 1.23 million of the finest level's 4.19 million pixels, by
+up to 55 levels: 0.84 million of them sea, 0.04 million inland water, 0.35 million land, all
+but 75,000 of those by 8 levels or less.
 
 **The swamp.** `MI_WaterSwamp_Muddy` absorbs about 20 times what the sea does, so swamp water
 is opaque within 0.1 m and near-black from above. The opaque target is #302627. Source:
@@ -249,7 +268,7 @@ Grass Fields, Western Dune Forest and No Man's Land.
 **The row.** Body and deep colour are both #708973, the colour that draws the pooled target
 #718a75 at the Blue Crater's 3.9 m once the sky's 0.02 reflection is added. At that depth the
 bed adds under 0.2 Delta E, whether it is the bake's WetSand (#816652) or WetSand's calibrated
-target (#a29583, section 31's rule). Source: screenshot, measured by the method of section 31:
+target (#a29583 then, #a4947f since 2026-10-09; section 31's rule). Source: screenshot, measured by the method of section 31:
 
 | Shot | What, light | Reading |
 | --- | --- | --- |

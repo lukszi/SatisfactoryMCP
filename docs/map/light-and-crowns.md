@@ -1108,7 +1108,7 @@ shrunk by 0.35. Every coral tree comes out lit as a hump.
 records (`terrain/crown_stamp.py` `meshed_species`, `is_render_only_foliage` on the species'
 mesh). The paint store still holds them: its crown-top plane holds the coral, so in a render
 with the light a coral tree still casts a tree shadow, and its canopy plane counts them. The
-coral trees draw as their meshes, in the calibrated colours: the coral mesh colour #99868e lit
+coral trees draw as their meshes, in the calibrated colours: the coral mesh colour #917c75 lit
 by the mesh's own top, the seabed coral under water, and section 31's rule for a coral speck
 standing in the sea.
 
@@ -1126,7 +1126,7 @@ base sweep: the luma of coral-tree pixels follows the north-west sun term of the
 at a Pearson r of 0.97 to 0.99 and the crown dome's at 0.36 to 0.57; drawn as crowns it was the
 other way round. In a full run's light, at the default sun, the coral standing in the sea
 follows its own surface at r 0.70 to 0.95 (375 to 6,228 pixels a window). The caps' median is
-1.3 to 1.8 Delta E from the #99868e target, against 6.8 to 7.1 as crowns.
+1.3 to 1.8 Delta E from the then target #99868e, against 6.8 to 7.1 as crowns.
 
 **Known limits.**
 
