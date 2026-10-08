@@ -86,7 +86,10 @@ tints and top layers, and the seabed coral carpet's cover and top. It also write
 the tree crowns: a top-down sprite per tree species, a record per tree (position, yaw, scale,
 lean, species) and the crown top on the 1 m grid. Only the `painted` render layer reads them.
 From generator 4 its `meta.json` also keeps the level's noon light, the atmosphere volumes and
-the shell colours that `calibrate` reads. §27 lists the files; see also §30 to §33 and §36.
+the shell colours that `calibrate` reads; from generator 5, `ground.tex.z` keeps the layers'
+own albedo, normal and height textures and the cell noise, which the painted ground's detail
+and the light's normal tiles read at 16384 px and up (§30, "The layers' own textures"). §27
+lists the files; see also §30 to §33 and §36.
 
 ### crown-sprites
 
@@ -260,6 +263,7 @@ be traced to the axis it should move.
 | `gamedata/ground/weightmaps.py` | data | The landscape's paint weightmaps, placed on the 1 m grid |
 | `gamedata/ground/landscape_albedo.py` | data | The paint layers' textures and albedo, the rock families' colours, and the 0–1 sRGB transfer (`srgb_unit_to_linear`) |
 | `gamedata/ground/bake.py` | data | The landscape's baked ground colour and the layer refit |
+| `gamedata/ground/layer_textures.py` | data | Each paint layer's albedo, normal and height texture with the shaders' repeats and cells, the cell noise, and the store's blob of them |
 | `gamedata/ground/biome.py` | data | Biome raster, its area names and calibration, region masks |
 | `terrain/heightfield/field.py` | data | Heightfield composition and plane encoding |
 | `terrain/heightfield/validate.py` | data | Heightfield gates (nodes, bare terrain, water) |
@@ -280,6 +284,8 @@ be traced to the axis it should move.
 | `terrain/crown_stamp.py` | renderer | Tree crowns stamped into a band of the output grid from their sprites: the placements and the numpy reference |
 | `terrain/crown_atlas.py` | renderer | The sprite cache as the stamps read it: one float32 atlas, every channel times alpha |
 | `terrain/texels.py` | renderer | Textures and atlas tiles read onto a band, sprites stamped over it: the reference the GPU's `render/gpu/texels.py` matches |
+| `terrain/ground_detail/textures.py` | renderer | The layer textures made ready for a run: mipped to its pixel, their low passes, two atlases, the noise's terms, each texel's leading layers |
+| `terrain/ground_detail/reference.py` | renderer | The ground's detail per pixel, the reference the GPU's `render/gpu/ground.py` matches |
 | `terrain/measure.py` | renderer | `SeamTrace`, `RegimeCoverage` |
 | `lighting/hillshade.py` | light | Hillshade, the sun term, the flat shade and slope |
 | `lighting/borrow.py` | light | The artwork borrow and its sidecar record |
@@ -338,6 +344,8 @@ be traced to the axis it should move.
 | `render/ground/lift.py` | | The raise-only lift by which rocks and the top raster raise the ground |
 | `render/ground/floating.py` | | What floats over a piece for the light: the arches and overhangs, and the surface without them |
 | `render/ground/void.py` | | The void as a piece draws it, once for every layer, and the land weight the light reads off it |
+| `render/ground/water_sample.py` | | The water a piece samples: surface, level, cover, and the terms every painter draws it with |
+| `render/ground/detail.py` | | A piece's ground detail, on the GPU where the run draws there, and the share the light keeps of its normal |
 | `render/draw/archaa.py` | | FXAA on the arches only, a band at a time with its neighbours' rows |
 | `render/draw/painting.py` | | One band coloured in one layer's style over that ground (`paint_band`), and its kept pixels as bytes (`piece_bytes`) |
 | `render/draw/stream.py` | | Each settled band handed to its layers' tile trees, the lit ones once the light has its rows |
@@ -351,6 +359,7 @@ be traced to the axis it should move.
 | `render/gpu/relight.py`, `fxaa.py`, `terrain.py` | | The default-sun relight, the arches' FXAA and the terrain's pieces as CUDA kernels (`*.cu` beside them), for `--gpu` |
 | `render/gpu/texels.py`, `texels.cu` | | `terrain/texels.py`'s reads and stamps on the device, for the painted style's rendered look |
 | `render/gpu/crowns.py` | | The crown stamps on the device (`stamp_crowns` in `texels.cu`), for `--gpu` |
+| `render/gpu/ground.py`, `ground.cu` | | The ground's detail on the device, the reference's bits |
 | `render/run/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
 | `tiles/pyramid.py` | | A layer's tile trees, the worker flags, the parallel cutter's self-check |
 | `tiles/cutter.py` | | The parallel cutter: every tree of a run cut as its sheets' rows come in, through one encode pool |

@@ -110,6 +110,10 @@ LIGHT_KEEP_BYTES = 4_060_000_000
 UNLIT_KEEP_BYTES = 450_000_000
 LIGHT_SCRATCH_BYTES = 17_790_000_000
 CROWN_SCRATCH_BYTES = 6_440_000_000
+#: The ground's detail normal the light adds, two bytes a pixel, from the size whose pixel is
+#: finer than the paint's metre (docs/map/painted.md section 30, "The layers' own textures").
+DETAIL_SCRATCH_BYTES = 2 * FULL_PX * FULL_PX
+DETAIL_MIN_PX = FULL_PX // 2
 #: The default-sun terms a lit render that keeps its cache moves out of the scratch into
 #: ``light.kept/``, 4 bytes a pixel; the kept tiles are hard links to the map's own.
 KEPT_TERMS_BYTES = 4 * FULL_PX * FULL_PX
@@ -326,6 +330,8 @@ def _render_cost(options: RenderOptions) -> tuple[float, int, int]:
     transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
     if options["light"]:
         transient += int((LIGHT_SCRATCH_BYTES + CROWN_SCRATCH_BYTES) * area)
+        if options["size"] >= DETAIL_MIN_PX:
+            transient += int(DETAIL_SCRATCH_BYTES * area)
     if _keeps_new_light(options):
         # The terms move out of the scratch, so they are kept rather than needed twice.
         terms = int(KEPT_TERMS_BYTES * area)

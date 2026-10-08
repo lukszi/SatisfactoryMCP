@@ -35,6 +35,7 @@ from mapgen.palette.styles import (
 )
 from mapgen.palette.water.falls import FALL_STYLES, draw_falls
 from mapgen.palette.water.open_sea import OpenSea
+from mapgen.render.ground.detail import drawn_share
 from mapgen.render.ground.surface import (
     AxisTaps,
     BandSampling,
@@ -234,11 +235,12 @@ def _painted_colours(
     ground = painted.ground
     centres = (grid.x_cm, y_cm)
     meshes = (surface.mesh_weight, surface.mesh_class, surface.level_m, surface.mesh_land)
+    bumps = None if job.unlit else _ground_bumps(surface)
     band: PaintedScene = {
         **scene,
         "crowns": stamped_crowns(ground.crowns, centres, spacing_m, job.unlit),
         "titan_crowns": stamped_crowns(ground.titan_crowns, centres, spacing_m, job.unlit),
-        "ndl": painted_ndl(z_m, spacing_m, job.unlit, meshes),
+        "ndl": painted_ndl(z_m, spacing_m, job.unlit, meshes, bumps),
         "ndl_flat": _FLAT_SUN,
         "rock_weight": rock_weight,
         "top_weight": surface.top_weight,
@@ -248,6 +250,7 @@ def _painted_colours(
         "water_optics": ground.water_optics(grid.linear, surface.water.get("river")),
         "grid": BandGrid((rows.cut, cols.cut), rows.lo, rows.hi, cols.lo, cols.hi, spacing_m),
         "unlit": job.unlit,
+        "detail": surface.detail,
     }
     paint: GridTaps = (
         taps_footprint(grid.field_y, painted.footprint, field.height),
@@ -256,6 +259,16 @@ def _painted_colours(
     rock: GridTaps = (rock_rows, cut_taps(painted.rock_cols, cols.cut))
     rgb = painted_colours(band, ground, _sampler(paint), _sampler(rock))
     return rgb, partial(canopy_cover, band, ground)
+
+
+def _ground_bumps(surface: BandSurface) -> F32Grid | None:
+    """The ground's detail normal where the ground is drawn rather than rock or a mesh, for a
+    sun term drawn into the colour; None without detail."""
+    if surface.detail is None:
+        return None
+    shape = (surface.z_m.shape[0], surface.z_m.shape[1])
+    drawn = drawn_share(shape, surface.rock_seen, surface.top_weight, surface.mesh_weight)
+    return surface.detail.normal * drawn[..., None]
 
 
 def stamped_crowns(

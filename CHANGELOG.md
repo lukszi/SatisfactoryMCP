@@ -33,7 +33,8 @@ Planned as 0.2.0.
   `python -m mapgen compress-cache <dir>` shrinks them about 20x.
 - Re-run the paint layers (`python -m mapgen paint`, or *paint* in the Maps tab) before the
   next painted render: paint layers from an earlier version keep no daylight, and a painted
-  map drawn from them keeps the screenshot colours.
+  map drawn from them keeps the screenshot colours. Paint layers from before generator 5 keep
+  no landscape textures, and a Satellite map drawn from them has no ground detail.
 
 ### Added
 
@@ -73,6 +74,14 @@ Planned as 0.2.0.
   normal maps, spherical normals and moss. `--gpu` runs the raster's per-sample work on the
   GPU, to the same bytes. The cache also holds the Titan canopy's two leaf meshes and their
   218 placements.
+- Map renders: the Satellite map's ground at 16384 and 32768 px shows the game's own landscape
+  textures under the baked colour's metre: grass, gravel, sand, forest floor and the other
+  paint layers at the repeats the game's shaders use from above, turned in cells as the game
+  turns them and height-blended where layers meet, while the colour at every larger scale
+  stays the game's bake. The live sun lights the same ground relief through the light's
+  normal tiles, on every map with a light. `--gpu` draws it on the GPU, to the same bytes.
+  The paint layers (generator 5) now keep the textures, so re-run them before the next render;
+  the light's scratch takes 2.1 GB more at full size.
 
 ### Changed
 

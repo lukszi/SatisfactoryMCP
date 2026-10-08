@@ -233,7 +233,7 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
 
 | Where | What |
 | --- | --- |
-| `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land |
+| `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land. At the native level the normal carries the ground's detail where the run drew one (painted.md section 30, "The layers' own textures") |
 | `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | A grey atlas of 97 cells of 128 px, 8 a row in 13 rows, at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 × 2080 px): cells 0–31 the ground's horizons, cells 32–63 the crowns' alone and 64–95 the Titan trees' alone, always stored, `255 · sqrt(deg / 90)`, a span's band folded in at the sun path's elevation (above, "Arches as spans"); cell 96 the trees' ambient occlusion, `255 · o` (below, "The trees in the light"). WebP q95 where a band is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles at q95 where a band folds") |
 | `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), the `key` the bake was made under (below, "Kept light"), tile counts, timings |
 | `<layer>/unlit/` | The unlit colour, 1x only |
@@ -388,9 +388,10 @@ size: the surface (heights 4, land 1), the default-sun terms (4), and the bake's
 half-resolution heights, land and sky view (1.5) and quarter-resolution horizons (6.1, the
 atlas's 97 cells). With a paint store the crown tops, cover and underside add 6, 6.4 GB,
 whatever layers the run draws. Until light version 5 the horizons took 4 bytes and the crowns 5.
-The Maps tab's estimate counts them
-as `presets.LIGHT_SCRATCH_BYTES` and `CROWN_SCRATCH_BYTES`, scaled by area; tests hold both to
-what the stage allocates.
+With the layers' textures, at 16384 px and up, the ground's detail normal adds 2, 2.1 GB at full
+size. The Maps tab's estimate counts them as `presets.LIGHT_SCRATCH_BYTES`,
+`CROWN_SCRATCH_BYTES` and `DETAIL_SCRATCH_BYTES`, scaled by area; tests hold each to what the
+stage allocates.
 
 It is scratch for one run, not a cache: no flag keeps it, and nothing reads it after the run.
 What a later run can use, the finished pyramid and the default-sun terms, is filed apart from

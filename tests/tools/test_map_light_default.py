@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 
+import numpy as np
 import pytest
 
 from mapgen.lighting.stage import Surface, allocate_work_arrays, occluder_planes
@@ -164,6 +165,27 @@ def test_the_crown_scratch_is_the_one_occluder_the_bake_reads(tmp_path):
     written = sum(path.stat().st_size for path in tmp_path.glob("*.npy"))
     expected = presets.CROWN_SCRATCH_BYTES * (size / presets.FULL_PX) ** 2
     assert written == pytest.approx(expected, rel=0.01)
+
+
+def test_the_detail_scratch_is_the_plane_the_surface_makes(tmp_path):
+    size = 512
+    surface = Surface(tmp_path, size)
+    surface.put(0, np.zeros((2, size), np.float32), np.ones((2, size), np.float32),
+                detail=np.zeros((2, size, 2), np.int8))  # fmt: skip
+    surface.close()
+    expected = presets.DETAIL_SCRATCH_BYTES * (size / presets.FULL_PX) ** 2
+    assert (tmp_path / "detail.npy").stat().st_size == pytest.approx(expected, rel=0.01)
+
+
+def test_the_estimate_counts_the_detail_only_where_the_pixel_is_finer_than_a_metre(in_use_local):
+    def light_per_area(size: int) -> float:
+        lit = presets.estimate("render", {"layers": ["terrain"], "size": size})
+        dark = presets.estimate("render", {"layers": ["terrain"], "size": size, "light": False})
+        return (lit["transient_bytes"] - dark["transient_bytes"]) / (size / presets.FULL_PX) ** 2
+
+    assert presets.DETAIL_MIN_PX == 16384
+    extra = light_per_area(16384) - light_per_area(8192)
+    assert extra == pytest.approx(presets.DETAIL_SCRATCH_BYTES, rel=1e-3)
 
 
 def test_a_measured_run_predicts_only_a_run_with_the_same_light(in_use_local):

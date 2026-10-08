@@ -427,6 +427,10 @@
   "soft": 0.5
  },
  "ground": "bake",
+ "ground_detail": {
+  "about": "the landscape layers' own textures under the bake's metre, as a ratio to their 0.5 m low pass; docs/map/painted.md section 30, The layers' own textures",
+  "strength": 1.0
+ },
  "rock_top": {
   "up": [
    0.6,

@@ -29,6 +29,7 @@ from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX, tile_relpath
 
 __all__ = [
+    "DETAIL_SCALE",
     "HZ_FOLDED_QUALITY",
     "HZ_LINEAR_SCALE",
     "HZ_QUALITY",
@@ -42,6 +43,7 @@ __all__ = [
     "TileSet",
     "atlas_cells",
     "decode_linear",
+    "detail_window",
     "downsample",
     "encode_linear",
     "encode_tiles",
@@ -56,6 +58,7 @@ __all__ = [
     "ring_rows",
     "tile_jobs",
     "upsampled",
+    "with_detail",
     "work_array",
 ]
 
@@ -68,6 +71,9 @@ HZ_FOLDED_QUALITY = 95
 #: The lossless tiles' WebP effort: the same pixels as 4 in less time (section 29).
 NRM_METHOD = 2
 ATLAS_COLS = 8
+#: The ground's detail normal in the work file ``detail``: a component of -1 to 1 as a byte
+#: of -127 to 127 (docs/map/painted.md section 30, "The layers' own textures").
+DETAIL_SCALE = 127.0
 
 #: Tiles of a level by ``(x, y)``: those whose horizon atlas holds a folded band.
 TileSet: TypeAlias = frozenset[tuple[int, int]]
@@ -150,6 +156,27 @@ def ring_rows(ringed: NDArray[np.floating], rows: slice) -> NDArray[np.floating]
 def normal_byte(component: F32Grid) -> U8Grid:
     """A normal's east or south component, -1 to 1, as the byte its tile stores."""
     return np.round((component * 0.5 + 0.5) * 255).astype(np.uint8)
+
+
+def detail_window(work: Path, r0: int, c0: int, side: int) -> NDArray[np.int8] | None:
+    """The ground's detail normal over a block, as bytes; None where the run drew none."""
+    plane = optional_array(work, "detail", np.int8)
+    return None if plane is None else np.asarray(plane[r0 : r0 + side, c0 : c0 + side])
+
+
+def with_detail(
+    east: F32Grid, south: F32Grid, detail: NDArray[np.int8] | None
+) -> tuple[F32Grid, F32Grid]:
+    """A normal with the ground's detail normal (east and south over ``DETAIL_SCALE``) added
+    to its slope, renormalised: the textures' bumps on the drawn ground."""
+    if detail is None:
+        return east, south
+    scale = np.float32(DETAIL_SCALE)
+    tilt_e = east + detail[..., 0].astype(np.float32) / scale
+    tilt_s = south + detail[..., 1].astype(np.float32) / scale
+    up = np.sqrt(np.clip(np.float32(1.0) - east * east - south * south, 0.0, 1.0))
+    length = np.sqrt(tilt_e * tilt_e + tilt_s * tilt_s + up * up)
+    return (tilt_e / length).astype(np.float32), (tilt_s / length).astype(np.float32)
 
 
 def padded_window(

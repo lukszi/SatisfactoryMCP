@@ -8,6 +8,7 @@ record every layer's sidecar shares; ``mapgen.commands.renders`` then draws them
 from __future__ import annotations
 
 import argparse
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -51,6 +52,11 @@ from mapgen.render.run.inputs import (
     water_record,
 )
 from mapgen.render.run.sprites import crown_sprites
+from mapgen.terrain.ground_detail.textures import (
+    DETAIL_MAX_SPACING_M,
+    DetailTextures,
+    load_detail_textures,
+)
 from mapgen.tiles.imaging import TileImaging
 from mapgen.tiles.layer_meta import RenderFacts, RunRecord
 from satisfactory_mcp.core.arrays import I8Grid, U8Grid
@@ -98,6 +104,7 @@ class Prepared:
     relief: dict[str, ReliefGround]
     style_digests: dict[str, str]
     record: RunRecord
+    textures: DetailTextures | None = None
 
     @property
     def painted(self) -> PaintedGround | None:
@@ -141,6 +148,7 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
     level = LevelSweep(game.store, game.scripts, not args.quiet)
     found = _biome_and_paint(args, layers, (setup, game, level), field, gathered)
     biome, paint, style_digests = found
+    textures = _detail_textures(args, layers, spacing_m, paint)
     direct, top, raster_sources = _rasters(args, setup, lattice, level, grid, paint, gathered)
     extras = _extras(args, setup, lattice, level, field, paint, gathered)
     water, sea, planes = drawn_water(
@@ -200,7 +208,28 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
         relief,
         style_digests,
         record,
+        textures,
     )
+
+
+def _detail_textures(
+    args: argparse.Namespace, layers: tuple[str, ...], spacing_m: float, paint: PaintInputs | None
+) -> DetailTextures | None:
+    """The landscape layers' textures for the ground's detail, where the painted layer is drawn
+    or the light captures the ground, and the pixel is finer than the bake's metre; what the
+    painted sidecar says of them."""
+    if spacing_m >= DETAIL_MAX_SPACING_M or not ("painted" in layers or args.light):
+        return None
+    started = time.time()
+    textures = load_detail_textures(args.paint_dir, spacing_m)
+    if textures is None:
+        print(f"  no layer textures in {args.paint_dir} (paint generator 5): no ground detail")
+        return None
+    seconds = time.time() - started
+    print(f"  ground detail: {len(textures.layers)} layers' textures in {seconds:.0f}s")
+    if paint is not None:
+        paint.block["ground_detail"] = textures.provenance(seconds)
+    return textures
 
 
 def _biome_and_paint(

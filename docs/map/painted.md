@@ -108,8 +108,9 @@ material") and with `CliffPillar_03` read from its own package rather than `Mesh
 
 ### The paint input
 
-`python -m mapgen paint` writes `data/local/paint/` once per game build, about 113 MB in about
-2 minutes. Paint generator version 3 writes:
+`python -m mapgen paint` writes `data/local/paint/` once per game build, about 115 MB in about
+2 minutes. Paint generator version 3 writes the files below; version 5 adds `ground.tex.z`,
+the landscape layers' own textures (section 30, "The layers' own textures"):
 
 | File | What | Section |
 | --- | --- | --- |
@@ -435,6 +436,134 @@ shallow pools and lake rims vanished: 0.81 km² of water is under 1 m deep. Off 
 the transmitted share is multiplied by `1 - water.inland_floor` (0.35), so inland water
 always keeps that much of its body colour. The sea is unchanged. A water class's own
 `turbidity` takes over where it is larger (section 37).
+
+### The layers' own textures under the bake (2026-10-09)
+
+The bake's texels are a metre, so at 0.229 m a pixel the painted ground was a soft blur with
+a staircase along every edge between two layers: flat paint where the game shows grass,
+gravel and sand. At 16384 and 32768 px the ground now takes the landscape layers' own
+textures below the bake's metre, read as the game's landscape material reads them from
+above, and the bake keeps the colour at every scale it holds. Below 16384 a pixel is a metre
+or wider and nothing changes.
+
+**The textures.** Paint generator 5 keeps each layer's albedo, normal and height texture and
+the material's cell-bombing noise in `ground.tex.z`, indexed by `ground_textures` in
+`meta.json` (`gamedata/ground/layer_textures.py`). A texture is kept at a power of two with a
+texel at most half a full-size pixel at the largest repeat any layer reads it at, 64 to 512 px,
+the noise at its own 1024: 1.6 MB in all. A run mips each one to about half its own pixel
+(`terrain/ground_detail/textures.py`).
+
+**The reads** come from the compiled landscape shaders, the rendered-look study's tiling
+table: the far repeats a top-down view shows, the heights the blend reads at the near ones.
+
+| Layer | Albedo | Normal | Height the blend reads |
+| --- | --- | --- | --- |
+| Grass | `TX_Grass_Far_01_Alb`, 50 m | `TX_Grass_01_Nor`, 4 m | `TX_Grass_01_HRA` R, 4 m |
+| Forest, PurpleForest | `TX_Forest_Far_01_Alb`, 14.29 m | flat: it fades out with distance | `TX_Forest_01_HRA` R, 4.545 m |
+| Sand | `TX_Sand_BC`, 20 m, half its detail | `TX_Sand_Normal`, 20 m, at 0.2 | `TX_Sand_HRA` R, 4 m, turned cells |
+| WetSand | `TX_Sand_BC`, 4 m, turned cells | `TX_Sand_Nor_Wet`, 4 m, turned cells | as Sand |
+| SandRipples | none: its far colour is flat | flat | `TX_SandRipples_HRA` R, 4 m, shifted cells |
+| SandCracks | `Sand_Dry_02_Alb`, 20 m | `Sand_Dry_02_Nor`, 4.545 m | `Sand_Dry_02_Refl` R, 4.545 m |
+| CoralRock | `TX_SeaRocks_01_Alb`, 20 m | `TX_SeaRocks_01_Nor`, 20 m | `TX_SeaRocks_01_HRA` R, 4.545 m |
+| GrassRed, Gravel, SandPebbles | their own, 4 m, turned cells | their own, 4 m, turned cells | their HRA's R, 4 m, turned cells |
+| Soil | `TX_Soil_01_Alb`, 4 m | `TX_Soil_01_Nor`, 4 m | `TX_Soil_01_HRA` R, 4 m |
+| RedJungle | `TX_Grass_RedJungle_01_Alb`, 4 m | Grass's, 4 m | Grass's, 4 m |
+| SandRock, DesertRock | `TX_SandRock_Alb_01`, 4.545 m | `TX_SandRock_Nor_01`, 4.545 m | `TX_SandRock_ORMA_01` B, 4.545 m |
+| Cliff (the paint layer) | `Cliff_Sediment_Alb`, 20 m, turned cells | `TX_Cliff_01_Nor`, 10.24 m | `TX_Cliff_01_HRA` R, 10.24 m |
+| Puddles (overlay) | `TX_Puddles_01_Alb`, 4 m, turned cells | `TX_Puddles_01_Nor`, 4 m, turned cells | none: lerped by its weight |
+
+The far blends were read off the shaders. The single-layer Sand shader mixes its 20 m albedo
+half and half with `Sand Far Color` and takes its 20 m normal at `(0.2, 0.2, 1)` of itself;
+SandRipples lerps its albedo to a far colour and its normal to a constant one; the cracks keep
+their near normal while their albedo goes far; the coral rock's normal goes far with its
+albedo over 100 m. Each two-layer shader height-blends both of its layers, each from one
+channel of a texture at the near repeat (R of an HRA, R of the cracks' Refl, B of the sand
+rock's ORMA). Red jungle has no normal or height texture of its own, so it borrows the
+grass's.
+
+**Per pixel** (`terrain/ground_detail/reference.py`):
+
+1. **Weights.** Each texel keeps its four heaviest layers and their weights (8 bytes a texel,
+   made once a run); the fifth and later carry 0.006 of a texel's weight on average. A pixel
+   reads them bilinear, corner by corner, a layer's slots in order.
+2. **Cells.** The noise repeats over 100 m (UV0 × 0.01). Its R shifts a cell along u by up to a
+   repeat and scales it by 0.9 to 1.1, G shifts it along v, B turns it a whole circle, and A
+   masks it. A layer with cells reads its texture a second time in the cell, turned (shifted
+   only for the ripples), and mixes it in by `clamp(2 A - 0.5, 0, 1)`, so the cells' borders
+   show the plain tiling; a turned cell's normal is turned back. The turn's cosine and sine
+   are worked out from the noise's texels on the host, so the kernel computes no
+   trigonometry.
+3. **Height blend**, as the engine's layer blend does it: `clamp(2 w - 1 + h, 1e-4, 1)` for
+   each layer, over their sum. A layer that weighs nothing at a pixel is left out.
+4. **Detail.** Each albedo texture has its low pass beside it, a Gaussian of 0.5 m
+   (`DETAIL_SIGMA_M`) wrapped as it repeats: about the blur the 1 m bake is drawn with, its box
+   and the bilinear read. The detail is the height-blended albedo over the low passes blended
+   by the heights' low passes, per channel. It carries what lies under the bake's metre, the
+   texture's grain and the layers' height mosaic where they meet, and its mean is 1. A read's
+   strength (the sand's half, the ripples' none) scales its texture about its low pass.
+5. **The overlay** lerps its own ratio and normal over the blend by its weight.
+
+The PigmentMap multiplies every layer's albedo in the shaders. At 7.3 m a texel it is in the
+bake, and it cancels from the detail, which is a ratio. Where the paint mix stands in for the
+bake the ground stays as before.
+
+**Drawing.** `render/ground/detail.py` computes a piece's detail once, beside its heights, for
+every layer of the pass. The painted ground multiplies its albedo by `1 + s (ratio - 1)`,
+`s` the palette's `ground_detail.strength` (1), before the canopy, the rock and the meshes are
+laid over it. Drawn with `--no-light`, its sun term takes the detail's normal too.
+
+**The light.** The detail's normal, faded by the share of the pixel the ground is drawn on (no
+rock, overlay lift or render-only mesh), goes to the light beside the heights as two bytes a
+pixel, east and south over 127 (`Surface.put`'s `detail`, `detail.npy`, 2.1 GB at full size).
+It is part of the surface's digest, so a kept light baked without it is not reused. The bake
+adds it to each block's normals along their slope and renormalises
+(`light_tiles.with_detail`), so the normal tiles, and through them the default sun's terms and
+the page's live sun, show the ground's relief on every layer: one pyramid serves every
+style. The coarser levels take their normals from the downsampled heights, without it.
+
+**On the GPU.** With `--gpu` the detail is `render/gpu/ground.cu`, a thread a pixel, on
+textures uploaded once a process with `texels.upload_atlas`; the texel reads are `texels.cu`'s.
+It gives the reference's bits (`tests/mapgen/test_ground_detail.py`, which skips without a
+device); a piece the device has no memory for runs on the CPU.
+
+**Measured** (2026-10-09, build 502094), on six 1024 px windows of the 32768 sheet drawn unlit,
+as a lit render draws its colour, from master's raster caches, against master's code:
+
+| Window | Pixels changed | By more than 12 (RGB sum) | Largest |
+| --- | --- | --- | --- |
+| Grass Fields (-508, 2301) | 719,085 | 338,826 | 242 |
+| Rocky Desert (-920, -1179) | 592,764 | 165,662 | 223 |
+| Titan forest's grass (81, -791) | 526,406 | 88,004 | 97 |
+| Forest floor (2603, 462) | 550,911 | 130,046 | 137 |
+| Spire Coast (269, -1943) | 338,657 | 37,199 | 274 |
+| North beach rocks (128, -1500) | 492,850 | 200,384 | 139 |
+
+Of each 1,048,576. Blurred over 4 m the windows move by at most 0.17 sRGB levels on average
+and 0.64 at the 95th percentile, over 1.5 m by 1.0 at the 95th: the large-scale colour stays
+the bake's. The grain under 1.5 m rises from a standard deviation of 5.2 to 8.9 levels to 6.1
+to 9.3. Drawn with `--no-light`, where the sun term takes the bumps too, 343,585 to 720,433
+pixels a window change. Beside frames of the 1.0, 1.1 and 1.2 trailers, the grass reads at
+the grain of the 1.0 trailer's top-down Grass Fields, the dunes stay smooth as the 1.2 aerial
+shows them, and the forest floor and the beaches take their litter and pebbles. Below 16384
+nothing moves: at 2048 every tile and light tile of the three layers is the same as master's,
+and only the painted sidecar's style version and digest change. A store without the textures
+draws the 32768 windows of the gates' G2 the same as master, all three layers.
+
+**Known limits.**
+
+- The landscape's UV0 is taken from the paint grid's corner, a whole number of metres off the
+  game's, so the textures' phase is not the game's own.
+- Soil's own cell bombing (its scale is a parameter the study did not resolve) is not drawn;
+  it tiles plainly.
+- The slot each shader reads a texture from is matched by name and by the channel the shader
+  reads: red jungle's borrowed normal and height, and the sand rock's height in its ORMA's B,
+  are inferences.
+- The SandRipples' wind swirl, an animated overlay at 200 and 250 m, is not drawn.
+- The rock meshes keep their own colour; only the landscape is textured.
+- The coarser levels of the light have no detail; they are a metre a pixel or more.
+- On the CPU the detail is numpy's: the six windows above drew 0.8 to 1.8 s slower each on
+  two threads, and about as fast as before with `--gpu` once its kernel is compiled. A
+  full-size render without `--gpu` draws minutes longer.
 
 ### Known limits
 
