@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 from collections.abc import Callable, Mapping, Sequence
 from types import ModuleType
 from typing import TypeVar
@@ -30,9 +31,11 @@ __all__ = [
     "decode_texture",
     "layer_albedo",
     "material_vectors",
+    "mip_shape",
     "rock_family_colours",
     "srgb_to_linear",
     "srgb_unit_to_linear",
+    "texture_size",
 ]
 
 
@@ -120,10 +123,43 @@ def _texture_view(game: GameReader, path: str) -> tuple[PackageView, bytes]:
     return view, game.store.read_path(path + ".ubulk") if has_bulk else b""
 
 
+def texture_size(body: bytes, fmt: str) -> tuple[int, int] | None:
+    """A cooked texture's mip-0 ``(width, height)``: the two int32 the platform data puts
+    before its pixel format string, three fields ahead of it. None where the string is not
+    there."""
+    at = body.find(struct.pack("<i", len(fmt) + 1) + fmt.encode("ascii") + b"\0")
+    if at < 12:
+        return None
+    width, height = struct.unpack_from("<2i", body, at - 12)
+    return (width, height) if width > 0 and height > 0 else None
+
+
+def mip_shape(
+    size: tuple[int, int] | None, nbytes: int, block: int | None, texel: int
+) -> tuple[int, int]:
+    """The ``(width, height)`` of the mip of ``nbytes``: the level of ``size`` whose blocks
+    (or texels) fill it exactly, else the square its byte count makes."""
+    if size is not None:
+        width, height = size
+        while width >= 1 and height >= 1:
+            if block is not None:
+                fits = max(1, -(-width // 4)) * max(1, -(-height // 4)) * block == nbytes
+            else:
+                fits = width * height * texel == nbytes
+            if fits:
+                return width, height
+            width, height = width // 2, height // 2
+    side = (
+        round((nbytes / block) ** 0.5) * 4 if block is not None else round((nbytes / texel) ** 0.5)
+    )
+    return side, side
+
+
 def decode_texture(
     game: GameReader, decoder: ModuleType, asset: str, want_max: int, channels: int = 3
 ) -> U8Grid:
-    """The largest mip no wider than ``want_max`` as (H, W, channels) uint8 RGB(A). Square."""
+    """The largest mip whose longer side is at most ``want_max``, as (H, W, channels) uint8
+    RGB(A). The mip's shape is the texture's own aspect where its header says so."""
     blocks: dict[str, tuple[int, Callable[[bytes, int, int], bytes]]] = {
         "PF_DXT1": (8, decoder.decode_bc1),
         "PF_DXT5": (16, decoder.decode_bc3),
@@ -136,29 +172,29 @@ def decode_texture(
     export = next(
         e for e in view.exports if class_name_of(view.class_of[e["slot"]]).startswith("Texture")
     )
-    best: tuple[int, bytes] | None = None
+    size = texture_size(view.pkg.body(export), fmt)
+    block = blocks[fmt][0] if fmt in blocks else None
+    texel = 4 if fmt == "PF_B8G8R8A8" else 1
+    best: tuple[tuple[int, int], bytes] | None = None
     for entry in view.pkg.bulk_entries():
-        if fmt in blocks:
-            side = round((entry["size"] / blocks[fmt][0]) ** 0.5) * 4
-        else:
-            side = round((entry["size"] / (4 if fmt == "PF_B8G8R8A8" else 1)) ** 0.5)
-        if side > want_max or (best and best[0] >= side):
+        shape = mip_shape(size, entry["size"], block, texel)
+        if max(shape) > want_max or (best and max(best[0]) >= max(shape)):
             continue
         source = view.pkg.body(export) if entry["flags"] & _INLINE_BULK else ubulk
         raw = source[entry["offset"] : entry["offset"] + entry["size"]]
         if len(raw) == entry["size"]:
-            best = (side, raw)
+            best = (shape, raw)
     if best is None:
         raise ValueError(f"{asset}: no mip at or under {want_max} px")
-    side, raw = best
+    (width, height), raw = best
     if fmt == "PF_B8G8R8A8":
-        rgba = np.frombuffer(raw, np.uint8).reshape(side, side, 4)[..., [2, 1, 0, 3]]
+        rgba = np.frombuffer(raw, np.uint8).reshape(height, width, 4)[..., [2, 1, 0, 3]]
     elif fmt == "PF_G8":
-        grey = np.frombuffer(raw, np.uint8).reshape(side, side)
+        grey = np.frombuffer(raw, np.uint8).reshape(height, width)
         rgba = np.dstack([grey, grey, grey, grey])
     else:
-        out = blocks[fmt][1](raw, side, side)
-        rgba = np.frombuffer(out, np.uint8).reshape(side, side, 4)[..., [2, 1, 0, 3]]
+        out = blocks[fmt][1](raw, width, height)
+        rgba = np.frombuffer(out, np.uint8).reshape(height, width, 4)[..., [2, 1, 0, 3]]
     return np.ascontiguousarray(rgba[..., :channels])
 
 

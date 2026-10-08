@@ -30,6 +30,7 @@ __all__ = [
     "CROWNS_NAME",
     "CROWN_RECORD",
     "CROWN_TOP_NAME",
+    "LEAF_ALPHA_MIN",
     "MASK_CLEAR_MEAN",
     "MASK_PARAMS",
     "MATERIAL_NONE",
@@ -57,6 +58,7 @@ __all__ = [
     "material_colour",
     "material_kind",
     "optical_depths",
+    "parameter_chain",
     "rasterise_sprite",
     "read_species",
     "species_name",
@@ -420,7 +422,7 @@ def leaf_mask(alphas: Sequence[F32Grid], shape: tuple[int, int]) -> F32Grid:
     return np.ones(shape, np.float32)
 
 
-def _parameter_chain(game: GameReader, path: str) -> list[MaterialParameters]:
+def parameter_chain(game: GameReader, path: str) -> list[MaterialParameters]:
     """The material instance's parameters, then its parents', at most four deep."""
     chain: list[MaterialParameters] = []
     view_path: str | None = path
@@ -443,7 +445,7 @@ def material_colour(game: GameReader, path: str, texture_rgba: TextureReader) ->
     The albedo texture is the instance's own or its nearest parent's. ``Brightness`` and
     ``Saturation`` are applied as the prototype did; nothing else in the graph is read.
     """
-    chain = _parameter_chain(game, path)
+    chain = parameter_chain(game, path)
     kind = material_kind(path, chain[0]) if chain else material_kind(path)
     entry: MaterialColour = {"kind": kind, "linear": None, "opacity": None}
     if entry["kind"] == "skip":

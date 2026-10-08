@@ -938,6 +938,184 @@ follows its own surface at r 0.70 to 0.95 (375 to 6,228 pixels a window). The ca
 - In a lit run the coral standing in the sea keeps the noon light whatever sun the page
   picks, and takes no cast shadow.
 
+### Crown sprites (2026-10-08)
+
+The rendered look draws each crown as the tree really looks from above: leaves, holes and
+branches in colour, with a normal the light can shade and an alpha the ground shows
+through. Today's crown is a cover silhouette in one flat colour per material. The crown
+sprites are the art for the new draw, one per species, every species covered: the change
+ships only when all trees have real art. Nothing draws them yet; the draw comes after its
+port to the GPU, and reads the cache below.
+
+`python -m mapgen crown-sprites` takes the species from the paint store's `crowns` block,
+reads each mesh, its textures and its billboard from the install, and writes
+`data/local/crown-sprites/` in about 30 s on the CPU, 10 s with `--gpu`. On build 502094 that is 53 species: 8 from
+the game's own view from above, 45 rasterised from their meshes.
+
+**Two sources.** A tree mesh carries its far-distance stand-in as a material slot, of one of
+three kinds, told apart by the master material (`gamedata/vegetation/billboards.py`):
+
+| Kind | Master | Views | Species |
+| --- | --- | --- | --- |
+| octahedral | `MM_OctaBillboardMat` | 3 x 3 frames: eight round the tree, the bottom-right one from straight above | 12 (11 bake folders: `SM_GreenTree_02`'s atlas sits in `SM_GreenTree_01`'s) |
+| impostor | `Imposter_Master` | 4 x 4 to 8 x 8 frames round the tree at one elevation, no top view | 12, among them `DioTree_01` and `_03`, `SM_AncientPineTree_02`, `SM_SnakeLegs_Tree_02`, the Dypsis and cat palms |
+| SpeedTree | `MM_SpeedTreeImposter` | side views, and a frame from above that the mesh does not use | the three Kapoks |
+
+The rest have no billboard at all, the yuccas, Purple and Amber trees among them. The
+Kapoks' SpeedTree atlas does hold a crown from above, bottom left, but of another tree: it is
+the billboard `SM_Kapok_01` shares with a sibling (`MI_Kapok_01_02_Imposter`), and placed at
+its best it overlaps the mesh's footprint by 0.50, with whole limbs on one side only. It is
+not used. Every species is rasterised from its mesh (below); one whose octahedral top view
+is usable takes that view instead. A view is usable when its texel spans at most `ATLAS_TEXEL_MAX_M` 0.2 m
+on the ground and its footprint overlaps the raster's by `ATLAS_IOU_MIN` 0.6. Four atlases
+are coarser: `DioTree_02` 0.23 m, `SM_SnakeLegs_Tree_01` 0.25 m, `SM_Mangrove_Tall_01` 0.34 m
+and `SM_AncientPineTree_01` 0.39 m a texel, the cook having dropped their top mips. The
+finest sheet's pixel is 0.229 m, and a view at its own pixel would be blurred twice by the
+stamp's resampling, so those four keep the raster.
+
+**The top view on the mesh** (`sprites/align.py`). Read off all twelve octahedral atlases
+against the raster, three conventions place a frame with no fitting:
+
+- the frame is centred on the mesh's pivot (within one atlas texel on every atlas, though
+  `SM_GreenTree_02`'s bounds centre stands 11 m off it);
+- turned by `np.rot90(frame, 3)`, its rows run along +Y and its columns along +X, as the
+  sprite grid's do; its normal's red is +X and green +Y;
+- its width is one of two measures of the mesh: twice the bounds' top over the pivot
+  (`height`: the green trees, bamboo, the funnel tree, `DioTree_02`, the tall mangrove,
+  Snake Legs), or the diameter of the sphere round the bounds' centre that holds every vertex
+  (`sphere`: the blue palms, the small mangroves, the ancient pine). Each matches the width a
+  free fit finds to 3%, and the generator's setting is not in the cook, so the rule whose
+  footprint overlaps the raster's more is taken.
+
+The frame is read onto the sprite grid at 4 x 4 samples a texel, colour and normal weighted
+by alpha. Its colour is the render target's linear albedo. The billboard material's own
+`Brightness` (up to 2.2) and `Desaturation` make up for how a flat card is shaded and are not
+applied, so the view's albedo is the mesh's. The render target kept only each normal
+component's positive half: z, which faces the camera, is whole, and a negative x or y reads
+0. What the unit length leaves over goes back on the axes that read 0, shared as the raster's
+own normal leans there, evenly where it does not. The crown top is the raster's, carried to
+the view's texels the raster leaves bare from the nearest it covers.
+
+**The mesh raster** (`sprites/raster.py`). LOD 0 is read with its first UV set, its tangent
+basis and its vertex colours (`staticmesh.lod0_surface`: the UVs vertex-major after the packed
+basis, half or full float; the basis two vectors a vertex, tangent then normal, four int8 over
+127, the normal's fourth the bitangent's sign; a colour an `FColor`, stored BGRA). Each
+material slot is a leaf, a bark, or skipped as the paint store's sprites skip it. A slot's albedo is its
+texture in linear light times the instance's `Brightness` and `Saturation`; its texture is
+read at the size whose texel spans about one sample on that slot's triangles, and a leaf at
+256 texels at least, since a smaller mip blurs the cut-out into a gradient. A leaf's mask is
+the first channel that is a cut-out, nearly every texel within 32 of 0 or 255: the packed
+`ORMA` map's blue first, where the wind-plant master keeps it on every leaf card of the
+build; then its alpha; then the albedo's, unless that holds subsurface. A bark is never cut.
+
+Each 0.125 m texel is sampled 4 x 4 times. A sample takes the highest triangle over it whose
+mask passes there, bilinear, from a third of 255 up; a tie keeps the triangle first in the
+mesh. A triangle whose UVs stay inside the texture holds its edges, so a card's border never
+reads the far side of its atlas; one that tiles wraps. The hit is then shaded
+(`sprites/shade.py`, below): its colour and its normal. A texel's alpha is its share of
+samples hit, its colour and normal their means, its top the highest. Triangles edge-on from
+above draw nothing.
+
+**The material at a hit.** What the material instances expose beyond the albedo, and what
+the shading makes of it:
+
+- **Normal maps.** A slot's `Normal` (else `Grass Normal`, else `Baked Normal`) is read at
+  the albedo's size, red and green as x and y over 127.5, z the unit length's remainder. The
+  hit's interpolated tangent `T` and normal `N` give the bitangent `B = cross(N, T) * sign`,
+  and the normal is `x T + y B + z N`, normalised: the engine's tangent space. On a card seen
+  from its back `N` is turned over and `T` and `B` are kept, as the engine's two-sided
+  foliage does. Checked against the game's own render: flipping green lowers the normals'
+  agreement with the octahedral views on nine of the twelve (`SM_GreenTree_01` 0.87 to 0.80,
+  `BluePalm_01` 0.88 to 0.83) and leaves the other three level, so the stored convention is
+  the engine's. The maps add leaf-level relief that the views, read at 0.03 to 0.39 m a
+  texel and rebuilt from their halves, mostly blur away: agreement moves by -0.02 to +0.01.
+- **Spherical normals.** The Dio leaves (`MI_DioTree_LeafMap_01` and `_03`) bend their
+  normals 0.976 of the way toward the direction from a pivot, the master's
+  `Spherical Normals Influence`. The pivot is taken as the instance's
+  `1.2 Style wind Crown Pivot` (`DioTree_02`: 10 m over the pivot); that the bend is about it
+  is an assumption, which the game's view of `DioTree_02` supports: agreement 0.803 without
+  the bend, 0.812 with it. No other tree material sets it.
+- **Moss.** Five bark instances carry a `Moss Albedo` with a `Moss Color Tint`, a `Fall
+  Off` and a `Contrast` (the three Kapoks', the purple trees' and the dead swamp trees').
+  Where a bark's normal turns up it wears the moss texture's mean colour times the tint:
+  none below z `1 - Fall Off`, all from `Fall Off / Contrast` above it (the Kapok: from 0.61
+  to 0.71). How the master ramps it in is not in the cook, so that ramp is a stand-in; the
+  moss's own texture detail is not drawn. The green trees' and the Snake Legs' bark set a
+  tint and a ramp but take their moss texture from the master, which the cook keeps without
+  its defaults, so they wear none.
+- **Vertex colours** are not colour. Every wind-plant mesh that has them keeps wind data in
+  them: red tracks the height (r 0.92 to 0.98 wherever it varies), green takes 4 to 78
+  distinct values (a branch index, by the master's `BranchID` parameters), alpha mostly two
+  or three levels. They are read and left out.
+- **Tints.** No tree material sets a hue, a colour variation or a per-instance tint; the
+  only colour scalars are `Brightness` and `Saturation`, applied to the albedo, and the
+  coral's and crater tree's `Emissive Color`, a glow that is no albedo and is left out. The
+  graph a master would apply them in is not in the cook either, so anything it does with
+  wind data, distance or the time of day cannot be recovered.
+
+The per-sample work is kernel-shaped, in two passes: the fill (`sprites/fill.py`) and the
+shading (`sprites/shade.py`), each numpy as the reference and a CUDA twin in `raster.cu`
+under `--gpu`, the fill a thread a sample over 32 x 32-sample bins of triangles in index
+order, the shading a thread a hit. Each twin does the same float32 operations in the same
+order (renders.md section 41), with no transcendental function: the textures are linear and
+the normal maps decoded before either pass. A build gives the same bytes either way; the
+twins' tests skip on a machine without a device. Triangle setup, the tables and the
+gathering into texels stay on the CPU.
+
+**Validated** on the eight species and four more whose atlas exists, raster against atlas:
+
+| Species | Footprint overlap | Area, raster / view (m²) | Luminance, view / raster | Normal agreement (mean cos) |
+| --- | --- | --- | --- | --- |
+| `SM_GreenTree_01` | 0.77 | 703 / 700 | 0.96 | 0.87 |
+| `SM_GreenTree_02` | 0.76 | 210 / 206 | 0.91 | 0.70 |
+| `SM_Mangrove_01` | 0.85 | 56 / 53 | 0.97 | 0.95 |
+| `SM_Mangrove_02` | 0.76 | 33 / 33 | 0.86 | 0.92 |
+| `SM_Mangrove_Tall_01` | 0.76 | 498 / 507 | 1.16 | 0.93 |
+| `SM_AncientPineTree_01` | 0.74 | 437 / 396 | 0.94 | 0.82 |
+| `DioTree_02` | 0.63 | 122 / 140 | 1.26 | 0.81 |
+| `SM_SnakeLegs_Tree_01` | 0.71 | 195 / 190 | 0.85 | 0.59 |
+| `SM_Bamboo_01` | 0.62 | 26 / 35 | 0.76 | 0.70 |
+| `BluePalm_01` | 0.86 | 5.4 / 5.5 | 0.96 | 0.88 |
+| `BluePalm_02` | 0.73 | 24 / 24 | 0.94 | 0.86 |
+| `FunnelTree_01` | 0.84 | 43 / 45 | 0.98 | 0.93 |
+
+The overlap is of two leaf-level alphas, so a one-texel shift of a leaf costs it; the areas
+agree within 6% on nine of the twelve, and the hue is the same on all. The raster's colour,
+read from the leaf textures, comes within 10% of the game's own render in luminance on seven
+of the twelve and within 26% on all.
+
+**The cache** (`sprites/store.py`) is laid out for one stamp kernel: `atlas.npz` holds three
+planes over one atlas 2048 wide, `colour` (RGBA8: sRGB colour and alpha), `normal` (two bytes:
+x and y as `(n + 1) * 127.5`, z the remainder up) and `top` (uint16, the crown top in cm over
+the pivot), and `records`, one row per species and level: its rectangle, its corner in mesh
+cm, its texel (12.5 cm doubling down the chain), its highest top, and how far its farthest
+covered texel reaches from the pivot, so a stamp bounds a tree under any yaw before it reads
+a texel. `first` and `levels` give each species'
+first row and its count. A level's texel `(r, c)` centres on `(x0 + (c + 0.5) t, y0 + (r +
+0.5) t)`, rows along +Y, the paint store sprites' convention, so a stamp turns and scales it
+by the tree's record as today. Each species carries its mip chain down to 4 texels:
+alpha and alpha-weighted colour averaged, normals summed by alpha, the top as its weighted
+mean. A one-texel gutter round each rectangle holds its edge colour at alpha 0, so a bilinear
+read never meets a neighbour or fades to black. `meta.json` is the stamp (the build, reader
+`crown_sprites` 1, the layout `format` 1, the texel), the record's dtype, and per species its
+mesh, source, instance count and what was measured. It is written after the atlas and
+removed first, so a write cut short is a miss. 4.3 MB.
+
+**Known limits.**
+
+- The moss ramp and the spherical normals' pivot are stand-ins for a graph the cook leaves
+  out ("The material at a hit").
+- The game's view keeps whatever the material graph does at run time; the raster reads the
+  textures and the instance parameters only, so a species' colour can move by the source it
+  takes. Both are albedo, and the species targets of section 31 still calibrate them.
+- `SM_Bamboo_01`'s view covers a third more than its raster and draws a quarter darker.
+- The coral trees and `CraterTree_02` get sprites, though the render-only mesh pass draws
+  them ("Coral trees are no crowns").
+- The paint store's own sprites read a leaf's mask from the `ORMA` alpha or the albedo's, so
+  the Kapok's (the albedo's subsurface) covers most of each card and the ancient pines' and
+  Snake Legs' have none; the crown sprites read the blue. The paint store is left as it is
+  until the new draw replaces its crowns.
+
 **The paint store keeps the coral (measured 2026-10-07).** The 1,384 coral trees, of 99,073,
 still write the crown-top and canopy planes, and neither is a second drawing. The canopy plane
 is weighted by `canopy_kept`, 0.0 while game-painted draws crowns, so leaving the coral out of

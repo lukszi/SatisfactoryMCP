@@ -66,6 +66,12 @@ Planned as 0.2.0.
   The light's controls show on every map that has a light, greyed with the reason where it is
   drawn baked, such as without WebGL2. Tree shadows with terrain shadows off miss the ones that
   fall inside terrain shade, until a later render stores them.
+- Map generator: `python -m mapgen crown-sprites` builds a top-down sprite of every tree
+  species, in colour, normal and alpha at 0.125 m, into `data/local/crown-sprites/`. Eight
+  species take the game's own billboard view from above; the other 45, the Kapok and the
+  yuccas among them, are rasterised from their meshes with their leaf and bark textures,
+  normal maps, spherical normals and moss. `--gpu` runs the raster's per-sample work on the
+  GPU, to the same bytes. No render draws them yet.
 
 ### Changed
 
@@ -353,6 +359,9 @@ Planned as 0.2.0.
   whole across the waterline, 1,233 are left whole in the sea, and 30 of the 37 terraces are
   kept whole across their lake's edge. `--gpu` works the footprints out on the GPU too, with
   the same bits. This shares the one version up every rendered map style takes.
+- Map generator: a texture that is not square is read at its own aspect. The paint layers read
+  the mangrove leaves, the Dypsis palms and the bamboo bark as garbled squares, so those
+  crowns' mean colours change at the next `python -m mapgen paint`.
 - Every rendered map style is one version up for the map changes of this release, once:
   terrain and satellite 9, game-painted 20, relief and relief dark 7. The live-sun light is
   model 3, so a map baked under model 2 is offered a relight.
