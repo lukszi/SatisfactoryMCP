@@ -79,7 +79,7 @@ __all__ = [
 
 LIGHT_ID = "sun"
 
-#: The atlas's first crown cell, first Titan tree cell and its ambient occlusion cell: the
+#: The atlas's first crown cell, first Titan tree cell and the ambient occlusion cell: the
 #: ground's horizons, then the crowns' and the Titan trees' each alone, then what the trees
 #: take off the sky light. Cells per tile, and the horizons among them.
 CROWN_CELL = HORIZON_DIRS
