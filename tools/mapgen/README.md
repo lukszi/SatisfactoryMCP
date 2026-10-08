@@ -294,6 +294,7 @@ be traced to the axis it should move.
 | `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the drawn surface and one block of its light |
 | `lighting/atlas.py` | light | A block's horizon atlas a cell at a time, its coarser levels' source and the default sun's planes |
 | `lighting/occlusion.py`, `occlusion.cu` | light | Ambient occlusion over a height plane, exact integer box sums; its CUDA twin for `--gpu` |
+| `lighting/block_occlusion.py` | light | A bake block's occlusion: the ground's, the trees' beyond it, and the atlas's occlusion cell |
 | `lighting/undersides.py` | light | Each tree species' crown underside from its mesh, laid on the paint store's grid; the Titan trees' slab |
 | `lighting/bake.py` | light | The lighting pyramid baked a row of blocks at a time, as the surface's rows come in |
 | `lighting/light_tiles.py` | light | The lighting pyramid's tile format, the bake's work files, and the coarser levels |

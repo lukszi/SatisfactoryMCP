@@ -27,8 +27,9 @@ from scipy import ndimage
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
 from mapgen.lighting.atlas import BakedHorizons, bake_horizons
+from mapgen.lighting.block_occlusion import TreesAo, ambient_cell, block_occlusion
 from mapgen.lighting.encoding import encode_beside
-from mapgen.lighting.horizon import crown_surface, normals, sky_view
+from mapgen.lighting.horizon import normals, sky_view
 from mapgen.lighting.lanes import device_lane
 from mapgen.lighting.light_tiles import (
     TileSet,
@@ -37,7 +38,6 @@ from mapgen.lighting.light_tiles import (
     folded_tiles,
     level_layout,
     normal_byte,
-    optional_array,
     padded_window,
     ring_rows,
     tile_jobs,
@@ -45,8 +45,7 @@ from mapgen.lighting.light_tiles import (
     with_detail,
     work_array,
 )
-from mapgen.lighting.model import AO_CELL, DIRECT_SCALE, light_axis, shaded_direct, sun_horizon
-from mapgen.lighting.occlusion import ao_margin, occlusion, relative_occlusion
+from mapgen.lighting.model import DIRECT_SCALE, light_axis, shaded_direct, sun_horizon
 from mapgen.lighting.spans.bake import BlockSpans, block_spans, default_shade
 from mapgen.lighting.spans.canopy import Canopy, blend_canopy, block_canopy, canopy_rows
 from mapgen.lighting.spans.holes import Holes, fill_holes, find_holes, half_heights, opened
@@ -357,7 +356,7 @@ def bake_block(job: BlockJob) -> BlockDone:
             )
     del spans
     with device_lane():
-        ground_ao, trees_ao = _occlusion(work, job.block, spacing_m)
+        ground_ao, trees_ao = block_occlusion(work, job.block, spacing_m, TERM_ROWS)
     nx, ny = _normals(work, (r0 - 1, r0 + block_px + 1, c0 - 1, c0 + block_px + 1), spacing_m)
     nx, ny = with_detail(nx, ny, detail_window(work, r0, c0, block_px))
     svf = np.clip(upsampled(sky_ringed), 0, 1) * (np.float32(1.0) - ground_ao)
@@ -366,7 +365,7 @@ def bake_block(job: BlockJob) -> BlockDone:
     )
     del nx, ny, svf
     if trees_ao is not None:
-        _ambient_cell(horizons, trees_ao.relative)
+        ambient_cell(horizons, trees_ao.relative)
     t = PYRAMID_TILE_PX
     folded = folded_tiles(horizons.folded, c0 // t, r0 // t)
     tiled = tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas, folded)
@@ -387,58 +386,6 @@ def bake_block(job: BlockJob) -> BlockDone:
     work_array(work, "hzq", np.uint8)[quarter] = horizon_quarter
     tiles = (nrm.shape[0] // t) * (nrm.shape[1] // t)
     return BlockDone(tiles, written.result(), time.time() - started, _gpu_calls(), folded)
-
-
-class _TreesAo(NamedTuple):
-    """A block's ambient occlusion under the trees, at full resolution: of the canopy top the
-    painted layer draws, and what it takes beyond the ground's own."""
-
-    visible: F32Grid
-    relative: F32Grid
-
-
-def _occlusion(
-    work: Path, block: tuple[int, int, int], spacing_m: float
-) -> tuple[F32Grid, _TreesAo | None]:
-    """The block's ambient occlusion: the ground's, and under the trees' (None without an
-    occluder), ``TERM_ROWS`` at a time. What floats occludes nothing: the arches and
-    overhangs are left out of the heights that occlude, as the sky view's spans let the sky
-    in beneath them."""
-    r0, c0, n = block
-    m = ao_margin(spacing_m)
-    z = work_array(work, "z", np.float32, "r")
-    top = optional_array(work, "occluder", np.float32)
-    cover = optional_array(work, "occluder_cover", np.uint8)
-    slabs = SlabStore(work / SLAB_DIR_NAME)
-    ground = np.empty((n, n), np.float32)
-    visible = None if top is None else np.empty((n, n), np.float32)
-    for start in range(0, n, TERM_ROWS):
-        rows = slice(start, min(start + TERM_ROWS, n))
-        window = (r0 + rows.start - m, r0 + rows.stop + m, c0 - m, c0 + n + m)
-        heights = padded_window(z, *window)
-        found = slabs.full(window, heights)
-        solid = heights if found is None else found[0]
-        drawn = heights[m : heights.shape[0] - m, m : heights.shape[1] - m]
-        ground[rows] = occlusion(solid, spacing_m, drawn)
-        if top is not None and visible is not None:
-            share = None if cover is None else padded_window(cover, *window, 0.0) / np.float32(255)
-            crowns = padded_window(top, *window, np.nan)
-            canopy = crown_surface(solid, crowns, share)
-            seen = crown_surface(heights, crowns, share)
-            visible[rows] = occlusion(
-                canopy, spacing_m, seen[m : seen.shape[0] - m, m : seen.shape[1] - m]
-            )
-    if visible is None:
-        return ground, None
-    return ground, _TreesAo(visible, relative_occlusion(visible, ground))
-
-
-def _ambient_cell(horizons: BakedHorizons, relative: F32Grid) -> None:
-    """The trees' occlusion as the atlas's cell, at half resolution, and for the coarser
-    levels at quarter."""
-    half = downsample(relative)
-    horizons.atlas[AO_CELL] = np.round(np.clip(half, 0, 1) * 255)
-    horizons.quarter[..., AO_CELL] = np.round(np.clip(downsample(half), 0, 1) * 255)
 
 
 def _gpu_calls() -> dict[str, int]:
@@ -463,7 +410,7 @@ def _default_terms(
     job: BlockJob,
     nrm: U8Grid,
     horizons: BakedHorizons,
-    trees: tuple[Canopy | None, _TreesAo | None],
+    trees: tuple[Canopy | None, TreesAo | None],
 ) -> None:
     """The block's terms at the default sun, ``TERM_ROWS`` at a time: the sky view and the
     ground's direct term, then the painted layer's, crowned and with the canopy's own light,
