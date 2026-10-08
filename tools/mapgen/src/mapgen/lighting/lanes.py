@@ -16,7 +16,7 @@ from multiprocessing.synchronize import Semaphore
 
 __all__ = ["DEVICE_LANES", "device_lane", "join", "lanes"]
 
-#: Blocks on the device at once (section 41, "Memory").
+#: Blocks on the device at once: device memory against the tail's wait (section 41, "On the GPU").
 DEVICE_LANES = 3
 
 _lanes: Semaphore | None = None
