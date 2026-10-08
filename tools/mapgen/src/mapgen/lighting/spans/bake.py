@@ -297,7 +297,7 @@ def _on_device(host: _OnHost, spans: BlockSpans, wanted: Container[int] | None) 
                     device = None
             yield from found if found is not None else _direction(host, spans, k, wanted)
     finally:
-        device = None
+        device = None  # its planes go before the pool hands the device's memory back
         gpu.release()
 
 
