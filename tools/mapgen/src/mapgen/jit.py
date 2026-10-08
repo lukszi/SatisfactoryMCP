@@ -18,6 +18,7 @@ import warnings
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from importlib import resources
+from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, TypeVar, cast
 
@@ -150,8 +151,8 @@ def helper(loop: _Loop) -> _Loop:
 
 
 def cuda_kernel(package: str, source: str, name: str) -> RawKernel:
-    """The kernel ``name`` of the CUDA file ``source`` in ``package``, compiled once a process
-    with ``CUDA_OPTIONS``; CuPy keeps the compiled code on disk."""
+    """The kernel ``name`` of the CUDA file ``source`` in ``package``, compiled with
+    ``CUDA_OPTIONS`` once and kept on disk (``_cubin``)."""
     with _compiling:
         return _cuda_module(package, source).get_function(name)
 
@@ -161,7 +162,31 @@ def _cuda_module(package: str, source: str) -> RawModule:
     import cupy
 
     code = resources.files(package).joinpath(source).read_text(encoding="utf-8")
-    return cupy.RawModule(code=code, options=CUDA_OPTIONS)
+    return cupy.RawModule(path=str(_cubin(code)))
+
+
+def _cubin(code: str) -> Path:
+    """``code`` compiled by NVRTC with ``CUDA_OPTIONS`` alone, kept where CuPy keeps its own
+    code. CuPy's own compile adds ``-ftz=true`` after them, which flushes subnormals."""
+    import cupy
+    from cupy.cuda import compiler
+
+    device = cupy.cuda.Device().compute_capability
+    key = repr((code, CUDA_OPTIONS, device, cupy.cuda.nvrtc.getVersion())).encode("utf-8")
+    folder = Path(os.environ.get("CUPY_CACHE_DIR") or Path.home() / ".cupy" / "kernel_cache")
+    path = folder / f"mapgen-{hashlib.sha256(key).hexdigest()[:32]}.cubin"
+    if not path.is_file():
+        binary, _names = compiler.compile_using_nvrtc(code, CUDA_OPTIONS)
+        folder.mkdir(parents=True, exist_ok=True)
+        part = path.with_suffix(f".{os.getpid()}.part")
+        part.write_bytes(binary if isinstance(binary, bytes) else binary.encode("utf-8"))
+        try:
+            os.replace(part, path)
+        except OSError:  # another process wrote the same file and holds it open
+            part.unlink(missing_ok=True)
+            if not path.is_file():
+                raise
+    return path
 
 
 def gpu_problem() -> str | None:

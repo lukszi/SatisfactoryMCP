@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import functools
 from functools import partial
-from typing import NamedTuple
+from types import ModuleType
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 from numpy.typing import NDArray
 
-from mapgen.jit import kernels_on
+from mapgen.jit import gpu_on, kernels_on
 from mapgen.lighting.horizon import (
     FADE_M,
     FINE_M,
@@ -39,20 +40,29 @@ from mapgen.lighting.sun import game_sun
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 
+if TYPE_CHECKING:
+    from mapgen.lighting.kernels import Offsets
+
 __all__ = [
     "BAND_GAP_DEG",
     "CROWN_UNDERSIDE",
     "OFF_PATH_EL_DEG",
     "Bands",
+    "KernelSteps",
     "SpanRuns",
     "SpanStep",
     "SpanSurface",
+    "as_degrees",
+    "band_target",
+    "kernel_steps",
     "march_spans",
     "path_elevation",
+    "rows_with_spans",
     "sky_view_spans",
     "span_block",
     "span_steps",
     "span_surface",
+    "step_reach",
 ]
 
 #: The sun disc, degrees: a gap narrower than it between two samples is no gap, and a band
@@ -167,7 +177,7 @@ def path_elevation(az_deg: float) -> float:
     return float(path[near[np.argmin(off[near])], 1])
 
 
-def _target(az_deg: float) -> tuple[np.float32, np.float32]:
+def band_target(az_deg: float) -> tuple[np.float32, np.float32]:
     """The tangent a band is kept nearest at ``az_deg``, and the sun disc's width there."""
     te = np.float32(np.tan(np.radians(path_elevation(az_deg))))
     return te, np.float32((1.0 + te * te) * np.radians(BAND_GAP_DEG))
@@ -288,12 +298,13 @@ def _span_step(
     strip.hi[...] = np.where(overlap, np.maximum(strip.hi, sh), np.where(take, sh, strip.hi))
 
 
-def _rows_with_spans(lo: F32Grid) -> NDArray[np.int64]:
+def rows_with_spans(lo: F32Grid) -> NDArray[np.int64]:
     """Per row, how many rows up to it hold a span: a row range's count in two reads."""
     return np.concatenate([[0], np.cumsum(np.isfinite(lo).any(axis=1))]).astype(np.int64)
 
 
-def _degrees(t: NDArray[np.floating]) -> F32Grid:
+def as_degrees(t: NDArray[np.floating]) -> F32Grid:
+    """Tangents as degrees: numpy's arctangent, which every path takes on the host."""
     return np.degrees(np.arctan(t)).astype(np.float32)
 
 
@@ -304,9 +315,9 @@ def _finish(best: F32Grid, lo: F32Grid, hi: F32Grid) -> tuple[F32Grid, F32Grid, 
     np.maximum(best, np.where(late, hi, best), out=best)
     floating = np.isfinite(lo) & ~late
     nan = np.float32(np.nan)
-    band_lo = np.where(floating, _degrees(np.where(floating, lo, 0)), nan).astype(np.float32)
-    band_hi = np.where(floating, _degrees(np.where(floating, hi, 0)), nan).astype(np.float32)
-    return _degrees(best), band_lo, band_hi
+    band_lo = np.where(floating, as_degrees(np.where(floating, lo, 0)), nan).astype(np.float32)
+    band_hi = np.where(floating, as_degrees(np.where(floating, hi, 0)), nan).astype(np.float32)
+    return as_degrees(best), band_lo, band_hi
 
 
 def march_spans(
@@ -326,9 +337,9 @@ def march_spans(
     hi = np.full(zc.shape, -np.inf, np.float32)
     seen = np.zeros(zc.shape, bool)
     steps = span_steps(az_deg, spacing_m, fade)
-    target = _target(az_deg)
-    reach = int(np.ceil(max((abs(s.oy) for s in steps), default=0.0))) + 2
-    rows = _rows_with_spans(surface.lo)
+    target = band_target(az_deg)
+    reach = step_reach(steps)
+    rows = rows_with_spans(surface.lo)
     if kernels_on():
         _compiled_march(surface, halo, steps, target, (best, lo, hi, seen), (rows, reach))
     else:
@@ -358,25 +369,48 @@ def _compiled_march(
     out: tuple[F32Grid, F32Grid, F32Grid, BoolMask],
     rows: tuple[NDArray[np.int64], int],
 ) -> None:
-    """``march_spans``' loop as a kernel, fed the steps it works out."""
-    from mapgen.lighting.spans import kernels as span_kernels
+    """``march_spans``' loop as a kernel, fed the steps it works out; on the GPU when the
+    switch says so."""
+    fed = kernel_steps(steps, halo)
+    _span_kernels().march_spans(
+        _planes(surface), halo, *fed, target, out, rows, _run_arrays(surface)
+    )
 
+
+class KernelSteps(NamedTuple):
+    """``span_steps`` as the kernels take them: which sample bilinearly, the offsets
+    (``horizon.kernel_offsets``), each sample's quad offsets, and per step its scale,
+    stretch near and far end, and fade weight."""
+
+    smooth: BoolMask
+    offsets: Offsets
+    quads: tuple[I64Grid, I64Grid]
+    per_step: F32Grid
+
+
+def kernel_steps(steps: list[SpanStep], halo: int) -> KernelSteps:
+    """``steps`` as the kernels take them."""
     smooth = [step.sample is bilinear for step in steps]
     oy, ox = [s.oy for s in steps], [s.ox for s in steps]
     offsets = kernel_offsets(oy, ox, smooth, (len(steps),), halo)
     per_step = np.array([[s.scale, s.near_m, s.far_m, s.weight] for s in steps], np.float32)
-    span_kernels.march_spans(
-        _planes(surface),
-        halo,
-        np.array(smooth),
-        offsets,
-        _quads(oy, ox),
-        per_step,
-        target,
-        out,
-        rows,
-        _run_arrays(surface),
-    )
+    return KernelSteps(np.array(smooth), offsets, _quads(oy, ox), per_step)
+
+
+def step_reach(steps: list[SpanStep]) -> int:
+    """The rows a step reads past its receiver's, with the quad's: how near a span must be."""
+    return int(np.ceil(max((abs(s.oy) for s in steps), default=0.0))) + 2
+
+
+def _span_kernels() -> ModuleType:
+    """The span kernels the switch selects: CUDA's or numba's, imported on first use."""
+    if gpu_on():
+        from mapgen.lighting.spans import gpu
+
+        return gpu
+    from mapgen.lighting.spans import kernels
+
+    return kernels
 
 
 def _quads(oy: list[float], ox: list[float]) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
@@ -404,10 +438,8 @@ def sky_view_spans(
     steps = np.geomspace(1.0, reach, SKY_STEPS)
     near_t, far_t = _stretches(steps)
     span = int(np.ceil(reach)) + 2
-    rows = _rows_with_spans(surface.lo)
+    rows = rows_with_spans(surface.lo)
     if kernels_on():
-        from mapgen.lighting.spans import kernels as span_kernels
-
         thetas = [2 * np.pi * k / SKY_DIRS for k in range(SKY_DIRS)]
         oy = [np.sin(theta) * t for theta in thetas for t in steps]
         ox = [np.cos(theta) * t for theta in thetas for t in steps]
@@ -425,7 +457,7 @@ def sky_view_spans(
             np.float32,
         )
         qy, qx = (q.reshape(shape) for q in _quads(oy, ox))
-        span_kernels.sky_view_spans(
+        _span_kernels().sky_view_spans(
             _planes(surface),
             halo,
             offsets,

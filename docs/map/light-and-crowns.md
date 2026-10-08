@@ -120,8 +120,9 @@ between its underside and its top as the receiver sees them:
   a rock beside it at its height, keep the drawn surface's.
 - Where no span is in reach, the march and the sky view are the plain ones to the bit, and a
   strip of rows with none skips the span work. Both run as numba kernels equal to their numpy
-  reference bit for bit (`span_kernels.py`, section 41 of renders.md). `--gpu` keeps the
-  plain march on CUDA; a block with spans marches them on numba.
+  reference bit for bit (`spans/kernels.py`, section 41 of renders.md). `--gpu` runs both, and
+  the rules after the march, on CUDA to the same bits (`spans/gpu.cu`, `spans/device.py`;
+  renders.md section 41, "On the GPU").
 
 **What casts as a span.**
 

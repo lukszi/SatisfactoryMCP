@@ -26,11 +26,12 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
+from mapgen.lighting.encoding import encode_beside
 from mapgen.lighting.horizon import HORIZON_DIRS, encode_horizon, normals, sky_view
+from mapgen.lighting.lanes import device_lane
 from mapgen.lighting.light_tiles import (
     HZ_LINEAR_SCALE,
     downsample,
-    encode_tiles,
     level_layout,
     normal_byte,
     padded_window,
@@ -148,7 +149,8 @@ _Shades: TypeAlias = dict[bool, tuple[F32Grid, F32Grid] | None]
 
 @dataclass(frozen=True)
 class BlockJob:
-    """One block of native tiles for a light worker: where it reads, writes, and how far."""
+    """One block of native tiles for a light worker: where it reads, writes, how far, and on
+    how many threads its tiles are encoded."""
 
     work: str
     dest: str
@@ -158,6 +160,7 @@ class BlockJob:
     sky_halo: int
     skip_water: bool
     block: tuple[int, int, int] = (0, 0, 0)
+    encode_threads: int = 1
 
 
 class BlockDone(NamedTuple):
@@ -302,7 +305,8 @@ def _bake_horizons(
     canopy = sun[:HORIZON_DIRS]
     bands: dict[int, Bands] = {}
     keep, shaded = sun_cells(DEFAULT_SUN[0]), shade_cells(DEFAULT_SUN[0])
-    cells = horizon_cells(z_half, halo - 1, spacing_m, spans, holes) if march else iter(())
+    wanted = {*keep, *shaded}
+    cells = horizon_cells(z_half, halo - 1, spacing_m, spans, holes, wanted) if march else iter(())
     for k, ringed, marched, whole in cells:
         deg = ringed[1:-1, 1:-1]
         hz_u8[k] = encode_horizon(deg)
@@ -368,14 +372,15 @@ def bake_block(job: BlockJob) -> BlockDone:
     holes = find_holes(z_half[halo - 1 : 1 - halo, halo - 1 : 1 - halo])
     if holes is not None:
         z_half, spans = opened(z_half), _opened_spans(spans)
-    horizons = _bake_horizons(z_half, halo, half_m, spans, half_px, march, holes)
-    sky_ringed = _sky_view(z_half, halo, job.sky_halo, half_m, spans, holes)
-    canopy_sky = None
-    if spans.crowns is not None:
-        rows, cols = _sky_rows(z_half, halo, job.sky_halo)
-        canopy_sky = fill_holes(
-            sky_view(spans.crowns.z[rows, cols], job.sky_halo, half_m), holes, 1.0
-        )
+    with device_lane():
+        horizons = _bake_horizons(z_half, halo, half_m, spans, half_px, march, holes)
+        sky_ringed = _sky_view(z_half, halo, job.sky_halo, half_m, spans, holes)
+        canopy_sky = None
+        if spans.crowns is not None:
+            rows, cols = _sky_rows(z_half, halo, job.sky_halo)
+            canopy_sky = fill_holes(
+                sky_view(spans.crowns.z[rows, cols], job.sky_halo, half_m), holes, 1.0
+            )
     del spans
     nx, ny = _normals(work, (r0 - 1, r0 + block_px + 1, c0 - 1, c0 + block_px + 1), spacing_m)
     svf = np.clip(upsampled(sky_ringed), 0, 1)
@@ -384,13 +389,14 @@ def bake_block(job: BlockJob) -> BlockDone:
     )
     del nx, ny, svf
     t = PYRAMID_TILE_PX
-    hz_bytes = encode_tiles(tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas))
-    canopy = None
-    if canopy_sky is not None:
-        canopy = block_canopy(work, job.block, horizons.canopy, canopy_sky)
-    _default_terms(work, job, nrm, horizons, canopy)
-    horizon_quarter = horizons.quarter
-    del horizons, canopy
+    tiled = tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas)
+    with encode_beside(tiled, job.encode_threads) as written:
+        canopy = None
+        if canopy_sky is not None:
+            canopy = block_canopy(work, job.block, horizons.canopy, canopy_sky)
+        _default_terms(work, job, nrm, horizons, canopy)
+        horizon_quarter = horizons.quarter
+        del horizons, canopy
     h0, w0 = r0 // 2, c0 // 2
     ringed = fill_holes(z_half[halo - 1 : 1 - halo, halo - 1 : 1 - halo], holes, 0.0)
     half = (slice(h0, h0 + half_px), slice(w0, w0 + half_px))
@@ -400,7 +406,7 @@ def bake_block(job: BlockJob) -> BlockDone:
     quarter = (slice(h0 // 2, (h0 + half_px) // 2), slice(w0 // 2, (w0 + half_px) // 2))
     work_array(work, "hzq", np.uint8)[quarter] = horizon_quarter
     tiles = (nrm.shape[0] // t) * (nrm.shape[1] // t)
-    return BlockDone(tiles, hz_bytes, time.time() - started, _gpu_calls())
+    return BlockDone(tiles, written.result(), time.time() - started, _gpu_calls())
 
 
 def _gpu_calls() -> dict[str, int]:

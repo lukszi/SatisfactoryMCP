@@ -1684,12 +1684,14 @@ another signature's code; that race is why each signature now has a file of its 
   optics, the carpet, the sunk crowns and the opaque water, each on bands from all wet to all
   dry, mixed both ways; and float64 planes, which run the reference.
 
-### On the GPU (2026-10-07)
+### On the GPU (2026-10-07; the spans and the block on the device, 2026-10-08)
 
-`mapgen renders --gpu` runs the light's horizon march and sky view as CUDA kernels, in each
-light process. Everything else runs as above: numba's kernels where they exist, numpy
-elsewhere. The CPU path stays the default and the reference, and the tiles are the same
-bytes either way.
+`mapgen renders --gpu` runs the light's marches and sky views, plain and with spans, as CUDA
+kernels in each light process, and keeps a block's planes on the device from its first
+direction to its last, the rules after each march included ("A block on the device", below).
+A block's tiles then encode on threads ("The encode"). Everything else runs as above:
+numba's kernels where they exist, numpy elsewhere. The CPU path stays the default and the
+reference, and the tiles are the same bytes either way.
 
 - **The switch.** `--gpu` sets `MAPGEN_KERNELS=cuda`, which the light's processes inherit;
   setting it by hand does the same. `jit.gpu_on()` says CUDA where the switch says `cuda`
@@ -1702,16 +1704,17 @@ bytes either way.
 - **The log.** Nothing a run writes says where its light was marched: the light's
   `meta.json` and the sidecars are a numba run's, timings apart. So each light process counts
   its march and sky-view calls by where they ran (`gpu.ran`), each block hands its count back
-  with its tiles, and a `--gpu` bake prints the sum once its block rows are in. At 2048, one
-  block of 32 ground and 32 crown horizons and a sky view: `light: horizon and sky-view calls
-  65 on NVIDIA GeForce RTX 3080; 0 ran on numba, the device out of memory` (measured before
-  the crowns became spans, which numba marches; below, "Spans"). A run without `--gpu` prints
-  no such line.
+  with its tiles, and a `--gpu` bake prints the sum once its block rows are in. A block with
+  ground spans and crowns counts its 64 marches, its sky view and its canopy's: `light:
+  horizon and sky-view calls 66 on NVIDIA GeForce RTX 3080; 0 ran on numba, the device out of
+  memory` for the one block at 2048. A run without `--gpu` prints no such line.
 - **What it needs.** The `gpu` extra: CuPy (`cupy-cuda12x`) and NVRTC from
   `nvidia-cuda-nvrtc-cu12`, both pinned, on Windows or Linux on x86-64, and an NVIDIA
-  driver. No CUDA toolkit. CuPy compiles `lighting/gpu.cu` once a process and keeps the
-  compiled code on disk. The type gate reads CuPy through the stub in `typings/cupy/` and
-  needs no `gpu` extra.
+  driver. No CUDA toolkit. NVRTC compiles each `.cu` file once, with `jit.CUDA_OPTIONS`, and
+  the cubin is kept in CuPy's kernel cache directory (`CUPY_CACHE_DIR`, else
+  `~/.cupy/kernel_cache`) under a name that digests the source, the options, the device and
+  NVRTC's version (`jit._cubin`). The type gate reads CuPy through the stub in
+  `typings/cupy/` and needs no `gpu` extra.
 - **Why the bits are the same.** Each thread does for its pixel what `lighting/kernels.py`
   does for one element of a row: the same float32 operations, in the same order, from the
   offsets, fractions and scales numpy works out (the rules above). NVRTC compiles with
@@ -1719,16 +1722,57 @@ bytes either way.
   100,000 such sums left 15,734 different without the option and none with it. Division,
   the square root and subnormals are IEEE's (`--prec-div`, `--prec-sqrt`, `--ftz=false`).
   The arctangent and the degrees stay in numpy, as every transcendental does.
+- **Subnormals (2026-10-08).** CuPy's own compile appends `-ftz=true` after the options it is
+  given, and NVRTC takes the last: `--ftz=false` never held, and the kernels flushed
+  subnormals to zero (a probe: `1e-20 * 1e-20` gave 0 on the device against numpy's `1e-40`).
+  `jit` now runs NVRTC with the options as they are and loads the cubin itself
+  (`RawModule(path=...)`); the probe gives numpy's bits, and a test holds it. No test or gate
+  had met a subnormal, so no output moves.
 - **What still differs, and cannot show.** A NaN the GPU makes carries CUDA's one bit
   pattern, where x86 keeps the payload of the NaN it came from. None arose in the tests, and
-  every reader of a horizon rounds it to a byte, where the two agree.
-- **Spans** take numba's span march: the CUDA march is the plain one, which a block with no
-  span in its window runs.
-- **Memory.** A call uploads its rasters and the steps, marches, reads the result back and
-  hands the device memory back. One the device has no memory for runs numba's kernel, with
-  the same bits. A light process with the GPU imports CuPy and opens a CUDA context: 0.65 GB
-  more commit (0.33 GB working set) and 0.19 GB of device memory, so `light_workers()`
-  counts `LIGHT_GPU_BYTES`, 0.7 GB, more a process.
+  every reader of a horizon rounds it to a byte, compares it or maps it to 0, where the two
+  agree.
+- **Spans (2026-10-08).** The span march and the sky view with spans have CUDA twins of
+  numba's (`lighting/spans/gpu.cu`), a thread a pixel. A thread visits a span sample where
+  the sample's four pixels hold a span, the quad `spans.SpanRuns` is cut from, so it visits
+  what numba's runs visit; a row with no span within reach skips the test, as numba's does.
+  Python's `min` and `max` keep the first of equals, and so do the twins. The underside is a
+  plane the kernels read per pixel, never a constant, so an underside per species changes no
+  kernel.
+- **A block on the device (2026-10-08).** `spans/bake.horizon_cells` makes each direction's
+  cells with one set of operations (`CellOps`): the host's (numpy, and numba's kernels) or the
+  device's (`lighting/spans/device.py`). On the device a block's heights, or its ground and
+  crown span surfaces, are uploaded once; per direction the march, the band rules of
+  `march._finish`, the holes' fill (`holes.fill_holes`, by each pixel's nearest index), the
+  folded horizon (`path_horizon`) and the crown cell's test run as kernels
+  (`lighting/spans/cells.cu`), and the two cells come back to the host for their bytes. The
+  arctangent and the degrees run in numpy between the march and the rules after it: on the
+  horizon whole, and on a band's edges only where it floats. numpy's float32 arctangent and
+  degrees give an element what they give it in any array (4.2 million values over nine
+  decades, shifted and subsampled six ways: every bit the same), so the floating pixels alone
+  give `_finish`'s bits. `np.maximum`, `np.minimum` and `np.clip` keep the NaN rules of their
+  scalar loops; the signed zero of "Why the bits are the same" can meet them and cannot show.
+  The bands of a cell come back only where the bake reads them, the default sun's four cells
+  (`wanted`).
+- **Out of device memory.** A block that finds no room to upload, or runs out at a direction,
+  makes the directions left with the host's operations, whose marches still go to the device
+  a call at a time and, with no room for one either, to numba's kernels: the same bits each
+  way, each march counted where it ran.
+- **Lanes and memory.** Every light process with the GPU opens its own CUDA context. A block
+  holds a lane while its horizons and sky views are made (`lighting/lanes.py`,
+  `DEVICE_LANES = 3`), so at most three blocks hold planes at once, however many processes
+  bake: a block at 16384 peaks at 0.50 GB in CuPy's pool, at 8192 0.47 GB, at 32768 about
+  0.65 GB by the planes' area. A context reserves stack for every thread the device can hold;
+  the kernels here keep none, so a light process sets 64 bytes a thread (`gpu.STACK_BYTES`)
+  where CUDA's default is 1 KB: 0.10 GB a context, not 0.19 (`nvidia-smi`, one process, 191
+  MB against 97 MB). A light process with the GPU also adds 0.65 GB of commit (0.33 GB
+  working set), so `light_workers()` counts `LIGHT_GPU_BYTES`, 0.7 GB, more a process.
+- **The encode.** With the marches on the device, encoding a block's 512 WebP files was
+  three quarters of its time. libwebp lets go of the GIL while it encodes (16 atlases of
+  1024 × 1024 in 4.41 s on one thread, 0.75 s on eight, the same bytes), so with `--gpu` a
+  block's tiles encode on threads (`lighting/encoding.py`): the cores a block row leaves each
+  of its blocks, at most eight, beside the block's default-sun terms. Without `--gpu` a block
+  encodes on one thread before its terms, as before.
 
 **Measured** (build 502094, RTX 3080; the machine shared, its CPU about half busy, no render
 lock: timings wait for the round's one exclusive run). One full-size light block, the bench of
@@ -1744,6 +1788,49 @@ One march over that block, 219 steps, takes 3.2 ms in the kernel and 11.5 ms wit
 transfers (3.4 ms to upload a raster, 3.9 ms to read the horizon back). numpy's arctangent and
 degrees after it take 53 ms, so they are now most of a horizon's cost. The crowns' march is
 short (its fade ends at 80 m), and there the transfers cost what numba's march does.
+
+**Measured, the block on the device** (2026-10-08, RTX 3080, a Ryzen 9 9950X3D; the machine
+shared, no render lock). One block of the surfaces a painted 8192 and 16384 render captured
+(4096 native pixels, 2048 at half resolution with the march's halo, ground spans and crowns,
+the 8192 block on the sheet's edge with holes), baked whole by `stage.bake_block` in one
+process, seconds:
+
+| Block | numba | spans on CUDA a call at a time | the block on the device | and its encode on 8 threads |
+| --- | --- | --- | --- | --- |
+| 8192, rows 4096, columns 0 (82 steps a march) | 108 | 112 | 65 | |
+| 16384, rows and columns 8192 (about 150 steps) | 196 | | 47 | 18 |
+
+numba's 8192 block spent 31 s in its 64 span marches, 20 s in numpy after them (the band
+rules with their arctangent, the fill, the fold) and 41 s encoding. At 16384 on the device
+the marches take under a second together; what stays on the host is numpy's arctangent
+(1.4 s a block), the atlas's bytes and the coarser levels' source (about 2 s), the default
+sun's terms (3.2 s), the normals (1.0 s), the crown planes (1.2 s) and the encode (35 s on
+one thread, 5 to 6 s on eight). Every comparison above gave the same bytes: the block's 512
+tile files, its terms and the coarser levels' four sources.
+
+**Measured, whole renders** (2026-10-08, the bench kit's `full`: all five layers, lit, the
+raster caches reused and the light baked fresh, each run under the exclusive render lock;
+master at 53144ad7 against this work). The light is the bake's own seconds, from its first
+block row to the installed pyramid; "after the draw" is the part of it the run waits for
+once the draw is done; the device memory is the device's peak over its use before the run.
+
+| Sheet | Run | Wall, s | Light, s | After the draw, s | Light processes | GPU busy in the light | Device memory |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 8192 | master, `--gpu` | 388.5 | 129.8 | 110.8 | 14 | 0.4% | 0.76 GB |
+| 8192 | `--gpu` | 315.9 | 54.4 | 32.3 | 14 | 3.9% | 1.28 GB |
+| 16384 | master, `--gpu` | 724.7 | 401.4 | 214.0 | 12 | another job's | another job's |
+| 16384 | `--gpu` | 495.7 | 211.7 | 48.0 | 13 | 7.4% | 1.93 GB |
+
+- Other work held under one core in the three runs with every column filled. In master's
+  16384 run it held 4.7 cores and another process the GPU at 40 to 70%; its repeat, busier
+  still, took 474.8 s of light, and the faster is shown.
+- At 16384 the light's tail fell from 214 s to 48 s: the last block row waits for the draw's
+  end, and its blocks take about 18 s each rather than about 200.
+- The GPU stays mostly idle: it does a block's marches in about a second, and the rest of a
+  block is the host's (the arctangent, the encode, the terms).
+- Without `--gpu` the light is master's. Back to back under the same load (seven cores of
+  other work and another process on the GPU), this work and master baked the 8192 light in
+  170.1 s and 170.0 s.
 
 **The painters stay on the CPU.** A CUDA twin of `water_composite` gave the numba kernel's
 bits, and took 1.36 ms against 1.81 ms for a 288 by 544 piece, and 60 to 93 ms against 73 to
@@ -1778,6 +1865,20 @@ one step to the next, which is a different draw.
   device out of memory`, 65 a block. 2048 bakes one block and G2 draws unlit, so this is the
   check over several blocks; the full-size light's 64 blocks are first checked by the full
   render after the round.
+- `tests/mapgen/test_gpu_light.py` (2026-10-08) compares the span march under both fades, on
+  arch decks and on crowns with an underside of their own each, and the sky view with spans
+  at two spacings, with the reference byte for byte; and a block's 64 cells on the device,
+  their degrees, bands and whole horizons, with spans and crowns, with crowns alone, with a
+  patch of holes and with nothing but holes. It runs a block out of device memory at its fifth
+  direction with room for a call and without, and holds the counts, the lanes, the encode's
+  bytes on threads and that a cubin keeps subnormals.
+- G1 at 2048 (2026-10-08, all five layers, lit, rasters rebuilt), without `--gpu` and with
+  it, each against the stories' baseline and against each other: all 1,125 tiles the same
+  bytes, the light's 170 among them, and the six sidecars the same apart from their timings.
+  The `--gpu` run logged `light: horizon and sky-view calls 66 on NVIDIA GeForce RTX 3080; 0
+  ran on numba`, and its light took 9.5 s against 26.0 s.
+- The whole light of the 8192 surface, baked by the pool with its lanes and threads: its
+  2,730 tile files and its terms the same SHA-256 with `--gpu` as without.
 
 ### The raster passes (2026-10-08)
 
@@ -1902,11 +2003,13 @@ bought nothing.
 
 - The painters left in numpy above. A kernel for the colour spaces could add its sums in
   the fixed order, but its cube roots and powers would move last bits.
-- On the GPU, each of a block's 64 marches uploads the block's rasters again, about a third
-  of the call; kept on the device for the block they would cost one upload. numpy's
-  arctangent after each march costs more than the whole call.
-- Each light process opens its own CUDA context, 0.19 GB of device memory: 16 processes take
-  3 GB of a 10 GB card before they march.
+- With `--gpu`, numpy's arctangent runs on the host between each march and the rules after
+  it: the device waits for it, about 20 ms a direction at 16384.
+- With `--gpu`, the normals, the default sun's terms (scipy's `zoom` and the canopy's
+  `gaussian_filter`), the crown planes and the atlas's bytes still run on the host; together
+  about as long as the encode on eight threads.
+- Each light process opens its own CUDA context, 0.10 GB of device memory: 16 processes take
+  1.6 GB of a 10 GB card before they march, and three lanes up to 2 GB more at full size.
 - The level sweep and the rock meshes' decode, 34 s at any size, are pure Python on one core,
   a third of the raster preparation at 32768 now. They read packages that do not depend on
   one another, so a pool of processes over them is the next step.

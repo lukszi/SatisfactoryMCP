@@ -10,17 +10,19 @@ docs/map/light-and-crowns.md section 29, "Arches as spans".
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Container, Iterator
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Protocol, TypeVar
 
 import numpy as np
 from scipy import ndimage
 
+from mapgen.jit import gpu_on
 from mapgen.lighting.horizon import (
     FADE_M,
     HORIZON_DIRS,
     OCCLUDER_FADE_M,
+    Fade,
     crown_surface,
     march_horizon,
 )
@@ -42,6 +44,7 @@ from satisfactory_mcp.core.arrays import BoolMask, F32Grid
 __all__ = [
     "BlockSpans",
     "Cell",
+    "CellOps",
     "band_cover",
     "block_spans",
     "cell_shade",
@@ -56,6 +59,9 @@ __all__ = [
 _CROWN_ROWS = 1024
 
 _Window = tuple[int, int, int, int]
+
+PlaneT = TypeVar("PlaneT")
+BandsT = TypeVar("BandsT")
 
 
 class BlockSpans(NamedTuple):
@@ -178,26 +184,121 @@ def _filled(bands: Bands, holes: Holes | None) -> Bands:
     )
 
 
+class CellOps(Protocol[PlaneT, BandsT]):
+    """What ``horizon_cells`` does to a direction, on the host (``_OnHost``) or on the device
+    (``lighting/spans/device.py``), and the planes it hands back to the host."""
+
+    def plain(self, az_deg: float) -> PlaneT: ...
+    def bands(self, surface: SpanSurface, az_deg: float, fade: Fade) -> BandsT: ...
+    def path(self, bands: BandsT, el: float) -> PlaneT: ...
+    def above(self, over: PlaneT, cell: PlaneT) -> PlaneT: ...
+    def host(self, plane: PlaneT) -> F32Grid: ...
+    def host_bands(self, bands: BandsT) -> Bands: ...
+
+
+class _OnHost:
+    """``CellOps`` in numpy, and numba's kernels where the switch says so."""
+
+    def __init__(self, z_half: F32Grid, halo: int, spacing_m: float, holes: Holes | None) -> None:
+        self.z_half, self.halo, self.spacing_m, self.holes = z_half, halo, spacing_m, holes
+
+    def plain(self, az_deg: float) -> F32Grid:
+        found = march_horizon(self.z_half, self.halo, az_deg, self.spacing_m)
+        return fill_holes(found, self.holes, 0.0)
+
+    def bands(self, surface: SpanSurface, az_deg: float, fade: Fade) -> Bands:
+        return _filled(march_spans(surface, self.halo, az_deg, self.spacing_m, fade), self.holes)
+
+    def path(self, bands: Bands, el: float) -> F32Grid:
+        return path_horizon(bands, el)
+
+    def above(self, over: F32Grid, cell: F32Grid) -> F32Grid:
+        return np.where(over > cell, over, np.float32(0.0))
+
+    def host(self, plane: F32Grid) -> F32Grid:
+        return plane
+
+    def host_bands(self, bands: Bands) -> Bands:
+        return bands
+
+
 def horizon_cells(
-    z_half: F32Grid, halo: int, spacing_m: float, spans: BlockSpans, holes: Holes | None = None
+    z_half: F32Grid,
+    halo: int,
+    spacing_m: float,
+    spans: BlockSpans,
+    holes: Holes | None = None,
+    wanted: Container[int] | None = None,
 ) -> Iterator[Cell]:
     """Each direction's ground cell, then its crown cell where the crowns stand above it, as
     the atlas stores them (``Cell``). A hole (``lighting/spans/holes.py``) takes the cells of the
-    pixel nearest it."""
+    pixel nearest it. A cell not in ``wanted`` may come without its bands. With the switch at
+    CUDA the block's planes stay on the device (``_on_device``)."""
+    host = _OnHost(z_half, halo, spacing_m, holes)
+    if gpu_on():
+        yield from _on_device(host, spans, wanted)
+        return
     for k in range(HORIZON_DIRS):
-        az = k * 360.0 / HORIZON_DIRS
-        el = path_elevation(az)
-        ground: Bands | None = None
-        if spans.ground is None:
-            cell = fill_holes(march_horizon(z_half, halo, az, spacing_m), holes, 0.0)
-        else:
-            ground = _filled(march_spans(spans.ground, halo, az, spacing_m, FADE_M), holes)
-            cell = path_horizon(ground, el)
-        yield Cell(k, cell, ground, cell)
-        if spans.crowns is not None:
-            crowns = _filled(march_spans(spans.crowns, halo, az, spacing_m, OCCLUDER_FADE_M), holes)
-            over = path_horizon(crowns, el)
-            yield Cell(HORIZON_DIRS + k, np.where(over > cell, over, np.float32(0.0)), crowns, over)
+        yield from _direction(host, spans, k, wanted)
+
+
+def _direction(
+    ops: CellOps[PlaneT, BandsT], spans: BlockSpans, k: int, wanted: Container[int] | None
+) -> list[Cell]:
+    """Direction ``k``'s ground cell and crown cell."""
+    az = k * 360.0 / HORIZON_DIRS
+    el = path_elevation(az)
+    ground: BandsT | None = None
+    if spans.ground is None:
+        cell = ops.plain(az)
+    else:
+        ground = ops.bands(spans.ground, az, FADE_M)
+        cell = ops.path(ground, el)
+    deg = ops.host(cell)
+    found = [Cell(k, deg, _kept(ops, ground, k, wanted), deg)]
+    if spans.crowns is not None:
+        crowns = ops.bands(spans.crowns, az, OCCLUDER_FADE_M)
+        over = ops.path(crowns, el)
+        kept = _kept(ops, crowns, HORIZON_DIRS + k, wanted)
+        found.append(Cell(HORIZON_DIRS + k, ops.host(ops.above(over, cell)), kept, ops.host(over)))
+    return found
+
+
+def _kept(
+    ops: CellOps[PlaneT, BandsT], bands: BandsT | None, k: int, wanted: Container[int] | None
+) -> Bands | None:
+    if bands is None or (wanted is not None and k not in wanted):
+        return None
+    return ops.host_bands(bands)
+
+
+def _on_device(host: _OnHost, spans: BlockSpans, wanted: Container[int] | None) -> Iterator[Cell]:
+    """``horizon_cells`` with the block's planes on the device. Out of device memory, the
+    directions left take the host's operations, whose marches go to the device a call at a
+    time or, without room for one, to numba; each march is counted where it ran."""
+    from mapgen.lighting import gpu
+    from mapgen.lighting.spans.device import DeviceCells
+
+    surfaces = [s for s in (spans.ground, spans.crowns) if s is not None]
+    try:
+        device: DeviceCells | None = DeviceCells(
+            host.z_half, host.halo, host.spacing_m, surfaces, host.holes
+        )
+    except MemoryError:  # CuPy's OutOfMemoryError
+        device = None
+    try:
+        for k in range(HORIZON_DIRS):
+            found = None
+            if device is not None:
+                try:
+                    found = _direction(device, spans, k, wanted)
+                    gpu.count(True, 1 + (spans.crowns is not None))
+                except MemoryError:
+                    device = None
+            yield from found if found is not None else _direction(host, spans, k, wanted)
+    finally:
+        device = None  # its planes go before the pool hands the device's memory back
+        gpu.release()
 
 
 def _weighted(az: float) -> list[tuple[int, np.float32]]:
