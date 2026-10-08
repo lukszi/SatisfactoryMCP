@@ -154,7 +154,7 @@ def test_the_bands_are_cut_as_they_settle_so_more_layers_need_no_more_scratch(in
     every = presets.estimate("render", {**dark, "layers": list(presets.RENDER_LAYERS)})
     one = presets.estimate("render", {**dark, "layers": ["terrain"]})
     assert every["transient_bytes"] == one["transient_bytes"]
-    assert every["keep_bytes"] == 5 * one["keep_bytes"]
+    assert every["keep_bytes"] == len(presets.RENDER_LAYERS) * one["keep_bytes"]
 
 
 def test_the_crown_scratch_is_the_one_occluder_the_bake_reads(tmp_path):
@@ -169,7 +169,7 @@ def test_the_crown_scratch_is_the_one_occluder_the_bake_reads(tmp_path):
 def test_a_measured_run_predicts_only_a_run_with_the_same_light(in_use_local):
     registry.record_history(
         {"job": "j", "preset": "render", "seconds": 2000,
-         "options": {"layers": ["relief"], "size": 32768, "recipe": "current", "light": False}}
+         "options": {"layers": ["relief-dark"], "size": 32768, "recipe": "current", "light": False}}
     )  # fmt: skip
-    assert presets.estimate("render", {"layers": ["relief"], "light": False})["measured"]
-    assert not presets.estimate("render", {"layers": ["relief"]})["measured"]
+    assert presets.estimate("render", {"layers": ["relief-dark"], "light": False})["measured"]
+    assert not presets.estimate("render", {"layers": ["relief-dark"]})["measured"]

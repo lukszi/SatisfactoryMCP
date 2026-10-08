@@ -9,7 +9,7 @@ import pytest
 
 from satisfactory_mcp import config
 from satisfactory_mcp.core import gpu
-from satisfactory_mcp.core.gameassets.versions import STYLES
+from satisfactory_mcp.core.gameassets.versions import RETIRED_STYLES, STYLES
 from satisfactory_mcp.domain.maps import axes as ax
 from satisfactory_mcp.domain.maps import presets, registry
 from tests.support.map_jobs import keep_cache
@@ -27,24 +27,28 @@ def test_every_style_declares_a_tone_and_the_axes_read_it():
     assert {row["tone"] for row in STYLES.values()} == {"light", "dark"}
     assert ax.style_tone({"style": {"id": "relief-night"}}) == "dark"
     assert ax.style_tone({"style": {"id": "relief-muted", "tone": "light"}}) == "light"
+    assert ax.style_tone({"style": {"id": "relief-muted"}}) == "light", "a retired style's"
     assert ax.style_tone({"style": {"id": "something new"}}) == "light"
     assert ax.style_tone({}) == "light"
     assert ax.LAYER_STYLE["relief-dark"] == "relief-night"
 
 
-def test_the_generate_form_can_ask_for_every_style(maps_home):
+def test_the_generate_form_can_ask_for_every_style_and_no_retired_one(maps_home):
     for layer in presets.RENDER_LAYERS:
         options = presets.normalise("render", {"layers": [layer], "size": 1024})
         assert options["layers"] == [layer]
     plan = presets.plan(
-        "render", {"layers": ["relief", "relief-dark"], "size": 1024}, "j1", 1, set()
+        "render", {"layers": ["terrain", "relief-dark"], "size": 1024}, "j1", 1, set()
     )
-    assert sorted(plan["produces"]) == ["relief-dark-r7-1", "relief-r7-1"]
+    assert sorted(plan["produces"]) == ["relief-dark-r7-1", "terrain-r7-1"]
     assert plan["argv"].count("--layer") == 2
+    for retired in RETIRED_STYLES.values():
+        with pytest.raises(presets.PresetError, match="layers is"):
+            presets.normalise("render", {"layers": [retired["layer"]], "size": 1024})
 
 
 def test_a_restyle_is_refused_until_a_full_render_kept_the_cache(maps_home):
-    options = {"layers": ["relief"], "size": 1024, "restyle": True}
+    options = {"layers": ["relief-dark"], "size": 1024, "restyle": True}
     with pytest.raises(presets.PresetError, match="raster cache"):
         presets.plan("render", options, "j1", 1, set())
     with pytest.raises(presets.PresetError, match="raster cache"):
@@ -62,20 +66,20 @@ def test_a_restyle_is_refused_until_a_full_render_kept_the_cache(maps_home):
 
 def test_a_restyle_costs_only_the_draw_and_the_cut(maps_home):
     keep_cache(32768)
-    full = presets.stage_plan("render", presets.normalise("render", {"layers": ["relief"]}))
-    unlit = {"layers": ["relief"], "restyle": True, "light": False}
+    full = presets.stage_plan("render", presets.normalise("render", {"layers": ["relief-dark"]}))
+    unlit = {"layers": ["relief-dark"], "restyle": True, "light": False}
     fast = presets.stage_plan("render", presets.normalise("render", unlit))
     assert {"sweep", "direct", "top", "light"} <= set(full)
-    assert set(fast) == {"prep", "draw", "cut:relief"}
+    assert set(fast) == {"prep", "draw", "cut:relief-dark"}
     assert 6 * 60 < sum(fast.values()) < 10 * 60
     assert presets.estimate("render", unlit)["seconds"] < 600
     lit = presets.stage_plan(
-        "render", presets.normalise("render", {"layers": ["relief"], "restyle": True})
+        "render", presets.normalise("render", {"layers": ["relief-dark"], "restyle": True})
     )
-    assert set(lit) == {"prep", "draw", "light", "cut:relief"}
+    assert set(lit) == {"prep", "draw", "light", "cut:relief-dark"}
     registry.record_history(
         {"job": "j", "preset": "render", "seconds": 2000,
-         "options": {"layers": ["relief"], "size": 32768, "recipe": "current"}}
+         "options": {"layers": ["relief-dark"], "size": 32768, "recipe": "current"}}
     )  # fmt: skip
     assert not presets.estimate("render", unlit)["measured"]
 

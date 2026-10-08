@@ -502,8 +502,10 @@ def test_the_cli_entry_imports_only_the_stdlib_at_module_scope():
 
 
 def test_the_style_tables_agree_with_versions_styles():
-    """``versions.STYLES`` is the one style table; every copy of it must match it."""
+    """``versions.STYLES`` is the one style table; every copy of it must match it. The axes
+    also name the retired styles, whose maps are still listed."""
     styles = _literal(VERSIONS_PY, "STYLES")
+    retired = _literal(VERSIONS_PY, "RETIRED_STYLES")
     rendered = {sid: row for sid, row in styles.items() if row["layer"] != ARTWORK_LAYER}
     layer_styles = {row["layer"]: sid for sid, row in rendered.items()}
     layers = [row["layer"] for row in rendered.values()]
@@ -511,7 +513,8 @@ def test_the_style_tables_agree_with_versions_styles():
     assert _literal(PKG / "palette" / "styles.py", "LAYER_STYLES") == layer_styles
     assert list(_literal(PKG / "commands" / "renders.py", "LAYERS")) == layers
     assert list(_literal(PRESETS_PY, "RENDER_LAYERS")) == layers
-    assert _literal(AXES_PY, "LAYER_STYLE") == {row["layer"]: sid for sid, row in styles.items()}
+    named = {row["layer"]: sid for sid, row in {**styles, **retired}.items()}
+    assert _literal(AXES_PY, "LAYER_STYLE") == named
 
     palettes = {p.stem for p in (PKG / "palette" / "palettes").glob("*.json")}
     assert palettes == set(rendered), f"palette files {sorted(palettes)} vs {sorted(rendered)}"

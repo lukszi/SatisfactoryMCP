@@ -51,9 +51,9 @@ __all__ = [
     "plan",
 ]
 
-RENDER_LAYERS: tuple[Layer, ...] = ("terrain", "satellite", "painted", "relief", "relief-dark")
+RENDER_LAYERS: tuple[Layer, ...] = ("terrain", "painted", "relief-dark")
 #: What a render job draws when it names no layers: the painted one needs the paint input.
-DEFAULT_LAYERS: tuple[Layer, ...] = ("terrain", "satellite")
+DEFAULT_LAYERS: tuple[Layer, ...] = ("terrain",)
 RENDER_SIZES = (1024, 2048, 4096, 8192, 16384, 32768)
 FULL_PX = 32768
 INPUT_PRESETS = ("heightmap", "caves", "rocks", "paint")

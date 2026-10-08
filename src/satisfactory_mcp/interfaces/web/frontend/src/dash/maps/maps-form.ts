@@ -14,7 +14,7 @@ import type { MapEstimateResponse, MapsResponse } from "../../api/shapes";
 const form = {
   preset: "render",
   input: "heightmap",
-  layers: { terrain: true, satellite: true, painted: false } as Record<string, boolean>,
+  layers: { terrain: true } as Record<string, boolean>,
   size: 4096,
   top: true,
   light: true,

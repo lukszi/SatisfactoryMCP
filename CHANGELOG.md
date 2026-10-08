@@ -62,6 +62,8 @@ Planned as 0.2.0.
 
 ### Changed
 
+- Map names: the game-painted map is now called "Satellite" and the dark relief "Relief".
+  Their ids, links and the saved default are unchanged.
 - Map renders: the game-painted map takes the colours derived from the game install for
   the targets within reach of their screenshots (sand, grass, wet sand, the canopy, the rock,
   the desert rock, the forest moss, the coral caps, the desert gravel, the Red Jungle cliffs),
@@ -188,6 +190,14 @@ Planned as 0.2.0.
 - The map generator scripts `tools/gen_map_renders.py`, `gen_map_image.py`,
   `gen_world_heightmap.py`, `gen_paint_layers.py` and `check_map_fill.py` are now shims for
   `python -m mapgen <command>` and warn when run. They will be removed in 0.3.0.
+
+### Removed
+
+- Map renders: the biome-coloured satellite style and the light relief are no longer drawn.
+  `python -m mapgen renders --layer` and the Maps tab offer terrain, painted and relief-dark,
+  and a job naming either old layer is refused. Maps already drawn in them stay listed and
+  served, as "Biome (old)" and "Relief light (old)", until deleted. The other layers' pixels
+  are unchanged.
 
 ### Fixed
 

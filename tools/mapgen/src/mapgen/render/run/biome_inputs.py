@@ -1,6 +1,6 @@
-"""The game's biome raster as the biome layers draw it: read, checked and coloured.
+"""The game's biome raster as the painted layer reads it: read, checked and named.
 
-Read once a run, and only when a layer coloured from it is drawn. The pin is scored against
+Read once a run, and only when the painted layer is drawn. The pin is scored against
 the artwork every run, and the region table checked against the raster
 (docs/map/renders.md section 17, "The game ships biome geometry after all").
 """
@@ -15,22 +15,14 @@ import numpy as np
 
 from mapgen.gamedata.ground.biome import (
     BiomeRaster,
+    area_names,
     calibrate_biome,
     read_biome,
     region_table_is_current,
 )
-from mapgen.palette.styles import (
-    BIOME_BLEND_TEXELS,
-    BIOME_COLOURS,
-    NO_MANS_LAND_RGB,
-    UNKNOWN_BIOME_RGB,
-    biome_colour_field,
-    biome_lookup,
-)
 from mapgen.tiles.imaging import TileImaging
-from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.iostore import IoStore
-from satisfactory_mcp.core.gameassets.maparea import MAP_AREA_CLASS, MAP_AREA_PATH, NO_MANS_LAND
+from satisfactory_mcp.core.gameassets.maparea import MAP_AREA_CLASS, MAP_AREA_PATH
 from satisfactory_mcp.core.gameassets.packages import ScriptObjects
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
@@ -44,14 +36,13 @@ __all__ = ["BiomeInputs", "read_biome_inputs"]
 
 @dataclass(frozen=True)
 class BiomeInputs:
-    """The biome raster, the areas it draws, their colours, and what the sidecars record.
+    """The biome raster, each index's area name, and what the sidecars record.
 
-    Empty when no biome layer is drawn: ``raster`` None, and a one-texel ``width``.
+    Empty without the painted layer: ``raster`` None, and a one-texel ``width``.
     """
 
     raster: BiomeRaster | None = None
     drawn: list[str] = field(default_factory=list[str])
-    rgb: U8Grid | None = None
     source: JsonObject = field(default_factory=dict[str, JsonValue])
     provenance: JsonObject | None = None
 
@@ -69,7 +60,7 @@ def read_biome_inputs(
     build_cl: int | None,
     pyooz_version: str,
 ) -> BiomeInputs:
-    """The biome raster read, its pin scored against the artwork, and its colours."""
+    """The biome raster read, its pin scored against the artwork, and its areas named."""
     biome = read_biome(store, scripts)
     print(
         f"  {biome['width']}x{biome['width']} palette indices, "
@@ -79,7 +70,7 @@ def read_biome_inputs(
     _print_calibration(calibration)
     agreement = region_table_is_current(biome)
     _print_agreement(agreement)
-    table, drawn = biome_lookup(biome)
+    drawn = area_names(biome)
     provenance: JsonObject = {
         "cl": build_cl,
         "reader_version": READER_VERSIONS["biome_raster"],
@@ -89,7 +80,7 @@ def read_biome_inputs(
         ),
     }
     source = _biome_source(biome, drawn, calibration, agreement, pyooz_version)
-    return BiomeInputs(biome, drawn, biome_colour_field(biome, table), source, provenance)
+    return BiomeInputs(biome, drawn, source, provenance)
 
 
 def _print_calibration(calibration: JsonObject) -> None:
@@ -132,7 +123,7 @@ def _biome_source(
     agreement: JsonObject,
     pyooz_version: str,
 ) -> JsonObject:
-    """``sources.biome_raster``: the asset, how it was read and checked, and this palette."""
+    """``sources.biome_raster``: the asset, how it was read and checked, and its areas."""
     asset = MAP_AREA_PATH.split("/FactoryGame/Content/")[1].rsplit(".", 1)[0]
     return {
         "biome_raster": {
@@ -151,15 +142,8 @@ def _biome_source(
             "shipped_palette_rgba": [[c for c in entry] for entry in biome["palette"]],
             "shipped_palette_role": (
                 "the game's own UI legend -- flat primaries, cyan, magenta, white. "
-                "Decoded for the record and NOT drawn: see palette below, which is this "
-                "file's own and was written to look like imagery."
+                "Decoded for the record and never drawn."
             ),
-            "palette": {name: [c for c in BIOME_COLOURS[name]] for name in sorted(BIOME_COLOURS)},
-            "palette_blend_texels": BIOME_BLEND_TEXELS,
-            "palette_fallback": {
-                NO_MANS_LAND: [c for c in NO_MANS_LAND_RGB],
-                "an area this file has no colour for": [c for c in UNKNOWN_BIOME_RGB],
-            },
             "index_to_area": {str(i): name for i, name in enumerate(drawn)},
             "index_to_asset": {str(i): name for i, name in enumerate(biome["assets_by_index"])},
             "calibration": calibration,

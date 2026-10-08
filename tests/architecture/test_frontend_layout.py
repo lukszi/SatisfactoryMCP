@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from satisfactory_mcp.core.gameassets.versions import RETIRED_STYLES
 from tests.support.import_graph import (
     PKG,
     REPO,
@@ -220,14 +221,18 @@ def test_the_frontend_sources_are_not_reachable_from_python():
 
 
 def test_the_page_and_the_registry_agree_on_the_old_base_map_names():
-    """Old ``#mode=`` links keep working only while both sides keep the same three names."""
-    legacy = next(
+    """Old ``#mode=`` links keep working only while both sides keep the same names. Before
+    the registry answers the page offers those of layers still drawn: a retired style's map
+    is listed by the registry, not by the page's fallback."""
+    served = next(
         [k.value for k in node.value.keys if isinstance(k, ast.Constant)]
         for node in ast.walk(parse(REGISTRY_PY))
         if isinstance(node, ast.Assign)
         and any(isinstance(t, ast.Name) and t.id == "LEGACY" for t in node.targets)
         and isinstance(node.value, ast.Dict)
     )
+    retired = {style["layer"] for style in RETIRED_STYLES.values()}
+    legacy = [name for name in served if name not in retired]
     tiles = FRONTEND_TILES_TS.read_text(encoding="utf-8")
     artwork = re.search(r'const ARTWORK = "([^"]+)";', tiles)
     assert artwork, "tiles.ts no longer names the artwork's registry id"
@@ -238,7 +243,7 @@ def test_the_page_and_the_registry_agree_on_the_old_base_map_names():
     offered = re.findall(r'legacy\((ARTWORK|"[a-z]+")', tiles)
     names = [legacy[0] if name == "ARTWORK" else name.strip('"') for name in offered]
     assert names == legacy, (
-        f"tiles.ts offers {names} before the registry answers; it serves {legacy}"
+        f"tiles.ts offers {names} before the registry answers; it serves {served}"
     )
 
 

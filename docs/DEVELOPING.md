@@ -433,7 +433,7 @@ with `uv sync --all-packages` and run `uv run python -m mapgen <command>`.
 | `python -m mapgen heightmap` | 1 m heightfield (ground, bare terrain, top) and the rock pack → `data/local/heightmap/`, 75 MB | ~4 min |
 | `python -m mapgen caves` | cave masks → `data/local/caves/` | 6 s sweep |
 | `python -m mapgen paint` | landscape paint layers → `data/local/paint/`, 54 MB | ~25 s |
-| `python -m mapgen renders` | terrain, satellite and painted base-map renders, with the live-sun light by default → `data/local/renders/`, 1.7 GB without the light | ~30 min without the light |
+| `python -m mapgen renders` | terrain, painted and relief-dark base-map renders, with the live-sun light by default → `data/local/renders/`, 1.7 GB without the light | ~30 min without the light |
 | `python -m mapgen artwork --enhance` | the game's map artwork as tiles (upscaled on a GPU) → `data/local/` | ~13.7 min |
 
 The old entry scripts (`tools/gen_world_heightmap.py`, `gen_map_renders.py`,

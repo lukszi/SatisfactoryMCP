@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
-from mapgen.gamedata.ground.biome import read_biome
+from mapgen.gamedata.ground.biome import area_names, read_biome
 from mapgen.gamedata.ground.paint_store import PAINT_DIR
 from mapgen.gamedata.install import missing_container, open_game
 from mapgen.palette.painted.albedo import load_paint_meta
@@ -33,7 +33,7 @@ from mapgen.palette.painted.derive.targets import (
     targets_json,
 )
 from mapgen.palette.painted.shapes import CalibrationStyle
-from mapgen.palette.styles import PAINTED_PALETTE, biome_lookup
+from mapgen.palette.styles import PAINTED_PALETTE
 from satisfactory_mcp.core.jsontypes import to_json_object
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -102,7 +102,7 @@ def main() -> int:
     if field is None:
         print(f"  no heightfield at {args.field}: the areas are not rehomed offshore")
     grid = meta["grid"]
-    areas = area_grid(biome, biome_lookup(biome)[1], field, (grid["height"], grid["width"]))
+    areas = area_grid(biome, area_names(biome), field, (grid["height"], grid["width"]))
     cal = PAINTED_PALETTE["calibration"]
     try:
         derived = derive(scene_from_store(paint_dir, meta, areas), cal)

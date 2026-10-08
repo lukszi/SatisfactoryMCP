@@ -1,7 +1,7 @@
 """A renders run's preparation: every stage before the first band is drawn.
 
 The field and its lattices, the game and the artwork's borrow, the biome raster and the paint,
-the rasters at the run's spacing, the extras, the water, each relief layer's ground, and the
+the rasters at the run's spacing, the extras, the water, the relief layer's ground, and the
 record every layer's sidecar shares; ``mapgen.commands.renders`` then draws them.
 """
 
@@ -57,8 +57,8 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = ["BIOME_LAYERS", "Prepared", "Setup", "prepare"]
 
-#: The layers coloured from the biome raster, which is read only when one of them is drawn.
-BIOME_LAYERS = ("satellite", "painted", "relief")
+#: The layers drawn from the biome raster, which is read only when one of them is drawn.
+BIOME_LAYERS = ("painted",)
 
 
 @dataclass(frozen=True)
@@ -200,7 +200,7 @@ def _biome_and_paint(
     field: hf.Field,
     gathered: _Gathered,
 ) -> tuple[BiomeInputs, PaintInputs | None, dict[str, str]]:
-    """The biome raster when a layer is coloured from it, the paint when the painted layer is
+    """The biome raster when a layer is drawn from it, the paint when the painted layer is
     drawn, and each style's digest with the paint's in the painted layer's."""
     biome = BiomeInputs()
     if any(layer in BIOME_LAYERS for layer in layers):

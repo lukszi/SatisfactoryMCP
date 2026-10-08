@@ -112,7 +112,10 @@ function actionsCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
       write("PUT", "/api/maps/default", { id: row.id, version: body.version }).catch(refused("the default map was not changed"));
     }, { disabled: row.default || row.status !== "ready", title: row.default ? "this is the default" : "open fresh pages on this map" })
   );
-  if (row.freshness.rerender || row.freshness.restyle || row.freshness.stale.length) {
+  const drawn = row.kind === "artwork" || body.styles.some(function (style) {
+    return style.layer === row.layer;
+  });
+  if (drawn && (row.freshness.rerender || row.freshness.restyle || row.freshness.stale.length)) {
     cell.appendChild(
       button(row.freshness.stale.length ? "regenerate" : "re-render", function () {
         rerender(row);

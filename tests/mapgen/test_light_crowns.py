@@ -66,13 +66,13 @@ def test_only_a_style_that_draws_the_crowns_is_shaded_by_them():
     from mapgen.render.draw.light import crown_layers
 
     assert crown_layers() == ["painted"]
-    assert shader_light("painted")["crowns"] and not shader_light("satellite")["crowns"]
+    assert shader_light("painted")["crowns"] and not shader_light("terrain")["crowns"]
     colour = np.full((8, 8, 3), 150, np.uint8)
     cells = np.zeros((model.HZ_CELLS, 8, 8), np.float32)
     cells[hz.HORIZON_DIRS :] = 60.0
     hz_u8 = hz.encode_horizon(cells)
     low = (225.0, 20.0)
-    for layer in ("terrain", "satellite", "relief"):
+    for layer in ("terrain", "relief-dark"):
         lit = model.relight(colour, _flat_nrm((8, 8)), hz_u8, low, shader_light(layer))
         bare = model.relight(colour, _flat_nrm((8, 8)), None, low, shader_light(layer), False)
         np.testing.assert_array_equal(lit, bare)

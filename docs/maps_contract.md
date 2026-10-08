@@ -156,10 +156,15 @@ and the tools' own staleness guards read what they always read.
 ### 3.2 Palettes are files
 
 `tools/mapgen/src/mapgen/palette/palettes/<style id>.json` holds every colour a painter draws
-with (`terrain-hypsometric`, `satellite-biome`, `satellite-painted`, `relief-muted`,
-`relief-night`). The style digest is the sha256 of the file's canonical JSON, so an edit without
-a version bump still reads as a different style, and line endings cannot change it. The version
-a style carries is `STYLES[id].version`.
+with (`terrain-hypsometric`, `satellite-painted`, `relief-night`). The style digest is the
+sha256 of the file's canonical JSON, so an edit without a version bump still reads as a
+different style, and line endings cannot change it. The version a style carries is
+`STYLES[id].version`.
+
+`RETIRED_STYLES` names the styles nothing draws now, `satellite-biome` and `relief-muted`
+(2026-10-08, map/renders.md section 17, "Three drawn layers"). Their palettes are gone; the
+maps already drawn in them stay listed and served until deleted, with their name and tone
+from that table, and `freshness` offers them no re-render and no newer palette.
 
 Each style also declares a **tone**, `light` or `dark` (`STYLES[id].tone`; the renders write it
 into `provenance.style.tone`). `axes.style_tone` reads the sidecar's word, else the table's, else
@@ -169,11 +174,11 @@ light, and every type on `GET /api/maps` carries it. The page's overlay colours 
 | Layer | Style id | Label | Name (§3.5) | Tone |
 |---|---|---|---|---|
 | `terrain` | `terrain-hypsometric` | terrain | Terrain | light |
-| `satellite` | `satellite-biome` | satellite | Satellite | light |
-| `painted` | `satellite-painted` | game-painted | Painted | light |
-| `relief` | `relief-muted` | relief | Relief | light |
-| `relief-dark` | `relief-night` | relief dark | Relief (dark) | dark |
+| `painted` | `satellite-painted` | game-painted | Satellite | light |
+| `relief-dark` | `relief-night` | relief dark | Relief | dark |
 | (artwork) | `artwork` | artwork | Game map | light |
+| `satellite` (retired) | `satellite-biome` | satellite | Biome (old) | light |
+| `relief` (retired) | `relief-muted` | relief | Relief light (old) | light |
 
 ### 3.3 Verdicts
 
@@ -217,10 +222,11 @@ Every type carries two names on `GET /api/maps`:
   1. The player's `label` when the type has one, used as it is. The generate form's optional
      name sets it on every type the job makes, **rename** in the Maps tab sets or clears it,
      and a **re-render** carries it to the new type.
-  2. Otherwise the style's name, `STYLES[id].name` (the table in §3.2): "Game map",
-     "Painted", "Satellite", "Terrain", "Relief", "Relief (dark)". Any artwork is "Game map";
-     a style the table does not know is its label, capitalised.
-  3. The build date is added, "Painted · 6 Oct", only when the switcher shows another
+  2. Otherwise the style's name, `STYLES[id].name` or `RETIRED_STYLES[id].name` (the table
+     in §3.2): "Game map", "Satellite", "Terrain", "Relief", and for maps of a retired style
+     "Biome (old)" and "Relief light (old)"; no two styles share one. Any artwork is "Game
+     map"; a style neither table knows is its label, capitalised.
+  3. The build date is added, "Satellite · 6 Oct", only when the switcher shows another
      unlabelled type of the same name. "Shows" means `ready` or `missing`, and ticked "in
      switcher" or the default. A type the switcher does not show is still dated beside a twin it
      does show, so the Maps tab tells the two apart. When two of them were built on one day,
@@ -245,7 +251,7 @@ from a whitelist and every path is chosen by the server.
 
 | Preset | Command | Options |
 |---|---|---|
-| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] --light\|--no-light [--no-titan-trees] [--cache-dir data/local/maps/_cache/<S> --keep-direct] [--restyle]` | `layers` ⊆ terrain, satellite, painted, relief, relief-dark (default the first two); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `light` (default true, §8.1); `titan_trees`; `keep_cache`; `restyle` |
+| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] --light\|--no-light [--no-titan-trees] [--cache-dir data/local/maps/_cache/<S> --keep-direct] [--restyle]` | `layers` ⊆ terrain, painted, relief-dark (default terrain; a retired layer is refused); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `light` (default true, §8.1); `titan_trees`; `keep_cache`; `restyle` |
 | `artwork` | `gen_map_image.py --game G --out-dir data/local/maps/<id> [--enhance] [--no-tiles-2x]` | `enhance` (only with a Vulkan GPU), `tiles_2x` |
 | `heightmap` | `gen_world_heightmap.py --game G --force --out-dir data/local/heightmap` | — |
 | `caves` | `… --caves --field … --caves-dir data/local/caves --force` | — |
@@ -428,7 +434,8 @@ rather than `settings.json` (shared-settings.md §1 says why).
    chip, a "default" chip, the technical name and size and folder, built date, size, the amber
    stale chip and its reason, neutral re-render and palette chips, then **set as default**,
    **re-render** / **regenerate** (queues the heightfield first when the offer needs it, and the
-   render with `replaces`), **rename** (inline), **in switcher**, **delete** (inline "delete X?
+   render with `replaces`; not on a map whose layer `styles` does not list, a retired one),
+   **rename** (inline), **in switcher**, **delete** (inline "delete X?
    size · delete · keep", disabled on the default). Rows stack under 600 px.
 5. **Inputs** (folded): heightfield, caves, rocks, paint, each with version, build and date,
    and **rebuild** where a preset exists.
@@ -448,7 +455,8 @@ beside its ticked twin, and the twin keeps its plain title. The two still read d
 
 The page opens on the fragment's `mode=` if it can be drawn, else the shared default, else the
 artwork, else plain. `mode=` holds a type id; the old `mode=artwork` is read as `map`, and
-`terrain` and `satellite` are still ids, so old links open what they opened. An id the registry
+`terrain` and `satellite` are still ids, so old links open what they opened while those maps
+are on disk; before the registry answers, only `map` and `terrain` are offered. An id the registry
 does not have is ignored rather than turning the map plain. `BaseMode` and `MapTileLayer` are
 `string`.
 

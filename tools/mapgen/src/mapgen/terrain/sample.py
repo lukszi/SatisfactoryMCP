@@ -6,7 +6,7 @@ The gathers run as numba kernels unless ``mapgen.jit`` selects this numpy, their
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import NamedTuple, TypeAlias
 
 import numpy as np
@@ -37,7 +37,6 @@ __all__ = [
     "resample",
     "resample_pchip",
     "sample_coverage",
-    "sample_noise",
     "sample_plain",
     "sample_surface",
     "taps_cubic",
@@ -456,37 +455,6 @@ class ClassMix:
             acc = sum(w[:, None] * np.asarray(table, np.float32)[c] for c, w in self.taps)
             out[self.mixed] = acc / self.total[:, None]
         return out
-
-
-def sample_noise(
-    fields: Iterable[tuple[F32Grid, float]],
-    rows: NDArray[np.integer],
-    cols: NDArray[np.integer],
-    size: int,
-) -> F32Grid:
-    """The octaves added up at these output pixels, as a multiplier around 1. Each octave is
-    read between its texel centres with smoothstep weights, wrapping, so its cells do not show
-    as blocks (docs/map/renders.md section 17, "The noise, read between its cells")."""
-    out = np.ones((len(rows), len(cols)), np.float32)
-    for field, amount in fields:
-        side = field.shape[0]
-        (r0, r1, tr), (c0, c1, tc) = (_noise_taps(i, side, size) for i in (rows, cols))
-        top = field[np.ix_(r0, c0)] * (1 - tc) + field[np.ix_(r0, c1)] * tc
-        bottom = field[np.ix_(r1, c0)] * (1 - tc) + field[np.ix_(r1, c1)] * tc
-        out += amount * (top * (1 - tr)[:, None] + bottom * tr[:, None])
-    return out
-
-
-def _noise_taps(
-    index: NDArray[np.integer], side: int, size: int
-) -> tuple[I64Grid, I64Grid, F32Grid]:
-    """The two noise texels around each output pixel along one axis, wrapped, and the far
-    one's smoothstep weight."""
-    position = (index.astype(np.float64) + 0.5) * side / size - 0.5
-    low = np.floor(position)
-    t = position - low
-    near = low.astype(np.int64) % side
-    return near, (near + 1) % side, (t * t * (3.0 - 2.0 * t)).astype(np.float32)
 
 
 _MASK64 = (1 << 64) - 1

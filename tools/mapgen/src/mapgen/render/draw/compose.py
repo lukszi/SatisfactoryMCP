@@ -143,7 +143,6 @@ class DrawPass:
 def render_layers(
     layers: Sequence[str],
     field: hf.Field,
-    biome_rgb: U8Grid | None,
     biome_width: int,
     borrow: tuple[I8Grid, U8Grid],
     size: int,
@@ -165,7 +164,7 @@ def render_layers(
     settled instead, and nothing is returned.
 
     ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. ``painted`` is
-    the painted layer's ground and ``relief`` each relief layer's. ``unlit`` draws the sun
+    the painted layer's ground and ``relief`` the relief layer's. ``unlit`` draws the sun
     term flat; the ground's ``surface`` receives the heights and land weight the seabed rule
     draws, once, whatever the layers. ``threads`` pieces are drawn at once, to the same bytes
     at any count and any width; ``bands`` takes the bands in order. The rest:
@@ -184,8 +183,6 @@ def render_layers(
         layer_job(
             layer,
             sources,
-            size,
-            biome_rgb,
             biome_width,
             painted if layer == "painted" else None,
             reliefs.get(layer),

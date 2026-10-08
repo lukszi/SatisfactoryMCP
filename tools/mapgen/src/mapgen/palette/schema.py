@@ -32,7 +32,6 @@ __all__ = [
     "RiverShoreStyle",
     "RockPatchesStyle",
     "RockTopStyle",
-    "SatellitePalette",
     "ShoreOptics",
     "ShoreStyle",
     "TerrainPalette",
@@ -131,7 +130,7 @@ class FallsStyle(TypedDict):
     soft: float
 
 
-# -------------------------------------------------------------------- terrain, satellite
+# ------------------------------------------------------------------------------ terrain
 
 
 class TerrainPalette(TypedDict):
@@ -145,28 +144,6 @@ class TerrainPalette(TypedDict):
     water_shallow: list[int]
     water_deep: list[int]
     shore: ShoreOptics
-
-
-class SatellitePalette(TypedDict):
-    """``satellite-biome.json``."""
-
-    id: str
-    about: str
-    biome_colours: dict[str, list[int]]
-    no_mans_land: list[int]
-    rock: list[int]
-    rock_lo_deg: float
-    rock_hi_deg: float
-    high: list[int]
-    high_lo_m: float
-    high_hi_m: float
-    high_lift: float
-    water_shallow: list[int]
-    water_deep: list[int]
-    noise_seed: int
-    noise_octaves: list[list[float]]
-    shore: ShoreOptics
-    falls: FallsStyle
 
 
 # ------------------------------------------------------------------------------- relief
@@ -211,7 +188,7 @@ class ReliefWaterStyle(TypedDict):
 
 
 class ReliefPalette(TypedDict):
-    """``relief-muted.json`` and ``relief-night.json``."""
+    """``relief-night.json``."""
 
     id: str
     about: str

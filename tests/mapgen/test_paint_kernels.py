@@ -1,5 +1,5 @@
 """The painters' numba kernels give the bits of the numpy they replace: the crown stamps and
-the water of the terrain, satellite, relief and painted styles.
+the water of the terrain, relief and painted styles.
 
 docs/map/renders.md section 41. Synthetic fixtures: no install, no field. Each comparison runs
 one call twice, ``MAPGEN_KERNELS=numpy`` then the kernels, and compares the bytes.
@@ -19,13 +19,7 @@ from mapgen import jit
 from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD
 from mapgen.palette import relief
 from mapgen.palette.painted.optics import mix_underwater
-from mapgen.palette.styles import (
-    SATELLITE_WATER_DEEP,
-    SATELLITE_WATER_SHALLOW,
-    SHORE_OPTICS,
-    WATER_DEEP,
-    WATER_SHALLOW,
-)
+from mapgen.palette.styles import RELIEF_PALETTES, SHORE_OPTICS, WATER_DEEP, WATER_SHALLOW
 from mapgen.palette.water import shore, wet
 from mapgen.terrain.crown_stamp import CrownSet, sprite_levels, stamp_crowns
 from tests.support.map_scenes import relief_ground
@@ -81,7 +75,7 @@ def test_the_reference_never_loads_numba():
         "land = np.ones((4, 5, 3), np.float32)\n"
         "water_composite(land, w, z, SHORE_OPTICS['terrain'], WATER_SHALLOW, WATER_DEEP, 0.75, "
         "0.25)\n"
-        "relief._water(land, {'water': w}, relief_ground('relief'), lambda p: z, z)\n"
+        "relief._water(land, {'water': w}, relief_ground('relief-dark'), lambda p: z, z)\n"
         "print(sorted(m for m in sys.modules if m == 'numba' or m.endswith('.kernels')))\n"
     )
     paths = [str(REPO_ROOT / "src"), str(REPO_ROOT / "tools" / "mapgen" / "src"), str(REPO_ROOT)]
@@ -179,20 +173,30 @@ def test_float32_pixel_centres_take_the_reference(monkeypatch):
 DRY = [0.0, 0.5, 0.8, 1.0]
 
 
+#: The terrain's shore, plain and with the painted shore's wet band and foam, which the
+#: composite draws for any style whose palette holds them.
+SHORES = {
+    "terrain": SHORE_OPTICS["terrain"],
+    "banded": {
+        **SHORE_OPTICS["terrain"],
+        "wet_band": SHORE_OPTICS["painted"]["wet_band"],
+        "foam": SHORE_OPTICS["painted"]["foam"],
+    },
+}
+
+
 @needs_numba
 @pytest.mark.parametrize("dry", DRY)
-@pytest.mark.parametrize("style", ["terrain", "satellite"])
+@pytest.mark.parametrize("style", sorted(SHORES))
 @pytest.mark.parametrize("stroke", [0.0, 0.22])
 def test_the_water_composite_is_the_reference_bit_for_bit(monkeypatch, dry, style, stroke):
     rng = np.random.default_rng(int(dry * 10) + 7 * (style == "terrain"))
     water = band_water(rng, SHAPE, dry)
     land = rng.uniform(0.0, 255.0, (*SHAPE, 3)).astype(np.float32)
     shade = rng.uniform(0.4, 1.0, SHAPE).astype(np.float32)
-    optics = {**SHORE_OPTICS[style], "stroke": stroke}
-    colours = (WATER_SHALLOW, WATER_DEEP) if style == "terrain" else (
-        SATELLITE_WATER_SHALLOW, SATELLITE_WATER_DEEP)  # fmt: skip
-    _same(monkeypatch, lambda: shore.water_composite(land, water, shade, optics, *colours,
-                                                     0.75, 0.25))  # fmt: skip
+    optics = {**SHORES[style], "stroke": stroke}
+    _same(monkeypatch, lambda: shore.water_composite(land, water, shade, optics, WATER_SHALLOW,
+                                                     WATER_DEEP, 0.75, 0.25))  # fmt: skip
 
 
 @needs_numba
@@ -215,7 +219,7 @@ def test_float64_water_takes_the_reference(monkeypatch):
     water = {key: plane.astype(np.float64) for key, plane in band_water(rng, SHAPE, 0.3).items()}
     land = rng.uniform(0.0, 255.0, (*SHAPE, 3))
     shade = np.ones(SHAPE)
-    args = (SHORE_OPTICS["satellite"], WATER_SHALLOW, WATER_DEEP, 0.75, 0.25)
+    args = (SHORES["banded"], WATER_SHALLOW, WATER_DEEP, 0.75, 0.25)
     got = shore.water_composite(land, water, shade, *args)
     monkeypatch.setenv(jit.KERNEL_SWITCH, jit.REFERENCE)
     assert got.dtype == np.float64
@@ -224,12 +228,14 @@ def test_float64_water_takes_the_reference(monkeypatch):
 
 @needs_numba
 @pytest.mark.parametrize("dry", DRY)
-@pytest.mark.parametrize("layer", ["relief", "relief-dark"])
+@pytest.mark.parametrize("stroke", [0.0, 0.2])
 @pytest.mark.parametrize("tinted", [True, False])
 @pytest.mark.parametrize("full", [0.3, 0.98])
-def test_the_relief_water_is_the_reference_bit_for_bit(monkeypatch, dry, layer, tinted, full):
+def test_the_relief_water_is_the_reference_bit_for_bit(monkeypatch, dry, stroke, tinted, full):
     rng = np.random.default_rng(int(dry * 10) + 3 * tinted)
-    ground = relief_ground(layer)
+    dark = RELIEF_PALETTES["relief-dark"][0]
+    style = {**dark["water"], "stroke": stroke}
+    ground = relief_ground("relief-dark", palette={**dark, "water": style})
     ground.water = rng.integers(0, 256, SHAPE).astype(np.uint8) if tinted else None
     scene = {"water": band_water(rng, SHAPE, dry, full)}
     land = rng.uniform(-0.2, 1.0, (*SHAPE, 3)).astype(np.float32)

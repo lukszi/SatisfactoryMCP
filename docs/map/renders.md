@@ -12,15 +12,46 @@ files they are the map's ([the document set](../../DESIGN.md#the-document-set)).
 
 The page's first base map was the game's own artwork, cut out of the reader's install by
 `mapgen artwork`. The 1 m heightfield made a second kind possible, and the game ships the
-ingredient for a third. The drawn layers are `terrain`, `satellite`, `painted` (section 27),
-`relief` and `relief-dark` (section 28); `/api/maptiles/{layer}/{z}/{x}/{y}` is how a client
-asks for one.
+ingredient for a third. The drawn layers are `terrain`, `painted` (section 27) and
+`relief-dark` (section 28); `/api/maptiles/{layer}/{z}/{x}/{y}` is how a client asks for one.
+Until 2026-10-08 there were two more, `satellite` and `relief` ("Three drawn layers" below).
 
 **`terrain`** is the hypsometric map: a green→olive→tan→rock→snow ramp over the 1st..99.5th
 height percentile, a north-west hillshade at 45°, and water tinted by its own depth. The colour
 is the height and nothing else.
 
-**`satellite`** is the same relief with the colour coming from the game's biome raster.
+**`satellite`** was the same relief with the colour coming from the game's biome raster. The
+painted layer still reads that raster ("The game ships biome geometry after all"); the
+palette and the noise after it were the satellite's own, and are kept here as its record.
+
+### Three drawn layers (2026-10-08)
+
+The map keeps three drawn layers: `terrain`, `painted`, shown as "Satellite", and
+`relief-dark`, shown as "Relief". The biome-coloured `satellite` layer (style
+`satellite-biome`) and the light relief (`relief`, style `relief-muted`) are no longer drawn.
+
+- **Removed:** both palettes, the satellite painter (`satellite_colours`, the noise and its
+  sampler, the blurred biome colour field), both layers from `mapgen renders --layer`, the
+  generate presets and their estimates, the server's layer list and the page's switcher and
+  form. A job naming either layer is refused (400).
+- **Kept:** the biome raster is still read, its pin still scored against the artwork and the
+  region table still checked, whenever the painted layer is drawn: it gives each area its
+  tint and calibration targets (`area_names` in `gamedata/ground/biome.py` names each index).
+  The painted layer's `sources.biome_raster` no longer records the satellite palette
+  (`palette`, `palette_blend_texels`, `palette_fallback`). The relief painter keeps the
+  options only the light palette set (biome tints, the three suns, the shore stroke), and the
+  terrain style's water keeps the wet band and the foam only the satellite set; the tests
+  draw them with palettes of their own.
+- **Ids and names:** the layer ids, map-type ids and cache tags are unchanged; only the names
+  moved, `STYLES[id].name` in `core/gameassets/versions.py`. Maps already drawn in the two
+  styles stay registered, listed and served until deleted, named from `RETIRED_STYLES`:
+  "Biome (old)" and "Relief light (old)", so no two styles share a name. They are offered no
+  re-render and no newer palette, since nothing draws them now.
+- **Pixels:** the three layers' pixels are the same bytes as before.
+- **What the two cost.** Drawn alone at full size with the kernels, the satellite layer took
+  about 205 s and the light relief about 235 s of the five layers' 1,555 s (294 and 323 s on
+  numpy; section 41, "Measured"); at 2048 about 1 s each. Those figures predate the one pass,
+  which draws the shared ground once.
 
 ### The game ships biome geometry after all
 
@@ -1045,7 +1076,7 @@ another.
   were tried in the research and changed pixels, so the band and block geometry stay.
 - `render_layers` builds what every band shares, once, before any band starts: the ground's
   sources (`_ground_sources`: the arguments, the column taps, the water planes) and each
-  layer's job (`painting.layer_job`: its painter's inputs, the satellite noise). The pieces
+  layer's job (`painting.layer_job`: its painter's inputs and their column taps). The pieces
   only read them.
 - `_draw_piece` writes its own pixels of every layer's sheet. From a piece's thread nothing
   else shared is written.
@@ -1155,7 +1186,7 @@ as `render.draw_threads`, beside `cut_workers`.
 | The field | Its planes are decoded when it loads; the water planes are read in `_ground_sources`, before any band |
 | A piece's ground | Its own piece's only. Every layer's painter reads it, and its arrays are read-only, so a painter that wrote to one would fail rather than change what the next layer reads |
 | `PaintedGround`, `ReliefGround`, `RiverWater`, `OpenSea` | Built before the draw. The crowns' calibrated sprites, the water classes and the family targets are written in setup, never by a band |
-| Random numbers | The satellite noise comes from a seeded generator, once per run in `layer_job`; the moss patches hash each pixel's position |
+| Random numbers | None drawn per band: the moss patches hash each pixel's position (the retired satellite's noise came from a seeded generator, once per run in `layer_job`) |
 | numpy's error state | Per thread since numpy 2; the band code sets no warnings filters, which are process-wide |
 | Palettes and colour tables | Module constants, read only |
 | The sheets and the light's surface | Each piece writes only its own pixels of the sheets; the caller's thread writes the light's surface, a band at a time in order |
@@ -1280,7 +1311,7 @@ bands at a time, where they drew one band each before.
   thinning, and the regime table's float sums, see the band as they did, so the sidecars'
   numbers are the same, and the seam trace needs no halo of its own.
 - **Nothing is computed from a piece's extent.** Every step but the stencils is a function
-  of a pixel's own place: the samplers gather by column, the noise and the moss patches hash
+  of a pixel's own place: the samplers gather by column, the moss patches hash
   positions, the crowns and the waterfalls are placed from each pixel's centre, and the void
   and the wet-pixel shortcuts decide per piece only to skip work that would leave a pixel as
   it was.

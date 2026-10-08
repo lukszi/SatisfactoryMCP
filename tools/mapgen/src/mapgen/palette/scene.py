@@ -16,7 +16,6 @@ __all__ = [
     "FloatGrid",
     "ReconciledWater",
     "ReliefScene",
-    "SatelliteScene",
     "ShadedScene",
     "UnderwaterWater",
     "WaterPlanes",
@@ -109,14 +108,6 @@ class ShadedScene(BandScene):
     """A band of the hypsometric terrain style: the hillshade over it."""
 
     shade: FloatGrid
-
-
-class SatelliteScene(ShadedScene):
-    """A band of the satellite style: its slope, biome colour and noise too."""
-
-    slope: FloatGrid
-    biome_rgb: FloatGrid
-    noise: FloatGrid
 
 
 class ReliefScene(BandScene):

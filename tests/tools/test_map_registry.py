@@ -49,6 +49,9 @@ def test_the_view_names_sorts_and_judges_each_type(local):
     assert rows["terrain-r4-502094"]["freshness"]["stale"] == []
     assert rows["terrain-r4-502094"]["freshness"]["rerender"]["label"] == "river splines r7"
     assert rows["terrain"]["freshness"]["rerender"]["label"] == "river splines r7"
+    # The satellite style is retired: its maps are listed under their own name, offered nothing.
+    assert rows["satellite"]["title"].startswith("Biome (old)")
+    assert rows["satellite"]["freshness"]["rerender"] is None
     order = [row["id"] for row in registry.view()["types"]]
     assert (
         order.index("terrain") < order.index("terrain-r4-502094") < order.index("terrain-r3-502094")
