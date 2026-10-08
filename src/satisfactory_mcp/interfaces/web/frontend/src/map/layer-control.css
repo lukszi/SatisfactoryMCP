@@ -166,6 +166,12 @@
   cursor: help;
 }
 
+/* The base map's parts (layercontrol/part-picker.ts): checkboxes under the radios, set a little
+   apart, since they say what the picked map is made of. */
+.layer-parts {
+  margin-top: var(--sp-1);
+}
+
 /* The amber word on a map type whose data is outdated. */
 .layer-mode-flag {
   margin-left: var(--sp-1);

@@ -177,10 +177,26 @@ export const SETTINGS: Setting[] = [
   },
   {
     kind: "switch",
+    key: "mapShade",
+    group: "map",
+    label: "shade",
+    hint: "light and shadow on a map drawn with live light; off shows its flat colour",
+    fallback: true,
+  },
+  {
+    kind: "switch",
     key: "sunShadows",
     group: "map",
-    label: "cast shadows",
-    hint: "rocks and cliffs shade the ground beyond them, fading out by 150 m",
+    label: "terrain shadows",
+    hint: "rocks, cliffs, arches and overhangs shade the ground beyond them, fading out by 150 m",
+    fallback: true,
+  },
+  {
+    kind: "switch",
+    key: "sunTreeShadows",
+    group: "map",
+    label: "tree shadows",
+    hint: "the tree crowns shade the ground beyond them, on a map that draws the trees",
     fallback: true,
   },
   {
@@ -269,12 +285,25 @@ export function settingNumber(key: string): number {
 }
 
 export function setSetting(key: string, value: boolean | string | number): void {
-  const found = find(key);
-  if (!found || !valid(found, value)) return;
-  values[key] = value;
+  setSettings({ [key]: value });
+}
+
+/** Several settings as one change: the valid ones are kept and the listeners hear it once. */
+export function setSettings(changes: Record<string, boolean | string | number>): void {
+  const shared: Changes = {};
+  let kept = 0;
+  Object.keys(changes).forEach(function (key) {
+    const found = find(key);
+    const value = changes[key]!;
+    if (!found || !valid(found, value)) return;
+    values[key] = value;
+    kept += 1;
+    if (found.shared) shared[found.shared] = value;
+  });
+  if (!kept) return;
   remember();
   settingListeners.emit();
-  if (found.shared && sharedWriter) sharedWriter({ [found.shared]: value });
+  if (Object.keys(shared).length && sharedWriter) sharedWriter(shared);
 }
 
 export function resetSettings(): void {

@@ -5,7 +5,9 @@ import {
   currentSun,
   FIRST_HOUR,
   gameSun,
+  hillshadeOnly,
   hourText,
+  isHillshadeOnly,
   LAST_HOUR,
   MAP_NW,
   MIN_ELEVATION_DEG,
@@ -56,8 +58,7 @@ describe("the sun the page is lit by", () => {
     const sun = currentSun();
     expect(sun.hour).toBe(NOON_HOUR);
     expect(sun.azimuthDeg).toBeCloseTo(gameSun(NOON_HOUR)[0], 9);
-    expect(sun.shadows).toBe(true);
-    expect(sun.sky).toBe(true);
+    expect(sun).toMatchObject({ shade: true, terrainShadows: true, treeShadows: true, sky: true });
     expect(sunOverridden()).toBe(false);
   });
 
@@ -66,8 +67,15 @@ describe("the sun the page is lit by", () => {
     expect(currentSun().hour).toBe(9);
     setSetting("sunTime", "nw");
     expect(currentSun()).toMatchObject({ azimuthDeg: MAP_NW[0], elevationDeg: MAP_NW[1], hour: null });
+  });
+
+  it("reads each switch from its own setting", () => {
     setSetting("sunShadows", false);
-    expect(currentSun().shadows).toBe(false);
+    expect(currentSun()).toMatchObject({ shade: true, terrainShadows: false, treeShadows: true, sky: true });
+    setSetting("sunTreeShadows", false);
+    expect(currentSun()).toMatchObject({ terrainShadows: false, treeShadows: false });
+    setSetting("mapShade", false);
+    expect(currentSun().shade).toBe(false);
   });
 
   it("normalises the azimuth and keeps the sun above the horizon and below the zenith", () => {
@@ -89,5 +97,31 @@ describe("the sun the page is lit by", () => {
     setSetting("sunSky", false);
     expect(heard.at(-1)!.sky).toBe(false);
     expect(listener).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("hillshade only", () => {
+  it("turns both shadows and the sky off, the shade on, and tells once", () => {
+    setSetting("mapShade", false);
+    const listener = vi.fn();
+    onSun(listener);
+    const before = currentSun();
+    hillshadeOnly();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(currentSun()).toMatchObject({ shade: true, terrainShadows: false, treeShadows: false, sky: false });
+    expect(currentSun().azimuthDeg).toBe(before.azimuthDeg);
+    expect(isHillshadeOnly(currentSun(), true)).toBe(true);
+  });
+
+  it("is that look only while every switch the map has agrees", () => {
+    hillshadeOnly();
+    setSetting("sunTreeShadows", true);
+    expect(isHillshadeOnly(currentSun(), true)).toBe(false);
+    expect(isHillshadeOnly(currentSun(), false)).toBe(true);
+    setSetting("sunSky", true);
+    expect(isHillshadeOnly(currentSun(), false)).toBe(false);
+    hillshadeOnly();
+    setSetting("mapShade", false);
+    expect(isHillshadeOnly(currentSun(), true)).toBe(false);
   });
 });

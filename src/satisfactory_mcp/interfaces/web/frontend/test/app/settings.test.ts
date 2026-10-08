@@ -72,6 +72,34 @@ describe("changing a setting", () => {
     expect(JSON.parse(storage.data.get("settings")!)).toEqual({ minMachines: 5 });
   });
 
+  it("takes several at once, keeping the valid ones, telling once and writing shared ones together", async () => {
+    const { settings, storage } = await load();
+    const heard = vi.fn();
+    const writer = vi.fn();
+    settings.onSetting(heard);
+    settings.writeSharedWith(writer);
+    settings.setSettings({ mapShade: false, sunSky: "no", nonesuch: true });
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(storage.data.get("settings")!)).toEqual({ mapShade: false });
+    expect(writer).not.toHaveBeenCalled();
+    settings.setSettings({ biomass: true, overclockLast: true, sunShadows: false });
+    expect(heard).toHaveBeenCalledTimes(2);
+    expect(writer).toHaveBeenCalledTimes(1);
+    expect(writer).toHaveBeenCalledWith({ biomass: true, overclock_last: true });
+    settings.setSettings({ nonesuch: 1 });
+    expect(heard).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the map's light switches, all on by default", async () => {
+    const { settings } = await load({ sunShadows: false });
+    expect(settings.settingOn("mapShade")).toBe(true);
+    expect(settings.settingOn("sunShadows")).toBe(false);
+    expect(settings.settingOn("sunTreeShadows")).toBe(true);
+    expect(settings.settingOn("sunSky")).toBe(true);
+    const map = settings.SETTINGS.filter((s) => s.group === "map").map((s) => s.key);
+    expect(map).toEqual(["sunTime", "mapShade", "sunShadows", "sunTreeShadows", "sunSky"]);
+  });
+
   it("writes a shared setting through to the server and keeps it local too", async () => {
     const { settings } = await load();
     const writer = vi.fn();

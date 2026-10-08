@@ -57,6 +57,18 @@ one answer that could be mistaken for success.
 The artwork's single-image `/api/mapimage` fallback is a detail of the artwork mode: probed
 only when its pyramid does not answer, and drawn as an `imageOverlay`.
 
+### Under the radios: what the picked map is made of (2026-10-08)
+
+A base map drawn with live light has parts that can be turned off without changing which
+picture it is. They are checkboxes under the radios, inside the mode section and folded with
+it (`layercontrol/part-picker.ts`, kept there through `radio-section.ts`'s `tail`). Today there
+is one, **shade**: off, the map shows its flat colour with no light at all. Each part is a
+Settings → map switch, so it is remembered like the sun's switches. The rows show only while the
+picked mode has a light, and greyed, with the reason as their tooltip, while that light is drawn
+baked: without WebGL2, or after the live light failed. A part is a switch in the lit layer's
+shader, not a Leaflet layer stacked over it: the shade is the light itself
+([light-and-crowns.md](light-and-crowns.md) §29, "The page").
+
 ### The mode radios have a sibling: the floor picker
 
 The same split, one level in. "Which storey of this factory am I looking at" is one question

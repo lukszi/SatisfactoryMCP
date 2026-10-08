@@ -115,7 +115,10 @@ click on one means, through `onModePick`. The arrow can only point that way — 
 reaches the control through `map/layers.ts` already — and the seam is what keeps "which picture
 is the base map" out of a widget that otherwise knows nothing about pyramids. Both pickers are
 built on `map/layercontrol/radio-section.ts` and hook into the control's render through
-`onDecorate`, so `control.ts` imports neither of them.
+`onDecorate`, so `control.ts` imports neither of them. The base map's parts under the radios
+(the shade checkbox) are `map/layercontrol/part-picker.ts`, which the mode section keeps as its
+`tail`: each row is a Settings → map switch, so it imports `app/settings.ts` and nothing of the
+map, and `map/tiles.ts` only tells it, through `showParts`, whether the picked mode has a light.
 
 The control does not import `map/floors/floors.ts` for the third time round the same shape:
 `onFloorPick` and `onFloorExit` in `map/layercontrol/floor-picker.ts` are the seam, and the
@@ -347,11 +350,13 @@ Leaflet, so a module reaches an internal through a declaration there, not throug
 
 `npm test` runs Vitest in node, with no DOM. It covers the modules whose logic stands on its
 own: formatting and words, markup escaping, copy, toasts' error wording, the fetch registry,
-settings and the address parser, the palette audit, the sun, floor membership, machine states
-and route geometry. The DOM and Leaflet glue is left to the page itself. A module that touches
-the page while it is imported is loaded afresh per test with that global stubbed (`app/state.ts`
-reads the address bar, `app/settings.ts` reads storage); `map/drawn/route-geometry.ts` runs with
-`map/map.ts` and Leaflet mocked, because importing those creates the map.
+settings and the address parser, the palette audit, the sun and the lit layer's shader
+switches, floor membership, machine states and route geometry. The DOM and Leaflet glue is left
+to the page itself. A module that touches the page while it is imported is loaded afresh per
+test with that global stubbed (`app/state.ts` reads the address bar, `app/settings.ts` reads
+storage); `map/drawn/route-geometry.ts` and `map/litlayer.ts` run with `map/map.ts` and Leaflet
+mocked, because importing those creates the map, and the lit layer with the API client mocked
+too, which reads the address bar.
 
 The tests live in `test/` rather than beside their modules because the architecture tests
 (`test_frontend_layout.py`, `test_comment_budget.py`) read every `.ts` under `src/` as page
