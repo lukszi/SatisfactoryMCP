@@ -59,6 +59,11 @@ Planned as 0.2.0.
 - Map generator: the render's raster caches are stored compressed, 0.93 GB instead of
   18.5 GB at full size, and read without inflating; the tiles are the same bytes.
   `python -m mapgen compress-cache` converts caches kept before.
+- Map generator: `python -m mapgen crown-sprites` builds a top-down sprite of every tree
+  species, in colour, normal and alpha at 0.125 m, into `data/local/crown-sprites/`. Eight
+  species take the game's own billboard view from above; the other 45, the Kapok and the
+  yuccas among them, are rasterised from their meshes with their leaf and bark textures.
+  `--gpu` runs the raster's fill on the GPU, to the same bytes. No render draws them yet.
 
 ### Changed
 
@@ -306,6 +311,9 @@ Planned as 0.2.0.
   a level at most a kilometre or more away.
 - The satellite map no longer shows a quilt of 29 m and 7.3 m squares on flat ground: its
   noise is read smoothly between its cells.
+- Map generator: a texture that is not square is read at its own aspect. The paint layers read
+  the mangrove leaves, the Dypsis palms and the bamboo bark as garbled squares, so those
+  crowns' mean colours change at the next `python -m mapgen paint`.
 - Every rendered map style is one version up for the map changes of this release, once:
   terrain and satellite 9, game-painted 20, relief and relief dark 7. The live-sun light is
   model 3, so a map baked under model 2 is offered a relight.
