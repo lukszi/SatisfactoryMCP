@@ -16,6 +16,7 @@ import pytest
 from mapgen.common import DEFAULT_GAME, LOCAL_DIR
 from mapgen.palette.painted.calibration import derived_hex
 from mapgen.palette.painted.derive.camera import delta_e, lab_of_hex
+from mapgen.palette.painted.derive.gate import gate_hex
 from tests.support.paths import committed_fixture
 
 pytestmark = pytest.mark.integration
@@ -72,6 +73,21 @@ def test_every_scored_key_lies_within_its_tolerance_of_its_screenshot(derived):
         elif "tolerance" in entry and (tolerance <= default or tolerance > gap + 1.5):
             far.append(f"  {key}: tolerance {tolerance} is stale at {gap:.1f}, lower it")
     assert not far, "\n".join(far)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "rock",
+        "areas[GrassFields,NorthernForest,WesternDuneForest].rock",
+        "areas[RedJungle,RedBambooFields].rock",
+    ],
+)
+def test_the_rock_derives_the_cliff_body_within_the_gate_s_chroma_and_hue(derived, key):
+    _meta, targets, _found = derived
+    assert targets[key].rule.kind == "cliff body texture"
+    verdict = gate_hex(targets[key].hex, _target(key))
+    assert verdict.chromatic <= verdict.allowance, f"{key}: {verdict}"
 
 
 def test_the_exposure_of_build_502094(derived):

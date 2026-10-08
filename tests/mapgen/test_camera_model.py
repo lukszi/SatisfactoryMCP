@@ -62,7 +62,8 @@ def test_unit_gains_grade_nothing():
     [
         ((0.519, 0.332, 0.225), "#d7c2a3"),  # Sand, the bake's median
         ((0.099, 0.139, 0.060), "#7f8d4e"),  # Grass
-        ((0.118, 0.101, 0.080), "#897758"),  # the cliff textures x the cliff Color Tint
+        ((0.118, 0.101, 0.080), "#897758"),  # v8's cliff rock: two wrong textures x the tint
+        ((0.09605, 0.09008, 0.0859), "#7b6f5a"),  # the cliff body texture, untinted
     ],
 )
 def test_an_albedo_measures_its_golden_display_colour(albedo, golden):

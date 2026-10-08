@@ -23,6 +23,10 @@ NAMES = ["Area_Desert", "Area_Grass"]
 SAND_RGB = (210, 190, 160)
 GRASS_RGB = (110, 130, 80)
 MIXED_RGB = (255, 0, 0)
+#: The cliff body texture's mean, linear, as build 502094 has it.
+CLIFF_BODY = [0.09605, 0.09008, 0.0859]
+#: The cliff family's Color Tint, which the rock rule records and does not apply.
+CLIFF_TINT = [0.624, 0.545, 0.471]
 #: Columns where sand and grass mix at 178 and 77 of 255: not pure at 0.7.
 MIXED_COLUMNS = slice(28, 36)
 
@@ -158,10 +162,9 @@ def write_store(directory: Path, daylight: bool = True) -> Path:
         "texture_means_linear": {"TX_Forest_Far_01_Alb": [0.052, 0.081, 0.028],
                                  "TX_SandRock_Alb_01": [0.491, 0.392, 0.287],
                                  "TX_Soil_01_Alb": [0.12, 0.09, 0.07],
-                                 "Cliff_Macro_Alb_02": [0.2, 0.19, 0.17],
-                                 "Cliff_Detail_Alb": [0.18, 0.18, 0.168]},
+                                 "Cliff_Sediment_Alb": CLIFF_BODY},
         "material_vectors": {"Sand Rock BaseColor": [0.594, 0.339, 0.328]},
-        "rock_families": {"cliff": {"material": "/Game/Cliff", "tint": [0.624, 0.545, 0.471]},
+        "rock_families": {"cliff": {"material": "/Game/Cliff", "tint": CLIFF_TINT},
                           "forest": {"material": "/Game/Cliff_Forest", "tint": None,
                                      "top_texture": "/Game/TX_Forest", "top": [0.05, 0.08, 0.03]},
                           "desert": {"material": "/Game/MI_DesertRock", "tint": None}},

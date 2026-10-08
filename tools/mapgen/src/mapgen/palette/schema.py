@@ -373,6 +373,8 @@ class CalibrationStyle(TypedDict):
     species: dict[str, str]
     areas: list[CalibrationArea]
     derived_keys: NotRequired[list[str]]
+    #: Derived keys a render takes past the derive gate: their target is a stand-in.
+    derived_ungated: NotRequired[list[str]]
 
 
 class PaintedPalette(TypedDict):
