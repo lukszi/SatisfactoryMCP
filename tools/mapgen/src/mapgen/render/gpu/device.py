@@ -1,7 +1,7 @@
 """What the draw's CUDA kernels share: their sources, the grids they launch on, the device
 memory they may hold, where each call ran, and a band's planes kept on the device.
 
-Imported only when ``mapgen.jit.gpu_on()``. docs/map/renders.md section 43.
+Imported only when ``mapgen.jit.gpu_on()``. docs/map/renders.md section 41, "The draw on the GPU".
 """
 
 from __future__ import annotations

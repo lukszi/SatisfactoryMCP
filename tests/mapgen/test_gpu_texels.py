@@ -1,8 +1,8 @@
 """Textures read onto a band and sprites stamped over it: the reference reads what it should,
 and the CUDA kernels give its bytes.
 
-docs/map/renders.md section 43. Synthetic textures throughout. The kernel tests skip, saying
-why, on a machine without numba, CuPy or a CUDA device.
+docs/map/renders.md section 41, "The draw on the GPU". Synthetic textures throughout. The
+kernel tests skip, saying why, on a machine without numba, CuPy or a CUDA device.
 """
 
 from __future__ import annotations

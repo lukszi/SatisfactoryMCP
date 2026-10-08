@@ -3,7 +3,7 @@
 The mask's dilation, the luma and the filter run on the device; only the columns each piece
 spans come back to the host, which cuts the pieces as ``column_pieces`` does, so every pixel
 is filtered inside its own piece as numpy filters it. Imported only when
-``mapgen.jit.gpu_on()``. docs/map/renders.md section 43.
+``mapgen.jit.gpu_on()``. docs/map/renders.md section 41, "The draw on the GPU".
 """
 
 from __future__ import annotations

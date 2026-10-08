@@ -5,7 +5,8 @@ What a band's look samples, its ground textures by world position and its sprite
 is uploaded once (``device.DeviceBand``, ``upload_atlas``) and read there by every kernel;
 only what is asked for comes back. The sprites are binned by cell on the host, each cell's
 in their order, so every pixel walks the sprites that may reach it as the reference walks
-them all. Imported only when ``mapgen.jit.gpu_on()``. docs/map/renders.md section 43.
+them all. Imported only when ``mapgen.jit.gpu_on()``. docs/map/renders.md section 41, "The
+draw on the GPU".
 """
 
 from __future__ import annotations

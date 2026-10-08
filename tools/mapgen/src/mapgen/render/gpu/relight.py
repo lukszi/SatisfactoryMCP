@@ -5,7 +5,7 @@ constants worked out here as numpy works them out. The two transcendentals of th
 space are numpy's own: sRGB to linear is read from a table of its 256 values, and linear to
 an sRGB byte from the steps numpy's ``pow`` was measured to take over every float32 between
 the dark knee and one (``srgb_steps``). Imported only when ``mapgen.jit.gpu_on()``.
-docs/map/renders.md section 43.
+docs/map/renders.md section 41, "The draw on the GPU".
 """
 
 from __future__ import annotations

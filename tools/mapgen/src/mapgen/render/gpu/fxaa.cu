@@ -1,6 +1,7 @@
 // render/draw/archaa.py's FXAA on the GPU, a thread an output pixel: arch_fxaa's float32
 // operations in fxaa's order, each pixel read inside its own column piece as numpy pads and
-// clips it. Compiled with --fmad=false (mapgen.jit). docs/map/renders.md section 43.
+// clips it. Compiled with --fmad=false (mapgen.jit). docs/map/renders.md section 41, "The
+// draw on the GPU".
 
 #define REACH 12
 

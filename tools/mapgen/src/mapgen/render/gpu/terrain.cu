@@ -2,7 +2,7 @@
 // it and the borrowed shading, the shore's water composite, the void, and the byte. Each step
 // does the float32 operations of its numpy or numba twin in their order (render/draw/
 // painting.py, lighting/hillshade.py, palette/styles.py, palette/water/kernels.py). Compiled
-// with --fmad=false (mapgen.jit). docs/map/renders.md section 43.
+// with --fmad=false (mapgen.jit). docs/map/renders.md section 41, "The draw on the GPU".
 
 __device__ float clip_unit(float x) {
     // np.clip(x, 0, 1): NaN stays NaN, -0 becomes +0.

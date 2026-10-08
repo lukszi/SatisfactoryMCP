@@ -1,7 +1,7 @@
 // render/draw/light.py's relight_rows on the GPU, a thread a pixel: lighting.model.apply_terms
 // with the operations numpy does, in its order. Compiled with --fmad=false (mapgen.jit).
 // The constants arrive as float arrays, laid out as render/gpu/relight.py writes them.
-// docs/map/renders.md section 43.
+// docs/map/renders.md section 41, "The draw on the GPU".
 
 struct Light {
     float a[3], b[3], flat[3];  // ambient * sky, (1 - ambient) * sun, the flat-ground light

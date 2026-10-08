@@ -4,7 +4,7 @@ The piece's planes go up once, the hillshade, the ramp, the shore's water compos
 void run on the device, and only the kept pixels come back, as the bytes ``compose`` would cut
 from the CPU's colour. The water's transmission, an ``exp``, is worked out by numpy first,
 as the numba painter has it. Imported only when ``mapgen.jit.gpu_on()``.
-docs/map/renders.md section 43.
+docs/map/renders.md section 41, "The draw on the GPU".
 """
 
 from __future__ import annotations

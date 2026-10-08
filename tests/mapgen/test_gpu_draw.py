@@ -1,8 +1,9 @@
-"""The draw's CUDA kernels give the CPU's bytes: the relight, the arches' FXAA, and where each
-call ran.
+"""The draw's CUDA kernels give the CPU's bytes: the relight, the arches' FXAA, the terrain's
+pieces, and where each call ran.
 
-docs/map/renders.md section 43. Synthetic rows throughout. The kernel tests skip, saying why,
-on a machine without numba, CuPy or a CUDA device; the log line runs everywhere.
+docs/map/renders.md section 41, "The draw on the GPU". Synthetic rows throughout. The kernel
+tests skip, saying why, on a machine without numba, CuPy or a CUDA device; the log line runs
+everywhere.
 """
 
 from __future__ import annotations
@@ -286,7 +287,8 @@ def _field():
     field = SimpleNamespace(
         height_dm=height, provenance_plane=np.ones((N, N), np.uint8),
         water_raster=lambda: water, water_quality_raster=lambda: grades,
-        x0_cm=BOUNDS_M["x_min_m"] * 100 + step_cm / 2, y0_cm=BOUNDS_M["y_min_m"] * 100 + step_cm / 2,
+        x0_cm=BOUNDS_M["x_min_m"] * 100 + step_cm / 2,
+        y0_cm=BOUNDS_M["y_min_m"] * 100 + step_cm / 2,
         spacing_cm=step_cm, width=N, height=N,
     )  # fmt: skip
     heights = height.astype(np.float32)
@@ -318,7 +320,6 @@ def test_a_gpu_draw_logs_where_its_calls_ran():
     from mapgen.render.gpu.device import ON_CPU, calls_line
 
     assert calls_line({"RTX": 5, ON_CPU: 1}) == (
-        "draw: relight, FXAA and terrain calls 5 on RTX; 1 ran on the CPU, the device out of "
-        "memory"
+        "draw: relight, FXAA and terrain calls 5 on RTX; 1 ran on the CPU, the device out of memory"
     )
     assert "calls none on CUDA; 0 ran" in calls_line({})

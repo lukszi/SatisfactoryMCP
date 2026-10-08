@@ -1,7 +1,7 @@
 // terrain/texels.py on the GPU, a thread a pixel: a texture or an atlas tile read bilinear,
 // and sprites stamped over a band in their order, each pixel walking the sprites of its cell.
 // The float32 operations of the reference in its order; compiled with --fmad=false
-// (mapgen.jit). docs/map/renders.md section 43.
+// (mapgen.jit). docs/map/renders.md section 41, "The draw on the GPU".
 
 struct Corners {
     long long a, b;
@@ -33,8 +33,10 @@ __device__ float bilinear(const float* texels, long long width, int channels, in
                           long long y0, long long y1, float fy, long long x0, long long x1,
                           float fx) {
     float gx = 1.0f - fx, gy = 1.0f - fy;
-    float a = texels[(y0 * width + x0) * channels + k], b = texels[(y0 * width + x1) * channels + k];
-    float c = texels[(y1 * width + x0) * channels + k], d = texels[(y1 * width + x1) * channels + k];
+    float a = texels[(y0 * width + x0) * channels + k];
+    float b = texels[(y0 * width + x1) * channels + k];
+    float c = texels[(y1 * width + x0) * channels + k];
+    float d = texels[(y1 * width + x1) * channels + k];
     float top = a * gx + b * fx;
     float bottom = c * gx + d * fx;
     return top * gy + bottom * fy;

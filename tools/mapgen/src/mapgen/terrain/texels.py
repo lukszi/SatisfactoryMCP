@@ -4,7 +4,8 @@ texture kernels (``render/gpu/texels.py``), which give its bytes.
 A texture is read at texel coordinates, bilinear between texel centres, repeating or clamped
 at its edge; an atlas holds many textures as tiles of one array. A sprite is a tile turned,
 scaled and laid over the band's colour by its alpha, sprite after sprite in their order.
-Every operation is float32 in the order written here. docs/map/renders.md section 43.
+Every operation is float32 in the order written here. docs/map/renders.md section 41, "The
+draw on the GPU".
 """
 
 from __future__ import annotations
