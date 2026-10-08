@@ -209,7 +209,10 @@ def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
     assert nrm[200, 20, 3] == 0 and nrm[200, 200, 3] == 255
     coarse = np.asarray(Image.open(root / "light" / "tiles" / "0" / "0_0.nrm.webp").convert("RGBA"))
     assert coarse[100, 10, 3] == 0 and coarse[100, 100, 3] == 255
-    assert stats["max_z"] == 1 and (root / "terrain" / UNLIT_DIR_NAME / "0" / "0_0.png").is_file()
+    assert stats["max_z"] == 1 and (root / "terrain" / UNLIT_DIR_NAME / "0" / "0_0.webp").is_file()
+    assert trees.unlit is not None and trees.unlit["layout"] == "unlit/{z}/{x}_{y}.webp"
+    unlit = np.asarray(Image.open(root / "terrain" / UNLIT_DIR_NAME / "1" / "0_0.webp"))
+    assert unlit.shape == (256, 256, 3) and (unlit == 128).all(), "lossless"
     baked = np.asarray(Image.open(root / "terrain" / "tiles" / "1" / "0_0.png"))
     assert baked[20, 20].tolist() == [128, 128, 128]  # water: unlit either way
     sidecar = {"_meta": {"provenance": {}}}

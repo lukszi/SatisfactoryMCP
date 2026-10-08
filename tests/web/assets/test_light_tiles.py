@@ -104,6 +104,52 @@ def test_a_bad_kind_a_tile_off_the_tree_or_an_unlit_less_layer_is_a_404(
     assert client.get("/api/maptiles/terrain/1/0/0?kind=hz").status_code == 404
 
 
+def _apart(local: Path, trees_bytes: int = 7) -> None:
+    """The lit layer redrawn apart at its trees: its ground as WebP, its trees a sparse tree
+    holding z0 and one z1 tile."""
+    layer = local / "renders" / "terrain"
+    for old in (layer / "unlit").rglob("*.png"):
+        old.unlink()
+    _tree(layer / "unlit", 1, ".webp", WEBP)
+    for name in ("0/0_0", "1/1_0"):
+        path = layer / "trees" / f"{name}.webp"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(WEBP)
+    sidecar = json.loads((layer / "meta.json").read_text(encoding="utf-8"))
+    light = sidecar["_meta"]["light"]
+    light["unlit_tiles"] = {"max_z": 1, "count": 5, "bytes": 5, "layout": "unlit/{z}/{x}_{y}.webp"}
+    light["trees_dir"] = "trees"
+    light["trees_tiles"] = {"max_z": 1, "count": 2, "bytes": trees_bytes, "sparse": True,
+                            "layout": "trees/{z}/{x}_{y}.webp"}  # fmt: skip
+    (layer / "meta.json").write_text(json.dumps(sidecar), encoding="utf-8")
+
+
+def test_a_layer_drawn_apart_serves_its_ground_and_its_sparse_trees(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    _lit_layer(tmp_path / "local")
+    before = json.loads(client.head("/api/maptiles/terrain/0/0/0").headers["x-map-light"])
+    assert before["parts"] == {}, "drawn whole: no parts to switch"
+    assert client.get("/api/maptiles/terrain/0/0/0?kind=trees").status_code == 404
+    _apart(tmp_path / "local")
+    light = json.loads(client.head("/api/maptiles/terrain/0/0/0").headers["x-map-light"])
+    assert light["parts"] == {"trees": {"max_z": 1, "sparse": True}}
+    assert light["build"] != before["build"], "a recut changes every URL"
+    tag = "&v=" + light["build"]
+    unlit = client.get("/api/maptiles/terrain/1/0/1?kind=unlit" + tag)
+    assert unlit.status_code == 200 and unlit.headers["content-type"] == "image/webp"
+    trees = client.get("/api/maptiles/terrain/1/1/0?kind=trees" + tag)
+    assert trees.status_code == 200 and trees.content == WEBP
+    assert trees.headers["content-type"] == "image/webp"
+    for method in (client.get, client.head):
+        empty = method("/api/maptiles/terrain/1/0/0?kind=trees" + tag)
+        assert empty.status_code == 204 and not empty.content
+        assert "immutable" in empty.headers["cache-control"]
+    assert client.get("/api/maptiles/terrain/2/0/0?kind=trees").status_code == 404
+    _apart(tmp_path / "local", trees_bytes=8)
+    again = json.loads(client.head("/api/maptiles/terrain/0/0/0").headers["x-map-light"])
+    assert again["build"] != light["build"], "the trees' bytes are in the tag"
+
+
 def test_a_light_dir_outside_data_local_is_never_followed(client, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
     _lit_layer(tmp_path / "local", light_dir="../../../outside")

@@ -1,17 +1,21 @@
 /* A base layer drawn unlit, lit live by the sun on one WebGL canvas over the map.
  *
- * Per tile it fetches three images of one square: the unlit colour (`?kind=unlit`), the
- * normals with sky view and land weight (`?kind=nrm`) and the horizons (`?kind=hz`: the
- * ground's, then the tree crowns', which only a style that draws the crowns reads), and the
- * shader multiplies the colour by the light. One canvas for the whole view, not one context
- * per tile. The arithmetic is mapgen's lighting/model.py; docs/spatial-and-map.md §29.
- * The switches (shade, terrain and tree shadows, sky) are uniforms: `lightSwitches`. */
+ * Per tile it fetches the unlit colour (`?kind=unlit`), the normals with sky view and land
+ * weight (`?kind=nrm`) and the horizons (`?kind=hz`: the ground's, then the trees', which only
+ * a style that draws the trees reads); on a layer drawn apart at its trees, the colour is the
+ * ground and the trees come as a fourth image (`?kind=trees`) while they are shown. The shader
+ * lights both and lays the trees over the ground. One canvas for the whole view, not one
+ * context per tile. The arithmetic is mapgen's lighting/model.py; docs/spatial-and-map.md §29.
+ * The switches (shade, trees, terrain and tree shadows, sky) are uniforms: `lightSwitches`. */
 
 import { tilePath } from "../api/client";
 import { L } from "./leaflet";
+import { createTileTextureCache, noTrees } from "./littiles";
 import { MAP_SHEET_PX, map } from "./map";
 import { currentSun, onSun } from "./sun";
 
+import type { TileTextureCache } from "./littiles";
+import type { LightControls } from "./suncontrol";
 import type { Sun } from "./sun";
 
 export interface LightParams {
@@ -44,7 +48,12 @@ export interface LightHeader {
     crown_cell?: number;
     /* Absent on a pyramid baked before each cell had a border of its edge texels. */
     hz_gutter?: number;
+    /* Absent before the Titan trees had cells of their own and the trees' sky occlusion one. */
+    titan_cell?: number;
+    ao_cell?: number;
   };
+  /** What the layer is made of besides the light; absent or empty on a layer drawn whole. */
+  parts?: { trees?: { max_z: number; sparse: boolean } };
 }
 
 export function parseLight(raw: string | null): LightHeader | null {
@@ -79,22 +88,25 @@ void main(){ vUV=aP; vec2 p=(uRect.xy+aP*uRect.zw)/uVP*2.0-1.0; gl_Position=vec4
 export const FS = `#version 300 es
 precision highp float;
 in vec2 vUV; out vec4 o;
-uniform sampler2D tCol, tNrm, tHz;
+uniform sampler2D tCol, tNrm, tHz, tTrees;
 uniform vec3 uL, uSky, uSun, uF;
 uniform float uEl, uInvNorm, uAmb, uTK, uTW, uSoft, uGroundSh, uSkyOn, uW, uFloor, uKnee, uLinear;
-uniform float uFill, uRows, uCrownSh, uLightOn, uGut, uIn;
-uniform int uI0, uI1, uCrown;
+uniform float uFill, uRows, uCrownSh, uLightOn, uGut, uIn, uTreesOn;
+uniform int uI0, uI1, uCrown, uTitan, uAo;
 float s2l(float c){ return c<=0.04045? c/12.92 : pow((c+0.055)/1.055,2.4); }
 float l2s(float c){ c=clamp(c,0.0,1.0); return c<=0.0031308? c*12.92 : 1.055*pow(c,1.0/2.4)-0.055; }
-float hz(int i){
+float raw(int i){
   vec2 cell=vec2(float(i%8), float(i/8));
   vec2 uv=clamp(vUV, vec2(0.5/128.0), vec2(1.0-0.5/128.0));
-  float q=texture(tHz,(cell+uGut+uv*uIn)*vec2(0.125,1.0/uRows)).r;
-  return q*q*90.0;
+  return texture(tHz,(cell+uGut+uv*uIn)*vec2(0.125,1.0/uRows)).r;
 }
+float hz(int i){ float q=raw(i); return q*q*90.0; }
 float horizon(){
   float h=uGroundSh*mix(hz(uI0),hz(uI1),uW);
-  if(uCrownSh>0.5) h=max(h,mix(hz(uI0+uCrown),hz(uI1+uCrown),uW));
+  if(uCrownSh*uTreesOn>0.5){
+    h=max(h,mix(hz(uI0+uCrown),hz(uI1+uCrown),uW));
+    if(uTitan>0) h=max(h,mix(hz(uI0+uTitan),hz(uI1+uTitan),uW));
+  }
   return h;
 }
 const vec3 LUMA=vec3(0.2126,0.7152,0.0722);
@@ -102,36 +114,29 @@ float tone1(float y){ if(uTK>=1.0||y<=uTK) return y; float sp=1.0-uTK; float x=(
 float untone1(float y){ if(uTK>=1.0||y<=uTK) return y; float sp=1.0-uTK; float u=min((y-uTK)/sp,0.999); float t=(uTW-uTK)/sp; float a=1.0/(t*t); float b=1.0-u; return uTK+sp*(sqrt(b*b+4.0*a*u)-b)/(2.0*a); }
 vec3 tone(vec3 x){ float y=max(dot(x,LUMA),1e-7); return x*(tone1(y)/y); }
 vec3 untone(vec3 x){ float y=max(dot(x,LUMA),1e-7); return x*(untone1(y)/y); }
+vec3 toLinear(vec3 c){ return uLinear>0.5 ? untone(vec3(s2l(c.r),s2l(c.g),s2l(c.b))) : c; }
 void main(){
-  vec3 c=texture(tCol,vUV).rgb; vec4 n4=texture(tNrm,vUV);
-  vec3 base= uLinear>0.5 ? untone(vec3(s2l(c.r),s2l(c.g),s2l(c.b))) : c;
+  vec3 base=toLinear(texture(tCol,vUV).rgb); vec4 n4=texture(tNrm,vUV);
+  vec4 t4=texture(tTrees,vUV); float a=t4.a*uTreesOn;
+  vec3 tree=a>0.0 ? toLinear(t4.rgb/t4.a) : vec3(0.0);
   vec2 nxy=n4.rg*2.0-1.0; vec3 nn=vec3(nxy, sqrt(max(1.0-dot(nxy,nxy),0.0)));
   float ndl=max(dot(nn,uL),0.0);
-  float sh=max(uGroundSh,uCrownSh)*clamp((horizon()-uEl)/uSoft+0.5,0.0,1.0);
-  float svf=mix(1.0,n4.b,uSkyOn);
+  float sh=max(uGroundSh,uCrownSh*uTreesOn)*clamp((horizon()-uEl)/uSoft+0.5,0.0,1.0);
+  float ao=(uAo>0 && uTreesOn>0.5) ? raw(uAo) : 0.0;
+  float svf=mix(1.0,n4.b*(1.0-ao),uSkyOn);
   vec3 rel=(uAmb*uSky*svf+(1.0-uAmb)*uSun*ndl*(1.0-sh*(1.0-uFill))*uInvNorm)/uF;
   rel=0.5*(rel+uFloor+sqrt((rel-uFloor)*(rel-uFloor)+uKnee*uKnee));
-  vec3 x=base*mix(vec3(1.0),rel,n4.a*uLightOn);
+  vec3 x=mix(base*mix(vec3(1.0),rel,n4.a*uLightOn), tree*mix(vec3(1.0),rel,uLightOn), a);
   vec3 t=tone(x);
   o = uLinear>0.5 ? vec4(l2s(t.r),l2s(t.g),l2s(t.b),1.0) : vec4(clamp(x,0.0,1.0),1.0);
 }`;
 
-export const UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm", "uAmb",
-  "uTK", "uTW", "uSoft", "uGroundSh", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1", "uFill", "uRows",
-  "uCrownSh", "uCrown", "uLightOn", "uGut", "uIn"];
+export const UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "tTrees", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm",
+  "uAmb", "uTK", "uTW", "uSoft", "uGroundSh", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1", "uFill", "uRows",
+  "uCrownSh", "uCrown", "uLightOn", "uGut", "uIn", "uTreesOn", "uTitan", "uAo"];
 /** A horizon cell's own texels a side; the pyramid's `hz_gutter` borders it. */
 const HZ_CELL_PX = 128;
-const KINDS = ["unlit", "nrm", "hz"];
-const CACHE_TILES = 120;
-const IN_FLIGHT = 8;
-const FAILS_TO_GIVE_UP = 6;
 const COARSE_LEVELS = 4;
-
-/** One tile's three textures, and the frame that last drew it. */
-interface CachedTile {
-  tex: WebGLTexture[];
-  used: number;
-}
 
 type Uniforms = Record<string, WebGLUniformLocation | null>;
 
@@ -163,133 +168,6 @@ function compile(gl: WebGL2RenderingContext): WebGLProgram {
   return program;
 }
 
-function texture(gl: WebGL2RenderingContext, bitmap: ImageBitmap, grey: boolean): WebGLTexture {
-  const made = gl.createTexture()!;
-  gl.bindTexture(gl.TEXTURE_2D, made);
-  if (grey) gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, gl.RED, gl.UNSIGNED_BYTE, bitmap);
-  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  return made;
-}
-
-function fetchBitmap(address: string): Promise<ImageBitmap> {
-  return fetch(address).then(function (response) {
-    if (!response.ok) throw new Error(address + ": " + response.status);
-    return response.blob().then(function (blob) {
-      return createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
-    });
-  });
-}
-
-/** The tiles held as textures, the ones in the air, and the ones still to ask for. */
-interface TileTextureCache {
-  /** Start a frame: these tiles are wanted, coarse first; load what is missing. */
-  request(keys: string[]): void;
-  /** A loaded tile, marked as drawn this frame, or undefined while it is not here yet. */
-  use(key: string): CachedTile | undefined;
-  /** Drop the longest-unused tiles past the budget, sparing `keep`. */
-  evict(keep: Set<string>): void;
-  /** Delete every texture and stop loading; replies still in the air are dropped. */
-  dispose(): void;
-}
-
-/* Tiles are fetched IN_FLIGHT at a time. `onGiveUp` fires when too many fail, or the root does:
- * the layer is then swapped for its baked twin. */
-function createTileTextureCache(
-  gl: WebGL2RenderingContext,
-  urlFor: (kind: string, z: number, x: number, y: number) => string,
-  onLoaded: () => void,
-  onGiveUp: (why: string) => void
-): TileTextureCache {
-  const cache = new Map<string, CachedTile>();
-  const pending = new Set<string>();
-  let queue: string[] = [];
-  let fails = 0;
-  let tick = 0;
-  let disposed = false;
-
-  function load(key: string): void {
-    const parts = key.split("/").map(Number);
-    pending.add(key);
-    Promise.all(
-      KINDS.map(function (kind) {
-        return fetchBitmap(urlFor(kind, parts[0]!, parts[1]!, parts[2]!));
-      })
-    )
-      .then(function (bitmaps) {
-        pending.delete(key);
-        if (disposed) return;
-        cache.set(key, {
-          tex: bitmaps.map(function (bitmap, i) {
-            return texture(gl, bitmap, i === 2);
-          }),
-          used: tick,
-        });
-        bitmaps.forEach(function (bitmap) {
-          bitmap.close();
-        });
-        onLoaded();
-        pump();
-      })
-      .catch(function () {
-        pending.delete(key);
-        fails += 1;
-        if (fails >= FAILS_TO_GIVE_UP || key === "0/0/0") onGiveUp("the lighting tiles would not load");
-        pump();
-      });
-  }
-
-  function pump(): void {
-    while (pending.size < IN_FLIGHT && queue.length) {
-      const key = queue.shift()!;
-      if (!cache.has(key) && !pending.has(key)) load(key);
-    }
-  }
-
-  return {
-    request: function (keys) {
-      tick += 1;
-      queue = keys.filter(function (key) {
-        return !cache.has(key) && !pending.has(key);
-      });
-      pump();
-    },
-    use: function (key) {
-      const held = cache.get(key);
-      if (held) held.used = tick;
-      return held;
-    },
-    evict: function (keep) {
-      if (cache.size <= CACHE_TILES) return;
-      const rows = Array.from(cache.entries()).filter(function (row) {
-        return !keep.has(row[0]);
-      });
-      rows.sort(function (a, b) {
-        return a[1].used - b[1].used;
-      });
-      rows.slice(0, cache.size - CACHE_TILES).forEach(function (row) {
-        row[1].tex.forEach(function (tex) {
-          gl.deleteTexture(tex);
-        });
-        cache.delete(row[0]);
-      });
-    },
-    dispose: function () {
-      disposed = true;
-      cache.forEach(function (held) {
-        held.tex.forEach(function (tex) {
-          gl.deleteTexture(tex);
-        });
-      });
-      cache.clear();
-      queue = [];
-    },
-  };
-}
-
 /* The uniforms that hold for the layer's whole life: the light's colours and tone curve, and
  * the shadow model the pyramid was baked with. */
 function uploadLightUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, light: LightHeader): void {
@@ -311,6 +189,8 @@ function uploadLightUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, lig
   gl.uniform1f(uniforms.uKnee!, model.shadow_floor_knee);
   gl.uniform1f(uniforms.uRows!, Math.ceil((model.hz_cells || model.dirs) / 8));
   gl.uniform1i(uniforms.uCrown!, model.crown_cell || 0);
+  gl.uniform1i(uniforms.uTitan!, model.titan_cell || 0);
+  gl.uniform1i(uniforms.uAo!, model.ao_cell || 0);
   const stride = HZ_CELL_PX + 2 * (model.hz_gutter || 0);
   gl.uniform1f(uniforms.uGut!, (model.hz_gutter || 0) / stride);
   gl.uniform1f(uniforms.uIn!, HZ_CELL_PX / stride);
@@ -321,16 +201,33 @@ export function castsTreeShadows(light: LightHeader): boolean {
   return !!(light.params.crowns && light.model.crown_cell);
 }
 
-export type LightSwitches = Record<"uLightOn" | "uGroundSh" | "uCrownSh" | "uSkyOn", number>;
+/** Whether the layer holds its trees apart from the ground, so the trees can be switched. */
+export function treesApart(light: LightHeader): boolean {
+  return !!(light.parts && light.parts.trees);
+}
 
-/* The shader's switches for `sun`. Terrain shadows off with tree shadows on loses the tree
- * shadows inside terrain shade: the light stores a crown cell only where it stands higher. */
+/** What the map's controls offer for this light; `off` is why it is not drawn live, or "". */
+export function lightControls(light: LightHeader, off: string): LightControls {
+  return { trees: castsTreeShadows(light), apart: treesApart(light), alone: !!light.model.titan_cell, off: off };
+}
+
+/** Whether the trees are drawn: always on a layer that keeps them in its colour. */
+function treesShown(light: LightHeader, sun: Sun): boolean {
+  return !treesApart(light) || sun.trees;
+}
+
+export type LightSwitches = Record<"uLightOn" | "uGroundSh" | "uCrownSh" | "uSkyOn" | "uTreesOn", number>;
+
+/* The shader's switches for `sun`. The trees off take their shadows and sky occlusion with
+ * them. Before the trees had cells of their own, terrain shadows off with tree shadows on loses
+ * the tree shadows inside terrain shade: a crown cell was stored only where it stood higher. */
 export function lightSwitches(light: LightHeader, sun: Sun): LightSwitches {
   return {
     uLightOn: sun.shade ? 1 : 0,
     uGroundSh: sun.terrainShadows ? 1 : 0,
     uCrownSh: sun.treeShadows && castsTreeShadows(light) ? 1 : 0,
     uSkyOn: sun.sky ? 1 : 0,
+    uTreesOn: treesShown(light, sun) ? 1 : 0,
   };
 }
 
@@ -385,7 +282,8 @@ function drawVisibleTiles(
   cache: TileTextureCache,
   sheet: SheetOnScreen,
   tileZoom: number,
-  dpr: number
+  dpr: number,
+  empty: WebGLTexture
 ): string[] {
   const drawn: string[] = [];
   for (let zoom = Math.max(0, tileZoom - COARSE_LEVELS); zoom <= tileZoom; zoom++) {
@@ -396,7 +294,7 @@ function drawVisibleTiles(
       drawn.push(key);
       const parts = key.split("/").map(Number);
       gl.uniform4f(uniforms.uRect!, sheet.x0 * dpr + parts[1]! * cell, sheet.y0 * dpr + parts[2]! * cell, cell, cell);
-      held.tex.forEach(function (tex, i) {
+      held.tex.concat([held.trees || empty]).forEach(function (tex, i) {
         gl.activeTexture(gl.TEXTURE0 + i);
         gl.bindTexture(gl.TEXTURE_2D, tex);
       });
@@ -410,10 +308,12 @@ function drawVisibleTiles(
 export function makeLitLayer(tileLayerId: string, light: LightHeader, onFail: (why: string) => void): L.Layer {
   const sheetZoomOffset = Math.log2(MAP_SHEET_PX / 256);
   const maxTileZoom = Math.min(light.max_z, light.unlit_max_z);
+  const treesMaxZ = light.parts && light.parts.trees ? light.parts.trees.max_z : maxTileZoom;
   let frame = 0;
   let canvas: HTMLCanvasElement | null = null;
   let gl: WebGL2RenderingContext | null = null;
   let cache: TileTextureCache | null = null;
+  let empty: WebGLTexture | null = null;
   const uniforms: Uniforms = {};
   let drawnZoom = 0;
   let drawnCorner: L.LatLng | null = null;
@@ -423,14 +323,14 @@ export function makeLitLayer(tileLayerId: string, light: LightHeader, onFail: (w
     return tilePath(tileLayerId, z, x, y) + "?kind=" + kind + "&v=" + encodeURIComponent(light.build);
   }
 
-  function tileZoomForView(): number {
+  function tileZoomForView(trees: boolean): number {
     const tileZoom = Math.round(map.getZoom() + sheetZoomOffset + Math.log2(window.devicePixelRatio || 1));
-    return Math.max(0, Math.min(maxTileZoom, tileZoom));
+    return Math.max(0, Math.min(trees ? Math.min(maxTileZoom, treesMaxZ) : maxTileZoom, tileZoom));
   }
 
   function draw(): void {
     frame = 0;
-    if (!gl || !canvas || !cache) return;
+    if (!gl || !canvas || !cache || !empty) return;
     const size = map.getSize();
     const dpr = window.devicePixelRatio || 1;
     const width = Math.round(size.x * dpr);
@@ -445,17 +345,19 @@ export function makeLitLayer(tileLayerId: string, light: LightHeader, onFail: (w
     drawnZoom = map.getZoom();
     drawnCorner = map.containerPointToLatLng([0, 0]);
     const sheet = sheetOnScreen();
-    const tileZoom = tileZoomForView();
+    const sun = currentSun();
+    const trees = treesApart(light) && sun.trees;
+    const tileZoom = tileZoomForView(trees);
     const want = visibleTiles(tileZoom, sheet);
     const coarse = visibleTiles(Math.max(0, tileZoom - COARSE_LEVELS), sheet);
-    cache.request(coarse.concat(want));
+    cache.request(coarse.concat(want), trees);
     gl.viewport(0, 0, width, height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform2f(uniforms.uVP!, width, height);
-    uploadSunUniforms(gl, uniforms, light, currentSun());
+    uploadSunUniforms(gl, uniforms, light, sun);
     const keep = new Set<string>(want.concat(coarse));
-    drawVisibleTiles(gl, uniforms, cache, sheet, tileZoom, dpr).forEach(function (key) {
+    drawVisibleTiles(gl, uniforms, cache, sheet, tileZoom, dpr, empty).forEach(function (key) {
       keep.add(key);
     });
     cache.evict(keep);
@@ -490,9 +392,11 @@ export function makeLitLayer(tileLayerId: string, light: LightHeader, onFail: (w
     made.uniform1i(uniforms.tCol!, 0);
     made.uniform1i(uniforms.tNrm!, 1);
     made.uniform1i(uniforms.tHz!, 2);
+    made.uniform1i(uniforms.tTrees!, 3);
     made.pixelStorei(made.UNPACK_COLORSPACE_CONVERSION_WEBGL, made.NONE);
     made.pixelStorei(made.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     uploadLightUniforms(made, uniforms, light);
+    empty = noTrees(made);
     cache = createTileTextureCache(made, url, redraw, onFail);
     canvas.addEventListener("webglcontextlost", function (event) {
       event.preventDefault();
@@ -521,6 +425,8 @@ export function makeLitLayer(tileLayerId: string, light: LightHeader, onFail: (w
     if (frame) cancelAnimationFrame(frame);
     frame = 0;
     if (cache) cache.dispose();
+    if (gl && empty) gl.deleteTexture(empty);
+    empty = null;
     const lostGl = gl;
     gl = null;
     const lose = lostGl ? lostGl.getExtension("WEBGL_lose_context") : null;

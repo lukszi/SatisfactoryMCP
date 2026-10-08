@@ -23,6 +23,7 @@ from typing import NamedTuple, Self
 import numpy as np
 
 from mapgen.pools import free_ram_bytes
+from mapgen.tiles.formats import PNG_TILES, TileFormat, commit_tiles, encode_tiles, tile_name
 from mapgen.tiles.imaging import TileImaging
 from mapgen.tiles.levels import SheetRows
 from satisfactory_mcp.core.arrays import U8Grid
@@ -56,11 +57,13 @@ Transform = Callable[[U8Grid], U8Grid]
 
 
 class TreeSpec(NamedTuple):
-    """A tile tree: its directory, its tile size, and what its levels say they were cut from."""
+    """A tile tree: its directory, its tile size, what its levels say they were cut from, and
+    the format its tiles are written in."""
 
     dir_name: str
     tile_px: int
     text: str
+    fmt: TileFormat = PNG_TILES
 
 
 class _Tree:
@@ -164,7 +167,11 @@ class Sheet:
             for z in range(tree.top_z + 1):
                 side = tree.spec.tile_px << z
                 self.consumers[side].append(_TileRows(stream, tree, z).add)
-        self.rows = SheetRows(stream.image_mod, px, [side for side in self.consumers if side < px])
+        channels = {tree.spec.fmt.channels for tree in self.trees}
+        if len(channels) != 1:
+            raise PyramidError(f"one sheet's trees are cut from one image mode, not {channels}")
+        sides = [side for side in self.consumers if side < px]
+        self.rows = SheetRows(stream.image_mod, px, sides, channels.pop())
         self.lane = _Lane(stream)
 
     def sheets(self) -> list[Sheet]:
@@ -283,17 +290,21 @@ class TileStream:
         view[...] = rows
         del view
         job = (block.name, rows.shape[1], z, row, str(tree.staging), tree.spec.tile_px)
+        fmt = tree.spec.fmt
         with self.changed:
             self.blocks.add(block)
             self.queued += rows.nbytes
         if self.encoders is None:
             future: Future[int] = Future()
             try:
-                future.set_result(encode_tile_row(job))
+                written = encode_tile_row(job) if fmt == PNG_TILES else encode_tiles((*job, fmt))
+                future.set_result(written)
             except Exception as exc:
                 future.set_exception(exc)
-        else:
+        elif fmt == PNG_TILES:
             future = self.encoders.submit(encode_tile_row, job)
+        else:
+            future = self.encoders.submit(encode_tiles, (*job, fmt))
         future.add_done_callback(partial(self._encoded, block, rows.nbytes))
         return future
 
@@ -332,11 +343,18 @@ class TileStream:
         return [self._commit(tree) for tree in trees]
 
     def _commit(self, tree: _Tree) -> JsonObject:
-        spec = tree.spec
+        spec, fmt = tree.spec, tree.spec.fmt
         levels: list[LevelRecord] = []
         for z in range(tree.top_z + 1):
             written = sum(future.result() for future in tree.rows[z])
-            levels.append(level_record(z, written, spec.text, spec.tile_px))
+            level = level_record(z, written, spec.text, spec.tile_px)
+            if fmt.sparse:
+                level["tiles"] = sum(1 for _ in (tree.staging / str(z)).glob("*" + fmt.suffix))
+            levels.append(level)
         stats = pyramid_record(levels, spec.tile_px, self.workers, spec.dir_name)
-        installed: JsonObject = commit_tree(stats, tree.out_dir, spec.dir_name)
-        return installed
+        if fmt == PNG_TILES:
+            installed: JsonObject = commit_tree(stats, tree.out_dir, spec.dir_name)
+            return installed
+        stats["layout"] = spec.dir_name + "/" + tile_name("{z}", "{x}", "{y}", fmt.suffix)
+        stats.update(fmt.record)
+        return commit_tiles(stats, tree.out_dir, spec.dir_name, fmt)

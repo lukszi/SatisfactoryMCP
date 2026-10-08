@@ -145,7 +145,8 @@ def test_one_pass_draws_each_layer_as_it_draws_alone_and_measures_once(tmp_path)
     handed: list[tuple[int, list[str]]] = []
     parts: dict[str, list[np.ndarray]] = {"terrain": [], "relief-dark": []}
 
-    def bands(top, rows):
+    def bands(top, rows, split):
+        assert split == {}, "no layer drawn apart unless asked"
         handed.append((top, list(rows)))
         for layer, band in rows.items():
             parts[layer].append(band)

@@ -67,6 +67,15 @@ Planned as 0.2.0.
   The light's controls show on every map that has a light, greyed with the reason where it is
   drawn baked, such as without WebGL2. Tree shadows with terrain shadows off miss the ones that
   fall inside terrain shade, until a later render stores them.
+- Web map: a *trees* checkbox beside *shade* on the Satellite map; off, the tree crowns and the
+  Titan trees go, with their shadows, and the ground under them shows. It needs a render drawn
+  from this version on; on an older one the row shows greyed. With the trees on, a crown over
+  the water now takes the live light.
+- Map renders: the Satellite layer keeps its trees apart for the page: `unlit/` holds the
+  ground without them and a new sparse `trees/` the crowns and Titan trees as lossless RGBA
+  WebP. `tiles/` and `tiles@2x/` are unchanged. `/api/maptiles/{id}/{z}/{x}/{y}?kind=trees`
+  serves them, answering 204 for a tile with no tree in it, and `X-Map-Light` names them under
+  `parts`.
 - Map generator: `python -m mapgen crown-sprites` builds a top-down sprite of every tree
   species, in colour, normal and alpha at 0.125 m, into `data/local/crown-sprites/`. Eight
   species take the game's own billboard view from above; the other 45, the Kapok and the
@@ -94,6 +103,9 @@ Planned as 0.2.0.
 - Map renders: the Titan forest's canopy is opaque and drawn from its own leaves' sprites,
   textured and lit by their normals, instead of a see-through, faceted green; the trunks stay
   as before.
+- Map renders: the unlit colour of a map drawn with live light (`unlit/`) is lossless WebP
+  instead of PNG, about a quarter smaller. Renders made before keep their PNG tiles and are
+  served as they are.
 - Map names: the game-painted map is now called "Satellite" and the dark relief "Relief".
   Their ids, links and the saved default are unchanged.
 - Map renders: a render that names no layers draws terrain and Satellite, and the Maps tab

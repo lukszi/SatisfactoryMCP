@@ -97,7 +97,7 @@ describe("changing a setting", () => {
     expect(settings.settingOn("sunTreeShadows")).toBe(true);
     expect(settings.settingOn("sunSky")).toBe(true);
     const map = settings.SETTINGS.filter((s) => s.group === "map").map((s) => s.key);
-    expect(map).toEqual(["sunTime", "mapShade", "sunShadows", "sunTreeShadows", "sunSky"]);
+    expect(map).toEqual(["sunTime", "mapShade", "mapTrees", "sunShadows", "sunTreeShadows", "sunSky"]);
   });
 
   it("writes a shared setting through to the server and keeps it local too", async () => {

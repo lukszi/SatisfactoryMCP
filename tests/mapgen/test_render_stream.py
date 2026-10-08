@@ -22,14 +22,15 @@ from mapgen.render.draw.kept_light import KEPT_LIGHT_DIR_NAME
 from mapgen.render.draw.light import UNLIT_DIR_NAME, LightingRun, crown_layers, relight_rows
 from mapgen.render.draw.stream import RenderStream
 from mapgen.tiles.cutter import TileStream
+from mapgen.tiles.formats import GROUND_TILES
 from satisfactory_mcp.core.gameassets.pyramid import install_pyramid
+from tests.support.cut import cut_whole
 
 Image = pytest.importorskip("PIL.Image")
 
 LAYERS = ("terrain", "painted")
 RECIPE = 6
 TEXT = "tools/gen_map_renders.py, {layer} recipe 6, Lanczos"
-UNLIT_TEXT = "tools/gen_map_renders.py, {layer} unlit, Lanczos"
 
 Planes = tuple[np.ndarray, np.ndarray]
 
@@ -109,9 +110,7 @@ def _reference(out: Path, size: int, planes: Planes | None) -> None:
         directory = out / "r" / layer
         sheet = _sheet(size, k)
         if terms is not None and land is not None:
-            unlit = Image.fromarray(sheet)
-            install_pyramid(unlit, Image, directory, source=UNLIT_TEXT.format(layer=layer),
-                            dir_name=UNLIT_DIR_NAME)  # fmt: skip
+            cut_whole(sheet, directory / UNLIT_DIR_NAME, GROUND_TILES)
             sheet = relight_rows(sheet, terms, land, shader_light(layer))
         lit = Image.fromarray(sheet)
         text = TEXT.format(layer=layer)
@@ -137,7 +136,8 @@ def test_the_lit_trees_take_each_band_once_the_light_has_its_rows(tmp_path, monk
     _reference(tmp_path / "b", 1024, planes)
     assert queued == [[], [0], [0, 1], [0, 1, 2, 3]], "a block row bakes once its rows are in"
     a, b = _digests(tmp_path / "a" / "r"), _digests(tmp_path / "b" / "r")
-    assert len([name for name in a if name.endswith(".png")]) == 2 * (21 + 21 + 5)
+    assert len([name for name in a if name.endswith(".png")]) == 2 * (21 + 5)
+    assert len([name for name in a if "/unlit/" in name and name.endswith(".webp")]) == 2 * 21
     assert {name for name in a if name.startswith("light/tiles")} == {
         name for name in b if name.startswith("light/tiles")
     }

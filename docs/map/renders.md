@@ -189,9 +189,12 @@ bargain the CRS already makes.
 
 ### Cutting in parallel, and the proof that it is the same bytes
 
-A lit layer writes three trees: `unlit/`, `tiles/` and `tiles@2x/`, 45,055 tiles at 32768.
-`mapgen/tiles/cutter.py` cuts every tree of a run while the draw is still going, a band of
-rows at a time (section 42), and writes the bytes of the serial cutter, `install_pyramid`:
+A lit layer writes three trees: `unlit/`, `tiles/` and `tiles@2x/`, 45,055 tiles at 32768;
+the painted layer a fourth, its sparse `trees/` (light-and-crowns.md section 36, "Trees
+apart"). `mapgen/tiles/cutter.py` cuts every tree of a run while the draw is still going, a
+band of rows at a time (section 42), and writes the bytes of the serial cutter,
+`install_pyramid`; `unlit/` and `trees/` are lossless WebP (`tiles/formats.py`), the bytes of
+a whole-sheet cut in that format, which a test holds:
 
 - **One encode pool.** `--cut-workers` processes (default one per logical core, at most 24)
   encode one row of tiles per job, for every tree of every layer. A row of tiles is queued as
@@ -2308,7 +2311,9 @@ light are the same bytes.
   the lit colour and goes to the layer's `tiles/` and `tiles@2x/`. With it, it goes to
   `unlit/` at once and waits for the default sun's terms of its rows (below); then it is
   relit (`light.relight_rows`, the arithmetic of section 29's baked copy, row by row) and goes
-  to `tiles/` and `tiles@2x/`.
+  to `tiles/` and `tiles@2x/`. The painted layer, drawn apart at its trees (`split=`), hands
+  its ground and its trees with each band: the ground goes to `unlit/`, the trees to `trees/`
+  at once, and the picture waits for its light as before.
 - **The cutter cuts it** (`tiles/cutter.py` `TileStream`, `tiles/levels.py`). Each sheet,
   the unlit and the lit of every layer, takes its rows in order on a lane: its tasks run one
   at a time in the order they came, and the lanes of all the sheets share a pool of 8
@@ -2318,8 +2323,8 @@ light are the same bytes.
   it is whole (section 17, "Cutting in parallel"). At 32768, `tiles@2x/` is cut from the
   16384 level, which a second sheet takes as its rows as they come.
 - **The install waits for it.** After the draw and the light, each layer's trees are waited
-  for, checked against their counts and renamed into place, `unlit/`, then `tiles/`, then
-  `tiles@2x/`, as before.
+  for, checked against their counts and renamed into place, `unlit/`, `trees/`, then
+  `tiles/`, then `tiles@2x/`.
 
 ### The light, a row of blocks at a time
 

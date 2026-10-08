@@ -236,8 +236,9 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
 | `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land. At the native level the normal carries the ground's detail where the run drew one (painted.md section 30, "The layers' own textures") |
 | `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | A grey atlas of 97 cells of 128 px, 8 a row in 13 rows, at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 × 2080 px): cells 0–31 the ground's horizons, cells 32–63 the crowns' alone and 64–95 the Titan trees' alone, always stored, `255 · sqrt(deg / 90)`, a span's band folded in at the sun path's elevation (above, "Arches as spans"); cell 96 the trees' ambient occlusion, `255 · o` (below, "The trees in the light"). WebP q95 where a band is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles at q95 where a band folds") |
 | `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), the `key` the bake was made under (below, "Kept light"), tile counts, timings |
-| `<layer>/unlit/` | The unlit colour, 1x only |
-| `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun: what a page without WebGL, and every older reader, draws |
+| `<layer>/unlit/` | The unlit colour, 1x only, lossless WebP (PNG before 2026-10-08; the server takes the suffix from the sidecar's `layout`). On the painted layer, the ground without its trees (section 36, "Trees apart") |
+| `<layer>/trees/` | Painted only: the crowns and the Titan trees as one layer, lossless WebP RGBA with straight alpha, 1x, sparse: a tile with no tree in it is not written (section 36, "Trees apart") |
+| `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun, trees and all: what a page without WebGL, and every older reader, draws |
 
 Coarser levels are computed from the coarser surface, not by averaging encoded tiles: normals
 from the downsampled heights, sky view by mean, and horizons by the mean of the shade the
@@ -804,24 +805,42 @@ shadows"). The arches and the overhangs come with the surface itself, in its `sl
 ### The page
 
 `litlayer.ts` draws a lit layer on one WebGL2 canvas in the base-map pane: per tile the unlit
-colour, normals and horizons, relit by the shader with the arithmetic of `lighting/model.py`.
-The z0 probe's `X-Map-Light` header carries the shader's numbers; the layer's `params.crowns`
-switches the crown cells on, and a pyramid without `hz_cells` reads as the old 8 × 4 atlas
-with no fill; one without `hz_gutter` reads its cells edge to edge. A test holds the shader to
-the Python model's constants. Without WebGL2, or when the
+colour, normals and horizons, relit by the shader with the arithmetic of `lighting/model.py`,
+and on a layer drawn apart at its trees the trees as a fourth texture (`littiles.ts`, below).
+The z0 probe's `X-Map-Light` header carries the shader's numbers and the layer's `parts`; the
+layer's `params.crowns` switches the crown cells on, and a pyramid without `hz_cells` reads as
+the old 8 × 4 atlas with no fill; one without `hz_gutter` reads its cells edge to edge. A test
+holds the shader to the Python model's constants. Without WebGL2, or when the
 context or the tiles fail, the layer falls back to the baked `tiles/` with a toast. Settings →
-map holds the default sun (game noon, 09:00, 16:00 or map north-west) and four switches:
+map holds the default sun (game noon, 09:00, 16:00 or map north-west) and five switches:
 
 | Setting | Label | Uniform | Off |
 | --- | --- | --- | --- |
 | `mapShade` | shade | `uLightOn` | the light is 1 everywhere: the unlit colour as it is |
+| `mapTrees` | trees | `uTreesOn` | the trees are not drawn, and neither their shadows nor their sky occlusion is read: the light of a world without trees. Only a layer whose probe has `parts.trees` can switch them; on any other they stay on |
 | `sunShadows` | terrain shadows | `uGroundSh` | the ground's horizon cells are not read: rocks, cliffs, arches and overhangs |
 | `sunTreeShadows` | tree shadows | `uCrownSh` | the crown cells are not read; only a layer with `params.crowns` has the switch |
 | `sunSky` | sky light | `uSkyOn` | the sky view is 1 |
 
-The shader takes the horizon as `max(uGroundSh · ground, crown)`, the crown term only while
-`uCrownSh`, and scales the shadow by `max(uGroundSh, uCrownSh)`, so both off casts none and both
-on is the picture from before the split. The sun button on the map opens a time-of-day slider on
+The shader takes the horizon as `max(uGroundSh · ground, crown, Titan)`, the tree terms only
+while `uCrownSh · uTreesOn`, the Titan term only where the pyramid has its own cells
+(`model.titan_cell`), and scales the shadow by `max(uGroundSh, uCrownSh · uTreesOn)`, so all
+off casts none and all on is the picture from before the switches. The trees' sky occlusion
+(`model.ao_cell`, linear) takes its share off the sky view while the trees are on.
+
+**The trees on the page.** A tile's trees are fetched only while the trees are on, as straight
+alpha premultiplied by the browser on decoding (`createImageBitmap`'s `premultiplyAlpha`), so a
+bilinear read never pulls in the colour the lossless WebP leaves free under alpha 0; a tile the
+sparse tree does not hold answers 204 and draws one shared transparent texture. The shader
+lights the ground and the trees with the same light, the ground weighted by its land weight
+and the trees by 1, so a crown over the water now takes the live light and its neighbours'
+shadows; it lays the trees over the ground at their alpha in linear light, before the tone
+curve. With both on that is the unlit colour of before, up to the 8-bit rounding of the two
+stores (section 36, "Trees apart"). The baked `tiles/` still keep a crown over the water at the
+light it was drawn with. A layer drawn before its trees came apart keeps them in its colour:
+its trees row shows greyed, and its trees are always on.
+
+The sun button on the map opens a time-of-day slider on
 the game's path, the presets, the three shadow and sky switches, a "hillshade only" button
 (both shadows and the sky off, the shade on, the sun where it is) and, under "advanced", a free
 compass with azimuth and elevation. The button moves the sun for the visit; Settings keeps the
@@ -832,29 +851,36 @@ The controls show only on a base map whose probe carries `X-Map-Light`. Where th
 drawn with its baked light instead, without WebGL2 or after a failure, they show greyed out
 with the reason as their tooltip.
 
+The trees row sits under the base-map radios beside the shade. While the trees are off the
+sun panel's tree-shadow switch greys out and says why.
+
 **Tree shadows without terrain shadows.** Until light version 5 the bake stored a crown cell
 only where the crowns' horizon stood above the ground's, and the crown march took the
 terrain with it, so with terrain shadows off a tree's shadow inside a terrain shadow was
 missing and the sun panel said so. From light version 5 the crown and Titan tree cells hold
 the trees alone and are always stored (below, "The trees in the light"), so tree shadows
 alone are exactly the trees'. A page reads the Titan tree cells and the trees' ambient
-occlusion cell by the model block's `titan_cell` and `ao_cell`; a pyramid without them reads
-as before.
+occlusion cell by the model block's `titan_cell` and `ao_cell`. On a pyramid without them,
+with terrain shadows off, a tree's shadow that falls where a terrain shadow would also fall
+reads a crown cell of 0 and is missing, and the sun panel says so in a line under the
+switches while that mix is set.
 
 ### Open
 
 - The spans' bands on the page, so a sun off the game's path shades them too.
-- The sun in the fragment, so a link carries it, and the shade and shadow switches with it.
+- The sun in the fragment, so a link carries it, and the shade, trees and shadow switches with
+  it.
 - With the shade off the page still fetches the normal and horizon tiles it no longer reads,
-  four fifths or more of a tile's bytes; skipping them needs a cache per kind.
+  four fifths or more of a tile's bytes; skipping them needs the tile cache to load each kind
+  apart, as it loads the trees.
 - Faint diagonal bands at low sun from the direction interpolation, and from the q90
   encoding on tiles without a folded band.
 - On the page a crown still takes the ground's normal and sky view, and the ground's horizon
   measured under it where that is higher; the baked copy lights it by its own top (above,
   "The canopy's own light").
 - The lattice seams at landscape holes (above, "Edges of the light").
-- A land weight for the crowns over water, read by the painted layer only, so they take the
-  live light and a tree's shadow can fall on the water.
+- The baked copy keeps a crown over the water at the light it was drawn with; the page lights
+  it (above, "The trees on the page"). A tree's shadow still falls on no water.
 - The horizon march reads the 0 m the heights drop to under no data as ground, so a void edge
   beside low ground casts a wall's shadow on it ("The land weight" fades the light at the
   edge itself, not the shadow it throws further in).
@@ -948,8 +974,9 @@ crown reads flat either way. The airbrushed dome that lit a crown before, its co
 top blurred by 0.75 m and lit at 0.35 of its relief, is gone, and with it `dome_gain`.
 
 `palette/painted/band.py` composites the crowns that stand out of the water last, over water
-and foam, under the highlight shoulder (`trees.over_crowns`); a crown under the water's
-surface is drawn in the bed instead ("Crowns and the water" below). The `crowns` block of
+and foam, under the highlight shoulder (`trees.over_crowns`), or keeps them apart ("Trees
+apart" below); a crown under the water's surface is drawn in the bed instead ("Crowns and the
+water" below). The `crowns` block of
 `satellite-painted.json`:
 
 | Key | Value | What |
@@ -1049,11 +1076,12 @@ opaque where their canopy's leaves are (section 30).
 
 **The light.** The lighting stage leaves water unlit: its land weight falls with the water
 cover (section 29, "The land weight"), and the one pyramid serves every layer, of which only the painted one
-draws crowns. So in a render with the light a crown over water keeps the flat light it was
-drawn with: no live shading, no shadow from its neighbours. No tree shadow falls on water,
-neither on its surface nor on its bed, and a render without the light draws no cast shadow
-at all. Lighting the crowns over water needs a crown land weight in the light pyramid that
-only the painted layer reads.
+draws crowns. So in the baked copy a crown over water keeps the flat light it was drawn with:
+no shading, no shadow from its neighbours. On the page, a render with its trees apart lights
+the trees at a land weight of 1, so a crown over the water takes the live light and its
+neighbours' shadows ("Trees apart" below); one drawn before keeps the flat light. No tree
+shadow falls on water, neither on its surface nor on its bed, and a render without the light
+draws no cast shadow at all.
 
 ### Coral trees are no crowns (2026-10-06)
 
@@ -1104,6 +1132,83 @@ follows its own surface at r 0.70 to 0.95 (375 to 6,228 pixels a window). The ca
 
 - In a lit run the coral standing in the sea keeps the noon light whatever sun the page
   picks, and takes no cast shadow.
+
+### Trees apart (2026-10-08)
+
+The page can switch the trees off (section 29, "The page"): to see the ground under a forest
+or under the Titan trees when building, or for the look. The light needs nothing new for it:
+the ground's cells, normals, sky view and land weight are the ground's without the trees, and
+the trees' shadows and sky occlusion are cells of their own. What it needs is the colour
+without the trees, and the trees apart from it.
+
+**The split** (`palette/painted/band.py` `painted_parts`). The painter lays the crowns that
+stand out of the water and then the Titan trees over the finished pixel last, each
+`out · (1 − a) + c · a` in linear light, before the tone curve. The pixel before them is the
+ground `G`; the layers fold into one (`trees.folded_trees`): `A = 1 − Π(1 − aᵢ)` and
+`C = P / A`, `P` the colours laid in turn premultiplied, a crown's `a` its alpha times the
+share of it out of the water. `G · (1 − A) + C · A` is the picture, which is still laid as
+before, so `tiles/` and `tiles@2x/` keep their bytes.
+
+- `unlit/` takes `tone(G)`, toned in the picture's own float type, so a pixel no tree covers
+  keeps its bytes;
+- `trees/` takes `tone(C)` as sRGB, with `A` as a byte.
+
+The page undoes the tone and the sRGB curve of each, as it does the unlit colour's, and lays
+the trees over the ground; with the light on, both take it. A test holds that the two stores,
+laid again, give the picture within one level (`tests/mapgen/test_trees_apart.py`).
+
+**Left in the ground.**
+
+- A crown under the water's surface is drawn into the bed ("Crowns and the water"): optics,
+  not an alpha, so with the trees off the swamp's sunk plants still show.
+- The coral trees are render-only meshes ("Coral trees are no crowns").
+- A crown hidden under an overhang (`hidden_below_m`) is in neither, as before.
+- The void and the falls are drawn over the picture and over the ground; on the ground no
+  crown hides a fall's foam, and the trees take no alpha where the void covers them
+  (`render/draw/painting.py` `draw_band`). The arches' FXAA runs on the ground and the lit
+  picture; the trees are not filtered.
+
+**The draw and the cut.** A run with the light draws the painted layer apart
+(`render_layers(split=...)`, only unlit and only into a band sink): each piece hands its
+ground and its trees as bytes beside the picture (`painting.TreeSplit`), and the stream sends
+the ground to `unlit/` and the trees to `trees/` at once, with no light to wait for, while the
+picture waits for its light as before (`render/draw/stream.py`). The tiles are lossless WebP
+(`tiles/formats.py`): the ground at effort 2, as the normal tiles; the trees at 4, RGBA with
+straight alpha and `exact=False`, so the colour under alpha 0 is free to compress. A coarser
+level of the trees is Pillow's Lanczos on RGBA, which resamples premultiplied, so no colour
+from under alpha 0 bleeds into an edge (a test pins it). A trees tile whose alpha is all 0 is
+not written: the tree is sparse, and its record counts the tiles written per level, with its
+`layout`, `alpha` and `sparse`. The layer's sidecar names it in its light block as
+`trees_dir` and `trees_tiles`; the server answers a tile on its grid that is not there with
+204 (maps_contract.md section 8.1).
+
+**Measured** at 2048, the painted layer drawn on master's surface before the split and after
+it (2026-10-08, build 502094):
+
+- `tiles/` (85 tiles), `tiles@2x/` (21) and the light's 170 tiles are the same bytes.
+- `trees/` holds 68 of the 85 tiles, 1.75 MB; 13.3% of the native level's pixels hold a tree.
+- `unlit/`, the ground, is 4.49 MB as WebP. The picture it was is 5.53 MB as PNG and 4.60 MB
+  as WebP; terrain's and relief-dark's unlit trees come out 23% and 20% under their PNG.
+- The ground and the trees laid again as the page lays them, the shade off, give the old
+  unlit colour within one level on 99.77% of the native level. Of the 9,728 pixels off by
+  more (at most 81 levels), 8,935 lie within reach of an arch's FXAA, which filtered the
+  picture's crowns with the arch but leaves the trees layer unfiltered; most of the rest lie
+  under a waterfall's mist, which the picture fades by the crowns' cover in sRGB and the page
+  by their alpha in linear light.
+  The ground differs from the old unlit on 6,009 pixels no tree covers, the same FXAA and
+  crowns whose alpha rounds to 0.
+
+At 2048 a crown is one to three pixels, so nearly every tile holds one. At full size the
+trees are estimated at 140 to 165 MB, from 48 forest tiles of the v8 render coded the same
+way, against the quarter the ground's WebP takes off the 526 MB of the painted layer's PNG.
+
+**Limits.**
+
+- The Titan trees go with the trees; they cannot be hidden alone.
+- A coarser level of the picture is not its coarser ground and trees laid over each other: they
+  differ by a covariance term at the trees' edges, which does not show.
+- The page relights a crown with the ground's normal; the canopy's own normal and sky view
+  would be a sparse tile beside the trees (section 29, "Open").
 
 ### Crown sprites (2026-10-08)
 

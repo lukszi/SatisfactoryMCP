@@ -54,13 +54,17 @@ __all__ = [
     "IDENTITY_OP",
     "TARGET_GREY",
     "CrownCalibration",
+    "TreeOver",
     "canopy_cover",
     "crown_calibration",
     "crown_lab",
     "crown_layer",
     "crown_ops",
+    "crown_over",
     "crown_sun",
+    "folded_trees",
     "hue_gate",
+    "lay_over",
     "lit_crowns",
     "moved_crowns",
     "named_targets",
@@ -70,6 +74,7 @@ __all__ = [
     "species_targets",
     "titan_canopy_levels",
     "titan_colours",
+    "titan_layers",
     "titan_over",
 ]
 
@@ -93,6 +98,8 @@ SpeciesLevels: TypeAlias = Sequence[Sequence[FloatGrid]]
 #: A scope of the crown calibration: its weight plane (None for the trees no other scope
 #: holds) and its target in OKLab.
 CrownScope: TypeAlias = tuple[FloatGrid | None, FloatGrid]
+#: Trees as laid over the finished pixel: their alpha and their linear colour.
+TreeOver: TypeAlias = tuple[FloatGrid, FloatGrid]
 
 
 class CrownCalibration(NamedTuple):
@@ -357,9 +364,17 @@ def titan_colours(palette: PaintedPalette) -> dict[int, FloatGrid]:
 
 
 def titan_over(out: FloatGrid, scene: PaintedScene, ground: PaintedSurface) -> FloatGrid:
-    """The Titan trees over the finished pixel at the style's opacity, 0 turning them off: the
-    trunks where the raster's top is a trunk, lit by that top and flat when drawn unlit; then
-    the canopy, from its sprites, lit by their normals as the crowns are."""
+    """The Titan trees over the finished pixel at the style's opacity; 0 turns them off."""
+    for layer in titan_layers(scene, ground):
+        out = lay_over(out, layer)
+    return out
+
+
+def titan_layers(scene: PaintedScene, ground: PaintedSurface) -> list[TreeOver]:
+    """The Titan trees as ``titan_over`` lays them, in order: the trunks where the raster's
+    top is a trunk, lit by that top and flat when drawn unlit; then the canopy, from its
+    sprites, lit by their normals as the crowns are."""
+    layers: list[TreeOver] = []
     found = _titan_seen(scene, ground)
     palette = ground.palette
     if found is not None:
@@ -372,13 +387,29 @@ def titan_over(out: FloatGrid, scene: PaintedScene, ground: PaintedSurface) -> F
             else sun_dot(surface, scene["grid"][5])
         )
         albedo = ground.titan_rgb[TITAN_TRUNK] * exposure_gain(palette)
-        lit = albedo * flat_light(palette, ndl, flat)
-        out = out * (1.0 - alpha[..., None]) + lit * alpha[..., None]
+        layers.append((alpha, albedo * flat_light(palette, ndl, flat)))
     canopy = _titan_canopy(scene, palette)
-    if canopy is None:
-        return out
-    alpha, colour = canopy
+    return layers if canopy is None else [*layers, canopy]
+
+
+def lay_over(out: FloatGrid, layer: TreeOver) -> FloatGrid:
+    """``out`` with a layer of trees laid over it at its alpha, in linear light."""
+    alpha, colour = layer
     return out * (1.0 - alpha[..., None]) + colour * alpha[..., None]
+
+
+def folded_trees(shape: tuple[int, ...], layers: Sequence[TreeOver]) -> TreeOver:
+    """``layers``, laid in turn, as one layer of the band's ``shape``: the alpha of their
+    union, and the colour that, laid at it, gives what laying each in turn gives. 0 where
+    none lies. docs/map/light-and-crowns.md section 36, "Trees apart"."""
+    alpha = np.zeros(shape[:2], np.float32)
+    premultiplied = np.zeros((*shape[:2], 3), np.float32)
+    for layer_alpha, colour in layers:
+        premultiplied = lay_over(premultiplied, (layer_alpha, colour))
+        alpha = alpha * (1.0 - layer_alpha) + layer_alpha
+    seen = alpha > 0
+    colour = np.where(seen[..., None], premultiplied / np.where(seen, alpha, 1.0)[..., None], 0.0)
+    return alpha, colour.astype(np.float32)
 
 
 def canopy_cover(scene: PaintedScene, ground: PaintedSurface) -> FloatGrid | None:
@@ -506,5 +537,9 @@ def lit_crowns(
 
 def over_crowns(out: FloatGrid, crowns: CrownLayer) -> FloatGrid:
     """The crowns that stand out of the water, over the finished pixel and its water."""
-    alpha = (crowns["alpha"] * (1.0 - crowns["sunk"]))[..., None]
-    return out * (1.0 - alpha) + crowns["colour"] * alpha
+    return lay_over(out, crown_over(crowns))
+
+
+def crown_over(crowns: CrownLayer) -> TreeOver:
+    """The crowns as ``over_crowns`` lays them: the share of each that stands out of the water."""
+    return crowns["alpha"] * (1.0 - crowns["sunk"]), crowns["colour"]
