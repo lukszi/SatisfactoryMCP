@@ -304,7 +304,7 @@ def test_the_terrain_layer_draws_the_cpu_s_bytes_on_the_device(monkeypatch, unli
 
     def draw(threads, columns):
         return render_layer(
-            "terrain", field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
+            "terrain", field, 1, borrow, N, False,
             heights, sea=sea, unlit=unlit, threads=threads, columns=columns,
         )  # fmt: skip
 

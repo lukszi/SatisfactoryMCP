@@ -127,7 +127,7 @@ def _seabed_surface(scene: SimpleNamespace, meshes: MeshPlanes) -> np.ndarray:
     surface = _Surface()
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
     render_layer(
-        "terrain", scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
+        "terrain", scene.field, 1, borrow, N, False,
         scene.texels.ground, meshes=meshes, reach=scene.texels.reach, unlit=True,
         surface=surface,
     )  # fmt: skip
