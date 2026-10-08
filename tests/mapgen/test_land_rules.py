@@ -31,7 +31,7 @@ from mapgen.palette.painted.trees import crown_lab, crown_layer, over_crowns, sp
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.render.draw.painting import _band_family
 from mapgen.terrain import render_meshes
-from mapgen.terrain.crown_stamp import CrownSet
+from mapgen.terrain.crown_atlas import ALPHA, CHANNELS, RGB
 from mapgen.terrain.render_meshes import (
     MESH_CLASS_MASK,
     MESH_CORAL,
@@ -259,16 +259,17 @@ def test_the_canopy_targets_are_one_global_green_and_red_by_species():
 
 
 def _crowns(colours, species, names=NAMES):
+    """What the calibration reads of a ``CrownSet``: its records, its species' tiles (as
+    ``crown_atlas`` lays a texel out) and their names."""
     levels = []
     for colour in colours:
-        level = np.zeros((4, 4, 6), np.float32)
-        level[1:3, 1:3, 0] = 1.0
-        level[1:3, 1:3, 1:4] = colour
+        level = np.zeros((4, 4, CHANNELS), np.float32)
+        level[1:3, 1:3, ALPHA] = 1.0
+        level[1:3, 1:3, RGB] = colour
         levels.append([level, level[::2, ::2].copy()])
     records = np.zeros(len(species), CROWN_RECORD)
     records["species"], records["scale"] = species, 1.0
-    reach = mid = top = np.ones(len(colours), np.float32)
-    return CrownSet(records, levels, [(0.0, 0.0)] * len(colours), reach, mid, top, names)
+    return SimpleNamespace(levels=levels, records=records, names=list(names))
 
 
 def test_a_species_target_moves_only_that_species_onto_it():
@@ -281,9 +282,9 @@ def test_a_species_target_moves_only_that_species_onto_it():
         set(measured) == {"species@SM_Kapok_03"} and measured["species@SM_Kapok_03"]["trees"] == 2
     )
     level = levels[1][0]
-    lab = crown_lab(level[1, 1, 1:4] / level[1, 1, 0], STYLE)
+    lab = crown_lab(level[1, 1, RGB] / level[1, 1, ALPHA], STYLE)
     np.testing.assert_allclose(lab, display_to_crown(PAINTED_PALETTE, "#7c4955"), atol=2e-3)
-    assert levels[1][0][0, 0, 1:4].tolist() == [0.0, 0.0, 0.0], "no cover, no colour"
+    assert levels[1][0][0, 0, RGB].tolist() == [0.0, 0.0, 0.0], "no cover, no colour"
     for k in (0, 2):
         for got, want in zip(levels[k], before[k], strict=True):
             np.testing.assert_array_equal(got, want)
@@ -303,7 +304,7 @@ def test_the_red_kapok_is_crimson_in_any_area_and_the_green_ones_are_not():
     ops = ground.crown_ops
     assert "species@SM_Kapok_03" in ground.crown_measured
     p = ground.palette
-    colours = [crowns.levels[k][0][1, 1, 1:4] for k in range(3)]
+    colours = [crowns.levels[k][0][1, 1, RGB] for k in range(3)]
     shape = (1, 3)
     terms = {"cover": np.ones(shape, np.float32), "top_cm": np.full(shape, 1500.0, np.float32),
              "rgb": np.array([colours], np.float32), "ndl": np.full(shape, 0.7, np.float32)}  # fmt: skip

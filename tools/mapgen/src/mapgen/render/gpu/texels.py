@@ -26,6 +26,7 @@ __all__ = [
     "DeviceAtlas",
     "sample_atlas",
     "sample_texture",
+    "sprite_cells",
     "stamp_sprites",
     "upload_atlas",
 ]
@@ -98,7 +99,7 @@ def stamp_sprites(
         raise ValueError(f"an atlas of {channels} channels: at most {MAX_CHANNELS}")
     rows, cols = cover.shape
     boxes = sprite_boxes(sprites, (rows, cols))
-    starts, ids, cells_x = _cells(boxes, rows, cols)
+    starts, ids, cells_x = sprite_cells(boxes, rows, cols)
     per_sprite = (sprites.x, sprites.y, sprites.half, sprites.cos, sprites.sin, sprites.opacity)
     table = np.concatenate([np.asarray(p, np.float32) for p in per_sprite])
     count = np.int64(len(sprites.x))
@@ -109,7 +110,7 @@ def stamp_sprites(
     kernel(_SOURCE, "stamp")(*row_grid(rows, cols), (*head, *bins, np.int32(cells_x), *look))
 
 
-def _cells(boxes: I64Grid, rows: int, cols: int) -> tuple[I32Grid, I32Grid, int]:
+def sprite_cells(boxes: I64Grid, rows: int, cols: int) -> tuple[I32Grid, I32Grid, int]:
     """Each cell's sprites, in their order: the cells' first entries (one more than the
     cells, the last the count) and the sprites, and the cells along a row."""
     cells_x, cells_y = -(-cols // CELL_PX), -(-rows // CELL_PX)

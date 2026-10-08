@@ -409,6 +409,7 @@ def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkey
 
     monkeypatch.setattr(painting, "painted_colours", grab)
     ground = SimpleNamespace(rock=[np.zeros((n // 4, n // 4), np.float32)], crowns=None,
+                             titan_crowns=None,
                              water_optics=lambda taps, river=None: None)  # fmt: skip
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
     for size in (n // 4, n):

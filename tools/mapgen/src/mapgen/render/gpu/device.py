@@ -103,12 +103,12 @@ def ran() -> dict[str, int]:
 
 
 def calls_line(calls: dict[str, int]) -> str:
-    """The log line of a ``--gpu`` draw: where its relight, FXAA and terrain calls ran."""
+    """The log line of a ``--gpu`` draw: where its relight, FXAA, terrain and crown calls ran."""
     on_cpu = calls.get(ON_CPU, 0)
     devices = ", ".join(f"{n:,} on {name}" for name, n in sorted(calls.items()) if name != ON_CPU)
     return (
-        f"draw: relight, FXAA and terrain calls {devices or 'none on CUDA'}; {on_cpu:,} ran on "
-        "the CPU, the device out of memory"
+        f"draw: relight, FXAA, terrain and crown calls {devices or 'none on CUDA'}; {on_cpu:,} "
+        "ran on the CPU, the device out of memory"
     )
 
 

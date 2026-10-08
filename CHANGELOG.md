@@ -71,10 +71,20 @@ Planned as 0.2.0.
   species take the game's own billboard view from above; the other 45, the Kapok and the
   yuccas among them, are rasterised from their meshes with their leaf and bark textures,
   normal maps, spherical normals and moss. `--gpu` runs the raster's per-sample work on the
-  GPU, to the same bytes. No render draws them yet.
+  GPU, to the same bytes. The cache also holds the Titan canopy's two leaf meshes and their
+  218 placements.
 
 ### Changed
 
+- Map renders: on the Satellite map every tree crown is drawn from its crown sprite, leaves,
+  holes and branches in their own colour, lit by their own normals instead of a smooth dome;
+  the ancient pines draw olive instead of mustard. A painted render builds the sprite cache
+  first where it finds none for the installed build (`--sprites-dir`, default
+  `data/local/crown-sprites/`). The crowns are stamped on the GPU with `--gpu`, to the same
+  bytes.
+- Map renders: the Titan forest's canopy is opaque and drawn from its own leaves' sprites,
+  textured and lit by their normals, instead of a see-through, faceted green; the trunks stay
+  as before.
 - Map names: the game-painted map is now called "Satellite" and the dark relief "Relief".
   Their ids, links and the saved default are unchanged.
 - Map renders: a render that names no layers draws terrain and Satellite, and the Maps tab

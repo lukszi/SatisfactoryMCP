@@ -1,20 +1,21 @@
 """The crown sprite cache: every species' sprite and its mips packed into one atlas.
 
 The layout is a stamp kernel's: three planes over one atlas (``colour`` RGBA8, sRGB colour
-and alpha; ``normal`` two bytes, x and y over 127.5 about 127.5, z up the remainder; ``top``
+and alpha; ``normal`` two bytes, x and y as ``n * 127 + 128``, z up the remainder; ``top``
 uint16, crown top cm over the pivot), and one ``RECORD`` row per species and level naming
 its rectangle and where its corner sits in mesh cm. A level's texel ``(r, c)`` centres on
 ``(x0_cm + (c + 0.5) texel_cm, y0_cm + (r + 0.5) texel_cm)``, rows along +Y, as the paint
 store's sprites. A one-texel gutter round every rectangle holds its edge colour at alpha 0,
-so a bilinear read inside never sees a neighbour. docs/map/light-and-crowns.md section 36,
-"Crown sprites".
+so a bilinear read inside never sees a neighbour. The Titan canopy's placements ride along
+as ``CROWN_RECORD`` rows (``titan``): the paint store holds foliage only.
+docs/map/light-and-crowns.md section 36, "Crown sprites".
 """
 
 from __future__ import annotations
 
 import os
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +25,7 @@ from scipy import ndimage
 from mapgen.cache import CACHE_SIDECAR_NAME, read_sidecar, write_sidecar
 from mapgen.common import LOCAL_DIR
 from mapgen.gamedata.ground.landscape_albedo import srgb_unit_to_linear
+from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD
 from mapgen.sprites.raster import SPRITE_CM, SpritePlanes
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid, U16Grid, U32Grid
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
@@ -41,6 +43,7 @@ __all__ = [
     "encode_atlas",
     "level_planes",
     "mip_chain",
+    "normal_xy",
     "read_sprites",
     "sprite_stamp",
     "write_sprites",
@@ -49,10 +52,12 @@ __all__ = [
 SPRITES_DIR_NAME = "crown-sprites"
 SPRITES_DIR = LOCAL_DIR / SPRITES_DIR_NAME
 ATLAS_NAME = "atlas.npz"
-#: The atlas layout's version: the planes, their encoding and the record.
-FORMAT = 1
+#: The atlas layout's version: the planes, their encoding, the record and the Titan rows.
+FORMAT = 2
 ATLAS_WIDTH = 2048
 GUTTER = 1
+#: A normal's x and y as stored: ``n * NORMAL_SCALE + NORMAL_ZERO``, 0 at 128 exactly.
+NORMAL_SCALE, NORMAL_ZERO = 127.0, 128.0
 #: A mip chain stops at the first level whose longer side is at most this.
 MIP_LAST_SIDE = 4
 
@@ -79,7 +84,8 @@ RECORD = np.dtype(
 @dataclass(frozen=True)
 class SpriteAtlas:
     """The packed planes, a record per species and level, each species' first record and
-    level count, and the species' names in index order."""
+    level count, the species' names in index order, and the Titan canopy's placements, their
+    ``species`` this atlas's."""
 
     colour: U8Grid
     normal: U8Grid
@@ -88,6 +94,7 @@ class SpriteAtlas:
     first: U32Grid
     levels: U8Grid
     names: list[str]
+    titan: npt.NDArray[np.void] = field(default_factory=lambda: np.zeros(0, CROWN_RECORD))
 
 
 def sprite_stamp(build: str | None) -> dict[str, object]:
@@ -153,7 +160,7 @@ def _texels(planes: SpritePlanes) -> tuple[U8Grid, U8Grid, U16Grid]:
         colour = colour[rows, cols]
         normal = normal[rows, cols]
     rgba = np.dstack([_srgb_u8(colour), np.round(np.clip(alpha, 0, 1) * 255).astype(np.uint8)])
-    xy = np.round((np.clip(normal[..., :2], -1, 1) + 1.0) * 127.5).astype(np.uint8)
+    xy = np.round(np.clip(normal[..., :2], -1, 1) * NORMAL_SCALE + NORMAL_ZERO).astype(np.uint8)
     top = np.round(np.clip(np.pad(planes.top_cm, g), 0, 65535)).astype(np.uint16)
     return rgba, xy, top
 
@@ -174,8 +181,11 @@ def _shelves(sizes: Sequence[tuple[int, int]], width: int) -> tuple[list[tuple[i
     return at, y + shelf
 
 
-def encode_atlas(sprites: Sequence[tuple[str, SpritePlanes]]) -> SpriteAtlas:
-    """Every species' mip chain packed on shelves, with its records."""
+def encode_atlas(
+    sprites: Sequence[tuple[str, SpritePlanes]], titan: npt.NDArray[np.void] | None = None
+) -> SpriteAtlas:
+    """Every species' mip chain packed on shelves, with its records; ``titan`` the Titan
+    canopy's placements, their species indices into ``sprites``."""
     levels: list[tuple[int, int, SpritePlanes, tuple[U8Grid, U8Grid, U16Grid]]] = []
     first = np.zeros(len(sprites), np.uint32)
     counts = np.zeros(len(sprites), np.uint8)
@@ -207,7 +217,9 @@ def encode_atlas(sprites: Sequence[tuple[str, SpritePlanes]]) -> SpriteAtlas:
             float(level.top_cm.max(initial=0.0)),
             _reach(level, SPRITE_CM * 2**n),
         )
-    return SpriteAtlas(colour, normal, top, records, first, counts, [n for n, _p in sprites])
+    names = [n for n, _p in sprites]
+    placed = np.zeros(0, CROWN_RECORD) if titan is None else np.asarray(titan, CROWN_RECORD)
+    return SpriteAtlas(colour, normal, top, records, first, counts, names, placed)
 
 
 def _reach(level: SpritePlanes, texel_cm: float) -> float:
@@ -220,12 +232,17 @@ def _reach(level: SpritePlanes, texel_cm: float) -> float:
     return float(np.hypot(x, y).max() + texel_cm * np.sqrt(0.5))
 
 
+def normal_xy(stored: U8Grid) -> F32Grid:
+    """A stored normal's x and y, an upright one exactly 0."""
+    return (stored.astype(np.float32) - np.float32(NORMAL_ZERO)) / np.float32(NORMAL_SCALE)
+
+
 def level_planes(atlas: SpriteAtlas, species: int, level: int = 0) -> SpritePlanes:
     """One species' level read back out of the atlas: linear colour, unit normal."""
     rec = atlas.records[int(atlas.first[species]) + level]
     x, y, w, h = (int(rec[f]) for f in ("x", "y", "width", "height"))
     rgba = atlas.colour[y : y + h, x : x + w].astype(np.float32) / np.float32(255.0)
-    xy = atlas.normal[y : y + h, x : x + w].astype(np.float32) / np.float32(127.5) - 1.0
+    xy = normal_xy(atlas.normal[y : y + h, x : x + w])
     z = np.sqrt(np.clip(1.0 - (xy * xy).sum(-1), 0.0, 1.0))
     return SpritePlanes(
         x0_cm=float(rec["x0_cm"]),
@@ -238,10 +255,15 @@ def level_planes(atlas: SpriteAtlas, species: int, level: int = 0) -> SpritePlan
 
 
 def write_sprites(
-    directory: Path, stamp: Mapping[str, object], atlas: SpriteAtlas, species: list[JsonObject]
+    directory: Path,
+    stamp: Mapping[str, object],
+    atlas: SpriteAtlas,
+    species: list[JsonObject],
+    skipped: Sequence[str] = (),
 ) -> Path:
-    """The atlas and its sidecar under ``directory``. The sidecar goes first and comes back
-    last, so a write cut short is a miss rather than a new atlas under an old stamp."""
+    """The atlas and its sidecar under ``directory``, with the species no sprite was made of.
+    The sidecar goes first and comes back last, so a write cut short is a miss rather than a
+    new atlas under an old stamp."""
     directory.mkdir(parents=True, exist_ok=True)
     sidecar = directory / CACHE_SIDECAR_NAME
     sidecar.unlink(missing_ok=True)
@@ -254,13 +276,16 @@ def write_sprites(
         records=atlas.records,
         first=atlas.first,
         levels=atlas.levels,
+        titan=atlas.titan,
     )
     os.replace(staging, directory / ATLAS_NAME)
     recorded: dict[str, object] = {
         **stamp,
         "atlas": {"width": int(atlas.colour.shape[1]), "height": int(atlas.colour.shape[0])},
-        "record": [[str(p) for p in field] for field in RECORD.descr],
+        "record": [[str(p) for p in entry] for entry in RECORD.descr],
         "species": species,
+        "skipped": list(skipped),
+        "titan_placements": len(atlas.titan),
     }
     write_sidecar(sidecar, recorded)
     return directory / ATLAS_NAME
@@ -284,6 +309,7 @@ def read_sprites(
         if isinstance(species, list)
         else []
     )
+    titan = planes.get("titan")
     atlas = SpriteAtlas(
         planes["colour"],
         planes["normal"],
@@ -292,5 +318,6 @@ def read_sprites(
         planes["first"],
         planes["levels"],
         names,
+        np.zeros(0, CROWN_RECORD) if titan is None else np.asarray(titan, CROWN_RECORD),
     )
     return atlas, recorded

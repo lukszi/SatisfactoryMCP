@@ -55,6 +55,7 @@ def painted_ground_stub(n: int) -> SimpleNamespace:
         crown=None,
         crown_ops=[],
         titan=None,
+        titan_crowns=None,
         carpet=None,
         mesh_rgb={},
         seabed_coral=np.zeros(3, np.float32),

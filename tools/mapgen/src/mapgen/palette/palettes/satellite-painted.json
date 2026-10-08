@@ -13,7 +13,6 @@
   "darkening": 0.85,
   "chroma": 0.8,
   "waterline_m": 0.1,
-  "dome_gain": 0.35,
   "shade_clamp": [
    0.55,
    1.2
@@ -459,7 +458,7 @@
   }
  },
  "titan_trees": {
-  "opacity": 0.8,
+  "opacity": 1.0,
   "leaves": [
    77,
    90,

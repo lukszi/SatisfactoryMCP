@@ -18,11 +18,11 @@ from numpy.typing import NDArray
 from mapgen.cache import MeshPlanes
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
-from mapgen.lighting.hillshade import FLAT_SUN_DOT, flat_shade, hillshade, sun_dot
+from mapgen.lighting.hillshade import FLAT_SUN_DOT, flat_shade, hillshade
 from mapgen.palette.painted.band import painted_colours, painted_ndl
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
 from mapgen.palette.painted.shapes import PaintedScene, Sampler
-from mapgen.palette.painted.trees import canopy_cover
+from mapgen.palette.painted.trees import canopy_cover, crown_sun
 from mapgen.palette.relief import BiomeSample, ReliefGround, relief_colours
 from mapgen.palette.scene import BandGrid, BandScene, FloatGrid, ReliefScene, ShadedScene
 from mapgen.palette.styles import (
@@ -44,12 +44,18 @@ from mapgen.render.ground.surface import (
     cut_taps,
 )
 from mapgen.render.ground.void import DrawnVoid
-from mapgen.terrain.crown_stamp import LitCrowns, stamp_crowns
+from mapgen.terrain.crown_stamp import (
+    CrownSet,
+    LitCrowns,
+    crown_placements,
+    stamp_crowns,
+    stamp_placed,
+)
 from mapgen.terrain.sample import grid_position, sample_plain, taps_footprint, taps_linear
 from satisfactory_mcp.core.arrays import BoolMask, F16Grid, F32Grid, F64Grid, I64Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
-__all__ = ["LayerJob", "domed_crowns", "layer_job", "paint_band", "piece_bytes"]
+__all__ = ["LayerJob", "layer_job", "paint_band", "piece_bytes", "stamped_crowns"]
 
 #: The flat ground's sun term, ``n.L`` of the default sun on level ground.
 _FLAT_SUN = np.float32(FLAT_SUN_DOT)
@@ -226,11 +232,12 @@ def _painted_colours(
     if surface.top_weight is not None:
         rock_weight = np.maximum(rock_weight, surface.top_weight)
     ground = painted.ground
-    crowns = domed_crowns(ground, grid.x_cm, y_cm, spacing_m, job.unlit)
+    centres = (grid.x_cm, y_cm)
     meshes = (surface.mesh_weight, surface.mesh_class, surface.level_m, surface.mesh_land)
     band: PaintedScene = {
         **scene,
-        "crowns": crowns,
+        "crowns": stamped_crowns(ground.crowns, centres, spacing_m, job.unlit),
+        "titan_crowns": stamped_crowns(ground.titan_crowns, centres, spacing_m, job.unlit),
         "ndl": painted_ndl(z_m, spacing_m, job.unlit, meshes),
         "ndl_flat": _FLAT_SUN,
         "rock_weight": rock_weight,
@@ -251,20 +258,28 @@ def _painted_colours(
     return rgb, partial(canopy_cover, band, ground)
 
 
-def domed_crowns(
-    painted: PaintedGround,
-    x_cm: F64Grid,
-    y_cm: F64Grid,
+def stamped_crowns(
+    crowns: CrownSet | None,
+    centres: tuple[F64Grid, F64Grid],
     spacing_m: float,
     unlit: bool = False,
 ) -> LitCrowns | None:
-    """The crowns over these pixel centres, with their domes lit by the shared sun."""
-    if painted.crowns is None:
+    """The crowns over these pixel centres, each pixel's sun term from their normals
+    (``trees.crown_sun``). With ``--gpu`` they are stamped on the device, to the same bits."""
+    if crowns is None:
         return None
-    stamped = stamp_crowns(painted.crowns, x_cm, y_cm, spacing_m * 100.0)
-    dome = stamped["dome_m"] * np.float32(painted.palette["crowns"]["dome_gain"])
-    ndl = np.full(dome.shape, _FLAT_SUN) if unlit else sun_dot(dome, spacing_m)
-    return {**stamped, "ndl": ndl}
+    step_cm = spacing_m * 100.0
+    stamped = None
+    if gpu_on():
+        from mapgen.render.gpu.crowns import stamp_crowns as on_device
+
+        placed = crown_placements(crowns, *centres, step_cm)
+        stamped = on_device(crowns.atlas, placed, centres)
+        if stamped is None:
+            stamped = stamp_placed(crowns.atlas.atlas, placed, centres)
+    else:
+        stamped = stamp_crowns(crowns, *centres, step_cm)
+    return {**stamped, "ndl": crown_sun(stamped, unlit)}
 
 
 def _sampler(taps: GridTaps) -> Sampler:

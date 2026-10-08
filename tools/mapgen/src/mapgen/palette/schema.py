@@ -218,7 +218,6 @@ class CrownStyle(TypedDict):
     darkening: float
     chroma: float
     waterline_m: float
-    dome_gain: float
     shade_clamp: list[float]
     hidden_below_m: float
 

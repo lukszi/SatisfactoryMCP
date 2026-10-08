@@ -46,6 +46,7 @@ from mapgen.palette.painted.calibration import (
     split_weight,
     with_derived,
 )
+from mapgen.palette.painted.crown_sets import crown_sets, crowns_provenance
 from mapgen.palette.painted.optics import base_water, class_optics, load_carpet, water_table
 from mapgen.palette.painted.shapes import (
     BandTaps,
@@ -75,11 +76,12 @@ from mapgen.palette.painted.trees import crown_calibration, titan_colours
 from mapgen.palette.painted.water_classes import water_classes
 from mapgen.palette.styles import dry_land_range
 from mapgen.palette.water.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M
-from mapgen.terrain.crown_stamp import CrownSet, load_crowns
+from mapgen.sprites.store import SpriteAtlas
+from mapgen.terrain.crown_stamp import CrownSet
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_SHELL, MESH_TERRACE
 from satisfactory_mcp.core.arrays import BoolMask, F16Grid, F64Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
-from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = ["ROCK_GRID_M", "PaintedGround", "biome_grid", "land_cells"]
@@ -134,7 +136,9 @@ def _fine_share(coarse: FloatGrid, rows: int, cols: int) -> U8Grid:
 class PaintedGround:
     """Everything the painted style samples per band, built once from the paint store.
 
-    ``stamps`` are the ``(x, y)`` metres of the nodes whose stamp the store's bake carries.
+    ``stamps`` are the ``(x, y)`` metres of the nodes whose stamp the store's bake carries;
+    ``sprites`` the crown sprite cache the crowns and the Titan canopy are drawn from, none
+    of either drawn without it.
     """
 
     def __init__(
@@ -146,6 +150,7 @@ class PaintedGround:
         area_names: list[str],
         stamps: F64Grid | None = None,
         bake: GroundBake | None = None,
+        sprites: SpriteAtlas | None = None,
     ) -> None:
         meta = load_paint_meta(paint_dir)
         if meta is None:
@@ -167,7 +172,7 @@ class PaintedGround:
         self.albedo: list[F16Grid] = [albedo[..., k].astype(np.float16) for k in range(3)]
         self.rock: list[FloatGrid] = self._rock(albedo)
         del albedo
-        self._trees(paint_dir)
+        self._trees(paint_dir, sprites)
         self.rock_family: Plane | None = None
         self.family_rock: dict[int, list[FloatGrid]] = {}
         self.source["rock_family_targets"] = {}
@@ -238,7 +243,9 @@ class PaintedGround:
 
     def provenance(self) -> JsonObject:
         """What the sidecar records about this ground beyond the paint store's digest."""
-        return {**self.source, "crowns": self._crowns_provenance()}
+        sets = (self.crowns, self.titan_crowns)
+        crowns = crowns_provenance(self.palette, self.meta, sets, self.crown_measured)
+        return {**self.source, "crowns": crowns}
 
     def attach_families(self, plane: Plane | None) -> None:
         """The direct pass's family plane, and the rock of each family the palette gives a
@@ -295,15 +302,15 @@ class PaintedGround:
             albedo, have, self.bake_weight = ground_albedo(albedo, have, bake, blur)
         return albedo, have, weights, seam_texels
 
-    def _trees(self, paint_dir: Path) -> None:
-        """The canopy share, the crowns when the palette draws them, the crown tops, and the
-        rock families' tints and tops, a top in its paint layer's target (``layer_tops``)."""
+    def _trees(self, paint_dir: Path, sprites: SpriteAtlas | None) -> None:
+        """The canopy share, the crowns when the palette draws them and the Titan canopy when
+        it draws the Titan trees, both over ``sprites``; the crown tops, and the rock
+        families' tints and tops, a top in its paint layer's target (``layer_tops``)."""
         meta, palette = self.meta, self.palette
         self.canopy: PaintPlane = paint_plane(paint_dir, meta, CANOPY_NAME)
-        drawn = palette.get("crowns", {}).get("draw", False)
-        self.crowns: CrownSet | None = (
-            load_crowns(paint_dir, meta.get("crowns"), meta["files"]) if drawn else None
-        )
+        self.crowns: CrownSet | None
+        self.titan_crowns: CrownSet | None
+        self.crowns, self.titan_crowns = crown_sets(paint_dir, meta, palette, sprites)
         self.crown: PaintPlane | None = (
             paint_plane(paint_dir, meta, CROWN_NAME) if CROWN_NAME in meta["files"] else None
         )
@@ -366,21 +373,6 @@ class PaintedGround:
         found = crown_calibration(self.crowns, self.palette, targets, grid, self._area_weight)
         self.crowns.levels = found.levels
         self.crown_ops, self.crown_measured = found.ops, found.measured
-
-    def _crowns_provenance(self) -> JsonValue:
-        if not self.palette.get("crowns", {}).get("draw"):
-            return "not drawn by this palette"
-        block = self.meta.get("crowns")
-        species = None if block is None else block["species"]
-        if self.crowns is None or species is None:
-            return "not in this paint store"
-        return {
-            "species": len(species),
-            "trees": len(self.crowns.records),
-            "rule": "one top-down sprite per species from its LOD 0, per-tree yaw, "
-            "scale and lean; tallest over lowest; hidden under a higher surface",
-            "calibration": self.crown_measured,
-        }
 
     def _bake(
         self, paint_dir: Path, mix: tuple[FloatGrid, BoolMask], weights: Mapping[str, PaintPlane]
