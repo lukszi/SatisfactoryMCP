@@ -78,7 +78,8 @@ def load_extras(
             "render-only meshes",
             quiet,
         )
-        out.meshes = MeshPlanes(*maps)
+        z_cm, cls, *family = maps
+        out.meshes = MeshPlanes(z_cm, cls, family[0] if family else None)
         out.mesh_source = to_json_object(mesh_source)
         out.falls, falls_source = load_falls(cache_root, build, swept_levels, heightfield)
         out.mesh_source.update(falls_source)

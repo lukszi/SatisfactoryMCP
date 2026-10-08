@@ -39,7 +39,8 @@ class FieldPiece(NamedTuple):
 
 class FloatSources(NamedTuple):
     """What a piece's solid surface is composed from: the rasters, the piece's rows and columns
-    of them (``cut``) and of its output (``kept``), its linear taps, and ``rock_kept``."""
+    of them (``cut``) and of its output (``kept``), its linear taps, ``rock_kept``, and where
+    its meshes' footprints are land (``shore.seabed_keeps``)."""
 
     direct: DirectPlanes | None
     overlay: TopPlanes | None
@@ -48,6 +49,7 @@ class FloatSources(NamedTuple):
     kept: tuple[slice, slice]
     linear: Taps
     keep_rock: RockKept
+    mesh_land: BoolMask | None = None
 
 
 def _arches(overlay: TopPlanes | None, cut: tuple[slice, slice]) -> BoolMask | None:
@@ -104,6 +106,7 @@ def _solid(
             level_m,
             composite_top,
             seabed=True,
+            land=sources.mesh_land,
         )[0]
     return z
 
