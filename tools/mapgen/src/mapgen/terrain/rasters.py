@@ -219,10 +219,15 @@ def direct_placements(
     ``families``, one code per placement row, is carried as each entry's raster source id.
     The **Y span** in world centimetres of the placement's transformed vertex box is the
     whole of the band selection: a bounding-interval test over the placements.
+
+    A mesh's box and its largest coordinate per axis are read once, not per placement:
+    ``|v * s|`` rounds to ``|v| * |s|`` and rounding keeps order, so the largest of a scaled
+    copy is the largest coordinate scaled, to the bit.
     """
     meshes, owners = sweep["meshes"], sweep["owners"]
     arch_ids = {i for i, m in enumerate(meshes) if ARCH_MARK in m.rsplit("/", 1)[-1]}
     windings = {mesh: winding_sign(v, t) for mesh, (v, t) in geometry.items()}
+    reach = {mesh: (np.abs(v).max(0), v.min(0), v.max(0)) for mesh, (v, _t) in geometry.items()}
     corners = _box_corners()
     prepared: list[PreparedPlacement] = []
     dropped = {"owner": 0, "excluded_mesh": 0, "no_geometry": 0, "arch": 0, "oversize": 0}
@@ -241,14 +246,13 @@ def direct_placements(
         if mesh_id in arch_ids:
             dropped["arch"] += 1
             continue
-        verts, _tris = geometry[mesh]
+        largest, low, high = reach[mesh]
         scale = row[8:11].astype(np.float32)
-        if float(np.abs(verts * scale).max()) > OVERSIZE_CM:
+        if float((largest * np.abs(scale)).max()) > OVERSIZE_CM:
             dropped["oversize"] += 1
             continue
         matrix = rotation_matrix(*row[5:8]).astype(np.float32)
         offset = row[2:5].astype(np.float32)
-        low, high = verts.min(0), verts.max(0)
         box = low + corners * (high - low)
         world_y = ((box * scale) @ matrix + offset)[:, 1]
         facing = int(windings[mesh] * np.sign(scale[0] * scale[1] * scale[2]))

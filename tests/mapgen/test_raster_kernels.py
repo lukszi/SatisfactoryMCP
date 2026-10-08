@@ -158,6 +158,16 @@ def test_the_numerator_threshold_passes_every_numerator_the_division_does(den):
     assert passes.any() and not passes.all()
 
 
+def test_a_scaled_mesh_s_largest_coordinate_is_its_largest_coordinate_scaled():
+    """``direct_placements``' oversize cull reads each mesh's largest coordinate once."""
+    rng = np.random.default_rng(13)
+    for _ in range(200):
+        verts = (rng.normal(0, 1, (500, 3)) * 10.0 ** rng.uniform(-3, 6)).astype(np.float32)
+        scale = (rng.uniform(-3, 3, 3) * 10.0 ** rng.uniform(-2, 2)).astype(np.float32)
+        whole = np.abs(verts * scale).max()
+        assert whole == (np.abs(verts).max(0) * np.abs(scale)).max()
+
+
 def _mesh(rng, verts=60, tris=90):
     return rng.normal(0, 300, (verts, 3)).astype(np.float32), rng.integers(0, verts, (tris, 3))
 
