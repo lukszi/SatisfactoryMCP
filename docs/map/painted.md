@@ -522,7 +522,10 @@ the bake's. The grain under 1.5 m rises from a standard deviation of 5.2 to 8.9 
 to 9.3. Drawn with `--no-light`, where the sun term takes the bumps too, 343,585 to 720,433
 pixels a window change. Beside frames of the 1.0, 1.1 and 1.2 trailers, the grass reads at
 the grain of the 1.0 trailer's top-down Grass Fields, the dunes stay smooth as the 1.2 aerial
-shows them, and the forest floor and the beaches take their litter and pebbles.
+shows them, and the forest floor and the beaches take their litter and pebbles. Below 16384
+nothing moves: at 2048 every tile and light tile of the three layers is the same as master's,
+and only the painted sidecar's style version and digest change. A store without the textures
+draws the 32768 windows of the gates' G2 the same as master, all three layers.
 
 **Known limits.**
 
@@ -536,6 +539,9 @@ shows them, and the forest floor and the beaches take their litter and pebbles.
 - The SandRipples' wind swirl, an animated overlay at 200 and 250 m, is not drawn.
 - The rock meshes keep their own colour; only the landscape is textured.
 - The coarser levels of the light have no detail; they are a metre a pixel or more.
+- On the CPU the detail is numpy's: the six windows above drew 0.8 to 1.8 s slower each on
+  two threads, and about as fast as before with `--gpu` once its kernel is compiled. A
+  full-size render without `--gpu` draws minutes longer.
 
 ### Known limits
 
