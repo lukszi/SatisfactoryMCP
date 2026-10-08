@@ -51,30 +51,40 @@ def _crowns(rng: np.random.Generator, ground: np.ndarray, el: np.ndarray) -> np.
 # ------------------------------------------------------------------------------ the atlas
 
 
-def _written(tmp_path, atlas: np.ndarray, exact: bool) -> np.ndarray:
+def _written(tmp_path, atlas: np.ndarray, folded: bool) -> np.ndarray:
     """``atlas`` through ``encode_tiles`` and read back, as the page's texture reads it."""
-    job = light_tiles.TileJob(str(tmp_path / "t"), np.zeros((256, 256, 4), np.uint8), atlas, exact)
+    job = light_tiles.TileJob(str(tmp_path / "t"), np.zeros((256, 256, 4), np.uint8), atlas, folded)
     light_tiles.encode_tiles([job])
-    with Image.open(tmp_path / f"t{light_tiles.HZ_SUFFIX}") as image:
-        rgb = np.asarray(image.convert("RGB"))
-    assert not exact or (rgb == rgb[..., :1]).all(), "grey"
-    return rgb[..., 0]  # the channel the shader reads
+    path = tmp_path / f"t{light_tiles.HZ_SUFFIX}"
+    assert path.read_bytes() == light_tiles.hz_webp(atlas, folded), "the tile is hz_webp's bytes"
+    with Image.open(path) as image:
+        return np.asarray(image.convert("RGB"))[..., 0]  # the channel the shader reads
 
 
-def test_a_horizon_atlas_round_trips_within_the_8_bit_code(tmp_path):
-    rng = np.random.default_rng(1)
+def _strips() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Smooth horizons with strips of folded bands across every cell, as a tile under arches
+    or crowns holds: the bytes, their cells' path elevations, and where the strips are."""
     els = refold.path_elevations()[np.arange(model.HZ_CELLS) % DIRS, None, None]
-    deg = _folded(rng, (model.HZ_CELLS, 128, 128), els)
-    deg[0, 0] = hz.decode_horizon(np.arange(128))
-    deg[0, 1] = hz.decode_horizon(np.arange(128, 256))
-    hz_u8 = hz.encode_horizon(deg)
-    assert set(np.unique(hz_u8)) == set(range(256)), "every byte the atlas can hold"
-    atlas = light_tiles.hz_atlas(hz_u8)
-    read = _written(tmp_path, atlas, exact=True)
-    assert read.tobytes() == atlas.tobytes(), "lossless: the bytes encoded"
-    code = np.sqrt(np.clip(deg / 90.0, 0, 1)) * 255.0
-    back = np.sqrt(hz.decode_horizon(light_tiles.atlas_cells(read)) / 90.0) * 255.0
-    assert float(np.abs(back - code).max()) <= 0.5 + 1e-3, "within half a step of the code"
+    yy, xx = np.mgrid[0:128, 0:128].astype(np.float32)
+    k = np.arange(model.HZ_CELLS)[:, None, None]
+    ground = 20 + 15 * np.sin(xx / (11 + k % 7)) * np.cos(yy / (9 + k % 5))
+    cover = 0.5 + 0.5 * np.sin((xx + yy) / 13 + k)
+    strip = np.abs(np.sin(xx / 17 + k)) < 0.35
+    deg = np.where(strip, els + SOFT * (cover - 0.5), ground).astype(np.float32)
+    return hz.encode_horizon(deg), els, strip
+
+
+def test_a_folded_atlas_reads_back_within_a_few_steps_of_its_code(tmp_path):
+    codes, els, strip = _strips()
+    exact = _page_shade(hz.decode_horizon(codes), els)
+    errors = {}
+    for folded in (False, True):
+        read = light_tiles.atlas_cells(_written(tmp_path, light_tiles.hz_atlas(codes), folded))
+        steps = np.abs(read.astype(int) - codes)
+        shade = np.abs(_page_shade(hz.decode_horizon(read), els) - exact)[strip]
+        errors[folded] = (float(np.percentile(steps, 99)), float(np.percentile(shade, 95)))
+    assert errors[True][0] <= 3, "the folded quality: within a few steps of the 8-bit code"
+    assert errors[True][1] <= 0.15 and errors[True][1] < errors[False][1], errors
 
 
 def test_each_atlas_cell_sits_in_a_border_of_its_own_edge():
@@ -96,7 +106,7 @@ def _edge_error(tmp_path, monkeypatch, gutter: int) -> int:
     yy, xx = np.mgrid[0:128, 0:128].astype(np.float32)
     cells = np.stack([128 + 100 * np.sin(xx / (9 + k % 7)) * np.cos(yy / (7 + k % 5))
                       for k in range(model.HZ_CELLS)]).astype(np.uint8)  # fmt: skip
-    lossy = light_tiles.atlas_cells(_written(tmp_path, light_tiles.hz_atlas(cells), exact=False))
+    lossy = light_tiles.atlas_cells(_written(tmp_path, light_tiles.hz_atlas(cells), folded=False))
     edges = (slice(None), slice(None), [0, 1, -2, -1])
     return int(np.abs(lossy[edges].astype(int) - cells[edges]).max())
 
@@ -108,11 +118,11 @@ def test_a_lossy_atlas_keeps_its_neighbours_off_each_cell_s_edge(tmp_path, monke
     assert bordered * 2 <= bare, (bordered, bare)
 
 
-def test_a_tile_is_stored_lossless_where_a_band_is_folded_into_it():
+def test_a_tile_holds_a_fold_where_any_of_its_pixels_does():
     folded = np.zeros((256, 384), bool)
     folded[130, 5] = folded[3, 300] = True
-    assert light_tiles.exact_tiles(folded, 10, 20) == {(10, 21), (12, 20)}
-    assert light_tiles.exact_tiles(np.zeros((128, 128), bool), 0, 0) == frozenset()
+    assert light_tiles.folded_tiles(folded, 10, 20) == {(10, 21), (12, 20)}
+    assert light_tiles.folded_tiles(np.zeros((128, 128), bool), 0, 0) == frozenset()
 
 
 # ------------------------------------------------------------------------ coarser levels
@@ -151,8 +161,8 @@ def test_a_coarser_level_averages_the_shade_the_page_reads():
 
 
 def _level(tmp_path) -> np.ndarray:
-    """A coarser level of 2 x 2 tiles from random horizons, tile (1, 0) named lossless: the
-    horizons it read."""
+    """A coarser level of 2 x 2 tiles from random horizons, tile (1, 0) named as holding a
+    fold: the horizons it read."""
     work, n = tmp_path / "work", 512
     work.mkdir()
     rng = np.random.default_rng(3)
@@ -184,13 +194,11 @@ def test_the_coarser_levels_refold_what_they_read(tmp_path):
     want = light_tiles.encode_linear(refold.refold(light_tiles.decode_linear(hzq), els))
     assert np.load(work / "hzq.npy").tobytes() == want.tobytes()
     tiles = tmp_path / "dest" / "1"
-    with Image.open(tiles / f"1_0{light_tiles.HZ_SUFFIX}") as image:
-        atlas = np.asarray(image.convert("L"))
-    cells = np.moveaxis(light_tiles.LINEAR_TO_HZ[hzq[:128, 128:]], -1, 0)
-    assert atlas.tobytes() == light_tiles.hz_atlas(cells).tobytes(), "named lossless: exact"
-    kinds = {p.name: p.read_bytes()[12:16] for p in tiles.glob(f"*{light_tiles.HZ_SUFFIX}")}
-    assert kinds == {"0_0.hz.webp": b"VP8 ", "1_0.hz.webp": b"VP8L", "0_1.hz.webp": b"VP8 ",
-                     "1_1.hz.webp": b"VP8 "}  # fmt: skip
+    for x, y in ((0, 0), (1, 0), (0, 1), (1, 1)):
+        rows, cols = slice(128 * y, 128 * (y + 1)), slice(128 * x, 128 * (x + 1))
+        atlas = light_tiles.hz_atlas(np.moveaxis(light_tiles.LINEAR_TO_HZ[hzq[rows, cols]], -1, 0))
+        written = (tiles / f"{x}_{y}{light_tiles.HZ_SUFFIX}").read_bytes()
+        assert written == light_tiles.hz_webp(atlas, (x, y) == (1, 0)), "the named tile at q95"
 
 
 def test_refold_takes_float32_texels_of_its_directions():

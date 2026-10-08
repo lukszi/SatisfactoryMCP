@@ -2,9 +2,9 @@
 
 Per tile, ``{z}/{x}_{y}.nrm.webp`` (lossless RGBA: east and south normal, sky view, land
 weight) and ``{z}/{x}_{y}.hz.webp`` (an 8 x 8 grey atlas at half resolution, each cell in a
-border of its edge texels: 32 faded ground horizons, then 32 crown horizons; lossless where a
-band is folded in, else lossy). Every style reads the ground's; only a style that draws the
-crowns adds theirs. docs/map/light-and-crowns.md section 29.
+border of its edge texels: 32 faded ground horizons, then 32 crown horizons; at a higher
+quality where a band is folded in). Every style reads the ground's; only a style that draws
+the crowns adds theirs. docs/map/light-and-crowns.md section 29.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX, tile_relpath
 
 __all__ = [
+    "HZ_FOLDED_QUALITY",
     "HZ_LINEAR_SCALE",
     "HZ_QUALITY",
     "HZ_SUFFIX",
@@ -43,8 +44,9 @@ __all__ = [
     "downsample",
     "encode_linear",
     "encode_tiles",
-    "exact_tiles",
+    "folded_tiles",
     "hz_atlas",
+    "hz_webp",
     "level_layout",
     "level_strips",
     "normal_byte",
@@ -58,13 +60,15 @@ __all__ = [
 
 NRM_SUFFIX = ".nrm.webp"
 HZ_SUFFIX = ".hz.webp"
-#: The lossy horizon atlases' WebP quality: those with no band folded in (section 29).
+#: The horizon atlases' WebP quality, and that of an atlas with a band folded in, which sits
+#: inside the shader's soft edge where a codec's error is the whole shade (section 29).
 HZ_QUALITY = 90
+HZ_FOLDED_QUALITY = 95
 #: The lossless tiles' WebP effort: the same pixels as 4 in less time (section 29).
 NRM_METHOD = 2
 ATLAS_COLS = 8
 
-#: Tiles of a level by ``(x, y)``: those whose horizon atlas is stored lossless.
+#: Tiles of a level by ``(x, y)``: those whose horizon atlas holds a folded band.
 TileSet: TypeAlias = frozenset[tuple[int, int]]
 
 #: Stored horizons for the coarser levels, before encoding: degrees times this, as a byte.
@@ -89,13 +93,13 @@ class Reducer(Protocol):
 
 
 class TileJob(NamedTuple):
-    """A tile to encode: its path stem, normal tile and horizon atlas, and whether the atlas
-    is stored lossless."""
+    """A tile to encode: its path stem, normal tile and horizon atlas, and whether a band is
+    folded into the atlas."""
 
     stem: str
     nrm: U8Grid
     atlas: U8Grid
-    exact: bool
+    folded: bool
 
 
 def hz_atlas(hz_u8: U8Grid) -> U8Grid:
@@ -160,30 +164,36 @@ def padded_window(
     return np.pad(part, pads, mode="constant", constant_values=fill)
 
 
+def hz_webp(atlas: U8Grid, folded: bool) -> bytes:
+    """A horizon atlas as its tile stores it: WebP at ``HZ_QUALITY``, or at
+    ``HZ_FOLDED_QUALITY`` where a band is folded in."""
+    from PIL import Image
+
+    buf = io.BytesIO()
+    quality = HZ_FOLDED_QUALITY if folded else HZ_QUALITY
+    Image.fromarray(atlas, "L").convert("RGB").save(buf, "WEBP", quality=quality, method=4)
+    return buf.getvalue()
+
+
 def encode_tiles(jobs: Iterable[TileJob]) -> int:
     """Each job's two tiles written; returns the horizon atlases' bytes."""
     from PIL import Image
 
     written = 0
-    for stem, nrm, atlas, exact in jobs:
+    for stem, nrm, atlas, folded in jobs:
         Path(stem).parent.mkdir(parents=True, exist_ok=True)
         buf = io.BytesIO()
         Image.fromarray(nrm, "RGBA").save(buf, "WEBP", lossless=True, exact=True, method=NRM_METHOD)
         Path(stem + NRM_SUFFIX).write_bytes(buf.getvalue())
-        buf = io.BytesIO()
-        grey = Image.fromarray(atlas, "L").convert("RGB")
-        if exact:
-            grey.save(buf, "WEBP", lossless=True, exact=True, method=NRM_METHOD)
-        else:
-            grey.save(buf, "WEBP", quality=HZ_QUALITY, method=4)
-        Path(stem + HZ_SUFFIX).write_bytes(buf.getvalue())
-        written += len(buf.getvalue())
+        data = hz_webp(atlas, folded)
+        Path(stem + HZ_SUFFIX).write_bytes(data)
+        written += len(data)
     return written
 
 
-def exact_tiles(folded: BoolMask, tx0: int, ty0: int) -> TileSet:
+def folded_tiles(folded: BoolMask, tx0: int, ty0: int) -> TileSet:
     """The tiles of a half-resolution plane, the first at ``(tx0, ty0)``, where ``folded``
-    holds a pixel: their atlases are stored lossless."""
+    holds a pixel."""
     h = PYRAMID_TILE_PX // 2
     rows, cols = folded.shape[0] // h, folded.shape[1] // h
     any_in = folded[: rows * h, : cols * h].reshape(rows, h, cols, h).any(axis=(1, 3))
@@ -191,16 +201,16 @@ def exact_tiles(folded: BoolMask, tx0: int, ty0: int) -> TileSet:
 
 
 def tile_jobs(
-    dest: Path, z: int, tx0: int, ty0: int, nrm: U8Grid, hz_u8: U8Grid, exact: TileSet
+    dest: Path, z: int, tx0: int, ty0: int, nrm: U8Grid, hz_u8: U8Grid, folded: TileSet
 ) -> Iterator[TileJob]:
-    """Each tile's job, made as it is asked for; ``exact`` names the lossless atlases."""
+    """Each tile's job, made as it is asked for; ``folded`` names the atlases with a band."""
     t, h = PYRAMID_TILE_PX, PYRAMID_TILE_PX // 2
     for j in range(nrm.shape[0] // t):
         for i in range(nrm.shape[1] // t):
             stem = str(dest / tile_relpath(z, tx0 + i, ty0 + j))[: -len(".png")]
             cell = np.ascontiguousarray(nrm[j * t : (j + 1) * t, i * t : (i + 1) * t])
             atlas = hz_atlas(hz_u8[:, j * h : (j + 1) * h, i * h : (i + 1) * h])
-            yield TileJob(stem, cell, atlas, (tx0 + i, ty0 + j) in exact)
+            yield TileJob(stem, cell, atlas, (tx0 + i, ty0 + j) in folded)
 
 
 def work_array(
@@ -253,10 +263,10 @@ def level_strips(
     spacing_m: float,
     pool: Executor,
     last: bool,
-    exact: TileSet = frozenset(),
+    folded: TileSet = frozenset(),
 ) -> int:
-    """One coarser level from the sources below it, a strip of tile rows at a time; ``exact``
-    names its tiles whose atlas is stored lossless.
+    """One coarser level from the sources below it, a strip of tile rows at a time; ``folded``
+    names its tiles above a tile with a folded band.
 
     The pool encodes a strip's tiles while this process computes the strips after it.
     """
@@ -281,7 +291,7 @@ def level_strips(
             [normal_byte(nx), normal_byte(ny), svf[r0 : r0 + rows], land[r0 : r0 + rows]], -1
         )
         hz_u8 = np.moveaxis(LINEAR_TO_HZ[hzq[r0 // 2 : (r0 + rows) // 2]], -1, 0)
-        jobs = list(tile_jobs(dest, level, 0, r0 // t, nrm, hz_u8, exact))
+        jobs = list(tile_jobs(dest, level, 0, r0 // t, nrm, hz_u8, folded))
         count += len(jobs)
         tasks = [jobs[i : i + LEVEL_TASK_TILES] for i in range(0, len(jobs), LEVEL_TASK_TILES)]
         pending.append([pool.submit(encode_tiles, task) for task in tasks])

@@ -32,7 +32,7 @@ from mapgen.lighting.light_tiles import (
     downsample,
     encode_linear,
     encode_tiles,
-    exact_tiles,
+    folded_tiles,
     level_layout,
     normal_byte,
     padded_window,
@@ -101,7 +101,7 @@ LIGHT_DIR_NAME = "light"
 
 #: The bake's own version. Bump it when the bake writes other bytes from the same surface,
 #: casters and model, so no run reuses a light the old bake wrote.
-LIGHT_VERSION = 3
+LIGHT_VERSION = 4
 
 #: Rows of a plane hashed at a time.
 DIGEST_ROWS = 1024
@@ -165,13 +165,13 @@ class BlockJob:
 
 class BlockDone(NamedTuple):
     """A baked block: its tiles, horizon bytes and seconds, with ``--gpu`` where its horizon
-    and sky-view calls ran (``gpu.ran``), and the tiles whose atlas it stored lossless."""
+    and sky-view calls ran (``gpu.ran``), and the tiles with a band folded into their atlas."""
 
     tiles: int
     hz_bytes: int
     seconds: float
     on_gpu: dict[str, int]
-    exact: TileSet = frozenset()
+    folded: TileSet = frozenset()
 
 
 class Place(NamedTuple):
@@ -413,8 +413,8 @@ def bake_block(job: BlockJob) -> BlockDone:
     )
     del nx, ny, svf
     t = PYRAMID_TILE_PX
-    exact = exact_tiles(horizons.folded, c0 // t, r0 // t)
-    jobs = tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas, exact)
+    folded = folded_tiles(horizons.folded, c0 // t, r0 // t)
+    jobs = tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas, folded)
     hz_bytes = encode_tiles(jobs)
     canopy = None
     if canopy_sky is not None:
@@ -431,7 +431,7 @@ def bake_block(job: BlockJob) -> BlockDone:
     quarter = (slice(h0 // 2, (h0 + half_px) // 2), slice(w0 // 2, (w0 + half_px) // 2))
     work_array(work, "hzq", np.uint8)[quarter] = horizon_quarter
     tiles = (nrm.shape[0] // t) * (nrm.shape[1] // t)
-    return BlockDone(tiles, hz_bytes, time.time() - started, _gpu_calls(), exact)
+    return BlockDone(tiles, hz_bytes, time.time() - started, _gpu_calls(), folded)
 
 
 def _gpu_calls() -> dict[str, int]:

@@ -31,7 +31,10 @@ from mapgen.tiles.cutter import TileStream
 SIZE = 512
 
 #: The digest of ``_pinned_bake`` at each ``LIGHT_VERSION`` since it read the horizon tiles.
-BAKE_PINS = {3: "sha256:230fc6638a0e4470e89f8382186f24974292c48f1306d0492f58028feac1dc68"}
+BAKE_PINS = {
+    3: "sha256:230fc6638a0e4470e89f8382186f24974292c48f1306d0492f58028feac1dc68",
+    4: "sha256:ef63278646e0edfce4ce255b2a0e1ae67a4816f95f052553b9078435134bf5e6",
+}
 
 Planes = tuple[np.ndarray, np.ndarray]
 
