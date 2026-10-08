@@ -23,8 +23,8 @@ _lanes: Semaphore | None = None
 
 
 def lanes() -> Semaphore:
-    """A new set of ``DEVICE_LANES`` lanes for a pool's processes."""
-    return multiprocessing.get_context("spawn").Semaphore(DEVICE_LANES)
+    """A new set of ``DEVICE_LANES`` lanes for a pool's processes, which start the default way."""
+    return multiprocessing.Semaphore(DEVICE_LANES)
 
 
 def join(shared: Semaphore) -> None:

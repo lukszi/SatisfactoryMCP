@@ -180,7 +180,12 @@ def _cubin(code: str) -> Path:
         folder.mkdir(parents=True, exist_ok=True)
         part = path.with_suffix(f".{os.getpid()}.part")
         part.write_bytes(binary if isinstance(binary, bytes) else binary.encode("utf-8"))
-        os.replace(part, path)
+        try:
+            os.replace(part, path)
+        except OSError:  # another process wrote the same file and holds it open
+            part.unlink(missing_ok=True)
+            if not path.is_file():
+                raise
     return path
 
 
