@@ -22,6 +22,7 @@ import numpy as np
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import ON_NUMBA, gpu_on
+from mapgen.lighting.encoding import encode_threads
 from mapgen.lighting.horizon import SKY_RADIUS_M, horizon_reach_px
 from mapgen.lighting.lanes import join, lanes
 from mapgen.lighting.light_tiles import level_strips
@@ -145,6 +146,7 @@ class LightBake:
             halo_h=horizon_reach_px(2 * spacing_m),
             sky_halo=int(np.ceil(SKY_RADIUS_M / (2 * spacing_m))) + 2,
             skip_water=True,
+            encode_threads=encode_threads(size // self.block),
         )
         self.rows: dict[int, Future[None]] = {}
         self.blocks = (size // self.block) ** 2

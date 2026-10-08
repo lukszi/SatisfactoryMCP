@@ -26,12 +26,12 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
+from mapgen.lighting.encoding import encoded
 from mapgen.lighting.horizon import HORIZON_DIRS, encode_horizon, normals, sky_view
 from mapgen.lighting.lanes import device_lane
 from mapgen.lighting.light_tiles import (
     HZ_LINEAR_SCALE,
     downsample,
-    encode_tiles,
     level_layout,
     normal_byte,
     padded_window,
@@ -149,7 +149,8 @@ _Shades: TypeAlias = dict[bool, tuple[F32Grid, F32Grid] | None]
 
 @dataclass(frozen=True)
 class BlockJob:
-    """One block of native tiles for a light worker: where it reads, writes, and how far."""
+    """One block of native tiles for a light worker: where it reads, writes, how far, and on
+    how many threads its tiles are encoded."""
 
     work: str
     dest: str
@@ -159,6 +160,7 @@ class BlockJob:
     sky_halo: int
     skip_water: bool
     block: tuple[int, int, int] = (0, 0, 0)
+    encode_threads: int = 1
 
 
 class BlockDone(NamedTuple):
@@ -387,7 +389,8 @@ def bake_block(job: BlockJob) -> BlockDone:
     )
     del nx, ny, svf
     t = PYRAMID_TILE_PX
-    hz_bytes = encode_tiles(tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas))
+    tiled = tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas)
+    hz_bytes = encoded(tiled, job.encode_threads)
     canopy = None
     if canopy_sky is not None:
         canopy = block_canopy(work, job.block, horizons.canopy, canopy_sky)
