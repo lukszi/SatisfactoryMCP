@@ -45,6 +45,7 @@ __all__ = [
     "faded_horizons",
     "horizon_reach_px",
     "kernel_offsets",
+    "kernel_steps",
     "march_horizon",
     "march_steps",
     "nearest",
@@ -343,15 +344,12 @@ def _compiled_march(
     says so."""
     from mapgen.lighting import kernels
 
-    smooth = [sample is bilinear for sample, _oy, _ox, _scale in steps]
-    oy, ox = [s[1] for s in steps], [s[2] for s in steps]
-    offsets = kernel_offsets(oy, ox, smooth, (len(steps),), halo)
-    scale = np.array([s[3] for s in steps], np.float32)
+    smooth, offsets, scale = kernel_steps(steps, halo)
     args = (
         np.ascontiguousarray(solid),
         np.ascontiguousarray(z),
         halo,
-        np.array(smooth),
+        smooth,
         offsets,
         scale,
         best,
@@ -362,6 +360,15 @@ def _compiled_march(
         gpu.march(*args)
     else:
         kernels.march(*args)
+
+
+def kernel_steps(steps: list[Step], halo: int) -> tuple[BoolMask, Offsets, F32Grid]:
+    """``march_steps`` as the march kernels take them: which sample bilinearly, the offsets
+    and the scales."""
+    smooth = [sample is bilinear for sample, _oy, _ox, _scale in steps]
+    oy, ox = [s[1] for s in steps], [s[2] for s in steps]
+    offsets = kernel_offsets(oy, ox, smooth, (len(steps),), halo)
+    return np.array(smooth), offsets, np.array([s[3] for s in steps], np.float32)
 
 
 def faded_horizons(

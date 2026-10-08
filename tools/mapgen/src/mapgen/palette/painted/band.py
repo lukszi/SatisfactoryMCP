@@ -31,7 +31,7 @@ from mapgen.palette.painted.surfaces import (
 from mapgen.palette.painted.trees import lit_crowns, over_crowns, titan_over
 from mapgen.palette.styles import ramp_position
 from mapgen.palette.water.shore import add_foam, inland_cover, seabed_keeps, wet_band
-from satisfactory_mcp.core.arrays import U8Grid
+from satisfactory_mcp.core.arrays import BoolMask, U8Grid
 
 __all__ = ["painted_colours", "painted_ndl"]
 
@@ -117,18 +117,18 @@ def painted_ndl(
     z_m: FloatGrid,
     spacing_m: float,
     unlit: bool,
-    meshes: tuple[FloatGrid | None, U8Grid | None, FloatGrid],
+    meshes: tuple[FloatGrid | None, U8Grid | None, FloatGrid, BoolMask | None],
 ) -> FloatGrid:
     """The painted style's sun term, ``n.L`` against the flat ``sin 45``: the north-west
     hillshade when lit, flat when unlit. Unlit, a sea mesh only this style draws keeps the
     default sun on its top: the light, captured under the seabed rule, has water there.
-    ``meshes`` is ``(weight, kept class, water level)``.
+    ``meshes`` is ``(weight, kept class, water level, footprint on land)``.
     """
     if not unlit:
         return sun_dot(z_m, spacing_m)
     flat = np.full(z_m.shape, FLAT_SUN_DOT, np.float32)
-    weight, kept, level = meshes
+    weight, kept, level, land = meshes
     if weight is None or kept is None:
         return flat
-    sea = np.where((kept > 0) & ~seabed_keeps(kept, z_m, level), weight, np.float32(0.0))
+    sea = np.where((kept > 0) & ~seabed_keeps(kept, z_m, level, land), weight, np.float32(0.0))
     return flat * (1.0 + sea * (surface_direct(z_m, spacing_m) - 1.0))

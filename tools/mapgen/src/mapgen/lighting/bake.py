@@ -22,7 +22,9 @@ import numpy as np
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import ON_NUMBA, gpu_on
+from mapgen.lighting.encoding import encode_threads
 from mapgen.lighting.horizon import SKY_RADIUS_M, horizon_reach_px
+from mapgen.lighting.lanes import join, lanes
 from mapgen.lighting.light_tiles import TileSet, level_strips
 from mapgen.lighting.model import light_axis
 from mapgen.lighting.stage import (
@@ -64,6 +66,13 @@ def gpu_calls_line(done: Sequence[BlockDone]) -> str:
         f"light: horizon and sky-view calls {devices or 'none on CUDA'}; {on_numba:,} ran on "
         "numba, the device out of memory"
     )
+
+
+def _light_pool(workers: int) -> ProcessPoolExecutor:
+    """The light's processes; with ``--gpu`` they share the device's lanes (``lanes``)."""
+    if not gpu_on():
+        return ProcessPoolExecutor(max_workers=workers)
+    return ProcessPoolExecutor(max_workers=workers, initializer=join, initargs=(lanes(),))
 
 
 def block_rows(size: int) -> tuple[int, list[int]]:
@@ -137,6 +146,7 @@ class LightBake:
             halo_h=horizon_reach_px(2 * spacing_m),
             sky_halo=int(np.ceil(SKY_RADIUS_M / (2 * spacing_m))) + 2,
             skip_water=True,
+            encode_threads=encode_threads(size // self.block),
         )
         self.rows: dict[int, Future[None]] = {}
         self.blocks = (size // self.block) ** 2
@@ -154,7 +164,7 @@ class LightBake:
             return self.rows[row]
         if self.pool is None:
             self.workers = light_workers(self.requested)
-            self.pool = ProcessPoolExecutor(max_workers=self.workers)
+            self.pool = _light_pool(self.workers)
             self.started = time.time()
         self.surface.flush()
         settled: Future[None] = Future()

@@ -451,7 +451,7 @@ and section 35's falls:
   terrace, where the meshes range from 6 to 56 m.
 - A seam over 1 m, such as a box edge across a lake whose two boxes stand 1.5 m apart, is
   left as a step: the rule cannot tell it from a fall.
-- The satellite and terrain styles still draw one water colour.
+- The terrain style still draws one water colour.
 
 ## 34. Rivers from the game's own splines: recipe 7 (2026-10-05)
 
@@ -567,7 +567,7 @@ Per band, through `RiverWater.over`.
   plane, other water gives way to the river at its edge whatever the levels, and holds its
   own only 12 m in (`RiverWater.yields`, over `RIVER_MOUTH_FADE_M`).
 - **Optics.** River pixels get the shore optics: the opacity fade and wet darkening in
-  terrain and satellite, and the wet band on the banks in every style. Painted water is
+  terrain, and the wet band on the banks in every style that sets one. Painted water is
   Beer-Lambert, so the bed shows in the shallows.
 - **No pale path.** A river 0.2 to 0.9 m deep seen through the 0.9 m alpha feather is mostly
   its bed paint. So the optics read a river at least `shore.river.min_depth_m` (0.6 m) deep

@@ -47,9 +47,10 @@ estimate assumes before a job of that kind has run once.
 | `caves` | `gen_world_heightmap.py --caves` | `data/local/caves/` (`caves.npz`, `meta.json`) | sweep 6 s; budget 2 min |
 | `rocks` | `gen_world_heightmap.py --rocks` | `rocks.npz` and `rocks.json` beside the field in `data/local/heightmap/` | 24 s; budget 5 min |
 | `paint` | `gen_paint_layers.py` | `data/local/paint/` (113 MB) | 2 min on a loaded machine; budget 2.5 min |
+| `crown-sprites` | | `data/local/crown-sprites/` (`atlas.npz`, `meta.json`, 4 MB) | 30 s on the CPU, 10 s with `--gpu` |
 | `calibrate` | | `data/local/paint/targets.derived.json` | 5 s |
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
-| `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 58 min for all five layers and 42 min for two, from measured stages ([maps_contract.md](../../docs/maps_contract.md) §4.3); a whole run is measured at the next full render |
+| `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 28 min for the three layers and 24 min for the default two, from measured stages ([maps_contract.md](../../docs/maps_contract.md) §4.3); the three, cold, took 27.5 min on the CPU and 21 min with `--gpu`, and 19 min with `--gpu` from kept raster caches, on 2026-10-08 (§41, "The whole render, timed") |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
 | `compress-cache` | | the given raster caches, converted in place | 4 s for a 1.3 GB Titan cache; about 2.5 min for a full set (estimate) |
 
@@ -87,6 +88,17 @@ lean, species) and the crown top on the 1 m grid. Only the `painted` render laye
 From generator 4 its `meta.json` also keeps the level's noon light, the atmosphere volumes and
 the shell colours that `calibrate` reads. §27 lists the files; see also §30 to §33 and §36.
 
+### crown-sprites
+
+Builds a top-down sprite of every tree species the paint store lists, in colour, normal and
+alpha at 0.125 m. A species whose octahedral billboard holds a fine enough top view takes
+that view; every other species is rasterised from its mesh with its leaf and bark textures.
+It reads the species from `--paint-dir` (default `data/local/paint/`, so `paint` runs first)
+and writes `--out-dir` (default `data/local/crown-sprites/`). A cache whose stamp matches the
+build is kept unless `--force`; `--species NAME` builds only the named ones. `--gpu` runs the
+raster's per-sample fill and shading as CUDA kernels, with the same bytes. No render reads the cache
+yet. See §36, "Crown sprites".
+
 ### calibrate
 
 Derives a display colour for every key of the game-painted palette's `calibration` block from
@@ -95,8 +107,9 @@ game's camera, and writes `targets.derived.json` beside the paint layers (`--out
 It never writes the install. `--check` prints each colour against the screenshot target and
 writes nothing. A paint store from before generator 4 is refused with exit code 2. A render
 takes the keys the palette's `derived_keys` lists from that file, or derives them itself when
-the file is missing or was derived from other data. See §31, "Targets derived from the game
-install".
+the file is missing or was derived from other data, and keeps the screenshot colour of a key
+the derive gate declines. See §31, "Targets derived from the game install" and "The derive
+gate".
 
 ### artwork
 
@@ -106,12 +119,14 @@ cache folder once. `--no-tiles-2x` skips the high-density pyramid. See §17.
 
 ### renders
 
-Draws the `terrain`, `satellite`, `painted`, `relief` and `relief-dark` layers from the
-heightfield, the game's biome raster and, for `painted`, the paint layers. Each layer is cut
-into the same 256 px pyramid as the artwork. A run that cannot draw what its sidecar would
-claim is refused with its own exit code (§20, "Refusals"). The main options:
+Draws the `terrain`, `painted` and `relief-dark` layers from the heightfield and, for
+`painted`, the paint layers and the game's biome raster. The page shows `painted` as
+"Satellite" and `relief-dark` as "Relief"; the biome-coloured `satellite` and the light
+`relief` are no longer drawn (§17, "Three drawn layers"). Each layer is cut into the same
+256 px pyramid as the artwork. A run that cannot draw what its sidecar would claim is refused
+with its own exit code (§20, "Refusals"). The main options:
 
-- `--layer L`, repeatable, picks the layers. The default is all five.
+- `--layer L`, repeatable, picks the layers. The default is all three.
 - `--size` takes 1024 to 32768. The smaller sizes are previews.
 - `--renders-name` writes beside the current renders instead of over them.
 - `--overwrite-in-use` writes even into a folder holding tiles of a map type the server's
@@ -150,10 +165,11 @@ claim is refused with its own exit code (§20, "Refusals"). The main options:
 - `--draw-columns N` draws each band in pieces of N output columns, 512 by default. Narrower
   pieces take less memory a thread, and the tiles are the same bytes at any width (§40,
   "Column pieces" and "Fixed-order sums").
-- `--gpu` runs the light's horizon march and sky view as CUDA kernels. It needs the root
-  project's `gpu` extra (`uv sync --all-extras` installs it) and an NVIDIA driver, and
-  refuses with exit code 12 where either is missing. The bake's log says where its calls
-  ran. The tiles are the same bytes (§41, "On the GPU").
+- `--gpu` runs the light's horizon march and sky view as CUDA kernels, and the draw's
+  relight, arch FXAA and terrain pieces. It needs the root project's `gpu` extra (`uv sync
+  --all-extras` installs it) and an NVIDIA driver, and refuses with exit code 12 where either
+  is missing. The bake's log and the draw's say where their calls ran. The tiles are the same
+  bytes (§41, "On the GPU" and "The draw on the GPU").
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
@@ -201,6 +217,7 @@ be traced to the axis it should move.
 | `commands/heightmap.py` | data | The heightmap command: arguments, refusals, stage order; `--caves` and `--rocks` go to the next row |
 | `commands/caves.py`, `rocks.py` | data | The cave masks and the rock collision pack, written beside a field |
 | `commands/paint.py` | data | The paint command: one level walk into the paint-layer store |
+| `commands/crown_sprites.py` | data | The crown-sprites command: every paint store species' sprite into the sprite cache |
 | `commands/calibrate.py` | | The calibrate command: display targets derived from the paint store |
 | `commands/artwork.py` | data | The artwork command: arguments, stage order, refusals |
 | `commands/check_fill.py` | | The check-fill command |
@@ -208,7 +225,7 @@ be traced to the axis it should move.
 | `gamedata/frame.py` | data | Map frame (read from `geo.MAP_SQUARE_M`), render sizes, the heightfield grid and its texel lookups (`grid_texel`, `grid_index`) |
 | `gamedata/artwork_sheet.py` | data | The artwork sheet: slice decode, layout proof, corner calibration |
 | `gamedata/meshes.py` | data | Mesh geometry reads at their finest source, collision hulls, `ExtendedBounds` (`MeshBounds`) |
-| `gamedata/maxz_raster.py` | data | `MaxZRaster`, the max-Z scatter rasteriser cliffs, crown sprites and render meshes share, and its `INSTANCE_BATCH` |
+| `gamedata/maxz_raster.py` | data | `MaxZRaster`, the max-Z scatter rasteriser cliffs, crown sprites and render meshes share, and its `INSTANCE_BATCH`; the numpy reference of the raster passes' kernels |
 | `gamedata/placements.py` | data | A placement's row in the sweep, its transform (`placement_transform`, `placement_matrix4`), the culls by owner, mesh name, arch and size (`cliff_cull`), and its material |
 | `gamedata/materials.py` | data | Material-instance parameters, and the materials of a mesh's sections |
 | `gamedata/nodes.py` | data | The static resource-node table (`load_static_nodes`), and the oil nodes the bake stamps |
@@ -229,11 +246,18 @@ be traced to the axis it should move.
 | `gamedata/vegetation/trees.py` | data | Tree instances as crowns: species bounds, instance scale, the tree table, canopy cover |
 | `gamedata/vegetation/crown_sprites.py` | data | Tree crown sprites from LOD 0, tree records, the crown top plane |
 | `gamedata/vegetation/carpet.py` | data | The seabed coral carpet's harvest and planes, written by the paint command |
+| `gamedata/vegetation/tree_surface.py` | data | A tree mesh's LOD 0 with UVs and normals, and each slot's albedo and leaf mask as the sprite raster samples them |
+| `gamedata/vegetation/billboards.py` | data | A species' billboard material (octahedral, impostor, SpeedTree) and the octahedral atlas's top view |
+| `sprites/raster.py` | data | The crown sprite raster: triangle setup, bins, the per-sample hits gathered into colour, normal, alpha and top |
+| `sprites/fill.py`, `shade.py`, `gpu.py`, `raster.cu` | data | The raster's per-sample fill and shading (normal maps, spherical normals, moss): the numpy references and their CUDA twins, bit for bit |
+| `sprites/align.py` | data | An octahedral top view laid on the mesh footprint: the turn, the pivot, the frame width rules, the normal's halves |
+| `sprites/build.py` | data | One species' sprite: the raster, or the top view where it is usable, and what was measured |
+| `sprites/store.py` | data | The sprite cache: mip chains packed in one atlas, its records, stamp, reader and writer |
 | `gamedata/ground/paint_store.py` | data | The paint-layer store's folder and file names |
 | `gamedata/ground/weightmaps.py` | data | The landscape's paint weightmaps, placed on the 1 m grid |
 | `gamedata/ground/landscape_albedo.py` | data | The paint layers' textures and albedo, the rock families' colours, and the 0–1 sRGB transfer (`srgb_unit_to_linear`) |
 | `gamedata/ground/bake.py` | data | The landscape's baked ground colour and the layer refit |
-| `gamedata/ground/biome.py` | data | Biome raster and its calibration, region masks |
+| `gamedata/ground/biome.py` | data | Biome raster, its area names and calibration, region masks |
 | `terrain/heightfield/field.py` | data | Heightfield composition and plane encoding |
 | `terrain/heightfield/validate.py` | data | Heightfield gates (nodes, bare terrain, water) |
 | `terrain/heightfield/sidecar_blocks.py` | data | Each layer's sidecar block, per-layer accuracy, the water block |
@@ -244,12 +268,14 @@ be traced to the axis it should move.
 | `terrain/solve.py` | renderer | Conjugate gradients with fixed-order sums, for the membranes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
 | `terrain/kernels.py` | renderer | The resampling gathers and the crown stamps compiled by numba |
-| `terrain/rasters.py` | renderer | Direct and top rasters on the output grid |
-| `terrain/rasters_banded.py` | renderer | A banded raster: each band folded onto the output grid and written to its cache |
+| `terrain/rasters.py` | renderer | Direct and top rasters on the output grid; the placements over a band and their faces |
+| `terrain/rasters_banded.py` | renderer | A banded raster: the bands rasterised on threads, each folded onto the output grid and written to its cache in order |
+| `terrain/maxz/raster.py`, `faces.py`, `kernels.py` | renderer | The raster passes' `MaxZRaster` (numba's scan and fold where the kernels are on), the faces of a placement each pass draws, and their numba kernels |
 | `terrain/top_raster.py`, `archfill.py` | renderer | The top raster with the arches apart (top, underside) and the boulders alone; the arches' sub-metre holes filled |
 | `terrain/overhangs.py` | renderer | Under each rock's top, its overhang's underside and the floor beneath it |
 | `terrain/render_meshes.py` | renderer | The render-only meshes and the Titan trees on the output grid |
 | `terrain/crown_stamp.py` | renderer | Tree crowns stamped into a band of the output grid |
+| `terrain/texels.py` | renderer | Textures and atlas tiles read onto a band, sprites stamped over it: the reference the GPU's `render/gpu/texels.py` matches |
 | `terrain/measure.py` | renderer | `SeamTrace`, `RegimeCoverage` |
 | `lighting/hillshade.py` | light | Hillshade, the sun term, the flat shade and slope |
 | `lighting/borrow.py` | light | The artwork borrow and its sidecar record |
@@ -264,10 +290,10 @@ be traced to the axis it should move.
 | `lighting/spans/holes.py`, `canopy.py` | light | No data in the captured surface, which the light takes as open; the canopy's own light |
 | `lighting/gpu.py`, `gpu.cu` | light | The same two as CUDA kernels, for `--gpu` |
 | `lighting/occluders.py` | light | The occluders the horizons take: the paint store's crown tops on a render grid (`sheet_crowns`) and a tree table's domes (`canopy_top`) |
-| `palette/styles.py` | style | Palette loading, digests, the colour painters and their height ramp |
+| `palette/styles.py` | style | Palette loading, digests, the terrain painter and its height ramp |
 | `palette/schema.py` | style | The palette files' shapes, and the check at load: a stray or missing key, or an unknown rock family, stops the run with a `PaletteError` naming the place in the file (§28). A key added to a palette needs its field here. |
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
-| `palette/relief.py` | style | The relief styles' painter (light and dark palettes) |
+| `palette/relief.py` | style | The relief style's painter, which draws the dark relief from its palette |
 | `palette/lightparams.py` | style | What the page's shader reads from a style |
 | `palette/scene.py` | style | What a band hands a painter: `BandScene`, its water terms, crowns, optics and grid |
 | `palette/painted/ground.py` | style | The game-painted ground, built once per run from the paint store |
@@ -286,16 +312,18 @@ be traced to the axis it should move.
 | `palette/painted/water_classes.py` | style | The water-class plane and the swamp-to-ocean blends at mouths |
 | `palette/water/surface.py`, `shore.py` | style | Water drawing, shore optics, foam |
 | `palette/water/wet.py` | style | A band's wet pixels, where the colour under the water is painted |
-| `palette/water/kernels.py` | style | The terrain, satellite and relief styles' water, compiled by numba |
+| `palette/water/kernels.py` | style | The terrain and relief styles' water, compiled by numba |
 | `palette/water/open_sea.py` | style | The open sea's bed past the measured one, and the void planes |
 | `palette/water/rivers.py` | style | River water: reconciled with the field's, laid over each band |
 | `palette/water/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |
 | `palette/water/perched.py` | style | Water levels re-read from the shoreline where a box top is not the surface |
 | `palette/water/seams.py` | style | Small level steps inside one sheet of water, feathered into a ramp |
 | `palette/water/geodesic.py` | style | Steps counted through a mask, as a flood grows out from its seeds |
+| `palette/water/footprints/plane.py` | style | The render-only meshes' land plane: each coral, shell or terrace footprint kept whole on land or left whole to the seabed, and each piece's reading of it |
+| `palette/water/footprints/reference.py`, `gpu.py`, `footprints.cu` | style | The land plane's per-texel marks and per-pixel reading in numpy, and the same as CUDA kernels for `--gpu` |
 | `render/run/prepare.py` | | Every stage of a run before the first band is drawn, in order (`prepare`) |
 | `render/run/inputs.py` | | A run's inputs and their refusals: the field and its lattices, the game, the borrow, the paint and the water |
-| `render/run/biome_inputs.py` | | The game's biome raster as the biome layers draw it: read, checked and coloured |
+| `render/run/biome_inputs.py` | | The game's biome raster as the painted layer reads it: read, checked and named |
 | `render/run/cached_rasters.py` | | The level sweep (`LevelSweep`) and the stamped direct and top rasters, rasterised or read back |
 | `render/draw/compose.py` | | The band loop that draws every layer of a run in one pass |
 | `render/ground/surface.py` | | One band's ground, composed once for all the layers (`band_grid`, `band_surfaces`) |
@@ -303,13 +331,16 @@ be traced to the axis it should move.
 | `render/ground/floating.py` | | What floats over a piece for the light: the arches and overhangs, and the surface without them |
 | `render/ground/void.py` | | The void as a piece draws it, once for every layer, and the land weight the light reads off it |
 | `render/draw/archaa.py` | | FXAA on the arches only, a band at a time with its neighbours' rows |
-| `render/draw/painting.py` | | One band coloured in one layer's style over that ground (`paint_band`) |
+| `render/draw/painting.py` | | One band coloured in one layer's style over that ground (`paint_band`), and its kept pixels as bytes (`piece_bytes`) |
 | `render/draw/stream.py` | | Each settled band handed to its layers' tile trees, the lit ones once the light has its rows |
 | `render/draw/drawpool.py` | | How many threads draw a pass's bands, and the pool that keeps their order |
 | `render/ground/stencils.py` | | How far each step of a band's draw reads its neighbours, and the band halo that holds them |
 | `render/run/extras.py` | | What a run loads beside the field: meshes, falls, Titan trees and rivers |
 | `render/draw/light.py` | | A run drawn unlit: the scratch claimed and closed, the crown occluder, the light baked as the bands come in, a kept light read while it matches, the default-sun relight |
 | `render/draw/kept_light.py` | | The finished light a lit render keeps beside its raster caches, and its install |
+| `render/gpu/device.py` | | What the draw's CUDA kernels share: their grids, the device memory they may hold, where each call ran, a band's planes kept on the device (`DeviceBand`) |
+| `render/gpu/relight.py`, `fxaa.py`, `terrain.py` | | The default-sun relight, the arches' FXAA and the terrain's pieces as CUDA kernels (`*.cu` beside them), for `--gpu` |
+| `render/gpu/texels.py`, `texels.cu` | | `terrain/texels.py`'s reads and stamps on the device, for the painted style's rendered look |
 | `render/run/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
 | `tiles/pyramid.py` | | A layer's tile trees, the worker flags, the parallel cutter's self-check |
 | `tiles/cutter.py` | | The parallel cutter: every tree of a run cut as its sheets' rows come in, through one encode pool |
@@ -446,17 +477,12 @@ sun picks two directions (§29). Trees join it as its `occluder`.
 - **`shore.river`** in each palette: the least depth the optics see once in from the bank, or
   a shallow bed reads as a pale path (§34).
 
-### Satellite colours (`palette/styles.py`)
+### Terrain colours (`palette/styles.py`)
 
-- **`BIOME_COLOURS`**: chosen by eye against crops, desaturated and capped below about 220,
-  not the asset's `mColorPalette` legend (§17).
-- **`BIOME_BLEND_TEXELS`** (24, about 44 m): a tree line's width, narrow enough that a 300 m
-  biome keeps its colour in the middle (§17).
-- **`NO_MANS_LAND_RGB`**, **`UNKNOWN_BIOME_RGB`**: a neutral bleached ground for the outer
-  coast and for an area a later build adds, so it looks unremarkable rather than wrong.
 - **`RAMP_LO_PCT`**, **`RAMP_HI_PCT`**: percentiles, not min and max, or one 400 m spire
   flattens the ramp over the rest of the world.
-- **The noise**: two fixed-seed fields sampled by world position, so no band edge shows (§17).
+- The biome-coloured satellite style's designed colours, blend and noise were retired with
+  the layer (§17, "Three drawn layers").
 
 ### The seam statistic (`terrain/measure.py`)
 

@@ -16,7 +16,18 @@ from scipy import ndimage
 from mapgen.terrain.archfill import column_pieces
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid, U8Grid
 
-__all__ = ["FXAA_HALO", "FXAA_REACH", "MASK_DILATE_PX", "arch_fxaa", "arch_mask", "fxaa"]
+__all__ = [
+    "FXAA_HALO",
+    "FXAA_REACH",
+    "MASK_DILATE_PX",
+    "PIECE_MARGIN",
+    "SUBPIX",
+    "THRESHOLD",
+    "THRESHOLD_MIN",
+    "arch_fxaa",
+    "arch_mask",
+    "fxaa",
+]
 
 #: How far the end-of-edge search reads along an edge, and the rows a band reads past its
 #: edges: the search, one pixel across it, and the 3 x 3 contrast test.
@@ -25,12 +36,12 @@ FXAA_HALO = FXAA_REACH + 2
 #: The arches' coverage grown by this many pixels is where FXAA's answer is kept.
 MASK_DILATE_PX = 3
 #: Columns past an arch a band's filter reads: more than the search and the mask reach.
-_PIECE_MARGIN = FXAA_HALO + MASK_DILATE_PX
+PIECE_MARGIN = FXAA_HALO + MASK_DILATE_PX
 
 #: FXAA 3.11's contrast thresholds and sub-pixel strength (its "quality" preset).
-_THRESHOLD = np.float32(0.125)
-_THRESHOLD_MIN = np.float32(0.0625)
-_SUBPIX = np.float32(0.75)
+THRESHOLD = np.float32(0.125)
+THRESHOLD_MIN = np.float32(0.0625)
+SUBPIX = np.float32(0.75)
 
 
 def _luma(rgb: F32Grid) -> F32Grid:
@@ -75,7 +86,7 @@ class _Edges:
         ]
         high = np.maximum.reduce(cross)
         self.range = high - np.minimum.reduce(cross)
-        self.edge = self.range >= np.maximum(_THRESHOLD_MIN, high * _THRESHOLD)
+        self.edge = self.range >= np.maximum(THRESHOLD_MIN, high * THRESHOLD)
 
 
 def _search(
@@ -129,7 +140,7 @@ def fxaa(rgb_u8: U8Grid, rows: slice) -> U8Grid:
             1 / 12
         )
         contrast = np.clip(np.abs(average - m) / np.maximum(found.range[ys, xs], 1e-6), 0, 1)
-        sub = ((np.float32(-2.0) * contrast + np.float32(3.0)) * contrast * contrast) ** 2 * _SUBPIX
+        sub = ((np.float32(-2.0) * contrast + np.float32(3.0)) * contrast * contrast) ** 2 * SUBPIX
         horizontal = (
             np.abs(-2 * west + nw + sw) + 2 * np.abs(-2 * m + n + s) + np.abs(-2 * east + ne + se)
         ) >= (
@@ -162,7 +173,7 @@ def arch_fxaa(rgb: U8Grid, cover: NDArray[np.generic], rows: slice) -> U8Grid:
     mask = arch_mask(cover)
     core = np.array(rgb[rows])
     keep = mask[rows]
-    for c0, c1 in column_pieces(keep, _PIECE_MARGIN):
+    for c0, c1 in column_pieces(keep, PIECE_MARGIN):
         filtered = fxaa(np.ascontiguousarray(rgb[:, c0:c1]), rows)
         inside = keep[:, c0:c1]
         core[:, c0:c1][inside] = filtered[inside]

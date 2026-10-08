@@ -256,7 +256,7 @@ def test_a_layer_that_does_not_exist_and_one_that_was_never_generated_are_told_a
     for layer, tool in (
         ("map", "gen_map_image.py"),
         ("terrain", "gen_map_renders.py"),
-        ("satellite", "gen_map_renders.py"),
+        ("satellite", "nothing draws this style now"),
     ):
         assert client.head(f"/api/maptiles/{layer}/0/0/0").status_code == 204, layer
         absent = client.get(f"/api/maptiles/{layer}/0/0/0")

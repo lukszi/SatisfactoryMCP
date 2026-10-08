@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from satisfactory_mcp.core.gameassets.versions import RETIRED_STYLES, STYLES
 from satisfactory_mcp.domain.maps import registry, titles
 
 
@@ -36,15 +37,21 @@ def row(ident: str, style: str, created: float | None = OCT6, **entry) -> dict:
     ("style", "family", "name"),
     [
         ("artwork", "artwork", "Game map"),
-        ("satellite-painted", "render", "Painted"),
-        ("satellite-biome", "render", "Satellite"),
+        ("satellite-painted", "render", "Satellite"),
         ("terrain-hypsometric", "render", "Terrain"),
-        ("relief-muted", "render", "Relief"),
-        ("relief-night", "render", "Relief (dark)"),
+        ("relief-night", "render", "Relief"),
+        ("satellite-biome", "render", "Biome (old)"),
+        ("relief-muted", "render", "Relief light (old)"),
     ],
 )
 def test_each_style_has_its_plain_name(style, family, name):
     assert titles.titles([row("a", style, family=family)], default=None) == {"a": name}
+
+
+def test_no_two_styles_share_a_name_retired_ones_included():
+    """A map drawn in a retired style is still listed, so its name must not be a drawn one's."""
+    names = [style["name"] for style in (*STYLES.values(), *RETIRED_STYLES.values())]
+    assert len(set(names)) == len(names), names
 
 
 def test_an_artwork_or_an_unknown_style_is_named_from_what_it_says():
@@ -57,20 +64,22 @@ def test_the_date_is_added_only_beside_another_of_the_same_style_in_the_switcher
     rows = [
         row("painted-new", "satellite-painted", OCT6),
         row("painted-old", "satellite-painted", OCT5),
-        row("relief", "relief-muted", OCT6),
+        row("relief", "relief-night", OCT6),
+        row("biome", "satellite-biome", OCT6),
     ]
     assert titles.titles(rows, default=None) == {
-        "painted-new": "Painted · 6 Oct",
-        "painted-old": "Painted · 5 Oct",
+        "painted-new": "Satellite · 6 Oct",
+        "painted-old": "Satellite · 5 Oct",
         "relief": "Relief",
+        "biome": "Biome (old)",
     }
     rows[1]["entry"]["in_switcher"] = False
     named = titles.titles(rows, default=None)
-    assert named["painted-new"] == "Painted", "the twin is not in the switcher"
-    assert named["painted-old"] == "Painted · 5 Oct", "the Maps tab still tells it apart"
+    assert named["painted-new"] == "Satellite", "the twin is not in the switcher"
+    assert named["painted-old"] == "Satellite · 5 Oct", "the Maps tab still tells it apart"
     rows[1]["entry"]["in_switcher"] = True
     rows[1]["status"] = "failed"
-    assert titles.titles(rows, default=None)["painted-new"] == "Painted"
+    assert titles.titles(rows, default=None)["painted-new"] == "Satellite"
 
 
 def test_two_of_one_style_built_on_one_day_add_the_time():
@@ -87,9 +96,9 @@ def test_two_of_one_style_built_on_one_day_add_the_time():
 
 
 def test_the_default_carries_a_star_after_its_name():
-    rows = [row("map", "artwork", family="artwork"), row("sat", "satellite-biome")]
+    rows = [row("map", "artwork", family="artwork"), row("sat", "satellite-painted")]
     assert titles.titles(rows, default="map") == {"map": "Game map ★", "sat": "Satellite"}
-    rows.append(row("sat-old", "satellite-biome", OCT5, in_switcher=False))
+    rows.append(row("sat-old", "satellite-painted", OCT5, in_switcher=False))
     named = titles.titles(rows, default="sat-old")
     assert named["sat-old"] == "Satellite · 5 Oct ★", "the default shows, ticked or not"
     assert named["sat"] == "Satellite · 6 Oct"
@@ -102,7 +111,7 @@ def test_a_label_wins_over_the_generated_name():
     ]
     assert titles.titles(rows, default="painted-new") == {
         "painted-new": "River test ★",
-        "painted-old": "Painted",
+        "painted-old": "Satellite",
     }
 
 

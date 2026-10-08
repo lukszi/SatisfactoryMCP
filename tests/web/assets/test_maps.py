@@ -40,7 +40,9 @@ def test_the_list_carries_every_type_its_freshness_and_what_can_run(stateless_cl
     }  # fmt: skip
     assert {row["tone"] for row in body["types"]} <= {"light", "dark"}
     assert terrain["tone"] == "light" and body["plain_tone"] == "dark"
-    assert {"relief", "relief-dark"} <= {row["layer"] for row in body["styles"]}
+    assert [row["layer"] for row in body["styles"]] == ["terrain", "painted", "relief-dark"]
+    satellite = next(t for t in body["types"] if t["id"] == "satellite")
+    assert satellite["status"] == "ready" and satellite["title"].startswith("Biome (old)")
     assert body["jobs"] == [] and body["queue_max"] == 4
     assert {row["name"] for row in body["inputs"]} == {"heightfield", "caves", "rocks", "paint"}
     assert KIND_MAPS in KINDS
@@ -114,9 +116,13 @@ def test_an_estimate_says_whether_the_disk_has_room(stateless_client):
     assert body["seconds"] > 0 and body["keep_bytes"] > 0 and isinstance(body["ok"], bool)
     full = stateless_client.get("/api/maps/estimate?preset=render&size=32768").json()
     assert full["seconds"] > body["seconds"] and full["needs_bytes"] > body["needs_bytes"]
+    both = "/api/maps/estimate?preset=render&size=32768&layers=terrain,painted"
+    assert stateless_client.get(both).json()["keep_bytes"] == full["keep_bytes"], "the default"
     dark = stateless_client.get("/api/maps/estimate?preset=render&size=32768&light=false").json()
     assert dark["seconds"] < full["seconds"] and dark["needs_bytes"] < full["needs_bytes"]
     assert stateless_client.get("/api/maps/estimate?preset=render&size=999").status_code == 400
+    retired = stateless_client.get("/api/maps/estimate?preset=render&layers=terrain,satellite")
+    assert retired.status_code == 400, "nothing draws the satellite style now"
 
 
 @pytest.fixture

@@ -47,7 +47,7 @@ from satisfactory_mcp.core.mapprogress import encode_stage
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 #: The layers this command draws, in the order they are cut; ``--layer`` restricts it.
-LAYERS = ("terrain", "satellite", "painted", "relief", "relief-dark")
+LAYERS = ("terrain", "painted", "relief-dark")
 
 #: Exit code of a run whose tiles could not be cut into place.
 CUT_FAILED = 1
@@ -141,7 +141,6 @@ def _draw_layers(
     render_layers(
         layers,
         run.field,
-        run.biome.rgb,
         run.biome.width,
         run.borrow,
         args.size,

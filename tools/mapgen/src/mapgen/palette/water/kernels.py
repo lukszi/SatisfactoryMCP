@@ -1,4 +1,4 @@
-"""The water painters for numba: the terrain and satellite styles' water and the relief's.
+"""The water painters for numba: the terrain style's water and the relief's.
 
 Each one reproduces its numpy reference bit for bit: per pixel the float32 operations of
 ``shore.water_composite`` and ``relief._water_over`` in their order, the mix by the water's

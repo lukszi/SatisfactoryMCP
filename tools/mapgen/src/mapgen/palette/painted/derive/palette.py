@@ -1,8 +1,9 @@
 """The painted palette a render draws with: its ``derived_keys`` wearing the derived colours.
 
 The colours come from ``targets.derived.json`` when its stamp matches the store, the area map
-and the calibration block, and are derived in the run otherwise. A store without daylight keeps
-every screenshot target. docs/map/calibration.md section 31.
+and the calibration block, and are derived in the run otherwise; a key the derive gate declines
+keeps its screenshot. A store without daylight keeps every screenshot target.
+docs/map/calibration.md section 31.
 """
 
 from __future__ import annotations
@@ -53,13 +54,17 @@ def calibrated_palette(
     if hexes is None:
         hexes = derive(scene_from_store(paint_dir, meta, areas), palette["calibration"]).hexes()
         source = "derived in this run"
-    merged, applied = with_targets(palette, hexes)
+    merged, applied, declined = with_targets(palette, hexes)
     kept: list[JsonValue] = [key for key in keys if key not in applied]
-    print(f"  {len(applied)} derived targets from {source}; {len(kept)} kept their screenshot")
+    print(
+        f"  {len(applied)} derived targets from {source}; {len(kept)} kept their screenshot, "
+        f"{len(declined)} of them by the derive gate"
+    )
     block: JsonObject = {
         "source": source,
         "applied": {k: hexes[k] for k in applied},
         "kept": kept,
+        "declined": {k: {"derived": hexes[k], "why": why} for k, why in declined.items()},
         "stamp": stamp,
     }
     return merged, palette_digest(merged), block

@@ -32,12 +32,11 @@ def stub_field(height_m: np.ndarray, water_m: np.ndarray | None = None, grades=N
     )
 
 
-def relief_ground(layer: str, biome=None, names=()) -> ReliefGround:
-    """A relief layer's ground over a 64x64 ramp from 0 to 100 m."""
+def relief_ground(layer: str, biome=None, names=(), palette=None) -> ReliefGround:
+    """A relief layer's ground over a 64x64 ramp from 0 to 100 m; ``palette`` replaces its own."""
     ramp = np.linspace(0.0, 100.0, 64, dtype=np.float32)
-    return ReliefGround(
-        RELIEF_PALETTES[layer][0], stub_field(np.tile(ramp, (64, 1))), biome, list(names)
-    )
+    style = RELIEF_PALETTES[layer][0] if palette is None else palette
+    return ReliefGround(style, stub_field(np.tile(ramp, (64, 1))), biome, list(names))
 
 
 def painted_ground_stub(n: int) -> SimpleNamespace:

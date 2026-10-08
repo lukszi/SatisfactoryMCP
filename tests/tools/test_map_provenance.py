@@ -10,12 +10,11 @@ from __future__ import annotations
 import json
 
 from mapgen.palette.styles import (
-    BIOME_COLOURS,
     LAYER_STYLES,
     PALETTE_DIR,
     RAMP_STOPS,
-    SATELLITE_PALETTE,
     TERRAIN_PALETTE,
+    WATER_DEEP,
     load_palette,
 )
 from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
@@ -59,7 +58,7 @@ def test_palettes_are_files_and_the_digest_is_their_content():
         assert palette == json.loads((PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8"))
     # The constants the painters draw with are the file's numbers, not a copy of them.
     assert RAMP_STOPS.tolist() == TERRAIN_PALETTE["ramp_stops"]
-    assert BIOME_COLOURS["Area_Swamp"] == tuple(SATELLITE_PALETTE["biome_colours"]["Area_Swamp"])
+    assert WATER_DEEP.tolist() == TERRAIN_PALETTE["water_deep"]
 
 
 def test_a_directory_digest_is_order_free_and_moves_with_any_file():

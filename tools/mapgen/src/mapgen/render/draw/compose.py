@@ -25,7 +25,7 @@ from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater, water_sources
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M
 from mapgen.render.draw.drawpool import PIECE_COLS, bands_held, in_order
-from mapgen.render.draw.painting import LayerJob, layer_job, paint_band
+from mapgen.render.draw.painting import LayerJob, layer_job, piece_bytes
 from mapgen.render.ground.lift import lattice_edge
 from mapgen.render.ground.stencils import band_halo, piece_halo
 from mapgen.render.ground.surface import (
@@ -143,7 +143,6 @@ class DrawPass:
 def render_layers(
     layers: Sequence[str],
     field: hf.Field,
-    biome_rgb: U8Grid | None,
     biome_width: int,
     borrow: tuple[I8Grid, U8Grid],
     size: int,
@@ -165,7 +164,7 @@ def render_layers(
     settled instead, and nothing is returned.
 
     ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. ``painted`` is
-    the painted layer's ground and ``relief`` each relief layer's. ``unlit`` draws the sun
+    the painted layer's ground and ``relief`` the relief layer's. ``unlit`` draws the sun
     term flat; the ground's ``surface`` receives the heights and land weight the seabed rule
     draws, once, whatever the layers. ``threads`` pieces are drawn at once, to the same bytes
     at any count and any width; ``bands`` takes the bands in order. The rest:
@@ -184,8 +183,6 @@ def render_layers(
         layer_job(
             layer,
             sources,
-            size,
-            biome_rgb,
             biome_width,
             painted if layer == "painted" else None,
             reliefs.get(layer),
@@ -356,6 +353,5 @@ def _draw_piece(
     out = (slice(0, rows.stop - rows.start), slice(cols.start - box.c0, cols.stop - box.c0))
     band = held[top]
     for job in draw.jobs:
-        rgb = paint_band(job, grid, surfaces[job.seabed])
-        band[job.layer][out] = np.clip(rgb[rows.kept, cols.kept], 0, 255).astype(np.uint8)
+        band[job.layer][out] = piece_bytes(job, grid, surfaces[job.seabed])
     return owed

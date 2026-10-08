@@ -305,7 +305,7 @@ def test_the_river_cache_is_keyed_on_build_and_reader(tmp_path):
 def test_recipe_7_is_current_and_reads_the_river_splines():
     assert RECIPE == versions.RENDER_RECIPE_CURRENT == 7
     assert versions.READER_VERSIONS["river_splines"] == 1
-    # the relief styles draw inland water opaque, so they need no minimum depth
-    for layer in ("terrain", "satellite", "painted"):
+    # the relief style draws inland water opaque, so it needs no minimum depth
+    for layer in ("terrain", "painted"):
         optics = SHORE_OPTICS[layer]
         assert optics["river"]["min_depth_m"] > 0 and optics["river"]["bank_m"] > 0, layer

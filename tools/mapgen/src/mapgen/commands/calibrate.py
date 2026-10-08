@@ -16,25 +16,24 @@ import time
 from pathlib import Path
 
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
-from mapgen.gamedata.ground.biome import read_biome
+from mapgen.gamedata.ground.biome import area_names, read_biome
 from mapgen.gamedata.ground.paint_store import PAINT_DIR
 from mapgen.gamedata.install import missing_container, open_game
 from mapgen.palette.painted.albedo import load_paint_meta
-from mapgen.palette.painted.calibration import with_derived
-from mapgen.palette.painted.derive.camera import delta_e, lab_of_hex
+from mapgen.palette.painted.derive.gate import gate_hex
 from mapgen.palette.painted.derive.scene import area_grid, scene_from_store
 from mapgen.palette.painted.derive.targets import (
     TARGETS_NAME,
     Derived,
     NoDaylight,
     derive,
-    key_slot,
+    gate_declines,
+    screenshot_target,
     stamp_of,
     targets_json,
 )
 from mapgen.palette.painted.shapes import CalibrationStyle
-from mapgen.palette.styles import PAINTED_PALETTE, biome_lookup
-from satisfactory_mcp.core.jsontypes import to_json_object
+from mapgen.palette.styles import PAINTED_PALETTE
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = ["main"]
@@ -61,18 +60,21 @@ def _parse_args() -> argparse.Namespace:
 
 
 def report(derived: Derived, cal: CalibrationStyle) -> list[str]:
-    """The table: key, derived colour, the palette's screenshot colour, their distance, light;
-    ``*`` marks the keys a render takes derived."""
+    """The table: key, derived colour, the palette's screenshot colour, their distance and its
+    chroma-and-hue part against the gate's allowance, light. ``*`` marks the keys a render takes
+    derived, ``x`` those the derive gate declines."""
     wanted = set(cal.get("derived_keys", []))
-    screenshot = to_json_object(with_derived(cal))
+    declined = gate_declines(cal, derived.hexes())
     lines = [f"E {derived.exposure:.4f} over {derived.texels} bake texels", *derived.notes]
     for t in derived.targets:
-        slot = key_slot(screenshot, t.key)
-        held = slot[0].get(slot[1]) if slot else None
-        now = held if isinstance(held, str) else None
-        gap = f"{delta_e(lab_of_hex(t.hex), lab_of_hex(now)):5.1f}" if t.hex and now else "     "
-        mark = "*" if t.key in wanted else " "
+        now = screenshot_target(cal, t.key)
+        gap = " " * 16
+        if t.hex and now:
+            verdict = gate_hex(t.hex, now)
+            gap = f"{verdict.delta_e:5.1f} {verdict.chromatic:4.1f}/{verdict.allowance:4.1f}"
+        mark = "x" if t.key in declined else "*" if t.key in wanted else " "
         why = f"  ({t.rule.error})" if t.rule.error else ""
+        why += f"  (gate: {declined[t.key]})" if t.key in declined else ""
         lines.append(f"{mark} {t.key:70s} {t.hex or '-':8s} {now or '-':8s} {gap}  {t.light}{why}")
     return lines
 
@@ -102,7 +104,7 @@ def main() -> int:
     if field is None:
         print(f"  no heightfield at {args.field}: the areas are not rehomed offshore")
     grid = meta["grid"]
-    areas = area_grid(biome, biome_lookup(biome)[1], field, (grid["height"], grid["width"]))
+    areas = area_grid(biome, area_names(biome), field, (grid["height"], grid["width"]))
     cal = PAINTED_PALETTE["calibration"]
     try:
         derived = derive(scene_from_store(paint_dir, meta, areas), cal)

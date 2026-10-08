@@ -33,6 +33,7 @@ from .....core.gameassets.pyramid import (
     TILES_DIR_NAME,
     tile_relpath,
 )
+from .....core.gameassets.versions import RETIRED_STYLES
 from .....core.jsontypes import JsonObject, JsonValue
 from .....domain.maps import registry
 from .....domain.spatial import geo
@@ -371,10 +372,10 @@ _LAYER_TOOLS = {
         "tools/gen_map_renders.py, which draws a hypsometric relief map of this world from "
         "the 1 m heightfield in data/local/heightmap/"
     ),
-    "satellite": (
-        "tools/gen_map_renders.py, which draws the same relief coloured from the game's own "
-        "biome raster, from the 1 m heightfield in data/local/heightmap/"
-    ),
+    **{
+        style["layer"]: "an earlier tools/gen_map_renders.py; nothing draws this style now"
+        for style in RETIRED_STYLES.values()
+    },
 }
 
 
@@ -409,7 +410,7 @@ def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Respons
 
     **Every header is that layer's own.** Depth, tile size, corners and build tag are read
     from the sidecar beside the tiles being served, because the layers are generated
-    separately and by different tools -- a regenerated satellite must not invalidate the
+    separately and by different tools -- a regenerated painted layer must not invalidate the
     terrain a browser is holding.
 
     **Cached hard, and stamped with the build.** A tile is immutable for a given cut, so the

@@ -1,4 +1,4 @@
-"""Where the relief styles, the live sun, the calibrated tone and the Titan trees meet.
+"""Where the relief style, the live sun, the calibrated tone and the Titan trees meet.
 
 Synthetic fixtures throughout. docs/spatial-and-map.md sections 28 to 31.
 """
@@ -37,7 +37,7 @@ from tests.support.map_scenes import relief_ground
 
 
 def test_relief_drawn_unlit_carries_no_sun_term():
-    ground = relief_ground("relief")
+    ground = relief_ground("relief-dark")
     rows = np.arange(16, dtype=np.float32)[:, None] * np.ones((1, 16), np.float32)
     slope = 50.0 + 0.6 * (8.0 - rows)
     lab = np.full((16, 16, 3), 0.6, np.float32)
@@ -58,7 +58,7 @@ def test_the_shader_tone_is_the_painted_style_s_own_and_inverts():
     shaded = shader_tone(y, t["knee"], t["white"])
     back = shader_untone(shaded, t["knee"], t["white"])
     np.testing.assert_allclose(back, y, atol=2e-4)
-    assert shader_light("relief")["tone_knee"] == 1.0
+    assert shader_light("relief-dark")["tone_knee"] == 1.0
 
 
 def test_a_bright_painted_pixel_survives_a_flat_relight():
@@ -83,13 +83,15 @@ def test_painted_keeps_the_default_sun_on_a_mesh_only_it_draws_in_the_water():
     z, sp, weight, kept = _bowl()
     sea = np.full(z.shape, OCEAN_LEVEL_M, np.float32)
     flat = np.float32(np.sin(np.radians(SUN_ALTITUDE_DEG)))
-    np.testing.assert_array_equal(painted_ndl(z, sp, False, (weight, kept, sea)), sun_dot(z, sp))
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, (None, None, sea)), flat)
+    np.testing.assert_array_equal(
+        painted_ndl(z, sp, False, (weight, kept, sea, None)), sun_dot(z, sp)
+    )
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, (None, None, sea, None)), flat)
     dry = np.full(z.shape, np.nan, np.float32)
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, kept, dry)), flat)
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, kept, dry, None)), flat)
     rock = np.where(kept > 0, MESH_ROCK, 0).astype(np.uint8)
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, rock, sea)), flat)
-    got = painted_ndl(z, sp, True, (weight, kept, sea))
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, rock, sea, None)), flat)
+    got = painted_ndl(z, sp, True, (weight, kept, sea, None))
     assert got[2, 2] == pytest.approx(flat), "the sea around it is the pyramid's"
     north_east, south_west = got[28, 52], got[52, 28]
     assert north_east > flat > south_west, "the noon sun in the south-west lights the far wall"

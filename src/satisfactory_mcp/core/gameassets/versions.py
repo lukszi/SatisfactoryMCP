@@ -22,6 +22,7 @@ __all__ = [
     "RENDER_RECIPES",
     "RENDER_RECIPE_CURRENT",
     "RENDER_RECIPE_KERNEL_ONLY",
+    "RETIRED_STYLES",
     "STYLES",
     "ArtworkRecipe",
     "HeightfieldNeed",
@@ -98,6 +99,7 @@ READER_VERSIONS = {
     "biome_raster": 1,
     "artwork_sheet": 1,
     "cliff_geometry": HEIGHTFIELD_GENERATOR_VERSION,
+    "crown_sprites": 1,
     "render_meshes": 4,
     "river_splines": 1,
     "rock_families": 3,
@@ -147,16 +149,20 @@ ARTWORK_RECIPES: dict[int, ArtworkRecipe] = {
 STYLES: dict[str, Style] = {
     "terrain-hypsometric": {"label": "terrain", "name": "Terrain", "layer": "terrain",
                             "version": 9, "tone": "light"},
-    "satellite-biome": {"label": "satellite", "name": "Satellite", "layer": "satellite",
-                        "version": 9, "tone": "light"},
-    "satellite-painted": {"label": "game-painted", "name": "Painted", "layer": "painted",
+    "satellite-painted": {"label": "game-painted", "name": "Satellite", "layer": "painted",
                           "version": 20, "tone": "light"},
-    "relief-muted": {"label": "relief", "name": "Relief", "layer": "relief", "version": 7,
-                     "tone": "light"},
-    "relief-night": {"label": "relief dark", "name": "Relief (dark)", "layer": "relief-dark",
+    "relief-night": {"label": "relief dark", "name": "Relief", "layer": "relief-dark",
                      "version": 7, "tone": "dark"},
     "artwork": {"label": "artwork", "name": "Game map", "layer": "map", "version": 1,
                 "tone": "light"},
+}  # fmt: skip
+
+#: Styles no longer drawn, whose maps already on disk keep a name and a tone until deleted.
+RETIRED_STYLES: dict[str, Style] = {
+    "satellite-biome": {"label": "satellite", "name": "Biome (old)", "layer": "satellite",
+                        "version": 9, "tone": "light"},
+    "relief-muted": {"label": "relief", "name": "Relief light (old)", "layer": "relief",
+                     "version": 7, "tone": "light"},
 }  # fmt: skip
 
 #: The tone of no imagery at all: the page's own dark sea.

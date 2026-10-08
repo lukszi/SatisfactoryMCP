@@ -12,15 +12,49 @@ files they are the map's ([the document set](../../DESIGN.md#the-document-set)).
 
 The page's first base map was the game's own artwork, cut out of the reader's install by
 `mapgen artwork`. The 1 m heightfield made a second kind possible, and the game ships the
-ingredient for a third. The drawn layers are `terrain`, `satellite`, `painted` (section 27),
-`relief` and `relief-dark` (section 28); `/api/maptiles/{layer}/{z}/{x}/{y}` is how a client
-asks for one.
+ingredient for a third. The drawn layers are `terrain`, `painted` (section 27) and
+`relief-dark` (section 28); `/api/maptiles/{layer}/{z}/{x}/{y}` is how a client asks for one.
+Until 2026-10-08 there were two more, `satellite` and `relief` ("Three drawn layers" below).
 
 **`terrain`** is the hypsometric map: a green→olive→tan→rock→snow ramp over the 1st..99.5th
 height percentile, a north-west hillshade at 45°, and water tinted by its own depth. The colour
 is the height and nothing else.
 
-**`satellite`** is the same relief with the colour coming from the game's biome raster.
+**`satellite`** was the same relief with the colour coming from the game's biome raster. The
+painted layer still reads that raster ("The game ships biome geometry after all"); the
+palette and the noise after it were the satellite's own, and are kept here as its record.
+
+### Three drawn layers (2026-10-08)
+
+The map keeps three drawn layers: `terrain`, `painted`, shown as "Satellite", and
+`relief-dark`, shown as "Relief". The biome-coloured `satellite` layer (style
+`satellite-biome`) and the light relief (`relief`, style `relief-muted`) are no longer drawn.
+
+- **Removed:** both palettes, the satellite painter (`satellite_colours`, the noise and its
+  sampler, the blurred biome colour field), both layers from `mapgen renders --layer`, the
+  generate presets and their estimates, the server's layer list and the page's switcher and
+  form. A job or an estimate naming either layer is refused.
+- **Kept:** the biome raster is still read, its pin still scored against the artwork and the
+  region table still checked, whenever the painted layer is drawn: it gives each area its
+  tint and calibration targets (`area_names` in `gamedata/ground/biome.py` names each index).
+  The painted layer's `sources.biome_raster` no longer records the satellite palette
+  (`palette`, `palette_blend_texels`, `palette_fallback`). The relief painter keeps the
+  options only the light palette set (biome tints, the three suns, the shore stroke), and the
+  terrain style's water keeps the wet band and the foam only the satellite set; the tests
+  draw them with palettes of their own.
+- **Default:** a job or an estimate that names no layers draws terrain and painted, and the
+  Maps tab ticks both. Where the paint input is missing the page queues it first, so the
+  default render works on a fresh install (maps_contract.md §6.2).
+- **Ids and names:** the layer ids, map-type ids and cache tags are unchanged; only the names
+  moved, `STYLES[id].name` in `core/gameassets/versions.py`. Maps already drawn in the two
+  styles stay registered, listed and served until deleted, named from `RETIRED_STYLES`:
+  "Biome (old)" and "Relief light (old)", so no two styles share a name. They are offered no
+  re-render and no newer palette, since nothing draws them now.
+- **Pixels:** the three layers' pixels are the same bytes as before.
+- **What the two cost.** Drawn alone at full size with the kernels, the satellite layer took
+  about 205 s and the light relief about 235 s of the five layers' 1,555 s (294 and 323 s on
+  numpy; section 41, "Measured"); at 2048 about 1 s each. Those figures predate the one pass,
+  which draws the shared ground once.
 
 ### The game ships biome geometry after all
 
@@ -319,7 +353,9 @@ counts each cull, `excluded_mesh` among them: 376 placements on build 502094, th
 changes is the grid they are pointed at, its own 32768², 0.229 m to the texel, so a difference
 between the render and the field is one of spacing rather than of rasteriser. About 216 M
 triangles over 20,233 placements are rasterised once, banded at 256 rows, into the direct cache
-(a zstd band store, section 39) that every layer draws from. Two rules make that draw smooth.
+(a zstd band store, section 39) that every layer draws from: the bands on threads and the
+scan compiled since 2026-10-08 (section 41, "The raster passes"). Two rules make that draw
+smooth.
 
 ### One: the kernel has to interpolate the lattice, not the fold it produced
 
@@ -1020,8 +1056,10 @@ reading 18.5 GB from a hard disk; that is an estimate from the read rates above,
 - An older build of the generator does not find the raw files in a band-store cache, so it
   misses and rebuilds raw. The `.bands` files stay beside them until the next band-store run
   or a cache clear removes them.
-- The job estimate's cache term, `CACHE_BYTES_FULL` in `domain/maps/presets.py`, is 1.0 GB at
-  32768, scaled by area like the rest.
+- The job estimate's cache term, `CACHE_BYTES_FULL` in `domain/maps/presets.py`, is 2.23 GB at
+  32768, scaled by area like the rest: the caches a full render kept on 2026-10-08. The
+  overhangs' underside and floor planes, 1.25 GB of the direct cache, came after the 0.93 GB
+  above.
 - A cache the run cannot delete at its end, because a file in it is still open, is named:
   "could not remove <dir>: a file in it is still open".
 - The light's scratch (section 29, "Scratch") is not in the band store. It is not a cache:
@@ -1045,7 +1083,7 @@ another.
   were tried in the research and changed pixels, so the band and block geometry stay.
 - `render_layers` builds what every band shares, once, before any band starts: the ground's
   sources (`_ground_sources`: the arguments, the column taps, the water planes) and each
-  layer's job (`painting.layer_job`: its painter's inputs, the satellite noise). The pieces
+  layer's job (`painting.layer_job`: its painter's inputs and their column taps). The pieces
   only read them.
 - `_draw_piece` writes its own pixels of every layer's sheet. From a piece's thread nothing
   else shared is written.
@@ -1123,8 +1161,19 @@ done. Every piece of a band reads the band's columns it needs out of the same de
 cutting them before they are joined (`BandArray._span`), so a piece copies its own columns
 only. At 32768 a band is 64 pieces, so 8 threads hold 4 decoded bands where they held 18
 before the pieces; at 2048 a band is 4 pieces, and they hold 7. One stored band of every
-plane the painted layer reads comes to about 160 MB at 32768, and about 125 MB for the other
-layers.
+plane the painted layer reads comes to 315 MB at 32768, and 277 MB for the other layers
+(`STORED_BAND_BYTES`).
+
+Those are the planes the draw's threads decode, recorded on every band read of a lit 2048
+render, once with terrain and relief-dark and once with the painted layer too (2026-10-08),
+and one band of each taken at 32768 wide. Without the painted layer the pass reads 12 planes,
+33 bytes a pixel: the direct raster's height, coverage, underside and floor, the top's solid
+height and coverage, its arches' coverage and underside and its own direct height and
+coverage, and the meshes' height and class. The painted layer adds the direct and mesh
+families and the Titan trees' height and class at half width. The 160 MB and 125 MB measured
+before (2026-10-07, from the peak commit of windowed draws, "Column pieces" below) came
+before the overhangs and arches added four of those planes, 13 bytes a pixel, about 109 MB
+a band (light-and-crowns.md section 29, "Arches as spans").
 
 ### How many threads
 
@@ -1140,8 +1189,8 @@ whole size when it is allocated: with other work running, the commit ran out at 
 width (`PIECE_BYTES`); a pass paints its layers in turn over one ground, so a piece of it
 costs its dearest layer's, and 0.015 GB more (`SEABED_BYTES`) for the second ground of a pass
 that draws the painted layer and another (`piece_bytes`). The decoded bands come on top,
-about 160 MB a band with the painted layer and 125 MB without at 32768 wide ("The band
-stores"). Those figures come from the peak commit of windowed draws at 1 and 8 threads
+315 MB a band with the painted layer and 277 MB without at 32768 wide ("The band stores").
+The pieces' figures come from the peak commit of windowed draws at 1 and 8 threads
 ("Column pieces" below); before the pieces, one more band in flight cost 1.9 to 4 GB at full
 width. Memory no longer holds the default back on any machine that can hold a sheet. `1`
 draws the pieces in turn. The run prints the count, and every layer's `meta.json` records it
@@ -1155,7 +1204,7 @@ as `render.draw_threads`, beside `cut_workers`.
 | The field | Its planes are decoded when it loads; the water planes are read in `_ground_sources`, before any band |
 | A piece's ground | Its own piece's only. Every layer's painter reads it, and its arrays are read-only, so a painter that wrote to one would fail rather than change what the next layer reads |
 | `PaintedGround`, `ReliefGround`, `RiverWater`, `OpenSea` | Built before the draw. The crowns' calibrated sprites, the water classes and the family targets are written in setup, never by a band |
-| Random numbers | The satellite noise comes from a seeded generator, once per run in `layer_job`; the moss patches hash each pixel's position |
+| Random numbers | None drawn per band: the moss patches hash each pixel's position (the retired satellite's noise came from a seeded generator, once per run in `layer_job`) |
 | numpy's error state | Per thread since numpy 2; the band code sets no warnings filters, which are process-wide |
 | Palettes and colour tables | Module constants, read only |
 | The sheets and the light's surface | Each piece writes only its own pixels of the sheets; the caller's thread writes the light's surface, a band at a time in order |
@@ -1280,7 +1329,7 @@ bands at a time, where they drew one band each before.
   thinning, and the regime table's float sums, see the band as they did, so the sidecars'
   numbers are the same, and the seam trace needs no halo of its own.
 - **Nothing is computed from a piece's extent.** Every step but the stencils is a function
-  of a pixel's own place: the samplers gather by column, the noise and the moss patches hash
+  of a pixel's own place: the samplers gather by column, the moss patches hash
   positions, the crowns and the waterfalls are placed from each pixel's centre, and the void
   and the wet-pixel shortcuts decide per piece only to skip work that would leave a pixel as
   it was.
@@ -1456,9 +1505,10 @@ and 32 on the crowns at a few hundred steps each, and the sky view. The draw spe
 fifth of its terrain time in the sampler's gathers. Each of them now also exists as a numba
 kernel: the same arithmetic, compiled, a row at a time, with none of the temporary arrays
 numpy makes for every step. So do the crown stamps and the water of every style, the
-painters that took the most of the draw ("The painters", below). The numpy code stays where
-it was, as the reference the kernels are proven against and the path a machine without numba
-runs.
+painters that took the most of the draw ("The painters", below), and, since 2026-10-08, the
+max-Z scan the direct, top, mesh and Titan caches are rasterised with ("The raster passes",
+below). The numpy code stays where it was, as the reference the kernels are proven against
+and the path a machine without numba runs.
 
 ### The switch
 
@@ -1468,8 +1518,9 @@ runs.
   the GPU ("On the GPU", below).
 - The two paths write the same bytes, so nothing a render writes records which one ran.
 - A kernel module (`lighting/kernels.py`, `lighting/spans/kernels.py`, `terrain/kernels.py`,
-  `palette/water/kernels.py`, `palette/painted/kernels.py`) is imported only once the switch
-  says kernels, so the reference never loads numba. A test holds that.
+  `terrain/maxz/kernels.py`, `palette/water/kernels.py`, `palette/painted/kernels.py`) is
+  imported only once the switch says kernels, so the reference never loads numba. A test
+  holds that.
 - The light's spawned processes inherit the switch with the environment.
 
 ### Why the bits are the same
@@ -1680,12 +1731,16 @@ another signature's code; that race is why each signature now has a file of its 
   optics, the carpet, the sunk crowns and the opaque water, each on bands from all wet to all
   dry, mixed both ways; and float64 planes, which run the reference.
 
-### On the GPU (2026-10-07)
+### On the GPU (2026-10-07; the spans and the block on the device, 2026-10-08)
 
-`mapgen renders --gpu` runs the light's horizon march and sky view as CUDA kernels, in each
-light process. Everything else runs as above: numba's kernels where they exist, numpy
-elsewhere. The CPU path stays the default and the reference, and the tiles are the same
-bytes either way.
+`mapgen renders --gpu` runs the light's marches and sky views, plain and with spans, as CUDA
+kernels in each light process, and keeps a block's planes on the device from its first
+direction to its last, the rules after each march included ("A block on the device", below).
+A block's tiles then encode on threads ("The encode"). Since 2026-10-08 it also runs the
+draw's relight, arch FXAA and terrain pieces in the run's own process ("The draw on the GPU",
+below), and the coral footprints' two loops there too. Everything else runs as above:
+numba's kernels where they exist, numpy elsewhere. The CPU path stays the default and the
+reference, and the tiles are the same bytes either way.
 
 - **The switch.** `--gpu` sets `MAPGEN_KERNELS=cuda`, which the light's processes inherit;
   setting it by hand does the same. `jit.gpu_on()` says CUDA where the switch says `cuda`
@@ -1698,16 +1753,17 @@ bytes either way.
 - **The log.** Nothing a run writes says where its light was marched: the light's
   `meta.json` and the sidecars are a numba run's, timings apart. So each light process counts
   its march and sky-view calls by where they ran (`gpu.ran`), each block hands its count back
-  with its tiles, and a `--gpu` bake prints the sum once its block rows are in. At 2048, one
-  block of 32 ground and 32 crown horizons and a sky view: `light: horizon and sky-view calls
-  65 on NVIDIA GeForce RTX 3080; 0 ran on numba, the device out of memory` (measured before
-  the crowns became spans, which numba marches; below, "Spans"). A run without `--gpu` prints
-  no such line.
+  with its tiles, and a `--gpu` bake prints the sum once its block rows are in. A block with
+  ground spans and crowns counts its 64 marches, its sky view and its canopy's: `light:
+  horizon and sky-view calls 66 on NVIDIA GeForce RTX 3080; 0 ran on numba, the device out of
+  memory` for the one block at 2048. A run without `--gpu` prints no such line.
 - **What it needs.** The `gpu` extra: CuPy (`cupy-cuda12x`) and NVRTC from
   `nvidia-cuda-nvrtc-cu12`, both pinned, on Windows or Linux on x86-64, and an NVIDIA
-  driver. No CUDA toolkit. CuPy compiles `lighting/gpu.cu` once a process and keeps the
-  compiled code on disk. The type gate reads CuPy through the stub in `typings/cupy/` and
-  needs no `gpu` extra.
+  driver. No CUDA toolkit. NVRTC compiles each `.cu` file once, with `jit.CUDA_OPTIONS`, and
+  the cubin is kept in CuPy's kernel cache directory (`CUPY_CACHE_DIR`, else
+  `~/.cupy/kernel_cache`) under a name that digests the source, the options, the device and
+  NVRTC's version (`jit._cubin`). The type gate reads CuPy through the stub in
+  `typings/cupy/` and needs no `gpu` extra.
 - **Why the bits are the same.** Each thread does for its pixel what `lighting/kernels.py`
   does for one element of a row: the same float32 operations, in the same order, from the
   offsets, fractions and scales numpy works out (the rules above). NVRTC compiles with
@@ -1715,21 +1771,72 @@ bytes either way.
   100,000 such sums left 15,734 different without the option and none with it. Division,
   the square root and subnormals are IEEE's (`--prec-div`, `--prec-sqrt`, `--ftz=false`).
   The arctangent and the degrees stay in numpy, as every transcendental does.
+- **Subnormals (2026-10-08).** CuPy's own compile appends `-ftz=true` after the options it is
+  given, and NVRTC takes the last: `--ftz=false` never held, and the kernels flushed
+  subnormals to zero (a probe: `1e-20 * 1e-20` gave 0 on the device against numpy's `1e-40`).
+  `jit` now runs NVRTC with the options as they are and loads the cubin itself
+  (`RawModule(path=...)`); the probe gives numpy's bits, and a test holds it. No test or gate
+  had met a subnormal, so no output moves.
 - **What still differs, and cannot show.** A NaN the GPU makes carries CUDA's one bit
   pattern, where x86 keeps the payload of the NaN it came from. None arose in the tests, and
-  every reader of a horizon rounds it to a byte, where the two agree.
-- **Spans** take numba's span march: the CUDA march is the plain one, which a block with no
-  span in its window runs.
+  every reader of a horizon rounds it to a byte, compares it or maps it to 0, where the two
+  agree.
+- **Spans (2026-10-08).** The span march and the sky view with spans have CUDA twins of
+  numba's (`lighting/spans/gpu.cu`), a thread a pixel. A thread visits a span sample where
+  the sample's four pixels hold a span, the quad `spans.SpanRuns` is cut from, so it visits
+  what numba's runs visit; a row with no span within reach skips the test, as numba's does.
+  Python's `min` and `max` keep the first of equals, and so do the twins. The underside is a
+  plane the kernels read per pixel, never a constant, so an underside per species changes no
+  kernel.
+- **A block on the device (2026-10-08).** `spans/bake.horizon_cells` makes each direction's
+  cells with one set of operations (`CellOps`): the host's (numpy, and numba's kernels) or the
+  device's (`lighting/spans/device.py`). On the device a block's heights, or its ground and
+  crown span surfaces, are uploaded once; per direction the march, the band rules of
+  `march._finish`, the holes' fill (`holes.fill_holes`, by each pixel's nearest index), the
+  folded horizon (`path_horizon`) and the crown cell's test run as kernels
+  (`lighting/spans/cells.cu`), and the two cells come back to the host for their bytes. The
+  arctangent and the degrees run in numpy between the march and the rules after it: on the
+  horizon whole, and on a band's edges only where it floats. numpy's float32 arctangent and
+  degrees give an element what they give it in any array (4.2 million values over nine
+  decades, shifted and subsampled six ways: every bit the same), so the floating pixels alone
+  give `_finish`'s bits. `np.maximum`, `np.minimum` and `np.clip` keep the NaN rules of their
+  scalar loops; the signed zero of "Why the bits are the same" can meet them and cannot show.
+  The bands of a cell come back only where the bake reads them, the default sun's four cells
+  (`wanted`); every cell with a band brings back where it stores the band folded in
+  (`band_in`, a byte a pixel), which sets its atlas's WebP quality (section 29).
 - **The coarser levels' refold** (`lighting/refold.cu`, 2026-10-08, section 29 "Coarser
   levels") runs on the device too, a thread a texel and direction, in the light processes. The
   run's own process refolds the coarser levels with the numpy reference, the same bits, so it
   still opens no CUDA context. There is no numba twin: off the GPU the reference runs, and a
   device out of memory falls back to it.
-- **Memory.** A call uploads its rasters and the steps, marches, reads the result back and
-  hands the device memory back. One the device has no memory for runs numba's kernel, with
-  the same bits. A light process with the GPU imports CuPy and opens a CUDA context: 0.65 GB
-  more commit (0.33 GB working set) and 0.19 GB of device memory, so `light_workers()`
-  counts `LIGHT_GPU_BYTES`, 0.7 GB, more a process.
+- **The coral footprints** (2026-10-08) have two kernels of their own,
+  `palette/water/footprints/gpu.py` and `footprints.cu`: the land plane's marks, a thread a
+  texel once a run, and each piece's reading of the plane, a thread a pixel (section 27,
+  "Whole footprints"). The numpy in `footprints/reference.py` is their reference: integer
+  compares, the maximum, and three float32 divisions and a subtraction in its order. Unlike
+  the light's, they run in the render's own process and its draw threads, so a `--gpu` run
+  opens a CUDA context there too. The whole plane at full size takes 12.2 s against 38.0 s;
+  a piece's reading, 288 by 544 pixels, 0.54 ms against 0.48 ms, which is noise beside the
+  piece's draw.
+- **Out of device memory.** A block that finds no room to upload, or runs out at a direction,
+  makes the directions left with the host's operations, whose marches still go to the device
+  a call at a time and, with no room for one either, to numba's kernels: the same bits each
+  way, each march counted where it ran.
+- **Lanes and memory.** Every light process with the GPU opens its own CUDA context. A block
+  holds a lane while its horizons and sky views are made (`lighting/lanes.py`,
+  `DEVICE_LANES = 3`), so at most three blocks hold planes at once, however many processes
+  bake: a block at 16384 peaks at 0.50 GB in CuPy's pool, at 8192 0.47 GB, at 32768 about
+  0.65 GB by the planes' area. A context reserves stack for every thread the device can hold;
+  the kernels here keep none, so a light process sets 64 bytes a thread (`gpu.STACK_BYTES`)
+  where CUDA's default is 1 KB: 0.10 GB a context, not 0.19 (`nvidia-smi`, one process, 191
+  MB against 97 MB). A light process with the GPU also adds 0.65 GB of commit (0.33 GB
+  working set), so `light_workers()` counts `LIGHT_GPU_BYTES`, 0.7 GB, more a process.
+- **The encode.** With the marches on the device, encoding a block's 512 WebP files was
+  three quarters of its time. libwebp lets go of the GIL while it encodes (16 atlases of
+  1024 × 1024 in 4.41 s on one thread, 0.75 s on eight, the same bytes), so with `--gpu` a
+  block's tiles encode on threads (`lighting/encoding.py`): the cores a block row leaves each
+  of its blocks, at most eight, beside the block's default-sun terms. Without `--gpu` a block
+  encodes on one thread before its terms, as before.
 
 **Measured** (build 502094, RTX 3080; the machine shared, its CPU about half busy, no render
 lock: timings wait for the round's one exclusive run). One full-size light block, the bench of
@@ -1746,6 +1853,49 @@ transfers (3.4 ms to upload a raster, 3.9 ms to read the horizon back). numpy's 
 degrees after it take 53 ms, so they are now most of a horizon's cost. The crowns' march is
 short (its fade ends at 80 m), and there the transfers cost what numba's march does.
 
+**Measured, the block on the device** (2026-10-08, RTX 3080, a Ryzen 9 9950X3D; the machine
+shared, no render lock). One block of the surfaces a painted 8192 and 16384 render captured
+(4096 native pixels, 2048 at half resolution with the march's halo, ground spans and crowns,
+the 8192 block on the sheet's edge with holes), baked whole by `stage.bake_block` in one
+process, seconds:
+
+| Block | numba | spans on CUDA a call at a time | the block on the device | and its encode on 8 threads |
+| --- | --- | --- | --- | --- |
+| 8192, rows 4096, columns 0 (82 steps a march) | 108 | 112 | 65 | |
+| 16384, rows and columns 8192 (about 150 steps) | 196 | | 47 | 18 |
+
+numba's 8192 block spent 31 s in its 64 span marches, 20 s in numpy after them (the band
+rules with their arctangent, the fill, the fold) and 41 s encoding. At 16384 on the device
+the marches take under a second together; what stays on the host is numpy's arctangent
+(1.4 s a block), the atlas's bytes and the coarser levels' source (about 2 s), the default
+sun's terms (3.2 s), the normals (1.0 s), the crown planes (1.2 s) and the encode (35 s on
+one thread, 5 to 6 s on eight). Every comparison above gave the same bytes: the block's 512
+tile files, its terms and the coarser levels' four sources.
+
+**Measured, whole renders** (2026-10-08, the bench kit's `full`: all five layers, lit, the
+raster caches reused and the light baked fresh, each run under the exclusive render lock;
+master at 53144ad7 against this work). The light is the bake's own seconds, from its first
+block row to the installed pyramid; "after the draw" is the part of it the run waits for
+once the draw is done; the device memory is the device's peak over its use before the run.
+
+| Sheet | Run | Wall, s | Light, s | After the draw, s | Light processes | GPU busy in the light | Device memory |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 8192 | master, `--gpu` | 388.5 | 129.8 | 110.8 | 14 | 0.4% | 0.76 GB |
+| 8192 | `--gpu` | 315.9 | 54.4 | 32.3 | 14 | 3.9% | 1.28 GB |
+| 16384 | master, `--gpu` | 724.7 | 401.4 | 214.0 | 12 | another job's | another job's |
+| 16384 | `--gpu` | 495.7 | 211.7 | 48.0 | 13 | 7.4% | 1.93 GB |
+
+- Other work held under one core in the three runs with every column filled. In master's
+  16384 run it held 4.7 cores and another process the GPU at 40 to 70%; its repeat, busier
+  still, took 474.8 s of light, and the faster is shown.
+- At 16384 the light's tail fell from 214 s to 48 s: the last block row waits for the draw's
+  end, and its blocks take about 18 s each rather than about 200.
+- The GPU stays mostly idle: it does a block's marches in about a second, and the rest of a
+  block is the host's (the arctangent, the encode, the terms).
+- Without `--gpu` the light is master's. Back to back under the same load (seven cores of
+  other work and another process on the GPU), this work and master baked the 8192 light in
+  170.1 s and 170.0 s.
+
 **The painters stay on the CPU.** A CUDA twin of `water_composite` gave the numba kernel's
 bits, and took 1.36 ms against 1.81 ms for a 288 by 544 piece, and 60 to 93 ms against 73 to
 101 ms for a whole band 32,768 wide: moving its planes to the device and back costs what the
@@ -1755,7 +1905,8 @@ against 3.0 to 7.1 ms for numba's whole call. So a GPU painter is worth at most 
 more draw thread, while the draw runs 8 that one GPU behind one bus would have to serve; and
 the four painters with kernels are under a tenth of a pass (2.22 s of 24.9 s on one thread,
 "The painters" above). A painter gains only when the band's planes stay on the device from
-one step to the next, which is a different draw.
+one step to the next, which is a different draw. The terrain's piece is now drawn that way
+("The draw on the GPU", below).
 
 **Checked.**
 
@@ -1764,7 +1915,8 @@ one step to the next, which is a different draw.
   number of thread blocks and a device out of memory. It also holds the switch, the flag and
   its refusal, the light's worker count, the count of where each call ran and the bake's
   line, and that CuPy loads only under `cuda`. On a machine without numba, CuPy or a device
-  the kernel tests skip and say which.
+  the kernel tests skip and say which. `tests/mapgen/test_mesh_footprints.py` does the same
+  for the footprints' two kernels, over fine and coarse folds and a device out of memory.
 - G1 at 2048 (all five layers, lit), with `--gpu` and without, side by side: all 1,125 tiles
   the same bytes as each other and as the pixel-batch baseline, and the six sidecars the same
   apart from their timings. Against that baseline both also add the light's `key`, which the
@@ -1779,16 +1931,331 @@ one step to the next, which is a different draw.
   device out of memory`, 65 a block. 2048 bakes one block and G2 draws unlit, so this is the
   check over several blocks; the full-size light's 64 blocks are first checked by the full
   render after the round.
+- `tests/mapgen/test_gpu_light.py` (2026-10-08) compares the span march under both fades, on
+  arch decks and on crowns with an underside of their own each, and the sky view with spans
+  at two spacings, with the reference byte for byte; and a block's 64 cells on the device,
+  their degrees, bands and whole horizons, with spans and crowns, with crowns alone, with a
+  patch of holes and with nothing but holes. It runs a block out of device memory at its fifth
+  direction with room for a call and without, and holds the counts, the lanes, the encode's
+  bytes on threads and that a cubin keeps subnormals.
+- G1 at 2048 (2026-10-08, all five layers, lit, rasters rebuilt), without `--gpu` and with
+  it, each against the stories' baseline and against each other: all 1,125 tiles the same
+  bytes, the light's 170 among them, and the six sidecars the same apart from their timings.
+  The `--gpu` run logged `light: horizon and sky-view calls 66 on NVIDIA GeForce RTX 3080; 0
+  ran on numba`, and its light took 9.5 s against 26.0 s.
+- The whole light of the 8192 surface, baked by the pool with its lanes and threads: its
+  2,730 tile files and its terms the same SHA-256 with `--gpu` as without.
+
+### The raster passes (2026-10-08)
+
+The direct, top, mesh and Titan caches are `MaxZRaster`'s work, and until this date it ran on
+one core: 2,175 s of a cold 32768 render on build 502094 (direct 1,605, meshes 359, Titan
+115, top 96) while 31 of the 32 cores idled. Since the overhangs (light-and-crowns.md section
+29, "Arches as spans") the direct pass made three passes over each band, its top, its
+undersides and the floor under them, and each transformed every placement again: about two
+thirds of its time. Three changes, and every cache is the same bytes.
+
+**The scan and the fold on numba** (`terrain/maxz/raster.py`, its kernels in
+`terrain/maxz/kernels.py`). Where the kernels are on, the raster passes rasterise into a
+`KernelRaster` (`max_z_raster`); the field's cliff layer and the crown sprites keep numpy's
+`MaxZRaster`.
+
+- *The same samples.* A triangle is tested at the points of its bucket, `size + 1` square
+  from the corner of its box, and a wide one tile by tile, with numpy's float operations in
+  numpy's order. A Python float meets a float32 array as numpy casts a weak scalar, to
+  float32 first, in the comparisons too.
+- *The same folds.* numpy buffers its candidates and folds them once more than
+  `RASTER_FLUSH` wait, checked after each `add` and after every 16 wide tiles. A fold keeps
+  each texel's highest candidate, of two equal the later (a stable lexsort's last), and NaN
+  over any (it sorts last, and then fails the `>`), and writes a texel only past what it
+  holds. So of two equal heights one fold keeps the later source, two folds the earlier. The
+  kernel counts its candidates as numpy buffers them and folds at the same points; between
+  folds each candidate goes straight into the open fold, per texel its height, source and
+  mark beside the list of texels marked, 11 bytes a texel while it is open. The order of the
+  samples inside one `add` cannot show: one `add` has one source.
+- *Fewer divisions.* A sample is in the triangle when `l1`, `l2` and `l3 = 1 - l1 - l2` are
+  all at least `-1e-6`, `l1` and `l2` each a numerator over the triangle's `den`. IEEE
+  division rounds correctly, so for a fixed `den` the quotient moves with the numerator
+  alone: `n / den >= -1e-6` holds for exactly the numerators past one value. The kernel finds
+  that value once a triangle, stepping from `-1e-6 * den` through the representable floats
+  (`_threshold`, a step or two), and tests both numerators against it with an addition each.
+  A sample that fails it fails numpy's test; one that passes is divided and tested as numpy
+  tests it. On a dense band at 32768, a quarter of the samples get that far and 4% are in.
+- *No buffers.* numpy's scan held a bucket's whole grid of samples in temporaries, the 16 GB
+  peak of the Titan pass at full size.
+
+**A placement's faces once a band** (`terrain/maxz/faces.py`, `rasters.band_placements`).
+The direct band sorts each placement's triangles once for its three passes: those reaching
+the band that face up, all of them where the winding is unknown, which the top and the floor
+draw, and those facing down whose top is high enough over the rock's foot to be an
+underside. They are kept as int32 row numbers. The transform, a 3×3 product per vertex in
+numpy's own BLAS call, is done again for each pass, which costs less than holding a band's
+vertices: holding them, with the faces as int64 triangles and twice the bands in flight, the
+8192 preparation peaked at 12.7 GB against 6.3.
+
+**Bands on threads** (`rasters_banded.in_band_order`, `RASTER_THREADS`). A band's planes
+depend on the triangles that reach it alone, and its folds count its own candidates, so the
+bands of the direct, top, mesh and Titan rasters are rasterised side by side, 16 at a time or
+one a core, and written in order, no more than 16 waiting past the one being written. The
+kernels release the GIL; the Python between them is a few percent of a band.
+
+What did not pay: a row's samples tested into arrays first for the compiler to vectorise,
+with and without the divisions, was a third slower than testing them one by one; a bucket is
+at most 9 samples wide for most triangles, too short a row to vectorise.
+
+#### Measured (2026-10-08, build 502094)
+
+The raster preparation alone at each size (the bench's `rasters` mode: the renders command's
+own functions in its order, the caches empty and numba's compiled code deleted first, so each
+run compiles; about 3.5 s of the direct pass), under the exclusive render lock, master against
+this code:
+
+| Stage, s | 8192, before | 8192, after | 16384, before | 16384, after |
+| --- | --- | --- | --- | --- |
+| sweep and mesh decode | 36.0 | 42.2 | 37.7 | 36.2 |
+| direct | 376.2 | 36.2 | 659.5 | 33.0 |
+| top | 27.5 | 2.6 | 41.1 | 4.8 |
+| meshes | 148.0 | 9.0 | 184.1 | 8.3 |
+| Titan trees, at half size | 16.8 | 3.6 | 33.8 | 3.6 |
+| the whole preparation | 612 | 102 | 963 | 93 |
+| peak commit, GB | 6.68 | 6.66 | 7.61 | 6.86 |
+
+The sweep and the decode are unchanged code; in the 8192 run the sweep had 0.8 of a core.
+At 2048 (the G1 run, beside other work) the direct pass took 34.8 s against 401.2, the
+meshes 15.9 against 178.8, the top 2.3 against 30.2 and the Titan trees 1.9 against 14.2:
+eight bands, so eight threads at most, and a triangle no bigger than a sample costs its
+setup whatever the size. Building G2's 32768 caches took 36.2 s for the direct pass, 14.5
+for the top, 9.1 for the meshes and 2.6 for the Titan trees, against 1,605, 96, 359 and 115
+in the cold full render of the base benchmark.
+
+The full render at 32768, all five layers lit, cold (every cache empty, numba compiling),
+against the base benchmark's: 1,638 s against 4,056, its preparation 351 s against 2,402.
+The four caches took 118 s against 2,176: the direct pass 73.5, 34.5 of it the unchanged
+sweep and mesh decode, the top 15.2, the meshes 21.9 and the Titan trees 7.9. The
+preparation's peak commit fell from 16.1 GB, the Titan pass's temporaries, to 11.4, the
+direct pass's 16 bands. The run's peak is the light's: 33.7 GB against 31.5, on 15 light
+workers against 11, a count that follows the free memory (a base run on 16 peaked at 35.4).
+The draw and the light, which this does not touch, took 21% less than in the base run,
+which shared the machine with 5 to 7 cores of other work while they ran.
+
+The direct pass reaches 8 to 12 of the 16 cores, and its bands spend about two fifths of
+their time waiting. The scan is not why: 16 threads scanning a small raster ran 12 times as
+fast as one. The transform between the kernel calls is part of it, numpy holding the GIL
+for some of it (16 threads ran it 2.7 times as fast as one); the rest is not pinned down.
+24 or 32 threads were slower than 16, one BLAS thread was slower, a shorter GIL switch
+interval bought CPU and no time, and letting 64 bands run ahead of the writer instead of 17
+bought nothing.
+
+#### Checked
+
+- Every file of the raster caches at 8192 and 16384, direct (all five planes), top, meshes,
+  Titan trees, falls and rivers, the same bytes as master's, `meta.json` apart from its
+  seconds.
+- G1 at 2048, uncached, all five layers lit: all 1,131 files the same content as the
+  baseline and all 1,125 tiles the same bytes; only the six sidecars differ in bytes, their
+  timings.
+- G2 at 32768 from caches this code built: all 15 windows the same SHA-256 as the baseline,
+  drawn from master's caches.
+- `tests/mapgen/test_raster_kernels.py`: the kernel raster against numpy's with folds forced
+  every 37 and every 4,000 candidates, with and without a ceiling, at both sample offsets and
+  an offset first row, wide, flat, tied and degenerate triangles, float64 vertices and a NaN
+  height; ties across one fold and across two; instances and row subsets; the threshold
+  against the division on 2,600 numerators each for seven `den`s from 1e-12 to 5e7; a
+  placement's faces and extent under every facing and rise; whole direct bands (one and two
+  sub-samples), top and mesh bands, both switch settings; a cache the same bytes on one
+  thread and on four.
+
+### The draw on the GPU (2026-10-08)
+
+With `--gpu` the run's own process also runs three of the draw's stages as CUDA kernels: the
+default sun's relight of every lit band (`render/gpu/relight.py`), the arches' FXAA
+(`render/gpu/fxaa.py`), and the terrain layer's pieces, from their ground to their bytes
+(`render/gpu/terrain.py`). Each gives its CPU twin's bytes, and a call the device has no
+memory for runs on the CPU. Everything else in the draw runs as before.
+
+**Where the draw's time went.** A lit 8192 render of the five layers on the CPU, with timers
+around the draw's stages (thread CPU seconds; the shared machine's free memory allowed the
+draw one thread):
+
+| Stage | CPU s | On the GPU |
+| --- | --- | --- |
+| The pieces' ground, `band_surfaces` (512 pieces) | 31.3 | no: sampling, not shading |
+| The painted layer's pieces | 86.4 | no: below |
+| The relief and relief-dark pieces | 26.2 + 21.5 | no: below |
+| The satellite pieces | 14.5 | no: the layer is retired |
+| The terrain pieces | 9.7 | yes |
+| The relight, `relight_rows` (160 bands) | 36.2 | yes |
+| The arches' FXAA, `arch_fxaa` (230 bands) | 20.2 | yes |
+| The lanes' resampling, and the tile rows copied for the encoders | 36 + 89 | no: not shading |
+
+A lit run draws its colour unlit and lights it afterwards, so the hillshade is computed only
+with `--no-light`; there the terrain kernel computes it too.
+
+**Each call** (RTX 3080, the best of several, the same bytes either way):
+
+| Call | CPU | GPU, transfers included |
+| --- | --- | --- |
+| The relight, 300 × 8192 px: sRGB / linear light | 212 / 327 ms | 2.5 / 2.8 ms |
+| The arches' FXAA, 300 × 8192 px, two arches | 86 ms | 3.0 ms |
+| A terrain piece, 288 × 544 px: no void / the void | 8.2 / 17.8 ms | 1.2 / 1.3 ms |
+| The hillshade's sun term alone, 288 × 544 px | 0.89 ms | 0.17 ms |
+
+**Why the bits are the same.** The rules of "Why the bits are the same" and "On the GPU" hold:
+float32 operations in numpy's order, no fused multiply-add, IEEE division and square root.
+And:
+
+- The relight in sRGB (terrain, relief-dark) is arithmetic and a square root. In linear
+  light (painted), sRGB to linear is read from a table of its 256 values, which numpy's own
+  `srgb_unit_to_linear` fills; the tone curve both ways is arithmetic; and linear back to an
+  sRGB byte is read from 256 steps: every float32 from the dark knee, 0.0031308, to one, 70.4
+  million of them, is put through `linear_to_srgb_unit` and the round once a process (0.9 s),
+  and a byte is the count of steps at or below a value, less one. That holds while the bytes
+  rise with the value, which the same pass checks; where they do not, the CPU relights the
+  linear layers.
+- The FXAA reads each pixel inside its own column piece, as numpy pads and clips it: the
+  mask's dilation and each column's share of it are worked out on the device, the pieces cut
+  on the host by `column_pieces`.
+- The terrain piece follows `terrain_colours`, the numba water composite term by term, and
+  `_void`. The water's transmission is an `exp`, worked out by numpy first as the numba
+  painter has it. The ramp's floor and fraction are exact. Whether the composite mixes every
+  pixel is counted on the host. NaN goes to byte 0, as numpy's cast does here. A plane that
+  is not float32 sends the piece to the CPU.
+- `np.clip` and `np.maximum` keep their NaN rules; the signed zero of section 41 can meet them
+  and cannot show in a byte.
+
+**What stays on the CPU, and why.**
+
+- The painted layer's crowns, ground colour and lit crowns: the style is redrawn next.
+- The painted water's mix (`optics.mix_underwater`, 6.8 s above): most of its cost is the
+  `exp` terms numpy works out first, and moving its ten planes takes 0.7 ms a piece, about
+  what numba's arithmetic takes. Its tone curve ends in sRGB's power on floats the void then
+  blends.
+- relief-dark: an arctangent (the slope), a cube root (the borrow), cubes (OKLab) and sRGB's
+  power sit between its arithmetic steps, each a round trip to the CPU.
+- relief-dark's sun term (`hillshade.sun_dot`), with `--no-light` only: 0.7 ms a piece saved,
+  about 6 s at full size, for a dispatch in the light's module.
+- The void over relief-dark and painted (`painting._void`, about 2.3 s a layer above): its
+  colour is float, so a round trip of three planes up and three down; the redrawn painted
+  style will keep it on the device.
+- The ground under the pieces: sampling, not shading.
+
+**Bands on the device.** `render/gpu/device.py`'s `DeviceBand` holds a piece's planes on the
+device, each uploaded once however many kernels read it, and the planes a kernel leaves for
+the next; only what is asked for comes back. The terrain piece is drawn that way, and the
+painted style's rendered look, textured ground and crown sprites, will be. For it,
+`terrain/texels.py` reads a texture onto a band (bilinear between texel centres, repeated or
+clamped), reads tiles of an atlas without touching their neighbours, and stamps sprites,
+turned and scaled, over a colour and its cover in their order; `render/gpu/texels.py` does
+the same on the device, to the same bytes, with the sprites binned by 16-pixel cells on the
+host so every pixel walks only the sprites that may reach it. Nothing draws with them yet.
+
+**Memory and the log.** With `--gpu` the run's process opens a CUDA context of its own when
+its first kernel runs, beside each light process's. Its pool is capped at 2 GiB
+(`device.DRAW_DEVICE_BYTES`); a call past it runs on the CPU. A `--gpu` run logs where the
+calls ran once its last layer is installed: at 16384, `draw: relight, FXAA and terrain calls
+2,798 on NVIDIA GeForce RTX 3080; 0 ran on the CPU, the device out of memory`.
+
+**Measured** (the bench kit's `full`, five layers, lit, the raster caches kept and the light
+baked fresh, under the exclusive render lock with other load under a core; numba compiled
+cold in each run). `--gpu` also runs the light's march on the device, which is not this
+change: at 8192 a run of the code before it with `--gpu` took 388.5 s, its relight 46.1 and
+its FXAA 27.1 CPU seconds.
+
+| | 8192 CPU | 8192 GPU | 16384 CPU | 16384 GPU |
+| --- | --- | --- | --- | --- |
+| Wall, s | 388.5 | 384.0 | 590.3 | 570.6 |
+| The draw, s | 45.9 | 43.0 | 185.9 | 171.9 |
+| The relight, CPU s (bands) | 43.8 (160) | 2.5 | 187.9 (320) | 6.3 |
+| The arches' FXAA, CPU s (bands) | 26.9 (230) | none | 70.3 (430) | none |
+| The light after the draw, s | 109.1 | 108.0 | 153.7 | 158.3 |
+| The cut after the light, s | 2.2 | 0.1 | 11.7 | 0.2 |
+| CPU, user s | 1,024 | 964 | 3,543 | 3,311 |
+| Peak commit, GB | 11.4 | 14.6 | 21.4 | 27.8 |
+| Peak device memory, MB | 1,722 | 2,958 | 1,703 | 4,520 |
+
+The wall is set by what the draw does not touch: the preparation, 216 to 221 s at both
+sizes, and the light's last rows after the draw, 108 to 158 s.
+A first 16384 CPU run took 648.0 s, with up to 8.6 cores of other work on the machine during
+its light; the table has the repeat. The device memory counts about 1.7 GB of other users';
+the extra commit is the CUDA contexts of the run and its light processes.
+
+**Checked.**
+
+- `tests/mapgen/test_gpu_draw.py` compares the relight in both light spaces at sizes off the
+  block size, the FXAA on stair steps and noise with arches at both sheet edges and merged
+  pieces, the terrain piece flat and lit under each way of the void, and a whole terrain
+  draw on 1 and 4 threads in pieces of 97 columns, with the CPU's bytes; and the steps
+  against numpy's bytes either side of each. `test_gpu_texels.py` does the same for the
+  texture, atlas and sprite kernels. On a machine without CuPy or a device they skip.
+- G1 at 2048 from the raster cache, all five layers, lit: on the CPU and with `--gpu`, all
+  1,125 tiles and light tiles the same bytes as the round's baseline and the sidecars the
+  same content. The `--gpu` run's 152 draw calls all ran on the device.
+- G2 at 32768, three windows of the five layers, unlit, so the terrain draws its hillshade on
+  the device: 15 of 15 draws the same SHA-256 as the baseline, on the CPU and with
+  `MAPGEN_KERNELS=cuda`.
+
+### The whole render, timed (2026-10-08)
+
+The full render at 32768, lit, after the raster passes, the light on the GPU and the draw on
+the GPU (build 502094; each run alone on the machine, other work under 2 cores, numba
+compiling cold). It draws the three layers, terrain, painted and relief-dark; master at
+53144ad7 drew five, with the satellite and relief layers since retired. The preparation and
+the light do not depend on the layer count; the draw does, so it is given per layer drawn
+too. Master had no cold `--gpu` run, so both cold runs stand against master's cold CPU run.
+Warm: the raster caches reused and the light baked fresh.
+
+| Seconds | Cold, master, CPU | Cold, CPU | Cold, `--gpu` | Warm, master, `--gpu` | Warm, `--gpu` |
+| --- | --- | --- | --- | --- | --- |
+| Wall | 4,055.7 | 1,650.7 | 1,258.8 | 1,916.4 | 1,131.4 |
+| The preparation | 2,401.5 | 344.8 | 325.0 | 300.9 | 214.0 |
+| The raster passes | 2,176.0 | 103.9 | 111.2 | reused | reused |
+| The paint | 147.6 | 152.9 | 146.1 | 192.0 | 146.2 |
+| The draw | 1,275.8 | 916.9 | 694.4 | 1,088.2 | 670.2 |
+| The draw, per layer drawn | 255.2 | 305.6 | 231.5 | 217.7 | 223.4 |
+| The light, first row to installed | 1,576.8 | 1,231.6 | 850.5 | 1,482.7 | 837.7 |
+| The light after the draw | 299.9 | 313.9 | 155.4 | 393.8 | 166.7 |
+| Light processes | 11 | 14 | 11 | 10 | 11 |
+| Each layer's cut after the light | 0.1 to 0.2 | 0.1 | 0.1 | 0.1 | 0.1 |
+| CPU, user and kernel | 23,627 | 19,275 | 11,956 | 20,667 | 12,638 |
+| Peak commit, GB | 31.5 | 30.6 | 27.6 | 37.8 | 27.8 |
+
+- **Against master:** 2.46 times as fast cold on the CPU, 3.22 cold with `--gpu`, 1.69 warm
+  with `--gpu`. Cold, the raster passes are most of it (2,072 of the 2,405 s saved on the
+  CPU); warm, the light (645 s) and the draw (418 s).
+- **The draw per layer** is 20% slower than master's on the CPU: the three layers kept are
+  the heavy ones, 69% of the five layers' one-thread work in section 40's window table
+  (painted alone 41%), and the ground they share is spread over three. With `--gpu` the
+  relight takes 16 to 18 thread seconds against 638 on the CPU, and the arches' FXAA (422 on
+  the CPU) and the terrain's pieces run on the device: 9,086 calls, none back on the CPU.
+- **The light** writes the same 4,056 MB of tiles either way; its tail after the draw halves
+  with `--gpu`. Master's at 53144ad7 wrote 2,382 MB, before the folded horizon tiles moved to
+  q95 (light-and-crowns.md section 29, "Horizon tiles and coarser levels").
+- **The Maps tab's stages** over the cold CPU run's log, through its own `Progress`: prep
+  184 s (the paint 153 of it), sweep 34, direct 39, top 157, draw 918, light 314 and each
+  cut under a second. `domain/maps/presets.py` budgets these (maps_contract.md §4.3).
+- The raster caches the cold run kept are 2.23 GB, the light's terms 4.29 GB.
 
 ### Known limits
 
 - The painters left in numpy above. A kernel for the colour spaces could add its sums in
   the fixed order, but its cube roots and powers would move last bits.
-- On the GPU, each of a block's 64 marches uploads the block's rasters again, about a third
-  of the call; kept on the device for the block they would cost one upload. numpy's
-  arctangent after each march costs more than the whole call.
-- Each light process opens its own CUDA context, 0.19 GB of device memory: 16 processes take
-  3 GB of a 10 GB card before they march.
+- With `--gpu`, numpy's arctangent runs on the host between each march and the rules after
+  it: the device waits for it, about 20 ms a direction at 16384.
+- With `--gpu`, the normals, the default sun's terms (scipy's `zoom` and the canopy's
+  `gaussian_filter`), the crown planes and the atlas's bytes still run on the host; together
+  about as long as the encode on eight threads.
+- Each light process opens its own CUDA context, 0.10 GB of device memory: 16 processes take
+  1.6 GB of a 10 GB card before they march, and three lanes up to 2 GB more at full size.
+- The level sweep and the rock meshes' decode, 34 s at any size, are pure Python on one core,
+  a third of the raster preparation at 32768 now. They read packages that do not depend on
+  one another, so a pool of processes over them is the next step.
+- The raster passes have no CUDA kernel; under `--gpu` they run numba's.
+- The draw's kernels share the device's default stream from the draw's 8 threads and the
+  lanes' 8, so their calls queue there; each is milliseconds, and none waits on another's
+  transfer for long.
+- A band near an arch is relit on the device, brought back, and sent up again for its FXAA:
+  about 5 ms more at full size than keeping it there, for a few hundred bands.
+- The linear relight's steps cost 0.9 s once a process, before its first linear band.
 - A numba release is a new proof, which is why it is pinned: the bit tests in
   `tests/mapgen/test_kernels.py` and `tests/mapgen/test_paint_kernels.py` and a G1 against the
   reference come with an upgrade.
@@ -1914,8 +2381,9 @@ its trees are installed, as before.
 
 ### Known limits
 
-- Not timed at full size. The draw, the light and the encoders now contend for the cores,
-  and the presets' stage seconds for the cut and the light (maps_contract.md §4.3) wait for
-  that measurement.
+- The draw, the light and the encoders contend for the cores. Timed at full size on
+  2026-10-08 (section 41, "The whole render, timed"): each layer's cut after the light is
+  under a second, and the light's tail after the draw 314 s on the CPU and 155 s with
+  `--gpu`, which the presets' stage seconds now budget (maps_contract.md §4.3).
 - The bands waiting for the light are held in memory, not in files.
 - At 2048 and below the light is one block: nothing of it overlaps the draw.

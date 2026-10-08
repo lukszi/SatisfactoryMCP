@@ -19,6 +19,8 @@ import pytest
 from mapgen.bandstore import BandArray, BandWriter
 from mapgen.cache import DirectPlanes, TopPlanes
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.palette.relief import ReliefGround
+from mapgen.palette.styles import RELIEF_PALETTES
 from mapgen.palette.water.open_sea import open_sea
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.pools import free_ram_bytes
@@ -103,20 +105,25 @@ class _Surface:
         self.land[row : row + len(z_m), columns] = land
 
 
+def _relief(scene):
+    return ReliefGround(RELIEF_PALETTES["relief-dark"][0], scene.field, None, [])
+
+
 def _draw(scene, layer, threads, columns=N):
     seam, regimes, surface = SeamTrace(), RegimeCoverage(), _Surface()
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
+    relief = _relief(scene) if layer == "relief-dark" else None
     rgb = render_layer(
-        layer, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
+        layer, scene.field, 1, borrow, N, False,
         scene.heights, direct=scene.direct, seam=seam, regimes=regimes,
         measured_plane_u8=scene.measured, overlay=scene.overlay, sea=scene.sea, unlit=True,
-        surface=surface, threads=threads, columns=columns,
+        surface=surface, threads=threads, columns=columns, relief=relief,
     )  # fmt: skip
     measured = json.dumps({"seam": seam.result(), "regimes": regimes.result()}, sort_keys=True)
     return rgb, measured, surface
 
 
-@pytest.mark.parametrize("layer", ["terrain", "satellite"])
+@pytest.mark.parametrize("layer", ["terrain", "relief-dark"])
 def test_a_layer_draws_the_same_bytes_and_measures_on_any_number_of_threads(tmp_path, layer):
     scene = _scene(tmp_path)
     rgb, measured, surface = _draw(scene, layer, 1)
@@ -132,11 +139,11 @@ def test_a_layer_draws_the_same_bytes_and_measures_on_any_number_of_threads(tmp_
 
 def test_one_pass_draws_each_layer_as_it_draws_alone_and_measures_once(tmp_path):
     scene = _scene(tmp_path)
-    alone = {layer: _draw(scene, layer, 1) for layer in ("terrain", "satellite")}
+    alone = {layer: _draw(scene, layer, 1) for layer in ("terrain", "relief-dark")}
     seam, regimes, surface = SeamTrace(), RegimeCoverage(), _Surface()
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
     handed: list[tuple[int, list[str]]] = []
-    parts: dict[str, list[np.ndarray]] = {"terrain": [], "satellite": []}
+    parts: dict[str, list[np.ndarray]] = {"terrain": [], "relief-dark": []}
 
     def bands(top, rows):
         handed.append((top, list(rows)))
@@ -144,24 +151,24 @@ def test_one_pass_draws_each_layer_as_it_draws_alone_and_measures_once(tmp_path)
             parts[layer].append(band)
 
     kept = draw_layers(
-        ("terrain", "satellite"), scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow,
+        ("terrain", "relief-dark"), scene.field, 1, borrow,
         N, False, scene.heights, direct=scene.direct, seam=seam, regimes=regimes,
         measured_plane_u8=scene.measured, overlay=scene.overlay, sea=scene.sea, unlit=True,
-        surface=surface, threads=3, bands=bands,
+        surface=surface, threads=3, bands=bands, relief={"relief-dark": _relief(scene)},
     )  # fmt: skip
     measured = json.dumps({"seam": seam.result(), "regimes": regimes.result()}, sort_keys=True)
     assert kept == {}, "a pass that hands its bands on keeps no sheet"
     tops = list(range(0, N, BAND_ROWS))
-    assert handed == [(top, ["terrain", "satellite"]) for top in tops], "in order, each once"
+    assert handed == [(top, ["terrain", "relief-dark"]) for top in tops], "in order, each once"
     for layer, (rgb, alone_measured, alone_surface) in alone.items():
         assert np.concatenate(parts[layer]).tobytes() == rgb.tobytes(), layer
         assert measured == alone_measured, "the pass measures the shared ground once"
         assert surface.z.tobytes() == alone_surface.z.tobytes()
         assert surface.land.tobytes() == alone_surface.land.tobytes()
     with pytest.raises(ValueError, match="once"):
-        draw_layers(("terrain", "terrain"), scene.field, None, 1, borrow, N, False)
+        draw_layers(("terrain", "terrain"), scene.field, 1, borrow, N, False)
     with pytest.raises(ValueError, match="painted"):
-        draw_layers(("terrain",), scene.field, None, 1, borrow, N, False, painted=object())
+        draw_layers(("terrain",), scene.field, 1, borrow, N, False, painted=object())
 
 
 def test_the_bands_settle_in_order_whatever_order_their_pieces_finish(tmp_path, monkeypatch):
@@ -284,7 +291,7 @@ def test_the_band_stores_hold_the_bands_the_pieces_in_flight_span_and_a_halo():
 SET_ASIDE = 32768 * 32768 * 3 + drawpool.RESERVE_BYTES
 
 #: Every layer, as a full run draws them.
-EVERY = ("terrain", "satellite", "painted", "relief", "relief-dark")
+EVERY = ("terrain", "painted", "relief-dark")
 
 
 def test_the_thread_count_is_the_request_or_the_default_capped_by_memory(monkeypatch):
@@ -312,7 +319,7 @@ def test_the_thread_count_is_the_request_or_the_default_capped_by_memory(monkeyp
 def test_a_piece_costs_its_dearest_layer_and_the_second_ground_by_its_width(monkeypatch):
     monkeypatch.setattr(drawpool.os, "cpu_count", lambda: 32)
     width = drawpool.PIECE_BYTES_WIDTH
-    assert drawpool.piece_bytes(["terrain", "relief"], width) == drawpool.PIECE_BYTES[None]
+    assert drawpool.piece_bytes(["terrain", "relief-dark"], width) == drawpool.PIECE_BYTES[None]
     assert drawpool.piece_bytes(["painted"], width) == drawpool.PIECE_BYTES["painted"]
     both = drawpool.PIECE_BYTES["painted"] + drawpool.SEABED_BYTES
     assert drawpool.piece_bytes(EVERY, width) == pytest.approx(both)

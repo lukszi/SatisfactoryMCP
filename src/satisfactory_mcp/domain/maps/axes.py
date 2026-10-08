@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import ChainMap
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, cast
@@ -20,6 +21,7 @@ from ...core.gameassets.versions import (
     READER_VERSIONS,
     RENDER_RECIPE_CURRENT,
     RENDER_RECIPES,
+    RETIRED_STYLES,
     STYLES,
 )
 from ...core.jsontypes import JsonObject, JsonValue
@@ -43,10 +45,11 @@ ARTWORK_GENERATOR = "tools/gen_map_image.py"
 
 Tone = Literal["light", "dark"]
 
-#: The version tables, read as the mappings they are.
+#: The version tables, read as the mappings they are; the styles with the retired ones, whose
+#: maps are still listed and served.
 RENDER_TABLE: Mapping[int, Mapping[str, object]] = RENDER_RECIPES
 ARTWORK_TABLE: Mapping[int, Mapping[str, object]] = ARTWORK_RECIPES
-STYLE_TABLE: Mapping[str, Mapping[str, object]] = STYLES
+STYLE_TABLE: Mapping[str, Mapping[str, object]] = ChainMap(STYLES, RETIRED_STYLES)
 
 #: The planes each legacy recipe opened, for sidecars written before ``provenance`` existed.
 LEGACY_PLANES = {
@@ -82,6 +85,7 @@ INPUT_NAMES = {
     "biome_raster": "biome raster reader",
     "artwork_sheet": "artwork sheet reader",
     "cliff_geometry": "cliff geometry reader",
+    "crown_sprites": "crown sprite reader",
     "render_meshes": "render mesh reader",
     "river_splines": "river spline reader",
     "rock_families": "rock family reader",
@@ -324,12 +328,14 @@ def _restyle_offer(axes: MapAxes) -> bool:
 
 
 def freshness(axes: MapAxes, current: MapInputsState) -> MapFreshness:
-    """``{stale: [{axis, text}], rerender, restyle, incomplete}`` for one map's axes."""
+    """``{stale: [{axis, text}], rerender, restyle, incomplete}`` for one map's axes; a
+    retired style is offered neither, since nothing draws it now."""
     stale, incomplete = _stale_inputs(axes, current)
+    retired = str(dict_at(axes, "style").get("id")) in RETIRED_STYLES
     return {
         "stale": stale,
-        "rerender": _rerender_offer(axes, current),
-        "restyle": _restyle_offer(axes),
+        "rerender": None if retired else _rerender_offer(axes, current),
+        "restyle": not retired and _restyle_offer(axes),
         "incomplete": incomplete,
     }
 

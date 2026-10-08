@@ -30,10 +30,11 @@ from mapgen.cache import (
 from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.level.sweep import Sweep, is_top_foliage
-from mapgen.gamedata.maxz_raster import MaxZRaster
 from mapgen.gamedata.meshes import finer_source, read_hull
 from mapgen.gamedata.placements import EXCLUDED_MESHES, placement_material, rotation_matrix
 from mapgen.gamedata.rocks.families import FAMILIES, worn_family
+from mapgen.terrain.maxz.raster import max_z_raster
+from mapgen.terrain.rasters_banded import in_band_order, raster_threads
 from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I64Grid, U8Grid, U16Grid
 from satisfactory_mcp.core.gameassets import staticmesh
 from satisfactory_mcp.core.gameassets.iostore import IoStore
@@ -325,7 +326,7 @@ def rasterise_mesh_band(
 ) -> tuple[F32Grid, U8Grid]:
     """One band: max-Z in world cm (nan where empty) and the source code of the winning mesh,
     its class or, per instance, its class and rock family (``MESH_FAMILY_SHIFT``)."""
-    raster = MaxZRaster(cols, rows, x0_cm, y0_cm, scale_cm, sample=0.5)
+    raster = max_z_raster(cols, rows, x0_cm, y0_cm, scale_cm, sample=0.5)
     y_hi = y0_cm + rows * scale_cm
     for mesh, group in prepared.items.items():
         near = (group.y_hi_cm >= y0_cm) & (group.y_lo_cm <= y_hi)
@@ -338,7 +339,7 @@ def rasterise_mesh_band(
             for start in range(0, len(picked), MESH_FOLIAGE_BATCH):
                 chunk = picked[start : start + MESH_FOLIAGE_BATCH]
                 world = np.einsum("vi,nij->nvj", verts, chunk[:, :3, :3]) + chunk[:, None, 3, :3]
-                raster.add(world[:, tris].reshape(-1, 3, 3), int(value))
+                raster.add_indexed(world, tris, int(value))
     z, src, _density = raster.result()
     return z, np.where(np.isfinite(z), src, 0).astype(np.uint8)
 
@@ -350,19 +351,27 @@ def rasterise_meshes(
     bounds_m: Mapping[str, float],
     band_rows: int,
     progress: bool,
+    threads: int | None = None,
 ) -> MeshRasterStats:
     """Rasterise the render-only meshes into the render's grid, banded, onto disk: the class
-    plane, and the family plane when the items carry families."""
+    plane, and the family plane when the items carry families. The bands are rasterised on
+    ``threads`` (``raster_threads()`` when None) and written in their order."""
     size = stamp["size"]
     step_cm = (bounds_m["x_max_m"] - bounds_m["x_min_m"]) * 100 / size
     covered, started = 0, time.time()
     names = MESH_PLANE_NAMES if prepared.families else MESH_PLANE_NAMES[:2]
+
+    def band_at(span: tuple[int, int]) -> tuple[F32Grid, U8Grid]:
+        top, bottom = span
+        y0 = bounds_m["y_min_m"] * 100 + top * step_cm
+        return rasterise_mesh_band(
+            prepared, bounds_m["x_min_m"] * 100, y0, step_cm, bottom - top, size
+        )
+
+    spans = list(band_spans(size, band_rows))
+    bands = in_band_order(band_at, spans, raster_threads() if threads is None else threads)
     with rewrite_planes(directory, names, size, band_rows, clear=MESH_PLANE_NAMES) as planes:
-        for band, (top, bottom) in enumerate(band_spans(size, band_rows)):
-            y0 = bounds_m["y_min_m"] * 100 + top * step_cm
-            z, code = rasterise_mesh_band(
-                prepared, bounds_m["x_min_m"] * 100, y0, step_cm, bottom - top, size
-            )
+        for band, ((top, bottom), (z, code)) in enumerate(zip(spans, bands, strict=True)):
             cls = code & MESH_CLASS_MASK
             planes[0].write(top, np.where(cls > 0, z, 0.0))
             planes[1].write(top, cls)

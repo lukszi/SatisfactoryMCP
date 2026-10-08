@@ -156,10 +156,15 @@ and the tools' own staleness guards read what they always read.
 ### 3.2 Palettes are files
 
 `tools/mapgen/src/mapgen/palette/palettes/<style id>.json` holds every colour a painter draws
-with (`terrain-hypsometric`, `satellite-biome`, `satellite-painted`, `relief-muted`,
-`relief-night`). The style digest is the sha256 of the file's canonical JSON, so an edit without
-a version bump still reads as a different style, and line endings cannot change it. The version
-a style carries is `STYLES[id].version`.
+with (`terrain-hypsometric`, `satellite-painted`, `relief-night`). The style digest is the
+sha256 of the file's canonical JSON, so an edit without a version bump still reads as a
+different style, and line endings cannot change it. The version a style carries is
+`STYLES[id].version`.
+
+`RETIRED_STYLES` names the styles nothing draws now, `satellite-biome` and `relief-muted`
+(2026-10-08, map/renders.md section 17, "Three drawn layers"). Their palettes are gone; the
+maps already drawn in them stay listed and served until deleted, with their name and tone
+from that table, and `freshness` offers them no re-render and no newer palette.
 
 Each style also declares a **tone**, `light` or `dark` (`STYLES[id].tone`; the renders write it
 into `provenance.style.tone`). `axes.style_tone` reads the sidecar's word, else the table's, else
@@ -169,11 +174,11 @@ light, and every type on `GET /api/maps` carries it. The page's overlay colours 
 | Layer | Style id | Label | Name (§3.5) | Tone |
 |---|---|---|---|---|
 | `terrain` | `terrain-hypsometric` | terrain | Terrain | light |
-| `satellite` | `satellite-biome` | satellite | Satellite | light |
-| `painted` | `satellite-painted` | game-painted | Painted | light |
-| `relief` | `relief-muted` | relief | Relief | light |
-| `relief-dark` | `relief-night` | relief dark | Relief (dark) | dark |
+| `painted` | `satellite-painted` | game-painted | Satellite | light |
+| `relief-dark` | `relief-night` | relief dark | Relief | dark |
 | (artwork) | `artwork` | artwork | Game map | light |
+| `satellite` (retired) | `satellite-biome` | satellite | Biome (old) | light |
+| `relief` (retired) | `relief-muted` | relief | Relief light (old) | light |
 
 ### 3.3 Verdicts
 
@@ -217,10 +222,11 @@ Every type carries two names on `GET /api/maps`:
   1. The player's `label` when the type has one, used as it is. The generate form's optional
      name sets it on every type the job makes, **rename** in the Maps tab sets or clears it,
      and a **re-render** carries it to the new type.
-  2. Otherwise the style's name, `STYLES[id].name` (the table in §3.2): "Game map",
-     "Painted", "Satellite", "Terrain", "Relief", "Relief (dark)". Any artwork is "Game map";
-     a style the table does not know is its label, capitalised.
-  3. The build date is added, "Painted · 6 Oct", only when the switcher shows another
+  2. Otherwise the style's name, `STYLES[id].name` or `RETIRED_STYLES[id].name` (the table
+     in §3.2): "Game map", "Satellite", "Terrain", "Relief", and for maps of a retired style
+     "Biome (old)" and "Relief light (old)"; no two styles share one. Any artwork is "Game
+     map"; a style neither table knows is its label, capitalised.
+  3. The build date is added, "Satellite · 6 Oct", only when the switcher shows another
      unlabelled type of the same name. "Shows" means `ready` or `missing`, and ticked "in
      switcher" or the default. A type the switcher does not show is still dated beside a twin it
      does show, so the Maps tab tells the two apart. When two of them were built on one day,
@@ -245,7 +251,7 @@ from a whitelist and every path is chosen by the server.
 
 | Preset | Command | Options |
 |---|---|---|
-| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] --light\|--no-light [--no-titan-trees] [--cache-dir data/local/maps/_cache/<S> --keep-direct] [--restyle]` | `layers` ⊆ terrain, satellite, painted, relief, relief-dark (default the first two); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `light` (default true, §8.1); `titan_trees`; `keep_cache`; `restyle` |
+| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] --light\|--no-light [--no-titan-trees] [--cache-dir data/local/maps/_cache/<S> --keep-direct] [--restyle]` | `layers` ⊆ terrain, painted, relief-dark (default terrain and painted; a retired layer is refused); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `light` (default true, §8.1); `titan_trees`; `keep_cache`; `restyle` |
 | `artwork` | `gen_map_image.py --game G --out-dir data/local/maps/<id> [--enhance] [--no-tiles-2x]` | `enhance` (only with a Vulkan GPU), `tiles_2x` |
 | `heightmap` | `gen_world_heightmap.py --game G --force --out-dir data/local/heightmap` | — |
 | `caves` | `… --caves --field … --caves-dir data/local/caves --force` | — |
@@ -272,13 +278,15 @@ records, and a job record still names its `script`.
   cache leaves; `GET /api/maps` lists those sizes as `cached_sizes`. The generator's `--restyle`
   checks the stamps (size, sub-samples, build) itself and exits 9 rather than rebuilding a
   raster, so a palette change never turns into a full render. The plan drops the sweep, direct
-  and top stages: one full-size layer is prep plus draw and cut, about 7.5 min against about
-  29 min for a full two-layer render (§4.3), both without the light. With the light, the
-  default, a lit render that kept its cache keeps its light beside it (`light.kept/`), and a
-  restyle that draws the same surface installs that light instead of baking it again
-  (spatial-and-map.md §29, "Kept light"). The estimate budgets 10 s at full size for that when
-  `light.kept/meta.json` is in the size's cache, else the bake, about 14 min (§8.1). A
-  restyle's history row is kept apart from full renders' when scaling the next estimate.
+  and top stages: one full-size layer is prep plus draw and cut, about 8 min (10 for the
+  painted layer, whose paint is prepared again) against about 18 min for a full render of
+  terrain and painted (§4.3), both without the light. With the light, the default, a lit
+  render that kept its cache keeps its light beside it (`light.kept/`), and a restyle that
+  draws the same surface installs that light instead of baking it again (spatial-and-map.md
+  §29, "Kept light"). The estimate budgets 10 s at full size for that when
+  `light.kept/meta.json` is in the size's cache, else the bake's rows left once the draw is
+  done, about 5 min (§4.3). A restyle's history row is kept apart from full renders' when
+  scaling the next estimate.
 - The one write outside `data/local` is the pre-existing one: `--enhance` downloads the
   upscaler into the user cache folder once; the form says so.
 
@@ -297,7 +305,7 @@ for a missing `gen` extra says to stop satisfactory-mcp first, because uv cannot
 ### 4.2 Disk
 
 A job is refused (507) unless free space covers what it keeps, what it needs while running
-(the raster caches, about 1 GB at 32768 in the zstd band store of spatial-and-map.md §39, and
+(the raster caches, 2.2 GB at 32768 in the zstd band store of spatial-and-map.md §39, and
 with the light its scratch, 15.6 GB, and the crown occluder's 5.4 GB whatever the layers,
 both scaled by area) and 2 GB more. A lit job that keeps its cache (`--keep-direct`, §4), or
 draws the kernel only, keeps the light's default-sun terms too, 4.3 GB at 32768, when no light
@@ -313,19 +321,24 @@ figure as freed.
 
 ### 4.3 Estimates
 
-From the stage seconds of measured full renders, area-scaled, with the direct and top passes
-floored because the triangles are the same at any size: prep 30, sweep 36, direct 692 and
-top 119 (2026-10-05); per layer a cut of 73, and with the light a bake of 830 once and each
-layer's cut 1.8 times as long (2026-10-06); the draw, one pass for every layer
-(spatial-and-map.md §40), 150 for the ground the layers share and 190 a layer (2026-10-07).
-One layer alone draws in 340, as before; five drew in 0.65 of the time five layers drawn one
-by one took, on windows of the full-size sheet. The 2026-10-06 figures are renders-v7's
-measured stages carried over the performance work of that day (spatial-and-map.md §17, §26,
-§29 and §40): the draw, 5,810 s for five layers, on 8 threads and less 12% for lean sampling,
-about 1,700 s; the light, 2,903 s, on 16 workers in strips; the cut of five lit layers,
-1,826 s, through one encode pool, about 660 s, before the PNG deflate level moved to 6. The
-cut without the light is that over 1.8, the share of pixels a layer encodes without its
-`unlit/` tree. Once a job of the same preset and recipe, restyle or
+From the stage seconds of a measured full render, area-scaled, with the direct and top passes
+floored because the triangles are the same at any size. The render: 32768, terrain, painted
+and relief-dark, lit, cold, on the CPU, 1,651 s (2026-10-08, spatial-and-map.md §41, "The
+whole render, timed"), its log read through the tab's own `Progress` (§5.3):
+
+- prep 31, and 153 more for the paint when the painted layer is drawn, at any size;
+- sweep 34, direct 39 and top 157, the top running on to the draw; floored at 35 and 88 as
+  measured at 2048 (spatial-and-map.md §41, "The raster passes");
+- the draw, one pass for every layer (spatial-and-map.md §40): 918 for the three, split as
+  the 2026-10-07 windows split it (150 of ground to 190 a layer), so 191 for the ground the
+  layers share and 242.5 a layer;
+- with the light, 314: its rows left once the draw is done. The rest of the bake, 1,136 s on
+  14 workers, runs beside the draw and is in the draw's seconds, so an unlit draw is budgeted
+  high;
+- each layer's cut 0.2: the wait for its trees, which are cut as the bands settle (§42).
+
+For that render's options the estimate is 1,657 s. `--gpu` is not a job option; with it the
+same render took 1,259 s. Once a job of the same preset and recipe, restyle or
 not and light or not, has finished, its wall time scaled by area replaces the constants, and
 the form says "(from the last run)".
 
@@ -418,17 +431,21 @@ rather than `settings.json` (shared-settings.md §1 says why).
    one red chip, with the error line and the log. A progress event redraws only this card, so
    the form keeps what was typed.
 3. **Generate a map** (folded unless there are no types): what (render, artwork, heightfield
-   inputs); one box per style from `styles` (its tone as the title); size slider (preview 1024 …
-   full 32768); arches and boulders; recipe; keep the raster cache; "palette only" when that size
-   is in `cached_sizes`; for artwork the GPU upscale with its download note, or a line saying no
-   Vulkan GPU was found; an optional name; the
+   inputs); one box per style from `styles` (its tone as the title), terrain and painted ticked;
+   size slider (preview 1024 … full 32768); arches and boulders; recipe; keep the raster cache;
+   "palette only" when that size is in `cached_sizes`; for artwork the GPU upscale with its
+   download note, or a line saying no Vulkan GPU was found; an optional name; the
    estimate line, live; **generate**, or **queue** while a job runs, disabled with the reason as
-   its title.
+   its title. A render with the painted layer and no `paint` input (`inputs[].present`) queues
+   the `paint` preset first and the render behind it, and the estimate line says so, so the
+   default works on a fresh install.
 4. **Map types**: a 64 px z0 thumbnail that opens the map on the type, the title (§3.5), id
    chip, a "default" chip, the technical name and size and folder, built date, size, the amber
    stale chip and its reason, neutral re-render and palette chips, then **set as default**,
-   **re-render** / **regenerate** (queues the heightfield first when the offer needs it, and the
-   render with `replaces`), **rename** (inline), **in switcher**, **delete** (inline "delete X?
+   **re-render** / **regenerate** (queues the heightfield first when the offer needs it, the
+   `paint` input for a painted map when it is missing, and the render with `replaces`; not on
+   a map whose layer `styles` does not list, a retired one),
+   **rename** (inline), **in switcher**, **delete** (inline "delete X?
    size · delete · keep", disabled on the default). Rows stack under 600 px.
 5. **Inputs** (folded): heightfield, caves, rocks, paint, each with version, build and date,
    and **rebuild** where a preset exists.
@@ -448,7 +465,8 @@ beside its ticked twin, and the twin keeps its plain title. The two still read d
 
 The page opens on the fragment's `mode=` if it can be drawn, else the shared default, else the
 artwork, else plain. `mode=` holds a type id; the old `mode=artwork` is read as `map`, and
-`terrain` and `satellite` are still ids, so old links open what they opened. An id the registry
+`terrain` and `satellite` are still ids, so old links open what they opened while those maps
+are on disk; before the registry answers, only `map` and `terrain` are offered. An id the registry
 does not have is ignored rather than turning the map plain. `BaseMode` and `MapTileLayer` are
 `string`.
 

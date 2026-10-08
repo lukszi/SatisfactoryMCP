@@ -69,6 +69,6 @@ def sun_dot(
 
 
 def slope_degrees(z_m: NDArray[np.floating], spacing_m: float) -> NDArray[np.floating]:
-    """How steep the ground is, in degrees. The satellite layer's rock rule reads this."""
+    """How steep the ground is, in degrees. The relief style's rock rule reads this."""
     d_south, d_east = np.gradient(z_m, spacing_m)
     return np.degrees(np.arctan(np.hypot(d_east, d_south)))

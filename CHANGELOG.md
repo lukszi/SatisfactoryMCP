@@ -66,20 +66,32 @@ Planned as 0.2.0.
   The light's controls show on every map that has a light, greyed with the reason where it is
   drawn baked, such as without WebGL2. Tree shadows with terrain shadows off miss the ones that
   fall inside terrain shade, until a later render stores them.
+- Map generator: `python -m mapgen crown-sprites` builds a top-down sprite of every tree
+  species, in colour, normal and alpha at 0.125 m, into `data/local/crown-sprites/`. Eight
+  species take the game's own billboard view from above; the other 45, the Kapok and the
+  yuccas among them, are rasterised from their meshes with their leaf and bark textures,
+  normal maps, spherical normals and moss. `--gpu` runs the raster's per-sample work on the
+  GPU, to the same bytes. No render draws them yet.
 
 ### Changed
 
+- Map names: the game-painted map is now called "Satellite" and the dark relief "Relief".
+  Their ids, links and the saved default are unchanged.
+- Map renders: a render that names no layers draws terrain and Satellite, and the Maps tab
+  ticks both. Without paint layers the Maps tab builds them first.
 - Map renders: the game-painted map takes the colours derived from the game install for
-  the targets within reach of their screenshots (sand, grass, wet sand, the canopy, the rock,
-  the desert rock, the forest moss, the coral caps, the desert gravel, the Red Jungle cliffs),
-  for the forest floor, and for the ground layers no screenshot covers (red grass, puddles,
-  the Red Jungle ground, sand cracks, pebbles and rock, soil). A render derives them itself
-  when `targets.derived.json` is missing or from other data. This shares the one version up
-  every rendered map style takes (under "Fixed").
+  the targets within reach of their screenshots in lightness, chroma and hue (sand, grass, the
+  canopy, the Grass Fields rock, the desert rock, the forest moss, the desert gravel, the Red
+  Jungle cliffs), for the forest floor, and for the ground layers no screenshot covers (red
+  grass, puddles, the Red Jungle ground, sand cracks, pebbles and rock, soil). A derived colour
+  that drifts from its screenshot in chroma or hue keeps the screenshot, and the render's
+  sidecar says why. A render derives the colours itself when `targets.derived.json` is missing
+  or from other data. This shares the one version up every rendered map style takes (under
+  "Fixed").
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
-  still accepted. With the light a full-size render is budgeted at about 16 minutes more and
+  still accepted. With the light a full-size render is budgeted at about 5 minutes more and
   needs 15.6 GB more scratch space.
 - Map generator: the light's scratch, `light.cache/`, is 5.4 GB smaller at full size with
   the painted layer, because the tree crowns are written once, where the bake reads them.
@@ -139,15 +151,17 @@ Planned as 0.2.0.
   run compiles them, about 3 s more. Each compiled signature is now kept in a file of its
   own, so processes compiling at once, such as the test suite's workers, no longer leave a
   cache that hands one signature another's code.
-- The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
-  render of all five layers with the light is budgeted at about 58 minutes, the default two
-  layers at about 42.
+- The Maps tab's render estimate follows a timed full render: at full size with the light,
+  the three layers are budgeted at about 28 minutes and the default two at about 24, where a
+  cold render of the three took 27.5 minutes. The paint's preparation, about 2.5 minutes
+  whenever the painted layer is drawn, is counted now. Its disk check counts the raster
+  caches at 2.2 GB and the light's tiles at 4.1 GB, as a full render writes them.
 - Map generator: a lit render that keeps its raster cache keeps its finished light beside it
   (`light.kept/`: the pyramid's tiles as hard links, and the default-sun terms, 4.3 GB at full
   size). A palette-only restyle that draws the same surface installs that light instead of
-  baking it again, about 14 minutes less at full size, and the Maps tab budgets it so. The
-  Maps tab's estimate counts those terms in what a job keeps. The light's `meta.json` records
-  the `key` it was baked under; the tiles are the same bytes.
+  baking it again, and the Maps tab budgets it so. The Maps tab's estimate counts those terms
+  in what a job keeps. The light's `meta.json` records the `key` it was baked under; the
+  tiles are the same bytes.
 - Map generator: each band is drawn in pieces of 512 columns, several pieces at once on the
   draw's threads (`--draw-columns` sets the width). On 8 threads the draw's peak memory falls
   from about 15 GB to about 2 GB, so free memory no longer cuts the thread count, and the five
@@ -164,6 +178,19 @@ Planned as 0.2.0.
   CPU path stays the default, and the tiles are the same bytes either way; a full-size light
   block's ground horizons take about 3 s instead of 8. The bake logs how many of its calls ran
   on the GPU and how many fell back to the CPU for want of device memory.
+- Map generator: with `--gpu` the light's span marches (arches, rock overhangs and the tree
+  crowns) and the rules after each march run on the GPU too, a block's planes kept there
+  from its first direction to its last, and a block's tiles encode on threads. A 16384 light
+  block takes about 18 s instead of 196 s, and a 16384 render's light about 212 s instead of
+  401 s (8192: 54 s instead of 130 s); the tiles are the same bytes. At most three blocks
+  hold the device at once, and a light process's CUDA context takes 0.10 GB instead of 0.19.
+  The CUDA kernels no longer flush subnormal numbers to zero, which CuPy's compile did
+  whatever the options said; no map moves.
+- Map generator: `--gpu` also runs the draw's relight by the default sun, the arches' FXAA
+  and the terrain layer's pieces as CUDA kernels, to the same bytes. At 16384 the relight's
+  188 CPU seconds become 6 and the FXAA's 70 none, and the draw takes 172 s instead of 186;
+  the run logs where the draw's calls ran. For the painted style's coming look, textures,
+  atlas tiles and sprites can now be read and stamped on the device too, to the CPU's bytes.
 - Map generator: a render whose light scratch another running render holds is refused with
   exit code 11 and the reason on stdout (it was exit 1 on stderr). The render sidecar's
   `cliff_geometry.placements_dropped` counts the passable `CliffPillar_03` as `excluded_mesh`
@@ -196,8 +223,24 @@ Planned as 0.2.0.
   `gen_world_heightmap.py`, `gen_paint_layers.py` and `check_map_fill.py` are now shims for
   `python -m mapgen <command>` and warn when run. They will be removed in 0.3.0.
 
+### Removed
+
+- Map renders: the biome-coloured satellite style and the light relief are no longer drawn.
+  `python -m mapgen renders --layer` and the Maps tab offer terrain, painted and relief-dark,
+  and a job naming either old layer is refused. Maps already drawn in them stay listed and
+  served, as "Biome (old)" and "Relief light (old)", until deleted. The other layers' pixels
+  are unchanged.
+
 ### Fixed
 
+- Map renders: the game-painted map's rock outside the deserts is grey again, not the tan of
+  the dirt paths. Its derived colour now comes from the texture the cliff material samples,
+  untinted, as the game's own baked distant view of the cliffs has it; it came from two
+  textures the cliffs never use, times a tint that view does not show. The Desert Canyons' and
+  the Rocky Desert's cliffs are grey with sand tops too, as that view has them; the desert rock
+  of the Dune Desert and the desert mesas stays terracotta. Wet sand and the coral caps keep
+  their screenshot colours, as their derived ones drift in chroma and hue. Re-run
+  `python -m mapgen calibrate`, or let the next render derive.
 - Chat saves merge against their base revision and across renames.
 - A recalled plan's pinned logistics are journalled with its solve.
 - The page resyncs plans and chat activity after a lost or overflowed event stream, and
@@ -321,6 +364,18 @@ Planned as 0.2.0.
   a level at most a kilometre or more away.
 - The satellite map no longer shows a quilt of 29 m and 7.3 m squares on flat ground: its
   noise is read smoothly between its cells.
+- Map renders keep or drop coral, shells and hot-spring terraces a whole footprint at a time.
+  The terrain and relief maps cut them along the game map's coarse waterline, a wall through
+  a reef, and kept pieces of reefs standing in the sea where that waterline has a dry patch
+  under the sea's level. A footprint that stands on land is now drawn whole, and
+  one wholly in the sea is left whole to the seabed; the live-sun light and the game-painted
+  map's unlit sun follow it. About 36,000 square metres of a map move: 346 reefs are kept
+  whole across the waterline, 1,233 are left whole in the sea, and 30 of the 37 terraces are
+  kept whole across their lake's edge. `--gpu` works the footprints out on the GPU too, with
+  the same bits. This shares the one version up every rendered map style takes.
+- Map generator: a texture that is not square is read at its own aspect. The paint layers read
+  the mangrove leaves, the Dypsis palms and the bamboo bark as garbled squares, so those
+  crowns' mean colours change at the next `python -m mapgen paint`.
 - Every rendered map style is one version up for the map changes of this release, once:
   terrain and satellite 9, game-painted 20, relief and relief dark 7. The live-sun light is
   model 3, so a map baked under model 2 is offered a relight.

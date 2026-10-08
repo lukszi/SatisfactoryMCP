@@ -63,11 +63,42 @@ build stamp, plus the reader version), with a class plane: coral, shell or rock.
 composited with the top layer's raise-only lift, and only where the mesh top stands within
 0.6 m of the water surface or above it, so seabed coral roots do not speckle the sea.
 
-The terrain, satellite and relief styles draw ground and water only, so there a mesh never
-breaks the water's surface: under water, coral, shells and terraces are left to the seabed,
-and a rock is drawn only where its top stands above the surface. Most coral the 0.6 m rule
-keeps stands well clear of the water (median 6 m), so each would be a one- or two-pixel island
-in the lagoons. The game-painted style keeps the rule above and colours the meshes itself.
+The terrain and relief styles draw ground and water only, so there a mesh never breaks the
+water's surface: coral, shells and terraces standing wholly in the sea are left to the seabed
+(below, "Whole footprints"), and a rock is drawn only where its top stands above the
+surface. Most coral the 0.6 m rule keeps stands well clear of the water (median 6 m), so
+each would be a one- or two-pixel island in the lagoons. The game-painted style keeps the rule
+above and colours the meshes itself.
+
+### Whole footprints (2026-10-08)
+
+The seabed rule first kept coral, shells and terraces pixel by pixel where the water plane is
+dry. That plane's outline is the artwork's 3.66 m mask, which crosses a mesh wherever it
+falls: the rule cut reefs into walls along it (13,865 wall texels over the map at 1 m), and it
+kept pieces of reefs standing in the sea wherever the mask has a dry patch under the sea's
+level. Now the footprint decides, once a run, on the field's 1 m grid
+(`palette/water/footprints/`):
+
+1. **Sea.** A texel is sea where the water plane is wet, or where its drawn ground is under
+   `OCEAN_LEVEL_M` within the ocean's 48 m reach, which the crossing rule already draws as
+   sea; there the level is the ocean's.
+2. **Footprints.** The coral and shell texels any layer draws (top above the level less
+   `MESH_REACH_M`) are joined 8-wise, the terraces apart. The mesh raster folds onto the
+   grid: a pixel finer than a texel onto its nearest one, a coarser pixel onto every texel it
+   covers, so a footprint stays joined at preview sizes too.
+3. **Decision.** A footprint with any texel on land is land whole, its part over the sea
+   included; one wholly in the sea is left whole to the seabed. Each pixel reads its nearest
+   texel's bit for its class (`land` on `MeshPlanes`); a rock keeps the rule above.
+
+The light every style is relit with and the painted style's unlit sun term (a mesh the light
+has as sea keeps the default sun) follow the same footprints. Measured on build 502094 at full
+size: 8,999 coral and shell footprints, 346 standing on land and in the sea, kept whole with
+82,605 texels over the sea, and 1,233 wholly in the sea, left whole; 37 terrace footprints, 30
+kept whole across their lake's edge and 2 left to the lake's bed. Against the pixel rule
+36,303 texels move, 34,489 of coral and shells and 1,814 of terraces, and no kept mesh texel
+borders a dropped one of its own footprint. The plane takes 36 s at full size, once a run.
+With `--gpu` its marks and each piece's reading of it run as CUDA kernels with the same bits
+(section 41, "On the GPU").
 
 **The heightfield is unchanged.** `CliffPillar_03` stays excluded there because it is passable
 in game: the map draws what the artwork draws, and height lookups keep reading the walkable
@@ -97,7 +128,8 @@ graph that wires them is stripped. Extracted planes reproduce the prototype's pa
 
 ### The game-painted style
 
-Layer `painted`, style `satellite-painted`, palette `palette/palettes/satellite-painted.json`.
+Layer `painted`, shown as "Satellite" since 2026-10-08, style `satellite-painted`, palette
+`palette/palettes/satellite-painted.json`.
 `palette/painted/ground.py` builds the ground once per run from the paint store, on the 1 m grid
 (about 80 s), and `palette/painted/band.py` draws each band over it (both under
 `tools/mapgen/src/mapgen/`). With `"ground": "bake"`, the palette's setting, the bake is the
@@ -151,11 +183,14 @@ to the heightfield's range rather than measured. Inland water takes its class's 
 ## 28. Relief styles, tones and the palette-only restyle (2026-10-05)
 
 Two styles beside the three drawn ones, from the colour study's directions A (muted
-cartographic) and C (dark). Build 502094.
+cartographic) and C (dark). Build 502094. Since 2026-10-08 only the dark one is drawn, shown
+as "Relief"; the light one is retired with its palette (renders.md section 17, "Three drawn
+layers"). What follows says what both did; the painter keeps the light one's options, which
+no palette sets now.
 
 | Layer | Style | Tone | Palette |
 |---|---|---|---|
-| `relief` | `relief-muted` | light | `palette/palettes/relief-muted.json` |
+| `relief` (retired) | `relief-muted` | light | `palette/palettes/relief-muted.json`, removed |
 | `relief-dark` | `relief-night` | dark | `palette/palettes/relief-night.json` |
 
 **Palette files are checked when they load** (`palette/schema.py`). Each file and each of its
@@ -168,7 +203,7 @@ that style records.
 
 ### What the relief painter does
 
-`palette/relief.py`, one painter for both palettes, all mixing in OKLab:
+`palette/relief.py`, one painter for any relief palette, all mixing in OKLab:
 
 1. **Ramp.** Height to `t` over dry land only (`waterq` dry, p1 to p99.5): `0.35·linear +
    0.65·equalised` for the light style, `0.4/0.6` for the dark one. The stops are OKLCh; they are

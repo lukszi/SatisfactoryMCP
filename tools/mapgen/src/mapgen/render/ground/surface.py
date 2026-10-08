@@ -22,6 +22,7 @@ from mapgen.cache import DirectPlanes, MeshPlanes, TopPlanes
 from mapgen.lighting.borrow import BORROW_CLAMP, BORROW_GAIN
 from mapgen.lighting.spans.slabs import SlabPlanes
 from mapgen.palette.scene import WaterTerms
+from mapgen.palette.water.footprints.plane import piece_land
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater
 from mapgen.palette.water.shore import (
@@ -226,8 +227,8 @@ class BandSurface:
 
     ``weight`` is the rock's coverage and ``rock_seen`` how much of it stands proud, both None
     without the direct regime; ``top_weight`` the overlay's lift; ``level_m`` the water level,
-    NaN where there is none; ``void`` the open sea's void as every layer draws it, None where
-    it draws none.
+    NaN where there is none; ``mesh_land`` where a mesh's footprint is land, None without the
+    land plane; ``void`` the open sea's void as every layer draws it, None where it draws none.
     """
 
     z_m: FloatGrid
@@ -241,6 +242,7 @@ class BandSurface:
     measured: FloatGrid
     mesh_weight: FloatGrid | None
     mesh_class: U8Grid | None
+    mesh_land: BoolMask | None
     water: WaterTerms
     borrow: FloatGrid
     void: DrawnVoid | None
@@ -355,6 +357,7 @@ def band_surfaces(
         z_m, sources.water, sources.sea, smooth, linear
     )
     planes, borrow = (water_m, wet, measured), _borrow(sources, grid)
+    on_land = _on_land(sources, grid)
     rules = set(seabeds)
     if sources.capture is not None:
         rules.add(True)
@@ -365,7 +368,9 @@ def band_surfaces(
             continue
         lifted, mesh_weight, mesh_class = z_m, None, None
         if sources.meshes is not None:
-            lifted, mesh_weight, mesh_class = _meshes(sources.meshes, grid, z_m, level_m, seabed)
+            lifted, mesh_weight, mesh_class = composite_meshes(
+                z_m, *_mesh_planes(sources.meshes, grid), level_m, composite_top, seabed, on_land
+            )
         surfaces[seabed] = _read_only(
             BandSurface(
                 z_m=lifted,
@@ -379,6 +384,7 @@ def band_surfaces(
                 measured=measured,
                 mesh_weight=mesh_weight,
                 mesh_class=mesh_class,
+                mesh_land=on_land,
                 water=_water_terms(sources, linear, lifted, planes),
                 borrow=borrow,
                 void=drawn_void(missing, sources.sea, linear, weight, lifted),
@@ -387,12 +393,14 @@ def band_surfaces(
     light = None
     if sources.capture is not None:
         lit = surfaces[True]
-        floating = piece_slabs(_float_sources(sources, grid), field, lit.z_m, level_m)
+        floating = piece_slabs(_float_sources(sources, grid, on_land), field, lit.z_m, level_m)
         light = _light_planes(grid, lit, floating)
     return {seabed: surfaces[seabed] for seabed in seabeds}, PieceOwed(seam, light)
 
 
-def _float_sources(sources: GroundSources, grid: BandSampling) -> FloatSources:
+def _float_sources(
+    sources: GroundSources, grid: BandSampling, on_land: BoolMask | None
+) -> FloatSources:
     """What ``piece_slabs`` composes a piece's solid surface from."""
     wet = None if sources.water is None else sources.water.wet
     return FloatSources(
@@ -403,6 +411,7 @@ def _float_sources(sources: GroundSources, grid: BandSampling) -> FloatSources:
         kept=(grid.rows.kept, grid.cols.kept),
         linear=grid.linear,
         keep_rock=partial(rock_kept, wet_plane=wet, sea=sources.sea),
+        mesh_land=on_land,
     )
 
 
@@ -448,19 +457,19 @@ def _read_only(surface: BandSurface) -> BandSurface:
     return surface
 
 
-def _meshes(
-    meshes: MeshPlanes, grid: BandSampling, z_m: FloatGrid, level_m: FloatGrid, seabed: bool
-) -> tuple[FloatGrid, FloatGrid, U8Grid]:
-    """The piece's ground raised by its render-only meshes: ``(z_m, weight, kept class)``."""
+def _mesh_planes(meshes: MeshPlanes, grid: BandSampling) -> tuple[F32Grid, U8Grid]:
+    """The piece's render-only meshes: ``(z cm, class)``."""
     cut = (grid.rows.cut, grid.cols.cut)
-    return composite_meshes(
-        z_m,
-        np.asarray(meshes.z_cm[cut], np.float32),
-        np.asarray(meshes.cls[cut], np.uint8),
-        level_m,
-        composite_top,
-        seabed=seabed,
-    )
+    return np.asarray(meshes.z_cm[cut], np.float32), np.asarray(meshes.cls[cut], np.uint8)
+
+
+def _on_land(sources: GroundSources, grid: BandSampling) -> BoolMask | None:
+    """Where the piece's meshes stand on a footprint on land (``footprints.plane``)."""
+    field, cut = sources.field, (grid.rows.cut, grid.cols.cut)
+    if sources.meshes is None:
+        return None
+    field_x = grid_position(grid.x_cm, field.x0_cm, field.spacing_cm, field.width)
+    return piece_land(sources.meshes, cut, grid.field_y, field_x)
 
 
 def _water_terms(

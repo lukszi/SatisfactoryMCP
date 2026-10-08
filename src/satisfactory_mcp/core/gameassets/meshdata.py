@@ -10,12 +10,13 @@ from typing import Literal, NamedTuple, Required, TypeAlias
 
 from typing_extensions import TypedDict
 
-from ..arrays import F32Grid, I32Grid
+from ..arrays import F32Grid, I32Grid, U8Grid
 
 __all__ = [
     "CollisionHull",
     "GateVerdict",
     "Lod",
+    "LodSurface",
     "MeshGates",
     "NaniteResource",
     "NaniteSummary",
@@ -48,6 +49,12 @@ class Lod:
     index_bytes: int = 0
     index_32bit: bool = False
     indices_at: int = 0
+    tangent_stride: int = 0
+    tangents_at: int = 0
+    uv_sets: int = 0
+    uv_stride: int = 0
+    uvs_at: int = 0
+    colours_at: int = 0
     start: int = 0
     end: int = 0
 
@@ -58,6 +65,19 @@ class Lod:
     @property
     def max_vertex(self) -> int:
         return max((section.max_vertex for section in self.sections), default=-1)
+
+
+@dataclass(frozen=True)
+class LodSurface:
+    """LOD 0's surface, a row a vertex: UV set 0, the packed basis's normal and tangent, the
+    sign that turns their cross product into the bitangent, and the vertex colour (RGBA8)
+    where the mesh keeps one."""
+
+    uvs: F32Grid
+    normals: F32Grid
+    tangents: F32Grid
+    signs: F32Grid
+    colours: U8Grid | None
 
 
 class PageState(NamedTuple):
