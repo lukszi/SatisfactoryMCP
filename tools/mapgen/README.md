@@ -242,6 +242,7 @@ be traced to the axis it should move.
 | `gamedata/level/lighting.py` | data | The persistent level's noon light and the atmosphere volumes that override it |
 | `gamedata/rocks/cliffs.py` | data | The field's cliff and top rasters |
 | `gamedata/rocks/families.py` | data | Rock material families (the cliff layers and desert rock): `FamilyResolver`, per placement, tint and top layer |
+| `gamedata/rocks/looks.py` | data | The rock look's textures read from the install (`read_rock_textures`), their tile sizes, and each family's top layer rule |
 | `gamedata/rocks/collision_pack.py`, `caves.py` | data | The rock collision pack (`rock_pack_arrays`, `encode_rock_pack`), the cave masks |
 | `gamedata/water/actors.py` | data | Which classes are water actors, each one's box in the world, and the boxes' highest top on the 1 m grid (`water_box_tops`, `box_texels`) |
 | `gamedata/water/channel.py` | data | The heightfield's water channel: artwork mask, box levels, lower bodies |
@@ -273,7 +274,7 @@ be traced to the axis it should move.
 | `terrain/harmonic.py` | renderer | Fills over a mask: nearest, harmonic and biharmonic, the screened membrane, the hole fill |
 | `terrain/emptied.py` | renderer | Where the rebuilt lattice is left empty because the artwork draws void: its pits, and the fill past its rim |
 | `terrain/solve.py` | renderer | Conjugate gradients with fixed-order sums, for the membranes |
-| `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
+| `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes |
 | `terrain/kernels.py` | renderer | The resampling gathers and the crown stamps compiled by numba |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid; the placements over a band and their faces |
 | `terrain/rasters_banded.py` | renderer | A banded raster: the bands rasterised on threads, each folded onto the output grid and written to its cache in order |
@@ -318,7 +319,10 @@ be traced to the axis it should move.
 | `palette/painted/derive/camera.py` | style | The camera model: UE5's film curve, the default sky, the exposure, the screenshot discount |
 | `palette/painted/derive/scene.py`, `rules.py` | style | The paint store on the 4 m grid, and the rule that derives each calibration key |
 | `palette/painted/derive/targets.py`, `palette.py` | style | The light vote, the derived colours, `targets.derived.json`, and the palette a render wears them in |
-| `palette/painted/surfaces.py` | style | Rock in its family's colour, the canopy over rock, the render-only meshes |
+| `palette/painted/surfaces.py` | style | Rock in its family's colour and look, the landscape Cliff layer's look, the canopy over rock, the render-only meshes |
+| `palette/painted/rock_grid.py` | style | Rock colour on the 4 m rock grid: the cliff albedo tinted by the ground, set on its targets |
+| `palette/painted/rock_look/atlas.py`, `surface.py` | style | The rock textures at the run's mip level in two atlases; the look laid on a band (albedo detail, the top layer's mask, the normal maps' light) |
+| `palette/painted/rock_look/reference.py`, `gpu.py`, `texels.cu` | style | The rock texel kernel: the numpy reference and its CUDA twin, bit for bit |
 | `palette/painted/trees.py` | style | Trees over the painted pixel: per-tree crowns lit by their normals, their calibration, the Titan trunks and canopy |
 | `palette/painted/crown_sets.py` | style | The crowns and the Titan canopy a painted ground draws over the crown sprites |
 | `palette/painted/optics.py` | style | What is seen under each wet pixel, the coral carpet |

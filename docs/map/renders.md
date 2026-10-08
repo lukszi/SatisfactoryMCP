@@ -1110,8 +1110,7 @@ moves.
 
 | Stencil | Where | Reach, px |
 | --- | --- | --- |
-| The gradient | `sun_dot`, `slope_degrees`, `surface_direct`, relief's `_shade`, `shore_terms` | 1 |
-| Rock tops | `top_cover`: the gradient's normal, then a 3 × 3 mean of its ramp | 2 |
+| The gradient | `sun_dot`, `slope_degrees`, `surface_direct`, the rock look's `surface_normals`, relief's `_shade`, `shore_terms` | 1 |
 | The water edge's blur | `water_alpha`: a Gaussian of 0.73 m, cut at 4 σ | 0 at 1024, 1 at 2048, 6 at 16384, 13 at 32768 |
 | Sunk specks | `sunk_specks`: a 3 × 3 mean over the water's cover | the blur's (at least the shore's 1) plus 1: 14 at 32768 |
 | The seam trace | `SeamTrace.measure`, along its row only | 33, no rows |

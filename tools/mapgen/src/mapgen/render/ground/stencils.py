@@ -66,11 +66,6 @@ def _gradient(_size: int) -> int:
     return 1
 
 
-def _rock_top(_size: int) -> int:
-    """The gradient's normal, then a 3 x 3 mean of its ramp."""
-    return 2
-
-
 def _sunk_specks(size: int) -> int:
     """A 3 x 3 mean over the water's cover: the edge's blur, or the shore crossing's gradient."""
     return max(water_blur_reach(size), 1) + 1
@@ -89,12 +84,12 @@ STENCILS: tuple[Stencil, ...] = (
             "lighting.hillshade.sun_dot",
             "lighting.hillshade.slope_degrees",
             "lighting.model.surface_direct",
+            "palette.painted.rock_look.surface.surface_normals",
             "palette.relief._shade",
             "palette.water.shore.shore_terms",
         ),
         _gradient,
     ),
-    Stencil("rock top", ("palette.painted.surfaces.top_cover",), _rock_top),
     Stencil("water edge blur", ("palette.water.surface.water_alpha",), water_blur_reach),
     Stencil("sunk specks", ("palette.painted.surfaces.sunk_specks",), _sunk_specks),
     Stencil(

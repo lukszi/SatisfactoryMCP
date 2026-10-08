@@ -363,17 +363,15 @@ so a cache cut by another version is rebuilt.
 family root's `Far Albedo` texture or else its `Albedo`: forest and grass from their far
 textures, red grass from `TX_GrassRed_01_Alb`, sand from `TX_Sand_BC`. Plain cliff, wet sand and
 red jungle have none. Per pixel, rock is multiplied by its family's tint relative to the
-median tint of all families, then blended to the top layer by an up-facing ramp on the drawn
-surface's normal, `nz` from 0.60 to 0.85, boxed over 3 pixels. That ramp is a guess: the
-`CliffTopMaterial` function is not decoded. The top lies in patches inside that ramp, and the
-forest top wears a display target in place of its texture's mean (section 31, "Moss in
-patches"); the sand and grass tops wear their paint layers' targets (section 31, "A top made
-of a paint layer").
+median tint of all families, then blended to the top layer where the cliff master's own slope
+mask puts it ("Rock textures" below). The forest top wears a display target in place of its
+texture's mean, the sand and grass tops their paint layers' targets (section 31, "The top
+layer's colours").
 
 An arch or boulder of the top pass lifted over a cliff is not that cliff, but the family plane
-under it is the cliff's: the direct pass alone stamps it. So a rock pixel takes the area's
-rock, with no family tint or top, by the overlay's lift over the surface below it (the band's
-`top_weight`, full from `MESH_FULL_LIFT_M`). The seventh render drew a root beam over the
+under it is the cliff's: the direct pass alone stamps it. So a rock pixel takes the arches' own
+colour and texture, with no family tint or top, by the overlay's lift over the surface below it
+(the band's `top_weight`, full from `MESH_FULL_LIFT_M`; "Rock textures" below). The seventh render drew a root beam over the
 Northern Forest's coast at (-122, -1580) with the sand family's top as a cream stripe and the
 forest family's moss further on, and arches of the Titan Forest at (1400, -560) with their
 cliffs' moss.
@@ -391,6 +389,95 @@ store's crown top over that texel (`crown.i16.z`, section 36), so a tree on a le
 tree below a cliff stays hidden. It is a per-pixel comparison against a 1 m plane. With crowns
 drawn the soft canopy is off, and the crowns' own "hidden under a higher surface" test decides
 (section 37).
+
+### Rock textures (2026-10-09)
+
+Rock drew as flat colour on its calibrated target, with moss in noise patches on its tops.
+It now wears its materials' own textures, read from the install at every render, so it looks
+rendered: the colour targets of section 31 stay, and the textures add what a top-down view of
+the game shows inside them. `gamedata/rocks/looks.py` reads the textures,
+`palette/painted/rock_look/` lays them on a band, and `surfaces.py` draws with them.
+
+**What each surface wears.** The tile sizes are the game's own, from the compiled landscape
+pixel shaders (`FG_Landscape`'s single-layer Cliff component) and the materials' parameters.
+
+| Surface | Albedo | Normal maps | Anti-tiling |
+| --- | --- | --- | --- |
+| Cliffs (families 1 to 7), the render-only rocks of those families, rocks of no family, and the landscape's Cliff layer | `Cliff_Sediment_Alb`, 20 m: UV0 times the layer's `Scale` 0.05 | `TX_Cliff_01_Nor` at 10.24 m (1/1024 a cm, world top-projected) and `T_Detail_Rocky_N` at 14.49 m (0.000690229 a cm) laid on it | rotated cells |
+| Arches and boulders (the top pass) | `TX_Arc_Rock_BC`, 8.93 m: an arch mesh spans about 125 m of surface per UV0 unit (`ArcMedium_01`, `ArcLarge_01` and `ArcSmall_01` 125 to 126 m) and its `MI_Arc_*` instances repeat the rock 13 to 15 times | `TX_Arc_Rock_N`, the same tile | none |
+| Desert rock (family 8) | `TX_DesertRock_Rough_01_Alb`, 12.5 m: an `SM_DesertRock` mesh spans 72 to 77 m per UV0 unit and `DesertRock_WA` repeats the rock 6 times | `TX_DesertRock_Rough_01_normal`, the same tile | none |
+| A family's top layer | its root's top texture (section 30, "Rock surfaces"): forest `TX_Forest_Far_01_Alb` and red grass `TX_GrassRed_01_Alb` at 50 m, the cliff master's `TopLayer Tiling Far` 0.02; grass `TX_Grass_Far_01_Alb` at 83.3 m, `Cliff_Grass`'s own 0.012; sand `TX_Sand_BC` at 50 m | none of its own | none |
+
+The **rotated cells** are the landscape's anti-tiling: `Cell_Bombing_Noise_basecolor` at 100 m
+(129 cells, about 8.8 m each). The shader reads the body a second time in each cell, offset by
+`2R - 1` and `2G - 1` tiles, scaled by `0.9 + 0.2 G`, turned by `2 pi B`, and blends the copy
+in by `2A - 0.5` of the cell mask, so the borders show the plain tiling. The cell's colour is
+read nearest, so each turn is one of 256 whose cosine and sine numpy works out once; its mask
+is read bilinear.
+
+**Seen from above.** Every texture is projected on the ground plane, the one a view from
+straight above sees undistorted. The landscape shader does that for the Cliff layer; the
+meshes' materials map by their UVs, which a raster has not got. A triplanar projection was
+tried first: on a wall the side planes squeeze the wall's height into a pixel's width, and the
+texture aliased into streaks.
+
+**Levels.** A texture is read at the mip level whose texel is nearest the run's pixel, box
+filtered from the decoded 1024 px (`atlas.mip_level`), so it never aliases: at full size the
+cliff albedo is read at 64 texels a tile (0.31 m), at 2048 px each tile is flat. The landscape
+Cliff layer's colour is the ground bake's, which already holds the texture at 1 m; there the
+look takes only what is finer, the texel over the same texel read at 1.25 m. Where the run
+draws the layers' own textures (below, "The layers' own textures"), the Cliff layer's texture
+comes with theirs, height-blended with its neighbours, and this look leaves the layer alone:
+the layer is textured once.
+
+**Colour.** A texel moves a pixel by the texture's value over its median, per channel, so the
+calibrated target stays the median of the rock as drawn: on full-size windows of the 32768
+sheet (unlit) the Desert Canyons' rock draws median #8b8671 against #8c8772 before, a desert
+mesa #c98c66 against #ca8d67. The top layer takes its own texture the same way over its
+target (section 31, "The top layer's colours"). `rock_look.albedo` (1) is the share of the
+contrast taken.
+
+**The top layer's mask** is the cliff master's own (`Rock_WA`, compiled for `Cliff_Sand`): the
+world normal's up component, normal-mapped, through `SlopeMask` and `CheapContrast`:
+`clip(nz ** Falloff_Power * (1 + 2 Falloff_Contrast) - Falloff_Contrast, 0, 1)`. `Rock_WA`'s
+`Falloff_Power` 1.5 and `Falloff_Contrast` 1.2 hold for every cliff family (no root overrides
+them): none of the top below `nz` 0.50, all of it above 0.75. The game reads the normal off
+each mesh's own normal map, by its UVs; the look's normal maps stand in for it. It replaces the
+ramp of `nz` 0.60 to 0.85 and the noise patches (section 31, "The top layer's colours").
+
+**Light.** The normal maps' normal is laid on the drawn surface's own (reoriented normal
+mapping, as the landscape shader does: the base map's slope doubled, the detail's halved). Its
+light is the style's sky and sun under the default sun, and the look multiplies the colour by
+that light over the same light on the drawn surface's normal, so the run's own light, baked or
+live, still lights the surface and the maps add only their relief (`rock_look.shade`, 1).
+
+**The arches' own family.** The game's baked distant view (the mesh HLOD bake, rasterised at
+1 m) has the arches and boulders lighter than the cliffs around them: per area, the median
+arch body (OKLab chroma under 0.04) is 1.15 times the cliffs' luminance (0.82 to 1.44 over 14
+areas), the boulders 1.08, both at the cliffs' chroma; rocks of the direct pass with no family
+are 0.89, darker and mixed. So the top pass wears `calibration.arches`, #8a8671: the default
+rock #85816c at 1.088 times the luminance (the median of both, OKLab L times 1.029), its
+chroma and hue kept. It used to take the area's rock. Rocks of no family keep the area's rock,
+in the cliff texture.
+
+**On the GPU.** `reference.look_texels` reads the pixels a band's rock covers, flat;
+`rock_look/gpu.py` with `texels.cu` does the same on the device with `--gpu`, the atlases
+uploaded once a run, to the same bits (float64 positions until they are wrapped into a tile,
+float32 after, compiled without fused multiply-adds). Two million random pixels of the install's
+textures give the same bytes both ways. The reference costs about 2.5 us a pixel on one core;
+on the five windows below, drawn on 2 shared threads, a window took 0.4 to 0.7 us a pixel more
+where rock covers most of it, and nothing more where it covers little.
+
+**Measured.** Six 1024 px windows of the 32768 sheet, unlit, against master: the coastal
+rock at (-422, -2138), artifact city (258, -867), a Grass Fields arch (110, 2800), the Desert
+Canyons (128, -1500), a desert mesa (1800, -2400) and the Red Jungle's cliffs and bare Cliff
+layer (-689, -110) change 308,777, 194,979, 488,427, 315,919, 946,141 and 519,884 of 1,048,576
+pixels, the same bytes with `--gpu`. The mesas stay terracotta and the Desert Canyons' cliffs
+grey with sand tops. The forest tops of the coastal rock are moss over the whole up-facing
+face, as the baked view has them, where the patches left a third to a half bare. The arch at
+artifact city draws #8c8873 where it drew the area's #786c57. On the 2048 sheet (G1, painted,
+lit) 1,338,601 of the 5,570,560 tile pixels over all levels move, at most by 103; the light's
+tiles are the same bytes.
 
 ### The Titan trees
 
@@ -568,7 +655,14 @@ draws the 32768 windows of the gates' G2 the same as master, all three layers.
 ### Known limits
 
 - Nothing here has been compared with an in-game top-down view.
-- The up-facing ramp is a guess.
+- The rock textures are laid on the ground plane, not by the meshes' UVs: a wall seen from
+  above shows the texture at its plan's scale, and the arches' and desert rock's tile is the
+  meshes' median UV density, one number for meshes that vary.
+- The top layer's mask reads the look's normal maps where the game reads each mesh's own; an
+  arch's top layer (grass and moss on `MI_Arc_Grass_01` and kin) is not drawn, as the top pass
+  does not say which arch instance a pixel is.
+- The normal maps' light is baked into the colour under the default sun, so a live sun lights
+  the rock's relief from the default's side.
 - The Titan canopy's light and shadow in a lit render are the light's (section 29): it casts
   as the crown occluder has it, from the raster's top.
 

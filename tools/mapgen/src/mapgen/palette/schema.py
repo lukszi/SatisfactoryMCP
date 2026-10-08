@@ -31,8 +31,7 @@ __all__ = [
     "ReliefShadeStyle",
     "ReliefWaterStyle",
     "RiverShoreStyle",
-    "RockPatchesStyle",
-    "RockTopStyle",
+    "RockLookStyle",
     "ShoreOptics",
     "ShoreStyle",
     "TerrainPalette",
@@ -266,22 +265,14 @@ class WaterClassesStyle(_About, total=False):
     translucent: WaterClassStyle
 
 
-class RockPatchesStyle(TypedDict):
-    """``rock_top.patches``: the noise that breaks a family's top layer into patches."""
+class RockLookStyle(TypedDict):
+    """``rock_look``: how much of the rock textures' albedo contrast and of their normal maps'
+    light the style takes, and how much of it the landscape's Cliff layer takes, 0 to 1."""
 
-    seed: int
-    octaves_m: list[list[float]]
-    level: float
-    soft: float
-    flat: list[float]
-    flat_gain: float
-
-
-class RockTopStyle(TypedDict):
-    """``rock_top``: the up-facing ramp a family's top layer takes, and its patches."""
-
-    up: list[float]
-    patches: NotRequired[RockPatchesStyle]
+    about: str
+    albedo: float
+    shade: float
+    layer: float
 
 
 class TitanTreesStyle(TypedDict):
@@ -351,6 +342,8 @@ class CalibrationStyle(TypedDict):
     canopy: str
     rock: str
     rock_keeps_exposure: bool
+    #: The arches and boulders: their own family, by the game's baked view.
+    arches: NotRequired[str]
     families: dict[str, str]
     tops: dict[str, str]
     meshes: dict[str, str]
@@ -401,7 +394,7 @@ class PaintedPalette(TypedDict):
     falls: FallsStyle
     ground: str
     ground_detail: NotRequired[GroundDetailStyle]
-    rock_top: RockTopStyle
+    rock_look: RockLookStyle
     titan_trees: TitanTreesStyle
     carpet: NotRequired[CarpetStyle]
     tone: ToneStyle

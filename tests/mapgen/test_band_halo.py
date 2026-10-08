@@ -18,8 +18,8 @@ from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
 from mapgen.lighting.hillshade import slope_degrees, sun_dot
 from mapgen.lighting.model import surface_direct
 from mapgen.palette import relief
-from mapgen.palette.painted.surfaces import sunk_specks, top_cover
-from mapgen.palette.scene import BandGrid
+from mapgen.palette.painted.rock_look.surface import surface_normals
+from mapgen.palette.painted.surfaces import sunk_specks
 from mapgen.palette.styles import RELIEF_PALETTES
 from mapgen.palette.water.shore import shore_terms
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M, water_alpha
@@ -88,27 +88,11 @@ def _gradients(size: int, axis: int) -> list[int]:
         lambda heights: sun_dot(heights, sp),
         lambda heights: slope_degrees(heights, sp),
         lambda heights: surface_direct(heights, sp),
+        lambda heights: surface_normals(heights, sp),
         relief_sun,
         shore,
     ]
     return [_reached(draw, _plane(1, 0.05 * sp), 0.01 * sp, axis) for draw in draws]
-
-
-def _rock_top(size: int, axis: int) -> list[int]:
-    """Faces about 45 degrees steep, inside the up-facing ramp; no patches."""
-    sp = _spacing(size)
-    z = np.arange(COLS, dtype=np.float32) * np.float32(sp) + _plane(2, 0.05 * sp)
-    ground = SimpleNamespace(
-        palette={"rock_top": {"up": (0.6, 0.85)}}, family_has_top=np.ones(1, np.float32)
-    )
-    code = np.zeros((ROWS, COLS), np.uint8)
-    whole = (slice(0, ROWS), slice(0, COLS))
-
-    def draw(heights: np.ndarray) -> np.ndarray:
-        scene = {"z_m": heights, "grid": BandGrid(whole, 0, ROWS, 0, COLS, sp)}
-        return top_cover(scene, ground, code)
-
-    return [_reached(draw, z, 0.05 * sp, axis)]
 
 
 def _water_blur(size: int, axis: int) -> list[int]:
@@ -144,7 +128,6 @@ def _sunk_specks(size: int, axis: int) -> list[int]:
 #: Each stencil a piece draws, measured on the functions at its sites, across rows or along.
 PROBES: dict[str, Callable[[int, int], list[int]]] = {
     "gradient": _gradients,
-    "rock top": _rock_top,
     "water edge blur": _water_blur,
     "sunk specks": _sunk_specks,
 }

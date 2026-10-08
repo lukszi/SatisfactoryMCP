@@ -25,6 +25,7 @@ from mapgen.palette.painted.shapes import (
 )
 from mapgen.palette.painted.surfaces import (
     canopy_over_rock,
+    cliff_layer,
     mesh_surface,
     rock_surface,
     sunk_specks,
@@ -57,14 +58,16 @@ def painted_colours(
 def _ground_colour(
     scene: PaintedScene, ground: PaintedSurface, sample: Sampler, sample_rock: Sampler
 ) -> FloatGrid:
-    """The band's ground before light: paint under canopy, rock, the meshes, then the
-    style's chroma gain and altitude lift."""
+    """The band's ground before light: paint with its layers' detail (else its Cliff layer's
+    look) under canopy, rock, the meshes, then the style's chroma gain and altitude lift."""
     palette = ground.palette
     albedo = np.stack([sample(plane) for plane in ground.albedo], -1)
     detail, style = scene.get("detail"), palette.get("ground_detail")
     if detail is not None and style is not None:
         strength = np.float32(style["strength"])
         albedo = albedo * np.maximum(_ONE + strength * (detail.ratio - _ONE), _ZERO)
+    else:
+        albedo = cliff_layer(albedo, scene, ground, sample)
     kept = 1.0 if scene.get("crowns") is None else palette["crowns"]["canopy_kept"]
     gain = palette["canopy_gain"] * kept
     canopy = np.clip(sample(ground.canopy) / 255.0 * gain, 0.0, 1.0)[..., None]
@@ -72,7 +75,8 @@ def _ground_colour(
     g = albedo * (1.0 - canopy) + canopy_rgb * canopy
     area_rock = np.stack([sample_rock(plane) for plane in ground.rock], -1)
     rock = scene["rock_weight"][..., None]
-    g = g * (1.0 - rock) + rock_surface(area_rock, scene, ground, sample_rock) * rock
+    drawn = rock_surface(area_rock, scene, ground, sample_rock, pick=scene["rock_weight"] > 0)
+    g = g * (1.0 - rock) + drawn * rock
     g = canopy_over_rock(g, canopy, rock, scene, ground, sample, canopy_rgb)
     g = mesh_surface(g, area_rock, scene, ground, sample_rock)
 

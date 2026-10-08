@@ -103,6 +103,7 @@ READER_VERSIONS = {
     "render_meshes": 4,
     "river_splines": 1,
     "rock_families": 3,
+    "rock_textures": 1,
     "titan_trees": 2,
     "waterfalls": 1,
 }

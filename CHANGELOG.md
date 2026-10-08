@@ -107,6 +107,14 @@ Planned as 0.2.0.
   sidecar says why. A render derives the colours itself when `targets.derived.json` is missing
   or from other data. This shares the one version up every rendered map style takes (under
   "Fixed").
+- Map renders: the Satellite map's rock looks rendered. Cliffs, the rocks drawn only by the
+  renderer and the landscape's Cliff layer wear the cliff material's own sediment texture,
+  laid on the ground at its 20 m with the landscape's rotated cells against tiling, and its
+  normal maps' relief; arches and boulders are a lighter warm grey of their own in the
+  arches' rock texture; desert rock wears its own rough texture and stays terracotta. A
+  cliff's moss, grass or sand lies where the cliff material's own slope mask puts it, in its
+  own texture, instead of in noise patches. The textures are read from the game install at
+  each render, and `--gpu` reads them on the device to the same bytes.
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
