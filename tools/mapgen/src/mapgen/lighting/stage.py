@@ -335,8 +335,9 @@ def bake_block(job: BlockJob) -> BlockDone:
             canopy_sky = fill_holes(
                 sky_view(spans.canopy.z[rows, cols], job.sky_halo, half_m), holes, 1.0
             )
-        ground_ao, trees_ao = _occlusion(work, job.block, spacing_m)
     del spans
+    with device_lane():
+        ground_ao, trees_ao = _occlusion(work, job.block, spacing_m)
     nx, ny = _normals(work, (r0 - 1, r0 + block_px + 1, c0 - 1, c0 + block_px + 1), spacing_m)
     svf = np.clip(upsampled(sky_ringed), 0, 1) * (np.float32(1.0) - ground_ao)
     nrm = np.stack(
