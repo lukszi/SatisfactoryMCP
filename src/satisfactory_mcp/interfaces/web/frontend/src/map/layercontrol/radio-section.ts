@@ -42,6 +42,8 @@ export interface RadioSectionConfig<C extends RadioChoice> {
   decorateHead?(head: HTMLElement): void;
   /** A sentence shown above the rows, or instead of them; its element's class and text. */
   message?: { className: string; text(): string };
+  /** An element of the caller's kept under the rows and folded with them. */
+  tail?(): HTMLElement;
   onPick(key: string): void;
 }
 
@@ -144,6 +146,11 @@ export function radioSection<C extends RadioChoice>(config: RadioSectionConfig<C
     if (config.message) {
       const note = current.querySelector<HTMLElement>("." + config.message.className);
       if (note) fold(note, !open);
+    }
+    if (config.tail) {
+      const tail = config.tail();
+      if (tail.parentNode !== current) current.appendChild(tail);
+      fold(tail, !open);
     }
     foldHead(head, open, title, picked, picked ? "showing " + picked : config.emptyNote);
   }

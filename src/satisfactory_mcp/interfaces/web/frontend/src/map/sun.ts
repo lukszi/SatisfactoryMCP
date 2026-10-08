@@ -5,14 +5,17 @@
  * docs/spatial-and-map.md §29. */
 
 import { createListeners } from "../app/listeners";
-import { onSetting, settingChoice, settingOn } from "../app/settings";
+import { onSetting, setSettings, settingChoice, settingOn } from "../app/settings";
 
 export interface Sun {
   azimuthDeg: number;
   elevationDeg: number;
   /** The game hour the sun stands at, or null when it was placed off the path. */
   hour: number | null;
-  shadows: boolean;
+  /** Whether the light is drawn at all; off, the map shows its flat colour. */
+  shade: boolean;
+  terrainShadows: boolean;
+  treeShadows: boolean;
   sky: boolean;
 }
 
@@ -100,8 +103,8 @@ function presetPlace(key: string): Place {
   return { azimuthDeg: at[0], elevationDeg: at[1], hour: hour };
 }
 
-/* Where the map control put the sun for this visit; null follows Settings. Shadows and sky are
- * settings either way, so the control's toggles are remembered like any other. */
+/* Where the map control put the sun for this visit; null follows Settings. Shade, shadows and
+ * sky are settings either way, so the control's toggles are remembered like any other. */
 let override: Place | null = null;
 const listeners = createListeners<[Sun]>();
 
@@ -111,9 +114,21 @@ export function currentSun(): Sun {
     azimuthDeg: at.azimuthDeg,
     elevationDeg: at.elevationDeg,
     hour: at.hour,
-    shadows: settingOn("sunShadows"),
+    shade: settingOn("mapShade"),
+    terrainShadows: settingOn("sunShadows"),
+    treeShadows: settingOn("sunTreeShadows"),
     sky: settingOn("sunSky"),
   };
+}
+
+/** The relief-map look in one change: the sun's Lambert term alone, no cast shadows, no sky. */
+export function hillshadeOnly(): void {
+  setSettings({ mapShade: true, sunShadows: false, sunTreeShadows: false, sunSky: false });
+}
+
+/** Whether `sun` is that look; `trees` says whether this map has tree shadows to switch. */
+export function isHillshadeOnly(sun: Sun, trees: boolean): boolean {
+  return sun.shade && !sun.terrainShadows && !(trees && sun.treeShadows) && !sun.sky;
 }
 
 /** Whether the map control has moved the sun away from the Settings default. */

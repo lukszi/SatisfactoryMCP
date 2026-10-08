@@ -4,7 +4,8 @@
  * normals with sky view and land weight (`?kind=nrm`) and the horizons (`?kind=hz`: the
  * ground's, then the tree crowns', which only a style that draws the crowns reads), and the
  * shader multiplies the colour by the light. One canvas for the whole view, not one context
- * per tile. The arithmetic is mapgen's lighting/model.py; docs/spatial-and-map.md §29. */
+ * per tile. The arithmetic is mapgen's lighting/model.py; docs/spatial-and-map.md §29.
+ * The switches (shade, terrain and tree shadows, sky) are uniforms: `lightSwitches`. */
 
 import { tilePath } from "../api/client";
 import { L } from "./leaflet";
@@ -73,13 +74,13 @@ const VS = `#version 300 es
 in vec2 aP; uniform vec4 uRect; uniform vec2 uVP; out vec2 vUV;
 void main(){ vUV=aP; vec2 p=(uRect.xy+aP*uRect.zw)/uVP*2.0-1.0; gl_Position=vec4(p.x,-p.y,0.,1.); }`;
 
-const FS = `#version 300 es
+export const FS = `#version 300 es
 precision highp float;
 in vec2 vUV; out vec4 o;
 uniform sampler2D tCol, tNrm, tHz;
 uniform vec3 uL, uSky, uSun, uF;
-uniform float uEl, uInvNorm, uAmb, uTK, uTW, uSoft, uShadowOn, uSkyOn, uW, uFloor, uKnee, uLinear;
-uniform float uFill, uRows, uCrownOn;
+uniform float uEl, uInvNorm, uAmb, uTK, uTW, uSoft, uGroundSh, uSkyOn, uW, uFloor, uKnee, uLinear;
+uniform float uFill, uRows, uCrownSh, uLightOn;
 uniform int uI0, uI1, uCrown;
 float s2l(float c){ return c<=0.04045? c/12.92 : pow((c+0.055)/1.055,2.4); }
 float l2s(float c){ c=clamp(c,0.0,1.0); return c<=0.0031308? c*12.92 : 1.055*pow(c,1.0/2.4)-0.055; }
@@ -90,8 +91,8 @@ float hz(int i){
   return q*q*90.0;
 }
 float horizon(){
-  float h=mix(hz(uI0),hz(uI1),uW);
-  if(uCrownOn>0.5) h=max(h,mix(hz(uI0+uCrown),hz(uI1+uCrown),uW));
+  float h=uGroundSh*mix(hz(uI0),hz(uI1),uW);
+  if(uCrownSh>0.5) h=max(h,mix(hz(uI0+uCrown),hz(uI1+uCrown),uW));
   return h;
 }
 const vec3 LUMA=vec3(0.2126,0.7152,0.0722);
@@ -104,18 +105,18 @@ void main(){
   vec3 base= uLinear>0.5 ? untone(vec3(s2l(c.r),s2l(c.g),s2l(c.b))) : c;
   vec2 nxy=n4.rg*2.0-1.0; vec3 nn=vec3(nxy, sqrt(max(1.0-dot(nxy,nxy),0.0)));
   float ndl=max(dot(nn,uL),0.0);
-  float sh=uShadowOn*clamp((horizon()-uEl)/uSoft+0.5,0.0,1.0);
+  float sh=max(uGroundSh,uCrownSh)*clamp((horizon()-uEl)/uSoft+0.5,0.0,1.0);
   float svf=mix(1.0,n4.b,uSkyOn);
   vec3 rel=(uAmb*uSky*svf+(1.0-uAmb)*uSun*ndl*(1.0-sh*(1.0-uFill))*uInvNorm)/uF;
   rel=0.5*(rel+uFloor+sqrt((rel-uFloor)*(rel-uFloor)+uKnee*uKnee));
-  vec3 x=base*mix(vec3(1.0),rel,n4.a);
+  vec3 x=base*mix(vec3(1.0),rel,n4.a*uLightOn);
   vec3 t=tone(x);
   o = uLinear>0.5 ? vec4(l2s(t.r),l2s(t.g),l2s(t.b),1.0) : vec4(clamp(x,0.0,1.0),1.0);
 }`;
 
-const UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm", "uAmb",
-  "uTK", "uTW", "uSoft", "uShadowOn", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1", "uFill", "uRows",
-  "uCrownOn", "uCrown"];
+export const UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm", "uAmb",
+  "uTK", "uTW", "uSoft", "uGroundSh", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1", "uFill", "uRows",
+  "uCrownSh", "uCrown", "uLightOn"];
 const KINDS = ["unlit", "nrm", "hz"];
 const CACHE_TILES = 120;
 const IN_FLIGHT = 8;
@@ -306,11 +307,28 @@ function uploadLightUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, lig
   gl.uniform1f(uniforms.uKnee!, model.shadow_floor_knee);
   gl.uniform1f(uniforms.uRows!, Math.ceil((model.hz_cells || model.dirs) / 8));
   gl.uniform1i(uniforms.uCrown!, model.crown_cell || 0);
-  gl.uniform1f(uniforms.uCrownOn!, params.crowns && model.crown_cell ? 1 : 0);
 }
 
-/* The uniforms that follow the sun: its direction, the normalisation, and which two of the
- * baked horizon directions to blend between. */
+/** Whether this layer draws the tree crowns and its pyramid holds their horizons. */
+export function castsTreeShadows(light: LightHeader): boolean {
+  return !!(light.params.crowns && light.model.crown_cell);
+}
+
+export type LightSwitches = Record<"uLightOn" | "uGroundSh" | "uCrownSh" | "uSkyOn", number>;
+
+/* The shader's switches for `sun`. Terrain shadows off with tree shadows on loses the tree
+ * shadows inside terrain shade: the light stores a crown cell only where it stands higher. */
+export function lightSwitches(light: LightHeader, sun: Sun): LightSwitches {
+  return {
+    uLightOn: sun.shade ? 1 : 0,
+    uGroundSh: sun.terrainShadows ? 1 : 0,
+    uCrownSh: sun.treeShadows && castsTreeShadows(light) ? 1 : 0,
+    uSkyOn: sun.sky ? 1 : 0,
+  };
+}
+
+/* The uniforms that follow the sun: its direction, the normalisation, which two of the baked
+ * horizon directions to blend between, and the switches. */
 function uploadSunUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, light: LightHeader, sun: Sun): void {
   const model = light.model;
   const toRadians = Math.PI / 180;
@@ -325,8 +343,10 @@ function uploadSunUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, light
   gl.uniform1i(uniforms.uI0!, lower);
   gl.uniform1i(uniforms.uI1!, (lower + 1) % dirs);
   gl.uniform1f(uniforms.uW!, direction - Math.floor(direction));
-  gl.uniform1f(uniforms.uShadowOn!, sun.shadows ? 1 : 0);
-  gl.uniform1f(uniforms.uSkyOn!, sun.sky ? 1 : 0);
+  const switches = lightSwitches(light, sun);
+  (Object.keys(switches) as (keyof LightSwitches)[]).forEach(function (name) {
+    gl.uniform1f(uniforms[name]!, switches[name]);
+  });
 }
 
 /** The sheet's two corners in container pixels, now. */
