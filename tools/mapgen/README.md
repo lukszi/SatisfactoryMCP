@@ -49,7 +49,7 @@ estimate assumes before a job of that kind has run once.
 | `paint` | `gen_paint_layers.py` | `data/local/paint/` (113 MB) | 2 min on a loaded machine; budget 2.5 min |
 | `calibrate` | | `data/local/paint/targets.derived.json` | 5 s |
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
-| `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 58 min for all five layers and 42 min for two, from measured stages ([maps_contract.md](../../docs/maps_contract.md) §4.3); a whole run is measured at the next full render |
+| `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 48 min for all five layers and 32 min for two, from measured stages ([maps_contract.md](../../docs/maps_contract.md) §4.3); all five, cold, took 27 min on 2026-10-08 (§41, "The raster passes") |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
 | `compress-cache` | | the given raster caches, converted in place | 4 s for a 1.3 GB Titan cache; about 2.5 min for a full set (estimate) |
 
@@ -208,7 +208,7 @@ be traced to the axis it should move.
 | `gamedata/frame.py` | data | Map frame (read from `geo.MAP_SQUARE_M`), render sizes, the heightfield grid and its texel lookups (`grid_texel`, `grid_index`) |
 | `gamedata/artwork_sheet.py` | data | The artwork sheet: slice decode, layout proof, corner calibration |
 | `gamedata/meshes.py` | data | Mesh geometry reads at their finest source, collision hulls, `ExtendedBounds` (`MeshBounds`) |
-| `gamedata/maxz_raster.py` | data | `MaxZRaster`, the max-Z scatter rasteriser cliffs, crown sprites and render meshes share, and its `INSTANCE_BATCH` |
+| `gamedata/maxz_raster.py` | data | `MaxZRaster`, the max-Z scatter rasteriser cliffs, crown sprites and render meshes share, and its `INSTANCE_BATCH`; the numpy reference of the raster passes' kernels |
 | `gamedata/placements.py` | data | A placement's row in the sweep, its transform (`placement_transform`, `placement_matrix4`), the culls by owner, mesh name, arch and size (`cliff_cull`), and its material |
 | `gamedata/materials.py` | data | Material-instance parameters, and the materials of a mesh's sections |
 | `gamedata/nodes.py` | data | The static resource-node table (`load_static_nodes`), and the oil nodes the bake stamps |
@@ -244,8 +244,9 @@ be traced to the axis it should move.
 | `terrain/solve.py` | renderer | Conjugate gradients with fixed-order sums, for the membranes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
 | `terrain/kernels.py` | renderer | The resampling gathers and the crown stamps compiled by numba |
-| `terrain/rasters.py` | renderer | Direct and top rasters on the output grid |
-| `terrain/rasters_banded.py` | renderer | A banded raster: each band folded onto the output grid and written to its cache |
+| `terrain/rasters.py` | renderer | Direct and top rasters on the output grid; the placements over a band and their faces |
+| `terrain/rasters_banded.py` | renderer | A banded raster: the bands rasterised on threads, each folded onto the output grid and written to its cache in order |
+| `terrain/maxz/raster.py`, `faces.py`, `kernels.py` | renderer | The raster passes' `MaxZRaster` (numba's scan and fold where the kernels are on), the faces of a placement each pass draws, and their numba kernels |
 | `terrain/top_raster.py`, `archfill.py` | renderer | The top raster with the arches apart (top, underside) and the boulders alone; the arches' sub-metre holes filled |
 | `terrain/overhangs.py` | renderer | Under each rock's top, its overhang's underside and the floor beneath it |
 | `terrain/render_meshes.py` | renderer | The render-only meshes and the Titan trees on the output grid |

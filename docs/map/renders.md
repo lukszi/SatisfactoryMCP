@@ -319,7 +319,9 @@ counts each cull, `excluded_mesh` among them: 376 placements on build 502094, th
 changes is the grid they are pointed at, its own 32768², 0.229 m to the texel, so a difference
 between the render and the field is one of spacing rather than of rasteriser. About 216 M
 triangles over 20,233 placements are rasterised once, banded at 256 rows, into the direct cache
-(a zstd band store, section 39) that every layer draws from. Two rules make that draw smooth.
+(a zstd band store, section 39) that every layer draws from: the bands on threads and the
+scan compiled since 2026-10-08 (section 41, "The raster passes"). Two rules make that draw
+smooth.
 
 ### One: the kernel has to interpolate the lattice, not the fold it produced
 
@@ -1456,9 +1458,10 @@ and 32 on the crowns at a few hundred steps each, and the sky view. The draw spe
 fifth of its terrain time in the sampler's gathers. Each of them now also exists as a numba
 kernel: the same arithmetic, compiled, a row at a time, with none of the temporary arrays
 numpy makes for every step. So do the crown stamps and the water of every style, the
-painters that took the most of the draw ("The painters", below). The numpy code stays where
-it was, as the reference the kernels are proven against and the path a machine without numba
-runs.
+painters that took the most of the draw ("The painters", below), and, since 2026-10-08, the
+max-Z scan the direct, top, mesh and Titan caches are rasterised with ("The raster passes",
+below). The numpy code stays where it was, as the reference the kernels are proven against
+and the path a machine without numba runs.
 
 ### The switch
 
@@ -1468,8 +1471,9 @@ runs.
   the GPU ("On the GPU", below).
 - The two paths write the same bytes, so nothing a render writes records which one ran.
 - A kernel module (`lighting/kernels.py`, `lighting/spans/kernels.py`, `terrain/kernels.py`,
-  `palette/water/kernels.py`, `palette/painted/kernels.py`) is imported only once the switch
-  says kernels, so the reference never loads numba. A test holds that.
+  `terrain/maxz/kernels.py`, `palette/water/kernels.py`, `palette/painted/kernels.py`) is
+  imported only once the switch says kernels, so the reference never loads numba. A test
+  holds that.
 - The light's spawned processes inherit the switch with the environment.
 
 ### Why the bits are the same
@@ -1775,6 +1779,125 @@ one step to the next, which is a different draw.
   check over several blocks; the full-size light's 64 blocks are first checked by the full
   render after the round.
 
+### The raster passes (2026-10-08)
+
+The direct, top, mesh and Titan caches are `MaxZRaster`'s work, and until this date it ran on
+one core: 2,175 s of a cold 32768 render on build 502094 (direct 1,605, meshes 359, Titan
+115, top 96) while 31 of the 32 cores idled. Since the overhangs (light-and-crowns.md section
+29, "Arches as spans") the direct pass made three passes over each band, its top, its
+undersides and the floor under them, and each transformed every placement again: about two
+thirds of its time. Three changes, and every cache is the same bytes.
+
+**The scan and the fold on numba** (`terrain/maxz/raster.py`, its kernels in
+`terrain/maxz/kernels.py`). Where the kernels are on, the raster passes rasterise into a
+`KernelRaster` (`max_z_raster`); the field's cliff layer and the crown sprites keep numpy's
+`MaxZRaster`.
+
+- *The same samples.* A triangle is tested at the points of its bucket, `size + 1` square
+  from the corner of its box, and a wide one tile by tile, with numpy's float operations in
+  numpy's order. A Python float meets a float32 array as numpy casts a weak scalar, to
+  float32 first, in the comparisons too.
+- *The same folds.* numpy buffers its candidates and folds them once more than
+  `RASTER_FLUSH` wait, checked after each `add` and after every 16 wide tiles. A fold keeps
+  each texel's highest candidate, of two equal the later (a stable lexsort's last), and NaN
+  over any (it sorts last, and then fails the `>`), and writes a texel only past what it
+  holds. So of two equal heights one fold keeps the later source, two folds the earlier. The
+  kernel counts its candidates as numpy buffers them and folds at the same points; between
+  folds each candidate goes straight into the open fold, per texel its height, source and
+  mark beside the list of texels marked, 11 bytes a texel while it is open. The order of the
+  samples inside one `add` cannot show: one `add` has one source.
+- *Fewer divisions.* A sample is in the triangle when `l1`, `l2` and `l3 = 1 - l1 - l2` are
+  all at least `-1e-6`, `l1` and `l2` each a numerator over the triangle's `den`. IEEE
+  division rounds correctly, so for a fixed `den` the quotient moves with the numerator
+  alone: `n / den >= -1e-6` holds for exactly the numerators past one value. The kernel finds
+  that value once a triangle, stepping from `-1e-6 * den` through the representable floats
+  (`_threshold`, a step or two), and tests both numerators against it with an addition each.
+  A sample that fails it fails numpy's test; one that passes is divided and tested as numpy
+  tests it. On a dense band at 32768, a quarter of the samples get that far and 4% are in.
+- *No buffers.* numpy's scan held a bucket's whole grid of samples in temporaries, the 16 GB
+  peak of the Titan pass at full size.
+
+**A placement's faces once a band** (`terrain/maxz/faces.py`, `rasters.band_placements`).
+The direct band sorts each placement's triangles once for its three passes: those reaching
+the band that face up, all of them where the winding is unknown, which the top and the floor
+draw, and those facing down whose top is high enough over the rock's foot to be an
+underside. They are kept as int32 row numbers. The transform, a 3×3 product per vertex in
+numpy's own BLAS call, is done again for each pass, which costs less than holding a band's
+vertices: holding them, with the faces as int64 triangles and twice the bands in flight, the
+8192 preparation peaked at 12.7 GB against 6.3.
+
+**Bands on threads** (`rasters_banded.in_band_order`, `RASTER_THREADS`). A band's planes
+depend on the triangles that reach it alone, and its folds count its own candidates, so the
+bands of the direct, top, mesh and Titan rasters are rasterised side by side, 16 at a time or
+one a core, and written in order, no more than 16 waiting past the one being written. The
+kernels release the GIL; the Python between them is a few percent of a band.
+
+What did not pay: a row's samples tested into arrays first for the compiler to vectorise,
+with and without the divisions, was a third slower than testing them one by one; a bucket is
+at most 9 samples wide for most triangles, too short a row to vectorise.
+
+#### Measured (2026-10-08, build 502094)
+
+The raster preparation alone at each size (the bench's `rasters` mode: the renders command's
+own functions in its order, the caches empty and numba's compiled code deleted first, so each
+run compiles; about 3.5 s of the direct pass), under the exclusive render lock, master against
+this code:
+
+| Stage, s | 8192, before | 8192, after | 16384, before | 16384, after |
+| --- | --- | --- | --- | --- |
+| sweep and mesh decode | 36.0 | 42.2 | 37.7 | 36.2 |
+| direct | 376.2 | 36.2 | 659.5 | 33.0 |
+| top | 27.5 | 2.6 | 41.1 | 4.8 |
+| meshes | 148.0 | 9.0 | 184.1 | 8.3 |
+| Titan trees, at half size | 16.8 | 3.6 | 33.8 | 3.6 |
+| the whole preparation | 612 | 102 | 963 | 93 |
+| peak commit, GB | 6.68 | 6.66 | 7.61 | 6.86 |
+
+The sweep and the decode are unchanged code; in the 8192 run the sweep had 0.8 of a core.
+At 2048 (the G1 run, beside other work) the direct pass took 34.8 s against 401.2, the
+meshes 15.9 against 178.8, the top 2.3 against 30.2 and the Titan trees 1.9 against 14.2:
+eight bands, so eight threads at most, and a triangle no bigger than a sample costs its
+setup whatever the size. Building G2's 32768 caches took 36.2 s for the direct pass, 14.5
+for the top, 9.1 for the meshes and 2.6 for the Titan trees, against 1,605, 96, 359 and 115
+in the cold full render of the base benchmark.
+
+The full render at 32768, all five layers lit, cold (every cache empty, numba compiling),
+against the base benchmark's: 1,638 s against 4,056, its preparation 351 s against 2,402.
+The four caches took 118 s against 2,176: the direct pass 73.5, 34.5 of it the unchanged
+sweep and mesh decode, the top 15.2, the meshes 21.9 and the Titan trees 7.9. The
+preparation's peak commit fell from 16.1 GB, the Titan pass's temporaries, to 11.4, the
+direct pass's 16 bands. The run's peak is the light's: 33.7 GB against 31.5, on 15 light
+workers against 11, a count that follows the free memory (a base run on 16 peaked at 35.4).
+The draw and the light, which this does not touch, took 21% less than in the base run,
+which shared the machine with 5 to 7 cores of other work while they ran.
+
+The direct pass reaches 8 to 12 of the 16 cores, and its bands spend about two fifths of
+their time waiting. The scan is not why: 16 threads scanning a small raster ran 12 times as
+fast as one. The transform between the kernel calls is part of it, numpy holding the GIL
+for some of it (16 threads ran it 2.7 times as fast as one); the rest is not pinned down.
+24 or 32 threads were slower than 16, one BLAS thread was slower, a shorter GIL switch
+interval bought CPU and no time, and letting 64 bands run ahead of the writer instead of 17
+bought nothing.
+
+#### Checked
+
+- Every file of the raster caches at 8192 and 16384, direct (all five planes), top, meshes,
+  Titan trees, falls and rivers, the same bytes as master's, `meta.json` apart from its
+  seconds.
+- G1 at 2048, uncached, all five layers lit: all 1,131 files the same content as the
+  baseline and all 1,125 tiles the same bytes; only the six sidecars differ in bytes, their
+  timings.
+- G2 at 32768 from caches this code built: all 15 windows the same SHA-256 as the baseline,
+  drawn from master's caches.
+- `tests/mapgen/test_raster_kernels.py`: the kernel raster against numpy's with folds forced
+  every 37 and every 4,000 candidates, with and without a ceiling, at both sample offsets and
+  an offset first row, wide, flat, tied and degenerate triangles, float64 vertices and a NaN
+  height; ties across one fold and across two; instances and row subsets; the threshold
+  against the division on 2,600 numerators each for seven `den`s from 1e-12 to 5e7; a
+  placement's faces and extent under every facing and rise; whole direct bands (one and two
+  sub-samples), top and mesh bands, both switch settings; a cache the same bytes on one
+  thread and on four.
+
 ### Known limits
 
 - The painters left in numpy above. A kernel for the colour spaces could add its sums in
@@ -1784,6 +1907,10 @@ one step to the next, which is a different draw.
   arctangent after each march costs more than the whole call.
 - Each light process opens its own CUDA context, 0.19 GB of device memory: 16 processes take
   3 GB of a 10 GB card before they march.
+- The level sweep and the rock meshes' decode, 34 s at any size, are pure Python on one core,
+  a third of the raster preparation at 32768 now. They read packages that do not depend on
+  one another, so a pool of processes over them is the next step.
+- The raster passes have no CUDA kernel; under `--gpu` they run numba's.
 - A numba release is a new proof, which is why it is pinned: the bit tests in
   `tests/mapgen/test_kernels.py` and `tests/mapgen/test_paint_kernels.py` and a G1 against the
   reference come with an upgrade.

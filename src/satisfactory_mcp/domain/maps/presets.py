@@ -82,10 +82,12 @@ COMMANDS = {
 #: The modules the generators need from the ``gen`` extra.
 GEN_MODULES = ("ooz", "texture2ddecoder", "PIL", "zstandard")
 
-#: Seconds per stage of one full 32768 px render of both layers, from its log (2026-10-05).
-#: ``fixed`` stages do not scale with the sheet; the rest scale with its area, and ``direct``
-#: never drops under its floor because the triangles are the same at any size.
-RENDER_STAGE_S = {"prep": 30.0, "sweep": 36.0, "direct": 692.0, "top": 119.0}
+#: Seconds per stage of one full 32768 px render, from its log: ``prep`` of both layers
+#: (2026-10-05); the sweep, the direct pass and the top through the water of all five, cold,
+#: with the raster passes compiled and on threads (2026-10-08). They scale with the sheet's
+#: area, and ``direct`` and ``top`` never drop under their floors: the triangles are the same
+#: at any size.
+RENDER_STAGE_S = {"prep": 30.0, "sweep": 33.0, "direct": 39.0, "top": 174.0}
 #: Per layer, from renders-v7's five lit layers and the 2026-10-06 performance work
 #: (docs/maps_contract.md section 4.3): the parallel cut of a layer without the light.
 RENDER_LAYER_S = {"cut": 73.0}
@@ -110,8 +112,9 @@ CROWN_SCRATCH_BYTES = 5_370_000_000
 #: The default-sun terms a lit render that keeps its cache moves out of the scratch into
 #: ``light.kept/``, 4 bytes a pixel; the kept tiles are hard links to the map's own.
 KEPT_TERMS_BYTES = 4 * FULL_PX * FULL_PX
-DIRECT_FLOOR_S = 80.0
-TOP_FLOOR_S = 18.0
+#: The direct and top stages at 2048 (2026-10-08).
+DIRECT_FLOOR_S = 35.0
+TOP_FLOOR_S = 88.0
 RENDER_KEEP_BYTES = 890_000_000
 RENDER_KEEP_FLOOR = 10_000_000
 #: The raster caches of one full render in the zstd band store: 0.93 GB measured, where the
