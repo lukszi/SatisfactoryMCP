@@ -292,6 +292,8 @@ be traced to the axis it should move.
 | `palette/water/perched.py` | style | Water levels re-read from the shoreline where a box top is not the surface |
 | `palette/water/seams.py` | style | Small level steps inside one sheet of water, feathered into a ramp |
 | `palette/water/geodesic.py` | style | Steps counted through a mask, as a flood grows out from its seeds |
+| `palette/water/footprints/plane.py` | style | The render-only meshes' land plane: each coral, shell or terrace footprint kept whole on land or left whole to the seabed, and each piece's reading of it |
+| `palette/water/footprints/reference.py`, `gpu.py`, `footprints.cu` | style | The land plane's per-texel marks and per-pixel reading in numpy, and the same as CUDA kernels for `--gpu` |
 | `render/run/prepare.py` | | Every stage of a run before the first band is drawn, in order (`prepare`) |
 | `render/run/inputs.py` | | A run's inputs and their refusals: the field and its lattices, the game, the borrow, the paint and the water |
 | `render/run/biome_inputs.py` | | The game's biome raster as the biome layers draw it: read, checked and coloured |
