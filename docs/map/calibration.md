@@ -55,8 +55,8 @@ screenshot measured by the method below, or derived by a rule from another targe
 | Rock outside every area entry | #85816c | screenshot |
 
 With a paint store from generator 4 on, a render takes the keys the palette's
-`calibration.derived_keys` lists from the game install instead ("Targets derived from the game
-install" below), these six among them.
+`calibration.derived_keys` lists from the game install instead, where the derive gate passes
+them ("Targets derived from the game install" below), these six among them.
 
 #### Wet sand by rule (2026-10-06)
 
@@ -502,9 +502,11 @@ the layers is mostly the biome tint, which is added after the transfer.
 `python -m mapgen calibrate` derives a display colour for every calibration key from the
 game's own data, through a model of the game's camera, and writes them to
 `targets.derived.json` beside the paint store. A palette names the keys a render takes from
-there in `calibration.derived_keys`; every other key keeps its screenshot target. Code:
-`palette/painted/derive/` (`camera.py`, `scene.py`, `rules.py`, `targets.py`, `palette.py`),
-`commands/calibrate.py`, and the readers in `gamedata/level/curves.py` and `lighting.py`.
+there in `calibration.derived_keys`, and takes each only where the derive gate passes it
+("The derive gate" below); every other key keeps its screenshot target. Code:
+`palette/painted/derive/` (`camera.py`, `scene.py`, `rules.py`, `gate.py`, `targets.py`,
+`palette.py`), `commands/calibrate.py`, and the readers in `gamedata/level/curves.py` and
+`lighting.py`.
 
 **Inputs.** The paint store, from generator 4 on, keeps three more blocks in its `meta.json`,
 read by the same level walk:
@@ -554,59 +556,90 @@ Desert's: most of its placements stand inside that volume.
 | --- | --- | --- |
 | bake median | layers, derived layers, area layers | the OKLab median of the bake over the layer's pure texels (at least 0.7 of the blend, at least 50) in the key's scope: inside an area entry's areas, or outside every entry that targets the layer |
 | paint table | an untargeted layer with too few pure texels | the layer's texture mean times its material vector |
-| cliff texture × tint | `rock`, an area's rock | the mean of `Cliff_Macro_Alb_02` and `Cliff_Detail_Alb` times the cliff family's `Color Tint` |
+| cliff body texture | `rock`, an area's rock | the mean of `Cliff_Sediment_Alb`, the body albedo every cliff instance streams; the family's `Color Tint` is recorded and not applied ("Rock from the cliff material" below) |
 | sand-rock | `families.desert`, an area rock wearing its target | the DesertRock paint-table entry, `TX_SandRock_Alb_01` times `Sand Rock BaseColor`; `MI_DesertRock` has no albedo texture of its own |
 | top texture | `tops` | the family's far albedo mean |
 | crowns | `canopy`, `crowns`, `species` | the weighted median of the trees' top-down sprite colours (cover × scale²); the canopy takes only crowns within 20 to 40° of the forest floor texture's hue and leaves out the keyed species and the blue palms |
 | material texture | `meshes.coral`, an area's shells | the materials' base-colour means under their masks |
 | none | water, seabed coral | the game's water absorbs but does not scatter, so its colour is the sky, the clouds and the fog, which the cooked assets do not expose |
 
-**Results on build 502094.** ΔE is OKLab ×100 against the screenshot target; `*` marks the
-keys `derived_keys` lists.
+**Results on build 502094** (model version 2, 2026-10-08). ΔE is OKLab ×100 against the
+screenshot target, and "Chroma and hue" the part of it in a and b against the gate's allowance;
+`*` marks the keys `derived_keys` lists and a render takes, `x` those it lists and the derive
+gate declines, so they keep their screenshot.
 
-| Key | Derived | Screenshot | ΔE | Light |
-| --- | --- | --- | ---: | --- |
-| * layers.Sand | #d7c1a2 | #d5cbb6 | 3.0 | global |
-| layers.SandRipples | #d98d64 | #ca784f | 6.0 | Dune Desert |
-| * layers.Grass | #7f8d4e | #83986e | 4.4 | global |
-| * layers.Forest | #484d26 | (the canopy's #558653) | 17.3 | global |
-| * derived.WetSand | #b38c61 | #a29583 | 4.7 | global |
-| * canopy | #5e8136 | #558653 | 3.2 | global |
-| * rock | #897758 | #85816c | 3.2 | global |
-| * families.desert | #c38761 | #ae8271 | 4.5 | Dune Desert |
-| * tops.forest | #54662b | #505936 | 4.7 | global |
-| * meshes.coral | #9f7e75 | #99868e | 3.6 | global |
-| crowns.blue_palm | #bec7c1 | #3d627d | 34.6 | global |
-| species.SM_Kapok_03 | #ad4a37 | #7c4955 | 10.3 | global |
-| desert entry: Sand | #d7c3a5 | #c4ab8b | 7.2 | global |
-| desert entry: WetSand | #b48d61 | #987b61 | 7.1 | global |
-| * desert entry: Gravel | #9e896f | #8f8373 | 3.1 | global |
-| * desert rock entry | #c38761 | #ae8271 | 4.5 | Dune Desert |
-| * Grass Fields etc.: rock | #897758 | #7e7868 | 2.6 | global |
-| Grass Fields: Grass | #7d8f50 | #9dad70 | 10.0 | global |
-| * Red Jungle: Cliff | #7c6f5b | #877e6e | 4.9 | global |
-| * Red Jungle: rock | #897758 | #877e6e | 3.0 | global |
-| crater: CoralRock | #82838e | #6c7386 | 5.8 | global |
-| Blue Crater: shell | #7b705b | #747b85 | 6.0 | global |
+| Key | Derived | Screenshot | ΔE | Chroma and hue | Light |
+| --- | --- | --- | ---: | ---: | --- |
+| * layers.Sand | #d7c1a2 | #d5cbb6 | 3.0 | 1.9 / 2.0 | global |
+| layers.SandRipples | #d98d64 | #ca784f | 6.0 | 1.0 / 7.8 | Dune Desert |
+| * layers.Grass | #7f8d4e | #83986e | 4.4 | 2.7 / 4.3 | global |
+| * layers.Forest | #484d26 | (the canopy's #558653) | 17.3 | 5.0 / 6.2 | global |
+| x derived.WetSand | #b38c61 | #a29583 | 4.7 | 4.6 / 2.0 | global |
+| * canopy | #5e8136 | #558653 | 3.2 | 2.9 / 6.2 | global |
+| x rock | #7b6f5a | #85816c | 5.5 | 1.0 / 2.1 | global |
+| * families.desert | #c38761 | #ae8271 | 4.5 | 3.3 / 4.0 | Dune Desert |
+| * tops.forest | #54662b | #505936 | 4.7 | 3.2 / 3.6 | global |
+| x meshes.coral | #9f7e75 | #99868e | 3.6 | 3.1 / 1.7 | global |
+| crowns.blue_palm | #bec7c1 | #3d627d | 34.6 | 6.1 / 4.1 | global |
+| species.SM_Kapok_03 | #ad4a37 | #7c4955 | 10.3 | 7.9 / 4.7 | global |
+| desert entry: Sand | #d7c3a5 | #c4ab8b | 7.2 | 0.7 / 3.5 | global |
+| desert entry: WetSand | #b48d61 | #987b61 | 7.1 | 2.5 / 3.5 | global |
+| * desert entry: Gravel | #9e896f | #8f8373 | 3.1 | 1.7 / 1.8 | global |
+| * desert rock entry | #c38761 | #ae8271 | 4.5 | 3.3 / 4.0 | Dune Desert |
+| * Grass Fields etc.: rock | #7b6f5a | #7e7868 | 2.9 | 1.1 / 1.7 | global |
+| Grass Fields: Grass | #7d8f50 | #9dad70 | 10.0 | 0.5 / 5.7 | global |
+| * Red Jungle: Cliff | #7c6f5b | #877e6e | 4.9 | 0.8 / 1.7 | global |
+| x Red Jungle: rock | #7b6f5a | #877e6e | 5.0 | 0.9 / 1.7 | global |
+| crater: CoralRock | #82838e | #6c7386 | 5.8 | 1.5 / 2.0 | global |
+| Blue Crater: shell | #7b705b | #747b85 | 6.0 | 5.1 / 1.3 | global |
+
+Model version 1 derived the three rock keys #897758: ΔE 3.2, 2.6 and 3.0, but chroma and hue
+2.2 / 2.1, 2.6 / 1.7 and 2.4 / 1.7. The gate declines all three; "Rock from the cliff
+material" below says where that colour came from.
 
 The layers no key targets get a derived colour too: GrassRed #c09872, Puddles #624f37,
 RedJungle #ae6451, SandCracks #d1845c (Dune Desert light), SandPebbles #bfaa85, SandRock
 #bd7551 (Dune Desert light) and Soil #896e4e, all from the bake; DesertRock and PurpleForest
 have no pure texels and fall back to their paint-table entries.
 
-**Which keys take the derived colour.** Those within ΔE 5 of their screenshot target, the
-desert rock under the Dune Desert's light, the Forest floor (it had no screenshot target, only
-the canopy's as a stand-in), and the seven layers with no target at all. The rest keep their
-screenshot: the blue palms (the leaf texture is a pale blue-grey and the model has no foliage
-sky term), the red Kapok (no subsurface light), every water colour, and the keys between 5 and
-10 until the in-game checks their verdicts list are done. A render with derived colours
-carries the merged palette's digest, so a different install's derivation is a different style.
+**Which keys take the derived colour.** `derived_keys` lists the desert rock under the Dune
+Desert's light, the Forest floor, the seven layers with no target at all, and the keys that
+were within ΔE 5 of their screenshot target when they were listed. Of those, a render takes the
+ones the derive gate passes. Not listed: the blue palms (the leaf texture is a pale blue-grey and
+the model has no foliage sky term), the red Kapok (no subsurface light), every water colour,
+and the keys between 5 and 10 until the in-game checks their verdicts list are done. A render
+with derived colours carries the merged palette's digest, so a different install's derivation
+is a different style.
+
+**The derive gate** (2026-10-08, `derive/gate.py`). A listed key takes its derived colour only
+when it agrees with its screenshot target in lightness, chroma and hue:
+
+- ΔE (OKLab ×100) at most 5, as the listing rule above;
+- and the a-and-b part of the difference, the chroma step and the hue step together, at most
+  2/3 of the target's chroma, the target counted at chroma 0.02 at least, so a grey target
+  keeps an allowance (×100: 1.3 for a grey, 2.1 for the default rock #85816c).
+
+ΔE alone let a hue shift through on a near lightness: model version 1's rock was 3.2 from
+#85816c with nearly all of it in hue and chroma. The share 2/3 sits between the worst key the
+gate keeps on this build (the sand and the desert gravel, 0.63 of their allowance) and model
+version 1's rock (0.71). `calibrate` prints both parts and marks a declined key `x` with why; a
+render records it in its sidecar (`sources.paint.derived_targets.declined`) and keeps the
+screenshot. A key with
+no screenshot target of its own is not gated, and `derived_ungated` names keys that pass
+regardless: the Forest floor, whose target is the canopy's as a stand-in.
+
+On build 502094 the gate declines four listed keys. The default rock and the Red Jungle's rock
+(ΔE 5.5 and 5.0, lightness only: the cliff body is darker than the lit tops the screenshots
+pool) keep #85816c and #877e6e, which are as grey. The wet sand (chroma 0.075 against 0.030)
+and the coral caps (hue 45° off) keep their screenshot colours, which model version 1 also
+replaced.
 
 **The file and the run.** `targets.derived.json` holds each key's colour with its rule, light,
 light shares, albedo, assets and sample count, and a stamp: the paint store's digest, the
-digest of the area map on the 4 m grid, the calibration block's digest without its `about`
-and `derived_keys`, and the model version. A render reads the file while its stamp holds and
-derives in its own run otherwise, about 6 s; a store from before generator 4 keeps every
+digest of the area map on the 4 m grid, the calibration block's digest without its `about`,
+`derived_keys` and `derived_ungated`, and the model version. A render reads the file while its
+stamp holds and derives in its own run otherwise, about 6 s; a store from before generator 4
+keeps every
 screenshot target and the sidecar says why (`sources.paint.derived_targets`). The command
 reads the install and writes nothing but the file; `--check` prints the table and writes
 nothing.
@@ -614,7 +647,8 @@ nothing.
 **Tests.** `tests/fixtures/calibration_screenshots.json` keeps the screenshot targets with
 their sources. A scored key must lie within ΔE 8 of its target, or within its own tolerance,
 its measured distance plus 1 (Grass Fields grass 11, the red Kapok 11.5); the blue palms are
-not scored. The integration test checks them on a real store with `E` within 2% of 2.81.
+not scored. The integration test checks them on a real store with `E` within 2% of 2.81, and
+that the three rock keys derive the cliff body within the gate's chroma-and-hue allowance.
 
 **Limits.**
 
@@ -628,6 +662,69 @@ not scored. The integration test checks them on a real store with `E` within 2% 
 - SandCracks (L 0.685) stays lighter than the screenshot SandRipples (L 0.653), though the bake
   has it darker; deriving SandRipples too (L 0.712) would restore the bake's order.
 - The Dune Desert volume's hull also covers the western mesas and 40% of the Spire Coast.
+
+### Rock from the cliff material (2026-10-08)
+
+Model version 1 derived every non-desert rock #897758 (chroma 0.050, hue 81°), close to the
+dirt paths, and the painter set every rock's chroma and hue to it. Its albedo was the mean of
+`Cliff_Macro_Alb_02` and `Cliff_Detail_Alb` times the cliff family's `Color Tint`. Neither
+texture is the cliffs': `Cliff_Macro_Alb_02` is referenced only by `MM_Arc_Emissive`, and
+`Cliff_Detail_Alb` by the arch master `MM_Arc_01` and the hot springs. Read on build 502094:
+
+- **One master, one tint.** Every cliff and cliff-family rock wears an instance of
+  `Rock/Material/Rock_WA`: 143 instances under `World/Environment/`. `Cliff` sets
+  `Color Tint` (0.624, 0.545, 0.471) and the static switch `Use Color Tint`; every family
+  root (`Cliff_Forest`, `_Grass`, `_RedGrass`, `_Sand`, `_WetSand`, `_RedJungle`) and 138 of
+  the 139 instances under them inherit both. One overrides the tint: `CliffCone_01_WetSand`,
+  (0.475, 0.404, 0.341). `Boulder_WA_Grass`, `Pebbles01` and `Ribrock_02_Inst` do not set the
+  switch; the master's own default is grey (0.870).
+- **What it samples.** The master's cached expression data references, for colour,
+  `Cliff_Sediment_Alb` (linear mean 0.096, 0.090, 0.086: dark grey with tan veins),
+  `TX_FlatRock_01_Alb` (streamed only where "No Sand/Grass" is off), the top layers' textures
+  and `PigmentMap`. Each mesh's `Reflection Map` is not colour: red edges, green cavity, blue
+  occlusion. The cliff instances stream `Cliff_Sediment_Alb`; `ROCK_TEXTURES` now names it,
+  so the next `mapgen paint` also records it as the store's rock albedo.
+- **Per area.** The static switch `PigmentMap` is on for the `Cliff_Grass`, `Cliff_RedGrass`
+  and `Cliff_Sand` trees (62 instances) and off for the plain, forest, wet-sand and red-jungle
+  cliffs. The pigment map is white over most of the map. Nothing varies per placement:
+  `bHasPerInstanceRandom` and `bHasPerInstanceCustomData` are false on `Rock_WA`.
+- **How the tint combines.** The graph is cooked out, so the parameter names are what is left:
+  `Color Tint` behind `Use Color Tint`, and `Mask Intensity` (0.4 on `Cliff`, 1.0 by default)
+  the only scalar that could be its strength; no lerp, overlay or strength parameter is named.
+  The game's own bake decides it. The persistent level ships 572 mesh HLOD cells
+  (`Persistent_Level_HLOD0_256m_1023m_L<n>_X<x>_Y<y>_Material_BaseColor`, 512 px virtual
+  textures in the bake's tile layout, the 256 m cell centred on (256x, 256y) m), each the
+  BaseColor of its merged proxies baked from their materials. A vector multiply survives that
+  bake: the sand tops read (0.509, 0.342, 0.227), `TX_Sand_BC` times the master's `BaseColor`
+  (0.949, 0.780, 0.737). The cliff body reads (0.084 to 0.095, 0.082 to 0.091, 0.078 to 0.084),
+  chroma 0.003 to 0.006, the same in all 17 non-desert areas: the body texture's colour. A
+  plain multiply by the tint would read (0.060, 0.049, 0.040), chroma 0.04. Whatever the tint
+  does, a masked lerp would fit its names, it does not reach the colour seen from afar, so the
+  rule records it and does not apply it.
+
+The rule's colour is the texture's under the warm noon sun: #7b6f5a, chroma 0.034 at hue 82°,
+against the grey targets' 0.025 to 0.031 at 82 to 98°.
+
+**Where rock is tan in the game.** In the HLOD bake, tan is the desert rock family
+(terracotta, the Dune Desert and the desert spires: `families.desert`), the sand tops of the
+`_Sand` family (4.0% of the Rocky Desert's atlas texels, 5.4% of the Savanna's, 2.2% of the
+Western Dune Forest's, 2.0% of the Desert Canyons'), and a lighter warm grey (linear 0.16 to
+0.18, 0.14 to 0.17, 0.12 to 0.15) on the arches (`MM_Arc_01`) and the rocks of other masters,
+which have no family and wear the area's rock.
+
+**Footage** (Coffee Stain's videos, by YouTube id): the 1.0 launch trailer (Jt4XOPiPJHs, 0:46)
+and the console trailer (TURoNOy6eC0, 0:56) show the Grass Fields arch grey; the 1.2 trailer
+(aoHCYhlYjlc, 0:24) and the console trailer (0:19) the desert rock terracotta. The Update 8
+showcase (ZywFe6eKNvk, an editor build, 0:14:28 and 0:15:20) shows grey cliffs and grey arches
+standing in sand beside red mesas. The rule and the families put both in place: the cliffs
+grey, the desert family terracotta.
+
+**Not changed.** The desert entry's rock (#ae8271) still colours every rock of the Desert
+Canyons and the Rocky Desert, the cliff families' included, though the HLOD bake has those
+cliffs grey with sand tops, as the showcase frames do. Dropping the two areas from that entry,
+or letting it skip the cliff families, is a palette choice ("Known limits", the north beach).
+The HLOD bake itself could become a source: rasterised top-down at 1 m it gives the game's own
+colour of every merged mesh, trees included, though its proxies are coarse.
 
 ### Known limits
 
@@ -672,9 +769,10 @@ not scored. The integration test checks them on a real store with `E` within 2% 
   entry's area target that reddens them. For the cliff foot to follow its own meshes, that
   entry's rock would have to skip the cliff families, which take the default #85816c instead.
   That would also grey the 561 cliff placements of the Desert Canyons and the 1,363 of the
-  Rocky Desert, so it is left undone. The boulders wear the same materials everywhere, with no
-  override, so following their mesh would give them one colour across the map, the Dune Desert
-  included.
+  Rocky Desert, so it is left undone, though the game's HLOD bake and the Update 8 showcase have
+  those placements grey too ("Rock from the cliff material"). The boulders wear the same
+  materials everywhere, with no override, so following their mesh would give them one colour
+  across the map, the Dune Desert included.
 - Boulders, arches, and rubble and rock piles whose material roots no family keep the area's
   rock. On the mesas, which the area map gives to the Spire Coast, a few of them stay grey
   (the default rock) on the red-brown rock.
