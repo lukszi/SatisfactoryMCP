@@ -150,10 +150,11 @@ claim is refused with its own exit code (§20, "Refusals"). The main options:
 - `--draw-columns N` draws each band in pieces of N output columns, 512 by default. Narrower
   pieces take less memory a thread, and the tiles are the same bytes at any width (§40,
   "Column pieces" and "Fixed-order sums").
-- `--gpu` runs the light's horizon march and sky view as CUDA kernels. It needs the root
-  project's `gpu` extra (`uv sync --all-extras` installs it) and an NVIDIA driver, and
-  refuses with exit code 12 where either is missing. The bake's log says where its calls
-  ran. The tiles are the same bytes (§41, "On the GPU").
+- `--gpu` runs the light's horizon march and sky view as CUDA kernels, and the draw's
+  relight, arch FXAA and terrain pieces. It needs the root project's `gpu` extra (`uv sync
+  --all-extras` installs it) and an NVIDIA driver, and refuses with exit code 12 where either
+  is missing. The bake's log and the draw's say where their calls ran. The tiles are the same
+  bytes (§41, "On the GPU" and "The draw on the GPU").
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
@@ -251,6 +252,7 @@ be traced to the axis it should move.
 | `terrain/overhangs.py` | renderer | Under each rock's top, its overhang's underside and the floor beneath it |
 | `terrain/render_meshes.py` | renderer | The render-only meshes and the Titan trees on the output grid |
 | `terrain/crown_stamp.py` | renderer | Tree crowns stamped into a band of the output grid |
+| `terrain/texels.py` | renderer | Textures and atlas tiles read onto a band, sprites stamped over it: the reference the GPU's `render/gpu/texels.py` matches |
 | `terrain/measure.py` | renderer | `SeamTrace`, `RegimeCoverage` |
 | `lighting/hillshade.py` | light | Hillshade, the sun term, the flat shade and slope |
 | `lighting/borrow.py` | light | The artwork borrow and its sidecar record |
@@ -303,13 +305,16 @@ be traced to the axis it should move.
 | `render/ground/floating.py` | | What floats over a piece for the light: the arches and overhangs, and the surface without them |
 | `render/ground/void.py` | | The void as a piece draws it, once for every layer, and the land weight the light reads off it |
 | `render/draw/archaa.py` | | FXAA on the arches only, a band at a time with its neighbours' rows |
-| `render/draw/painting.py` | | One band coloured in one layer's style over that ground (`paint_band`) |
+| `render/draw/painting.py` | | One band coloured in one layer's style over that ground (`paint_band`), and its kept pixels as bytes (`piece_bytes`) |
 | `render/draw/stream.py` | | Each settled band handed to its layers' tile trees, the lit ones once the light has its rows |
 | `render/draw/drawpool.py` | | How many threads draw a pass's bands, and the pool that keeps their order |
 | `render/ground/stencils.py` | | How far each step of a band's draw reads its neighbours, and the band halo that holds them |
 | `render/run/extras.py` | | What a run loads beside the field: meshes, falls, Titan trees and rivers |
 | `render/draw/light.py` | | A run drawn unlit: the scratch claimed and closed, the crown occluder, the light baked as the bands come in, a kept light read while it matches, the default-sun relight |
 | `render/draw/kept_light.py` | | The finished light a lit render keeps beside its raster caches, and its install |
+| `render/gpu/device.py` | | What the draw's CUDA kernels share: their grids, the device memory they may hold, where each call ran, a band's planes kept on the device (`DeviceBand`) |
+| `render/gpu/relight.py`, `fxaa.py`, `terrain.py` | | The default-sun relight, the arches' FXAA and the terrain's pieces as CUDA kernels (`*.cu` beside them), for `--gpu` |
+| `render/gpu/texels.py`, `texels.cu` | | `terrain/texels.py`'s reads and stamps on the device, for the painted style's rendered look |
 | `render/run/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
 | `tiles/pyramid.py` | | A layer's tile trees, the worker flags, the parallel cutter's self-check |
 | `tiles/cutter.py` | | The parallel cutter: every tree of a run cut as its sheets' rows come in, through one encode pool |

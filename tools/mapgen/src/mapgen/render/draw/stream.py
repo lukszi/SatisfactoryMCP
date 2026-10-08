@@ -19,6 +19,7 @@ from typing import NamedTuple, TypeAlias
 import numpy as np
 
 from mapgen.cache import Plane
+from mapgen.jit import gpu_on
 from mapgen.palette.lightparams import shader_light
 from mapgen.render.draw.archaa import FXAA_HALO, arch_fxaa
 from mapgen.render.draw.light import UNLIT_DIR_NAME, LightingRun, relight_rows
@@ -84,6 +85,7 @@ class RenderStream:
         self.first: dict[str, deque[_Band]] = {}
         self.waiting: dict[str, deque[_Band]] = {}
         self.tails: dict[_Lane, U8Grid | None] = {}
+        self.installed: set[str] = set()
         for layer in layers:
             directory = layer_dir(out_dir, layer, renders_name)
             directory.mkdir(parents=True, exist_ok=True)
@@ -183,10 +185,15 @@ class RenderStream:
 
     def install(self, layer: str) -> LayerTrees:
         """Wait for ``layer``'s trees, then rename each into place: ``unlit/``, ``tiles/``,
-        ``tiles@2x/``."""
+        ``tiles@2x/``. After the last layer's, a ``--gpu`` run logs where its calls ran."""
         started = time.time()
         unlit = self.cutter.install(self.unlit[layer])[0] if self.light is not None else None
         tiles, dense = self.cutter.install(self.lit[layer])
+        self.installed.add(layer)
+        if gpu_on() and self.installed == set(self.lit):
+            from mapgen.render.gpu.device import calls_line, ran
+
+            print(calls_line(ran()), flush=True)
         return LayerTrees(tiles, dense, unlit, time.time() - started)
 
 
@@ -209,7 +216,7 @@ def _with_halo(rgb: U8Grid, halo: _Halo) -> U8Grid:
     """A band antialiased on its arches with its neighbours' rows."""
     whole = np.concatenate([halo.head, rgb, halo.tail])
     core = slice(halo.head.shape[0], halo.head.shape[0] + rgb.shape[0])
-    return arch_fxaa(whole, halo.cover, core)
+    return _antialiased(whole, halo.cover, core)
 
 
 def _relit_with_halo(rgb: U8Grid, halo: _Halo, relight: Transform) -> U8Grid:
@@ -217,7 +224,18 @@ def _relit_with_halo(rgb: U8Grid, halo: _Halo, relight: Transform) -> U8Grid:
     then antialiased on its arches."""
     lit = relight(np.concatenate([halo.head, rgb, halo.tail]))
     core = slice(halo.head.shape[0], halo.head.shape[0] + rgb.shape[0])
-    return arch_fxaa(lit, halo.cover, core)
+    return _antialiased(lit, halo.cover, core)
+
+
+def _antialiased(rgb: U8Grid, cover: U8Grid, core: slice) -> U8Grid:
+    """``arch_fxaa``; with ``--gpu`` on the device (``render/gpu/fxaa.py``), the same bytes."""
+    if gpu_on():
+        from mapgen.render.gpu.fxaa import arch_fxaa as on_gpu
+
+        done = on_gpu(rgb, cover, core)
+        if done is not None:
+            return done
+    return arch_fxaa(rgb, cover, core)
 
 
 def _terms(light: LightingRun, r0: int, r1: int) -> tuple[U8Grid, U8Grid]:

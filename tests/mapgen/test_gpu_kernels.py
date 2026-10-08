@@ -112,7 +112,8 @@ def test_the_refusal_table_holds_each_code_and_the_gpu_s_is_its_own():
 
 @pytest.mark.usefixtures("device")
 def test_the_flag_probes_the_device_from_a_process_of_its_own():
-    """The run's own process never opens a CUDA context: only its light's processes use one."""
+    """The probe opens no CUDA context in the run's own process: the draw's kernels open it
+    there, if they run at all."""
     code = (
         "import sys\n"
         "from mapgen import jit\n"

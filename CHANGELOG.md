@@ -165,6 +165,11 @@ Planned as 0.2.0.
   hold the device at once, and a light process's CUDA context takes 0.10 GB instead of 0.19.
   The CUDA kernels no longer flush subnormal numbers to zero, which CuPy's compile did
   whatever the options said; no map moves.
+- Map generator: `--gpu` also runs the draw's relight by the default sun, the arches' FXAA
+  and the terrain layer's pieces as CUDA kernels, to the same bytes. At 16384 the relight's
+  188 CPU seconds become 6 and the FXAA's 70 none, and the draw takes 172 s instead of 186;
+  the run logs where the draw's calls ran. For the painted style's coming look, textures,
+  atlas tiles and sprites can now be read and stamped on the device too, to the CPU's bytes.
 - Map generator: a render whose light scratch another running render holds is refused with
   exit code 11 and the reason on stdout (it was exit 1 on stderr). The render sidecar's
   `cliff_geometry.placements_dropped` counts the passable `CliffPillar_03` as `excluded_mesh`
