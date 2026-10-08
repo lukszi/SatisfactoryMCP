@@ -1,10 +1,11 @@
 """The lighting pyramid's tiles: their format, the work files, and the coarser levels.
 
 Per tile, ``{z}/{x}_{y}.nrm.webp`` (lossless RGBA: east and south normal, sky view, land
-weight) and ``{z}/{x}_{y}.hz.webp`` (an 8 x 8 grey atlas at half resolution, each cell in a
-border of its edge texels: 32 faded ground horizons, then 32 crown horizons; at a higher
-quality where a band is folded in). Every style reads the ground's; only a style that draws
-the crowns adds theirs. docs/map/light-and-crowns.md section 29.
+weight) and ``{z}/{x}_{y}.hz.webp`` (a grey atlas of 8 cells a row at half resolution, each
+cell in a border of its edge texels: 32 faded ground horizons, 32 of the crowns, 32 of the
+Titan trees, then the trees' ambient occlusion; at a higher quality where a band is folded
+in). Every style reads the ground's; only a style that draws the trees adds theirs.
+docs/map/light-and-crowns.md section 29.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from numpy.typing import NDArray
 from scipy import ndimage
 
 from mapgen.lighting.horizon import encode_horizon, normals
-from mapgen.lighting.model import HZ_CELLS, HZ_GUTTER_PX
+from mapgen.lighting.model import HORIZON_CELLS, HZ_CELLS, HZ_GUTTER_PX
 from mapgen.lighting.refold import path_elevations, refold
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX, tile_relpath
@@ -290,7 +291,8 @@ def level_strips(
         nrm = np.stack(
             [normal_byte(nx), normal_byte(ny), svf[r0 : r0 + rows], land[r0 : r0 + rows]], -1
         )
-        hz_u8 = np.moveaxis(LINEAR_TO_HZ[hzq[r0 // 2 : (r0 + rows) // 2]], -1, 0)
+        quarter = np.array(hzq[r0 // 2 : (r0 + rows) // 2])
+        hz_u8 = np.moveaxis(_atlas_bytes(quarter), -1, 0)
         jobs = list(tile_jobs(dest, level, 0, r0 // t, nrm, hz_u8, folded))
         count += len(jobs)
         tasks = [jobs[i : i + LEVEL_TASK_TILES] for i in range(0, len(jobs), LEVEL_TASK_TILES)]
@@ -301,11 +303,7 @@ def level_strips(
             next_level["zh"][a:b] = downsample(np.asarray(z[r0 : r0 + rows]))
             next_level["landh"][a:b] = np.round(downsample(land[r0 : r0 + rows].astype(np.float32)))
             next_level["svfh"][a:b] = np.round(downsample(svf[r0 : r0 + rows].astype(np.float32)))
-            hz_rows = decode_linear(hzq[r0 // 2 : (r0 + rows) // 2])
-            # On the CPU: the run's own process opens no CUDA context (renders.md section 41).
-            next_level["hzq"][r0 // 4 : (r0 + rows) // 4] = encode_linear(
-                refold(hz_rows, path_elevations(), gpu=False)
-            )
+            next_level["hzq"][r0 // 4 : (r0 + rows) // 4] = _coarser(quarter)
         while len(pending) > LEVEL_AHEAD:
             _wait(pending.popleft())
     while pending:
@@ -315,6 +313,24 @@ def level_strips(
         next_level.pop(name).flush()  # Windows replaces a file only once its last map is closed
         (work / f"{name}.next.npy").replace(work / f"{name}.npy")
     return count
+
+
+def _atlas_bytes(quarter: U8Grid) -> U8Grid:
+    """A level's stored cells as its atlas holds them: the horizons encoded, the ambient
+    occlusion as it is."""
+    horizons, ambient = quarter[..., :HORIZON_CELLS], quarter[..., HORIZON_CELLS:]
+    return np.concatenate([LINEAR_TO_HZ[horizons], ambient], -1)
+
+
+def _coarser(quarter: U8Grid) -> U8Grid:
+    """The next level's stored cells from a level's: the horizons refolded, the ambient
+    occlusion averaged."""
+    out = np.empty((quarter.shape[0] // 2, quarter.shape[1] // 2, quarter.shape[2]), np.uint8)
+    # On the CPU: the run's own process opens no CUDA context (renders.md section 41).
+    folded = refold(decode_linear(quarter[..., :HORIZON_CELLS]), path_elevations(), gpu=False)
+    out[..., :HORIZON_CELLS] = encode_linear(folded)
+    out[..., HORIZON_CELLS:] = np.round(downsample(quarter[..., HORIZON_CELLS:].astype(np.float32)))
+    return out
 
 
 def _wait(futures: Sequence[Future[int]]) -> None:

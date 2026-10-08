@@ -17,9 +17,10 @@ import pytest
 from mapgen import jit
 from mapgen.lighting import bake, encoding, lanes, light_tiles, stage
 from mapgen.lighting import horizon as hz
+from mapgen.lighting.occlusion import ao_margin, occlusion
 from mapgen.lighting.spans import bake as span_bake
 from mapgen.lighting.spans import march as spans
-from mapgen.lighting.spans.holes import find_holes, opened
+from mapgen.lighting.spans.holes import OPEN_M, find_holes, opened
 from tests.support.relief import octave_terrain
 
 SP = 1.0
@@ -63,13 +64,27 @@ def _spans(z: np.ndarray) -> spans.SpanSurface:
 
 
 def _crowns(z: np.ndarray, seed: int) -> spans.SpanSurface:
-    """Crowns 4 to 12 m tall on a share of ``z``, each underside its own share of the top."""
+    """Crowns 4 to 12 m tall on a share of ``z``, each underside its own share of the top,
+    marched alone over open ground."""
     rng = np.random.default_rng(seed)
     lift = np.where(rng.random(z.shape) < 0.35, rng.uniform(4, 12, z.shape), 0)
     under = rng.uniform(0.2, 0.7, z.shape)
     top = np.where(lift > 0, z + lift, np.nan).astype(np.float32)
     lo = np.where(lift > 0, z + under * lift, np.nan).astype(np.float32)
-    return spans.span_surface((z + lift).astype(np.float32), z, lo, top)
+    open_ground = np.full(z.shape, OPEN_M, np.float32)
+    return spans.span_surface((z + lift).astype(np.float32), open_ground, lo, top, z)
+
+
+def _trees(z: np.ndarray, seed: int) -> tuple[spans.SpanSurface | None, ...]:
+    """Crowns on a share of ``z``, each with its own underside byte, and Titan trees 40 m up
+    over a patch: alone, alone, and together over ``z``."""
+    rng = np.random.default_rng(seed)
+    top = np.where(rng.random(z.shape) < 0.35, z + rng.uniform(4, 12, z.shape), np.nan)
+    under = rng.integers(40, 180, z.shape).astype(np.float32)
+    patch = (slice(z.shape[0] // 3, z.shape[0] // 2), slice(z.shape[1] // 4, z.shape[1] // 2))
+    top[patch], under[patch] = z[patch] + 40.0, 255.0
+    rec, crowns, titans = span_bake.tree_spans(z, top.astype(np.float32), None, under)
+    return span_bake.tree_surfaces(span_bake.TreePlanes(rec, *crowns, *titans), z)
 
 
 # --------------------------------------------------------------------------- the kernels
@@ -122,9 +137,9 @@ def _block(seed: int, nan: str | None) -> tuple[np.ndarray, int, span_bake.Block
         z[HALO + 10 : HALO + 30, HALO + 40 : HALO + 75] = np.nan
     elif nan == "all":
         z[...] = np.nan
-    ground, crowns = _spans(z), _crowns(z, seed)
+    ground = _spans(z)
     holes = find_holes(z[HALO - 1 : 1 - HALO, HALO - 1 : 1 - HALO])
-    block = span_bake.BlockSpans(ground, crowns)
+    block = span_bake.BlockSpans(ground, *_trees(z, seed))
     if holes is not None:
         z, block = opened(z), stage._opened_spans(block)
     return z, HALO - 1, block, holes
@@ -132,10 +147,7 @@ def _block(seed: int, nan: str | None) -> tuple[np.ndarray, int, span_bake.Block
 
 def _cells(z, halo, block, holes, wanted=None) -> list[object]:
     found = span_bake.horizon_cells(z, halo, SP, block, holes, wanted)
-    return [
-        (cell.k, cell.deg, cell.bands and tuple(cell.bands), cell.whole, cell.band_in)
-        for cell in found
-    ]
+    return [(cell.k, cell.deg, cell.bands and tuple(cell.bands), cell.band_in) for cell in found]
 
 
 @pytest.mark.usefixtures("device")
@@ -143,18 +155,44 @@ def _cells(z, halo, block, holes, wanted=None) -> list[object]:
 def test_a_block_s_cells_on_the_device_are_the_reference_s(monkeypatch, nan):
     z, halo, block, holes = _block(seed=3, nan=nan)
     found = _same(monkeypatch, lambda: _cells(z, halo, block, holes))
-    assert isinstance(found, list) and len(found) == 2 * hz.HORIZON_DIRS
-    plain = span_bake.BlockSpans(None, block.crowns)
+    trees = 0 if nan == "all" else 2  # no height, no tree stands
+    assert isinstance(found, list) and len(found) == (1 + trees) * hz.HORIZON_DIRS
+    plain = span_bake.BlockSpans(None, block.crowns, block.titans)
     _same(monkeypatch, lambda: _cells(z, halo, plain, holes))
+
+
+@pytest.mark.usefixtures("device")
+@pytest.mark.parametrize("nan", [None, "patch"])
+def test_the_trees_together_for_the_default_sun_are_the_reference_s(monkeypatch, nan):
+    z, halo, block, holes = _block(seed=6, nan=nan)
+
+    def together() -> list[object]:
+        found = span_bake.canopy_cells(z, halo, SP, block, holes, [20, 21])
+        return [(k, whole, tuple(bands)) for k, whole, bands in found]
+
+    assert len(_same(monkeypatch, together)) == 2
+
+
+@pytest.mark.usefixtures("device")
+@pytest.mark.parametrize("spacing", [0.229, 1.0, 3.66])
+def test_the_ambient_occlusion_is_the_reference_bit_for_bit(spacing):
+    m = ao_margin(spacing)
+    z = octave_terrain(2 * m + 150, seed=7)
+    z[40:52, 60:90] += 15.0
+    z[70:75, 20:24] = np.nan
+    plane = z[: 2 * m + 120]
+    assert (
+        occlusion(plane, spacing, gpu=True).tobytes()
+        == occlusion(plane, spacing, gpu=False).tobytes()
+    )
 
 
 @pytest.mark.usefixtures("device")
 def test_a_cell_not_wanted_comes_without_its_bands_on_the_device(monkeypatch):
     z, halo, block, holes = _block(seed=4, nan=None)
     monkeypatch.setenv(jit.KERNEL_SWITCH, jit.GPU)
-    wanted = {20, 52}
-    found = list(span_bake.horizon_cells(z, halo, SP, block, holes, wanted))
-    assert {cell.k for cell in found if cell.bands is not None} == wanted
+    found = list(span_bake.horizon_cells(z, halo, SP, block, holes, {20, 52}))
+    assert {cell.k for cell in found if cell.bands is not None} == {20}, "a ground cell's only"
 
 
 def _out_of_memory(*_args: object) -> None:
@@ -166,7 +204,7 @@ def _out_of_memory(*_args: object) -> None:
 def test_a_block_the_device_runs_out_of_memory_for_finishes_on_the_host(
     monkeypatch, room_for_a_call
 ):
-    """Out of memory at the fifth direction's crowns: the directions left march a call at a
+    """Out of memory at the fourth direction's crowns: the directions left march a call at a
     time on the device, or with no room for one either, on numba."""
     from mapgen.lighting import gpu
     from mapgen.lighting.spans import device as on_device
@@ -181,7 +219,7 @@ def test_a_block_the_device_runs_out_of_memory_for_finishes_on_the_host(
 
     def fails_late(self, *args):
         calls[0] += 1
-        if calls[0] > 9:
+        if calls[0] > 10:
             raise MemoryError("out of device memory")
         return marched(self, *args)
 
@@ -191,9 +229,9 @@ def test_a_block_the_device_runs_out_of_memory_for_finishes_on_the_host(
     gpu.ran()
     assert _bits(_cells(z, halo, block, holes)) == reference
     counted = gpu.ran()
-    left = 2 * (hz.HORIZON_DIRS - 4)
+    left = 3 * (hz.HORIZON_DIRS - 3)
     assert counted.pop(jit.ON_NUMBA, 0) == (0 if room_for_a_call else left)
-    assert list(counted.values()) == [8 + left if room_for_a_call else 8]
+    assert list(counted.values()) == [9 + left if room_for_a_call else 9]
 
 
 # ------------------------------------------------------------------------------ the lanes

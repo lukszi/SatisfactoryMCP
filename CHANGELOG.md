@@ -216,6 +216,19 @@ Planned as 0.2.0.
   and are rebuilt once, the direct raster taking about 2.4 times as long; a kept light is
   baked again. The light takes two to three times as long under crowns and arches, and each
   of its processes counts 2.0 GB instead of 1.5.
+- Map generator (light version 5): a tree crown casts from where its species' leaves start,
+  read off its mesh at the start of a render (a green tree or a Kapok three quarters up, a
+  bush from the ground), instead of halfway up every crown, and the Titan trees as a 12 m slab
+  under their canopy instead of half their height. The crowns and the Titan trees cast into
+  horizon cells of their own, each without the terrain and stored everywhere, so a page can
+  show tree shadows without terrain shadows and hide the trees' shadows with the trees; the
+  horizon atlas grows from 64 cells to 97 in 13 rows, placed by the light model's new
+  `titan_cell` and `ao_cell`. Rocks, cliff feet and gullies take ambient occlusion in the sky
+  light every style reads, and the trees' occlusion is a cell of its own; arches and
+  overhangs occlude nothing beneath them. Every lit map moves (at 2048, 1.0 to 1.2 million lit
+  pixels a layer, the unlit colour none), and a kept light is baked again. The light's scratch
+  grows by 3.1 bytes a pixel, 3.3 GB at full size, and a lit render spends about 33 s more
+  before it draws. With `--gpu` the occlusion runs on the device, to the same bytes.
 
 ### Deprecated
 

@@ -20,6 +20,7 @@ from scipy import ndimage
 from mapgen import pools
 from mapgen.lighting import bake, light_tiles, model, refold, stage
 from mapgen.lighting import horizon as hz
+from mapgen.lighting.atlas import bake_horizons
 from mapgen.lighting.bake import bake_light
 from mapgen.lighting.spans import bake as span_bake
 from mapgen.lighting.spans import march as spans
@@ -107,45 +108,54 @@ SP = 5.0
 
 
 def _block_inputs(side=96):
-    """A block's heights, its halo, and spans: an arch deck over a third of it, and crowns."""
+    """A block's heights, its halo, and spans: an arch deck over a third of it, crowns, and
+    Titan trees over the highest ground."""
     halo = hz.horizon_reach_px(SP)
     z = _terrain(side + 2 * halo, seed=3)
     lo = np.where(z > 15, z + 3, np.nan).astype(np.float32)
-    lift = np.where(z > 5, 6.0, 0.0).astype(np.float32)
-    crown_lo = np.where(lift > 0, z + spans.CROWN_UNDERSIDE * lift, np.nan).astype(np.float32)
-    crowns = spans.span_surface(z + lift, z, crown_lo, np.where(lift > 0, z + lift, np.nan))
+    top = np.where(z > 5, z + 6.0, np.nan).astype(np.float32)
+    under = np.where(z > 25, 255.0, 127.0).astype(np.float32)
+    rec, crowns, titans = span_bake.tree_spans(z, top, None, under)
+    planes = span_bake.TreePlanes(rec, *crowns, *titans)
     ground = spans.span_surface(np.fmax(z, lo + 7), z, lo, lo + 7)
-    return z, halo, span_bake.BlockSpans(ground, crowns)
+    return z, halo, span_bake.BlockSpans(ground, *span_bake.tree_surfaces(planes, z))
 
 
 def test_a_block_s_horizons_a_direction_at_a_time_are_the_stacked_ones():
     zh, halo, block = _block_inputs()
     m = zh.shape[0] - 2 * halo
     cells = sorted(span_bake.horizon_cells(zh, halo, SP, block), key=lambda cell: cell.k)
-    assert [cell.k for cell in cells] == list(range(model.HZ_CELLS))
+    assert [cell.k for cell in cells] == list(range(model.HORIZON_CELLS))
     stack = np.stack([cell.deg for cell in cells])
-    found = stage._bake_horizons(zh, halo, SP, block, m, True)
-    assert found.atlas.tobytes() == hz.encode_horizon(stack).tobytes()
+    found = bake_horizons(zh, halo, SP, block, m, True)
+    assert found.atlas[: model.HORIZON_CELLS].tobytes() == hz.encode_horizon(stack).tobytes()
+    assert not found.atlas[model.AO_CELL :].any(), "the block fills the ambient cell"
     fine = np.moveaxis(stack, 0, -1)
     want_hq = light_tiles.encode_linear(refold.refold(fine, refold.path_elevations()))
-    assert found.quarter.tobytes() == want_hq.tobytes(), "refolded a direction at a time"
-    folds = [cell.whole > cell.bands.horizon for cell in cells if cell.bands is not None]
-    assert found.folded.any() and found.folded.sum() <= np.logical_or.reduce(folds).sum()
-    assert set(found.bands) == span_bake.shade_cells(DEFAULT_SUN[0]) == {20, 52}
+    have_hq = found.quarter[..., : model.HORIZON_CELLS]
+    assert have_hq.tobytes() == want_hq.tobytes(), "refolded a direction at a time"
     ringed = sorted(span_bake.horizon_cells(zh, halo - 1, SP, block), key=lambda cell: cell.k)
+    folds = [cell.band_in[1:-1, 1:-1] for cell in ringed if cell.band_in is not None]
+    assert found.folded.any() and found.folded.tobytes() == np.logical_or.reduce(folds).tobytes()
+    groups = {cell.k // model.HORIZON_DIRS for cell in ringed if cell.band_in is not None}
+    assert groups == {0, 1, 2}, "the ground, the crowns and the Titan trees fold their bands"
+    assert set(found.bands) == span_bake.shade_cells(DEFAULT_SUN[0]) == {20, 52}
     rings = np.stack([cell.deg for cell in ringed])
     assert rings[:, 1:-1, 1:-1].tobytes() == stack.tobytes(), "a pixel's march is its own"
-    for k in model.sun_cells(DEFAULT_SUN[0]):
+    sun = model.sun_cells(DEFAULT_SUN[0])
+    for k in sun[:2]:
         assert found.sun[k].tobytes() == rings[k].tobytes(), "the default sun keeps the ring"
-    for k in model.sun_cells(DEFAULT_SUN[0])[:2]:
-        whole = ringed[model.HORIZON_DIRS + k].whole
-        assert found.canopy[k].tobytes() == whole.tobytes(), "the canopy keeps its whole horizon"
+    canopy = list(span_bake.canopy_cells(zh, halo - 1, SP, block, None, sun[:2]))
+    for d, whole, _bands in canopy:
+        assert found.sun[model.CROWN_CELL + d].tobytes() == whole.tobytes(), "trees together"
+        assert found.canopy[d].tobytes() == whole.tobytes(), "the canopy keeps its whole horizon"
+    assert found.bands[52].horizon.tobytes() == canopy[0][2].horizon.tobytes()
 
 
 def test_without_spans_a_block_bakes_the_plain_march():
     zh, halo, _block = _block_inputs()
     m = zh.shape[0] - 2 * halo
-    found = stage._bake_horizons(zh, halo, SP, span_bake.BlockSpans(None, None), m, True)
+    found = bake_horizons(zh, halo, SP, span_bake.BlockSpans(None, None), m, True)
     ground = hz.faded_horizons(zh, halo, SP)
     assert found.atlas[: model.HORIZON_DIRS].tobytes() == hz.encode_horizon(ground).tobytes()
     assert not found.atlas[model.HORIZON_DIRS :].any()
@@ -157,23 +167,26 @@ def test_the_default_sun_reads_only_its_four_cells_and_water_bakes_zero():
     m = zh.shape[0] - 2 * halo
     keep = model.sun_cells(DEFAULT_SUN[0])
     assert len(set(keep)) == 4 and all(k >= model.HORIZON_DIRS for k in keep[2:])
-    sparse = [None] * model.HZ_CELLS
+    sparse = [None] * (model.CROWN_CELL + model.HORIZON_DIRS)
     for k in keep:
         sparse[k] = np.full((m, m), 10.0 + k, np.float32)
     nrm = np.full((m, m, 4), 200, np.uint8)
     assert model.direct_term(nrm, sparse, DEFAULT_SUN, crowns=True).shape == (m, m)
-    found = stage._bake_horizons(zh, halo, SP, block, m, False)
+    found = bake_horizons(zh, halo, SP, block, m, False)
     assert not found.atlas.any() and not found.quarter.any() and not found.bands
     assert not any(plane.any() for plane in found.sun)
 
 
-def test_without_crowns_the_crown_cells_stay_zero():
+def test_without_trees_the_tree_cells_stay_zero():
     zh, halo, block = _block_inputs()
     m = zh.shape[0] - 2 * halo
-    found = stage._bake_horizons(zh, halo, SP, block._replace(crowns=None), m, True)
+    found = bake_horizons(zh, halo, SP, span_bake.BlockSpans(block.ground, None), m, True)
     hz_u8, hq = found.atlas, found.quarter
     assert hz_u8[: model.HORIZON_DIRS].any() and not hz_u8[model.HORIZON_DIRS :].any()
     assert not hq[..., model.HORIZON_DIRS :].any()
+    titans = bake_horizons(zh, halo, SP, block._replace(crowns=None), m, True).atlas
+    assert not titans[model.CROWN_CELL : model.TITAN_CELL].any(), "no crowns, no crown cells"
+    assert titans[model.TITAN_CELL : model.AO_CELL].any()
 
 
 class _LazyPool:

@@ -281,12 +281,15 @@ be traced to the axis it should move.
 | `lighting/borrow.py` | light | The artwork borrow and its sidecar record |
 | `lighting/sun.py`, `model.py` | light | The game's sun path and default; the live-light model and its reference |
 | `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the drawn surface and one block of its light |
+| `lighting/atlas.py` | light | A block's horizon atlas a cell at a time, its coarser levels' source and the default sun's planes |
+| `lighting/occlusion.py`, `occlusion.cu` | light | Ambient occlusion over a height plane, exact integer box sums; its CUDA twin for `--gpu` |
+| `lighting/undersides.py` | light | Each tree species' crown underside from its mesh, laid on the paint store's grid; the Titan trees' slab |
 | `lighting/bake.py` | light | The lighting pyramid baked a row of blocks at a time, as the surface's rows come in |
 | `lighting/light_tiles.py` | light | The lighting pyramid's tile format, the bake's work files, and the coarser levels |
 | `lighting/refold.py`, `refold.cu` | light | A coarser level's horizons, averaged as the shade the page reads; its CUDA twin for `--gpu` |
 | `lighting/kernels.py` | light | The horizon march and the sky view compiled by numba |
 | `lighting/spans/march.py`, `kernels.py` | light | The march and the sky view over spans (arches, overhangs, crowns), and their numba kernels |
-| `lighting/spans/bake.py`, `slabs.py` | light | A block's spans, the atlas's folded bands and the default sun's per-cell shade; the captured spans' sparse store |
+| `lighting/spans/bake.py`, `slabs.py` | light | A block's spans (the ground's, the crowns' and the Titan trees' alone, and the trees together), the atlas's folded bands and the default sun's per-cell shade; the captured spans' sparse store |
 | `lighting/spans/holes.py`, `canopy.py` | light | No data in the captured surface, which the light takes as open; the canopy's own light |
 | `lighting/gpu.py`, `gpu.cu` | light | The same two as CUDA kernels, for `--gpu` |
 | `lighting/occluders.py` | light | The occluders the horizons take: the paint store's crown tops on a render grid (`sheet_crowns`) and a tree table's domes (`canopy_top`) |
@@ -424,9 +427,16 @@ sun picks two directions (§29). Trees join it as its `occluder`.
   to the sheet's pixel, mean top and covered share; `horizon.crown_surface` lifts each crown by that share, so a small crown
   casts a small shadow (§29, "Hooks").
 - **Spans** (`lighting/spans/march.py`): arches, rock overhangs and crowns block only between their
-  underside and their top, so light passes beneath; `CROWN_UNDERSIDE` (0.5) puts a crown's
-  underside halfway up its lift, `OVERHANG_CLEAR_M` (2 m) is the gap that makes a rock float
-  (§29, "Arches as spans").
+  underside and their top, so light passes beneath; `OVERHANG_CLEAR_M` (2 m) is the gap that
+  makes a rock float (§29, "Arches as spans").
+- **Undersides** (`lighting/undersides.py`): a species' crown starts where `LEAF_LOW_SHARE` (5%)
+  of its leaf area seen from above lies lower, as a share of its top, read off its mesh; one
+  the install cannot give takes `CROWN_UNDERSIDE` (0.5). The Titan trees are a slab
+  `TITAN_SLAB_M` (12 m) deep, the rendered-look study's value: thicker, a Titan canopy cast a
+  wall under every step of its top (§29, "The trees in the light").
+- **Cells of their own**: the crowns' and the Titan trees' horizons are marched alone, without
+  the terrain, and always stored, so the page's tree shadows go with the trees and hold
+  without the terrain's (§29).
 - **`OCCLUDER_FADE_M`** (25 m, 80 m): a crown is porous; under the 16:00 sun an 80 m mangrove
   lays a 61 m shadow with it, 93 m with the ground's fade.
 - **Receivers on the crown top**: received on the ground under the crowns, 71-86% of two

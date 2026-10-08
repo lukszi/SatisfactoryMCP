@@ -19,10 +19,13 @@ from mapgen.lighting.model import SHADOW_SOFT_DEG
 from mapgen.lighting.spans.march import path_elevation
 from satisfactory_mcp.core.arrays import F32Grid
 
-__all__ = ["REFOLD_VALUES", "path_elevations", "refold"]
+__all__ = ["REFOLD_VALUES", "TREE_GROUPS", "path_elevations", "refold"]
 
 #: About as many output values as the reference makes at a time, so its temporaries stay small.
 REFOLD_VALUES = 1 << 20
+
+#: The groups of tree cells after the ground's a refold takes: the crowns', the Titan trees'.
+TREE_GROUPS = 2
 
 #: Threads of a block, along a row of texels and their directions.
 _ROW_THREADS = 128
@@ -44,18 +47,21 @@ def path_elevations() -> F32Grid:
 
 
 def refold(fine: F32Grid, el: F32Grid, gpu: bool | None = None) -> F32Grid:
-    """``fine`` is ``(2 rows, 2 cols, cells)`` degrees: ``el``'s directions, then optionally
-    their crown cells (0 where not above the ground's). Returns ``(rows, cols, cells)``.
+    """``fine`` is ``(2 rows, 2 cols, cells)`` degrees: ``el``'s directions, the ground's, then
+    up to ``TREE_GROUPS`` more groups of them, the trees' alone. Returns ``(rows, cols,
+    cells)``.
 
     A texel takes the mean shade at its direction's ``el``, refolded, else, all lit or all
-    shaded, the mean of its degrees. A crown cell averages the larger of the two horizons and
-    is kept only where it stands above the ground's. ``gpu`` None follows the switch; False
-    keeps a process that opens no CUDA context off the device.
+    shaded, the mean of its degrees. A tree cell takes its own, except where the larger of it
+    and the ground's shades more on average than the ground's: there it takes that, so the
+    page's maximum of the two is the mean of the larger. ``gpu`` None follows the switch;
+    False keeps a process that opens no CUDA context off the device.
     """
     rows, cols, cells = fine.shape[0] // 2, fine.shape[1] // 2, fine.shape[2]
     if fine.dtype != np.float32 or el.dtype != np.float32 or el.ndim != 1:
         raise TypeError("refold takes float32 degrees and a float32 elevation per direction")
-    if fine.shape[:2] != (2 * rows, 2 * cols) or cells not in (el.size, 2 * el.size):
+    groups = [k * el.size for k in range(1, TREE_GROUPS + 2)]
+    if fine.shape[:2] != (2 * rows, 2 * cols) or cells not in groups:
         raise ValueError(f"{fine.shape} is not 2 x 2 texels of {el.size} directions")
     if gpu_on() if gpu is None else gpu:
         try:
@@ -72,13 +78,17 @@ def _reference(fine: F32Grid, el: F32Grid) -> F32Grid:
     for top in range(0, rows, step):
         part = fine[2 * top : 2 * min(top + step, rows)]
         a, b, c, d = (part[i::2, j::2] for i in (0, 1) for j in (0, 1))
-        ground = _mean_shade((a[..., :dirs], b[..., :dirs], c[..., :dirs], d[..., :dirs]), el)
+        ground, shaded = _mean_shade(
+            (a[..., :dirs], b[..., :dirs], c[..., :dirs], d[..., :dirs]), el
+        )
         done = slice(top, top + ground.shape[0])
         out[done, :, :dirs] = ground
-        if cells > dirs:
-            quad = tuple(_larger(q[..., dirs:], q[..., :dirs]) for q in (a, b, c, d))
-            over = _mean_shade((quad[0], quad[1], quad[2], quad[3]), el)
-            out[done, :, dirs:] = np.where(over > ground, over, _ZERO)
+        for first in range(dirs, cells, dirs):
+            trees = slice(first, first + dirs)
+            own, _ = _mean_shade((a[..., trees], b[..., trees], c[..., trees], d[..., trees]), el)
+            quad = tuple(_larger(q[..., trees], q[..., :dirs]) for q in (a, b, c, d))
+            over, raised = _mean_shade((quad[0], quad[1], quad[2], quad[3]), el)
+            out[done, :, trees] = np.where(raised > shaded, over, own)
     return out
 
 
@@ -90,12 +100,14 @@ def _shade(h: F32Grid, el: F32Grid) -> F32Grid:
     return np.minimum(np.maximum((h - el) / _SOFT + _HALF, _ZERO), _ONE)
 
 
-def _mean_shade(quad: Quad, el: F32Grid) -> F32Grid:
+def _mean_shade(quad: Quad, el: F32Grid) -> tuple[F32Grid, F32Grid]:
+    """Four texels' horizon as a coarser texel stores it, and their mean shade."""
     a, b, c, d = quad
     shade = ((_shade(a, el) + _shade(b, el)) + (_shade(c, el) + _shade(d, el))) * _QUARTER
     mean = ((a + b) + (c + d)) * _QUARTER
     folded = el + _SOFT * (shade - _HALF)
-    return np.where((shade > _ZERO) & (shade < _ONE), folded, mean)
+    stored: F32Grid = np.where((shade > _ZERO) & (shade < _ONE), folded, mean)
+    return stored, shade.astype(np.float32, copy=False)
 
 
 def _on_gpu(fine: F32Grid, el: F32Grid) -> F32Grid:

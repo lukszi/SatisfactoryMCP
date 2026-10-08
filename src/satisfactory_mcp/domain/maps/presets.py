@@ -108,8 +108,8 @@ LIGHT_KEPT_S = 10.0
 #: The light's pyramid at full size, its folded horizon tiles at q95: 4.06 GB (2026-10-08).
 LIGHT_KEEP_BYTES = 4_060_000_000
 UNLIT_KEEP_BYTES = 450_000_000
-LIGHT_SCRATCH_BYTES = 15_570_000_000
-CROWN_SCRATCH_BYTES = 5_370_000_000
+LIGHT_SCRATCH_BYTES = 17_790_000_000
+CROWN_SCRATCH_BYTES = 6_440_000_000
 #: The default-sun terms a lit render that keeps its cache moves out of the scratch into
 #: ``light.kept/``, 4 bytes a pixel; the kept tiles are hard links to the map's own.
 KEPT_TERMS_BYTES = 4 * FULL_PX * FULL_PX

@@ -45,7 +45,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BAND_GAP_DEG",
-    "CROWN_UNDERSIDE",
     "OFF_PATH_EL_DEG",
     "Bands",
     "KernelSteps",
@@ -71,10 +70,6 @@ BAND_GAP_DEG = 6.0
 
 #: The elevation a band is kept nearest where the sun's path never reaches a direction.
 OFF_PATH_EL_DEG = 45.0
-
-#: A crown's underside over the drawn surface, as a share of its top's height over it: the
-#: light passes beneath it. One share for every species (a limit, section 29).
-CROWN_UNDERSIDE = np.float32(0.5)
 
 
 class SpanRuns(NamedTuple):
@@ -122,9 +117,13 @@ class Bands(NamedTuple):
     seen: BoolMask
 
 
-def span_surface(z: F32Grid, solid: F32Grid, lo: F32Grid, hi: F32Grid) -> SpanSurface:
-    """A ``SpanSurface``; the tops are the spans' top over the solid surface, as it is drawn."""
-    tops = np.where(np.isfinite(hi), np.fmax(hi, solid), solid).astype(np.float32)
+def span_surface(
+    z: F32Grid, solid: F32Grid, lo: F32Grid, hi: F32Grid, ground: F32Grid | None = None
+) -> SpanSurface:
+    """A ``SpanSurface``; the tops are the spans' top over ``ground``, as it is drawn, which is
+    the solid surface unless the spans are marched alone over open ground."""
+    under = solid if ground is None else ground
+    tops = np.where(np.isfinite(hi), np.fmax(hi, under), under).astype(np.float32)
     plane = partial(np.ascontiguousarray, dtype=np.float32)
     return SpanSurface(plane(z), plane(solid), plane(lo), plane(hi), tops, _runs(lo))
 
@@ -157,7 +156,6 @@ def span_block() -> JsonObject:
     return {
         "bands": "one per direction: the band nearest the sun path's elevation there",
         "gap_deg": BAND_GAP_DEG,
-        "crown_underside": float(CROWN_UNDERSIDE),
         "atlas": "a band folded into its direction's cell at path_el_deg; the bake reads it whole",
         "path_el_deg": [
             round(path_elevation(k * 360.0 / HORIZON_DIRS), 2) for k in range(HORIZON_DIRS)

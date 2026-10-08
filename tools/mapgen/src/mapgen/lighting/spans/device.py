@@ -1,8 +1,8 @@
 """A block's atlas cells on the GPU: what ``bake.horizon_cells`` does to each direction, with
 the block's planes kept on the device from the first direction to the last.
 
-Each march, the band rules after it, the holes' fill, the folded horizon and the crown cell's
-test run on the device (``gpu.cu``, ``cells.cu``); the arctangent and the degrees, numpy's
+Each march, the band rules after it, the holes' fill, the folded horizon and where it holds
+a band run on the device (``gpu.cu``, ``cells.cu``); the arctangent and the degrees, numpy's
 transcendentals, run on the host between them, on the pixels that need them. The cells come
 back as the host's code makes them, bit for bit. Imported only when ``mapgen.jit.gpu_on()``.
 docs/map/renders.md section 41, "On the GPU".
@@ -114,16 +114,10 @@ class DeviceCells:
         self._run("path", (*bands[:3], at, at - half, at + half, soft, cell))
         return cell
 
-    def above(self, over: _Plane, cell: _Plane) -> _Plane:
-        """The crown cell: ``np.where(over > cell, over, 0)``."""
-        out = cp.empty(self.shape, np.float32)
-        self._run("above", (over, cell, out))
-        return out
-
-    def band_in(self, stored: _Plane, whole: _Plane, bands: DeviceBands) -> BoolMask:
-        """``bake._OnHost.band_in``: where the cell stores the band folded in."""
+    def band_in(self, cell: _Plane, bands: DeviceBands) -> BoolMask:
+        """``bake._OnHost.band_in``: where the cell is the band folded in."""
         out = cp.empty(self.shape, np.bool_)
-        self._run("band_in", (stored, whole, bands.horizon, out))
+        self._run("band_in", (cell, bands.horizon, out))
         return out.get()
 
     def host(self, plane: _Plane) -> F32Grid:
