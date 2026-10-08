@@ -107,7 +107,11 @@ LIGHT_STAGE_S = 314.0
 LIGHT_KEPT_S = 10.0
 #: The light's pyramid at full size, its folded horizon tiles at q95: 4.06 GB (2026-10-08).
 LIGHT_KEEP_BYTES = 4_060_000_000
-UNLIT_KEEP_BYTES = 450_000_000
+#: A layer's ``unlit/`` as lossless WebP, about a fifth under the PNG it was (2026-10-08), and
+#: the painted layer's sparse ``trees/``, estimated from 48 forest tiles (docs/map/
+#: light-and-crowns.md section 36, "Trees apart").
+UNLIT_KEEP_BYTES = 360_000_000
+TREES_KEEP_BYTES = 160_000_000
 LIGHT_SCRATCH_BYTES = 15_570_000_000
 CROWN_SCRATCH_BYTES = 5_370_000_000
 #: The default-sun terms a lit render that keeps its cache moves out of the scratch into
@@ -323,6 +327,9 @@ def _render_cost(options: RenderOptions) -> tuple[float, int, int]:
     per_layer = RENDER_KEEP_BYTES + (UNLIT_KEEP_BYTES if options["light"] else 0)
     keep = len(options["layers"]) * max(RENDER_KEEP_FLOOR, int(per_layer * area))
     keep += int(LIGHT_KEEP_BYTES * area) if options["light"] else 0
+    keep += (
+        int(TREES_KEEP_BYTES * area) if options["light"] and "painted" in options["layers"] else 0
+    )
     transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
     if options["light"]:
         transient += int((LIGHT_SCRATCH_BYTES + CROWN_SCRATCH_BYTES) * area)
