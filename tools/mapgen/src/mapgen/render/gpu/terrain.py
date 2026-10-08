@@ -73,10 +73,13 @@ def terrain_bytes(piece: TerrainPiece) -> U8Grid | None:
     """The kept pixels of ``terrain_colours``, ``_void`` and the byte, as ``compose`` cuts
     them; None for the CPU to draw them where a plane is not float32 or the device has no
     memory for the piece."""
+    optics: ShoreOptics = TERRAIN_SHORE
+    depth = optical_depth(piece.water, optics.get("river"), optics.get("inland"))
+    transmit = np.exp(-depth / np.float32(optics["clarity_m"]))
     planes = (piece.z_m, piece.borrow, *_water(piece.water).values(), *(piece.void or ()))
-    if not all(plane.dtype == np.float32 for plane in planes):
+    if not all(plane.dtype == np.float32 for plane in (*planes, transmit)):
         return None
-    return on_device(lambda: _draw(piece))
+    return on_device(lambda: _draw(piece, transmit))
 
 
 def _water(water: WaterTerms) -> dict[str, FloatGrid]:
@@ -100,17 +103,15 @@ def shade_plane(band: DeviceBand, z_m: F32Grid, spacing_m: float) -> cp.ndarray[
     return out
 
 
-def _draw(piece: TerrainPiece) -> U8Grid:
+def _draw(piece: TerrainPiece, transmit: F32Grid) -> U8Grid:
+    """The piece on the device; ``transmit`` is the water's, which numpy worked out."""
     band = DeviceBand()
     rows, cols = piece.z_m.shape
     if piece.spacing_m is None:
         shade = cp.full((rows, cols), FLAT_SHADE, np.float32)
     else:
         shade = shade_plane(band, piece.z_m, piece.spacing_m)
-    optics: ShoreOptics = TERRAIN_SHORE
     water = _water(piece.water)
-    depth = optical_depth(piece.water, optics.get("river"), optics.get("inland"))
-    transmit = np.exp(-depth / np.float32(optics["clarity_m"]))
     every = np.count_nonzero(water["cover"]) > WET_MIX_MOST * water["cover"].size
     on_water = tuple(band.upload(name, plane) for name, plane in water.items())
     on_void = (on_water[0],) * 4
