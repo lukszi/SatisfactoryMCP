@@ -1804,6 +1804,30 @@ sun's terms (3.2 s), the normals (1.0 s), the crown planes (1.2 s) and the encod
 one thread, 5 to 6 s on eight). Every comparison above gave the same bytes: the block's 512
 tile files, its terms and the coarser levels' four sources.
 
+**Measured, whole renders** (2026-10-08, the bench kit's `full`: all five layers, lit, the
+raster caches reused and the light baked fresh, each run under the exclusive render lock;
+master at 53144ad7 against this work). The light is the bake's own seconds, from its first
+block row to the installed pyramid; "after the draw" is the part of it the run waits for
+once the draw is done; the device memory is the device's peak over its use before the run.
+
+| Sheet | Run | Wall, s | Light, s | After the draw, s | Light processes | GPU busy in the light | Device memory |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 8192 | master, `--gpu` | 388.5 | 129.8 | 110.8 | 14 | 0.4% | 0.76 GB |
+| 8192 | `--gpu` | 315.9 | 54.4 | 32.3 | 14 | 3.9% | 1.28 GB |
+| 16384 | master, `--gpu` | 724.7 | 401.4 | 214.0 | 12 | another job's | another job's |
+| 16384 | `--gpu` | 495.7 | 211.7 | 48.0 | 13 | 7.4% | 1.93 GB |
+
+- Other work held under one core in the three runs with every column filled. In master's
+  16384 run it held 4.7 cores and another process the GPU at 40 to 70%; its repeat, busier
+  still, took 474.8 s of light, and the faster is shown.
+- At 16384 the light's tail fell from 214 s to 48 s: the last block row waits for the draw's
+  end, and its blocks take about 18 s each rather than about 200.
+- The GPU stays mostly idle: it does a block's marches in about a second, and the rest of a
+  block is the host's (the arctangent, the encode, the terms).
+- Without `--gpu` the light is master's. Back to back under the same load (seven cores of
+  other work and another process on the GPU), this work and master baked the 8192 light in
+  170.1 s and 170.0 s.
+
 **The painters stay on the CPU.** A CUDA twin of `water_composite` gave the numba kernel's
 bits, and took 1.36 ms against 1.81 ms for a 288 by 544 piece, and 60 to 93 ms against 73 to
 101 ms for a whole band 32,768 wide: moving its planes to the device and back costs what the

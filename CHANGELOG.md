@@ -160,7 +160,8 @@ Planned as 0.2.0.
 - Map generator: with `--gpu` the light's span marches (arches, rock overhangs and the tree
   crowns) and the rules after each march run on the GPU too, a block's planes kept there
   from its first direction to its last, and a block's tiles encode on threads. A 16384 light
-  block takes about 18 s instead of 196 s; the tiles are the same bytes. At most three blocks
+  block takes about 18 s instead of 196 s, and a 16384 render's light about 212 s instead of
+  401 s (8192: 54 s instead of 130 s); the tiles are the same bytes. At most three blocks
   hold the device at once, and a light process's CUDA context takes 0.10 GB instead of 0.19.
   The CUDA kernels no longer flush subnormal numbers to zero, which CuPy's compile did
   whatever the options said; no map moves.
