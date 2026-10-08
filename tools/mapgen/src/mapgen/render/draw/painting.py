@@ -17,6 +17,7 @@ from numpy.typing import NDArray
 
 from mapgen.cache import MeshPlanes
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.jit import gpu_on
 from mapgen.lighting.hillshade import FLAT_SUN_DOT, flat_shade, hillshade, slope_degrees, sun_dot
 from mapgen.palette.painted.band import painted_colours, painted_ndl
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
@@ -35,7 +36,7 @@ from mapgen.palette.styles import (
     with_sea,
     with_void,
 )
-from mapgen.palette.water.falls import draw_falls
+from mapgen.palette.water.falls import FALL_STYLES, draw_falls
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.render.ground.surface import (
     AxisTaps,
@@ -57,7 +58,7 @@ from mapgen.terrain.sample import (
 from satisfactory_mcp.core.arrays import BoolMask, F16Grid, F32Grid, F64Grid, I64Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
-__all__ = ["LayerJob", "domed_crowns", "layer_job", "paint_band"]
+__all__ = ["LayerJob", "domed_crowns", "layer_job", "paint_band", "piece_bytes"]
 
 #: The flat ground's sun term, ``n.L`` of the default sun on level ground.
 _FLAT_SUN = np.float32(FLAT_SUN_DOT)
@@ -164,6 +165,36 @@ def _painted_inputs(
         footprint=footprint,
         paint_cols=taps_footprint(field_x, footprint, field.width),
     )
+
+
+def piece_bytes(job: LayerJob, grid: BandSampling, surface: BandSurface) -> U8Grid:
+    """The piece's kept pixels in the layer's style, as bytes. With ``--gpu`` the terrain is
+    drawn on the device (``render/gpu/terrain.py``), to the same bytes."""
+    if gpu_on() and _plain_terrain(job):
+        from mapgen.render.gpu.terrain import TerrainPiece, terrain_bytes
+
+        piece = TerrainPiece(
+            z_m=surface.z_m,
+            spacing_m=None if job.unlit else job.ground.spacing_m,
+            borrow=surface.borrow,
+            water=surface.water,
+            missing=surface.missing,
+            void=surface.void,
+            open_sea=job.ground.sea is not None,
+            ramp=job.ramp,
+            kept=(grid.rows.kept, grid.cols.kept),
+        )
+        done = terrain_bytes(piece)
+        if done is not None:
+            return done
+    rgb = paint_band(job, grid, surface)
+    return np.clip(rgb[grid.rows.kept, grid.cols.kept], 0, 255).astype(np.uint8)
+
+
+def _plain_terrain(job: LayerJob) -> bool:
+    """Whether the job is the terrain style's, which draws no falls."""
+    plain = job.satellite is None and job.painted is None and job.relief is None
+    return plain and job.layer in PLAIN_LAYERS and job.layer not in FALL_STYLES
 
 
 def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> FloatGrid:

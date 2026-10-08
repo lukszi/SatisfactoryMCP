@@ -25,7 +25,7 @@ from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater, water_sources
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M
 from mapgen.render.draw.drawpool import PIECE_COLS, bands_held, in_order
-from mapgen.render.draw.painting import LayerJob, layer_job, paint_band
+from mapgen.render.draw.painting import LayerJob, layer_job, piece_bytes
 from mapgen.render.ground.lift import lattice_edge
 from mapgen.render.ground.stencils import band_halo, piece_halo
 from mapgen.render.ground.surface import (
@@ -356,6 +356,5 @@ def _draw_piece(
     out = (slice(0, rows.stop - rows.start), slice(cols.start - box.c0, cols.stop - box.c0))
     band = held[top]
     for job in draw.jobs:
-        rgb = paint_band(job, grid, surfaces[job.seabed])
-        band[job.layer][out] = np.clip(rgb[rows.kept, cols.kept], 0, 255).astype(np.uint8)
+        band[job.layer][out] = piece_bytes(job, grid, surfaces[job.seabed])
     return owed

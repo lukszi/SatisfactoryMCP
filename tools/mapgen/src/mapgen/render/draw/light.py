@@ -23,7 +23,7 @@ import numpy as np
 from mapgen.cache import TitanPlanes, held_open
 from mapgen.common import Refusal
 from mapgen.gamedata.ground.paint_store import CROWN_NAME
-from mapgen.jit import add_gpu_flag
+from mapgen.jit import add_gpu_flag, gpu_on
 from mapgen.lighting.bake import LightBake, block_rows
 from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import CrownGrid, sheet_crowns
@@ -153,10 +153,17 @@ def relight_rows(rgb: U8Grid, terms: U8Grid, land: U8Grid, params: JsonObject) -
     same rows.
 
     A style that draws the crowns (``params["crowns"]``) takes the terms with their shadows
-    and the canopy's own light (``stage.TERMS``); every other style the ground's alone.
+    and the canopy's own light (``stage.TERMS``); every other style the ground's alone. With
+    ``--gpu`` the rows are relit on the device (``render/gpu/relight.py``), to the same bytes.
     """
     crowned = (TERM_CROWNED_DIRECT, TERM_CROWNED_SKY)
     which, sky = crowned if params.get("crowns") else (TERM_DIRECT, TERM_SKY)
+    if gpu_on():
+        from mapgen.render.gpu.relight import relight_rows as relit_on_gpu
+
+        lit = relit_on_gpu(rgb, terms, land, params, (which, sky))
+        if lit is not None:
+            return lit
     out = np.empty_like(rgb)
     for top in range(0, rgb.shape[0], RELIGHT_ROWS):
         rows = slice(top, top + RELIGHT_ROWS)
