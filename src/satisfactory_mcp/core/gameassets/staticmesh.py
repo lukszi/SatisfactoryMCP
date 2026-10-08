@@ -62,6 +62,7 @@ from .iostore import IoStore
 from .meshdata import (
     CollisionHull,
     Lod,
+    LodSurface,
     MeshGates,
     NaniteResource,
     NaniteSummary,
@@ -89,6 +90,7 @@ __all__ = [
     "CollisionHull",
     "Cursor",
     "Lod",
+    "LodSurface",
     "NaniteResource",
     "PageSpan",
     "PageState",
@@ -140,9 +142,6 @@ Bounds: TypeAlias = tuple[F64Grid, F64Grid]
 
 #: LOD 0 as ``(positions, triangles, max vertex)``.
 Lod0: TypeAlias = tuple[F32Grid, I64Grid, int]
-
-#: LOD 0's surface: ``(first UV set (n, 2), vertex normals (n, 3))``.
-LodSurface: TypeAlias = tuple[F32Grid, F32Grid]
 
 
 class MeshRow(TypedDict, total=False):
@@ -282,7 +281,9 @@ def _serialize_buffers(cur: Cursor, lod: Lod) -> None:
     cur.skip(4)  # Stride
     colour_vertices = cur.i32()
     if not colour_strip[0] & 2 and colour_vertices > 0:
-        cur.bulk_array()
+        stride, colours, at = cur.bulk_array()
+        if stride == 4 and colours == lod.vertices:
+            lod.colours_at = at
 
     lod.index_32bit, lod.index_bytes, lod.indices_at = _index_buffer(cur)
     if not strip_class & 4:  # CDSF_ReversedIndexBuffer
@@ -533,10 +534,13 @@ def lod0_buffers(tail: bytes, parsed: RenderData) -> Lod0 | None:
 
 
 def lod0_surface(tail: bytes, parsed: RenderData) -> LodSurface | None:
-    """LOD0's first UV set and its vertex normals, or None where the walk did not find them.
+    """LOD0's first UV set, tangent basis and vertex colours, or None where the walk did not
+    find the first two.
 
-    A texcoord is two float32 (full precision) or two float16; a normal is the second packed
-    basis vector, four int8 (or int16 at high precision) over 127 (32767).
+    A texcoord is two float32 (full precision) or two float16. The basis is two packed
+    vectors a vertex, four int8 (or int16 at high precision) over 127 (32767): the tangent,
+    then the normal, whose fourth component is the bitangent's sign. A colour is an
+    ``FColor``, stored BGRA.
     """
     lod = parsed["lods"][0]
     n = lod.vertices
@@ -547,8 +551,18 @@ def lod0_surface(tail: bytes, parsed: RenderData) -> LodSurface | None:
     uvs = uvs.reshape(n, lod.uv_sets, 2)[:, 0].astype(np.float32)
     basis_dtype, top = ("<i2", 32767.0) if lod.tangent_stride == 16 else ("i1", 127.0)
     basis = np.frombuffer(tail, basis_dtype, count=8 * n, offset=lod.tangents_at).reshape(n, 2, 4)
-    normals = (basis[:, 1, :3].astype(np.float32) / np.float32(top)).astype(np.float32)
-    return uvs, normals
+    unit = (basis.astype(np.float32) / np.float32(top)).astype(np.float32)
+    colours = None
+    if lod.colours_at:
+        bgra = np.frombuffer(tail, np.uint8, count=4 * n, offset=lod.colours_at).reshape(n, 4)
+        colours = np.ascontiguousarray(bgra[:, [2, 1, 0, 3]])
+    return LodSurface(
+        uvs=uvs,
+        normals=np.ascontiguousarray(unit[:, 1, :3]),
+        tangents=np.ascontiguousarray(unit[:, 0, :3]),
+        signs=np.where(unit[:, 1, 3] < 0, -1.0, 1.0).astype(np.float32),
+        colours=colours,
+    )
 
 
 def _lod0_by_search(tail: bytes) -> Lod0 | None:
