@@ -88,6 +88,13 @@ Planned as 0.2.0.
   sidecar says why. A render derives the colours itself when `targets.derived.json` is missing
   or from other data. This shares the one version up every rendered map style takes (under
   "Fixed").
+- Map renders: the Satellite map's sea is turquoise over the shallows, steel blue in the
+  lagoons and navy in the deep, fitted to 1.0 screenshots of the sea where it was teal at
+  every depth; the seabed coral carpet keeps its colour. Coral caps are a warm grey-pink, as
+  official footage shows them from above, where they were mauve. Wet sand keeps more of the
+  sand's colour (chroma x1.15). Ground drawn without the game's baked colour, as on the Grass
+  Fields' southern slopes, takes each area's step to the baked colour instead of a fixed
+  biome hue, so it no longer turns greener at the bake's edge. The style's version goes up.
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is

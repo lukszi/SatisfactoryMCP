@@ -33,10 +33,9 @@ arrived.
 
 - **Gain.** The ground's exposure is multiplied by `tone.gain` = 1.6, for both lit land and
   the bed under water. On land layers the bake fitted best at ×1.6 to ×2.1 linear. The water
-  body, sky and deep colours are not scaled. The Beer-Lambert fit assumed a bed of the
-  displayed dry sand times 0.8, which the gain delivers: over the Sand target the ramp is
-  0.25 m #8a9b92, 0.5 m #6d8c88 and 1 m #5a8182, against the fit's #8d9c93, #6f8e89 and
-  #5d8483.
+  body, sky and deep colours are not scaled. The bed under water is the displayed ground
+  times 0.8, which the gain delivers: over the Sand target the sea's ramp (section 33, "The
+  sea by depth band") is 0.25 m #87ada9, 0.5 m #6ca6a7 and 1 m #5c9da3.
 - **Shoulder.** On luminance, the curve is the identity below `knee` 0.6. Above it, a
   Reinhard curve takes `white` 1.6 to 1, scaled to join the identity with slope 1.
 
@@ -48,7 +47,7 @@ screenshot measured by the method below, or derived by a rule from another targe
 | Target | Colour | Source |
 | --- | --- | --- |
 | Sand | #d5cbb6 | screenshot |
-| WetSand | #a29583: the Sand target at OKLab L ×0.80, C ×1.0, h −10 | derived (rule) |
+| WetSand | #a4947f: the Sand target at OKLab L ×0.80, C ×1.15, h −10 | derived (rule) |
 | SandRipples (the Dune Desert) | #ca784f | screenshot |
 | Grass | #83986e | screenshot |
 | Forest and the canopy | #558653 | screenshot |
@@ -71,10 +70,17 @@ the north beach; [3806590944](https://steamcommunity.com/sharedfiles/filedetails
 −3 to −13°. Under a blue-cast sky the glossy band reflects the sky and turns −30 to −50°, so a
 single shot of it can read a low-chroma mauve; that is the sky, not the sand.
 
+**From above (2026-10-09).** Those shots look along the beach. Seen from high above, in
+Coffee Stain's Update 8 showcase (YouTube ZywFe6eKNvk, frames 593 and 596, the Rocky Desert
+coast), four boxes of the wet band against the dry sand beside it read L ×0.78 to ×0.84,
+C ×1.06 to ×1.24 and h −8 to −16°: the band keeps more of the sand's colour where the
+camera sees no sky in it. Drawn with the rule at C ×1.0, the band also landed under it,
+C ×0.82 to ×0.94 (below). So the rule's chroma is ×1.15.
+
 `calibration.derived` holds the rule: WetSand is the Sand target with OKLab lightness ×0.80,
-chroma ×1.0 and hue −10°. `with_derived` (`palette/painted/calibration.py`) adds it to every
-scope that has a Sand target and no WetSand target of its own: #a29583 from the global
-#d5cbb6, and #987b61 inside the desert entry from its #c4ab8b. A target written out in a scope
+chroma ×1.15 and hue −10°. `with_derived` (`palette/painted/calibration.py`) adds it to every
+scope that has a Sand target and no WetSand target of its own: #a4947f from the global
+#d5cbb6, and #9b7a5b inside the desert entry from its #c4ab8b. A target written out in a scope
 wins over the rule. The derived targets then go through the per-layer transfer like any other.
 
 The band the shore draws (section 27, `wet_band`) multiplies the ground near the waterline on
@@ -206,7 +212,7 @@ references were used. A target is a screenshot measured so, or derived by a rule
 | Rock, default | everywhere else, the Spire Coast included | #85816c | screenshot | [Abyss Cliffs](https://satisfactory.wiki.gg/images/Abyss_Cliffs.png), [Lake Forest](https://satisfactory.wiki.gg/images/Lake_Forest.png), the store shot. Lit up-facing bare rock on the Spire Coast pools to #877b71, ΔE 2.1 from it (see "The Spire Coast rock from its own material") |
 | Top layer, forest family | the up-facing faces of every `_Forest` cliff and rock, in patches | #505936 | screenshot | moss and grass on lit Spire Coast tops, six boxes pooled: [Can't beat that view](https://images.steamusercontent.com/ugc/12186521166813992372/550A8BFD145E1EC2AFAF479D7DE6B99D87CB37FD/) (the arch top and a shelf), [a Spire pillar](https://images.steamusercontent.com/ugc/54708874924571662/8337E85F52B3538ED4EC6B96D2B0281B9DC53240/), [a leaning pillar from above](https://images.steamusercontent.com/ugc/14675271398369972649/33698D99D1A66B96456520E8149422C870255F1D/), [the oil platform](https://images.steamusercontent.com/ugc/16557712698482623084/7042B540721BDD03CD7F72A2D5CD82452986D6E4/) and an unpublished 1.0 shot (see "Moss in patches") |
 | Sand | the deserts and Savanna | #c4ab8b | screenshot | [Somersloop](https://satisfactory.wiki.gg/images/Somersloop_at_Rocky_Desert.jpg), [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), [Desert Canyons](https://satisfactory.wiki.gg/images/Desert_Canyons.png) |
-| WetSand | the deserts and Savanna | #987b61 | derived (rule) | the entry's Sand at L ×0.80, C ×1.0, h −10 ("Wet sand by rule" above) |
+| WetSand | the deserts and Savanna | #9b7a5b | derived (rule) | the entry's Sand at L ×0.80, C ×1.15, h −10 ("Wet sand by rule" above) |
 | Gravel | the deserts and Savanna | #8f8373 | screenshot | Somersloop, and the gravel-to-sand ratio in Desert Canyons |
 | Grass | Grass Fields | #9dad70 | screenshot | the v1.1 top-down HUB shots: [front](https://satisfactory.wiki.gg/images/HUB_Front_Overhead.png), [rear](https://satisfactory.wiki.gg/images/HUB_Rear_Overhead.png), [burners](https://satisfactory.wiki.gg/images/HUB_Biomass_Burners_Overhead.png), [freighter](https://satisfactory.wiki.gg/images/HUB_FICSIT_Freighter_Overhead.png) |
 | Crowns, red Kapok (`SM_Kapok_03`) | everywhere, by species | #7c4955 | screenshot | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942); two 1.0 sources agree (ΔE 1.8 and 1.9) (see "Crowns") |
@@ -390,10 +396,11 @@ pixels carry a top, and 1.0 s where 10 to 26% do: 55 to 133 s over the sheet's 1
 
 ### Other colours
 
-- **Meshes.** Coral-tree caps are #99868e, a display target, so the gain does not brighten
-  it. Seabed coral #5f8899 is a bed colour, as in the water fit, so it is also divided by the
-  0.8 wet factor. It is composited into the bed before Beer-Lambert, with the depth measured
-  to the coral top, so shallow reefs stay visible: #628b9b at the surface, #5a8286 at 0.5 m.
+- **Meshes.** Coral-tree caps are #917c75, a display target, so the gain does not brighten
+  it (see "Coral caps from above" below). Seabed coral #5f8899 is a bed colour, as in the
+  water fit, so it is also divided by the 0.8 wet factor. It is composited into the bed before
+  Beer-Lambert, with the depth measured to the coral top, so shallow reefs stay visible:
+  #618d9d at the surface, #5ea0a7 at 0.5 m.
 - **Which coral is under water.** Coral takes the seabed colour by the pixel's water cover,
   never by `depth_m > 0`, which off the ocean's reach is the depth fraction of dry land.
 - **Coral specks.** The mesh raster takes one sample per pixel, so coral narrower than a
@@ -401,11 +408,17 @@ pixels carry a top, and 1.0 s where 10 to 26% do: 55 to 133 s over the sheet's 1
   coral pixel whose eight neighbours are at least 60% water (`SPECK_WATER`) is drawn as that
   water, at their mean depth, with the coral as its bed. Coral wider than a pixel keeps its
   cap colour, and so does coral on land: the Spire Coast's coral trees stand a median 23 m
-  above the sea and are the caps the #99868e target was measured on. At 2048 px this sinks
+  above the sea, where the first cap target, #99868e, was measured. At 2048 px this sinks
   823 coral pixels of the sheet, 260 of them in the Spire Coast crop at (16, -2137). The
   specks left in the Spire lagoon at 2048 are coral pieces 2 to 75 px across standing a median
   6.5 m out of the water, and boulders and ground a median 0.33 m over the sea's level: game
   data, kept.
+- **Coral caps from above** (2026-10-09). The first cap target, #99868e (h 351, a mauve), came
+  from one low-confidence 1.0 shot. Coffee Stain's Update 8 showcase (YouTube ZywFe6eKNvk)
+  shows coral trees on the Rocky Desert coast from high above in frames 593 and 596: four
+  lit caps pool to #9d857d, #917c75 by the screenshot method's discount (L 0.604, C 0.029,
+  h 39), a warm grey-pink. The derived texture mean #9f7e75 has that hue (h 36) at 1.5 times
+  the chroma. The caps now wear #917c75; drawn, they move from h 351 to h 39 on the map.
 - **Shells** (`SM_BigShell_01`, `PlateauShell`, `SmallShell`: everything the `Shell` class
   takes) wear their own material's colour: the mean of their BaseColor textures in linear
   light is 0.08 to 0.11 neutral grey, kept as the albedo sRGB (88, 85, 83). Their materials
@@ -575,16 +588,16 @@ gate declines, so they keep their screenshot.
 | layers.SandRipples | #d98d64 | #ca784f | 6.0 | 1.0 / 7.8 | Dune Desert |
 | * layers.Grass | #7f8d4e | #83986e | 4.4 | 2.7 / 4.3 | global |
 | * layers.Forest | #484d26 | (the canopy's #558653) | 17.3 | 5.0 / 6.2 | global |
-| x derived.WetSand | #b38c61 | #a29583 | 4.7 | 4.6 / 2.0 | global |
+| x derived.WetSand | #b38c61 | #a4947f | 4.1 | 4.0 / 2.4 | global |
 | * canopy | #5e8136 | #558653 | 3.2 | 2.9 / 6.2 | global |
 | x rock | #7b6f5a | #85816c | 5.5 | 1.0 / 2.1 | global |
 | * families.desert | #c38761 | #ae8271 | 4.5 | 3.3 / 4.0 | Dune Desert |
 | * tops.forest | #54662b | #505936 | 4.7 | 3.2 / 3.6 | global |
-| x meshes.coral | #9f7e75 | #99868e | 3.6 | 3.1 / 1.7 | global |
+| meshes.coral | #9f7e75 | #917c75 | 2.4 | 1.5 / 1.9 | global |
 | crowns.blue_palm | #bec7c1 | #3d627d | 34.6 | 6.1 / 4.1 | global |
 | species.SM_Kapok_03 | #ad4a37 | #7c4955 | 10.3 | 7.9 / 4.7 | global |
 | desert entry: Sand | #d7c3a5 | #c4ab8b | 7.2 | 0.7 / 3.5 | global |
-| desert entry: WetSand | #b48d61 | #987b61 | 7.1 | 2.5 / 3.5 | global |
+| desert entry: WetSand | #b48d61 | #9b7a5b | 6.8 | 1.7 / 4.0 | global |
 | * desert entry: Gravel | #9e896f | #8f8373 | 3.1 | 1.7 / 1.8 | global |
 | * desert rock entry | #c38761 | #ae8271 | 4.5 | 3.3 / 4.0 | Dune Desert |
 | * Grass Fields etc.: rock | #7b6f5a | #7e7868 | 2.9 | 1.1 / 1.7 | global |
@@ -629,11 +642,14 @@ screenshot. A key with
 no screenshot target of its own is not gated, and `derived_ungated` names keys that pass
 regardless: the Forest floor, whose target is the canopy's as a stand-in.
 
-On build 502094 the gate declines four listed keys. The default rock and the Red Jungle's rock
-(ΔE 5.5 and 5.0, lightness only: the cliff body is darker than the lit tops the screenshots
-pool) keep #85816c and #877e6e, which are as grey. The wet sand (chroma 0.075 against 0.030)
-and the coral caps (hue 45° off) keep their screenshot colours, which model version 1 also
-replaced.
+On build 502094 the gate declines three listed keys. The default rock and the Red Jungle's
+rock (ΔE 5.5 and 5.0, lightness only: the cliff body is darker than the lit tops the
+screenshots pool) keep #85816c and #877e6e, which are as grey. The wet sand (chroma 0.076
+against the rule's 0.035) keeps its rule, which model version 1 also replaced. The coral caps
+are no longer listed (2026-10-09): the gate declined the derived #9f7e75 for a hue 45° off the
+first cap target #99868e, but footage from above puts the caps at h 39, the derived hue, and
+at chroma 0.029, under the derived 0.043 ("Coral caps from above"). The caps take that
+reading.
 
 **The file and the run.** `targets.derived.json` holds each key's colour with its rule, light,
 light shares, albedo, assets and sample count, and a stamp: the paint store's digest, the
@@ -758,7 +774,7 @@ colour of every merged mesh, trees included, though its proxies are coarse.
   likely darker than the mean; no reference has been measured.
 - `AmberTree_01`'s crown is branch cards at opacity 0.18, so it draws as a tan haze tens of
   metres wide over the ground and the palms under it; its look from above is unchecked.
-- Render-only meshes take one colour per class: the coral class's cap target #99868e also
+- Render-only meshes take one colour per class: the coral class's cap target #917c75 also
   colours `CraterCoralRoots` (the Blue Crater's pillars), `SM_NetFungi_01` and the barnacles,
   and the shell class's grey the `SmallShell` plates on the Desert Canyons' cliffs. Neither
   was measured on those meshes.

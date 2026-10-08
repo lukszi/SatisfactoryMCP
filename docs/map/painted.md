@@ -146,8 +146,10 @@ ground wherever it has one (section 30); elsewhere the paint mix is:
    square-root linear), the colour is blended towards a 6 m blur of itself. 154,401 edge
    texels qualify on this build.
 4. Off the landscape: the median paint of the biome, blurred 44 m, faded in over 6 m.
-5. **Biome tint.** Biomes painted with the same Grass layer merged. Each biome gets a small
-   OKLab `(a, b)` offset, 0.35 of its hue offset in the satellite-biome palette, blurred 44 m.
+5. **Biome tint.** Off the bake only (section 31, "The ground albedo source"), each area
+   takes an OKLab `(a, b)` offset, blurred 44 m: the median step from the calibrated paint
+   mix to the calibrated bake over the texels the bake fully covers in that area
+   (`biome_tint_ab`, at `biome_tint_strength` 1). See "Area tints from the bake" below.
 6. Rock colour on a 4 m grid: the game's cliff albedo, taking 0.3 of the lightness and 0.5 of
    the chroma of the ground around it (25 m blur), plus 0.02 L. Grey rock read as mud; this
    reads as stone.
@@ -162,15 +164,28 @@ OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, tim
 1.12 and the artwork borrow with its dark ink damped to 0.25. The gain and shoulder of section
 31, then sRGB.
 
-**Water** is Beer-Lambert, calibrated against Spire Coast screenshots:
-`bed * T + W (1 - T) + 0.02 sky`, `T = exp(-k d)` with `k` = (4.08, 3.53, 3.53) per metre and
-`W` #577f7e, then blended towards the open sea #3c597d by `1 - exp(-d / 12 m)` (section 33,
-"Sea deep and swamp water"). The bed is the ground colour times exposure times 0.8 (wet).
+**Water** is Beer-Lambert: `bed * T + W (1 - T) + 0.02 sky`, `T = exp(-k d)` with `k` =
+(4.59, 3.97, 7.27) per metre and `W` #5fa9a9, then blended towards the open sea #3c597d by
+`1 - exp(-d / 3.9 m)`. The row is fitted to the 1.0 screenshots of section 33 ("The sea by
+depth band"). The bed is the ground colour times exposure times 0.8 (wet).
 Coral and shells are part of the bed: they are composited into the ground colour first, and
 the depth `d` is measured to the drawn surface, which over a mesh is the mesh top, so a shallow
-reef stays visible. The fit is six shallow patches at 1.5 to 4.2 Delta E, with depths matched
-to the heightfield's range rather than measured. Inland water takes its class's optics
-(section 33).
+reef stays visible. Inland water takes its class's optics (section 33).
+
+### Area tints from the bake (2026-10-09)
+
+The biome tint once took 0.35 of each biome's hue offset in the retired satellite-biome
+palette. That offset predates the per-layer transfer of section 31, which already lands each
+layer on its target off the bake as on it, so the tint pushed off-bake ground away from the
+bake next to it: the Grass Fields' grass drew C 0.101, h 126 off the bake against C 0.086,
+h 121 on it, ΔE 1.8 across the bake's edge. The offsets are now measured: per area, the
+median OKLab `(a, b)` of the calibrated bake less that of the calibrated paint mix, over the
+texels the bake covers fully (eroded by 3 m), at strength 1. On build 502094 every area's step
+is under 0.002 but the Southern Forest's (-0.0105, -0.0169) and the Spire Coast's (0.0026,
+0.0036). Measured on the 2048 sheet, pure texels at least 12 m from the bake's edge, unlit:
+Grass Fields grass on and off the bake ΔE 1.8 to 0.8, Abyss Cliffs grass 2.1 to 1.2. A layer
+the area's median does not represent moves little or the other way: Grass Fields sand 2.6 to
+2.9, gravel 4.7 to 3.7.
 
 ### Known limits
 
@@ -482,9 +497,11 @@ Palette key `carpet`, in `palette/painted/optics.py`:
    top is 0.8 m down (origins at 1.4 m). With the bed's own `k` the carpet would vanish, yet the
    screenshots show it clearly through the channels. The carpet's depth is scaled by 0.2; the
    water fit's depths were matched, not measured, so this is the weaker number of the two.
-4. **Colour** `#6c9ebe` (linear-light carpet albedo at map exposure). Drawn over the channels it
+4. **Colour** `#7499c3` (linear-light carpet albedo at map exposure). Drawn over the channels it
    comes out at median `#5e8a9c`, against the calibration target `#5f8899` (the reference's
-   `#6493a6` at map exposure).
+   `#6493a6` at map exposure). It was `#6c9ebe` under the sea's first fit; with the 2026-10-09
+   sea row it is refitted so a carpet 0.3 to 1.5 m under the surface draws within ΔE 1.7 of
+   before.
 
 `strength` 0 switches it off; a paint store without carpet planes draws none.
 
