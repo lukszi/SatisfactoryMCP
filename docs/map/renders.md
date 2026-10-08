@@ -461,6 +461,7 @@ it writes. The codes are constants beside the stage that raises them.
 | 10 | `render/run/inuse.IN_USE` | the output folder holds a map type the server's registry lists; `--overwrite-in-use` writes anyway |
 | 11 | `render/draw/light.SCRATCH_IN_USE` | the light's scratch is held open by a render still running (section 29, "Scratch") |
 | 12 | `jit.NO_GPU` | `--gpu` and the CUDA kernels cannot run here: numba, CuPy or a device is missing (section 41, "On the GPU") |
+| 13 | `render/run/sprites.NO_SPRITES` | the crown sprites the painted run just built do not read back (light-and-crowns.md section 36, "Crown sprites") |
 | 1 | `commands/renders.CUT_FAILED` | the tiles could not be cut into place |
 
 Exit code 2 is argparse's, for a command line it cannot parse.
@@ -1665,13 +1666,13 @@ All 1,152 calls gave the same bits both ways. The pass is 22% shorter on one thr
 threads the stamps also stop holding the GIL tree by tree. The 8-thread draw has not been
 timed yet with no other run on the machine.
 
-- `terrain/kernels.py`, `stamp`: `_stamp` for every tree of a band in turn. What `_stamp`
-  works out per tree before it reads a texel (the crown's centre and the rows and columns it
-  may reach, its mip level and texel, its yaw's cosine and sine) is worked out by numpy for
-  all the band's trees at once (`crown_stamp._placements`), with the float64 operations
-  `_stamp` does one tree at a time. The mips are read from one float64 atlas
-  (`CrownSet.atlas()`, 53 MB on build 502094, which holds a float32 texel exactly), laid out
-  again only when the set's `levels` is replaced.
+- `terrain/kernels.py`, `stamp`: `_stamp` for every tree of a band in turn. What a tree needs
+  before it reads a texel (its tile, its centre, its pose and the rows and columns it may
+  reach) is worked out by numpy for all the band's trees at once
+  (`crown_stamp.crown_placements`). Since 2026-10-08 the tiles are the crown sprites', read
+  from one float32 atlas with every channel times alpha (`terrain/crown_atlas.py`, 161 MB on
+  build 502094 with the Titan canopy), and the per-pixel work is float32 after the pixel's
+  centre less the tree's is rounded to it once (light-and-crowns.md section 36, "Drawing").
 - `palette/water/kernels.py`: `water_composite` and the relief's `_water` per pixel, the wet
   band, the stroke and the foam included, and the mix by the cover.
 - `palette/painted/kernels.py`, `underwater`: `mix_underwater` on the pixels it mixes: the bed
@@ -1702,10 +1703,11 @@ Left in numpy, measured in the profile:
 - The mix makes the numpy painter's choices: `shore.wet_mix` mixes only a band's wet pixels
   when under a third of it is wet and every pixel above, and the wet painters paint the whole
   band past `WET_MOST`. A dry pixel keeps the ground's value either way.
-- A kernel takes float32 planes, colours and exposure only, and float64 pixel centres for
-  the crowns. With any other the numpy painter runs, whose float types follow its inputs'.
+- A kernel takes float32 planes, colours and exposure only. With any other the numpy painter
+  runs, whose float types follow its inputs'. The crowns take any pixel centres: each is
+  taken less a tree's float64 centre in float64 both ways.
 - `np.clip` and `np.maximum` are reproduced with their NaN rules; the signed zero above can
-  meet the crowns' dome and top, and cannot show there either.
+  meet the crowns' top, and cannot show there either.
 
 **Compiling.** The painter kernels' signatures took 3.3 s together in a fresh process with
 an empty cache (the stamps 1.0 s of it, numba starting up with them), and 0.44 s loaded from
@@ -2125,7 +2127,8 @@ And:
 
 **What stays on the CPU, and why.**
 
-- The painted layer's crowns, ground colour and lit crowns: the style is redrawn next.
+- The painted layer's ground colour, and its crowns' colour and light; the crowns themselves
+  are stamped on the device (below).
 - The painted water's mix (`optics.mix_underwater`, 6.8 s above): most of its cost is the
   `exp` terms numpy works out first, and moving its ten planes takes 0.7 ms a piece, about
   what numba's arithmetic takes. Its tone curve ends in sRGB's power on floats the void then
@@ -2147,12 +2150,23 @@ painted style's rendered look, textured ground and crown sprites, will be. For i
 clamped), reads tiles of an atlas without touching their neighbours, and stamps sprites,
 turned and scaled, over a colour and its cover in their order; `render/gpu/texels.py` does
 the same on the device, to the same bytes, with the sprites binned by 16-pixel cells on the
-host so every pixel walks only the sprites that may reach it. Nothing draws with them yet.
+host so every pixel walks only the sprites that may reach it.
+
+**The crowns on the device** (2026-10-08). `render/gpu/crowns.py` stamps a band's crowns from
+their sprites with the `stamp_crowns` kernel beside the sprite stamp in `texels.cu`: the
+placements worked out on the host as for the CPU (`crown_stamp.crown_placements`), binned by
+the same 16-pixel cells, a thread a pixel walking its cell's trees in their order and reading
+tiles with the same bilinear read; cover, colour, normal and top come back, and the colour's
+light stays on the host. The atlas goes up once a process, again only after the colour
+calibration moved it. A band the device has no memory for is stamped on the CPU. The
+numpy reference, numba's kernel and this one give the same bits
+(light-and-crowns.md section 36, "Drawing").
 
 **Memory and the log.** With `--gpu` the run's process opens a CUDA context of its own when
 its first kernel runs, beside each light process's. Its pool is capped at 2 GiB
 (`device.DRAW_DEVICE_BYTES`); a call past it runs on the CPU. A `--gpu` run logs where the
-calls ran once its last layer is installed: at 16384, `draw: relight, FXAA and terrain calls
+calls ran once its last layer is installed (the crown stamps among them since 2026-10-08):
+at 16384, `draw: relight, FXAA and terrain calls
 2,798 on NVIDIA GeForce RTX 3080; 0 ran on the CPU, the device out of memory`.
 
 **Measured** (the bench kit's `full`, five layers, lit, the raster caches kept and the light
@@ -2186,7 +2200,9 @@ the extra commit is the CUDA contexts of the run and its light processes.
   pieces, the terrain piece flat and lit under each way of the void, and a whole terrain
   draw on 1 and 4 threads in pieces of 97 columns, with the CPU's bytes; and the steps
   against numpy's bytes either side of each. `test_gpu_texels.py` does the same for the
-  texture, atlas and sprite kernels. On a machine without CuPy or a device they skip.
+  texture, atlas and sprite kernels, and `test_gpu_crowns.py` for the crown stamps, with an
+  atlas the calibration moved after a first stamp. On a machine without CuPy or a device
+  they skip.
 - G1 at 2048 from the raster cache, all five layers, lit: on the CPU and with `--gpu`, all
   1,125 tiles and light tiles the same bytes as the round's baseline and the sidecars the
   same content. The `--gpu` run's 152 draw calls all ran on the device.

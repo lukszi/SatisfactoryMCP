@@ -76,7 +76,7 @@ def _painted_ground() -> SimpleNamespace:
     """The parts of the painted ground ``render_layer`` reads before the painter."""
     rock = [np.zeros((N // 4, N // 4), np.float32)]
     return SimpleNamespace(rock=rock, rock_family=None, titan=None, crowns=None,
-                           water_optics=lambda taps, river=None: None)  # fmt: skip
+                           titan_crowns=None, water_optics=lambda taps, river=None: None)  # fmt: skip
 
 
 def _draw(scene, layer: str) -> _Surface:

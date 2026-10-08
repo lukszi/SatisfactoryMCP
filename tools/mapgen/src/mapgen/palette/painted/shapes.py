@@ -202,6 +202,7 @@ class PaintedScene(BandScene):
     cliffs, and water optics."""
 
     crowns: LitCrowns | None
+    titan_crowns: NotRequired[LitCrowns | None]
     ndl: FloatGrid
     ndl_flat: np.float32
     rock_weight: FloatGrid

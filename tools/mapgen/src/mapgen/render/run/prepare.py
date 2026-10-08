@@ -19,6 +19,7 @@ from mapgen.cache import (
     cached_family,
 )
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.install import GameReader
 from mapgen.gamedata.water.channel import artwork_planes
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.relief import ReliefGround
@@ -46,12 +47,15 @@ from mapgen.render.run.inputs import (
     rebuilt_lattice,
     refuse_restyle_gaps,
     refuse_stale_layers,
+    require_paint,
     water_record,
 )
+from mapgen.render.run.sprites import crown_sprites
 from mapgen.tiles.imaging import TileImaging
 from mapgen.tiles.layer_meta import RenderFacts, RunRecord
 from satisfactory_mcp.core.arrays import I8Grid, U8Grid
 from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
+from satisfactory_mcp.core.gameassets.packages import ClassFacts
 from satisfactory_mcp.core.gameassets.provenance import changelist
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from satisfactory_mcp.core.jsontypes import JsonObject, require_object
@@ -134,8 +138,9 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
         gathered.parallel_check = check_parallel_cutter(
             game.artwork, setup.image_mod, scratch, setup.cut_workers
         )
-    biome, paint, style_digests = _biome_and_paint(args, layers, setup, game, field, gathered)
     level = LevelSweep(game.store, game.scripts, not args.quiet)
+    found = _biome_and_paint(args, layers, (setup, game, level), field, gathered)
+    biome, paint, style_digests = found
     direct, top, raster_sources = _rasters(args, setup, lattice, level, grid, paint, gathered)
     extras = _extras(args, setup, lattice, level, field, paint, gathered)
     water, sea, planes = drawn_water(
@@ -201,13 +206,14 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
 def _biome_and_paint(
     args: argparse.Namespace,
     layers: tuple[str, ...],
-    setup: Setup,
-    game: GameInputs,
+    readers: tuple[Setup, GameInputs, LevelSweep],
     field: hf.Field,
     gathered: _Gathered,
 ) -> tuple[BiomeInputs, PaintInputs | None, dict[str, str]]:
-    """The biome raster when a layer is drawn from it, the paint when the painted layer is
-    drawn, and each style's digest with the paint's in the painted layer's."""
+    """The biome raster when a layer is drawn from it, the paint and the crown sprites when
+    the painted layer is drawn, and each style's digest with the paint's in the painted
+    layer's."""
+    setup, game, level = readers
     biome = BiomeInputs()
     if any(layer in BIOME_LAYERS for layer in layers):
         biome = read_biome_inputs(
@@ -222,7 +228,17 @@ def _biome_and_paint(
     style_digests = dict(STYLE_DIGESTS)
     paint = None
     if "painted" in layers and biome.raster is not None:
-        paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, biome.raster, biome.drawn)
+        require_paint(args.paint_dir)
+
+        def reader() -> GameReader:
+            index = level.index
+            return GameReader(game.store, game.scripts, index, ClassFacts(game.store, index))
+
+        sprites = crown_sprites(
+            args.sprites_dir, args.paint_dir, args.game, reader, lambda: level.sweep
+        )
+        drawn = (biome.raster, list(biome.drawn))
+        paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, drawn, sprites)
         gathered.inputs["paint"], style_digests["painted"] = paint.provenance, paint.digest
     return biome, paint, style_digests
 

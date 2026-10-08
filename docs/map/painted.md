@@ -396,15 +396,37 @@ drawn the soft canopy is off, and the crowns' own "hidden under a higher surface
 73 trunks (`SM_TitanTree_01`, Nanite) and 218 leaf meshes (`SM_TitanTree_Leaves_01` and `_02`)
 are StaticMeshActors the sweep already lists. `titan_items` picks them and the mesh rasteriser
 draws them at twice the render's pixel into `titan.cache` (stamp: half the size, the build, the
-`titan_trees` reader). The painter samples that raster bilinearly, lights the crowns by their
-own relief (drawn unlit, flat: the light lights them by their own top, section 29, "The
-canopy's own light"), and lays them over the finished pixel, water included, at `titan_trees.opacity`
-(0.8), leaves sRGB (77, 90, 48), trunks (99, 88, 81). They cover about 0.9 km² of ground that
-was mostly drawn bare. They are exposed like everything else, by `exposure` times `tone.gain`.
+`titan_trees` reader). They cover about 0.9 km² of ground that was mostly drawn bare, and are
+laid over the finished pixel, water included, at `titan_trees.opacity` (1.0), exposed like
+everything else, by `exposure` times `tone.gain`.
+
+**The trunks** come from that raster, where its top is a trunk: sampled bilinearly, sRGB (99,
+88, 81), lit by their own top, flat when drawn unlit (the light lights them, section 29, "The
+canopy's own light").
+
+**The canopy is drawn from its own crown sprites** (2026-10-08). Its two leaf meshes are crown
+species of the sprite cache, rasterised with their textures as every crown is: the leaf card
+cut out by the `ORMA` mask, its colour from `TX_TitanTree_Leaves_BC`, its normal from the
+normal map bent toward the pivot by the material's `Spherical Normals Influence` of 0.65. The
+cache carries the 218 placements beside the art, and the canopy is stamped as the crowns are
+(light-and-crowns.md section 36, "Drawing"), as a layer of its own laid after the crowns and
+the trunks: its texels moved in OKLab so their mean is the style's leaf colour (77, 90, 48),
+which the leaves' own mean nearly is (76, 89, 47); lit by its normals; hidden where the drawn
+surface stands more than `hidden_below_m` over its top; not calibrated as a crown.
+
+Two defects of the raster's canopy went with it. At 0.8 it was see-through, the ground and
+crowns under it showing as a green haze; its leaves now hide what is under them, with holes
+where the cards leave them. Lit by its own top, it was faceted: the leaf mesh's top is large
+flat cards, so each card was one plane of light, and the half-resolution raster stepped
+between them. Rasterising it at full resolution, now that the rasters are fast, draws the
+same flat cards sharper; it removes the steps, not the facets. Shaded from its leaf texture
+and normals, each card reads as leaves, and the spherical normals round the canopy as the
+game's material does.
 
 Players build under these trees, so they are a style toggle. `--no-titan-trees` renders with
-opacity 0, skips the raster and records its own style digest; the Maps tab's generate form has
-a "Titan trees (game-painted)" checkbox for it, the preset option `titan_trees`.
+opacity 0, skips the raster and the canopy and records its own style digest; the Maps tab's
+generate form has a "Titan trees (game-painted)" checkbox for it, the preset option
+`titan_trees`.
 
 ### Inland water
 
@@ -418,7 +440,8 @@ always keeps that much of its body colour. The sea is unchanged. A water class's
 
 - Nothing here has been compared with an in-game top-down view.
 - The up-facing ramp is a guess.
-- The Titan crowns over water let the water's blue through at 0.8 opacity.
+- The Titan canopy's light and shadow in a lit render are the light's (section 29): it casts
+  as the crown occluder has it, from the raster's top.
 
 ## 32. The seabed coral carpet (2026-10-05)
 

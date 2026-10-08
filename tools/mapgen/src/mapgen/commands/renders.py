@@ -17,7 +17,6 @@ from typing import NamedTuple, cast
 
 from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, Refusal, base_parser, require_gen
 from mapgen.gamedata.frame import RENDER_PX
-from mapgen.gamedata.ground.paint_store import PAINT_DIR
 from mapgen.palette.styles import LAYER_STYLES, SHORE_OPTICS
 from mapgen.render.draw.compose import DRAW_STAGE, GroundInputs, render_layers
 from mapgen.render.draw.drawpool import add_draw_flags, draw_threads
@@ -32,6 +31,7 @@ from mapgen.render.draw.stream import RenderOut, RenderStream
 from mapgen.render.run.extras import remove_run_caches
 from mapgen.render.run.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.render.run.prepare import BIOME_LAYERS, Prepared, Setup, prepare
+from mapgen.render.run.sprites import add_paint_flags
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace, measured_lines
 from mapgen.terrain.rasters import DIRECT_SUBSAMPLES
 from mapgen.terrain.sample import taps_cubic, taps_pchip
@@ -300,12 +300,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="leave the Titan forest's trees off the painted layer (a style variant)",
     )
-    parser.add_argument(
-        "--paint-dir",
-        type=Path,
-        default=PAINT_DIR,
-        help="the paint layers tools/gen_paint_layers.py wrote, for the painted layer",
-    )
+    add_paint_flags(parser)
     parser.add_argument(
         "--renders-name",
         default=RENDERS_DIR_NAME,

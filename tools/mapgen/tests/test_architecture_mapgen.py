@@ -25,8 +25,8 @@ PRESETS_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "presets.py
 #: Who may import whom inside ``mapgen``. A unit is a subpackage or a top-level module, and
 #: each command module is a unit of its own (``commands.renders``).
 #: gamedata <- terrain <- lighting <- palette <- render <- commands <- cli, ``sprites`` (the
-#: crown sprites, built from gamedata, read by nothing yet) beside terrain, with ``tiles``
-#: (cutting and describing a finished sheet) under render and ``common``,
+#: crown sprites, built from gamedata) under terrain, whose crown stamps draw them, with
+#: ``tiles`` (cutting and describing a finished sheet) under render and ``common``,
 #: ``bandstore``, ``cache`` and ``colour`` as leaves under all of them, ``pools`` (free
 #: memory, a worker's BLAS threads) under the units that start pools, and ``jit`` (the kernel
 #: switch) under the units with kernels and ``render``, whose light flags set it. ``cli``
@@ -40,10 +40,21 @@ ALLOWED: dict[str, frozenset[str]] = {
     "cache": frozenset({"common", "bandstore"}),
     "gamedata": frozenset({"common", "colour", "gamedata"}),
     "sprites": frozenset({"common", "cache", "jit", "gamedata", "sprites"}),
-    "terrain": frozenset({"common", "cache", "jit", "gamedata", "terrain"}),
+    "terrain": frozenset({"common", "cache", "jit", "gamedata", "sprites", "terrain"}),
     "lighting": frozenset({"common", "colour", "pools", "jit", "gamedata", "terrain", "lighting"}),
     "palette": frozenset(
-        {"common", "colour", "pools", "cache", "jit", "gamedata", "terrain", "lighting", "palette"}
+        {
+            "common",
+            "colour",
+            "pools",
+            "cache",
+            "jit",
+            "gamedata",
+            "sprites",
+            "terrain",
+            "lighting",
+            "palette",
+        }
     ),
     "tiles": frozenset({"common", "pools", "gamedata", "lighting", "tiles"}),
     "render": frozenset(
@@ -54,6 +65,7 @@ ALLOWED: dict[str, frozenset[str]] = {
             "jit",
             "cache",
             "gamedata",
+            "sprites",
             "terrain",
             "lighting",
             "palette",
@@ -81,7 +93,7 @@ ALLOWED: dict[str, frozenset[str]] = {
     "commands.caves": frozenset({"common", "gamedata"}),
     "commands.rocks": frozenset({"common", "gamedata"}),
     "commands.paint": frozenset({"common", "gamedata"}),
-    "commands.crown_sprites": frozenset({"common", "jit", "gamedata", "sprites"}),
+    "commands.crown_sprites": frozenset({"common", "jit", "gamedata", "sprites", "render"}),
     "commands.calibrate": frozenset({"common", "gamedata", "palette"}),
     "commands.artwork": frozenset({"common", "gamedata", "tiles", "enhance"}),
     "commands.check_fill": frozenset({"common", "cache", "gamedata", "terrain"}),

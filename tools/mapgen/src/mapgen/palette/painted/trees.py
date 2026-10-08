@@ -1,7 +1,8 @@
-"""Trees laid over the finished painted pixel: the Titan forest's raster and per-tree crowns,
-the crowns moved onto the species targets, the canopy targets and the named crown targets;
-a crown under the water's surface goes to the bed instead. docs/map/painted.md section 30,
-docs/map/calibration.md section 31 and docs/map/light-and-crowns.md section 36.
+"""Trees laid over the finished painted pixel: per-tree crowns, lit by their sprites' normals,
+moved onto the species targets, the canopy targets and the named crown targets; the Titan
+forest's trunks from its raster and its canopy from its sprites. A crown under the water's
+surface goes to the bed instead. docs/map/painted.md section 30, docs/map/calibration.md
+section 31 and docs/map/light-and-crowns.md section 36.
 """
 
 from __future__ import annotations
@@ -17,7 +18,8 @@ from mapgen.cache import TitanPlanes
 from mapgen.colour import flat_light, linear_from_oklab, oklab, sky_sun_light, srgb_to_linear
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.vegetation.crown_sprites import SPRITE_M
-from mapgen.lighting.hillshade import sun_dot
+from mapgen.lighting.hillshade import FLAT_SUN_DOT, SUN_ALTITUDE_DEG, SUN_AZIMUTH_DEG, sun_dot
+from mapgen.lighting.sun import DEFAULT_SUN, sun_vector
 from mapgen.palette.painted.calibration import (
     display_to_crown,
     exposure_gain,
@@ -39,7 +41,8 @@ from mapgen.palette.painted.shapes import (
     TitanTreesStyle,
 )
 from mapgen.palette.schema import CrownStyle
-from mapgen.terrain.crown_stamp import CrownSet, LitCrowns
+from mapgen.terrain.crown_atlas import ALPHA, RGB
+from mapgen.terrain.crown_stamp import CrownBand, CrownSet, LitCrowns
 from mapgen.terrain.render_meshes import TITAN_LEAVES, TITAN_TRUNK
 from satisfactory_mcp.core.arrays import I64Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -56,6 +59,7 @@ __all__ = [
     "crown_lab",
     "crown_layer",
     "crown_ops",
+    "crown_sun",
     "hue_gate",
     "lit_crowns",
     "moved_crowns",
@@ -64,6 +68,7 @@ __all__ = [
     "sample_titan",
     "species_colours",
     "species_targets",
+    "titan_canopy_levels",
     "titan_colours",
     "titan_over",
 ]
@@ -82,7 +87,8 @@ GATE_CHROMA = 0.02
 CANOPY_GREY = (0.0, GATE_CHROMA)
 TARGET_GREY = (GATE_CHROMA, 0.025)
 
-#: Every species' mips, finest first: cover, cover-weighted linear rgb, dome and top.
+#: Every species' mips, finest first, as ``crown_atlas`` lays a texel out: colour, normal and
+#: top, each times alpha, then alpha.
 SpeciesLevels: TypeAlias = Sequence[Sequence[FloatGrid]]
 #: A scope of the crown calibration: its weight plane (None for the trees no other scope
 #: holds) and its target in OKLab.
@@ -133,9 +139,9 @@ def species_colours(levels: SpeciesLevels) -> tuple[FloatGrid, FloatGrid]:
     colours: list[FloatGrid] = []
     areas: list[float] = []
     for mips in levels:
-        cover = mips[0][..., 0]
+        cover = mips[0][..., ALPHA]
         total = float(cover.sum())
-        colours.append(mips[0][..., 1:4].sum((0, 1)) / max(total, 1e-6))
+        colours.append(mips[0][..., RGB].sum((0, 1)) / max(total, 1e-6))
         areas.append(total * SPRITE_M * SPRITE_M)
     return np.asarray(colours, np.float32), np.asarray(areas, np.float32)
 
@@ -240,13 +246,27 @@ def named_targets(
 
 def _moved_level(level: FloatGrid, step: float, matrix: FloatGrid, style: CrownStyle) -> FloatGrid:
     """One mip with each texel's colour moved by a transfer in the crown's OKLab."""
-    cover = level[..., :1]
-    lab = crown_lab(level[..., 1:4] / np.maximum(cover, np.float32(1e-6)), style)
+    cover = level[..., ALPHA, None]
+    lab = crown_lab(level[..., RGB] / np.maximum(cover, np.float32(1e-6)), style)
     lab[..., 0] += np.float32(step)
     lab[..., 1:] = turned(lab[..., 1], lab[..., 2], matrix) / np.float32(style["chroma"])
     moved = np.clip(linear_from_oklab(lab), 0.0, None) / np.float32(style["darkening"])
     out = level.copy()
-    out[..., 1:4] = np.where(cover > 0, moved * cover, 0.0)
+    out[..., RGB] = np.where(cover > 0, moved * cover, 0.0)
+    return out
+
+
+def titan_canopy_levels(
+    levels: SpeciesLevels, species: Sequence[int], target: FloatGrid, style: CrownStyle
+) -> list[list[FloatGrid]]:
+    """``levels`` with each Titan canopy species' colour moved in plain OKLab so its mean is
+    ``target``, linear: the canopy keeps the style's leaf colour and its texture's variation."""
+    plain: CrownStyle = {**style, "darkening": 1.0, "chroma": 1.0}
+    colours, _areas = species_colours(levels)
+    out = [list(mips) for mips in levels]
+    for k in species:
+        step, matrix = transfer_op(oklab(np.clip(colours[k], 1e-7, None)), oklab(target))
+        out[k] = [_moved_level(level, step, matrix, plain) for level in levels[k]]
     return out
 
 
@@ -337,42 +357,54 @@ def titan_colours(palette: PaintedPalette) -> dict[int, FloatGrid]:
 
 
 def titan_over(out: FloatGrid, scene: PaintedScene, ground: PaintedSurface) -> FloatGrid:
-    """The Titan trees over the finished pixel at the style's opacity; 0 turns them off.
-    Drawn unlit they stand flat, as the crowns do: the light lights them by their own top."""
+    """The Titan trees over the finished pixel at the style's opacity, 0 turning them off: the
+    trunks where the raster's top is a trunk, lit by that top and flat when drawn unlit; then
+    the canopy, from its sprites, lit by their normals as the crowns are."""
     found = _titan_seen(scene, ground)
-    if found is None:
-        return out
-    z_t, cover, cls, alpha = found
-    surface = np.where(cover > 0, z_t, scene["z_m"])
-    albedo = np.zeros(out.shape, np.float32)
-    for which, rgb in ground.titan_rgb.items():
-        albedo = np.where((cls == which)[..., None], rgb, albedo)
     palette = ground.palette
-    exposure = exposure_gain(palette)
-    spacing_m = scene["grid"][5]
-    flat = scene["ndl_flat"]
-    ndl = np.full(surface.shape, flat) if scene.get("unlit") else sun_dot(surface, spacing_m)
-    lit = albedo * flat_light(palette, ndl, flat) * exposure
-    return out * (1.0 - alpha[..., None]) + lit * alpha[..., None]
+    if found is not None:
+        z_t, cover, _cls, alpha = found
+        surface = np.where(cover > 0, z_t, scene["z_m"])
+        flat = scene["ndl_flat"]
+        ndl = (
+            np.full(surface.shape, flat)
+            if scene.get("unlit")
+            else sun_dot(surface, scene["grid"][5])
+        )
+        albedo = ground.titan_rgb[TITAN_TRUNK] * exposure_gain(palette)
+        lit = albedo * flat_light(palette, ndl, flat)
+        out = out * (1.0 - alpha[..., None]) + lit * alpha[..., None]
+    canopy = _titan_canopy(scene, palette)
+    if canopy is None:
+        return out
+    alpha, colour = canopy
+    return out * (1.0 - alpha[..., None]) + colour * alpha[..., None]
 
 
 def canopy_cover(scene: PaintedScene, ground: PaintedSurface) -> FloatGrid | None:
     """How much of each pixel the crowns and the Titan trees hide, as the style draws them
     over everything else; None where there are neither."""
     crowns = scene.get("crowns")
-    cover = None if crowns is None else np.clip(crowns["cover"], 0.0, 1.0)
     found = _titan_seen(scene, ground)
-    if found is None:
-        return cover
-    alpha = found[3]
-    return alpha if cover is None else 1.0 - (1.0 - cover) * (1.0 - alpha)
+    canopy = _titan_canopy(scene, ground.palette)
+    shares = [
+        *([] if crowns is None else [np.clip(crowns["cover"], 0.0, 1.0)]),
+        *([] if found is None else [found[3]]),
+        *([] if canopy is None else [canopy[0]]),
+    ]
+    if not shares:
+        return None
+    clear = np.ones_like(shares[0])
+    for share in shares:
+        clear = clear * (1.0 - share)
+    return 1.0 - clear
 
 
 def _titan_seen(
     scene: PaintedScene, ground: PaintedSurface
 ) -> tuple[FloatGrid, FloatGrid, NDArray[np.generic], FloatGrid] | None:
-    """The Titan trees over the band: ``(z m, cover, class, alpha)``, the alpha they are drawn
-    at; None where the palette draws none or the band holds none."""
+    """The Titan trunks over the band: ``(z m, cover, class, alpha)``, the alpha they are
+    drawn at; None where the palette draws none or the band holds none."""
     style: TitanTreesStyle = ground.palette.get("titan_trees") or {}
     opacity = np.float32(style.get("opacity", 0.0))
     if ground.titan is None or not opacity:
@@ -382,8 +414,44 @@ def _titan_seen(
     if found is None:
         return None
     z_t, cover, cls = found
-    above = cover * (z_t >= scene["z_m"] - np.float32(0.5))
+    above = cover * (z_t >= scene["z_m"] - np.float32(0.5)) * (cls == TITAN_TRUNK)
     return z_t, cover, cls, opacity * np.clip(above, 0.0, 1.0)
+
+
+def _titan_canopy(
+    scene: PaintedScene, palette: PaintedPalette
+) -> tuple[FloatGrid, FloatGrid] | None:
+    """The Titan canopy over the band as it is laid: ``(alpha, colour)``, its sprites' colour
+    under the crowns' light and exposure, hidden where the surface stands over it; None
+    without it."""
+    crowns = scene.get("titan_crowns")
+    if crowns is None:
+        return None
+    style = palette["crowns"]
+    cover = crowns["cover"]
+    top_m = np.nan_to_num(crowns["top_cm"], nan=-1e9) / np.float32(100.0)
+    seen = top_m > scene["z_m"] - style["hidden_below_m"]
+    low, high = style["shade_clamp"]
+    shade = np.clip(crowns["ndl"] / scene["ndl_flat"], low, high)
+    light = sky_sun_light(palette["sky"], palette["sun"], np.float32(palette["ambient"]), shade)
+    colour = crowns["rgb"] / np.maximum(cover, np.float32(1e-4))[..., None]
+    return np.clip(cover, 0.0, 1.0) * seen, colour * light * exposure_gain(palette)
+
+
+def crown_sun(crowns: CrownBand, unlit: bool) -> FloatGrid:
+    """Each pixel's sun term from the mean normal of its crowns, against flat ground's
+    ``FLAT_SUN_DOT``: lit, the north-west sun's own; unlit, the light's default sun over its
+    flat ground's, so a crown keeps the leaf-level relief the light cannot draw. Flat where
+    no crown is."""
+    cover = crowns["cover"]
+    normal = crowns["normal"] / np.maximum(cover, np.float32(1e-6))[..., None]
+    sun = DEFAULT_SUN if unlit else (SUN_AZIMUTH_DEG, SUN_ALTITUDE_DEG)
+    light = np.asarray(sun_vector(*sun), np.float32)
+    along = normal[..., 0] * light[0] + normal[..., 1] * light[1] + normal[..., 2] * light[2]
+    ndl = np.maximum(along, np.float32(0.0))
+    if unlit:
+        ndl = ndl * np.float32(FLAT_SUN_DOT / light[2])
+    return np.where(cover > 0, ndl, np.float32(FLAT_SUN_DOT)).astype(np.float32)
 
 
 def crown_layer(
@@ -394,7 +462,7 @@ def crown_layer(
     exposure: float | np.float32,
     ops: Sequence[tuple[FloatGrid, tuple[float, float]]] = (),
 ) -> CrownLayer:
-    """The crowns of a band, lit by their own domes: ``alpha``, ``colour``, ``top_m``, and
+    """The crowns of a band, lit by their normals: ``alpha``, ``colour``, ``top_m``, and
     ``sunk``, the share of each pixel's crown that stands under the water's surface.
 
     A crown is hidden where the drawn surface stands above its top: a tree under an

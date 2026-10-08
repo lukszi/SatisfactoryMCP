@@ -41,6 +41,7 @@ from mapgen.palette.painted.trees import (
     over_crowns,
 )
 from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.terrain.crown_atlas import ALPHA, CHANNELS, RGB
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from mapgen.terrain.sample import taps_linear
 
@@ -55,12 +56,13 @@ PALM, BALLOON = (0.26585, 0.39797, 0.46165), (0.29132, 0.3309, 0.37206)
 
 
 def _crowns(colours, species, xs, scale=1.0):
-    """Fake crowns: one 4x4 fully covered sprite per colour, one record per tree."""
+    """Fake crowns: one 4x4 fully covered, upright sprite per colour, one record per tree."""
     levels = []
     for colour in colours:
-        level = np.zeros((4, 4, 6), np.float32)
-        level[..., 0] = 1.0
-        level[..., 1:4] = colour
+        level = np.zeros((4, 4, CHANNELS), np.float32)
+        level[..., ALPHA] = 1.0
+        level[..., RGB] = colour
+        level[..., 5] = 1.0
         levels.append([level])
     records = np.zeros(len(species), CROWN_RECORD)
     records["species"], records["x"], records["scale"] = species, xs, scale
@@ -148,7 +150,7 @@ def test_blue_palms_take_their_own_target_by_species_even_under_a_sparse_crown()
     ops = ground.crown_ops
     assert [grey for _op, grey in ops] == [CANOPY_GREY], "a named target moves the mips"
     assert ground.crown_measured["crowns@blue_palm"]["trees"] == 10, "the palms alone"
-    moved = [level[0][0, 0, 1:4] for level in ground.crowns.levels]
+    moved = [level[0][0, 0, RGB] for level in ground.crowns.levels]
     for k in (0, 1, 3, 4):
         np.testing.assert_array_equal(moved[k], np.float32(colours[k]), err_msg=f"crown {k}")
     amber = np.array([0.33869, 0.23403, 0.12035], np.float32)

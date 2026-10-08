@@ -243,8 +243,9 @@ def add_gpu_flag(parser: argparse.ArgumentParser) -> None:
         nargs=0,
         default=False,
         help=(
-            "run the light's horizon march and sky view, and the draw's relight, arch FXAA and "
-            "terrain, as CUDA kernels on the GPU: the gpu extra and an NVIDIA driver (the same "
+            "run the light's horizon march and sky view, and the draw's relight, arch FXAA, "
+            "terrain and crowns, as CUDA kernels on the GPU: the gpu extra and an NVIDIA driver "
+            "(the same "
             f"as {KERNEL_SWITCH}={GPU}). The tiles are the same bytes"
         ),
     )

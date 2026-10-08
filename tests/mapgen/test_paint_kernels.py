@@ -21,7 +21,8 @@ from mapgen.palette import relief
 from mapgen.palette.painted.optics import mix_underwater
 from mapgen.palette.styles import RELIEF_PALETTES, SHORE_OPTICS, WATER_DEEP, WATER_SHALLOW
 from mapgen.palette.water import shore, wet
-from mapgen.terrain.crown_stamp import CrownSet, sprite_levels, stamp_crowns
+from mapgen.terrain.crown_stamp import CrownSet, stamp_crowns
+from tests.support.crown_sprites import draw_atlas, random_sprite
 from tests.support.map_scenes import relief_ground
 from tests.support.paths import REPO_ROOT
 from tests.support.wet_bands import band_water, painted_band
@@ -61,12 +62,11 @@ def test_the_reference_never_loads_numba():
         "from mapgen.palette.styles import SHORE_OPTICS, WATER_DEEP, WATER_SHALLOW\n"
         "from mapgen.palette.water.shore import water_composite\n"
         "from mapgen.terrain.crown_stamp import CrownSet, stamp_crowns\n"
+        "from tests.support.crown_sprites import draw_atlas, random_sprite\n"
         "from tests.support.map_scenes import relief_ground\n"
         "tree = np.zeros(1, CROWN_RECORD)\n"
         "tree['scale'] = tree['scale_z'] = tree['axis_z'] = 1.0\n"
-        "one = np.ones(1, np.float32)\n"
-        "crowns = CrownSet(tree, [[np.ones((5, 5, 6), np.float32)]], [(-25.0, -25.0)], "
-        "one * 80, one, one)\n"
+        "crowns = CrownSet(tree, draw_atlas([random_sprite(np.random.default_rng(0), 5, 5)]))\n"
         "centres = np.arange(-5.0, 5.0) * 20.0\n"
         "assert stamp_crowns(crowns, centres, centres, 20.0)['cover'].any()\n"
         "z = np.ones((4, 5), np.float32)\n"
@@ -103,21 +103,10 @@ def test_every_painter_kernel_releases_the_gil_and_caches_on_disk():
 # ---------------------------------------------------------------------------- the crowns
 
 
-def _sprite(rng: np.random.Generator, side: int) -> dict:
-    cover = rng.integers(0, 256, (side, side + 3)).astype(np.uint8)
-    cover[rng.random(cover.shape) < 0.3] = 0
-    return {"cover": cover, "slot": rng.integers(0, 3, cover.shape).astype(np.uint8),
-            "top_cm": rng.integers(300, 2500, cover.shape).astype(np.int16)}  # fmt: skip
-
-
-def _crowns(seed: int, trees: int = 400) -> CrownSet:
+def _crowns(seed: int, trees: int = 400, opacity: float = 1.0) -> CrownSet:
     """Species of three sizes and trees of every scale, yaw and lean over a 60 m square."""
     rng = np.random.default_rng(seed)
-    colours = [[0.1, 0.3, 0.05], None, [0.2, 0.25, 0.1]]
-    sprites = [_sprite(rng, side) for side in (9, 40, 70)]
-    levels = [sprite_levels(sprite, colours) for sprite in sprites]
-    origins = [(-0.5 * 12.5 * s["cover"].shape[1], -0.4 * 12.5 * s["cover"].shape[0])
-               for s in sprites]  # fmt: skip
+    sprites = [random_sprite(rng, side, side + 3) for side in (9, 40, 70)]
     records = np.zeros(trees, CROWN_RECORD)
     records["x"], records["y"] = rng.uniform(-3000.0, 3000.0, (2, trees))
     records["z"] = rng.uniform(-500.0, 2000.0, trees)
@@ -128,20 +117,18 @@ def _crowns(seed: int, trees: int = 400) -> CrownSet:
     records["axis_x"], records["axis_y"] = lean
     records["axis_z"] = np.sqrt(1.0 - (lean**2).sum(0))
     records["species"] = rng.integers(0, len(sprites), trees)
-    reach = np.array([np.hypot(*s["cover"].shape) * 12.5 for s in sprites], np.float32)
-    mid = np.array([800.0, 1200.0, 1500.0], np.float32)
-    top = np.array([2500.0, 2500.0, 2500.0], np.float32)
-    return CrownSet(records, levels, origins, reach, mid, top, ["a", "b", "c"])
+    return CrownSet(records, draw_atlas(sprites), opacity)
 
 
 @needs_numba
 @pytest.mark.parametrize("size", [2048, 8192, 32768])
 def test_the_crown_stamps_are_the_reference_bit_for_bit(monkeypatch, size):
-    crowns = _crowns(seed=size)
+    crowns = _crowns(seed=size, opacity=0.7 if size == 8192 else 1.0)
     step = 7500.0 * 100.0 / size
     centres = (np.arange(-150, 150, dtype=np.float64) + 0.5) * step
     stamped = _same(monkeypatch, lambda: stamp_crowns(crowns, centres, centres[40:220], step))
     assert stamped["cover"].any(), "the band holds trees"
+    assert np.isfinite(stamped["top_cm"]).any() and stamped["normal"].any()
     _same(monkeypatch, lambda: stamp_crowns(crowns, centres[7:], centres[5:9], step))
 
 
@@ -156,14 +143,12 @@ def test_the_stamps_follow_mips_replaced_after_the_first_stamp(monkeypatch):
     assert not np.array_equal(again["rgb"], first["rgb"])
 
 
-def test_float32_pixel_centres_take_the_reference(monkeypatch):
-    """The kernel reproduces float64 centres; with others the reference stamps."""
-    monkeypatch.delenv(jit.KERNEL_SWITCH, raising=False)
+@needs_numba
+def test_float32_pixel_centres_stamp_the_reference_too(monkeypatch):
+    """A centre less a tree's float64 centre is float64 in both, whatever the centres are."""
     crowns = _crowns(seed=5, trees=60)
     centres = (np.arange(-100, 100) + 0.5).astype(np.float32) * np.float32(30.0)
-    got = stamp_crowns(crowns, centres, centres, 30.0)
-    monkeypatch.setenv(jit.KERNEL_SWITCH, jit.REFERENCE)
-    assert _bits(got) == _bits(stamp_crowns(crowns, centres, centres, 30.0))
+    _same(monkeypatch, lambda: stamp_crowns(crowns, centres, centres, 30.0))
 
 
 # ----------------------------------------------------------------------------- the water

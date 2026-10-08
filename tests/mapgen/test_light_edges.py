@@ -192,12 +192,11 @@ def test_a_canopy_under_the_surface_is_hidden_and_takes_no_light_of_its_own(tmp_
     assert sunk[floor][..., 2].tobytes() == bare[floor][..., 2].tobytes()
 
 
-def test_the_canopy_s_relief_and_blur_are_the_painted_crowns():
+def test_the_canopy_s_relief_and_blur_are_the_ones_the_crowns_were_drawn_with():
     from mapgen.lighting.spans import canopy
-    from mapgen.palette.styles import PAINTED_PALETTE
     from mapgen.terrain.crown_stamp import DOME_SIGMA_M
 
-    assert canopy.CANOPY_RELIEF == PAINTED_PALETTE["crowns"]["dome_gain"]
+    assert canopy.CANOPY_RELIEF == 0.35, "the painted crowns' dome gain before their sprites"
     assert canopy.CANOPY_SMOOTH_M == DOME_SIGMA_M
 
 
@@ -241,7 +240,7 @@ def test_the_titan_trees_join_the_crowns_where_they_stand_higher():
     assert top[42, 42] == 20.0 and np.isnan(top[60, 60]) and cover[60, 60] == 0
 
 
-def test_the_titan_trees_drawn_unlit_stand_flat_for_the_light_to_light():
+def test_the_titan_trunks_drawn_unlit_stand_flat_for_the_light_to_light():
     import copy
     from types import SimpleNamespace
 
@@ -250,7 +249,7 @@ def test_the_titan_trees_drawn_unlit_stand_flat_for_the_light_to_light():
     from mapgen.terrain.render_meshes import TITAN_LEAVES, TITAN_TRUNK
 
     z = np.add.outer(np.zeros(8), np.arange(8) * 400.0).astype(np.float32) + 3000.0
-    cls = np.full((8, 8), TITAN_LEAVES, np.uint8)
+    cls = np.full((8, 8), TITAN_TRUNK, np.uint8)
     leaves = np.array([0.07, 0.1, 0.03], np.float32)
     ground = SimpleNamespace(palette=copy.deepcopy(PAINTED_PALETTE), titan=(z, cls, 2, 0, 0),
                              titan_rgb={TITAN_LEAVES: leaves, TITAN_TRUNK: leaves})  # fmt: skip

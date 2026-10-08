@@ -1,5 +1,6 @@
 // terrain/texels.py on the GPU, a thread a pixel: a texture or an atlas tile read bilinear,
-// and sprites stamped over a band in their order, each pixel walking the sprites of its cell.
+// and sprites or crowns stamped over a band in their order, each pixel walking the sprites of
+// its cell.
 // The float32 operations of the reference in its order; compiled with --fmad=false
 // (mapgen.jit). docs/map/renders.md section 41, "The draw on the GPU".
 
@@ -105,4 +106,63 @@ extern "C" __global__ void stamp(float* colour, float* cover, int rows, int cols
         }
         cover[p] = cover[p] + alpha * (1.0f - cover[p]);
     }
+}
+
+#define CROWN_CHANNELS 8
+
+// terrain/crown_stamp.py's crowns, a thread a pixel walking the crowns of its cell in their
+// order. Per crown: centre (x, y) in world cm; pose: cos, sin, the tile's corner (x, y) and
+// texel in scaled cm, rise, z, opacity; boxes: r0, r1, c0, c1. A tile's texels are colour,
+// normal and top, each times alpha, then alpha. Outputs start empty and top at -inf.
+extern "C" __global__ void stamp_crowns(float* cover, float* rgb, float* normal, float* top,
+                                        int rows, int cols, const double* xs,
+                                        const double* ys, const double* centre,
+                                        const float* pose, const int* tile,
+                                        const long long* boxes, const int* starts,
+                                        const int* ids, int cell, int cells_x,
+                                        const float* atlas, int width, const int* tiles,
+                                        float seen_from) {
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+    int r = blockIdx.y;
+    if (c >= cols || r >= rows) return;
+    int at = (r / cell) * cells_x + c / cell;
+    float a_sum = 0.0f, r0 = 0.0f, r1 = 0.0f, r2 = 0.0f, n0 = 0.0f, n1 = 0.0f, n2 = 0.0f;
+    float high = __int_as_float(0xff800000);  // -inf
+    float t[CROWN_CHANNELS];
+    for (int i = starts[at]; i < starts[at + 1]; ++i) {
+        int k = ids[i];
+        const long long* box = boxes + (long long)k * 4;
+        if (r < box[0] || r >= box[1] || c < box[2] || c >= box[3]) continue;
+        const float* q = pose + (long long)k * 8;
+        float dx = (float)(xs[c] - centre[2 * k]);
+        float dy = (float)(ys[r] - centre[2 * k + 1]);
+        float u = (q[0] * dx + q[1] * dy - q[2]) / q[4];
+        float v = (q[0] * dy - q[1] * dx - q[3]) / q[4];
+        atlas_texel(atlas, width, CROWN_CHANNELS, tiles, tile[k], u, v, 0, t);
+        float a = t[7] * q[7];
+        a = a < 0.0f ? 0.0f : (a > 1.0f ? 1.0f : a);
+        float keep = 1.0f - a;
+        a_sum = a + a_sum * keep;
+        r0 = t[0] * q[7] + r0 * keep;
+        r1 = t[1] * q[7] + r1 * keep;
+        r2 = t[2] * q[7] + r2 * keep;
+        float nx = q[0] * t[3] - q[1] * t[4];
+        float ny = q[1] * t[3] + q[0] * t[4];
+        n0 = nx * q[7] + n0 * keep;
+        n1 = ny * q[7] + n1 * keep;
+        n2 = t[5] * q[7] + n2 * keep;
+        if (a >= seen_from) {
+            float height = q[6] + t[6] / t[7] * q[5];
+            if (height > high) high = height;
+        }
+    }
+    long long p = (long long)r * cols + c;
+    cover[p] = a_sum;
+    rgb[p * 3] = r0;
+    rgb[p * 3 + 1] = r1;
+    rgb[p * 3 + 2] = r2;
+    normal[p * 3] = n0;
+    normal[p * 3 + 1] = n1;
+    normal[p * 3 + 2] = n2;
+    top[p] = high;
 }
