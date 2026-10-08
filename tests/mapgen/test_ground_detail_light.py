@@ -70,6 +70,7 @@ def textures(tmp_path_factory):
 def _painted_ground() -> SimpleNamespace:
     rock = [np.zeros((N // 4, N // 4), np.float32)]
     return SimpleNamespace(rock=rock, rock_family=None, titan=None, crowns=None,
+                           titan_crowns=None,
                            water_optics=lambda taps, river=None: None)  # fmt: skip
 
 

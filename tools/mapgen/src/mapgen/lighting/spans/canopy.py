@@ -41,10 +41,11 @@ __all__ = [
 ]
 
 #: The canopy top is smoothed over this before its slope is taken, as the painted crowns'
-#: domes are, so the 1 m grid of the crown plane draws no facets.
+#: domes were, so the 1 m grid of the crown plane draws no facets.
 CANOPY_SMOOTH_M = DOME_SIGMA_M
 
-#: The share of the canopy top's relief its slope keeps: the painted crowns' ``dome_gain``.
+#: The share of the canopy top's relief its slope keeps: the painted crowns' dome gain before
+#: their sprites' normals lit them.
 CANOPY_RELIEF = 0.35
 
 

@@ -38,12 +38,12 @@ def _same(plane):
 
 def _band():
     """Six pixels: bare, a crown, half a crown, a crown over the water, one sunk under it,
-    and a Titan tree."""
+    and a Titan trunk (the raster draws the trunks; the canopy comes from its sprites)."""
     ground = painted_ground_stub(N)
     titan_cls = np.zeros((2, N + 1), np.uint8)
-    titan_cls[:, 5] = TITAN_LEAVES
+    titan_cls[:, 5] = TITAN_TRUNK
     ground.titan = (np.full((2, N + 1), 5000, np.int32), titan_cls, 1, 0, 0)
-    ground.titan_rgb = {TITAN_LEAVES: np.array(LEAF, np.float32), TITAN_TRUNK: np.zeros(3)}
+    ground.titan_rgb = {TITAN_LEAVES: np.zeros(3), TITAN_TRUNK: np.array(LEAF, np.float32)}
     scene = water_scene(N)
     scene["water"]["cover"] = np.array([[0, 0, 0, 1, 1, 0]], np.float32)
     scene["water"]["depth_m"] = np.array([[0, 0, 0, 0.3, 3.0, 0]], np.float32)

@@ -56,6 +56,7 @@ class PaintedParts(NamedTuple):
     trees: FloatGrid
     alpha: FloatGrid
 
+
 _ZERO, _ONE = np.float32(0.0), np.float32(1.0)
 
 
