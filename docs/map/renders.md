@@ -2147,7 +2147,9 @@ painted style's rendered look, textured ground and crown sprites, will be. For i
 clamped), reads tiles of an atlas without touching their neighbours, and stamps sprites,
 turned and scaled, over a colour and its cover in their order; `render/gpu/texels.py` does
 the same on the device, to the same bytes, with the sprites binned by 16-pixel cells on the
-host so every pixel walks only the sprites that may reach it. Nothing draws with them yet.
+host so every pixel walks only the sprites that may reach it. The ground's detail draws on
+them since 2026-10-09: its textures go up with `upload_atlas` and `render/gpu/ground.cu` reads
+them as `texels.cu` does (painted.md section 30, "The layers' own textures").
 
 **Memory and the log.** With `--gpu` the run's process opens a CUDA context of its own when
 its first kernel runs, beside each light process's. Its pool is capped at 2 GiB

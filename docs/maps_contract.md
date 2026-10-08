@@ -207,7 +207,9 @@ lists it. spatial-and-map.md sections 27 and 30 describe the planes. Generator v
 the baked ground colour, the crown tops, the cliff families and the seabed coral carpet planes
 (section 32). Version 3 adds the water bodies (`water_bodies.json`, section 33) the painted
 style classes its water from, and the tree crowns (section 36) whose measured crown tops
-replace version 2's estimate, so a version 1 or 2 store reads as stale.
+replace version 2's estimate, so a version 1 or 2 store reads as stale. Version 5 adds the
+landscape layers' own textures (`ground.tex.z`), which the painted ground's detail and the
+light's normal tiles read (painted.md section 30, "The layers' own textures").
 
 The game-painted layer also lists two readers, `rock_families` (each rock's material family
 in the direct raster: the cliff layers, and desert rock since version 2) and `titan_trees`
