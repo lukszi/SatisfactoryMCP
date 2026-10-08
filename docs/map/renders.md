@@ -1683,9 +1683,10 @@ another signature's code; that race is why each signature now has a file of its 
 ### On the GPU (2026-10-07)
 
 `mapgen renders --gpu` runs the light's horizon march and sky view as CUDA kernels, in each
-light process. Everything else runs as above: numba's kernels where they exist, numpy
-elsewhere. The CPU path stays the default and the reference, and the tiles are the same
-bytes either way.
+light process, and since 2026-10-08 the draw's relight, arch FXAA and terrain pieces in the
+run's own ("The draw on the GPU", below). Everything else runs as above: numba's kernels
+where they exist, numpy elsewhere. The CPU path stays the default and the reference, and the
+tiles are the same bytes either way.
 
 - **The switch.** `--gpu` sets `MAPGEN_KERNELS=cuda`, which the light's processes inherit;
   setting it by hand does the same. `jit.gpu_on()` says CUDA where the switch says `cuda`
@@ -1750,7 +1751,8 @@ against 3.0 to 7.1 ms for numba's whole call. So a GPU painter is worth at most 
 more draw thread, while the draw runs 8 that one GPU behind one bus would have to serve; and
 the four painters with kernels are under a tenth of a pass (2.22 s of 24.9 s on one thread,
 "The painters" above). A painter gains only when the band's planes stay on the device from
-one step to the next, which is a different draw.
+one step to the next, which is a different draw. The terrain's piece is now drawn that way
+("The draw on the GPU", below).
 
 **Checked.**
 
@@ -1775,6 +1777,135 @@ one step to the next, which is a different draw.
   check over several blocks; the full-size light's 64 blocks are first checked by the full
   render after the round.
 
+### The draw on the GPU (2026-10-08)
+
+With `--gpu` the run's own process also runs three of the draw's stages as CUDA kernels: the
+default sun's relight of every lit band (`render/gpu/relight.py`), the arches' FXAA
+(`render/gpu/fxaa.py`), and the terrain layer's pieces, from their ground to their bytes
+(`render/gpu/terrain.py`). Each gives its CPU twin's bytes, and a call the device has no
+memory for runs on the CPU. Everything else in the draw runs as before.
+
+**Where the draw's time went.** A lit 8192 render of the five layers on the CPU, with timers
+around the draw's stages (thread CPU seconds; the shared machine's free memory allowed the
+draw one thread):
+
+| Stage | CPU s | On the GPU |
+| --- | --- | --- |
+| The pieces' ground, `band_surfaces` (512 pieces) | 31.3 | no: sampling, not shading |
+| The painted layer's pieces | 86.4 | no: below |
+| The relief and relief-dark pieces | 26.2 + 21.5 | no: below |
+| The satellite pieces | 14.5 | no: the layer is being dropped |
+| The terrain pieces | 9.7 | yes |
+| The relight, `relight_rows` (160 bands) | 36.2 | yes |
+| The arches' FXAA, `arch_fxaa` (230 bands) | 20.2 | yes |
+| The lanes' resampling, and the tile rows copied for the encoders | 36 + 89 | no: not shading |
+
+A lit run draws its colour unlit and lights it afterwards, so the hillshade is computed only
+with `--no-light`; there the terrain kernel computes it too.
+
+**Each call** (RTX 3080, the best of several, the same bytes either way):
+
+| Call | CPU | GPU, transfers included |
+| --- | --- | --- |
+| The relight, 300 × 8192 px: sRGB / linear light | 212 / 327 ms | 2.5 / 2.8 ms |
+| The arches' FXAA, 300 × 8192 px, two arches | 86 ms | 3.0 ms |
+| A terrain piece, 288 × 544 px: no void / the void | 8.2 / 17.8 ms | 1.2 / 1.3 ms |
+| The hillshade's sun term alone, 288 × 544 px | 0.89 ms | 0.17 ms |
+
+**Why the bits are the same.** The rules of "Why the bits are the same" and "On the GPU" hold:
+float32 operations in numpy's order, no fused multiply-add, IEEE division and square root.
+And:
+
+- The relight in sRGB (terrain, relief-dark) is arithmetic and a square root. In linear
+  light (painted), sRGB to linear is read from a table of its 256 values, which numpy's own
+  `srgb_unit_to_linear` fills; the tone curve both ways is arithmetic; and linear back to an
+  sRGB byte is read from 256 steps: every float32 from the dark knee, 0.0031308, to one, 70.4
+  million of them, is put through `linear_to_srgb_unit` and the round once a process (0.9 s),
+  and a byte is the count of steps at or below a value, less one. That holds while the bytes
+  rise with the value, which the same pass checks; where they do not, the CPU relights the
+  linear layers.
+- The FXAA reads each pixel inside its own column piece, as numpy pads and clips it: the
+  mask's dilation and each column's share of it are worked out on the device, the pieces cut
+  on the host by `column_pieces`.
+- The terrain piece follows `terrain_colours`, the numba water composite term by term, and
+  `_void`. The water's transmission is an `exp`, worked out by numpy first as the numba
+  painter has it. The ramp's floor and fraction are exact. Whether the composite mixes every
+  pixel is counted on the host. NaN goes to byte 0, as numpy's cast does here. A plane that
+  is not float32 sends the piece to the CPU.
+- `np.clip` and `np.maximum` keep their NaN rules; the signed zero of section 41 can meet them
+  and cannot show in a byte.
+
+**What stays on the CPU, and why.**
+
+- The painted layer's crowns, ground colour and lit crowns: the style is redrawn next.
+- The painted water's mix (`optics.mix_underwater`, 6.8 s above): most of its cost is the
+  `exp` terms numpy works out first, and moving its ten planes takes 0.7 ms a piece, about
+  what numba's arithmetic takes. Its tone curve ends in sRGB's power on floats the void then
+  blends.
+- relief-dark: an arctangent (the slope), a cube root (the borrow), cubes (OKLab) and sRGB's
+  power sit between its arithmetic steps, each a round trip to the CPU.
+- relief-dark's sun term (`hillshade.sun_dot`), with `--no-light` only: 0.7 ms a piece saved,
+  about 6 s at full size, for a dispatch in the light's module.
+- The void over relief-dark and painted (`painting._void`, about 2.3 s a layer above): its
+  colour is float, so a round trip of three planes up and three down; the redrawn painted
+  style will keep it on the device.
+- The ground under the pieces: sampling, not shading.
+
+**Bands on the device.** `render/gpu/device.py`'s `DeviceBand` holds a piece's planes on the
+device, each uploaded once however many kernels read it, and the planes a kernel leaves for
+the next; only what is asked for comes back. The terrain piece is drawn that way, and the
+painted style's rendered look, textured ground and crown sprites, will be. For it,
+`terrain/texels.py` reads a texture onto a band (bilinear between texel centres, repeated or
+clamped), reads tiles of an atlas without touching their neighbours, and stamps sprites,
+turned and scaled, over a colour and its cover in their order; `render/gpu/texels.py` does
+the same on the device, to the same bytes, with the sprites binned by 16-pixel cells on the
+host so every pixel walks only the sprites that may reach it. Nothing draws with them yet.
+
+**Memory and the log.** With `--gpu` the run's process opens a CUDA context of its own when
+its first kernel runs, beside each light process's. Its pool is capped at 2 GiB
+(`device.DRAW_DEVICE_BYTES`); a call past it runs on the CPU. A `--gpu` run logs where the
+calls ran once its last layer is installed: at 16384, `draw: relight, FXAA and terrain calls
+2,798 on NVIDIA GeForce RTX 3080; 0 ran on the CPU, the device out of memory`.
+
+**Measured** (the bench kit's `full`, five layers, lit, the raster caches kept and the light
+baked fresh, under the exclusive render lock with other load under a core; numba compiled
+cold in each run). `--gpu` also runs the light's march on the device, which is not this
+change: at 8192 a run of the code before it with `--gpu` took 388.5 s, its relight 46.1 and
+its FXAA 27.1 CPU seconds.
+
+| | 8192 CPU | 8192 GPU | 16384 CPU | 16384 GPU |
+| --- | --- | --- | --- | --- |
+| Wall, s | 388.5 | 384.0 | 590.3 | 570.6 |
+| The draw, s | 45.9 | 43.0 | 185.9 | 171.9 |
+| The relight, CPU s (bands) | 43.8 (160) | 2.5 | 187.9 (320) | 6.3 |
+| The arches' FXAA, CPU s (bands) | 26.9 (230) | none | 70.3 (430) | none |
+| The light after the draw, s | 109.1 | 108.0 | 153.7 | 158.3 |
+| The cut after the light, s | 2.2 | 0.1 | 11.7 | 0.2 |
+| CPU, user s | 1,024 | 964 | 3,543 | 3,311 |
+| Peak commit, GB | 11.4 | 14.6 | 21.4 | 27.8 |
+| Peak device memory, MB | 1,722 | 2,958 | 1,703 | 4,520 |
+
+The wall is set by what the draw does not touch: the preparation, 216 to 221 s at both
+sizes, and the light's last rows after the draw, 108 to 158 s.
+A first 16384 CPU run took 648.0 s, with up to 8.6 cores of other work on the machine during
+its light; the table has the repeat. The device memory counts about 1.7 GB of other users';
+the extra commit is the CUDA contexts of the run and its light processes.
+
+**Checked.**
+
+- `tests/mapgen/test_gpu_draw.py` compares the relight in both light spaces at sizes off the
+  block size, the FXAA on stair steps and noise with arches at both sheet edges and merged
+  pieces, the terrain piece flat and lit under each way of the void, and a whole terrain
+  draw on 1 and 4 threads in pieces of 97 columns, with the CPU's bytes; and the steps
+  against numpy's bytes either side of each. `test_gpu_texels.py` does the same for the
+  texture, atlas and sprite kernels. On a machine without CuPy or a device they skip.
+- G1 at 2048 from the raster cache, all five layers, lit: on the CPU and with `--gpu`, all
+  1,125 tiles and light tiles the same bytes as the round's baseline and the sidecars the
+  same content. The `--gpu` run's 152 draw calls all ran on the device.
+- G2 at 32768, three windows of the five layers, unlit, so the terrain draws its hillshade on
+  the device: 15 of 15 draws the same SHA-256 as the baseline, on the CPU and with
+  `MAPGEN_KERNELS=cuda`.
+
 ### Known limits
 
 - The painters left in numpy above. A kernel for the colour spaces could add its sums in
@@ -1784,6 +1915,12 @@ one step to the next, which is a different draw.
   arctangent after each march costs more than the whole call.
 - Each light process opens its own CUDA context, 0.19 GB of device memory: 16 processes take
   3 GB of a 10 GB card before they march.
+- The draw's kernels share the device's default stream from the draw's 8 threads and the
+  lanes' 8, so their calls queue there; each is milliseconds, and none waits on another's
+  transfer for long.
+- A band near an arch is relit on the device, brought back, and sent up again for its FXAA:
+  about 5 ms more at full size than keeping it there, for a few hundred bands.
+- The linear relight's steps cost 0.9 s once a process, before its first linear band.
 - A numba release is a new proof, which is why it is pinned: the bit tests in
   `tests/mapgen/test_kernels.py` and `tests/mapgen/test_paint_kernels.py` and a G1 against the
   reference come with an upgrade.

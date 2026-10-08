@@ -157,6 +157,11 @@ Planned as 0.2.0.
   CPU path stays the default, and the tiles are the same bytes either way; a full-size light
   block's ground horizons take about 3 s instead of 8. The bake logs how many of its calls ran
   on the GPU and how many fell back to the CPU for want of device memory.
+- Map generator: `--gpu` also runs the draw's relight by the default sun, the arches' FXAA
+  and the terrain layer's pieces as CUDA kernels, to the same bytes. At 16384 the relight's
+  188 CPU seconds become 6 and the FXAA's 70 none, and the draw takes 172 s instead of 186;
+  the run logs where the draw's calls ran. For the painted style's coming look, textures,
+  atlas tiles and sprites can now be read and stamped on the device too, to the CPU's bytes.
 - Map generator: a render whose light scratch another running render holds is refused with
   exit code 11 and the reason on stdout (it was exit 1 on stderr). The render sidecar's
   `cliff_geometry.placements_dropped` counts the passable `CliffPillar_03` as `excluded_mesh`
