@@ -399,7 +399,10 @@ def crown_horizons(
 
 
 def encode_horizon(deg: NDArray[np.floating]) -> U8Grid:
-    """Degrees to the stored byte: ``255 * sqrt(deg / 90)``, finest near the horizon."""
+    """Degrees to the stored byte: ``255 * sqrt(deg / 90)``, finest near the horizon. A NaN is
+    refused: cast to a byte it would read as open sky."""
+    if np.isnan(deg).any():
+        raise ValueError("a horizon is NaN: a march read a hole that was not opened")
     return np.round(np.sqrt(np.clip(deg / 90.0, 0.0, 1.0)) * 255.0).astype(np.uint8)
 
 

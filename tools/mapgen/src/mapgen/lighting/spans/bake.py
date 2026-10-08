@@ -161,13 +161,15 @@ def path_horizon(bands: Bands, el: float) -> F32Grid:
 
 class Cell(NamedTuple):
     """An atlas cell as marched: its index, its degrees as the atlas stores them, the bands it
-    was made from (None for a plain march), and the horizon it was cut from: for a crown cell
-    the crowns' whole, received on the canopy top."""
+    was made from (None for a plain march), the horizon it was cut from (for a crown cell the
+    crowns' whole, received on the canopy top), and where it stores a band folded in (None
+    for a plain march)."""
 
     k: int
     deg: F32Grid
     bands: Bands | None
     whole: F32Grid
+    band_in: BoolMask | None
 
 
 def _filled(bands: Bands, holes: Holes | None) -> Bands:
@@ -192,6 +194,7 @@ class CellOps(Protocol[PlaneT, BandsT]):
     def bands(self, surface: SpanSurface, az_deg: float, fade: Fade) -> BandsT: ...
     def path(self, bands: BandsT, el: float) -> PlaneT: ...
     def above(self, over: PlaneT, cell: PlaneT) -> PlaneT: ...
+    def band_in(self, stored: PlaneT, whole: PlaneT, bands: BandsT) -> BoolMask: ...
     def host(self, plane: PlaneT) -> F32Grid: ...
     def host_bands(self, bands: BandsT) -> Bands: ...
 
@@ -214,6 +217,10 @@ class _OnHost:
 
     def above(self, over: F32Grid, cell: F32Grid) -> F32Grid:
         return np.where(over > cell, over, np.float32(0.0))
+
+    def band_in(self, stored: F32Grid, whole: F32Grid, bands: Bands) -> BoolMask:
+        """Where the cell stores its whole, and the whole is the band folded in."""
+        return (stored == whole) & (whole > bands.horizon)
 
     def host(self, plane: F32Grid) -> F32Grid:
         return plane
@@ -255,12 +262,15 @@ def _direction(
         ground = ops.bands(spans.ground, az, FADE_M)
         cell = ops.path(ground, el)
     deg = ops.host(cell)
-    found = [Cell(k, deg, _kept(ops, ground, k, wanted), deg)]
+    band_in = None if ground is None else ops.band_in(cell, cell, ground)
+    found = [Cell(k, deg, _kept(ops, ground, k, wanted), deg, band_in)]
     if spans.crowns is not None:
         crowns = ops.bands(spans.crowns, az, OCCLUDER_FADE_M)
         over = ops.path(crowns, el)
+        stored = ops.above(over, cell)
         kept = _kept(ops, crowns, HORIZON_DIRS + k, wanted)
-        found.append(Cell(HORIZON_DIRS + k, ops.host(ops.above(over, cell)), kept, ops.host(over)))
+        band_in = ops.band_in(stored, over, crowns)
+        found.append(Cell(HORIZON_DIRS + k, ops.host(stored), kept, ops.host(over), band_in))
     return found
 
 

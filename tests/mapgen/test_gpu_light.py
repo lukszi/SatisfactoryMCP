@@ -132,7 +132,10 @@ def _block(seed: int, nan: str | None) -> tuple[np.ndarray, int, span_bake.Block
 
 def _cells(z, halo, block, holes, wanted=None) -> list[object]:
     found = span_bake.horizon_cells(z, halo, SP, block, holes, wanted)
-    return [(cell.k, cell.deg, cell.bands and tuple(cell.bands), cell.whole) for cell in found]
+    return [
+        (cell.k, cell.deg, cell.bands and tuple(cell.bands), cell.whole, cell.band_in)
+        for cell in found
+    ]
 
 
 @pytest.mark.usefixtures("device")
@@ -240,7 +243,8 @@ def test_a_block_s_tiles_encode_to_the_same_bytes_on_threads(tmp_path):
     written = {}
     for threads in (1, 3):
         dest = tmp_path / str(threads)
-        hz_bytes = encoding.encoded(light_tiles.tile_jobs(dest, 5, 0, 0, nrm, atlas), threads)
+        jobs = light_tiles.tile_jobs(dest, 5, 0, 0, nrm, atlas, frozenset({(1, 0)}))
+        hz_bytes = encoding.encoded(jobs, threads)
         tiles = {p.relative_to(dest).as_posix(): p.read_bytes() for p in dest.rglob("*.webp")}
         written[threads] = (hz_bytes, tiles)
     assert written[1] == written[3] and len(written[1][1]) == 8

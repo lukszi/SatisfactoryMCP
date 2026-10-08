@@ -70,3 +70,12 @@ extern "C" __global__ void above(const float* over, const float* cell, float* ou
     if (i >= n) return;
     out[i] = over[i] > cell[i] ? over[i] : 0.0f;
 }
+
+// Where a cell stores the band folded in: it holds its whole, and the whole stands above the
+// band's horizon.
+extern "C" __global__ void band_in(const float* stored, const float* whole, const float* hz,
+                                   bool* out, long long n) {
+    long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    out[i] = stored[i] == whole[i] && whole[i] > hz[i];
+}

@@ -25,7 +25,7 @@ from mapgen.jit import ON_NUMBA, gpu_on
 from mapgen.lighting.encoding import encode_threads
 from mapgen.lighting.horizon import SKY_RADIUS_M, horizon_reach_px
 from mapgen.lighting.lanes import join, lanes
-from mapgen.lighting.light_tiles import level_strips
+from mapgen.lighting.light_tiles import TileSet, level_strips
 from mapgen.lighting.model import light_axis
 from mapgen.lighting.stage import (
     BLOCK_TILES,
@@ -218,18 +218,24 @@ class LightBake:
             print(gpu_calls_line(self.done), flush=True)
         tiles = sum(done.tiles for done in self.done)
         spacing_m, work = self.surface.spacing_m, self.surface.directory
+        folded: TileSet = frozenset(tile for done in self.done for tile in done.folded)
+        counted = len(folded)
         with one_blas_thread():
             for level in range(self.top - 1, -1, -1):
                 spacing = spacing_m * 2 ** (self.top - level)
-                tiles += level_strips(work, self.staging, level, spacing, self._pool(), level == 0)
-        return self._install(key, tiles, native_s)
+                folded = frozenset((x // 2, y // 2) for x, y in folded)
+                counted += len(folded)
+                tiles += level_strips(
+                    work, self.staging, level, spacing, self._pool(), level == 0, folded
+                )
+        return self._install(key, tiles, native_s, counted)
 
     def _pool(self) -> ProcessPoolExecutor:
         if self.pool is None:
             raise RuntimeError("the light's coarser levels need its block rows baked first")
         return self.pool
 
-    def _install(self, key: JsonObject, tiles: int, native_s: float) -> JsonObject:
+    def _install(self, key: JsonObject, tiles: int, native_s: float, folded: int) -> JsonObject:
         root, staging, size = self.root, self.staging, self.surface.size
         written = sum(p.stat().st_size for p in staging.rglob("*.webp"))
         installed_by = swap_into_place(
@@ -251,6 +257,7 @@ class LightBake:
                 "count": tiles,
                 "bytes": written,
                 "hz_bytes": sum(done.hz_bytes for done in self.done),
+                "hz_folded": folded,
                 "installed_by": installed_by,
             },
             "render": {

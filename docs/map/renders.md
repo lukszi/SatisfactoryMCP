@@ -1755,7 +1755,13 @@ way.
   give `_finish`'s bits. `np.maximum`, `np.minimum` and `np.clip` keep the NaN rules of their
   scalar loops; the signed zero of "Why the bits are the same" can meet them and cannot show.
   The bands of a cell come back only where the bake reads them, the default sun's four cells
-  (`wanted`).
+  (`wanted`); every cell with a band brings back where it stores the band folded in
+  (`band_in`, a byte a pixel), which sets its atlas's WebP quality (section 29).
+- **The coarser levels' refold** (`lighting/refold.cu`, 2026-10-08, section 29 "Coarser
+  levels") runs on the device too, a thread a texel and direction, in the light processes. The
+  run's own process refolds the coarser levels with the numpy reference, the same bits, so it
+  still opens no CUDA context. There is no numba twin: off the GPU the reference runs, and a
+  device out of memory falls back to it.
 - **Out of device memory.** A block that finds no room to upload, or runs out at a direction,
   makes the directions left with the host's operations, whose marches still go to the device
   a call at a time and, with no room for one either, to numba's kernels: the same bits each

@@ -33,7 +33,7 @@ from mapgen.lighting.spans.march import (
     span_steps,
     step_reach,
 )
-from satisfactory_mcp.core.arrays import F32Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid
 
 __all__ = ["DeviceBands", "DeviceCells"]
 
@@ -119,6 +119,12 @@ class DeviceCells:
         out = cp.empty(self.shape, np.float32)
         self._run("above", (over, cell, out))
         return out
+
+    def band_in(self, stored: _Plane, whole: _Plane, bands: DeviceBands) -> BoolMask:
+        """``bake._OnHost.band_in``: where the cell stores the band folded in."""
+        out = cp.empty(self.shape, np.bool_)
+        self._run("band_in", (stored, whole, bands.horizon, out))
+        return out.get()
 
     def host(self, plane: _Plane) -> F32Grid:
         return plane.get()

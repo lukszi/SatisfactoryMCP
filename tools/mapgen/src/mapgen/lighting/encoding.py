@@ -16,8 +16,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 
 from mapgen.jit import gpu_on
-from mapgen.lighting.light_tiles import encode_tiles
-from satisfactory_mcp.core.arrays import U8Grid
+from mapgen.lighting.light_tiles import TileJob, encode_tiles
 
 __all__ = ["ENCODE_BATCH", "ENCODE_THREADS", "encode_beside", "encode_threads", "encoded"]
 
@@ -35,7 +34,7 @@ def encode_threads(row_blocks: int) -> int:
     return max(1, min(ENCODE_THREADS, (os.cpu_count() or 1) // max(1, row_blocks)))
 
 
-def encoded(jobs: Iterator[tuple[str, U8Grid, U8Grid]], threads: int) -> int:
+def encoded(jobs: Iterator[TileJob], threads: int) -> int:
     """``light_tiles.encode_tiles`` of ``jobs`` on ``threads`` threads: the horizon bytes
     written."""
     if threads <= 1:
@@ -48,9 +47,7 @@ def encoded(jobs: Iterator[tuple[str, U8Grid, U8Grid]], threads: int) -> int:
 
 
 @contextmanager
-def encode_beside(
-    jobs: Iterator[tuple[str, U8Grid, U8Grid]], threads: int
-) -> Generator[Future[int], None, None]:
+def encode_beside(jobs: Iterator[TileJob], threads: int) -> Generator[Future[int], None, None]:
     """``encoded(jobs, threads)``: on one thread, done before the block goes on; on more,
     beside what the block does in the ``with``, and done when it leaves."""
     if threads <= 1:

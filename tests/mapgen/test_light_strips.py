@@ -18,7 +18,7 @@ import pytest
 from scipy import ndimage
 
 from mapgen import pools
-from mapgen.lighting import bake, light_tiles, model, stage
+from mapgen.lighting import bake, light_tiles, model, refold, stage
 from mapgen.lighting import horizon as hz
 from mapgen.lighting.bake import bake_light
 from mapgen.lighting.spans import bake as span_bake
@@ -126,9 +126,11 @@ def test_a_block_s_horizons_a_direction_at_a_time_are_the_stacked_ones():
     stack = np.stack([cell.deg for cell in cells])
     found = stage._bake_horizons(zh, halo, SP, block, m, True)
     assert found.atlas.tobytes() == hz.encode_horizon(stack).tobytes()
-    scale = light_tiles.HZ_LINEAR_SCALE
-    want_hq = np.round(np.clip(light_tiles.downsample(np.moveaxis(stack, 0, -1)), 0, 90) * scale)
-    assert found.quarter.tobytes() == want_hq.astype(np.uint8).tobytes()
+    fine = np.moveaxis(stack, 0, -1)
+    want_hq = light_tiles.encode_linear(refold.refold(fine, refold.path_elevations()))
+    assert found.quarter.tobytes() == want_hq.tobytes(), "refolded a direction at a time"
+    folds = [cell.whole > cell.bands.horizon for cell in cells if cell.bands is not None]
+    assert found.folded.any() and found.folded.sum() <= np.logical_or.reduce(folds).sum()
     assert set(found.bands) == span_bake.shade_cells(DEFAULT_SUN[0]) == {20, 52}
     ringed = sorted(span_bake.horizon_cells(zh, halo - 1, SP, block), key=lambda cell: cell.k)
     rings = np.stack([cell.deg for cell in ringed])
