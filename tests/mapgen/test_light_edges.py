@@ -93,6 +93,30 @@ def _hole(z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return z, land
 
 
+def test_a_hole_only_in_a_block_s_halo_is_opened_as_in_the_block_that_holds_it(
+    tmp_path, monkeypatch
+):
+    """Three of four blocks see the hole only past their edge; unopened, it made their horizons
+    NaN, which the atlas read as open sky."""
+    z, land = _ridges(), np.ones((SIZE, SIZE), np.float32)
+    z[262:, :250], land[262:, :250] = np.nan, 0.0  # within every neighbour's halo of 16 px
+    baked = {}
+    for tiles in (1, 2):
+        monkeypatch.setattr(bake, "BLOCK_TILES", tiles)
+        baked[tiles] = _bake(tmp_path / str(tiles), z, land)
+    (one_terms, one_tiles), (four_terms, four_tiles) = baked[2], baked[1]
+    dry = land > 0
+    assert np.array_equal(four_terms["terms"][dry], one_terms["terms"][dry])
+    for name in ("1/0_0", "1/1_0", "1/1_1"):  # the blocks whose core holds no hole
+        for suffix in (".hz.webp", ".nrm.webp"):
+            assert four_tiles[name + suffix] == one_tiles[name + suffix], name + suffix
+
+
+def test_a_nan_horizon_is_refused_not_stored_as_open_sky():
+    with pytest.raises(ValueError, match="NaN"):
+        hz.encode_horizon(np.array([[10.0, np.nan]], np.float32))
+
+
 def test_no_data_casts_nothing_where_the_0_m_plane_cast_a_wall(tmp_path):
     flat = np.full((SIZE, SIZE), -50.0, np.float32)
     z, land = _hole(flat)

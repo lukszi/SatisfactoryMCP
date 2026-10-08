@@ -44,6 +44,7 @@ from satisfactory_mcp.core.jsontypes import JsonObject
 __all__ = [
     "DIRECT_SCALE",
     "HZ_CELLS",
+    "HZ_GUTTER_PX",
     "LIGHT_ID",
     "NORMALISE_MIN_EL_DEG",
     "SHADOW_FILL",
@@ -70,6 +71,10 @@ LIGHT_ID = "sun"
 
 #: Atlas cells per tile: the ground's horizons, then the crowns'.
 HZ_CELLS = 2 * HORIZON_DIRS
+
+#: Each atlas cell sits in a border of its own edge texels this wide, so a lossy codec's blur
+#: across the cell's edge lands on copies (section 29, "What is written").
+HZ_GUTTER_PX = 16
 
 #: Below this elevation the sun term is normalised as if the sun stood here.
 NORMALISE_MIN_EL_DEG = 35.0
@@ -146,9 +151,11 @@ def model_block() -> JsonObject:
         "default_hour": NOON_HOUR,
         "hz_cells": HZ_CELLS,
         "crown_cell": HORIZON_DIRS,
+        "hz_gutter": HZ_GUTTER_PX,
         "hz_encoding": (
-            "atlas of 8 x 8 cells, u8 = 255 * sqrt(deg / 90): the ground's horizons, then the "
-            "crowns' where they stand above the ground's, else 0"
+            "atlas of 8 x 8 cells, each in a border of its edge texels hz_gutter wide, u8 = 255 "
+            "* sqrt(deg / 90): the ground's horizons, then the crowns' where they stand above "
+            "the ground's, else 0"
         ),
         "nrm_encoding": "RGBA: east and south normal as (v + 1) / 2, sky view, land weight",
         "spans": span_block(),

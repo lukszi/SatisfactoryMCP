@@ -257,6 +257,7 @@ be traced to the axis it should move.
 | `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the drawn surface and one block of its light |
 | `lighting/bake.py` | light | The lighting pyramid baked a row of blocks at a time, as the surface's rows come in |
 | `lighting/light_tiles.py` | light | The lighting pyramid's tile format, the bake's work files, and the coarser levels |
+| `lighting/refold.py`, `refold.cu` | light | A coarser level's horizons, averaged as the shade the page reads; its CUDA twin for `--gpu` |
 | `lighting/kernels.py` | light | The horizon march and the sky view compiled by numba |
 | `lighting/spans/march.py`, `kernels.py` | light | The march and the sky view over spans (arches, overhangs, crowns), and their numba kernels |
 | `lighting/spans/bake.py`, `slabs.py` | light | A block's spans, the atlas's folded bands and the default sun's per-cell shade; the captured spans' sparse store |

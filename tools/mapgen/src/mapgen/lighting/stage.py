@@ -28,9 +28,11 @@ from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
 from mapgen.lighting.horizon import HORIZON_DIRS, encode_horizon, normals, sky_view
 from mapgen.lighting.light_tiles import (
-    HZ_LINEAR_SCALE,
+    TileSet,
     downsample,
+    encode_linear,
     encode_tiles,
+    folded_tiles,
     level_layout,
     normal_byte,
     padded_window,
@@ -47,6 +49,7 @@ from mapgen.lighting.model import (
     sun_cells,
     sun_horizon,
 )
+from mapgen.lighting.refold import path_elevations, refold
 from mapgen.lighting.spans.bake import (
     BlockSpans,
     block_spans,
@@ -98,7 +101,7 @@ LIGHT_DIR_NAME = "light"
 
 #: The bake's own version. Bump it when the bake writes other bytes from the same surface,
 #: casters and model, so no run reuses a light the old bake wrote.
-LIGHT_VERSION = 2
+LIGHT_VERSION = 4
 
 #: Rows of a plane hashed at a time.
 DIGEST_ROWS = 1024
@@ -161,13 +164,14 @@ class BlockJob:
 
 
 class BlockDone(NamedTuple):
-    """A baked block: its tiles, horizon bytes and seconds, and with ``--gpu`` where its
-    horizon and sky-view calls ran (``gpu.ran``)."""
+    """A baked block: its tiles, horizon bytes and seconds, with ``--gpu`` where its horizon
+    and sky-view calls ran (``gpu.ran``), and the tiles with a band folded into their atlas."""
 
     tiles: int
     hz_bytes: int
     seconds: float
     on_gpu: dict[str, int]
+    folded: TileSet = frozenset()
 
 
 class Place(NamedTuple):
@@ -269,16 +273,25 @@ def _opened_spans(spans: BlockSpans) -> BlockSpans:
     return BlockSpans(open_surface(spans.ground), open_surface(spans.crowns))
 
 
+def _no_data(z_half: F32Grid, spans: BlockSpans) -> bool:
+    """Whether the window holds a hole anywhere, halo included: the march and the sky view
+    read all of it, and a hole they read unopened would make a horizon NaN."""
+    planes = [z_half, *(p for found in spans if found is not None for p in (found.z, found.solid))]
+    return any(bool(np.isnan(plane).any()) for plane in planes)
+
+
 class BakedHorizons(NamedTuple):
     """A block's horizons: the atlas bytes, the coarser levels' source, the default sun's
     cells and, by direction, the canopy's own horizon toward it, and the bands the default
-    sun's cells were marched with; all but the first two with a ring."""
+    sun's cells were marched with, all but the first two with a ring; and where a band is
+    folded into any cell."""
 
     atlas: U8Grid
     quarter: U8Grid
     sun: list[F32Grid]
     canopy: list[F32Grid]
     bands: dict[int, Bands]
+    folded: BoolMask
 
 
 def _bake_horizons(
@@ -303,10 +316,18 @@ def _bake_horizons(
     bands: dict[int, Bands] = {}
     keep, shaded = sun_cells(DEFAULT_SUN[0]), shade_cells(DEFAULT_SUN[0])
     cells = horizon_cells(z_half, halo - 1, spacing_m, spans, holes) if march else iter(())
+    folded = np.zeros((half_px, half_px), bool)
+    pair: list[F32Grid] = []
     for k, ringed, marched, whole in cells:
         deg = ringed[1:-1, 1:-1]
         hz_u8[k] = encode_horizon(deg)
-        horizon_quarter[..., k] = np.round(np.clip(downsample(deg), 0, 90) * HZ_LINEAR_SCALE)
+        pair.append(deg)
+        if k >= HORIZON_DIRS or spans.crowns is None:  # a ground cell's crown cell comes next
+            _quarter(horizon_quarter, k % HORIZON_DIRS, pair)
+            pair = []
+        if marched is not None:  # stored as the band folded in, not as the horizon
+            core = whole[1:-1, 1:-1]
+            folded |= (deg == core) & (core > marched.horizon[1:-1, 1:-1])
         if k in keep:
             sun[k] = ringed
             if k >= HORIZON_DIRS:
@@ -315,7 +336,15 @@ def _bake_horizons(
             bands[k] = marched
     if bands:
         bands.update({k: plain_bands(sun[k]) for k in shaded if k not in bands and march})
-    return BakedHorizons(hz_u8, horizon_quarter, sun, canopy, bands)
+    return BakedHorizons(hz_u8, horizon_quarter, sun, canopy, bands, folded)
+
+
+def _quarter(quarter: U8Grid, d: int, pair: list[F32Grid]) -> None:
+    """Direction ``d``'s horizons for the coarser levels, at quarter resolution: its ground
+    cell, then its crown cell where the crowns were marched (``refold.refold``)."""
+    found = encode_linear(refold(np.stack(pair, -1), path_elevations()[d : d + 1]))
+    for i in range(len(pair)):
+        quarter[..., d + i * HORIZON_DIRS] = found[..., i]
 
 
 def _sky_rows(z_half: F32Grid, halo: int, sky: int) -> tuple[slice, slice]:
@@ -366,7 +395,7 @@ def bake_block(job: BlockJob) -> BlockDone:
     march = not (job.skip_water and not land_core.any())
     z_half, spans = _half_surfaces(work, window, march)
     holes = find_holes(z_half[halo - 1 : 1 - halo, halo - 1 : 1 - halo])
-    if holes is not None:
+    if _no_data(z_half, spans):
         z_half, spans = opened(z_half), _opened_spans(spans)
     horizons = _bake_horizons(z_half, halo, half_m, spans, half_px, march, holes)
     sky_ringed = _sky_view(z_half, halo, job.sky_halo, half_m, spans, holes)
@@ -384,7 +413,9 @@ def bake_block(job: BlockJob) -> BlockDone:
     )
     del nx, ny, svf
     t = PYRAMID_TILE_PX
-    hz_bytes = encode_tiles(tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas))
+    folded = folded_tiles(horizons.folded, c0 // t, r0 // t)
+    jobs = tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas, folded)
+    hz_bytes = encode_tiles(jobs)
     canopy = None
     if canopy_sky is not None:
         canopy = block_canopy(work, job.block, horizons.canopy, canopy_sky)
@@ -400,7 +431,7 @@ def bake_block(job: BlockJob) -> BlockDone:
     quarter = (slice(h0 // 2, (h0 + half_px) // 2), slice(w0 // 2, (w0 + half_px) // 2))
     work_array(work, "hzq", np.uint8)[quarter] = horizon_quarter
     tiles = (nrm.shape[0] // t) * (nrm.shape[1] // t)
-    return BlockDone(tiles, hz_bytes, time.time() - started, _gpu_calls())
+    return BlockDone(tiles, hz_bytes, time.time() - started, _gpu_calls(), folded)
 
 
 def _gpu_calls() -> dict[str, int]:

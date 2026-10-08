@@ -16,6 +16,7 @@ import pytest
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting import horizon as hz
 from mapgen.lighting import model
+from mapgen.lighting.light_tiles import atlas_cells
 from mapgen.lighting.occluders import sheet_crowns
 from mapgen.palette.lightparams import shader_light
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -54,8 +55,7 @@ def test_the_crowns_cast_into_their_own_cells_and_never_into_the_ground_s(tmp_pa
     meta, tiles, _surface = _crowned_bake(tmp_path)
     assert meta["light"]["occluder_layers"] == ["painted"]
     atlas = np.asarray(Image.open(tiles / "1" / "1_1.hz.webp").convert("L"))
-    cells = atlas.reshape(8, 128, 8, 128).transpose(0, 2, 1, 3).reshape(64, 128, 128)
-    degrees = hz.decode_horizon(cells)
+    degrees = hz.decode_horizon(atlas_cells(atlas))
     assert float(degrees[: hz.HORIZON_DIRS].max()) < 2.0, "flat ground has no ground horizon"
     assert float(degrees[hz.HORIZON_DIRS :].max()) > 30.0, "the crown shades beside it"
     without, _tiles, _s = _crowned_bake(tmp_path / "bare", with_crown=False)
@@ -155,10 +155,12 @@ def test_the_shader_and_the_python_model_read_the_same_constants():
     source = LITLAYER_TS.read_text(encoding="utf-8")
     block = model.model_block()
     for key in ("dirs", "normalise_min_el", "shadow_soft_deg", "shadow_fill", "shadow_floor",
-                "shadow_floor_knee", "hz_cells", "crown_cell"):  # fmt: skip
+                "shadow_floor_knee", "hz_cells", "crown_cell", "hz_gutter"):  # fmt: skip
         assert key in block, key
         assert f"model.{key}" in source, key
     assert "1.0-sh*(1.0-uFill)" in source and "params.crowns" in source
+    assert "(cell+uGut+uv*uIn)" in source and "HZ_CELL_PX = 128;" in source, "the cell's border"
+    assert block["hz_gutter"] == model.HZ_GUTTER_PX
     assert "1 - shade * (1 - SHADOW_FILL)" in inspect.getsource(model.shaded_direct)
     assert block["hz_cells"] == 2 * block["crown_cell"] == 2 * hz.HORIZON_DIRS
     assert json.loads(json.dumps(block)) == block
