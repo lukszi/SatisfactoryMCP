@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from typing import Literal, NamedTuple, TypeAlias, TypedDict, overload
 
 import numpy as np
@@ -21,6 +21,8 @@ from mapgen.gamedata.placements import (
 )
 from mapgen.gamedata.vegetation.trees import is_tree
 from mapgen.gamedata.water.falls import read_fall
+from mapgen.terrain.maxz.faces import Faces, band_faces
+from mapgen.terrain.maxz.raster import max_z_raster
 from mapgen.terrain.render_meshes import (
     InstanceSpans,
     Shape,
@@ -36,12 +38,15 @@ __all__ = [
     "TOP_FOLIAGE_BATCH",
     "CliffGeometry",
     "Geometry",
+    "PlacedFaces",
     "PreparedPlacement",
     "TopItems",
     "TopMeta",
     "add_placements",
+    "band_placements",
     "direct_placements",
-    "placed",
+    "draw_up",
+    "placement_world",
     "rasterise_direct_band",
     "read_cliff_geometry",
     "sweep_world",
@@ -74,6 +79,14 @@ class PreparedPlacement(NamedTuple):
     y_min_cm: float
     y_max_cm: float
     family: int | None = None
+
+
+class PlacedFaces(NamedTuple):
+    """A placement over a band: the placement, its faces there, its source id."""
+
+    entry: PreparedPlacement
+    faces: Faces
+    source: int
 
 
 class CliffGeometry(TypedDict):
@@ -304,7 +317,7 @@ def rasterise_direct_band(
     The facing cull runs per placement as it does in the field, and then the triangles are
     cut down to the ones whose own Y interval reaches this band.
     """
-    raster = MaxZRaster(
+    raster = max_z_raster(
         cols * subsamples, rows * subsamples, x0_cm, y0_cm, scale_cm / subsamples, sample=0.5
     )
     add_placements(raster, prepared, geometry, y0_cm, y0_cm + rows * scale_cm)
@@ -323,32 +336,41 @@ def add_placements(
 
     The source id is an entry's family when it has one, else its mesh id plus one.
     """
+    draw_up(raster, band_placements(prepared, geometry, y_lo, y_hi), geometry)
+
+
+def draw_up(raster: MaxZRaster, placed: Iterable[PlacedFaces], geometry: Geometry) -> None:
+    """Each placement's upward faces into ``raster``, under its source id."""
+    for item in placed:
+        if item.faces.up.size:
+            world = placement_world(item.entry, geometry)
+            raster.add_indexed(world, geometry[item.entry.mesh][1], item.source, item.faces.up)
+
+
+def placement_world(entry: PreparedPlacement, geometry: Geometry) -> FloatGrid:
+    """A placement's vertices in world cm."""
+    verts, _tris = geometry[entry.mesh]
+    return (verts * entry.scale) @ entry.matrix + entry.offset
+
+
+def band_placements(
+    prepared: Iterable[PreparedPlacement],
+    geometry: Geometry,
+    y_lo: float,
+    y_hi: float,
+    rise: float | None = None,
+) -> Iterator[PlacedFaces]:
+    """The placements with a face reaching ``[y_lo, y_hi]``, in order, with those faces
+    (``maxz.faces.band_faces``; ``rise`` sorts out the undersides). The vertices are let go:
+    each pass transforms them again, which costs less than holding a band's worth."""
     for entry in prepared:
-        found = placed(entry, geometry, y_lo, y_hi)
-        if found is None:
+        if entry.y_max_cm < y_lo or entry.y_min_cm > y_hi:
             continue
-        world, tris = found
-        if entry.facing:
-            corner = world[tris[:, 0]]
-            normals = np.cross(world[tris[:, 1]] - corner, world[tris[:, 2]] - corner)
-            tris = tris[(normals[:, 2] * entry.facing) > 0]
-            if not tris.size:
-                continue
-        raster.add(world[tris], entry.mesh_id + 1 if entry.family is None else entry.family)
-
-
-def placed(
-    entry: PreparedPlacement, geometry: Geometry, y_lo: float, y_hi: float
-) -> tuple[FloatGrid, I64Grid] | None:
-    """A placement's vertices in world cm and its triangles whose Y interval reaches
-    ``[y_lo, y_hi]``; None where none does."""
-    if entry.y_max_cm < y_lo or entry.y_min_cm > y_hi:
-        return None
-    verts, tris = geometry[entry.mesh]
-    world = (verts * entry.scale) @ entry.matrix + entry.offset
-    ty = world[:, 1][tris]
-    tris = tris[(ty.max(1) >= y_lo) & (ty.min(1) <= y_hi)]
-    return (world, tris) if tris.size else None
+        world = placement_world(entry, geometry)
+        faces = band_faces(world, geometry[entry.mesh][1], entry.facing, (y_lo, y_hi), rise)
+        if faces.up.size or faces.down.size:
+            source = entry.mesh_id + 1 if entry.family is None else entry.family
+            yield PlacedFaces(entry, faces, source)
 
 
 def top_items(

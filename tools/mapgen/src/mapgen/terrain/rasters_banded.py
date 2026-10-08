@@ -7,9 +7,13 @@ render's own grid (``terrain.rasters``, ``terrain.top_raster``, ``terrain.render
 
 from __future__ import annotations
 
+import os
 import time
+from collections import deque
+from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from typing import Protocol, TypeAlias
+from typing import Protocol, TypeAlias, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -32,12 +36,15 @@ from satisfactory_mcp.core.arrays import F32Grid, U8Grid, U16Grid
 
 __all__ = [
     "DIRECT_RASTER_ROLE",
+    "RASTER_THREADS",
     "TOP_RASTER_ROLE",
     "BandPlanes",
     "BandRaster",
     "RasterStats",
     "fold_band",
+    "in_band_order",
     "pixel_coverage",
+    "raster_threads",
     "reduce_direct",
     "reduce_source",
     "write_banded_raster",
@@ -49,6 +56,14 @@ DIRECT_RASTER_ROLE = (
     "with the count of sub-samples that hit something beside it. Written once and "
     "read by every layer; deleted at the end of the run unless --keep-direct."
 )
+
+
+#: Bands a raster pass rasterises at once, fewer on fewer cores (docs/map/renders.md
+#: section 20): the bands are independent and their kernels release the GIL.
+RASTER_THREADS = 16
+
+_Span = TypeVar("_Span")
+_Band = TypeVar("_Band")
 
 
 TOP_RASTER_ROLE = (
@@ -81,6 +96,33 @@ class BandRaster(Protocol):
     def __call__(
         self, x0_cm: float, y0_cm: float, scale_cm: float, rows: int, cols: int, subsamples: int, /
     ) -> F32Grid | tuple[F32Grid, U16Grid] | BandPlanes: ...
+
+
+def raster_threads() -> int:
+    """``RASTER_THREADS``, but no more than the cores."""
+    return max(1, min(RASTER_THREADS, os.cpu_count() or 1))
+
+
+def in_band_order(
+    band: Callable[[_Span], _Band], spans: Iterable[_Span], threads: int
+) -> Iterator[_Band]:
+    """``band`` over ``spans`` on ``threads`` threads, yielded in the spans' order, at most
+    ``threads`` bands past the one waited on. One thread is a plain loop."""
+    if threads <= 1:
+        yield from map(band, spans)
+        return
+    pending: deque[Future[_Band]] = deque()
+    with ThreadPoolExecutor(max_workers=threads, thread_name_prefix="raster") as pool:
+        try:
+            for span in spans:
+                pending.append(pool.submit(band, span))
+                if len(pending) > threads:
+                    yield pending.popleft().result()
+            while pending:
+                yield pending.popleft().result()
+        finally:
+            for future in pending:
+                future.cancel()
 
 
 def reduce_direct(sub_z: F32Grid, rows: int, cols: int, subsamples: int) -> tuple[F32Grid, U8Grid]:
@@ -143,30 +185,34 @@ def write_banded_raster(
     progress: bool,
     *,
     role: str = DIRECT_RASTER_ROLE,
+    threads: int | None = None,
 ) -> RasterStats:
     """Rasterise every placed rock into the render's own grid, ``DIRECT_BAND_ROWS`` at a time,
     into a cache ``cached_raster`` reads back only under the same ``stamp``.
 
     A ``band_raster`` that returns ``(z, source)`` also writes the family plane, and one that
     returns ``BandPlanes`` writes those; the first band says which, before any plane is
-    opened, and every band after it must agree.
+    opened, and every band after it must agree. The bands are rasterised on ``threads``
+    (``raster_threads()`` when None) and written in their order.
     """
     step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / size
     x0_cm = BOUNDS_M["x_min_m"] * 100
     started = time.time()
 
-    def band_at(top: int, bottom: int) -> BandPlanes:
+    def band_at(span: tuple[int, int]) -> BandPlanes:
+        top, bottom = span
         y0_cm = BOUNDS_M["y_min_m"] * 100 + top * step_cm
         sub = band_raster(x0_cm, y0_cm, step_cm, bottom - top, size, subsamples)
         return fold_band(sub, bottom - top, size, subsamples)
 
     spans = list(band_spans(size, DIRECT_BAND_ROWS))
-    first = band_at(*spans[0])
+    bands = in_band_order(band_at, spans, raster_threads() if threads is None else threads)
+    first = next(bands)
     names = tuple(first)
     covered = 0
     with rewrite_planes(directory, names, size, DIRECT_BAND_ROWS, clear=PLANE_DTYPES) as planes:
         for band, (top, bottom) in enumerate(spans):
-            got = first if band == 0 else band_at(top, bottom)
+            got = first if band == 0 else next(bands)
             if tuple(got) != names:
                 raise ValueError(f"band {band} of {directory.name} changed what it returns")
             for plane, name in zip(planes, names, strict=True):

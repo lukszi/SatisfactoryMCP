@@ -36,6 +36,7 @@ from mapgen.terrain.rasters import (
     top_items,
 )
 from mapgen.terrain.rasters_banded import (
+    DIRECT_RASTER_ROLE,
     TOP_RASTER_ROLE,
     BandRaster,
     RasterStats,
@@ -138,7 +139,6 @@ class RasterGrid:
         self, rasterise_band: BandRaster, directory: Path, role: str | None = None
     ) -> RasterStats:
         """Every band rasterised into ``directory`` under this grid's stamp; the stats."""
-        roles = {} if role is None else {"role": role}
         return write_banded_raster(
             rasterise_band,
             directory,
@@ -146,7 +146,7 @@ class RasterGrid:
             self.subsamples,
             self.stamp,
             self.progress,
-            **roles,
+            role=DIRECT_RASTER_ROLE if role is None else role,
         )
 
 

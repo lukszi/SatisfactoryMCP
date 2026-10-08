@@ -20,10 +20,16 @@ from mapgen.cache import (
     TOP_SOLID_COVERAGE_NAME,
     TOP_SOLID_Z_NAME,
 )
-from mapgen.gamedata.maxz_raster import MaxZRaster
 from mapgen.terrain.archfill import column_pieces, fill_arch_holes
+from mapgen.terrain.maxz.raster import max_z_raster
 from mapgen.terrain.overhangs import SAME_SURFACE_CM
-from mapgen.terrain.rasters import TOP_FOLIAGE_BATCH, TopItems, add_placements, placed
+from mapgen.terrain.rasters import (
+    TOP_FOLIAGE_BATCH,
+    TopItems,
+    band_placements,
+    draw_up,
+    placement_world,
+)
 from mapgen.terrain.rasters_banded import BandPlanes, reduce_direct
 from satisfactory_mcp.core.arrays import F32Grid
 
@@ -68,21 +74,21 @@ def arch_rasters(
     triangles rasterised upside down.
     """
     x0_cm, y0_cm, step_cm = origin
-    high = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0)
-    low = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0)
+    high = max_z_raster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0)
+    low = max_z_raster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0)
     y_lo, y_hi = y0_cm + row0 * step_cm, y0_cm + (row0 + rows) * step_cm
-    add_placements(high, items.arches, items.shapes, y_lo, y_hi)
+    placed = list(band_placements(items.arches, items.shapes, y_lo, y_hi))
+    draw_up(high, placed, items.shapes)
     top = high.result()[0]
     ceiling = np.where(np.isfinite(top), top - np.float32(SAME_SURFACE_CM), -np.inf)
-    below = MaxZRaster(
+    below = max_z_raster(
         cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0, ceiling=ceiling.astype(np.float32)
     )
-    for entry in items.arches:
-        found = placed(entry, items.shapes, y_lo, y_hi)
-        if found is not None:
-            world, tris = found
-            low.add(world[tris] * np.array([1.0, 1.0, -1.0], world.dtype), entry.mesh_id + 1)
-            below.add(world[tris], entry.mesh_id + 1)
+    for item in placed:
+        world, tris = placement_world(item.entry, items.shapes), items.shapes[item.entry.mesh][1]
+        flipped = world * np.array([1.0, 1.0, -1.0], world.dtype)
+        low.add_indexed(flipped, tris, item.source, item.faces.up)
+        below.add_indexed(world, tris, item.source, item.faces.up)
     under = below.result()[0]
     return top, np.where(np.isfinite(under), under, -low.result()[0]).astype(np.float32)
 
@@ -90,7 +96,7 @@ def arch_rasters(
 def _boulders(
     items: TopItems, x0_cm: float, y0_cm: float, step_cm: float, rows: int, cols: int
 ) -> F32Grid:
-    raster = MaxZRaster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5)
+    raster = max_z_raster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5)
     y_hi = y0_cm + rows * step_cm
     for mesh, group in items.boulders.items():
         verts, tris = items.shapes[mesh]
@@ -98,7 +104,7 @@ def _boulders(
         for start in range(0, len(picked), TOP_FOLIAGE_BATCH):
             chunk = picked[start : start + TOP_FOLIAGE_BATCH]
             world = np.einsum("vi,nij->nvj", verts, chunk[:, :3, :3]) + chunk[:, None, 3, :3]
-            raster.add(world[:, tris].reshape(-1, 3, 3), 1)
+            raster.add_indexed(world, tris, 1)
     return raster.result()[0]
 
 

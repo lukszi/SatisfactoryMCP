@@ -11,6 +11,7 @@ __all__ = [
     "INSTANCE_BATCH",
     "MAX_SPAN",
     "RASTER_FLUSH",
+    "WIDE_TILES",
     "MaxZRaster",
 ]
 
@@ -27,7 +28,7 @@ _BUCKETS = (1, 2, 4, 8, 16, 32, 64, 128, 256)
 #: The widest bucket. A wider box is scanned in tiles of this many texels.
 MAX_SPAN = _BUCKETS[-1]
 #: Tiles of wide triangles scanned per vectorised pass: about a million sample points.
-_WIDE_TILES = 16
+WIDE_TILES = 16
 
 
 class MaxZRaster:
@@ -63,13 +64,20 @@ class MaxZRaster:
         self.ceiling = None if ceiling is None else np.ravel(ceiling)
         self.z: F32Grid = np.full(height * width, -np.inf, dtype=np.float32)
         self.source_id: U16Grid = np.zeros(height * width, dtype=np.uint16)
-        self.density: U32Grid = np.zeros(height * width, dtype=np.uint32)
+        self._density: U32Grid | None = None
         self._pending_texels: list[I64Grid] = []
         self._pending_heights: list[F32Grid] = []
         self._pending_sources: list[U16Grid] = []
         self._pending_count = 0
         self._pending_samples: list[I64Grid] = []
         self._pending_sample_count = 0
+
+    @property
+    def density(self) -> U32Grid:
+        """Source vertices per texel (``count_samples``), made on first use."""
+        if self._density is None:
+            self._density = np.zeros(self.height * self.width, dtype=np.uint32)
+        return self._density
 
     def count_samples(self, points: NDArray[np.floating]) -> None:
         """Record which texel each SOURCE VERTEX landed in. The density plane, accumulated.
@@ -169,6 +177,19 @@ class MaxZRaster:
         if self._pending_count > RASTER_FLUSH:
             self.fold_heights()
 
+    def add_indexed(
+        self,
+        world: NDArray[np.floating],
+        tris: I64Grid,
+        source_id: int,
+        rows: NDArray[np.integer] | None = None,
+    ) -> None:
+        """``add`` of the triangles ``tris`` index into ``world``'s vertices, ``(V, 3)``, or
+        into each instance's of ``(N, V, 3)``, instance by instance; only ``rows`` of them
+        when given."""
+        picked = tris if rows is None else tris[rows]
+        self.add(world[..., picked, :].reshape(-1, 3, 3), source_id)
+
     def _add_wide(
         self,
         fx: NDArray[np.floating],
@@ -196,8 +217,8 @@ class MaxZRaster:
         if not owners:
             return
         owner, corner = np.concatenate(owners), np.concatenate(corners)
-        for start in range(0, len(owner), _WIDE_TILES):
-            pick, at = owner[start : start + _WIDE_TILES], corner[start : start + _WIDE_TILES]
+        for start in range(0, len(owner), WIDE_TILES):
+            pick, at = owner[start : start + WIDE_TILES], corner[start : start + WIDE_TILES]
             self._scan(fx[pick], fy[pick], z[pick], at[:, 0], at[:, 1], tile_w, tile_h, source_id)
             if self._pending_count > RASTER_FLUSH:
                 self.fold_heights()
