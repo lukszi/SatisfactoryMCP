@@ -358,12 +358,19 @@ def add_foam(
     return rgb * (1.0 - weight) + white * np.float32(foam.get("white", 1.0)) * weight
 
 
-def seabed_keeps(mesh_class_band: U8Grid, top_m: FloatGrid, water_level_m: FloatGrid) -> BoolMask:
-    """Where a style that draws ground and water only keeps a mesh: on dry land, or a rock
-    whose top stands above the surface."""
+def seabed_keeps(
+    mesh_class_band: U8Grid,
+    top_m: FloatGrid,
+    water_level_m: FloatGrid,
+    land: BoolMask | None = None,
+) -> BoolMask:
+    """Where a style that draws ground and water only keeps a mesh: a rock on dry land or
+    whose top stands above the surface; coral, shells and terraces where their whole
+    footprint is land (``land``, ``palette/water/footprints``), or without it on dry land."""
     dry = ~np.isfinite(water_level_m)
     level = np.where(dry, -np.inf, water_level_m)
-    return dry | ((mesh_class_band == MESH_ROCK) & (top_m > level))
+    soft = dry if land is None else land
+    return np.where(mesh_class_band == MESH_ROCK, dry | (top_m > level), soft)
 
 
 def composite_meshes(
@@ -373,20 +380,22 @@ def composite_meshes(
     water_level_m: FloatGrid,
     composite: MeshLift,
     seabed: bool = False,
+    land: BoolMask | None = None,
 ) -> tuple[FloatGrid, FloatGrid, U8Grid]:
     """``z_m`` raised by the meshes standing near or above the water; and their weight.
 
     ``composite`` is the renderer's raise-only lift (``composite_top``). The weight is how
     much of the drawn surface is the mesh: 0 where it did not raise the ground. With
     ``seabed`` (the styles that draw ground and water only) nothing breaks the water's
-    surface: under water the coral, shells and terraces are left to the seabed, and a rock
-    stays only where its top stands above the surface.
+    surface: coral, shells and terraces whose footprint is in the sea are left whole to the
+    seabed (``seabed_keeps``, by ``land``), and a rock stays only where its top stands above
+    the surface.
     """
     level = np.where(np.isfinite(water_level_m), water_level_m, -np.inf)
     top_m = mesh_z_cm / np.float32(100.0)
     keep = (mesh_class_band > 0) & (top_m > level - MESH_REACH_M)
     if seabed:
-        keep &= seabed_keeps(mesh_class_band, top_m, water_level_m)
+        keep &= seabed_keeps(mesh_class_band, top_m, water_level_m, land)
     raised = composite(z_m, mesh_z_cm, keep.astype(np.uint8))
     weight = np.clip((raised - z_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     return raised, weight, np.where(keep, mesh_class_band, 0).astype(np.uint8)

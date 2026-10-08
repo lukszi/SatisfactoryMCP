@@ -1691,9 +1691,9 @@ kernels in each light process, and keeps a block's planes on the device from its
 direction to its last, the rules after each march included ("A block on the device", below).
 A block's tiles then encode on threads ("The encode"). Since 2026-10-08 it also runs the
 draw's relight, arch FXAA and terrain pieces in the run's own process ("The draw on the GPU",
-below). Everything else runs as above: numba's kernels where they exist, numpy elsewhere.
-The CPU path stays the default and the reference, and the tiles are the same bytes either
-way.
+below), and the coral footprints' two loops there too. Everything else runs as above:
+numba's kernels where they exist, numpy elsewhere. The CPU path stays the default and the
+reference, and the tiles are the same bytes either way.
 
 - **The switch.** `--gpu` sets `MAPGEN_KERNELS=cuda`, which the light's processes inherit;
   setting it by hand does the same. `jit.gpu_on()` says CUDA where the switch says `cuda`
@@ -1762,6 +1762,15 @@ way.
   run's own process refolds the coarser levels with the numpy reference, the same bits, so it
   still opens no CUDA context. There is no numba twin: off the GPU the reference runs, and a
   device out of memory falls back to it.
+- **The coral footprints** (2026-10-08) have two kernels of their own,
+  `palette/water/footprints/gpu.py` and `footprints.cu`: the land plane's marks, a thread a
+  texel once a run, and each piece's reading of the plane, a thread a pixel (section 27,
+  "Whole footprints"). The numpy in `footprints/reference.py` is their reference: integer
+  compares, the maximum, and three float32 divisions and a subtraction in its order. Unlike
+  the light's, they run in the render's own process and its draw threads, so a `--gpu` run
+  opens a CUDA context there too. The whole plane at full size takes 12.2 s against 38.0 s;
+  a piece's reading, 288 by 544 pixels, 0.54 ms against 0.48 ms, which is noise beside the
+  piece's draw.
 - **Out of device memory.** A block that finds no room to upload, or runs out at a direction,
   makes the directions left with the host's operations, whose marches still go to the device
   a call at a time and, with no room for one either, to numba's kernels: the same bits each
@@ -1859,7 +1868,8 @@ one step to the next, which is a different draw. The terrain's piece is now draw
   number of thread blocks and a device out of memory. It also holds the switch, the flag and
   its refusal, the light's worker count, the count of where each call ran and the bake's
   line, and that CuPy loads only under `cuda`. On a machine without numba, CuPy or a device
-  the kernel tests skip and say which.
+  the kernel tests skip and say which. `tests/mapgen/test_mesh_footprints.py` does the same
+  for the footprints' two kernels, over fine and coarse folds and a device out of memory.
 - G1 at 2048 (all five layers, lit), with `--gpu` and without, side by side: all 1,125 tiles
   the same bytes as each other and as the pixel-batch baseline, and the six sidecars the same
   apart from their timings. Against that baseline both also add the light's `key`, which the

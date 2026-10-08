@@ -23,8 +23,10 @@ from mapgen.gamedata.water.channel import artwork_planes
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import RELIEF_PALETTES, STYLE_DIGESTS
+from mapgen.palette.water.footprints.plane import TexelPlanes, mesh_land
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.perched import WaterSurfaces
+from mapgen.palette.water.rivers import water_sources
 from mapgen.palette.water.surface import drawn_water
 from mapgen.render.run.biome_inputs import BiomeInputs, read_biome_inputs
 from mapgen.render.run.cached_rasters import LevelSweep, RasterGrid, direct_raster, top_raster
@@ -52,7 +54,7 @@ from satisfactory_mcp.core.arrays import I8Grid, U8Grid
 from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
 from satisfactory_mcp.core.gameassets.provenance import changelist
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, require_object
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = ["BIOME_LAYERS", "Prepared", "Setup", "prepare"]
@@ -139,6 +141,7 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
     water, sea, planes = drawn_water(
         field, args.kernel_only, extras.rivers, (lattice.heights, lattice.ground), art_water
     )
+    footprints = _mesh_footprints(args.size, field, lattice, (water, sea), extras)
     if paint is not None:
         paint.block["water_classes"] = paint.ground.classify_water(field, planes)
     relief = {
@@ -153,13 +156,16 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
         for layer in layers
         if layer in RELIEF_PALETTES
     }
+    water_facts = water_record(water, sea, extras.river_meta, spacing_m, water_source)
+    if footprints is not None:
+        water_facts["mesh_footprints"] = footprints
     facts = RenderFacts(
         size=args.size,
         spacing_m=spacing_m,
         subsamples=args.direct_subsamples,
         two_regime=direct is not None,
         composition=lattice.composition(top_overlay=top is not None),
-        water=water_record(water, sea, extras.river_meta, spacing_m, water_source),
+        water=water_facts,
         cut_workers=setup.cut_workers,
         parallel_check=gathered.parallel_check,
         pillow_version=setup.versions["pillow"],
@@ -254,6 +260,33 @@ def _rasters(
         top, top_source = top_raster(level, setup.cache_root / TOP_CACHE_DIR_NAME, grid)
         sources = {**sources, **top_source}
     return direct, top, sources
+
+
+def _mesh_footprints(
+    size: int,
+    field: hf.Field,
+    lattice: Lattice,
+    drawn: tuple[WaterSurfaces, OpenSea | None],
+    extras: RenderExtras,
+) -> JsonObject | None:
+    """The meshes' land plane put on ``extras.meshes``, from the water and ground the bands
+    draw, where the run draws the meshes and the ocean's reach; its record, else None."""
+    (water, sea), meshes, ground = drawn, extras.meshes, lattice.heights
+    if meshes is None or water.reach is None or ground is None:
+        return None
+    level, grades = (water.level, None) if sea is None else sea.planes
+    level, wet, _measured = water_sources(field, extras.rivers, level, grades)
+    if level is None or wet is None:
+        return None
+    land, record = mesh_land(meshes, field, size, TexelPlanes(wet, water.reach, ground, level))
+    extras.meshes = meshes._replace(land=land)
+    coral, terraces = (require_object(record[name]) for name in ("coral_and_shells", "terraces"))
+    print(
+        f"  mesh footprints: {coral['on_land_and_in_the_sea']} coral and shell footprints "
+        f"standing in the sea kept whole on land, {coral['in_the_sea']} left whole to the "
+        f"seabed; terraces {terraces['on_land_and_in_the_sea']} and {terraces['in_the_sea']}"
+    )
+    return record
 
 
 def _extras(

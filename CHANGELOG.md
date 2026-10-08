@@ -334,6 +334,15 @@ Planned as 0.2.0.
   a level at most a kilometre or more away.
 - The satellite map no longer shows a quilt of 29 m and 7.3 m squares on flat ground: its
   noise is read smoothly between its cells.
+- Map renders keep or drop coral, shells and hot-spring terraces a whole footprint at a time.
+  The terrain, satellite and relief maps cut them along the game map's coarse waterline, a
+  wall through a reef, and kept pieces of reefs standing in the sea where that waterline has a
+  dry patch under the sea's level. A footprint that stands on land is now drawn whole, and
+  one wholly in the sea is left whole to the seabed; the live-sun light and the game-painted
+  map's unlit sun follow it. About 36,000 square metres of a map move: 346 reefs are kept
+  whole across the waterline, 1,233 are left whole in the sea, and 30 of the 37 terraces are
+  kept whole across their lake's edge. `--gpu` works the footprints out on the GPU too, with
+  the same bits. This shares the one version up every rendered map style takes.
 - Every rendered map style is one version up for the map changes of this release, once:
   terrain and satellite 9, game-painted 20, relief and relief dark 7. The live-sun light is
   model 3, so a map baked under model 2 is offered a relight.

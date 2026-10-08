@@ -83,13 +83,15 @@ def test_painted_keeps_the_default_sun_on_a_mesh_only_it_draws_in_the_water():
     z, sp, weight, kept = _bowl()
     sea = np.full(z.shape, OCEAN_LEVEL_M, np.float32)
     flat = np.float32(np.sin(np.radians(SUN_ALTITUDE_DEG)))
-    np.testing.assert_array_equal(painted_ndl(z, sp, False, (weight, kept, sea)), sun_dot(z, sp))
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, (None, None, sea)), flat)
+    np.testing.assert_array_equal(
+        painted_ndl(z, sp, False, (weight, kept, sea, None)), sun_dot(z, sp)
+    )
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, (None, None, sea, None)), flat)
     dry = np.full(z.shape, np.nan, np.float32)
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, kept, dry)), flat)
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, kept, dry, None)), flat)
     rock = np.where(kept > 0, MESH_ROCK, 0).astype(np.uint8)
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, rock, sea)), flat)
-    got = painted_ndl(z, sp, True, (weight, kept, sea))
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, rock, sea, None)), flat)
+    got = painted_ndl(z, sp, True, (weight, kept, sea, None))
     assert got[2, 2] == pytest.approx(flat), "the sea around it is the pyramid's"
     north_east, south_west = got[28, 52], got[52, 28]
     assert north_east > flat > south_west, "the noon sun in the south-west lights the far wall"

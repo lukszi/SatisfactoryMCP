@@ -272,7 +272,7 @@ def _painted_colours(
         rock_weight = np.maximum(rock_weight, surface.top_weight)
     ground = painted.ground
     crowns = domed_crowns(ground, grid.x_cm, y_cm, spacing_m, job.unlit)
-    meshes = (surface.mesh_weight, surface.mesh_class, surface.level_m)
+    meshes = (surface.mesh_weight, surface.mesh_class, surface.level_m, surface.mesh_land)
     band: PaintedScene = {
         **scene,
         "crowns": crowns,

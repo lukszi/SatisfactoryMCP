@@ -20,7 +20,7 @@ from numpy.typing import NDArray
 
 from mapgen.bandstore import BandArray, BandWriter
 from mapgen.common import RENDERS_DIR_NAME, ReaderStamp
-from satisfactory_mcp.core.arrays import F32Grid
+from satisfactory_mcp.core.arrays import F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
@@ -157,11 +157,14 @@ class TopPlanes(NamedTuple):
 
 
 class MeshPlanes(NamedTuple):
-    """The render-only meshes: z in cm, the class code, and the rock family where written."""
+    """The render-only meshes: z in cm, the class code, the rock family where written, and
+    the run's land plane on the field's 1 m grid where it has one (``palette/water/footprints``).
+    """
 
     z_cm: Plane
     cls: Plane
     family: Plane | None = None
+    land: U8Grid | None = None
 
 
 class TitanPlanes(NamedTuple):
