@@ -849,7 +849,28 @@ surface is drawn in the bed instead ("Crowns and the water" below). The `crowns`
 **The colours** are the sprites' texels, moved by section 31's crown calibration as before:
 the species and named crown targets move a species' tiles, the canopy target each pixel. The
 ancient pines' sprite reads its needles' mask from the packed `ORMA` blue, so they draw olive
-needles where the paint store's flat colour, the whole card's mean, drew them mustard.
+needles where the paint store's flat colour, the whole card's mean, drew them mustard. The
+canopy target's op is measured on the sprites: the median green crown is the Kapok's, greyer
+in its sprite than its flat colour was, so the op lifts lightness by 0.063 and chroma 1.54
+times, where it lifted 0.037 and 1.14; a crown already more saturated than the Kapok, the
+green trees' game view, draws greener than before.
+
+**Measured** (2026-10-08, build 502094, the gate inputs' paint store, against master
+a22775a5's own runs):
+
+- At 2048, painted and lit: the light's 170 tiles keep their content, the light is not
+  touched. Of the painted tiles 578,950 of the native level's 4.19 million pixels change
+  (13.8%, 48 of 64 tiles, by up to 123), and 26 to 35% of each coarser level; `unlit/` the
+  same.
+- At 32768, 1024-pixel windows drawn unlit and lit by the style's own sun: 772,689 of
+  1,048,576 pixels change at the Titan forest (1769.7, -10.0), 719,346 in the Northern Forest
+  (81.2, -790.8), 648,659 in the Red Jungle (-1036, 237) and 166,457 on the Spire Coast
+  (269, -1943), by up to 110 to 154 levels. The ancient pines' crown cores there move from
+  #8e8826 to #707c21.
+- The Titan canopy's sprites against the raster's leaves over 600 m round the Titan forest:
+  the footprints overlap by 0.89 (cover over a half on 42% of the pixels against the leaves'
+  47%, the cards' holes), and the sprites' top stands a median 1.2 m under the raster's.
+- On those windows the CUDA stamps give numba's bits on the real atlas and paint store.
 
 ### Known limits
 
