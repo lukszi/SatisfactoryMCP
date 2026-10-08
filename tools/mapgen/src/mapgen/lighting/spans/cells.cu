@@ -1,5 +1,5 @@
 // A block's atlas cells on the GPU, a thread a pixel: march._finish without its arctangent,
-// holes.fill_holes, bake.path_horizon and the crown cell's test, each numpy operation the
+// holes.fill_holes, bake.path_horizon and where it folds a band, each numpy operation the
 // float32 one numpy does, in its order (--fmad=false). np.maximum, np.minimum and np.clip as
 // their scalar loops have them. docs/map/renders.md section 41, "On the GPU".
 
@@ -63,19 +63,9 @@ extern "C" __global__ void fill(const float* plane, const long long* nearest, fl
     out[i] = plane[nearest[i]];
 }
 
-// The crown cell: the crowns' horizon where it stands above the ground's, else 0.
-extern "C" __global__ void above(const float* over, const float* cell, float* out,
-                                 long long n) {
+// Where a cell is the band folded in: it stands above the horizon it was cut from.
+extern "C" __global__ void band_in(const float* cell, const float* hz, bool* out, long long n) {
     long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
-    out[i] = over[i] > cell[i] ? over[i] : 0.0f;
-}
-
-// Where a cell stores the band folded in: it holds its whole, and the whole stands above the
-// band's horizon.
-extern "C" __global__ void band_in(const float* stored, const float* whole, const float* hz,
-                                   bool* out, long long n) {
-    long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    out[i] = stored[i] == whole[i] && whole[i] > hz[i];
+    out[i] = cell[i] > hz[i];
 }

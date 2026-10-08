@@ -195,10 +195,11 @@ def test_the_light_casts_the_store_s_crowns_whether_or_not_painted_is_drawn(tmp_
         crown_occluder(crowns, tmp_path / name, 1024)
         for crowns, name in ((from_store, "a"), (from_ground, "b"))
     ]
-    (top_a, cover_a), (top_b, cover_b) = (o for o in occluders if o is not None)
+    (top_a, cover_a, under_a), (top_b, cover_b, under_b) = (o for o in occluders if o)
     assert np.isfinite(top_a).any() and cover_a.any()
     assert top_a.tobytes() == top_b.tobytes() and cover_a.tobytes() == cover_b.tobytes()
-    del occluders, top_a, cover_a, top_b, cover_b
+    assert under_a.tobytes() == under_b.tobytes() and (under_a[cover_a > 0] == 127).all()
+    del occluders, top_a, cover_a, under_a, top_b, cover_b, under_b
 
 
 @pytest.mark.parametrize("meta", [None, {"grid": {}, "files": {}}])

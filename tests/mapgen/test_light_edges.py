@@ -226,6 +226,7 @@ def test_relight_rows_lights_the_crowned_style_with_its_own_terms():
 
 def test_the_titan_trees_join_the_crowns_where_they_stand_higher():
     from mapgen.cache import TitanPlanes
+    from mapgen.lighting.occluders import UNDER_TITAN
     from mapgen.render.draw.light import titan_crowns
 
     n = 64
@@ -235,9 +236,11 @@ def test_the_titan_trees_join_the_crowns_where_they_stand_higher():
     top = np.full((n, n), np.nan, np.float32)
     top[10:14, 10:14], top[40:44, 40:44] = 80.0, 20.0
     cover = np.where(np.isfinite(top), 255, 0).astype(np.uint8)
-    titan_crowns(TitanPlanes(z_cm, cls, 2, 0, 0), top, cover)
+    under = np.where(np.isfinite(top), 100, 0).astype(np.uint8)
+    titan_crowns(TitanPlanes(z_cm, cls, 2, 0, 0), top, cover, under)
     assert top[16, 16] == pytest.approx(50.0) and cover[16, 16] == 255, "a Titan crown"
-    assert top[12, 12] == 80.0, "a higher crown keeps its top"
+    assert under[16, 16] == UNDER_TITAN, "marked as a Titan tree's, for cells of its own"
+    assert top[12, 12] == 80.0 and under[12, 12] == 100, "a higher crown keeps its top"
     assert top[42, 42] == 20.0 and np.isnan(top[60, 60]) and cover[60, 60] == 0
 
 

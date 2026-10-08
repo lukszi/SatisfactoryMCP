@@ -42,10 +42,10 @@ def _folded(rng: np.random.Generator, shape: tuple[int, ...], el: np.ndarray) ->
 
 
 def _crowns(rng: np.random.Generator, ground: np.ndarray, el: np.ndarray) -> np.ndarray:
-    """Crown cells as the atlas stores them: a horizon where it stands above the ground's,
-    else 0."""
+    """Tree cells as the atlas stores them: the trees' own horizon, above or under the
+    ground's, and 0 where no tree is in reach."""
     over = _folded(rng, ground.shape, el)
-    return np.where((over > ground) & (rng.random(ground.shape) < 0.5), over, 0).astype(np.float32)
+    return np.where(rng.random(ground.shape) < 0.5, over, 0).astype(np.float32)
 
 
 # ------------------------------------------------------------------------------ the atlas
@@ -92,7 +92,7 @@ def test_each_atlas_cell_sits_in_a_border_of_its_own_edge():
     hz_u8 = rng.integers(0, 256, (model.HZ_CELLS, 128, 128), dtype=np.uint8)
     atlas = light_tiles.hz_atlas(hz_u8)
     g, stride = model.HZ_GUTTER_PX, 128 + 2 * model.HZ_GUTTER_PX
-    assert atlas.shape == (8 * stride, 8 * stride) and g == 16
+    assert atlas.shape == (13 * stride, 8 * stride) and g == 16, "97 cells, 8 a row"
     assert light_tiles.atlas_cells(atlas).tobytes() == hz_u8.tobytes()
     k, r, c = 19, 2, 3  # cell 19 is the third row's fourth
     framed = atlas[r * stride : (r + 1) * stride, c * stride : (c + 1) * stride]
@@ -136,25 +136,33 @@ def test_a_thin_shadow_survives_a_coarser_level():
     shade = _page_shade(coarse[..., :DIRS], els)
     assert np.allclose(shade[:, 1], 0.5) and not shade[:, [0, 2, 3]].any()
     assert not _page_shade(light_tiles.downsample(fine), els).any(), "the mean of degrees lost it"
-    assert not coarse[..., DIRS:].any(), "no crown, no crown cell"
+    assert not coarse[..., DIRS:].any(), "no tree, no tree cell"
 
 
-def test_a_coarser_level_averages_the_shade_the_page_reads():
+@pytest.mark.parametrize("groups", [1, 2])
+def test_a_coarser_level_averages_the_shade_the_page_reads(groups):
     els = refold.path_elevations()
     rng = np.random.default_rng(2)
     ground = _folded(rng, (64, 96, DIRS), els)
-    crowns = _crowns(rng, ground, els)
-    stored = light_tiles.encode_linear(refold.refold(np.concatenate([ground, crowns], -1), els))
+    trees = [_crowns(rng, ground, els) for _ in range(groups)]
+    stored = light_tiles.encode_linear(refold.refold(np.concatenate([ground, *trees], -1), els))
     coarse = light_tiles.decode_linear(stored)
     half_step = np.float32(0.5 / light_tiles.HZ_LINEAR_SCALE) / SOFT + np.float32(1e-5)
     want = light_tiles.downsample(_page_shade(ground, els))
     assert np.abs(_page_shade(coarse[..., :DIRS], els) - want).max() <= half_step
-    crowned = light_tiles.downsample(_page_shade(np.maximum(ground, crowns), els))
-    page = _page_shade(np.maximum(coarse[..., :DIRS], coarse[..., DIRS:]), els)
-    assert np.abs(page - crowned).max() <= half_step, "the page's max of the two, averaged"
     assert np.abs(_page_shade(light_tiles.downsample(ground), els) - want).max() > 0.3
-    bare = light_tiles.downsample((crowns > 0).astype(np.float32)) == 0
-    assert not stored[..., DIRS:][bare].any(), "a crown cell stays empty where no crown stands"
+    for g, crowns in enumerate(trees, 1):
+        cell = coarse[..., g * DIRS : (g + 1) * DIRS]
+        crowned = light_tiles.downsample(_page_shade(np.maximum(ground, crowns), els))
+        page = _page_shade(np.maximum(coarse[..., :DIRS], cell), els)
+        assert np.abs(page - crowned).max() <= half_step, "the page's max of the two, averaged"
+        own = light_tiles.downsample(_page_shade(crowns, els))
+        alone = np.abs(_page_shade(cell, els) - own) <= half_step
+        raised = crowned > want
+        assert alone[~raised].all(), "the trees alone, where they raise nothing: their own mean"
+        assert raised.any() and (~raised).any()
+        bare = light_tiles.downsample((crowns > 0).astype(np.float32)) == 0
+        assert not stored[..., g * DIRS : (g + 1) * DIRS][bare].any(), "empty where no tree"
     lit = light_tiles.downsample(np.where(_page_shade(ground, els) > 0, 1.0, 0.0)) == 0
     mean = light_tiles.encode_linear(light_tiles.downsample(ground))
     assert np.array_equal(stored[..., :DIRS][lit], mean[lit]), "all lit: the mean of degrees"
@@ -191,12 +199,20 @@ def test_the_coarser_levels_refold_what_they_read(tmp_path):
     work = tmp_path / "work"
     hzq = _level(tmp_path)
     els = refold.path_elevations()
-    want = light_tiles.encode_linear(refold.refold(light_tiles.decode_linear(hzq), els))
-    assert np.load(work / "hzq.npy").tobytes() == want.tobytes()
+    horizons, ambient = hzq[..., : model.HORIZON_CELLS], hzq[..., model.HORIZON_CELLS :]
+    want = np.concatenate(
+        [
+            light_tiles.encode_linear(refold.refold(light_tiles.decode_linear(horizons), els)),
+            np.round(light_tiles.downsample(ambient.astype(np.float32))).astype(np.uint8),
+        ],
+        -1,
+    )
+    assert np.load(work / "hzq.npy").tobytes() == want.tobytes(), "the ambient cell averaged"
+    stored = np.concatenate([light_tiles.LINEAR_TO_HZ[horizons], ambient], -1)
     tiles = tmp_path / "dest" / "1"
     for x, y in ((0, 0), (1, 0), (0, 1), (1, 1)):
         rows, cols = slice(128 * y, 128 * (y + 1)), slice(128 * x, 128 * (x + 1))
-        atlas = light_tiles.hz_atlas(np.moveaxis(light_tiles.LINEAR_TO_HZ[hzq[rows, cols]], -1, 0))
+        atlas = light_tiles.hz_atlas(np.moveaxis(stored[rows, cols], -1, 0))
         written = (tiles / f"{x}_{y}{light_tiles.HZ_SUFFIX}").read_bytes()
         assert written == light_tiles.hz_webp(atlas, (x, y) == (1, 0)), "the named tile at q95"
 
@@ -209,6 +225,9 @@ def test_refold_takes_float32_texels_of_its_directions():
         refold.refold(np.zeros((4, 5, DIRS), np.float32), els)
     with pytest.raises(ValueError):
         refold.refold(np.zeros((4, 4, DIRS + 1), np.float32), els)
+    with pytest.raises(ValueError):
+        refold.refold(np.zeros((4, 4, 4 * DIRS), np.float32), els)
+    assert refold.refold(np.zeros((4, 4, 3 * DIRS), np.float32), els).shape == (2, 2, 3 * DIRS)
 
 
 # ------------------------------------------------------------------------------ the GPU
@@ -234,25 +253,25 @@ def _same(monkeypatch: pytest.MonkeyPatch, call: Callable[[], np.ndarray]) -> No
 
 
 @pytest.mark.usefixtures("device")
-@pytest.mark.parametrize("crowned", [False, True])
-def test_the_cuda_refold_is_the_reference_bit_for_bit(monkeypatch, crowned):
+@pytest.mark.parametrize("groups", [0, 1, 2])
+def test_the_cuda_refold_is_the_reference_bit_for_bit(monkeypatch, groups):
     els = refold.path_elevations()
-    rng = np.random.default_rng(4 + crowned)
+    rng = np.random.default_rng(4 + groups)
     ground = _folded(rng, (2 * 9, 2 * 5, DIRS), els)  # 160 threads a row: one block idles
     ground[0, 0] = ground[0, 1] = ground[1, 0] = ground[1, 1] = els + SOFT
-    fine = np.concatenate([ground, _crowns(rng, ground, els)], -1) if crowned else ground
+    fine = np.concatenate([ground, *(_crowns(rng, ground, els) for _ in range(groups))], -1)
     _same(monkeypatch, lambda: refold.refold(fine, els))
     _same(monkeypatch, lambda: refold.refold(fine[2:-2, 2:], els))  # a strided view
 
 
 @pytest.mark.usefixtures("device")
 def test_the_cuda_refold_of_one_direction_is_the_reference_bit_for_bit(monkeypatch):
-    """A light block refolds a direction at a time: its ground cell and its crown cell."""
+    """A light block refolds a direction at a time: its ground cell and its trees' cells."""
     els = refold.path_elevations()[7:8]
     rng = np.random.default_rng(6)
     ground = _folded(rng, (2 * 130, 2 * 70, 1), els)
-    pair = np.concatenate([ground, _crowns(rng, ground, els)], -1)
-    _same(monkeypatch, lambda: refold.refold(pair, els))
+    trio = np.concatenate([ground, _crowns(rng, ground, els), _crowns(rng, ground, els)], -1)
+    _same(monkeypatch, lambda: refold.refold(trio, els))
 
 
 @pytest.mark.usefixtures("device")

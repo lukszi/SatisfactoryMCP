@@ -1793,17 +1793,26 @@ reference, and the tiles are the same bytes either way.
   device's (`lighting/spans/device.py`). On the device a block's heights, or its ground and
   crown span surfaces, are uploaded once; per direction the march, the band rules of
   `march._finish`, the holes' fill (`holes.fill_holes`, by each pixel's nearest index), the
-  folded horizon (`path_horizon`) and the crown cell's test run as kernels
-  (`lighting/spans/cells.cu`), and the two cells come back to the host for their bytes. The
+  folded horizon (`path_horizon`) and where it folds a band run as kernels
+  (`lighting/spans/cells.cu`), and the ground's, crowns' and Titan trees' cells come back to the
+  host for their bytes (light version 5: the trees' cells hold the trees alone, so the crown
+  cell's test against the ground's went). The
   arctangent and the degrees run in numpy between the march and the rules after it: on the
   horizon whole, and on a band's edges only where it floats. numpy's float32 arctangent and
   degrees give an element what they give it in any array (4.2 million values over nine
   decades, shifted and subsampled six ways: every bit the same), so the floating pixels alone
   give `_finish`'s bits. `np.maximum`, `np.minimum` and `np.clip` keep the NaN rules of their
   scalar loops; the signed zero of "Why the bits are the same" can meet them and cannot show.
-  The bands of a cell come back only where the bake reads them, the default sun's four cells
-  (`wanted`); every cell with a band brings back where it stores the band folded in
-  (`band_in`, a byte a pixel), which sets its atlas's WebP quality (section 29).
+  The bands of a cell come back only where the bake reads them, the default sun's two ground
+  cells (`wanted`); every cell with a band brings back where it stores the band folded in
+  (`band_in`, a byte a pixel), which sets its atlas's WebP quality (section 29). The trees
+  together over the ground, which the default sun's crowned terms read, are marched for its
+  two directions with the host's operations, the march a call at a time on the device.
+- **Ambient occlusion** (`lighting/occlusion.cu`, light version 5, section 29 "Ambient
+  occlusion"): the box sums are of heights in integer steps, exact in any order, so the twin
+  sums each box straight, a thread a pixel, where the reference takes running sums; the float
+  steps after them are numpy's, in its order. The light processes run it, a block's rows at a
+  time.
 - **The coarser levels' refold** (`lighting/refold.cu`, 2026-10-08, section 29 "Coarser
   levels") runs on the device too, a thread a texel and direction, in the light processes. The
   run's own process refolds the coarser levels with the numpy reference, the same bits, so it

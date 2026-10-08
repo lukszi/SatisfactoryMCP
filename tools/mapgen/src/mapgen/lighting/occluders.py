@@ -20,6 +20,8 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "CROWN_RIM",
+    "UNDER_SCALE",
+    "UNDER_TITAN",
     "CrownGrid",
     "canopy_top",
     "sheet_crowns",
@@ -27,6 +29,11 @@ __all__ = [
 
 #: The crown's rim, as a share of the tree's height; the dome rises from it to the top.
 CROWN_RIM = 0.3
+
+#: An underside byte: a crown's underside as a share of its top's height times
+#: ``UNDER_SCALE``, or ``UNDER_TITAN`` where the top is a Titan tree's (``undersides``).
+UNDER_SCALE = 254
+UNDER_TITAN = 255
 
 #: Sheet rows ``sheet_crowns`` reads the plane for at a time.
 _BAND_ROWS = 256
@@ -107,6 +114,7 @@ def sheet_crowns(
     size: int,
     out: F32Grid,
     cover: U8Grid | None = None,
+    under: tuple[U8Grid, U8Grid] | None = None,
 ) -> F32Grid:
     """The paint store's 1 m crown-top plane on a ``size`` px sheet, into ``out``.
 
@@ -114,6 +122,7 @@ def sheet_crowns(
     where none does. ``cover`` receives that share as a byte. Each pixel averages a box of
     its own width, or of one texel on a sheet finer than the plane, which is the bilinear
     sample: a crown keeps its area and its round edge, and a small one casts a small shadow.
+    ``under`` is the plane's underside bytes and the sheet's, which take their mean the same way.
     """
     step_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
     grid_m = grid["spacing_cm"] / 100.0
@@ -137,4 +146,8 @@ def sheet_crowns(
         out[band] = np.where(seen, mean / np.maximum(share, 1e-9), np.nan)
         if cover is not None:
             cover[band] = np.where(seen, np.round(np.clip(share, 0.0, 1.0) * 255.0), 0)
+        if under is not None:
+            byte = np.where(have, under[0][lo : lo + dm.shape[0]], 0)
+            low = _box_sums(byte, local, cols) / area / np.maximum(share, 1e-9)
+            under[1][band] = np.where(seen, np.round(np.clip(low, 0.0, UNDER_SCALE)), 0)
     return out

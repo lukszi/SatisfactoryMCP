@@ -204,7 +204,7 @@ def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
         nrm = np.asarray(Image.open(root / "light" / "tiles" / f"{name}.nrm.webp").convert("RGBA"))
         assert nrm.shape == (256, 256, 4)
         atlas = np.asarray(Image.open(root / "light" / "tiles" / f"{name}.hz.webp"))
-        assert atlas.shape[:2] == (1280, 1280)  # 8 x 8 cells, 128 px in a 16 px border
+        assert atlas.shape[:2] == (2080, 1280)  # 13 rows of 8 cells, 128 px in a 16 px border
     nrm = np.asarray(Image.open(root / "light" / "tiles" / "1" / "0_0.nrm.webp").convert("RGBA"))
     assert nrm[200, 20, 3] == 0 and nrm[200, 200, 3] == 255
     coarse = np.asarray(Image.open(root / "light" / "tiles" / "0" / "0_0.nrm.webp").convert("RGBA"))

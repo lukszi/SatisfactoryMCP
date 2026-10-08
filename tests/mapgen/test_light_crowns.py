@@ -162,6 +162,12 @@ def test_the_shader_and_the_python_model_read_the_same_constants():
     assert "(cell+uGut+uv*uIn)" in source and "HZ_CELL_PX = 128;" in source, "the cell's border"
     assert block["hz_gutter"] == model.HZ_GUTTER_PX
     assert "1 - shade * (1 - SHADOW_FILL)" in inspect.getsource(model.shaded_direct)
-    assert block["hz_cells"] == 2 * block["crown_cell"] == 2 * hz.HORIZON_DIRS
+    dirs = hz.HORIZON_DIRS
+    assert (block["crown_cell"], block["titan_cell"], block["ao_cell"]) == (
+        dirs,
+        2 * dirs,
+        3 * dirs,
+    )
+    assert block["hz_cells"] == block["ao_cell"] + 1 == model.HZ_CELLS
     assert json.loads(json.dumps(block)) == block
     assert math.isclose(block["shadow_soft_deg"], model.SHADOW_SOFT_DEG)
