@@ -488,7 +488,7 @@
   "white": 1.6
  },
  "calibration": {
-  "about": "display sRGB targets from in-game screenshots; derived_keys names the ones a render takes from the game install instead (mapgen calibrate); docs/map/calibration.md section 31",
+  "about": "display sRGB targets from in-game screenshots; derived_keys names the ones a render takes from the game install instead (mapgen calibrate) where the derive gate passes them, derived_ungated those whose target is a stand-in; docs/map/calibration.md section 31",
   "pure_share": 0.7,
   "min_texels": 200,
   "area_blur_m": 25.0,
@@ -541,9 +541,7 @@
    },
    {
     "areas": [
-     "Area_DuneDesert",
-     "Area_DesertCanyons",
-     "Area_RockyDesert"
+     "Area_DuneDesert"
     ],
     "rock": "#ae8271"
    },
@@ -608,7 +606,7 @@
    "tops.forest",
    "meshes.coral",
    "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].layers.Gravel_WeightLayerInfo",
-   "areas[DuneDesert,DesertCanyons,RockyDesert].rock",
+   "areas[DuneDesert].rock",
    "areas[GrassFields,NorthernForest,WesternDuneForest].rock",
    "areas[RedJungle,RedBambooFields].rock",
    "areas[RedJungle,RedBambooFields].layers.Cliff_LayerInfo",
@@ -619,6 +617,9 @@
    "layers.SandPebbles_LayerInfo",
    "layers.SandRock_LayerInfo",
    "layers.Soil_LayerInfo"
+  ],
+  "derived_ungated": [
+   "layers.Forest_LayerInfo"
   ]
  }
 }

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import typing
 from collections.abc import Mapping
-from typing import Literal, NotRequired, TypedDict, TypeVar, cast
+from typing import Literal, NotRequired, Required, TypedDict, TypeVar, cast
 
 from mapgen.gamedata.rocks.families import FAMILIES
 from satisfactory_mcp.core.jsontypes import is_object_dict, is_object_list
@@ -373,6 +373,8 @@ class CalibrationStyle(TypedDict):
     species: dict[str, str]
     areas: list[CalibrationArea]
     derived_keys: NotRequired[list[str]]
+    #: Derived keys a render takes past the derive gate: their target is a stand-in.
+    derived_ungated: NotRequired[list[str]]
 
 
 class PaintedPalette(TypedDict):
@@ -464,10 +466,21 @@ def _fits(hint: object, value: object, where: str) -> None:
         raise TypeError(f"{where}: no check for {hint!r}")
 
 
+def _required_keys(shape: type) -> frozenset[str]:
+    """The keys a block must have. ``__required_keys__`` alone counts a ``NotRequired`` field
+    as required when its annotation is a string, as ``from __future__ import annotations``
+    makes it, so the qualifiers are read off the resolved hints."""
+    marked = typing.get_type_hints(shape, include_extras=True)
+    keys: frozenset[str] = shape.__dict__["__required_keys__"]
+    optional = {k for k, hint in marked.items() if typing.get_origin(hint) is NotRequired}
+    required = {k for k, hint in marked.items() if typing.get_origin(hint) is Required}
+    return (keys - optional) | required
+
+
 def _fits_block(shape: type, value: object, where: str) -> None:
     block = _as_dict(value, where)
     hints = typing.get_type_hints(shape)
-    required: frozenset[str] = shape.__dict__["__required_keys__"]
+    required = _required_keys(shape)
     wrong = {"missing": required - block.keys(), "not read": block.keys() - hints.keys()}
     if any(wrong.values()):
         found = "; ".join(f"{label} {sorted(keys)}" for label, keys in wrong.items() if keys)

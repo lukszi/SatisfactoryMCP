@@ -2,7 +2,8 @@
 
 ``derive`` lights each rule's albedo by the atmosphere volume its samples stand in and measures
 it through the camera model. ``mapgen calibrate`` keeps the result beside the store; a render
-lays it over the keys its palette's ``derived_keys`` names. docs/map/calibration.md section 31.
+lays it over the keys its palette's ``derived_keys`` names that the derive gate passes.
+docs/map/calibration.md section 31.
 """
 
 from __future__ import annotations
@@ -11,11 +12,14 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 
 from mapgen.gamedata.level.lighting import AtmosphereVolume, LevelLighting
+from mapgen.palette.painted.calibration import with_derived
 from mapgen.palette.painted.derive.camera import Light, exposure, hex_of_lab, measured_lab
+from mapgen.palette.painted.derive.gate import gate_hex
 from mapgen.palette.painted.derive.rules import Derivation, entries, scope_key, untargeted_layers
 from mapgen.palette.painted.derive.scene import Scene
 from mapgen.palette.painted.derive.tonemap import Gains
@@ -29,13 +33,16 @@ __all__ = [
     "GLOBAL",
     "MODEL_VERSION",
     "TARGETS_NAME",
+    "Applied",
     "Derived",
     "NoDaylight",
     "Target",
     "derive",
+    "gate_declines",
     "key_slot",
     "make_key_slot",
     "read_targets",
+    "screenshot_target",
     "stamp_of",
     "targets_json",
     "vote",
@@ -44,7 +51,7 @@ __all__ = [
 
 TARGETS_NAME = "targets.derived.json"
 #: Bumped whenever a rule or the camera model changes what a store derives.
-MODEL_VERSION = 1
+MODEL_VERSION = 2
 GLOBAL = "global"
 #: Samples a light vote counts at most, drawn with a fixed seed.
 MAX_VOTES = 20_000
@@ -52,6 +59,8 @@ _GAINS = ("mColorGainShadows", "mColorGainMidtones", "mColorGainHighlights")
 #: The blocks a calibration key names.
 _BLOCKS = ("layers", "derived", "canopy", "rock", "families", "tops", "meshes", "crowns", "species")
 _UNMODELLED = ("mColorGammaMidtones", "mColorContrastShadows", "mColorSaturationMidtones")
+#: The calibration fields that say who wears a derived colour, not what is derived.
+_NOT_DERIVED = ("about", "derived_keys", "derived_ungated")
 
 
 class NoDaylight(Exception):
@@ -187,7 +196,7 @@ def derive(scene: Scene, cal: CalibrationStyle) -> Derived:
 def stamp_of(paint_digest: str | None, areas_digest: str, cal: CalibrationStyle) -> JsonObject:
     """What a derivation depends on: the store, the area map, the calibration block (not its
     prose, nor which keys wear the result), the model."""
-    block: dict[str, object] = {k: v for k, v in cal.items() if k not in ("about", "derived_keys")}
+    block: dict[str, object] = {k: v for k, v in cal.items() if k not in _NOT_DERIVED}
     return {
         "paint_digest": paint_digest,
         "areas_digest": areas_digest,
@@ -302,21 +311,55 @@ def make_key_slot(cal: JsonObject, key: str) -> tuple[JsonObject, str] | None:
     return key_slot(cal, key)
 
 
-def with_targets(
-    palette: PaintedPalette, hexes: Mapping[str, str]
-) -> tuple[PaintedPalette, list[str]]:
-    """The palette with each ``derived_keys`` key that has a derived colour wearing it, and
-    those keys. A derived key the calibration block cannot hold is refused."""
-    keys = palette["calibration"].get("derived_keys", [])
+def screenshot_target(cal: CalibrationStyle, key: str) -> str | None:
+    """The screenshot colour the palette holds for a calibration key, a derived layer's by its
+    rule; None for a key with no target of its own."""
+    slot = key_slot(to_json_object(with_derived(cal)), key)
+    held = slot[0].get(slot[1]) if slot else None
+    return held if isinstance(held, str) else None
+
+
+def gate_declines(cal: CalibrationStyle, hexes: Mapping[str, str]) -> dict[str, str]:
+    """Each derived key with a colour that the derive gate declines, and why. A key with no
+    screenshot target, or one ``derived_ungated`` names, is not gated."""
+    ungated = set(cal.get("derived_ungated", []))
+    declined: dict[str, str] = {}
+    for key in cal.get("derived_keys", []):
+        target = screenshot_target(cal, key)
+        if key not in hexes or key in ungated or target is None:
+            continue
+        verdict = gate_hex(hexes[key], target)
+        if not verdict.passed:
+            declined[key] = "; ".join(verdict.failures)
+    return declined
+
+
+class Applied(NamedTuple):
+    """The palette wearing the derived colours, the keys it took, and the keys the gate
+    declined with why."""
+
+    palette: PaintedPalette
+    applied: list[str]
+    declined: dict[str, str]
+
+
+def with_targets(palette: PaintedPalette, hexes: Mapping[str, str]) -> Applied:
+    """The palette with each ``derived_keys`` key that has a derived colour the derive gate
+    passes wearing it. A derived key the calibration block cannot hold is refused."""
     calibration = palette["calibration"]
+    keys = calibration.get("derived_keys", [])
     unknown = [k for k in keys if make_key_slot(to_json_object(calibration), k) is None]
     if unknown:
         raise ValueError(f"calibration.derived_keys names no calibration key: {unknown}")
+    stray = [k for k in calibration.get("derived_ungated", []) if k not in keys]
+    if stray:
+        raise ValueError(f"calibration.derived_ungated names keys derived_keys lacks: {stray}")
+    declined = gate_declines(calibration, hexes)
     merged = to_json_object(palette)
     cal = require_object(merged["calibration"])
-    applied = [key for key in keys if key in hexes]
+    applied = [key for key in keys if key in hexes and key not in declined]
     for key in applied:
         slot = make_key_slot(cal, key)
         if slot is not None:
             slot[0][slot[1]] = hexes[key]
-    return checked(PaintedPalette, merged, palette["id"]), applied
+    return Applied(checked(PaintedPalette, merged, palette["id"]), applied, declined)

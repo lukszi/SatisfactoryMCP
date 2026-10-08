@@ -23,6 +23,7 @@ from mapgen.palette.painted.derive.targets import (
     GLOBAL,
     TARGETS_NAME,
     derive,
+    screenshot_target,
     stamp_of,
     targets_json,
     vote,
@@ -31,6 +32,8 @@ from mapgen.palette.painted.derive.targets import (
 from mapgen.palette.styles import PAINTED_PALETTE, palette_digest
 from tests.support.paint_store import (
     CALIBRATION,
+    CLIFF_BODY,
+    CLIFF_TINT,
     NAMES,
     SAND_RGB,
     VOLUMES,
@@ -104,6 +107,16 @@ def test_the_desert_family_is_the_sand_rock_under_the_dune_light(scene):
     assert found["families.desert"].light == DESERT_ROCK_LIGHT
 
 
+def test_the_cliff_rock_is_its_body_texture_with_the_tint_recorded_not_applied(scene):
+    rock = _rows(scene)["rock"]
+    assert rock.kind == "cliff body texture"
+    np.testing.assert_allclose(rock.albedo, CLIFF_BODY)
+    assert rock.params["Color Tint, not applied"] == CLIFF_TINT
+    assert rock.assets == [
+        "/Game/FactoryGame/World/Environment/Rock/Cliff/Textures/CliffSediment/Cliff_Sediment_Alb"
+    ]
+
+
 def test_water_comes_back_underivable_with_its_reason(scene):
     rows = _rows(scene)
     for key in ("meshes.coral_seabed", "areas[Grass].water"):
@@ -128,10 +141,11 @@ def test_derived_colours_land_on_their_keys_and_a_wrong_key_is_refused():
     cal["derived_keys"] = ["layers.Sand_LayerInfo", "derived.WetSand_LayerInfo", "canopy",
                            "families.desert", "areas[RedJungle,RedBambooFields].rock",
                            "layers.Soil_LayerInfo"]  # fmt: skip
+    cal["derived_ungated"] = cal["derived_keys"][:-1]
     hexes = {key: "#123456" for key in cal["derived_keys"][:-1]}
-    merged, applied = with_targets(palette, hexes)
+    merged, applied, declined = with_targets(palette, hexes)
     out = merged["calibration"]
-    assert applied == cal["derived_keys"][:-1]
+    assert applied == cal["derived_keys"][:-1] and not declined
     assert out["layers"]["Sand_LayerInfo"] == out["layers"]["WetSand_LayerInfo"] == "#123456"
     assert out["canopy"] == out["families"]["desert"] == "#123456"
     assert "Soil_LayerInfo" not in out["layers"], "no colour, no target"
@@ -143,11 +157,34 @@ def test_derived_colours_land_on_their_keys_and_a_wrong_key_is_refused():
         with_targets(palette, {})
 
 
+def test_the_gate_keeps_a_screenshot_whose_derived_colour_drifts_in_chroma_or_hue():
+    palette = copy.deepcopy(PAINTED_PALETTE)
+    cal = palette["calibration"]
+    cal["derived_keys"] = ["rock", "areas[RedJungle,RedBambooFields].rock",
+                           "layers.Soil_LayerInfo"]  # fmt: skip
+    cal["derived_ungated"] = []
+    # The tan v8 derived for both: within dE 5 of each grey target, but not in chroma and hue.
+    hexes = {"rock": "#897758", "areas[RedJungle,RedBambooFields].rock": "#827a6b",
+             "layers.Soil_LayerInfo": "#896e4e"}  # fmt: skip
+    merged, applied, declined = with_targets(palette, hexes)
+    assert applied == ["areas[RedJungle,RedBambooFields].rock", "layers.Soil_LayerInfo"]
+    assert list(declined) == ["rock"] and "chroma and hue" in declined["rock"]
+    assert merged["calibration"]["rock"] == "#85816c", "the screenshot stays"
+    assert merged["calibration"]["layers"]["Soil_LayerInfo"] == "#896e4e", "no target, no gate"
+    cal["derived_ungated"] = ["rock"]
+    assert with_targets(palette, hexes).declined == {}
+    cal["derived_ungated"] = ["canopy"]
+    with pytest.raises(ValueError, match="canopy"):
+        with_targets(palette, hexes)
+
+
 def test_every_derived_key_of_the_shipped_palette_is_a_calibration_key():
-    keys = PAINTED_PALETTE["calibration"]["derived_keys"]
-    merged, applied = with_targets(PAINTED_PALETTE, {key: "#000000" for key in keys})
-    assert applied == keys
-    assert merged["calibration"]["rock"] == "#000000"
+    cal = PAINTED_PALETTE["calibration"]
+    keys = cal["derived_keys"]
+    hexes = {key: screenshot_target(cal, key) or "#000000" for key in keys}
+    merged, applied, declined = with_targets(PAINTED_PALETTE, hexes)
+    assert applied == keys and not declined
+    assert merged["calibration"]["layers"]["Soil_LayerInfo"] == "#000000"
 
 
 def _biome() -> tuple[dict, list[str]]:
@@ -158,6 +195,7 @@ def _palette() -> dict:
     palette = copy.deepcopy(PAINTED_PALETTE)
     palette["calibration"] = copy.deepcopy(CALIBRATION)
     palette["calibration"]["derived_keys"] = ["layers.Grass_LayerInfo", "canopy"]
+    palette["calibration"]["derived_ungated"] = ["layers.Grass_LayerInfo", "canopy"]
     return palette
 
 
@@ -193,6 +231,7 @@ def test_the_stamp_ignores_the_prose_and_which_keys_wear_the_derived_colours():
     cal = copy.deepcopy(CALIBRATION)
     before = stamp_of("s", "a", cal)
     cal["derived_keys"] = ["canopy"]
+    cal["derived_ungated"] = ["canopy"]
     cal["about"] = "reworded"
     assert stamp_of("s", "a", cal) == before
     cal["layers"] = {}

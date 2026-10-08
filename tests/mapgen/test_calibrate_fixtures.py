@@ -11,11 +11,13 @@ import json
 import os
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from mapgen.common import DEFAULT_GAME, LOCAL_DIR
 from mapgen.palette.painted.calibration import derived_hex
 from mapgen.palette.painted.derive.camera import delta_e, lab_of_hex
+from mapgen.palette.painted.derive.gate import gate_hex
 from tests.support.paths import committed_fixture
 
 pytestmark = pytest.mark.integration
@@ -72,6 +74,44 @@ def test_every_scored_key_lies_within_its_tolerance_of_its_screenshot(derived):
         elif "tolerance" in entry and (tolerance <= default or tolerance > gap + 1.5):
             far.append(f"  {key}: tolerance {tolerance} is stale at {gap:.1f}, lower it")
     assert not far, "\n".join(far)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "rock",
+        "areas[GrassFields,NorthernForest,WesternDuneForest].rock",
+        "areas[RedJungle,RedBambooFields].rock",
+    ],
+)
+def test_the_rock_derives_the_cliff_body_within_the_gate_s_chroma_and_hue(derived, key):
+    _meta, targets, _found = derived
+    assert targets[key].rule.kind == "cliff body texture"
+    verdict = gate_hex(targets[key].hex, _target(key))
+    assert verdict.chromatic <= verdict.allowance, f"{key}: {verdict}"
+
+
+def _chroma_hue(hex_colour: str) -> tuple[float, float]:
+    lab = lab_of_hex(hex_colour)
+    return float(np.hypot(lab[1], lab[2])), float(np.degrees(np.arctan2(lab[2], lab[1])) % 360)
+
+
+def test_the_desert_canyons_cliffs_draw_grey_and_the_desert_family_terracotta(derived):
+    from mapgen.palette.painted.derive.targets import with_targets
+    from mapgen.palette.styles import PAINTED_PALETTE
+
+    _meta, _targets, found = derived
+    cal = with_targets(PAINTED_PALETTE, found.hexes()).palette["calibration"]
+
+    def rock_of(area: str) -> str:
+        own = (e["rock"] for e in cal["areas"] if "rock" in e and area in e["areas"])
+        return next(own, cal["rock"])
+
+    for area in ("Area_DesertCanyons", "Area_RockyDesert"):
+        assert _chroma_hue(rock_of(area))[0] < 0.04, area
+    for colour in (cal["families"]["desert"], rock_of("Area_DuneDesert")):
+        chroma, hue = _chroma_hue(colour)
+        assert chroma > 0.05 and 25.0 < hue < 70.0, colour
 
 
 def test_the_exposure_of_build_502094(derived):

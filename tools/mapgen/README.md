@@ -95,8 +95,9 @@ game's camera, and writes `targets.derived.json` beside the paint layers (`--out
 It never writes the install. `--check` prints each colour against the screenshot target and
 writes nothing. A paint store from before generator 4 is refused with exit code 2. A render
 takes the keys the palette's `derived_keys` lists from that file, or derives them itself when
-the file is missing or was derived from other data. See §31, "Targets derived from the game
-install".
+the file is missing or was derived from other data, and keeps the screenshot colour of a key
+the derive gate declines. See §31, "Targets derived from the game install" and "The derive
+gate".
 
 ### artwork
 

@@ -127,27 +127,31 @@ def layer_table(scene: Scene, key: str, layer: str) -> Derivation:
 
 
 def cliff_rock(scene: Scene, key: str, family: str, scope: BoolMask | None) -> Derivation:
-    """The cliff macro and detail textures' mean times the family's ``Color Tint``."""
+    """The cliff master's body texture, untinted: the game's own bake of its cliffs keeps the
+    texture's hue, so the family's ``Color Tint`` is recorded, not multiplied."""
     means = scene.meta.get("texture_means_linear", {})
+    missing = [t for t in ROCK_TEXTURES if t not in means]
+    if missing:
+        return Derivation(key, error=f"the store has no mean of {', '.join(missing)}")
     source = scene.meta.get("rock_families", {}).get(family, {})
-    tint = source.get("tint")
-    if not tint:
-        return Derivation(key, error=f"the {family} family has no Color Tint")
     mean = np.mean([means[t] for t in ROCK_TEXTURES], axis=0)
+    params = {"texture_mean_linear": _rounded(mean)}
+    tint = source.get("tint")
+    if tint:
+        params["Color Tint, not applied"] = list(tint)
     return Derivation(
         key,
-        "cliff texture x tint",
-        f"mean of {', '.join(ROCK_TEXTURES)} x {family} family Color Tint",
-        mean * np.asarray(tint),
+        "cliff body texture",
+        f"mean of {', '.join(ROCK_TEXTURES)}, the {family} family's body; Color Tint not applied",
+        mean,
         None if scope is None else scene.where(scope),
-        assets=[_GAME + TEXTURES[t] for t in ROCK_TEXTURES]
-        + [f"{source.get('material')} vector 'Color Tint'"],
-        params={"texture_mean_linear": _rounded(mean), "Color Tint": list(tint)},
+        assets=[_GAME + TEXTURES[t] for t in ROCK_TEXTURES],
+        params=params,
     )
 
 
 def family_rock(scene: Scene, key: str, family: str, scope: BoolMask | None) -> Derivation:
-    """A family's rock: its cliff tint, or for the desert family the landscape's sand-rock
+    """A family's rock: the cliff body, or for the desert family the landscape's sand-rock
     albedo under the Dune Desert's light (its own material has no texture to multiply)."""
     if family != "desert":
         return cliff_rock(scene, key, family, scope)

@@ -85,7 +85,8 @@ OVERLAYS: dict[str, tuple[str | None, str | None]] = {
     "Puddles_LayerInfo": ("TX_Puddles_01_Alb", None)
 }
 
-ROCK_TEXTURES = ("Cliff_Macro_Alb_02", "Cliff_Detail_Alb")
+#: The cliff master ``Rock_WA``'s body albedo, the one every cliff instance streams.
+ROCK_TEXTURES = ("Cliff_Sediment_Alb",)
 CANOPY_TEXTURE = "TX_Forest_Far_01_Alb"
 
 PIGMENT_MAX_PX = 2048

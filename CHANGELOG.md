@@ -70,12 +70,14 @@ Planned as 0.2.0.
 ### Changed
 
 - Map renders: the game-painted map takes the colours derived from the game install for
-  the targets within reach of their screenshots (sand, grass, wet sand, the canopy, the rock,
-  the desert rock, the forest moss, the coral caps, the desert gravel, the Red Jungle cliffs),
-  for the forest floor, and for the ground layers no screenshot covers (red grass, puddles,
-  the Red Jungle ground, sand cracks, pebbles and rock, soil). A render derives them itself
-  when `targets.derived.json` is missing or from other data. This shares the one version up
-  every rendered map style takes (under "Fixed").
+  the targets within reach of their screenshots in lightness, chroma and hue (sand, grass, the
+  canopy, the Grass Fields rock, the desert rock, the forest moss, the desert gravel, the Red
+  Jungle cliffs), for the forest floor, and for the ground layers no screenshot covers (red
+  grass, puddles, the Red Jungle ground, sand cracks, pebbles and rock, soil). A derived colour
+  that drifts from its screenshot in chroma or hue keeps the screenshot, and the render's
+  sidecar says why. A render derives the colours itself when `targets.derived.json` is missing
+  or from other data. This shares the one version up every rendered map style takes (under
+  "Fixed").
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
@@ -211,6 +213,14 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the game-painted map's rock outside the deserts is grey again, not the tan of
+  the dirt paths. Its derived colour now comes from the texture the cliff material samples,
+  untinted, as the game's own baked distant view of the cliffs has it; it came from two
+  textures the cliffs never use, times a tint that view does not show. The Desert Canyons' and
+  the Rocky Desert's cliffs are grey with sand tops too, as that view has them; the desert rock
+  of the Dune Desert and the desert mesas stays terracotta. Wet sand and the coral caps keep
+  their screenshot colours, as their derived ones drift in chroma and hue. Re-run
+  `python -m mapgen calibrate`, or let the next render derive.
 - Chat saves merge against their base revision and across renames.
 - A recalled plan's pinned logistics are journalled with its solve.
 - The page resyncs plans and chat activity after a lost or overflowed event stream, and
