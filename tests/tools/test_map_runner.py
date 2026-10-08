@@ -284,7 +284,8 @@ def test_progress_reads_a_recorded_full_render_log():
     options = presets.normalise("render", {"size": 32768, "light": False})
     # The layers that run drew, the satellite since retired among them.
     drew = {**options, "layers": ["terrain", "satellite"]}
-    progress = store.Progress(presets.stage_plan("render", drew), 32768)
+    plan = presets.stage_plan("render", drew)
+    progress = store.Progress(plan, 32768)
     seen = []
     for line in lines.splitlines():
         progress.feed(line)
@@ -296,7 +297,9 @@ def test_progress_reads_a_recorded_full_render_log():
     assert pcts == sorted(pcts), "progress never runs backwards"
     assert progress.finished and progress.fraction_done() == 1.0
     halfway = dict(seen)["draw"]
-    assert 0.5 < halfway < 0.9
+    # The bands are cut as they settle, so the cuts left after the draw are seconds.
+    through_draw = sum(seconds for stage, seconds in plan.items() if not stage.startswith("cut:"))
+    assert 0.5 < halfway <= through_draw / sum(plan.values())
     assert progress.eta(100.0) is None
 
 

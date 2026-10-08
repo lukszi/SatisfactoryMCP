@@ -91,7 +91,7 @@ Planned as 0.2.0.
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
-  still accepted. With the light a full-size render is budgeted at about 16 minutes more and
+  still accepted. With the light a full-size render is budgeted at about 5 minutes more and
   needs 15.6 GB more scratch space.
 - Map generator: the light's scratch, `light.cache/`, is 5.4 GB smaller at full size with
   the painted layer, because the tree crowns are written once, where the bake reads them.
@@ -151,15 +151,17 @@ Planned as 0.2.0.
   run compiles them, about 3 s more. Each compiled signature is now kept in a file of its
   own, so processes compiling at once, such as the test suite's workers, no longer leave a
   cache that hands one signature another's code.
-- The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
-  render of all five layers with the light is budgeted at about 58 minutes, the default two
-  layers at about 42.
+- The Maps tab's render estimate follows a timed full render: at full size with the light,
+  the three layers are budgeted at about 28 minutes and the default two at about 24, where a
+  cold render of the three took 27.5 minutes. The paint's preparation, about 2.5 minutes
+  whenever the painted layer is drawn, is counted now. Its disk check counts the raster
+  caches at 2.2 GB and the light's tiles at 4.1 GB, as a full render writes them.
 - Map generator: a lit render that keeps its raster cache keeps its finished light beside it
   (`light.kept/`: the pyramid's tiles as hard links, and the default-sun terms, 4.3 GB at full
   size). A palette-only restyle that draws the same surface installs that light instead of
-  baking it again, about 14 minutes less at full size, and the Maps tab budgets it so. The
-  Maps tab's estimate counts those terms in what a job keeps. The light's `meta.json` records
-  the `key` it was baked under; the tiles are the same bytes.
+  baking it again, and the Maps tab budgets it so. The Maps tab's estimate counts those terms
+  in what a job keeps. The light's `meta.json` records the `key` it was baked under; the
+  tiles are the same bytes.
 - Map generator: each band is drawn in pieces of 512 columns, several pieces at once on the
   draw's threads (`--draw-columns` sets the width). On 8 threads the draw's peak memory falls
   from about 15 GB to about 2 GB, so free memory no longer cuts the thread count, and the five

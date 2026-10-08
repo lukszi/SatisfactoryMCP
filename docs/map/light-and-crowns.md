@@ -481,8 +481,9 @@ so while it draws a run reads the kept terms as long as its bands match the kept
 thread (SHA-256 runs at about 2.8 GB/s a core; the surface is 5.4 GB at 32768) and the crowns
 once as they are written (5.4 GB, about 2 s). Linking a full-size pyramid's 43,690 files took
 6.5 s on the hard disk and 9.4 s on the SSD of the reference machine, once to keep it and once
-to install it, against about 830 s for the bake. The Maps tab budgets a restyle whose cache
-holds `light.kept/meta.json` at `LIGHT_KEPT_S`, 10 s at full size, in place of the bake. Its
+to install it, against about 1,140 s for the bake on the CPU (2026-10-08), 314 s of it after
+the draw. The Maps tab budgets a restyle whose cache holds `light.kept/meta.json` at
+`LIGHT_KEPT_S`, 10 s at full size, in place of those 314 s (`LIGHT_STAGE_S`). Its
 cache size counts the linked tiles in full, though they share their blocks with the render
 they came from.
 
@@ -495,7 +496,9 @@ same surface digest, drawn on 4 threads and on 8. Timed alone on the reference m
 same pair before the change and after it: the full run took 482.5 s and 477.0 s, so the
 hashing and the keep cost nothing measurable; the restyle 208.2 s, of which 12.9 s was the
 bake on 2 workers, and 191.7 s. Every tile and sidecar of the two restyles is the same but
-the light's `key`. At full size the bake a restyle skips is about 830 s.
+the light's `key`. At full size the bake a restyle skips is about 1,140 s on the CPU and
+770 s with `--gpu`, most of it beside the draw (renders.md section 41, "The whole render,
+timed").
 
 ### Edges of the light (2026-10-07)
 

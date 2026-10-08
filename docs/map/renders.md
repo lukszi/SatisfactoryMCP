@@ -1056,8 +1056,10 @@ reading 18.5 GB from a hard disk; that is an estimate from the read rates above,
 - An older build of the generator does not find the raw files in a band-store cache, so it
   misses and rebuilds raw. The `.bands` files stay beside them until the next band-store run
   or a cache clear removes them.
-- The job estimate's cache term, `CACHE_BYTES_FULL` in `domain/maps/presets.py`, is 1.0 GB at
-  32768, scaled by area like the rest.
+- The job estimate's cache term, `CACHE_BYTES_FULL` in `domain/maps/presets.py`, is 2.23 GB at
+  32768, scaled by area like the rest: the caches a full render kept on 2026-10-08. The
+  overhangs' underside and floor planes, 1.25 GB of the direct cache, came after the 0.93 GB
+  above.
 - A cache the run cannot delete at its end, because a file in it is still open, is named:
   "could not remove <dir>: a file in it is still open".
 - The light's scratch (section 29, "Scratch") is not in the band store. It is not a cache:
@@ -1159,8 +1161,19 @@ done. Every piece of a band reads the band's columns it needs out of the same de
 cutting them before they are joined (`BandArray._span`), so a piece copies its own columns
 only. At 32768 a band is 64 pieces, so 8 threads hold 4 decoded bands where they held 18
 before the pieces; at 2048 a band is 4 pieces, and they hold 7. One stored band of every
-plane the painted layer reads comes to about 160 MB at 32768, and about 125 MB for the other
-layers.
+plane the painted layer reads comes to 315 MB at 32768, and 277 MB for the other layers
+(`STORED_BAND_BYTES`).
+
+Those are the planes the draw's threads decode, recorded on every band read of a lit 2048
+render, once with terrain and relief-dark and once with the painted layer too (2026-10-08),
+and one band of each taken at 32768 wide. Without the painted layer the pass reads 12 planes,
+33 bytes a pixel: the direct raster's height, coverage, underside and floor, the top's solid
+height and coverage, its arches' coverage and underside and its own direct height and
+coverage, and the meshes' height and class. The painted layer adds the direct and mesh
+families and the Titan trees' height and class at half width. The 160 MB and 125 MB measured
+before (2026-10-07, from the peak commit of windowed draws, "Column pieces" below) came
+before the overhangs and arches added four of those planes, 13 bytes a pixel, about 109 MB
+a band (light-and-crowns.md section 29, "Arches as spans").
 
 ### How many threads
 
@@ -1176,8 +1189,8 @@ whole size when it is allocated: with other work running, the commit ran out at 
 width (`PIECE_BYTES`); a pass paints its layers in turn over one ground, so a piece of it
 costs its dearest layer's, and 0.015 GB more (`SEABED_BYTES`) for the second ground of a pass
 that draws the painted layer and another (`piece_bytes`). The decoded bands come on top,
-about 160 MB a band with the painted layer and 125 MB without at 32768 wide ("The band
-stores"). Those figures come from the peak commit of windowed draws at 1 and 8 threads
+315 MB a band with the painted layer and 277 MB without at 32768 wide ("The band stores").
+The pieces' figures come from the peak commit of windowed draws at 1 and 8 threads
 ("Column pieces" below); before the pieces, one more band in flight cost 1.9 to 4 GB at full
 width. Memory no longer holds the default back on any machine that can hold a sheet. `1`
 draws the pieces in turn. The run prints the count, and every layer's `meta.json` records it
@@ -2181,6 +2194,47 @@ the extra commit is the CUDA contexts of the run and its light processes.
   the device: 15 of 15 draws the same SHA-256 as the baseline, on the CPU and with
   `MAPGEN_KERNELS=cuda`.
 
+### The whole render, timed (2026-10-08)
+
+The full render at 32768, lit, after the raster passes, the light on the GPU and the draw on
+the GPU (build 502094; each run alone on the machine, other work under 2 cores, numba
+compiling cold). It draws the three layers, terrain, painted and relief-dark; master at
+53144ad7 drew five, with the satellite and relief layers since retired. The preparation and
+the light do not depend on the layer count; the draw does, so it is given per layer drawn
+too. Master had no cold `--gpu` run, so both cold runs stand against master's cold CPU run.
+Warm: the raster caches reused and the light baked fresh.
+
+| Seconds | Cold, master, CPU | Cold, CPU | Cold, `--gpu` | Warm, master, `--gpu` | Warm, `--gpu` |
+| --- | --- | --- | --- | --- | --- |
+| Wall | 4,055.7 | 1,650.7 | 1,258.8 | 1,916.4 | 1,131.4 |
+| The preparation | 2,401.5 | 344.8 | 325.0 | 300.9 | 214.0 |
+| The raster passes | 2,176.0 | 103.9 | 111.2 | reused | reused |
+| The paint | 147.6 | 152.9 | 146.1 | 192.0 | 146.2 |
+| The draw | 1,275.8 | 916.9 | 694.4 | 1,088.2 | 670.2 |
+| The draw, per layer drawn | 255.2 | 305.6 | 231.5 | 217.7 | 223.4 |
+| The light, first row to installed | 1,576.8 | 1,231.6 | 850.5 | 1,482.7 | 837.7 |
+| The light after the draw | 299.9 | 313.9 | 155.4 | 393.8 | 166.7 |
+| Light processes | 11 | 14 | 11 | 10 | 11 |
+| Each layer's cut after the light | 0.1 to 0.2 | 0.1 | 0.1 | 0.1 | 0.1 |
+| CPU, user and kernel | 23,627 | 19,275 | 11,956 | 20,667 | 12,638 |
+| Peak commit, GB | 31.5 | 30.6 | 27.6 | 37.8 | 27.8 |
+
+- **Against master:** 2.46 times as fast cold on the CPU, 3.22 cold with `--gpu`, 1.69 warm
+  with `--gpu`. Cold, the raster passes are most of it (2,072 of the 2,405 s saved on the
+  CPU); warm, the light (645 s) and the draw (418 s).
+- **The draw per layer** is 20% slower than master's on the CPU: the three layers kept are
+  the heavy ones, 69% of the five layers' one-thread work in section 40's window table
+  (painted alone 41%), and the ground they share is spread over three. With `--gpu` the
+  relight takes 16 to 18 thread seconds against 638 on the CPU, and the arches' FXAA (422 on
+  the CPU) and the terrain's pieces run on the device: 9,086 calls, none back on the CPU.
+- **The light** writes the same 4,056 MB of tiles either way; its tail after the draw halves
+  with `--gpu`. Master's at 53144ad7 wrote 2,382 MB, before the folded horizon tiles moved to
+  q95 (light-and-crowns.md section 29, "Horizon tiles and coarser levels").
+- **The Maps tab's stages** over the cold CPU run's log, through its own `Progress`: prep
+  184 s (the paint 153 of it), sweep 34, direct 39, top 157, draw 918, light 314 and each
+  cut under a second. `domain/maps/presets.py` budgets these (maps_contract.md §4.3).
+- The raster caches the cold run kept are 2.23 GB, the light's terms 4.29 GB.
+
 ### Known limits
 
 - The painters left in numpy above. A kernel for the colour spaces could add its sums in
@@ -2327,8 +2381,9 @@ its trees are installed, as before.
 
 ### Known limits
 
-- Not timed at full size. The draw, the light and the encoders now contend for the cores,
-  and the presets' stage seconds for the cut and the light (maps_contract.md §4.3) wait for
-  that measurement.
+- The draw, the light and the encoders contend for the cores. Timed at full size on
+  2026-10-08 (section 41, "The whole render, timed"): each layer's cut after the light is
+  under a second, and the light's tail after the draw 314 s on the CPU and 155 s with
+  `--gpu`, which the presets' stage seconds now budget (maps_contract.md §4.3).
 - The bands waiting for the light are held in memory, not in files.
 - At 2048 and below the light is one block: nothing of it overlaps the draw.

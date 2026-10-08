@@ -278,13 +278,15 @@ records, and a job record still names its `script`.
   cache leaves; `GET /api/maps` lists those sizes as `cached_sizes`. The generator's `--restyle`
   checks the stamps (size, sub-samples, build) itself and exits 9 rather than rebuilding a
   raster, so a palette change never turns into a full render. The plan drops the sweep, direct
-  and top stages: one full-size layer is prep plus draw and cut, about 7.5 min against about
-  29 min for a full two-layer render (§4.3), both without the light. With the light, the
-  default, a lit render that kept its cache keeps its light beside it (`light.kept/`), and a
-  restyle that draws the same surface installs that light instead of baking it again
-  (spatial-and-map.md §29, "Kept light"). The estimate budgets 10 s at full size for that when
-  `light.kept/meta.json` is in the size's cache, else the bake, about 14 min (§8.1). A
-  restyle's history row is kept apart from full renders' when scaling the next estimate.
+  and top stages: one full-size layer is prep plus draw and cut, about 8 min (10 for the
+  painted layer, whose paint is prepared again) against about 18 min for a full render of
+  terrain and painted (§4.3), both without the light. With the light, the default, a lit
+  render that kept its cache keeps its light beside it (`light.kept/`), and a restyle that
+  draws the same surface installs that light instead of baking it again (spatial-and-map.md
+  §29, "Kept light"). The estimate budgets 10 s at full size for that when
+  `light.kept/meta.json` is in the size's cache, else the bake's rows left once the draw is
+  done, about 5 min (§4.3). A restyle's history row is kept apart from full renders' when
+  scaling the next estimate.
 - The one write outside `data/local` is the pre-existing one: `--enhance` downloads the
   upscaler into the user cache folder once; the form says so.
 
@@ -303,7 +305,7 @@ for a missing `gen` extra says to stop satisfactory-mcp first, because uv cannot
 ### 4.2 Disk
 
 A job is refused (507) unless free space covers what it keeps, what it needs while running
-(the raster caches, about 1 GB at 32768 in the zstd band store of spatial-and-map.md §39, and
+(the raster caches, 2.2 GB at 32768 in the zstd band store of spatial-and-map.md §39, and
 with the light its scratch, 15.6 GB, and the crown occluder's 5.4 GB whatever the layers,
 both scaled by area) and 2 GB more. A lit job that keeps its cache (`--keep-direct`, §4), or
 draws the kernel only, keeps the light's default-sun terms too, 4.3 GB at 32768, when no light
@@ -319,21 +321,24 @@ figure as freed.
 
 ### 4.3 Estimates
 
-From the stage seconds of measured full renders, area-scaled, with the direct and top passes
-floored because the triangles are the same at any size: prep 30 (2026-10-05); sweep 33,
-direct 39 and top 174, floored at 35 and 88 as measured at 2048, from a cold render of all
-five layers with the raster passes compiled and on threads (2026-10-08, spatial-and-map.md
-§41, "The raster passes"); per layer a cut of 73, and with the light a bake of 830 once and each
-layer's cut 1.8 times as long (2026-10-06); the draw, one pass for every layer
-(spatial-and-map.md §40), 150 for the ground the layers share and 190 a layer (2026-10-07).
-One layer alone draws in 340, as before; five drew in 0.65 of the time five layers drawn one
-by one took, on windows of the full-size sheet. The 2026-10-06 figures are renders-v7's
-measured stages carried over the performance work of that day (spatial-and-map.md §17, §26,
-§29 and §40): the draw, 5,810 s for five layers, on 8 threads and less 12% for lean sampling,
-about 1,700 s; the light, 2,903 s, on 16 workers in strips; the cut of five lit layers,
-1,826 s, through one encode pool, about 660 s, before the PNG deflate level moved to 6. The
-cut without the light is that over 1.8, the share of pixels a layer encodes without its
-`unlit/` tree. Once a job of the same preset and recipe, restyle or
+From the stage seconds of a measured full render, area-scaled, with the direct and top passes
+floored because the triangles are the same at any size. The render: 32768, terrain, painted
+and relief-dark, lit, cold, on the CPU, 1,651 s (2026-10-08, spatial-and-map.md §41, "The
+whole render, timed"), its log read through the tab's own `Progress` (§5.3):
+
+- prep 31, and 153 more for the paint when the painted layer is drawn, at any size;
+- sweep 34, direct 39 and top 157, the top running on to the draw; floored at 35 and 88 as
+  measured at 2048 (spatial-and-map.md §41, "The raster passes");
+- the draw, one pass for every layer (spatial-and-map.md §40): 918 for the three, split as
+  the 2026-10-07 windows split it (150 of ground to 190 a layer), so 191 for the ground the
+  layers share and 242.5 a layer;
+- with the light, 314: its rows left once the draw is done. The rest of the bake, 1,136 s on
+  14 workers, runs beside the draw and is in the draw's seconds, so an unlit draw is budgeted
+  high;
+- each layer's cut 0.2: the wait for its trees, which are cut as the bands settle (§42).
+
+For that render's options the estimate is 1,657 s. `--gpu` is not a job option; with it the
+same render took 1,259 s. Once a job of the same preset and recipe, restyle or
 not and light or not, has finished, its wall time scaled by area replaces the constants, and
 the form says "(from the last run)".
 

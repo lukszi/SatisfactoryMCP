@@ -83,30 +83,30 @@ COMMANDS = {
 #: The modules the generators need from the ``gen`` extra.
 GEN_MODULES = ("ooz", "texture2ddecoder", "PIL", "zstandard")
 
-#: Seconds per stage of one full 32768 px render, from its log: ``prep`` of both layers
-#: (2026-10-05); the sweep, the direct pass and the top through the water of all five, cold,
-#: with the raster passes compiled and on threads (2026-10-08). They scale with the sheet's
-#: area, and ``direct`` and ``top`` never drop under their floors: the triangles are the same
-#: at any size.
-RENDER_STAGE_S = {"prep": 30.0, "sweep": 33.0, "direct": 39.0, "top": 174.0}
-#: Per layer, from renders-v7's five lit layers and the 2026-10-06 performance work
-#: (docs/maps_contract.md section 4.3): the parallel cut of a layer without the light.
-RENDER_LAYER_S = {"cut": 73.0}
-#: The draw, one pass over every layer (section 4.3): the ground the layers share, once, and
-#: each layer's colour over it. One layer alone takes 340 s, the draw on 8 threads less lean
-#: sampling's 12%; five take 0.65 of five drawn one by one (2026-10-07).
-RENDER_DRAW_S = {"ground": 150.0, "layer": 190.0}
-#: ``--light``: the lighting bake once, on 16 workers (docs/spatial-and-map.md section 29), and
-#: per layer the unlit tree cut beside the baked one, ``LIGHT_CUT_FACTOR`` times the cut. The
-#: scratch is the light cache while it runs, and the crown occluder the paint store adds to
-#: it whatever the layers, written once (section 29, "Scratch").
-LIGHT_STAGE_S = 830.0
+#: Seconds per stage of one full 32768 px render on the CPU, from the log of a cold, lit render
+#: of the three layers (2026-10-08, docs/maps_contract.md section 4.3): ``prep``, and ``paint``
+#: on top of it when the painted layer is drawn; ``top`` runs on to the draw. ``direct`` and
+#: ``top`` scale with the sheet's area and never drop under their floors: the triangles are
+#: the same at any size.
+RENDER_STAGE_S = {"prep": 31.0, "paint": 153.0, "sweep": 34.0, "direct": 39.0, "top": 157.0}
+#: Per layer: the wait for its trees once the draw and the light are done, since the bands
+#: are cut as they settle (section 4.3).
+RENDER_LAYER_S = {"cut": 0.2}
+#: The draw, one pass over every layer with the light baking beside it: the ground the layers
+#: share, once, and each layer's colour over it. The three layers' 918 s (2026-10-08), split as
+#: the 2026-10-07 windows split it, 150 s of ground to 190 a layer.
+RENDER_DRAW_S = {"ground": 191.0, "layer": 242.5}
+#: ``--light``: the bake's rows left once the draw is done, 314 of its 1,136 s on 14 workers
+#: (2026-10-08). The scratch is the light cache while it runs, and the crown occluder the paint
+#: store adds to it whatever the layers, written once (docs/spatial-and-map.md section 29,
+#: "Scratch").
+LIGHT_STAGE_S = 314.0
 #: A restyle at a size whose cache keeps a light installs it instead of baking: hard links to
 #: the full-size pyramid's 43,690 files, 6.5 to 9.4 s on the reference machine
 #: (docs/spatial-and-map.md section 29, "Kept light").
 LIGHT_KEPT_S = 10.0
-LIGHT_CUT_FACTOR = 1.8
-LIGHT_KEEP_BYTES = 1_000_000_000
+#: The light's pyramid at full size, its folded horizon tiles at q95: 4.06 GB (2026-10-08).
+LIGHT_KEEP_BYTES = 4_060_000_000
 UNLIT_KEEP_BYTES = 450_000_000
 LIGHT_SCRATCH_BYTES = 15_570_000_000
 CROWN_SCRATCH_BYTES = 5_370_000_000
@@ -118,9 +118,9 @@ DIRECT_FLOOR_S = 35.0
 TOP_FLOOR_S = 88.0
 RENDER_KEEP_BYTES = 890_000_000
 RENDER_KEEP_FLOOR = 10_000_000
-#: The raster caches of one full render in the zstd band store: 0.93 GB measured, where the
-#: raw layout they replace was 18.5 GB (docs/spatial-and-map.md section 39).
-CACHE_BYTES_FULL = 1_000_000_000
+#: The raster caches of one full render in the zstd band store: 2.23 GB measured (2026-10-08),
+#: 1.25 GB of it the overhangs' undersides and floors (docs/spatial-and-map.md section 39).
+CACHE_BYTES_FULL = 2_230_000_000
 SPARE_BYTES = 2_000_000_000
 
 #: Seconds and bytes kept of the presets that do not scale: the artwork, plain or upscaled,
@@ -222,21 +222,21 @@ def _area(size: float) -> float:
 def _render_seconds(options: RenderOptions, cache_hit: bool = False) -> dict[str, float]:
     area = _area(options["size"])
     kernel = options["recipe"] == "kernel-only"
-    stages = {"prep": RENDER_STAGE_S["prep"]}
+    layers = options["layers"]
+    paint = RENDER_STAGE_S["paint"] if "painted" in layers else 0.0
+    stages = {"prep": RENDER_STAGE_S["prep"] + paint}
     if not kernel and not cache_hit and not options.get("restyle"):
         stages["sweep"] = RENDER_STAGE_S["sweep"]
         stages["direct"] = max(DIRECT_FLOOR_S, RENDER_STAGE_S["direct"] * area)
         if options["top"]:
             stages["top"] = max(TOP_FLOOR_S, RENDER_STAGE_S["top"] * area)
-    layers = options["layers"]
     draw = RENDER_DRAW_S["ground"] + RENDER_DRAW_S["layer"] * len(layers)
     stages["draw"] = draw * area + 2.0
     if options.get("light"):
         kept = options.get("restyle") and light_kept(options["size"])
         stages["light"] = (LIGHT_KEPT_S if kept else LIGHT_STAGE_S) * area + 2.0
-    cut = RENDER_LAYER_S["cut"] * (LIGHT_CUT_FACTOR if options.get("light") else 1.0)
     for layer in layers:
-        stages[f"cut:{layer}"] = cut * area + 2.0
+        stages[f"cut:{layer}"] = RENDER_LAYER_S["cut"] * area + 2.0
     return stages
 
 

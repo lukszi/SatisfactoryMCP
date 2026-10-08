@@ -58,7 +58,7 @@ SEABED_BYTES = 0.015e9
 
 #: One decoded stored band of every plane a pass reads, at 32768 wide: with the painted
 #: layer, and without (None). Scaled by the sheet's width.
-STORED_BAND_BYTES = {"painted": 0.16e9, None: 0.125e9}
+STORED_BAND_BYTES = {"painted": 0.315e9, None: 0.277e9}
 SHEET_WIDTH = 32768
 
 #: Memory left free for everything but the pieces: the rest of the process and the machine.
