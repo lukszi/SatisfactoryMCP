@@ -2,23 +2,24 @@
 tiles of one block can encode side by side in its light process.
 
 With ``--gpu`` the marches leave a light process little but the encode, which was then most
-of a block's time; a block row's blocks share the cores between them. Without it, one thread a
-block, as before. The bytes are the same either way. docs/map/renders.md section 41, "On the
-GPU".
+of a block's time; a block row's blocks share the cores between them, and the encode runs
+beside the block's default-sun terms. Without it, one thread a block, in turn, as before. The
+bytes are the same either way. docs/map/renders.md section 41, "On the GPU".
 """
 
 from __future__ import annotations
 
 import itertools
 import os
-from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Generator, Iterator
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import contextmanager
 
 from mapgen.jit import gpu_on
 from mapgen.lighting.light_tiles import encode_tiles
 from satisfactory_mcp.core.arrays import U8Grid
 
-__all__ = ["ENCODE_BATCH", "ENCODE_THREADS", "encode_threads", "encoded"]
+__all__ = ["ENCODE_BATCH", "ENCODE_THREADS", "encode_beside", "encode_threads", "encoded"]
 
 #: The threads a block's tiles are encoded on at most, and the tiles a thread is handed at a
 #: time: only these are made and held at once.
@@ -44,3 +45,18 @@ def encoded(jobs: Iterator[tuple[str, U8Grid, U8Grid]], threads: int) -> int:
         while batch := list(itertools.islice(jobs, ENCODE_BATCH * threads)):
             written += sum(pool.map(encode_tiles, ([tile] for tile in batch)))
     return written
+
+
+@contextmanager
+def encode_beside(
+    jobs: Iterator[tuple[str, U8Grid, U8Grid]], threads: int
+) -> Generator[Future[int], None, None]:
+    """``encoded(jobs, threads)``: on one thread, done before the block goes on; on more,
+    beside what the block does in the ``with``, and done when it leaves."""
+    if threads <= 1:
+        done: Future[int] = Future()
+        done.set_result(encode_tiles(jobs))
+        yield done
+        return
+    with ThreadPoolExecutor(1) as beside:
+        yield beside.submit(encoded, jobs, threads)

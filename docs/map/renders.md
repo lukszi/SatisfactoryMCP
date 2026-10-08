@@ -1767,7 +1767,8 @@ reference, and the tiles are the same bytes either way.
   three quarters of its time. libwebp lets go of the GIL while it encodes (16 atlases of
   1024 × 1024 in 4.41 s on one thread, 0.75 s on eight, the same bytes), so with `--gpu` a
   block's tiles encode on threads (`lighting/encoding.py`): the cores a block row leaves each
-  of its blocks, at most eight. Without `--gpu` a block encodes on one thread, as before.
+  of its blocks, at most eight, beside the block's default-sun terms. Without `--gpu` a block
+  encodes on one thread before its terms, as before.
 
 **Measured** (build 502094, RTX 3080; the machine shared, its CPU about half busy, no render
 lock: timings wait for the round's one exclusive run). One full-size light block, the bench of

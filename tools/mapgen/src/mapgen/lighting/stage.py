@@ -26,7 +26,7 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
-from mapgen.lighting.encoding import encoded
+from mapgen.lighting.encoding import encode_beside
 from mapgen.lighting.horizon import HORIZON_DIRS, encode_horizon, normals, sky_view
 from mapgen.lighting.lanes import device_lane
 from mapgen.lighting.light_tiles import (
@@ -390,13 +390,13 @@ def bake_block(job: BlockJob) -> BlockDone:
     del nx, ny, svf
     t = PYRAMID_TILE_PX
     tiled = tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas)
-    hz_bytes = encoded(tiled, job.encode_threads)
-    canopy = None
-    if canopy_sky is not None:
-        canopy = block_canopy(work, job.block, horizons.canopy, canopy_sky)
-    _default_terms(work, job, nrm, horizons, canopy)
-    horizon_quarter = horizons.quarter
-    del horizons, canopy
+    with encode_beside(tiled, job.encode_threads) as written:
+        canopy = None
+        if canopy_sky is not None:
+            canopy = block_canopy(work, job.block, horizons.canopy, canopy_sky)
+        _default_terms(work, job, nrm, horizons, canopy)
+        horizon_quarter = horizons.quarter
+        del horizons, canopy
     h0, w0 = r0 // 2, c0 // 2
     ringed = fill_holes(z_half[halo - 1 : 1 - halo, halo - 1 : 1 - halo], holes, 0.0)
     half = (slice(h0, h0 + half_px), slice(w0, w0 + half_px))
@@ -406,7 +406,7 @@ def bake_block(job: BlockJob) -> BlockDone:
     quarter = (slice(h0 // 2, (h0 + half_px) // 2), slice(w0 // 2, (w0 + half_px) // 2))
     work_array(work, "hzq", np.uint8)[quarter] = horizon_quarter
     tiles = (nrm.shape[0] // t) * (nrm.shape[1] // t)
-    return BlockDone(tiles, hz_bytes, time.time() - started, _gpu_calls())
+    return BlockDone(tiles, written.result(), time.time() - started, _gpu_calls())
 
 
 def _gpu_calls() -> dict[str, int]:
