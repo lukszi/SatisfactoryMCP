@@ -1844,6 +1844,13 @@ one step to the next, which is a different draw.
   patch of holes and with nothing but holes. It runs a block out of device memory at its fifth
   direction with room for a call and without, and holds the counts, the lanes, the encode's
   bytes on threads and that a cubin keeps subnormals.
+- G1 at 2048 (2026-10-08, all five layers, lit, rasters rebuilt), without `--gpu` and with
+  it, each against the stories' baseline and against each other: all 1,125 tiles the same
+  bytes, the light's 170 among them, and the six sidecars the same apart from their timings.
+  The `--gpu` run logged `light: horizon and sky-view calls 66 on NVIDIA GeForce RTX 3080; 0
+  ran on numba`, and its light took 9.5 s against 26.0 s.
+- The whole light of the 8192 surface, baked by the pool with its lanes and threads: its
+  2,730 tile files and its terms the same SHA-256 with `--gpu` as without.
 
 ### Known limits
 
