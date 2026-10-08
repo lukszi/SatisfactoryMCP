@@ -14,6 +14,8 @@ export interface Sun {
   hour: number | null;
   /** Whether the light is drawn at all; off, the map shows its flat colour. */
   shade: boolean;
+  /** Whether the trees are drawn, on a map that holds them apart; off takes their shadows. */
+  trees: boolean;
   terrainShadows: boolean;
   treeShadows: boolean;
   sky: boolean;
@@ -115,6 +117,7 @@ export function currentSun(): Sun {
     elevationDeg: at.elevationDeg,
     hour: at.hour,
     shade: settingOn("mapShade"),
+    trees: settingOn("mapTrees"),
     terrainShadows: settingOn("sunShadows"),
     treeShadows: settingOn("sunTreeShadows"),
     sky: settingOn("sunSky"),

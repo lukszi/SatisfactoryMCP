@@ -32,6 +32,10 @@ import type { Sun } from "./sun";
 /** What the base map's light offers: tree shadows or not, and why it is not drawn live. */
 export interface LightControls {
   trees: boolean;
+  /** The trees are held apart from the ground, so they can be switched off (`parts.trees`). */
+  apart: boolean;
+  /** The tree cells hold the trees alone, so tree shadows without terrain shadows are whole. */
+  alone: boolean;
   /** "" while the light is drawn live, else the reason it is not. */
   off: string;
 }
@@ -39,7 +43,7 @@ export interface LightControls {
 /** The compass dial's radius, in its own SVG units: the horizon ring. */
 const COMPASS_RADIUS_PX = 46;
 let control: L.Control | null = null;
-let controls: LightControls = { trees: false, off: "" };
+let controls: LightControls = { trees: false, apart: false, alone: false, off: "" };
 let refresh: ((sun: Sun) => void) | null = null;
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -139,16 +143,19 @@ function toggle(label: string, key: string, read: (sun: Sun) => boolean) {
   });
   row.appendChild(box);
   row.appendChild(document.createTextNode(" " + label));
+  const hint = row.title;
   return {
     row: row,
-    show: function (sun: Sun) {
+    show: function (sun: Sun, why = "") {
       box.checked = read(sun);
+      box.disabled = !!why;
+      row.title = why || hint;
     },
   };
 }
 
-/* The switches, the hillshade-only look, and a note for the one mix the light cannot draw in
- * full: tree shadows without terrain shadows (docs/spatial-and-map.md §29, "The page"). */
+/* The switches, the hillshade-only look, and a note for the one mix an older light cannot draw
+ * in full: tree shadows without terrain shadows (docs/spatial-and-map.md §29, "The page"). */
 function switches(): { el: HTMLElement; show: (sun: Sun) => void } {
   const terrain = toggle("terrain shadows", "sunShadows", function (sun) {
     return sun.terrainShadows;
@@ -175,11 +182,12 @@ function switches(): { el: HTMLElement; show: (sun: Sun) => void } {
   return {
     el: el,
     show: function (sun) {
+      const treesOff = controls.apart && !sun.trees;
       terrain.show(sun);
-      trees.show(sun);
+      trees.show(sun, treesOff ? "the trees are off: tick trees under the base map" : "");
       sky.show(sun);
       trees.row.hidden = !controls.trees;
-      gap.hidden = !(controls.trees && sun.treeShadows && !sun.terrainShadows);
+      gap.hidden = !(controls.trees && !controls.alone && !treesOff && sun.treeShadows && !sun.terrainShadows);
       flat.setAttribute("aria-pressed", isHillshadeOnly(sun, controls.trees) ? "true" : "false");
     },
   };

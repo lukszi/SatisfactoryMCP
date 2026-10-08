@@ -185,6 +185,14 @@ export const SETTINGS: Setting[] = [
   },
   {
     kind: "switch",
+    key: "mapTrees",
+    group: "map",
+    label: "trees",
+    hint: "the tree crowns and the Titan trees, with their shadows, on a map drawn with them apart; off shows the ground under them",
+    fallback: true,
+  },
+  {
+    kind: "switch",
     key: "sunShadows",
     group: "map",
     label: "terrain shadows",
