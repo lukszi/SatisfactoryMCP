@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from typing import NotRequired, Required, TypedDict
 
 import pytest
 
@@ -50,6 +51,40 @@ def test_a_missing_and_a_stray_key_are_named_with_their_place():
     palette = _file("painted")
     palette["water_classes"]["lakeblue"] = palette["water_classes"]["lake_blue"]
     assert "water_classes: not read ['lakeblue']" in _refusal("painted", palette)
+
+
+class _Optional(TypedDict):
+    kept: int
+    left_out: NotRequired[int]
+
+
+class _Partial(_Optional, total=False):
+    loose: int
+    held: Required[int]
+
+
+def test_a_not_required_key_may_be_left_out_under_postponed_annotations():
+    assert schema.checked(_Optional, {"kept": 1}, "t") == {"kept": 1}
+    assert schema.checked(_Partial, {"kept": 1, "held": 2}, "t") == {"kept": 1, "held": 2}
+    with pytest.raises(schema.PaletteError, match=r"missing \['held', 'kept'\]"):
+        schema.checked(_Partial, {"left_out": 3, "loose": 4}, "t")
+
+
+@pytest.mark.parametrize(
+    ("layer", "path"),
+    [
+        ("painted", ("carpet",)),
+        ("painted", ("calibration", "derived_keys")),
+        ("painted", ("calibration", "derived_ungated")),
+    ],
+)
+def test_a_shipped_palette_may_leave_out_its_optional_blocks(layer, path):
+    palette = _file(layer)
+    holder = palette
+    for key in path[:-1]:
+        holder = holder[key]
+    del holder[path[-1]]
+    assert schema.checked(SHAPES[layer], palette, LAYER_STYLES[layer]) is palette
 
 
 def test_values_are_held_to_their_type():
