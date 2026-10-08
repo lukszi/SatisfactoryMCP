@@ -204,7 +204,8 @@ references were used. A target is a screenshot measured so, or derived by a rule
 | Rock | Grass Fields, Northern Forest, Western Dune Forest | #7e7868 | screenshot | up-facing lit rock: [store shot](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/ss_b1104309f1c22c85de6ad6c401e6d889411c14d2.1920x1080.jpg), [Random mode 1](https://satisfactory.wiki.gg/images/Random_Game_Mode_-_Resource_Node_Example_1.png), [cave entrance](https://satisfactory.wiki.gg/images/Entrance_Of_A_Cave.webp), [Northern Forest U8](https://satisfactory.wiki.gg/images/Comparison_2_-_Northern_Forest_-_U8.png) |
 | Rock and Cliff layer | Red Jungle, Jungle Spires, Red Bamboo Fields | #877e6e | screenshot | [Jungle Spires](https://satisfactory.wiki.gg/images/Jungle_Spires.png), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942) |
 | Rock, default | everywhere else, the Spire Coast included | #85816c | screenshot | [Abyss Cliffs](https://satisfactory.wiki.gg/images/Abyss_Cliffs.png), [Lake Forest](https://satisfactory.wiki.gg/images/Lake_Forest.png), the store shot. Lit up-facing bare rock on the Spire Coast pools to #877b71, ΔE 2.1 from it (see "The Spire Coast rock from its own material") |
-| Top layer, forest family | the up-facing faces of every `_Forest` cliff and rock, in patches | #505936 | screenshot | moss and grass on lit Spire Coast tops, six boxes pooled: [Can't beat that view](https://images.steamusercontent.com/ugc/12186521166813992372/550A8BFD145E1EC2AFAF479D7DE6B99D87CB37FD/) (the arch top and a shelf), [a Spire pillar](https://images.steamusercontent.com/ugc/54708874924571662/8337E85F52B3538ED4EC6B96D2B0281B9DC53240/), [a leaning pillar from above](https://images.steamusercontent.com/ugc/14675271398369972649/33698D99D1A66B96456520E8149422C870255F1D/), [the oil platform](https://images.steamusercontent.com/ugc/16557712698482623084/7042B540721BDD03CD7F72A2D5CD82452986D6E4/) and an unpublished 1.0 shot (see "Moss in patches") |
+| Top layer, forest family | the up-facing faces of every `_Forest` cliff and rock, where the cliff master's mask puts the top | #505936 | screenshot | moss and grass on lit Spire Coast tops, six boxes pooled: [Can't beat that view](https://images.steamusercontent.com/ugc/12186521166813992372/550A8BFD145E1EC2AFAF479D7DE6B99D87CB37FD/) (the arch top and a shelf), [a Spire pillar](https://images.steamusercontent.com/ugc/54708874924571662/8337E85F52B3538ED4EC6B96D2B0281B9DC53240/), [a leaning pillar from above](https://images.steamusercontent.com/ugc/14675271398369972649/33698D99D1A66B96456520E8149422C870255F1D/), [the oil platform](https://images.steamusercontent.com/ugc/16557712698482623084/7042B540721BDD03CD7F72A2D5CD82452986D6E4/) and an unpublished 1.0 shot (see "The top layer's colours") |
+| Rock, arches and boulders | the top pass, everywhere | #8a8671 | derived (bake) | the default rock at 1.088 times its luminance, the median arch and boulder body over the cliffs' in the game's baked distant view, per area (painted.md section 30, "Rock textures") |
 | Sand | the deserts and Savanna | #c4ab8b | screenshot | [Somersloop](https://satisfactory.wiki.gg/images/Somersloop_at_Rocky_Desert.jpg), [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), [Desert Canyons](https://satisfactory.wiki.gg/images/Desert_Canyons.png) |
 | WetSand | the deserts and Savanna | #987b61 | derived (rule) | the entry's Sand at L ×0.80, C ×1.0, h −10 ("Wet sand by rule" above) |
 | Gravel | the deserts and Savanna | #8f8373 | screenshot | Somersloop, and the gravel-to-sand ratio in Desert Canyons |
@@ -300,7 +301,7 @@ has another shape and no material of its own.
 Windows of the full-size grid (0.229 m to the pixel, 240 to 300 m across) drawn in-process
 through `render_layer`, with the fifth render's raster caches, the paint store, and no artwork
 detail and no open sea. Values are the median of the pixels named, display sRGB, and ΔE is
-OKLab ×100. The rock tops are measured in "Moss in patches".
+OKLab ×100. The rock tops were measured with the patches of 2026-10-06.
 
 | Window | Pixels | Drawn | Against the reference |
 | --- | --- | --- | --- |
@@ -321,31 +322,15 @@ The canopy's global step is +0.037 in lightness and ×1.141 in chroma over 26,00
 red Kapok's own is −0.035 and ×0.646 over its 1,324 trees. The wet sand's derived targets reach
 the bed under shallow water too, as the bed is the ground seen through the water.
 
-### Moss in patches (2026-10-06)
+### The top layer's colours (2026-10-06; the mask, 2026-10-09)
 
-On the Spire Coast's lit tops the screenshots show moss and grass on 14 to 66% of the face, in
-patches with bare rock between them, pooled #505936. So the top layer lies in patches inside
-section 30's up-facing ramp, and the forest top wears that colour. A solid lid in the forest
-texture's mean draws #58713d on flat ground, ΔE 7.5 from it.
-
-**No mask from the game.** Where the top shows is decided inside `CliffTopMaterial`, the
-Cliff master's top-layer function. It is cooked into the master, so its mask cannot be read
-(section 30, "Rock surfaces"). The patches are a rule drawn by the style and tuned to the
-screenshots' share, not game data.
-
-**The mask.** `palette/painted/surfaces.py` `top_cover` multiplies section 30's up-facing ramp
-by a patch mask from `rock_top.patches`. The mask's noise is `patch_noise`: value noise on a
-lattice in world metres from the frame's corner, each lattice point valued by a 64-bit hash
-of its indices and the seed, blended by smoothstep. Three octaves of 16, 6 and 2.5 m weigh
-0.4, 0.35 and 0.25 (`octaves_m`, `seed` 5). Each pixel samples the noise at its own centre,
-so a point of the world draws the same in every band, tile, window and sheet size, and no
-texture is stored. Flatness shapes it: the noise is lowered by up to `flat_gain` 0.1, all of
-it at `nz` 0.85 and none from 0.97 up (`flat`), so flatter faces carry more moss. The mask is
-that noise against `level` 0.5, through an edge `soft` 0.06 wide. On flat faces that is moss
-on 49% of the rock, 26 to 72% in 30 m boxes (10th to 90th percentile); at `nz` 0.85 it is
-21%, 6 to 40% in 30 m boxes. The mask applies wherever the top does: on the heightfield
-cliffs by the direct pass's family plane, and on the render-only rocks by their own family
-(`mesh_surface`).
+On the Spire Coast's lit tops the screenshots show moss and grass on 14 to 66% of the face,
+pooled #505936, and the forest top wears that colour. From 2026-10-06 the top lay in value
+noise patches inside an up-facing ramp, a rule tuned to the screenshots' share. Since
+2026-10-09 it lies where the cliff master's own slope mask puts it, read from its compiled
+shader, and the look's normal maps break its edge (painted.md section 30, "Rock textures"):
+the game's baked distant view has the coastal tops mossy over the whole up-facing face, the
+screenshots' bare share being the mesh normal maps' own relief.
 
 **The forest top.** `calibration.tops` names a display target for a family's top, made a
 ground colour as the other display targets are (`top_targets`, applied by `family_tables`).
@@ -361,32 +346,6 @@ the texture's mean, as red grass is. A texture mean is brighter than the bake th
 fitted on: the sand top's (linear 0.56, 0.45, 0.33) drew near white (#fce1c1 to #ffe7ca) in
 patches over the desert and beach rock of the Rocky Desert, the Dune Desert's edge and the
 Northern Forest's sand cliffs.
-
-**Measured** as in "The land rules, measured", on windows 280 m across. The pixels are
-forest-family rock facing up (`nz` above 0.85), clear of water, crowns and canopy, with the
-heightfield cliffs (rock weight at least 0.99, no mesh) and the render-only rocks counted
-apart. The moss share is the share of them with a top weight of at least 0.5; "moss" is the
-median of those at least 0.9 moss.
-
-| Window | Pixels | Moss share | All tops | Moss | Moss ΔE to #505936 |
-| --- | --- | --- | --- | --- | --- |
-| Lagoon stacks (203, -2515) | cliff tops, 13,253 | 0.523 | #707157 | #4e5734 | 0.7 |
-| | render-only rock tops, 6,184 | 0.384 | #7c7861 | #4e5734 | 0.7 |
-| Spiral (-339, -2275) | cliff tops, 35,848 | 0.343 | #837f69 | #4f5835 | 0.4 |
-| Lake Forest (298, -557) | cliff tops, 123,793 | 0.353 | #7f7b65 | #535c38 | 1.1 |
-| | render-only rock tops, 3,070 | 0.308 | #86826c | #555e3b | 1.7 |
-| Spire cliffs (357, -1670) | cliff tops, 189,822 | 0.452 | #7f795f | #515a37 | 0.4 |
-| | render-only rock tops, 68,450 | 0.514 | #767259 | #535c39 | 1.1 |
-
-In 30 m boxes the cliff tops carry 14 to 72% moss in the Lake Forest (10th to 90th
-percentile of 15 boxes) and 26 to 67% at the Spire cliffs (25 boxes), against the
-screenshots' 14 to 66%. A window's share is below the flat 49% because most of its tops are
-short of `nz` 0.97. Between the patches the tops show the area's rock as drawn: #85816c in
-the Lake Forest, the default target, #86826d to #8e8a74 in the two Spire Coast windows, and
-#9a8472 at the Spire cliffs, which stand on the Desert Canyons' edge.
-
-**Cost.** On one full-width band of the 32768 sheet the mask adds 0.43 s where 2.5% of the
-pixels carry a top, and 1.0 s where 10 to 26% do: 55 to 133 s over the sheet's 128 bands.
 
 ### Other colours
 
@@ -725,9 +684,9 @@ Canyons and the Rocky Desert too, and so coloured every rock there salmon, the 5
 cliff-family placements included, though the HLOD bake has those cliffs grey with sand tops, as
 the showcase frames do. It now names the Dune Desert only. The two areas' rock wears the
 default (#85816c on this build, the derived rock being declined by the gate), and their sand
-tops the desert sand target #c4ab8b in patches; the desert rock family wears its own target
-wherever it stands, so the mesas stay terracotta. The derived key is `areas[DuneDesert].rock`,
-the same rule and the same #c38761 as before.
+tops the desert sand target #c4ab8b where the cliff master's mask puts them; the desert rock
+family wears its own target wherever it stands, so the mesas stay terracotta. The derived key
+is `areas[DuneDesert].rock`, the same rule and the same #c38761 as before.
 
 The HLOD bake itself could become a source: rasterised top-down at 1 m it gives the game's own
 colour of every merged mesh, trees included, though its proxies are coarse.
@@ -744,10 +703,10 @@ colour of every merged mesh, trees included, though its proxies are coarse.
   green, and the others keep the bake's colour.
 - The Grass Fields grass target comes from one place, seen in four v1.1 shots; the biome
   is inferred from the flowers. Grass elsewhere keeps the global target.
-- The patches of the top layer are a rule, not the game's mask, which is cooked into
-  `CliffTopMaterial` ("Moss in patches"). Only the forest top has a colour measured from
-  screenshots; the sand and grass tops wear their layers' targets and the red grass top its
-  texture's mean, in the same patches. The `_WetSand` instances' top layer is the cooked
+- The top layer's mask is the cliff master's, read with the look's normal maps where the game
+  reads each mesh's own (painted.md section 30, "Rock textures"). Only the forest top has a
+  colour measured from screenshots; the sand and grass tops wear their layers' targets and
+  the red grass top its texture's mean. The `_WetSand` instances' top layer is the cooked
   master's default and is not drawn; whether it shows in game is unchecked.
 - The red Kapok is crimson wherever it grows, the Rocky Desert and the Red Bamboo Fields
   included, by the Red Jungle's references. Its crowns there were not measured from above.
