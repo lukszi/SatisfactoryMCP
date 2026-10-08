@@ -158,6 +158,31 @@ def test_a_texture_s_size_is_read_ahead_of_its_pixel_format_and_a_mip_takes_its_
     assert mip_shape((64, 64), 64 * 64 * 4, None, 4) == (64, 64)
 
 
+def test_a_slot_s_shading_is_its_normal_map_moss_and_spherical_normals():
+    normal = np.zeros((8, 8, 4), np.uint8)
+    normal[..., 0], normal[..., 1] = 204, 128  # x 0.6, y 0
+    moss = np.full((8, 8, 4), 255, np.uint8)
+    chain = [
+        {
+            "scalar": {"Contrast": 3.0, "Fall Off": 0.4, "Spherical Normals Influence": 0.9},
+            "vector": {
+                "Moss Color Tint": (0.5, 1.0, 0.25, 1.0),
+                "1.2 Style wind Crown Pivot": (0.0, 0.0, 1000.0, 1.0),
+            },
+            "texture": {"Normal": "nor", "Baked Normal": "baked", "Moss Albedo": "moss"},
+            "parent": None,
+        }
+    ]
+    got = ts.slot_shading(chain, 8, lambda p, _s: {"nor": normal, "moss": moss}[p])
+    assert got.normal_map is not None
+    assert np.allclose(got.normal_map[0, 0], (0.6, 0.0, 0.8), atol=0.01), "Normal before Baked"
+    assert got.moss == pytest.approx((0.5, 1.0, 0.25)), "the texture's mean, tinted"
+    assert (got.moss_low, got.moss_gain) == pytest.approx((0.6, 7.5))
+    assert (got.sphere, got.pivot_cm) == (pytest.approx(0.9), (0.0, 0.0, 1000.0))
+    plain = ts.slot_shading(_chain(None), 8, lambda p, _s: normal)
+    assert plain.normal_map is None and plain.moss is None and plain.sphere == 0.0
+
+
 def test_a_leaf_s_mask_is_the_packed_map_s_blue_before_any_alpha():
     rgba = np.zeros((16, 16, 4), np.uint8)
     rgba[..., :3] = 128

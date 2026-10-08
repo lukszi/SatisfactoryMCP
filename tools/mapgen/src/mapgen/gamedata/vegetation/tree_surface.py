@@ -1,12 +1,12 @@
-"""A tree mesh as the crown sprite raster draws it: LOD 0 with its first UV set and vertex
-normals, and each material slot's albedo and leaf mask at the size the raster samples them.
-docs/map/light-and-crowns.md section 36, "Crown sprites".
+"""A tree mesh as the crown sprite raster draws it: LOD 0 with its first UV set and tangent
+basis, and each material slot's albedo, leaf mask, normal map, moss and spherical normals at
+the size the raster samples them. docs/map/light-and-crowns.md section 36, "Crown sprites".
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -32,15 +32,23 @@ __all__ = [
     "MASK_BINARY",
     "MASK_EDGE",
     "MASK_SIDE",
+    "MOSS_RAMP",
+    "MOSS_SIDE",
+    "NORMAL_PARAMS",
+    "PIVOT_PARAM",
+    "SPHERE_PARAM",
     "TEXTURE_SIDE_MAX",
     "TEXTURE_SIDE_MIN",
     "SizedTextureReader",
+    "SlotShading",
     "SlotTexture",
     "SurfaceMesh",
     "is_mask",
     "read_surface",
+    "slot_shading",
     "slot_texture",
     "slot_textures",
+    "tangent_normals",
     "texture_side",
     "uv_scale_cm",
 ]
@@ -59,11 +67,22 @@ MASK_SIDE = 256
 MASK_BINARY = 0.85
 MASK_EDGE = 32
 
+#: Texture parameters that carry a tangent-space normal map, in the order tried.
+NORMAL_PARAMS = ("Normal", "Grass Normal", "Baked Normal")
+#: A bark's moss: its colour is the mean of this decoded size; where it lies is a ramp on the
+#: normal's z from ``1 - Fall Off``, steep as ``Contrast / Fall Off``, these where unset.
+MOSS_SIDE = 64
+MOSS_RAMP = (0.5, 1.0)
+#: The wind-plant master's spherical normals: how far, and about which point.
+SPHERE_PARAM = "Spherical Normals Influence"
+PIVOT_PARAM = "1.2 Style wind Crown Pivot"
+
 
 @dataclass(frozen=True)
 class SurfaceMesh:
     """One tree mesh's LOD 0: positions (cm), UV set 0, vertex normals, triangles, each
-    triangle's material slot, the slot list, and the mesh's ``ExtendedBounds`` corners."""
+    triangle's material slot, the slot list; the tangents and bitangent signs, the vertex
+    colours (RGBA8) where the mesh keeps them, and the mesh's ``ExtendedBounds`` corners."""
 
     verts: F32Grid
     uvs: F32Grid
@@ -71,7 +90,28 @@ class SurfaceMesh:
     tris: I64Grid
     slots: I64Grid
     materials: list[str | None]
+    tangents: F32Grid | None = None
+    signs: F32Grid | None = None
+    colours: U8Grid | None = None
     bounds: tuple[F64Grid, F64Grid] | None = None
+
+
+@dataclass(frozen=True)
+class SlotShading:
+    """What a slot's material does to a sample beyond its albedo.
+
+    ``normal_map`` holds tangent-space unit normals (h x w x 3) or is None. A bark with a moss
+    layer wears ``moss`` (linear) where its normal's z passes ``moss_low``, fully from
+    ``1 / moss_gain`` above it. ``sphere`` is how far its normals bend toward the direction
+    from ``pivot_cm`` (mesh cm), as a foliage material's spherical normals do.
+    """
+
+    normal_map: F32Grid | None = None
+    moss: tuple[float, float, float] | None = None
+    moss_low: float = 1.0
+    moss_gain: float = 0.0
+    sphere: float = 0.0
+    pivot_cm: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
 
 @dataclass(frozen=True)
@@ -80,13 +120,15 @@ class SlotTexture:
 
     ``albedo`` is linear, with the instance's ``Brightness`` and ``Saturation`` applied;
     ``alpha`` is the leaf mask (255 where the slot has none) and ``masked`` whether the raster
-    tests it. A skipped slot carries a 1 x 1 texture and is never drawn.
+    tests it; ``shading`` its normal map, moss and spherical normals. A skipped slot carries a
+    1 x 1 texture and is never drawn.
     """
 
     kind: str
     albedo: F32Grid
     alpha: U8Grid
     masked: bool
+    shading: SlotShading = field(default_factory=SlotShading)
 
 
 def read_surface(game: GameReader, mesh: str) -> SurfaceMesh | None:
@@ -112,11 +154,13 @@ def read_surface(game: GameReader, mesh: str) -> SurfaceMesh | None:
     for section in parsed["lods"][0].sections:
         first = section.first_index // 3
         slots[first : first + section.triangles] = section.material
-    uvs, normals = surface
     return SurfaceMesh(
         verts=np.asarray(verts, np.float32),
-        uvs=uvs,
-        normals=normals,
+        uvs=surface.uvs,
+        normals=surface.normals,
+        tangents=surface.tangents,
+        signs=surface.signs,
+        colours=surface.colours,
         tris=tris,
         slots=slots,
         materials=mesh_materials(view, export),
@@ -219,6 +263,62 @@ def slot_texture(
         albedo=np.ascontiguousarray(linear, np.float32),
         alpha=np.full(shape, 255, np.uint8) if alpha is None else alpha,
         masked=alpha is not None,
+        shading=slot_shading(chain, side, texture_rgba),
+    )
+
+
+def tangent_normals(rgba: U8Grid) -> F32Grid:
+    """A two-channel normal map as unit tangent-space vectors: x and y from red and green over
+    127.5 about 127.5, z what the unit length leaves."""
+    xy = rgba[..., :2].astype(np.float32) / np.float32(127.5) - np.float32(1.0)
+    z = np.sqrt(np.maximum(np.float32(1.0) - (xy * xy).sum(-1), np.float32(0.0)))
+    n = np.dstack([xy, z])
+    return np.ascontiguousarray(n / np.linalg.norm(n, axis=-1, keepdims=True), np.float32)
+
+
+def slot_shading(
+    chain: Sequence[MaterialParameters], side: int, texture_rgba: SizedTextureReader
+) -> SlotShading:
+    """A slot's normal map (``NORMAL_PARAMS``, the first found), its moss and its spherical
+    normals, from the material chain. The moss is its texture's mean, tinted; how the
+    master ramps it in is not in the cook, so ``MOSS_RAMP`` stands for it."""
+    textures = {k: v for p in reversed(chain) for k, v in p["texture"].items()}
+    scalar = {k: v for p in reversed(chain) for k, v in p["scalar"].items()}
+    vector = {k: v for p in reversed(chain) for k, v in p["vector"].items()}
+    normal_map = None
+    path = next((textures[n] for n in NORMAL_PARAMS if textures.get(n)), None)
+    if path is not None:
+        try:
+            normal_map = tangent_normals(texture_rgba(path, side))
+        except Exception:  # an undecodable normal map leaves the vertex normals
+            normal_map = None
+    moss, low, gain = None, 1.0, 0.0
+    moss_path = textures.get("Moss Albedo")
+    if moss_path:
+        try:
+            mean = (
+                srgb_unit_to_linear(
+                    texture_rgba(moss_path, MOSS_SIDE)[..., :3].astype(np.float32)
+                    / np.float32(255.0)
+                )
+                .reshape(-1, 3)
+                .mean(0)
+            )
+        except Exception:  # no moss texture: the bark keeps its own colour
+            mean = None
+        if mean is not None:
+            tint = vector.get("Moss Color Tint", (1.0, 1.0, 1.0, 1.0))
+            moss = tuple(float(m * t) for m, t in zip(mean, tint[:3], strict=True))
+            fall = max(scalar.get("Fall Off", MOSS_RAMP[0]), 1e-3)
+            low, gain = 1.0 - fall, scalar.get("Contrast", MOSS_RAMP[1]) / fall
+    pivot = vector.get(PIVOT_PARAM, (0.0, 0.0, 0.0, 0.0))
+    return SlotShading(
+        normal_map=normal_map,
+        moss=(moss[0], moss[1], moss[2]) if moss is not None else None,
+        moss_low=float(low),
+        moss_gain=float(gain),
+        sphere=float(scalar.get(SPHERE_PARAM, 0.0)),
+        pivot_cm=(float(pivot[0]), float(pivot[1]), float(pivot[2])),
     )
 
 

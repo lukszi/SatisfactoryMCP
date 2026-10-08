@@ -47,7 +47,7 @@ estimate assumes before a job of that kind has run once.
 | `caves` | `gen_world_heightmap.py --caves` | `data/local/caves/` (`caves.npz`, `meta.json`) | sweep 6 s; budget 2 min |
 | `rocks` | `gen_world_heightmap.py --rocks` | `rocks.npz` and `rocks.json` beside the field in `data/local/heightmap/` | 24 s; budget 5 min |
 | `paint` | `gen_paint_layers.py` | `data/local/paint/` (113 MB) | 2 min on a loaded machine; budget 2.5 min |
-| `crown-sprites` | | `data/local/crown-sprites/` (`atlas.npz`, `meta.json`, 4 MB) | 18 s on the CPU |
+| `crown-sprites` | | `data/local/crown-sprites/` (`atlas.npz`, `meta.json`, 4 MB) | 30 s on the CPU, 10 s with `--gpu` |
 | `calibrate` | | `data/local/paint/targets.derived.json` | 5 s |
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
 | `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 58 min for all five layers and 42 min for two, from measured stages ([maps_contract.md](../../docs/maps_contract.md) §4.3); a whole run is measured at the next full render |
@@ -96,7 +96,7 @@ that view; every other species is rasterised from its mesh with its leaf and bar
 It reads the species from `--paint-dir` (default `data/local/paint/`, so `paint` runs first)
 and writes `--out-dir` (default `data/local/crown-sprites/`). A cache whose stamp matches the
 build is kept unless `--force`; `--species NAME` builds only the named ones. `--gpu` runs the
-raster's per-sample fill as a CUDA kernel, with the same bytes. No render reads the cache
+raster's per-sample fill and shading as CUDA kernels, with the same bytes. No render reads the cache
 yet. See §36, "Crown sprites".
 
 ### calibrate
@@ -245,7 +245,7 @@ be traced to the axis it should move.
 | `gamedata/vegetation/tree_surface.py` | data | A tree mesh's LOD 0 with UVs and normals, and each slot's albedo and leaf mask as the sprite raster samples them |
 | `gamedata/vegetation/billboards.py` | data | A species' billboard material (octahedral, impostor, SpeedTree) and the octahedral atlas's top view |
 | `sprites/raster.py` | data | The crown sprite raster: triangle setup, bins, the per-sample hits gathered into colour, normal, alpha and top |
-| `sprites/fill.py`, `gpu.py`, `fill.cu` | data | The raster's per-sample fill: the numpy reference and its CUDA twin, bit for bit |
+| `sprites/fill.py`, `shade.py`, `gpu.py`, `raster.cu` | data | The raster's per-sample fill and shading (normal maps, spherical normals, moss): the numpy references and their CUDA twins, bit for bit |
 | `sprites/align.py` | data | An octahedral top view laid on the mesh footprint: the turn, the pivot, the frame width rules, the normal's halves |
 | `sprites/build.py` | data | One species' sprite: the raster, or the top view where it is usable, and what was measured |
 | `sprites/store.py` | data | The sprite cache: mip chains packed in one atlas, its records, stamp, reader and writer |

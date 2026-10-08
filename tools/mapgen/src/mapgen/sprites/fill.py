@@ -86,7 +86,7 @@ class Hits:
     b2: F32Grid
 
 
-def taps(first: F32Grid, n: int, wrap: bool | BoolMask) -> tuple[I64Grid, I64Grid]:
+def taps(first: F32Grid, n: int | I64Grid, wrap: bool | BoolMask) -> tuple[I64Grid, I64Grid]:
     """The two texels a bilinear read takes along one axis from the floored coordinate
     ``first``: wrapped round ``n``, or held at the edges where ``wrap`` is false."""
     i = first.astype(np.int64)

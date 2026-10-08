@@ -19,6 +19,7 @@ from mapgen.gamedata.vegetation import billboards
 from mapgen.gamedata.vegetation.billboards import Billboard, TopView
 from mapgen.gamedata.vegetation.tree_surface import (
     SizedTextureReader,
+    SlotTexture,
     SurfaceMesh,
     read_surface,
     slot_textures,
@@ -137,6 +138,18 @@ def _mean_colour(planes: SpritePlanes) -> list[JsonValue]:
     return [round(float(v), 4) for v in mean]
 
 
+def _slot_label(texture: SlotTexture) -> str:
+    """A slot's kind and what its material adds: ``leaf+mask+normal+sphere``, say."""
+    shading = texture.shading
+    marks = (
+        ("mask", texture.masked),
+        ("normal", shading.normal_map is not None),
+        ("moss", shading.moss is not None),
+        ("sphere", shading.sphere > 0),
+    )
+    return "+".join([texture.kind, *(name for name, present in marks if present)])
+
+
 def _billboard_record(board: Billboard | None) -> JsonObject:
     if board is None:
         return {"billboard": None}
@@ -171,7 +184,7 @@ def species_sprite(
         **_billboard_record(board),
         "raster_area_m2": round(float(raster.alpha.sum()) * (SPRITE_CM / 100.0) ** 2, 2),
         "raster_linear": _mean_colour(raster),
-        "slots": [t.kind + ("+mask" if t.masked else "") for t in textures],
+        "slots": [_slot_label(t) for t in textures],
     }
     view = billboards.top_view(board, texture_rgba) if board is not None else None
     choice = _top_view_choice(view, raster, surface) if view is not None else None

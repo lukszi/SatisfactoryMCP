@@ -2,8 +2,8 @@
 
 Each sprite texel is sampled ``SUBSAMPLES`` squared times. A sample takes the highest
 triangle over it whose leaf mask passes there (``fill.top_hits``, or its CUDA twin under
-``--gpu``); its colour is the slot's albedo at the hit's UV and its normal the triangle's
-interpolated vertex normal, turned up, since a leaf card is seen from either side. A texel's
+``--gpu``); its colour and normal are the material's at the hit (``shade.shade``, or its
+twin): the albedo at the hit's UV, the tangent basis turned by the normal map. A texel's
 alpha is its share of samples hit. docs/map/light-and-crowns.md section 36, "Crown sprites".
 """
 
@@ -17,8 +17,9 @@ import numpy as np
 from mapgen import jit
 from mapgen.gamedata.vegetation.crown_sprites import SPRITE_M
 from mapgen.gamedata.vegetation.tree_surface import SlotTexture, SurfaceMesh
-from mapgen.sprites import fill
+from mapgen.sprites import fill, shade
 from mapgen.sprites.fill import Hits, Triangles
+from mapgen.sprites.shade import Shading, ShadingTables
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I32Grid, I64Grid, U8Grid
 
 __all__ = [
@@ -29,10 +30,10 @@ __all__ = [
     "AlphaTextures",
     "SpriteGrid",
     "SpritePlanes",
-    "bilinear",
     "pack_alpha",
     "rasterise",
     "resolve",
+    "shade_samples",
     "sprite_grid",
     "top_hits",
     "triangle_setup",
@@ -183,19 +184,14 @@ def top_hits(tris: Triangles, alpha: AlphaTextures, grid: SpriteGrid) -> Hits:
     return fill.top_hits(tris, alpha.texels, alpha.table, grid.rows, grid.cols)
 
 
-def bilinear(image: F32Grid, u: F32Grid, v: F32Grid, wrap: BoolMask) -> F32Grid:
-    """``image`` (h, w, channels) at UVs, texel centres at half steps; each read wraps or
-    holds the edges as ``wrap`` says (``fill.mask_at``)."""
-    h, w = image.shape[:2]
-    fu = u * np.float32(w) - np.float32(0.5)
-    fv = v * np.float32(h) - np.float32(0.5)
-    x0, y0 = np.floor(fu), np.floor(fv)
-    fx, fy = (fu - x0)[:, None], (fv - y0)[:, None]
-    i0, i1 = fill.taps(x0, w, wrap)
-    j0, j1 = fill.taps(y0, h, wrap)
-    top = image[j0, i0] * (1 - fx) + image[j0, i1] * fx
-    bottom = image[j1, i0] * (1 - fx) + image[j1, i1] * fx
-    return (top * (1 - fy) + bottom * fy).astype(np.float32)
+def shade_samples(hits: Hits, tris: Triangles, tables: ShadingTables, grid: SpriteGrid) -> Shading:
+    """Every hit's colour and normal: the numpy reference, or its CUDA twin under ``--gpu``."""
+    origin = (grid.x0_cm, grid.y0_cm)
+    if jit.gpu_on():
+        from mapgen.sprites import gpu
+
+        return gpu.shade_samples(hits, tris, tables, origin, SAMPLE_CM)
+    return shade.shade(hits, tris, tables, origin, SAMPLE_CM)
 
 
 def _sums(texel: I64Grid, weights: F32Grid, size: int) -> F64Grid:
@@ -210,23 +206,12 @@ def resolve(
     textures: Sequence[SlotTexture],
     grid: SpriteGrid,
 ) -> SpritePlanes:
-    """The samples' hits gathered into texels: alpha, mean colour, mean normal, highest top."""
+    """The samples' hits shaded and gathered into texels: alpha, mean colour, mean normal,
+    highest top."""
+    shaded = shade_samples(hits, tris, shade.shading_tables(surface, tris, textures), grid)
     hit = np.flatnonzero(hits.tri.ravel() >= 0)
-    t = hits.tri.ravel()[hit]
-    b1, b2 = hits.b1.ravel()[hit], hits.b2.ravel()[hit]
-    s = tris.setup[t]
-    u = np.asarray((s[:, fill.U0] + b1 * s[:, fill.DU1]) + b2 * s[:, fill.DU2], np.float32)
-    v = np.asarray((s[:, fill.V0] + b1 * s[:, fill.DV1]) + b2 * s[:, fill.DV2], np.float32)
-    slot = tris.bounds[t, fill.SLOT]
-    wrap = tris.bounds[t, fill.WRAP] > 0
-    colour = np.zeros((len(hit), 3), np.float32)
-    for k in np.unique(slot):
-        at = slot == k
-        colour[at] = bilinear(textures[int(k)].albedo, u[at], v[at], wrap[at])
-    n = surface.normals[surface.tris[tris.source[t]]]
-    normal = n[:, 0] + b1[:, None] * (n[:, 1] - n[:, 0]) + b2[:, None] * (n[:, 2] - n[:, 0])
-    normal *= np.where(normal[:, 2:] < 0, -1.0, 1.0).astype(np.float32)
-    normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-6)
+    colour = shaded.colour.reshape(-1, 3)[hit]
+    normal = shaded.normal.reshape(-1, 3)[hit]
     texel = (hit // grid.cols // SUBSAMPLES) * grid.width + (hit % grid.cols) // SUBSAMPLES
     size = grid.width * grid.height
     count = np.bincount(texel, minlength=size).astype(np.float32)

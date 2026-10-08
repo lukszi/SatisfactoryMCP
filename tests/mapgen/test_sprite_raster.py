@@ -11,13 +11,14 @@ import pytest
 
 from mapgen import jit
 from mapgen.gamedata.vegetation.tree_surface import (
+    SlotShading,
     SlotTexture,
     SurfaceMesh,
     is_mask,
     texture_side,
     uv_scale_cm,
 )
-from mapgen.sprites import fill, raster
+from mapgen.sprites import fill, raster, shade
 
 #: pytest puts its own filters before ``mapgen.jit``'s, which quiets this one in a render.
 pytestmark = pytest.mark.filterwarnings("ignore:CUDA path could not be detected:UserWarning")
@@ -27,7 +28,7 @@ BARK = (0.20, 0.12, 0.08)
 
 
 def _card(x0, y0, x1, y1, z, slot, down=False, tiles=1.0):
-    """A flat card, mesh cm, UVs 0 to `tiles` across it, its normal up (or down)."""
+    """A flat card, mesh cm, UVs 0 to ``tiles`` across it, its normal up (or down)."""
     verts = np.array([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], np.float32)
     uvs = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], np.float32) * np.float32(tiles)
     normals = np.tile(np.array([0, 0, -1.0 if down else 1.0], np.float32), (4, 1))
@@ -46,15 +47,23 @@ def _mesh(*cards):
         tris=tris,
         slots=np.concatenate(parts[4]),
         materials=["leaf", "bark"],
+        tangents=np.tile(np.array([1, 0, 0], np.float32), (len(tris) * 2, 1)),
+        signs=np.ones(len(tris) * 2, np.float32),
     )
 
 
-def _texture(colour, alpha=None, kind="leaf"):
+def _texture(colour, alpha=None, kind="leaf", shading=None):
     """A 16 x 16 slot texture of one colour; ``alpha`` the mask, unmasked when None."""
     albedo = np.tile(np.array(colour, np.float32), (16, 16, 1))
+    shading = shading or SlotShading()
     if alpha is None:
-        return SlotTexture(kind, albedo, np.full((16, 16), 255, np.uint8), False)
-    return SlotTexture(kind, albedo, alpha.astype(np.uint8), True)
+        return SlotTexture(kind, albedo, np.full((16, 16), 255, np.uint8), False, shading)
+    return SlotTexture(kind, albedo, alpha.astype(np.uint8), True, shading)
+
+
+def _normal_map(x, y):
+    """A 4 x 4 normal map of one tangent-space normal."""
+    return np.tile(np.array([x, y, np.sqrt(1 - x * x - y * y)], np.float32), (4, 4, 1))
 
 
 def _left_half():
@@ -146,6 +155,49 @@ def test_the_mask_is_a_cut_out_and_textures_are_read_at_the_sample_s_size():
     assert uv_scale_cm(mesh, 1) is None
 
 
+# ---------------------------------------------------------------------- the shading
+
+
+def test_a_normal_map_turns_the_card_through_its_tangent_basis():
+    tilted = SlotShading(normal_map=_normal_map(0.6, 0.0))
+    up = raster.rasterise(_mesh(_card(0, 0, 100, 100, 300, 0)), [_texture(LEAF, shading=tilted)])
+    assert up is not None and np.allclose(up.normal[up.alpha == 1], (0.6, 0.0, 0.8), atol=1e-5)
+    across = SlotShading(normal_map=_normal_map(0.0, 0.6))
+    side = raster.rasterise(_mesh(_card(0, 0, 100, 100, 300, 0)), [_texture(LEAF, shading=across)])
+    assert side is not None and np.allclose(side.normal[side.alpha == 1], (0, 0.6, 0.8), atol=1e-5)
+    back = raster.rasterise(
+        _mesh(_card(0, 0, 100, 100, 300, 0, down=True)), [_texture(LEAF, shading=across)]
+    )
+    assert back is not None
+    assert np.allclose(back.normal[back.alpha == 1], (0, -0.6, 0.8), atol=1e-5), (
+        "a back face keeps the front's bitangent, as the engine's two-sided foliage does"
+    )
+
+
+def test_spherical_normals_bend_toward_the_pivot_and_moss_covers_a_bark_turned_up():
+    sphere = SlotShading(sphere=1.0, pivot_cm=(0.0, 0.0, 0.0))
+    planes = raster.rasterise(
+        _mesh(_card(0, 0, 100, 100, 300, 0)), [_texture(LEAF, shading=sphere)]
+    )
+    assert planes is not None
+    centre = np.array([-12.5 + 8.5 * raster.SPRITE_CM, -12.5 + 4.5 * raster.SPRITE_CM, 300.0])
+    assert np.allclose(planes.normal[4, 8], centre / np.linalg.norm(centre), atol=2e-3)
+    moss = SlotShading(moss=(0.0, 1.0, 0.0), moss_low=0.5, moss_gain=2.0)
+    flat = raster.rasterise(
+        _mesh(_card(0, 0, 100, 100, 300, 0)), [_texture(BARK, kind="bark", shading=moss)]
+    )
+    assert flat is not None and np.allclose(flat.colour[flat.alpha == 1], (0, 1, 0)), "full moss"
+    leaning = SlotShading(
+        normal_map=_normal_map(0.8, 0.0), moss=(0.0, 1.0, 0.0), moss_low=0.5, moss_gain=2.0
+    )
+    steep = raster.rasterise(
+        _mesh(_card(0, 0, 100, 100, 300, 0)), [_texture(BARK, kind="bark", shading=leaning)]
+    )
+    assert steep is not None
+    expected = np.array(BARK) + (np.array([0, 1, 0]) - np.array(BARK)) * 0.2
+    assert np.allclose(steep.colour[steep.alpha == 1], expected, atol=1e-5), "z 0.6: a fifth"
+
+
 # ------------------------------------------------------------------------- the twin
 
 
@@ -180,3 +232,38 @@ def test_the_gpu_fill_gives_the_reference_s_bits(monkeypatch):
         assert (a.dtype, a.shape) == (b.dtype, b.shape)
         assert a.tobytes() == b.tobytes(), field
     assert (reference.tri >= 0).mean() > 0.3
+
+
+@pytest.mark.usefixtures("device")
+def test_the_gpu_shading_gives_the_reference_s_bits(monkeypatch):
+    rng = np.random.default_rng(11)
+    cards = []
+    for k in range(40):
+        x, y = rng.uniform(-400, 400, 2)
+        w, h = rng.uniform(30, 300, 2)
+        down = bool(k % 5 == 0)
+        cards.append(_card(x, y, x + w, y + h, rng.uniform(0, 900), k % 2, down, 1 + k % 3))
+    mesh = _mesh(*cards)
+    maps = rng.normal(0, 0.4, (8, 8, 3)).astype(np.float32)
+    maps[..., 2] = np.abs(maps[..., 2]) + 0.5
+    maps /= np.linalg.norm(maps, axis=-1, keepdims=True)
+    leaf = SlotShading(normal_map=maps, sphere=0.7, pivot_cm=(10.0, -20.0, 400.0))
+    bark = SlotShading(moss=(0.1, 0.4, 0.05), moss_low=0.3, moss_gain=3.0)
+    albedo = rng.uniform(0, 1, (16, 16, 3)).astype(np.float32)
+    textures = [
+        SlotTexture("leaf", albedo, np.full((16, 16), 255, np.uint8), False, leaf),
+        _texture(BARK, kind="bark", shading=bark),
+    ]
+    grid = raster.sprite_grid(mesh.verts)
+    tris = raster.triangle_setup(mesh, np.ones(len(mesh.tris), bool), grid)
+    monkeypatch.setenv(jit.KERNEL_SWITCH, jit.REFERENCE)
+    hits = raster.top_hits(tris, raster.pack_alpha(textures), grid)
+    tables = shade.shading_tables(mesh, tris, textures)
+    reference = raster.shade_samples(hits, tris, tables, grid)
+    monkeypatch.setenv(jit.KERNEL_SWITCH, jit.GPU)
+    on_gpu = raster.shade_samples(hits, tris, tables, grid)
+    for field in ("colour", "normal"):
+        a, b = getattr(reference, field), getattr(on_gpu, field)
+        assert (a.dtype, a.shape) == (b.dtype, b.shape)
+        assert a.tobytes() == b.tobytes(), field
+    assert (np.abs(reference.normal[..., 0]) > 0.05).mean() > 0.2, "the map and sphere bend it"
