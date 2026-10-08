@@ -1,16 +1,20 @@
-/* The sun button: a small control on the map while a lit layer is drawn. It opens a time-of-day
- * slider on the game's sun path, four presets, the shadow and sky switches, and under
- * "advanced" a free compass. It moves the sun for this visit; Settings → map keeps the default. */
+/* The sun button: a small control on the map while the base map has a light. It opens a
+ * time-of-day slider on the game's sun path, four presets, the shadow and sky switches, the
+ * hillshade-only look, and under "advanced" a free compass. It moves the sun for this visit;
+ * Settings → map keeps the default. Greyed, with the reason as its tooltip, while the light is
+ * not drawn live or the shade is off. */
 
 import { make } from "../kit/dom";
 import { L } from "./leaflet";
 import { map } from "./map";
-import { setSetting } from "../app/settings";
+import { setSetting, SETTINGS } from "../app/settings";
 import {
   currentSun,
   FIRST_HOUR,
   gameSun,
+  hillshadeOnly,
   hourText,
+  isHillshadeOnly,
   LAST_HOUR,
   MAP_NW,
   MIN_ELEVATION_DEG,
@@ -25,10 +29,17 @@ import {
 
 import type { Sun } from "./sun";
 
+/** What the base map's light offers: tree shadows or not, and why it is not drawn live. */
+export interface LightControls {
+  trees: boolean;
+  /** "" while the light is drawn live, else the reason it is not. */
+  off: string;
+}
+
 /** The compass dial's radius, in its own SVG units: the horizon ring. */
 const COMPASS_RADIUS_PX = 46;
 let control: L.Control | null = null;
-let root: HTMLElement | null = null;
+let controls: LightControls = { trees: false, off: "" };
 let refresh: ((sun: Sun) => void) | null = null;
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -117,6 +128,10 @@ function slider(label: string, min: number, max: number, step: number, input: (v
 
 function toggle(label: string, key: string, read: (sun: Sun) => boolean) {
   const row = make("label", "sun-check");
+  const setting = SETTINGS.find(function (candidate) {
+    return candidate.key === key;
+  });
+  row.title = setting ? setting.hint : "";
   const box = make("input", "");
   box.type = "checkbox";
   box.addEventListener("change", function () {
@@ -132,7 +147,45 @@ function toggle(label: string, key: string, read: (sun: Sun) => boolean) {
   };
 }
 
-function panel(): HTMLElement {
+/* The switches, the hillshade-only look, and a note for the one mix the light cannot draw in
+ * full: tree shadows without terrain shadows (docs/spatial-and-map.md §29, "The page"). */
+function switches(): { el: HTMLElement; show: (sun: Sun) => void } {
+  const terrain = toggle("terrain shadows", "sunShadows", function (sun) {
+    return sun.terrainShadows;
+  });
+  const trees = toggle("tree shadows", "sunTreeShadows", function (sun) {
+    return sun.treeShadows;
+  });
+  const sky = toggle("sky light", "sunSky", function (sun) {
+    return sun.sky;
+  });
+  const flat = make("button", "", "hillshade only");
+  flat.type = "button";
+  flat.title = "the relief alone: no cast shadows and no sky light";
+  flat.addEventListener("click", hillshadeOnly);
+  const el = make("div", "");
+  const checks = make("div", "sun-checks");
+  [terrain.row, trees.row, sky.row, flat].forEach(function (part) {
+    checks.appendChild(part);
+  });
+  el.appendChild(checks);
+  const gap = make("div", "sun-note", "some tree shadows inside terrain shade are missing");
+  gap.title = "the light keeps a tree's shadow only where it stands above the terrain's";
+  el.appendChild(gap);
+  return {
+    el: el,
+    show: function (sun) {
+      terrain.show(sun);
+      trees.show(sun);
+      sky.show(sun);
+      trees.row.hidden = !controls.trees;
+      gap.hidden = !(controls.trees && sun.treeShadows && !sun.terrainShadows);
+      flat.setAttribute("aria-pressed", isHillshadeOnly(sun, controls.trees) ? "true" : "false");
+    },
+  };
+}
+
+function panel(): { box: HTMLElement; show: (sun: Sun) => void } {
   const box = make("div", "sun-panel");
   box.hidden = true;
   const head = make("div", "sun-head");
@@ -167,16 +220,8 @@ function panel(): HTMLElement {
   });
   presets.appendChild(northWest);
   box.appendChild(presets);
-  const shadows = toggle("shadows", "sunShadows", function (sun) {
-    return sun.shadows;
-  });
-  const sky = toggle("sky light", "sunSky", function (sun) {
-    return sun.sky;
-  });
-  const checks = make("div", "sun-checks");
-  checks.appendChild(shadows.row);
-  checks.appendChild(sky.row);
-  box.appendChild(checks);
+  const lights = switches();
+  box.appendChild(lights.el);
   const more = make("details", "sun-more");
   more.appendChild(make("summary", "", "advanced"));
   const dial = compass();
@@ -190,44 +235,57 @@ function panel(): HTMLElement {
   more.appendChild(azimuth.row);
   more.appendChild(elevation.row);
   box.appendChild(more);
-  refresh = function (sun) {
-    readout.textContent =
-      (sun.hour !== null ? hourText(sun.hour) + " · " : "") + Math.round(sun.azimuthDeg) + "° / " + Math.round(sun.elevationDeg) + "°";
-    reset.hidden = !sunOverridden();
-    time.range.value = String(sun.hour !== null ? sun.hour : NOON_HOUR);
-    time.out.textContent = sun.hour !== null ? hourText(sun.hour) : "—";
-    azimuth.range.value = String(sun.azimuthDeg);
-    azimuth.out.textContent = Math.round(sun.azimuthDeg) + "°";
-    elevation.range.value = String(sun.elevationDeg);
-    elevation.out.textContent = Math.round(sun.elevationDeg) + "°";
-    shadows.show(sun);
-    sky.show(sun);
-    dial.show(sun);
+  return {
+    box: box,
+    show: function (sun) {
+      readout.textContent =
+        (sun.hour !== null ? hourText(sun.hour) + " · " : "") + Math.round(sun.azimuthDeg) + "° / " + Math.round(sun.elevationDeg) + "°";
+      reset.hidden = !sunOverridden();
+      time.range.value = String(sun.hour !== null ? sun.hour : NOON_HOUR);
+      time.out.textContent = sun.hour !== null ? hourText(sun.hour) : "—";
+      azimuth.range.value = String(sun.azimuthDeg);
+      azimuth.out.textContent = Math.round(sun.azimuthDeg) + "°";
+      elevation.range.value = String(sun.elevationDeg);
+      elevation.out.textContent = Math.round(sun.elevationDeg) + "°";
+      lights.show(sun);
+      dial.show(sun);
+    },
   };
-  refresh(currentSun());
-  return box;
+}
+
+function openPanel(button: HTMLElement, box: HTMLElement, open: boolean): void {
+  box.hidden = !open;
+  button.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 function build(): L.Control {
   const made = new L.Control({ position: "topleft" });
   made.onAdd = function () {
-    root = L.DomUtil.create("div", "leaflet-bar sun-control");
+    const root = L.DomUtil.create("div", "leaflet-bar sun-control");
     const button = L.DomUtil.create("a", "sun-button", root);
     button.href = "#";
     button.innerHTML = "&#9728;";
-    button.title = "sun: time of day and shadows";
     button.setAttribute("aria-label", "sun");
     button.setAttribute("role", "button");
     button.setAttribute("aria-expanded", "false");
-    const box = panel();
-    root.appendChild(box);
+    const sunPanel = panel();
+    root.appendChild(sunPanel.box);
     L.DomEvent.disableClickPropagation(root);
     L.DomEvent.disableScrollPropagation(root);
     L.DomEvent.on(button, "click", function (event) {
       L.DomEvent.preventDefault(event);
-      box.hidden = !box.hidden;
-      button.setAttribute("aria-expanded", box.hidden ? "false" : "true");
+      if (button.getAttribute("aria-disabled") !== "true") openPanel(button, sunPanel.box, sunPanel.box.hidden);
     });
+    refresh = function (sun) {
+      const why = controls.off || (sun.shade ? "" : "the shade is off: tick shade under the base map");
+      if (why) openPanel(button, sunPanel.box, false);
+      button.setAttribute("aria-disabled", why ? "true" : "false");
+      button.title = why || "sun: time of day and shadows";
+      if (why) L.DomUtil.addClass(button, "sun-off");
+      else L.DomUtil.removeClass(button, "sun-off");
+      sunPanel.show(sun);
+    };
+    refresh(currentSun());
     return root;
   };
   return made;
@@ -237,15 +295,16 @@ onSun(function (sun) {
   if (refresh) refresh(sun);
 });
 
-/** Shown only while the base map is drawn with live light. */
-export function showSunControl(visible: boolean): void {
-  if (visible && !control) {
+/** Shown while the base map has a light, greyed while it is not drawn live; null removes it. */
+export function showSunControl(next: LightControls | null): void {
+  if (next) controls = next;
+  if (next && !control) {
     control = build();
     control.addTo(map);
-  } else if (!visible && control) {
+  } else if (!next && control) {
     control.remove();
     control = null;
-    root = null;
     refresh = null;
   }
+  if (refresh) refresh(currentSun());
 }

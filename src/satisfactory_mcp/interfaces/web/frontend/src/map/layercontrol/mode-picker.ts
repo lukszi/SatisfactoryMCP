@@ -6,6 +6,7 @@
 import { esc } from "../../kit/dom";
 import { L } from "../leaflet";
 import { onDecorate } from "./control";
+import { partsBox } from "./part-picker";
 import { radioSection } from "./radio-section";
 
 /** One row of the MODE section: a radio, and why it can or cannot be picked. */
@@ -57,6 +58,7 @@ const modes = radioSection<ModeChoice>({
     if (choice.ready) L.DomUtil.removeClass(row, "layer-mode-off");
     else L.DomUtil.addClass(row, "layer-mode-off");
   },
+  tail: partsBox,
   onPick: function (key) {
     pickMode(key);
   },

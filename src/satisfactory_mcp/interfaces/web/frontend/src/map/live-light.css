@@ -14,6 +14,14 @@
   font-size: 16px;
 }
 
+/* Greyed while the light is not drawn live or the shade is off; the tooltip says which. */
+.sun-control .sun-button.sun-off,
+.sun-control .sun-button.sun-off:hover {
+  opacity: 0.45;
+  background: var(--panel);
+  cursor: help;
+}
+
 .sun-panel {
   width: 236px;
   padding: var(--sp-2);
@@ -32,9 +40,16 @@
   margin: var(--sp-1) 0;
 }
 
-.sun-presets {
+.sun-presets,
+.sun-checks {
   flex-wrap: wrap;
-  gap: var(--sp-1);
+  gap: var(--sp-1) var(--sp-2);
+}
+
+.sun-note {
+  margin: var(--sp-1) 0;
+  color: var(--muted);
+  font-size: var(--fs-s);
 }
 
 .sun-title {
@@ -57,7 +72,8 @@
   cursor: pointer;
 }
 
-.sun-panel button:hover {
+.sun-panel button:hover,
+.sun-panel button[aria-pressed="true"] {
   border-color: var(--accent);
 }
 
