@@ -19,6 +19,7 @@ from mapgen.cache import (
     cached_family,
 )
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.rocks.looks import read_rock_textures
 from mapgen.gamedata.water.channel import artwork_planes
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.relief import ReliefGround
@@ -135,6 +136,8 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
             game.artwork, setup.image_mod, scratch, setup.cut_workers
         )
     biome, paint, style_digests = _biome_and_paint(args, layers, setup, game, field, gathered)
+    if paint is not None:
+        _attach_look(paint, game, spacing_m, gathered)
     level = LevelSweep(game.store, game.scripts, not args.quiet)
     direct, top, raster_sources = _rasters(args, setup, lattice, level, grid, paint, gathered)
     extras = _extras(args, setup, lattice, level, field, paint, gathered)
@@ -225,6 +228,26 @@ def _biome_and_paint(
         paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, biome.raster, biome.drawn)
         gathered.inputs["paint"], style_digests["painted"] = paint.provenance, paint.digest
     return biome, paint, style_digests
+
+
+def _attach_look(
+    paint: PaintInputs, game: GameInputs, spacing_m: float, gathered: _Gathered
+) -> None:
+    """The rocks' textures from the install on the painted ground, and the reader among the
+    inputs; a build whose textures cannot be read draws its rock flat and says why."""
+    families = paint.ground.meta.get("rock_families") or {}
+    tops = {name: entry.get("top_texture") for name, entry in families.items()}
+    try:
+        textures = read_rock_textures(game.store, game.scripts, tops)
+    except (KeyError, ValueError, StopIteration) as exc:
+        paint.block["rock_look"] = f"not drawn: the rock textures did not read ({exc!r})"
+        return
+    paint.ground.attach_look(textures, spacing_m)
+    paint.block["rock_look"] = paint.ground.source["rock_look"]
+    gathered.inputs["rock_textures"] = {
+        "cl": game.build_cl,
+        "reader_version": READER_VERSIONS["rock_textures"],
+    }
 
 
 def _rasters(

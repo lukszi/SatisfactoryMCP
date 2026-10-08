@@ -309,8 +309,8 @@ def _rock_ground(flat_top=True):
     has[grass] = 1.0 if flat_top else 0.0
     return SimpleNamespace(
         rock_family=np.full((8, 8), grass, np.uint8), family_rock={}, family_tint=tint,
-        family_top=top, family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
-        family_top_rgb={},
+        family_top=top, family_has_top=has, palette={}, family_top_rgb={},
+        rock_look=None, arch_rgb=None,
     )  # fmt: skip
 
 
@@ -435,6 +435,7 @@ def _band_ground(floor):
         albedo=[np.full((2, 2), v, np.float32) for v in (0.3, 0.25, 0.2)],
         canopy=np.zeros((2, 2), np.float32), canopy_rgb=np.zeros(3, np.float32),
         rock=[np.zeros((2, 2), np.float32)] * 3, rock_family=None, crown=None, titan=None, carpet=None,
+        rock_look=None, arch_rgb=None, cliff_layer=None,
         mesh_rgb={}, seabed_coral=np.zeros(3, np.float32), ramp=(0.0, 1.0, np.linspace(0, 1, 5)),
         water={"k": np.asarray(w["k_per_m"], np.float32), "body": linear(w["body"]),
                "sky": np.zeros(3, np.float32), "deep": linear(w["deep"]),

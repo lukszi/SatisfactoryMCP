@@ -3,9 +3,10 @@
 Ground colour is the game's baked landscape colour where it has one (the store's bake, or a
 ``GroundBake`` handed in), else the paint layers' weights times each layer's albedo, tinted by
 the PigmentMap; each layer moved onto its calibrated target; the biome's median off the
-landscape; rock on a coarse grid in its area's or its family's colour. Every number is in
-``palette/palettes/satellite-painted.json``; docs/map/painted.md sections 27, 30 and 32 and
-docs/map/calibration.md section 31. ``band.py`` draws it a band at a time.
+landscape; rock on a coarse grid in its area's or its family's colour (``rock_grid.py``), and
+its look from the install once attached. Every number is in
+``palette/palettes/satellite-painted.json``; docs/map/painted.md sections 27, 30 and 32
+and docs/map/calibration.md section 31. ``band.py`` draws it a band at a time.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from mapgen.colour import linear_from_oklab, oklab, srgb_to_linear
 from mapgen.gamedata.frame import SPACING_CM
 from mapgen.gamedata.ground.bake import BAKE_NAME, bake_have
 from mapgen.gamedata.ground.paint_store import CANOPY_NAME, CROWN_NAME, PIGMENT_NAME
+from mapgen.gamedata.rocks.looks import RockTextures
 from mapgen.gamedata.water.bodies import WATER_CLASSES
 from mapgen.palette.painted.albedo import (
     GroundBake,
@@ -47,6 +49,8 @@ from mapgen.palette.painted.calibration import (
     with_derived,
 )
 from mapgen.palette.painted.optics import base_water, class_optics, load_carpet, water_table
+from mapgen.palette.painted.rock_grid import ROCK_GRID_M, rock_planes, tinted_rock
+from mapgen.palette.painted.rock_look.atlas import RockLook, rock_look
 from mapgen.palette.painted.shapes import (
     BandTaps,
     BiomeGrid,
@@ -84,11 +88,11 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = ["ROCK_GRID_M", "PaintedGround", "biome_grid", "land_cells"]
 
-#: The rock colour's grid, coarser than the paint: it is a 25 m blur of it.
-ROCK_GRID_M = 4
-
 #: The render-only meshes the painted style colours, by class, with their palette names.
 MESH_COLOUR_NAMES = ((MESH_CORAL, "coral"), (MESH_SHELL, "shell"), (MESH_TERRACE, "terrace"))
+
+#: The landscape's Cliff layer, which the rock look textures.
+CLIFF_LAYER = "Cliff_LayerInfo"
 
 #: Every fourth texel each way: where the medians of the paint are measured.
 _EVERY_4TH = (slice(None, None, 4), slice(None, None, 4))
@@ -161,12 +165,16 @@ class PaintedGround:
         self.area_assets = list(biome["assets_by_index"])
         self.coarse_index = self._coarse_areas(index, field)
         albedo = self._calibrate(albedo, weights)
+        self.cliff_layer: PaintPlane | None = weights.get(CLIFF_LAYER)
         del weights
         albedo = self._fallback(albedo, have, index, len(area_names))
         albedo = self._biome_tint(albedo, index, area_names)
         self.albedo: list[F16Grid] = [albedo[..., k].astype(np.float16) for k in range(3)]
         self.rock: list[FloatGrid] = self._rock(albedo)
         del albedo
+        self.rock_look: RockLook | None = None
+        arches = palette["calibration"].get("arches")
+        self.arch_rgb: FloatGrid | None = None if arches is None else self._target(arches)
         self._trees(paint_dir)
         self.rock_family: Plane | None = None
         self.family_rock: dict[int, list[FloatGrid]] = {}
@@ -261,6 +269,11 @@ class PaintedGround:
     def attach_titan(self, titan: TitanPlanes | None) -> None:
         """The Titan tree raster on the render grid, as ``(z cm, class, factor, row0, col0)``."""
         self.titan = titan
+
+    def attach_look(self, textures: RockTextures, spacing_m: float) -> None:
+        """The rocks' textures from the install, at the levels a pixel of ``spacing_m`` reads."""
+        self.rock_look = rock_look(textures, spacing_m)
+        self.source["rock_look"] = self.rock_look.record
 
     # -- building the ground -------------------------------------------------------------------
 
@@ -477,6 +490,13 @@ class PaintedGround:
         self.source["offshore_cells_rehomed"] = int((out != coarse).sum())
         return out
 
+    def _rock(self, albedo: FloatGrid) -> list[FloatGrid]:
+        """Rock colour on the rock grid (``rock_grid.py``); the grid before its targets is kept
+        for the families' when the palette names any."""
+        lab = tinted_rock(albedo, self.meta, self.palette)
+        self._rock_lab = lab if self.palette["calibration"].get("families") else None
+        return rock_planes(lab, self.palette, self._area_weight)
+
     def _target(self, hex_colour: str) -> FloatGrid:
         return np.clip(linear_from_oklab(display_to_ground(self.palette, hex_colour)), 0.0, 1.0)
 
@@ -540,60 +560,6 @@ class PaintedGround:
                 split[key], split[name] = split_weight(split[name], share)
                 jobs.append((key, name, hex_colour, inside))
         return jobs
-
-    def _rock(self, albedo: FloatGrid) -> list[FloatGrid]:
-        """Rock colour on a coarse grid: the game's rock albedo, tinted by the ground around.
-
-        Each area entry's rock target, then the default ``rock`` target everywhere else, sets
-        the chroma and hue and moves the lightness by the median offset, keeping its variation.
-        """
-        palette = self.palette
-        lab = self._tinted_rock(albedo)
-        cal = palette["calibration"]
-        self._rock_lab = lab if cal.get("families") else None
-        groups = [
-            (self._area_weight(e["areas"])[: lab.shape[0], : lab.shape[1]], e["rock"])
-            for e in cal.get("areas", [])
-            if "rock" in e
-        ]
-        mask = np.zeros(lab.shape[:2], np.float32)
-        for weight, _ in groups:
-            mask += weight
-        if "rock" in cal:
-            groups.append((np.clip(1.0 - mask, 0.0, 1.0), cal["rock"]))
-            mask = mask + groups[-1][0]
-        norm = np.maximum(mask, 1.0)
-        shift = np.zeros_like(lab)
-        for weight, hex_colour in groups:
-            if not (weight > 0.5).any():
-                continue
-            target = display_to_ground(palette, hex_colour)
-            moved = np.empty_like(lab)
-            moved[..., 0] = lab[..., 0] + (target[0] - np.median(lab[weight > 0.5][:, 0]))
-            moved[..., 1:] = target[1:]
-            shift += (moved - lab) * (weight / norm)[..., None]
-        lab = lab + shift
-        mask = np.minimum(mask, 1.0)
-        rock = np.clip(linear_from_oklab(lab), 0.0, 1.0)
-        if cal.get("rock_keeps_exposure"):
-            rock *= (mask + (1.0 - mask) / np.float32(palette["tone"]["gain"]))[..., None]
-        return [rock[..., k].astype(np.float32) for k in range(3)]
-
-    def _tinted_rock(self, albedo: FloatGrid) -> FloatGrid:
-        """The game's rock albedo in OKLab on the rock grid, moved toward the ground around."""
-        palette = self.palette
-        step = ROCK_GRID_M
-        rock_lab = oklab(np.asarray(self.meta["albedo_linear"]["rock"], np.float32))
-        blur = palette["rock_tint_blur_m"]
-        near = np.stack(
-            [ndimage.gaussian_filter(albedo[..., k], blur)[::step, ::step] for k in range(3)], -1
-        )
-        lab = oklab(np.clip(near, 1e-7, None))
-        lightness, chroma = palette["rock_tint_lightness"], palette["rock_tint_chroma"]
-        lab[..., 0] = rock_lab[0] * (1 - lightness) + lab[..., 0] * lightness
-        lab[..., 0] += np.float32(palette["rock_lightness_add"])
-        lab[..., 1:] = rock_lab[1:] * (1 - chroma) + lab[..., 1:] * chroma
-        return lab
 
 
 def _mesh_target(name: str) -> Callable[[CalibrationArea], str | None]:

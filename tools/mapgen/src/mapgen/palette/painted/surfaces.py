@@ -1,11 +1,11 @@
-"""What stands on the painted ground: rock in its family's colour, the canopy over rock, and
-the render-only meshes. docs/map/painted.md sections 27 and 30 and docs/map/calibration.md
-section 31.
+"""What stands on the painted ground: rock in its family's colour and look, the canopy over
+rock, and the render-only meshes. docs/map/painted.md sections 27 and 30 and
+docs/map/calibration.md section 31.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping
 
 import numpy as np
 import numpy.typing as npt
@@ -20,6 +20,19 @@ from mapgen.palette.painted.calibration import (
     scoped_planes,
     with_derived,
 )
+from mapgen.palette.painted.rock_look.reference import (
+    KIND_ARCH,
+    KIND_CLIFF,
+    KIND_DESERT,
+    KIND_LAYER,
+)
+from mapgen.palette.painted.rock_look.surface import (
+    band_look,
+    mixed,
+    surface_normals,
+    top_mask,
+    top_rules,
+)
 from mapgen.palette.painted.shapes import (
     BandWater,
     ColourPlanes,
@@ -31,14 +44,14 @@ from mapgen.palette.painted.shapes import (
     Sampler,
 )
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
-from mapgen.terrain.sample import patch_noise
-from satisfactory_mcp.core.arrays import U8Grid
+from satisfactory_mcp.core.arrays import BoolMask, I32Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "SPECK_WATER",
     "canopy_over_rock",
+    "cliff_layer",
     "family_cells",
     "family_code",
     "family_tables",
@@ -47,9 +60,11 @@ __all__ = [
     "mesh_surface",
     "rock_surface",
     "sunk_specks",
-    "top_cover",
     "top_targets",
 ]
+
+#: The desert rock family: its material has no albedo texture and no top layer.
+_DESERT = FAMILIES.index("desert")
 
 #: A coral pixel is narrower than the pixel when at least this share of its eight neighbours
 #: is water: a coral head standing in the sea, which the max-Z raster widens to a pixel.
@@ -196,34 +211,14 @@ def _mean3x3(a: FloatGrid) -> FloatGrid:
     return out
 
 
-def _ramp(nz: FloatGrid, lo_hi: Sequence[float]) -> FloatGrid:
-    lo, hi = lo_hi
-    return _mean3x3(np.clip((nz - lo) / (hi - lo), 0.0, 1.0))
-
-
-def top_cover(scene: PaintedScene, ground: PaintedSurface, code: U8Grid) -> FloatGrid:
-    """The top layer's weight per pixel: the up-facing faces of a family with a top, and with
-    ``rock_top.patches`` only in patches, more of them the flatter the face. The patches are
-    ``patch_noise`` at each pixel's centre, so a point draws the same at any size or band."""
-    _band, lo, _hi, c0, _c1, spacing_m = scene["grid"]
-    d_south, d_east = np.gradient(scene["z_m"], spacing_m)
-    nz = 1.0 / np.sqrt(1.0 + d_east * d_east + d_south * d_south)
-    rule = ground.palette["rock_top"]
-    weight = _ramp(nz, rule["up"]) * ground.family_has_top[code]
-    patches = rule.get("patches")
-    seen = weight > 0.0
-    if patches is None or not seen.any():
-        return weight
-    rows, cols = np.nonzero(seen)
-    noise = patch_noise(
-        (c0 + cols + 0.5) * spacing_m,
-        (lo + rows + 0.5) * spacing_m,
-        patches["octaves_m"],
-        patches["seed"],
-    )
-    level = noise + patches["flat_gain"] * (_ramp(nz, patches["flat"])[seen] - 1.0)
-    weight[seen] *= np.clip((level - patches["level"]) / patches["soft"] + 0.5, 0.0, 1.0)
-    return weight
+def _top_tiles(ground: PaintedSurface, code: U8Grid) -> I32Grid:
+    """Each pixel's top layer's albedo tile in the look, -1 where its family has none."""
+    tiles = np.full(len(FAMILIES), -1, np.int32)
+    if ground.rock_look is not None:
+        for which, tile in ground.rock_look.tops.items():
+            if ground.family_has_top[which]:
+                tiles[which] = tile
+    return tiles[code]
 
 
 def rock_surface(
@@ -232,12 +227,14 @@ def rock_surface(
     ground: PaintedSurface,
     sample_rock: Sampler | None = None,
     code: U8Grid | None = None,
+    pick: BoolMask | None = None,
 ) -> FloatGrid:
-    """Rock in its family's colour: the family's own target where it has one, else the area's
-    rock in the family's tint, with the family's top layer on its up-facing faces (``top_cover``).
+    """Rock in its family's colour and look: the family's own target where it has one, else
+    the area's rock in the family's tint, its top layer where the cliff master's mask puts it,
+    textured by the look where the run has one at the ``pick``ed pixels (all when None).
     ``code`` is the family per pixel; the direct pass's family plane on this band when None,
     which an arch or boulder lifted over the cliff (``scene["top_weight"]``) does not wear: by
-    its lift it takes the area's rock."""
+    its lift it takes the arches' rock (``_arch_rock``)."""
     area_rock, lifted = rock_rgb, None
     if code is not None:
         code = np.asarray(code)
@@ -251,16 +248,67 @@ def rock_surface(
         if hit.any():
             rock_rgb = np.where(hit, sampled_rgb(planes, sample_rock), rock_rgb)
     rgb = rock_rgb * ground.family_tint[code]
-    weight = top_cover(scene, ground, code)[..., None]
     top = ground.family_top[code]
     for which, planes in ground.family_top_rgb.items():
         hit = (code == which)[..., None]
         if hit.any():
             top = np.where(hit, sampled_rgb(planes, sample_rock), top)
-    out = rgb * (1.0 - weight) + top * weight
+    look, has_top = ground.rock_look, ground.family_has_top[code]
+    pick = np.ones(code.shape, bool) if pick is None else pick
+    if look is None:
+        up = surface_normals(scene["z_m"], scene["grid"][5])[..., 2]
+        weight = (top_mask(up, *top_rules(None, code)) * has_top)[..., None]
+        out = rgb * (1.0 - weight) + top * weight
+    else:
+        kind = np.where(code == _DESERT, KIND_DESERT, KIND_CLIFF).astype(np.uint8)
+        got = band_look(look, scene, ground.palette, pick, (kind, _top_tiles(ground, code)))
+        strength = ground.palette["rock_look"]
+        weight = (top_mask(got.up, *top_rules(look, code)) * has_top)[..., None]
+        body = rgb * mixed(got.body, strength["albedo"])
+        layer = top * mixed(got.top, strength["albedo"])
+        shade = mixed(got.shade, strength["shade"])[..., None]
+        out = (body * (1.0 - weight) + layer * weight) * shade
     if lifted is None or not lifted.any():
         return out
-    return out + (area_rock - out) * lifted[..., None]
+    arch = _arch_rock(area_rock, scene, ground, pick & (lifted > 0.0))
+    return out + (arch - out) * lifted[..., None]
+
+
+def _arch_rock(
+    area_rock: FloatGrid, scene: PaintedScene, ground: PaintedSurface, pick: BoolMask
+) -> FloatGrid:
+    """The arches and boulders: their own colour where the palette gives one, else the area's
+    rock, in the arches' rock texture where the run has the look."""
+    rock = (
+        area_rock if ground.arch_rgb is None else np.broadcast_to(ground.arch_rgb, area_rock.shape)
+    )
+    look = ground.rock_look
+    if look is None:
+        return rock
+    reads = (np.full(pick.shape, KIND_ARCH, np.uint8), np.full(pick.shape, -1, np.int32))
+    got = band_look(look, scene, ground.palette, pick, reads)
+    strength = ground.palette["rock_look"]
+    shade = mixed(got.shade, strength["shade"])[..., None]
+    return rock * mixed(got.body, strength["albedo"]) * shade
+
+
+def cliff_layer(
+    albedo: FloatGrid, scene: PaintedScene, ground: PaintedSurface, sample: Sampler
+) -> FloatGrid:
+    """The landscape's Cliff layer textured by its own material, by its paint weight: the
+    detail finer than the ground's 1 m colour, and its normal maps' light."""
+    look, plane = ground.rock_look, ground.cliff_layer
+    if look is None or plane is None:
+        return albedo
+    strength = ground.palette["rock_look"]
+    weight = sample(plane) * np.float32(strength["layer"] / 255.0)
+    pick = weight > 0.0
+    if not pick.any():
+        return albedo
+    reads = (np.full(pick.shape, KIND_LAYER, np.uint8), np.full(pick.shape, -1, np.int32))
+    got = band_look(look, scene, ground.palette, pick, reads)
+    factor = mixed(got.body, strength["albedo"]) * mixed(got.shade, strength["shade"])[..., None]
+    return albedo * (1.0 + weight[..., None] * (factor - 1.0))
 
 
 def canopy_over_rock(
@@ -322,7 +370,7 @@ def mesh_surface(
 ) -> FloatGrid:
     """The render-only meshes over ``g``, each class in its own colour.
 
-    A rock wears its own family (``scene["mesh_family"]``) and that family's top layer, as a
+    A rock wears its own family (``scene["mesh_family"]``), its top layer and its look, as a
     cliff does, never the family of a cliff it happens to overlap; without the plane it takes
     the area's rock. Coral under water is the seabed coral; ``scene["water"]`` is the water
     after ``sunk_specks``.
@@ -332,8 +380,9 @@ def mesh_surface(
         return g
     family = scene.get("mesh_family")
     colour = area_rock
-    if family is not None and (cls == MESH_ROCK).any():
-        colour = rock_surface(area_rock, scene, ground, sample_rock, family)
+    rock = (cls == MESH_ROCK) & (mesh_w > 0.0)
+    if family is not None and rock.any():
+        colour = rock_surface(area_rock, scene, ground, sample_rock, family, rock)
     for which, rgb in ground.mesh_rgb.items():
         colour = np.where((cls == which)[..., None], sampled_rgb(rgb, sample_rock), colour)
     wet = np.where(cls == MESH_CORAL, np.clip(scene["water"]["cover"], 0.0, 1.0), 0.0)

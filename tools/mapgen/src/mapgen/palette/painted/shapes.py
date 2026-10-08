@@ -11,6 +11,7 @@ from numpy.typing import NDArray
 from mapgen.cache import Plane, TitanPlanes
 from mapgen.gamedata.level.lighting import AtmosphereVolume, LevelLighting
 from mapgen.gamedata.vegetation.crown_sprites import CrownsBlock, MaterialColour
+from mapgen.palette.painted.rock_look.atlas import RockLook
 from mapgen.palette.scene import BandGrid, BandScene, BandTaps, UnderwaterWater, WaterTerms
 from mapgen.palette.schema import (
     CalibrationArea,
@@ -18,8 +19,7 @@ from mapgen.palette.schema import (
     CarpetStyle,
     DerivedLayer,
     PaintedPalette,
-    RockPatchesStyle,
-    RockTopStyle,
+    RockLookStyle,
     TitanTreesStyle,
     WaterClassStyle,
 )
@@ -52,8 +52,7 @@ __all__ = [
     "PaintedSurface",
     "Ramp",
     "RockFamilyEntry",
-    "RockPatchesStyle",
-    "RockTopStyle",
+    "RockLookStyle",
     "Sampler",
     "TitanTreesStyle",
     "UnderwaterScene",
@@ -272,6 +271,9 @@ class PaintedSurface(Protocol):
     family_top: F32Grid
     family_top_rgb: dict[int, ColourPlanes]
     family_has_top: F32Grid
+    rock_look: RockLook | None
+    arch_rgb: F32Grid | None
+    cliff_layer: PaintPlane | None
     mesh_rgb: dict[int, ColourPlanes]
     seabed_coral: F32Grid
     titan: TitanPlanes | None

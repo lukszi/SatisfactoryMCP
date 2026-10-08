@@ -30,7 +30,6 @@ __all__ = [
     "direct_mask",
     "frame_coordinates",
     "grid_position",
-    "patch_noise",
     "pchip_1d",
     "pchip_slope",
     "reads_nothing",
@@ -455,46 +454,3 @@ class ClassMix:
             acc = sum(w[:, None] * np.asarray(table, np.float32)[c] for c, w in self.taps)
             out[self.mixed] = acc / self.total[:, None]
         return out
-
-
-_MASK64 = (1 << 64) - 1
-_PRIMES = (0x9E3779B97F4A7C15, 0xC2B2AE3D27D4EB4F, 0x165667B19E3779F9)
-_FMIX = (np.uint64(0xFF51AFD7ED558CCD), np.uint64(0xC4CEB9FE1A85EC53))
-
-
-def _lattice(i: I64Grid, j: I64Grid, seed: int) -> F32Grid:
-    """A value in [0, 1) per integer lattice point: a hash of the point and ``seed``."""
-    mixed = (seed * _PRIMES[2]) & _MASK64
-    h = i.astype(np.uint64) * np.uint64(_PRIMES[0]) + j.astype(np.uint64) * np.uint64(_PRIMES[1])
-    h = h ^ np.uint64(mixed)
-    for mult in _FMIX:
-        h = (h ^ (h >> np.uint64(33))) * mult
-    h = h ^ (h >> np.uint64(33))
-    return (h >> np.uint64(40)).astype(np.float32) / np.float32(1 << 24)
-
-
-def patch_noise(
-    x_m: ArrayLike, y_m: ArrayLike, octaves: Sequence[Sequence[float]], seed: int
-) -> F32Grid:
-    """Value noise in [0, 1] at points in metres from the frame's corner: per octave
-    ``(wavelength m, amount)`` a hashed lattice blended by smoothstep, mixed by amount. The
-    lattice is hashed once over the points' extent and its corners gathered from it."""
-    xs, ys = np.broadcast_arrays(np.asarray(x_m, np.float64), np.asarray(y_m, np.float64))
-    total = np.zeros(xs.shape, np.float32)
-    if not xs.size:
-        return total
-    for k, (wavelength, amount) in enumerate(octaves):
-        u, v = xs / wavelength, ys / wavelength
-        i, j = np.floor(u), np.floor(v)
-        su, sv = (t * t * (3.0 - 2.0 * t) for t in (u - i, v - j))
-        ii, jj = i.astype(np.int64), j.astype(np.int64)
-        i0, j0 = int(ii.min()), int(jj.min())
-        width = int(ii.max()) - i0 + 2
-        cols, rows = np.arange(i0, i0 + width), np.arange(j0, int(jj.max()) + 2)
-        table = _lattice(cols[None, :], rows[:, None], seed + k).ravel()
-        at = (jj - j0) * width + (ii - i0)
-        corner = [table[at + offset] for offset in (0, 1, width, width + 1)]
-        near = corner[0] + (corner[1] - corner[0]) * su
-        far = corner[2] + (corner[3] - corner[2]) * su
-        total += np.float32(amount) * (near + (far - near) * sv).astype(np.float32)
-    return total / np.float32(sum(amount for _w, amount in octaves))

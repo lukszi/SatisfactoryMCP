@@ -88,7 +88,7 @@ def _mesh_ground():
     top[FOREST], has[FOREST] = (0.05, 0.08, 0.03), 1.0
     return SimpleNamespace(
         rock_family=None, family_rock={}, family_tint=np.ones((n, 3), np.float32),
-        family_top=top, family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
+        family_top=top, family_has_top=has, palette={}, rock_look=None, arch_rgb=None,
         mesh_rgb={}, seabed_coral=np.zeros(3, np.float32), family_top_rgb={},
     )  # fmt: skip
 

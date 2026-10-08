@@ -428,35 +428,11 @@
   "soft": 0.5
  },
  "ground": "bake",
- "rock_top": {
-  "up": [
-   0.6,
-   0.85
-  ],
-  "patches": {
-   "seed": 5,
-   "octaves_m": [
-    [
-     16.0,
-     0.4
-    ],
-    [
-     6.0,
-     0.35
-    ],
-    [
-     2.5,
-     0.25
-    ]
-   ],
-   "level": 0.5,
-   "soft": 0.06,
-   "flat": [
-    0.85,
-    0.97
-   ],
-   "flat_gain": 0.1
-  }
+ "rock_look": {
+  "about": "the rocks' own textures from the install, world-projected: how much of their albedo contrast and of their normal maps' light the style takes, and how much of it the landscape's Cliff layer takes; docs/map/painted.md section 30, Rock textures",
+  "albedo": 1.0,
+  "shade": 1.0,
+  "layer": 1.0
  },
  "titan_trees": {
   "opacity": 0.8,
@@ -509,6 +485,7 @@
   "canopy": "#558653",
   "rock": "#85816c",
   "rock_keeps_exposure": true,
+  "arches": "#8a8671",
   "families": {
    "desert": "#ae8271"
   },

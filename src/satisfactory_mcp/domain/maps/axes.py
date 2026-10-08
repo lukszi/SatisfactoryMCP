@@ -89,6 +89,7 @@ INPUT_NAMES = {
     "render_meshes": "render mesh reader",
     "river_splines": "river spline reader",
     "rock_families": "rock family reader",
+    "rock_textures": "rock texture reader",
     "titan_trees": "titan tree reader",
     "waterfalls": "waterfall reader",
 }
