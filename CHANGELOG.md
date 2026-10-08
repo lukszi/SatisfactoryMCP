@@ -62,8 +62,9 @@ Planned as 0.2.0.
 - Map generator: `python -m mapgen crown-sprites` builds a top-down sprite of every tree
   species, in colour, normal and alpha at 0.125 m, into `data/local/crown-sprites/`. Eight
   species take the game's own billboard view from above; the other 45, the Kapok and the
-  yuccas among them, are rasterised from their meshes with their leaf and bark textures.
-  `--gpu` runs the raster's fill on the GPU, to the same bytes. No render draws them yet.
+  yuccas among them, are rasterised from their meshes with their leaf and bark textures,
+  normal maps, spherical normals and moss. `--gpu` runs the raster's per-sample work on the
+  GPU, to the same bytes. No render draws them yet.
 
 ### Changed
 
