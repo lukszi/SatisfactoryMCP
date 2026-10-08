@@ -541,9 +541,7 @@
    },
    {
     "areas": [
-     "Area_DuneDesert",
-     "Area_DesertCanyons",
-     "Area_RockyDesert"
+     "Area_DuneDesert"
     ],
     "rock": "#ae8271"
    },
@@ -608,7 +606,7 @@
    "tops.forest",
    "meshes.coral",
    "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].layers.Gravel_WeightLayerInfo",
-   "areas[DuneDesert,DesertCanyons,RockyDesert].rock",
+   "areas[DuneDesert].rock",
    "areas[GrassFields,NorthernForest,WesternDuneForest].rock",
    "areas[RedJungle,RedBambooFields].rock",
    "areas[RedJungle,RedBambooFields].layers.Cliff_LayerInfo",

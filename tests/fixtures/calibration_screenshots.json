@@ -23,7 +23,7 @@
   "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].layers.Gravel_WeightLayerInfo": {"hex": "#8f8373", "confidence": "medium", "source": "wiki Somersloop at Rocky Desert; north beach band check"},
   "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].derived.WetSand_LayerInfo": {"ratio": {"of": "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].layers.Sand_LayerInfo", "lightness": 0.80, "chroma": 0.98, "hue_deg": -13.0}, "confidence": "low",
    "source": "the wet-band ratio applied to the desert Sand target"},
-  "areas[DuneDesert,DesertCanyons,RockyDesert].rock": {"hex": "#ae8271", "confidence": "high", "source": "the desert rock shots, as families.desert"},
+  "areas[DuneDesert].rock": {"hex": "#ae8271", "confidence": "high", "source": "the desert rock shots, as families.desert"},
   "areas[GrassFields,NorthernForest,WesternDuneForest].rock": {"hex": "#7e7868", "confidence": "medium", "source": "store shot, wiki Random mode 1, Entrance_Of_A_Cave, Northern Forest U8"},
   "areas[GrassFields].layers.Grass_LayerInfo": {"hex": "#9dad70", "confidence": "medium", "tolerance": 11.0, "source": "4 v1.1 top-down HUB shots (wiki)"},
   "areas[RedJungle,RedBambooFields].rock": {"hex": "#877e6e", "confidence": "medium", "source": "wiki Jungle_Spires, Steam 2627451942"},

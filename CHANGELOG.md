@@ -196,9 +196,11 @@ Planned as 0.2.0.
 - Map renders: the game-painted map's rock outside the deserts is grey again, not the tan of
   the dirt paths. Its derived colour now comes from the texture the cliff material samples,
   untinted, as the game's own baked distant view of the cliffs has it; it came from two
-  textures the cliffs never use, times a tint that view does not show. The desert rock keeps
-  its colour. Wet sand and the coral caps keep their screenshot colours, as their derived ones
-  drift in chroma and hue. Re-run `python -m mapgen calibrate`, or let the next render derive.
+  textures the cliffs never use, times a tint that view does not show. The Desert Canyons' and
+  the Rocky Desert's cliffs are grey with sand tops too, as that view has them; the desert rock
+  of the Dune Desert and the desert mesas stays terracotta. Wet sand and the coral caps keep
+  their screenshot colours, as their derived ones drift in chroma and hue. Re-run
+  `python -m mapgen calibrate`, or let the next render derive.
 - Chat saves merge against their base revision and across renames.
 - A recalled plan's pinned logistics are journalled with its solve.
 - The page resyncs plans and chat activity after a lost or overflowed event stream, and

@@ -199,7 +199,7 @@ references were used. A target is a screenshot measured so, or derived by a rule
 
 | Material | Areas | Target | Source | References |
 | --- | --- | --- | --- | --- |
-| Rock | Dune Desert, Desert Canyons, Rocky Desert (not Savanna) | #ae8271 | screenshot | first pass |
+| Rock | Dune Desert (Desert Canyons and Rocky Desert until 2026-10-08) | #ae8271 | screenshot | first pass |
 | Rock, desert rock family | wherever desert rock stands (see "Rock by mesh family" below) | #ae8271 | screenshot | the desert rock target above. On the desert spires: [Spires Base](https://images.steamusercontent.com/ugc/23177420036648851/71D9249104B80F4E0B96989BE624C9583A34D636/) and [Funicular base](https://images.steamusercontent.com/ugc/9849253882402225725/30B60C5F97C3A2CDF7BA66D4554AB06E246919FD/) pool to #af6f58 (ΔE 4.9), and a Dune Desert mesa wall, [Desert for Dessert](https://steamcommunity.com/sharedfiles/filedetails/?id=3360666296), reads #925e4b |
 | Rock | Grass Fields, Northern Forest, Western Dune Forest | #7e7868 | screenshot | up-facing lit rock: [store shot](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/ss_b1104309f1c22c85de6ad6c401e6d889411c14d2.1920x1080.jpg), [Random mode 1](https://satisfactory.wiki.gg/images/Random_Game_Mode_-_Resource_Node_Example_1.png), [cave entrance](https://satisfactory.wiki.gg/images/Entrance_Of_A_Cave.webp), [Northern Forest U8](https://satisfactory.wiki.gg/images/Comparison_2_-_Northern_Forest_-_U8.png) |
 | Rock and Cliff layer | Red Jungle, Jungle Spires, Red Bamboo Fields | #877e6e | screenshot | [Jungle Spires](https://satisfactory.wiki.gg/images/Jungle_Spires.png), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942) |
@@ -221,7 +221,8 @@ Two readings in these references:
   ground tint gave it. Lit tops that face up read warm (h 80 to 100); vertical and hazy faces
   read blue-grey from sky light, which a top-down map does not show.
 - The Rocky Desert rock in its own references is grey, not the Dune Desert red-brown, so
-  Savanna is kept out of the desert rock.
+  Savanna is kept out of the desert rock. Since 2026-10-08 the Rocky Desert and the Desert
+  Canyons are too ("Rock from the cliff material").
 
 ### Rock by mesh family (2026-10-06)
 
@@ -719,10 +720,15 @@ showcase (ZywFe6eKNvk, an editor build, 0:14:28 and 0:15:20) shows grey cliffs a
 standing in sand beside red mesas. The rule and the families put both in place: the cliffs
 grey, the desert family terracotta.
 
-**Not changed.** The desert entry's rock (#ae8271) still colours every rock of the Desert
-Canyons and the Rocky Desert, the cliff families' included, though the HLOD bake has those
-cliffs grey with sand tops, as the showcase frames do. Dropping the two areas from that entry,
-or letting it skip the cliff families, is a palette choice ("Known limits", the north beach).
+**The desert entry follows the game.** The desert rock entry (#ae8271) named the Desert
+Canyons and the Rocky Desert too, and so coloured every rock there salmon, the 561 and 1,363
+cliff-family placements included, though the HLOD bake has those cliffs grey with sand tops, as
+the showcase frames do. It now names the Dune Desert only. The two areas' rock wears the
+default (#85816c on this build, the derived rock being declined by the gate), and their sand
+tops the desert sand target #c4ab8b in patches; the desert rock family wears its own target
+wherever it stands, so the mesas stay terracotta. The derived key is `areas[DuneDesert].rock`,
+the same rule and the same #c38761 as before.
+
 The HLOD bake itself could become a source: rasterised top-down at 1 m it gives the game's own
 colour of every merged mesh, trees included, though its proxies are coarse.
 
@@ -760,19 +766,15 @@ colour of every merged mesh, trees included, though its proxies are coarse.
   shore's band is the only wet cue and reads L ×0.97 in its first metre, against ×0.80 in
   game.
 - The rocks on the North Beach lagoon islands, and the cliff foot and boulders along the north
-  beach around (128, -1500), sit inside the main piece of `Area_DesertCanyons`, so the
-  offshore rehoming leaves them, and they keep the desert rock, though the wiki and a 2022
-  editor view show them grey. None of them is desert rock, so the desert family does not touch
-  them: the cliff foot is cliff meshes (`CliffPillar_01` to `_07`, `CliffFlat_02` and `_03`,
-  `CliffFormation_04` and `_05`) in plain, `_Forest` and `_Grass` instances, and the boulders
-  are foliage `SM_Boulder_04` and `SM_Boulder_02` in their own materials. It is the desert
-  entry's area target that reddens them. For the cliff foot to follow its own meshes, that
-  entry's rock would have to skip the cliff families, which take the default #85816c instead.
-  That would also grey the 561 cliff placements of the Desert Canyons and the 1,363 of the
-  Rocky Desert, so it is left undone, though the game's HLOD bake and the Update 8 showcase have
-  those placements grey too ("Rock from the cliff material"). The boulders wear the same
-  materials everywhere, with no override, so following their mesh would give them one colour
-  across the map, the Dune Desert included.
+  beach around (128, -1500), sit inside the main piece of `Area_DesertCanyons`. They were
+  salmon while the desert rock entry named that area, and are grey since it names the Dune
+  Desert only ("Rock from the cliff material"), as the wiki, a 2022 editor view and the game's
+  HLOD bake show them. None of them is desert rock: the cliff foot is cliff meshes
+  (`CliffPillar_01` to `_07`, `CliffFlat_02` and `_03`, `CliffFormation_04` and `_05`) in plain,
+  `_Forest` and `_Grass` instances, and the boulders are foliage `SM_Boulder_04` and
+  `SM_Boulder_02` in their own materials. The boulders wear the same materials everywhere, with
+  no override, so following their mesh would give them one colour across the map, the Dune
+  Desert included.
 - Boulders, arches, and rubble and rock piles whose material roots no family keep the area's
   rock. On the mesas, which the area map gives to the Spire Coast, a few of them stay grey
   (the default rock) on the red-brown rock.

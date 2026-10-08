@@ -24,6 +24,7 @@ from mapgen.palette.painted.calibration import (
     display_to_linear,
     with_derived,
 )
+from mapgen.palette.painted.derive.camera import lab_of_hex
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
 from mapgen.palette.painted.surfaces import mesh_surface
 from mapgen.palette.painted.trees import crown_lab, crown_layer, over_crowns, species_targets
@@ -59,6 +60,25 @@ def test_the_spire_coast_has_no_rock_of_its_own_and_falls_back_to_the_default():
     spire = [e for e in CAL["areas"] if "rock" in e and "Area_SpireCoast" in e["areas"]]
     assert spire == [], "the dark grey came from one backlit face"
     assert CAL["rock"] == "#85816c"
+
+
+def _chroma_hue(hex_colour: str) -> tuple[float, float]:
+    lab = lab_of_hex(hex_colour)
+    return float(np.hypot(lab[1], lab[2])), float(np.degrees(np.arctan2(lab[2], lab[1])) % 360)
+
+
+@pytest.mark.parametrize("area", ["Area_DesertCanyons", "Area_RockyDesert"])
+def test_the_desert_canyons_and_rocky_desert_cliffs_wear_the_grey_default(area):
+    own = [e for e in CAL["areas"] if "rock" in e and area in e["areas"]]
+    assert own == [], "the game's own bake has their cliffs grey with sand tops"
+    assert _chroma_hue(CAL["rock"])[0] < 0.035
+
+
+def test_the_desert_rock_family_and_the_dune_desert_stay_terracotta():
+    dune = [e["rock"] for e in CAL["areas"] if "rock" in e and "Area_DuneDesert" in e["areas"]]
+    for colour in (CAL["families"]["desert"], *dune):
+        chroma, hue = _chroma_hue(colour)
+        assert chroma > 0.05 and 25.0 < hue < 70.0, colour
 
 
 def _mesh_ground():
