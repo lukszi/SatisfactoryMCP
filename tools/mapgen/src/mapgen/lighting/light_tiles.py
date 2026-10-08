@@ -115,7 +115,7 @@ def atlas_cells(atlas: U8Grid, cells: int = HZ_CELLS) -> U8Grid:
     """``hz_atlas`` undone: the ``(cells, h, w)`` bytes inside their borders."""
     g = HZ_GUTTER_PX
     sh, sw = atlas.shape[0] // -(-cells // ATLAS_COLS), atlas.shape[1] // ATLAS_COLS
-    found = []
+    found: list[U8Grid] = []
     for k in range(cells):
         r, c = divmod(k, ATLAS_COLS)
         found.append(atlas[r * sh + g : (r + 1) * sh - g, c * sw + g : (c + 1) * sw - g])

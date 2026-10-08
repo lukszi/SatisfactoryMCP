@@ -290,7 +290,7 @@ Planned as 0.2.0.
   edge; a coarser level averages the shade the page draws instead of the horizon. A hole of
   no data just past one of the light's 4096-pixel blocks no longer lights a staircase wedge
   beside it. The light is baked again once, and a page needs this version's build to read
-  the new horizon tiles.
+  the new horizon tiles. A full-size map's light grows from about 2.4 to 5.6 GB.
 - Map water: two water boxes meeting inside one sheet of water no longer draw a straight line
   where their tops differ by up to a metre; the level is feathered over about 12 m. A river
   hands over to a lake or the sea along a ramp, is drawn across the joints between its

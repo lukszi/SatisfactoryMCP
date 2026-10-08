@@ -370,7 +370,8 @@ folded band is lossless and every other one q90, each cell in a border of its ow
 most about 1.3 GB at z7 and less in practice, because open water compresses to almost
 nothing. The crown cells are 0 wherever no crown stands above the ground's horizon; at 2048
 they take the light pyramid from 18.8 to 24.2 MB. The unlit colour adds about half the
-colour pyramid again.
+colour pyramid again. A full-size light was 2.38 GB under the spans with q75 horizons, and
+is 5.56 GB since its folded tiles are lossless (below, "Horizon tiles and coarser levels").
 
 ### Scratch
 
@@ -608,6 +609,23 @@ are the terrain's own soft horizon. The light's `meta.json` counts the lossless 
 `tiles.hz_lossless`. At 2048 a tile is 0.9 km across and 79 of the 85 hold a fold: the
 horizon tiles take 35.7 MB where q75 took 19.2 (all lossless 36.2, all q90 with the border
 27.8).
+
+**Measured at full size** (2026-10-08, the v8 surface, build 502094; each encoding of the
+same atlases, lossless ones decoded and encoded again). 12,856 of the 21,845 tiles hold a
+fold, 9,360 of the 16,384 at z7: arches, overhangs and, mostly, crowns. The normal tiles stay
+0.88 GB.
+
+| Horizon tiles | z7 | z0–z6 | All | Against q75 |
+| --- | --- | --- | --- | --- |
+| q75, no border (before) | 0.97 GB | 0.56 GB | 1.53 GB | |
+| q75, border | 1.06 GB | 0.59 GB | 1.66 GB | +0.12 GB |
+| q90, border | 1.66 GB | 0.90 GB | 2.56 GB | +1.03 GB |
+| lossless where folded, else q90 (this bake) | 3.17 GB | 1.51 GB | 4.68 GB | +3.15 GB |
+| lossless | 3.40 GB | 1.57 GB | 4.97 GB | +3.44 GB |
+
+The light took 1,035 s on 16 workers, the native levels 908 s. On 480 folded z7 tiles, the
+page's shade inside the soft edge is off by, at the 95th percentile: q75 0.50, q90 0.27,
+q95 0.18, q100 0.10, lossless 0; q95 takes 0.64 and q100 0.82 of the lossless bytes.
 
 **The cells' border.** The atlas packs its 64 cells edge to edge, and a lossy codec smears
 each cell's neighbour two or three texels into it, which the shader's clamp to the cell
