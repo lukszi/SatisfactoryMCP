@@ -18,7 +18,7 @@ from numpy.typing import NDArray
 from mapgen.cache import MeshPlanes
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
-from mapgen.lighting.hillshade import FLAT_SUN_DOT, flat_shade, hillshade, slope_degrees, sun_dot
+from mapgen.lighting.hillshade import FLAT_SUN_DOT, flat_shade, hillshade, sun_dot
 from mapgen.palette.painted.band import painted_colours, painted_ndl
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
 from mapgen.palette.painted.shapes import PaintedScene, Sampler
@@ -26,12 +26,9 @@ from mapgen.palette.painted.trees import canopy_cover
 from mapgen.palette.relief import BiomeSample, ReliefGround, relief_colours
 from mapgen.palette.scene import BandGrid, BandScene, FloatGrid, ReliefScene, ShadedScene
 from mapgen.palette.styles import (
-    NOISE_SEED,
     PLAIN_LAYERS,
     biome_index,
-    noise_fields,
     ramp_range,
-    satellite_colours,
     terrain_colours,
     with_sea,
     with_void,
@@ -48,13 +45,7 @@ from mapgen.render.ground.surface import (
 )
 from mapgen.render.ground.void import DrawnVoid
 from mapgen.terrain.crown_stamp import LitCrowns, stamp_crowns
-from mapgen.terrain.sample import (
-    grid_position,
-    sample_noise,
-    sample_plain,
-    taps_footprint,
-    taps_linear,
-)
+from mapgen.terrain.sample import grid_position, sample_plain, taps_footprint, taps_linear
 from satisfactory_mcp.core.arrays import BoolMask, F16Grid, F32Grid, F64Grid, I64Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -62,14 +53,6 @@ __all__ = ["LayerJob", "domed_crowns", "layer_job", "paint_band", "piece_bytes"]
 
 #: The flat ground's sun term, ``n.L`` of the default sun on level ground.
 _FLAT_SUN = np.float32(FLAT_SUN_DOT)
-
-
-@dataclass(frozen=True)
-class SatelliteInputs:
-    """What the satellite style adds: the biome colours and the noise octaves."""
-
-    biome_rgb: U8Grid
-    noise: list[tuple[F32Grid, float]]
 
 
 @dataclass(frozen=True)
@@ -94,13 +77,10 @@ class LayerJob:
 
     layer: str
     ground: GroundSources
-    size: int
-    column_index: I64Grid
     biome_width: int
     biome_cols: I64Grid
     ramp: tuple[float, float]
     unlit: bool
-    satellite: SatelliteInputs | None
     painted: PaintedInputs | None
     relief: ReliefGround | None
     falls: F64Grid | None
@@ -114,8 +94,6 @@ class LayerJob:
 def layer_job(
     layer: str,
     ground: GroundSources,
-    size: int,
-    biome_rgb: U8Grid | None,
     biome_width: int,
     painted: PaintedGround | None,
     relief: ReliefGround | None,
@@ -123,26 +101,18 @@ def layer_job(
     unlit: bool,
 ) -> LayerJob:
     """The layer's own half of a draw: its style's inputs and the columns it reads them on."""
-    field, window, x_cm = ground.field, ground.window, ground.x_cm
+    field, x_cm = ground.field, ground.x_cm
     if (layer == "painted") != (painted is not None):
         raise ValueError("the painted ground is the painted layer's, and only its")
     if layer not in PLAIN_LAYERS and painted is None and relief is None:
         raise ValueError(f"no painter draws {layer!r}")
-    satellite = None
-    if layer == "satellite":
-        if biome_rgb is None:
-            raise ValueError("the satellite layer is coloured from the biome raster")
-        satellite = SatelliteInputs(biome_rgb, noise_fields(NOISE_SEED))
     return LayerJob(
         layer=layer,
         ground=ground,
-        size=size,
-        column_index=np.arange(window.c0, window.c1),
         biome_width=biome_width,
         biome_cols=biome_index(x_cm, BOUNDS_M["x_min_m"], BOUNDS_M["x_max_m"], biome_width),
         ramp=ramp_range(field),
         unlit=unlit,
-        satellite=satellite,
         painted=None if painted is None else _painted_inputs(painted, field, x_cm, ground),
         relief=relief,
         falls=falls,
@@ -193,7 +163,7 @@ def piece_bytes(job: LayerJob, grid: BandSampling, surface: BandSurface) -> U8Gr
 
 def _plain_terrain(job: LayerJob) -> bool:
     """Whether the job is the terrain style's, which draws no falls."""
-    plain = job.satellite is None and job.painted is None and job.relief is None
+    plain = job.painted is None and job.relief is None
     return plain and job.layer in PLAIN_LAYERS and job.layer not in FALL_STYLES
 
 
@@ -221,33 +191,18 @@ def paint_band(job: LayerJob, grid: BandSampling, surface: BandSurface) -> Float
             _picker(biome_rows, job.biome_cols[grid.cols.cut]),
         )
     else:
-        rgb = _style_colours(job, grid, scene)
+        rgb = _terrain_colours(job, scene)
     rgb = _void(rgb, surface.missing, job.ground.sea, surface.void)
     spacing_m = job.ground.spacing_m
     return draw_falls(rgb, job.falls, job.layer, grid.x_cm, y_cm, z_m, spacing_m, hidden)
 
 
-def _style_colours(job: LayerJob, grid: BandSampling, scene: BandScene) -> FloatGrid:
-    """A style with a plain painter: the terrain and satellite ramps over the hillshade."""
-    z_m, spacing_m = scene["z_m"], job.ground.spacing_m
-    shade = flat_shade(z_m.shape) if job.unlit else hillshade(z_m, spacing_m)
+def _terrain_colours(job: LayerJob, scene: BandScene) -> FloatGrid:
+    """The plain painter: the terrain ramp over the hillshade."""
+    z_m = scene["z_m"]
+    shade = flat_shade(z_m.shape) if job.unlit else hillshade(z_m, job.ground.spacing_m)
     shaded: ShadedScene = {**scene, "shade": shade}
-    if job.satellite is None:
-        return terrain_colours(shaded)
-    lo, hi, cut = grid.rows.lo, grid.rows.hi, grid.cols.cut
-    y_cm = job.ground.y_cm[lo:hi]
-    slope = slope_degrees(z_m, spacing_m)
-    biome_rows = biome_index(y_cm, BOUNDS_M["y_min_m"], BOUNDS_M["y_max_m"], job.biome_width)
-    biome = job.satellite.biome_rgb[np.ix_(biome_rows, job.biome_cols[cut])]
-    noise = job.satellite.noise
-    return satellite_colours(
-        {
-            **shaded,
-            "slope": slope,
-            "biome_rgb": biome.astype(np.float32),
-            "noise": sample_noise(noise, np.arange(lo, hi), job.column_index[cut], job.size),
-        }
-    )
+    return terrain_colours(shaded)
 
 
 def _painted_colours(

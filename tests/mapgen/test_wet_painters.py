@@ -13,6 +13,7 @@ from mapgen.palette.painted import band as painted_band
 from mapgen.palette.painted.optics import mix_underwater, underwater
 from mapgen.palette.painted.shapes import UnderwaterScene
 from mapgen.palette.relief import relief_colours
+from mapgen.palette.styles import RELIEF_PALETTES
 from mapgen.palette.water import wet
 from mapgen.palette.water.shore import wet_mix
 from mapgen.palette.water.wet import WetPixels
@@ -79,13 +80,15 @@ def test_the_painted_band_draws_the_same_bits_either_way(monkeypatch):
     assert _bits(drawn["wet pixels"]) == _bits(drawn["whole band"])
 
 
-@pytest.mark.parametrize("layer", ["relief", "relief-dark"])
+@pytest.mark.parametrize("stroke", [0.0, 0.2])
 @pytest.mark.parametrize("dry", [0.0, 0.6, 1.0])
 @pytest.mark.parametrize("tinted", [True, False])
-def test_relief_water_on_the_wet_pixels_is_the_whole_band_s(monkeypatch, layer, dry, tinted):
+def test_relief_water_on_the_wet_pixels_is_the_whole_band_s(monkeypatch, stroke, dry, tinted):
     rng = np.random.default_rng(int(dry * 10) + 3 * tinted)
     tint = rng.integers(0, 256, SHAPE).astype(np.uint8)
-    ground = relief_ground(layer)
+    dark = RELIEF_PALETTES["relief-dark"][0]
+    style = {**dark["water"], "stroke": stroke}
+    ground = relief_ground("relief-dark", palette={**dark, "water": style})
     ground.water = tint if tinted else None
     scene = {
         "z_m": rng.uniform(0.0, 100.0, SHAPE).astype(np.float32),

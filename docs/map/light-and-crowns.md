@@ -60,7 +60,7 @@ divided by the same expression for flat ground in the open, so flat ground at an
   (section 36, "Crowns and the water").
 - **Per style.** The painted style lights in linear light with its own ambient, sky and sun
   colours; the shader undoes and reapplies the luminance tone curve of section 31
-  (`tone_knee`, `tone_white`). Terrain, satellite and both relief styles multiply into sRGB,
+  (`tone_knee`, `tone_white`). Terrain and the relief multiply into sRGB,
   as the hillshade always did: ambient `SHADE_FLOOR / (SHADE_FLOOR + SHADE_RANGE · sin 45°)`,
   white light, no curve (`palette/lightparams.py`). Relief drawn unlit keeps flat ground at its
   ramp colour, so its live light is this sRGB approximation, not its own OKLab shade. One
@@ -733,7 +733,6 @@ full render.
   measured under it where that is higher; the baked copy lights it by its own top (above,
   "The canopy's own light").
 - The lattice seams at landscape holes (above, "Edges of the light").
-- Whether the satellite style draws the tree crowns, and so reads their shadows.
 - A land weight for the crowns over water, read by the painted layer only, so they take the
   live light and a tree's shadow can fall on the water.
 - The horizon march reads the 0 m the heights drop to under no data as ground, so a void edge

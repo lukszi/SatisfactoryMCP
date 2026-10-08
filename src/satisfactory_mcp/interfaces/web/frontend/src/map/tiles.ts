@@ -60,7 +60,6 @@ function isPyramid(spec: ModeSpec): spec is PyramidSpec {
 const GENERATORS: Record<string, string> = {
   map: "tools/gen_map_image.py, which cuts it out of the installed game",
   terrain: "tools/gen_map_renders.py, from the 1 m heightfield in data/local/heightmap/",
-  satellite: "tools/gen_map_renders.py, from the heightfield and the game's own biome raster",
 };
 
 /** The id the artwork has always had in the registry, and the page's old name for it. */
@@ -81,12 +80,11 @@ function legacy(key: string, label: string, about: string): ModeSpec {
   return { key: key, typeId: key, label: label, about: about, generator: GENERATORS[key] || "", flag: "", flagTitle: "" };
 }
 
-/* What the switcher offers before the registry answers, or when it cannot: the three names the
- * page had before there was a registry, which the server still serves unregistered. */
+/* What the switcher offers before the registry answers, or when it cannot: the old names the
+ * server still serves unregistered, for the layers still drawn. */
 const LEGACY: ModeSpec[] = [
   legacy(ARTWORK, "artwork", "the game's own map artwork"),
   legacy("terrain", "terrain", "a hypsometric relief map of this world, drawn from its own heightfield"),
-  legacy("satellite", "satellite", "the same relief, coloured from the game's own biome raster"),
 ];
 
 let MODES: ModeSpec[] = LEGACY.concat([PLAIN]);
@@ -307,7 +305,7 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
   if (dense) maxZ = Math.max(maxZ, denseMaxZ);
 
   // The build tag makes every URL change when the pyramid is recut, which is what lets the
-  // server mark a tile immutable. It is per layer, so recutting the satellite cannot
+  // server mark a tile immutable. It is per layer, so recutting the painted layer cannot
   // invalidate the terrain a browser is holding.
   //
   // `px=` is NOT in this query: it is per tile, because one layer spans levels the dense tree
@@ -393,7 +391,7 @@ function overlayMaker(spec: ModeSpec, response: Response): () => BaseLayer {
 }
 
 /** One HEAD against one pyramid's z0 tile. Never rejects: a probe that fails is a mode
- *  that is not there, which is the ordinary state for all three of them. */
+ *  that is not there, which is the ordinary state for any of them. */
 function probePyramid(spec: PyramidSpec): Promise<void> {
   return fetch(tilePath(spec.typeId, 0, 0, 0), { method: "HEAD" })
     .then(function (r) {
@@ -562,7 +560,7 @@ export function requestBaseMode(key: BaseMode, recordInHash: boolean): void {
 }
 
 /* Ask the registry which types there are, probe the ones the switcher lists, then open on a
- * mode. Without a registry answer the three old names are probed instead. */
+ * mode. Without a registry answer the old names are probed instead. */
 export function loadBaseMap(): Promise<void> {
   onModePick(function (key) {
     showBaseMode(key as BaseMode, true);

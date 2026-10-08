@@ -4163,7 +4163,7 @@ export interface components {
         /** MapJobOptions */
         MapJobOptions: {
             /** Layers */
-            layers?: ("terrain" | "satellite" | "painted" | "relief" | "relief-dark")[];
+            layers?: ("terrain" | "painted" | "relief-dark")[];
             /** Size */
             size?: number;
             /**

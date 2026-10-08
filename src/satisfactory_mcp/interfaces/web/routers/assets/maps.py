@@ -321,7 +321,7 @@ async def maps_index(request: Request) -> MapsResponse | JSONResponse:
 @router.get("/maps/estimate", response_model=MapEstimateResponse)
 def map_estimate(
     preset: Preset,
-    layers: str = "terrain,satellite",
+    layers: str = ",".join(presets.DEFAULT_LAYERS),
     size: int = presets.FULL_PX,
     recipe: Literal["current", "kernel-only"] = "current",
     top: bool = True,

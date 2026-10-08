@@ -37,7 +37,7 @@ __all__ = [
 ]
 
 
-Layer = Literal["terrain", "satellite", "painted", "relief", "relief-dark"]
+Layer = Literal["terrain", "painted", "relief-dark"]
 RenderRecipe = Literal["current", "kernel-only"]
 
 #: A map's provenance axes as its sidecar states them (docs/maps_contract.md §3): JSON, read

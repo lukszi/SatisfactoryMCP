@@ -1,8 +1,8 @@
-"""The relief styles: one painter, a light and a dark palette.
+"""The relief style's painter, which draws the dark relief layer from its palette.
 
-An OKLab elevation ramp over dry land, soft biome tints, slope rock, a hillshade that keeps flat
-ground at its ramp colour and shifts hue into shadow, then flat depth-tinted water. Every number
-is in the style's palette file; docs/map/painted.md section 28 explains them.
+An OKLab elevation ramp over dry land, optional biome tints, slope rock, a hillshade that keeps
+flat ground at its ramp colour and shifts hue into shadow, then flat depth-tinted water. Every
+number is in the style's palette file; docs/map/painted.md section 28 explains them.
 """
 
 from __future__ import annotations
@@ -106,7 +106,8 @@ def water_tint_plane(
 def _biome_planes(
     palette: ReliefPalette, biome: BiomeRaster, area_names: list[str]
 ) -> F16Grid | None:
-    """``(dL·w, a·w, b·w, w)`` per biome texel, blurred like the satellite's biome colours."""
+    """``(dL·w, a·w, b·w, w)`` per biome texel, blurred so no area boundary is a line; None
+    for a palette without tints."""
     tints = palette["biome_tints"]
     if not tints:
         return None

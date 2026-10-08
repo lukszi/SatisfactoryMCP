@@ -119,12 +119,14 @@ cache folder once. `--no-tiles-2x` skips the high-density pyramid. See §17.
 
 ### renders
 
-Draws the `terrain`, `satellite`, `painted`, `relief` and `relief-dark` layers from the
-heightfield, the game's biome raster and, for `painted`, the paint layers. Each layer is cut
-into the same 256 px pyramid as the artwork. A run that cannot draw what its sidecar would
-claim is refused with its own exit code (§20, "Refusals"). The main options:
+Draws the `terrain`, `painted` and `relief-dark` layers from the heightfield and, for
+`painted`, the paint layers and the game's biome raster. The page shows `painted` as
+"Satellite" and `relief-dark` as "Relief"; the biome-coloured `satellite` and the light
+`relief` are no longer drawn (§17, "Three drawn layers"). Each layer is cut into the same
+256 px pyramid as the artwork. A run that cannot draw what its sidecar would claim is refused
+with its own exit code (§20, "Refusals"). The main options:
 
-- `--layer L`, repeatable, picks the layers. The default is all five.
+- `--layer L`, repeatable, picks the layers. The default is all three.
 - `--size` takes 1024 to 32768. The smaller sizes are previews.
 - `--renders-name` writes beside the current renders instead of over them.
 - `--overwrite-in-use` writes even into a folder holding tiles of a map type the server's
@@ -255,7 +257,7 @@ be traced to the axis it should move.
 | `gamedata/ground/weightmaps.py` | data | The landscape's paint weightmaps, placed on the 1 m grid |
 | `gamedata/ground/landscape_albedo.py` | data | The paint layers' textures and albedo, the rock families' colours, and the 0–1 sRGB transfer (`srgb_unit_to_linear`) |
 | `gamedata/ground/bake.py` | data | The landscape's baked ground colour and the layer refit |
-| `gamedata/ground/biome.py` | data | Biome raster and its calibration, region masks |
+| `gamedata/ground/biome.py` | data | Biome raster, its area names and calibration, region masks |
 | `terrain/heightfield/field.py` | data | Heightfield composition and plane encoding |
 | `terrain/heightfield/validate.py` | data | Heightfield gates (nodes, bare terrain, water) |
 | `terrain/heightfield/sidecar_blocks.py` | data | Each layer's sidecar block, per-layer accuracy, the water block |
@@ -288,10 +290,10 @@ be traced to the axis it should move.
 | `lighting/spans/holes.py`, `canopy.py` | light | No data in the captured surface, which the light takes as open; the canopy's own light |
 | `lighting/gpu.py`, `gpu.cu` | light | The same two as CUDA kernels, for `--gpu` |
 | `lighting/occluders.py` | light | The occluders the horizons take: the paint store's crown tops on a render grid (`sheet_crowns`) and a tree table's domes (`canopy_top`) |
-| `palette/styles.py` | style | Palette loading, digests, the colour painters and their height ramp |
+| `palette/styles.py` | style | Palette loading, digests, the terrain painter and its height ramp |
 | `palette/schema.py` | style | The palette files' shapes, and the check at load: a stray or missing key, or an unknown rock family, stops the run with a `PaletteError` naming the place in the file (§28). A key added to a palette needs its field here. |
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
-| `palette/relief.py` | style | The relief styles' painter (light and dark palettes) |
+| `palette/relief.py` | style | The relief style's painter, which draws the dark relief from its palette |
 | `palette/lightparams.py` | style | What the page's shader reads from a style |
 | `palette/scene.py` | style | What a band hands a painter: `BandScene`, its water terms, crowns, optics and grid |
 | `palette/painted/ground.py` | style | The game-painted ground, built once per run from the paint store |
@@ -310,7 +312,7 @@ be traced to the axis it should move.
 | `palette/painted/water_classes.py` | style | The water-class plane and the swamp-to-ocean blends at mouths |
 | `palette/water/surface.py`, `shore.py` | style | Water drawing, shore optics, foam |
 | `palette/water/wet.py` | style | A band's wet pixels, where the colour under the water is painted |
-| `palette/water/kernels.py` | style | The terrain, satellite and relief styles' water, compiled by numba |
+| `palette/water/kernels.py` | style | The terrain and relief styles' water, compiled by numba |
 | `palette/water/open_sea.py` | style | The open sea's bed past the measured one, and the void planes |
 | `palette/water/rivers.py` | style | River water: reconciled with the field's, laid over each band |
 | `palette/water/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |
@@ -321,7 +323,7 @@ be traced to the axis it should move.
 | `palette/water/footprints/reference.py`, `gpu.py`, `footprints.cu` | style | The land plane's per-texel marks and per-pixel reading in numpy, and the same as CUDA kernels for `--gpu` |
 | `render/run/prepare.py` | | Every stage of a run before the first band is drawn, in order (`prepare`) |
 | `render/run/inputs.py` | | A run's inputs and their refusals: the field and its lattices, the game, the borrow, the paint and the water |
-| `render/run/biome_inputs.py` | | The game's biome raster as the biome layers draw it: read, checked and coloured |
+| `render/run/biome_inputs.py` | | The game's biome raster as the painted layer reads it: read, checked and named |
 | `render/run/cached_rasters.py` | | The level sweep (`LevelSweep`) and the stamped direct and top rasters, rasterised or read back |
 | `render/draw/compose.py` | | The band loop that draws every layer of a run in one pass |
 | `render/ground/surface.py` | | One band's ground, composed once for all the layers (`band_grid`, `band_surfaces`) |
@@ -475,17 +477,12 @@ sun picks two directions (§29). Trees join it as its `occluder`.
 - **`shore.river`** in each palette: the least depth the optics see once in from the bank, or
   a shallow bed reads as a pale path (§34).
 
-### Satellite colours (`palette/styles.py`)
+### Terrain colours (`palette/styles.py`)
 
-- **`BIOME_COLOURS`**: chosen by eye against crops, desaturated and capped below about 220,
-  not the asset's `mColorPalette` legend (§17).
-- **`BIOME_BLEND_TEXELS`** (24, about 44 m): a tree line's width, narrow enough that a 300 m
-  biome keeps its colour in the middle (§17).
-- **`NO_MANS_LAND_RGB`**, **`UNKNOWN_BIOME_RGB`**: a neutral bleached ground for the outer
-  coast and for an area a later build adds, so it looks unremarkable rather than wrong.
 - **`RAMP_LO_PCT`**, **`RAMP_HI_PCT`**: percentiles, not min and max, or one 400 m spire
   flattens the ramp over the rest of the world.
-- **The noise**: two fixed-seed fields sampled by world position, so no band edge shows (§17).
+- The biome-coloured satellite style's designed colours, blend and noise were retired with
+  the layer (§17, "Three drawn layers").
 
 ### The seam statistic (`terrain/measure.py`)
 

@@ -37,12 +37,12 @@ def _target(key: str) -> str:
 
 @pytest.fixture(scope="module")
 def derived():
-    from mapgen.gamedata.ground.biome import read_biome
+    from mapgen.gamedata.ground.biome import area_names, read_biome
     from mapgen.gamedata.install import missing_container, open_game
     from mapgen.palette.painted.albedo import load_paint_meta
     from mapgen.palette.painted.derive.scene import area_grid, scene_from_store
     from mapgen.palette.painted.derive.targets import derive
-    from mapgen.palette.styles import PAINTED_PALETTE, biome_lookup
+    from mapgen.palette.styles import PAINTED_PALETTE
     from satisfactory_mcp.domain.spatial import heightfield as hf
 
     if missing_container(DEFAULT_GAME):
@@ -54,7 +54,7 @@ def derived():
     biome = read_biome(game.store, game.scripts)
     field = hf.load_field(FIELD, cache=False)
     shape = (meta["grid"]["height"], meta["grid"]["width"])
-    areas = area_grid(biome, biome_lookup(biome)[1], field, shape)
+    areas = area_grid(biome, area_names(biome), field, shape)
     found = derive(scene_from_store(PAINT, meta, areas), PAINTED_PALETTE["calibration"])
     return meta, {t.key: t for t in found.targets}, found
 

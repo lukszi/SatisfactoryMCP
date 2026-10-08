@@ -288,7 +288,7 @@ def test_the_renderer_draws_its_wet_and_measured_planes_from_the_grades_it_is_gi
 def test_relief_tints_the_open_sea_by_the_depth_over_its_bed():
     height, water, grades = _coast()
     field = _field(height, water, grades)
-    palette = RELIEF_PALETTES["relief"][0]["water"]
+    palette = RELIEF_PALETTES["relief-dark"][0]["water"]
     flat = water_tint_plane(field, palette)
     sea, heights, _ground = _sea(height, water, grades)
     tinted = water_tint_plane(field, palette, sea.planes, heights)
@@ -442,8 +442,8 @@ def test_a_layer_draws_the_artwork_s_sea_and_the_void_past_the_data():
     heights = height.astype(np.float32)
     sea = open_sea(field, (heights, None), None, art, OCEAN_LEVEL_M)
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
-    old = render_layer("terrain", field, None, 1, borrow, n, False)
-    new = render_layer("terrain", field, None, 1, borrow, n, False, heights, sea=sea)
+    old = render_layer("terrain", field, 1, borrow, n, False)
+    new = render_layer("terrain", field, 1, borrow, n, False, heights, sea=sea)
     navy = np.all(np.abs(new.astype(np.float32) - SEA_RGB) <= 1, axis=-1)
     assert np.all(np.abs(old[:, 45:].astype(np.float32) - SEA_RGB) <= 1), "before: all navy"
     assert not navy[4:28, 45:].any(), "the artwork's sea is drawn as sea"
@@ -476,7 +476,7 @@ def test_the_land_weight_fades_with_the_void_as_drawn_not_at_the_data_s_edge():
     sea = open_sea(field, (heights, None), None, np.zeros((n, n), bool), OCEAN_LEVEL_M)
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
     surface = _Surface(size)
-    render_layer("terrain", field, None, 1, borrow, size, False, heights, sea=sea,
+    render_layer("terrain", field, 1, borrow, size, False, heights, sea=sea,
                  surface=surface)  # fmt: skip
     land = surface.land
     assert (land[:, :300] > 0.999).all() and (land[:, 560:] == 0.0).all()
@@ -509,7 +509,7 @@ def test_a_rock_under_the_sea_s_level_is_the_void_s_where_the_sea_fades_into_it(
         rock[480:530, 200:] = top_m is not None
         direct = DirectPlanes(np.full((n, n), (top_m or 0) * 100.0, np.float32), rock, ground, 1)
         surface = _Surface(n)
-        rgb = render_layer("terrain", field, None, 1, borrow, n, False, heights,
+        rgb = render_layer("terrain", field, 1, borrow, n, False, heights,
                            direct=direct, sea=sea, surface=surface)  # fmt: skip
         return rgb[490:520].astype(np.int16), surface.z[490:520], surface.land[490:520]
 

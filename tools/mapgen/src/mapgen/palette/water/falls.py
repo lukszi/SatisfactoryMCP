@@ -16,7 +16,7 @@ from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.water.falls import FallRecord, load_or_sweep_falls
 from mapgen.palette.scene import FloatGrid, field_heights
 from mapgen.palette.schema import FallsStyle
-from mapgen.palette.styles import PAINTED_PALETTE, SATELLITE_PALETTE
+from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from satisfactory_mcp.core.arrays import F64Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -30,10 +30,8 @@ __all__ = [
     "prepare_falls",
 ]
 
-FALL_STYLES: dict[str, FallsStyle] = {
-    "satellite": SATELLITE_PALETTE["falls"],
-    "painted": PAINTED_PALETTE["falls"],
-}
+#: The styles that draw the falls, by layer.
+FALL_STYLES: dict[str, FallsStyle] = {"painted": PAINTED_PALETTE["falls"]}
 
 #: A fall that drops less than this is a step in a river, not a waterfall.
 MIN_DROP_M = 2.0

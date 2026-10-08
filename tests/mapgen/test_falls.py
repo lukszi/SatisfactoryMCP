@@ -180,9 +180,7 @@ def test_a_style_without_falls_draws_none_and_no_data_is_lip_level():
     assert FALL_STYLES.get("terrain") is None
     same = draw_falls(rgb.copy(), _fall(), "terrain", x_cm, y_cm, np.zeros((41, 41)), 0.25)
     assert np.array_equal(same, rgb)
-    holes = draw_falls(
-        rgb.copy(), _fall(), "satellite", x_cm, y_cm, np.full((41, 41), np.nan), 0.25
-    )
+    holes = draw_falls(rgb.copy(), _fall(), "painted", x_cm, y_cm, np.full((41, 41), np.nan), 0.25)
     assert np.isfinite(holes).all() and (holes >= rgb).all()
 
 

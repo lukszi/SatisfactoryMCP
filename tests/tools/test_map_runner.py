@@ -260,7 +260,7 @@ def test_a_restarted_server_re_adopts_a_running_child_and_interrupts_a_dead_one(
 def test_every_preset_writes_only_under_data_local(env):
     local = registry.local_dir().resolve()
     for preset, options in (
-        ("render", {"layers": ["terrain", "satellite"], "size": 32768, "keep_cache": True}),
+        ("render", {"layers": ["terrain", "relief-dark"], "size": 32768, "keep_cache": True}),
         ("artwork", {"enhance": True}),
         ("heightmap", {}),
         ("caves", {}),
@@ -282,7 +282,9 @@ def test_progress_reads_a_recorded_full_render_log():
     first layer's draw drives the pass's stage."""
     lines = (FIXTURES / "map_render_full.log").read_text(encoding="utf-8")
     options = presets.normalise("render", {"size": 32768, "light": False})
-    progress = store.Progress(presets.stage_plan("render", options), 32768)
+    # The layers that run drew, the satellite since retired among them.
+    drew = {**options, "layers": ["terrain", "satellite"]}
+    progress = store.Progress(presets.stage_plan("render", drew), 32768)
     seen = []
     for line in lines.splitlines():
         progress.feed(line)

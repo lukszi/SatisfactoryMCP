@@ -63,10 +63,10 @@ build stamp, plus the reader version), with a class plane: coral, shell or rock.
 composited with the top layer's raise-only lift, and only where the mesh top stands within
 0.6 m of the water surface or above it, so seabed coral roots do not speckle the sea.
 
-The terrain, satellite and relief styles draw ground and water only, so there a mesh never
-breaks the water's surface: coral, shells and terraces standing wholly in the sea are left to
-the seabed (below, "Whole footprints"), and a rock is drawn only where its top stands above
-the surface. Most coral the 0.6 m rule keeps stands well clear of the water (median 6 m), so
+The terrain and relief styles draw ground and water only, so there a mesh never breaks the
+water's surface: coral, shells and terraces standing wholly in the sea are left to the seabed
+(below, "Whole footprints"), and a rock is drawn only where its top stands above the
+surface. Most coral the 0.6 m rule keeps stands well clear of the water (median 6 m), so
 each would be a one- or two-pixel island in the lagoons. The game-painted style keeps the rule
 above and colours the meshes itself.
 
@@ -128,7 +128,8 @@ graph that wires them is stripped. Extracted planes reproduce the prototype's pa
 
 ### The game-painted style
 
-Layer `painted`, style `satellite-painted`, palette `palette/palettes/satellite-painted.json`.
+Layer `painted`, shown as "Satellite" since 2026-10-08, style `satellite-painted`, palette
+`palette/palettes/satellite-painted.json`.
 `palette/painted/ground.py` builds the ground once per run from the paint store, on the 1 m grid
 (about 80 s), and `palette/painted/band.py` draws each band over it (both under
 `tools/mapgen/src/mapgen/`). With `"ground": "bake"`, the palette's setting, the bake is the
@@ -182,11 +183,14 @@ to the heightfield's range rather than measured. Inland water takes its class's 
 ## 28. Relief styles, tones and the palette-only restyle (2026-10-05)
 
 Two styles beside the three drawn ones, from the colour study's directions A (muted
-cartographic) and C (dark). Build 502094.
+cartographic) and C (dark). Build 502094. Since 2026-10-08 only the dark one is drawn, shown
+as "Relief"; the light one is retired with its palette (renders.md section 17, "Three drawn
+layers"). What follows says what both did; the painter keeps the light one's options, which
+no palette sets now.
 
 | Layer | Style | Tone | Palette |
 |---|---|---|---|
-| `relief` | `relief-muted` | light | `palette/palettes/relief-muted.json` |
+| `relief` (retired) | `relief-muted` | light | `palette/palettes/relief-muted.json`, removed |
 | `relief-dark` | `relief-night` | dark | `palette/palettes/relief-night.json` |
 
 **Palette files are checked when they load** (`palette/schema.py`). Each file and each of its
@@ -199,7 +203,7 @@ that style records.
 
 ### What the relief painter does
 
-`palette/relief.py`, one painter for both palettes, all mixing in OKLab:
+`palette/relief.py`, one painter for any relief palette, all mixing in OKLab:
 
 1. **Ramp.** Height to `t` over dry land only (`waterq` dry, p1 to p99.5): `0.35·linear +
    0.65·equalised` for the light style, `0.4/0.6` for the dark one. The stops are OKLCh; they are

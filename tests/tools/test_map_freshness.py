@@ -138,8 +138,16 @@ def test_a_legacy_render_sidecar_is_read_into_axes_and_flagged_inferred():
     assert ax.display_name(got) == "satellite · two-regime r3 · data 502094/hf v3"
     verdict = ax.freshness(got, _now())
     assert [s["axis"] for s in verdict["stale"]] == ["heightfield"]
-    assert verdict["rerender"]["label"] == "river splines r7"
+    assert verdict["rerender"] is None, "nothing draws the satellite style now"
     assert verdict["incomplete"] is True
+
+
+@pytest.mark.parametrize("style", sorted(versions.RETIRED_STYLES))
+def test_a_retired_style_is_stale_as_ever_but_offered_nothing(style):
+    retired = {**_axes(recipe=4, hf=3), "style": {"id": style, "version": 1}}
+    got = ax.freshness(retired, _now())
+    assert [s["axis"] for s in got["stale"]] == ["heightfield"]
+    assert got["rerender"] is None and got["restyle"] is False
 
 
 def test_a_legacy_artwork_sidecar_reads_its_build_and_enhancement():

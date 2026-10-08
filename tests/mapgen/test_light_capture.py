@@ -29,7 +29,7 @@ from tests.support.draw import draw_layers, render_layer
 N = 96
 
 #: The layers in the order a full run draws them.
-LAYERS = ("terrain", "satellite", "painted", "relief", "relief-dark")
+LAYERS = ("terrain", "painted", "relief-dark")
 
 
 class _Surface:
@@ -86,7 +86,7 @@ def _draw(scene, layer: str) -> _Surface:
     if layer in RELIEF_PALETTES:
         relief = ReliefGround(RELIEF_PALETTES[layer][0], scene.field, None, [])
     render_layer(
-        layer, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
+        layer, scene.field, 1, borrow, N, False,
         scene.heights, meshes=scene.meshes, unlit=True, surface=surface,
         painted=_painted_ground() if layer == "painted" else None, relief=relief,
     )  # fmt: skip
@@ -129,13 +129,13 @@ def test_one_pass_draws_every_layer_as_alone_painted_over_its_own_meshes(monkeyp
                for layer in LAYERS if layer in RELIEF_PALETTES}  # fmt: skip
     surface = _Surface()
     drawn = draw_layers(
-        LAYERS, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
+        LAYERS, scene.field, 1, borrow, N, False,
         scene.heights, meshes=scene.meshes, unlit=True, surface=surface,
         painted=_painted_ground(), relief=reliefs,
     )  # fmt: skip
     for layer in LAYERS:
         alone = render_layer(
-            layer, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
+            layer, scene.field, 1, borrow, N, False,
             scene.heights, meshes=scene.meshes, unlit=True,
             painted=_painted_ground() if layer == "painted" else None, relief=reliefs.get(layer),
         )  # fmt: skip
@@ -161,7 +161,7 @@ def test_a_pass_in_column_pieces_draws_and_captures_what_whole_rows_do(monkeypat
     for columns in (N, 23, 7):
         surface = _Surface()
         sheets = draw_layers(
-            LAYERS, scene.field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, N, False,
+            LAYERS, scene.field, 1, borrow, N, False,
             scene.heights, meshes=scene.meshes, unlit=True, surface=surface,
             painted=_painted_ground(), relief=reliefs, threads=3, columns=columns,
         )  # fmt: skip

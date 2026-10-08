@@ -1,4 +1,4 @@
-"""The palettes and the two drawn layers' colour painters.
+"""The palettes, and the terrain layer's colour painter.
 
 Each style is a JSON file in ``palettes/``, refused at import unless it has its style's shape
 (``palette.schema``); the constants below are read out of them.
@@ -11,21 +11,13 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
-from scipy import ndimage
 
-from mapgen.gamedata.ground.biome import BiomeRaster
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
-from mapgen.palette.scene import (
-    FloatGrid,
-    SatelliteScene,
-    ShadedScene,
-    field_heights,
-)
+from mapgen.palette.scene import FloatGrid, ShadedScene, field_heights
 from mapgen.palette.schema import (
     PaintedPalette,
     Palette,
     ReliefPalette,
-    SatellitePalette,
     ShoreOptics,
     ShoreStyle,
     TerrainPalette,
@@ -33,24 +25,13 @@ from mapgen.palette.schema import (
     checked,
 )
 from mapgen.palette.water.shore import blend_where, water_composite
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid, U8Grid
-from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, require_object
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
-    "BIOME_BLEND_TEXELS",
-    "BIOME_COLOURS",
-    "HIGH_HI_M",
-    "HIGH_LIFT",
-    "HIGH_LO_M",
-    "HIGH_RGB",
     "LAYER_STYLES",
-    "NOISE_OCTAVES",
-    "NOISE_SEED",
-    "NOISE_SMOOTH",
-    "NO_MANS_LAND_RGB",
     "PAINTED_DIGEST",
     "PAINTED_PALETTE",
     "PALETTE_DIR",
@@ -61,38 +42,25 @@ __all__ = [
     "RAMP_LO_PCT",
     "RAMP_STOPS",
     "RELIEF_PALETTES",
-    "ROCK_HI_DEG",
-    "ROCK_LO_DEG",
-    "ROCK_RGB",
-    "SATELLITE_DIGEST",
-    "SATELLITE_PALETTE",
-    "SATELLITE_SHORE",
-    "SATELLITE_WATER_DEEP",
-    "SATELLITE_WATER_SHALLOW",
     "SEA_RGB",
     "SHORE_OPTICS",
     "STYLE_DIGESTS",
     "TERRAIN_DIGEST",
     "TERRAIN_PALETTE",
     "TERRAIN_SHORE",
-    "UNKNOWN_BIOME_RGB",
     "VOID_EDGE_RGB",
     "VOID_MOST",
     "VOID_RIM_RGB",
     "WATER_DEEP",
     "WATER_SHALLOW",
-    "biome_colour_field",
     "biome_index",
-    "biome_lookup",
     "dry_land_range",
     "load_palette",
-    "noise_fields",
     "painted_style",
     "palette_digest",
     "ramp",
     "ramp_position",
     "ramp_range",
-    "satellite_colours",
     "terrain_colours",
     "with_sea",
     "with_void",
@@ -103,9 +71,7 @@ __all__ = [
 PALETTE_DIR = Path(__file__).resolve().parent / "palettes"
 LAYER_STYLES = {
     "terrain": "terrain-hypsometric",
-    "satellite": "satellite-biome",
     "painted": "satellite-painted",
-    "relief": "relief-muted",
     "relief-dark": "relief-night",
 }
 
@@ -130,15 +96,11 @@ def _layer_palette(shape: type[Palette], layer: str) -> tuple[Palette, str]:
 
 
 TERRAIN_PALETTE, TERRAIN_DIGEST = _layer_palette(TerrainPalette, "terrain")
-SATELLITE_PALETTE, SATELLITE_DIGEST = _layer_palette(SatellitePalette, "satellite")
 PAINTED_PALETTE, PAINTED_DIGEST = _layer_palette(PaintedPalette, "painted")
-#: The relief layers share one painter (``palette.relief``), one palette each.
-RELIEF_PALETTES = {
-    layer: _layer_palette(ReliefPalette, layer) for layer in ("relief", "relief-dark")
-}
+#: The layers ``palette.relief`` paints, by layer: its palette and digest.
+RELIEF_PALETTES = {"relief-dark": _layer_palette(ReliefPalette, "relief-dark")}
 STYLE_DIGESTS = {
     "terrain": TERRAIN_DIGEST,
-    "satellite": SATELLITE_DIGEST,
     "painted": PAINTED_DIGEST,
     **{layer: digest for layer, (_palette, digest) in RELIEF_PALETTES.items()},
 }
@@ -155,10 +117,8 @@ def painted_style(no_titan_trees: bool) -> tuple[PaintedPalette, str]:
 
 #: The ocean shore's optics per style (recipe 6): opacity at the line, depth fade, wet ground.
 TERRAIN_SHORE: ShoreOptics = TERRAIN_PALETTE["shore"]
-SATELLITE_SHORE: ShoreOptics = SATELLITE_PALETTE["shore"]
 SHORE_OPTICS: dict[str, ShoreStyle] = {
     "terrain": TERRAIN_SHORE,
-    "satellite": SATELLITE_SHORE,
     "painted": PAINTED_PALETTE["shore"],
     **{layer: palette["shore"] for layer, (palette, _digest) in RELIEF_PALETTES.items()},
 }
@@ -188,76 +148,6 @@ VOID_RIM_RGB = np.array([236, 236, 230], np.float32)
 #: Past this share of a band under the void's cover or rim, ``with_void`` blends every pixel.
 VOID_MOST = 2 / 3
 
-# The satellite layer's own rules (tools/mapgen/README.md, "Design notes").
-
-#: One colour per named area, chosen by eye; not the asset's UI ``mColorPalette``.
-BIOME_COLOURS = {name: tuple(colour) for name, colour in SATELLITE_PALETTE["biome_colours"].items()}
-
-#: Biome bleed in raster texels (1.83 m each): 24 is about a tree line, 44 m.
-BIOME_BLEND_TEXELS = 24.0
-
-#: The outer coast, which the game names no biome for: a neutral bleached ground.
-NO_MANS_LAND_RGB = tuple(SATELLITE_PALETTE["no_mans_land"])
-
-#: An area a later build adds: the same neutral, not a guessed green.
-UNKNOWN_BIOME_RGB = NO_MANS_LAND_RGB
-
-#: Bare rock, and the slope band over which the biome's colour gives way to it.
-ROCK_RGB = np.array(SATELLITE_PALETTE["rock"], np.float32)
-ROCK_LO_DEG = float(SATELLITE_PALETTE["rock_lo_deg"])
-ROCK_HI_DEG = float(SATELLITE_PALETTE["rock_hi_deg"])
-
-#: High ground pales over this band of metres, at most HIGH_LIFT of the way to HIGH_RGB.
-HIGH_RGB = np.array(SATELLITE_PALETTE["high"], np.float32)
-HIGH_LO_M = float(SATELLITE_PALETTE["high_lo_m"])
-HIGH_HI_M = float(SATELLITE_PALETTE["high_hi_m"])
-HIGH_LIFT = float(SATELLITE_PALETTE["high_lift"])
-
-#: Water seen from above: dark, green in the shallows, near-black in the deep.
-SATELLITE_WATER_SHALLOW = np.array(SATELLITE_PALETTE["water_shallow"], np.float32)
-SATELLITE_WATER_DEEP = np.array(SATELLITE_PALETTE["water_deep"], np.float32)
-
-#: Two octaves of fixed-seed value noise, sampled by world position so no band shows.
-NOISE_SEED = int(SATELLITE_PALETTE["noise_seed"])
-NOISE_OCTAVES = tuple(
-    (int(size), float(amount)) for size, amount in SATELLITE_PALETTE["noise_octaves"]
-)
-NOISE_SMOOTH = 1.0
-
-
-def biome_colour_field(biome: BiomeRaster, table: F32Grid) -> U8Grid:
-    """The raster's indices turned into colour, then blurred so no area boundary is a line.
-
-    Done once at the raster's own 4096, one channel at a time, and kept as uint8.
-    """
-    area = biome["area"]
-    field = np.empty(area.shape + (3,), np.uint8)
-    for channel in range(3):
-        blurred = ndimage.gaussian_filter(
-            table[:, channel][area], BIOME_BLEND_TEXELS, mode="nearest"
-        )
-        field[..., channel] = np.clip(blurred, 0, 255).astype(np.uint8)
-    return field
-
-
-def biome_lookup(biome: BiomeRaster) -> tuple[F32Grid, list[str]]:
-    """Per palette index: its RGB in the designed palette, and the name it was drawn as."""
-    names = biome["names"]
-    rgb = np.zeros((len(names), 3), np.float32)
-    drawn: list[str] = []
-    for index, name in enumerate(names):
-        if name in BIOME_COLOURS:
-            colour = BIOME_COLOURS[name]
-            drawn.append(name)
-        elif name == NO_MANS_LAND or name is None:
-            colour = NO_MANS_LAND_RGB
-            drawn.append(NO_MANS_LAND)
-        else:
-            colour = UNKNOWN_BIOME_RGB
-            drawn.append(f"{name} (no colour in this file's table)")
-        rgb[index] = colour
-    return rgb, drawn
-
 
 def ramp(values: FloatGrid, stops: F32Grid) -> FloatGrid:
     """Linear interpolation along a colour ramp, ``values`` in [0, 1]."""
@@ -267,27 +157,11 @@ def ramp(values: FloatGrid, stops: F32Grid) -> FloatGrid:
     return stops[low] * (1 - fraction) + stops[low + 1] * fraction
 
 
-def noise_fields(rng_seed: int) -> list[tuple[F32Grid, float]]:
-    """The value-noise octaves, made once and sampled by world position afterwards, so no
-    band boundary draws a seam."""
-    rng = np.random.default_rng(rng_seed)
-    fields: list[tuple[F32Grid, float]] = []
-    for size, amount in NOISE_OCTAVES:
-        field = rng.standard_normal((size, size), dtype=np.float32)
-        fields.append((ndimage.gaussian_filter(field, NOISE_SMOOTH, mode="wrap"), amount))
-    return fields
-
-
 def biome_index(coordinate: FloatGrid, lo_m: float, hi_m: float, width: int) -> I64Grid:
     """Which biome texel a run of world coordinates falls in. Nearest, and never in between:
     an area index is a name, and the average of two names is a third, unrelated area."""
     position = (coordinate - lo_m * 100) / ((hi_m - lo_m) * 100) * width
     return np.clip(position.astype(np.int64), 0, width - 1)
-
-
-# --------------------------------------------------------------------------------------
-# The two layers.
-# --------------------------------------------------------------------------------------
 
 
 def terrain_colours(scene: ShadedScene) -> FloatGrid:
@@ -306,32 +180,6 @@ def terrain_colours(scene: ShadedScene) -> FloatGrid:
         TERRAIN_SHORE,
         WATER_SHALLOW,
         WATER_DEEP,
-        WATER_SHADE_FLOOR,
-        WATER_SHADE_RANGE,
-    )
-
-
-def satellite_colours(scene: SatelliteScene) -> FloatGrid:
-    """Ground colour from the biome, then rock, then altitude, then light, then water.
-
-    In that order: the biome says what grows there, the slope overrules it because nothing
-    grows on a cliff face, the altitude bleaches what is left, the hillshade lights all of it
-    at once, and the water goes on top because it is a different surface. ``borrow`` rides
-    with the hillshade: what is taken from the artwork is light.
-    """
-    slope, z_m = scene["slope"], scene["z_m"]
-    rock = np.clip((slope - ROCK_LO_DEG) / (ROCK_HI_DEG - ROCK_LO_DEG), 0.0, 1.0)[..., None]
-    rgb = scene["biome_rgb"] * (1 - rock) + ROCK_RGB * rock
-    lift = np.clip((z_m - HIGH_LO_M) / (HIGH_HI_M - HIGH_LO_M), 0.0, 1.0)[..., None] * HIGH_LIFT
-    rgb = rgb * (1 - lift) + HIGH_RGB * lift
-    land = rgb * scene["noise"][..., None] * (scene["shade"] * scene["borrow"])[..., None]
-    return water_composite(
-        land,
-        scene["water"],
-        scene["shade"],
-        SATELLITE_SHORE,
-        SATELLITE_WATER_SHALLOW,
-        SATELLITE_WATER_DEEP,
         WATER_SHADE_FLOOR,
         WATER_SHADE_RANGE,
     )
@@ -369,8 +217,8 @@ def _void_blend(
     return (rgb * (1.0 - weight) + colour * weight) * (1.0 - line) + VOID_RIM_RGB * line
 
 
-#: The layers ``render.draw.painting`` draws with ``terrain_colours`` or ``satellite_colours``.
-PLAIN_LAYERS = frozenset({"terrain", "satellite"})
+#: The layers ``render.draw.painting`` draws with ``terrain_colours``.
+PLAIN_LAYERS = frozenset({"terrain"})
 
 
 def ramp_range(field: hf.Field) -> tuple[float, float]:

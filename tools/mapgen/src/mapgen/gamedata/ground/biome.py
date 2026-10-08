@@ -30,6 +30,7 @@ __all__ = [
     "CALIBRATION_STEP_M",
     "REGION_TABLE",
     "CalibrationImaging",
+    "area_names",
     "boundary_mask",
     "calibrate_biome",
     "pinned_box",
@@ -114,15 +115,15 @@ def read_biome(store: IoStore, scripts: ScriptObjects) -> BiomeRaster:
     """The map-area raster as a renderer wants it: a numpy square and a name per index.
 
     The decode, the shape checks and the index -> ``Area_*`` resolution are
-    ``core.gameassets.maparea``'s. This adds the raster as a numpy array to index a colour
-    table with, and each index flattened to the STEM -- ``Area_RedJungle`` rather than
-    ``Area_RedJungle_2`` -- because ``BIOME_COLOURS`` is one colour per kind of ground.
+    ``core.gameassets.maparea``'s. This adds the raster as a numpy array to index a table
+    with, and each index flattened to the STEM -- ``Area_RedJungle`` rather than
+    ``Area_RedJungle_2`` -- because the palettes key one kind of ground once.
     """
     try:
         areas = read_map_areas(store, scripts)
     except MapAreaError as exc:
         raise SystemExit(
-            f"{exc} The satellite layer has no other source for what grows where, so "
+            f"{exc} The painted layer has no other source for which area is where, so "
             "nothing here can be trusted until that is looked at."
         ) from exc
     raster = np.frombuffer(areas.texels, dtype=np.uint8).reshape(areas.width, areas.width)
@@ -138,6 +139,11 @@ def read_biome(store: IoStore, scripts: ScriptObjects) -> BiomeRaster:
         "assets": list(areas.assets),
         "distinct_areas": sorted({n for n in names if n and n != NO_MANS_LAND}),
     }
+
+
+def area_names(biome: BiomeRaster) -> list[str]:
+    """Each palette index's area stem; the outer coast's name where the game names none."""
+    return [NO_MANS_LAND if name is None else name for name in biome["names"]]
 
 
 def boundary_mask(labels: U8Grid) -> BoolMask:

@@ -1,4 +1,4 @@
-"""The one name a map type is shown by, on the page and in chat: "Painted · 6 Oct ★".
+"""The one name a map type is shown by, on the page and in chat: "Satellite · 6 Oct ★".
 
 Composed here and nowhere else; docs/maps_contract.md §3.5 is the specification.
 """

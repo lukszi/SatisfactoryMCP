@@ -12,9 +12,7 @@ from mapgen.palette.styles import LAYER_STYLES, load_palette
 
 SHAPES = {
     "terrain": schema.TerrainPalette,
-    "satellite": schema.SatellitePalette,
     "painted": schema.PaintedPalette,
-    "relief": schema.ReliefPalette,
     "relief-dark": schema.ReliefPalette,
 }
 
@@ -88,12 +86,12 @@ def test_a_shipped_palette_may_leave_out_its_optional_blocks(layer, path):
 
 
 def test_values_are_held_to_their_type():
-    palette = _file("satellite")
+    palette = _file("painted")
     palette["falls"]["edge_m"] = True
-    assert "falls.edge_m: True is not a number" in _refusal("satellite", palette)
-    palette = _file("satellite")
-    palette["noise_seed"] = 1.5
-    assert "noise_seed: 1.5 is not a whole number" in _refusal("satellite", palette)
-    palette = _file("relief")
+    assert "falls.edge_m: True is not a number" in _refusal("painted", palette)
+    palette = _file("painted")
+    palette["calibration"]["min_texels"] = 1.5
+    assert "min_texels: 1.5 is not a whole number" in _refusal("painted", palette)
+    palette = _file("relief-dark")
     palette["shade"]["mode"] = "multiply"
-    assert "shade.mode: 'multiply'" in _refusal("relief", palette)
+    assert "shade.mode: 'multiply'" in _refusal("relief-dark", palette)

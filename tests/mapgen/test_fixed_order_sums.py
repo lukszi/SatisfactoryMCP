@@ -190,7 +190,7 @@ def test_the_painted_band_is_the_same_bytes_whole_and_in_pieces_on_threads():
 def test_the_relief_band_is_the_same_bytes_whole_and_in_pieces_on_threads():
     rng = np.random.default_rng(8)
     shape = (24, WIDE)
-    ground = relief_ground("relief")
+    ground = relief_ground("relief-dark")
     cover = np.where(rng.random(shape) < 0.6, 0.0, rng.random(shape)).astype(np.float32)
     water = {"cover": cover, "depth": rng.random(shape).astype(np.float32),
              "depth_m": rng.uniform(0.0, 6.0, shape).astype(np.float32),
@@ -254,12 +254,12 @@ def test_a_pass_wider_than_16384_columns_is_the_same_bytes_in_pieces_of_any_widt
     """``--draw-columns`` past the width OpenBLAS changed its order at, and under it."""
     field = _wide_field()
     borrow = (np.broadcast_to(np.int8(0), (SHEET_PX, SHEET_PX)), np.zeros_like(field.height_dm))
-    layers = ("terrain", "satellite", "painted", "relief", "relief-dark")
+    layers = ("terrain", "painted", "relief-dark")
     reliefs = {layer: relief_ground(layer) for layer in RELIEF_PALETTES}
     drawn = {}
     for columns, threads in ((WIDE, 1), (16_385, 2), (PIECE_COLS, 4)):
         sheets = draw_layers(
-            layers, field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, RENDER_PX, False,
+            layers, field, 1, borrow, RENDER_PX, False,
             window=WIDE_WINDOW, painted=_wide_painted(field), relief=reliefs, threads=threads,
             columns=columns,
         )  # fmt: skip

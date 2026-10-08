@@ -1,9 +1,9 @@
 """What the page's shader reads from a style to light its unlit colour.
 
-The painted style lights in linear light under its luminance tone curve; terrain and
-satellite multiply their hillshade into sRGB, which is ``SHADE_FLOOR`` as the ambient share
-of the flat-ground light and no tone curve. Only a style that draws the tree crowns reads
-their shadows (``crowns``). docs/map/light-and-crowns.md section 29.
+The painted style lights in linear light under its luminance tone curve; terrain multiplies
+its hillshade into sRGB, which is ``SHADE_FLOOR`` as the ambient share of the flat-ground
+light and no tone curve, and the relief is relit the same way. Only a style that draws the
+tree crowns reads their shadows (``crowns``). docs/map/light-and-crowns.md section 29.
 """
 
 from __future__ import annotations

@@ -75,6 +75,10 @@ Planned as 0.2.0.
 
 ### Changed
 
+- Map names: the game-painted map is now called "Satellite" and the dark relief "Relief".
+  Their ids, links and the saved default are unchanged.
+- Map renders: a render that names no layers draws terrain and Satellite, and the Maps tab
+  ticks both. Without paint layers the Maps tab builds them first.
 - Map renders: the game-painted map takes the colours derived from the game install for
   the targets within reach of their screenshots in lightness, chroma and hue (sand, grass, the
   canopy, the Grass Fields rock, the desert rock, the forest moss, the desert gravel, the Red
@@ -217,6 +221,14 @@ Planned as 0.2.0.
   `gen_world_heightmap.py`, `gen_paint_layers.py` and `check_map_fill.py` are now shims for
   `python -m mapgen <command>` and warn when run. They will be removed in 0.3.0.
 
+### Removed
+
+- Map renders: the biome-coloured satellite style and the light relief are no longer drawn.
+  `python -m mapgen renders --layer` and the Maps tab offer terrain, painted and relief-dark,
+  and a job naming either old layer is refused. Maps already drawn in them stay listed and
+  served, as "Biome (old)" and "Relief light (old)", until deleted. The other layers' pixels
+  are unchanged.
+
 ### Fixed
 
 - Map renders: the game-painted map's rock outside the deserts is grey again, not the tan of
@@ -351,9 +363,9 @@ Planned as 0.2.0.
 - The satellite map no longer shows a quilt of 29 m and 7.3 m squares on flat ground: its
   noise is read smoothly between its cells.
 - Map renders keep or drop coral, shells and hot-spring terraces a whole footprint at a time.
-  The terrain, satellite and relief maps cut them along the game map's coarse waterline, a
-  wall through a reef, and kept pieces of reefs standing in the sea where that waterline has a
-  dry patch under the sea's level. A footprint that stands on land is now drawn whole, and
+  The terrain and relief maps cut them along the game map's coarse waterline, a wall through
+  a reef, and kept pieces of reefs standing in the sea where that waterline has a dry patch
+  under the sea's level. A footprint that stands on land is now drawn whole, and
   one wholly in the sea is left whole to the seabed; the live-sun light and the game-painted
   map's unlit sun follow it. About 36,000 square metres of a map move: 346 reefs are kept
   whole across the waterline, 1,233 are left whole in the sea, and 30 of the 37 terraces are

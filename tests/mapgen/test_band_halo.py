@@ -20,6 +20,7 @@ from mapgen.lighting.model import surface_direct
 from mapgen.palette import relief
 from mapgen.palette.painted.surfaces import sunk_specks, top_cover
 from mapgen.palette.scene import BandGrid
+from mapgen.palette.styles import RELIEF_PALETTES
 from mapgen.palette.water.shore import shore_terms
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M, water_alpha
 from mapgen.render.draw import compose
@@ -236,14 +237,17 @@ def _drawn(
 ) -> tuple[np.ndarray, _Capture]:
     capture = _Capture()
     borrow = (np.broadcast_to(np.int8(0), (SHEET_PX, SHEET_PX)), np.zeros_like(field.height_dm))
+    ground = None
+    if layer in RELIEF_PALETTES:
+        ground = relief.ReliefGround(RELIEF_PALETTES[layer][0], field, None, [])
     rgb = render_layer(
-        layer, field, np.full((1, 1, 3), 90.0, np.float32), 1, borrow, RENDER_PX, False,
-        window=WINDOW, surface=capture, columns=columns,
+        layer, field, 1, borrow, RENDER_PX, False,
+        window=WINDOW, surface=capture, columns=columns, relief=ground,
     )  # fmt: skip
     return rgb, capture
 
 
-@pytest.mark.parametrize("layer", ["terrain", "satellite"])
+@pytest.mark.parametrize("layer", ["terrain", "relief-dark"])
 def test_a_full_size_window_drawn_in_bands_is_the_window_drawn_whole(monkeypatch, layer):
     field = _lake_field()
     rgb, capture = _drawn(field, layer)
@@ -267,7 +271,7 @@ def test_a_full_size_window_drawn_in_bands_is_the_window_drawn_whole(monkeypatch
 PIECE = (WINDOW[3] - WINDOW[2]) // 4
 
 
-@pytest.mark.parametrize("layer", ["terrain", "satellite"])
+@pytest.mark.parametrize("layer", ["terrain", "relief-dark"])
 def test_a_full_size_window_drawn_in_pieces_is_the_window_drawn_whole(monkeypatch, layer):
     field = _lake_field()
     rgb, capture = _drawn(field, layer, PIECE)

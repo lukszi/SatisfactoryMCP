@@ -67,10 +67,7 @@ from mapgen.lighting.hillshade import (
     hillshade,
 )
 from mapgen.palette.styles import (
-    BIOME_COLOURS,
-    NO_MANS_LAND_RGB,
     SEA_RGB,
-    UNKNOWN_BIOME_RGB,
     WATER_DEEP,
     WATER_SHALLOW,
     terrain_colours,
@@ -132,6 +129,7 @@ from satisfactory_mcp.core.gameassets.pyramid import (
     pyramid_top_z,
     tile_relpath,
 )
+from satisfactory_mcp.core.gameassets.versions import RETIRED_STYLES
 from satisfactory_mcp.domain.maps import presets, registry
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from satisfactory_mcp.interfaces.web.routers.assets import tiles as web_tiles
@@ -149,9 +147,9 @@ def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, mon
     assert RENDERS_DIR_NAME == web_tiles.MAP_RENDERS_DIR_NAME
     assert RENDER_SIDECAR_NAME == web_tiles.MAP_RENDER_SIDECAR_NAME
     assert set(LAYERS) == set(presets.RENDER_LAYERS)
-    assert {layer for layer in registry.LEGACY if layer != web_tiles.MAP_LAYER_DEFAULT} <= set(
-        LAYERS
-    )
+    legacy = {layer for layer in registry.LEGACY if layer != web_tiles.MAP_LAYER_DEFAULT}
+    retired = {style["layer"] for style in RETIRED_STYLES.values()}
+    assert legacy <= set(LAYERS) | retired, "an old id is a layer drawn now, or a retired one"
     assert BOUNDS_M == web_tiles.DEFAULT_MAP_BOUNDS_M
     # The tile grid is the cutter's, not this generator's: it hands its sheet to
     # ``core.gameassets.pyramid`` and the endpoint has to be configured for what THAT cuts.
@@ -935,49 +933,6 @@ def test_the_top_overlay_raises_the_ground_smoothly_and_lands_on_pixel_centres()
     assert z_cm[:, first] == pytest.approx(300.0)
     arch = int(numpy.ceil(3000.0 / step_cm - 0.5))
     assert cover[:, arch].all() and z_cm[0, arch] == pytest.approx(500.0)
-
-
-def test_the_biome_palette_is_this_file_s_own_and_covers_what_the_game_ships():
-    """The satellite layer's colours are designed, and every area the game names has one.
-
-    The asset ships 37 RGBA entries and they are a minimap legend -- flat primaries, cyan,
-    magenta, pure white -- so they are decoded for the record and never drawn. What has to
-    hold is that the replacement is complete (an area with no colour would fall back to a
-    neutral and quietly vanish into the coast) and that it really is a satellite palette
-    rather than the legend under another name: nothing saturated, nothing at full white.
-    """
-    # Pinned by name rather than against a subset. The old form compared this table with
-    # ``REGION_PAIRS``, a list of wiki names that meant the same place as a game area; that
-    # list is gone with the wiki trace, and what replaces it is the stronger claim: these
-    # are the seventeen area stems build 495413 names, and every one of them has a colour.
-    # ``tests/core/gameassets/test_maparea.py`` pins the same seventeen against the container.
-    assert set(BIOME_COLOURS) == {
-        "Area_AbyssCliffs",
-        "Area_DesertCanyons",
-        "Area_DuneDesert",
-        "Area_GrassFields",
-        "Area_LakeForest",
-        "Area_MazeCanyons",
-        "Area_NorthernForest",
-        "Area_RedBambooFields",
-        "Area_RedJungle",
-        "Area_RockyDesert",
-        "Area_Savanna",
-        "Area_SouthernForest",
-        "Area_SpireCoast",
-        "Area_Swamp",
-        "Area_TitanForest",
-        "Area_WesternDuneForest",
-        "Area_crater",
-    }
-    for name, colour in BIOME_COLOURS.items():
-        assert len(colour) == 3 and all(0 <= c <= 255 for c in colour), name
-        assert max(colour) - min(colour) <= 110, f"{name} is more saturated than imagery gets"
-        assert max(colour) <= 220, f"{name} is brighter than imagery gets"
-    # The fallbacks are the same kind of colour, so an area a later build adds looks
-    # unremarkable rather than wrong.
-    for colour in (NO_MANS_LAND_RGB, UNKNOWN_BIOME_RGB):
-        assert max(colour) - min(colour) <= 40
 
 
 class _FakeSheet:
