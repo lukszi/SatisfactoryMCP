@@ -554,10 +554,11 @@ always keeps that much of its body colour. The sea is unchanged. A water class's
 
 The bake's texels are a metre, so at 0.229 m a pixel the painted ground was a soft blur with
 a staircase along every edge between two layers: flat paint where the game shows grass,
-gravel and sand. At 16384 and 32768 px the ground now takes the landscape layers' own
-textures below the bake's metre, read as the game's landscape material reads them from
-above, and the bake keeps the colour at every scale it holds. Below 16384 a pixel is a metre
-or wider and nothing changes.
+gravel and sand. From 8192 px up the ground now takes the landscape layers' own textures
+below the bake's metre, read as the game's landscape material reads them from above, and the
+bake keeps the colour at every scale it holds. The detail is drawn wherever a pixel is under
+`DETAIL_MAX_SPACING_M`, a metre: an 8192 pixel is 0.92 m, so it draws there too, if little;
+at 4096 and below a pixel is 1.83 m or wider and nothing changes.
 
 **The textures.** Paint generator 5 keeps each layer's albedo, normal and height texture and
 the material's cell-bombing noise in `ground.tex.z`, indexed by `ground_textures` in
@@ -657,7 +658,7 @@ the bake's. The grain under 1.5 m rises from a standard deviation of 5.2 to 8.9 
 to 9.3. Drawn with `--no-light`, where the sun term takes the bumps too, 343,585 to 720,433
 pixels a window change. Beside frames of the 1.0, 1.1 and 1.2 trailers, the grass reads at
 the grain of the 1.0 trailer's top-down Grass Fields, the dunes stay smooth as the 1.2 aerial
-shows them, and the forest floor and the beaches take their litter and pebbles. Below 16384
+shows them, and the forest floor and the beaches take their litter and pebbles. Below 8192
 nothing moves: at 2048 every tile and light tile of the three layers is the same as master's,
 and only the painted sidecar's style version and digest change. A store without the textures
 draws the 32768 windows of the gates' G2 the same as master, all three layers.

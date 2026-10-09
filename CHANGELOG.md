@@ -83,7 +83,7 @@ Planned as 0.2.0.
   normal maps, spherical normals and moss. `--gpu` runs the raster's per-sample work on the
   GPU, to the same bytes. The cache also holds the Titan canopy's two leaf meshes and their
   218 placements.
-- Map renders: the Satellite map's ground at 16384 and 32768 px shows the game's own landscape
+- Map renders: the Satellite map's ground at 8192 px and up shows the game's own landscape
   textures under the baked colour's metre: grass, gravel, sand, forest floor and the other
   paint layers at the repeats the game's shaders use from above, turned in cells as the game
   turns them and height-blended where layers meet, while the colour at every larger scale
@@ -301,6 +301,8 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Maps tab: a render's estimate counts the ground detail's 2.1 GB of scratch from 8192 px,
+  where the render starts drawing it, instead of from 16384.
 - Map renders: the game-painted map's rock outside the deserts is grey again, not the tan of
   the dirt paths. Its derived colour now comes from the texture the cliff material samples,
   untinted, as the game's own baked distant view of the cliffs has it; it came from two

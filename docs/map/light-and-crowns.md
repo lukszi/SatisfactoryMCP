@@ -389,10 +389,11 @@ size: the surface (heights 4, land 1), the default-sun terms (4), and the bake's
 half-resolution heights, land and sky view (1.5) and quarter-resolution horizons (6.1, the
 atlas's 97 cells). With a paint store the crown tops, cover and underside add 6, 6.4 GB,
 whatever layers the run draws. Until light version 5 the horizons took 4 bytes and the crowns 5.
-With the layers' textures, at 16384 px and up, the ground's detail normal adds 2, 2.1 GB at full
-size. The Maps tab's estimate counts them as `presets.LIGHT_SCRATCH_BYTES`,
-`CROWN_SCRATCH_BYTES` and `DETAIL_SCRATCH_BYTES`, scaled by area; tests hold each to what the
-stage allocates.
+With the layers' textures, at 8192 px and up (an 8192 pixel is 0.92 m, under the bake's metre),
+the ground's detail normal adds 2, 2.1 GB at full size. The Maps tab's estimate counts them as
+`presets.LIGHT_SCRATCH_BYTES`, `CROWN_SCRATCH_BYTES` and `DETAIL_SCRATCH_BYTES`, scaled by
+area; tests hold each to what the stage allocates, and `DETAIL_MIN_PX` to the first size the
+generator draws the detail at.
 
 It is scratch for one run, not a cache: no flag keeps it, and nothing reads it after the run.
 What a later run can use, the finished pyramid and the default-sun terms, is filed apart from

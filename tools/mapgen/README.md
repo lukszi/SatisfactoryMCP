@@ -88,7 +88,7 @@ lean, species) and the crown top on the 1 m grid. Only the `painted` render laye
 From generator 4 its `meta.json` also keeps the level's noon light, the atmosphere volumes and
 the shell colours that `calibrate` reads; from generator 5, `ground.tex.z` keeps the layers'
 own albedo, normal and height textures and the cell noise, which the painted ground's detail
-and the light's normal tiles read at 16384 px and up (§30, "The layers' own textures"). §27
+and the light's normal tiles read at 8192 px and up (§30, "The layers' own textures"). §27
 lists the files; see also §30 to §33 and §36.
 
 ### crown-sprites
