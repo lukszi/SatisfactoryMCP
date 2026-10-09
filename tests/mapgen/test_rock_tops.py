@@ -16,8 +16,8 @@ import pytest
 from mapgen.colour import oklab
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.palette.painted.calibration import display_to_ground, scoped_planes
-from mapgen.palette.painted.rock_look.atlas import rock_look
-from mapgen.palette.painted.rock_look.reference import KIND_CLIFF, LookPixels, look_texels
+from mapgen.palette.painted.rock_look.atlas import KIND_CLIFF, rock_look
+from mapgen.palette.painted.rock_look.reference import LookPixels, look_texels
 from mapgen.palette.painted.rock_look.surface import top_mask
 from mapgen.palette.painted.surfaces import (
     cliff_layer,
@@ -158,7 +158,8 @@ def test_textured_rock_is_its_colour_times_the_texel_at_each_pixel_centre():
     drawn = rock_surface(rock, scene, ground, None, code)
     rows, cols = np.mgrid[0:12, 0:20]
     px = LookPixels(
-        x_m=((c0 + cols + 0.5) * spacing).ravel(), y_m=((lo + rows + 0.5) * spacing).ravel(),
+        u=((c0 + cols + 0.5) * spacing).ravel().astype(np.float32),
+        v=((lo + rows + 0.5) * spacing).ravel().astype(np.float32),
         normal=np.tile(np.float32([0, 0, 1]), (240, 1)), kind=np.full(240, KIND_CLIFF, np.uint8),
         top=np.full(240, -1, np.int32),
     )  # fmt: skip

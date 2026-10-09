@@ -272,7 +272,9 @@ def _mesh_scene(cls, cover):
 def test_wet_coral_is_seabed_dry_coral_is_coral_and_rocks_wear_the_area_rock():
     coral, shell = np.array([0.4, 0.3, 0.35], np.float32), np.array([0.1, 0.1, 0.1], np.float32)
     seabed = np.array([0.1, 0.2, 0.3], np.float32)
-    ground = SimpleNamespace(mesh_rgb={MESH_CORAL: coral, MESH_SHELL: shell}, seabed_coral=seabed)
+    ground = SimpleNamespace(
+        mesh_rgb={MESH_CORAL: coral, MESH_SHELL: shell}, seabed_coral=seabed, rock_look=None
+    )
     area_rock = np.full((1, 4, 3), 0.25, np.float32)
     g = np.zeros((1, 4, 3), np.float32)
     scene = _mesh_scene([MESH_CORAL, MESH_CORAL, MESH_SHELL, MESH_ROCK], [1.0, 0.0, 0.0, 0.0])

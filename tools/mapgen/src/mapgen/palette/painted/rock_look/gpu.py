@@ -1,6 +1,7 @@
 """The texel kernel on the GPU: ``reference.look_texels``, a thread a pixel, to its bits.
 
-``texels.cu`` does the reference's operations in its order, compiled without fused
+``render/gpu/cells.cu``'s ``look_texels`` does the reference's operations in its order, with
+the landscape's cells the ground's detail reads through, compiled without fused
 multiply-adds (``mapgen.jit``). The look's atlases go to the device once a run and stay; a
 call the device has no memory for runs the reference instead. Imported only when
 ``mapgen.jit.gpu_on()``. docs/map/painted.md section 30, "Rock textures".
@@ -25,7 +26,7 @@ __all__ = ["FLAT_THREADS", "look_texels"]
 #: Threads of a block over the pixels laid flat.
 FLAT_THREADS = 256
 
-_SOURCE = ("mapgen.palette.painted.rock_look", "texels.cu")
+_SOURCE = ("mapgen.render.gpu", "cells.cu")
 
 _uploading = threading.Lock()
 
@@ -35,7 +36,7 @@ class _OnDevice(NamedTuple):
 
     albedo: tuple[object, ...]
     normals: tuple[object, ...]
-    cells: tuple[object, ...]
+    table: tuple[object, ...]
 
 
 _uploaded: dict[int, tuple[RockLook, _OnDevice]] = {}
@@ -55,22 +56,22 @@ def _on_device(look: RockLook) -> _OnDevice:
             _up(look.albedo.texels, np.float32),
             np.int32(look.albedo.texels.shape[1]),
             _up(look.albedo.tiles, np.int32),
-            _up(look.albedo_tiles_m, np.float64),
             _up(look.albedo_median, np.float32),
+            _up(look.top_inverse(), np.float32),
         )
         normals = (
             _up(look.normals.texels, np.float32),
             np.int32(look.normals.texels.shape[1]),
             _up(look.normals.tiles, np.int32),
-            _up(look.normal_tiles_m, np.float64),
         )
-        cells = (
-            _up(look.cells, np.float32),
-            np.int32(look.cells.shape[0]),
-            np.float64(look.cell_tile_m),
-            _up(look.turn, np.float64),
+        table = (
+            _up(look.noise, np.float32),
+            np.int32(look.noise.shape[0]),
+            _up(look.reads, np.int32),
+            _up(look.inverse, np.float32),
+            _up(look.gains, np.float32),
         )
-        found = _OnDevice(albedo, normals, cells)
+        found = _OnDevice(albedo, normals, table)
         _uploaded.clear()
         _uploaded[id(look)] = (look, found)
         return found
@@ -91,15 +92,15 @@ def _look_texels(look: RockLook, px: LookPixels) -> LookTexels:
     held = _on_device(look)
     outs = [cp.empty((n, 3), np.float32) for _ in range(3)]
     args = (
-        _up(px.x_m, np.float64),
-        _up(px.y_m, np.float64),
+        _up(px.u, np.float32),
+        _up(px.v, np.float32),
         _up(px.normal, np.float32),
         _up(px.kind, np.uint8),
         _up(px.top, np.int32),
         np.int64(n),
         *held.albedo,
         *held.normals,
-        *held.cells,
+        *held.table,
         *outs,
     )
     blocks = (max(1, -(-n // FLAT_THREADS)),)

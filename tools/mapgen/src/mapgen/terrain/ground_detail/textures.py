@@ -30,6 +30,7 @@ from mapgen.gamedata.ground.layer_textures import (
     decode_ground_textures,
 )
 from mapgen.gamedata.ground.paint_store import META_NAME
+from mapgen.terrain.ground_detail.cells import noise_terms
 from mapgen.terrain.texels import Atlas
 from satisfactory_mcp.core.arrays import F32Grid, I32Grid, I64Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
@@ -38,7 +39,6 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 __all__ = [
     "DETAIL_MAX_SPACING_M",
     "DETAIL_SIGMA_M",
-    "NOISE_TERMS",
     "NO_LAYER",
     "TOP_LAYERS",
     "DetailTextures",
@@ -54,9 +54,6 @@ TOP_LAYERS = 4
 NO_LAYER = 255
 #: A pixel at least this wide draws no detail: the 1 m bake holds what it shows.
 DETAIL_MAX_SPACING_M = 1.0
-#: The noise's terms a texel: its cell's shift along u and v in repeats, its scale, the
-#: cosine and sine of its turn, and its mask.
-NOISE_TERMS = 6
 #: Weight texels merged into the leading layers at a time.
 _MERGE_TEXELS = 1 << 21
 
@@ -167,7 +164,7 @@ def load_detail_textures(paint_dir: Path, spacing_m: float) -> DetailTextures | 
     return DetailTextures(
         colour=colour.atlas(),
         surface=surface.atlas(),
-        noise=_noise_terms(textures[NOISE]),
+        noise=noise_terms(textures[NOISE]),
         table=table,
         layers=layers + overlays,
         overlay=len(layers) if overlays else -1,
@@ -249,16 +246,6 @@ def _height_tile(texels: U8Grid, read: Read, spacing_m: float) -> F32Grid:
     height = texels[..., :1].astype(np.float32) / np.float32(255.0)
     mipped = _mipped(height, _levels(texels.shape[0], read.tile_m, spacing_m))
     return np.concatenate([mipped, _low(mipped, read.tile_m)], -1)
-
-
-def _noise_terms(rgba: U8Grid) -> F32Grid:
-    """The cell noise as the terms a cell reads (``NOISE_TERMS``): R shifts u and scales by
-    0.9 to 1.1, G shifts v, B turns a whole circle, A is the cell's mask."""
-    c = rgba.astype(np.float64) / 255.0
-    turn = 2.0 * np.pi * c[..., 2]
-    terms = [2.0 * c[..., 0] - 1.0, 2.0 * c[..., 1] - 1.0, 0.9 + 0.2 * c[..., 0]]
-    terms += [np.cos(turn), np.sin(turn), c[..., 3]]
-    return np.ascontiguousarray(np.stack(terms, -1), np.float32)
 
 
 def _leading(planes: Iterator[tuple[int, U8Grid]], shape: tuple[int, int]) -> tuple[U8Grid, U8Grid]:

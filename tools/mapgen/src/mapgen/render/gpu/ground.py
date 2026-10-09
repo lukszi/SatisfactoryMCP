@@ -23,7 +23,7 @@ from mapgen.terrain.ground_detail.textures import DetailTextures
 
 __all__ = ["ground_detail"]
 
-_SOURCE = "ground.cu"
+_SOURCE = "cells.cu"
 
 
 class _OnDevice(NamedTuple):

@@ -2162,8 +2162,9 @@ clamped), reads tiles of an atlas without touching their neighbours, and stamps 
 turned and scaled, over a colour and its cover in their order; `render/gpu/texels.py` does
 the same on the device, to the same bytes, with the sprites binned by 16-pixel cells on the
 host so every pixel walks only the sprites that may reach it. The ground's detail draws on
-them since 2026-10-09: its textures go up with `upload_atlas` and `render/gpu/ground.cu` reads
-them as `texels.cu` does (painted.md section 30, "The layers' own textures").
+them since 2026-10-09: its textures go up with `upload_atlas` and `render/gpu/cells.cu` reads
+them as `texels.cu` does, through the landscape's rotated cells it shares with the rock look's
+kernel (painted.md section 30, "The layers' own textures" and "Rock textures").
 
 **The crowns on the device** (2026-10-08). `render/gpu/crowns.py` stamps a band's crowns from
 their sprites with the `stamp_crowns` kernel beside the sprite stamp in `texels.cu`: the

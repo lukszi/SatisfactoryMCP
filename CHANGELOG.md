@@ -127,6 +127,12 @@ Planned as 0.2.0.
   cliff's moss, grass or sand lies where the cliff material's own slope mask puts it, in its
   own texture, instead of in noise patches. The textures are read from the game install at
   each render, and `--gpu` reads them on the device to the same bytes.
+- Map renders: the Satellite map's desert rock no longer repeats in a visible lattice over
+  whole mesas. Its texture is turned in the landscape's cells, as the arches' and the shells'
+  are, standing in for the meshes' own UV layouts, and repeats at the game's 17 m, the size
+  of the desert meshes seen most from above, instead of 12.5 m. The big grey shells on the
+  coasts, which drew as flat colour, wear their own shell texture and relief. The style's
+  version goes up.
 - Map renders: the Satellite map's sea is turquoise over the shallows, steel blue in the
   lagoons and navy in the deep, fitted to 1.0 screenshots of the sea where it was teal at
   every depth; the seabed coral carpet keeps its colour. Coral caps are a warm grey-pink, as
@@ -301,6 +307,8 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the Satellite map's ground turns its texture cells by the scale the game's
+  landscape shader reads from the cell noise's green, not its red.
 - Maps tab: a render's estimate counts the ground detail's 2.1 GB of scratch from 8192 px,
   where the render starts drawing it, instead of from 16384.
 - Map renders: the game-painted map's rock outside the deserts is grey again, not the tan of
