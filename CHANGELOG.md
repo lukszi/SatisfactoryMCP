@@ -134,6 +134,15 @@ Planned as 0.2.0.
   sand's colour (chroma x1.15). Ground drawn without the game's baked colour, as on the Grass
   Fields' southern slopes, takes each area's step to the baked colour instead of a fixed
   biome hue, so it no longer turns greener at the bake's edge. The style's version goes up.
+- Map renders: the Satellite map's colours checked against the game's own baked view once the
+  look draws its textures and crown sprites. The green tree crowns take the 1.0 canopy
+  screenshot again, a little bluer and less saturated, and the ancient pines lose most of
+  their yellow. The Grass Fields' grass is the game's own green instead of a pale yellow-green,
+  the Southern Forest's grass-topped cliffs wear its bluer grass, the Dune Desert's arches and
+  rib bones are terracotta again, and the red jungle cliffs show their red tops. Palettes can
+  now give an area's arches a colour of their own (`calibration.areas[].arches`) and a rock
+  family a top the game install does not name (`calibration.tops`). The style's version goes
+  up.
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is

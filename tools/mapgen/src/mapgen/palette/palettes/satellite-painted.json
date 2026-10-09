@@ -42,8 +42,8 @@
    0.0013
   ],
   "Area_GrassFields": [
-   -0.001,
-   0.0008
+   -0.003,
+   0.0004
   ],
   "Area_LakeForest": [
    -0.0001,
@@ -74,8 +74,8 @@
    -0.0002
   ],
   "Area_SouthernForest": [
-   -0.0105,
-   -0.0169
+   -0.001,
+   -0.0005
   ],
   "Area_SpireCoast": [
    0.0026,
@@ -493,7 +493,8 @@
    "desert": "#ae8271"
   },
   "tops": {
-   "forest": "#505936"
+   "forest": "#505936",
+   "redjungle": "#ad6351"
   },
   "meshes": {
    "coral": "#917c75",
@@ -523,7 +524,8 @@
     "areas": [
      "Area_DuneDesert"
     ],
-    "rock": "#ae8271"
+    "rock": "#ae8271",
+    "arches": "#ba7b56"
    },
    {
     "areas": [
@@ -535,10 +537,10 @@
    },
    {
     "areas": [
-     "Area_GrassFields"
+     "Area_SouthernForest"
     ],
     "layers": {
-     "Grass_LayerInfo": "#9dad70"
+     "Grass_LayerInfo": "#53784a"
     }
    },
    {
@@ -580,7 +582,6 @@
    "layers.Grass_LayerInfo",
    "layers.Forest_LayerInfo",
    "derived.WetSand_LayerInfo",
-   "canopy",
    "rock",
    "families.desert",
    "tops.forest",

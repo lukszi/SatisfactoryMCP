@@ -188,6 +188,11 @@ Grass Fields grass on and off the bake ΔE 1.8 to 0.8, Abyss Cliffs grass 2.1 to
 the area's median does not represent moves little or the other way: Grass Fields sand 2.6 to
 2.9, gravel 4.7 to 3.7.
 
+A step follows the targets it is measured after, so a change of an area's layer targets is
+measured again. Since the second colour review (calibration.md section 31, "The second
+review") the Southern Forest's grass has a target of its own, which does what its step did:
+(-0.0010, -0.0005) now; the Grass Fields, whose grass target went, (-0.0030, 0.0004).
+
 ### Known limits
 
 - Lakes keep recipe 5's edge; rivers get sloped banks from their splines (section 34).
@@ -377,7 +382,8 @@ so a cache cut by another version is rebuilt.
 (linear 0.624, 0.545, 0.471 for every family on this build), and its top layer, the mean of the
 family root's `Far Albedo` texture or else its `Albedo`: forest and grass from their far
 textures, red grass from `TX_GrassRed_01_Alb`, sand from `TX_Sand_BC`. Plain cliff, wet sand and
-red jungle have none. Per pixel, rock is multiplied by its family's tint relative to the
+red jungle have none; the red jungle's takes its display target from `calibration.tops` (section
+31, "The top layer's colours"), in flat colour. Per pixel, rock is multiplied by its family's tint relative to the
 median tint of all families, then blended to the top layer where the cliff master's own slope
 mask puts it ("Rock textures" below). The forest top wears a display target in place of its
 texture's mean, the sand and grass tops their paint layers' targets (section 31, "The top
@@ -473,7 +479,10 @@ areas), the boulders 1.08, both at the cliffs' chroma; rocks of the direct pass 
 are 0.89, darker and mixed. So the top pass wears `calibration.arches`, #8a8671: the default
 rock #85816c at 1.088 times the luminance (the median of both, OKLab L times 1.029), its
 chroma and hue kept. It used to take the area's rock. Rocks of no family keep the area's rock,
-in the cliff texture.
+in the cliff texture. An area entry can give its arches a colour of its own,
+`calibration.areas[].arches`, blended in by the entry's area weight as the other area targets
+are: the Dune Desert's arches and rib bones are terracotta in the baked view, #ba7b56, which
+the grey had replaced (section 31, "The second review").
 
 **On the GPU.** `reference.look_texels` reads the pixels a band's rock covers, flat;
 `rock_look/gpu.py` with `texels.cu` does the same on the device with `--gpu`, the atlases
@@ -515,7 +524,9 @@ cache carries the 218 placements beside the art, and the canopy is stamped as th
 (light-and-crowns.md section 36, "Drawing"), as a layer of its own laid after the crowns and
 the trunks: its texels moved in OKLab so their mean is the style's leaf colour (77, 90, 48),
 which the leaves' own mean nearly is (76, 89, 47); lit by its normals; hidden where the drawn
-surface stands more than `hidden_below_m` over its top; not calibrated as a crown.
+surface stands more than `hidden_below_m` over its top; not calibrated as a crown. The game's
+baked distant view holds no Titan leaves (it shows the plateaus and the trunks under them), so
+their colour from above has no reference yet.
 
 Two defects of the raster's canopy went with it. At 0.8 it was see-through, the ground and
 crowns under it showing as a green haze; its leaves now hide what is under them, with holes

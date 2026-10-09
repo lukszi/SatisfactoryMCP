@@ -15,7 +15,7 @@ import pytest
 
 from mapgen.colour import oklab
 from mapgen.gamedata.rocks.families import FAMILIES
-from mapgen.palette.painted.calibration import display_to_ground
+from mapgen.palette.painted.calibration import display_to_ground, scoped_planes
 from mapgen.palette.painted.rock_look.atlas import rock_look
 from mapgen.palette.painted.rock_look.reference import KIND_CLIFF, LookPixels, look_texels
 from mapgen.palette.painted.rock_look.surface import top_mask
@@ -33,6 +33,8 @@ from tests.support.rock_textures import rock_textures
 FOREST = FAMILIES.index("forest")
 GRASS = FAMILIES.index("grass")
 SAND = FAMILIES.index("sand")
+REDJUNGLE = FAMILIES.index("redjungle")
+CLIFF = FAMILIES.index("cliff")
 MOSS = (0.05, 0.08, 0.03)
 ARCH = np.array([0.3, 0.28, 0.25], np.float32)
 
@@ -68,7 +70,7 @@ def _slope(nz, shape=(16, 16), spacing=0.25):
 def test_the_palette_draws_the_look_and_no_patches():
     assert "rock_top" not in PAINTED_PALETTE
     assert set(PAINTED_PALETTE["rock_look"]) == {"about", "albedo", "shade", "layer"}
-    assert PAINTED_PALETTE["calibration"]["tops"] == {"forest": "#505936"}
+    assert PAINTED_PALETTE["calibration"]["tops"] == {"forest": "#505936", "redjungle": "#ad6351"}
 
 
 def test_the_arches_are_a_lighter_warm_grey_than_the_default_rock():
@@ -113,6 +115,21 @@ def test_an_arch_over_a_cliff_wears_the_arches_colour_by_its_lift():
     ground.arch_rgb = None
     np.testing.assert_allclose(rock_surface(rock, _scene(np.zeros((2, 3)), top_weight=lift),
                                             ground)[0, 2], 0.3, atol=1e-6)  # fmt: skip
+
+
+def test_an_area_entry_s_arches_hold_inside_it_and_the_palette_s_outside():
+    ground = _ground()
+    ground.rock_family = np.full((2, 2), FOREST, np.uint8)
+    dune = np.array([0.5, 0.3, 0.2], np.float32)
+    inside = np.array([[1.0, 0.0], [1.0, 0.0]], np.float32)
+    ground.arch_rgb = scoped_planes(ARCH, [(inside, dune)])
+    lift = np.ones((2, 2), np.float32)
+    out = rock_surface(np.full((2, 2, 3), 0.3, np.float32), _scene(np.zeros((2, 2)), top_weight=lift),
+                       ground, lambda plane: plane)  # fmt: skip
+    np.testing.assert_allclose(out[:, 0], [dune, dune], atol=1e-6)
+    np.testing.assert_allclose(out[:, 1], [ARCH, ARCH], atol=1e-6)
+    entry = next(e for e in PAINTED_PALETTE["calibration"]["areas"] if "arches" in e)
+    assert entry["areas"] == ["Area_DuneDesert"], "the Dune Desert's terracotta arches"
 
 
 # ---------------------------------------------------------------------- the look on a band
@@ -214,8 +231,18 @@ def test_a_top_of_a_paint_layers_texture_wears_that_layers_target_where_it_stand
 def test_the_family_tables_take_the_tops_from_the_palette():
     families = {"forest": {"top": [0.1, 0.15, 0.07]}, "grass": {"top": [0.2, 0.3, 0.1]}}
     _tint, top, has = family_tables(families, PAINTED_PALETTE)
+    tops = PAINTED_PALETTE["calibration"]["tops"]
     np.testing.assert_array_equal(
-        top, top_targets(family_tables(families)[1], {"forest": "#505936"}, PAINTED_PALETTE)
+        top, top_targets(family_tables(families)[1], tops, PAINTED_PALETTE)
     )
     np.testing.assert_allclose(top[GRASS], [0.2, 0.3, 0.1])
     assert has[FOREST] == has[GRASS] == 1.0
+
+
+def test_a_top_target_gives_a_top_to_a_family_the_store_has_none_for():
+    families = {"redjungle": {"top": None}, "cliff": {"top": None}}
+    _tint, top, has = family_tables(families, PAINTED_PALETTE)
+    want = display_to_ground(PAINTED_PALETTE, PAINTED_PALETTE["calibration"]["tops"]["redjungle"])
+    assert has[REDJUNGLE] == 1.0 and has[CLIFF] == 0.0
+    np.testing.assert_allclose(oklab(top[REDJUNGLE]), want, atol=2e-3)
+    assert family_tables(families)[2][REDJUNGLE] == 0.0, "without the palette, none"

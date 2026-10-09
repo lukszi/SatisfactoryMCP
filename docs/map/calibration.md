@@ -166,6 +166,8 @@ files are checked"). An entry can carry:
   entry's target, the rest to the global target if there is one. Each source median is
   measured on its own side, on pure texels as above.
 - **`rock`.** As the desert rock below.
+- **`arches`.** The arches and boulders inside the entry's areas, where `calibration.arches`
+  colours them elsewhere (painted.md section 30, "Rock textures").
 - **`canopy`** and **`meshes`** (coral, shell). The colour becomes a plane on the rock grid:
   the global colour outside, the entry's inside. The canopy targets also move the tree crowns
   (see "Crowns" below). No entry carries a canopy target today: the forests take the global
@@ -215,7 +217,9 @@ references were used. A target is a screenshot measured so, or derived by a rule
 | Sand | the deserts and Savanna | #c4ab8b | screenshot | [Somersloop](https://satisfactory.wiki.gg/images/Somersloop_at_Rocky_Desert.jpg), [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), [Desert Canyons](https://satisfactory.wiki.gg/images/Desert_Canyons.png) |
 | WetSand | the deserts and Savanna | #9b7a5b | derived (rule) | the entry's Sand at L ×0.80, C ×1.15, h −10 ("Wet sand by rule" above) |
 | Gravel | the deserts and Savanna | #8f8373 | screenshot | Somersloop, and the gravel-to-sand ratio in Desert Canyons |
-| Grass | Grass Fields | #9dad70 | screenshot | the v1.1 top-down HUB shots: [front](https://satisfactory.wiki.gg/images/HUB_Front_Overhead.png), [rear](https://satisfactory.wiki.gg/images/HUB_Rear_Overhead.png), [burners](https://satisfactory.wiki.gg/images/HUB_Biomass_Burners_Overhead.png), [freighter](https://satisfactory.wiki.gg/images/HUB_FICSIT_Freighter_Overhead.png) |
+| Grass | Southern Forest | #53784a | derived (bake) | the area's pure grass texels in the game's baked colour through the camera model; its grass is bluer than any other area's ("The second review" below) |
+| Arches and boulders | Dune Desert | #ba7b56 | derived (bake) | the Dune Desert's arches and rib bones in the game's baked distant view through the camera model ("The second review" below) |
+| Top layer, red jungle family | the up-facing faces of every `_RedJungle` cliff | #ad6351 | derived (bake) | those cliffs' tops in the game's baked distant view through the camera model ("The second review" below) |
 | Crowns, red Kapok (`SM_Kapok_03`) | everywhere, by species | #7c4955 | screenshot | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942); two 1.0 sources agree (ΔE 1.8 and 1.9) (see "Crowns") |
 | Crowns, blue palms | everywhere, by hue | #3d627d | screenshot | [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), high-angle daylight: the blue leaf pixels (hue 190 to 290, chroma at least 0.04) of five crowns pooled, then the method above. The [Rocky Desert area](https://satisfactory.wiki.gg/images/Rocky_Desert_Area.png) crowns agree on hue (242) but are seen from below; the [river split](https://satisfactory.wiki.gg/images/Rocky_Desert_river_split.png) crowns are backlit. A 1.0 shot gives #556b85 (ΔE 4.4); not derivable, as a third of the leaf is midribs and the fronds are sparse |
 | CoralRock layer | Blue Crater, Crater Lakes | #6c7386 | screenshot | [crater ground at noon](https://steamcommunity.com/sharedfiles/filedetails/?id=3372405479) |
@@ -340,14 +344,20 @@ screenshots' bare share being the mesh normal maps' own relief.
 
 **The forest top.** `calibration.tops` names a display target for a family's top, made a
 ground colour as the other display targets are (`top_targets`, applied by `family_tables`).
-Only the forest family has one, #505936, from the Spire Coast boxes of the target table
-above.
+The forest family has one, #505936, from the Spire Coast boxes of the target table above.
+
+**The red jungle top** (2026-10-09). `Cliff_RedJungle` turns its top layer on but overrides
+no texture, so the store records no top for it and its cliffs drew bare grey. The game's baked
+distant view has their up-facing faces the red of the jungle floor: #ad6351 through the camera
+model in the Red Bamboo Fields, the Red Jungle and the Lake Forest, against the grey drawn
+(ΔE 8.6 to 9.6). A family named in `tops` now has a top even where the store read none, so
+`tops.redjungle` #ad6351 gives them one, in flat colour under the cliff master's mask.
 
 **A top made of a paint layer** (2026-10-07, `surfaces.layer_tops`). The sand, grass and red
 grass tops are textures of the landscape's own tiles, `Tiles/<Layer>/`, so the folder names
 the paint layer they are. Such a top wears that layer's display target, scoped by area as the
 layer is, on the rock grid: the sand top #d5cbb6, and #c4ab8b in the deserts and the Savanna;
-the grass top #83986e, and #9dad70 in the Grass Fields. A layer with no target leaves its top
+the grass top #83986e, and #53784a in the Southern Forest. A layer with no target leaves its top
 the texture's mean, as red grass is. A texture mean is brighter than the bake the gain was
 fitted on: the sand top's (linear 0.56, 0.45, 0.33) drew near white (#fce1c1 to #ffe7ca) in
 patches over the desert and beach rock of the Rocky Desert, the Dune Desert's edge and the
@@ -402,8 +412,9 @@ crowns instead (`palette/painted/trees.py` `crown_ops`, applied in `crown_layer`
 - **Hue gate.** A target was measured on canopy of one hue. A crown takes all of its scope's
   step within 20 degrees of the target's hue and none past 40 (`HUE_GATE_DEG`), scaled by its
   chroma from none at grey to all at 0.02 (`CANOPY_GREY`); the source median is taken over the
-  gated crowns only. Pink bamboo, coral trees and the yellow pines of the Northern and Lake
-  Forests keep their texture colours; the blue palms take a target of their own (below).
+  gated crowns only. Pink bamboo and coral trees keep their texture colours; the blue palms
+  take a target of their own (below). The ancient pines' sprites stand 27 to 28 degrees off
+  the canopy target's hue and take 0.66 to 0.72 of its step, by their mean colour.
   Without the gate one step over every species drew the Red Bamboo orange: a per-channel
   median over mixed hues has almost no chroma, so the global scale came out x1.7.
 - **Named crown targets.** `calibration.crowns` names targets for crowns that no canopy target
@@ -548,7 +559,7 @@ gate declines, so they keep their screenshot.
 | * layers.Grass | #7f8d4e | #83986e | 4.4 | 2.7 / 4.3 | global |
 | * layers.Forest | #484d26 | (the canopy's #558653) | 17.3 | 5.0 / 6.2 | global |
 | x derived.WetSand | #b38c61 | #a4947f | 4.1 | 4.0 / 2.4 | global |
-| * canopy | #5e8136 | #558653 | 3.2 | 2.9 / 6.2 | global |
+| canopy | #5e8136 | #558653 | 3.2 | 2.9 / 6.2 | global |
 | x rock | #7b6f5a | #85816c | 5.5 | 1.0 / 2.1 | global |
 | * families.desert | #c38761 | #ae8271 | 4.5 | 3.3 / 4.0 | Dune Desert |
 | * tops.forest | #54662b | #505936 | 4.7 | 3.2 / 3.6 | global |
@@ -560,7 +571,6 @@ gate declines, so they keep their screenshot.
 | * desert entry: Gravel | #9e896f | #8f8373 | 3.1 | 1.7 / 1.8 | global |
 | * desert rock entry | #c38761 | #ae8271 | 4.5 | 3.3 / 4.0 | Dune Desert |
 | * Grass Fields etc.: rock | #7b6f5a | #7e7868 | 2.9 | 1.1 / 1.7 | global |
-| Grass Fields: Grass | #7d8f50 | #9dad70 | 10.0 | 0.5 / 5.7 | global |
 | * Red Jungle: Cliff | #7c6f5b | #877e6e | 4.9 | 0.8 / 1.7 | global |
 | x Red Jungle: rock | #7b6f5a | #877e6e | 5.0 | 0.9 / 1.7 | global |
 | crater: CoralRock | #82838e | #6c7386 | 5.8 | 1.5 / 2.0 | global |
@@ -580,9 +590,11 @@ Desert's light, the Forest floor, the seven layers with no target at all, and th
 were within ΔE 5 of their screenshot target when they were listed. Of those, a render takes the
 ones the derive gate passes. Not listed: the blue palms (the leaf texture is a pale blue-grey and
 the model has no foliage sky term), the red Kapok (no subsurface light), every water colour,
-and the keys between 5 and 10 until the in-game checks their verdicts list are done. A render
-with derived colours carries the merged palette's digest, so a different install's derivation
-is a different style.
+and the keys between 5 and 10 until the in-game checks their verdicts list are done. Since
+2026-10-09 the canopy is not listed either: its rule measures the paint store's flat slot
+colours, which the render no longer draws ("The second review" below). A render with derived
+colours carries the merged palette's digest, so a different install's derivation is a
+different style.
 
 **The derive gate** (2026-10-08, `derive/gate.py`). A listed key takes its derived colour only
 when it agrees with its screenshot target in lightness, chroma and hue:
@@ -622,7 +634,7 @@ nothing.
 
 **Tests.** `tests/fixtures/calibration_screenshots.json` keeps the screenshot targets with
 their sources. A scored key must lie within ΔE 8 of its target, or within its own tolerance,
-its measured distance plus 1 (Grass Fields grass 11, the red Kapok 11.5); the blue palms are
+its measured distance plus 1 (the red Kapok 11.5); the blue palms are
 not scored. The integration test checks them on a real store with `E` within 2% of 2.81, and
 that the three rock keys derive the cliff body within the gate's chroma-and-hue allowance.
 
@@ -707,6 +719,36 @@ is `areas[DuneDesert].rock`, the same rule and the same #c38761 as before.
 The HLOD bake itself could become a source: rasterised top-down at 1 m it gives the game's own
 colour of every merged mesh, trees included, though its proxies are coarse.
 
+### The second review (2026-10-09)
+
+The look drawn from the game's own textures and crown sprites was reviewed region by region:
+twenty windows of the full-size sheet, 469 m across, drawn unlit, against the game's baked
+distant view through the camera model (the landscape bake under the mesh HLOD bake rasterised
+at 1 m) and official footage. Two readings of that reference came first:
+
+- **The HLOD bake holds no crowns and no Titan canopy.** Under a tree it shows what lies
+  beneath: under the Red Jungle's crowns the grey cliffs, under the Southern Forest's purple
+  trees the green grass, under the Titan canopy the plateaus and the trunks. It is no reference
+  for crown colours, so the crowns were judged against their own sprites' albedo through the
+  camera model.
+- **Under rock it is the rock by family.** Rock lifted over the ground, by family, against
+  the bake: the forest, grass and sand tops lie within ΔE 0.3 to 3.3 of it, the plain cliffs
+  mostly within 2 (greener beside grass, by up to 6.0 in the Crater Lakes, from the ground
+  tint of section 27; 6.8 darker in the Blue Crater), the red jungle tops 9 off (below).
+
+What changed, as medians of the windows' pixels against the bake through the camera:
+
+| Change | Before | After |
+| --- | --- | --- |
+| The canopy takes its 1.0 screenshot #558653: the derived canopy (#5e8136) measures the paint store's flat slot colours, which no render draws, and the sprites' own median green crown, the Kapok's, gives about #597136 through the camera, ΔE 6 from the screenshot, which the gate would decline. The step's chroma scale falls from ×1.83 to ×1.54 (sidecar `crowns@0`) | Kapok crowns #5a7933 (C 0.104, h 129), ancient pines #7a840e (C 0.129, h 115) | #517d4d (C 0.087, h 142), #698833 (C 0.118, h 127) |
+| The Grass Fields' grass target #9dad70 (four v1.1 top-down shots, metered on the scene) is gone: it drew the grass 8.7 L over the bake and lighter than the arch beside it, where the 1.0 launch and console trailers have lit grass at L 0.60 and the arch's lit rock at 0.54 to 0.59. The fields take the global grass | grass ΔE 8.7, grass-topped cliffs 7.1 | 1.3, 2.3 |
+| The Southern Forest's grass is the bluest in the bake (#53784a, h 140 against 118 to 122 elsewhere), and 87% of its rock is the grass family, whose tops wore the global grass target. An area target #53784a puts both on the bake; the area's off-bake tint falls from (-0.0105, -0.0169) to (-0.0010, -0.0005) and the Grass Fields' moves to (-0.0030, 0.0004), measured again as painted.md section 27 says | ground grass ΔE 2.1, cliff tops 7.9 | 0.3, 0.6 |
+| `calibration.areas[].arches`: an area entry's arches and boulders. The Dune Desert's arches and rib bones pool to #ba7b56 in the bake; `calibration.arches` had turned them grey | #8c8770 (grey) | #ba7b56 |
+| `tops.redjungle` #ad6351 ("The top layer's colours") | red jungle cliffs ΔE 8.6 to 9.6 | 1.7 to 2.0 |
+
+At 2048 (G1, painted only, from the same rasters) 732,019 of the native level's 4,194,304
+painted pixels change, by up to 77; the light's tiles keep their bytes.
+
 ### Known limits
 
 - No screenshot target, for want of a clean reference: SandRock (Dune Desert and Spire
@@ -717,8 +759,13 @@ colour of every merged mesh, trees included, though its proxies are coarse.
   among them take their derived colour where the store has daylight ("Targets derived from
   the game install"); without it, Forest_LayerInfo takes the canopy target, a vivid treetop
   green, and the others keep the bake's colour.
-- The Grass Fields grass target comes from one place, seen in four v1.1 shots; the biome
-  is inferred from the flowers. Grass elsewhere keeps the global target.
+- The derive's crown rules (`canopy`, `crowns`, `species`) read the paint store's flat slot
+  colours, not the crown sprites a render draws, so no crown key is taken from the install.
+- The game's baked distant view holds no tree crowns and no Titan canopy, so no crown colour
+  is checked against the game's own view; the ancient pines draw their sprites' colour moved
+  by 0.66 to 0.72 of the canopy step, olive-green and lighter than the grass's footage shows.
+- The terracotta arches between the mesas, east of x 1,400, stand in the Spire Coast's area
+  and wear the grey arches' colour; the baked view has them terracotta (#c88d63).
 - The top layer's mask is the cliff master's, read with the look's normal maps where the game
   reads each mesh's own (painted.md section 30, "Rock textures"). Only the forest top has a
   colour measured from screenshots; the sand and grass tops wear their layers' targets and
@@ -755,5 +802,6 @@ colour of every merged mesh, trees included, though its proxies are coarse.
   (the default rock) on the red-brown rock.
 - The Red Bamboo Fields and Red Jungle lakes keep the sea fit: their reference water
   reflects a purple sky, which is not the swamp's look.
-- Every target comes from tonemapped perspective screenshots; only the Grass Fields grass
-  is from a top-down view.
+- Every screenshot target comes from tonemapped perspective screenshots; the coral caps and
+  the wet sand rule come from editor footage seen from above, and the Southern Forest grass,
+  the Dune Desert's arches and the red jungle top from the game's baked distant view.

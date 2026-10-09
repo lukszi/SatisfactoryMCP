@@ -179,7 +179,11 @@ class PaintedGround:
         del albedo
         self.rock_look: RockLook | None = None
         arches = palette["calibration"].get("arches")
-        self.arch_rgb: FloatGrid | None = None if arches is None else self._target(arches)
+        self.arch_rgb: ColourPlanes | None = (
+            None
+            if arches is None
+            else scoped_planes(self._target(arches), self._area_targets(lambda e: e.get("arches")))
+        )
         self._trees(paint_dir, sprites)
         self.rock_family: Plane | None = None
         self.family_rock: dict[int, list[FloatGrid]] = {}

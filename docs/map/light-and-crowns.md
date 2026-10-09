@@ -995,7 +995,9 @@ needles where the paint store's flat colour, the whole card's mean, drew them mu
 canopy target's op is measured on the sprites: the median green crown is the Kapok's, greyer
 in its sprite than its flat colour was, so the op lifts lightness by 0.063 and chroma 1.54
 times, where it lifted 0.037 and 1.14; a crown already more saturated than the Kapok, the
-green trees' game view, draws greener than before.
+green trees' game view, draws greener than before. That is the op to the 1.0 screenshot
+#558653; the derived canopy, measured on the paint store's flat slot colours, asked ×1.83 and
+is not taken since 2026-10-09 (calibration.md section 31, "The second review").
 
 **Measured** (2026-10-08, build 502094, the gate inputs' paint store, against master
 a22775a5's own runs):

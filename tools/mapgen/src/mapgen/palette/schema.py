@@ -324,6 +324,7 @@ class CalibrationArea(_Areas, total=False):
 
     layers: dict[str, str]
     rock: str
+    arches: str
     meshes: dict[str, str]
     canopy: str
     water: str

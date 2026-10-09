@@ -83,7 +83,7 @@ def family_tables(
 ) -> tuple[FloatGrid, FloatGrid, FloatGrid]:
     """By family code: the tint relative to the families' median, the top layer, and whether
     there is one. With ``palette``, its ``calibration.tops`` replace their families' tops
-    (``top_targets``).
+    (``top_targets``), and give one to a family whose top texture the store could not read.
 
     The rock targets are calibrated on rock that already wears the common tint, so only a
     family's departure from it is applied; with one tint for all, rock stays on target.
@@ -107,7 +107,10 @@ def family_tables(
     if tinted:
         tint[tinted] /= np.maximum(np.median(tint[tinted], axis=0), np.float32(1e-6))
     if palette is not None:
-        top = top_targets(top, palette["calibration"].get("tops", {}), palette)
+        tops = palette["calibration"].get("tops", {})
+        top = top_targets(top, tops, palette)
+        for name in tops:
+            has_top[family_code(name, "tops")] = 1.0
     return tint, top, has_top
 
 
@@ -270,17 +273,25 @@ def rock_surface(
         out = (body * (1.0 - weight) + layer * weight) * shade
     if lifted is None or not lifted.any():
         return out
-    arch = _arch_rock(area_rock, scene, ground, pick & (lifted > 0.0))
+    arch = _arch_rock(area_rock, scene, ground, pick & (lifted > 0.0), sample_rock)
     return out + (arch - out) * lifted[..., None]
 
 
 def _arch_rock(
-    area_rock: FloatGrid, scene: PaintedScene, ground: PaintedSurface, pick: BoolMask
+    area_rock: FloatGrid,
+    scene: PaintedScene,
+    ground: PaintedSurface,
+    pick: BoolMask,
+    sample_rock: Sampler | None = None,
 ) -> FloatGrid:
-    """The arches and boulders: their own colour where the palette gives one, else the area's
-    rock, in the arches' rock texture where the run has the look."""
+    """The arches and boulders: their own colour, by area where an area entry gives one, where
+    the palette has it, else the area's rock, in the arches' rock texture where the run has the
+    look."""
+    own = ground.arch_rgb
     rock = (
-        area_rock if ground.arch_rgb is None else np.broadcast_to(ground.arch_rgb, area_rock.shape)
+        area_rock
+        if own is None
+        else np.broadcast_to(sampled_rgb(own, sample_rock), area_rock.shape)
     )
     look = ground.rock_look
     if look is None:
