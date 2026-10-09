@@ -207,7 +207,9 @@ lists it. spatial-and-map.md sections 27 and 30 describe the planes. Generator v
 the baked ground colour, the crown tops, the cliff families and the seabed coral carpet planes
 (section 32). Version 3 adds the water bodies (`water_bodies.json`, section 33) the painted
 style classes its water from, and the tree crowns (section 36) whose measured crown tops
-replace version 2's estimate, so a version 1 or 2 store reads as stale.
+replace version 2's estimate, so a version 1 or 2 store reads as stale. Version 5 adds the
+landscape layers' own textures (`ground.tex.z`), which the painted ground's detail and the
+light's normal tiles read (painted.md section 30, "The layers' own textures").
 
 The game-painted layer also lists two readers, `rock_families` (each rock's material family
 in the direct raster: the cliff layers, and desert rock since version 2) and `titan_trees`
@@ -512,12 +514,21 @@ answers HEAD 204 and GET 404.
 A layer drawn with the light (`--light`, the default; `--unlit` is the old spelling) names
 its lighting pyramid in its sidecar (`_meta.light.dir`, relative to the layer, refused unless
 it resolves inside `data/local`). Its z0 probe adds `X-Map-Light`, compact JSON: `{build,
-max_z, unlit_max_z, params, baked_sun, model}`. `?kind=unlit` serves the unlit colour (PNG),
-`?kind=nrm` and `?kind=hz` the lighting tiles (WebP); with `?v=` the light build tag they are
-immutable. Any other `kind`, or a layer drawn with `--no-light` or before the light existed,
+max_z, unlit_max_z, params, baked_sun, model, parts}`. `?kind=unlit` serves the unlit colour,
+lossless WebP (PNG on a render from before 2026-10-08; the suffix is the one the sidecar's
+`unlit_tiles.layout` names), `?kind=nrm` and `?kind=hz` the lighting tiles (WebP). A layer
+drawn apart at its trees (the painted layer, `_meta.light.trees_dir` and `trees_tiles`) has
+`parts: {"trees": {"max_z", "sparse": true}}`; its `unlit` is the ground without the trees,
+and `?kind=trees` serves the trees, lossless WebP RGBA with straight alpha. That tree is sparse:
+a tile on its grid with no tree in it answers **204 to GET and HEAD**, cached like a tile; off
+the grid is a 404, and so is `kind=trees` on a layer drawn whole (`parts` is `{}`). With `?v=`
+the light build tag every kind is immutable; the tag digests the light's count and bytes and
+the unlit and trees trees' counts and bytes, so a recut of any changes every URL. Any other
+`kind`, or a layer drawn with `--no-light` or before the light existed,
 is a 404. The `render` preset takes `light`, default true since 2026-10-06, and passes
 `--light`, or `--no-light` when it is false. With the light the plan adds a `light` stage
-after the draw, the unlit and light trees to the estimate's kept bytes, and the light cache
+after the draw, the unlit and light trees (and the painted layer's `trees/`) to the
+estimate's kept bytes, and the light cache
 (§4.2) to its bytes while running. docs/spatial-and-map.md §29 describes the
 light.
 

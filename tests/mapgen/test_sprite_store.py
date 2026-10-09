@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from mapgen.cache import CACHE_SIDECAR_NAME
+from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD
 from mapgen.sprites import store
 from mapgen.sprites.raster import SPRITE_CM, SpritePlanes
 
@@ -85,15 +86,27 @@ def test_the_gutter_carries_the_edge_colour_at_no_alpha():
     assert np.array_equal(gutter[:3], edge[:3]), "a bilinear read at the rim keeps its colour"
 
 
+def test_an_upright_normal_reads_back_upright():
+    sprite = _sprite(6, 6)
+    sprite.normal[...] = (0.0, 0.0, 1.0)
+    back = store.level_planes(store.encode_atlas([("A", sprite)]), 0)
+    assert np.all(back.normal[..., :2] == 0.0) and np.all(back.normal[..., 2] == 1.0)
+
+
 def test_the_cache_is_read_only_under_its_own_stamp(tmp_path):
-    atlas = store.encode_atlas([("A", _sprite(12, 12))])
+    titan = np.zeros(3, CROWN_RECORD)
+    titan["x"], titan["species"] = (1.0, 2.0, 3.0), 0
+    atlas = store.encode_atlas([("A", _sprite(12, 12))], titan)
     stamp = store.sprite_stamp("b1")
-    store.write_sprites(tmp_path, stamp, atlas, [{"name": "A", "source": "mesh raster"}])
+    species = [{"name": "A", "source": "mesh raster"}]
+    store.write_sprites(tmp_path, stamp, atlas, species, ["B"])
     found = store.read_sprites(tmp_path, stamp)
     assert found is not None
     again, meta = found
     assert again.names == ["A"] and again.records.tobytes() == atlas.records.tobytes()
-    assert meta["species"] == [{"name": "A", "source": "mesh raster"}]
+    assert again.titan.tobytes() == titan.tobytes(), "the Titan canopy's placements ride along"
+    assert meta["species"] == species and meta["skipped"] == ["B"]
+    assert meta["titan_placements"] == 3
     assert store.read_sprites(tmp_path, store.sprite_stamp("b2")) is None, "another build"
     sidecar = json.loads((tmp_path / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
     sidecar["format"] = store.FORMAT + 1

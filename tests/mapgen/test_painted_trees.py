@@ -41,6 +41,7 @@ from mapgen.palette.painted.trees import (
     over_crowns,
 )
 from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.terrain.crown_atlas import ALPHA, CHANNELS, RGB
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from mapgen.terrain.sample import taps_linear
 
@@ -55,12 +56,13 @@ PALM, BALLOON = (0.26585, 0.39797, 0.46165), (0.29132, 0.3309, 0.37206)
 
 
 def _crowns(colours, species, xs, scale=1.0):
-    """Fake crowns: one 4x4 fully covered sprite per colour, one record per tree."""
+    """Fake crowns: one 4x4 fully covered, upright sprite per colour, one record per tree."""
     levels = []
     for colour in colours:
-        level = np.zeros((4, 4, 6), np.float32)
-        level[..., 0] = 1.0
-        level[..., 1:4] = colour
+        level = np.zeros((4, 4, CHANNELS), np.float32)
+        level[..., ALPHA] = 1.0
+        level[..., RGB] = colour
+        level[..., 5] = 1.0
         levels.append([level])
     records = np.zeros(len(species), CROWN_RECORD)
     records["species"], records["x"], records["scale"] = species, xs, scale
@@ -148,7 +150,7 @@ def test_blue_palms_take_their_own_target_by_species_even_under_a_sparse_crown()
     ops = ground.crown_ops
     assert [grey for _op, grey in ops] == [CANOPY_GREY], "a named target moves the mips"
     assert ground.crown_measured["crowns@blue_palm"]["trees"] == 10, "the palms alone"
-    moved = [level[0][0, 0, 1:4] for level in ground.crowns.levels]
+    moved = [level[0][0, 0, RGB] for level in ground.crowns.levels]
     for k in (0, 1, 3, 4):
         np.testing.assert_array_equal(moved[k], np.float32(colours[k]), err_msg=f"crown {k}")
     amber = np.array([0.33869, 0.23403, 0.12035], np.float32)
@@ -211,7 +213,7 @@ def _ground(opaque):
     w = p["water"]
     lin = lambda c: (np.asarray(c, np.float32) / 255) ** 2.2
     return SimpleNamespace(
-        palette=p, carpet=None, opaque_water=opaque, water_class=np.zeros((1, 1), np.uint8),
+        palette=p, carpet=None, rock_look=None, arch_rgb=None, cliff_layer=None, opaque_water=opaque, water_class=np.zeros((1, 1), np.uint8),
         water={"k": np.asarray(w["k_per_m"], np.float32), "body": lin(w["body"]),
                "sky": np.zeros(3, np.float32), "deep": lin(w["deep"]),
                "deep_tau_m": np.float32(12.0), "bed": np.float32(0.8),
@@ -250,8 +252,8 @@ def test_rock_keeps_its_target_under_the_common_tint_and_a_family_keeps_its_depa
     assert has[names.index("grass")] == 1.0 and has[names.index("cliff")] == 0.0
     ground = SimpleNamespace(rock_family=np.full((4, 4), names.index("cliff"), np.uint8),
                              family_rock={}, family_tint=ratio, family_top=top,
-                             family_top_rgb={}, family_has_top=has,
-                             palette={"rock_top": {"up": [0.6, 0.85]}})  # fmt: skip
+                             family_top_rgb={}, family_has_top=has, palette={},
+                             rock_look=None, arch_rgb=None)  # fmt: skip
     rock = np.full((4, 4, 3), 0.3, np.float32)
     scene = {"z_m": np.zeros((4, 4), np.float32), "grid": (slice(0, 4), 0, 4, 0, 4, 1.0)}
     np.testing.assert_allclose(rock_surface(rock, scene, ground), rock, atol=1e-6)
@@ -328,6 +330,7 @@ def test_the_painted_band_draws_with_the_whole_chain():
         palette=p, albedo=[np.full(shape, 0.2, np.float32)] * 3, canopy=np.zeros(shape),
         canopy_rgb=np.zeros(3, np.float32), rock=[np.full(shape, 0.2, np.float32)] * 3,
         rock_family=None, crown=None, titan=None, carpet=None, mesh_rgb={},
+        rock_look=None, arch_rgb=None, cliff_layer=None,
         seabed_coral=np.zeros(3, np.float32), opaque_water=[], crown_ops=[],
         ramp=(0.0, 1.0, np.linspace(0, 1, 5)),
         water={"k": np.asarray(w["k_per_m"], np.float32), "body": lin(w["body"]),

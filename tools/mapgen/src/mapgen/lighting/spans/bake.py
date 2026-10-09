@@ -1,16 +1,19 @@
-"""A light block's spans: arches and overhangs over the ground, crowns over both, as baked.
+"""A light block's spans: arches and overhangs over the ground, the trees over both, as baked.
 
 ``block_spans`` reads a block's window: the slabs the draw captured (``lighting/spans/slabs.py``)
-and the crowns, each crown a span from ``CROWN_UNDERSIDE`` of its height to its top.
-``horizon_cells`` marches them into the atlas, where a band floating over the horizon is
-folded in at the elevation the sun's path has in that direction (``path_horizon``), and keeps
-the bands the default sun reads, which ``default_shade`` shades per cell.
-docs/map/light-and-crowns.md section 29, "Arches as spans".
+and the trees, each crown a span from its species' underside to its top and each Titan tree a
+slab of ``TITAN_SLAB_M`` (``lighting/undersides.py``). ``horizon_cells`` marches them into the
+atlas: the ground's cells, then the crowns' and the Titan trees' each alone, a band floating
+over the horizon folded in at the elevation the sun's path has in that direction
+(``path_horizon``). ``canopy_cells`` marches the trees together over the ground for the default
+sun, whose bands ``default_shade`` shades per cell. docs/map/light-and-crowns.md section 29,
+"Arches as spans".
 """
 
 from __future__ import annotations
 
-from collections.abc import Container, Iterator
+from collections.abc import Container, Iterable, Iterator
+from functools import partial
 from pathlib import Path
 from typing import NamedTuple, Protocol, TypeVar
 
@@ -27,10 +30,10 @@ from mapgen.lighting.horizon import (
     march_horizon,
 )
 from mapgen.lighting.light_tiles import downsample, optional_array, padded_window
-from mapgen.lighting.model import SHADOW_SOFT_DEG, sun_cells
-from mapgen.lighting.spans.holes import Holes, fill_holes, half_heights
+from mapgen.lighting.model import CROWN_CELL, SHADOW_SOFT_DEG, TITAN_CELL, TITAN_FADE_M, sun_cells
+from mapgen.lighting.occluders import UNDER_SCALE, UNDER_TITAN
+from mapgen.lighting.spans.holes import OPEN_M, Holes, fill_holes, half_heights
 from mapgen.lighting.spans.march import (
-    CROWN_UNDERSIDE,
     Bands,
     SpanSurface,
     march_spans,
@@ -39,20 +42,25 @@ from mapgen.lighting.spans.march import (
 )
 from mapgen.lighting.spans.slabs import SlabStore
 from mapgen.lighting.sun import Sun
+from mapgen.lighting.undersides import CROWN_UNDERSIDE, TITAN_SLAB_M
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid
 
 __all__ = [
     "BlockSpans",
     "Cell",
     "CellOps",
+    "TreePlanes",
     "band_cover",
     "block_spans",
+    "canopy_cells",
     "cell_shade",
     "default_shade",
     "horizon_cells",
     "path_horizon",
     "plain_bands",
     "shade_cells",
+    "tree_spans",
+    "tree_surfaces",
 ]
 
 #: Rows of the window a block reads the crowns for at a time, at full resolution.
@@ -65,42 +73,81 @@ BandsT = TypeVar("BandsT")
 
 
 class BlockSpans(NamedTuple):
-    """What casts on a block beyond its heights: the arches' and overhangs' spans over the
-    ground (None where the window has none), and the crowns' (None without an occluder)."""
+    """What casts on a block beyond its heights, at half resolution: the arches' and
+    overhangs' spans over the ground (None where the window has none); the crowns' and the
+    Titan trees' each alone over open ground, received on the canopy top (None where none
+    stands); and both together over the ground, which the default sun's crowned light reads."""
 
     ground: SpanSurface | None
     crowns: SpanSurface | None
+    titans: SpanSurface | None = None
+    canopy: SpanSurface | None = None
 
 
-def _crown_rows(
-    z: F32Grid, top: F32Grid, share: F32Grid | None, out: tuple[F32Grid, F32Grid, F32Grid], row: int
-) -> None:
-    """Rows of the window from ``row`` on: the crowns stood on ``z`` (the receivers), and their
-    underside and top where they stand above it, at half resolution, into ``out``."""
+class TreePlanes(NamedTuple):
+    """A window's trees at half resolution: the canopy top the receivers stand on, and the
+    crowns' and the Titan trees' underside and top, NaN where none stands."""
+
+    receivers: F32Grid
+    crown_lo: F32Grid
+    crown_hi: F32Grid
+    titan_lo: F32Grid
+    titan_hi: F32Grid
+
+
+def tree_spans(
+    z: F32Grid, top: F32Grid, share: F32Grid | None, under: F32Grid | None
+) -> tuple[F32Grid, tuple[F32Grid, F32Grid], tuple[F32Grid, F32Grid]]:
+    """The trees stood on ``z`` (the receivers), and the crowns' and the Titan trees' underside
+    and top where they stand above it, NaN elsewhere. A crown's underside is its species'
+    share of its lift (``under`` bytes, None for ``CROWN_UNDERSIDE``); a Titan tree's is
+    ``TITAN_SLAB_M`` under its top."""
     rec = crown_surface(z, top, share)
     lift = rec - z
     over = lift > 0
+    titan = over & (under == np.float32(UNDER_TITAN)) if under is not None else over & False
+    crown = over & ~titan
+    if under is None:
+        share_lo = np.float32(round(CROWN_UNDERSIDE * UNDER_SCALE) / UNDER_SCALE)
+    else:
+        share_lo = under / np.float32(UNDER_SCALE)
     nan = np.float32(np.nan)
-    lo = np.where(over, z + CROWN_UNDERSIDE * lift, nan).astype(np.float32)
-    hi = np.where(over, rec, nan).astype(np.float32)
+    slab = np.maximum(z, rec - np.float32(TITAN_SLAB_M))
+    crowns = np.where(crown, z + share_lo * lift, nan), np.where(crown, rec, nan)
+    titans = np.where(titan, slab, nan), np.where(titan, rec, nan)
+    as32 = partial(np.asarray, dtype=np.float32)
+    return rec, (as32(crowns[0]), as32(crowns[1])), (as32(titans[0]), as32(titans[1]))
+
+
+def _tree_rows(
+    z: F32Grid, rows: tuple[F32Grid, F32Grid | None, F32Grid | None], out: TreePlanes, row: int
+) -> None:
+    """Rows of the window from ``row`` on: ``tree_spans`` of the crown top, share and
+    underside ``rows``, at half resolution, into ``out``."""
+    rec, crowns, titans = tree_spans(z, *rows)
     cells = slice(row // 2, (row + z.shape[0]) // 2)
-    out[0][cells] = half_heights(rec)
-    out[1][cells] = downsample(lo, how=np.nanmin)
-    out[2][cells] = downsample(hi, how=np.nanmax)
+    out.receivers[cells] = half_heights(rec)
+    for (lo, hi), (lo_out, hi_out) in (
+        (crowns, (out.crown_lo, out.crown_hi)),
+        (titans, (out.titan_lo, out.titan_hi)),
+    ):
+        lo_out[cells] = downsample(lo, how=np.nanmin)
+        hi_out[cells] = downsample(hi, how=np.nanmax)
 
 
-def _crowns(
-    work: Path, window: _Window, z_window: F32Grid, z_half: F32Grid, solid: F32Grid
-) -> SpanSurface | None:
-    """The crowns of the window as spans over ``solid`` (half resolution), or None. Rows off
-    the sheet hold none."""
+def _tree_planes(
+    work: Path, window: _Window, z_window: F32Grid, z_half: F32Grid
+) -> TreePlanes | None:
+    """The trees of the window at half resolution, or None without an occluder. Rows off the
+    sheet hold none."""
     occluder = optional_array(work, "occluder", np.float32)
     if occluder is None:
         return None
     cover = optional_array(work, "occluder_cover", np.uint8)
+    unders = optional_array(work, "occluder_under", np.uint8)
     r0, r1, c0, c1 = window
     nan = np.full(z_half.shape, np.nan, np.float32)
-    planes = (z_half.copy(), nan, nan.copy())
+    planes = TreePlanes(z_half.copy(), nan, nan.copy(), nan.copy(), nan.copy())
     first, last = max(r0, 0) - r0, min(r1, occluder.shape[0]) - r0
     for row in range(first, last, _CROWN_ROWS):
         a, b = r0 + row, min(r0 + row + _CROWN_ROWS, r0 + last)
@@ -108,9 +155,33 @@ def _crowns(
         share = (
             None if cover is None else padded_window(cover, a, b, c0, c1, 0.0) / np.float32(255.0)
         )
-        _crown_rows(z_window[row : row + b - a], top, share, planes, row)
-    receivers, lo, hi = planes
-    return span_surface(receivers, solid, lo, hi)
+        under = None if unders is None else padded_window(unders, a, b, c0, c1, 0.0)
+        _tree_rows(z_window[row : row + b - a], (top, share, under), planes, row)
+    return planes
+
+
+def _alone(receivers: F32Grid, lo: F32Grid, hi: F32Grid, ground: F32Grid) -> SpanSurface | None:
+    """Spans marched alone: over open ground, their tops standing on ``ground``; None where
+    the window holds none."""
+    if not np.isfinite(lo).any():
+        return None
+    return span_surface(receivers, np.full(lo.shape, OPEN_M, np.float32), lo, hi, ground)
+
+
+def tree_surfaces(
+    planes: TreePlanes, solid: F32Grid
+) -> tuple[SpanSurface | None, SpanSurface | None, SpanSurface | None]:
+    """The crowns alone, the Titan trees alone, and both over ``solid``: of two at a cell,
+    the one whose top is higher."""
+    rec = planes.receivers
+    crowns = _alone(rec, planes.crown_lo, planes.crown_hi, solid)
+    titans = _alone(rec, planes.titan_lo, planes.titan_hi, solid)
+    if crowns is None and titans is None:
+        return None, None, None
+    titan = np.isfinite(planes.titan_hi) & ~(planes.crown_hi > planes.titan_hi)
+    lo = np.where(titan, planes.titan_lo, planes.crown_lo)
+    hi = np.where(titan, planes.titan_hi, planes.crown_hi)
+    return crowns, titans, span_surface(rec, solid, lo, hi)
 
 
 def block_spans(
@@ -120,7 +191,10 @@ def block_spans(
     found = slabs.half(window, z_half)
     ground = None if found is None else span_surface(z_half, found.solid, found.lo, found.hi)
     solid = z_half if found is None else found.solid
-    return BlockSpans(ground, _crowns(work, window, z_window, z_half, solid))
+    planes = _tree_planes(work, window, z_window, z_half)
+    if planes is None:
+        return BlockSpans(ground, None)
+    return BlockSpans(ground, *tree_surfaces(planes, solid))
 
 
 def band_cover(hz: F32Grid, bands: tuple[tuple[F32Grid, F32Grid], ...], el: float) -> F32Grid:
@@ -161,14 +235,12 @@ def path_horizon(bands: Bands, el: float) -> F32Grid:
 
 class Cell(NamedTuple):
     """An atlas cell as marched: its index, its degrees as the atlas stores them, the bands it
-    was made from (None for a plain march), the horizon it was cut from (for a crown cell the
-    crowns' whole, received on the canopy top), and where it stores a band folded in (None
-    for a plain march)."""
+    was made from (kept for a wanted ground cell, else None), and where it stores a band
+    folded in (None for a plain march)."""
 
     k: int
     deg: F32Grid
     bands: Bands | None
-    whole: F32Grid
     band_in: BoolMask | None
 
 
@@ -193,8 +265,7 @@ class CellOps(Protocol[PlaneT, BandsT]):
     def plain(self, az_deg: float) -> PlaneT: ...
     def bands(self, surface: SpanSurface, az_deg: float, fade: Fade) -> BandsT: ...
     def path(self, bands: BandsT, el: float) -> PlaneT: ...
-    def above(self, over: PlaneT, cell: PlaneT) -> PlaneT: ...
-    def band_in(self, stored: PlaneT, whole: PlaneT, bands: BandsT) -> BoolMask: ...
+    def band_in(self, cell: PlaneT, bands: BandsT) -> BoolMask: ...
     def host(self, plane: PlaneT) -> F32Grid: ...
     def host_bands(self, bands: BandsT) -> Bands: ...
 
@@ -215,12 +286,9 @@ class _OnHost:
     def path(self, bands: Bands, el: float) -> F32Grid:
         return path_horizon(bands, el)
 
-    def above(self, over: F32Grid, cell: F32Grid) -> F32Grid:
-        return np.where(over > cell, over, np.float32(0.0))
-
-    def band_in(self, stored: F32Grid, whole: F32Grid, bands: Bands) -> BoolMask:
-        """Where the cell stores its whole, and the whole is the band folded in."""
-        return (stored == whole) & (whole > bands.horizon)
+    def band_in(self, cell: F32Grid, bands: Bands) -> BoolMask:
+        """Where the cell is the band folded in: above the horizon it was cut from."""
+        return cell > bands.horizon
 
     def host(self, plane: F32Grid) -> F32Grid:
         return plane
@@ -237,10 +305,11 @@ def horizon_cells(
     holes: Holes | None = None,
     wanted: Container[int] | None = None,
 ) -> Iterator[Cell]:
-    """Each direction's ground cell, then its crown cell where the crowns stand above it, as
-    the atlas stores them (``Cell``). A hole (``lighting/spans/holes.py``) takes the cells of the
-    pixel nearest it. A cell not in ``wanted`` may come without its bands. With the switch at
-    CUDA the block's planes stay on the device (``_on_device``)."""
+    """Each direction's ground cell, then its crowns' and its Titan trees' cells where the
+    block has them, as the atlas stores them (``Cell``). A hole (``lighting/spans/holes.py``)
+    takes the cells of the pixel nearest it. Only a ground cell in ``wanted`` (every one when
+    None) comes with its bands. With the switch at CUDA the block's planes stay on the device
+    (``_on_device``)."""
     host = _OnHost(z_half, halo, spacing_m, holes)
     if gpu_on():
         yield from _on_device(host, spans, wanted)
@@ -252,7 +321,7 @@ def horizon_cells(
 def _direction(
     ops: CellOps[PlaneT, BandsT], spans: BlockSpans, k: int, wanted: Container[int] | None
 ) -> list[Cell]:
-    """Direction ``k``'s ground cell and crown cell."""
+    """Direction ``k``'s ground cell, then its crowns' and Titan trees' cells."""
     az = k * 360.0 / HORIZON_DIRS
     el = path_elevation(az)
     ground: BandsT | None = None
@@ -261,16 +330,16 @@ def _direction(
     else:
         ground = ops.bands(spans.ground, az, FADE_M)
         cell = ops.path(ground, el)
-    deg = ops.host(cell)
-    band_in = None if ground is None else ops.band_in(cell, cell, ground)
-    found = [Cell(k, deg, _kept(ops, ground, k, wanted), deg, band_in)]
-    if spans.crowns is not None:
-        crowns = ops.bands(spans.crowns, az, OCCLUDER_FADE_M)
-        over = ops.path(crowns, el)
-        stored = ops.above(over, cell)
-        kept = _kept(ops, crowns, HORIZON_DIRS + k, wanted)
-        band_in = ops.band_in(stored, over, crowns)
-        found.append(Cell(HORIZON_DIRS + k, ops.host(stored), kept, ops.host(over), band_in))
+    band_in = None if ground is None else ops.band_in(cell, ground)
+    found = [Cell(k, ops.host(cell), _kept(ops, ground, k, wanted), band_in)]
+    for first, surface, fade in (
+        (CROWN_CELL, spans.crowns, OCCLUDER_FADE_M),
+        (TITAN_CELL, spans.titans, TITAN_FADE_M),
+    ):
+        if surface is not None:
+            trees = ops.bands(surface, az, fade)
+            whole = ops.path(trees, el)
+            found.append(Cell(first + k, ops.host(whole), None, ops.band_in(whole, trees)))
     return found
 
 
@@ -289,7 +358,7 @@ def _on_device(host: _OnHost, spans: BlockSpans, wanted: Container[int] | None) 
     from mapgen.lighting import gpu
     from mapgen.lighting.spans.device import DeviceCells
 
-    surfaces = [s for s in (spans.ground, spans.crowns) if s is not None]
+    surfaces = [s for s in (spans.ground, spans.crowns, spans.titans) if s is not None]
     try:
         device: DeviceCells | None = DeviceCells(
             host.z_half, host.halo, host.spacing_m, surfaces, host.holes
@@ -302,13 +371,34 @@ def _on_device(host: _OnHost, spans: BlockSpans, wanted: Container[int] | None) 
             if device is not None:
                 try:
                     found = _direction(device, spans, k, wanted)
-                    gpu.count(True, 1 + (spans.crowns is not None))
+                    gpu.count(True, 1 + (spans.crowns is not None) + (spans.titans is not None))
                 except MemoryError:
                     device = None
             yield from found if found is not None else _direction(host, spans, k, wanted)
     finally:
         device = None  # its planes go before the pool hands the device's memory back
         gpu.release()
+
+
+def canopy_cells(
+    z_half: F32Grid,
+    halo: int,
+    spacing_m: float,
+    spans: BlockSpans,
+    holes: Holes | None,
+    dirs: Iterable[int],
+) -> Iterator[tuple[int, F32Grid, Bands]]:
+    """For each direction in ``dirs``, the crowns and Titan trees together over the ground,
+    received on the canopy top: the horizon with its band folded in, and the bands. What the
+    default sun's crowned light reads, made on the host; a march goes to the device a call at
+    a time with the switch at CUDA."""
+    if spans.canopy is None:
+        return
+    host = _OnHost(z_half, halo, spacing_m, holes)
+    for k in sorted(dirs):
+        az = k * 360.0 / HORIZON_DIRS
+        bands = host.bands(spans.canopy, az, OCCLUDER_FADE_M)
+        yield k, host.path(bands, path_elevation(az)), bands
 
 
 def _weighted(az: float) -> list[tuple[int, np.float32]]:

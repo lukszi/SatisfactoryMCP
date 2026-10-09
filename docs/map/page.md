@@ -61,13 +61,21 @@ only when its pyramid does not answer, and drawn as an `imageOverlay`.
 
 A base map drawn with live light has parts that can be turned off without changing which
 picture it is. They are checkboxes under the radios, inside the mode section and folded with
-it (`layercontrol/part-picker.ts`, kept there through `radio-section.ts`'s `tail`). Today there
-is one, **shade**: off, the map shows its flat colour with no light at all. Each part is a
-Settings → map switch, so it is remembered like the sun's switches. The rows show only while the
-picked mode has a light, and greyed, with the reason as their tooltip, while that light is drawn
-baked: without WebGL2, or after the live light failed. A part is a switch in the lit layer's
-shader, not a Leaflet layer stacked over it: the shade is the light itself
-([light-and-crowns.md](light-and-crowns.md) §29, "The page").
+it (`layercontrol/part-picker.ts`, kept there through `radio-section.ts`'s `tail`):
+
+- **shade**: off, the map shows its flat colour with no light at all.
+- **trees**, beside it on a map that draws the trees (Satellite): off, the crowns and the Titan
+  trees go, and their shadows and sky occlusion with them, so the ground under a forest shows
+  for building. Terrain and Relief draw no trees and have no row.
+
+Each part is a Settings → map switch, so it is remembered like the sun's switches. The rows show
+only while the picked mode has a light, and greyed, with the reason as their tooltip, while that
+light is drawn baked: without WebGL2, or after the live light failed. The trees row is greyed
+too on a render drawn before its trees came apart from its colour, which keeps them always on.
+A part is a switch in the lit layer's shader, not a Leaflet layer stacked over it: the shade is
+the light itself, and the trees are laid over the ground in linear light before the tone curve
+and change the light the ground takes ([light-and-crowns.md](light-and-crowns.md) §29, "The
+page", and §36, "Trees apart").
 
 ### The mode radios have a sibling: the floor picker
 

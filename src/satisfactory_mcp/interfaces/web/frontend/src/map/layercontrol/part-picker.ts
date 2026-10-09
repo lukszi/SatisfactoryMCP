@@ -1,9 +1,13 @@
 /* The base map's parts, checkboxes under the mode radios: what a map drawn with live light is
- * made of. Shade today; docs/spatial-and-map.md §18. Each row is a Settings → map switch. The
- * rows show only while the base map has a light, greyed with the reason while it is not lit live. */
+ * made of. Shade, and the trees on a map that draws them; docs/spatial-and-map.md §18. Each row
+ * is a Settings → map switch. The rows show only while the base map has a light, greyed with
+ * the reason while a part cannot be switched: the light is not drawn live, or the render keeps
+ * its trees in its colour. */
 
 import { L } from "../leaflet";
 import { onSetting, setSetting, settingOn, SETTINGS } from "../../app/settings";
+
+import type { LightControls } from "../suncontrol";
 
 interface PartRow {
   setting: string;
@@ -11,12 +15,18 @@ interface PartRow {
   row: HTMLElement;
 }
 
-const PARTS: [string, string][] = [["mapShade", "shade"]];
+const PARTS: [string, string][] = [
+  ["mapShade", "shade"],
+  ["mapTrees", "trees"],
+];
+
+/** Why the trees of a render drawn before they came apart cannot be switched. */
+export const TREES_IN_COLOUR = "this render keeps its trees in its colour: render it again to switch them";
 
 let box: HTMLElement | null = null;
 let rows: PartRow[] = [];
-/* null: no light, so no rows; "": drawn live; otherwise why it is not. */
-let off: string | null = null;
+/* null: no light, so no rows. */
+let controls: LightControls | null = null;
 
 function hintOf(key: string): string {
   const setting = SETTINGS.find(function (candidate) {
@@ -25,14 +35,24 @@ function hintOf(key: string): string {
   return setting ? setting.hint : "";
 }
 
+/** null hides a part's row; "" draws it live; any other text greys it, with that tooltip. */
+export function partState(setting: string, light: LightControls | null): string | null {
+  if (!light) return null;
+  if (setting !== "mapTrees") return light.off;
+  if (!light.trees && !light.apart) return null;
+  return light.off || (light.apart ? "" : TREES_IN_COLOUR);
+}
+
 function refresh(): void {
   if (!box) return;
-  box.hidden = off === null;
+  box.hidden = controls === null;
   rows.forEach(function (part) {
+    const why = partState(part.setting, controls);
+    part.row.hidden = why === null;
     part.input.checked = settingOn(part.setting);
-    part.input.disabled = !!off;
-    part.row.title = off || hintOf(part.setting);
-    if (off) L.DomUtil.addClass(part.row, "layer-mode-off");
+    part.input.disabled = !!why;
+    part.row.title = why || hintOf(part.setting);
+    if (why) L.DomUtil.addClass(part.row, "layer-mode-off");
     else L.DomUtil.removeClass(part.row, "layer-mode-off");
   });
 }
@@ -60,10 +80,9 @@ export function partsBox(): HTMLElement {
   return box;
 }
 
-/** null hides the rows (this base map has no light); "" draws them live; any other text
- *  greys them, with that text as their tooltip. */
-export function showParts(why: string | null): void {
-  off = why;
+/** The base map's light, or null for one without: its rows follow it. */
+export function showParts(light: LightControls | null): void {
+  controls = light;
   refresh();
 }
 

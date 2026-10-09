@@ -4,8 +4,8 @@ Separable interpolation and PCHIP onto the output grid reproduce their numpy ref
 ``sample`` bit for bit: per output pixel the same operations in the same order and at the
 same precision, taps in the order numpy adds them. The source slab is read as it is stored,
 no float32 copy of it is made. The crown stamps reproduce ``crown_stamp._stamp`` tree by tree,
-from the placements ``crown_stamp`` works out in numpy. Imported only when
-``mapgen.jit.kernels_on()``. docs/map/renders.md section 41.
+from the placements ``crown_stamp`` works out in numpy, every operation float32 as there.
+Imported only when ``mapgen.jit.kernels_on()``. docs/map/renders.md section 41.
 """
 
 from __future__ import annotations
@@ -16,11 +16,12 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mapgen.jit import helper, kernel
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I32Grid, I64Grid
 
 __all__ = ["clip_unit", "pchip", "raise_nan", "separable", "stamp"]
 
 _ZERO = np.float32(0.0)
+_HALF = np.float32(0.5)
 _ONE = np.float32(1.0)
 _TWO = np.float32(2.0)
 _THREE = np.float32(3.0)
@@ -164,60 +165,66 @@ def raise_nan(top: np.floating, rise: np.floating) -> np.floating:
 
 
 @helper
-def _mip_bilinear(
-    texels: F64Grid, first: int, width: int, x: float, y: float, out: F64Grid
-) -> None:
-    """``crown_stamp._bilinear`` at one point of the mip whose texels start at ``first``:
-    ``x, y`` are its texel coordinates plus a half, ``width`` its row with the rim."""
-    x0, y0 = np.floor(x), np.floor(y)
-    fx, fy = x - x0, y - y0
-    gx, gy = 1 - fx, 1 - fy
-    at = first + int(y0) * width + int(x0)
+def _corner(position: np.float32, size: int) -> tuple[int, int, np.float32]:
+    """``texels._corners`` at one position: the texels either side, clamped, and the weight."""
+    at = position - _HALF
+    first = np.float32(np.floor(at))
+    low = int(first)
+    return min(max(low, 0), size - 1), min(max(low + 1, 0), size - 1), at - first
+
+
+@helper
+def _tile_texel(texels: F32Grid, tile: I32Grid, u: np.float32, v: np.float32, out: F32Grid) -> None:
+    """``texels.sample_atlas`` of one tile ``(x, y, w, h)`` at ``(u, v)``, clamped, into
+    ``out``."""
+    y0, y1, fy = _corner(v, int(tile[3]))
+    x0, x1, fx = _corner(u, int(tile[2]))
+    y0, y1, x0, x1 = y0 + tile[1], y1 + tile[1], x0 + tile[0], x1 + tile[0]
+    gx, gy = _ONE - fx, _ONE - fy
     for k in range(out.shape[0]):
-        upper = texels[at, k] * gx + texels[at + 1, k] * fx
-        lower = texels[at + width, k] * gx + texels[at + width + 1, k] * fx
+        upper = texels[y0, x0, k] * gx + texels[y0, x1, k] * fx
+        lower = texels[y1, x0, k] * gx + texels[y1, x1, k] * fx
         out[k] = upper * gy + lower * fy
 
 
 @kernel
 def stamp(
-    texels: F64Grid,
-    mips: I64Grid,
-    spans: I64Grid,
-    poses: F64Grid,
+    texels: F32Grid,
+    tiles: I32Grid,
+    placed: tuple[I32Grid, F64Grid, F32Grid, I64Grid],
     centres: tuple[F64Grid, F64Grid],
-    seen_from: float,
+    seen_from: np.float32,
     planes: tuple[F32Grid, F32Grid, F32Grid, F32Grid],
 ) -> None:
-    """``crown_stamp._stamp`` for each tree in turn, into ``planes`` (cover, rgb, dome, top).
+    """``crown_stamp._stamp`` for each tree in turn, into ``planes`` (cover, rgb, normal, top).
 
-    ``texels`` and ``mips`` are a ``crown_stamp.MipAtlas``'s. Per tree, ``spans`` is ``(mip,
-    r0, r1, c0, c1)`` and ``poses`` ``(cx, cy, cos, sin, ox * scale, oy * scale, texel,
-    scale_z, axis_z, z)``; ``seen_from`` is the cover from which a crown has a top.
+    ``texels`` and ``tiles`` are a ``crown_atlas.CrownAtlas``'s; ``placed`` a
+    ``crown_stamp.Placements``' tile, centre, pose and box; ``seen_from`` the cover from
+    which a crown has a top.
     """
     x_cm, y_cm = centres
-    cover, rgb, dome, top = planes
-    got = np.empty(texels.shape[1], np.float64)
-    for t in range(spans.shape[0]):
-        mip, r0, r1, c0, c1 = spans[t, 0], spans[t, 1], spans[t, 2], spans[t, 3], spans[t, 4]
-        first, height, width = mips[mip, 0], mips[mip, 1], mips[mip, 2]
-        cx, cy, cos, sin = poses[t, 0], poses[t, 1], poses[t, 2], poses[t, 3]
-        ox, oy, texel = poses[t, 4], poses[t, 5], poses[t, 6]
-        scale_z, axis_z, z = poses[t, 7], poses[t, 8], poses[t, 9]
-        for r in range(r0, r1):
-            py = y_cm[r] - cy
-            for c in range(c0, c1):
-                px = x_cm[c] - cx
-                u = (cos * px + sin * py - ox) / texel
-                v = (cos * py - sin * px - oy) / texel
-                if not (-0.5 < u < width - 2 + 0.5 and -0.5 < v < height - 2 + 0.5):
-                    continue
-                _mip_bilinear(texels, first, width, u + 0.5, v + 0.5, got)
-                a = clip_unit(got[0])
-                keep = 1.0 - a
+    cover, rgb, normal, top = planes
+    tile, centre, pose, box = placed
+    t = np.empty(texels.shape[2], np.float32)
+    for k in range(tile.shape[0]):
+        cos, sin, ox, oy, texel = pose[k, 0], pose[k, 1], pose[k, 2], pose[k, 3], pose[k, 4]
+        rise, z, opacity = pose[k, 5], pose[k, 6], pose[k, 7]
+        for r in range(box[k, 0], box[k, 1]):
+            dy = np.float32(y_cm[r] - centre[k, 1])
+            for c in range(box[k, 2], box[k, 3]):
+                dx = np.float32(x_cm[c] - centre[k, 0])
+                u = (cos * dx + sin * dy - ox) / texel
+                v = (cos * dy - sin * dx - oy) / texel
+                _tile_texel(texels, tiles[tile[k]], u, v, t)
+                a = min(max(t[7] * opacity, _ZERO), _ONE)
+                keep = _ONE - a
                 cover[r, c] = a + cover[r, c] * keep
-                for k in range(3):
-                    rgb[r, c, k] = got[1 + k] + rgb[r, c, k] * keep
-                dome[r, c] = raise_nan(dome[r, c], got[4] * scale_z)
-                rise = got[5] * scale_z * axis_z if a >= seen_from else -np.inf
-                top[r, c] = raise_nan(top[r, c], z + rise)
+                for j in range(3):
+                    rgb[r, c, j] = t[j] * opacity + rgb[r, c, j] * keep
+                nx = cos * t[3] - sin * t[4]
+                ny = sin * t[3] + cos * t[4]
+                normal[r, c, 0] = nx * opacity + normal[r, c, 0] * keep
+                normal[r, c, 1] = ny * opacity + normal[r, c, 1] * keep
+                normal[r, c, 2] = t[5] * opacity + normal[r, c, 2] * keep
+                if a >= seen_from:
+                    top[r, c] = max(top[r, c], z + t[6] / t[7] * rise)

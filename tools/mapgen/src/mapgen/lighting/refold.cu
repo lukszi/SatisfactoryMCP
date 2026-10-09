@@ -5,11 +5,12 @@ __device__ float shade(float h, float el, float soft) {
     return fminf(fmaxf((h - el) / soft + 0.5f, 0.0f), 1.0f);
 }
 
-__device__ float mean_shade(float a, float b, float c, float d, float el, float soft) {
-    float s = ((shade(a, el, soft) + shade(b, el, soft)) + (shade(c, el, soft) + shade(d, el, soft)))
-              * 0.25f;
+// Four texels' horizon as a coarser texel stores it; `s` takes their mean shade.
+__device__ float mean_shade(float a, float b, float c, float d, float el, float soft, float* s) {
+    *s = ((shade(a, el, soft) + shade(b, el, soft)) + (shade(c, el, soft) + shade(d, el, soft)))
+         * 0.25f;
     float mean = ((a + b) + (c + d)) * 0.25f;
-    return (s > 0.0f && s < 1.0f) ? el + soft * (s - 0.5f) : mean;
+    return (*s > 0.0f && *s < 1.0f) ? el + soft * (*s - 0.5f) : mean;
 }
 
 __device__ float larger(float a, float b) { return a > b ? a : b; }
@@ -26,13 +27,14 @@ extern "C" __global__ void refold(
     const float* p = fine + 2LL * i * width + 2LL * j * cells;
     const float* q = p + width;
     float a = p[k], b = p[cells + k], c = q[k], d = q[cells + k];
-    float ground = mean_shade(a, b, c, d, el[k], soft);
+    float shaded, raised, unused;
+    float ground = mean_shade(a, b, c, d, el[k], soft, &shaded);
     float* o = out + ((long long)i * cols + j) * cells;
     o[k] = ground;
-    if (cells > dirs) {
-        int m = dirs + k;
+    for (int m = dirs + k; m < cells; m += dirs) {
+        float own = mean_shade(p[m], p[cells + m], q[m], q[cells + m], el[k], soft, &unused);
         float over = mean_shade(larger(p[m], a), larger(p[cells + m], b), larger(q[m], c),
-                                larger(q[cells + m], d), el[k], soft);
-        o[m] = over > ground ? over : 0.0f;
+                                larger(q[cells + m], d), el[k], soft, &raised);
+        o[m] = raised > shaded ? over : own;
     }
 }

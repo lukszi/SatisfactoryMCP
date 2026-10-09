@@ -29,7 +29,7 @@ from mapgen.lighting.borrow import (
 from mapgen.palette.painted.albedo import load_paint_meta
 from mapgen.palette.painted.derive.palette import calibrated_palette
 from mapgen.palette.painted.ground import PaintedGround
-from mapgen.palette.painted.shapes import BiomeGrid
+from mapgen.palette.painted.shapes import BiomeGrid, PaintMeta
 from mapgen.palette.styles import painted_style
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.perched import WaterSurfaces
@@ -41,6 +41,7 @@ from mapgen.palette.water.surface import (
 )
 from mapgen.render.ground.lift import DIRECT_LIFT_KNEE_M
 from mapgen.render.run.cached_rasters import RasterGrid
+from mapgen.sprites.store import SpriteAtlas
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
 from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
 from mapgen.terrain.sample import direct_mask
@@ -97,6 +98,7 @@ __all__ = [
     "rebuilt_lattice",
     "refuse_restyle_gaps",
     "refuse_stale_layers",
+    "require_paint",
     "water_record",
 ]
 
@@ -416,10 +418,8 @@ def check_parallel_cutter(
     return check.record()
 
 
-def prepare_paint(
-    paint_dir: Path, no_titan_trees: bool, field: hf.Field, biome: BiomeGrid, drawn: list[str]
-) -> PaintInputs:
-    """The painted layer's ground from the paint store; a run without the store is refused."""
+def require_paint(paint_dir: Path) -> PaintMeta:
+    """The paint store's meta; a painted run without the store is refused."""
     paint_meta = load_paint_meta(paint_dir)
     if paint_meta is None:
         raise Refusal(
@@ -428,12 +428,29 @@ def prepare_paint(
             "from. Extract them once from the installed game:\n"
             "    uv run --extra gen python tools/gen_paint_layers.py",
         )
+    return paint_meta
+
+
+def prepare_paint(
+    paint_dir: Path,
+    no_titan_trees: bool,
+    field: hf.Field,
+    biome: tuple[BiomeGrid, list[str]],
+    sprites: tuple[SpriteAtlas, JsonObject],
+) -> PaintInputs:
+    """The painted layer's ground from the paint store and the crown sprites (the atlas and
+    its sidecar block); a run without the store is refused."""
+    paint_meta = require_paint(paint_dir)
     started = time.time()
     palette, digest = painted_style(no_titan_trees)
+    raster, drawn = biome
     palette, digest, derived = calibrated_palette(
-        palette, digest, paint_dir, (biome, list(drawn)), field
+        palette, digest, paint_dir, (raster, list(drawn)), field
     )
-    ground = PaintedGround(paint_dir, palette, field, biome, list(drawn), oil_nodes())
+    atlas, sprites_block = sprites
+    ground = PaintedGround(
+        paint_dir, palette, field, raster, list(drawn), oil_nodes(), sprites=atlas
+    )
     provenance: JsonObject = {
         "cl": paint_meta.get("cl"),
         "generator_version": paint_meta.get("generator_version"),
@@ -445,6 +462,7 @@ def prepare_paint(
         "generator_version": paint_meta.get("generator_version"),
         "digest": paint_meta.get("digest"),
         **ground.provenance(),
+        "crown_sprites": sprites_block,
         "derived_targets": derived,
         "seconds_to_prepare": round(time.time() - started, 1),
     }

@@ -17,7 +17,7 @@ from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting import stage
 from mapgen.lighting.bake import bake_light
-from mapgen.lighting.occluders import CrownGrid
+from mapgen.lighting.occluders import UNDER_TITAN, CrownGrid
 from mapgen.lighting.stage import Surface, occluder_planes
 from mapgen.render.draw.light import (
     LIGHT_CACHE_DIR_NAME,
@@ -78,6 +78,7 @@ def test_a_run_that_fails_still_deletes_its_scratch(tmp_path):
         assert sorted(p.name for p in (tmp_path / LIGHT_CACHE_DIR_NAME).glob("occluder*")) == [
             "occluder.npy",
             "occluder_cover.npy",
+            "occluder_under.npy",
         ]
         run.surface.put(0, np.zeros((16, 16), np.float32), np.ones((16, 16), np.float32))
         raise RuntimeError("a layer failed part way")
@@ -124,13 +125,15 @@ def test_an_occluder_read_in_place_bakes_the_bytes_a_copied_one_does(tmp_path, m
     top = np.full((size, size), np.nan, np.float32)
     top[250:262, 240:270] = 60.0
     cover = np.where(np.isfinite(top), 255, 0).astype(np.uint8)
+    under = np.full((size, size), 90, np.uint8)
+    under[255:262, 240:250] = UNDER_TITAN
     copied = _surface(tmp_path / "copied", size)
-    bake_light(copied, tmp_path / "a", 1, (top, cover), progress=False)
+    bake_light(copied, tmp_path / "a", 1, (top, cover, under), progress=False)
     copied.close()
 
     work = tmp_path / "in_place"
     planes = occluder_planes(work, size)
-    planes[0][:], planes[1][:] = top, cover
+    planes[0][:], planes[1][:], planes[2][:] = top, cover, under
     saved: list[str] = []
     monkeypatch.setattr(stage.np, "save", lambda path, *_a, **_k: saved.append(Path(path).name))
     in_place = _surface(work, size)

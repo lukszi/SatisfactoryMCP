@@ -320,6 +320,7 @@ def test_a_gpu_draw_logs_where_its_calls_ran():
     from mapgen.render.gpu.device import ON_CPU, calls_line
 
     assert calls_line({"RTX": 5, ON_CPU: 1}) == (
-        "draw: relight, FXAA and terrain calls 5 on RTX; 1 ran on the CPU, the device out of memory"
+        "draw: relight, FXAA, terrain and crown calls 5 on RTX; 1 ran on the CPU, the device out "
+        "of memory"
     )
     assert "calls none on CUDA; 0 ran" in calls_line({})

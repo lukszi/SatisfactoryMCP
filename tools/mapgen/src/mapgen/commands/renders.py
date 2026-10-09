@@ -17,7 +17,6 @@ from typing import NamedTuple, cast
 
 from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, Refusal, base_parser, require_gen
 from mapgen.gamedata.frame import RENDER_PX
-from mapgen.gamedata.ground.paint_store import PAINT_DIR
 from mapgen.palette.styles import LAYER_STYLES, SHORE_OPTICS
 from mapgen.render.draw.compose import DRAW_STAGE, GroundInputs, render_layers
 from mapgen.render.draw.drawpool import add_draw_flags, draw_threads
@@ -25,6 +24,7 @@ from mapgen.render.draw.light import (
     LightingRun,
     add_light_flags,
     claim_scratch,
+    crown_layers,
     crown_tops,
     light_run,
 )
@@ -32,6 +32,7 @@ from mapgen.render.draw.stream import RenderOut, RenderStream
 from mapgen.render.run.extras import remove_run_caches
 from mapgen.render.run.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.render.run.prepare import BIOME_LAYERS, Prepared, Setup, prepare
+from mapgen.render.run.sprites import add_paint_flags
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace, measured_lines
 from mapgen.terrain.rasters import DIRECT_SUBSAMPLES
 from mapgen.terrain.sample import taps_cubic, taps_pchip
@@ -94,7 +95,7 @@ def _render(
     light_workers, cut_workers = pool_sizes(args)
     setup = Setup(cache_root, decoder, load_imaging(), versions, cut_workers)
     run = prepare(args, layers, setup)
-    crowns = None if root is None else crown_tops(args.paint_dir, run.painted)
+    crowns = None if root is None else crown_tops(args.paint_dir, run.painted, args.game)
     with (
         light_run(root, args.size, crowns, light_workers, setup.cache_root) as light,
         TileStream(setup.image_mod, cut_workers) as cutter,
@@ -113,16 +114,15 @@ def _draw_layers(
 ) -> None:
     """Draw every layer in one pass, each band cut as it settles; then install each layer's
     trees with its sidecar beside them."""
-    two_regime = run.direct is not None
-    seam = SeamTrace() if two_regime else None
-    regimes = RegimeCoverage() if two_regime else None
+    seam, regimes = (SeamTrace(), RegimeCoverage()) if run.direct is not None else (None, None)
     threads = draw_threads(args.draw_threads, layers, args.size, columns=args.draw_columns)
     print(f"drawing {', '.join(layers)} at {args.size}x{args.size} on {threads} thread(s)")
     print(encode_stage(DRAW_STAGE, 0.0), flush=True)
     started = time.time()
     arches = None if run.top is None else run.top.arch_coverage
     out = RenderOut(args.out_dir, args.renders_name)
-    stream = RenderStream(cutter, layers, out, args.size, run.record.recipe, light, arches)
+    split = tuple(layer for layer in layers if layer in crown_layers()) if light else ()
+    stream = RenderStream(cutter, layers, out, args.size, run.record.recipe, light, arches, split)
     ground = GroundInputs(
         height_dm=run.lattice.heights,
         kernel=taps_cubic if args.kernel_only else taps_pchip,
@@ -137,6 +137,7 @@ def _draw_layers(
         seam=seam,
         regimes=regimes,
         surface=light.surface if light else None,
+        textures=run.textures,
     )
     render_layers(
         layers,
@@ -153,6 +154,7 @@ def _draw_layers(
         threads=threads,
         bands=stream.put,
         columns=args.draw_columns,
+        split=split,
     )
     seconds = time.time() - started
     measured: JsonObject = {}
@@ -204,7 +206,7 @@ def _install(
     )
     sidecar = layer_sidecar(run.record, draw, stats, dense)
     if light is not None:
-        light.decorate(sidecar, layer, trees.unlit)
+        light.decorate(sidecar, layer, trees.unlit, trees.trees)
     directory = layer_dir(args.out_dir, layer, args.renders_name)
     (directory / RENDER_SIDECAR_NAME).write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
     trees = f"{tree_text(stats, 'tiles')} plus {tree_text(dense, '@2x')}"
@@ -300,12 +302,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="leave the Titan forest's trees off the painted layer (a style variant)",
     )
-    parser.add_argument(
-        "--paint-dir",
-        type=Path,
-        default=PAINT_DIR,
-        help="the paint layers tools/gen_paint_layers.py wrote, for the painted layer",
-    )
+    add_paint_flags(parser)
     parser.add_argument(
         "--renders-name",
         default=RENDERS_DIR_NAME,

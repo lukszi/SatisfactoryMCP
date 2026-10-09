@@ -40,16 +40,19 @@ divided by the same expression for flat ground in the open, so flat ground at an
   it shadowed ground is the ambient term alone, the same for every slope, and a valley in
   shadow reads as one flat grey shape at the floor. 0.2 and 0.35 were compared at 16:00 on
   the cliff-lakes and abyss crops; 0.35 keeps the rock's shape inside the shadow.
-- **Tree crowns** cast into horizons of their own (below). Only a style that draws the
-  crowns reads them (`shader_light(layer)["crowns"]`, the painted style today); every other
-  style is shaded by the ground alone. Shared by every style, the crowns' shadows drew
-  near-black blocks in the forests and dashes in the desert on layers that draw no trees,
-  five times as frequent beside a crown as away from one.
+- **Tree crowns and the Titan trees** cast into horizons of their own, each alone (below, "The
+  trees in the light"). Only a style that draws the trees reads them
+  (`shader_light(layer)["crowns"]`, the painted style today); every other style is shaded by
+  the ground alone. Shared by every style, the crowns' shadows drew near-black blocks in the
+  forests and dashes in the desert on layers that draw no trees, five times as frequent
+  beside a crown as away from one.
 - **Arches, rock overhangs and crowns are spans** (below, "Arches as spans"): each blocks only
   between its underside and its top, so its shadow falls where the sun's ray meets it and
   light passes beneath.
 - **Sky view** within 10 m darkens the foot of a cliff and the floor of a gully. Larger radii
   grey whole valleys.
+- **Ambient occlusion** darkens the sky view where a rock, a cliff or an arch meets the ground,
+  at full resolution, and the trees' own a cell of the atlas (below, "Ambient occlusion").
 - **Normalisation** by `sin(max(el, 35°))`: without the clamp a fifth to a third of the
   pixels blow out at 20°.
 - **Shadow floor.** The light passes through a soft maximum with 0.36 at a knee of 0.1
@@ -140,9 +143,12 @@ between its underside and its top as the receiver sees them:
   another or sunk into it finds the other's top as its floor, and a mesh with an open bottom,
   or whose winding is unknown, has no underside: both stay columns. The solid surface sets a
   floating rock down on its floor, or the ground.
-- **Crowns.** Each crown pixel is a span from `CROWN_UNDERSIDE` (half) of its top's height over
-  the drawn surface to its top, marched into the crown cells under the crowns' own fade. A
-  crown over open ground now throws its own shape, offset by the sun, instead of a streak.
+- **Crowns.** Each crown pixel is a span from its species' underside, a share of its top's
+  height over the drawn surface, to its top, marched alone into the crown cells under the
+  crowns' own fade (below, "The trees in the light"). A crown over open ground throws its own
+  shape, offset by the sun, instead of a streak.
+- **The Titan trees** are a slab `TITAN_SLAB_M` (12 m) deep under their canopy's top, marched
+  alone into cells of their own under the ground's fade.
 
 **The arches' holes.** Their meshes have open edges that left slits and specks in the raster,
 drawn as dark lines through the deck. The top raster fills a hole the arch encloses whose
@@ -155,9 +161,10 @@ cuts closes, and where nothing is filled the top raster is the one it was. On a 
 than 0.46 m to the pixel nothing is filled.
 
 **The default sun** is baked from the bands themselves: per cell, the horizon's soft edge plus
-the share of the sun disc the bands above it hide (with the crowns, the union of two bands),
-weighted between the sun's two directions as the horizon is, and zoomed to the pixels as the
-horizon is (`span_bake.default_shade`). Only
+the share of the sun disc the bands above it hide (with the trees, the union of two bands:
+the ground's, and the crowns' and Titan trees' marched together over the ground,
+`span_bake.canopy_cells`), weighted between the sun's two directions as the horizon is, and
+zoomed to the pixels as the horizon is (`span_bake.default_shade`). Only
 cells a span was in reach of, grown by one, take it; every other pixel's term is the horizon's
 as before. Zoomed horizons would draw one-pixel bright rings where a cell holding an arch as
 horizon meets one holding it as a band.
@@ -212,10 +219,11 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
 - One band per direction: a third arch in line, apart from the kept band by more than a sun
   disc, casts no shadow in that direction.
 - One span per pixel: where two decks cross, the part of the lower one under the upper casts
-  nothing.
+  nothing; where a Titan tree's canopy stands over a crown, the crown casts nothing.
 - Where several spans compete for a direction's one band, neighbouring cells can keep
   different ones: a faint speckle in the shadow, seen under the maze site's stacked arches.
-- One crown underside for every species: a palm's crown is shallower, a conifer's deeper.
+- One underside a species: the share of its own top its leaves start at, whatever the tree's
+  scale and the slope it stands on.
 - An overhang over a ledge sets the ledge's top down as the floor only where it is the highest
   face under the overhang; an overhang over another overhang keeps the lower one a column.
 - The page's horizons are exact for a sun on the game's path only, until the bands reach it.
@@ -225,11 +233,12 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
 
 | Where | What |
 | --- | --- |
-| `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land |
-| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | An 8 × 8 grey atlas of 128 px cells at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 px a side), `255 · sqrt(deg / 90)`: cells 0–31 the ground's horizons, cells 32–63 the crowns' where they stand above the ground's, else 0; a span's band folded in at the sun path's elevation (above, "Arches as spans"). WebP q95 where a band is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles at q95 where a band folds") |
+| `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land. At the native level the normal carries the ground's detail where the run drew one (painted.md section 30, "The layers' own textures") |
+| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | A grey atlas of 97 cells of 128 px, 8 a row in 13 rows, at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 × 2080 px): cells 0–31 the ground's horizons, cells 32–63 the crowns' alone and 64–95 the Titan trees' alone, always stored, `255 · sqrt(deg / 90)`, a span's band folded in at the sun path's elevation (above, "Arches as spans"); cell 96 the trees' ambient occlusion, `255 · o` (below, "The trees in the light"). WebP q95 where a band is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles at q95 where a band folds") |
 | `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), the `key` the bake was made under (below, "Kept light"), tile counts, timings |
-| `<layer>/unlit/` | The unlit colour, 1x only |
-| `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun: what a page without WebGL, and every older reader, draws |
+| `<layer>/unlit/` | The unlit colour, 1x only, lossless WebP (PNG before 2026-10-08; the server takes the suffix from the sidecar's `layout`). On the painted layer, the ground without its trees (section 36, "Trees apart") |
+| `<layer>/trees/` | Painted only: the crowns and the Titan trees as one layer, lossless WebP RGBA with straight alpha, 1x, sparse: a tile with no tree in it is not written (section 36, "Trees apart") |
+| `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun, trees and all: what a page without WebGL, and every older reader, draws |
 
 Coarser levels are computed from the coarser surface, not by averaging encoded tiles: normals
 from the downsampled heights, sky view by mean, and horizons by the mean of the shade the
@@ -375,12 +384,15 @@ is 4.06 GB with its folded tiles at q95 (below, "Horizon tiles and coarser level
 
 ### Scratch
 
-While the run lasts, `light.cache/` holds 14.5 bytes a pixel, 15.6 GB at full
+While the run lasts, `light.cache/` holds 16.6 bytes a pixel, 17.8 GB at full
 size: the surface (heights 4, land 1), the default-sun terms (4), and the bake's
-half-resolution heights, land and sky view (1.5) and quarter-resolution horizons (4). With
-a paint store the crown tops and cover add 5, 5.4 GB, whatever layers the run draws. The Maps tab's estimate counts them
-as `presets.LIGHT_SCRATCH_BYTES` and `CROWN_SCRATCH_BYTES`, scaled by area; tests hold both to
-what the stage allocates.
+half-resolution heights, land and sky view (1.5) and quarter-resolution horizons (6.1, the
+atlas's 97 cells). With a paint store the crown tops, cover and underside add 6, 6.4 GB,
+whatever layers the run draws. Until light version 5 the horizons took 4 bytes and the crowns 5.
+With the layers' textures, at 16384 px and up, the ground's detail normal adds 2, 2.1 GB at full
+size. The Maps tab's estimate counts them as `presets.LIGHT_SCRATCH_BYTES`,
+`CROWN_SCRATCH_BYTES` and `DETAIL_SCRATCH_BYTES`, scaled by area; tests hold each to what the
+stage allocates.
 
 It is scratch for one run, not a cache: no flag keeps it, and nothing reads it after the run.
 What a later run can use, the finished pyramid and the default-sun terms, is filed apart from
@@ -563,8 +575,8 @@ into the painted layer's terms (`lighting/spans/canopy.py` `block_canopy` and `c
   their top where it stands higher, and the larger cover. So they cast into the crown cells
   as the crowns do.
 - **Its slope:** the occluder's top smoothed over its own pixels by `DOME_SIGMA_M` (0.75 m),
-  with 0.35 of its relief (`CANOPY_RELIEF`), as the painted crowns' own lit domes take it
-  (`dome_gain`; a test holds the two to the painter's); flat where no canopy is. The crown
+  with 0.35 of its relief (`CANOPY_RELIEF`), as the painted crowns' own lit domes took it
+  until they were lit by their sprites' normals (section 36); flat where no canopy is. The crown
   plane steps by metres between neighbouring trees, and at its full relief a forest drew as a
   mottle of dark crescents.
 - **Its horizon:** the crowns' horizon received on the canopy top, whole: the crowns' span
@@ -574,9 +586,11 @@ into the painted layer's terms (`lighting/spans/canopy.py` `block_canopy` and `c
 - The painted layer's direct term and sky view are the ground's blended toward the canopy's
   by its share. The terms gain a fourth byte, the painted sky view (`stage.TERMS`), and
   `relight_rows` reads the third and fourth for a style that draws the crowns.
-- **Drawn unlit, the Titan trees stand flat** (`palette/painted/trees.py` `titan_over`), as
-  the crowns do. Before, the unlit colour kept the style's own north-west hillshade on
-  them, under the light. Painted style 20, round 2's one bump.
+- **Drawn unlit, the Titan trees stood flat** (`palette/painted/trees.py` `titan_over`), as
+  the crowns did. Before, the unlit colour kept the style's own north-west hillshade on
+  them, under the light. Painted style 20, round 2's one bump. Since 2026-10-08 the trunks
+  stand flat and the canopy, like every crown, keeps its sprites' normals at the default sun
+  (section 36, "Drawing").
 
 Only the baked copy has it. The page's shader still lights the canopy with the ground's
 normal and sky view and the larger of the two horizons, until a tile carries the canopy's
@@ -668,40 +682,165 @@ All of it changes the light's bytes, so `LIGHT_VERSION` is 4 (3 stored the folde
 lossless and was never shipped) and a kept light is baked again; the pinned bake's digest now
 covers its horizon tiles as well.
 
+### The trees in the light (2026-10-09)
+
+Light version 5. Until it, every crown was cast from half its lift to its top, the Titan
+trees joined the crowns in one plane and cast as crowns, and a crown cell was stored only
+where the crowns' horizon, with the terrain marched in it, stood above the ground's.
+
+**Each species' underside** (`lighting/undersides.py`). A species' crown starts where
+`LEAF_LOW_SHARE` (5%) of its leaf area seen from above lies lower, as a share of its crown
+top: its LOD 0 read at the start of a run from the install, the paint store's material kinds
+saying which triangles are leaves (bark for a species with none). The lowest few percent are
+left out because a palm's or a bush's lowest card hangs near the ground and would make the
+whole crown a column. A species whose mesh cannot be read keeps `CROWN_UNDERSIDE`, 0.5. On
+build 502094, of the 53 species:
+
+| Species | Underside | Species | Underside |
+| --- | --- | --- | --- |
+| `SM_GreenTree_01`, `_02` | 0.74, 0.76 | `DioTree_01`, `_02`, `_03` | 0.17, 0.32, 0.34 |
+| `SM_Kapok_01`, `_03` | 0.75 | `SM_PurpleTree_01`, `_02` | 0.30 |
+| `SM_AncientPineTree_01`, `_02` | 0.71, 0.54 | `CatPalm_01`, `SM_DypsisPalm_01` | 0.30 |
+| `SM_Bamboo_01`, `_02` | 0.49, 0.55 | `SM_SnailBottom_*`, `SM_Uppochner_02` | 0.01 to 0.08 |
+| `BluePalm_01`, `_02` | 0.58, 0.71 | stumps, bulbs, pollen trees, `SM_Trunk_01` | 0 |
+| `SM_Mangrove_Tall_01` | 0.45 | `SM_Yucca_01`, `_02` | 0.51, 0.33 |
+
+The paint store keeps one crown-top plane, the highest crown at each 1 m texel. Each tree is
+placed again as `crown_sprites.stamp_tops` placed it, and a texel takes the underside of the
+tree whose sprite stands highest there (`stamp_undersides`): 33 s for the store's 99,073 trees
+and 494 million sprite texels, once a run, before the draw. The sheet takes the mean underside
+over the crowns a pixel covers (`occluders.sheet_crowns`), and a pixel whose top is a Titan
+tree's is marked as one (`render/draw/light.py` `titan_crowns`); `occluder_under` is the
+light's third occluder plane, a byte a pixel, digested in the kept light's key.
+
+**The Titan trees** are a slab `TITAN_SLAB_M` (12 m) deep under their canopy's top, the
+rendered-look study's value, never below the ground. Before, half the lift of a canopy 46 to
+86 m up was a slab 23 to 43 m deep. They cast under the ground's fade (40 to 150 m) instead
+of the crowns' (25 to 80 m), which cut a canopy 60 m up off its shadow from 25 m out at a
+low sun.
+
+**Cells of their own, always stored.** The atlas grows to 97 cells in 13 rows (above, "What
+is written"): the ground's 32 as before, the crowns' 32, the Titan trees' 32 and the trees'
+ambient occlusion. The crowns and the Titan trees are each marched alone: over open ground
+(`OPEN_M`), so no terrain stands in their cells, their tops standing on the ground where a
+sample reaches down to the horizon (`spans/bake.py` `tree_surfaces`), received on the canopy
+top. Every cell is stored, 0 where no tree is in reach. The page shades with the larger of
+the cells it reads, so tree shadows alone are exactly the trees', and both on is the picture
+of before at the native level but where a terrain horizon and a tree's band each hide part of
+the sun disc: there the larger of the two shades a little less than their union did. The
+default sun's crowned terms still read the union: for its two directions the crowns and the
+Titan trees are marched together over the ground (`canopy_cells`), as the crown cells were
+before, and that march gives the canopy's own light its horizon.
+
+A coarser level refolds a tree cell on its own, except where the larger of it and the
+ground's shades more on average than the ground's: there the cell takes the refold of that
+larger horizon (`refold.refold`, and its CUDA twin), so with both switches on the page's
+maximum is the mean of the larger and exact for a sun on the path, and with tree shadows
+alone a 2 x 2 of texels where the trees raise nothing reads the trees' own mean. Where both
+shade, tree shadows alone keep some of the terrain's at the coarser levels.
+
+**Ambient occlusion** (`lighting/occlusion.py`). At three scales, boxes of half-width 1, 3 and
+8 m (`AO_SCALES_M`, weights 0.3, 0.4, 0.3), a pixel is occluded by how far the mean height of
+its box stands above it, against 1.5 times the half-width (`AO_DEPTH`); the weighted sum times
+0.55 (`AO_STRENGTH`) is taken off its sky light, the rendered-look study's numbers with boxes
+for its blurs. The heights are summed as integers in steps of 1/1024 m, exact whichever
+window a block reads, so a block's occlusion is the same bits in any block layout, and
+`occlusion.cu` is its twin under `--gpu`. A scale under half a pixel is left out: a 2048 sheet
+keeps the two larger.
+
+- **The ground's**: the occluding heights are the solid surface, what floats left out, so an
+  arch or an overhang darkens nothing beneath or beside it (its sky view already lets the sky
+  in beneath it), and the receivers are the drawn surface. It is folded into the normal
+  tiles' sky view, which every style reads, and the default sun's sky terms: rocks, cliff
+  feet and gullies darken by up to 0.55 of their sky light, a terraced rock at every step.
+- **The trees'**: the same over the canopy top, crowns and Titan trees stood on the ground,
+  against the ground's, as a factor on what the ground's leaves (`relative_occlusion`): the
+  atlas's cell 96, `255 · o`, at half resolution, the coarser levels its mean. The page takes
+  it off the sky light only while it draws the trees; the painted layer's baked sky term
+  takes it, and the canopy's own sky the canopy top's occlusion.
+
+**Measured** on three full-size windows of 2048 × 2048 px drawn by the renders command and
+baked with each code (2026-10-09, master a22775a5 against this branch; `cache32k-master`'s
+rasters, `inputs-stories`):
+
+| Window | Crowned direct term (default sun) moved | Ground sky term moved | Painted sky term moved |
+| --- | --- | --- | --- |
+| Titan forest (1769.7, -10.0) | 108,002 px (2.6%), by -3 to 2 at p1 / p99 | 1,604,960 px, by up to -32 at p1 | 2,652,472 px, by up to -126 at p1 |
+| The study's forest spot (81.2, -790.8) | 86,259 px (2.1%), by 0 to 2 | 1,900,466 px, by up to -29 | 2,635,088 px, by up to -125 |
+| Rib bones (2981.2, -2745.6) | 6,853 px (0.2%), by 0 | 1,874,372 px, by up to -41 | 1,984,242 px, by up to -68 |
+
+The default sun's shadows hardly move. At noon a Titan canopy wider than about 30 m blocks
+every ray that passes beneath its edge from below, however deep its slab, so its shadow is
+its footprint moved by the sun, and the straight-edged diagonal bands beside the canopies of
+the study's forest spot, the shadows' sides swept along the sun's azimuth with the half-
+resolution canopy's steps along them, are the same before and after. A 12 m slab lets the sun
+in beneath a canopy at a low sun and under its narrower parts, where the page's light moves.
+The sky terms carry the occlusion: under and beside the forests' crowns the painted layer's
+sky term falls by up to half, and the ground's by up to a sixth beside rocks, cliffs and the
+rib bones' feet; the arches' sky stays as it was.
+
+At 2048 all three layers against master's run (`inputs-stories`, uncached): the unlit sheets
+are the same bytes; the lit tiles move in 71 of each layer's 85, 1,235,545 pixels of
+painted's by up to 56 levels, 1,099,503 of terrain's by up to 48 and 1,010,703 of
+relief-dark's by up to 42; the normal tiles in 79 of 85, 1,965,962 pixels by up to 109 (the
+sky view); every horizon atlas, its crown cells now stored everywhere. The pyramid takes 41.2
+MB instead of 40.4, its horizon atlases 23.6 instead of 23.2, 78 of them folded instead of
+79. The full size was not measured.
+
 ### Hooks
 
 `bake_light` takes an optional `occluder` on the sheet's grid, which only casts: the crown tops
-in metres, NaN where empty, or `(top, cover)` with the covered share of each pixel as a byte.
-The crowns stand on the surface, each lifted by its cover (`horizon.crown_surface`), and are
-spans from half their lift to that top (above, "Arches as spans"), cast into the crown cells
-under their own shorter fade (`OCCLUDER_FADE_M`, 25 to 80 m) and received on the crown tops, so
-a crown is lit or shaded where the painted layer draws it. A crown cell keeps its horizon only
-where it stands above the ground's, which the shader's `max` makes exact and leaves the cells
-empty away from trees. `occluder_layers` names the layers that read them. The paint store's
-crown tops feed it (section 36; the mapgen README's "Horizons and tree shadows"). The arches
-and the overhangs come with the surface itself, in its `slabs/`.
+in metres, NaN where empty, or `(top, cover)` with the covered share of each pixel as a byte,
+or `(top, cover, under)` with each pixel's underside byte (`occluders.UNDER_SCALE`: a crown's
+underside as a share of its lift, 254 for all of it, or `UNDER_TITAN`, 255, for a Titan
+tree). The trees stand on the surface, each lifted by its cover (`horizon.crown_surface`), and
+are spans from their underside to that top (above, "Arches as spans"; below, "The trees in
+the light"); without an underside plane every crown's is half its lift. The crowns cast into
+the crown cells under their own shorter fade (`OCCLUDER_FADE_M`, 25 to 80 m), the Titan trees
+into theirs under the ground's, each alone and received on the canopy top, so a tree is lit or
+shaded where the painted layer draws it. `occluder_layers` names the layers that read them.
+The paint store's crown tops feed it (section 36; the mapgen README's "Horizons and tree
+shadows"). The arches and the overhangs come with the surface itself, in its `slabs/`.
 
 ### The page
 
 `litlayer.ts` draws a lit layer on one WebGL2 canvas in the base-map pane: per tile the unlit
-colour, normals and horizons, relit by the shader with the arithmetic of `lighting/model.py`.
-The z0 probe's `X-Map-Light` header carries the shader's numbers; the layer's `params.crowns`
-switches the crown cells on, and a pyramid without `hz_cells` reads as the old 8 × 4 atlas
-with no fill; one without `hz_gutter` reads its cells edge to edge. A test holds the shader to
-the Python model's constants. Without WebGL2, or when the
+colour, normals and horizons, relit by the shader with the arithmetic of `lighting/model.py`,
+and on a layer drawn apart at its trees the trees as a fourth texture (`littiles.ts`, below).
+The z0 probe's `X-Map-Light` header carries the shader's numbers and the layer's `parts`; the
+layer's `params.crowns` switches the crown cells on, and a pyramid without `hz_cells` reads as
+the old 8 × 4 atlas with no fill; one without `hz_gutter` reads its cells edge to edge. A test
+holds the shader to the Python model's constants. Without WebGL2, or when the
 context or the tiles fail, the layer falls back to the baked `tiles/` with a toast. Settings →
-map holds the default sun (game noon, 09:00, 16:00 or map north-west) and four switches:
+map holds the default sun (game noon, 09:00, 16:00 or map north-west) and five switches:
 
 | Setting | Label | Uniform | Off |
 | --- | --- | --- | --- |
 | `mapShade` | shade | `uLightOn` | the light is 1 everywhere: the unlit colour as it is |
+| `mapTrees` | trees | `uTreesOn` | the trees are not drawn, and neither their shadows nor their sky occlusion is read: the light of a world without trees. Only a layer whose probe has `parts.trees` can switch them; on any other they stay on |
 | `sunShadows` | terrain shadows | `uGroundSh` | the ground's horizon cells are not read: rocks, cliffs, arches and overhangs |
 | `sunTreeShadows` | tree shadows | `uCrownSh` | the crown cells are not read; only a layer with `params.crowns` has the switch |
 | `sunSky` | sky light | `uSkyOn` | the sky view is 1 |
 
-The shader takes the horizon as `max(uGroundSh · ground, crown)`, the crown term only while
-`uCrownSh`, and scales the shadow by `max(uGroundSh, uCrownSh)`, so both off casts none and both
-on is the picture from before the split. The sun button on the map opens a time-of-day slider on
+The shader takes the horizon as `max(uGroundSh · ground, crown, Titan)`, the tree terms only
+while `uCrownSh · uTreesOn`, the Titan term only where the pyramid has its own cells
+(`model.titan_cell`), and scales the shadow by `max(uGroundSh, uCrownSh · uTreesOn)`, so all
+off casts none and all on is the picture from before the switches. The trees' sky occlusion
+(`model.ao_cell`, linear) takes its share off the sky view while the trees are on.
+
+**The trees on the page.** A tile's trees are fetched only while the trees are on, as straight
+alpha premultiplied by the browser on decoding (`createImageBitmap`'s `premultiplyAlpha`), so a
+bilinear read never pulls in the colour the lossless WebP leaves free under alpha 0; a tile the
+sparse tree does not hold answers 204 and draws one shared transparent texture. The shader
+lights the ground and the trees with the same light, the ground weighted by its land weight
+and the trees by 1, so a crown over the water now takes the live light and its neighbours'
+shadows; it lays the trees over the ground at their alpha in linear light, before the tone
+curve. With both on that is the unlit colour of before, up to the 8-bit rounding of the two
+stores (section 36, "Trees apart"). The baked `tiles/` still keep a crown over the water at the
+light it was drawn with. A layer drawn before its trees came apart keeps them in its colour:
+its trees row shows greyed, and its trees are always on.
+
+The sun button on the map opens a time-of-day slider on
 the game's path, the presets, the three shadow and sky switches, a "hillshade only" button
 (both shadows and the sky off, the shade on, the sun where it is) and, under "advanced", a free
 compass with azimuth and elevation. The button moves the sun for the visit; Settings keeps the
@@ -712,32 +851,36 @@ The controls show only on a base map whose probe carries `X-Map-Light`. Where th
 drawn with its baked light instead, without WebGL2 or after a failure, they show greyed out
 with the reason as their tooltip.
 
-**Tree shadows without terrain shadows are incomplete.** The bake stores a crown cell only
-where the crowns' horizon stands above the ground's (`lighting/spans/bake.py`,
-`horizon_cells`), which the shader's `max` makes exact while both are on. With terrain shadows
-off, a tree's shadow that falls where a terrain shadow would also fall reads a crown cell of 0
-and is missing: the ground there is lit, with no other artefact. Elsewhere the tree shadows are
-exact, because where the terrain does not shade, the crowns' horizon is either stored or below
-the sun. The sun panel says so in a line under the switches while that mix is set. Storing the
-crown cell always removes the gap; that changes the light's bytes, so it waits for the next
-full render.
+The trees row sits under the base-map radios beside the shade. While the trees are off the
+sun panel's tree-shadow switch greys out and says why.
+
+**Tree shadows without terrain shadows.** Until light version 5 the bake stored a crown cell
+only where the crowns' horizon stood above the ground's, and the crown march took the
+terrain with it, so with terrain shadows off a tree's shadow inside a terrain shadow was
+missing and the sun panel said so. From light version 5 the crown and Titan tree cells hold
+the trees alone and are always stored (below, "The trees in the light"), so tree shadows
+alone are exactly the trees'. A page reads the Titan tree cells and the trees' ambient
+occlusion cell by the model block's `titan_cell` and `ao_cell`. On a pyramid without them,
+with terrain shadows off, a tree's shadow that falls where a terrain shadow would also fall
+reads a crown cell of 0 and is missing, and the sun panel says so in a line under the
+switches while that mix is set.
 
 ### Open
 
 - The spans' bands on the page, so a sun off the game's path shades them too.
-- The sun in the fragment, so a link carries it, and the shade and shadow switches with it.
-- The crown cell stored always, so tree shadows without terrain shadows are complete (above,
-  "The page").
+- The sun in the fragment, so a link carries it, and the shade, trees and shadow switches with
+  it.
 - With the shade off the page still fetches the normal and horizon tiles it no longer reads,
-  four fifths or more of a tile's bytes; skipping them needs a cache per kind.
+  four fifths or more of a tile's bytes; skipping them needs the tile cache to load each kind
+  apart, as it loads the trees.
 - Faint diagonal bands at low sun from the direction interpolation, and from the q90
   encoding on tiles without a folded band.
 - On the page a crown still takes the ground's normal and sky view, and the ground's horizon
   measured under it where that is higher; the baked copy lights it by its own top (above,
   "The canopy's own light").
 - The lattice seams at landscape holes (above, "Edges of the light").
-- A land weight for the crowns over water, read by the painted layer only, so they take the
-  live light and a tree's shadow can fall on the water.
+- The baked copy keeps a crown over the water at the light it was drawn with; the page lights
+  it (above, "The trees on the page"). A tree's shadow still falls on no water.
 - The horizon march reads the 0 m the heights drop to under no data as ground, so a void edge
   beside low ground casts a wall's shadow on it ("The land weight" fades the light at the
   edge itself, not the shadow it throws further in).
@@ -786,52 +929,100 @@ times its own scale, snapped to eleven bins from 0.5 to 20 m.
 
 ### Drawing
 
-`terrain/crown_stamp.py` stamps the crowns into each band of the render's own grid. Each tree's
-sprite is turned by its yaw, scaled, and shifted along its trunk axis by the species' mean
-crown height, so a leaning bamboo's crown stands off its base. The sprite is read through a
-mip chain (2x2 means; the top channel takes the maximum) at the level whose texel is nearest
-the output pixel, bilinearly, so a 1024 preview keeps each crown's area. Trees are laid
-lowest top first, each over the ones below. A band returns cover, cover-weighted colour, a
-dome height and the highest crown top in world cm; `stamp_crowns(...)["top_cm"]` is the crown
-height raster on any render grid.
+Since 2026-10-08 every crown is drawn from its species' crown sprite ("Crown sprites" below):
+leaves, holes and branches in their own colour, lit by their own normals. The paint store's
+sprites (one flat colour per material slot) only feed the crown-top plane now.
+
+**The atlas.** A painted run reads the crown sprite cache of the installed build, and builds
+it first where it is missing, for another build, or short of a species of the paint store
+(`render/run/sprites.py`, `--sprites-dir`, default `data/local/crown-sprites/`). It decodes it
+once into one float32 atlas (`terrain/crown_atlas.py`): per texel the linear colour, the
+normal and the crown top, each times alpha, then alpha; a tile per species and mip with its
+one-texel gutter. Because every channel is times alpha, a bilinear read between a crown's edge
+and its gutter fades all of them together, and the gutter's alpha of 0 adds nothing. A crown's
+top is that read over its alpha, the alpha-weighted top.
+
+**The stamp** (`terrain/crown_stamp.py`). Each tree takes the mip whose texel, times the tree's
+scale, is nearest the output pixel (log2 of their ratio, rounded), is turned by its yaw,
+scaled, and shifted along its trunk axis by the species' mean crown height, so a leaning
+bamboo's crown stands off its base. Trees are laid lowest top first, each over the ones below.
+A band returns cover, colour and normal times cover, composited front over back, and the
+highest crown top in world cm where the cover reaches `COVER_TOP_MIN` (0.25).
+
+What a tree needs is worked out on the host in float64 (`crown_placements`): its tile, its
+stamp centre, its pose as float32 (turn, the tile's corner and texel in the tree's scaled
+cm, its top's rise, base and opacity) and the rows and columns it can reach, bounded by its
+tile's farthest covered texel plus a texel's diagonal, the bilinear tent's reach. Per pixel,
+the pixel's centre less the stamp's centre is taken in float64 and rounded to float32 once;
+the rest is float32 in a fixed order. Three implementations give the same bits: the numpy
+reference (`_stamp`), numba's (`terrain/kernels.py` `stamp`, the default), and CUDA under
+`--gpu` (`render/gpu/crowns.py`, kernel `stamp_crowns` in `render/gpu/texels.cu`, the trees
+binned into 16-pixel cells as the sprite stamp bins its sprites, the atlas uploaded once a
+process). Tests hold the two kernels to the reference bit for bit.
 
 A pixel is placed on a sprite from its own centre on the sheet, so a crown draws the same
 whichever band or window holds it (2026-10-07); counted from the band's corner, a crown moved
-with the band that held it. Placing the pixels from their centres moved a full-size band's
-cover by up to 0.0024 and its dome by up to 5 cm, and where a cover crosses `COVER_TOP_MIN`
-the top passes to another crown, so the crown flips between drawn and hidden. On build 502094
-that moved 328 pixels in 55 of the painted layer's 85 tiles at 2048, by up to 12 levels, and
-0.02% of the full-size windows renders.md section 40 describes, by up to 76; no other layer
-and no light tile.
+with the band that held it.
 
-The stamps run as a numba kernel, to the same bits, unless `MAPGEN_KERNELS=numpy` (renders.md
-section 41, "The painters").
+**The light.** Each pixel's sun term is the normal of its crowns, averaged by alpha, each
+sprite normal turned by its tree's yaw (`trees.crown_sun`), against flat ground: drawn lit, the
+style's north-west sun; drawn unlit, as in every run with the light, the light's default sun
+over its own flat ground. A crown drawn unlit so keeps the leaf-level relief the light cannot
+draw (the canopy's own light takes the crown tops smoothed by 0.75 m, section 29), as the
+meshes only the painted style draws keep the default sun (`band.painted_ndl`); an upright
+crown reads flat either way. The airbrushed dome that lit a crown before, its cover times its
+top blurred by 0.75 m and lit at 0.35 of its relief, is gone, and with it `dome_gain`.
 
 `palette/painted/band.py` composites the crowns that stand out of the water last, over water
-and foam, under the highlight shoulder (`trees.over_crowns`); a crown under the water's
-surface is drawn in the bed instead ("Crowns and the water" below). The `crowns` block of
+and foam, under the highlight shoulder (`trees.over_crowns`), or keeps them apart ("Trees
+apart" below); a crown under the water's surface is drawn in the bed instead ("Crowns and the
+water" below). The `crowns` block of
 `satellite-painted.json`:
 
 | Key | Value | What |
 | --- | --- | --- |
 | `draw` | true | Off, the soft canopy is drawn instead |
 | `canopy_kept` | 0.0 | How much of the soft canopy stays under the crowns. 0: the crowns replace it, so no tree is drawn twice |
-| `darkening`, `chroma` | 0.85, 0.8 | Times the texture colour, and times the style's own chroma gain of 1.2 |
-| `dome_gain`, `shade_clamp` | 0.35, [0.55, 1.2] | The light: the style's sky and sun over the shared sun's `sun_dot` on the crown's smoothed height (0.75 m) times 0.35, relative to flat ground and clamped |
+| `darkening`, `chroma` | 0.85, 0.8 | Times the sprite's colour, and times the style's own chroma gain of 1.2 |
+| `shade_clamp` | [0.55, 1.2] | The light: the style's sky and sun over the crown normals' sun term, relative to flat ground and clamped |
 | `hidden_below_m` | 0.5 | A crown whose top is more than this below the drawn surface is hidden: a tree under an overhang, or beside a higher rock |
 | `waterline_m` | 0.1 | The height over which a crown's top passes from over the water to under it, centred on the water's surface |
 
-Drawing a z7 crop of the painted layer takes 1.8 to 2.5 s with crowns against 0.8 to 1.8 s
-without, on 1.1 to 2.7 Mpx crops of forest, Red Bamboo and the Titan forest. Most of the sheet
-has no tree.
+**The colours** are the sprites' texels, moved by section 31's crown calibration as before:
+the species and named crown targets move a species' tiles, the canopy target each pixel. The
+ancient pines' sprite reads its needles' mask from the packed `ORMA` blue, so they draw olive
+needles where the paint store's flat colour, the whole card's mean, drew them mustard. The
+canopy target's op is measured on the sprites: the median green crown is the Kapok's, greyer
+in its sprite than its flat colour was, so the op lifts lightness by 0.063 and chroma 1.54
+times, where it lifted 0.037 and 1.14; a crown already more saturated than the Kapok, the
+green trees' game view, draws greener than before. That is the op to the 1.0 screenshot
+#558653; the derived canopy, measured on the paint store's flat slot colours, asked ×1.83 and
+is not taken since 2026-10-09 (calibration.md section 31, "The second review").
+
+**Measured** (2026-10-08, build 502094, the gate inputs' paint store, against master
+a22775a5's own runs):
+
+- At 2048, painted and lit: the light's 170 tiles keep their content, the light is not
+  touched. Of the painted tiles 578,950 of the native level's 4.19 million pixels change
+  (13.8%, 48 of 64 tiles, by up to 123), and 26 to 35% of each coarser level; `unlit/` the
+  same.
+- At 32768, 1024-pixel windows drawn unlit and lit by the style's own sun: 772,689 of
+  1,048,576 pixels change at the Titan forest (1769.7, -10.0), 719,346 in the Northern Forest
+  (81.2, -790.8), 648,659 in the Red Jungle (-1036, 237) and 166,457 on the Spire Coast
+  (269, -1943), by up to 110 to 154 levels. The ancient pines' crown cores there move from
+  #8e8826 to #707c21.
+- The Titan canopy's sprites against the raster's leaves over 600 m round the Titan forest:
+  the footprints overlap by 0.89 (cover over a half on 42% of the pixels against the leaves'
+  47%, the cards' holes), and the sprites' top stands a median 1.2 m under the raster's.
+- On those windows the CUDA stamps give numba's bits on the real atlas and paint store.
 
 ### Known limits
 
-- **Colours are the textures', moved by the canopy target, the red Kapok's species target
+- **Colours are the sprites', moved by the canopy target, the red Kapok's species target
   and, for the blue palms, a target of their own.** Crowns of a target's own hue, and the red
   Kapok `SM_Kapok_03` by name, are calibrated (section 31, "Crowns"); every other crown keeps
-  its texture mean: bamboo is a saturated pink-red, the tall mangroves' tops are their bark
-  texture. The style's `chroma` of 0.8 is a taste call.
+  its sprite's colours: bamboo is a saturated pink-red. The style's `chroma` of 0.8 is a
+  taste call.
 - **Blue palms are blue, on a target of their own.** `BluePalm_01` and `_02` (3,332 trees:
   1,747 in the Rocky Desert, 768 in the Savanna, 344 on the Spire Coast) have one leaf colour,
   the leaf half of `TX_BluePalm_01_Alb`: light blue with white midribs, linear (0.27, 0.40,
@@ -843,9 +1034,12 @@ has no tree.
   #3a5e78 with lit tops #416783: ΔE 4.7 to the Rocky Desert area shot's #2e6695, and 5.5 to
   the river split's lit tops #3e5579. The wiki's Rocky Desert and Spire Coast shots show blue
   palms in both biomes, so they stay blue everywhere.
-- A crown is lit by the fixed north-west sun of the painted style. The live sun shading takes
-  the crown tops as its occluder (section 29), and the baked default sun lights them by
-  their own top ("The canopy's own light"); the page's normal pyramid has the ground's only.
+- Drawn unlit, a crown keeps its sprite normals' shading at the default sun whatever sun the
+  page picks, and the light's canopy term, lit by the smoothed crown tops, comes on top of
+  it: on a sloped canopy the slope is lit twice, mildly, at the canopy's 0.35 of its relief.
+  The page's normal pyramid has the ground's normals only; a tree normal tile would let the
+  page light the sprites' normals itself.
+- A crown's normal is turned by its tree's yaw; lean and an uneven scale do not tilt it.
 - Lean moves a crown; it does not foreshorten it.
 - `SM_Trunk_01` (6,933 logs and stumps) draws as small bark sprites.
 
@@ -879,16 +1073,17 @@ go into the bed, where the swamp's opaque water (tau 0.3 m) hides them. The game
 water is murky, so a plant under it is not seen from above either.
 
 A river under bamboo is hidden by the crowns, as from above in the game; it shows where the
-canopy is open. The Titan trees are laid over the water and stand tens of metres out of it;
-they keep their 0.8 opacity everywhere (section 30).
+canopy is open. The Titan trees are laid over the water and stand tens of metres out of it,
+opaque where their canopy's leaves are (section 30).
 
 **The light.** The lighting stage leaves water unlit: its land weight falls with the water
 cover (section 29, "The land weight"), and the one pyramid serves every layer, of which only the painted one
-draws crowns. So in a render with the light a crown over water keeps the flat light it was
-drawn with: no live shading, no shadow from its neighbours. No tree shadow falls on water,
-neither on its surface nor on its bed, and a render without the light draws no cast shadow
-at all. Lighting the crowns over water needs a crown land weight in the light pyramid that
-only the painted layer reads.
+draws crowns. So in the baked copy a crown over water keeps the flat light it was drawn with:
+no shading, no shadow from its neighbours. On the page, a render with its trees apart lights
+the trees at a land weight of 1, so a crown over the water takes the live light and its
+neighbours' shadows ("Trees apart" below); one drawn before keeps the flat light. No tree
+shadow falls on water, neither on its surface nor on its bed, and a render without the light
+draws no cast shadow at all.
 
 ### Coral trees are no crowns (2026-10-06)
 
@@ -915,7 +1110,7 @@ shrunk by 0.35. Every coral tree comes out lit as a hump.
 records (`terrain/crown_stamp.py` `meshed_species`, `is_render_only_foliage` on the species'
 mesh). The paint store still holds them: its crown-top plane holds the coral, so in a render
 with the light a coral tree still casts a tree shadow, and its canopy plane counts them. The
-coral trees draw as their meshes, in the calibrated colours: the coral mesh colour #99868e lit
+coral trees draw as their meshes, in the calibrated colours: the coral mesh colour #917c75 lit
 by the mesh's own top, the seabed coral under water, and section 31's rule for a coral speck
 standing in the sea.
 
@@ -933,26 +1128,105 @@ base sweep: the luma of coral-tree pixels follows the north-west sun term of the
 at a Pearson r of 0.97 to 0.99 and the crown dome's at 0.36 to 0.57; drawn as crowns it was the
 other way round. In a full run's light, at the default sun, the coral standing in the sea
 follows its own surface at r 0.70 to 0.95 (375 to 6,228 pixels a window). The caps' median is
-1.3 to 1.8 Delta E from the #99868e target, against 6.8 to 7.1 as crowns.
+1.3 to 1.8 Delta E from the then target #99868e, against 6.8 to 7.1 as crowns.
 
 **Known limits.**
 
 - In a lit run the coral standing in the sea keeps the noon light whatever sun the page
   picks, and takes no cast shadow.
 
+### Trees apart (2026-10-08)
+
+The page can switch the trees off (section 29, "The page"): to see the ground under a forest
+or under the Titan trees when building, or for the look. The light needs nothing new for it:
+the ground's cells, normals, sky view and land weight are the ground's without the trees, and
+the trees' shadows and sky occlusion are cells of their own. What it needs is the colour
+without the trees, and the trees apart from it.
+
+**The split** (`palette/painted/band.py` `painted_parts`). The painter lays the crowns that
+stand out of the water and then the Titan trees over the finished pixel last, each
+`out · (1 − a) + c · a` in linear light, before the tone curve. The pixel before them is the
+ground `G`; the layers fold into one (`trees.folded_trees`): `A = 1 − Π(1 − aᵢ)` and
+`C = P / A`, `P` the colours laid in turn premultiplied, a crown's `a` its alpha times the
+share of it out of the water. `G · (1 − A) + C · A` is the picture, which is still laid as
+before, so `tiles/` and `tiles@2x/` keep their bytes.
+
+- `unlit/` takes `tone(G)`, toned in the picture's own float type, so a pixel no tree covers
+  keeps its bytes;
+- `trees/` takes `tone(C)` as sRGB, with `A` as a byte.
+
+The page undoes the tone and the sRGB curve of each, as it does the unlit colour's, and lays
+the trees over the ground; with the light on, both take it. A test holds that the two stores,
+laid again, give the picture within one level (`tests/mapgen/test_trees_apart.py`).
+
+**Left in the ground.**
+
+- A crown under the water's surface is drawn into the bed ("Crowns and the water"): optics,
+  not an alpha, so with the trees off the swamp's sunk plants still show.
+- The coral trees are render-only meshes ("Coral trees are no crowns").
+- A crown hidden under an overhang (`hidden_below_m`) is in neither, as before.
+- The void and the falls are drawn over the picture and over the ground; on the ground no
+  crown hides a fall's foam, and the trees take no alpha where the void covers them
+  (`render/draw/painting.py` `draw_band`). The arches' FXAA runs on the ground and the lit
+  picture; the trees are not filtered.
+
+**The draw and the cut.** A run with the light draws the painted layer apart
+(`render_layers(split=...)`, only unlit and only into a band sink): each piece hands its
+ground and its trees as bytes beside the picture (`painting.TreeSplit`), and the stream sends
+the ground to `unlit/` and the trees to `trees/` at once, with no light to wait for, while the
+picture waits for its light as before (`render/draw/stream.py`). The tiles are lossless WebP
+(`tiles/formats.py`): the ground at effort 2, as the normal tiles; the trees at 4, RGBA with
+straight alpha and `exact=False`, so the colour under alpha 0 is free to compress. A coarser
+level of the trees is Pillow's Lanczos on RGBA, which resamples premultiplied, so no colour
+from under alpha 0 bleeds into an edge (a test pins it). A trees tile whose alpha is all 0 is
+not written: the tree is sparse, and its record counts the tiles written per level, with its
+`layout`, `alpha` and `sparse`. The layer's sidecar names it in its light block as
+`trees_dir` and `trees_tiles`; the server answers a tile on its grid that is not there with
+204 (maps_contract.md section 8.1).
+
+**Measured** at 2048, the painted layer drawn on master's surface before the split and after
+it (2026-10-08, build 502094):
+
+- `tiles/` (85 tiles), `tiles@2x/` (21) and the light's 170 tiles are the same bytes.
+- `trees/` holds 68 of the 85 tiles, 1.75 MB; 13.3% of the native level's pixels hold a tree.
+- `unlit/`, the ground, is 4.49 MB as WebP. The picture it was is 5.53 MB as PNG and 4.60 MB
+  as WebP; terrain's and relief-dark's unlit trees come out 23% and 20% under their PNG.
+- The ground and the trees laid again as the page lays them, the shade off, give the old
+  unlit colour within one level on 99.77% of the native level. Of the 9,728 pixels off by
+  more (at most 81 levels), 8,935 lie within reach of an arch's FXAA, which filtered the
+  picture's crowns with the arch but leaves the trees layer unfiltered; most of the rest lie
+  under a waterfall's mist, which the picture fades by the crowns' cover in sRGB and the page
+  by their alpha in linear light.
+  The ground differs from the old unlit on 6,009 pixels no tree covers, the same FXAA and
+  crowns whose alpha rounds to 0.
+
+At 2048 a crown is one to three pixels, so nearly every tile holds one. At full size the
+trees are estimated at 140 to 165 MB, from 48 forest tiles of the v8 render coded the same
+way, against the quarter the ground's WebP takes off the 526 MB of the painted layer's PNG.
+
+**Limits.**
+
+- The Titan trees go with the trees; they cannot be hidden alone.
+- A coarser level of the picture is not its coarser ground and trees laid over each other: they
+  differ by a covariance term at the trees' edges, which does not show.
+- The page relights a crown with the ground's normal; the canopy's own normal and sky view
+  would be a sparse tile beside the trees (section 29, "Open").
+
 ### Crown sprites (2026-10-08)
 
 The rendered look draws each crown as the tree really looks from above: leaves, holes and
 branches in colour, with a normal the light can shade and an alpha the ground shows
-through. Today's crown is a cover silhouette in one flat colour per material. The crown
-sprites are the art for the new draw, one per species, every species covered: the change
-ships only when all trees have real art. Nothing draws them yet; the draw comes after its
-port to the GPU, and reads the cache below.
+through. The crown sprites are that art, one per species, every species covered, and since
+2026-10-08 every crown is drawn from them ("Drawing" above), the Titan canopy too
+(section 30).
 
-`python -m mapgen crown-sprites` takes the species from the paint store's `crowns` block,
-reads each mesh, its textures and its billboard from the install, and writes
-`data/local/crown-sprites/` in about 30 s on the CPU, 10 s with `--gpu`. On build 502094 that is 53 species: 8 from
-the game's own view from above, 45 rasterised from their meshes.
+`python -m mapgen crown-sprites` takes the species from the paint store's `crowns` block and
+the Titan canopy's meshes from a sweep of the levels, with their placements; reads each
+mesh, its textures and its billboard from the install, and writes `data/local/crown-sprites/`
+in about 90 s on the CPU, a third of it the sweep. On build 502094 that is 55 species: 8 from
+the game's own view from above, 47 rasterised from their meshes, the two Titan canopy meshes
+among them; and 218 Titan canopy placements. A painted run builds the cache itself where it
+finds none current (`--sprites-dir`).
 
 **Two sources.** A tree mesh carries its far-distance stand-in as a material slot, of one of
 three kinds, told apart by the master material (`gamedata/vegetation/billboards.py`):
@@ -1088,20 +1362,23 @@ of the twelve and within 26% on all.
 
 **The cache** (`sprites/store.py`) is laid out for one stamp kernel: `atlas.npz` holds three
 planes over one atlas 2048 wide, `colour` (RGBA8: sRGB colour and alpha), `normal` (two bytes:
-x and y as `(n + 1) * 127.5`, z the remainder up) and `top` (uint16, the crown top in cm over
-the pivot), and `records`, one row per species and level: its rectangle, its corner in mesh
-cm, its texel (12.5 cm doubling down the chain), its highest top, and how far its farthest
-covered texel reaches from the pivot, so a stamp bounds a tree under any yaw before it reads
-a texel. `first` and `levels` give each species'
-first row and its count. A level's texel `(r, c)` centres on `(x0 + (c + 0.5) t, y0 + (r +
+x and y as `n * 127 + 128`, so an upright normal reads back exactly upright, z the remainder
+up) and `top` (uint16, the crown top in cm over the pivot), and `records`, one row per species
+and level: its rectangle, its corner in mesh cm, its texel (12.5 cm doubling down the chain),
+its highest top, and how far its farthest covered texel reaches from the pivot, so a stamp
+bounds a tree under any yaw before it reads a texel. `first` and `levels` give each species'
+first row and its count; `titan` the Titan canopy's placements as paint store records, their
+species the atlas's. A level's texel `(r, c)` centres on `(x0 + (c + 0.5) t, y0 + (r +
 0.5) t)`, rows along +Y, the paint store sprites' convention, so a stamp turns and scales it
-by the tree's record as today. Each species carries its mip chain down to 4 texels:
+by the tree's record. Each species carries its mip chain down to 4 texels:
 alpha and alpha-weighted colour averaged, normals summed by alpha, the top as its weighted
 mean. A one-texel gutter round each rectangle holds its edge colour at alpha 0, so a bilinear
 read never meets a neighbour or fades to black. `meta.json` is the stamp (the build, reader
-`crown_sprites` 1, the layout `format` 1, the texel), the record's dtype, and per species its
-mesh, source, instance count and what was measured. It is written after the atlas and
-removed first, so a write cut short is a miss. 4.3 MB.
+`crown_sprites` 1, the layout `format` 2, the texel), the record's dtype, per species its
+mesh, source, instance count and what was measured (a Titan canopy mesh marked `titan`), the
+species no sprite was made of, and the count of Titan placements. It is written after the
+atlas and removed first, so a write cut short is a miss. 13 MB, an atlas of 2048 x 2454.
+Format 1, before the Titan canopy and the exact upright normal, is read as a miss.
 
 **Known limits.**
 
@@ -1115,8 +1392,8 @@ removed first, so a write cut short is a miss. 4.3 MB.
   them ("Coral trees are no crowns").
 - The paint store's own sprites read a leaf's mask from the `ORMA` alpha or the albedo's, so
   the Kapok's (the albedo's subsurface) covers most of each card and the ancient pines' and
-  Snake Legs' have none; the crown sprites read the blue. The paint store is left as it is
-  until the new draw replaces its crowns.
+  Snake Legs' have none; the crown sprites read the blue. The draw no longer reads them; the
+  crown-top plane, the light's occluder, still comes from them.
 
 **The paint store keeps the coral (measured 2026-10-07).** The 1,384 coral trees, of 99,073,
 still write the crown-top and canopy planes, and neither is a second drawing. The canopy plane

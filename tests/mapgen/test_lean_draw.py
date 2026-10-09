@@ -21,8 +21,8 @@ from mapgen.palette.styles import (
 from mapgen.palette.water.open_sea import VoidPlanes
 from mapgen.palette.water.shore import wet_mix
 from mapgen.render.draw import painting
-from mapgen.render.ground import lift, surface, void
-from mapgen.render.ground.surface import WaterPlanes
+from mapgen.render.ground import lift, void, water_sample
+from mapgen.render.ground.water_sample import WaterPlanes
 from mapgen.terrain.sample import (
     reads_nothing,
     resample,
@@ -182,12 +182,12 @@ def test_the_void_helpers_skip_only_what_reads_as_zero(monkeypatch, void_rows, m
         return (
             painting._void(rgb, missing, sea, void.drawn_void(missing, sea, linear, rock, z_m)),
             lift.rock_kept(z_m * 100.0, missing, linear, wet_plane, sea),
-            surface._sample_water_surface(z_m, planes, sea, smooth, linear),
+            water_sample.sample_water_surface(z_m, planes, sea, smooth, linear),
         )
 
     lean = run()
     monkeypatch.setattr(void, "reads_nothing", _always_read)
-    monkeypatch.setattr(surface, "reads_nothing", _always_read)
+    monkeypatch.setattr(water_sample, "reads_nothing", _always_read)
     monkeypatch.setattr(lift, "reads_nothing", _always_read)
     full = run()
     for got, want in zip(lean[:2] + lean[2], full[:2] + full[2], strict=True):

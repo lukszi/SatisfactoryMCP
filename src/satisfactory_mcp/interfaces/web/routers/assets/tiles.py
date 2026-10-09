@@ -37,7 +37,7 @@ from .....core.gameassets.versions import RETIRED_STYLES
 from .....core.jsontypes import JsonObject, JsonValue
 from .....domain.maps import registry
 from .....domain.spatial import geo
-from ...serial import cached_file, error_response, json_object, sidecar_meta_block
+from ...serial import IMMUTABLE, cached_file, error_response, json_object, sidecar_meta_block
 
 __all__ = ["DEFAULT_MAP_BOUNDS_M", "router"]
 
@@ -192,14 +192,17 @@ def map_tile_path(
 
 
 #: The query parameter that asks a lit layer for one of its lighting trees instead of its
-#: colour: the unlit colour, or the light pyramid's normals or horizons. docs/maps_contract.md
-#: section 8.1.
+#: colour: the unlit colour (the ground, on a layer drawn apart at its trees), the trees, or
+#: the light pyramid's normals or horizons. docs/maps_contract.md section 8.1.
 MAP_TILE_KIND_PARAM = "kind"
-LIGHT_KINDS = {"unlit": ".png", "nrm": ".nrm.webp", "hz": ".hz.webp"}
+LIGHT_KINDS = {"unlit": ".png", "trees": ".webp", "nrm": ".nrm.webp", "hz": ".hz.webp"}
+#: The suffixes a colour tree's sidecar ``layout`` may name; any other keeps the kind's own.
+_COLOUR_SUFFIXES = {".png": "image/png", ".webp": "image/webp"}
 
 
 class LightHeader(TypedDict):
-    """``X-Map-Light``: what the page needs to relight a layer live."""
+    """``X-Map-Light``: what the page needs to relight a layer live, and its parts besides the
+    light: ``{"trees": {max_z, sparse}}`` on a layer drawn apart at its trees."""
 
     build: str
     max_z: int
@@ -207,23 +210,35 @@ class LightHeader(TypedDict):
     params: JsonValue
     baked_sun: JsonValue
     model: JsonObject
+    parts: JsonObject
 
 
 class Light(TypedDict):
-    """A lit layer's two trees, their depths, and the header that describes them."""
+    """A lit layer's trees, their depths and suffixes, and the header that describes them."""
 
     root: Path
     unlit: Path
     max_z: int
     unlit_max_z: int
+    trees: Path | None
+    trees_max_z: int
+    suffix: dict[str, str]
     header: LightHeader
 
 
+def _layout_suffix(tree: JsonObject, kind: str) -> str:
+    """The suffix a colour tree's ``layout`` names, as long as it is one this side serves."""
+    layout = tree.get("layout")
+    found = Path(layout).suffix if isinstance(layout, str) else ""
+    return found if found in _COLOUR_SUFFIXES else LIGHT_KINDS[kind]
+
+
 def _light(layer: str) -> Light | None:
-    """A lit layer's lighting: its unlit tree, the light pyramid, the shader's numbers.
+    """A lit layer's lighting: its unlit tree and trees, the light pyramid, the shader's numbers.
 
     ``None`` for a layer drawn lit. The light pyramid's folder comes from the sidecar and is
-    refused unless it resolves inside ``data/local``, like a registry ``dir``.
+    refused unless it resolves inside ``data/local``, like a registry ``dir``; the colour
+    trees' names and suffixes are checked against the two each can be.
     """
     directory = _layer_dir(layer)
     block = sidecar_meta_block(_layer_sidecar(layer)).get("light")
@@ -238,23 +253,35 @@ def _light(layer: str) -> Light | None:
     meta = sidecar_meta_block(root / MAP_RENDER_SIDECAR_NAME)
     tiles = json_object(meta.get("tiles"))
     unlit = json_object(block.get("unlit_tiles"))
+    trees = json_object(block.get("trees_tiles"))
     model = json_object(meta.get("light"))
     max_z, unlit_max_z = tiles.get("max_z"), unlit.get("max_z")
     if not isinstance(max_z, int) or not isinstance(unlit_max_z, int):
         return None
+    trees_max_z = trees.get("max_z")
+    has_trees = isinstance(trees_max_z, int) and block.get("trees_dir") == "trees"
     stamp = "|".join(
         [
             layer,
             str(model.get("digest")),
             *(str(tiles.get(key)) for key in ("count", "bytes")),
-            str(unlit.get("bytes")),
+            *(str(tree.get(key)) for tree in (unlit, trees) for key in ("count", "bytes")),
         ]
     )
+    parts: JsonObject = {}
+    if has_trees:
+        parts["trees"] = {"max_z": trees_max_z, "sparse": trees.get("sparse") is True}
     return {
         "root": root,
         "unlit": directory / str(block.get("unlit_dir") or "unlit"),
         "max_z": max_z,
         "unlit_max_z": unlit_max_z,
+        "trees": directory / "trees" if has_trees else None,
+        "trees_max_z": trees_max_z if isinstance(trees_max_z, int) else -1,
+        "suffix": {
+            "unlit": _layout_suffix(unlit, "unlit"),
+            "trees": _layout_suffix(trees, "trees"),
+        },
         "header": {
             "build": hashlib.sha256(stamp.encode("utf-8")).hexdigest()[:12],
             "max_z": max_z,
@@ -262,12 +289,15 @@ def _light(layer: str) -> Light | None:
             "params": block.get("params"),
             "baked_sun": block.get("baked_sun"),
             "model": {k: v for k, v in model.items() if k not in ("label", "digest")},
+            "parts": parts,
         },
     }
 
 
 def _light_tile(request: Request, layer: str, z: int, x: int, y: int) -> Response:
-    """One tile of a lit layer's ``unlit``, ``nrm`` or ``hz`` tree; ``kind`` picks which."""
+    """One tile of a lit layer's ``unlit``, ``trees``, ``nrm`` or ``hz`` tree; ``kind`` picks
+    which. The trees are sparse: a tile on their grid that is not there has no tree in it, a
+    204 to GET and HEAD alike, cached as the tiles are."""
     kind = request.query_params.get(MAP_TILE_KIND_PARAM, "")
     light = _light(layer)
     if kind not in LIGHT_KINDS or light is None:
@@ -276,21 +306,38 @@ def _light_tile(request: Request, layer: str, z: int, x: int, y: int) -> Respons
             "layer drawn with --unlit",
             404,
         )
-    depth = light["unlit_max_z"] if kind == "unlit" else light["max_z"]
+    trees = light["trees"]
+    if kind == "trees" and trees is None:
+        return error_response(
+            f"no trees tiles for {layer}: it was drawn before its trees came apart from the "
+            "ground, or draws none; render it again to have them",
+            404,
+        )
+    depth = {"unlit": light["unlit_max_z"], "trees": light["trees_max_z"]}.get(kind, light["max_z"])
     span = 1 << z
     if not (0 <= z <= depth and 0 <= x < span and 0 <= y < span):
         return error_response(
             f"no {kind} tile {layer}/{z}/{x}/{y}: that tree runs z0..z{depth}", 404
         )
     stem = tile_relpath(z, x, y)[: -len(".png")]
-    tree = light["unlit"] if kind == "unlit" else light["root"] / TILES_DIR_NAME
-    path = tree / (stem + LIGHT_KINDS[kind])
+    build = light["header"]["build"]
+    tree = {"unlit": light["unlit"], "trees": trees}.get(kind) or light["root"] / TILES_DIR_NAME
+    suffix = light["suffix"].get(kind, LIGHT_KINDS[kind])
+    path = tree / (stem + suffix)
     if not path.is_file():
+        if kind == "trees":
+            return _no_trees(request, build)
         if request.method == "HEAD":
             return Response(status_code=204)
         return error_response(f"no {kind} tile {layer}/{z}/{x}/{y}: {path} is not there", 404)
-    media = "image/png" if kind == "unlit" else "image/webp"
-    return cached_file(request, path, light["header"]["build"], media_type=media)
+    media = _COLOUR_SUFFIXES.get(suffix, "image/webp")
+    return cached_file(request, path, build, media_type=media)
+
+
+def _no_trees(request: Request, build: str) -> Response:
+    """A tile of a sparse tree with nothing in it: 204, behind ``?v=`` immutable like a tile."""
+    cache = IMMUTABLE if "v" in request.query_params else "no-cache"
+    return Response(status_code=204, headers={"Cache-Control": cache, "ETag": f'"{build}"'})
 
 
 def _tile_tree(request: Request, pyramid: Pyramid) -> tuple[str, int]:

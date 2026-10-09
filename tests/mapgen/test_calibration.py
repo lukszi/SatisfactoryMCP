@@ -77,9 +77,9 @@ def _area_targets() -> list[str]:
         "#ca784f",
         "#558653",
         "#ae8271",
-        "#99868e",
-        "#a29583",
-        "#987b61",
+        "#917c75",
+        "#a4947f",
+        "#9b7a5b",
         "#85816c",
         *_area_targets(),
     ],
@@ -293,6 +293,7 @@ def _bare_ground(names, assets, index, calibration):
     palette = {**PAINTED_PALETTE, "calibration": {**PAINTED_PALETTE["calibration"], **calibration}}
     ground.palette, ground.area_names, ground.area_assets = palette, names, assets
     ground.coarse_index = index[::ROCK_GRID_M, ::ROCK_GRID_M]
+    ground.rock_look = ground.arch_rgb = None
     return ground
 
 
@@ -400,6 +401,9 @@ def _water_ground(opaque):
         crown_ops=[],
         titan=None,
         carpet=None,
+        rock_look=None,
+        arch_rgb=None,
+        cliff_layer=None,
         mesh_rgb={},
         seabed_coral=np.zeros(3, np.float32),
         water={

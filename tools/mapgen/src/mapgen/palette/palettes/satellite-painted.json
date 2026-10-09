@@ -13,7 +13,6 @@
   "darkening": 0.85,
   "chroma": 0.8,
   "waterline_m": 0.1,
-  "dome_gain": 0.35,
   "shade_clamp": [
    0.55,
    1.2
@@ -27,76 +26,76 @@
   0.03,
   0.09
  ],
- "biome_tint_strength": 0.35,
+ "biome_tint_strength": 1.0,
  "biome_tint_blur_m": 44.0,
  "biome_tint_ab": {
   "Area_AbyssCliffs": [
-   0.0136,
-   -0.0329
+   0.0005,
+   0.0005
   ],
   "Area_DesertCanyons": [
-   0.0419,
-   0.0116
+   0.0001,
+   0.001
   ],
   "Area_DuneDesert": [
-   0.0194,
-   0.0158
-  ],
-  "Area_GrassFields": [
-   -0.0323,
-   0.0208
-  ],
-  "Area_LakeForest": [
-   -0.034,
-   -0.0047
-  ],
-  "Area_MazeCanyons": [
-   0.0216,
-   -0.0095
-  ],
-  "Area_NorthernForest": [
-   -0.0317,
-   -0.0063
-  ],
-  "Area_RedBambooFields": [
-   0.0382,
-   0.0113
-  ],
-  "Area_RedJungle": [
-   0.0313,
+   0.0012,
    0.0013
   ],
+  "Area_GrassFields": [
+   -0.003,
+   0.0004
+  ],
+  "Area_LakeForest": [
+   -0.0001,
+   0.0
+  ],
+  "Area_MazeCanyons": [
+   0.0013,
+   0.0005
+  ],
+  "Area_NorthernForest": [
+   0.0012,
+   0.0005
+  ],
+  "Area_RedBambooFields": [
+   0.0,
+   0.0
+  ],
+  "Area_RedJungle": [
+   -0.0004,
+   -0.0006
+  ],
   "Area_RockyDesert": [
-   0.0287,
-   0.0148
+   -0.0007,
+   -0.0001
   ],
   "Area_Savanna": [
-   -0.0024,
-   0.022
+   -0.0009,
+   -0.0002
   ],
   "Area_SouthernForest": [
-   -0.0324,
-   -0.0038
+   -0.001,
+   -0.0005
   ],
   "Area_SpireCoast": [
-   -0.0109,
-   -0.0043
+   0.0026,
+   0.0036
   ],
   "Area_Swamp": [
-   -0.0143,
-   -0.0054
+   0.0003,
+   0.0005
   ],
   "Area_TitanForest": [
-   -0.0264,
-   -0.0162
+   0.0005,
+   -0.0004
   ],
   "Area_WesternDuneForest": [
-   -0.011,
-   0.0101
+   -0.0012,
+   -0.0006
   ],
   "Area_crater": [
-   0.0008,
-   -0.0247
+   -0.0001,
+   0.0
   ]
  },
  "rock_tint_blur_m": 25.0,
@@ -169,16 +168,16 @@
   }
  },
  "water": {
-  "model": "beer-lambert, calibrated on Spire Coast screenshots",
+  "model": "beer-lambert, fitted to 1.0 screenshots of the sea by depth band",
   "k_per_m": [
-   4.08,
-   3.53,
-   3.53
+   4.59,
+   3.97,
+   7.27
   ],
   "body": [
-   87,
-   127,
-   126
+   95,
+   169,
+   169
   ],
   "surface_r": 0.02,
   "sky": [
@@ -191,7 +190,7 @@
    89,
    125
   ],
-  "deep_tau_m": 12.0,
+  "deep_tau_m": 3.9,
   "bed_wet": 0.8,
   "inland_floor": 0.35,
   "opaque_tau_m": 0.3
@@ -428,38 +427,18 @@
   "soft": 0.5
  },
  "ground": "bake",
- "rock_top": {
-  "up": [
-   0.6,
-   0.85
-  ],
-  "patches": {
-   "seed": 5,
-   "octaves_m": [
-    [
-     16.0,
-     0.4
-    ],
-    [
-     6.0,
-     0.35
-    ],
-    [
-     2.5,
-     0.25
-    ]
-   ],
-   "level": 0.5,
-   "soft": 0.06,
-   "flat": [
-    0.85,
-    0.97
-   ],
-   "flat_gain": 0.1
-  }
+ "ground_detail": {
+  "about": "the landscape layers' own textures under the bake's metre, as a ratio to their 0.5 m low pass; docs/map/painted.md section 30, The layers' own textures",
+  "strength": 1.0
+ },
+ "rock_look": {
+  "about": "the rocks' own textures from the install, world-projected: how much of their albedo contrast and of their normal maps' light the style takes, and how much of it the landscape's Cliff layer takes; docs/map/painted.md section 30, Rock textures",
+  "albedo": 1.0,
+  "shade": 1.0,
+  "layer": 1.0
  },
  "titan_trees": {
-  "opacity": 0.8,
+  "opacity": 1.0,
   "leaves": [
    77,
    90,
@@ -473,9 +452,9 @@
  },
  "carpet": {
   "colour": [
-   108,
-   158,
-   190
+   116,
+   153,
+   195
   ],
   "strength": 1.0,
   "depth_scale": 0.2,
@@ -502,21 +481,23 @@
    "WetSand_LayerInfo": {
     "from": "Sand_LayerInfo",
     "lightness": 0.8,
-    "chroma": 1.0,
+    "chroma": 1.15,
     "hue_deg": -10.0
    }
   },
   "canopy": "#558653",
   "rock": "#85816c",
   "rock_keeps_exposure": true,
+  "arches": "#8a8671",
   "families": {
    "desert": "#ae8271"
   },
   "tops": {
-   "forest": "#505936"
+   "forest": "#505936",
+   "redjungle": "#ad6351"
   },
   "meshes": {
-   "coral": "#99868e",
+   "coral": "#917c75",
    "coral_seabed": "#5f8899",
    "terrace": "#ccbea8"
   },
@@ -543,7 +524,8 @@
     "areas": [
      "Area_DuneDesert"
     ],
-    "rock": "#ae8271"
+    "rock": "#ae8271",
+    "arches": "#ba7b56"
    },
    {
     "areas": [
@@ -555,10 +537,10 @@
    },
    {
     "areas": [
-     "Area_GrassFields"
+     "Area_SouthernForest"
     ],
     "layers": {
-     "Grass_LayerInfo": "#9dad70"
+     "Grass_LayerInfo": "#53784a"
     }
    },
    {
@@ -600,11 +582,9 @@
    "layers.Grass_LayerInfo",
    "layers.Forest_LayerInfo",
    "derived.WetSand_LayerInfo",
-   "canopy",
    "rock",
    "families.desert",
    "tops.forest",
-   "meshes.coral",
    "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].layers.Gravel_WeightLayerInfo",
    "areas[DuneDesert].rock",
    "areas[GrassFields,NorthernForest,WesternDuneForest].rock",

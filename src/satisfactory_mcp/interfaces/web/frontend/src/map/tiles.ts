@@ -14,7 +14,7 @@ import { tilePath } from "../api/client";
 import { onModePick, showModes } from "./layercontrol/mode-picker";
 import { showParts } from "./layercontrol/part-picker";
 import { L } from "./leaflet";
-import { castsTreeShadows, makeLitLayer, parseLight, webglReady } from "./litlayer";
+import { lightControls, makeLitLayer, parseLight, webglReady } from "./litlayer";
 import { fetchMapRegistry, mapTypeAxes, mapRegistry, onMapRegistry, staleReasons, staleLabel } from "../app/map-types";
 import { boundsOfBbox, MAP_SHEET_PX, MAP_SQUARE_M, map, writeHash } from "./map";
 import { applyRegionDefaultForMode, updateRegionBlend } from "./regions";
@@ -322,7 +322,6 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
   const light = parseLight(response.headers.get("X-Map-Light"));
 
   return function (): BaseLayer {
-    const trees = !!light && castsTreeShadows(light);
     if (light && webglReady() && !litOff[spec.key]) {
       try {
         const lit = makeLitLayer(spec.typeId, light, function (why) {
@@ -331,7 +330,7 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
           fail(spec.label + ": " + why + "; showing it with the default sun baked in");
           if (state.mode === spec.key) showBaseMode(spec.key, false);
         });
-        return { layer: lit, light: { trees: trees, off: "" } };
+        return { layer: lit, light: lightControls(light, "") };
       } catch (ignored) {
         litOff[spec.key] = "WebGL would not start";
       }
@@ -366,7 +365,7 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
       );
     });
     const off = "live light off: " + (litOff[spec.key] || "needs WebGL2");
-    return { layer: tiles, light: light ? { trees: trees, off: off } : null };
+    return { layer: tiles, light: light ? lightControls(light, off) : null };
   };
 }
 
@@ -467,7 +466,7 @@ function showBaseMode(key: BaseMode, recordInHash: boolean): void {
     baseLayer.addTo(map);
   }
   showSunControl(light);
-  showParts(light ? light.off : null);
+  showParts(light);
   state.mode = mode;
   state.imagery = !!baseLayer;
   setMapTone(toneOf(mode));

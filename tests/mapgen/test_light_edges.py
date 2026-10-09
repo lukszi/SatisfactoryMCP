@@ -192,12 +192,11 @@ def test_a_canopy_under_the_surface_is_hidden_and_takes_no_light_of_its_own(tmp_
     assert sunk[floor][..., 2].tobytes() == bare[floor][..., 2].tobytes()
 
 
-def test_the_canopy_s_relief_and_blur_are_the_painted_crowns():
+def test_the_canopy_s_relief_and_blur_are_the_ones_the_crowns_were_drawn_with():
     from mapgen.lighting.spans import canopy
-    from mapgen.palette.styles import PAINTED_PALETTE
     from mapgen.terrain.crown_stamp import DOME_SIGMA_M
 
-    assert canopy.CANOPY_RELIEF == PAINTED_PALETTE["crowns"]["dome_gain"]
+    assert canopy.CANOPY_RELIEF == 0.35, "the painted crowns' dome gain before their sprites"
     assert canopy.CANOPY_SMOOTH_M == DOME_SIGMA_M
 
 
@@ -226,6 +225,7 @@ def test_relight_rows_lights_the_crowned_style_with_its_own_terms():
 
 def test_the_titan_trees_join_the_crowns_where_they_stand_higher():
     from mapgen.cache import TitanPlanes
+    from mapgen.lighting.occluders import UNDER_TITAN
     from mapgen.render.draw.light import titan_crowns
 
     n = 64
@@ -235,13 +235,15 @@ def test_the_titan_trees_join_the_crowns_where_they_stand_higher():
     top = np.full((n, n), np.nan, np.float32)
     top[10:14, 10:14], top[40:44, 40:44] = 80.0, 20.0
     cover = np.where(np.isfinite(top), 255, 0).astype(np.uint8)
-    titan_crowns(TitanPlanes(z_cm, cls, 2, 0, 0), top, cover)
+    under = np.where(np.isfinite(top), 100, 0).astype(np.uint8)
+    titan_crowns(TitanPlanes(z_cm, cls, 2, 0, 0), top, cover, under)
     assert top[16, 16] == pytest.approx(50.0) and cover[16, 16] == 255, "a Titan crown"
-    assert top[12, 12] == 80.0, "a higher crown keeps its top"
+    assert under[16, 16] == UNDER_TITAN, "marked as a Titan tree's, for cells of its own"
+    assert top[12, 12] == 80.0 and under[12, 12] == 100, "a higher crown keeps its top"
     assert top[42, 42] == 20.0 and np.isnan(top[60, 60]) and cover[60, 60] == 0
 
 
-def test_the_titan_trees_drawn_unlit_stand_flat_for_the_light_to_light():
+def test_the_titan_trunks_drawn_unlit_stand_flat_for_the_light_to_light():
     import copy
     from types import SimpleNamespace
 
@@ -250,7 +252,7 @@ def test_the_titan_trees_drawn_unlit_stand_flat_for_the_light_to_light():
     from mapgen.terrain.render_meshes import TITAN_LEAVES, TITAN_TRUNK
 
     z = np.add.outer(np.zeros(8), np.arange(8) * 400.0).astype(np.float32) + 3000.0
-    cls = np.full((8, 8), TITAN_LEAVES, np.uint8)
+    cls = np.full((8, 8), TITAN_TRUNK, np.uint8)
     leaves = np.array([0.07, 0.1, 0.03], np.float32)
     ground = SimpleNamespace(palette=copy.deepcopy(PAINTED_PALETTE), titan=(z, cls, 2, 0, 0),
                              titan_rgb={TITAN_LEAVES: leaves, TITAN_TRUNK: leaves})  # fmt: skip

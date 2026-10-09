@@ -26,7 +26,7 @@ from mapgen.gamedata.ground.paint_store import CROWN_NAME
 from mapgen.jit import add_gpu_flag, gpu_on
 from mapgen.lighting.bake import LightBake, block_rows
 from mapgen.lighting.model import DIRECT_SCALE, apply_terms
-from mapgen.lighting.occluders import CrownGrid, sheet_crowns
+from mapgen.lighting.occluders import UNDER_SCALE, UNDER_TITAN, CrownGrid, sheet_crowns
 from mapgen.lighting.stage import (
     LIGHT_DIR_NAME,
     TERM_CROWNED_DIRECT,
@@ -40,6 +40,7 @@ from mapgen.lighting.stage import (
     occluder_planes,
 )
 from mapgen.lighting.sun import DEFAULT_SUN
+from mapgen.lighting.undersides import CROWN_UNDERSIDE, paint_undersides
 from mapgen.palette.lightparams import shader_light
 from mapgen.palette.painted.albedo import load_paint_meta, paint_plane
 from mapgen.palette.painted.ground import PaintedGround
@@ -54,6 +55,7 @@ from satisfactory_mcp.core.mapprogress import encode_stage
 __all__ = [
     "LIGHT_CACHE_DIR_NAME",
     "SCRATCH_IN_USE",
+    "TREES_DIR_NAME",
     "UNLIT_DIR_NAME",
     "CrownTops",
     "LightingRun",
@@ -70,6 +72,8 @@ __all__ = [
 ]
 
 UNLIT_DIR_NAME = "unlit"
+#: The trees of a layer drawn apart at them, laid over ``unlit/``, its ground, by the page.
+TREES_DIR_NAME = "trees"
 LIGHT_CACHE_DIR_NAME = "light.cache"
 #: Rows relit at a time: each row is lit on its own, so only the memory it takes changes.
 RELIGHT_ROWS = 64
@@ -79,20 +83,23 @@ TITAN_ROWS = 256
 #: Exit code of a run whose light scratch a render still running holds open.
 SCRATCH_IN_USE = 11
 
-#: The crowns the light bake casts: their tops in metres and the share of a pixel covered.
-Occluder: TypeAlias = tuple[F32Grid, U8Grid]
+#: The crowns the light bake casts: their tops in metres, the share of a pixel covered and
+#: their underside byte (``occluders.UNDER_SCALE``).
+Occluder: TypeAlias = tuple[F32Grid, U8Grid, U8Grid]
 
 #: Where a block row's terms are read from: the kept bake's, or this run's bake.
 KEPT, BAKED = "kept", "baked"
 
 
 class CrownTops(NamedTuple):
-    """The paint store's crown-top plane, decimetres on its 1 m grid, and where it lies; and
-    the Titan trees' raster where the painted layer draws them."""
+    """The paint store's crown-top plane, decimetres on its 1 m grid, and where it lies; the
+    Titan trees' raster where the painted layer draws them; and the underside byte of each
+    texel's crown (``undersides.stamp_undersides``), None for ``CROWN_UNDERSIDE`` everywhere."""
 
     top_dm: PaintPlane
     grid: CrownGrid
     titan: TitanPlanes | None = None
+    under: U8Grid | None = None
 
 
 def add_light_flags(parser: argparse.ArgumentParser) -> None:
@@ -179,10 +186,13 @@ def crown_layers() -> list[str]:
     return [layer for layer in LAYER_STYLES if shader_light(layer).get("crowns")]
 
 
-def crown_tops(paint_dir: Path, painted: PaintedGround | None) -> CrownTops | None:
+def crown_tops(
+    paint_dir: Path, painted: PaintedGround | None, game_dir: Path | None = None
+) -> CrownTops | None:
     """The crown tops the light casts whatever layers a run draws: the painted ground's when
     it is drawn, with its Titan trees, else the paint store's; None without a store or its
-    crown plane."""
+    crown plane. Each crown's underside comes from its species' mesh in the install at
+    ``game_dir``."""
     titan = None
     if painted is not None:
         meta, plane, titan = painted.meta, painted.crown, painted.titan
@@ -191,7 +201,12 @@ def crown_tops(paint_dir: Path, painted: PaintedGround | None) -> CrownTops | No
         if meta is None or CROWN_NAME not in meta["files"]:
             return None
         plane = paint_plane(paint_dir, meta, CROWN_NAME)
-    return None if plane is None else CrownTops(plane, meta["grid"], titan)
+    if plane is None:
+        return None
+    crowns = meta.get("crowns")
+    species = crowns["species"] if crowns else []
+    under = paint_undersides(paint_dir, species, plane.shape, meta["grid"], game_dir)
+    return CrownTops(plane, meta["grid"], titan, under)
 
 
 def crown_occluder(crowns: CrownTops | None, scratch_root: Path, size: int) -> Occluder | None:
@@ -201,16 +216,20 @@ def crown_occluder(crowns: CrownTops | None, scratch_root: Path, size: int) -> O
     """
     if crowns is None:
         return None
-    top, cover = occluder_planes(scratch_root / LIGHT_CACHE_DIR_NAME, size)
-    sheet_crowns(crowns.top_dm, crowns.grid, size, top, cover)
+    top, cover, under = occluder_planes(scratch_root / LIGHT_CACHE_DIR_NAME, size)
+    plane = crowns.under
+    if plane is None:
+        plane = np.full(crowns.top_dm.shape, round(CROWN_UNDERSIDE * UNDER_SCALE), np.uint8)
+    sheet_crowns(crowns.top_dm, crowns.grid, size, top, cover, (plane, under))
     if crowns.titan is not None:
-        titan_crowns(crowns.titan, top, cover)
-    return top, cover
+        titan_crowns(crowns.titan, top, cover, under)
+    return top, cover, under
 
 
-def titan_crowns(titan: TitanPlanes, top: F32Grid, cover: U8Grid) -> None:
+def titan_crowns(titan: TitanPlanes, top: F32Grid, cover: U8Grid, under: U8Grid) -> None:
     """The Titan trees laid into the crown planes, a band of rows at a time: their top where
-    it stands higher, and the larger cover. They cast and take the canopy's light as crowns."""
+    it stands higher, the larger cover, and ``UNDER_TITAN`` where their top is the one kept.
+    They cast into cells of their own and take the canopy's light as crowns."""
     rows, cols = top.shape
     for start in range(0, rows, TITAN_ROWS):
         stop = min(start + TITAN_ROWS, rows)
@@ -220,9 +239,11 @@ def titan_crowns(titan: TitanPlanes, top: F32Grid, cover: U8Grid) -> None:
         z_m, share, _cls = found
         seen = share >= np.float32(0.5 / 255.0)
         band = np.asarray(top[start:stop])
-        top[start:stop] = np.where(seen & ~(band >= z_m), z_m, band)
+        wins = seen & ~(band >= z_m)
+        top[start:stop] = np.where(wins, z_m, band)
         byte = np.round(np.clip(share, 0.0, 1.0) * 255.0)
         cover[start:stop] = np.where(seen, np.maximum(cover[start:stop], byte), cover[start:stop])
+        under[start:stop] = np.where(wins, UNDER_TITAN, under[start:stop])
 
 
 class LightingRun:
@@ -370,13 +391,19 @@ class LightingRun:
             f"on {render['workers']} workers"
         )
 
-    def decorate(self, sidecar: JsonObject, layer: str, unlit: JsonObject | None) -> None:
-        """Name the lighting pyramid, ``unlit/`` and the shader's style fields in a layer's
-        sidecar."""
+    def decorate(
+        self,
+        sidecar: JsonObject,
+        layer: str,
+        unlit: JsonObject | None,
+        trees: JsonObject | None = None,
+    ) -> None:
+        """Name the lighting pyramid, ``unlit/``, ``trees/`` for a layer drawn apart at its
+        trees, and the shader's style fields in a layer's sidecar."""
         meta = sidecar["_meta"]
         if not isinstance(meta, dict):
             return
-        meta["light"] = {
+        block: JsonObject = {
             "dir": f"../{LIGHT_DIR_NAME}",
             "unlit_dir": UNLIT_DIR_NAME,
             "unlit_tiles": unlit,
@@ -387,6 +414,14 @@ class LightingRun:
                 "relights with the lighting pyramid in dir, for any sun"
             ),
         }
+        if trees is not None:
+            block["trees_dir"], block["trees_tiles"] = TREES_DIR_NAME, trees
+            block["role"] = (
+                "tiles/ and tiles@2x/ are lit by baked_sun; unlit/ is the ground without the "
+                "trees and trees/ the trees over it, which the page relights with the lighting "
+                "pyramid in dir, for any sun"
+            )
+        meta["light"] = block
         provenance = meta.get("provenance")
         if isinstance(provenance, dict) and self.meta is not None:
             provenance["light"] = self.meta["light"]

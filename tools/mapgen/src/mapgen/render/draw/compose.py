@@ -9,11 +9,11 @@ colours a piece in each layer's style.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, ExitStack, closing
 from dataclasses import dataclass
 from functools import partial
-from typing import Protocol, TypeAlias, runtime_checkable
+from typing import NamedTuple, Protocol, TypeAlias, runtime_checkable
 
 import numpy as np
 
@@ -25,7 +25,7 @@ from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater, water_sources
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M
 from mapgen.render.draw.drawpool import PIECE_COLS, bands_held, in_order
-from mapgen.render.draw.painting import LayerJob, layer_job, piece_bytes
+from mapgen.render.draw.painting import LayerJob, TreeSplit, layer_job, piece_bytes
 from mapgen.render.ground.lift import lattice_edge
 from mapgen.render.ground.stencils import band_halo, piece_halo
 from mapgen.render.ground.surface import (
@@ -35,13 +35,14 @@ from mapgen.render.ground.surface import (
     PieceOwed,
     RegimeSources,
     Span,
-    WaterPlanes,
     Window,
     band_grid,
     band_surfaces,
     settle_band,
     span,
 )
+from mapgen.render.ground.water_sample import WaterPlanes
+from mapgen.terrain.ground_detail.textures import DetailTextures
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.sample import frame_coordinates, grid_position, taps_linear, taps_pchip
 from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I8Grid, I16Grid, U8Grid
@@ -74,9 +75,9 @@ PIECE_HALO = piece_halo()
 #: The progress stage of the pass, which draws every layer at once.
 DRAW_STAGE = "draw"
 
-#: Where a pass hands each band once it is settled, in order: its first row, and its rows of
-#: every layer, which are the sink's from then on.
-BandSink: TypeAlias = Callable[[int, dict[str, U8Grid]], None]
+#: Where a pass hands each band once it is settled, in order: its first row, its rows of
+#: every layer, and the parts of each layer drawn apart at its trees; the sink's from then on.
+BandSink: TypeAlias = Callable[[int, dict[str, U8Grid], dict[str, TreeSplit]], None]
 
 
 @runtime_checkable
@@ -97,7 +98,8 @@ class GroundInputs:
     run's rasters, ``measured_plane_u8`` the measurement plane the regime table reads, and
     ``reach``, ``rivers``, ``water_level`` and ``sea`` its water: ``sea``'s planes replace
     ``water_level``'s. ``seam`` and ``regimes`` take the bands' measurements and ``surface``
-    their light, in band order.
+    their light, in band order. ``textures`` are the landscape layers' own, for the ground's
+    detail under the bake.
     """
 
     height_dm: F32Grid | None = None
@@ -113,6 +115,7 @@ class GroundInputs:
     seam: SeamTrace | None = None
     regimes: RegimeCoverage | None = None
     surface: LightCapture | None = None
+    textures: DetailTextures | None = None
 
 
 @dataclass(frozen=True)
@@ -157,6 +160,7 @@ def render_layers(
     threads: int = 1,
     bands: BandSink | None = None,
     columns: int = PIECE_COLS,
+    split: Collection[str] = (),
 ) -> dict[str, U8Grid]:
     """Every layer of ``layers`` drawn in one pass over the bands, each band in pieces of
     ``columns`` output columns whose ground is composed once for all of them. Returns each
@@ -167,8 +171,9 @@ def render_layers(
     the painted layer's ground and ``relief`` the relief layer's. ``unlit`` draws the sun
     term flat; the ground's ``surface`` receives the heights and land weight the seabed rule
     draws, once, whatever the layers. ``threads`` pieces are drawn at once, to the same bytes
-    at any count and any width; ``bands`` takes the bands in order. The rest:
-    docs/map/renders.md sections 20, 25, 40 and 42.
+    at any count and any width; ``bands`` takes the bands in order, and with them the parts of
+    the ``split`` layers, drawn apart at their trees. The rest: docs/map/renders.md sections
+    20, 25, 40 and 42.
     """
     if not layers or len(set(layers)) != len(layers):
         raise ValueError(f"a pass draws each of its layers once: {list(layers)}")
@@ -176,6 +181,8 @@ def render_layers(
         raise ValueError("the painted ground is the painted layer's, and only its")
     if columns < 1:
         raise ValueError(f"a piece draws at least one column, not {columns}")
+    if split and (bands is None or not set(split) <= set(layers)):
+        raise ValueError(f"a pass hands {list(split)} apart to a band sink, of its own layers")
     box = Window(*(window or (0, size, 0, size)))
     sources = _ground_sources(field, box, size, borrow, ground or GroundInputs())
     reliefs = relief or {}
@@ -188,14 +195,22 @@ def render_layers(
             reliefs.get(layer),
             falls,
             unlit,
+            layer in split,
         )
         for layer in layers
     )
     shape = (box.r1 - box.r0, box.c1 - box.c0, 3)
     out = {} if bands is not None else {layer: np.empty(shape, np.uint8) for layer in layers}
     draw = DrawPass(sources, jobs, columns)
-    _draw(draw, _Bands(box, layers, out, bands), size, progress, threads)
+    _draw(draw, _Bands(box, layers, out, bands, split), size, progress, threads)
     return out
+
+
+class _Held(NamedTuple):
+    """A band being drawn: its rows of every layer, and the parts of the layers drawn apart."""
+
+    colour: dict[str, U8Grid]
+    parts: dict[str, TreeSplit]
 
 
 class _Bands:
@@ -203,25 +218,36 @@ class _Bands:
     it is settled and handed to the sink."""
 
     def __init__(
-        self, box: Window, layers: Sequence[str], sheets: dict[str, U8Grid], sink: BandSink | None
+        self,
+        box: Window,
+        layers: Sequence[str],
+        sheets: dict[str, U8Grid],
+        sink: BandSink | None,
+        split: Collection[str] = (),
     ) -> None:
         self.box, self.layers, self.sheets, self.sink = box, layers, sheets, sink
-        self.held: dict[int, dict[str, U8Grid]] = {}
+        self.split = split
+        self.held: dict[int, _Held] = {}
 
     def open(self, top: int) -> None:
         """The band from row ``top``, made before its first piece is drawn."""
         box, stop = self.box, min(top + BAND_ROWS, self.box.r1)
         if self.sink is None:
             rows = slice(top - box.r0, stop - box.r0)
-            self.held[top] = {layer: sheet[rows] for layer, sheet in self.sheets.items()}
+            self.held[top] = _Held({layer: sheet[rows] for layer, sheet in self.sheets.items()}, {})
             return
-        shape = (stop - top, box.c1 - box.c0, 3)
-        self.held[top] = {layer: np.empty(shape, np.uint8) for layer in self.layers}
+        shape = (stop - top, box.c1 - box.c0)
+        colour = {layer: np.empty((*shape, 3), np.uint8) for layer in self.layers}
+        parts = {
+            layer: TreeSplit(np.empty((*shape, 3), np.uint8), np.empty((*shape, 4), np.uint8))
+            for layer in self.split
+        }
+        self.held[top] = _Held(colour, parts)
 
     def settled(self, top: int) -> None:
         band = self.held.pop(top)
         if self.sink is not None:
-            self.sink(top, band)
+            self.sink(top, band.colour, band.parts)
 
 
 def _draw(draw: DrawPass, bands: _Bands, size: int, progress: bool, threads: int) -> None:
@@ -315,6 +341,7 @@ def _ground_sources(
         prov_cols=np.clip(
             np.round((x_cm - field.x0_cm) / field.spacing_cm).astype(np.int64), 0, field.width - 1
         ),
+        textures=inputs.textures,
     )
 
 
@@ -341,9 +368,7 @@ def _band_planes(draw: DrawPass) -> list[HeldPlane]:
     return [plane for plane in planes if isinstance(plane, HeldPlane)]
 
 
-def _draw_piece(
-    draw: DrawPass, held: dict[int, dict[str, U8Grid]], at: tuple[int, int]
-) -> PieceOwed:
+def _draw_piece(draw: DrawPass, held: dict[int, _Held], at: tuple[int, int]) -> PieceOwed:
     """The piece at ``(top, left)`` of every layer's band, all over one ground, and what it
     owes its band. Nothing shared is written but its own pixels of the bands."""
     top, left = at
@@ -353,5 +378,9 @@ def _draw_piece(
     out = (slice(0, rows.stop - rows.start), slice(cols.start - box.c0, cols.stop - box.c0))
     band = held[top]
     for job in draw.jobs:
-        band[job.layer][out] = piece_bytes(job, grid, surfaces[job.seabed])
+        drawn = piece_bytes(job, grid, surfaces[job.seabed])
+        band.colour[job.layer][out] = drawn.colour
+        if drawn.split is not None:
+            parts = band.parts[job.layer]
+            parts.ground[out], parts.trees[out] = drawn.split
     return owed

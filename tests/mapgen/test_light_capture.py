@@ -16,6 +16,7 @@ import pytest
 from mapgen.cache import MeshPlanes
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.ground.paint_store import CROWN_NAME, META_NAME
+from mapgen.palette.painted.band import PaintedParts
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import RELIEF_PALETTES
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
@@ -76,7 +77,7 @@ def _painted_ground() -> SimpleNamespace:
     """The parts of the painted ground ``render_layer`` reads before the painter."""
     rock = [np.zeros((N // 4, N // 4), np.float32)]
     return SimpleNamespace(rock=rock, rock_family=None, titan=None, crowns=None,
-                           water_optics=lambda taps, river=None: None)  # fmt: skip
+                           titan_crowns=None, water_optics=lambda taps, river=None: None)  # fmt: skip
 
 
 def _draw(scene, layer: str) -> _Surface:
@@ -173,6 +174,43 @@ def test_a_pass_in_column_pieces_draws_and_captures_what_whole_rows_do(monkeypat
         assert surface.land.tobytes() == whole_surface.land.tobytes(), columns
 
 
+def test_a_pass_hands_the_painted_layer_apart_at_its_trees_with_each_band(monkeypatch):
+    """The parts the painter draws reach the sink as bytes beside the picture, which is the
+    picture drawn whole; the other layers come whole."""
+
+    def picture(scene, ground, sample, sample_rock):
+        rgb = np.stack([scene["z_m"], scene["water"]["cover"] * 200, scene["ndl"] * 100], -1)
+        return rgb.astype(np.float32)
+
+    def parts(scene, ground, sample, sample_rock):
+        rgb = picture(scene, ground, sample, sample_rock)
+        return PaintedParts(rgb, rgb * 0.5, rgb + 20.0, np.clip(rgb[..., 0] / 255.0, 0.0, 1.0))
+
+    monkeypatch.setattr(painting, "painted_colours", picture)
+    monkeypatch.setattr(painting, "painted_parts", parts)
+    scene = _scene()
+    borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
+    args = (("terrain", "painted"), scene.field, 1, borrow, N, False, scene.heights)
+    keywords = {"meshes": scene.meshes, "unlit": True, "painted": _painted_ground()}
+    handed: list[tuple] = []
+    draw_layers(*args, **keywords, bands=lambda *band: handed.append(band), split=("painted",))
+    whole = draw_layers(*args, **keywords)
+    assert [set(split) for _top, _bands, split in handed] == [{"painted"}]
+    _top, bands, split = handed[0]
+    assert bands["painted"].tobytes() == whole["painted"].tobytes()
+    ground, trees = split["painted"]
+    assert ground.shape == (N, N, 3) and trees.shape == (N, N, 4)
+    red = whole["painted"][..., 0].astype(int)
+    assert (np.abs(ground.astype(int) - whole["painted"] // 2) <= 1).all()
+    shown = red > 0
+    assert shown.any() and (np.abs(trees[..., 3].astype(int) - red) <= 1).all()
+    assert (np.abs(trees[..., 0][shown].astype(int) - (red[shown] + 20)) <= 1).all()
+    with pytest.raises(ValueError, match="apart"):
+        draw_layers(*args, **keywords, split=("painted",))
+    with pytest.raises(ValueError, match="unlit"):
+        draw_layers(*args, **{**keywords, "unlit": False}, bands=print, split=("painted",))
+
+
 def _paint_store(tmp_path, top_dm: np.ndarray, grid: dict) -> None:
     (tmp_path / CROWN_NAME).write_bytes(hf.encode_i16(top_dm))
     files = {CROWN_NAME: {"shape": list(top_dm.shape), "kind": "i16"}}
@@ -195,10 +233,11 @@ def test_the_light_casts_the_store_s_crowns_whether_or_not_painted_is_drawn(tmp_
         crown_occluder(crowns, tmp_path / name, 1024)
         for crowns, name in ((from_store, "a"), (from_ground, "b"))
     ]
-    (top_a, cover_a), (top_b, cover_b) = (o for o in occluders if o is not None)
+    (top_a, cover_a, under_a), (top_b, cover_b, under_b) = (o for o in occluders if o)
     assert np.isfinite(top_a).any() and cover_a.any()
     assert top_a.tobytes() == top_b.tobytes() and cover_a.tobytes() == cover_b.tobytes()
-    del occluders, top_a, cover_a, top_b, cover_b
+    assert under_a.tobytes() == under_b.tobytes() and (under_a[cover_a > 0] == 127).all()
+    del occluders, top_a, cover_a, under_a, top_b, cover_b, under_b
 
 
 @pytest.mark.parametrize("meta", [None, {"grid": {}, "files": {}}])

@@ -42,6 +42,7 @@ from mapgen.gamedata.ground.landscape_albedo import (
     rock_family_colours,
     srgb_to_linear,
 )
+from mapgen.gamedata.ground.layer_textures import GROUND_TEXTURES_NAME, encode_ground_textures
 from mapgen.gamedata.ground.paint_store import (
     CANOPY_NAME,
     GRID,
@@ -129,11 +130,13 @@ class PaintSweep:
 
 @dataclass(frozen=True)
 class TextureInputs:
-    """The landscape material's vectors, each texture's mean linear albedo, and the pigment."""
+    """The landscape material's vectors, each texture's mean linear albedo, the pigment, and
+    the layers' own textures as the store's blob and its index."""
 
     vectors: dict[str, tuple[float, ...]]
     means: dict[str, list[float]]
     pigment: U8Grid
+    ground: tuple[bytes, JsonObject]
 
 
 @dataclass(frozen=True)
@@ -283,7 +286,8 @@ def crown_payload(
 
 
 def _texture_inputs(game: GameReader, decoder: ModuleType) -> TextureInputs:
-    """The landscape material's vectors, every listed texture's mean, and the pigment map."""
+    """The landscape material's vectors, every listed texture's mean, the pigment map, and
+    the layers' own textures (``layer_textures``)."""
     material = PackageView(game.store.read_path(GAME_ROOT + MATERIAL + ".uasset"), game.scripts)
     means = {
         name: srgb_to_linear(decode_texture(game, decoder, asset, 512))
@@ -293,7 +297,12 @@ def _texture_inputs(game: GameReader, decoder: ModuleType) -> TextureInputs:
         for name, asset in TEXTURES.items()
     }
     pigment = decode_texture(game, decoder, PIGMENT, PIGMENT_MAX_PX)
-    return TextureInputs(material_vectors(material), means, pigment)
+
+    def rgba(asset: str, side: int) -> U8Grid:
+        return decode_texture(game, decoder, asset, side, channels=4)
+
+    ground = encode_ground_textures(rgba)
+    return TextureInputs(material_vectors(material), means, pigment, ground)
 
 
 def _plane_files(
@@ -408,6 +417,7 @@ def _paint_meta(
         "bake": parts.satellite.bake,
         "rock_families": dict(parts.satellite.rock_families),
         "carpet": parts.carpet,
+        "ground_textures": textures.ground[1],
         **parts.daylight,
         "counts": {"unreadable": found.unreadable, "failed_packages": found.failed_packages},
         "seconds": round(time.time() - started, 1),
@@ -463,7 +473,8 @@ def main() -> int:
     textures = _texture_inputs(game, decoder)
     print(
         f"  {len(textures.means)} textures, {len(textures.vectors)} material vectors, "
-        f"pigment {textures.pigment.shape[0]} px"
+        f"pigment {textures.pigment.shape[0]} px, {len(textures.ground[0]) / 1e6:.1f} MB of "
+        "layer textures"
     )
 
     found = sweep_paint_levels(game, not quiet, MeshBounds(game.store, game.scripts, game.index))
@@ -514,6 +525,10 @@ def main() -> int:
                 },
             ),
             (carpet_blobs, carpet_files),
+            (
+                {GROUND_TEXTURES_NAME: textures.ground[0]},
+                {GROUND_TEXTURES_NAME: {"kind": "textures", "role": "layer textures"}},
+            ),
         ]
     )
     daylight = _daylight(game, decoder, found.volumes)

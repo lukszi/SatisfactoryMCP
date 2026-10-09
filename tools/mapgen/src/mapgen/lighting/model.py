@@ -37,12 +37,20 @@ from mapgen.lighting.horizon import (
 )
 from mapgen.lighting.spans.march import span_block
 from mapgen.lighting.sun import DEFAULT_SUN, NOON_HOUR, Sun, sun_vector
+from mapgen.lighting.undersides import CROWN_UNDERSIDE, LEAF_LOW_SHARE, TITAN_SLAB_M
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.versions import LIGHTS
 from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
+    "AO_CELL",
+    "AO_DEPTH",
+    "AO_SCALES_M",
+    "AO_STRENGTH",
+    "AO_WEIGHTS",
+    "CROWN_CELL",
     "DIRECT_SCALE",
+    "HORIZON_CELLS",
     "HZ_CELLS",
     "HZ_GUTTER_PX",
     "LIGHT_ID",
@@ -51,6 +59,8 @@ __all__ = [
     "SHADOW_FLOOR",
     "SHADOW_FLOOR_KNEE",
     "SHADOW_SOFT_DEG",
+    "TITAN_CELL",
+    "TITAN_FADE_M",
     "Horizons",
     "LightBlock",
     "LightParams",
@@ -69,8 +79,25 @@ __all__ = [
 
 LIGHT_ID = "sun"
 
-#: Atlas cells per tile: the ground's horizons, then the crowns'.
-HZ_CELLS = 2 * HORIZON_DIRS
+#: The atlas's first crown cell, first Titan tree cell and the ambient occlusion cell: the
+#: ground's horizons, then the crowns' and the Titan trees' each alone, then what the trees
+#: take off the sky light. Cells per tile, and the horizons among them.
+CROWN_CELL = HORIZON_DIRS
+TITAN_CELL = 2 * HORIZON_DIRS
+AO_CELL = 3 * HORIZON_DIRS
+HORIZON_CELLS = AO_CELL
+HZ_CELLS = AO_CELL + 1
+
+#: The Titan trees' fade: the ground's, for a canopy tens of metres up.
+TITAN_FADE_M = FADE_M
+
+#: Ambient occlusion (``lighting/occlusion.py``): the half-widths of the boxes it reads,
+#: metres, and their weights; how many half-widths over a pixel a box's mean occludes it
+#: fully; and the most of the sky it takes.
+AO_SCALES_M = (1.0, 3.0, 8.0)
+AO_WEIGHTS = (0.3, 0.4, 0.3)
+AO_DEPTH = 1.5
+AO_STRENGTH = 0.55
 
 #: Each atlas cell sits in a border of its own edge texels this wide, so a lossy codec's blur
 #: across the cell's edge lands on copies (section 29, "What is written").
@@ -150,15 +177,29 @@ def model_block() -> JsonObject:
         "default_sun": list(DEFAULT_SUN),
         "default_hour": NOON_HOUR,
         "hz_cells": HZ_CELLS,
-        "crown_cell": HORIZON_DIRS,
+        "crown_cell": CROWN_CELL,
+        "titan_cell": TITAN_CELL,
+        "ao_cell": AO_CELL,
         "hz_gutter": HZ_GUTTER_PX,
         "hz_encoding": (
-            "atlas of 8 x 8 cells, each in a border of its edge texels hz_gutter wide, u8 = 255 "
-            "* sqrt(deg / 90): the ground's horizons, then the crowns' where they stand above "
-            "the ground's, else 0"
+            "atlas of 8 cells a row, each in a border of its edge texels hz_gutter wide: the "
+            "ground's horizons, the crowns' alone, the Titan trees' alone, u8 = 255 * sqrt(deg "
+            "/ 90), received on the canopy top; then the trees' ambient occlusion, u8 = 255 * o"
         ),
         "nrm_encoding": "RGBA: east and south normal as (v + 1) / 2, sky view, land weight",
         "spans": span_block(),
+        "trees": {
+            "crown_underside": f"per species: under {LEAF_LOW_SHARE} of its leaf area",
+            "crown_underside_unknown": CROWN_UNDERSIDE,
+            "titan_slab_m": TITAN_SLAB_M,
+            "titan_fade_m": list(TITAN_FADE_M),
+        },
+        "ao": {
+            "scales_m": list(AO_SCALES_M),
+            "weights": list(AO_WEIGHTS),
+            "depth": AO_DEPTH,
+            "strength": AO_STRENGTH,
+        },
     }
 
 
@@ -191,9 +232,10 @@ def _toward(hz_deg: Horizons, az: float, first: int = 0) -> F32Grid:
 
 
 def sun_cells(az: float) -> tuple[int, int, int, int]:
-    """The cells ``direct_term`` reads for a sun at ``az``: two of the ground's, two crowns'."""
+    """The cells the default sun's terms read for a sun at ``az``: two of the ground's, two of
+    the trees' (the bake's own: crowns and Titan trees together over the ground)."""
     i0, i1, _w = _either_side(az)
-    return i0, i1, HORIZON_DIRS + i0, HORIZON_DIRS + i1
+    return i0, i1, CROWN_CELL + i0, CROWN_CELL + i1
 
 
 def direct_term(
@@ -207,8 +249,8 @@ def direct_term(
     """``ndl * (1 - shadow * (1 - fill)) / sin(max(el, 35))`` per pixel.
 
     ``hz_deg`` is ``(cells, h, w)``: the ground's ``HORIZON_DIRS`` horizons, then, when
-    ``crowns`` and the atlas has them, the crowns', which shade where they stand higher. A
-    sequence of as many planes does too; only the ``sun_cells`` are read. ``filtered`` is
+    ``crowns`` and the atlas has them, the trees', which shade where they stand higher. A
+    sequence of as many planes does too; only the sun's directions are read. ``filtered`` is
     ``(use, shade)`` on the normals' grid: where ``use``, the shadow is ``shade``, filtered
     per cell beside a span (``span_bake.default_shade``), not read off the horizon.
     """
@@ -222,10 +264,12 @@ def direct_term(
 
 
 def sun_horizon(hz_deg: Horizons, az: float, crowns: bool = False) -> F32Grid:
-    """The horizon toward ``az``; with ``crowns`` and crown cells, the crowns' where higher."""
+    """The horizon toward ``az``; with ``crowns``, the crown and Titan tree cells the planes
+    hold where they stand higher."""
     hz = _toward(hz_deg, az)
-    if crowns and len(hz_deg) >= HZ_CELLS:
-        hz = np.maximum(hz, _toward(hz_deg, az, HORIZON_DIRS))
+    for first in (CROWN_CELL, TITAN_CELL) if crowns else ():
+        if len(hz_deg) >= first + HORIZON_DIRS:
+            hz = np.maximum(hz, _toward(hz_deg, az, first))
     return hz
 
 
@@ -296,11 +340,19 @@ def relight(
 ) -> U8Grid:
     """The shader's answer in numpy: unlit colour, the light tile, a sun.
 
-    ``params`` is ``shader_light``'s; its ``crowns`` says whether the crown horizons count.
+    ``params`` is ``shader_light``'s; its ``crowns`` says whether the trees' horizons and
+    their ambient occlusion count. ``hz_u8`` is ``(cells, h, w)``, on the normals' grid or
+    coarser.
     """
     light = light_params(params)
-    hz_deg = decode_horizon(hz_u8) if (shadows and hz_u8 is not None) else None
+    horizons = None if hz_u8 is None else hz_u8[:HORIZON_CELLS]
+    hz_deg = decode_horizon(horizons) if (shadows and horizons is not None) else None
     direct = direct_term(nrm_u8, hz_deg, sun, shadows, light["crowns"])
     svf = nrm_u8[..., 2].astype(np.float32) / 255.0 if sky else np.ones(direct.shape, np.float32)
+    if sky and light["crowns"] and hz_u8 is not None and len(hz_u8) > AO_CELL:
+        ao = hz_u8[AO_CELL].astype(np.float32) / np.float32(255.0)
+        if ao.shape != svf.shape:
+            ao = ndimage.zoom(ao, np.array(svf.shape) / np.array(ao.shape), order=1)
+        svf = svf * (np.float32(1.0) - ao)
     land = nrm_u8[..., 3].astype(np.float32) / 255.0
     return apply_terms(rgb_u8, svf, direct, land, light)

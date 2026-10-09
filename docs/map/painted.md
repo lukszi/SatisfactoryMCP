@@ -108,8 +108,9 @@ material") and with `CliffPillar_03` read from its own package rather than `Mesh
 
 ### The paint input
 
-`python -m mapgen paint` writes `data/local/paint/` once per game build, about 113 MB in about
-2 minutes. Paint generator version 3 writes:
+`python -m mapgen paint` writes `data/local/paint/` once per game build, about 115 MB in about
+2 minutes. Paint generator version 3 writes the files below; version 5 adds `ground.tex.z`,
+the landscape layers' own textures (section 30, "The layers' own textures"):
 
 | File | What | Section |
 | --- | --- | --- |
@@ -146,8 +147,10 @@ ground wherever it has one (section 30); elsewhere the paint mix is:
    square-root linear), the colour is blended towards a 6 m blur of itself. 154,401 edge
    texels qualify on this build.
 4. Off the landscape: the median paint of the biome, blurred 44 m, faded in over 6 m.
-5. **Biome tint.** Biomes painted with the same Grass layer merged. Each biome gets a small
-   OKLab `(a, b)` offset, 0.35 of its hue offset in the satellite-biome palette, blurred 44 m.
+5. **Biome tint.** Off the bake only (section 31, "The ground albedo source"), each area
+   takes an OKLab `(a, b)` offset, blurred 44 m: the median step from the calibrated paint
+   mix to the calibrated bake over the texels the bake fully covers in that area
+   (`biome_tint_ab`, at `biome_tint_strength` 1). See "Area tints from the bake" below.
 6. Rock colour on a 4 m grid: the game's cliff albedo, taking 0.3 of the lightness and 0.5 of
    the chroma of the ground around it (25 m blur), plus 0.02 L. Grey rock read as mud; this
    reads as stone.
@@ -162,15 +165,33 @@ OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, tim
 1.12 and the artwork borrow with its dark ink damped to 0.25. The gain and shoulder of section
 31, then sRGB.
 
-**Water** is Beer-Lambert, calibrated against Spire Coast screenshots:
-`bed * T + W (1 - T) + 0.02 sky`, `T = exp(-k d)` with `k` = (4.08, 3.53, 3.53) per metre and
-`W` #577f7e, then blended towards the open sea #3c597d by `1 - exp(-d / 12 m)` (section 33,
-"Sea deep and swamp water"). The bed is the ground colour times exposure times 0.8 (wet).
+**Water** is Beer-Lambert: `bed * T + W (1 - T) + 0.02 sky`, `T = exp(-k d)` with `k` =
+(4.59, 3.97, 7.27) per metre and `W` #5fa9a9, then blended towards the open sea #3c597d by
+`1 - exp(-d / 3.9 m)`. The row is fitted to the 1.0 screenshots of section 33 ("The sea by
+depth band"). The bed is the ground colour times exposure times 0.8 (wet).
 Coral and shells are part of the bed: they are composited into the ground colour first, and
 the depth `d` is measured to the drawn surface, which over a mesh is the mesh top, so a shallow
-reef stays visible. The fit is six shallow patches at 1.5 to 4.2 Delta E, with depths matched
-to the heightfield's range rather than measured. Inland water takes its class's optics
-(section 33).
+reef stays visible. Inland water takes its class's optics (section 33).
+
+### Area tints from the bake (2026-10-09)
+
+The biome tint once took 0.35 of each biome's hue offset in the retired satellite-biome
+palette. That offset predates the per-layer transfer of section 31, which already lands each
+layer on its target off the bake as on it, so the tint pushed off-bake ground away from the
+bake next to it: the Grass Fields' grass drew C 0.101, h 126 off the bake against C 0.086,
+h 121 on it, ΔE 1.8 across the bake's edge. The offsets are now measured: per area, the
+median OKLab `(a, b)` of the calibrated bake less that of the calibrated paint mix, over the
+texels the bake covers fully (eroded by 3 m), at strength 1. On build 502094 every area's step
+is under 0.002 but the Southern Forest's (-0.0105, -0.0169) and the Spire Coast's (0.0026,
+0.0036). Measured on the 2048 sheet, pure texels at least 12 m from the bake's edge, unlit:
+Grass Fields grass on and off the bake ΔE 1.8 to 0.8, Abyss Cliffs grass 2.1 to 1.2. A layer
+the area's median does not represent moves little or the other way: Grass Fields sand 2.6 to
+2.9, gravel 4.7 to 3.7.
+
+A step follows the targets it is measured after, so a change of an area's layer targets is
+measured again. Since the second colour review (calibration.md section 31, "The second
+review") the Southern Forest's grass has a target of its own, which does what its step did:
+(-0.0010, -0.0005) now; the Grass Fields, whose grass target went, (-0.0030, 0.0004).
 
 ### Known limits
 
@@ -361,18 +382,17 @@ so a cache cut by another version is rebuilt.
 (linear 0.624, 0.545, 0.471 for every family on this build), and its top layer, the mean of the
 family root's `Far Albedo` texture or else its `Albedo`: forest and grass from their far
 textures, red grass from `TX_GrassRed_01_Alb`, sand from `TX_Sand_BC`. Plain cliff, wet sand and
-red jungle have none. Per pixel, rock is multiplied by its family's tint relative to the
-median tint of all families, then blended to the top layer by an up-facing ramp on the drawn
-surface's normal, `nz` from 0.60 to 0.85, boxed over 3 pixels. That ramp is a guess: the
-`CliffTopMaterial` function is not decoded. The top lies in patches inside that ramp, and the
-forest top wears a display target in place of its texture's mean (section 31, "Moss in
-patches"); the sand and grass tops wear their paint layers' targets (section 31, "A top made
-of a paint layer").
+red jungle have none; the red jungle's takes its display target from `calibration.tops` (section
+31, "The top layer's colours"), in flat colour. Per pixel, rock is multiplied by its family's tint relative to the
+median tint of all families, then blended to the top layer where the cliff master's own slope
+mask puts it ("Rock textures" below). The forest top wears a display target in place of its
+texture's mean, the sand and grass tops their paint layers' targets (section 31, "The top
+layer's colours").
 
 An arch or boulder of the top pass lifted over a cliff is not that cliff, but the family plane
-under it is the cliff's: the direct pass alone stamps it. So a rock pixel takes the area's
-rock, with no family tint or top, by the overlay's lift over the surface below it (the band's
-`top_weight`, full from `MESH_FULL_LIFT_M`). The seventh render drew a root beam over the
+under it is the cliff's: the direct pass alone stamps it. So a rock pixel takes the arches' own
+colour and texture, with no family tint or top, by the overlay's lift over the surface below it
+(the band's `top_weight`, full from `MESH_FULL_LIFT_M`; "Rock textures" below). The seventh render drew a root beam over the
 Northern Forest's coast at (-122, -1580) with the sand family's top as a cream stripe and the
 forest family's moss further on, and arches of the Titan Forest at (1400, -560) with their
 cliffs' moss.
@@ -391,20 +411,136 @@ tree below a cliff stays hidden. It is a per-pixel comparison against a 1 m plan
 drawn the soft canopy is off, and the crowns' own "hidden under a higher surface" test decides
 (section 37).
 
+### Rock textures (2026-10-09)
+
+Rock drew as flat colour on its calibrated target, with moss in noise patches on its tops.
+It now wears its materials' own textures, read from the install at every render, so it looks
+rendered: the colour targets of section 31 stay, and the textures add what a top-down view of
+the game shows inside them. `gamedata/rocks/looks.py` reads the textures,
+`palette/painted/rock_look/` lays them on a band, and `surfaces.py` draws with them.
+
+**What each surface wears.** The tile sizes are the game's own, from the compiled landscape
+pixel shaders (`FG_Landscape`'s single-layer Cliff component) and the materials' parameters.
+
+| Surface | Albedo | Normal maps | Anti-tiling |
+| --- | --- | --- | --- |
+| Cliffs (families 1 to 7), the render-only rocks of those families, rocks of no family, and the landscape's Cliff layer | `Cliff_Sediment_Alb`, 20 m: UV0 times the layer's `Scale` 0.05 | `TX_Cliff_01_Nor` at 10.24 m (1/1024 a cm, world top-projected) and `T_Detail_Rocky_N` at 14.49 m (0.000690229 a cm) laid on it | rotated cells |
+| Arches and boulders (the top pass) | `TX_Arc_Rock_BC`, 8.93 m: an arch mesh spans about 125 m of surface per UV0 unit (`ArcMedium_01`, `ArcLarge_01` and `ArcSmall_01` 125 to 126 m) and its `MI_Arc_*` instances repeat the rock 13 to 15 times | `TX_Arc_Rock_N`, the same tile | none |
+| Desert rock (family 8) | `TX_DesertRock_Rough_01_Alb`, 12.5 m: an `SM_DesertRock` mesh spans 72 to 77 m per UV0 unit and `DesertRock_WA` repeats the rock 6 times | `TX_DesertRock_Rough_01_normal`, the same tile | none |
+| A family's top layer | its root's top texture (section 30, "Rock surfaces"): forest `TX_Forest_Far_01_Alb` and red grass `TX_GrassRed_01_Alb` at 50 m, the cliff master's `TopLayer Tiling Far` 0.02; grass `TX_Grass_Far_01_Alb` at 83.3 m, `Cliff_Grass`'s own 0.012; sand `TX_Sand_BC` at 50 m | none of its own | none |
+
+The **rotated cells** are the landscape's anti-tiling: `Cell_Bombing_Noise_basecolor` at 100 m
+(129 cells, about 8.8 m each). The shader reads the body a second time in each cell, offset by
+`2R - 1` and `2G - 1` tiles, scaled by `0.9 + 0.2 G`, turned by `2 pi B`, and blends the copy
+in by `2A - 0.5` of the cell mask, so the borders show the plain tiling. The cell's colour is
+read nearest, so each turn is one of 256 whose cosine and sine numpy works out once; its mask
+is read bilinear.
+
+**Seen from above.** Every texture is projected on the ground plane, the one a view from
+straight above sees undistorted. The landscape shader does that for the Cliff layer; the
+meshes' materials map by their UVs, which a raster has not got. A triplanar projection was
+tried first: on a wall the side planes squeeze the wall's height into a pixel's width, and the
+texture aliased into streaks.
+
+**Levels.** A texture is read at the mip level whose texel is nearest the run's pixel, box
+filtered from the decoded 1024 px (`atlas.mip_level`), so it never aliases: at full size the
+cliff albedo is read at 64 texels a tile (0.31 m), at 2048 px each tile is flat. The landscape
+Cliff layer's colour is the ground bake's, which already holds the texture at 1 m; there the
+look takes only what is finer, the texel over the same texel read at 1.25 m. Where the run
+draws the layers' own textures (below, "The layers' own textures"), the Cliff layer's texture
+comes with theirs, height-blended with its neighbours, and this look leaves the layer alone:
+the layer is textured once.
+
+**Colour.** A texel moves a pixel by the texture's value over its median, per channel, so the
+calibrated target stays the median of the rock as drawn: on full-size windows of the 32768
+sheet (unlit) the Desert Canyons' rock draws median #8b8671 against #8c8772 before, a desert
+mesa #c98c66 against #ca8d67. The top layer takes its own texture the same way over its
+target (section 31, "The top layer's colours"). `rock_look.albedo` (1) is the share of the
+contrast taken.
+
+**The top layer's mask** is the cliff master's own (`Rock_WA`, compiled for `Cliff_Sand`): the
+world normal's up component, normal-mapped, through `SlopeMask` and `CheapContrast`:
+`clip(nz ** Falloff_Power * (1 + 2 Falloff_Contrast) - Falloff_Contrast, 0, 1)`. `Rock_WA`'s
+`Falloff_Power` 1.5 and `Falloff_Contrast` 1.2 hold for every cliff family (no root overrides
+them): none of the top below `nz` 0.50, all of it above 0.75. The game reads the normal off
+each mesh's own normal map, by its UVs; the look's normal maps stand in for it. It replaces the
+ramp of `nz` 0.60 to 0.85 and the noise patches (section 31, "The top layer's colours").
+
+**Light.** The normal maps' normal is laid on the drawn surface's own (reoriented normal
+mapping, as the landscape shader does: the base map's slope doubled, the detail's halved). Its
+light is the style's sky and sun under the default sun, and the look multiplies the colour by
+that light over the same light on the drawn surface's normal, so the run's own light, baked or
+live, still lights the surface and the maps add only their relief (`rock_look.shade`, 1).
+
+**The arches' own family.** The game's baked distant view (the mesh HLOD bake, rasterised at
+1 m) has the arches and boulders lighter than the cliffs around them: per area, the median
+arch body (OKLab chroma under 0.04) is 1.15 times the cliffs' luminance (0.82 to 1.44 over 14
+areas), the boulders 1.08, both at the cliffs' chroma; rocks of the direct pass with no family
+are 0.89, darker and mixed. So the top pass wears `calibration.arches`, #8a8671: the default
+rock #85816c at 1.088 times the luminance (the median of both, OKLab L times 1.029), its
+chroma and hue kept. It used to take the area's rock. Rocks of no family keep the area's rock,
+in the cliff texture. An area entry can give its arches a colour of its own,
+`calibration.areas[].arches`, blended in by the entry's area weight as the other area targets
+are: the Dune Desert's arches and rib bones are terracotta in the baked view, #ba7b56, which
+the grey had replaced (section 31, "The second review").
+
+**On the GPU.** `reference.look_texels` reads the pixels a band's rock covers, flat;
+`rock_look/gpu.py` with `texels.cu` does the same on the device with `--gpu`, the atlases
+uploaded once a run, to the same bits (float64 positions until they are wrapped into a tile,
+float32 after, compiled without fused multiply-adds). Two million random pixels of the install's
+textures give the same bytes both ways. The reference costs about 2.5 us a pixel on one core;
+on the five windows below, drawn on 2 shared threads, a window took 0.4 to 0.7 us a pixel more
+where rock covers most of it, and nothing more where it covers little.
+
+**Measured.** Six 1024 px windows of the 32768 sheet, unlit, against master: the coastal
+rock at (-422, -2138), artifact city (258, -867), a Grass Fields arch (110, 2800), the Desert
+Canyons (128, -1500), a desert mesa (1800, -2400) and the Red Jungle's cliffs and bare Cliff
+layer (-689, -110) change 308,777, 194,979, 488,427, 315,919, 946,141 and 519,884 of 1,048,576
+pixels, the same bytes with `--gpu`. The mesas stay terracotta and the Desert Canyons' cliffs
+grey with sand tops. The forest tops of the coastal rock are moss over the whole up-facing
+face, as the baked view has them, where the patches left a third to a half bare. The arch at
+artifact city draws #8c8873 where it drew the area's #786c57. On the 2048 sheet (G1, painted,
+lit) 1,338,601 of the 5,570,560 tile pixels over all levels move, at most by 103; the light's
+tiles are the same bytes.
+
 ### The Titan trees
 
 73 trunks (`SM_TitanTree_01`, Nanite) and 218 leaf meshes (`SM_TitanTree_Leaves_01` and `_02`)
 are StaticMeshActors the sweep already lists. `titan_items` picks them and the mesh rasteriser
 draws them at twice the render's pixel into `titan.cache` (stamp: half the size, the build, the
-`titan_trees` reader). The painter samples that raster bilinearly, lights the crowns by their
-own relief (drawn unlit, flat: the light lights them by their own top, section 29, "The
-canopy's own light"), and lays them over the finished pixel, water included, at `titan_trees.opacity`
-(0.8), leaves sRGB (77, 90, 48), trunks (99, 88, 81). They cover about 0.9 km² of ground that
-was mostly drawn bare. They are exposed like everything else, by `exposure` times `tone.gain`.
+`titan_trees` reader). They cover about 0.9 km² of ground that was mostly drawn bare, and are
+laid over the finished pixel, water included, at `titan_trees.opacity` (1.0), exposed like
+everything else, by `exposure` times `tone.gain`.
+
+**The trunks** come from that raster, where its top is a trunk: sampled bilinearly, sRGB (99,
+88, 81), lit by their own top, flat when drawn unlit (the light lights them, section 29, "The
+canopy's own light").
+
+**The canopy is drawn from its own crown sprites** (2026-10-08). Its two leaf meshes are crown
+species of the sprite cache, rasterised with their textures as every crown is: the leaf card
+cut out by the `ORMA` mask, its colour from `TX_TitanTree_Leaves_BC`, its normal from the
+normal map bent toward the pivot by the material's `Spherical Normals Influence` of 0.65. The
+cache carries the 218 placements beside the art, and the canopy is stamped as the crowns are
+(light-and-crowns.md section 36, "Drawing"), as a layer of its own laid after the crowns and
+the trunks: its texels moved in OKLab so their mean is the style's leaf colour (77, 90, 48),
+which the leaves' own mean nearly is (76, 89, 47); lit by its normals; hidden where the drawn
+surface stands more than `hidden_below_m` over its top; not calibrated as a crown. The game's
+baked distant view holds no Titan leaves (it shows the plateaus and the trunks under them), so
+their colour from above has no reference yet.
+
+Two defects of the raster's canopy went with it. At 0.8 it was see-through, the ground and
+crowns under it showing as a green haze; its leaves now hide what is under them, with holes
+where the cards leave them. Lit by its own top, it was faceted: the leaf mesh's top is large
+flat cards, so each card was one plane of light, and the half-resolution raster stepped
+between them. Rasterising it at full resolution, now that the rasters are fast, draws the
+same flat cards sharper; it removes the steps, not the facets. Shaded from its leaf texture
+and normals, each card reads as leaves, and the spherical normals round the canopy as the
+game's material does.
 
 Players build under these trees, so they are a style toggle. `--no-titan-trees` renders with
-opacity 0, skips the raster and records its own style digest; the Maps tab's generate form has
-a "Titan trees (game-painted)" checkbox for it, the preset option `titan_trees`.
+opacity 0, skips the raster and the canopy and records its own style digest; the Maps tab's
+generate form has a "Titan trees (game-painted)" checkbox for it, the preset option
+`titan_trees`.
 
 ### Inland water
 
@@ -414,11 +550,147 @@ the transmitted share is multiplied by `1 - water.inland_floor` (0.35), so inlan
 always keeps that much of its body colour. The sea is unchanged. A water class's own
 `turbidity` takes over where it is larger (section 37).
 
+### The layers' own textures under the bake (2026-10-09)
+
+The bake's texels are a metre, so at 0.229 m a pixel the painted ground was a soft blur with
+a staircase along every edge between two layers: flat paint where the game shows grass,
+gravel and sand. At 16384 and 32768 px the ground now takes the landscape layers' own
+textures below the bake's metre, read as the game's landscape material reads them from
+above, and the bake keeps the colour at every scale it holds. Below 16384 a pixel is a metre
+or wider and nothing changes.
+
+**The textures.** Paint generator 5 keeps each layer's albedo, normal and height texture and
+the material's cell-bombing noise in `ground.tex.z`, indexed by `ground_textures` in
+`meta.json` (`gamedata/ground/layer_textures.py`). A texture is kept at a power of two with a
+texel at most half a full-size pixel at the largest repeat any layer reads it at, 64 to 512 px,
+the noise at its own 1024: 1.6 MB in all. A run mips each one to about half its own pixel
+(`terrain/ground_detail/textures.py`).
+
+**The reads** come from the compiled landscape shaders, the rendered-look study's tiling
+table: the far repeats a top-down view shows, the heights the blend reads at the near ones.
+
+| Layer | Albedo | Normal | Height the blend reads |
+| --- | --- | --- | --- |
+| Grass | `TX_Grass_Far_01_Alb`, 50 m | `TX_Grass_01_Nor`, 4 m | `TX_Grass_01_HRA` R, 4 m |
+| Forest, PurpleForest | `TX_Forest_Far_01_Alb`, 14.29 m | flat: it fades out with distance | `TX_Forest_01_HRA` R, 4.545 m |
+| Sand | `TX_Sand_BC`, 20 m, half its detail | `TX_Sand_Normal`, 20 m, at 0.2 | `TX_Sand_HRA` R, 4 m, turned cells |
+| WetSand | `TX_Sand_BC`, 4 m, turned cells | `TX_Sand_Nor_Wet`, 4 m, turned cells | as Sand |
+| SandRipples | none: its far colour is flat | flat | `TX_SandRipples_HRA` R, 4 m, shifted cells |
+| SandCracks | `Sand_Dry_02_Alb`, 20 m | `Sand_Dry_02_Nor`, 4.545 m | `Sand_Dry_02_Refl` R, 4.545 m |
+| CoralRock | `TX_SeaRocks_01_Alb`, 20 m | `TX_SeaRocks_01_Nor`, 20 m | `TX_SeaRocks_01_HRA` R, 4.545 m |
+| GrassRed, Gravel, SandPebbles | their own, 4 m, turned cells | their own, 4 m, turned cells | their HRA's R, 4 m, turned cells |
+| Soil | `TX_Soil_01_Alb`, 4 m | `TX_Soil_01_Nor`, 4 m | `TX_Soil_01_HRA` R, 4 m |
+| RedJungle | `TX_Grass_RedJungle_01_Alb`, 4 m | Grass's, 4 m | Grass's, 4 m |
+| SandRock, DesertRock | `TX_SandRock_Alb_01`, 4.545 m | `TX_SandRock_Nor_01`, 4.545 m | `TX_SandRock_ORMA_01` B, 4.545 m |
+| Cliff (the paint layer) | `Cliff_Sediment_Alb`, 20 m, turned cells | `TX_Cliff_01_Nor`, 10.24 m | `TX_Cliff_01_HRA` R, 10.24 m |
+| Puddles (overlay) | `TX_Puddles_01_Alb`, 4 m, turned cells | `TX_Puddles_01_Nor`, 4 m, turned cells | none: lerped by its weight |
+
+The far blends were read off the shaders. The single-layer Sand shader mixes its 20 m albedo
+half and half with `Sand Far Color` and takes its 20 m normal at `(0.2, 0.2, 1)` of itself;
+SandRipples lerps its albedo to a far colour and its normal to a constant one; the cracks keep
+their near normal while their albedo goes far; the coral rock's normal goes far with its
+albedo over 100 m. Each two-layer shader height-blends both of its layers, each from one
+channel of a texture at the near repeat (R of an HRA, R of the cracks' Refl, B of the sand
+rock's ORMA). Red jungle has no normal or height texture of its own, so it borrows the
+grass's.
+
+**Per pixel** (`terrain/ground_detail/reference.py`):
+
+1. **Weights.** Each texel keeps its four heaviest layers and their weights (8 bytes a texel,
+   made once a run); the fifth and later carry 0.006 of a texel's weight on average. A pixel
+   reads them bilinear, corner by corner, a layer's slots in order.
+2. **Cells.** The noise repeats over 100 m (UV0 × 0.01). Its R shifts a cell along u by up to a
+   repeat and scales it by 0.9 to 1.1, G shifts it along v, B turns it a whole circle, and A
+   masks it. A layer with cells reads its texture a second time in the cell, turned (shifted
+   only for the ripples), and mixes it in by `clamp(2 A - 0.5, 0, 1)`, so the cells' borders
+   show the plain tiling; a turned cell's normal is turned back. The turn's cosine and sine
+   are worked out from the noise's texels on the host, so the kernel computes no
+   trigonometry.
+3. **Height blend**, as the engine's layer blend does it: `clamp(2 w - 1 + h, 1e-4, 1)` for
+   each layer, over their sum. A layer that weighs nothing at a pixel is left out.
+4. **Detail.** Each albedo texture has its low pass beside it, a Gaussian of 0.5 m
+   (`DETAIL_SIGMA_M`) wrapped as it repeats: about the blur the 1 m bake is drawn with, its box
+   and the bilinear read. The detail is the height-blended albedo over the low passes blended
+   by the heights' low passes, per channel. It carries what lies under the bake's metre, the
+   texture's grain and the layers' height mosaic where they meet, and its mean is 1. A read's
+   strength (the sand's half, the ripples' none) scales its texture about its low pass.
+5. **The overlay** lerps its own ratio and normal over the blend by its weight.
+
+The PigmentMap multiplies every layer's albedo in the shaders. At 7.3 m a texel it is in the
+bake, and it cancels from the detail, which is a ratio. Where the paint mix stands in for the
+bake the ground stays as before.
+
+**Drawing.** `render/ground/detail.py` computes a piece's detail once, beside its heights, for
+every layer of the pass. The painted ground multiplies its albedo by `1 + s (ratio - 1)`,
+`s` the palette's `ground_detail.strength` (1), before the canopy, the rock and the meshes are
+laid over it. Drawn with `--no-light`, its sun term takes the detail's normal too.
+
+**The light.** The detail's normal, faded by the share of the pixel the ground is drawn on (no
+rock, overlay lift or render-only mesh), goes to the light beside the heights as two bytes a
+pixel, east and south over 127 (`Surface.put`'s `detail`, `detail.npy`, 2.1 GB at full size).
+It is part of the surface's digest, so a kept light baked without it is not reused. The bake
+adds it to each block's normals along their slope and renormalises
+(`light_tiles.with_detail`), so the normal tiles, and through them the default sun's terms and
+the page's live sun, show the ground's relief on every layer: one pyramid serves every
+style. The coarser levels take their normals from the downsampled heights, without it.
+
+**On the GPU.** With `--gpu` the detail is `render/gpu/ground.cu`, a thread a pixel, on
+textures uploaded once a process with `texels.upload_atlas`; the texel reads are `texels.cu`'s.
+It gives the reference's bits (`tests/mapgen/test_ground_detail.py`, which skips without a
+device); a piece the device has no memory for runs on the CPU.
+
+**Measured** (2026-10-09, build 502094), on six 1024 px windows of the 32768 sheet drawn unlit,
+as a lit render draws its colour, from master's raster caches, against master's code:
+
+| Window | Pixels changed | By more than 12 (RGB sum) | Largest |
+| --- | --- | --- | --- |
+| Grass Fields (-508, 2301) | 719,085 | 338,826 | 242 |
+| Rocky Desert (-920, -1179) | 592,764 | 165,662 | 223 |
+| Titan forest's grass (81, -791) | 526,406 | 88,004 | 97 |
+| Forest floor (2603, 462) | 550,911 | 130,046 | 137 |
+| Spire Coast (269, -1943) | 338,657 | 37,199 | 274 |
+| North beach rocks (128, -1500) | 492,850 | 200,384 | 139 |
+
+Of each 1,048,576. Blurred over 4 m the windows move by at most 0.17 sRGB levels on average
+and 0.64 at the 95th percentile, over 1.5 m by 1.0 at the 95th: the large-scale colour stays
+the bake's. The grain under 1.5 m rises from a standard deviation of 5.2 to 8.9 levels to 6.1
+to 9.3. Drawn with `--no-light`, where the sun term takes the bumps too, 343,585 to 720,433
+pixels a window change. Beside frames of the 1.0, 1.1 and 1.2 trailers, the grass reads at
+the grain of the 1.0 trailer's top-down Grass Fields, the dunes stay smooth as the 1.2 aerial
+shows them, and the forest floor and the beaches take their litter and pebbles. Below 16384
+nothing moves: at 2048 every tile and light tile of the three layers is the same as master's,
+and only the painted sidecar's style version and digest change. A store without the textures
+draws the 32768 windows of the gates' G2 the same as master, all three layers.
+
+**Known limits.**
+
+- The landscape's UV0 is taken from the paint grid's corner, a whole number of metres off the
+  game's, so the textures' phase is not the game's own.
+- Soil's own cell bombing (its scale is a parameter the study did not resolve) is not drawn;
+  it tiles plainly.
+- The slot each shader reads a texture from is matched by name and by the channel the shader
+  reads: red jungle's borrowed normal and height, and the sand rock's height in its ORMA's B,
+  are inferences.
+- The SandRipples' wind swirl, an animated overlay at 200 and 250 m, is not drawn.
+- The rock meshes keep their own colour; only the landscape is textured.
+- The coarser levels of the light have no detail; they are a metre a pixel or more.
+- On the CPU the detail is numpy's: the six windows above drew 0.8 to 1.8 s slower each on
+  two threads, and about as fast as before with `--gpu` once its kernel is compiled. A
+  full-size render without `--gpu` draws minutes longer.
+
 ### Known limits
 
 - Nothing here has been compared with an in-game top-down view.
-- The up-facing ramp is a guess.
-- The Titan crowns over water let the water's blue through at 0.8 opacity.
+- The rock textures are laid on the ground plane, not by the meshes' UVs: a wall seen from
+  above shows the texture at its plan's scale, and the arches' and desert rock's tile is the
+  meshes' median UV density, one number for meshes that vary.
+- The top layer's mask reads the look's normal maps where the game reads each mesh's own; an
+  arch's top layer (grass and moss on `MI_Arc_Grass_01` and kin) is not drawn, as the top pass
+  does not say which arch instance a pixel is.
+- The normal maps' light is baked into the colour under the default sun, so a live sun lights
+  the rock's relief from the default's side.
+- The Titan canopy's light and shadow in a lit render are the light's (section 29): it casts
+  as the crown occluder has it, from the raster's top.
 
 ## 32. The seabed coral carpet (2026-10-05)
 
@@ -482,9 +754,11 @@ Palette key `carpet`, in `palette/painted/optics.py`:
    top is 0.8 m down (origins at 1.4 m). With the bed's own `k` the carpet would vanish, yet the
    screenshots show it clearly through the channels. The carpet's depth is scaled by 0.2; the
    water fit's depths were matched, not measured, so this is the weaker number of the two.
-4. **Colour** `#6c9ebe` (linear-light carpet albedo at map exposure). Drawn over the channels it
+4. **Colour** `#7499c3` (linear-light carpet albedo at map exposure). Drawn over the channels it
    comes out at median `#5e8a9c`, against the calibration target `#5f8899` (the reference's
-   `#6493a6` at map exposure).
+   `#6493a6` at map exposure). It was `#6c9ebe` under the sea's first fit; with the 2026-10-09
+   sea row it is refitted so a carpet 0.3 to 1.5 m under the surface draws within ΔE 1.7 of
+   before.
 
 `strength` 0 switches it off; a paint store without carpet planes draws none.
 

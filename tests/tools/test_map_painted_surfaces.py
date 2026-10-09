@@ -21,7 +21,7 @@ from mapgen.cache import (
     cached_family,
     raster_cache_stamp,
 )
-from mapgen.colour import srgb_to_linear
+from mapgen.colour import sky_sun_light, srgb_to_linear
 from mapgen.gamedata.frame import BOUNDS_M, ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.ground.bake import (
     BAKE_NAME,
@@ -309,8 +309,8 @@ def _rock_ground(flat_top=True):
     has[grass] = 1.0 if flat_top else 0.0
     return SimpleNamespace(
         rock_family=np.full((8, 8), grass, np.uint8), family_rock={}, family_tint=tint,
-        family_top=top, family_has_top=has, palette={"rock_top": {"up": [0.6, 0.85]}},
-        family_top_rgb={},
+        family_top=top, family_has_top=has, palette={}, family_top_rgb={},
+        rock_look=None, arch_rgb=None,
     )  # fmt: skip
 
 
@@ -350,25 +350,44 @@ def test_the_coarse_tree_raster_is_read_bilinear_on_the_sheet():
     assert sample_titan((z, np.zeros_like(cls), 2, 0, 0), (0, 8, 0, 8)) is None
 
 
-def test_the_titan_trees_follow_the_style_toggle():
+def test_the_titan_trunks_follow_the_style_toggle():
     out = np.full((8, 8, 3), 0.3, np.float32)
-    z = np.zeros((4, 4), np.float32)
-    cls = np.zeros((4, 4), np.uint8)
-    z[:, :], cls[:, :] = 3000.0, TITAN_LEAVES
+    z = np.full((4, 4), 3000.0, np.float32)
+    cls = np.full((4, 4), TITAN_TRUNK, np.uint8)
+    cls[3] = TITAN_LEAVES
     palette = copy.deepcopy(PAINTED_PALETTE)
-    leaves = np.array([0.07, 0.1, 0.03], np.float32)
+    trunk = np.array([0.07, 0.1, 0.03], np.float32)
     ground = SimpleNamespace(palette=palette, titan=(z, cls, 2, 0, 0),
-                             titan_rgb={TITAN_LEAVES: leaves, TITAN_TRUNK: leaves})  # fmt: skip
+                             titan_rgb={TITAN_LEAVES: trunk * 2, TITAN_TRUNK: trunk})  # fmt: skip
     scene = {"z_m": np.zeros((8, 8), np.float32), "grid": (None, 0, 8, 0, 8, 0.25),
              "ndl_flat": np.float32(np.sin(np.deg2rad(45)))}  # fmt: skip
     drawn = titan_over(out, scene, ground)
-    opacity = palette["titan_trees"]["opacity"]
-    assert 0 < opacity < 1
+    assert palette["titan_trees"]["opacity"] == 1.0, "the Titan trees hide what is under them"
     exposure = palette["exposure"] * palette["tone"]["gain"]
-    expected = 0.3 * (1 - opacity) + leaves * exposure * opacity
-    np.testing.assert_allclose(drawn[4, 4], expected, rtol=0.05)
+    np.testing.assert_allclose(drawn[2, 2], trunk * exposure, rtol=0.05)
+    np.testing.assert_array_equal(drawn[7, 7], out[7, 7], "the canopy is the sprites', not this")
     palette["titan_trees"]["opacity"] = 0
     assert titan_over(out, scene, ground) is out
+
+
+def test_the_titan_canopy_is_laid_whole_and_hidden_under_a_higher_surface():
+    shape = (1, 3)
+    out = np.full((*shape, 3), 0.3, np.float32)
+    leaves = np.array([0.07, 0.1, 0.03], np.float32)
+    canopy = {"cover": np.ones(shape, np.float32), "rgb": np.tile(leaves, (*shape, 1)),
+              "normal": np.tile(np.float32([0, 0, 1]), (*shape, 1)),
+              "top_cm": np.full(shape, 5000.0, np.float32),
+              "ndl": np.full(shape, np.sin(np.deg2rad(45)), np.float32)}  # fmt: skip
+    palette = copy.deepcopy(PAINTED_PALETTE)
+    ground = SimpleNamespace(palette=palette, titan=None, titan_rgb={})
+    scene = {"z_m": np.array([[0.0, 30.0, 80.0]], np.float32), "grid": (None, 0, 1, 0, 3, 0.25),
+             "ndl_flat": np.float32(np.sin(np.deg2rad(45))), "titan_crowns": canopy}  # fmt: skip
+    drawn = titan_over(out, scene, ground)
+    light = sky_sun_light(palette["sky"], palette["sun"], np.float32(palette["ambient"]))
+    exposure = palette["exposure"] * palette["tone"]["gain"]
+    np.testing.assert_allclose(drawn[0, 0], leaves * light * exposure, rtol=1e-5)
+    np.testing.assert_allclose(drawn[0, 1], drawn[0, 0], err_msg="whole, nothing through it")
+    np.testing.assert_array_equal(drawn[0, 2], out[0, 2], "rock above its top hides it")
 
 
 def test_switching_the_titan_trees_off_is_a_style_of_its_own():
@@ -435,6 +454,7 @@ def _band_ground(floor):
         albedo=[np.full((2, 2), v, np.float32) for v in (0.3, 0.25, 0.2)],
         canopy=np.zeros((2, 2), np.float32), canopy_rgb=np.zeros(3, np.float32),
         rock=[np.zeros((2, 2), np.float32)] * 3, rock_family=None, crown=None, titan=None, carpet=None,
+        rock_look=None, arch_rgb=None, cliff_layer=None,
         mesh_rgb={}, seabed_coral=np.zeros(3, np.float32), ramp=(0.0, 1.0, np.linspace(0, 1, 5)),
         water={"k": np.asarray(w["k_per_m"], np.float32), "body": linear(w["body"]),
                "sky": np.zeros(3, np.float32), "deep": linear(w["deep"]),

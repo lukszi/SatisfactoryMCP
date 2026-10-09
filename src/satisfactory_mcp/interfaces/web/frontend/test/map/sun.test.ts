@@ -76,6 +76,9 @@ describe("the sun the page is lit by", () => {
     expect(currentSun()).toMatchObject({ terrainShadows: false, treeShadows: false });
     setSetting("mapShade", false);
     expect(currentSun().shade).toBe(false);
+    expect(currentSun().trees).toBe(true);
+    setSetting("mapTrees", false);
+    expect(currentSun().trees).toBe(false);
   });
 
   it("normalises the azimuth and keeps the sun above the horizon and below the zenith", () => {

@@ -33,7 +33,8 @@ Planned as 0.2.0.
   `python -m mapgen compress-cache <dir>` shrinks them about 20x.
 - Re-run the paint layers (`python -m mapgen paint`, or *paint* in the Maps tab) before the
   next painted render: paint layers from an earlier version keep no daylight, and a painted
-  map drawn from them keeps the screenshot colours.
+  map drawn from them keeps the screenshot colours. Paint layers from before generator 5 keep
+  no landscape textures, and a Satellite map drawn from them has no ground detail.
 
 ### Added
 
@@ -66,15 +67,45 @@ Planned as 0.2.0.
   The light's controls show on every map that has a light, greyed with the reason where it is
   drawn baked, such as without WebGL2. Tree shadows with terrain shadows off miss the ones that
   fall inside terrain shade, until a later render stores them.
+- Web map: a *trees* checkbox beside *shade* on the Satellite map; off, the tree crowns and the
+  Titan trees go, with their shadows, and the ground under them shows. It needs a render drawn
+  from this version on; on an older one the row shows greyed. With the trees on, a crown over
+  the water now takes the live light.
+- Map renders: the Satellite layer keeps its trees apart for the page: `unlit/` holds the
+  ground without them and a new sparse `trees/` the crowns and Titan trees as lossless RGBA
+  WebP. `tiles/` and `tiles@2x/` are unchanged. `/api/maptiles/{id}/{z}/{x}/{y}?kind=trees`
+  serves them, answering 204 for a tile with no tree in it, and `X-Map-Light` names them under
+  `parts`.
 - Map generator: `python -m mapgen crown-sprites` builds a top-down sprite of every tree
   species, in colour, normal and alpha at 0.125 m, into `data/local/crown-sprites/`. Eight
   species take the game's own billboard view from above; the other 45, the Kapok and the
   yuccas among them, are rasterised from their meshes with their leaf and bark textures,
   normal maps, spherical normals and moss. `--gpu` runs the raster's per-sample work on the
-  GPU, to the same bytes. No render draws them yet.
+  GPU, to the same bytes. The cache also holds the Titan canopy's two leaf meshes and their
+  218 placements.
+- Map renders: the Satellite map's ground at 16384 and 32768 px shows the game's own landscape
+  textures under the baked colour's metre: grass, gravel, sand, forest floor and the other
+  paint layers at the repeats the game's shaders use from above, turned in cells as the game
+  turns them and height-blended where layers meet, while the colour at every larger scale
+  stays the game's bake. The live sun lights the same ground relief through the light's
+  normal tiles, on every map with a light. `--gpu` draws it on the GPU, to the same bytes.
+  The paint layers (generator 5) now keep the textures, so re-run them before the next render;
+  the light's scratch takes 2.1 GB more at full size.
 
 ### Changed
 
+- Map renders: on the Satellite map every tree crown is drawn from its crown sprite, leaves,
+  holes and branches in their own colour, lit by their own normals instead of a smooth dome;
+  the ancient pines draw olive instead of mustard. A painted render builds the sprite cache
+  first where it finds none for the installed build (`--sprites-dir`, default
+  `data/local/crown-sprites/`). The crowns are stamped on the GPU with `--gpu`, to the same
+  bytes.
+- Map renders: the Titan forest's canopy is opaque and drawn from its own leaves' sprites,
+  textured and lit by their normals, instead of a see-through, faceted green; the trunks stay
+  as before.
+- Map renders: the unlit colour of a map drawn with live light (`unlit/`) is lossless WebP
+  instead of PNG, about a quarter smaller. Renders made before keep their PNG tiles and are
+  served as they are.
 - Map names: the game-painted map is now called "Satellite" and the dark relief "Relief".
   Their ids, links and the saved default are unchanged.
 - Map renders: a render that names no layers draws terrain and Satellite, and the Maps tab
@@ -88,6 +119,30 @@ Planned as 0.2.0.
   sidecar says why. A render derives the colours itself when `targets.derived.json` is missing
   or from other data. This shares the one version up every rendered map style takes (under
   "Fixed").
+- Map renders: the Satellite map's rock looks rendered. Cliffs, the rocks drawn only by the
+  renderer and the landscape's Cliff layer wear the cliff material's own sediment texture,
+  laid on the ground at its 20 m with the landscape's rotated cells against tiling, and its
+  normal maps' relief; arches and boulders are a lighter warm grey of their own in the
+  arches' rock texture; desert rock wears its own rough texture and stays terracotta. A
+  cliff's moss, grass or sand lies where the cliff material's own slope mask puts it, in its
+  own texture, instead of in noise patches. The textures are read from the game install at
+  each render, and `--gpu` reads them on the device to the same bytes.
+- Map renders: the Satellite map's sea is turquoise over the shallows, steel blue in the
+  lagoons and navy in the deep, fitted to 1.0 screenshots of the sea where it was teal at
+  every depth; the seabed coral carpet keeps its colour. Coral caps are a warm grey-pink, as
+  official footage shows them from above, where they were mauve. Wet sand keeps more of the
+  sand's colour (chroma x1.15). Ground drawn without the game's baked colour, as on the Grass
+  Fields' southern slopes, takes each area's step to the baked colour instead of a fixed
+  biome hue, so it no longer turns greener at the bake's edge. The style's version goes up.
+- Map renders: the Satellite map's colours checked against the game's own baked view once the
+  look draws its textures and crown sprites. The green tree crowns take the 1.0 canopy
+  screenshot again, a little bluer and less saturated, and the ancient pines lose most of
+  their yellow. The Grass Fields' grass is the game's own green instead of a pale yellow-green,
+  the Southern Forest's grass-topped cliffs wear its bluer grass, the Dune Desert's arches and
+  rib bones are terracotta again, and the red jungle cliffs show their red tops. Palettes can
+  now give an area's arches a colour of their own (`calibration.areas[].arches`) and a rock
+  family a top the game install does not name (`calibration.tops`). The style's version goes
+  up.
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
@@ -216,6 +271,19 @@ Planned as 0.2.0.
   and are rebuilt once, the direct raster taking about 2.4 times as long; a kept light is
   baked again. The light takes two to three times as long under crowns and arches, and each
   of its processes counts 2.0 GB instead of 1.5.
+- Map generator (light version 5): a tree crown casts from where its species' leaves start,
+  read off its mesh at the start of a render (a green tree or a Kapok three quarters up, a
+  bush from the ground), instead of halfway up every crown, and the Titan trees as a 12 m slab
+  under their canopy instead of half their height. The crowns and the Titan trees cast into
+  horizon cells of their own, each without the terrain and stored everywhere, so a page can
+  show tree shadows without terrain shadows and hide the trees' shadows with the trees; the
+  horizon atlas grows from 64 cells to 97 in 13 rows, placed by the light model's new
+  `titan_cell` and `ao_cell`. Rocks, cliff feet and gullies take ambient occlusion in the sky
+  light every style reads, and the trees' occlusion is a cell of its own; arches and
+  overhangs occlude nothing beneath them. Every lit map moves (at 2048, 1.0 to 1.2 million lit
+  pixels a layer, the unlit colour none), and a kept light is baked again. The light's scratch
+  grows by 3.1 bytes a pixel, 3.3 GB at full size, and a lit render spends about 33 s more
+  before it draws. With `--gpu` the occlusion runs on the device, to the same bytes.
 
 ### Deprecated
 

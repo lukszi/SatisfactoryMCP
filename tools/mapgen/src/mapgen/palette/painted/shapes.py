@@ -11,6 +11,7 @@ from numpy.typing import NDArray
 from mapgen.cache import Plane, TitanPlanes
 from mapgen.gamedata.level.lighting import AtmosphereVolume, LevelLighting
 from mapgen.gamedata.vegetation.crown_sprites import CrownsBlock, MaterialColour
+from mapgen.palette.painted.rock_look.atlas import RockLook
 from mapgen.palette.scene import BandGrid, BandScene, BandTaps, UnderwaterWater, WaterTerms
 from mapgen.palette.schema import (
     CalibrationArea,
@@ -18,12 +19,12 @@ from mapgen.palette.schema import (
     CarpetStyle,
     DerivedLayer,
     PaintedPalette,
-    RockPatchesStyle,
-    RockTopStyle,
+    RockLookStyle,
     TitanTreesStyle,
     WaterClassStyle,
 )
 from mapgen.terrain.crown_stamp import CrownSet, LitCrowns
+from mapgen.terrain.ground_detail.reference import GroundDetail
 from satisfactory_mcp.core.arrays import F16Grid, F32Grid, FloatGrid, I16Grid, U8Grid
 
 __all__ = [
@@ -52,8 +53,7 @@ __all__ = [
     "PaintedSurface",
     "Ramp",
     "RockFamilyEntry",
-    "RockPatchesStyle",
-    "RockTopStyle",
+    "RockLookStyle",
     "Sampler",
     "TitanTreesStyle",
     "UnderwaterScene",
@@ -199,9 +199,10 @@ class CrownLayer(TypedDict):
 class PaintedScene(BandScene):
     """One band as the painted style draws it (``render.draw.painting``): the shared scene, then
     its crowns, sun term, rock and mesh weights, the arches' and boulders' lift over the
-    cliffs, and water optics."""
+    cliffs, water optics, and the ground's detail under the bake."""
 
     crowns: LitCrowns | None
+    titan_crowns: NotRequired[LitCrowns | None]
     ndl: FloatGrid
     ndl_flat: np.float32
     rock_weight: FloatGrid
@@ -212,6 +213,7 @@ class PaintedScene(BandScene):
     water_optics: ClassOptics | None
     grid: BandGrid
     unlit: NotRequired[bool]
+    detail: NotRequired[GroundDetail | None]
 
 
 class WetOptics(TypedDict):
@@ -272,6 +274,9 @@ class PaintedSurface(Protocol):
     family_top: F32Grid
     family_top_rgb: dict[int, ColourPlanes]
     family_has_top: F32Grid
+    rock_look: RockLook | None
+    arch_rgb: ColourPlanes | None
+    cliff_layer: PaintPlane | None
     mesh_rgb: dict[int, ColourPlanes]
     seabed_coral: F32Grid
     titan: TitanPlanes | None

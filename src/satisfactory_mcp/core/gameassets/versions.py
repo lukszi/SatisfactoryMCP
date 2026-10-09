@@ -91,7 +91,7 @@ HEIGHTFIELD_GENERATOR_VERSION = 6
 CAVES_VERSION = 1
 
 #: ``tools/gen_paint_layers.py``'s output version; ``paint/meta.json``'s ``generator_version``.
-PAINT_GENERATOR_VERSION = 4
+PAINT_GENERATOR_VERSION = 5
 
 #: How the inputs a render reads straight from the install are decoded. ``cliff_geometry``
 #: is the heightfield generator's own sweep and decode, imported by the renders.
@@ -103,6 +103,7 @@ READER_VERSIONS = {
     "render_meshes": 4,
     "river_splines": 1,
     "rock_families": 3,
+    "rock_textures": 1,
     "titan_trees": 2,
     "waterfalls": 1,
 }
@@ -150,7 +151,7 @@ STYLES: dict[str, Style] = {
     "terrain-hypsometric": {"label": "terrain", "name": "Terrain", "layer": "terrain",
                             "version": 9, "tone": "light"},
     "satellite-painted": {"label": "game-painted", "name": "Satellite", "layer": "painted",
-                          "version": 20, "tone": "light"},
+                          "version": 22, "tone": "light"},
     "relief-night": {"label": "relief dark", "name": "Relief", "layer": "relief-dark",
                      "version": 7, "tone": "dark"},
     "artwork": {"label": "artwork", "name": "Game map", "layer": "map", "version": 1,

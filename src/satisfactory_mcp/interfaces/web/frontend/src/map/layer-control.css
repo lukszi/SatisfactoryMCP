@@ -172,6 +172,11 @@
   margin-top: var(--sp-1);
 }
 
+/* A part the picked map does not have, such as trees on terrain: Leaflet's rows are blocks. */
+.layer-part[hidden] {
+  display: none;
+}
+
 /* The amber word on a map type whose data is outdated. */
 .layer-mode-flag {
   margin-left: var(--sp-1);
