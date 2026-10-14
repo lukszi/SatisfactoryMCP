@@ -67,6 +67,18 @@ python -m mapgen share-export <out> --ids <id>,<id>       # other types than the
 A rerun copies only files that are not there yet. `--prune` deletes the tile folders and page
 assets the new manifests no longer name.
 
+**Hard links.** When the export folder is on the same volume as the renders, each tile is a
+hard link to the render's own file instead of a copy: no bytes are written, so an export that
+copies 188,000 files in about 25 minutes takes a fraction of that (z0 to z4, 4,000 files:
+6 s linked, 16 to 32 s copied). Where a link fails (another volume, a file system without
+hard links, no permission) that file is copied instead. `--copy` copies every file. A linked
+tile shares its bytes with the render folder: deleting the render folder leaves the export
+intact, but editing a tile in place would change both. Renders never do that; a finished
+render's files are only ever read. Only the tiles are linked: the page's files, rebuilt in
+place by `npm run build:share`, are copied, and `index.html` and the manifests are written
+fresh. The scan reads linked tiles like any other file, and an upload sends their contents
+(rsync without `-H` sees plain files).
+
 ### Nothing private leaves the machine
 
 The site is public, so the export is built from allowlists and checked before it counts:

@@ -2,6 +2,7 @@
 
 A tile folder's name carries its build tag, so a file once written never changes: a rerun
 skips every file already there at the same size, and a new render lands in new folders.
+Tiles are hard-linked to the render's own files where the volume allows, else copied.
 """
 
 from __future__ import annotations
@@ -46,11 +47,13 @@ class Count:
     files: int = 0
     bytes: int = 0
     copied: int = 0
+    linked: int = 0
 
     def add(self, other: Count) -> None:
         self.files += other.files
         self.bytes += other.bytes
         self.copied += other.copied
+        self.linked += other.linked
 
 
 def _tiles(tree: TreeCopy, max_z: int) -> Iterator[tuple[int, os.DirEntry[str]]]:
@@ -73,8 +76,19 @@ def count_tree(tree: TreeCopy, max_z: int) -> Count:
     return count
 
 
-def copy_tree(tree: TreeCopy, out: Path, max_z: int) -> Count:
-    """Copy one tree's levels into ``out``; each new file's bytes pass ``image_problem`` first."""
+def _link(source: Path, part: Path) -> bool:
+    """Hard-link ``source`` at ``part``; False where that fails (another volume, no links)."""
+    part.unlink(missing_ok=True)
+    try:
+        os.link(source, part)
+    except OSError:
+        return False
+    return True
+
+
+def copy_tree(tree: TreeCopy, out: Path, max_z: int, link: bool = True) -> Count:
+    """Place one tree's levels in ``out``, linked or copied; each new file's bytes pass
+    ``image_problem`` first."""
     count = Count()
     made: set[Path] = set()
     for z, entry in _tiles(tree, max_z):
@@ -92,9 +106,12 @@ def copy_tree(tree: TreeCopy, out: Path, max_z: int) -> Count:
         if problem:
             raise ValueError(f"{tree.target}/{z}/{entry.name}: {problem}")
         part = target.with_name(target.name + ".part")
-        part.write_bytes(data)
+        if link and _link(Path(entry.path), part):
+            count.linked += 1
+        else:
+            part.write_bytes(data)
+            count.copied += 1
         os.replace(part, target)
-        count.copied += 1
     return count
 
 

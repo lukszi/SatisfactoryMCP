@@ -1,7 +1,7 @@
 """Export the rendered map as a public, map-only static site.
 
 ``python -m mapgen share-export <out> [--max-z N] [--parts lit,baked,dense] [--ids a,b]
-[--dry-run] [--prune]``. Reads the registry and the layers' sidecars directly, so the server
+[--dry-run] [--prune] [--copy]``. Reads the registry and the layers' sidecars directly, so the server
 need not run. Tiles go to build-tagged folders under ``t/``, the page to ``assets/``; the two
 manifests under ``data/`` and ``index.html`` are written last, and only once every other file
 has passed the privacy scan. docs/map/sharing.md.
@@ -36,6 +36,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true", help="count files and bytes only")
     parser.add_argument("--prune", action="store_true", help="delete folders no longer named")
     parser.add_argument(
+        "--copy", action="store_true", help="copy tiles even where they could be hard-linked"
+    )
+    parser.add_argument(
         "--page", type=Path, default=PAGE_DIR, help="the `npm run build:share` output"
     )
     parser.add_argument(
@@ -60,7 +63,8 @@ def _check_out(out: Path) -> None:
 def _report(rows: list[tuple[str, files.Count]], total: files.Count, dry: bool) -> None:
     for name, count in rows:
         print(f"{count.bytes / 1e6:10.1f} MB {count.files:8d} files  {name}")
-    verb = "would hold" if dry else f"holds ({total.copied} copied this run)"
+    placed = f"{total.copied} copied, {total.linked} linked"
+    verb = "would hold" if dry else f"holds ({placed} this run)"
     print(f"{total.bytes / 1e9:10.2f} GB {total.files:8d} files  {verb}")
 
 
@@ -105,7 +109,7 @@ def run(args: argparse.Namespace) -> int:
 
     _check_out(out)
     assets = files.copy_page(args.page, out)
-    rows = [(tree.target, files.copy_tree(tree, out, args.max_z)) for tree in trees]
+    rows = [(tree.target, files.copy_tree(tree, out, args.max_z, not args.copy)) for tree in trees]
     total = files.Count()
     for _name, count in rows:
         total.add(count)
