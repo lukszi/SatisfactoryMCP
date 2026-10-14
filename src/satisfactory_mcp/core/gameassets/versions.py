@@ -85,7 +85,7 @@ class LightModel(TypedDict):
 PROVENANCE_SCHEMA = 1
 
 #: ``tools/gen_world_heightmap.py``'s output version; its sidecar's ``generator_version``.
-HEIGHTFIELD_GENERATOR_VERSION = 6
+HEIGHTFIELD_GENERATOR_VERSION = 7
 
 #: ``caves/meta.json``'s ``caves_version``.
 CAVES_VERSION = 1

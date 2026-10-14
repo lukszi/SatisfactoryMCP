@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TypedDict
+
 import numpy as np
 
 from satisfactory_mcp.core.arrays import F64Grid, I16Grid, I64Grid
@@ -15,11 +17,13 @@ __all__ = [
     "GRID_PX",
     "ORIGIN_X_CM",
     "ORIGIN_Y_CM",
+    "OUTPUT_GRID",
     "RENDER_2X_PX",
     "RENDER_PX",
     "SPACING_CM",
     "Z6_TEXEL_M",
     "Z7_TEXEL_M",
+    "GridBox",
     "grid_index",
     "grid_texel",
     "sample_grid",
@@ -39,6 +43,26 @@ GRID_PX = 7500
 SPACING_CM = 100.0
 ORIGIN_X_CM = _X0 * 100
 ORIGIN_Y_CM = _Y0 * 100
+
+
+class GridBox(TypedDict):
+    """A 1 m raster's size and georeference: the output grid, or the landscape frame."""
+
+    width: int
+    height: int
+    x0_cm: float
+    y0_cm: float
+    scale_cm: float
+
+
+#: The output grid as a ``GridBox``: the field's rock layers are rasterised over all of it.
+OUTPUT_GRID: GridBox = {
+    "width": GRID_PX,
+    "height": GRID_PX,
+    "x0_cm": ORIGIN_X_CM,
+    "y0_cm": ORIGIN_Y_CM,
+    "scale_cm": SPACING_CM,
+}
 
 #: What a render is drawn at, z7 at the top of the 1x tree, and what its @2x tree is cut
 #: from: the artwork's sheet size, the same frame (docs/map/renders.md §20 says why z7).

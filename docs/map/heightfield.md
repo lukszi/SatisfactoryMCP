@@ -139,6 +139,29 @@ The server's reader is three layers in `domain/spatial/heightfield/`: `PlaneStor
 planes and the georeference, `FieldAreas` answers rectangle queries (`area`, `nearest_water`),
 and `Field` answers point lookups.
 
+### Rocks past the frame (2026-10-14, generator 7)
+
+The landscape's frame ends at x -3048 and 4064 m and y -3048 and 3048 m, and the map goes on
+past it on rock: the south end of the Grass Fields, the north and east coasts. Up to generator
+6 the cliff and top layers were rasterised on the frame alone, so every rock was cut at its
+edge and the 3.66 m fill took over: a straight line across the ground at y 3048 m in every
+rendered layer, where the fill stood about a metre off the rock beside it. Both layers are
+now rasterised on the whole output grid (`gamedata.frame.OUTPUT_GRID`). In the frame the rule
+is unchanged. Past it, a rock replaces the fill where its top stands no more than
+`BEYOND_FRAME_BELOW_FILL_M` (2 m) under the fill or above it; elsewhere the fill stays. Over
+the sea the fill holds the water's surface, and of the rock texels past the frame that the
+fill has values for, 0.91 M stand 40 to 100 m under it: the seabed, which stays the open
+sea's. No-data texels stay no data.
+
+Measured on build 502094: 0.43 M texels past the frame turn from fill to rock (the fill falls
+from 13.96% of the box in generator 5's field to 13.20%), 818 texels of the artwork's water
+become dry where a rock stands over the surface, and the four water gates and the node table
+hold (546 of 625 nodes within a metre, against 542; Spire Coast recall 99.37% either way). The
+tolerance leaves 9,234 lone fill texels inside rock past the frame, where the rock dips under
+the fill's coarse cell on a slope. Along y 3048 m the line goes from a median step of 11 levels
+across one row of the relief layer (5.3 in the painted one) to none above the ground's own
+grain.
+
 ### Reading a point
 
 `Field.height_at(x_cm, y_cm, *, surface=..., hint_z_cm=None)` reads bilinear over the four

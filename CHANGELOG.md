@@ -337,6 +337,11 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the straight line across the ground at the south end of the Grass Fields
+  (y 3048 m) is gone. The heightmap cut every rock at the edge of the landscape and filled
+  the rest from the game's coarse height raster; rocks now go on past that edge where they
+  stand at the coarse surface or above it. Re-run `python -m mapgen heightmap` (generator 7);
+  the next render rebuilds its rock caches once.
 - Map renders: the Satellite map's pink-brown barnacle boulders along the beaches wear their
   own barnacle texture and relief instead of flat colour, as the other rocks and the shells
   do. Their colour stays the coral's. The style's version goes up, and the render-only mesh
