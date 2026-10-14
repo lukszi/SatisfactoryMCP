@@ -661,6 +661,22 @@ in `top.cache` (a filled hole takes its nearest drawn pixel's, a boulder over an
 through the camera, colours them over `arches` and any area entry's. The Dune Desert's
 `arches` entry still colours what else the top pass draws there.
 
+**Measured** at 2048 (G1, painted, uncached: the top cache is cut again for its new plane),
+unlit, against the same bake texels, the v10 render's 2048 level before. The top pass draws
+161 desert arches (of the 230, 69 are oversized or off the raster); red grass reads its top
+at 3.33 m.
+
+| Pixels | Bake | Before | ΔE | After | ΔE |
+| --- | --- | --- | --- | --- | --- |
+| Red-grass tops the bake holds (8,279 texels) | #c09971 | #c1926e, 22% red | 1.8 | #be9570, none red | 1.0 |
+| Desert arches, Dune Desert | #a86647 | #bc7d58 | 6.9 | #b16e4d | 2.6 |
+| Desert arches east of x 1,400, elsewhere | #a86647 | #9b8e76 | 10.2 | #b67352 | 4.3 |
+| The other arches | #8e8868 | #8d8973 | 1.5 | #8e8a74 | 1.6 |
+
+On the arches' inner pixels, away from the mesas they cross, the desert arches draw ΔE 2.9
+and 3.6 from the bake, all of it lightness (L 0.61 against 0.58): the altitude lift and the
+look's light, as on the other arches.
+
 ### The Titan trees
 
 73 trunks (`SM_TitanTree_01`, Nanite) and 218 leaf meshes (`SM_TitanTree_Leaves_01` and `_02`)
