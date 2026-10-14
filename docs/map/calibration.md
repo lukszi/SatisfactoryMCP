@@ -111,9 +111,16 @@ reads h 54 and is left out as an outlier.
 #### The transfer
 
 Each target is taken back through the flat-ground pipeline into ground OKLab: the inverse
-shoulder, divided by exposure times gain and by the flat sky-and-sun light, then half the
-altitude lift and the chroma gain undone. For each layer, the median colour of its pure
-texels (at least 0.7 of the weight) is measured on the albedo as it arrived. The step from
+shoulder, divided by exposure times gain and by the flat sky-and-sun light, then the altitude
+lift and the chroma gain undone. For each layer, the median colour of its pure texels (at
+least 0.7 of the weight) is measured on the albedo as it arrived, over the texels where the
+ground shows: no cliff answers the field's height there (`prov` 4 or 5) and no arch or boulder
+stands over it (the field's `top` above its ground); all the pure texels where fewer than
+`min_texels` show. The lift is undone at those texels' median position up the height ramp,
+the lift they are drawn with (`palette/painted/layer_targets.py`, sidecar `ramp_at`); until
+2026-10-14 it was undone at the ramp's middle for every layer, and the median taken over
+texels the map mostly draws rock on ("Crater floor, terraces and coral meshes, checked"
+below). The step from
 that median to the target has three parts: a lightness offset, a chroma scale (clipped to
 0.25 to 4) and a hue turn. Each texel moves by its layers' steps, mixed by their normalised
 weights. Because the transfer measures its own source, the same targets work on the bake
@@ -218,9 +225,10 @@ references were used. A target is a screenshot measured so, or derived by a rule
 | WetSand | the deserts and Savanna | #9b7a5b | derived (rule) | the entry's Sand at L ×0.80, C ×1.15, h −10 ("Wet sand by rule" above) |
 | Gravel | the deserts and Savanna | #8f8373 | screenshot | Somersloop, and the gravel-to-sand ratio in Desert Canyons |
 | Grass | Southern Forest | #53784a | derived (bake) | the area's pure grass texels in the game's baked colour through the camera model; its grass is bluer than any other area's ("The second review" below) |
-| Arches and boulders | Dune Desert | #ba7b56 | derived (bake) | the Dune Desert's arches and rib bones in the game's baked distant view through the camera model ("The second review" below) |
+| Boulders of the top pass | Dune Desert | #ca9164 | derived (bake) | the Dune Desert's boulder tops in the game's baked distant view through the camera model (painted.md section 30, "The Dune Desert's boulders"); #ba7b56, the arches' and rib bones', until the desert arches took their family's colour |
 | Top layer, red jungle family | the up-facing faces of every `_RedJungle` cliff | #ad6351 | derived (bake) | those cliffs' tops in the game's baked distant view through the camera model ("The second review" below) |
 | Crowns, red Kapok (`SM_Kapok_03`) | everywhere, by species | #7c4955 | screenshot | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942); two 1.0 sources agree (ΔE 1.8 and 1.9) (see "Crowns") |
+| Crowns, orange palms (`Orange_palm1`, `Orange_palm2`) | everywhere, by species | #c3cbb6, #bcc5ad | derived (texture) | each species' sprite colour through the camera model: `TX_OrangePalm_Alb_01`, pale sage under the warm sun (light-and-crowns.md section 36, "Foliage colours checked"); they skip the canopy step |
 | Crowns, blue palms | everywhere, by hue | #3d627d | screenshot | [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), high-angle daylight: the blue leaf pixels (hue 190 to 290, chroma at least 0.04) of five crowns pooled, then the method above. The [Rocky Desert area](https://satisfactory.wiki.gg/images/Rocky_Desert_Area.png) crowns agree on hue (242) but are seen from below; the [river split](https://satisfactory.wiki.gg/images/Rocky_Desert_river_split.png) crowns are backlit. A 1.0 shot gives #556b85 (ΔE 4.4); not derivable, as a third of the leaf is midribs and the fronds are sparse |
 | CoralRock layer | Blue Crater, Crater Lakes | #6c7386 | screenshot | [crater ground at noon](https://steamcommunity.com/sharedfiles/filedetails/?id=3372405479) |
 | Shell meshes (the pale plates) | Blue Crater | #747b85 | screenshot | [Blue Crater aerial](https://steamcommunity.com/sharedfiles/filedetails/?id=3579556500), [Blue Crater](https://satisfactory.wiki.gg/images/Blue_Crater.png), the noon crater shot |
@@ -439,9 +447,20 @@ crowns instead (`palette/painted/trees.py` `crown_ops`, applied in `crown_layer`
   that belongs to the tree rather than to the place. `species_targets` (`trees.py`) returns
   every species' sprite mips with each named species moved, every texel, from its own colour
   as drawn onto its target, and `PaintedGround` takes those mips before the scopes are
-  measured, so the hue gates that follow see the moved colour. One is named: the red Kapok
+  measured, so the hue gates that follow see the moved colour. Three are named: the red Kapok
   `SM_Kapok_03`, on #7c4955, 1,324 trees, step -0.035 and ×0.646 (sidecar
-  `species@SM_Kapok_03`).
+  `species@SM_Kapok_03`), and the orange palms (below).
+- **A named species skips the canopy step** (2026-10-14). Its colour is its own, so the canopy
+  scopes do not count its trees, and its mips are moved again, once the global canopy op is
+  measured, onto the colour that op's step carries onto its target at the gate that colour
+  opens (`before_canopy`, fixed-point rounds on the gate): drawn, it lands on its target. The
+  red Kapok's crimson opens no gate and is where it was. The orange palms (`Orange_palm1` and
+  `_2`, 5,621 shrubs, chroma 0.020) opened the canopy gate fully and drew mint, #b9ebd0 and
+  #afe1c6 at flat shade; they now take their leaf texture's camera colour, pale sage, #c3cbb6
+  and #bcc5ad (light-and-crowns.md section 36, "Foliage colours checked"): gates 0.62 and 0.68,
+  steps -0.050 and -0.032, ×0.56 and ×0.63. Dropping their trees from the canopy measure leaves
+  its op as it was (+0.063 L, ×1.54). An area entry's canopy op, where one is given, still
+  reaches a named species there; no entry carries one.
 
 **Why by species.** The red Kapok grows outside the Red Jungle too: 68% of its crowns stand
 there, but also 32% of the Rocky Desert's, 22% of the Red Bamboo Fields' and 19% of the Jungle
@@ -774,10 +793,65 @@ meets the Sand target, so a graded shot can be read where nothing else is.
   1.2 L. The rest comes later in the band, from the detail and the light, in a split not
   measured. So the 9.1 L between the drawn floor and the bake is about 4 of grass against
   bare rock and 5 of drawing. Raising the target to cover the drawing would hide that in
-  one key; it is left as found.
+  one key; it is left as found. Measured and fixed the same day (below, "The floor's own
+  target, where it is drawn").
 - Every other Blue Crater shot found (Steam 3365198348, 3506289898, 3583833668, 3773246231
   and the wiki's `Blue_Crater.png`) is under the area's blue haze or the wiki's cyan grade.
   A daylight shot of the floor from above would show whether the grass reads from height.
+
+**The floor's own target, where it is drawn** (2026-10-14). Over the 1.69 million pixels of
+the v10 render's unlit and lit z7 tiles whose 1 m paint texel is pure CoralRock in the Blue
+Crater, dry, with no rock, arch, boulder, render-only mesh or tree crown over it, the steps
+from the target to the drawn floor, as medians (OKLab L ×100):
+
+| Step | Colour | L | Step |
+| --- | --- | --- | --- |
+| The target | #6c7386 | 55.6 | |
+| Lifted at the floor's own height (ramp position 0.12, the texels' median; p10 0.08, p90 0.33), not 0.5 | #686f82 | 54.1 | -1.5 |
+| Times the ground detail (its ratio's median 0.99, 0.96, 0.96; its mean 0.99) | #666d7f | 53.6 | -0.5 |
+| The unlit tile as drawn | #60697d | 52.2 | -1.4 |
+| The lit tile as drawn | #5b6375 | 49.9 | -2.2 |
+
+- **The 1.4 L before the tiles is the transfer's own measure.** Of the crater's 414,897 pure
+  CoralRock texels, 64% lie under rock or the top pass and 58% under render-only meshes; only
+  18% are open ground. The source median was taken over all of them, and the open ground's
+  bake is darker: built in process (`PaintedGround`, the render's own paint store and field),
+  the ground lifted at its height reads L 52.4 on the open texels against 54.9 on the whole
+  set, 55.9 under rock and 55.1 under meshes. Taking the median over the ground the field
+  shows, no cliff and no arch or boulder over it, closes it: the meshes do not move it
+  (the open texels and those with only meshes over them read the same).
+- **The light's 2.2 L is shade.** Lit over unlit, the floor's luminance has a median of 0.91;
+  on the 54% of the pixels over 0.9 the lit floor reads L 51.7 against 52.2 unlit, and the
+  rest lies in the crater walls' and the coral's shadows. The target was metered on sunlit
+  ground, so the shade stays.
+- **The detail's 0.5 L stays.** The ratio keeps the layers' mean (0.99) and only its median
+  is lower; it is drawn only where the pixel is finer than its limit, so a target set to
+  absorb it would draw the floor lighter at the coarse levels.
+
+So the transfer now measures each layer on the ground that shows and undoes the lift at that
+ground's height. The Blue Crater's open floor, built in process before and after: L 52.4 to
+55.0 before the detail and the light, 0.6 under its target (#697186 against #6c7386); drawn,
+about 54.5 unlit and 52 lit with the crater's shade (estimated from the steps above). No
+target moved.
+
+Every layer's transfer moves with it (sidecar `paint.calibration`, `dL` before and after, the
+ramp position, the texels measured):
+
+| Layer | Texels measured | Ramp position | dL |
+| --- | --- | --- | --- |
+| CoralRock, crater | 25,928 to 12,363 | 0.10 | -0.060 to -0.038 |
+| Cliff, red jungle areas | 17,827 to 5,728 | 0.91 | -0.015 to -0.028 |
+| RedJungle | 65,786 to 43,410 | 0.93 | -0.011 to -0.024 |
+| WetSand | 302,510 to 272,647 | 0.14 | -0.006 to +0.005 |
+| WetSand, deserts | 85,332 to 79,415 | 0.16 | -0.051 to -0.040 |
+| SandPebbles | 41,603 to 30,995 | 0.41 | +0.002 to -0.010 |
+| Puddles | 13,861 to 11,936 | 0.20 | -0.037 to -0.029 |
+| Grass, Southern Forest | 26,361 to 12,787 | 0.28 | -0.019 to -0.012 |
+| Gravel, deserts | 23,596 to 11,703 | 0.27 | +0.001 to +0.008 |
+
+The other nine move by 0.5 L or less. A layer low on the ramp (the beaches' wet sand, the
+crater) is drawn lighter than before and one high on it (the red jungle's plateaus) darker,
+each now on its target where it lies.
 
 **Hot-spring terraces** (`meshes.terrace`, #ccbea8, drawn #c6b9a3).
 
@@ -837,8 +911,10 @@ instance, the class is mostly other meshes, each with its own texture:
   is checked against the game's own view; the ancient pines draw their sprites' colour moved
   by 0.66 to 0.72 of the canopy step, olive-green and lighter than the grass's footage shows.
 - The arches' colour by material covers the desert arches only (`arch_families`, painted.md
-  section 30, "Red-grass tops and the desert arches"); the Dune Desert's `arches` entry
-  still colours its boulders, unmeasured on their own.
+  section 30, "Red-grass tops and the desert arches"). The boulders take theirs by area: the
+  Dune Desert's `arches` entry, measured on its boulders (#ca9164), but the Spire Coast's
+  boulders, terracotta in the bake too (#c88f63), draw grey (ΔE 9.5) until the top pass
+  carries a boulder's material as it carries an arch's.
 - The top layer's mask is the cliff master's, read with the look's normal maps where the game
   reads each mesh's own (painted.md section 30, "Rock textures"). Only the forest top has a
   colour measured from screenshots; the sand and grass tops wear their layers' targets and
@@ -848,13 +924,12 @@ instance, the class is mostly other meshes, each with its own texture:
   master's default and is not drawn; whether it shows in game is unchecked.
 - The red Kapok is crimson wherever it grows, the Rocky Desert and the Red Bamboo Fields
   included, by the Red Jungle's references. Its crowns there were not measured from above.
-- No crown target for the orange palms (`Orange_palm1`, `_2`, chroma 0.020) or the screw palm
-  (`SM_ScrewPalm_01`, 0.017): their texture means are pale grey-green and grey-teal, and the
-  canopy gate moves the orange palms all the way and the screw palm by 0.62, so they draw a
-  pale mint #a7bcac and a blue-grey #768c85. Like the blue palm's, their in-game crowns are
-  likely darker than the mean; no reference has been measured. The orange palms' leaf
-  texture, the pines' pre-1.0 views and the crowns' `darkening` are measured in
-  light-and-crowns.md section 36, "Foliage colours checked".
+- The orange palms (`Orange_palm1`, `_2`) wear their leaf texture's camera colour, pale sage,
+  not a screenshot: no view from above has been found. The screw palm (`SM_ScrewPalm_01`,
+  chroma 0.017) has no target: its texture mean is grey-teal and the canopy gate moves it by
+  0.62, so it draws a blue-grey #768c85. The orange palms' leaf texture, the pines' pre-1.0
+  views and the crowns' `darkening` are measured in light-and-crowns.md section 36, "Foliage
+  colours checked".
 - `AmberTree_01`'s crown is branch cards at opacity 0.18, so it draws as a tan haze tens of
   metres wide over the ground and the palms under it; its look from above is unchecked.
 - Render-only meshes take one colour per class, but for the coral meshes of

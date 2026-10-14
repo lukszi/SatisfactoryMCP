@@ -86,12 +86,13 @@ def display_to_linear(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
     return rgb * np.float32(y0 / max(y, 1e-6))
 
 
-def display_to_ground(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
-    """A display sRGB target back through flat light, exposure, tone and chroma: OKLab."""
+def display_to_ground(palette: PaintedPalette, hex_colour: str, lift_at: float = 0.5) -> FloatGrid:
+    """A display sRGB target back through flat light, exposure, tone and chroma: OKLab, with
+    the altitude lift undone at the height ramp's ``lift_at``, its middle by default."""
     rgb = display_to_linear(palette, hex_colour) / exposure_gain(palette)
     flat = sky_sun_light(palette["sky"], palette["sun"], np.float32(palette["ambient"]))
     lab = oklab(rgb / flat)
-    lab[0] -= np.float32(palette["altitude_lift"] * 0.5)
+    lab[0] -= np.float32(palette["altitude_lift"] * lift_at)
     lab[1:] /= np.float32(palette["chroma_gain"])
     return lab
 

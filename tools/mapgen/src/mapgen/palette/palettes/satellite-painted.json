@@ -514,7 +514,9 @@
    "blue_palm": "#3d627d"
   },
   "species": {
-   "SM_Kapok_03": "#7c4955"
+   "SM_Kapok_03": "#7c4955",
+   "Orange_palm1": "#c3cbb6",
+   "Orange_palm2": "#bcc5ad"
   },
   "areas": [
    {
@@ -534,7 +536,7 @@
      "Area_DuneDesert"
     ],
     "rock": "#ae8271",
-    "arches": "#ba7b56"
+    "arches": "#ca9164"
    },
    {
     "areas": [

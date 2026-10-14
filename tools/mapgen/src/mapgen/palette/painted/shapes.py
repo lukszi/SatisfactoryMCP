@@ -268,6 +268,8 @@ class PaintedSurface(Protocol):
     crown_ops: list[CrownOp]
     rock: list[F32Grid]
     rock_family: Plane | None
+    rock_top_rule: Plane | None
+    top_overrides: list[tuple[float | None, float | None]]
     family_rock: dict[int, list[F32Grid]]
     family_tint: F32Grid
     family_top: F32Grid

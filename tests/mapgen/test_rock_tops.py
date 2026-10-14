@@ -19,7 +19,7 @@ from mapgen.gamedata.rocks.looks import TOP_FAR_SWITCH, top_tile_m
 from mapgen.palette.painted.calibration import display_to_ground, scoped_planes
 from mapgen.palette.painted.rock_look.atlas import KIND_CLIFF, rock_look
 from mapgen.palette.painted.rock_look.reference import LookPixels, look_texels
-from mapgen.palette.painted.rock_look.surface import top_mask
+from mapgen.palette.painted.rock_look.surface import top_mask, top_rules
 from mapgen.palette.painted.surfaces import (
     cliff_layer,
     family_tables,
@@ -47,7 +47,8 @@ def _ground(look=None):
     top[FOREST], has[FOREST] = MOSS, 1.0
     top[SAND], has[SAND] = (0.4, 0.33, 0.25), 1.0
     return SimpleNamespace(
-        rock_family=None, family_rock={}, family_tint=np.ones((n, 3), np.float32),
+        rock_family=None, rock_top_rule=None, top_overrides=[], family_rock={},
+        family_tint=np.ones((n, 3), np.float32),
         family_top=top, family_has_top=has, palette=copy.deepcopy(PAINTED_PALETTE),
         family_top_rgb={}, rock_look=look, arch_rgb=ARCH, cliff_layer=None,
     )  # fmt: skip
@@ -102,6 +103,22 @@ def test_a_flat_top_wears_its_family_s_top_layer_and_a_wall_none():
     half = rock_surface(rock, _scene(_slope(0.62)), _ground(), None, code)[8, 8]
     weight = top_mask(np.float32(0.62), np.float32(1.5), np.float32(1.2))
     np.testing.assert_allclose(half, 0.4 * (1 - weight) + np.float32(MOSS) * weight, rtol=1e-4)
+
+
+def test_a_rock_instance_s_own_top_mask_numbers_hold_over_its_family_s():
+    rock = np.full((16, 16, 3), 0.4, np.float32)
+    ground = _ground()
+    ground.rock_family = np.full((16, 16), FOREST, np.uint8)
+    ground.rock_top_rule = np.zeros((16, 16), np.uint8)
+    ground.rock_top_rule[:, 8:] = 1
+    ground.top_overrides = [(2.0, 3.0)]
+    out = rock_surface(rock, _scene(_slope(0.62)), ground)
+    weight = top_mask(np.float32(0.62), np.float32(1.5), np.float32(1.2))
+    np.testing.assert_allclose(out[8, 4], 0.4 * (1 - weight) + np.float32(MOSS) * weight, rtol=1e-4)
+    np.testing.assert_allclose(out[8, 12], 0.4, atol=1e-6)  # under (2, 3)'s edge at 0.65
+    power, contrast = top_rules(None, np.full(3, FOREST, np.uint8),
+                                (np.array([0, 1, 2], np.uint8), [(2.0, None), (None, 3.0)]))  # fmt: skip
+    assert power.tolist() == [1.5, 2.0, 1.5] and contrast.tolist() == pytest.approx([1.2, 1.2, 3.0])
 
 
 def test_an_arch_over_a_cliff_wears_the_arches_colour_by_its_lift():

@@ -9,6 +9,7 @@ rides under the run's light. docs/map/painted.md section 30, "Rock textures".
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import NamedTuple
 
 import numpy as np
@@ -63,13 +64,26 @@ def read_texels(look: RockLook, px: LookPixels) -> LookTexels:
     return reference.look_texels(look, px)
 
 
-def top_rules(look: RockLook | None, codes: U8Grid) -> tuple[F32Grid, F32Grid]:
-    """Each pixel's top layer mask power and contrast: its family's, else the cliff master's."""
+def top_rules(
+    look: RockLook | None,
+    codes: U8Grid,
+    own: tuple[U8Grid, Sequence[tuple[float | None, float | None]]] | None = None,
+) -> tuple[F32Grid, F32Grid]:
+    """Each pixel's top layer mask power and contrast: its family's, else the cliff master's,
+    then the rock instance's own where ``own`` (the rule plane and its table, entry ``k - 1``
+    for index ``k``) gives one."""
     power = np.full(codes.shape, FALLOFF_POWER, np.float32)
     contrast = np.full(codes.shape, FALLOFF_CONTRAST, np.float32)
     for code, rule in ({} if look is None else look.rules).items():
         hit = codes == code
         power[hit], contrast[hit] = rule.power, rule.contrast
+    index, table = own if own is not None else (None, ())
+    for k, (own_power, own_contrast) in enumerate(table, start=1):
+        hit = index == k
+        if own_power is not None:
+            power[hit] = own_power
+        if own_contrast is not None:
+            contrast[hit] = own_contrast
     return power, contrast
 
 

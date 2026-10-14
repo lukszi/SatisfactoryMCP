@@ -344,6 +344,22 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the Satellite map's ground colours hold their targets where the ground is
+  drawn. Each paint layer's colour is measured on the ground the map shows, not under rocks,
+  and set for the height it lies at, so low ground (the Blue Crater's floor, the beaches' wet
+  sand) is no longer drawn darker than its target, nor high ground (the red jungle's
+  plateaus) lighter. The Blue Crater's floor gains about 2.5 L. The style's version goes up.
+- Map renders: the Satellite map's orange palms, the small shrubs among the Southern Forest's
+  purple trees, are pale sage, their leaves' colour in the game's sun, instead of mint. A tree
+  species with a colour of its own in the palette now keeps that colour: the green canopy's
+  adjustment no longer moves it on. The style's version goes up.
+- Map renders: the Satellite map's red jungle and red-grass cliffs lay their grass and moss
+  tops by each cliff's own material settings, as the game does, instead of their family's
+  alone: about a quarter of those cliffs keep the top off the steeper rims of their shelves.
+  The rock raster cache is rebuilt once (it gains a plane), and the style's version goes up.
+- Map renders: the Satellite map's boulders in the Dune Desert take their own colour from the
+  game's baked distant view, a lighter sand-terracotta, instead of the colour once measured on
+  the desert's arches. The style's version goes up.
 - Map renders: the Satellite map's pink-brown barnacle boulders along the beaches wear their
   own barnacle texture and relief instead of flat colour, as the other rocks and the shells
   do. Their colour stays the coral's. The style's version goes up, and the render-only mesh

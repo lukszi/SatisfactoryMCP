@@ -17,8 +17,11 @@ from mapgen.cache import (
     CACHE_SIDECAR_NAME,
     DIRECT_COVERAGE_NAME,
     DIRECT_FAMILY_NAME,
+    DIRECT_TOP_RULE_NAME,
     DIRECT_Z_NAME,
+    TOP_RULES_KEY,
     cached_family,
+    cached_top_rules,
     raster_cache_stamp,
 )
 from mapgen.colour import sky_sun_light, srgb_to_linear
@@ -44,7 +47,7 @@ from mapgen.palette.painted.surfaces import canopy_over_rock, rock_surface
 from mapgen.palette.painted.trees import sample_titan, titan_over
 from mapgen.palette.styles import PAINTED_DIGEST, PAINTED_PALETTE, painted_style
 from mapgen.terrain.rasters import direct_placements, rasterise_direct_band
-from mapgen.terrain.rasters_banded import reduce_source
+from mapgen.terrain.rasters_banded import fold_band, reduce_source
 from mapgen.terrain.render_meshes import (
     TITAN_LEAVES,
     TITAN_TRUNK,
@@ -309,6 +312,62 @@ def test_the_direct_pass_carries_each_placement_s_family_as_its_source():
     assert family[0, first] == 3 and family[0, second] == 5 and family[0, 0] == 0
 
 
+def test_an_instance_s_own_top_mask_numbers_below_its_family_root_are_its_rule(monkeypatch):
+    root = rockfamily.ROOT_DIR
+    chain = {
+        "/Game/X/CliffFlat_03_RedGrass": _View(parent=root + "Cliff_RedGrass"),
+        "/Game/X/CliffSide_01_RedGrass": _View(parent=root + "Cliff_RedGrass"),
+        "/Game/X/CliffPillar_02_RedGrass": _View(parent="/Game/X/CliffFlat_03_RedGrass"),
+        root + "Cliff_RedGrass": _View(parent=root + "Cliff"),
+        root + "Cliff": _View(),
+    }
+    scalars = {
+        "/Game/X/CliffFlat_03_RedGrass": {"Falloff_Power": 2.0, "Falloff_Contrast": 3.0},
+        "/Game/X/CliffSide_01_RedGrass": {"Falloff_Power": 2.5, "Tiling": 4.0},
+        root + "Cliff_RedGrass": {"Falloff_Power": 9.0},
+    }
+    views = {id(view): name for name, view in chain.items()}
+    monkeypatch.setattr(rockfamily, "open_package", lambda _s, _c, _i, asset: chain.get(asset))
+    monkeypatch.setattr(rockfamily, "scalar_parameters", lambda v: scalars.get(views[id(v)], {}))
+    resolver = rockfamily.FamilyResolver(None, None, None)
+    assert resolver.top_override("/Game/X/CliffFlat_03_RedGrass") == (2.0, 3.0)
+    assert resolver.top_override("/Game/X/CliffPillar_02_RedGrass") == (2.0, 3.0), "inherited"
+    assert resolver.top_override("/Game/X/CliffSide_01_RedGrass") == (2.5, None)
+    assert resolver.top_override(root + "Cliff_RedGrass") == (None, None), "the family's own"
+    red = rockfamily.FAMILIES.index("redgrass")
+    materials = ["/Game/X/CliffFlat_03_RedGrass", "/Game/X/CliffSide_01_RedGrass",
+                 root + "Cliff_RedGrass", "/Game/X/CliffPillar_02_RedGrass"]  # fmt: skip
+    sweep = {
+        "meshes": ["/Game/Rock/A"],
+        "placements": np.zeros((5, 11)),
+        "placement_materials": np.array([0, 1, 2, 3, 0], np.int32),
+        "materials": materials,
+    }
+    codes = np.array([red, red, red, red, rockfamily.FAMILIES.index("desert")], np.uint8)
+    rules, table = rockfamily.placement_top_rules(None, None, None, sweep, codes)
+    assert table == [(2.0, 3.0), (2.5, None)], "in order of their numbers"
+    assert rules.tolist() == [1, 2, 0, 1, 0], "the desert reads none"
+
+
+def test_the_direct_cache_splits_a_source_into_family_and_top_rule(tmp_path):
+    z = np.array([[1.0, 2.0, np.nan]], np.float32)
+    source = np.array([[3 + rockfamily.FAMILY_SLOTS * 2, 5, 0]], np.uint16)
+    planes = fold_band((z, source), 1, 3, 1)
+    assert planes[DIRECT_FAMILY_NAME].tolist() == [[3, 5, 0]]
+    assert planes[DIRECT_TOP_RULE_NAME].tolist() == [[2, 0, 0]]
+    stamp = raster_cache_stamp(8, 1, "test-build")
+    np.zeros((8, 8), np.float32).tofile(tmp_path / DIRECT_Z_NAME)
+    np.zeros((8, 8), np.uint8).tofile(tmp_path / DIRECT_COVERAGE_NAME)
+    np.full((8, 8), 2, np.uint8).tofile(tmp_path / DIRECT_TOP_RULE_NAME)
+    (tmp_path / CACHE_SIDECAR_NAME).write_text(json.dumps(stamp), encoding="utf-8")
+    assert cached_top_rules(tmp_path, stamp) is None, "no table in the sidecar"
+    body = {**stamp, TOP_RULES_KEY: [[2.0, 3.0], [2.5, None]]}
+    (tmp_path / CACHE_SIDECAR_NAME).write_text(json.dumps(body), encoding="utf-8")
+    found = cached_top_rules(tmp_path, stamp)
+    assert found is not None and int(found[0][0, 0]) == 2
+    assert found[1] == [(2.0, 3.0), (2.5, None)]
+
+
 def test_a_sub_sampled_texel_takes_the_family_of_its_highest_sample():
     z = np.array([[1.0, 5.0], [np.nan, 2.0]], np.float32)
     source = np.array([[2, 6], [0, 3]], np.uint16)
@@ -324,7 +383,8 @@ def _rock_ground(flat_top=True):
     top[grass] = (0.1, 0.2, 0.05)
     has[grass] = 1.0 if flat_top else 0.0
     return SimpleNamespace(
-        rock_family=np.full((8, 8), grass, np.uint8), family_rock={}, family_tint=tint,
+        rock_family=np.full((8, 8), grass, np.uint8), rock_top_rule=None, top_overrides=[],
+        family_rock={}, family_tint=tint,
         family_top=top, family_has_top=has, palette={}, family_top_rgb={},
         rock_look=None, arch_rgb=None,
     )  # fmt: skip
