@@ -76,8 +76,29 @@ tile shares its bytes with the render folder: deleting the render folder leaves 
 intact, but editing a tile in place would change both. Renders never do that; a finished
 render's files are only ever read. Only the tiles are linked: the page's files, rebuilt in
 place by `npm run build:share`, are copied, and `index.html` and the manifests are written
-fresh. The scan reads linked tiles like any other file, and an upload sends their contents
-(rsync without `-H` sees plain files).
+fresh. An upload sends linked tiles' contents (rsync without `-H` sees plain files).
+
+**A tar instead of a folder.** `--tar <file>` writes the same layout as one tar, read straight
+from the render folders and the built page, with no export folder in between; `--tar -`
+writes it to stdout (every message then goes to stderr), so it can be piped into an extract
+on the server:
+
+```
+python -m mapgen share-export --tar - | ssh <host> 'tar -C <site folder> -xf -'
+python -m mapgen share-export --tar site.tar --max-z 3      # a file; site.tar.part until done
+```
+
+The scan runs on the page's files and the two manifests before the first byte is written: a
+refused export writes nothing. Then come all tiles, then `assets/` and `vendor/`, and
+`data/maps.json`, `data/site.json` and `index.html` last, so an extract cut short leaves the
+live page on the files it already had. The tar is uncompressed (the tiles are WebP and PNG
+already) and holds only regular files: no links, even where the render's tiles are hard
+links, and no directory entries, so the extract creates missing folders with the server's
+default mode and leaves existing folders alone. Every file is mode 0644, owned by uid and gid
+0 with no names, and carries its source's mtime; the manifests and `index.html` carry the
+newest mtime before them. The same renders and page give the same bytes. Each run sends every
+tile again: there is no "only what is new" mode. `--prune` and `--copy` belong to the folder
+mode; old tile folders on the server are deleted by hand.
 
 ### Nothing private leaves the machine
 
@@ -87,10 +108,11 @@ The site is public, so the export is built from allowlists and checked before it
   `mapgen/share/manifest.py`; the light model keeps only the numbers the shader reads. No
   paths, sidecar fields, timings, job data, freshness notes or full digests. Each finished
   document is checked against the same lists (`validate`).
-- **Images without metadata.** A PNG may hold only pixel and colour chunks, a WebP only its
-  bitstream: a text, EXIF or XMP chunk refuses the copy.
-- **A scan of every file** (`mapgen/share/privacy.py`) before the manifests are written. It
-  refuses a Windows or Unix home path, any Windows path, this checkout's and its data folder's
+- **Images by name only.** Tiles are written by the renderer, which adds no text, EXIF or XMP
+  chunks, and there are close to 200,000 of them, so the scan never opens a PNG or WebP. Their
+  names are fixed by the tile pattern and the build-tagged folders.
+- **A scan of every text file** (`mapgen/share/privacy.py`: HTML, JS, CSS, JSON and text)
+  before the manifests are written. It refuses a Windows or Unix home path, any Windows path, this checkout's and its data folder's
   paths, an email address, a full git or SHA-256 hash, a `file:` URL, this machine's user and
   host names and git's author name and email (`--private` adds more words), a JSON key off the
   allowlist, a dotfile, a link, and any file type besides HTML, JS, CSS, JSON, PNG, WebP and
@@ -133,7 +155,9 @@ drops slow clients. A busy site would add `mod_evasive` or a firewall rule.
 4. Later, export with `--prune` and mirror the deletions in `t/` and `assets/`.
 
 With rsync that is two runs, the second with only `index.html` and `data/`. Any order-keeping
-upload works.
+upload works. The tar keeps that order by itself: `npm run build:share`, then the
+`--tar -` pipe above is the whole update, with no export folder on this machine. Run it
+under `set -o pipefail`, so a refused export or a failed extract fails the command.
 
 ### Checking a deployment
 

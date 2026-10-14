@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mapgen.share.manifest import TreeCopy
-from mapgen.share.privacy import image_problem
 from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
@@ -27,7 +26,9 @@ __all__ = [
     "copy_page",
     "copy_tree",
     "count_tree",
+    "page_files",
     "prune",
+    "tiles",
     "trees_bitmap",
     "write_manifest",
 ]
@@ -56,21 +57,22 @@ class Count:
         self.linked += other.linked
 
 
-def _tiles(tree: TreeCopy, max_z: int) -> Iterator[tuple[int, os.DirEntry[str]]]:
-    """(z, entry) for every tile of levels 0..min(tree depth, max_z), names checked."""
+def tiles(tree: TreeCopy, max_z: int) -> Iterator[tuple[int, os.DirEntry[str]]]:
+    """(z, entry) for every tile of levels 0..min(tree depth, max_z), names checked, by name."""
     for z in range(min(tree.max_z, max_z) + 1):
         level = tree.source / str(z)
         if not level.is_dir():
             continue
-        with os.scandir(level) as entries:
-            for entry in entries:
-                if entry.is_file(follow_symlinks=False) and TILE_NAME.match(entry.name):
-                    yield z, entry
+        with os.scandir(level) as found:
+            entries = sorted(found, key=lambda e: e.name)
+        for entry in entries:
+            if entry.is_file(follow_symlinks=False) and TILE_NAME.match(entry.name):
+                yield z, entry
 
 
 def count_tree(tree: TreeCopy, max_z: int) -> Count:
     count = Count()
-    for _z, entry in _tiles(tree, max_z):
+    for _z, entry in tiles(tree, max_z):
         count.files += 1
         count.bytes += entry.stat().st_size
     return count
@@ -87,11 +89,10 @@ def _link(source: Path, part: Path) -> bool:
 
 
 def copy_tree(tree: TreeCopy, out: Path, max_z: int, link: bool = True) -> Count:
-    """Place one tree's levels in ``out``, linked or copied; each new file's bytes pass
-    ``image_problem`` first."""
+    """Place one tree's levels in ``out``, linked or copied."""
     count = Count()
     made: set[Path] = set()
-    for z, entry in _tiles(tree, max_z):
+    for z, entry in tiles(tree, max_z):
         size = entry.stat().st_size
         count.files += 1
         count.bytes += size
@@ -101,15 +102,11 @@ def copy_tree(tree: TreeCopy, out: Path, max_z: int, link: bool = True) -> Count
             made.add(target.parent)
         if target.is_file() and target.stat().st_size == size:
             continue
-        data = Path(entry.path).read_bytes()
-        problem = image_problem(entry.name, data)
-        if problem:
-            raise ValueError(f"{tree.target}/{z}/{entry.name}: {problem}")
         part = target.with_name(target.name + ".part")
         if link and _link(Path(entry.path), part):
             count.linked += 1
         else:
-            part.write_bytes(data)
+            shutil.copyfile(entry.path, part)
             count.copied += 1
         os.replace(part, target)
     return count
@@ -122,7 +119,7 @@ def trees_bitmap(tree: TreeCopy, max_z: int) -> str:
     """
     depth = min(tree.max_z, max_z)
     bits = bytearray(((4 ** (depth + 1) - 1) // 3 + 7) // 8)
-    for z, entry in _tiles(tree, max_z):
+    for z, entry in tiles(tree, max_z):
         found = TILE_NAME.match(entry.name)
         assert found is not None
         x, y = int(found.group(1)), int(found.group(2))
@@ -132,21 +129,25 @@ def trees_bitmap(tree: TreeCopy, max_z: int) -> str:
     return base64.b64encode(bytes(bits)).decode("ascii")
 
 
-def copy_page(page: Path, out: Path) -> list[str]:
-    """The built page into ``out``: everything but its entry, which is the caller's to swap in
-    last. Returns the files under ``assets/`` the entry refers to."""
+def page_files(page: Path) -> list[tuple[str, Path]]:
+    """(name in the export, file) for the built page's files but its entry, sorted."""
     entry = page / PAGE_ENTRY
     if not entry.is_file():
         raise FileNotFoundError(
             f"{entry} is missing: build the page first with `npm run build:share` in "
             "src/satisfactory_mcp/interfaces/web/frontend/"
         )
-    for path in sorted(page.rglob("*")):
-        rel = path.relative_to(page).as_posix()
-        if path.is_file() and rel != PAGE_ENTRY:
-            (out / rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(path, out / rel)
-    html = entry.read_text(encoding="utf-8")
+    found = ((p.relative_to(page).as_posix(), p) for p in sorted(page.rglob("*")))
+    return [(rel, path) for rel, path in found if path.is_file() and rel != PAGE_ENTRY]
+
+
+def copy_page(page: Path, out: Path) -> list[str]:
+    """The built page into ``out``: everything but its entry, which is the caller's to swap in
+    last. Returns the files under ``assets/`` the entry refers to."""
+    for rel, path in page_files(page):
+        (out / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, out / rel)
+    html = (page / PAGE_ENTRY).read_text(encoding="utf-8")
     return sorted(set(re.findall(r'(?:src|href)="\./(assets/[^"]+)"', html)))
 
 

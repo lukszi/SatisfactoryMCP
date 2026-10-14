@@ -53,7 +53,7 @@ estimate assumes before a job of that kind has run once.
 | `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 28 min for the three layers and 24 min for the default two, from measured stages ([maps_contract.md](../../docs/maps_contract.md) §4.3); the three, cold, took 27.5 min on the CPU and 21 min with `--gpu`, and 19 min with `--gpu` from kept raster caches, on 2026-10-08 (§41, "The whole render, timed") |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
 | `compress-cache` | | the given raster caches, converted in place | 4 s for a 1.3 GB Titan cache; about 2.5 min for a full set (estimate) |
-| `share-export` | | the given folder: the public map-only site | a rerun with nothing new: seconds; the full 10 GB copy: not measured |
+| `share-export` | | the given folder, or one tar (`--tar`): the public map-only site | a rerun with nothing new: seconds; the full 10 GB copy: not measured |
 
 ### heightmap
 

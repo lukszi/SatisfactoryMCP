@@ -7,10 +7,12 @@ drawn apart at its trees, with a sidecar that also carries what must never leave
 from __future__ import annotations
 
 import base64
+import io
 import json
 import os
 import struct
 import sys
+import tarfile
 import zlib
 from pathlib import Path
 
@@ -220,7 +222,7 @@ def test_a_folder_that_is_not_an_export_is_refused(site, capsys):
 
 
 def _png_with_text() -> bytes:
-    body = b"Comment\x00made on a laptop"
+    body = b"Comment\x00/home/someone/x"
     chunk = struct.pack(">I", len(body)) + b"tEXt" + body
     chunk += struct.pack(">I", zlib.crc32(b"tEXt" + body))
     return PNG[:33] + chunk + PNG[33:]
@@ -266,12 +268,11 @@ def test_the_page_must_work_under_a_strict_content_security_policy(site, capsys,
     assert why in capsys.readouterr().out
 
 
-def test_an_image_carrying_metadata_is_never_copied(site, capsys):
+def test_images_are_not_scanned(site):
     tile = site / "data" / "local" / "renders" / "terrain" / "tiles" / "1" / "0_1.png"
     tile.write_bytes(_png_with_text())
-    assert privacy.image_problem("0_1.png", _png_with_text()) == "a tEXt chunk"
-    with pytest.raises(ValueError, match="tEXt"):
-        _export(site)
+    assert _export(site) == 0
+    assert _export_tar(site) == 0
 
 
 def test_a_manifest_key_off_the_allowlist_is_named():
@@ -283,6 +284,83 @@ def test_a_manifest_key_off_the_allowlist_is_named():
     assert manifest.validate(site_doc, manifest.SITE_SCHEMA) == [
         "/layers/../escape: key not on the allowlist"
     ]
+
+
+def _export_tar(site: Path, *extra: str) -> int:
+    argv = ["--tar", str(site / "site.tar"), "--ids", "terrain", "--page", str(site / "page")]
+    return share_export.main([*argv, *extra])
+
+
+def _members(site: Path) -> list[tarfile.TarInfo]:
+    with tarfile.open(site / "site.tar") as tar:
+        return tar.getmembers()
+
+
+def test_the_tar_holds_the_folder_layout_tiles_first_and_the_switch_last(site):
+    assert _export(site) == 0
+    assert _export_tar(site) == 0
+    members = _members(site)
+    names = [m.name for m in members]
+    assert set(names) == _files(site / "out")
+    assert names[-3:] == ["data/maps.json", "data/site.json", "index.html"]
+    first_page = min(i for i, n in enumerate(names) if not n.startswith("t/"))
+    assert all(n.startswith("t/") for n in names[:first_page])
+    assert all(n.startswith(("assets/", "vendor/")) for n in names[first_page:-3])
+    newest = max(m.mtime for m in members[:-3])
+    for m in members:
+        assert m.isreg() and m.mode == 0o644, m.name
+        assert (m.uid, m.gid, m.uname, m.gname) == (0, 0, "", ""), m.name
+    assert {m.mtime for m in members[-3:]} == {newest}, "the switch is as new as its newest file"
+    with tarfile.open(site / "site.tar") as tar:
+        for rel in ("data/site.json", "assets/app-a1.js"):
+            extracted = tar.extractfile(rel)
+            assert extracted is not None and extracted.read() == (site / "out" / rel).read_bytes()
+
+
+def test_hard_linked_sources_are_plain_files_in_the_tar(site):
+    tile = site / "data" / "local" / "renders" / "terrain" / "tiles" / "0" / "0_0.png"
+    os.link(tile, site / "twin.png")
+    assert _export_tar(site) == 0
+    members = _members(site)
+    assert not [m.name for m in members if m.islnk() or m.issym() or m.isdir()]
+    tiles = [m for m in members if m.name.endswith("/tiles/0/0_0.png")]
+    assert len(tiles) == 1 and tiles[0].size == len(PNG)
+
+
+def test_the_tar_is_the_same_bytes_every_run(site):
+    assert _export_tar(site) == 0
+    first = (site / "site.tar").read_bytes()
+    assert _export_tar(site) == 0
+    assert (site / "site.tar").read_bytes() == first
+
+
+def test_the_tar_streams_to_stdout_and_talks_on_stderr(site, capsysbinary):
+    argv = ["--tar", "-", "--ids", "terrain", "--page", str(site / "page")]
+    assert share_export.main(argv) == 0
+    caught = capsysbinary.readouterr()
+    with tarfile.open(fileobj=io.BytesIO(caught.out)) as tar:
+        assert tar.getnames()[-1] == "index.html"
+    assert b"files" in caught.err
+
+
+@pytest.mark.parametrize(
+    ("rel", "content"),
+    [
+        ("assets/app-a1.js", 'var p="/home/someone/repo"'),
+        ("assets/extra.json", '{"cache": "C:\\\\Users\\\\someone\\\\x"}'),
+    ],
+)
+def test_a_refused_tar_writes_nothing(site, capsys, rel, content):
+    (site / "page" / rel).write_text(content, encoding="utf-8")
+    assert _export_tar(site) == 1
+    printed = capsys.readouterr().out
+    assert "NOT exported" in printed and "home path" in printed
+    assert not (site / "site.tar").exists() and not (site / "site.tar.part").exists()
+
+
+def test_the_export_takes_one_destination(site):
+    assert share_export.main([str(site / "out"), "--tar", "-"]) == 1
+    assert share_export.main(["--ids", "terrain"]) == 1
 
 
 def test_the_command_is_reachable_through_the_entry_point(monkeypatch, capsys):

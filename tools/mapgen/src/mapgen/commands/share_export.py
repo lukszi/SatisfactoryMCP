@@ -1,20 +1,26 @@
 """Export the rendered map as a public, map-only static site.
 
-``python -m mapgen share-export <out> [--max-z N] [--parts lit,baked,dense] [--ids a,b]
-[--dry-run] [--prune] [--copy]``. Reads the registry and the layers' sidecars directly, so the server
-need not run. Tiles go to build-tagged folders under ``t/``, the page to ``assets/``; the two
-manifests under ``data/`` and ``index.html`` are written last, and only once every other file
-has passed the privacy scan. docs/map/sharing.md.
+``python -m mapgen share-export (<out> | --tar <file or ->) [--max-z N] [--parts lit,baked,dense]
+[--ids a,b] [--dry-run] [--prune] [--copy]``. Reads the registry and the layers' sidecars
+directly, so the server need not run. Tiles go to build-tagged folders under ``t/``, the page
+to ``assets/``; the two manifests under ``data/`` and ``index.html`` come last, and only once
+every text file has passed the privacy scan. ``--tar`` writes the same layout as one tar
+stream instead of a folder. docs/map/sharing.md.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import itertools
+import os
+import sys
 import time
 from pathlib import Path
+from typing import BinaryIO
 
 from mapgen.common import ROOT, Refusal
-from mapgen.share import files, manifest, privacy
+from mapgen.share import archive, files, manifest, privacy
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.maps import registry
 
@@ -27,7 +33,12 @@ FULL_Z = 7
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="mapgen share-export", description=__doc__)
-    parser.add_argument("out", type=Path, help="the export folder; created, or updated in place")
+    parser.add_argument(
+        "out", type=Path, nargs="?", help="the export folder; created, or updated in place"
+    )
+    parser.add_argument(
+        "--tar", metavar="FILE", help="write a tar to FILE (- for stdout) instead of a folder"
+    )
     parser.add_argument("--max-z", type=int, default=FULL_Z, help="deepest level (default 7)")
     parser.add_argument(
         "--parts", default=",".join(manifest.PARTS), help="lit, baked, dense (default: all)"
@@ -90,15 +101,55 @@ def _documents(plans: list[manifest.LayerPlan], ids: list[str]) -> tuple[JsonObj
     return manifest.maps_document(ids), site
 
 
-def run(args: argparse.Namespace) -> int:
-    started = time.monotonic()
+def _final(
+    plans: list[manifest.LayerPlan], ids: list[str], page: Path, max_z: int
+) -> dict[str, str]:
+    """The manifests and the page's entry, in the order they are written: last of all."""
+    for plan in plans:
+        if plan.sparse is not None:
+            plan.trees = files.trees_bitmap(plan.sparse, max_z)
+    maps, site = _documents(plans, ids)
+    return {
+        "data/maps.json": files.json_text(maps),
+        "data/site.json": files.json_text(site),
+        "index.html": (page / files.PAGE_ENTRY).read_text(encoding="utf-8"),
+    }
+
+
+def _final_problems(final: dict[str, str], roots: list[Path], words: list[str]) -> list[str]:
+    return [
+        *(p for rel in files.MANIFESTS for p in privacy.manifest_problems(rel, final[rel])),
+        *(p for rel, text in final.items() for p in privacy.text_problems(rel, text, roots, words)),
+    ]
+
+
+def _refused(problems: list[str], what: str) -> int:
+    print(f"NOT exported: the {what} holds something a public site must not.")
+    for problem in problems[:50]:
+        print("  " + problem)
+    return 1
+
+
+def _scope(args: argparse.Namespace) -> tuple[list[str], list[manifest.LayerPlan]]:
     parts = {p for p in str(args.parts).split(",") if p}
     if not parts <= set(manifest.PARTS) or not parts:
         raise Refusal(manifest.REFUSED, f"--parts takes {', '.join(manifest.PARTS)}")
+    if (args.out is None) == (args.tar is None) and not args.dry_run:
+        raise Refusal(manifest.REFUSED, "name either an export folder or --tar")
+    if args.tar is not None and (args.prune or args.copy):
+        raise Refusal(manifest.REFUSED, "--prune and --copy are for an export folder")
     ids = [i for i in args.ids.split(",") if i] or manifest.default_ids()
-    plans = [manifest.plan_layer(i, args.max_z, parts) for i in ids]
+    return ids, [manifest.plan_layer(i, args.max_z, parts) for i in ids]
+
+
+def _roots() -> list[Path]:
+    return [ROOT, registry.local_dir().parent, Path.home()]
+
+
+def run(args: argparse.Namespace, stdout: BinaryIO | None = None) -> int:
+    started = time.monotonic()
+    ids, plans = _scope(args)
     trees = _copies(plans)
-    out: Path = args.out.resolve()
     if args.dry_run:
         rows = [(tree.target, files.count_tree(tree, args.max_z)) for tree in trees]
         total = files.Count()
@@ -106,50 +157,87 @@ def run(args: argparse.Namespace) -> int:
             total.add(count)
         _report(rows, total, True)
         return 0
+    if args.tar is not None:
+        return _run_tar(args, ids, plans, trees, stdout, started)
 
+    out: Path = args.out.resolve()
     _check_out(out)
     assets = files.copy_page(args.page, out)
     rows = [(tree.target, files.copy_tree(tree, out, args.max_z, not args.copy)) for tree in trees]
     total = files.Count()
     for _name, count in rows:
         total.add(count)
-    for plan in plans:
-        if plan.sparse is not None:
-            plan.trees = files.trees_bitmap(plan.sparse, args.max_z)
-    maps, site = _documents(plans, ids)
-    final = {
-        "data/maps.json": files.json_text(maps),
-        "data/site.json": files.json_text(site),
-        "index.html": (args.page / files.PAGE_ENTRY).read_text(encoding="utf-8"),
-    }
-    roots = [ROOT, registry.local_dir().parent, Path.home()]
-    words = privacy.private_words(args.private)
+    final = _final(plans, ids, args.page, args.max_z)
+    roots, words = _roots(), privacy.private_words(args.private)
     problems = [
-        *(p for rel in files.MANIFESTS for p in privacy.manifest_problems(rel, final[rel])),
-        *(p for rel, text in final.items() for p in privacy.text_problems(rel, text, roots, words)),
+        *_final_problems(final, roots, words),
         *(p for p in privacy.scan(out, roots, words) if not p.startswith(tuple(final))),
     ]
     if problems:
-        print("NOT exported: the folder holds something a public site must not.")
-        for problem in problems[:50]:
-            print("  " + problem)
-        return 1
+        return _refused(problems, "folder")
     for rel, text in final.items():
         files.write_manifest(out, rel, text)
     _report(rows, total, False)
     if args.prune:
-        folders = _folders(plans)
-        for gone in files.prune(out, folders, set(assets)):
+        for gone in files.prune(out, _folders(plans), set(assets)):
             print(f"pruned {gone}")
+    render = manifest.render_id(sorted(_folders(plans)))
+    print(f"render {render}: {out} passed the privacy scan in {time.monotonic() - started:.0f} s")
+    return 0
+
+
+def _run_tar(
+    args: argparse.Namespace,
+    ids: list[str],
+    plans: list[manifest.LayerPlan],
+    trees: list[manifest.TreeCopy],
+    stdout: BinaryIO | None,
+    started: float,
+) -> int:
+    """The export as a tar: scanned whole before its first byte, tiles first, ``final`` last."""
+    page = files.page_files(args.page)
+    final = _final(plans, ids, args.page, args.max_z)
+    roots, words = _roots(), privacy.private_words(args.private)
+    problems = [
+        *privacy.top_problems(rel.split("/")[0] for rel, _path in page),
+        *(p for rel, path in page for p in privacy.file_problems(rel, path, roots, words)),
+        *_final_problems(final, roots, words),
+    ]
+    if problems:
+        return _refused(problems, "export")
+    members = itertools.chain(
+        (m for tree in trees for m in archive.tile_members(tree, args.max_z)),
+        (archive.Member(rel, path) for rel, path in page),
+        (archive.Member(rel, data=text.encode("utf-8")) for rel, text in final.items()),
+    )
+    if args.tar == "-":
+        assert stdout is not None
+        total = archive.write(stdout, members)
+        stdout.flush()
+        where = "stdout"
+    else:
+        target = Path(args.tar).resolve()
+        part = target.with_name(target.name + ".part")
+        with part.open("wb") as handle:
+            total = archive.write(handle, members)
+        os.replace(part, target)
+        where = str(target)
+    render = manifest.render_id(sorted(_folders(plans)))
     print(
-        f"render {site['render']}: {out} passed the privacy scan in {time.monotonic() - started:.0f} s"
+        f"render {render}: {total.files} files, {total.bytes / 1e9:.2f} GB to {where} "
+        f"in {time.monotonic() - started:.0f} s"
     )
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    try:
-        return run(_parser().parse_args(argv))
-    except Refusal as refusal:
-        print(refusal.message)
-        return refusal.code
+    args = _parser().parse_args(argv)
+    to_stdout = args.tar == "-"
+    # The tar owns stdout; every message goes to stderr.
+    stdout = sys.stdout.buffer if to_stdout else None
+    with contextlib.redirect_stdout(sys.stderr) if to_stdout else contextlib.nullcontext():
+        try:
+            return run(args, stdout)
+        except Refusal as refusal:
+            print(refusal.message)
+            return refusal.code
