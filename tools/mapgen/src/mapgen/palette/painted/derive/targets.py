@@ -1,7 +1,7 @@
 """Display targets derived from the paint store, and the palette that wears them.
 
 ``derive`` lights each rule's albedo by the atmosphere volume its samples stand in and measures
-it through the camera model. ``mapgen calibrate`` keeps the result beside the store; a render
+it through the camera model, a crown rule's under the leaves' light. ``mapgen calibrate`` keeps the result beside the store; a render
 lays it over the keys its palette's ``derived_keys`` names that the derive gate passes.
 docs/map/calibration.md section 31.
 """
@@ -30,6 +30,7 @@ from satisfactory_mcp.core.arrays import BoolMask, F64Grid
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, require_object, to_json_object
 
 __all__ = [
+    "FOLIAGE_KINDS",
     "GLOBAL",
     "MODEL_VERSION",
     "TARGETS_NAME",
@@ -51,7 +52,7 @@ __all__ = [
 
 TARGETS_NAME = "targets.derived.json"
 #: Bumped whenever a rule or the camera model changes what a store derives.
-MODEL_VERSION = 2
+MODEL_VERSION = 3
 GLOBAL = "global"
 #: Samples a light vote counts at most, drawn with a fixed seed.
 MAX_VOTES = 20_000
@@ -59,6 +60,8 @@ _GAINS = ("mColorGainShadows", "mColorGainMidtones", "mColorGainHighlights")
 #: The blocks a calibration key names.
 _BLOCKS = ("layers", "derived", "canopy", "rock", "families", "tops", "meshes", "crowns", "species")
 _UNMODELLED = ("mColorGammaMidtones", "mColorContrastShadows", "mColorSaturationMidtones")
+#: The rule kinds measured as leaves (``camera.foliage_illuminant``).
+FOLIAGE_KINDS = ("species crowns", "canopy crowns")
 #: The calibration fields that say who wears a derived colour, not what is derived.
 _NOT_DERIVED = ("about", "derived_keys", "derived_ungated")
 
@@ -185,7 +188,8 @@ def derive(scene: Scene, cal: CalibrationStyle) -> Derived:
         light = row.light if row.light in lights else next(iter(shares))
         colour = None
         if row.albedo is not None:
-            colour = hex_of_lab(measured_lab(row.albedo, lights[light], gain))
+            leaves = row.kind in FOLIAGE_KINDS
+            colour = hex_of_lab(measured_lab(row.albedo, lights[light], gain, leaves))
         found.append(Target(row.key, colour, light, shares, row, targeted))
     return Derived(gain, band, int(scene.have.sum()), lights, found, notes)
 
@@ -211,6 +215,7 @@ def _target_json(t: Target) -> JsonObject:
         "hex": t.hex,
         "light": t.light,
         "light_shares": dict(t.shares),
+        "foliage": t.rule.kind in FOLIAGE_KINDS,
         "rule": rule.rule or None,
         "albedo_linear": None if rule.albedo is None else [round(float(v), 5) for v in rule.albedo],
         "assets": list(rule.assets),

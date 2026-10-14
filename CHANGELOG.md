@@ -104,6 +104,13 @@ Planned as 0.2.0.
 
 ### Changed
 
+- Map generator: `python -m mapgen calibrate` measures tree crowns under the light leaves get
+  seen from above, mostly the sky in their own crown's shade, instead of flat ground's: the
+  derived crown colours turn bluer at the same lightness (the canopy 13° off its 1.0 target
+  in hue before, 6° now; the red Kapok 28° before, 21° now). Ground colours are unchanged.
+  Re-run `python -m mapgen calibrate`, or let the next render derive.
+- Map renders: the Satellite map's orange palms take that light too, pale grey-mint instead of
+  pale sage, a small step (about 2 ΔE). The style's version goes up.
 - Map renders: the Satellite map's tree crowns and the Titan canopy read more three-dimensional
   again: each crown is shaded by its own shape as well as its leaves, sunward lobes lighter and
   the far sides and dips between crowns darker, set by the style's `crowns.relief`. The
