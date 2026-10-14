@@ -15,7 +15,7 @@ from typing import NamedTuple
 
 from mapgen.gamedata.ground.landscape_albedo import decode_texture
 from mapgen.gamedata.install import GameReader, open_package
-from mapgen.gamedata.materials import material_parent, scalar_parameters
+from mapgen.gamedata.materials import material_parent, scalar_parameters, switch_parameters
 from mapgen.gamedata.rocks.families import FAMILIES, FAMILY_ROOTS, MAX_CHAIN, ROOT_DIR
 from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.iostore import IoStore
@@ -40,10 +40,12 @@ __all__ = [
     "SHELL_FADE",
     "SHELL_TILE_M",
     "SHELL_UV_M",
+    "TOP_FAR_SWITCH",
     "TOP_FAR_TILING",
     "RockTextures",
     "TopRule",
     "read_rock_textures",
+    "top_tile_m",
 ]
 
 #: The body's albedo, normal and detail normal, the anti-tiling cells, and the arches' rock.
@@ -97,6 +99,9 @@ BARNACLE_TILE_M = BARNACLE_CUT[2] * BARNACLE_UV_M
 FALLOFF_POWER = 1.5
 FALLOFF_CONTRAST = 1.2
 TOP_FAR_TILING = 0.02
+#: The static switch that reads the top at ``TopLayer Tiling Far``; a family without it
+#: reads its top at ``TopLayer Tiling``, the near repeat.
+TOP_FAR_SWITCH = "Use Far Albedo"
 
 #: Decoded at most this wide: the full-size sheet reads a 20 m tile at 23 texels a pixel.
 _MAX_PX = 1024
@@ -145,10 +150,20 @@ def read_rock_textures(
     return RockTextures(textures, tops, sources)
 
 
+def top_tile_m(scalars: Mapping[str, float], switches: Mapping[str, bool]) -> float:
+    """A family's top layer tile in metres: the far repeat where ``TOP_FAR_SWITCH`` is on,
+    else the near ``TopLayer Tiling`` (the far one when the chain sets none)."""
+    far = scalars.get("TopLayer Tiling Far", TOP_FAR_TILING)
+    tiling = far if switches.get(TOP_FAR_SWITCH, False) else scalars.get("TopLayer Tiling", far)
+    return 1.0 / tiling
+
+
 def _top_rule(game: GameReader, root: str, texture: str) -> TopRule:
     """A family root's top layer numbers: the nearest override up its chain, else the
-    master's own."""
+    master's own. The repeat is the far one where the chain switches ``TOP_FAR_SWITCH`` on,
+    else the near one."""
     found: dict[str, float] = {}
+    switches: dict[str, bool] = {}
     current: str | None = root
     for _ in range(MAX_CHAIN):
         view = (
@@ -158,11 +173,12 @@ def _top_rule(game: GameReader, root: str, texture: str) -> TopRule:
             break
         for name, value in scalar_parameters(view).items():
             found.setdefault(name, value)
+        for name, on in switch_parameters(view).items():
+            switches.setdefault(name, on)
         current = material_parent(view)
-    tiling = found.get("TopLayer Tiling Far", TOP_FAR_TILING)
     return TopRule(
         texture,
-        1.0 / tiling,
+        top_tile_m(found, switches),
         found.get("Falloff_Power", FALLOFF_POWER),
         found.get("Falloff_Contrast", FALLOFF_CONTRAST),
     )

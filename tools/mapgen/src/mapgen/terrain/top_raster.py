@@ -11,11 +11,14 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import numpy as np
+from numpy.typing import NDArray
+from scipy import ndimage
 
 from mapgen.cache import (
     ARCH_COVERAGE_NAME,
     ARCH_UNDER_NAME,
     DIRECT_COVERAGE_NAME,
+    DIRECT_FAMILY_NAME,
     DIRECT_Z_NAME,
     TOP_SOLID_COVERAGE_NAME,
     TOP_SOLID_Z_NAME,
@@ -30,7 +33,7 @@ from mapgen.terrain.rasters import (
     draw_up,
     placement_world,
 )
-from mapgen.terrain.rasters_banded import BandPlanes, reduce_direct
+from mapgen.terrain.rasters_banded import BandPlanes, reduce_direct, reduce_source
 from satisfactory_mcp.core.arrays import F32Grid
 
 __all__ = [
@@ -53,20 +56,22 @@ _PIECE_GAP_M = 2 * FILL_HALO_M
 class TopBand(NamedTuple):
     """One band of the top raster on its sub-sampled grid, max-Z in cm, NaN where none.
 
-    ``top`` is the arches (filled) and the boulders, ``solid`` the boulders alone, and
-    ``under`` the arches' underside.
+    ``top`` is the arches (filled) and the boulders, ``solid`` the boulders alone,
+    ``under`` the arches' underside, and ``family`` the winning arch's family code where an
+    arch is the top (``top_items``' ``families``), 0 elsewhere.
     """
 
     top: F32Grid
     solid: F32Grid
     under: F32Grid
+    family: NDArray[np.integer]
 
 
 def arch_rasters(
     items: TopItems, origin: tuple[float, float, float], rows: int, cols: int, row0: int = 0
-) -> tuple[F32Grid, F32Grid]:
+) -> tuple[F32Grid, F32Grid, NDArray[np.integer]]:
     """The arches' top and underside over ``rows`` from ``row0`` of the grid whose first
-    texel is ``origin`` (x, y, step in cm), NaN where none.
+    texel is ``origin`` (x, y, step in cm), NaN where none, and the top's source id.
 
     The top is ``add_placements``' raster of the arches. The underside is the highest arch
     surface ``SAME_SURFACE_CM`` or more below it: under a deck that crosses another, its own
@@ -79,7 +84,7 @@ def arch_rasters(
     y_lo, y_hi = y0_cm + row0 * step_cm, y0_cm + (row0 + rows) * step_cm
     placed = list(band_placements(items.arches, items.shapes, y_lo, y_hi))
     draw_up(high, placed, items.shapes)
-    top = high.result()[0]
+    top, source, _density = high.result()
     ceiling = np.where(np.isfinite(top), top - np.float32(SAME_SURFACE_CM), -np.inf)
     below = max_z_raster(
         cols, rows, x0_cm, y0_cm, step_cm, sample=0.5, row0=row0, ceiling=ceiling.astype(np.float32)
@@ -90,7 +95,8 @@ def arch_rasters(
         low.add_indexed(flipped, tris, item.source, item.faces.up)
         below.add_indexed(world, tris, item.source, item.faces.up)
     under = below.result()[0]
-    return top, np.where(np.isfinite(under), under, -low.result()[0]).astype(np.float32)
+    under = np.where(np.isfinite(under), under, -low.result()[0]).astype(np.float32)
+    return top, under, source
 
 
 def _boulders(
@@ -108,13 +114,23 @@ def _boulders(
     return raster.result()[0]
 
 
-def _filled(top: F32Grid, under: F32Grid, spacing_m: float) -> tuple[F32Grid, F32Grid]:
-    """The fill run on each column piece that holds an arch; the same as on the whole band."""
-    top, under = top.copy(), under.copy()
+def _filled(
+    top: F32Grid, under: F32Grid, source: NDArray[np.integer], spacing_m: float
+) -> tuple[F32Grid, F32Grid, NDArray[np.integer]]:
+    """The fill run on each column piece that holds an arch; the same as on the whole band.
+    A filled pixel takes the source of the nearest pixel the arches drew."""
+    top, under, source = top.copy(), under.copy(), source.copy()
     for c0, c1 in column_pieces(np.isfinite(top), int(np.ceil(_PIECE_GAP_M / spacing_m))):
+        drawn = np.isfinite(top[:, c0:c1])
         got = fill_arch_holes(top[:, c0:c1], under[:, c0:c1], spacing_m)
         top[:, c0:c1], under[:, c0:c1] = got.top, got.under
-    return top, under
+        if got.filled.any() and drawn.any():
+            piece = source[:, c0:c1]
+            nearest = ndimage.distance_transform_edt(
+                ~drawn, return_distances=False, return_indices=True
+            )
+            piece[got.filled] = piece[nearest[0], nearest[1]][got.filled]
+    return top, under, source
 
 
 def rasterise_top_band(
@@ -135,13 +151,16 @@ def rasterise_top_band(
     spacing_m = step / 100.0
     halo = int(np.ceil(FILL_HALO_M / spacing_m))
     sub_rows, sub_cols = rows * subsamples, cols * subsamples
-    top, under = arch_rasters(
+    top, under, source = arch_rasters(
         items, (x0_cm, y0_cm, step), sub_rows + 2 * halo, sub_cols, row0=-halo
     )
-    top, under = _filled(top, under, spacing_m)
-    top, under = top[halo : halo + sub_rows], under[halo : halo + sub_rows]
+    top, under, source = _filled(top, under, source, spacing_m)
+    cut = slice(halo, halo + sub_rows)
+    top, under, source = top[cut], under[cut], source[cut]
     solid = _boulders(items, x0_cm, y0_cm, step, sub_rows, sub_cols)
-    return TopBand(np.fmax(top, solid), solid, under)
+    arch_wins = np.isfinite(top) & ~(solid > top)
+    family = np.where(arch_wins, source, 0).astype(np.uint16)
+    return TopBand(np.fmax(top, solid), solid, under, family)
 
 
 def rasterise_top_planes(
@@ -170,4 +189,5 @@ def top_band_planes(band: TopBand, rows: int, cols: int, subsamples: int) -> Ban
         TOP_SOLID_COVERAGE_NAME: solid_cov,
         ARCH_UNDER_NAME: under_z,
         ARCH_COVERAGE_NAME: under_cov,
+        DIRECT_FAMILY_NAME: reduce_source(band.top, band.family, rows, cols, subsamples),
     }

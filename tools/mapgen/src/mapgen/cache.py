@@ -55,12 +55,13 @@ TOP_PLANE_NAMES = (
     TOP_SOLID_COVERAGE_NAME,
     ARCH_UNDER_NAME,
     ARCH_COVERAGE_NAME,
+    DIRECT_FAMILY_NAME,
 )
 
 #: The version of the planes the direct and top caches hold beyond max-Z and coverage, bumped
 #: when that set changes. Old caches lack it in their stamp, so they are rebuilt rather than
 #: read without the planes the light needs.
-RASTER_SCHEMA = 2
+RASTER_SCHEMA = 3
 
 MESH_CACHE_DIR_NAME = "meshes.cache"
 MESH_Z_NAME = "meshes.z.f32"
@@ -145,7 +146,8 @@ class DirectPlanes(NamedTuple):
 
 class TopPlanes(NamedTuple):
     """The arch-and-boulder overlay: its max-Z, its coverage, and the samples per texel; the
-    boulders alone and the arches' underside and coverage where the cache has them."""
+    boulders alone, the arches' underside and coverage, and the top arch's family
+    (``gamedata.rocks.families.ARCH_FAMILY_ROOTS``) where the cache has them."""
 
     z: Plane
     coverage: Plane
@@ -154,6 +156,7 @@ class TopPlanes(NamedTuple):
     solid_coverage: Plane | None = None
     arch_under: Plane | None = None
     arch_coverage: Plane | None = None
+    family: Plane | None = None
 
 
 class MeshPlanes(NamedTuple):
@@ -417,8 +420,8 @@ def cached_top(directory: Path, stamp: DirectStamp, subsamples: int) -> TopPlane
     found = _planes(directory, stamp, TOP_PLANE_NAMES)
     if found is None:
         return None
-    z, coverage, solid_z, solid_coverage, under, arches = found
-    return TopPlanes(z, coverage, subsamples, solid_z, solid_coverage, under, arches)
+    z, coverage, solid_z, solid_coverage, under, arches, family = found
+    return TopPlanes(z, coverage, subsamples, solid_z, solid_coverage, under, arches, family)
 
 
 def cached_meshes(directory: Path, stamp: MeshStamp) -> tuple[Plane, Plane] | None:

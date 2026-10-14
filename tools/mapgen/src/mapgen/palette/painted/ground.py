@@ -73,6 +73,7 @@ from mapgen.palette.painted.shapes import (
 )
 from mapgen.palette.painted.surfaces import (
     family_cells,
+    family_code,
     family_tables,
     family_targets,
     layer_tops,
@@ -192,6 +193,10 @@ class PaintedGround:
             if arches is None
             else scoped_planes(self._target(arches), self._area_targets(lambda e: e.get("arches")))
         )
+        self.arch_family_rgb: dict[int, FloatGrid] = {
+            family_code(name, "arch_families"): self._target(hex_colour)
+            for name, hex_colour in palette["calibration"].get("arch_families", {}).items()
+        }
         self._trees(paint_dir, sprites)
         self.rock_family: Plane | None = None
         self.family_rock: dict[int, list[FloatGrid]] = {}

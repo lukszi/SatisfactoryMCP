@@ -19,6 +19,7 @@ from mapgen.gamedata.placements import (
     OVERSIZE_CM,
     rotation_matrix,
 )
+from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.gamedata.vegetation.trees import is_tree
 from mapgen.gamedata.water.falls import read_fall
 from mapgen.terrain.maxz.faces import Faces, band_faces
@@ -120,6 +121,7 @@ class TopMeta(TypedDict):
     foliage_instances: int
     foliage_sources: dict[str, str]
     meshes_skipped: list[str]
+    arch_families: dict[str, int]
 
 
 # --------------------------------------------------------------------------------------
@@ -378,7 +380,12 @@ def band_placements(
 
 
 def top_items(
-    store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep, geometry: Geometry
+    store: IoStore,
+    scripts: ScriptObjects,
+    index: AssetIndex,
+    sweep: Sweep,
+    geometry: Geometry,
+    families: NDArray[np.integer] | None = None,
 ) -> tuple[TopItems, TopMeta]:
     """The arches and foliage boulders ``top.i16.z`` carries, at their finest geometry.
 
@@ -387,7 +394,8 @@ def top_items(
     ``OVERSIZE_CM`` or wholly off the raster is dropped, as ``direct_placements`` drops a
     rock: the distant scenery arches. Boulders are foliage instances with their own 4x4
     matrices. Both fall back to the collision trimesh the field rasterised when no finer
-    source decodes.
+    source decodes. ``families``, one code per placement row, is each arch's raster source
+    id (0 for none), as ``direct_placements`` carries a rock's.
     """
     meshes, owners = sweep["meshes"], sweep["owners"]
     arch_ids = {i for i, m in enumerate(meshes) if ARCH_MARK in m.rsplit("/", 1)[-1]}
@@ -406,7 +414,7 @@ def top_items(
     arches: list[PreparedPlacement] = []
     skipped: set[str] = set()
     dropped = {"oversize": 0, "off_raster": 0}
-    for row in sweep["placements"]:
+    for i, row in enumerate(sweep["placements"]):
         mesh_id = int(row[0])
         if mesh_id not in arch_ids or owners[int(row[1])] in EXCLUDED_OWNERS:
             continue
@@ -436,6 +444,7 @@ def top_items(
                 0,
                 float(world[:, 1].min()),
                 float(world[:, 1].max()),
+                0 if families is None else int(families[i]),
             )
         )
     boulders: dict[str, InstanceSpans] = {}
@@ -452,4 +461,9 @@ def top_items(
         "foliage_instances": int(sum(len(group.mats) for group in boulders.values())),
         "foliage_sources": finest["sources"],
         "meshes_skipped": sorted(skipped),
+        "arch_families": {
+            FAMILIES[code]: int(n)
+            for code, n in enumerate(np.bincount([a.family or 0 for a in arches], minlength=1))
+            if code and n
+        },
     }

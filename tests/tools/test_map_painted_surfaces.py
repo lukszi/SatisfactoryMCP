@@ -249,6 +249,22 @@ def test_desert_rock_roots_the_desert_family_and_reads_no_cliff_colour(monkeypat
     assert not any("DesertRock" in package for package in opened)
 
 
+def test_the_desert_arch_material_roots_the_desert_family_and_the_grey_arches_none(monkeypatch):
+    base = "/Game/FactoryGame/World/Environment/Rock/Arc/Material/"
+    chain = {
+        base + "MI_Arc_Desert_01": _View(parent=base + "MM_Arc_Emissive"),
+        base + "MI_Arc_bare_01": _View(parent=base + "MM_Arc_01"),
+        base + "MM_Arc_Emissive": _View(),
+        base + "MM_Arc_01": _View(),
+    }
+    monkeypatch.setattr(rockfamily, "open_package", lambda _s, _c, _i, asset: chain.get(asset))
+    arches = rockfamily.FamilyResolver(None, None, None, roots=rockfamily.ARCH_FAMILY_ROOTS)
+    assert arches.family_of(base + "MI_Arc_Desert_01") == rockfamily.FAMILIES.index("desert")
+    assert arches.family_of(base + "MI_Arc_bare_01") == 0
+    cliffs = rockfamily.FamilyResolver(None, None, None)
+    assert cliffs.family_of(base + "MI_Arc_Desert_01") == 0, "a cliff's roots know no arch"
+
+
 def test_an_override_wins_over_the_mesh_s_own_material(monkeypatch):
     monkeypatch.setattr(
         rockfamily.FamilyResolver, "mesh_material", lambda *a: rockfamily.ROOT_DIR + "Cliff_Sand"

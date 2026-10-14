@@ -9,6 +9,7 @@ docs/map/calibration.md section 31 have the measurements.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TypedDict
 
 import numpy as np
@@ -22,6 +23,7 @@ from satisfactory_mcp.core.gameassets.iostore import IoStore
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, ScriptObjects
 
 __all__ = [
+    "ARCH_FAMILY_ROOTS",
     "FAMILIES",
     "FAMILY_ROOTS",
     "MAX_CHAIN",
@@ -59,6 +61,10 @@ FAMILY_ROOTS = {
     "Cliff_RedJungle": "redjungle",
     "MI_DesertRock": "desert",
 }
+#: The arch material instances that wear a family's colour, by leaf name: the desert arches'
+#: ``MI_Arc_Desert_01`` (``MM_Arc_Emissive``, ``BaseColor`` 1.0, 0.41, 0.33) is terracotta
+#: wherever it stands, where the arch masters' other instances are grey.
+ARCH_FAMILY_ROOTS = {"MI_Arc_Desert_01": "desert"}
 #: Families with no ``Color Tint`` or top layer to read: the palette's target colours them.
 TARGET_ONLY = frozenset({"desert"})
 ROOT_DIR = "/Game/FactoryGame/World/Environment/Rock/Cliff/Material/"
@@ -90,8 +96,9 @@ class FamilyResolver:
         index: AssetIndex,
         by_mesh: dict[str, str | None] | None = None,
         by_material: dict[str, int] | None = None,
+        roots: Mapping[str, str] = FAMILY_ROOTS,
     ) -> None:
-        self.store, self.scripts, self.index = store, scripts, index
+        self.store, self.scripts, self.index, self.roots = store, scripts, index, roots
         self.by_mesh: dict[str, str | None] = {} if by_mesh is None else by_mesh
         self.by_material: dict[str, int] = {} if by_material is None else by_material
 
@@ -104,8 +111,8 @@ class FamilyResolver:
         code, current = 0, material
         for _ in range(MAX_CHAIN):
             leaf = current.rsplit("/", 1)[-1]
-            if leaf in FAMILY_ROOTS:
-                code = FAMILIES.index(FAMILY_ROOTS[leaf])
+            if leaf in self.roots:
+                code = FAMILIES.index(self.roots[leaf])
                 break
             view = open_package(self.store, self.scripts, self.index, current)
             parent = material_parent(view) if view is not None else None
@@ -144,15 +151,23 @@ def worn_family(
 
 
 def placement_families(
-    store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep
+    store: IoStore,
+    scripts: ScriptObjects,
+    index: AssetIndex,
+    sweep: Sweep,
+    roots: Mapping[str, str] = FAMILY_ROOTS,
+    meshes_only: frozenset[int] | None = None,
 ) -> U8Grid:
-    """One family code per row of ``sweep["placements"]``."""
+    """One family code per row of ``sweep["placements"]``, by ``roots``; with
+    ``meshes_only``, rows of other mesh ids keep 0 unread."""
     meshes, rows = sweep["meshes"], sweep["placements"]
-    resolver = FamilyResolver(store, scripts, index)
+    resolver = FamilyResolver(store, scripts, index, roots=roots)
     codes = np.zeros(len(rows), np.uint8)
     for i, row in enumerate(rows):
-        mesh = meshes[int(row[PLACEMENT_MESH])]
-        codes[i] = resolver.worn_family(mesh, placement_material(sweep, i))
+        mesh_id = int(row[PLACEMENT_MESH])
+        if meshes_only is not None and mesh_id not in meshes_only:
+            continue
+        codes[i] = resolver.worn_family(meshes[mesh_id], placement_material(sweep, i))
     return codes
 
 

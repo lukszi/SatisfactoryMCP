@@ -287,14 +287,21 @@ def _arch_rock(
     sample_rock: Sampler | None = None,
 ) -> FloatGrid:
     """The arches and boulders: their own colour, by area where an area entry gives one, where
-    the palette has it, else the area's rock, in the arches' rock texture where the run has the
-    look."""
+    the palette has it, else the area's rock; an arch whose material wears a family's colour
+    (``scene["top_family"]``) in that colour; in the arches' rock texture where the run has
+    the look."""
     own = ground.arch_rgb
     rock = (
         area_rock
         if own is None
         else np.broadcast_to(sampled_rgb(own, sample_rock), area_rock.shape)
     )
+    family = scene.get("top_family")
+    if family is not None:
+        for code, rgb in ground.arch_family_rgb.items():
+            hit = (family == code)[..., None]
+            if hit.any():
+                rock = np.where(hit, rgb, rock)
     look = ground.rock_look
     if look is None:
         return rock

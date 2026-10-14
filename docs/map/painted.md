@@ -433,7 +433,7 @@ the materials' parameters.
 | Desert rock (family 8) | `TX_DesertRock_Rough_01_Alb`, 17.15 m: `DesertRock_WA` repeats it 6 times a UV0 unit, and the up faces of `SM_DesertRock_05`, most of the desert seen from above, span 102.9 m a unit (below) | `TX_DesertRock_Rough_01_normal`, the same tile, at its own strength | rotated cells, for the mesh's UVs |
 | Shells (the render-only `*Shell*` meshes) | a 10 m square cut from the first island of `TX_SmallShell_BC`, faded into a tile (below) | the same cut of `TX_SmallShell_N`, and `SeaRock_Detail_Nor` at 1.40 m (`DetailNormal_UV` 22.8) laid on it | rotated cells, for the mesh's UVs |
 | Barnacles (the render-only `*Barnacle*` meshes) | a 1.65 m square cut from `TX_Barnacle_01_Alb`, faded into a tile (below) | the same cut of `TX_Barnacle_01_Nor` | rotated cells, for the mesh's UVs |
-| A family's top layer | its root's top texture (section 30, "Rock surfaces"): forest `TX_Forest_Far_01_Alb` and red grass `TX_GrassRed_01_Alb` at 50 m, the cliff master's `TopLayer Tiling Far` 0.02; grass `TX_Grass_Far_01_Alb` at 83.3 m, `Cliff_Grass`'s own 0.012; sand `TX_Sand_BC` at 50 m | none of its own | none |
+| A family's top layer | its root's top texture (section 30, "Rock surfaces"): forest `TX_Forest_Far_01_Alb` at 50 m, the cliff master's `TopLayer Tiling Far` 0.02; grass `TX_Grass_Far_01_Alb` at 83.3 m, `Cliff_Grass`'s own 0.012; sand `TX_Sand_BC` at 50 m; red grass `TX_GrassRed_01_Alb` at 3.33 m, its near `TopLayer Tiling` 0.3, as its root does not switch the far albedo on ("Red-grass tops and the desert arches" below) | none of its own | none |
 
 The **rotated cells** are the landscape's anti-tiling: `Cell_Bombing_Noise_basecolor` at 100 m
 (129 cells, about 8.8 m each). The shader reads a texture a second time in each cell, offset by
@@ -559,7 +559,9 @@ chroma and hue kept. It used to take the area's rock. Rocks of no family keep th
 in the cliff texture. An area entry can give its arches a colour of its own,
 `calibration.areas[].arches`, blended in by the entry's area weight as the other area targets
 are: the Dune Desert's arches and rib bones are terracotta in the baked view, #ba7b56, which
-the grey had replaced (section 31, "The second review").
+the grey had replaced (section 31, "The second review"). An arch whose material wears a
+family's colour takes `calibration.arch_families` over both: the desert arches, wherever they
+stand ("Red-grass tops and the desert arches" below).
 
 **On the GPU.** `reference.look_texels` reads the pixels a band's rock covers, flat;
 `rock_look/gpu.py` with the `look_texels` kernel of `render/gpu/cells.cu` does the same on the
@@ -605,6 +607,76 @@ cells' borders leaves. Its median holds, #c98b65 against #cb8c66 at the mesa, #c
 standard deviation of 1.8 levels to 8.5. The cliffs move by the cells' new reading (the
 noise's terms bilinear where its colour was read nearest, float32 positions), and the ground
 by the cells' scale (below, "The layers' own textures"), neither a change of look.
+
+### Red-grass tops and the desert arches (2026-10-14)
+
+Two rock colours the second review left open (calibration.md section 31, "Known limits"),
+each settled on the game's own material and its baked distant view: the mesh HLOD bake
+rasterised top-down at 1 m (calibration.md section 31, "Rock from the cliff material") through the
+camera model, against the v10 render's unlit z5 tiles (0.92 m), in OKLab. The bake is
+flat-lit albedo, so it is compared with unlit tiles only.
+
+**The red-grass tops.** The map drew the cliff tops of the red-grass family (`Cliff_RedGrass`,
+115 placements: 84 in the Rocky Desert, 29 in the Savanna, 2 in the crater) as a red-speckled
+carpet, where the review read grey cliff body in the bake.
+
+- *Where the bake is grey, it does not hold the cliff.* Of the 92 placements whose tops
+  cover 200 or more up-facing bake texels, 76 show the top on 90% of them or more and 6 on under
+  10%. At the grey ones (`CliffPillar_02` at scale 3.17 at (-1579, -1939), (-1634, -1895),
+  (-1483, -1896), (-1977, -1534) and (-1895, -1505), `CliffPillar_07` at 3.0 at (-1678, -1403)) the bake's
+  surface lies 12 to 63 m under the drawn rock top: those cliffs have no HLOD proxy, and the
+  grey is the plain cliffs below them. Where the bake's surface is the cliff's (within 1 m),
+  it is the top.
+- *The top's colour holds.* There, the bake reads #c09971 (L 0.710, C 0.072, h 66) and the
+  map's median #bf9771 to #bd9570, ΔE 0.4 to 1.2 over four windows.
+- *Its grain did not.* The bake's top is flat (L standard deviation 0.006 to 0.013, no
+  pixel red), the map's speckled (0.033 to 0.046, 12 to 30% of the pixels red, OKLab C over
+  0.09 at a hue under 50). The look laid `TX_GrassRed_01_Alb`, red flowers on tan, at the
+  master's far repeat, 50 m, which spread each flower over metres. The family's root does not
+  switch `Use Far Albedo` on (`Cliff_Forest`, `_Grass` and `_Sand` do; read from each
+  instance's `StaticParametersRuntime` by `gamedata/materials.py` `switch_parameters`), so it
+  has no far texture and reads its albedo at its near repeat, `TopLayer Tiling` 0.3, 3.33 m
+  (`gamedata/rocks/looks.py` `top_tile_m`). At map scales the mips average that to the
+  texture's mean, as the bake has it; at full size a flower is its own size.
+
+**The desert arches.** The arches between the desert mesas, east of x 1,400, drew grey:
+they stand in the Spire Coast's area (and in the Rocky Desert's, the Desert Canyons' and no
+area's), which the Dune Desert's `arches` entry does not reach. Their colour is their
+material's: the 230 arch placements that wear `MI_Arc_Desert_01` (`MM_Arc_Emissive`, its
+`BaseColor` vector 1.0, 0.41, 0.33) are terracotta wherever they stand, and the arches'
+other instances (`MI_Arc_bare_01`, `_Grass_01`, `_Forest_01`) grey. Over the bake texels each
+arch top holds (within 1.5 m of the drawn top), by the nearest arch placement's material:
+
+| Arches | Texels | Bake | Map before | ΔE |
+| --- | --- | --- | --- | --- |
+| `MI_Arc_Desert_01`, Dune Desert | 1,122 | #a86647 | #bd7e59 | 7.3 |
+| `MI_Arc_Desert_01`, east of x 1,400, elsewhere | 456 | #a86647 | #969079 | 10.8 |
+| `MI_Arc_Desert_01`, west of x 1,400 | 60 | #a86647 | #978f77 | 10.5 |
+| the other arch instances | 5,875 | #8e8868 | #8d8974 | 1.6 |
+
+So the arches carry a family as the cliffs do. `gamedata/rocks/families.py`
+`ARCH_FAMILY_ROOTS` roots `MI_Arc_Desert_01` in the desert family; the top pass gives each
+arch its family as its raster source id and keeps the winning arch's as `direct.family.u8`
+in `top.cache` (a filled hole takes its nearest drawn pixel's, a boulder over an arch none;
+`RASTER_SCHEMA` 3), and `calibration.arch_families.desert`, #a86647, the bake's median
+through the camera, colours them over `arches` and any area entry's. The Dune Desert's
+`arches` entry still colours what else the top pass draws there.
+
+**Measured** at 2048 (G1, painted, uncached: the top cache is cut again for its new plane),
+unlit, against the same bake texels, the v10 render's 2048 level before. The top pass draws
+161 desert arches (of the 230, 69 are oversized or off the raster); red grass reads its top
+at 3.33 m.
+
+| Pixels | Bake | Before | ΔE | After | ΔE |
+| --- | --- | --- | --- | --- | --- |
+| Red-grass tops the bake holds (8,279 texels) | #c09971 | #c1926e, 22% red | 1.8 | #be9570, none red | 1.0 |
+| Desert arches, Dune Desert | #a86647 | #bc7d58 | 6.9 | #b16e4d | 2.6 |
+| Desert arches east of x 1,400, elsewhere | #a86647 | #9b8e76 | 10.2 | #b67352 | 4.3 |
+| The other arches | #8e8868 | #8d8973 | 1.5 | #8e8a74 | 1.6 |
+
+On the arches' inner pixels, away from the mesas they cross, the desert arches draw ΔE 2.9
+and 3.6 from the bake, all of it lightness (L 0.61 against 0.58): the altitude lift and the
+look's light, as on the other arches.
 
 ### The Titan trees
 
