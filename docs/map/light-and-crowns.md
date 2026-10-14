@@ -958,7 +958,7 @@ cell keeps the sun's elevation.
 two ways: the terrain's against the sun's elevation, the band's or the trees' at their fold.
 No single value reads right both ways off the path, and moving the merge into the ground
 cell instead turns the error round (the band's part then read at the sun's elevation, the
-all-or-nothing of light version 7). Reading each part its own way needs the share of the
+all-or-nothing that light version 8 removed). Reading each part its own way needs the share of the
 merge kept per texel: one more value per band and tree cell, so a fifth cell group in the
 atlas, its refold (`refold.py` and `refold.cu`), the codec's quality rule, the page's reads
 (`litlayer.ts`) and the reference (`model.band_shade`, `model.tree_shade`), and a light
