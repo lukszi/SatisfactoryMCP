@@ -192,14 +192,6 @@ def test_a_canopy_under_the_surface_is_hidden_and_takes_no_light_of_its_own(tmp_
     assert sunk[floor][..., 2].tobytes() == bare[floor][..., 2].tobytes()
 
 
-def test_the_canopy_s_relief_and_blur_are_the_ones_the_crowns_were_drawn_with():
-    from mapgen.lighting.spans import canopy
-    from mapgen.terrain.crown_stamp import DOME_SIGMA_M
-
-    assert canopy.CANOPY_RELIEF == 0.35, "the painted crowns' dome gain before their sprites"
-    assert canopy.CANOPY_SMOOTH_M == DOME_SIGMA_M
-
-
 def test_the_terms_in_strips_of_rows_are_the_bytes_of_one_strip(tmp_path, monkeypatch):
     whole = _trench_block(tmp_path / "whole", True)
     monkeypatch.setattr(stage, "TERM_ROWS", 96)
@@ -221,26 +213,6 @@ def test_relight_rows_lights_the_crowned_style_with_its_own_terms():
     terrain = relight_rows(rgb, terms, land, shader_light("terrain"))
     assert terrain.tobytes() == relight_rows(rgb, terms[..., [0, 1, 1, 0]], land,
                                              shader_light("terrain")).tobytes()  # fmt: skip
-
-
-def test_the_titan_trees_join_the_crowns_where_they_stand_higher():
-    from mapgen.cache import TitanPlanes
-    from mapgen.lighting.occluders import UNDER_TITAN
-    from mapgen.render.draw.light import titan_crowns
-
-    n = 64
-    z_cm = np.zeros((n // 2, n // 2), np.int32)
-    cls = np.zeros((n // 2, n // 2), np.uint8)
-    z_cm[4:12, 4:12], cls[4:12, 4:12] = 5000, 1
-    top = np.full((n, n), np.nan, np.float32)
-    top[10:14, 10:14], top[40:44, 40:44] = 80.0, 20.0
-    cover = np.where(np.isfinite(top), 255, 0).astype(np.uint8)
-    under = np.where(np.isfinite(top), 100, 0).astype(np.uint8)
-    titan_crowns(TitanPlanes(z_cm, cls, 2, 0, 0), top, cover, under)
-    assert top[16, 16] == pytest.approx(50.0) and cover[16, 16] == 255, "a Titan crown"
-    assert under[16, 16] == UNDER_TITAN, "marked as a Titan tree's, for cells of its own"
-    assert top[12, 12] == 80.0 and under[12, 12] == 100, "a higher crown keeps its top"
-    assert top[42, 42] == 20.0 and np.isnan(top[60, 60]) and cover[60, 60] == 0
 
 
 def test_the_titan_trunks_drawn_unlit_stand_flat_for_the_light_to_light():

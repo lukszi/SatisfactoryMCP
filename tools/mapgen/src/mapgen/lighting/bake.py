@@ -111,11 +111,11 @@ class LightBake:
     need not wait for the bake, nor the bake for the draw's end.
 
     ``workers`` None is ``light_workers()``, counted when the first row is queued. ``occluder``
-    is an optional crown-top raster on the sheet's grid, metres, NaN where empty, or ``(top,
-    cover)`` with the covered share as a byte; it casts into the crown horizons that
-    ``occluder_layers`` read, and only casts; with a third plane, each crown's underside byte
-    (``occluders.UNDER_SCALE``). The arches and overhangs come with the surface,
-    in its ``SlabStore``. An occluder made by ``occluder_planes`` in the surface's directory is
+    is an optional tree-top raster on the sheet's grid, metres, NaN where empty, or ``(top,
+    cover)`` with the covered share as a byte; it casts into the tree and canopy cells that
+    ``occluder_layers`` read, and only casts; with a third plane, the Titan byte where the
+    Titan canopy is the top (``spans.trees.TITAN_BYTE``). The arches and overhangs come with
+    the surface, in its ``SlabStore``. An occluder made by ``occluder_planes`` in the surface's directory is
     read where it is, not copied.
     """
 
@@ -131,10 +131,10 @@ class LightBake:
         self.occluder, self.occluder_layers = occluder, occluder_layers
         size, work, spacing_m = surface.size, surface.directory, surface.spacing_m
         allocate_work_arrays(work, size)
-        crown_top, crown_cover, crown_under = occluder_parts(occluder)
-        save_work_array(work, "occluder", crown_top)
-        save_work_array(work, "occluder_cover", crown_cover, np.uint8)
-        save_work_array(work, "occluder_under", crown_under, np.uint8)
+        tree_top, tree_cover, titan = occluder_parts(occluder)
+        save_work_array(work, "occluder", tree_top)
+        save_work_array(work, "occluder_cover", tree_cover, np.uint8)
+        save_work_array(work, "occluder_titan", titan, np.uint8)
         self.top = int(np.log2(size // PYRAMID_TILE_PX))
         self.root = out_dir / LIGHT_DIR_NAME
         self.staging = self.root / (TILES_DIR_NAME + STAGING_SUFFIX)

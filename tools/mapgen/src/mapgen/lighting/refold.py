@@ -2,8 +2,9 @@
 
 The page shades a horizon at the sun path's elevation by a 6-degree soft edge. A mean of
 degrees loses a thin shadow beside lit ground; the mean of the four shades, folded back as
-``spans.bake.path_horizon`` folds a band, keeps it for a sun on the path. Pure float32
-arrays; ``refold.cu`` is the CUDA twin, bit for bit, where ``mapgen.jit.gpu_on()``.
+``spans.bake.path_horizon`` folds a band, keeps it for a sun on the path. A canopy texel of 0
+holds no canopy and is read as the ground's. Pure float32 arrays; ``refold.cu`` is the CUDA
+twin, bit for bit, where ``mapgen.jit.gpu_on()``.
 docs/map/light-and-crowns.md section 29, "Coarser levels".
 """
 
@@ -17,6 +18,7 @@ from mapgen.jit import cuda_kernel, gpu_on
 from mapgen.lighting.horizon import HORIZON_DIRS
 from mapgen.lighting.model import SHADOW_SOFT_DEG
 from mapgen.lighting.spans.march import path_elevation
+from mapgen.lighting.spans.porous import CANOPY_FLOOR_DEG
 from satisfactory_mcp.core.arrays import F32Grid
 
 __all__ = ["REFOLD_VALUES", "TREE_GROUPS", "path_elevations", "refold"]
@@ -24,8 +26,10 @@ __all__ = ["REFOLD_VALUES", "TREE_GROUPS", "path_elevations", "refold"]
 #: About as many output values as the reference makes at a time, so its temporaries stay small.
 REFOLD_VALUES = 1 << 20
 
-#: The groups of tree cells after the ground's a refold takes: the crowns', the Titan trees'.
+#: The groups of cells after the ground's a refold takes: the trees', the canopy's.
 TREE_GROUPS = 2
+#: The canopy's group: 0 is no canopy, and a stored texel is at least ``CANOPY_FLOOR_DEG``.
+_CANOPY_GROUP = 2
 
 #: Threads of a block, along a row of texels and their directions.
 _ROW_THREADS = 128
@@ -54,8 +58,9 @@ def refold(fine: F32Grid, el: F32Grid, gpu: bool | None = None) -> F32Grid:
     A texel takes the mean shade at its direction's ``el``, refolded, else, all lit or all
     shaded, the mean of its degrees. A tree cell takes its own, except where the larger of it
     and the ground's shades more on average than the ground's: there it takes that, so the
-    page's maximum of the two is the mean of the larger. ``gpu`` None follows the switch;
-    False keeps a process that opens no CUDA context off the device.
+    page's maximum of the two is the mean of the larger. A canopy cell takes the mean of its
+    four, a texel of 0 read as the ground's, where any holds a canopy, else 0. ``gpu`` None
+    follows the switch; False keeps a process that opens no CUDA context off the device.
     """
     rows, cols, cells = fine.shape[0] // 2, fine.shape[1] // 2, fine.shape[2]
     if fine.dtype != np.float32 or el.dtype != np.float32 or el.ndim != 1:
@@ -85,11 +90,25 @@ def _reference(fine: F32Grid, el: F32Grid) -> F32Grid:
         out[done, :, :dirs] = ground
         for first in range(dirs, cells, dirs):
             trees = slice(first, first + dirs)
+            if first == _CANOPY_GROUP * dirs:
+                out[done, :, trees] = _canopy((a, b, c, d), trees, dirs, el)
+                continue
             own, _ = _mean_shade((a[..., trees], b[..., trees], c[..., trees], d[..., trees]), el)
             quad = tuple(_larger(q[..., trees], q[..., :dirs]) for q in (a, b, c, d))
             over, raised = _mean_shade((quad[0], quad[1], quad[2], quad[3]), el)
             out[done, :, trees] = np.where(raised > shaded, over, own)
     return out
+
+
+def _canopy(quad: Quad, cells: slice, dirs: int, el: F32Grid) -> F32Grid:
+    """A canopy group's coarser texel: the refold of its four, each the ground's where it
+    holds no canopy; floored where any holds one, else 0."""
+    held = [q[..., cells] > _ZERO for q in quad]
+    filled = [np.where(h, q[..., cells], q[..., :dirs]) for h, q in zip(held, quad, strict=True)]
+    stored, _ = _mean_shade((filled[0], filled[1], filled[2], filled[3]), el)
+    floor = np.float32(CANOPY_FLOOR_DEG)
+    found = np.where(stored > floor, stored, floor)
+    return np.where((held[0] | held[1]) | (held[2] | held[3]), found, _ZERO).astype(np.float32)
 
 
 def _larger(a: F32Grid, b: F32Grid) -> F32Grid:
@@ -121,6 +140,7 @@ def _on_gpu(fine: F32Grid, el: F32Grid) -> F32Grid:
             cp.asarray(np.ascontiguousarray(fine)),
             cp.asarray(np.ascontiguousarray(el)),
             _SOFT,
+            np.float32(CANOPY_FLOOR_DEG),
             np.int32(el.size),
             np.int32(cells),
             out,

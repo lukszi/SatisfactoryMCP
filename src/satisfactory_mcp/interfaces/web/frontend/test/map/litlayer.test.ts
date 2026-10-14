@@ -11,7 +11,9 @@ vi.mock("../../src/map/map", () => ({ MAP_SHEET_PX: 8192, map: {} }));
 vi.mock("../../src/map/leaflet", () => ({ L: {} }));
 vi.mock("../../src/api/client", () => ({ tilePath: () => "" }));
 
-function header(crowns: boolean, crownCell?: number, apart = false): LightHeader {
+/* A pyramid of light version 5 (`apart`: trees apart, Titan cells) or 6 (`porous`: canopy cells). */
+function header(crowns: boolean, crownCell?: number, apart = false, porous = false): LightHeader {
+  const cells = porous ? { canopy_cell: 64, canopy_floor_deg: 0.5, ao_cell: 96 } : apart ? { titan_cell: 64, ao_cell: 96 } : {};
   return {
     build: "b",
     max_z: 7,
@@ -25,11 +27,11 @@ function header(crowns: boolean, crownCell?: number, apart = false): LightHeader
       shadow_floor: 0.36,
       shadow_floor_knee: 0.1,
       shadow_fill: 0.35,
-      hz_cells: apart ? 97 : 64,
+      hz_cells: apart || porous ? 97 : 64,
       crown_cell: crownCell,
-      ...(apart ? { titan_cell: 64, ao_cell: 96 } : {}),
+      ...cells,
     },
-    ...(apart ? { parts: { trees: { max_z: 7, sparse: true } } } : {}),
+    ...(apart || porous ? { parts: { trees: { max_z: 7, sparse: true } } } : {}),
   };
 }
 
@@ -77,16 +79,26 @@ describe("the shader's switches", () => {
   it("read the trees, their cells and their sky occlusion only while the trees are on", () => {
     for (const name of ["tTrees", "uTitan", "uAo"]) expect(UNIFORMS).toContain(name);
     expect(FS).toMatch(/uniform int [^;]*\buTitan\b[^;]*\buAo\b/);
-    expect(FS).toContain("if(uCrownSh*uTreesOn>0.5)");
+    expect(FS).toContain("if(uCrownSh*uTreesOn<0.5) return h;");
     expect(FS).toContain("max(uGroundSh,uCrownSh*uTreesOn)");
     expect(FS).toContain("(uAo>0 && uTreesOn>0.5) ? raw(uAo) : 0.0");
     expect(FS).toContain("float a=t4.a*uTreesOn;");
+  });
+
+  it("light the trees flat under the canopy's own horizon where the pyramid has canopy cells", () => {
+    for (const name of ["uCanopy", "uCanFloor"]) expect(UNIFORMS).toContain(name);
+    expect(FS).toMatch(/uniform int [^;]*\buCanopy\b/);
+    expect(FS).toMatch(/uniform float [^;]*\buCanFloor\b/);
+    expect(FS).toContain("q>=uCanFloor ? q*q*90.0 : hz(i)");
+    expect(FS).toContain("(uCanopy>0 && a>0.0) ? lit(1.0,max(uL.z,0.0),canopyHorizon()) : rel");
+    expect(FS).toContain("tree*mix(vec3(1.0),relT,uLightOn)");
   });
 });
 
 describe("the controls a light offers", () => {
   it("say whether the trees can be switched and whether their shadows are whole alone", () => {
     expect(lightControls(header(true, 32, true), "")).toEqual({ trees: true, apart: true, alone: true, off: "" });
+    expect(lightControls(header(true, 32, false, true), "")).toEqual({ trees: true, apart: true, alone: true, off: "" });
     expect(lightControls(header(true, 32), "why")).toEqual({ trees: true, apart: false, alone: false, off: "why" });
     expect(lightControls(header(false, 32), "")).toMatchObject({ trees: false, apart: false });
   });

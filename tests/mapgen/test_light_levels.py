@@ -139,12 +139,11 @@ def test_a_thin_shadow_survives_a_coarser_level():
     assert not coarse[..., DIRS:].any(), "no tree, no tree cell"
 
 
-@pytest.mark.parametrize("groups", [1, 2])
-def test_a_coarser_level_averages_the_shade_the_page_reads(groups):
+def test_a_coarser_level_averages_the_shade_the_page_reads():
     els = refold.path_elevations()
     rng = np.random.default_rng(2)
     ground = _folded(rng, (64, 96, DIRS), els)
-    trees = [_crowns(rng, ground, els) for _ in range(groups)]
+    trees = [_crowns(rng, ground, els)]
     stored = light_tiles.encode_linear(refold.refold(np.concatenate([ground, *trees], -1), els))
     coarse = light_tiles.decode_linear(stored)
     half_step = np.float32(0.5 / light_tiles.HZ_LINEAR_SCALE) / SOFT + np.float32(1e-5)
@@ -166,6 +165,24 @@ def test_a_coarser_level_averages_the_shade_the_page_reads(groups):
     lit = light_tiles.downsample(np.where(_page_shade(ground, els) > 0, 1.0, 0.0)) == 0
     mean = light_tiles.encode_linear(light_tiles.downsample(ground))
     assert np.array_equal(stored[..., :DIRS][lit], mean[lit]), "all lit: the mean of degrees"
+
+
+def test_a_coarser_canopy_cell_reads_a_texel_without_one_as_the_ground_s():
+    els = refold.path_elevations()
+    rng = np.random.default_rng(4)
+    ground = _folded(rng, (64, 96, DIRS), els)
+    held = rng.random(ground.shape) < 0.4
+    canopy = np.where(held, np.maximum(_folded(rng, ground.shape, els), 0.5), 0).astype(np.float32)
+    fine = np.concatenate([ground, np.zeros_like(ground), canopy], -1)
+    coarse = refold.refold(fine, els)[..., 2 * DIRS :]
+    present = light_tiles.downsample(held.astype(np.float32)) > 0
+    assert not coarse[~present].any(), "no canopy beneath: none stored"
+    assert (coarse[present] >= np.float32(model.CANOPY_FLOOR_DEG)).all()
+    filled = np.where(held, canopy, ground)
+    want = light_tiles.downsample(_page_shade(filled, els))
+    shade = _page_shade(coarse, els)
+    inside = present & (coarse > np.float32(model.CANOPY_FLOOR_DEG))
+    assert np.abs(shade - want)[inside].max() <= np.float32(1e-5), "the mean shade, refolded"
 
 
 def _level(tmp_path) -> np.ndarray:

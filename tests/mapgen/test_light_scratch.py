@@ -14,11 +14,11 @@ import numpy as np
 import pytest
 
 from mapgen.common import Refusal
-from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting import stage
 from mapgen.lighting.bake import bake_light
-from mapgen.lighting.occluders import UNDER_TITAN, CrownGrid
+from mapgen.lighting.spans.trees import TITAN_BYTE
 from mapgen.lighting.stage import Surface, occluder_planes
+from mapgen.sprites.store import SpriteAtlas
 from mapgen.render.draw.light import (
     LIGHT_CACHE_DIR_NAME,
     SCRATCH_IN_USE,
@@ -36,10 +36,13 @@ def _args(*argv: str) -> argparse.Namespace:
     return parser.parse_args(list(argv))
 
 
-def _crowns() -> CrownTops:
-    grid: CrownGrid = {"x0_cm": BOUNDS_M["x_min_m"] * 100.0,
-                       "y0_cm": BOUNDS_M["y_min_m"] * 100.0, "spacing_cm": 100.0}  # fmt: skip
-    return CrownTops(np.full((8, 8), 120, np.int16), grid)
+def _crowns(tmp_path: Path) -> CrownTops:
+    """A paint store's crowns and their sprites, under ``tmp_path``."""
+    from tests.support.crown_sprites import square_sprites
+    from tests.support.paint_store import write_store
+
+    store = write_store(tmp_path / "paint")
+    return CrownTops(square_sprites(["SM_GreenTree_01", "BluePalm_01", "SM_Kapok_03"]), store)
 
 
 def test_the_scratch_goes_under_scratch_dir_else_the_cache_dir_else_the_renders(tmp_path):
@@ -74,23 +77,23 @@ def test_the_scratch_of_a_render_still_running_is_refused_and_left_as_it_is(tmp_
 
 
 def test_a_run_that_fails_still_deletes_its_scratch(tmp_path):
-    with pytest.raises(RuntimeError), light_run(tmp_path, 16, _crowns()) as run:
+    with pytest.raises(RuntimeError), light_run(tmp_path, 16, _crowns(tmp_path)) as run:
         assert sorted(p.name for p in (tmp_path / LIGHT_CACHE_DIR_NAME).glob("occluder*")) == [
             "occluder.npy",
             "occluder_cover.npy",
-            "occluder_under.npy",
+            "occluder_titan.npy",
         ]
         run.surface.put(0, np.zeros((16, 16), np.float32), np.ones((16, 16), np.float32))
         raise RuntimeError("a layer failed part way")
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
-    with light_run(None, 16, _crowns()) as run:
+    with light_run(None, 16, _crowns(tmp_path)) as run:
         assert run is None
 
 
 def test_a_run_that_baked_deletes_its_scratch_crowns_and_all(tmp_path):
     """The bake holds the crowns' memory maps until it is closed, and Windows deletes no
     mapped file."""
-    with light_run(tmp_path, 256, _crowns(), workers=1) as run:
+    with light_run(tmp_path, 256, _crowns(tmp_path), workers=1) as run:
         assert run is not None
         run.begin(tmp_path / "r")
         run.surface.put(0, np.zeros((256, 256), np.float32), np.ones((256, 256), np.float32))
@@ -101,8 +104,8 @@ def test_a_run_that_baked_deletes_its_scratch_crowns_and_all(tmp_path):
 
 
 def test_crowns_that_fail_to_write_leave_no_scratch_behind(tmp_path):
-    broken = CrownTops(np.full((8, 8), 120, np.int16), cast(CrownGrid, {}))
-    with pytest.raises(KeyError), light_run(tmp_path, 16, broken):
+    broken = CrownTops(cast(SpriteAtlas, None), tmp_path)
+    with pytest.raises(AttributeError), light_run(tmp_path, 16, broken):
         pass
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
 
@@ -125,8 +128,8 @@ def test_an_occluder_read_in_place_bakes_the_bytes_a_copied_one_does(tmp_path, m
     top = np.full((size, size), np.nan, np.float32)
     top[250:262, 240:270] = 60.0
     cover = np.where(np.isfinite(top), 255, 0).astype(np.uint8)
-    under = np.full((size, size), 90, np.uint8)
-    under[255:262, 240:250] = UNDER_TITAN
+    under = np.zeros((size, size), np.uint8)
+    under[255:262, 240:250] = TITAN_BYTE
     copied = _surface(tmp_path / "copied", size)
     bake_light(copied, tmp_path / "a", 1, (top, cover, under), progress=False)
     copied.close()

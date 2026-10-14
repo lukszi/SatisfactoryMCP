@@ -45,7 +45,14 @@ from mapgen.lighting.light_tiles import (
     with_detail,
     work_array,
 )
-from mapgen.lighting.model import DIRECT_SCALE, light_axis, shaded_direct, sun_horizon
+from mapgen.lighting.model import (
+    DIRECT_SCALE,
+    canopy_horizon,
+    light_axis,
+    shaded_direct,
+    soft_shade,
+    sun_horizon,
+)
 from mapgen.lighting.spans.bake import BlockSpans, block_spans, default_shade
 from mapgen.lighting.spans.canopy import Canopy, blend_canopy, block_canopy, canopy_rows
 from mapgen.lighting.spans.holes import Holes, fill_holes, find_holes, half_heights, opened
@@ -91,7 +98,7 @@ LIGHT_DIR_NAME = "light"
 
 #: The bake's own version. Bump it when the bake writes other bytes from the same surface,
 #: casters and model, so no run reuses a light the old bake wrote.
-LIGHT_VERSION = 5
+LIGHT_VERSION = 6
 
 #: Rows of a plane hashed at a time.
 DIGEST_ROWS = 1024
@@ -121,7 +128,7 @@ _FILES = (
     "land",
     "occluder",
     "occluder_cover",
-    "occluder_under",
+    "occluder_titan",
     "terms",
     "zh",
     "landh",
@@ -130,8 +137,8 @@ _FILES = (
     "detail",
 )
 
-#: The crown tops on the sheet's grid, metres, or the tops with the covered share as a byte,
-#: and with the underside byte (``occluders.UNDER_SCALE``).
+#: The trees' tops on the sheet's grid, metres, or the tops with the covered share as a byte,
+#: and with the Titan byte (``spans.trees.TITAN_BYTE``).
 Occluder: TypeAlias = (
     F32Grid | tuple[F32Grid, U8Grid | None] | tuple[F32Grid, U8Grid | None, U8Grid | None]
 )
@@ -139,9 +146,9 @@ Occluder: TypeAlias = (
 #: Rows, then columns, of the sheet: ``(r0, r1, c0, c1)``.
 _Window: TypeAlias = tuple[int, int, int, int]
 
-#: The default sun's shade per cell beside a span, crowned and not: ``(use, shade)``, with
-#: ``use`` as 0 or 1 to be upsampled.
-_Shades: TypeAlias = dict[bool, tuple[F32Grid, F32Grid] | None]
+#: The default sun's shade per cell beside a span: ``(use, shade)``, with ``use`` as 0 or 1 to
+#: be upsampled.
+_Shades: TypeAlias = tuple[F32Grid, F32Grid] | None
 
 
 @dataclass(frozen=True)
@@ -278,20 +285,21 @@ def _half_surfaces(work: Path, window: _Window, march: bool) -> tuple[F32Grid, B
 def _opened_spans(spans: BlockSpans) -> BlockSpans:
     """``spans`` with every hole of the receivers, the solid surface and the tops open
     (``holes.opened``): what the march and the sky view read."""
-
-    def open_surface(found: SpanSurface | None) -> SpanSurface | None:
-        if found is None:
-            return None
-        planes = (opened(found.z), opened(found.solid), found.lo, found.hi, opened(found.tops))
-        return SpanSurface(*planes, found.runs)
-
-    return BlockSpans(*(open_surface(found) for found in spans))
+    ground, trees, solid = spans
+    if ground is not None:
+        planes = (opened(ground.z), opened(ground.solid), ground.lo, ground.hi)
+        ground = SpanSurface(*planes, opened(ground.tops), ground.runs)
+    if trees is not None:
+        trees = trees._replace(receivers=opened(trees.receivers))
+    return BlockSpans(ground, trees, None if solid is None else opened(solid))
 
 
 def _no_data(z_half: F32Grid, spans: BlockSpans) -> bool:
     """Whether the window holds a hole anywhere, halo included: the march and the sky view
     read all of it, and a hole they read unopened would make a horizon NaN."""
-    planes = [z_half, *(p for found in spans if found is not None for p in (found.z, found.solid))]
+    ground, trees, solid = spans
+    planes = [z_half, *(() if ground is None else (ground.z, ground.solid))]
+    planes += [p for p in (solid, None if trees is None else trees.receivers) if p is not None]
     return any(bool(np.isnan(plane).any()) for plane in planes)
 
 
@@ -349,10 +357,10 @@ def bake_block(job: BlockJob) -> BlockDone:
         horizons = bake_horizons(z_half, halo, half_m, spans, half_px, march, holes)
         sky_ringed = _sky_view(z_half, halo, job.sky_halo, half_m, spans, holes)
         canopy_sky = None
-        if spans.canopy is not None:
+        if spans.trees is not None and march:
             rows, cols = _sky_rows(z_half, halo, job.sky_halo)
             canopy_sky = fill_holes(
-                sky_view(spans.canopy.z[rows, cols], job.sky_halo, half_m), holes, 1.0
+                sky_view(spans.trees.receivers[rows, cols], job.sky_halo, half_m), holes, 1.0
             )
     del spans
     with device_lane():
@@ -371,8 +379,9 @@ def bake_block(job: BlockJob) -> BlockDone:
     tiled = tile_jobs(Path(job.dest), job.z, c0 // t, r0 // t, nrm, horizons.atlas, folded)
     with encode_beside(tiled, job.encode_threads) as written:
         canopy = None
-        if canopy_sky is not None:
-            canopy = block_canopy(work, job.block, horizons.canopy, canopy_sky)
+        if canopy_sky is not None and horizons.trees:
+            horizon = canopy_horizon(horizons.sun, DEFAULT_SUN[0])
+            canopy = block_canopy(work, job.block, horizon, canopy_sky)
         _default_terms(work, job, nrm, horizons, (canopy, trees_ao))
         horizon_quarter = horizons.quarter
         del horizons, canopy, trees_ao
@@ -396,12 +405,11 @@ def _gpu_calls() -> dict[str, int]:
     return gpu.ran()
 
 
-def _filtered(shades: _Shades, crowned: bool, rows: slice) -> tuple[BoolMask, F32Grid] | None:
+def _filtered(shades: _Shades, rows: slice) -> tuple[BoolMask, F32Grid] | None:
     """The default sun's shade beside a span on ``rows`` of the block, at full resolution."""
-    found = shades[crowned]
-    if found is None:
+    if shades is None:
         return None
-    use, shade = found
+    use, shade = shades
     return upsampled(ring_rows(use, rows)) > 0, upsampled(ring_rows(shade, rows))
 
 
@@ -413,35 +421,37 @@ def _default_terms(
     trees: tuple[Canopy | None, TreesAo | None],
 ) -> None:
     """The block's terms at the default sun, ``TERM_ROWS`` at a time: the sky view and the
-    ground's direct term, then the painted layer's, crowned and with the canopy's own light,
-    and its sky view, with what the trees take off it. Beside a span the shadow is shaded per
-    cell (``default_shade``)."""
+    ground's direct term, then the painted layer's under the trees too, with the canopy's own
+    light, and its sky view, with what the trees take off it. Beside a span the ground's shadow
+    is shaded per cell (``default_shade``), the trees' where they shade more."""
     canopy, ambient = trees
     r0, c0, n = job.block
     terms = work_array(work, "terms", np.uint8)
-    sun = horizons.sun
-    ringed = {crowned: sun_horizon(sun, DEFAULT_SUN[0], crowned) for crowned in (False, True)}
-    shades: _Shades = {}
-    for crowned in (False, True):
-        found = default_shade(horizons.bands, DEFAULT_SUN, crowned) if horizons.bands else None
-        shades[crowned] = None if found is None else (found[0].astype(np.float32), found[1])
+    sun, (az, el) = horizons.sun, DEFAULT_SUN
+    ground, crowned = sun_horizon(sun, az), sun_horizon(sun, az, horizons.trees)
+    found = default_shade(horizons.bands, DEFAULT_SUN) if horizons.bands else None
+    shades: _Shades = None if found is None else (found[0].astype(np.float32), found[1])
     for start in range(0, n, TERM_ROWS):
         rows = slice(start, min(start + TERM_ROWS, n))
         out = terms[r0 + rows.start : r0 + rows.stop, c0 : c0 + n]
         part = nrm[rows]
         out[..., TERM_SKY] = out[..., TERM_CROWNED_SKY] = part[..., 2]
-        for k, crowned in ((TERM_DIRECT, False), (TERM_CROWNED_DIRECT, True)):
-            horizon = upsampled(ring_rows(ringed[crowned], rows))
-            direct = shaded_direct(part, horizon, DEFAULT_SUN, _filtered(shades, crowned, rows))
-            if crowned and canopy is not None:
-                light = canopy_rows(canopy, job.block, job.spacing_m, rows)
-                open_sky = part[..., 2].astype(np.float32) / np.float32(255.0)
-                if ambient is not None:
-                    open_sky = open_sky * (np.float32(1.0) - ambient.relative[rows])
-                    light = light._replace(sky=light.sky * (1 - ambient.visible[rows]))
-                direct, open_sky = blend_canopy(direct, open_sky, light)
-                out[..., TERM_CROWNED_SKY] = np.round(np.clip(open_sky, 0, 1) * 255)
-            out[..., k] = np.clip(np.round(direct * DIRECT_SCALE), 0, 255)
+        filtered = _filtered(shades, rows)
+        direct = shaded_direct(part, upsampled(ring_rows(ground, rows)), DEFAULT_SUN, filtered)
+        out[..., TERM_DIRECT] = np.clip(np.round(direct * DIRECT_SCALE), 0, 255)
+        horizon = upsampled(ring_rows(crowned, rows))
+        if filtered is not None and horizons.trees:
+            filtered = (filtered[0], np.maximum(filtered[1], soft_shade(horizon, el)))
+        direct = shaded_direct(part, horizon, DEFAULT_SUN, filtered)
+        if canopy is not None:
+            light = canopy_rows(canopy, job.block, rows)
+            open_sky = part[..., 2].astype(np.float32) / np.float32(255.0)
+            if ambient is not None:
+                open_sky = open_sky * (np.float32(1.0) - ambient.relative[rows])
+                light = light._replace(sky=light.sky * (1 - ambient.visible[rows]))
+            direct, open_sky = blend_canopy(direct, open_sky, light)
+            out[..., TERM_CROWNED_SKY] = np.round(np.clip(open_sky, 0, 1) * 255)
+        out[..., TERM_CROWNED_DIRECT] = np.clip(np.round(direct * DIRECT_SCALE), 0, 255)
 
 
 def allocate_work_arrays(work: Path, size: int) -> None:
@@ -476,13 +486,13 @@ def light_workers(requested: int | None = None) -> int:
 
 
 def occluder_planes(work: Path, size: int) -> tuple[F32Grid, U8Grid, U8Grid]:
-    """The crown tops, cover and underside as ``w+`` memory maps under the names the bake
+    """The trees' tops, cover and Titan byte as ``w+`` memory maps under the names the bake
     reads."""
     work.mkdir(parents=True, exist_ok=True)
     shape = (size, size)
     top = np.lib.format.open_memmap(work / "occluder.npy", "w+", np.float32, shape)
     cover = np.lib.format.open_memmap(work / "occluder_cover.npy", "w+", np.uint8, shape)
-    return top, cover, np.lib.format.open_memmap(work / "occluder_under.npy", "w+", np.uint8, shape)
+    return top, cover, np.lib.format.open_memmap(work / "occluder_titan.npy", "w+", np.uint8, shape)
 
 
 def plane_digest(plane: NDArray[np.number] | None) -> str | None:
@@ -498,7 +508,7 @@ def plane_digest(plane: NDArray[np.number] | None) -> str | None:
 def occluder_parts(
     occluder: Occluder | None,
 ) -> tuple[F32Grid | None, U8Grid | None, U8Grid | None]:
-    """An ``Occluder``'s tops, cover and underside, None for those it has not."""
+    """An ``Occluder``'s tops, cover and Titan byte, None for those it has not."""
     if not isinstance(occluder, tuple):
         return occluder, None, None
     if len(occluder) == 2:
@@ -507,13 +517,13 @@ def occluder_parts(
 
 
 def caster_digests(occluder: Occluder | None) -> JsonObject:
-    """What casts on the surface in a bake besides it, digested: the crown tops, cover and
-    underside. The slabs are the surface's own, digested with it."""
-    top, cover, under = occluder_parts(occluder)
+    """What casts on the surface in a bake besides it, digested: the trees' tops, cover and
+    Titan byte. The slabs are the surface's own, digested with it."""
+    top, cover, titan = occluder_parts(occluder)
     return {
         "occluder": plane_digest(top),
         "occluder_cover": plane_digest(cover),
-        "occluder_under": plane_digest(under),
+        "occluder_titan": plane_digest(titan),
     }
 
 

@@ -36,9 +36,9 @@ from mapgen.lighting.horizon import (
     decode_horizon,
 )
 from mapgen.lighting.spans.march import span_block
+from mapgen.lighting.spans.porous import CANOPY_FLOOR_DEG, porous_block
 from mapgen.lighting.sun import DEFAULT_SUN, NOON_HOUR, Sun, sun_vector
-from mapgen.lighting.undersides import CROWN_UNDERSIDE, LEAF_LOW_SHARE, TITAN_SLAB_M
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, FloatGrid, U8Grid
 from satisfactory_mcp.core.gameassets.versions import LIGHTS
 from satisfactory_mcp.core.jsontypes import JsonObject
 
@@ -48,6 +48,7 @@ __all__ = [
     "AO_SCALES_M",
     "AO_STRENGTH",
     "AO_WEIGHTS",
+    "CANOPY_CELL",
     "CROWN_CELL",
     "DIRECT_SCALE",
     "HORIZON_CELLS",
@@ -59,19 +60,20 @@ __all__ = [
     "SHADOW_FLOOR",
     "SHADOW_FLOOR_KNEE",
     "SHADOW_SOFT_DEG",
-    "TITAN_CELL",
     "TITAN_FADE_M",
     "Horizons",
     "LightBlock",
     "LightParams",
     "LightSpace",
     "apply_terms",
+    "canopy_horizon",
     "direct_term",
     "light_axis",
     "light_params",
     "model_block",
     "relight",
     "shaded_direct",
+    "soft_shade",
     "sun_cells",
     "sun_horizon",
     "surface_direct",
@@ -79,16 +81,17 @@ __all__ = [
 
 LIGHT_ID = "sun"
 
-#: The atlas's first crown cell, first Titan tree cell and the ambient occlusion cell: the
-#: ground's horizons, then the crowns' and the Titan trees' each alone, then what the trees
-#: take off the sky light. Cells per tile, and the horizons among them.
+#: The atlas's first tree cell, first canopy cell and the ambient occlusion cell: the ground's
+#: horizons, then the trees' shade (crowns and Titan canopy, porous), then the ground's
+#: horizons received on the canopy top, then what the trees take off the sky light. Cells per
+#: tile, and the horizons among them.
 CROWN_CELL = HORIZON_DIRS
-TITAN_CELL = 2 * HORIZON_DIRS
+CANOPY_CELL = 2 * HORIZON_DIRS
 AO_CELL = 3 * HORIZON_DIRS
 HORIZON_CELLS = AO_CELL
 HZ_CELLS = AO_CELL + 1
 
-#: The Titan trees' fade: the ground's, for a canopy tens of metres up.
+#: The Titan canopy's fade: the ground's, for a canopy tens of metres up.
 TITAN_FADE_M = FADE_M
 
 #: Ambient occlusion (``lighting/occlusion.py``): the half-widths of the boxes it reads,
@@ -178,22 +181,20 @@ def model_block() -> JsonObject:
         "default_hour": NOON_HOUR,
         "hz_cells": HZ_CELLS,
         "crown_cell": CROWN_CELL,
-        "titan_cell": TITAN_CELL,
+        "canopy_cell": CANOPY_CELL,
+        "canopy_floor_deg": CANOPY_FLOOR_DEG,
         "ao_cell": AO_CELL,
         "hz_gutter": HZ_GUTTER_PX,
         "hz_encoding": (
-            "atlas of 8 cells a row, each in a border of its edge texels hz_gutter wide: the "
-            "ground's horizons, the crowns' alone, the Titan trees' alone, u8 = 255 * sqrt(deg "
-            "/ 90), received on the canopy top; then the trees' ambient occlusion, u8 = 255 * o"
+            "atlas of 8 cells a row, each in a border of its edge texels hz_gutter wide, u8 = "
+            "255 * sqrt(deg / 90): the ground's horizons; the trees' shade, folded at the sun "
+            "path's elevation, received on the canopy top; the ground's horizons received on "
+            "the canopy top where a tree covers the cell, at least canopy_floor_deg, 0 "
+            "elsewhere; then the trees' ambient occlusion, u8 = 255 * o"
         ),
         "nrm_encoding": "RGBA: east and south normal as (v + 1) / 2, sky view, land weight",
         "spans": span_block(),
-        "trees": {
-            "crown_underside": f"per species: under {LEAF_LOW_SHARE} of its leaf area",
-            "crown_underside_unknown": CROWN_UNDERSIDE,
-            "titan_slab_m": TITAN_SLAB_M,
-            "titan_fade_m": list(TITAN_FADE_M),
-        },
+        "trees": porous_block(),
         "ao": {
             "scales_m": list(AO_SCALES_M),
             "weights": list(AO_WEIGHTS),
@@ -231,11 +232,11 @@ def _toward(hz_deg: Horizons, az: float, first: int = 0) -> F32Grid:
     return before + after
 
 
-def sun_cells(az: float) -> tuple[int, int, int, int]:
+def sun_cells(az: float) -> tuple[int, ...]:
     """The cells the default sun's terms read for a sun at ``az``: two of the ground's, two of
-    the trees' (the bake's own: crowns and Titan trees together over the ground)."""
+    the trees', two of the canopy's."""
     i0, i1, _w = _either_side(az)
-    return i0, i1, CROWN_CELL + i0, CROWN_CELL + i1
+    return i0, i1, CROWN_CELL + i0, CROWN_CELL + i1, CANOPY_CELL + i0, CANOPY_CELL + i1
 
 
 def direct_term(
@@ -264,32 +265,56 @@ def direct_term(
 
 
 def sun_horizon(hz_deg: Horizons, az: float, crowns: bool = False) -> F32Grid:
-    """The horizon toward ``az``; with ``crowns``, the crown and Titan tree cells the planes
-    hold where they stand higher."""
+    """The horizon toward ``az``; with ``crowns``, the tree cells where they stand higher."""
     hz = _toward(hz_deg, az)
-    for first in (CROWN_CELL, TITAN_CELL) if crowns else ():
-        if len(hz_deg) >= first + HORIZON_DIRS:
-            hz = np.maximum(hz, _toward(hz_deg, az, first))
+    if crowns and len(hz_deg) >= CROWN_CELL + HORIZON_DIRS:
+        hz = np.maximum(hz, _toward(hz_deg, az, CROWN_CELL))
     return hz
 
 
+def canopy_horizon(hz_deg: Horizons, az: float) -> F32Grid:
+    """The horizon toward ``az`` the trees themselves are lit under: the canopy cells (the
+    ground's where a cell holds none), and the tree cells where they stand higher."""
+    i0, i1, w = _either_side(az)
+
+    def canopy(k: int) -> F32Grid:
+        held = hz_deg[CANOPY_CELL + k]
+        found: F32Grid = np.where(held >= np.float32(CANOPY_FLOOR_DEG / 4), held, hz_deg[k])
+        return found
+
+    terrain = canopy(i0) * (1 - w) + canopy(i1) * w
+    return np.maximum(terrain, _toward(hz_deg, az, CROWN_CELL))
+
+
 def shaded_direct(
-    nrm_u8: U8Grid, hz: F32Grid | None, sun: Sun, filtered: tuple[BoolMask, F32Grid] | None = None
+    nrm_u8: U8Grid | tuple[int, int],
+    hz: F32Grid | None,
+    sun: Sun,
+    filtered: tuple[BoolMask, F32Grid] | None = None,
 ) -> F32Grid:
     """``direct_term`` for the horizon toward the sun on the normals' own grid, None for none,
-    and ``filtered`` on that grid too."""
+    and ``filtered`` on that grid too. A shape for the normals is flat ground of that shape."""
     az, el = sun
-    nx = nrm_u8[..., 0].astype(np.float32) / 127.5 - 1
-    ny = nrm_u8[..., 1].astype(np.float32) / 127.5 - 1
-    nz = np.sqrt(np.clip(1 - nx * nx - ny * ny, 0, 1))
     lx, ly, lz = sun_vector(az, el)
-    ndl = np.maximum(nx * lx + ny * ly + nz * lz, 0.0)
+    if isinstance(nrm_u8, tuple):
+        ndl = np.full(nrm_u8, max(np.float32(lz), np.float32(0.0)), np.float32)
+    else:
+        nx = nrm_u8[..., 0].astype(np.float32) / 127.5 - 1
+        ny = nrm_u8[..., 1].astype(np.float32) / 127.5 - 1
+        nz = np.sqrt(np.clip(1 - nx * nx - ny * ny, 0, 1))
+        ndl = np.maximum(nx * lx + ny * ly + nz * lz, 0.0)
     shade = np.zeros_like(ndl)
     if hz is not None:
-        shade = np.clip((hz - el) / SHADOW_SOFT_DEG + 0.5, 0, 1)
+        shade = soft_shade(hz, el)
         if filtered is not None:
             shade = np.where(filtered[0], filtered[1], shade)
     return (ndl * (1 - shade * (1 - SHADOW_FILL)) * _sun_gain(el)).astype(np.float32)
+
+
+def soft_shade(hz: F32Grid, el: float) -> F32Grid:
+    """The share of the sun at ``el`` a horizon ``hz`` shades, over the soft edge."""
+    found: F32Grid = np.clip((hz - el) / SHADOW_SOFT_DEG + 0.5, 0, 1)
+    return found
 
 
 def _sun_gain(el: float) -> np.float32:
@@ -312,21 +337,46 @@ def apply_terms(
 ) -> U8Grid:
     """Unlit colour times the light, in the style's own space. Arrays in [0, 1] except rgb."""
     light = light_params(params)
+    return _shown(_unlit(rgb_u8, light) * _relative(svf, direct, land, light), light)
+
+
+def _relative(
+    svf: NDArray[np.floating],
+    direct: NDArray[np.floating],
+    land: NDArray[np.floating],
+    light: LightParams,
+) -> FloatGrid:
+    """The light relative to flat ground in the open, through the shadow floor, by land."""
     ambient = np.float32(light["ambient"])
     sky, sun = unit_luminance(light["sky"]), unit_luminance(light["sun"])
     flat = sky_sun_light(light["sky"], light["sun"], ambient)
     rel = (ambient * sky * svf[..., None] + (1 - ambient) * sun * direct[..., None]) / flat
     k = SHADOW_FLOOR_KNEE
     rel = 0.5 * (rel + SHADOW_FLOOR + np.sqrt((rel - SHADOW_FLOOR) ** 2 + k * k))
-    rel = 1 + (rel - 1) * land[..., None]
+    found: FloatGrid = 1 + (rel - 1) * land[..., None]
+    return found
+
+
+def _unlit(rgb_u8: U8Grid, light: LightParams) -> FloatGrid:
+    """Stored colour in the space the style lights in: under its tone curve, or sRGB."""
     c = rgb_u8.astype(np.float32) / 255.0
     if light["space"] == "linear":
-        knee, white = light["tone_knee"], light["tone_white"]
-        base = by_luminance(srgb_unit_to_linear(c), untone, knee, white)
-        out = linear_to_srgb_unit(by_luminance(base * rel, tone, knee, white))
+        found: FloatGrid = by_luminance(srgb_unit_to_linear(c), untone, *_tone(light))
+        return found
+    return c
+
+
+def _shown(lit: FloatGrid, light: LightParams) -> U8Grid:
+    """Lit colour back to stored bytes, through the tone curve in linear light."""
+    if light["space"] == "linear":
+        out = linear_to_srgb_unit(by_luminance(lit, tone, *_tone(light)))
     else:
-        out = np.clip(c * rel, 0, 1)
+        out = np.clip(lit, 0, 1)
     return np.round(out * 255).astype(np.uint8)
+
+
+def _tone(light: LightParams) -> tuple[float, float]:
+    return light["tone_knee"], light["tone_white"]
 
 
 def relight(
@@ -337,12 +387,15 @@ def relight(
     params: LightBlock,
     shadows: bool = True,
     sky: bool = True,
+    trees: U8Grid | None = None,
 ) -> U8Grid:
     """The shader's answer in numpy: unlit colour, the light tile, a sun.
 
     ``params`` is ``shader_light``'s; its ``crowns`` says whether the trees' horizons and
     their ambient occlusion count. ``hz_u8`` is ``(cells, h, w)``, on the normals' grid or
-    coarser.
+    coarser. ``trees`` is a layer drawn apart at its trees, RGBA with straight alpha: lit
+    flat under the canopy's horizon and the open sky, and laid over the ground in the
+    style's light (section 29, "A porous canopy").
     """
     light = light_params(params)
     horizons = None if hz_u8 is None else hz_u8[:HORIZON_CELLS]
@@ -355,4 +408,20 @@ def relight(
             ao = ndimage.zoom(ao, np.array(svf.shape) / np.array(ao.shape), order=1)
         svf = svf * (np.float32(1.0) - ao)
     land = nrm_u8[..., 3].astype(np.float32) / 255.0
-    return apply_terms(rgb_u8, svf, direct, land, light)
+    if trees is None:
+        return apply_terms(rgb_u8, svf, direct, land, light)
+    shape = (direct.shape[0], direct.shape[1])
+    hz = None if hz_deg is None else _on_grid(canopy_horizon(hz_deg, sun[0]), shape)
+    ones = np.ones(shape, np.float32)
+    lit_trees = _unlit(trees[..., :3], light) * _relative(ones, shaded_direct(shape, hz, sun), ones, light)
+    ground = _unlit(rgb_u8, light) * _relative(svf, direct, land, light)
+    alpha = (trees[..., 3].astype(np.float32) / np.float32(255.0))[..., None]
+    return _shown(ground * (1 - alpha) + lit_trees * alpha, light)
+
+
+def _on_grid(plane: F32Grid, shape: tuple[int, int]) -> F32Grid:
+    """A coarser plane brought to ``shape`` as ``direct_term`` brings a horizon."""
+    if plane.shape == shape:
+        return plane
+    found: F32Grid = ndimage.zoom(plane, np.array(shape) / np.array(plane.shape), order=1)
+    return found

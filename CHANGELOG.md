@@ -271,6 +271,15 @@ Planned as 0.2.0.
   and are rebuilt once, the direct raster taking about 2.4 times as long; a kept light is
   baked again. The light takes two to three times as long under crowns and arches, and each
   of its processes counts 2.0 GB instead of 1.5.
+- Map generator (light version 6): the tree canopy is porous. Crowns and the Titan canopy
+  let light through by their cover, cast from the crown sprites at full resolution, so canopy
+  shade is dappled instead of a solid footprint swept by the sun: the straight diagonal wedges
+  in the Titan Forest go, at the default sun and on the page. On a page the trees are lit by
+  their own horizon on the canopy top, not the ground's beneath it. The horizon atlas keeps
+  97 cells; cells 64 to 95 now hold the ground's horizon on the canopy (`canopy_cell` in the
+  light model, replacing `titan_cell`), and an older pyramid still draws. The species'
+  undersides and their 33 s per run are gone. Every painted lit map moves, the other styles
+  keep their bytes; a kept light is baked again, and the horizon tiles grow by about a sixth.
 - Map generator (light version 5): a tree crown casts from where its species' leaves start,
   read off its mesh at the start of a render (a green tree or a Kapok three quarters up, a
   bush from the ground), instead of halfway up every crown, and the Titan trees as a 12 m slab

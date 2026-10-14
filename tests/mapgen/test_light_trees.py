@@ -1,8 +1,9 @@
-"""The trees in the light: each species' own underside, the Titan trees' thin slab and cells of
-their own, the trees' cells stored always, and the ambient occlusion.
+"""The trees in the light: a porous leaf shell under each tree's top, the trees' cells stored
+always, the ground's horizons on the canopy top, the page's trees lit on their own, and the
+ambient occlusion.
 
-docs/map/light-and-crowns.md section 29, "What casts as a span", "The atlas" and "Ambient
-occlusion". Synthetic fixtures throughout: no install, no field.
+docs/map/light-and-crowns.md section 29, "A porous canopy" and "Ambient occlusion". Synthetic
+fixtures throughout: no install, no field.
 """
 
 from __future__ import annotations
@@ -12,169 +13,142 @@ import math
 import numpy as np
 import pytest
 
-from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.vegetation.crown_sprites import SpeciesMesh
 from mapgen.lighting import horizon as hz
 from mapgen.lighting import model
-from mapgen.lighting.occluders import UNDER_SCALE, UNDER_TITAN, sheet_crowns
 from mapgen.lighting.occlusion import ao_margin, ao_scales, occlusion, relative_occlusion
 from mapgen.lighting.spans import bake as span_bake
-from mapgen.lighting.spans.march import march_spans
-from mapgen.lighting.undersides import (
-    CROWN_UNDERSIDE,
-    LEAF_LOW_SHARE,
-    TITAN_SLAB_M,
-    leaf_low_cm,
-    species_undersides,
-    stamp_undersides,
+from mapgen.lighting.spans import porous
+from mapgen.lighting.spans.march import path_elevation
+from mapgen.lighting.spans.trees import (
+    CANOPY_PAD_CELLS,
+    TreePlanes,
+    canopy_cell,
+    canopy_planes,
+    tree_cells,
+    trees_porous,
 )
 from mapgen.palette.lightparams import shader_light
-from satisfactory_mcp.domain.spatial import heightfield as hf
 
 SP = 0.5
 HALO = hz.horizon_reach_px(SP)
 EAST = 90.0
 
 
-def _card(z_cm: float, half_cm: float = 100.0) -> np.ndarray:
-    """A flat square leaf card at ``z_cm``, two triangles' vertices."""
-    a, b = -half_cm, half_cm
-    corners = [(a, a), (b, a), (b, b), (a, a), (b, b), (a, b)]
-    return np.array([(x, y, z_cm) for x, y in corners], np.float32)
-
-
-def _mesh(cards: list[tuple[float, float, int]]) -> SpeciesMesh:
-    """A mesh of flat cards: ``(height cm, half width cm, material slot)`` each."""
-    verts = np.concatenate([_card(z, h) for z, h, _slot in cards])
-    tris = np.arange(len(verts), dtype=np.int64).reshape(-1, 3)
-    slots = np.repeat(np.array([slot for _z, _h, slot in cards], np.int64), 2)
-    return SpeciesMesh(verts, tris, slots, ["bark", "leaf"])
-
-
-def test_a_species_underside_is_under_its_lowest_leaves_but_a_few():
-    crown = [(800.0 + 10 * k, 300.0, 1) for k in range(40)]
-    assert leaf_low_cm(_mesh(crown), ["bark", "leaf"]) == pytest.approx(800.0, abs=30.0)
-    stray = crown + [(50.0, 40.0, 1)]  # one small leaf card near the ground
-    assert leaf_low_cm(_mesh(stray), ["bark", "leaf"]) > 700.0, "a few low leaves do not count"
-    low = crown + [(50.0, 300.0, 1) for _ in range(10)]  # a fifth of the leaves low down
-    assert leaf_low_cm(_mesh(low), ["bark", "leaf"]) == pytest.approx(50.0)
-    trunk = [(0.0, 50.0, 0), (400.0, 50.0, 0)]
-    assert leaf_low_cm(_mesh(trunk), ["bark", "leaf"]) == pytest.approx(0.0), "bark alone"
-    assert leaf_low_cm(_mesh(trunk), ["skip", "skip"]) is None
-    assert 0 < LEAF_LOW_SHARE < 0.2
-
-
-def test_a_species_whose_mesh_cannot_be_read_takes_the_default_share():
-    species = [{"name": "a", "mesh": "/x/a", "materials": [], "radius_m": 1.0, "top_m": 5.0}]
-    found = species_undersides(None, species, [500.0])
-    assert found.tolist() == [pytest.approx(CROWN_UNDERSIDE)]
-
-
-def _sprite(side: int, top_cm: float) -> dict[str, object]:
-    cover = np.full((side, side), 255, np.uint8)
-    top = np.full((side, side), top_cm, np.uint16)
-    corner = -side * 12.5 / 2
-    return {"cover": cover, "top_cm": top, "slot": np.zeros_like(cover), "x0_cm": corner,
-            "y0_cm": corner, "offset": 0, "width": side, "height": side}  # fmt: skip
-
-
-def _records(trees: list[tuple[float, float, int]]) -> np.ndarray:
-    from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD
-
-    out = np.zeros(len(trees), CROWN_RECORD)
-    for k, (x, y, species) in enumerate(trees):
-        out[k] = (x, y, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, species)
-    return out
-
-
-def test_a_texel_takes_the_underside_of_the_tree_whose_crown_is_highest_there():
-    grid = {"spacing_cm": 100.0, "x0_cm": 50.0, "y0_cm": 50.0}
-    sprites = [_sprite(96, 2000.0), _sprite(16, 900.0)]  # 12 m and 2 m wide
-    under = np.array([0.7, 0.2], np.float32)
-    records = _records([(1000.0, 1000.0, 0), (1500.0, 1000.0, 1), (1700.0, 1700.0, 1)])
-    plane = stamp_undersides(records, sprites, under, (24, 24), grid)
-    tall, short = round(0.7 * UNDER_SCALE), round(0.2 * UNDER_SCALE)
-    assert plane[10, 10] == tall and plane[10, 15] == tall, "under the taller crown"
-    assert plane[17, 17] == short and plane[2, 2] == 0
-    flipped = stamp_undersides(records, sprites[::-1], under[::-1], (24, 24), grid)
-    assert flipped[10, 10] == tall, "the crown highest at a texel, whichever its index"
-
-
-def test_the_sheet_takes_the_underside_s_mean_over_the_crowns_it_covers():
-    grid = {"x0_cm": BOUNDS_M["x_min_m"] * 100.0, "y0_cm": BOUNDS_M["y_min_m"] * 100.0,
-            "spacing_cm": 100.0}  # fmt: skip
-    top = np.full((32, 32), hf.NODATA, np.int16)
-    top[8:16, 8:24] = 200
-    under = np.zeros((32, 32), np.uint8)
-    under[8:16, 8:16], under[8:16, 16:24] = 50, 150
-    size = int((BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / 3.0)
-    out = np.empty((size, size), np.float32)
-    cover, sheet_under = np.zeros((size, size), np.uint8), np.zeros((size, size), np.uint8)
-    sheet_crowns(top, grid, size, out, cover, (under, sheet_under))
-    assert sheet_under[3, 3] == 50 and sheet_under[3, 6] == 150
-    assert 50 < sheet_under[3, 5] < 150, "a pixel over both takes their mean"
-    assert not sheet_under[cover == 0].any()
-
-
-def test_a_crown_spans_its_species_share_and_a_titan_tree_a_thin_slab():
+def test_a_cell_takes_the_cover_weighted_top_and_a_leaf_shell_under_it():
     z = np.zeros((4, 4), np.float32)
-    top = np.full((4, 4), 60.0, np.float32)
-    under = np.full((4, 4), round(0.75 * UNDER_SCALE), np.float32)
-    under[2:] = UNDER_TITAN
-    rec, (c_lo, c_hi), (t_lo, t_hi) = span_bake.tree_spans(z, top, None, under)
-    assert rec.tolist() == top.tolist()
-    share = round(0.75 * UNDER_SCALE) / UNDER_SCALE
-    assert c_lo[0, 0] == pytest.approx(share * 60.0) and c_hi[0, 0] == 60.0
-    assert np.isnan(c_lo[2:]).all() and np.isnan(t_lo[:2]).all()
-    assert t_lo[2, 0] == pytest.approx(60.0 - TITAN_SLAB_M) and t_hi[2, 0] == 60.0
-    low = span_bake.tree_spans(z, np.full((4, 4), 8.0, np.float32), None, under)[2]
-    assert low[0][2, 0] == 0.0, "a canopy under the slab's depth stands on the ground"
-    _rec, (old_lo, _hi), _t = span_bake.tree_spans(z, top, None, None)
-    assert old_lo[0, 0] == pytest.approx(CROWN_UNDERSIDE * 60.0), "no underside plane: the default"
+    top = np.full((4, 4), np.nan, np.float32)
+    top[0, :2], top[1, :2] = (20.0, 10.0), (20.0, 10.0)
+    cover = np.where(np.isfinite(top), 0.5, 0.0).astype(np.float32)
+    cover[0, 0] = cover[1, 0] = 1.0
+    titan = np.zeros((4, 4), bool)
+    titan[:2, 2:] = True
+    top[:2, 2:], cover[:2, 2:] = 60.0, 0.25
+    cells = tree_cells(z, np.zeros((2, 2), np.float32), top, cover, titan)
+    weighted = (2 * 1.0 * 20.0 + 2 * 0.5 * 10.0) / 3.0
+    assert cells.hi[0, 0] == pytest.approx(weighted)
+    assert cells.lo[0, 0] == pytest.approx(weighted - porous.LEAF_SHELL_M)
+    assert cells.cover[0, 0] == pytest.approx(0.75) and cells.receivers[0, 0] == cells.hi[0, 0]
+    assert cells.cover[0, 1] == pytest.approx(0.25) and cells.receivers[0, 1] == 0.0
+    assert cells.tau_titans[0, 1] > 0 and cells.tau_crowns[0, 1] == 0.0
+    assert cells.tau_crowns[0, 0] == pytest.approx(-math.log(1 - 0.75), rel=1e-6)
+    assert np.isnan(cells.hi[1]).all() and (cells.receivers[1] == 0.0).all()
 
 
-def _trees(z: np.ndarray, top: np.ndarray, under: np.ndarray | None) -> span_bake.BlockSpans:
-    """``z`` with trees of ``top`` and ``under`` bytes stood on it, as a block casts them."""
-    rec, crowns, titans = span_bake.tree_spans(z, top, None, under)
-    surfaces = span_bake.tree_surfaces(span_bake.TreePlanes(rec, *crowns, *titans), z)
-    return span_bake.BlockSpans(None, *surfaces)
+def test_a_shell_too_near_the_ground_reaches_down_to_it():
+    z = np.zeros((2, 2), np.float32)
+    top = np.full((2, 2), 1.5, np.float32)
+    cells = tree_cells(z, np.zeros((1, 1), np.float32), top, np.ones((2, 2), np.float32), z > 1)
+    assert cells.lo[0, 0] == 0.0 and cells.hi[0, 0] == 1.5
+    assert cells.tau_crowns[0, 0] == pytest.approx(-math.log(1 - porous.COVER_MAX), rel=1e-6)
 
 
-def test_the_titan_canopy_lets_the_sun_through_beneath_its_slab():
+def _canopy(n: int, cols: slice, top_m: float, cover: float, titan: bool = False) -> TreePlanes:
+    """Flat ground at 0 m under a canopy over ``cols`` of every row, at half resolution."""
+    z = np.zeros((2 * n, 2 * n), np.float32)
+    tops = np.full(z.shape, np.nan, np.float32)
+    tops[:, 2 * cols.start : 2 * cols.stop] = top_m
+    share = np.where(np.isfinite(tops), cover, 0.0).astype(np.float32)
+    flag = np.full(z.shape, titan)
+    return tree_cells(z, np.zeros((n, n), np.float32), tops, share, flag)
+
+
+def _depth(planes: TreePlanes, az: float = EAST) -> np.ndarray:
+    return porous.march_porous(trees_porous(planes), HALO, az, SP)
+
+
+@pytest.mark.parametrize("cover", [0.3, 0.6, 1.0])
+def test_a_ray_through_a_canopy_keeps_the_light_its_cover_lets_through(cover):
     n = 2 * HALO + 200
-    z = np.zeros((n, n), np.float32)
+    col = HALO + 100
+    planes = _canopy(n, slice(col, col + 60), 30.0, cover)
+    depth = _depth(planes)
+    el = math.radians(path_elevation(EAST))
+    west = col - HALO - round(30.0 / math.tan(el) / SP) + 4  # rising through the shell
+    shade = 1 - math.exp(-float(depth[40, west]))
+    kept = min(cover, porous.COVER_MAX)
+    assert shade == pytest.approx(kept, abs=0.05), "the light the cover lets through"
+    assert depth[40, col - HALO - 120] == 0.0, "the ray passes over the canopy far west of it"
+
+
+def test_the_light_passes_beneath_a_canopy_and_through_its_gaps():
+    n = 2 * HALO + 200
     col = HALO + 150
-    top = np.full((n, n), np.nan, np.float32)
-    top[:, col : col + 40] = 60.0  # 20 m wide, 60 m up
-    titan = _trees(z, top, np.full((n, n), UNDER_TITAN, np.float32)).titans
-    old = _trees(z, top, np.full((n, n), round(0.5 * UNDER_SCALE), np.float32)).crowns
-    assert titan is not None and old is not None
-    el, row, d = 45.0, 40, 15.0
-    at = col - round(d / SP) - HALO  # 15 m west of the canopy
-    shade = {}
-    for name, surface, fade in (("thin", titan, model.TITAN_FADE_M),
-                                ("thick", old, hz.OCCLUDER_FADE_M)):  # fmt: skip
-        bands = march_spans(surface, HALO, EAST, SP, fade)
-        shade[name] = span_bake.cell_shade(bands.horizon, ((bands.lo, bands.hi),), el)[row, at]
-    assert shade["thick"] == 1.0, "a 30 m slab hides the sun from beneath the canopy"
-    assert shade["thin"] == 0.0, "a 12 m one lets it through"
-    assert (60.0 - TITAN_SLAB_M) / (d + 20.0) > math.tan(math.radians(el + 3.0)), "beneath"
+    planes = _canopy(n, slice(col, col + 40), 60.0, 1.0, titan=True)
+    depth = _depth(planes)
+    row = 40
+    under = col - HALO - round(15.0 / SP)  # 15 m west: the ray rises under the 20 m wide shell
+    assert depth[row, under] == 0.0, "light passes beneath the canopy"
+    through = col - HALO - round(50.0 / SP)  # 50 m west: it climbs through the shell
+    assert depth[row, through] > 1.0
+    gap = planes._replace(tau_titans=np.where(np.arange(n)[:, None] == HALO + row, 0.0, planes.tau_titans))
+    assert _depth(gap)[row, through] < depth[row, through] / 4, "a gap in the cover lets it in"
 
 
-def test_a_tree_s_cell_holds_the_trees_alone_and_is_stored_inside_terrain_shade():
+def test_each_tree_class_fades_with_its_own_distance():
+    n = 2 * HALO + 200
+    col = HALO + 300
+    crowns = _canopy(n, slice(col, col + 20), 60.0, 0.6)
+    titans = _canopy(n, slice(col, col + 20), 60.0, 0.6, titan=True)
+    at = col - HALO - round(60.0 / SP)  # the ray climbs through the shell about 60 m out
+    near, far = float(_depth(crowns)[40, at]), float(_depth(titans)[40, at])
+    assert 0.0 < near < far, "the crowns fade by 80 m, the Titan canopy by 150 m"
+    assert near / far == pytest.approx(
+        hz.fade_weight(60.0, hz.OCCLUDER_FADE_M) / hz.fade_weight(60.0, hz.FADE_M), rel=0.15
+    )
+
+
+def test_a_tree_cell_holds_the_trees_alone_folded_at_the_sun_path_s_elevation():
     n = 2 * HALO + 120
     z = np.zeros((n, n), np.float32)
     z[:, n - HALO - 30 :] = 80.0  # a cliff to the east shades the whole core at low sun
-    top = np.full((n, n), np.nan, np.float32)
-    top[:, HALO + 60 : HALO + 64] = 15.0
-    spans = _trees(z, top, None)
+    col = HALO + 60
+    planes = _canopy(n, slice(col, col + 16), 15.0, 0.9)
+    spans = span_bake.BlockSpans(None, planes, z)
     k = int(EAST / (360 / hz.HORIZON_DIRS))
-    cells = {c.k: c.deg for c in span_bake.horizon_cells(z, HALO, SP, spans)}
-    ground, trees = cells[k], cells[model.CROWN_CELL + k]
-    row, west = 30, 40  # core columns west of the crown, under the cliff's shade
-    assert ground[row, west] > 30.0, "the terrain shades it"
-    assert 0 < trees[row, west] < ground[row, west], "stored, though under the terrain's"
-    assert trees[row, 5] == 0.0, "far from the tree: no terrain in a tree's cell"
+    cells = {c.k: c for c in span_bake.horizon_cells(z, HALO, SP, spans)}
+    ground, trees = cells[k].deg, cells[model.CROWN_CELL + k]
+    west = col - HALO - round(13.0 / SP)
+    el = 45.0
+    assert ground[30, west] > 30.0, "the terrain shades it"
+    assert trees.deg[30, west] == pytest.approx(el + 6.0 * (0.8 - 0.5), abs=0.6), "the cover's"
+    assert trees.band_in is not None and trees.band_in[30, west]
+    assert trees.deg[30, 5] == 0.0, "far from the tree: no terrain in a tree's cell"
+
+
+def test_a_canopy_cell_holds_the_ground_s_horizon_received_on_the_canopy_top():
+    n = 2 * HALO + 120
+    z = np.zeros((n, n), np.float32)
+    z[:, n - HALO - 30 :] = 80.0  # a cliff to the east
+    col = HALO + 40
+    planes = _canopy(n, slice(col, col + 20), 60.0, 1.0)
+    canopy = canopy_planes(z, planes, HALO - 1, SP)
+    found = canopy_cell(canopy, HALO - 1, EAST, SP)[1:-1, 1:-1]
+    ground = hz.march_horizon(z, HALO, EAST, SP)
+    row, on = 30, col - HALO + 10
+    assert 0.0 < found[row, on] < ground[row, on], "the cliff stands lower over the canopy"
+    assert found[row, on - 10 - CANOPY_PAD_CELLS - 2] == 0.0, "no tree: no canopy cell"
+    beside = found[row, on - 10 - 1]
+    assert beside >= model.CANOPY_FLOOR_DEG or beside == pytest.approx(ground[row, on - 11], 2.0)
 
 
 def test_the_page_reads_the_trees_shadows_and_their_occlusion_only_with_the_trees():
@@ -182,19 +156,40 @@ def test_the_page_reads_the_trees_shadows_and_their_occlusion_only_with_the_tree
     nrm = np.empty((8, 8, 4), np.uint8)
     nrm[...] = (128, 128, 200, 255)
     cells = np.zeros((model.HZ_CELLS, 8, 8), np.float32)
-    cells[model.TITAN_CELL : model.AO_CELL] = 60.0
+    cells[model.CROWN_CELL : model.CANOPY_CELL] = 60.0
     hz_u8 = hz.encode_horizon(cells)
     hz_u8[model.AO_CELL] = 128
     sun = (225.0, 30.0)
     painted, terrain = shader_light("painted"), shader_light("terrain")
     shaded = model.relight(colour, nrm, hz_u8, sun, painted)
     open_sky = model.relight(colour, nrm, None, sun, painted)
-    assert shaded.mean() < open_sky.mean() - 10, "a Titan tree's shadow"
+    assert shaded.mean() < open_sky.mean() - 10, "a tree's shadow"
     no_trees = model.relight(colour, nrm, hz_u8, sun, terrain)
     assert no_trees.tobytes() == model.relight(colour, nrm, None, sun, terrain).tobytes()
     unshadowed = model.relight(colour, nrm, hz_u8, sun, painted, shadows=False)
     hz_u8[model.AO_CELL] = 0
     assert unshadowed.mean() < model.relight(colour, nrm, hz_u8, sun, painted, False).mean()
+
+
+def test_the_page_lights_the_trees_under_the_canopy_s_horizon_not_the_ground_s():
+    colour = np.full((8, 8, 3), 150, np.uint8)
+    nrm = np.empty((8, 8, 4), np.uint8)
+    nrm[...] = (128, 128, 255, 255)
+    cells = np.zeros((model.HZ_CELLS, 8, 8), np.float32)
+    cells[: model.CROWN_CELL] = 60.0  # the ground beneath the canopy is in a rock's shadow
+    cells[model.CANOPY_CELL : model.AO_CELL] = model.CANOPY_FLOOR_DEG  # its top is not
+    hz_u8 = hz.encode_horizon(cells)
+    sun, painted = (225.0, 30.0), shader_light("painted")
+    trees = np.dstack([colour, np.full((8, 8), 255, np.uint8)])
+    lit = model.relight(colour, nrm, hz_u8, sun, painted, trees=trees)
+    ground = model.relight(colour, nrm, hz_u8, sun, painted)
+    assert lit.mean() > ground.mean() + 10, "the canopy stands over the rock's shadow"
+    cells[model.CANOPY_CELL : model.AO_CELL] = 0.0  # no canopy cell: the ground's horizon
+    held = model.relight(colour, nrm, hz.encode_horizon(cells), sun, painted, trees=trees)
+    assert abs(int(held.mean()) - int(ground.mean())) <= 2
+    bare = trees.copy()
+    bare[..., 3] = 0
+    assert model.relight(colour, nrm, hz_u8, sun, painted, trees=bare).tobytes() == ground.tobytes()
 
 
 # --------------------------------------------------------------------- ambient occlusion
