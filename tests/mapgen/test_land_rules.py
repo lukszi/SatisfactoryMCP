@@ -281,7 +281,11 @@ NAMES = ["SM_Kapok_01", "SM_Kapok_03", "SM_Bamboo_01"]
 def test_the_canopy_targets_are_one_global_green_and_red_by_species():
     assert [e for e in CAL["areas"] if "canopy" in e] == [], "no area canopy entries"
     assert CAL["canopy"] == "#558653"
-    assert CAL["species"] == {"SM_Kapok_03": "#7c4955"}
+    assert CAL["species"] == {
+        "SM_Kapok_03": "#7c4955",
+        "Orange_palm1": "#c3cbb6",
+        "Orange_palm2": "#bcc5ad",
+    }, "the orange palms at their leaf's camera colour"
     assert CAL["crowns"]["blue_palm"] == "#3d627d"
 
 

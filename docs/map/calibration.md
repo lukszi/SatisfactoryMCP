@@ -221,6 +221,7 @@ references were used. A target is a screenshot measured so, or derived by a rule
 | Boulders of the top pass | Dune Desert | #ca9164 | derived (bake) | the Dune Desert's boulder tops in the game's baked distant view through the camera model (painted.md section 30, "The Dune Desert's boulders"); #ba7b56, the arches' and rib bones', until the desert arches took their family's colour |
 | Top layer, red jungle family | the up-facing faces of every `_RedJungle` cliff | #ad6351 | derived (bake) | those cliffs' tops in the game's baked distant view through the camera model ("The second review" below) |
 | Crowns, red Kapok (`SM_Kapok_03`) | everywhere, by species | #7c4955 | screenshot | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942); two 1.0 sources agree (ΔE 1.8 and 1.9) (see "Crowns") |
+| Crowns, orange palms (`Orange_palm1`, `Orange_palm2`) | everywhere, by species | #c3cbb6, #bcc5ad | derived (texture) | each species' sprite colour through the camera model: `TX_OrangePalm_Alb_01`, pale sage under the warm sun (light-and-crowns.md section 36, "Foliage colours checked"); they skip the canopy step |
 | Crowns, blue palms | everywhere, by hue | #3d627d | screenshot | [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), high-angle daylight: the blue leaf pixels (hue 190 to 290, chroma at least 0.04) of five crowns pooled, then the method above. The [Rocky Desert area](https://satisfactory.wiki.gg/images/Rocky_Desert_Area.png) crowns agree on hue (242) but are seen from below; the [river split](https://satisfactory.wiki.gg/images/Rocky_Desert_river_split.png) crowns are backlit. A 1.0 shot gives #556b85 (ΔE 4.4); not derivable, as a third of the leaf is midribs and the fronds are sparse |
 | CoralRock layer | Blue Crater, Crater Lakes | #6c7386 | screenshot | [crater ground at noon](https://steamcommunity.com/sharedfiles/filedetails/?id=3372405479) |
 | Shell meshes (the pale plates) | Blue Crater | #747b85 | screenshot | [Blue Crater aerial](https://steamcommunity.com/sharedfiles/filedetails/?id=3579556500), [Blue Crater](https://satisfactory.wiki.gg/images/Blue_Crater.png), the noon crater shot |
@@ -436,9 +437,20 @@ crowns instead (`palette/painted/trees.py` `crown_ops`, applied in `crown_layer`
   that belongs to the tree rather than to the place. `species_targets` (`trees.py`) returns
   every species' sprite mips with each named species moved, every texel, from its own colour
   as drawn onto its target, and `PaintedGround` takes those mips before the scopes are
-  measured, so the hue gates that follow see the moved colour. One is named: the red Kapok
+  measured, so the hue gates that follow see the moved colour. Three are named: the red Kapok
   `SM_Kapok_03`, on #7c4955, 1,324 trees, step -0.035 and ×0.646 (sidecar
-  `species@SM_Kapok_03`).
+  `species@SM_Kapok_03`), and the orange palms (below).
+- **A named species skips the canopy step** (2026-10-14). Its colour is its own, so the canopy
+  scopes do not count its trees, and its mips are moved again, once the global canopy op is
+  measured, onto the colour that op's step carries onto its target at the gate that colour
+  opens (`before_canopy`, fixed-point rounds on the gate): drawn, it lands on its target. The
+  red Kapok's crimson opens no gate and is where it was. The orange palms (`Orange_palm1` and
+  `_2`, 5,621 shrubs, chroma 0.020) opened the canopy gate fully and drew mint, #b9ebd0 and
+  #afe1c6 at flat shade; they now take their leaf texture's camera colour, pale sage, #c3cbb6
+  and #bcc5ad (light-and-crowns.md section 36, "Foliage colours checked"): gates 0.62 and 0.68,
+  steps -0.050 and -0.032, ×0.56 and ×0.63. Dropping their trees from the canopy measure leaves
+  its op as it was (+0.063 L, ×1.54). An area entry's canopy op, where one is given, still
+  reaches a named species there; no entry carries one.
 
 **Why by species.** The red Kapok grows outside the Red Jungle too: 68% of its crowns stand
 there, but also 32% of the Rocky Desert's, 22% of the Red Bamboo Fields' and 19% of the Jungle
@@ -844,13 +856,12 @@ instance, the class is mostly other meshes, each with its own texture:
   master's default and is not drawn; whether it shows in game is unchecked.
 - The red Kapok is crimson wherever it grows, the Rocky Desert and the Red Bamboo Fields
   included, by the Red Jungle's references. Its crowns there were not measured from above.
-- No crown target for the orange palms (`Orange_palm1`, `_2`, chroma 0.020) or the screw palm
-  (`SM_ScrewPalm_01`, 0.017): their texture means are pale grey-green and grey-teal, and the
-  canopy gate moves the orange palms all the way and the screw palm by 0.62, so they draw a
-  pale mint #a7bcac and a blue-grey #768c85. Like the blue palm's, their in-game crowns are
-  likely darker than the mean; no reference has been measured. The orange palms' leaf
-  texture, the pines' pre-1.0 views and the crowns' `darkening` are measured in
-  light-and-crowns.md section 36, "Foliage colours checked".
+- The orange palms (`Orange_palm1`, `_2`) wear their leaf texture's camera colour, pale sage,
+  not a screenshot: no view from above has been found. The screw palm (`SM_ScrewPalm_01`,
+  chroma 0.017) has no target: its texture mean is grey-teal and the canopy gate moves it by
+  0.62, so it draws a blue-grey #768c85. The orange palms' leaf texture, the pines' pre-1.0
+  views and the crowns' `darkening` are measured in light-and-crowns.md section 36, "Foliage
+  colours checked".
 - `AmberTree_01`'s crown is branch cards at opacity 0.18, so it draws as a tan haze tens of
   metres wide over the ground and the palms under it; its look from above is unchecked.
 - Render-only meshes take one colour per class: the coral class's cap target #917c75 also

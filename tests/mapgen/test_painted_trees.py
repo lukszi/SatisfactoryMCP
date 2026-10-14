@@ -23,6 +23,7 @@ from mapgen.palette.painted.calibration import (
     display_to_crown,
     display_to_ground,
     display_to_linear,
+    sampled_rgb,
     scoped_planes,
     weighted_median,
 )
@@ -34,11 +35,14 @@ from mapgen.palette.painted.trees import (
     CANOPY_GREY,
     IDENTITY_OP,
     TARGET_GREY,
+    crown_calibration,
     crown_lab,
     crown_layer,
     crown_ops,
     hue_gate,
+    moved_crowns,
     over_crowns,
+    species_colours,
 )
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.terrain.crown_atlas import ALPHA, CHANNELS, RGB
@@ -96,6 +100,24 @@ def test_a_canopy_target_leaves_crowns_of_another_hue_alone():
     lab = crown_lab(np.array([GREEN, pink, blue], np.float32), STYLE)
     gate = hue_gate(lab, ops[0][5:7])
     assert gate[0] == 1.0 and gate[1] == 0.0 and gate[2] == 0.0
+
+
+def test_a_species_with_its_own_target_skips_the_canopy_step():
+    sage = (0.26, 0.36, 0.28)  # the orange palms' leaf: grey-mint, inside the canopy gate
+    crowns = _crowns([GREEN, sage], [0] * 20 + [1] * 20, [0.0] * 40)
+    crowns.names = ["SM_Kapok_01", "Orange_palm2"]
+    targets = {"canopy": "#558653", "species": {"Orange_palm2": "#bcc5ad"}, "min_texels": 5}
+    zero = lambda _keys: np.zeros((1, 1), np.float32)
+    found = crown_calibration(crowns, PAINTED_PALETTE, targets, ((1, 1), 1e9), zero)
+    assert found.measured["crowns@0"]["trees"] == 20, "the named species is not counted"
+    assert 0.0 < found.measured["species@Orange_palm2"]["canopy_gate"] <= 1.0
+    op = np.asarray(sampled_rgb(found.ops[0][0], lambda plane: plane), np.float32).reshape(-1)
+    colours = species_colours(found.levels)[0]
+    drawn = moved_crowns(crown_lab(colours, STYLE), [(op, CANOPY_GREY)])
+    want = display_to_crown(PAINTED_PALETTE, "#bcc5ad")
+    np.testing.assert_allclose(drawn[1], want, atol=2e-3)
+    canopy = display_to_crown(PAINTED_PALETTE, "#558653")
+    np.testing.assert_allclose(drawn[0], canopy, atol=2e-3)
 
 
 def test_a_crowns_weight_is_the_ground_it_hides():

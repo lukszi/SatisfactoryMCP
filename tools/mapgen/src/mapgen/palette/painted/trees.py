@@ -55,6 +55,7 @@ __all__ = [
     "TARGET_GREY",
     "CrownCalibration",
     "TreeOver",
+    "before_canopy",
     "canopy_cover",
     "crown_calibration",
     "crown_lab",
@@ -163,16 +164,18 @@ def crown_ops(
     min_trees: int,
     grey: tuple[float, float] = CANOPY_GREY,
     levels: SpeciesLevels | None = None,
+    skip: Sequence[int] = (),
 ) -> tuple[list[FloatGrid | None], JsonObject]:
     """One colour transfer per scope, from its trees' median crown colour to its target.
 
     ``cells`` is each record's ``(row, col)`` on the scope planes. A tree counts by the ground
     its crown hides times its hue gate, which opens over ``grey``; ``levels`` are the mips it
-    is measured on, the crowns' own when None. Returns the ops, None for a scope with too few
-    trees, and what was measured.
+    is measured on, the crowns' own when None; the species of ``skip`` are not counted.
+    Returns the ops, None for a scope with too few trees, and what was measured.
     """
     colours, areas = species_colours(crowns.levels if levels is None else levels)
     species = crowns.records["species"]
+    counted = ~np.isin(species, np.asarray(skip, np.int64))
     lab = crown_lab(colours, style)[species]
     weight = areas[species] * crowns.records["scale"] ** 2
     rows, cols = cells
@@ -185,7 +188,8 @@ def crown_ops(
     for i, (plane, target) in enumerate(scopes):
         hue = np.asarray(target[1:], np.float32) / max(float(np.hypot(*target[1:])), 1e-6)
         gate = hue_gate(lab, hue, grey)
-        inside = ((plane[rows, cols] if plane is not None else 1.0 - claimed) >= 0.5) & (gate > 0.5)
+        held = plane[rows, cols] if plane is not None else 1.0 - claimed
+        inside = (held >= 0.5) & (gate > 0.5) & counted
         if inside.sum() < min_trees:
             ops.append(None)
             continue
@@ -201,10 +205,16 @@ def crown_ops(
 
 
 def species_targets(
-    crowns: CrownSet, style: CrownStyle, targets: Mapping[str, str], palette: PaintedPalette
+    crowns: CrownSet,
+    style: CrownStyle,
+    targets: Mapping[str, str],
+    palette: PaintedPalette,
+    canopy: FloatGrid | None = None,
 ) -> tuple[list[list[FloatGrid]], JsonObject]:
     """Every species' mips with each named species moved onto its target, and what was
-    measured: one step from its colour as drawn (``crown_lab``) to the target as a crown."""
+    measured: one step from its colour as drawn (``crown_lab``) to the target as a crown,
+    or, given the ``canopy`` op, to the colour that op's gated step carries onto it, so the
+    drawn crown skips the canopy step (``before_canopy``)."""
     names = list(crowns.names)
     levels: list[list[FloatGrid]] = [list(mips) for mips in crowns.levels]
     colours, _areas = species_colours(levels)
@@ -214,14 +224,33 @@ def species_targets(
             continue
         k = names.index(name)
         target = display_to_crown(palette, hex_colour)
+        gate = 0.0
+        if canopy is not None:
+            target, gate = before_canopy(target, canopy)
         step, matrix = transfer_op(crown_lab(colours[k], style), target)
         levels[k] = [_moved_level(level, step, matrix, style) for level in levels[k]]
         measured[f"species@{name}"] = {
             "trees": int((crowns.records["species"] == k).sum()),
             "dL": round(step, 4),
             "chroma_scale": round(float(np.hypot(*matrix[0])), 3),
+            "canopy_gate": round(gate, 3),
         }
     return levels, measured
+
+
+def before_canopy(target: FloatGrid, op: FloatGrid, rounds: int = 32) -> tuple[FloatGrid, float]:
+    """The colour the canopy ``op``, gated on that colour (``moved_crowns``), carries onto
+    ``target``, by fixed-point rounds on the gate, and that gate."""
+    eye = np.eye(2, dtype=np.float32)
+    matrix = op[1:5].reshape(2, 2)
+    found, gate = np.asarray(target, np.float32).copy(), 0.0
+    for _ in range(rounds):
+        gate = float(hue_gate(found, op[5:7], CANOPY_GREY))
+        found = np.array(
+            [target[0] - gate * op[0], *np.linalg.solve(eye + gate * (matrix - eye), target[1:])],
+            np.float32,
+        )
+    return found, gate
 
 
 def named_targets(
@@ -288,7 +317,9 @@ def crown_calibration(
 ) -> CrownCalibration:
     """The species targets (``species_targets``) and the named crown targets
     (``named_targets``), both moved into the species' mips, then the canopy targets' op (one
-    op, or seven coarse planes) measured on the moved mips.
+    op, or seven coarse planes) measured on the moved mips. A species with a target of its own
+    is not counted, and is moved again so the global canopy op's step carries it onto its
+    target: it skips the canopy step.
 
     ``grid`` is the scope planes' ``(shape, step cm)``, ``area_weight(keys)`` an area entry's
     plane on it. An area entry's trees move to its canopy target, the rest to the global one.
@@ -304,13 +335,18 @@ def crown_calibration(
     ]
     if "canopy" in targets:
         scopes.append((None, display_to_crown(palette, targets["canopy"])))
-    levels, moved = species_targets(crowns, style, targets.get("species", {}), palette)
+    species = targets.get("species", {})
+    levels, moved = species_targets(crowns, style, species, palette)
     levels, named = named_targets(crowns, palette, targets, (rows, cols), levels)
+    skip = [k for k, name in enumerate(crowns.names) if name in species]
     ops, measured = crown_ops(
-        crowns, style, (rows, cols), scopes, targets["min_texels"], levels=levels
+        crowns, style, (rows, cols), scopes, targets["min_texels"], levels=levels, skip=skip
     )
-    found: JsonObject = {**measured, **moved, **named}
     default = ops[-1] if "canopy" in targets and ops[-1] is not None else IDENTITY_OP
+    if skip:
+        levels, moved = species_targets(crowns, style, species, palette, default)
+        levels, named = named_targets(crowns, palette, targets, (rows, cols), levels)
+    found: JsonObject = {**measured, **moved, **named}
     scoped = [(w, op) for (w, _t), op in zip(scopes, ops, strict=True) if w is not None]
     taken = [(w, op) for w, op in scoped if op is not None]
     out: list[CrownOp] = [(scoped_planes(default, taken), CANOPY_GREY)]

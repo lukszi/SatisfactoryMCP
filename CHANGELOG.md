@@ -337,6 +337,10 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the Satellite map's orange palms, the small shrubs among the Southern Forest's
+  purple trees, are pale sage, their leaves' colour in the game's sun, instead of mint. A tree
+  species with a colour of its own in the palette now keeps that colour: the green canopy's
+  adjustment no longer moves it on. The style's version goes up.
 - Map renders: the Satellite map's red jungle and red-grass cliffs lay their grass and moss
   tops by each cliff's own material settings, as the game does, instead of their family's
   alone: about a quarter of those cliffs keep the top off the steeper rims of their shelves.
