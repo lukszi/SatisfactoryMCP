@@ -44,6 +44,7 @@ from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
     "CORAL_CLASSES",
+    "CORAL_KINDS",
     "MESH_BARNACLE",
     "MESH_CLASS_MASK",
     "MESH_CLASS_NAMES",
@@ -66,6 +67,7 @@ __all__ = [
     "MeshRasterStats",
     "PreparedMeshes",
     "Shape",
+    "coral_kind",
     "instance_y_spans",
     "is_render_only_foliage",
     "is_render_only_static",
@@ -103,7 +105,18 @@ MESH_CLASS_NAMES = {
 }
 #: The classes drawn as coral: in its colour, sunk into the sea as the seabed's.
 CORAL_CLASSES = (MESH_CORAL, MESH_BARNACLE)
-#: A mesh raster's source code: the class in the low bits, a rock's family above them.
+#: Coral meshes with a colour of their own, by leaf name; any other coral wears the class's.
+CORAL_KINDS = (
+    "CraterCoralRoots",
+    "SM_CoralRoot_01",
+    "SM_NetFungi_01",
+    "SM_CoralCactus_01",
+    "SM_CoralCactus_02",
+    "CraterBush",
+    "CraterTree_02",
+)
+#: A mesh raster's source code: the class in the low bits, a rock's family or a coral's kind
+#: (its index in ``CORAL_KINDS`` plus one) above them.
 MESH_FAMILY_SHIFT = 3
 MESH_CLASS_MASK = (1 << MESH_FAMILY_SHIFT) - 1
 
@@ -183,6 +196,12 @@ def mesh_class(mesh: str) -> int:
     return MESH_CORAL
 
 
+def coral_kind(mesh: str) -> int:
+    """A coral mesh's kind, its index in ``CORAL_KINDS`` plus one; 0 for any other mesh."""
+    name = mesh.rsplit("/", 1)[-1]
+    return CORAL_KINDS.index(name) + 1 if name in CORAL_KINDS else 0
+
+
 def titan_class(mesh: str) -> int:
     name = mesh.rsplit("/", 1)[-1]
     if TITAN_MARK not in name:
@@ -260,8 +279,8 @@ def _mesh_groups(
     sweep: Sweep,
     shapes: Mapping[str, Shape],
 ) -> dict[str, tuple[list[F64Grid], list[int]]]:
-    """Per render-only mesh, its instances' matrices and source codes: the class, and for a
-    rock the family its placement wears (``worn_family``), shifted above it."""
+    """Per render-only mesh, its instances' matrices and source codes: the class, and shifted
+    above it a rock's family its placement wears (``worn_family``) or a coral's kind."""
     meshes = sweep["meshes"]
     caches: tuple[dict[str, str | None], dict[str, int]] = ({}, {})
     groups: dict[str, tuple[list[F64Grid], list[int]]] = {}
@@ -271,9 +290,11 @@ def _mesh_groups(
         mats_now, codes = groups.setdefault(mesh, ([], []))
         mats_now.extend(mats)
         for material in materials:
-            rock = cls == MESH_ROCK
-            family = worn_family(store, scripts, index, mesh, material, caches) if rock else 0
-            codes.append(cls | family << MESH_FAMILY_SHIFT)
+            if cls == MESH_ROCK:
+                above = worn_family(store, scripts, index, mesh, material, caches)
+            else:
+                above = coral_kind(mesh) if cls == MESH_CORAL else 0
+            codes.append(cls | above << MESH_FAMILY_SHIFT)
 
     for i, row in enumerate(sweep["placements"]):
         mesh: str = meshes[int(row[0])]

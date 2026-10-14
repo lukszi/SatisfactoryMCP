@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, srgb_to_linear, tone
+from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, tone
 from mapgen.gamedata.ground.landscape_albedo import LAYERS
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.gamedata.water.bodies import WATER_CLASSES
@@ -231,12 +231,13 @@ def test_a_bake_from_srgb_is_linear_and_drops_black_holes():
 def test_the_calibration_names_real_layers_and_the_style_was_bumped():
     cal = PAINTED_PALETTE["calibration"]
     assert set(cal["layers"]) <= set(LAYERS)
-    assert {"coral", "coral_seabed"} <= set(cal["meshes"])
+    assert "coral" in cal["meshes"] and "coral_seabed" not in cal["meshes"], "the water tints coral"
     assert "shell" not in cal["meshes"], "a shell wears its own material's grey"
     assert "shoulder" not in PAINTED_PALETTE, "the tone replaced it"
     assert versions.STYLES["satellite-painted"]["version"] >= 3
-    seabed = srgb_to_linear(_hex(cal["meshes"]["coral_seabed"]))
-    assert seabed[2] > seabed[0], "the seabed coral stays blue"
+    from mapgen.terrain.render_meshes import CORAL_KINDS
+
+    assert set(cal["coral_meshes"]) <= set(CORAL_KINDS)
 
 
 def test_every_area_entry_names_real_areas_and_scopes_each_material_once():
@@ -405,7 +406,7 @@ def _water_ground(opaque):
         arch_rgb=None,
         cliff_layer=None,
         mesh_rgb={},
-        seabed_coral=np.zeros(3, np.float32),
+        coral_rgb={},
         water=dict(base_water(p)),
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
         opaque_water=opaque,

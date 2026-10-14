@@ -171,7 +171,9 @@ OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, tim
 2.17 times the ocean material's absorption, (1.695, 0.498, 0.363) per metre, and `W` the sky
 term #3c597d less the 0.02 sky, then blended towards #3c597d by `1 - exp(-d / 100 m)`: the
 sea's physics row of section 33 ("The sea's physics row"). The bed is the ground colour times
-exposure times 0.8 (wet).
+exposure times the scale on what the sea shows behind its surface, the ocean material's
+`Ocean SBW` 1.3 in the fitted tint (0.8, 0.94, 1.3) (section 33, "What is behind the sea's
+surface"); inland water's bed is the ground times exposure times 0.8 (wet).
 Coral and shells are part of the bed: they are composited into the ground colour first, and
 the depth `d` is measured to the drawn surface, which over a mesh is the mesh top, so a shallow
 reef stays visible. Inland water takes its class's optics (section 33).
@@ -939,15 +941,21 @@ Palette key `carpet`, in `palette/painted/optics.py`:
    bed by its cover, and is seen through the water above its own top: depth
    `level - top`, with `level = z + depth`. Then the same Beer-Lambert as the bed, before the
    open-sea term: `carpet * T + W (1 - T) + sky`.
-3. **`depth_scale` 0.2.** The water's fitted `k` saturates by about 1 m, and the median carpet
-   top is 0.8 m down (origins at 1.4 m). With the bed's own `k` the carpet would vanish, yet the
-   screenshots show it clearly through the channels. The carpet's depth is scaled by 0.2; the
-   water fit's depths were matched, not measured, so this is the weaker number of the two.
-4. **Colour** `#7499c3` (linear-light carpet albedo at map exposure). Drawn over the channels it
-   comes out at median `#5e8a9c`, against the calibration target `#5f8899` (the reference's
-   `#6493a6` at map exposure). It was `#6c9ebe` under the sea's first fit; with the 2026-10-09
-   sea row it is refitted so a carpet 0.3 to 1.5 m under the surface draws within ΔE 1.7 of
-   before.
+3. **`depth_scale` 1.** The carpet is seen through the whole water above its top, as the bed
+   is, at the sea's scale behind its surface. From 2026-10-05 to 2026-10-14 its depth was
+   scaled by 0.2, because the fitted rows' `k` (up to 7.3 per metre) hid it within a metre;
+   the game's absorption lets it through.
+4. **Colour** `#141a26`, a near-black navy (linear-light albedo at map exposure). In the 1.0
+   Spire Coast shot ([3771500868](https://steamcommunity.com/sharedfiles/filedetails/?id=3771500868))
+   the patches read as dark navy in the turquoise over sand, L 0.23 to 0.32 and hue 247 to
+   275 at map exposure, against L 0.42 to 0.58 for the water over sand beside them, with
+   cyan flecks, the rosettes' pale rims. Fitted at the patches' median 0.7 m under the
+   surface, the albedo comes out at 0: through 0.7 m of the sea's row even a black carpet
+   reads L 0.33. The colour keeps the rosettes' blue at the darkest the evidence allows.
+   Source: screenshot. Drawn, a patch 1 to 1.6 m down reads #38445c to #39475e (L 0.39)
+   against #537f88 to #5d8385 for the water around it. It was the light blue `#7499c3` under
+   the teal rows, fitted to a target of `#5f8899`, which the clearer physics row drew as light
+   blue blotches (the northern lagoons near (-100, -2020)).
 
 `strength` 0 switches it off; a paint store without carpet planes draws none.
 
@@ -960,8 +968,10 @@ load, two plane samples per band.
 
 ### Known limits
 
-- The blue is matched to screenshots, not read from the material: the grass master material is
-  stripped, so in-game tint and subsurface scattering cannot be checked.
+- The colour is matched to one screenshot, not read from the material: the grass master
+  material is stripped, so in-game tint and subsurface scattering cannot be checked. The
+  patches are drawn a little lighter against their water than that shot reads them (L 0.39
+  against 0.57, where it has 0.27 against 0.50).
 - Rosettes above the water line (in the Crater biome) are not drawn; they are ordinary land
   foliage, which the understory item covers.
 - The pale rims the screenshots show inside the patches are not drawn.

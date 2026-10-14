@@ -21,6 +21,7 @@ from satisfactory_mcp.core.gameassets.packages import (
 
 __all__ = [
     "ABSORPTION",
+    "BEHIND",
     "MURKINESS",
     "OCEAN_MATERIAL",
     "MaterialDefaults",
@@ -32,6 +33,8 @@ __all__ = [
 OCEAN_MATERIAL = "/Game/Developers/gabrielestigliano/Ocean/MM_OceanMaster"
 #: The two parameters whose product is the ocean's absorption per metre.
 ABSORPTION, MURKINESS = "Ocean Absorption Color", "Ocean Murkyness"
+#: The scale on the scene behind the water, the single-layer water's ``ColorScaleBehindWater``.
+BEHIND = "Ocean SBW"
 
 #: ``RuntimeEntries`` is indexed by parameter type: scalars first, then vectors.
 _SCALAR, _VECTOR = 0, 1
@@ -45,11 +48,13 @@ class MaterialDefaults(NamedTuple):
 
 
 class OceanAbsorption(NamedTuple):
-    """The ocean's absorption per metre, and the two parameters it is the product of."""
+    """The ocean's absorption per metre, the two parameters it is the product of, and the
+    scale on what is seen behind the water."""
 
     per_m: tuple[float, float, float]
     colour: tuple[float, float, float]
     murkiness: float
+    behind: float
 
 
 def _cached_stream(view: PackageView) -> list[PropertyTag]:
@@ -109,9 +114,10 @@ def material_defaults(view: PackageView) -> MaterialDefaults:
 def read_ocean_absorption(
     store: IoStore, scripts: ScriptObjects, index: AssetIndex
 ) -> OceanAbsorption:
-    """``Ocean Absorption Color`` times ``Ocean Murkyness`` of the ocean material.
+    """``Ocean Absorption Color`` times ``Ocean Murkyness`` of the ocean material, and its
+    ``Ocean SBW``.
 
-    Raises ``KeyError`` when the material or either parameter is not in the install.
+    Raises ``KeyError`` when the material or any of the three is not in the install.
     """
     path = index.path_for(OCEAN_MATERIAL)
     if path is None:
@@ -120,4 +126,4 @@ def read_ocean_absorption(
     colour = defaults.vector[ABSORPTION][:3]
     murkiness = defaults.scalar[MURKINESS]
     per_m = (colour[0] * murkiness, colour[1] * murkiness, colour[2] * murkiness)
-    return OceanAbsorption(per_m, colour, murkiness)
+    return OceanAbsorption(per_m, colour, murkiness, defaults.scalar[BEHIND])

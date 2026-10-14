@@ -56,6 +56,7 @@ PILLAR = "/Game/FactoryGame/World/Environment/Rock/Cliff/Mesh/CliffPillar_03"
 CORAL = "/Game/FactoryGame/World/Environment/Foliage/Coral/SM_CoralTreeSmall_01"
 SEA_ROCK = "/Game/FactoryGame/World/Environment/Rock/SeaRock/SM_SeaRock_01"
 BARNACLE = "/Game/FactoryGame/World/Environment/Foliage/Coral/Barnacle/SM_Barnacle_01"
+CRATER_ROOTS = "/Game/FactoryGame/World/Environment/Foliage/Coral/CraterCoralRoots/CraterCoralRoots"
 
 
 # ----------------------------------------------------------------------- the Spire Coast rock
@@ -94,7 +95,7 @@ def _mesh_ground():
     return SimpleNamespace(
         rock_family=None, family_rock={}, family_tint=np.ones((n, 3), np.float32),
         family_top=top, family_has_top=has, palette={}, rock_look=None, arch_rgb=None,
-        mesh_rgb={}, seabed_coral=np.zeros(3, np.float32), family_top_rgb={},
+        mesh_rgb={}, coral_rgb={}, family_top_rgb={},
     )  # fmt: skip
 
 
@@ -129,7 +130,7 @@ def test_a_render_only_rock_wears_its_own_family_and_top_layer():
     np.testing.assert_allclose(out[2, 0], 0.25, err_msg="a cache without the plane")
 
 
-def test_a_barnacle_is_coral_in_its_own_texture_and_sinks_as_coral():
+def test_a_barnacle_is_coral_in_its_own_texture_in_the_water_too():
     assert render_meshes.mesh_class(BARNACLE) == MESH_BARNACLE
     assert render_meshes.mesh_class(CORAL) == MESH_CORAL
     assert GROUPS[MESH_BARNACLE] == GROUPS[MESH_CORAL], "one footprint with the coral"
@@ -138,7 +139,6 @@ def test_a_barnacle_is_coral_in_its_own_texture_and_sinks_as_coral():
     ground.palette = PAINTED_PALETTE
     ground.rock_look = rock_look(rock_textures(), 0.25)
     ground.mesh_rgb = {MESH_CORAL: pink, MESH_BARNACLE: pink}
-    ground.seabed_coral = np.array([0.1, 0.2, 0.3], np.float32)
     scene = _mesh_scene([MESH_CORAL] * 8 + [MESH_BARNACLE] * 8)
     g = np.zeros((4, 16, 3), np.float32)
     out = mesh_surface(g, g + 0.25, scene, ground, lambda plane: plane)
@@ -147,8 +147,23 @@ def test_a_barnacle_is_coral_in_its_own_texture_and_sinks_as_coral():
     assert barnacle.std(axis=0).min() > 0.01, "the barnacles are textured, not flat"
     np.testing.assert_allclose(np.median(barnacle / pink, axis=0), 1.0, atol=0.25)
     wet = dict(scene, water={"cover": np.ones((4, 16), np.float32)})
-    np.testing.assert_allclose(mesh_surface(g, g, wet, ground, None), 0.1 + 0.1 * np.arange(3)
-                               + np.zeros((4, 16, 3)), rtol=1e-6, err_msg="both sink")  # fmt: skip
+    np.testing.assert_array_equal(mesh_surface(g, g + 0.25, wet, ground, lambda plane: plane), out,
+                                  err_msg="the water's optics tint them, not a colour of its own")  # fmt: skip
+
+
+def test_a_coral_of_a_kind_of_its_own_wears_its_colour():
+    pink, grey = np.array([0.4, 0.3, 0.35], np.float32), np.array([0.3, 0.3, 0.25], np.float32)
+    roots = render_meshes.coral_kind(CRATER_ROOTS)
+    assert roots == render_meshes.CORAL_KINDS.index("CraterCoralRoots") + 1
+    assert render_meshes.coral_kind(CORAL) == 0, "the caps wear the class's colour"
+    ground = _mesh_ground()
+    ground.mesh_rgb, ground.coral_rgb = {MESH_CORAL: pink}, {roots: grey}
+    scene = _mesh_scene([MESH_CORAL, MESH_CORAL, MESH_ROCK], [roots, 0, roots])
+    out = mesh_surface(np.zeros((4, 3, 3), np.float32), np.full((4, 3, 3), 0.25, np.float32),
+                       scene, ground, lambda plane: plane)  # fmt: skip
+    np.testing.assert_allclose(out[0, 0], grey)
+    np.testing.assert_allclose(out[0, 1], pink)
+    np.testing.assert_allclose(out[0, 2], 0.25, err_msg="a rock's bits are its family")
 
 
 def test_mesh_items_carry_each_rock_s_family_and_leave_coral_alone(monkeypatch):
@@ -163,9 +178,9 @@ def test_mesh_items_carry_each_rock_s_family_and_leave_coral_alone(monkeypatch):
     monkeypatch.setattr(render_meshes, "worn_family", worn)
     row = lambda mesh: (mesh, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1)
     sweep = {
-        "meshes": [PILLAR, CORAL],
-        "placements": np.array([row(0), row(0), row(1)], np.float64),
-        "placement_materials": np.array([0, -1, -1], np.int32),
+        "meshes": [PILLAR, CORAL, CRATER_ROOTS],
+        "placements": np.array([row(0), row(0), row(1), row(2)], np.float64),
+        "placement_materials": np.array([0, -1, -1, -1], np.int32),
         "materials": ["MI_Forest"],
         "extra_foliage": {SEA_ROCK: [np.eye(4)]},
     }
@@ -174,8 +189,10 @@ def test_mesh_items_carry_each_rock_s_family_and_leave_coral_alone(monkeypatch):
     assert (codes & MESH_CLASS_MASK).tolist() == [MESH_ROCK, MESH_ROCK]
     assert (codes >> MESH_FAMILY_SHIFT).tolist() == [FOREST, GRASS], "override, then its own"
     assert prepared.items[CORAL].codes.tolist() == [MESH_CORAL]
+    kind = render_meshes.coral_kind(CRATER_ROOTS)
+    assert prepared.items[CRATER_ROOTS].codes.tolist() == [MESH_CORAL | kind << MESH_FAMILY_SHIFT]
     assert (prepared.items[SEA_ROCK].codes >> MESH_FAMILY_SHIFT).tolist() == [GRASS]
-    assert all(mesh != CORAL for mesh, _m in asked), "coral is not a rock"
+    assert all(mesh not in (CORAL, CRATER_ROOTS) for mesh, _m in asked), "coral is not a rock"
     assert prepared.families and meta["rock_families"] == {"forest": 1, "grass": 2}
 
 

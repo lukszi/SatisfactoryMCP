@@ -98,6 +98,13 @@ Planned as 0.2.0.
   again: each crown is shaded by its own shape as well as its leaves, sunward lobes lighter and
   the far sides and dips between crowns darker, set by the style's `crowns.relief`. The
   style's version goes up.
+- Map renders: under the Satellite map's sea, the seabed is seen at the scale the game's ocean
+  material puts on what is behind its surface, so clear shallows read turquoise over sand
+  instead of grey-green. The crater-grass patches on the seabed are dark navy, as the game
+  shows them, where they were light blue blotches; sunk coral and barnacles keep their own
+  colours under the water's tint; the Blue Crater's coral roots, coral root, net fungi, coral
+  cactus, crater bush and crater tree each wear their own texture colour. The style's
+  version goes up, and so do the render mesh and ocean readers: the mesh cache is rebuilt.
 - Map renders: the Satellite map's sea is drawn with the game's own ocean absorption, read
   from the install's ocean material and scaled by the factor the sky fit gives, over its bed,
   and the fitted sky colour at depth. Shallow lagoons turn blue where they were teal, and

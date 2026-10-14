@@ -85,7 +85,13 @@ from mapgen.palette.styles import dry_land_range
 from mapgen.palette.water.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M
 from mapgen.sprites.store import SpriteAtlas
 from mapgen.terrain.crown_stamp import CrownSet
-from mapgen.terrain.render_meshes import MESH_BARNACLE, MESH_CORAL, MESH_SHELL, MESH_TERRACE
+from mapgen.terrain.render_meshes import (
+    CORAL_KINDS,
+    MESH_BARNACLE,
+    MESH_CORAL,
+    MESH_SHELL,
+    MESH_TERRACE,
+)
 from satisfactory_mcp.core.arrays import BoolMask, F16Grid, F64Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -216,9 +222,7 @@ class PaintedGround:
         self.crown_measured: JsonObject = {}
         self._calibrate_crowns(self.palette["calibration"])
         self.carpet: Carpet | None = load_carpet(paint_dir, meta, self.palette)
-        self.seabed_coral: FloatGrid = colours["coral_seabed"] / np.float32(
-            self.palette["water"]["bed_wet"]
-        )
+        self.coral_rgb: dict[int, FloatGrid] = self._coral_colours()
         self.water: WaterBase = base_water(self.palette)
         self.ramp: Ramp = dry_land_range(
             field, self.palette["ramp_lo_pct"], self.palette["ramp_hi_pct"]
@@ -295,8 +299,8 @@ class PaintedGround:
         self.titan = titan
 
     def attach_sea(self, absorption: OceanAbsorption) -> None:
-        """The install's ocean absorption, which sets the sea's row in place of the palette's
-        ``k_per_m``."""
+        """The install's ocean absorption and scale behind the surface, which set the sea's row
+        in place of the palette's ``k_per_m`` and ``behind_scale``."""
         self.water = base_water(self.palette, absorption)
         self.water_rows = water_table(self.palette, absorption)
         self.source["sea_absorption"] = {
@@ -304,6 +308,8 @@ class PaintedGround:
             "colour": [round(v, 6) for v in absorption.colour],
             "murkiness": round(absorption.murkiness, 6),
             "k_per_m": [round(float(v), 5) for v in self.water["k"]],
+            "behind_scale": round(absorption.behind, 6),
+            "behind": [round(float(v), 5) for v in self.water["tint"]],
         }
 
     def attach_look(self, textures: RockTextures, spacing_m: float) -> None:
@@ -366,6 +372,15 @@ class PaintedGround:
         for name, hex_colour in self.palette["calibration"].get("meshes", {}).items():
             colours[name] = self._target(hex_colour)
         return colours
+
+    def _coral_colours(self) -> dict[int, FloatGrid]:
+        """The coral meshes with a colour of their own, by kind (``coral_kind``): their
+        calibration targets."""
+        named = self.palette["calibration"].get("coral_meshes", {})
+        return {
+            CORAL_KINDS.index(name) + 1: self._target(hex_colour)
+            for name, hex_colour in named.items()
+        }
 
     def _canopy_colour(self) -> FloatGrid:
         """The canopy's linear colour: its calibration target, else the store's canopy, darker."""
