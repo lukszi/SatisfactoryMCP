@@ -115,20 +115,21 @@ row" below).
 
 ```
 T     = (1 - turbidity) * exp(-k d)
-under = bed * bed_tint * T + body * (1 - T) + 0.02 sky
+under = bed * 0.8 * bed_tint * T + body * (1 - T) + 0.02 sky
 under = lerp(under, deep, 1 - exp(-d / deep_tau))
 ```
 
-With turbidity 0 and a white bed tint this is the ocean's formula. Turbidity is an opacity
-floor: murky water hides its bed even at the edge. The bed tint stands for a stained bed,
-the sulfur pond's orange rim.
+The 0.8 is the wet bed (`bed_wet`). Turbidity is an opacity floor: murky water hides its bed
+even at the edge. The bed tint stands for a stained bed, the sulfur pond's orange rim. The sea
+takes the same formula with turbidity 0 and, in place of `0.8 * bed_tint`, the scale on what
+is seen behind its surface ("What is behind the sea's surface" below).
 
 Each source is tagged: **screenshot** (measured on in-game pictures), **game data** (read
 from the material), **fit** (fitted to screenshots through a model) or **none**.
 
 | Class | Body | Deep | k (r, g, b) /m | Turbidity | Source |
 |---|---|---|---|---|---|
-| ocean (the `water` block) | #385478 | #3c597d | 1.695, 0.498, 0.363 | 0 | game data times a fit: k is 2.17 times `MM_OceanMaster`'s absorption; body and deep are the sky term #3c597d, the body less the surface's reflection; deep tau 100 m (see "The sea's physics row") |
+| ocean (the `water` block) | #385478 | #3c597d | 1.695, 0.498, 0.363 | 0 | game data times a fit: k is 2.17 times `MM_OceanMaster`'s absorption; body and deep are the sky term #3c597d, the body less the surface's reflection; deep tau 100 m; the bed at the material's `Ocean SBW` 1.3 times (0.8, 0.94, 1.3) (see "The sea's physics row") |
 | river | #4f7d78 | #2e5054 | 2.4, 1.6, 1.6 | 0 | screenshot: hue from the wiki's Rocky Desert river; clear, so the bed shows |
 | lake | #56745b | #375a58 | 3.0, 2.2, 2.6 | 0.1 | screenshot: body jade near the shore; deep teal from 1.0 top-down screenshots (see "Lake colours") |
 | lake_blue | #4a8494 | #22485a | 3.4, 1.0, 0.75 | 0 | game data: `MI_Lake_Blue_01` absorption (0.52, 0.15, 0.11) |
@@ -184,8 +185,8 @@ fitted one. Source: fit.
 **The sea.** Its deep colour is #3c597d. From 2026-10-09 to 2026-10-14 the body, the
 absorption and `deep_tau_m` were fitted to the readings below ("The sea by depth band"). Since
 2026-10-14 the sea draws the full row the sky fit gives (k 1.69, 0.50, 0.36 per metre, 2.17
-times the game's absorption, with body and deep both #3c597d; "The sea's physics row"), which
-draws the 1.0 lagoons blue, at hue 219 to 233, where the screenshots read teal. Source:
+times the game's absorption, with body and deep both #3c597d; "The sea's physics row"), and
+sees its bed at the material's scale ("What is behind the sea's surface"). Source:
 screenshot, measured by the method of section 31:
 
 | Shot | What, light | Reading |
@@ -262,10 +263,11 @@ water", where the depth-band row fitted its own absorption and body to the scree
 **The absorption** is the ocean material's. `MM_OceanMaster` is a base material, a
 single-layer water whose `Ocean Base Color` is black: it absorbs and scatters nothing back.
 Its parameter defaults are kept in the cooked material's cached expression data, after the
-export's tagged properties: `Ocean Absorption Color` (0.5208, 0.1531, 0.1116) and `Ocean
-Murkyness` 1.5. Their product, (0.781, 0.230, 0.167), is read as the absorption per metre.
-`gamedata/water/ocean.py` reads them from the install when a render prepares
-(`read_ocean_absorption`, reader `ocean_absorption` 1), and the painted sidecar records them
+export's tagged properties: `Ocean Absorption Color` (0.5208, 0.1531, 0.1116), `Ocean
+Murkyness` 1.5 and `Ocean SBW` 1.3 ("What is behind the sea's surface"). The first two's
+product, (0.781, 0.230, 0.167), is read as the absorption per metre. `gamedata/water/ocean.py`
+reads them from the install when a render prepares
+(`read_ocean_absorption`, reader `ocean_absorption` 2), and the painted sidecar records them
 under `sea_absorption`. Where the install's material does not read, the sea takes the
 palette's `k_per_m`, the same product on build 502094, and the sidecar says so. Source: game
 data. That the shader multiplies the two, and in those units, is read from the parameter
@@ -283,11 +285,12 @@ only these numbers are kept.
 k     = absorption_scale * absorption
 body  = sky_term - surface_r * sky
 deep  = sky_term
-under = bed * bed_wet * exp(-k d) + body * (1 - exp(-k d)) + surface_r * sky
+under = bed * behind * exp(-k d) + body * (1 - exp(-k d)) + surface_r * sky
 under = lerp(under, deep, 1 - exp(-d / 100 m))
 ```
 
-- At no depth the sea shows its wet bed and the surface's reflection, as every water does.
+- At no depth the sea shows its bed, at the scale behind its surface, and the surface's
+  reflection, as every water does.
 - Deep water draws the sky term #3c597d itself: the body is the sky term less the 0.02
   reflection the painter adds over every water, so body and reflection sum to the deep
   colour. The sky term is what the open sea shows; the reflection is part of it.
@@ -297,8 +300,8 @@ under = lerp(under, deep, 1 - exp(-d / 100 m))
   shore pixel's taps), and an infinite tau would mix into nothing. At 100 m the blend adds
   0.01 per metre to the blue's 0.363, under 3 %.
 
-Over the wet sand target (#a4947f) it draws #7f8478 at 0.25 m (hue 123), #6e8078 at 0.5 m
-(169), #567879 at 1 m (198), #426d7a at 2 m (219), #3d667b at 3 m (233), #3c617c at 4 m
+Over the wet sand target (#a4947f), with that day's wet bed of 0.8, it drew #7f8478 at 0.25 m
+(hue 123), #6e8078 at 0.5 m (169), #567879 at 1 m (198), #426d7a at 2 m (219), #3d667b at 3 m (233), #3c617c at 4 m
 (241), #3c5a7d at 8 m and #3c597d from 15 m. Against the screenshot readings of "Sea deep and
 swamp water", matched by depth band as in "The sea by depth band": mean Delta E 3.2, max 8.5,
 where the depth-band row reached 1.3 and 2.4. The lagoon, channel and deep readings sit within
@@ -314,6 +317,69 @@ the full-size sheet before: the channel between the western islands near (-2560,
 drew #4a7c8e, and the open sea keeps #3c597d. In the clearer water the seabed carpet's patches
 (section 32) show light blue, as in the northern lagoons near (-100, -2020); the carpet's
 colour and strength were set under the teal row.
+
+### What is behind the sea's surface (2026-10-14)
+
+The physics row of the day before drew the shallows over sand grey-green and missed the two
+readings where the bed shows through (#6ca0a7 by ΔE 8.5, #78969e by 6.1), and the seabed
+carpet, tuned under the teal row, showed through the clearer water as light blue blotches.
+
+**The scale behind the surface.** `MM_OceanMaster` has a third parameter for what is seen
+from above through it: `Ocean SBW` 1.3, among the same cached defaults
+(`read_ocean_absorption`, reader `ocean_absorption` 2). A single-layer water material scales
+the scene behind its surface by `ColorScaleBehindWater`; SBW is read as that ("scene behind
+water"), from its name. Source: game data. Everything the sea shows of what lies under it is
+scaled: the bed, the coral, the carpet and the sunk crowns.
+
+```
+behind = SBW * behind_tint = 1.3 * (0.8, 0.94, 1.3) = (1.04, 1.22, 1.69)
+under  = bed * behind * exp(-k d) + body * (1 - exp(-k d)) + surface_r * sky
+```
+
+**The wet bed.** The 0.8 of the wet bed stays in the tint's red: the 1.0 Spire Coast shot
+([3771500868](https://steamcommunity.com/sharedfiles/filedetails/?id=3771500868)) reads the
+water at a sandy beach's edge at the dry sand's lightness and grey (L 0.60 to 0.62, C 0.01,
+against the dry sand's L 0.61), which the row meets within 3 L at 0.1 m. At SBW alone (1.3
+on every channel) the edge drew 6 to 9 L over the beach, a white rim.
+
+**The tint.** With the game's absorption the bed through the water turns green before blue:
+its blue keeps at most 1.37 times its green, so sand, whose blue is 0.6 of its green, never
+reads cyan, where the screenshots show the sandy shallows turquoise. The tint's green and blue
+are a fit, by the method of "The sea by depth band", to the eight readings and four samples of
+the Spire Coast shot over sand at map exposure (#6f8888, #5d878a, #4e727e, #2d5b6f, boxes
+clear of reflections), with the red held at the wet bed's 0.8: green 0.94, blue 1.3. Source:
+fit. It may stand for the material's caustics (`CausticsSize` 600, not drawn), which light
+the bed under the shallows.
+
+**The absorption's scale and the deep blend** do not move. Over the readings and samples the
+fit is flat in `absorption_scale` from 1.5 to 3 and in `deep_tau_m` from 8 to 100 m (mean ΔE
+within 0.05): a reading's depth is matched by band, so another scale only moves its match.
+The 2.17 has a reading of its own: light reaching the bed goes down through the water and back
+up, and a 45° sun refracts to 32° in water, so the path is 1 + 1/cos 32° = 2.18 times the
+depth.
+
+**No larger reflection.** A row in which most of the sky term is the surface's reflection, not
+the water's body, fits the readings as well (mean 1.48 at a 0.75 share), but light added over
+the surface brightens whatever is under it: nothing in the shallows could read darker than
+L 0.42, and the crater-grass patches in the same Spire Coast shot read L 0.23 to 0.32. The
+reflection stays 0.02 of the sky.
+
+**Score.** Against the eight readings, matched by depth band: mean ΔE 1.54, max 2.6 (the row
+before: 3.2 and 8.6; the depth-band row: 1.3 and 2.5). The three deep readings alone cost 2.4,
+1.3 and 2.3, the sky term's own miss. The four Spire Coast samples: mean 1.4 (the row before:
+4.0). Over the wet sand target (#a68868) the row draws #909288 at 0.25 m, #5d8385 at 1 m,
+#447583 at 2 m, #3c6480 at 4 m and #3c5b7e at 8 m; over pale sand (#d4c2a2) #b6ccca at
+0.25 m, #70b2bb at 1 m and #4996ab at 2 m, the turquoise of the game's lagoons.
+
+**Measured** on windows of the full-size sheet drawn through the renders command's own
+preparation, 240 m across at (-100, -2020), (400, -2100), (-430, -2200) and (-2560, 760): fully
+wet lagoon water 1 to 1.6 m deep draws #537f88 to #5d8385 (L 0.57 to 0.58), and a crater-grass
+patch at that depth #38445c to #39475e (L 0.39), where the Spire Coast shot reads the patches
+L 0.23 to 0.32 against water L 0.42 to 0.58.
+
+Tests: `tests/mapgen/test_sea_row.py` (the scale behind the surface, the readings by depth
+band, the install's read) and `tests/mapgen/test_carpet.py` (the patches darker than the water
+over sand around them).
 
 ### Translucent water (2026-10-06)
 
@@ -508,11 +574,14 @@ and section 35's falls:
   rows above. The sulfur pond, hot spring and cave optics come from material parameters,
   not from pictures.
 - The sky fit also gives rows for the river and the blue lake. They are not applied.
-- The sea's physics row draws the shallows over sand as sand under about 0.5 m and the
-  lagoons blue, where the 1.0 screenshots read both teal (see "The sea's physics row").
-  The material's absorption is read as per metre from two parameter names; the shader graph
-  that combines them was not decoded. The seabed carpet's patches, tuned under the teal row,
-  show as light blue blotches through it.
+- The material's absorption is read as per metre from two parameter names, and `Ocean SBW`
+  as the scale behind the surface from its name; the shader graph that uses them was not
+  decoded. The cool tint on the sea's bed is a fit, and the material's caustics, which may be
+  what it stands for, are not drawn ("What is behind the sea's surface").
+- The sea's edge over pale sand draws a light grey-cyan fringe, 3 L above the dry sand beside
+  it, where the one 1.0 shot with a beach in it reads the edge water at the dry sand's
+  lightness. A daylight shot looking straight down at a sandy beach's waterline, and one over
+  a crater-grass patch in a lagoon, would settle the edge and the patches' darkness.
 - Translucent water draws one colour past 2 m. The target was measured at the Blue Crater's
   4 m only; the deeper translucent lakes (the Western Dune Forest one at (-772, 1631) runs to
   22 m) are unchecked. The two actors that set their own colours draw with the class row (see

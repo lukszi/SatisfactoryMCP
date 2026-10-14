@@ -471,10 +471,10 @@ def _band_ground(floor):
         canopy=np.zeros((2, 2), np.float32), canopy_rgb=np.zeros(3, np.float32),
         rock=[np.zeros((2, 2), np.float32)] * 3, rock_family=None, crown=None, titan=None, carpet=None,
         rock_look=None, arch_rgb=None, cliff_layer=None,
-        mesh_rgb={}, seabed_coral=np.zeros(3, np.float32), ramp=(0.0, 1.0, np.linspace(0, 1, 5)),
+        mesh_rgb={}, coral_rgb={}, ramp=(0.0, 1.0, np.linspace(0, 1, 5)),
         water={"k": np.asarray(w["k_per_m"], np.float32), "body": linear(w["sky_term"]),
                "sky": np.zeros(3, np.float32), "deep": linear(w["sky_term"]),
-               "deep_tau_m": np.float32(12.0), "bed": np.float32(0.8),
+               "deep_tau_m": np.float32(12.0), "tint": np.full(3, 0.8, np.float32),
                "inland_floor": np.float32(floor)},
         opaque_water=[], water_class=None, family_rock={}, crown_ops=[],
     )  # fmt: skip

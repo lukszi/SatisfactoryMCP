@@ -59,7 +59,7 @@ def painted_ground_stub(n: int) -> SimpleNamespace:
         arch_rgb=None,
         cliff_layer=None,
         mesh_rgb={},
-        seabed_coral=np.zeros(3, np.float32),
+        coral_rgb={},
         water=dict(base_water(palette)),
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
         opaque_water=[],

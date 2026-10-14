@@ -366,10 +366,13 @@ Northern Forest's sand cliffs.
 ### Other colours
 
 - **Meshes.** Coral-tree caps are #917c75, a display target, so the gain does not brighten
-  it (see "Coral caps from above" below). Seabed coral #5f8899 is a bed colour, as in the
-  water fit, so it is also divided by the 0.8 wet factor. It is composited into the bed before
-  Beer-Lambert, with the depth measured to the coral top, so shallow reefs stay visible:
-  #618d9d at the surface, #5ea0a7 at 0.5 m.
+  it (see "Coral caps from above" below). Coral under water wears its own colour and is seen
+  through the sea's optics, with the depth measured to the coral top, so shallow reefs stay
+  visible: the caps draw #958b99 at the surface and #6d8294 at 0.5 m, the pink coral root
+  #d5bac9 and #97aabf (before the tone). From 2026-10-05 to
+  2026-10-14 coral under water wore a seabed colour, #5f8899, the reef as seen through the
+  teal rows; under the physics row it drew steel-blue specks, where the Spire Coast shot
+  shows the coral roots pink under the water. The barnacles keep their own texture there too.
 - **Which coral is under water.** Coral takes the seabed colour by the pixel's water cover,
   never by `depth_m > 0`, which off the ocean's reach is the depth fraction of dry land.
 - **Coral specks.** The mesh raster takes one sample per pixel, so coral narrower than a
@@ -810,10 +813,13 @@ instance, the class is mostly other meshes, each with its own texture:
   `SM_CoralRoot_01` on a beach. Balanced on its sand it reads #c08b8e (L 0.689, C 0.065,
   h 15): 9.5 from the cap colour, and 8.0 from its own texture through the camera, darker
   and pinker. It agrees with the texture that the class colour is too dark for this mesh.
-- The class is one colour, so a mesh of its own needs a class or a mesh plane in the mesh
-  raster (painted.md section 27, "Render-only meshes"), with a target per mesh. For
-  `CraterCoralRoots`, the bulk of the class, nothing but its texture has been read: no
-  change until a daylight shot of the Blue Crater's coral shows it.
+- Since 2026-10-14 each of these meshes wears its texture through the camera
+  (`calibration.coral_meshes`, by leaf name; `CraterTree_02` too); the caps and the rest of
+  the class (`SM_CoralFormation_01`, `_03`, `CoralPiece_03_03`, `SM_CoralTree_02`) keep
+  #917c75. The mesh raster carries the kind above the class, where a rock carries its family
+  (`terrain/render_meshes.py` `CORAL_KINDS`, reader `render_meshes` 6). Source: game data,
+  through the camera. For `CraterCoralRoots`, the bulk of the class, nothing but its texture
+  has been read; a daylight shot of the Blue Crater's coral would check it.
 
 ### Known limits
 
@@ -851,12 +857,10 @@ instance, the class is mostly other meshes, each with its own texture:
   light-and-crowns.md section 36, "Foliage colours checked".
 - `AmberTree_01`'s crown is branch cards at opacity 0.18, so it draws as a tan haze tens of
   metres wide over the ground and the palms under it; its look from above is unchecked.
-- Render-only meshes take one colour per class: the coral class's cap target #917c75 also
-  colours `CraterCoralRoots` (the Blue Crater's pillars), `SM_NetFungi_01` and the barnacles,
-  and the shell class's grey the `SmallShell` plates on the Desert Canyons' cliffs. The other
-  coral meshes' textures, `CraterTree_02`'s apart, lie ΔE 10 to 21 from it, all lighter
-  ("Crater floor, terraces and coral meshes, checked"); the shells were not measured on
-  those plates.
+- Render-only meshes take one colour per class, but for the coral meshes of
+  `calibration.coral_meshes`, which wear their textures through the camera ("Crater floor,
+  terraces and coral meshes, checked"): the shell class's grey colours the `SmallShell`
+  plates on the Desert Canyons' cliffs, which were not measured.
 - On a beach whose paint has no WetSand above the drawn sea, as at the north beach, the
   shore's band is the only wet cue and reads L ×0.97 in its first metre, against ×0.80 in
   game.

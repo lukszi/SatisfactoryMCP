@@ -216,7 +216,7 @@ def _ground(opaque):
         palette=p, carpet=None, rock_look=None, arch_rgb=None, cliff_layer=None, opaque_water=opaque, water_class=np.zeros((1, 1), np.uint8),
         water={"k": np.asarray(w["k_per_m"], np.float32), "body": lin(w["sky_term"]),
                "sky": np.zeros(3, np.float32), "deep": lin(w["sky_term"]),
-               "deep_tau_m": np.float32(12.0), "bed": np.float32(0.8),
+               "deep_tau_m": np.float32(12.0), "tint": np.full(3, 0.8, np.float32),
                "inland_floor": np.float32(0.0), "opaque_tau_m": np.float32(0.3)},
     )  # fmt: skip
 
@@ -269,18 +269,17 @@ def _mesh_scene(cls, cover):
     }  # fmt: skip
 
 
-def test_wet_coral_is_seabed_dry_coral_is_coral_and_rocks_wear_the_area_rock():
+def test_coral_wears_its_colour_wet_or_dry_and_rocks_wear_the_area_rock():
     coral, shell = np.array([0.4, 0.3, 0.35], np.float32), np.array([0.1, 0.1, 0.1], np.float32)
-    seabed = np.array([0.1, 0.2, 0.3], np.float32)
     ground = SimpleNamespace(
-        mesh_rgb={MESH_CORAL: coral, MESH_SHELL: shell}, seabed_coral=seabed, rock_look=None
+        mesh_rgb={MESH_CORAL: coral, MESH_SHELL: shell}, coral_rgb={}, rock_look=None
     )
     area_rock = np.full((1, 4, 3), 0.25, np.float32)
     g = np.zeros((1, 4, 3), np.float32)
     scene = _mesh_scene([MESH_CORAL, MESH_CORAL, MESH_SHELL, MESH_ROCK], [1.0, 0.0, 0.0, 0.0])
     out = mesh_surface(g, area_rock, scene, ground, lambda plane: plane)
-    np.testing.assert_allclose(out[0, 0], seabed, err_msg="coral under water")
-    np.testing.assert_allclose(out[0, 1], coral, err_msg="dry land, whatever depth_m says")
+    np.testing.assert_allclose(out[0, 0], coral, err_msg="coral under water: the water tints it")
+    np.testing.assert_allclose(out[0, 1], coral, err_msg="dry land")
     np.testing.assert_allclose(out[0, 2], shell)
     np.testing.assert_allclose(out[0, 3], 0.25, err_msg="the area's rock, no cliff family")
 
@@ -333,11 +332,11 @@ def test_the_painted_band_draws_with_the_whole_chain():
         canopy_rgb=np.zeros(3, np.float32), rock=[np.full(shape, 0.2, np.float32)] * 3,
         rock_family=None, crown=None, titan=None, carpet=None, mesh_rgb={},
         rock_look=None, arch_rgb=None, cliff_layer=None,
-        seabed_coral=np.zeros(3, np.float32), opaque_water=[], crown_ops=[],
+        coral_rgb={}, opaque_water=[], crown_ops=[],
         ramp=(0.0, 1.0, np.linspace(0, 1, 5)),
         water={"k": np.asarray(w["k_per_m"], np.float32), "body": lin(w["sky_term"]),
                "sky": np.zeros(3, np.float32), "deep": lin(w["sky_term"]),
-               "deep_tau_m": np.float32(12.0), "bed": np.float32(0.8),
+               "deep_tau_m": np.float32(12.0), "tint": np.full(3, 0.8, np.float32),
                "inland_floor": np.float32(0.0)},
     )  # fmt: skip
     zero = np.zeros(shape, np.float32)

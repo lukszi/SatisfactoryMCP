@@ -65,7 +65,8 @@ __all__ = [
     "water_table",
 ]
 
-#: One row per water class: absorption, body, deep colour, deep tau, turbidity, bed tint.
+#: One row per water class: absorption, body, deep colour, deep tau, turbidity, and the scale
+#: on the bed: the sea's on all it sees behind its surface, an inland class's wet bed and tint.
 WATER_TABLE_COLUMNS = (3, 3, 3, 1, 1, 3)
 
 #: The band's water terms ``underwater`` reads: ``mix_underwater`` takes these alone onto the
@@ -86,7 +87,7 @@ def base_water(palette: PaintedPalette, absorption: OceanAbsorption | None = Non
         "sky": surface_sky(water),
         "deep": sea.deep,
         "deep_tau_m": sea.deep_tau_m,
-        "bed": np.float32(water["bed_wet"]),
+        "tint": sea.behind,
         "inland_floor": np.float32(water.get("inland_floor", 0.0)),
         "opaque_tau_m": np.float32(water["opaque_tau_m"]),
     }
@@ -97,7 +98,7 @@ def water_table(palette: PaintedPalette, absorption: OceanAbsorption | None = No
     the ocean (``sea_row``), a mouth blend mixes its classes' rows by ``class_shares``, class
     by class."""
     sea = sea_row(palette["water"], absorption)
-    ocean = [*sea.k, *sea.body, *sea.deep, sea.deep_tau_m, 0.0, 1.0, 1.0, 1.0]
+    ocean = [*sea.k, *sea.body, *sea.deep, sea.deep_tau_m, 0.0, *sea.behind]
     classes = palette.get("water_classes", {})
     rows: list[list[float]] = []
     for name in WATER_CLASSES:
@@ -107,7 +108,7 @@ def water_table(palette: PaintedPalette, absorption: OceanAbsorption | None = No
             continue
         if isinstance(entry, str):
             raise TypeError(f"the palette's water_classes.{name} is text, not optics")
-        rows.append(_class_row(entry))
+        rows.append(_class_row(entry, palette["water"]["bed_wet"]))
     shares, table = class_shares(), np.asarray(rows, np.float32)
     mixed = shares[:, :1] * table[0]
     for k in range(1, len(table)):
@@ -115,15 +116,15 @@ def water_table(palette: PaintedPalette, absorption: OceanAbsorption | None = No
     return mixed
 
 
-def _class_row(entry: WaterClassStyle) -> list[float]:
-    """An inland class's row, linear, in ``WATER_TABLE_COLUMNS`` order."""
+def _class_row(entry: WaterClassStyle, bed_wet: float) -> list[float]:
+    """An inland class's row, linear, in ``WATER_TABLE_COLUMNS`` order; its bed is wet."""
     return [
         *entry["k_per_m"],
         *srgb_to_linear(entry["body"]),
         *srgb_to_linear(entry["deep"]),
         entry["deep_tau_m"],
         entry["turbidity"],
-        *entry["bed_tint"],
+        *(np.float32(bed_wet) * np.asarray(entry["bed_tint"], np.float32)),
     ]
 
 
@@ -214,7 +215,7 @@ def carpet_bed(
     cover = sample(carpet[0]) / np.float32(255.0) * np.float32(style["strength"])
     cover = np.where(depth > 0.0, np.clip(cover, 0.0, 1.0), 0.0)[..., None]
     transmit = np.exp(-water["k"] * above[..., None])
-    rgb = srgb_to_linear(style["colour"])
+    rgb = srgb_to_linear(style["colour"]) * water["tint"]
     seen = rgb * transmit + water["body"] * (1.0 - transmit) + water["sky"]
     return under * (1.0 - cover) + seen * cover
 
@@ -235,13 +236,13 @@ def underwater(
     w = optics or ground.water
     depth = _optical_depth(water, ground)[..., None]
     floor = w["inland_floor"] * (1.0 - water["ocean"])[..., None]
-    tint = w["tint"] if "turbidity" in w else np.float32(1.0)
+    tint = w["tint"]
     if "turbidity" in w:
         floor = np.maximum(floor, w["turbidity"])
 
     def through(colour: FloatGrid, metres: FloatGrid) -> FloatGrid:
         transmit = np.exp(-w["k"] * metres) * (1.0 - floor)
-        return colour * w["bed"] * tint * transmit + w["body"] * (1.0 - transmit) + w["sky"]
+        return colour * tint * transmit + w["body"] * (1.0 - transmit) + w["sky"]
 
     under = through(g * exposure, depth)
     if ground.carpet is not None:
@@ -288,7 +289,6 @@ def _wet_optics(pixels: WetPixels, optics: ClassOptics) -> WetOptics:
         "k": pixels.take_band(optics["k"]),
         "sky": pixels.take_band(optics["sky"]),
         "deep_tau_m": tau if isinstance(tau, np.generic) else pixels.take_band(tau),
-        "bed": optics["bed"],
         "inland_floor": optics["inland_floor"],
         "opaque_tau_m": optics["opaque_tau_m"],
         "turbidity": pixels.take_band(optics["turbidity"]),
@@ -392,7 +392,7 @@ def _mix_compiled(
         opaque=_opaque_terms(pixels, _Murk(depth, water, taken), ground, reads.sample_rock),
     )
     band = _band_terms(g, scene, crowns, ground.water if optics is None else optics)
-    knobs = kernels.UnderwaterKnobs(np.float32(reads.exposure), w["bed"], w["sky"])
+    knobs = kernels.UnderwaterKnobs(np.float32(reads.exposure), w["sky"])
     if not float32_planes(*band, *wet_terms, *(term for part in extras for term in part), *knobs):
         return None
     flags = kernels.UnderwaterFlags(
@@ -421,7 +421,7 @@ def _band_terms(
             return np.broadcast_to(plane, (size, *plane.shape))
         return plane.reshape(size, *plane.shape[2:])
 
-    tint = optics["tint"] if "turbidity" in optics else np.ones(3, np.float32)
+    tint = optics["tint"]
     crown = np.zeros((0, 3), np.float32) if crowns is None else flat(crowns["colour"])
     return kernels.BandColours(
         g=flat(g),
@@ -451,7 +451,7 @@ def _carpet_terms(
     cover = pixels.take(sample(carpet[0])) / np.float32(255.0) * np.float32(style["strength"])
     cover = np.where(depth > 0.0, np.clip(cover, 0.0, 1.0), 0.0)
     transmit = np.exp(-water["k"] * above[..., None])
-    rgb = srgb_to_linear(style["colour"])
+    rgb = srgb_to_linear(style["colour"]) * water["tint"]
     return kernels.CarpetTerms(transmit, cover, rgb, water["body"], water["sky"])
 
 

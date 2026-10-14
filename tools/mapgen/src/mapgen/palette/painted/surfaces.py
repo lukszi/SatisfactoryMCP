@@ -45,7 +45,13 @@ from mapgen.palette.painted.shapes import (
     RockFamilyEntry,
     Sampler,
 )
-from mapgen.terrain.render_meshes import CORAL_CLASSES, MESH_BARNACLE, MESH_ROCK, MESH_SHELL
+from mapgen.terrain.render_meshes import (
+    CORAL_CLASSES,
+    MESH_BARNACLE,
+    MESH_CORAL,
+    MESH_ROCK,
+    MESH_SHELL,
+)
 from satisfactory_mcp.core.arrays import BoolMask, I32Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -408,8 +414,8 @@ def mesh_surface(
 
     A rock wears its own family (``scene["mesh_family"]``), its top layer and its look, as a
     cliff does, never the family of a cliff it happens to overlap; without the plane it takes
-    the area's rock. Coral under water is the seabed coral; ``scene["water"]`` is the water
-    after ``sunk_specks``.
+    the area's rock. A coral of a kind of its own (``scene["mesh_family"]``) wears that
+    kind's colour, in the water as on land: the water's optics tint it.
     """
     mesh_w, cls = scene.get("mesh_weight"), scene.get("mesh_class")
     if mesh_w is None or cls is None or not mesh_w.any():
@@ -418,12 +424,14 @@ def mesh_surface(
     colour = area_rock
     rock = (cls == MESH_ROCK) & (mesh_w > 0.0)
     if family is not None and rock.any():
-        colour = rock_surface(area_rock, scene, ground, sample_rock, family, rock)
+        code = np.where(rock, family, np.uint8(0))
+        colour = rock_surface(area_rock, scene, ground, sample_rock, code, rock)
     for which, rgb in ground.mesh_rgb.items():
         colour = np.where((cls == which)[..., None], sampled_rgb(rgb, sample_rock), colour)
+    if family is not None:
+        coral = cls == MESH_CORAL
+        for kind, rgb in ground.coral_rgb.items():
+            colour = np.where((coral & (family == kind))[..., None], rgb, colour)
     for which, kind in ((MESH_SHELL, KIND_SHELL), (MESH_BARNACLE, KIND_BARNACLE)):
         colour = _own_look(colour, scene, ground, (cls == which) & (mesh_w > 0.0), kind)
-    coral = np.isin(cls, CORAL_CLASSES)
-    wet = np.where(coral, np.clip(scene["water"]["cover"], 0.0, 1.0), 0.0)
-    colour = colour + (ground.seabed_coral - colour) * wet[..., None]
     return g * (1.0 - mesh_w[..., None]) + colour * mesh_w[..., None]
