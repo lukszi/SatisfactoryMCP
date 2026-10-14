@@ -68,6 +68,7 @@ __all__ = [
     "BLOCK_TILES",
     "LIGHT_DIR_NAME",
     "LIGHT_GPU_BYTES",
+    "LIGHT_GPU_WORKER_CAP",
     "LIGHT_VERSION",
     "LIGHT_WORKER_BYTES",
     "LIGHT_WORKER_CAP",
@@ -119,8 +120,12 @@ TERM_ROWS = 512
 #: full-size block with crowns or arches, started with one BLAS thread.
 LIGHT_WORKER_CAP = 16
 LIGHT_WORKER_BYTES = 2_500_000_000  # 2.18 GB peak on a dense forest block, 2026-10-14
-#: What a light process adds with the CUDA kernels: CuPy and its context, 0.84 GB measured.
-LIGHT_GPU_BYTES = 970_000_000
+#: What a light process adds with the CUDA kernels: CuPy and its context. Measured 2.97 GB
+#: commit with the GPU on a dense block (2026-10-14), so worker plus this is 3.1 GB.
+LIGHT_GPU_BYTES = 600_000_000
+#: With the GPU a block row's 8 blocks bake faster than the draw delivers the next row, so
+#: more workers only wait (docs/map/renders.md).
+LIGHT_GPU_WORKER_CAP = 8
 
 #: The work files a bake leaves in the surface's directory, beside its ``SlabStore``.
 _FILES = (
@@ -477,13 +482,16 @@ def save_work_array(
 
 
 def light_workers(requested: int | None = None) -> int:
-    """``requested``, else one a core up to ``LIGHT_WORKER_CAP`` that the free RAM holds."""
+    """``requested``, else one a core up to the cap (``LIGHT_GPU_WORKER_CAP`` with the GPU,
+    ``LIGHT_WORKER_CAP`` without) that the free RAM holds."""
     if requested:
         return max(1, requested)
     free = free_ram_bytes()
-    each = LIGHT_WORKER_BYTES + (LIGHT_GPU_BYTES if gpu_on() else 0)
-    by_ram = LIGHT_WORKER_CAP if free is None else int(free // each)
-    return max(1, min(os.cpu_count() or 1, LIGHT_WORKER_CAP, by_ram))
+    gpu = gpu_on()
+    each = LIGHT_WORKER_BYTES + (LIGHT_GPU_BYTES if gpu else 0)
+    cap = LIGHT_GPU_WORKER_CAP if gpu else LIGHT_WORKER_CAP
+    by_ram = cap if free is None else int(free // each)
+    return max(1, min(os.cpu_count() or 1, cap, by_ram))
 
 
 def occluder_planes(work: Path, size: int) -> tuple[F32Grid, U8Grid, U8Grid]:

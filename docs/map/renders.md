@@ -1843,9 +1843,11 @@ reference, and the tiles are the same bytes either way.
   0.65 GB by the planes' area. A context reserves stack for every thread the device can hold;
   the kernels here keep none, so a light process sets 64 bytes a thread (`gpu.STACK_BYTES`)
   where CUDA's default is 1 KB: 0.10 GB a context, not 0.19 (`nvidia-smi`, one process, 191
-  MB against 97 MB). A light process with the GPU also adds up to 0.84 GB of commit (re-measured on 2026-10-14;
-  0.65 GB before the tree and arch cells), so `light_workers()` counts `LIGHT_GPU_BYTES`,
-  0.97 GB, more a process.
+  MB against 97 MB). A light process with the GPU peaks at 2.97 GB of commit on a dense block (re-measured on
+  2026-10-14), so `light_workers()` counts `LIGHT_GPU_BYTES`, 0.6 GB, on top of the CPU
+  figure: 3.1 GB a process. With the GPU the pool stops at 8 (`LIGHT_GPU_WORKER_CAP`): a
+  block row's 8 blocks bake in about 86 s, faster than the draw delivers the next row
+  (about 132 s apart in the v10 render), so more workers only wait.
 - **The encode.** With the marches on the device, encoding a block's 512 WebP files was
   three quarters of its time. libwebp lets go of the GIL while it encodes (16 atlases of
   1024 × 1024 in 4.41 s on one thread, 0.75 s on eight, the same bytes), so with `--gpu` a

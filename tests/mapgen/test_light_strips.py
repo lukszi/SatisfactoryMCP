@@ -23,9 +23,9 @@ from mapgen.lighting import horizon as hz
 from mapgen.lighting.atlas import bake_horizons
 from mapgen.lighting.bake import bake_light
 from mapgen.lighting.spans import bake as span_bake
+from mapgen.lighting.spans import march as spans
 from mapgen.lighting.spans import porous
 from mapgen.lighting.spans.trees import TreePlanes
-from mapgen.lighting.spans import march as spans
 from mapgen.lighting.stage import Surface
 from mapgen.lighting.sun import DEFAULT_SUN
 
@@ -284,6 +284,7 @@ def test_a_bake_is_the_same_bytes_on_one_worker_and_on_the_default_count(tmp_pat
 
 def test_light_workers_take_the_cores_capped_by_the_free_ram(monkeypatch):
     gb = stage.LIGHT_WORKER_BYTES
+    monkeypatch.setattr(stage, "gpu_on", lambda: False)
     monkeypatch.setattr(stage.os, "cpu_count", lambda: 32)
     monkeypatch.setattr(stage, "free_ram_bytes", lambda: 40 * gb)
     assert stage.light_workers() == stage.LIGHT_WORKER_CAP == 16
@@ -333,3 +334,13 @@ def test_a_worker_with_one_blas_thread_commits_no_blas_buffers():
         out = subprocess.run([sys.executable, "-c", _COMMIT_PROBE], capture_output=True,
                              text=True, check=True)  # fmt: skip
     assert int(out.stdout) < 200_000_000
+
+
+def test_light_workers_with_the_gpu_stop_at_a_block_row(monkeypatch):
+    each = stage.LIGHT_WORKER_BYTES + stage.LIGHT_GPU_BYTES
+    monkeypatch.setattr(stage, "gpu_on", lambda: True)
+    monkeypatch.setattr(stage.os, "cpu_count", lambda: 32)
+    monkeypatch.setattr(stage, "free_ram_bytes", lambda: 40 * each)
+    assert stage.light_workers() == stage.LIGHT_GPU_WORKER_CAP == 8
+    monkeypatch.setattr(stage, "free_ram_bytes", lambda: 4.5 * each)
+    assert stage.light_workers() == 4
