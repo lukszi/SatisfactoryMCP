@@ -907,6 +907,12 @@ draws the 32768 windows of the gates' G2 the same as master, all three layers.
   the desert shells take their family's colour under it ("The desert shells"), not
   `TX_smallshell_Desert_Alb`'s grain. Laying each shell's own texture needs its UVs or its
   placement per pixel, which the mesh raster does not keep.
+- The hot-spring terraces read flat cream, as at (895, 2215), though the light lights them:
+  their land weight is 1 on 97% of their pixels in the v10 light tiles and in a capture of
+  today's code, and their rims draw. Their tops are level basins in one flat colour with no
+  texture, and from above a terrace is mostly its pools (`Water_Plateau` slots), which the
+  mesh class does not draw (calibration.md, "Crater floor, terraces and coral meshes,
+  checked"). A reference from above would decide the pools' colour.
 - The other shells draw #797573 where the bake through the camera reads #746956 (ΔE 4.8), a
   warmer grey; their colour is their material's texture mean, not moved here.
 - The top layer's mask reads the look's normal maps where the game reads each mesh's own; an
