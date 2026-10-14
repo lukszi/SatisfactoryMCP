@@ -853,10 +853,10 @@ instance, the class is mostly other meshes, each with its own texture:
   metres wide over the ground and the palms under it; its look from above is unchecked.
 - Render-only meshes take one colour per class: the coral class's cap target #917c75 also
   colours `CraterCoralRoots` (the Blue Crater's pillars), `SM_NetFungi_01` and the barnacles,
-  and the shell class's grey the `SmallShell` plates on the Desert Canyons' cliffs. The other
-  coral meshes' textures, `CraterTree_02`'s apart, lie ΔE 10 to 21 from it, all lighter
-  ("Crater floor, terraces and coral meshes, checked"); the shells were not measured on
-  those plates.
+  and the shell class's grey every shell but the desert ones (painted.md section 30, "The
+  desert shells"). The other coral meshes' textures, `CraterTree_02`'s apart, lie ΔE 10 to 21
+  from it, all lighter ("Crater floor, terraces and coral meshes, checked"); the plain shells
+  read #746956 in the bake through the camera (painted.md section 30, "Known limits").
 - On a beach whose paint has no WetSand above the drawn sea, as at the north beach, the
   shore's band is the only wet cue and reads L ×0.97 in its first metre, against ×0.80 in
   game.

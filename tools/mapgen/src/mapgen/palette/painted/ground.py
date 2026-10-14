@@ -197,6 +197,10 @@ class PaintedGround:
             family_code(name, "arch_families"): self._target(hex_colour)
             for name, hex_colour in palette["calibration"].get("arch_families", {}).items()
         }
+        self.shell_family_rgb: dict[int, FloatGrid] = {
+            family_code(name, "shell_families"): self._target(hex_colour)
+            for name, hex_colour in palette["calibration"].get("shell_families", {}).items()
+        }
         self._trees(paint_dir, sprites)
         self.rock_family: Plane | None = None
         self.family_rock: dict[int, list[FloatGrid]] = {}

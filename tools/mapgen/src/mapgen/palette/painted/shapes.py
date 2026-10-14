@@ -278,6 +278,7 @@ class PaintedSurface(Protocol):
     rock_look: RockLook | None
     arch_rgb: ColourPlanes | None
     arch_family_rgb: dict[int, F32Grid]
+    shell_family_rgb: dict[int, F32Grid]
     cliff_layer: PaintPlane | None
     mesh_rgb: dict[int, ColourPlanes]
     seabed_coral: F32Grid

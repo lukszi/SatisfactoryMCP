@@ -57,6 +57,7 @@ def painted_ground_stub(n: int) -> SimpleNamespace:
         carpet=None,
         rock_look=None,
         arch_rgb=None,
+        shell_family_rgb={},
         cliff_layer=None,
         mesh_rgb={},
         seabed_coral=np.zeros(3, np.float32),

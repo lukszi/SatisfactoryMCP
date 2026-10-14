@@ -408,7 +408,7 @@ def mesh_surface(
 
     A rock wears its own family (``scene["mesh_family"]``), its top layer and its look, as a
     cliff does, never the family of a cliff it happens to overlap; without the plane it takes
-    the area's rock. Coral under water is the seabed coral; ``scene["water"]`` is the water
+    the area's rock. A shell whose material wears a family takes ``shell_family_rgb``. Coral under water is the seabed coral; ``scene["water"]`` is the water
     after ``sunk_specks``.
     """
     mesh_w, cls = scene.get("mesh_weight"), scene.get("mesh_class")
@@ -421,6 +421,9 @@ def mesh_surface(
         colour = rock_surface(area_rock, scene, ground, sample_rock, family, rock)
     for which, rgb in ground.mesh_rgb.items():
         colour = np.where((cls == which)[..., None], sampled_rgb(rgb, sample_rock), colour)
+    if family is not None:
+        for code, rgb in ground.shell_family_rgb.items():
+            colour = np.where(((cls == MESH_SHELL) & (family == code))[..., None], rgb, colour)
     for which, kind in ((MESH_SHELL, KIND_SHELL), (MESH_BARNACLE, KIND_BARNACLE)):
         colour = _own_look(colour, scene, ground, (cls == which) & (mesh_w > 0.0), kind)
     coral = np.isin(cls, CORAL_CLASSES)

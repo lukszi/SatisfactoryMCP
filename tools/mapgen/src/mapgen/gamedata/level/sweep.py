@@ -10,7 +10,9 @@ from typing import NotRequired, TypeAlias, TypedDict
 
 import numpy as np
 
+from mapgen.gamedata.level.foliage_types import FoliageTypeMaterials, component_foliage_type
 from mapgen.gamedata.level.landscape import Proxy, grass_data_heights
+from mapgen.gamedata.materials import first_override
 from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.water.actors import is_water_class, water_actor_box
 from mapgen.gamedata.water.rivers import RIVER_CLASS, RiverRecord, river_actor
@@ -37,7 +39,6 @@ __all__ = [
     "TOP_FOLIAGE_MESHES",
     "Sweep",
     "Transform",
-    "first_override",
     "foliage_instances",
     "instance_matrices",
     "instances_to_world",
@@ -77,6 +78,9 @@ class Sweep(TypedDict):
     rivers: list[RiverRecord]
     foliage: dict[str, F64Grid]
     extra_foliage: dict[str, F64Grid]
+    #: Per ``extra_foliage`` instance, its foliage type's override material: an index into
+    #: ``materials``, -1 for the mesh's own.
+    extra_foliage_materials: dict[str, I32Grid]
     actors: list[object]
     seconds: float
     trees: NotRequired[dict[str, F64Grid]]
@@ -160,18 +164,6 @@ def instance_matrices(tail: bytes, expect: int | None) -> F64Grid | None:
         mats = np.frombuffer(tail, "<f8", count=count * 16, offset=off + 8).reshape(count, 4, 4)
         if np.allclose(mats[:, 3, 3], 1.0) and np.allclose(mats[:, :3, 3], 0.0):
             return mats
-    return None
-
-
-def first_override(view: PackageView, payload: bytes | None) -> str | None:
-    """The first non-empty entry of a component's ``OverrideMaterials``, as a package path."""
-    if not payload or len(payload) < 4:
-        return None
-    count = struct.unpack_from("<i", payload, 0)[0]
-    for i in range(max(0, min(count, (len(payload) - 4) // 4))):
-        path = view.import_path(payload[4 + 4 * i : 8 + 4 * i])
-        if path:
-            return path
     return None
 
 
@@ -274,6 +266,7 @@ class _Harvest:
     meshes: MeshBounds
     classes: ClassFacts
     extra_foliage: Callable[[str], bool] | None
+    type_materials: FoliageTypeMaterials
     components: list[tuple[int, int, U16Grid]] = field(
         default_factory=list[tuple[int, int, U16Grid]]
     )
@@ -295,6 +288,7 @@ class _Harvest:
     rivers: list[RiverRecord] = field(default_factory=list[RiverRecord])
     foliage: dict[str, list[F64Grid]] = field(default_factory=dict[str, list[F64Grid]])
     extra: dict[str, list[F64Grid]] = field(default_factory=dict[str, list[F64Grid]])
+    extra_chosen: dict[str, list[I32Grid]] = field(default_factory=dict[str, list[I32Grid]])
     actors: list[object] = field(default_factory=list[object])
     malformed: int = 0
 
@@ -340,9 +334,16 @@ class _Harvest:
             return is_top_foliage(mesh) or bool(extra and extra(mesh))
 
         found = foliage_instances(view, slot, self.classes, wanted=wanted)
-        if found is not None:
-            harvest = self.foliage if is_top_foliage(found[0]) else self.extra
-            harvest.setdefault(found[0], []).append(found[1])
+        if found is None:
+            return
+        mesh, mats = found
+        if is_top_foliage(mesh):
+            self.foliage.setdefault(mesh, []).append(mats)
+            return
+        self.extra.setdefault(mesh, []).append(mats)
+        material = self.type_materials.material(component_foliage_type(view, slot))
+        chosen = self.material_ids.setdefault(material, len(self.material_ids)) if material else -1
+        self.extra_chosen.setdefault(mesh, []).append(np.full(len(mats), chosen, np.int32))
 
     def _water_actor(self, view: PackageView, slot: int, name: str, path: str) -> None:
         self.water_actors[name] = self.water_actors.get(name, 0) + 1
@@ -384,6 +385,9 @@ class _Harvest:
             "rivers": self.rivers,
             "foliage": {mesh: np.concatenate(parts) for mesh, parts in self.foliage.items()},
             "extra_foliage": {mesh: np.concatenate(parts) for mesh, parts in self.extra.items()},
+            "extra_foliage_materials": {
+                mesh: np.concatenate(parts) for mesh, parts in self.extra_chosen.items()
+            },
             "actors": self.actors,
             "seconds": seconds,
         }
@@ -405,7 +409,9 @@ def sweep_levels(
     and nothing interpreted. Foliage ``extra_foliage`` accepts lands in
     ``extra_foliage``; whatever ``read_actor`` returns for a level actor, in ``actors``.
     """
-    harvest = _Harvest(meshes, classes, extra_foliage)
+    harvest = _Harvest(
+        meshes, classes, extra_foliage, FoliageTypeMaterials(store, scripts, meshes.index)
+    )
     unreadable = 0
     started = time.time()
 

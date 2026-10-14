@@ -27,6 +27,7 @@ __all__ = [
     "FAMILIES",
     "FAMILY_ROOTS",
     "MAX_CHAIN",
+    "SHELL_FAMILY_ROOTS",
     "TARGET_ONLY",
     "TINT_PARAMETER",
     "TOP_TEXTURE_PARAMETERS",
@@ -65,6 +66,9 @@ FAMILY_ROOTS = {
 #: ``MI_Arc_Desert_01`` (``MM_Arc_Emissive``, ``BaseColor`` 1.0, 0.41, 0.33) is terracotta
 #: wherever it stands, where the arch masters' other instances are grey.
 ARCH_FAMILY_ROOTS = {"MI_Arc_Desert_01": "desert"}
+#: The shell materials that wear a family's colour: ``FT_SmallShell_Desert`` puts
+#: ``MI_SmallShell_Desert`` (its own red albedo) on the Desert Canyons' small shells.
+SHELL_FAMILY_ROOTS = {"MI_SmallShell_Desert": "desert"}
 #: Families with no ``Color Tint`` or top layer to read: the palette's target colours them.
 TARGET_ONLY = frozenset({"desert"})
 ROOT_DIR = "/Game/FactoryGame/World/Environment/Rock/Cliff/Material/"
@@ -144,10 +148,12 @@ def worn_family(
     mesh: str,
     material: str | None,
     caches: tuple[dict[str, str | None], dict[str, int]],
+    roots: Mapping[str, str] = FAMILY_ROOTS,
 ) -> int:
-    """``FamilyResolver.worn_family`` over ``caches``, ``(by mesh, by material)``, which the
-    caller keeps across calls."""
-    return FamilyResolver(store, scripts, index, *caches).worn_family(mesh, material)
+    """``FamilyResolver.worn_family`` by ``roots`` over ``caches``, ``(by mesh, by
+    material)``, which the caller keeps across calls, one pair for each ``roots``."""
+    resolver = FamilyResolver(store, scripts, index, *caches, roots=roots)
+    return resolver.worn_family(mesh, material)
 
 
 def placement_families(

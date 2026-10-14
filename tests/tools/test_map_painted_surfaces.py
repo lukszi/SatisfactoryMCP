@@ -34,7 +34,7 @@ from mapgen.gamedata.ground.bake import (
     stamp_windows,
 )
 from mapgen.gamedata.ground.weightmaps import component_origin
-from mapgen.gamedata.level.sweep import first_override
+from mapgen.gamedata.materials import first_override
 from mapgen.gamedata.nodes import oil_nodes
 from mapgen.gamedata.rocks import families as rockfamily
 from mapgen.palette.painted.albedo import bake_table, patch_stamps

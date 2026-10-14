@@ -190,6 +190,8 @@ def sweep_world(
     extra = sweep["extra_foliage"]
     sweep["trees"] = {m: mats for m, mats in extra.items() if is_tree(m)}
     sweep["extra_foliage"] = {m: mats for m, mats in extra.items() if is_render_only_foliage(m)}
+    chosen = sweep.get("extra_foliage_materials", {})
+    sweep["extra_foliage_materials"] = {m: chosen[m] for m in sweep["extra_foliage"] if m in chosen}
     return sweep
 
 

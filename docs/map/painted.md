@@ -678,6 +678,40 @@ On the arches' inner pixels, away from the mesas they cross, the desert arches d
 and 3.6 from the bake, all of it lightness (L 0.61 against 0.58): the altitude lift and the
 look's light, as on the other arches.
 
+### The desert shells (2026-10-14)
+
+Every shell drew in the one shell colour, a dark grey, so the small shells on the Desert
+Canyons' cliffs, at (1300, -1800) among others, were grey-blue plates on red rock. 781 of the
+4,020 foliage `SmallShell` instances are painted with `FT_SmallShell_Desert`, a foliage type
+whose `OverrideMaterials` is `MI_SmallShell_Desert`, with its own red albedo
+(`TX_smallshell_Desert_Alb`); they stand between x 1,130 and 1,450 and y -2,170 and -1,430.
+The others are `SmallShell_FoliageType`, which overrides nothing.
+
+**Which type painted a component.** A foliage component keeps no `OverrideMaterials`; its
+type does. The level's `InstancedFoliageActor` maps each type to its component in its native
+tail (`FoliageInfos`): the type's import index, one byte for the implementation, then the
+component's export index. `gamedata/level/foliage_types.py` reads the type from there and the
+type's first override from its own package. Checked on the 896 shell components: the 686 in
+levels that import only `SmallShell_FoliageType` and the 128 in levels that import only
+`FT_SmallShell_Desert` all resolve to their level's one type; the 82 in levels that import
+both split 42 and 40. The sweep keeps each render-only foliage instance's override material
+in `extra_foliage_materials`, beside `extra_foliage`.
+
+**The shells' family.** The mesh pass gives a shell the family its material wears, as it does
+a rock, by its own roots (`gamedata/rocks/families.py` `SHELL_FAMILY_ROOTS`:
+`MI_SmallShell_Desert` is desert), in the mesh cache's family plane (render mesh reader 6).
+`calibration.shell_families.desert` colours those shells over the shell colour and any area
+entry's, in the shells' texture look as before.
+
+**Measured** on the game's HLOD bake through the camera model, as the desert arches were (the
+same script draws their #a86647 again): over the bake texels within 1.5 m of a shell top, by
+the nearest shell instance's type, the desert shells read #c78f62 (1,643 texels) and the other
+shells #746956 (213,660). On an unlit 80 m window at (1300, -1800), the desert shells drew
+#797573 before, ΔE 15.5 from the bake, and draw #c68e61 now, ΔE 0.3. The dark patches on the
+red rock at (1822, -1415) the review also named are not shells: no shell stands there, and
+they are rock meshes in the cliff look, which the Desert Canyons draw grey since the rock
+colour fixes.
+
 ### The Titan trees
 
 73 trunks (`SM_TitanTree_01`, Nanite) and 218 leaf meshes (`SM_TitanTree_Leaves_01` and `_02`)
@@ -869,10 +903,12 @@ draws the 32768 windows of the gates' G2 the same as master, all three layers.
 - The arches' tile leaves out the instance's scale, which `MM_Arc_01` does not undo.
 - Desert rock draws its rough texture only: the cracked one, blended in by each mesh's own
   mask, the height gradient and the sand on top are not drawn.
-- Every shell wears one cut of `SmallShell`'s texture, the 195 big and plateau shells too, in
-  the palette's one shell colour; `MI_SmallShell_Desert`'s red albedo is not drawn.
-  Laying each shell's own texture needs its UVs or its placement per pixel, which the mesh
-  raster does not keep.
+- Every shell wears one cut of `SmallShell`'s texture, the 195 big and plateau shells too;
+  the desert shells take their family's colour under it ("The desert shells"), not
+  `TX_smallshell_Desert_Alb`'s grain. Laying each shell's own texture needs its UVs or its
+  placement per pixel, which the mesh raster does not keep.
+- The other shells draw #797573 where the bake through the camera reads #746956 (ΔE 4.8), a
+  warmer grey; their colour is their material's texture mean, not moved here.
 - The top layer's mask reads the look's normal maps where the game reads each mesh's own; an
   arch's top layer (grass and moss on `MI_Arc_Grass_01` and kin) is not drawn, as the top pass
   does not say which arch instance a pixel is.

@@ -352,6 +352,8 @@ class CalibrationStyle(TypedDict):
     arches: NotRequired[str]
     #: The arches whose material wears a rock family's colour, by family, over ``arches``.
     arch_families: NotRequired[dict[str, str]]
+    #: The shells whose material wears a rock family's colour, by family, over ``meshes``.
+    shell_families: NotRequired[dict[str, str]]
     families: dict[str, str]
     tops: dict[str, str]
     meshes: dict[str, str]
@@ -421,7 +423,7 @@ def checked(shape: type[Palette], raw: object, style: str) -> Palette:
     _fits(shape, raw, style)
     calibration = _as_dict(raw, style).get("calibration")
     if calibration is not None:
-        for block in ("families", "tops", "arch_families"):
+        for block in ("families", "tops", "arch_families", "shell_families"):
             found = _as_dict(calibration, style).get(block)
             if found is None:
                 continue

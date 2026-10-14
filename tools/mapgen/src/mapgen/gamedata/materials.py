@@ -10,6 +10,7 @@ from satisfactory_mcp.core.gameassets.packages import PackageView, ZenExport, pr
 __all__ = [
     "MaterialParameters",
     "Vector4",
+    "first_override",
     "material_parameters",
     "material_parent",
     "mesh_materials",
@@ -30,6 +31,18 @@ class MaterialParameters(TypedDict):
     vector: dict[str, Vector4]
     texture: dict[str, str | None]
     parent: str | None
+
+
+def first_override(view: PackageView, payload: bytes | None) -> str | None:
+    """The first non-empty entry of a component's ``OverrideMaterials``, as a package path."""
+    if not payload or len(payload) < 4:
+        return None
+    count = struct.unpack_from("<i", payload, 0)[0]
+    for i in range(max(0, min(count, (len(payload) - 4) // 4))):
+        path = view.import_path(payload[4 + 4 * i : 8 + 4 * i])
+        if path:
+            return path
+    return None
 
 
 def mesh_materials(view: PackageView, export: ZenExport) -> list[str | None]:

@@ -232,10 +232,11 @@ be traced to the axis it should move.
 | `gamedata/meshes.py` | data | Mesh geometry reads at their finest source, collision hulls, `ExtendedBounds` (`MeshBounds`) |
 | `gamedata/maxz_raster.py` | data | `MaxZRaster`, the max-Z scatter rasteriser cliffs, crown sprites and render meshes share, and its `INSTANCE_BATCH`; the numpy reference of the raster passes' kernels |
 | `gamedata/placements.py` | data | A placement's row in the sweep, its transform (`placement_transform`, `placement_matrix4`), the culls by owner, mesh name, arch and size (`cliff_cull`), and its material |
-| `gamedata/materials.py` | data | Material-instance parameters, and the materials of a mesh's sections |
+| `gamedata/materials.py` | data | Material-instance parameters, a component's first override, and the materials of a mesh's sections |
 | `gamedata/nodes.py` | data | The static resource-node table (`load_static_nodes`), and the oil nodes the bake stamps |
 | `gamedata/install.py` | data | The install opened once: `GameReader`, `open_game`, `open_package`, `missing_container` |
 | `gamedata/level/sweep.py` | data | The level sweep: foliage, water actors, landscape components; `world_levels`, and instances to world (`quat_axes`, `instances_to_world`) |
+| `gamedata/level/foliage_types.py` | data | Which foliage type painted a foliage component, and the material that type puts on it |
 | `gamedata/level/landscape.py` | data | The landscape frame and its seam offsets |
 | `gamedata/level/fill_raster.py` | data | `HeightData_Test`, the interface raster that fills outside the landscape |
 | `gamedata/level/curves.py` | data | `FRichCurve` keys and evaluation, and the numbers a tag holds |
