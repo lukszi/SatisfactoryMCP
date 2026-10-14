@@ -85,7 +85,7 @@ class LightModel(TypedDict):
 PROVENANCE_SCHEMA = 1
 
 #: ``tools/gen_world_heightmap.py``'s output version; its sidecar's ``generator_version``.
-HEIGHTFIELD_GENERATOR_VERSION = 6
+HEIGHTFIELD_GENERATOR_VERSION = 7
 
 #: ``caves/meta.json``'s ``caves_version``.
 CAVES_VERSION = 1
@@ -101,7 +101,7 @@ READER_VERSIONS = {
     "cliff_geometry": HEIGHTFIELD_GENERATOR_VERSION,
     "crown_sprites": 1,
     "ocean_absorption": 2,
-    "render_meshes": 6,
+    "render_meshes": 7,
     "river_splines": 1,
     "rock_families": 4,
     "rock_textures": 3,
@@ -152,7 +152,7 @@ STYLES: dict[str, Style] = {
     "terrain-hypsometric": {"label": "terrain", "name": "Terrain", "layer": "terrain",
                             "version": 9, "tone": "light"},
     "satellite-painted": {"label": "game-painted", "name": "Satellite", "layer": "painted",
-                          "version": 31, "tone": "light"},
+                          "version": 32, "tone": "light"},
     "relief-night": {"label": "relief dark", "name": "Relief", "layer": "relief-dark",
                      "version": 7, "tone": "dark"},
     "artwork": {"label": "artwork", "name": "Game map", "layer": "map", "version": 1,

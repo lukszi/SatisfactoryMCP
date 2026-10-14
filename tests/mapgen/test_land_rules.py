@@ -40,6 +40,7 @@ from mapgen.terrain.render_meshes import (
     MESH_CORAL,
     MESH_FAMILY_SHIFT,
     MESH_ROCK,
+    MESH_SHELL,
     MeshGroup,
     PreparedMeshes,
     mesh_items,
@@ -56,6 +57,8 @@ PILLAR = "/Game/FactoryGame/World/Environment/Rock/Cliff/Mesh/CliffPillar_03"
 CORAL = "/Game/FactoryGame/World/Environment/Foliage/Coral/SM_CoralTreeSmall_01"
 SEA_ROCK = "/Game/FactoryGame/World/Environment/Rock/SeaRock/SM_SeaRock_01"
 BARNACLE = "/Game/FactoryGame/World/Environment/Foliage/Coral/Barnacle/SM_Barnacle_01"
+SHELL = "/Game/FactoryGame/World/Environment/Foliage/Coral/SmallShell/SmallShell"
+DESERT = rockfamily.FAMILIES.index("desert")
 CRATER_ROOTS = "/Game/FactoryGame/World/Environment/Foliage/Coral/CraterCoralRoots/CraterCoralRoots"
 
 
@@ -95,7 +98,7 @@ def _mesh_ground():
     return SimpleNamespace(
         rock_family=None, family_rock={}, family_tint=np.ones((n, 3), np.float32),
         family_top=top, family_has_top=has, palette={}, rock_look=None, arch_rgb=None,
-        mesh_rgb={}, coral_rgb={}, family_top_rgb={},
+        mesh_rgb={}, coral_rgb={}, family_top_rgb={}, shell_family_rgb={},
     )  # fmt: skip
 
 
@@ -171,7 +174,7 @@ def test_mesh_items_carry_each_rock_s_family_and_leave_coral_alone(monkeypatch):
     monkeypatch.setattr(render_meshes, "read_shape", lambda *a: (shape, "test"))
     asked: list = []
 
-    def worn(_s, _c, _i, mesh, material, _caches):
+    def worn(_s, _c, _i, mesh, material, _caches, _roots):
         asked.append((mesh, material))
         return {"MI_Forest": FOREST, None: GRASS}[material]
 
@@ -194,6 +197,41 @@ def test_mesh_items_carry_each_rock_s_family_and_leave_coral_alone(monkeypatch):
     assert (prepared.items[SEA_ROCK].codes >> MESH_FAMILY_SHIFT).tolist() == [GRASS]
     assert all(mesh not in (CORAL, CRATER_ROOTS) for mesh, _m in asked), "coral is not a rock"
     assert prepared.families and meta["rock_families"] == {"forest": 1, "grass": 2}
+
+
+def test_a_shell_takes_the_family_its_foliage_type_s_material_wears(monkeypatch):
+    """Foliage shells read the material their foliage type puts on them, by the shells'
+    roots; a desert shell draws in ``shell_family_rgb``, the others in the shell colour."""
+    shape = (np.array([[0, 0, 0], [100, 0, 0], [0, 100, 0]], np.float32), np.array([[0, 1, 2]]))
+    monkeypatch.setattr(render_meshes, "read_shape", lambda *a: (shape, "test"))
+
+    def worn(_s, _c, _i, _mesh, material, _caches, roots):
+        leaf = (material or "").rsplit("/", 1)[-1]
+        return rockfamily.FAMILIES.index(roots[leaf]) if leaf in roots else 0
+
+    monkeypatch.setattr(render_meshes, "worn_family", worn)
+    sweep = {
+        "meshes": [], "placements": np.zeros((0, 11)), "placement_materials": np.zeros(0, np.int32),
+        "materials": ["/Game/M/MI_SmallShell_Desert"],
+        "extra_foliage": {SHELL: [np.eye(4)] * 3},
+        "extra_foliage_materials": {SHELL: np.array([0, -1, 0], np.int32)},
+    }  # fmt: skip
+    prepared, meta = mesh_items(None, None, None, sweep)
+    codes = prepared.items[SHELL].codes
+    assert (codes & MESH_CLASS_MASK).tolist() == [MESH_SHELL] * 3
+    assert (codes >> MESH_FAMILY_SHIFT).tolist() == [DESERT, 0, DESERT]
+    assert meta["shell_families"] == {"none": 1, "desert": 2}
+
+    grey, red = np.array([0.1, 0.1, 0.1], np.float32), np.array([0.5, 0.25, 0.15], np.float32)
+    ground = _mesh_ground()
+    ground.mesh_rgb = {MESH_SHELL: grey}
+    ground.shell_family_rgb = {DESERT: red}
+    scene = _mesh_scene([MESH_SHELL, MESH_SHELL, MESH_ROCK], [DESERT, 0, 0])
+    g = np.zeros((4, 3, 3), np.float32)
+    out = mesh_surface(g, np.full((4, 3, 3), 0.25, np.float32), scene, ground, lambda p: p)
+    np.testing.assert_allclose(out[2, 0], red, err_msg="the desert shell")
+    np.testing.assert_allclose(out[2, 1], grey, err_msg="a shell of no family")
+    assert set(CAL.get("shell_families", {})) == {"desert"}
 
 
 def test_the_band_keeps_each_instance_s_code():

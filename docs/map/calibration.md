@@ -891,7 +891,7 @@ instance, the class is mostly other meshes, each with its own texture:
   (`calibration.coral_meshes`, by leaf name; `CraterTree_02` too); the caps and the rest of
   the class (`SM_CoralFormation_01`, `_03`, `CoralPiece_03_03`, `SM_CoralTree_02`) keep
   #917c75. The mesh raster carries the kind above the class, where a rock carries its family
-  (`terrain/render_meshes.py` `CORAL_KINDS`, reader `render_meshes` 6). Source: game data,
+  (`terrain/render_meshes.py` `CORAL_KINDS`, reader `render_meshes` 7). Source: game data,
   through the camera. For `CraterCoralRoots`, the bulk of the class, nothing but its texture
   has been read; a daylight shot of the Blue Crater's coral would check it.
 
@@ -934,8 +934,10 @@ instance, the class is mostly other meshes, each with its own texture:
   metres wide over the ground and the palms under it; its look from above is unchecked.
 - Render-only meshes take one colour per class, but for the coral meshes of
   `calibration.coral_meshes`, which wear their textures through the camera ("Crater floor,
-  terraces and coral meshes, checked"): the shell class's grey colours the `SmallShell`
-  plates on the Desert Canyons' cliffs, which were not measured.
+  terraces and coral meshes, checked"), and the desert shells, which wear
+  `calibration.shell_families` (painted.md section 30, "The desert shells"). The shell
+  class's grey colours every other shell; those read #746956 in the bake through the camera
+  (painted.md section 30, "Known limits").
 - On a beach whose paint has no WetSand above the drawn sea, as at the north beach, the
   shore's band is the only wet cue and reads L ×0.97 in its first metre, against ×0.80 in
   game.

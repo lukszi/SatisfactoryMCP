@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, TypedDict
 import numpy as np
 from numpy.typing import NDArray
 
+from mapgen.gamedata.frame import GridBox
 from mapgen.gamedata.install import GameReader
 from mapgen.gamedata.maxz_raster import INSTANCE_BATCH, MaxZRaster
 from mapgen.gamedata.meshes import CookedMesh, clamp_triangles, read_hull, winding_sign
@@ -23,7 +24,6 @@ from mapgen.gamedata.placements import (
 from satisfactory_mcp.core.arrays import F32Grid, I64Grid, U32Grid
 
 if TYPE_CHECKING:
-    from mapgen.gamedata.level.landscape import LandscapeFrame
     from mapgen.gamedata.level.sweep import Sweep
 
 __all__ = [
@@ -61,16 +61,15 @@ class TopOverlay(TypedDict):
     seconds: float
 
 
-def _frame_raster(frame: LandscapeFrame) -> MaxZRaster:
-    return MaxZRaster(
-        frame["width"], frame["height"], frame["x0_cm"], frame["y0_cm"], frame["scale_cm"]
-    )
+def _box_raster(box: GridBox) -> MaxZRaster:
+    return MaxZRaster(box["width"], box["height"], box["x0_cm"], box["y0_cm"], box["scale_cm"])
 
 
 def rasterise_cliffs(
-    sweep: Sweep, geometry: dict[str, CookedMesh], frame: LandscapeFrame, progress: bool = True
+    sweep: Sweep, geometry: dict[str, CookedMesh], box: GridBox, progress: bool = True
 ) -> CliffRaster:
-    """Transform, cull and rasterise every placed rock into a 1 m max-Z overlay, in cm.
+    """Transform, cull and rasterise every placed rock into a 1 m max-Z overlay over
+    ``box``, in cm: the output grid, as rocks stand past the landscape's frame too.
 
     Culling, in the order it costs least: ``cliff_cull``'s placement culls, then the
     downward-facing half of the triangles, then the triangles outside the mesh's own padded
@@ -80,7 +79,7 @@ def rasterise_cliffs(
     placements = sweep["placements"]
     meshes, owners = sweep["meshes"], sweep["owners"]
     windings = {m: winding_sign(cooked.verts, cooked.tris) for m, cooked in geometry.items()}
-    raster = _frame_raster(frame)
+    raster = _box_raster(box)
     arch_ids = arch_mesh_ids(meshes)
     dropped = {"owner": 0, "excluded_mesh": 0, "no_geometry": 0, "arch": 0, "oversize": 0}
     used = triangles = samples = clamped = 0
@@ -144,15 +143,16 @@ def _up_facing(world: NDArray[np.floating], tris: I64Grid, facing: float) -> I64
 
 
 def rasterise_top(
-    sweep: Sweep, frame: LandscapeFrame, reader: GameReader, progress: bool = True
+    sweep: Sweep, box: GridBox, reader: GameReader, progress: bool = True
 ) -> TopOverlay:
-    """Arches and foliage boulders as a 1 m max-Z overlay, from their collision trimeshes.
+    """Arches and foliage boulders as a 1 m max-Z overlay over ``box``, from their
+    collision trimeshes.
 
     These are what the ground deliberately leaves out: an arch is a roof over buildable
     ground, and a boulder is painted foliage the placement sweep never sees.
     """
     started = time.time()
-    raster = _frame_raster(frame)
+    raster = _box_raster(box)
     placements, meshes, owners = sweep["placements"], sweep["meshes"], sweep["owners"]
     arch_ids = arch_mesh_ids(meshes)
     hulls: dict[str, tuple[F32Grid, I64Grid] | None] = {}

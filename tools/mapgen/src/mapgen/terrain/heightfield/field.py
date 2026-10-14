@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from mapgen.gamedata.water.channel import WaterSurface
 
 __all__ = [
+    "BEYOND_FRAME_BELOW_FILL_M",
     "FILL_HORIZONTAL_M",
     "FILL_VERTICAL_M",
     "FieldLayers",
@@ -33,6 +34,10 @@ __all__ = [
 #: The interface raster's own resolution, for the accuracy the fill layer inherits.
 FILL_HORIZONTAL_M = (FILL_RASTER_BOX_CM[1] - FILL_RASTER_BOX_CM[0]) / 100.0 / FILL_RASTER_PX
 FILL_VERTICAL_M = FILL_RASTER_SCALE_CM_PER_RAW / 255.0 / 100.0
+#: Past the landscape's frame a rock replaces the fill where its top stands no more than this
+#: under it: over the sea the fill holds the water's surface, and the rock deeper down is
+#: the seabed (docs/map/heightfield.md section 22, "Rocks past the frame").
+BEYOND_FRAME_BELOW_FILL_M = 2.0
 
 
 class FieldLayers(TypedDict):
@@ -51,18 +56,13 @@ class FieldLayers(TypedDict):
     quantisation_rms_m: float
 
 
-def fold_top_overlay(
-    height_dm: I16Grid, frame: LandscapeFrame, top: TopOverlay
-) -> tuple[I16Grid, int]:
-    """``height_dm`` max-folded with the overlay, and how many texels the overlay raised."""
-    dx, dy = drop_offsets(frame)
-    out = height_dm.copy()
-    window = out[dy : dy + frame["height"], dx : dx + frame["width"]]
+def fold_top_overlay(height_dm: I16Grid, top: TopOverlay) -> tuple[I16Grid, int]:
+    """``height_dm`` max-folded with the overlay, rasterised on the output grid, and how many
+    texels the overlay raised."""
     over_dm = np.clip(np.round(np.nan_to_num(top["z_cm"], nan=-1e9) / 10.0), -32767, 32767)
     over_dm = np.where(np.isfinite(top["z_cm"]), over_dm, hf.NODATA).astype(np.int16)
-    raise_ = (over_dm != hf.NODATA) & ((window == hf.NODATA) | (over_dm > window))
-    window[raise_] = over_dm[raise_]
-    return out, int(raise_.sum())
+    raise_ = (over_dm != hf.NODATA) & ((height_dm == hf.NODATA) | (over_dm > height_dm))
+    return np.where(raise_, over_dm, height_dm).astype(np.int16), int(raise_.sum())
 
 
 def fill_raster_indices() -> tuple[NDArray[np.integer], NDArray[np.integer]]:
@@ -92,9 +92,10 @@ def compose_field(
 
     The fill is everywhere the interface raster says anything, so it goes down first and is
     the answer only where nothing better arrives. The landscape drops in index-aligned over
-    its own frame. The cliff overlay then wins any texel where real geometry stands above
-    the sculpted ground, and any texel the landscape left as a hole: a cave mouth's rock is
-    still a measurement.
+    its own frame. The cliff overlay, rasterised on the whole output grid, then wins any
+    texel in the frame where real geometry stands above the sculpted ground or the
+    landscape left a hole (a cave mouth's rock is still a measurement), and any texel past
+    the frame where it stands within ``BEYOND_FRAME_BELOW_FILL_M`` of the fill or above it.
     """
     dx, dy = drop_offsets(frame)
     bi, bj = fill_raster_indices()
@@ -102,25 +103,28 @@ def compose_field(
     z_m = np.where(valid, baseline_cm / 100.0, np.nan).astype(np.float32)[np.ix_(bj, bi)]
     prov = np.where(np.isnan(z_m), hf.PROV_NODATA, hf.PROV_FILL).astype(np.uint8)
 
-    land_m = np.where(frame["good"], frame["z_cm"] / 100.0, np.nan).astype(np.float32)
-    sub_prov = np.where(frame["good"], hf.PROV_LANDSCAPE, hf.PROV_NODATA).astype(np.uint8)
+    window = (slice(dy, dy + frame["height"]), slice(dx, dx + frame["width"]))
+    framed = np.zeros((GRID_PX, GRID_PX), bool)
+    framed[window] = True
+    land_m = np.full((GRID_PX, GRID_PX), np.nan, np.float32)
+    land_m[window] = np.where(frame["good"], frame["z_cm"] / 100.0, np.nan)
+    landed = np.isfinite(land_m)
 
     cliff_m = (cliffs["z_cm"] / 100.0).astype(np.float32)
-    take = np.isfinite(cliff_m) & (~np.isfinite(land_m) | (cliff_m > land_m))
-    sub_z = np.where(take, cliff_m, land_m)
+    # A NaN on either side compares False: no rock, or no fill to agree with, keeps the fill.
+    beyond = ~framed & (cliff_m >= z_m - BEYOND_FRAME_BELOW_FILL_M)
+    within = framed & np.isfinite(cliff_m) & (~landed | (cliff_m > land_m))
+    take = within | beyond
+    z_m[landed] = land_m[landed]
+    prov[landed] = hf.PROV_LANDSCAPE
     # Two cliff values, one layer, equally accurate at 1 m: 5 says a source vertex landed in
     # this texel, 4 says the rasteriser reached it by interpolating the plane of a triangle
     # wider than the texel. The split exists for renders drawing finer than 1 m.
     direct = take & (cliffs["density"] >= DIRECT_SAMPLES_MIN)
-    sub_prov = np.where(take, hf.PROV_CLIFF, sub_prov)
-    sub_prov = np.where(direct, hf.PROV_CLIFF_DIRECT, sub_prov).astype(np.uint8)
-    sub_density = np.where(take, np.minimum(cliffs["density"], 255), 0).astype(np.uint8)
-
-    window = np.isfinite(sub_z)
-    z_m[dy : dy + frame["height"], dx : dx + frame["width"]][window] = sub_z[window]
-    prov[dy : dy + frame["height"], dx : dx + frame["width"]][window] = sub_prov[window]
-    density = np.zeros((GRID_PX, GRID_PX), np.uint8)
-    density[dy : dy + frame["height"], dx : dx + frame["width"]][window] = sub_density[window]
+    z_m[take] = cliff_m[take]
+    prov[take] = hf.PROV_CLIFF
+    prov[direct] = hf.PROV_CLIFF_DIRECT
+    density = np.where(take, np.minimum(cliffs["density"], 255), 0).astype(np.uint8)
 
     known = np.isfinite(z_m)
     height_dm = np.where(known, np.clip(np.round(z_m * 10.0), -32767, 32767), hf.NODATA)

@@ -47,8 +47,7 @@ for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
         sys.path.insert(0, str(_path))
 
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
-from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.level.landscape import LandscapeFrame, drop_offsets, landscape_frame
+from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, OUTPUT_GRID, SPACING_CM
 from mapgen.gamedata.level.sweep import Sweep, sweep_levels
 from mapgen.gamedata.meshes import ROCK_DIRS, CookedMesh, MeshBounds
 from mapgen.gamedata.nodes import node_rows
@@ -450,9 +449,8 @@ def main() -> int:
     index = AssetIndex(store)
     classes = ClassFacts(store, index)
 
-    print("sweeping the world for placements and the landscape frame")
+    print("sweeping the world for placements")
     sweep = sweep_levels(store, scripts, classes, MeshBounds(store, scripts, index), loud)
-    frame = landscape_frame(sweep)
 
     print("reading every rock mesh's hull, LOD0 and Nanite leaf")
     read = read_rungs(store, scripts, index, sweep["meshes"], loud)
@@ -469,7 +467,7 @@ def main() -> int:
         if rung not in RUNGS:
             print(f"unknown rung {rung!r}")
             return 2
-        table["rungs"][rung] = score_rung(rung, read, sweep, frame, probes, province, loud)
+        table["rungs"][rung] = score_rung(rung, read, sweep, probes, province, loud)
 
     if args.out:
         args.out.write_text(json.dumps(table, indent=1), encoding="utf-8")
@@ -534,7 +532,6 @@ def score_rung(
     rung: str,
     read: RungRead,
     sweep: Sweep,
-    frame: LandscapeFrame,
     probes: dict[str, F64Grid],
     province: dict[str, BoolMask],
     loud: bool,
@@ -543,10 +540,8 @@ def score_rung(
     geometry = geometry_for(rung, read)
     triangles = sum(len(t) for _v, t, _lo, _hi in geometry.values())
     print(f"\nrung {rung}: {len(geometry)} meshes, {triangles} source triangles")
-    cliffs = rasterise_cliffs(sweep, geometry, frame, loud)
-    whole = np.full((GRID_PX, GRID_PX), np.nan, np.float32)
-    dx, dy = drop_offsets(frame)
-    whole[dy : dy + frame["height"], dx : dx + frame["width"]] = cliffs["z_cm"]
+    cliffs = rasterise_cliffs(sweep, geometry, OUTPUT_GRID, loud)
+    whole = cliffs["z_cm"]
     entry: RungScore = {
         "meshes": len(geometry),
         "source_triangles": triangles,

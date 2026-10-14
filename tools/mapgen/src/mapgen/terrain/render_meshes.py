@@ -32,7 +32,12 @@ from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.level.sweep import Sweep, is_top_foliage
 from mapgen.gamedata.meshes import finer_source, read_hull
 from mapgen.gamedata.placements import EXCLUDED_MESHES, placement_material, rotation_matrix
-from mapgen.gamedata.rocks.families import FAMILIES, worn_family
+from mapgen.gamedata.rocks.families import (
+    FAMILIES,
+    FAMILY_ROOTS,
+    SHELL_FAMILY_ROOTS,
+    worn_family,
+)
 from mapgen.terrain.maxz.raster import max_z_raster
 from mapgen.terrain.rasters_banded import in_band_order, raster_threads
 from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I64Grid, U8Grid, U16Grid
@@ -115,8 +120,8 @@ CORAL_KINDS = (
     "CraterBush",
     "CraterTree_02",
 )
-#: A mesh raster's source code: the class in the low bits, a rock's family or a coral's kind
-#: (its index in ``CORAL_KINDS`` plus one) above them.
+#: A mesh raster's source code: the class in the low bits, a rock's or a shell's family or a
+#: coral's kind (its index in ``CORAL_KINDS`` plus one) above them.
 MESH_FAMILY_SHIFT = 3
 MESH_CLASS_MASK = (1 << MESH_FAMILY_SHIFT) - 1
 
@@ -280,18 +285,20 @@ def _mesh_groups(
     shapes: Mapping[str, Shape],
 ) -> dict[str, tuple[list[F64Grid], list[int]]]:
     """Per render-only mesh, its instances' matrices and source codes: the class, and shifted
-    above it a rock's family its placement wears (``worn_family``) or a coral's kind."""
-    meshes = sweep["meshes"]
-    caches: tuple[dict[str, str | None], dict[str, int]] = ({}, {})
+    above it the family a rock's placement or a shell's foliage type wears (``worn_family``)
+    or a coral's kind."""
+    meshes, materials = sweep["meshes"], sweep["materials"]
+    roots = {MESH_ROCK: FAMILY_ROOTS, MESH_SHELL: SHELL_FAMILY_ROOTS}
+    caches: dict[int, tuple[dict[str, str | None], dict[str, int]]] = {c: ({}, {}) for c in roots}
     groups: dict[str, tuple[list[F64Grid], list[int]]] = {}
 
-    def add(mesh: str, mats: list[F64Grid], materials: list[str | None]) -> None:
+    def add(mesh: str, mats: list[F64Grid], worn: list[str | None]) -> None:
         cls = mesh_class(mesh)
         mats_now, codes = groups.setdefault(mesh, ([], []))
         mats_now.extend(mats)
-        for material in materials:
-            if cls == MESH_ROCK:
-                above = worn_family(store, scripts, index, mesh, material, caches)
+        for material in worn:
+            if cls in roots:
+                above = worn_family(store, scripts, index, mesh, material, caches[cls], roots[cls])
             else:
                 above = coral_kind(mesh) if cls == MESH_CORAL else 0
             codes.append(cls | above << MESH_FAMILY_SHIFT)
@@ -301,9 +308,11 @@ def _mesh_groups(
         if mesh not in shapes or not is_render_only_static(mesh):
             continue
         add(mesh, [_placement_matrix(row)], [placement_material(sweep, i)])
+    chosen = sweep.get("extra_foliage_materials", {})
     for mesh, mats in sweep.get("extra_foliage", {}).items():
         if mesh in shapes:
-            add(mesh, list(np.asarray(mats)), [None] * len(mats))
+            picks = chosen.get(mesh, np.full(len(mats), -1, np.int32))
+            add(mesh, list(np.asarray(mats)), [materials[k] if k >= 0 else None for k in picks])
     return groups
 
 
@@ -331,6 +340,7 @@ def mesh_items(
     items: dict[str, MeshGroup] = {}
     counts = {MESH_CLASS_NAMES[c]: 0 for c in MESH_CLASS_NAMES}
     families = dict.fromkeys(FAMILIES, 0)
+    shells = dict.fromkeys(FAMILIES, 0)
     for mesh, (mats, codes) in _mesh_groups(store, scripts, index, sweep, shapes).items():
         group = MeshGroup(
             np.asarray(codes, np.uint16),
@@ -341,10 +351,14 @@ def mesh_items(
         if mesh_class(mesh) == MESH_ROCK:
             for code in group.codes >> MESH_FAMILY_SHIFT:
                 families[FAMILIES[code]] += 1
+        elif mesh_class(mesh) == MESH_SHELL:
+            for code in group.codes >> MESH_FAMILY_SHIFT:
+                shells[FAMILIES[code]] += 1
     return PreparedMeshes(items, shapes, families=True), {
         "meshes": len(items),
         "instances": {**counts},
         "rock_families": {name: n for name, n in families.items() if n},
+        "shell_families": {name: n for name, n in shells.items() if n},
         "sources": sources,
         "seconds": round(time.time() - started, 1),
     }

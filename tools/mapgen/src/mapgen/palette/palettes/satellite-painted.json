@@ -490,6 +490,9 @@
   "arch_families": {
    "desert": "#a86647"
   },
+  "shell_families": {
+   "desert": "#c78f62"
+  },
   "families": {
    "desert": "#ae8271"
   },

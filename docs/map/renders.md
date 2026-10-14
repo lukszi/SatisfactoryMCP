@@ -561,10 +561,9 @@ column of the painted layer to 0.2, its neighbours' being 0.1, and the heights' 
 from 0.31 to 0.06; along y 3048 m the painted step falls from 2.8 to 0.3. The three windows of
 section 40 hold no lattice edge and draw the same bytes.
 
-Left as it is: a step in the field's own heights at that edge. Along y 3048 m the cliff
-texels stand 1.1 m under the fill beside them, because the fill's seam band carries only the
-landscape's residual and never reads rock (section 26); that step still draws a soft crease in
-the hillshade.
+The step in the field's own heights at that edge, cliff texels 1.1 m under the fill beside
+them, came from the field cutting its rocks at the landscape's frame; since generator 7 the
+rocks go on past it (heightfield.md section 22, "Rocks past the frame").
 
 ### Known limits
 

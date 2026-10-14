@@ -18,6 +18,7 @@ from pathlib import Path
 from mapgen.commands.caves import write_caves
 from mapgen.commands.rocks import write_rocks
 from mapgen.common import LOCAL_DIR, Refusal, base_parser, require_gen
+from mapgen.gamedata.frame import OUTPUT_GRID
 from mapgen.gamedata.install import GameReader, missing_container, open_game
 from mapgen.gamedata.level.fill_raster import read_fill_raster
 from mapgen.gamedata.level.landscape import LandscapeFrame, drop_offsets, landscape_frame
@@ -133,7 +134,7 @@ def _landscape(run: _Run) -> tuple[Sweep, LandscapeFrame]:
     return sweep, frame
 
 
-def _cliffs(run: _Run, sweep: Sweep, frame: LandscapeFrame) -> tuple[MeshGeometry, CliffRaster]:
+def _cliffs(run: _Run, sweep: Sweep) -> tuple[MeshGeometry, CliffRaster]:
     """Every placed rock's finest geometry, folded into the 1 m max-Z overlay."""
     reader = run.reader
     print("decoding the finest geometry every placed rock ships")
@@ -149,7 +150,7 @@ def _cliffs(run: _Run, sweep: Sweep, frame: LandscapeFrame) -> tuple[MeshGeometr
             "whole of what makes this field better than the interface raster. Refusing.",
         )
     print("rasterising them into a 1 m max-Z overlay")
-    cliffs = rasterise_cliffs(sweep, meshes["geometry"], frame, run.loud)
+    cliffs = rasterise_cliffs(sweep, meshes["geometry"], OUTPUT_GRID, run.loud)
     run.timings["rasterise"] = round(cliffs["seconds"], 1)
     print(
         f"  {cliffs['placements_used']}/{cliffs['placements_total']} placements, "
@@ -172,14 +173,12 @@ def _compose(run: _Run, frame: LandscapeFrame, cliffs: CliffRaster) -> FieldLaye
     return fused
 
 
-def _top(
-    run: _Run, sweep: Sweep, frame: LandscapeFrame, fused: FieldLayers
-) -> tuple[TopOverlay, I16Grid, int]:
+def _top(run: _Run, sweep: Sweep, fused: FieldLayers) -> tuple[TopOverlay, I16Grid, int]:
     """Arches and foliage boulders, folded over the field into the ``top`` plane."""
     print("rasterising arches and foliage boulders for the top plane")
-    top = rasterise_top(sweep, frame, run.reader, run.loud)
+    top = rasterise_top(sweep, OUTPUT_GRID, run.reader, run.loud)
     run.timings["top"] = round(top["seconds"], 1)
-    top_dm, top_raised = field.fold_top_overlay(fused["height_dm"], frame, top)
+    top_dm, top_raised = field.fold_top_overlay(fused["height_dm"], top)
     print(
         f"  {top['arch_placements']} arch placements, {top['foliage_instances']} foliage "
         f"instances {top['foliage_by_mesh']}; raised {top_raised} texels over the ground"
@@ -239,9 +238,9 @@ def build_field(
     """Every stage of the field, then its planes, sidecar and collision pack written."""
     run = _Run(reader, not args.quiet)
     sweep, frame = _landscape(run)
-    meshes, cliffs = _cliffs(run, sweep, frame)
+    meshes, cliffs = _cliffs(run, sweep)
     fused = _compose(run, frame, cliffs)
-    top, top_dm, top_raised = _top(run, sweep, frame, fused)
+    top, top_dm, top_raised = _top(run, sweep, fused)
     water, water_checks = _water(run, sweep, fused)
     validation, terrain_check = _validate(run, frame, fused)
     started = time.time()
