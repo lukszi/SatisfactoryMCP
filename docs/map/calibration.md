@@ -228,7 +228,7 @@ references were used. A target is a screenshot measured so, or derived by a rule
 | Boulders of the top pass | Dune Desert | #ca9164 | derived (bake) | the Dune Desert's boulder tops in the game's baked distant view through the camera model (painted.md section 30, "The Dune Desert's boulders"); #ba7b56, the arches' and rib bones', until the desert arches took their family's colour |
 | Top layer, red jungle family | the up-facing faces of every `_RedJungle` cliff | #ad6351 | derived (bake) | those cliffs' tops in the game's baked distant view through the camera model ("The second review" below) |
 | Crowns, red Kapok (`SM_Kapok_03`) | everywhere, by species | #7c4955 | screenshot | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942); two 1.0 sources agree (ΔE 1.8 and 1.9) (see "Crowns") |
-| Crowns, orange palms (`Orange_palm1`, `Orange_palm2`) | everywhere, by species | #c3cbb6, #bcc5ad | derived (texture) | each species' sprite colour through the camera model: `TX_OrangePalm_Alb_01`, pale sage under the warm sun (light-and-crowns.md section 36, "Foliage colours checked"); they skip the canopy step |
+| Crowns, orange palms (`Orange_palm1`, `Orange_palm2`) | everywhere, by species | #bfcbc3, #b6c5bc | derived (texture) | each species' sprite colour through the camera model under the leaves' light: `TX_OrangePalm_Alb_01`, pale grey-mint (light-and-crowns.md section 36, "Foliage colours checked"; "The sky on the leaves" below); they skip the canopy step. #c3cbb6 and #bcc5ad, pale sage, flat-lit, until style version 35 |
 | Crowns, blue palms | everywhere, by hue | #3d627d | screenshot | [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), high-angle daylight: the blue leaf pixels (hue 190 to 290, chroma at least 0.04) of five crowns pooled, then the method above. The [Rocky Desert area](https://satisfactory.wiki.gg/images/Rocky_Desert_Area.png) crowns agree on hue (242) but are seen from below; the [river split](https://satisfactory.wiki.gg/images/Rocky_Desert_river_split.png) crowns are backlit. A 1.0 shot gives #556b85 (ΔE 4.4); not derivable, as a third of the leaf is midribs and the fronds are sparse |
 | CoralRock layer | Blue Crater, Crater Lakes | #6c7386 | screenshot | [crater ground at noon](https://steamcommunity.com/sharedfiles/filedetails/?id=3372405479) |
 | Shell meshes (the pale plates) | Blue Crater | #747b85 | screenshot | [Blue Crater aerial](https://steamcommunity.com/sharedfiles/filedetails/?id=3579556500), [Blue Crater](https://satisfactory.wiki.gg/images/Blue_Crater.png), the noon crater shot |
@@ -456,9 +456,10 @@ crowns instead (`palette/painted/trees.py` `crown_ops`, applied in `crown_layer`
   opens (`before_canopy`, fixed-point rounds on the gate): drawn, it lands on its target. The
   red Kapok's crimson opens no gate and is where it was. The orange palms (`Orange_palm1` and
   `_2`, 5,621 shrubs, chroma 0.020) opened the canopy gate fully and drew mint, #b9ebd0 and
-  #afe1c6 at flat shade; they now take their leaf texture's camera colour, pale sage, #c3cbb6
-  and #bcc5ad (light-and-crowns.md section 36, "Foliage colours checked"): gates 0.62 and 0.68,
-  steps -0.050 and -0.032, ×0.56 and ×0.63. Dropping their trees from the canopy measure leaves
+  #afe1c6 at flat shade; they now take their leaf texture's camera colour, #bfcbc3 and
+  #b6c5bc under the leaves' light (pale sage, #c3cbb6 and #bcc5ad, flat-lit until style 35;
+  light-and-crowns.md section 36, "Foliage colours checked"): gates 0.51 and 0.58, steps
+  -0.043 and -0.027, ×0.34 and ×0.39. Dropping their trees from the canopy measure leaves
   its op as it was (+0.063 L, ×1.54). An area entry's canopy op, where one is given, still
   reaches a named species there; no entry carries one.
 
@@ -548,7 +549,19 @@ rehomed offshore as in "Area targets" above.
   a derived colour and a screenshot target are measured alike.
 - `E` is 2.8067 on build 502094, over 2.24 million lit bake texels at 4 m.
 
-Every product is written out in a fixed order. The model has no fitted parameter.
+Every product is written out in a fixed order. Flat ground has no fitted parameter; the
+leaves have three ("The sky on the leaves" below).
+
+**Leaves.** The crown rules (`canopy`, `crowns`, `species`) are measured under the leaves' light
+instead of `I` (`camera.foliage_illuminant`, model version 3):
+
+    I_leaves = sun lux / π · sun colour · (f · sin(elevation) · T_atm + S)
+    S = 1.93 · sky · SkyLuminanceFactor + 0.15 · sin(elevation) · T_atm
+
+scaled to the luminance of `I`. `S` is the sky as 1.0 footage shows it, `f` = 0.063 the direct
+sun the leaves of a crown seen from above take on average. The scaling keeps a crown's
+lightness where flat-lit leaves have it, so the light moves hue and chroma only and the crowns'
+`darkening` stays the one thing that sets how dark they draw.
 
 **The light of a key.** Each sample a key is measured on (a texel, or a tree) takes the
 highest-priority volume whose hull holds it, else the level's light; the key takes the light
@@ -565,11 +578,13 @@ Desert's: most of its placements stand inside that volume.
 | cliff body texture | `rock`, an area's rock | the mean of `Cliff_Sediment_Alb`, the body albedo every cliff instance streams; the family's `Color Tint` is recorded and not applied ("Rock from the cliff material" below) |
 | sand-rock | `families.desert`, an area rock wearing its target | the DesertRock paint-table entry, `TX_SandRock_Alb_01` times `Sand Rock BaseColor`; `MI_DesertRock` has no albedo texture of its own |
 | top texture | `tops` | the family's far albedo mean |
-| crowns | `canopy`, `crowns`, `species` | the weighted median of the trees' top-down sprite colours (cover × scale²); the canopy takes only crowns within 20 to 40° of the forest floor texture's hue and leaves out the keyed species and the blue palms |
+| crowns | `canopy`, `crowns`, `species` | the weighted median of the trees' top-down sprite colours (cover × scale²); the canopy takes only crowns within 20 to 40° of the forest floor texture's hue and leaves out the keyed species and the blue palms. Measured under the leaves' light |
 | material texture | `meshes.coral`, an area's shells | the materials' base-colour means under their masks |
 | none | water, seabed coral | the game's water absorbs but does not scatter, so its colour is the sky, the clouds and the fog, which the cooked assets do not expose |
 
-**Results on build 502094** (model version 2, 2026-10-08). ΔE is OKLab ×100 against the
+**Results on build 502094** (model version 2, 2026-10-08; the crown rows model version 3,
+2026-10-14, under the leaves' light: flat-lit they were canopy #5e8136, the blue palms #bec7c1
+and the red Kapok #ad4a37). ΔE is OKLab ×100 against the
 screenshot target, and "Chroma and hue" the part of it in a and b against the gate's allowance;
 `*` marks the keys `derived_keys` lists and a render takes, `x` those it lists and the derive
 gate declines, so they keep their screenshot.
@@ -581,13 +596,13 @@ gate declines, so they keep their screenshot.
 | * layers.Grass | #7f8d4e | #83986e | 4.4 | 2.7 / 4.3 | global |
 | * layers.Forest | #484d26 | (the canopy's #558653) | 17.3 | 5.0 / 6.2 | global |
 | x derived.WetSand | #b38c61 | #a4947f | 4.1 | 4.0 / 2.4 | global |
-| canopy | #5e8136 | #558653 | 3.2 | 2.9 / 6.2 | global |
+| canopy | #568244 | #558653 | 1.9 | 1.4 / 6.2 | global |
 | x rock | #7b6f5a | #85816c | 5.5 | 1.0 / 2.1 | global |
 | * families.desert | #c38761 | #ae8271 | 4.5 | 3.3 / 4.0 | Dune Desert |
 | * tops.forest | #54662b | #505936 | 4.7 | 3.2 / 3.6 | global |
 | meshes.coral | #9f7e75 | #917c75 | 2.4 | 1.5 / 1.9 | global |
-| crowns.blue_palm | #bec7c1 | #3d627d | 34.6 | 6.1 / 4.1 | global |
-| species.SM_Kapok_03 | #ad4a37 | #7c4955 | 10.3 | 7.9 / 4.7 | global |
+| crowns.blue_palm | #b8c8ce | #3d627d | 34.5 | 4.3 / 4.1 | global |
+| species.SM_Kapok_03 | #a14a44 | #7c4955 | 7.6 | 5.7 / 4.7 | global |
 | desert entry: Sand | #d7c3a5 | #c4ab8b | 7.2 | 0.7 / 3.5 | global |
 | desert entry: WetSand | #b48d61 | #9b7a5b | 6.8 | 1.7 / 4.0 | global |
 | * desert entry: Gravel | #9e896f | #8f8373 | 3.1 | 1.7 / 1.8 | global |
@@ -611,7 +626,8 @@ have no pure texels and fall back to their paint-table entries.
 Desert's light, the Forest floor, the seven layers with no target at all, and the keys that
 were within ΔE 5 of their screenshot target when they were listed. Of those, a render takes the
 ones the derive gate passes. Not listed: the blue palms (the leaf texture is a pale blue-grey and
-the model has no foliage sky term), the red Kapok (no subsurface light), every water colour,
+the model's leaves' light turns their hue but cannot darken them), the red Kapok (its hue is
+21° off under the leaves' light, 28° without it), every water colour,
 and the keys between 5 and 10 until the in-game checks their verdicts list are done. Since
 2026-10-09 the canopy is not listed either: its rule measures the paint store's flat slot
 colours, which the render no longer draws ("The second review" below). A render with derived
@@ -672,6 +688,56 @@ that the three rock keys derive the cliff body within the gate's chroma-and-hue 
 - SandCracks (L 0.685) stays lighter than the screenshot SandRipples (L 0.653), though the bake
   has it darker; deriving SandRipples too (L 0.712) would restore the bake's order.
 - The Dune Desert volume's hull also covers the western mesas and 40% of the Spire Coast.
+
+### The sky on the leaves (2026-10-14)
+
+Without a sky term for leaves the camera model drew every crown too warm: the canopy 13° in
+hue short of its 1.0 target towards yellow, the red Kapok 28° towards orange, the blue palms
+84° off. Flat ground was within 0 to 17°, most keys within 10°.
+
+**How strong the sky is.** Where a shadow falls on one surface, shade over sun is the sky's
+share of the light: the albedo, the exposure and any grade cancel. Inverted through the film
+curve, five boxes in two 1.0 trailer frames:
+
+| Frame | Surface | Shade over sun, R G B | Clear sky ×, grey share |
+| --- | --- | --- | --- |
+| 1.0 launch trailer (`Jt4XOPiPJHs`), scene 22, top-down over a factory | a concrete foundation, under a tree's shadow (three box pairs) | 0.21 0.24 0.34; 0.12 0.17 0.29; 0.17 0.21 0.32 | 1.91, 0.20; 1.93, 0.07; 1.87, 0.14 |
+| console trailer (`TURoNOy6eC0`), scene 2, desert | sand under a tumbleweed; under a post | 0.19 0.24 0.36; 0.28 0.33 0.40 | 2.48, 0.15; 2.05, 0.33 |
+
+Each pair fits the sky as the engine's clear sky ("The camera model") times a factor, plus a
+grey part in the sun's colour: the multiple scattering the single-scattering integral leaves
+out, and the clouds and the light the shadow's own caster throws back. The medians, 1.93 and
+0.15 of the direct sun, are `SKY_SCALE` and `SKY_GREY`. That sky is about five times the
+model's in red and three times in blue, and less blue than the clear sky alone.
+
+**Ground keeps the flat model.** Under that sky the ground's derived colours move by about 1
+ΔE (Sand #d7c1a2 to #d6c1a5, Grass #7f8d4e to #7e8e50, Gravel #9e896f to #9d8a72, the desert
+rock #c38761 to #c28864) and do not get closer to their screenshots: the median ΔE goes from 4.5
+to 4.3, the median hue gap from 4.8° to 6.0°, the rock's from 16.6° to 17.1°. The drawn ground
+colours stay as they are.
+
+**Leaves.** On flat-lit leaves that sky moves the canopy by under 1°. A crown seen from above
+is mostly its own shade: the leaves the camera sees take a small share `f` of the direct sun
+and the whole sky. The launch trailer's scene 22 shows a persimmon (`DioTree`, fruit on it)
+from above beside sunlit Grass Fields grass; crown over grass in scene light, against their
+albedos (the sprite colour and the Grass Fields grass in the bake), fits `f` = 0.063 to 1% in
+every channel (at `f` = 1, 19%). The other crown in that frame reads bluer than any `f`; it
+stands under the shadow of the tower beside it. Checked on the targets the fit did not see:
+
+| Key | Target | Flat-lit | Leaves' light | Hue gap |
+| --- | --- | --- | --- | --- |
+| canopy (`SM_Kapok_01` mostly) | #558653 | #5e8136 | #568244 | −13.2° to −6.2°, ΔE 3.2 to 1.9 |
+| `species.SM_Kapok_03` | #7c4955 | #ad4a37 | #a14a44 | +27.7° to +21.0°, ΔE 10.3 to 7.6 |
+| `crowns.blue_palm` | #3d627d | #bec7c1 | #b8c8ce | −84.4° to −19.1°, ΔE 34.6 to 34.5 (its lightness is the midribs) |
+
+The leaves' light keeps each crown's lightness within 0.02 L and moves a species' camera colour
+by 1.2 to 3.7 ΔE: greens 7 to 14° towards blue-green, reds and pinks 8 to 20° towards crimson,
+the purple trees 27° towards violet, near-grey leaves the most in hue for the least in
+colour. Only the orange palms draw a camera colour (`Orange_palm1` and `_2`, "Crowns"): #c3cbb6
+and #bcc5ad become #bfcbc3 and #b6c5bc, pale sage to pale grey-mint, ΔE 1.9 and 2.2; their drawn
+crown pixels move from #9fa998 to #9ba9a3, ΔE 1.6 (style version 35). No other drawn colour
+moves: the canopy, the red Kapok and the blue palms keep their screenshots, and the other species
+are drawn from their sprites.
 
 ### Rock from the cliff material (2026-10-08)
 

@@ -3,9 +3,11 @@
     measured = discount(OKLab(filmic(grade(E * albedo * I))))
 
 ``I`` is the noon sun through the engine's default sky (``atmosphere``), ``E`` the histogram
-auto-exposure over the lit bake, and the film curve and grade ``tonemap``'s. Every constant is
-the engine's or the screenshot method's; docs/map/calibration.md section 31 lists them. Every
-product is written out in a fixed order, never BLAS.
+auto-exposure over the lit bake, and the film curve and grade ``tonemap``'s. Leaves take
+``foliage_illuminant`` instead: most of a crown seen from above is in its own shade, lit by the
+sky. Every constant is the engine's, the screenshot method's or fitted to 1.0 footage;
+docs/map/calibration.md section 31 lists them. Every product is written out in a fixed order,
+never BLAS.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ __all__ = [
     "delta_e",
     "discount",
     "exposure",
+    "foliage_illuminant",
     "hex_of_lab",
     "hex_of_linear",
     "illuminant",
@@ -34,6 +37,13 @@ __all__ = [
 ]
 
 REC709 = np.array([0.2126, 0.7152, 0.0722])
+#: The sky 1.0 footage shows, from shade against sun on one surface: the engine's clear sky
+#: times ``SKY_SCALE``, plus ``SKY_GREY`` of the direct sun in its own colour.
+SKY_SCALE = 1.93
+SKY_GREY = 0.15
+#: The direct sun the leaves of a crown seen from above take on average, as a share of flat
+#: ground's; fitted to a persimmon crown from above in the 1.0 launch trailer.
+FOLIAGE_SUNLIT = 0.063
 
 
 @dataclass(frozen=True)
@@ -61,6 +71,18 @@ def illuminant(light: Light) -> F64Grid:
     return light.sun_lux / np.pi * np.asarray(light.sun_colour) * total
 
 
+def foliage_illuminant(light: Light) -> F64Grid:
+    """``illuminant`` for leaves: ``FOLIAGE_SUNLIT`` of the direct sun plus the whole sky, at
+    flat ground's luminance, so it moves a crown's colour and leaves its lightness alone."""
+    t_sun, sky = _sky_terms(light.elevation_deg)
+    direct = np.sin(np.radians(light.elevation_deg)) * t_sun
+    seen_sky = SKY_SCALE * (sky * np.asarray(light.sky_luminance_factor)) + SKY_GREY * direct
+    sun = light.sun_lux / np.pi * np.asarray(light.sun_colour)
+    leaves = sun * (FOLIAGE_SUNLIT * direct + seen_sky)
+    ground = illuminant(light)
+    return leaves * (float(dot3(ground, REC709)) / float(dot3(leaves, REC709)))
+
+
 def exposure(
     bake_linear: NDArray[np.floating], light: Light, bias_ev: float, band_pct: tuple[float, float]
 ) -> tuple[float, float]:
@@ -80,11 +102,15 @@ def discount(lab: NDArray[np.floating]) -> F64Grid:
 
 
 def measured_lab(
-    albedo_linear: NDArray[np.floating] | list[float], light: Light, gain: float
+    albedo_linear: NDArray[np.floating] | list[float],
+    light: Light,
+    gain: float,
+    foliage: bool = False,
 ) -> F64Grid:
     """What a screenshot of flat, lit ground of this albedo measures, in OKLab, under the
-    exposure ``gain``."""
-    scene = gain * np.asarray(albedo_linear, np.float64) * illuminant(light)
+    exposure ``gain``; with ``foliage``, of a crown's leaves seen from above."""
+    lit = foliage_illuminant(light) if foliage else illuminant(light)
+    scene = gain * np.asarray(albedo_linear, np.float64) * lit
     display = tonemap(scene, light.gains)
     return discount(oklab(np.clip(display, 1e-9, 1.0)))
 

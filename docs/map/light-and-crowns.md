@@ -1324,6 +1324,14 @@ flat shade they draw those colours, ΔE 0. Composited over the v10 unlit tiles a
 (260, 2250), the palms' own crown pixels (1,308) move from #9fd3b8 to #acb59e as drawn, a few
 L under the flat colour by their sprite normals' shading.
 
+Since style version 35 the camera colour is taken under the leaves' light (calibration.md
+section 31, "The sky on the leaves"): most of a crown seen from above is its own shade, lit by
+the sky. The palms' camera colours become #bfcbc3 (`Orange_palm1`) and #b6c5bc
+(`Orange_palm2`), pale grey-mint, at the same lightness; over the unlit tiles around (260, 2250) their drawn pixels
+move from #9fa998 to #9ba9a3, ΔE 1.6. The camera colours above, and the darkening table's
+"camera colour" column, are flat-lit; under the leaves' light every species keeps its
+lightness within 0.02 L, so the darkening comparison holds.
+
 **The ancient pines** draw #698a28 (Lab 53, -27, 47) as rendered. Three pre-1.0 views agree
 that they are less saturated:
 

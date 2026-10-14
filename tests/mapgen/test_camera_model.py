@@ -88,3 +88,22 @@ def test_delta_e_is_the_oklab_distance_times_100():
     assert camera.delta_e(camera.lab_of_hex("#000000"), camera.lab_of_hex("#ffffff")) == (
         pytest.approx(100.0, abs=0.01)
     )
+
+
+def test_the_leaves_light_keeps_flat_grounds_luminance_and_is_bluer():
+    ground, leaves = camera.illuminant(NOON), camera.foliage_illuminant(NOON)
+    assert float(leaves @ camera.REC709) == pytest.approx(float(ground @ camera.REC709), rel=1e-12)
+    assert leaves[2] / leaves[0] > 1.5 * ground[2] / ground[0]
+
+
+@pytest.mark.parametrize(
+    ("albedo", "flat", "leaves"),
+    [
+        ((0.0598, 0.1186, 0.0353), "#5e8136", "#568243"),  # SM_Kapok_01, the canopy
+        ((0.0527, 0.0868, 0.0314), "#556a2f", "#4d6c3b"),  # DioTree_02
+    ],
+)
+def test_a_crown_measures_bluer_under_the_leaves_light(albedo, flat, leaves):
+    lab = camera.measured_lab(np.array(albedo), NOON, E)
+    assert camera.hex_of_lab(lab) == flat
+    assert camera.hex_of_lab(camera.measured_lab(np.array(albedo), NOON, E, foliage=True)) == leaves

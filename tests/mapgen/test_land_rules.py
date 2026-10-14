@@ -338,9 +338,9 @@ def test_the_canopy_targets_are_one_global_green_and_red_by_species():
     assert CAL["canopy"] == "#558653"
     assert CAL["species"] == {
         "SM_Kapok_03": "#7c4955",
-        "Orange_palm1": "#c3cbb6",
-        "Orange_palm2": "#bcc5ad",
-    }, "the orange palms at their leaf's camera colour"
+        "Orange_palm1": "#bfcbc3",
+        "Orange_palm2": "#b6c5bc",
+    }, "the orange palms at their leaves' camera colour under the leaves' light"
     assert CAL["crowns"]["blue_palm"] == "#3d627d"
 
 
