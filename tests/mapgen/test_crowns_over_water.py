@@ -86,4 +86,5 @@ def test_pixels_without_a_crown_keep_their_bed_carpet_and_water():
     crowns = _crowns(tops, cover=[1.0, 1.0, 0.0, 0.0])
     drawn, bare = _draw(ground, 2.0, crowns), _draw(ground, 2.0)
     np.testing.assert_array_equal(drawn[0, 2:], bare[0, 2:])
-    assert _gap(drawn, bare)[0, 0] > _gap(drawn, bare)[0, 1] > 0, "out of the water, then under"
+    assert (_gap(drawn, bare)[0, :2] > 0).all(), "out of the water and under it, both drawn"
+    assert _gap(drawn[:, :1], drawn[:, 1:2])[0, 0] > 10, "the sunk one through the water"

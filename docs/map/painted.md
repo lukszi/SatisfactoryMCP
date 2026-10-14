@@ -168,9 +168,10 @@ OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, tim
 31, then sRGB.
 
 **Water** is Beer-Lambert: `bed * T + W (1 - T) + 0.02 sky`, `T = exp(-k d)` with `k` =
-(4.59, 3.97, 7.27) per metre and `W` #5fa9a9, then blended towards the open sea #3c597d by
-`1 - exp(-d / 3.9 m)`. The row is fitted to the 1.0 screenshots of section 33 ("The sea by
-depth band"). The bed is the ground colour times exposure times 0.8 (wet).
+2.17 times the ocean material's absorption, (1.695, 0.498, 0.363) per metre, and `W` the sky
+term #3c597d less the 0.02 sky, then blended towards #3c597d by `1 - exp(-d / 100 m)`: the
+sea's physics row of section 33 ("The sea's physics row"). The bed is the ground colour times
+exposure times 0.8 (wet).
 Coral and shells are part of the bed: they are composited into the ground colour first, and
 the depth `d` is measured to the drawn surface, which over a mesh is the mesh top, so a shallow
 reef stays visible. Inland water takes its class's optics (section 33).

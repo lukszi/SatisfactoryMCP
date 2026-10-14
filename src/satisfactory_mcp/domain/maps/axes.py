@@ -86,6 +86,7 @@ INPUT_NAMES = {
     "artwork_sheet": "artwork sheet reader",
     "cliff_geometry": "cliff geometry reader",
     "crown_sprites": "crown sprite reader",
+    "ocean_absorption": "ocean absorption reader",
     "render_meshes": "render mesh reader",
     "river_splines": "river spline reader",
     "rock_families": "rock family reader",

@@ -249,6 +249,7 @@ be traced to the axis it should move.
 | `gamedata/water/bodies.py` | data | Water actors' materials, hot-spring terraces, the class of each body |
 | `gamedata/water/rivers.py` | data | River splines (`BP_River_PROT_C`), sampling, the 1 m ribbon planes |
 | `gamedata/water/falls.py` | data | Waterfall records from the `BP_WaterFallTool_02` actors, and their cache |
+| `gamedata/water/ocean.py` | data | The ocean material's absorption from its cached parameter defaults (`read_ocean_absorption`) |
 | `gamedata/vegetation/trees.py` | data | Tree instances as crowns: species bounds, instance scale, the tree table, canopy cover |
 | `gamedata/vegetation/crown_sprites.py` | data | Tree crown sprites from LOD 0, tree records, the crown top plane |
 | `gamedata/vegetation/carpet.py` | data | The seabed coral carpet's harvest and planes, written by the paint command |
@@ -328,6 +329,7 @@ be traced to the axis it should move.
 | `palette/painted/trees.py` | style | Trees over the painted pixel: per-tree crowns lit by their normals, their calibration, the Titan trunks and canopy |
 | `palette/painted/crown_sets.py` | style | The crowns and the Titan canopy a painted ground draws over the crown sprites |
 | `palette/painted/optics.py` | style | What is seen under each wet pixel, the coral carpet |
+| `palette/painted/sea.py` | style | The sea's physics row: the game's absorption times the fitted scale, the sky term at depth |
 | `palette/painted/kernels.py` | style | The colour under the water and its mix, compiled by numba |
 | `palette/painted/water_classes.py` | style | The water-class plane and the swamp-to-ocean blends at mouths |
 | `palette/water/surface.py`, `shore.py` | style | Water drawing, shore optics, foam |

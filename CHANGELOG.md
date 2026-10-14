@@ -94,6 +94,11 @@ Planned as 0.2.0.
 
 ### Changed
 
+- Map renders: the Satellite map's sea is drawn with the game's own ocean absorption, read
+  from the install's ocean material and scaled by the factor the sky fit gives, over its bed,
+  and the fitted sky colour at depth. Shallow lagoons turn blue where they were teal, and
+  sand shows through the first half metre. Lakes and rivers keep their colours. The style's
+  version goes up.
 - Map renders: on the Satellite map every tree crown is drawn from its crown sprite, leaves,
   holes and branches in their own colour, lit by their own normals instead of a smooth dome;
   the ancient pines draw olive instead of mustard. A painted render builds the sprite cache

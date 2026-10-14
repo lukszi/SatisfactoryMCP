@@ -119,14 +119,15 @@ def test_an_old_paint_store_or_a_switched_off_style_draws_no_carpet(tmp_path):
 
 
 def _ground(cover, top_m):
-    water = PAINTED_PALETTE["water"]
+    """Water that absorbs 4 per metre on every channel over a green-grey body: the carpet's
+    own blue is then told apart from the water's by how much of it shows."""
     return SimpleNamespace(
         palette={"carpet": CARPET},
         carpet=(np.full((1, 4), cover, np.uint8), np.asarray(top_m, np.float16).reshape(1, 4)),
         water={
-            "k": np.asarray(water["k_per_m"], np.float32),
-            "body": srgb_to_linear(water["body"]),
-            "sky": srgb_to_linear(water["sky"]) * np.float32(water["surface_r"]),
+            "k": np.full(3, 4.0, np.float32),
+            "body": srgb_to_linear([79, 125, 120]),
+            "sky": srgb_to_linear([150, 190, 230]) * np.float32(0.02),
         },
     )
 

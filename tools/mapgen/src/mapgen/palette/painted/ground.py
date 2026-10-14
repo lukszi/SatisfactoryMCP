@@ -25,6 +25,7 @@ from mapgen.gamedata.ground.bake import BAKE_NAME, bake_have
 from mapgen.gamedata.ground.paint_store import CANOPY_NAME, CROWN_NAME, PIGMENT_NAME
 from mapgen.gamedata.rocks.looks import RockTextures
 from mapgen.gamedata.water.bodies import WATER_CLASSES
+from mapgen.gamedata.water.ocean import OceanAbsorption
 from mapgen.palette.painted.albedo import (
     GroundBake,
     bake_table,
@@ -286,6 +287,18 @@ class PaintedGround:
     def attach_titan(self, titan: TitanPlanes | None) -> None:
         """The Titan tree raster on the render grid, as ``(z cm, class, factor, row0, col0)``."""
         self.titan = titan
+
+    def attach_sea(self, absorption: OceanAbsorption) -> None:
+        """The install's ocean absorption, which sets the sea's row in place of the palette's
+        ``k_per_m``."""
+        self.water = base_water(self.palette, absorption)
+        self.water_rows = water_table(self.palette, absorption)
+        self.source["sea_absorption"] = {
+            "absorption_per_m": [round(v, 6) for v in absorption.per_m],
+            "colour": [round(v, 6) for v in absorption.colour],
+            "murkiness": round(absorption.murkiness, 6),
+            "k_per_m": [round(float(v), 5) for v in self.water["k"]],
+        }
 
     def attach_look(self, textures: RockTextures, spacing_m: float) -> None:
         """The rocks' textures from the install, at the levels a pixel of ``spacing_m`` reads."""

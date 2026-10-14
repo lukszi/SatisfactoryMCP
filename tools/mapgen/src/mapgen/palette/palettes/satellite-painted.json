@@ -168,16 +168,17 @@
   }
  },
  "water": {
-  "model": "beer-lambert, fitted to 1.0 screenshots of the sea by depth band",
+  "model": "beer-lambert: the game's ocean absorption times absorption_scale over the bed, the fitted sky term at depth",
+  "absorption_scale": 2.17,
   "k_per_m": [
-   4.59,
-   3.97,
-   7.27
+   1.6953,
+   0.4985,
+   0.3633
   ],
-  "body": [
-   95,
-   169,
-   169
+  "sky_term": [
+   60,
+   89,
+   125
   ],
   "surface_r": 0.02,
   "sky": [
@@ -185,12 +186,7 @@
    190,
    230
   ],
-  "deep": [
-   60,
-   89,
-   125
-  ],
-  "deep_tau_m": 3.9,
+  "deep_tau_m": 100.0,
   "bed_wet": 0.8,
   "inland_floor": 0.35,
   "opaque_tau_m": 0.3
