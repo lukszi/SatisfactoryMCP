@@ -17,7 +17,7 @@ from typing import NamedTuple
 import numpy as np
 from numpy.typing import NDArray
 
-from mapgen.cache import MeshPlanes
+from mapgen.cache import MeshPlanes, TopPlanes
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
 from mapgen.lighting.hillshade import FLAT_SUN_DOT, flat_shade, hillshade
@@ -313,6 +313,7 @@ def _painted_colours(
         "top_weight": surface.top_weight,
         "mesh_weight": surface.mesh_weight,
         "mesh_class": surface.mesh_class,
+        "top_family": _top_family(job.ground.overlay, (rows.cut, cols.cut)),
         "mesh_family": _band_family(job.ground.meshes, (rows.cut, cols.cut)),
         "water_optics": ground.water_optics(grid.linear, surface.water.get("river")),
         "grid": BandGrid((rows.cut, cols.cut), rows.lo, rows.hi, cols.lo, cols.hi, spacing_m),
@@ -393,6 +394,11 @@ def _band_family(meshes: MeshPlanes | None, cut: tuple[slice, slice]) -> U8Grid 
         if meshes is None or meshes.family is None
         else np.asarray(meshes.family[cut], np.uint8)
     )
+
+
+def _top_family(top: TopPlanes | None, cut: tuple[slice, slice]) -> U8Grid | None:
+    """The top arch's family on this piece; None for a cache without the plane."""
+    return None if top is None or top.family is None else np.asarray(top.family[cut], np.uint8)
 
 
 def _void(

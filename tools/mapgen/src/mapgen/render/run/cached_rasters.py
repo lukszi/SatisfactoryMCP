@@ -26,7 +26,8 @@ from mapgen.cache import (
 from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.level.sweep import Sweep
-from mapgen.gamedata.rocks.families import placement_families
+from mapgen.gamedata.placements import arch_mesh_ids
+from mapgen.gamedata.rocks.families import ARCH_FAMILY_ROOTS, placement_families
 from mapgen.terrain.overhangs import rasterise_direct_planes
 from mapgen.terrain.rasters import (
     CliffGeometry,
@@ -238,8 +239,13 @@ def top_raster(level: LevelSweep, cache: Path, grid: RasterGrid) -> tuple[TopPla
     def rasterise() -> JsonObject:
         print(f"rasterising the arches and foliage boulders at {grid.spacing_m:.4f} m")
         geometry = level.geometry
+        sweep = geometry["sweep"]
+        arch_ids = frozenset(arch_mesh_ids(sweep["meshes"]))
+        families = placement_families(
+            level.store, level.scripts, level.index, sweep, ARCH_FAMILY_ROOTS, arch_ids
+        )
         items, top_meta = top_items(
-            level.store, level.scripts, level.index, geometry["sweep"], geometry["geometry"]
+            level.store, level.scripts, level.index, sweep, geometry["geometry"], families
         )
         print(
             f"  {top_meta['arch_placements']} arches, "

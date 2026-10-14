@@ -199,7 +199,7 @@ class CrownLayer(TypedDict):
 class PaintedScene(BandScene):
     """One band as the painted style draws it (``render.draw.painting``): the shared scene, then
     its crowns, sun term, rock and mesh weights, the arches' and boulders' lift over the
-    cliffs, water optics, and the ground's detail under the bake."""
+    cliffs and the top arch's family, water optics, and the ground's detail under the bake."""
 
     crowns: LitCrowns | None
     titan_crowns: NotRequired[LitCrowns | None]
@@ -207,6 +207,7 @@ class PaintedScene(BandScene):
     ndl_flat: np.float32
     rock_weight: FloatGrid
     top_weight: NotRequired[FloatGrid | None]
+    top_family: NotRequired[U8Grid | None]
     mesh_weight: FloatGrid | None
     mesh_class: U8Grid | None
     mesh_family: U8Grid | None
@@ -276,6 +277,7 @@ class PaintedSurface(Protocol):
     family_has_top: F32Grid
     rock_look: RockLook | None
     arch_rgb: ColourPlanes | None
+    arch_family_rgb: dict[int, F32Grid]
     cliff_layer: PaintPlane | None
     mesh_rgb: dict[int, ColourPlanes]
     seabed_coral: F32Grid

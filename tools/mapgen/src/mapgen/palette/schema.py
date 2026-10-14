@@ -345,6 +345,8 @@ class CalibrationStyle(TypedDict):
     rock_keeps_exposure: bool
     #: The arches and boulders: their own family, by the game's baked view.
     arches: NotRequired[str]
+    #: The arches whose material wears a rock family's colour, by family, over ``arches``.
+    arch_families: NotRequired[dict[str, str]]
     families: dict[str, str]
     tops: dict[str, str]
     meshes: dict[str, str]
@@ -414,8 +416,11 @@ def checked(shape: type[Palette], raw: object, style: str) -> Palette:
     _fits(shape, raw, style)
     calibration = _as_dict(raw, style).get("calibration")
     if calibration is not None:
-        for block in ("families", "tops"):
-            names = _as_dict(_as_dict(calibration, style)[block], style)
+        for block in ("families", "tops", "arch_families"):
+            found = _as_dict(calibration, style).get(block)
+            if found is None:
+                continue
+            names = _as_dict(found, style)
             unknown = sorted(set(names) - set(FAMILIES))
             if unknown:
                 raise PaletteError(f"{style}: calibration.{block} names no family {unknown}")

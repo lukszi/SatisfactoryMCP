@@ -489,6 +489,9 @@
   "rock": "#85816c",
   "rock_keeps_exposure": true,
   "arches": "#8a8671",
+  "arch_families": {
+   "desert": "#a86647"
+  },
   "families": {
    "desert": "#ae8271"
   },

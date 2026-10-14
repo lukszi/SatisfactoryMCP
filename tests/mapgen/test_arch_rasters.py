@@ -9,14 +9,16 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from mapgen.cache import DIRECT_FAMILY_NAME
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.maxz_raster import MaxZRaster
+from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.terrain import rasters
 from mapgen.terrain.archfill import fill_arch_holes
 from mapgen.terrain.overhangs import overhang_rasters, reduce_floor, reduce_under
 from mapgen.terrain.rasters import PreparedPlacement, TopItems, top_items
 from mapgen.terrain.render_meshes import InstanceSpans
-from mapgen.terrain.top_raster import FILL_HALO_M, rasterise_top_band
+from mapgen.terrain.top_raster import FILL_HALO_M, rasterise_top_band, top_band_planes
 
 STEP_CM = 750000.0 / 32768
 SPACING_M = STEP_CM / 100.0
@@ -118,11 +120,11 @@ def test_the_ceiling_keeps_only_what_lies_below_it():
 # ---------------------------------------------------------------------- the top raster
 
 
-def _items(arch_parts, boulder=None):
+def _items(arch_parts, boulder=None, family=0):
     verts, tris = _join(*arch_parts)
     arch = PreparedPlacement("Arc", 0, np.eye(3, dtype=np.float32), np.ones(3, np.float32),
                              np.zeros(3, np.float32), 0.0, float(verts[:, 1].min()),
-                             float(verts[:, 1].max()))  # fmt: skip
+                             float(verts[:, 1].max()), family)  # fmt: skip
     shapes = {"Arc": (verts, tris)}
     boulders = {}
     if boulder is not None:
@@ -144,6 +146,23 @@ def test_the_top_raster_keeps_the_arch_s_underside_and_the_boulders_apart():
     assert np.isnan(band.solid[on_deck]), "the boulders alone stand there: none"
     assert band.top[on_rock] == band.solid[on_rock] == pytest.approx(300.0)
     assert np.isnan(band.under[on_rock])
+
+
+def test_the_top_raster_keeps_the_arch_s_family_where_the_arch_is_the_top():
+    desert = FAMILIES.index("desert")
+    gap = 2.2 * STEP_CM  # a 2 px slit: the fill closes it
+    deck = [_box(0, 500, 0, 1000, 800, 1000), _box(500 + gap, 1000, 0, 1000, 800, 1000)]
+    rock = _box(1200, 1500, 0, 1000, 0, 3000)
+    unfilled = MaxZRaster(80, 32, 0.0, 0.0, STEP_CM, sample=0.5)
+    items = _items(deck, rock, desert)
+    rasters.add_placements(unfilled, items.arches, items.shapes, 0.0, 32 * STEP_CM)
+    band = rasterise_top_band(items, 0.0, 0.0, STEP_CM, 32, 80, 1)
+    family = top_band_planes(band, 32, 80, 1)[DIRECT_FAMILY_NAME]
+    slit = np.isnan(unfilled.result()[0]) & np.isfinite(band.top) & np.isnan(band.solid)
+    assert slit.any() and (family[slit] == desert).all(), "a filled hole is its arch's"
+    assert family[_px(5), _px(2)] == desert and family[_px(5), _px(13)] == 0, "boulder: none"
+    plain = rasterise_top_band(_items(deck, rock), 0.0, 0.0, STEP_CM, 32, 80, 1)
+    assert not plain.family.any()
 
 
 def test_under_a_deck_that_crosses_another_the_underside_is_its_own():

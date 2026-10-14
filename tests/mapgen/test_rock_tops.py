@@ -15,6 +15,7 @@ import pytest
 
 from mapgen.colour import oklab
 from mapgen.gamedata.rocks.families import FAMILIES
+from mapgen.gamedata.rocks.looks import TOP_FAR_SWITCH, top_tile_m
 from mapgen.palette.painted.calibration import display_to_ground, scoped_planes
 from mapgen.palette.painted.rock_look.atlas import KIND_CLIFF, rock_look
 from mapgen.palette.painted.rock_look.reference import LookPixels, look_texels
@@ -130,6 +131,31 @@ def test_an_area_entry_s_arches_hold_inside_it_and_the_palette_s_outside():
     np.testing.assert_allclose(out[:, 1], [ARCH, ARCH], atol=1e-6)
     entry = next(e for e in PAINTED_PALETTE["calibration"]["areas"] if "arches" in e)
     assert entry["areas"] == ["Area_DuneDesert"], "the Dune Desert's terracotta arches"
+
+
+def test_an_arch_whose_material_wears_a_family_takes_its_colour_over_the_area_s():
+    ground = _ground()
+    ground.rock_family = np.full((2, 2), FOREST, np.uint8)
+    dune = np.array([0.5, 0.3, 0.2], np.float32)
+    terracotta = np.array([0.4, 0.15, 0.08], np.float32)
+    ground.arch_rgb = scoped_planes(ARCH, [(np.array([[1.0, 1.0], [0.0, 0.0]], np.float32), dune)])
+    ground.arch_family_rgb = {FAMILIES.index("desert"): terracotta}
+    family = np.array([[FAMILIES.index("desert"), 0], [FAMILIES.index("desert"), 0]], np.uint8)
+    scene = _scene(np.zeros((2, 2)), top_weight=np.ones((2, 2), np.float32), top_family=family)
+    out = rock_surface(np.full((2, 2, 3), 0.3, np.float32), scene, ground, lambda plane: plane)
+    np.testing.assert_allclose(out[:, 0], [terracotta, terracotta], atol=1e-6)
+    np.testing.assert_allclose(out[:, 1], [dune, ARCH], atol=1e-6)
+    shipped = PAINTED_PALETTE["calibration"].get("arch_families", {})
+    assert set(shipped) == {"desert"}, "the desert arches' material, wherever they stand"
+
+
+def test_a_top_without_the_far_albedo_switch_reads_its_near_repeat():
+    red_grass = {"TopLayer Tiling": 0.3}
+    assert top_tile_m(red_grass, {}) == pytest.approx(1 / 0.3)
+    assert top_tile_m(red_grass, {TOP_FAR_SWITCH: True}) == pytest.approx(50.0)
+    grass = {"TopLayer Tiling": 0.17, "TopLayer Tiling Far": 0.012}
+    assert top_tile_m(grass, {TOP_FAR_SWITCH: True}) == pytest.approx(1 / 0.012)
+    assert top_tile_m({}, {}) == pytest.approx(50.0), "no near repeat: the master's far one"
 
 
 # ---------------------------------------------------------------------- the look on a band

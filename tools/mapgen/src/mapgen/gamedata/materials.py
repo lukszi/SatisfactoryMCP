@@ -14,6 +14,7 @@ __all__ = [
     "material_parent",
     "mesh_materials",
     "scalar_parameters",
+    "switch_parameters",
     "texture_parameters",
     "vector_parameters",
 ]
@@ -47,28 +48,54 @@ def mesh_materials(view: PackageView, export: ZenExport) -> list[str | None]:
     return out
 
 
-def _parameter_array(view: PackageView, array: str) -> list[tuple[str, str | None, bytes]]:
-    """``(name, value kind, value payload)`` of every entry of one ``*ParameterValues``."""
-    payload = view.props(0).get(array, b"")
+#: A ``BoolProperty`` tag keeps its value in this bit of the tag's flag byte.
+_BOOL_TRUE = 0x10
+
+
+def _struct_array(
+    view: PackageView, payload: bytes, value_tag: str
+) -> list[tuple[str, str | None, bytes, int]]:
+    """``(name, value kind, value payload, value flags)`` of every entry of a parameter
+    array whose entries name themselves by ``ParameterInfo`` and hold ``value_tag``."""
     count = struct.unpack_from("<I", payload, 0)[0] if len(payload) >= 4 else 0
     pos = 4
-    out: list[tuple[str, str | None, bytes]] = []
+    out: list[tuple[str, str | None, bytes, int]] = []
     for _ in range(count):
         tags, pos = property_tags(payload, view.pkg.names, pos)
         name: str | None = None
         kind: str | None = None
-        value = b""
-        for tag, tag_kind, raw, _flags, _index in tags:
+        value, flags = b"", 0
+        for tag, tag_kind, raw, tag_flags, _index in tags:
             if tag == "ParameterInfo" and tag_kind == "StructProperty":
                 inner, _end = property_tags(raw, view.pkg.names, 0)
                 for key, inner_kind, inner_raw, _inner_flags, _inner_index in inner:
                     if key == "Name" and inner_kind == "NameProperty":
                         name = view.read_fname(inner_raw)
-            elif tag == "ParameterValue":
-                kind, value = tag_kind, raw
+            elif tag == value_tag:
+                kind, value, flags = tag_kind, raw, tag_flags
         if name:
-            out.append((name, kind, value))
+            out.append((name, kind, value, flags))
     return out
+
+
+def _parameter_array(view: PackageView, array: str) -> list[tuple[str, str | None, bytes]]:
+    """``(name, value kind, value payload)`` of every entry of one ``*ParameterValues``."""
+    entries = _struct_array(view, view.props(0).get(array, b""), "ParameterValue")
+    return [(name, kind, value) for name, kind, value, _flags in entries]
+
+
+def switch_parameters(view: PackageView) -> dict[str, bool]:
+    """A material instance's own static switches, by name: the ``StaticSwitchParameters``
+    of its ``StaticParametersRuntime``."""
+    payload = view.props(0).get("StaticParametersRuntime", b"")
+    tags, _end = property_tags(payload, view.pkg.names, 0)
+    found: dict[str, bool] = {}
+    for tag, kind, raw, _flags, _index in tags:
+        if tag == "StaticSwitchParameters" and kind == "ArrayProperty":
+            for name, value_kind, _value, flags in _struct_array(view, raw, "Value"):
+                if value_kind == "BoolProperty":
+                    found[name] = bool(flags & _BOOL_TRUE)
+    return found
 
 
 def scalar_parameters(view: PackageView) -> dict[str, float]:

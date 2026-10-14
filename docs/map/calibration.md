@@ -764,12 +764,15 @@ painted pixels change, by up to 77; the light's tiles keep their bytes.
 - The game's baked distant view holds no tree crowns and no Titan canopy, so no crown colour
   is checked against the game's own view; the ancient pines draw their sprites' colour moved
   by 0.66 to 0.72 of the canopy step, olive-green and lighter than the grass's footage shows.
-- The terracotta arches between the mesas, east of x 1,400, stand in the Spire Coast's area
-  and wear the grey arches' colour; the baked view has them terracotta (#c88d63).
+- The arches' colour by material covers the desert arches only (`arch_families`, painted.md
+  section 30, "Red-grass tops and the desert arches"); the Dune Desert's `arches` entry
+  still colours its boulders, unmeasured on their own.
 - The top layer's mask is the cliff master's, read with the look's normal maps where the game
   reads each mesh's own (painted.md section 30, "Rock textures"). Only the forest top has a
   colour measured from screenshots; the sand and grass tops wear their layers' targets and
-  the red grass top its texture's mean. The `_WetSand` instances' top layer is the cooked
+  the red grass top its texture's mean, which the baked view's tops match (ΔE 0.4 to 1.2).
+  The red-grass cliffs the baked view shows grey are six large cliffs it holds no
+  proxy for; whether their tops show in game is unchecked. The `_WetSand` instances' top layer is the cooked
   master's default and is not drawn; whether it shows in game is unchecked.
 - The red Kapok is crimson wherever it grows, the Rocky Desert and the Red Bamboo Fields
   included, by the Red Jungle's references. Its crowns there were not measured from above.
