@@ -50,6 +50,7 @@ from mapgen.palette.painted.calibration import (
 )
 from mapgen.palette.painted.crown_sets import crown_sets, crowns_provenance
 from mapgen.palette.painted.optics import base_water, class_optics, load_carpet, water_table
+from mapgen.palette.painted.parallel import for_row_blocks, gaussian
 from mapgen.palette.painted.rock_grid import ROCK_GRID_M, rock_planes, tinted_rock
 from mapgen.palette.painted.rock_look.atlas import RockLook, rock_look
 from mapgen.palette.painted.shapes import (
@@ -414,12 +415,14 @@ class PaintedGround:
             rgb = np.array(rgb)
             texels = patch_stamps(rgb, ok, albedo, self._stamps, list(weights.values()))
             self.source["bake_stamps_patched"] = {"nodes": len(self._stamps), "texels": texels}
-        soft = ndimage.gaussian_filter(ok.astype(np.float32), self.palette["have_blur_m"])
+        soft = gaussian(ok.astype(np.float32), self.palette["have_blur_m"])
         w = (np.clip(soft * 2.0 - 1.0, 0.0, 1.0) * ok).astype(np.float32)
-        for start in range(0, albedo.shape[0], 512):
-            block = slice(start, start + 512)
+
+        def lay(block: slice) -> None:
             weight = w[block][..., None]
             albedo[block] = albedo[block] * (1.0 - weight) + srgb_to_linear(rgb[block]) * weight
+
+        for_row_blocks(lay, albedo.shape[0])
         hidden = hidden_ground(ok)
         self.source["hidden_ground_texels"] = int(hidden.sum())
         return albedo, (have | ok) & ~hidden, w
@@ -452,8 +455,8 @@ class PaintedGround:
                 medians[i] = np.median(picked, axis=0)
         fallback = medians[index]
         for k in range(3):
-            fallback[..., k] = ndimage.gaussian_filter(fallback[..., k], palette["fallback_blur_m"])
-        weight = ndimage.gaussian_filter(have.astype(np.float32), palette["have_blur_m"])[..., None]
+            fallback[..., k] = gaussian(fallback[..., k], palette["fallback_blur_m"])
+        weight = gaussian(have.astype(np.float32), palette["have_blur_m"])[..., None]
         return albedo * weight + fallback * (1.0 - weight)
 
     def _biome_tint(self, albedo: FloatGrid, index: U8Grid, area_names: list[str]) -> FloatGrid:
@@ -468,13 +471,15 @@ class PaintedGround:
             offsets[i] = palette["biome_tint_ab"].get(name, (0.0, 0.0))
         shift = offsets[index] * strength
         for k in range(2):
-            shift[..., k] = ndimage.gaussian_filter(shift[..., k], palette["biome_tint_blur_m"])
+            shift[..., k] = gaussian(shift[..., k], palette["biome_tint_blur_m"])
         out = np.empty_like(albedo)
-        for start in range(0, albedo.shape[0], 512):
-            block = slice(start, start + 512)
+
+        def tint(block: slice) -> None:
             lab = oklab(np.clip(albedo[block], 1e-7, None))
             lab[..., 1:] += shift[block]
             out[block] = np.clip(linear_from_oklab(lab), 0.0, 1.0)
+
+        for_row_blocks(tint, albedo.shape[0])
         if self.bake_weight is not None:
             w = self.bake_weight[..., None]
             out = out * (1.0 - w) + albedo * w

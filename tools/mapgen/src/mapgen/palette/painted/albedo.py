@@ -16,6 +16,7 @@ from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, srgb_to_line
 from mapgen.gamedata.ground.bake import BAKE_NAME, STAMP_RING_MIN, stamp_windows
 from mapgen.gamedata.ground.paint_store import META_NAME
 from mapgen.gamedata.water.bodies import WATER_BODIES_NAME
+from mapgen.palette.painted.parallel import for_row_blocks, gaussian
 from mapgen.palette.painted.shapes import FloatGrid, PaintedPalette, PaintMeta, PaintPlane
 from satisfactory_mcp.core.arrays import BoolMask, F64Grid
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
@@ -83,16 +84,22 @@ def mix_layers(
     weights: Mapping[str, PaintPlane], table: Mapping[str, FloatGrid], shape: tuple[int, int]
 ) -> tuple[FloatGrid, BoolMask]:
     """Weight-normalised mix of the layers' albedos; and where any layer was painted."""
-    acc = np.zeros((*shape, 3), np.float32)
-    total = np.zeros(shape, np.float32)
-    for name, weight in weights.items():
-        if name not in table:
-            continue
-        w = weight.astype(np.float32) / np.float32(255.0)
-        acc += w[..., None] * table[name]
-        total += w
-    have = total > 0
-    return acc / np.maximum(total, 1e-6)[..., None], have
+    mixed = np.empty((*shape, 3), np.float32)
+    have = np.empty(shape, bool)
+    drawn = [(weight, table[name]) for name, weight in weights.items() if name in table]
+
+    def mix(block: slice) -> None:
+        acc = np.zeros(mixed[block].shape, np.float32)
+        total = np.zeros(have[block].shape, np.float32)
+        for weight, albedo in drawn:
+            w = weight[block].astype(np.float32) / np.float32(255.0)
+            acc += w[..., None] * albedo
+            total += w
+        have[block] = total > 0
+        mixed[block] = acc / np.maximum(total, 1e-6)[..., None]
+
+    for_row_blocks(mix, shape[0])
+    return mixed, have
 
 
 def seam_blend(
@@ -124,10 +131,10 @@ def seam_blend(
     lo, hi = palette["seam_jump"]
     step = np.where(edge, np.clip((jump - lo) / (hi - lo), 0.0, 1.0), 0.0).astype(np.float32)
     sigma = float(palette["seam_blend_m"])
-    weight = np.clip(ndimage.gaussian_filter(step, sigma) * np.sqrt(2 * np.pi) * sigma, 0.0, 1.0)
+    weight = np.clip(gaussian(step, sigma) * np.sqrt(2 * np.pi) * sigma, 0.0, 1.0)
     out = rgb.copy()
     for k in range(3):
-        soft = ndimage.gaussian_filter(rgb[..., k], sigma)
+        soft = gaussian(rgb[..., k], sigma)
         out[..., k] = rgb[..., k] * (1.0 - weight) + soft * weight
     return out, int((step > 0).sum())
 

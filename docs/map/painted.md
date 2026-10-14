@@ -892,3 +892,51 @@ load, two plane samples per band.
 - Rosettes above the water line (in the Crater biome) are not drawn; they are ordinary land
   foliage, which the understory item covers.
 - The pale rims the screenshots show inside the patches are not drawn.
+
+## 43. Preparing the painted ground on threads (2026-10-14)
+
+The painted layer's preparation (`prepare_paint`: the calibrated palette and `PaintedGround`,
+logged as `paint layers prepared in`) took about 150 s of every run that draws the painted
+layer, cached or not. It works on the paint store's 7500² grid, so its cost does not depend on
+`--size`.
+
+### Where the time went
+
+A profile of master 794a008a (one run, under load, 219 s):
+
+| part | s |
+|---|---|
+| the layer transfer (`layer_transfer`, 15 blocks of 512 rows) | 97 |
+| of it: the pair terms / the colour split (`by_colour`) | 46 / 22 |
+| 27 Gaussian blurs (`gaussian_filter`, one thread each) | 74 |
+| of them: the biome fallback / the biome tint / the rock grid / the seams | 29 / 18 / 16 / 6 |
+| the layer mix (`mix_layers`) | 14 |
+
+### What changed
+
+Nothing a pixel sees: every plane the ground holds is the same bit for bit.
+
+- `palette/painted/parallel.py` cuts each blur into its two 1-D passes and each pass into spans
+  of lines, on up to 8 threads. Every line of a pass is filtered on its own, so the spans give
+  `gaussian_filter`'s exact result, the float32 between the passes included. The rock grid's
+  blur filters only the rows it keeps in its second pass.
+- The per-texel steps already worked in blocks of 512 rows: the transfer, the layer mix, the
+  bake's feather and the biome tint now run their blocks four at a time. The blocks are the
+  same, so a block's own choices (which layers it holds, whether it shifts) are too.
+- `by_colour` no longer sorts every layer plane nor keeps every layer's median: the two largest
+  are two `argmax` calls (the first index on a tie, as the stable sort gave), and each layer's
+  median is summed alone and copied where it is picked. The same float32 sums in the same
+  order; a transfer block holds about a third of the memory it did.
+
+The block threads are capped at four for memory: a transfer block holds about 0.5 GB of
+temporaries.
+
+### Measured
+
+One run each on an idle machine, the preparation alone on the gate inputs: master 234 s,
+this code 63 s (3.7x). The process's peak commit through it went from 8.4 to 9.2 GB.
+
+Bit identity: every array and value of the prepared ground, its digest and its sidecar block
+compared between master and this code on the gate inputs: none differs.
+`tests/mapgen/test_paint_parallel.py` holds the blur, the blocks and the colour split to the
+serial code on synthetic planes.
