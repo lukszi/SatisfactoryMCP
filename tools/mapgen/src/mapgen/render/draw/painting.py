@@ -22,9 +22,10 @@ from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import gpu_on
 from mapgen.lighting.hillshade import FLAT_SUN_DOT, flat_shade, hillshade
 from mapgen.palette.painted.band import PaintedParts, painted_colours, painted_ndl, painted_parts
+from mapgen.palette.painted.crown_form import crown_form
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
 from mapgen.palette.painted.shapes import PaintedScene, Sampler
-from mapgen.palette.painted.trees import canopy_cover, crown_sun
+from mapgen.palette.painted.trees import canopy_cover, crown_light_sun, crown_sun
 from mapgen.palette.relief import BiomeSample, ReliefGround, relief_colours
 from mapgen.palette.scene import BandGrid, BandScene, FloatGrid, ReliefScene, ShadedScene
 from mapgen.palette.styles import (
@@ -64,11 +65,11 @@ __all__ = [
     "LayerJob",
     "PieceBytes",
     "TreeSplit",
+    "crown_band",
     "draw_band",
     "layer_job",
     "paint_band",
     "piece_bytes",
-    "crown_band",
     "stamped_crowns",
 ]
 
@@ -303,10 +304,12 @@ def _painted_colours(
     centres = (grid.x_cm, y_cm)
     meshes = (surface.mesh_weight, surface.mesh_class, surface.level_m, surface.mesh_land)
     bumps = None if job.unlit else _ground_bumps(surface)
+    trees = ground.crowns is not None or ground.titan_crowns is not None
+    relief = ground.palette["crowns"]["relief"] if trees else 0.0
     band: PaintedScene = {
         **scene,
-        "crowns": stamped_crowns(ground.crowns, centres, spacing_m, job.unlit),
-        "titan_crowns": stamped_crowns(ground.titan_crowns, centres, spacing_m, job.unlit),
+        "crowns": stamped_crowns(ground.crowns, centres, spacing_m, job.unlit, relief),
+        "titan_crowns": stamped_crowns(ground.titan_crowns, centres, spacing_m, job.unlit, relief),
         "ndl": painted_ndl(z_m, spacing_m, job.unlit, meshes, bumps),
         "ndl_flat": _FLAT_SUN,
         "rock_weight": rock_weight,
@@ -346,13 +349,17 @@ def stamped_crowns(
     centres: tuple[F64Grid, F64Grid],
     spacing_m: float,
     unlit: bool = False,
+    relief: float = 0.0,
 ) -> LitCrowns | None:
     """The crowns over these pixel centres, each pixel's sun term from their normals
-    (``trees.crown_sun``)."""
+    (``trees.crown_sun``) and, with a ``relief``, their form's factor on it (``crown_form``)."""
     if crowns is None:
         return None
     stamped = crown_band(crowns, centres, spacing_m)
-    return {**stamped, "ndl": crown_sun(stamped, unlit)}
+    lit: LitCrowns = {**stamped, "ndl": crown_sun(stamped, unlit)}
+    if relief:
+        lit["form"] = crown_form(stamped["top_cm"], spacing_m, relief, crown_light_sun(unlit))
+    return lit
 
 
 def crown_band(crowns: CrownSet, centres: tuple[F64Grid, F64Grid], spacing_m: float) -> CrownBand:

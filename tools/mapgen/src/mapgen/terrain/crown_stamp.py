@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Container
 from pathlib import Path
-from typing import NamedTuple, TypedDict
+from typing import NamedTuple, NotRequired, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
@@ -59,9 +59,11 @@ class CrownBand(TypedDict):
 
 
 class LitCrowns(CrownBand):
-    """A band's crowns with their sun term: ``ndl``, the scene's sun term of each normal."""
+    """A band's crowns with their sun term: ``ndl``, the scene's sun term of each normal, and
+    ``form``, their crown form's factor on it (``palette/painted/crown_form.py``), 1 without."""
 
     ndl: F32Grid
+    form: NotRequired[F32Grid]
 
 
 class Placements(NamedTuple):

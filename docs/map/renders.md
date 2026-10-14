@@ -1116,6 +1116,7 @@ moves.
 | The gradient | `sun_dot`, `slope_degrees`, `surface_direct`, the rock look's `surface_normals`, relief's `_shade`, `shore_terms` | 1 |
 | The water edge's blur | `water_alpha`: a Gaussian of 0.73 m, cut at 4 σ | 0 at 1024, 1 at 2048, 6 at 16384, 13 at 32768 |
 | Sunk specks | `sunk_specks`: a 3 × 3 mean over the water's cover | the blur's (at least the shore's 1) plus 1: 14 at 32768 |
+| The crown form | `crown_form`: a box mean of the crown tops of half-width 1.8 m, then its slope between means as far either side (light-and-crowns.md section 36, "Crown form") | 1 at 1024 and 2048, 4 at 8192, 16 at 32768 |
 | The seam trace | `SeamTrace.measure`, along its row only | 33, no rows |
 
 `BAND_HALO` is the widest reach across rows at 32768, rounded up to whole steps of 8 rows:

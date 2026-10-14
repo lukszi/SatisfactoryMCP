@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
+from mapgen.palette.painted.crown_form import form_reach
 from mapgen.palette.water.surface import WATER_EDGE_BLUR_M
 from mapgen.terrain.measure import SEAM_NEAR_TEXELS
 
@@ -71,6 +72,11 @@ def _sunk_specks(size: int) -> int:
     return max(water_blur_reach(size), 1) + 1
 
 
+def _crown_form(size: int) -> int:
+    """The crown tops' box mean, then its slope between means either side."""
+    return form_reach(pixel_m(size))
+
+
 def _seam_trace(_size: int) -> int:
     """A second difference along the row, then the neighbourhood of a seam either side."""
     return SEAM_NEAR_TEXELS + 1
@@ -92,6 +98,7 @@ STENCILS: tuple[Stencil, ...] = (
     ),
     Stencil("water edge blur", ("palette.water.surface.water_alpha",), water_blur_reach),
     Stencil("sunk specks", ("palette.painted.surfaces.sunk_specks",), _sunk_specks),
+    Stencil("crown form", ("palette.painted.crown_form.crown_form",), _crown_form),
     Stencil(
         "seam trace", ("terrain.measure.SeamTrace.measure",), _seam_trace, rows=False, pieces=False
     ),

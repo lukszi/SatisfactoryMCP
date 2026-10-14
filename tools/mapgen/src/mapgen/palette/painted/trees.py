@@ -19,7 +19,7 @@ from mapgen.colour import flat_light, linear_from_oklab, oklab, sky_sun_light, s
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.vegetation.crown_sprites import SPRITE_M
 from mapgen.lighting.hillshade import FLAT_SUN_DOT, SUN_ALTITUDE_DEG, SUN_AZIMUTH_DEG, sun_dot
-from mapgen.lighting.sun import DEFAULT_SUN, sun_vector
+from mapgen.lighting.sun import DEFAULT_SUN, Sun, sun_vector
 from mapgen.palette.painted.calibration import (
     display_to_crown,
     exposure_gain,
@@ -59,8 +59,10 @@ __all__ = [
     "crown_calibration",
     "crown_lab",
     "crown_layer",
+    "crown_light_sun",
     "crown_ops",
     "crown_over",
+    "crown_shade",
     "crown_sun",
     "folded_trees",
     "hue_gate",
@@ -462,11 +464,23 @@ def _titan_canopy(
     cover = crowns["cover"]
     top_m = np.nan_to_num(crowns["top_cm"], nan=-1e9) / np.float32(100.0)
     seen = top_m > scene["z_m"] - style["hidden_below_m"]
-    low, high = style["shade_clamp"]
-    shade = np.clip(crowns["ndl"] / scene["ndl_flat"], low, high)
+    shade = crown_shade(crowns, scene, style)
     light = sky_sun_light(palette["sky"], palette["sun"], np.float32(palette["ambient"]), shade)
     colour = crowns["rgb"] / np.maximum(cover, np.float32(1e-4))[..., None]
     return np.clip(cover, 0.0, 1.0) * seen, colour * light * exposure_gain(palette)
+
+
+def crown_light_sun(unlit: bool) -> Sun:
+    """The sun a crown is drawn under: the light's default sun unlit, else the north-west one."""
+    return DEFAULT_SUN if unlit else (SUN_AZIMUTH_DEG, SUN_ALTITUDE_DEG)
+
+
+def crown_shade(crowns: LitCrowns, scene: PaintedScene, style: CrownStyle) -> FloatGrid:
+    """The crowns' sun term over flat ground's, clamped to ``shade_clamp``, times their form."""
+    low, high = style["shade_clamp"]
+    shade = np.clip(crowns["ndl"] / scene["ndl_flat"], low, high)
+    form = crowns.get("form")
+    return shade if form is None else shade * form
 
 
 def crown_sun(crowns: CrownBand, unlit: bool) -> FloatGrid:
@@ -476,8 +490,7 @@ def crown_sun(crowns: CrownBand, unlit: bool) -> FloatGrid:
     no crown is."""
     cover = crowns["cover"]
     normal = crowns["normal"] / np.maximum(cover, np.float32(1e-6))[..., None]
-    sun = DEFAULT_SUN if unlit else (SUN_AZIMUTH_DEG, SUN_ALTITUDE_DEG)
-    light = np.asarray(sun_vector(*sun), np.float32)
+    light = np.asarray(sun_vector(*crown_light_sun(unlit)), np.float32)
     along = normal[..., 0] * light[0] + normal[..., 1] * light[1] + normal[..., 2] * light[2]
     ndl = np.maximum(along, np.float32(0.0))
     if unlit:
@@ -510,8 +523,7 @@ def crown_layer(
     lab = moved_crowns(crown_lab(crowns["rgb"] / np.maximum(cover, 1e-4)[..., None], style), ops)
     lab[..., 1:] *= np.float32(palette["chroma_gain"])
     colour = np.clip(linear_from_oklab(lab), 0.0, 1.0)
-    low, high = style["shade_clamp"]
-    shade = np.clip(crowns["ndl"] / scene["ndl_flat"], low, high)
+    shade = crown_shade(crowns, scene, style)
     light = sky_sun_light(palette["sky"], palette["sun"], np.float32(ambient), shade)
     return {
         "alpha": np.clip(cover, 0.0, 1.0) * np.float32(style["opacity"]) * seen,

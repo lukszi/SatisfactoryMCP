@@ -326,6 +326,7 @@ be traced to the axis it should move.
 | `palette/painted/rock_look/atlas.py`, `surface.py` | style | The rock textures at the run's mip level in two atlases and what each kind of rock reads of them; the look laid on a band (albedo detail, the top layer's mask, the normal maps' light) |
 | `palette/painted/rock_look/reference.py`, `gpu.py` | style | The rock texel kernel: the numpy reference and its CUDA twin (`look_texels` in `render/gpu/cells.cu`), bit for bit |
 | `palette/painted/trees.py` | style | Trees over the painted pixel: per-tree crowns lit by their normals, their calibration, the Titan trunks and canopy |
+| `palette/painted/crown_form.py`, `crown_form.cu` | style | The crowns' form: their tops' slope lit against flat ground, a factor on their sun term; the numpy reference and its CUDA twin |
 | `palette/painted/crown_sets.py` | style | The crowns and the Titan canopy a painted ground draws over the crown sprites |
 | `palette/painted/optics.py` | style | What is seen under each wet pixel, the coral carpet |
 | `palette/painted/kernels.py` | style | The colour under the water and its mix, compiled by numba |
