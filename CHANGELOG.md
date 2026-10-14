@@ -344,6 +344,8 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the near-black swamp water no longer spills onto the sea between the abyss
+  rocks: sea-level water outside the swamp is the sea's.
 - Map renders: the flat taupe blocks with stepped outlines along the east desert coast are
   sea. Where the coarse fill past the landscape holds the sea's surface it is drawn as sea,
   its shore is smoothed, and no beach is invented under its cliffs.

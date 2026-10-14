@@ -250,8 +250,9 @@ def classify(
     ``level_m`` is the water level per texel (nan where none), ``wet`` the texels the
     channel calls water, ``bodies`` the store's ``WaterBodies``, ``biome`` the biome index
     grid and the names it indexes. No box but the ocean's claims the open sea, nor water at
-    the ocean's level from under it. A river box's claim stands only on a body it mostly
-    covers (``_settle_rivers``).
+    the ocean's level from under it, and a swamp box none at the ocean's level outside the
+    swamp's areas. A river box's claim stands only on a body it mostly covers
+    (``_settle_rivers``).
     """
     stored = stored_bodies(bodies)
     springs = stored.get("hot_springs") or []
@@ -261,6 +262,9 @@ def classify(
         if found is not None:
             claims.append(((box[3] - box[0]) * (box[4] - box[1]), _ID[found], box))
     sea = open_sea(level_m, wet, ocean_level_m)
+    index, names = biome
+    swampy = np.array([BIOME_CLASS.get(n or "") == "swamp" for n in names], bool)
+    off_swamp = 0
     plane = np.zeros(wet.shape, np.uint8)
     base = np.zeros(wet.shape, np.uint8)
     rank = np.zeros(wet.shape, np.uint16)
@@ -276,6 +280,10 @@ def classify(
             hit &= ~sea[window]
             if box[5] / 100 < ocean_level_m:
                 hit &= np.abs(level - ocean_level_m) > SEA_ROUNDING_M
+        if cid == SWAMP:
+            outside = hit & ~swampy[index[window]] & (np.abs(level - ocean_level_m) <= OCEAN_BAND_M)
+            off_swamp += int(outside.sum())
+            hit &= ~outside
         plane[window][hit] = cid
         rank[window][hit] = order
         if cid != RIVER:
@@ -291,7 +299,6 @@ def classify(
     _fill_by_majority(plane, wet)
     left = wet & (plane == DRY)
     if left.any():
-        index, names = biome
         lut = np.array([_ID[BIOME_CLASS.get(n or "", "lake")] for n in names], np.uint8)
         plane[left] = lut[index[left]]
     counts = np.bincount(plane.ravel(), minlength=len(WATER_CLASSES))
@@ -302,6 +309,7 @@ def classify(
         "filled_by_biome": int(left.sum()),
         "open_sea_texels": int(sea.sum()),
         "river_box_texels_given_back": given_back,
+        "swamp_box_texels_off_the_swamp": off_swamp,
     }
 
 

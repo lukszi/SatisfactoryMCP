@@ -469,6 +469,13 @@ and the blend carried the near-black swamp on into the void's sea. Ocean over no
 on the swamp's side alone, a smoothstep from none at the line to all of it 30 m in. On the
 run's planes the blend shrinks from 90,125 to 85,168 texels; nothing else moves.
 
+**Past the swamp (2026-10-14).** Over data too the boxes claimed sea-level water between the
+abyss rocks that the open sea's opening does not reach, so the near-black swamp drew over the
+sea there in No Man's Land, as at (3031, 1140). A swamp box now claims no water within the
+ocean's band outside the areas the biome table calls swamp (`BIOME_CLASS`); that water is
+ocean. On build 502094 28,547 texels go back to the ocean, and the blend shrinks from 84,204
+to 64,434 texels. Inside `Area_Swamp` nothing changes.
+
 ### Hot springs (2026-10-07)
 
 A hot-spring terrace used to turn the whole lake box holding it into a hot spring: a 150 m
