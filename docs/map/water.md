@@ -137,7 +137,7 @@ from the material), **fit** (fitted to screenshots through a model) or **none**.
 | cave | #2f4a47 | #1c2e2d | 3.0, 2.5, 2.5 | 0 | none: dark |
 | sulfur | #67a395 | #3f8a7e | 3.0, 2.0, 2.0 | 0.3 | game data: `SulfurPond_Inst`, deep (0.17, 1, 0.89) cyan, shallow (1, 0.26, 0) orange as the bed tint |
 | hot_spring | #68a098 | #46827d | 2.5, 1.6, 1.5 | 0.2 | none: milky turquoise |
-| translucent | #708973 | #708973 | 1.4, 1.4, 1.4 | 0 | screenshot: the Blue Crater from above in 1.0 and 1.1, pooled #718a75. k: game data, the translucent material's opacity ramp (see "Translucent water") |
+| translucent | #8fa685 | #375a58 | 1.4, 1.4, 1.4 | 0 | screenshot: the Blue Crater from above in 1.0 and 1.1, pooled #718a75 at its 3.9 m; deep the lake's teal. k: game data, the translucent material's opacity ramp (see "Translucent water") |
 
 Targets follow the Spire Coast calibration (section 27): the reference colour times 0.85
 linear for map exposure, OKLab L times 0.95 and chroma times 0.9. The river references are a
@@ -484,9 +484,10 @@ lake in the Savanna at (533, 968), median depth 5.8 m; two lakes in the Western 
 (481, 2150); and smaller lakes and ponds in the Southern Forest, Titan Forest, Red Jungle,
 Grass Fields, Western Dune Forest and No Man's Land.
 
-**The row.** Body and deep colour are both #708973, the colour that draws the pooled target
-#718a75 at the Blue Crater's 3.9 m once the sky's 0.02 reflection is added. At that depth the
-bed adds under 0.2 Delta E, whether it is the bake's WetSand (#816652) or WetSand's calibrated
+**The row.** Body and deep colour were both #708973, the colour that draws the pooled target
+#718a75 at the Blue Crater's 3.9 m once the sky's 0.02 reflection is added (since 2026-10-14
+a body and the lake's deep teal draw it: "Translucent water by depth"). At that depth the bed
+adds under 0.2 Delta E, whether it is the bake's WetSand (#816652) or WetSand's calibrated
 target (#a29583 then, #a4947f since 2026-10-09; section 31's rule). Source: screenshot, measured by the method of section 31:
 
 | Shot | What, light | Reading |
@@ -521,6 +522,46 @@ bluer (2499) and turquoise (2500) in game.
 the older translucent material with the same colour parameters (`WaterColor A` and `B`,
 `DeepWater`, `ShallowWater`). None of them is a `BP_TranslucentWater_C`, and a known material
 decides before the actor class does, so they keep the sulfur row.
+
+### Translucent water by depth (2026-10-14)
+
+On the west coast at (-1420, 2325) a basin about 58 m under the sea holds a lake of its own,
+fed by two falls over its northern lip: 6,869 texels at -75.9 m over a floor at -80 m (depth
+p10, p50 and p90 2.6, 4.0 and 5.4 m). It is translucent water, and it drew as one flat
+rectangle of #708973, for two reasons:
+
+- **The row.** Body and deep colour were the same, so translucent water drew one colour past
+  2 m. Now the body is #8fa685 and the deep colour the lake's teal #375a58 at the lake's
+  `deep_tau_m` 6 m. The body is solved, as the old row was, to draw the pooled target #718a75
+  over WetSand at the Blue Crater's 3.9 m (Delta E under 0.6), so the Blue Crater keeps its
+  colour. Through the row: #889b81 to 1 m, #7f967d at 2 m, #718a75 at 3.9 m, #647e6d at 6 m,
+  #4b6961 at 12 m and the teal from about 30 m. The game's own map draws the basin pale over
+  its shallow western end and darker where it is deep, and other lakes reach the same teal.
+- **The crossing.** The basin lies inside the ocean's 48 m reach, where the waterline is the
+  drawn surface crossing a level (`crossing_level`, "The swamp's own level" below). Water
+  outside the sea's band took the sea's -17.0 m, so the basin's water was measured from the
+  sea: 62 m deep, the deep colour everywhere within 48 m of the coast and the true 4 m only
+  past it, along a straight-edged line across the lake. Water whose own level lies under the
+  band now crosses at its own level, as water within the band does; water above the band
+  still takes the sea's. On the field's own planes the basin is the only such water in the
+  reach (6,964 texels, the rest a few texels at its falls).
+
+Drawn unlit over each window's baked bed, the median translucent texel by depth. Before, every
+one read #708973 to #718a75 past 2 m (the basin #708973 at every depth); after:
+
+| Lake | 1-2 m | 3-4 m | 5-6 m | 8-12 m | 12-20 m |
+| --- | --- | --- | --- | --- | --- |
+| West-coast basin (-1420, 2325) | #80967c | #738c76 | #698270 | #577366 | |
+| Western Dune Forest (-772, 1631) | #82977d | #738c76 | #66806e | #4f6c62 | #4a6860 |
+| Savanna (533, 968) | #83987d | #728b75 | #67806f | #577266 | |
+| Blue Crater (1558, 2110) | #82987e | #708974 | #698370 | | |
+
+The basin's rock walls and its northern lip, which the sea's crossing had drawn as water down
+to -17.0 m, are drawn as ground again.
+
+Tests: `tests/mapgen/test_translucent_row.py` (the Blue Crater's target, darker and more teal
+with depth, the lake's deep colour, only the swamp one colour at every depth) and
+`tests/mapgen/test_painted.py` (a basin below the sea is as deep as its own water).
 
 ### Swamp mouths (2026-10-06)
 
@@ -717,10 +758,10 @@ and section 35's falls:
   it, where the one 1.0 shot with a beach in it reads the edge water at the dry sand's
   lightness. A daylight shot looking straight down at a sandy beach's waterline, and one over
   a crater-grass patch in a lagoon, would settle the edge and the patches' darkness.
-- Translucent water draws one colour past 2 m. The target was measured at the Blue Crater's
-  4 m only; the deeper translucent lakes (the Western Dune Forest one at (-772, 1631) runs to
-  22 m) are unchecked. The two actors that set their own colours draw with the class row (see
-  "Translucent water").
+- Translucent water was measured at the Blue Crater's 4 m only. How it darkens past that is
+  the lake's deep colour and tau, not a reading; the deeper translucent lakes (the Western
+  Dune Forest one at (-772, 1631) runs to 22 m) are unchecked against pictures. The two actors
+  that set their own colours draw with the class row (see "Translucent water").
 - Classes change at box edges. Where the water channel is itself built from boxes, as in the
   Red Bamboo terrace lakes near (420, 560), a chain of pools reads as a mosaic of classes.
 - Two bodies more than 0.5 m apart in level are judged apart. Where the field levelled them

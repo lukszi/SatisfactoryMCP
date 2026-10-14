@@ -113,6 +113,18 @@ def test_water_near_the_ocean_s_level_draws_its_waterline_at_its_own_level():
     assert (terms["edge"] == 0.0).all() and (terms["cover"] == 1.0).all()
 
 
+def test_a_basin_below_the_sea_is_as_deep_as_its_own_water():
+    """The west-coast basin's lake at -75.9 m over a -80 m floor, in the ocean's reach."""
+    basin = np.float32(-75.9)
+    water_m = np.array([[basin, LEVEL - 0.6, LEVEL + 0.6]], np.float32)
+    want = np.array([[basin, LEVEL - 0.6, LEVEL]], np.float32)
+    np.testing.assert_array_equal(crossing_level(water_m), want)
+    floor = np.full((4, 8), -80.0, np.float32)
+    floor[:, :2] = -70.0
+    terms = shore_terms(floor, 1.0, crossing_level(np.full_like(floor, basin)))
+    assert np.allclose(terms["depth_m"][:, 4:], 4.1) and (terms["cover"][:, :1] == 0.0).all()
+
+
 def _field(water_dm, grades, height_dm):
     return SimpleNamespace(
         water_raster=lambda: water_dm,

@@ -141,10 +141,11 @@ def shore_terms(
 
 def crossing_level(water_m: FloatGrid) -> FloatGrid:
     """The level the crossing rule draws each pixel's waterline at: its own water's where that
-    lies within the ocean's band (the swamp's -16.7 m), else the ocean's."""
+    lies within the ocean's band (the swamp's -16.7 m) or under it (a basin below the sea),
+    else the ocean's."""
     level = np.float32(OCEAN_LEVEL_M)
-    near = np.abs(water_m - level) <= np.float32(OCEAN_LEVEL_BAND_M)
-    return np.where(near, water_m, level).astype(np.float32)
+    own = water_m - level <= np.float32(OCEAN_LEVEL_BAND_M)
+    return np.where(own, water_m, level).astype(np.float32)
 
 
 def blend_water(
