@@ -116,6 +116,9 @@ Planned as 0.2.0.
   the sea within the sea's shore reach, the basin on the west coast near (-1420, 2325), is
   now as deep as its own water instead of measured from the sea's level. The style's version
   goes up.
+- Map renders: dry hollows under the sea's level beside the coast, around the west-coast
+  basin and along the west and north edges, are drawn as the ground and rock they are; within
+  48 m of the sea they were drawn as deep sea. The sea and the coast do not move.
 - Map generator: the light's coarser zoom levels are built while the draw runs, each strip
   as soon as the block rows under it are baked, instead of all after the last row, which
   took about 4 minutes at full size. A full-size render should end about 3 minutes sooner,

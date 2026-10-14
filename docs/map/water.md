@@ -563,6 +563,40 @@ Tests: `tests/mapgen/test_translucent_row.py` (the Blue Crater's target, darker 
 with depth, the lake's deep colour, only the swamp one colour at every depth) and
 `tests/mapgen/test_painted.py` (a basin below the sea is as deep as its own water).
 
+### Dry hollows under the sea (2026-10-14)
+
+Within the ocean's 48 m reach the crossing rule draws every pixel whose ground lies under
+-17.0 m as sea, whatever the water plane says. That is meant for the coast, where the plane's
+3.66 m artwork blocks leave dry texels under the sea beside the water. It also drowned the
+hollows the sea does not fill: the sunken ground around the west-coast basin, behind its rock
+walls and past the straight edge of the ocean's box near (-1643, 2436), and the like at
+(-1674, 3170), (-1620, 3474), (2934, 1141) and on the north edge near (1466, -3273). The game's
+own map draws them black or as rock, not water. 80,170 dry texels more than 5 m under the sea
+were drawn as sea, 25,045 of them in one patch at (-1643, 2436).
+
+**The rule.** `dry_hollows` (`palette/water/shore.py`) takes out of the reach each part of
+the dry ground under the sea that is more than 4 m (`HOLLOW_CLEAR_M`) from any water and
+sinks more than 5 m (`HOLLOW_DEPTH_M`) under the sea somewhere in it. Such a part keeps
+recipe 5's rule, which draws dry texels as ground. Water is never taken out: the basin's lake
+and the ocean's own patches standing over the hollow keep the crossing. A beach's dry strip
+lies within 4 m of the water, and a shallow dip inland never reaches 5 m down, so both stay.
+The hollows join through the dry ground only, not through the sea, because the hollow at
+(-1643, 2436) touches the open sea under the -17 m contour along its box's edge.
+
+**Moved.** On the field, 66,163 texels in 85 hollows leave the reach (11,879,716 to
+11,813,553); none is wet and none lacks a height. By depth under the sea: 1,918 to 1 m, 2,151
+from 1 to 2 m, 6,007 from 2 to 5 m, 13,192 from 5 to 10 m, 23,423 from 10 to 50 m and 19,472
+deeper. Of the 80,170 dry texels more than 5 m down, 55,799 are ground now; 24,371 are still
+drawn as sea, all within 4 m of water: strips beside a box's edge, between the ocean's patches
+over the hollow, and around the arch's footprint near (-2805, 602). Drawn on windows of the
+painted sheet, the rock walls and islands that the sea had covered stand out as the game's map
+draws them. Two coast windows, (-2560, 760) and (-100, -2020), 240 m across, do not change by
+a byte; a 400 m window at (-2202, 243) changes 991 pixels, all in one pocket at (-2134, 232),
+and a 300 m window over the arch 195.
+
+Test: `tests/mapgen/test_painted.py` (a hollow behind a wall leaves the reach; its lake, the
+sea, a beach's strip and a shallow dip keep it).
+
 ### Swamp mouths (2026-10-06)
 
 The class plane names one class per texel, and the renderer samples it bilinearly. Where swamp
@@ -741,6 +775,11 @@ and section 35's falls:
 
 ### Known limits
 
+- A dry hollow's edge against the sea is the texel edge of the reach, so where sea and hollow
+  meet over ground under the sea the line steps by 1 m. Within 4 m of any water the hollows
+  stay sea (24,371 texels more than 5 m down). A small sand pocket against a rock at
+  (-2134, 232) joins the hollow under the rock and turns from shallow water to sand with a
+  stepped blue rim; whether it holds water in game is unchecked ("Dry hollows under the sea").
 - The lake, the sea's deep colour and the swamp have been checked against screenshots from
   above; no in-game top-down check over a known depth has been made. A look from about 50 m
   over the open sea at (-3000, 645) and over the swamp at (2343, 291) would settle the two

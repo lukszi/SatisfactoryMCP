@@ -26,11 +26,13 @@ from mapgen.palette.schema import (
 )
 from mapgen.palette.water.wet import cover_mix, float32_planes
 from mapgen.terrain.render_meshes import MESH_ROCK
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
+    "HOLLOW_CLEAR_M",
+    "HOLLOW_DEPTH_M",
     "MESH_FULL_LIFT_M",
     "MESH_REACH_M",
     "OCEAN_LEVEL_BAND_M",
@@ -43,6 +45,7 @@ __all__ = [
     "blend_where",
     "composite_meshes",
     "crossing_level",
+    "dry_hollows",
     "inland_cover",
     "inland_share",
     "ocean_reach",
@@ -63,6 +66,13 @@ OCEAN_LEVEL_BAND_M = 0.5
 
 #: How far past measured ocean water the crossing rule reaches, metres.
 OCEAN_REACH_M = 48.0
+
+#: Dry ground this far under the sea marks a hollow the sea does not fill, metres.
+HOLLOW_DEPTH_M = 5.0
+
+#: Dry ground counts towards a hollow only this far from any water, metres: past the
+#: artwork mask's 3.66 m blocks, which leave dry texels under the sea along every coast.
+HOLLOW_CLEAR_M = 4.0
 
 #: A render-only mesh is drawn only where its top stands within this of the water surface or
 #: above it, so seabed coral roots do not speckle the sea.
@@ -108,16 +118,41 @@ def ocean_reach(field: hf.Field) -> tuple[U8Grid, JsonObject]:
         & (water != hf.NODATA)
         & (np.abs(level_m - OCEAN_LEVEL_M) <= OCEAN_LEVEL_BAND_M)
     )
-    distance = ndimage.distance_transform_edt(~ocean) * (field.spacing_cm / 100.0)
+    spacing_m = field.spacing_cm / 100.0
+    distance = ndimage.distance_transform_edt(~ocean) * spacing_m
     # Level-only water stands over the fill, whose raster holds the surface, not a bed.
-    reach = ((distance <= OCEAN_REACH_M) & (grades != hf.WATER_LEVEL_ONLY)).astype(np.uint8)
+    near = (distance <= OCEAN_REACH_M) & (grades != hf.WATER_LEVEL_ONLY)
+    hollows = dry_hollows(field.height_dm, water, grades, near, spacing_m)
+    reach = (near & ~hollows).astype(np.uint8)
     return reach, {
         "ocean_texels": int(ocean.sum()),
         "reach_texels": int(reach.sum()),
+        "hollow_texels": int(hollows.sum()),
         "level_m": OCEAN_LEVEL_M,
         "level_band_m": OCEAN_LEVEL_BAND_M,
         "reach_m": OCEAN_REACH_M,
     }
+
+
+def dry_hollows(
+    height_dm: I16Grid, water: I16Grid, grades: U8Grid, near: BoolMask, spacing_m: float
+) -> BoolMask:
+    """Dry ground under the sea within ``near`` that the sea does not fill: each part of the
+    dry ground under the sea, clear of water by ``HOLLOW_CLEAR_M``, that sinks
+    ``HOLLOW_DEPTH_M`` under it somewhere. A hollow behind a wall or past a box's edge; a
+    beach's strip beside the water and a shallow dip inland are not (docs/map/water.md)."""
+    wet = (water != hf.NODATA) & (grades != hf.WATER_DRY)
+    under = near & ~wet & (height_dm != hf.NODATA)
+    under &= height_dm < np.float32(OCEAN_LEVEL_M * hf.DM_PER_M)
+    if not under.any():
+        return under
+    clear = under & (ndimage.distance_transform_edt(~wet) * spacing_m > HOLLOW_CLEAR_M)
+    parts, _count = ndimage.label(clear, structure=np.ones((3, 3), bool))
+    deep = clear & (height_dm < np.float32((OCEAN_LEVEL_M - HOLLOW_DEPTH_M) * hf.DM_PER_M))
+    sunk = np.zeros(int(parts.max()) + 1, bool)
+    sunk[np.unique(parts[deep])] = True
+    sunk[0] = False
+    return sunk[parts]
 
 
 def shore_terms(
