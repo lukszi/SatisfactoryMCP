@@ -1,15 +1,13 @@
-// terrain/ground_detail/reference.py on the GPU, a thread a pixel: the layers' weights from
-// a piece's window, the noise's cells, each present layer's reads, the height blend and the
-// overlay. The float32 operations of the reference in its order; the texel reads are
-// texels.cu's. Compiled with --fmad=false (mapgen.jit). docs/map/painted.md section 30,
-// "The layers' own textures".
+// The landscape's rotated cells on the GPU (terrain/ground_detail/cells.py: an atlas tile read
+// bilinear and repeated, the noise's cell at a pixel, a read in the cell and its mix, a turned
+// normal turned back) and the two kernels that read through them, a thread a pixel: the
+// ground's detail (terrain/ground_detail/reference.py) and the rock look's texels
+// (palette/painted/rock_look/reference.py). The float32 operations of each reference in its
+// order; compiled with --fmad=false (mapgen.jit). docs/map/painted.md section 30, "The layers'
+// own textures" and "Rock textures".
 
-#define TOP_LAYERS 4
-#define NO_LAYER 255
-#define MAX_LAYERS 32
 #define CELLS_NONE 0
 #define CELLS_ROTATED 1
-#define BLEND_FLOOR 1e-4f
 
 struct Corners {
     long long a, b;
@@ -84,8 +82,8 @@ __device__ Cells cells_at(const float* noise, int side, float u, float v) {
     return out;
 }
 
-// One read of a layer's tile at (u, v) metres into `plain`, and into `cell` its read in the
-// cells; true when it has cells. `read` is the tile, the cells' kind and the inverse repeat.
+// One read of a tile at (u, v) metres into `plain`, and into `cell` its read in the cells;
+// true when it has cells. `mode` is the cells' kind, `inverse` the inverse repeat.
 __device__ bool read(Atlas atlas, int tile, int mode, float inverse, float u, float v,
                      const Cells& c, float* plain, float* cell) {
     const int* t = atlas.tiles + tile * 4;
@@ -121,6 +119,14 @@ __device__ void normal_read(Atlas surface, int tile, int mode, float inverse, fl
     }
     mixed(out, cell, 2, c.mask);
 }
+
+// ---- the ground's detail: the layers' weights from a piece's window, the noise's cells, each
+// present layer's reads, the height blend and the overlay.
+
+#define TOP_LAYERS 4
+#define NO_LAYER 255
+#define MAX_LAYERS 32
+#define BLEND_FLOOR 1e-4f
 
 // The layers' table: per layer, its albedo, normal and height read's tile, cells, inverse.
 struct Layers {
@@ -238,4 +244,103 @@ extern "C" __global__ void ground_detail(
     }
     for (int k = 0; k < 3; ++k) ratio[p * 3 + k] = out_ratio[k];
     for (int k = 0; k < 2; ++k) normal[p * 2 + k] = out_normal[k];
+}
+
+// ---- the rock look: on the ground plane, through the cells, the kind's albedo over its median
+// or base, the top layer's albedo, and the normal maps laid on the surface.
+
+#define ALBEDO 0
+#define UNDER 1
+#define BASE 2
+#define DETAIL 3
+
+// The look: both atlases, the albedo tiles' medians and inverse repeats, and per kind its
+// reads (tile and cells, four of them), their inverse repeats and its two slope gains.
+struct Look {
+    Atlas albedo, normals;
+    const float* median;
+    const float* top_inverse;
+    const int* reads;
+    const float* inverse;
+    const float* gains;
+};
+
+// A read of slot `slot` of `kind` into `out`, mixed with its read in the cells.
+__device__ void slot_read(Atlas at, const Look& l, int kind, int slot, float u, float v,
+                         const Cells& c, float* out) {
+    const int* r = l.reads + (kind * 4 + slot) * 2;
+    float cell[3];
+    if (read(at, r[0], r[1], l.inverse[kind * 4 + slot], u, v, c, out, cell))
+        mixed(out, cell, at.channels, c.mask);
+}
+
+__device__ void body(const Look& l, int kind, float u, float v, const Cells& c, float* out) {
+    int tile = l.reads[(kind * 4 + ALBEDO) * 2];
+    if (tile < 0) {
+        for (int k = 0; k < 3; ++k) out[k] = 1.0f;
+        return;
+    }
+    float fine[3], under[3];
+    slot_read(l.albedo, l, kind, ALBEDO, u, v, c, fine);
+    if (l.reads[(kind * 4 + UNDER) * 2] >= 0) slot_read(l.albedo, l, kind, UNDER, u, v, c, under);
+    else for (int k = 0; k < 3; ++k) under[k] = l.median[tile * 3 + k];
+    for (int k = 0; k < 3; ++k) out[k] = fine[k] / under[k];
+}
+
+// A normal map's east and south into `out`, flat where the kind has none.
+__device__ void map_read(const Look& l, int kind, int slot, float u, float v, const Cells& c,
+                         float* out) {
+    const int* r = l.reads + (kind * 4 + slot) * 2;
+    out[0] = 0.0f;
+    out[1] = 0.0f;
+    if (r[0] >= 0) normal_read(l.normals, r[0], r[1], l.inverse[kind * 4 + slot], u, v, c, out);
+}
+
+// The base normal map with the detail laid on it (reoriented), each slope times its gain.
+__device__ void mapped(const Look& l, int kind, float u, float v, const Cells& c, float* r) {
+    float b[2], d[2];
+    map_read(l, kind, BASE, u, v, c, b);
+    map_read(l, kind, DETAIL, u, v, c, d);
+    float gain = l.gains[kind * 2], detail_gain = -l.gains[kind * 2 + 1];
+    float bz = sqrtf(fmaxf(1.0f - b[0] * b[0] - b[1] * b[1], 0.0f));
+    float dz = sqrtf(fmaxf(1.0f - d[0] * d[0] - d[1] * d[1], 0.0f));
+    float t[3] = {b[0] * gain, b[1] * gain, bz + 1.0f};
+    float w[3] = {d[0] * detail_gain, d[1] * detail_gain, dz};
+    float dot = t[0] * w[0] + t[1] * w[1] + t[2] * w[2];
+    for (int k = 0; k < 3; ++k) r[k] = t[k] * dot - w[k] * t[2];
+    float length = sqrtf(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+    for (int k = 0; k < 3; ++k) r[k] = r[k] / length;
+}
+
+extern "C" __global__ void look_texels(
+    const float* u, const float* v, const float* normal, const unsigned char* kind,
+    const int* top, long long n, const float* albedo_texels, int albedo_width,
+    const int* albedo_tiles, const float* median, const float* top_inverse,
+    const float* normal_texels, int normal_width, const int* normal_tiles, const float* noise,
+    int noise_side, const int* reads, const float* inverse, const float* gains, float* body_out,
+    float* top_out, float* normal_out) {
+    long long p = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (p >= n) return;
+    Look l = {{albedo_texels, albedo_width, 3, albedo_tiles},
+              {normal_texels, normal_width, 2, normal_tiles},
+              median, top_inverse, reads, inverse, gains};
+    int k = kind[p];
+    float x = u[p], y = v[p];
+    Cells c = cells_at(noise, noise_side, x, y);
+    body(l, k, x, y, c, body_out + p * 3);
+    if (top[p] >= 0) {
+        float layer[3], none[3];
+        read(l.albedo, top[p], CELLS_NONE, top_inverse[top[p]], x, y, c, layer, none);
+        for (int q = 0; q < 3; ++q) top_out[p * 3 + q] = layer[q] / median[top[p] * 3 + q];
+    } else {
+        for (int q = 0; q < 3; ++q) top_out[p * 3 + q] = 1.0f;
+    }
+    float r[3], out[3];
+    mapped(l, k, x, y, c, r);
+    const float* nrm = normal + p * 3;
+    out[0] = r[0] + r[2] * nrm[0];
+    out[1] = r[1] + r[2] * nrm[1];
+    out[2] = r[2] * nrm[2];
+    float length = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
+    for (int q = 0; q < 3; ++q) normal_out[p * 3 + q] = out[q] / length;
 }

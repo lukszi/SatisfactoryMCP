@@ -26,6 +26,7 @@ from mapgen.gamedata.ground.layer_textures import (
     decode_ground_textures,
     encode_ground_textures,
 )
+from mapgen.terrain.ground_detail.cells import noise_terms
 from mapgen.terrain.ground_detail.reference import detail_piece, ground_detail
 from mapgen.terrain.ground_detail.textures import (
     DETAIL_MAX_SPACING_M,
@@ -190,6 +191,15 @@ def test_cells_with_no_mask_read_as_the_plain_tiling(textures):
     assert no_mask.normal.tobytes() == no_cells.normal.tobytes()
     turned = ground_detail(textures, piece)
     assert not np.array_equal(turned.ratio, no_cells.ratio), "the cells turn the read"
+
+
+def test_a_cell_is_shifted_by_red_and_green_and_scaled_by_green_as_the_shader_has_it():
+    rgba = np.zeros((1, 2, 4), np.uint8)
+    rgba[0, 0], rgba[0, 1] = (255, 0, 0, 255), (0, 255, 64, 0)
+    shift_u, shift_v, scale, cos, _sin, mask = np.moveaxis(noise_terms(rgba)[0], -1, 0)
+    assert shift_u.tolist() == [1.0, -1.0] and shift_v.tolist() == [-1.0, 1.0]
+    assert scale.tolist() == [np.float32(0.9), np.float32(1.1)]
+    assert cos[0] == 1.0 and mask.tolist() == [1.0, 0.0]
 
 
 def test_the_overlay_lerps_over_the_blend_by_its_weight(textures):

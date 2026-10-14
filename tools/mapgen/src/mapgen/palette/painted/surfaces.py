@@ -20,11 +20,12 @@ from mapgen.palette.painted.calibration import (
     scoped_planes,
     with_derived,
 )
-from mapgen.palette.painted.rock_look.reference import (
+from mapgen.palette.painted.rock_look.atlas import (
     KIND_ARCH,
     KIND_CLIFF,
     KIND_DESERT,
     KIND_LAYER,
+    KIND_SHELL,
 )
 from mapgen.palette.painted.rock_look.surface import (
     band_look,
@@ -43,7 +44,7 @@ from mapgen.palette.painted.shapes import (
     RockFamilyEntry,
     Sampler,
 )
-from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
+from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from satisfactory_mcp.core.arrays import BoolMask, I32Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -63,7 +64,7 @@ __all__ = [
     "top_targets",
 ]
 
-#: The desert rock family: its material has no albedo texture and no top layer.
+#: The desert rock family: its own rock texture, and no top layer.
 _DESERT = FAMILIES.index("desert")
 
 #: A coral pixel is narrower than the pixel when at least this share of its eight neighbours
@@ -303,6 +304,21 @@ def _arch_rock(
     return rock * mixed(got.body, strength["albedo"]) * shade
 
 
+def _shell_look(
+    colour: FloatGrid, scene: PaintedScene, ground: PaintedSurface, pick: BoolMask
+) -> FloatGrid:
+    """The ``pick``ed shells in their own textures where the run has the look: a cut of their
+    albedo and normal maps around their colour, and their detail normal map."""
+    look = ground.rock_look
+    if look is None or not pick.any():
+        return colour
+    reads = (np.full(pick.shape, KIND_SHELL, np.uint8), np.full(pick.shape, -1, np.int32))
+    got = band_look(look, scene, ground.palette, pick, reads)
+    strength = ground.palette["rock_look"]
+    factor = mixed(got.body, strength["albedo"]) * mixed(got.shade, strength["shade"])[..., None]
+    return colour * factor
+
+
 def cliff_layer(
     albedo: FloatGrid, scene: PaintedScene, ground: PaintedSurface, sample: Sampler
 ) -> FloatGrid:
@@ -379,7 +395,8 @@ def mesh_surface(
     ground: PaintedSurface,
     sample_rock: Sampler | None,
 ) -> FloatGrid:
-    """The render-only meshes over ``g``, each class in its own colour.
+    """The render-only meshes over ``g``, each class in its own colour, the shells in their
+    own textures.
 
     A rock wears its own family (``scene["mesh_family"]``), its top layer and its look, as a
     cliff does, never the family of a cliff it happens to overlap; without the plane it takes
@@ -396,6 +413,7 @@ def mesh_surface(
         colour = rock_surface(area_rock, scene, ground, sample_rock, family, rock)
     for which, rgb in ground.mesh_rgb.items():
         colour = np.where((cls == which)[..., None], sampled_rgb(rgb, sample_rock), colour)
+    colour = _shell_look(colour, scene, ground, (cls == MESH_SHELL) & (mesh_w > 0.0))
     wet = np.where(cls == MESH_CORAL, np.clip(scene["water"]["cover"], 0.0, 1.0), 0.0)
     colour = colour + (ground.seabed_coral - colour) * wet[..., None]
     return g * (1.0 - mesh_w[..., None]) + colour * mesh_w[..., None]

@@ -1,10 +1,10 @@
 """The textures and numbers a rock's surface is drawn with, read from the install.
 
-The cliff body is the landscape Cliff layer's material, world-projected; the arches wear
-their own rock texture; each cliff family's top layer is its root material's top texture.
-Tile sizes come from the compiled landscape shader and the materials' parameters, the top
-layer's mask from the cliff master's ``SlopeMask`` and ``CheapContrast``. docs/map/painted.md
-section 30, "Rock textures" has the measurements.
+The cliff body is the landscape Cliff layer's material, world-projected; the arches, the
+desert rock and the shells wear their own textures; each cliff family's top layer is its
+root material's top texture. Tile sizes come from the compiled shaders and
+the materials' parameters, the top layer's mask from the cliff master's ``SlopeMask`` and
+``CheapContrast``. docs/map/painted.md section 30, "Rock textures" has the measurements.
 """
 
 from __future__ import annotations
@@ -31,6 +31,11 @@ __all__ = [
     "FALLOFF_CONTRAST",
     "FALLOFF_POWER",
     "LOOK_TEXTURES",
+    "SHELL_CUT",
+    "SHELL_DETAIL_TILE_M",
+    "SHELL_FADE",
+    "SHELL_TILE_M",
+    "SHELL_UV_M",
     "TOP_FAR_TILING",
     "RockTextures",
     "TopRule",
@@ -47,6 +52,9 @@ LOOK_TEXTURES = {
     "arch_normal": "World/Environment/Rock/Arc/Texture/Textures/TX_Arc_Rock_N",
     "desert_albedo": "World/Environment/Rock/DesertRock/Texture/TX_DesertRock_Rough_01_Alb",
     "desert_normal": "World/Environment/Rock/DesertRock/Texture/TX_DesertRock_Rough_01_normal",
+    "shell_albedo": "World/Environment/Foliage/Coral/SmallShell/Textures/TX_SmallShell_BC",
+    "shell_normal": "World/Environment/Foliage/Coral/SmallShell/Textures/TX_SmallShell_N",
+    "shell_detail": "World/Environment/Rock/SeaRock/Texture/SeaRock_Detail_Nor",
 }
 
 #: The landscape Cliff layer's albedo: UV0 times its ``Scale``, 0.05.
@@ -58,8 +66,19 @@ CLIFF_DETAIL_TILE_M = 14.4879
 CELL_TILE_M = 100.0
 #: An arch mesh spans about 125 m per UV unit; its instances repeat the rock 13 to 15 times.
 ARCH_TILE_M = 125.0 / 14.0
-#: A desert rock mesh spans about 75 m per UV unit; ``DesertRock_WA`` repeats its rock 6 times.
-DESERT_TILE_M = 75.0 / 6.0
+#: ``DesertRock_WA`` repeats its rock 6 times a UV unit, scaled with the mesh; the desert
+#: seen from above is mostly ``SM_DesertRock_05``, whose up faces span 102.9 m a UV unit.
+DESERT_TILE_M = 102.9 / 6.0
+#: A shell's UV unit: ``SmallShell`` (4,028 of 4,223 shells) spans 58.7 m a UV unit and is
+#: placed at a median 0.545, which its material does not undo.
+SHELL_UV_M = 58.7 * 0.545
+#: The square of its texture's first island the look tiles, ``(u, v, side)`` in UV units, the
+#: run after it faded into its start, and the tile's span.
+SHELL_CUT = (0.15, 0.13, 0.3125)
+SHELL_FADE = 0.0625
+SHELL_TILE_M = SHELL_CUT[2] * SHELL_UV_M
+#: ``SmallShell_Inst`` repeats its detail normal 22.8 times a UV unit.
+SHELL_DETAIL_TILE_M = SHELL_UV_M / 22.8
 
 #: ``Rock_WA``'s own ``Falloff_Power``, ``Falloff_Contrast`` and ``TopLayer Tiling Far``.
 FALLOFF_POWER = 1.5

@@ -83,7 +83,7 @@ Planned as 0.2.0.
   normal maps, spherical normals and moss. `--gpu` runs the raster's per-sample work on the
   GPU, to the same bytes. The cache also holds the Titan canopy's two leaf meshes and their
   218 placements.
-- Map renders: the Satellite map's ground at 16384 and 32768 px shows the game's own landscape
+- Map renders: the Satellite map's ground at 8192 px and up shows the game's own landscape
   textures under the baked colour's metre: grass, gravel, sand, forest floor and the other
   paint layers at the repeats the game's shaders use from above, turned in cells as the game
   turns them and height-blended where layers meet, while the colour at every larger scale
@@ -127,6 +127,12 @@ Planned as 0.2.0.
   cliff's moss, grass or sand lies where the cliff material's own slope mask puts it, in its
   own texture, instead of in noise patches. The textures are read from the game install at
   each render, and `--gpu` reads them on the device to the same bytes.
+- Map renders: the Satellite map's desert rock no longer repeats in a visible lattice over
+  whole mesas. Its texture is turned in the landscape's cells, as the arches' and the shells'
+  are, standing in for the meshes' own UV layouts, and repeats at the game's 17 m, the size
+  of the desert meshes seen most from above, instead of 12.5 m. The big grey shells on the
+  coasts, which drew as flat colour, wear their own shell texture and relief. The style's
+  version goes up.
 - Map renders: the Satellite map's sea is turquoise over the shallows, steel blue in the
   lagoons and navy in the deep, fitted to 1.0 screenshots of the sea where it was teal at
   every depth; the seabed coral carpet keeps its colour. Coral caps are a warm grey-pink, as
@@ -310,6 +316,10 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the Satellite map's ground turns its texture cells by the scale the game's
+  landscape shader reads from the cell noise's green, not its red.
+- Maps tab: a render's estimate counts the ground detail's 2.1 GB of scratch from 8192 px,
+  where the render starts drawing it, instead of from 16384.
 - Map renders: the game-painted map's rock outside the deserts is grey again, not the tan of
   the dirt paths. Its derived colour now comes from the texture the cliff material samples,
   untinted, as the game's own baked distant view of the cliffs has it; it came from two
