@@ -43,7 +43,8 @@ Planned as 0.2.0.
   `python -m mapgen share-export <out>` writes it with the tiles into build-tagged folders,
   checks every file for private data and writes the two manifests last. An Apache 2.4
   template with a strict Content-Security-Policy is in `docs/map/share-apache.conf`;
-  docs/map/sharing.md has the steps.
+  docs/map/sharing.md has the steps. On the renders' own volume the tiles are hard-linked
+  instead of copied (`--copy` copies them).
 - Map generator: `python -m mapgen calibrate` derives the game-painted style's display colours
   from the game install: the level's noon light and its atmosphere volumes, the baked ground,
   the textures and the tree crowns, through a model of the game's camera. It writes

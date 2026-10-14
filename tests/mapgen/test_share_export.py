@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import struct
 import sys
 import zlib
@@ -153,7 +154,7 @@ def test_a_rerun_copies_nothing_and_a_new_render_lands_beside_the_old_until_prun
     assert _export(site) == 0
     first = json.loads((site / "out" / "data" / "site.json").read_text(encoding="utf-8"))
     assert _export(site) == 0
-    assert "(0 copied this run)" in capsys.readouterr().out
+    assert "(0 copied, 0 linked this run)" in capsys.readouterr().out
     meta = site / "data" / "local" / "renders" / "light" / "meta.json"
     meta.write_text(meta.read_text(encoding="utf-8").replace('"bytes": 99', '"bytes": 100'))
     assert _export(site) == 0
@@ -163,6 +164,46 @@ def test_a_rerun_copies_nothing_and_a_new_render_lands_beside_the_old_until_prun
     assert second["render"] != first["render"]
     assert _export(site, "--prune") == 0
     assert not (site / "out" / old).exists() and (site / "out" / new).is_dir()
+
+
+def _tile_pairs(site: Path) -> list[tuple[Path, Path]]:
+    """(render file, export file) for the baked tiles."""
+    row = json.loads((site / "out" / "data" / "site.json").read_text(encoding="utf-8"))
+    source = site / "data" / "local" / "renders" / "terrain" / "tiles"
+    target = site / "out" / row["layers"]["terrain"]["dir"] / "tiles"
+    return [(p, target / p.relative_to(source)) for p in source.rglob("*.png")]
+
+
+def test_tiles_are_hard_links_and_written_files_are_not(site, capsys):
+    assert _export(site) == 0
+    assert "(0 copied, 86 linked this run)" in capsys.readouterr().out
+    pairs = _tile_pairs(site)
+    assert pairs and all(t.samefile(s) for s, t in pairs)
+    out = site / "out"
+    for rel in ("index.html", "data/maps.json", "data/site.json", "assets/app-a1.js"):
+        assert (out / rel).stat().st_nlink == 1, rel
+
+
+def test_a_failed_link_falls_back_to_a_copy(site, monkeypatch, capsys):
+    def refuse(*_args: object) -> None:
+        raise OSError(18, "Invalid cross-device link")
+
+    monkeypatch.setattr(os, "link", refuse)
+    assert _export(site) == 0
+    assert " 0 linked this run" in capsys.readouterr().out
+    pairs = _tile_pairs(site)
+    assert pairs and not any(t.samefile(s) for s, t in pairs)
+    assert all(t.read_bytes() == s.read_bytes() for s, t in pairs)
+    assert not [n for n in _files(site / "out") if n.endswith(".part")]
+
+
+def test_copy_never_links(site, monkeypatch):
+    def forbidden(*_args: object) -> None:
+        raise AssertionError("linked under --copy")
+
+    monkeypatch.setattr(os, "link", forbidden)
+    assert _export(site, "--copy") == 0
+    assert all(t.stat().st_nlink == 1 for _s, t in _tile_pairs(site))
 
 
 def test_the_dry_run_counts_and_writes_nothing(site, capsys):
