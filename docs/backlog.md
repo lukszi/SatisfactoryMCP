@@ -438,8 +438,8 @@ package and sink it (worst). A planner change, unrelated to the head-lift model.
 `mFluidBox` (fluid buffers' `stored_m3` was already there). Every fluid measurement to date has had
 to parse the raw `.sav` with `pioneersav`, because the projection does not carry `mFluidBox`. That
 is the right call while the model is moving and the wrong one once it settles. **It needs a
-`SCHEMA_VERSION` bump, so it must be coordinated** — a second Claude instance has been doing belt
-work in parallel and the two changes must not collide.
+`SCHEMA_VERSION` bump, so it must be coordinated** — belt work has been running
+in parallel and the two changes must not collide.
 
 ### Reported without a measurement, and needing one first
 
