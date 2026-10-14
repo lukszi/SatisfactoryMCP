@@ -94,6 +94,10 @@ Planned as 0.2.0.
 
 ### Changed
 
+- Map renders: the Satellite map's tree crowns and the Titan canopy read more three-dimensional
+  again: each crown is shaded by its own shape as well as its leaves, sunward lobes lighter and
+  the far sides and dips between crowns darker, set by the style's `crowns.relief`. The
+  style's version goes up.
 - Map renders: on the Satellite map every tree crown is drawn from its crown sprite, leaves,
   holes and branches in their own colour, lit by their own normals instead of a smooth dome;
   the ancient pines draw olive instead of mustard. A painted render builds the sprite cache

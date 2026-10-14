@@ -17,7 +17,9 @@ import pytest
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
 from mapgen.lighting.hillshade import slope_degrees, sun_dot
 from mapgen.lighting.model import surface_direct
+from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.palette import relief
+from mapgen.palette.painted.crown_form import crown_form
 from mapgen.palette.painted.rock_look.surface import surface_normals
 from mapgen.palette.painted.surfaces import sunk_specks
 from mapgen.palette.styles import RELIEF_PALETTES
@@ -125,11 +127,21 @@ def _sunk_specks(size: int, axis: int) -> list[int]:
     return [max(*_water_blur(size, axis), *_gradients(size, axis)) + _specks_own(axis)]
 
 
+def _crown_form(size: int, axis: int) -> list[int]:
+    """Crown tops everywhere, in cm, raised steeply enough that every read shows."""
+
+    def draw(top_cm: np.ndarray) -> np.ndarray:
+        return crown_form(top_cm, _spacing(size), 1.5, DEFAULT_SUN, gpu=False)
+
+    return [_reached(draw, _plane(6, 300.0, 1000.0), 50.0, axis)]
+
+
 #: Each stencil a piece draws, measured on the functions at its sites, across rows or along.
 PROBES: dict[str, Callable[[int, int], list[int]]] = {
     "gradient": _gradients,
     "water edge blur": _water_blur,
     "sunk specks": _sunk_specks,
+    "crown form": _crown_form,
 }
 
 
@@ -167,9 +179,9 @@ def test_only_the_seam_trace_reads_the_band_whole():
     assert [s.name for s in STENCILS if not s.pieces] == ["seam trace"]
 
 
-def test_the_widest_reach_is_the_specks_over_the_water_edge_blur():
-    assert [band_reach(size) for size in SIZES] == [14, 7, 4, 3, 2, 2]
-    assert [piece_reach(size) for size in SIZES] == [14, 7, 4, 3, 2, 2]
+def test_the_widest_reach_is_the_crown_form_then_the_specks_over_the_water_edge_blur():
+    assert [band_reach(size) for size in SIZES] == [16, 8, 4, 3, 2, 2]
+    assert [piece_reach(size) for size in SIZES] == [16, 8, 4, 3, 2, 2]
     assert band_halo() == piece_halo() == 16
 
 

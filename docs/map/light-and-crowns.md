@@ -871,7 +871,8 @@ and the shade under and beside the canopy is the cover's mottle. The soft diagon
 the forest spot's clearing at 16:00 stays: it is the shadow of a 90 m rock pillar 40 to 70 m
 south-south-east of it, terrain. At the rib bones only the trees in the window's corner move;
 the bones and their shadows keep their light. The canopy itself reads flatter than in light
-version 5, which lit the sprites' relief twice.
+version 5, which lit the sprites' relief twice; Satellite style 25 gives the crowns their form
+back in their colour, lit once (section 36, "Crown form").
 
 At 2048 (`inputs-stories`, terrain, painted and relief-dark) against light version 5: the
 unlit sheets, the trees layer, the normal tiles and terrain's and relief-dark's lit tiles are
@@ -1100,10 +1101,11 @@ with the band that held it.
 sprite normal turned by its tree's yaw (`trees.crown_sun`), against flat ground: drawn lit, the
 style's north-west sun; drawn unlit, as in every run with the light, the light's default sun
 over its own flat ground. A crown drawn unlit so keeps the leaf-level relief the light cannot
-draw (the canopy's own light takes the crown tops smoothed by 0.75 m, section 29), as the
-meshes only the painted style draws keep the default sun (`band.painted_ndl`); an upright
-crown reads flat either way. The airbrushed dome that lit a crown before, its cover times its
-top blurred by 0.75 m and lit at 0.35 of its relief, is gone, and with it `dome_gain`.
+draw, as the meshes only the painted style draws keep the default sun (`band.painted_ndl`); an
+upright crown reads flat either way. The airbrushed dome that lit a crown before, its cover
+times its top blurred by 0.75 m and lit at 0.35 of its relief, is gone, and with it
+`dome_gain`. Since Satellite style 25 the crowns' form multiplies that sun term, under the
+same sun (below, "Crown form").
 
 `palette/painted/band.py` composites the crowns that stand out of the water last, over water
 and foam, under the highlight shoulder (`trees.over_crowns`), or keeps them apart ("Trees
@@ -1117,6 +1119,7 @@ water" below). The `crowns` block of
 | `canopy_kept` | 0.0 | How much of the soft canopy stays under the crowns. 0: the crowns replace it, so no tree is drawn twice |
 | `darkening`, `chroma` | 0.85, 0.8 | Times the sprite's colour, and times the style's own chroma gain of 1.2 |
 | `shade_clamp` | [0.55, 1.2] | The light: the style's sky and sun over the crown normals' sun term, relative to flat ground and clamped |
+| `relief` | 1.5 | How far the crowns' form is raised before it is lit, a factor on the clamped sun term; 0 draws the crowns by their normals alone ("Crown form") |
 | `hidden_below_m` | 0.5 | A crown whose top is more than this below the drawn surface is hidden: a tree under an overhang, or beside a higher rock |
 | `waterline_m` | 0.1 | The height over which a crown's top passes from over the water to under it, centred on the water's surface |
 
@@ -1148,6 +1151,51 @@ a22775a5's own runs):
   47%, the cards' holes), and the sprites' top stands a median 1.2 m under the raster's.
 - On those windows the CUDA stamps give numba's bits on the real atlas and paint store.
 
+### Crown form (2026-10-14)
+
+Satellite style 25. Since light version 6 the light draws the canopy flat and the crowns are
+shaded by their sprite normals alone, and the canopy read flatter than in light version 5,
+whose smoothed canopy slope lit the crowns a second time over their normals. The sprite
+normals carry the leaves, not the crown: on the forest species their mean over 1 m agrees
+with the slope of the sprite's own top only weakly (`SM_GreenTree_01` 0.14,
+`SM_TitanTree_Leaves_01` 0.28, `SM_AncientPineTree_01` -0.04, the alpha-weighted cosine of the
+two tilts), so a lobe's sunward side, the dip between two crowns and a crown's step down to a
+lower one were not drawn.
+
+**The form** (`palette/painted/crown_form.py`) is read off the stamped crown tops, the highest
+crown's at each pixel (section 36, "Drawing"): the mean top over a box of half-width
+`FORM_M` (1.8 m) at each pixel, crown tops only, so bare ground beside a crown draws no rim;
+its slope between the means `FORM_M` either side, a side with no crown taking the pixel's
+own; that slope times the style's `crowns.relief` (1.5), lit against flat ground,
+`max(n · L, 0) / L_z`, under the sun the crown's normals are lit by. The factor multiplies
+the clamped sun term of the normals, so it reaches a canopy whose normals sit at the clamp's
+floor (the Titan canopy's mostly do), and only the sun part of the crown's light: the sky
+light stays. Flat tops give 1. The leaves and the form are two scales lit once each, not one
+relief lit twice. Each set of trees, the paint store's crowns and the Titan canopy, reads its
+own tops. Heights are summed as integers in eighths of a centimetre, exact in any order, and
+`crown_form.cu` is the CUDA twin under `--gpu`, the same bits (a test holds the two). Its
+reach, 16 px at 32768, is the band halo's (renders.md section 40). `relief` 0 draws the
+crowns as style 24 did.
+
+`relief` was chosen on full-size windows against the v9 and v10 renders' tiles: 1 changed
+little, 2 darkened the forests' crowns by a seventh at the median, and a 1 m box drew the
+leaves' own height noise as a dark mottle; 1.5 over 1.8 m gives the Titan canopy and the
+large crowns their lobes without v9's dark footprint wedges.
+
+**Measured** (2026-10-14, build 502094, `inputs-stories`) on 0.229 m windows, the factor on
+the crowns' light where trees cover at least half a pixel, and their mean linear luminance
+in the v10 lit tiles before and with the factor laid on their tree pixels (the light is unchanged):
+
+| Window | Tree pixels | Factor p1 / p50 / p99 | Mean luminance |
+| --- | --- | --- | --- |
+| Northern Forest (81.2, -790.8), 512 px | 152,993 | 0.40 / 0.88 / 1.06 | 0.081 to 0.069 |
+| Titan forest (1769.7, -10.0), 512 px | 185,707 | 0.53 / 0.97 / 1.07 | 0.088 to 0.082 |
+| Blue palms (-1672, -969), 512 px | 18,223 | 0.38 / 0.80 / 1.06 | 0.151 to 0.125 |
+| A lone green tree (-592.1, -2216.7), 384 px | 37,442 | 0.48 / 0.95 / 1.07 | 0.087 to 0.080 |
+
+The crowns are darker by 7 to 17% on the whole, most where a crown's far half falls steeply
+(the palms' drooping fronds), and the lit side gains up to 7%.
+
 ### Known limits
 
 - **Colours are the sprites', moved by the canopy target, the red Kapok's species target
@@ -1166,11 +1214,10 @@ a22775a5's own runs):
   #3a5e78 with lit tops #416783: ΔE 4.7 to the Rocky Desert area shot's #2e6695, and 5.5 to
   the river split's lit tops #3e5579. The wiki's Rocky Desert and Spire Coast shots show blue
   palms in both biomes, so they stay blue everywhere.
-- Drawn unlit, a crown keeps its sprite normals' shading at the default sun whatever sun the
-  page picks, and the light's canopy term, lit by the smoothed crown tops, comes on top of
-  it: on a sloped canopy the slope is lit twice, mildly, at the canopy's 0.35 of its relief.
-  The page's normal pyramid has the ground's normals only; a tree normal tile would let the
-  page light the sprites' normals itself.
+- Drawn unlit, a crown keeps its sprite normals' shading and its form at the default sun
+  whatever sun the page picks; the page lights the trees flat (section 29, "A porous
+  canopy"), so neither is lit twice. The page's normal pyramid has the ground's normals only;
+  a tree normal tile would let the page light the sprites' normals and the form itself.
 - A crown's normal is turned by its tree's yaw; lean and an uneven scale do not tilt it.
 - Lean moves a crown; it does not foreshorten it.
 - `SM_Trunk_01` (6,933 logs and stumps) draws as small bark sprites.

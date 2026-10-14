@@ -219,6 +219,7 @@ class CrownStyle(TypedDict):
     chroma: float
     waterline_m: float
     shade_clamp: list[float]
+    relief: float
     hidden_below_m: float
 
 

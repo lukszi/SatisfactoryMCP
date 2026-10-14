@@ -17,6 +17,7 @@
    0.55,
    1.2
   ],
+  "relief": 1.5,
   "hidden_below_m": 0.5
  },
  "have_blur_m": 6.0,
