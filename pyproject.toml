@@ -1,6 +1,6 @@
 [project]
 name = "satisfactory-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for planning Satisfactory factories"
 # PEP 639 licence expression. PolyForm Noncommercial is not OSI-approved and has no
 # standard SPDX id, so it is named by LicenseRef pointing at the full text in LICENSE.
