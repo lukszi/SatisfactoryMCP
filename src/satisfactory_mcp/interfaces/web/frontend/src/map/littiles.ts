@@ -3,6 +3,8 @@
  * sparse trees tree has nothing in answers 204, and draws the shared transparent texture.
  * docs/map/light-and-crowns.md §29, "The page". */
 
+import { SHARE } from "../share/mode";
+
 /** The kinds every tile needs, in texture-unit order; the trees are the fourth unit. */
 const KINDS = ["unlit", "nrm", "hz"];
 export const TREES_KIND = "trees";
@@ -48,9 +50,10 @@ export function noTrees(gl: WebGL2RenderingContext): WebGLTexture {
   return texture(gl, null, false);
 }
 
-/* A tile as a bitmap, or null for a 204. The trees come premultiplied, so a bilinear read
+/* A tile as a bitmap, or null for a 204 (or, shared, a tree tile the export lists as empty). The trees come premultiplied, so a bilinear read
  * never pulls in the colour under alpha 0 that their lossless WebP leaves free. */
 export function fetchBitmap(address: string, premultiplied = false): Promise<ImageBitmap | null> {
+  if (SHARE && !address) return Promise.resolve(null);
   return fetch(address).then(function (response) {
     if (response.status === 204) return null;
     if (!response.ok) throw new Error(address + ": " + response.status);

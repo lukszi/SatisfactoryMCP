@@ -23,6 +23,7 @@ COMMANDS: dict[str, tuple[str, tuple[str, ...]]] = {
     "calibrate": ("mapgen.commands.calibrate", ()),
     "check-fill": ("mapgen.commands.check_fill", ()),
     "compress-cache": ("mapgen.commands.compress_cache", ()),
+    "share-export": ("mapgen.commands.share_export", ()),
 }
 
 

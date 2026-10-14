@@ -10,6 +10,8 @@
  * The switches (shade, trees, terrain and tree shadows, sky) are uniforms: `lightSwitches`. */
 
 import { tilePath } from "../api/client";
+import { SHARE } from "../share/mode";
+import { siteTileUrl } from "../share/site";
 import { L } from "./leaflet";
 import { createTileTextureCache, noTrees } from "./littiles";
 import { MAP_SHEET_PX, map } from "./map";
@@ -379,6 +381,7 @@ export function makeLitLayer(tileLayerId: string, light: LightHeader, onFail: (w
   const self = new L.Layer();
 
   function url(kind: string, z: number, x: number, y: number): string {
+    if (SHARE) return siteTileUrl(tileLayerId, z, x, y, kind, false);
     return tilePath(tileLayerId, z, x, y) + "?kind=" + kind + "&v=" + encodeURIComponent(light.build);
   }
 

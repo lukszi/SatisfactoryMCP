@@ -11,6 +11,8 @@
  */
 
 import { tilePath } from "../api/client";
+import { SHARE } from "../share/mode";
+import { siteProbe, siteTileUrl } from "../share/site";
 import { onModePick, showModes } from "./layercontrol/mode-picker";
 import { showParts } from "./layercontrol/part-picker";
 import { L } from "./leaflet";
@@ -210,6 +212,8 @@ function modeFailed(spec: ModeSpec, why: string, message: string): void {
 interface PyramidOptions extends L.TileLayerOptions {
   denseMaxZ?: number;
   denseQuery?: string;
+  /** The layer id, for the shared map's file paths. */
+  siteLayer?: string;
 }
 
 /* A TileLayer that knows how many tiles its pyramid actually has.
@@ -234,6 +238,10 @@ const PyramidLayer = L.TileLayer.extend({
     }
     let url = L.TileLayer.prototype.getTileUrl.call(this, coords);
     const options = this.options as PyramidOptions;
+    if (SHARE) {
+      const z = coords.z + options.zoomOffset!;
+      return siteTileUrl(options.siteLayer!, z, coords.x, coords.y, "", !!options.denseQuery && z <= options.denseMaxZ!);
+    }
     // The same arithmetic as `span`: coords.z + zoomOffset is the pyramid's own z, already
     // clamped to maxNativeZoom by Leaflet, so past the dense tree's top this asks for the
     // 1x tile of the SAME level -- the identical square of the world, standard density.
@@ -354,6 +362,7 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
       denseMaxZ: denseMaxZ,
       denseQuery: denseQuery,
     });
+    if (SHARE) (tiles.options as PyramidOptions).siteLayer = spec.typeId;
     let broke = false;
     tiles.on("tileerror", function () {
       if (broke) return;
@@ -392,7 +401,7 @@ function overlayMaker(spec: ModeSpec, response: Response): () => BaseLayer {
 /** One HEAD against one pyramid's z0 tile. Never rejects: a probe that fails is a mode
  *  that is not there, which is the ordinary state for any of them. */
 function probePyramid(spec: PyramidSpec): Promise<void> {
-  return fetch(tilePath(spec.typeId, 0, 0, 0), { method: "HEAD" })
+  return (SHARE ? Promise.resolve(siteProbe(spec.typeId)) : fetch(tilePath(spec.typeId, 0, 0, 0), { method: "HEAD" }))
     .then(function (r) {
       if (r.status !== 200) return; // 204: never generated, and that is not an error
       const factory = pyramidMaker(spec, r);
@@ -405,6 +414,7 @@ function probePyramid(spec: PyramidSpec): Promise<void> {
 
 /** ...and the artwork's fallback, probed only when its pyramid did not answer. */
 function probeMapImage(spec: ModeSpec): Promise<void> {
+  if (SHARE) return Promise.resolve(); // the shared map has no single-image artwork
   return fetch("/api/mapimage", { method: "HEAD" })
     .then(function (r) {
       if (r.status !== 200) return; // 204: no local render, which is the default state
