@@ -344,6 +344,9 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the flat taupe blocks with stepped outlines along the east desert coast are
+  sea. Where the coarse fill past the landscape holds the sea's surface it is drawn as sea,
+  its shore is smoothed, and no beach is invented under its cliffs.
 - Map renders: lakes and rivers no longer end on the stair-stepped blocks of the game map's
   water mask. Their water reaches up to 3 m past it, to where its surface meets the ground,
   and the mask's outline is smoothed. A river meeting a patch of lake water covers what the

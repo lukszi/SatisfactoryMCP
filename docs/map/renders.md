@@ -808,10 +808,35 @@ satellite 9, game-painted 20, and relief and relief dark 7, round 2's one bump.
 Known limits:
 
 - The fake east beach (4111, -2530) is not past the rim: the artwork draws water there
-  inside its line. It is the open sea's bed rising to the coast over the first tens of
-  metres, as everywhere beside a cliff, under a bay the artwork draws in its deep teal.
-- The fill inside the rim keeps its edge, a staircase of the interface raster's 3.66 m
-  texels where it ends, along the east edge between the abyss cliffs and the swamp.
+  inside its line. It was the open sea's bed rising to the fill's coast; since 2026-10-14 the
+  fill is no coast ("The fill's shore", below).
+
+### The fill's shore (2026-10-14)
+
+Past the landscape the fill's water and its ground step in the interface raster's 3.66 m
+cells, and two things drew there as flat taupe blocks with staircase outlines on the east
+desert coast, at (4097, -1972) and (4105, -2530):
+
+- **Dry fill at the sea's surface.** Where the raster holds the sea's own surface and the
+  artwork's mask left the cell dry, the rebuilt fill stood 1 m over the sea as flat land. The
+  open sea took only the dry texels within 3 texels of it. Now dry fill at or under the top
+  of the ocean's band (the field's own heights, -16 m) joins the sea wherever it reaches it
+  through such fill, and gets its bed.
+- **The fill's shore.** Between dry fill and the sea, the dry outline is smoothed by a
+  Gaussian of 2 m (`FILL_SHORE_SIGMA_M`) inside the fill: a cell's corner past it joins the
+  sea, a notch of level-only sea inside it is ground at the rebuilt fill's height.
+- **The fill is no coast.** The bed rose to every dry coast beside the open sea, and beside a
+  fill cliff that drew a beach the artwork does not have, under a bay it draws in its deep
+  teal. The raster says nothing of the bed there, so a fill coast does not seed it; the
+  measured bed, the artwork's tones and the settling depth do.
+
+On build 502094 the open sea takes 119,149 dry texels where it took 53,104, 118,462 of them
+fill; 613 texels of level-only sea become ground; the bed lies under 7.96 M texels where it
+lay under 7.80 M. The swamp's coast and the landscape's beaches are not fill and keep their
+rule.
+
+Known limit: the fill's shore is decided texel by texel, so against deep water its outline
+still shows 1 m steps at full zoom.
 
 ### Drawing less (2026-10-06)
 
