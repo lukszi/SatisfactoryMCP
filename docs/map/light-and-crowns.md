@@ -954,6 +954,18 @@ Off the path, a coarser band or tree cell that took the larger of it and the gro
 at the fold, the terrain part of it too; where the bands raise nothing, the coarser ground
 cell keeps the sun's elevation.
 
+**Why that stays** (checked 2026-10-14). A merged texel holds one number for two shades read
+two ways: the terrain's against the sun's elevation, the band's or the trees' at their fold.
+No single value reads right both ways off the path, and moving the merge into the ground
+cell instead turns the error round (the band's part then read at the sun's elevation, the
+all-or-nothing of light version 7). Reading each part its own way needs the share of the
+merge kept per texel: one more value per band and tree cell, so a fifth cell group in the
+atlas, its refold (`refold.py` and `refold.cu`), the codec's quality rule, the page's reads
+(`litlayer.ts`) and the reference (`model.band_shade`, `model.tree_shade`), and a light
+version. That is a change of the light's store, not a contained fix. It touches only the
+coarser levels, only where a band or a tree's shade and the terrain's meet within one coarse
+texel, and only for a sun off the path; on the path the merge is exact.
+
 ### Hooks
 
 `bake_light` takes an optional `occluder` on the sheet's grid, which only casts: the trees'
@@ -1045,7 +1057,9 @@ switches while that mix is set.
   encoding on tiles without a folded band.
 - The tree and band cells are exact only for a sun on the game's path; off it they keep the
   path's shade at the sun's azimuth (section 29, "Off the sun's path" and "Bands off the sun's
-  path").
+  path"). At the coarser levels a cell that took the larger of it and the ground's also reads
+  its terrain part at the fold; a fix needs a cell group of its own ("Bands off the sun's
+  path", "Why that stays").
 - One leaf shell a tree pixel and one mean cover a cell: a sparse crown over a dense one
   shades as their mean.
 - The lattice seams at landscape holes (above, "Edges of the light").
