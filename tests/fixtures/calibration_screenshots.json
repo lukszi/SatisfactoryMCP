@@ -29,7 +29,8 @@
   "areas[GrassFields,NorthernForest,WesternDuneForest].rock": {"hex": "#7e7868", "confidence": "medium", "source": "store shot, wiki Random mode 1, Entrance_Of_A_Cave, Northern Forest U8"},
   "areas[RedJungle,RedBambooFields].rock": {"hex": "#877e6e", "confidence": "medium", "source": "wiki Jungle_Spires, Steam 2627451942"},
   "areas[RedJungle,RedBambooFields].layers.Cliff_LayerInfo": {"hex": "#877e6e", "confidence": "medium", "source": "wiki Jungle_Spires, Steam 2627451942"},
-  "areas[crater].layers.CoralRock_LayerInfo": {"hex": "#6c7386", "confidence": "medium", "source": "crater ground at noon (Steam 3372405479)"},
+  "areas[crater].layers.CoralRock_LayerInfo": {"hex": "#6c7386", "confidence": "medium", "source": "crater ground at noon (Steam 3372405479)",
+   "alt": [{"hex": "#6f7482", "source": "the same shot measured again 2026-10-14: four boxes of lit crater grass, bare paths left out, pooled"}]},
   "areas[crater_1].meshes.shell": {"hex": "#747b85", "confidence": "medium", "source": "Blue Crater aerial (Steam 3579556500), wiki Blue_Crater, noon crater shot",
    "alt": [{"hex": "#787986", "source": "17 boxes pooled"}]}
  }
