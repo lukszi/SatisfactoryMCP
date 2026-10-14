@@ -178,7 +178,7 @@ def test_a_block_s_cells_on_the_device_are_the_reference_s(monkeypatch, nan):
     z, halo, block, holes = _block(seed=3, nan=nan)
     found = _same(monkeypatch, lambda: _cells(z, halo, block, holes))
     trees = 0 if nan == "all" else 2  # no height, no tree stands: no tree or canopy cells
-    assert isinstance(found, list) and len(found) == (1 + trees) * hz.HORIZON_DIRS
+    assert isinstance(found, list) and len(found) == (2 + trees) * hz.HORIZON_DIRS
     plain = span_bake.BlockSpans(None, block.trees, block.solid)
     _same(monkeypatch, lambda: _cells(z, halo, plain, holes))
 

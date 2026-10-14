@@ -160,7 +160,10 @@ def span_block() -> JsonObject:
     return {
         "bands": "one per direction: the band nearest the sun path's elevation there",
         "gap_deg": BAND_GAP_DEG,
-        "atlas": "a band folded into its direction's cell at path_el_deg; the bake reads it whole",
+        "atlas": (
+            "a band's shade folded at path_el_deg into its direction's band cell, read back "
+            "there whatever the sun's elevation; the bake reads the band whole"
+        ),
         "path_el_deg": [
             round(path_elevation(k * 360.0 / HORIZON_DIRS), 2) for k in range(HORIZON_DIRS)
         ],

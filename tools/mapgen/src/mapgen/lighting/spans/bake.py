@@ -2,11 +2,13 @@
 
 ``block_spans`` reads a block's window: the slabs the draw captured (``lighting/spans/slabs.py``)
 and the trees (``lighting/spans/trees.py``). ``horizon_cells`` marches each direction's cells:
-the ground's, a band floating over the horizon folded in at the elevation the sun's path has in
-that direction (``path_horizon``); the trees', a porous medium whose shade is folded in at that
-elevation (``lighting/spans/porous.py``); and the ground's horizon received on the canopy top.
+the ground's horizon; the trees', a porous medium whose shade is folded at the elevation the
+sun's path has in that direction (``lighting/spans/porous.py``); the ground's horizon received
+on the canopy top; and the band floating over the horizon, its shade folded there too
+(``fold_band``).
 ``default_shade`` shades the ground's bands per cell for the default sun.
-docs/map/light-and-crowns.md section 29, "Arches as spans" and "A porous canopy".
+docs/map/light-and-crowns.md section 29, "Arches as spans", "A porous canopy" and
+"Bands off the sun's path".
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from scipy import ndimage
 
 from mapgen.jit import gpu_on
 from mapgen.lighting.horizon import FADE_M, HORIZON_DIRS, Fade, march_horizon
-from mapgen.lighting.model import CANOPY_CELL, CROWN_CELL, SHADOW_SOFT_DEG, sun_cells
+from mapgen.lighting.model import BAND_CELL, CANOPY_CELL, CROWN_CELL, SHADOW_SOFT_DEG, sun_cells
 from mapgen.lighting.spans.holes import Holes, fill_holes
 from mapgen.lighting.spans.march import (
     Bands,
@@ -50,8 +52,9 @@ __all__ = [
     "block_spans",
     "cell_shade",
     "default_shade",
+    "fold_band",
     "horizon_cells",
-    "path_horizon",
+    "open_fold",
     "plain_bands",
     "shade_cells",
 ]
@@ -109,20 +112,24 @@ def cell_shade(hz: F32Grid, bands: tuple[tuple[F32Grid, F32Grid], ...], el: floa
     return np.clip(soft + band_cover(hz, bands, el), 0, 1).astype(np.float32)
 
 
-def path_horizon(bands: Bands, el: float) -> F32Grid:
-    """The horizon a page that reads horizons alone shades with: the band folded in where it
-    hides the sun disc at ``el``, the sun path's elevation in this direction, else the horizon.
-    Exact for a sun on the path; the bake's own shade reads the band (``cell_shade``)."""
-    hz = bands.horizon
-    cover = band_cover(hz, ((bands.lo, bands.hi),), el)
-    folded = np.float32(el) + np.float32(SHADOW_SOFT_DEG) * (cover - np.float32(0.5))
-    return np.where(cover > 0, np.maximum(hz, folded), hz).astype(np.float32)
+def fold_band(bands: Bands, el: float) -> F32Grid:
+    """The band's shade at ``el``, the sun path's elevation in this direction, folded as the
+    trees' is: ``el + soft * (cover - 1/2)``, ``el - soft / 2`` where it hides none. Exact for
+    a sun on the path; the bake's own shade reads the band (``cell_shade``)."""
+    cover = band_cover(bands.horizon, ((bands.lo, bands.hi),), el)
+    found: F32Grid = np.float32(el) + np.float32(SHADOW_SOFT_DEG) * (cover - np.float32(0.5))
+    return found.astype(np.float32)
+
+
+def open_fold(el: float) -> np.float32:
+    """``fold_band`` where the band hides none of the sun disc."""
+    return np.float32(el) - np.float32(SHADOW_SOFT_DEG / 2)
 
 
 class Cell(NamedTuple):
     """An atlas cell as marched: its index, its degrees as the atlas stores them, the bands it
-    was made from (kept for a wanted ground cell, else None), and where it stores a band or
-    the trees' shade folded in (None for a plain march)."""
+    was made from (kept for a wanted ground cell, else None), and where it stores a band's or
+    the trees' shade folded in (None for a horizon)."""
 
     k: int
     deg: F32Grid
@@ -151,7 +158,8 @@ class CellOps(Protocol[PlaneT, BandsT]):
     def plain(self, az_deg: float) -> PlaneT: ...
     def bands(self, surface: SpanSurface, az_deg: float, fade: Fade) -> BandsT: ...
     def path(self, bands: BandsT, el: float) -> PlaneT: ...
-    def band_in(self, cell: PlaneT, bands: BandsT) -> BoolMask: ...
+    def horizon(self, bands: BandsT) -> PlaneT: ...
+    def band_in(self, cell: PlaneT, el: float) -> BoolMask: ...
     def porous(self, az_deg: float) -> F32Grid: ...
     def canopy(self, az_deg: float) -> F32Grid: ...
     def host(self, plane: PlaneT) -> F32Grid: ...
@@ -180,11 +188,15 @@ class _OnHost:
         return _filled(march_spans(surface, self.halo, az_deg, self.spacing_m, fade), self.holes)
 
     def path(self, bands: Bands, el: float) -> F32Grid:
-        return path_horizon(bands, el)
+        return fold_band(bands, el)
 
-    def band_in(self, cell: F32Grid, bands: Bands) -> BoolMask:
-        """Where the cell is the band folded in: above the horizon it was cut from."""
-        return cell > bands.horizon
+    def horizon(self, bands: Bands) -> F32Grid:
+        return bands.horizon
+
+    def band_in(self, cell: F32Grid, el: float) -> BoolMask:
+        """Where the band cell holds some of the band's shade."""
+        found: BoolMask = cell > open_fold(el)
+        return found
 
     def porous(self, az_deg: float) -> F32Grid:
         """The trees' optical depth toward ``az_deg`` (``porous.march_porous``), filled."""
@@ -214,7 +226,7 @@ def horizon_cells(
     wanted: Container[int] | None = None,
 ) -> Iterator[Cell]:
     """Each direction's ground cell, then its trees' and its canopy's cells where the block
-    has trees, as the atlas stores them (``Cell``). A hole (``lighting/spans/holes.py``) takes
+    has trees, and its band cell where it has spans, as the atlas stores them (``Cell``). A hole (``lighting/spans/holes.py``) takes
     the cells of the pixel nearest it. Only a ground cell in ``wanted`` (every one when None)
     comes with its bands. With the switch at CUDA the block's planes stay on the device
     (``_on_device``)."""
@@ -233,21 +245,22 @@ def horizon_cells(
 def _direction(
     ops: CellOps[PlaneT, BandsT], spans: BlockSpans, k: int, wanted: Container[int] | None
 ) -> list[Cell]:
-    """Direction ``k``'s ground cell, then its trees' and canopy's cells."""
+    """Direction ``k``'s ground cell, then its trees', canopy's and band's cells."""
     az = k * 360.0 / HORIZON_DIRS
     el = path_elevation(az)
     ground: BandsT | None = None
     if spans.ground is None:
-        cell = ops.plain(az)
+        found = [Cell(k, ops.host(ops.plain(az)), None, None)]
     else:
         ground = ops.bands(spans.ground, az, FADE_M)
-        cell = ops.path(ground, el)
-    band_in = None if ground is None else ops.band_in(cell, ground)
-    found = [Cell(k, ops.host(cell), _kept(ops, ground, k, wanted), band_in)]
+        found = [Cell(k, ops.host(ops.horizon(ground)), _kept(ops, ground, k, wanted), None)]
     if spans.trees is not None:
         deg, folded = fold(ops.porous(az), el)
         found.append(Cell(CROWN_CELL + k, deg, None, folded))
         found.append(Cell(CANOPY_CELL + k, ops.canopy(az), None, None))
+    if ground is not None:
+        band = ops.path(ground, el)
+        found.append(Cell(BAND_CELL + k, ops.host(band), None, ops.band_in(band, el)))
     return found
 
 

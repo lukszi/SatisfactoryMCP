@@ -1,5 +1,5 @@
 // A block's atlas cells on the GPU, a thread a pixel: march._finish without its arctangent,
-// holes.fill_holes, bake.path_horizon and where it folds a band, each numpy operation the
+// holes.fill_holes, bake.fold_band and where it holds some shade, each numpy operation the
 // float32 one numpy does, in its order (--fmad=false). np.maximum, np.minimum and np.clip as
 // their scalar loops have them. docs/map/renders.md section 41, "On the GPU".
 
@@ -39,7 +39,7 @@ extern "C" __global__ void fill_bands(const float* hz, const float* lo, const fl
     f_seen[i] = seen[at];
 }
 
-// bake.path_horizon at the sun path's elevation `el`, with `floor_el` and `ceil_el` the sun
+// bake.fold_band at the sun path's elevation `el`, with `floor_el` and `ceil_el` the sun
 // disc's edges there and `soft` its width: band_cover's one band, NaN taken as none.
 extern "C" __global__ void path(const float* hz, const float* lo, const float* hi, float el,
                                 float floor_el, float ceil_el, float soft, float* cell,
@@ -51,8 +51,7 @@ extern "C" __global__ void path(const float* hz, const float* lo, const float* h
     float span = np_minimum(hi[i], ceil_el) - np_maximum(lo[i], bottom);
     float part = np_clip(span, 0.0f, soft);
     float cover = (0.0f + (isnan(part) ? 0.0f : part)) / soft;
-    float folded = el + soft * (cover - 0.5f);
-    cell[i] = cover > 0.0f ? np_maximum(h, folded) : h;
+    cell[i] = el + soft * (cover - 0.5f);
 }
 
 // holes.fill_holes of one plane.
@@ -63,9 +62,9 @@ extern "C" __global__ void fill(const float* plane, const long long* nearest, fl
     out[i] = plane[nearest[i]];
 }
 
-// Where a cell is the band folded in: it stands above the horizon it was cut from.
-extern "C" __global__ void band_in(const float* cell, const float* hz, bool* out, long long n) {
+// Where a band cell holds some shade: above `open`, its fold where the band hides none.
+extern "C" __global__ void band_in(const float* cell, float open, bool* out, long long n) {
     long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
-    out[i] = cell[i] > hz[i];
+    out[i] = cell[i] > open;
 }

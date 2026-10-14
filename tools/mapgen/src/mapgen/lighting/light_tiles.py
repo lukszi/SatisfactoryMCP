@@ -2,9 +2,9 @@
 
 Per tile, ``{z}/{x}_{y}.nrm.webp`` (lossless RGBA: east and south normal, sky view, land
 weight) and ``{z}/{x}_{y}.hz.webp`` (a grey atlas of 8 cells a row at half resolution, each
-cell in a border of its edge texels: 32 faded ground horizons, 32 of the crowns, 32 of the
-Titan trees, then the trees' ambient occlusion; at a higher quality where a band is folded
-in). Every style reads the ground's; only a style that draws the trees adds theirs.
+cell in a border of its edge texels: 32 faded ground horizons, 32 of the trees' shade, 32 of
+the ground's horizons on the canopy top, 32 of the bands' shade, then the trees' ambient
+occlusion; at a higher quality where shade is folded in). Every style reads the ground's; only a style that draws the trees adds theirs.
 docs/map/light-and-crowns.md section 29.
 """
 

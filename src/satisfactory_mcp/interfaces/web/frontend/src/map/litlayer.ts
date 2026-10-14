@@ -56,6 +56,9 @@ export interface LightHeader {
      * absent before the canopy was porous (light version 6). */
     canopy_cell?: number;
     canopy_floor_deg?: number;
+    /* The arches' and overhangs' shade folded at the path's elevations; absent before light
+     * version 8, whose ground cells hold the bands folded in. */
+    band_cell?: number;
     /* Where each direction's band and tree shade are folded; with `trees` (light version 6
      * on) the tree cells are shade folded there, not horizons. */
     spans?: { path_el_deg?: number[] };
@@ -101,7 +104,7 @@ uniform sampler2D tCol, tNrm, tHz, tTrees;
 uniform vec3 uL, uSky, uSun, uF;
 uniform float uEl, uInvNorm, uAmb, uTK, uTW, uSoft, uGroundSh, uSkyOn, uW, uFloor, uKnee, uLinear;
 uniform float uFill, uRows, uCrownSh, uLightOn, uGut, uIn, uTreesOn, uCanFloor, uPath0, uPath1;
-uniform int uI0, uI1, uCrown, uTitan, uAo, uCanopy, uFolded;
+uniform int uI0, uI1, uCrown, uTitan, uAo, uCanopy, uFolded, uBand;
 float s2l(float c){ return c<=0.04045? c/12.92 : pow((c+0.055)/1.055,2.4); }
 float l2s(float c){ c=clamp(c,0.0,1.0); return c<=0.0031308? c*12.92 : 1.055*pow(c,1.0/2.4)-0.055; }
 float raw(int i){
@@ -111,18 +114,29 @@ float raw(int i){
 }
 float hz(int i){ float q=raw(i); return q*q*90.0; }
 float soft(float h, float el){ return clamp((h-el)/uSoft+0.5,0.0,1.0); }
+float folded(float s){ return uEl+uSoft*(s-0.5); }
+float band(int i, float el){ return soft(hz(i+uBand),el); }
 float trees(float h){
   if(uCrownSh*uTreesOn<0.5) return h;
   if(uFolded>0){
     float s=mix(soft(hz(uI0+uCrown),uPath0),soft(hz(uI1+uCrown),uPath1),uW);
-    return max(h,uEl+uSoft*(s-0.5));
+    return max(h,folded(s));
   }
   h=max(h,mix(hz(uI0+uCrown),hz(uI1+uCrown),uW));
   return uTitan>0 ? max(h,mix(hz(uI0+uTitan),hz(uI1+uTitan),uW)) : h;
 }
-float horizon(){ return trees(uGroundSh*mix(hz(uI0),hz(uI1),uW)); }
-float onCanopy(int i){ float q=raw(i+uCanopy); return q>=uCanFloor ? q*q*90.0 : hz(i); }
-float canopyHorizon(){ return trees(uGroundSh*mix(onCanopy(uI0),onCanopy(uI1),uW)); }
+float ground(){
+  float h=mix(hz(uI0),hz(uI1),uW);
+  return uBand>0 ? max(h,folded(mix(band(uI0,uPath0),band(uI1,uPath1),uW))) : h;
+}
+float horizon(){ return trees(uGroundSh*ground()); }
+bool held(int i){ return raw(i+uCanopy)>=uCanFloor; }
+float onCanopy(int i){ float q=raw(i+uCanopy); return held(i) ? q*q*90.0 : hz(i); }
+float under(int i, float el){ return (uBand==0 || held(i)) ? 0.0 : band(i,el); }
+float canopyHorizon(){
+  float h=max(mix(onCanopy(uI0),onCanopy(uI1),uW),folded(mix(under(uI0,uPath0),under(uI1,uPath1),uW)));
+  return trees(uGroundSh*h);
+}
 const vec3 LUMA=vec3(0.2126,0.7152,0.0722);
 float tone1(float y){ if(uTK>=1.0||y<=uTK) return y; float sp=1.0-uTK; float x=(y-uTK)/sp; float t=(uTW-uTK)/sp; return uTK+sp*x*(1.0+x/(t*t))/(1.0+x); }
 float untone1(float y){ if(uTK>=1.0||y<=uTK) return y; float sp=1.0-uTK; float u=min((y-uTK)/sp,0.999); float t=(uTW-uTK)/sp; float a=1.0/(t*t); float b=1.0-u; return uTK+sp*(sqrt(b*b+4.0*a*u)-b)/(2.0*a); }
@@ -150,7 +164,7 @@ void main(){
 export const UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "tTrees", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm",
   "uAmb", "uTK", "uTW", "uSoft", "uGroundSh", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1", "uFill", "uRows",
   "uCrownSh", "uCrown", "uLightOn", "uGut", "uIn", "uTreesOn", "uTitan", "uAo", "uCanopy", "uCanFloor", "uFolded",
-  "uPath0", "uPath1"];
+  "uPath0", "uPath1", "uBand"];
 /** A horizon cell's own texels a side; the pyramid's `hz_gutter` borders it. */
 const HZ_CELL_PX = 128;
 const COARSE_LEVELS = 4;
@@ -211,21 +225,28 @@ function uploadLightUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, lig
   gl.uniform1i(uniforms.uCanopy!, model.canopy_cell || 0);
   gl.uniform1f(uniforms.uCanFloor!, 0.5 * Math.sqrt((model.canopy_floor_deg || 0) / 90));
   gl.uniform1i(uniforms.uFolded!, pathElevations(light) ? 1 : 0);
+  gl.uniform1i(uniforms.uBand!, bandCell(light));
   const stride = HZ_CELL_PX + 2 * (model.hz_gutter || 0);
   gl.uniform1f(uniforms.uGut!, (model.hz_gutter || 0) / stride);
   gl.uniform1f(uniforms.uIn!, HZ_CELL_PX / stride);
 }
 
-/** Each direction's sun-path elevation, where its tree cell is folded, or null on a pyramid
- * whose tree cells are horizons (before the porous canopy). */
+/** Each direction's sun-path elevation, where its tree and band cells are folded, or null on
+ * a pyramid whose tree cells are horizons (before the porous canopy). */
 export function pathElevations(light: LightHeader): number[] | null {
   const els = light.model.spans && light.model.spans.path_el_deg;
   return light.model.trees && els && els.length === light.model.dirs ? els : null;
 }
 
-/* The folds of the two tree cells the sun reads: a sun off the path keeps the path's shade at
- * its azimuth instead of all or none (docs/map/light-and-crowns.md, "Off the sun's path"). */
-function uploadTreeFolds(gl: WebGL2RenderingContext, uniforms: Uniforms, light: LightHeader, lower: number): void {
+/** The first band cell, or 0 on a pyramid whose ground cells hold the bands folded in. */
+export function bandCell(light: LightHeader): number {
+  return light.model.band_cell && pathElevations(light) ? light.model.band_cell : 0;
+}
+
+/* The folds of the two tree and band cells the sun reads: a sun off the path keeps the path's
+ * shade at its azimuth instead of all or none (docs/map/light-and-crowns.md, "Off the sun's
+ * path"). */
+function uploadFolds(gl: WebGL2RenderingContext, uniforms: Uniforms, light: LightHeader, lower: number): void {
   const els = pathElevations(light);
   if (!els) return;
   gl.uniform1f(uniforms.uPath0!, els[lower]!);
@@ -284,7 +305,7 @@ function uploadSunUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, light
   gl.uniform1i(uniforms.uI0!, lower);
   gl.uniform1i(uniforms.uI1!, (lower + 1) % dirs);
   gl.uniform1f(uniforms.uW!, direction - Math.floor(direction));
-  uploadTreeFolds(gl, uniforms, light, lower);
+  uploadFolds(gl, uniforms, light, lower);
   const switches = lightSwitches(light, sun);
   (Object.keys(switches) as (keyof LightSwitches)[]).forEach(function (name) {
     gl.uniform1f(uniforms[name]!, switches[name]);

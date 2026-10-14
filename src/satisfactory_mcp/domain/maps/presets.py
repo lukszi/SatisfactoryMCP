@@ -112,7 +112,7 @@ LIGHT_KEEP_BYTES = 4_060_000_000
 #: light-and-crowns.md section 36, "Trees apart").
 UNLIT_KEEP_BYTES = 360_000_000
 TREES_KEEP_BYTES = 160_000_000
-LIGHT_SCRATCH_BYTES = 17_790_000_000
+LIGHT_SCRATCH_BYTES = 19_940_000_000
 CROWN_SCRATCH_BYTES = 6_440_000_000
 #: The ground's detail normal the light adds, two bytes a pixel, from the size whose pixel is
 #: finer than the paint's metre: 8192, at 0.92 m (docs/map/painted.md section 30, "The

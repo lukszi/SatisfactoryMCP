@@ -295,6 +295,12 @@ Planned as 0.2.0.
   light model, replacing `titan_cell`), and an older pyramid still draws. The species'
   undersides and their 33 s per run are gone. Every painted lit map moves, the other styles
   keep their bytes; a kept light is baked again, and the horizon tiles grow by about a sixth.
+- Map generator (light version 8): the shade under arches and rock overhangs keeps the game
+  path's shade at the sun's azimuth when the sun leaves the path (the free compass, the "map
+  NW" preset, the slider's last half hour each end) instead of flipping to none or all of
+  it; terrain shadows stay read at the sun's own elevation. The bands get horizon cells of
+  their own, so the horizon tiles grow to 129 cells; an older pyramid still draws as before.
+  Lit maps move under and beside arches and overhangs; a kept light is baked again.
 - Map generator (light version 7): tree shade is smooth between the light's half-resolution
   cells instead of a patch with a hard rim per cell, and a sun off the game's path (the free
   compass, the slider's last half hour each end) keeps the path's tree shade at its azimuth

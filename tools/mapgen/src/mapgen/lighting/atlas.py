@@ -15,8 +15,8 @@ import numpy as np
 
 from mapgen.lighting.horizon import HORIZON_DIRS, encode_horizon
 from mapgen.lighting.light_tiles import encode_linear
-from mapgen.lighting.model import CANOPY_CELL, CROWN_CELL, HZ_CELLS, sun_cells
-from mapgen.lighting.refold import TREE_GROUPS, path_elevations, refold
+from mapgen.lighting.model import AO_CELL, CROWN_CELL, HZ_CELLS, sun_cells
+from mapgen.lighting.refold import GROUPS, path_elevations, refold
 from mapgen.lighting.spans.bake import BlockSpans, Cell, horizon_cells, plain_bands, shade_cells
 from mapgen.lighting.spans.holes import Holes
 from mapgen.lighting.spans.march import Bands
@@ -28,7 +28,8 @@ __all__ = ["BakedHorizons", "bake_horizons"]
 
 class BakedHorizons(NamedTuple):
     """A block's horizons: the atlas bytes, the coarser levels' source, the default sun's
-    cells (the ground's, the trees' and the canopy's, by index) and the bands its ground cells
+    cells (the ground's, the trees', the canopy's and the bands', by index) and the bands its
+    ground cells
     were marched with, both with a ring; where a band or the trees' shade is folded into any
     atlas cell; and whether the block has tree cells."""
 
@@ -40,13 +41,13 @@ class BakedHorizons(NamedTuple):
     trees: bool
 
 
-def _quarter(quarter: U8Grid, d: int, ground: F32Grid, trees: list[F32Grid | None]) -> None:
+def _quarter(quarter: U8Grid, d: int, ground: F32Grid, more: list[F32Grid | None]) -> None:
     """Direction ``d``'s horizons for the coarser levels, at quarter resolution: its ground
-    cell, then its trees' cells when the block has any, 0 for a group it has not
+    cell, then its other groups' cells when the block has any, 0 for a group it has not
     (``refold.refold``)."""
     planes = [ground]
-    if any(plane is not None for plane in trees):
-        planes += [np.zeros_like(ground) if plane is None else plane for plane in trees]
+    if any(plane is not None for plane in more):
+        planes += [np.zeros_like(ground) if plane is None else plane for plane in more]
     found = encode_linear(refold(np.stack(planes, -1), path_elevations()[d : d + 1]))
     for i in range(len(planes)):
         quarter[..., d + i * HORIZON_DIRS] = found[..., i]
@@ -66,7 +67,7 @@ def bake_horizons(
     hz_u8 = np.zeros((HZ_CELLS, half_px, half_px), np.uint8)
     quarter = np.zeros((half_px // 2, half_px // 2, HZ_CELLS), np.uint8)
     blank = np.zeros((half_px + 2, half_px + 2), np.float32)
-    sun = [blank] * (CANOPY_CELL + HORIZON_DIRS)
+    sun = [blank] * AO_CELL
     bands: dict[int, Bands] = {}
     keep, shaded = sun_cells(DEFAULT_SUN[0]), shade_cells(DEFAULT_SUN[0])
     cells = horizon_cells(z_half, halo - 1, spacing_m, spans, holes, shaded) if march else iter(())
@@ -74,7 +75,7 @@ def bake_horizons(
     group = _empty_group()
     direction = 0
     for cell in cells:
-        if cell.k < CROWN_CELL:  # a direction's ground cell comes first, then its trees'
+        if cell.k < CROWN_CELL:  # a direction's ground cell comes first, then its others
             if group[0] is not None:
                 _quarter(quarter, direction, group[0], group[1:])
             group, direction = _empty_group(), cell.k
@@ -92,12 +93,12 @@ def bake_horizons(
 
 
 def _empty_group() -> list[F32Grid | None]:
-    """A direction's cells as they come: its ground's, then its trees' and its canopy's."""
-    return [None for _ in range(TREE_GROUPS + 1)]
+    """A direction's cells as they come: its ground's, then its trees', canopy's and band's."""
+    return [None for _ in range(GROUPS)]
 
 
 def _store(cell: Cell, hz_u8: U8Grid, group: list[F32Grid | None], folded: BoolMask) -> None:
-    """A marched cell into the atlas bytes, its direction's group, and where it folds a band."""
+    """A marched cell into the atlas bytes, its direction's group, and where it folds shade."""
     deg = cell.deg[1:-1, 1:-1]
     hz_u8[cell.k] = encode_horizon(deg)
     group[cell.k // HORIZON_DIRS] = deg

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { castsTreeShadows, FS, lightControls, lightSwitches, parseLight, pathElevations, UNIFORMS } from "../../src/map/litlayer";
+import { bandCell, castsTreeShadows, FS, lightControls, lightSwitches, parseLight, pathElevations, UNIFORMS } from "../../src/map/litlayer";
 import { partState, TREES_IN_COLOUR } from "../../src/map/layercontrol/part-picker";
 
 import type { LightHeader } from "../../src/map/litlayer";
@@ -16,10 +16,12 @@ const PATH_EL = Array.from({ length: 32 }, function (_unused, k) {
   return k >= 13 && k <= 27 ? 16 + k : 45;
 });
 
-/* A pyramid of light version 5 (`apart`: trees apart, Titan cells) or 6 (`porous`: canopy cells). */
-function header(crowns: boolean, crownCell?: number, apart = false, porous = false): LightHeader {
+/* A pyramid of light version 5 (`apart`: trees apart, Titan cells), 6 (`porous`: canopy cells)
+ * or 8 (`bands`: band cells too). */
+function header(crowns: boolean, crownCell?: number, apart = false, porous = false, bands = false): LightHeader {
   const folds = { spans: { path_el_deg: PATH_EL }, trees: { leaf_shell_m: 2 } };
-  const cells = porous ? { canopy_cell: 64, canopy_floor_deg: 0.5, ao_cell: 96, ...folds } : apart ? { titan_cell: 64, ao_cell: 96 } : {};
+  const banded = bands ? { band_cell: 96, ao_cell: 128, hz_cells: 129 } : {};
+  const cells = porous ? { canopy_cell: 64, canopy_floor_deg: 0.5, ao_cell: 96, ...folds, ...banded } : apart ? { titan_cell: 64, ao_cell: 96 } : {};
   return {
     build: "b",
     max_z: 7,
@@ -95,7 +97,8 @@ describe("the shader's switches", () => {
     for (const name of ["uCanopy", "uCanFloor"]) expect(UNIFORMS).toContain(name);
     expect(FS).toMatch(/uniform int [^;]*\buCanopy\b/);
     expect(FS).toMatch(/uniform float [^;]*\buCanFloor\b/);
-    expect(FS).toContain("q>=uCanFloor ? q*q*90.0 : hz(i)");
+    expect(FS).toContain("held(i) ? q*q*90.0 : hz(i)");
+    expect(FS).toContain("bool held(int i){ return raw(i+uCanopy)>=uCanFloor; }");
     expect(FS).toContain("(uCanopy>0 && a>0.0) ? lit(1.0,max(uL.z,0.0),canopyHorizon()) : rel");
     expect(FS).toContain("tree*mix(vec3(1.0),relT,uLightOn)");
   });
@@ -104,7 +107,27 @@ describe("the shader's switches", () => {
     for (const name of ["uFolded", "uPath0", "uPath1"]) expect(UNIFORMS).toContain(name);
     expect(FS).toMatch(/uniform float [^;]*\buPath0\b[^;]*\buPath1\b/);
     expect(FS).toContain("float s=mix(soft(hz(uI0+uCrown),uPath0),soft(hz(uI1+uCrown),uPath1),uW);");
-    expect(FS).toContain("return max(h,uEl+uSoft*(s-0.5));");
+    expect(FS).toContain("return max(h,folded(s));");
+    expect(FS).toContain("float folded(float s){ return uEl+uSoft*(s-0.5); }");
+  });
+});
+
+describe("the band cells", () => {
+  it("are read at their folds, the larger of them and the ground's horizon shading", () => {
+    expect(UNIFORMS).toContain("uBand");
+    expect(FS).toMatch(/uniform int [^;]*\buBand\b/);
+    expect(FS).toContain("return uBand>0 ? max(h,folded(mix(band(uI0,uPath0),band(uI1,uPath1),uW))) : h;");
+    expect(FS).toContain("float horizon(){ return trees(uGroundSh*ground()); }");
+  });
+
+  it("shade the trees only where no canopy cell holds them", () => {
+    expect(FS).toContain("float under(int i, float el){ return (uBand==0 || held(i)) ? 0.0 : band(i,el); }");
+  });
+
+  it("are none on a pyramid whose ground cells hold the bands folded in", () => {
+    expect(bandCell(header(true, 32, false, true, true))).toBe(96);
+    expect(bandCell(header(true, 32, false, true))).toBe(0);
+    expect(bandCell(header(false, undefined))).toBe(0);
   });
 });
 

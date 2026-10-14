@@ -92,7 +92,7 @@ def test_each_atlas_cell_sits_in_a_border_of_its_own_edge():
     hz_u8 = rng.integers(0, 256, (model.HZ_CELLS, 128, 128), dtype=np.uint8)
     atlas = light_tiles.hz_atlas(hz_u8)
     g, stride = model.HZ_GUTTER_PX, 128 + 2 * model.HZ_GUTTER_PX
-    assert atlas.shape == (13 * stride, 8 * stride) and g == 16, "97 cells, 8 a row"
+    assert atlas.shape == (17 * stride, 8 * stride) and g == 16, "129 cells, 8 a row"
     assert light_tiles.atlas_cells(atlas).tobytes() == hz_u8.tobytes()
     k, r, c = 19, 2, 3  # cell 19 is the third row's fourth
     framed = atlas[r * stride : (r + 1) * stride, c * stride : (c + 1) * stride]
@@ -243,8 +243,8 @@ def test_refold_takes_float32_texels_of_its_directions():
     with pytest.raises(ValueError):
         refold.refold(np.zeros((4, 4, DIRS + 1), np.float32), els)
     with pytest.raises(ValueError):
-        refold.refold(np.zeros((4, 4, 4 * DIRS), np.float32), els)
-    assert refold.refold(np.zeros((4, 4, 3 * DIRS), np.float32), els).shape == (2, 2, 3 * DIRS)
+        refold.refold(np.zeros((4, 4, 5 * DIRS), np.float32), els)
+    assert refold.refold(np.zeros((4, 4, 4 * DIRS), np.float32), els).shape == (2, 2, 4 * DIRS)
 
 
 # ------------------------------------------------------------------------------ the GPU
@@ -270,7 +270,7 @@ def _same(monkeypatch: pytest.MonkeyPatch, call: Callable[[], np.ndarray]) -> No
 
 
 @pytest.mark.usefixtures("device")
-@pytest.mark.parametrize("groups", [0, 1, 2])
+@pytest.mark.parametrize("groups", [0, 1, 2, 3])
 def test_the_cuda_refold_is_the_reference_bit_for_bit(monkeypatch, groups):
     els = refold.path_elevations()
     rng = np.random.default_rng(4 + groups)
@@ -283,12 +283,12 @@ def test_the_cuda_refold_is_the_reference_bit_for_bit(monkeypatch, groups):
 
 @pytest.mark.usefixtures("device")
 def test_the_cuda_refold_of_one_direction_is_the_reference_bit_for_bit(monkeypatch):
-    """A light block refolds a direction at a time: its ground cell and its trees' cells."""
+    """A light block refolds a direction at a time: its ground cell and its others."""
     els = refold.path_elevations()[7:8]
     rng = np.random.default_rng(6)
     ground = _folded(rng, (2 * 130, 2 * 70, 1), els)
-    trio = np.concatenate([ground, _crowns(rng, ground, els), _crowns(rng, ground, els)], -1)
-    _same(monkeypatch, lambda: refold.refold(trio, els))
+    four = np.concatenate([ground, *(_crowns(rng, ground, els) for _ in range(3))], -1)
+    _same(monkeypatch, lambda: refold.refold(four, els))
 
 
 @pytest.mark.usefixtures("device")
