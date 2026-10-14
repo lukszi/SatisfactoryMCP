@@ -15,9 +15,16 @@ import pytest
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.water.channel import lower_bodies
 from mapgen.gamedata.water.rivers import RIVER_CLASS, ribbon_planes, sample_rivers
-from mapgen.palette.water.rivers import RIVER_MAX_DEPTH_M, RiverWater, river_terms
+from mapgen.palette.water.rivers import (
+    RIVER_JOINTS,
+    RIVER_MAX_DEPTH_M,
+    RiverWater,
+    _smooth_jags,
+    river_terms,
+)
 from mapgen.palette.water.seams import BOX_SEAMS, feather_box_seams, feather_steps, step_marks
 from mapgen.palette.water.shore import OCEAN_LEVEL_M, blend_water
+from mapgen.palette.water.surface import WATER_REACH_M, water_edge
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 X0, Y0 = ORIGIN_X_CM / 100, ORIGIN_Y_CM / 100
@@ -149,9 +156,42 @@ def test_the_river_draws_through_the_blur_past_the_last_wet_texel():
     assert drawn["river"][0, 20] == pytest.approx(1.0) and drawn["cover"][0, 20] == 1.0
     halo["wet"] = zero + 0.5
     under = river_terms(halo, z, river, np.ones_like(z), 0.25)
-    assert not under["river"].any(), "real deep water above the river still hides it"
+    # Real deep water above the river hides it where it covers, and the river the rest.
+    assert under["river"] == pytest.approx(np.full(z.shape, 0.7)), "the river fills the gap"
+    assert under["cover"] == pytest.approx(np.ones(z.shape)), "no ground between the two"
     del halo["wet"]
-    assert not river_terms(halo, z, river, np.ones_like(z), 0.25)["river"].any()
+    rest = river_terms(halo, z, river, np.ones_like(z), 0.25)
+    assert rest["river"] == pytest.approx(np.full(z.shape, 0.7))
+
+
+def test_a_jagged_joint_on_a_sloped_river_is_smoothed_and_a_fall_is_not():
+    rows, cols = np.mgrid[0:40, 0:80]
+    level = (cols * -0.2).astype(np.float32)
+    flips = (rows + cols) % 2 == 0
+    level[:, 30:40] += np.where(flips[:, 30:40], 1.0, 0.0)  # two sections flipping texel by texel
+    level[:, 60:] -= RIVER_JOINTS.high_m + 3.0  # a fall
+    out, moved = _smooth_jags(level, np.ones(level.shape, bool))
+    jumps = np.abs(np.diff(out[:, 20:50], axis=1))
+    assert moved and jumps.max() < 0.5, "no step left where the sections flip"
+    assert np.array_equal(out[:, 57:], level[:, 57:]), "the fall keeps its edge"
+
+
+def test_field_water_reaches_past_its_mask_where_its_level_may_stand_above_the_ground():
+    wet = np.zeros((40, 40), np.uint8)
+    wet[10:30, 10:30] = 1
+    level = np.where(wet == 1, 500, hf.NODATA).astype(np.int16)
+    edge = water_edge(level, wet, wet.copy())
+    reach = edge.wet.astype(bool) & ~wet.astype(bool)
+    assert reach[10:30, 30 : 30 + WATER_REACH_M].all() and not reach[10:30, 34:].any()
+    assert (edge.level[reach] == 500).all() and edge.measured[reach].all()
+    assert edge.soft[20, 20] == 255 and 0 < edge.soft[20, 31] < 255 and edge.soft[20, 35] == 0
+    assert edge.soft[10, 10] < edge.soft[10, 20], "a body's corner is rounded"
+    thin = np.zeros((40, 40), np.uint8)
+    thin[:, 20] = 1
+    stream = water_edge(np.where(thin == 1, 500, hf.NODATA).astype(np.int16), thin, thin.copy())
+    assert (stream.soft[:, 20] == 255).all(), "a channel a metre wide keeps its cover"
+    kept = water_edge(level, wet, wet.copy(), keep_out=np.ones(wet.shape, bool))
+    assert np.array_equal(kept.wet, wet), "no reach under a ribbon"
 
 
 # ------------------------------------------------------------------------ box seams

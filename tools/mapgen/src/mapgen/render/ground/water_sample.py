@@ -10,7 +10,12 @@ import numpy as np
 from mapgen.palette.scene import WaterTerms
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.shore import blend_water, shore_terms
-from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_alpha, water_depth_fraction
+from mapgen.palette.water.surface import (
+    WATER_DEPTH_FULL_M,
+    WaterEdge,
+    water_alpha,
+    water_depth_fraction,
+)
 from mapgen.terrain.sample import AxisTaps, reads_nothing, sample_coverage, sample_plain
 from mapgen.terrain.sample import sample_surface as sample_raster
 from satisfactory_mcp.core.arrays import FloatGrid, I16Grid, U8Grid
@@ -23,11 +28,13 @@ _GridTaps: TypeAlias = tuple[AxisTaps, AxisTaps]
 
 
 class WaterPlanes(NamedTuple):
-    """The water a band samples on the field's grid: its level and the wet and measured planes."""
+    """The water a band samples on the field's grid: its level, the wet and measured planes,
+    and the edge its cover is drawn to (``surface.water_edge``; the wet plane's without it)."""
 
     level: I16Grid
     wet: U8Grid
     measured: U8Grid
+    edge: WaterEdge | None = None
 
 
 def band_water_terms(
@@ -68,7 +75,8 @@ def sample_water_surface(
     """One band's water surface, level (NaN where none), wet cover and measured share.
 
     With the open sea, the wet cover counts only the share of a pixel that is not void, so
-    the void's edge is never drawn as land.
+    the void's edge is never drawn as land. With an edge, the surface and the cover are the
+    edge's: the level carried past the mask, and the smoothed outline.
     """
     if water is None:
         wet = measured = np.zeros(z_m.shape, np.float32)
@@ -76,8 +84,16 @@ def sample_water_surface(
     water_dm, water_missing = sample_raster(water.level, smooth, linear, hf.NODATA)
     water_m = water_dm / np.float32(hf.DM_PER_M)
     level_m = np.where(water_missing, np.nan, water_m)
-    wet = sample_coverage(water.wet, linear)
-    measured = sample_coverage(water.measured, linear) / np.where(wet <= 0.0, 1.0, wet)
+    if water.edge is None:
+        wet = sample_coverage(water.wet, linear)
+        measured = sample_coverage(water.measured, linear) / np.where(wet <= 0.0, 1.0, wet)
+    else:
+        edge = water.edge
+        reach_dm, _missing = sample_raster(edge.level, smooth, linear, hf.NODATA)
+        water_m = reach_dm / np.float32(hf.DM_PER_M)
+        wet = np.clip(sample_plain(edge.soft, linear) / np.float32(255.0), 0.0, 1.0)
+        held = sample_coverage(edge.wet, linear)
+        measured = sample_coverage(edge.measured, linear) / np.where(held <= 0.0, 1.0, held)
     if sea is not None and not reads_nothing(sea.void.cover, linear):
         land = 1.0 - sample_plain(sea.void.cover, linear) / np.float32(255.0)
         wet = np.clip(wet / np.maximum(land, np.float32(1e-3)), 0.0, 1.0)

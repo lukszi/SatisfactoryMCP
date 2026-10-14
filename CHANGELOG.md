@@ -344,6 +344,12 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: lakes and rivers no longer end on the stair-stepped blocks of the game map's
+  water mask. Their water reaches up to 3 m past it, to where its surface meets the ground,
+  and the mask's outline is smoothed. A river meeting a patch of lake water covers what the
+  lake leaves of each pixel, so no outline of ground is drawn round the patch, and a river's
+  surface on a steep bend no longer breaks into a checkerboard of small steps. Every style's
+  version goes up.
 - Map renders: the Satellite map's pink-brown barnacle boulders along the beaches wear their
   own barnacle texture and relief instead of flat colour, as the other rocks and the shells
   do. Their colour stays the coral's. The style's version goes up, and the render-only mesh

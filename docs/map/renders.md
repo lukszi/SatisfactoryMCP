@@ -650,7 +650,9 @@ half and is scored on the east. The seam trace's share of a hard switch is 1.22 
 
 ### Known limits
 
-- The 1 m staircase along the water edge is unchanged, because the water quality plane is 1 m.
+- The 1 m staircase along the water edge was the water quality plane's, which is 1 m; since
+  2026-10-14 the field's water is drawn to its smoothed outline and past it to where its
+  level meets the ground (water.md section 33, "Water edges").
 - The rebuilt lattice is not stored. The server's height lookups still read the field as
   generated.
 

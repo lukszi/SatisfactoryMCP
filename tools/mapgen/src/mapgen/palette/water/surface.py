@@ -5,7 +5,7 @@ Why the feathers and the fallbacks are what they are: tools/mapgen/README.md, "D
 
 from __future__ import annotations
 
-from typing import cast
+from typing import NamedTuple, cast
 
 import numpy as np
 from scipy import ndimage
@@ -16,16 +16,22 @@ from mapgen.palette.water.open_sea import Lattice, OpenSea, open_sea
 from mapgen.palette.water.perched import WaterSurfaces, water_surfaces
 from mapgen.palette.water.seams import feather_box_seams
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
-from satisfactory_mcp.core.arrays import F32Grid, U8Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I16Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "WATER_DEPTH_FULL_M",
     "WATER_EDGE_BLUR_M",
     "WATER_EDGE_M",
+    "WATER_REACH_M",
+    "WATER_SOFT_LOW",
+    "WATER_SOFT_SIGMA_M",
+    "WATER_THICK",
+    "WaterEdge",
     "drawn_water",
     "water_alpha",
     "water_depth_fraction",
+    "water_edge",
     "water_over",
     "water_planes",
 ]
@@ -38,6 +44,59 @@ WATER_EDGE_M = 0.9
 
 #: The edge softened in space too, in metres of ground, for water against a cliff.
 WATER_EDGE_BLUR_M = 0.73
+
+#: Measured water carries its level this many metres past its mask, the artwork's 3.66 m
+#: blocks, for the drawn ground to cut where it stands above it.
+WATER_REACH_M = 3
+
+#: The mask's outline is smoothed by a Gaussian of this sigma, in metres, and the water fades
+#: out past it to where the smoothed mask reads ``WATER_SOFT_LOW``: 2.6 m past a straight edge.
+WATER_SOFT_SIGMA_M = 1.5
+WATER_SOFT_LOW = 0.04
+
+#: A wet texel within 2 m of one whose smoothed mask reads this is in a body, and its cover
+#: follows the smoothed outline; elsewhere it is a thin channel and keeps its full cover.
+WATER_THICK = 0.9
+
+
+class WaterEdge(NamedTuple):
+    """Field water's edge on the 1 m grid: its level carried ``WATER_REACH_M`` past the mask
+    (``hf.NODATA`` elsewhere), how much of each texel it may cover (0..255, the smoothed
+    outline), and the mask and measured planes with the reach added."""
+
+    level: I16Grid
+    soft: U8Grid
+    wet: U8Grid
+    measured: U8Grid
+
+
+def water_edge(
+    level: I16Grid, wet: U8Grid, measured: U8Grid, keep_out: BoolMask | None = None
+) -> WaterEdge:
+    """Where field water may be drawn past its blocky mask (docs/map/water.md section 33,
+    "Water edges"). Dry texels within ``WATER_REACH_M`` of measured water, outside
+    ``keep_out`` (the river ribbons, which draw their own water there), take the highest
+    level beside them and count as measured, so the drawn ground cuts the water's outline.
+    """
+    nodata = np.int16(hf.NODATA)
+    free = wet == 0
+    if keep_out is not None:
+        free &= ~keep_out
+    grown = np.where(measured != 0, level, nodata).astype(np.int16)
+    for _ in range(WATER_REACH_M):
+        grown = np.where(free & (grown == nodata), ndimage.maximum_filter(grown, 3), grown)
+    reached = free & (grown != nodata)
+    smooth = ndimage.gaussian_filter(wet.astype(np.float32), WATER_SOFT_SIGMA_M)
+    t = np.clip((smooth - WATER_SOFT_LOW) / np.float32(0.5 - WATER_SOFT_LOW), 0.0, 1.0)
+    outline = t * t * (3.0 - 2.0 * t)
+    thick = ndimage.maximum_filter(smooth, 5) >= WATER_THICK
+    soft = np.where(wet != 0, np.where(thick, outline, 1.0), np.where(reached, outline, 0.0))
+    return WaterEdge(
+        level=np.where(reached, grown, level).astype(np.int16),
+        soft=np.round(soft * 255.0).astype(np.uint8),
+        wet=((wet != 0) | reached).astype(np.uint8),
+        measured=((measured != 0) | reached).astype(np.uint8),
+    )
 
 
 def drawn_water(
