@@ -21,7 +21,8 @@ files, so the coast is drawn from it.
   the fill, whose raster holds the surface (about -16.3 m off the landscape frame) rather than
   a bed; read as ground it drew a dry strip around the frame. Applying the crossing to all
   measured water would newly wet about 1 M texels of river and lake bank, because their box
-  tops are flat while their banks are not.
+  tops are flat while their banks are not. Dry hollows under the sea's level are left out
+  (`dry_hollows`; docs/map/water.md, "Dry hollows under the sea").
 - **Coverage.** `cover = clip((L - z) / (|grad z| * px) + 0.5, 0, 1)`, with `z` the final
   drawn surface (terrain, rocks, arches, render-only meshes). The edge is one antialiased
   pixel at every zoom. The two rules are blended by the reach plane's bilinear coverage.

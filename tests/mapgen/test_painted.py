@@ -153,6 +153,28 @@ def test_the_crossing_reaches_only_near_measured_ocean_and_never_a_lake():
     assert not reach[:, 20:30].any(), "level-only water keeps recipe 5: its raster is the surface"
 
 
+def test_a_dry_hollow_under_the_sea_leaves_the_reach_and_the_coast_keeps_it():
+    """A hollow behind a wall, its own lake, a beach's dry strip and a shallow dip."""
+    n = 120
+    water = np.full((n, n), hf.NODATA, np.int16)
+    grades = np.zeros((n, n), np.uint8)
+    water[:, :20] = round(LEVEL * hf.DM_PER_M)
+    grades[:, :20] = hf.WATER_MEASURED
+    height = np.full((n, n), 50, np.int16)
+    height[:, :20] = -200
+    height[:, 20:23] = -180
+    height[:60, 25:60] = -600
+    height[62:, 25:60] = -180
+    water[10:20, 40:50] = -580
+    grades[10:20, 40:50] = hf.WATER_MEASURED
+    reach, meta = ocean_reach(_field(water, grades, height))
+    assert not reach[:5, 25:60].any() and not reach[30:60, 25:60].any(), "the hollow is dry"
+    assert reach[10:20, 40:50].all(), "water in the hollow keeps the crossing"
+    assert reach[:, :23].all(), "the sea and the beach's strip beside it are untouched"
+    assert reach[62:, 25:60].all(), "a shallow dip is not a hollow"
+    assert 0 < meta["hollow_texels"] < 60 * 35
+
+
 def test_rivers_and_lakes_keep_recipe_5_exactly():
     rng = np.random.default_rng(1)
     shape = (5, 7)
