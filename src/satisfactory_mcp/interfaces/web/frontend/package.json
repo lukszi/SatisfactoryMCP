@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:share": "vite build --mode share",
     "check": "tsc --noEmit",
     "test": "vitest run --coverage",
     "posttest": "node scripts/lcov-posix.mjs",

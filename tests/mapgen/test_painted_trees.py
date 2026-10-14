@@ -23,6 +23,7 @@ from mapgen.palette.painted.calibration import (
     display_to_crown,
     display_to_ground,
     display_to_linear,
+    sampled_rgb,
     scoped_planes,
     weighted_median,
 )
@@ -34,11 +35,14 @@ from mapgen.palette.painted.trees import (
     CANOPY_GREY,
     IDENTITY_OP,
     TARGET_GREY,
+    crown_calibration,
     crown_lab,
     crown_layer,
     crown_ops,
     hue_gate,
+    moved_crowns,
     over_crowns,
+    species_colours,
 )
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.terrain.crown_atlas import ALPHA, CHANNELS, RGB
@@ -96,6 +100,24 @@ def test_a_canopy_target_leaves_crowns_of_another_hue_alone():
     lab = crown_lab(np.array([GREEN, pink, blue], np.float32), STYLE)
     gate = hue_gate(lab, ops[0][5:7])
     assert gate[0] == 1.0 and gate[1] == 0.0 and gate[2] == 0.0
+
+
+def test_a_species_with_its_own_target_skips_the_canopy_step():
+    sage = (0.26, 0.36, 0.28)  # the orange palms' leaf: grey-mint, inside the canopy gate
+    crowns = _crowns([GREEN, sage], [0] * 20 + [1] * 20, [0.0] * 40)
+    crowns.names = ["SM_Kapok_01", "Orange_palm2"]
+    targets = {"canopy": "#558653", "species": {"Orange_palm2": "#bcc5ad"}, "min_texels": 5}
+    zero = lambda _keys: np.zeros((1, 1), np.float32)
+    found = crown_calibration(crowns, PAINTED_PALETTE, targets, ((1, 1), 1e9), zero)
+    assert found.measured["crowns@0"]["trees"] == 20, "the named species is not counted"
+    assert 0.0 < found.measured["species@Orange_palm2"]["canopy_gate"] <= 1.0
+    op = np.asarray(sampled_rgb(found.ops[0][0], lambda plane: plane), np.float32).reshape(-1)
+    colours = species_colours(found.levels)[0]
+    drawn = moved_crowns(crown_lab(colours, STYLE), [(op, CANOPY_GREY)])
+    want = display_to_crown(PAINTED_PALETTE, "#bcc5ad")
+    np.testing.assert_allclose(drawn[1], want, atol=2e-3)
+    canopy = display_to_crown(PAINTED_PALETTE, "#558653")
+    np.testing.assert_allclose(drawn[0], canopy, atol=2e-3)
 
 
 def test_a_crowns_weight_is_the_ground_it_hides():
@@ -216,7 +238,7 @@ def _ground(opaque):
         palette=p, carpet=None, rock_look=None, arch_rgb=None, cliff_layer=None, opaque_water=opaque, water_class=np.zeros((1, 1), np.uint8),
         water={"k": np.asarray(w["k_per_m"], np.float32), "body": lin(w["sky_term"]),
                "sky": np.zeros(3, np.float32), "deep": lin(w["sky_term"]),
-               "deep_tau_m": np.float32(12.0), "bed": np.float32(0.8),
+               "deep_tau_m": np.float32(12.0), "tint": np.full(3, 0.8, np.float32),
                "inland_floor": np.float32(0.0), "opaque_tau_m": np.float32(0.3)},
     )  # fmt: skip
 
@@ -251,6 +273,7 @@ def test_rock_keeps_its_target_under_the_common_tint_and_a_family_keeps_its_depa
     np.testing.assert_allclose(ratio[0], 1.0)
     assert has[names.index("grass")] == 1.0 and has[names.index("cliff")] == 0.0
     ground = SimpleNamespace(rock_family=np.full((4, 4), names.index("cliff"), np.uint8),
+                             rock_top_rule=None, top_overrides=[],
                              family_rock={}, family_tint=ratio, family_top=top,
                              family_top_rgb={}, family_has_top=has, palette={},
                              rock_look=None, arch_rgb=None)  # fmt: skip
@@ -269,18 +292,17 @@ def _mesh_scene(cls, cover):
     }  # fmt: skip
 
 
-def test_wet_coral_is_seabed_dry_coral_is_coral_and_rocks_wear_the_area_rock():
+def test_coral_wears_its_colour_wet_or_dry_and_rocks_wear_the_area_rock():
     coral, shell = np.array([0.4, 0.3, 0.35], np.float32), np.array([0.1, 0.1, 0.1], np.float32)
-    seabed = np.array([0.1, 0.2, 0.3], np.float32)
     ground = SimpleNamespace(
-        mesh_rgb={MESH_CORAL: coral, MESH_SHELL: shell}, seabed_coral=seabed, rock_look=None
+        mesh_rgb={MESH_CORAL: coral, MESH_SHELL: shell}, coral_rgb={}, rock_look=None
     )
     area_rock = np.full((1, 4, 3), 0.25, np.float32)
     g = np.zeros((1, 4, 3), np.float32)
     scene = _mesh_scene([MESH_CORAL, MESH_CORAL, MESH_SHELL, MESH_ROCK], [1.0, 0.0, 0.0, 0.0])
     out = mesh_surface(g, area_rock, scene, ground, lambda plane: plane)
-    np.testing.assert_allclose(out[0, 0], seabed, err_msg="coral under water")
-    np.testing.assert_allclose(out[0, 1], coral, err_msg="dry land, whatever depth_m says")
+    np.testing.assert_allclose(out[0, 0], coral, err_msg="coral under water: the water tints it")
+    np.testing.assert_allclose(out[0, 1], coral, err_msg="dry land")
     np.testing.assert_allclose(out[0, 2], shell)
     np.testing.assert_allclose(out[0, 3], 0.25, err_msg="the area's rock, no cliff family")
 
@@ -333,11 +355,11 @@ def test_the_painted_band_draws_with_the_whole_chain():
         canopy_rgb=np.zeros(3, np.float32), rock=[np.full(shape, 0.2, np.float32)] * 3,
         rock_family=None, crown=None, titan=None, carpet=None, mesh_rgb={},
         rock_look=None, arch_rgb=None, cliff_layer=None,
-        seabed_coral=np.zeros(3, np.float32), opaque_water=[], crown_ops=[],
+        coral_rgb={}, opaque_water=[], crown_ops=[],
         ramp=(0.0, 1.0, np.linspace(0, 1, 5)),
         water={"k": np.asarray(w["k_per_m"], np.float32), "body": lin(w["sky_term"]),
                "sky": np.zeros(3, np.float32), "deep": lin(w["sky_term"]),
-               "deep_tau_m": np.float32(12.0), "bed": np.float32(0.8),
+               "deep_tau_m": np.float32(12.0), "tint": np.full(3, 0.8, np.float32),
                "inland_floor": np.float32(0.0)},
     )  # fmt: skip
     zero = np.zeros(shape, np.float32)

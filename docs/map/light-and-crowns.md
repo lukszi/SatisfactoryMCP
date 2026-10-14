@@ -319,7 +319,7 @@ worker holds more than it needs; none of it moves a byte:
   (`model.sun_cells`), so the 64 cells are never stacked as 1 GB of floats. The refold of one
   direction is the stacked one's to the bit, which a test holds.
 - **Workers of its own.** `--light-workers` sets the bake's pool. By default it is one a
-  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 2.0 GB
+  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 2.5 GB
   each (`LIGHT_WORKER_BYTES`, below), counted when the bake starts. On Windows the free
   memory is the lesser of the free RAM and the commit still available
   (`pools.free_ram_bytes`): a process that cannot commit fails with RAM to spare, which
@@ -337,7 +337,8 @@ worker holds more than it needs; none of it moves a byte:
   0.04 GB. A full-size block peaks at 1.08 GB working set and 0.98 GB commit, one under arches
   at 1.36 and 1.04 GB. With the crowns and arches as spans (2026-10-07) a block under crowns
   peaks at 1.44 GB commit and one with crowns and arches at 1.50 GB; `LIGHT_WORKER_BYTES` is
-  2.0 GB, the larger with room. The default sun's terms are made 512 rows at a time
+  2.5 GB: re-measured on 2026-10-14 with the tree and arch cells, a dense forest block peaks
+  at 2.18 GB and a sparse one at 2.12 GB, plus 15% room. The default sun's terms are made 512 rows at a time
   (`stage.TERM_ROWS`), to the same bytes, so the canopy's own light adds nothing measurable:
   before the spans, with crowns over half of it a block peaked at 1.13 and 1.09 GB, against
   1.14 and 1.02 before the canopy, and at 1.30 and 1.26 GB with a hole of no data across it
@@ -954,6 +955,18 @@ Off the path, a coarser band or tree cell that took the larger of it and the gro
 at the fold, the terrain part of it too; where the bands raise nothing, the coarser ground
 cell keeps the sun's elevation.
 
+**Why that stays** (checked 2026-10-14). A merged texel holds one number for two shades read
+two ways: the terrain's against the sun's elevation, the band's or the trees' at their fold.
+No single value reads right both ways off the path, and moving the merge into the ground
+cell instead turns the error round (the band's part then read at the sun's elevation, the
+all-or-nothing that light version 8 removed). Reading each part its own way needs the share of the
+merge kept per texel: one more value per band and tree cell, so a fifth cell group in the
+atlas, its refold (`refold.py` and `refold.cu`), the codec's quality rule, the page's reads
+(`litlayer.ts`) and the reference (`model.band_shade`, `model.tree_shade`), and a light
+version. That is a change of the light's store, not a contained fix. It touches only the
+coarser levels, only where a band or a tree's shade and the terrain's meet within one coarse
+texel, and only for a sun off the path; on the path the merge is exact.
+
 ### Hooks
 
 `bake_light` takes an optional `occluder` on the sheet's grid, which only casts: the trees'
@@ -1045,7 +1058,9 @@ switches while that mix is set.
   encoding on tiles without a folded band.
 - The tree and band cells are exact only for a sun on the game's path; off it they keep the
   path's shade at the sun's azimuth (section 29, "Off the sun's path" and "Bands off the sun's
-  path").
+  path"). At the coarser levels a cell that took the larger of it and the ground's also reads
+  its terrain part at the fold; a fix needs a cell group of its own ("Bands off the sun's
+  path", "Why that stays").
 - One leaf shell a tree pixel and one mean cover a cell: a sparse crown over a dense one
   shades as their mean.
 - The lattice seams at landscape holes (above, "Edges of the light").
@@ -1235,9 +1250,9 @@ The crowns are darker by 7 to 17% on the whole, most where a crown's far half fa
 
 ### Known limits
 
-- **Colours are the sprites', moved by the canopy target, the red Kapok's species target
-  and, for the blue palms, a target of their own.** Crowns of a target's own hue, and the red
-  Kapok `SM_Kapok_03` by name, are calibrated (section 31, "Crowns"); every other crown keeps
+- **Colours are the sprites', moved by the canopy target, the species targets (the red Kapok,
+  the orange palms) and, for the blue palms, a target of their own.** Crowns of a target's own
+  hue, and the named species, are calibrated (section 31, "Crowns"); every other crown keeps
   its sprite's colours: bamboo is a saturated pink-red. The style's `chroma` of 0.8 is a
   taste call.
 - **Blue palms are blue, on a target of their own.** `BluePalm_01` and `_02` (3,332 trees:
@@ -1262,8 +1277,9 @@ The crowns are darker by 7 to 17% on the whole, most where a crown's far half fa
 ### Foliage colours checked (2026-10-14)
 
 Three open questions on crown colour were checked against what exists: the game's own leaf
-textures, the screenshot targets, the editor footage and wiki screenshots. Nothing changed;
-each needs a top-down daylight screenshot from 1.0 to settle.
+textures, the screenshot targets, the editor footage and wiki screenshots. The orange palms
+changed (below); the darkening and the pines need a top-down daylight screenshot from 1.0 to
+settle.
 
 **Method.** Colours are CIELAB (D65) from display sRGB, ΔE is CIE76. "Camera" is section 31's
 camera model of a species' sprite colour (calibration.md, "The camera model"): what a
@@ -1302,6 +1318,12 @@ shade, ΔE 16.1 and 17.1: 7 to 9 L lighter and a -21 for -7. The hue is the leaf
 the style's neutral light; the rest is the canopy step, ×1.54 chroma and +0.063 L, which the
 canopy gate gives them in full at chroma 0.020. No screenshot shows them from above.
 
+Since 2026-10-14 they are named species on their camera colours, `Orange_palm1` #c3cbb6 and
+`Orange_palm2` #bcc5ad, and skip the canopy step (calibration.md section 31, "Crowns"): at
+flat shade they draw those colours, ΔE 0. Composited over the v10 unlit tiles at 0.229 m around
+(260, 2250), the palms' own crown pixels (1,308) move from #9fd3b8 to #acb59e as drawn, a few
+L under the flat colour by their sprite normals' shading.
+
 **The ancient pines** draw #698a28 (Lab 53, -27, 47) as rendered. Three pre-1.0 views agree
 that they are less saturated:
 
@@ -1311,10 +1333,9 @@ that they are less saturated:
 | editor footage frame 0193 (Update 8), a crown from above | misty | 44, -5, 31 (#706933) | 28.1 |
 | camera colour of the needle albedo | model | 55, -14, 48 (#858829) | 13.5 |
 
-A species target would not hold as the code stands: the pines' colour opens the canopy gate
-to 0.66 to 0.72, so the canopy step would move them on past any target (calibration.md,
-"Crowns"). A 1.0 top-down shot of the Northern Forest decides the colour, and named species
-then need to skip the canopy step.
+A species target now holds: a named species skips the canopy step (calibration.md,
+"Crowns"), so the pines' colour can be set once a 1.0 top-down shot of the Northern Forest
+decides it.
 
 ### Crowns and the water (2026-10-06)
 

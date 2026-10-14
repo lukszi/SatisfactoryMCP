@@ -45,7 +45,13 @@ from mapgen.palette.painted.shapes import (
     RockFamilyEntry,
     Sampler,
 )
-from mapgen.terrain.render_meshes import CORAL_CLASSES, MESH_BARNACLE, MESH_ROCK, MESH_SHELL
+from mapgen.terrain.render_meshes import (
+    CORAL_CLASSES,
+    MESH_BARNACLE,
+    MESH_CORAL,
+    MESH_ROCK,
+    MESH_SHELL,
+)
 from satisfactory_mcp.core.arrays import BoolMask, I32Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -240,12 +246,15 @@ def rock_surface(
     ``code`` is the family per pixel; the direct pass's family plane on this band when None,
     which an arch or boulder lifted over the cliff (``scene["top_weight"]``) does not wear: by
     its lift it takes the arches' rock (``_arch_rock``)."""
-    area_rock, lifted = rock_rgb, None
+    area_rock, lifted, own = rock_rgb, None, None
     if code is not None:
         code = np.asarray(code)
     elif ground.rock_family is not None:
         code = np.asarray(ground.rock_family[scene["grid"][0]], np.uint8)
         lifted = scene.get("top_weight")
+        if ground.rock_top_rule is not None and ground.top_overrides:
+            rule = np.asarray(ground.rock_top_rule[scene["grid"][0]], np.uint8)
+            own = (rule, ground.top_overrides)
     else:
         return rock_rgb
     for which, planes in ground.family_rock.items():
@@ -262,13 +271,13 @@ def rock_surface(
     pick = np.ones(code.shape, bool) if pick is None else pick
     if look is None:
         up = surface_normals(scene["z_m"], scene["grid"][5])[..., 2]
-        weight = (top_mask(up, *top_rules(None, code)) * has_top)[..., None]
+        weight = (top_mask(up, *top_rules(None, code, own)) * has_top)[..., None]
         out = rgb * (1.0 - weight) + top * weight
     else:
         kind = np.where(code == _DESERT, KIND_DESERT, KIND_CLIFF).astype(np.uint8)
         got = band_look(look, scene, ground.palette, pick, (kind, _top_tiles(ground, code)))
         strength = ground.palette["rock_look"]
-        weight = (top_mask(got.up, *top_rules(look, code)) * has_top)[..., None]
+        weight = (top_mask(got.up, *top_rules(look, code, own)) * has_top)[..., None]
         body = rgb * mixed(got.body, strength["albedo"])
         layer = top * mixed(got.top, strength["albedo"])
         shade = mixed(got.shade, strength["shade"])[..., None]
@@ -408,8 +417,9 @@ def mesh_surface(
 
     A rock wears its own family (``scene["mesh_family"]``), its top layer and its look, as a
     cliff does, never the family of a cliff it happens to overlap; without the plane it takes
-    the area's rock. A shell whose material wears a family takes ``shell_family_rgb``. Coral under water is the seabed coral; ``scene["water"]`` is the water
-    after ``sunk_specks``.
+    the area's rock. A shell whose material wears a family takes ``shell_family_rgb``. A
+    coral of a kind of its own (``scene["mesh_family"]``) wears that kind's colour, in the
+    water as on land: the water's optics tint it.
     """
     mesh_w, cls = scene.get("mesh_weight"), scene.get("mesh_class")
     if mesh_w is None or cls is None or not mesh_w.any():
@@ -418,15 +428,16 @@ def mesh_surface(
     colour = area_rock
     rock = (cls == MESH_ROCK) & (mesh_w > 0.0)
     if family is not None and rock.any():
-        colour = rock_surface(area_rock, scene, ground, sample_rock, family, rock)
+        code = np.where(rock, family, np.uint8(0))
+        colour = rock_surface(area_rock, scene, ground, sample_rock, code, rock)
     for which, rgb in ground.mesh_rgb.items():
         colour = np.where((cls == which)[..., None], sampled_rgb(rgb, sample_rock), colour)
     if family is not None:
         for code, rgb in ground.shell_family_rgb.items():
             colour = np.where(((cls == MESH_SHELL) & (family == code))[..., None], rgb, colour)
+        coral = cls == MESH_CORAL
+        for kind, rgb in ground.coral_rgb.items():
+            colour = np.where((coral & (family == kind))[..., None], rgb, colour)
     for which, kind in ((MESH_SHELL, KIND_SHELL), (MESH_BARNACLE, KIND_BARNACLE)):
         colour = _own_look(colour, scene, ground, (cls == which) & (mesh_w > 0.0), kind)
-    coral = np.isin(cls, CORAL_CLASSES)
-    wet = np.where(coral, np.clip(scene["water"]["cover"], 0.0, 1.0), 0.0)
-    colour = colour + (ground.seabed_coral - colour) * wet[..., None]
     return g * (1.0 - mesh_w[..., None]) + colour * mesh_w[..., None]

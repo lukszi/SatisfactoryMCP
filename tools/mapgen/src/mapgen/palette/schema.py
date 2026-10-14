@@ -227,7 +227,9 @@ class PaintedWaterStyle(TypedDict):
     """The painted style's ``water``: the Beer-Lambert model and the sea's physics row.
 
     The sea absorbs ``absorption_scale`` times the ocean material's absorption, ``k_per_m``
-    where the install's does not read; deep water shows ``sky_term``.
+    where the install's does not read; deep water shows ``sky_term``. What is seen behind the
+    sea's surface is scaled by the material's ``Ocean SBW`` (``behind_scale`` where the
+    install's does not read) times ``behind_tint``; inland water's bed by ``bed_wet``.
     """
 
     model: str
@@ -237,6 +239,8 @@ class PaintedWaterStyle(TypedDict):
     surface_r: float
     sky: list[float]
     deep_tau_m: float
+    behind_scale: float
+    behind_tint: list[float]
     bed_wet: float
     inland_floor: float
     opaque_tau_m: float
@@ -357,6 +361,8 @@ class CalibrationStyle(TypedDict):
     families: dict[str, str]
     tops: dict[str, str]
     meshes: dict[str, str]
+    #: The coral meshes with a colour of their own, by leaf name (``CORAL_KINDS``).
+    coral_meshes: NotRequired[dict[str, str]]
     crowns: dict[str, str]
     species: dict[str, str]
     areas: list[CalibrationArea]

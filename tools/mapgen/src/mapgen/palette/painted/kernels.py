@@ -88,10 +88,9 @@ class UnderwaterExtras(NamedTuple):
 
 
 class UnderwaterKnobs(NamedTuple):
-    """The exposure, the bed's wetness and the sky's colour, float32."""
+    """The exposure and the sky's colour, float32."""
 
     exposure: np.float32
-    bed: np.float32
     sky: F32Grid
 
 
@@ -114,19 +113,18 @@ def _over(under: F32Grid, seen: F32Grid, share: np.float32) -> None:
 @helper
 def _through(
     colour: F32Grid,
-    bed: np.float32,
     optics: tuple[F32Grid, F32Grid, F32Grid],
     e: F32Grid,
     keep: np.float32,
     out: F32Grid,
 ) -> None:
     """``underwater.through`` at one pixel: ``colour`` seen through the water whose
-    ``exp(-k metres)`` is ``e``; ``optics`` is this pixel's ``(bed tint, body, sky)`` and
+    ``exp(-k metres)`` is ``e``; ``optics`` is this pixel's ``(bed scale, body, sky)`` and
     ``keep`` its ``1 - floor``."""
     tint, body, sky = optics
     for k in range(3):
         transmit = e[k] * keep
-        out[k] = colour[k] * bed * tint[k] * transmit + body[k] * (_ONE - transmit) + sky[k]
+        out[k] = colour[k] * tint[k] * transmit + body[k] * (_ONE - transmit) + sky[k]
 
 
 @kernel
@@ -151,7 +149,7 @@ def underwater(
     crown_e, sunk = extras.sunk
     murk_e, opaque_share, opaque_rgb = extras.opaque
     has_carpet, has_crowns, has_opaque, whole = flags
-    exposure, bed, sky = knobs
+    exposure, sky = knobs
     touched = 0
     for i in range(index.shape[0]):
         touched += cover[index[i]] != _ZERO
@@ -167,14 +165,14 @@ def underwater(
         here = (tint[p], body[p], sky)
         for k in range(3):
             lit_g[k] = g[p, k] * exposure
-        _through(lit_g, bed, here, bed_e[i], keep[i], under)
+        _through(lit_g, here, bed_e[i], keep[i], under)
         if has_carpet:
             for k in range(3):
                 t = carpet_e[i, k]
                 seen[k] = carpet_rgb[k] * t + carpet_body[k] * (_ONE - t) + carpet_sky[k]
             _over(under, seen, carpet_cover[i])
         if has_crowns:
-            _through(crown_rgb[p], bed, here, crown_e[i], keep[i], seen)
+            _through(crown_rgb[p], here, crown_e[i], keep[i], seen)
             _over(under, seen, sunk[i])
         _over(under, deep[p], _ONE - open_e[i])
         if has_opaque:

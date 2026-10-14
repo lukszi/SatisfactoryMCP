@@ -19,6 +19,7 @@ from mapgen.cache import (
     DirectPlanes,
     TopPlanes,
     cached_family,
+    cached_top_rules,
 )
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.install import GameReader
@@ -353,6 +354,7 @@ def _rasters(
     }
     if paint is not None:
         paint.ground.attach_families(cached_family(cache, grid.stamp))
+        paint.ground.attach_top_rules(cached_top_rules(cache, grid.stamp))
         for name in ("rock_families",) + (() if args.no_titan_trees else ("titan_trees",)):
             inputs[name] = {**inputs["cliff_geometry"], "reader_version": READER_VERSIONS[name]}
     top = None

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping
 from pathlib import Path
-from typing import TypeAlias
 
 import numpy as np
 from scipy import ndimage
@@ -23,6 +22,7 @@ from mapgen.colour import linear_from_oklab, oklab, srgb_to_linear
 from mapgen.gamedata.frame import SPACING_CM
 from mapgen.gamedata.ground.bake import BAKE_NAME, bake_have
 from mapgen.gamedata.ground.paint_store import CANOPY_NAME, CROWN_NAME, PIGMENT_NAME
+from mapgen.gamedata.rocks.families import TopOverride
 from mapgen.gamedata.rocks.looks import RockTextures
 from mapgen.gamedata.water.bodies import WATER_CLASSES
 from mapgen.gamedata.water.ocean import OceanAbsorption
@@ -43,13 +43,12 @@ from mapgen.palette.painted.calibration import (
     area_ids,
     display_to_ground,
     display_to_linear,
-    median_lab,
     rehome_offshore,
     scoped_planes,
-    split_weight,
-    with_derived,
 )
 from mapgen.palette.painted.crown_sets import crown_sets, crowns_provenance
+from mapgen.palette.painted.grids import biome_grid, land_cells
+from mapgen.palette.painted.layer_targets import EVERY_4TH, DrawnGround, calibrate_layers
 from mapgen.palette.painted.optics import base_water, class_optics, load_carpet, water_table
 from mapgen.palette.painted.parallel import for_row_blocks, gaussian
 from mapgen.palette.painted.rock_grid import ROCK_GRID_M, rock_planes, tinted_rock
@@ -78,20 +77,24 @@ from mapgen.palette.painted.surfaces import (
     family_targets,
     layer_tops,
 )
-from mapgen.palette.painted.transfer import LayerOp, layer_op, layer_transfer
 from mapgen.palette.painted.trees import crown_calibration, titan_colours
 from mapgen.palette.painted.water_classes import water_classes
 from mapgen.palette.styles import dry_land_range
-from mapgen.palette.water.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M
 from mapgen.sprites.store import SpriteAtlas
 from mapgen.terrain.crown_stamp import CrownSet
-from mapgen.terrain.render_meshes import MESH_BARNACLE, MESH_CORAL, MESH_SHELL, MESH_TERRACE
+from mapgen.terrain.render_meshes import (
+    CORAL_KINDS,
+    MESH_BARNACLE,
+    MESH_CORAL,
+    MESH_SHELL,
+    MESH_TERRACE,
+)
 from satisfactory_mcp.core.arrays import BoolMask, F16Grid, F64Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
-__all__ = ["ROCK_GRID_M", "PaintedGround", "biome_grid", "land_cells"]
+__all__ = ["ROCK_GRID_M", "PaintedGround"]
 
 #: The render-only meshes the painted style colours, by class, with their palette names; the
 #: barnacles wear the coral's.
@@ -104,46 +107,6 @@ MESH_COLOUR_NAMES = (
 
 #: The landscape's Cliff layer, which the rock look textures.
 CLIFF_LAYER = "Cliff_LayerInfo"
-
-#: Every fourth texel each way: where the medians of the paint are measured.
-_EVERY_4TH = (slice(None, None, 4), slice(None, None, 4))
-
-#: A layer's colour transfer to measure: its key, layer, display target and where it counts.
-LayerJob: TypeAlias = tuple[str, str, str, BoolMask]
-
-
-def biome_grid(biome: BiomeGrid, rows: int, cols: int) -> U8Grid:
-    """The biome raster's index under every texel of the 1 m grid. Nearest."""
-    width = biome["width"]
-    r = np.clip(((np.arange(rows) + 0.5) * width / rows).astype(np.int64), 0, width - 1)
-    c = np.clip(((np.arange(cols) + 0.5) * width / cols).astype(np.int64), 0, width - 1)
-    return biome["area"][np.ix_(r, c)]
-
-
-def land_cells(field: FieldPlanes, shape: tuple[int, int]) -> BoolMask | None:
-    """Ground the sea does not cover, on a grid of ``shape`` over the field, nearest; None for a
-    field without water planes. Water at the ocean's level is sea whatever its grade, and so is
-    the void off the landscape."""
-    water, grades = field.water_raster(), field.water_quality_raster()
-    if water is None or grades is None:
-        return None
-    height = field.height_dm
-    if height is None:
-        return None
-    rows = np.minimum(np.arange(shape[0]) * field.height // shape[0], field.height - 1)
-    cols = np.minimum(np.arange(shape[1]) * field.width // shape[1], field.width - 1)
-    pick = np.ix_(rows, cols)
-    level = water[pick].astype(np.float32) / np.float32(hf.DM_PER_M)
-    sea = (grades[pick] != hf.WATER_DRY) & (water[pick] != hf.NODATA)
-    sea &= np.abs(level - OCEAN_LEVEL_M) <= OCEAN_LEVEL_BAND_M
-    return (height[pick] != hf.NODATA) & ~sea
-
-
-def _fine_share(coarse: FloatGrid, rows: int, cols: int) -> U8Grid:
-    """A coarse 0..1 weight on the 1 m grid as a 0..255 share, nearest."""
-    r = np.minimum(np.arange(rows) // ROCK_GRID_M, coarse.shape[0] - 1)
-    c = np.minimum(np.arange(cols) // ROCK_GRID_M, coarse.shape[1] - 1)
-    return np.round(coarse[np.ix_(r, c)] * 255.0).astype(np.uint8)
 
 
 class PaintedGround:
@@ -178,7 +141,10 @@ class PaintedGround:
         self.area_names = area_names
         self.area_assets = list(biome["assets_by_index"])
         self.coarse_index = self._coarse_areas(index, field)
-        albedo = self._calibrate(albedo, weights)
+        self.ramp: Ramp = dry_land_range(
+            field, self.palette["ramp_lo_pct"], self.palette["ramp_hi_pct"]
+        )
+        albedo = self._calibrate(albedo, weights, (*_drawn_ground(field), self.ramp))
         self.cliff_layer: PaintPlane | None = weights.get(CLIFF_LAYER)
         del weights
         albedo = self._fallback(albedo, have, index, len(area_names))
@@ -203,6 +169,8 @@ class PaintedGround:
         }
         self._trees(paint_dir, sprites)
         self.rock_family: Plane | None = None
+        self.rock_top_rule: Plane | None = None
+        self.top_overrides: list[TopOverride] = []
         self.family_rock: dict[int, list[FloatGrid]] = {}
         self.source["rock_family_targets"] = {}
         self.titan: TitanPlanes | None = None
@@ -220,13 +188,8 @@ class PaintedGround:
         self.crown_measured: JsonObject = {}
         self._calibrate_crowns(self.palette["calibration"])
         self.carpet: Carpet | None = load_carpet(paint_dir, meta, self.palette)
-        self.seabed_coral: FloatGrid = colours["coral_seabed"] / np.float32(
-            self.palette["water"]["bed_wet"]
-        )
+        self.coral_rgb: dict[int, FloatGrid] = self._coral_colours()
         self.water: WaterBase = base_water(self.palette)
-        self.ramp: Ramp = dry_land_range(
-            field, self.palette["ramp_lo_pct"], self.palette["ramp_hi_pct"]
-        )
         self.water_class: U8Grid | None = None
         self.water_rows = water_table(self.palette)
         self.source["seam_texels_blended"] = seam_texels
@@ -276,10 +239,16 @@ class PaintedGround:
         crowns = crowns_provenance(self.palette, self.meta, sets, self.crown_measured)
         return {**self.source, "crowns": crowns}
 
+    def attach_top_rules(self, found: tuple[Plane, list[TopOverride]] | None) -> None:
+        """The direct pass's top rule plane and table: rock instances' own top mask numbers."""
+        self.rock_top_rule, self.top_overrides = (None, []) if found is None else found
+        self.source["top_rule_overrides"] = [list(rule) for rule in self.top_overrides]
+
     def attach_families(self, plane: Plane | None) -> None:
         """The direct pass's family plane, and the rock of each family the palette gives a
         target (``surfaces.family_targets``), which holds over any area's rock."""
         self.rock_family, self.family_rock = plane, {}
+        self.rock_top_rule, self.top_overrides = None, []
         base, self._rock_lab = self._rock_lab, None
         if plane is None or base is None:
             return
@@ -299,8 +268,8 @@ class PaintedGround:
         self.titan = titan
 
     def attach_sea(self, absorption: OceanAbsorption) -> None:
-        """The install's ocean absorption, which sets the sea's row in place of the palette's
-        ``k_per_m``."""
+        """The install's ocean absorption and scale behind the surface, which set the sea's row
+        in place of the palette's ``k_per_m`` and ``behind_scale``."""
         self.water = base_water(self.palette, absorption)
         self.water_rows = water_table(self.palette, absorption)
         self.source["sea_absorption"] = {
@@ -308,6 +277,8 @@ class PaintedGround:
             "colour": [round(v, 6) for v in absorption.colour],
             "murkiness": round(absorption.murkiness, 6),
             "k_per_m": [round(float(v), 5) for v in self.water["k"]],
+            "behind_scale": round(absorption.behind, 6),
+            "behind": [round(float(v), 5) for v in self.water["tint"]],
         }
 
     def attach_look(self, textures: RockTextures, spacing_m: float) -> None:
@@ -370,6 +341,15 @@ class PaintedGround:
         for name, hex_colour in self.palette["calibration"].get("meshes", {}).items():
             colours[name] = self._target(hex_colour)
         return colours
+
+    def _coral_colours(self) -> dict[int, FloatGrid]:
+        """The coral meshes with a colour of their own, by kind (``coral_kind``): their
+        calibration targets."""
+        named = self.palette["calibration"].get("coral_meshes", {})
+        return {
+            CORAL_KINDS.index(name) + 1: self._target(hex_colour)
+            for name, hex_colour in named.items()
+        }
 
     def _canopy_colour(self) -> FloatGrid:
         """The canopy's linear colour: its calibration target, else the store's canopy, darker."""
@@ -467,8 +447,8 @@ class PaintedGround:
     def _fallback(self, albedo: FloatGrid, have: BoolMask, index: U8Grid, areas: int) -> FloatGrid:
         """Off the landscape: the median paint of the biome, blurred, faded in over the edge."""
         palette = self.palette
-        idx, ok = index[_EVERY_4TH], have[_EVERY_4TH]
-        flat = albedo[_EVERY_4TH]
+        idx, ok = index[EVERY_4TH], have[EVERY_4TH]
+        flat = albedo[EVERY_4TH]
         global_median = np.median(flat[ok], axis=0) if ok.any() else np.full(3, 0.2, np.float32)
         medians = np.tile(global_median, (areas, 1)).astype(np.float32)
         for i in np.unique(idx[ok]):
@@ -536,59 +516,29 @@ class PaintedGround:
         sigma = self.palette["calibration"]["area_blur_m"] / ROCK_GRID_M
         return np.clip(ndimage.gaussian_filter(mask, sigma), 0.0, 1.0)
 
-    def _calibrate(self, albedo: FloatGrid, weights: Mapping[str, PaintPlane]) -> FloatGrid:
-        """Move each layer's median colour onto its target, measured on whatever albedo came.
-
-        An area entry's layer target takes that layer's weight inside its areas; the global
-        target takes the rest, and each one's source median is measured on its own side.
-        """
-        cal = with_derived(self.palette["calibration"])
-        sample = _EVERY_4TH
-        flat = albedo[sample]
-        total = np.zeros(flat.shape[:2], np.float32)
-        for w in weights.values():
-            total += w[sample]
-        split = dict(weights)
-        jobs = self._area_layer_jobs(cal, weights, split, (albedo.shape[0], albedo.shape[1]))
-        scoped: dict[str, BoolMask] = {}
-        for _key, name, _hex, inside in jobs:
-            scoped[name] = scoped.get(name, np.zeros_like(inside)) | inside
-        for name, hex_colour in cal["layers"].items():
-            if name in weights:
-                outside = ~scoped[name] if name in scoped else np.ones(total.shape, bool)
-                jobs.append((name, name, hex_colour, outside))
-        ops: dict[str, LayerOp] = {}
-        self.calibration: JsonObject = {}
-        for key, name, hex_colour, where in jobs:
-            pure = (weights[name][sample] >= cal["pure_share"] * np.maximum(total, 1.0)) & where
-            if pure.sum() < cal["min_texels"]:
-                continue
-            source = median_lab(flat[pure])
-            ops[key] = layer_op(source, display_to_ground(self.palette, hex_colour))
-            self.calibration[key] = {"texels": int(pure.sum()), "dL": round(ops[key][0], 4)}
-        return layer_transfer(albedo, split, ops) if ops else albedo
-
-    def _area_layer_jobs(
+    def _calibrate(
         self,
-        cal: CalibrationStyle,
+        albedo: FloatGrid,
         weights: Mapping[str, PaintPlane],
-        split: dict[str, PaintPlane],
-        shape: tuple[int, int],
-    ) -> list[LayerJob]:
-        """Each area entry's layer targets, with the layer's weight in ``split`` cut into the
-        share inside its areas (``layer@entry``) and the rest."""
-        jobs: list[LayerJob] = []
-        for i, entry in enumerate(cal.get("areas", [])):
-            layers = {k: v for k, v in entry.get("layers", {}).items() if k in weights}
-            if not layers:
-                continue
-            share = _fine_share(self._area_weight(entry["areas"]), *shape)
-            inside = share[_EVERY_4TH] >= 128
-            for name, hex_colour in layers.items():
-                key = f"{name}@{i}"
-                split[key], split[name] = split_weight(split[name], share)
-                jobs.append((key, name, hex_colour, inside))
-        return jobs
+        drawn: DrawnGround | None = None,
+    ) -> FloatGrid:
+        """Each layer moved onto its target where it is drawn (``layer_targets``)."""
+        albedo, self.calibration = calibrate_layers(
+            albedo, weights, self.palette, self._area_weight, drawn
+        )
+        return albedo
+
+
+def _drawn_ground(field: hf.Field) -> tuple[FloatGrid, BoolMask]:
+    """On the ``EVERY_4TH`` texels: the field's height in metres, NaN where it has none, and
+    where the ground shows, no cliff answering its height and no arch or boulder over it."""
+    dm = field.height_dm[EVERY_4TH]
+    z_m = np.where(dm != hf.NODATA, dm.astype(np.float32) / np.float32(hf.DM_PER_M), np.nan)
+    shown = ~np.isin(field.provenance_plane[EVERY_4TH], hf.PROV_CLIFF_VALUES)
+    top = field.plane(hf.TOP_NAME)
+    if top is not None:
+        shown &= np.asarray(top[EVERY_4TH]) <= dm
+    return z_m, shown
 
 
 def _mesh_target(name: str) -> Callable[[CalibrationArea], str | None]:

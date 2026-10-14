@@ -114,11 +114,6 @@
    85,
    83
   ],
-  "coral_seabed": [
-   95,
-   136,
-   153
-  ],
   "terrace": [
    204,
    190,
@@ -169,7 +164,7 @@
   }
  },
  "water": {
-  "model": "beer-lambert: the game's ocean absorption times absorption_scale over the bed, the fitted sky term at depth",
+  "model": "beer-lambert: the game's ocean absorption times absorption_scale over the bed seen behind the surface at the material's scale, the fitted sky term at depth",
   "absorption_scale": 2.17,
   "k_per_m": [
    1.6953,
@@ -188,6 +183,12 @@
    230
   ],
   "deep_tau_m": 100.0,
+  "behind_scale": 1.3,
+  "behind_tint": [
+   0.8,
+   0.94,
+   1.3
+  ],
   "bed_wet": 0.8,
   "inland_floor": 0.35,
   "opaque_tau_m": 0.3
@@ -449,12 +450,12 @@
  },
  "carpet": {
   "colour": [
-   116,
-   153,
-   195
+   20,
+   26,
+   38
   ],
   "strength": 1.0,
-  "depth_scale": 0.2,
+  "depth_scale": 1.0,
   "blur_m": 3.0,
   "gain": 8.0
  },
@@ -501,14 +502,24 @@
   },
   "meshes": {
    "coral": "#917c75",
-   "coral_seabed": "#5f8899",
    "terrace": "#ccbea8"
+  },
+  "coral_meshes": {
+   "CraterCoralRoots": "#a39f87",
+   "SM_CoralRoot_01": "#d0a89d",
+   "SM_NetFungi_01": "#c8c1b1",
+   "SM_CoralCactus_01": "#bca181",
+   "SM_CoralCactus_02": "#bca181",
+   "CraterBush": "#c5b1ae",
+   "CraterTree_02": "#908479"
   },
   "crowns": {
    "blue_palm": "#3d627d"
   },
   "species": {
-   "SM_Kapok_03": "#7c4955"
+   "SM_Kapok_03": "#7c4955",
+   "Orange_palm1": "#c3cbb6",
+   "Orange_palm2": "#bcc5ad"
   },
   "areas": [
    {
@@ -528,7 +539,7 @@
      "Area_DuneDesert"
     ],
     "rock": "#ae8271",
-    "arches": "#ba7b56"
+    "arches": "#ca9164"
    },
    {
     "areas": [

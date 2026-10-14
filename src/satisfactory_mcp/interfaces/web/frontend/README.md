@@ -17,6 +17,7 @@ edit away.
 cd src/satisfactory_mcp/interfaces/web/frontend
 npm ci            # exact versions from package-lock.json
 npm run build     # build the page into ../static/, which app.py serves
+npm run build:share  # the map-only page for a public static site, into dist-share/
 npm run dev       # Vite on :5173, hot reload, /api proxied to :8712
 npm run check     # tsc --noEmit
 npm test          # Vitest over test/, coverage to coverage/lcov.info

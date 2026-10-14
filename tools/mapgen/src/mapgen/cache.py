@@ -32,11 +32,22 @@ DIRECT_Z_NAME = "direct.z.f32"
 DIRECT_COVERAGE_NAME = "direct.cov.u8"
 #: The cliff family of each texel's winning rock (``gamedata.rocks.families.FAMILIES``).
 DIRECT_FAMILY_NAME = "direct.family.u8"
+#: The index of the winning rock's own top mask numbers into the sidecar's ``top_rules``, 0
+#: where its family's hold (``gamedata.rocks.families.placement_top_rules``).
+DIRECT_TOP_RULE_NAME = "direct.toprule.u8"
+#: The sidecar key of that table: ``[power, contrast]`` per index from 1, null where the
+#: instance sets only the other.
+TOP_RULES_KEY = "top_rules"
 #: Under a rock's top: the underside of its overhang, and the highest surface below that,
 #: cm, NaN where none (``terrain/overhangs.py``).
 DIRECT_UNDER_NAME = "direct.under.f32"
 DIRECT_FLOOR_NAME = "direct.floor.f32"
-DIRECT_PLANE_NAMES = (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME, DIRECT_FAMILY_NAME)
+DIRECT_PLANE_NAMES = (
+    DIRECT_Z_NAME,
+    DIRECT_COVERAGE_NAME,
+    DIRECT_FAMILY_NAME,
+    DIRECT_TOP_RULE_NAME,
+)
 
 #: Every cache's stamp: the sidecar a cache is read back by.
 CACHE_SIDECAR_NAME = "meta.json"
@@ -61,7 +72,7 @@ TOP_PLANE_NAMES = (
 #: The version of the planes the direct and top caches hold beyond max-Z and coverage, bumped
 #: when that set changes. Old caches lack it in their stamp, so they are rebuilt rather than
 #: read without the planes the light needs.
-RASTER_SCHEMA = 3
+RASTER_SCHEMA = 4
 
 MESH_CACHE_DIR_NAME = "meshes.cache"
 MESH_Z_NAME = "meshes.z.f32"
@@ -75,6 +86,7 @@ PLANE_DTYPES: dict[str, np.dtype[np.generic]] = {
     DIRECT_Z_NAME: np.dtype(np.float32),
     DIRECT_COVERAGE_NAME: np.dtype(np.uint8),
     DIRECT_FAMILY_NAME: np.dtype(np.uint8),
+    DIRECT_TOP_RULE_NAME: np.dtype(np.uint8),
     DIRECT_UNDER_NAME: np.dtype(np.float32),
     DIRECT_FLOOR_NAME: np.dtype(np.float32),
     TOP_SOLID_Z_NAME: np.dtype(np.float32),
@@ -408,6 +420,25 @@ def cached_family(directory: Path, stamp: DirectStamp) -> Plane | None:
     if cached_raster(directory, stamp) is None:
         return None
     return _single(_planes(directory, stamp, (DIRECT_FAMILY_NAME,)))
+
+
+def cached_top_rules(
+    directory: Path, stamp: DirectStamp
+) -> tuple[Plane, list[tuple[float | None, float | None]]] | None:
+    """The direct cache's top rule plane and its table (``TOP_RULES_KEY``), when it is this
+    cache and has them."""
+    recorded = read_sidecar(directory / CACHE_SIDECAR_NAME, stamp)
+    table = None if recorded is None else recorded.get(TOP_RULES_KEY)
+    plane = _single(_planes(directory, stamp, (DIRECT_TOP_RULE_NAME,)))
+    if plane is None or not isinstance(table, list):
+        return None
+    rules: list[tuple[float | None, float | None]] = []
+    for entry in table:
+        if not isinstance(entry, list) or len(entry) != 2:
+            return None
+        numbers = [float(v) if isinstance(v, (int, float)) else None for v in entry]
+        rules.append((numbers[0], numbers[1]))
+    return plane, rules
 
 
 def cached_overhangs(directory: Path, stamp: DirectStamp) -> tuple[Plane, Plane] | None:

@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, srgb_to_linear, tone
+from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, tone
 from mapgen.gamedata.ground.landscape_albedo import LAYERS
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.gamedata.water.bodies import WATER_CLASSES
@@ -231,12 +231,13 @@ def test_a_bake_from_srgb_is_linear_and_drops_black_holes():
 def test_the_calibration_names_real_layers_and_the_style_was_bumped():
     cal = PAINTED_PALETTE["calibration"]
     assert set(cal["layers"]) <= set(LAYERS)
-    assert {"coral", "coral_seabed"} <= set(cal["meshes"])
+    assert "coral" in cal["meshes"] and "coral_seabed" not in cal["meshes"], "the water tints coral"
     assert "shell" not in cal["meshes"], "a shell wears its own material's grey"
     assert "shoulder" not in PAINTED_PALETTE, "the tone replaced it"
     assert versions.STYLES["satellite-painted"]["version"] >= 3
-    seabed = srgb_to_linear(_hex(cal["meshes"]["coral_seabed"]))
-    assert seabed[2] > seabed[0], "the seabed coral stays blue"
+    from mapgen.terrain.render_meshes import CORAL_KINDS
+
+    assert set(cal["coral_meshes"]) <= set(CORAL_KINDS)
 
 
 def test_every_area_entry_names_real_areas_and_scopes_each_material_once():
@@ -319,6 +320,31 @@ def test_an_area_layer_target_moves_its_own_side_and_the_global_one_the_rest():
     np.testing.assert_allclose(oklab(out[5, 5]), display_to_ground(p, "#c4ab8b"), atol=2e-3)
     np.testing.assert_allclose(oklab(out[5, 25]), display_to_ground(p, "#d5cbb6"), atol=2e-3)
     assert set(ground.calibration) == {"Sand_LayerInfo@0", "Sand_LayerInfo"}
+
+
+def test_a_layer_target_holds_on_the_ground_that_shows_at_the_height_it_stands():
+    ground = _bare_ground(
+        ["Area_A"], ["Area_A_1"], np.zeros((32, 32), np.uint8), {"min_texels": 4, "layers": {}}
+    )
+    ground.palette["calibration"]["layers"] = {"Sand_LayerInfo": "#d5cbb6"}
+    albedo = np.tile(np.array([0.4, 0.3, 0.2], np.float32), (32, 32, 1))
+    albedo[:, 16:] = (0.2, 0.2, 0.25)  # under rock: not what the map shows
+    weights = {"Sand_LayerInfo": np.full((32, 32), 255, np.uint8)}
+    shown = np.zeros((8, 8), bool)
+    shown[:, :4] = True
+    ramp = (0.0, 10.0, np.linspace(0.0, 10.0, 101, dtype=np.float32))
+    drawn = (np.full((8, 8), 10.0, np.float32), shown, ramp)
+    out = ground._calibrate(albedo, weights, drawn)
+    p = ground.palette
+    want = display_to_ground(p, "#d5cbb6", 1.0)
+    np.testing.assert_allclose(oklab(out[5, 5]), want, atol=2e-3)
+    assert ground.calibration["Sand_LayerInfo"]["texels"] == 32
+    assert ground.calibration["Sand_LayerInfo"]["ramp_at"] == 1.0
+    lift = display_to_ground(p, "#d5cbb6")[0] - want[0]
+    assert lift == pytest.approx(0.5 * p["altitude_lift"], abs=1e-6), "undone at the top"
+    shown[:] = False
+    ground._calibrate(albedo, weights, drawn)
+    assert ground.calibration["Sand_LayerInfo"]["texels"] == 64, "too few shown: every pure one"
 
 
 def test_rock_takes_its_area_target_and_the_default_elsewhere_at_full_exposure():
@@ -405,7 +431,7 @@ def _water_ground(opaque):
         arch_rgb=None,
         cliff_layer=None,
         mesh_rgb={},
-        seabed_coral=np.zeros(3, np.float32),
+        coral_rgb={},
         water=dict(base_water(p)),
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
         opaque_water=opaque,

@@ -171,7 +171,9 @@ OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, tim
 2.17 times the ocean material's absorption, (1.695, 0.498, 0.363) per metre, and `W` the sky
 term #3c597d less the 0.02 sky, then blended towards #3c597d by `1 - exp(-d / 100 m)`: the
 sea's physics row of section 33 ("The sea's physics row"). The bed is the ground colour times
-exposure times 0.8 (wet).
+exposure times the scale on what the sea shows behind its surface, the ocean material's
+`Ocean SBW` 1.3 in the fitted tint (0.8, 0.94, 1.3) (section 33, "What is behind the sea's
+surface"); inland water's bed is the ground times exposure times 0.8 (wet).
 Coral and shells are part of the bed: they are composited into the ground colour first, and
 the depth `d` is measured to the drawn surface, which over a mesh is the mesh top, so a shallow
 reef stays visible. Inland water takes its class's optics (section 33).
@@ -377,9 +379,11 @@ and 8,772 others (desert rock, boulders, arches). Desert rock is a family of its
 
 **The plane.** The direct pass rasterises every rock with the max-Z rasteriser, which keeps the
 winning triangle's source id; the source is the placement's family, written as
-`direct.family.u8` beside the direct cache. The stamping rides the rasteriser and costs no pass
-of its own. The direct cache's stamp carries `families` (the `rock_families` reader version),
-so a cache cut by another version is rebuilt.
+`direct.family.u8` beside the direct cache, and its instance's top rule (section 30, "The top
+layer's mask"), written as `direct.toprule.u8`: the source is `family + 16 rule`, split when
+the band is folded. The stamping rides the rasteriser and costs no pass of its own. The direct
+cache's stamp carries `families` (the `rock_families` reader version), so a cache cut by
+another version is rebuilt.
 
 **Colour.** The paint store records each family's `Color Tint`, the nearest one up the chain
 (linear 0.624, 0.545, 0.471 for every family on this build), and its top layer, the mean of the
@@ -534,8 +538,22 @@ contrast taken.
 **The top layer's mask** is the cliff master's own (`Rock_WA`, compiled for `Cliff_Sand`): the
 world normal's up component, normal-mapped, through `SlopeMask` and `CheapContrast`:
 `clip(nz ** Falloff_Power * (1 + 2 Falloff_Contrast) - Falloff_Contrast, 0, 1)`. `Rock_WA`'s
-`Falloff_Power` 1.5 and `Falloff_Contrast` 1.2 hold for every cliff family (no root overrides
-them): none of the top below `nz` 0.50, all of it above 0.75. The game reads the normal off
+`Falloff_Power` 1.5 and `Falloff_Contrast` 1.2 hold for every cliff family root (none
+overrides them): none of the top below `nz` 0.50, all of it above 0.75. A cliff's own instance
+may set them below its root, and the mask takes the instance's numbers
+(2026-10-14). On build 502094, 143 of the 582 red jungle cliffs and 40 of the 115 red-grass
+cliffs do (34 and 5 of them restating the master's), at a power of 1.5 to 2.5 and a contrast
+of 1.2 to 3.0 (most of them 2.0 and 2.0 or 3.0: none of the top
+below `nz` 0.63 to 0.65, all of it above 0.76 to 0.78), as do 846 plain cliffs, which draw no
+top; the forest, grass, sand and wet-sand instances set none. `gamedata/rocks/families.py`
+`placement_top_rules` reads each placement's numbers up its chain to the family root, the
+direct pass keeps the winning rock's as an index into the cache sidecar's `top_rules` table
+(`direct.toprule.u8`, 0 for the family's own; up to 15 entries, the most placed), and
+`rock_look/surface.py` `top_rules` lays them over the family's. On full-size windows (the
+surface's own normal, without the normal maps) the share of the top on the rock that takes the
+instance numbers falls from 0.887 to 0.870 in the Red Jungle at (-775, 525) and from 0.815 to
+0.778 among the red-grass cliffs at (-1825, -1275): the rims of the steeper shelves lose a
+band of top. The game reads the normal off
 each mesh's own normal map, by its UVs; the look's normal maps stand in for it. It replaces the
 ramp of `nz` 0.60 to 0.85 and the noise patches (section 31, "The top layer's colours").
 
@@ -558,8 +576,9 @@ rock #85816c at 1.088 times the luminance (the median of both, OKLab L times 1.0
 chroma and hue kept. It used to take the area's rock. Rocks of no family keep the area's rock,
 in the cliff texture. An area entry can give its arches a colour of its own,
 `calibration.areas[].arches`, blended in by the entry's area weight as the other area targets
-are: the Dune Desert's arches and rib bones are terracotta in the baked view, #ba7b56, which
-the grey had replaced (section 31, "The second review"). An arch whose material wears a
+are: the Dune Desert's boulders are terracotta in the baked view, #ca9164 ("The Dune
+Desert's boulders" below; the entry was #ba7b56, the arches' and rib bones', until the arches
+took their family's colour). An arch whose material wears a
 family's colour takes `calibration.arch_families` over both: the desert arches, wherever they
 stand ("Red-grass tops and the desert arches" below).
 
@@ -678,6 +697,24 @@ On the arches' inner pixels, away from the mesas they cross, the desert arches d
 and 3.6 from the bake, all of it lightness (L 0.61 against 0.58): the altitude lift and the
 look's light, as on the other arches.
 
+**The Dune Desert's boulders** (2026-10-14). With the desert arches on their family's colour,
+the Dune Desert's `arches` entry coloured only the foliage boulders the top pass draws there,
+at the arches' #ba7b56, unmeasured on their own. Measured as above, on the 0.23 m grid of the
+top cache and the v10 render's unlit z7 tiles, over the boulder tops the bake holds (its
+surface within 1.5 m of the boulder's top; 96,000 pixels, 10,401 bake texels):
+
+| Boulders | Bake | Drawn (#ba7b56) | ΔE | The grey rule (#8a8671), estimated | ΔE |
+| --- | --- | --- | --- | --- | --- |
+| Dune Desert | #ca9164 | #bc7e58 | 5.5 | #8c8873 | 10.5 |
+
+The four quarters of the area agree within ΔE 1 (#c88f63 to #cc9265). So the boulders need
+the entry, and it now holds their own median through the camera, #ca9164; the drawn colour
+sits about 0.4 L over the entry's, as before. The same terracotta stands on the Spire
+Coast's boulders (#c88f63 in the bake, drawn grey #8f8a75, ΔE 9.5), while the Rocky Desert's
+read grey-tan (#a08f71, drawn #8d8873, ΔE 3.7): like the arches', their colour follows the
+mesh's material, which the top pass does not yet carry for boulders (calibration.md section
+31, "Known limits").
+
 ### The desert shells (2026-10-14)
 
 Every shell drew in the one shell colour, a dark grey, so the small shells on the Desert
@@ -699,7 +736,7 @@ in `extra_foliage_materials`, beside `extra_foliage`.
 
 **The shells' family.** The mesh pass gives a shell the family its material wears, as it does
 a rock, by its own roots (`gamedata/rocks/families.py` `SHELL_FAMILY_ROOTS`:
-`MI_SmallShell_Desert` is desert), in the mesh cache's family plane (render mesh reader 6).
+`MI_SmallShell_Desert` is desert), in the mesh cache's family plane (render mesh reader 7).
 `calibration.shell_families.desert` colours those shells over the shell colour and any area
 entry's, in the shells' texture look as before.
 
@@ -988,15 +1025,21 @@ Palette key `carpet`, in `palette/painted/optics.py`:
    bed by its cover, and is seen through the water above its own top: depth
    `level - top`, with `level = z + depth`. Then the same Beer-Lambert as the bed, before the
    open-sea term: `carpet * T + W (1 - T) + sky`.
-3. **`depth_scale` 0.2.** The water's fitted `k` saturates by about 1 m, and the median carpet
-   top is 0.8 m down (origins at 1.4 m). With the bed's own `k` the carpet would vanish, yet the
-   screenshots show it clearly through the channels. The carpet's depth is scaled by 0.2; the
-   water fit's depths were matched, not measured, so this is the weaker number of the two.
-4. **Colour** `#7499c3` (linear-light carpet albedo at map exposure). Drawn over the channels it
-   comes out at median `#5e8a9c`, against the calibration target `#5f8899` (the reference's
-   `#6493a6` at map exposure). It was `#6c9ebe` under the sea's first fit; with the 2026-10-09
-   sea row it is refitted so a carpet 0.3 to 1.5 m under the surface draws within ΔE 1.7 of
-   before.
+3. **`depth_scale` 1.** The carpet is seen through the whole water above its top, as the bed
+   is, at the sea's scale behind its surface. From 2026-10-05 to 2026-10-14 its depth was
+   scaled by 0.2, because the fitted rows' `k` (up to 7.3 per metre) hid it within a metre;
+   the game's absorption lets it through.
+4. **Colour** `#141a26`, a near-black navy (linear-light albedo at map exposure). In the 1.0
+   Spire Coast shot ([3771500868](https://steamcommunity.com/sharedfiles/filedetails/?id=3771500868))
+   the patches read as dark navy in the turquoise over sand, L 0.23 to 0.32 and hue 247 to
+   275 at map exposure, against L 0.42 to 0.58 for the water over sand beside them, with
+   cyan flecks, the rosettes' pale rims. Fitted at the patches' median 0.7 m under the
+   surface, the albedo comes out at 0: through 0.7 m of the sea's row even a black carpet
+   reads L 0.33. The colour keeps the rosettes' blue at the darkest the evidence allows.
+   Source: screenshot. Drawn, a patch 1 to 1.6 m down reads #38445c to #39475e (L 0.39)
+   against #537f88 to #5d8385 for the water around it. It was the light blue `#7499c3` under
+   the teal rows, fitted to a target of `#5f8899`, which the clearer physics row drew as light
+   blue blotches (the northern lagoons near (-100, -2020)).
 
 `strength` 0 switches it off; a paint store without carpet planes draws none.
 
@@ -1009,8 +1052,10 @@ load, two plane samples per band.
 
 ### Known limits
 
-- The blue is matched to screenshots, not read from the material: the grass master material is
-  stripped, so in-game tint and subsurface scattering cannot be checked.
+- The colour is matched to one screenshot, not read from the material: the grass master
+  material is stripped, so in-game tint and subsurface scattering cannot be checked. The
+  patches are drawn a little lighter against their water than that shot reads them (L 0.39
+  against 0.57, where it has 0.27 against 0.50).
 - Rosettes above the water line (in the Crater biome) are not drawn; they are ordinary land
   foliage, which the understory item covers.
 - The pale rims the screenshots show inside the patches are not drawn.

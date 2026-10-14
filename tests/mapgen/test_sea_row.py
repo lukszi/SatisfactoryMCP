@@ -1,4 +1,5 @@
-"""The sea's physics row: the game's ocean absorption over the bed, the sky term at depth.
+"""The sea's physics row: the game's ocean absorption over the bed seen behind the surface at
+the material's scale, the sky term at depth.
 
 docs/map/water.md section 33, "The sea's physics row".
 """
@@ -17,11 +18,26 @@ from mapgen.palette.styles import PAINTED_PALETTE
 from tests.support.map_scenes import CLASS_ID, painted_ground_stub, water_scene
 
 WATER = PAINTED_PALETTE["water"]
-#: ``MM_OceanMaster`` on build 502094: ``Ocean Absorption Color`` and ``Ocean Murkyness``.
-COLOUR, MURKINESS = (0.520833, 0.1531489, 0.111624), 1.5
-GAME = OceanAbsorption(tuple(c * MURKINESS for c in COLOUR), COLOUR, MURKINESS)
+#: ``MM_OceanMaster`` on build 502094: ``Ocean Absorption Color``, ``Ocean Murkyness`` and
+#: ``Ocean SBW``.
+COLOUR, MURKINESS, BEHIND = (0.520833, 0.1531489, 0.111624), 1.5, 1.3
+GAME = OceanAbsorption(tuple(c * MURKINESS for c in COLOUR), COLOUR, MURKINESS, BEHIND)
 SKY_TERM = "#3c597d"
 WET_SAND = np.array([0.36, 0.3, 0.22], np.float32)
+#: The screenshot readings of docs/map/water.md, "Sea deep and swamp water", by the depth band
+#: each shot shows, matched over the wet sand targets as in "The sea by depth band".
+SHALLOW, MID, DEEP = (0.2, 1.5), (2.0, 8.0), (20.0, 60.0)
+READINGS = [
+    ("#2b557c", DEEP),
+    ("#385a85", DEEP),
+    ("#3b6887", MID),
+    ("#4b6f88", MID),
+    ("#4a5d7e", DEEP),
+    ("#6ca0a7", SHALLOW),
+    ("#3d6f7a", MID),
+    ("#78969e", SHALLOW),
+]
+WET_SAND_TARGETS = ("#a68c72", "#a4947f")
 
 
 def _hex(linear: np.ndarray) -> str:
@@ -29,15 +45,21 @@ def _hex(linear: np.ndarray) -> str:
     return "#" + "".join(f"{v:02x}" for v in rgb)
 
 
-def _drawn(depths: list[float], absorption: OceanAbsorption | None = GAME) -> np.ndarray:
-    """The sea over a wet-sand bed at each depth, linear, by the numpy reference."""
+def _linear(hex_colour: str) -> np.ndarray:
+    return srgb_to_linear([int(hex_colour[i : i + 2], 16) for i in (1, 3, 5)])
+
+
+def _drawn(
+    depths: list[float], absorption: OceanAbsorption | None = GAME, bed: np.ndarray = WET_SAND
+) -> np.ndarray:
+    """The sea over a bed at each depth, linear, by the numpy reference."""
     n = len(depths)
     ground = painted_ground_stub(n)
     ground.water = base_water(PAINTED_PALETTE, absorption)
     scene = water_scene(n)
     scene["water"]["depth_m"] = np.asarray(depths, np.float32)[None, :]
     scene["water"]["ocean"] = np.ones((1, n), np.float32)
-    bed = np.broadcast_to(WET_SAND, (1, n, 3)).astype(np.float32)
+    bed = np.broadcast_to(bed, (1, n, 3)).astype(np.float32)
     whole = UnderwaterScene(scene["z_m"], scene["water"], None)
     return underwater(bed, whole, ground, lambda p: p, lambda p: p, np.float32(1.0))[0]
 
@@ -61,9 +83,15 @@ def test_body_and_deep_are_the_sky_term_with_the_surface_s_reflection():
     assert _hex(row.deep) == SKY_TERM
 
 
+def test_what_is_behind_the_surface_takes_the_material_s_scale_in_the_fitted_tint():
+    behind = sea_row(WATER, GAME).behind
+    np.testing.assert_allclose(behind, BEHIND * np.asarray(WATER["behind_tint"]), rtol=1e-6)
+    np.testing.assert_allclose(sea_row(WATER, None).behind, behind, rtol=1e-6)
+
+
 def test_at_no_depth_the_sea_shows_its_bed():
     got = _drawn([0.0])[0]
-    want = WET_SAND * np.float32(WATER["bed_wet"]) + surface_sky(WATER)
+    want = WET_SAND * sea_row(WATER, GAME).behind + surface_sky(WATER)
     np.testing.assert_allclose(got, want, rtol=1e-6)
 
 
@@ -82,12 +110,24 @@ def test_each_channel_runs_monotonically_from_the_bed_to_the_sky_term():
         assert (steps[:, c] * sign >= -1e-7).all(), f"channel {c} turns back"
 
 
-def test_the_lagoons_read_blue_where_the_fitted_row_read_teal():
-    """2 to 3 m over wet sand: hue about 228 (OKLab), where the teal row drew about 210."""
-    for colour in _drawn([2.0, 2.5, 3.0]):
-        lab = oklab(colour)
-        hue = float(np.degrees(np.arctan2(lab[2], lab[1])) % 360)
-        assert 215.0 < hue < 240.0
+def test_the_screenshot_readings_are_met_by_depth_band():
+    """Each reading against the nearest colour the row draws in its band: mean Delta E 1.54
+    and at most 2.6 (OKLab x100), where the row before the behind scale reached 3.2 and 8.6."""
+    misses = []
+    for reading, (lo, hi) in READINGS:
+        target = oklab(_linear(reading))
+        depths = list(np.linspace(lo, hi, 200))
+        misses.append(
+            min(
+                float(
+                    np.min(np.linalg.norm(oklab(_drawn(depths, bed=_linear(bed))) - target, axis=1))
+                )
+                for bed in WET_SAND_TARGETS
+            )
+            * 100
+        )
+    assert np.mean(misses) < 1.6
+    assert max(misses) < 2.7
 
 
 def test_the_table_s_ocean_row_is_the_sea_row_and_inland_rows_do_not_move():
@@ -96,6 +136,7 @@ def test_the_table_s_ocean_row_is_the_sea_row_and_inland_rows_do_not_move():
     row = sea_row(WATER, GAME)
     np.testing.assert_array_equal(with_game[CLASS_ID["ocean"], :3], row.k)
     np.testing.assert_array_equal(with_game[CLASS_ID["ocean"], 3:6], row.body)
+    np.testing.assert_array_equal(with_game[CLASS_ID["ocean"], -3:], row.behind)
     for name in ("river", "lake", "lake_blue", "cave", "sulfur", "hot_spring", "translucent"):
         np.testing.assert_array_equal(with_game[CLASS_ID[name]], without[CLASS_ID[name]])
 
@@ -113,3 +154,4 @@ def test_the_ocean_absorption_read_from_the_installed_game():
     np.testing.assert_allclose(found.colour, COLOUR, rtol=1e-5)
     assert found.murkiness == MURKINESS
     np.testing.assert_allclose(found.per_m, GAME.per_m, rtol=1e-5)
+    assert found.behind == pytest.approx(BEHIND)

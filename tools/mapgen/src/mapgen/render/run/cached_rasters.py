@@ -13,8 +13,11 @@ from functools import cached_property, partial
 from pathlib import Path
 from typing import NamedTuple, TypeAlias, TypeVar, cast
 
+import numpy as np
+
 from mapgen.cache import (
     CACHE_SIDECAR_NAME,
+    TOP_RULES_KEY,
     DirectStamp,
     Plane,
     TopPlanes,
@@ -22,12 +25,18 @@ from mapgen.cache import (
     cached_raster,
     cached_top,
     raster_cache_stamp,
+    write_sidecar,
 )
 from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.placements import arch_mesh_ids
-from mapgen.gamedata.rocks.families import ARCH_FAMILY_ROOTS, placement_families
+from mapgen.gamedata.rocks.families import (
+    ARCH_FAMILY_ROOTS,
+    FAMILY_SLOTS,
+    placement_families,
+    placement_top_rules,
+)
 from mapgen.terrain.overhangs import rasterise_direct_planes
 from mapgen.terrain.rasters import (
     CliffGeometry,
@@ -198,11 +207,16 @@ def direct_raster(
             + (f" with {sampled}x{sampled} sub-samples" if sampled > 1 else "")
         )
         geometry = level.geometry
-        families = placement_families(level.store, level.scripts, level.index, geometry["sweep"])
-        prepared, dropped = direct_placements(geometry["sweep"], geometry["geometry"], families)
+        sweep = geometry["sweep"]
+        families = placement_families(level.store, level.scripts, level.index, sweep)
+        rules, table = placement_top_rules(level.store, level.scripts, level.index, sweep, families)
+        sources = families.astype(np.uint16) + np.uint16(FAMILY_SLOTS) * rules
+        prepared, dropped = direct_placements(sweep, geometry["geometry"], sources)
         print(f"  {len(prepared)} placements rasterised, dropped {dropped}")
         band = partial(rasterise_direct_planes, prepared, geometry["geometry"])
         stats = grid.write(band, cache)
+        rules_json: JsonValue = [list(rule) for rule in table]
+        write_sidecar(cache / CACHE_SIDECAR_NAME, {**stats, TOP_RULES_KEY: rules_json})
         print(
             f"  direct raster: {stats['texels_with_geometry'] / 1e6:.1f} M texels "
             f"({stats['share_of_the_sheet']}% of the sheet) in {stats['seconds']}s"
@@ -223,6 +237,8 @@ def direct_raster(
                 "triangles_out_of_bounds": geometry["triangles_out_of_bounds"],
                 "placements_rasterised": len(prepared),
                 "placements_dropped": cast(JsonValue, dropped),
+                "top_rules": rules_json,
+                "placements_with_top_rule": int(np.count_nonzero(rules)),
                 "raster": cast(JsonValue, stats),
                 "pyooz_version": pyooz_version,
             }

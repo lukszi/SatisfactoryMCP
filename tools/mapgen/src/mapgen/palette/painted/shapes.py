@@ -174,7 +174,7 @@ class WaterBase(TypedDict):
     sky: F32Grid
     deep: F32Grid
     deep_tau_m: F32Grid | np.float32
-    bed: np.float32
+    tint: F32Grid
     inland_floor: np.float32
     opaque_tau_m: np.float32
 
@@ -183,7 +183,6 @@ class ClassOptics(WaterBase):
     """A band's per-pixel optics by water class, and the class shares asked for."""
 
     turbidity: F32Grid
-    tint: F32Grid
     share: NotRequired[dict[int, F32Grid]]
 
 
@@ -224,7 +223,6 @@ class WetOptics(TypedDict):
     k: F32Grid
     sky: F32Grid
     deep_tau_m: F32Grid | np.float32
-    bed: np.float32
     inland_floor: np.float32
     opaque_tau_m: np.float32
     turbidity: F32Grid
@@ -270,6 +268,8 @@ class PaintedSurface(Protocol):
     crown_ops: list[CrownOp]
     rock: list[F32Grid]
     rock_family: Plane | None
+    rock_top_rule: Plane | None
+    top_overrides: list[tuple[float | None, float | None]]
     family_rock: dict[int, list[F32Grid]]
     family_tint: F32Grid
     family_top: F32Grid
@@ -281,7 +281,7 @@ class PaintedSurface(Protocol):
     shell_family_rgb: dict[int, F32Grid]
     cliff_layer: PaintPlane | None
     mesh_rgb: dict[int, ColourPlanes]
-    seabed_coral: F32Grid
+    coral_rgb: dict[int, F32Grid]
     titan: TitanPlanes | None
     titan_rgb: dict[int, F32Grid]
     ramp: Ramp

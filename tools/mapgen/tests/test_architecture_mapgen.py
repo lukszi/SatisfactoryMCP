@@ -98,6 +98,8 @@ ALLOWED: dict[str, frozenset[str]] = {
     "commands.artwork": frozenset({"common", "gamedata", "tiles", "enhance"}),
     "commands.check_fill": frozenset({"common", "cache", "gamedata", "terrain"}),
     "commands.compress_cache": frozenset({"common", "bandstore", "cache"}),
+    "share": frozenset({"common", "share"}),
+    "commands.share_export": frozenset({"common", "share"}),
     "cli": frozenset(),
     "__main__": frozenset({"cli"}),
 }

@@ -118,7 +118,7 @@ def test_an_old_paint_store_or_a_switched_off_style_draws_no_carpet(tmp_path):
     assert load_carpet(tmp_path, meta, {}) is None
 
 
-def _ground(cover, top_m):
+def _ground(cover, top_m, behind=1.0):
     """Water that absorbs 4 per metre on every channel over a green-grey body: the carpet's
     own blue is then told apart from the water's by how much of it shows."""
     return SimpleNamespace(
@@ -128,6 +128,7 @@ def _ground(cover, top_m):
             "k": np.full(3, 4.0, np.float32),
             "body": srgb_to_linear([79, 125, 120]),
             "sky": srgb_to_linear([150, 190, 230]) * np.float32(0.02),
+            "tint": np.full(3, behind, np.float32),
         },
     )
 
@@ -146,6 +147,46 @@ def test_the_carpet_shows_through_shallow_water_and_fades_with_depth():
     assert near[2] < near[0] < near[1], "a top above the surface is seen whole, a deep one barely"
     assert out[0, 0, 2] > out[0, 0, 0], "the shallow patch reads blue"
     np.testing.assert_array_equal(out[0, 3], under[0, 3], "dry ground is untouched")
+
+
+def test_the_carpet_is_seen_at_the_sea_s_scale_behind_its_surface():
+    """A top above the surface is seen whole, at the scale on what is behind the surface."""
+    scene = UnderwaterScene(
+        np.full((1, 4), -18.4, np.float32), {"depth_m": np.full((1, 4), 1.4, np.float32)}, None
+    )
+    under = np.zeros((1, 4, 3), np.float32)
+    plain = carpet_bed(under, scene, _ground(255, [-16.5] * 4), lambda p: p.astype(np.float32))
+    scaled = carpet_bed(
+        under, scene, _ground(255, [-16.5] * 4, 1.3), lambda p: p.astype(np.float32)
+    )
+    sky = srgb_to_linear([150, 190, 230]) * np.float32(0.02)
+    np.testing.assert_allclose(scaled[0, 0] - sky, (plain[0, 0] - sky) * 1.3, rtol=1e-5)
+
+
+def test_the_painted_carpet_reads_darker_than_the_sand_water_around_it():
+    """In the 1.0 Spire Coast shot the crater grass reads as dark navy patches in the turquoise
+    over sand (docs/map/painted.md section 32); at the patches' median 0.7 m below the surface,
+    over sand 1.4 m down."""
+    from mapgen.colour import oklab
+    from mapgen.palette.painted.optics import base_water
+
+    water = base_water(PAINTED_PALETTE)
+    ground = SimpleNamespace(
+        palette=PAINTED_PALETTE,
+        carpet=(np.full((1, 1), 255, np.uint8), np.full((1, 1), -17.7, np.float16)),
+        water=water,
+    )
+    scene = UnderwaterScene(
+        np.full((1, 1), -18.4, np.float32), {"depth_m": np.full((1, 1), 1.4, np.float32)}, None
+    )
+    sand = srgb_to_linear([166, 136, 104])
+    t = np.exp(-water["k"] * 1.4)
+    over_sand = sand * water["tint"] * t + water["body"] * (1 - t) + water["sky"]
+    patch = carpet_bed(over_sand[None, None], scene, ground, lambda p: p.astype(np.float32))
+    lab_patch, lab_sand = oklab(patch[0, 0]), oklab(over_sand)
+    assert lab_patch[0] < lab_sand[0] - 0.1
+    hue = float(np.degrees(np.arctan2(lab_patch[2], lab_patch[1])) % 360)
+    assert 230.0 < hue < 280.0, "navy"
 
 
 def test_the_painted_style_carries_the_carpet_and_both_versions_moved():

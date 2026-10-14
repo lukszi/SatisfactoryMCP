@@ -38,6 +38,12 @@ Planned as 0.2.0.
 
 ### Added
 
+- Map: the rendered map can be published as a public, map-only static site.
+  `npm run build:share` builds a page with only the map, the map-style switch and the sun;
+  `python -m mapgen share-export <out>` writes it with the tiles into build-tagged folders,
+  checks every file for private data and writes the two manifests last. An Apache 2.4
+  template with a strict Content-Security-Policy is in `docs/map/share-apache.conf`;
+  docs/map/sharing.md has the steps.
 - Map generator: `python -m mapgen calibrate` derives the game-painted style's display colours
   from the game install: the level's noon light and its atmosphere volumes, the baked ground,
   the textures and the tree crowns, through a model of the game's camera. It writes
@@ -98,6 +104,13 @@ Planned as 0.2.0.
   again: each crown is shaded by its own shape as well as its leaves, sunward lobes lighter and
   the far sides and dips between crowns darker, set by the style's `crowns.relief`. The
   style's version goes up.
+- Map renders: under the Satellite map's sea, the seabed is seen at the scale the game's ocean
+  material puts on what is behind its surface, so clear shallows read turquoise over sand
+  instead of grey-green. The crater-grass patches on the seabed are dark navy, as the game
+  shows them, where they were light blue blotches; sunk coral and barnacles keep their own
+  colours under the water's tint; the Blue Crater's coral roots, coral root, net fungi, coral
+  cactus, crater bush and crater tree each wear their own texture colour. The style's
+  version goes up, and so do the render mesh and ocean readers: the mesh cache is rebuilt.
 - Map renders: the Satellite map's sea is drawn with the game's own ocean absorption, read
   from the install's ocean material and scaled by the factor the sky fit gives, over its bed,
   and the fitted sky colour at depth. Shallow lagoons turn blue where they were teal, and
@@ -345,6 +358,22 @@ Planned as 0.2.0.
   the rest from the game's coarse height raster; rocks now go on past that edge where they
   stand at the coarse surface or above it. Re-run `python -m mapgen heightmap` (generator 7);
   the next render rebuilds its rock caches once.
+- Map renders: the Satellite map's ground colours hold their targets where the ground is
+  drawn. Each paint layer's colour is measured on the ground the map shows, not under rocks,
+  and set for the height it lies at, so low ground (the Blue Crater's floor, the beaches' wet
+  sand) is no longer drawn darker than its target, nor high ground (the red jungle's
+  plateaus) lighter. The Blue Crater's floor gains about 2.5 L. The style's version goes up.
+- Map renders: the Satellite map's orange palms, the small shrubs among the Southern Forest's
+  purple trees, are pale sage, their leaves' colour in the game's sun, instead of mint. A tree
+  species with a colour of its own in the palette now keeps that colour: the green canopy's
+  adjustment no longer moves it on. The style's version goes up.
+- Map renders: the Satellite map's red jungle and red-grass cliffs lay their grass and moss
+  tops by each cliff's own material settings, as the game does, instead of their family's
+  alone: about a quarter of those cliffs keep the top off the steeper rims of their shelves.
+  The rock raster cache is rebuilt once (it gains a plane), and the style's version goes up.
+- Map renders: the Satellite map's boulders in the Dune Desert take their own colour from the
+  game's baked distant view, a lighter sand-terracotta, instead of the colour once measured on
+  the desert's arches. The style's version goes up.
 - Map renders: the Satellite map's pink-brown barnacle boulders along the beaches wear their
   own barnacle texture and relief instead of flat colour, as the other rocks and the shells
   do. Their colour stays the coral's. The style's version goes up, and the render-only mesh

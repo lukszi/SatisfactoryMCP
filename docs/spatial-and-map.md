@@ -47,6 +47,7 @@ the others meet.
 | 41 | [Compiled kernels: the light, the sampler's gathers and the painters (2026-10-07)](map/renders.md#41-compiled-kernels-the-light-the-samplers-gathers-and-the-painters-2026-10-07) | renders.md |
 | 42 | [Cutting the bands as they settle (2026-10-07)](map/renders.md#42-cutting-the-bands-as-they-settle-2026-10-07) | renders.md |
 | 43 | [Preparing the painted ground on threads (2026-10-14)](map/painted.md#43-preparing-the-painted-ground-on-threads-2026-10-14) | painted.md |
+| 44 | [The shared map: a public, map-only static site (2026-10-14)](map/sharing.md#44-the-shared-map-a-public-map-only-static-site-2026-10-14) | sharing.md |
 
 ---
 

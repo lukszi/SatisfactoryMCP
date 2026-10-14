@@ -364,7 +364,7 @@ def _band_planes(draw: DrawPass) -> list[HeldPlane]:
     for job in draw.jobs:
         if job.painted is not None:
             painted = job.painted.ground
-            planes += [painted.rock_family, *(painted.titan or ())[:2]]
+            planes += [painted.rock_family, painted.rock_top_rule, *(painted.titan or ())[:2]]
     return [plane for plane in planes if isinstance(plane, HeldPlane)]
 
 

@@ -287,7 +287,7 @@ def _cache(tmp_path, threads, name):
 @needs_numba
 def test_the_cache_is_the_same_bytes_on_any_number_of_threads(tmp_path):
     one = _cache(tmp_path, 1, "one")
-    assert len(one) == 5 and one == _cache(tmp_path, 4, "four")
+    assert len(one) == 6 and one == _cache(tmp_path, 4, "four")
 
 
 def test_the_bands_come_back_in_order_with_a_bounded_number_ahead():
