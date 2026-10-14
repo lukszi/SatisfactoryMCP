@@ -546,7 +546,9 @@ def crown_layer(
     ops: Sequence[tuple[FloatGrid, tuple[float, float]]] = (),
 ) -> CrownLayer:
     """The crowns of a band, lit by their normals: ``alpha``, ``colour``, ``top_m``, and
-    ``sunk``, the share of each pixel's crown that stands under the water's surface.
+    ``sunk``, the share of each pixel's crown that stands under the water's surface. Where
+    their form is drawn the light takes the style's ``form_gain``, which returns the form's
+    mean darkening.
 
     A crown is hidden where the drawn surface stands above its top: a tree under an
     overhang, or rock the tree grows beside and below. ``ops`` are the calibration's
@@ -564,6 +566,8 @@ def crown_layer(
     colour = np.clip(linear_from_oklab(lab), 0.0, 1.0)
     shade = crown_shade(crowns, scene, style)
     light = sky_sun_light(palette["sky"], palette["sun"], np.float32(ambient), shade)
+    if crowns.get("form") is not None:
+        light = light * np.float32(style["form_gain"])
     return {
         "alpha": np.clip(cover, 0.0, 1.0) * np.float32(style["opacity"]) * seen,
         "colour": colour * light * exposure,

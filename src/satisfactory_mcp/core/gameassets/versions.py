@@ -152,7 +152,7 @@ STYLES: dict[str, Style] = {
     "terrain-hypsometric": {"label": "terrain", "name": "Terrain", "layer": "terrain",
                             "version": 11, "tone": "light"},
     "satellite-painted": {"label": "game-painted", "name": "Satellite", "layer": "painted",
-                          "version": 35, "tone": "light"},
+                          "version": 36, "tone": "light"},
     "relief-night": {"label": "relief dark", "name": "Relief", "layer": "relief-dark",
                      "version": 9, "tone": "dark"},
     "artwork": {"label": "artwork", "name": "Game map", "layer": "map", "version": 1,

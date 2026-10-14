@@ -104,6 +104,10 @@ Planned as 0.2.0.
 
 ### Changed
 
+- Map renders: the Satellite map's tree crowns are lit a fifth brighter where their shape is
+  drawn, which had darkened every crown by about that much on the whole: species keep their
+  measured colours on average, and lobes and dips keep their contrast. The style's version
+  goes up.
 - Map generator: `python -m mapgen calibrate` measures tree crowns under the light leaves get
   seen from above, mostly the sky in their own crown's shade, instead of flat ground's: the
   derived crown colours turn bluer at the same lightness (the canopy 13° off its 1.0 target
