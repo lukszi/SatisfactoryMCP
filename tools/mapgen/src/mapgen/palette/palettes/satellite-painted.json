@@ -18,6 +18,7 @@
    1.2
   ],
   "relief": 1.5,
+  "form_gain": 1.2,
   "hidden_below_m": 0.5
  },
  "have_blur_m": 6.0,

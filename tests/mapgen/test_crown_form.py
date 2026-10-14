@@ -12,7 +12,7 @@ import pytest
 from mapgen import jit
 from mapgen.lighting.sun import DEFAULT_SUN, sun_vector
 from mapgen.palette.painted.crown_form import FORM_M, crown_form, form_reach
-from mapgen.palette.painted.trees import crown_shade
+from mapgen.palette.painted.trees import crown_layer, crown_shade
 from mapgen.palette.styles import PAINTED_PALETTE
 
 pytestmark = pytest.mark.filterwarnings("ignore:CUDA path could not be detected:UserWarning")
@@ -89,6 +89,30 @@ def test_the_form_multiplies_the_clamped_sun_term():
 
 def test_the_style_raises_its_crowns_form():
     assert PAINTED_PALETTE["crowns"]["relief"] == 1.5
+    assert PAINTED_PALETTE["crowns"]["form_gain"] == 1.2
+
+
+def test_the_form_gain_lights_only_crowns_with_a_form():
+    """The gain returns the form's mean darkening; a flat form draws the crown brighter by
+    exactly the gain, and a crown with no form keeps its light."""
+    shape = (1, 2)
+    flat = np.float32(0.7)
+    crowns = {
+        "cover": np.ones(shape, np.float32),
+        "rgb": np.full((*shape, 3), 0.1, np.float32),
+        "top_cm": np.full(shape, 500.0, np.float32),
+        "ndl": np.full(shape, flat, np.float32),
+        "form": np.ones(shape, np.float32),
+    }
+    scene = {
+        "z_m": np.zeros(shape, np.float32),
+        "water": {"cover": np.zeros(shape, np.float32), "depth_m": np.zeros(shape, np.float32)},
+        "ndl_flat": flat,
+    }
+    formed = crown_layer(crowns, scene, PAINTED_PALETTE, 0.4, 1.0)["colour"]  # type: ignore[arg-type]
+    del crowns["form"]
+    plain = crown_layer(crowns, scene, PAINTED_PALETTE, 0.4, 1.0)["colour"]  # type: ignore[arg-type]
+    np.testing.assert_allclose(formed, plain * PAINTED_PALETTE["crowns"]["form_gain"], rtol=1e-6)
 
 
 @pytest.mark.parametrize("spacing", [0.229, 0.92, 3.66])

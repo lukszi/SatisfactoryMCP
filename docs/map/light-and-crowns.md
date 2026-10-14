@@ -1172,6 +1172,7 @@ water" below). The `crowns` block of
 | `darkening`, `chroma` | 0.85, 0.8 | Times the sprite's colour, and times the style's own chroma gain of 1.2 |
 | `shade_clamp` | [0.55, 1.2] | The light: the style's sky and sun over the crown normals' sun term, relative to flat ground and clamped |
 | `relief` | 1.5 | How far the crowns' form is raised before it is lit, a factor on the clamped sun term; 0 draws the crowns by their normals alone ("Crown form") |
+| `form_gain` | 1.2 | Times the light of a crown whose form is drawn: the form's mean darkening, measured and returned ("The darkening measured again") |
 | `hidden_below_m` | 0.5 | A crown whose top is more than this below the drawn surface is hidden: a tree under an overhang, or beside a higher rock |
 | `waterline_m` | 0.1 | The height over which a crown's top passes from over the water to under it, centred on the water's surface |
 
@@ -1246,7 +1247,8 @@ in the v10 lit tiles before and with the factor laid on their tree pixels (the l
 | A lone green tree (-592.1, -2216.7), 384 px | 37,442 | 0.48 / 0.95 / 1.07 | 0.087 to 0.080 |
 
 The crowns are darker by 7 to 17% on the whole, most where a crown's far half falls steeply
-(the palms' drooping fronds), and the lit side gains up to 7%.
+(the palms' drooping fronds), and the lit side gains up to 7%. Since Satellite style 36 the
+style's `form_gain` gives that mean back ("The darkening measured again" below).
 
 ### Known limits
 
@@ -1308,6 +1310,58 @@ purple trees' one reference fits 0.85 better. The bamboo has no view from above:
 frames and the wiki's Red Bamboo Fields shot show stems at eye level. So the darkening stays
 0.85. A self-shade term on the crowns would darken these species twice; with one, the
 darkening is the first thing to measure again.
+
+**The darkening measured again (2026-10-14).** Crown form (above) is that self-shade term, so
+each species was measured as v11 (style 34) draws it. Crown pixels of each species are those
+within 0.6 of a crown's radius of one of its trees and in no other species' disc (1.15 radii),
+cover at least 0.95, on 60 m windows over its five densest 60 m cells, drawn in-process at
+0.229 m as the trees layer is (the light's default sun) and checked against the v11 `trees/`
+tiles: 2 levels apart at the median. "Top 60%" is the screenshot meter the targets were taken
+with, the median of the top 60% of L; the target is the species' own (calibrated) or its
+camera colour (the others). CIELAB L:
+
+| Species | Target | Flat shade | Normals | v11 (form) | Style 36 | v11 mean L, style 36 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `SM_Kapok_01` (canopy target) | 51.4 | 51.9 | 50.1 | 47.3 | 51.3 | 43.3, 47.1 |
+| `SM_Kapok_03` (species target) | 37.3 | 38.7 | 37.1 | 35.5 | 38.8 | 32.8, 35.8 |
+| `BluePalm_01` (crown target) | 39.9 | 40.4 | 36.5 | 35.0 | 38.2 | 32.0, 35.0 |
+| `SM_GreenTree_02` (canopy op) | 53 | 55.4 | 52.1 | 47.6 | 51.5 | 44.4, 48.2 |
+| `DioTree_02` (canopy op) | 50 | 52.5 | 49.7 | 46.0 | 49.9 | 42.1, 45.8 |
+| `Orange_palm2` (species target) | 78 | 75.4 | 72.4 | 65.1 | 70.4 | 57.0, 61.7 |
+| `CatPalm_01` | 67 | 64.4 | 58.2 | 52.2 | 56.5 | 48.6, 52.7 |
+| `SM_Bamboo_01` | 50 | 50.0 | 47.2 | 45.9 | 49.8 | 43.3, 47.0 |
+| `SM_DypsisPalm_01` | 65 | 71.8 | 67.2 | 62.1 | 66.9 | 55.9, 60.4 |
+| `SM_PurpleTree_01` | 55 | 51.1 | 49.0 | 43.7 | 47.5 | 40.2, 43.7 |
+| `SM_PurpleTree_02` | 54 | 50.1 | 48.4 | 43.0 | 46.7 | 39.2, 42.6 |
+| `AmberTree_01` | 67 | 62.8 | 61.4 | 61.1 | 65.9 | 58.0, 62.7 |
+| `SM_Mangrove_02` | 64 | 62.6 | 62.9 | 59.9 | 64.6 | 52.9, 57.3 |
+| `SM_AncientPineTree_01` | 55 | 58.9 | 57.2 | 50.1 | 54.2 | 45.9, 49.8 |
+
+"Flat shade" is the crown at a sun term of 1, "Normals" with the sprite normals only (style
+24), "v11" with the form as well. The sprite normals cost up to 6 L, the form another 0.3 to 7.3.
+On the screenshot meter the normals alone left the calibrated crowns 0.2 to 3.4 L under their
+targets, as a screenshot's own self-shade would; the form took them 1.5 to 4.5 L further.
+Over 399 50 m windows round trees picked at random (seed 0), cover-weighted, the form takes
+the crowns' mean light from 0.866 of flat ground's to 0.723 under the default sun (gain 1.198
+back; per window 1.05 to 1.38 between the 10th and 90th percentile) and from 0.894 to 0.770
+under the north-west sun (1.161). So the form's mean darkening is an error of the form, not a
+look of the leaves, and `form_gain` 1.2 multiplies the light of every crown whose form is
+drawn: the lobes and dips keep their ratios and the mean comes back. The Titan canopy keeps
+its form's darkening; its target was not measured with the form.
+
+With the gain the calibrated crowns sit within 1.5 L of their targets on the screenshot meter
+(the blue palms 1.7 under). The 0.85 is measured again on the uncalibrated species: at 0.85
+they sit a median 1.1 L under their camera colours on that meter (`CatPalm_01` and the purple
+trees 7 to 10 under, Dypsis and the mangroves 1 to 2 over); at 1.0 a median 3.5 over, the
+amber tree, bamboo, Dypsis and mangroves 3.5 to 6.6 over. The purple trees' wiki reference,
+L -1.0 at 0.85 before the form, reads about -2.6 at 0.85 with the gain and +0.9 at 1.0, on
+those species' own 1.6 L the form still costs them after the gain. The darkening stays 0.85.
+The orange palms stand under the purple trees, and the form reads the taller crowns' step
+down onto them (their mean form 0.35 to 0.58), so they stay 8 to 14 L under their target.
+Crops, 90 m at 0.229 m over the v11 unlit ground, before and after: the Northern Forest
+(81.2, -790.8), the Red Jungle (-1036, 237), the Southern Forest (700, 2200), the blue palms
+(-1672, -969) and the cat palms (1280, 1500); their crown pixels' medians move from #577520,
+#703e4b, #705886, #2e4c64 and #a46e51 to #5f7f24, #794452, #7a6091, #33536c and #b27759.
 
 **The orange palms** (`Orange_palm1`, `_2`, 5,621 shrubs 3.5 to 6.7 m tall, most of them among the
 purple trees of the Southern Forest) read mint. Their only leaf texture, `TX_OrangePalm_Alb_01`
