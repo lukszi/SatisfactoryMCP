@@ -308,6 +308,13 @@ bed shows through clear water at 0.2 to 1.5 m as sand, not as teal.
 Tests: `tests/mapgen/test_sea_row.py` (the row by depth on the numpy reference, the table, the
 install's read). The underwater kernel and its reference are unchanged: the row is data.
 
+**Measured** on a 2048 render of the painted layer (build 502094), against the same level of
+the full-size sheet before: the channel between the western islands near (-2560, 760) draws
+#3d6374 (hue 228) where it drew #518996 (hue 214), the shelf west of them #3c5a79 where it
+drew #4a7c8e, and the open sea keeps #3c597d. In the clearer water the seabed carpet's patches
+(section 32) show light blue, as in the northern lagoons near (-100, -2020); the carpet's
+colour and strength were set under the teal row.
+
 ### Translucent water (2026-10-06)
 
 The Blue Crater's lake is not `MI_Lake_Blue_01`. It is a `BP_TranslucentWater_C`, which
@@ -504,7 +511,8 @@ and section 35's falls:
 - The sea's physics row draws the shallows over sand as sand under about 0.5 m and the
   lagoons blue, where the 1.0 screenshots read both teal (see "The sea's physics row").
   The material's absorption is read as per metre from two parameter names; the shader graph
-  that combines them was not decoded.
+  that combines them was not decoded. The seabed carpet's patches, tuned under the teal row,
+  show as light blue blotches through it.
 - Translucent water draws one colour past 2 m. The target was measured at the Blue Crater's
   4 m only; the deeper translucent lakes (the Western Dune Forest one at (-772, 1631) runs to
   22 m) are unchecked. The two actors that set their own colours draw with the class row (see
