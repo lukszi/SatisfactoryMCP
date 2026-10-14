@@ -49,6 +49,8 @@ def painted_ground_stub(n: int) -> SimpleNamespace:
         canopy_rgb=np.zeros(3, np.float32),
         rock=rock,
         rock_family=None,
+        rock_top_rule=None,
+        top_overrides=[],
         family_rock={},
         crown=None,
         crown_ops=[],

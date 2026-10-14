@@ -241,13 +241,16 @@ def species_targets(
 def before_canopy(target: FloatGrid, op: FloatGrid, rounds: int = 32) -> tuple[FloatGrid, float]:
     """The colour the canopy ``op``, gated on that colour (``moved_crowns``), carries onto
     ``target``, by fixed-point rounds on the gate, and that gate."""
-    eye = np.eye(2, dtype=np.float32)
-    matrix = op[1:5].reshape(2, 2)
     found, gate = np.asarray(target, np.float32).copy(), 0.0
     for _ in range(rounds):
         gate = float(hue_gate(found, op[5:7], CANOPY_GREY))
+        # The gated step's (a, b) matrix, 1 + g (M - 1), undone by its 2 x 2 inverse.
+        m00, m01 = 1.0 + gate * (op[1] - 1.0), gate * op[2]
+        m10, m11 = gate * op[3], 1.0 + gate * (op[4] - 1.0)
+        det = m00 * m11 - m01 * m10
+        a, b = float(target[1]), float(target[2])
         found = np.array(
-            [target[0] - gate * op[0], *np.linalg.solve(eye + gate * (matrix - eye), target[1:])],
+            [target[0] - gate * op[0], (m11 * a - m01 * b) / det, (m00 * b - m10 * a) / det],
             np.float32,
         )
     return found, gate
