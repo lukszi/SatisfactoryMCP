@@ -98,7 +98,7 @@ LIGHT_DIR_NAME = "light"
 
 #: The bake's own version. Bump it when the bake writes other bytes from the same surface,
 #: casters and model, so no run reuses a light the old bake wrote.
-LIGHT_VERSION = 6
+LIGHT_VERSION = 7
 
 #: Rows of a plane hashed at a time.
 DIGEST_ROWS = 1024
@@ -380,7 +380,7 @@ def bake_block(job: BlockJob) -> BlockDone:
     with encode_beside(tiled, job.encode_threads) as written:
         canopy = None
         if canopy_sky is not None and horizons.trees:
-            horizon = canopy_horizon(horizons.sun, DEFAULT_SUN[0])
+            horizon = canopy_horizon(horizons.sun, DEFAULT_SUN)
             canopy = block_canopy(work, job.block, horizon, canopy_sky)
         _default_terms(work, job, nrm, horizons, (canopy, trees_ao))
         horizon_quarter = horizons.quarter
@@ -427,8 +427,9 @@ def _default_terms(
     canopy, ambient = trees
     r0, c0, n = job.block
     terms = work_array(work, "terms", np.uint8)
-    sun, (az, el) = horizons.sun, DEFAULT_SUN
-    ground, crowned = sun_horizon(sun, az), sun_horizon(sun, az, horizons.trees)
+    sun, el = horizons.sun, DEFAULT_SUN[1]
+    ground = sun_horizon(sun, DEFAULT_SUN)
+    crowned = sun_horizon(sun, DEFAULT_SUN, horizons.trees)
     found = default_shade(horizons.bands, DEFAULT_SUN) if horizons.bands else None
     shades: _Shades = None if found is None else (found[0].astype(np.float32), found[1])
     for start in range(0, n, TERM_ROWS):

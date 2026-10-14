@@ -10,14 +10,11 @@ docs/map/light-and-crowns.md section 29, "Coarser levels".
 
 from __future__ import annotations
 
-import functools
-
 import numpy as np
 
 from mapgen.jit import cuda_kernel, gpu_on
-from mapgen.lighting.horizon import HORIZON_DIRS
 from mapgen.lighting.model import SHADOW_SOFT_DEG
-from mapgen.lighting.spans.march import path_elevation
+from mapgen.lighting.spans.march import path_elevations
 from mapgen.lighting.spans.porous import CANOPY_FLOOR_DEG
 from satisfactory_mcp.core.arrays import F32Grid
 
@@ -38,16 +35,6 @@ _SOFT = np.float32(SHADOW_SOFT_DEG)
 _ZERO, _QUARTER, _HALF, _ONE = (np.float32(v) for v in (0.0, 0.25, 0.5, 1.0))
 
 Quad = tuple[F32Grid, F32Grid, F32Grid, F32Grid]
-
-
-@functools.cache
-def path_elevations() -> F32Grid:
-    """The elevation each ground direction's band is folded at, as ``path_horizon`` takes it."""
-    els = np.array(
-        [path_elevation(k * 360.0 / HORIZON_DIRS) for k in range(HORIZON_DIRS)], np.float32
-    )
-    els.flags.writeable = False
-    return els
 
 
 def refold(fine: F32Grid, el: F32Grid, gpu: bool | None = None) -> F32Grid:

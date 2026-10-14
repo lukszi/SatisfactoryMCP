@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { castsTreeShadows, FS, lightControls, lightSwitches, parseLight, UNIFORMS } from "../../src/map/litlayer";
+import { castsTreeShadows, FS, lightControls, lightSwitches, parseLight, pathElevations, UNIFORMS } from "../../src/map/litlayer";
 import { partState, TREES_IN_COLOUR } from "../../src/map/layercontrol/part-picker";
 
 import type { LightHeader } from "../../src/map/litlayer";
@@ -11,9 +11,15 @@ vi.mock("../../src/map/map", () => ({ MAP_SHEET_PX: 8192, map: {} }));
 vi.mock("../../src/map/leaflet", () => ({ L: {} }));
 vi.mock("../../src/api/client", () => ({ tilePath: () => "" }));
 
+/* Each direction's sun-path elevation, as mapgen's model block records it. */
+const PATH_EL = Array.from({ length: 32 }, function (_unused, k) {
+  return k >= 13 && k <= 27 ? 16 + k : 45;
+});
+
 /* A pyramid of light version 5 (`apart`: trees apart, Titan cells) or 6 (`porous`: canopy cells). */
 function header(crowns: boolean, crownCell?: number, apart = false, porous = false): LightHeader {
-  const cells = porous ? { canopy_cell: 64, canopy_floor_deg: 0.5, ao_cell: 96 } : apart ? { titan_cell: 64, ao_cell: 96 } : {};
+  const folds = { spans: { path_el_deg: PATH_EL }, trees: { leaf_shell_m: 2 } };
+  const cells = porous ? { canopy_cell: 64, canopy_floor_deg: 0.5, ao_cell: 96, ...folds } : apart ? { titan_cell: 64, ao_cell: 96 } : {};
   return {
     build: "b",
     max_z: 7,
@@ -92,6 +98,21 @@ describe("the shader's switches", () => {
     expect(FS).toContain("q>=uCanFloor ? q*q*90.0 : hz(i)");
     expect(FS).toContain("(uCanopy>0 && a>0.0) ? lit(1.0,max(uL.z,0.0),canopyHorizon()) : rel");
     expect(FS).toContain("tree*mix(vec3(1.0),relT,uLightOn)");
+  });
+
+  it("read each tree cell at the elevation it was folded at, whatever the sun's", () => {
+    for (const name of ["uFolded", "uPath0", "uPath1"]) expect(UNIFORMS).toContain(name);
+    expect(FS).toMatch(/uniform float [^;]*\buPath0\b[^;]*\buPath1\b/);
+    expect(FS).toContain("float s=mix(soft(hz(uI0+uCrown),uPath0),soft(hz(uI1+uCrown),uPath1),uW);");
+    expect(FS).toContain("return max(h,uEl+uSoft*(s-0.5));");
+  });
+});
+
+describe("the tree cells' folds", () => {
+  it("are the path's elevations on a porous pyramid, and none on one whose tree cells are horizons", () => {
+    expect(pathElevations(header(true, 32, false, true))).toEqual(PATH_EL);
+    expect(pathElevations(header(true, 32, true))).toBeNull();
+    expect(pathElevations(header(true, 32))).toBeNull();
   });
 });
 

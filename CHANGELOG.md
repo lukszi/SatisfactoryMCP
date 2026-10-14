@@ -286,6 +286,12 @@ Planned as 0.2.0.
   light model, replacing `titan_cell`), and an older pyramid still draws. The species'
   undersides and their 33 s per run are gone. Every painted lit map moves, the other styles
   keep their bytes; a kept light is baked again, and the horizon tiles grow by about a sixth.
+- Map generator (light version 7): tree shade is smooth between the light's half-resolution
+  cells instead of a patch with a hard rim per cell, and a sun off the game's path (the free
+  compass, the slider's last half hour each end) keeps the path's tree shade at its azimuth
+  instead of none or all of it. Painted lit maps move under and beside the trees; a kept
+  light is baked again, and the native horizon tiles of a 2048 render shrink by about a
+  quarter.
 - Map generator (light version 5): a tree crown casts from where its species' leaves start,
   read off its mesh at the start of a render (a green tree or a Kapok three quarters up, a
   bush from the ground), instead of halfway up every crown, and the Titan trees as a 12 m slab
