@@ -158,9 +158,10 @@ from 13.96% of the box in generator 5's field to 13.20%), 818 texels of the artw
 become dry where a rock stands over the surface, and the four water gates and the node table
 hold (546 of 625 nodes within a metre, against 542; Spire Coast recall 99.37% either way). The
 tolerance leaves 9,234 lone fill texels inside rock past the frame, where the rock dips under
-the fill's coarse cell on a slope. Along y 3048 m the line goes from a median step of 11 levels
-across one row of the relief layer (5.3 in the painted one) to none above the ground's own
-grain.
+the fill's coarse cell on a slope. On unlit 100 m windows at (-250, 3048), the step across that
+row falls from a median 9 levels to none in the relief layer, and from 2.7 to the texture's own
+grain (under 2) in the painted one. Where a rock past the frame ends against the fill or the
+sea, its 1 m edge now draws as a small staircase, as it does in the frame.
 
 ### Reading a point
 
