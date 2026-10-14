@@ -913,6 +913,13 @@ draws the 32768 windows of the gates' G2 the same as master, all three layers.
   texture, and from above a terrace is mostly its pools (`Water_Plateau` slots), which the
   mesh class does not draw (calibration.md, "Crater floor, terraces and coral meshes,
   checked"). A reference from above would decide the pools' colour.
+- Two marks the defect review took for drawing faults are the game's paint (2026-10-14).
+  The grey ring between grass and sand at (-385, -1405) is the `Gravel_WeightLayerInfo`
+  layer painted round the grass: its pure texels draw #9f8e7a, the landscape bake through the
+  camera reads #a18d70 there (ΔE 1.3), and the sand beside it 1.2. The ragged brown blot at
+  the oil node on the west coast's sand bar, (-2450, 906), is `WetSand_LayerInfo` painted
+  round the node, its 1 m speckle included, the same shape in the bake. The bake also has the
+  node's dark oil pool in its middle, which the map does not draw.
 - The other shells draw #797573 where the bake through the camera reads #746956 (ΔE 4.8), a
   warmer grey; their colour is their material's texture mean, not moved here.
 - The top layer's mask reads the look's normal maps where the game reads each mesh's own; an
