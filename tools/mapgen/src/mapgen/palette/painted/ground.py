@@ -26,6 +26,7 @@ from mapgen.gamedata.rocks.families import TopOverride
 from mapgen.gamedata.rocks.looks import RockTextures
 from mapgen.gamedata.water.bodies import WATER_CLASSES
 from mapgen.gamedata.water.ocean import OceanAbsorption
+from mapgen.gamedata.water.river_material import RiverAbsorption
 from mapgen.palette.painted.albedo import (
     GroundBake,
     bake_table,
@@ -192,6 +193,7 @@ class PaintedGround:
         self.water: WaterBase = base_water(self.palette)
         self.water_class: U8Grid | None = None
         self.water_rows = water_table(self.palette)
+        self._absorption: tuple[OceanAbsorption | None, RiverAbsorption | None] = (None, None)
         self.source["seam_texels_blended"] = seam_texels
         self.source["water_classes"] = "not classified: all water draws as the ocean"
         self._bodies = load_water_bodies(paint_dir, meta)
@@ -270,8 +272,9 @@ class PaintedGround:
     def attach_sea(self, absorption: OceanAbsorption) -> None:
         """The install's ocean absorption and scale behind the surface, which set the sea's row
         in place of the palette's ``k_per_m`` and ``behind_scale``."""
+        self._absorption = (absorption, self._absorption[1])
         self.water = base_water(self.palette, absorption)
-        self.water_rows = water_table(self.palette, absorption)
+        self.water_rows = water_table(self.palette, *self._absorption)
         self.source["sea_absorption"] = {
             "absorption_per_m": [round(v, 6) for v in absorption.per_m],
             "colour": [round(v, 6) for v in absorption.colour],
@@ -279,6 +282,19 @@ class PaintedGround:
             "k_per_m": [round(float(v), 5) for v in self.water["k"]],
             "behind_scale": round(absorption.behind, 6),
             "behind": [round(float(v), 5) for v in self.water["tint"]],
+        }
+
+    def attach_river(self, absorption: RiverAbsorption) -> None:
+        """The install's river absorption, which sets the river row's in place of the
+        palette's ``k_per_m``."""
+        self._absorption = (self._absorption[0], absorption)
+        self.water_rows = water_table(self.palette, *self._absorption)
+        scale = self.palette["water"]["absorption_scale"]
+        self.source["river_absorption"] = {
+            "absorption_per_m": [round(v, 6) for v in absorption.per_m],
+            "colour": [round(v, 6) for v in absorption.colour],
+            "murkiness": round(absorption.murkiness, 6),
+            "k_per_m": [round(scale * v, 5) for v in absorption.per_m],
         }
 
     def attach_look(self, textures: RockTextures, spacing_m: float) -> None:

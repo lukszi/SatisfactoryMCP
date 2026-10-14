@@ -44,6 +44,7 @@ __all__ = [
     "composite_meshes",
     "crossing_level",
     "inland_cover",
+    "inland_share",
     "ocean_reach",
     "optical_depth",
     "seabed_keeps",
@@ -331,7 +332,7 @@ def optical_depth(
         floor = water["river"] * np.float32(river["min_depth_m"]) * ramp
         depth = np.maximum(depth, floor)
     if inland and inland.get("min_depth_m"):
-        floor = _inland_share(water) * np.float32(inland["min_depth_m"])
+        floor = inland_share(water) * np.float32(inland["min_depth_m"])
         depth = np.maximum(depth, floor)
     return depth
 
@@ -344,11 +345,11 @@ def inland_cover(water: WaterTerms, inland: InlandShoreStyle | None) -> WaterTer
     if not inland or not inland.get("edge_m") or "wet" not in water:
         return water
     ramp = np.clip(water["depth_m"] / np.float32(inland["edge_m"]), 0.0, 1.0)
-    floor = _inland_share(water) * water["wet"] * ramp
+    floor = inland_share(water) * water["wet"] * ramp
     return {**water, "cover": np.maximum(water["cover"], floor)}
 
 
-def _inland_share(water: UnderwaterWater) -> FloatGrid:
+def inland_share(water: UnderwaterWater) -> FloatGrid:
     """The share of each pixel's water that is neither the ocean's reach nor a river's."""
     river = water["river"] if "river" in water else np.float32(0.0)
     return (1.0 - water["ocean"]) * (1.0 - river)

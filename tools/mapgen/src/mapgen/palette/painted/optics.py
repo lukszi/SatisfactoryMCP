@@ -22,6 +22,7 @@ from mapgen.colour import srgb_to_linear
 from mapgen.gamedata.vegetation.carpet import COVER_NAME, TOP_NAME
 from mapgen.gamedata.water.bodies import OCEAN, WATER_CLASSES
 from mapgen.gamedata.water.ocean import OceanAbsorption
+from mapgen.gamedata.water.river_material import RiverAbsorption
 from mapgen.jit import kernels_on
 from mapgen.palette.painted.albedo import paint_plane
 from mapgen.palette.painted.sea import sea_row, surface_sky
@@ -43,7 +44,7 @@ from mapgen.palette.painted.shapes import (
 )
 from mapgen.palette.painted.water_classes import class_shares
 from mapgen.palette.scene import UnderwaterWater
-from mapgen.palette.water.shore import WET_MIX_MOST, optical_depth, wet_mix
+from mapgen.palette.water.shore import WET_MIX_MOST, inland_share, optical_depth, wet_mix
 from mapgen.palette.water.wet import EveryPixel, WetPixels, float32_planes
 from mapgen.terrain.sample import ClassMix, class_taps
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid
@@ -93,10 +94,15 @@ def base_water(palette: PaintedPalette, absorption: OceanAbsorption | None = Non
     }
 
 
-def water_table(palette: PaintedPalette, absorption: OceanAbsorption | None = None) -> FloatGrid:
+def water_table(
+    palette: PaintedPalette,
+    absorption: OceanAbsorption | None = None,
+    river: RiverAbsorption | None = None,
+) -> FloatGrid:
     """A row of linear optics per class plane value; a class the palette leaves out draws as
     the ocean (``sea_row``), a mouth blend mixes its classes' rows by ``class_shares``, class
-    by class."""
+    by class. ``river`` is the install's river material, whose absorption times the water's
+    ``absorption_scale`` the river row takes in place of its ``k_per_m``."""
     sea = sea_row(palette["water"], absorption)
     ocean = [*sea.k, *sea.body, *sea.deep, sea.deep_tau_m, 0.0, *sea.behind]
     classes = palette.get("water_classes", {})
@@ -108,7 +114,10 @@ def water_table(palette: PaintedPalette, absorption: OceanAbsorption | None = No
             continue
         if isinstance(entry, str):
             raise TypeError(f"the palette's water_classes.{name} is text, not optics")
-        rows.append(_class_row(entry, palette["water"]["bed_wet"]))
+        absorb = entry["k_per_m"]
+        if name == "river" and river is not None:
+            absorb = [palette["water"]["absorption_scale"] * a for a in river.per_m]
+        rows.append(_class_row(entry, absorb, palette["water"]["bed_wet"]))
     shares, table = class_shares(), np.asarray(rows, np.float32)
     mixed = shares[:, :1] * table[0]
     for k in range(1, len(table)):
@@ -116,10 +125,11 @@ def water_table(palette: PaintedPalette, absorption: OceanAbsorption | None = No
     return mixed
 
 
-def _class_row(entry: WaterClassStyle, bed_wet: float) -> list[float]:
-    """An inland class's row, linear, in ``WATER_TABLE_COLUMNS`` order; its bed is wet."""
+def _class_row(entry: WaterClassStyle, k: Sequence[float], bed_wet: float) -> list[float]:
+    """An inland class's row, linear, in ``WATER_TABLE_COLUMNS`` order, absorbing ``k`` per
+    metre; its bed is wet."""
     return [
-        *entry["k_per_m"],
+        *k,
         *srgb_to_linear(entry["body"]),
         *srgb_to_linear(entry["deep"]),
         entry["deep_tau_m"],
@@ -235,7 +245,7 @@ def underwater(
     water, optics = scene.water, scene.water_optics
     w = optics or ground.water
     depth = _optical_depth(water, ground)[..., None]
-    floor = w["inland_floor"] * (1.0 - water["ocean"])[..., None]
+    floor = w["inland_floor"] * inland_share(water)[..., None]
     tint = w["tint"]
     if "turbidity" in w:
         floor = np.maximum(floor, w["turbidity"])
@@ -377,7 +387,7 @@ def _mix_compiled(
     taken = None if optics is None else _wet_optics(pixels, optics)
     w = taken or ground.water
     depth = _optical_depth(water, ground)[..., None]
-    floor = w["inland_floor"] * (1.0 - water["ocean"])[..., None]
+    floor = w["inland_floor"] * inland_share(water)[..., None]
     if "turbidity" in w:
         floor = np.maximum(floor, w["turbidity"])
     wet_terms = kernels.WetTerms(
