@@ -319,7 +319,7 @@ worker holds more than it needs; none of it moves a byte:
   (`model.sun_cells`), so the 64 cells are never stacked as 1 GB of floats. The refold of one
   direction is the stacked one's to the bit, which a test holds.
 - **Workers of its own.** `--light-workers` sets the bake's pool. By default it is one a
-  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 2.0 GB
+  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 2.5 GB
   each (`LIGHT_WORKER_BYTES`, below), counted when the bake starts. On Windows the free
   memory is the lesser of the free RAM and the commit still available
   (`pools.free_ram_bytes`): a process that cannot commit fails with RAM to spare, which
@@ -337,7 +337,8 @@ worker holds more than it needs; none of it moves a byte:
   0.04 GB. A full-size block peaks at 1.08 GB working set and 0.98 GB commit, one under arches
   at 1.36 and 1.04 GB. With the crowns and arches as spans (2026-10-07) a block under crowns
   peaks at 1.44 GB commit and one with crowns and arches at 1.50 GB; `LIGHT_WORKER_BYTES` is
-  2.0 GB, the larger with room. The default sun's terms are made 512 rows at a time
+  2.5 GB: re-measured on 2026-10-14 with the tree and arch cells, a dense forest block peaks
+  at 2.18 GB and a sparse one at 2.12 GB, plus 15% room. The default sun's terms are made 512 rows at a time
   (`stage.TERM_ROWS`), to the same bytes, so the canopy's own light adds nothing measurable:
   before the spans, with crowns over half of it a block peaked at 1.13 and 1.09 GB, against
   1.14 and 1.02 before the canopy, and at 1.30 and 1.26 GB with a hole of no data across it

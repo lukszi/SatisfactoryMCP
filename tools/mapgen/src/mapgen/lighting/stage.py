@@ -118,9 +118,9 @@ TERM_ROWS = 512
 #: Light processes at most, and the free memory each one needs: its measured peak on a
 #: full-size block with crowns or arches, started with one BLAS thread.
 LIGHT_WORKER_CAP = 16
-LIGHT_WORKER_BYTES = 2_000_000_000
-#: What a light process adds with the CUDA kernels: CuPy and its context, 0.65 GB measured.
-LIGHT_GPU_BYTES = 700_000_000
+LIGHT_WORKER_BYTES = 2_500_000_000  # 2.18 GB peak on a dense forest block, 2026-10-14
+#: What a light process adds with the CUDA kernels: CuPy and its context, 0.84 GB measured.
+LIGHT_GPU_BYTES = 970_000_000
 
 #: The work files a bake leaves in the surface's directory, beside its ``SlabStore``.
 _FILES = (
