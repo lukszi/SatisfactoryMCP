@@ -95,8 +95,12 @@ TOOLS_ALLOWED_PREFIXES: tuple[str, ...] = ("tools", "mapgen", "satisfactory_mcp.
 #: Measured exceptions: three hard dependencies, and the parser read by a one-shot CLI.
 TOOLS_EXTRA_ROOTS = frozenset({"numpy", "scipy", "platformdirs", "pioneersav"})
 
-#: The generators that write the terrain field read the package that reads it.
-TOOLS_EXTRA_PREFIXES: tuple[str, ...] = ("satisfactory_mcp.domain.spatial",)
+#: The generators that write the terrain field read the package that reads it; the shared
+#: map's export reads the map registry and the pyramids' sidecars the tile routes serve from.
+TOOLS_EXTRA_PREFIXES: tuple[str, ...] = (
+    "satisfactory_mcp.domain.spatial",
+    "satisfactory_mcp.domain.maps",
+)
 
 
 def layer(module: str) -> str | None:

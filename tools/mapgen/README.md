@@ -53,6 +53,7 @@ estimate assumes before a job of that kind has run once.
 | `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` and `light/` | 3 min at `--size 1024`; at full size with the light, budget about 28 min for the three layers and 24 min for the default two, from measured stages ([maps_contract.md](../../docs/maps_contract.md) §4.3); the three, cold, took 27.5 min on the CPU and 21 min with `--gpu`, and 19 min with `--gpu` from kept raster caches, on 2026-10-08 (§41, "The whole render, timed") |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
 | `compress-cache` | | the given raster caches, converted in place | 4 s for a 1.3 GB Titan cache; about 2.5 min for a full set (estimate) |
+| `share-export` | | the given folder: the public map-only site | a rerun with nothing new: seconds; the full 10 GB copy: not measured |
 
 ### heightmap
 
@@ -204,6 +205,15 @@ render holds open. `--to <dir>` writes the band store elsewhere and leaves the s
 A `--to` that is the source, a folder holding it or a folder inside it, links and junctions
 followed, is refused before anything is written. It does not read the game. See §39.
 
+### share-export
+
+`python -m mapgen share-export <out>` writes the rendered map as a public, map-only static
+site: the page from `npm run build:share`, two manifests and the tile trees, every folder
+named by its build tag. It reads the registry and the sidecars, not the server, and passes
+every file through a privacy scan before the manifests are written. `--dry-run` counts,
+`--max-z` and `--parts` cut it down, `--prune` drops folders no longer named. It does not
+read the game. See §44 ([docs/map/sharing.md](../../docs/map/sharing.md)).
+
 ## Package map
 
 Everything is under `src/mapgen/`. Each subpackage owns one provenance axis, so a change can
@@ -227,6 +237,10 @@ be traced to the axis it should move.
 | `commands/artwork.py` | data | The artwork command: arguments, stage order, refusals |
 | `commands/check_fill.py` | | The check-fill command |
 | `commands/compress_cache.py` | | The compress-cache command |
+| `commands/share_export.py` | | The share-export command: plan, copy, scan, then the manifests |
+| `share/manifest.py` | | The shared site's manifests, built from allowlists, and their check |
+| `share/files.py` | | The shared site's files: tile trees by level, the page, the trees bitmap, pruning |
+| `share/privacy.py` | | The privacy scan every shared export passes |
 | `gamedata/frame.py` | data | Map frame (read from `geo.MAP_SQUARE_M`), render sizes, the heightfield grid and its texel lookups (`grid_texel`, `grid_index`) |
 | `gamedata/artwork_sheet.py` | data | The artwork sheet: slice decode, layout proof, corner calibration |
 | `gamedata/meshes.py` | data | Mesh geometry reads at their finest source, collision hulls, `ExtendedBounds` (`MeshBounds`) |
