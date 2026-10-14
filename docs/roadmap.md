@@ -5,11 +5,16 @@ distinct items, in the order to actually work them. Defects live in [backlog.md]
 this is the register of things that are not broken and might still be worth building. The parked
 features it sequences against are §21 and §22 of [parked.md](parked.md).
 
-**Status, 2026-08-06.** Section 1 is history — all eight shipped within a day of being written,
-and their entries below are kept for the constraints they attached, every one of which the
-shipped code carries. Each of the three big bets in §2 had a spike land its primitive; none has
-its consumers. §3 through §7 are still live, and §5 — what is deliberately not being built — is
-the section most likely to be re-proposed by someone who has not read it.
+**Status, 2026-10-14, re-checked against the code.** Section 1 is history — all eight shipped within
+a day of being written, and their entries below are kept for the constraints they attached, every
+one of which the shipped code carries. Of the three big bets in §2, §21 has its consumers and its
+head-lift slice, §2.1 has one reader left (siting by the whole bill) plus the extractor cap, and §22
+still has no tool. All seven cheap wins in §3 are done; the two fluid items in §3b are not started.
+Four of the six risks in §4 are defused, one is half closed, one is open. §5 — what is deliberately
+not being built — is the section most likely to be re-proposed by someone who has not read it.
+
+Several commit ids quoted in §1–§4 before this date were cut before a history rewrite and no
+longer resolve; the ids added on 2026-10-14 are current.
 
 The one structural finding, one layer down from the backlog's: **a domain function is not
 finished until something calls it.** Nine of the strongest candidates were the same shape, a
@@ -18,6 +23,7 @@ outside `byproducts.py`, `installed_build()` with no runtime caller, `GameData.w
 `water_volumes()` behind a 30-pump gate, `Field.at()` where `Field.window()` belonged. None grew
 the tool count. That is why they crowded the top, and it is why `domain/world/logistics.py` and
 `domain/world/timeline.py` — landed yesterday, called by nothing — are the shape to watch next.
+(As of 2026-10-14 the first has two readers and the second still has none.)
 
 ---
 
@@ -39,7 +45,7 @@ not an argument about whether to ship.
 
 ---
 
-## 2. Big bets: every primitive landed, no consumer did
+## 2. Big bets: every primitive landed; §21's consumers did too, §22's did not
 
 **2.1 Read the heightfield as an AREA** — *synergy + prior-art lenses independently; subsumes
 three other candidates.*
@@ -51,9 +57,11 @@ three other candidates.*
   returning z-range, slope, %submerged and %no-data. Two consumers so far —
   `domain/spatial/ranking.py:119` and `domain/world/water.py:149`. Building the primitive first
   is what stopped three callers minting three area reads.
-- LEFT: the terrain line on a Siting's footprint, and **siting by the whole bill**
-  (`rank_build_sites(plan=)`), which must ship as a SECOND TABLE of the plan's other raw items
-  and their nearest fields, explicitly not folded into the score.
+- DONE: the terrain line on a Siting's footprint (`e7f1e17`, `Siting.terrain_line` in
+  `domain/planning/siting/record.py`: pad z range, cave, water surface, provenance).
+- LEFT: **siting by the whole bill** (`rank_build_sites(plan=)`, still no such parameter),
+  which must ship as a SECOND TABLE of the plan's other raw items and their nearest fields,
+  explicitly not folded into the score.
 - STANDING CONSTRAINT: buildable ≠ flat. Stilts are normal play and cliffs are sometimes
   desirable, so every term is published as a raw component with a small default weight, never as
   a veto. And the derived water-extractor COUNT is the one output the field cannot support:
@@ -62,7 +70,9 @@ three other candidates.*
   hardcoded constant inside every solved plan whose own comment admitted it stood in for a site
   the model could not see. `cfee408` measures the cap where the plan actually stands and makes
   the constant the fallback that says it is assumed. The constant is not gone; it is now honest,
-  and finishing the job means the measurement becoming the default.
+  and finishing the job means the measurement becoming the default. Still open on 2026-10-14:
+  `domain/planning/solver/scenario.py` falls back to the constant whenever the caller names
+  no count. (`cfee408` is now `260416f`.)
 
 **2.2 §21, the physical logistics graph.**
 
@@ -74,14 +84,16 @@ three other candidates.*
 - The spike then **disproved §21's premise**. The port-level geometric join it prescribed was
   measured at 28.7% wrong; the contraction that replaced it is exact. The prescription has been
   struck from parked.md §21 rather than annotated, because a top-down reader would have built it.
-- SHIPPED: `domain/world/logistics.py`. LEFT: everything that consumes it — `trace_upstream`'s
-  physical mode and `factory_health`'s evidence line.
+- SHIPPED: `domain/world/logistics.py`. Its two consumers are DONE: `factory_health` names what
+  feeds a starved machine over the physical graph (`43a7549`), and `trace_upstream` walks it and
+  names the runs it crossed (`e72f70b`).
 - **Constraint B, head lift is §21's first slice, not a separate project**, still stands and is
   now cheap: `trunks.pumps()` does the arithmetic for imagined pipes while `conduits.py` carries
   z, via-devices and the `FGPipeNetwork` id for real ones, and the network-wide walk it needed is
   what landed. Note the counter-argument in its favour: §21 will NEVER find this failure, because
   there connectivity is exactly what is fine. AGAINST head lift generally: it is a lower bound —
   no friction, no pipe head, no backflow — and must say so, or it declares a working pipe broken.
+  DONE: `domain/world/headlift.py` (`4b59014`), read by `factory_health` (`2e3d586`).
 
 **2.3 §22, the timeline** — *worth more than when it was parked.*
 
@@ -90,7 +102,8 @@ three other candidates.*
   rate, N hours", and "when did this stop" become honest only once there is a second sample.
 - SHIPPED: `domain/world/timeline.py` — the row, the identity key that survives autosave
   rotation, the index file, the pairwise comparison. Measured at 112 s to index 50 saves cold,
-  for 101 kB. LEFT: a tool, and the window note every answer must print with it.
+  for 101 kB. LEFT, unchanged on 2026-10-14: a tool, and the window note every answer must
+  print with it — nothing in `src/` imports the module.
 - THE HARD COROLLARY, undischarged: **do not build ETA-from-a-300 s-window before §22 is
   consumed.** That is a forecast dressed as a reading, and it is the exact class of
   confidently-wrong answer this project exists to avoid.
@@ -99,17 +112,17 @@ three other candidates.*
 
 ## 3. Cheap wins while passing through
 
-One of seven is done. The rest are unchanged and still cheap.
+All seven are done (re-checked 2026-10-14).
 
 | What | Effort | Why now | Status |
 |---|---|---|---|
 | Hypertube `role` tag on material edges | hours | Precondition for §21. Fixed a live lie to five consumers. | DONE `86d466c` |
-| Warnings channels reach a reader | hours | `GameData.warnings` reaches a bare `len()` (`tools/resources.py:32`); `projection["warnings"]` has zero consumers anywhere. Two note blocks in `world_summary` and the save resource. | open |
-| Unread-class census | hours | Fifteen lines mirroring the null-yaw census. **Must land in the same commit as the warnings readers or it is invisible by construction.** Needs a hand-built "seen and dismissed" allow-list or its first run is 4,300 berry bushes. | open |
-| Node-table forward build check | hours | `skew_from_meta` returns `None` unconditionally on the shipped table — the guard is structurally incapable of firing on the event it exists for. `installed_build()` returns the exact pin string every artifact records and still has no runtime caller. Ten lines closes it for five pinned artifacts. | open |
+| Warnings channels reach a reader | hours | `GameData.warnings` reaches a bare `len()` (`tools/resources.py:32`); `projection["warnings"]` has zero consumers anywhere. Two note blocks in `world_summary` and the save resource. | DONE `72afd32`, `app.integrity_notes`, read by `world_summary` and both orientation resources |
+| Unread-class census | hours | Fifteen lines mirroring the null-yaw census. **Must land in the same commit as the warnings readers or it is invisible by construction.** Needs a hand-built "seen and dismissed" allow-list or its first run is 4,300 berry bushes. | DONE `72afd32`, in the same commit as the readers; the allow-list is six classes, the test is a monitor or buffer rather than a name list |
+| Node-table forward build check | hours | `skew_from_meta` returns `None` unconditionally on the shipped table — the guard is structurally incapable of firing on the event it exists for. `installed_build()` returns the exact pin string every artifact records and still has no runtime caller. Ten lines closes it for five pinned artifacts. | DONE `4f80dad`: `provenance.stale_artifacts` compares `installed_build()` with each artifact's pin at runtime and notes drift |
 | "These 8 machines are wired to nothing" in `factory_health` | hours | The one salvage from the killed electrical-islands pair. `stalled` said "power, or a monitor that lies" and could not check which. | DONE `deadb0b`, widened here from degree zero to *no generator reachable over the wires* — the claim and its two refusals are [save-projection.md](save-projection.md) §6.1a |
-| Comment-budget failure message | 15 min | The cheapest remedy for a failing ratchet is deleting an explanation, in a codebase whose prose is the design record. Change the message to name the intended remedy. Note: caps are per-*directory*, so "raise this file's cap" is not currently available. | open |
-| `docs_path()` raises instead of returning `G:\SteamLibrary` | hours | A function lying rather than failing (`config.py:25`). | open |
+| Comment-budget failure message | 15 min | The cheapest remedy for a failing ratchet is deleting an explanation, in a codebase whose prose is the design record. Change the message to name the intended remedy. Note: caps are per-*directory*, so "raise this file's cap" is not currently available. | DONE `7884219` |
+| `docs_path()` raises instead of returning `G:\SteamLibrary` | hours | A function lying rather than failing (`config.py:25`). | DONE `9a8b8b2`: raises `FileNotFoundError` naming every place it looked |
 
 ---
 
@@ -133,7 +146,8 @@ have, and neither of which any tool in the ecosystem performs:
 
 Output is advice about what was built, not a fault, and it wants its own tool rather than a
 column on a health report. Effort: hours once the head-lift model exists, because both reuse
-its geometry.
+its geometry. **OPEN on 2026-10-14**, and the head-lift model it waited on has landed
+(`4b59014`). Backlog item 50.
 
 **Byproduct remedies in `explain_byproducts`.** Manual, Lesson 9: the aluminium water loop
 is the canonical case, and the LP is mathematically right about it while being physically
@@ -143,13 +157,14 @@ extractors and cap them with a valve (only stable at 100% efficiency), dedicate 
 to the byproduct (most stable), feed it to other machines, or package and sink it (worst).
 `explain_byproducts` should carry them, so a plan that strands a byproduct says what players
 actually do about it. This is a planner change and has nothing to do with the head-lift
-model; it is listed here so it is not lost.
+model; it is listed here so it is not lost. **OPEN on 2026-10-14**: no remedy text in the
+planner. Backlog item 51.
 
 ---
 
 ## 4. Risks to defuse, by probability × damage
 
-Two are defused. Four are live, and their ordering is unchanged.
+Re-checked 2026-10-14: four are defused, one is half closed, one is live.
 
 1. ~~**Eleven concurrent save parses every autosave.**~~ **DEFUSED.** Measured at 11 concurrent
    GETs, every one 3.9–4.35 s. Closed by single-flight around the cache miss (`c5e2aae`,
@@ -159,10 +174,11 @@ Two are defused. Four are live, and their ordering is unchanged.
    request of graph, structures, pipe flow, conduit runs and proposals. The whole study is
    [residency.md](residency.md).
 2. ~~**`phase_requirements` goes blind on the next elevator delivery.**~~ **DEFUSED** by 1.3.
-3. **Node table silently stale on the next game patch.** p ≈ twice a year, damage = an evening of
-   confidently wrong node answers, which is the standing "map updates move nodes" failure. See §3.
-4. **Both invariant channels unread.** p = whenever a patch breaks normalisation; damage =
-   publishing a smaller world and calling it the world, silently. See §3.
+3. ~~**Node table silently stale on the next game patch.**~~ **DEFUSED** by `4f80dad`: the
+   installed build is compared with every generated table's pin at runtime, and drift reaches
+   `world_summary` and the orientation resources as a note. See §3.
+4. ~~**Both invariant channels unread.**~~ **DEFUSED** by `72afd32`: both channels, and the
+   unread-class census, print as notes. See §3.
 5. **`/api/worlds` publishes the Windows username and SteamID64, and the server accepts any Host
    header.** **DEFERRED 2026-08-09**, on the maintainer's own environment: the machine sits behind
    NAT on a household network with two people on it, so the exposure that matters there is not
@@ -170,17 +186,18 @@ Two are defused. Four are live, and their ordering is unchanged.
    network's, not the code's.** The repo is public, and a stranger who clones it inherits the
    same behaviour without inheriting the NAT, so this stays on the list for the stranger-facing
    cluster in §5 and should be revisited before the project is advertised anywhere.
-   **Partly closed 2026-09-27:** every non-GET request now passes a Host/Origin guard
-   (frontend_vision.md §9.2), added with the first write routes. Reads still accept any Host.
-   Low p in any case — it needs a hostile page open while the map runs, and DNS rebinding
-   defeats the absent CORS header. Fix is a Host allowlist with an env override. Caveat:
+   **Half closed 2026-09-27:** every non-GET request passes a Host/Origin guard
+   (frontend_vision.md §9.2), and `d398f68` the same day extended the Host check to reads
+   (`interfaces/web/guard.py`: the Host must name the server's own bound address). **Left:**
+   `/api/worlds` still sends each save's absolute `path`, which carries the Windows username
+   and the SteamID64 folder. Caveat:
    dropping `path` is costlier than pitched, because `routers/world/worlds.py:41` documents it as the
    pin `?save=` takes back verbatim, so schema, frontend and the filename resolver's
    cross-world ambiguity move together.
 6. **`cohere.propose` is between quadratic and cubic.** 0.35 s at 581 machines, 10.92 s at 2,324,
    extrapolating to ~90 s at 4,600. p of hitting it this year: low, and risk 1's memo means it is
    paid once per save rather than per request. What remains is a scale assertion with 10×
-   headroom — not paging.
+   headroom — not paging. **OPEN on 2026-10-14**: no scale assertion exists yet.
 
 ---
 
@@ -272,14 +289,16 @@ angles was the strongest signal in this dataset, and both shipped inside a day.
 
 - ~~**Hypertubes before §21.**~~ Discharged: the role tag landed first, as it had to.
 - **Head lift and the starved chain are slices of §21**, not competitors. Head lift is the fluid
-  slice §21 would otherwise never reach, because there connectivity is fine.
+  slice §21 would otherwise never reach, because there connectivity is fine. Both have shipped:
+  head lift as `4b59014`, the starved chain as `factory_health`'s feed rows (`43a7549`).
 - **Measured rates before §22, and before `supplied_from`.** The first half is done. The second
   is not: `build_scenario(supplied=)` exists and nothing fills it, and filling it from a
   *nameplate* surplus feeds the planner a rate a starved factory does not deliver. Same reason as
-  the ETA rule: no forecast from a single window until §22 supplies a second sample.
+  the ETA rule: no forecast from a single window until §22 supplies a second sample. Still true
+  on 2026-10-14: `supplied=` is filled only by the caller, and §22 has no tool.
 - **Terrain window before water columns, before siting-by-bill, before the extractor cap.** One
-  primitive, four readers, in that order. The primitive and the first two readers are in; the
-  last two are not.
+  primitive, four readers, in that order. The primitive and the first two readers are in, and so
+  is the terrain line on a siting (`e7f1e17`); siting-by-bill and the extractor cap are not.
 - **Transport networks:** nothing found here raises their priority. Trains, drones and trucks did
   not appear in a single one of 38 candidates. But note the asymmetry — hypertubes are the one
   transport network already fully present in the save, and their treatment was a defect in a

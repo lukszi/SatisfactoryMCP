@@ -7,11 +7,14 @@ both citations. Numbers are stable and are cited elsewhere, so a closed item kee
 rather than being deleted. Parked FEATURES are [parked.md](parked.md) §21 and §22; work that is
 not a defect is [roadmap.md](roadmap.md).
 
-**State, 2026-08-10: 39 of the original 40 closed, and item 36 is the one remaining — a
-test-file assertion, not a surface feature.** Items 37 and above were filed later and are not
-part of that count.
+**State, 2026-10-14, re-checked against the code: 39 of the original 40 closed, and item 36 is
+the one remaining — a test-file assertion, not a surface feature.** Items 37 and above were
+filed later and are not part of that count. Of those twenty (37–56), six are closed (44–49),
+one is partly done (53) and thirteen are open: the six in-game rigs of P6, and items 43, 50–52
+and 54–56. Two P3 rows stay open: the boolean filters and the `top=` alias.
 
-P0, P1, P2 and P5 are done outright. What is left is P3, and only P3.
+P0, P1, P2 and P4 are done outright. Of the original sections, what is left is two rows of P3
+and item 36 in P5.
 
 **On 2026-08-10 the owner withdrew this file's standing posture on convention drift** — *"I
 want a unified and sleek interface, no duplicate vocabulary even to keep backwards compat."*
@@ -43,6 +46,7 @@ the map drew. The general fix was one habit rather than one commit: **a projecti
 finished until both interfaces read it.** It held. The habit is the part that has to survive,
 and the two modules landed yesterday — `domain/world/logistics.py` and `domain/world/timeline.py`
 — are already the same shape from the other direction: correct, cached, and read by nobody.
+On 2026-10-14 the first is read by two tools (item 44) and the second still by none (item 43).
 
 ---
 
@@ -267,8 +271,9 @@ anything". Two of the three already were:
 `ef59c62`, which predates this backlog. The audit that filed the row searched `src/` and read
 the absence as proof.
 
-What is genuinely left is `drop_actor=`, which nothing passes anywhere, and the assertion this
-row asked for: that ablating each knob degrades the riser-violation count. Today the test proves
+What was left was `drop_actor=`, which nothing passed anywhere — `9043ce4` removed it from
+`_solve` — and the assertion this row asked for, which is still open on 2026-10-14: that
+ablating each knob degrades the riser-violation count. Today the test proves
 the two models agree, not that either is doing work. It is still **not a surface feature** — its
 honest home is that test file.
 
@@ -358,7 +363,8 @@ about performance and not a reason to build anything.
 This is the structural defect that explained a third of P0–P5, recurring: **a projection key, or
 a domain module, is not finished until both interfaces read it.**
 
-**43 — `domain/world/timeline.py` has no tool.** Roadmap §2.3. The row, the identity key that
+**43 — `domain/world/timeline.py` has no tool. OPEN on 2026-10-14**: nothing in `src/` imports
+it. Roadmap §2.3. The row, the identity key that
 survives autosave rotation, the index file and the pairwise comparison all shipped; measured at
 112 s to index 50 saves cold, for 101 kB. What is missing is a tool and **the window note every
 answer must print with it**. The value is real and it grew: a 300 s window in one save is a
@@ -368,40 +374,51 @@ undischarged and binds whoever takes this: do not build ETA-from-a-300 s-window 
 timeline is consumed.** That is a forecast dressed as a reading, and it is the exact class of
 confidently-wrong answer this project exists to avoid.
 
-**44 — `domain/world/logistics.py` has no tool.** Roadmap §2.2, [parked.md](parked.md) §21.
+**44 — `domain/world/logistics.py` has no tool. CLOSED** (`43a7549`, `e72f70b`): it reaches the
+surface through the two consumers roadmap §2.2 named, `factory_health`'s feed rows and
+`trace_upstream`'s crossed runs, both closed before this row was filed. Roadmap §2.2,
+[parked.md](parked.md) §21.
 `Link`, `PhysicalGraph.feeds/drains` and `build_physical_graph` are correct and cached and reach
 no surface. Note that §21's original geometric-join prescription was **struck** after being
 measured 28.7% wrong, so read the parked entry for what survived before designing anything on
 top of it.
 
-**45 — `GameData.warnings` and `projection["warnings"]` reach no reader.** Roadmap §3. The first
-reaches a bare `len()` in `tools/resources.py:32`; the second has zero consumers anywhere. Two
-note blocks, in `world_summary` and in the save resource, close it.
+**45 — `GameData.warnings` and `projection["warnings"]` reach no reader. CLOSED** (`72afd32`):
+`app.integrity_notes` prints both in `world_summary` and the two orientation resources. Roadmap §3.
+The first reaches a bare `len()` in `tools/resources.py:32`; the second has zero consumers anywhere.
+Two note blocks, in `world_summary` and in the save resource, close it.
 
-**46 — The unread-class census.** Roadmap §3. Fifteen lines mirroring the null-yaw census.
+**46 — The unread-class census. CLOSED** (`72afd32`), in the same commit as item 45, with a
+six-class allow-list. Roadmap §3. Fifteen lines mirroring the null-yaw census.
 **It must land in the same commit as item 45 or it is invisible by construction.** It also needs
 a hand-built "seen and dismissed" allow-list, or its first run reports 4,300 berry bushes.
 
 ### Things that lie rather than fail
 
-**47 — `skew_from_meta` returns `None` unconditionally on the shipped table.** Roadmap §3. The
+**47 — `skew_from_meta` returns `None` unconditionally on the shipped table. CLOSED**
+(`4f80dad`) by a second guard rather than by fixing the first: `provenance.stale_artifacts`
+compares `installed_build()` with each generated table's pin at runtime and prints a note on
+drift. `skew_from_meta` itself still cannot fire on a shipped table. Roadmap §3. The
 guard is structurally incapable of firing on the event it exists for. `installed_build()`
 returns the exact pin string every artifact records and still has no runtime caller. Ten lines
 closes it for five pinned artifacts — and this is the guard that would announce a map update
 having moved the pinned node and collectible tables, which is a failure mode that has already
 bitten.
 
-**48 — `docs_path()` raises instead of returning `G:\SteamLibrary`.** Roadmap §3,
-`config.py:25`. A function lying rather than failing.
+**48 — `docs_path()` raises instead of returning `G:\SteamLibrary`. CLOSED** (`9a8b8b2`): it raises
+`FileNotFoundError` naming every place it looked. Roadmap §3, `config.py:25`. A function lying
+rather than failing.
 
-**49 — The comment-budget failure message names no remedy.** Roadmap §3, fifteen minutes. The
+**49 — The comment-budget failure message names no remedy. CLOSED** (`7884219`). Roadmap §3,
+fifteen minutes. The
 cheapest way to satisfy a failing ratchet is to delete an explanation, in a codebase whose prose
 is the design record. The message should name the intended remedy instead. Caps are
 per-**directory**, so "raise this file's cap" is not available and the message must not imply it.
 
 ### Fluid work that is not the head-lift model
 
-**50 — Pipe build review, a build-advice tool.** Roadmap §3b, from the FICSIT Plumbing Manual.
+**50 — Pipe build review, a build-advice tool. OPEN on 2026-10-14**; the head-lift geometry it
+reuses has landed. Roadmap §3b, from the FICSIT Plumbing Manual.
 Two mistakes the manual names, both decidable from the contracted runs and machine positions
 already held, and neither performed by any tool in the ecosystem: *a feed pipeline built below
 its machine inputs* (Lesson 8 — head lift is the same for every pipe in a network, so a feed
@@ -410,36 +427,39 @@ no vertical separation* (pump lift does not stack pump-to-pump — three Mk2 pum
 50 m, not 150 — it stacks only with gravity gained after the pump). The output is **advice about
 what was built, not a fault**, so it wants its own tool rather than a column on a health report.
 
-**51 — Byproduct remedies in `explain_byproducts`.** Roadmap §3b, Lesson 9. The LP balances a
-byproduct as an equality and is mathematically right while being physically naive: it has no
-idea the second refinery clogs when its output is fed back to the first. The manual ranks four
-remedies — underclock the extractors and cap them with a valve (stable only at 100% efficiency),
-dedicate refineries to the byproduct (most stable), feed it to other machines, or package and
-sink it (worst). A planner change, unrelated to the head-lift model.
+**51 — Byproduct remedies in `explain_byproducts`. OPEN on 2026-10-14.** Roadmap §3b, Lesson 9. The
+LP balances a byproduct as an equality and is mathematically right while being physically naive: it
+has no idea the second refinery clogs when its output is fed back to the first. The manual ranks
+four remedies — underclock the extractors and cap them with a valve (stable only at 100%
+efficiency), dedicate refineries to the byproduct (most stable), feed it to other machines, or
+package and sink it (worst). A planner change, unrelated to the head-lift model.
 
-**52 — Pipe fill is not in the projection.** Every fluid measurement to date has had to parse
-the raw `.sav` with `pioneersav`, because the projection does not carry `mFluidBox`. That is the
-right call while the model is moving and the wrong one once it settles. **It needs a
-`SCHEMA_VERSION` bump, so it must be coordinated** — a second Claude instance has been doing
-belt work in parallel and the two changes must not collide.
+**52 — Pipe fill is not in the projection. OPEN on 2026-10-14**: pipe rows still carry no
+`mFluidBox` (fluid buffers' `stored_m3` was already there). Every fluid measurement to date has had
+to parse the raw `.sav` with `pioneersav`, because the projection does not carry `mFluidBox`. That
+is the right call while the model is moving and the wrong one once it settles. **It needs a
+`SCHEMA_VERSION` bump, so it must be coordinated** — a second Claude instance has been doing belt
+work in parallel and the two changes must not collide.
 
 ### Reported without a measurement, and needing one first
 
-**53 — Belt instances have no stable ident.** A belt can be addressed as `chain:N` but an
+**53 — Belt instances have no stable ident. PARTIAL.** Schema 20 (`e40bcd0`) gave belt rows an
+`actorIndex` and every belt run a `chain:` ident, which closed the run-level half before this row
+was filed; a single belt piece is still not addressable. A belt can be addressed as `chain:N` but an
 individual belt actor cannot, and giving it one is believed to need an `actorIndex` in the
 projection — hence a `SCHEMA_VERSION` bump and the same coordination as item 52. **Re-derive the
 requirement before bumping**: this was stated in conversation and never written down against the
 code.
 
-**54 — Derived views are rebuilt on every MCP start.** Recorded in conversation as **≈815 ms**,
-and that figure is **[UNVERIFIED]** — measure it before designing a cache. The single-flight
-memoisation and the `SaveWatcher` pre-warm already landed and cut a cold read from 8.40 s to
-4.19 s and a warm `load_projection` from 98.8 ms to 0.44 ms, so the remaining start-up cost may
-already be smaller than remembered.
+**54 — Derived views are rebuilt on every MCP start. OPEN on 2026-10-14.** Recorded as **≈815 ms**,
+which [residency.md](residency.md) did measure (§23.1) before the cohere split; re-measure it on
+today's code before designing a cache. The single-flight memoisation and the `SaveWatcher` pre-warm
+already landed and cut a cold read from 8.40 s to 4.19 s and a warm `load_projection` from 98.8 ms
+to 0.44 ms, so the remaining start-up cost may already be smaller than remembered.
 
-**55 — A terrain water-lift column, and a valve splitter check.** Both were named in
-conversation and neither has a written specification. **Write down what each would claim, and
-what save evidence supports it, before either is built.** Filed so they are not lost, not
+**55 — A terrain water-lift column, and a valve splitter check. OPEN on 2026-10-14.** Both were
+named in conversation and neither has a written specification. **Write down what each would claim,
+and what save evidence supports it, before either is built.** Filed so they are not lost, not
 because they are ready.
 
 ### One tagged-property walk
@@ -461,7 +481,9 @@ the new walk changes the generator's water outputs, so it is a re-baseline with 
 run rather than a refactor. The curves and the volumes read identically under both walks, and
 the sweep's tag dictionaries match the old `flagged_tags` on all 182,947 streams, which is why
 those moved and the rest did not. **Switch the remaining callers in one change, compare the
-water outputs before and after, and delete `property_tags` once nothing calls it.**
+water outputs before and after, and delete `property_tags` once nothing calls it.** OPEN on
+2026-10-14: `76aa4c8` moved the mapgen copies onto one reader before this row was written, and
+`property_tags` still has four call sites.
 
 ## Not doing, and why
 
