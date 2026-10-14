@@ -495,8 +495,8 @@ def _direct_regime(
     """The rocks composited onto the lattice under them: ``(z_m, missing, weight, rock_seen,
     seam, base_m)``, ``seam`` the output pixels the band measures when it measures and
     ``base_m`` the ground the rocks stand on. Where that lattice knows nothing the field's
-    fold stands in, and near its edge the two are blended by the lattice's softened edge, so
-    no texel of it draws a step."""
+    fold stands in, and near its edge the rocks composited on each are blended by the
+    lattice's softened edge, so no texel of it draws a step or a crease."""
     smooth, linear = grid.smooth, grid.linear
     ground_dm, ground_missing = sample_surface(direct.ground, smooth, linear, hf.NODATA)
     spacing_m = sources.field.spacing_cm / 100.0
@@ -506,14 +506,16 @@ def _direct_regime(
         ground_missing = np.where(rim.inside, rim.fold, ground_missing)
         z_m = np.where(rim.inside, rim.z_dm / np.float32(hf.DM_PER_M), z_m)
     base_m = np.where(ground_missing, z_m, ground_dm / np.float32(hf.DM_PER_M))
-    edge = _lattice_edge(sources.lattice_edge, linear)
-    if edge is not None:
-        base_m = np.where(edge > 0.0, base_m + edge * (z_m - base_m), base_m)
     cut = (grid.rows.cut, grid.cols.cut)
     rock = (np.asarray(direct.z[cut], np.float32), np.asarray(direct.coverage[cut]))
     wet_plane = None if sources.water is None else sources.water.wet
     kept = rock_kept(rock[0], missing, linear, wet_plane, sources.sea)
+    fold_m, fold_missing = z_m, missing
     z_m, missing, weight, switched = blend_regimes(base_m, missing, rock, direct.subsamples, kept)
+    edge = _lattice_edge(sources.lattice_edge, linear)
+    if edge is not None:
+        z_m, switched = _toward_fold(edge, (z_m, switched), fold_m, fold_missing, rock, kept, direct)
+        base_m = np.where(edge > 0.0, base_m + edge * (fold_m - base_m), base_m)
     rock_lift = np.clip((z_m - base_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     rock_seen = np.where(ground_missing, weight, np.minimum(weight, rock_lift))
     if edge is not None:
@@ -524,6 +526,28 @@ def _direct_regime(
         delta = (rock[0] / 100.0 - base_m)[out]
         seam = SeamPlanes(z_m[out], switched[out], weight[out], delta)
     return z_m, missing, weight, rock_seen, seam, base_m
+
+
+def _toward_fold(
+    edge: FloatGrid,
+    on_lattice: tuple[FloatGrid, FloatGrid],
+    fold_m: FloatGrid,
+    fold_missing: BoolMask,
+    rock: tuple[F32Grid, NDArray[np.generic]],
+    kept: F32Grid | None,
+    direct: DirectPlanes,
+) -> tuple[FloatGrid, FloatGrid]:
+    """The heights and the seam's hard switch composited on the lattice, blended by ``edge``
+    toward the same composited on the fold. Blending the ground under the rock instead swept
+    it through the rock's height, where the raise-only lift turns a corner: a crease along a
+    lattice buried far under its rock (renders.md section 25, "Where the lattice stops")."""
+    z_fold, _, _, switched_fold = blend_regimes(fold_m, fold_missing, rock, direct.subsamples, kept)
+    z_m, switched = on_lattice
+    blended = edge > 0.0
+    return (
+        np.where(blended, z_m + edge * (z_fold - z_m), z_m),
+        np.where(blended, switched + edge * (switched_fold - switched), switched),
+    )
 
 
 def _lattice_edge(plane: U8Grid | None, linear: GridTaps) -> FloatGrid | None:

@@ -549,8 +549,8 @@ the fill, it was a line several hundred metres long in every layer.
 
 `render/ground/lift.py` `lattice_edge` softens that edge over `LATTICE_EDGE_BLUR_M` (2 m) inside the
 lattice: a byte per texel, 255 where the fold stands in, falling to 0 about 6 m in, built once
-a draw. A band blends the lattice's height towards the fold, and the rock's share towards its
-coverage, by it (`render/ground/surface.py` `_direct_regime`). Where the field has no data either,
+a draw. A band blends the heights composited on the lattice towards those composited on the
+fold (below, "A lattice buried under its rock"), and the rock's share towards its coverage, by it (`render/ground/surface.py` `_direct_regime`). Where the field has no data either,
 the lattice's edge is the void's or a pit's, which the void draws, so it is not softened.
 Past about 6 m from the edge every pixel is the same bits as before.
 
@@ -584,6 +584,29 @@ knows nothing. A crop of the piece's texels is read, so no plane is kept.
 The rule finds 3,337 rim texels in 138 places on build 502094, most of them along the west
 coast's cliffs near (-1668, 2400), the abyss near (2826, 1305) and the crater. The drop along
 y 3048 m, 1.1 m in the median and at most 4.7 m, keeps the ramp above.
+
+### A lattice buried under its rock (2026-10-14)
+
+The light drew a faint east-west line, one or two grey levels, across a formation at
+y ≈ 2160 m (x 1910 to 2030 m), in the lit tiles and the normals only. There the bare
+landscape (`terrain.u16.z`) runs on under the formation 55 to 110 m below its top and stops
+at field row 5910, so the lattice ends inside the rock, far under it, and the fold of the
+rock itself stands in south of the row. The blend above ramped the ground under the rock
+from the buried landscape up to the fold over a few metres. A rock covering the pixel shows
+as the ground plus the raise-only lift of the rock over it: the rock itself while the ground
+is far below, the fold plus up to half the knee (`DIRECT_LIFT_KNEE_M`) once the ground is the
+fold, which stands 0.1 to 0.3 m above the fine rock there. The ramp swept the ground through
+the rock's height within a fraction of a pixel, so the heights turned that corner in one row:
+a crease of about 0.2 m, 20 to 27 levels in the south normal's byte along 130 m of row.
+
+`render/ground/surface.py` `_toward_fold` now composites the rocks on the lattice and on the
+fold each and blends the two heights (and the seam trace's hard switch) by the lattice's
+edge, so the same step is a ramp over the edge's width. Drawn in-process over the 512 × 1280
+px around it at full size, the south normal's deviation along the row falls from 27 levels
+to at most 5, spread over ten rows, and a high-passed hillshade shows no line. The heights of
+that window move in 10,291 px by more than 5 cm, all within the lattice's edge, 152 px by
+more than a metre: where the fold stands far above the rock raster, a cliff the old blend
+drew where the ramping ground crossed the rock is now a ramp across the edge.
 
 ### Known limits
 

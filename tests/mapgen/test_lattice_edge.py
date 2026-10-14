@@ -90,6 +90,24 @@ def test_the_rock_s_share_blends_into_the_fold_s_where_the_lattice_stops(monkeyp
     assert np.array_equal(soft[:, EDGE:VOID], hard[:, EDGE:VOID])
 
 
+def test_a_lattice_buried_under_its_rock_draws_no_crease_where_it_stops(monkeypatch):
+    """A landscape 80 m under a rock that covers it, the fold beside it just over the rock:
+    the heights ramp from the rock to the fold's lift instead of turning a corner in a pixel."""
+    field, heights, direct, spacing_m = _scene()
+    ground = direct.ground.copy()
+    ground[:, :EDGE] = -500.0
+    direct = DirectPlanes(np.full((N, N), 2990.0, np.float32), direct.coverage, ground, 1)
+    monkeypatch.setattr(lift, "LATTICE_EDGE_BLUR_M", 3 * spacing_m)
+    borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
+    inputs = compose.GroundInputs(height_dm=heights, direct=direct)
+    sources = compose._ground_sources(field, Window(0, N, 0, N), N, borrow, inputs)
+    grid = band_grid(sources, span(0, N, (0, N), 0), span(0, N, (0, N), 0))
+    surfaces, _owed = band_surfaces(sources, grid, {False})
+    row = np.array(surfaces[False].z_m)[N // 2, EDGE - 14 : EDGE + 4]
+    assert abs(row[0] - 29.9) < 1e-3 and row[-1] > 30.05, "the rock, then the fold's lift"
+    assert np.abs(np.diff(row, 2)).max() < 0.04, "a ramp, not a corner"
+
+
 def _rim_scene(drop_dm: float):
     """A lattice at 0 dm west of a diagonal staircase of texels and the fold ``drop_dm`` under
     it east of the staircase, read at a quarter of a texel."""

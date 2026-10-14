@@ -382,6 +382,17 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Web map: zoomed out with the sun off its daily path, the shade where an arch's, an
+  overhang's or a tree's shadow meets a terrain shadow is read each its own way: the terrain
+  against the sun's height, the arch or tree at the path's. A coarser level kept the two in
+  one number and read the terrain at the path's height there. The light's version goes up
+  to 9, so a kept light is baked again; its coarser horizon tiles hold 64 more cells, about
+  0.24 GB more at full size at most, and the light's scratch takes 4.3 GB more. Pages read
+  older lights as before.
+- Map renders: no faint east-west line in the live light across the rocks near
+  (1990, 2160), where the landscape buried under a formation ends inside it: the rock's
+  height is blended from the buried ground's side to the fold's instead of the ground under
+  it, which turned a 0.2 m corner in one pixel row.
 - Map renders: the Satellite map's desert boulders are terracotta wherever they stand, as
   their own desert material and the game's distant view have them: those on the Spire Coast,
   in the Rocky Desert, the Desert Canyons and the Swamp drew grey. The other shells take the
