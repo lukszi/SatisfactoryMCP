@@ -1,8 +1,8 @@
 """The scan a shared export passes before it counts as done: the site is public, so it holds
 only the allowlisted files and keys, and none of them may name this machine or its owner.
 
-Text files are read whole; images are checked by their chunk headers, since a PNG text chunk
-or a WebP EXIF block is where a path or a name could ride along. docs/map/sharing.md.
+Text files are read whole; images are judged by their names only and never opened: a tile
+folder holds hundreds of thousands of them, all written by the renderer. docs/map/sharing.md.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import getpass
 import json
 import re
 import socket
-import struct
 import subprocess
 from collections.abc import Iterable
 from pathlib import Path
@@ -22,11 +21,12 @@ from satisfactory_mcp.core.jsontypes import JsonValue
 __all__ = [
     "ALLOWED_SUFFIXES",
     "TOP_LEVEL",
-    "image_problem",
+    "file_problems",
     "manifest_problems",
     "private_words",
     "scan",
     "text_problems",
+    "top_problems",
 ]
 
 TEXT_SUFFIXES = frozenset({".html", ".js", ".css", ".json", ".txt"})
@@ -36,12 +36,6 @@ ALLOWED_SUFFIXES = TEXT_SUFFIXES | IMAGE_SUFFIXES
 #: The only names allowed at the export's root.
 TOP_LEVEL = frozenset({"index.html", "assets", "vendor", "data", "t"})
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]*$")
-
-PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
-#: Pixel and colour chunks only; tEXt, zTXt, iTXt, eXIf and tIME carry metadata.
-PNG_CHUNKS = frozenset({b"IHDR", b"PLTE", b"tRNS", b"IDAT", b"IEND", b"gAMA", b"sRGB", b"pHYs"})
-#: Bitstream chunks only; EXIF and XMP carry metadata.
-WEBP_CHUNKS = frozenset({b"VP8 ", b"VP8L", b"VP8X", b"ALPH"})
 
 #: Patterns no file may contain, with what each one means.
 PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -111,59 +105,6 @@ def text_problems(rel: str, text: str, roots: Iterable[Path], words: Iterable[st
     return found
 
 
-def image_problem(name: str, data: bytes) -> str:
-    """Why an image file may not be published, or ``""``: wrong magic, or a metadata chunk."""
-    if name.endswith(".png"):
-        if not data.startswith(PNG_MAGIC):
-            return "not a PNG"
-        at = len(PNG_MAGIC)
-        while at + 8 <= len(data):
-            length, kind = struct.unpack(">I4s", data[at : at + 8])
-            if kind not in PNG_CHUNKS:
-                return f"a {kind.decode('latin-1')} chunk"
-            at += 12 + length
-        return ""
-    if name.endswith(".webp"):
-        if data[:4] != b"RIFF" or data[8:12] != b"WEBP":
-            return "not a WebP"
-        at = 12
-        while at + 8 <= len(data):
-            kind, length = data[at : at + 4], struct.unpack("<I", data[at + 4 : at + 8])[0]
-            if kind not in WEBP_CHUNKS:
-                return f"a {kind.decode('latin-1')} chunk"
-            at += 8 + length + (length & 1)
-        return ""
-    return "not an image"
-
-
-def _image_head_problem(path: Path) -> str:
-    """``image_problem`` reading only the chunk headers, for files copied by an earlier run."""
-    with path.open("rb") as handle:
-        head = handle.read(12)
-        if path.suffix == ".png":
-            if not head.startswith(PNG_MAGIC):
-                return "not a PNG"
-            handle.seek(len(PNG_MAGIC))
-            while chunk := handle.read(8):
-                if len(chunk) < 8:
-                    return "a truncated chunk"
-                length, kind = struct.unpack(">I4s", chunk)
-                if kind not in PNG_CHUNKS:
-                    return f"a {kind.decode('latin-1')} chunk"
-                handle.seek(length + 4, 1)
-            return ""
-        if head[:4] != b"RIFF" or head[8:12] != b"WEBP":
-            return "not a WebP"
-        while chunk := handle.read(8):
-            if len(chunk) < 8:
-                return "a truncated chunk"
-            kind, length = chunk[:4], struct.unpack("<I", chunk[4:])[0]
-            if kind not in WEBP_CHUNKS:
-                return f"a {kind.decode('latin-1')} chunk"
-            handle.seek(length + (length & 1), 1)
-        return ""
-
-
 def _layer_light_keys(site: JsonValue) -> list[str]:
     """Each layer's ``X-Map-Light`` header, a JSON string inside the JSON, against its list."""
     found: list[str] = []
@@ -186,32 +127,32 @@ def manifest_problems(rel: str, text: str) -> list[str]:
     return [f"{rel}: a JSON file that is not one of the two manifests"]
 
 
-def scan(out: Path, roots: Iterable[Path], words: Iterable[str], images: bool = True) -> list[str]:
-    """Every reason ``out`` may not be published; empty when it may.
+def top_problems(names: Iterable[str]) -> list[str]:
+    """Each top-level name that is not part of the site."""
+    return [f"{n}: not part of the shared site" for n in sorted(set(names)) if n not in TOP_LEVEL]
 
-    ``images`` False skips the image chunk walk, for files this run copied and checked already.
-    """
+
+def file_problems(rel: str, path: Path, roots: list[Path], words: list[str]) -> list[str]:
+    """What is wrong with one file of the export; only text files are opened."""
+    if path.is_symlink():
+        return [f"{rel}: a link"]
+    if not SAFE_NAME.match(path.name) or path.suffix not in ALLOWED_SUFFIXES:
+        return [f"{rel}: a file type the site does not serve"]
+    if path.suffix not in TEXT_SUFFIXES:
+        return []
+    text = path.read_text(encoding="utf-8")
+    found = text_problems(rel, text, roots, words)
+    if path.suffix == ".json":
+        found.extend(manifest_problems(rel, text))
+    return found
+
+
+def scan(out: Path, roots: Iterable[Path], words: Iterable[str]) -> list[str]:
+    """Every reason ``out`` may not be published; empty when it may."""
     roots, words = list(roots), list(words)
-    found: list[str] = []
-    for top in sorted(out.iterdir()):
-        if top.name not in TOP_LEVEL:
-            found.append(f"{top.name}: not part of the shared site")
+    found = top_problems(top.name for top in out.iterdir())
     for path in sorted(out.rglob("*")):
-        rel = path.relative_to(out).as_posix()
-        if path.is_symlink():
-            found.append(f"{rel}: a link")
+        if path.is_dir() and not path.is_symlink():
             continue
-        if path.is_dir():
-            continue
-        if not SAFE_NAME.match(path.name) or path.suffix not in ALLOWED_SUFFIXES:
-            found.append(f"{rel}: a file type the site does not serve")
-        elif path.suffix in TEXT_SUFFIXES:
-            text = path.read_text(encoding="utf-8")
-            found.extend(text_problems(rel, text, roots, words))
-            if path.suffix == ".json":
-                found.extend(manifest_problems(rel, text))
-        elif images:
-            problem = _image_head_problem(path)
-            if problem:
-                found.append(f"{rel}: {problem}")
+        found.extend(file_problems(path.relative_to(out).as_posix(), path, roots, words))
     return found
