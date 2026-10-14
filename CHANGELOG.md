@@ -337,6 +337,9 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the Satellite map's boulders in the Dune Desert take their own colour from the
+  game's baked distant view, a lighter sand-terracotta, instead of the colour once measured on
+  the desert's arches. The style's version goes up.
 - Map renders: the Satellite map's pink-brown barnacle boulders along the beaches wear their
   own barnacle texture and relief instead of flat colour, as the other rocks and the shells
   do. Their colour stays the coral's. The style's version goes up, and the render-only mesh

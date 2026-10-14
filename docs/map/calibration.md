@@ -218,7 +218,7 @@ references were used. A target is a screenshot measured so, or derived by a rule
 | WetSand | the deserts and Savanna | #9b7a5b | derived (rule) | the entry's Sand at L ×0.80, C ×1.15, h −10 ("Wet sand by rule" above) |
 | Gravel | the deserts and Savanna | #8f8373 | screenshot | Somersloop, and the gravel-to-sand ratio in Desert Canyons |
 | Grass | Southern Forest | #53784a | derived (bake) | the area's pure grass texels in the game's baked colour through the camera model; its grass is bluer than any other area's ("The second review" below) |
-| Arches and boulders | Dune Desert | #ba7b56 | derived (bake) | the Dune Desert's arches and rib bones in the game's baked distant view through the camera model ("The second review" below) |
+| Boulders of the top pass | Dune Desert | #ca9164 | derived (bake) | the Dune Desert's boulder tops in the game's baked distant view through the camera model (painted.md section 30, "The Dune Desert's boulders"); #ba7b56, the arches' and rib bones', until the desert arches took their family's colour |
 | Top layer, red jungle family | the up-facing faces of every `_RedJungle` cliff | #ad6351 | derived (bake) | those cliffs' tops in the game's baked distant view through the camera model ("The second review" below) |
 | Crowns, red Kapok (`SM_Kapok_03`) | everywhere, by species | #7c4955 | screenshot | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942); two 1.0 sources agree (ΔE 1.8 and 1.9) (see "Crowns") |
 | Crowns, blue palms | everywhere, by hue | #3d627d | screenshot | [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), high-angle daylight: the blue leaf pixels (hue 190 to 290, chroma at least 0.04) of five crowns pooled, then the method above. The [Rocky Desert area](https://satisfactory.wiki.gg/images/Rocky_Desert_Area.png) crowns agree on hue (242) but are seen from below; the [river split](https://satisfactory.wiki.gg/images/Rocky_Desert_river_split.png) crowns are backlit. A 1.0 shot gives #556b85 (ΔE 4.4); not derivable, as a third of the leaf is midribs and the fronds are sparse |
@@ -831,8 +831,10 @@ instance, the class is mostly other meshes, each with its own texture:
   is checked against the game's own view; the ancient pines draw their sprites' colour moved
   by 0.66 to 0.72 of the canopy step, olive-green and lighter than the grass's footage shows.
 - The arches' colour by material covers the desert arches only (`arch_families`, painted.md
-  section 30, "Red-grass tops and the desert arches"); the Dune Desert's `arches` entry
-  still colours its boulders, unmeasured on their own.
+  section 30, "Red-grass tops and the desert arches"). The boulders take theirs by area: the
+  Dune Desert's `arches` entry, measured on its boulders (#ca9164), but the Spire Coast's
+  boulders, terracotta in the bake too (#c88f63), draw grey (ΔE 9.5) until the top pass
+  carries a boulder's material as it carries an arch's.
 - The top layer's mask is the cliff master's, read with the look's normal maps where the game
   reads each mesh's own (painted.md section 30, "Rock textures"). Only the forest top has a
   colour measured from screenshots; the sand and grass tops wear their layers' targets and
