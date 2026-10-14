@@ -55,11 +55,13 @@ takes the statics under `/Foliage/Coral/` and `/UnderWater/` plus `CliffPillar_0
 same placement sweep, and the foliage instances of the same directories and of `/Rubble/` and
 `SeaRock` (minus the top-layer boulders) through the `extra_foliage` harvest of
 `sweep_levels`. Each mesh is read at its finest source, falling back to its collision hull. On
-this build: 57,294 coral, 4,223 shell and 38,009 rock instances. The coral trees are tree
+this build: 44,207 coral, 13,087 barnacle, 4,223 shell and 38,009 rock instances. The coral trees are tree
 foliage too, and only this pass draws them (section 36, "Coral trees are no crowns").
 
 They are rasterised into `meshes.cache/` beside `direct.cache/` and `top.cache/` (same size and
-build stamp, plus the reader version), with a class plane: coral, shell or rock. They are
+build stamp, plus the reader version), with a class plane: coral, shell, rock, terrace or
+barnacle. A barnacle (`SM_Barnacle_01` and `_02`, 13,087 instances) is coral everywhere but in
+the painted style's look ("Rock textures", "The barnacles"). They are
 composited with the top layer's raise-only lift, and only where the mesh top stands within
 0.6 m of the water surface or above it, so seabed coral roots do not speckle the sea.
 
@@ -429,6 +431,7 @@ the materials' parameters.
 | Arches and boulders (the top pass) | `TX_Arc_Rock_BC`, 8.93 m: an arch mesh spans about 125 m of surface per UV0 unit (`ArcMedium_01`, `ArcLarge_01` and `ArcSmall_01` 125 to 126 m) and its `MI_Arc_*` instances repeat the rock 13 to 15 times | `TX_Arc_Rock_N`, the same tile | rotated cells, for the mesh's UVs |
 | Desert rock (family 8) | `TX_DesertRock_Rough_01_Alb`, 17.15 m: `DesertRock_WA` repeats it 6 times a UV0 unit, and the up faces of `SM_DesertRock_05`, most of the desert seen from above, span 102.9 m a unit (below) | `TX_DesertRock_Rough_01_normal`, the same tile, at its own strength | rotated cells, for the mesh's UVs |
 | Shells (the render-only `*Shell*` meshes) | a 10 m square cut from the first island of `TX_SmallShell_BC`, faded into a tile (below) | the same cut of `TX_SmallShell_N`, and `SeaRock_Detail_Nor` at 1.40 m (`DetailNormal_UV` 22.8) laid on it | rotated cells, for the mesh's UVs |
+| Barnacles (the render-only `*Barnacle*` meshes) | a 1.65 m square cut from `TX_Barnacle_01_Alb`, faded into a tile (below) | the same cut of `TX_Barnacle_01_Nor` | rotated cells, for the mesh's UVs |
 | A family's top layer | its root's top texture (section 30, "Rock surfaces"): forest `TX_Forest_Far_01_Alb` and red grass `TX_GrassRed_01_Alb` at 50 m, the cliff master's `TopLayer Tiling Far` 0.02; grass `TX_Grass_Far_01_Alb` at 83.3 m, `Cliff_Grass`'s own 0.012; sand `TX_Sand_BC` at 50 m | none of its own | none |
 
 The **rotated cells** are the landscape's anti-tiling: `Cell_Bombing_Noise_basecolor` at 100 m
@@ -451,7 +454,7 @@ keeps its texel size, and a mesh's own tile is its metres a UV unit over 6; it b
 on top at `Sand Tiling` 32. In the game the repeat is broken by each mesh's UV layout and each
 placement's turn and shift, and by that mask; a projection on the ground plane has none of
 them, and drew the desert as one lattice over whole mesas, 12.5 m a cell. So the look turns
-every texture of its own (the arches', the desert rock's and the shells') in the landscape's
+every texture of its own (the arches', the desert rock's, the shells' and the barnacles') in the landscape's
 cells, the game's anti-tiling for a texture laid on the ground plane, in place of the meshes'
 UVs; the cliffs wear the landscape's Cliff layer material, which has the cells already.
 
@@ -488,6 +491,22 @@ both axes, so the tile runs on into itself without a seam and without the four-f
 mirrored cut drew; the cut is turned in the cells, over the shell colour as the rock's
 textures are over theirs, with the detail laid on its normal at full strength as the
 material's reoriented blend has it.
+
+**The barnacles** (2026-10-14). The pink-brown boulders along the beaches, at (510, -1950)
+among others, are not rock either: they are `SM_Barnacle_01` and `_02`, render-only meshes of
+the coral folder that the mesh pass classed `coral`, so they drew in the coral colour, flat,
+after the rock textures came. They now have a class of their own, `barnacle`, which is coral
+in every rule (its colour and area targets, the seabed under water, the footprints, the sunk
+specks) and in the look wears its own texture. Their material is `Asset_Master` again, albedo
+and normal by UV0 once over the mesh, each texture unique to its mesh, no detail map. The
+class plane does not tell the two meshes apart, so both wear `SM_Barnacle_01`'s: 12,404 of the
+13,087 barnacles, and 2,844 of the 3,199 that stand above the sea's level. Its up faces span
+5.09 m a UV unit (plan-area weighted median), at a median placed scale of 0.647, 3.29 m. The
+texture is barnacles packed edge to edge, so the look cuts the square of side 0.5 from UV
+(0.0625, 0.375), one whole barnacle and parts of its neighbours, 1.65 m as placed, and fades the
+next 0.125 into its start as for the shells; it is turned in the cells over the coral colour,
+with its normal map at full strength. `SM_Barnacle_02` (683, `TX_Barnacle_02_*`, 10.9 m a
+texture as placed) is the same pink in a coarser pattern.
 
 **Seen from above.** Every texture is projected on the ground plane, the one a view from
 straight above sees undistorted. The landscape shader does that for the Cliff layer; the
@@ -526,8 +545,8 @@ that light over the same light on the drawn surface's normal, so the run's own l
 live, still lights the surface and the maps add only their relief (`rock_look.shade`, 1). The
 desert rock's map is the detail on the mesh's own normal in `DesertRock_WA`, at
 `TiledNormal_Intensity` 1, so it is laid at its own strength since 2026-10-09 (its slope was
-doubled before, as a base map's); the shells' maps are as `Asset_Master` blends them, both at
-full strength; the arches keep the doubled base.
+doubled before, as a base map's); the shells' and the barnacles' maps are as `Asset_Master`
+blends them, at full strength; the arches keep the doubled base.
 
 **The arches' own family.** The game's baked distant view (the mesh HLOD bake, rasterised at
 1 m) has the arches and boulders lighter than the cliffs around them: per area, the median

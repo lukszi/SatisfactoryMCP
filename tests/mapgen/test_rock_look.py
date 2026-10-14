@@ -16,6 +16,9 @@ from mapgen import jit
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.gamedata.rocks.looks import (
     ARCH_TILE_M,
+    BARNACLE_CUT,
+    BARNACLE_FADE,
+    BARNACLE_TILE_M,
     CLIFF_ALBEDO_TILE_M,
     DESERT_TILE_M,
     LOOK_TEXTURES,
@@ -26,14 +29,17 @@ from mapgen.gamedata.rocks.looks import (
 )
 from mapgen.palette.painted.rock_look.atlas import (
     ALBEDO_ARCH,
+    ALBEDO_BARNACLE,
     ALBEDO_CLIFF,
     ALBEDO_DESERT,
     ALBEDO_SHELL,
     KIND_ARCH,
+    KIND_BARNACLE,
     KIND_CLIFF,
     KIND_DESERT,
     KIND_LAYER,
     KIND_SHELL,
+    KINDS,
     RockLook,
     mip_level,
     rock_look,
@@ -113,13 +119,14 @@ def test_the_look_names_the_install_s_textures_and_the_material_spans():
     assert set(LOOK_TEXTURES) == {
         "cliff_albedo", "cliff_normal", "cliff_detail", "cells", "arch_albedo",
         "arch_normal", "desert_albedo", "desert_normal", "shell_albedo", "shell_normal",
-        "shell_detail",
+        "shell_detail", "barnacle_albedo", "barnacle_normal",
     }  # fmt: skip
     assert CLIFF_ALBEDO_TILE_M == 20.0 and math.isclose(ARCH_TILE_M, 8.93, abs_tol=0.01)
     assert math.isclose(DESERT_TILE_M, 17.15, abs_tol=0.01), "SM_DesertRock_05 at Tiling 6"
     assert math.isclose(SHELL_DETAIL_TILE_M, 1.40, abs_tol=0.01), "SmallShell as placed"
+    assert math.isclose(BARNACLE_TILE_M, 1.65, abs_tol=0.01), "SM_Barnacle_01 as placed"
     look = _look()
-    assert look.tops == {SAND: 5} and look.rules[SAND].tile_m == 50.0
+    assert look.tops == {SAND: 6} and look.rules[SAND].tile_m == 50.0
     assert look.record["tiles_m"]["desert"] == round(DESERT_TILE_M, 3)
 
 
@@ -168,7 +175,7 @@ def test_the_cliff_layer_takes_only_the_detail_finer_than_its_1m_colour():
 
 def test_flat_normal_maps_leave_the_surface_s_normal_and_others_tilt_it():
     flat = _look(normals=(128, 128))
-    for kind in (KIND_CLIFF, KIND_ARCH, KIND_DESERT, KIND_SHELL):
+    for kind in (KIND_CLIFF, KIND_ARCH, KIND_DESERT, KIND_SHELL, KIND_BARNACLE):
         px = _pixels(300, kind, seed=3)
         np.testing.assert_allclose(look_texels(flat, px).normal, px.normal, atol=0.02)
         tilted = look_texels(_look(), px).normal
@@ -200,6 +207,22 @@ def test_the_shell_s_cut_runs_on_into_its_own_start():
     assert look.albedo_tiles_m[ALBEDO_SHELL] == SHELL_TILE_M
 
 
+def test_the_barnacles_wear_a_cut_of_their_own_texture_through_the_cells():
+    textures = rock_textures()
+    own = textures.textures["barnacle_albedo"][..., :3].astype(np.float32) / 255
+    cut = seamless_cut(own, BARNACLE_CUT, BARNACLE_FADE)
+    c0, r0 = round(BARNACLE_CUT[0] * 64), round(BARNACLE_CUT[1] * 64)
+    n, m = round(BARNACLE_CUT[2] * 64), round(BARNACLE_FADE * 64)
+    assert cut.shape == (n, n, 3) and r0 + n + m <= 64, "the cut and its run fit the texture"
+    np.testing.assert_array_equal(cut[m:, m:], own[r0 + m : r0 + n, c0 + m : c0 + n])
+    plain, turned = _look(cells_alpha=0), _look(cells_alpha=255)
+    assert plain.albedo_tiles_m[ALBEDO_BARNACLE] == BARNACLE_TILE_M
+    px = _pixels(300, KIND_BARNACLE, seed=8)
+    flat = look_texels(plain, px).body
+    np.testing.assert_allclose(flat, _plain(plain, ALBEDO_BARNACLE, px), rtol=1e-4, atol=1e-5)
+    assert not np.allclose(look_texels(turned, px).body, flat), "turned in the cells"
+
+
 def test_a_top_layer_reads_its_own_texture_and_none_reads_one():
     look = _look()
     px = _pixels(500, KIND_CLIFF, top=look.tops[SAND])
@@ -217,7 +240,7 @@ def test_the_texel_kernel_on_the_device_gives_the_reference_s_bits():
     from mapgen.palette.painted.rock_look import gpu
 
     look = _look()
-    kinds = np.random.default_rng(9).integers(1, 6, 20000)
+    kinds = np.random.default_rng(9).integers(1, KINDS, 20000)
     px = _pixels(20000, kinds, seed=4)
     top = np.where(np.arange(20000) % 3 == 0, look.tops[SAND], -1).astype(np.int32)
     px = px._replace(top=top)

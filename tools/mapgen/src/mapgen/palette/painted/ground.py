@@ -82,7 +82,7 @@ from mapgen.palette.styles import dry_land_range
 from mapgen.palette.water.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M
 from mapgen.sprites.store import SpriteAtlas
 from mapgen.terrain.crown_stamp import CrownSet
-from mapgen.terrain.render_meshes import MESH_CORAL, MESH_SHELL, MESH_TERRACE
+from mapgen.terrain.render_meshes import MESH_BARNACLE, MESH_CORAL, MESH_SHELL, MESH_TERRACE
 from satisfactory_mcp.core.arrays import BoolMask, F16Grid, F64Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.core.jsontypes import JsonObject
@@ -90,8 +90,14 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = ["ROCK_GRID_M", "PaintedGround", "biome_grid", "land_cells"]
 
-#: The render-only meshes the painted style colours, by class, with their palette names.
-MESH_COLOUR_NAMES = ((MESH_CORAL, "coral"), (MESH_SHELL, "shell"), (MESH_TERRACE, "terrace"))
+#: The render-only meshes the painted style colours, by class, with their palette names; the
+#: barnacles wear the coral's.
+MESH_COLOUR_NAMES = (
+    (MESH_CORAL, "coral"),
+    (MESH_SHELL, "shell"),
+    (MESH_TERRACE, "terrace"),
+    (MESH_BARNACLE, "coral"),
+)
 
 #: The landscape's Cliff layer, which the rock look textures.
 CLIFF_LAYER = "Cliff_LayerInfo"

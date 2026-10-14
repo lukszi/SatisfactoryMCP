@@ -22,6 +22,7 @@ from mapgen.palette.painted.calibration import (
 )
 from mapgen.palette.painted.rock_look.atlas import (
     KIND_ARCH,
+    KIND_BARNACLE,
     KIND_CLIFF,
     KIND_DESERT,
     KIND_LAYER,
@@ -44,7 +45,7 @@ from mapgen.palette.painted.shapes import (
     RockFamilyEntry,
     Sampler,
 )
-from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
+from mapgen.terrain.render_meshes import CORAL_CLASSES, MESH_BARNACLE, MESH_ROCK, MESH_SHELL
 from satisfactory_mcp.core.arrays import BoolMask, I32Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -304,15 +305,15 @@ def _arch_rock(
     return rock * mixed(got.body, strength["albedo"]) * shade
 
 
-def _shell_look(
-    colour: FloatGrid, scene: PaintedScene, ground: PaintedSurface, pick: BoolMask
+def _own_look(
+    colour: FloatGrid, scene: PaintedScene, ground: PaintedSurface, pick: BoolMask, kind: int
 ) -> FloatGrid:
-    """The ``pick``ed shells in their own textures where the run has the look: a cut of their
-    albedo and normal maps around their colour, and their detail normal map."""
+    """The ``pick``ed shells or barnacles (``kind``) in their own textures where the run has
+    the look: a cut of their albedo and normal maps around their colour, and any detail map."""
     look = ground.rock_look
     if look is None or not pick.any():
         return colour
-    reads = (np.full(pick.shape, KIND_SHELL, np.uint8), np.full(pick.shape, -1, np.int32))
+    reads = (np.full(pick.shape, kind, np.uint8), np.full(pick.shape, -1, np.int32))
     got = band_look(look, scene, ground.palette, pick, reads)
     strength = ground.palette["rock_look"]
     factor = mixed(got.body, strength["albedo"]) * mixed(got.shade, strength["shade"])[..., None]
@@ -371,7 +372,7 @@ def sunk_specks(scene: PaintedScene) -> BandWater:
     mesh_w, mesh_class = scene.get("mesh_weight"), scene.get("mesh_class")
     if mesh_w is None or mesh_class is None:
         return water
-    coral = (mesh_class == MESH_CORAL) & (mesh_w > 0)
+    coral = np.isin(mesh_class, CORAL_CLASSES) & (mesh_w > 0)
     if not coral.any():
         return water
     cover = water["cover"]
@@ -395,8 +396,8 @@ def mesh_surface(
     ground: PaintedSurface,
     sample_rock: Sampler | None,
 ) -> FloatGrid:
-    """The render-only meshes over ``g``, each class in its own colour, the shells in their
-    own textures.
+    """The render-only meshes over ``g``, each class in its own colour, the shells and the
+    barnacles in their own textures.
 
     A rock wears its own family (``scene["mesh_family"]``), its top layer and its look, as a
     cliff does, never the family of a cliff it happens to overlap; without the plane it takes
@@ -413,7 +414,9 @@ def mesh_surface(
         colour = rock_surface(area_rock, scene, ground, sample_rock, family, rock)
     for which, rgb in ground.mesh_rgb.items():
         colour = np.where((cls == which)[..., None], sampled_rgb(rgb, sample_rock), colour)
-    colour = _shell_look(colour, scene, ground, (cls == MESH_SHELL) & (mesh_w > 0.0))
-    wet = np.where(cls == MESH_CORAL, np.clip(scene["water"]["cover"], 0.0, 1.0), 0.0)
+    for which, kind in ((MESH_SHELL, KIND_SHELL), (MESH_BARNACLE, KIND_BARNACLE)):
+        colour = _own_look(colour, scene, ground, (cls == which) & (mesh_w > 0.0), kind)
+    coral = np.isin(cls, CORAL_CLASSES)
+    wet = np.where(coral, np.clip(scene["water"]["cover"], 0.0, 1.0), 0.0)
     colour = colour + (ground.seabed_coral - colour) * wet[..., None]
     return g * (1.0 - mesh_w[..., None]) + colour * mesh_w[..., None]

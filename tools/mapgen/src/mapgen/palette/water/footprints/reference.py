@@ -12,7 +12,7 @@ from typing import NamedTuple
 import numpy as np
 
 from mapgen.palette.water.shore import MESH_REACH_M, OCEAN_LEVEL_M
-from mapgen.terrain.render_meshes import MESH_CORAL, MESH_SHELL, MESH_TERRACE
+from mapgen.terrain.render_meshes import CORAL_CLASSES, MESH_SHELL, MESH_TERRACE
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I16Grid, I64Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -45,7 +45,7 @@ NO_GROUND = np.float32(hf.NODATA)
 
 def _groups() -> U8Grid:
     table = np.zeros(256, np.uint8)
-    table[[MESH_CORAL, MESH_SHELL]] = CORAL_GROUP
+    table[[*CORAL_CLASSES, MESH_SHELL]] = CORAL_GROUP
     table[MESH_TERRACE] = TERRACE_GROUP
     return table
 

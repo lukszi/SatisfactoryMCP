@@ -316,6 +316,10 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the Satellite map's pink-brown barnacle boulders along the beaches wear their
+  own barnacle texture and relief instead of flat colour, as the other rocks and the shells
+  do. Their colour stays the coral's. The style's version goes up, and the render-only mesh
+  cache is rebuilt once.
 - Map renders: the Satellite map's ground turns its texture cells by the scale the game's
   landscape shader reads from the cell noise's green, not its red.
 - Maps tab: a render's estimate counts the ground detail's 2.1 GB of scratch from 8192 px,

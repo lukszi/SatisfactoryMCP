@@ -16,6 +16,9 @@ from mapgen.gamedata.ground.layer_textures import CELLS_NONE, CELLS_ROTATED
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.gamedata.rocks.looks import (
     ARCH_TILE_M,
+    BARNACLE_CUT,
+    BARNACLE_FADE,
+    BARNACLE_TILE_M,
     CELL_TILE_M,
     CLIFF_ALBEDO_TILE_M,
     CLIFF_DETAIL_TILE_M,
@@ -36,6 +39,7 @@ from satisfactory_mcp.core.jsontypes import JsonObject
 __all__ = [
     "ALBEDO",
     "ALBEDO_ARCH",
+    "ALBEDO_BARNACLE",
     "ALBEDO_CLIFF",
     "ALBEDO_DESERT",
     "ALBEDO_LAYER_BASE",
@@ -44,6 +48,7 @@ __all__ = [
     "DETAIL",
     "KINDS",
     "KIND_ARCH",
+    "KIND_BARNACLE",
     "KIND_CLIFF",
     "KIND_DESERT",
     "KIND_LAYER",
@@ -57,15 +62,16 @@ __all__ = [
 ]
 
 #: What a pixel is drawn as: a cliff, the landscape's Cliff layer, an arch or boulder, desert
-#: rock, or a shell. 0 is none.
-KIND_CLIFF, KIND_LAYER, KIND_ARCH, KIND_DESERT, KIND_SHELL = 1, 2, 3, 4, 5
-KINDS = 6
+#: rock, a shell or a barnacle. 0 is none.
+KIND_CLIFF, KIND_LAYER, KIND_ARCH, KIND_DESERT, KIND_SHELL, KIND_BARNACLE = 1, 2, 3, 4, 5, 6
+KINDS = 7
 #: A kind's reads, in the table's order: its albedo, what the albedo is measured against (none:
 #: the albedo tile's median), its base normal map and the detail laid on it.
 ALBEDO, UNDER, BASE, DETAIL = 0, 1, 2, 3
 
 #: The albedo atlas's fixed tiles; the families' top layers follow them.
 ALBEDO_CLIFF, ALBEDO_LAYER_BASE, ALBEDO_ARCH, ALBEDO_DESERT, ALBEDO_SHELL = 0, 1, 2, 3, 4
+ALBEDO_BARNACLE = 5
 #: The texture and span of each normal tile, in the normal atlas's order.
 _NORMALS = (
     ("cliff_normal", CLIFF_NORMAL_TILE_M),
@@ -74,8 +80,18 @@ _NORMALS = (
     ("desert_normal", DESERT_TILE_M),
     ("shell_normal", SHELL_TILE_M),
     ("shell_detail", SHELL_DETAIL_TILE_M),
+    ("barnacle_normal", BARNACLE_TILE_M),
 )
-_N_CLIFF, _N_DETAIL, _N_ARCH, _N_DESERT, _N_SHELL, _N_SHELL_DETAIL = range(len(_NORMALS))
+_N_CLIFF, _N_DETAIL, _N_ARCH, _N_DESERT, _N_SHELL, _N_SHELL_DETAIL, _N_BARNACLE = range(
+    len(_NORMALS)
+)
+#: The textures cut from a mesh's own UV layout: their cut and the run faded into it.
+_CUTS = {
+    "shell_albedo": (SHELL_CUT, SHELL_FADE),
+    "shell_normal": (SHELL_CUT, SHELL_FADE),
+    "barnacle_albedo": (BARNACLE_CUT, BARNACLE_FADE),
+    "barnacle_normal": (BARNACLE_CUT, BARNACLE_FADE),
+}
 
 #: Per kind, ``(tile, cells)`` of each read, -1 for none, and the slope gains of its base
 #: and detail normal maps. The cliff and the layer read as the landscape's Cliff layer does;
@@ -88,6 +104,7 @@ _READS: dict[int, tuple[tuple[int, int], ...]] = {
     KIND_ARCH: ((ALBEDO_ARCH, _ROT), (-1, _NONE), (_N_ARCH, _ROT), (-1, _NONE)),
     KIND_DESERT: ((ALBEDO_DESERT, _ROT), (-1, _NONE), (-1, _NONE), (_N_DESERT, _ROT)),
     KIND_SHELL: ((ALBEDO_SHELL, _ROT), (-1, _NONE), (_N_SHELL, _ROT), (_N_SHELL_DETAIL, _ROT)),
+    KIND_BARNACLE: ((ALBEDO_BARNACLE, _ROT), (-1, _NONE), (_N_BARNACLE, _ROT), (-1, _NONE)),
 }
 _GAINS = {KIND_CLIFF: (2.0, 0.5), KIND_LAYER: (2.0, 0.5), KIND_ARCH: (2.0, 1.0)}
 
@@ -163,21 +180,32 @@ def _pack(tiles: list[F32Grid]) -> Atlas:
     return Atlas(texels, boxes)
 
 
-def seamless_cut(texels: F32Grid) -> F32Grid:
-    """``SHELL_CUT`` of ``texels`` as a tile that repeats without a seam: the ``SHELL_FADE``
-    after the cut, along each axis, faded into its start, so its last texel runs on into the
-    texel after it."""
+def seamless_cut(
+    texels: F32Grid,
+    cut: tuple[float, float, float] = SHELL_CUT,
+    fade: float = SHELL_FADE,
+) -> F32Grid:
+    """``cut`` of ``texels``, ``(u, v, side)`` in UV units, as a tile that repeats without a
+    seam: the ``fade`` after the cut, along each axis, faded into its start, so its last texel
+    runs on into the texel after it."""
     rows, cols = texels.shape[:2]
-    u0, v0, side = SHELL_CUT
+    u0, v0, side = cut
     c0, r0 = round(u0 * cols), round(v0 * rows)
-    n, m = round(side * cols), round(SHELL_FADE * cols)
-    cut = texels[r0 : r0 + n + m, c0 : c0 + n + m].astype(np.float32)
+    n, m = round(side * cols), round(fade * cols)
+    tile = texels[r0 : r0 + n + m, c0 : c0 + n + m].astype(np.float32)
     ramp: F32Grid = (np.arange(m, dtype=np.float32) + np.float32(0.5)) / np.float32(m)
     for axis in (1, 0):
-        head, tail = np.take(cut, range(m), axis), np.take(cut, range(n, n + m), axis)
-        weight = ramp.reshape([-1 if k == axis else 1 for k in range(cut.ndim)])
-        cut = np.concatenate([tail + weight * (head - tail), np.take(cut, range(m, n), axis)], axis)
-    return np.ascontiguousarray(cut, np.float32)
+        head, tail = np.take(tile, range(m), axis), np.take(tile, range(n, n + m), axis)
+        weight = ramp.reshape([-1 if k == axis else 1 for k in range(tile.ndim)])
+        tile = np.concatenate(
+            [tail + weight * (head - tail), np.take(tile, range(m, n), axis)], axis
+        )
+    return np.ascontiguousarray(tile, np.float32)
+
+
+def _cut(name: str, texels: F32Grid) -> F32Grid:
+    """A texture as the look tiles it: its seamless cut where it has one (``_CUTS``)."""
+    return seamless_cut(texels, *_CUTS[name]) if name in _CUTS else texels
 
 
 def _table(spans: list[float]) -> tuple[I32Grid, F32Grid, F32Grid]:
@@ -211,12 +239,16 @@ def rock_look(textures: RockTextures, spacing_m: float) -> RockLook:
     fine = level("cliff_albedo", side, CLIFF_ALBEDO_TILE_M)
     levels["layer_base"] = max(fine, mip_level(side, CLIFF_ALBEDO_TILE_M, LAYER_BASE_M))
     albedo = [_mip(cliff, fine), _mip(cliff, levels["layer_base"])]
-    spans = [CLIFF_ALBEDO_TILE_M, CLIFF_ALBEDO_TILE_M, ARCH_TILE_M, DESERT_TILE_M, SHELL_TILE_M]
-    for name, tile_m in (("arch_albedo", ARCH_TILE_M), ("desert_albedo", DESERT_TILE_M)):
-        own = _linear(found[name])
+    own_tiles = (
+        ("arch_albedo", ARCH_TILE_M),
+        ("desert_albedo", DESERT_TILE_M),
+        ("shell_albedo", SHELL_TILE_M),
+        ("barnacle_albedo", BARNACLE_TILE_M),
+    )
+    spans = [CLIFF_ALBEDO_TILE_M, CLIFF_ALBEDO_TILE_M, *(tile_m for _name, tile_m in own_tiles)]
+    for name, tile_m in own_tiles:
+        own = _cut(name, _linear(found[name]))
         albedo.append(_mip(own, level(name, own.shape[0], tile_m)))
-    shell = seamless_cut(_linear(found["shell_albedo"]))
-    albedo.append(_mip(shell, level("shell_albedo", shell.shape[0], SHELL_TILE_M)))
     tops: dict[int, int] = {}
     rules: dict[int, TopRule] = {}
     for code, (rule, rgba) in sorted(textures.tops.items()):
@@ -227,8 +259,7 @@ def rock_look(textures: RockTextures, spacing_m: float) -> RockLook:
         spans.append(rule.tile_m)
     normals: list[F32Grid] = []
     for name, tile_m in _NORMALS:
-        signed = _signed(found[name])
-        signed = seamless_cut(signed) if name == "shell_normal" else signed
+        signed = _cut(name, _signed(found[name]))
         normals.append(_mip(signed, level(name, signed.shape[0], tile_m)))
     medians = np.stack([np.median(t.reshape(-1, 3), axis=0) for t in albedo])
     reads, inverse, gains = _table(spans)
@@ -265,9 +296,11 @@ def _record(
             "desert": round(DESERT_TILE_M, 3),
             "shell": round(SHELL_TILE_M, 3),
             "shell_detail": round(SHELL_DETAIL_TILE_M, 3),
+            "barnacle": round(BARNACLE_TILE_M, 3),
         },
         "shell_cut_uv": list(SHELL_CUT),
-        "rotated_cells": ["cliff_albedo", "arch", "desert", "shell"],
+        "barnacle_cut_uv": list(BARNACLE_CUT),
+        "rotated_cells": ["cliff_albedo", "arch", "desert", "shell", "barnacle"],
         "tops": {
             FAMILIES[code]: {
                 "tile_m": round(rule.tile_m, 3),
