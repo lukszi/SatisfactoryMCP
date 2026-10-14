@@ -43,6 +43,8 @@ from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
+    "CORAL_CLASSES",
+    "MESH_BARNACLE",
     "MESH_CLASS_MASK",
     "MESH_CLASS_NAMES",
     "MESH_CORAL",
@@ -89,14 +91,18 @@ RENDER_ONLY_FOLIAGE_MESHES = frozenset({"SmoothRock_03", "SnakeStone_01"})
 RENDER_ONLY_MESHES = EXCLUDED_MESHES
 ROCK_CLASS_MARKS = ("CliffPillar", "Rubble", "RockPile", "SeaRock", "SmoothRock", "SnakeStone")
 
-#: Mesh classes, as stored in the cache's class plane. 0 is nothing.
-MESH_CORAL, MESH_SHELL, MESH_ROCK, MESH_TERRACE = 1, 2, 3, 4
+#: Mesh classes, as stored in the cache's class plane. 0 is nothing. A barnacle is coral
+#: that wears a texture of its own.
+MESH_CORAL, MESH_SHELL, MESH_ROCK, MESH_TERRACE, MESH_BARNACLE = 1, 2, 3, 4, 5
 MESH_CLASS_NAMES = {
     MESH_CORAL: "coral",
     MESH_SHELL: "shell",
     MESH_ROCK: "rock",
     MESH_TERRACE: "terrace",
+    MESH_BARNACLE: "barnacle",
 }
+#: The classes drawn as coral: in its colour, sunk into the sea as the seabed's.
+CORAL_CLASSES = (MESH_CORAL, MESH_BARNACLE)
 #: A mesh raster's source code: the class in the low bits, a rock's family above them.
 MESH_FAMILY_SHIFT = 3
 MESH_CLASS_MASK = (1 << MESH_FAMILY_SHIFT) - 1
@@ -168,6 +174,8 @@ def mesh_class(mesh: str) -> int:
     name = mesh.rsplit("/", 1)[-1]
     if "Shell" in name:
         return MESH_SHELL
+    if "Barnacle" in name:
+        return MESH_BARNACLE
     if "/HotSpring/" in mesh:
         return MESH_TERRACE
     if any(mark in name for mark in ROCK_CLASS_MARKS):

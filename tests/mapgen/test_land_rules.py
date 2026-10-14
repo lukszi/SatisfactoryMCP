@@ -26,13 +26,16 @@ from mapgen.palette.painted.calibration import (
 )
 from mapgen.palette.painted.derive.camera import lab_of_hex
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
+from mapgen.palette.painted.rock_look.atlas import rock_look
 from mapgen.palette.painted.surfaces import mesh_surface
 from mapgen.palette.painted.trees import crown_lab, crown_layer, over_crowns, species_targets
 from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.palette.water.footprints.reference import GROUPS
 from mapgen.render.draw.painting import _band_family
 from mapgen.terrain import render_meshes
 from mapgen.terrain.crown_atlas import ALPHA, CHANNELS, RGB
 from mapgen.terrain.render_meshes import (
+    MESH_BARNACLE,
     MESH_CLASS_MASK,
     MESH_CORAL,
     MESH_FAMILY_SHIFT,
@@ -43,6 +46,7 @@ from mapgen.terrain.render_meshes import (
     mesh_pass,
     rasterise_mesh_band,
 )
+from tests.support.rock_textures import rock_textures
 
 CAL = PAINTED_PALETTE["calibration"]
 STYLE = PAINTED_PALETTE["crowns"]
@@ -51,6 +55,7 @@ GRASS = rockfamily.FAMILIES.index("grass")
 PILLAR = "/Game/FactoryGame/World/Environment/Rock/Cliff/Mesh/CliffPillar_03"
 CORAL = "/Game/FactoryGame/World/Environment/Foliage/Coral/SM_CoralTreeSmall_01"
 SEA_ROCK = "/Game/FactoryGame/World/Environment/Rock/SeaRock/SM_SeaRock_01"
+BARNACLE = "/Game/FactoryGame/World/Environment/Foliage/Coral/Barnacle/SM_Barnacle_01"
 
 
 # ----------------------------------------------------------------------- the Spire Coast rock
@@ -122,6 +127,28 @@ def test_a_render_only_rock_wears_its_own_family_and_top_layer():
     plain = _mesh_scene([MESH_ROCK], None)
     out = mesh_surface(g[:, :1], area_rock[:, :1], plain, ground, None)
     np.testing.assert_allclose(out[2, 0], 0.25, err_msg="a cache without the plane")
+
+
+def test_a_barnacle_is_coral_in_its_own_texture_and_sinks_as_coral():
+    assert render_meshes.mesh_class(BARNACLE) == MESH_BARNACLE
+    assert render_meshes.mesh_class(CORAL) == MESH_CORAL
+    assert GROUPS[MESH_BARNACLE] == GROUPS[MESH_CORAL], "one footprint with the coral"
+    pink = np.array([0.4, 0.3, 0.35], np.float32)
+    ground = _mesh_ground()
+    ground.palette = PAINTED_PALETTE
+    ground.rock_look = rock_look(rock_textures(), 0.25)
+    ground.mesh_rgb = {MESH_CORAL: pink, MESH_BARNACLE: pink}
+    ground.seabed_coral = np.array([0.1, 0.2, 0.3], np.float32)
+    scene = _mesh_scene([MESH_CORAL] * 8 + [MESH_BARNACLE] * 8)
+    g = np.zeros((4, 16, 3), np.float32)
+    out = mesh_surface(g, g + 0.25, scene, ground, lambda plane: plane)
+    np.testing.assert_allclose(out[:, :8], np.broadcast_to(pink, (4, 8, 3)), err_msg="coral")
+    barnacle = out[:, 8:].reshape(-1, 3)
+    assert barnacle.std(axis=0).min() > 0.01, "the barnacles are textured, not flat"
+    np.testing.assert_allclose(np.median(barnacle / pink, axis=0), 1.0, atol=0.25)
+    wet = dict(scene, water={"cover": np.ones((4, 16), np.float32)})
+    np.testing.assert_allclose(mesh_surface(g, g, wet, ground, None), 0.1 + 0.1 * np.arange(3)
+                               + np.zeros((4, 16, 3)), rtol=1e-6, err_msg="both sink")  # fmt: skip
 
 
 def test_mesh_items_carry_each_rock_s_family_and_leave_coral_alone(monkeypatch):

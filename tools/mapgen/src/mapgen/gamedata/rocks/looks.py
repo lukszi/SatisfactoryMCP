@@ -1,7 +1,7 @@
 """The textures and numbers a rock's surface is drawn with, read from the install.
 
 The cliff body is the landscape Cliff layer's material, world-projected; the arches, the
-desert rock and the shells wear their own textures; each cliff family's top layer is its
+desert rock, the shells and the barnacles wear their own textures; each cliff family's top layer is its
 root material's top texture. Tile sizes come from the compiled shaders and
 the materials' parameters, the top layer's mask from the cliff master's ``SlopeMask`` and
 ``CheapContrast``. docs/map/painted.md section 30, "Rock textures" has the measurements.
@@ -23,6 +23,10 @@ from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, Sc
 
 __all__ = [
     "ARCH_TILE_M",
+    "BARNACLE_CUT",
+    "BARNACLE_FADE",
+    "BARNACLE_TILE_M",
+    "BARNACLE_UV_M",
     "CELL_TILE_M",
     "CLIFF_ALBEDO_TILE_M",
     "CLIFF_DETAIL_TILE_M",
@@ -55,6 +59,8 @@ LOOK_TEXTURES = {
     "shell_albedo": "World/Environment/Foliage/Coral/SmallShell/Textures/TX_SmallShell_BC",
     "shell_normal": "World/Environment/Foliage/Coral/SmallShell/Textures/TX_SmallShell_N",
     "shell_detail": "World/Environment/Rock/SeaRock/Texture/SeaRock_Detail_Nor",
+    "barnacle_albedo": "World/Environment/Foliage/Coral/Barnacle/Textures/TX_Barnacle_01_Alb",
+    "barnacle_normal": "World/Environment/Foliage/Coral/Barnacle/Textures/TX_Barnacle_01_Nor",
 }
 
 #: The landscape Cliff layer's albedo: UV0 times its ``Scale``, 0.05.
@@ -79,6 +85,13 @@ SHELL_FADE = 0.0625
 SHELL_TILE_M = SHELL_CUT[2] * SHELL_UV_M
 #: ``SmallShell_Inst`` repeats its detail normal 22.8 times a UV unit.
 SHELL_DETAIL_TILE_M = SHELL_UV_M / 22.8
+#: A barnacle's UV unit: ``SM_Barnacle_01`` (12,404 of 13,087 barnacles) spans 5.09 m a UV
+#: unit over its up faces and is placed at a median 0.647, which ``Asset_Master`` keeps.
+BARNACLE_UV_M = 5.09 * 0.647
+#: The square of its texture the look tiles, and the run after it, as for the shells.
+BARNACLE_CUT = (0.0625, 0.375, 0.5)
+BARNACLE_FADE = 0.125
+BARNACLE_TILE_M = BARNACLE_CUT[2] * BARNACLE_UV_M
 
 #: ``Rock_WA``'s own ``Falloff_Power``, ``Falloff_Contrast`` and ``TopLayer Tiling Far``.
 FALLOFF_POWER = 1.5

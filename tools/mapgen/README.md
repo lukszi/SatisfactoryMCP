@@ -242,7 +242,7 @@ be traced to the axis it should move.
 | `gamedata/level/lighting.py` | data | The persistent level's noon light and the atmosphere volumes that override it |
 | `gamedata/rocks/cliffs.py` | data | The field's cliff and top rasters |
 | `gamedata/rocks/families.py` | data | Rock material families (the cliff layers and desert rock): `FamilyResolver`, per placement, tint and top layer |
-| `gamedata/rocks/looks.py` | data | The rock look's textures read from the install (`read_rock_textures`), their tile sizes, the shells' cut, and each family's top layer rule |
+| `gamedata/rocks/looks.py` | data | The rock look's textures read from the install (`read_rock_textures`), their tile sizes, the shells' and barnacles' cuts, and each family's top layer rule |
 | `gamedata/rocks/collision_pack.py`, `caves.py` | data | The rock collision pack (`rock_pack_arrays`, `encode_rock_pack`), the cave masks |
 | `gamedata/water/actors.py` | data | Which classes are water actors, each one's box in the world, and the boxes' highest top on the 1 m grid (`water_box_tops`, `box_texels`) |
 | `gamedata/water/channel.py` | data | The heightfield's water channel: artwork mask, box levels, lower bodies |
