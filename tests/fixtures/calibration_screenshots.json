@@ -20,7 +20,7 @@
    "alt": [{"hex": "#99868e", "source": "Spire Coast coral caps, 1.0 (low confidence)"}, {"hex": "#877669", "source": "one daylight reading"}]},
   "crowns.blue_palm": {"hex": "#3d627d", "confidence": "medium", "tolerance": null, "source": "wiki Rocky_desert_six_Iron_nodes, high angle, blue leaf pixels of five crowns",
    "alt": [{"hex": "#556b85", "source": "1.0 shot"}]},
-  "species.SM_Kapok_03": {"hex": "#7c4955", "confidence": "medium", "tolerance": 11.5, "source": "Steam 3776654401 (Red Jungle from above), Steam 2627451942 (Red Jungle 2021)"},
+  "species.SM_Kapok_03": {"hex": "#7c4955", "confidence": "medium", "tolerance": 9.0, "source": "Steam 3776654401 (Red Jungle from above), Steam 2627451942 (Red Jungle 2021)"},
   "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].layers.Sand_LayerInfo": {"hex": "#c4ab8b", "confidence": "medium", "source": "wiki Somersloop_at_Rocky_Desert, Rocky_desert_six_Iron_nodes, Desert_Canyons"},
   "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].layers.Gravel_WeightLayerInfo": {"hex": "#8f8373", "confidence": "medium", "source": "wiki Somersloop at Rocky Desert; north beach band check"},
   "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].derived.WetSand_LayerInfo": {"ratio": {"of": "areas[DuneDesert,DesertCanyons,RockyDesert,Savanna].layers.Sand_LayerInfo", "lightness": 0.81, "chroma": 1.15, "hue_deg": -11.0}, "confidence": "low",
