@@ -46,6 +46,7 @@ the others meet.
 | 40 | [Drawing a layer's bands on threads (2026-10-06)](map/renders.md#40-drawing-a-layers-bands-on-threads-2026-10-06) | renders.md |
 | 41 | [Compiled kernels: the light, the sampler's gathers and the painters (2026-10-07)](map/renders.md#41-compiled-kernels-the-light-the-samplers-gathers-and-the-painters-2026-10-07) | renders.md |
 | 42 | [Cutting the bands as they settle (2026-10-07)](map/renders.md#42-cutting-the-bands-as-they-settle-2026-10-07) | renders.md |
+| 43 | [Preparing the painted ground on threads (2026-10-14)](map/painted.md#43-preparing-the-painted-ground-on-threads-2026-10-14) | painted.md |
 
 ---
 

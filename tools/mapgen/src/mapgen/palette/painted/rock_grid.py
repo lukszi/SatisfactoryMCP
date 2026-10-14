@@ -8,10 +8,10 @@ from __future__ import annotations
 from collections.abc import Callable, Collection
 
 import numpy as np
-from scipy import ndimage
 
 from mapgen.colour import linear_from_oklab, oklab
 from mapgen.palette.painted.calibration import display_to_ground
+from mapgen.palette.painted.parallel import gaussian
 from mapgen.palette.painted.shapes import FloatGrid, PaintedPalette, PaintMeta
 
 __all__ = ["ROCK_GRID_M", "rock_planes", "tinted_rock"]
@@ -63,9 +63,7 @@ def tinted_rock(albedo: FloatGrid, meta: PaintMeta, palette: PaintedPalette) -> 
     step = ROCK_GRID_M
     rock_lab = oklab(np.asarray(meta["albedo_linear"]["rock"], np.float32))
     blur = palette["rock_tint_blur_m"]
-    near = np.stack(
-        [ndimage.gaussian_filter(albedo[..., k], blur)[::step, ::step] for k in range(3)], -1
-    )
+    near = np.stack([gaussian(albedo[..., k], blur, step) for k in range(3)], -1)
     lab = oklab(np.clip(near, 1e-7, None))
     lightness, chroma = palette["rock_tint_lightness"], palette["rock_tint_chroma"]
     lab[..., 0] = rock_lab[0] * (1 - lightness) + lab[..., 0] * lightness

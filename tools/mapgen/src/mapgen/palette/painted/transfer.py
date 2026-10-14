@@ -15,6 +15,7 @@ import numpy.typing as npt
 
 from mapgen.colour import linear_from_oklab, oklab
 from mapgen.palette.painted.calibration import transfer_op, turned
+from mapgen.palette.painted.parallel import BLOCK_ROWS, for_row_blocks
 from mapgen.palette.painted.shapes import FloatGrid, PaintPlane
 
 __all__ = ["GREY_SOURCE_CHROMA", "LayerOp", "by_colour", "layer_op", "layer_transfer"]
@@ -73,7 +74,7 @@ def layer_transfer(
     albedo: FloatGrid,
     weights: Mapping[str, PaintPlane],
     ops: Mapping[str, LayerOp],
-    rows_per_block: int = 512,
+    rows_per_block: int = BLOCK_ROWS,
 ) -> FloatGrid:
     """Each texel moved by its layers' ops, mixed by their shares.
 
@@ -86,36 +87,50 @@ def layer_transfer(
     """
     ops = {name: op for name, op in ops.items() if name in weights}
     pairs = _pair_terms(ops)
-    eye = np.eye(2, dtype=np.float32)
     out = np.empty_like(albedo)
-    for start in range(0, albedo.shape[0], rows_per_block):
-        block = slice(start, start + rows_per_block)
-        total = np.zeros(albedo[block].shape[:2], np.float32)
-        for weight in weights.values():
-            total += weight[block]
-        total = np.maximum(total, np.float32(1e-6))
-        lab = oklab(np.clip(albedo[block], 1e-7, None))
-        share = by_colour(lab, {name: weights[name][block] / total for name in ops}, ops)
-        d_l = np.zeros(lab.shape[:2], np.float32)
-        m = np.zeros((*lab.shape[:2], 2, 2), np.float32)
-        m[..., 0, 0] = m[..., 1, 1] = 1.0
-        shift = np.zeros((*lab.shape[:2], 2), np.float32)
-        shifted = False
-        for name, op in ops.items():
-            w = share[name]
-            d_l += w * np.float32(op.step)
-            m += w[..., None, None] * (op.matrix - eye)
-            if op.shift.any():
-                shift += w[..., None] * op.shift
-                shifted = True
-        if pairs:
-            shifted = _add_pair_terms(shift, share, pairs) or shifted
-        lab[..., 0] += d_l
-        lab[..., 1:] = turned(lab[..., 1], lab[..., 2], m)
-        if shifted:
-            lab[..., 1:] += shift
-        out[block] = np.clip(linear_from_oklab(lab), 0.0, 1.0)
+
+    def move(block: slice) -> None:
+        out[block] = _moved_block(
+            albedo[block], {k: w[block] for k, w in weights.items()}, ops, pairs
+        )
+
+    for_row_blocks(move, albedo.shape[0], rows_per_block)
     return out
+
+
+def _moved_block(
+    albedo: FloatGrid,
+    weights: Mapping[str, PaintPlane],
+    ops: Mapping[str, LayerOp],
+    pairs: list[tuple[str, str, FloatGrid]],
+) -> FloatGrid:
+    """One row block of ``layer_transfer``."""
+    eye = np.eye(2, dtype=np.float32)
+    total = np.zeros(albedo.shape[:2], np.float32)
+    for weight in weights.values():
+        total += weight
+    total = np.maximum(total, np.float32(1e-6))
+    lab = oklab(np.clip(albedo, 1e-7, None))
+    share = by_colour(lab, {name: weights[name] / total for name in ops}, ops)
+    d_l = np.zeros(lab.shape[:2], np.float32)
+    m = np.zeros((*lab.shape[:2], 2, 2), np.float32)
+    m[..., 0, 0] = m[..., 1, 1] = 1.0
+    shift = np.zeros((*lab.shape[:2], 2), np.float32)
+    shifted = False
+    for name, op in ops.items():
+        w = share[name]
+        d_l += w * np.float32(op.step)
+        m += w[..., None, None] * (op.matrix - eye)
+        if op.shift.any():
+            shift += w[..., None] * op.shift
+            shifted = True
+    if pairs:
+        shifted = _add_pair_terms(shift, share, pairs) or shifted
+    lab[..., 0] += d_l
+    lab[..., 1:] = turned(lab[..., 1], lab[..., 2], m)
+    if shifted:
+        lab[..., 1:] += shift
+    return np.clip(linear_from_oklab(lab), 0.0, 1.0)
 
 
 def by_colour(
@@ -132,16 +147,17 @@ def by_colour(
     layers = sorted({_layer(name) for name in present})
     if len(layers) < 2:
         return dict(share)
+    members = [[name for name in present if _layer(name) == layer] for layer in layers]
     mass = np.zeros((len(layers), *lab.shape[:2]), np.float32)
-    median = np.zeros((len(layers), *lab.shape[:2], 3), np.float32)
-    for name in present:
-        k = layers.index(_layer(name))
-        mass[k] += share[name]
-        median[k] += share[name][..., None] * ops[name].source
-    median /= np.maximum(mass, np.float32(1e-12))[..., None]
-    order = np.argsort(-mass, axis=0, kind="stable")[:2]
-    w_i, w_j = np.take_along_axis(mass, order, 0)
-    s_i, s_j = np.take_along_axis(median, order[..., None], 0)
+    for k, names in enumerate(members):
+        for name in names:
+            mass[k] += share[name]
+    first, second = _two_largest(mass)
+    w_i = np.take_along_axis(mass, first[None], 0)[0]
+    w_j = np.take_along_axis(mass, second[None], 0)[0]
+    s_i, s_j = _two_medians(
+        mass, (first, second), [[(share[n], ops[n].source) for n in names] for names in members]
+    )
     mixed = w_j > 0
     pair = np.maximum(w_i + w_j, np.float32(1e-12))
     along = s_i - s_j
@@ -152,14 +168,41 @@ def by_colour(
     held = w_i / pair
     moved = (held + np.float32(4.0) * held * (1.0 - held) * (u - held)) * pair
     tiny = np.float32(1e-12)
-    scale = np.ones_like(mass)
-    np.put_along_axis(scale, order[:1], (moved / np.maximum(w_i, tiny))[None], 0)
-    np.put_along_axis(scale, order[1:], ((pair - moved) / np.maximum(w_j, tiny))[None], 0)
+    kept, given = moved / np.maximum(w_i, tiny), (pair - moved) / np.maximum(w_j, tiny)
     out = dict(share)
-    for name in present:
-        k = layers.index(_layer(name))
-        out[name] = np.where(mixed, share[name] * scale[k], share[name]).astype(np.float32)
+    for k, names in enumerate(members):
+        scale = np.where(first == k, kept, np.where(second == k, given, np.float32(1.0)))
+        for name in names:
+            out[name] = np.where(mixed, share[name] * scale, share[name]).astype(np.float32)
     return out
+
+
+def _two_largest(mass: FloatGrid) -> tuple[npt.NDArray[np.intp], npt.NDArray[np.intp]]:
+    """The largest and second-largest plane of ``mass`` per texel, the lower index on a tie:
+    the first two of a stable descending sort, without sorting every plane."""
+    first = np.argmax(mass, axis=0)
+    rest = mass.copy()
+    np.put_along_axis(rest, first[None], -np.inf, 0)
+    return first, np.argmax(rest, axis=0)
+
+
+def _two_medians(
+    mass: FloatGrid,
+    picks: tuple[npt.NDArray[np.intp], npt.NDArray[np.intp]],
+    members: list[list[tuple[FloatGrid, FloatGrid]]],
+) -> tuple[FloatGrid, FloatGrid]:
+    """The share-weighted source median of the layer each of ``picks`` names, per texel; a
+    layer's median sums its ``(share, source)`` members in order over its ``mass``."""
+    shape = (*mass.shape[1:], 3)
+    found = (np.zeros(shape, np.float32), np.zeros(shape, np.float32))
+    for k, terms in enumerate(members):
+        median = np.zeros(shape, np.float32)
+        for share, source in terms:
+            median += share[..., None] * source
+        median /= np.maximum(mass[k], np.float32(1e-12))[..., None]
+        for pick, into in zip(picks, found, strict=True):
+            np.copyto(into, median, where=(pick == k)[..., None])
+    return found
 
 
 def _add_pair_terms(
