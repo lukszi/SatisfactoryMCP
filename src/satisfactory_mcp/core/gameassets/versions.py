@@ -102,6 +102,7 @@ READER_VERSIONS = {
     "crown_sprites": 1,
     "ocean_absorption": 2,
     "render_meshes": 7,
+    "river_absorption": 1,
     "river_splines": 1,
     "rock_families": 5,
     "rock_textures": 3,

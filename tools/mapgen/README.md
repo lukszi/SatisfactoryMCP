@@ -265,6 +265,7 @@ be traced to the axis it should move.
 | `gamedata/water/rivers.py` | data | River splines (`BP_River_PROT_C`), sampling, the 1 m ribbon planes |
 | `gamedata/water/falls.py` | data | Waterfall records from the `BP_WaterFallTool_02` actors, and their cache |
 | `gamedata/water/ocean.py` | data | The ocean material's absorption and scale behind its surface from its cached parameter defaults (`read_ocean_absorption`) |
+| `gamedata/water/river_material.py` | data | The river material's absorption, followed along its parent chain (`read_river_absorption`) |
 | `gamedata/vegetation/trees.py` | data | Tree instances as crowns: species bounds, instance scale, the tree table, canopy cover |
 | `gamedata/vegetation/crown_sprites.py` | data | Tree crown sprites from LOD 0, tree records, the crown top plane |
 | `gamedata/vegetation/carpet.py` | data | The seabed coral carpet's harvest and planes, written by the paint command |

@@ -27,6 +27,7 @@ from mapgen.gamedata.rocks.looks import read_rock_textures
 from mapgen.gamedata.vegetation.crown_sprites import CROWNS_NAME
 from mapgen.gamedata.water.channel import artwork_planes
 from mapgen.gamedata.water.ocean import read_ocean_absorption
+from mapgen.gamedata.water.river_material import read_river_absorption
 from mapgen.palette.painted.albedo import load_paint_meta
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.relief import ReliefGround
@@ -159,6 +160,7 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
     if paint is not None:
         _attach_look(paint, game, spacing_m, gathered)
         _attach_sea(paint, game, level.index, gathered)
+        _attach_river(paint, game, level.index, gathered)
     textures = _detail_textures(args, layers, spacing_m, paint)
     direct, top, raster_sources = _rasters(args, setup, lattice, level, grid, paint, gathered)
     extras = _extras(args, setup, lattice, level, field, paint, gathered)
@@ -329,6 +331,24 @@ def _attach_sea(
     gathered.inputs["ocean_absorption"] = {
         "cl": game.build_cl,
         "reader_version": READER_VERSIONS["ocean_absorption"],
+    }
+
+
+def _attach_river(
+    paint: PaintInputs, game: GameInputs, index: AssetIndex, gathered: _Gathered
+) -> None:
+    """The river material's absorption from the install on the painted ground, and the reader
+    among the inputs; where it cannot be read the river takes the palette's ``k_per_m``."""
+    try:
+        absorption = read_river_absorption(game.store, game.scripts, index)
+    except (KeyError, ValueError, IndexError, struct.error) as exc:
+        paint.block["river_absorption"] = f"the palette's k_per_m: the river did not read ({exc!r})"
+        return
+    paint.ground.attach_river(absorption)
+    paint.block["river_absorption"] = paint.ground.source["river_absorption"]
+    gathered.inputs["river_absorption"] = {
+        "cl": game.build_cl,
+        "reader_version": READER_VERSIONS["river_absorption"],
     }
 
 

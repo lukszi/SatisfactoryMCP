@@ -104,6 +104,11 @@ Planned as 0.2.0.
 
 ### Changed
 
+- Map renders: the Satellite map's rivers are drawn with the game's own river absorption,
+  read from the install's river material, under the sea's sky colour. Shallow rivers show
+  their bed under a grey veil; pools and deep runs turn slate blue to the sea's blue, where
+  every river was teal. The waterline of a river no longer takes the inland water's opacity
+  floor. The style's version goes up, and a new river absorption reader joins the inputs.
 - Map renders: the Satellite map's tree crowns are lit a fifth brighter where their shape is
   drawn, which had darkened every crown by about that much on the whole: species keep their
   measured colours on average, and lobes and dips keep their contrast. The style's version
