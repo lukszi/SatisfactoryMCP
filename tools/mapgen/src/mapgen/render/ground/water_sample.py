@@ -48,7 +48,7 @@ def band_water_terms(
     spacing_m: float,
 ) -> WaterTerms:
     """Recipe 5's water, and within ``reach`` of the sea the ocean's crossing rule, at the
-    water's own level near the ocean's (``crossing_level``). ``wet``
+    water's own level near or under the ocean's (``crossing_level``). ``wet``
     rides along for the rivers: past the last wet texel, the edge's blur is no water."""
     old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)
     old_depth = water_depth_fraction(z_m, water_m, measured)

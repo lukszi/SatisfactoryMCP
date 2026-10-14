@@ -109,6 +109,13 @@ Planned as 0.2.0.
   their bed under a grey veil; pools and deep runs turn slate blue to the sea's blue, where
   every river was teal. The waterline of a river no longer takes the inland water's opacity
   floor. The style's version goes up, and a new river absorption reader joins the inputs.
+- Map renders: on the Satellite map the Blue Crater's kind of lake (translucent water) shows
+  its depth: its bed in the shallows, darker and more teal with depth, down to the other
+  lakes' deep colour. It had one colour at every depth, so the lakes in the Savanna and the
+  Western Dune Forest read flat; the Blue Crater keeps its colour. A lake standing below
+  the sea within the sea's shore reach, the basin on the west coast near (-1420, 2325), is
+  now as deep as its own water instead of measured from the sea's level. The style's version
+  goes up.
 - Map renders: the Satellite map's tree crowns are lit a fifth brighter where their shape is
   drawn, which had darkened every crown by about that much on the whole: species keep their
   measured colours on average, and lobes and dips keep their contrast. The style's version
