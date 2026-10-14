@@ -11,12 +11,20 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
-from mapgen.palette.scene import FloatGrid, ReconciledWater, WaterPlanes, field_heights
+from mapgen.palette.scene import (
+    FloatGrid,
+    ReconciledWater,
+    WaterPlanes,
+    field_heights,
+    field_water,
+)
+from mapgen.palette.water.lips import hold_at_lips
 from mapgen.palette.water.open_sea import Lattice, OpenSea, open_sea
-from mapgen.palette.water.perched import WaterSurfaces, water_surfaces
+from mapgen.palette.water.perched import NoWaterPlanes, PerchedMeta, perched_levels, wet_holes
 from mapgen.palette.water.seams import feather_box_seams
-from mapgen.palette.water.shore import OCEAN_LEVEL_M
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I16Grid, U8Grid
+from mapgen.palette.water.shore import OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I16Grid, U8Grid
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -28,12 +36,14 @@ __all__ = [
     "WATER_SOFT_SIGMA_M",
     "WATER_THICK",
     "WaterEdge",
+    "WaterSurfaces",
     "drawn_water",
     "water_alpha",
     "water_depth_fraction",
     "water_edge",
     "water_over",
     "water_planes",
+    "water_surfaces",
 ]
 
 #: Water is tinted by depth, clipped here: past it more depth is not more colour.
@@ -99,22 +109,72 @@ def water_edge(
     )
 
 
+class WaterSurfaces(NamedTuple):
+    """The water a render draws: the ocean reach, and the level and grade planes after the
+    rivers took their boxes' water back, perched water was re-levelled and holes filled."""
+
+    reach: U8Grid | None
+    reach_meta: JsonObject
+    level: I16Grid | None
+    grades: U8Grid | None
+    perched: PerchedMeta | NoWaterPlanes | None
+
+    @property
+    def planes(self) -> WaterPlanes | None:
+        return None if self.level is None else (self.level, self.grades)
+
+
+def water_surfaces(
+    field: hf.Field,
+    kernel_only: bool,
+    rivers: ReconciledWater | None = None,
+    lips: F64Grid | None = None,
+) -> WaterSurfaces:
+    """Recipe 6's ocean reach and the re-levelled water, both announced. ``rivers`` is the
+    run's ``RiverWater``: its reconciled planes are re-levelled, so a spline's ribbon stands
+    in for its box everywhere it speaks. ``lips`` (``lips.fall_lips``) hold up the water
+    their falls pour from. ``--kernel-only`` draws neither."""
+    if kernel_only:
+        return WaterSurfaces(None, {}, None, None, None)
+    reach, reach_meta = ocean_reach(field)
+    print(
+        f"  ocean shore at {OCEAN_LEVEL_M} m: {reach_meta.get('ocean_texels')} ocean "
+        f"texels, {reach_meta.get('reach_texels')} within {OCEAN_REACH_M:g} m"
+    )
+    planes = None if rivers is None else (rivers.water_dm, rivers.grades)
+    level, meta = perched_levels(field, planes)
+    own = field.water_quality_raster()
+    grades = own if rivers is None else rivers.grades
+    if "bodies" in meta and level is not None and grades is not None:
+        print(f"  perched water: {meta['bodies']} bodies, {meta['texels']} texels re-levelled")
+        before = field_water(field)[0] if rivers is None else rivers.water_dm
+        level, lips_meta = hold_at_lips(field, before, level, lips)
+        meta["lips"] = lips_meta
+        print(f"  held at a lip: {lips_meta['lips']} falls, {lips_meta['texels']} texels raised")
+        dropped = None if rivers is None else (own != hf.WATER_DRY) & (grades == hf.WATER_DRY)
+        level, grades, holes = wet_holes(field, before, level, grades, dropped)
+        meta["holes"] = holes
+        print(f"  holes in lakes: {holes['bodies']} bodies, {holes['texels']} texels re-wetted")
+    return WaterSurfaces(reach, reach_meta, level, grades, meta)
+
+
 def drawn_water(
     field: hf.Field,
     kernel_only: bool,
     rivers: object,
     lattice: Lattice,
     artwork_water: U8Grid | None,
+    lips: F64Grid | None = None,
 ) -> tuple[WaterSurfaces, OpenSea | None, WaterPlanes | None]:
     """The run's water as every layer draws it: ``(surfaces, open sea or None, planes)``.
 
-    ``palette.water.perched.water_surfaces``, then ``open_sea`` over the run's ``lattice``.
+    ``water_surfaces``, then ``open_sea`` over the run's ``lattice``; ``lips`` as there.
     ``--kernel-only`` (recipe 2) has neither, and keeps the page's sea past the data.
     ``rivers`` is the run's ``RiverWater`` or None. The level drawn, the open sea's or the
     surfaces', has its box seams feathered (``seams.feather_box_seams``); ``planes``, which
     the classes and the relief tint are read from, keep the levels as they were.
     """
-    water = water_surfaces(field, kernel_only, cast(ReconciledWater | None, rivers))
+    water = water_surfaces(field, kernel_only, cast(ReconciledWater | None, rivers), lips)
     if kernel_only or water.level is None or water.grades is None:
         return water, None, water.planes
     if artwork_water is None:

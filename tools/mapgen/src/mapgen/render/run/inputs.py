@@ -32,11 +32,11 @@ from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.painted.shapes import BiomeGrid, PaintMeta
 from mapgen.palette.styles import painted_style
 from mapgen.palette.water.open_sea import OpenSea
-from mapgen.palette.water.perched import WaterSurfaces
 from mapgen.palette.water.surface import (
     WATER_DEPTH_FULL_M,
     WATER_EDGE_BLUR_M,
     WATER_EDGE_M,
+    WaterSurfaces,
     water_planes,
 )
 from mapgen.render.ground.lift import DIRECT_LIFT_KNEE_M

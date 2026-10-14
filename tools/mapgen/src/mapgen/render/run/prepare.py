@@ -32,9 +32,8 @@ from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import RELIEF_PALETTES, STYLE_DIGESTS
 from mapgen.palette.water.footprints.plane import TexelPlanes, mesh_land
 from mapgen.palette.water.open_sea import OpenSea
-from mapgen.palette.water.perched import WaterSurfaces
 from mapgen.palette.water.rivers import water_sources
-from mapgen.palette.water.surface import drawn_water
+from mapgen.palette.water.surface import WaterSurfaces, drawn_water
 from mapgen.render.run.biome_inputs import BiomeInputs, read_biome_inputs
 from mapgen.render.run.cached_rasters import LevelSweep, RasterGrid, direct_raster, top_raster
 from mapgen.render.run.extras import RenderExtras, load_extras
@@ -163,7 +162,12 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
     direct, top, raster_sources = _rasters(args, setup, lattice, level, grid, paint, gathered)
     extras = _extras(args, setup, lattice, level, field, paint, gathered)
     water, sea, planes = drawn_water(
-        field, args.kernel_only, extras.rivers, (lattice.heights, lattice.ground), art_water
+        field,
+        args.kernel_only,
+        extras.rivers,
+        (lattice.heights, lattice.ground),
+        art_water,
+        extras.lips,
     )
     footprints = _mesh_footprints(args.size, field, lattice, (water, sea), extras)
     if paint is not None:

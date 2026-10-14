@@ -978,7 +978,7 @@ drop and end in a straight hand-over line.
 
 8 m was measured, not derived: at 10 m the plateau stays joined through one 10.0 m step, and
 at 5 m 494 texels draw deeper than at 8 m and 1,454 shallower. The falls records (section 35)
-are not read.
+are read only after it, to hold up the water a fall pours from ("Held at a lip").
 
 ### Measured (build 502094)
 
@@ -1070,6 +1070,32 @@ texels) on the field's planes alone. 83,423 texels of the water planes every sty
 change, in 42 places merged at 100 m; the swamp, the Blue Crater, the sulfur pools and the
 ocean coast draw byte-identical.
 
+### Held at a lip (2026-10-14)
+
+At (2040, -1880) the arch lake's east arm drew as a flat sand box with straight sides, the
+"waterfall box" of the sweep. No foam is drawn there; the box was the lake itself.
+
+- **The cause.** The arm's `FGWaterVolume`, at 228.7 m, runs on 3 m past the cliff its fall
+  pours over, and the artwork leaves the arm's shallows round the island dry, at 224 to
+  225 m. Its shoreline therefore stands below the level all round: the cliff top, the dry
+  shallows, and the 18 m strip under the arch, which is dry too until the holes are filled.
+  The membrane spanned that shoreline and laid the arm on its own bed, 0 to 1 m deep, which
+  draws as sand. The strip under the arch then took the arm's sunk surface (two bodies over
+  one gap, the lower one), a 6 m step along its west edge against the lake at 228.7 m.
+- **The rule.** `palette/water/lips.py`, between the re-levelling and the holes. A fall's lip
+  (section 35's record) is the water's surface where it pours, so water the re-levelling
+  lowered below a lip is raised back to it: the connected part of lowered water found under
+  the fall's top modules (10 to 100% of their run upstream of the lip, across 80% of its
+  width), on the lip's upstream side. Never above the box top, never the ocean's falls.
+  Past the lip the membrane runs on down the cliff.
+- **What it moves.** On build 502094, in a render, 12 lips hold water and 3,391 texels rise:
+  the arm, 2,581 texels at the lip (2075, -1855), now at 226.5 m and 1.5 to 4.5 m deep; the
+  lake below the fall at (-1340, -306), 427; the canyon pool at (2114, -1914), 198; nine
+  others under 50. The strip under the arch now takes 226.5 m.
+
+The lip is placed out over the void, here 12 m east of the cliff top, so the water feeding
+it is looked for along the top modules' run, not just behind the lip.
+
 ### Known limits
 
 - Where a river spline speaks, its ribbon (section 34) has already taken the box's water
@@ -1095,5 +1121,11 @@ ocean coast draw byte-identical.
   their own, smaller than a pixel at 2048.
 - A sloped reach below a drop that joins lower water takes that water's level along its
   whole length, so its upper end would draw dry. No such case shows on this build.
+- The fall at (2075, -1855) still draws no foam: section 35 reads the field's box levels,
+  and its lip stands 2.2 m under the arm's box. Reading the drawn water instead would draw
+  38 more falls, most at real steps in rivers, but in the canyon basin near (2131, -1828)
+  the wide falls' pools draw as straight-sided bars over the lower lake.
+- A dry patch of about 10 by 20 m in the arm's south corner near (2040, -1830) stays
+  sand: it is within 12 m of the cliff, where the holes rule reads a spill.
 - This section leaves level-only water alone. At the ocean's level it draws on section 26's
   open-sea bed; away from it, it keeps the deep tint.
