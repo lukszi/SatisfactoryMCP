@@ -20,7 +20,7 @@ from satisfactory_mcp.core.gameassets.pyramid import (
     TILES_2X_DIR_NAME,
     TILES_DIR_NAME,
 )
-from satisfactory_mcp.domain.maps import registry
+from satisfactory_mcp.domain.maps import pyramids, registry
 from satisfactory_mcp.interfaces.web.routers.assets import tiles as web_tiles
 from tests.support.tiles import PNG_BYTES, fake_pyramid
 
@@ -265,8 +265,8 @@ def test_a_layer_that_does_not_exist_and_one_that_was_never_generated_are_told_a
 
     # An unknown layer is refused before any of that, so it can never name a file.
     assert web_tiles.map_tile_path(0, 0, 0, layer="bathymetry") is None
-    assert web_tiles._layer_dir("bathymetry") is None
-    assert web_tiles._layer_sidecar("bathymetry") is None
+    assert pyramids.layer_dir("bathymetry") is None
+    assert pyramids.layer_sidecar("bathymetry") is None
     # Including when it is shaped like an escape: there is no join for it to escape through.
     for shape in ("..", "../..", "map/../..", ".", ""):
         assert web_tiles.map_tile_path(0, 0, 0, layer=shape) is None, shape
