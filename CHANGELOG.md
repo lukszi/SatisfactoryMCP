@@ -116,6 +116,11 @@ Planned as 0.2.0.
   the sea within the sea's shore reach, the basin on the west coast near (-1420, 2325), is
   now as deep as its own water instead of measured from the sea's level. The style's version
   goes up.
+- Map generator: the light's coarser zoom levels are built while the draw runs, each strip
+  as soon as the block rows under it are baked, instead of all after the last row, which
+  took about 4 minutes at full size. A full-size render should end about 3 minutes sooner,
+  with the same tiles to the byte. Building them holds about 0.3 GB at a time instead of up
+  to about 2.5 GB at the end of the run.
 - Map renders: the Satellite map's tree crowns are lit a fifth brighter where their shape is
   drawn, which had darkened every crown by about that much on the whole: species keep their
   measured colours on average, and lobes and dips keep their contrast. The style's version

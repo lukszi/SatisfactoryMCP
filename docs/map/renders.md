@@ -2388,12 +2388,31 @@ light are the same bytes.
 - **When a band is relit.** A lit band waits until every block row up to its rows is baked
   (`LightingRun.ready`). Its terms and land weight are then copied out of the scratch
   (`LightingRun.terms`), and the relight runs on the cutter's lanes.
+- **The coarser levels as the rows come in** (2026-10-14). Each coarser level is built a
+  strip of 256 rows at a time, and a strip runs as soon as the rows it reads are in: those
+  of the level above, plus the one row past it that its normals read
+  (`lighting/coarse.py`, `CoarseLevels`). A thread of the run takes the block rows in order
+  as they settle, and builds every strip they make ready, from z6 down to z0; the level
+  below's sources go to `{name}.z{level}.npy` in the scratch, removed at the end. A strip is
+  cut into pieces of 16 tiles (`LEVEL_PIECE_TILES`), so its arrays do not grow with the
+  sheet. While the draw runs, two threads encode the tiles (`bake.COARSE_THREADS`), with one
+  piece waiting: the light's processes are baking blocks then. From the draw's end the
+  light's processes take them, `LEVEL_AHEAD` pieces waiting. Before, all of z6..z0 was built
+  after the last block row, about 230 s at full size that nothing overlapped (v10: 224-234 s,
+  z6 alone about 159 s). Now only what the last block row unlocks is left then: 9 of z6's 64
+  strips and the ends of the levels below, estimated at 35-60 s, so a full render ends about
+  3 minutes sooner if the two threads keep up with the rows (about 110 s of their time a
+  block row, against 130-170 s between rows); a backlog they leave goes to the processes at
+  the draw's end. Not measured at full size.
 - **After the draw** the rows not yet queued are queued, the waiting bands relit as their
-  rows come in, the coarser levels baked from the native ones, and the pyramid renamed into
-  place, as in section 29.
+  rows come in, the coarser levels' last strips built, and the pyramid renamed into place,
+  as in section 29.
 - **The same bytes.** A block reads and writes what it did; only when it runs changes. A
   band is relit a row at a time with the terms of its own rows, and the luminance reads no
-  row width (section 40, "Fixed-order sums").
+  row width (section 40, "Fixed-order sums"). A coarser level's normals, 2 × 2 means and
+  refold are per texel or per 2 × 2 block, so a piece computes the texels a whole strip
+  would; a test builds three levels both ways to the same bytes, and a synthetic 4096 bake,
+  rows fed at a draw's pace, writes every tile byte for byte as the builder before it.
 
 ### A kept light, read while it matches
 

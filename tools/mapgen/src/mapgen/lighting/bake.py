@@ -1,7 +1,8 @@
 """The bake of a captured surface into the lighting pyramid, a block row at a time.
 
 ``lighting/stage.py`` bakes one block; this queues a row's blocks on the light processes once
-the surface holds every row they read, then bakes the coarser levels and writes the meta.
+the surface holds every row they read, bakes the coarser levels' strips as the rows under them
+come in (``coarse.CoarseLevels``), and writes the meta.
 docs/map/light-and-crowns.md section 29 and docs/map/renders.md section 42.
 """
 
@@ -13,19 +14,21 @@ import threading
 import time
 from collections import Counter
 from collections.abc import Callable, Sequence
-from concurrent.futures import CancelledError, Future, ProcessPoolExecutor
+from concurrent.futures import CancelledError, Future, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
+from queue import SimpleQueue
 
 import numpy as np
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.jit import ON_NUMBA, gpu_on
+from mapgen.lighting.coarse import CoarseLevels
 from mapgen.lighting.encoding import encode_threads
 from mapgen.lighting.horizon import SKY_RADIUS_M, horizon_reach_px
 from mapgen.lighting.lanes import join, lanes
-from mapgen.lighting.light_tiles import TileSet, level_strips
+from mapgen.lighting.light_tiles import TileSet
 from mapgen.lighting.model import light_axis
 from mapgen.lighting.stage import (
     BLOCK_TILES,
@@ -53,7 +56,14 @@ from satisfactory_mcp.core.gameassets.pyramid import (
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.core.mapprogress import encode_stage
 
-__all__ = ["LightBake", "bake_light", "block_rows", "gpu_calls_line"]
+__all__ = ["COARSE_THREADS", "LightBake", "bake_light", "block_rows", "gpu_calls_line"]
+
+#: Threads that encode the coarser levels' tiles while the draw runs, and the pieces they may
+#: have waiting: the light's processes bake blocks then, so these take cores the run leaves
+#: idle, and hold little. From ``finish`` on the light's processes encode them, with
+#: ``LEVEL_AHEAD`` pieces waiting (docs/map/renders.md section 42).
+COARSE_THREADS = 2
+COARSE_AHEAD = 1
 
 
 def gpu_calls_line(done: Sequence[BlockDone]) -> str:
@@ -70,10 +80,16 @@ def gpu_calls_line(done: Sequence[BlockDone]) -> str:
 
 
 def _light_pool(workers: int) -> ProcessPoolExecutor:
-    """The light's processes; with ``--gpu`` they share the device's lanes (``lanes``)."""
-    if not gpu_on():
-        return ProcessPoolExecutor(max_workers=workers)
-    return ProcessPoolExecutor(max_workers=workers, initializer=join, initargs=(lanes(),))
+    """The light's processes, every one started now with one BLAS thread, so that a later
+    submit from any thread starts none; with ``--gpu`` they share the device's lanes."""
+    with one_blas_thread():
+        if gpu_on():
+            pool = ProcessPoolExecutor(max_workers=workers, initializer=join, initargs=(lanes(),))
+        else:
+            pool = ProcessPoolExecutor(max_workers=workers)
+        for _ in range(workers):
+            pool.submit(int)  # a submit no idle process takes starts one
+    return pool
 
 
 def block_rows(size: int) -> tuple[int, list[int]]:
@@ -159,6 +175,14 @@ class LightBake:
         self.started = 0.0
         self.progress = False
         self._lock = threading.Lock()
+        self._threads = ThreadPoolExecutor(COARSE_THREADS, thread_name_prefix="coarse")
+        self.coarse = CoarseLevels(
+            work, self.staging, self.top, spacing_m, self._threads, COARSE_AHEAD
+        )
+        self._settled: SimpleQueue[int | None] = SimpleQueue()
+        self._builder: threading.Thread | None = None
+        self._failed: BaseException | None = None
+        self._closing = False
 
     def queue(self, row: int) -> Future[None]:
         """Block row ``row`` on the light processes, once; the future settles when its last
@@ -169,16 +193,18 @@ class LightBake:
             self.workers = light_workers(self.requested)
             self.pool = _light_pool(self.workers)
             self.started = time.time()
+            self._builder = threading.Thread(target=self._build_coarse, daemon=True)
+            self._builder.start()
         self.surface.flush()
         settled: Future[None] = Future()
         size, block = self.surface.size, self.block
         jobs = [replace(self.common, block=(row * block, c, block)) for c in range(0, size, block)]
         left = [len(jobs)]
-        with one_blas_thread():
-            futures = [self.pool.submit(bake_block, job) for job in jobs]
+        futures = [self.pool.submit(bake_block, job) for job in jobs]
         for future in futures:
             future.add_done_callback(partial(self._block_done, settled, left))
         self.rows[row] = settled
+        settled.add_done_callback(lambda _settled: self._settled.put(row))
         return settled
 
     def _block_done(
@@ -197,6 +223,29 @@ class LightBake:
         elif last and not settled.done():
             settled.set_result(None)
 
+    def _build_coarse(self) -> None:
+        """The coarser levels' strips, each as soon as the block rows under it are in, in
+        order; stops at a failed row, which ``finish`` raises."""
+        size, rows, baked = self.surface.size, len(self.reads), 0
+        settled: set[int] = set()
+        try:
+            while baked < rows:
+                row = self._settled.get()
+                if row is None or self._closing:
+                    return
+                future = self.rows[row]
+                if future.cancelled() or future.exception() is not None:
+                    return
+                settled.add(row)
+                while baked in settled:
+                    baked += 1
+                with self._lock:
+                    folded = frozenset(tile for done in self.done for tile in done.folded)
+                half = min(baked * self.block, size) // 2
+                self.coarse.advance(half, folded, lambda: self._closing)
+        except BaseException as failed:  # handed to finish, which raises it
+            self._failed = failed
+
     def finish(
         self,
         key: JsonObject | None = None,
@@ -213,24 +262,25 @@ class LightBake:
             if progress and self.done:
                 print(encode_stage("light", len(self.done) / self.blocks), flush=True)
         for row in range(len(self.reads)):
-            self.queue(row).result()
+            self.queue(row)
+        self.coarse.encoder, self.coarse.ahead = self._pool(), None
+        for row in range(len(self.reads)):
+            self.rows[row].result()
             if on_row is not None:
                 on_row(row)
         native_s = time.time() - self.started
         if gpu_on():
             print(gpu_calls_line(self.done), flush=True)
-        tiles = sum(done.tiles for done in self.done)
-        spacing_m, work = self.surface.spacing_m, self.surface.directory
+        if self._builder is not None:
+            self._builder.join()
+        if self._failed is not None:
+            raise self._failed
+        tiles = sum(done.tiles for done in self.done) + self.coarse.finish()
         folded: TileSet = frozenset(tile for done in self.done for tile in done.folded)
         counted = len(folded)
-        with one_blas_thread():
-            for level in range(self.top - 1, -1, -1):
-                spacing = spacing_m * 2 ** (self.top - level)
-                folded = frozenset((x // 2, y // 2) for x, y in folded)
-                counted += len(folded)
-                tiles += level_strips(
-                    work, self.staging, level, spacing, self._pool(), level == 0, folded
-                )
+        for _ in range(self.top):
+            folded = frozenset((x // 2, y // 2) for x, y in folded)
+            counted += len(folded)
         return self._install(key, tiles, native_s, counted)
 
     def _pool(self) -> ProcessPoolExecutor:
@@ -281,7 +331,14 @@ class LightBake:
     def close(self) -> None:
         """Stop the light processes, cancelling the blocks not yet started, and let go of
         what casts: the crowns may be memory maps of the scratch."""
+        self._closing = True
+        self._settled.put(None)
         if self.pool is not None:
             self.pool.shutdown(wait=True, cancel_futures=True)
             self.pool = None
+        if self._builder is not None:
+            self._builder.join()
+            self._builder = None
+        self._threads.shutdown(wait=True, cancel_futures=True)
+        self.coarse.close()
         self.occluder = None

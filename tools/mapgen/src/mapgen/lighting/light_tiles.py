@@ -35,9 +35,12 @@ __all__ = [
     "HZ_QUALITY",
     "HZ_SUFFIX",
     "LEVEL_AHEAD",
+    "LEVEL_PIECE_TILES",
     "LEVEL_TASK_TILES",
     "LINEAR_TO_HZ",
     "NRM_SUFFIX",
+    "CoarseLevel",
+    "LevelSources",
     "MapMode",
     "TileJob",
     "TileSet",
@@ -53,6 +56,7 @@ __all__ = [
     "level_layout",
     "level_strips",
     "normal_byte",
+    "open_sources",
     "optional_array",
     "padded_window",
     "ring_rows",
@@ -81,14 +85,16 @@ TileSet: TypeAlias = frozenset[tuple[int, int]]
 #: Stored horizons for the coarser levels, before encoding: degrees times this, as a byte.
 HZ_LINEAR_SCALE = 2.8
 
-#: Strips of a coarser level whose tiles may still be encoding while the next is computed,
-#: and the tiles a task of the pool encodes.
+#: Pieces of a coarser level's strip whose tiles may still be encoding while the next is
+#: computed, the tiles of a piece, and the tiles a task of the pool encodes.
 LEVEL_AHEAD = 4
+LEVEL_PIECE_TILES = 16
 LEVEL_TASK_TILES = 4
+#: Quarter rows refolded at a time. Pieces and these bound the arrays, not the bytes.
+REFOLD_ROWS = 32
 
 ScalarT = TypeVar("ScalarT", bound=np.generic)
 MapMode: TypeAlias = Literal["r", "r+", "w+", "c"]
-_MemMap: TypeAlias = np.memmap[tuple[int, ...], np.dtype[np.generic]]
 
 
 class Reducer(Protocol):
@@ -284,6 +290,120 @@ def level_layout(half: int) -> tuple[tuple[str, type[np.generic], tuple[int, ...
     )
 
 
+class LevelSources(NamedTuple):
+    """A coarser level's four sources (``level_layout``): heights, land, sky view, horizons."""
+
+    z: NDArray[np.float32]
+    land: NDArray[np.uint8]
+    svf: NDArray[np.uint8]
+    hzq: NDArray[np.uint8]
+
+
+def open_sources(work: Path, suffix: str = "") -> LevelSources:
+    """The sources in ``work``'s files ``{name}{suffix}.npy``, read-only."""
+    z, land, svf, hzq = (f"{name}{suffix}" for name, _, _ in level_layout(2))
+    return LevelSources(
+        work_array(work, z, np.float32, "r"),
+        work_array(work, land, np.uint8, "r"),
+        work_array(work, svf, np.uint8, "r"),
+        work_array(work, hzq, np.uint8, "r"),
+    )
+
+
+def _create_sources(work: Path, suffix: str, half: int) -> LevelSources:
+    made = [
+        np.lib.format.open_memmap(work / f"{name}{suffix}.npy", "w+", dtype, shape)
+        for name, dtype, shape in level_layout(half)
+    ]
+    return LevelSources(*made)
+
+
+class CoarseLevel:
+    """One coarser level, a strip of tile rows at a time as its sources' rows come in.
+
+    Each strip writes its rows of the level below, in the files ``{name}{below}.npy`` made at
+    the first strip; ``below`` None for the last level.
+    """
+
+    def __init__(
+        self,
+        sources: LevelSources,
+        dest: Path,
+        level: int,
+        spacing_m: float,
+        work: Path,
+        below: str | None,
+    ) -> None:
+        self.sources, self.dest, self.level, self.spacing_m = sources, dest, level, spacing_m
+        self.work, self.below_suffix = work, below
+        self.below: LevelSources | None = None
+        self.size = sources.z.shape[0]
+        self.r0 = self.tiles = 0
+
+    def ready(self, rows: int) -> bool:
+        """Whether the next strip can run once its sources hold ``rows`` rows: its own and
+        the row past it that its normals read."""
+        return self.r0 < self.size and rows >= min(self.r0 + PYRAMID_TILE_PX + 1, self.size)
+
+    @property
+    def written(self) -> int:
+        """The rows of the level below written so far."""
+        return min(self.r0, self.size) // 2
+
+    def strip(
+        self,
+        pool: Executor,
+        pending: deque[list[Future[int]]],
+        folded: TileSet,
+        ahead: int | None = None,
+    ) -> None:
+        """The next strip, ``LEVEL_PIECE_TILES`` tiles at a time: each piece's tiles to
+        ``pool``, ``LEVEL_TASK_TILES`` to a task, while at most ``ahead`` (``LEVEL_AHEAD``)
+        pieces wait in ``pending``; ``folded`` names its tiles above a tile with a folded
+        band."""
+        ahead = LEVEL_AHEAD if ahead is None else ahead
+        if self.below is None and self.below_suffix is not None:
+            self.below = _create_sources(self.work, self.below_suffix, self.size // 2)
+        piece = LEVEL_PIECE_TILES * PYRAMID_TILE_PX
+        for c0 in range(0, self.size, piece):
+            jobs = self._piece(c0, min(c0 + piece, self.size), folded)
+            self.tiles += len(jobs)
+            tasks = [jobs[i : i + LEVEL_TASK_TILES] for i in range(0, len(jobs), LEVEL_TASK_TILES)]
+            pending.append([pool.submit(encode_tiles, task) for task in tasks])
+            del jobs, tasks
+            while len(pending) > ahead:
+                _wait(pending.popleft())
+        self.r0 += PYRAMID_TILE_PX
+
+    def _piece(self, c0: int, c1: int, folded: TileSet) -> list[TileJob]:
+        """Columns ``[c0, c1)`` of the strip: its tile jobs, and the level below's texels."""
+        src, t, r0 = self.sources, PYRAMID_TILE_PX, self.r0
+        r1 = r0 + t
+        nx, ny = normals(padded_window(src.z, r0 - 1, r1 + 1, c0 - 1, c1 + 1), self.spacing_m)
+        svf, land = src.svf[r0:r1, c0:c1], src.land[r0:r1, c0:c1]
+        nrm = np.stack([normal_byte(nx), normal_byte(ny), svf, land], -1)
+        quarter = np.array(src.hzq[r0 // 2 : r1 // 2, c0 // 2 : c1 // 2])
+        hz_u8 = np.moveaxis(_atlas_bytes(quarter), -1, 0)
+        jobs = list(tile_jobs(self.dest, self.level, c0 // t, r0 // t, nrm, hz_u8, folded))
+        below = self.below
+        if below is not None:
+            half = (slice(r0 // 2, r1 // 2), slice(c0 // 2, c1 // 2))
+            below.z[half] = downsample(np.array(src.z[r0:r1, c0:c1]))
+            below.land[half] = np.round(downsample(land.astype(np.float32)))
+            below.svf[half] = np.round(downsample(svf.astype(np.float32)))
+            below.hzq[r0 // 4 : r1 // 4, c0 // 4 : c1 // 4] = _coarser(quarter)
+        return jobs
+
+    def close(self) -> None:
+        """The level below written out, and every map let go."""
+        below, self.below = self.below, None
+        if below is not None:
+            for part in below:
+                if isinstance(part, np.memmap):
+                    part.flush()
+        del below
+
+
 def level_strips(
     work: Path,
     dest: Path,
@@ -293,53 +413,21 @@ def level_strips(
     last: bool,
     folded: TileSet = frozenset(),
 ) -> int:
-    """One coarser level from the sources below it, a strip of tile rows at a time; ``folded``
-    names its tiles above a tile with a folded band.
-
-    The pool encodes a strip's tiles while this process computes the strips after it.
-    """
-    z = work_array(work, "zh", np.float32, "r")
-    land = work_array(work, "landh", np.uint8, "r")
-    svf = work_array(work, "svfh", np.uint8, "r")
-    hzq = work_array(work, "hzq", np.uint8, "r")
-    size = z.shape[0]
-    next_level: dict[str, _MemMap] = {}
-    if not last:
-        for name, dtype, shape in level_layout(size // 2):
-            path = work / f"{name}.next.npy"
-            next_level[name] = np.lib.format.open_memmap(path, "w+", dtype, shape)
-    t = PYRAMID_TILE_PX
-    rows = t
-    count = 0
+    """One coarser level from the sources in ``work``, whole, replacing them with the next
+    level's unless ``last``; ``folded`` names its tiles above a tile with a folded band."""
+    built = CoarseLevel(open_sources(work), dest, level, spacing_m, work, None if last else ".next")
     pending: deque[list[Future[int]]] = deque()
-    for r0 in range(0, size, rows):
-        z_strip = padded_window(z, r0 - 1, r0 + rows + 1, -1, size + 1)
-        nx, ny = normals(z_strip, spacing_m)
-        nrm = np.stack(
-            [normal_byte(nx), normal_byte(ny), svf[r0 : r0 + rows], land[r0 : r0 + rows]], -1
-        )
-        quarter = np.array(hzq[r0 // 2 : (r0 + rows) // 2])
-        hz_u8 = np.moveaxis(_atlas_bytes(quarter), -1, 0)
-        jobs = list(tile_jobs(dest, level, 0, r0 // t, nrm, hz_u8, folded))
-        count += len(jobs)
-        tasks = [jobs[i : i + LEVEL_TASK_TILES] for i in range(0, len(jobs), LEVEL_TASK_TILES)]
-        pending.append([pool.submit(encode_tiles, task) for task in tasks])
-        del jobs, tasks
-        if next_level:
-            a, b = r0 // 2, (r0 + rows) // 2
-            next_level["zh"][a:b] = downsample(np.asarray(z[r0 : r0 + rows]))
-            next_level["landh"][a:b] = np.round(downsample(land[r0 : r0 + rows].astype(np.float32)))
-            next_level["svfh"][a:b] = np.round(downsample(svf[r0 : r0 + rows].astype(np.float32)))
-            next_level["hzq"][r0 // 4 : (r0 + rows) // 4] = _coarser(quarter)
-        while len(pending) > LEVEL_AHEAD:
-            _wait(pending.popleft())
+    while built.ready(built.size):
+        built.strip(pool, pending, folded)
     while pending:
         _wait(pending.popleft())
-    del z, land, svf, hzq
-    for name in list(next_level):
-        next_level.pop(name).flush()  # Windows replaces a file only once its last map is closed
-        (work / f"{name}.next.npy").replace(work / f"{name}.npy")
-    return count
+    tiles = built.tiles
+    built.close()
+    del built  # Windows replaces a file only once its last map is closed
+    if not last:
+        for name, _, _ in level_layout(2):
+            (work / f"{name}.next.npy").replace(work / f"{name}.npy")
+    return tiles
 
 
 def _atlas_bytes(quarter: U8Grid) -> U8Grid:
@@ -350,12 +438,14 @@ def _atlas_bytes(quarter: U8Grid) -> U8Grid:
 
 
 def _coarser(quarter: U8Grid) -> U8Grid:
-    """The next level's stored cells from a level's: the horizons refolded, the ambient
-    occlusion averaged."""
+    """The next level's stored cells from a level's: the horizons refolded, ``REFOLD_ROWS``
+    rows at a time, the ambient occlusion averaged."""
     out = np.empty((quarter.shape[0] // 2, quarter.shape[1] // 2, quarter.shape[2]), np.uint8)
-    # On the CPU: the run's own process opens no CUDA context (renders.md section 41).
-    folded = refold(decode_linear(quarter[..., :HORIZON_CELLS]), path_elevations(), gpu=False)
-    out[..., :HORIZON_CELLS] = encode_linear(folded)
+    for top in range(0, quarter.shape[0], REFOLD_ROWS):
+        part = quarter[top : top + REFOLD_ROWS, :, :HORIZON_CELLS]
+        # On the CPU: the run's own process opens no CUDA context (renders.md section 41).
+        folded = refold(decode_linear(part), path_elevations(), gpu=False)
+        out[top // 2 : (top + part.shape[0]) // 2, :, :HORIZON_CELLS] = encode_linear(folded)
     out[..., HORIZON_CELLS:] = np.round(downsample(quarter[..., HORIZON_CELLS:].astype(np.float32)))
     return out
 

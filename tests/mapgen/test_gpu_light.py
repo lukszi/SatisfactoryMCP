@@ -273,7 +273,16 @@ def test_a_block_waits_while_every_lane_is_taken(monkeypatch):
 
 def test_only_a_gpu_bake_hands_its_processes_the_lanes(monkeypatch):
     made: list[dict[str, object]] = []
-    monkeypatch.setattr(bake, "ProcessPoolExecutor", lambda **kw: made.append(kw))
+    started: list[object] = []
+
+    class Pool:
+        def __init__(self, **kw: object) -> None:
+            made.append(kw)
+
+        def submit(self, fn: object) -> None:
+            started.append(fn)
+
+    monkeypatch.setattr(bake, "ProcessPoolExecutor", Pool)
     monkeypatch.setenv(jit.KERNEL_SWITCH, jit.REFERENCE)
     bake._light_pool(3)
     monkeypatch.setattr(jit, "_numba", lambda: object())
@@ -281,6 +290,7 @@ def test_only_a_gpu_bake_hands_its_processes_the_lanes(monkeypatch):
     bake._light_pool(3)
     assert made[0] == {"max_workers": 3}
     assert made[1]["initializer"] is lanes.join and len(made[1]["initargs"]) == 1
+    assert len(started) == 6, "every process started at once"
 
 
 # --------------------------------------------------------------------------- the encode
