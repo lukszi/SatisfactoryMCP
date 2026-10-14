@@ -325,10 +325,17 @@ worker holds more than it needs; none of it moves a byte:
   (`pools.free_ram_bytes`): a process that cannot commit fails with RAM to spare, which
   other processes' idle pools can bring about. `--workers N` sets it where `--light-workers`
   is not given, and sizes the cutter's pool the same way.
-- **A fed pool for the coarser levels.** The parent submits a strip's tiles, 4 to a task
-  (`LEVEL_TASK_TILES`), and computes the next strips while they encode, up to `LEVEL_AHEAD`
-  (4) strips ahead, so the pool is not left idle between strips. The horizon bytes come from a
-  256-entry table of `encode_horizon(decode_linear(q))`, exact because both are elementwise.
+- **A fed pool for the coarser levels.** The parent submits a strip's tiles a piece of 16
+  at a time (`LEVEL_PIECE_TILES`), 4 to a task (`LEVEL_TASK_TILES`), and computes the next
+  pieces while they encode, up to `LEVEL_AHEAD` (4) pieces ahead, so the pool is not left
+  idle between them. The horizon bytes come from a 256-entry table of
+  `encode_horizon(decode_linear(q))`, exact because both are elementwise. The refold runs
+  32 quarter rows at a time (`REFOLD_ROWS`). A level's strips run as the block rows under
+  them come in, not after the last (renders.md section 42, "The coarser levels as the rows
+  come in"). Measured with traced memory on an 8192 px level, building it whole peaked at
+  1.33 GB before the pieces and 0.47 GB with them; built as the rows come in, on two threads
+  with one piece waiting, 0.29 GB. The pieces' width is fixed, so the peak no longer grows
+  with the sheet.
 - **One BLAS thread a worker.** numpy and scipy each load an OpenBLAS, and on a 32-thread
   machine each commits about 0.8 GB of thread buffers as it loads, about 25 GB over 16
   workers, for a bake that makes no BLAS call. The pool starts its workers with
@@ -404,7 +411,7 @@ size and traffic while the run lasts, not of reuse.
 | `occluder`, `occluder_cover` | By `crown_occluder`, 256 rows at a time, then hashed once | By the bake, a block with its halo |
 | `slabs/` | With the surface, a band at a time: only the 256 px tiles that hold an arch or an overhang, hashed with it | By the bake, the tiles in a block's window, at half resolution |
 | `terms` | By the bake's processes, a block each, then moved to the kept light | For each lit band, a band at a time, once its row of blocks is baked |
-| `zh`, `landh`, `svfh`, `hzq` | By the bake's processes, a block each | By each coarser level, a strip of rows at a time; each level replaces them with its own |
+| `zh`, `landh`, `svfh`, `hzq` | By the bake's processes, a block each; each coarser level writes the next one's to `{name}.z{level}.npy`, a strip at a time | By each coarser level, a strip of rows at a time as the rows under it come in; the levels' files are removed when the last is built |
 
 `crown_occluder` writes the occluder files themselves (`stage.occluder_planes`), and the bake
 reads them where they are; a test bakes from them and from a copy to the same bytes.
