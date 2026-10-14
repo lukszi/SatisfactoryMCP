@@ -337,6 +337,11 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the Satellite map's ground colours hold their targets where the ground is
+  drawn. Each paint layer's colour is measured on the ground the map shows, not under rocks,
+  and set for the height it lies at, so low ground (the Blue Crater's floor, the beaches' wet
+  sand) is no longer drawn darker than its target, nor high ground (the red jungle's
+  plateaus) lighter. The Blue Crater's floor gains about 2.5 L. The style's version goes up.
 - Map renders: the Satellite map's orange palms, the small shrubs among the Southern Forest's
   purple trees, are pale sage, their leaves' colour in the game's sun, instead of mint. A tree
   species with a colour of its own in the palette now keeps that colour: the green canopy's

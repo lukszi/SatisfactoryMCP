@@ -111,9 +111,16 @@ reads h 54 and is left out as an outlier.
 #### The transfer
 
 Each target is taken back through the flat-ground pipeline into ground OKLab: the inverse
-shoulder, divided by exposure times gain and by the flat sky-and-sun light, then half the
-altitude lift and the chroma gain undone. For each layer, the median colour of its pure
-texels (at least 0.7 of the weight) is measured on the albedo as it arrived. The step from
+shoulder, divided by exposure times gain and by the flat sky-and-sun light, then the altitude
+lift and the chroma gain undone. For each layer, the median colour of its pure texels (at
+least 0.7 of the weight) is measured on the albedo as it arrived, over the texels where the
+ground shows: no cliff answers the field's height there (`prov` 4 or 5) and no arch or boulder
+stands over it (the field's `top` above its ground); all the pure texels where fewer than
+`min_texels` show. The lift is undone at those texels' median position up the height ramp,
+the lift they are drawn with (`palette/painted/layer_targets.py`, sidecar `ramp_at`); until
+2026-10-14 it was undone at the ramp's middle for every layer, and the median taken over
+texels the map mostly draws rock on ("Crater floor, terraces and coral meshes, checked"
+below). The step from
 that median to the target has three parts: a lightness offset, a chroma scale (clipped to
 0.25 to 4) and a hue turn. Each texel moves by its layers' steps, mixed by their normalised
 weights. Because the transfer measures its own source, the same targets work on the bake
@@ -783,10 +790,65 @@ meets the Sand target, so a graded shot can be read where nothing else is.
   1.2 L. The rest comes later in the band, from the detail and the light, in a split not
   measured. So the 9.1 L between the drawn floor and the bake is about 4 of grass against
   bare rock and 5 of drawing. Raising the target to cover the drawing would hide that in
-  one key; it is left as found.
+  one key; it is left as found. Measured and fixed the same day (below, "The floor's own
+  target, where it is drawn").
 - Every other Blue Crater shot found (Steam 3365198348, 3506289898, 3583833668, 3773246231
   and the wiki's `Blue_Crater.png`) is under the area's blue haze or the wiki's cyan grade.
   A daylight shot of the floor from above would show whether the grass reads from height.
+
+**The floor's own target, where it is drawn** (2026-10-14). Over the 1.69 million pixels of
+the v10 render's unlit and lit z7 tiles whose 1 m paint texel is pure CoralRock in the Blue
+Crater, dry, with no rock, arch, boulder, render-only mesh or tree crown over it, the steps
+from the target to the drawn floor, as medians (OKLab L ×100):
+
+| Step | Colour | L | Step |
+| --- | --- | --- | --- |
+| The target | #6c7386 | 55.6 | |
+| Lifted at the floor's own height (ramp position 0.12, the texels' median; p10 0.08, p90 0.33), not 0.5 | #686f82 | 54.1 | -1.5 |
+| Times the ground detail (its ratio's median 0.99, 0.96, 0.96; its mean 0.99) | #666d7f | 53.6 | -0.5 |
+| The unlit tile as drawn | #60697d | 52.2 | -1.4 |
+| The lit tile as drawn | #5b6375 | 49.9 | -2.2 |
+
+- **The 1.4 L before the tiles is the transfer's own measure.** Of the crater's 414,897 pure
+  CoralRock texels, 64% lie under rock or the top pass and 58% under render-only meshes; only
+  18% are open ground. The source median was taken over all of them, and the open ground's
+  bake is darker: built in process (`PaintedGround`, the render's own paint store and field),
+  the ground lifted at its height reads L 52.4 on the open texels against 54.9 on the whole
+  set, 55.9 under rock and 55.1 under meshes. Taking the median over the ground the field
+  shows, no cliff and no arch or boulder over it, closes it: the meshes do not move it
+  (the open texels and those with only meshes over them read the same).
+- **The light's 2.2 L is shade.** Lit over unlit, the floor's luminance has a median of 0.91;
+  on the 54% of the pixels over 0.9 the lit floor reads L 51.7 against 52.2 unlit, and the
+  rest lies in the crater walls' and the coral's shadows. The target was metered on sunlit
+  ground, so the shade stays.
+- **The detail's 0.5 L stays.** The ratio keeps the layers' mean (0.99) and only its median
+  is lower; it is drawn only where the pixel is finer than its limit, so a target set to
+  absorb it would draw the floor lighter at the coarse levels.
+
+So the transfer now measures each layer on the ground that shows and undoes the lift at that
+ground's height. The Blue Crater's open floor, built in process before and after: L 52.4 to
+55.0 before the detail and the light, 0.6 under its target (#697186 against #6c7386); drawn,
+about 54.5 unlit and 52 lit with the crater's shade (estimated from the steps above). No
+target moved.
+
+Every layer's transfer moves with it (sidecar `paint.calibration`, `dL` before and after, the
+ramp position, the texels measured):
+
+| Layer | Texels measured | Ramp position | dL |
+| --- | --- | --- | --- |
+| CoralRock, crater | 25,928 to 12,363 | 0.10 | -0.060 to -0.038 |
+| Cliff, red jungle areas | 17,827 to 5,728 | 0.91 | -0.015 to -0.028 |
+| RedJungle | 65,786 to 43,410 | 0.93 | -0.011 to -0.024 |
+| WetSand | 302,510 to 272,647 | 0.14 | -0.006 to +0.005 |
+| WetSand, deserts | 85,332 to 79,415 | 0.16 | -0.051 to -0.040 |
+| SandPebbles | 41,603 to 30,995 | 0.41 | +0.002 to -0.010 |
+| Puddles | 13,861 to 11,936 | 0.20 | -0.037 to -0.029 |
+| Grass, Southern Forest | 26,361 to 12,787 | 0.28 | -0.019 to -0.012 |
+| Gravel, deserts | 23,596 to 11,703 | 0.27 | +0.001 to +0.008 |
+
+The other nine move by 0.5 L or less. A layer low on the ramp (the beaches' wet sand, the
+crater) is drawn lighter than before and one high on it (the red jungle's plateaus) darker,
+each now on its target where it lies.
 
 **Hot-spring terraces** (`meshes.terrace`, #ccbea8, drawn #c6b9a3).
 

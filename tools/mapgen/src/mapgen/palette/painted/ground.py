@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping
 from pathlib import Path
-from typing import TypeAlias
 
 import numpy as np
 from scipy import ndimage
@@ -44,13 +43,11 @@ from mapgen.palette.painted.calibration import (
     area_ids,
     display_to_ground,
     display_to_linear,
-    median_lab,
     rehome_offshore,
     scoped_planes,
-    split_weight,
-    with_derived,
 )
 from mapgen.palette.painted.crown_sets import crown_sets, crowns_provenance
+from mapgen.palette.painted.layer_targets import EVERY_4TH, DrawnGround, calibrate_layers
 from mapgen.palette.painted.optics import base_water, class_optics, load_carpet, water_table
 from mapgen.palette.painted.parallel import for_row_blocks, gaussian
 from mapgen.palette.painted.rock_grid import ROCK_GRID_M, rock_planes, tinted_rock
@@ -79,7 +76,6 @@ from mapgen.palette.painted.surfaces import (
     family_targets,
     layer_tops,
 )
-from mapgen.palette.painted.transfer import LayerOp, layer_op, layer_transfer
 from mapgen.palette.painted.trees import crown_calibration, titan_colours
 from mapgen.palette.painted.water_classes import water_classes
 from mapgen.palette.styles import dry_land_range
@@ -105,12 +101,6 @@ MESH_COLOUR_NAMES = (
 
 #: The landscape's Cliff layer, which the rock look textures.
 CLIFF_LAYER = "Cliff_LayerInfo"
-
-#: Every fourth texel each way: where the medians of the paint are measured.
-_EVERY_4TH = (slice(None, None, 4), slice(None, None, 4))
-
-#: A layer's colour transfer to measure: its key, layer, display target and where it counts.
-LayerJob: TypeAlias = tuple[str, str, str, BoolMask]
 
 
 def biome_grid(biome: BiomeGrid, rows: int, cols: int) -> U8Grid:
@@ -138,13 +128,6 @@ def land_cells(field: FieldPlanes, shape: tuple[int, int]) -> BoolMask | None:
     sea = (grades[pick] != hf.WATER_DRY) & (water[pick] != hf.NODATA)
     sea &= np.abs(level - OCEAN_LEVEL_M) <= OCEAN_LEVEL_BAND_M
     return (height[pick] != hf.NODATA) & ~sea
-
-
-def _fine_share(coarse: FloatGrid, rows: int, cols: int) -> U8Grid:
-    """A coarse 0..1 weight on the 1 m grid as a 0..255 share, nearest."""
-    r = np.minimum(np.arange(rows) // ROCK_GRID_M, coarse.shape[0] - 1)
-    c = np.minimum(np.arange(cols) // ROCK_GRID_M, coarse.shape[1] - 1)
-    return np.round(coarse[np.ix_(r, c)] * 255.0).astype(np.uint8)
 
 
 class PaintedGround:
@@ -179,7 +162,10 @@ class PaintedGround:
         self.area_names = area_names
         self.area_assets = list(biome["assets_by_index"])
         self.coarse_index = self._coarse_areas(index, field)
-        albedo = self._calibrate(albedo, weights)
+        self.ramp: Ramp = dry_land_range(
+            field, self.palette["ramp_lo_pct"], self.palette["ramp_hi_pct"]
+        )
+        albedo = self._calibrate(albedo, weights, (*_drawn_ground(field), self.ramp))
         self.cliff_layer: PaintPlane | None = weights.get(CLIFF_LAYER)
         del weights
         albedo = self._fallback(albedo, have, index, len(area_names))
@@ -223,9 +209,6 @@ class PaintedGround:
             self.palette["water"]["bed_wet"]
         )
         self.water: WaterBase = base_water(self.palette)
-        self.ramp: Ramp = dry_land_range(
-            field, self.palette["ramp_lo_pct"], self.palette["ramp_hi_pct"]
-        )
         self.water_class: U8Grid | None = None
         self.water_rows = water_table(self.palette)
         self.source["seam_texels_blended"] = seam_texels
@@ -472,8 +455,8 @@ class PaintedGround:
     def _fallback(self, albedo: FloatGrid, have: BoolMask, index: U8Grid, areas: int) -> FloatGrid:
         """Off the landscape: the median paint of the biome, blurred, faded in over the edge."""
         palette = self.palette
-        idx, ok = index[_EVERY_4TH], have[_EVERY_4TH]
-        flat = albedo[_EVERY_4TH]
+        idx, ok = index[EVERY_4TH], have[EVERY_4TH]
+        flat = albedo[EVERY_4TH]
         global_median = np.median(flat[ok], axis=0) if ok.any() else np.full(3, 0.2, np.float32)
         medians = np.tile(global_median, (areas, 1)).astype(np.float32)
         for i in np.unique(idx[ok]):
@@ -541,59 +524,29 @@ class PaintedGround:
         sigma = self.palette["calibration"]["area_blur_m"] / ROCK_GRID_M
         return np.clip(ndimage.gaussian_filter(mask, sigma), 0.0, 1.0)
 
-    def _calibrate(self, albedo: FloatGrid, weights: Mapping[str, PaintPlane]) -> FloatGrid:
-        """Move each layer's median colour onto its target, measured on whatever albedo came.
-
-        An area entry's layer target takes that layer's weight inside its areas; the global
-        target takes the rest, and each one's source median is measured on its own side.
-        """
-        cal = with_derived(self.palette["calibration"])
-        sample = _EVERY_4TH
-        flat = albedo[sample]
-        total = np.zeros(flat.shape[:2], np.float32)
-        for w in weights.values():
-            total += w[sample]
-        split = dict(weights)
-        jobs = self._area_layer_jobs(cal, weights, split, (albedo.shape[0], albedo.shape[1]))
-        scoped: dict[str, BoolMask] = {}
-        for _key, name, _hex, inside in jobs:
-            scoped[name] = scoped.get(name, np.zeros_like(inside)) | inside
-        for name, hex_colour in cal["layers"].items():
-            if name in weights:
-                outside = ~scoped[name] if name in scoped else np.ones(total.shape, bool)
-                jobs.append((name, name, hex_colour, outside))
-        ops: dict[str, LayerOp] = {}
-        self.calibration: JsonObject = {}
-        for key, name, hex_colour, where in jobs:
-            pure = (weights[name][sample] >= cal["pure_share"] * np.maximum(total, 1.0)) & where
-            if pure.sum() < cal["min_texels"]:
-                continue
-            source = median_lab(flat[pure])
-            ops[key] = layer_op(source, display_to_ground(self.palette, hex_colour))
-            self.calibration[key] = {"texels": int(pure.sum()), "dL": round(ops[key][0], 4)}
-        return layer_transfer(albedo, split, ops) if ops else albedo
-
-    def _area_layer_jobs(
+    def _calibrate(
         self,
-        cal: CalibrationStyle,
+        albedo: FloatGrid,
         weights: Mapping[str, PaintPlane],
-        split: dict[str, PaintPlane],
-        shape: tuple[int, int],
-    ) -> list[LayerJob]:
-        """Each area entry's layer targets, with the layer's weight in ``split`` cut into the
-        share inside its areas (``layer@entry``) and the rest."""
-        jobs: list[LayerJob] = []
-        for i, entry in enumerate(cal.get("areas", [])):
-            layers = {k: v for k, v in entry.get("layers", {}).items() if k in weights}
-            if not layers:
-                continue
-            share = _fine_share(self._area_weight(entry["areas"]), *shape)
-            inside = share[_EVERY_4TH] >= 128
-            for name, hex_colour in layers.items():
-                key = f"{name}@{i}"
-                split[key], split[name] = split_weight(split[name], share)
-                jobs.append((key, name, hex_colour, inside))
-        return jobs
+        drawn: DrawnGround | None = None,
+    ) -> FloatGrid:
+        """Each layer moved onto its target where it is drawn (``layer_targets``)."""
+        albedo, self.calibration = calibrate_layers(
+            albedo, weights, self.palette, self._area_weight, drawn
+        )
+        return albedo
+
+
+def _drawn_ground(field: hf.Field) -> tuple[FloatGrid, BoolMask]:
+    """On the ``EVERY_4TH`` texels: the field's height in metres, NaN where it has none, and
+    where the ground shows, no cliff answering its height and no arch or boulder over it."""
+    dm = field.height_dm[EVERY_4TH]
+    z_m = np.where(dm != hf.NODATA, dm.astype(np.float32) / np.float32(hf.DM_PER_M), np.nan)
+    shown = ~np.isin(field.provenance_plane[EVERY_4TH], hf.PROV_CLIFF_VALUES)
+    top = field.plane(hf.TOP_NAME)
+    if top is not None:
+        shown &= np.asarray(top[EVERY_4TH]) <= dm
+    return z_m, shown
 
 
 def _mesh_target(name: str) -> Callable[[CalibrationArea], str | None]:
