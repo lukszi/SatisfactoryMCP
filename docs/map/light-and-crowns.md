@@ -1259,6 +1259,63 @@ The crowns are darker by 7 to 17% on the whole, most where a crown's far half fa
 - Lean moves a crown; it does not foreshorten it.
 - `SM_Trunk_01` (6,933 logs and stumps) draws as small bark sprites.
 
+### Foliage colours checked (2026-10-14)
+
+Three open questions on crown colour were checked against what exists: the game's own leaf
+textures, the screenshot targets, the editor footage and wiki screenshots. Nothing changed;
+each needs a top-down daylight screenshot from 1.0 to settle.
+
+**Method.** Colours are CIELAB (D65) from display sRGB, ΔE is CIE76. "Camera" is section 31's
+camera model of a species' sprite colour (calibration.md, "The camera model"): what a
+screenshot of flat, sunlit leaves of that albedo would measure. "Map" is the crown pipeline
+on that colour at flat shade (`crown_lab`, the calibration's ops, chroma gain, flat light,
+exposure, tone). A rendered crown is a few L darker again, by its sprite normals' shading.
+Screenshots are metered as the targets are: median of the top 60% of L in a box, then the
+screenshot discount.
+
+**The darkening of 0.85.** It multiplies every sprite colour before the calibration. On a
+species a target moves (the green and red Kapok, the blue palms, and the crowns the canopy
+gate opens for) the transfer absorbs it. On the others (bamboo, cat and Dypsis palms, the
+purple and Amber trees, the pollen trees) it stays, and they draw 3.4 to 7 L under their
+camera colour at flat shade. The evidence on whether crowns from above read darker than
+their albedo disagrees:
+
+| Reference | Species | Against the camera colour of its albedo |
+| --- | --- | --- |
+| canopy target #558653 (1.0, high) | `SM_Kapok_01` | 6.9 L lighter: an albedo factor of 1.28 |
+| species target #7c4955 (1.0, medium) | `SM_Kapok_03` | the same L: a factor of 1.00 |
+| crown target #3d627d (medium) | `BluePalm_01`, `_02` | 34 L darker: 0.25, the texture mean's white midribs (Known limits above) |
+| wiki `Southern_Forest.png` (2023, before Update 8, hazy, high angle) | `SM_PurpleTree_01`, `_02` | the drawn crowns at 0.85: ΔE 6.7 (L -1.0); at 1.0: ΔE 8.4 (L +2.5) |
+
+Without the darkening the uncalibrated species land within 3.1 L of their camera colour; the
+purple trees' one reference fits 0.85 better. The bamboo has no view from above: the editor
+frames and the wiki's Red Bamboo Fields shot show stems at eye level. So the darkening stays
+0.85. A self-shade term on the crowns would darken these species twice; with one, the
+darkening is the first thing to measure again.
+
+**The orange palms** (`Orange_palm1`, `_2`, 5,621 shrubs 3.5 to 6.7 m tall, most of them among the
+purple trees of the Southern Forest) read mint. Their only leaf texture, `TX_OrangePalm_Alb_01`
+(`MI_OrangePalm_02` and `_03`, no tint vector, parent `MM_WindPlants`), is a pale grey-mint
+leaf: mean linear (0.31, 0.43, 0.33), Lab (69, -14, 7) under white light. The game's warm sun
+makes it pale sage on camera, #bcc5ad and #c3cbb6. The map draws #afe1c6 and #b9ebd0 at flat
+shade, ΔE 16.1 and 17.1: 7 to 9 L lighter and a -21 for -7. The hue is the leaf's own under
+the style's neutral light; the rest is the canopy step, ×1.54 chroma and +0.063 L, which the
+canopy gate gives them in full at chroma 0.020. No screenshot shows them from above.
+
+**The ancient pines** draw #698a28 (Lab 53, -27, 47) as rendered. Three pre-1.0 views agree
+that they are less saturated:
+
+| Reference | Light | Lab | ΔE to the map |
+| --- | --- | --- | ---: |
+| wiki `Northern_Forest.png` (2023, after Update 5), lit crowns against the sky | daylight, side view | 50, -16, 32 (#6e7e40) | 18.4 |
+| editor footage frame 0193 (Update 8), a crown from above | misty | 44, -5, 31 (#706933) | 28.1 |
+| camera colour of the needle albedo | model | 55, -14, 48 (#858829) | 13.5 |
+
+A species target would not hold as the code stands: the pines' colour opens the canopy gate
+to 0.66 to 0.72, so the canopy step would move them on past any target (calibration.md,
+"Crowns"). A 1.0 top-down shot of the Northern Forest decides the colour, and named species
+then need to skip the canopy step.
+
 ### Crowns and the water (2026-10-06)
 
 Of the 99,073 trees, 6,490 stand on a wet texel of the field, 6,035 of them at the ocean's

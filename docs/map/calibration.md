@@ -777,7 +777,9 @@ painted pixels change, by up to 77; the light's tiles keep their bytes.
   (`SM_ScrewPalm_01`, 0.017): their texture means are pale grey-green and grey-teal, and the
   canopy gate moves the orange palms all the way and the screw palm by 0.62, so they draw a
   pale mint #a7bcac and a blue-grey #768c85. Like the blue palm's, their in-game crowns are
-  likely darker than the mean; no reference has been measured.
+  likely darker than the mean; no reference has been measured. The orange palms' leaf
+  texture, the pines' pre-1.0 views and the crowns' `darkening` are measured in
+  light-and-crowns.md section 36, "Foliage colours checked".
 - `AmberTree_01`'s crown is branch cards at opacity 0.18, so it draws as a tan haze tens of
   metres wide over the ground and the palms under it; its look from above is unchecked.
 - Render-only meshes take one colour per class: the coral class's cap target #917c75 also
