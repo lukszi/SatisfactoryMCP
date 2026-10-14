@@ -232,7 +232,7 @@ def test_the_calibration_names_real_layers_and_the_style_was_bumped():
     cal = PAINTED_PALETTE["calibration"]
     assert set(cal["layers"]) <= set(LAYERS)
     assert "coral" in cal["meshes"] and "coral_seabed" not in cal["meshes"], "the water tints coral"
-    assert "shell" not in cal["meshes"], "a shell wears its own material's grey"
+    assert cal["meshes"]["shell"] == "#746956", "the plain shells' colour in the game's baked view"
     assert "shoulder" not in PAINTED_PALETTE, "the tone replaced it"
     assert versions.STYLES["satellite-painted"]["version"] >= 3
     from mapgen.terrain.render_meshes import CORAL_KINDS

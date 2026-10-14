@@ -922,7 +922,7 @@ def test_the_top_overlay_raises_the_ground_smoothly_and_lands_on_pixel_centres()
     )
     items = TopItems(
         [arch],
-        {"Boulder": InstanceSpans(matrix[None], numpy.array([-200.0]), numpy.array([200.0]))},
+        {("Boulder", 0): InstanceSpans(matrix[None], numpy.array([-200.0]), numpy.array([200.0]))},
         {"Arc": (flat, up[:, ::-1].copy()), "Boulder": (flat, up)},
     )
     band = rasterise_top_band(items, 0.0, 0.0, step_cm, 4, 160, 1)

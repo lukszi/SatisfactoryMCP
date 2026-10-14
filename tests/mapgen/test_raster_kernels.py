@@ -255,7 +255,12 @@ def test_the_top_and_mesh_bands_are_the_reference_bit_for_bit(monkeypatch):
     reach = np.full(30, 900.0)
     codes = np.arange(30, dtype=np.uint16) % 3 + 1
     boulders = {"Rock_1": MeshGroup(codes, mats, mats[:, 3, 1] - reach, mats[:, 3, 1] + reach)}
-    items = TopItems(arches, {"Rock_1": InstanceSpans(*boulders["Rock_1"][1:])}, geometry)
+    spans = InstanceSpans(*boulders["Rock_1"][1:])
+    worn = {
+        ("Rock_1", f): InstanceSpans(*(a[codes % 2 == k] for a in spans))
+        for k, f in ((0, 0), (1, 8))
+    }
+    items = TopItems(arches, worn, geometry)
     meshes = PreparedMeshes(boulders, geometry, families=True)
     _same(
         monkeypatch,

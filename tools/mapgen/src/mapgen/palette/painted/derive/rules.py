@@ -54,6 +54,7 @@ _WATER = (
     "water: the game's water absorbs but does not scatter, so its colour is the sky, "
     "clouds and fog, which the cooked assets do not expose"
 )
+_SHELL = "shells: measured on the mesh HLOD bake, which the paint store does not keep"
 
 _Where = tuple[F64Grid, F64Grid] | None
 
@@ -291,6 +292,8 @@ def _global_rows(scene: Scene, cal: CalibrationStyle) -> list[Derivation]:
     for mesh in cal.get("meshes", {}):
         if mesh == "coral":
             rows.append(material(scene, "meshes.coral", [CORAL_CAPS], "coral tree caps"))
+        elif mesh == "shell":
+            rows.append(Derivation("meshes.shell", error=_SHELL))
         elif "seabed" in mesh:
             rows.append(Derivation(f"meshes.{mesh}", error=f"under the sea; {_WATER}"))
         else:

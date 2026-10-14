@@ -77,9 +77,11 @@ class Sweep(TypedDict):
     water_box_sources: dict[str, int]
     rivers: list[RiverRecord]
     foliage: dict[str, F64Grid]
-    extra_foliage: dict[str, F64Grid]
-    #: Per ``extra_foliage`` instance, its foliage type's override material: an index into
+    #: Per ``foliage`` instance, its foliage type's override material: an index into
     #: ``materials``, -1 for the mesh's own.
+    foliage_materials: dict[str, I32Grid]
+    extra_foliage: dict[str, F64Grid]
+    #: The same for each ``extra_foliage`` instance.
     extra_foliage_materials: dict[str, I32Grid]
     actors: list[object]
     seconds: float
@@ -287,6 +289,7 @@ class _Harvest:
     box_sources: dict[str, int] = field(default_factory=dict[str, int])
     rivers: list[RiverRecord] = field(default_factory=list[RiverRecord])
     foliage: dict[str, list[F64Grid]] = field(default_factory=dict[str, list[F64Grid]])
+    foliage_chosen: dict[str, list[I32Grid]] = field(default_factory=dict[str, list[I32Grid]])
     extra: dict[str, list[F64Grid]] = field(default_factory=dict[str, list[F64Grid]])
     extra_chosen: dict[str, list[I32Grid]] = field(default_factory=dict[str, list[I32Grid]])
     actors: list[object] = field(default_factory=list[object])
@@ -337,13 +340,12 @@ class _Harvest:
         if found is None:
             return
         mesh, mats = found
-        if is_top_foliage(mesh):
-            self.foliage.setdefault(mesh, []).append(mats)
-            return
-        self.extra.setdefault(mesh, []).append(mats)
+        top = is_top_foliage(mesh)
+        (self.foliage if top else self.extra).setdefault(mesh, []).append(mats)
         material = self.type_materials.material(component_foliage_type(view, slot))
         chosen = self.material_ids.setdefault(material, len(self.material_ids)) if material else -1
-        self.extra_chosen.setdefault(mesh, []).append(np.full(len(mats), chosen, np.int32))
+        picks = self.foliage_chosen if top else self.extra_chosen
+        picks.setdefault(mesh, []).append(np.full(len(mats), chosen, np.int32))
 
     def _water_actor(self, view: PackageView, slot: int, name: str, path: str) -> None:
         self.water_actors[name] = self.water_actors.get(name, 0) + 1
@@ -384,6 +386,9 @@ class _Harvest:
             "water_box_sources": self.box_sources,
             "rivers": self.rivers,
             "foliage": {mesh: np.concatenate(parts) for mesh, parts in self.foliage.items()},
+            "foliage_materials": {
+                mesh: np.concatenate(parts) for mesh, parts in self.foliage_chosen.items()
+            },
             "extra_foliage": {mesh: np.concatenate(parts) for mesh, parts in self.extra.items()},
             "extra_foliage_materials": {
                 mesh: np.concatenate(parts) for mesh, parts in self.extra_chosen.items()

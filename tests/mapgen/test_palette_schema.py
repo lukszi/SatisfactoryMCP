@@ -35,7 +35,7 @@ def test_every_shipped_palette_has_exactly_its_shape():
         assert schema.checked(shape, palette, LAYER_STYLES[layer]) is palette
 
 
-@pytest.mark.parametrize("block", ["families", "tops", "arch_families"])
+@pytest.mark.parametrize("block", ["families", "tops", "arch_families", "boulder_families"])
 def test_a_calibration_target_for_a_family_the_game_lacks_is_refused(block):
     palette = _file("painted")
     palette["calibration"][block]["lava"] = "#000000"

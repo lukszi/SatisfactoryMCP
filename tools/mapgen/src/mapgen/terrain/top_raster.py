@@ -23,6 +23,7 @@ from mapgen.cache import (
     TOP_SOLID_COVERAGE_NAME,
     TOP_SOLID_Z_NAME,
 )
+from mapgen.gamedata.rocks.families import TOP_BOULDER_BIT
 from mapgen.terrain.archfill import column_pieces, fill_arch_holes
 from mapgen.terrain.maxz.raster import max_z_raster
 from mapgen.terrain.overhangs import SAME_SURFACE_CM
@@ -57,8 +58,8 @@ class TopBand(NamedTuple):
     """One band of the top raster on its sub-sampled grid, max-Z in cm, NaN where none.
 
     ``top`` is the arches (filled) and the boulders, ``solid`` the boulders alone,
-    ``under`` the arches' underside, and ``family`` the winning arch's family code where an
-    arch is the top (``top_items``' ``families``), 0 elsewhere.
+    ``under`` the arches' underside, and ``family`` the family code of the arch or boulder on
+    top, a boulder's with ``TOP_BOULDER_BIT``; 0 where neither wears one.
     """
 
     top: F32Grid
@@ -101,17 +102,19 @@ def arch_rasters(
 
 def _boulders(
     items: TopItems, x0_cm: float, y0_cm: float, step_cm: float, rows: int, cols: int
-) -> F32Grid:
+) -> tuple[F32Grid, NDArray[np.integer]]:
+    """The boulders' max-Z and the family of the boulder on top."""
     raster = max_z_raster(cols, rows, x0_cm, y0_cm, step_cm, sample=0.5)
     y_hi = y0_cm + rows * step_cm
-    for mesh, group in items.boulders.items():
+    for (mesh, family), group in items.boulders.items():
         verts, tris = items.shapes[mesh]
         picked = group.mats[(group.y_hi_cm >= y0_cm) & (group.y_lo_cm <= y_hi)]
         for start in range(0, len(picked), TOP_FOLIAGE_BATCH):
             chunk = picked[start : start + TOP_FOLIAGE_BATCH]
             world = np.einsum("vi,nij->nvj", verts, chunk[:, :3, :3]) + chunk[:, None, 3, :3]
-            raster.add_indexed(world, tris, 1)
-    return raster.result()[0]
+            raster.add_indexed(world, tris, family)
+    solid, source, _density = raster.result()
+    return solid, source
 
 
 def _filled(
@@ -157,9 +160,10 @@ def rasterise_top_band(
     top, under, source = _filled(top, under, source, spacing_m)
     cut = slice(halo, halo + sub_rows)
     top, under, source = top[cut], under[cut], source[cut]
-    solid = _boulders(items, x0_cm, y0_cm, step, sub_rows, sub_cols)
+    solid, worn = _boulders(items, x0_cm, y0_cm, step, sub_rows, sub_cols)
     arch_wins = np.isfinite(top) & ~(solid > top)
-    family = np.where(arch_wins, source, 0).astype(np.uint16)
+    boulder = np.where(np.isfinite(solid) & (worn > 0), worn | TOP_BOULDER_BIT, 0)
+    family = np.where(arch_wins, source, boulder).astype(np.uint16)
     return TopBand(np.fmax(top, solid), solid, under, family)
 
 

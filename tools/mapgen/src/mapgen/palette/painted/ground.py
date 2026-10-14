@@ -22,7 +22,7 @@ from mapgen.colour import linear_from_oklab, oklab, srgb_to_linear
 from mapgen.gamedata.frame import SPACING_CM
 from mapgen.gamedata.ground.bake import BAKE_NAME, bake_have
 from mapgen.gamedata.ground.paint_store import CANOPY_NAME, CROWN_NAME, PIGMENT_NAME
-from mapgen.gamedata.rocks.families import TopOverride
+from mapgen.gamedata.rocks.families import TOP_BOULDER_BIT, TopOverride
 from mapgen.gamedata.rocks.looks import RockTextures
 from mapgen.gamedata.water.bodies import WATER_CLASSES
 from mapgen.gamedata.water.ocean import OceanAbsorption
@@ -159,9 +159,14 @@ class PaintedGround:
             if arches is None
             else scoped_planes(self._target(arches), self._area_targets(lambda e: e.get("arches")))
         )
-        self.arch_family_rgb: dict[int, FloatGrid] = {
-            family_code(name, "arch_families"): self._target(hex_colour)
-            for name, hex_colour in palette["calibration"].get("arch_families", {}).items()
+        arch_families = palette["calibration"].get("arch_families", {})
+        boulder_families = palette["calibration"].get("boulder_families", {})
+        self.top_family_rgb: dict[int, FloatGrid] = {
+            **{family_code(k, "arch_families"): self._target(v) for k, v in arch_families.items()},
+            **{
+                family_code(k, "boulder_families") | TOP_BOULDER_BIT: self._target(v)
+                for k, v in boulder_families.items()
+            },
         }
         self.shell_family_rgb: dict[int, FloatGrid] = {
             family_code(name, "shell_families"): self._target(hex_colour)

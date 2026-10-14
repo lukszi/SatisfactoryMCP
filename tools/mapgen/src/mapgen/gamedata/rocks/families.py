@@ -29,6 +29,7 @@ from satisfactory_mcp.core.gameassets.packages import AssetIndex, ScriptObjects
 
 __all__ = [
     "ARCH_FAMILY_ROOTS",
+    "BOULDER_FAMILY_ROOTS",
     "FALLOFF_PARAMETERS",
     "FAMILIES",
     "FAMILY_ROOTS",
@@ -37,6 +38,7 @@ __all__ = [
     "SHELL_FAMILY_ROOTS",
     "TARGET_ONLY",
     "TINT_PARAMETER",
+    "TOP_BOULDER_BIT",
     "TOP_TEXTURE_PARAMETERS",
     "FamilyResolver",
     "FamilySource",
@@ -78,6 +80,15 @@ ARCH_FAMILY_ROOTS = {"MI_Arc_Desert_01": "desert"}
 #: The shell materials that wear a family's colour: ``FT_SmallShell_Desert`` puts
 #: ``MI_SmallShell_Desert`` (its own red albedo) on the Desert Canyons' small shells.
 SHELL_FAMILY_ROOTS = {"MI_SmallShell_Desert": "desert"}
+#: The foliage boulder materials that wear a family's colour: the desert boulders' foliage
+#: types put these terracotta-tinted instances of the grey boulders' own on them.
+BOULDER_FAMILY_ROOTS = {
+    "MI_Boulder_02_Desert": "desert",
+    "MI_Boulder_03_04_Desert": "desert",
+    "MI_Boulder_Desert_06": "desert",
+}
+#: The top cache's family plane holds an arch's family code, or a boulder's with this bit.
+TOP_BOULDER_BIT = 0x80
 #: Families with no ``Color Tint`` or top layer to read: the palette's target colours them.
 TARGET_ONLY = frozenset({"desert"})
 ROOT_DIR = "/Game/FactoryGame/World/Environment/Rock/Cliff/Material/"

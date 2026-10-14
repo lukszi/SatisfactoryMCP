@@ -365,6 +365,11 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the Satellite map's desert boulders are terracotta wherever they stand, as
+  their own desert material and the game's distant view have them: those on the Spire Coast,
+  in the Rocky Desert, the Desert Canyons and the Swamp drew grey. The other shells take the
+  warmer grey-brown of the game's distant view. The style's version goes up, and the rock
+  raster caches are rebuilt once.
 - Map renders: the Satellite map's small shells on the Desert Canyons' cliffs are terracotta,
   as their own desert material and the game's distant view have them, not grey-blue plates on
   the red rock. The style's version goes up, and the render-only mesh cache is rebuilt once.

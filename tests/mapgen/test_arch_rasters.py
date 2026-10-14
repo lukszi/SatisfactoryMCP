@@ -12,7 +12,7 @@ import pytest
 from mapgen.cache import DIRECT_FAMILY_NAME
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.maxz_raster import MaxZRaster
-from mapgen.gamedata.rocks.families import FAMILIES
+from mapgen.gamedata.rocks.families import FAMILIES, TOP_BOULDER_BIT
 from mapgen.terrain import rasters
 from mapgen.terrain.archfill import fill_arch_holes
 from mapgen.terrain.overhangs import overhang_rasters, reduce_floor, reduce_under
@@ -120,7 +120,7 @@ def test_the_ceiling_keeps_only_what_lies_below_it():
 # ---------------------------------------------------------------------- the top raster
 
 
-def _items(arch_parts, boulder=None, family=0):
+def _items(arch_parts, boulder=None, family=0, boulder_family=0):
     verts, tris = _join(*arch_parts)
     arch = PreparedPlacement("Arc", 0, np.eye(3, dtype=np.float32), np.ones(3, np.float32),
                              np.zeros(3, np.float32), 0.0, float(verts[:, 1].min()),
@@ -131,7 +131,9 @@ def _items(arch_parts, boulder=None, family=0):
         shapes["Boulder"] = boulder
         mats = np.eye(4, dtype=np.float32)[None]
         y = boulder[0][:, 1]
-        boulders["Boulder"] = InstanceSpans(mats, np.array([y.min()]), np.array([y.max()]))
+        boulders[("Boulder", boulder_family)] = InstanceSpans(
+            mats, np.array([y.min()]), np.array([y.max()])
+        )
     return TopItems([arch], boulders, shapes)
 
 
@@ -163,6 +165,16 @@ def test_the_top_raster_keeps_the_arch_s_family_where_the_arch_is_the_top():
     assert family[_px(5), _px(2)] == desert and family[_px(5), _px(13)] == 0, "boulder: none"
     plain = rasterise_top_band(_items(deck, rock), 0.0, 0.0, STEP_CM, 32, 80, 1)
     assert not plain.family.any()
+
+
+def test_the_top_raster_marks_a_boulder_s_family_where_the_boulder_is_the_top():
+    desert = FAMILIES.index("desert")
+    deck = _box(0, 1000, 0, 1000, 800, 1000)
+    rock = _box(1200, 1500, 0, 1000, 0, 300)
+    band = rasterise_top_band(_items([deck], rock, 0, desert), 0.0, 0.0, STEP_CM, 32, 80, 1)
+    family = top_band_planes(band, 32, 80, 1)[DIRECT_FAMILY_NAME]
+    assert family[_px(5), _px(13)] == desert | TOP_BOULDER_BIT
+    assert family[_px(5), _px(5)] == 0, "the plain arch's deck"
 
 
 def test_under_a_deck_that_crosses_another_the_underside_is_its_own():
@@ -256,3 +268,37 @@ def test_top_items_drop_oversized_arches_and_arches_off_the_raster(monkeypatch):
     items, meta = top_items(_Store(), None, None, sweep, {"/Rock/Arc_A": (verts, tris)})
     assert len(items.arches) == 1 and meta["arch_placements"] == 1
     assert meta["arches_dropped"] == {"oversize": 1, "off_raster": 1}
+
+
+def test_top_items_group_the_boulders_by_the_family_their_foliage_type_s_material_wears(
+    monkeypatch,
+):
+    verts, tris = _box(0, 100, 0, 100, 0, 100)
+    monkeypatch.setattr(
+        rasters, "read_mesh_geometry", lambda *a, **k: {"geometry": {}, "sources": {}}
+    )
+    monkeypatch.setattr(rasters, "read_hull", lambda *a, **k: (verts, tris))
+
+    class Resolver:
+        def __init__(self, *args, roots):
+            self.roots = roots
+
+        def worn_family(self, mesh, material):
+            leaf = (material or "").rsplit("/", 1)[-1]
+            return FAMILIES.index(self.roots[leaf]) if leaf in self.roots else 0
+
+    monkeypatch.setattr(rasters, "FamilyResolver", Resolver)
+    mats = np.tile(np.eye(4), (3, 1, 1))
+    sweep = {
+        "meshes": [],
+        "owners": [],
+        "placements": np.zeros((0, 11)),
+        "materials": ["/Boulder/MI_Boulder_03_04_Desert"],
+        "foliage": {"/Boulder/SM_Boulder_04": mats},
+        "foliage_materials": {"/Boulder/SM_Boulder_04": np.array([0, -1, 0], np.int32)},
+    }
+    items, meta = top_items(_Store(), None, None, sweep, {})
+    desert = FAMILIES.index("desert")
+    sizes = {key: len(group.mats) for key, group in items.boulders.items()}
+    assert sizes == {("/Boulder/SM_Boulder_04", 0): 1, ("/Boulder/SM_Boulder_04", desert): 2}
+    assert meta["boulder_families"] == {"desert": 2}

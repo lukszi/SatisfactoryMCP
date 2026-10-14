@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from mapgen.colour import oklab
-from mapgen.gamedata.rocks.families import FAMILIES
+from mapgen.gamedata.rocks.families import FAMILIES, TOP_BOULDER_BIT
 from mapgen.gamedata.rocks.looks import TOP_FAR_SWITCH, top_tile_m
 from mapgen.palette.painted.calibration import display_to_ground, scoped_planes
 from mapgen.palette.painted.rock_look.atlas import KIND_CLIFF, rock_look
@@ -146,8 +146,8 @@ def test_an_area_entry_s_arches_hold_inside_it_and_the_palette_s_outside():
                        ground, lambda plane: plane)  # fmt: skip
     np.testing.assert_allclose(out[:, 0], [dune, dune], atol=1e-6)
     np.testing.assert_allclose(out[:, 1], [ARCH, ARCH], atol=1e-6)
-    entry = next(e for e in PAINTED_PALETTE["calibration"]["areas"] if "arches" in e)
-    assert entry["areas"] == ["Area_DuneDesert"], "the Dune Desert's terracotta arches"
+    shipped = [e["areas"] for e in PAINTED_PALETTE["calibration"]["areas"] if "arches" in e]
+    assert shipped == [], "the desert boulders and arches take their material's colour"
 
 
 def test_an_arch_whose_material_wears_a_family_takes_its_colour_over_the_area_s():
@@ -156,7 +156,7 @@ def test_an_arch_whose_material_wears_a_family_takes_its_colour_over_the_area_s(
     dune = np.array([0.5, 0.3, 0.2], np.float32)
     terracotta = np.array([0.4, 0.15, 0.08], np.float32)
     ground.arch_rgb = scoped_planes(ARCH, [(np.array([[1.0, 1.0], [0.0, 0.0]], np.float32), dune)])
-    ground.arch_family_rgb = {FAMILIES.index("desert"): terracotta}
+    ground.top_family_rgb = {FAMILIES.index("desert"): terracotta}
     family = np.array([[FAMILIES.index("desert"), 0], [FAMILIES.index("desert"), 0]], np.uint8)
     scene = _scene(np.zeros((2, 2)), top_weight=np.ones((2, 2), np.float32), top_family=family)
     out = rock_surface(np.full((2, 2, 3), 0.3, np.float32), scene, ground, lambda plane: plane)
@@ -164,6 +164,20 @@ def test_an_arch_whose_material_wears_a_family_takes_its_colour_over_the_area_s(
     np.testing.assert_allclose(out[:, 1], [dune, ARCH], atol=1e-6)
     shipped = PAINTED_PALETTE["calibration"].get("arch_families", {})
     assert set(shipped) == {"desert"}, "the desert arches' material, wherever they stand"
+
+
+def test_a_boulder_whose_material_wears_a_family_takes_its_own_colour_not_the_arches():
+    ground = _ground()
+    ground.rock_family = np.full((2, 3), FOREST, np.uint8)
+    desert = FAMILIES.index("desert")
+    arch, boulder = np.array([0.4, 0.15, 0.08], np.float32), np.array([0.5, 0.3, 0.2], np.float32)
+    ground.top_family_rgb = {desert: arch, desert | TOP_BOULDER_BIT: boulder}
+    family = np.tile(np.array([desert, desert | TOP_BOULDER_BIT, 0], np.uint8), (2, 1))
+    scene = _scene(np.zeros((2, 3)), top_weight=np.ones((2, 3), np.float32), top_family=family)
+    out = rock_surface(np.full((2, 3, 3), 0.3, np.float32), scene, ground, lambda plane: plane)
+    np.testing.assert_allclose(out[1], [arch, boulder, ARCH], atol=1e-6)
+    shipped = PAINTED_PALETTE["calibration"].get("boulder_families", {})
+    assert set(shipped) == {"desert"}, "the desert boulders' material, wherever they stand"
 
 
 def test_a_top_without_the_far_albedo_switch_reads_its_near_repeat():

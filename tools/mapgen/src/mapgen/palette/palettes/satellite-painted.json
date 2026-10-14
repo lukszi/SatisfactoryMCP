@@ -494,6 +494,9 @@
   "shell_families": {
    "desert": "#c78f62"
   },
+  "boulder_families": {
+   "desert": "#ca9165"
+  },
   "families": {
    "desert": "#ae8271"
   },
@@ -503,6 +506,7 @@
   },
   "meshes": {
    "coral": "#917c75",
+   "shell": "#746956",
    "terrace": "#ccbea8"
   },
   "coral_meshes": {
@@ -539,8 +543,7 @@
     "areas": [
      "Area_DuneDesert"
     ],
-    "rock": "#ae8271",
-    "arches": "#ca9164"
+    "rock": "#ae8271"
    },
    {
     "areas": [

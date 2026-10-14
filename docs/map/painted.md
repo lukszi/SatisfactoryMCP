@@ -581,10 +581,10 @@ rock #85816c at 1.088 times the luminance (the median of both, OKLab L times 1.0
 chroma and hue kept. It used to take the area's rock. Rocks of no family keep the area's rock,
 in the cliff texture. An area entry can give its arches a colour of its own,
 `calibration.areas[].arches`, blended in by the entry's area weight as the other area targets
-are: the Dune Desert's boulders are terracotta in the baked view, #ca9164 ("The Dune
-Desert's boulders" below; the entry was #ba7b56, the arches' and rib bones', until the arches
-took their family's colour). An arch whose material wears a
-family's colour takes `calibration.arch_families` over both: the desert arches, wherever they
+are. No shipped entry sets one: the Dune Desert's held its boulders' terracotta until the
+boulders took their material's colour ("The desert boulders and the plain shells" below). An
+arch whose material wears a family's colour takes `calibration.arch_families` over both, a
+foliage boulder `calibration.boulder_families`: the desert arches and boulders, wherever they
 stand ("Red-grass tops and the desert arches" below).
 
 **On the GPU.** `reference.look_texels` reads the pixels a band's rock covers, flat;
@@ -717,8 +717,7 @@ the entry, and it now holds their own median through the camera, #ca9164; the dr
 sits about 0.4 L over the entry's, as before. The same terracotta stands on the Spire
 Coast's boulders (#c88f63 in the bake, drawn grey #8f8a75, ΔE 9.5), while the Rocky Desert's
 read grey-tan (#a08f71, drawn #8d8873, ΔE 3.7): like the arches', their colour follows the
-mesh's material, which the top pass does not yet carry for boulders (calibration.md section
-31, "Known limits").
+mesh's material, which the top pass now carries for boulders too (below).
 
 ### The desert shells (2026-10-14)
 
@@ -753,6 +752,64 @@ shells #746956 (213,660). On an unlit 80 m window at (1300, -1800), the desert s
 red rock at (1822, -1415) the review also named are not shells: no shell stands there, and
 they are rock meshes in the cliff look, which the Desert Canyons draw grey since the rock
 colour fixes.
+
+### The desert boulders and the plain shells (2026-10-14)
+
+**Which boulders are desert.** Of the 41,351 foliage boulders the top pass draws, 11,153 are
+painted with a desert foliage type (`SM_Boulder_Desert_02`, `_03`, `_04` and `_06_FoliageType`)
+whose `OverrideMaterials` is a terracotta-tinted instance of the grey boulder's own:
+`MI_Boulder_02_Desert`, `MI_Boulder_03_04_Desert` and `MI_Boulder_Desert_06` (`Color Tint`
+1.0, 0.40 to 0.46, 0.28 to 0.29, where the grey ones are 0.30 to 0.65 in every channel). The
+others' types override nothing. The desert ones stand in the Dune Desert, the Spire Coast, the
+Rocky Desert, the Desert Canyons and the Swamp, so an area entry could not reach them.
+
+**Carried as the arches' family is.** The sweep keeps each top-layer foliage instance's
+override material in `foliage_materials`, beside `foliage`, as it does for the render-only
+foliage (`extra_foliage_materials`, "The desert shells" above). `terrain/rasters.py`
+`top_items` groups each boulder mesh's instances by the family their material wears
+(`gamedata/rocks/families.py` `BOULDER_FAMILY_ROOTS`: the three desert instances are desert),
+and the top pass rasterises each group with its family as the raster source id. The top
+cache's family plane holds the winning arch's family as before, or, where a boulder is the top,
+the boulder's with `TOP_BOULDER_BIT` (0x80) set, so `calibration.boulder_families` and
+`arch_families` colour them apart (rock family reader 5: the top and direct caches are cut
+again once). The Dune Desert's `arches` entry is gone: the boulders it coloured take the
+family's colour, and only a few plain boulders stand there.
+
+**Measured** on the game's HLOD bake through the camera model, over the bake texels within 1.5
+m of a boulder's top (as "The Dune Desert's boulders" above), against the v11 render's unlit
+z7 tiles:
+
+| Boulders | Texels | Bake | Map before | ΔE |
+| --- | --- | --- | --- | --- |
+| Desert, everywhere | 10,070 | #ca9165 | #b48763 | 4.7 |
+| Desert, Dune Desert | 3,417 | #c98f63 | #c4895f | 1.8 |
+| Desert, Spire Coast | 3,012 | #ca9064 | #948e77 | 8.8 |
+| Desert, Rocky Desert | 1,684 | #ca9265 | #928c75 | 9.3 |
+| Desert, Desert Canyons | 1,270 | #cd9466 | #968d74 | 9.2 |
+| Desert, Swamp | 591 | #cb9265 | #948c73 | 9.1 |
+| Plain, standing 2 m or more over the ground | 716 | #9e895e | #8c8872 | 3.7 |
+
+The desert boulders read the same terracotta in every area (ΔE under 1 between them), so
+`calibration.boulder_families.desert` is their median, #ca9165. The plain boulders keep
+`calibration.arches`: where they stand clear of the ground the bake reads them warm grey, and
+the texels of low boulders (22,902 in all) take the colour of the ground round them, green in
+the forests and red in the Red Jungle, which a boulder colour cannot follow.
+
+The plain shells, all but the desert ones, drew their material's texture mean, #797573, where
+the bake reads #746956 over 213,660 texels ("The desert shells" above, ΔE 4.8):
+`calibration.meshes.shell` now holds that, by the bake rather than a paint-store rule (`mapgen
+calibrate` names the source for the key).
+
+On unlit 100 m windows (8192 grid, 0.92 m), the same top cache drawn by the code before and
+after, over the bake texels each window holds:
+
+| Window | Pixels | Bake | Before | ΔE | After | ΔE |
+| --- | --- | --- | --- | --- | --- | --- |
+| Spire Coast, desert boulders, (1550, -1650) | 157 | #c98f63 | #8a8873 | 10.5 | #c69266 | 0.8 |
+| Dune Desert, desert boulders, (3750, -1250) | 145 | #c78c5f | #c38d61 | 0.7 | #c38d62 | 0.7 |
+| Rocky Desert, desert boulders, (1150, -1950) | 208 | #c58a5d | #868570 | 10.4 | #bd8b62 | 1.4 |
+| Swamp, desert boulders, (1750, -950) | 56 | #cb9466 | #87856f | 12.0 | #bf8c61 | 3.0 |
+| Plain shells, (-422, -2138), 120 m | 1,045 | #6f6551 | #74706e | 4.7 | #706552 | 0.2 |
 
 ### The Titan trees
 
@@ -962,8 +1019,9 @@ draws the 32768 windows of the gates' G2 the same as master, all three layers.
   the oil node on the west coast's sand bar, (-2450, 906), is `WetSand_LayerInfo` painted
   round the node, its 1 m speckle included, the same shape in the bake. The bake also has the
   node's dark oil pool in its middle, which the map does not draw.
-- The other shells draw #797573 where the bake through the camera reads #746956 (ΔE 4.8), a
-  warmer grey; their colour is their material's texture mean, not moved here.
+- The plain boulders wear one colour, `calibration.arches`; low boulders in the bake take
+  their surroundings' green or red, which the map does not follow ("The desert boulders and
+  the plain shells").
 - The top layer's mask reads the look's normal maps where the game reads each mesh's own; an
   arch's top layer (grass and moss on `MI_Arc_Grass_01` and kin) is not drawn, as the top pass
   does not say which arch instance a pixel is.

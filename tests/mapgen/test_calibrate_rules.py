@@ -128,6 +128,10 @@ def test_a_key_no_rule_knows_is_answered_not_raised(scene):
     assert _rows(scene)["meshes.kelp"].error == "no rule for mesh 'kelp'"
 
 
+def test_the_shells_name_the_bake_they_were_set_from(scene):
+    assert "HLOD bake" in (_rows(scene)["meshes.shell"].error or "")
+
+
 def test_an_untargeted_layer_falls_back_to_its_paint_table(scene):
     (soil,) = untargeted_layers(scene, CALIBRATION)
     assert soil.key == "layers.Soil_LayerInfo"

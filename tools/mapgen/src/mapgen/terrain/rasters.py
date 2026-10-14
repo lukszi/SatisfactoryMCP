@@ -19,7 +19,7 @@ from mapgen.gamedata.placements import (
     OVERSIZE_CM,
     rotation_matrix,
 )
-from mapgen.gamedata.rocks.families import FAMILIES
+from mapgen.gamedata.rocks.families import BOULDER_FAMILY_ROOTS, FAMILIES, FamilyResolver
 from mapgen.gamedata.vegetation.trees import is_tree
 from mapgen.gamedata.water.falls import read_fall
 from mapgen.terrain.maxz.faces import Faces, band_faces
@@ -105,10 +105,11 @@ class CliffGeometry(TypedDict):
 
 
 class TopItems(NamedTuple):
-    """What the top pass draws: the arches, the foliage boulders, and every shape they use."""
+    """What the top pass draws: the arches, the foliage boulders by mesh and the family their
+    material wears, and every shape they use."""
 
     arches: list[PreparedPlacement]
-    boulders: dict[str, InstanceSpans]
+    boulders: dict[tuple[str, int], InstanceSpans]
     shapes: dict[str, Shape]
 
 
@@ -122,6 +123,7 @@ class TopMeta(TypedDict):
     foliage_sources: dict[str, str]
     meshes_skipped: list[str]
     arch_families: dict[str, int]
+    boulder_families: dict[str, int]
 
 
 # --------------------------------------------------------------------------------------
@@ -397,7 +399,8 @@ def top_items(
     rock: the distant scenery arches. Boulders are foliage instances with their own 4x4
     matrices. Both fall back to the collision trimesh the field rasterised when no finer
     source decodes. ``families``, one code per placement row, is each arch's raster source
-    id (0 for none), as ``direct_placements`` carries a rock's.
+    id (0 for none), as ``direct_placements`` carries a rock's; a boulder's family is the one
+    its foliage type's material wears (``BOULDER_FAMILY_ROOTS``).
     """
     meshes, owners = sweep["meshes"], sweep["owners"]
     arch_ids = {i for i, m in enumerate(meshes) if ARCH_MARK in m.rsplit("/", 1)[-1]}
@@ -449,13 +452,19 @@ def top_items(
                 0 if families is None else int(families[i]),
             )
         )
-    boulders: dict[str, InstanceSpans] = {}
+    boulders: dict[tuple[str, int], InstanceSpans] = {}
+    worn = _boulder_families(store, scripts, index, sweep)
+    boulder_families = dict.fromkeys(FAMILIES[1:], 0)
     for mesh, mats in sweep["foliage"].items():
         found = shape(mesh)
         if found is None:
             skipped.add(mesh.rsplit("/", 1)[-1])
             continue
-        boulders[mesh] = instance_y_spans(found[0], np.asarray(mats, np.float32))
+        for code in np.unique(worn[mesh]).tolist():
+            picked = np.asarray(mats, np.float32)[worn[mesh] == code]
+            boulders[(mesh, code)] = instance_y_spans(found[0], picked)
+            if code:
+                boulder_families[FAMILIES[code]] += len(picked)
     drawn = {mesh: found for mesh, found in shapes.items() if found is not None}
     return TopItems(arches, boulders, drawn), {
         "arch_placements": len(arches),
@@ -468,4 +477,21 @@ def top_items(
             for code, n in enumerate(np.bincount([a.family or 0 for a in arches], minlength=1))
             if code and n
         },
+        "boulder_families": {name: n for name, n in boulder_families.items() if n},
     }
+
+
+def _boulder_families(
+    store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep
+) -> dict[str, NDArray[np.integer]]:
+    """Per foliage boulder mesh, the family code each instance's material wears."""
+    resolver = FamilyResolver(store, scripts, index, roots=BOULDER_FAMILY_ROOTS)
+    chosen = sweep.get("foliage_materials", {})
+    out: dict[str, NDArray[np.integer]] = {}
+    for mesh, mats in sweep["foliage"].items():
+        picks = chosen.get(mesh, np.full(len(mats), -1, np.int32))
+        kinds, at = np.unique(picks, return_inverse=True)
+        worn: list[str | None] = [sweep["materials"][int(k)] if k >= 0 else None for k in kinds]
+        codes = [resolver.worn_family(mesh, material) for material in worn]
+        out[mesh] = np.asarray(codes, np.uint8)[at.reshape(-1)]
+    return out

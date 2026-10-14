@@ -68,7 +68,12 @@ CALIBRATION = {
     "rock_keeps_exposure": True,
     "families": {"desert": "#ae8271"},
     "tops": {"forest": "#505936"},
-    "meshes": {"coral": "#99868e", "coral_seabed": "#5f8899", "kelp": "#00ff00"},
+    "meshes": {
+        "coral": "#99868e",
+        "coral_seabed": "#5f8899",
+        "kelp": "#00ff00",
+        "shell": "#746956",
+    },
     "crowns": {"blue_palm": "#3d627d"},
     "species": {"SM_Kapok_03": "#7c4955"},
     "areas": [

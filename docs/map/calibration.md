@@ -225,7 +225,8 @@ references were used. A target is a screenshot measured so, or derived by a rule
 | WetSand | the deserts and Savanna | #9b7a5b | derived (rule) | the entry's Sand at L ×0.80, C ×1.15, h −10 ("Wet sand by rule" above) |
 | Gravel | the deserts and Savanna | #8f8373 | screenshot | Somersloop, and the gravel-to-sand ratio in Desert Canyons |
 | Grass | Southern Forest | #53784a | derived (bake) | the area's pure grass texels in the game's baked colour through the camera model; its grass is bluer than any other area's ("The second review" below) |
-| Boulders of the top pass | Dune Desert | #ca9164 | derived (bake) | the Dune Desert's boulder tops in the game's baked distant view through the camera model (painted.md section 30, "The Dune Desert's boulders"); #ba7b56, the arches' and rib bones', until the desert arches took their family's colour |
+| Boulders of the top pass, desert family | wherever a boulder wears a desert material (`boulder_families`) | #ca9165 | derived (bake) | the desert boulders' tops in the game's baked distant view through the camera model, alike in all five areas they stand in (painted.md section 30, "The desert boulders and the plain shells"). Until style version 37 an area entry, the Dune Desert's, at #ca9164, which left the Spire Coast's, the Rocky Desert's, the Desert Canyons' and the Swamp's grey (ΔE 8.8 to 9.3) |
+| Shells, plain | every shell but the desert ones (`meshes.shell`) | #746956 | derived (bake) | the shells' tops in the game's baked distant view through the camera model (painted.md section 30, "The desert shells"); their material's texture mean, #797573 (ΔE 4.8), until style version 37 |
 | Top layer, red jungle family | the up-facing faces of every `_RedJungle` cliff | #ad6351 | derived (bake) | those cliffs' tops in the game's baked distant view through the camera model ("The second review" below) |
 | Crowns, red Kapok (`SM_Kapok_03`) | everywhere, by species | #7c4955 | screenshot | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942); two 1.0 sources agree (ΔE 1.8 and 1.9) (see "Crowns") |
 | Crowns, orange palms (`Orange_palm1`, `Orange_palm2`) | everywhere, by species | #bfcbc3, #b6c5bc | derived (texture) | each species' sprite colour through the camera model under the leaves' light: `TX_OrangePalm_Alb_01`, pale grey-mint (light-and-crowns.md section 36, "Foliage colours checked"; "The sky on the leaves" below); they skip the canopy step. #c3cbb6 and #bcc5ad, pale sage, flat-lit, until style version 35 |
@@ -581,6 +582,7 @@ Desert's: most of its placements stand inside that volume.
 | crowns | `canopy`, `crowns`, `species` | the weighted median of the trees' top-down sprite colours (cover × scale²); the canopy takes only crowns within 20 to 40° of the forest floor texture's hue and leaves out the keyed species and the blue palms. Measured under the leaves' light |
 | material texture | `meshes.coral`, an area's shells | the materials' base-colour means under their masks |
 | none | water, seabed coral | the game's water absorbs but does not scatter, so its colour is the sky, the clouds and the fog, which the cooked assets do not expose |
+| none | `meshes.shell` | measured on the mesh HLOD bake, which the paint store does not keep |
 
 **Results on build 502094** (model version 2, 2026-10-08; the crown rows model version 3,
 2026-10-14, under the leaves' light: flat-lit they were canopy #5e8136, the blue palms #bec7c1
@@ -976,11 +978,12 @@ instance, the class is mostly other meshes, each with its own texture:
 - The game's baked distant view holds no tree crowns and no Titan canopy, so no crown colour
   is checked against the game's own view; the ancient pines draw their sprites' colour moved
   by 0.66 to 0.72 of the canopy step, olive-green and lighter than the grass's footage shows.
-- The arches' colour by material covers the desert arches only (`arch_families`, painted.md
-  section 30, "Red-grass tops and the desert arches"). The boulders take theirs by area: the
-  Dune Desert's `arches` entry, measured on its boulders (#ca9164), but the Spire Coast's
-  boulders, terracotta in the bake too (#c88f63), draw grey (ΔE 9.5) until the top pass
-  carries a boulder's material as it carries an arch's.
+- The colour by material covers the desert arches and boulders only (`arch_families`,
+  `boulder_families`; painted.md section 30, "Red-grass tops and the desert arches" and "The
+  desert boulders and the plain shells"). Measured over the bake texels on 100 m windows, the
+  desert boulders draw ΔE 0.7 to 3.0 from the bake, where the Spire Coast's, the Rocky
+  Desert's and the Swamp's drew grey, ΔE 10.4 to 12.0. The plain boulders wear one grey; where
+  the bake reads low ones green or red, it is the ground round them.
 - The top layer's mask is the cliff master's, read with the look's normal maps where the game
   reads each mesh's own (painted.md section 30, "Rock textures"). Only the forest top has a
   colour measured from screenshots; the sand and grass tops wear their layers' targets and
@@ -1002,8 +1005,9 @@ instance, the class is mostly other meshes, each with its own texture:
   `calibration.coral_meshes`, which wear their textures through the camera ("Crater floor,
   terraces and coral meshes, checked"), and the desert shells, which wear
   `calibration.shell_families` (painted.md section 30, "The desert shells"). The shell
-  class's grey colours every other shell; those read #746956 in the bake through the camera
-  (painted.md section 30, "Known limits").
+  class's colour, `meshes.shell`, colours every other shell: #746956, their bake through the
+  camera, set by hand as the paint store keeps no mesh bake (ΔE 0.2 on an unlit window, 4.7
+  before).
 - On a beach whose paint has no WetSand above the drawn sea, as at the north beach, the
   shore's band is the only wet cue and reads L ×0.97 in its first metre, against ×0.80 in
   game.
