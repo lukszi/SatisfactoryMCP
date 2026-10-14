@@ -22,6 +22,7 @@ from mapgen.cache import (
     DIRECT_CACHE_DIR_NAME,
     DIRECT_COVERAGE_NAME,
     DIRECT_FAMILY_NAME,
+    DIRECT_TOP_RULE_NAME,
     DIRECT_Z_NAME,
     MESH_CACHE_DIR_NAME,
     MESH_CLASS_NAME,
@@ -34,6 +35,7 @@ from mapgen.cache import (
     cached_raster,
     mesh_stamp,
     missing_caches,
+    open_plane,
     raster_cache_stamp,
 )
 from mapgen.commands.compress_cache import compress
@@ -47,7 +49,7 @@ pytest.importorskip("zstandard")
 
 #: Three bands of 256 rows, the last one short.
 SIZE = 600
-DIRECT_PLANES = (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME, DIRECT_FAMILY_NAME)
+DIRECT_PLANES = (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME, DIRECT_FAMILY_NAME, DIRECT_TOP_RULE_NAME)
 
 
 def _plane(dtype, shape, seed=0):
@@ -344,7 +346,8 @@ def test_the_converter_round_trips_a_raw_cache_in_place(tmp_path):
     after = json.loads((folder / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
     assert after == {**recorded, "storage": STORAGE_BANDS}
     assert not any((folder / name).exists() for name in DIRECT_PLANES)
-    planes = (*cached_raster(folder, stamp), cached_family(folder, stamp))
+    rule = open_plane(folder, DIRECT_TOP_RULE_NAME, stamp["size"], STORAGE_BANDS)
+    planes = (*cached_raster(folder, stamp), cached_family(folder, stamp), rule)
     for plane, name in zip(planes, DIRECT_PLANES, strict=True):
         assert isinstance(plane, BandArray) and np.asarray(plane).tobytes() == before[name]
     assert compress(folder) == {"already": True, "removed": [], "kept": {}}

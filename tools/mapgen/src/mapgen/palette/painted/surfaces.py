@@ -240,12 +240,15 @@ def rock_surface(
     ``code`` is the family per pixel; the direct pass's family plane on this band when None,
     which an arch or boulder lifted over the cliff (``scene["top_weight"]``) does not wear: by
     its lift it takes the arches' rock (``_arch_rock``)."""
-    area_rock, lifted = rock_rgb, None
+    area_rock, lifted, own = rock_rgb, None, None
     if code is not None:
         code = np.asarray(code)
     elif ground.rock_family is not None:
         code = np.asarray(ground.rock_family[scene["grid"][0]], np.uint8)
         lifted = scene.get("top_weight")
+        if ground.rock_top_rule is not None and ground.top_overrides:
+            rule = np.asarray(ground.rock_top_rule[scene["grid"][0]], np.uint8)
+            own = (rule, ground.top_overrides)
     else:
         return rock_rgb
     for which, planes in ground.family_rock.items():
@@ -262,13 +265,13 @@ def rock_surface(
     pick = np.ones(code.shape, bool) if pick is None else pick
     if look is None:
         up = surface_normals(scene["z_m"], scene["grid"][5])[..., 2]
-        weight = (top_mask(up, *top_rules(None, code)) * has_top)[..., None]
+        weight = (top_mask(up, *top_rules(None, code, own)) * has_top)[..., None]
         out = rgb * (1.0 - weight) + top * weight
     else:
         kind = np.where(code == _DESERT, KIND_DESERT, KIND_CLIFF).astype(np.uint8)
         got = band_look(look, scene, ground.palette, pick, (kind, _top_tiles(ground, code)))
         strength = ground.palette["rock_look"]
-        weight = (top_mask(got.up, *top_rules(look, code)) * has_top)[..., None]
+        weight = (top_mask(got.up, *top_rules(look, code, own)) * has_top)[..., None]
         body = rgb * mixed(got.body, strength["albedo"])
         layer = top * mixed(got.top, strength["albedo"])
         shade = mixed(got.shade, strength["shade"])[..., None]

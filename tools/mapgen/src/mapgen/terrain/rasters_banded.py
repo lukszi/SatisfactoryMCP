@@ -23,6 +23,7 @@ from mapgen.cache import (
     DIRECT_BAND_ROWS,
     DIRECT_COVERAGE_NAME,
     DIRECT_FAMILY_NAME,
+    DIRECT_TOP_RULE_NAME,
     DIRECT_Z_NAME,
     PLANE_DTYPES,
     STORAGE_BANDS,
@@ -32,6 +33,7 @@ from mapgen.cache import (
     write_sidecar,
 )
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.rocks.families import FAMILY_SLOTS
 from satisfactory_mcp.core.arrays import F32Grid, U8Grid, U16Grid
 
 __all__ = [
@@ -167,7 +169,9 @@ def fold_band(
     band_z, band_coverage = reduce_direct(sub_z, rows, cols, subsamples)
     planes: BandPlanes = {DIRECT_Z_NAME: band_z, DIRECT_COVERAGE_NAME: band_coverage}
     if sub_source is not None:
-        planes[DIRECT_FAMILY_NAME] = reduce_source(sub_z, sub_source, rows, cols, subsamples)
+        source = reduce_source(sub_z, sub_source, rows, cols, subsamples)
+        planes[DIRECT_FAMILY_NAME] = source % np.uint8(FAMILY_SLOTS)
+        planes[DIRECT_TOP_RULE_NAME] = source // np.uint8(FAMILY_SLOTS)
     return planes
 
 
@@ -190,7 +194,8 @@ def write_banded_raster(
     """Rasterise every placed rock into the render's own grid, ``DIRECT_BAND_ROWS`` at a time,
     into a cache ``cached_raster`` reads back only under the same ``stamp``.
 
-    A ``band_raster`` that returns ``(z, source)`` also writes the family plane, and one that
+    A ``band_raster`` that returns ``(z, source)`` also writes the family and top rule planes
+    (``source`` is ``family + FAMILY_SLOTS * rule``), and one that
     returns ``BandPlanes`` writes those; the first band says which, before any plane is
     opened, and every band after it must agree. The bands are rasterised on ``threads``
     (``raster_threads()`` when None) and written in their order.

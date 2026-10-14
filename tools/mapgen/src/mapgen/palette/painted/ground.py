@@ -23,6 +23,7 @@ from mapgen.colour import linear_from_oklab, oklab, srgb_to_linear
 from mapgen.gamedata.frame import SPACING_CM
 from mapgen.gamedata.ground.bake import BAKE_NAME, bake_have
 from mapgen.gamedata.ground.paint_store import CANOPY_NAME, CROWN_NAME, PIGMENT_NAME
+from mapgen.gamedata.rocks.families import TopOverride
 from mapgen.gamedata.rocks.looks import RockTextures
 from mapgen.gamedata.water.bodies import WATER_CLASSES
 from mapgen.gamedata.water.ocean import OceanAbsorption
@@ -199,6 +200,8 @@ class PaintedGround:
         }
         self._trees(paint_dir, sprites)
         self.rock_family: Plane | None = None
+        self.rock_top_rule: Plane | None = None
+        self.top_overrides: list[TopOverride] = []
         self.family_rock: dict[int, list[FloatGrid]] = {}
         self.source["rock_family_targets"] = {}
         self.titan: TitanPlanes | None = None
@@ -272,10 +275,16 @@ class PaintedGround:
         crowns = crowns_provenance(self.palette, self.meta, sets, self.crown_measured)
         return {**self.source, "crowns": crowns}
 
+    def attach_top_rules(self, found: tuple[Plane, list[TopOverride]] | None) -> None:
+        """The direct pass's top rule plane and table: rock instances' own top mask numbers."""
+        self.rock_top_rule, self.top_overrides = (None, []) if found is None else found
+        self.source["top_rule_overrides"] = [list(rule) for rule in self.top_overrides]
+
     def attach_families(self, plane: Plane | None) -> None:
         """The direct pass's family plane, and the rock of each family the palette gives a
         target (``surfaces.family_targets``), which holds over any area's rock."""
         self.rock_family, self.family_rock = plane, {}
+        self.rock_top_rule, self.top_overrides = None, []
         base, self._rock_lab = self._rock_lab, None
         if plane is None or base is None:
             return

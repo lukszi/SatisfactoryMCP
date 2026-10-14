@@ -10,13 +10,18 @@ docs/map/calibration.md section 31 have the measurements.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TypedDict
+from typing import TypeAlias, TypedDict
 
 import numpy as np
 
 from mapgen.gamedata.install import open_package
 from mapgen.gamedata.level.sweep import Sweep
-from mapgen.gamedata.materials import material_parent, texture_parameters, vector_parameters
+from mapgen.gamedata.materials import (
+    material_parent,
+    scalar_parameters,
+    texture_parameters,
+    vector_parameters,
+)
 from mapgen.gamedata.placements import PLACEMENT_MESH, placement_material
 from satisfactory_mcp.core.arrays import U8Grid
 from satisfactory_mcp.core.gameassets.iostore import IoStore
@@ -24,16 +29,20 @@ from satisfactory_mcp.core.gameassets.packages import AssetIndex, ScriptObjects
 
 __all__ = [
     "ARCH_FAMILY_ROOTS",
+    "FALLOFF_PARAMETERS",
     "FAMILIES",
     "FAMILY_ROOTS",
+    "FAMILY_SLOTS",
     "MAX_CHAIN",
     "TARGET_ONLY",
     "TINT_PARAMETER",
     "TOP_TEXTURE_PARAMETERS",
     "FamilyResolver",
     "FamilySource",
+    "TopOverride",
     "family_sources",
     "placement_families",
+    "placement_top_rules",
     "worn_family",
 ]
 
@@ -72,6 +81,15 @@ TINT_PARAMETER = "Color Tint"
 #: The family's top-layer texture, the far one first: the map sees the rock from afar.
 TOP_TEXTURE_PARAMETERS = ("Far Albedo", "Albedo")
 MAX_CHAIN = 8
+#: The top layer mask's numbers, which a cliff's own instance may set below its family root.
+FALLOFF_PARAMETERS = ("Falloff_Power", "Falloff_Contrast")
+#: A raster source id is ``family + FAMILY_SLOTS * rule``: the family code and the index of
+#: the placement's top rule override (0 for none), one u8 when folded.
+FAMILY_SLOTS = 16
+
+#: An instance's own ``(Falloff_Power, Falloff_Contrast)`` below its family root; None where
+#: it sets none, so the family's own number holds.
+TopOverride: TypeAlias = tuple[float | None, float | None]
 
 
 class FamilySource(TypedDict):
@@ -101,6 +119,7 @@ class FamilyResolver:
         self.store, self.scripts, self.index, self.roots = store, scripts, index, roots
         self.by_mesh: dict[str, str | None] = {} if by_mesh is None else by_mesh
         self.by_material: dict[str, int] = {} if by_material is None else by_material
+        self._overrides: dict[str, TopOverride] = {}
 
     def family_of(self, material: str | None) -> int:
         """The family code a material belongs to, by walking its parents to a family root."""
@@ -136,6 +155,28 @@ class FamilyResolver:
         """The family a mesh wears: its placement's override ``material``, else its own."""
         return self.family_of(material if material is not None else self.mesh_material(mesh))
 
+    def top_override(self, material: str | None) -> TopOverride:
+        """The nearest ``FALLOFF_PARAMETERS`` a material's chain sets below its family root."""
+        if not material:
+            return (None, None)
+        if material in self._overrides:
+            return self._overrides[material]
+        found: dict[str, float] = {}
+        current: str | None = material
+        for _ in range(MAX_CHAIN):
+            if current is None or current.rsplit("/", 1)[-1] in self.roots:
+                break
+            view = open_package(self.store, self.scripts, self.index, current)
+            if view is None:
+                break
+            for name, value in scalar_parameters(view).items():
+                if name in FALLOFF_PARAMETERS:
+                    found.setdefault(name, value)
+            current = material_parent(view)
+        power, contrast = (found.get(name) for name in FALLOFF_PARAMETERS)
+        self._overrides[material] = (power, contrast)
+        return power, contrast
+
 
 def worn_family(
     store: IoStore,
@@ -169,6 +210,36 @@ def placement_families(
             continue
         codes[i] = resolver.worn_family(meshes[mesh_id], placement_material(sweep, i))
     return codes
+
+
+def placement_top_rules(
+    store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep, codes: U8Grid
+) -> tuple[U8Grid, list[TopOverride]]:
+    """Per row of ``sweep["placements"]`` of a family ``codes`` gives (desert aside), the
+    index into the returned overrides of its instance's own top mask numbers (0 for none,
+    ``k`` for entry ``k - 1``). The most placed ``FAMILY_SLOTS - 1`` overrides are kept, in
+    order of their numbers."""
+    meshes, rows = sweep["meshes"], sweep["placements"]
+    resolver = FamilyResolver(store, scripts, index)
+    skip = {0, *(FAMILIES.index(family) for family in TARGET_ONLY)}
+    found: list[TopOverride | None] = [None] * len(rows)
+    for i, row in enumerate(rows):
+        if int(codes[i]) in skip:
+            continue
+        material = placement_material(sweep, i)
+        if material is None:
+            material = resolver.mesh_material(meshes[int(row[PLACEMENT_MESH])])
+        override = resolver.top_override(material)
+        found[i] = None if override == (None, None) else override
+    counts: dict[TopOverride, int] = {}
+    for override in found:
+        if override is not None:
+            counts[override] = counts.get(override, 0) + 1
+    kept = sorted(counts, key=lambda o: -counts[o])[: FAMILY_SLOTS - 1]
+    table = sorted(kept, key=lambda o: tuple(-1.0 if v is None else v for v in o))
+    slot = {override: k + 1 for k, override in enumerate(table)}
+    variants = np.array([slot.get(o, 0) if o is not None else 0 for o in found], np.uint8)
+    return variants, table
 
 
 def family_sources(

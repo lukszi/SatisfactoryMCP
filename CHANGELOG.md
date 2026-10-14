@@ -337,6 +337,10 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the Satellite map's red jungle and red-grass cliffs lay their grass and moss
+  tops by each cliff's own material settings, as the game does, instead of their family's
+  alone: about a quarter of those cliffs keep the top off the steeper rims of their shelves.
+  The rock raster cache is rebuilt once (it gains a plane), and the style's version goes up.
 - Map renders: the Satellite map's boulders in the Dune Desert take their own colour from the
   game's baked distant view, a lighter sand-terracotta, instead of the colour once measured on
   the desert's arches. The style's version goes up.

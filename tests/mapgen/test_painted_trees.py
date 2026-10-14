@@ -251,6 +251,7 @@ def test_rock_keeps_its_target_under_the_common_tint_and_a_family_keeps_its_depa
     np.testing.assert_allclose(ratio[0], 1.0)
     assert has[names.index("grass")] == 1.0 and has[names.index("cliff")] == 0.0
     ground = SimpleNamespace(rock_family=np.full((4, 4), names.index("cliff"), np.uint8),
+                             rock_top_rule=None, top_overrides=[],
                              family_rock={}, family_tint=ratio, family_top=top,
                              family_top_rgb={}, family_has_top=has, palette={},
                              rock_look=None, arch_rgb=None)  # fmt: skip
