@@ -40,6 +40,8 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 __all__ = [
     "RIVER_EDGE_FADE_M",
     "RIVER_HANDOVER_M",
+    "RIVER_JAG_SIGMA_M",
+    "RIVER_JAG_TEXELS",
     "RIVER_JOINTS",
     "RIVER_LEVEL_MATCH_M",
     "RIVER_MAX_DEPTH_M",
@@ -83,6 +85,12 @@ RIVER_HANDOVER_M = 1.0
 RIVER_MOUTH_FADE_M = 12.0
 RIVER_MOUTH_BLEND_M = 2.0
 
+#: The drawn plane near a step of ``RIVER_STEP_M`` to the joints' ``high_m``, within this
+#: many texels, is smoothed by a Gaussian of this sigma, metres: on a sloped bend the nearest
+#: centreline piece flips between two of the river's sections and leaves a jagged step.
+RIVER_JAG_TEXELS = 2
+RIVER_JAG_SIGMA_M = 1.5
+
 #: The joints between a river's sections: steps of 0.5 to 2 m feathered over 8 m either side,
 #: through a surface sloping at most 0.25 m from texel to texel.
 RIVER_JOINTS = SeamFeather(low_m=0.5, high_m=2.0, reach=8, run_m=0.25)
@@ -125,6 +133,7 @@ class RiverWater:
             valley = speaks & (ground - level <= RIVER_MAX_DEPTH_M)
             draws = speaks & (across <= 1.0) & ~steps & (level > ground)
         drawn, joints = feather_steps(level, zone & np.isfinite(level), RIVER_JOINTS)
+        drawn, jags = _smooth_jags(drawn, zone & np.isfinite(level))
         lips = _beside_a_step(drawn)
         tops = _Tops(river_top, other_top, boxes)
         self.water_dm: I16Grid
@@ -146,6 +155,7 @@ class RiverWater:
             np.int16
         )
         self.stats["joint_texels_feathered"] = joints
+        self.stats["jag_texels_smoothed"] = jags
         self.stats.update(
             rivers=len(cached["rivers"]),
             sections=sum(len(river["sections"]) for river in cached["rivers"]),
@@ -162,6 +172,31 @@ class RiverWater:
         presence = sample_plain(self.presence, linear) / np.float32(255.0)
         yields = sample_plain(self.yields, linear) / np.float32(255.0)
         return river_terms(terms, z_m, river_m, presence, spacing_m, yields)
+
+
+def _smooth_jags(level: F32Grid, valid: BoolMask) -> tuple[F32Grid, int]:
+    """``level`` smoothed within ``RIVER_JAG_TEXELS`` of a step of ``RIVER_STEP_M`` to
+    ``RIVER_JOINTS.high_m`` and clear of a larger one, a fall; and how many texels moved."""
+    with np.errstate(invalid="ignore"):
+        rows, cols = np.abs(np.diff(level, axis=0)), np.abs(np.diff(level, axis=1))
+    small, fall = np.zeros(level.shape, bool), np.zeros(level.shape, bool)
+    bands = ((small, RIVER_STEP_M, RIVER_JOINTS.high_m), (fall, RIVER_JOINTS.high_m, np.inf))
+    for plane, low, high in bands:
+        with np.errstate(invalid="ignore"):
+            down, across = (rows > low) & (rows <= high), (cols > low) & (cols <= high)
+        plane[1:] |= down
+        plane[:-1] |= down
+        plane[:, 1:] |= across
+        plane[:, :-1] |= across
+    near = ndimage.binary_dilation(small, iterations=RIVER_JAG_TEXELS)
+    zone = near & valid & ~ndimage.binary_dilation(fall, iterations=RIVER_JAG_TEXELS + 1)
+    if not zone.any():
+        return level, 0
+    weight = ndimage.gaussian_filter(valid.astype(np.float32), RIVER_JAG_SIGMA_M)
+    held = np.where(valid, level, 0.0).astype(np.float32)
+    total = ndimage.gaussian_filter(held, RIVER_JAG_SIGMA_M)
+    smooth = total / np.maximum(weight, np.float32(1e-6))
+    return np.where(zone, smooth, level).astype(np.float32), int(zone.sum())
 
 
 def _mouth_fade(plane: BoolMask, other: BoolMask) -> FloatGrid:
@@ -326,7 +361,8 @@ def river_terms(
     banks are where the game's plane meets the terrain and not where a mask ends. Past the
     other water's last wet texel (``terms["wet"]``), away from the sea, its edge's blur is no
     water the river gives way to; ``yields`` is how far the other water gives way to it
-    whatever the levels (``RiverWater.yields``).
+    whatever the levels (``RiverWater.yields``). The river covers what the other water leaves
+    of a pixel, so the ground never shows between the two.
     """
     level = np.where(np.isfinite(river_m), river_m, z_m - np.float32(1e3))
     cross = shore_terms(z_m, spacing_m, level)
@@ -337,8 +373,10 @@ def river_terms(
     if yields is not None:
         wins = np.maximum(wins, yields)
     rules = presence * np.maximum((terms["cover"] <= 0.0) | blur, wins)
-    mine = cross["cover"] * rules
-    cover = mine + (1.0 - mine) * terms["cover"]
+    free = cross["cover"] * presence
+    held = terms["cover"]
+    mine = free * ((1.0 - held) + held * np.maximum(blur, wins))
+    cover = held + (1.0 - held) * free
     share = mine / np.maximum(cover, np.float32(1e-6))
     depth_m = cross["depth_m"]
     out = terms.copy()

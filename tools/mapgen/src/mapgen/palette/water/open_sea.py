@@ -26,6 +26,7 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "COAST_ABOVE_M",
+    "FILL_SHORE_SIGMA_M",
     "OPEN_SEA_BLEND_M",
     "OPEN_SEA_BLEND_PULL_M",
     "OPEN_SEA_CELL",
@@ -61,6 +62,9 @@ OPEN_SEA_SETTLE_M = 400.0
 #: the ocean's band; ground at or under that top is sea the artwork's mask left dry. The
 #: field's fill holds the sea's own surface to within 0.7 m.
 COAST_ABOVE_M = 1.0
+
+#: The fill's shore is its dry outline smoothed by a Gaussian of this sigma, in metres.
+FILL_SHORE_SIGMA_M = 2.0
 
 #: The grid the open sea's bed is solved on, in 1 m texels per side.
 OPEN_SEA_CELL = 4
@@ -102,7 +106,9 @@ _OPEN_SEA_RULE = (
     "fixed on the measured bed past blend_m and at a dry coast (stored ground "
     "coast_above_m over the band's top; dry ground at or under it joins the sea, and "
     "so does such ground in a gap at most strip_m wide between the sea and the void "
-    "past the world's edge), "
+    "past the world's edge; the fill is no coast, its dry texels at or under the "
+    "band's top join the sea wherever they reach it through such fill, and its shore "
+    "is its dry outline smoothed over fill_shore_sigma_m), "
     "held to the measured bed over blend_pull_m within blend_m, drawn to the depth of "
     "the artwork's water tone (tone_depth_m) over tone_pull_m, settling to deep_m "
     "over about settle_m; the measured bed is laid back over it across blend_m, so "
@@ -172,7 +178,12 @@ def open_sea(
     level_m = level / np.float32(hf.DM_PER_M)
     ocean = (level != hf.NODATA) & (np.abs(level_m - ocean_level_m) <= OCEAN_BAND_M)
     unknown = (ocean & (grades == hf.WATER_LEVEL_ONLY)) | (sea & (grades == hf.WATER_DRY))
+    sunk, raised = _fill_shore(field, grades, nodata, unknown, ocean_level_m)
+    unknown &= ~raised
+    grades = np.where(raised, np.uint8(hf.WATER_DRY), grades).astype(np.uint8)
+    level = np.where(raised, np.int16(hf.NODATA), level).astype(np.int16)
     coast, sunken, low = _dry_beside(field, grades, nodata, unknown, ocean_level_m)
+    low |= sunk
     added = low | (sea & (grades == hf.WATER_DRY))
     unknown |= added
     measured = ocean & (grades == hf.WATER_MEASURED) & ~nodata
@@ -202,6 +213,7 @@ def open_sea(
         "deep_m": OPEN_SEA_DEPTH_M,
         "settle_m": OPEN_SEA_SETTLE_M,
         "coast_above_m": COAST_ABOVE_M,
+        "fill_shore_sigma_m": FILL_SHORE_SIGMA_M,
         "cell_m": OPEN_SEA_CELL * step_m,
         "blend_m": OPEN_SEA_BLEND_M,
         "blend_pull_m": OPEN_SEA_BLEND_PULL_M,
@@ -212,6 +224,8 @@ def open_sea(
         "strip_m": VOID_STRIP_M,
         "sea_over_no_data_texels": int(sea.sum()),
         "dry_texels_joined": int(low.sum()),
+        "fill_joined_texels": int(sunk.sum()),
+        "fill_raised_texels": int(raised.sum()),
         "strip_texels_joined": int(strip.sum()),
         "void_texels": int(empty[0].sum()),
         "pit_texels": int(np.count_nonzero(void.pit)),
@@ -228,14 +242,45 @@ def _dry_beside(
     field: hf.Field, grades: U8Grid, nodata: BoolMask, unknown: BoolMask, ocean_level_m: float
 ) -> tuple[BoolMask, BoolMask, BoolMask]:
     """``(coast, sunken, low)``: dry ground beside ``unknown`` the bed rises to, dry ground at
-    or under the top of the ocean's band, and the sunken ground beside, which joins the sea."""
+    or under the top of the ocean's band, and the sunken ground beside, which joins the sea.
+    The fill is no coast: the interface raster says nothing of the bed beside it."""
     # Read against the field's own heights: the rebuilt fill stands a metre above them.
     top = (ocean_level_m + OCEAN_BAND_M) * hf.DM_PER_M
     stored = np.asarray(field_heights(field))
     beside = (grades == hf.WATER_DRY) & ~nodata & ndimage.binary_dilation(unknown, iterations=3)
     coast = beside & (stored >= top + COAST_ABOVE_M * hf.DM_PER_M)
+    coast &= np.asarray(field.provenance_plane) != hf.PROV_FILL
     sunken = (grades == hf.WATER_DRY) & ~nodata & (stored <= top) & (stored != hf.NODATA)
     return coast, sunken, beside & sunken
+
+
+def _fill_shore(
+    field: hf.Field, grades: U8Grid, nodata: BoolMask, sea: BoolMask, ocean_level_m: float
+) -> tuple[BoolMask, BoolMask]:
+    """``(sunk, raised)``: fill that joins ``sea``, and fill under it that is ground.
+
+    The fill's water steps in the interface raster's 3.66 m cells. Dry fill at or under the
+    top of the ocean's band holds the raster's own sea surface, and joins the sea wherever it
+    reaches it through such fill. Then the fill's shore is the dry fill's outline smoothed by
+    ``FILL_SHORE_SIGMA_M``: a cell's corner past it is sea, a notch inside it ground.
+    """
+    fill = (np.asarray(field.provenance_plane) == hf.PROV_FILL) & ~nodata
+    stored = np.asarray(field_heights(field))
+    low = fill & (grades == hf.WATER_DRY) & ~sea
+    low &= stored <= (ocean_level_m + OCEAN_BAND_M) * hf.DM_PER_M
+    labels, _count = ndimage.label(low, np.ones((3, 3), bool))
+    reached = np.unique(labels[low & ndimage.binary_dilation(sea)])
+    sunk = low & np.isin(labels, reached[reached > 0])
+    water = sea | sunk
+    dry = fill & (grades == hf.WATER_DRY) & ~water
+    shore = fill & (dry | water)
+    sigma = FILL_SHORE_SIGMA_M * 100.0 / field.spacing_cm
+    share = ndimage.gaussian_filter(dry.astype(np.float32), sigma)
+    share /= np.maximum(ndimage.gaussian_filter(shore.astype(np.float32), sigma), 1e-6)
+    near = ndimage.binary_dilation(dry, iterations=3) & ndimage.binary_dilation(water, iterations=3)
+    sunk |= dry & near & (share < 0.5)
+    raised = fill & sea & near & (share >= 0.5) & (grades == hf.WATER_LEVEL_ONLY)
+    return sunk, raised
 
 
 def _bed(

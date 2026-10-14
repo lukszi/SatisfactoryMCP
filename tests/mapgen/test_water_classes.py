@@ -312,6 +312,25 @@ def test_sea_level_water_the_map_edge_does_not_reach_keeps_its_box():
     assert (plane[wet] == CLASS_ID["swamp"]).all() and counts["open_sea_texels"] == 0
 
 
+def test_a_swamp_box_claims_no_sea_level_water_outside_the_swamp():
+    """Between the abyss rocks a swamp box reaches over sea-level water in No Man's Land
+    behind a mouth narrower than the open sea's: that water is the ocean's."""
+    n = 400
+    wet = np.zeros((n, n), bool)
+    wet[120:280, 120:280] = True
+    level = _sea_level(wet)
+    box = _box(100, 100, 300, 300, OCEAN_LEVEL_M)
+    bodies = {"actors": [["BP_Water_C", box, ["MI_WaterSwamp_Muddy"]]], "hot_springs": []}
+    index = np.zeros((n, n), np.uint8)
+    index[:, 200:] = 1
+    plane, counts = classify(
+        level, wet, bodies, (index, ["Area_Swamp", "Area_NoMansLand"]), OCEAN_LEVEL_M
+    )
+    assert (plane[120:280, 120:200] == CLASS_ID["swamp"]).all(), "the swamp keeps its own"
+    assert (plane[120:280, 200:280] == OCEAN).all(), "outside it the sea is the ocean's"
+    assert counts["swamp_box_texels_off_the_swamp"] == 160 * 80
+
+
 def test_a_lake_box_under_the_sea_claims_no_water_at_the_sea_s_level():
     """The Rocky Desert box 5 cm under the sea reaches half across a lagoon whose level is the
     sea's: the lagoon stays ocean with no seam at the box's edge. A pond under the sea at its

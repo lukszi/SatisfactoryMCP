@@ -23,7 +23,7 @@ from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater, water_sources
-from mapgen.palette.water.surface import WATER_EDGE_BLUR_M
+from mapgen.palette.water.surface import WATER_EDGE_BLUR_M, water_edge
 from mapgen.render.draw.drawpool import PIECE_COLS, bands_held, in_order
 from mapgen.render.draw.painting import LayerJob, TreeSplit, layer_job, piece_bytes
 from mapgen.render.ground.lift import lattice_edge
@@ -304,7 +304,8 @@ def _ground_sources(
     level, wet, measured = water_sources(field, inputs.rivers, drawn, grades)
     water = None
     if level is not None and wet is not None and measured is not None:
-        water = WaterPlanes(level, wet, measured)
+        ribbons = None if inputs.rivers is None else inputs.rivers.presence > 0
+        water = WaterPlanes(level, wet, measured, water_edge(level, wet, measured, ribbons))
     field_x = grid_position(x_cm, field.x0_cm, field.spacing_cm, field.width)
     art_step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / SHEET_PX
     art_x0_cm = BOUNDS_M["x_min_m"] * 100 + art_step_cm / 2

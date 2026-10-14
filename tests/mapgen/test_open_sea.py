@@ -238,6 +238,31 @@ def test_the_open_sea_s_bed_rises_to_a_dry_coast():
     assert depth[30] < 2.0 and depth[45] < depth[200] < depth[-1]
 
 
+def _fill_coast():
+    """The coast as the fill draws it past the landscape: a fill shelf 5 m high in the west,
+    then dry fill holding the sea's own surface, then level-only sea."""
+    height, water, grades = _coast(40, 1200)
+    height[:, :30] = 50
+    height[:, 30:120] = OCEAN_DM
+    grades[:, 30:120] = hf.WATER_DRY
+    grades[:, 120:] = hf.WATER_LEVEL_ONLY
+    water[:, 30:120] = hf.NODATA
+    field = _field(height, water, grades)
+    field.provenance_plane = np.full(height.shape, hf.PROV_FILL, np.uint8)
+    return field, height
+
+
+def test_dry_fill_at_the_sea_s_surface_is_sea_and_the_fill_is_no_coast():
+    field, height = _fill_coast()
+    heights, ground = height.astype(np.float32), height.astype(np.float32)
+    art = np.zeros(height.shape, bool)
+    sea = open_sea(field, (heights, ground), None, art, OCEAN_LEVEL_M)
+    assert (sea.grades[:, 30:] == hf.WATER_MEASURED).all(), "the raster's sea surface is sea"
+    assert sea.meta["fill_joined_texels"] == 40 * 90
+    depth = (OCEAN_DM - heights[20]) / hf.DM_PER_M
+    assert depth[31] > 20.0, "no beach invented under a fill cliff"
+
+
 def test_no_data_is_sea_where_the_artwork_draws_water_and_void_elsewhere():
     height, water, grades = _coast(400, 400)
     height[:, 120:] = hf.NODATA

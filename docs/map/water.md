@@ -469,6 +469,13 @@ and the blend carried the near-black swamp on into the void's sea. Ocean over no
 on the swamp's side alone, a smoothstep from none at the line to all of it 30 m in. On the
 run's planes the blend shrinks from 90,125 to 85,168 texels; nothing else moves.
 
+**Past the swamp (2026-10-14).** Over data too the boxes claimed sea-level water between the
+abyss rocks that the open sea's opening does not reach, so the near-black swamp drew over the
+sea there in No Man's Land, as at (3031, 1140). A swamp box now claims no water within the
+ocean's band outside the areas the biome table calls swamp (`BIOME_CLASS`); that water is
+ocean. On build 502094 28,547 texels go back to the ocean, and the blend shrinks from 84,204
+to 64,434 texels. Inside `Area_Swamp` nothing changes.
+
 ### Hot springs (2026-10-07)
 
 A hot-spring terrace used to turn the whole lake box holding it into a hot spring: a 150 m
@@ -543,6 +550,29 @@ neither the ocean's reach nor a river's:
   every wet texel takes at least the tint of a metre of its class's water. A river keeps its
   own floor, 0.6 m once 2.5 m in from its bank (section 34).
 
+### Water edges (2026-10-14)
+
+The wet plane is the artwork's mask, in its 3.66 m blocks, and field water was drawn only
+inside it: the depth feather cut it where the ground rises above the level, but where the
+mask stopped first, short of the shore or in open water, the water ended on the mask's
+stairs, as across the canyon lake at (1800, -1772) and along the bank at (-1140, 1630).
+
+`surface.water_edge` builds, once a pass on the 1 m grid, the edge every style draws the
+field's water to (`WaterPlanes.edge`):
+
+- **Reach.** Dry texels within 3 m (`WATER_REACH_M`) of measured water take the highest level
+  beside them and count as measured, so the depth feather cuts the water where its surface
+  meets the drawn ground, at full resolution. Not under a river's ribbon, which draws its own
+  water there.
+- **Outline.** The mask is smoothed by a Gaussian of 1.5 m (`WATER_SOFT_SIGMA_M`): past it the
+  water fades out to where the smoothed mask reads 0.04 (`WATER_SOFT_LOW`), 2.6 m past a
+  straight edge, and inside a body the cover follows the smoothed outline, so a block's
+  corner is rounded. A wet texel with no texel within 2 m reading 0.9 (`WATER_THICK`) is a
+  thin channel and keeps its full cover.
+
+The level, the class and the meshes' seabed rule still read the mask as it was. The edge
+costs about 3 s a pass and about 1 GB at its peak.
+
 ### What the water fixes moved (2026-10-07)
 
 Build 502094, against round 2's baseline; this section's rules with section 34's hand-over
@@ -608,6 +638,8 @@ and section 35's falls:
   terrace, where the meshes range from 6 to 56 m.
 - A seam over 1 m, such as a box edge across a lake whose two boxes stand 1.5 m apart, is
   left as a step: the rule cannot tell it from a fall.
+- Where the mask stops in open water more than 3 m from any shore, the water fades out
+  along the smoothed outline instead of a straight line, still where the mask put it.
 - The terrain style still draws one water colour.
 
 ## 34. Rivers from the game's own splines: recipe 7 (2026-10-05)
@@ -711,6 +743,13 @@ Per band, through `RiverWater.over`.
   (`RIVER_JOINTS`, the membrane of section 33's "Box seams", through a surface sloping at most
   0.25 m a texel), and the river is drawn across it. The field's reconcile above reads the
   planes as they were. A step over 2 m is a fall and keeps its gap.
+- **Jagged joints** (2026-10-14). On a sloped bend the nearest centreline piece flips between
+  two sections texel by texel, a checkerboard of 0.5 to 2 m steps the joints' feather does not
+  take, since the level runs on flat on neither side. The ribbon drew nothing beside each step,
+  and the field's water kept at the lip filled the holes in blocks: the pixel-block squares at
+  the junction at (-1585, -480). Within 2 texels of such a step (`RIVER_JAG_TEXELS`), and
+  clear of a fall, the drawn plane is smoothed by a Gaussian of 1.5 m (`RIVER_JAG_SIGMA_M`):
+  49,417 texels on build 502094.
 - **Where a river meets other water, the higher surface shows**, handed over along a ramp
   (2026-10-07): the river's share of the water runs from none where its plane stands 0.55 m
   under the other surface to all of it 0.45 m over (`RIVER_HANDOVER_M`, 1 m, centred on the
@@ -718,6 +757,10 @@ Per band, through `RiverWater.over`.
   drew panels of river and lake colour wherever it crossed the tie, and a mouth a line; both
   now change tone along the ramp. Past the other water's last wet texel, away from the sea,
   the blur of its edge is no water to give way to (section 38, "Boxes over lower water").
+  The river covers what the other water leaves of a pixel (2026-10-14): at the edge of a
+  patch of field water in a river, the two used to cover a pixel's share each, and the ground
+  showed between them as an outline round every patch, as at (-1585, -480) and (1352,
+  -1735).
 - **Water a box leaves in the channel gives way at its edge** (2026-10-07). Where a lake's box
   keeps the field's water standing in a river's channel, its edge is the box's straight edge,
   and deeper than the river it drew a darker block, as at the junction at (-1585, -480). On the
