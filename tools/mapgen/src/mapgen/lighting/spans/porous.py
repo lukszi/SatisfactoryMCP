@@ -64,7 +64,7 @@ COVER_MAX = 0.8
 CANOPY_COVER_MIN = 0.5
 #: A canopy cell's least stored value, so 0 can mean that no tree covers it; degrees.
 CANOPY_FLOOR_DEG = 0.5
-#: The least shade a cell stores; below it the cell is 0, open.
+#: The least shade that counts as folded in (``light_tiles.HZ_FOLDED_QUALITY``).
 SHADE_MIN = 1.0 / 255.0
 #: The thinnest span a share of height is taken of, metres.
 THICK_MIN_M = np.float32(0.1)
@@ -106,7 +106,10 @@ def porous_block() -> JsonObject:
         "canopy_cover_min": CANOPY_COVER_MIN,
         "shade_min": round(SHADE_MIN, 6),
         "fades_m": {"crowns": list(OCCLUDER_FADE_M), "titans": list(FADE_M)},
-        "cell": "shade 1 - exp(-depth) at path_el_deg, folded as a band: el + soft * (s - 1/2)",
+        "cell": (
+            "shade 1 - exp(-depth) at path_el_deg, folded as a band: el + soft * (s - 1/2), "
+            "an open cell too; read back at its own path_el_deg whatever the sun's elevation"
+        ),
     }
 
 
@@ -232,8 +235,9 @@ def _compiled(
 
 def fold(depth: F32Grid, el: float) -> tuple[F32Grid, BoolMask]:
     """A cell from its optical depth: the shade ``1 - exp(-depth)`` folded at ``el``, the sun
-    path's elevation, as a band is; 0 where under ``SHADE_MIN``. And where it is folded."""
+    path's elevation, as a band is, an open cell too (``el - soft / 2``), so a bilinear read
+    between cells is a bilinear read of their shade. And where it shades, ``SHADE_MIN`` on."""
     shade = (np.float32(1.0) - np.exp(-depth)).astype(np.float32)
     kept = shade >= np.float32(SHADE_MIN)
     folded = np.float32(el) + np.float32(_SOFT_DEG) * (shade - _HALF)
-    return np.where(kept, folded, np.float32(0.0)).astype(np.float32), kept
+    return folded.astype(np.float32), kept

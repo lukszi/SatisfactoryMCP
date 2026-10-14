@@ -826,9 +826,8 @@ it took a run): a shell under the top already lets the sun in beneath a crown de
 the page's larger of two cells never did that.
 
 **The tree cells** (32 to 63) hold the trees' shade `s = 1 - exp(-depth)` folded at the path's
-elevation as a band is, `el + 6° × (s - ½)`, where `s` is at least `SHADE_MIN` (1/255), else
-0. Exact for a sun on the game's path, the time-of-day slider; the encoding and the shader's
-arithmetic do not change. A cell at least `CANOPY_COVER_MIN` (half) covered receives on its
+elevation as a band is, `el + 6° × (s - ½)`, an open cell too since light version 7 (below,
+"Off the sun's path"). Exact for a sun on the game's path, the time-of-day slider. A cell at least `CANOPY_COVER_MIN` (half) covered receives on its
 canopy top, any other on the ground, so the canopy is lit where it is drawn and the floor
 seen through a gap is dappled by the cover the ray leaves through. The march has a numba and
 a CUDA twin (`spans/kernels.py`, `spans/gpu.cu`), the same bits as the numpy (a test holds
@@ -880,6 +879,44 @@ the same bytes; painted's lit tiles move in 71 of 85, 1,402,542 pixels by up to 
 the horizon atlases in 74 of 85. The pyramid takes 47.9 MB instead of 41.2, its horizon
 atlases 27.7 instead of 23.6, 79 of them folded instead of 78. The full size was not
 measured.
+
+### Off the sun's path
+
+Light version 7 (2026-10-14). Two faults of the tree cells of light version 6.
+
+**Blocks between cells.** An open cell stored 0°, far below a folded one (`el ± 3°`). The
+page and the bake read a horizon bilinearly between half-resolution cells, and a degree
+halfway between a shaded cell and 0° is far under the sun: the shade fell to nothing within
+`3° / el` of a cell's width from the shaded cell's centre, so each shaded cell drew its own
+patch with a hard rim, blocks two pixels wide in the light without colour. `porous.fold` now
+folds every cell, an open one at `el - 3°`, so a bilinear read of two cells is a bilinear read
+of their shade: the cover's mottle is smooth at full resolution with no cell stored there.
+Storing the tree cells at full resolution was the other way: four times the texels of 32 of
+the atlas's 97 cells, a march over four times the pixels, and a page that reads two cell
+sizes, for a picture the bilinear read already draws smooth. The open cells also compress
+better: the 2048 sheet's native horizon atlases take 21.2 MB instead of 27.7.
+
+**A sun off the path.** A tree cell is shade folded at its direction's path elevation, so it
+is exact only for a sun at that elevation. The page reaches others: the free compass, the "map
+NW" preset (315°, 45°, which `OFF_PATH_EL_DEG` folds exactly), and the time slider's last half
+hour each end, where the sun stands between a direction on the path (146.25° and 303.75°, at
+16.7°) and one past its end (135° and 315°, folded at 45°). Read against the sun's elevation,
+a cell `d` degrees above or below its fold shades `s - d / 6°`: all or nothing a few degrees
+off, the whole reach of every tree black for a sun lower than the fold. Now the page and the
+reference (`model.tree_shade`) read each tree cell at its own fold, `spans.path_el_deg` of the
+model block, and blend the two directions' shades: exact on the path, between two directions
+whatever their elevations, and off the path the path's shade at that azimuth, the shadows'
+direction right and their length the path's. The larger of it and the terrain's shade shades,
+as before. A coarser level's tree cell that took the larger of it and the ground's
+(above, "Cells of their own") is read at the fold too, so off the path the terrain part of it
+reads at the path's elevation; the terrain's own cells keep the sun's.
+
+On the 2048 sheet (`inputs-stories`) against light version 6: the default sun's ground terms
+are the same bytes, the crowned direct term moves in 571,451 px, 548,768 of them within 90 m
+of a tree (the gaps between the old patches filled), the sheet's mean 1.8 levels lower. The
+ground's horizon
+cells decode up to 6 levels apart at p99.9 (the lossy atlas codec's answer to the new tree
+cells), no ground code having changed.
 
 ### Hooks
 

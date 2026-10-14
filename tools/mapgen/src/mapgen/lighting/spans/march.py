@@ -56,6 +56,7 @@ __all__ = [
     "kernel_steps",
     "march_spans",
     "path_elevation",
+    "path_elevations",
     "quad",
     "quad_offsets",
     "rows_with_spans",
@@ -176,6 +177,17 @@ def path_elevation(az_deg: float) -> float:
     if not near.size:
         return OFF_PATH_EL_DEG
     return float(path[near[np.argmin(off[near])], 1])
+
+
+@functools.cache
+def path_elevations() -> F32Grid:
+    """``path_elevation`` of each stored direction: where its band and its trees' shade are
+    folded."""
+    els = np.array(
+        [path_elevation(k * 360.0 / HORIZON_DIRS) for k in range(HORIZON_DIRS)], np.float32
+    )
+    els.flags.writeable = False
+    return els
 
 
 def band_target(az_deg: float) -> tuple[np.float32, np.float32]:

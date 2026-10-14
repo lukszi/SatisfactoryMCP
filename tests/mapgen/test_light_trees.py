@@ -132,7 +132,45 @@ def test_a_tree_cell_holds_the_trees_alone_folded_at_the_sun_path_s_elevation():
     assert ground[30, west] > 30.0, "the terrain shades it"
     assert trees.deg[30, west] == pytest.approx(el + 6.0 * (0.8 - 0.5), abs=0.6), "the cover's"
     assert trees.band_in is not None and trees.band_in[30, west]
-    assert trees.deg[30, 5] == 0.0, "far from the tree: no terrain in a tree's cell"
+    assert trees.deg[30, 5] == el - 3.0, "far from the tree: open, no terrain in a tree's cell"
+    assert not trees.band_in[30, 5]
+
+
+def test_an_open_cell_is_folded_too_so_a_bilinear_read_blends_the_shade():
+    el = 50.0
+    deg, kept = porous.fold(np.array([[0.0, 2.0]], np.float32), el)
+    assert deg[0, 0] == el - 3.0 and kept.tolist() == [[False, True]]
+    shades = model.soft_shade(deg, el)
+    halfway = model.soft_shade(deg.mean(keepdims=True), el)
+    assert float(halfway[0, 0]) == pytest.approx(float(shades.mean()), abs=1e-6)
+    assert float(shades[0, 1]) == pytest.approx(1 - math.exp(-2.0), abs=1e-6)
+
+
+def _tree_planes(shade: float, k: int, k_shade: float | None = None) -> np.ndarray:
+    """Every horizon cell 0, the tree cells folded at their own path elevation."""
+    cells = np.zeros((model.HZ_CELLS, 4, 4), np.float32)
+    for d in range(hz.HORIZON_DIRS):
+        s = k_shade if d == k and k_shade is not None else shade
+        cells[model.CROWN_CELL + d] = porous.fold(
+            np.full((4, 4), -math.log(1 - s), np.float32),
+            path_elevation(d * 360.0 / hz.HORIZON_DIRS),
+        )[0]
+    return cells
+
+
+@pytest.mark.parametrize("el", [10.0, 30.0, 62.25, 80.0])
+def test_a_sun_off_the_path_keeps_the_path_s_tree_shade(el):
+    cells = _tree_planes(0.4, 20)
+    assert model.tree_shade(cells, 225.0)[0, 0] == pytest.approx(0.4, abs=1e-5)
+    hz_at = model.sun_horizon(cells, (225.0, el), crowns=True)
+    assert model.soft_shade(hz_at, el)[0, 0] == pytest.approx(0.4, abs=1e-5), "never all or none"
+
+
+def test_between_two_directions_the_shades_blend_whatever_their_path_elevations():
+    k = 27  # 303.75 degrees, on the path at 16.7; the next, 315, past its end at 45
+    cells = _tree_planes(0.0, k, 0.6)
+    az = (k + 0.25) * 360.0 / hz.HORIZON_DIRS
+    assert model.tree_shade(cells, az)[0, 0] == pytest.approx(0.75 * 0.6, abs=1e-5)
 
 
 def test_a_canopy_cell_holds_the_ground_s_horizon_received_on_the_canopy_top():

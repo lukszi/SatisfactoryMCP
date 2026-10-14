@@ -172,7 +172,7 @@ def test_the_default_sun_reads_only_its_six_cells_and_water_bakes_zero():
         sparse[k] = np.full((m, m), 10.0 + k, np.float32)
     nrm = np.full((m, m, 4), 200, np.uint8)
     assert model.direct_term(nrm, sparse, DEFAULT_SUN, crowns=True).shape == (m, m)
-    assert model.canopy_horizon(sparse, DEFAULT_SUN[0]).shape == (m, m)
+    assert model.canopy_horizon(sparse, DEFAULT_SUN).shape == (m, m)
     found = bake_horizons(zh, halo, SP, block, m, False)
     assert not found.atlas.any() and not found.quarter.any() and not found.bands
     assert not any(plane.any() for plane in found.sun) and not found.trees

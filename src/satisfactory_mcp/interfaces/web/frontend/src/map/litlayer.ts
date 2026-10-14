@@ -56,6 +56,10 @@ export interface LightHeader {
      * absent before the canopy was porous (light version 6). */
     canopy_cell?: number;
     canopy_floor_deg?: number;
+    /* Where each direction's band and tree shade are folded; with `trees` (light version 6
+     * on) the tree cells are shade folded there, not horizons. */
+    spans?: { path_el_deg?: number[] };
+    trees?: object;
   };
   /** What the layer is made of besides the light; absent or empty on a layer drawn whole. */
   parts?: { trees?: { max_z: number; sparse: boolean } };
@@ -96,8 +100,8 @@ in vec2 vUV; out vec4 o;
 uniform sampler2D tCol, tNrm, tHz, tTrees;
 uniform vec3 uL, uSky, uSun, uF;
 uniform float uEl, uInvNorm, uAmb, uTK, uTW, uSoft, uGroundSh, uSkyOn, uW, uFloor, uKnee, uLinear;
-uniform float uFill, uRows, uCrownSh, uLightOn, uGut, uIn, uTreesOn, uCanFloor;
-uniform int uI0, uI1, uCrown, uTitan, uAo, uCanopy;
+uniform float uFill, uRows, uCrownSh, uLightOn, uGut, uIn, uTreesOn, uCanFloor, uPath0, uPath1;
+uniform int uI0, uI1, uCrown, uTitan, uAo, uCanopy, uFolded;
 float s2l(float c){ return c<=0.04045? c/12.92 : pow((c+0.055)/1.055,2.4); }
 float l2s(float c){ c=clamp(c,0.0,1.0); return c<=0.0031308? c*12.92 : 1.055*pow(c,1.0/2.4)-0.055; }
 float raw(int i){
@@ -106,8 +110,13 @@ float raw(int i){
   return texture(tHz,(cell+uGut+uv*uIn)*vec2(0.125,1.0/uRows)).r;
 }
 float hz(int i){ float q=raw(i); return q*q*90.0; }
+float soft(float h, float el){ return clamp((h-el)/uSoft+0.5,0.0,1.0); }
 float trees(float h){
   if(uCrownSh*uTreesOn<0.5) return h;
+  if(uFolded>0){
+    float s=mix(soft(hz(uI0+uCrown),uPath0),soft(hz(uI1+uCrown),uPath1),uW);
+    return max(h,uEl+uSoft*(s-0.5));
+  }
   h=max(h,mix(hz(uI0+uCrown),hz(uI1+uCrown),uW));
   return uTitan>0 ? max(h,mix(hz(uI0+uTitan),hz(uI1+uTitan),uW)) : h;
 }
@@ -121,7 +130,7 @@ vec3 tone(vec3 x){ float y=max(dot(x,LUMA),1e-7); return x*(tone1(y)/y); }
 vec3 untone(vec3 x){ float y=max(dot(x,LUMA),1e-7); return x*(untone1(y)/y); }
 vec3 toLinear(vec3 c){ return uLinear>0.5 ? untone(vec3(s2l(c.r),s2l(c.g),s2l(c.b))) : c; }
 vec3 lit(float svf, float ndl, float h){
-  float sh=max(uGroundSh,uCrownSh*uTreesOn)*clamp((h-uEl)/uSoft+0.5,0.0,1.0);
+  float sh=max(uGroundSh,uCrownSh*uTreesOn)*soft(h,uEl);
   vec3 rel=(uAmb*uSky*svf+(1.0-uAmb)*uSun*ndl*(1.0-sh*(1.0-uFill))*uInvNorm)/uF;
   return 0.5*(rel+uFloor+sqrt((rel-uFloor)*(rel-uFloor)+uKnee*uKnee));
 }
@@ -140,7 +149,8 @@ void main(){
 
 export const UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "tTrees", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm",
   "uAmb", "uTK", "uTW", "uSoft", "uGroundSh", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1", "uFill", "uRows",
-  "uCrownSh", "uCrown", "uLightOn", "uGut", "uIn", "uTreesOn", "uTitan", "uAo", "uCanopy", "uCanFloor"];
+  "uCrownSh", "uCrown", "uLightOn", "uGut", "uIn", "uTreesOn", "uTitan", "uAo", "uCanopy", "uCanFloor", "uFolded",
+  "uPath0", "uPath1"];
 /** A horizon cell's own texels a side; the pyramid's `hz_gutter` borders it. */
 const HZ_CELL_PX = 128;
 const COARSE_LEVELS = 4;
@@ -200,9 +210,26 @@ function uploadLightUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, lig
   gl.uniform1i(uniforms.uAo!, model.ao_cell || 0);
   gl.uniform1i(uniforms.uCanopy!, model.canopy_cell || 0);
   gl.uniform1f(uniforms.uCanFloor!, 0.5 * Math.sqrt((model.canopy_floor_deg || 0) / 90));
+  gl.uniform1i(uniforms.uFolded!, pathElevations(light) ? 1 : 0);
   const stride = HZ_CELL_PX + 2 * (model.hz_gutter || 0);
   gl.uniform1f(uniforms.uGut!, (model.hz_gutter || 0) / stride);
   gl.uniform1f(uniforms.uIn!, HZ_CELL_PX / stride);
+}
+
+/** Each direction's sun-path elevation, where its tree cell is folded, or null on a pyramid
+ * whose tree cells are horizons (before the porous canopy). */
+export function pathElevations(light: LightHeader): number[] | null {
+  const els = light.model.spans && light.model.spans.path_el_deg;
+  return light.model.trees && els && els.length === light.model.dirs ? els : null;
+}
+
+/* The folds of the two tree cells the sun reads: a sun off the path keeps the path's shade at
+ * its azimuth instead of all or none (docs/map/light-and-crowns.md, "Off the sun's path"). */
+function uploadTreeFolds(gl: WebGL2RenderingContext, uniforms: Uniforms, light: LightHeader, lower: number): void {
+  const els = pathElevations(light);
+  if (!els) return;
+  gl.uniform1f(uniforms.uPath0!, els[lower]!);
+  gl.uniform1f(uniforms.uPath1!, els[(lower + 1) % els.length]!);
 }
 
 /** Whether this layer draws the tree crowns and its pyramid holds their horizons. */
@@ -257,6 +284,7 @@ function uploadSunUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, light
   gl.uniform1i(uniforms.uI0!, lower);
   gl.uniform1i(uniforms.uI1!, (lower + 1) % dirs);
   gl.uniform1f(uniforms.uW!, direction - Math.floor(direction));
+  uploadTreeFolds(gl, uniforms, light, lower);
   const switches = lightSwitches(light, sun);
   (Object.keys(switches) as (keyof LightSwitches)[]).forEach(function (name) {
     gl.uniform1f(uniforms[name]!, switches[name]);
