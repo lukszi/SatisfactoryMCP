@@ -6,9 +6,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from mapgen.colour import srgb_to_linear
 from mapgen.gamedata.water.bodies import WATER_CLASSES
-from mapgen.palette.painted.optics import WATER_TABLE_COLUMNS, water_table
+from mapgen.palette.painted.optics import WATER_TABLE_COLUMNS, base_water, water_table
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import PAINTED_PALETTE, RELIEF_PALETTES
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -42,7 +41,6 @@ def relief_ground(layer: str, biome=None, names=(), palette=None) -> ReliefGroun
 def painted_ground_stub(n: int) -> SimpleNamespace:
     """A one-row painted ground of ``n`` texels: flat albedo, grey rock, the palette's water."""
     palette = PAINTED_PALETTE
-    water = palette["water"]
     rock = [np.full((1, n), 0.2, np.float32) for _ in range(3)]
     return SimpleNamespace(
         palette=palette,
@@ -62,16 +60,7 @@ def painted_ground_stub(n: int) -> SimpleNamespace:
         cliff_layer=None,
         mesh_rgb={},
         seabed_coral=np.zeros(3, np.float32),
-        water={
-            "k": np.asarray(water["k_per_m"], np.float32),
-            "body": srgb_to_linear(water["body"]),
-            "sky": srgb_to_linear(water["sky"]) * np.float32(water["surface_r"]),
-            "deep": srgb_to_linear(water["deep"]),
-            "deep_tau_m": np.float32(water["deep_tau_m"]),
-            "bed": np.float32(water["bed_wet"]),
-            "inland_floor": np.float32(water.get("inland_floor", 0.0)),
-            "opaque_tau_m": np.float32(water["opaque_tau_m"]),
-        },
+        water=dict(base_water(palette)),
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
         opaque_water=[],
         water_class=None,

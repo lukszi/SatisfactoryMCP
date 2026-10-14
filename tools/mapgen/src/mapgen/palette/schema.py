@@ -224,14 +224,18 @@ class CrownStyle(TypedDict):
 
 
 class PaintedWaterStyle(TypedDict):
-    """The painted style's ``water``: the Beer-Lambert model and the ocean's own rows."""
+    """The painted style's ``water``: the Beer-Lambert model and the sea's physics row.
+
+    The sea absorbs ``absorption_scale`` times the ocean material's absorption, ``k_per_m``
+    where the install's does not read; deep water shows ``sky_term``.
+    """
 
     model: str
+    absorption_scale: float
     k_per_m: list[float]
-    body: list[float]
+    sky_term: list[float]
     surface_r: float
     sky: list[float]
-    deep: list[float]
     deep_tau_m: float
     bed_wet: float
     inland_floor: float

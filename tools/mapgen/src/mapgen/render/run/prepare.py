@@ -8,6 +8,7 @@ record every layer's sidecar shares; ``mapgen.commands.renders`` then draws them
 from __future__ import annotations
 
 import argparse
+import struct
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,9 +22,10 @@ from mapgen.cache import (
 )
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.install import GameReader
-from mapgen.gamedata.vegetation.crown_sprites import CROWNS_NAME
 from mapgen.gamedata.rocks.looks import read_rock_textures
+from mapgen.gamedata.vegetation.crown_sprites import CROWNS_NAME
 from mapgen.gamedata.water.channel import artwork_planes
+from mapgen.gamedata.water.ocean import read_ocean_absorption
 from mapgen.palette.painted.albedo import load_paint_meta
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.relief import ReliefGround
@@ -65,7 +67,7 @@ from mapgen.tiles.imaging import TileImaging
 from mapgen.tiles.layer_meta import RenderFacts, RunRecord
 from satisfactory_mcp.core.arrays import I8Grid, U8Grid
 from satisfactory_mcp.core.gameassets.imaging import BlockDecoder
-from satisfactory_mcp.core.gameassets.packages import ClassFacts
+from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts
 from satisfactory_mcp.core.gameassets.provenance import changelist
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from satisfactory_mcp.core.jsontypes import JsonObject, require_object
@@ -156,6 +158,7 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
     biome, paint, style_digests, sprites = found
     if paint is not None:
         _attach_look(paint, game, spacing_m, gathered)
+        _attach_sea(paint, game, level.index, gathered)
     textures = _detail_textures(args, layers, spacing_m, paint)
     direct, top, raster_sources = _rasters(args, setup, lattice, level, grid, paint, gathered)
     extras = _extras(args, setup, lattice, level, field, paint, gathered)
@@ -303,6 +306,24 @@ def _attach_look(
     gathered.inputs["rock_textures"] = {
         "cl": game.build_cl,
         "reader_version": READER_VERSIONS["rock_textures"],
+    }
+
+
+def _attach_sea(
+    paint: PaintInputs, game: GameInputs, index: AssetIndex, gathered: _Gathered
+) -> None:
+    """The ocean material's absorption from the install on the painted ground, and the reader
+    among the inputs; where it cannot be read the sea takes the palette's ``k_per_m``."""
+    try:
+        absorption = read_ocean_absorption(game.store, game.scripts, index)
+    except (KeyError, ValueError, IndexError, struct.error) as exc:
+        paint.block["sea_absorption"] = f"the palette's k_per_m: the ocean did not read ({exc!r})"
+        return
+    paint.ground.attach_sea(absorption)
+    paint.block["sea_absorption"] = paint.ground.source["sea_absorption"]
+    gathered.inputs["ocean_absorption"] = {
+        "cl": game.build_cl,
+        "reader_version": READER_VERSIONS["ocean_absorption"],
     }
 
 

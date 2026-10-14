@@ -21,8 +21,10 @@ from scipy import ndimage
 from mapgen.colour import srgb_to_linear
 from mapgen.gamedata.vegetation.carpet import COVER_NAME, TOP_NAME
 from mapgen.gamedata.water.bodies import OCEAN, WATER_CLASSES
+from mapgen.gamedata.water.ocean import OceanAbsorption
 from mapgen.jit import kernels_on
 from mapgen.palette.painted.albedo import paint_plane
+from mapgen.palette.painted.sea import sea_row, surface_sky
 from mapgen.palette.painted.shapes import (
     BandTaps,
     Carpet,
@@ -73,54 +75,56 @@ UNDERWATER_TERMS: frozenset[str] = UnderwaterWater.__required_keys__
 _RIVER = WATER_CLASSES.index("river")
 
 
-def base_water(palette: PaintedPalette) -> WaterBase:
-    """The palette's ocean optics, linear: what every wet pixel without a class takes."""
+def base_water(palette: PaintedPalette, absorption: OceanAbsorption | None = None) -> WaterBase:
+    """The palette's ocean optics, linear: what every wet pixel without a class takes.
+    ``absorption`` is the install's ocean material, which sets the sea's (``sea_row``)."""
     water = palette["water"]
+    sea = sea_row(water, absorption)
     return {
-        "k": np.asarray(water["k_per_m"], np.float32),
-        "body": srgb_to_linear(water["body"]),
-        "sky": srgb_to_linear(water["sky"]) * np.float32(water["surface_r"]),
-        "deep": srgb_to_linear(water["deep"]),
-        "deep_tau_m": np.float32(water["deep_tau_m"]),
+        "k": sea.k,
+        "body": sea.body,
+        "sky": surface_sky(water),
+        "deep": sea.deep,
+        "deep_tau_m": sea.deep_tau_m,
         "bed": np.float32(water["bed_wet"]),
         "inland_floor": np.float32(water.get("inland_floor", 0.0)),
         "opaque_tau_m": np.float32(water["opaque_tau_m"]),
     }
 
 
-def water_table(palette: PaintedPalette) -> FloatGrid:
+def water_table(palette: PaintedPalette, absorption: OceanAbsorption | None = None) -> FloatGrid:
     """A row of linear optics per class plane value; a class the palette leaves out draws as
-    the ocean, a mouth blend mixes its classes' rows by ``class_shares``, class by class."""
-    water = palette["water"]
-    ocean: WaterClassStyle = {
-        "k_per_m": water["k_per_m"],
-        "body": water["body"],
-        "deep": water["deep"],
-        "deep_tau_m": water["deep_tau_m"],
-        "turbidity": 0.0,
-        "bed_tint": [1.0, 1.0, 1.0],
-    }
+    the ocean (``sea_row``), a mouth blend mixes its classes' rows by ``class_shares``, class
+    by class."""
+    sea = sea_row(palette["water"], absorption)
+    ocean = [*sea.k, *sea.body, *sea.deep, sea.deep_tau_m, 0.0, 1.0, 1.0, 1.0]
     classes = palette.get("water_classes", {})
     rows: list[list[float]] = []
     for name in WATER_CLASSES:
-        entry = classes.get(name, ocean)
+        entry = classes.get(name)
+        if entry is None:
+            rows.append([float(v) for v in ocean])
+            continue
         if isinstance(entry, str):
             raise TypeError(f"the palette's water_classes.{name} is text, not optics")
-        rows.append(
-            [
-                *entry["k_per_m"],
-                *srgb_to_linear(entry["body"]),
-                *srgb_to_linear(entry["deep"]),
-                entry["deep_tau_m"],
-                entry["turbidity"],
-                *entry["bed_tint"],
-            ]
-        )
+        rows.append(_class_row(entry))
     shares, table = class_shares(), np.asarray(rows, np.float32)
     mixed = shares[:, :1] * table[0]
     for k in range(1, len(table)):
         mixed = mixed + shares[:, k : k + 1] * table[k]
     return mixed
+
+
+def _class_row(entry: WaterClassStyle) -> list[float]:
+    """An inland class's row, linear, in ``WATER_TABLE_COLUMNS`` order."""
+    return [
+        *entry["k_per_m"],
+        *srgb_to_linear(entry["body"]),
+        *srgb_to_linear(entry["deep"]),
+        entry["deep_tau_m"],
+        entry["turbidity"],
+        *entry["bed_tint"],
+    ]
 
 
 def class_optics(

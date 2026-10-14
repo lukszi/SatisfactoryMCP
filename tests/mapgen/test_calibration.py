@@ -25,6 +25,7 @@ from mapgen.palette.painted.calibration import (
     transfer_op,
 )
 from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
+from mapgen.palette.painted.optics import base_water
 from mapgen.palette.painted.surfaces import rock_surface
 from mapgen.palette.painted.transfer import by_colour, layer_op, layer_transfer
 from mapgen.palette.styles import PAINTED_PALETTE
@@ -388,7 +389,6 @@ def test_a_desert_family_rock_takes_the_desert_target_in_any_area():
 
 def _water_ground(opaque):
     p = PAINTED_PALETTE
-    w = p["water"]
     return SimpleNamespace(
         palette=p,
         albedo=[np.full((1, 2), 0.3, np.float16)] * 3,
@@ -406,16 +406,7 @@ def _water_ground(opaque):
         cliff_layer=None,
         mesh_rgb={},
         seabed_coral=np.zeros(3, np.float32),
-        water={
-            "k": np.asarray(w["k_per_m"], np.float32),
-            "body": srgb_to_linear(w["body"]),
-            "sky": srgb_to_linear(w["sky"]) * np.float32(w["surface_r"]),
-            "deep": srgb_to_linear(w["deep"]),
-            "deep_tau_m": np.float32(w["deep_tau_m"]),
-            "bed": np.float32(w["bed_wet"]),
-            "opaque_tau_m": np.float32(w["opaque_tau_m"]),
-            "inland_floor": np.float32(w["inland_floor"]),
-        },
+        water=dict(base_water(p)),
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
         opaque_water=opaque,
         water_class=None,
