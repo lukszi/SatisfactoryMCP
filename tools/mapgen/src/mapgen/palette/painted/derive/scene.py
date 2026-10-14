@@ -29,7 +29,8 @@ from mapgen.gamedata.vegetation.crown_sprites import (
     decode_sprites,
 )
 from mapgen.palette.painted.calibration import area_ids, rehome_offshore
-from mapgen.palette.painted.ground import ROCK_GRID_M, biome_grid, land_cells
+from mapgen.palette.painted.grids import biome_grid, land_cells
+from mapgen.palette.painted.ground import ROCK_GRID_M
 from mapgen.palette.painted.shapes import BiomeGrid, FieldPlanes, PaintFile, PaintMeta
 from mapgen.terrain.render_meshes import is_render_only_foliage
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, U8Grid

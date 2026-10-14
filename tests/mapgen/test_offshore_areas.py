@@ -11,7 +11,8 @@ import numpy as np
 
 from mapgen.colour import oklab
 from mapgen.palette.painted.calibration import display_to_ground, rehome_offshore
-from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround, land_cells
+from mapgen.palette.painted.grids import land_cells
+from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from satisfactory_mcp.domain.spatial import heightfield as hf
