@@ -1,7 +1,7 @@
 // lighting/refold.py's reference on the GPU: a thread a coarse texel and direction.
-// Compiled with --fmad=false (mapgen.jit), so each operation rounds as numpy's does. The third
-// group is the canopy's: 0 holds none and reads as the ground's, a stored texel is at least
-// `floor`.
+// Compiled with --fmad=false (mapgen.jit), so each operation rounds as numpy's does. The groups
+// are the ground's, the trees', the canopy's (0 holds none and reads as the ground's, a stored
+// texel is at least `floor`) and the bands'.
 
 __device__ float shade(float h, float el, float soft) {
     return fminf(fmaxf((h - el) / soft + 0.5f, 0.0f), 1.0f);
@@ -32,6 +32,17 @@ __device__ float canopy(const float* p, const float* q, int cells, int m, int k,
     return any ? (stored > floor ? stored : floor) : 0.0f;
 }
 
+// A group's texel: its own refold, or that of the larger of it and `u` where that shades more
+// on average than `u` alone (`under`).
+__device__ float over(const float* p, const float* q, int cells, int m, const float* u,
+                      float under, float el, float soft) {
+    float unused, raised;
+    float own = mean_shade(p[m], p[cells + m], q[m], q[cells + m], el, soft, &unused);
+    float up = mean_shade(larger(p[m], u[0]), larger(p[cells + m], u[1]), larger(q[m], u[2]),
+                          larger(q[cells + m], u[3]), el, soft, &raised);
+    return raised > under ? up : own;
+}
+
 extern "C" __global__ void refold(
     const float* fine, const float* el, float soft, float floor, int dirs, int cells,
     float* out, int rows, int cols) {
@@ -43,19 +54,20 @@ extern "C" __global__ void refold(
     long long width = 2LL * cols * cells;
     const float* p = fine + 2LL * i * width + 2LL * j * cells;
     const float* q = p + width;
-    float a = p[k], b = p[cells + k], c = q[k], d = q[cells + k];
-    float shaded, raised, unused;
-    float ground = mean_shade(a, b, c, d, el[k], soft, &shaded);
+    float u[4] = {p[k], p[cells + k], q[k], q[cells + k]};
+    float shaded;
     float* o = out + ((long long)i * cols + j) * cells;
-    o[k] = ground;
-    for (int m = dirs + k; m < cells; m += dirs) {
-        if (m >= 2 * dirs) {
-            o[m] = canopy(p, q, cells, m, k, el[k], soft, floor);
-            continue;
-        }
-        float own = mean_shade(p[m], p[cells + m], q[m], q[cells + m], el[k], soft, &unused);
-        float over = mean_shade(larger(p[m], a), larger(p[cells + m], b), larger(q[m], c),
-                                larger(q[cells + m], d), el[k], soft, &raised);
-        o[m] = raised > shaded ? over : own;
+    o[k] = mean_shade(u[0], u[1], u[2], u[3], el[k], soft, &shaded);
+    int b = 3 * dirs + k;
+    if (b < cells) {
+        o[b] = over(p, q, cells, b, u, shaded, el[k], soft);
+        u[0] = larger(p[b], u[0]);
+        u[1] = larger(p[cells + b], u[1]);
+        u[2] = larger(q[b], u[2]);
+        u[3] = larger(q[cells + b], u[3]);
+        mean_shade(u[0], u[1], u[2], u[3], el[k], soft, &shaded);
     }
+    if (dirs + k < cells) o[dirs + k] = over(p, q, cells, dirs + k, u, shaded, el[k], soft);
+    int m = 2 * dirs + k;
+    if (m < cells) o[m] = canopy(p, q, cells, m, k, el[k], soft, floor);
 }

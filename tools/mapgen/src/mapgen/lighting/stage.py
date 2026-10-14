@@ -98,7 +98,7 @@ LIGHT_DIR_NAME = "light"
 
 #: The bake's own version. Bump it when the bake writes other bytes from the same surface,
 #: casters and model, so no run reuses a light the old bake wrote.
-LIGHT_VERSION = 7
+LIGHT_VERSION = 8
 
 #: Rows of a plane hashed at a time.
 DIGEST_ROWS = 1024

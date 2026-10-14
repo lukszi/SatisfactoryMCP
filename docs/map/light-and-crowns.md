@@ -166,13 +166,14 @@ cells a span was in reach of, grown by one, take it; every other pixel's term is
 as before. Zoomed horizons would draw one-pixel bright rings where a cell holding an arch as
 horizon meets one holding it as a band.
 
-**The atlas.** The page reads horizons, no bands yet. So a cell folds its band in at the
-elevation the sun's path has in that direction, `el + 6° × (cover − ½)` where the band hides
-some of the disc there (`span_bake.path_horizon`). For a sun on the game's path, the time-of-day
-slider, the page shades a span where the bake does; a sun off the path keeps the path's
-shadow there. The model block's `spans` records the rule and the 32 path elevations. Live bands
-on the page (their underside and top per direction in a texture of their own, read per texel
-by the shader) are a later step; nothing here needs to change for it.
+**The atlas.** The page reads no bands, only their shade at the elevation the sun's path has in
+that direction, folded as `el + 6° × (cover − ½)` (`span_bake.fold_band`). Until light version
+8 the band was folded into the ground's cell; it now has a cell of its own, read at its fold
+(below, "Bands off the sun's path"). For a sun on the game's path, the time-of-day slider, the
+page shades a span where the bake does; a sun off the path keeps the path's shade at its
+azimuth. The model block's `spans` records the rule and the 32 path elevations. Live bands on
+the page (their underside and top per direction in a texture of their own, read per texel by
+the shader) are a later step.
 
 A folded band sits inside the shader's 6° soft edge, which is about 10 steps of the atlas's
 byte at the path's elevations, so the tile that holds one is stored at a higher quality
@@ -221,7 +222,8 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
   different ones: a faint speckle in the shadow, seen under the maze site's stacked arches.
 - An overhang over a ledge sets the ledge's top down as the floor only where it is the highest
   face under the overhang; an overhang over another overhang keeps the lower one a column.
-- The page's horizons are exact for a sun on the game's path only, until the bands reach it.
+- The page's band shade is exact for a sun on the game's path only, until the bands reach it;
+  off it, the path's shade at that azimuth.
 - Holes in the arches wider than a metre stay open.
 
 ### What is written
@@ -229,7 +231,7 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
 | Where | What |
 | --- | --- |
 | `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land. At the native level the normal carries the ground's detail where the run drew one (painted.md section 30, "The layers' own textures") |
-| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | A grey atlas of 97 cells of 128 px, 8 a row in 13 rows, at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 × 2080 px): cells 0–31 the ground's horizons, cells 32–63 the trees' porous shade, folded at the sun path's elevation, always stored, and 64–95 the ground's horizons received on the canopy top where a tree covers the cell (below, "A porous canopy"), `255 · sqrt(deg / 90)`, a span's band folded in at the sun path's elevation (above, "Arches as spans"); cell 96 the trees' ambient occlusion, `255 · o` (below, "The trees in the light"). WebP q95 where a band is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles at q95 where a band folds") |
+| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | A grey atlas of 129 cells of 128 px, 8 a row in 17 rows, at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 × 2720 px), `255 · sqrt(deg / 90)`: cells 0–31 the ground's horizons; 32–63 the trees' porous shade, folded at the sun path's elevation, always stored; 64–95 the ground's horizons received on the canopy top where a tree covers the cell (below, "A porous canopy"); 96–127 the arches' and overhangs' band shade, folded at the sun path's elevation, 0 in a block no span reaches (above, "Arches as spans", and below, "Bands off the sun's path"); cell 128 the trees' ambient occlusion, `255 · o` (below, "The trees in the light"). WebP q95 where a band or the trees' shade is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles at q95 where a band folds") |
 | `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), the `key` the bake was made under (below, "Kept light"), tile counts, timings |
 | `<layer>/unlit/` | The unlit colour, 1x only, lossless WebP (PNG before 2026-10-08; the server takes the suffix from the sidecar's `layout`). On the painted layer, the ground without its trees (section 36, "Trees apart") |
 | `<layer>/trees/` | Painted only: the crowns and the Titan trees as one layer, lossless WebP RGBA with straight alpha, 1x, sparse: a tile with no tree in it is not written (section 36, "Trees apart") |
@@ -379,10 +381,10 @@ is 4.06 GB with its folded tiles at q95 (below, "Horizon tiles and coarser level
 
 ### Scratch
 
-While the run lasts, `light.cache/` holds 16.6 bytes a pixel, 17.8 GB at full
+While the run lasts, `light.cache/` holds 18.6 bytes a pixel, 19.9 GB at full
 size: the surface (heights 4, land 1), the default-sun terms (4), and the bake's
-half-resolution heights, land and sky view (1.5) and quarter-resolution horizons (6.1, the
-atlas's 97 cells). With a paint store the trees' tops, cover and Titan byte add 6, 6.4 GB,
+half-resolution heights, land and sky view (1.5) and quarter-resolution horizons (8.1, the
+atlas's 129 cells). With a paint store the trees' tops, cover and Titan byte add 6, 6.4 GB,
 whatever layers the run draws. Until light version 5 the horizons took 4 bytes and the crowns 5.
 With the layers' textures, at 8192 px and up (an 8192 pixel is 0.92 m, under the bake's metre),
 the ground's detail normal adds 2, 2.1 GB at full size. The Maps tab's estimate counts them as
@@ -918,6 +920,39 @@ ground's horizon
 cells decode up to 6 levels apart at p99.9 (the lossy atlas codec's answer to the new tree
 cells), no ground code having changed.
 
+### Bands off the sun's path
+
+Light version 8 (2026-10-14). The arches' and overhangs' bands had the trees' fault of light
+version 6 (above, "Off the sun's path"): a ground cell held the band folded in at its
+direction's path elevation, `max(horizon, el + 6° × (cover − ½))`, and the page read it
+against the sun's elevation. A few degrees off the fold the shade under an arch or a ledge
+went to all or none: under the desert mesas at the slider's ends, at the "map NW" preset where
+the path never comes, and at any free-compass sun. The page could not read the band at its
+fold either, since in a ground cell a folded band and a terrain horizon near the fold look
+alike, and a terrain horizon must be read at the sun's elevation.
+
+**Cells of their own.** The band now has 32 cells after the canopy's (`model.BAND_CELL`, 96
+to 127; the ambient occlusion moves to 128): its shade folded at the path's elevation, an
+open texel at `el − 3°` as the trees' are (`span_bake.fold_band`), so a bilinear read blends
+the shade; a block no span reaches stores 0, which reads as none at every fold. The ground's
+cells hold its horizon alone. The page and the reference (`model.band_shade`) read each band
+cell at its fold, blend the two directions' shades, and shade with the larger of that and the
+ground's horizon read at the sun's elevation. Exact on the path, as before up to the order of
+the larger and the blend at an arch's foot, where the band meets the horizon; off it, the
+path's band shade at the sun's azimuth and the terrain's own shadows at the sun's elevation.
+The trees themselves are lit under the band only where no canopy cell holds them, as they
+were. The model block adds `band_cell`; a pyramid without it keeps its bands in the ground's
+cells and reads as before. The quality rule follows the shade: a tile is stored at q95 where a
+band cell or a tree cell holds some shade.
+
+**Coarser levels.** A coarser band texel takes its own refold, except where the larger of it
+and the ground's shades more on average than the ground's, where it takes that, as a tree cell
+does (`refold.refold` and `refold.cu`); a tree cell now weighs itself against the larger of the
+ground's and the band's. So the page's maximum is the mean of the larger, exact on the path.
+Off the path, a coarser band or tree cell that took the larger of it and the ground's is read
+at the fold, the terrain part of it too; where the bands raise nothing, the coarser ground
+cell keeps the sun's elevation.
+
 ### Hooks
 
 `bake_light` takes an optional `occluder` on the sheet's grid, which only casts: the trees'
@@ -999,7 +1034,7 @@ switches while that mix is set.
 
 ### Open
 
-- The spans' bands on the page, so a sun off the game's path shades them too.
+- The spans' bands on the page, so a sun off the game's path shades them as it stands.
 - The sun in the fragment, so a link carries it, and the shade, trees and shadow switches with
   it.
 - With the shade off the page still fetches the normal and horizon tiles it no longer reads,
@@ -1007,7 +1042,9 @@ switches while that mix is set.
   apart, as it loads the trees.
 - Faint diagonal bands at low sun from the direction interpolation, and from the q90
   encoding on tiles without a folded band.
-- The tree cells are exact only for a sun on the game's path, as the folded bands are.
+- The tree and band cells are exact only for a sun on the game's path; off it they keep the
+  path's shade at the sun's azimuth (section 29, "Off the sun's path" and "Bands off the sun's
+  path").
 - One leaf shell a tree pixel and one mean cover a cell: a sparse crown over a dense one
   shades as their mean.
 - The lattice seams at landscape holes (above, "Edges of the light").

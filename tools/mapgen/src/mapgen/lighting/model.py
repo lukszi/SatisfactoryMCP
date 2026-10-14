@@ -48,6 +48,7 @@ __all__ = [
     "AO_SCALES_M",
     "AO_STRENGTH",
     "AO_WEIGHTS",
+    "BAND_CELL",
     "CANOPY_CELL",
     "CROWN_CELL",
     "DIRECT_SCALE",
@@ -66,6 +67,7 @@ __all__ = [
     "LightParams",
     "LightSpace",
     "apply_terms",
+    "band_shade",
     "canopy_horizon",
     "direct_term",
     "light_axis",
@@ -82,13 +84,14 @@ __all__ = [
 
 LIGHT_ID = "sun"
 
-#: The atlas's first tree cell, first canopy cell and the ambient occlusion cell: the ground's
+#: The atlas's first tree, canopy and band cell and the ambient occlusion cell: the ground's
 #: horizons, then the trees' shade (crowns and Titan canopy, porous), then the ground's
-#: horizons received on the canopy top, then what the trees take off the sky light. Cells per
-#: tile, and the horizons among them.
+#: horizons received on the canopy top, then the arches' and overhangs' shade, then what the
+#: trees take off the sky light. Cells per tile, and the horizons among them.
 CROWN_CELL = HORIZON_DIRS
 CANOPY_CELL = 2 * HORIZON_DIRS
-AO_CELL = 3 * HORIZON_DIRS
+BAND_CELL = 3 * HORIZON_DIRS
+AO_CELL = 4 * HORIZON_DIRS
 HORIZON_CELLS = AO_CELL
 HZ_CELLS = AO_CELL + 1
 
@@ -184,6 +187,7 @@ def model_block() -> JsonObject:
         "crown_cell": CROWN_CELL,
         "canopy_cell": CANOPY_CELL,
         "canopy_floor_deg": CANOPY_FLOOR_DEG,
+        "band_cell": BAND_CELL,
         "ao_cell": AO_CELL,
         "hz_gutter": HZ_GUTTER_PX,
         "hz_encoding": (
@@ -191,7 +195,8 @@ def model_block() -> JsonObject:
             "255 * sqrt(deg / 90): the ground's horizons; the trees' shade, folded at the sun "
             "path's elevation, received on the canopy top; the ground's horizons received on "
             "the canopy top where a tree covers the cell, at least canopy_floor_deg, 0 "
-            "elsewhere; then the trees' ambient occlusion, u8 = 255 * o"
+            "elsewhere; the arches' and overhangs' shade folded at the sun path's elevation, "
+            "0 where no span is in reach; then the trees' ambient occlusion, u8 = 255 * o"
         ),
         "nrm_encoding": "RGBA: east and south normal as (v + 1) / 2, sky view, land weight",
         "spans": span_block(),
@@ -235,9 +240,9 @@ def _toward(hz_deg: Horizons, az: float, first: int = 0) -> F32Grid:
 
 def sun_cells(az: float) -> tuple[int, ...]:
     """The cells the default sun's terms read for a sun at ``az``: two of the ground's, two of
-    the trees', two of the canopy's."""
+    the trees', two of the canopy's, two of the bands'."""
     i0, i1, _w = _either_side(az)
-    return i0, i1, CROWN_CELL + i0, CROWN_CELL + i1, CANOPY_CELL + i0, CANOPY_CELL + i1
+    return tuple(first + i for first in (0, CROWN_CELL, CANOPY_CELL, BAND_CELL) for i in (i0, i1))
 
 
 def direct_term(
@@ -265,46 +270,87 @@ def direct_term(
     return shaded_direct(nrm_u8, hz, sun, filtered)
 
 
-def tree_shade(hz_deg: Horizons, az: float) -> F32Grid:
-    """The trees' shade toward ``az``: each tree cell read at the elevation it was folded at,
-    its direction's ``path_elevation``, whatever the sun's, then blended. Exact for a sun on
-    the path; off it, the path's shade at that azimuth (section 29, "Off the sun's path")."""
-    i0, i1, w = _either_side(az)
+def _folded_shade(hz_deg: Horizons, first: int, az: float) -> tuple[F32Grid, F32Grid]:
+    """Cells from ``first`` that hold shade folded at their direction's ``path_elevation``:
+    the shade of the two either side of ``az``, each read at its own fold whatever the sun's
+    (section 29, "Off the sun's path")."""
+    i0, i1, _w = _either_side(az)
     els = path_elevations()
-    before = soft_shade(hz_deg[CROWN_CELL + i0], float(els[i0])) * (1 - w)
-    after = soft_shade(hz_deg[CROWN_CELL + i1], float(els[i1])) * w
-    found: F32Grid = (before + after).astype(np.float32)
+    return soft_shade(hz_deg[first + i0], float(els[i0])), soft_shade(
+        hz_deg[first + i1], float(els[i1])
+    )
+
+
+def _blend(pair: tuple[F32Grid, F32Grid], az: float) -> F32Grid:
+    _i0, _i1, w = _either_side(az)
+    found: F32Grid = (pair[0] * (1 - w) + pair[1] * w).astype(np.float32)
     return found
 
 
-def _trees_at(hz_deg: Horizons, sun: Sun) -> F32Grid:
-    """``tree_shade`` folded again at the sun's elevation, so the larger of it and a horizon
+def tree_shade(hz_deg: Horizons, az: float) -> F32Grid:
+    """The trees' shade toward ``az``, blended between its two directions. Exact for a sun on
+    the path; off it, the path's shade at that azimuth."""
+    return _blend(_folded_shade(hz_deg, CROWN_CELL, az), az)
+
+
+def band_shade(hz_deg: Horizons, az: float) -> F32Grid:
+    """The arches' and overhangs' shade toward ``az``, as ``tree_shade`` reads the trees'."""
+    return _blend(_folded_shade(hz_deg, BAND_CELL, az), az)
+
+
+def _has_bands(hz_deg: Horizons) -> bool:
+    """Whether the atlas holds band cells: before light version 8 the bands were folded into
+    the ground's cells."""
+    return len(hz_deg) >= BAND_CELL + HORIZON_DIRS
+
+
+def _at(shade: F32Grid, el: float) -> F32Grid:
+    """A shade folded again at the sun's elevation ``el``, so the larger of it and a horizon
     shades as the larger of the two shades."""
-    el = np.float32(sun[1])
-    found: F32Grid = el + np.float32(SHADOW_SOFT_DEG) * (tree_shade(hz_deg, sun[0]) - 0.5)
+    found: F32Grid = np.float32(el) + np.float32(SHADOW_SOFT_DEG) * (shade - np.float32(0.5))
     return found.astype(np.float32)
 
 
-def sun_horizon(hz_deg: Horizons, sun: Sun, crowns: bool = False) -> F32Grid:
-    """The horizon toward ``sun``; with ``crowns``, the trees' shade where it shades more."""
+def _with_band(hz: F32Grid, shade: F32Grid, el: float) -> F32Grid:
+    """``hz`` raised to the band's ``shade`` where the band shades at all."""
+    found: F32Grid = np.where(shade > 0, np.maximum(hz, _at(shade, el)), hz).astype(np.float32)
+    return found
+
+
+def _ground(hz_deg: Horizons, sun: Sun) -> F32Grid:
+    """The ground's horizon toward ``sun``, its bands' shade where they shade more."""
     hz = _toward(hz_deg, sun[0])
+    if not _has_bands(hz_deg):
+        return hz
+    return _with_band(hz, band_shade(hz_deg, sun[0]), sun[1])
+
+
+def sun_horizon(hz_deg: Horizons, sun: Sun, crowns: bool = False) -> F32Grid:
+    """The horizon toward ``sun``, the bands' shade where it shades more; with ``crowns``, the
+    trees' shade where that shades more."""
+    hz = _ground(hz_deg, sun)
     if crowns and len(hz_deg) >= CROWN_CELL + HORIZON_DIRS:
-        hz = np.maximum(hz, _trees_at(hz_deg, sun))
+        hz = np.maximum(hz, _at(tree_shade(hz_deg, sun[0]), sun[1]))
     return hz
 
 
 def canopy_horizon(hz_deg: Horizons, sun: Sun) -> F32Grid:
     """The horizon toward ``sun`` the trees themselves are lit under: the canopy cells (the
-    ground's where a cell holds none), and the trees' shade where it shades more."""
-    i0, i1, w = _either_side(sun[0])
-
-    def canopy(k: int) -> F32Grid:
-        held = hz_deg[CANOPY_CELL + k]
-        found: F32Grid = np.where(held >= np.float32(CANOPY_FLOOR_DEG / 4), held, hz_deg[k])
-        return found
-
-    terrain = canopy(i0) * (1 - w) + canopy(i1) * w
-    return np.maximum(terrain, _trees_at(hz_deg, sun))
+    ground's, with its bands, where a cell holds none), and the trees' shade where it shades
+    more."""
+    az, el = sun
+    i0, i1, w = _either_side(az)
+    floor = np.float32(CANOPY_FLOOR_DEG / 4)
+    held = (hz_deg[CANOPY_CELL + i0] >= floor, hz_deg[CANOPY_CELL + i1] >= floor)
+    on = [
+        np.where(h, hz_deg[CANOPY_CELL + k], hz_deg[k]) for h, k in zip(held, (i0, i1), strict=True)
+    ]
+    terrain: F32Grid = on[0] * (1 - w) + on[1] * w
+    if _has_bands(hz_deg):
+        s0, s1 = _folded_shade(hz_deg, BAND_CELL, az)
+        under = (np.where(held[0], np.float32(0.0), s0), np.where(held[1], np.float32(0.0), s1))
+        terrain = _with_band(terrain, _blend(under, az), el)
+    return np.maximum(terrain, _at(tree_shade(hz_deg, az), el))
 
 
 def shaded_direct(
@@ -434,7 +480,9 @@ def relight(
     shape = (direct.shape[0], direct.shape[1])
     hz = None if hz_deg is None else _on_grid(canopy_horizon(hz_deg, sun), shape)
     ones = np.ones(shape, np.float32)
-    lit_trees = _unlit(trees[..., :3], light) * _relative(ones, shaded_direct(shape, hz, sun), ones, light)
+    lit_trees = _unlit(trees[..., :3], light) * _relative(
+        ones, shaded_direct(shape, hz, sun), ones, light
+    )
     ground = _unlit(rgb_u8, light) * _relative(svf, direct, land, light)
     alpha = (trees[..., 3].astype(np.float32) / np.float32(255.0))[..., None]
     return _shown(ground * (1 - alpha) + lit_trees * alpha, light)

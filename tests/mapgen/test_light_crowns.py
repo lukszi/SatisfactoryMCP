@@ -66,7 +66,7 @@ def test_only_a_style_that_draws_the_crowns_is_shaded_by_them():
     assert shader_light("painted")["crowns"] and not shader_light("terrain")["crowns"]
     colour = np.full((8, 8, 3), 150, np.uint8)
     cells = np.zeros((model.HZ_CELLS, 8, 8), np.float32)
-    cells[hz.HORIZON_DIRS :] = 60.0
+    cells[model.CROWN_CELL : model.BAND_CELL] = 70.0  # over the folds: shaded whole
     hz_u8 = hz.encode_horizon(cells)
     low = (225.0, 20.0)
     for layer in ("terrain", "relief-dark"):
@@ -132,7 +132,7 @@ def test_the_shader_and_the_python_model_read_the_same_constants():
     block = model.model_block()
     for key in ("dirs", "normalise_min_el", "shadow_soft_deg", "shadow_fill", "shadow_floor",
                 "shadow_floor_knee", "hz_cells", "crown_cell", "hz_gutter", "canopy_cell",
-                "canopy_floor_deg"):  # fmt: skip
+                "canopy_floor_deg", "band_cell"):  # fmt: skip
         assert key in block, key
         assert f"model.{key}" in source, key
     assert "1.0-sh*(1.0-uFill)" in source and "params.crowns" in source
@@ -140,10 +140,11 @@ def test_the_shader_and_the_python_model_read_the_same_constants():
     assert block["hz_gutter"] == model.HZ_GUTTER_PX
     assert "1 - shade * (1 - SHADOW_FILL)" in inspect.getsource(model.shaded_direct)
     dirs = hz.HORIZON_DIRS
-    assert (block["crown_cell"], block["canopy_cell"], block["ao_cell"]) == (
+    assert (block["crown_cell"], block["canopy_cell"], block["band_cell"], block["ao_cell"]) == (
         dirs,
         2 * dirs,
         3 * dirs,
+        4 * dirs,
     )
     assert block["hz_cells"] == block["ao_cell"] + 1 == model.HZ_CELLS
     assert json.loads(json.dumps(block)) == block

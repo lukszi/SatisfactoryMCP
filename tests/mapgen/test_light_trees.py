@@ -215,14 +215,14 @@ def test_the_page_lights_the_trees_under_the_canopy_s_horizon_not_the_ground_s()
     nrm[...] = (128, 128, 255, 255)
     cells = np.zeros((model.HZ_CELLS, 8, 8), np.float32)
     cells[: model.CROWN_CELL] = 60.0  # the ground beneath the canopy is in a rock's shadow
-    cells[model.CANOPY_CELL : model.AO_CELL] = model.CANOPY_FLOOR_DEG  # its top is not
+    cells[model.CANOPY_CELL : model.BAND_CELL] = model.CANOPY_FLOOR_DEG  # its top is not
     hz_u8 = hz.encode_horizon(cells)
     sun, painted = (225.0, 30.0), shader_light("painted")
     trees = np.dstack([colour, np.full((8, 8), 255, np.uint8)])
     lit = model.relight(colour, nrm, hz_u8, sun, painted, trees=trees)
     ground = model.relight(colour, nrm, hz_u8, sun, painted)
     assert lit.mean() > ground.mean() + 10, "the canopy stands over the rock's shadow"
-    cells[model.CANOPY_CELL : model.AO_CELL] = 0.0  # no canopy cell: the ground's horizon
+    cells[model.CANOPY_CELL : model.BAND_CELL] = 0.0  # no canopy cell: the ground's horizon
     held = model.relight(colour, nrm, hz.encode_horizon(cells), sun, painted, trees=trees)
     assert abs(int(held.mean()) - int(ground.mean())) <= 2
     bare = trees.copy()

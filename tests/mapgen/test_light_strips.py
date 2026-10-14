@@ -143,7 +143,7 @@ def test_a_block_s_horizons_a_direction_at_a_time_are_the_stacked_ones():
     folds = [cell.band_in[1:-1, 1:-1] for cell in ringed if cell.band_in is not None]
     assert found.folded.any() and found.folded.tobytes() == np.logical_or.reduce(folds).tobytes()
     groups = {cell.k // model.HORIZON_DIRS for cell in ringed if cell.band_in is not None}
-    assert groups == {0, 1}, "the ground folds its bands and the trees their shade"
+    assert groups == {1, 3}, "the trees fold their shade and the bands theirs"
     assert set(found.bands) == span_bake.shade_cells(DEFAULT_SUN[0]) == {20}
     rings = np.stack([cell.deg for cell in ringed])
     assert rings[:, 1:-1, 1:-1].tobytes() == stack.tobytes(), "a pixel's march is its own"
@@ -162,12 +162,12 @@ def test_without_spans_a_block_bakes_the_plain_march():
     assert not any(bands.seen.any() for bands in found.bands.values())
 
 
-def test_the_default_sun_reads_only_its_six_cells_and_water_bakes_zero():
+def test_the_default_sun_reads_only_its_eight_cells_and_water_bakes_zero():
     zh, halo, block = _block_inputs()
     m = zh.shape[0] - 2 * halo
     keep = model.sun_cells(DEFAULT_SUN[0])
-    assert len(set(keep)) == 6 and all(k >= model.HORIZON_DIRS for k in keep[2:])
-    sparse = [None] * (model.CANOPY_CELL + model.HORIZON_DIRS)
+    assert len(set(keep)) == 8 and all(k >= model.HORIZON_DIRS for k in keep[2:])
+    sparse = [None] * model.AO_CELL
     for k in keep:
         sparse[k] = np.full((m, m), 10.0 + k, np.float32)
     nrm = np.full((m, m, 4), 200, np.uint8)
@@ -183,11 +183,17 @@ def test_without_trees_the_tree_and_canopy_cells_stay_zero():
     m = zh.shape[0] - 2 * halo
     found = bake_horizons(zh, halo, SP, span_bake.BlockSpans(block.ground, None), m, True)
     hz_u8, hq = found.atlas, found.quarter
-    assert hz_u8[: model.HORIZON_DIRS].any() and not hz_u8[model.HORIZON_DIRS :].any()
-    assert not hq[..., model.HORIZON_DIRS :].any()
+    assert (
+        hz_u8[: model.HORIZON_DIRS].any() and not hz_u8[model.HORIZON_DIRS : model.BAND_CELL].any()
+    )
+    assert not hq[..., model.HORIZON_DIRS : model.BAND_CELL].any()
+    assert (
+        hz_u8[model.BAND_CELL : model.AO_CELL].any()
+        and hq[..., model.BAND_CELL : model.AO_CELL].any()
+    )
     treed = bake_horizons(zh, halo, SP, block, m, True).atlas
     assert treed[model.CROWN_CELL : model.CANOPY_CELL].any()
-    assert treed[model.CANOPY_CELL : model.AO_CELL].any()
+    assert treed[model.CANOPY_CELL : model.BAND_CELL].any()
 
 
 class _LazyPool:

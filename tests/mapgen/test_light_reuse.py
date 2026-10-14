@@ -37,6 +37,7 @@ BAKE_PINS = {
     5: "sha256:85334d315294cd37e14049b7126aadf5a36e272d5510d41734f19c5d0eeea8a9",
     6: "sha256:5c7fb4ddcc0941173bc1fa200037b38870b355415d19e262b3ddc5771fb823f0",
     7: "sha256:fb29608f4650ae07f59287873cabd262b266f18cb4cb85c2fec58c88d8297160",
+    8: "sha256:de3d1826cfd6185f334c78d9ece42436acfcf40d5fa1bf117e06fbd1e8aff88b",
 }
 
 Planes = tuple[np.ndarray, np.ndarray]

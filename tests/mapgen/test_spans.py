@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from mapgen.lighting import horizon as hz
-from mapgen.lighting import stage
+from mapgen.lighting import model, stage
 from mapgen.lighting.light_tiles import downsample, padded_window
 from mapgen.lighting.spans import bake as span_bake
 from mapgen.lighting.spans import march as spans
@@ -145,15 +145,19 @@ def test_the_sky_beside_a_span_is_open_and_beside_a_wall_it_is_not():
     assert sky < HALO
 
 
-def test_a_band_is_folded_into_the_atlas_at_the_sun_path_s_elevation():
-    hz_deg = np.zeros((1, 3), np.float32)
-    lo = np.array([[50.0, 58.0, np.nan]], np.float32)
-    hi = np.array([[58.0, 70.0, np.nan]], np.float32)
-    bands = spans.Bands(hz_deg, lo, hi, np.ones((1, 3), bool))
-    folded = span_bake.path_horizon(bands, 62.25)
-    assert folded[0, 0] == 0.0, "a band under the sun's disc there leaves the horizon"
+def test_a_band_s_shade_is_folded_at_the_sun_path_s_elevation():
+    hz_deg = np.zeros((1, 4), np.float32)
+    lo = np.array([[50.0, 58.0, np.nan, 61.25]], np.float32)
+    hi = np.array([[58.0, 70.0, np.nan, 64.25]], np.float32)
+    bands = spans.Bands(hz_deg, lo, hi, np.ones((1, 4), bool))
+    folded = span_bake.fold_band(bands, 62.25)
+    open_ = span_bake.open_fold(62.25)
+    assert open_ == np.float32(62.25 - 3.0)
+    assert folded[0, 0] == open_, "a band under the sun's disc there shades none of it"
     assert folded[0, 1] == pytest.approx(62.25 + 3.0), "one over it shades it whole"
-    assert folded[0, 2] == 0.0
+    assert folded[0, 2] == open_
+    assert folded[0, 3] == pytest.approx(62.25), "one over half the disc, half"
+    assert model.soft_shade(folded, 62.25)[0].tolist() == pytest.approx([0.0, 1.0, 0.0, 0.5])
     assert spans.path_elevation(DEFAULT_SUN[0]) == pytest.approx(DEFAULT_SUN[1], abs=0.1)
     assert spans.path_elevation(0.0) == spans.OFF_PATH_EL_DEG
 
