@@ -21,15 +21,13 @@ from scipy.sparse import csgraph
 
 from mapgen.palette.scene import (
     FloatGrid,
-    ReconciledWater,
     WaterPlanes,
     field_heights,
-    field_water,
 )
-from mapgen.palette.water.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
+from mapgen.palette.water.lips import LipsMeta
+from mapgen.palette.water.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M
 from mapgen.terrain.harmonic import harmonic_fill
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I16Grid, U8Grid
-from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -41,12 +39,11 @@ __all__ = [
     "SPILL_RING_M",
     "SPILL_SHARE",
     "HolesMeta",
+    "NoWaterPlanes",
     "PerchedMeta",
-    "WaterSurfaces",
     "perched_levels",
     "relevel",
     "spill_share",
-    "water_surfaces",
     "wet_holes",
 ]
 
@@ -165,6 +162,7 @@ class PerchedMeta(TypedDict):
     texels: int
     largest: list[PerchedBody]
     holes: NotRequired[HolesMeta]
+    lips: NotRequired[LipsMeta]
 
 
 @final
@@ -555,45 +553,3 @@ def wet_holes(
         "largest": places[:PERCHED_LIST_MAX],
     }
     return level, grades, meta
-
-
-class WaterSurfaces(NamedTuple):
-    """The water a render draws: the ocean reach, and the level and grade planes after the
-    rivers took their boxes' water back, perched water was re-levelled and holes filled."""
-
-    reach: U8Grid | None
-    reach_meta: JsonObject
-    level: I16Grid | None
-    grades: U8Grid | None
-    perched: PerchedMeta | NoWaterPlanes | None
-
-    @property
-    def planes(self) -> WaterPlanes | None:
-        return None if self.level is None else (self.level, self.grades)
-
-
-def water_surfaces(
-    field: hf.Field, kernel_only: bool, rivers: ReconciledWater | None = None
-) -> WaterSurfaces:
-    """Recipe 6's ocean reach and the re-levelled water, both announced. ``rivers`` is the
-    run's ``RiverWater``: its reconciled planes are re-levelled, so a spline's ribbon stands
-    in for its box everywhere it speaks. ``--kernel-only`` draws neither."""
-    if kernel_only:
-        return WaterSurfaces(None, {}, None, None, None)
-    reach, reach_meta = ocean_reach(field)
-    print(
-        f"  ocean shore at {OCEAN_LEVEL_M} m: {reach_meta.get('ocean_texels')} ocean "
-        f"texels, {reach_meta.get('reach_texels')} within {OCEAN_REACH_M:g} m"
-    )
-    planes = None if rivers is None else (rivers.water_dm, rivers.grades)
-    level, meta = perched_levels(field, planes)
-    own = field.water_quality_raster()
-    grades = own if rivers is None else rivers.grades
-    if "bodies" in meta and level is not None and grades is not None:
-        print(f"  perched water: {meta['bodies']} bodies, {meta['texels']} texels re-levelled")
-        before = field_water(field)[0] if rivers is None else rivers.water_dm
-        dropped = None if rivers is None else (own != hf.WATER_DRY) & (grades == hf.WATER_DRY)
-        level, grades, holes = wet_holes(field, before, level, grades, dropped)
-        meta["holes"] = holes
-        print(f"  holes in lakes: {holes['bodies']} bodies, {holes['texels']} texels re-wetted")
-    return WaterSurfaces(reach, reach_meta, level, grades, meta)

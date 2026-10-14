@@ -377,6 +377,10 @@ Planned as 0.2.0.
 - Map renders: the swamp's waterlines are drawn at the swamp's own water level, 0.3 m over
   the sea's, so its islands take the outline the game's map gives them and the grey blocks
   of foam on flat island ground are gone.
+- Map renders: the canyon lake's arm beside the arch at (2040, -1880) is water again, not a
+  flat sand box with straight sides. Water a waterfall pours from stands at least at the
+  fall's lip; before, where the lake's box ran on over the cliff, the lake was laid on its
+  own bed. Twelve falls hold water up this way.
 - Map renders: the near-black swamp water no longer spills onto the sea between the abyss
   rocks: sea-level water outside the swamp is the sea's.
 - Map renders: the flat taupe blocks with stepped outlines along the east desert coast are

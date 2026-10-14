@@ -41,6 +41,7 @@ class RenderExtras:
 
     meshes: MeshPlanes | None = None
     falls: F64Grid | None = None
+    lips: F64Grid | None = None
     titan: TitanPlanes | None = None
     rivers: RiverWater | None = None
     mesh_source: JsonObject = field(default_factory=dict[str, JsonValue])
@@ -81,7 +82,7 @@ def load_extras(
         z_cm, cls, *family = maps
         out.meshes = MeshPlanes(z_cm, cls, family[0] if family else None)
         out.mesh_source = to_json_object(mesh_source)
-        out.falls, falls_source = load_falls(cache_root, build, swept_levels, heightfield)
+        out.falls, out.lips, falls_source = load_falls(cache_root, build, swept_levels, heightfield)
         out.mesh_source.update(falls_source)
         out.readers += ["render_meshes", "waterfalls"]
     if titan:
