@@ -9,7 +9,7 @@ import numpy as np
 
 from mapgen.palette.scene import WaterTerms
 from mapgen.palette.water.open_sea import OpenSea
-from mapgen.palette.water.shore import blend_water, shore_terms
+from mapgen.palette.water.shore import blend_water, crossing_level, shore_terms
 from mapgen.palette.water.surface import (
     WATER_DEPTH_FULL_M,
     WaterEdge,
@@ -47,7 +47,8 @@ def band_water_terms(
     linear: _GridTaps,
     spacing_m: float,
 ) -> WaterTerms:
-    """Recipe 5's water, and within ``reach`` of the sea the ocean's crossing rule. ``wet``
+    """Recipe 5's water, and within ``reach`` of the sea the ocean's crossing rule, at the
+    water's own level near the ocean's (``crossing_level``). ``wet``
     rides along for the rivers: past the last wet texel, the edge's blur is no water."""
     old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)
     old_depth = water_depth_fraction(z_m, water_m, measured)
@@ -58,7 +59,7 @@ def band_water_terms(
             sample_coverage(reach, linear),
             old_cover,
             old_depth,
-            shore_terms(z_m, spacing_m),
+            shore_terms(z_m, spacing_m, crossing_level(water_m)),
             WATER_DEPTH_FULL_M,
         )
     terms["wet"] = wet

@@ -476,6 +476,19 @@ ocean's band outside the areas the biome table calls swamp (`BIOME_CLASS`); that
 ocean. On build 502094 28,547 texels go back to the ocean, and the blend shrinks from 84,204
 to 64,434 texels. Inside `Area_Swamp` nothing changes.
 
+**The swamp's own level (2026-10-14).** The ocean's crossing rule drew every waterline in its
+48 m reach at -17.0 m, and the swamp's water counts as ocean there, being within the 0.5 m band.
+But the swamp stands at -16.7 m (and -16.8 m in places), so its islands were drawn out to the
+-17.0 m contour, wider than the water the field measures, and where flat ground sat at exactly
+-17.0 m the waterline and its foam lay across it in blocks, the field's 1 m texels: grey
+squares on the island at (2503, 791). `crossing_level` (`palette/water/shore.py`) now gives
+each pixel its own water's level where that lies within the band, and -17.0 m elsewhere; dry
+ground far from water samples no level and keeps the ocean's. The open sea reads exactly
+-17.0 m (7.98 M measured texels), so its coast does not move; 0.96 M measured texels lie in
+the band off it, nearly all swamp. The swamp's islands shrink to the field's wet outline,
+which is what the game's own map draws there. It shares the water-edge batch's version bump,
+as no map was rendered between them.
+
 ### Hot springs (2026-10-07)
 
 A hot-spring terrace used to turn the whole lake box holding it into a hot spring: a 150 m

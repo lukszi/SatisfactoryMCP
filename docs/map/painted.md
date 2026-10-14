@@ -43,7 +43,9 @@ files, so the coast is drawn from it.
 - **The level** is one constant, `OCEAN_LEVEL_M = -17.0`, the water boxes' and ocean tiles'
   own level. The artwork, the paint's Sand/WetSand crossover and the lowest land plants agree
   on about -17.4 instead. At -17.0 the spiral sandbars near (-339, -2275) read as shallows;
-  whether they are dry in game decides the constant.
+  whether they are dry in game decides the constant. Water of its own within the reach's
+  0.5 m band, the swamp's at -16.7 m, crosses at its own level (`crossing_level`;
+  docs/map/water.md, "The swamp's own level").
 - **One pass.** Each painter returns its ground and `water_composite` lays water over it
   once; outside the reach it is exactly recipe 5's `water_over`.
 

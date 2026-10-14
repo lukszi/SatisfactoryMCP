@@ -49,6 +49,7 @@ from mapgen.palette.water.shore import (
     add_foam,
     blend_water,
     composite_meshes,
+    crossing_level,
     inland_cover,
     ocean_reach,
     optical_depth,
@@ -100,6 +101,16 @@ def test_a_steep_shore_is_still_one_pixel_and_a_flat_one_does_not_blow_up():
     flat = np.full((4, 8), LEVEL - 0.001, np.float32)
     cover = shore_terms(flat, 0.229)["cover"]
     assert np.isfinite(cover).all() and (cover == 1.0).all()
+
+
+def test_water_near_the_ocean_s_level_draws_its_waterline_at_its_own_level():
+    swamp = np.float32(LEVEL + 0.3)
+    water_m = np.array([[swamp, LEVEL, 0.0, 120.0]], np.float32)
+    assert crossing_level(water_m).tolist() == [[swamp, LEVEL, LEVEL, LEVEL]]
+    # A flat patch at the ocean's level under the swamp's water: no waterline across it.
+    flat = np.full((4, 8), LEVEL, np.float32)
+    terms = shore_terms(flat, 0.229, crossing_level(np.full_like(flat, swamp)))
+    assert (terms["edge"] == 0.0).all() and (terms["cover"] == 1.0).all()
 
 
 def _field(water_dm, grades, height_dm):

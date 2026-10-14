@@ -374,6 +374,9 @@ Planned as 0.2.0.
 - Map renders: the Satellite map's boulders in the Dune Desert take their own colour from the
   game's baked distant view, a lighter sand-terracotta, instead of the colour once measured on
   the desert's arches. The style's version goes up.
+- Map renders: the swamp's waterlines are drawn at the swamp's own water level, 0.3 m over
+  the sea's, so its islands take the outline the game's map gives them and the grey blocks
+  of foam on flat island ground are gone.
 - Map renders: the near-black swamp water no longer spills onto the sea between the abyss
   rocks: sea-level water outside the swamp is the sea's.
 - Map renders: the flat taupe blocks with stepped outlines along the east desert coast are
