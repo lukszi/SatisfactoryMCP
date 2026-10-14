@@ -749,6 +749,72 @@ What changed, as medians of the windows' pixels against the bake through the cam
 At 2048 (G1, painted only, from the same rasters) 732,019 of the native level's 4,194,304
 painted pixels change, by up to 77; the light's tiles keep their bytes.
 
+### Crater floor, terraces and coral meshes, checked (2026-10-14)
+
+Three colours the second review left open, checked against the references at hand. None
+changed: each check either confirmed the target or found too little to move it. ΔE is OKLab
+×100; "through the camera" is the derive's camera model ("Targets derived from the game
+install"); "balanced on its sand" scales a shot's channels in linear light until its lit sand
+meets the Sand target, so a graded shot can be read where nothing else is.
+
+**The Blue Crater floor** (`areas[crater].layers.CoralRock_LayerInfo`, #6c7386).
+
+- Its source, [3372405479](https://steamcommunity.com/sharedfiles/filedetails/?id=3372405479)
+  (1.0, clear sky, high sun), measured again in four boxes of lit ground, the bare paths
+  left out, pools to #6f7482 (L 0.559, C 0.022, h 271; the boxes span L 0.54 to 0.60): ΔE
+  0.9 from the target. The target stands.
+- What that ground shows is crater grass, the purple-blue foliage over the CoralRock layer.
+  The bake (#7c7e8d) is the bare layer, 3.7 lighter.
+- The map draws the floor #5b647d (L 0.505, C 0.034): 5.4 L under its own target. The
+  transfer meets the target before the altitude lift and the ground detail. The floor stands
+  at about -75 m, 0.09 up the height ramp where the transfer assumes 0.5, which costs it
+  1.2 L. The rest comes later in the band, from the detail and the light, in a split not
+  measured. So the 9.1 L between the drawn floor and the bake is about 4 of grass against
+  bare rock and 5 of drawing. Raising the target to cover the drawing would hide that in
+  one key; it is left as found.
+- Every other Blue Crater shot found (Steam 3365198348, 3506289898, 3583833668, 3773246231
+  and the wiki's `Blue_Crater.png`) is under the area's blue haze or the wiki's cyan grade.
+  A daylight shot of the floor from above would show whether the grass reads from height.
+
+**Hot-spring terraces** (`meshes.terrace`, #ccbea8, drawn #c6b9a3).
+
+- Their textures through the camera are #c1b59e (`Plateau1and3`), #bdad91
+  (`MI_HotSpring_02`) and #cac3b3 (`OriginStaligtite`): the drawn colour lies 1.4 from the
+  first.
+- The bake is no reference here: 54% of the HLOD texels on the 101 terraces are pure white,
+  so the second review's #d3d1cc is the discount's cap on clipped white.
+- The one shot, the wiki's
+  [Geyser node](https://satisfactory.wiki.gg/images/Geyser_node_-_steam.png) (Early Access,
+  low side view, the terraces in a cliff's shade), balanced on its sand, gives a near-neutral
+  rim #c4c8c5 (ΔE 5.0 from the drawn colour) and orange-red pools #a97152 and #a26d6c. The
+  pools are the meshes' water slots (`Water_Plateau`, `Water_Plateau2`, `Water_Plateau3`,
+  with no albedo texture), which the mesh class leaves out. From above a terrace is mostly
+  pool. One graded side view is too little to move the class; a daylight shot from above
+  would settle the rim and say whether the pools need a colour.
+
+**Coral meshes other than the caps.** The coral class wears the cap target #917c75. By
+instance, the class is mostly other meshes, each with its own texture:
+
+| Mesh | Instances | Texture through the camera | ΔE to #917c75 |
+| --- | --- | --- | --- |
+| `CraterCoralRoots` | 28,002 | #a39f87, grey-olive | 10.1 |
+| `SM_CoralRoot_01` | 5,119 | #d0a89d, pink | 16.2 |
+| `SM_NetFungi_01` | 3,118 | #c8c1b1, pale grey | 21.0 |
+| `SM_CoralCactus_01`, `_02` | 2,769 | #bca181, sand-brown | 12.6 |
+| `CraterBush` | 1,082 | #c5b1ae, pale mauve | 17.3 |
+| `CraterTree_02` | 341 | #908479 | 2.1 |
+| the caps, `SM_CoralTreeSmall_01`, `_02` | 1,043 | #9f7e75 | 2.4 |
+
+- The only shot of one of them is the wiki's
+  [Coral](https://satisfactory.wiki.gg/images/Coral.png) (Early Access, daylight, side view),
+  `SM_CoralRoot_01` on a beach. Balanced on its sand it reads #c08b8e (L 0.689, C 0.065,
+  h 15): 9.5 from the cap colour, and 8.0 from its own texture through the camera, darker
+  and pinker. It agrees with the texture that the class colour is too dark for this mesh.
+- The class is one colour, so a mesh of its own needs a class or a mesh plane in the mesh
+  raster (painted.md section 27, "Render-only meshes"), with a target per mesh. For
+  `CraterCoralRoots`, the bulk of the class, nothing but its texture has been read: no
+  change until a daylight shot of the Blue Crater's coral shows it.
+
 ### Known limits
 
 - No screenshot target, for want of a clean reference: SandRock (Dune Desert and Spire
@@ -784,8 +850,10 @@ painted pixels change, by up to 77; the light's tiles keep their bytes.
   metres wide over the ground and the palms under it; its look from above is unchecked.
 - Render-only meshes take one colour per class: the coral class's cap target #917c75 also
   colours `CraterCoralRoots` (the Blue Crater's pillars), `SM_NetFungi_01` and the barnacles,
-  and the shell class's grey the `SmallShell` plates on the Desert Canyons' cliffs. Neither
-  was measured on those meshes.
+  and the shell class's grey the `SmallShell` plates on the Desert Canyons' cliffs. The other
+  coral meshes' textures, `CraterTree_02`'s apart, lie ΔE 10 to 21 from it, all lighter
+  ("Crater floor, terraces and coral meshes, checked"); the shells were not measured on
+  those plates.
 - On a beach whose paint has no WetSand above the drawn sea, as at the north beach, the
   shore's band is the only wet cue and reads L ×0.97 in its first metre, against ×0.80 in
   game.
