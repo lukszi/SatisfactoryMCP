@@ -344,6 +344,9 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the swamp's waterlines are drawn at the swamp's own water level, 0.3 m over
+  the sea's, so its islands take the outline the game's map gives them and the grey blocks
+  of foam on flat island ground are gone.
 - Map renders: the near-black swamp water no longer spills onto the sea between the abyss
   rocks: sea-level water outside the swamp is the sea's.
 - Map renders: the flat taupe blocks with stepped outlines along the east desert coast are
