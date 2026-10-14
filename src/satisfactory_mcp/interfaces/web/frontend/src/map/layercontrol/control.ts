@@ -324,8 +324,8 @@ function panelHead(rows: HTMLElement[]): HTMLElement {
     // what stays on screen when the list folds, so it has to be the top of the box.
     container.insertBefore(head, container.firstChild);
   }
-  const tail = drawnOf(rows.filter(rowOn).length, rows.length);
-  foldHead(head, state.panel.open, "layers", tail, tail + " drawn right now");
+  const tail = rows.length ? drawnOf(rows.filter(rowOn).length, rows.length) : "";
+  foldHead(head, state.panel.open, "layers", tail, rows.length ? tail + " drawn right now" : "base map and sun");
   fold(head, false);
   if (state.panel.open) L.DomUtil.removeClass(head, "shut");
   else L.DomUtil.addClass(head, "shut");

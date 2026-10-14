@@ -3,6 +3,7 @@
  * both read it here, so neither imports the other. docs/maps_contract.md §6. */
 
 import { get } from "../api/client";
+import { SHARE } from "../share/mode";
 import { createListeners } from "./listeners";
 import { friendlyError } from "../kit/toast";
 
@@ -32,7 +33,7 @@ let inflight: Promise<MapsResponse | null> | null = null;
 
 export function fetchMapRegistry(): Promise<MapsResponse | null> {
   if (inflight) return inflight;
-  inflight = get<MapsResponse>("/api/maps")
+  inflight = (SHARE ? fetch("data/maps.json").then((r) => r.json() as Promise<MapsResponse>) : get<MapsResponse>("/api/maps"))
     .then(function (body) {
       mapRegistry.body = body;
       mapRegistry.failed = "";
