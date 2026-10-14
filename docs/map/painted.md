@@ -207,6 +207,9 @@ review") the Southern Forest's grass has a target of its own, which does what it
   by the ocean rule.
 - Pigment strength (0.15) makes the central Red Bamboo ground strongly red where the paint
   mix draws.
+- The rectangular patch in the canyons at (2041, -1526) is the game's own paint: its west
+  edge is a landscape component's edge at x 2033 m, where the sand rock layer stops, and
+  its stepped south edge is the layer weights' 1 m texels, in the bake as in the weights.
 
 ## 28. Relief styles, tones and the palette-only restyle (2026-10-05)
 

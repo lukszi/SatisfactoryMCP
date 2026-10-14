@@ -381,6 +381,9 @@ Planned as 0.2.0.
   flat sand box with straight sides. Water a waterfall pours from stands at least at the
   fall's lip; before, where the lake's box ran on over the cliff, the lake was laid on its
   own bed. Twelve falls hold water up this way.
+- Map renders: where the ground drops sharply into a hole, as round the Blue Crater's coral
+  disc, the drop follows a smooth outline instead of the 1 m grid's stair steps. Every
+  style's version goes up.
 - Map renders: the near-black swamp water no longer spills onto the sea between the abyss
   rocks: sea-level water outside the swamp is the sea's.
 - Map renders: the flat taupe blocks with stepped outlines along the east desert coast are

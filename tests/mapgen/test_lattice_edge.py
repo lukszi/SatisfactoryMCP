@@ -14,8 +14,10 @@ from mapgen.cache import DirectPlanes
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.render.draw import compose
 from mapgen.render.ground import lift
+from mapgen.render.ground.holes import hole_rim
 from mapgen.render.ground.lift import lattice_edge
 from mapgen.render.ground.surface import Window, band_grid, band_surfaces, span
+from mapgen.terrain.sample import taps_linear, taps_pchip
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 #: One texel of the field to an output pixel.
@@ -86,3 +88,31 @@ def test_the_rock_s_share_blends_into_the_fold_s_where_the_lattice_stops(monkeyp
     assert np.abs(np.diff(soft[row, EDGE - 12 : EDGE + 4])).max() < 0.3, "a ramp now"
     assert np.array_equal(soft[:, : EDGE - 12], hard[:, : EDGE - 12]), "the same bits away"
     assert np.array_equal(soft[:, EDGE:VOID], hard[:, EDGE:VOID])
+
+
+def _rim_scene(drop_dm: float):
+    """A lattice at 0 dm west of a diagonal staircase of texels and the fold ``drop_dm`` under
+    it east of the staircase, read at a quarter of a texel."""
+    side = 40
+    rows, cols = np.mgrid[0:side, 0:side]
+    east = cols > rows
+    ground = np.where(east, hf.NODATA, 0.0).astype(np.float32)
+    heights = np.where(east, -drop_dm, 0.0).astype(np.float32)
+    position = np.arange(10, 30, 0.25)
+    taps = (taps_pchip(position, side), taps_pchip(position, side))
+    linear = (taps_linear(position, side), taps_linear(position, side))
+    return heights, ground, taps, linear, position
+
+
+def test_a_hole_s_rim_follows_the_smoothed_outline_and_a_small_drop_is_left_alone():
+    heights, ground, taps, linear, position = _rim_scene(500.0)
+    rim = hole_rim(heights, ground, taps, linear, 1.0)
+    assert rim is not None and rim.inside.any()
+    # Where the drop is drawn, column by column: the staircase put it on the texel grid.
+    low = rim.inside & (rim.z_dm < -250.0)
+    first = np.argmax(low, axis=1)
+    drop_at = position[first] - position
+    assert np.ptp(drop_at[8:-8]) < 0.3, "the drop runs along the diagonal, not in steps"
+    assert (rim.fold == low)[rim.inside].mean() > 0.95
+    small, ground, taps, linear, _ = _rim_scene(30.0)
+    assert hole_rim(small, ground, taps, linear, 1.0) is None, "a 3 m drop keeps its ramp"

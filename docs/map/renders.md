@@ -565,6 +565,26 @@ The step in the field's own heights at that edge, cliff texels 1.1 m under the f
 them, came from the field cutting its rocks at the landscape's frame; since generator 7 the
 rocks go on past it (heightfield.md section 22, "Rocks past the frame").
 
+### Hole rims (2026-10-14)
+
+Where the lattice drops into the fold, the fold standing far under the lattice beside it, the
+blend above only ramps the drop: the two heights still meet on the 1 m grid's texel
+boundary, and the drop drew a staircase. The Blue Crater's coral disc at (1745, 2505) shows
+it: the fill under the disc stands near the coral's top and the crater's floor rock 68 m
+under it, so the coral and the fill took turns along a stepped line.
+
+`render/ground/holes.py` `hole_rim` finds, per piece, fold texels standing more than
+`HOLE_STEP_M` (5 m) under a lattice texel beside them. Within `HOLE_ZONE` (3) texels of them it
+reads the lattice and the fold each on its own, and switches where the fold's mask, smoothed
+by a Gaussian of `HOLE_SIGMA_M` (1.5 m), reads one half, blended over about 0.75 m: the drop
+follows a smooth outline at full resolution, as the water's edge does (water.md section 33,
+"Water edges"). On that outline's fold side the rock's share is drawn as where the lattice
+knows nothing. A crop of the piece's texels is read, so no plane is kept.
+
+The rule finds 3,337 rim texels in 138 places on build 502094, most of them along the west
+coast's cliffs near (-1668, 2400), the abyss near (2826, 1305) and the crater. The drop along
+y 3048 m, 1.1 m in the median and at most 4.7 m, keeps the ramp above.
+
 ### Known limits
 
 - The artwork borrow still multiplies the drawn map's arch strokes into the shading, so a
