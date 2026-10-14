@@ -1,5 +1,6 @@
-"""The span march and the sky view with spans on the GPU: ``kernels.march_spans`` and
-``kernels.sky_view_spans``, a thread a pixel.
+"""The span march, the porous march and the sky view with spans on the GPU:
+``kernels.march_spans``, ``kernels.march_porous`` and ``kernels.sky_view_spans``, a thread a
+pixel.
 
 Each takes its numba twin's arguments and gives its bits (``gpu.cu``). A call the device has
 no memory for runs the twin instead; each call is counted where it ran (``lighting.gpu.ran``).
@@ -21,7 +22,15 @@ from mapgen.lighting.kernels import Offsets
 from mapgen.lighting.spans import kernels
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid
 
-__all__ = ["Resident", "march_resident", "march_spans", "resident", "sky_view_spans"]
+__all__ = [
+    "Resident",
+    "march_porous",
+    "march_resident",
+    "march_spans",
+    "porous_resident",
+    "resident",
+    "sky_view_spans",
+]
 
 _SOURCE = ("mapgen.lighting.spans", "gpu.cu")
 
@@ -62,6 +71,20 @@ def march_spans(
     """``kernels.march_spans``: ``out`` written whole, the bits it raises in place."""
     args = (surface, halo, smooth, offsets, quads, per_step, target, out, rows)
     gpu.on_device(_march_spans, kernels.march_spans, args, runs)
+
+
+def march_porous(
+    surface: _Surface,
+    halo: int,
+    steps: _Steps,
+    ray: tuple[np.float32, np.float32],
+    acc: F32Grid,
+    rows: tuple[I64Grid, int],
+    runs: _Runs,
+) -> None:
+    """``kernels.march_porous``: ``acc`` written whole, the bits it raises in place."""
+    args = (surface, halo, *steps, ray, acc, rows)
+    gpu.on_device(_march_porous, kernels.march_porous, args, runs)
 
 
 def sky_view_spans(
@@ -115,6 +138,33 @@ def march_resident(
     return found
 
 
+def porous_resident(
+    surface: Resident, halo: int, steps: _Steps, ray: tuple[np.float32, np.float32], reach: int
+) -> _Plane:
+    """``kernels.march_porous`` over a ``Resident`` of the porous planes: the core's optical
+    depth, on the device; ``ray`` is the ray's tangent and the thinnest span."""
+    smooth, offsets, quads, per_step = steps
+    n, cols = (side - 2 * halo for side in surface.planes[0].shape)
+    acc = cp.empty((n, cols), np.float32)
+    args = (
+        *surface.planes,
+        np.int64(surface.width),
+        np.int32(halo),
+        _near_spans((surface.counts, reach), halo, n),
+        cp.asarray(np.ascontiguousarray(smooth, np.bool_)),
+        *_steps(offsets, quads),
+        cp.asarray(np.ascontiguousarray(per_step, np.float32)),
+        np.int32(per_step.shape[0]),
+        np.float32(ray[0]),
+        np.float32(ray[1]),
+        acc,
+        np.int32(n),
+        np.int32(cols),
+    )
+    cuda_kernel(*_SOURCE, "march_porous")(*gpu.grid(n, cols), args)
+    return acc
+
+
 def _near_spans(rows: tuple[I64Grid, int], halo: int, count: int) -> cp.ndarray[np.uint8]:
     """Per output row, ``kernels._near_spans``: whether a row within reach holds a span."""
     counts, reach = rows
@@ -148,6 +198,22 @@ def _march_spans(
     found = march_resident(on, halo, (smooth, offsets, quads, per_step), target, reach)
     for host, device in zip(out, found, strict=True):
         host[...] = device.get()
+
+
+def _march_porous(
+    surface: _Surface,
+    halo: int,
+    smooth: BoolMask,
+    offsets: Offsets,
+    quads: tuple[I64Grid, I64Grid],
+    per_step: F32Grid,
+    ray: tuple[np.float32, np.float32],
+    acc: F32Grid,
+    rows: tuple[I64Grid, int],
+) -> None:
+    counts, reach = rows
+    on = resident(surface, counts)
+    acc[...] = porous_resident(on, halo, (smooth, offsets, quads, per_step), ray, reach).get()
 
 
 def _sky_view_spans(

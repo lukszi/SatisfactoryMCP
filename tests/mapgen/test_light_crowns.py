@@ -13,13 +13,10 @@ import math
 import numpy as np
 import pytest
 
-from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting import horizon as hz
 from mapgen.lighting import model
 from mapgen.lighting.light_tiles import atlas_cells
-from mapgen.lighting.occluders import sheet_crowns
 from mapgen.palette.lightparams import shader_light
-from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.paths import REPO_ROOT
 
 LITLAYER_TS = REPO_ROOT / "src/satisfactory_mcp/interfaces/web/frontend/src/map/litlayer.ts"
@@ -130,32 +127,12 @@ def test_a_taller_blocker_throws_a_wider_penumbra_on_the_ground():
     assert penumbra_m(30.0) > penumbra_m(8.0) > 0.0
 
 
-def test_sheet_crowns_keeps_a_crown_s_area_and_its_mean_height():
-    grid = {"x0_cm": BOUNDS_M["x_min_m"] * 100.0, "y0_cm": BOUNDS_M["y_min_m"] * 100.0,
-            "spacing_cm": 100.0}  # fmt: skip
-    top = np.full((96, 96), hf.NODATA, np.int16)
-    yy, xx = np.mgrid[0:96, 0:96]
-    disc = (yy - 48) ** 2 + (xx - 48) ** 2 <= 10**2
-    top[disc] = 250
-    size = int((BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / 8.0)
-    out = np.empty((size, size), np.float32)
-    cover = np.zeros((size, size), np.uint8)
-
-    sheet_crowns(top, grid, size, out, cover)
-
-    step = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
-    area = cover.astype(np.float64).sum() / 255.0 * step * step
-    assert area == pytest.approx(disc.sum(), rel=0.15), "no max filter: the footprint keeps"
-    seen = cover > 0
-    assert 0 < int((cover[seen] < 255).sum()) and np.nanmax(out) == pytest.approx(25.0, abs=0.01)
-    assert np.isnan(out[~seen]).all()
-
-
 def test_the_shader_and_the_python_model_read_the_same_constants():
     source = LITLAYER_TS.read_text(encoding="utf-8")
     block = model.model_block()
     for key in ("dirs", "normalise_min_el", "shadow_soft_deg", "shadow_fill", "shadow_floor",
-                "shadow_floor_knee", "hz_cells", "crown_cell", "hz_gutter"):  # fmt: skip
+                "shadow_floor_knee", "hz_cells", "crown_cell", "hz_gutter", "canopy_cell",
+                "canopy_floor_deg"):  # fmt: skip
         assert key in block, key
         assert f"model.{key}" in source, key
     assert "1.0-sh*(1.0-uFill)" in source and "params.crowns" in source
@@ -163,7 +140,7 @@ def test_the_shader_and_the_python_model_read_the_same_constants():
     assert block["hz_gutter"] == model.HZ_GUTTER_PX
     assert "1 - shade * (1 - SHADOW_FILL)" in inspect.getsource(model.shaded_direct)
     dirs = hz.HORIZON_DIRS
-    assert (block["crown_cell"], block["titan_cell"], block["ao_cell"]) == (
+    assert (block["crown_cell"], block["canopy_cell"], block["ao_cell"]) == (
         dirs,
         2 * dirs,
         3 * dirs,

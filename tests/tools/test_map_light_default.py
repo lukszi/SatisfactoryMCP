@@ -12,8 +12,10 @@ import argparse
 import numpy as np
 import pytest
 
+from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting.stage import Surface, allocate_work_arrays, occluder_planes
 from mapgen.render.draw.kept_light import KEPT_LIGHT_DIR_NAME
+from mapgen.terrain.ground_detail.textures import DETAIL_MAX_SPACING_M
 from satisfactory_mcp.domain.maps import presets, registry
 from tests.support.map_jobs import Passed, keep_cache, run_renders
 
@@ -183,9 +185,15 @@ def test_the_estimate_counts_the_detail_only_where_the_pixel_is_finer_than_a_met
         dark = presets.estimate("render", {"layers": ["terrain"], "size": size, "light": False})
         return (lit["transient_bytes"] - dark["transient_bytes"]) / (size / presets.FULL_PX) ** 2
 
-    assert presets.DETAIL_MIN_PX == 16384
-    extra = light_per_area(16384) - light_per_area(8192)
+    assert presets.DETAIL_MIN_PX == 8192, "an 8192 pixel is 0.92 m, under the bake's metre"
+    extra = light_per_area(8192) - light_per_area(4096)
     assert extra == pytest.approx(presets.DETAIL_SCRATCH_BYTES, rel=1e-3)
+
+
+def test_the_estimate_s_detail_size_is_the_first_whose_pixel_draws_the_detail():
+    span_m = BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]
+    drawn = [size for size in presets.RENDER_SIZES if span_m / size < DETAIL_MAX_SPACING_M]
+    assert presets.DETAIL_MIN_PX == drawn[0]
 
 
 def test_a_measured_run_predicts_only_a_run_with_the_same_light(in_use_local):

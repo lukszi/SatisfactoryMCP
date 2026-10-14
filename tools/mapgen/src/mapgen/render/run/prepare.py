@@ -21,8 +21,10 @@ from mapgen.cache import (
 )
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.install import GameReader
+from mapgen.gamedata.vegetation.crown_sprites import CROWNS_NAME
 from mapgen.gamedata.rocks.looks import read_rock_textures
 from mapgen.gamedata.water.channel import artwork_planes
+from mapgen.palette.painted.albedo import load_paint_meta
 from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import RELIEF_PALETTES, STYLE_DIGESTS
@@ -53,6 +55,7 @@ from mapgen.render.run.inputs import (
     water_record,
 )
 from mapgen.render.run.sprites import crown_sprites
+from mapgen.sprites.store import SpriteAtlas
 from mapgen.terrain.ground_detail.textures import (
     DETAIL_MAX_SPACING_M,
     DetailTextures,
@@ -106,6 +109,8 @@ class Prepared:
     style_digests: dict[str, str]
     record: RunRecord
     textures: DetailTextures | None = None
+    #: The crown sprites, read where the painted layer is drawn or the light casts the trees.
+    sprites: SpriteAtlas | None = None
 
     @property
     def painted(self) -> PaintedGround | None:
@@ -148,7 +153,7 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
         )
     level = LevelSweep(game.store, game.scripts, not args.quiet)
     found = _biome_and_paint(args, layers, (setup, game, level), field, gathered)
-    biome, paint, style_digests = found
+    biome, paint, style_digests, sprites = found
     if paint is not None:
         _attach_look(paint, game, spacing_m, gathered)
     textures = _detail_textures(args, layers, spacing_m, paint)
@@ -212,6 +217,7 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
         style_digests,
         record,
         textures,
+        sprites,
     )
 
 
@@ -241,10 +247,10 @@ def _biome_and_paint(
     readers: tuple[Setup, GameInputs, LevelSweep],
     field: hf.Field,
     gathered: _Gathered,
-) -> tuple[BiomeInputs, PaintInputs | None, dict[str, str]]:
+) -> tuple[BiomeInputs, PaintInputs | None, dict[str, str], SpriteAtlas | None]:
     """The biome raster when a layer is drawn from it, the paint and the crown sprites when
-    the painted layer is drawn, and each style's digest with the paint's in the painted
-    layer's."""
+    the painted layer is drawn, each style's digest with the paint's in the painted layer's,
+    and the crown sprites, which a lit run reads for the light whatever it draws."""
     setup, game, level = readers
     biome = BiomeInputs()
     if any(layer in BIOME_LAYERS for layer in layers):
@@ -259,20 +265,25 @@ def _biome_and_paint(
         gathered.inputs["biome_raster"] = biome.provenance or {}
     style_digests = dict(STYLE_DIGESTS)
     paint = None
+
+    def reader() -> GameReader:
+        index = level.index
+        return GameReader(game.store, game.scripts, index, ClassFacts(game.store, index))
+
+    def sprites() -> tuple[SpriteAtlas, JsonObject]:
+        return crown_sprites(args.sprites_dir, args.paint_dir, args.game, reader, lambda: level.sweep)
+
     if "painted" in layers and biome.raster is not None:
         require_paint(args.paint_dir)
-
-        def reader() -> GameReader:
-            index = level.index
-            return GameReader(game.store, game.scripts, index, ClassFacts(game.store, index))
-
-        sprites = crown_sprites(
-            args.sprites_dir, args.paint_dir, args.game, reader, lambda: level.sweep
-        )
+        found = sprites()
         drawn = (biome.raster, list(biome.drawn))
-        paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, drawn, sprites)
+        paint = prepare_paint(args.paint_dir, args.no_titan_trees, field, drawn, found)
         gathered.inputs["paint"], style_digests["painted"] = paint.provenance, paint.digest
-    return biome, paint, style_digests
+        return biome, paint, style_digests, found[0]
+    meta = load_paint_meta(args.paint_dir)
+    if args.light and meta is not None and CROWNS_NAME in meta["files"]:
+        return biome, paint, style_digests, sprites()[0]
+    return biome, paint, style_digests, None
 
 
 def _attach_look(

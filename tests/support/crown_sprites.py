@@ -55,3 +55,17 @@ def sprite_atlas(
 def draw_atlas(sprites: Sequence[SpritePlanes], names: Sequence[str] | None = None) -> CrownAtlas:
     """The sprites as the stamps read them."""
     return crown_atlas(sprite_atlas(sprites, names=names))
+
+
+def square_sprites(
+    names: Sequence[str], side: int = 48, top_cm: float = 900.0, titan: np.ndarray | None = None
+) -> SpriteAtlas:
+    """One square crown sprite for each of ``names``, ``side`` texels across, 0.8 covered and
+    ``top_cm`` tall, and ``titan`` the Titan canopy's placements, as the cache stores them."""
+    alpha = np.full((side, side), 0.8, np.float32)
+    colour = np.full((side, side, 3), 0.1, np.float32)
+    normal = np.zeros((side, side, 3), np.float32)
+    normal[..., 2] = 1.0
+    top = np.full((side, side), top_cm, np.float32)
+    planes = SpritePlanes(-side * 6.25, -side * 6.25, alpha, colour, normal, top)
+    return sprite_atlas([planes] * len(names), titan, names)

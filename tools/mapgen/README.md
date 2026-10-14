@@ -88,7 +88,7 @@ lean, species) and the crown top on the 1 m grid. Only the `painted` render laye
 From generator 4 its `meta.json` also keeps the level's noon light, the atmosphere volumes and
 the shell colours that `calibrate` reads; from generator 5, `ground.tex.z` keeps the layers'
 own albedo, normal and height textures and the cell noise, which the painted ground's detail
-and the light's normal tiles read at 16384 px and up (§30, "The layers' own textures"). §27
+and the light's normal tiles read at 8192 px and up (§30, "The layers' own textures"). §27
 lists the files; see also §30 to §33 and §36.
 
 ### crown-sprites
@@ -215,7 +215,7 @@ be traced to the axis it should move.
 | `common.py` | | Repository root, `data/local`, the default game path, the shared argument parser, `Refusal`, and `require_gen` |
 | `colour.py` | | sRGB, linear light and OKLab, the luminance weights, the tone curve, the sky-and-sun and flat light |
 | `pools.py` | | What a pool of workers may take: the free memory, and one BLAS thread in each worker |
-| `jit.py` | | The kernel switch: numba-compiled loops, CUDA kernels (`MAPGEN_KERNELS=cuda`, `--gpu`), or the numpy they equal bit for bit (`MAPGEN_KERNELS=numpy`); a cache file per compiled signature |
+| `jit.py` | | The kernel switch: numba-compiled loops, CUDA kernels (`MAPGEN_KERNELS=cuda`, `--gpu`), or the numpy they equal bit for bit (`MAPGEN_KERNELS=numpy`); a cache file per compiled signature; a CUDA source's `#include "<package>:<file>"` replaced by that file |
 | `cache.py` | | The stamped caches (direct, top, meshes, Titan trees, rivers): stamps, readers, `rewrite_planes` and the atomic `write_sidecar`. Raster caches are written as band stores; raw memory maps are still read. |
 | `bandstore.py` | | The zstd band store: `BandWriter` and the read-only `BandArray` |
 | `commands/renders.py` | | The renders orchestrator: arguments, the pass and each layer's install; `render/run/prepare.py` prepares the run |
@@ -242,7 +242,7 @@ be traced to the axis it should move.
 | `gamedata/level/lighting.py` | data | The persistent level's noon light and the atmosphere volumes that override it |
 | `gamedata/rocks/cliffs.py` | data | The field's cliff and top rasters |
 | `gamedata/rocks/families.py` | data | Rock material families (the cliff layers and desert rock): `FamilyResolver`, per placement, tint and top layer |
-| `gamedata/rocks/looks.py` | data | The rock look's textures read from the install (`read_rock_textures`), their tile sizes, and each family's top layer rule |
+| `gamedata/rocks/looks.py` | data | The rock look's textures read from the install (`read_rock_textures`), their tile sizes, the shells' cut, and each family's top layer rule |
 | `gamedata/rocks/collision_pack.py`, `caves.py` | data | The rock collision pack (`rock_pack_arrays`, `encode_rock_pack`), the cave masks |
 | `gamedata/water/actors.py` | data | Which classes are water actors, each one's box in the world, and the boxes' highest top on the 1 m grid (`water_box_tops`, `box_texels`) |
 | `gamedata/water/channel.py` | data | The heightfield's water channel: artwork mask, box levels, lower bodies |
@@ -287,6 +287,7 @@ be traced to the axis it should move.
 | `terrain/texels.py` | renderer | Textures and atlas tiles read onto a band, sprites stamped over it: the reference the GPU's `render/gpu/texels.py` matches |
 | `terrain/ground_detail/textures.py` | renderer | The layer textures made ready for a run: mipped to its pixel, their low passes, two atlases, the noise's terms, each texel's leading layers |
 | `terrain/ground_detail/reference.py` | renderer | The ground's detail per pixel, the reference the GPU's `render/gpu/ground.py` matches |
+| `terrain/ground_detail/cells.py` | renderer | The landscape's rotated cells, shared by the ground's detail and the rock look: the noise's terms, a read in the pixel's cell and its mix; `render/gpu/cells.cu` is its CUDA twin |
 | `terrain/measure.py` | renderer | `SeamTrace`, `RegimeCoverage` |
 | `lighting/hillshade.py` | light | Hillshade, the sun term, the flat shade and slope |
 | `lighting/borrow.py` | light | The artwork borrow and its sidecar record |
@@ -295,16 +296,16 @@ be traced to the axis it should move.
 | `lighting/atlas.py` | light | A block's horizon atlas a cell at a time, its coarser levels' source and the default sun's planes |
 | `lighting/occlusion.py`, `occlusion.cu` | light | Ambient occlusion over a height plane, exact integer box sums; its CUDA twin for `--gpu` |
 | `lighting/block_occlusion.py` | light | A bake block's occlusion: the ground's, the trees' beyond it, and the atlas's occlusion cell |
-| `lighting/undersides.py` | light | Each tree species' crown underside from its mesh, laid on the paint store's grid; the Titan trees' slab |
 | `lighting/bake.py` | light | The lighting pyramid baked a row of blocks at a time, as the surface's rows come in |
 | `lighting/light_tiles.py` | light | The lighting pyramid's tile format, the bake's work files, and the coarser levels |
 | `lighting/refold.py`, `refold.cu` | light | A coarser level's horizons, averaged as the shade the page reads; its CUDA twin for `--gpu` |
 | `lighting/kernels.py` | light | The horizon march and the sky view compiled by numba |
 | `lighting/spans/march.py`, `kernels.py` | light | The march and the sky view over spans (arches, overhangs, crowns), and their numba kernels |
-| `lighting/spans/bake.py`, `slabs.py` | light | A block's spans (the ground's, the crowns' and the Titan trees' alone, and the trees together), the atlas's folded bands and the default sun's per-cell shade; the captured spans' sparse store |
+| `lighting/spans/bake.py`, `slabs.py` | light | A block's spans and trees, the atlas's folded bands and the default sun's per-cell shade; the captured spans' sparse store |
+| `lighting/spans/porous.py`, `trees.py` | light | The trees as a porous leaf shell: the march of their optical depth and its fold; a block's trees at half resolution and the canopy cells |
 | `lighting/spans/holes.py`, `canopy.py` | light | No data in the captured surface, which the light takes as open; the canopy's own light |
 | `lighting/gpu.py`, `gpu.cu` | light | The same two as CUDA kernels, for `--gpu` |
-| `lighting/occluders.py` | light | The occluders the horizons take: the paint store's crown tops on a render grid (`sheet_crowns`) and a tree table's domes (`canopy_top`) |
+| `lighting/occluders.py` | light | A tree table's domes as an occluder (`canopy_top`) |
 | `palette/styles.py` | style | Palette loading, digests, the terrain painter and its height ramp |
 | `palette/schema.py` | style | The palette files' shapes, and the check at load: a stray or missing key, or an unknown rock family, stops the run with a `PaletteError` naming the place in the file (§28). A key added to a palette needs its field here. |
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
@@ -322,8 +323,8 @@ be traced to the axis it should move.
 | `palette/painted/derive/targets.py`, `palette.py` | style | The light vote, the derived colours, `targets.derived.json`, and the palette a render wears them in |
 | `palette/painted/surfaces.py` | style | Rock in its family's colour and look, the landscape Cliff layer's look, the canopy over rock, the render-only meshes |
 | `palette/painted/rock_grid.py` | style | Rock colour on the 4 m rock grid: the cliff albedo tinted by the ground, set on its targets |
-| `palette/painted/rock_look/atlas.py`, `surface.py` | style | The rock textures at the run's mip level in two atlases; the look laid on a band (albedo detail, the top layer's mask, the normal maps' light) |
-| `palette/painted/rock_look/reference.py`, `gpu.py`, `texels.cu` | style | The rock texel kernel: the numpy reference and its CUDA twin, bit for bit |
+| `palette/painted/rock_look/atlas.py`, `surface.py` | style | The rock textures at the run's mip level in two atlases and what each kind of rock reads of them; the look laid on a band (albedo detail, the top layer's mask, the normal maps' light) |
+| `palette/painted/rock_look/reference.py`, `gpu.py` | style | The rock texel kernel: the numpy reference and its CUDA twin (`look_texels` in `render/gpu/cells.cu`), bit for bit |
 | `palette/painted/trees.py` | style | Trees over the painted pixel: per-tree crowns lit by their normals, their calibration, the Titan trunks and canopy |
 | `palette/painted/crown_sets.py` | style | The crowns and the Titan canopy a painted ground draws over the crown sprites |
 | `palette/painted/optics.py` | style | What is seen under each wet pixel, the coral carpet |
@@ -364,7 +365,7 @@ be traced to the axis it should move.
 | `render/gpu/relight.py`, `fxaa.py`, `terrain.py` | | The default-sun relight, the arches' FXAA and the terrain's pieces as CUDA kernels (`*.cu` beside them), for `--gpu` |
 | `render/gpu/texels.py`, `texels.cu` | | `terrain/texels.py`'s reads and stamps on the device, for the painted style's rendered look |
 | `render/gpu/crowns.py` | | The crown stamps on the device (`stamp_crowns` in `texels.cu`), for `--gpu` |
-| `render/gpu/ground.py`, `ground.cu` | | The ground's detail on the device, the reference's bits |
+| `render/gpu/ground.py`, `cells.cu` | | The ground's detail on the device, the reference's bits; `cells.cu` holds the landscape's rotated cells and both kernels that read through them, the ground's and the rock look's |
 | `render/run/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
 | `tiles/pyramid.py` | | A layer's tile trees, the worker flags, the parallel cutter's self-check |
 | `tiles/cutter.py` | | The parallel cutter: every tree of a run cut as its sheets' rows come in, through one encode pool |
@@ -444,20 +445,20 @@ sun picks two directions (§29). Trees join it as its `occluder`.
   style that draws them (`shader_light`'s `crowns`, `render.draw.light.crown_layers`, the light
   sidecar's `occluder_layers`); in the shared horizons they drew black blocks on every style
   (§29).
-- **`sheet_crowns`**: the paint store's crown tops, whatever layers a run draws, box-averaged
-  to the sheet's pixel, mean top and covered share; `horizon.crown_surface` lifts each crown by that share, so a small crown
-  casts a small shadow (§29, "Hooks").
-- **Spans** (`lighting/spans/march.py`): arches, rock overhangs and crowns block only between their
+- **The occluder** (`render/draw/tree_occluder.py`): the crown sprites of the paint store's
+  crowns and the Titan canopy, stamped at the sheet's resolution whatever layers a run draws:
+  top, cover and a Titan byte (§29, "A porous canopy").
+- **Spans** (`lighting/spans/march.py`): arches and rock overhangs block only between their
   underside and their top, so light passes beneath; `OVERHANG_CLEAR_M` (2 m) is the gap that
   makes a rock float (§29, "Arches as spans").
-- **Undersides** (`lighting/undersides.py`): a species' crown starts where `LEAF_LOW_SHARE` (5%)
-  of its leaf area seen from above lies lower, as a share of its top, read off its mesh; one
-  the install cannot give takes `CROWN_UNDERSIDE` (0.5). The Titan trees are a slab
-  `TITAN_SLAB_M` (12 m) deep, the rendered-look study's value: thicker, a Titan canopy cast a
-  wall under every step of its top (§29, "The trees in the light").
-- **Cells of their own**: the crowns' and the Titan trees' horizons are marched alone, without
-  the terrain, and always stored, so the page's tree shadows go with the trees and hold
-  without the terrain's (§29).
+- **A porous canopy** (`lighting/spans/porous.py`): a tree pixel is a leaf shell
+  `LEAF_SHELL_M` (2 m) under its top of optical depth `-ln(1 - min(cover, COVER_MAX))`; a ray
+  keeps `exp(-depth)` of the sun, so canopy shade is the cover's dappled pattern, not a solid
+  footprint swept by the sun (§29, "A porous canopy").
+- **Cells of their own**: the trees' shade is marched without the terrain and always stored,
+  so the page's tree shadows go with the trees and hold without the terrain's; the canopy
+  cells hold the ground's horizon received on the canopy top, which the page lights the trees
+  under (§29).
 - **`OCCLUDER_FADE_M`** (25 m, 80 m): a crown is porous; under the 16:00 sun an 80 m mangrove
   lays a 61 m shadow with it, 93 m with the ground's fade.
 - **Receivers on the crown top**: received on the ground under the crowns, 71-86% of two

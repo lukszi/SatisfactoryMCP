@@ -115,9 +115,10 @@ TREES_KEEP_BYTES = 160_000_000
 LIGHT_SCRATCH_BYTES = 17_790_000_000
 CROWN_SCRATCH_BYTES = 6_440_000_000
 #: The ground's detail normal the light adds, two bytes a pixel, from the size whose pixel is
-#: finer than the paint's metre (docs/map/painted.md section 30, "The layers' own textures").
+#: finer than the paint's metre: 8192, at 0.92 m (docs/map/painted.md section 30, "The
+#: layers' own textures").
 DETAIL_SCRATCH_BYTES = 2 * FULL_PX * FULL_PX
-DETAIL_MIN_PX = FULL_PX // 2
+DETAIL_MIN_PX = FULL_PX // 4
 #: The default-sun terms a lit render that keeps its cache moves out of the scratch into
 #: ``light.kept/``, 4 bytes a pixel; the kept tiles are hard links to the map's own.
 KEPT_TERMS_BYTES = 4 * FULL_PX * FULL_PX

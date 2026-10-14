@@ -95,7 +95,8 @@ def _render(
     light_workers, cut_workers = pool_sizes(args)
     setup = Setup(cache_root, decoder, load_imaging(), versions, cut_workers)
     run = prepare(args, layers, setup)
-    crowns = None if root is None else crown_tops(args.paint_dir, run.painted, args.game)
+    titans = not args.no_titan_trees
+    crowns = None if root is None else crown_tops(args.paint_dir, run.sprites, titans)
     with (
         light_run(root, args.size, crowns, light_workers, setup.cache_root) as light,
         TileStream(setup.image_mod, cut_workers) as cutter,

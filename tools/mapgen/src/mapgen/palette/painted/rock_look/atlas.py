@@ -1,5 +1,5 @@
 """A run's rock look: the install's rock textures at the mip level the run's pixel reads them
-at, packed into one albedo and one normal atlas for the texel kernel.
+at, packed into one albedo and one normal atlas, and what each kind of rock reads of them.
 
 docs/map/painted.md section 30, "Rock textures".
 """
@@ -12,6 +12,7 @@ from typing import NamedTuple
 import numpy as np
 
 from mapgen.gamedata.ground.landscape_albedo import srgb_unit_to_linear
+from mapgen.gamedata.ground.layer_textures import CELLS_NONE, CELLS_ROTATED
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.gamedata.rocks.looks import (
     ARCH_TILE_M,
@@ -20,40 +21,75 @@ from mapgen.gamedata.rocks.looks import (
     CLIFF_DETAIL_TILE_M,
     CLIFF_NORMAL_TILE_M,
     DESERT_TILE_M,
+    SHELL_CUT,
+    SHELL_DETAIL_TILE_M,
+    SHELL_FADE,
+    SHELL_TILE_M,
     RockTextures,
     TopRule,
 )
+from mapgen.terrain.ground_detail.cells import noise_terms
 from mapgen.terrain.texels import Atlas
-from satisfactory_mcp.core.arrays import F32Grid, F64Grid, U8Grid
+from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I32Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
+    "ALBEDO",
     "ALBEDO_ARCH",
     "ALBEDO_CLIFF",
     "ALBEDO_DESERT",
     "ALBEDO_LAYER_BASE",
+    "ALBEDO_SHELL",
+    "BASE",
+    "DETAIL",
+    "KINDS",
+    "KIND_ARCH",
+    "KIND_CLIFF",
+    "KIND_DESERT",
+    "KIND_LAYER",
+    "KIND_SHELL",
     "LAYER_BASE_M",
-    "NORMAL_ARCH",
-    "NORMAL_CLIFF",
-    "NORMAL_DESERT",
-    "NORMAL_DETAIL",
+    "UNDER",
     "RockLook",
     "mip_level",
     "rock_look",
+    "seamless_cut",
 ]
 
-#: The albedo atlas's fixed tiles; the families' top layers follow them.
-ALBEDO_CLIFF, ALBEDO_LAYER_BASE, ALBEDO_ARCH, ALBEDO_DESERT = 0, 1, 2, 3
-#: The normal atlas's tiles.
-NORMAL_CLIFF, NORMAL_DETAIL, NORMAL_ARCH, NORMAL_DESERT = 0, 1, 2, 3
+#: What a pixel is drawn as: a cliff, the landscape's Cliff layer, an arch or boulder, desert
+#: rock, or a shell. 0 is none.
+KIND_CLIFF, KIND_LAYER, KIND_ARCH, KIND_DESERT, KIND_SHELL = 1, 2, 3, 4, 5
+KINDS = 6
+#: A kind's reads, in the table's order: its albedo, what the albedo is measured against (none:
+#: the albedo tile's median), its base normal map and the detail laid on it.
+ALBEDO, UNDER, BASE, DETAIL = 0, 1, 2, 3
 
-#: The texture and span of each normal tile, in that order.
+#: The albedo atlas's fixed tiles; the families' top layers follow them.
+ALBEDO_CLIFF, ALBEDO_LAYER_BASE, ALBEDO_ARCH, ALBEDO_DESERT, ALBEDO_SHELL = 0, 1, 2, 3, 4
+#: The texture and span of each normal tile, in the normal atlas's order.
 _NORMALS = (
     ("cliff_normal", CLIFF_NORMAL_TILE_M),
     ("cliff_detail", CLIFF_DETAIL_TILE_M),
     ("arch_normal", ARCH_TILE_M),
     ("desert_normal", DESERT_TILE_M),
+    ("shell_normal", SHELL_TILE_M),
+    ("shell_detail", SHELL_DETAIL_TILE_M),
 )
+_N_CLIFF, _N_DETAIL, _N_ARCH, _N_DESERT, _N_SHELL, _N_SHELL_DETAIL = range(len(_NORMALS))
+
+#: Per kind, ``(tile, cells)`` of each read, -1 for none, and the slope gains of its base
+#: and detail normal maps. The cliff and the layer read as the landscape's Cliff layer does;
+#: every other texture takes the rotated cells for the meshes' own UVs (painted.md section 30).
+_ROT, _NONE = CELLS_ROTATED, CELLS_NONE
+_CLIFF_NORMALS = ((_N_CLIFF, _NONE), (_N_DETAIL, _NONE))
+_READS: dict[int, tuple[tuple[int, int], ...]] = {
+    KIND_CLIFF: ((ALBEDO_CLIFF, _ROT), (-1, _NONE), *_CLIFF_NORMALS),
+    KIND_LAYER: ((ALBEDO_CLIFF, _ROT), (ALBEDO_LAYER_BASE, _ROT), *_CLIFF_NORMALS),
+    KIND_ARCH: ((ALBEDO_ARCH, _ROT), (-1, _NONE), (_N_ARCH, _ROT), (-1, _NONE)),
+    KIND_DESERT: ((ALBEDO_DESERT, _ROT), (-1, _NONE), (-1, _NONE), (_N_DESERT, _ROT)),
+    KIND_SHELL: ((ALBEDO_SHELL, _ROT), (-1, _NONE), (_N_SHELL, _ROT), (_N_SHELL_DETAIL, _ROT)),
+}
+_GAINS = {KIND_CLIFF: (2.0, 0.5), KIND_LAYER: (2.0, 0.5), KIND_ARCH: (2.0, 1.0)}
 
 #: The texel the landscape layer's colour already holds: the ground bake's 1 m.
 LAYER_BASE_M = 1.0
@@ -64,21 +100,27 @@ _MIN_SIDE = 4
 
 class RockLook(NamedTuple):
     """What the texel kernel reads: the albedo atlas (linear) with each tile's span in metres
-    and median, the normal atlas (-1..1) with its tiles' spans, the anti-tiling cells (0..1)
-    and their span, the cosine and sine of each cell turn, the tiles of the families' top
-    layers and their rules, and the record the sidecar keeps."""
+    and median, the normal atlas (-1..1) with its tiles' spans, the cell noise's terms, each
+    kind's reads (``(KINDS, 4, 2)``: tile and cells), their inverse repeats (``(KINDS, 4)``)
+    and slope gains (``(KINDS, 2)``), the tiles of the families' top layers and their rules,
+    and the record the sidecar keeps."""
 
     albedo: Atlas
     albedo_tiles_m: F64Grid
     albedo_median: F32Grid
     normals: Atlas
     normal_tiles_m: F64Grid
-    cells: F32Grid
-    cell_tile_m: float
-    turn: F64Grid
+    noise: F32Grid
+    reads: I32Grid
+    inverse: F32Grid
+    gains: F32Grid
     tops: dict[int, int]
     rules: dict[int, TopRule]
     record: JsonObject
+
+    def top_inverse(self) -> F32Grid:
+        """Each albedo tile's inverse repeat, as a top layer reads it."""
+        return (1.0 / self.albedo_tiles_m).astype(np.float32)
 
 
 def mip_level(side: int, tile_m: float, spacing_m: float) -> int:
@@ -121,6 +163,40 @@ def _pack(tiles: list[F32Grid]) -> Atlas:
     return Atlas(texels, boxes)
 
 
+def seamless_cut(texels: F32Grid) -> F32Grid:
+    """``SHELL_CUT`` of ``texels`` as a tile that repeats without a seam: the ``SHELL_FADE``
+    after the cut, along each axis, faded into its start, so its last texel runs on into the
+    texel after it."""
+    rows, cols = texels.shape[:2]
+    u0, v0, side = SHELL_CUT
+    c0, r0 = round(u0 * cols), round(v0 * rows)
+    n, m = round(side * cols), round(SHELL_FADE * cols)
+    cut = texels[r0 : r0 + n + m, c0 : c0 + n + m].astype(np.float32)
+    ramp: F32Grid = (np.arange(m, dtype=np.float32) + np.float32(0.5)) / np.float32(m)
+    for axis in (1, 0):
+        head, tail = np.take(cut, range(m), axis), np.take(cut, range(n, n + m), axis)
+        weight = ramp.reshape([-1 if k == axis else 1 for k in range(cut.ndim)])
+        cut = np.concatenate([tail + weight * (head - tail), np.take(cut, range(m, n), axis)], axis)
+    return np.ascontiguousarray(cut, np.float32)
+
+
+def _table(spans: list[float]) -> tuple[I32Grid, F32Grid, F32Grid]:
+    """Each kind's reads, their inverse repeats and its slope gains."""
+    reads = np.full((KINDS, 4, 2), -1, np.int32)
+    reads[..., 1] = CELLS_NONE
+    inverse = np.ones((KINDS, 4), np.float32)
+    gains = np.ones((KINDS, 2), np.float32)
+    normal_spans = [tile_m for _name, tile_m in _NORMALS]
+    for kind, kind_reads in _READS.items():
+        for slot, (tile, cells) in enumerate(kind_reads):
+            reads[kind, slot] = (tile, cells)
+            if tile >= 0:
+                span = spans[tile] if slot in (ALBEDO, UNDER) else normal_spans[tile]
+                inverse[kind, slot] = np.float32(1.0 / span)
+        gains[kind] = _GAINS.get(kind, (1.0, 1.0))
+    return reads, inverse, gains
+
+
 def rock_look(textures: RockTextures, spacing_m: float) -> RockLook:
     """The textures at the levels a pixel of ``spacing_m`` reads them at."""
     found = textures.textures
@@ -135,10 +211,12 @@ def rock_look(textures: RockTextures, spacing_m: float) -> RockLook:
     fine = level("cliff_albedo", side, CLIFF_ALBEDO_TILE_M)
     levels["layer_base"] = max(fine, mip_level(side, CLIFF_ALBEDO_TILE_M, LAYER_BASE_M))
     albedo = [_mip(cliff, fine), _mip(cliff, levels["layer_base"])]
-    spans = [CLIFF_ALBEDO_TILE_M, CLIFF_ALBEDO_TILE_M, ARCH_TILE_M, DESERT_TILE_M]
+    spans = [CLIFF_ALBEDO_TILE_M, CLIFF_ALBEDO_TILE_M, ARCH_TILE_M, DESERT_TILE_M, SHELL_TILE_M]
     for name, tile_m in (("arch_albedo", ARCH_TILE_M), ("desert_albedo", DESERT_TILE_M)):
         own = _linear(found[name])
         albedo.append(_mip(own, level(name, own.shape[0], tile_m)))
+    shell = seamless_cut(_linear(found["shell_albedo"]))
+    albedo.append(_mip(shell, level("shell_albedo", shell.shape[0], SHELL_TILE_M)))
     tops: dict[int, int] = {}
     rules: dict[int, TopRule] = {}
     for code, (rule, rgba) in sorted(textures.tops.items()):
@@ -150,20 +228,20 @@ def rock_look(textures: RockTextures, spacing_m: float) -> RockLook:
     normals: list[F32Grid] = []
     for name, tile_m in _NORMALS:
         signed = _signed(found[name])
+        signed = seamless_cut(signed) if name == "shell_normal" else signed
         normals.append(_mip(signed, level(name, signed.shape[0], tile_m)))
-    cells = found["cells"].astype(np.float32) / np.float32(255.0)
-    cells = _mip(cells, level("cells", cells.shape[0], CELL_TILE_M))
-    turn = 2.0 * np.pi * np.arange(256, dtype=np.float64) / 255.0
     medians = np.stack([np.median(t.reshape(-1, 3), axis=0) for t in albedo])
+    reads, inverse, gains = _table(spans)
     return RockLook(
         albedo=_pack(albedo),
         albedo_tiles_m=np.asarray(spans, np.float64),
         albedo_median=medians.astype(np.float32),
         normals=_pack(normals),
         normal_tiles_m=np.asarray([tile_m for _name, tile_m in _NORMALS], np.float64),
-        cells=cells,
-        cell_tile_m=CELL_TILE_M,
-        turn=np.stack([np.cos(turn), np.sin(turn)], -1),
+        noise=noise_terms(found["cells"]),
+        reads=reads,
+        inverse=inverse,
+        gains=gains,
         tops=tops,
         rules=rules,
         record=_record(textures, levels, rules),
@@ -173,8 +251,8 @@ def rock_look(textures: RockTextures, spacing_m: float) -> RockLook:
 def _record(
     textures: RockTextures, levels: dict[str, int], rules: dict[int, TopRule]
 ) -> JsonObject:
-    """What the sidecar says of the look: the textures read, each one's level and span, and
-    each family's top layer."""
+    """What the sidecar says of the look: the textures read, each one's level and span, the
+    textures turned in cells, and each family's top layer."""
     return {
         "textures": dict(textures.sources),
         "levels": dict(levels),
@@ -185,7 +263,11 @@ def _record(
             "cells": CELL_TILE_M,
             "arch": round(ARCH_TILE_M, 3),
             "desert": round(DESERT_TILE_M, 3),
+            "shell": round(SHELL_TILE_M, 3),
+            "shell_detail": round(SHELL_DETAIL_TILE_M, 3),
         },
+        "shell_cut_uv": list(SHELL_CUT),
+        "rotated_cells": ["cliff_albedo", "arch", "desert", "shell"],
         "tops": {
             FAMILIES[code]: {
                 "tile_m": round(rule.tile_m, 3),

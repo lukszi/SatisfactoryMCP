@@ -419,22 +419,75 @@ rendered: the colour targets of section 31 stay, and the textures add what a top
 the game shows inside them. `gamedata/rocks/looks.py` reads the textures,
 `palette/painted/rock_look/` lays them on a band, and `surfaces.py` draws with them.
 
-**What each surface wears.** The tile sizes are the game's own, from the compiled landscape
-pixel shaders (`FG_Landscape`'s single-layer Cliff component) and the materials' parameters.
+**What each surface wears.** The tile sizes are the game's own, from the compiled pixel
+shaders (`FG_Landscape`'s single-layer Cliff component, `DesertRock_WA`, `Asset_Master`) and
+the materials' parameters.
 
 | Surface | Albedo | Normal maps | Anti-tiling |
 | --- | --- | --- | --- |
 | Cliffs (families 1 to 7), the render-only rocks of those families, rocks of no family, and the landscape's Cliff layer | `Cliff_Sediment_Alb`, 20 m: UV0 times the layer's `Scale` 0.05 | `TX_Cliff_01_Nor` at 10.24 m (1/1024 a cm, world top-projected) and `T_Detail_Rocky_N` at 14.49 m (0.000690229 a cm) laid on it | rotated cells |
-| Arches and boulders (the top pass) | `TX_Arc_Rock_BC`, 8.93 m: an arch mesh spans about 125 m of surface per UV0 unit (`ArcMedium_01`, `ArcLarge_01` and `ArcSmall_01` 125 to 126 m) and its `MI_Arc_*` instances repeat the rock 13 to 15 times | `TX_Arc_Rock_N`, the same tile | none |
-| Desert rock (family 8) | `TX_DesertRock_Rough_01_Alb`, 12.5 m: an `SM_DesertRock` mesh spans 72 to 77 m per UV0 unit and `DesertRock_WA` repeats the rock 6 times | `TX_DesertRock_Rough_01_normal`, the same tile | none |
+| Arches and boulders (the top pass) | `TX_Arc_Rock_BC`, 8.93 m: an arch mesh spans about 125 m of surface per UV0 unit (`ArcMedium_01`, `ArcLarge_01` and `ArcSmall_01` 125 to 126 m) and its `MI_Arc_*` instances repeat the rock 13 to 15 times | `TX_Arc_Rock_N`, the same tile | rotated cells, for the mesh's UVs |
+| Desert rock (family 8) | `TX_DesertRock_Rough_01_Alb`, 17.15 m: `DesertRock_WA` repeats it 6 times a UV0 unit, and the up faces of `SM_DesertRock_05`, most of the desert seen from above, span 102.9 m a unit (below) | `TX_DesertRock_Rough_01_normal`, the same tile, at its own strength | rotated cells, for the mesh's UVs |
+| Shells (the render-only `*Shell*` meshes) | a 10 m square cut from the first island of `TX_SmallShell_BC`, faded into a tile (below) | the same cut of `TX_SmallShell_N`, and `SeaRock_Detail_Nor` at 1.40 m (`DetailNormal_UV` 22.8) laid on it | rotated cells, for the mesh's UVs |
 | A family's top layer | its root's top texture (section 30, "Rock surfaces"): forest `TX_Forest_Far_01_Alb` and red grass `TX_GrassRed_01_Alb` at 50 m, the cliff master's `TopLayer Tiling Far` 0.02; grass `TX_Grass_Far_01_Alb` at 83.3 m, `Cliff_Grass`'s own 0.012; sand `TX_Sand_BC` at 50 m | none of its own | none |
 
 The **rotated cells** are the landscape's anti-tiling: `Cell_Bombing_Noise_basecolor` at 100 m
-(129 cells, about 8.8 m each). The shader reads the body a second time in each cell, offset by
+(129 cells, about 8.8 m each). The shader reads a texture a second time in each cell, offset by
 `2R - 1` and `2G - 1` tiles, scaled by `0.9 + 0.2 G`, turned by `2 pi B`, and blends the copy
-in by `2A - 0.5` of the cell mask, so the borders show the plain tiling. The cell's colour is
-read nearest, so each turn is one of 256 whose cosine and sine numpy works out once; its mask
-is read bilinear.
+in by `saturate(2A - 0.5)` of the cell mask, so the borders show the plain tiling; a turned
+normal is turned back. The look reads them with the ground's own code,
+`terrain/ground_detail/cells.py` ("The layers' own textures" below), the noise's terms read
+bilinear as the shader's sampler does.
+
+**What the meshes' materials do** (2026-10-09). No rock mesh material turns its textures in
+cells. The compiled pixel shaders of `Rock_WA` (both permutations), `Cliff`, `Cliff_Sand`,
+`DesertRock_WA`, `MM_Arc_01` and `Asset_Master` read every texture at the mesh's UV0 times a
+parameter, and none reads one at coordinates taken from another texture, which the cells need;
+`Rock_WA` imports `MF_CSS_CellBombing`, but no compiled permutation uses it. `DesertRock_WA`
+reads its rock at UV0 times `Tiling` (6) times the instance's `ObjectScale`, so a scaled rock
+keeps its texel size, and a mesh's own tile is its metres a UV unit over 6; it blends
+`TX_DesertRock_Rough_01` toward `TX_DesertRock_Cracked_01` by the B channel of the mesh's own
+`ORMA` map (UV0 times one), tints by a height gradient (`CliffRock_CurveAtlas`) and lays sand
+on top at `Sand Tiling` 32. In the game the repeat is broken by each mesh's UV layout and each
+placement's turn and shift, and by that mask; a projection on the ground plane has none of
+them, and drew the desert as one lattice over whole mesas, 12.5 m a cell. So the look turns
+every texture of its own (the arches', the desert rock's and the shells') in the landscape's
+cells, the game's anti-tiling for a texture laid on the ground plane, in place of the meshes'
+UVs; the cliffs wear the landscape's Cliff layer material, which has the cells already.
+
+**The desert's tile.** Seen from above, the desert is the placements' up faces. Per desert
+mesh, over its up faces (normal up 0.5 or more) weighted by their plan area, the metres a UV0
+unit spans, and the mesh's share of the desert's plan area over its placements (scale
+squared, overlaps counted):
+
+| Mesh | Placements | Metres a UV unit | Tile | Share |
+| --- | --- | --- | --- | --- |
+| `SM_DesertRock_05` | 1,685 | 102.9 | 17.15 m | 53 % |
+| `SM_DesertRock_01` | 686 | 88.3 | 14.7 m | 18 % |
+| `SM_DesertRock_02` | 699 | 94.8 | 15.8 m | 11 % |
+| `SM_DesertRock_03` | 606 | 85.4 | 14.2 m | 9 % |
+| `SM_DesertRock_06`, `_04`, the pillars and the boulder | 1,972 | 31 to 116 | 5.2 to 19.3 m | 9 % |
+
+`SM_DesertRock_Bridge_01`'s 33 placements scaled 5 to 267 times are vistas outside the map's
+frame and are left out. The direct raster keeps a family, not a mesh, so the desert takes the
+coverage-weighted median, 17.15 m; the 12.5 m before was the all-faces median of `_01` and
+`_04` alone.
+
+**The shells.** The big grey masses on the coasts, at (-422, -2138) among others, are not rock:
+they are `PlateauShell`, `SM_BigShell_01` and `SmallShell`, render-only meshes of the coral
+folder that the mesh pass classes `shell`. They drew in the palette's one shell colour,
+untouched by the look. Their material, `Asset_Master`, maps albedo, normal and reflection by
+UV0 once over the mesh, each mesh's texture unique to it, and tiles only `SeaRock_Detail_Nor`,
+`DetailNormal_UV` times a UV unit without the instance's scale undone. That detail is 1.40 m on
+a `SmallShell` as placed (58.7 m a UV unit at the median scale 0.545; 4,028 of the 4,223
+shells), and box-filtered to a 0.23 m pixel it is nearly flat, so it alone left the shells
+flat. Each shell texture holds two islands, the upper faces of the mesh's two lobes. The look
+cuts a square from the first island of `SmallShell`'s albedo and normal, 0.3125 of the texture
+(10.0 m as placed) from UV (0.15, 0.13), and fades the next 0.0625 into the square's start along
+both axes, so the tile runs on into itself without a seam and without the four-fold marks a
+mirrored cut drew; the cut is turned in the cells, over the shell colour as the rock's
+textures are over theirs, with the detail laid on its normal at full strength as the
+material's reoriented blend has it.
 
 **Seen from above.** Every texture is projected on the ground plane, the one a view from
 straight above sees undistorted. The landscape shader does that for the Cliff layer; the
@@ -470,7 +523,11 @@ ramp of `nz` 0.60 to 0.85 and the noise patches (section 31, "The top layer's co
 mapping, as the landscape shader does: the base map's slope doubled, the detail's halved). Its
 light is the style's sky and sun under the default sun, and the look multiplies the colour by
 that light over the same light on the drawn surface's normal, so the run's own light, baked or
-live, still lights the surface and the maps add only their relief (`rock_look.shade`, 1).
+live, still lights the surface and the maps add only their relief (`rock_look.shade`, 1). The
+desert rock's map is the detail on the mesh's own normal in `DesertRock_WA`, at
+`TiledNormal_Intensity` 1, so it is laid at its own strength since 2026-10-09 (its slope was
+doubled before, as a base map's); the shells' maps are as `Asset_Master` blends them, both at
+full strength; the arches keep the doubled base.
 
 **The arches' own family.** The game's baked distant view (the mesh HLOD bake, rasterised at
 1 m) has the arches and boulders lighter than the cliffs around them: per area, the median
@@ -485,10 +542,13 @@ are: the Dune Desert's arches and rib bones are terracotta in the baked view, #b
 the grey had replaced (section 31, "The second review").
 
 **On the GPU.** `reference.look_texels` reads the pixels a band's rock covers, flat;
-`rock_look/gpu.py` with `texels.cu` does the same on the device with `--gpu`, the atlases
-uploaded once a run, to the same bits (float64 positions until they are wrapped into a tile,
-float32 after, compiled without fused multiply-adds). Two million random pixels of the install's
-textures give the same bytes both ways. The reference costs about 2.5 us a pixel on one core;
+`rock_look/gpu.py` with the `look_texels` kernel of `render/gpu/cells.cu` does the same on the
+device with `--gpu`, the atlases uploaded once a run, to the same bits (positions in float32
+metres, as the ground's detail has them, compiled without fused multiply-adds). `cells.cu`
+holds the landscape's cells once, and both kernels that read through them, the ground's
+detail and this one. Two million random pixels of the install's textures gave the same bytes
+both ways before the cells were shared; `tests/mapgen/test_rock_look.py` keeps the check on
+20,000 of every kind. The reference costs about 2.5 us a pixel on one core;
 on the five windows below, drawn on 2 shared threads, a window took 0.4 to 0.7 us a pixel more
 where rock covers most of it, and nothing more where it covers little.
 
@@ -502,6 +562,29 @@ face, as the baked view has them, where the patches left a third to a half bare.
 artifact city draws #8c8873 where it drew the area's #786c57. On the 2048 sheet (G1, painted,
 lit) 1,338,601 of the 5,570,560 tile pixels over all levels move, at most by 103; the light's
 tiles are the same bytes.
+
+**Measured: the cells, the desert's tile and the shells** (2026-10-09, build 502094). Six 1024
+px windows of the 32768 sheet against v9 (`678700f3`), drawn with `--gpu`; the CPU draws the
+same bytes (the seams and the coastal rock, lit and unlit). Pixels changed of 1,048,576:
+
+| Window | Unlit | By more than 8 | Lit |
+| --- | --- | --- | --- |
+| The seams, desert rock (3080, -2975) | 716,998 | 386,386 | 717,385 |
+| A desert mesa (1800, -2400) | 951,102 | 543,237 | 951,671 |
+| Desert Canyons, its region's centre (-76, -1803) | 301,864 | 94,935 | 300,319 |
+| Desert Canyons' cliffs (128, -1500) | 408,664 | 145,024 | 408,071 |
+| The coastal rock (-422, -2138) | 246,518 | 58,664 | 244,960 |
+| A Grass Fields arch (110, 2800) | 141,590 | 43,387 | 141,994 |
+
+The desert's lattice is gone: over the desert rock of the unlit mesa window, the high-passed
+luminance correlates 0.70 with itself one 12.5 m tile along either axis in v9, and 0.21 and
+0.19 one 17.15 m tile along now (0.52 to 0.17 at the seams), what the plain tiling at the
+cells' borders leaves. Its median holds, #c98b65 against #cb8c66 at the mesa, #c5815c against
+#c6835e at the seams. On the coastal rock's bare shells (no crown over them) the median is
+(119, 115, 113) before and (120, 115, 114) after, and the grain under 1.4 m rises from a
+standard deviation of 1.8 levels to 8.5. The cliffs move by the cells' new reading (the
+noise's terms bilinear where its colour was read nearest, float32 positions), and the ground
+by the cells' scale (below, "The layers' own textures"), neither a change of look.
 
 ### The Titan trees
 
@@ -554,10 +637,11 @@ always keeps that much of its body colour. The sea is unchanged. A water class's
 
 The bake's texels are a metre, so at 0.229 m a pixel the painted ground was a soft blur with
 a staircase along every edge between two layers: flat paint where the game shows grass,
-gravel and sand. At 16384 and 32768 px the ground now takes the landscape layers' own
-textures below the bake's metre, read as the game's landscape material reads them from
-above, and the bake keeps the colour at every scale it holds. Below 16384 a pixel is a metre
-or wider and nothing changes.
+gravel and sand. From 8192 px up the ground now takes the landscape layers' own textures
+below the bake's metre, read as the game's landscape material reads them from above, and the
+bake keeps the colour at every scale it holds. The detail is drawn wherever a pixel is under
+`DETAIL_MAX_SPACING_M`, a metre: an 8192 pixel is 0.92 m, so it draws there too, if little;
+at 4096 and below a pixel is 1.83 m or wider and nothing changes.
 
 **The textures.** Paint generator 5 keeps each layer's albedo, normal and height texture and
 the material's cell-bombing noise in `ground.tex.z`, indexed by `ground_textures` in
@@ -599,13 +683,16 @@ grass's.
 1. **Weights.** Each texel keeps its four heaviest layers and their weights (8 bytes a texel,
    made once a run); the fifth and later carry 0.006 of a texel's weight on average. A pixel
    reads them bilinear, corner by corner, a layer's slots in order.
-2. **Cells.** The noise repeats over 100 m (UV0 × 0.01). Its R shifts a cell along u by up to a
-   repeat and scales it by 0.9 to 1.1, G shifts it along v, B turns it a whole circle, and A
-   masks it. A layer with cells reads its texture a second time in the cell, turned (shifted
-   only for the ripples), and mixes it in by `clamp(2 A - 0.5, 0, 1)`, so the cells' borders
-   show the plain tiling; a turned cell's normal is turned back. The turn's cosine and sine
-   are worked out from the noise's texels on the host, so the kernel computes no
-   trigonometry.
+2. **Cells** (`terrain/ground_detail/cells.py`, which the rock look reads through too). The
+   noise repeats over 100 m (UV0 × 0.01). Its R shifts a cell along u by up to a repeat, G
+   shifts it along v and scales it by 0.9 to 1.1 (`0.2 G + 0.9` in the compiled Sand shader;
+   until 2026-10-09 the scale was read from R), B turns it a whole circle, and A masks it. A
+   layer with cells reads its texture a second time in the cell, turned (shifted only for the
+   ripples), and mixes it in by `clamp(2 A - 0.5, 0, 1)`, so the cells' borders show the plain
+   tiling; a turned cell's normal is turned back. The turn's cosine and sine are worked out
+   from the noise's texels on the host, so the kernel computes no trigonometry; between two
+   cells it blends the two turns' cosines and sines where the shader blends the turn, inside
+   the borders the mask leaves plain.
 3. **Height blend**, as the engine's layer blend does it: `clamp(2 w - 1 + h, 1e-4, 1)` for
    each layer, over their sum. A layer that weighs nothing at a pixel is left out.
 4. **Detail.** Each albedo texture has its low pass beside it, a Gaussian of 0.5 m
@@ -634,8 +721,9 @@ adds it to each block's normals along their slope and renormalises
 the page's live sun, show the ground's relief on every layer: one pyramid serves every
 style. The coarser levels take their normals from the downsampled heights, without it.
 
-**On the GPU.** With `--gpu` the detail is `render/gpu/ground.cu`, a thread a pixel, on
-textures uploaded once a process with `texels.upload_atlas`; the texel reads are `texels.cu`'s.
+**On the GPU.** With `--gpu` the detail is the `ground_detail` kernel of
+`render/gpu/cells.cu`, a thread a pixel, on textures uploaded once a process with
+`texels.upload_atlas`; the cells and the texel reads are the ones the rock look's kernel shares.
 It gives the reference's bits (`tests/mapgen/test_ground_detail.py`, which skips without a
 device); a piece the device has no memory for runs on the CPU.
 
@@ -657,7 +745,7 @@ the bake's. The grain under 1.5 m rises from a standard deviation of 5.2 to 8.9 
 to 9.3. Drawn with `--no-light`, where the sun term takes the bumps too, 343,585 to 720,433
 pixels a window change. Beside frames of the 1.0, 1.1 and 1.2 trailers, the grass reads at
 the grain of the 1.0 trailer's top-down Grass Fields, the dunes stay smooth as the 1.2 aerial
-shows them, and the forest floor and the beaches take their litter and pebbles. Below 16384
+shows them, and the forest floor and the beaches take their litter and pebbles. Below 8192
 nothing moves: at 2048 every tile and light tile of the three layers is the same as master's,
 and only the painted sidecar's style version and digest change. A store without the textures
 draws the 32768 windows of the gates' G2 the same as master, all three layers.
@@ -682,8 +770,17 @@ draws the 32768 windows of the gates' G2 the same as master, all three layers.
 
 - Nothing here has been compared with an in-game top-down view.
 - The rock textures are laid on the ground plane, not by the meshes' UVs: a wall seen from
-  above shows the texture at its plan's scale, and the arches' and desert rock's tile is the
-  meshes' median UV density, one number for meshes that vary.
+  above shows the texture at its plan's scale, and the arches', the desert rock's and the
+  shells' tile is one number for meshes that vary (the desert's 14.2 to 17.2 m on its main
+  meshes). The landscape's rotated cells stand in for each mesh's own UV layout and
+  placement; no mesh material has them.
+- The arches' tile leaves out the instance's scale, which `MM_Arc_01` does not undo.
+- Desert rock draws its rough texture only: the cracked one, blended in by each mesh's own
+  mask, the height gradient and the sand on top are not drawn.
+- Every shell wears one cut of `SmallShell`'s texture, the 195 big and plateau shells too, in
+  the palette's one shell colour; `MI_SmallShell_Desert`'s red albedo is not drawn.
+  Laying each shell's own texture needs its UVs or its placement per pixel, which the mesh
+  raster does not keep.
 - The top layer's mask reads the look's normal maps where the game reads each mesh's own; an
   arch's top layer (grass and moss on `MI_Arc_Grass_01` and kin) is not drawn, as the top pass
   does not say which arch instance a pixel is.

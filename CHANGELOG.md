@@ -83,7 +83,7 @@ Planned as 0.2.0.
   normal maps, spherical normals and moss. `--gpu` runs the raster's per-sample work on the
   GPU, to the same bytes. The cache also holds the Titan canopy's two leaf meshes and their
   218 placements.
-- Map renders: the Satellite map's ground at 16384 and 32768 px shows the game's own landscape
+- Map renders: the Satellite map's ground at 8192 px and up shows the game's own landscape
   textures under the baked colour's metre: grass, gravel, sand, forest floor and the other
   paint layers at the repeats the game's shaders use from above, turned in cells as the game
   turns them and height-blended where layers meet, while the colour at every larger scale
@@ -127,6 +127,12 @@ Planned as 0.2.0.
   cliff's moss, grass or sand lies where the cliff material's own slope mask puts it, in its
   own texture, instead of in noise patches. The textures are read from the game install at
   each render, and `--gpu` reads them on the device to the same bytes.
+- Map renders: the Satellite map's desert rock no longer repeats in a visible lattice over
+  whole mesas. Its texture is turned in the landscape's cells, as the arches' and the shells'
+  are, standing in for the meshes' own UV layouts, and repeats at the game's 17 m, the size
+  of the desert meshes seen most from above, instead of 12.5 m. The big grey shells on the
+  coasts, which drew as flat colour, wear their own shell texture and relief. The style's
+  version goes up.
 - Map renders: the Satellite map's sea is turquoise over the shallows, steel blue in the
   lagoons and navy in the deep, fitted to 1.0 screenshots of the sea where it was teal at
   every depth; the seabed coral carpet keeps its colour. Coral caps are a warm grey-pink, as
@@ -271,6 +277,15 @@ Planned as 0.2.0.
   and are rebuilt once, the direct raster taking about 2.4 times as long; a kept light is
   baked again. The light takes two to three times as long under crowns and arches, and each
   of its processes counts 2.0 GB instead of 1.5.
+- Map generator (light version 6): the tree canopy is porous. Crowns and the Titan canopy
+  let light through by their cover, cast from the crown sprites at full resolution, so canopy
+  shade is dappled instead of a solid footprint swept by the sun: the straight diagonal wedges
+  in the Titan Forest go, at the default sun and on the page. On a page the trees are lit by
+  their own horizon on the canopy top, not the ground's beneath it. The horizon atlas keeps
+  97 cells; cells 64 to 95 now hold the ground's horizon on the canopy (`canopy_cell` in the
+  light model, replacing `titan_cell`), and an older pyramid still draws. The species'
+  undersides and their 33 s per run are gone. Every painted lit map moves, the other styles
+  keep their bytes; a kept light is baked again, and the horizon tiles grow by about a sixth.
 - Map generator (light version 5): a tree crown casts from where its species' leaves start,
   read off its mesh at the start of a render (a green tree or a Kapok three quarters up, a
   bush from the ground), instead of halfway up every crown, and the Titan trees as a 12 m slab
@@ -301,6 +316,10 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: the Satellite map's ground turns its texture cells by the scale the game's
+  landscape shader reads from the cell noise's green, not its red.
+- Maps tab: a render's estimate counts the ground detail's 2.1 GB of scratch from 8192 px,
+  where the render starts drawing it, instead of from 16384.
 - Map renders: the game-painted map's rock outside the deserts is grey again, not the tan of
   the dirt paths. Its derived colour now comes from the texture the cliff material samples,
   untinted, as the game's own baked distant view of the cliffs has it; it came from two

@@ -108,8 +108,8 @@ def band_look(
     _band, lo, _hi, c0, _c1, spacing_m = scene["grid"]
     normals = surface_normals(scene["z_m"], spacing_m)[rows, cols]
     px = LookPixels(
-        x_m=np.asarray((c0 + cols + 0.5) * spacing_m, np.float64),
-        y_m=np.asarray((lo + rows + 0.5) * spacing_m, np.float64),
+        u=np.asarray((c0 + cols + 0.5) * spacing_m, np.float32),
+        v=np.asarray((lo + rows + 0.5) * spacing_m, np.float32),
         normal=normals,
         kind=kind[rows, cols].astype(np.uint8),
         top=top_tile[rows, cols].astype(np.int32),

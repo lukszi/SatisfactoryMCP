@@ -1798,9 +1798,9 @@ reference, and the tiles are the same bytes either way.
   crown span surfaces, are uploaded once; per direction the march, the band rules of
   `march._finish`, the holes' fill (`holes.fill_holes`, by each pixel's nearest index), the
   folded horizon (`path_horizon`) and where it folds a band run as kernels
-  (`lighting/spans/cells.cu`), and the ground's, crowns' and Titan trees' cells come back to the
-  host for their bytes (light version 5: the trees' cells hold the trees alone, so the crown
-  cell's test against the ground's went). The
+  (`lighting/spans/cells.cu`), and the ground's cells come back to the host for their bytes.
+  The trees' porous march (light version 6) runs as its own kernel (`lighting/spans/gpu.cu`),
+  the same bits as `spans/porous.py`. The
   arctangent and the degrees run in numpy between the march and the rules after it: on the
   horizon whole, and on a band's edges only where it floats. numpy's float32 arctangent and
   degrees give an element what they give it in any array (4.2 million values over nine
@@ -1809,9 +1809,9 @@ reference, and the tiles are the same bytes either way.
   scalar loops; the signed zero of "Why the bits are the same" can meet them and cannot show.
   The bands of a cell come back only where the bake reads them, the default sun's two ground
   cells (`wanted`); every cell with a band brings back where it stores the band folded in
-  (`band_in`, a byte a pixel), which sets its atlas's WebP quality (section 29). The trees
-  together over the ground, which the default sun's crowned terms read, are marched for its
-  two directions with the host's operations, the march a call at a time on the device.
+  (`band_in`, a byte a pixel), which sets its atlas's WebP quality (section 29). The canopy
+  cells' plain march over the ground runs with the host's operations, a call at a time on the
+  device.
 - **Ambient occlusion** (`lighting/occlusion.cu`, light version 5, section 29 "Ambient
   occlusion"): the box sums are of heights in integer steps, exact in any order, so the twin
   sums each box straight, a thread a pixel, where the reference takes running sums; the float
@@ -2162,8 +2162,9 @@ clamped), reads tiles of an atlas without touching their neighbours, and stamps 
 turned and scaled, over a colour and its cover in their order; `render/gpu/texels.py` does
 the same on the device, to the same bytes, with the sprites binned by 16-pixel cells on the
 host so every pixel walks only the sprites that may reach it. The ground's detail draws on
-them since 2026-10-09: its textures go up with `upload_atlas` and `render/gpu/ground.cu` reads
-them as `texels.cu` does (painted.md section 30, "The layers' own textures").
+them since 2026-10-09: its textures go up with `upload_atlas` and `render/gpu/cells.cu` reads
+them as `texels.cu` does, through the landscape's rotated cells it shares with the rock look's
+kernel (painted.md section 30, "The layers' own textures" and "Rock textures").
 
 **The crowns on the device** (2026-10-08). `render/gpu/crowns.py` stamps a band's crowns from
 their sprites with the `stamp_crowns` kernel beside the sprite stamp in `texels.cu`: the

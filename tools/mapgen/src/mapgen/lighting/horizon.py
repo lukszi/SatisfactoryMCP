@@ -47,6 +47,7 @@ __all__ = [
     "kernel_offsets",
     "kernel_steps",
     "march_horizon",
+    "received_horizon",
     "march_steps",
     "nearest",
     "normals",
@@ -276,6 +277,15 @@ def march_horizon(
         return out
     crowns = crown_horizon(crown_surface(z, occluder), halo, az_deg, spacing_m)
     return np.maximum(out, crowns)
+
+
+def received_horizon(
+    solid: F32Grid, z: F32Grid, halo: int, az_deg: float, spacing_m: float, fade: Fade = FADE_M
+) -> F32Grid:
+    """The faded horizon over ``solid`` toward one azimuth, received on ``z``, in degrees."""
+    solid, z = np.asarray(solid, np.float32), np.asarray(z, np.float32)
+    best = _march(solid, z, halo, az_deg, spacing_m, fade)
+    return np.degrees(np.arctan(best)).astype(np.float32)
 
 
 def crown_horizon(

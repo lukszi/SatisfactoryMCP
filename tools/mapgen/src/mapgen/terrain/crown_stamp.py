@@ -31,7 +31,6 @@ from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I32Grid, I6
 
 __all__ = [
     "COVER_TOP_MIN",
-    "DOME_SIGMA_M",
     "CrownBand",
     "CrownSet",
     "LitCrowns",
@@ -43,8 +42,6 @@ __all__ = [
     "stamp_placed",
 ]
 
-#: The canopy light's smoothing of the crown tops (``lighting/spans/canopy.py``).
-DOME_SIGMA_M = 0.75
 #: Cover under which a pixel says nothing about the crown's height.
 COVER_TOP_MIN = np.float32(0.25)
 

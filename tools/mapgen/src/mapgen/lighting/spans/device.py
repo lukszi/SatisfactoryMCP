@@ -3,8 +3,9 @@ the block's planes kept on the device from the first direction to the last.
 
 Each march, the band rules after it, the holes' fill, the folded horizon and where it holds
 a band run on the device (``gpu.cu``, ``cells.cu``); the arctangent and the degrees, numpy's
-transcendentals, run on the host between them, on the pixels that need them. The cells come
-back as the host's code makes them, bit for bit. Imported only when ``mapgen.jit.gpu_on()``.
+transcendentals, run on the host between them, on the pixels that need them, as do the trees'
+shade and the canopy cells' resampling. The cells come back as the host's code makes them, bit
+for bit. Imported only when ``mapgen.jit.gpu_on()``.
 docs/map/renders.md section 41, "On the GPU".
 """
 
@@ -33,6 +34,8 @@ from mapgen.lighting.spans.march import (
     span_steps,
     step_reach,
 )
+from mapgen.lighting.spans.porous import THICK_MIN_M, PorousSurface, porous_steps
+from mapgen.lighting.spans.trees import CanopyPlanes, canopy_from_quarter
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid
 
 __all__ = ["DeviceBands", "DeviceCells"]
@@ -56,7 +59,8 @@ class DeviceBands(NamedTuple):
 
 class DeviceCells:
     """``bake.horizon_cells``' operations on the device, for one block: its heights (marched
-    plain where no span casts) or its span surfaces, uploaded once, and its holes."""
+    plain where no span casts) or its span surfaces, its trees and its canopy's quarter
+    planes, uploaded once, and its holes."""
 
     def __init__(
         self,
@@ -65,6 +69,7 @@ class DeviceCells:
         spacing_m: float,
         surfaces: Sequence[SpanSurface],
         holes: Holes | None,
+        trees: tuple[PorousSurface, CanopyPlanes] | None = None,
     ) -> None:
         self.halo, self.spacing_m, self.z_half = halo, spacing_m, z_half
         self.shape = (z_half.shape[0] - 2 * halo, z_half.shape[1] - 2 * halo)
@@ -73,6 +78,16 @@ class DeviceCells:
             id(s): span_gpu.resident((s.z, s.solid, s.lo, s.hi, s.tops), rows_with_spans(s.lo))
             for s in surfaces
         }
+        self.trees = trees
+        self.porous_on: span_gpu.Resident | None = None
+        self.canopy_on: tuple[_Plane, _Plane] | None = None
+        self.titans = False
+        if trees is not None:
+            porous, canopy = trees
+            planes = (porous.z, porous.lo, porous.hi, porous.tau_crowns, porous.tau_titans)
+            self.porous_on = span_gpu.resident(planes, rows_with_spans(porous.lo))
+            self.titans = bool(np.any(porous.tau_titans))
+            self.canopy_on = (gpu.device(canopy.solid), gpu.device(canopy.receivers))
         self.holes = holes
         self.nearest: cp.ndarray[np.int64] | None = None
         if holes is not None and holes.nearest is not None:
@@ -105,6 +120,27 @@ class DeviceCells:
             gpu.device(as_degrees(best.get())), _band(lo, where), _band(hi, where), seen
         )
         return self._filled(bands)
+
+    def porous(self, az_deg: float) -> F32Grid:
+        """``bake._OnHost.porous``: the trees' optical depth, filled, on the host."""
+        assert self.porous_on is not None
+        steps = porous_steps(az_deg, self.spacing_m, self.halo, self.titans)
+        ray = (band_target(az_deg)[0], THICK_MIN_M)
+        depth = span_gpu.porous_resident(self.porous_on, self.halo, steps[:4], ray, steps.reach)
+        return self._fill(depth, 0.0).get()
+
+    def canopy(self, az_deg: float) -> F32Grid:
+        """``bake._OnHost.canopy``: the ground's horizon received on the canopy, filled."""
+        assert self.canopy_on is not None and self.trees is not None
+        planes = self.trees[1]
+        solid, receivers = self.canopy_on
+        n = (solid.shape[0] - 2 * planes.halo, solid.shape[1] - 2 * planes.halo)
+        best = cp.zeros(n, np.float32)
+        quarter_m = 2 * self.spacing_m
+        steps = plain_steps(march_steps(az_deg, quarter_m, FADE_M), planes.halo)
+        gpu.march_on_device(solid, receivers, planes.halo, steps, best)
+        found = canopy_from_quarter(as_degrees(best.get()), planes, self.halo)
+        return self._fill(gpu.device(found), 0.0).get()
 
     def path(self, bands: DeviceBands, el: float) -> _Plane:
         """``bake.path_horizon`` of filled bands."""

@@ -16,6 +16,7 @@ from mapgen.lighting import stage
 from mapgen.lighting.light_tiles import downsample, padded_window
 from mapgen.lighting.spans import bake as span_bake
 from mapgen.lighting.spans import march as spans
+from mapgen.lighting.spans import trees as span_trees
 from mapgen.lighting.spans.slabs import SlabPlanes, SlabStore
 from mapgen.lighting.sun import DEFAULT_SUN
 
@@ -172,17 +173,17 @@ def test_the_default_sun_s_shade_is_filtered_only_where_a_span_was_in_reach():
     marched = {
         k: spans.march_spans(surface, HALO, k * 360.0 / hz.HORIZON_DIRS, SP) for k in (20, 21)
     }
-    found = span_bake.default_shade(marched, DEFAULT_SUN, crowns=False)
+    found = span_bake.default_shade(marched, DEFAULT_SUN)
     assert found is not None
     use, shade = found
     assert use[:40].any() and not use[-40:].any(), "rows the rays from it never meet keep it"
     assert shade.dtype == np.float32 and ((shade >= 0) & (shade <= 1)).all()
     plain = {k: span_bake.plain_bands(b.horizon) for k, b in marched.items()}
-    assert span_bake.default_shade(plain, DEFAULT_SUN, crowns=True) is None
+    assert span_bake.default_shade(plain, DEFAULT_SUN) is None
 
 
-def test_the_crowns_of_a_window_reaching_far_off_the_sheet(tmp_path, monkeypatch):
-    monkeypatch.setattr(span_bake, "_CROWN_ROWS", 16)
+def test_the_trees_of_a_window_reaching_far_off_the_sheet(tmp_path, monkeypatch):
+    monkeypatch.setattr(span_trees, "_TREE_ROWS", 16)
     z = np.zeros((64, 64), np.float32)
     top = np.full(z.shape, np.nan, np.float32)
     top[40:60, 10:20] = 8.0
@@ -191,10 +192,11 @@ def test_the_crowns_of_a_window_reaching_far_off_the_sheet(tmp_path, monkeypatch
     z_window = padded_window(z, *window)
     z_half = downsample(z_window)
     store = SlabStore(tmp_path / "slabs")
-    crowns = span_bake.block_spans(tmp_path, window, z_window, z_half, store).crowns
-    assert crowns is not None and crowns.lo.shape == z_half.shape
-    assert (crowns.lo[4:14, 9:14] == 4.0).all() and np.isfinite(crowns.lo).sum() == 50
-    assert crowns.z[30:].tobytes() == z_half[30:].tobytes()
+    trees = span_bake.block_spans(tmp_path, window, z_window, z_half, store).trees
+    assert trees is not None and trees.lo.shape == z_half.shape
+    assert (trees.lo[4:14, 9:14] == 8.0 - span_trees.LEAF_SHELL_M).all()
+    assert np.isfinite(trees.lo).sum() == 50 and (trees.receivers[4:14, 9:14] == 8.0).all()
+    assert trees.receivers[30:].tobytes() == z_half[30:].tobytes()
 
 
 def test_the_ground_beside_a_span_takes_the_solid_surface_s_normals(tmp_path):
