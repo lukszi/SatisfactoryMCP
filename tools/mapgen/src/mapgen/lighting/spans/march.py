@@ -56,7 +56,10 @@ __all__ = [
     "kernel_steps",
     "march_spans",
     "path_elevation",
+    "quad",
+    "quad_offsets",
     "rows_with_spans",
+    "runs_of",
     "sky_view_spans",
     "span_block",
     "span_steps",
@@ -73,7 +76,7 @@ OFF_PATH_EL_DEG = 45.0
 
 
 class SpanRuns(NamedTuple):
-    """Per row, the runs of columns where a sample's four pixels (``_quad``) hold a span:
+    """Per row, the runs of columns where a sample's four pixels (``quad``) hold a span:
     ``start[row[r] : row[r + 1]]`` to ``end`` (exclusive). The kernels visit only these."""
 
     row: I64Grid
@@ -125,10 +128,10 @@ def span_surface(
     under = solid if ground is None else ground
     tops = np.where(np.isfinite(hi), np.fmax(hi, under), under).astype(np.float32)
     plane = partial(np.ascontiguousarray, dtype=np.float32)
-    return SpanSurface(plane(z), plane(solid), plane(lo), plane(hi), tops, _runs(lo))
+    return SpanSurface(plane(z), plane(solid), plane(lo), plane(hi), tops, runs_of(lo))
 
 
-def _runs(lo: F32Grid) -> SpanRuns:
+def runs_of(lo: F32Grid) -> SpanRuns:
     """The ``SpanRuns`` of an underside plane."""
     f = np.isfinite(lo)
     quad = (f[:-1, :-1] | f[:-1, 1:]) | (f[1:, :-1] | f[1:, 1:])
@@ -210,31 +213,37 @@ def span_steps(az_deg: float, spacing_m: float, fade: Fade) -> list[SpanStep]:
     return out
 
 
-def _quad(
-    surface: SpanSurface, rows: tuple[int, int], cols: tuple[int, int], oy: float, ox: float
+def quad(
+    lo: F32Grid, hi: F32Grid, rows: tuple[int, int], cols: tuple[int, int], iy: int, ix: int
 ) -> tuple[F32Grid, F32Grid]:
-    """Of the four pixels around the sample, as ``bilinear`` reads them, the span whose top is
-    highest, reaching down over those of the others it overlaps: its underside and top, NaN
-    where none floats. A thin span is never stepped over on a diagonal, one object's pixels
-    are read whole, and two spans one above the other are never read as one."""
+    """Of the four pixels from ``(iy, ix)`` on, down and right, the span whose top is highest,
+    reaching down over those of the others it overlaps: its underside and top, NaN where none
+    floats. A thin span is never stepped over on a diagonal, one object's pixels are read
+    whole, and two spans one above the other are never read as one."""
     (a, b), (c0, c1) = rows, cols
-    iy, ix = int(np.floor(oy)), int(np.floor(ox))
     corners = ((0, 0), (0, 1), (1, 0), (1, 1))
 
     def at(p: F32Grid, corner: tuple[int, int]) -> F32Grid:
         dy, dx = corner
         return p[a + iy + dy : b + iy + dy, c0 + ix + dx : c1 + ix + dx]
 
-    low, high = at(surface.lo, corners[0]), at(surface.hi, corners[0])
+    low, high = at(lo, corners[0]), at(hi, corners[0])
     for corner in corners[1:]:
-        top = at(surface.hi, corner)
+        top = at(hi, corner)
         take = (top > high) | (np.isnan(high) & ~np.isnan(top))
-        low = np.where(take, at(surface.lo, corner), low)
+        low = np.where(take, at(lo, corner), low)
         high = np.where(take, top, high)
     for corner in corners:
-        under, top = at(surface.lo, corner), at(surface.hi, corner)
+        under, top = at(lo, corner), at(hi, corner)
         np.fmin(low, np.where((under <= high) & (top >= low), under, np.nan), out=low)
     return low, high
+
+
+def _quad(
+    surface: SpanSurface, rows: tuple[int, int], cols: tuple[int, int], oy: float, ox: float
+) -> tuple[F32Grid, F32Grid]:
+    """``quad`` of a surface's spans around a sample at ``(oy, ox)``, as ``bilinear`` reads it."""
+    return quad(surface.lo, surface.hi, rows, cols, int(np.floor(oy)), int(np.floor(ox)))
 
 
 def _tangents(
@@ -392,7 +401,7 @@ def kernel_steps(steps: list[SpanStep], halo: int) -> KernelSteps:
     oy, ox = [s.oy for s in steps], [s.ox for s in steps]
     offsets = kernel_offsets(oy, ox, smooth, (len(steps),), halo)
     per_step = np.array([[s.scale, s.near_m, s.far_m, s.weight] for s in steps], np.float32)
-    return KernelSteps(np.array(smooth), offsets, _quads(oy, ox), per_step)
+    return KernelSteps(np.array(smooth), offsets, quad_offsets(oy, ox), per_step)
 
 
 def step_reach(steps: list[SpanStep]) -> int:
@@ -411,8 +420,8 @@ def _span_kernels() -> ModuleType:
     return kernels
 
 
-def _quads(oy: list[float], ox: list[float]) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
-    """Each sample's whole-pixel offsets to the four pixels ``_quad`` reads."""
+def quad_offsets(oy: list[float], ox: list[float]) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """Each sample's whole-pixel offsets to the four pixels ``quad`` reads."""
     return (
         np.floor(np.array(oy, np.float64)).astype(np.int64),
         np.floor(np.array(ox, np.float64)).astype(np.int64),
@@ -454,7 +463,7 @@ def sky_view_spans(
             ],
             np.float32,
         )
-        qy, qx = (q.reshape(shape) for q in _quads(oy, ox))
+        qy, qx = (q.reshape(shape) for q in quad_offsets(oy, ox))
         _span_kernels().sky_view_spans(
             _planes(surface),
             halo,

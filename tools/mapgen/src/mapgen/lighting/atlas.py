@@ -15,16 +15,9 @@ import numpy as np
 
 from mapgen.lighting.horizon import HORIZON_DIRS, encode_horizon
 from mapgen.lighting.light_tiles import encode_linear
-from mapgen.lighting.model import CROWN_CELL, HZ_CELLS, sun_cells
+from mapgen.lighting.model import CANOPY_CELL, CROWN_CELL, HZ_CELLS, sun_cells
 from mapgen.lighting.refold import TREE_GROUPS, path_elevations, refold
-from mapgen.lighting.spans.bake import (
-    BlockSpans,
-    Cell,
-    canopy_cells,
-    horizon_cells,
-    plain_bands,
-    shade_cells,
-)
+from mapgen.lighting.spans.bake import BlockSpans, Cell, horizon_cells, plain_bands, shade_cells
 from mapgen.lighting.spans.holes import Holes
 from mapgen.lighting.spans.march import Bands
 from mapgen.lighting.sun import DEFAULT_SUN
@@ -35,16 +28,16 @@ __all__ = ["BakedHorizons", "bake_horizons"]
 
 class BakedHorizons(NamedTuple):
     """A block's horizons: the atlas bytes, the coarser levels' source, the default sun's
-    cells (the ground's, then the trees' together over it) and, by direction, the canopy's
-    own horizon toward it, and the bands the default sun's cells were marched with, all but
-    the first two with a ring; and where a band is folded into any atlas cell."""
+    cells (the ground's, the trees' and the canopy's, by index) and the bands its ground cells
+    were marched with, both with a ring; where a band or the trees' shade is folded into any
+    atlas cell; and whether the block has tree cells."""
 
     atlas: U8Grid
     quarter: U8Grid
     sun: list[F32Grid]
-    canopy: list[F32Grid]
     bands: dict[int, Bands]
     folded: BoolMask
+    trees: bool
 
 
 def _quarter(quarter: U8Grid, d: int, ground: F32Grid, trees: list[F32Grid | None]) -> None:
@@ -73,12 +66,10 @@ def bake_horizons(
     hz_u8 = np.zeros((HZ_CELLS, half_px, half_px), np.uint8)
     quarter = np.zeros((half_px // 2, half_px // 2, HZ_CELLS), np.uint8)
     blank = np.zeros((half_px + 2, half_px + 2), np.float32)
-    sun = [blank] * (CROWN_CELL + HORIZON_DIRS)
-    canopy = sun[:HORIZON_DIRS]
+    sun = [blank] * (CANOPY_CELL + HORIZON_DIRS)
     bands: dict[int, Bands] = {}
     keep, shaded = sun_cells(DEFAULT_SUN[0]), shade_cells(DEFAULT_SUN[0])
-    wanted = {k for k in (*keep, *shaded) if k < CROWN_CELL}
-    cells = horizon_cells(z_half, halo - 1, spacing_m, spans, holes, wanted) if march else iter(())
+    cells = horizon_cells(z_half, halo - 1, spacing_m, spans, holes, shaded) if march else iter(())
     folded = np.zeros((half_px, half_px), bool)
     group = _empty_group()
     direction = 0
@@ -94,20 +85,14 @@ def bake_horizons(
             bands[cell.k] = cell.bands
     if group[0] is not None:
         _quarter(quarter, direction, group[0], group[1:])
-    trees: set[int] = set()
-    if march:
-        trees = {k - CROWN_CELL for k in (*keep, *shaded) if k >= CROWN_CELL}
-    for d, whole, marched in canopy_cells(z_half, halo - 1, spacing_m, spans, holes, trees):
-        sun[CROWN_CELL + d] = canopy[d] = whole
-        if CROWN_CELL + d in shaded:
-            bands[CROWN_CELL + d] = marched
     if bands:
         bands.update({k: plain_bands(sun[k]) for k in shaded if k not in bands and march})
-    return BakedHorizons(hz_u8, quarter, sun, canopy, bands, folded)
+    trees = march and spans.trees is not None
+    return BakedHorizons(hz_u8, quarter, sun, bands, folded, trees)
 
 
 def _empty_group() -> list[F32Grid | None]:
-    """A direction's cells as they come: its ground's, then its trees' groups."""
+    """A direction's cells as they come: its ground's, then its trees' and its canopy's."""
     return [None for _ in range(TREE_GROUPS + 1)]
 
 

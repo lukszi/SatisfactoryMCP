@@ -20,7 +20,9 @@ from mapgen.lighting import horizon as hz
 from mapgen.lighting.occlusion import ao_margin, occlusion
 from mapgen.lighting.spans import bake as span_bake
 from mapgen.lighting.spans import march as spans
+from mapgen.lighting.spans import porous
 from mapgen.lighting.spans.holes import OPEN_M, find_holes, opened
+from mapgen.lighting.spans.trees import TreePlanes, trees_porous
 from tests.support.relief import octave_terrain
 
 SP = 1.0
@@ -75,16 +77,24 @@ def _crowns(z: np.ndarray, seed: int) -> spans.SpanSurface:
     return spans.span_surface((z + lift).astype(np.float32), open_ground, lo, top, z)
 
 
-def _trees(z: np.ndarray, seed: int) -> tuple[spans.SpanSurface | None, ...]:
-    """Crowns on a share of ``z``, each with its own underside byte, and Titan trees 40 m up
-    over a patch: alone, alone, and together over ``z``."""
+def _trees(z: np.ndarray, seed: int) -> TreePlanes | None:
+    """Crowns 4 to 12 m tall on a share of ``z`` and the Titan canopy 40 m up over a patch,
+    each cell its own cover, as half-resolution cells; None where no tree stands."""
     rng = np.random.default_rng(seed)
     top = np.where(rng.random(z.shape) < 0.35, z + rng.uniform(4, 12, z.shape), np.nan)
-    under = rng.integers(40, 180, z.shape).astype(np.float32)
+    titan = np.zeros(z.shape, bool)
     patch = (slice(z.shape[0] // 3, z.shape[0] // 2), slice(z.shape[1] // 4, z.shape[1] // 2))
-    top[patch], under[patch] = z[patch] + 40.0, 255.0
-    rec, crowns, titans = span_bake.tree_spans(z, top.astype(np.float32), None, under)
-    return span_bake.tree_surfaces(span_bake.TreePlanes(rec, *crowns, *titans), z)
+    top[patch], titan[patch] = z[patch] + 40.0, True
+    hi = top.astype(np.float32)
+    if not np.isfinite(hi).any():
+        return None
+    lo = np.where(np.isfinite(hi), np.maximum(z, hi - porous.LEAF_SHELL_M), np.nan)
+    cover = np.where(np.isfinite(hi), rng.uniform(0.2, 1.0, z.shape), 0.0).astype(np.float32)
+    depth = porous.depth_of(cover)
+    zero = np.float32(0.0)
+    receivers = np.where(cover >= porous.CANOPY_COVER_MIN, hi, z).astype(np.float32)
+    return TreePlanes(receivers, lo.astype(np.float32), hi, np.where(titan, zero, depth),
+                      np.where(titan, depth, zero), cover)  # fmt: skip
 
 
 # --------------------------------------------------------------------------- the kernels
@@ -98,6 +108,18 @@ def test_the_span_march_is_the_reference_bit_for_bit(monkeypatch, az):
         _same(monkeypatch, lambda f=fade: tuple(spans.march_spans(surface, HALO, az, SP, f)))
     crowns = _crowns(octave_terrain(2 * HALO + 70, seed=2), seed=int(az))
     _same(monkeypatch, lambda: tuple(spans.march_spans(crowns, HALO, az, SP, hz.OCCLUDER_FADE_M)))
+
+
+@pytest.mark.usefixtures("device")
+@pytest.mark.parametrize("az", [0.0, 33.75, 90.0, 157.5, 225.0, 303.75])
+def test_the_porous_march_is_the_reference_bit_for_bit(monkeypatch, az):
+    planes = _trees(octave_terrain(2 * HALO + 90, seed=3), seed=int(az))
+    assert planes is not None
+    surface = trees_porous(planes)
+    found = _same(monkeypatch, lambda: porous.march_porous(surface, HALO, az, SP))
+    assert isinstance(found, np.ndarray) and found.any()
+    crowns = trees_porous(planes._replace(tau_titans=np.zeros_like(planes.tau_titans)))
+    _same(monkeypatch, lambda: porous.march_porous(crowns, HALO, az, SP))
 
 
 @pytest.mark.usefixtures("device")
@@ -139,7 +161,7 @@ def _block(seed: int, nan: str | None) -> tuple[np.ndarray, int, span_bake.Block
         z[...] = np.nan
     ground = _spans(z)
     holes = find_holes(z[HALO - 1 : 1 - HALO, HALO - 1 : 1 - HALO])
-    block = span_bake.BlockSpans(ground, *_trees(z, seed))
+    block = span_bake.BlockSpans(ground, _trees(z, seed), ground.solid)
     if holes is not None:
         z, block = opened(z), stage._opened_spans(block)
     return z, HALO - 1, block, holes
@@ -155,22 +177,10 @@ def _cells(z, halo, block, holes, wanted=None) -> list[object]:
 def test_a_block_s_cells_on_the_device_are_the_reference_s(monkeypatch, nan):
     z, halo, block, holes = _block(seed=3, nan=nan)
     found = _same(monkeypatch, lambda: _cells(z, halo, block, holes))
-    trees = 0 if nan == "all" else 2  # no height, no tree stands
+    trees = 0 if nan == "all" else 2  # no height, no tree stands: no tree or canopy cells
     assert isinstance(found, list) and len(found) == (1 + trees) * hz.HORIZON_DIRS
-    plain = span_bake.BlockSpans(None, block.crowns, block.titans)
+    plain = span_bake.BlockSpans(None, block.trees, block.solid)
     _same(monkeypatch, lambda: _cells(z, halo, plain, holes))
-
-
-@pytest.mark.usefixtures("device")
-@pytest.mark.parametrize("nan", [None, "patch"])
-def test_the_trees_together_for_the_default_sun_are_the_reference_s(monkeypatch, nan):
-    z, halo, block, holes = _block(seed=6, nan=nan)
-
-    def together() -> list[object]:
-        found = span_bake.canopy_cells(z, halo, SP, block, holes, [20, 21])
-        return [(k, whole, tuple(bands)) for k, whole, bands in found]
-
-    assert len(_same(monkeypatch, together)) == 2
 
 
 @pytest.mark.usefixtures("device")
@@ -204,7 +214,7 @@ def _out_of_memory(*_args: object) -> None:
 def test_a_block_the_device_runs_out_of_memory_for_finishes_on_the_host(
     monkeypatch, room_for_a_call
 ):
-    """Out of memory at the fourth direction's crowns: the directions left march a call at a
+    """Out of memory at the fourth direction's trees: the directions left march a call at a
     time on the device, or with no room for one either, on numba."""
     from mapgen.lighting import gpu
     from mapgen.lighting.spans import device as on_device
@@ -214,18 +224,20 @@ def test_a_block_the_device_runs_out_of_memory_for_finishes_on_the_host(
     monkeypatch.setenv(jit.KERNEL_SWITCH, jit.REFERENCE)
     reference = _bits(_cells(z, halo, block, holes))
     monkeypatch.setenv(jit.KERNEL_SWITCH, jit.GPU)
-    marched = on_device.DeviceCells.bands
+    marched = on_device.DeviceCells.porous
     calls = [0]
 
     def fails_late(self, *args):
         calls[0] += 1
-        if calls[0] > 10:
+        if calls[0] > 3:
             raise MemoryError("out of device memory")
         return marched(self, *args)
 
-    monkeypatch.setattr(on_device.DeviceCells, "bands", fails_late)
+    monkeypatch.setattr(on_device.DeviceCells, "porous", fails_late)
     if not room_for_a_call:
         monkeypatch.setattr(span_gpu, "_march_spans", _out_of_memory)
+        monkeypatch.setattr(span_gpu, "_march_porous", _out_of_memory)
+        monkeypatch.setattr(gpu, "_march", _out_of_memory)
     gpu.ran()
     assert _bits(_cells(z, halo, block, holes)) == reference
     counted = gpu.ran()

@@ -4,8 +4,9 @@
  * weight (`?kind=nrm`) and the horizons (`?kind=hz`: the ground's, then the trees', which only
  * a style that draws the trees reads); on a layer drawn apart at its trees, the colour is the
  * ground and the trees come as a fourth image (`?kind=trees`) while they are shown. The shader
- * lights both and lays the trees over the ground. One canvas for the whole view, not one
- * context per tile. The arithmetic is mapgen's lighting/model.py; docs/spatial-and-map.md §29.
+ * lights both, the trees flat under their own horizon where the pyramid has canopy cells, and
+ * lays the trees over the ground. One canvas for the whole view, not one context per tile.
+ * The arithmetic is mapgen's lighting/model.py; docs/spatial-and-map.md §29.
  * The switches (shade, trees, terrain and tree shadows, sky) are uniforms: `lightSwitches`. */
 
 import { tilePath } from "../api/client";
@@ -51,6 +52,10 @@ export interface LightHeader {
     /* Absent before the Titan trees had cells of their own and the trees' sky occlusion one. */
     titan_cell?: number;
     ao_cell?: number;
+    /* The ground's horizons received on the canopy top, and the least a held cell stores;
+     * absent before the canopy was porous (light version 6). */
+    canopy_cell?: number;
+    canopy_floor_deg?: number;
   };
   /** What the layer is made of besides the light; absent or empty on a layer drawn whole. */
   parts?: { trees?: { max_z: number; sparse: boolean } };
@@ -91,8 +96,8 @@ in vec2 vUV; out vec4 o;
 uniform sampler2D tCol, tNrm, tHz, tTrees;
 uniform vec3 uL, uSky, uSun, uF;
 uniform float uEl, uInvNorm, uAmb, uTK, uTW, uSoft, uGroundSh, uSkyOn, uW, uFloor, uKnee, uLinear;
-uniform float uFill, uRows, uCrownSh, uLightOn, uGut, uIn, uTreesOn;
-uniform int uI0, uI1, uCrown, uTitan, uAo;
+uniform float uFill, uRows, uCrownSh, uLightOn, uGut, uIn, uTreesOn, uCanFloor;
+uniform int uI0, uI1, uCrown, uTitan, uAo, uCanopy;
 float s2l(float c){ return c<=0.04045? c/12.92 : pow((c+0.055)/1.055,2.4); }
 float l2s(float c){ c=clamp(c,0.0,1.0); return c<=0.0031308? c*12.92 : 1.055*pow(c,1.0/2.4)-0.055; }
 float raw(int i){
@@ -101,39 +106,41 @@ float raw(int i){
   return texture(tHz,(cell+uGut+uv*uIn)*vec2(0.125,1.0/uRows)).r;
 }
 float hz(int i){ float q=raw(i); return q*q*90.0; }
-float horizon(){
-  float h=uGroundSh*mix(hz(uI0),hz(uI1),uW);
-  if(uCrownSh*uTreesOn>0.5){
-    h=max(h,mix(hz(uI0+uCrown),hz(uI1+uCrown),uW));
-    if(uTitan>0) h=max(h,mix(hz(uI0+uTitan),hz(uI1+uTitan),uW));
-  }
-  return h;
+float trees(float h){
+  if(uCrownSh*uTreesOn<0.5) return h;
+  h=max(h,mix(hz(uI0+uCrown),hz(uI1+uCrown),uW));
+  return uTitan>0 ? max(h,mix(hz(uI0+uTitan),hz(uI1+uTitan),uW)) : h;
 }
+float horizon(){ return trees(uGroundSh*mix(hz(uI0),hz(uI1),uW)); }
+float onCanopy(int i){ float q=raw(i+uCanopy); return q>=uCanFloor ? q*q*90.0 : hz(i); }
+float canopyHorizon(){ return trees(uGroundSh*mix(onCanopy(uI0),onCanopy(uI1),uW)); }
 const vec3 LUMA=vec3(0.2126,0.7152,0.0722);
 float tone1(float y){ if(uTK>=1.0||y<=uTK) return y; float sp=1.0-uTK; float x=(y-uTK)/sp; float t=(uTW-uTK)/sp; return uTK+sp*x*(1.0+x/(t*t))/(1.0+x); }
 float untone1(float y){ if(uTK>=1.0||y<=uTK) return y; float sp=1.0-uTK; float u=min((y-uTK)/sp,0.999); float t=(uTW-uTK)/sp; float a=1.0/(t*t); float b=1.0-u; return uTK+sp*(sqrt(b*b+4.0*a*u)-b)/(2.0*a); }
 vec3 tone(vec3 x){ float y=max(dot(x,LUMA),1e-7); return x*(tone1(y)/y); }
 vec3 untone(vec3 x){ float y=max(dot(x,LUMA),1e-7); return x*(untone1(y)/y); }
 vec3 toLinear(vec3 c){ return uLinear>0.5 ? untone(vec3(s2l(c.r),s2l(c.g),s2l(c.b))) : c; }
+vec3 lit(float svf, float ndl, float h){
+  float sh=max(uGroundSh,uCrownSh*uTreesOn)*clamp((h-uEl)/uSoft+0.5,0.0,1.0);
+  vec3 rel=(uAmb*uSky*svf+(1.0-uAmb)*uSun*ndl*(1.0-sh*(1.0-uFill))*uInvNorm)/uF;
+  return 0.5*(rel+uFloor+sqrt((rel-uFloor)*(rel-uFloor)+uKnee*uKnee));
+}
 void main(){
   vec3 base=toLinear(texture(tCol,vUV).rgb); vec4 n4=texture(tNrm,vUV);
   vec4 t4=texture(tTrees,vUV); float a=t4.a*uTreesOn;
   vec3 tree=a>0.0 ? toLinear(t4.rgb/t4.a) : vec3(0.0);
   vec2 nxy=n4.rg*2.0-1.0; vec3 nn=vec3(nxy, sqrt(max(1.0-dot(nxy,nxy),0.0)));
-  float ndl=max(dot(nn,uL),0.0);
-  float sh=max(uGroundSh,uCrownSh*uTreesOn)*clamp((horizon()-uEl)/uSoft+0.5,0.0,1.0);
   float ao=(uAo>0 && uTreesOn>0.5) ? raw(uAo) : 0.0;
-  float svf=mix(1.0,n4.b*(1.0-ao),uSkyOn);
-  vec3 rel=(uAmb*uSky*svf+(1.0-uAmb)*uSun*ndl*(1.0-sh*(1.0-uFill))*uInvNorm)/uF;
-  rel=0.5*(rel+uFloor+sqrt((rel-uFloor)*(rel-uFloor)+uKnee*uKnee));
-  vec3 x=mix(base*mix(vec3(1.0),rel,n4.a*uLightOn), tree*mix(vec3(1.0),rel,uLightOn), a);
+  vec3 rel=lit(mix(1.0,n4.b*(1.0-ao),uSkyOn),max(dot(nn,uL),0.0),horizon());
+  vec3 relT=(uCanopy>0 && a>0.0) ? lit(1.0,max(uL.z,0.0),canopyHorizon()) : rel;
+  vec3 x=mix(base*mix(vec3(1.0),rel,n4.a*uLightOn), tree*mix(vec3(1.0),relT,uLightOn), a);
   vec3 t=tone(x);
   o = uLinear>0.5 ? vec4(l2s(t.r),l2s(t.g),l2s(t.b),1.0) : vec4(clamp(x,0.0,1.0),1.0);
 }`;
 
 export const UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "tTrees", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm",
   "uAmb", "uTK", "uTW", "uSoft", "uGroundSh", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1", "uFill", "uRows",
-  "uCrownSh", "uCrown", "uLightOn", "uGut", "uIn", "uTreesOn", "uTitan", "uAo"];
+  "uCrownSh", "uCrown", "uLightOn", "uGut", "uIn", "uTreesOn", "uTitan", "uAo", "uCanopy", "uCanFloor"];
 /** A horizon cell's own texels a side; the pyramid's `hz_gutter` borders it. */
 const HZ_CELL_PX = 128;
 const COARSE_LEVELS = 4;
@@ -191,6 +198,8 @@ function uploadLightUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, lig
   gl.uniform1i(uniforms.uCrown!, model.crown_cell || 0);
   gl.uniform1i(uniforms.uTitan!, model.titan_cell || 0);
   gl.uniform1i(uniforms.uAo!, model.ao_cell || 0);
+  gl.uniform1i(uniforms.uCanopy!, model.canopy_cell || 0);
+  gl.uniform1f(uniforms.uCanFloor!, 0.5 * Math.sqrt((model.canopy_floor_deg || 0) / 90));
   const stride = HZ_CELL_PX + 2 * (model.hz_gutter || 0);
   gl.uniform1f(uniforms.uGut!, (model.hz_gutter || 0) / stride);
   gl.uniform1f(uniforms.uIn!, HZ_CELL_PX / stride);
@@ -208,7 +217,8 @@ export function treesApart(light: LightHeader): boolean {
 
 /** What the map's controls offer for this light; `off` is why it is not drawn live, or "". */
 export function lightControls(light: LightHeader, off: string): LightControls {
-  return { trees: castsTreeShadows(light), apart: treesApart(light), alone: !!light.model.titan_cell, off: off };
+  const alone = !!(light.model.titan_cell || light.model.canopy_cell);
+  return { trees: castsTreeShadows(light), apart: treesApart(light), alone: alone, off: off };
 }
 
 /** Whether the trees are drawn: always on a layer that keeps them in its colour. */

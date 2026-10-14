@@ -20,7 +20,7 @@ from mapgen.lighting.kernels import Offsets, bilinear_row, raise_row
 from mapgen.terrain.kernels import raise_nan
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid
 
-__all__ = ["march_spans", "sky_view_spans"]
+__all__ = ["march_porous", "march_spans", "sky_view_spans"]
 
 _ZERO = np.float32(0.0)
 _ONE = np.float32(1.0)
@@ -186,6 +186,58 @@ def march_spans(
                         top[j] = raise_nan(top[j], exact)
                     else:
                         _into_band(j, tl, th, weight, (band_lo[i], band_hi[i]), target)
+
+
+@kernel
+def march_porous(
+    surface: tuple[F32Grid, F32Grid, F32Grid, F32Grid, F32Grid],
+    halo: int,
+    smooth: BoolMask,
+    offsets: Offsets,
+    quads: tuple[I64Grid, I64Grid],
+    per_step: F32Grid,
+    ray: tuple[np.float32, np.float32],
+    acc: F32Grid,
+    rows: tuple[I64Grid, int],
+    runs: _Runs,
+) -> None:
+    """``porous.march_porous``' loop over every row of the core; ``acc`` is raised in place.
+
+    ``surface`` is the receivers, the trees' underside and top, and the two optical depths;
+    ``per_step`` each step's stretch near and far end and the crowns' and Titan canopy's
+    fade weights; ``ray`` the ray's tangent and the thinnest span; ``runs`` as
+    ``march_spans``.
+    """
+    te, thick = ray
+    z, lo_p, hi_p, tau_c, tau_t = surface
+    iy, ix, fy, fx, gy, gx = offsets
+    qy, qx = quads
+    counts, reach = rows
+    cols = acc.shape[1]
+    frac = np.empty(4, np.float32)
+    for i in range(acc.shape[0]):
+        r = halo + i
+        if not _near_spans(counts, r, reach):
+            continue
+        near = z[r, halo : halo + cols]
+        for s in range(per_step.shape[0]):
+            near_m, far_m, w_c, w_t = per_step[s, 0], per_step[s, 1], per_step[s, 2], per_step[s, 3]
+            down, up = te * near_m, te * far_m
+            sr, sc = r + iy[s], halo + ix[s]
+            frac[0], frac[1], frac[2], frac[3] = fy[s], fx[s], gy[s], gx[s]
+            qr, qc = r + qy[s], halo + qx[s]
+            for run in range(runs[0][qr], runs[0][qr + 1]):
+                a, b = _run_columns(runs, qc, cols, run)
+                for j in range(a, b):
+                    low, high = _quad(lo_p, hi_p, qr, qc + j)
+                    dl, dh = low - near[j], high - near[j]
+                    v = min(dh, up) - max(dl, down)
+                    if v > _ZERO:
+                        share = min(v / max(dh - dl, thick), _ONE)
+                        part = _sample(tau_c, sr, sc + j, smooth[s], frac) * w_c + _sample(
+                            tau_t, sr, sc + j, smooth[s], frac
+                        ) * w_t
+                        acc[i, j] += share * part
 
 
 @kernel

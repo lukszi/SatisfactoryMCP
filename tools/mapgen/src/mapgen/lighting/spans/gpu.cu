@@ -157,3 +157,43 @@ extern "C" __global__ void sky_view_spans(
     }
     out[(long long)i * cols + j] = 1.0f - acc / (float)dirs;
 }
+
+// porous.march_porous: per output pixel, the optical depth a ray at tangent `te` takes from
+// the tree samples it climbs through. The planes are the receivers, the trees' underside and
+// top, and the crowns' and the Titan canopy's depth; `per_step` holds a step's stretch near
+// and far end and the two fades' weights.
+extern "C" __global__ void march_porous(
+    const float* z, const float* lo_p, const float* hi_p, const float* tau_c,
+    const float* tau_t, long long w, int halo, const unsigned char* near_spans,
+    const bool* smooth, const int* iy, const int* ix, const int* qy, const int* qx,
+    const float* fy, const float* fx, const float* gy, const float* gx, const float* per_step,
+    int steps, float te, float thick, float* acc, int rows, int cols) {
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int i = blockIdx.y;
+    if (j >= cols || i >= rows) return;
+    long long r = halo + i;
+    long long out = (long long)i * cols + j;
+    float depth = 0.0f;
+    if (near_spans[i] != 0) {
+        float near = z[r * w + halo + j];
+        for (int s = 0; s < steps; ++s) {
+            const float* k = per_step + 4 * s;
+            float down = te * k[0], up = te * k[1];
+            long long qr = r + qy[s], qc = (long long)halo + qx[s] + j;
+            if (!holds_span(lo_p, w, qr, qc)) continue;
+            float low, high;
+            quad(lo_p, hi_p, w, qr, qc, low, high);
+            float dl = low - near, dh = high - near;
+            float v = (dh < up ? dh : up) - (dl > down ? dl : down);
+            if (!(v > 0.0f)) continue;
+            float t = dh - dl;
+            float f = v / (t > thick ? t : thick);
+            f = f < 1.0f ? f : 1.0f;
+            long long sr = r + iy[s], sc = (long long)halo + ix[s] + j;
+            float a = sample(tau_c, w, sr, sc, smooth[s], fy[s], fx[s], gy[s], gx[s]);
+            float b = sample(tau_t, w, sr, sc, smooth[s], fy[s], fx[s], gy[s], gx[s]);
+            depth += f * (a * k[2] + b * k[3]);
+        }
+    }
+    acc[out] = depth;
+}

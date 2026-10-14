@@ -48,6 +48,7 @@ from mapgen.render.ground.surface import (
 )
 from mapgen.render.ground.void import DrawnVoid
 from mapgen.terrain.crown_stamp import (
+    CrownBand,
     CrownSet,
     LitCrowns,
     crown_placements,
@@ -67,6 +68,7 @@ __all__ = [
     "layer_job",
     "paint_band",
     "piece_bytes",
+    "crown_band",
     "stamped_crowns",
 ]
 
@@ -346,21 +348,24 @@ def stamped_crowns(
     unlit: bool = False,
 ) -> LitCrowns | None:
     """The crowns over these pixel centres, each pixel's sun term from their normals
-    (``trees.crown_sun``). With ``--gpu`` they are stamped on the device, to the same bits."""
+    (``trees.crown_sun``)."""
     if crowns is None:
         return None
+    stamped = crown_band(crowns, centres, spacing_m)
+    return {**stamped, "ndl": crown_sun(stamped, unlit)}
+
+
+def crown_band(crowns: CrownSet, centres: tuple[F64Grid, F64Grid], spacing_m: float) -> CrownBand:
+    """The crowns over these pixel centres. With ``--gpu`` they are stamped on the device, to
+    the same bits."""
     step_cm = spacing_m * 100.0
-    stamped = None
     if gpu_on():
         from mapgen.render.gpu.crowns import stamp_crowns as on_device
 
         placed = crown_placements(crowns, *centres, step_cm)
         stamped = on_device(crowns.atlas, placed, centres)
-        if stamped is None:
-            stamped = stamp_placed(crowns.atlas.atlas, placed, centres)
-    else:
-        stamped = stamp_crowns(crowns, *centres, step_cm)
-    return {**stamped, "ndl": crown_sun(stamped, unlit)}
+        return stamp_placed(crowns.atlas.atlas, placed, centres) if stamped is None else stamped
+    return stamp_crowns(crowns, *centres, step_cm)
 
 
 def _sampler(taps: GridTaps) -> Sampler:

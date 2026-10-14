@@ -35,6 +35,7 @@ BAKE_PINS = {
     3: "sha256:230fc6638a0e4470e89f8382186f24974292c48f1306d0492f58028feac1dc68",
     4: "sha256:ef63278646e0edfce4ce255b2a0e1ae67a4816f95f052553b9078435134bf5e6",
     5: "sha256:85334d315294cd37e14049b7126aadf5a36e272d5510d41734f19c5d0eeea8a9",
+    6: "sha256:5c7fb4ddcc0941173bc1fa200037b38870b355415d19e262b3ddc5771fb823f0",
 }
 
 Planes = tuple[np.ndarray, np.ndarray]
@@ -267,14 +268,14 @@ def _pinned_planes() -> Planes:
 
 
 def _pinned_bake(tmp_path: Path) -> str:
-    """The bake's byte planes and its tiles' pixels for one fixed surface, a crown with its
-    own underside, and a Titan tree on the scarp."""
+    """The bake's byte planes and its tiles' pixels for one fixed surface, a crown and a Titan
+    canopy on the scarp."""
     surface = Surface(tmp_path / "work", SIZE)
     _put(surface, _pinned_planes())
     top, cover = _occluder(400.0)
-    under = np.where(cover > 0, 90, 0).astype(np.uint8)
-    top[300:330, 100:150], cover[300:330, 100:150], under[300:330, 100:150] = 260.0, 255, 255
-    bake_light(surface, tmp_path / "out", 1, (top, cover, under), progress=False,
+    titan = np.zeros(cover.shape, np.uint8)
+    top[300:330, 100:150], cover[300:330, 100:150], titan[300:330, 100:150] = 260.0, 200, 255
+    bake_light(surface, tmp_path / "out", 1, (top, cover, titan), progress=False,
                occluder_layers=["painted"])  # fmt: skip
     digest = hashlib.sha256()
     for name in ("terms", "svfh", "landh", "hzq"):

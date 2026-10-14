@@ -40,15 +40,15 @@ divided by the same expression for flat ground in the open, so flat ground at an
   it shadowed ground is the ambient term alone, the same for every slope, and a valley in
   shadow reads as one flat grey shape at the floor. 0.2 and 0.35 were compared at 16:00 on
   the cliff-lakes and abyss crops; 0.35 keeps the rock's shape inside the shadow.
-- **Tree crowns and the Titan trees** cast into horizons of their own, each alone (below, "The
-  trees in the light"). Only a style that draws the trees reads them
-  (`shader_light(layer)["crowns"]`, the painted style today); every other style is shaded by
-  the ground alone. Shared by every style, the crowns' shadows drew near-black blocks in the
-  forests and dashes in the desert on layers that draw no trees, five times as frequent
-  beside a crown as away from one.
-- **Arches, rock overhangs and crowns are spans** (below, "Arches as spans"): each blocks only
-  between its underside and its top, so its shadow falls where the sun's ray meets it and
-  light passes beneath.
+- **Tree crowns and the Titan canopy** are porous: a ray toward the sun keeps the light their
+  cover lets through, and they cast into cells of their own (below, "A porous canopy"). Only a
+  style that draws the trees reads them (`shader_light(layer)["crowns"]`, the painted style
+  today); every other style is shaded by the ground alone. Shared by every style, the crowns'
+  shadows drew near-black blocks in the forests and dashes in the desert on layers that draw
+  no trees, five times as frequent beside a crown as away from one.
+- **Arches and rock overhangs are spans** (below, "Arches as spans"): each blocks only between
+  its underside and its top, so its shadow falls where the sun's ray meets it and light passes
+  beneath.
 - **Sky view** within 10 m darkens the foot of a cliff and the floor of a gully. Larger radii
   grey whole valleys.
 - **Ambient occlusion** darkens the sky view where a rock, a cliff or an arch meets the ground,
@@ -143,12 +143,10 @@ between its underside and its top as the receiver sees them:
   another or sunk into it finds the other's top as its floor, and a mesh with an open bottom,
   or whose winding is unknown, has no underside: both stay columns. The solid surface sets a
   floating rock down on its floor, or the ground.
-- **Crowns.** Each crown pixel is a span from its species' underside, a share of its top's
-  height over the drawn surface, to its top, marched alone into the crown cells under the
-  crowns' own fade (below, "The trees in the light"). A crown over open ground throws its own
-  shape, offset by the sun, instead of a streak.
-- **The Titan trees** are a slab `TITAN_SLAB_M` (12 m) deep under their canopy's top, marched
-  alone into cells of their own under the ground's fade.
+- **The trees** were spans until light version 6: each crown pixel from its species'
+  underside to its top, the Titan canopy a 12 m slab under its top (below, "The trees in the
+  light"). Since then they are a porous leaf shell under their top (below, "A porous
+  canopy"), marched by a march of their own.
 
 **The arches' holes.** Their meshes have open edges that left slits and specks in the raster,
 drawn as dark lines through the deck. The top raster fills a hole the arch encloses whose
@@ -161,9 +159,8 @@ cuts closes, and where nothing is filled the top raster is the one it was. On a 
 than 0.46 m to the pixel nothing is filled.
 
 **The default sun** is baked from the bands themselves: per cell, the horizon's soft edge plus
-the share of the sun disc the bands above it hide (with the trees, the union of two bands:
-the ground's, and the crowns' and Titan trees' marched together over the ground,
-`span_bake.canopy_cells`), weighted between the sun's two directions as the horizon is, and
+the share of the sun disc the bands above it hide (with the trees, the larger of it and the
+trees' porous shade, below, "A porous canopy"), weighted between the sun's two directions as the horizon is, and
 zoomed to the pixels as the horizon is (`span_bake.default_shade`). Only
 cells a span was in reach of, grown by one, take it; every other pixel's term is the horizon's
 as before. Zoomed horizons would draw one-pixel bright rings where a cell holding an arch as
@@ -222,8 +219,6 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
   nothing; where a Titan tree's canopy stands over a crown, the crown casts nothing.
 - Where several spans compete for a direction's one band, neighbouring cells can keep
   different ones: a faint speckle in the shadow, seen under the maze site's stacked arches.
-- One underside a species: the share of its own top its leaves start at, whatever the tree's
-  scale and the slope it stands on.
 - An overhang over a ledge sets the ledge's top down as the floor only where it is the highest
   face under the overhang; an overhang over another overhang keeps the lower one a column.
 - The page's horizons are exact for a sun on the game's path only, until the bands reach it.
@@ -234,7 +229,7 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
 | Where | What |
 | --- | --- |
 | `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land. At the native level the normal carries the ground's detail where the run drew one (painted.md section 30, "The layers' own textures") |
-| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | A grey atlas of 97 cells of 128 px, 8 a row in 13 rows, at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 × 2080 px): cells 0–31 the ground's horizons, cells 32–63 the crowns' alone and 64–95 the Titan trees' alone, always stored, `255 · sqrt(deg / 90)`, a span's band folded in at the sun path's elevation (above, "Arches as spans"); cell 96 the trees' ambient occlusion, `255 · o` (below, "The trees in the light"). WebP q95 where a band is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles at q95 where a band folds") |
+| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | A grey atlas of 97 cells of 128 px, 8 a row in 13 rows, at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 × 2080 px): cells 0–31 the ground's horizons, cells 32–63 the trees' porous shade, folded at the sun path's elevation, always stored, and 64–95 the ground's horizons received on the canopy top where a tree covers the cell (below, "A porous canopy"), `255 · sqrt(deg / 90)`, a span's band folded in at the sun path's elevation (above, "Arches as spans"); cell 96 the trees' ambient occlusion, `255 · o` (below, "The trees in the light"). WebP q95 where a band is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles at q95 where a band folds") |
 | `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), the `key` the bake was made under (below, "Kept light"), tile counts, timings |
 | `<layer>/unlit/` | The unlit colour, 1x only, lossless WebP (PNG before 2026-10-08; the server takes the suffix from the sidecar's `layout`). On the painted layer, the ground without its trees (section 36, "Trees apart") |
 | `<layer>/trees/` | Painted only: the crowns and the Titan trees as one layer, lossless WebP RGBA with straight alpha, 1x, sparse: a tile with no tree in it is not written (section 36, "Trees apart") |
@@ -387,7 +382,7 @@ is 4.06 GB with its folded tiles at q95 (below, "Horizon tiles and coarser level
 While the run lasts, `light.cache/` holds 16.6 bytes a pixel, 17.8 GB at full
 size: the surface (heights 4, land 1), the default-sun terms (4), and the bake's
 half-resolution heights, land and sky view (1.5) and quarter-resolution horizons (6.1, the
-atlas's 97 cells). With a paint store the crown tops, cover and underside add 6, 6.4 GB,
+atlas's 97 cells). With a paint store the trees' tops, cover and Titan byte add 6, 6.4 GB,
 whatever layers the run draws. Until light version 5 the horizons took 4 bytes and the crowns 5.
 With the layers' textures, at 16384 px and up, the ground's detail normal adds 2, 2.1 GB at full
 size. The Maps tab's estimate counts them as `presets.LIGHT_SCRATCH_BYTES`,
@@ -787,18 +782,114 @@ sky view); every horizon atlas, its crown cells now stored everywhere. The pyram
 MB instead of 40.4, its horizon atlases 23.6 instead of 23.2, 78 of them folded instead of
 79. The full size was not measured.
 
+### A porous canopy (2026-10-14)
+
+Light version 6. At noon a Titan canopy wider than about 30 m blocked every ray from below,
+however deep its slab, so its shadow was a solid footprint moved by the sun, and the straight
+diagonal bands beside the Titan Forest were that footprint's sides swept along the sun's
+azimuth, with the half-resolution crown raster's steps along them (above, "The trees in the
+light"). Light passes through a canopy by its cover, so the trees are now porous: their
+shade is partial and dappled, the cover's pattern thrown by the sun.
+
+**The cover is the crown sprites'** (`render/draw/tree_occluder.py`). The light's occluder is
+what the colour draw stamps: the paint store's crowns (every species with a sprite, the
+coral trees left out) and the Titan canopy's placements, each stamped from its crown sprite at
+the sheet's own resolution with the crown stamp (section 36; numpy, numba, or CUDA under
+`--gpu`), at opacity 1 whatever the palette, 256 rows at a time. Three planes: the higher top
+of the two sets in metres (NaN where none), their cover laid together, `1 - (1 - a)(1 - b)`,
+as a byte, and a Titan byte, 255 where the Titan canopy's top is the higher. A lit run reads
+the crown sprite cache whenever the paint store has crowns, whatever layers it draws
+(`render/run/prepare.py`), so "One capture" holds for the Titan canopy too; `--no-titan-trees`
+leaves it out. The Titan trunks and the paint store's 1 m crown plane are no longer the
+light's.
+
+**A leaf shell.** A half-resolution cell (`lighting/spans/trees.py`) takes the
+cover-weighted mean top of its pixels and a shell `LEAF_SHELL_M` (2 m) deep under it, with
+the crowns' and the Titan canopy's optical depth `-ln(1 - min(cover, COVER_MAX))` of their
+mean cover. `COVER_MAX` (0.8) lets the densest leaves pass a fifth of the light, so a crown
+seen from below is never black; 0.65 and 0.8 were compared on the Titan Forest window. A ray
+toward the sun at the sun path's elevation in a direction (`path_elevation`, where the bands
+fold) adds, for each sample it climbs through, the share of the shell's height it climbs
+there times the sample's depth, weighted by the crowns' fade (25 to 80 m) or the Titan
+canopy's (the ground's, 40 to 150 m) (`lighting/spans/porous.py` `march_porous`). Over one
+shell the shares sum to 1, so a ray is dimmed by that canopy's cover where it leaves it: the
+shadow is the cover's pattern moved by the sun, without the sweep a deep span draws. A
+medium spread over the whole span (the crown's underside, or the 12 m slab, to its top) was
+tried first: it softens the wedges but smears the cover over the ray's horizontal reach in
+the span, 27 m at 16:00, and keeps a soft diagonal. 1 m and 3 m shells look the same.
+
+The rule is the same for every crown and the Titan canopy. The species' undersides and the
+Titan slab leave the light with it (`lighting/undersides.py`, the underside byte and the 33 s
+it took a run): a shell under the top already lets the sun in beneath a crown deeper than
+2 m. The crowns and the Titan canopy march together, so a ray through both is dimmed by both;
+the page's larger of two cells never did that.
+
+**The tree cells** (32 to 63) hold the trees' shade `s = 1 - exp(-depth)` folded at the path's
+elevation as a band is, `el + 6° × (s - ½)`, where `s` is at least `SHADE_MIN` (1/255), else
+0. Exact for a sun on the game's path, the time-of-day slider; the encoding and the shader's
+arithmetic do not change. A cell at least `CANOPY_COVER_MIN` (half) covered receives on its
+canopy top, any other on the ground, so the canopy is lit where it is drawn and the floor
+seen through a gap is dappled by the cover the ray leaves through. The march has a numba and
+a CUDA twin (`spans/kernels.py`, `spans/gpu.cu`), the same bits as the numpy (a test holds
+the three, the CUDA one skipping without a device).
+
+**The canopy cells** (64 to 95, the Titan trees' cells before) hold the ground's horizon
+received on the canopy top: the plain march over the solid ground, at quarter resolution
+brought to half (the terrain's horizon is smooth there), stored where a tree covers the cell,
+grown by 3 cells (`CANOPY_PAD_CELLS`), at least `CANOPY_FLOOR_DEG` (0.5°) so that 0 still
+means "no canopy". The model block drops `titan_cell` and adds `canopy_cell` and
+`canopy_floor_deg`; its `trees` records the porous constants. A coarser level refolds the
+tree cells as the crown cells were refolded, and the canopy cells by their own mean shade, a
+missing texel read as the ground's (`refold.py`, `refold.cu`).
+
+**The page** lights a layer drawn apart at its trees as two (`litlayer.ts`): the ground as
+before, under `max(ground, trees)`; the trees flat, in the open sky, under the canopy cell
+(the ground's where a texel holds none) and the tree cells. The page lit the canopy with the
+ground's normal, sky view and horizon, measured 40 to 70 m under it on the rocks beneath the
+Titan trees: that drew the straight-armed dark star on the Titan window at noon and the large
+dark field over it at 16:00, neither of them a tree's shadow. A v5 pyramid has no
+`canopy_cell` and is lit as before; a v6 pyramid on an old page reads only its tree cells.
+
+**The baked terms** are the page's at the default sun: the painted layer's ground part under
+the larger of the ground's per-cell shade and the trees' (`stage._default_terms`), the
+canopy's own light (above, "The canopy's own light") flat under the larger of the canopy cell
+and the tree cell, and blended by the cover as before. The trees-together march over the
+ground for the default sun (`canopy_cells`) and the canopy's smoothed slope
+(`CANOPY_RELIEF`), which lit the sprites' relief a second time, are gone.
+
+**Measured** (2026-10-14, build 502094). Three full-size windows of 2048 × 2048 px at
+0.229 m/px, baked with each code over the same capture (`inputs-stories`):
+
+| Window | Baked noon moved | Page 16:00 moved |
+| --- | --- | --- |
+| Titan Forest spot (81.2, -790.8) | 3,452,499 px (82%), p99 39 levels | 3,653,046 px, p99 40 |
+| Titan forest (1769.7, -10.0) | 3,895,385 px (93%), p99 38 | 3,948,574 px, p99 37 |
+| Rib bones (2981.2, -2745.6) | 408,169 px (10%), p99 30 | 423,396 px, p99 29 |
+
+At the forest spot and the Titan window the diagonal wedges are gone at noon and at 16:00,
+and the shade under and beside the canopy is the cover's mottle. The soft diagonal edge across
+the forest spot's clearing at 16:00 stays: it is the shadow of a 90 m rock pillar 40 to 70 m
+south-south-east of it, terrain. At the rib bones only the trees in the window's corner move;
+the bones and their shadows keep their light. The canopy itself reads flatter than in light
+version 5, which lit the sprites' relief twice.
+
+At 2048 (`inputs-stories`, terrain, painted and relief-dark) against light version 5: the
+unlit sheets, the trees layer, the normal tiles and terrain's and relief-dark's lit tiles are
+the same bytes; painted's lit tiles move in 71 of 85, 1,402,542 pixels by up to 70 levels;
+the horizon atlases in 74 of 85. The pyramid takes 47.9 MB instead of 41.2, its horizon
+atlases 27.7 instead of 23.6, 79 of them folded instead of 78. The full size was not
+measured.
+
 ### Hooks
 
-`bake_light` takes an optional `occluder` on the sheet's grid, which only casts: the crown tops
-in metres, NaN where empty, or `(top, cover)` with the covered share of each pixel as a byte,
-or `(top, cover, under)` with each pixel's underside byte (`occluders.UNDER_SCALE`: a crown's
-underside as a share of its lift, 254 for all of it, or `UNDER_TITAN`, 255, for a Titan
-tree). The trees stand on the surface, each lifted by its cover (`horizon.crown_surface`), and
-are spans from their underside to that top (above, "Arches as spans"; below, "The trees in
-the light"); without an underside plane every crown's is half its lift. The crowns cast into
-the crown cells under their own shorter fade (`OCCLUDER_FADE_M`, 25 to 80 m), the Titan trees
-into theirs under the ground's, each alone and received on the canopy top, so a tree is lit or
-shaded where the painted layer draws it. `occluder_layers` names the layers that read them.
+`bake_light` takes an optional `occluder` on the sheet's grid, which only casts: the trees'
+tops in metres, NaN where empty, or `(top, cover)` with the covered share of each pixel as a
+byte, or `(top, cover, titan)` with the Titan byte (`spans.trees.TITAN_BYTE`, 255 where the
+Titan canopy's top is the higher). The trees are a porous leaf shell under their top (above,
+"A porous canopy"); without a cover plane a tree pixel is fully covered. The crowns cast under
+their own shorter fade (`OCCLUDER_FADE_M`, 25 to 80 m), the Titan canopy under the ground's,
+together into the tree cells, received on the canopy top where a cell is at least half
+covered, so a tree is lit or shaded where the painted layer draws it. `occluder_layers` names the layers that read them.
 The paint store's crown tops feed it (section 36; the mapgen README's "Horizons and tree
 shadows"). The arches and the overhangs come with the surface itself, in its `slabs/`.
 
@@ -822,9 +913,11 @@ map holds the default sun (game noon, 09:00, 16:00 or map north-west) and five s
 | `sunTreeShadows` | tree shadows | `uCrownSh` | the crown cells are not read; only a layer with `params.crowns` has the switch |
 | `sunSky` | sky light | `uSkyOn` | the sky view is 1 |
 
-The shader takes the horizon as `max(uGroundSh · ground, crown, Titan)`, the tree terms only
-while `uCrownSh · uTreesOn`, the Titan term only where the pyramid has its own cells
-(`model.titan_cell`), and scales the shadow by `max(uGroundSh, uCrownSh · uTreesOn)`, so all
+The shader takes the horizon as `max(uGroundSh · ground, trees)`, the tree term only while
+`uCrownSh · uTreesOn` (and on a v5 pyramid the Titan term where it has `model.titan_cell`).
+On a v6 pyramid it lights the trees apart from the ground: flat, in the open sky, under
+`max(uGroundSh · canopy, trees)` with the canopy cell (`model.canopy_cell`) where it holds one
+(above, "A porous canopy"). It scales the shadow by `max(uGroundSh, uCrownSh · uTreesOn)`, so all
 off casts none and all on is the picture from before the switches. The trees' sky occlusion
 (`model.ao_cell`, linear) takes its share off the sky view while the trees are on.
 
@@ -857,10 +950,11 @@ sun panel's tree-shadow switch greys out and says why.
 **Tree shadows without terrain shadows.** Until light version 5 the bake stored a crown cell
 only where the crowns' horizon stood above the ground's, and the crown march took the
 terrain with it, so with terrain shadows off a tree's shadow inside a terrain shadow was
-missing and the sun panel said so. From light version 5 the crown and Titan tree cells hold
-the trees alone and are always stored (below, "The trees in the light"), so tree shadows
-alone are exactly the trees'. A page reads the Titan tree cells and the trees' ambient
-occlusion cell by the model block's `titan_cell` and `ao_cell`. On a pyramid without them,
+missing and the sun panel said so. From light version 5 the tree cells hold
+the trees alone and are always stored (above, "The trees in the light" and "A porous
+canopy"), so tree shadows alone are exactly the trees'. A page reads the Titan tree cells (v5)
+or the canopy cells (v6) and the trees' ambient occlusion cell by the model block's
+`titan_cell`, `canopy_cell` and `ao_cell`. On a pyramid without them,
 with terrain shadows off, a tree's shadow that falls where a terrain shadow would also fall
 reads a crown cell of 0 and is missing, and the sun panel says so in a line under the
 switches while that mix is set.
@@ -875,9 +969,9 @@ switches while that mix is set.
   apart, as it loads the trees.
 - Faint diagonal bands at low sun from the direction interpolation, and from the q90
   encoding on tiles without a folded band.
-- On the page a crown still takes the ground's normal and sky view, and the ground's horizon
-  measured under it where that is higher; the baked copy lights it by its own top (above,
-  "The canopy's own light").
+- The tree cells are exact only for a sun on the game's path, as the folded bands are.
+- One leaf shell a tree pixel and one mean cover a cell: a sparse crown over a dense one
+  shades as their mean.
 - The lattice seams at landscape holes (above, "Edges of the light").
 - The baked copy keeps a crown over the water at the light it was drawn with; the page lights
   it (above, "The trees on the page"). A tree's shadow still falls on no water.

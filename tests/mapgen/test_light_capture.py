@@ -1,7 +1,7 @@
 """The light is one capture whatever layers a run draws, and in whatever order.
 
-Every layer hands the light the surface the seabed rule draws, and the crowns cast from the
-paint store whether or not the painted layer is drawn. docs/spatial-and-map.md section 29.
+Every layer hands the light the surface the seabed rule draws, and the trees cast from the
+crown sprites whether or not the painted layer is drawn. docs/spatial-and-map.md section 29.
 Synthetic fixtures: no install, no field on disk.
 """
 
@@ -15,7 +15,7 @@ import pytest
 
 from mapgen.cache import MeshPlanes
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.ground.paint_store import CROWN_NAME, META_NAME
+from mapgen.gamedata.ground.paint_store import META_NAME
 from mapgen.palette.painted.band import PaintedParts
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import RELIEF_PALETTES
@@ -211,38 +211,54 @@ def test_a_pass_hands_the_painted_layer_apart_at_its_trees_with_each_band(monkey
         draw_layers(*args, **{**keywords, "unlit": False}, bands=print, split=("painted",))
 
 
-def _paint_store(tmp_path, top_dm: np.ndarray, grid: dict) -> None:
-    (tmp_path / CROWN_NAME).write_bytes(hf.encode_i16(top_dm))
-    files = {CROWN_NAME: {"shape": list(top_dm.shape), "kind": "i16"}}
-    meta = {"grid": grid, "files": files}
-    (tmp_path / META_NAME).write_text(json.dumps(meta), encoding="utf-8")
+def _sprites(names: list[str], titan: np.ndarray | None = None):
+    from tests.support.crown_sprites import square_sprites
+
+    return square_sprites(names, titan=titan)
 
 
-def test_the_light_casts_the_store_s_crowns_whether_or_not_painted_is_drawn(tmp_path):
-    grid = {"width": 64, "height": 64, "x0_cm": BOUNDS_M["x_min_m"] * 100.0,
-            "y0_cm": BOUNDS_M["y_min_m"] * 100.0, "spacing_cm": 100.0}  # fmt: skip
-    top_dm = np.full((64, 64), hf.NODATA, np.int16)
-    top_dm[5:9, 6:10] = 250
-    _paint_store(tmp_path, top_dm, grid)
-    painted = SimpleNamespace(meta={"grid": grid}, crown=top_dm.copy(), titan=None)
+def _titan(x_cm: float, y_cm: float, z_cm: float) -> np.ndarray:
+    from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD
 
-    from_store = crown_tops(tmp_path, None)
-    from_ground = crown_tops(tmp_path / "unread", painted)
-    assert from_store is not None and from_ground is not None
-    occluders = [
-        crown_occluder(crowns, tmp_path / name, 1024)
-        for crowns, name in ((from_store, "a"), (from_ground, "b"))
-    ]
-    (top_a, cover_a, under_a), (top_b, cover_b, under_b) = (o for o in occluders if o)
-    assert np.isfinite(top_a).any() and cover_a.any()
-    assert top_a.tobytes() == top_b.tobytes() and cover_a.tobytes() == cover_b.tobytes()
-    assert under_a.tobytes() == under_b.tobytes() and (under_a[cover_a > 0] == 127).all()
-    del occluders, top_a, cover_a, under_a, top_b, cover_b, under_b
+    found = np.zeros(1, CROWN_RECORD)
+    found["x"], found["y"], found["z"] = x_cm, y_cm, z_cm
+    found["scale"] = found["scale_z"] = found["axis_z"] = 4.0
+    found["axis_z"] = 1.0
+    return found
 
 
-@pytest.mark.parametrize("meta", [None, {"grid": {}, "files": {}}])
-def test_a_run_without_the_store_s_crowns_casts_none(tmp_path, meta):
-    if meta is not None:
-        (tmp_path / META_NAME).write_text(json.dumps(meta), encoding="utf-8")
-    assert crown_tops(tmp_path, None) is None
-    assert crown_tops(tmp_path, SimpleNamespace(meta={"grid": {}}, crown=None, titan=None)) is None
+def test_the_light_stamps_the_crown_sprites_whatever_layers_are_drawn(tmp_path):
+    from tests.support.paint_store import write_store
+
+    store = write_store(tmp_path / "paint")
+    names = [entry["name"] for entry in json.loads((store / META_NAME).read_text())["crowns"]["species"]]
+    sprites = _sprites(names, _titan(3000.0, 6000.0, 5000.0))
+    size = 2048
+    step = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
+    found = crown_occluder(crown_tops(store, sprites, True), tmp_path / "a", size)
+    assert found is not None
+    top, cover, titan = found
+    row = int((10.0 - BOUNDS_M["y_min_m"]) / step)
+    col = int((32.0 - BOUNDS_M["x_min_m"]) / step)
+    assert np.isfinite(top[row, col]) and cover[row, col] > 0 and titan[row, col] == 0
+    assert top[row, col] == pytest.approx(9.0, abs=0.01), "a crown's top over its pivot"
+    t_row = int((60.0 - BOUNDS_M["y_min_m"]) / step)
+    t_col = int((30.0 - BOUNDS_M["x_min_m"]) / step)
+    assert titan[t_row, t_col] == 255 and top[t_row, t_col] == pytest.approx(50.0 + 36.0, abs=0.05)
+    assert not cover[np.isnan(top)].any() and not titan[np.isnan(top)].any()
+    without = crown_occluder(crown_tops(store, sprites, False), tmp_path / "b", size)
+    assert without is not None and not without[2].any(), "no Titan canopy without the Titan trees"
+    del found, top, cover, titan, without
+
+
+def test_a_run_without_the_store_s_crowns_or_the_sprites_casts_none(tmp_path):
+    from tests.support.paint_store import write_store
+
+    assert crown_tops(tmp_path, _sprites(["a"]), True) is None, "no paint store"
+    store = write_store(tmp_path / "paint")
+    assert crown_tops(store, None, True) is None, "no crown sprites"
+    meta = json.loads((store / META_NAME).read_text(encoding="utf-8"))
+    del meta["files"]["crowns.rec.z"]
+    (store / META_NAME).write_text(json.dumps(meta), encoding="utf-8")
+    assert crown_tops(store, _sprites(["a"]), True) is None, "a store without crowns"
+    assert crown_occluder(None, tmp_path, 64) is None
