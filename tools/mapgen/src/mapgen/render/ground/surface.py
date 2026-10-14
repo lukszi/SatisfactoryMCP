@@ -28,6 +28,7 @@ from mapgen.palette.water.rivers import RiverWater
 from mapgen.palette.water.shore import MESH_FULL_LIFT_M, composite_meshes
 from mapgen.render.ground.detail import detail_bytes, drawn_share, piece_detail
 from mapgen.render.ground.floating import FieldPiece, FloatSources, band_slabs, piece_slabs
+from mapgen.render.ground.holes import hole_rim
 from mapgen.render.ground.lift import blend_regimes, composite_top, rock_kept
 from mapgen.render.ground.void import DrawnVoid, drawn_void, land_weight
 from mapgen.render.ground.water_sample import (
@@ -498,6 +499,12 @@ def _direct_regime(
     no texel of it draws a step."""
     smooth, linear = grid.smooth, grid.linear
     ground_dm, ground_missing = sample_surface(direct.ground, smooth, linear, hf.NODATA)
+    spacing_m = sources.field.spacing_cm / 100.0
+    rim = hole_rim(sources.heights, direct.ground, smooth, linear, spacing_m)
+    if rim is not None:
+        ground_dm = np.where(rim.inside, rim.z_dm, ground_dm)
+        ground_missing = np.where(rim.inside, rim.fold, ground_missing)
+        z_m = np.where(rim.inside, rim.z_dm / np.float32(hf.DM_PER_M), z_m)
     base_m = np.where(ground_missing, z_m, ground_dm / np.float32(hf.DM_PER_M))
     edge = _lattice_edge(sources.lattice_edge, linear)
     if edge is not None:

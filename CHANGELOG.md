@@ -344,6 +344,9 @@ Planned as 0.2.0.
 
 ### Fixed
 
+- Map renders: where the ground drops sharply into a hole, as round the Blue Crater's coral
+  disc, the drop follows a smooth outline instead of the 1 m grid's stair steps. Every
+  style's version goes up.
 - Map renders: the near-black swamp water no longer spills onto the sea between the abyss
   rocks: sea-level water outside the swamp is the sea's.
 - Map renders: the flat taupe blocks with stepped outlines along the east desert coast are
