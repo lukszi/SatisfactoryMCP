@@ -604,8 +604,9 @@ walls and past the straight edge of the ocean's box near (-1643, 2436), and the 
 own map draws them black or as rock, not water. 80,170 dry texels more than 5 m under the sea
 were drawn as sea, 25,045 of them in one patch at (-1643, 2436).
 
-**The rule.** `dry_hollows` (`palette/water/shore.py`) takes out of the reach each part of
-the dry ground under the sea that is more than 4 m (`HOLLOW_CLEAR_M`) from any water and
+**The rule (replaced, see "Open sea is not a hollow" below).** `dry_hollows`
+(`palette/water/shore.py`) took out of the reach each part of the dry ground under the sea
+that is more than 4 m (`HOLLOW_CLEAR_M`, since removed) from any water and
 sinks more than 5 m (`HOLLOW_DEPTH_M`) under the sea somewhere in it. Such a part keeps
 recipe 5's rule, which draws dry texels as ground. Water is never taken out: the basin's lake
 and the ocean's own patches standing over the hollow keep the crossing. A beach's dry strip
@@ -626,6 +627,25 @@ and a 300 m window over the arch 195.
 
 Test: `tests/mapgen/test_painted.py` (a hollow behind a wall leaves the reach; its lake, the
 sea, a beach's strip and a shallow dip keep it).
+
+**Open sea is not a hollow (2026-10-15).** The rule above drew open sea as land. Past the
+straight edge at x -1740 off the south-west coast the landscape ends: the floor is cliff and
+fill texels 25 to 145 m down, then no data, and the ocean's raster covers only patches of it.
+Nothing above the sea stands between that floor and the ocean, so the sea fills it, and the
+game's sea surface lies over it; render v12 drew its rocks as dry land, with a straight edge
+and a brown stripe of cliff along the box. The same held for every large "hollow" above: of
+the 66,163 texels, 65,120 join measured ocean through ground under the sea.
+
+Now a hollow is a part of the dry ground under the sea (8-connected) that sinks 5 m under it
+somewhere and touches no measured ocean texel, so ground above the sea walls it off. The 4 m
+clearance is gone: the coast's dry strips touch the ocean and stay in the reach by that
+alone. Water at the ocean's level standing over a walled pit still makes it sea; a lake at
+its own level does not. On the field 1,286 texels in 31 hollows leave the reach (11,878,430
+stay), the largest 792 at (1476, -3112) and 186 at (-1629, 3063); the window x -1841..-1606,
+y 2344..2578 has exactly the reach it had before this rule.
+
+Test: `tests/mapgen/test_painted.py` (open sea past the box's edge keeps the reach; walled
+off and without the ocean's patch, the same drop is a hollow).
 
 ### Swamp mouths (2026-10-06)
 
@@ -805,11 +825,10 @@ and section 35's falls:
 
 ### Known limits
 
-- A dry hollow's edge against the sea is the texel edge of the reach, so where sea and hollow
-  meet over ground under the sea the line steps by 1 m. Within 4 m of any water the hollows
-  stay sea (24,371 texels more than 5 m down). A small sand pocket against a rock at
-  (-2134, 232) joins the hollow under the rock and turns from shallow water to sand with a
-  stepped blue rim; whether it holds water in game is unchecked ("Dry hollows under the sea").
+- A dry hollow is judged on the heightfield alone: a wall above the sea counts only where the
+  field's ground or cliff texels stand above -17.0 m, and a gap one texel wide under the sea
+  joins a pit to the ocean. Whether the 31 walled hollows left ("Dry hollows under the sea")
+  hold water in game is unchecked.
 - The lake, the sea's deep colour and the swamp have been checked against screenshots from
   above; no in-game top-down check over a known depth has been made. A look from about 50 m
   over the open sea at (-3000, 645) and over the swamp at (2343, 291) would settle the two
