@@ -5307,29 +5307,69 @@ export interface components {
             /** Notes */
             notes: string;
         };
-        /** PlanGraph */
+        /**
+         * PlanGraph
+         * @description ``positions`` are the plan's stored node positions for the nodes this solve has.
+         */
         PlanGraph: {
             /** Nodes */
             nodes: components["schemas"]["PlanGraphNode"][];
             /** Edges */
             edges: components["schemas"]["PlanGraphEdge"][];
+            /** Positions */
+            positions: {
+                [key: string]: number[];
+            };
+            /** Buildings */
+            buildings: components["schemas"]["PlanGraphBuilding"][];
         };
-        /** PlanGraphEdge */
+        /**
+         * PlanGraphBuilding
+         * @description Whole machines of one building type over its ``groups`` process nodes, and their MW.
+         */
+        PlanGraphBuilding: {
+            /** Building */
+            building: string;
+            /** Count */
+            count: number;
+            /** Groups */
+            groups: number;
+            /** Mw */
+            mw: number;
+        };
+        /**
+         * PlanGraphEdge
+         * @description One flow, from the decomposition in docs/planning.md §8.5o. ``item`` is the legacy
+         *     display name; ``unit`` is items, m3 or MW.
+         */
         PlanGraphEdge: {
+            /** Id */
+            id: string;
             /** Source */
             source: string;
             /** Target */
             target: string;
             /** Item */
             item: string;
+            /** Item Id */
+            item_id: string;
+            /** Item Name */
+            item_name: string;
+            /** Item Group */
+            item_group: string;
             /** Per Min */
             per_min: number;
+            /** Unit */
+            unit: string;
             /** Text */
             text: string | null;
         };
         /**
          * PlanGraphNode
-         * @description ``kind`` is process, input or export; ``item`` is a class id, null for power.
+         * @description One graph node; ids stay the same across revs and re-solves (docs/planner_vision.md
+         *     §4.2). ``kind`` is process, input, export, leftover or sink. ``machines`` is the work in
+         *     machines at 100% and ``utilisation`` its last machine's share; ``mw`` is signed like a
+         *     row's. ``row``/``rows`` join to ``SolveRow.id``; ``item`` is the legacy class id.
          */
         PlanGraphNode: {
             /** Id */
@@ -5344,8 +5384,36 @@ export interface components {
             rank: number;
             /** Row */
             row: string | null;
+            /** Rows */
+            rows: string[];
             /** Item */
             item: string | null;
+            /** Item Id */
+            item_id: string | null;
+            /** Item Name */
+            item_name: string | null;
+            /** Recipe Id */
+            recipe_id: string | null;
+            /** Recipe Name */
+            recipe_name: string | null;
+            /** Building */
+            building: string | null;
+            /** Building Icon */
+            building_icon: string | null;
+            /** Built */
+            built: number;
+            /** Machines */
+            machines: number;
+            /** Clock */
+            clock: number | null;
+            /** Mw */
+            mw: number | null;
+            /** Utilisation */
+            utilisation: number;
+            /** Per Min */
+            per_min: number | null;
+            /** Unit */
+            unit: string;
         };
         /**
          * PlanIndexRow
@@ -5411,6 +5479,8 @@ export interface components {
             member?: components["schemas"]["JsonValue"];
             /** Name */
             name?: string;
+            /** Node */
+            node?: string;
             was?: components["schemas"]["JsonValue"];
         };
         /** PlanOpsResponse */
@@ -5486,6 +5556,10 @@ export interface components {
             args: components["schemas"]["PlanArgsBody"];
             /** Headroom Mw */
             headroom_mw: number | null;
+            /** Node Positions */
+            node_positions: {
+                [key: string]: number[];
+            };
             /** Names */
             names: {
                 [key: string]: string;
@@ -6724,6 +6798,7 @@ export interface components {
         /**
          * SolveBody
          * @description Exactly one of ``args`` (a request) and ``key`` (a stored plan, at ``rev`` or its head).
+         *     Only a stored plan has node positions to echo in ``graph.positions``.
          */
         SolveBody: {
             /** Args */
