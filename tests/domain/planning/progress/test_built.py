@@ -76,7 +76,9 @@ def _pseudo(recs, machines, site=None, factory="", keep=None):
     cy = sum(p[1] for p in points) / len(points) / 100.0
     if site is not None:
         cx, cy = site
-    prepared = NS(solution=NS(processes=procs), request=NS(node_rows=[]))
+    prepared = NS(
+        solution=NS(processes=procs), request=NS(node_rows=[], selection=NS(whole_map=False))
+    )
     state = NS(factory=factory, siting={"origin_m": [cx, cy, None]}, args=NS(sources=[]))
     return prepared, state
 
@@ -242,7 +244,18 @@ def test_node_owner_names_the_cluster_its_nodes_feed(named):
         "rates": {},
         "pid": "x",
     }
-    prepared = NS(solution=NS(processes=[proc]), request=NS(node_rows=[node]))
+    miner = {
+        **proc,
+        "kind": "extractor",
+        "building_id": "Build_MinerMk1_C",
+        "recipe": None,
+        "rates": {"Desc_OreIron_C": 60.0},
+        "pid": "m",
+    }
+    prepared = NS(
+        solution=NS(processes=[proc, miner]),
+        request=NS(node_rows=[node], selection=NS(whole_map=False)),
+    )
     owners = [pr for pr in named.proposals if pump.leaf in pr.machines]
     state = NS(factory="", siting={"origin_m": [0.0, 0.0, None]}, args=NS(sources=[]))
     b = built.detect(named.game, named, state, prepared)
@@ -301,3 +314,18 @@ def test_chat_sees_where_built_was_found(planned):
     assert "\tbuilt\t" in listing and "not placed" in listing
     world = planning.diff_vs_save(plan="spire-coast-full", factory="whole world")
     assert "# counting the whole world ·" in world and "machines built" in world
+
+
+def test_a_whole_map_plan_is_not_built_where_some_extractor_stands(planned):
+    """A motor plan sited at the player read as built at the crude oil cluster: every node on
+    the map counted as its own, so oil extractors there stood in for the motor plant."""
+    from satisfactory_mcp.interfaces.mcp.tools import planning
+
+    motor = {"objective": "min_machines", "exports": ["Motor"], "export_minimums": {"Motor": 5}}
+    planning.plan_factory(**motor, save_as="motor", site_at="me")
+    out = planning.diff_vs_save(plan="motor")
+    assert "# nothing of this plan stands at its site" in out
+    assert "crude oil" not in out and "already feed" not in out
+    # Nothing tapped yet, so the free nodes are measured from the site, never 0 km.
+    assert "on 1 free node(s) @" in out and "@0km" not in out
+    assert "crude oil" not in planning.list_plans()

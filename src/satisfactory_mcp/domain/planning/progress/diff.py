@@ -723,13 +723,15 @@ def build_diff(
     request: PlanRequest,
     scope: set[str] | None = None,
     biomass: bool = False,
+    site_cm: tuple[float, float] | None = None,
 ) -> DiffReport:
     """Match a solved plan against the save and derive the actions to reach it.
 
-    ``scope`` limits what counts as already built to one factory's machines.
+    ``scope`` limits what counts as already built to one factory's machines. ``site_cm`` is
+    where a sited plan stands: the anchor while nothing of it is tapped yet.
     """
     index = _index_save(state, request, scope)
-    anchor = _anchor(index)
+    anchor = _anchor(index) or site_cm
     jobs = group_processes(sol)
 
     # Build order is chain depth over the plan's own item graph, condensed so that the

@@ -93,7 +93,10 @@ then adds its other machines on the plan's jobs. Clusters are capped at 250 m be
 dependents attach and **extractors never grow a cluster**: grown from the three pumps on
 `spire-coast-e1`'s nodes, the rule pulled in eleven refineries 1.4 km away. Extractors count on
 the plan's own nodes when their owner is one of the counted clusters or a cluster that makes
-nothing; water pumps count when they belong to a counted cluster.
+nothing; water pumps count when they belong to a counted cluster. The plan's own nodes are
+only those of a resource it mines, and a whole-map plan has none: otherwise every node on
+the map was its own, and a motor plan read as built at the nearest crude oil cluster. With
+nothing of the plan tapped yet, a sited plan's free-node distances are measured from its site.
 
 **Owners and the one hard rule.** Every counted machine has an owner: its named factory, else
 its cluster. Owners are ranked by fit (rate overlap with the plan over the union of the two,

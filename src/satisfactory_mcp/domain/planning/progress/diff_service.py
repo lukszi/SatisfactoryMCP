@@ -126,10 +126,12 @@ def diff_in_scope(
     solution, request = solution_of(prepared), request_of(prepared)
     if stored is not None:
         found = built.detect(g, st, stored, prepared, scope_name)
-        diff = build_diff(g, st, solution, request, scope=found.scope, biomass=biomass)
+        sit = siting_mod.parse(stored)
+        at = (sit.x_m * 100.0, sit.y_m * 100.0) if sit is not None else None
+        diff = build_diff(g, st, solution, request, found.scope, biomass, site_cm=at)
         low = None
         if found.scope_low is not None:
-            low = build_diff(g, st, solution, request, scope=found.scope_low, biomass=biomass)
+            low = build_diff(g, st, solution, request, found.scope_low, biomass, site_cm=at)
         built.fill_progress(found, diff, low)
         diff.built_at = found
         note = ""

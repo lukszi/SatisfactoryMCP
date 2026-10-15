@@ -220,7 +220,9 @@ def _delta_rows(
                 if max(spans) - min(spans) < 0.1
                 else f"{min(spans):.2g}-{max(spans):.2g}km"
             )
-            head = f"on {len(r.targets)} free node(s) @{reach}"
+            # No anchor means no distance was measured; 0 km would be invented.
+            at = f" @{reach}" if diff_report.anchor is not None else ""
+            head = f"on {len(r.targets)} free node(s){at}"
             note = f"{head}; {note}" if note else head
             targets += [t[0] for t in r.targets]
         rows.append(
