@@ -1349,6 +1349,31 @@ At (2040, -1880) the arch lake's east arm drew as a flat sand box with straight 
 The lip is placed out over the void, here 12 m east of the cliff top, so the water feeding
 it is looked for along the top modules' run, not just behind the lip.
 
+### Box pieces over a basin (2026-10-15)
+
+At the wide fall's channel at (1850, 313) the lake above ended on a straight north-south line
+at x 1819 for about 90 m, and east of the rock rib the channel drew as straight-sided deep
+blocks with a dark rim.
+
+- **The channel.** The lake's boxes at 94.8 m reach over the basin in two pieces a dry rib
+  parts from the lake, so no drop cuts them and "Water below a drop" never applied. Judged
+  whole, their membrane spanned the rock on their south shore, 83 to 94 m high, and climbed
+  to 58 m over a bed at -17 m. A body with no ground within `LIP_DROP_M` of its level
+  anywhere is now water below a drop whole (`_below_drops`): it takes the swamp's level.
+- **The lake's edge.** The ocean's reach (section 27) ran 48 m from the swamp over the lake,
+  and the crossing drew the lake's 94.8 m water at -17 m, under its bed. Water the run
+  draws more than 8 m above the sea (`ABOVE_SEA_M`), judged on the re-levelled planes, now
+  leaves the reach and keeps its own level. Re-levelled water at the sea's level keeps it.
+
+**Measured** on build 502094, on the run's water planes, both rules together: the reach loses
+3,616 texels in six places and gains none: the wide fall's lake (1,543), a canyon lake at
+65.4 m at (1672, -2190) whose straight edge in the canyon goes too (1,889), a pond at
+-0.4 m under an arch at (-778, -1047) (149), and three of 26 or fewer. The re-levelling
+moves 3,261 texels in 17 places: the channel (961, now -17.4 to -16.7 m), a pool below a
+box at (324, -618) (1,268, by 8 m on average, its deep patches up the banks gone), (-285,
+-730) (372), (3416, -468) (528, by a few decimetres), 92 at (796, -372), and twelve of 10
+or fewer; 31 texels of holes are no longer filled. Nothing else changes.
+
 ### Known limits
 
 - Where a river spline speaks, its ribbon (section 34) has already taken the box's water
@@ -1358,18 +1383,19 @@ it is looked for along the top modules' run, not just behind the lip.
   it. Where the lower body's own water reaches the piece over its bed, it is the lower
   body's before this runs ("Boxes over lower water").
 - Left after "Boxes over lower water": a 93 m straight line at x -1369 near (-1265, -323), a
-  0.5 m step between the lower river's box and its ribbon; the river strips at (-1126, 218)
-  under a 201.6 m volume standing 2.8 m over the ribbon, inside the 8 m rule; faint lines in
-  the arch lakes near (1764, -2122); and the wide fall's channel at (1850, 313), whose lower
-  water is the swamp at the ocean's level.
+  0.5 m step between the lower river's box and its ribbon; and faint lines in the arch lakes
+  near (1764, -2122). The river between the arches at (-1126, 218) keeps no field water
+  since section 34's river volumes: its straight sides are the ribbon's own edge, where the
+  plane stands over a flat bed, as the artwork draws it; the bands in it were the 10 cm
+  level steps section 34 removed.
 - The arch lake near (1980, -1890) ends in a straight line at y -1733, the edge of its
   `FGWaterVolume`. South of it the only box is the ocean spline's at -17 m, so the field's
   water rule (section 19) drops the artwork's water there as ground standing out of the
   sea. That is the field's level rule, not a hole, and this section leaves it.
-- A faint straight line remains beside the wide fall, 48 m from the swamp's edge, in
-  terrain, satellite, relief and relief dark; painted shows no step. The shore rule's ocean
-  reach is found on the field's own planes, before the re-levelling. Finding it on the
-  re-levelled planes would also change the drawing around the older perched bodies.
+- The ocean's reach is still found from the field's own ocean water, not the re-levelled
+  water: found from the re-levelled planes it gains 99,841 texels in 29 places, mostly the
+  mouths of sloped rivers re-levelled to the sea, whose water a few metres above the sea
+  the crossing would then draw at -17 m ("Box pieces over a basin").
 - About 50 texels at the fall's foot keep 94.8 m: corner-joined pieces with no shoreline of
   their own, smaller than a pixel at 2048.
 - A sloped reach below a drop that joins lower water takes that water's level along its

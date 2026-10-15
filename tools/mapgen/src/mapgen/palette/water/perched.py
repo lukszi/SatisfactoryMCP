@@ -85,7 +85,8 @@ _PERCHED_RULE = (
     "within excess_m of that surface, takes the surface at twice excess_m, and is "
     "handed over linearly between. A body is cut where its ground falls more than "
     "lip_drop_m between neighbours; a part below such a cut and more than lip_drop_m "
-    "under the level all over is judged first, perched when its own ring or the "
+    "under the level all over, or a whole body that far under it, is judged first, "
+    "perched when its own ring or the "
     "body's spills. Its membrane spans only the shoreline beside the water it joins "
     "more than excess_m below the level, or failing that the shoreline that far below "
     "and within lip_drop_m of its ground, never the drop or the cliffs. Re-levelled, "
@@ -242,9 +243,12 @@ def _below_drops(
 ) -> list[tuple[Window, BoolMask]]:
     """The water below a drop in ``body``, as ``(window, mask)`` inside its window, lowest
     first. Cut wherever the ground falls more than ``LIP_DROP_M`` between neighbours, it is
-    every part with no ground within ``LIP_DROP_M`` of ``value``, beside one that has."""
+    every part with no ground within ``LIP_DROP_M`` of ``value``, beside one that has; a
+    body with no such ground anywhere is below a drop whole, a box piece over a basin."""
     h, w = body.shape
     drop = LIP_DROP_M * hf.DM_PER_M
+    if body.any() and not (body & (ground >= value - drop)).any():
+        return [((slice(0, h), slice(0, w)), body.copy())]
     index = np.arange(h * w, dtype=np.int64).reshape(h, w)
     pairs: list[NDArray[np.int64]] = []
     cut = False

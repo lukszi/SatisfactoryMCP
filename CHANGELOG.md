@@ -24,6 +24,11 @@ All notable changes to this project are recorded here. The format follows
   in steps; and five river stretches, among them a desert canyon pool and a short river
   meeting a lake, were drawn as a straight-edged block of lake water over the river. Shade
   now runs on along the flow and changes only at waterfalls. The style's version goes up.
+- Map renders: the lake above the wide waterfall near the swamp now runs on to its lip,
+  where it ended on a straight line 48 m from the swamp, and the channel below the fall is
+  drawn as the shallow swamp water it is, not as straight-sided deep blocks. Water standing
+  well above the sea near the coast keeps its own level; two more places drew such water at
+  the sea's level, a canyon lake at (1672, -2190) and a pond under an arch at (-778, -1047).
 
 ## [0.2.0] - 2026-10-14
 

@@ -103,7 +103,7 @@ def test_a_lake_whose_box_runs_over_its_fall_draws_at_its_lip_not_on_its_bed():
     field = _field(water, grades, height)
     reach = (np.zeros((N, N), np.uint8), {"ocean_texels": 0, "reach_texels": 0})
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("mapgen.palette.water.surface.ocean_reach", lambda _field: reach)
+        mp.setattr("mapgen.palette.water.surface.ocean_reach", lambda _field, _drawn=None: reach)
         sunk = water_surfaces(field, False)
         held = water_surfaces(field, False, lips=_lip())
     basin = lake & (np.arange(N)[None, :] < CLIFF - 5)

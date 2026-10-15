@@ -153,6 +153,28 @@ def test_the_crossing_reaches_only_near_measured_ocean_and_never_a_lake():
     assert not reach[:, 20:30].any(), "level-only water keeps recipe 5: its raster is the surface"
 
 
+def test_water_drawn_well_above_the_sea_keeps_its_own_level_inside_the_reach():
+    """The lake above the wide fall at (1815, 313) ended on a straight line 48 m from the
+    swamp: the sea's crossing drew its 94.8 m water at -17 m. A basin the box covered at
+    94.8 m but drawn re-levelled to the sea keeps the crossing."""
+    n = 120
+    water = np.full((n, n), hf.NODATA, np.int16)
+    grades = np.zeros((n, n), np.uint8)
+    water[:, :20] = round(LEVEL * hf.DM_PER_M)
+    water[:, 20:60] = 948
+    grades[:, :60] = hf.WATER_MEASURED
+    field = _field(water, grades, np.zeros((n, n), np.int16))
+    drawn = water.copy()
+    drawn[:, 20:40] = round(LEVEL * hf.DM_PER_M)
+    reach, meta = ocean_reach(field, (drawn, grades))
+    assert reach[:, :40].all(), "the sea and the basin drawn at its level keep the crossing"
+    assert not reach[:, 40:60].any(), "the lake keeps its own level"
+    assert reach[:, 60 : 20 + int(OCEAN_REACH_M)].all(), "dry ground past it is unchanged"
+    assert meta["above_sea_texels"] == 20 * n
+    held, _meta = ocean_reach(field)
+    assert not held[:, 20:60].any(), "without drawn planes the field's own levels are judged"
+
+
 def test_a_dry_hollow_under_the_sea_leaves_the_reach_and_the_coast_keeps_it():
     """A hollow behind a wall, its own lake, a beach's dry strip and a shallow dip."""
     n = 120

@@ -136,11 +136,6 @@ def water_surfaces(
     their falls pour from. ``--kernel-only`` draws neither."""
     if kernel_only:
         return WaterSurfaces(None, {}, None, None, None)
-    reach, reach_meta = ocean_reach(field)
-    print(
-        f"  ocean shore at {OCEAN_LEVEL_M} m: {reach_meta.get('ocean_texels')} ocean "
-        f"texels, {reach_meta.get('reach_texels')} within {OCEAN_REACH_M:g} m"
-    )
     planes = None if rivers is None else (rivers.water_dm, rivers.grades)
     level, meta = perched_levels(field, planes)
     own = field.water_quality_raster()
@@ -155,6 +150,13 @@ def water_surfaces(
         level, grades, holes = wet_holes(field, before, level, grades, dropped)
         meta["holes"] = holes
         print(f"  holes in lakes: {holes['bodies']} bodies, {holes['texels']} texels re-wetted")
+    # Water drawn well above the sea leaves its reach: judged on the re-levelled planes.
+    drawn = None if level is None or grades is None else (level, grades)
+    reach, reach_meta = ocean_reach(field, drawn)
+    print(
+        f"  ocean shore at {OCEAN_LEVEL_M} m: {reach_meta.get('ocean_texels')} ocean "
+        f"texels, {reach_meta.get('reach_texels')} within {OCEAN_REACH_M:g} m"
+    )
     return WaterSurfaces(reach, reach_meta, level, grades, meta)
 
 
