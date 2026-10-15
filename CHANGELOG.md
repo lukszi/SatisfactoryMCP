@@ -11,6 +11,11 @@ All notable changes to this project are recorded here. The format follows
 - Map renders: the Satellite map's hot-spring terraces wear their material's texture instead
   of flat cream, and the pools on their tops are drawn as the hot-spring water. The render-only
   mesh cache is rebuilt once.
+- Map renders: the shore past the landscape, on the east desert coast and round its pools, no
+  longer follows 1 m steps at full zoom: the waterline is drawn along the shore's smoothed
+  outline. Cliffs, deep water and the landscape's own beaches are left as they were.
+- Map renders: in the Relief dark map the deep sea is a little lighter, so the edge of the
+  world reads where the sea meets the page's navy, as it does in the Satellite map.
 - Map renders: the Satellite map's shallow rivers are teal again, where the game's absorption
   under the sea's sky colour drew them as their bed under a grey veil, and deep runs no
   longer turn the sea's blue: they darken to slate teal, so a river meets the lake it feeds

@@ -789,10 +789,13 @@ Known limits:
   artwork draws void, the ground is drawn.
 - 681 regions pass, many of them a few texels of deep ground; those inside the land are drawn
   as small pits, grey with a rim.
-- In the satellite and relief dark styles the deep sea (#152a3b, #031b2d) and the page's navy
-  are close in colour. Beside the land the void has a lit edge and a rim, but where the sea
-  fades into it nothing marks the edge of the world. Whether the void past the edge should
-  leave the page's navy, as the artwork's black does, is open.
+- The void past the edge stays the page's navy (#10202c) in every style, so a style's deep
+  sea must stand apart from it for the world's edge to read where the sea fades into it.
+  Satellite's (#3b597c) does. Relief dark's was darker than the page and almost its colour
+  (#031b2d, OKLab L 0.215 against 0.236); since 2026-10-15 it is L 0.27 (#11293b), lighter
+  than the page as satellite's is, still darker than its shallow water (L 0.30). Only the
+  palette's `deep_lch` changed; `test_relief.py` pins the gap. Whether the void should leave
+  the page's navy, as the artwork's black does, is still open.
 - The tones are a hint, not a bed: under the teal the open sea is not held deeper than 6 m,
   and a tone's anti-aliased edge against land can read a metre or two too deep.
 - The falls off the edge of the world are left out (section 35).
@@ -877,8 +880,30 @@ fill; 613 texels of level-only sea become ground; the bed lies under 7.96 M texe
 lay under 7.80 M. The swamp's coast and the landscape's beaches are not fill and keep their
 rule.
 
-Known limit: the fill's shore is decided texel by texel, so against deep water its outline
-still shows 1 m steps at full zoom.
+**The shore along its smoothed outline (2026-10-15).** The shore past the landscape, fill and
+cliff ground against the sea, was still decided texel by texel, and its ground stands within
+a few decimetres of the sea's surface: the drawn waterline followed the 1 m texels at full
+zoom, on the east desert coast from (4100, -2000) to (4105, -2530) and round the pool at
+(4102, -2100). The render draws the waterline where the height crosses the water's level, so
+`palette/water/outline.py` `shore_outline` gives it a smoothed coverage to cross: the dry
+share of the shore, blurred by `FILL_SHORE_SIGMA_M`, sets a ramp through the sea's level,
+`SHORE_RISE_M` (2.5 m) from all-sea to all-ground, and within about 3 m of the outline the
+heights are drawn towards it, tapering to the height as drawn.
+
+- No texel changes side: ground ends at least `SHORE_CLEAR_M` (3 cm) over the sea's level
+  and a bed as far under it, so the masks, the grades and every count are as before. Dry
+  ground up to `SHORE_UNDER_M` (0.2 m) under the level counts as the shore's ground.
+- Ground more than `SHORE_STEEP_M` (6 m) over the sea is a cliff and a bed more than 6 m under
+  it deep water: neither is drawn towards the ramp, from half of it fading out. The
+  landscape's own shores are measured and keep their heights.
+- On a straight shore cut into texels the waterline strayed up to 0.46 m from the line; it
+  now strays 0.06 m (0.15 m where the steps are long), `test_shore_outline.py`.
+- On build 502094 (the stored field, fill a metre up): 75,969 texels move, all within 3.2 m
+  of the dry/wet border, by at most 3.2 m, median 0.15 m on the ground and 0.37 m under the
+  water. It adds about 6 s to the open sea, in bands of 512 rows.
+
+Known limit: the fill's own walls, ground more than 6 m over the sea in 3.66 m raster cells,
+keep their steps.
 
 ### Drawing less (2026-10-06)
 

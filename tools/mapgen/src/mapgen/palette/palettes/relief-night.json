@@ -31,7 +31,7 @@
  "borrow_ink_damp": 0.25,
  "water": {
   "shallow_lch": [0.300, 0.066, 226],
-  "deep_lch": [0.215, 0.046, 244],
+  "deep_lch": [0.270, 0.046, 244],
   "tau_m": 12.0,
   "level_only": 0.85,
   "blur_m": 6.0,

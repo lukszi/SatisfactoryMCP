@@ -16,6 +16,7 @@ from scipy import ndimage
 from mapgen.gamedata.water.bodies import OCEAN_BAND_M
 from mapgen.palette.scene import FloatGrid, WaterPlanes, field_heights, field_water
 from mapgen.palette.water.geodesic import geodesic_steps
+from mapgen.palette.water.outline import SHORE_RISE_M, SHORE_STEEP_M, shore_outline
 from mapgen.palette.water.shore import OCEAN_REACH_M
 from mapgen.terrain.fill import cosine_taper
 from mapgen.terrain.harmonic import nearest_fill
@@ -108,7 +109,10 @@ _OPEN_SEA_RULE = (
     "so does such ground in a gap at most strip_m wide between the sea and the void "
     "past the world's edge; the fill is no coast, its dry texels at or under the "
     "band's top join the sea wherever they reach it through such fill, and its shore "
-    "is its dry outline smoothed over fill_shore_sigma_m), "
+    "is its dry outline smoothed over fill_shore_sigma_m; past the landscape the heights "
+    "beside the sea are ramped through its level along their outline smoothed over that "
+    "sigma, shore_rise_m from all-sea to all-ground, cliffs and deep water past "
+    "shore_steep_m kept), "
     "held to the measured bed over blend_pull_m within blend_m, drawn to the depth of "
     "the artwork's water tone (tone_depth_m) over tone_pull_m, settling to deep_m "
     "over about settle_m; the measured bed is laid back over it across blend_m, so "
@@ -205,6 +209,12 @@ def open_sea(
     for plane in (heights_dm, ground_dm):
         if plane is not None:
             plane[drawn] = bed
+    ashore = np.asarray(field.provenance_plane) != hf.PROV_LANDSCAPE
+    ashore &= ~nodata & ~unknown & (grades == hf.WATER_DRY)
+    sides = (ashore, unknown | measured)
+    sigma = FILL_SHORE_SIGMA_M * 100.0 / field.spacing_cm
+    smoothed = shore_outline((heights_dm, ground_dm), sides, level, sigma)
+    del ashore
     grades = np.where(unknown, np.uint8(hf.WATER_MEASURED), grades).astype(np.uint8)
     meta: JsonObject = {
         "rule": _OPEN_SEA_RULE,
@@ -214,6 +224,8 @@ def open_sea(
         "settle_m": OPEN_SEA_SETTLE_M,
         "coast_above_m": COAST_ABOVE_M,
         "fill_shore_sigma_m": FILL_SHORE_SIGMA_M,
+        "shore_rise_m": SHORE_RISE_M,
+        "shore_steep_m": SHORE_STEEP_M,
         "cell_m": OPEN_SEA_CELL * step_m,
         "blend_m": OPEN_SEA_BLEND_M,
         "blend_pull_m": OPEN_SEA_BLEND_PULL_M,
@@ -226,6 +238,7 @@ def open_sea(
         "dry_texels_joined": int(low.sum()),
         "fill_joined_texels": int(sunk.sum()),
         "fill_raised_texels": int(raised.sum()),
+        "shore_outline_texels": smoothed,
         "strip_texels_joined": int(strip.sum()),
         "void_texels": int(empty[0].sum()),
         "pit_texels": int(np.count_nonzero(void.pit)),

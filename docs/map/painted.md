@@ -267,7 +267,9 @@ that style records.
 The dark ramp runs from `(.360 .056 148)` to `(.600 .048 85)`: green at the bottom, so lowland
 does not match the shallow water, and warm at the top, where cooler stops made high ground
 mauve-grey mud. Its water is darker and bluer, shallow `(.300 .066 226)` and deep
-`(.215 .046 244)`, so the shallows do not read as lowland. On the 2048 preview the land's
+`(.270 .046 244)`, so the shallows do not read as lowland; the deep tone stays lighter than
+the page's navy, so the world's edge reads (renders.md section 26; it was `.215` until
+2026-10-15). On the 2048 preview the land's
 median L is 0.44 and water 0.5 to 4 m deep 0.30, and 8% of the land is darker than that water.
 
 ### Measured
