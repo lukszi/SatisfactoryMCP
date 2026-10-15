@@ -1,5 +1,5 @@
 """One memory budget for a run's pools: the draw, the cut's encoders and the light share one
-reading of the free memory. docs/map/renders.md section 43."""
+reading of the free memory. docs/map/renders.md section 45."""
 
 from __future__ import annotations
 

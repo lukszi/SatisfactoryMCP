@@ -1,9 +1,9 @@
 # The drawn renders: layers, sampler, recipes and caches
 
-Sections 17, 20, 25, 26, 39, 40, 41 and 42 of the [design spec](../../DESIGN.md): the drawn base layers,
+Sections 17, 20, 25, 26, 39, 40, 41, 42 and 45 of the [design spec](../../DESIGN.md): the drawn base layers,
 how they sample the field and the rocks, the recipes they draw by, their raster caches,
-how a layer's bands are drawn, the loops compiled for it, and how the bands are cut as they
-settle. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-42-the-map).
+how a layer's bands are drawn, the loops compiled for it, how the bands are cut as they
+settle, and the memory budget the run's pools share. A section number below resolves through the [map's index](../spatial-and-map.md#sections-17-to-42-the-map).
 
 Numbers 19 to 24 also name sections of parked.md, residency.md and plumbing.md; in these
 files they are the map's ([the document set](../../DESIGN.md#the-document-set)).
@@ -2544,7 +2544,7 @@ its trees are installed, as before.
 - The bands waiting for the light are held in memory, not in files.
 - At 2048 and below the light is one block: nothing of it overlaps the draw.
 
-## 43. One memory budget for the run's pools (2026-10-15)
+## 45. One memory budget for the run's pools (2026-10-15)
 
 The draw's threads (`drawpool.draw_threads`, section 40) and the light's processes
 (`stage.light_workers`, section 41) each sized themselves from the free memory

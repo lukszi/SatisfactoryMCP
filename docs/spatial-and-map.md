@@ -48,6 +48,7 @@ the others meet.
 | 42 | [Cutting the bands as they settle (2026-10-07)](map/renders.md#42-cutting-the-bands-as-they-settle-2026-10-07) | renders.md |
 | 43 | [Preparing the painted ground on threads (2026-10-14)](map/painted.md#43-preparing-the-painted-ground-on-threads-2026-10-14) | painted.md |
 | 44 | [The shared map: a public, map-only static site (2026-10-14)](map/sharing.md#44-the-shared-map-a-public-map-only-static-site-2026-10-14) | sharing.md |
+| 45 | [One memory budget for the run's pools (2026-10-15)](map/renders.md#45-one-memory-budget-for-the-runs-pools-2026-10-15) | renders.md |
 
 ---
 
