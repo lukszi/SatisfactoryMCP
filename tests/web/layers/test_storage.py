@@ -121,6 +121,7 @@ def test_a_world_with_nothing_in_store_answers_with_an_empty_payload(game):
                 "count": 0,
                 "filled": 0,
                 "items_total": 0,
+                "shapes": {},
             }
 
 

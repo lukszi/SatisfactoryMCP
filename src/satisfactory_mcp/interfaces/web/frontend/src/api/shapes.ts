@@ -61,6 +61,10 @@ export type MachinesResponse = Body<"MachinesResponse">;
 export type StructureRow = Schema["StructureRow"];
 export type StructuresResponse = Body<"StructuresResponse">;
 
+/** A class's drawn outline and ports, sent once per class beside the rows that use it. */
+export type BuildingShape = Schema["BuildingShape"];
+export type PortRow = Schema["PortRow"];
+
 /* ------------------------------------------------ /api/belts and /api/pipes */
 
 export type BeltRow = Schema["BeltRow"];

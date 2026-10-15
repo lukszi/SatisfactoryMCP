@@ -46,6 +46,8 @@ declare module "leaflet" {
   interface Path {
     /** A direction mark rather than a route: styled by opacity, never by weight. */
     _chevron?: boolean;
+    /** A building's port notch: shown only when zoomed in; see drawn/outlines.ts. */
+    _port?: boolean;
     /** A glyph whose radius is a fixed pixel size; read twice in drawn/route-passes.ts. */
     _fixed?: boolean;
     /** How this path was drawn before it was ghosted; present while it is ghosted. */

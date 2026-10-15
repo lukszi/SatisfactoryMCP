@@ -113,6 +113,7 @@ PINNED_ARTIFACTS = (
     ("the resource node table", ("resource_nodes.json",), ("_meta", "sources", "primary")),
     ("the world node table", ("world_resource_nodes.json",), ("_meta",)),
     ("the region names", ("region_names.json",), ("_meta",)),
+    ("the building shapes", ("building_shapes.json",), ("_meta",)),
     ("the height field", ("local", "heightmap", "meta.json"), ("sources", "game")),
     ("the map image", ("local", "map.json"), ("_meta", "sources", "map_slices")),
     ("the item icons", ("local", "icons", "manifest.json"), ("_meta", "source")),

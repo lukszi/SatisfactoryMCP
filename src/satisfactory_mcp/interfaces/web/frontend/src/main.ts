@@ -34,6 +34,7 @@ import { markHiddenRows, notePickupChoice } from "./map/drawn/pickups";
 import { renderPanel, showSelector } from "./map/panel";
 import { listenForPins } from "./chat/pins";
 import { noteRegionChoice, updateRegionBlend } from "./map/regions";
+import { restyleNotchesForZoom } from "./map/drawn/outlines";
 import { restyleRoutesForZoom, ROUTE_LAYERS, sinkRoutes } from "./map/drawn/route-passes";
 import { wireSearch } from "./app/search";
 import { syncSharedSettings } from "./app/shared-settings";
@@ -86,9 +87,11 @@ import "./dash/world/world-here";
  * consequence of the import graph, so reordering two imports would silently reorder the
  * handlers -- and three of these events have more than one listener:
  *
- *   zoomend            writeHash, restyleRoutesForZoom, declutter, markHiddenRows
+ *   zoomend            writeHash, restyleRoutesForZoom, restyleNotchesForZoom, declutter,
+ *                      markHiddenRows
  *   overlayadd         (the control's own decorator), noteRegionChoice, noteFloorChoice,
- *                      notePickupChoice, restyleRoutesForZoom + sinkRoutes, declutter
+ *                      notePickupChoice, restyleNotchesForZoom, restyleRoutesForZoom +
+ *                      sinkRoutes, declutter
  *   overlayremove      (the control's own decorator), noteRegionChoice, noteFloorChoice,
  *                      notePickupChoice, declutter
  *
@@ -106,6 +109,8 @@ map.on("overlayadd overlayremove", noteFloorChoice);
 // ...and for the pickup rows, which the fragment carries: see notePickupChoice.
 map.on("overlayadd overlayremove", notePickupChoice);
 map.on("zoomend", restyleRoutesForZoom);
+// A notch layer ticked on carries the visibility of the zoom it was drawn at.
+map.on("zoomend overlayadd", restyleNotchesForZoom);
 
 /* A layer added long after both fetches landed is appended to the canvas' draw list, i.e. on
  * top of everything, so the sink has to run again when the player ticks the box. And so does

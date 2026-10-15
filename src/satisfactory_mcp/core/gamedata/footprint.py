@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from ..jsontypes import JsonObject, JsonValue
 from .uestruct import as_float, as_list, parse_struct
 
-__all__ = ["FOUNDATION_M", "Footprint", "Packed", "extract_footprint"]
+__all__ = ["FOUNDATION_M", "Footprint", "Packed", "clearance_rings", "extract_footprint"]
 
 #: Standard foundation edge length. Everything in Satisfactory grids to this.
 FOUNDATION_M = 8.0
@@ -47,6 +47,9 @@ class Footprint:
     width_m: float  # X
     depth_m: float  # Y
     height_m: float  # Z
+    #: Where the box's centre sits from the actor origin, in the actor's own frame.
+    offset_x_m: float = 0.0
+    offset_y_m: float = 0.0
 
     @property
     def area_m2(self) -> float:
@@ -148,9 +151,8 @@ def _corners(box_min: JsonObject, box_max: JsonObject) -> list[tuple[float, floa
     return [(x, y, z) for x in (x0, x1) for y in (y0, y1) for z in (z0, z1)]
 
 
-def extract_footprint(raw: JsonValue) -> Footprint | None:
-    """Union AABB of a building's own clearance boxes, in metres. Hard boxes when the
-    buildable has any, otherwise its soft ones -- see the module docstring."""
+def _counted(raw: JsonValue) -> list[JsonObject]:
+    """The clearance entries that are the building's own volume -- see the module docstring."""
     entries = [
         e
         for e in as_list(parse_struct(raw))
@@ -158,10 +160,74 @@ def extract_footprint(raw: JsonValue) -> Footprint | None:
         # Approach clearance is never the building's volume, hard or soft.
         and str(e.get("ExcludeForSnapping", "")).strip().lower() != "true"
     ]
-    hard = _union(e for e in entries if e.get("Type") != "CT_Soft")
+    hard = [e for e in entries if e.get("Type") != "CT_Soft" and _box_corners(e)]
     # Fallback, never a union of both: mixing soft into hard grows the Fuel Generator past
     # the 20x20 its own hard boxes measure.
-    return hard if hard is not None else _union(entries)
+    return hard or entries
+
+
+def extract_footprint(raw: JsonValue) -> Footprint | None:
+    """Union AABB of a building's own clearance boxes, in metres. Hard boxes when the
+    buildable has any, otherwise its soft ones -- see the module docstring."""
+    return _union(_counted(raw))
+
+
+def clearance_rings(raw: JsonValue) -> list[list[tuple[float, float]]]:
+    """Each counted clearance box seen from above, in metres in the actor frame: four
+    corners for a box turned about Z, the convex hull of all eight for any other turn."""
+    rings: list[list[tuple[float, float]]] = []
+    for entry in _counted(raw):
+        corners = _box_corners(entry)
+        if corners:
+            hull = _hull([(round(x / 100.0, 2), round(y / 100.0, 2)) for x, y, _z in corners])
+            if len(hull) >= 3:
+                rings.append(hull)
+    return rings
+
+
+def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Convex hull, counter-clockwise (monotone chain)."""
+    pts = sorted(set(points))
+    if len(pts) < 3:
+        return pts
+
+    def cross(o: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> float:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list[tuple[float, float]] = []
+    upper: list[tuple[float, float]] = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def _box_corners(entry: JsonObject) -> list[tuple[float, float, float]]:
+    """A clearance box's eight corners in the actor frame, in cm; empty for a torn entry."""
+    box = entry.get("ClearanceBox")
+    if not isinstance(box, dict):
+        return []
+    box_min, box_max = box.get("Min"), box.get("Max")
+    if not isinstance(box_min, dict) or not isinstance(box_max, dict):
+        return []
+    transform = entry.get("RelativeTransform") or {}
+    rotation = transform.get("Rotation") if isinstance(transform, dict) else None
+    translation = transform.get("Translation") if isinstance(transform, dict) else None
+    tx, ty, tz = (
+        (as_float(translation.get(k)) for k in ("X", "Y", "Z"))
+        if isinstance(translation, dict)
+        else (0.0, 0.0, 0.0)
+    )
+    placed: list[tuple[float, float, float]] = []
+    for corner in _corners(box_min, box_max):
+        x, y, z = _rotate(rotation, corner) if isinstance(rotation, dict) else corner
+        placed.append((x + tx, y + ty, z + tz))
+    return placed
 
 
 def _union(entries: Iterable[JsonObject]) -> Footprint | None:
@@ -169,36 +235,18 @@ def _union(entries: Iterable[JsonObject]) -> Footprint | None:
     low_cm = [float("inf")] * 3
     high_cm = [float("-inf")] * 3
     seen = False
-
     for entry in entries:
-        box = entry.get("ClearanceBox")
-        if not isinstance(box, dict):
-            continue
-        box_min, box_max = box.get("Min"), box.get("Max")
-        if not isinstance(box_min, dict) or not isinstance(box_max, dict):
-            continue
-
-        transform = entry.get("RelativeTransform") or {}
-        rotation = transform.get("Rotation") if isinstance(transform, dict) else None
-        translation = transform.get("Translation") if isinstance(transform, dict) else None
-        tx, ty, tz = (
-            (as_float(translation.get(k)) for k in ("X", "Y", "Z"))
-            if isinstance(translation, dict)
-            else (0.0, 0.0, 0.0)
-        )
-
-        for corner in _corners(box_min, box_max):
-            point = _rotate(rotation, corner) if isinstance(rotation, dict) else corner
-            for axis, (value, offset) in enumerate(zip(point, (tx, ty, tz))):
-                world = value + offset
-                low_cm[axis] = min(low_cm[axis], world)
-                high_cm[axis] = max(high_cm[axis], world)
+        for point in _box_corners(entry):
+            for axis, value in enumerate(point):
+                low_cm[axis] = min(low_cm[axis], value)
+                high_cm[axis] = max(high_cm[axis], value)
             seen = True
-
     if not seen:
         return None
     return Footprint(
         width_m=round((high_cm[0] - low_cm[0]) / 100.0, 2),
         depth_m=round((high_cm[1] - low_cm[1]) / 100.0, 2),
         height_m=round((high_cm[2] - low_cm[2]) / 100.0, 2),
+        offset_x_m=round((high_cm[0] + low_cm[0]) / 200.0, 2),
+        offset_y_m=round((high_cm[1] + low_cm[1]) / 200.0, 2),
     )

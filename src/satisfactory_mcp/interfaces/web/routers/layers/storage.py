@@ -11,9 +11,17 @@ from typing import Literal
 from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
+from .....core.gamedata.shapes import BuildingShape
 from .....core.saveio.schema import StorageRecord
 from .....domain.world.state import WorldState
-from ...serial import StoredItem, contents_json, object_rows, placement_fields, require_world
+from ...serial import (
+    StoredItem,
+    building_shapes,
+    contents_json,
+    object_rows,
+    placement_fields,
+    require_world,
+)
 
 __all__ = ["router"]
 
@@ -81,6 +89,8 @@ class StorageResponse(TypedDict):
     count: int
     filled: int
     items_total: int
+    #: Each listed class's outline and ports, once (docs/web-wire.md).
+    shapes: dict[str, BuildingShape]
 
 
 def _storage_row(st: WorldState, row: StorageRecord) -> StorageSolid | StorageFluid:
@@ -120,4 +130,5 @@ def storage(request: Request, save: str | None = None, world: str | None = None)
         "count": len(rows),
         "filled": sum(1 for r in solids if r["total"]),
         "items_total": sum(r["total"] for r in solids),
+        "shapes": building_shapes(st.game, (r["cls"] for r in rows)),
     }

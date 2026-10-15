@@ -12,11 +12,19 @@ from typing import Literal, cast
 from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
+from .....core.gamedata.shapes import BuildingShape
 from .....core.saveio import rows as saverows
 from .....core.saveio.schema import PipeNetwork
 from .....domain.world.flow import PipeFlow
 from .....domain.world.state import WorldState
-from ...serial import PlacementFields, cm_to_m, object_rows, placement_fields, require_world
+from ...serial import (
+    PlacementFields,
+    building_shapes,
+    cm_to_m,
+    object_rows,
+    placement_fields,
+    require_world,
+)
 
 __all__ = ["router"]
 
@@ -86,6 +94,8 @@ class BeltsResponse(TypedDict):
     chains: int
     attachments: list[AttachmentRow]
     attachment_count: int
+    #: Each attachment class's outline and ports, once (docs/web-wire.md).
+    shapes: dict[str, BuildingShape]
 
 
 def _belt_class(st: WorldState, cls: str | None) -> BeltClass:
@@ -152,6 +162,7 @@ def belts(request: Request, save: str | None = None, world: str | None = None) -
         "chains": len({r["chain"] for r in rows}),
         "attachments": attachments,
         "attachment_count": len(attachments),
+        "shapes": building_shapes(st.game, (a["cls"] for a in attachments)),
     }
 
 

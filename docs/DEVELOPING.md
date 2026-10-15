@@ -450,6 +450,7 @@ and the `gen` extra check:
 | `tools/gen_world_resource_nodes.py` | the node table → `data/world_resource_nodes.json` | ~4 s |
 | `tools/gen_resource_nodes.py` | the served node table → `data/resource_nodes.json` | <1 s |
 | `tools/gen_region_names.py` | the region-name grids → `data/region_names.json` | ~3 s |
+| `tools/gen_building_shapes.py` | building outlines and ports → `data/building_shapes.json` ([building-shapes.md](building-shapes.md)) | ~7 s |
 | `tools/gen_world_collectibles.py` | the collectible table → `data/world_collectibles.json` | ~40 s for 99 saves |
 
 Run them as `uv run --extra gen python tools/<name>.py`. Imagery and the heightfield land in

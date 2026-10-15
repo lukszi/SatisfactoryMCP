@@ -89,6 +89,7 @@ def test_a_world_with_no_belts_answers_with_an_empty_network(game):
                 "chains": 0,
                 "attachments": [],
                 "attachment_count": 0,
+                "shapes": {},
             }
 
 
@@ -169,7 +170,7 @@ def test_the_splitters_and_mergers_ride_with_the_belts_and_with_nothing_else(cli
 
     # The no-double-draw claim, checked rather than asserted in a comment.
     machines = client.get("/api/machines").json()
-    drawn = {r["instance_leaf"] for kind in machines for r in machines[kind]}
+    drawn = {r["instance_leaf"] for kind in ("machines", "extractors", "generators") for r in machines[kind]}
     assert not drawn & {r["instance_leaf"] for r in body["attachments"]}
 
 

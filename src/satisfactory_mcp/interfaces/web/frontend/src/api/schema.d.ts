@@ -2446,6 +2446,10 @@ export interface components {
             attachments: components["schemas"]["AttachmentRow"][];
             /** Attachment Count */
             attachment_count: number;
+            /** Shapes */
+            shapes: {
+                [key: string]: components["schemas"]["BuildingShape"];
+            };
         };
         /** Body_name_candidate_api_labels_post */
         Body_name_candidate_api_labels_post: {
@@ -2476,6 +2480,21 @@ export interface components {
             item: string;
             /** Amount */
             amount: number;
+        };
+        /**
+         * BuildingShape
+         * @description What the map draws a class as: where the outline came from, the rings, the ports.
+         */
+        BuildingShape: {
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "mesh" | "clearance";
+            /** Rings */
+            rings: number[][][];
+            /** Ports */
+            ports: components["schemas"]["PortRow"][];
         };
         /**
          * BuiltGraphEdge
@@ -4013,6 +4032,8 @@ export interface components {
         /**
          * MachinesResponse
          * @description What ``/api/machines`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
+         *
+         *     ``shapes`` holds each listed class's outline and ports once (docs/web-wire.md).
          */
         MachinesResponse: {
             /** Machines */
@@ -4021,6 +4042,10 @@ export interface components {
             extractors: components["schemas"]["PlacementRow"][];
             /** Generators */
             generators: components["schemas"]["PlacementRow"][];
+            /** Shapes */
+            shapes: {
+                [key: string]: components["schemas"]["BuildingShape"];
+            };
         };
         /** MakerRow */
         MakerRow: {
@@ -5635,6 +5660,32 @@ export interface components {
             connections: number;
         };
         /**
+         * PortRow
+         * @description One belt or pipe connector: where it is and which way it faces (degrees, +x to +y).
+         */
+        PortRow: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "belt" | "pipe";
+            /**
+             * Flow
+             * @enum {string}
+             */
+            flow: "in" | "out" | "any";
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z M */
+            z_m: number;
+            /** Yaw */
+            yaw: number;
+        };
+        /**
          * PowerReport
          * @description Generation capacity, draw both nameplate and measured, and what each leaves out.
          *
@@ -7081,6 +7132,10 @@ export interface components {
             filled: number;
             /** Items Total */
             items_total: number;
+            /** Shapes */
+            shapes: {
+                [key: string]: components["schemas"]["BuildingShape"];
+            };
         };
         /**
          * StorageSolid
