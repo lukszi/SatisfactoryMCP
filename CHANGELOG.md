@@ -16,6 +16,9 @@ All notable changes to this project are recorded here. The format follows
   coast and along the west and north edges, is drawn as deep sea again; 0.2.0 drew the rock
   on its floor as dry land, with a straight edge and a brown stripe where it met the sea.
   Only ground under the sea that land above the sea walls off from it is drawn as ground.
+- Map renders: the Satellite map's plain shells are grey again, as the game draws them, not
+  tan. The tan, on the shell plates of the northern lagoon islands among others, was the
+  ground under the shells, read for their colour. The style's version goes up.
 
 ## [0.2.0] - 2026-10-14
 
