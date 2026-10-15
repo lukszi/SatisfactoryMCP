@@ -31,7 +31,7 @@ SELECTOR_HELP = (
     "selectors: north|south|east|west|northeast|... , region:<name>, grid:X3Y4, "
     "node:<instance>, pin:<n>, near:<place>@<radius_m>, bbox:<x1>,<y1>,<x2>,<y2>, "
     "resource:<name>, purity:pure|normal|impure, kind:node|well_sat|geyser. Any "
-    "filter takes all, which means no filter; all on its own is every node"
+    "filter takes all, which means no filter; all on its own is every node, none is no node"
 )
 
 _LOCATION_PREFIXES = ("region", "grid", "node", "near", "bbox")
@@ -168,8 +168,10 @@ def _select_pin(ctx: _SelectContext, prefix: str | None, value: str) -> _Outcome
 
 
 def _select_all(ctx: _SelectContext, prefix: str | None, value: str) -> _Outcome:
-    if prefix is not None or value.casefold() != "all":
+    if prefix is not None or value.casefold() not in ("all", "none"):
         return _NO_MATCH
+    if value.casefold() == "none":
+        return _Match([], "no nodes")
     return _Match(list(ctx.nodes), "whole map")
 
 

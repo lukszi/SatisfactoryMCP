@@ -98,6 +98,7 @@ A **source spec** is a list of selectors, and it is what every `sources=` parame
 | `purity:pure\|normal\|impure\|all` | filter: purity |
 | `kind:node\|well_sat\|geyser\|all` | filter: node kind |
 | `all` | every node on the map |
+| `none` | no node: a plan fed only by what it is `supplied`, such as one made from a built factory with no extractors |
 
 The last three are also plain parameters on `search_resource_nodes` — `resource=`,
 `purity=`, `kind=` — spelled exactly as the terms they stand in for, so either form reads
