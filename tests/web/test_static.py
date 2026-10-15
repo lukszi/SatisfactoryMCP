@@ -50,6 +50,9 @@ def test_the_static_bundle_ships_the_page_and_the_vendor_licence():
     licence = (STATIC_DIR / "vendor" / "LEAFLET-LICENSE").read_text(encoding="utf-8")
     assert "BSD 2-Clause License" in licence
     assert "Leaflet" in (STATIC_DIR / "app.js").read_text(encoding="utf-8")[:1000]
+    elk = (STATIC_DIR / "vendor" / "ELKJS-LICENSE").read_text(encoding="utf-8")
+    assert "Eclipse Public License - v 2.0" in elk
+    assert "elkjs" in (STATIC_DIR / "app.js").read_text(encoding="utf-8")[:1500]
 
 
 @_built
