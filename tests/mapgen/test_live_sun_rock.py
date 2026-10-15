@@ -32,7 +32,7 @@ from mapgen.render.draw import painting
 from mapgen.render.ground.detail import with_tilt
 from mapgen.terrain.ground_detail.textures import load_detail_textures
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_SHELL
-from tests.mapgen.test_ground_detail_light import N, _Capture, _field, _painted_ground
+from tests.support.detail_light import Capture, N, bare_painted_ground, sloped_field
 from tests.support.draw import draw_layers
 from tests.support.ground_textures import write_textured_store
 from tests.support.rock_textures import rock_textures
@@ -218,7 +218,7 @@ def test_the_light_takes_the_tilt_whatever_layers_a_run_draws(monkeypatch, grave
         return np.zeros(scene["z_m"].shape + (3,), np.float32)
 
     monkeypatch.setattr(painting, "painted_colours", painter)
-    field = _field()
+    field = sloped_field()
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
     top_cm = (field.height_dm.astype(np.float32) / 10.0 + 2.0) * 100.0
     cls = np.zeros((N, N), np.uint8)
@@ -227,11 +227,11 @@ def test_the_light_takes_the_tilt_whatever_layers_a_run_draws(monkeypatch, grave
     source = RockTilt(_look(7500.0 / N), None, 1.0)
     captured = {}
     for layer, tilt in (("terrain", None), ("terrain", source), ("painted", source)):
-        capture = _Capture()
+        capture = Capture()
         draw_layers(
             (layer,), field, 1, borrow, N, False, field.height_dm.astype(np.float32),
             unlit=True, surface=capture, textures=gravel, meshes=meshes, rock_tilt=tilt,
-            painted=_painted_ground() if layer == "painted" else None,
+            painted=bare_painted_ground() if layer == "painted" else None,
         )  # fmt: skip
         captured[layer, tilt is not None] = capture.detail
     plain, tilted = captured["terrain", False], captured["terrain", True]

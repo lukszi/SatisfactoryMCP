@@ -7,12 +7,9 @@ no field on disk.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import numpy as np
 import pytest
 
-from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.lighting.light_tiles import DETAIL_SCALE, detail_window, with_detail
 from mapgen.lighting.stage import Surface, discard
 from mapgen.render.draw import painting
@@ -20,38 +17,11 @@ from mapgen.render.ground.detail import detail_bytes, drawn_share
 from mapgen.terrain.ground_detail.reference import GroundDetail
 from mapgen.terrain.ground_detail.textures import load_detail_textures
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.detail_light import Capture, N, bare_painted_ground, sloped_field
 from tests.support.draw import draw_layers
 from tests.support.ground_textures import write_textured_store
 
 pytestmark = pytest.mark.filterwarnings("ignore:CUDA path could not be detected:UserWarning")
-
-#: One band of output, one texel of the field a pixel.
-N = 64
-
-
-class _Capture:
-    """What the pass hands the light, the detail normal's bytes included."""
-
-    def __init__(self) -> None:
-        self.detail = np.full((N, N, 2), -128, np.int16)
-        self.calls = 0
-
-    def put(self, row, z_m, land, columns=slice(None), slabs=None, *, detail=None):
-        self.calls += 1
-        if detail is not None:
-            self.detail[row : row + len(z_m), columns] = detail
-
-
-def _field() -> SimpleNamespace:
-    step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / N
-    rows, cols = np.mgrid[0:N, 0:N]
-    height = (300 + 3 * rows + 2 * cols).astype(np.int16)
-    return SimpleNamespace(
-        height_dm=height, provenance_plane=np.ones((N, N), np.uint8),
-        water_raster=lambda: None, water_quality_raster=lambda: None,
-        x0_cm=BOUNDS_M["x_min_m"] * 100 + step_cm / 2,
-        y0_cm=BOUNDS_M["y_min_m"] * 100 + step_cm / 2, spacing_cm=step_cm, width=N, height=N,
-    )  # fmt: skip
 
 
 @pytest.fixture(scope="module")
@@ -67,13 +37,6 @@ def textures(tmp_path_factory):
     return found
 
 
-def _painted_ground() -> SimpleNamespace:
-    rock = [np.zeros((N // 4, N // 4), np.float32)]
-    return SimpleNamespace(rock=rock, rock_family=None, rock_top_rule=None, titan=None,
-                           crowns=None, titan_crowns=None,
-                           water_optics=lambda taps, river=None: None)  # fmt: skip
-
-
 def test_the_painted_layer_and_the_light_read_the_detail_in_any_pieces(monkeypatch, textures):
     seen: list[GroundDetail | None] = []
 
@@ -82,14 +45,14 @@ def test_the_painted_layer_and_the_light_read_the_detail_in_any_pieces(monkeypat
         return np.zeros(scene["z_m"].shape + (3,), np.float32)
 
     monkeypatch.setattr(painting, "painted_colours", painter)
-    field = _field()
+    field = sloped_field()
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
     captured = []
     for columns in (N, 13):
-        capture = _Capture()
+        capture = Capture()
         draw_layers(
             ("painted",), field, 1, borrow, N, False, field.height_dm.astype(np.float32),
-            unlit=True, surface=capture, painted=_painted_ground(), textures=textures,
+            unlit=True, surface=capture, painted=bare_painted_ground(), textures=textures,
             columns=columns,
         )  # fmt: skip
         captured.append(capture.detail)
@@ -146,8 +109,8 @@ def test_the_detail_tilts_the_normal_and_none_leaves_it():
 
 
 def test_a_field_without_textures_hands_the_light_no_detail():
-    field = _field()
-    capture = _Capture()
+    field = sloped_field()
+    capture = Capture()
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
     draw_layers(("terrain",), field, 1, borrow, N, False, field.height_dm.astype(np.float32),
                 unlit=True, surface=capture)  # fmt: skip

@@ -1,7 +1,7 @@
 """One memory budget for a run's pools: the draw's threads, the cut's encoders and the light's
 processes, sized from one reading of the free memory taken before the draw.
 
-docs/map/renders.md section 43.
+docs/map/renders.md section 45.
 """
 
 from __future__ import annotations

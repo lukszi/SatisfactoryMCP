@@ -55,6 +55,7 @@ __all__ = [
     "RockFamilyEntry",
     "RockLookStyle",
     "Sampler",
+    "SpeckScene",
     "TitanTreesStyle",
     "UnderwaterScene",
     "WaterBase",
@@ -216,6 +217,15 @@ class PaintedScene(BandScene):
     unlit: NotRequired[bool]
     detail: NotRequired[GroundDetail | None]
     look_lit: NotRequired[bool]
+
+
+class SpeckScene(TypedDict):
+    """What the coral speck rule reads of a band (``surfaces.sunk_specks``): its water and
+    the render-only meshes' weight and class. A ``PaintedScene`` is one."""
+
+    water: BandWater
+    mesh_weight: FloatGrid | None
+    mesh_class: U8Grid | None
 
 
 class WetOptics(TypedDict):

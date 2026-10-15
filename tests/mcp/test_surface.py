@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 
 import pytest
 
@@ -182,6 +183,10 @@ def test_the_finder_tools_take_the_status_and_network_the_page_filters_by():
     assert "network" in tools["search_conduits"].inputSchema["properties"]
 
 
+#: The save's age (``text.ago``), measured out: it grows by the day, not with the resource.
+SAVE_AGE = re.compile(r" \((?:under a minute|\d+ min|\d+h|\d+ days) ago\)")
+
+
 @pytest.mark.parametrize(
     "uri",
     [
@@ -193,7 +198,7 @@ def test_the_finder_tools_take_the_status_and_network_the_page_filters_by():
 def test_resources_are_small(uri):
     out = _run(srv.mcp.read_resource(uri))
     text = out[0].content if isinstance(out, list) else str(out)
-    assert 0 < len(text) < 1000
+    assert 0 < len(SAVE_AGE.sub("", text)) < 1000
 
 
 def test_docs_summary_reports_no_normalisation_warnings():

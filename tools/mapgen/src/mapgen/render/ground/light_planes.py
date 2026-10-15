@@ -10,7 +10,7 @@ section 36, "Coral trees are no crowns", and docs/map/painted.md section 30, "Ro
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 
@@ -23,7 +23,8 @@ from mapgen.render.ground.void import land_weight
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, FloatGrid, I8Grid, U8Grid
 
 if TYPE_CHECKING:
-    from mapgen.palette.painted.shapes import PaintedScene
+    from mapgen.cache import Plane
+    from mapgen.palette.painted.shapes import SpeckScene
     from mapgen.render.ground.surface import BandSampling, BandSurface, GroundSources
 
 __all__ = ["LightPlanes", "SeaMeshes", "light_planes", "sea_meshes"]
@@ -60,8 +61,8 @@ def sea_meshes(own: BandSurface) -> SeaMeshes | None:
     where = (kept > 0) & ~seabed_keeps(kept, own.z_m, own.level_m, own.mesh_land)
     if not where.any():
         return None
-    scene = {"water": own.water, "mesh_weight": weight, "mesh_class": kept}
-    water = sunk_specks(cast("PaintedScene", scene))
+    scene: SpeckScene = {"water": own.water, "mesh_weight": weight, "mesh_class": kept}
+    water = sunk_specks(scene)
     land = land_weight(own.missing, water["cover"], own.void)
     return SeaMeshes(where, own.z_m, land, weight, kept)
 
@@ -109,8 +110,8 @@ def _or_zero(plane: FloatGrid | U8Grid | None) -> FloatGrid | U8Grid | int:
     return 0 if plane is None else plane
 
 
-def _cut(plane: object, grid: BandSampling) -> U8Grid | None:
+def _cut(plane: Plane | None, grid: BandSampling) -> U8Grid | None:
     """A raster plane on the piece, as bytes; None without it."""
     if plane is None:
         return None
-    return np.asarray(cast("U8Grid", plane)[grid.rows.cut, grid.cols.cut], np.uint8)
+    return np.asarray(plane[grid.rows.cut, grid.cols.cut], np.uint8)

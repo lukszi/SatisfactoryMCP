@@ -62,7 +62,7 @@ __all__ = ["COARSE_THREADS", "LightBake", "bake_light", "block_rows", "gpu_calls
 #: Threads that encode the coarser levels' tiles, a quarter of the cores up to 8, and the
 #: pieces they may have waiting while the draw runs; from ``finish`` on, ``LEVEL_AHEAD``.
 #: Pillow encodes without the GIL, so these keep up with the rows (docs/map/renders.md
-#: section 42, "Keeping up").
+#: section 42, "The light, a row of blocks at a time").
 COARSE_THREADS = max(2, min(8, (os.cpu_count() or 8) // 4))
 COARSE_AHEAD = 2
 
