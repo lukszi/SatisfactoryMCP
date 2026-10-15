@@ -111,6 +111,10 @@ badge "chat", never a hue; local only; the page never prompts the agent.
 
 ## 3. Data: the production graph (on `SolveResponse`)
 
+Superseded for `graph` by planner_vision.md §4.2: node ids are now `p:`/`in:`/`ex:` plus class
+ids, one process node per recipe group, and the flows are planning.md §8.5o. The row fields
+below still hold.
+
 Built by `summary.solve_summary` from the solver's own processes (item ids), with
 `graph.chain_depth` over each row's non-MW inputs and outputs. TypeScript no longer builds
 edges (`planner-result.ts graphOf` is deleted).

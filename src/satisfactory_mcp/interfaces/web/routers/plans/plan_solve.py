@@ -36,7 +36,8 @@ router = APIRouter(prefix="/api")
 
 
 class SolveBody(TypedDict):
-    """Exactly one of ``args`` (a request) and ``key`` (a stored plan, at ``rev`` or its head)."""
+    """Exactly one of ``args`` (a request) and ``key`` (a stored plan, at ``rev`` or its head).
+    Only a stored plan has node positions to echo in ``graph.positions``."""
 
     args: NotRequired[dict[str, object] | None]
     key: NotRequired[str | None]
@@ -78,16 +79,18 @@ def solve_plan(
     if (args is None) == (key is None):
         return error_response("send exactly one of args and key", 400)
     st = require_world(request, save, world)
+    positions: dict[str, list[float]] = {}
     if key is not None:
         check_plan_key(key)
-        kwargs = require_plan(plan_log(st), key, body.get("rev")).kwargs()
+        stored = require_plan(plan_log(st), key, body.get("rev"))
+        kwargs, positions = stored.kwargs(), stored.node_positions
     else:
         try:
             kwargs = PlanArgs.from_dict(args).kwargs()
         except InvalidOp as exc:
             return error_response(str(exc), 400)
     try:
-        return summary.solve_summary(st.game, st, kwargs)
+        return summary.solve_summary(st.game, st, kwargs, positions=positions)
     except ValueError as exc:
         return error_response(str(exc), 400)
 

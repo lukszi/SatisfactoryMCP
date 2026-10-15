@@ -66,6 +66,7 @@ class PlanOpBody(TypedDict, total=False):
     item: str
     member: JsonValue
     name: str
+    node: str
     was: JsonValue
 
 
@@ -112,6 +113,7 @@ class PlanStateRecord(TypedDict, total=False):
     siting: JsonObject
     args: PlanArgsBody
     headroom_mw: float | None
+    node_positions: dict[str, list[float]]
 
 
 #: Who wrote a commit: ``kind``, ``client`` and ``pid``, as ``planlog.Actor.to_dict`` gives it.

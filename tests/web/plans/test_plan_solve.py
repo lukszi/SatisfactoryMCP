@@ -318,16 +318,20 @@ def test_the_solve_carries_the_production_graph_with_ids_and_depths(fresh_state_
     assert all(r["id"] == (r["recipe_id"] or r["id"]) for r in rows)
     assert all(r["id"].startswith("label:") for r in rows if r["recipe_id"] is None)
     kinds = [n["kind"] for n in graph["nodes"]]
-    assert kinds == sorted(kinds, key=["input", "process", "export"].index)
+    order = ["input", "process", "export", "leftover", "sink"]
+    assert kinds == sorted(kinds, key=order.index)
     procs = [n for n in graph["nodes"] if n["kind"] == "process"]
-    assert [n["id"] for n in procs] == ids and [n["row"] for n in procs] == ids
-    assert [n["rank"] for n in procs] == [r["depth"] + 1 for r in rows]
+    assert all(n["id"].startswith("p:") and n["row"] == n["rows"][0] for n in procs)
+    assert sorted(r for n in procs for r in n["rows"]) == sorted(ids)
+    depth = {r["id"]: r["depth"] for r in rows}
+    assert all(n["rank"] == max(depth[r] for r in n["rows"]) + 1 for n in procs)
     [export] = [n for n in graph["nodes"] if n["kind"] == "export"]
-    assert export["id"] == f"ex:{RIP}" and export["item"] == "Desc_IronPlateReinforced_C"
+    assert export["id"] == "ex:Desc_IronPlateReinforced_C"
+    assert export["item"] == export["item_id"] == "Desc_IronPlateReinforced_C"
     assert export["rank"] == max(n["rank"] for n in procs) + 1
-    assert export["detail"] == "exported 5/min"
+    assert export["detail"] == "exported 5/min" and export["per_min"] == 5.0
     top = next(n for n in procs if n["item"] == "Desc_IronPlateReinforced_C")
-    row = next(r for r in rows if r["id"] == top["id"])
+    row = next(r for r in rows if r["id"] == top["row"])
     assert top["detail"].startswith(f"{row['building']} ×{row['machines']} · ")
     assert top["detail"].endswith("%") and " MW · " in top["detail"]
     names = {n["id"] for n in graph["nodes"]}
@@ -336,7 +340,39 @@ def test_the_solve_carries_the_production_graph_with_ids_and_depths(fresh_state_
     assert into == pytest.approx(5.0, abs=1e-3)
     miners = [r for r in rows if r["id"].startswith("label:")]
     assert miners and all(r["depth"] == 0 for r in miners)
-    assert len(json.dumps(graph)) < 8000
+    assert len(json.dumps(graph)) < 12_000
+
+
+def test_node_positions_ride_with_the_plan_and_change_no_solve(fresh_state_client):
+    created = create_plan(fresh_state_client)
+    key = created["key"]
+    before = fresh_state_client.post(
+        "/api/plan/solve", json={"key": key}, headers=PAGE_ORIGIN
+    ).json()
+    node = before["graph"]["nodes"][0]["id"]
+    place = [
+        {"op": "place", "node": node, "value": [12.5, -3]},
+        {"op": "place", "node": "p:Recipe_NotInThisPlan_C", "value": [1, 1]},
+    ]
+    pushed = push_ops(fresh_state_client, key, 1, *place).json()
+    assert pushed["rev"] == 2 and pushed["state"]["text"] == "v2 page: layout: 2 nodes moved"
+    assert pushed["state"]["node_positions"][node] == [12.5, -3.0]
+    assert pushed["state"]["plan_id"] == created["state"]["plan_id"]
+    after = fresh_state_client.post(
+        "/api/plan/solve", json={"key": key}, headers=PAGE_ORIGIN
+    ).json()
+    assert after["graph"]["positions"] == {node: [12.5, -3.0]}
+    assert {**after, "graph": {**after["graph"], "positions": {}}} == before
+    assert after["token"] == before["token"]
+    push_ops(fresh_state_client, key, 2, {"op": "reset_layout"})
+    reset = fresh_state_client.post(
+        "/api/plan/solve", json={"key": key}, headers=PAGE_ORIGIN
+    ).json()
+    assert reset["graph"]["positions"] == {}
+    old = fresh_state_client.post(
+        "/api/plan/solve", json={"key": key, "rev": 2}, headers=PAGE_ORIGIN
+    ).json()
+    assert old["graph"]["positions"] == {node: [12.5, -3.0]}
 
 
 def test_an_infeasible_solve_has_an_empty_graph(fresh_state_client):
@@ -344,7 +380,8 @@ def test_an_infeasible_solve_has_an_empty_graph(fresh_state_client):
     body = fresh_state_client.post(
         "/api/plan/solve", json={"args": args}, headers=PAGE_ORIGIN
     ).json()
-    assert body["feasible"] is False and body["graph"] == {"nodes": [], "edges": []}
+    empty = {"nodes": [], "edges": [], "positions": {}, "buildings": []}
+    assert body["feasible"] is False and body["graph"] == empty
 
 
 def test_the_delta_names_rows_added_changed_and_removed(fresh_state_client):
