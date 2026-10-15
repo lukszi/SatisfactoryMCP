@@ -931,9 +931,10 @@ each now on its target where it lies.
   low side view, the terraces in a cliff's shade), balanced on its sand, gives a near-neutral
   rim #c4c8c5 (ΔE 5.0 from the drawn colour) and orange-red pools #a97152 and #a26d6c. The
   pools are the meshes' water slots (`Water_Plateau`, `Water_Plateau2`, `Water_Plateau3`,
-  with no albedo texture), which the mesh class leaves out. From above a terrace is mostly
-  pool. One graded side view is too little to move the class; a daylight shot from above
-  would settle the rim and say whether the pools need a colour.
+  with no albedo texture). From above a terrace is mostly pool. One graded side view is too
+  little to move the class; a daylight shot from above would settle the rim and the pools.
+  Since 2026-10-15 the pools are drawn as the hot-spring water and the rim wears its texture
+  (painted.md section 30, "The hot-spring terraces and their pools").
 
 **Coral meshes other than the caps.** The coral class wears the cap target #917c75. By
 instance, the class is mostly other meshes, each with its own texture:

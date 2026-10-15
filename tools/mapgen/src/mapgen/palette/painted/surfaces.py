@@ -1,6 +1,6 @@
 """What stands on the painted ground: rock in its family's colour and look, the canopy over
-rock, and the render-only meshes. docs/map/painted.md sections 27 and 30 and
-docs/map/calibration.md section 31.
+rock, and the render-only meshes, the hot-spring terraces' pools among them.
+docs/map/painted.md sections 27 and 30 and docs/map/calibration.md section 31.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from mapgen.palette.painted.calibration import (
     scoped_planes,
     with_derived,
 )
+from mapgen.palette.painted.pools import pool_colour
 from mapgen.palette.painted.rock_look.atlas import (
     KIND_ARCH,
     KIND_BARNACLE,
@@ -27,6 +28,7 @@ from mapgen.palette.painted.rock_look.atlas import (
     KIND_DESERT,
     KIND_LAYER,
     KIND_SHELL,
+    KIND_TERRACE,
 )
 from mapgen.palette.painted.rock_look.surface import (
     band_look,
@@ -51,7 +53,9 @@ from mapgen.terrain.render_meshes import (
     MESH_CORAL,
     MESH_ROCK,
     MESH_SHELL,
+    MESH_TERRACE,
 )
+from mapgen.terrain.terrace_pools import TERRACE_POOL
 from satisfactory_mcp.core.arrays import BoolMask, I32Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -324,8 +328,9 @@ def _arch_rock(
 def _own_look(
     colour: FloatGrid, scene: PaintedScene, ground: PaintedSurface, pick: BoolMask, kind: int
 ) -> FloatGrid:
-    """The ``pick``ed shells or barnacles (``kind``) in their own textures where the run has
-    the look: a cut of their albedo and normal maps around their colour, and any detail map."""
+    """The ``pick``ed shells, barnacles or terraces (``kind``) in their own textures where the
+    run has the look: a cut of their albedo and normal maps around their colour, and any detail
+    map."""
     look = ground.rock_look
     if look is None or not pick.any():
         return colour
@@ -412,8 +417,9 @@ def mesh_surface(
     ground: PaintedSurface,
     sample_rock: Sampler | None,
 ) -> FloatGrid:
-    """The render-only meshes over ``g``, each class in its own colour, the shells and the
-    barnacles in their own textures.
+    """The render-only meshes over ``g``, each class in its own colour, the shells, the
+    barnacles and the terraces in their own textures, a terrace's pools (``TERRACE_POOL``) as
+    its surface under the hot-spring water (``pool_colour``).
 
     A rock wears its own family (``scene["mesh_family"]``), its top layer and its look, as a
     cliff does, never the family of a cliff it happens to overlap; without the plane it takes
@@ -438,6 +444,11 @@ def mesh_surface(
         coral = cls == MESH_CORAL
         for kind, rgb in ground.coral_rgb.items():
             colour = np.where((coral & (family == kind))[..., None], rgb, colour)
-    for which, kind in ((MESH_SHELL, KIND_SHELL), (MESH_BARNACLE, KIND_BARNACLE)):
+    owned = ((MESH_SHELL, KIND_SHELL), (MESH_BARNACLE, KIND_BARNACLE), (MESH_TERRACE, KIND_TERRACE))
+    for which, kind in owned:
         colour = _own_look(colour, scene, ground, (cls == which) & (mesh_w > 0.0), kind)
+    if family is not None:
+        pool = ((cls == MESH_TERRACE) & (family == TERRACE_POOL))[..., None]
+        if pool.any():
+            colour = np.where(pool, pool_colour(colour, ground.palette), colour)
     return g * (1.0 - mesh_w[..., None]) + colour * mesh_w[..., None]

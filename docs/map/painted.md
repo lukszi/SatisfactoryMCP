@@ -65,7 +65,9 @@ foliage too, and only this pass draws them (section 36, "Coral trees are no crow
 They are rasterised into `meshes.cache/` beside `direct.cache/` and `top.cache/` (same size and
 build stamp, plus the reader version), with a class plane: coral, shell, rock, terrace or
 barnacle. A barnacle (`SM_Barnacle_01` and `_02`, 13,087 instances) is coral everywhere but in
-the painted style's look ("Rock textures", "The barnacles"). They are
+the painted style's look ("Rock textures", "The barnacles"). A hot-spring terrace's pools
+are its water sections, rasterised apart with the pool code above the terrace class ("The
+hot-spring terraces and their pools"). They are
 composited with the top layer's raise-only lift, and only where the mesh top stands within
 0.6 m of the water surface or above it, so seabed coral roots do not speckle the sea.
 
@@ -443,6 +445,7 @@ the materials' parameters.
 | Arches and boulders (the top pass) | `TX_Arc_Rock_BC`, 8.93 m: an arch mesh spans about 125 m of surface per UV0 unit (`ArcMedium_01`, `ArcLarge_01` and `ArcSmall_01` 125 to 126 m) and its `MI_Arc_*` instances repeat the rock 13 to 15 times | `TX_Arc_Rock_N`, the same tile | rotated cells, for the mesh's UVs |
 | Desert rock (family 8) | `TX_DesertRock_Rough_01_Alb`, 17.15 m: `DesertRock_WA` repeats it 6 times a UV0 unit, and the up faces of `SM_DesertRock_05`, most of the desert seen from above, span 102.9 m a unit (below) | `TX_DesertRock_Rough_01_normal`, the same tile, at its own strength | rotated cells, for the mesh's UVs |
 | Shells (the render-only `*Shell*` meshes) | a 10 m square cut from the first island of `TX_SmallShell_BC`, faded into a tile (below) | the same cut of `TX_SmallShell_N`, and `SeaRock_Detail_Nor` at 1.40 m (`DetailNormal_UV` 22.8) laid on it | rotated cells, for the mesh's UVs |
+| Hot-spring terraces (the render-only `/HotSpring/` meshes) | a 6.8 m square cut from `HotSpring_Plateau1And3_Alb`, faded into a tile ("The hot-spring terraces and their pools") | the same cut of `HotSpring_Plateau1And3_Nor` | rotated cells, for the mesh's UVs |
 | Barnacles (the render-only `*Barnacle*` meshes) | a 1.65 m square cut from `TX_Barnacle_01_Alb`, faded into a tile (below) | the same cut of `TX_Barnacle_01_Nor` | rotated cells, for the mesh's UVs |
 | A family's top layer | its root's top texture (section 30, "Rock surfaces"): forest `TX_Forest_Far_01_Alb` at 50 m, the cliff master's `TopLayer Tiling Far` 0.02; grass `TX_Grass_Far_01_Alb` at 83.3 m, `Cliff_Grass`'s own 0.012; sand `TX_Sand_BC` at 50 m; red grass `TX_GrassRed_01_Alb` at 3.33 m, its near `TopLayer Tiling` 0.3, as its root does not switch the far albedo on ("Red-grass tops and the desert arches" below) | none of its own | none |
 
@@ -466,7 +469,8 @@ keeps its texel size, and a mesh's own tile is its metres a UV unit over 6; it b
 on top at `Sand Tiling` 32. In the game the repeat is broken by each mesh's UV layout and each
 placement's turn and shift, and by that mask; a projection on the ground plane has none of
 them, and drew the desert as one lattice over whole mesas, 12.5 m a cell. So the look turns
-every texture of its own (the arches', the desert rock's, the shells' and the barnacles') in the landscape's
+every texture of its own (the arches', the desert rock's, the shells', the barnacles' and the
+terraces') in the landscape's
 cells, the game's anti-tiling for a texture laid on the ground plane, in place of the meshes'
 UVs; the cliffs wear the landscape's Cliff layer material, which has the cells already.
 
@@ -572,7 +576,8 @@ live, still lights the surface and the maps add only their relief (`rock_look.sh
 desert rock's map is the detail on the mesh's own normal in `DesertRock_WA`, at
 `TiledNormal_Intensity` 1, so it is laid at its own strength since 2026-10-09 (its slope was
 doubled before, as a base map's); the shells' and the barnacles' maps are as `Asset_Master`
-blends them, at full strength; the arches keep the doubled base.
+blends them, at full strength, and the terraces' at full strength too; the arches keep the
+doubled base.
 
 **The arches' own family.** The game's baked distant view (the mesh HLOD bake, rasterised at
 1 m) has the arches and boulders lighter than the cliffs around them: per area, the median
@@ -839,6 +844,56 @@ material's own, as up to style 36. `mapgen calibrate` derives the key from the s
 as it does for an area's shells, if a palette sets it. The desert boulders' terracotta stands:
 their materials carry it (`Color Tint` 1.0, 0.40 to 0.46, 0.28 to 0.29).
 
+### The hot-spring terraces and their pools (2026-10-15)
+
+The terraces, as at (895, 2215), drew as flat cream: one colour, `calibration.meshes.terrace`
+#ccbea8, with no texture, and their pools in the same cream. Build 502094.
+
+**What the game has.** 101 terraces under `/World/Environment/HotSpring/Mesh/`, none with an
+override material:
+
+| Mesh | Instances | Rock material, albedo | Pool material | Pool share of the plan from above |
+| --- | --- | --- | --- | --- |
+| `Hotspring_Plateau_01` | 26 | `Plateau1and3`, `HotSpring_Plateau1And3_Alb` | `Water_Plateau`, two levels | 0.72 |
+| `Hotspring_Plateau_02` | 24 | `MI_HotSpring_02` (`MM_Grass_Master`), `TX_HotSpringPlateau2_BC` | `Water_Plateau2` | 0.74 |
+| `Hotspring_Plateau_03` | 19 | `Plateau1and3` | `Water_Plateau3` | 0.53 |
+| `Hotspring_Origin_01` | 19 | `OriginStaligtite`, `HotSpring_OriginStaligtite_Alb` | `Water_Origin` | 0.68 |
+| `Hotspring_Blob_01` | 9 | `MI_Geyser` (`MM_Grass_Master`), `TX_HotSpring_BC` | none | 0 |
+| `Hotspring_Staligtite_01` | 4 | `OriginStaligtite` | none | 0 |
+
+Each pool is LOD 0's first section: a level plane (z spread 0 in the mesh) a few centimetres
+under its rim, over a basin whose floor lies a median 0.3 to 1.0 m below it (`_03` 0.28,
+`_02` 0.62, `_01` about 0.9, `_Origin` 1.0, measured by rasterising each section of the mesh
+at 10 cm). From above a terrace is mostly pool. The max-Z raster already drew the pool planes,
+since they cover the basins, but with the terrace's code, so they wore the cream.
+
+**The pools.** `mesh_items` now splits each `/HotSpring/` mesh whose sections name a
+`/HotSpring/Material/Water_*` material (`terrain/terrace_pools.py`): the pool triangles are
+rasterised under their own key with `TERRACE_POOL` (1) above the terrace class, in the plane a
+rock's family takes. Only a mesh read at LOD 0 is split, as only its triangles follow the
+sections; the four meshes above are. The painted style draws a pool texel as the terrace's own
+surface under 0.8 m (`POOL_DEPTH_M`) of the `hot_spring` water class, by the optics the lakes
+take (water.md, "The optics"), its colours taken back by the exposure since the mesh layer is
+drawn before the light: #ccbea8 under it reads about #7cac9f once exposed, the class's milky
+turquoise. On the 120 m window round (890, 2240), 69% of the 59,747 terrace texels at z7 are
+pool. The pools' own materials (`WaterColor A` yellow, `B` blue, `DeepWater` magenta,
+`ShallowWater` blue, all through `HotspringWater_Inst`) are not decoded.
+
+**The texture.** The terraces wear a cut of `HotSpring_Plateau1And3_Alb` and its normal map
+in the look, as the shells and barnacles do (`KIND_TERRACE`): `Plateau1and3` is the material
+of 45 of the 69 plateaus, and its siblings are the same pale crust. The texture is a unique
+unwrap; the up faces of `_01` mostly read the island at UV (0.03 to 0.3, 0.5 to 0.8), so the
+look cuts the square of side 0.25 from (0.03, 0.5) and fades the next 0.03125 into its start.
+`_01` and `_03` span 27.1 and 25.1 m a UV unit over their up faces and are placed at a median
+1.04, so the cut is 6.8 m. The colour target stays #ccbea8: the texture moves a pixel by its
+texel over the tile's median.
+
+Not drawn: `MM_Grass_Master`'s and `OriginStaligtite`'s own textures on their meshes (the class
+plane does not tell the meshes apart), the material's detail albedo and normal
+(`DetailAlb_Tile` 5, `DetailNor_Tile` 400, on the master's default texture), and the pools'
+waves. No reference from above shows the pools: the game's map draws the terraces as land and
+no pools, and the developer stream's Red Bamboo frames (1069 to 1081) show none.
+
 ### The Titan trees
 
 73 trunks (`SM_TitanTree_01`, Nanite) and 218 leaf meshes (`SM_TitanTree_Leaves_01` and `_02`)
@@ -1034,12 +1089,9 @@ draws the 32768 windows of the gates' G2 the same as master, all three layers.
   the desert shells take their family's colour under it ("The desert shells"), not
   `TX_smallshell_Desert_Alb`'s grain. Laying each shell's own texture needs its UVs or its
   placement per pixel, which the mesh raster does not keep.
-- The hot-spring terraces read flat cream, as at (895, 2215), though the light lights them:
-  their land weight is 1 on 97% of their pixels in the v10 light tiles and in a capture of
-  today's code, and their rims draw. Their tops are level basins in one flat colour with no
-  texture, and from above a terrace is mostly its pools (`Water_Plateau` slots), which the
-  mesh class does not draw (calibration.md, "Crater floor, terraces and coral meshes,
-  checked"). A reference from above would decide the pools' colour.
+- The hot-spring terraces wear one texture, `Plateau1and3`'s, and their pools the
+  `hot_spring` class's optics at one depth ("The hot-spring terraces and their pools"). A
+  reference from above would check the pools' colour.
 - Two marks the defect review took for drawing faults are the game's paint (2026-10-14).
   The grey ring between grass and sand at (-385, -1405) is the `Gravel_WeightLayerInfo`
   layer painted round the grass: its pure texels draw #9f8e7a, the landscape bake through the

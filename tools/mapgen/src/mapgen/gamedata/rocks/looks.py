@@ -40,6 +40,10 @@ __all__ = [
     "SHELL_FADE",
     "SHELL_TILE_M",
     "SHELL_UV_M",
+    "TERRACE_CUT",
+    "TERRACE_FADE",
+    "TERRACE_TILE_M",
+    "TERRACE_UV_M",
     "TOP_FAR_SWITCH",
     "TOP_FAR_TILING",
     "RockTextures",
@@ -63,6 +67,8 @@ LOOK_TEXTURES = {
     "shell_detail": "World/Environment/Rock/SeaRock/Texture/SeaRock_Detail_Nor",
     "barnacle_albedo": "World/Environment/Foliage/Coral/Barnacle/Textures/TX_Barnacle_01_Alb",
     "barnacle_normal": "World/Environment/Foliage/Coral/Barnacle/Textures/TX_Barnacle_01_Nor",
+    "terrace_albedo": "World/Environment/HotSpring/Texture/HotSpring_Plateau1And3_Alb",
+    "terrace_normal": "World/Environment/HotSpring/Texture/HotSpring_Plateau1And3_Nor",
 }
 
 #: The landscape Cliff layer's albedo: UV0 times its ``Scale``, 0.05.
@@ -94,6 +100,13 @@ BARNACLE_UV_M = 5.09 * 0.647
 BARNACLE_CUT = (0.0625, 0.375, 0.5)
 BARNACLE_FADE = 0.125
 BARNACLE_TILE_M = BARNACLE_CUT[2] * BARNACLE_UV_M
+#: A terrace's UV unit: ``Plateau1and3``'s meshes, ``Hotspring_Plateau_01`` and ``_03``, span
+#: 27.1 and 25.1 m a UV unit over their up faces; their 45 instances are placed at a median 1.04.
+TERRACE_UV_M = 26.2 * 1.04
+#: The square of the island their up faces mostly read, and the run after it, as for the shells.
+TERRACE_CUT = (0.03, 0.5, 0.25)
+TERRACE_FADE = 0.03125
+TERRACE_TILE_M = TERRACE_CUT[2] * TERRACE_UV_M
 
 #: ``Rock_WA``'s own ``Falloff_Power``, ``Falloff_Contrast`` and ``TopLayer Tiling Far``.
 FALLOFF_POWER = 1.5

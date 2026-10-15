@@ -40,6 +40,7 @@ from mapgen.gamedata.rocks.families import (
 )
 from mapgen.terrain.maxz.raster import max_z_raster
 from mapgen.terrain.rasters_banded import in_band_order, raster_threads
+from mapgen.terrain.terrace_pools import pool_masks, split_pools
 from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I64Grid, U8Grid, U16Grid
 from satisfactory_mcp.core.gameassets import staticmesh
 from satisfactory_mcp.core.gameassets.iostore import IoStore
@@ -120,8 +121,8 @@ CORAL_KINDS = (
     "CraterBush",
     "CraterTree_02",
 )
-#: A mesh raster's source code: the class in the low bits, a rock's or a shell's family or a
-#: coral's kind (its index in ``CORAL_KINDS`` plus one) above them.
+#: A mesh raster's source code: the class in the low bits, a rock's or a shell's family, a
+#: coral's kind (its index in ``CORAL_KINDS`` plus one) or a terrace's pool above them.
 MESH_FAMILY_SHIFT = 3
 MESH_CLASS_MASK = (1 << MESH_FAMILY_SHIFT) - 1
 
@@ -319,7 +320,8 @@ def _mesh_groups(
 def mesh_items(
     store: IoStore, scripts: ScriptObjects, index: AssetIndex, sweep: Sweep
 ) -> tuple[PreparedMeshes, JsonObject]:
-    """Every render-only placement and foliage instance, grouped by mesh with their codes."""
+    """Every render-only placement and foliage instance, grouped by mesh with their codes; the
+    terraces' pools apart (``split_pools``)."""
     started = time.time()
     meshes = sweep["meshes"]
     wanted = sorted(
@@ -354,11 +356,14 @@ def mesh_items(
         elif mesh_class(mesh) == MESH_SHELL:
             for code in group.codes >> MESH_FAMILY_SHIFT:
                 shells[FAMILIES[code]] += 1
+    masks = pool_masks(store, scripts, index, shapes)
+    pools = split_pools(items, shapes, masks, MESH_FAMILY_SHIFT)
     return PreparedMeshes(items, shapes, families=True), {
         "meshes": len(items),
         "instances": {**counts},
         "rock_families": {name: n for name, n in families.items() if n},
         "shell_families": {name: n for name, n in shells.items() if n},
+        "terrace_pool_triangles": dict(pools),
         "sources": sources,
         "seconds": round(time.time() - started, 1),
     }

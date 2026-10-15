@@ -28,6 +28,9 @@ from mapgen.gamedata.rocks.looks import (
     SHELL_DETAIL_TILE_M,
     SHELL_FADE,
     SHELL_TILE_M,
+    TERRACE_CUT,
+    TERRACE_FADE,
+    TERRACE_TILE_M,
     RockTextures,
     TopRule,
 )
@@ -44,6 +47,7 @@ __all__ = [
     "ALBEDO_DESERT",
     "ALBEDO_LAYER_BASE",
     "ALBEDO_SHELL",
+    "ALBEDO_TERRACE",
     "BASE",
     "DETAIL",
     "KINDS",
@@ -53,6 +57,7 @@ __all__ = [
     "KIND_DESERT",
     "KIND_LAYER",
     "KIND_SHELL",
+    "KIND_TERRACE",
     "LAYER_BASE_M",
     "UNDER",
     "RockLook",
@@ -62,16 +67,17 @@ __all__ = [
 ]
 
 #: What a pixel is drawn as: a cliff, the landscape's Cliff layer, an arch or boulder, desert
-#: rock, a shell or a barnacle. 0 is none.
+#: rock, a shell, a barnacle or a hot-spring terrace. 0 is none.
 KIND_CLIFF, KIND_LAYER, KIND_ARCH, KIND_DESERT, KIND_SHELL, KIND_BARNACLE = 1, 2, 3, 4, 5, 6
-KINDS = 7
+KIND_TERRACE = 7
+KINDS = 8
 #: A kind's reads, in the table's order: its albedo, what the albedo is measured against (none:
 #: the albedo tile's median), its base normal map and the detail laid on it.
 ALBEDO, UNDER, BASE, DETAIL = 0, 1, 2, 3
 
 #: The albedo atlas's fixed tiles; the families' top layers follow them.
 ALBEDO_CLIFF, ALBEDO_LAYER_BASE, ALBEDO_ARCH, ALBEDO_DESERT, ALBEDO_SHELL = 0, 1, 2, 3, 4
-ALBEDO_BARNACLE = 5
+ALBEDO_BARNACLE, ALBEDO_TERRACE = 5, 6
 #: The texture and span of each normal tile, in the normal atlas's order.
 _NORMALS = (
     ("cliff_normal", CLIFF_NORMAL_TILE_M),
@@ -81,8 +87,9 @@ _NORMALS = (
     ("shell_normal", SHELL_TILE_M),
     ("shell_detail", SHELL_DETAIL_TILE_M),
     ("barnacle_normal", BARNACLE_TILE_M),
+    ("terrace_normal", TERRACE_TILE_M),
 )
-_N_CLIFF, _N_DETAIL, _N_ARCH, _N_DESERT, _N_SHELL, _N_SHELL_DETAIL, _N_BARNACLE = range(
+_N_CLIFF, _N_DETAIL, _N_ARCH, _N_DESERT, _N_SHELL, _N_SHELL_DETAIL, _N_BARNACLE, _N_TERRACE = range(
     len(_NORMALS)
 )
 #: The textures cut from a mesh's own UV layout: their cut and the run faded into it.
@@ -91,6 +98,8 @@ _CUTS = {
     "shell_normal": (SHELL_CUT, SHELL_FADE),
     "barnacle_albedo": (BARNACLE_CUT, BARNACLE_FADE),
     "barnacle_normal": (BARNACLE_CUT, BARNACLE_FADE),
+    "terrace_albedo": (TERRACE_CUT, TERRACE_FADE),
+    "terrace_normal": (TERRACE_CUT, TERRACE_FADE),
 }
 
 #: Per kind, ``(tile, cells)`` of each read, -1 for none, and the slope gains of its base
@@ -105,6 +114,7 @@ _READS: dict[int, tuple[tuple[int, int], ...]] = {
     KIND_DESERT: ((ALBEDO_DESERT, _ROT), (-1, _NONE), (-1, _NONE), (_N_DESERT, _ROT)),
     KIND_SHELL: ((ALBEDO_SHELL, _ROT), (-1, _NONE), (_N_SHELL, _ROT), (_N_SHELL_DETAIL, _ROT)),
     KIND_BARNACLE: ((ALBEDO_BARNACLE, _ROT), (-1, _NONE), (_N_BARNACLE, _ROT), (-1, _NONE)),
+    KIND_TERRACE: ((ALBEDO_TERRACE, _ROT), (-1, _NONE), (_N_TERRACE, _ROT), (-1, _NONE)),
 }
 _GAINS = {KIND_CLIFF: (2.0, 0.5), KIND_LAYER: (2.0, 0.5), KIND_ARCH: (2.0, 1.0)}
 
@@ -244,6 +254,7 @@ def rock_look(textures: RockTextures, spacing_m: float) -> RockLook:
         ("desert_albedo", DESERT_TILE_M),
         ("shell_albedo", SHELL_TILE_M),
         ("barnacle_albedo", BARNACLE_TILE_M),
+        ("terrace_albedo", TERRACE_TILE_M),
     )
     spans = [CLIFF_ALBEDO_TILE_M, CLIFF_ALBEDO_TILE_M, *(tile_m for _name, tile_m in own_tiles)]
     for name, tile_m in own_tiles:
@@ -297,10 +308,12 @@ def _record(
             "shell": round(SHELL_TILE_M, 3),
             "shell_detail": round(SHELL_DETAIL_TILE_M, 3),
             "barnacle": round(BARNACLE_TILE_M, 3),
+            "terrace": round(TERRACE_TILE_M, 3),
         },
         "shell_cut_uv": list(SHELL_CUT),
         "barnacle_cut_uv": list(BARNACLE_CUT),
-        "rotated_cells": ["cliff_albedo", "arch", "desert", "shell", "barnacle"],
+        "terrace_cut_uv": list(TERRACE_CUT),
+        "rotated_cells": ["cliff_albedo", "arch", "desert", "shell", "barnacle", "terrace"],
         "tops": {
             FAMILIES[code]: {
                 "tile_m": round(rule.tile_m, 3),
