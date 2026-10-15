@@ -2418,15 +2418,22 @@ light are the same bytes.
   as they settle, and builds every strip they make ready, from z6 down to z0; the level
   below's sources go to `{name}.z{level}.npy` in the scratch, removed at the end. A strip is
   cut into pieces of 16 tiles (`LEVEL_PIECE_TILES`), so its arrays do not grow with the
-  sheet. While the draw runs, two threads encode the tiles (`bake.COARSE_THREADS`), with one
-  piece waiting: the light's processes are baking blocks then. From the draw's end the
-  light's processes take them, `LEVEL_AHEAD` pieces waiting. Before, all of z6..z0 was built
-  after the last block row, about 230 s at full size that nothing overlapped (v10: 224-234 s,
-  z6 alone about 159 s). Now only what the last block row unlocks is left then: 9 of z6's 64
-  strips and the ends of the levels below, estimated at 35-60 s, so a full render ends about
-  3 minutes sooner if the two threads keep up with the rows (about 110 s of their time a
-  block row, against 130-170 s between rows); a backlog they leave goes to the processes at
-  the draw's end. Not measured at full size.
+  sheet. Threads of the run encode the tiles (`bake.COARSE_THREADS`, a quarter of the cores
+  up to 8), with two pieces waiting while the draw runs and `LEVEL_AHEAD` from its end. Before,
+  all of z6..z0 was built after the last block row, about 230 s at full size that nothing
+  overlapped (v10: 224-234 s, z6 alone about 159 s). Now only what the last block row unlocks
+  is left then: 9 of z6's 64 strips and the ends of the levels below.
+- **Keeping up** (2026-10-15). The first version had two threads and one piece waiting, and
+  handed the encode to the light's processes at the draw's end. They did not keep up: in
+  the v12 render (2026-10-14, `--gpu`, 32 cores) half of z6's tiles were written in the last
+  3.5 minutes, and the coarser levels ended 189 s after the last block row (the files'
+  times). A coarser tile is a 2720 × 1280 horizon atlas and a normal tile, 372 ms to encode
+  on one core, so the 5,461 coarser tiles are about 2,000 core seconds; the strip's own
+  arrays are about a tenth of that. Pillow encodes without the GIL: 8 threads encoded 6.3
+  times as fast as one, 8 processes 6.8 times. At the draw's end the light's processes are
+  still baking the last row, and the strips handed to them queued behind it. Now 8 threads
+  encode throughout, which keeps the levels with the rows; what the last row unlocks is
+  about 700 tiles, 40 to 60 s.
 - **After the draw** the rows not yet queued are queued, the waiting bands relit as their
   rows come in, the coarser levels' last strips built, and the pyramid renamed into place,
   as in section 29.
