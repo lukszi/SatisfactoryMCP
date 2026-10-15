@@ -59,10 +59,12 @@ def test_the_first_reply_starts_an_unsited_plan_and_carries_the_static_parts(sit
     assert body["key"] == key and body["rev"] == 1 and body["sited"] is False
     assert body["source"] in ("layout", "default") and body["w_m"] > 0
     assert isinstance(body["nodes"], list) and len(body["content_bbox_m"]) == 4
+    assert isinstance(body["foundation_grids"], list)
     assert body["token"] and body["z_note"] == "terrain height: pending"
     step = site_client.get(f"{PREVIEW}?key={key}&x_m=-238&y_m=-1466&yaw_deg=30").json()
     assert (step["x_m"], step["y_m"], step["yaw_deg"]) == (-238.0, -1466.0, 30.0)
     assert step["nodes"] is None and step["content_bbox_m"] is None
+    assert step["foundation_grids"] is None
     assert step["built"]["mode"] == "auto"
 
 
