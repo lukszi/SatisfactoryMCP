@@ -21,6 +21,7 @@ from ..views import (
 if TYPE_CHECKING:
     from ...solver.scenario import PlanKwargs
 
+from .node_layout import stored_layout
 from .wording import (
     action_words,
     conflict_subject,
@@ -97,6 +98,8 @@ class PlanState:
     siting: JsonObject = field(default_factory=dict[str, JsonValue])
     args: PlanArgs = field(default_factory=PlanArgs)
     headroom_mw: float | None = None
+    #: Graph node id to ``[x, y]``; layout only, never a solve input.
+    node_positions: dict[str, list[float]] = field(default_factory=dict[str, list[float]])
 
     def kwargs(self) -> PlanKwargs:
         return self.args.kwargs()
@@ -121,6 +124,7 @@ class PlanState:
             siting=copy.deepcopy(raw.get("siting") or {}),
             args=PlanArgs.from_dict(raw.get("args")),
             headroom_mw=_stored_headroom(raw.get("headroom_mw")),
+            node_positions=stored_layout(raw.get("node_positions")),
         )
 
     def body(self) -> PlanStateRecord:
@@ -136,6 +140,7 @@ class PlanState:
             "siting": copy.deepcopy(self.siting),
             "args": self.args.to_dict(),
             "headroom_mw": self.headroom_mw,
+            "node_positions": copy.deepcopy(self.node_positions),
         }
 
 

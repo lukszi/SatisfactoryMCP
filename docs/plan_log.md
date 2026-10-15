@@ -63,6 +63,8 @@ any `conflict` makes the whole push `Outdated` and nothing is written.
 
 - `record` ops never clash.
 - A `forget` on either side clashes with everything, whatever its key.
+- Apart from a `forget`, layout ops (`place`, `layout`) clash with nothing: the later write
+  of a node's place wins, so dragging a node never refuses a push. They are no solve input.
 - `add required X` and `add banned X` clash across the two fields (the one semantic pair),
   on the literal member only (contract S4).
 - Otherwise ops clash only on the same merge key: the same kind with the same value is

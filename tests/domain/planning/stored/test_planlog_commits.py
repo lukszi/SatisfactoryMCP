@@ -46,8 +46,9 @@ def test_a_created_plan_is_v1_with_every_field_present(plans, plan):
         "siting",
         "args",
         "headroom_mw",
+        "node_positions",
     }
-    assert state.headroom_mw is None
+    assert state.headroom_mw is None and state.node_positions == {}
     assert (plans.root / plan / "snap" / "1.json").is_file()
 
 

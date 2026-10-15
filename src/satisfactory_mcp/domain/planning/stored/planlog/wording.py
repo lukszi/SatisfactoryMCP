@@ -116,6 +116,10 @@ def describe_op(op: PlanOp) -> str:
         return "site " + _site_words(op)
     if kind == "rename":
         return f'renamed "{op.get("was", "")}"{ARROW}"{op.get("name", "")}"'
+    if kind == "place":
+        return "layout: 1 node moved"
+    if kind == "layout":
+        return "layout restored" if op.get("value") else "layout reset"
     return {"create": "created", "forget": "forgotten", "restore": "restored"}.get(kind, "")
 
 
@@ -145,7 +149,12 @@ def _region(x_m: float, y_m: float) -> str:
 
 
 def _ops_text(ops: list[PlanOp]) -> str:
-    return " · ".join(t for t in (describe_op(o) for o in ops) if t)
+    """Each op's words; the nodes one gesture moved count as one phrase."""
+    moved = sum(1 for o in ops if o.get("op") == "place")
+    words = [describe_op(o) for o in ops if o.get("op") != "place"]
+    if moved:
+        words.append(f"layout: {moved} node{'s' if moved > 1 else ''} moved")
+    return " · ".join(t for t in words if t)
 
 
 def describe_commit(commit: Commit) -> str:
