@@ -13,6 +13,7 @@ import "./map/layer-control.css";
 import "./map/drawn.css";
 import "./dash/panel.css";
 import "./dash/planner/site.css";
+import "./dash/planner/graph/plan-graph.css";
 import "./chat/advice.css";
 import "./dash/maps/settings-maps.css";
 import "./map/live-light.css";

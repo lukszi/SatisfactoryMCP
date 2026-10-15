@@ -1,0 +1,208 @@
+/* The planner's production graph (dash/planner/graph/). Item-group colours colour the lines
+   and their arrows only; nodes stay in the closed palette. */
+
+.pg-wrap {
+  position: relative;
+}
+
+.pg-wrap.pg-waiting .graph-frame {
+  opacity: 0.6;
+}
+
+.pg-ground {
+  fill: transparent;
+}
+
+.pg-edge {
+  fill: none;
+  stroke-width: 2;
+  stroke-opacity: 0.9;
+  stroke-linejoin: round;
+}
+
+.grp-oil { --grp: var(--grp-oil); }
+.grp-water { --grp: var(--grp-water); }
+.grp-gas { --grp: var(--grp-gas); }
+.grp-ore { --grp: var(--grp-ore); }
+.grp-metal { --grp: var(--grp-metal); }
+.grp-component { --grp: var(--grp-component); }
+.grp-nuclear { --grp: var(--grp-nuclear); }
+.grp-power { --grp: var(--grp-power); }
+.grp-other { --grp: var(--grp-other); }
+
+.pg-edge,
+.pg-label rect {
+  stroke: var(--grp);
+}
+
+.pg-arrowhead {
+  fill: var(--grp);
+}
+
+.pg-label rect {
+  fill: var(--bg);
+  stroke-width: 1;
+  stroke-opacity: 0.6;
+}
+
+.pg-label-text {
+  fill: var(--ink-soft);
+  font-size: var(--fs-s);
+  text-anchor: middle;
+}
+
+.pg-node {
+  cursor: pointer;
+}
+
+.pg-node:focus {
+  outline: none;
+}
+
+.pg-node.dragging {
+  cursor: grabbing;
+}
+
+.pg-disc,
+.pg-box {
+  fill: var(--panel);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+.pg-ring-track {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 4;
+}
+
+.pg-ring {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.pg-ring.tone-full {
+  stroke: var(--ok);
+}
+
+.pg-ring.tone-most {
+  stroke: var(--accent);
+}
+
+.pg-ring.tone-part {
+  stroke: var(--flash);
+}
+
+.pg-glyph {
+  fill: var(--dim);
+}
+
+.pg-title {
+  fill: var(--ink);
+  font-size: var(--fs-m);
+  font-weight: 600;
+  text-anchor: middle;
+}
+
+.pg-sub {
+  fill: var(--muted);
+  font-size: var(--fs-s);
+  text-anchor: middle;
+}
+
+.pg-node.kind-input .pg-box {
+  fill: transparent;
+  stroke: var(--dim);
+  stroke-dasharray: 5 4;
+}
+
+.pg-node.kind-export .pg-box {
+  stroke: var(--muted);
+}
+
+.pg-node.kind-leftover .pg-box {
+  fill: transparent;
+  stroke: var(--muted);
+  stroke-dasharray: 5 4;
+}
+
+.pg-node.kind-sink .pg-box {
+  fill: transparent;
+  stroke: var(--muted);
+  stroke-dasharray: 2 4;
+}
+
+.pg-node:hover .pg-disc,
+.pg-node:hover .pg-box,
+.pg-node:focus-visible .pg-disc,
+.pg-node:focus-visible .pg-box {
+  stroke: var(--accent);
+}
+
+.pg-node.picked .pg-disc,
+.pg-node.picked .pg-box {
+  stroke: var(--accent-hi);
+  stroke-width: 3;
+}
+
+.pg-node.flash .pg-disc {
+  animation: graph-flash 1s ease-in-out 4;
+}
+
+.pg-chained .pg-node,
+.pg-chained .pg-edge,
+.pg-chained .pg-label {
+  opacity: 0.18;
+  transition: opacity 0.15s;
+}
+
+.pg-chained .pg-node.in-chain,
+.pg-chained .pg-edge.in-chain,
+.pg-chained .pg-label.in-chain {
+  opacity: 1;
+}
+
+.pg-tip {
+  position: absolute;
+  z-index: 2;
+  max-width: 420px;
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink-soft);
+  font-size: var(--fs-s);
+  pointer-events: none;
+}
+
+.pg-tip-k {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.pg-tools:empty {
+  display: none;
+}
+
+.pg-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--sp-3);
+}
+
+.pg-rate .dash-number {
+  width: 7em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-node.flash .pg-disc {
+    animation: none;
+  }
+
+  .pg-chained .pg-node,
+  .pg-chained .pg-edge,
+  .pg-chained .pg-label {
+    transition: none;
+  }
+}

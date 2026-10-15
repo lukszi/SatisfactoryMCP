@@ -1,40 +1,29 @@
 /* The result panel: what the head solves to, as a build list or a graph, redrawn after every
  * new version. See docs/planner-p3_contract.md §9. */
 
-import { button, chip, copyButton, error, idChip, loading, subTabs, table } from "../../kit/dashkit";
+import { chip, error, idChip, loading, subTabs, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { count, mw, pct, withDetail } from "../../kit/format";
-import { drawGraph, setPicked } from "../graph";
-import { graphCardFrame, GRAPH_HINT } from "../graph-frame";
+import { count, mw } from "../../kit/format";
 import { recipesButton, renderAlternates } from "./alternates";
-import { askButton, openAsksAbout } from "../../chat/asks";
+import { openAsksAbout } from "../../chat/asks";
 import { pickTab } from "./reads";
-import { bench, changed, pendingFocus } from "./state";
-import { applyOps, banOps } from "./writes";
+import { bench, changed } from "./state";
 import { rowOverclock } from "./power";
+import { banButton, clockText, pinProcessButton, processAsk } from "./row-actions";
+import { planGraphTab } from "./graph/view";
+import { nodeForPick, planGraphOf } from "./graph/model";
 import { renderSite } from "./site";
 import { renderTrack } from "./track/track";
-import { ratesText, resultSummaryCard, withoutPower } from "./result-summary";
-import { processPinsByRecipe, createPin } from "../../chat/pins";
+import { ratesText, resultSummaryCard } from "./result-summary";
+import { processPinsByRecipe } from "../../chat/pins";
 import { WORDS } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
-import type { GraphNodeShape } from "../graph";
-import type { FocusSelection, PlanGraphNode, SolveResponse, SolveRow } from "../../api/shapes";
+import type { FocusSelection, SolveResponse, SolveRow } from "../../api/shapes";
 import type { ResultTab } from "./state";
 
-interface PlanNode extends GraphNodeShape {
-  tip: string;
-  row: string | null;
-  item: string | null;
-}
-
-// The graph is drawn again only when its data, badges or flashes change; scroll and focus are kept.
-const graphCache = { data: null as SolveResponse | null, key: "", frame: null as HTMLElement | null, x: 0, y: 0, focus: "" };
-const flashed: Record<string, number> = {};
 const order: SortState = { key: "building", desc: false };
 
-const FLASH_MS = 4000;
 const WIDE = window.matchMedia("(min-width: 1280px)");
 const TABS: { id: ResultTab; label: string }[] = [
   { id: "build list", label: "build list" },
@@ -42,12 +31,6 @@ const TABS: { id: ResultTab; label: string }[] = [
   { id: "track", label: WORDS.track },
   { id: "site", label: WORDS.site },
 ];
-
-function clockText(row: { machines: number; clock: number; last_clock?: number | null }): string {
-  if (row.last_clock === null || row.last_clock === undefined) return pct(row.clock, 1);
-  if (row.machines === 1) return pct(row.last_clock, 1);
-  return "100%, last " + pct(row.last_clock, 1);
-}
 
 function clockCell(row: SolveRow, live: boolean): string | HTMLElement {
   const pick = live && !bench.gone ? rowOverclock(row) : null;
@@ -59,10 +42,8 @@ function clockCell(row: SolveRow, live: boolean): string | HTMLElement {
 }
 
 function mainItem(data: SolveResponse, row: SolveRow): string | null {
-  const node = data.graph.nodes.filter(function (n) {
-    return n.row === row.id;
-  })[0];
-  return node ? node.item : null;
+  const node = nodeForPick(planGraphOf(data), row.id);
+  return node ? node.itemId : null;
 }
 
 WIDE.addEventListener("change", function () {
@@ -74,35 +55,6 @@ function pickRow(row: SolveRow, select: (s: FocusSelection) => void): void {
   select({ kind: "process", label: row.building + " · " + row.recipe, ref: row.recipe_id || row.recipe });
 }
 
-function banButton(row: SolveRow): HTMLButtonElement {
-  return button(
-    "ban",
-    function () {
-      const member = row.recipe_id || row.recipe;
-      pendingFocus.ctl = "banned:" + member;
-      pendingFocus.until = Date.now() + 5000;
-      applyOps(banOps(member));
-    },
-    { title: "keep this recipe out of the plan", label: "ban " + row.recipe }
-  );
-}
-
-function pinProcessButton(row: SolveRow): HTMLButtonElement | null {
-  const id = row.recipe_id;
-  if (!id) return null;
-  return button(
-    WORDS.pin,
-    function () {
-      createPin("process", { plan: bench.key, recipe: id! });
-    },
-    { title: "pin this process and copy its pin:N for chat", label: "pin " + row.recipe }
-  );
-}
-
-function copyIdButton(text: string, what: string): HTMLButtonElement {
-  return copyButton(text, "copy", { title: "copy " + text + " for a tool call", label: "copy " + what });
-}
-
 function rowActions(data: SolveResponse, row: SolveRow): HTMLElement {
   const box = make("span", "dash-acts");
   const item = mainItem(data, row);
@@ -112,11 +64,6 @@ function rowActions(data: SolveResponse, row: SolveRow): HTMLElement {
   if (pin) box.appendChild(pin);
   box.appendChild(processAsk(row, "row"));
   return box;
-}
-
-function processAsk(row: SolveRow, where: string): HTMLButtonElement {
-  const ref = row.recipe_id || row.recipe;
-  return askButton({ kind: "process", label: row.building + " · " + row.recipe, ref: ref, plan: bench.key, rev: bench.plan ? bench.plan.rev : null }, where + ":" + row.id);
 }
 
 function recipeCell(row: SolveRow, live: boolean): HTMLElement {
@@ -231,177 +178,6 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: FocusSe
   parent.appendChild(card);
 }
 
-/** The chat-changed rows still inside their flash window, counted from when each was first seen. */
-function updateFlashingRows(): string[] {
-  const now = Date.now();
-  Object.keys(flashed).forEach(function (id) {
-    if (!bench.chatChangedRows[id]) delete flashed[id];
-  });
-  Object.keys(bench.chatChangedRows).forEach(function (id) {
-    if (!flashed[id]) flashed[id] = now;
-  });
-  return Object.keys(flashed).filter(function (id) {
-    return now - flashed[id]! < FLASH_MS;
-  });
-}
-
-function planNodes(data: SolveResponse): PlanNode[] {
-  const byId: Record<string, SolveRow> = {};
-  data.rows.forEach(function (r) {
-    byId[r.id] = r;
-  });
-  const pins = processPinsByRecipe(bench.key);
-  return data.graph.nodes.map(function (n: PlanGraphNode): PlanNode {
-    const row = n.row ? byId[n.row] : undefined;
-    const badges: string[] = [];
-    if (row && bench.chatChangedRows[row.id]) badges.push(WORDS.actorChat);
-    if (row?.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
-    const tip = row
-      ? row.building + " · " + row.recipe + "\nin: " + ratesText(withoutPower(row.inputs)) + "\nout: " + ratesText(withoutPower(row.outputs))
-      : withDetail(n.label, n.detail);
-    return {
-      id: n.id,
-      kind: n.kind,
-      label: n.label,
-      detail: n.detail,
-      rank: n.rank,
-      row: n.row,
-      item: n.item,
-      badges: badges,
-      tip: tip,
-      machines: 0,
-      running: 0,
-      blocked: 0,
-      stopped: 0,
-    };
-  });
-}
-
-function pickNode(data: SolveResponse, node: PlanNode, select: (s: FocusSelection) => void): void {
-  const row = data.rows.filter(function (r) {
-    return r.id === node.row;
-  })[0];
-  if (row) {
-    pickRow(row, select);
-    return;
-  }
-  bench.picked = node.id;
-  select({ kind: "item", label: node.label, ref: node.item || "" });
-}
-
-function cachedGraphFrame(data: SolveResponse, select: (s: FocusSelection) => void): HTMLElement {
-  const nodes = planNodes(data);
-  const flash = updateFlashingRows();
-  const key =
-    nodes
-      .map(function (n) {
-        return n.id + "=" + (n.badges || []).join("+");
-      })
-      .join("|") +
-    "#" +
-    flash.join("|");
-  if (graphCache.data !== data || graphCache.key !== key || !graphCache.frame) {
-    const frame = drawGraph(
-      { nodes: nodes, edges: data.graph.edges.map(function (e) {
-        return { source: e.source, target: e.target, item: e.item, per_min: e.per_min, text: e.text || undefined };
-      }) },
-      function (n: PlanNode) {
-        return n.tip;
-      },
-      function (n: PlanNode) {
-        pickNode(data, n, select);
-      },
-      {
-        pickable: function (n: PlanNode) {
-          return n.kind === "process" || (n.kind === "export" && !!n.item);
-        },
-        picked: bench.picked,
-        flash: flash,
-      }
-    );
-    if (graphCache.data !== data) {
-      graphCache.x = 0;
-      graphCache.y = 0;
-    }
-    frame.addEventListener("scroll", function () {
-      if (!frame.isConnected) return;
-      graphCache.x = frame.scrollLeft;
-      graphCache.y = frame.scrollTop;
-    });
-    frame.addEventListener("focusin", function (event) {
-      const node = (event.target as Element).closest(".graph-node");
-      graphCache.focus = node ? node.getAttribute("data-node") || "" : "";
-    });
-    frame.addEventListener("focusout", function () {
-      setTimeout(function () {
-        if (frame.isConnected && !frame.contains(document.activeElement)) graphCache.focus = "";
-      }, 0);
-    });
-    graphCache.data = data;
-    graphCache.key = key;
-    graphCache.frame = frame;
-    if (flash.length) setTimeout(changed, FLASH_MS);
-  } else setPicked(graphCache.frame, bench.picked);
-  return graphCache.frame;
-}
-
-function nodeCard(parent: HTMLElement, data: SolveResponse): void {
-  const picked = bench.picked;
-  const node = picked
-    ? data.graph.nodes.filter(function (n) {
-        return n.id === picked;
-      })[0]
-    : undefined;
-  if (!node) return;
-  const card = make("section", "dash-card plan-node");
-  card.setAttribute("aria-label", "picked: " + node.label);
-  const row = data.rows.filter(function (r) {
-    return r.id === node!.row;
-  })[0];
-  const title = make("div", "dash-title");
-  title.appendChild(make("h2", "dash-h", row ? row.recipe : node.label));
-  const acts = make("div", "dash-acts");
-  if (row) {
-    const power = row.mw ? " · " + mw(row.mw, { signed: true }) : "";
-    card.appendChild(title);
-    card.appendChild(make("p", "plan-facts", row.building + " ×" + count(row.machines) + " · " + clockText(row) + power));
-    card.appendChild(make("p", "dash-sub", "in: " + ratesText(withoutPower(row.inputs))));
-    card.appendChild(make("p", "dash-sub", "out: " + ratesText(withoutPower(row.outputs))));
-    if (!bench.gone) {
-      if (node.item && row.recipe_id) acts.appendChild(recipesButton(node.item, row.item || row.recipe, "node"));
-      acts.appendChild(banButton(row));
-      const pin = pinProcessButton(row);
-      if (pin) acts.appendChild(pin);
-    }
-    if (row.recipe_id) acts.appendChild(copyIdButton(row.recipe_id, row.recipe));
-    if (!bench.gone) acts.appendChild(processAsk(row, "node"));
-  } else {
-    card.appendChild(title);
-    card.appendChild(make("p", "plan-facts", node.detail));
-    if (node.item && !bench.gone) acts.appendChild(recipesButton(node.item, node.label, "node"));
-    if (!bench.gone) {
-      const about = { kind: "item", label: node.label, ref: node.item || node.id, plan: bench.key, rev: bench.plan ? bench.plan.rev : null };
-      acts.appendChild(askButton(about, "node:" + node.id));
-    }
-  }
-  card.appendChild(acts);
-  parent.appendChild(card);
-}
-
-function graphTab(parent: HTMLElement, data: SolveResponse, select: (s: FocusSelection) => void): HTMLElement | null {
-  const card = graphCardFrame("production graph", true);
-  parent.appendChild(card);
-  if (!data.graph.nodes.length) {
-    card.appendChild(make("p", "dash-note", "nothing to draw"));
-    return null;
-  }
-  const frame = cachedGraphFrame(data, select);
-  card.appendChild(frame);
-  card.appendChild(make("p", "dash-note", "click a process for its recipes · rates split over each item's producers by share · " + GRAPH_HINT));
-  nodeCard(parent, data);
-  return frame;
-}
-
 export function renderVersionResult(parent: HTMLElement, data: SolveResponse, rev: number, select: (s: FocusSelection) => void): void {
   resultSummaryCard(parent, data, rev, false);
   if (data.feasible) buildList(parent, data, select, false);
@@ -440,15 +216,6 @@ function renderInfeasibleFallback(parent: HTMLElement, select: (s: FocusSelectio
   parent.appendChild(grey);
 }
 
-/** Puts the graph back where it was scrolled to, and its focused node, after a redraw. */
-function restoreGraphView(frame: HTMLElement): void {
-  frame.scrollLeft = graphCache.x;
-  frame.scrollTop = graphCache.y;
-  const lost = !document.activeElement || document.activeElement === document.body;
-  const again = graphCache.focus && lost ? frame.querySelector<SVGGElement>('[data-node="' + CSS.escape(graphCache.focus) + '"]') : null;
-  if (again) again.focus({ preventScroll: true });
-}
-
 export function renderResult(parent: HTMLElement, select: (s: FocusSelection) => void, close: () => void): void {
   if (bench.tab === "site") {
     resultTabs(parent);
@@ -474,9 +241,8 @@ export function renderResult(parent: HTMLElement, select: (s: FocusSelection) =>
   if (bench.alternates && !beside) renderAlternates(split, close);
   split.appendChild(main);
   if (bench.alternates && beside) renderAlternates(split, close);
-  const frame = bench.tab === "graph" ? graphTab(main, data, select) : null;
-  if (bench.tab === "track") renderTrack(main, select);
-  else if (bench.tab !== "graph") buildList(main, data, select, true);
+  if (bench.tab === "graph") planGraphTab(main, data, select);
+  else if (bench.tab === "track") renderTrack(main, select);
+  else buildList(main, data, select, true);
   parent.appendChild(split);
-  if (frame) restoreGraphView(frame);
 }
