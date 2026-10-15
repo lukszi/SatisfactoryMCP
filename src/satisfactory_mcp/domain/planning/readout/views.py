@@ -71,6 +71,8 @@ class PlanGraphNode(TypedDict):
     recipe_id: str | None
     recipe_name: str | None
     building: str | None
+    #: The building's descriptor class, the name its picture is served under.
+    building_icon: str | None
     built: int
     machines: float
     clock: float | None

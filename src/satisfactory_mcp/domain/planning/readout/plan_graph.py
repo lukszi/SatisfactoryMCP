@@ -21,6 +21,7 @@ __all__ = ["POWER_ID", "SINK_BUILDING", "main_id", "production_graph"]
 #: The item id power goes by in node and edge ids.
 POWER_ID = "power"
 SINK_BUILDING = "AWESOME Sink"
+SINK_BUILD_ID = "Build_ResourceSink_C"
 
 _EPS = 1e-6
 #: An item balance off by less than this is rounding, not something left over.
@@ -114,6 +115,12 @@ def _utilisation(units: float) -> float:
     return 1.0 if part < _EPS or part > 1 - _EPS else round(part, 4)
 
 
+def _building_icon(g: GameData, building_id: str | None) -> str | None:
+    """The descriptor class a building's picture is filed under, as ``/api/icons/`` serves it."""
+    building = g.buildings.get(building_id or "")
+    return building.descriptor if building is not None else None
+
+
 def _process_node(g: GameData, group: _Group) -> PlanGraphNode:
     first, proc = group.rows[0]
     recipe = g.recipes.get(proc["recipe"] or "")
@@ -142,6 +149,7 @@ def _process_node(g: GameData, group: _Group) -> PlanGraphNode:
         "recipe_id": proc["recipe"],
         "recipe_name": recipe.name if recipe is not None else None,
         "building": first["building"] or None,
+        "building_icon": _building_icon(g, proc["building_id"]),
         "built": built,
         "machines": round(units, 4),
         "clock": round(clock, 4) if clock is not None else None,
@@ -172,6 +180,7 @@ def _item_node(
         "recipe_id": None,
         "recipe_name": None,
         "building": None,
+        "building_icon": None,
         "built": 0,
         "machines": 0.0,
         "clock": None,
@@ -295,7 +304,13 @@ def _sink_node(g: GameData, row: SinkRow, rank: int) -> PlanGraphNode:
         rank,
         f"sunk {_amount(g, item, rate)} · {sinks} {SINK_BUILDING}{many}",
     )
-    node.update(building=SINK_BUILDING, built=sinks, machines=float(sinks), mw=-round(row["mw"], 2))
+    node.update(
+        building=SINK_BUILDING,
+        building_icon=_building_icon(g, SINK_BUILD_ID),
+        built=sinks,
+        machines=float(sinks),
+        mw=-round(row["mw"], 2),
+    )
     return node
 
 
