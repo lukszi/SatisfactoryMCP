@@ -175,3 +175,30 @@ against a 256 m flat fill faded to 0.45 wherever there is imagery.
 | `crates` | `crates` | `#3fcc94` | crate glyphs (`drawn/crates.ts`) | placements/generators 21.5 | a 13 px glyph found on open terrain at world zoom: dE 50.2 from the nearest ground |
 | `plans` | `plans` | `#4ec22e` | a sited plan's dashed outline (`drawn/plan-sitings.ts`) | markers/Desc_OreUranium_C 25.0 | green, which nothing built spends; dE 105.5 from the concrete and 110.7 from the machine blue it is laid over |
 | `map-highlight` | `highlight` | `#ff4fd8` | the one selection outline or ring (`map/map-highlight.ts`) | markers/Desc_SAM_C 27.6 | |
+
+## Plan graph lines
+
+The one exception to the closed dashboard palette, allowed 2026-10-15 for the planner's
+production graph (`dash/planner/graph/`, planner_vision.md §4.2), and for its **lines and
+arrowheads only**: each edge takes the colour of its item's group, which the server sends as
+`item_group` (the table is `readout/item_groups.py`). Nodes, rings and labels stay in the closed
+palette. These are CSS tokens in `app/base.css`, not map colours: the graph is never drawn over
+the map, so they are not declared through `declareColours` and the map audit does not see them.
+
+| token | hex | contrast on `--bg` / `--panel` |
+| --- | --- | --- |
+| `--grp-oil` | `#a585e8` | 6.0 / 5.4 |
+| `--grp-water` | `#4aa3eb` | 6.5 / 5.9 |
+| `--grp-gas` | `#3fc2ad` | 8.1 / 7.2 |
+| `--grp-ore` | `#c9744a` | 5.2 / 4.6 |
+| `--grp-metal` | `#c3cad3` | 10.8 / 9.6 |
+| `--grp-component` | `#d6ae4c` | 8.5 / 7.6 |
+| `--grp-nuclear` | `#8fd14a` | 9.6 / 8.6 |
+| `--grp-power` | `#ffa257` | 8.9 / 8.0 |
+| `--grp-other` | `#7b818a` | 4.5 / 4.1 |
+
+Contrast is the WCAG ratio. The closest pair is ore and power at dE 23.0 (CIE76). Against the
+semantic tokens: `--blocked` is 33.9 from component, `--select` 47.4 from oil, `--bad` 23.6 from
+ore, `--ok` 22.6 from nuclear, the accent 14.0 from water and `--mid` 11.9 from other. The page
+has one theme, the dark one, and these are picked for it; on white most fall under 3:1, so a
+light theme would need twins.
