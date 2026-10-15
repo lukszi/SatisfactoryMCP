@@ -264,15 +264,7 @@ def production_graph(
 
 def _raw(g: GameData, sol: Solution) -> list[ItemRate]:
     """What the plan takes from the world: extractor output plus raw drawn from outside."""
-    raw = dict(sol.raw_used)
-    for row in sol.processes:
-        rates = row["rates"]
-        if any(rate < -_EPS and item != MW for item, rate in rates.items()):
-            continue
-        for item, rate in rates.items():
-            if rate > _EPS and item != MW:
-                raw[item] = raw.get(item, 0.0) + rate
-    return _rates(g, raw, 1)
+    return _rates(g, sol.drawn_raw(), 1)
 
 
 def _blockers(errors: list[str], failure_notes: list[str]) -> list[str]:

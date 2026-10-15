@@ -398,7 +398,11 @@ def _plan_summary(
                 ]
                 + [(z["name"], "0") for z in report.zero_exports if z["item"] not in sol.exports]
             ),
-            "raw: " + render.kv([(g.item_name(k), render.num(v)) for k, v in sol.raw_used.items()]),
+            "raw: "
+            + (
+                render.kv([(g.item_name(k), render.num(v)) for k, v in sol.drawn_raw().items()])
+                or "nothing"
+            ),
             "sunk: "
             + (
                 render.kv([(g.item_name(k), render.num(v)) for k, v in sol.sunk.items()])

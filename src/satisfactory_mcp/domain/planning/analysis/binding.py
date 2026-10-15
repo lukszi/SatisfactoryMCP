@@ -61,16 +61,6 @@ def _capacity(sc: Scenario) -> dict[str, float]:
     return out
 
 
-def _drawn(sol: Solution) -> dict[str, float]:
-    out = dict(sol.raw_used)
-    for row in sol.processes:
-        if row["kind"] == "extractor":
-            for item, rate in row["rates"].items():
-                if rate > _EPS:
-                    out[item] = out.get(item, 0.0) + rate
-    return out
-
-
 def _more_raw(sc: Scenario, only: str | None = None) -> Scenario:
     nodes = {
         key: (int(_LIFTED) if only in (None, key[1]) else count)
@@ -90,7 +80,7 @@ def _raw_probe(sc: Scenario, missing: tuple[str, ...]) -> _Probe:
         return replace(lifted, raw_caps={**lifted.raw_caps, **dict.fromkeys(missing, _LIFTED)})
 
     def suspects(sol: Solution) -> list[str]:
-        drawn = _drawn(sol)
+        drawn = sol.drawn_raw()
         return [
             item
             for item, used in sorted(drawn.items(), key=lambda kv: -kv[1])
