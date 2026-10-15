@@ -549,6 +549,25 @@ split for Site (§11 D1). Every view marks chat-changed rows with the **chat** b
 | Reuse | `frontend/src/dash/graph.ts` already draws a built factory's recipe-group graph (frontend_vision.md §9.8). It takes any `{nodes, edges}` of that shape, so a plan can be mapped onto it; its longest-path layers would yield to the server's `depth[]` |
 | Rendering | Hand-written SVG, no library. Edge width ∝ log(rate). No new hues |
 
+**The wire shape** (`SolveResponse.graph`, `readout/plan_graph.py`). The flows and the node
+kinds are planning.md §8.5o; this is what the page reads.
+
+| Part | Fields | Rule |
+|---|---|---|
+| node ids | `p:<recipe_id>`, `p:x:<miner>:<resource>`, `p:g:<generator>:<fuel>`, `in:<item>`, `ex:<item>`, `ex:power`, `left:<item>`, `sink:<item>` | Class ids, never names: the same across revs and re-solves while the recipe or item is in the plan |
+| `nodes[]` | `id`, `kind`, `label`, `item_id`, `item_name`, `recipe_id`, `recipe_name`, `building`, `built`, `machines`, `clock`, `mw`, `utilisation`, `rank`, `per_min`, `unit` | `kind` ∈ process, input, export, leftover, sink. `machines` is work at 100% (float), `utilisation` the last machine's share (1 when whole), `clock` a percent (null on item nodes), `mw` signed like a row's (negative draws). `per_min` on item nodes only. `unit` is `items`, `m3` or `MW` |
+| legacy node fields | `detail`, `row`, `rows`, `item` | `row` is the first `SolveRow.id` of the group, `rows` all of them |
+| `edges[]` | `id`, `source`, `target`, `item_id`, `item_name`, `item_group`, `per_min`, `unit`, `text`, legacy `item` | `id` = `<source>><target>:<item_id>`; `text` is MW words on power lines, else null |
+| `item_group` | `oil`, `water`, `gas`, `ore`, `metal`, `component`, `nuclear`, `power`, `other` | One table, `readout/item_groups.py`; an item not in it is `other`. Acids and solutions are `other`. Line colours only: the one exception to the closed palette |
+| `positions` | `{node_id: [x, y]}` | The plan's stored layout in graph units, kept only for ids this graph has. Empty when solving `args` rather than a stored `key` |
+| `buildings[]` | `building`, `count`, `groups`, `mw` | Whole machines and MW per building type, sinks included, largest `abs(mw)` first |
+
+**Layout is stored with the plan, not solved.** A dragged node is a `place` op on the plan
+log (planner_slice_contract.md §3): a new rev, undoable, merged and never in conflict, and
+never a solve input, so `plan_id` and the solve stay the same. `reset_layout` clears it.
+Unknown ids are dropped on read, so a node that leaves the plan loses its place and gets it
+back if it returns while the stored entry stands.
+
 ### 4.3 Build list
 
 | | |

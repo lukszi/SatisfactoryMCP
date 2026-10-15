@@ -7,7 +7,6 @@ ranked. ``plan_factory`` renders the same report as text.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
@@ -24,14 +23,13 @@ from ..solver.prepare import PlanFailure, PreparedPlan
 from ..solver.scenario import PlanRequest, build_scenario, shard_stock
 from ..stored import provenance
 from . import payback
+from .plan_graph import main_id, production_graph
 from .report import PlanFactoryReport, build_plan_report
 from .slice import PlanSlice
 from .views import (
     ItemRate,
     PaybackView,
     PlanGraph,
-    PlanGraphEdge,
-    PlanGraphNode,
     SolveResponse,
     SolveRow,
 )
@@ -45,7 +43,6 @@ __all__ = [
     "failure_cause",
     "names_for",
     "power_view",
-    "production_graph",
     "solve_summary",
     "stamp_for",
 ]
@@ -86,17 +83,8 @@ def _rates(g: GameData, rates: dict[str, float], sign: int) -> list[ItemRate]:
     return sorted(rows, key=lambda r: -r["per_min"])
 
 
-def _main_id(g: GameData, proc: ProcessRow) -> str | None:
-    """The item a row is for: its recipe's main product, else its largest output."""
-    recipe = g.recipes.get(proc["recipe"] or "")
-    if recipe is not None and recipe.main_product is not None:
-        return recipe.main_product
-    made = [(rate, item) for item, rate in proc["rates"].items() if rate > _EPS and item != MW]
-    return max(made)[1] if made else None
-
-
 def _main_item(g: GameData, proc: ProcessRow) -> str | None:
-    item = _main_id(g, proc)
+    item = main_id(g, proc)
     return g.item_name(item) if item is not None else None
 
 
@@ -124,19 +112,6 @@ def _row(g: GameData, proc: ProcessRow, required: set[str], rid: str, depth: int
     }
 
 
-def _num(value: float, dp: int = 1) -> str:
-    scale = 10**dp
-    text = f"{math.floor(value * scale + 0.5) / scale:,.{dp}f}"
-    if dp:
-        text = text.rstrip("0").rstrip(".")
-    return "0" if text in ("-0", "") else text
-
-
-def _mw_text(value: float, signed: bool = False) -> str:
-    whole = -math.floor(-value + 0.5) if value < 0 else math.floor(value + 0.5)
-    return ("+" if signed and whole > 0 else "") + f"{whole:,}" + " MW"
-
-
 def _row_ids(g: GameData, processes: list[ProcessRow]) -> list[str]:
     ids: list[str] = []
     seen: dict[str, int] = {}
@@ -159,107 +134,6 @@ def _rows(
         (_row(g, proc, required, rid, depth), proc)
         for proc, rid, depth in zip(ordered, ids, depths, strict=True)
     ]
-
-
-def _graph_edges(
-    g: GameData, paired: list[tuple[SolveRow, ProcessRow]], exports: dict[str, float]
-) -> tuple[list[PlanGraphEdge], list[str]]:
-    """Every flow into a row or an export, split across its producers by share, and the
-    items nothing in the plan makes (drawn from outside)."""
-    made: dict[str, list[tuple[str, float]]] = {}
-    for row, proc in paired:
-        for item, rate in proc["rates"].items():
-            if rate > _EPS and item != MW:
-                made.setdefault(item, []).append((row["id"], rate))
-        if row["mw"] > 0:
-            made.setdefault(MW, []).append((row["id"], row["mw"]))
-    demands = [
-        (item, row["id"], -rate)
-        for row, proc in paired
-        for item, rate in proc["rates"].items()
-        if rate < -_EPS and item != MW
-    ]
-    demands += [(item, "ex:" + _name(g, item), rate) for item, rate in exports.items()]
-
-    inputs: dict[str, None] = {}
-    edges: list[PlanGraphEdge] = []
-    for item, target, need in demands:
-        sources = made.get(item) or []
-        total = sum(rate for _, rate in sources)
-        if not sources or total <= _EPS:
-            if item == MW:
-                continue
-            inputs.setdefault(item)
-            edges.append(
-                {
-                    "source": "in:" + _name(g, item),
-                    "target": target,
-                    "item": _name(g, item),
-                    "per_min": round(need, 4),
-                    "text": None,
-                }
-            )
-            continue
-        for source, rate in sources:
-            share = need * rate / total
-            edges.append(
-                {
-                    "source": source,
-                    "target": target,
-                    "item": _name(g, item),
-                    "per_min": round(share, 4),
-                    "text": _mw_text(share) if item == MW else None,
-                }
-            )
-    return edges, list(inputs)
-
-
-def production_graph(
-    g: GameData, paired: list[tuple[SolveRow, ProcessRow]], exports: dict[str, float]
-) -> PlanGraph:
-    """The graph the workbench draws over rows that carry their ``id`` and ``depth``."""
-    edges, inputs = _graph_edges(g, paired, exports)
-    top = max((row["depth"] + 1 for row, _ in paired), default=0) + 1
-    nodes: list[PlanGraphNode] = [
-        {
-            "id": "in:" + _name(g, item),
-            "kind": "input",
-            "label": _name(g, item),
-            "detail": "from outside the plan",
-            "rank": 0,
-            "row": None,
-            "item": item,
-        }
-        for item in inputs
-    ]
-    for row, proc in paired:
-        power = f" · {_mw_text(row['mw'], signed=True)}" if row["mw"] else ""
-        nodes.append(
-            {
-                "id": row["id"],
-                "kind": "process",
-                "label": row["recipe"],
-                "detail": f"{row['building']} ×{row['machines']:,}{power} · "
-                f"{_num(row['clock'] * 100, 1)}%",
-                "rank": row["depth"] + 1,
-                "row": row["id"],
-                "item": _main_id(g, proc),
-            }
-        )
-    for item, rate in exports.items():
-        amount = _mw_text(rate) if item == MW else _num(rate, 1) + "/min"
-        nodes.append(
-            {
-                "id": "ex:" + _name(g, item),
-                "kind": "export",
-                "label": "power" if item == MW else _name(g, item),
-                "detail": "exported " + amount,
-                "rank": top,
-                "row": None,
-                "item": None if item == MW else item,
-            }
-        )
-    return {"nodes": nodes, "edges": edges}
 
 
 def _raw(g: GameData, sol: Solution) -> list[ItemRate]:
@@ -445,7 +319,7 @@ def _empty_summary(st: WorldState, req: PlanRequest) -> _SummaryBase:
         "exports": [],
         "inputs": [],
         "rows": [],
-        "graph": {"nodes": [], "edges": []},
+        "graph": {"nodes": [], "edges": [], "positions": {}, "buildings": []},
         "shards": None,
         "sloops_used": 0,
         "power": _no_power(req),
@@ -468,14 +342,24 @@ def _failure_summary(
 
 
 def solve_summary(
-    g: GameData, st: WorldState, kwargs: Mapping[str, object], required: list[str] | None = None
+    g: GameData,
+    st: WorldState,
+    kwargs: Mapping[str, object],
+    required: list[str] | None = None,
+    *,
+    positions: Mapping[str, list[float]] | None = None,
 ) -> SolveResponse:
-    """``SolveResponse`` for ``kwargs``: the solved plan as plain data, or why there is none."""
-    return _solve_response(g, st, kwargs, required)
+    """``SolveResponse`` for ``kwargs``: the solved plan as plain data, or why there is none.
+    ``positions`` are a stored plan's node positions, echoed for the nodes the graph has."""
+    return _solve_response(g, st, kwargs, required, positions)
 
 
 def _solve_response(
-    g: GameData, st: WorldState, kwargs: Mapping[str, object], required: list[str] | None
+    g: GameData,
+    st: WorldState,
+    kwargs: Mapping[str, object],
+    required: list[str] | None,
+    positions: Mapping[str, list[float]] | None,
 ) -> SolveResponse:
     kwargs = dict(kwargs)
     if required and not kwargs.get("required"):
@@ -493,7 +377,7 @@ def _solve_response(
     assert sol is not None and bill is not None, "a plan that did not fail is solved and billed"
     paired = _rows(g, sol.processes, set(req.required))
     rows = [r for r, _ in paired]
-    graph = production_graph(g, paired, sol.exports)
+    graph = production_graph(g, paired, sol, req.scenario, positions)
     notes = [*errors, *prepared.notes]
     machines = round(sol.machines_total)
     mw_draw = round(bill.draw_mw + bill.sink_mw, 2)
