@@ -50,7 +50,13 @@ from mapgen.palette.painted.calibration import (
 from mapgen.palette.painted.crown_sets import crown_sets, crowns_provenance
 from mapgen.palette.painted.grids import biome_grid, land_cells
 from mapgen.palette.painted.layer_targets import EVERY_4TH, DrawnGround, calibrate_layers
-from mapgen.palette.painted.optics import base_water, class_optics, load_carpet, water_table
+from mapgen.palette.painted.optics import (
+    base_water,
+    class_optics,
+    load_carpet,
+    river_k,
+    water_table,
+)
 from mapgen.palette.painted.parallel import for_row_blocks, gaussian
 from mapgen.palette.painted.rock_grid import ROCK_GRID_M, rock_planes, tinted_rock
 from mapgen.palette.painted.rock_look.atlas import RockLook, rock_look
@@ -294,12 +300,11 @@ class PaintedGround:
         palette's ``k_per_m``."""
         self._absorption = (self._absorption[0], absorption)
         self.water_rows = water_table(self.palette, *self._absorption)
-        scale = self.palette["water"]["absorption_scale"]
         self.source["river_absorption"] = {
             "absorption_per_m": [round(v, 6) for v in absorption.per_m],
             "colour": [round(v, 6) for v in absorption.colour],
             "murkiness": round(absorption.murkiness, 6),
-            "k_per_m": [round(scale * v, 5) for v in absorption.per_m],
+            "k_per_m": [round(v, 5) for v in river_k(self.palette, absorption)],
         }
 
     def attach_look(self, textures: RockTextures, spacing_m: float) -> None:

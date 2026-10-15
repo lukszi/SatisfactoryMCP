@@ -198,21 +198,22 @@
   "about": "inland water by class; the ocean keeps water. docs/map/water.md section 33",
   "river": {
    "k_per_m": [
-    1.085,
-    0.5199,
-    0.7365
+    2.5,
+    1.1979,
+    1.697
    ],
+   "absorption_scale": 5.0,
    "body": [
-    56,
-    84,
+    79,
+    125,
     120
    ],
    "deep": [
-    60,
-    89,
-    125
+    65,
+    93,
+    100
    ],
-   "deep_tau_m": 100.0,
+   "deep_tau_m": 2.0,
    "turbidity": 0.0,
    "bed_tint": [
     1.0,

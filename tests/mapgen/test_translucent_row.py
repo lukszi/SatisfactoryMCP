@@ -65,7 +65,7 @@ def test_deep_translucent_water_draws_the_lake_s_deep_colour():
 
 def test_only_the_opaque_swamp_draws_one_colour_at_every_depth():
     for cls in WATER_CLASSES[2:]:
-        # A river's absorption reaches its deep blue by about 4 m, so it is read from 1 m.
+        # A river reaches its deep colour by about 4 m, so it is read from 1 m.
         mid, deep = _drawn(cls, [1.0 if cls == "river" else 4.0, 12.0])
         if cls == "swamp":
             assert _delta_e(mid, deep) < 2.0

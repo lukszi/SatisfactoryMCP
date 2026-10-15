@@ -62,6 +62,7 @@ __all__ = [
     "load_carpet",
     "mix_underwater",
     "opaque_share",
+    "river_k",
     "underwater",
     "water_table",
 ]
@@ -101,8 +102,8 @@ def water_table(
 ) -> FloatGrid:
     """A row of linear optics per class plane value; a class the palette leaves out draws as
     the ocean (``sea_row``), a mouth blend mixes its classes' rows by ``class_shares``, class
-    by class. ``river`` is the install's river material, whose absorption times the water's
-    ``absorption_scale`` the river row takes in place of its ``k_per_m``."""
+    by class. ``river`` is the install's river material, whose absorption times the river
+    row's ``absorption_scale`` the row takes in place of its ``k_per_m``."""
     sea = sea_row(palette["water"], absorption)
     ocean = [*sea.k, *sea.body, *sea.deep, sea.deep_tau_m, 0.0, *sea.behind]
     classes = palette.get("water_classes", {})
@@ -116,13 +117,21 @@ def water_table(
             raise TypeError(f"the palette's water_classes.{name} is text, not optics")
         absorb = entry["k_per_m"]
         if name == "river" and river is not None:
-            absorb = [palette["water"]["absorption_scale"] * a for a in river.per_m]
+            absorb = river_k(palette, river)
         rows.append(_class_row(entry, absorb, palette["water"]["bed_wet"]))
     shares, table = class_shares(), np.asarray(rows, np.float32)
     mixed = shares[:, :1] * table[0]
     for k in range(1, len(table)):
         mixed = mixed + shares[:, k : k + 1] * table[k]
     return mixed
+
+
+def river_k(palette: PaintedPalette, river: RiverAbsorption) -> list[float]:
+    """The river row's absorption per metre: its ``absorption_scale`` times the material's;
+    without a river row, the sea's scale."""
+    row = palette.get("water_classes", {}).get("river")
+    scale = palette["water"]["absorption_scale"] if row is None else row["absorption_scale"]
+    return [scale * a for a in river.per_m]
 
 
 def _class_row(entry: WaterClassStyle, k: Sequence[float], bed_wet: float) -> list[float]:

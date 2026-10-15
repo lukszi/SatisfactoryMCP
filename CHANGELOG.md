@@ -6,6 +6,13 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Map renders: the Satellite map's shallow rivers are teal again, where the game's absorption
+  under the sea's sky colour drew them as their bed under a grey veil, and deep runs no
+  longer turn the sea's blue: they darken to slate teal, so a river meets the lake it feeds
+  without a jump in colour. The style's version goes up.
+
 ## [0.2.0] - 2026-10-14
 
 ### Upgrade notes
