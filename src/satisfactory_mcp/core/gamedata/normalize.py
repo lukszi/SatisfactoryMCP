@@ -15,7 +15,7 @@ from dataclasses import replace
 
 from ..jsontypes import JsonObject, JsonValue
 from .constants import BELT_SPEED_TO_IPM, PURITY_MULT, max_clock
-from .footprint import extract_footprint
+from .footprint import clearance_rings, extract_footprint
 from .loader import DocsDump
 from .model import (
     MANUFACTURER_NATIVES,
@@ -265,6 +265,9 @@ def _build_buildings(dump: DocsDump, items: dict[str, Item]) -> dict[str, Buildi
                 max_head_lift_m=as_float(docs_class.get("mMaxPressure")),
                 machine_head_lift_m=_stated_head_lift(docs_class.get("mDescription")),
                 footprint=extract_footprint(docs_class.get("mClearanceData")),
+                clearance=tuple(
+                    tuple(ring) for ring in clearance_rings(docs_class.get("mClearanceData"))
+                ),
             )
     return out
 

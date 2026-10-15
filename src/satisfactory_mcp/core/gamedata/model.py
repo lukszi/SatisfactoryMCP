@@ -173,6 +173,9 @@ class Building:
     #: Axis-aligned footprint from mClearanceData, in metres. None for a few
     #: buildables that declare no clearance at all.
     footprint: Footprint | None = None
+    #: Each counted clearance box seen from above, metres in the actor frame; the drawn
+    #: stand-in where data/building_shapes.json has no outline (docs/building-shapes.md).
+    clearance: tuple[tuple[tuple[float, float], ...], ...] = ()
 
     # extractor
     items_per_cycle: float = 0.0
