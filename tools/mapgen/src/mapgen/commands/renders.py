@@ -69,13 +69,18 @@ def main() -> int:
     except Refusal as refusal:
         print(refusal.message)
         return refusal.code
-    if not (args.kernel_only or args.keep_direct or args.restyle):
+    if not _keeps_caches(args):
         gc.collect()
         for directory in remove_run_caches(cache_root):
             print(f"could not remove {directory}: a file in it is still open")
     print(f"done in {time.time() - started:.0f}s")
     print("none of it is committed: data/local/ is gitignored and stays that way.")
     return 0
+
+
+def _keeps_caches(args: argparse.Namespace) -> bool:
+    """Whether the run leaves its raster caches and its light for a later run."""
+    return bool(args.kernel_only or args.keep_direct or args.restyle)
 
 
 def _render(
@@ -97,8 +102,9 @@ def _render(
     run = prepare(args, layers, setup)
     titans = not args.no_titan_trees
     crowns = None if root is None else crown_tops(args.paint_dir, run.sprites, titans)
+    keep = _keeps_caches(args)
     with (
-        light_run(root, args.size, crowns, light_workers, setup.cache_root) as light,
+        light_run(root, args.size, crowns, light_workers, setup.cache_root, keep) as light,
         TileStream(setup.image_mod, cut_workers) as cutter,
     ):
         started = time.time()

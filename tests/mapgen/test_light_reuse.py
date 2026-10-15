@@ -100,9 +100,9 @@ def _baked(tmp: Path, cache: Path | None, planes=None, occluder=None) -> None:
         run.close()
 
 
-def _installed(tmp: Path, cache: Path | None, occluder=None):
+def _installed(tmp: Path, cache: Path | None, occluder=None, keep: bool = True):
     """One lit layer into ``tmp/out/r``: the light's ``_meta`` and the layer's tiles."""
-    run = LightingRun(tmp / "scratch", SIZE, occluder, light_workers=1, cache_root=cache)
+    run = LightingRun(tmp / "scratch", SIZE, occluder, light_workers=1, cache_root=cache, keep=keep)
     z, land = _planes()
     sheet = np.full((SIZE, SIZE, 3), 128, np.uint8)
     try:
@@ -219,6 +219,19 @@ def test_a_keep_that_fails_leaves_the_run_its_own_terms(tmp_path, monkeypatch):
     alone, tiles_alone = _installed(tmp_path / "b", None)
     assert tiles == tiles_alone, "relit by the scratch's own terms"
     assert meta is not None and alone is not None and alone["key"] == meta["key"]
+
+
+def test_a_run_that_deletes_its_caches_keeps_no_light_and_writes_the_same(tmp_path, monkeypatch):
+    links = _Counted(monkeypatch, kept_light, "_link_tree")
+    meta, tiles = _installed(tmp_path / "a", tmp_path / "cache", keep=False)
+    assert links.count == 0 and not (tmp_path / "cache" / KEPT_LIGHT_DIR_NAME).exists()
+    kept_meta, kept_tiles = _installed(tmp_path / "b", tmp_path / "cache")
+    assert tiles == kept_tiles
+    assert meta is not None and kept_meta is not None and meta["key"] == kept_meta["key"]
+    a, b = tmp_path / "a" / "out" / "r", tmp_path / "b" / "out" / "r"
+    light_a, light_b = _files(a / "light"), _files(b / "light")
+    del light_a["meta.json"], light_b["meta.json"]  # its timings
+    assert light_a == light_b
 
 
 def test_a_run_without_a_cache_root_keeps_nothing_and_writes_the_key(tmp_path):

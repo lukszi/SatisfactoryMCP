@@ -206,7 +206,8 @@ class LightingRun:
     follows it a block row at a time, and the terms each band is relit by.
 
     ``light_workers`` bake the light, None counting them from the cores and free memory.
-    With a ``cache_root`` the bake is kept under it. A kept bake that differs at most in the
+    With a ``cache_root`` the bake is kept under it, unless ``keep`` is False: a run that
+    deletes its caches at its end. A kept bake that differs at most in the
     surface is read while the bands drawn so far are the ones it was baked from, and is
     installed if they all are; the first band drawn otherwise starts this run's bake.
     """
@@ -218,6 +219,7 @@ class LightingRun:
         occluder: Occluder | None = None,
         light_workers: int | None = None,
         cache_root: Path | None = None,
+        keep: bool = True,
     ) -> None:
         self.surface = Surface(scratch_root / LIGHT_CACHE_DIR_NAME, size)
         self.occluder = occluder
@@ -225,6 +227,7 @@ class LightingRun:
         self.casts = caster_digests(occluder)
         self.light_workers = light_workers
         self.kept = None if cache_root is None else KeptLight(cache_root / KEPT_LIGHT_DIR_NAME)
+        self.keep = keep
         self.meta: JsonObject | None = None
         self.renders: Path | None = None
         self.bake: LightBake | None = None
@@ -336,7 +339,7 @@ class LightingRun:
         # Nothing may hold the terms mapped while the keep moves them.
         bake.close()
         self._terms.clear()
-        if self.kept is not None:
+        if self.kept is not None and self.keep:
             puts = self.surface.puts()
             self.surface.terms = self.kept.keep(self.meta, renders, self.surface.terms, puts)
         done, render = require_object(self.meta["tiles"]), require_object(self.meta["render"])
@@ -401,10 +404,12 @@ def light_run(
     crowns: CrownTops | None,
     workers: int | None = None,
     cache_root: Path | None = None,
+    keep: bool = True,
 ) -> Generator[LightingRun | None, None, None]:
     """The run's light stage in ``root``, crowns first, its scratch deleted however the run
-    ends, the crowns' and the surface's failures included; or None without the light. The
-    bake is kept under ``cache_root``, where one of the same surface is reused."""
+    ends, the crowns' and the surface's failures included; or None without the light. A
+    bake of the same surface under ``cache_root`` is reused, and this one kept there when
+    ``keep``."""
     if root is None:
         yield None
         return
@@ -417,6 +422,7 @@ def light_run(
             crown_occluder(crowns, root, size),
             light_workers=workers,
             cache_root=cache_root,
+            keep=keep,
         )
         yield run
     except BaseException as exc:

@@ -481,8 +481,10 @@ the renders.
 | `meta.json` | The bake's `meta.json`, key included. It is removed first and written last, so a keep cut short is never read |
 
 It goes with the raster caches: a run that keeps none (no `--keep-direct`, `--restyle` or
-`--kernel-only`) deletes it at its end, and the Maps tab's cache clear takes it with the rest
-of `_cache/<size>/`. A keep that fails, in a read-only folder say, leaves no `meta.json`, and
+`--kernel-only`) does not keep its bake (since 2026-10-15) and deletes any kept light at its
+end, and the Maps tab's cache clear takes it with the rest of `_cache/<size>/`. Keeping it
+only to delete it cost the v12 render (2026-10-14) about 70 s after the light: the 43,690
+links and the terms, copied from a `--scratch-dir` on another volume (the files' times). A keep that fails, in a read-only folder say, leaves no `meta.json`, and
 the run relights from its own scratch.
 
 **Reuse.** When the kept `meta.json` carries the run's digest and its terms and tiles are

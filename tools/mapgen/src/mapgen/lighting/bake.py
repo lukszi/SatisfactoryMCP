@@ -9,6 +9,7 @@ docs/map/light-and-crowns.md section 29 and docs/map/renders.md section 42.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import threading
 import time
@@ -58,12 +59,12 @@ from satisfactory_mcp.core.mapprogress import encode_stage
 
 __all__ = ["COARSE_THREADS", "LightBake", "bake_light", "block_rows", "gpu_calls_line"]
 
-#: Threads that encode the coarser levels' tiles while the draw runs, and the pieces they may
-#: have waiting: the light's processes bake blocks then, so these take cores the run leaves
-#: idle, and hold little. From ``finish`` on the light's processes encode them, with
-#: ``LEVEL_AHEAD`` pieces waiting (docs/map/renders.md section 42).
-COARSE_THREADS = 2
-COARSE_AHEAD = 1
+#: Threads that encode the coarser levels' tiles, a quarter of the cores up to 8, and the
+#: pieces they may have waiting while the draw runs; from ``finish`` on, ``LEVEL_AHEAD``.
+#: Pillow encodes without the GIL, so these keep up with the rows (docs/map/renders.md
+#: section 42, "Keeping up").
+COARSE_THREADS = max(2, min(8, (os.cpu_count() or 8) // 4))
+COARSE_AHEAD = 2
 
 
 def gpu_calls_line(done: Sequence[BlockDone]) -> str:
@@ -263,7 +264,8 @@ class LightBake:
                 print(encode_stage("light", len(self.done) / self.blocks), flush=True)
         for row in range(len(self.reads)):
             self.queue(row)
-        self.coarse.encoder, self.coarse.ahead = self._pool(), None
+        # The threads keep encoding: the light's processes still bake the last rows.
+        self.coarse.ahead = None
         for row in range(len(self.reads)):
             self.rows[row].result()
             if on_row is not None:
@@ -282,11 +284,6 @@ class LightBake:
             folded = frozenset((x // 2, y // 2) for x, y in folded)
             counted += len(folded)
         return self._install(key, tiles, native_s, counted)
-
-    def _pool(self) -> ProcessPoolExecutor:
-        if self.pool is None:
-            raise RuntimeError("the light's coarser levels need its block rows baked first")
-        return self.pool
 
     def _install(self, key: JsonObject, tiles: int, native_s: float, folded: int) -> JsonObject:
         root, staging, size = self.root, self.staging, self.surface.size
