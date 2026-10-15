@@ -172,6 +172,7 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
         art_water,
         extras.lips,
     )
+    extras.place_falls(field, water.level if sea is None else sea.level)
     footprints = _mesh_footprints(args.size, field, lattice, (water, sea), extras)
     if paint is not None:
         paint.block["water_classes"] = paint.ground.classify_water(field, planes)

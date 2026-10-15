@@ -18,7 +18,14 @@ from mapgen.gamedata.water.falls import (
     load_or_sweep_falls,
 )
 from mapgen.palette.water import falls as fallpaint
-from mapgen.palette.water.falls import FALL_STYLES, draw_falls, prepare_falls
+from mapgen.palette.water.falls import (
+    FALL_STYLES,
+    WIDE_M,
+    DrawnWater,
+    draw_falls,
+    prepare_falls,
+)
+from mapgen.render.run.extras import RenderExtras
 from mapgen.terrain.render_meshes import (
     MESH_ROCK,
     MESH_TERRACE,
@@ -137,6 +144,49 @@ def test_the_drop_is_measured_to_the_ground_below_the_lip():
     assert prepared[0, 10] == pytest.approx(5.0), "base is the ground, not the curtain's end"
 
 
+def test_a_lip_under_its_own_box_is_a_fall_on_the_drawn_water():
+    """The box the fall pours from stands over its lip, as at (2075, -1855): measured on the
+    drawn water, re-levelled to the lip, it falls; the box still stands out from the lip."""
+    ground = np.full((80, 80), 38.0)
+    ground[41:, :] = 5.0
+    box = np.full((80, 80), 42.2)  # 2.2 m over the lip, and over the cliff's foot
+    field = _field(ground, box)
+    assert not len(prepare_falls([_record()], field)), "on the field's boxes: no drop"
+    drawn = np.where(np.arange(80)[:, None] <= 40, 40.0, np.nan) + np.zeros((1, 80))
+    level_dm = np.where(np.isnan(drawn), hf.NODATA, drawn * 10).astype(np.int16)
+    prepared = prepare_falls([_record()], field, DrawnWater(level_dm))
+    assert prepared.shape == (1, 11) and prepared[0, 10] == pytest.approx(5.0)
+
+
+def test_a_river_lip_falls_where_its_ribbon_steps_down():
+    """At (-999, 1575) the river box stands over the lip and the ribbons draw the river above
+    and below it: the ribbon below is the landing."""
+    ground = np.full((80, 80), 38.0)
+    ground[41:, :] = 2.0
+    box = np.full((80, 80), 46.0)
+    dry = np.full((80, 80), hf.NODATA, np.int16)
+    ribbon = np.where(np.arange(80)[:, None] <= 40, 41.0, 3.0).astype(np.float32) + np.zeros(
+        (1, 80), np.float32
+    )
+    presence = np.full((80, 80), 255, np.uint8)
+    prepared = prepare_falls([_record()], _field(ground, box), DrawnWater(dry, ribbon, presence))
+    assert prepared.shape == (1, 11) and prepared[0, 10] == pytest.approx(3.0)
+    unseen = DrawnWater(dry, ribbon, np.zeros_like(presence))
+    assert prepare_falls([_record()], _field(ground, box), unseen)[0, 10] == pytest.approx(2.0)
+
+
+def test_a_run_places_its_falls_on_the_water_it_draws():
+    ground = np.full((80, 80), 38.0)
+    ground[41:, :] = 5.0
+    field = _field(ground, np.full((80, 80), 42.2))
+    extras = RenderExtras(fall_records=[_record()], mesh_source={"waterfalls": {"actors": 1}})
+    extras.place_falls(field, None)
+    assert extras.falls is not None and not len(extras.falls)
+    level_dm = np.where(np.arange(80)[:, None] <= 40, 400, hf.NODATA).astype(np.int16)
+    extras.place_falls(field, level_dm + np.zeros((1, 80), np.int16))
+    assert len(extras.falls) == 1 and extras.mesh_source["waterfalls"]["drawable"] == 1
+
+
 def test_falls_without_a_drop_or_at_the_sea_or_off_the_data_are_left_out():
     flat = np.full((80, 80), 40.0)
     assert not len(prepare_falls([_record()], _field(flat))), "no drop"
@@ -221,6 +271,52 @@ def test_the_foam_goes_under_what_hides_it_and_is_asked_only_near_a_fall():
     far = _fall(x=500.0)
     draw_falls(rgb.copy(), far, "painted", x_cm, y_cm, surface, 0.25, canopy)
     assert asked == [1], "no fall near: the cover is never worked out"
+
+
+def test_the_pool_stays_in_its_own_basin():
+    """A pool landing at 10 m never paints over a lower lake past the basin's rim, as the
+    canyon falls near (2131, -1828) did over the lake 100 m below."""
+    cfg = FALL_STYLES["painted"]
+    xs = np.arange(-30.0, 30.01, 0.25)
+    ys = np.full(1, 3.5)  # across the pool, past the streak
+    basin = np.full((1, len(xs)), 9.0)
+    lower = np.where(xs > 11.0, -90.0, 9.0)[None, :]
+    foam, _mist = fallpaint._fall_alpha(_fall()[0], cfg, xs, ys, basin, 0.25)
+    cut, cut_mist = fallpaint._fall_alpha(_fall()[0], cfg, xs, ys, lower, 0.25)
+    assert foam[0, xs > 11.0].max() > 0.1, "the pool reaches there over its own basin"
+    assert cut[0, xs > 11.0].max() == 0.0 and cut_mist[0, xs > 11.0].max() == 0.0
+    assert np.array_equal(cut[0, xs < 11.0], foam[0, xs < 11.0])
+
+
+def test_the_pool_has_no_straight_sides_along_a_wide_lip():
+    cfg = FALL_STYLES["painted"]
+    wide = _fall(half=40.0)[0]
+    xs = np.arange(-35.0, 35.01, 0.25)
+    ys = np.arange(0.0, 30.0, 0.25)
+    foam, _mist = fallpaint._fall_alpha(wide, cfg, xs, ys, np.full((len(ys), len(xs)), 9.0), 0.25)
+    pool = foam[ys > 2.0]
+    reach = (pool > 0.2).sum(axis=0) * 0.25  # how far out the pool runs, along the lip
+    assert reach.max() - reach.min() > 2.0
+
+
+def test_the_streak_brightens_from_the_top_modules_without_a_line():
+    cfg = FALL_STYLES["painted"]
+    ys = np.arange(-6.0, 1.5, 0.05)
+    foam, _mist = fallpaint._fall_alpha(_fall()[0], cfg, np.array([0.0]), ys,
+                                        np.full((len(ys), 1), 47.0), 0.05)  # fmt: skip
+    assert np.abs(np.diff(foam[:, 0])).max() < 0.05
+
+
+def test_a_very_wide_fall_is_fainter_and_a_normal_one_is_not():
+    """The 277 m fall at (1784, 559) drew the brightest bar in its area at low zoom."""
+    cfg = FALL_STYLES["painted"]
+    xs, ys = np.array([0.0]), np.array([0.5, 10.0])
+    surface = np.array([[47.0], [9.0]])
+    normal = fallpaint._fall_alpha(_fall(half=WIDE_M / 2)[0], cfg, xs, ys, surface, 0.25)[0]
+    wide = fallpaint._fall_alpha(_fall(half=138.0)[0], cfg, xs, ys, surface, 0.25)[0]
+    narrow = fallpaint._fall_alpha(_fall(half=10.0)[0], cfg, xs, ys, surface, 0.25)[0]
+    assert np.allclose(normal, narrow), "up to the wide width the foam is as it was"
+    assert np.allclose(wide, normal * np.sqrt(WIDE_M / 276.0))
 
 
 def test_a_coarse_pixel_softens_the_foam():

@@ -19,13 +19,13 @@ from mapgen.cache import (
     TitanPlanes,
 )
 from mapgen.gamedata.level.sweep import Sweep
-from mapgen.gamedata.water.falls import FALLS_CACHE_DIR_NAME
-from mapgen.palette.water.falls import load_falls
+from mapgen.gamedata.water.falls import FALLS_CACHE_DIR_NAME, FallRecord
+from mapgen.palette.water.falls import DrawnWater, load_falls, prepare_falls
 from mapgen.palette.water.rivers import RiverWater, load_rivers
 from mapgen.render.draw.kept_light import KEPT_LIGHT_DIR_NAME
 from mapgen.render.run.cached_rasters import LevelSweep
 from mapgen.terrain.render_meshes import mesh_items, mesh_pass, titan_items
-from satisfactory_mcp.core.arrays import F64Grid
+from satisfactory_mcp.core.arrays import F64Grid, I16Grid
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue, to_json_object
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -41,6 +41,7 @@ class RenderExtras:
 
     meshes: MeshPlanes | None = None
     falls: F64Grid | None = None
+    fall_records: list[FallRecord] | None = None
     lips: F64Grid | None = None
     titan: TitanPlanes | None = None
     rivers: RiverWater | None = None
@@ -48,6 +49,21 @@ class RenderExtras:
     titan_source: JsonObject = field(default_factory=dict[str, JsonValue])
     river_meta: JsonObject = field(default_factory=dict[str, JsonValue])
     readers: list[str] = field(default_factory=list[str])
+
+    def place_falls(self, heightfield: hf.Field, level_dm: I16Grid | None) -> None:
+        """Which falls draw, measured on the water the run draws: ``level_dm`` and the
+        rivers' ribbons, else the field's own water. docs/map/water.md section 35."""
+        if self.fall_records is None:
+            return
+        rivers = self.rivers
+        drawn = None
+        if level_dm is not None:
+            ribbons = (None, None) if rivers is None else (rivers.level_m, rivers.presence)
+            drawn = DrawnWater(level_dm, *ribbons)
+        self.falls = prepare_falls(self.fall_records, heightfield, drawn)
+        block = self.mesh_source.get("waterfalls")
+        if isinstance(block, dict):
+            block["drawable"] = len(self.falls)
 
 
 def load_extras(
@@ -82,7 +98,7 @@ def load_extras(
         z_cm, cls, *family = maps
         out.meshes = MeshPlanes(z_cm, cls, family[0] if family else None)
         out.mesh_source = to_json_object(mesh_source)
-        out.falls, out.lips, falls_source = load_falls(cache_root, build, swept_levels, heightfield)
+        out.fall_records, out.lips, falls_source = load_falls(cache_root, build, swept_levels)
         out.mesh_source.update(falls_source)
         out.readers += ["render_meshes", "waterfalls"]
     if titan:

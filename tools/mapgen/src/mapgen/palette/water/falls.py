@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
 import numpy as np
 
@@ -19,13 +19,16 @@ from mapgen.palette.schema import FallsStyle
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.palette.water.lips import fall_lips
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
-from satisfactory_mcp.core.arrays import F64Grid
+from satisfactory_mcp.core.arrays import F32Grid, F64Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
+    "BASIN_M",
     "FALL_STYLES",
     "MIN_DROP_M",
+    "WIDE_M",
+    "DrawnWater",
     "draw_falls",
     "load_falls",
     "prepare_falls",
@@ -40,65 +43,95 @@ MIN_DROP_M = 2.0
 #: A lip this far under the field's surface is in a cave or under a rock.
 BURIED_M = 4.0
 
-#: A lip this far under standing water, or this close to the sea, is the ocean pouring off
-#: the world's edge.
-SUBMERGED_M = 1.0
+#: A lip less than this above the ocean level is the ocean pouring off the world's edge.
+OCEAN_M = 1.0
 
 #: Where the landing is looked for: metres out from the lip, and across it as a share of width.
 _OUT_M = (0.5, 1.0, 2.0, 4.0, 7.0, 11.0)
 _ACROSS = (-0.4, -0.2, 0.0, 0.2, 0.4)
+
+#: A lip wider than this draws its foam fainter, by the square root of the ratio: the 277 m
+#: fall would otherwise be the brightest thing in its area at every zoom.
+WIDE_M = 80.0
+
+#: The landing pool's own basin: ground more than ``max(lo, gain * drop)`` below the landing
+#: is lower water past the basin's rim, where the pool and the mist fade out over half that.
+BASIN_M = (8.0, 0.3)
+
+#: How far the pool's radius wanders along the lip, as a share of it.
+POOL_WANDER = 0.35
 
 #: The columns of a drawable fall's row (``prepare_falls``), in order: the lip, the unit
 #: vectors along and out of it, its half width and top length, the landing and the base.
 _X, _Y, _HALF_WIDTH, _TOP_LEN = 0, 1, 7, 8
 
 
-def _surface_at(field: hf.Field, x_m: F64Grid, y_m: F64Grid) -> tuple[F64Grid, F64Grid]:
-    """The field's ground and water surface at world points, ``nan`` where it has none."""
+class DrawnWater(NamedTuple):
+    """The water a render draws: its level plane in decimetres, and the river ribbons' level
+    in metres with their presence, which stand in for the field's water where they draw."""
+
+    level_dm: I16Grid
+    ribbon_m: F32Grid | None = None
+    presence: U8Grid | None = None
+
+
+def _surface_at(
+    field: hf.Field, x_m: F64Grid, y_m: F64Grid, drawn: DrawnWater | None = None
+) -> tuple[F64Grid, F64Grid]:
+    """The ground and water surface at world points, ``nan`` where there is none: the drawn
+    water's, else the field's own."""
     col = np.round((x_m * 100 - field.x0_cm) / field.spacing_cm).astype(np.int64)
     row = np.round((y_m * 100 - field.y0_cm) / field.spacing_cm).astype(np.int64)
     on = (col >= 0) & (col < field.width) & (row >= 0) & (row < field.height)
     col, row = np.clip(col, 0, field.width - 1), np.clip(row, 0, field.height - 1)
     ground = field_heights(field)[row, col].astype(np.float64)
-    level = field.water_raster()
+    level = field.water_raster() if drawn is None else drawn.level_dm
     water = np.full(ground.shape, np.nan) if level is None else level[row, col].astype(np.float64)
     ground = np.where(ground == hf.NODATA, np.nan, ground / hf.DM_PER_M)
     water = np.where(water == hf.NODATA, np.nan, water / hf.DM_PER_M)
+    if drawn is not None and drawn.ribbon_m is not None and drawn.presence is not None:
+        ribbon = drawn.ribbon_m[row, col].astype(np.float64)
+        draws = (drawn.presence[row, col] > 0) & (ribbon != hf.NODATA)
+        water = np.where(draws, np.fmax(water, ribbon), water)
     return np.where(on, ground, np.nan), np.where(on, water, np.nan)
 
 
 def load_falls(
-    cache_root: Path, build: str | None, sweep_once: Callable[[], Sweep], field: hf.Field
-) -> tuple[F64Grid, F64Grid, dict[str, JsonObject]]:
-    """The drawable falls for this field, every fall's lip (``lips.fall_lips``), and the
-    sidecar's ``waterfalls`` block."""
+    cache_root: Path, build: str | None, sweep_once: Callable[[], Sweep]
+) -> tuple[list[FallRecord], F64Grid, dict[str, JsonObject]]:
+    """Every fall's record and lip (``lips.fall_lips``), and the sidecar's ``waterfalls``
+    block. Which falls draw is decided on the drawn water (``prepare_falls``)."""
     swept, source = load_or_sweep_falls(cache_root, build, sweep_once)
     # Stamped by its reader's version, or just swept: the records have the sweep's shape.
     records = cast(list[FallRecord], swept)
-    falls = prepare_falls(records, field)
-    source["waterfalls"]["drawable"] = len(falls)
-    return falls, fall_lips(records), source
+    return records, fall_lips(records), source
 
 
-def prepare_falls(records: list[FallRecord] | None, field: hf.Field) -> F64Grid:
+def prepare_falls(
+    records: list[FallRecord] | None, field: hf.Field, drawn: DrawnWater | None = None
+) -> F64Grid:
     """One row per drawable fall: x, y, lip z, along, out, half width, top, landing, base z.
 
-    The landing is the lowest surface just out from the lip; the drop is measured to it, not
-    to the bottom of the tool's curtain, which often runs on underground.
+    The lip and the landing are measured on ``drawn``, the water the render draws, else on
+    the field's: a box often stands over its own lip. The landing is the lowest surface just
+    out from the lip; the drop is measured to it, not to the bottom of the tool's curtain,
+    which often runs on underground.
     """
     rows: list[tuple[float, ...]] = []
     for fall in records or ():
         x, y, z, (ux, uy), (nx, ny) = fall["x"], fall["y"], fall["z"], fall["along"], fall["out"]
         half_m = fall["width_m"] / 2
-        ground, water = _surface_at(field, np.array([x]), np.array([y]))
-        if z < OCEAN_LEVEL_M + SUBMERGED_M or water[0] > z + SUBMERGED_M:
+        ground = _surface_at(field, np.array([x]), np.array([y]))[0]
+        # Water standing over the lip is the river or lake it pours from; a lip under water
+        # on both sides has no drop to its landing.
+        if z < OCEAN_LEVEL_M + OCEAN_M:
             continue
         if not ground[0] <= z + BURIED_M:
             continue
         out_m = np.repeat(_OUT_M, len(_ACROSS))
         across_m = np.tile(_ACROSS, len(_OUT_M)) * 2 * half_m
         x_m, y_m = x + across_m * ux + out_m * nx, y + across_m * uy + out_m * ny
-        z_out = np.fmax(*_surface_at(field, x_m, y_m))
+        z_out = np.fmax(*_surface_at(field, x_m, y_m, drawn))
         if np.isfinite(z_out).mean() < 0.5:
             continue
         base = max(float(np.nanmin(z_out)), z - fall["height_m"])
@@ -141,7 +174,8 @@ def _fall_alpha(
     along = _soft_step(out_m + top_len, edge) * end
     upstream = style["top"] * np.clip(1.0 + out_m / max(top_len, 1e-6), 0.0, 1.0)
     downstream = 1.0 - (1.0 - style["streak_end"]) * np.clip(out_m / spread, 0, 1)
-    fade = np.where(out_m < 0, upstream, downstream)
+    # The top modules' faint run brightens into the curtain over a few pixels, not on a line.
+    fade = upstream + (downstream - upstream) * _smooth_step(out_m, 2.0 * edge)
     on_cliff = np.clip((z + style["above_m"] - surface) / style["above_m"], 0.0, 1.0)
     waves = np.cos(across_m * 2.1) + np.cos(across_m * 0.77 + 1.3)
     strands = 1.0 - style["strands"] * (0.5 + 0.25 * waves)
@@ -150,15 +184,21 @@ def _fall_alpha(
     pool_radius_m = float(np.clip(pool_gain * drop, pool_lo, pool_hi))
     centre = max(landing, 0.5 * spread)
     distance_m = np.hypot(np.maximum(np.abs(across_m) - half_m, 0.0), out_m - centre)
-    width = style["ring_width"] * pool_radius_m
-    ring = np.exp(-(((distance_m - pool_radius_m) / width) ** 2))
+    # Along a wide lip the pool's sides wander, so they draw no straight bar.
+    wander = np.cos(across_m * 0.45 + 0.7) + np.cos(across_m * 0.19 + 2.1)
+    radius_m = pool_radius_m * (1.0 + POOL_WANDER * 0.5 * wander)
+    width = style["ring_width"] * radius_m
+    ring = np.exp(-(((distance_m - radius_m) / width) ** 2))
     rim = style["core"] + (1.0 - style["core"]) * ring
-    pool_shape = rim * np.exp(-((np.maximum(distance_m - pool_radius_m, 0.0) / width) ** 2))
+    pool_shape = rim * np.exp(-((np.maximum(distance_m - radius_m, 0.0) / width) ** 2))
     low = np.clip((z - surface) / (style["pool_below"] * drop) - 1.0, 0.0, 1.0)
+    basin_m = max(BASIN_M[0], BASIN_M[1] * drop)
+    low *= _smooth_step(np.asarray(surface - (base - basin_m), np.float64), 0.5 * basin_m)
     pool = style["pool"] * pool_shape * low
     reach = style["mist_reach"] * pool_radius_m
     mist = style["mist"] * np.exp(-((distance_m / reach) ** 2)) * low
-    return np.maximum(streak, pool), mist
+    gain = min(1.0, np.sqrt(WIDE_M / max(2 * half_m, 1e-6)))
+    return gain * np.maximum(streak, pool), gain * mist
 
 
 def draw_falls(
