@@ -22,9 +22,11 @@ from ..progress.stages import track
 from ..progress.startup import Commissioning, commission
 from ..solver.prepare import PreparedPlan, prepare
 from ..stored.planlog import PlanState
+from .grids import foundation_grids
 from .views import (
     SiteBuilt,
     SiteFit,
+    SiteGrid,
     SiteLoss,
     SitePreviewNode,
     SitePreviewResponse,
@@ -260,6 +262,10 @@ def _progress_lost(now: SiteBuilt, here: SiteBuilt) -> SiteLoss | None:
     return {"now": had, "here": has or 0, "total": total, "text": text}
 
 
+def _grids(st: WorldState) -> list[SiteGrid]:
+    return st.derived("foundation_grids", lambda: foundation_grids(st.projection))
+
+
 def _preview_base(
     st: WorldState, sess: PreviewSession, sit: siting_mod.Siting, include_static: bool
 ) -> SitePreviewResponse:
@@ -306,6 +312,7 @@ def _preview_base(
         "overlaps": [],
         "nodes": None,
         "content_bbox_m": [v / 100 for v in geo.CONTENT_BBOX] if include_static else None,
+        "foundation_grids": _grids(st) if include_static else None,
         "failure": sess.failure,
     }
     if include_static:

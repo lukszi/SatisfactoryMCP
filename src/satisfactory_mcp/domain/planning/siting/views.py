@@ -136,9 +136,19 @@ class SiteFit(TypedDict):
     value: SiteValue
 
 
+class SiteGrid(TypedDict):
+    """One run of foundations on one lattice: lines at ``anchor_m ± 4 + k·8`` m along the
+    axes turned by ``yaw_deg``."""
+
+    yaw_deg: float
+    anchor_m: list[float]
+    bbox_m: list[float]
+    tiles: int
+
+
 class SitePreviewResponse(TypedDict):
-    """One candidate pad. ``now`` is the stored site's figure; ``nodes`` and ``content_bbox_m``
-    come only with ``first=1``. Outside the map square only ``where`` is filled."""
+    """One candidate pad. ``now`` is the stored site's figure; ``nodes``, ``content_bbox_m``
+    and ``foundation_grids`` come only with ``first=1``. Outside the map square only ``where`` is filled."""
 
     key: str
     rev: int
@@ -171,4 +181,5 @@ class SitePreviewResponse(TypedDict):
     overlaps: list[str]
     nodes: list[SitePreviewNode] | None
     content_bbox_m: list[float] | None
+    foundation_grids: list[SiteGrid] | None
     failure: str

@@ -1,20 +1,21 @@
-/* A plan's pad being moved on the map: handles, the crosshair mode, keyboard nudges and the
- * snap. Owns no fetch: it reports `step` while a gesture runs and `commit` when it ends.
+/* A plan's pad being moved and resized on the map: handles, the crosshair mode, keyboard
+ * nudges and the snap. Owns no fetch: it reports `step` while a gesture runs and `commit` when it ends.
  * docs/planner-p5_contract.md §3 is the specification. */
 
 import { L } from "../../map/leaflet";
 import { footprintCorners, map, MAP_SQUARE_M, latLngOf } from "../../map/map";
 import { PLAN_COLOUR } from "../../map/drawn/plan-sitings";
+import { moveStep } from "./pad/grid-snap";
+import { addResizeHandles, clearResizeHandles, placeResizeHandles, showResizeHandles } from "./pad/resize-handles";
+import { sizeStep } from "./pad/size-step";
 
-export interface Pad {
-  x_m: number;
-  y_m: number;
-  yaw_deg: number;
-  width_m: number;
-  depth_m: number;
-}
+import type { Grid, SnapContext } from "./pad/grid-snap";
+import type { Pad } from "./pad/geometry";
+import type { ResizeHost } from "./pad/resize-handles";
 
-type Gesture = "" | "drag" | "turn" | "keys" | "cross";
+export type { Pad } from "./pad/geometry";
+
+type Gesture = "" | "drag" | "turn" | "keys" | "cross" | "resize";
 
 export type GestureKind = Exclude<Gesture, "">;
 
@@ -37,6 +38,8 @@ const FINE_M = 1;
 const BURST_MS = 600;
 const TURN_REACH = 1.5;
 const PANE = "sitedrag";
+/** How close on screen an edge comes to a built grid line before it lands on it. */
+const SNAP_PX = 10;
 
 const pane = map.createPane(PANE);
 pane.style.zIndex = "640";
@@ -59,6 +62,23 @@ let cross: HTMLElement | null = null;
 let snapMode = function (): string {
   return "fine";
 };
+let grids: Grid[] = [];
+
+/** The save's foundation grids, from the first preview reply. */
+export function useGrids(list: Grid[]): void {
+  grids = list;
+}
+
+function snapContext(at: L.LatLng): SnapContext {
+  const here = map.latLngToContainerPoint(at);
+  const there = map.containerPointToLatLng(here.add([SNAP_PX, 0]));
+  return { grids: grids, tolM: Math.abs(there.lng - at.lng), step: sizeStep() };
+}
+
+/** The outline goes solid while the pad sits on a built grid; setStyle, as the map may draw on a canvas. */
+function setSnapped(on: boolean): void {
+  if (outline) outline.setStyle({ dashArray: on ? null : "8,5", weight: on ? 4 : 3 } as L.PathOptions);
+}
 
 export function useSnap(mode: () => string): void {
   snapMode = mode;
@@ -150,6 +170,7 @@ function draw(p: Pad, moveHandles: boolean): void {
   if (outline) outline.setLatLngs(padCorners(p));
   if (moveHandles && mover) mover.setLatLng(latLngOf(p));
   if (moveHandles && turner) turner.setLatLng(turnAt(p));
+  if (moveHandles) placeResizeHandles(p);
   drawLines(p);
 }
 
@@ -161,6 +182,7 @@ function step(p: Pad): void {
 function end(how: GestureKind): void {
   const p = pad;
   gesture = "";
+  setSnapped(false);
   if (!p || !hooks) return;
   draw(p, true);
   if (aborted) {
@@ -230,6 +252,34 @@ function shiftHeld(event: L.LeafletEvent): boolean {
   return !!(event as unknown as { originalEvent?: MouseEvent }).originalEvent?.shiftKey;
 }
 
+/** Shift or Ctrl: a move with no snap at all. */
+function freeHeld(event: L.LeafletEvent): boolean {
+  const e = (event as unknown as { originalEvent?: MouseEvent }).originalEvent;
+  return !!(e?.shiftKey || e?.ctrlKey || e?.metaKey);
+}
+
+const resizeHost: ResizeHost = {
+  pad: function () {
+    return pad;
+  },
+  begin: function () {
+    beginGesture("resize");
+  },
+  step: function (p, snapped) {
+    step(p);
+    setSnapped(snapped);
+    if (mover) mover.setLatLng(latLngOf(p));
+    if (turner) turner.setLatLng(turnAt(p));
+  },
+  end: function () {
+    end("resize");
+  },
+  aborted: function () {
+    return aborted;
+  },
+  snapContext: snapContext,
+};
+
 function handles(p: Pad, name: string): void {
   mover = L.marker(latLngOf(p), { draggable: true, keyboard: true, pane: PANE, icon: icon("move", "move the pad"), autoPan: false });
   turner = L.marker(turnAt(p), { draggable: true, keyboard: false, pane: PANE, icon: icon("turn", "turn the pad"), autoPan: false });
@@ -238,9 +288,14 @@ function handles(p: Pad, name: string): void {
   });
   mover.on("drag", function (e) {
     if (aborted || !pad) return;
-    const at = gameXY((e as L.LeafletMouseEvent).latlng);
-    step(snap(withPlace(pad, at.x_m, at.y_m, pad.yaw_deg), shiftHeld(e)));
+    const latlng = (e as L.LeafletMouseEvent).latlng;
+    const at = gameXY(latlng);
+    const free = freeHeld(e);
+    const moved = moveStep(snap(withPlace(pad, at.x_m, at.y_m, pad.yaw_deg), free), free, snapContext(latlng));
+    step(moved.pad);
+    setSnapped(moved.snapped);
     if (turner) turner.setLatLng(turnAt(pad!));
+    placeResizeHandles(pad!);
   });
   mover.on("dragend", function () {
     end("drag");
@@ -259,6 +314,7 @@ function handles(p: Pad, name: string): void {
   });
   mover.addTo(layer);
   turner.addTo(layer);
+  addResizeHandles(layer, resizeHost, p);
   const handle = mover.getElement();
   if (handle) {
     handle.setAttribute("aria-label", "pad of “" + name + "”, move with arrow keys, turn with [ and ]");
@@ -303,6 +359,7 @@ export function showNodeLines(list: Spot[]): void {
 export function stopPadEdit(): void {
   clearTimeout(burstTimer);
   stopCrosshair();
+  clearResizeHandles();
   layer.clearLayers();
   outline = null;
   mover = null;
@@ -350,6 +407,7 @@ export function startCrosshair(): void {
   beginGesture("cross");
   if (mover) mover.setOpacity(0);
   if (turner) turner.setOpacity(0);
+  showResizeHandles(false);
   cross = document.createElement("div");
   cross.className = "site-cross";
   cross.setAttribute("aria-hidden", "true");
@@ -370,6 +428,7 @@ function stopCrosshair(): void {
   cross = null;
   if (mover) mover.setOpacity(1);
   if (turner) turner.setOpacity(1);
+  showResizeHandles(true);
 }
 
 export function crosshairActive(): boolean {
@@ -409,7 +468,7 @@ export function showGhostPad(p: Pad | null): void {
 }
 
 document.addEventListener("keydown", function (event) {
-  if (event.key !== "Escape" || (gesture !== "drag" && gesture !== "turn")) return;
+  if (event.key !== "Escape" || (gesture !== "drag" && gesture !== "turn" && gesture !== "resize")) return;
   event.preventDefault();
   aborted = true;
   if (padBeforeGesture) draw(padBeforeGesture, false);

@@ -6384,6 +6384,21 @@ export interface components {
             machines: number;
             value: components["schemas"]["SiteValue"];
         };
+        /**
+         * SiteGrid
+         * @description One run of foundations on one lattice: lines at ``anchor_m ± 4 + k·8`` m along the
+         *     axes turned by ``yaw_deg``.
+         */
+        SiteGrid: {
+            /** Yaw Deg */
+            yaw_deg: number;
+            /** Anchor M */
+            anchor_m: number[];
+            /** Bbox M */
+            bbox_m: number[];
+            /** Tiles */
+            tiles: number;
+        };
         /** SiteLoss */
         SiteLoss: {
             /** Now */
@@ -6408,8 +6423,8 @@ export interface components {
         };
         /**
          * SitePreviewResponse
-         * @description One candidate pad. ``now`` is the stored site's figure; ``nodes`` and ``content_bbox_m``
-         *     come only with ``first=1``. Outside the map square only ``where`` is filled.
+         * @description One candidate pad. ``now`` is the stored site's figure; ``nodes``, ``content_bbox_m``
+         *     and ``foundation_grids`` come only with ``first=1``. Outside the map square only ``where`` is filled.
          */
         SitePreviewResponse: {
             /** Key */
@@ -6470,6 +6485,8 @@ export interface components {
             nodes: components["schemas"]["SitePreviewNode"][] | null;
             /** Content Bbox M */
             content_bbox_m: number[] | null;
+            /** Foundation Grids */
+            foundation_grids: components["schemas"]["SiteGrid"][] | null;
             /** Failure */
             failure: string;
         };

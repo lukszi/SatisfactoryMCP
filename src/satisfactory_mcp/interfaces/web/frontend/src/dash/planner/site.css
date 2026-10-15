@@ -35,6 +35,46 @@ body.site-on #dash {
   cursor: grab;
 }
 
+/* Resize handles: 12 px drawn, 28 px to hit at every zoom; the cursor is set per turn. */
+.site-resize {
+  background: var(--bg);
+  border-color: var(--site-pad);
+}
+
+.site-resize::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.site-resize-edge {
+  border-radius: 2px;
+}
+
+.site-readout {
+  position: absolute;
+  z-index: 650;
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg);
+  color: var(--ink-hi);
+  font-size: var(--fs-s);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.site-readout.site-snapped {
+  border-color: var(--site-pad);
+}
+
+.site-step {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+}
+
 .site-handle:focus-visible {
   outline: 2px solid var(--accent-hi);
   outline-offset: 2px;
