@@ -227,16 +227,21 @@ def integrality_vector(scenario: Scenario, columns: Columns) -> U8Grid:
 def goal_vector(
     scenario: Scenario, processes: list[Process], columns: Columns
 ) -> F64Grid | Solution:
-    """Phase 1's objective, minimised, or an infeasible Solution naming what is missing."""
+    """Phase 1's objective, minimised, or a refused Solution naming what is missing."""
     goal = np.zeros(columns.size)
     if scenario.objective == "max_mw":
         if MW not in columns.export_items:
-            return Solution.infeasible("objective max_mw requires __MW__ in exports")
+            return Solution.refused(
+                "objective max_mw maximises exported power, so it needs MW in exports: "
+                "add MW to exports, or choose another objective"
+            )
         goal[columns.export(columns.export_items.index(MW))] = -1.0
     elif scenario.objective == "max_item":
         if not scenario.target_item or scenario.target_item not in columns.export_items:
-            return Solution.infeasible(
-                f"objective max_item requires {scenario.target_item!r} in exports"
+            name = scenario.game.item_name(scenario.target_item) if scenario.target_item else ""
+            return Solution.refused(
+                f"objective max_item needs its target_item in exports: add {name or 'one'} "
+                "to exports, or choose another objective"
             )
         goal[columns.export(columns.export_items.index(scenario.target_item))] = -1.0
     elif scenario.objective == "min_raw":
@@ -258,7 +263,7 @@ def goal_vector(
             if process.mw < 0:
                 goal[columns.process(i)] = -process.mw
     else:
-        return Solution.infeasible(f"unknown objective {scenario.objective!r}")
+        return Solution.refused(f"unknown objective {scenario.objective!r}")
     return goal
 
 
@@ -303,7 +308,9 @@ def solve_two_phase(
         lambda: milp(c=objective, constraints=constraints, integrality=integrality, bounds=bounds)
     )
     if not phase1.success or phase1.x is None:
-        return Solution.infeasible(f"phase 1 infeasible: {phase1.message}")
+        # scipy's status 2 is plain infeasibility, which the diagnosis explains; any other
+        # failure (time limit, unbounded) is kept in the solver's words.
+        return Solution.infeasible("" if phase1.status == 2 else f"phase 1: {phase1.message}")
     if scenario.objective == "min_machines":
         return phase1.x, []
     optimum = float(objective @ phase1.x)

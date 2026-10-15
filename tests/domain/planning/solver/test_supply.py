@@ -127,7 +127,8 @@ def test_the_probe_says_so_when_supply_is_not_the_cause(game, state):
     report = supply.diagnose(req, game, state.unlocked_building_ids)
     assert not report.rescued
     assert not report.missing
-    assert "not a raw-supply problem" in "\n".join(supply.describe(report, game))
+    # Naming the untested resources here blamed Nitrogen Gas on every failure.
+    assert supply.describe(report, game) == []
 
 
 def test_an_export_nothing_can_make_is_named_without_a_probe(game, state):

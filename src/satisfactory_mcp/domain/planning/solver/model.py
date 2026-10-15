@@ -210,7 +210,12 @@ class Solution:
     @classmethod
     def infeasible(cls, reason: str) -> Solution:
         """A solve that found no plan, with ``reason`` as its one warning."""
-        return cls("infeasible", 0.0, 0.0, [], {}, {}, {}, 0.0, warnings=[reason])
+        return cls("infeasible", 0.0, 0.0, [], {}, {}, {}, 0.0, warnings=[reason] if reason else [])
+
+    @classmethod
+    def refused(cls, reason: str) -> Solution:
+        """No solve ran: the arguments cannot be optimised as given. ``reason`` says the fix."""
+        return cls("refused", 0.0, 0.0, [], {}, {}, {}, 0.0, warnings=[reason])
 
     @property
     def ok(self) -> bool:

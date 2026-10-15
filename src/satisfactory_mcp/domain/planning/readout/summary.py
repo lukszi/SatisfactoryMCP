@@ -335,6 +335,17 @@ def failure_cause(prepared: PreparedPlan) -> str:
     dead = [n for n in notes if n.startswith(("nothing produces", "nothing in scope makes"))]
     if dead:
         return dead[0]
+    for note in notes:
+        if note.startswith("objective "):
+            return note
+        if note.startswith("short raw: "):
+            names = note.removeprefix("short raw: ").split(" -- ")[0]
+            return f"these sources cannot supply enough {names}; add sources, or lower a rate"
+        if note.startswith("byproduct with no outlet: "):
+            names = note.removeprefix("byproduct with no outlet: ").split(" -- ")[0]
+            return f"{names} has nowhere to go; add it to exports, or allow sinks for a solid"
+        if note.startswith("power: "):
+            return "the plant cannot power itself while it exports MW"
     named = [_clip(e) for e in errors if e.startswith(("required", "exclude_recipes"))]
     if named:
         return "a recipe setting names nothing usable: " + "; ".join(named)

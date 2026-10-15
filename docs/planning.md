@@ -92,11 +92,22 @@ Both outcomes are reported, and the negative one is worth as much:
 | probe | reported |
 |---|---|
 | solves | every resource it drew on is *a* cause — the only change was making it available |
-| still infeasible | raw supply is **not** the problem; something else is binding |
+| still infeasible | nothing is said about these resources; the binding probes below take over |
+
+**The binding probes** (`planning/analysis/binding.py`) run when neither of the above names a cause.
+Each lifts one family of limits and re-solves: every extractor and `supplied=` cap (more raw),
+every produced item made exportable (byproduct outlets), and for a plan exporting MW, the grid.
+Only a family whose lifting makes the plan solve is reported. Within it, the suspects -- resources
+drawn past what the scope gives, or items that left in the probe -- are each re-solved alone
+(at most four); the ones that rescue the plan alone are named, otherwise all suspects are named
+as binding together. If no family rescues it alone, all are lifted at once; still infeasible is
+reported as "cause not found" rather than guessed. An objective that needs an export the request
+lacks (`max_mw` without MW) is refused before any solve and says only that. HiGHS's own
+"infeasible" status line is no longer shown; any other solver status still is.
 
 Measured on the reference save: max Steel Ingot ≥ 100/min scoped to `resource:Iron Ore` is infeasible,
 and the probe names **Coal — no node in scope (62 elsewhere on the map)**. Forcing 10⁷ Steel Ingot on
-Spire Coast is also infeasible, and there the probe correctly declines to blame supply.
+Spire Coast is also infeasible; the missing-resource probe declines to blame those resources, and the binding probes below name the short ones.
 
 **What it cannot prove.** It does not apportion blame: two missing resources that are jointly needed are
 both listed, with no claim about which is *the* blocker, and a resource the probe used because it was

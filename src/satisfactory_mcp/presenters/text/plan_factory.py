@@ -425,16 +425,7 @@ def render_plan_factory(
 ) -> str:
     prepared = report.prepared
     if prepared.failure:
-        hint = (
-            "with equality balances, infeasible usually means a byproduct has no "
-            "consumer and no legal sink -- try adding it to exports"
-        )
-        notes = (
-            [*prepared.failure.notes, hint]
-            if "INFEASIBLE" in prepared.failure.headline
-            else prepared.failure.notes
-        )
-        return render.envelope(f"# {prepared.failure.headline}", "", notes)
+        return render.envelope(f"# {prepared.failure.headline}", "", prepared.failure.notes)
     req, sol, bill = prepared.request, solution_of(prepared), _bill(report)
 
     notes = [
