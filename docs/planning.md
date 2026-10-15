@@ -646,7 +646,8 @@ OQ4 is closed. The Alien Power Augmenter is still a different model and still un
 
 `plan_layout` turns a solved plan into a buildable **schematic** — modules, connections, floor
 assignment and a space budget. Explicitly *not* a blueprint: no world coordinates and no belt routing,
-because there is no terrain heightmap in any data available here and inventing one would be worse than
+because blocks are not placed on the terrain. A heightfield now exists and `site_plan` reads it for the pad;
+placing blocks on it is the parked slab packer, and until then inventing positions would be worse than
 declining.
 
 **Footprints are derived, not hardcoded.** Every buildable carries `mClearanceData`, so machine
@@ -815,7 +816,7 @@ extractor. And Water Extractors sit on no node, so they get no trunk and are nam
 note, because 9,200 m3/min vanishing from a table that otherwise conserves every unit
 would read as a complete answer.
 
-`run` is the straight-line chain and is labelled a LOWER BOUND: there is no terrain here,
+`run` is the straight-line chain and is labelled a LOWER BOUND: runs are not routed over the terrain,
 so a drawn route would be invented -- the same line § 8.5 draws around the schematic.
 
 ### 8.5d Commissioning: a startup order, not a build order

@@ -523,3 +523,14 @@ def test_a_building_with_no_clearance_data_is_not_free(game, state):
     assert bare.packed is None
     assert bare.foundations == 0
     assert bare.block_width_m == 0.0
+
+
+def test_plan_layout_no_longer_says_there_is_no_terrain(game, state, use_world):
+    """Terrain exists and site_plan reads it; only the layout itself does not use it."""
+    from satisfactory_mcp import server as srv
+
+    use_world(state)
+    motor = {"objective": "min_machines", "exports": ["Motor"], "export_minimums": {"Motor": 5}}
+    out = srv.plan_layout(**motor) + srv.plan_layout(**motor, show="trunks")
+    assert "no terrain" not in out
+    assert "site_plan places the pad" in out

@@ -103,7 +103,7 @@ def plan_layout(
     crosses between them).
 
     A SCHEMATIC, not a blueprint: modules, connections, floor assignment and a space budget,
-    but no world coordinates or belt routing -- there is no terrain data to place them on.
+    but no world coordinates or belt routing; site_plan places the pad on the terrain.
     Blocks are split by carrier throughput, and floors follow chain depth with a logistics
     deck between production floors.
     """
