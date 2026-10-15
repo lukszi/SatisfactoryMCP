@@ -19,7 +19,7 @@ from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, Refusal, base_parser, req
 from mapgen.gamedata.frame import RENDER_PX
 from mapgen.palette.styles import LAYER_STYLES, SHORE_OPTICS
 from mapgen.render.draw.compose import DRAW_STAGE, GroundInputs, render_layers
-from mapgen.render.draw.drawpool import add_draw_flags, draw_threads
+from mapgen.render.draw.drawpool import add_draw_flags
 from mapgen.render.draw.light import (
     LightingRun,
     add_light_flags,
@@ -29,6 +29,7 @@ from mapgen.render.draw.light import (
     light_run,
 )
 from mapgen.render.draw.stream import RenderOut, RenderStream
+from mapgen.render.run.budget import PoolAsks, RunBudget, run_budget
 from mapgen.render.run.extras import remove_run_caches
 from mapgen.render.run.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.render.run.prepare import BIOME_LAYERS, Prepared, Setup, prepare
@@ -103,12 +104,16 @@ def _render(
     titans = not args.no_titan_trees
     crowns = None if root is None else crown_tops(args.paint_dir, run.sprites, titans)
     keep = _keeps_caches(args)
+    cut_ask = args.workers if args.cut_workers is None else args.cut_workers
+    asks = PoolAsks(args.draw_threads, cut_ask, light_workers, root is not None)
+    budget = run_budget(layers, args.size, asks, args.draw_columns)
+    print(budget.line(), flush=True)
     with (
-        light_run(root, args.size, crowns, light_workers, setup.cache_root, keep) as light,
-        TileStream(setup.image_mod, cut_workers) as cutter,
+        light_run(root, args.size, crowns, budget.light_workers, setup.cache_root, keep) as light,
+        TileStream(setup.image_mod, budget.cut_workers) as cutter,
     ):
         started = time.time()
-        _draw_layers(args, layers, run, light, cutter)
+        _draw_layers(args, layers, run, (light, cutter), budget)
     return started
 
 
@@ -116,13 +121,14 @@ def _draw_layers(
     args: argparse.Namespace,
     layers: tuple[str, ...],
     run: Prepared,
-    light: LightingRun | None,
-    cutter: TileStream,
+    pools: tuple[LightingRun | None, TileStream],
+    budget: RunBudget,
 ) -> None:
-    """Draw every layer in one pass, each band cut as it settles; then install each layer's
-    trees with its sidecar beside them."""
+    """Draw every layer in one pass on the budget's threads, each band cut as it settles;
+    then install each layer's trees with its sidecar beside them."""
+    light, cutter = pools
     seam, regimes = (SeamTrace(), RegimeCoverage()) if run.direct is not None else (None, None)
-    threads = draw_threads(args.draw_threads, layers, args.size, columns=args.draw_columns)
+    threads = budget.draw_threads
     print(f"drawing {', '.join(layers)} at {args.size}x{args.size} on {threads} thread(s)")
     print(encode_stage(DRAW_STAGE, 0.0), flush=True)
     started = time.time()
