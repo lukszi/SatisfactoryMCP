@@ -18,7 +18,7 @@ from ....core.gamedata.model import GameData
 from ....core.gamedata.search import resolve_item
 from ....core.gamedata.unlocks import granted_by_label
 from ...world.state import WorldState
-from ..solver.model import MW, Process, Scenario, Solution
+from ..solver.model import MW, Process, Scenario, SinkRow, Solution
 from ..solver.optimize import solve
 from ..solver.processes import build_processes
 from ..solver.scenario import build_scenario, with_recipes
@@ -54,6 +54,7 @@ def _unit(objective: str) -> str:
         "min_power": "MW",
         "min_machines": "machines",
         "min_raw": "raw/min",
+        "min_raw_power": "raw/min",
     }.get(objective, "/min")
 
 
@@ -336,6 +337,8 @@ class ByproductReport:
     no_sink_value: float | None
     notes: list[str]
     solves: int
+    #: The plan's sunk byproducts with their sinks, kept so each can be given a use later.
+    sinks: list[SinkRow] = field(default_factory=list[SinkRow])
 
 
 # ---------------------------------------------------------------------- analysis
@@ -511,6 +514,7 @@ def analyse(
         no_sink_value=no_sink_value,
         notes=notes,
         solves=probes.count,
+        sinks=list(base.sinks) if base.ok else [],
     )
 
 

@@ -191,7 +191,7 @@ function newPlanForm(parent: HTMLElement): void {
     changed();
     const minimums: Record<string, number> = {};
     minimums[name] = perMinute;
-    createPlan(name + " " + perMin(perMinute), { objective: "min_machines", exports: [name], export_minimums: minimums }, "")
+    createPlan(name + " " + perMin(perMinute), { objective: "min_raw_power", exports: [name], export_minimums: minimums }, "")
       .then(function (key) {
         newPlan.draft = { item: "", rate: "" };
         go("planner/" + key);

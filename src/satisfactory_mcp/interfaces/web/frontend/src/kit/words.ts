@@ -121,6 +121,7 @@ export const OBJECTIVES: Record<string, string> = {
   max_mw: "max MW",
   max_item: "max item",
   min_raw: "min raw",
+  min_raw_power: "least raw, then power",
   min_machines: "min machines",
   min_power: "min power",
 };

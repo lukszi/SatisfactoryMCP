@@ -30,6 +30,14 @@ def _also_stuck_note(report: ByproductReport) -> str:
     )
 
 
+def _sunk_note(report: ByproductReport) -> str:
+    """The sunk byproducts, listed so any of them can be given a consumer or export later."""
+    return "sunk byproducts, kept for a later use: " + ", ".join(
+        f"{r['name']} {render.num(r['rate'])}/min ({r['sinks']} sink(s), {render.num(r['mw'])} MW)"
+        for r in report.sinks
+    )
+
+
 def _no_blocker(report: ByproductReport, now: str) -> str:
     """Nothing is stuck: say so, and what the Sink alone is absorbing."""
     unit = report.unit
@@ -46,6 +54,8 @@ def _no_blocker(report: ByproductReport, now: str) -> str:
             "sinking is a real belt and 30 MW per Sink: give those items a consumer or "
             "an export if you would rather keep them"
         )
+    if report.sinks:
+        notes.append(_sunk_note(report))
     if report.also_stuck:
         notes.append(_also_stuck_note(report))
     if report.base_value is None:
@@ -109,6 +119,8 @@ def _blocker_notes(game: GameData, report: ByproductReport, top: Blocker) -> lis
         )
     if report.also_stuck:
         notes.append(_also_stuck_note(report))
+    if report.sinks:
+        notes.append(_sunk_note(report))
     return notes
 
 

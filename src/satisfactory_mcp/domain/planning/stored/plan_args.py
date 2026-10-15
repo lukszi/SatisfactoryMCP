@@ -45,7 +45,7 @@ __all__ = [
     "member_key",
 ]
 
-OBJECTIVES = ("max_mw", "max_item", "min_raw", "min_machines", "min_power")
+OBJECTIVES = ("max_mw", "max_item", "min_raw", "min_raw_power", "min_machines", "min_power")
 POWER = "MW"
 _POWER_SPELLINGS = frozenset({"mw", "power", "__mw__"})
 _POWER_FIELDS = frozenset({"exports", "export_minimums"})

@@ -130,7 +130,20 @@ def _confirm(sc: Scenario, probe: _Probe, suspects: list[str], diag: Diagnosis) 
     return confirmed
 
 
-def _line(game: GameData, family: str, items: list[str], capacity: dict[str, float]) -> str:
+def _outlet_fix(sc: Scenario, items: list[str]) -> str:
+    """How to let ``items`` leave; sinking is offered only where it is off and would take one."""
+    if not sc.allow_sinks and any(
+        (known := sc.game.items.get(i)) is not None and known.sinkable for i in items
+    ):
+        return "add it to exports, allow_sinks for a solid, or explain_byproducts for consumers"
+    return (
+        "add it to exports, or explain_byproducts for consumers; "
+        "it cannot go to an AWESOME Sink (fluids never can)"
+    )
+
+
+def _line(sc: Scenario, family: str, items: list[str], capacity: dict[str, float]) -> str:
+    game = sc.game
     names = ", ".join(game.item_name(i) for i in items)
     if family == "raw":
         caps = "; ".join(
@@ -146,7 +159,7 @@ def _line(game: GameData, family: str, items: list[str], capacity: dict[str, flo
     if family == "byproduct":
         return (
             f"byproduct with no outlet: {names} -- letting it leave makes the plan solve: "
-            "add it to exports, allow_sinks for a solid, or explain_byproducts for consumers"
+            + _outlet_fix(sc, items)
         )
     return (
         "power: with MW in exports the plant must power itself, and it cannot here; "
@@ -154,9 +167,9 @@ def _line(game: GameData, family: str, items: list[str], capacity: dict[str, flo
     )
 
 
-def _joint(game: GameData, found: list[tuple[str, list[str]]], cap: dict[str, float]) -> str:
+def _joint(sc: Scenario, found: list[tuple[str, list[str]]], cap: dict[str, float]) -> str:
     parts = [
-        _line(game, family, items, cap).split(" -- ")[0].split("; without")[0]
+        _line(sc, family, items, cap).split(" -- ")[0].split("; without")[0]
         for family, items in found
         if items or family == "power"
     ]
@@ -200,7 +213,7 @@ def explain(
         suspects = probe.suspects(sol)
         confirmed = _confirm(sc, probe, suspects, diag) if suspects else []
         found.append((probe.family, confirmed or suspects))
-        diag.lines.append(_line(game, probe.family, confirmed or suspects, capacity))
+        diag.lines.append(_line(sc, probe.family, confirmed or suspects, capacity))
         if suspects and not confirmed:
             diag.lines.append(f"{probe.family}: none of these alone is enough; they bind together")
     if found:
@@ -213,7 +226,7 @@ def explain(
     sol = solve(together)
     if sol.ok:
         joint = [(p.family, p.suspects(sol)) for p in probes]
-        diag.lines.append(_joint(game, joint, capacity))
+        diag.lines.append(_joint(sc, joint, capacity))
     else:
         diag.lines.append(
             "cause not found: more raw, open byproduct outlets and grid power together still "

@@ -14,7 +14,7 @@ from ...domain.planning.readout.report import PlanFactoryReport
 from ...domain.planning.readout.slice import PlanSlice, grid_import_mw, linear_gap_note
 from ...domain.planning.readout.summary import power_view
 from ...domain.planning.siting.record import Siting
-from ...domain.planning.solver.model import MW, ProcessRow
+from ...domain.planning.solver.model import MW, ProcessRow, Solution
 from ...domain.world.state import WorldState
 from . import primitives as render
 
@@ -362,6 +362,19 @@ def _logistics_block(report: PlanFactoryReport, limit: int) -> tuple[str, list[s
     return block, notes
 
 
+def _sunk_block(sol: Solution) -> str:
+    """The sunk byproducts kept as a list, so any of them can be given a use later."""
+    if not sol.sinks:
+        return ""
+    return "\n# sunk byproducts: export one or feed it to keep it\n" + render.table(
+        ("item", "rate", "sinks", "MW"),
+        [
+            (r["name"], f"{render.num(r['rate'])}/min", r["sinks"], render.num(r["mw"]))
+            for r in sol.sinks
+        ],
+    )
+
+
 def _plan_summary(
     g: GameData,
     st: WorldState,
@@ -460,6 +473,7 @@ def render_plan_factory(
             total=len(sol.processes),
             limit=limit,
         )
-        + logistics_block,
+        + logistics_block
+        + _sunk_block(sol),
         notes,
     )

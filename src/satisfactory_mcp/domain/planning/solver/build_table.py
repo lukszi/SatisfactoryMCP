@@ -12,7 +12,15 @@ from ....core.arrays import F64Grid
 from ....core.gamedata.model import GameData
 from .carrier import carrier_for
 from .lp import Columns
-from .model import NEGLIGIBLE_IPM, LogisticsRow, PaybackPoint, Process, ProcessRow, Scenario
+from .model import (
+    NEGLIGIBLE_IPM,
+    LogisticsRow,
+    PaybackPoint,
+    Process,
+    ProcessRow,
+    Scenario,
+    SinkRow,
+)
 from .overclock import (
     SpreadableRow,
     horizon_readout,
@@ -258,11 +266,10 @@ def solution_warnings(
     columns: Columns,
     dropped: list[tuple[str, float]],
     flows: list[LogisticsRow],
-    sunk: dict[str, float],
+    sinks: list[SinkRow],
     grid_draw: float,
 ) -> list[str]:
     """What the build table leaves out, and what the plan needs beyond its own machines."""
-    game = scenario.game
     warnings: list[str] = []
     if dropped:
         worst = max(rate for _, rate in dropped)
@@ -287,11 +294,11 @@ def solution_warnings(
             + more
         )
 
-    if sunk:
+    if sinks:
+        count = sum(row["sinks"] for row in sinks)
         warnings.append(
-            "plan sinks "
-            + ", ".join(f"{v:g} {game.item_name(k)}/min" for k, v in sunk.items())
-            + " -- needs a belt to an AWESOME Sink or the line stalls"
+            f"plan sinks {len(sinks)} byproduct(s): {count} AWESOME Sink(s), "
+            f"{sum(row['mw'] for row in sinks):g} MW, counted -- belt each in or the line stalls"
         )
     if grid_draw > _EPS:
         warnings.append(

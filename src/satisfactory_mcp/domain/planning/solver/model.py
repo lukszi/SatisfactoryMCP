@@ -20,6 +20,7 @@ __all__ = [
     "Process",
     "ProcessRow",
     "Scenario",
+    "SinkRow",
     "Solution",
     "normalise_objective",
 ]
@@ -82,7 +83,8 @@ class Scenario:
 
     game: GameData
     recipes: list[str]  # allowed recipe ids
-    objective: str = "max_mw"  # max_mw | max_item | min_raw | min_machines | min_power
+    #: max_mw | max_item | min_raw | min_raw_power | min_machines | min_power
+    objective: str = "max_mw"
     target_item: str | None = None
     #: Items that may leave the plant: a whitelist, never every item (docs/planning.md §8.2).
     exports: tuple[str, ...] = (MW,)
@@ -175,6 +177,17 @@ class LogisticsRow(TypedDict):
     lines: int
 
 
+class SinkRow(TypedDict):
+    """One sunk byproduct: whole AWESOME Sinks for its ``rate`` per minute, one belt line
+    each, and their draw. Listed so the item can be given a consumer later."""
+
+    item: str
+    name: str
+    rate: float
+    sinks: int
+    mw: float
+
+
 class PaybackPoint(TypedDict):
     """The plan read out at one payback stop; ``buildings`` counts only the rows a horizon
     can spread. ``plain`` flags the 0 h build with no overclock every stop compares with."""
@@ -206,6 +219,8 @@ class Solution:
     payback_curve: list[PaybackPoint] = field(default_factory=list[PaybackPoint])
     #: The overclock-last pick at this solve's horizon, made whether or not it is on.
     overclock: OverclockPick | None = None
+    #: The sunk byproducts, largest first; their sinks are in ``machines_total``.
+    sinks: list[SinkRow] = field(default_factory=list[SinkRow])
 
     @classmethod
     def infeasible(cls, reason: str) -> Solution:

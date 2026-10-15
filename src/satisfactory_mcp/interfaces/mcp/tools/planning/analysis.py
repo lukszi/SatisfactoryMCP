@@ -18,13 +18,13 @@ from .....presenters.text.bom import render_bom
 from .....presenters.text.byproducts import render_byproducts
 from .....presenters.text.compare import render_comparison
 from ... import app
-from ...params import AsOf, Limit, PlanName
-from ._requests import recall_request, solve_args
+from ...params import AsOf, Limit, Objective, PlanName
+from ._requests import goal_for, recall_request, solve_args
 
 
 @app.tool()
 def explain_byproducts(
-    objective: str = "max_mw",
+    objective: Objective = None,
     target_item: str | None = None,
     item: str | None = None,
     sources: list[str] | None = None,
@@ -53,7 +53,7 @@ def explain_byproducts(
     report = analyse(
         g,
         st,
-        objective=objective,
+        objective=goal_for(objective, None, export_minimums),
         target_item=target_item,
         sources=sources,
         exports=exports,
@@ -204,7 +204,7 @@ def _unlock_notes(
 
 @app.tool()
 def rank_unlocks(
-    objective: str = "max_mw",
+    objective: Objective = None,
     target_item: str | None = None,
     sources: list[str] | None = None,
     exports: list[str] | None = None,
@@ -246,6 +246,7 @@ def rank_unlocks(
     g = app.game()
     st = app.load_world(save, world, as_of)
 
+    objective = goal_for(objective, plan, export_minimums)
     supplied = solve_args(
         objective=objective,
         target_item=target_item,

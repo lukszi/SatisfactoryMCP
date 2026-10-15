@@ -40,13 +40,14 @@ testing contract. Section numbers are continuous with the rest of the spec;
 **Hard drives:** `list_pending_hard_drive_choices`, `advise_hard_drive_pick`
 
 ```
-plan_factory(objective="max_mw", target_item=None, sources=[...],
+plan_factory(objective=None, target_item=None, sources=[...],
              exports=["__MW__"], export_minimums={}, only_free_nodes=False,
              allow_sinks=True, save=None, world=None, limit=15,
              logistics_items=None)
   -> summary (net_MW, machines, grid_import, exports, raw, sunk)
      + warnings/binding first, then a process table with a BUILD marker
      + a logistics table of `limit` flows, plus any logistics_items pinned
+     + the sunk byproducts: item, rate, AWESOME Sinks, MW
 
 search_resource_nodes(sources=[...], resource=None, purity=None, kind=None,
                       only_free=False, status="free"|"tapped"|"all"|None,

@@ -31,6 +31,12 @@ BaseRev = Annotated[
 
 PlanName = Annotated[str | None, Field(description="recall a saved plan by name")]
 
+#: Omitted, a rate request is least raw then least power; anything else, most power.
+Objective = Annotated[
+    str | None,
+    Field(description="omitted: min_raw_power with export_minimums, else max_mw"),
+]
+
 WaterExtractors = Annotated[
     int | None,
     Field(description="how many Water Extractors your site can actually hold"),

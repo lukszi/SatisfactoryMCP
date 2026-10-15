@@ -23,7 +23,23 @@ the power balance just another mass-balance row and keeps every objective linear
 Σ_p x_p·(out_ip − in_ip) + raw_i − out_i − snk_i == 0
 ```
 
-Objectives: `max_mw`, `max_item`, `min_raw`, `min_machines`, `min_power`.
+Objectives: `max_mw`, `max_item`, `min_raw`, `min_raw_power`, `min_machines`, `min_power`.
+
+**The default goal.** A request that names no objective and asks for a rate of some item
+(`export_minimums` with anything but MW: "Computer 2/min") solves `min_raw_power`; any other
+request solves `max_mw`, as before. A recalled plan keeps the objective it was stored with.
+`max_mw` was the wrong default for a rate: it builds the biggest power plant the scope allows
+around the two Computers, or, with the item as the only export, refuses outright. The web
+planner's new-plan form asks for the same goal.
+
+`min_raw_power` is least raw material with power as a side consideration, solved in three
+stages: least raw (the `min_raw` vector, every resource weight 1); then least power -- the
+consumers' draw, the sinks' share and the `machine_cost_mw` price per machine -- with raw held
+within `RAW_TIE_SLACK` (1%) of that least; then least machines at that power, as every
+objective ends. A lexicographic pair with no slack would only break exact ties, and `min_raw`
+is degenerate enough (§8.7) that "nearly equal raw use" is the honest reading of the request.
+`objective_value` reports the raw total. Measured on the reference save, two Computers from the
+grid: 108.9 MW drawn against `min_raw`'s 110.1 MW, raw within the slack.
 Extra rows: somersloop budget, belt/pipe throughput caps, machine cap.
 
 **Two-phase lexicographic solve is mandatory.** With only `n_p ≥ x_p`, any larger `n_p` is optimal — an
@@ -50,6 +66,18 @@ MW is an export, since a power plant that imports power to export it is unbounde
 
 MW-only is the default export set for a power plant, and it is why a crude-oil plant can come back
 infeasible: every crude→fuel route emits Polymer Resin, and resin only terminates in Plastic or Rubber.
+
+**Sunk byproducts are kept as a list.** `allow_sinks` is on by default, so a solid byproduct
+with no use inside the plan goes to an AWESOME Sink rather than stalling it. The plan says so:
+`plan_factory` prints a "sunk byproducts" table (item, rate per minute, sinks, MW),
+`explain_byproducts` repeats it as a note, and the web plan lists it among its warnings, so
+each can be given a consumer or an export later. The sinks are counted: one per item per belt
+line, in `machines_total`, and at their full 30 MW each in the exact power figure (§8.2e).
+The LP itself still charges a sink per belt line linearly, which keeps the solve linear and
+only ever understates the sink's draw. Fluids cannot be sunk (the Sink takes a conveyor only),
+so a fluid byproduct still needs a consumer or an export, and an infeasible plan's probe never
+offers a sink for one: it offers `allow_sinks` only where sinking is off and the item is a
+sinkable solid (§8.2a).
 
 Why it matters, measured on crude→plastic from 300 m³/min:
 
@@ -103,7 +131,10 @@ drawn past what the scope gives, or items that left in the probe -- are each re-
 as binding together. If no family rescues it alone, all are lifted at once; still infeasible is
 reported as "cause not found" rather than guessed. An objective that needs an export the request
 lacks (`max_mw` without MW) is refused before any solve and says only that. HiGHS's own
-"infeasible" status line is no longer shown; any other solver status still is.
+"infeasible" status line is no longer shown; any other solver status still is. A byproduct
+outlet's fix follows the sink default: with sinks on, a named byproduct is one no sink takes
+(a fluid, or an unsinkable solid), so the line offers an export or a consumer and says it
+cannot be sunk; `allow_sinks` is offered only when the request turned sinks off.
 
 Measured on the reference save: max Steel Ingot ≥ 100/min scoped to `resource:Iron Ore` is infeasible,
 and the probe names **Coal — no node in scope (62 elsewhere on the map)**. Forcing 10⁷ Steel Ingot on
@@ -336,7 +367,7 @@ are placed at a derived clock. `clock**exponent` is convex, so N machines below 
 *less* than the linear estimate. The identity that holds is
 
 ```
-solution.net_mw == sum(mw_linear) - sink_mw        # exactly
+solution.net_mw == sum(mw_linear) - sink_mw_linear        # exactly
 ```
 
 and the exact figure is better — 43,101 MW against 43,092 promised on a measured plan.
@@ -345,7 +376,8 @@ erring the other way would reject a slice that fits.
 
 `sink_mw` belongs to the plan, not to any process — an AWESOME Sink is charged per belt
 line of sunk material and no column owns it. A partial slice reports 0 rather than a
-prorated invention.
+prorated invention. `sink_mw` is whole sinks at 30 MW each, the exact figure; the LP's
+per-belt share is `sink_mw_linear`.
 
 **The shard bill.** `plan_factory` now prints it from the clocks the plan already chose:
 

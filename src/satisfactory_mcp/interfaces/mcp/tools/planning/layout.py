@@ -18,6 +18,7 @@ from ... import app
 from ...params import (
     AsOf,
     Limit,
+    Objective,
     OverclockLast,
     PaybackHours,
     PlanName,
@@ -27,7 +28,13 @@ from ...params import (
     WaterExtractors,
 )
 from ._plan_log import journal_view
-from ._requests import power_refusal, recall_request, resolve_row_overclock, solve_args
+from ._requests import (
+    goal_for,
+    power_refusal,
+    recall_request,
+    resolve_row_overclock,
+    solve_args,
+)
 
 
 def _payback_notes(g: GameData, st: WorldState, prepared: PreparedPlan) -> list[str]:
@@ -40,7 +47,7 @@ def _payback_notes(g: GameData, st: WorldState, prepared: PreparedPlan) -> list[
 
 @app.tool()
 def plan_layout(
-    objective: str = "max_mw",
+    objective: Objective = None,
     target_item: str | None = None,
     sources: list[str] | None = None,
     exports: list[str] | None = None,
@@ -119,6 +126,7 @@ def plan_layout(
     row_choices, refused = resolve_row_overclock(row_overclock)
     if refused:
         return refused
+    objective = goal_for(objective, plan, export_minimums)
     tiers = resolve_tiers(g, st, belt_tier, pipe_tier)
     if tiers.errors:
         return render_layout(
