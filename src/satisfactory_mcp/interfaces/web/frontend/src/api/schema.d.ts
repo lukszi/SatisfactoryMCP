@@ -1910,6 +1910,26 @@ export interface paths {
         patch: operations["change_map_api_maps__ident__patch"];
         trace?: never;
     };
+    "/api/factories/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan From Built Factory
+         * @description Store a new plan at v1 that reproduces one named factory; every call makes a new one.
+         */
+        post: operations["plan_from_built_factory_api_factories_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5198,6 +5218,37 @@ export interface components {
             figure: string;
             /** Text */
             text: string;
+        };
+        /** PlanFromFactoryBody */
+        PlanFromFactoryBody: {
+            /** Factory */
+            factory: string;
+        };
+        /**
+         * PlanFromFactoryResponse
+         * @description ``differences`` is how a solve of the plan departs from the build; empty when none.
+         */
+        PlanFromFactoryResponse: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Rev */
+            rev: number;
+            /** Factory */
+            factory: string;
+            /** Feasible */
+            feasible: boolean;
+            /** Machines */
+            machines: number;
+            /** Mw Draw */
+            mw_draw: number | null;
+            /** Built Mw */
+            built_mw: number;
+            /** Differences */
+            differences: string[];
+            /** Notes */
+            notes: string;
         };
         /** PlanGraph */
         PlanGraph: {
@@ -11142,6 +11193,49 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MapsStaleResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_from_built_factory_api_factories_plan_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanFromFactoryBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanFromFactoryResponse"];
+                };
+            };
+            /** @description no factory by that name */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

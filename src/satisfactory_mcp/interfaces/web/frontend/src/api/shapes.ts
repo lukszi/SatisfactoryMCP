@@ -122,6 +122,7 @@ export type NamedResponse = Body<"NamedResponse">;
 export type ForgotResponse = Body<"ForgotResponse">;
 export type RenamedResponse = Body<"RenamedResponse">;
 export type LabelRefused = Body<"LabelRefusedResponse">;
+export type PlanFromFactoryResponse = Body<"PlanFromFactoryResponse">;
 export type GraphNode = Schema["GraphNode"];
 export type FactoryGraphResponse = Body<"FactoryGraphResponse">;
 export type MachineSpot = Schema["MachineSpot"];

@@ -18,6 +18,7 @@ import { aspectTabs, factoryAddress, factoryDash, factoryPinButton } from "./add
 import { renderAspect } from "./factory-detail";
 import { closeGraph, graphView, openGraph, renderGraphCard, resetGraphOnNewEpoch } from "./graph-view";
 import { healthOrPlaceholder } from "./list";
+import { planFromFactoryButton } from "./plan-from";
 import { resetDetectOnNewEpoch } from "./detect";
 import { onRenamed, renamedTo } from "./rename";
 
@@ -160,6 +161,7 @@ function factoryHeader(row: FactoryHealthRow, aspect: string): HTMLElement {
       { title: "draw around machines on the map to add them to this factory or remove them" }
     )
   );
+  head.appendChild(planFromFactoryButton(row.name));
   head.appendChild(factoryPinButton(row.name));
   return head;
 }

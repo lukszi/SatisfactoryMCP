@@ -20,6 +20,7 @@ from .factories import (
     factory_health,
     factory_labels,
     factory_list,
+    factory_plan,
     trace,
 )
 from .layers import belts_pipes, crates, floors, placements, power_lines, storage
@@ -80,4 +81,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     settings.router,
     advice.router,
     maps.router,
+    factory_plan.router,
 )
