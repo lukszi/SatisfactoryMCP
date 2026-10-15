@@ -2,7 +2,8 @@
 
 The detail is the landscape layers' own textures under the bake's metre
 (``terrain/ground_detail``): the painted layer multiplies its ground by the ratio, and the
-light adds the normal to its normal tiles wherever the ground is what is drawn.
+light adds the normal to its normal tiles wherever the ground is what is drawn, and the
+rock look's tilt where the run has it (``light_planes.py``).
 docs/map/painted.md section 30, "The layers' own textures".
 """
 
@@ -17,7 +18,7 @@ from mapgen.terrain.ground_detail.textures import DetailTextures
 from mapgen.terrain.sample import Taps
 from satisfactory_mcp.core.arrays import F32Grid, F64Grid, FloatGrid, I8Grid
 
-__all__ = ["detail_bytes", "drawn_share", "piece_detail"]
+__all__ = ["detail_bytes", "drawn_share", "piece_detail", "with_tilt"]
 
 
 def piece_detail(
@@ -66,3 +67,12 @@ def detail_bytes(detail: GroundDetail | None, drawn: F32Grid) -> I8Grid:
     normal = detail.normal * drawn[..., None]
     scaled = np.clip(normal, -1.0, 1.0) * np.float32(DETAIL_SCALE)
     return np.round(scaled).astype(np.int8)
+
+
+def with_tilt(detail: I8Grid, tilt: F32Grid) -> I8Grid:
+    """The detail bytes with the rock look's tilt (``rock_look/tilt.py``) added, in the same
+    bytes; a pixel without tilt, or with none to read, keeps its byte."""
+    flat = np.clip(np.nan_to_num(tilt), -1.0, 1.0)
+    scaled = np.round(flat * np.float32(DETAIL_SCALE)).astype(np.int16)
+    limit = int(DETAIL_SCALE)
+    return np.clip(detail.astype(np.int16) + scaled, -limit, limit).astype(np.int8)

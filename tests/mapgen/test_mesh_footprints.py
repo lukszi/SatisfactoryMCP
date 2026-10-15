@@ -15,7 +15,6 @@ import pytest
 from mapgen import jit
 from mapgen.cache import MeshPlanes
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.palette.painted.band import painted_ndl
 from mapgen.palette.water.footprints import reference
 from mapgen.palette.water.footprints.plane import mesh_land, piece_land
 from mapgen.palette.water.footprints.reference import (
@@ -30,6 +29,8 @@ from mapgen.palette.water.footprints.reference import (
 from mapgen.palette.water.shore import OCEAN_LEVEL_M, seabed_keeps
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL, MESH_TERRACE
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from mapgen.render.ground import light_planes as ground_light
+from mapgen.render.ground.light_planes import sea_meshes
 from tests.support.draw import render_layer
 
 #: One texel of the field a pixel.
@@ -124,6 +125,8 @@ class _Surface:
 
 
 def _seabed_surface(scene: SimpleNamespace, meshes: MeshPlanes) -> np.ndarray:
+    """The seabed rule's heights, as the light would capture them without the painted
+    rule's meshes in the sea (``render/ground/light_planes.py``)."""
     surface = _Surface()
     borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((N, N), np.uint8))
     render_layer(
@@ -134,7 +137,8 @@ def _seabed_surface(scene: SimpleNamespace, meshes: MeshPlanes) -> np.ndarray:
     return surface.z
 
 
-def test_the_seabed_rule_draws_each_footprint_whole():
+def test_the_seabed_rule_draws_each_footprint_whole(monkeypatch):
+    monkeypatch.setattr(ground_light, "sea_meshes", lambda own: None)
     scene = _scene()
     land, _record = mesh_land(scene.meshes, scene.field, N, scene.texels)
     whole = _seabed_surface(scene, scene.meshes._replace(land=land))
@@ -156,18 +160,6 @@ def test_the_seabed_rule_follows_the_footprint_and_rocks_keep_theirs():
     assert seabed_keeps(coral, top, level).tolist() == [[False, False, True, True]]
     assert seabed_keeps(coral, top, level, land).tolist() == land.tolist()
     assert seabed_keeps(rock, top, level, land).tolist() == [[True, False, True, True]]
-
-
-def test_painted_keeps_its_own_sun_only_on_meshes_left_to_the_seabed():
-    z = (np.arange(81, dtype=np.float32).reshape(9, 9) // 9) - np.float32(15.0)
-    weight = np.ones(z.shape, np.float32)
-    kept = np.full(z.shape, MESH_CORAL, np.uint8)
-    sea = np.full(z.shape, OCEAN_LEVEL_M, np.float32)
-    flat = painted_ndl(z, 1.0, True, (None, None, sea, None))
-    in_sea = painted_ndl(z, 1.0, True, (weight, kept, sea, np.zeros(z.shape, bool)))
-    on_land = painted_ndl(z, 1.0, True, (weight, kept, sea, np.ones(z.shape, bool)))
-    assert not np.array_equal(in_sea, flat), "left to the seabed, it keeps its own sun"
-    np.testing.assert_array_equal(on_land, flat)
 
 
 def test_every_pixel_folds_onto_texels_its_nearest_among_them():
@@ -266,3 +258,18 @@ def test_a_call_the_device_has_no_memory_for_runs_the_reference(monkeypatch):
     monkeypatch.setattr(gpu, "_texel_marks", out_of_memory)
     got = gpu.texel_marks(cls, z_cm, rows, cols, planes)
     assert got.tobytes() == reference.texel_marks(cls, z_cm, rows, cols, planes).tobytes()
+
+
+def test_the_light_takes_from_the_painted_rule_only_the_meshes_left_to_the_seabed():
+    z = (np.arange(81, dtype=np.float32).reshape(9, 9) // 9) - np.float32(15.0)
+    zero = np.zeros(z.shape, np.float32)
+    own = SimpleNamespace(
+        z_m=z, missing=np.zeros(z.shape, bool), void=None,
+        mesh_weight=np.ones(z.shape, np.float32), mesh_class=np.full(z.shape, MESH_CORAL, np.uint8),
+        level_m=np.full(z.shape, OCEAN_LEVEL_M, np.float32),
+        water={"cover": zero, "depth_m": zero}, mesh_land=np.zeros(z.shape, bool),
+    )  # fmt: skip
+    found = sea_meshes(own)
+    assert found is not None and found.where.all(), "left to the seabed, the light takes it"
+    np.testing.assert_array_equal(found.z_m, z)
+    assert sea_meshes(SimpleNamespace(**{**vars(own), "mesh_land": np.ones(z.shape, bool)})) is None

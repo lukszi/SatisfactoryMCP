@@ -31,6 +31,7 @@ from mapgen.palette.painted.rock_look.atlas import (
     KIND_TERRACE,
 )
 from mapgen.palette.painted.rock_look.surface import (
+    BandLook,
     band_look,
     mixed,
     surface_normals,
@@ -45,6 +46,7 @@ from mapgen.palette.painted.shapes import (
     PaintedScene,
     PaintedSurface,
     RockFamilyEntry,
+    RockLookStyle,
     Sampler,
 )
 from mapgen.terrain.render_meshes import (
@@ -249,7 +251,8 @@ def rock_surface(
     textured by the look where the run has one at the ``pick``ed pixels (all when None).
     ``code`` is the family per pixel; the direct pass's family plane on this band when None,
     which an arch or boulder lifted over the cliff (``scene["top_weight"]``) does not wear: by
-    its lift it takes the arches' rock (``_arch_rock``)."""
+    its lift it takes the arches' rock (``_arch_rock``). Where the light takes the normal maps
+    (``scene["look_lit"]``) their light stays out of the colour (``rock_look/tilt.py``)."""
     area_rock, lifted, own = rock_rgb, None, None
     if code is not None:
         code = np.asarray(code)
@@ -284,8 +287,7 @@ def rock_surface(
         weight = (top_mask(got.up, *top_rules(look, code, own)) * has_top)[..., None]
         body = rgb * mixed(got.body, strength["albedo"])
         layer = top * mixed(got.top, strength["albedo"])
-        shade = mixed(got.shade, strength["shade"])[..., None]
-        out = (body * (1.0 - weight) + layer * weight) * shade
+        out = (body * (1.0 - weight) + layer * weight) * _shade(got, scene, strength)
     if lifted is None or not lifted.any():
         return out
     arch = _arch_rock(area_rock, scene, ground, pick & (lifted > 0.0), sample_rock)
@@ -321,8 +323,7 @@ def _arch_rock(
     reads = (np.full(pick.shape, KIND_ARCH, np.uint8), np.full(pick.shape, -1, np.int32))
     got = band_look(look, scene, ground.palette, pick, reads)
     strength = ground.palette["rock_look"]
-    shade = mixed(got.shade, strength["shade"])[..., None]
-    return rock * mixed(got.body, strength["albedo"]) * shade
+    return rock * mixed(got.body, strength["albedo"]) * _shade(got, scene, strength)
 
 
 def _own_look(
@@ -337,8 +338,15 @@ def _own_look(
     reads = (np.full(pick.shape, kind, np.uint8), np.full(pick.shape, -1, np.int32))
     got = band_look(look, scene, ground.palette, pick, reads)
     strength = ground.palette["rock_look"]
-    factor = mixed(got.body, strength["albedo"]) * mixed(got.shade, strength["shade"])[..., None]
-    return colour * factor
+    return colour * mixed(got.body, strength["albedo"]) * _shade(got, scene, strength)
+
+
+def _shade(got: BandLook, scene: PaintedScene, strength: RockLookStyle) -> FloatGrid:
+    """The normal maps' light on the colour, ``(rows, cols, 1)``; one where the light takes
+    their tilt instead."""
+    if scene.get("look_lit"):
+        return np.ones((*got.shade.shape, 1), np.float32)
+    return mixed(got.shade, strength["shade"])[..., None]
 
 
 def cliff_layer(

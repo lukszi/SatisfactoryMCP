@@ -302,7 +302,6 @@ def _painted_colours(
         rock_weight = np.maximum(rock_weight, surface.top_weight)
     ground = painted.ground
     centres = (grid.x_cm, y_cm)
-    meshes = (surface.mesh_weight, surface.mesh_class, surface.level_m, surface.mesh_land)
     bumps = None if job.unlit else _ground_bumps(surface)
     trees = ground.crowns is not None or ground.titan_crowns is not None
     relief = ground.palette["crowns"]["relief"] if trees else 0.0
@@ -310,7 +309,7 @@ def _painted_colours(
         **scene,
         "crowns": stamped_crowns(ground.crowns, centres, spacing_m, job.unlit, relief),
         "titan_crowns": stamped_crowns(ground.titan_crowns, centres, spacing_m, job.unlit, relief),
-        "ndl": painted_ndl(z_m, spacing_m, job.unlit, meshes, bumps),
+        "ndl": painted_ndl(z_m, spacing_m, job.unlit, bumps),
         "ndl_flat": _FLAT_SUN,
         "rock_weight": rock_weight,
         "top_weight": surface.top_weight,
@@ -322,6 +321,7 @@ def _painted_colours(
         "grid": BandGrid((rows.cut, cols.cut), rows.lo, rows.hi, cols.lo, cols.hi, spacing_m),
         "unlit": job.unlit,
         "detail": surface.detail,
+        "look_lit": job.unlit and job.ground.rock_tilt is not None,
     }
     paint: GridTaps = (
         taps_footprint(grid.field_y, painted.footprint, field.height),

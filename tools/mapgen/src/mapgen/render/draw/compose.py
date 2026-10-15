@@ -20,6 +20,7 @@ import numpy as np
 from mapgen.cache import DirectPlanes, MeshPlanes, TopPlanes
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.palette.painted.ground import PaintedGround
+from mapgen.palette.painted.rock_look.tilt import RockTilt
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater, water_sources
@@ -99,7 +100,7 @@ class GroundInputs:
     ``reach``, ``rivers``, ``water_level`` and ``sea`` its water: ``sea``'s planes replace
     ``water_level``'s. ``seam`` and ``regimes`` take the bands' measurements and ``surface``
     their light, in band order. ``textures`` are the landscape layers' own, for the ground's
-    detail under the bake.
+    detail under the bake, and ``rock_tilt`` the rock look's normal maps the light takes.
     """
 
     height_dm: F32Grid | None = None
@@ -116,6 +117,7 @@ class GroundInputs:
     regimes: RegimeCoverage | None = None
     surface: LightCapture | None = None
     textures: DetailTextures | None = None
+    rock_tilt: RockTilt | None = None
 
 
 @dataclass(frozen=True)
@@ -343,6 +345,7 @@ def _ground_sources(
             np.round((x_cm - field.x0_cm) / field.spacing_cm).astype(np.int64), 0, field.width - 1
         ),
         textures=inputs.textures,
+        rock_tilt=inputs.rock_tilt,
     )
 
 

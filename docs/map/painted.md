@@ -98,8 +98,9 @@ level. Now the footprint decides, once a run, on the field's 1 m grid
    included; one wholly in the sea is left whole to the seabed. Each pixel reads its nearest
    texel's bit for its class (`land` on `MeshPlanes`); a rock keeps the rule above.
 
-The light every style is relit with and the painted style's unlit sun term (a mesh the light
-has as sea keeps the default sun) follow the same footprints. Measured on build 502094 at full
+The light every style is relit with, which takes a mesh the seabed rule leaves to the seabed
+from the painted rule (light-and-crowns.md section 36, "Coral trees are no crowns"), follows
+the same footprints. Measured on build 502094 at full
 size: 8,999 coral and shell footprints, 346 standing on land and in the sea, kept whole with
 82,605 texels over the sea, and 1,233 wholly in the sea, left whole; 37 terrace footprints, 30
 kept whole across their lake's edge and 2 left to the lake's bed. Against the pixel rule
@@ -580,6 +581,30 @@ desert rock's map is the detail on the mesh's own normal in `DesertRock_WA`, at
 doubled before, as a base map's); the shells' and the barnacles' maps are as `Asset_Master`
 blends them, at full strength, and the terraces' at full strength too; the arches keep the
 doubled base.
+
+**The light takes the maps (2026-10-15).** That ratio is the default sun's, so baked into the
+colour a live sun lit the relief from noon's side whatever it picked. Where the run's light
+carries the ground's detail normal (a lit run at 8192 px and up, "The layers' own textures"),
+the painted layer drawn unlit leaves the ratio out of its colour (`surfaces._shade`,
+`scene["look_lit"]`), and the light lays the maps on its normal tiles instead: each pixel's
+tilt, the slope that added to the surface's normal and renormalised gives the mapped normal
+(`rock_look/tilt.py` `tilt_of`, `light_tiles.with_detail`), is added to the detail bytes
+(`render/ground/detail.py` `with_tilt`). The tilt is laid where the painted layer lays the
+look and by the same weights: the rock by its family's kind and its weight, the arches over it
+by their lift, the render-only rock, shells and barnacles over both by the meshes' weight
+(`band_tilt`). It is read from the surface the light captures, whatever layers a run draws
+(light-and-crowns.md section 29, "One capture"): the look's normal maps come from the install
+without a paint store, and the family from the direct cache (`render/run/prepare.py`
+`_rock_tilt`).
+
+Measured with the install's textures on a synthetic rolling slope (768 px at 0.229 m, every
+kind of the look): at the default sun, open sky, the lit bytes move by 0.74 to 0.86 levels on
+average, 2 at the 99th percentile, 4 to 15 at most; in a cast shadow 1.0 to 1.6 on average and
+3 to 6 at the 99th percentile, where the light now keeps only the fill's share of the relief,
+as it does for the ground. The tilt fits the detail byte's range (one slope) on all but 0.01%
+of pixels, slopes to 68 degrees included. Under a sun from the far side (45 degrees, 35 high)
+the relief is 0.08 levels from the mapped normal's own light on average, against 2.9 to 6.1
+baked. Below 8192 px, and with `--no-light`, the ratio stays in the colour, as before.
 
 **The arches' own family.** The game's baked distant view (the mesh HLOD bake, rasterised at
 1 m) has the arches and boulders lighter than the cliffs around them: per area, the median
@@ -1107,8 +1132,15 @@ draws the 32768 windows of the gates' G2 the same as master, all three layers.
 - The top layer's mask reads the look's normal maps where the game reads each mesh's own; an
   arch's top layer (grass and moss on `MI_Arc_Grass_01` and kin) is not drawn, as the top pass
   does not say which arch instance a pixel is.
-- The normal maps' light is baked into the colour under the default sun, so a live sun lights
-  the rock's relief from the default's side.
+- Below 8192 px the normal maps' light is still baked into the colour under the default sun,
+  so a live sun lights the rock's relief from the default's side there. From 8192 px up the
+  light takes it ("The light takes the maps"), on its native level only: the coarser levels
+  take their normals from the downsampled heights, as for the ground's detail, so zoomed out
+  under the live sun the rock shows less of its texture's relief than the colour baked before.
+- Under the canopy laid over rock (`canopy_over_rock`) the light keeps the rock's tilt; the
+  colour there is the canopy's.
+- Where the light takes the maps, the light stage reads the look's texels for the rock a
+  second time, beside the painted layer's own read.
 - The Titan canopy's light and shadow in a lit render are the light's (section 29): it casts
   as the crown occluder has it, from the raster's top.
 

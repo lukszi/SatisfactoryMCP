@@ -42,6 +42,11 @@ All notable changes to this project are recorded here. The format follows
   drawn as the shallow swamp water it is, not as straight-sided deep blocks. Water standing
   well above the sea near the coast keeps its own level; two more places drew such water at
   the sea's level, a canyon lake at (1672, -2190) and a pond under an arch at (-778, -1047).
+- Map renders: with the live sun, the Satellite map's rock texture relief now turns with the
+  sun on maps of 8192 px and up; it stayed lit from noon's side whatever sun was picked. At
+  the default sun the map looks as before.
+- Map renders: with the live sun, coral and shells standing in the sea are lit by the sun
+  picked and cast and take shadows; they kept the noon light and cast none.
 
 ## [0.2.0] - 2026-10-14
 

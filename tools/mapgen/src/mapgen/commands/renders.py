@@ -145,6 +145,7 @@ def _draw_layers(
         regimes=regimes,
         surface=light.surface if light else None,
         textures=run.textures,
+        rock_tilt=run.rock_tilt,
     )
     render_layers(
         layers,
