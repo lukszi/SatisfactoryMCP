@@ -5,6 +5,16 @@
   position: relative;
 }
 
+/* The graph takes the whole page width, not the reading column, and the larger share beside
+   the alternates. */
+#dash-body:has(.pg-wrap) {
+  max-width: none;
+}
+
+.plan-result.beside:has(.pg-wrap) {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+}
+
 .pg-wrap.pg-waiting .graph-frame {
   opacity: 0.6;
 }
@@ -109,6 +119,12 @@
   fill: var(--muted);
   font-size: var(--fs-s);
   text-anchor: middle;
+}
+
+/* An item box's lines start after its picture; the CSS property would beat the attribute. */
+.pg-node:not(.kind-process) .pg-title,
+.pg-node:not(.kind-process) .pg-sub {
+  text-anchor: start;
 }
 
 .pg-node.kind-input .pg-box {
