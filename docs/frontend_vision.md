@@ -909,13 +909,13 @@ me that graph for a detected factory".
     Ctrl+wheel zooms (a plain wheel scrolls the page), dragging pans and a double-click
     fits again.
   - One card for both callers: `graphCardFrame(heading, shown, toggle)` in `dash/graph-frame.ts`, with one
-    **hide graph** toggle per view. The planner draws its plan with the same component
-    (planner_vision.md §4.2); power is not an item there. A process's node shows its MW,
-    and exported power is a **power** terminal fed by the generators, labelled in MW.
+    **hide graph** toggle per view. The planner's graph tab uses the same card and frame
+    around its own drawing (planner_vision.md §4.2).
 - **Where.** The factory detail view has a **graph** button next to **map**. Each Detect row
   has a **graph** action, which opens the same card above the list. The component takes any
-  `{nodes, edges}` of that shape, so the planner's production graph (planner_vision.md §4.2)
-  can reuse it.
+  `{nodes, edges}` of that shape. The planner's production graph has its own drawing since
+  2026-10-15 (`dash/planner/graph/`, ELK layout, item-coloured lines, draggable nodes;
+  planner_vision.md §4.2); this one stays the factory view's.
 - **Not yet.** Per-machine drill-down, belt tiers on edges, and a layout that keeps positions
   steady across saves.
 

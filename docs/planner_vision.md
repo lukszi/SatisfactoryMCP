@@ -546,8 +546,52 @@ split for Site (§11 D1). Every view marks chat-changed rows with the **chat** b
 | Columns | `graph.chain_depth`, the SCC condensation shared by diff and commission (§8.5h), sent by the server. Not recomputed in TypeScript |
 | Controls | Node: alternates, ban, pin, ask chat. Edge: pin to logistics, explain byproduct. Hover: rates |
 | Data | `POST /api/plan/solve` → `processes[].rates`, `flows`, `depth[]` |
-| Reuse | `frontend/src/dash/graph.ts` already draws a built factory's recipe-group graph (frontend_vision.md §9.8). It takes any `{nodes, edges}` of that shape, so a plan can be mapped onto it; its longest-path layers would yield to the server's `depth[]` |
-| Rendering | Hand-written SVG, no library. Edge width ∝ log(rate). No new hues |
+| Drawing | `frontend/src/dash/planner/graph/`, its own module set; the factory view keeps `dash/graph.ts` (frontend_vision.md §9.8) |
+| Rendering | Hand-written SVG. elkjs (EPL-2.0, unmodified, in a Web Worker) computes positions and edge routes only. Lines take their item group's colour: the one exception to the closed palette (frontend_palette.md) |
+
+**The wire shape** (`SolveResponse.graph`, `readout/plan_graph.py`). The flows and the node
+kinds are planning.md §8.5o; this is what the page reads.
+
+| Part | Fields | Rule |
+|---|---|---|
+| node ids | `p:<recipe_id>`, `p:x:<miner>:<resource>`, `p:g:<generator>:<fuel>`, `in:<item>`, `ex:<item>`, `ex:power`, `left:<item>`, `sink:<item>` | Class ids, never names: the same across revs and re-solves while the recipe or item is in the plan |
+| `nodes[]` | `id`, `kind`, `label`, `item_id`, `item_name`, `recipe_id`, `recipe_name`, `building`, `built`, `machines`, `clock`, `mw`, `utilisation`, `rank`, `per_min`, `unit` | `kind` ∈ process, input, export, leftover, sink. `machines` is work at 100% (float), `utilisation` the last machine's share (1 when whole), `clock` a percent (null on item nodes), `mw` signed like a row's (negative draws). `per_min` on item nodes only. `unit` is `items`, `m3` or `MW` |
+| legacy node fields | `detail`, `row`, `rows`, `item` | `row` is the first `SolveRow.id` of the group, `rows` all of them |
+| `edges[]` | `id`, `source`, `target`, `item_id`, `item_name`, `item_group`, `per_min`, `unit`, `text`, legacy `item` | `id` = `<source>><target>:<item_id>`; `text` is MW words on power lines, else null |
+| `item_group` | `oil`, `water`, `gas`, `ore`, `metal`, `component`, `nuclear`, `power`, `other` | One table, `readout/item_groups.py`; an item not in it is `other`. Acids and solutions are `other`. Line colours only: the one exception to the closed palette |
+| `positions` | `{node_id: [x, y]}` | The plan's stored layout in graph units, kept only for ids this graph has. Empty when solving `args` rather than a stored `key` |
+| `buildings[]` | `building`, `count`, `groups`, `mw` | Whole machines and MW per building type, sinks included, largest `abs(mw)` first |
+
+**Layout is stored with the plan, not solved.** A dragged node is a `place` op on the plan
+log (planner_slice_contract.md §3): a new rev, undoable, merged and never in conflict, and
+never a solve input, so `plan_id` and the solve stay the same. `reset_layout` clears it.
+Unknown ids are dropped on read, so a node that leaves the plan loses its place and gets it
+back if it returns while the stored entry stands.
+
+**What the page does with it** (`frontend/src/dash/planner/graph/`, decided 2026-10-15):
+
+- **Layout.** ELK layered, left to right, orthogonal routes, inline edge labels, one west and
+  one east port per node at a fixed height, columns pinned to `rank` by partitions. It runs in
+  a Web Worker (`vendor/elk-worker.min.js`, copied unmodified), once per distinct graph shape.
+  The previous order down each column is fed back as model order, so a small edit does not
+  reshuffle. Without a worker, or if it fails or takes 15 s, a column layout routed by our own
+  router stands in.
+- **Nodes.** A process is a disc with its product's icon (a neutral glyph when the install has
+  no icons), "×built Building" and "Recipe · clock" under it, and a ring for `utilisation`:
+  full when the work is whole machines, else an arc for the last machine's share. Item nodes
+  show icon, name and rate; a leftover reads "surplus", a sink its sink count.
+- **Interaction.** A click picks a node, lights its whole upstream and downstream chain, dims
+  the rest and opens the node card (alternates, ban, pin, ask; an export's minimum rate edits in
+  place). A click on open ground clears; hovering shows machines, clock, MW and rates.
+- **Dragging.** A dragged node stays where it is dropped, as a `place` op. Its edges re-route
+  live around every node box with our own router (A* over the padded box sides, a cost per
+  bend); edges it does not touch keep ELK's routes. **reset layout** sends `reset_layout`.
+  A layout-only version leaves the solve inputs unchanged, so the page reuses the last solve
+  and reads places from the plan state's `node_positions`.
+- **Lists.** Under the graph: buildings (count, MW) from `buildings[]`, each item's balance
+  (needed, produced, supplied, consumed, surplus) from the edges, and the plan's total power.
+- **Measured** (synthetic 114 nodes, 156 edges, node): ELK about 150 ms warm and 300 ms on
+  first use, building the SVG about 15 ms, one drag frame about 5 ms for a node's 5 edges.
 
 ### 4.3 Build list
 
@@ -899,7 +943,8 @@ Nothing still open below is assumed above. Memory `verify-play-patterns`: ask, d
 
 ## 10. Constraints carried over
 
-- **Local only.** No graph library, no CDN, no model key, no network from the page (§2.8).
+- **Local only.** No CDN, no model key, no network from the page (§2.8). One layout library,
+  elkjs, bundled and served by this server (§4.2, allowed 2026-10-15); rendering stays ours.
 - **Palette closed.** Stopped red, blocked yellow; chat is marked by a text badge, not a hue. Any
   map colour goes through `declareColours` and the ΔE audit.
 - **Facts, not advice.** Deltas are shown, never ranked. No ETAs.

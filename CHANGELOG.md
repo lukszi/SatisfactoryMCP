@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Web planner API: graph node positions are stored with the plan by `place` and
+  `reset_layout` ops, undoable and never in conflict, and come back with a stored plan's
+  solve; they never change the solve.
+
 ### Changed
 
 - Planner: a request for a rate of an item ("Computer 2/min") with no objective solves for
@@ -20,6 +26,10 @@ All notable changes to this project are recorded here. The format follows
   `explain_byproducts` and the web plan, and the sinks count in the plan's buildings and exact
   power. Fluids still cannot be sunk, and the infeasibility hint no longer offers sinks for
   them.
+- Web planner API: the solve's production graph has one node per recipe group with stable
+  class-id node and edge ids, leftover and sink nodes (a leftover shows only the excess),
+  flows that add up exactly to each node's rates, an item colour group per line, and
+  machines and MW per building type.
 
 ### Fixed
 

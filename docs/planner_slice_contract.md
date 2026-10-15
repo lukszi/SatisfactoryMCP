@@ -62,6 +62,7 @@ case-insensitively. A rename is an op.
 | `provenance` | dict | {} | `provenance.record` shape |
 | `siting` | dict | {} | `Siting.to_dict()` shape; {} = not sited |
 | `args` | `PlanArgs` | below | |
+| `node_positions` | dict | {} | graph node id → `[x, y]`; layout only, never a solve input |
 
 `PlanArgs`. The store keeps the full shape. `kwargs()` maps it to `build_scenario` arguments
 and **drops values at their default**.
@@ -124,6 +125,12 @@ replay.
 | `forget` | – | – | `forgotten=true` | `lifecycle` | `restore` |
 | `restore` | – | – | `forgotten=false` | `lifecycle` | `forget` |
 | `record` | `field` ∈ {`plan_id`, `provenance`}, `value` | – | derived fields | **none**: never conflicts | none; skipped by undo |
+| `place` | `node`, `value` (`[x, y]`, or null = forget the node's place) | `was` | `node_positions[node]` | `layout[node]`, never conflicts | `place value=was` |
+| `layout` | `value` (whole layout; `{}` or null = clear). Writers may send `reset_layout` with no fields, stored as `layout value={}` | `was` | `node_positions` | `layout`, never conflicts | `layout value=was` |
+
+**Layout ops never conflict.** A drag merges onto any head and the later write wins, so moving
+a node never answers 409. They are refused only on a forgotten plan, like every op. A
+position is two finite numbers within ±10⁷; a layout holds at most 2,000 nodes.
 
 **No-ops are dropped before append.** Examples: `set` to the current value, `add` of a
 member already present, `remove`/`del` of something absent. A commit whose ops all drop
@@ -171,6 +178,8 @@ these forms. The page shows the server's `text` and never formats ops itself.
 | add/remove | `+banned Alternate: Bolted Frame`, `−sources region:Grass Fields` (recipe ids shown as the id; the web/tool layer may substitute display names) |
 | site | `site moved` / `site set` / `site cleared` |
 | rename | `renamed "a"→"b"` |
+| place | `layout: 3 nodes moved` (all of a commit's moves as one phrase) |
+| layout | `layout reset` / `layout restored` |
 | create / forget / restore | `created` / `forgotten` / `restored` |
 | record | "" (hidden) |
 

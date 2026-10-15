@@ -22,6 +22,8 @@ const LOOKBACK_REVS = 20;
 
 let solveSeq = 0;
 let solved: Record<string, SolveResponse> = {};
+let solvedInputs: Record<string, string> = {};
+let resultKey = "";
 
 /** The save token the head was solved against, or "" before a result. */
 export function saveToken(): string {
@@ -59,10 +61,15 @@ export function solveHead(): void {
   const key = bench.key;
   const rev = plan.rev;
   const seq = ++solveSeq;
+  const inputs = JSON.stringify(plan.args);
+  // A layout-only version (a moved node) leaves the solve inputs alone: its answer is the last one.
+  if (bench.result && resultKey === key && solvedInputs[key] === inputs) solved[key + ":" + rev] = solved[key + ":" + rev] || bench.result;
   bench.solvingRev = rev;
   solveAt(key, rev)
     .then(function (data) {
       if (seq !== solveSeq || bench.key !== key) return;
+      solvedInputs[key] = inputs;
+      resultKey = key;
       bench.result = data;
       bench.resultRev = rev;
       if (data.feasible) bench.lastFeasible = { rev: rev, data: data };
@@ -81,6 +88,7 @@ export function solveHead(): void {
 
 export function forgetSolves(): void {
   solved = {};
+  solvedInputs = {};
   solveHead();
 }
 

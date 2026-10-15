@@ -161,6 +161,15 @@ travel with that binary form for whoever ever distributes one, so every build ca
 truth, there is no vendored copy to drift — into `static/vendor/LEAFLET-LICENSE`, the page
 names it in a comment, and the bundle's own banner states what is compiled in.
 
+elkjs (pinned to **0.11.1**, used under EPL-2.0 of its EPL-2.0-or-GPL-3.0 choice) lays out
+the planner's production graph and nothing else; drawing stays ours. Its small API is compiled
+into `app.js`; its worker is a finished script, so the build copies
+`node_modules/elkjs/lib/elk-worker.min.js` unmodified to `static/vendor/elk-worker.min.js` and
+`node_modules/elkjs/LICENSE.md` to `static/vendor/ELKJS-LICENSE`, and the banner names both.
+EPL-2.0 asks for the licence text and the source's whereabouts with any distribution of the
+object code; the unmodified upstream package is that source. The map-only share build does not
+include it.
+
 ## Module notes
 
 The reasons behind a few modules, kept here so the modules can stay code. Each module names

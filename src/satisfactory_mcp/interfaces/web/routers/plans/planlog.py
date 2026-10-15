@@ -91,6 +91,7 @@ class PlanStateBody(TypedDict):
     siting: Mapping[str, object] | None
     args: PlanArgsBody
     headroom_mw: float | None
+    node_positions: dict[str, list[float]]
     names: dict[str, str]
     head: int
     text: str
@@ -223,10 +224,8 @@ class _Version(TypedDict):
 
 def _save_token(st: WorldState, given: str | None) -> str:
     """The save token a write is stamped with: the page's own, else the loaded save's."""
-    if given:
-        return given
     try:
-        return pin.check(st.header, None)
+        return given or pin.check(st.header, None)
     except Exception:
         return ""
 
@@ -287,6 +286,7 @@ def _state_body(log: PlanLog, state: PlanState, game: GameData) -> PlanStateRepl
         "siting": state.siting or None,
         "args": state.args.to_dict(),
         "headroom_mw": state.headroom_mw,
+        "node_positions": state.node_positions,
         "names": summary.names_for(game, state.args),
         "head": head.rev,
         "text": head.text(),

@@ -30,6 +30,7 @@ from .ops import (
     apply,
     canonical_op,
     check_lifecycle,
+    check_room,
     clash,
     diff_args,
     inverse,
@@ -156,6 +157,7 @@ def _apply_ops(
             dropped.append(op)
             continue
         check_lifecycle(work, op)
+        check_room(work, op)
         filled = with_was(work, op)
         apply(work, filled)
         applied.append(filled)
@@ -477,6 +479,8 @@ class PlanLog:
                 ops.append({"op": "site", "value": then.siting or None})
             if head.name != then.name:
                 ops.append({"op": "rename", "name": then.name})
+            if head.node_positions != then.node_positions:
+                ops.append({"op": "layout", "value": json_copy(then.node_positions)})
             pushed = self._merge(
                 key,
                 current,

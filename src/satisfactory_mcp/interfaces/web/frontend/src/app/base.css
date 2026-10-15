@@ -40,6 +40,18 @@
   --flash: #f0ad4e;
   --remove: #f0ad4e;
 
+  /* The plan graph's lines by item group: the one exception to the closed palette, lines only
+     (docs/frontend_palette.md, "Plan graph lines"). */
+  --grp-oil: #a585e8;
+  --grp-water: #4aa3eb;
+  --grp-gas: #3fc2ad;
+  --grp-ore: #c9744a;
+  --grp-metal: #c3cad3;
+  --grp-component: #d6ae4c;
+  --grp-nuclear: #8fd14a;
+  --grp-power: #ffa257;
+  --grp-other: #7b818a;
+
   --floor-up: #eef4f8;
   --floor-down: #93a5b4;
   --count-ink: #f2f4f6;

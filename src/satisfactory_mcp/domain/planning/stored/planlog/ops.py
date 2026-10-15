@@ -23,6 +23,7 @@ from ..plan_args import (
     member_key,
 )
 from ..views import PlanOp
+from .node_layout import MAX_NODES, checked_layout, checked_node, checked_position
 from .records import Commit, PlanState, json_copy
 from .wording import op_text
 
@@ -45,9 +46,17 @@ def merge_key(op: PlanOp) -> str | None:
         return "site"
     if kind == "rename":
         return "name"
+    if kind == "place":
+        return f"layout[{op_text(op, 'node')}]"
+    if kind == "layout":
+        return "layout"
     if kind in ("create", "forget", "restore"):
         return "lifecycle"
     return None
+
+
+#: Ops that move graph nodes: never a solve input, and never a conflict.
+LAYOUT_OPS = frozenset({"place", "layout"})
 
 
 _INVERSE_KIND = {"add": "remove", "remove": "add", "forget": "restore", "restore": "forget"}
@@ -77,6 +86,10 @@ def _inverse_one(op: PlanOp) -> PlanOp | None:
         return {"op": "site", "value": op.get("was") or None}
     if kind == "rename":
         return {"op": "rename", "name": op.get("was", "")}
+    if kind == "place":
+        return {"op": "place", "node": op["node"], "value": op.get("was")}
+    if kind == "layout":
+        return {"op": "layout", "value": op.get("was") or {}}
     if kind in ("forget", "restore"):
         return {"op": _INVERSE_KIND[kind]}
     if kind == "create":
@@ -145,6 +158,12 @@ def canonical_op(op: Mapping[str, object]) -> PlanOp:
         return {"op": "rename", "name": wanted.strip()}
     if kind in ("forget", "restore"):
         return {"op": kind}
+    if kind == "place":
+        node, pos = checked_node(op.get("node")), checked_position(op.get("value"))
+        return {"op": "place", "node": node, "value": None if pos is None else [pos[0], pos[1]]}
+    if kind in ("layout", "reset_layout"):
+        value = op.get("value") if kind == "layout" else None
+        return {"op": "layout", "value": json_copy(checked_layout(value))}
     if kind == "record":
         return _canonical_record(name, op.get("value"))
     if kind == "create":
@@ -167,6 +186,11 @@ def _current(state: PlanState, op: PlanOp) -> JsonValue:
         return state.name
     if kind in ("forget", "restore"):
         return state.forgotten
+    if kind == "place":
+        place = state.node_positions.get(op_text(op, "node"))
+        return None if place is None else [place[0], place[1]]
+    if kind == "layout":
+        return json_copy(state.node_positions)
     if kind == "record":
         return getattr(state, name)
     return None
@@ -174,7 +198,7 @@ def _current(state: PlanState, op: PlanOp) -> JsonValue:
 
 def is_noop(state: PlanState, op: PlanOp) -> bool:
     kind, now = op["op"], _current(state, op)
-    if kind in ("set", "put", "record"):
+    if kind in ("set", "put", "record", "place", "layout"):
         return now == op["value"]
     if kind == "del":
         return now is None
@@ -211,13 +235,25 @@ def apply(state: PlanState, op: PlanOp) -> None:
         state.name = op_text(op, "name")
     elif kind in ("forget", "restore"):
         state.forgotten = kind == "forget"
+    elif kind == "place":
+        _place(state, op_text(op, "node"), op.get("value"))
+    elif kind == "layout":
+        state.node_positions = checked_layout(op.get("value"))
     elif kind == "record":
         setattr(state, name, copy.deepcopy(op["value"]))
 
 
+def _place(state: PlanState, node: str, value: object) -> None:
+    place = checked_position(value)
+    if place is None:
+        state.node_positions.pop(node, None)
+    else:
+        state.node_positions[node] = place
+
+
 def with_was(state: PlanState, op: PlanOp) -> PlanOp:
     out = dict(op)
-    if op["op"] in ("set", "put", "del", "site"):
+    if op["op"] in ("set", "put", "del", "site", "place", "layout"):
         out["was"] = _current(state, op)
     elif op["op"] == "rename":
         out["was"] = state.name
@@ -229,6 +265,14 @@ def check_lifecycle(work: PlanState, op: PlanOp) -> None:
         raise InvalidOp("the plan is already forgotten")
     if op["op"] == "restore" and not work.forgotten:
         raise InvalidOp("the plan is not forgotten")
+
+
+def check_room(work: PlanState, op: PlanOp) -> None:
+    """Refuse a ``place`` that would grow the layout past its cap."""
+    if op["op"] != "place" or op.get("value") is None:
+        return
+    if op_text(op, "node") not in work.node_positions and len(work.node_positions) >= MAX_NODES:
+        raise InvalidOp(f"a layout holds at most {MAX_NODES:,} nodes")
 
 
 def _value(op: PlanOp) -> JsonValue:
@@ -244,6 +288,8 @@ def clash(mine: PlanOp, theirs: PlanOp) -> str | None:
         return None
     if theirs["op"] == "forget" or mine["op"] == "forget":
         return "conflict"
+    if mine["op"] in LAYOUT_OPS or theirs["op"] in LAYOUT_OPS:
+        return None
     if (
         mine["op"] == "add"
         and theirs["op"] == "add"

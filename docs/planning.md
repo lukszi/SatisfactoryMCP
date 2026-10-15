@@ -1462,6 +1462,57 @@ over the 70 extractors took 1.6 s, and takes 37 ms now. `WorldState.feeds` keeps
 with the game data they were built from, and a new state, which is what a new save gives,
 builds its own.
 
+### 8.5o The graph's flows: who feeds whom
+
+The production graph (planner_vision.md §4.2) draws one line per flow of one item from one
+node to another. **The LP never says who feeds whom.** It keeps one balance row per item:
+what the processes make, plus raw drawn in, equals what they use, plus export and sink. Any
+split of that balance between suppliers and users is equally optimal, so the graph picks one,
+and it picks it the same way every time (`readout/flows.py`, `readout/plan_graph.py`).
+
+**The nodes.** One process node per recipe group: every row of one recipe (its clock modes
+and somersloop counts), every extractor of one building on one resource (all purities), and
+each generator-and-fuel pair. Around them sit the item nodes:
+
+| kind | id | per_min |
+|---|---|---|
+| input | `in:<item>` | raw drawn from outside (`supplied=`), plus any shortfall the rows leave |
+| export | `ex:<item>`, `ex:power` | what leaves, **capped at the asked rate** when a rate was asked |
+| leftover | `left:<item>` | the excess only: export beyond the asked rate, plus any surplus no outlet takes |
+| sink | `sink:<item>` | the sunk byproduct, with its AWESOME Sinks and their MW |
+
+**Leftover is the excess, never the total.** A plan asked for 10 Polymer Resin a minute
+that exports 2,580 shows `ex` at 10 and `left` at 2,570. The item the objective maximises
+(`max_item`) has no ask to exceed, so all of it is export. A surplus under 0.01/min is
+rounding (the rows are rounded to 4 dp, and negligible rows are left out of the table), not
+a leftover.
+
+**The split: north-west corner over a fixed order.** For each item, suppliers are listed
+input first, then producing nodes by chain depth and then id; users are listed consuming
+nodes by depth and id, then export, leftover, sink. The rule walks both lists at once and
+sends each supplier's rate to users in turn until one side is used up. Why this rule:
+
+- **exact:** each node's flows sum to its own rate for that item, and the inputs, exports,
+  leftovers and sinks to theirs;
+- **few lines:** at most `suppliers + users - 1` edges per item, the fewest any split can
+  guarantee, where the old per-share split drew every supplier to every user;
+- **stable:** the order is ids and depths, never floats, so the same solve gives the same
+  edges, and ties never flip between solves;
+- **upstream first:** a shallow supplier feeds a shallow user, which keeps lines short in a
+  left-to-right layout.
+
+A min-cost transportation solve was weighed and not built: with no geometry there is no cost
+to minimise, and it would pick among equal optima by solver detail, not by a stable rule.
+
+**Power.** Exported MW is split over the generators the same way; what they make beyond the
+export runs the plant and draws no line, as before.
+
+**Machines and the ring.** A process node's `machines` is its work in machines at 100%
+(built × clock), and `utilisation` the share of the last of those machines, 1 when whole.
+`built` is the whole machines the rows build, which can exceed `ceil(machines)` when a row
+spreads over more machines at a lower clock (§8.4). `graph.buildings` sums `built` and MW
+per building type, sinks included.
+
 ### 8.6 Diff vs save — what to actually change
 
 `plan_factory` says what the factory should be. `diff_vs_save` says what to do about it. The hard part

@@ -16,6 +16,7 @@ __all__ = [
     "PaybackStop",
     "PaybackView",
     "PlanGraph",
+    "PlanGraphBuilding",
     "PlanGraphEdge",
     "PlanGraphNode",
     "SolveResponse",
@@ -52,7 +53,10 @@ class SolveRow(TypedDict):
 
 
 class PlanGraphNode(TypedDict):
-    """``kind`` is process, input or export; ``item`` is a class id, null for power."""
+    """One graph node; ids stay the same across revs and re-solves (docs/planner_vision.md
+    §4.2). ``kind`` is process, input, export, leftover or sink. ``machines`` is the work in
+    machines at 100% and ``utilisation`` its last machine's share; ``mw`` is signed like a
+    row's. ``row``/``rows`` join to ``SolveRow.id``; ``item`` is the legacy class id."""
 
     id: str
     kind: str
@@ -60,20 +64,54 @@ class PlanGraphNode(TypedDict):
     detail: str
     rank: int
     row: str | None
+    rows: list[str]
     item: str | None
+    item_id: str | None
+    item_name: str | None
+    recipe_id: str | None
+    recipe_name: str | None
+    building: str | None
+    built: int
+    machines: float
+    clock: float | None
+    mw: float | None
+    utilisation: float
+    per_min: float | None
+    unit: str
 
 
 class PlanGraphEdge(TypedDict):
+    """One flow, from the decomposition in docs/planning.md §8.5o. ``item`` is the legacy
+    display name; ``unit`` is items, m3 or MW."""
+
+    id: str
     source: str
     target: str
     item: str
+    item_id: str
+    item_name: str
+    item_group: str
     per_min: float
+    unit: str
     text: str | None
 
 
+class PlanGraphBuilding(TypedDict):
+    """Whole machines of one building type over its ``groups`` process nodes, and their MW."""
+
+    building: str
+    count: int
+    groups: int
+    mw: float
+
+
 class PlanGraph(TypedDict):
+    """``positions`` are the plan's stored node positions for the nodes this solve has."""
+
     nodes: list[PlanGraphNode]
     edges: list[PlanGraphEdge]
+    positions: dict[str, list[float]]
+    buildings: list[PlanGraphBuilding]
 
 
 class BuildAmount(TypedDict):
