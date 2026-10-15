@@ -24,6 +24,11 @@ All notable changes to this project are recorded here. The format follows
   in steps; and five river stretches, among them a desert canyon pool and a short river
   meeting a lake, were drawn as a straight-edged block of lake water over the river. Shade
   now runs on along the flow and changes only at waterfalls. The style's version goes up.
+- Map renders: 52 more waterfalls draw their foam, 94 in all. A fall whose lake or river
+  stands a few metres over its lip, such as the canyon arm's fall and a river fall that drew
+  as a thin dark line, was taken for a fall under water. A landing pool now stays in its own
+  basin instead of laying a straight bar over the lake below, its sides along a wide lip
+  wander, the lip itself no longer draws as a hard line, and the 277 m wide fall is fainter.
 
 ## [0.2.0] - 2026-10-14
 

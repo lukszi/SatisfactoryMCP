@@ -1044,8 +1044,8 @@ Per band, through `RiverWater.over`.
 - Steps of more than 2 m per metre break the ribbon for a few metres. Those are
   waterfalls, which are a separate item. The water kept beside the lip (2,975 texels in 300
   runs) still steps by the fall's height, so the lip reads as a line under a metre wide, as
-  at (-999, 1575); that fall is not drawn, because the falls are prepared on the field's own
-  water, whose river volume stands over its lip.
+  at (-999, 1575). Since 2026-10-15 the falls are prepared on the drawn water (section 35),
+  and that fall draws its foam over the line.
 - The river's colour model is parked: the ramp makes the hand-over continuous, but a river
   in a lake of another class still draws a band of mixed colour along its course.
 - A section bent more tightly than its half width draws the fan its mesh would.
@@ -1094,18 +1094,28 @@ area and are not read.
 
 ### Which falls are drawn
 
-`palette/water/falls.py` prepares the records against the field once per run. The drop is measured
-to the lowest surface within 11 m out from the lip, never below the curtain's own end. A fall
-is left out when:
+`palette/water/falls.py` prepares the records once per run, on the water the run draws
+(`RenderExtras.place_falls`, right after `drawn_water`): the drawn level plane (the open sea's
+where there is one), and the river ribbons' level wherever they draw, the higher of the two.
+The drop is measured to the lowest surface within 11 m out from the lip, never below the
+curtain's own end. A fall is left out when:
 
-- its lip is less than 1 m above the ocean level, or under standing water. These are the ocean
-  pouring off the edge of the world: 102 of the 185 in-frame records.
+- its lip is less than 1 m above the ocean level. These are the ocean pouring off the edge of
+  the world: 44 of the 185 in-frame records.
 - the field has no ground under the lip, or less than half of the 30 points out from it.
 - the ground under the lip is more than 4 m above it, which means the fall is inside a cave or a
-  rock: 40 records.
-- it drops less than 2 m.
+  rock.
+- it drops less than 2 m. A lip under standing water on both sides has no drop.
 
-One more record fails the last two tests, which leaves 42 drawable falls on this build.
+That leaves 94 drawable falls on build 502094.
+
+**Water over the lip (2026-10-15).** Until then the records were prepared on the field's own
+water, and a lip more than 1 m under it was left out as the ocean's. That rule took 58 inland
+falls with the 44 at the world's edge, because the water a fall pours from often stands over
+its lip: the arm's box 2.2 m over the lip at (2075, -1855), the river box at (-999, 1575), and
+ribbons and re-levelled lakes 1 to 5 m over the brink of real cliffs. On the drawn water those
+falls land on the lake or river below and draw. 52 falls were added, none dropped, and 12 of
+the 42 kept moved their landing by up to 2 m.
 
 ### How they are drawn
 
@@ -1134,6 +1144,23 @@ hard white rectangle, as at (740, 285) and (2040, -1880). Its sides now fade alo
 smoothstep over half the lip's half width, and its far end over half the spread (`soft`,
 0.5), so the foam thins out towards the ends of the lip and the end of its run.
 
+**Pools and wide lips (2026-10-15).** With the falls of the canyon near (2131, -1828) drawn,
+four changes keep the foam where the water lands:
+
+- **Its own basin.** The pool and the mist fade out where the ground stands more than
+  `max(8 m, 0.3 * drop)` below the landing (`BASIN_M`), over half that. A pool landing in the
+  canyon pool at 162 m no longer lays its capsule over the lake at 55 m past the rim.
+- **Sides that wander.** The capsule along a wide lip drew a straight-sided bar. Its radius
+  now wanders by up to 35% along the lip (`POOL_WANDER`, two slow cosines), so the edge
+  follows no line. The splash discs give no better shape: the tool lays them in one straight
+  row.
+- **No line at the lip.** The faint top modules met the full curtain on the lip's line, a
+  hard straight edge across the foam. The streak now brightens over two edge widths.
+- **Wide falls are fainter.** A lip wider than 80 m (`WIDE_M`) draws its foam and mist at
+  `sqrt(80 / width)`: the 277 m fall at (1784, 559) at 0.54. The render is drawn once at full
+  size and the zooms are cut from it, so the dimming cannot depend on the zoom. No other fall
+  is wider than 73 m.
+
 **Under the trees (2026-10-07).** The falls are drawn after everything else, so a crown or
 the Titan canopy over a lip drew the foam on top of the trees, as at (1805, 480) and
 (2278, 775). In the painted style the foam and the mist now go under what the crowns and the
@@ -1160,11 +1187,14 @@ other render-only meshes.
   pool sizes were chosen by looking at crops.
 - The waterfall material bends the curtain outwards in the vertex shader (`Curvature Amount`,
   `WPO Strenght`). The record keeps the straight curtain the instances describe.
-- Where a rock overhangs part of a pool, the pool stops at the rock's edge. That is correct,
-  but it can draw a straight cut across the foam.
-- A 277 m wide fall, such as the one at (1784, 559), draws a long bright bar. At z3 and below
-  it is one of the brightest features in its area.
-- The 102 falls off the edge of the world stay out. The artwork draws them as curtains on
+- Where a rock overhangs part of a pool, or the basin ends at a straight ledge, the pool
+  stops at that edge. Softening it would need the pixels around, which a band does not have
+  at its own edge, so it stays a per-pixel cut.
+- A fall's top modules draw a faint striped band over the water upstream of a wide lip, as
+  over the canyon arm west of (2075, -1855).
+- The fall at (2300, -3051) is measured into a pit 220 m deep; its pool shows only in the
+  pit.
+- The 44 falls off the edge of the world stay out. The artwork draws them as curtains on
   the void's edge, and since section 26's void follows the artwork they could be drawn
   there; whether they should is still open.
 
@@ -1374,10 +1404,9 @@ it is looked for along the top modules' run, not just behind the lip.
   their own, smaller than a pixel at 2048.
 - A sloped reach below a drop that joins lower water takes that water's level along its
   whole length, so its upper end would draw dry. No such case shows on this build.
-- The fall at (2075, -1855) still draws no foam: section 35 reads the field's box levels,
-  and its lip stands 2.2 m under the arm's box. Reading the drawn water instead would draw
-  38 more falls, most at real steps in rivers, but in the canyon basin near (2131, -1828)
-  the wide falls' pools draw as straight-sided bars over the lower lake.
+- The fall at (2075, -1855) drew no foam until 2026-10-15: section 35 read the field's box
+  levels, and its lip stands 2.2 m under the arm's box. It now reads the drawn water, and
+  each pool stays in its own basin (section 35, "Pools and wide lips").
 - A dry patch of about 10 by 20 m in the arm's south corner near (2040, -1830) stays
   sand: it is within 12 m of the cliff, where the holes rule reads a spill.
 - This section leaves level-only water alone. At the ocean's level it draws on section 26's
