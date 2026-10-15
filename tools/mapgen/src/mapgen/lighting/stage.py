@@ -88,6 +88,7 @@ __all__ = [
     "default_terms",
     "discard",
     "light_key",
+    "light_worker_bytes",
     "light_workers",
     "occluder_parts",
     "occluder_planes",
@@ -481,14 +482,19 @@ def save_work_array(
         np.save(path, np.asarray(raster, dtype))
 
 
-def light_workers(requested: int | None = None) -> int:
+def light_worker_bytes() -> int:
+    """What one light process needs: ``LIGHT_GPU_BYTES`` more with the GPU."""
+    return LIGHT_WORKER_BYTES + (LIGHT_GPU_BYTES if gpu_on() else 0)
+
+
+def light_workers(requested: int | None = None, free: float | None = None) -> int:
     """``requested``, else one a core up to the cap (``LIGHT_GPU_WORKER_CAP`` with the GPU,
-    ``LIGHT_WORKER_CAP`` without) that the free RAM holds."""
+    ``LIGHT_WORKER_CAP`` without) that ``free`` bytes hold (``free_ram_bytes()`` when None)."""
     if requested:
         return max(1, requested)
-    free = free_ram_bytes()
+    free = free_ram_bytes() if free is None else free
     gpu = gpu_on()
-    each = LIGHT_WORKER_BYTES + (LIGHT_GPU_BYTES if gpu else 0)
+    each = light_worker_bytes()
     cap = LIGHT_GPU_WORKER_CAP if gpu else LIGHT_WORKER_CAP
     by_ram = cap if free is None else int(free // each)
     return max(1, min(os.cpu_count() or 1, cap, by_ram))

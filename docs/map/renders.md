@@ -2543,3 +2543,57 @@ its trees are installed, as before.
   `--gpu`, which the presets' stage seconds now budget (maps_contract.md §4.3).
 - The bands waiting for the light are held in memory, not in files.
 - At 2048 and below the light is one block: nothing of it overlaps the draw.
+
+## 43. One memory budget for the run's pools (2026-10-15)
+
+The draw's threads (`drawpool.draw_threads`, section 40) and the light's processes
+(`stage.light_workers`, section 41) each sized themselves from the free memory
+(`pools.free_ram_bytes`, the lesser of free physical memory and free commit), and each took
+the whole of it. The two run at once, so the headroom was booked twice. A full-size run with
+about 24 GB free took 8 draw threads and 8 light processes on the GPU, 8 × 3.1 GB for the
+light alone, and failed with `ArrayMemoryError` 14% into the draw.
+
+### The split
+
+`render/run/budget.py` `run_budget` reads the free memory once, before the draw, and books
+it in turn:
+
+- **One light process**, set aside first: the light needs at least one.
+- **Held back.** One sheet's bytes (size² × 3) and `RESERVE_BYTES` (2 GiB): about the rows
+  the cut and the light hold beside the draw, and the rest of the process. The draw kept
+  the same back before.
+- **The draw.** `draw_threads` from the headroom: `DRAW_THREADS` (8) unless the pieces in
+  flight and their decoded bands (`pass_bytes`) do not fit.
+- **The encoders.** As many as `CUT_WORKERS` that what the draw leaves holds, at
+  `WORKER_BYTES` each; one encoder runs on the caller's thread and books nothing.
+- **The light.** `light_workers` from what is left: one a core up to its cap, at
+  `light_worker_bytes()` each (2.5 GB, 3.1 GB with the GPU), at least one (the one set aside).
+
+The bake used to count its processes when its first row was queued; it now takes the
+budget's count. A count given by `--draw-threads`, `--light-workers`, `--cut-workers` or
+`--workers` is taken as asked and booked all the same (the draw's still capped by the whole
+headroom, as before), so the log shows when the flags overbook. The run prints the split in
+one line before the draw, for example at full size, lit on the GPU, with 24 GB free:
+
+    memory: 24.0 GB free, 5.4 GB held back, 1.7 GB left; draw 8 thread(s) 2.0 GB,
+    cut 24 encoder(s) 2.5 GB, light 4 worker(s) 12.4 GB
+
+With 50 GB free each pool gets what it took alone before: 8 threads, 24 encoders, 8 light
+processes. Without a reading of the free memory every pool keeps its default.
+
+### The encoders' share
+
+The encoders are started at once, under `pools.one_blas_thread`, rather than one at a time
+as the pool's first tasks come: started later, from a process whose environment no longer
+says one BLAS thread, each would commit about 0.8 GB of BLAS buffers. Started so, one
+encoder peaked at 59 MB of commit on a full-width 32768 row (2026-10-15), and
+`WORKER_BYTES` goes from 200 MB to 100 MB.
+
+### Checked
+
+- Tests (`tests/mapgen/test_run_budget.py`), on a faked 32-core machine with the light on the
+  GPU and the free memory given: 24 GB no longer gives 8 threads and 8 processes, and books
+  no more than it has; 50 GB gives 8, 24 and 8; 4 GB gives one of each; a short headroom
+  takes draw threads before the last light process; asked counts are kept and booked; a run
+  without the light books none; no reading keeps the defaults.
+- No pixels change: the counts decide only how much runs at once.

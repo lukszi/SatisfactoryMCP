@@ -22,7 +22,7 @@ from typing import NamedTuple, Self
 
 import numpy as np
 
-from mapgen.pools import free_ram_bytes
+from mapgen.pools import free_ram_bytes, one_blas_thread
 from mapgen.tiles.formats import PNG_TILES, TileFormat, commit_tiles, encode_tiles, tile_name
 from mapgen.tiles.imaging import TileImaging
 from mapgen.tiles.levels import SheetRows
@@ -46,8 +46,10 @@ CUT_WORKER_CAP = 24
 CUT_WORKERS = min(os.cpu_count() or 1, CUT_WORKER_CAP)
 #: Threads the sheets' lanes run on; Pillow releases the GIL inside a resize.
 LANCZOS_THREADS = min(os.cpu_count() or 1, 8)
-#: What one encoder holds, and what stays free while new rows wait for memory.
-WORKER_BYTES = 200 << 20
+#: What one encoder holds, started with one BLAS thread: 59 MB peak commit on a full-width
+#: 32768 row (2026-10-15), 0.8 GB with every core's BLAS buffers. And what stays free while
+#: new rows wait for memory.
+WORKER_BYTES = 100 << 20
 RAM_RESERVE = 4 << 30
 #: Rows queued on the lanes or encoding before ``put`` waits for them.
 QUEUED_BYTES = 2 << 30
@@ -196,8 +198,9 @@ class Sheet:
 class TileStream:
     """One encode pool and one pool of lanes for every sheet of a run.
 
-    ``workers`` encode, capped by free memory; one cuts serially on the caller's thread, each
-    row as it is put. A failure anywhere stops the work and is raised by the next ``put`` or
+    ``workers`` encode, capped by free memory and all started now with one BLAS thread, so a
+    lane's submit starts none; one cuts serially on the caller's thread, each row as it is
+    put. A failure anywhere stops the work and is raised by the next ``put`` or
     ``install``.
     """
 
@@ -213,7 +216,10 @@ class TileStream:
         if self.workers > 1:
             # Spawned, not forked: the encoders start while the lanes' threads run.
             spawn = multiprocessing.get_context("spawn")
-            self.encoders = ProcessPoolExecutor(max_workers=self.workers, mp_context=spawn)
+            with one_blas_thread():
+                self.encoders = ProcessPoolExecutor(max_workers=self.workers, mp_context=spawn)
+                for _ in range(self.workers):
+                    self.encoders.submit(int)  # a submit no idle process takes starts one
             self.threads = ThreadPoolExecutor(max_workers=threads, thread_name_prefix="lanczos")
         self.changed = threading.Condition()
         self.queued = 0
