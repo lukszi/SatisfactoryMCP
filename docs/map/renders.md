@@ -789,10 +789,13 @@ Known limits:
   artwork draws void, the ground is drawn.
 - 681 regions pass, many of them a few texels of deep ground; those inside the land are drawn
   as small pits, grey with a rim.
-- In the satellite and relief dark styles the deep sea (#152a3b, #031b2d) and the page's navy
-  are close in colour. Beside the land the void has a lit edge and a rim, but where the sea
-  fades into it nothing marks the edge of the world. Whether the void past the edge should
-  leave the page's navy, as the artwork's black does, is open.
+- The void past the edge stays the page's navy (#10202c) in every style, so a style's deep
+  sea must stand apart from it for the world's edge to read where the sea fades into it.
+  Satellite's (#3b597c) does. Relief dark's was darker than the page and almost its colour
+  (#031b2d, OKLab L 0.215 against 0.236); since 2026-10-15 it is L 0.27 (#11293b), lighter
+  than the page as satellite's is, still darker than its shallow water (L 0.30). Only the
+  palette's `deep_lch` changed; `test_relief.py` pins the gap. Whether the void should leave
+  the page's navy, as the artwork's black does, is still open.
 - The tones are a hint, not a bed: under the teal the open sea is not held deeper than 6 m,
   and a tone's anti-aliased edge against land can read a metre or two too deep.
 - The falls off the edge of the world are left out (section 35).

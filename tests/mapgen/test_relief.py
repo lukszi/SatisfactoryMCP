@@ -31,7 +31,7 @@ from mapgen.palette.relief import (
     relief_colours,
     water_tint_plane,
 )
-from mapgen.palette.styles import LAYER_STYLES, RELIEF_PALETTES, SHORE_OPTICS
+from mapgen.palette.styles import LAYER_STYLES, RELIEF_PALETTES, SEA_RGB, SHORE_OPTICS
 from satisfactory_mcp.core.gameassets import versions
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.map_scenes import relief_ground, stub_field
@@ -121,6 +121,20 @@ def test_water_covers_the_ground_in_the_style_s_own_colours():
     got = relief_colours(scene, ground, _identity, _identity)
     lab = oklab(srgb_to_linear(got[4, 4]))
     assert np.allclose(lab, oklab_from_lch(ground.palette["water"]["shallow_lch"]), atol=0.01)
+
+
+def test_the_deep_sea_stands_apart_from_the_page_so_the_world_s_edge_reads():
+    """The void past the world's edge is the page's navy; the deep sea beside it must not be."""
+    ground = relief_ground("relief-dark")
+    scene = _scene(np.full((8, 8), -80.0, np.float32))
+    scene["water"]["cover"] = scene["water"]["depth"] = np.ones((8, 8), np.float32)
+    ground.water = None
+    deep = oklab(srgb_to_linear(relief_colours(scene, ground, _identity, _identity)[4, 4]))
+    page = oklab(srgb_to_linear(SEA_RGB))
+    assert deep[0] - page[0] >= 0.03, "lighter than the page, as the satellite sea is"
+    assert np.linalg.norm(deep - page) >= 0.035
+    water = ground.palette["water"]
+    assert water["deep_lch"][0] < water["shallow_lch"][0], "deep water still reads deeper"
 
 
 def test_biome_tints_move_the_ground_towards_the_biome():
