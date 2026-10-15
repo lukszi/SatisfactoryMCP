@@ -6,6 +6,8 @@ clock, and an interned foundation with neither -- so the yaw test asserts across
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
@@ -14,11 +16,18 @@ from satisfactory_mcp.core.gamedata.footprint import FOUNDATION_M
 from satisfactory_mcp.domain.world.state import WorldState
 from tests.support.web import client_over
 
+#: The row lists ``/api/machines`` sends beside its ``shapes``.
+KINDS = ("machines", "extractors", "generators")
+
+
+def _rows(body: dict[str, Any]) -> list[dict[str, Any]]:
+    return [row for kind in KINDS for row in body[kind]]
+
 
 def test_machines_split_by_kind_and_name_their_buildings(client, state):
     body = client.get("/api/machines").json()
-    assert set(body) == {"machines", "extractors", "generators"}
-    for kind in body:
+    assert set(body) == {"machines", "extractors", "generators", "shapes"}
+    for kind in KINDS:
         assert len(body[kind]) == len(state.projection[kind])
     row = body["machines"][0]
     assert set(row) == {
@@ -66,7 +75,7 @@ def test_a_machine_carries_the_height_a_top_down_map_cannot_draw(client):
     All three sides come from one ``mClearanceData`` and go null together, so a row with a
     width and no height would mean the extractor had read two thirds of a measurement.
     """
-    rows = [row for kind in client.get("/api/machines").json().values() for row in kind]
+    rows = _rows(client.get("/api/machines").json())
     for row in rows:
         assert (row["h_m"] is None) == (row["w_m"] is None) == (row["l_m"] is None)
     tall = {row["name"]: row["h_m"] for row in rows if row["h_m"] and row["h_m"] >= 12}
@@ -86,7 +95,7 @@ def test_every_machine_carries_the_state_the_health_report_would_give_it(client,
     from satisfactory_mcp.domain.factories import health
 
     body = client.get("/api/machines").json()
-    rows = {row["instance_leaf"]: row for kind in body for row in body[kind]}
+    rows = {row["instance_leaf"]: row for kind in KINDS for row in body[kind]}
     report = health.assess("t", list(rows), state.game, state.projection)
     assert len(report.machines) == len(rows), "assess did not see every row the map is sent"
     for m in report.machines:
@@ -106,14 +115,14 @@ def test_actionable_is_the_health_tuple_and_blocked_stays_tellable(client):
 
     body = client.get("/api/machines").json()
     counts: dict[str, int] = {}
-    for kind in body:
+    for kind in KINDS:
         for row in body[kind]:
             counts[row["state"]] = counts.get(row["state"], 0) + 1
             assert row["actionable"] == (row["state"] in health.ACTIONABLE), row
     assert counts["blocked"] > counts["starved"], counts
     assert "blocked" in health.ACTIONABLE
     # And a paused machine keeps both spellings: the save's own field, and the assessment.
-    for kind in body:
+    for kind in KINDS:
         for row in body[kind]:
             assert row["paused"] == (row["state"] == "paused"), row
 
@@ -122,7 +131,7 @@ def test_uptime_is_a_fraction_and_absent_rather_than_zero_where_unmeasured(clien
     """The only measured number in the project. ``null`` is "no productivity monitor on this
     building"; ``0.0`` is "monitored, and it produced nothing" -- and a page that drew those
     the same would report every belt-side buffer as a stopped machine."""
-    rows = [row for kind in client.get("/api/machines").json().values() for row in kind]
+    rows = _rows(client.get("/api/machines").json())
     measured = [r["uptime"] for r in rows if r["uptime"] is not None]
     assert measured and len(measured) < len(rows), "both branches exist on the fixture world"
     for value in measured:
@@ -140,7 +149,7 @@ def test_machine_popup_rows_never_degrade_to_engine_ids(client):
     the docs dump has no entry for (both biomass burners here) still comes back as words
     rather than as ``Build_GeneratorIntegratedBiomass_C``."""
     body = client.get("/api/machines").json()
-    rows = [row for kind in body for row in body[kind]]
+    rows = [row for kind in KINDS for row in body[kind]]
     with_recipe = [r for r in rows if r["recipe"]]
     assert with_recipe
     for r in with_recipe:
@@ -163,7 +172,7 @@ def test_machines_carry_their_own_footprint_so_the_map_can_draw_true_size(client
     body = client.get("/api/machines").json()
     sizes = {
         row["cls"]: (row["w_m"], row["l_m"])
-        for kind in body
+        for kind in KINDS
         for row in body[kind]
         if row["w_m"] is not None
     }
@@ -172,7 +181,7 @@ def test_machines_carry_their_own_footprint_so_the_map_can_draw_true_size(client
         assert 1 <= w <= 40 and 1 <= l <= 40, "a footprint in centimetres, or none at all"
     unmeasured = {
         row["cls"]
-        for kind in body
+        for kind in KINDS
         for row in body[kind]
         if row["w_m"] is None or row["l_m"] is None
     }
@@ -298,7 +307,7 @@ def test_placements_carry_the_yaw_the_map_has_to_draw_them_at(client, state):
     assert len(angled) > 1000, "the reference world has several slabs laid at an angle"
 
     machines = client.get("/api/machines").json()
-    rows = [row for kind in machines for row in machines[kind]]
+    rows = _rows(machines)
     assert rows and all("yaw" in row for row in rows)
     assert any(row["yaw"] for row in rows), "every machine on this world faces north?"
     for row in rows:
@@ -318,3 +327,17 @@ def test_a_projection_from_before_schema_12_says_unknown_rather_than_zero(game):
     ) as c:
         assert c.get("/api/structures").json()["structures"][0]["yaw"] is None
         assert c.get("/api/machines").json()["machines"][0]["yaw"] is None
+
+
+def test_shapes_come_once_per_class_and_cover_every_drawn_machine(client):
+    """Outlines are keyed by class beside the rows, never repeated per actor; each one is
+    either measured from the meshes or the clearance boxes at their own offset."""
+    body = client.get("/api/machines").json()
+    shapes = body["shapes"]
+    classes = {row["cls"] for row in _rows(body)}
+    assert set(shapes) <= classes
+    for cls, shape in shapes.items():
+        assert shape["source"] in ("mesh", "clearance"), cls
+        assert shape["rings"] and all(len(ring) >= 3 for ring in shape["rings"]), cls
+        for port in shape["ports"]:
+            assert port["kind"] in ("belt", "pipe") and port["flow"] in ("in", "out", "any")

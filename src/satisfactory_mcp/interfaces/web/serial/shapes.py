@@ -7,8 +7,10 @@ from typing import Literal, TypeAlias, TypeVar, cast
 
 from typing_extensions import TypedDict
 
+from .... import config
 from ....core.gamedata.footprint import Footprint
 from ....core.gamedata.model import GameData, Recipe, pretty_class
+from ....core.gamedata.shapes import BuildingShape, building_shape, load_shape_table
 from ....core.jsontypes import JsonValue, is_object_sequence
 from ....core.saveio.records import instance_leaf
 from ....core.saveio.schema import (
@@ -52,6 +54,7 @@ __all__ = [
     "TableAge",
     "actor_json",
     "building_footprint",
+    "building_shapes",
     "collectible_json",
     "contents_json",
     "flow_edges_json",
@@ -443,6 +446,18 @@ def machine_name(game: GameData, recipe: Recipe) -> str | None:
     """The machine a recipe runs in, by display name; ``None`` for hand and build recipes."""
     building = game.machine(recipe)
     return building.name if building else None
+
+
+def building_shapes(game: GameData, classes: Iterable[str]) -> dict[str, BuildingShape]:
+    """The drawn outline of each class, keyed by class and sent once rather than per actor;
+    a class with neither a mesh outline nor clearance boxes is left out."""
+    table = load_shape_table(config.data_dir())
+    out: dict[str, BuildingShape] = {}
+    for cls in sorted(set(classes)):
+        shape = building_shape(game, table, cls)
+        if shape is not None:
+            out[cls] = shape
+    return out
 
 
 def building_footprint(game: GameData, cls: str) -> Footprint | None:

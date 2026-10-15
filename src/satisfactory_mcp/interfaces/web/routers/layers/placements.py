@@ -13,6 +13,7 @@ from typing_extensions import TypedDict
 
 from .....core.gamedata.footprint import FOUNDATION_M
 from .....core.gamedata.model import pretty_class
+from .....core.gamedata.shapes import BuildingShape
 from .....core.saveio import rows as saverows
 from .....core.saveio.records import instance_leaf
 from .....core.saveio.schema import BuildableRecord
@@ -20,6 +21,7 @@ from .....domain.factories import health
 from .....domain.world.state import WorldState
 from ...serial import (
     building_footprint,
+    building_shapes,
     cm_to_m,
     placement_fields,
     require_world,
@@ -75,11 +77,15 @@ class PlacementRow(TypedDict):
 
 
 class MachinesResponse(TypedDict):
-    """What ``/api/machines`` sends on a 200. An error is a 4xx with ``{"error": ...}``."""
+    """What ``/api/machines`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
+
+    ``shapes`` holds each listed class's outline and ports once (docs/web-wire.md).
+    """
 
     machines: list[PlacementRow]
     extractors: list[PlacementRow]
     generators: list[PlacementRow]
+    shapes: dict[str, BuildingShape]
 
 
 class StructureRow(TypedDict):
@@ -156,10 +162,13 @@ def machines(
     def rows(kind: MachineKind) -> list[PlacementRow]:
         return [_record_row(st, row, verdicts, owners) for row in projection.get(kind, ())]
 
+    out: dict[MachineKind, list[PlacementRow]] = {kind: rows(kind) for kind in MACHINE_KINDS}
+    classes = (row["cls"] for kind in MACHINE_KINDS for row in out[kind])
     return {
-        "machines": rows("machines"),
-        "extractors": rows("extractors"),
-        "generators": rows("generators"),
+        "machines": out["machines"],
+        "extractors": out["extractors"],
+        "generators": out["generators"],
+        "shapes": building_shapes(st.game, classes),
     }
 
 

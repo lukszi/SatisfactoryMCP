@@ -148,6 +148,12 @@ resolutions, and the line between them decides every nullable field on the place
   client picks the fallback, because one drawn on the server would look measured.
 - `yaw` turns those extents into the rectangle the player placed, so the two are read
   together or not at all.
+- `shapes` (on `/api/machines`, `/api/storage` and `/api/belts`) maps each class in that
+  response to its outline once, never per actor: `source` (`mesh` from
+  `data/building_shapes.json`, or `clearance` from the clearance boxes at their own offsets),
+  `rings` as `[x, y]` metres in the actor's frame, and `ports` (`kind` belt/pipe, `flow`
+  in/out/any, `x_m`/`y_m`/`z_m`, `yaw` the facing in degrees). A class with neither is absent
+  and the page draws the `w_m` x `l_m` rectangle. [building-shapes.md](building-shapes.md).
 - `uptime` keeps three decimals: at two, 0.9994 rounds onto 1.0 and `health.SATURATED`'s line
   vanishes.
 - `/api/machines` asks `health.assess` once for the whole world rather than per row (on the
