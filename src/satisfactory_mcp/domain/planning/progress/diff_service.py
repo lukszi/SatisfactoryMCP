@@ -9,7 +9,7 @@ was asked -- partition the plan into startup stages and match them against the s
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from ....core.gamedata.model import GameData
 from ...factories.select import SelectorError, resolve_factory
@@ -20,7 +20,7 @@ from ..solver.prepare import PreparedPlan, prepare
 from ..stored.planlog import PlanState
 from ..stored.store import Plan
 from . import built
-from .diff import DiffReport, build_diff, request_of, solution_of
+from .diff import DiffReport, build_diff, request_of, slices_for, solution_of
 from .stages import Tracking, machine_states, track
 from .startup import Commissioning, commission
 
@@ -79,6 +79,10 @@ class DiffVsSaveReport:
     prepared: PreparedPlan
     #: The grid the plan is matched against, read whether or not the plan solves.
     power: PowerReport
+    #: The one headroom this answer uses -- the diff's slices and the startup stages alike --
+    #: and where it came from (``resolve_headroom``).
+    headroom_mw: float = 0.0
+    headroom_source: str = ""
     #: ``None`` when the plan failed or came back empty -- there is nothing to diff.
     diff: DiffReport | None = None
     #: The startup partition matched against the save, only when a stage was asked for.
@@ -238,6 +242,9 @@ def build_diff_report(
 
     recalled = stored if stored is not None else (st.plans.find(plan) if plan else None)
     diff, report.scope_note = diff_in_scope(g, st, prepared, factory, biomass, stored=recalled)
+    head, report.headroom_source = resolve_headroom(report.power, stored=stored, default=default)
+    report.headroom_mw = head
+    diff = replace(diff, headroom_mw=head, slices=slices_for(diff.deficit_mw, head))
     report.diff = diff
 
     # A sited plan gets the census over its own pad. Beside the identity-matched diff,
