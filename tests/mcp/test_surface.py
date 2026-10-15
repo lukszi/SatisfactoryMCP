@@ -386,9 +386,10 @@ def test_the_registered_surface_survives_the_split():
     no tool did. 49: +rename_plan. 50: +milestones, the HUB half of the ladder mam_research
     already walked for the MAM. 52: +rename_factory, +amend_factory -- a label could be
     written and deleted and nothing in between. 54: +plan_log, +ui_context -- plan versions
-    and what the page has open. 55: +settings, what the page and chat share."""
+    and what the page has open. 55: +settings, what the page and chat share. 56:
+    +plan_from_factory, a built factory as a plan to edit."""
     tools = _run(srv.mcp.list_tools())
-    assert len(tools) == 55
+    assert len(tools) == 56
     assert {
         "amend_factory",
         "collected_from_world",
@@ -397,6 +398,7 @@ def test_the_registered_surface_survives_the_split():
         "factory_floors",
         "mam_research",
         "milestones",
+        "plan_from_factory",
         "plan_log",
         "rank_unlocks",
         "rename_factory",

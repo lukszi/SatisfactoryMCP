@@ -35,7 +35,7 @@ testing contract. Section numbers are continuous with the rest of the spec;
 **Factories:** `factory_map`, `propose_factories`, `factory_query`, `factory_health`, `select_machines`, `name_factory`, `rename_factory`, `amend_factory`, `list_factories`, `forget_factory`, `factory_floors`, `trace_upstream`
 **Inventory:** `stock`, `storage`, `crates`
 **Spatial:** `list_regions`, `describe_location`, `search_resource_nodes`, `search_conduits`, `rank_build_sites`, `show_on_map`
-**Planning:** `plan_factory`, `plan_layout`, `commission_plan`, `diff_vs_save`, `bom`, `rank_unlocks`, `list_plans`, `plan_log`, `site_plan`, `rename_plan`, `forget_plan`, `explain_byproducts`, `compare_recipe_options`
+**Planning:** `plan_factory`, `plan_from_factory`, `plan_layout`, `commission_plan`, `diff_vs_save`, `bom`, `rank_unlocks`, `list_plans`, `plan_log`, `site_plan`, `rename_plan`, `forget_plan`, `explain_byproducts`, `compare_recipe_options`
 **The page:** `ui_context`, `settings`
 **Hard drives:** `list_pending_hard_drive_choices`, `advise_hard_drive_pick`
 
@@ -774,9 +774,15 @@ the history behind the contracts live here:
 - **`plan_factory`.** `machine_cost_mw` defaults to 5 MW, just above the 2.58 MW per machine
   that spreading throughput over more machines was measured to save. Overclock modes are not
   offered by default because they spend Power Shards. Somersloops are placed one at a time
-  across many machines because output is linear in sloops and power quadratic. How many
-  Water Extractors a body of water holds is placement geometry no data here carries, so
-  `site_at` measures the water and never moves an LP number.
+  across many machines because output is linear in sloops and power quadratic (each costs
+  4x power for 2x output on its machine). How many Water Extractors a body of water holds is
+  placement geometry no data here carries, so `site_at` measures the water and never moves an
+  LP number. With `save_as` the site is recorded with yaw and footprint, for `diff_vs_save`'s
+  on-site census and `show_on_map at='plan:<name>'`, and a recalled sited plan is measured at
+  its own site.
+- **`plan_from_factory`** goes the other way from `diff_vs_save`: a built, named factory becomes
+  a stored plan, one `create`, so `forget_plan` (or undoing it in `plan_log`) takes it back. The
+  mapping and the differences it reports are docs/planning.md §8.5p.
 - **`propose_factories`** was validated leave-one-factory-out against the twelve hand-named
   factories of the reference world: precision 1.000 on every fold, recall 0.945.
 - **`trace_upstream`.** 92.5% of the connectors landing on a machine name their direction;

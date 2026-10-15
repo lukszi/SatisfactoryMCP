@@ -1910,6 +1910,26 @@ export interface paths {
         patch: operations["change_map_api_maps__ident__patch"];
         trace?: never;
     };
+    "/api/factories/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan From Built Factory
+         * @description Store a new plan at v1 that reproduces one named factory; every call makes a new one.
+         */
+        post: operations["plan_from_built_factory_api_factories_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5199,69 +5219,60 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** PlanFromFactoryBody */
+        PlanFromFactoryBody: {
+            /** Factory */
+            factory: string;
+        };
         /**
-         * PlanGraph
-         * @description ``positions`` are the plan's stored node positions for the nodes this solve has.
+         * PlanFromFactoryResponse
+         * @description ``differences`` is how a solve of the plan departs from the build; empty when none.
          */
+        PlanFromFactoryResponse: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Rev */
+            rev: number;
+            /** Factory */
+            factory: string;
+            /** Feasible */
+            feasible: boolean;
+            /** Machines */
+            machines: number;
+            /** Mw Draw */
+            mw_draw: number | null;
+            /** Built Mw */
+            built_mw: number;
+            /** Differences */
+            differences: string[];
+            /** Notes */
+            notes: string;
+        };
+        /** PlanGraph */
         PlanGraph: {
             /** Nodes */
             nodes: components["schemas"]["PlanGraphNode"][];
             /** Edges */
             edges: components["schemas"]["PlanGraphEdge"][];
-            /** Positions */
-            positions: {
-                [key: string]: number[];
-            };
-            /** Buildings */
-            buildings: components["schemas"]["PlanGraphBuilding"][];
         };
-        /**
-         * PlanGraphBuilding
-         * @description Whole machines of one building type over its ``groups`` process nodes, and their MW.
-         */
-        PlanGraphBuilding: {
-            /** Building */
-            building: string;
-            /** Count */
-            count: number;
-            /** Groups */
-            groups: number;
-            /** Mw */
-            mw: number;
-        };
-        /**
-         * PlanGraphEdge
-         * @description One flow, from the decomposition in docs/planning.md §8.5o. ``item`` is the legacy
-         *     display name; ``unit`` is items, m3 or MW.
-         */
+        /** PlanGraphEdge */
         PlanGraphEdge: {
-            /** Id */
-            id: string;
             /** Source */
             source: string;
             /** Target */
             target: string;
             /** Item */
             item: string;
-            /** Item Id */
-            item_id: string;
-            /** Item Name */
-            item_name: string;
-            /** Item Group */
-            item_group: string;
             /** Per Min */
             per_min: number;
-            /** Unit */
-            unit: string;
             /** Text */
             text: string | null;
         };
         /**
          * PlanGraphNode
-         * @description One graph node; ids stay the same across revs and re-solves (docs/planner_vision.md
-         *     §4.2). ``kind`` is process, input, export, leftover or sink. ``machines`` is the work in
-         *     machines at 100% and ``utilisation`` its last machine's share; ``mw`` is signed like a
-         *     row's. ``row``/``rows`` join to ``SolveRow.id``; ``item`` is the legacy class id.
+         * @description ``kind`` is process, input or export; ``item`` is a class id, null for power.
          */
         PlanGraphNode: {
             /** Id */
@@ -5276,36 +5287,8 @@ export interface components {
             rank: number;
             /** Row */
             row: string | null;
-            /** Rows */
-            rows: string[];
             /** Item */
             item: string | null;
-            /** Item Id */
-            item_id: string | null;
-            /** Item Name */
-            item_name: string | null;
-            /** Recipe Id */
-            recipe_id: string | null;
-            /** Recipe Name */
-            recipe_name: string | null;
-            /** Building */
-            building: string | null;
-            /** Building Icon */
-            building_icon: string | null;
-            /** Built */
-            built: number;
-            /** Machines */
-            machines: number;
-            /** Clock */
-            clock: number | null;
-            /** Mw */
-            mw: number | null;
-            /** Utilisation */
-            utilisation: number;
-            /** Per Min */
-            per_min: number | null;
-            /** Unit */
-            unit: string;
         };
         /**
          * PlanIndexRow
@@ -5371,8 +5354,6 @@ export interface components {
             member?: components["schemas"]["JsonValue"];
             /** Name */
             name?: string;
-            /** Node */
-            node?: string;
             was?: components["schemas"]["JsonValue"];
         };
         /** PlanOpsResponse */
@@ -5448,10 +5429,6 @@ export interface components {
             args: components["schemas"]["PlanArgsBody"];
             /** Headroom Mw */
             headroom_mw: number | null;
-            /** Node Positions */
-            node_positions: {
-                [key: string]: number[];
-            };
             /** Names */
             names: {
                 [key: string]: string;
@@ -6673,7 +6650,6 @@ export interface components {
         /**
          * SolveBody
          * @description Exactly one of ``args`` (a request) and ``key`` (a stored plan, at ``rev`` or its head).
-         *     Only a stored plan has node positions to echo in ``graph.positions``.
          */
         SolveBody: {
             /** Args */
@@ -11217,6 +11193,49 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MapsStaleResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_from_built_factory_api_factories_plan_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanFromFactoryBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanFromFactoryResponse"];
+                };
+            };
+            /** @description no factory by that name */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

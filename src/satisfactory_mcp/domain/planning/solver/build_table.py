@@ -34,6 +34,13 @@ from .views import OverclockOption, OverclockPick
 __all__ = ["BuildRows", "binding_constraints", "build_rows", "logistics", "solution_warnings"]
 
 _EPS = 1e-7
+#: A count this little over a whole number is LP residue, not one more machine (§8.4).
+_WHOLE_TOL = 1e-5
+
+
+def _whole(count: float) -> int:
+    """Whole machines for ``count`` machine-equivalents: at least one."""
+    return max(1, math.ceil(count - _WHOLE_TOL))
 
 
 @dataclass
@@ -146,7 +153,7 @@ def build_rows(
             folded.add(process.group)
             machines, units = pooled[process.group]
             # The count is sum(v) and the clock absorbs the rate, so the cap holds (§8.2c).
-            built = max(1, math.ceil(machines - 1e-9))
+            built = _whole(machines)
             fixed_machines += built
             fixed_draw += _fixed_draw(process, built, units)
             writer.write(process, built, units / built, machines, units / process.clock)
@@ -162,7 +169,7 @@ def build_rows(
             )
 
         # ceil(v) machines all at v/ceil(v): exact and power-optimal (§8.4).
-        built = max(1, math.ceil(count - 1e-9))
+        built = _whole(count)
         units = process.clock * count
         if spreadable(process) and not negligible:
             spread.append(SpreadableRow(process, units, game.buildings.get(process.building or "")))
@@ -184,7 +191,7 @@ def build_rows(
                 row.process, built, row.units / built, count, count, last_clock=top, option=option
             )
         else:
-            built = max(1, math.ceil(count - 1e-9))
+            built = _whole(count)
             writer.write(row.process, built, row.units / built, count, count, option=option)
     writer.rows.sort(key=lambda d: -abs(d["mw"]))
 

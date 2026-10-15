@@ -459,8 +459,7 @@ def plan_factory(
     **replaces** the default rather than extending it, and exporting MW forbids drawing from
     the grid. A token matching no item is refused by name.
 
-    ``sloops`` is a BUDGET of Somersloops to commit, spent where they buy the most; 0 spends
-    none. Each costs 4x power for 2x output on its machine, so they spread across machines.
+    ``sloops`` is a BUDGET of Somersloops, spread where they buy the most; 0 spends none.
 
     ``payback_hours`` spreads a row over more, slower machines while the power saved repays
     their build points within that many hours of play, at ``power_price`` points per MWh
@@ -481,11 +480,8 @@ def plan_factory(
     you read (list_plans name=): edits to other settings merge, and the same setting changed
     by someone else is refused as outdated and nothing is saved.
 
-    ``site_at`` says where the plan will STAND: the terrain at that pad is read and the
-    water note says how much is under water, at what level and how far below dry ground,
-    never changing an LP number. With ``save_as`` it is recorded with yaw and footprint,
-    for diff_vs_save's on-site census and show_on_map at='plan:<name>'; a recalled sited
-    plan is measured at its own site. site_plan moves a stored plan's siting.
+    ``site_at`` says where the plan will STAND: the water there is measured, never an LP
+    number. With ``save_as`` it is recorded; site_plan moves it.
     """
     g = app.game()
     st = app.load_world(save, world, as_of)
