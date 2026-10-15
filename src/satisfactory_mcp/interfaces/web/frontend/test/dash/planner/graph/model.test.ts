@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../../src/dash/planner/writes", () => ({ applyOps: vi.fn() }));
 
-import { itemBalances, powerTotals } from "../../../../src/dash/planner/graph/balance";
-import { layoutInput } from "../../../../src/dash/planner/graph/draw";
-import { completed } from "../../../../src/dash/planner/graph/layout";
-import { elkGraph, readElk } from "../../../../src/dash/planner/graph/layout-input";
+import { itemBalances, powerTotals } from "../../../../src/dash/prodgraph/balance";
+import { layoutInput } from "../../../../src/dash/prodgraph/draw";
+import { completed } from "../../../../src/dash/prodgraph/layout";
+import { elkGraph, readElk } from "../../../../src/dash/prodgraph/layout-input";
 import { edgeLabel, nodeForPick, readPlanGraph } from "../../../../src/dash/planner/graph/model";
 import { moveNode, placeOp, positionsFor, resetLayout, resetLayoutOp, settle } from "../../../../src/dash/planner/graph/positions";
 import { applyOps } from "../../../../src/dash/planner/writes";

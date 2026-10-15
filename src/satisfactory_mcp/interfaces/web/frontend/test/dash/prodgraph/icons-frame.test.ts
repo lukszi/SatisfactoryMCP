@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { fitScale } from "../../../../src/dash/frame-fit";
-import { iconIdFor } from "../../../../src/dash/planner/graph/icons";
-import { readPlanGraph } from "../../../../src/dash/planner/graph/model";
+import { fitScale } from "../../../src/dash/frame-fit";
+import { iconIdFor } from "../../../src/dash/prodgraph/icons";
+import { readPlanGraph } from "../../../src/dash/planner/graph/model";
 
-import type { SolveResponse } from "../../../../src/api/shapes";
+import type { SolveResponse } from "../../../src/api/shapes";
 
 describe("node pictures", () => {
   it("shows a process's building, an item node's item, and nothing for power", () => {

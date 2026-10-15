@@ -1,5 +1,5 @@
-/* The planner's production graph (dash/planner/graph/). Item-group colours colour the lines
-   and their arrows only; nodes stay in the closed palette. */
+/* The production graph (dash/prodgraph/), for plans and built factories. Item-group colours
+   colour the lines and their arrows only; nodes stay in the closed palette. */
 
 .pg-wrap {
   position: relative;
@@ -147,6 +147,17 @@
   fill: transparent;
   stroke: var(--muted);
   stroke-dasharray: 2 4;
+}
+
+/* A built group's worst machine state, as the factory views tone it. */
+.pg-node.state-blocked .pg-disc {
+  stroke: var(--blocked);
+  stroke-width: 3;
+}
+
+.pg-node.state-bad .pg-disc {
+  stroke: var(--bad);
+  stroke-width: 3;
 }
 
 .pg-node:hover .pg-disc,

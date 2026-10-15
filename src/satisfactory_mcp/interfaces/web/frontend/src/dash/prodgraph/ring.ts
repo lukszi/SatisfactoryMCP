@@ -1,5 +1,6 @@
-/* The utilisation ring round a process node: full while the group is whole machines, otherwise
- * an arc for the share of the last machine still needed. See docs/planner_vision.md §4.2. */
+/* The ring round a process node: in a plan, full while the group is whole machines, otherwise
+ * an arc for the share of the last machine still needed; in a built factory, the measured share
+ * of time producing. See docs/planner_vision.md §4.2. */
 
 export type RingTone = "full" | "most" | "part";
 
@@ -17,6 +18,13 @@ export function ringFor(work: number, utilisation: number): Ring {
   const last = Math.max(0, Math.min(1, utilisation));
   if (last <= WHOLE || 1 - last < WHOLE) return { fraction: 1, tone: "full" };
   return { fraction: last, tone: last >= 0.5 ? "most" : "part" };
+}
+
+/** A built group's ring: the measured share of time its machines spent producing. */
+export function measuredRing(productivity: number): Ring {
+  const share = Math.max(0, Math.min(1, productivity));
+  if (1 - share < WHOLE) return { fraction: 1, tone: "full" };
+  return { fraction: share, tone: share >= 0.5 ? "most" : "part" };
 }
 
 function point(cx: number, cy: number, r: number, turn: number): [number, number] {

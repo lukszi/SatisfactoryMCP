@@ -8,7 +8,7 @@ import { recipesButton } from "../alternates";
 import { banButton, clockText, copyIdButton, pinProcessButton, processAsk } from "../row-actions";
 import { bench } from "../state";
 import { applyOps } from "../writes";
-import { tipLines } from "./interact";
+import { tipLines } from "../../prodgraph/interact";
 
 import type { SolveResponse, SolveRow } from "../../../api/shapes";
 import type { Op } from "../state";

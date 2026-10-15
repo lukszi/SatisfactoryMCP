@@ -1,5 +1,6 @@
-/* Laying a plan graph out: ELK in a Web Worker, a column layout routed by our own router when no
- * worker can run, and the player's placed nodes laid over either with their edges re-routed. */
+/* Laying a production graph out: ELK in a Web Worker, a column layout routed by our own router
+ * when no worker can run, and the player's placed nodes laid over either with their edges
+ * re-routed. */
 
 import ElkApi from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";

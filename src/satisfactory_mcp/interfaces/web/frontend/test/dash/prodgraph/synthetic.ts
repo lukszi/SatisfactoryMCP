@@ -1,6 +1,6 @@
 /* A plan-shaped graph of any size for layout tests: inputs, ranked process columns, exports. */
 
-import type { LayoutIn } from "../../../../src/dash/planner/graph/layout-input";
+import type { LayoutIn } from "../../../src/dash/prodgraph/layout-input";
 
 export function syntheticGraph(processes: number, seed = 7): LayoutIn {
   let s = seed;

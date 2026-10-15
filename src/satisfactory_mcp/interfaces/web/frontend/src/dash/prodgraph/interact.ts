@@ -1,9 +1,9 @@
-/* What the plan graph does under the pointer: a click picks a node and lights its chain, a click
+/* What the production graph does under the pointer: a click picks a node and lights its chain, a click
  * on open ground clears, hovering shows a short tip, and a dragged node stays where it is
  * dropped while its edges re-route around the other nodes as it moves. */
 
-import { formatNumber, mw, pct } from "../../../kit/format";
-import { make } from "../../../kit/dom";
+import { formatNumber, mw, pct } from "../../kit/format";
+import { make } from "../../kit/dom";
 import { chainOf } from "./chain";
 import { drawHops, itemLines, placeNode, processTitle, routePoints, setRoute } from "./draw";
 import { hopTargets } from "./hops";
@@ -12,17 +12,17 @@ import { rateText } from "./model";
 
 import type { GraphHandle } from "./draw";
 import type { Layout, LayoutIn } from "./layout-input";
-import type { PlanEdge, PlanGraphView, PlanNode } from "./model";
+import type { ProdEdge, ProdGraph, ProdNode } from "./model";
 
 export interface LiveGraph {
   handle: GraphHandle;
-  view: PlanGraphView;
+  view: ProdGraph;
   input: LayoutIn;
   layout: Layout;
 }
 
 export interface GraphCallbacks {
-  pick(node: PlanNode): void;
+  pick(node: ProdNode): void;
   moved(id: string, at: [number, number]): void;
 }
 
@@ -39,8 +39,8 @@ interface Drag {
 
 const SLOP = 4;
 
-function ratesInto(view: PlanGraphView, id: string, into: boolean): string {
-  const sums: Record<string, PlanEdge & { total: number }> = {};
+function ratesInto(view: ProdGraph, id: string, into: boolean): string {
+  const sums: Record<string, ProdEdge & { total: number }> = {};
   const names: string[] = [];
   view.edges.forEach(function (e) {
     if ((into ? e.target : e.source) !== id) return;
@@ -60,11 +60,28 @@ function ratesInto(view: PlanGraphView, id: string, into: boolean): string {
     .join(", ");
 }
 
-export function tipLines(view: PlanGraphView, node: PlanNode): string[] {
+export function tipLines(view: ProdGraph, node: ProdNode): string[] {
   if (node.kind !== "process") return itemLines(node, view);
   const head = processTitle(node) + " · " + (node.recipeName || node.label);
   const power = node.mw ? " · " + mw(node.mw, { signed: true }) : "";
-  return [head, "clock " + pct(node.clock, 1) + " · " + formatNumber(node.machines, 2) + " machines of work" + power, "in: " + ratesInto(view, node.id, true), "out: " + ratesInto(view, node.id, false)];
+  const lines = [head, "clock " + pct(node.clock, 1) + " · " + formatNumber(node.machines, 2) + " machines of work" + power, "in: " + ratesInto(view, node.id, true), "out: " + ratesInto(view, node.id, false)];
+  const built = builtLine(node);
+  if (built) lines.push(built);
+  return lines;
+}
+
+/** A built group's measured share and its machines by state; empty for a plan. */
+export function builtLine(node: ProdNode): string {
+  const parts: string[] = [];
+  if (node.productivity !== null) {
+    const some = node.monitored < node.built ? " of " + node.monitored + " monitored" : "";
+    parts.push("producing " + pct(node.productivity, 0) + " of the time" + some);
+  }
+  const states = Object.keys(node.states).map(function (state) {
+    return node.states[state] + " " + state;
+  });
+  if (states.length) parts.push(states.join(", "));
+  return parts.join(" · ");
 }
 
 /** Lights `id`'s chain and dims the rest; an empty id clears. */
@@ -101,7 +118,7 @@ function rerouteDrag(live: LiveGraph, drag: Drag): void {
   drawHops(live.handle, live.layout, hopTargets(routePoints(live.layout), drag.edges, before));
 }
 
-function wireTip(live: LiveGraph, wrap: HTMLElement, g: SVGGElement, node: PlanNode): void {
+function wireTip(live: LiveGraph, wrap: HTMLElement, g: SVGGElement, node: ProdNode): void {
   const tip = function () {
     let box = wrap.querySelector<HTMLElement>(".pg-tip");
     if (!box) {

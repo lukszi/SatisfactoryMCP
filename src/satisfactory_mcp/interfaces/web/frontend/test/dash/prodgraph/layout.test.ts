@@ -1,11 +1,11 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import { describe, expect, it } from "vitest";
 
-import { columnLayout, completed, placeNodes } from "../../../../src/dash/planner/graph/layout";
-import { elkGraph, ordered, readElk } from "../../../../src/dash/planner/graph/layout-input";
+import { columnLayout, completed, placeNodes } from "../../../src/dash/prodgraph/layout";
+import { elkGraph, ordered, readElk } from "../../../src/dash/prodgraph/layout-input";
 import { syntheticGraph } from "./synthetic";
 
-import type { Layout } from "../../../../src/dash/planner/graph/layout-input";
+import type { Layout } from "../../../src/dash/prodgraph/layout-input";
 
 function overlapping(layout: Layout): string[] {
   const ids = Object.keys(layout.boxes);
