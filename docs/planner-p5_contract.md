@@ -68,6 +68,34 @@ open questions are in §13.
   off. The card's head line and fields follow at once; the feedback lines follow the preview.
 - **Escape** while dragging puts the pad back and writes nothing.
 - Release commits (F6).
+- Ctrl (Cmd on a Mac) turns the snap off too. Unless it is off, a pad that comes within 10 px of
+  a built foundation grid (§5.4) and is turned within 10° of it takes that grid's turn, and each
+  axis whose nearer edge lies within 10 px of a grid line lands on it. The outline goes solid
+  while it sits there.
+
+### F2a Resize on a desktop
+
+- **Eight handles**: a 12 px square on each corner and on the middle of each edge, with a 28 px
+  hit area, both in screen pixels so they are as easy to catch at any zoom. Each shows the
+  resize cursor of the way it pulls, turned with the pad. An edge shorter than 44 px on screen
+  hides its handle so the corners stay reachable.
+- An edge handle changes one side, a corner both; the opposite side stays put. **Shift** on a
+  corner keeps the pad's ratio (the pointer is projected on its diagonal). **Alt** resizes round
+  the centre. **Ctrl** snaps nothing. Modifiers are read live: pressing or releasing one
+  mid-drag redraws the pad where the pointer is. Shift may be held before grabbing a handle
+  (Leaflet ignores a Shift press-and-drag, so the handle passes it on without Shift).
+- Sizes snap to the step the card's **snap [8 m] [4 m] [off]** row picks, per browser, 8 m by
+  default: every foundation in the game data is 8 × 8 m (the 4 m pieces are quarter pipes and
+  walkways). A side is never under one foundation (8 m, `FOOTPRINT_MIN_M`) nor over 2 km, and a
+  pointer dragged past the far side stops at 8 m rather than flipping the pad.
+- With a built grid (§5.4) in reach and the pad square with it (its turn equal modulo 90°), each
+  pulled edge within 10 px of a grid line lands on it. A resize never turns the pad. When the
+  held side is off that grid, the size then is whatever puts the pulled edge on the line.
+- While dragging, a readout beside the handle says `48 × 32 m · 6 × 4 foundations`, plus
+  `· on the foundations` when the edges sit on a built grid; the outline goes solid then too.
+- Escape puts the pad back. Release commits (F6) with `footprint_source: given`: one version,
+  so Ctrl+Z undoes it. Steps only preview.
+- On a coarse pointer there are no handles: the typed W and D fields (F5) resize.
 
 ### F3 Move by keyboard
 
@@ -136,7 +164,8 @@ confirm, since it moves the pad onto what is built.
 → `SitePreviewResponse` (`routers/plans/plan_site.py`).
 
 - Any of x, y, yaw, w, d left out comes from the stored site, else from `initial_siting`.
-- `first=1` adds `nodes` (the plan's chosen nodes) and `content_bbox_m`.
+- `first=1` adds `nodes` (the plan's chosen nodes), `content_bbox_m` and `foundation_grids`
+  (§5.4).
 - `full=1` reads the terrain at 1 m; otherwise the window is capped at 40,000 texels.
 - Unknown key or rev: 404. A pad with any corner outside the map square: 200 with
   `in_map: false` and only `region` filled. A plan that does not solve: 200 with `failure`.
@@ -157,6 +186,7 @@ confirm, since it moves the pad onto what is built.
 | `basis` | First placement: `counted on its pad from now (was: <old area>)` |
 | `loses` | `{now, here, total, text}` when auto detection counts fewer built here than at the stored site |
 | `fits overlaps` | §F7; names of other plans whose pads meet this one |
+| `foundation_grids` | `first=1` only: the save's built foundation grids (§5.4) |
 
 ### 4.3 Losing progress
 
@@ -202,6 +232,29 @@ so they cannot store different shapes. Undo does not: it replays the stored inve
 - Chat's `site_plan` writes and previews are snapped with the shared value; the page's typed
   fields are not.
 
+### 5.4 Foundation grids (`siting.grids.foundation_grids`, `pad/grid-snap.ts`)
+
+The pad aligns to what is built near it, never to a world-wide grid: the build gun lays each
+foundation against its neighbours, so a base far from the world origin has its own turn and
+its own 8 m phase.
+
+- Every `structures` piece whose class names `Foundation` (passthroughs and pieces with an
+  unread yaw left out) is a tile centre. Its turn is its yaw modulo 90° (to 0.1°) and its phase
+  is the centre's position modulo 8 m along the turned axes (to 5 cm).
+- Tiles on one turn and phase that touch, by edge or corner, are one grid; stacked storeys
+  share cells and so one grid. Each grid is `yaw_deg`, `anchor_m` (one tile's centre),
+  `bbox_m` (round its tiles) and `tiles`; the largest 2,000 are sent, largest first. They are a
+  derived view of the save, built once per projection.
+- Lines run half a tile off the anchor and then every step: `anchor ± 4 + k·8` m, or every
+  4 m on the half step.
+- A grid is in reach when its box comes within the snap distance (10 px at the current zoom)
+  of the pad's box; the one nearest the pad's centre wins, the larger on a tie.
+- A moved pad within 10° of the grid's turn takes that turn exactly (a quarter-turned pad
+  lays its width along the grid's other axis); on each axis the nearer edge within reach of a
+  line lands on it and the size stays. A resized pad aligns only its pulled edges (F2a).
+- The snap off (Ctrl, Shift on a move, or `off` in the card) skips all of it. Without a grid in
+  reach a move keeps the §5.2 snap.
+
 ### 5.3 Words (`describe_op`, `_action_words`)
 
 `site set at 1,476, -2,098 (Rocky Desert)` · `site moved 1,503 m west` · `site moved 212 m
@@ -242,6 +295,7 @@ siting.set_ground_z(provider)   # provider(x_m, y_m, yaw_deg, width_m, depth_m) 
 | Module | Does |
 |---|---|
 | `dash/planner/pad-drag.ts` (new) | Handles, crosshair, keyboard bursts, snap, node lines, the ghost. No fetch: it reports `step` and `commit` |
+| `dash/planner/pad/` | `geometry.ts` the pad's frame, resize and readout; `grid-snap.ts` the built-grid snap (§5.4); `resize-handles.ts` the eight handles; `size-step.ts` the card's snap row; `op.ts` the `site` op |
 | `planner-site.ts` (new) | The card, the throttled preview loop, the drop with its confirm, fit, [use it], the split class |
 | `planner-core.ts`, `planner.ts`, `planner-result.ts`, `planner-bench.ts` | `ResultTab` `"site"`, the address, follow for `plan.view view=site`, the tab |
 | `planner-built.ts` | **[place]** opens the site tab |
@@ -278,6 +332,11 @@ One fix was needed to get there: `built._cluster_names` named every proposal on 
   one version per drop and undo, `loses` on the new head, the p95 budget, chat preview → journal
   → page push as one version, and chat writes on both snaps.
 - `tests/test_planlog.py`: site ops in the M1 and replay tests now carry valid sitings.
+- `tests/domain/planning/siting/test_site_grids.py`: grids from tiles off the world phase,
+  turned, out of phase, stacked, and the skipped pieces.
+- `test/dash/planner/pad/*.test.ts` (Vitest): every handle, Shift and Alt, the minimum, a
+  turned pad, the readout and cursor, the op a resize writes; the grid snap on whole and half
+  steps, with phase and turn, quarter turns, and Ctrl or `off` skipping it.
 
 ---
 
