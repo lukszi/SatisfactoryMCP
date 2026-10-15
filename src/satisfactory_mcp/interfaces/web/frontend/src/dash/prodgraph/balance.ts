@@ -1,7 +1,7 @@
-/* Each item's flows by where they start and end, and the plan's power, read off the graph so
+/* Each item's flows by where they start and end, and the graph's power, read off the graph so
  * the lists agree with the lines. */
 
-import type { PlanGraphView, Unit } from "./model";
+import type { ProdGraph, Unit } from "./model";
 
 export interface ItemBalance {
   key: string;
@@ -15,7 +15,7 @@ export interface ItemBalance {
 }
 
 /** Power is not an item and stays out. */
-export function itemBalances(view: PlanGraphView): ItemBalance[] {
+export function itemBalances(view: ProdGraph): ItemBalance[] {
   const kind: Record<string, string> = {};
   view.nodes.forEach(function (n) {
     kind[n.id] = n.kind;
@@ -41,7 +41,7 @@ export function itemBalances(view: PlanGraphView): ItemBalance[] {
 }
 
 /** Signed node MW summed: what the plan's machines and sinks draw, and what it generates. */
-export function powerTotals(view: PlanGraphView): { draw: number; made: number } {
+export function powerTotals(view: ProdGraph): { draw: number; made: number } {
   let draw = 0;
   let made = 0;
   view.nodes.forEach(function (n) {

@@ -15,20 +15,17 @@ from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
 from .....domain.factories import candidates, flowgraph
+from .....domain.factories.built_graph import built_graph
 from .....domain.factories.query import build_view
 from .....domain.factories.select import SelectorError, select_machines
+from .....domain.factories.views import BuiltGraphEdge, BuiltGraphNode
+from .....domain.planning.readout.views import PlanGraphBuilding
 from .....domain.world import pin
 from .....domain.world.state import WorldState
 from ...serial import (
-    Flow,
-    FlowEdge,
     MachineSpot,
-    Placed,
     RequestRefused,
     bbox_m,
-    flow_edges_json,
-    flow_group_json,
-    flow_json,
     machine_spots,
     require_world,
     standing_anchors,
@@ -39,75 +36,18 @@ __all__ = ["router"]
 router = APIRouter(prefix="/api")
 
 
-class GraphNode(TypedDict):
-    """``kind`` is ``group`` (machines on one recipe), ``input``, or a terminal: ``storage``,
-    ``export``, ``sink``, ``nowhere``. Counts, ``states`` (machines per health state) and ``bbox_m``
-    are for groups only."""
-
-    id: str
-    kind: str
-    label: str
-    detail: str
-    machines: int
-    clock: float | None
-    makes: list[Flow]
-    running: int
-    blocked: int
-    stopped: int
-    states: dict[str, int]
-    bbox_m: tuple[float, float, float, float] | None
-
-
 class FactoryGraphResponse(TypedDict):
+    """The plan graph's shape for built machines (docs/frontend_vision.md §9.8); ``mw_draw``
+    and ``mw_generated`` are nameplate at the saved clocks."""
+
     title: str
     token: str
     buffers: int
-    nodes: list[GraphNode]
-    edges: list[FlowEdge]
-
-
-TERMINAL_LABELS = {
-    "storage": "to storage",
-    "export": "leaves the {}",
-    "sink": "AWESOME Sink",
-    "nowhere": "goes nowhere",
-}
-
-
-def _plain_node(key: str, kind: str, label: str, detail: str) -> GraphNode:
-    """An input or terminal node: a label and a line, and none of a group's counts."""
-    return {
-        "id": key,
-        "kind": kind,
-        "label": label,
-        "detail": detail,
-        "machines": 0,
-        "clock": None,
-        "makes": [],
-        "running": 0,
-        "blocked": 0,
-        "stopped": 0,
-        "states": {},
-        "bbox_m": None,
-    }
-
-
-def _group_node(
-    flow_graph: flowgraph.FlowGraph, group: flowgraph.Group, placed: Placed
-) -> GraphNode:
-    """One recipe group: its machines' mean clock, what it makes, its states and its box."""
-    clocks = group.clocks
-    return {
-        **flow_group_json(group),
-        "kind": "group",
-        "clock": round(sum(clocks) / len(clocks), 3) if clocks else None,
-        "makes": [
-            flow_json(flow_graph, item, rate)
-            for item, rate in sorted(group.makes.items(), key=lambda kv: -kv[1])
-        ],
-        "states": dict(sorted(group.health.items())),
-        "bbox_m": bbox_m(placed, group.machines),
-    }
+    nodes: list[BuiltGraphNode]
+    edges: list[BuiltGraphEdge]
+    buildings: list[PlanGraphBuilding]
+    mw_draw: float
+    mw_generated: float
 
 
 class PickedMachines(NamedTuple):
@@ -157,7 +97,7 @@ def factory_graph(
     save: str | None = None,
     world: str | None = None,
 ) -> FactoryGraphResponse:
-    """The recipe-group production graph of a named factory, or of a detected candidate.
+    """The production graph of a named factory, or of a detected candidate, by recipe group.
 
     A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
     written since then is refused (409), since the index may now name another cluster.
@@ -165,22 +105,19 @@ def factory_graph(
     st, machines, title = _picked_machines(request, factory, candidate, token, save, world)
     view = build_view(title, machines, st.graph, st.game, st.projection)
     flow_graph = flowgraph.build(st, st.game, view)
-    whole = "factory" if factory else "cluster"
     placed = candidates.positions(st.projection)
-    nodes = [_group_node(flow_graph, group, placed) for group in flow_graph.groups.values()]
-    used = {e.source for e in flow_graph.edges} | {e.target for e in flow_graph.edges}
-    for key in sorted(k for k in used if k.startswith("in:")):
-        nodes.append(_plain_node(key, "input", key[3:], f"enters the {whole}"))
-    for kind, text in TERMINAL_LABELS.items():
-        if kind in used:
-            reached = f"{flow_graph.terminals.get(kind, 0)} reached"
-            nodes.append(_plain_node(kind, kind, text.format(whole), reached))
+    graph = built_graph(
+        flow_graph,
+        view,
+        st.game,
+        "factory" if factory else "cluster",
+        lambda group: bbox_m(placed, group),
+    )
     return {
         "title": title,
         "token": pin.check(st.header, None),
         "buffers": len(flow_graph.buffers),
-        "nodes": nodes,
-        "edges": flow_edges_json(flow_graph),
+        **graph,
     }
 
 

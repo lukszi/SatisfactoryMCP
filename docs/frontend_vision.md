@@ -874,50 +874,60 @@ me that graph for a detected factory".
   `candidate=proposal:N&token=<the detect token>`. A stale token gets 409, since the index may
   now name another cluster. Passing both or neither gets 400, and an unknown factory gets 404.
   It is built by `flowgraph.build`, the same code that classes the Detect items (§9.4).
-- **Nodes.**
-  - Recipe groups, e.g. "8× Assembler · Rotor", with machine count, mean clock, nameplate
-    outputs with destinations, and `states`: machines per `health.assess` state. The older
-    running / blocked / stopped mix stays in the payload (`ACTIONABLE` minus blocked counts
-    as stopped, and everything else, paused included, as running); the page reads `states`.
-  - One input node per item that enters the factory (or the cluster, for a Detect row).
-  - One terminal per kind: to storage, leaves the factory or cluster, AWESOME Sink, goes
-    nowhere.
+- **Shape.** Since 2026-10-15 the reply is the plan graph's wire shape (planner_vision.md
+  §4.2), built by `domain/factories/built_graph.py` from the flow graph, so one drawing serves
+  plans and built factories. `nodes[]`, `edges[]` and `buildings[]` as a plan's, plus
+  `mw_draw` and `mw_generated`, plus `title`, `token` and `buffers` (boxes walked through).
+  No `positions`: see **Layout** below.
 
-  Edges are items with apportioned items/min (§9.4). The payload is grouped by recipe: the
-  110-machine cluster is 16 nodes and 20 edges.
-- **Drawing.** `frontend/src/dash/graph.ts` is hand SVG with no library; the columns and their
-  order are `dash/graph-ranks.ts`, the zoomable frame and the card `dash/graph-frame.ts`.
-  - Inputs sit in the first column. Each group is placed by its longest path from the
-    inputs, with cycles cut where the walk meets them. Terminals sit in the last column.
-    Three barycentre sweeps order each column.
-  - Edges between the same two nodes share one curve and one label. A backward edge dips
-    below the nodes.
-  - Each group's third line counts its machines by state through `dash/machine-states.ts`: fine states
-    read "running", every other state by its own name, so paused is never running. The
-    outline takes the worst tone: `--bad` when a machine needs action, `--blocked` when the
-    worst is blocked, neutral otherwise. Terminals and inputs are neutral; inputs and "goes
-    nowhere" are dashed, the sink dotted and "sunk: not a product" in muted text. A plan has
-    no live state, so its nodes stay neutral.
-  - Columns are as wide as their text, and each gap as wide as its edge labels, wrapped to
-    item and rate on two lines. A label slides along its curve until it clears every node
-    and label; one with no free spot is left to the edge's tooltip.
-  - Hovering shows each group's outputs and where they go. Clicking a group, or Enter on it
-    (groups are in the tab order), flies the map to its machines and outlines them.
-  - The first view fits the whole graph when the text stays between 11 and 14 px; a wider
-    graph opens at 11 px in a frame that scrolls sideways, faded at the right edge while
-    more is off-screen. The frame is as tall as the graph, up to 80% of the window.
-    Ctrl+wheel zooms (a plain wheel scrolls the page), dragging pans and a double-click
-    fits again.
-  - One card for both callers: `graphCardFrame(heading, shown, toggle)` in `dash/graph-frame.ts`, with one
-    **hide graph** toggle per view. The planner's graph tab uses the same card and frame
-    around its own drawing (planner_vision.md §4.2).
+  | Part | Built factory rule |
+  |---|---|
+  | process ids | `p:<recipe>`, `p:x:<extractor>:<resource>`, `p:g:<generator>:<fuel>`: class ids, as a plan's, so a factory that runs a recipe in a plan gets the same id |
+  | process nodes | One per building and recipe. `built` counts every machine, paused too; `machines` is the work of the running ones (sum of clocks); `clock` the mean percent; `mw` signed nameplate at the saved clocks; `utilisation` the last machine's share of that work, as a plan's |
+  | `productivity`, `monitored` | Mean share of the productivity window spent producing, over the `monitored` running machines that keep a monitor; null when none does |
+  | `states`, `bbox_m` | Machines per `health.assess` state; where the group's machines stand, in metres |
+  | `in:<item>` | input: what the factory (or cluster) uses beyond what its own producers that reach it make; `note` "enters the factory" |
+  | `ex:<item>` | export: output that physically reaches a machine outside the set, or any other building a run ends at that is not a fitting, box or sink; `note` "leaves the factory" |
+  | `box:<item>` | export: output that ends in a box or tank nothing drains; `note` "to storage" |
+  | `sink:<item>` | sink: output that reaches an AWESOME Sink |
+  | `left:<item>` | leftover, `note` "backs up": output on a belt to nothing, or output no edge carries (a port with no belt) |
+  | edges | `<source>><target>:<item_id>`, with `item_group` from the plan's table. A terminal edge that carries no surplus (an overflow path) has `per_min` 0 and `text` "Item overflow" |
+  | `rank` | Inputs 0; processes by longest path over the condensation, so a loop shares one column; every end in the last column |
+
+- **What is measured and what is computed.**
+  - *From the save:* which machines, their recipes, clock speeds and paused flags; the
+    belts and pipes the outputs are walked over; the productivity window (`productivity`);
+    the uptime and buffers that `health.assess` turns into `states`.
+  - *Computed:* every rate. A machine's rate is its recipe's nameplate at its saved clock;
+    each item's demand is split over the producers that physically reach it by their share
+    (§9.4), and the rest comes `in:` from outside. MW is nameplate at the clock, not the
+    measured draw. This graph reads no belt contents.
+  - The two are never blended: a group at 40% productivity still shows its nameplate flows,
+    and the ring shows the 40%.
+- **Drawing.** The planner's engine, shared in `frontend/src/dash/prodgraph/`: ELK layout in a
+  worker, our own router for drags, line jumps, item-group colours, building and item
+  pictures, the chain highlight, hover details and the buildings and items lists
+  (planner_vision.md §4.2). What differs for a built factory:
+  - The ring is the measured productivity: full when flat out, an arc for the share, only
+    the track when idle. A group no monitor covers falls back to the plan's ring.
+  - A group with machines that need action carries a badge per state ("2 starved") and its
+    disc takes the worst tone: `--bad`, or `--blocked` when the worst is blocked
+    (`dash/machine-states.ts`).
+  - An end's line says where its rate goes: "45/min · to storage".
+  - Hover and the picked node's card add "producing 75% of the time" and the machines by
+    state. The card has **show on map**, which flies to the group's machines and outlines
+    them.
+  - The lists' power line is the reply's nameplate `mw_draw` and `mw_generated`.
+- **Layout.** Not stored. A factory has no plan log, and its label store holds names and
+  anchors that chat shares, not page layout, so a dragged node keeps its place for the page
+  session only and **reset layout** puts it back. The layout stays steady by ELK's model
+  order, kept per factory for the session, and by the class-id node ids, which do not change
+  between saves while the recipe runs.
 - **Where.** The factory detail view has a **graph** button next to **map**. Each Detect row
-  has a **graph** action, which opens the same card above the list. The component takes any
-  `{nodes, edges}` of that shape. The planner's production graph has its own drawing since
-  2026-10-15 (`dash/planner/graph/`, ELK layout, item-coloured lines, draggable nodes;
-  planner_vision.md §4.2); this one stays the factory view's.
-- **Not yet.** Per-machine drill-down, belt tiers on edges, and a layout that keeps positions
-  steady across saves.
+  has a **graph** action, which opens the same card above the list. One card for all callers:
+  `graphCardFrame(heading, shown, toggle)` in `dash/graph-frame.ts`.
+- **Not yet.** Per-machine drill-down, belt tiers on edges, and places stored across
+  sessions.
 
 ### 9.9 Amend by lasso, and a cluster's machines on the map
 

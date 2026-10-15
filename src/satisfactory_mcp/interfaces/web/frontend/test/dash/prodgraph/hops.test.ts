@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { HOP_R, hopPath, hoppedPaths, hopsOn, hopTargets, verticalsOf } from "../../../../src/dash/planner/graph/hops";
+import { HOP_R, hopPath, hoppedPaths, hopsOn, hopTargets, verticalsOf } from "../../../src/dash/prodgraph/hops";
 
-import type { Pt } from "../../../../src/dash/planner/graph/router";
+import type { Pt } from "../../../src/dash/prodgraph/router";
 
 const arcs = (d: string) => (d.match(/A/g) || []).length;
 const line = (...xy: number[]): Pt[] => {

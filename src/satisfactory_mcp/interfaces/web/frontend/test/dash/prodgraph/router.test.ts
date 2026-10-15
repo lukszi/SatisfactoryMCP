@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { routeOrthogonal, simplify } from "../../../../src/dash/planner/graph/router";
+import { routeOrthogonal, simplify } from "../../../src/dash/prodgraph/router";
 
-import type { Pt, Rect } from "../../../../src/dash/planner/graph/router";
+import type { Pt, Rect } from "../../../src/dash/prodgraph/router";
 
 function crosses(points: Pt[], r: Rect): boolean {
   for (let i = 1; i < points.length; i++) {

@@ -2,7 +2,7 @@
  * process shows its building, an item node its item. One probe per page decides; until it
  * answers, nodes draw the neutral glyph and the answer redraws them. */
 
-import type { PlanNode } from "./model";
+import type { ProdNode } from "./model";
 
 let served: boolean | null = null;
 let build = "";
@@ -10,7 +10,7 @@ let build = "";
 const NO_PICTURE = ["MW", "power"];
 
 /** The descriptor class a node's picture is filed under, or null for none (power). */
-export function iconIdFor(node: Pick<PlanNode, "kind" | "buildingIcon" | "itemId">): string | null {
+export function iconIdFor(node: Pick<ProdNode, "kind" | "buildingIcon" | "itemId">): string | null {
   const item = node.itemId && NO_PICTURE.indexOf(node.itemId) < 0 ? node.itemId : null;
   return node.kind === "process" ? node.buildingIcon || item : item;
 }

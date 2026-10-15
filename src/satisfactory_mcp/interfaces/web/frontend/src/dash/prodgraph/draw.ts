@@ -1,22 +1,23 @@
-/* The plan graph's SVG: round process nodes with a utilisation ring, item boxes, orthogonal
- * edges in their item group's colour with an arrow and a "Item rate" label. Positions come from
- * layout.ts; this module only measures and draws. See docs/planner_vision.md §4.2. */
+/* The production graph's SVG: round process nodes with a utilisation ring, item boxes,
+ * orthogonal edges in their item group's colour with an arrow and a "Item rate" label. Positions
+ * come from layout.ts; this module only measures and draws. See docs/planner_vision.md §4.2. */
 
-import { count, pct } from "../../../kit/format";
+import { count, pct } from "../../kit/format";
 import { hoppedPaths } from "./hops";
 import { iconIdFor, iconUrl } from "./icons";
 import { edgeLabel, ITEM_GROUPS, rateText } from "./model";
-import { ringFor, ringPath } from "./ring";
+import { measuredRing, ringFor, ringPath } from "./ring";
 import { LINE, measure, SMALL_FONT, svg, svgText, TITLE_FONT } from "./text";
 
 import type { EdgeRoute, Layout, LayoutIn, LayoutNodeIn } from "./layout-input";
-import type { PlanEdge, PlanGraphView, PlanNode } from "./model";
+import type { ProdEdge, ProdGraph, ProdNode } from "./model";
 import type { Pt, Rect } from "./router";
 
-/** Per node: the chat and pin tags it carries, and whether it flashes for a fresh chat edit. */
+/** Per node: the tags it carries, whether it flashes, and the outline tone of its worst state. */
 export interface NodeMarks {
   badges: Record<string, string[]>;
   flash: string[];
+  tones?: Record<string, string>;
 }
 
 export interface GraphHandle {
@@ -35,17 +36,17 @@ const LABEL_PAD = 4;
 const GLYPH = "M-9,8 L-9,-1 L-4,2 L-4,-2 L1,1 L1,-8 L6,-8 L6,8 Z";
 const BOLT = "M2,-9 L-6,2 L-1,2 L-3,9 L6,-3 L1,-3 Z";
 
-export function processTitle(node: PlanNode): string {
+export function processTitle(node: ProdNode): string {
   return "×" + count(node.built) + " " + (node.building || "machine");
 }
 
-function processSub(node: PlanNode): string {
+function processSub(node: ProdNode): string {
   const name = node.recipeName || node.label;
   return node.clock === null ? name : name + " · " + pct(node.clock, 1);
 }
 
 /** An item node's rate: the server's, or the sum of what flows through it. */
-export function nodeRate(node: PlanNode, view: PlanGraphView): number | null {
+export function nodeRate(node: ProdNode, view: ProdGraph): number | null {
   if (node.perMin !== null) return node.perMin;
   let sum = 0;
   let any = false;
@@ -59,17 +60,18 @@ export function nodeRate(node: PlanNode, view: PlanGraphView): number | null {
   return any ? sum : null;
 }
 
-export function itemLines(node: PlanNode, view: PlanGraphView): [string, string] {
+export function itemLines(node: ProdNode, view: ProdGraph): [string, string] {
   const name = node.itemName || node.label;
   const rate = nodeRate(node, view);
   const amount = rate === null ? node.detail : rateText(rate, node.unit);
+  if (node.note) return [name, amount + " · " + node.note];
   if (node.kind === "leftover") return [name, "surplus " + amount];
   if (node.kind === "sink") return [name, "sunk " + amount + (node.built ? " · ×" + count(node.built) + " sinks" : "")];
   if (node.kind === "input") return [name, amount + " in"];
   return [name, amount];
 }
 
-export function layoutInput(view: PlanGraphView, order: Record<string, number>): LayoutIn {
+export function layoutInput(view: ProdGraph, order: Record<string, number>): LayoutIn {
   const nodes: LayoutNodeIn[] = view.nodes.map(function (n) {
     if (n.kind === "process") {
       const w = Math.max(measure(processTitle(n), TITLE_FONT), measure(processSub(n), SMALL_FONT)) + 2 * LABEL_PAD;
@@ -101,7 +103,7 @@ function arrowMarkers(defs: SVGDefsElement): void {
   });
 }
 
-function glyphOrIcon(group: SVGGElement, node: PlanNode, redraw: () => void, cx: number, cy: number, size: number): void {
+function glyphOrIcon(group: SVGGElement, node: ProdNode, redraw: () => void, cx: number, cy: number, size: number): void {
   const url = iconUrl(iconIdFor(node), redraw);
   const power = node.itemId === "power" || node.unit === "MW";
   const glyph = svg("path", { d: power ? BOLT : GLYPH, class: "pg-glyph", transform: "translate(" + cx + "," + cy + ") scale(" + size / 20 + ")" });
@@ -116,11 +118,11 @@ function glyphOrIcon(group: SVGGElement, node: PlanNode, redraw: () => void, cx:
   group.appendChild(image);
 }
 
-function drawProcess(group: SVGGElement, node: PlanNode, box: Rect, redraw: () => void): void {
+function drawProcess(group: SVGGElement, node: ProdNode, box: Rect, redraw: () => void): void {
   const c = box.w / 2;
   group.appendChild(svg("circle", { class: "pg-disc", cx: c, cy: c, r: RING_R }));
   group.appendChild(svg("circle", { class: "pg-ring-track", cx: c, cy: c, r: RING_R }));
-  const ring = ringFor(node.machines, node.utilisation);
+  const ring = node.productivity === null ? ringFor(node.machines, node.utilisation) : measuredRing(node.productivity);
   const d = ringPath(c, c, RING_R, ring.fraction);
   if (d) group.appendChild(svg("path", { class: "pg-ring tone-" + ring.tone, d: d }));
   glyphOrIcon(group, node, redraw, c, c, 26);
@@ -129,7 +131,7 @@ function drawProcess(group: SVGGElement, node: PlanNode, box: Rect, redraw: () =
   group.appendChild(svgText("pg-sub", c, top + 2 * LINE - 3, processSub(node)));
 }
 
-function drawItem(group: SVGGElement, node: PlanNode, box: Rect, view: PlanGraphView, redraw: () => void): void {
+function drawItem(group: SVGGElement, node: ProdNode, box: Rect, view: ProdGraph, redraw: () => void): void {
   group.appendChild(svg("rect", { class: "pg-box", width: box.w, height: box.h, rx: 6 }));
   glyphOrIcon(group, node, redraw, 6 + ICON / 2, box.h / 2, ICON);
   const [a, b] = itemLines(node, view);
@@ -160,9 +162,10 @@ function drawBadges(group: SVGGElement, words: string[], centre: number): void {
   });
 }
 
-function drawNode(node: PlanNode, box: Rect, view: PlanGraphView, marks: NodeMarks, redraw: () => void): SVGGElement {
+function drawNode(node: ProdNode, box: Rect, view: ProdGraph, marks: NodeMarks, redraw: () => void): SVGGElement {
   const flash = marks.flash.indexOf(node.id) >= 0 ? " flash" : "";
-  const group = svg("g", { class: "pg-node kind-" + node.kind + flash, transform: "translate(" + box.x + "," + box.y + ")", "data-node": node.id, tabindex: 0, role: "button" });
+  const tone = marks.tones && marks.tones[node.id] ? " state-" + marks.tones[node.id] : "";
+  const group = svg("g", { class: "pg-node kind-" + node.kind + flash + tone, transform: "translate(" + box.x + "," + box.y + ")", "data-node": node.id, tabindex: 0, role: "button" });
   if (node.kind === "process") {
     drawProcess(group, node, box, redraw);
     const badges = marks.badges[node.id];
@@ -175,7 +178,7 @@ function drawNode(node: PlanNode, box: Rect, view: PlanGraphView, marks: NodeMar
   return group;
 }
 
-export function drawLabel(layer: SVGGElement, edge: PlanEdge, place: Rect): SVGGElement {
+export function drawLabel(layer: SVGGElement, edge: ProdEdge, place: Rect): SVGGElement {
   const g = svg("g", { class: "pg-label grp-" + edge.group, "data-edge": edge.id });
   g.appendChild(svg("rect", { x: place.x, y: place.y, width: place.w, height: place.h, rx: 3 }));
   g.appendChild(svgText("pg-label-text", place.x + place.w / 2, place.y + place.h - 4, edgeLabel(edge)));
@@ -183,7 +186,7 @@ export function drawLabel(layer: SVGGElement, edge: PlanEdge, place: Rect): SVGG
   return g;
 }
 
-export function setRoute(handle: GraphHandle, edge: PlanEdge, route: EdgeRoute): void {
+export function setRoute(handle: GraphHandle, edge: ProdEdge, route: EdgeRoute): void {
   const path = handle.edges[edge.id];
   if (path) path.setAttribute("d", pathData(route.points));
   const old = handle.labels[edge.id];
@@ -214,7 +217,7 @@ export function placeNode(handle: GraphHandle, id: string, box: Rect): void {
   if (g) g.setAttribute("transform", "translate(" + box.x + "," + box.y + ")");
 }
 
-export function drawPlanSvg(view: PlanGraphView, layout: Layout, marks: NodeMarks, redraw: () => void): GraphHandle {
+export function drawGraphSvg(view: ProdGraph, layout: Layout, marks: NodeMarks, redraw: () => void): GraphHandle {
   const root = svg("svg", { class: "graph pg", viewBox: "0 0 " + layout.width + " " + layout.height, role: "group", "aria-label": "production graph" });
   const defs = svg("defs", {});
   arrowMarkers(defs);

@@ -1,16 +1,21 @@
 /* The lists beside the graph: buildings with counts and power, every item's balance, and the
- * plan's total power. */
+ * total power. */
 
-import { table } from "../../../kit/dashkit";
-import { make } from "../../../kit/dom";
-import { count, mw } from "../../../kit/format";
-import { itemBalances, powerTotals } from "./balance";
+import { table } from "../../kit/dashkit";
+import { make } from "../../kit/dom";
+import { count, mw } from "../../kit/format";
+import { itemBalances } from "./balance";
 import { rateText } from "./model";
 
-import type { Column, SortState } from "../../../kit/dashkit";
-import type { SolveResponse } from "../../../api/shapes";
+import type { Column, SortState } from "../../kit/dashkit";
 import type { ItemBalance } from "./balance";
-import type { BuildingCount, PlanGraphView, Unit } from "./model";
+import type { BuildingCount, ProdGraph, Unit } from "./model";
+
+export interface PowerTotals {
+  draw: number;
+  made: number;
+  net: number;
+}
 
 const buildingOrder: SortState = { key: "count", desc: true };
 const itemOrder: SortState = { key: "name", desc: false };
@@ -46,18 +51,14 @@ function itemsCard(parent: HTMLElement, rows: ItemBalance[], onSort: () => void)
   parent.appendChild(card);
 }
 
-function powerLine(data: SolveResponse, view: PlanGraphView): string {
-  const own = powerTotals(view);
-  const draw = data.mw_draw ?? own.draw;
-  const made = data.mw_generated ?? own.made;
-  const net = data.mw_net ?? made - draw;
-  return "total power: draws " + mw(draw) + " · generates " + mw(made) + " · net " + mw(net, { signed: true });
+export function powerText(power: PowerTotals): string {
+  return "total power: draws " + mw(power.draw) + " · generates " + mw(power.made) + " · net " + mw(power.net, { signed: true });
 }
 
-export function renderLists(parent: HTMLElement, data: SolveResponse, view: PlanGraphView, onSort: () => void): void {
+export function renderLists(parent: HTMLElement, view: ProdGraph, power: PowerTotals, onSort: () => void): void {
   const box = make("div", "pg-lists");
   buildingsCard(box, view.buildings, onSort);
   itemsCard(box, itemBalances(view), onSort);
   parent.appendChild(box);
-  parent.appendChild(make("p", "dash-note pg-power", powerLine(data, view)));
+  parent.appendChild(make("p", "dash-note pg-power", powerText(power)));
 }

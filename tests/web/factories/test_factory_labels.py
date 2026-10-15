@@ -181,17 +181,21 @@ def test_a_candidate_graph_groups_by_recipe_and_ends_at_terminals(fresh_state_cl
     reply = _graph(fresh_state_client, candidate=row["selector"], token=body["token"])
     assert reply.status_code == 200, reply.text
     graph = reply.json()
-    groups = [n for n in graph["nodes"] if n["kind"] == "group"]
-    assert sum(n["machines"] for n in groups) == row["machines"]
+    groups = [n for n in graph["nodes"] if n["kind"] == "process"]
+    assert sum(n["built"] for n in groups) == row["machines"]
     assert len(groups) < row["machines"], "grouped by recipe, not per machine"
-    ids = {n["id"] for n in graph["nodes"]}
+    ids = [n["id"] for n in graph["nodes"]]
+    assert len(ids) == len(set(ids))
     assert all(e["source"] in ids and e["target"] in ids for e in graph["edges"])
+    assert all(e["id"] == f"{e['source']}>{e['target']}:{e['item_id']}" for e in graph["edges"])
     for n in groups:
-        assert n["running"] + n["blocked"] + n["stopped"] == n["machines"]
-        assert sum(n["states"].values()) == n["machines"]
-        assert n["blocked"] == n["states"].get("blocked", 0)
+        assert n["id"].startswith("p:") and n["rank"] >= 1
+        assert sum(n["states"].values()) == n["built"]
+        assert n["productivity"] is None or 0 <= n["productivity"] <= 1
+        assert n["building_icon"] is None or n["building_icon"].startswith("Desc_")
+    assert sum(b["count"] for b in graph["buildings"]) == row["machines"]
     if row["products"]:
-        assert {"storage", "export"} & ids
+        assert {n["kind"] for n in graph["nodes"]} & {"export", "leftover", "sink"}
 
 
 def test_a_named_factory_draws_the_same_graph_as_its_candidate(fresh_state_client):
@@ -200,9 +204,9 @@ def test_a_named_factory_draws_the_same_graph_as_its_candidate(fresh_state_clien
     named = _graph(fresh_state_client, factory="graph me").json()
     unnamed = _graph(fresh_state_client, candidate=row["selector"], token=body["token"]).json()
     assert named["edges"] == unnamed["edges"]
-    groups = [[n for n in g["nodes"] if n["kind"] == "group"] for g in (named, unnamed)]
+    groups = [[n for n in g["nodes"] if n["kind"] == "process"] for g in (named, unnamed)]
     assert groups[0] == groups[1]
-    inputs = [n["detail"] for n in named["nodes"] if n["kind"] == "input"]
+    inputs = [n["note"] for n in named["nodes"] if n["kind"] == "input"]
     assert all(d == "enters the factory" for d in inputs)
 
 

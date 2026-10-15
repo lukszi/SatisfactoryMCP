@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { chainOf } from "../../../../src/dash/planner/graph/chain";
-import { lastShare } from "../../../../src/dash/planner/graph/model";
-import { ringFor, ringPath } from "../../../../src/dash/planner/graph/ring";
+import { chainOf } from "../../../src/dash/prodgraph/chain";
+import { lastShare } from "../../../src/dash/prodgraph/model";
+import { ringFor, ringPath } from "../../../src/dash/prodgraph/ring";
 
 describe("ringFor", () => {
   it("is a full ring for whole machines", () => {

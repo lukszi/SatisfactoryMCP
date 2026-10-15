@@ -62,6 +62,11 @@ class MachineRow:
     #: Nameplate items/min this machine makes and uses, by item name; empty when paused.
     makes: dict[str, float] = field(default_factory=dict[str, float])
     uses: dict[str, float] = field(default_factory=dict[str, float])
+    recipe_id: str = ""
+    #: Share of its productivity window spent producing; ``None`` without a monitor.
+    share: float | None = None
+    #: Nameplate MW at its clock, signed: negative draws, positive generates; 0 when paused.
+    mw: float = 0.0
 
 
 class NodeRow(NamedTuple):
@@ -215,6 +220,8 @@ def _machine_row(record: BuildableRecord, leaf: str, recipe_name: str = "") -> M
         clock=float(record.get("clock") or 1.0),
         paused=bool(record.get("paused")),
         pos=tuple(record.get("pos") or (0.0, 0.0, 0.0)),
+        recipe_id=record.get("recipe") or "",
+        share=measured_share(record),
     )
 
 
@@ -273,7 +280,8 @@ def _add_manufacturers(
             # Silently contributing 0 MW would understate the whole factory's draw.
             view.issues.append(f"{leaf}: unknown building {record.get('cls')!r}, power not counted")
         else:
-            _charge_power(view, game.recipe_power_mw(recipe, row.clock), record)
+            row.mw = -game.recipe_power_mw(recipe, row.clock)
+            _charge_power(view, -row.mw, record)
 
 
 def _node_resource(
@@ -321,7 +329,8 @@ def _add_extractors(
         building = game.buildings.get(record.get("cls", ""))
         if building is None:
             continue
-        _charge_power(view, building.power_at(row.clock), record)
+        row.mw = -building.power_at(row.clock)
+        _charge_power(view, -row.mw, record)
         share = measured_share(record)
         if resource and purity:
             _count_producer(view, record, share)
@@ -352,7 +361,8 @@ def _add_generators(
         building = game.buildings.get(record.get("cls", ""))
         if building is None:
             continue
-        view.generation_mw += building.power_production_mw * row.clock
+        row.mw = building.power_production_mw * row.clock
+        view.generation_mw += row.mw
         fuel = game.items.get(record.get("fuel") or "")
         if fuel is not None:
             share = measured_share(record)

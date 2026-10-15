@@ -1,16 +1,26 @@
-/* The Factories tab's production graph card: one graph open at a time, of a named factory or
- * of an unnamed cluster. */
+/* The Factories tab's production graph card: one graph open at a time, of a named factory or of
+ * an unnamed cluster, drawn on the shared canvas (dash/prodgraph/) like a plan's. Dragged places
+ * last for the page session only; the layout keeps its order per factory. See
+ * docs/frontend_vision.md §9.8. */
 
 import { get, latest } from "../../api/client";
-import { appendNote, error, loading } from "../../kit/dashkit";
-import { count, flow, pct } from "../../kit/format";
+import { appendNote, button, error, loading } from "../../kit/dashkit";
+import { count } from "../../kit/format";
+import { make } from "../../kit/dom";
 import { showBox } from "../../map/map-highlight";
 import { state } from "../../app/state";
-import { drawGraph, stateLine } from "../graph";
 import { graphCardFrame, GRAPH_HINT } from "../graph-frame";
+import { canvasFrame, newCanvas, settleFrame, useView } from "../prodgraph/canvas";
+import { tipLines } from "../prodgraph/interact";
+import { renderLists } from "../prodgraph/lists";
+import { nodeForPick, readGraph } from "../prodgraph/model";
 import { leaveDashThen, requestRender } from "../actions";
+import { needsAction } from "../machine-states";
 
-import type { FactoryGraphResponse, GraphNode } from "../../api/shapes";
+import type { FactoryGraphResponse } from "../../api/shapes";
+import type { CanvasHost, Positions } from "../prodgraph/canvas";
+import type { NodeMarks } from "../prodgraph/draw";
+import type { Loose, ProdGraph, ProdNode } from "../prodgraph/model";
 
 export type GraphSource = "factory" | "candidate";
 
@@ -23,8 +33,13 @@ export const graphView = {
   busy: false,
   failure: null as unknown,
   data: null as FactoryGraphResponse | null,
-  drawn: null as HTMLElement | null,
+  view: null as ProdGraph | null,
+  picked: "",
 };
+
+const canvas = newCanvas();
+/** Dragged places per graph key, for this page session. */
+const placed: Record<string, Positions> = {};
 
 function graphPath(source: GraphSource, subject: string, token?: string): `/api/factories/graph?${string}` {
   const query =
@@ -42,36 +57,64 @@ function resetGraph(): void {
   graphView.busy = false;
   graphView.failure = null;
   graphView.data = null;
-  graphView.drawn = null;
+  graphView.view = null;
+  graphView.picked = "";
 }
 
 export function resetGraphOnNewEpoch(): void {
   if (graphView.source && graphView.epoch !== state.epoch) resetGraph();
 }
 
-function nodeTip(node: GraphNode): string {
-  const lines = [node.label + (node.detail ? " · " + node.detail : "")];
-  if (node.kind === "group") {
-    lines.push(stateLine(node) + (node.clock !== null ? " · clock " + pct(node.clock) : ""));
-    node.makes.forEach(function (made) {
-      lines.push("makes " + flow(made.name, made.per_min) + (made.to.length ? " → " + made.to.join(", ") : ""));
-    });
-    lines.push("click: show these machines on the map");
-  }
-  if (node.kind === "sink") lines.push("what reaches the AWESOME Sink is sunk, not a product");
-  return lines.join("\n");
+function graphKey(): string {
+  return graphView.source + ":" + graphView.subject;
 }
 
-function showGroupOnMap(node: GraphNode): void {
-  const box = node.bbox_m;
-  if (box) {
-    leaveDashThen(function () {
-      showBox(box);
+/** Each group's machines that need action, as badges, and the worst of them as the outline. */
+export function stateMarks(view: ProdGraph): NodeMarks {
+  const marks: NodeMarks = { badges: {}, flash: [], tones: {} };
+  view.nodes.forEach(function (node) {
+    const words: string[] = [];
+    let tone = "";
+    Object.keys(node.states).forEach(function (s) {
+      if (!needsAction(s)) return;
+      words.push(count(node.states[s]!) + " " + s);
+      if (s !== "blocked") tone = "bad";
+      else if (!tone) tone = "blocked";
     });
-  }
+    if (words.length) marks.badges[node.id] = words;
+    if (tone) marks.tones![node.id] = tone;
+  });
+  return marks;
+}
+
+function host(view: ProdGraph): CanvasHost {
+  const key = graphKey();
+  return {
+    key: key,
+    positions: function () {
+      return placed[key] || {};
+    },
+    marks: function () {
+      return stateMarks(view);
+    },
+    pick: function (node) {
+      graphView.picked = node.id;
+      requestRender();
+    },
+    clear: function () {
+      if (!graphView.picked) return;
+      graphView.picked = "";
+      requestRender();
+    },
+    moved: function (id, at) {
+      (placed[key] = placed[key] || {})[id] = [Math.round(at[0]), Math.round(at[1])];
+    },
+    changed: requestRender,
+  };
 }
 
 export function openGraph(source: GraphSource, subject: string, title: string, token?: string): void {
+  resetGraph();
   const ticket = latest("graph");
   graphView.source = source;
   graphView.subject = subject;
@@ -79,15 +122,12 @@ export function openGraph(source: GraphSource, subject: string, title: string, t
   graphView.token = token || "";
   graphView.epoch = state.epoch;
   graphView.busy = true;
-  graphView.failure = null;
-  graphView.data = null;
-  graphView.drawn = null;
   requestRender();
   get<FactoryGraphResponse>(graphPath(source, subject, token))
     .then(function (data) {
       if (!ticket.fresh()) return;
       graphView.data = data;
-      graphView.drawn = data.nodes.length ? drawGraph(data, nodeTip, showGroupOnMap) : null;
+      graphView.view = readGraph(data as unknown as Loose);
     })
     .catch(function (failure) {
       if (!ticket.fresh()) return;
@@ -105,8 +145,71 @@ export function closeGraph(): void {
   requestRender();
 }
 
+function tools(): HTMLElement {
+  const bar = make("div", "dash-acts pg-tools");
+  const key = graphKey();
+  if (placed[key] && Object.keys(placed[key]!).length) {
+    bar.appendChild(
+      button(
+        "reset layout",
+        function () {
+          delete placed[key];
+          canvas.drawn = "";
+          requestRender();
+        },
+        { title: "put every moved node back where the layout puts it" }
+      )
+    );
+  }
+  return bar;
+}
+
+function nodeCard(parent: HTMLElement, view: ProdGraph, node: ProdNode): void {
+  const card = make("section", "dash-card plan-node");
+  card.setAttribute("aria-label", "picked: " + node.label);
+  const lines = tipLines(view, node);
+  const title = make("div", "dash-title");
+  title.appendChild(make("h2", "dash-h", lines[0]!));
+  card.appendChild(title);
+  lines.slice(1).forEach(function (line) {
+    card.appendChild(make("p", "dash-sub", line));
+  });
+  const box = node.bbox;
+  if (box) {
+    const acts = make("div", "dash-acts");
+    acts.appendChild(
+      button(
+        "show on map",
+        function () {
+          leaveDashThen(function () {
+            showBox(box);
+          });
+        },
+        { title: "fly the map to these machines and outline them" }
+      )
+    );
+    card.appendChild(acts);
+  }
+  parent.appendChild(card);
+}
+
+function drawGraph(card: HTMLElement, data: FactoryGraphResponse, view: ProdGraph): void {
+  useView(canvas, view);
+  card.appendChild(tools());
+  const wrap = canvasFrame(canvas, host(view));
+  card.appendChild(wrap);
+  const lead = "nameplate rates at the saved clocks, split over each item's producers by share; rings are measured productivity" + (data.buffers ? " · " + count(data.buffers) + " boxes walked through" : "");
+  appendNote(card, lead + " · click a node for its chain · drag a node to place it (this session) · " + GRAPH_HINT);
+  const picked = nodeForPick(view, graphView.picked);
+  settleFrame(canvas, wrap, picked ? picked.id : "");
+  if (picked) nodeCard(card, view, picked);
+  const power = { draw: data.mw_draw, made: data.mw_generated, net: data.mw_generated - data.mw_draw };
+  renderLists(card, view, power, requestRender);
+}
+
 export function renderGraphCard(parent: HTMLElement): void {
   const data = graphView.data;
+  const view = graphView.view;
   const card = graphCardFrame("production graph · " + graphView.title, true, graphView.source === "candidate" ? closeGraph : undefined);
   if (graphView.busy) loading(card, "the graph");
   else if (graphView.failure) {
@@ -114,12 +217,10 @@ export function renderGraphCard(parent: HTMLElement): void {
     error(card, "the graph", graphView.failure, function () {
       if (again.source) openGraph(again.source, again.subject, again.title, again.token);
     });
-  } else if (data && !data.nodes.length) {
+  } else if (data && view && !view.nodes.length) {
     appendNote(card, "nothing to draw");
-  } else if (graphView.drawn && data) {
-    card.appendChild(graphView.drawn);
-    const lead = "nameplate rates split over each item's producers by share" + (data.buffers ? " · " + count(data.buffers) + " boxes walked through" : "");
-    appendNote(card, lead + " · " + GRAPH_HINT + ", click a group for the map");
+  } else if (data && view) {
+    drawGraph(card, data, view);
   }
   parent.appendChild(card);
 }
