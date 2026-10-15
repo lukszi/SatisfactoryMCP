@@ -32,6 +32,22 @@ request solves `max_mw`, as before. A recalled plan keeps the objective it was s
 around the two Computers, or, with the item as the only export, refuses outright. The web
 planner's new-plan form asks for the same goal.
 
+**A rate request is on the grid.** The same request, if it also leaves `exports` unset,
+exports the items it asks for and nothing else (`default_exports`), instead of the MW-only
+default. With no MW export the grid column stays open (below), so the plan draws its power
+from the grid rather than building generators for itself, and never invents a power export.
+Its draw is reported -- `grid_import_MW` and the "plan draws from the existing grid" line in
+`plan_factory`, `target_MW` in `diff_vs_save`, whose `fits` and over-headroom warning check it
+against the power headroom (§8.6). A plan is assumed connected to the grid; a factory that must
+power itself says so with `exports=["MW", ...]`. Every tool that picks the default goal picks
+these exports too (`exports_for`, beside `goal_for`): `plan_factory`, `plan_layout`,
+`diff_vs_save`, `commission_plan`, `rank_unlocks` and `explain_byproducts`. The web form
+already sends the item as its only export, so it was on the grid from the start. Explicit
+exports, an explicit objective (a `max_mw` power plant above all) and a power minimum in
+`export_minimums` keep the MW default, and a recalled plan keeps the exports it was stored
+with. Measured on the reference save, two Computers a minute: 22 buildings drawing 82.3 MW
+from the grid, where the MW-only default built 26 that powered themselves.
+
 `min_raw_power` is least raw material with power as a side consideration, solved in three
 stages: least raw (the `min_raw` vector, every resource weight 1); then least power -- the
 consumers' draw, the sinks' share and the `machine_cost_mw` price per machine -- with raw held

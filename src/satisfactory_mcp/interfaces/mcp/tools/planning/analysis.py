@@ -19,7 +19,7 @@ from .....presenters.text.byproducts import render_byproducts
 from .....presenters.text.compare import render_comparison
 from ... import app
 from ...params import AsOf, Limit, Objective, PlanName
-from ._requests import goal_for, recall_request, solve_args
+from ._requests import exports_for, goal_for, recall_request, solve_args
 
 
 @app.tool()
@@ -56,7 +56,7 @@ def explain_byproducts(
         objective=goal_for(objective, None, export_minimums),
         target_item=target_item,
         sources=sources,
-        exports=exports,
+        exports=exports_for(objective, None, exports, export_minimums),
         export_minimums=export_minimums,
         only_free_nodes=only_free_nodes,
         allow_sinks=allow_sinks,
@@ -246,6 +246,7 @@ def rank_unlocks(
     g = app.game()
     st = app.load_world(save, world, as_of)
 
+    exports = exports_for(objective, plan, exports, export_minimums)
     objective = goal_for(objective, plan, export_minimums)
     supplied = solve_args(
         objective=objective,

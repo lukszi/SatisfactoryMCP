@@ -29,6 +29,7 @@ from ...params import (
 )
 from ._plan_log import journal_view
 from ._requests import (
+    exports_for,
     goal_for,
     power_refusal,
     recall_request,
@@ -126,6 +127,7 @@ def plan_layout(
     row_choices, refused = resolve_row_overclock(row_overclock)
     if refused:
         return refused
+    exports = exports_for(objective, plan, exports, export_minimums)
     objective = goal_for(objective, plan, export_minimums)
     tiers = resolve_tiers(g, st, belt_tier, pipe_tier)
     if tiers.errors:

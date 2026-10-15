@@ -46,6 +46,7 @@ __all__ = [
     "ShardStock",
     "build_scenario",
     "chain_scenario",
+    "default_exports",
     "default_objective",
     "select_for",
     "shard_stock",
@@ -151,6 +152,15 @@ def default_objective(export_minimums: Mapping[str, float] | None) -> str:
     some item ("X per minute"), otherwise the most power (docs/planning.md §8.1)."""
     asks_items = any(rate and not is_power(name) for name, rate in (export_minimums or {}).items())
     return "min_raw_power" if asks_items else "max_mw"
+
+
+def default_exports(export_minimums: Mapping[str, float] | None) -> list[str] | None:
+    """The exports of a rate request that names neither goal nor exports: the items it asks
+    for and nothing else, so it draws from the grid (docs/planning.md §8.1). None, the MW-only
+    default, for any other request."""
+    if default_objective(export_minimums) != "min_raw_power":
+        return None
+    return [name for name, rate in (export_minimums or {}).items() if rate]
 
 
 def select_for(game: GameData, state: WorldState, sources: list[str] | None) -> Selection:

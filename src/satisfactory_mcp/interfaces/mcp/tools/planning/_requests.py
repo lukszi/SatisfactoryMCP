@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from .....domain.planning.solver.scenario import default_objective
+from .....domain.planning.solver.scenario import default_exports, default_objective
 from .....domain.planning.stored.plan_args import InvalidOp, PlanArgs
 from .....domain.planning.stored.recall import PLAN_DEFAULTS, expand_plan_pin, recall_plan
 from .....domain.planning.stored.store import Plan
@@ -67,6 +67,22 @@ def goal_for(
     if objective:
         return objective
     return str(PLAN_DEFAULTS["objective"]) if plan else default_objective(export_minimums)
+
+
+def exports_for(
+    objective: str | None,
+    plan: str | None,
+    exports: list[str] | None,
+    export_minimums: Mapping[str, float] | None,
+) -> list[str] | None:
+    """``exports`` as given; a rate request with no goal and no exports is on the grid.
+
+    Called before ``goal_for`` with the caller's own ``objective``; a recalled plan keeps
+    its stored exports.
+    """
+    if exports or objective or plan:
+        return exports
+    return default_exports(export_minimums)
 
 
 def solve_args(**given: object) -> dict[str, object]:

@@ -17,7 +17,7 @@ from .....presenters.text.diff import render_diff
 from ... import app
 from ...params import AsOf, Biomass, Limit, Objective, PlanName
 from ._plan_log import journal_view, world_plan_log
-from ._requests import factory_value, goal_for, recall_request, solve_args
+from ._requests import exports_for, factory_value, goal_for, recall_request, solve_args
 
 
 class StagePosition(NamedTuple):
@@ -137,6 +137,7 @@ def diff_vs_save(
     g = app.game()
     st = app.load_world(save, world, as_of)
 
+    exports = exports_for(objective, plan, exports, export_minimums)
     objective = goal_for(objective, plan, export_minimums)
     supplied = solve_args(
         objective=objective,
@@ -234,6 +235,7 @@ def commission_plan(
     g = app.game()
     st = app.load_world(save, world, as_of)
 
+    exports = exports_for(objective, plan, exports, export_minimums)
     objective = goal_for(objective, plan, export_minimums)
     supplied = solve_args(
         objective=objective,

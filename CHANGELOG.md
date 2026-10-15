@@ -12,6 +12,10 @@ All notable changes to this project are recorded here. The format follows
   the least raw material, then the least power within 1% of it (`min_raw_power`), in chat and
   on the web planner; other requests still default to `max_mw`, and an explicit objective or a
   recalled plan's own is kept.
+- Planner: such a request with no exports either is assumed on the grid: it exports only the
+  items it asks for and draws its power from the grid instead of building generators, and its
+  draw is reported and checked against the power headroom in `diff_vs_save`. Explicit exports,
+  an explicit objective (a `max_mw` power plant) and stored plans are unchanged.
 - Planner: sunk byproducts are listed with their rate, AWESOME Sinks and MW in the plan,
   `explain_byproducts` and the web plan, and the sinks count in the plan's buildings and exact
   power. Fluids still cannot be sunk, and the infeasibility hint no longer offers sinks for
