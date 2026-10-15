@@ -37,6 +37,11 @@ All notable changes to this project are recorded here. The format follows
   as a thin dark line, was taken for a fall under water. A landing pool now stays in its own
   basin instead of laying a straight bar over the lake below, its sides along a wide lip
   wander, the lip itself no longer draws as a hard line, and the 277 m wide fall is fainter.
+- Map renders: the lake above the wide waterfall near the swamp now runs on to its lip,
+  where it ended on a straight line 48 m from the swamp, and the channel below the fall is
+  drawn as the shallow swamp water it is, not as straight-sided deep blocks. Water standing
+  well above the sea near the coast keeps its own level; two more places drew such water at
+  the sea's level, a canyon lake at (1672, -2190) and a pond under an arch at (-778, -1047).
 
 ## [0.2.0] - 2026-10-14
 

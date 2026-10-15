@@ -31,6 +31,7 @@ from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
+    "ABOVE_SEA_M",
     "HOLLOW_DEPTH_M",
     "MESH_FULL_LIFT_M",
     "MESH_REACH_M",
@@ -65,6 +66,10 @@ OCEAN_LEVEL_BAND_M = 0.5
 
 #: How far past measured ocean water the crossing rule reaches, metres.
 OCEAN_REACH_M = 48.0
+
+#: Water standing more than this above the sea within its reach is a lake's or a fall's
+#: pool, drawn at its own level, not by the sea's crossing, metres.
+ABOVE_SEA_M = 8.0
 
 #: Dry ground this far under the sea marks a hollow the sea does not fill, metres.
 HOLLOW_DEPTH_M = 5.0
@@ -101,8 +106,12 @@ MeshLift = Callable[[FloatGrid, FloatGrid, U8Grid], FloatGrid]
 # ----------------------------------------------------------------------- the shore
 
 
-def ocean_reach(field: hf.Field) -> tuple[U8Grid, JsonObject]:
-    """1 where the crossing rule applies: within the reach of measured ocean water."""
+def ocean_reach(
+    field: hf.Field, drawn: tuple[I16Grid, U8Grid] | None = None
+) -> tuple[U8Grid, JsonObject]:
+    """1 where the crossing rule applies: within the reach of the field's measured ocean
+    water, but not over water ``drawn`` (the run's re-levelled ``(level_dm, grades)``, the
+    field's own when None) more than ``ABOVE_SEA_M`` above the sea."""
     water = field.water_raster()
     grades = field.water_quality_raster()
     if water is None or grades is None:
@@ -117,12 +126,20 @@ def ocean_reach(field: hf.Field) -> tuple[U8Grid, JsonObject]:
     distance = ndimage.distance_transform_edt(~ocean) * spacing_m
     # Level-only water stands over the fill, whose raster holds the surface, not a bed.
     near = (distance <= OCEAN_REACH_M) & (grades != hf.WATER_LEVEL_ONLY)
+    high, held = drawn or (water, grades)
+    above = (
+        near
+        & (held != hf.WATER_DRY)
+        & (high != hf.NODATA)
+        & (high > np.int16(round((OCEAN_LEVEL_M + ABOVE_SEA_M) * hf.DM_PER_M)))
+    )
     hollows = dry_hollows(field.height_dm, water, grades, near, ocean)
-    reach = (near & ~hollows).astype(np.uint8)
+    reach = (near & ~hollows & ~above).astype(np.uint8)
     return reach, {
         "ocean_texels": int(ocean.sum()),
         "reach_texels": int(reach.sum()),
         "hollow_texels": int(hollows.sum()),
+        "above_sea_texels": int(above.sum()),
         "level_m": OCEAN_LEVEL_M,
         "level_band_m": OCEAN_LEVEL_BAND_M,
         "reach_m": OCEAN_REACH_M,

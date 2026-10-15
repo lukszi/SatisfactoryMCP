@@ -207,7 +207,7 @@ def test_the_water_a_render_draws_carries_the_wetted_holes():
     field = _field(water, grades, height)
     reach = (np.zeros(grades.shape, np.uint8), {"ocean_texels": 0, "reach_texels": 0})
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("mapgen.palette.water.surface.ocean_reach", lambda _field: reach)
+        mp.setattr("mapgen.palette.water.surface.ocean_reach", lambda _field, _drawn=None: reach)
         got = water_surfaces(field, False)
     assert (got.grades[parts["middle"]] == hf.WATER_MEASURED).all()
     assert (got.level[parts["middle"]] == 110).all()
@@ -238,7 +238,7 @@ def test_the_rivers_reconciled_water_is_what_gets_relevelled():
     field = _field(water, grades, height)
     reach = (np.zeros((ROWS, COLS), np.uint8), {"ocean_texels": 0, "reach_texels": 0})
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("mapgen.palette.water.surface.ocean_reach", lambda _field: reach)
+        mp.setattr("mapgen.palette.water.surface.ocean_reach", lambda _field, _drawn=None: reach)
         got = water_surfaces(field, False, rivers)
     assert got.grades is kept
     assert (got.level[:100] == hf.NODATA).all(), "dropped river water stays dropped"
@@ -314,3 +314,19 @@ def test_a_pit_in_a_lake_whose_level_is_right_is_left_alone():
     out, meta = perched_levels(_field(water, grades, height))
     assert np.array_equal(out, water)
     assert meta["bodies"] == 0 and meta["bodies_cut_at_a_drop"] == 1
+
+
+def test_a_box_piece_over_a_basin_with_no_lip_of_its_own_takes_the_water_it_joins():
+    """The wide fall's channel at (1850, 313): a dry rib parts the box's piece over the basin
+    from the lake, so no drop cuts it, and a rock 10 m under the box stands on its shore.
+    Judged whole, the membrane climbed that rock and drew 70 m of water in the channel."""
+    water, grades, height = _fall()
+    rib = (BASIN[0], slice(100, 104))
+    water[rib], grades[rib], height[rib] = hf.NODATA, hf.WATER_DRY, 1050
+    rock = (slice(120, 130), BASIN[1])
+    height[rock] = BOX_DM - round(10 * hf.DM_PER_M)
+    out, meta = perched_levels(_field(water, grades, height))
+    piece = (BASIN[0], slice(104, 140))
+    assert (out[piece] == SWAMP_DM).all(), "the piece stands at the swamp's level"
+    assert (out[LAKE] == BOX_DM).all()
+    assert any(body["below_a_drop"] for body in meta["largest"])
