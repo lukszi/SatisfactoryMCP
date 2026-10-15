@@ -26,6 +26,7 @@ from mapgen.palette.water import rivers as rivers_module
 from mapgen.palette.water.rivers import RIVER_HANDOVER_M, RIVER_TIE_M, RiverWater, river_terms
 from mapgen.palette.water.shore import blend_water, optical_depth, water_composite
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M
+from mapgen.terrain.sample import taps_linear
 from mapgen.tiles.recipes import RECIPE
 from satisfactory_mcp.core.gameassets import versions
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -172,10 +173,10 @@ def test_a_joint_between_two_sections_is_one_surface():
     )
     step = _river(upper, lower)
     rivers = RiverWater({"rivers": [step], "boxes": []}, _field(ground, water, grades))
-    level = rivers.level_dm[60, 60:100].astype(int)
-    assert np.abs(np.diff(level)).max() <= 3, "no step left at the joint"
+    level = rivers.level_m[60, 60:100]
+    assert np.abs(np.diff(level)).max() <= 0.3, "no step left at the joint"
     assert (rivers.presence[60, 70:90] > 0).all(), "the river is drawn across the joint"
-    assert level[0] == 30 and level[-1] == 20
+    assert level[0] == pytest.approx(3.0) and level[-1] == pytest.approx(2.0)
     assert rivers.stats["joint_texels_feathered"] > 0
 
 
@@ -259,7 +260,7 @@ def test_the_river_boxes_water_is_taken_back_and_lakes_are_relevelled():
     cached = {"rivers": [_river(_section(10, 150, 60, 2.0, 2.0, 8.0, 8.0))], "boxes": boxes}
     rivers = RiverWater(cached, _field(ground, water, grades))
     assert rivers.grades[60, 80] == hf.WATER_DRY, "the box's water in the channel is gone"
-    assert rivers.presence[60, 80] == 255 and rivers.level_dm[60, 80] == 20
+    assert rivers.presence[60, 80] == 255 and rivers.level_m[60, 80] == pytest.approx(2.0)
     assert rivers.water_dm[100, 120] == 25 and rivers.grades[100, 120] == hf.WATER_MEASURED
     assert rivers.water_dm[10, 10] == 25, "water no river box levelled is untouched"
     assert rivers.stats["rivers"] == 1 and rivers.stats["dropped_km2"] > 0
@@ -275,6 +276,38 @@ def test_a_volume_inside_a_river_s_box_is_the_river_s_own():
     named = river_volumes([river, own, lake, high])
     assert [name for name, _box in named] == [RIVER_CLASS, RIVER_CLASS, *(["FGWaterVolume"] * 2)]
     assert named[1][1] == own[1]
+
+
+def test_a_volume_reaching_past_its_river_s_box_is_still_the_river_s_own():
+    """A classless volume 80% inside a river's box, with no lake's surface box at its top, is
+    the river's own: read as a lake's, it stood a straight-edged block of field water a metre
+    over the ribbon. With a lake's box at its top it stays the lake's."""
+    river = (RIVER_CLASS, (0.0, 0.0, -500.0, 10000.0, 4000.0, 600.0))
+    wide = ("FGWaterVolume", (0.0, -1000.0, -400.0, 10000.0, 4000.0, 500.0))
+    named = river_volumes([river, wide])
+    assert [name for name, _box in named] == [RIVER_CLASS, RIVER_CLASS]
+    lake = ("BP_Water_C", (0.0, -1000.0, 500.0, 10000.0, 1000.0, 500.0))
+    assert river_volumes([river, wide, lake])[1][0] == "FGWaterVolume"
+    loose = ("FGWaterVolume", (0.0, -4000.0, -400.0, 10000.0, 4000.0, 500.0))
+    assert river_volumes([river, loose])[1][0] == "FGWaterVolume", "half outside: not its own"
+
+
+def test_a_gently_sloping_river_runs_on_without_steps():
+    """A ribbon falling 0.4 m over 140 m is drawn at its own level everywhere: in decimetres
+    it stepped every 35 m, and each step drew a straight line across the river."""
+    ground = np.zeros(SHAPE, np.float32)
+    water = np.full(SHAPE, np.nan, np.float32)
+    grades = np.full(SHAPE, hf.WATER_DRY, np.uint8)
+    cached = {"rivers": [_river(_section(10, 150, 60, 2.0, 1.6, 8.0, 8.0))], "boxes": []}
+    rivers = RiverWater(cached, _field(ground, water, grades))
+    level = rivers.level_m[60, 20:140]
+    assert (np.diff(level) < 0).all(), "no flat runs between steps"
+    cols = np.arange(20.0, 140.0, 0.25)
+    linear = (taps_linear(np.full(4, 60.0), SHAPE[0]), taps_linear(cols, SHAPE[1]))
+    z = np.zeros((4, len(cols)), np.float32)
+    depth = rivers.over(_flat_terms(z.shape), z, linear, 0.25)["depth_m"][1]
+    assert np.abs(np.diff(depth)).max() < 0.002, "the depth runs on along the flow"
+    assert depth[0] == pytest.approx(1.97, abs=0.01) and depth[-1] == pytest.approx(1.63, abs=0.01)
 
 
 def test_water_a_river_s_own_volume_levels_is_taken_back_like_its_box():

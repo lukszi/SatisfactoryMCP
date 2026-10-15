@@ -151,8 +151,9 @@ class RiverWater:
         self.yields: U8Grid = np.round(_other_yields(other, on_plane & speaks) * 255).astype(
             np.uint8
         )
-        self.level_dm: I16Grid = np.where(zone, np.round(drawn * hf.DM_PER_M), hf.NODATA).astype(
-            np.int16
+        # Metres: in decimetres a gently sloping ribbon stepped, a line across it at each step.
+        self.level_m: F32Grid = np.where(zone & np.isfinite(drawn), drawn, hf.NODATA).astype(
+            np.float32
         )
         self.stats["joint_texels_feathered"] = joints
         self.stats["jag_texels_smoothed"] = jags
@@ -167,8 +168,8 @@ class RiverWater:
         self, terms: WaterTerms, z_m: FloatGrid, linear: BandTaps, spacing_m: float
     ) -> WaterTerms:
         """The band's water with the ribbons laid over it."""
-        level_dm, missing = sample_surface(self.level_dm, linear, linear, hf.NODATA)
-        river_m = np.where(missing, np.nan, level_dm / np.float32(hf.DM_PER_M))
+        level_m, missing = sample_surface(self.level_m, linear, linear, hf.NODATA)
+        river_m = np.where(missing, np.nan, level_m)
         presence = sample_plain(self.presence, linear) / np.float32(255.0)
         yields = sample_plain(self.yields, linear) / np.float32(255.0)
         return river_terms(terms, z_m, river_m, presence, spacing_m, yields)

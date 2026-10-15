@@ -942,6 +942,16 @@ changed.
   river box's water standing over the ribbon in a straight-edged block, as at the junction at
   (-1585, -480) and below the fall at (-1891, 320). A lake's own visible box, where it stands
   at the volume's top, still holds that lake's level.
+- **Volumes reaching past the river's box** (2026-10-15). Five river volumes lie only 81 to
+  89% inside their river's box: the designers drew them a few metres wider. With no visible
+  surface box within 0.5 m of their top (`LAKE_TOP_M`), 75% inside is enough
+  (`RIVER_VOLUME_INSIDE_BARE`; 61 of the 270). Read as a lake's, each stood field water up to
+  6 m over the ribbon, cut by the volume's straight edges and shaded along the 12 m give-way
+  ramp: the darker block with straight ends in the desert canyon pool at (1740, -2220) and
+  the bands in the short river between two falls at (-950, 1590). The others are
+  at (428, -1000), (-1478, -779) and (-1296, -313); 23 k texels move. The nine volumes from
+  41 to 88% inside that do have a lake box at their top (the lake at 131.1 m around (500,
+  -450) among them) stay the lake's, and the next share without one is 41%.
 - **A wet texel came from a river box** when its level equals that box's top within 5 cm and
   no other surface box stands as high: 0.358 km², 0.372 km² with the volumes.
 - **Under another surface box** (a lake the river AABB overhangs), the texel takes that box's
@@ -966,6 +976,14 @@ Per band, through `RiverWater.over`.
   crosses the drawn surface: the ocean's one-pixel crossing rule (`shore_terms`) with a level
   per pixel instead of -17 m. The banks are where the game's plane meets the terrain, not
   where a mask ends.
+- **The level plane is in metres** (`RiverWater.level_m`, float32, 2026-10-15). Until then it
+  was kept in decimetres like the field's water. A ribbon falling a few decimetres over a
+  hundred metres then stood in flat runs with a 0.1 m step between them, tens of metres apart,
+  each a straight line across the river along the plane's contour. A 0.1 m step is a third
+  of a shallow river's depth, and where the river meets a lake it moves the hand-over share
+  by a tenth, so the lines showed in every river: the stripes across the mouth at (-1130,
+  1630), and lines across the canyon pools at (1740, -2220). Real steps are untouched: a fall
+  still leaves its step of more than 2 m, at the lip.
 - **Presence fades** to 0 over 1.5 m inside the plane's edge, over 1.5 m before the 8 m depth
   cut, where the plane hangs 1 to 2 m over other water (`RIVER_OVER_WATER_M`), and on
   texels beside a jump of more than 0.5 m between neighbours (`RIVER_STEP_M`). Such a jump is
@@ -1011,6 +1029,7 @@ Per band, through `RiverWater.over`.
 
 ### Cost
 
+- `RiverWater` keeps its level plane at 225 MB (float32), 112 MB more than in decimetres.
 - `RiverWater` takes 8 to 11 s per run and about 1 GB of temporary 1 m planes; the joints'
   feather and the two distance planes over other water add about 4 s.
 - Drawing a crop costs 5 to 20% more than recipe 6.

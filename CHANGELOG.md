@@ -19,6 +19,11 @@ All notable changes to this project are recorded here. The format follows
 - Map renders: the Satellite map's plain shells are grey again, as the game draws them, not
   tan. The tan, on the shell plates of the northern lagoon islands among others, was the
   ground under the shells, read for their colour. The style's version goes up.
+- Map renders: rivers no longer show straight lines across the water where the shade jumps.
+  The river's surface height was rounded to 10 cm, so a gently sloping river changed depth
+  in steps; and five river stretches, among them a desert canyon pool and a short river
+  meeting a lake, were drawn as a straight-edged block of lake water over the river. Shade
+  now runs on along the flow and changes only at waterfalls. The style's version goes up.
 
 ## [0.2.0] - 2026-10-14
 
