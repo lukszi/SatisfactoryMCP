@@ -152,6 +152,11 @@ class DiffReport:
     built_at: BuiltAt | None = None
 
 
+def slices_for(deficit_mw: float, headroom_mw: float) -> int:
+    """Proportional slices a build dipping ``deficit_mw`` needs to stay inside the headroom."""
+    return math.ceil(deficit_mw / headroom_mw) if deficit_mw > 0 and headroom_mw > 0 else 1
+
+
 def solution_of(prepared: PreparedPlan) -> Solution:
     """The solution of a plan whose ``failure`` the caller has ruled out."""
     assert prepared.solution is not None, "the plan did not solve"
@@ -723,13 +728,15 @@ def build_diff(
     request: PlanRequest,
     scope: set[str] | None = None,
     biomass: bool = False,
+    site_cm: tuple[float, float] | None = None,
 ) -> DiffReport:
     """Match a solved plan against the save and derive the actions to reach it.
 
-    ``scope`` limits what counts as already built to one factory's machines.
+    ``scope`` limits what counts as already built to one factory's machines. ``site_cm`` is
+    where a sited plan stands: the anchor while nothing of it is tapped yet.
     """
     index = _index_save(state, request, scope)
-    anchor = _anchor(index)
+    anchor = _anchor(index) or site_cm
     jobs = group_processes(sol)
 
     # Build order is chain depth over the plan's own item graph, condensed so that the
@@ -760,7 +767,7 @@ def build_diff(
         running += sum(r.delta_mw for r in rows if r.stage == stage)
         trough = min(trough, running)
     deficit = -trough
-    slices = math.ceil(deficit / headroom) if deficit > 0 and headroom > 0 else 1
+    slices = slices_for(deficit, headroom)
 
     notes = list(request.selection.errors)
     # Only the ones that could actually be occupying a table node. Water pumps make up

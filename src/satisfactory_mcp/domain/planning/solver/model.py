@@ -210,8 +210,25 @@ class Solution:
     @classmethod
     def infeasible(cls, reason: str) -> Solution:
         """A solve that found no plan, with ``reason`` as its one warning."""
-        return cls("infeasible", 0.0, 0.0, [], {}, {}, {}, 0.0, warnings=[reason])
+        return cls("infeasible", 0.0, 0.0, [], {}, {}, {}, 0.0, warnings=[reason] if reason else [])
+
+    @classmethod
+    def refused(cls, reason: str) -> Solution:
+        """No solve ran: the arguments cannot be optimised as given. ``reason`` says the fix."""
+        return cls("refused", 0.0, 0.0, [], {}, {}, {}, 0.0, warnings=[reason])
 
     @property
     def ok(self) -> bool:
         return self.status == "optimal"
+
+    def drawn_raw(self) -> dict[str, float]:
+        """What the plan takes from the world per minute: extractor output plus raw
+        drawn from outside (``supplied=``), largest first."""
+        raw = dict(self.raw_used)
+        for row in self.processes:
+            if row["kind"] != "extractor":
+                continue
+            for item, rate in row["rates"].items():
+                if rate > 1e-6 and item != MW:
+                    raw[item] = raw.get(item, 0.0) + rate
+        return dict(sorted(raw.items(), key=lambda kv: -kv[1]))

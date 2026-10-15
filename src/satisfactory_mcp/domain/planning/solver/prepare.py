@@ -15,7 +15,7 @@ from typing import cast
 
 from ....core.gamedata.model import GameData
 from ...world.state import WorldState
-from ..analysis import supply
+from ..analysis import binding, supply
 from .model import Solution
 from .optimize import free_lunch_audit, solve
 from .scenario import PlanKwargs, PlanRequest, build_scenario
@@ -102,10 +102,9 @@ def prepare(
     solution = solve(request.scenario)
     if not solution.ok:
         notes = list(solution.warnings)
-        if diagnose:
-            notes += supply.describe(
-                supply.diagnose(request, game, state.unlocked_building_ids), game
-            )
+        # A refused objective is the whole answer: no solve ran, so no limit can be blamed.
+        if diagnose and solution.status != "refused":
+            notes += binding.explain(request, game, state.unlocked_building_ids).lines
         if request.required:
             names = ", ".join(game.recipes[rid].name for rid in request.required)
             notes.append(f"required in force: {names} -- removing one may make this feasible")

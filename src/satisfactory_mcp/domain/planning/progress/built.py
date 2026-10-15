@@ -515,9 +515,18 @@ def _detect_at_site(
     out = BuiltAt(mode="auto", area=area, confidence="nothing", scope=set())
 
     seeds = _seed_machines(placed, want, area)
-    plan_nodes = {
-        instance_leaf(row["instance"]) for row in request.node_rows if row.get("kind") == "node"
-    }
+    # Only nodes of a resource the plan mines are its own, and a whole-map plan names no node:
+    # an extractor anywhere in the world says nothing about where it stands.
+    mined = {job.resource for job in jobs if job.kind == "extractor"}
+    plan_nodes: set[str] = (
+        set[str]()
+        if request.selection.whole_map
+        else {
+            instance_leaf(row["instance"])
+            for row in request.node_rows
+            if row.get("kind") == "node" and row.get("resource") in mined
+        }
+    )
     on_nodes = [r for r in placed.values() if r.group == "extractors" and r.node in plan_nodes]
     if not seeds and not on_nodes:
         return out

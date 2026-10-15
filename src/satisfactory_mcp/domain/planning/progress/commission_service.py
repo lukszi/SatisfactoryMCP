@@ -42,8 +42,8 @@ class CommissionReport:
     #: The headroom the sequence was actually built against, and where it came from.
     headroom_mw: float = 0.0
     headroom_source: str = ""
-    #: Built extractors already feeding running generators. Only computed for a
-    #: sequence that exists, since it is advice about following one.
+    #: The plan's own built extractors already feeding running generators. Only computed
+    #: for a sequence that exists, since it is advice about following one.
     live_feeders: list[tuple[str, float]] = field(default_factory=list[tuple[str, float]])
     #: The same waves matched against the save, only for a stored plan.
     tracking: Tracking | None = None
@@ -82,17 +82,19 @@ def build_commission_report(
     )
 
     report.startup = startup = commission(prepared, g, report.headroom_mw, report.headroom_source)
+    if not solution_of(prepared).processes:
+        return report
+    try:
+        diff, _ = diff_in_scope(g, st, prepared, None, biomass, stored=stored)
+    except SelectorError:
+        return report
     if startup.ok:
-        # What the sequence is standing on. A wave that repipes an extractor already
-        # feeding live generators takes that power down mid-startup, which is exactly the
-        # moment the plan has least headroom to spare. Read from the save's own
-        # connections rather than assumed, and only PROVEN-running generators are charged.
-        report.live_feeders = live_feeders(g, st)
-    if stored is not None and solution_of(prepared).processes:
-        try:
-            diff, _ = diff_in_scope(g, st, prepared, None, biomass, stored=stored)
-        except SelectorError:
-            return report
+        # A wave that repipes an extractor already feeding live generators takes that power
+        # down mid-startup. Only the plan's own matched extractors can be repiped by it, and
+        # only PROVEN-running generators are charged.
+        own = {leaf for row in diff.rows for leaf in row.have_instances}
+        report.live_feeders = live_feeders(g, st, only=own)
+    if stored is not None:
         report.built_at = diff.built_at
         report.tracking = track(prepared, startup, diff, g, st, plan_name=stored.name)
     return report

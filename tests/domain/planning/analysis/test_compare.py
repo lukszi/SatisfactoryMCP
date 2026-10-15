@@ -292,6 +292,17 @@ def test_explain_byproducts_says_when_the_focus_item_is_unknown(state, use_world
     assert "unknown item 'Unobtanium'" in srv.explain_byproducts(item="Unobtanium")
 
 
+def test_explain_byproducts_takes_only_free_nodes_like_plan_factory(state, use_world):
+    """It raised TypeError: the domain took the flag, the tool did not pass it on."""
+    from satisfactory_mcp import server as srv
+
+    use_world(state)
+    out = srv.explain_byproducts(
+        objective="min_machines", exports=["Plastic"], only_free_nodes=True
+    )
+    assert not out.startswith("! ")
+
+
 # ------------------------------------------------------- context budget
 
 

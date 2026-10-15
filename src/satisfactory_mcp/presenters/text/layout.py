@@ -2,8 +2,8 @@
 
 Six tables share one header and one pile of caveats, because they are six views of the SAME
 schematic -- change ``show`` and the plan underneath does not move. The caveats are what
-stop a schematic being read as a blueprint: there is no terrain data here, so routing,
-lengths and world coordinates are absent.
+stop a schematic being read as a blueprint: the layout does not place blocks on the
+terrain, so routing, lengths and world coordinates are absent.
 """
 
 from __future__ import annotations
@@ -250,7 +250,7 @@ def _trunks_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, li
     notes = list(trunk_plan.notes)
     notes.append(
         f"trunks converge on {trunk_plan.destination_label}. `run` is the straight-line chain "
-        "node to node, so it is a LOWER BOUND on pipe -- no terrain data exists here. "
+        "node to node, so it is a LOWER BOUND on pipe -- it does not follow the ground. "
         "`head` is the climb from the far end inward: UP needs pumping, down does not. "
         f"Pump counts assume {pump_name} at {pump_head:.0f}m head (mDesignPressure) and "
         "are a LOWER bound: pipe friction and the head a full pipe holds on its own are "
@@ -412,8 +412,8 @@ def _schematic_notes(g: GameData, st: WorldState, report: LayoutReport) -> list[
             "nothing here prices the ground between them"
         )
     notes.append(
-        "schematic only: no world coordinates or belt routing -- there is no terrain "
-        "data available, so those would be invented"
+        "schematic only: no world coordinates or belt routing -- the layout does not place "
+        "blocks on the terrain; site_plan places the pad on the ground and reads its height"
     )
     needed = {
         b.building_id for b in layout.blocks if b.building_id and st.built(b.building_id) == 0

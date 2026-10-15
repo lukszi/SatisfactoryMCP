@@ -2,7 +2,7 @@
 
 A plan counts extractor lines; this says which nodes share each one. Nodes join a pipe along a
 nearest-neighbour chain from the far end inward, cut where the next would overflow, and runs
-and pump counts are straight-line lower bounds since there is no terrain (docs/planning.md §8.5c).
+and pump counts are straight-line lower bounds: runs do not follow the ground (docs/planning.md §8.5c).
 """
 
 from __future__ import annotations

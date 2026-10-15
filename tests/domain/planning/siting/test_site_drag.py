@@ -303,8 +303,19 @@ def test_without_a_terrain_field_the_card_says_so_and_z_is_pending(world):
     assert out["z_m"] == 42.0 and out["z_note"] == ""
 
 
+#: The wire line that stands at ``BUILT_SPOT``. The plan must be one built there: a whole-map
+#: plan's miners elsewhere no longer make a factory its own.
+WIRE_ARGS = {
+    "objective": "min_machines",
+    "exports": ["Wire"],
+    "export_minimums": {"Wire": 60},
+    "only_recipes": ["Wire", "Copper Ingot"],
+}
+
+
 def test_fit_to_built_offers_a_pad_that_covers_the_candidate(world):
-    sess = site_preview.open_session(world.game, world, _plan(world, at=BUILT_SPOT))
+    plan = _plan(world, at=BUILT_SPOT, args=WIRE_ARGS)
+    sess = site_preview.open_session(world.game, world, plan)
     out = site_preview.preview(world.game, world, sess, _pad(*BUILT_SPOT, side=40.0))
     assert out["fits"], "a 40 m pad does not cover the factory it stands in"
     fit = out["fits"][0]

@@ -398,7 +398,11 @@ def _plan_summary(
                 ]
                 + [(z["name"], "0") for z in report.zero_exports if z["item"] not in sol.exports]
             ),
-            "raw: " + render.kv([(g.item_name(k), render.num(v)) for k, v in sol.raw_used.items()]),
+            "raw: "
+            + (
+                render.kv([(g.item_name(k), render.num(v)) for k, v in sol.drawn_raw().items()])
+                or "nothing"
+            ),
             "sunk: "
             + (
                 render.kv([(g.item_name(k), render.num(v)) for k, v in sol.sunk.items()])
@@ -425,16 +429,7 @@ def render_plan_factory(
 ) -> str:
     prepared = report.prepared
     if prepared.failure:
-        hint = (
-            "with equality balances, infeasible usually means a byproduct has no "
-            "consumer and no legal sink -- try adding it to exports"
-        )
-        notes = (
-            [*prepared.failure.notes, hint]
-            if "INFEASIBLE" in prepared.failure.headline
-            else prepared.failure.notes
-        )
-        return render.envelope(f"# {prepared.failure.headline}", "", notes)
+        return render.envelope(f"# {prepared.failure.headline}", "", prepared.failure.notes)
     req, sol, bill = prepared.request, solution_of(prepared), _bill(report)
 
     notes = [

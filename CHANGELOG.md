@@ -8,6 +8,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- Planner: an infeasible plan names the limit it runs into (short raw, a byproduct with no
+  outlet, power, a locked recipe) instead of the same Nitrogen Gas and byproduct hints on
+  every failure; `max_mw` without MW in exports says only that.
+- Planner: the `raw:` line lists what the plan extracts per minute; `diff_vs_save` prints one
+  headroom, the one its stages use, and warns when the plan does not fit in it.
+- Planner: `commission_plan`'s cutover risk lists only the plan's own extractors; a whole-map
+  plan is no longer reported as built at an unrelated extractor cluster; `explain_byproducts`
+  takes `only_free_nodes`; `plan_layout` no longer says there is no terrain data.
 - Map renders: the Satellite map's hot-spring terraces wear their material's texture instead
   of flat cream, and the pools on their tops are drawn as the hot-spring water. The render-only
   mesh cache is rebuilt once.

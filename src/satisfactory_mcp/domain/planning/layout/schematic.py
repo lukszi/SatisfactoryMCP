@@ -1,6 +1,6 @@
 """Turn a solved plan into a buildable schematic: blocks, buses and floors.
 
-A schematic, never a blueprint: there is no terrain here, so no coordinates. Blocks come from
+A schematic, never a blueprint: blocks are not placed on the terrain, so no coordinates. Blocks come from
 line counts, connections are one bus per item, and floors follow chain depth on the item
 graph's condensation, or minimise fluid lift on request (docs/planning.md §8.5, §8.5m).
 """

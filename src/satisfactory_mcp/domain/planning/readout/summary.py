@@ -264,15 +264,7 @@ def production_graph(
 
 def _raw(g: GameData, sol: Solution) -> list[ItemRate]:
     """What the plan takes from the world: extractor output plus raw drawn from outside."""
-    raw = dict(sol.raw_used)
-    for row in sol.processes:
-        rates = row["rates"]
-        if any(rate < -_EPS and item != MW for item, rate in rates.items()):
-            continue
-        for item, rate in rates.items():
-            if rate > _EPS and item != MW:
-                raw[item] = raw.get(item, 0.0) + rate
-    return _rates(g, raw, 1)
+    return _rates(g, sol.drawn_raw(), 1)
 
 
 def _blockers(errors: list[str], failure_notes: list[str]) -> list[str]:
@@ -335,6 +327,17 @@ def failure_cause(prepared: PreparedPlan) -> str:
     dead = [n for n in notes if n.startswith(("nothing produces", "nothing in scope makes"))]
     if dead:
         return dead[0]
+    for note in notes:
+        if note.startswith("objective "):
+            return note
+        if note.startswith("short raw: "):
+            names = note.removeprefix("short raw: ").split(" -- ")[0]
+            return f"these sources cannot supply enough {names}; add sources, or lower a rate"
+        if note.startswith("byproduct with no outlet: "):
+            names = note.removeprefix("byproduct with no outlet: ").split(" -- ")[0]
+            return f"{names} has nowhere to go; add it to exports, or allow sinks for a solid"
+        if note.startswith("power: "):
+            return "the plant cannot power itself while it exports MW"
     named = [_clip(e) for e in errors if e.startswith(("required", "exclude_recipes"))]
     if named:
         return "a recipe setting names nothing usable: " + "; ".join(named)

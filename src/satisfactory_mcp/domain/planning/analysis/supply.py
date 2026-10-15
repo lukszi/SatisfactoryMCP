@@ -1,7 +1,7 @@
 """Which raw input a plan cannot get, and why -- the other half of INFEASIBLE.
 
 One probe re-solves with a free supply of every resource the scope cannot extract, and
-``raw_used`` names the ones the plan wanted; still infeasible means supply is not the cause.
+``raw_used`` names the ones the plan wanted; still infeasible leaves the cause to ``binding``.
 The why beside each is a factual read of the node table, quoted as counts. docs/planning.md §8.2a.
 """
 
@@ -221,14 +221,9 @@ def describe(report: SupplyReport, game: GameData) -> list[str]:
     lines = list(report.unmakeable)
     if not report.candidates:
         return lines
-    names = ", ".join(game.item_name(c) for c in report.candidates)
-    if not report.rescued:
-        lines.append(
-            f"not a raw-supply problem on its own: a free supply of {names} still leaves "
-            "this INFEASIBLE, so something else is binding too"
-        )
-        return lines
-    if not report.missing:
+    # A failed probe proves only that these resources are not the cause; naming them would
+    # send the reader after an input the plan does not want.
+    if not report.rescued or not report.missing:
         return lines
     lines.append(
         "unavailable raw input is a cause: with these supplied, and nothing else "

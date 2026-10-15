@@ -220,7 +220,9 @@ def _delta_rows(
                 if max(spans) - min(spans) < 0.1
                 else f"{min(spans):.2g}-{max(spans):.2g}km"
             )
-            head = f"on {len(r.targets)} free node(s) @{reach}"
+            # No anchor means no distance was measured; 0 km would be invented.
+            at = f" @{reach}" if diff_report.anchor is not None else ""
+            head = f"on {len(r.targets)} free node(s){at}"
             note = f"{head}; {note}" if note else head
             targets += [t[0] for t in r.targets]
         rows.append(
@@ -269,17 +271,36 @@ def _delta_summary(
                 [
                     ("now_gen_MW", render.num(power["generation_mw"])),
                     ("draw_MW", render.num(power["draw_mw"])),
-                    ("headroom_MW", render.num(power["headroom_mw"])),
+                    ("headroom_MW", render.num(report.headroom_mw)),
+                    ("plan_adds_MW", render.num(diff_report.deficit_mw)),
+                    ("fits", "yes" if _fits(report) else "NO"),
                 ]
-            ),
+            )
+            + f"  # headroom {report.headroom_source}",
         ]
+    )
+
+
+def _fits(report: DiffVsSaveReport) -> bool:
+    return _diff(report).deficit_mw <= report.headroom_mw + 1e-6
+
+
+def _fit_note(report: DiffVsSaveReport) -> str:
+    """A warning, never a refusal, when the build needs more than the headroom."""
+    if _fits(report):
+        return ""
+    adds = _diff(report).deficit_mw
+    return (
+        f"does not fit: building it adds up to {render.num(adds)} MW of draw against "
+        f"{render.num(report.headroom_mw)} MW of headroom ({report.headroom_source}); "
+        "switched on at once, the grid's fuse blows"
     )
 
 
 def _delta_notes(report: DiffVsSaveReport) -> list[str]:
     """What the delta rows cannot say for themselves: ranges, spread, off-100% clocks."""
     diff_report = _diff(report)
-    notes = [*diff_report.notes]
+    notes = [note for note in (_fit_note(report),) if note] + diff_report.notes
     if biomass_note(report.power):
         notes.append(biomass_note(report.power))
     ranged = [r for r in diff_report.rows if r.build_max is not None and r.build_max != r.build]
@@ -444,11 +465,6 @@ def render_diff(
         if block:
             parts.append(block)
         notes += stage_notes
-        if report.startup is not None and report.startup.headroom_source:
-            notes.append(
-                f"stages use {render.num(report.startup.headroom_mw)} MW of headroom, "
-                f"{report.startup.headroom_source}"
-            )
 
     if plan_name:
         plan_notes = [f"recalled saved plan {plan_name!r}", *plan_notes]
