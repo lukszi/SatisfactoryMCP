@@ -48,6 +48,7 @@ from mapgen.palette.painted.shapes import (
     RockFamilyEntry,
     RockLookStyle,
     Sampler,
+    SpeckScene,
 )
 from mapgen.terrain.render_meshes import (
     CORAL_CLASSES,
@@ -390,7 +391,7 @@ def canopy_over_rock(
     return g * (1.0 - cover) + colour * cover
 
 
-def sunk_specks(scene: PaintedScene) -> BandWater:
+def sunk_specks(scene: SpeckScene) -> BandWater:
     """The band's water with each coral speck standing in it drawn as that water.
 
     A speck is a coral pixel whose neighbours are mostly water: it takes their mean depth and
