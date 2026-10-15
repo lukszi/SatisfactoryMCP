@@ -22,6 +22,8 @@ export interface PlanNode {
   recipeId: string | null;
   recipeName: string | null;
   building: string | null;
+  /** The building's descriptor class, which its picture is served under. */
+  buildingIcon: string | null;
   /** Machines actually built, whole. */
   built: number;
   /** Work in machines at 100% (built × clock), so 15.31 for 16 at 95.7%. */
@@ -139,6 +141,7 @@ function fullNode(raw: Loose, rows: Record<string, SolveRow>): PlanNode {
     recipeId: recipeId,
     recipeName: str(raw.recipe_name),
     building: str(raw.building),
+    buildingIcon: str(raw.building_icon),
     built: num(raw.built, Math.ceil(machines - WHOLE)),
     machines: machines,
     clock: typeof raw.clock === "number" ? raw.clock / 100 : null,
@@ -183,6 +186,7 @@ function legacyNode(raw: Loose, rows: Record<string, SolveRow>): PlanNode {
     recipeId: row ? row.recipe_id : null,
     recipeName: row ? row.recipe : null,
     building: row ? row.building : null,
+    buildingIcon: null,
     built: row ? row.machines : 0,
     machines: row ? rowWork(row) : 0,
     clock: row ? row.clock : null,

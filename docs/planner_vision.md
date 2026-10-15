@@ -555,7 +555,7 @@ kinds are planning.md §8.5o; this is what the page reads.
 | Part | Fields | Rule |
 |---|---|---|
 | node ids | `p:<recipe_id>`, `p:x:<miner>:<resource>`, `p:g:<generator>:<fuel>`, `in:<item>`, `ex:<item>`, `ex:power`, `left:<item>`, `sink:<item>` | Class ids, never names: the same across revs and re-solves while the recipe or item is in the plan |
-| `nodes[]` | `id`, `kind`, `label`, `item_id`, `item_name`, `recipe_id`, `recipe_name`, `building`, `built`, `machines`, `clock`, `mw`, `utilisation`, `rank`, `per_min`, `unit` | `kind` ∈ process, input, export, leftover, sink. `machines` is work at 100% (float), `utilisation` the last machine's share (1 when whole), `clock` a percent (null on item nodes), `mw` signed like a row's (negative draws). `per_min` on item nodes only. `unit` is `items`, `m3` or `MW` |
+| `nodes[]` | `id`, `kind`, `label`, `item_id`, `item_name`, `recipe_id`, `recipe_name`, `building`, `building_icon`, `built`, `machines`, `clock`, `mw`, `utilisation`, `rank`, `per_min`, `unit` | `kind` ∈ process, input, export, leftover, sink. `machines` is work at 100% (float), `utilisation` the last machine's share (1 when whole), `clock` a percent (null on item nodes), `mw` signed like a row's (negative draws). `per_min` on item nodes only. `unit` is `items`, `m3` or `MW`. `building_icon` is the building's descriptor class (`Desc_GeneratorFuel_C`), the name `/api/icons/` serves its picture under; null on item nodes except a sink, which carries the AWESOME Sink's |
 | legacy node fields | `detail`, `row`, `rows`, `item` | `row` is the first `SolveRow.id` of the group, `rows` all of them |
 | `edges[]` | `id`, `source`, `target`, `item_id`, `item_name`, `item_group`, `per_min`, `unit`, `text`, legacy `item` | `id` = `<source>><target>:<item_id>`; `text` is MW words on power lines, else null |
 | `item_group` | `oil`, `water`, `gas`, `ore`, `metal`, `component`, `nuclear`, `power`, `other` | One table, `readout/item_groups.py`; an item not in it is `other`. Acids and solutions are `other`. Line colours only: the one exception to the closed palette |
@@ -576,10 +576,25 @@ back if it returns while the stored entry stands.
   The previous order down each column is fed back as model order, so a small edit does not
   reshuffle. Without a worker, or if it fails or takes 15 s, a column layout routed by our own
   router stands in.
-- **Nodes.** A process is a disc with its product's icon (a neutral glyph when the install has
-  no icons), "×built Building" and "Recipe · clock" under it, and a ring for `utilisation`:
+- **Frame.** The graph takes the page's full width (the reading column's cap is lifted while
+  it shows, and it gets the larger share beside the alternates drawer). A new layout is fitted
+  so every node shows: scaled down to the frame's width and about 78% of the window's height,
+  never below 25%, never above 117%. Ctrl+scroll zooms from there, drag pans, a double click
+  fits again; a zoom survives redraws until the next new layout.
+- **Nodes.** A process is a disc with its building's picture (`building_icon`; the product's
+  when a node has none; a neutral glyph when the install generated no icons), "×built
+  Building" and "Recipe · clock" under it, and a ring for `utilisation`:
   full when the work is whole machines, else an arc for the last machine's share. Item nodes
-  show icon, name and rate; a leftover reads "surplus", a sink its sink count.
+  show their item's picture, name and rate; a leftover reads "surplus", a sink its sink count;
+  the power export shows a bolt. Pictures are asked for with the `X-Icons-Build` tag so the
+  browser caches them; the first probe's answer redraws the graph with them.
+- **Line jumps.** Where a horizontal stretch of one edge crosses a vertical stretch of another,
+  the horizontal one arcs over it (radius 4.5 graph units, so it scales with the zoom), the way
+  a circuit diagram bridges wires. Never at a line's own bends or ends (a crossing within the
+  radius of them is left plain), never where one line only ends on another (a split or join),
+  never between parallel lines sharing a corridor. Jumps closer than their width merge into one
+  wider arc. While a node is dragged, only its edges and the edges crossing them before or
+  after the move are redrawn (`graph/hops.ts`).
 - **Interaction.** A click picks a node, lights its whole upstream and downstream chain, dims
   the rest and opens the node card (alternates, ban, pin, ask; an export's minimum rate edits in
   place). A click on open ground clears; hovering shows machines, clock, MW and rates.
@@ -592,6 +607,12 @@ back if it returns while the stored entry stands.
   (needed, produced, supplied, consumed, surplus) from the edges, and the plan's total power.
 - **Measured** (synthetic 114 nodes, 156 edges, node): ELK about 150 ms warm and 300 ms on
   first use, building the SVG about 15 ms, one drag frame about 5 ms for a node's 5 edges.
+  In headless Chrome on a real plan (11 nodes, 14 edges, 2026-10-15): the graph is drawn about
+  110 ms after the tab is clicked with no main-thread task over 50 ms (ELK runs in the worker),
+  drag frames hold 7 ms, and all line jumps take 8 µs a pass, 3 µs a drag frame.
+- **A screenshot tool that times out is not a frozen page.** Chrome produces no frames for a
+  tab in a minimised window, so a CDP screenshot of any page there, even a bare PNG, waits 30 s
+  and fails, while scripts in the page run normally.
 
 ### 4.3 Build list
 

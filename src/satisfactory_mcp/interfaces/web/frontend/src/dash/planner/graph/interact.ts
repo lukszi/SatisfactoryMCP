@@ -5,7 +5,8 @@
 import { formatNumber, mw, pct } from "../../../kit/format";
 import { make } from "../../../kit/dom";
 import { chainOf } from "./chain";
-import { itemLines, placeNode, processTitle, setRoute } from "./draw";
+import { drawHops, itemLines, placeNode, processTitle, routePoints, setRoute } from "./draw";
+import { hopTargets } from "./hops";
 import { reroute } from "./layout";
 import { rateText } from "./model";
 
@@ -92,10 +93,12 @@ function svgPoint(root: SVGSVGElement, event: PointerEvent): { x: number; y: num
 }
 
 function rerouteDrag(live: LiveGraph, drag: Drag): void {
+  const before = routePoints(live.layout);
   reroute(live.input, live.layout, drag.edges);
   live.view.edges.forEach(function (e) {
     if (drag.edges.has(e.id) && live.layout.routes[e.id]) setRoute(live.handle, e, live.layout.routes[e.id]!);
   });
+  drawHops(live.handle, live.layout, hopTargets(routePoints(live.layout), drag.edges, before));
 }
 
 function wireTip(live: LiveGraph, wrap: HTMLElement, g: SVGGElement, node: PlanNode): void {

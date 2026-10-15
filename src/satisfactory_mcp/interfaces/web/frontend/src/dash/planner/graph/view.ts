@@ -20,6 +20,7 @@ import { hasPlaced, moveNode, positionsFor, resetLayout, settle } from "./positi
 import type { Positions } from "./positions";
 
 import type { FocusSelection, SolveResponse } from "../../../api/shapes";
+import type { FrameView } from "../../frame-fit";
 import type { NodeMarks } from "./draw";
 import type { LiveGraph } from "./interact";
 import type { Layout, LayoutIn } from "./layout-input";
@@ -37,9 +38,10 @@ interface GraphCache {
   wrap: HTMLElement | null;
   x: number;
   y: number;
+  zoom: FrameView;
 }
 
-const cache: GraphCache = { data: null, view: null, serial: 0, sig: "", base: null, pending: "", drawn: "", live: null, wrap: null, x: 0, y: 0 };
+const cache: GraphCache = { data: null, view: null, serial: 0, sig: "", base: null, pending: "", drawn: "", live: null, wrap: null, x: 0, y: 0, zoom: { zoom: 1 } };
 const orders: Record<string, Record<string, number>> = {};
 const flashed: Record<string, number> = {};
 const FLASH_MS = 4000;
@@ -137,9 +139,9 @@ function wrapper(): HTMLElement {
 function draw(view: PlanGraphView, input: LayoutIn, key: string, marks: NodeMarks): void {
   const positions = positionsFor(bench.key, stored(view));
   const layout = placeNodes(input, cache.base!, positions);
-  const handle = drawPlanSvg(view, layout, marks, changed);
+  const handle = drawPlanSvg(view, layout, marks, redrawAll);
   const live: LiveGraph = { handle: handle, view: view, input: input, layout: layout };
-  const frame = zoomableFrame(handle.root, layout.width, layout.height);
+  const frame = zoomableFrame(handle.root, layout.width, layout.height, { fitAll: true, view: cache.zoom });
   wrapper().replaceChildren(frame);
   wireNodes(live, cache.wrap!, {
     pick: pick,
@@ -153,6 +155,12 @@ function draw(view: PlanGraphView, input: LayoutIn, key: string, marks: NodeMark
   cache.drawn = key;
 }
 
+/** Draws again even though nothing the draw key covers changed, e.g. once icons are known. */
+function redrawAll(): void {
+  cache.drawn = "";
+  changed();
+}
+
 function layOut(input: LayoutIn, sig: string): void {
   if (cache.pending === sig) return;
   cache.pending = sig;
@@ -164,6 +172,9 @@ function layOut(input: LayoutIn, sig: string): void {
     if (cache.pending !== sig) return;
     cache.base = base;
     cache.sig = sig;
+    cache.zoom = { zoom: 1 };
+    cache.x = 0;
+    cache.y = 0;
     orders[plan] = orderOf(base);
     if (import.meta.env.DEV) console.debug("plan graph laid out in " + Math.round(performance.now() - t0) + " ms, " + input.nodes.length + " nodes");
     changed();

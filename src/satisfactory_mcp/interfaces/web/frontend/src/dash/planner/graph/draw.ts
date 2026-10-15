@@ -3,7 +3,8 @@
  * layout.ts; this module only measures and draws. See docs/planner_vision.md §4.2. */
 
 import { count, pct } from "../../../kit/format";
-import { iconUrl } from "./icons";
+import { hoppedPaths } from "./hops";
+import { iconIdFor, iconUrl } from "./icons";
 import { edgeLabel, ITEM_GROUPS, rateText } from "./model";
 import { ringFor, ringPath } from "./ring";
 import { LINE, measure, SMALL_FONT, svg, svgText, TITLE_FONT } from "./text";
@@ -32,6 +33,7 @@ const ITEM_H = 38;
 const ICON = 20;
 const LABEL_PAD = 4;
 const GLYPH = "M-9,8 L-9,-1 L-4,2 L-4,-2 L1,1 L1,-8 L6,-8 L6,8 Z";
+const BOLT = "M2,-9 L-6,2 L-1,2 L-3,9 L6,-3 L1,-3 Z";
 
 export function processTitle(node: PlanNode): string {
   return "×" + count(node.built) + " " + (node.building || "machine");
@@ -99,8 +101,10 @@ function arrowMarkers(defs: SVGDefsElement): void {
   });
 }
 
-function glyphOrIcon(group: SVGGElement, url: string | null, cx: number, cy: number, size: number): void {
-  const glyph = svg("path", { d: GLYPH, class: "pg-glyph", transform: "translate(" + cx + "," + cy + ") scale(" + size / 20 + ")" });
+function glyphOrIcon(group: SVGGElement, node: PlanNode, redraw: () => void, cx: number, cy: number, size: number): void {
+  const url = iconUrl(iconIdFor(node), redraw);
+  const power = node.itemId === "power" || node.unit === "MW";
+  const glyph = svg("path", { d: power ? BOLT : GLYPH, class: "pg-glyph", transform: "translate(" + cx + "," + cy + ") scale(" + size / 20 + ")" });
   group.appendChild(glyph);
   if (!url) return;
   const image = svg("image", { href: url, x: cx - size / 2, y: cy - size / 2, width: size, height: size });
@@ -119,7 +123,7 @@ function drawProcess(group: SVGGElement, node: PlanNode, box: Rect, redraw: () =
   const ring = ringFor(node.machines, node.utilisation);
   const d = ringPath(c, c, RING_R, ring.fraction);
   if (d) group.appendChild(svg("path", { class: "pg-ring tone-" + ring.tone, d: d }));
-  glyphOrIcon(group, iconUrl(node.itemId, redraw), c, c, 26);
+  glyphOrIcon(group, node, redraw, c, c, 26);
   const top = box.h + LABEL_PAD;
   group.appendChild(svgText("pg-title", c, top + LINE - 3, processTitle(node)));
   group.appendChild(svgText("pg-sub", c, top + 2 * LINE - 3, processSub(node)));
@@ -127,7 +131,7 @@ function drawProcess(group: SVGGElement, node: PlanNode, box: Rect, redraw: () =
 
 function drawItem(group: SVGGElement, node: PlanNode, box: Rect, view: PlanGraphView, redraw: () => void): void {
   group.appendChild(svg("rect", { class: "pg-box", width: box.w, height: box.h, rx: 6 }));
-  glyphOrIcon(group, iconUrl(node.itemId, redraw), 6 + ICON / 2, box.h / 2, ICON);
+  glyphOrIcon(group, node, redraw, 6 + ICON / 2, box.h / 2, ICON);
   const [a, b] = itemLines(node, view);
   const x = ICON + 12;
   const title = svgText("pg-title", x, LINE, a);
@@ -188,6 +192,23 @@ export function setRoute(handle: GraphHandle, edge: PlanEdge, route: EdgeRoute):
   if (route.label) handle.labels[edge.id] = drawLabel(handle.labelLayer, edge, route.label);
 }
 
+export function routePoints(layout: Layout): Record<string, Pt[]> {
+  const out: Record<string, Pt[]> = {};
+  Object.keys(layout.routes).forEach(function (id) {
+    out[id] = layout.routes[id]!.points;
+  });
+  return out;
+}
+
+/** Redraws the edges in `which` with their line jumps over every other edge. */
+export function drawHops(handle: GraphHandle, layout: Layout, which: Iterable<string>): void {
+  const paths = hoppedPaths(routePoints(layout), which);
+  Object.keys(paths).forEach(function (id) {
+    const path = handle.edges[id];
+    if (path) path.setAttribute("d", paths[id]!);
+  });
+}
+
 export function placeNode(handle: GraphHandle, id: string, box: Rect): void {
   const g = handle.nodes[id];
   if (g) g.setAttribute("transform", "translate(" + box.x + "," + box.y + ")");
@@ -206,10 +227,11 @@ export function drawPlanSvg(view: PlanGraphView, layout: Layout, marks: NodeMark
   root.appendChild(nodeLayer);
   root.appendChild(labelLayer);
   const handle: GraphHandle = { root: root, nodes: {}, edges: {}, labels: {}, labelLayer: labelLayer };
+  const hopped = hoppedPaths(routePoints(layout), Object.keys(layout.routes));
   view.edges.forEach(function (e) {
     const route = layout.routes[e.id];
     if (!route) return;
-    const path = svg("path", { class: "pg-edge grp-" + e.group, d: pathData(route.points), "marker-end": "url(#pg-arrow-" + e.group + ")", "data-edge": e.id });
+    const path = svg("path", { class: "pg-edge grp-" + e.group, d: hopped[e.id] || pathData(route.points), "marker-end": "url(#pg-arrow-" + e.group + ")", "data-edge": e.id });
     const title = svg("title", {});
     title.textContent = edgeLabel(e);
     path.appendChild(title);

@@ -5290,6 +5290,8 @@ export interface components {
             recipe_name: string | null;
             /** Building */
             building: string | null;
+            /** Building Icon */
+            building_icon: string | null;
             /** Built */
             built: number;
             /** Machines */

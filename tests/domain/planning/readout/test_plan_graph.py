@@ -134,6 +134,27 @@ def test_a_process_node_counts_machines_clock_and_its_last_machine(game, state):
     assert mws == sorted(mws, reverse=True)
 
 
+def test_process_nodes_name_their_building_picture_and_item_nodes_none(game, state):
+    _, graph = _graph(game, state, SUNK)
+    processes = [n for n in graph["nodes"] if n["kind"] == "process"]
+    assert processes
+    for node in processes:
+        assert node["building_icon"].startswith("Desc_") and node["building_icon"].endswith("_C")
+    ends = [n for n in graph["nodes"] if n["kind"] in ("input", "export", "leftover")]
+    assert ends and all(n["building_icon"] is None for n in ends)
+
+
+def test_a_power_plant_draws_its_generators_and_their_power_export(game, state):
+    _, graph = _graph(game, state, SUNK)
+    nodes = {n["id"]: n for n in graph["nodes"]}
+    generators = [n for n in nodes.values() if n["kind"] == "process" and n["mw"] > 0]
+    assert generators and nodes["ex:power"]["kind"] == "export"
+    assert all(n["building_icon"].startswith("Desc_Generator") for n in generators)
+    fed = {e["target"] for e in graph["edges"] if e["item_id"] != "power"}
+    powering = {e["source"] for e in graph["edges"] if e["target"] == "ex:power"}
+    assert {n["id"] for n in generators} <= fed & powering
+
+
 # ------------------------------------------------------------------ leftovers and sinks
 
 
@@ -142,6 +163,7 @@ def test_a_sunk_byproduct_is_a_sink_node_with_its_sinks_and_power(game, state):
     [sink] = [n for n in graph["nodes"] if n["kind"] == "sink"]
     assert sink["id"] == "sink:Desc_PolymerResin_C" and sink["building"] == "AWESOME Sink"
     assert sink["built"] >= 1 and sink["mw"] is not None and sink["mw"] < 0
+    assert sink["building_icon"] == "Desc_ResourceSink_C"
     into = _sums(graph["edges"], "target")[(sink["id"], "Desc_PolymerResin_C")]
     assert into == pytest.approx(sink["per_min"], abs=1e-3)
     [sinks] = [b for b in graph["buildings"] if b["building"] == "AWESOME Sink"]

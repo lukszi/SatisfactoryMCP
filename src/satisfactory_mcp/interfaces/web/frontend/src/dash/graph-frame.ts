@@ -3,17 +3,20 @@
 
 import { button } from "../kit/dashkit";
 import { make } from "../kit/dom";
+import { fitScale, ROOM_H, ZOOM } from "./frame-fit";
 
-const MAX_SCALE = 14 / 12;
-const ZOOM = [0.25, 3];
+import type { FrameOptions, FrameView } from "./frame-fit";
 
 export const GRAPH_HINT = "ctrl+scroll zooms, drag pans, double-click fits";
 
-export function zoomableFrame(root: SVGSVGElement, width: number, height: number): HTMLElement {
+export function zoomableFrame(root: SVGSVGElement, width: number, height: number, options?: FrameOptions): HTMLElement {
   const box = make("div", "graph-frame");
   box.appendChild(root);
+  const fitAll = !!options?.fitAll;
+  const view: FrameView = options?.view || { zoom: 1 };
   let base = 1;
-  let zoom = 1;
+  let fitted = false;
+  let zoom = view.zoom;
   const edge = function () {
     box.classList.toggle("more", box.scrollLeft + box.clientWidth < box.scrollWidth - 2);
   };
@@ -26,14 +29,15 @@ export function zoomableFrame(root: SVGSVGElement, width: number, height: number
   const fit = function () {
     const room = box.clientWidth;
     if (!room) return;
-    base = Math.min(MAX_SCALE, Math.max(1, room / width));
+    base = fitScale(room, Math.round(window.innerHeight * ROOM_H), width, height, fitAll);
+    fitted = true;
     size();
   };
   size();
   box.addEventListener("scroll", edge);
   if (typeof ResizeObserver !== "undefined") {
     new ResizeObserver(function () {
-      if (zoom === 1) fit();
+      if (zoom === 1 || !fitted) fit();
     }).observe(box);
   }
   box.addEventListener(
@@ -47,6 +51,7 @@ export function zoomableFrame(root: SVGSVGElement, width: number, height: number
       const old = base * zoom;
       const next = Math.min(ZOOM[1]!, Math.max(ZOOM[0]!, old * (event.deltaY > 0 ? 1 / 1.15 : 1.15)));
       zoom = next / base;
+      view.zoom = zoom;
       size();
       box.scrollLeft = ((box.scrollLeft + px) * next) / old - px;
       box.scrollTop = ((box.scrollTop + py) * next) / old - py;
@@ -76,6 +81,7 @@ export function zoomableFrame(root: SVGSVGElement, width: number, height: number
   box.addEventListener("dblclick", function (event) {
     if ((event.target as Element).closest(".graph-node.pickable")) return;
     zoom = 1;
+    view.zoom = 1;
     fit();
     box.scrollLeft = 0;
     box.scrollTop = 0;
