@@ -18,14 +18,15 @@
 import { code, popup, popupTitleRow } from "../../kit/dom";
 import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
-import { footprintCorners, latLngOf, pixelsPerMetre } from "../map";
+import { latLngOf, pixelsPerMetre } from "../map";
 import { mapTone } from "../map-tone";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
+import { addNotches, outlineLatLngs } from "./outlines";
 import { routePolyline } from "./route-geometry";
 import { liftRadius, ROUTE_WIDTH_M, routeWeight, sinkRoutes } from "./route-passes";
 
-import type { AttachmentRow, BeltRow, BeltsResponse } from "../../api/shapes";
+import type { AttachmentRow, BeltRow, BeltsResponse, BuildingShape } from "../../api/shapes";
 import type { Point3M } from "../geometry";
 
 /* Mid steel with one value step either side for the tiers (docs/frontend_palette.md); the
@@ -132,11 +133,11 @@ function caseBeltRuns(runs: L.Polyline[], group: L.LayerGroup, ppm: number): voi
 /* A splitter or merger's square. It rides in the belts layer but is joined the machines' way --
  * by instance id, in the band it stands on -- which is the split `/api/floors` makes between
  * runs and placements. */
-function junctionSquare(attachment: AttachmentRow, x_m: number, y_m: number): L.Polygon {
+function junctionSquare(attachment: AttachmentRow, x_m: number, y_m: number, shape?: BuildingShape): L.Polygon {
   const halfWidth = (attachment.w_m || ATTACHMENT_FALLBACK_M) / 2;
   const halfLength = (attachment.l_m || ATTACHMENT_FALLBACK_M) / 2;
   const junction = L.polygon(
-    footprintCorners(x_m, y_m, halfWidth, halfLength, attachment.yaw),
+    outlineLatLngs(x_m, y_m, attachment.yaw, shape, halfWidth, halfLength),
     {
       color: BELT_COLOUR,
       weight: 1,
@@ -195,7 +196,9 @@ export function drawBelts(data: BeltsResponse): void {
   if (mapTone() === "light") caseBeltRuns(runs, group, ppm);
   (data.attachments || []).forEach(function (attachment) {
     if (attachment.x_m === null || attachment.y_m === null) return;
-    junctionSquare(attachment, attachment.x_m, attachment.y_m).addTo(group);
+    const shape = data.shapes[attachment.cls];
+    const junction = junctionSquare(attachment, attachment.x_m, attachment.y_m, shape).addTo(group);
+    addNotches(group, attachment.x_m, attachment.y_m, attachment.yaw, shape, junction._floor!);
   });
   sinkRoutes();
 }

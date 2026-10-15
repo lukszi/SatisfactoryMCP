@@ -67,7 +67,7 @@ export function restyleRoutesForZoom() {
 }
 
 /* Every route piece sent below the machines and node dots; sunk first is left highest, so the
- * chevrons go first, then the glyphs, then the runs. */
+ * chevrons and port notches go first, then the glyphs, then the runs. */
 export function sinkRoutes() {
   ROUTE_LAYERS.forEach(function (name) {
     const group = state.layers[name];
@@ -78,7 +78,7 @@ export function sinkRoutes() {
     group.eachLayer(function (layer) {
       if (!(layer instanceof L.Path)) return;
       const piece = layer as L.Path;
-      if (piece._chevron) chevrons.push(piece);
+      if (piece._chevron || piece._port) chevrons.push(piece);
       else if (piece instanceof L.Polygon || piece._fixed) glyphs.push(piece);
       else runs.push(piece);
     });

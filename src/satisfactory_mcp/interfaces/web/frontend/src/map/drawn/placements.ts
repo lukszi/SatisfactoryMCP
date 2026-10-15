@@ -18,6 +18,7 @@ import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
 import { footprintCorners, hashFor } from "../map";
 import { raiseNodeDots } from "./markers";
+import { addNotches, outlineLatLngs } from "./outlines";
 import { showMachine } from "../map-highlight";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
@@ -145,7 +146,8 @@ export function drawMachines(data: MachinesResponse): void {
       const blocked = m.state === BLOCKED;
       const stopped = m.actionable && !blocked;
       const idle = stopped || m.state === "paused";
-      const piece = L.polygon(footprintCorners(m.x_m, m.y_m!, w, l, m.yaw), {
+      const shape = data.shapes[m.cls];
+      const piece = L.polygon(outlineLatLngs(m.x_m, m.y_m!, m.yaw, shape, w, l), {
         color: machineOutline(blocked, stopped, KIND_COLOUR[kind]),
         fillColor: KIND_COLOUR[kind],
         weight: m.actionable ? 3 : 1,
@@ -202,6 +204,7 @@ export function drawMachines(data: MachinesResponse): void {
         h_m: m.h_m,
       };
       piece.addTo(group);
+      addNotches(group, m.x_m, m.y_m!, m.yaw, shape, piece._floor);
     });
   });
   raiseNodeDots();
@@ -314,7 +317,8 @@ export function drawStorage(data: StorageResponse): void {
     const colour = s.kind === "fluid" ? STORAGE_FLUID_COLOUR : STORAGE_COLOUR;
     const w = (s.w_m || STORAGE_FALLBACK_M) / 2;
     const l = (s.l_m || STORAGE_FALLBACK_M) / 2;
-    const box = L.polygon(footprintCorners(s.x_m, s.y_m, w, l, s.yaw), {
+    const shape = data.shapes[s.cls];
+    const box = L.polygon(outlineLatLngs(s.x_m, s.y_m, s.yaw, shape, w, l), {
       color: colour,
       weight: 1,
       fillColor: colour,
@@ -329,6 +333,7 @@ export function drawStorage(data: StorageResponse): void {
     // band lists this box and a mark carrying an id would be a join that always misses.
     box._floor = { x_m: s.x_m, y_m: s.y_m, z_m: s.z_m === null ? undefined : s.z_m };
     box.addTo(group);
+    addNotches(group, s.x_m, s.y_m, s.yaw, shape, box._floor);
   });
   raiseNodeDots();
 }
