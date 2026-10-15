@@ -1,5 +1,5 @@
-"""The river's physics row: the game's river absorption over its bed, the sky term at depth,
-and no inland opacity floor under the ribbons.
+"""The river's row: the game's river absorption at the river's own scale over its bed, teal
+in the shallows and slate teal at depth, and no inland opacity floor under the ribbons.
 
 docs/map/water.md section 33, "The river's physics row".
 """
@@ -15,7 +15,7 @@ from mapgen.palette.painted.optics import WATER_TABLE_COLUMNS, base_water, under
 from mapgen.palette.painted.sea import surface_sky
 from mapgen.palette.painted.shapes import UnderwaterScene
 from mapgen.palette.styles import PAINTED_PALETTE
-from tests.support.map_scenes import CLASS_ID, painted_ground_stub, water_scene
+from tests.support.map_scenes import CLASS_ID, class_optics, painted_ground_stub, water_scene
 
 WATER = PAINTED_PALETTE["water"]
 ROW = PAINTED_PALETTE["water_classes"]["river"]
@@ -35,6 +35,8 @@ READINGS = [
     ("#3e5156", DEEP),
 ]
 BEDS = ("#a68c72", "#a4947f", "#7d7560")
+#: The pale bed under the red forest's narrow rivers, which drew grey under style 37.
+FOREST_BED = "#95897c"
 
 
 def _linear(hex_colour: str) -> np.ndarray:
@@ -44,6 +46,12 @@ def _linear(hex_colour: str) -> np.ndarray:
 def _hue(linear: np.ndarray) -> float:
     lab = oklab(linear)
     return float(np.degrees(np.arctan2(lab[2], lab[1])) % 360)
+
+
+def _lch(linear: np.ndarray) -> tuple[float, float, float]:
+    """OKLab lightness and chroma (x100) and hue (degrees)."""
+    lab = oklab(linear)
+    return float(lab[0] * 100), float(np.hypot(lab[1], lab[2]) * 100), _hue(linear)
 
 
 def _drawn(depths: list[float], bed: np.ndarray = WET_SAND, ribbon: float = 1.0) -> np.ndarray:
@@ -66,10 +74,11 @@ def _drawn(depths: list[float], bed: np.ndarray = WET_SAND, ribbon: float = 1.0)
     return underwater(beds, whole, ground, lambda p: p, lambda p: p, np.float32(1.0))[0]
 
 
-def test_the_river_absorbs_the_game_s_absorption_times_the_sea_s_scale():
+def test_the_river_absorbs_the_game_s_absorption_times_its_own_scale():
     row = water_table(PAINTED_PALETTE, river=GAME)[CLASS_ID["river"]]
-    want = [WATER["absorption_scale"] * a for a in GAME.per_m]
+    want = [ROW["absorption_scale"] * a for a in GAME.per_m]
     np.testing.assert_allclose(row[:3], want, rtol=1e-6)
+    assert ROW["absorption_scale"] != WATER["absorption_scale"]
 
 
 def test_the_palette_k_is_what_the_scale_gives_on_the_1_0_material():
@@ -80,15 +89,13 @@ def test_the_palette_k_is_what_the_scale_gives_on_the_1_0_material():
     )
 
 
-def test_body_and_deep_are_the_sea_s_sky_term():
-    """As the sea's: the body with the surface's reflection is the sky term, which is also
-    the deep colour, within the palette's sRGB rounding."""
-    sky_term = srgb_to_linear(WATER["sky_term"])
-    np.testing.assert_allclose(srgb_to_linear(ROW["deep"]), sky_term)
-    np.testing.assert_allclose(
-        srgb_to_linear(ROW["body"]) + surface_sky(WATER), sky_term, atol=2e-3
-    )
+def test_body_is_the_teal_reading_and_deep_the_hue_fit():
+    """The body is the wiki's teal river; the deep colour is the readings' hue fit at the
+    sky term's lightness, not the sea's blue."""
+    assert list(ROW["body"]) == [79, 125, 120]
+    assert list(ROW["deep"]) == [65, 93, 100]
     assert ROW["turbidity"] == 0.0
+    assert list(ROW["deep"]) != list(WATER["sky_term"])
 
 
 def test_at_no_depth_the_ribbon_shows_its_bed():
@@ -110,14 +117,41 @@ def test_field_water_of_the_river_class_keeps_the_inland_floor():
     np.testing.assert_allclose(_drawn([0.2], ribbon=0.0)[0], want, rtol=1e-5)
 
 
-def test_shallow_water_keeps_its_bed_and_deep_water_turns_blue():
-    shallow, mid, deep = _drawn([0.6, 3.0, 8.0])
-    assert _hue(shallow) < 220, "a river 0.6 m deep still reads its bed"
-    assert _hue(mid) > 235 and _hue(deep) > 245
-    assert np.abs(linear_to_srgb(deep) - np.asarray(WATER["sky_term"])).max() < 1.5
+def test_a_shallow_narrow_river_reads_teal_not_grey():
+    """The red forest's rivers, a few decimetres deep over a pale bed, drew grey under the
+    sea's sky term (chroma 0.5 at 0.3 m); they read teal, as under the teal row before."""
+    for depth in (0.3, 0.6):
+        got = _drawn([depth], _linear(FOREST_BED))[0]
+        _l, chroma, hue = _lch(got)
+        assert 160 < hue < 200, f"{depth} m: hue {hue:.0f} is not teal"
+        assert chroma > 1.8, f"{depth} m: chroma {chroma:.1f} reads grey"
+        r, g, b = linear_to_srgb(got)
+        assert g > r + 6 and b > r + 4, f"{depth} m: {r:.0f} {g:.0f} {b:.0f}"
 
 
-def test_each_channel_runs_monotonically_from_the_bed_to_the_sky_term():
+def test_deep_water_turns_slate_teal_not_the_sea_s_blue():
+    shallow, mid, deep = _drawn([0.6, 3.0, 30.0], _linear(FOREST_BED))
+    assert _hue(shallow) < _hue(mid) < _hue(deep) < 225
+    assert np.abs(linear_to_srgb(deep) - np.asarray(ROW["deep"])).max() < 1.5
+
+
+def test_a_river_meets_the_lake_it_feeds_without_a_jump():
+    """At a mouth the ribbon hands over to the lake's row; from 2 m down the two draw within
+    Delta E 4 (OKLab x100) of each other, where the sea's sky term missed by 5 to 7."""
+    depths = [2.0, 3.0, 5.0, 8.0, 15.0]
+    n = len(depths)
+    ground = painted_ground_stub(n)
+    scene = water_scene(n, class_optics(ground, "lake", n))
+    scene["water"]["depth_m"] = np.asarray(depths, np.float32)[None, :]
+    bed = np.broadcast_to(_linear("#a4947f"), (1, n, 3)).astype(np.float32)
+    whole = UnderwaterScene(scene["z_m"], scene["water"], scene["water_optics"])
+    lake = underwater(bed, whole, ground, lambda p: p, lambda p: p, np.float32(1.0))[0]
+    river = _drawn(depths, _linear("#a4947f"))
+    gap = np.linalg.norm(oklab(river) - oklab(lake), axis=1) * 100
+    assert gap.max() < 4.0, np.round(gap, 1)
+
+
+def test_each_channel_runs_monotonically_from_the_bed_to_the_deep_colour():
     """Up to the body's sRGB rounding, which the deep blend takes back at a few 1e-7 a step."""
     got = _drawn(list(np.linspace(0.0, 40.0, 401)))
     steps = np.diff(got, axis=0)
@@ -127,8 +161,9 @@ def test_each_channel_runs_monotonically_from_the_bed_to_the_sky_term():
 
 
 def test_the_screenshot_readings_are_met_by_depth_band():
-    """Each reading against the nearest colour the row draws in its band: mean Delta E 4.77
-    and at most 7.0 (OKLab x100), where the teal row before reached 4.84 and 8.7."""
+    """Each reading against the nearest colour the row draws in its band: mean Delta E 3.79
+    and at most 5.9 (OKLab x100), where the teal row reached 4.84 and 8.7 and the sea's sky
+    term 4.77 and 7.0."""
     misses = []
     for reading, (lo, hi) in READINGS:
         target = oklab(_linear(reading))
@@ -140,8 +175,8 @@ def test_the_screenshot_readings_are_met_by_depth_band():
             )
             * 100
         )
-    assert np.mean(misses) < 4.8
-    assert max(misses) < 7.1
+    assert np.mean(misses) < 3.85
+    assert max(misses) < 6.0
 
 
 def test_only_the_river_row_takes_the_river_material():

@@ -30,6 +30,7 @@ __all__ = [
     "ReliefRockStyle",
     "ReliefShadeStyle",
     "ReliefWaterStyle",
+    "RiverClassStyle",
     "RiverShoreStyle",
     "RockLookStyle",
     "ShoreOptics",
@@ -258,6 +259,13 @@ class WaterClassStyle(TypedDict):
     bed_tint: list[float]
 
 
+class RiverClassStyle(WaterClassStyle):
+    """The river's optics: ``absorption_scale`` times the install's river absorption stands in
+    for ``k_per_m``."""
+
+    absorption_scale: float
+
+
 class _About(TypedDict):
     about: str
 
@@ -265,7 +273,7 @@ class _About(TypedDict):
 class WaterClassesStyle(_About, total=False):
     """``water_classes``: a class left out draws as the ocean."""
 
-    river: WaterClassStyle
+    river: RiverClassStyle
     lake: WaterClassStyle
     lake_blue: WaterClassStyle
     swamp: WaterClassStyle

@@ -130,7 +130,7 @@ from the material), **fit** (fitted to screenshots through a model) or **none**.
 | Class | Body | Deep | k (r, g, b) /m | Turbidity | Source |
 |---|---|---|---|---|---|
 | ocean (the `water` block) | #385478 | #3c597d | 1.695, 0.498, 0.363 | 0 | game data times a fit: k is 2.17 times `MM_OceanMaster`'s absorption; body and deep are the sky term #3c597d, the body less the surface's reflection; deep tau 100 m; the bed at the material's `Ocean SBW` 1.3 times (0.8, 0.94, 1.3) (see "The sea's physics row") |
-| river | #385478 | #3c597d | 1.085, 0.520, 0.737 | 0 | game data times the sea's fit: k is 2.17 times `MI_SLW_River_Base_01`'s absorption; body and deep are the sky term, as the sea's; deep tau 100 m; no inland floor under a ribbon (see "The river's physics row"). Before 2026-10-14: #4f7d78, #2e5054, k 2.4, 1.6, 1.6, from the wiki's Rocky Desert river |
+| river | #4f7d78 | #415d64 | 2.5, 1.198, 1.697 | 0 | game data times a fit: k is 5 times `MI_SLW_River_Base_01`'s absorption (`absorption_scale` in the row); body the wiki's Rocky Desert river; deep the readings' hue fit, tau 2 m; no inland floor under a ribbon (see "The river's row, teal in the shallows"). 2026-10-14 only: the sea's sky term #385478, #3c597d at 2.17 times the absorption. Before: #4f7d78, #2e5054, k 2.4, 1.6, 1.6 |
 | lake | #56745b | #375a58 | 3.0, 2.2, 2.6 | 0.1 | screenshot: body jade near the shore; deep teal from 1.0 top-down screenshots (see "Lake colours") |
 | lake_blue | #4a8494 | #22485a | 3.4, 1.0, 0.75 | 0 | game data: `MI_Lake_Blue_01` absorption (0.52, 0.15, 0.11) |
 | swamp | #302627 | #302627 | 4.0, 4.5, 5.0 | 0.45 | screenshot: opaque near-black from above in 1.0 (see "Sea deep and swamp water") |
@@ -466,9 +466,39 @@ than 1 m, 15% deeper than 2 m, 3% deeper than 4 m. Most rivers read as their bed
 veil. Blue shows in the pools and deep runs, such as the pool at (-1180, -280) (median 3.1 m)
 and the desert river at (2080, -1900).
 
-Tests: `tests/mapgen/test_river_row.py` (the row from the install's read, the sky term at
-depth, the bed at the waterline, no floor under a ribbon, monotone channels, the readings by
-depth band, the other classes untouched).
+Tests: `tests/mapgen/test_river_row.py` (the row from the install's read, the bed at the
+waterline, no floor under a ribbon, monotone channels, the readings by depth band, the other
+classes untouched).
+
+### The river's row, teal in the shallows (2026-10-15)
+
+The physics row above drew the wrong thing on the map. Most ribbons are shallow (median
+0.8 m), and the narrow ones are shallower still near their banks, where the 0.6 m floor has
+not ramped in. At 2.17 times the game's absorption a few decimetres pass most of the bed, so
+the red forest's rivers (around (-550, 120)) drew their pale bed under a grey veil: #7f7d73
+on the map where the teal row drew #617f76. Deep runs went the other way, to the sea's
+blue. A short river between two lakes (around (-950, 1580)) drew mid-blue between two teal
+lakes, and the mouth boxes, where the ribbon's share of the lake steps, showed as bands. The
+geometry of those boxes did not change; the bands are the gap between the two rows.
+
+**The row now.** The game's absorption keeps its hue (red first, green last) at 5 times, not
+the sea's 2.17: k (2.5, 1.198, 1.697), the row's own `absorption_scale`. The body is the
+wiki's teal river #4f7d78 again. The deep colour is the readings' hue fit #415d64 (hue 215,
+"What the readings alone would pick"), with a 2 m tau. Source: fit to the six readings above
+under a constraint: a shallow ribbon over a pale bed reads teal. The readings alone are flat
+in the scale from 4 to 8; 5 gives the teal row's chroma at 0.3 m.
+
+| Row | Mean ΔE | Max | Forest bed #95897c at 0.3 m, 0.6 m, 3 m, 30 m | Gap to the lake, 2 to 15 m |
+| --- | --- | --- | --- | --- |
+| teal (to 2026-10-13) | 4.84 | 8.7 | hue 166, 183, 193; deep #2f5255 | |
+| sky term (2026-10-14) | 4.77 | 7.0 | chroma 0.5 (grey), hue 211, 243; deep #3c597d | 5.1 to 7.2 |
+| now | 3.79 | 5.9 | hue 173, 189, 206; deep #415d64 | 2.1 to 3.5 |
+
+Deep water (hue 215) is a little bluer than the teal row's #2e5054 and no longer the sea's
+blue. The deep colour stays the open question below.
+
+Tests: `tests/mapgen/test_river_row.py` (a shallow narrow river reads teal, deep water slate
+teal, the river within ΔE 4 of the lake from 2 m, the readings below 3.85 mean).
 
 ### Translucent water (2026-10-06)
 
@@ -786,9 +816,9 @@ and section 35's falls:
   rows above. The sulfur pond, hot spring and cave optics come from material parameters,
   not from pictures.
 - The sky fit also gives a row for the blue lake. It is not applied.
-- The river's deep colour is the sea's sky term. No river reading looks down on water deeper
-  than about 5 m; the oblique readings alone would pick a slate #415d64 at depth ("The river's
-  physics row"). A daylight look straight down on the pool at (-1180, -280) would settle it.
+- The river's deep colour is the readings' hue fit #415d64. No river reading looks down on
+  water deeper than about 5 m ("The river's physics row"). A daylight look straight down on
+  the pool at (-1180, -280) would settle it.
 - The material's absorption is read as per metre from two parameter names, and `Ocean SBW`
   as the scale behind the surface from its name; the shader graph that uses them was not
   decoded. The cool tint on the sea's bed is a fit, and the material's caustics, which may be
