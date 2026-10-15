@@ -30,10 +30,12 @@ from satisfactory_mcp.core.gameassets.packages import (
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
+    "LAKE_TOP_M",
     "RIVER_CLASS",
     "RIVER_PLANE_HALF_WIDTH_CM",
     "RIVER_VOLUME_CLASS",
     "RIVER_VOLUME_INSIDE",
+    "RIVER_VOLUME_INSIDE_BARE",
     "RIVER_VOLUME_TOP_M",
     "SAMPLE_STEP_M",
     "RibbonPlanes",
@@ -73,9 +75,16 @@ _OTHER_SURFACES = WATER_SURFACE_CLASSES - {RIVER_CLASS}
 RIVER_VOLUME_CLASS = "FGWaterVolume"
 
 #: Such a volume lying at least this share inside a river's box, with its top within this
-#: many metres of the box's, is the river's own: 56 of the 270 on build 502094.
+#: many metres of the box's, is the river's own: 56 of the 270 on build 502094. One no
+#: visible surface box holds at its top (within ``LAKE_TOP_M``) needs only the bare share:
+#: 5 more, each reaching a few metres past its river's box.
 RIVER_VOLUME_INSIDE = 0.9
+RIVER_VOLUME_INSIDE_BARE = 0.75
 RIVER_VOLUME_TOP_M = 1.5
+LAKE_TOP_M = 0.5
+
+#: The surface boxes a lake, pond or the sea draws itself with.
+_VISIBLE_SURFACES = _OTHER_SURFACES - {RIVER_VOLUME_CLASS}
 
 
 class RiverActor(TypedDict):
@@ -343,24 +352,39 @@ def river_volumes(
 ) -> list[tuple[str, Sequence[float]]]:
     """``boxes`` with each river's own volumes named as its box: a classless volume
     (``RIVER_VOLUME_CLASS``) at least ``RIVER_VOLUME_INSIDE`` of whose footprint lies inside
-    a river box, its top within ``RIVER_VOLUME_TOP_M`` of that box's. Its top is the river's
-    upper end, as the river box's is, not a lake's surface."""
+    a river box, its top within ``RIVER_VOLUME_TOP_M`` of that box's, or
+    ``RIVER_VOLUME_INSIDE_BARE`` when no visible surface box stands at its top. Its top is the
+    river's upper end, as the river box's is, not a lake's surface."""
     rivers = [box for name, box in boxes if name == RIVER_CLASS]
+    visible = [box for name, box in boxes if name in _VISIBLE_SURFACES]
+
+    def own(box: Sequence[float]) -> bool:
+        share = _river_share(box, rivers)
+        return share >= RIVER_VOLUME_INSIDE or (
+            share >= RIVER_VOLUME_INSIDE_BARE and not _held_by_a_lake(box, visible)
+        )
+
     return [
-        (RIVER_CLASS if name == RIVER_VOLUME_CLASS and _inside_a_river(box, rivers) else name, box)
+        (RIVER_CLASS if name == RIVER_VOLUME_CLASS and own(box) else name, box)
         for name, box in boxes
     ]
 
 
-def _inside_a_river(box: Sequence[float], rivers: Sequence[Sequence[float]]) -> bool:
-    x0, y0, _z0, x1, y1, z1 = box
-    area = (x1 - x0) * (y1 - y0)
-    for rx0, ry0, _rz0, rx1, ry1, rz1 in rivers:
-        across = max(0.0, min(x1, rx1) - max(x0, rx0)) * max(0.0, min(y1, ry1) - max(y0, ry0))
-        nested = area > 0 and across >= RIVER_VOLUME_INSIDE * area
-        if nested and abs(z1 - rz1) <= RIVER_VOLUME_TOP_M * 100:
-            return True
-    return False
+def _overlap(a: Sequence[float], b: Sequence[float]) -> float:
+    """The area two boxes' footprints share, cm²."""
+    return max(0.0, min(a[3], b[3]) - max(a[0], b[0])) * max(0.0, min(a[4], b[4]) - max(a[1], b[1]))
+
+
+def _river_share(box: Sequence[float], rivers: Sequence[Sequence[float]]) -> float:
+    """The largest share of ``box``'s footprint inside one river box whose top is near its."""
+    area = (box[3] - box[0]) * (box[4] - box[1])
+    near = [r for r in rivers if abs(box[5] - r[5]) <= RIVER_VOLUME_TOP_M * 100]
+    return max((_overlap(box, r) / area for r in near), default=0.0) if area > 0 else 0.0
+
+
+def _held_by_a_lake(box: Sequence[float], visible: Sequence[Sequence[float]]) -> bool:
+    """Whether a visible surface box over ``box`` has its top within ``LAKE_TOP_M``."""
+    return any(_overlap(box, v) > 0 and abs(box[5] - v[5]) <= LAKE_TOP_M * 100 for v in visible)
 
 
 def box_tops(
