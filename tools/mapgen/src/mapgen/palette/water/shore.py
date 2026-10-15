@@ -31,7 +31,6 @@ from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
-    "HOLLOW_CLEAR_M",
     "HOLLOW_DEPTH_M",
     "MESH_FULL_LIFT_M",
     "MESH_REACH_M",
@@ -69,10 +68,6 @@ OCEAN_REACH_M = 48.0
 
 #: Dry ground this far under the sea marks a hollow the sea does not fill, metres.
 HOLLOW_DEPTH_M = 5.0
-
-#: Dry ground counts towards a hollow only this far from any water, metres: past the
-#: artwork mask's 3.66 m blocks, which leave dry texels under the sea along every coast.
-HOLLOW_CLEAR_M = 4.0
 
 #: A render-only mesh is drawn only where its top stands within this of the water surface or
 #: above it, so seabed coral roots do not speckle the sea.
@@ -122,7 +117,7 @@ def ocean_reach(field: hf.Field) -> tuple[U8Grid, JsonObject]:
     distance = ndimage.distance_transform_edt(~ocean) * spacing_m
     # Level-only water stands over the fill, whose raster holds the surface, not a bed.
     near = (distance <= OCEAN_REACH_M) & (grades != hf.WATER_LEVEL_ONLY)
-    hollows = dry_hollows(field.height_dm, water, grades, near, spacing_m)
+    hollows = dry_hollows(field.height_dm, water, grades, near, ocean)
     reach = (near & ~hollows).astype(np.uint8)
     return reach, {
         "ocean_texels": int(ocean.sum()),
@@ -135,22 +130,23 @@ def ocean_reach(field: hf.Field) -> tuple[U8Grid, JsonObject]:
 
 
 def dry_hollows(
-    height_dm: I16Grid, water: I16Grid, grades: U8Grid, near: BoolMask, spacing_m: float
+    height_dm: I16Grid, water: I16Grid, grades: U8Grid, near: BoolMask, ocean: BoolMask
 ) -> BoolMask:
     """Dry ground under the sea within ``near`` that the sea does not fill: each part of the
-    dry ground under the sea, clear of water by ``HOLLOW_CLEAR_M``, that sinks
-    ``HOLLOW_DEPTH_M`` under it somewhere. A hollow behind a wall or past a box's edge; a
+    dry ground under the sea that sinks ``HOLLOW_DEPTH_M`` under it somewhere and touches no
+    ``ocean`` texel, so ground above the sea walls it off. Open sea past a box's edge, a
     beach's strip beside the water and a shallow dip inland are not (docs/map/water.md)."""
     wet = (water != hf.NODATA) & (grades != hf.WATER_DRY)
     under = near & ~wet & (height_dm != hf.NODATA)
     under &= height_dm < np.float32(OCEAN_LEVEL_M * hf.DM_PER_M)
     if not under.any():
         return under
-    clear = under & (ndimage.distance_transform_edt(~wet) * spacing_m > HOLLOW_CLEAR_M)
-    parts, _count = ndimage.label(clear, structure=np.ones((3, 3), bool))
-    deep = clear & (height_dm < np.float32((OCEAN_LEVEL_M - HOLLOW_DEPTH_M) * hf.DM_PER_M))
+    ring = np.ones((3, 3), bool)
+    parts, _count = ndimage.label(under, structure=ring)
+    deep = under & (height_dm < np.float32((OCEAN_LEVEL_M - HOLLOW_DEPTH_M) * hf.DM_PER_M))
     sunk = np.zeros(int(parts.max()) + 1, bool)
     sunk[np.unique(parts[deep])] = True
+    sunk[np.unique(parts[ndimage.binary_dilation(ocean, structure=ring)])] = False
     sunk[0] = False
     return sunk[parts]
 

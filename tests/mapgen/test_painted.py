@@ -175,6 +175,32 @@ def test_a_dry_hollow_under_the_sea_leaves_the_reach_and_the_coast_keeps_it():
     assert 0 < meta["hollow_texels"] < 60 * 35
 
 
+def test_open_sea_past_the_ocean_boxs_edge_keeps_the_reach():
+    """The ocean's raster stops at a straight edge; past it the floor drops 130 m with no
+    wall above the sea, and the ocean's own patches stand over the drop."""
+    n = 120
+    water = np.full((n, n), hf.NODATA, np.int16)
+    grades = np.zeros((n, n), np.uint8)
+    water[:, :20] = round(LEVEL * hf.DM_PER_M)
+    grades[:, :20] = hf.WATER_MEASURED
+    height = np.full((n, n), -1330, np.int16)
+    height[:, :20] = -180
+    height[50:60, 40:50] = 50
+    water[10:20, 40:50] = round(LEVEL * hf.DM_PER_M)
+    grades[10:20, 40:50] = hf.WATER_MEASURED
+    reach, meta = ocean_reach(_field(water, grades, height))
+    assert reach[:, : 20 + int(OCEAN_REACH_M)].all(), "the open sea is not a hollow"
+    assert meta["hollow_texels"] == 0
+    height[:, 20:23] = 50
+    reach, meta = ocean_reach(_field(water, grades, height))
+    assert reach[:, : 20 + int(OCEAN_REACH_M)].all(), "the ocean's patch still fills it"
+    water[10:20, 40:50], grades[10:20, 40:50] = hf.NODATA, hf.WATER_DRY
+    reach, meta = ocean_reach(_field(water, grades, height))
+    drop = np.s_[:, 23 : 20 + int(OCEAN_REACH_M)]
+    assert not reach[drop][height[drop] < 0].any(), "walled off, the drop is a hollow"
+    assert reach[:, :20].all()
+
+
 def test_rivers_and_lakes_keep_recipe_5_exactly():
     rng = np.random.default_rng(1)
     shape = (5, 7)

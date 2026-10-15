@@ -6,6 +6,13 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Map renders: open sea past the straight edge of the ocean's water, off the south-west
+  coast and along the west and north edges, is drawn as deep sea again; 0.2.0 drew the rock
+  on its floor as dry land, with a straight edge and a brown stripe where it met the sea.
+  Only ground under the sea that land above the sea walls off from it is drawn as ground.
+
 ## [0.2.0] - 2026-10-14
 
 ### Upgrade notes
