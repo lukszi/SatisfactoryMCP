@@ -23,21 +23,35 @@ def plan(game, state):
 
 def test_the_whole_plan_reproduces_the_solvers_own_totals(plan):
     """The identity that makes every other figure trustworthy:
-    solution.net_mw == sum(mw_linear) - sink_mw, exactly."""
+    solution.net_mw == sum(mw_linear) - sink_mw_linear, exactly. The plan's machine total
+    counts its AWESOME Sinks besides the process rows."""
     prepared, game = plan
     whole = slice_of(prepared, game)
-    assert whole.machines == prepared.solution.machines_total
-    assert whole.net_mw_linear - whole.sink_mw == pytest.approx(prepared.solution.net_mw, abs=0.01)
+    sinks = sum(row["sinks"] for row in prepared.solution.sinks)
+    assert whole.machines + sinks == prepared.solution.machines_total
+    assert whole.net_mw_linear - whole.sink_mw_linear == pytest.approx(
+        prepared.solution.net_mw, abs=0.01
+    )
+
+
+def test_the_exact_sink_draw_is_whole_sinks(plan):
+    """An AWESOME Sink draws its full 30 MW however little it takes."""
+    prepared, game = plan
+    whole = slice_of(prepared, game)
+    assert prepared.solution.sinks
+    assert whole.sink_mw == 30.0 * sum(row["sinks"] for row in prepared.solution.sinks)
 
 
 def test_exact_power_is_never_worse_than_the_solver_promised(plan):
     """mw_linear is proportional to machine-equivalents; mw is the figure after whole
     machines are placed at a derived clock. clock**exponent is convex, so N machines
     below 100% draw LESS than the linear estimate -- 9.4 MW to the good on this plan.
-    Headroom checks use the exact number for exactly this reason."""
+    Headroom checks use the exact number for exactly this reason. The sinks are compared
+    at the LP's own share here; whole sinks only ever draw more."""
     prepared, game = plan
     whole = slice_of(prepared, game)
-    assert whole.net_mw >= prepared.solution.net_mw - 0.01
+    machines_only = whole.net_mw + whole.sink_mw - whole.sink_mw_linear
+    assert machines_only >= prepared.solution.net_mw - 0.01
 
 
 def test_a_partial_slice_never_claims_the_sink(plan):

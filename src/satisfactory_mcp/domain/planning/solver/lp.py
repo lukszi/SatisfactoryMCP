@@ -16,7 +16,12 @@ from ....core.gamedata.constants import AWESOME_SINK_MW
 from .model import MW, Process, Scenario, Solution
 from .overclock import machine_price_mw
 
+#: How far above its least raw use ``min_raw_power`` may go to save power: "nearly equal"
+#: raw use, as a share of that least (docs/planning.md §8.1).
+RAW_TIE_SLACK = 0.01
+
 __all__ = [
+    "RAW_TIE_SLACK",
     "Columns",
     "balance_rows",
     "bounds_and_group_caps",
@@ -25,7 +30,9 @@ __all__ = [
     "machine_price_vector",
     "max_machines_row",
     "power_row",
+    "power_vector",
     "price_machines_for_power",
+    "raw_tie_row",
     "recycle_once_rows",
     "sloop_budget_row",
     "solve_two_phase",
@@ -244,7 +251,7 @@ def goal_vector(
                 "to exports, or choose another objective"
             )
         goal[columns.export(columns.export_items.index(scenario.target_item))] = -1.0
-    elif scenario.objective == "min_raw":
+    elif scenario.objective in ("min_raw", "min_raw_power"):
         # Raw arrives through raw columns and extractor processes, and both are priced.
         for j in range(len(columns.raw_items)):
             goal[columns.raw(j)] = scenario.raw_weights.get(columns.raw_items[j], 1.0)
@@ -259,12 +266,37 @@ def goal_vector(
         for i in range(columns.n_processes):
             goal[columns.process(i)] = 1.0
     elif scenario.objective == "min_power":
-        for i, process in enumerate(processes):
-            if process.mw < 0:
-                goal[columns.process(i)] = -process.mw
+        goal = power_vector(scenario, processes, columns, with_sinks=False)
     else:
         return Solution.refused(f"unknown objective {scenario.objective!r}")
     return goal
+
+
+def power_vector(
+    scenario: Scenario, processes: list[Process], columns: Columns, *, with_sinks: bool = True
+) -> F64Grid:
+    """MW drawn by the plan's consumers, and by its sinks unless ``with_sinks`` is off."""
+    goal = np.zeros(columns.size)
+    for i, process in enumerate(processes):
+        if process.mw < 0:
+            goal[columns.process(i)] = -process.mw
+    if with_sinks:
+        for j in range(len(columns.sink_items)):
+            goal[columns.sink(j)] = AWESOME_SINK_MW / max(scenario.belt_ipm, 1.0)
+    return goal
+
+
+def raw_tie_row(
+    raw_goal: F64Grid, constraints: list[LinearConstraint], bounds: Bounds, integrality: U8Grid
+) -> LinearConstraint | Solution:
+    """Raw use held within ``RAW_TIE_SLACK`` of its least, so power can be minimised next."""
+    least = solverlane.run(
+        lambda: milp(c=raw_goal, constraints=constraints, integrality=integrality, bounds=bounds)
+    )
+    if not least.success or least.x is None:
+        return Solution.infeasible("" if least.status == 2 else f"phase 1: {least.message}")
+    best = float(raw_goal @ least.x)
+    return LinearConstraint(raw_goal.reshape(1, -1), -np.inf, best * (1 + RAW_TIE_SLACK) + 1e-6)
 
 
 def price_machines_for_power(
@@ -272,7 +304,7 @@ def price_machines_for_power(
 ) -> F64Grid:
     """``goal`` with each machine priced in MW when the objective is power (§8.4)."""
     priced = goal.copy()
-    if scenario.objective in ("max_mw", "min_power"):
+    if scenario.objective in ("max_mw", "min_power", "min_raw_power"):
         for i, process in enumerate(processes):
             priced[columns.process(i)] += machine_price_mw(scenario, process.building)
     return priced

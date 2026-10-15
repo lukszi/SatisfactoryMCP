@@ -27,6 +27,7 @@ from ...params import (
     AsOf,
     Limit,
     LogisticsItems,
+    Objective,
     OverclockLast,
     PaybackHours,
     PlanName,
@@ -42,6 +43,7 @@ from ._plan_log import BUSY, head_stamper, needs_base, world_plan_log, write
 from ._requests import (
     RecalledRequest,
     factory_value,
+    goal_for,
     plan_pin,
     power_refusal,
     recall_request,
@@ -367,7 +369,7 @@ def _mark_override_notes(notes: list[str], save_as: str | None, save_note: str) 
 
 @app.tool()
 def plan_factory(
-    objective: str = "max_mw",
+    objective: Objective = None,
     target_item: str | None = None,
     sources: list[str] | None = None,
     exports: list[str] | None = None,
@@ -442,9 +444,8 @@ def plan_factory(
     save power, each priced at ``machine_cost_mw`` (default 5 MW). Overclock modes are not
     offered by default; nothing here counts the Power Shards they need.
 
-    objective: max_mw | max_item | min_raw | min_machines | min_power. Every item balances
-    as an EQUALITY, so a byproduct with no consumer makes the plan infeasible rather than
-    silently vanishing.
+    objective: max_mw | max_item | min_raw | min_raw_power | min_machines | min_power;
+    omitted, a rate is min_raw_power, else max_mw. Spare solids are sunk and listed.
 
     ``exports`` is the whitelist of what may leave; the default is power only, which is
     often infeasible for crude oil::
@@ -511,6 +512,7 @@ def plan_factory(
     ):
         plan = existing.key
 
+    objective = goal_for(objective, plan, export_minimums)
     given = solve_args(
         objective=objective,
         target_item=target_item,

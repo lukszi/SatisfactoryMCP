@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -45,6 +46,7 @@ __all__ = [
     "ShardStock",
     "build_scenario",
     "chain_scenario",
+    "default_objective",
     "select_for",
     "shard_stock",
     "with_recipes",
@@ -142,6 +144,13 @@ def _export_token(game: GameData, name: str) -> tuple[str | None, str | None]:
     if resolved is None:
         return None, f"no item matches {name!r}"
     return resolved, None
+
+
+def default_objective(export_minimums: Mapping[str, float] | None) -> str:
+    """The goal of a request that names none: least raw then least power for a rate of
+    some item ("X per minute"), otherwise the most power (docs/planning.md §8.1)."""
+    asks_items = any(rate and not is_power(name) for name, rate in (export_minimums or {}).items())
+    return "min_raw_power" if asks_items else "max_mw"
 
 
 def select_for(game: GameData, state: WorldState, sources: list[str] | None) -> Selection:

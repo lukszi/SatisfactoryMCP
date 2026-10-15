@@ -59,7 +59,9 @@ class PlanSlice:
     #: What the LP itself optimised, kept so the solution's own total can be reproduced.
     net_mw_linear: float = 0.0
     #: Charged to the plan as a whole; 0 on a partial slice, which cannot attribute it.
+    #: Whole sinks at full draw; ``sink_mw_linear`` is the LP's share per belt line.
     sink_mw: float = 0.0
+    sink_mw_linear: float = 0.0
     #: Net per-minute rate per item across these processes.
     flows: dict[str, float] = field(default_factory=dict[str, float])
     shard_rows: list[ShardRow] = field(default_factory=list[ShardRow])
@@ -165,7 +167,8 @@ def slice_of(
         # Only the whole plan can own the sink: it is charged per belt line of sunk
         # material, and no single column is responsible for it.
         scenario = prepared.request.scenario
-        out.sink_mw = sum(
+        out.sink_mw = sum(row["mw"] for row in solution.sinks)
+        out.sink_mw_linear = sum(
             v * AWESOME_SINK_MW / max(scenario.belt_ipm, 1.0) for v in solution.sunk.values()
         )
 

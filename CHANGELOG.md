@@ -6,6 +6,17 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Planner: a request for a rate of an item ("Computer 2/min") with no objective solves for
+  the least raw material, then the least power within 1% of it (`min_raw_power`), in chat and
+  on the web planner; other requests still default to `max_mw`, and an explicit objective or a
+  recalled plan's own is kept.
+- Planner: sunk byproducts are listed with their rate, AWESOME Sinks and MW in the plan,
+  `explain_byproducts` and the web plan, and the sinks count in the plan's buildings and exact
+  power. Fluids still cannot be sunk, and the infeasibility hint no longer offers sinks for
+  them.
+
 ### Fixed
 
 - Planner: an infeasible plan names the limit it runs into (short raw, a byproduct with no

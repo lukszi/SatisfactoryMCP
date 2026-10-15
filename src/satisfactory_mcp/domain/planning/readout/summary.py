@@ -335,7 +335,12 @@ def failure_cause(prepared: PreparedPlan) -> str:
             return f"these sources cannot supply enough {names}; add sources, or lower a rate"
         if note.startswith("byproduct with no outlet: "):
             names = note.removeprefix("byproduct with no outlet: ").split(" -- ")[0]
-            return f"{names} has nowhere to go; add it to exports, or allow sinks for a solid"
+            fix = (
+                "add it to exports, or allow sinks for a solid"
+                if "allow_sinks" in note
+                else "export it or give it a consumer; it cannot be sunk"
+            )
+            return f"{names} has nowhere to go; {fix}"
         if note.startswith("power: "):
             return "the plant cannot power itself while it exports MW"
     named = [_clip(e) for e in errors if e.startswith(("required", "exclude_recipes"))]
@@ -353,6 +358,14 @@ def _warnings(
         f"export at zero: {z['name']} is named in exports but 0/min leaves this plan"
         for z in report.zero_exports
     ]
+    if sol.sinks:
+        out.append(
+            "sunk byproducts, kept for a later use: "
+            + ", ".join(
+                f"{r['name']} {r['rate']:g}/min ({r['sinks']} sink(s), {r['mw']:g} MW)"
+                for r in sol.sinks
+            )
+        )
     if report.water_binding and not report.water_cap_given:
         out.append(f"water extractors capped at {report.water_cap} by an assumption, and binding")
     if bill.shard_rows and report.shard_budget and bill.shards > report.shard_budget["potential"]:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from .....domain.planning.solver.scenario import default_objective
 from .....domain.planning.stored.plan_args import InvalidOp, PlanArgs
 from .....domain.planning.stored.recall import PLAN_DEFAULTS, expand_plan_pin, recall_plan
 from .....domain.planning.stored.store import Plan
@@ -57,6 +58,15 @@ def find_stored_plan(st: WorldState, name: str) -> Plan:
     if stored is None:
         raise unknown_plan(st, name)
     return stored
+
+
+def goal_for(
+    objective: str | None, plan: str | None, export_minimums: Mapping[str, float] | None
+) -> str:
+    """``objective`` as given, else the default goal; a recalled plan keeps its own."""
+    if objective:
+        return objective
+    return str(PLAN_DEFAULTS["objective"]) if plan else default_objective(export_minimums)
 
 
 def solve_args(**given: object) -> dict[str, object]:
