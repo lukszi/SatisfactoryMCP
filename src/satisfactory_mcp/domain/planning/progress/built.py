@@ -518,8 +518,8 @@ def _detect_at_site(
     # Only nodes of a resource the plan mines are its own, and a whole-map plan names no node:
     # an extractor anywhere in the world says nothing about where it stands.
     mined = {job.resource for job in jobs if job.kind == "extractor"}
-    plan_nodes = (
-        set()
+    plan_nodes: set[str] = (
+        set[str]()
         if request.selection.whole_map
         else {
             instance_leaf(row["instance"])
