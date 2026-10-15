@@ -1561,7 +1561,7 @@ export interface paths {
         };
         /**
          * Factory Graph
-         * @description The recipe-group production graph of a named factory, or of a detected candidate.
+         * @description The production graph of a named factory, or of a detected candidate, by recipe group.
          *
          *     A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
          *     written since then is refused (409), since the index may now name another cluster.
@@ -2458,6 +2458,92 @@ export interface components {
             amount: number;
         };
         /**
+         * BuiltGraphEdge
+         * @description One apportioned nameplate flow; ``text`` names an overflow path with no surplus.
+         */
+        BuiltGraphEdge: {
+            /** Id */
+            id: string;
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Item Id */
+            item_id: string;
+            /** Item Name */
+            item_name: string;
+            /** Item Group */
+            item_group: string;
+            /** Per Min */
+            per_min: number;
+            /** Unit */
+            unit: string;
+            /** Text */
+            text: string | null;
+        };
+        /**
+         * BuiltGraphNode
+         * @description The plan graph's node (planning ``PlanGraphNode``) for a built factory. ``kind`` is
+         *     process, input, export, leftover or sink; ``note`` qualifies an item node's rate.
+         *     ``productivity`` is the measured mean over the ``monitored`` running machines, ``states``
+         *     machines per health state; ``bbox_m`` is a process's machines on the map.
+         */
+        BuiltGraphNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /** Rank */
+            rank: number;
+            /** Item Id */
+            item_id: string | null;
+            /** Item Name */
+            item_name: string | null;
+            /** Recipe Id */
+            recipe_id: string | null;
+            /** Recipe Name */
+            recipe_name: string | null;
+            /** Building */
+            building: string | null;
+            /** Building Icon */
+            building_icon: string | null;
+            /** Built */
+            built: number;
+            /** Machines */
+            machines: number;
+            /** Clock */
+            clock: number | null;
+            /** Mw */
+            mw: number;
+            /** Utilisation */
+            utilisation: number;
+            /** Per Min */
+            per_min: number | null;
+            /** Unit */
+            unit: string;
+            /** Note */
+            note: string | null;
+            /** Productivity */
+            productivity: number | null;
+            /** Monitored */
+            monitored: number;
+            /** States */
+            states: {
+                [key: string]: number;
+            };
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+        };
+        /**
          * CandidateRow
          * @description ``region`` is null in the sea and off the map; ``selector`` is what the MCP tools take.
          *
@@ -3096,7 +3182,11 @@ export interface components {
             /** Issues */
             issues: components["schemas"]["AspectIssue"][];
         };
-        /** FactoryGraphResponse */
+        /**
+         * FactoryGraphResponse
+         * @description The plan graph's shape for built machines (docs/frontend_vision.md §9.8); ``mw_draw``
+         *     and ``mw_generated`` are nameplate at the saved clocks.
+         */
         FactoryGraphResponse: {
             /** Title */
             title: string;
@@ -3105,9 +3195,15 @@ export interface components {
             /** Buffers */
             buffers: number;
             /** Nodes */
-            nodes: components["schemas"]["GraphNode"][];
+            nodes: components["schemas"]["BuiltGraphNode"][];
             /** Edges */
-            edges: components["schemas"]["FlowEdge"][];
+            edges: components["schemas"]["BuiltGraphEdge"][];
+            /** Buildings */
+            buildings: components["schemas"]["PlanGraphBuilding"][];
+            /** Mw Draw */
+            mw_draw: number;
+            /** Mw Generated */
+            mw_generated: number;
         };
         /**
          * FactoryHealthResponse
@@ -3627,45 +3723,6 @@ export interface components {
             machine: string | null;
             /** Products */
             products: components["schemas"]["ItemAmount"][];
-        };
-        /**
-         * GraphNode
-         * @description ``kind`` is ``group`` (machines on one recipe), ``input``, or a terminal: ``storage``,
-         *     ``export``, ``sink``, ``nowhere``. Counts, ``states`` (machines per health state) and ``bbox_m``
-         *     are for groups only.
-         */
-        GraphNode: {
-            /** Id */
-            id: string;
-            /** Kind */
-            kind: string;
-            /** Label */
-            label: string;
-            /** Detail */
-            detail: string;
-            /** Machines */
-            machines: number;
-            /** Clock */
-            clock: number | null;
-            /** Makes */
-            makes: components["schemas"]["Flow"][];
-            /** Running */
-            running: number;
-            /** Blocked */
-            blocked: number;
-            /** Stopped */
-            stopped: number;
-            /** States */
-            states: {
-                [key: string]: number;
-            };
-            /** Bbox M */
-            bbox_m: [
-                number,
-                number,
-                number,
-                number
-            ] | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {

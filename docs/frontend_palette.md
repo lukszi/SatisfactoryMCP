@@ -179,8 +179,8 @@ against a 256 m flat fill faded to 0.45 wherever there is imagery.
 ## Plan graph lines
 
 The one exception to the closed dashboard palette, allowed 2026-10-15 for the planner's
-production graph (`dash/planner/graph/`, planner_vision.md §4.2), and for its **lines and
-arrowheads only**: each edge takes the colour of its item's group, which the server sends as
+production graph (`dash/prodgraph/`, planner_vision.md §4.2), which a built factory's graph
+draws with too (frontend_vision.md §9.8), and for its **lines and arrowheads only**: each edge takes the colour of its item's group, which the server sends as
 `item_group` (the table is `readout/item_groups.py`). Nodes, rings and labels stay in the closed
 palette. These are CSS tokens in `app/base.css`, not map colours: the graph is never drawn over
 the map, so they are not declared through `declareColours` and the map audit does not see them.

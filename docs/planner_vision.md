@@ -546,7 +546,7 @@ split for Site (§11 D1). Every view marks chat-changed rows with the **chat** b
 | Columns | `graph.chain_depth`, the SCC condensation shared by diff and commission (§8.5h), sent by the server. Not recomputed in TypeScript |
 | Controls | Node: alternates, ban, pin, ask chat. Edge: pin to logistics, explain byproduct. Hover: rates |
 | Data | `POST /api/plan/solve` → `processes[].rates`, `flows`, `depth[]` |
-| Drawing | `frontend/src/dash/planner/graph/`, its own module set; the factory view keeps `dash/graph.ts` (frontend_vision.md §9.8) |
+| Drawing | `frontend/src/dash/prodgraph/`, the engine the factory view's graph shares (frontend_vision.md §9.8); `dash/planner/graph/` holds the plan's side: reading a solve, places as plan ops, the node card |
 | Rendering | Hand-written SVG. elkjs (EPL-2.0, unmodified, in a Web Worker) computes positions and edge routes only. Lines take their item group's colour: the one exception to the closed palette (frontend_palette.md) |
 
 **The wire shape** (`SolveResponse.graph`, `readout/plan_graph.py`). The flows and the node
@@ -568,7 +568,7 @@ never a solve input, so `plan_id` and the solve stay the same. `reset_layout` cl
 Unknown ids are dropped on read, so a node that leaves the plan loses its place and gets it
 back if it returns while the stored entry stands.
 
-**What the page does with it** (`frontend/src/dash/planner/graph/`, decided 2026-10-15):
+**What the page does with it** (`frontend/src/dash/prodgraph/`, decided 2026-10-15):
 
 - **Layout.** ELK layered, left to right, orthogonal routes, inline edge labels, one west and
   one east port per node at a fixed height, columns pinned to `rank` by partitions. It runs in
@@ -594,7 +594,7 @@ back if it returns while the stored entry stands.
   radius of them is left plain), never where one line only ends on another (a split or join),
   never between parallel lines sharing a corridor. Jumps closer than their width merge into one
   wider arc. While a node is dragged, only its edges and the edges crossing them before or
-  after the move are redrawn (`graph/hops.ts`).
+  after the move are redrawn (`prodgraph/hops.ts`).
 - **Interaction.** A click picks a node, lights its whole upstream and downstream chain, dims
   the rest and opens the node card (alternates, ban, pin, ask; an export's minimum rate edits in
   place). A click on open ground clears; hovering shows machines, clock, MW and rates.

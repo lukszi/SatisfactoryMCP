@@ -7,8 +7,13 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
+from ..planning.readout.views import PlanGraphBuilding
+
 __all__ = [
     "BalanceRow",
+    "BuiltGraph",
+    "BuiltGraphEdge",
+    "BuiltGraphNode",
     "FloorCounts",
     "GraphSummary",
     "LabelDoc",
@@ -89,3 +94,56 @@ class BalanceRow(TypedDict):
     net: float
     measured_net: float | None
     verdict: str
+
+
+class BuiltGraphNode(TypedDict):
+    """The plan graph's node (planning ``PlanGraphNode``) for a built factory. ``kind`` is
+    process, input, export, leftover or sink; ``note`` qualifies an item node's rate.
+    ``productivity`` is the measured mean over the ``monitored`` running machines, ``states``
+    machines per health state; ``bbox_m`` is a process's machines on the map."""
+
+    id: str
+    kind: str
+    label: str
+    detail: str
+    rank: int
+    item_id: str | None
+    item_name: str | None
+    recipe_id: str | None
+    recipe_name: str | None
+    building: str | None
+    building_icon: str | None
+    built: int
+    machines: float
+    clock: float | None
+    mw: float
+    utilisation: float
+    per_min: float | None
+    unit: str
+    note: str | None
+    productivity: float | None
+    monitored: int
+    states: dict[str, int]
+    bbox_m: tuple[float, float, float, float] | None
+
+
+class BuiltGraphEdge(TypedDict):
+    """One apportioned nameplate flow; ``text`` names an overflow path with no surplus."""
+
+    id: str
+    source: str
+    target: str
+    item_id: str
+    item_name: str
+    item_group: str
+    per_min: float
+    unit: str
+    text: str | None
+
+
+class BuiltGraph(TypedDict):
+    nodes: list[BuiltGraphNode]
+    edges: list[BuiltGraphEdge]
+    buildings: list[PlanGraphBuilding]
+    mw_draw: float
+    mw_generated: float

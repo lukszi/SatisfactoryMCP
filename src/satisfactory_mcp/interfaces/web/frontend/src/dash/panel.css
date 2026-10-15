@@ -1100,99 +1100,6 @@ a.dash-where:hover {
   display: block;
 }
 
-.graph-node rect {
-  fill: var(--panel);
-  stroke: var(--line);
-  stroke-width: 1.5;
-}
-
-.graph-node.pickable {
-  cursor: pointer;
-}
-
-.graph-node:focus {
-  outline: none;
-}
-
-.graph-node.pickable:hover rect,
-.graph-node:focus-visible rect {
-  stroke: var(--accent);
-}
-
-.graph-node:focus-visible rect {
-  stroke-width: 3;
-}
-
-.graph-node.tone-blocked rect {
-  stroke: var(--blocked);
-  stroke-width: 3;
-}
-
-.graph-node.tone-bad rect {
-  stroke: var(--bad);
-  stroke-width: 3;
-}
-
-.graph-node.kind-input rect,
-.graph-node.kind-nowhere rect {
-  fill: transparent;
-  stroke: var(--dim);
-  stroke-dasharray: 5 4;
-}
-
-.graph-node.kind-storage rect,
-.graph-node.kind-export rect {
-  stroke: var(--muted);
-}
-
-.graph-node.kind-sink rect {
-  fill: transparent;
-  stroke: var(--muted);
-  stroke-dasharray: 2 4;
-}
-
-.graph-node text {
-  fill: var(--muted);
-  font-size: var(--fs-s);
-}
-
-.graph-node .graph-node-k {
-  fill: var(--ink);
-  font-size: var(--fs-m);
-  font-weight: 600;
-}
-
-.graph-edge {
-  fill: none;
-  stroke: var(--accent);
-  stroke-opacity: 0.55;
-  stroke-width: 1.5;
-}
-
-.graph-edge.sunk {
-  stroke: var(--muted);
-  stroke-dasharray: 3 3;
-}
-
-.graph-arrowhead {
-  fill: var(--accent);
-}
-
-.graph-edge-back {
-  fill: var(--bg);
-  opacity: 0.85;
-}
-
-.graph-edge-label {
-  fill: var(--ink-soft);
-  font-size: var(--fs-s);
-  text-anchor: middle;
-  paint-order: stroke;
-  stroke: var(--bg);
-  stroke-width: 3px;
-  stroke-linejoin: round;
-}
-
 .inv-search {
   display: flex;
   align-items: center;
@@ -2240,12 +2147,6 @@ path.lasso-area {
   min-width: 0;
 }
 
-.graph-node.picked rect,
-.graph-node.pickable.picked:hover rect {
-  stroke: var(--select);
-  stroke-width: 3;
-}
-
 .graph-badge rect {
   fill: var(--bg);
   stroke: var(--line);
@@ -2258,20 +2159,10 @@ path.lasso-area {
   text-anchor: middle;
 }
 
-.graph-node.flash rect {
-  animation: graph-flash 1s ease-in-out 4;
-}
-
 @keyframes graph-flash {
   50% {
     stroke: var(--accent-hi);
     stroke-width: 3;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .graph-node.flash rect {
-    animation: none;
   }
 }
 
