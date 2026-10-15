@@ -188,3 +188,14 @@ def test_commissioning_flags_the_cutover_risk(planned):
     assert "CUTOVER RISK" in out
     assert "Oil Extractor" in out
     assert "trace_upstream" in out
+
+
+def test_the_cutover_risk_is_only_the_plans_own_extractors(planned):
+    """A motor plan draws no water or oil, yet it listed the extractors feeding the fuel
+    generators: the check scanned the whole world instead of the plan's matched machines."""
+    motor = {"objective": "min_machines", "exports": ["Motor"], "export_minimums": {"Motor": 5}}
+    srv.plan_factory(**motor, save_as="motor")
+    out = srv.commission_plan(plan="motor")
+    assert "startup order" in out
+    assert "CUTOVER RISK" not in out
+    assert "CUTOVER RISK" not in srv.commission_plan(**motor)

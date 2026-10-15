@@ -10,7 +10,7 @@ measurements.
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -255,8 +255,11 @@ def power_at_risk(state: WorldState, game: GameData, machines: list[str]) -> tup
     return mw, total, running
 
 
-def live_feeders(g: GameData, st: WorldState, floor_mw: float = 1.0) -> list[tuple[str, float]]:
-    """Built extractors whose output currently reaches a running generator.
+def live_feeders(
+    g: GameData, st: WorldState, floor_mw: float = 1.0, only: Collection[str] | None = None
+) -> list[tuple[str, float]]:
+    """Built extractors whose output currently reaches a running generator; ``only`` keeps
+    those whose instance leaf is in it.
 
     Which of the machines already on the ground are load-bearing right now, which a startup
     order cannot answer on its own. The distribution is lopsided in practice -- one of
@@ -265,17 +268,19 @@ def live_feeders(g: GameData, st: WorldState, floor_mw: float = 1.0) -> list[tup
     """
     return [
         (f"{name} {instance_leaf(record['instance'])[-10:]}", mw)
-        for record, name, mw in feeder_records(g, st, floor_mw)
+        for record, name, mw in feeder_records(g, st, floor_mw, only)
     ]
 
 
 def feeder_records(
-    g: GameData, st: WorldState, floor_mw: float = 1.0
+    g: GameData, st: WorldState, floor_mw: float = 1.0, only: Collection[str] | None = None
 ) -> list[tuple[ExtractorRecord, str, float]]:
     """``live_feeders`` as (extractor record, building name, MW), largest first."""
     out: list[tuple[ExtractorRecord, str, float]] = []
     for record in st.projection.get("extractors", ()):
         instance = instance_leaf(record["instance"])
+        if only is not None and instance not in only:
+            continue
         mw, _, running = power_at_risk(st, g, [instance])
         if running and mw >= floor_mw:
             building = g.buildings.get(record.get("cls", ""))
