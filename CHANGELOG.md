@@ -8,6 +8,9 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- Map renders: the Satellite map's hot-spring terraces wear their material's texture instead
+  of flat cream, and the pools on their tops are drawn as the hot-spring water. The render-only
+  mesh cache is rebuilt once.
 - Map renders: the Satellite map's shallow rivers are teal again, where the game's absorption
   under the sea's sky colour drew them as their bed under a grey veil, and deep runs no
   longer turn the sea's blue: they darken to slate teal, so a river meets the lake it feeds

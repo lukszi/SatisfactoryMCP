@@ -257,7 +257,7 @@ be traced to the axis it should move.
 | `gamedata/level/lighting.py` | data | The persistent level's noon light and the atmosphere volumes that override it |
 | `gamedata/rocks/cliffs.py` | data | The field's cliff and top rasters |
 | `gamedata/rocks/families.py` | data | Rock material families (the cliff layers and desert rock): `FamilyResolver`, per placement, tint and top layer |
-| `gamedata/rocks/looks.py` | data | The rock look's textures read from the install (`read_rock_textures`), their tile sizes, the shells' and barnacles' cuts, and each family's top layer rule |
+| `gamedata/rocks/looks.py` | data | The rock look's textures read from the install (`read_rock_textures`), their tile sizes, the shells', barnacles' and terraces' cuts, and each family's top layer rule |
 | `gamedata/rocks/collision_pack.py`, `caves.py` | data | The rock collision pack (`rock_pack_arrays`, `encode_rock_pack`), the cave masks |
 | `gamedata/water/actors.py` | data | Which classes are water actors, each one's box in the world, and the boxes' highest top on the 1 m grid (`water_box_tops`, `box_texels`) |
 | `gamedata/water/channel.py` | data | The heightfield's water channel: artwork mask, box levels, lower bodies |
@@ -299,6 +299,7 @@ be traced to the axis it should move.
 | `terrain/top_raster.py`, `archfill.py` | renderer | The top raster with the arches apart (top, underside) and the boulders alone; the arches' sub-metre holes filled |
 | `terrain/overhangs.py` | renderer | Under each rock's top, its overhang's underside and the floor beneath it |
 | `terrain/render_meshes.py` | renderer | The render-only meshes and the Titan trees on the output grid |
+| `terrain/terrace_pools.py` | renderer | The hot-spring terraces' pools, split from their meshes by material |
 | `terrain/crown_stamp.py` | renderer | Tree crowns stamped into a band of the output grid from their sprites: the placements and the numpy reference |
 | `terrain/crown_atlas.py` | renderer | The sprite cache as the stamps read it: one float32 atlas, every channel times alpha |
 | `terrain/texels.py` | renderer | Textures and atlas tiles read onto a band, sprites stamped over it: the reference the GPU's `render/gpu/texels.py` matches |
@@ -339,6 +340,7 @@ be traced to the axis it should move.
 | `palette/painted/derive/scene.py`, `rules.py` | style | The paint store on the 4 m grid, and the rule that derives each calibration key |
 | `palette/painted/derive/targets.py`, `palette.py` | style | The light vote, the derived colours, `targets.derived.json`, and the palette a render wears them in |
 | `palette/painted/surfaces.py` | style | Rock in its family's colour and look, the landscape Cliff layer's look, the canopy over rock, the render-only meshes |
+| `palette/painted/pools.py` | style | The terraces' pools: the terrace under the hot-spring water |
 | `palette/painted/rock_grid.py` | style | Rock colour on the 4 m rock grid: the cliff albedo tinted by the ground, set on its targets |
 | `palette/painted/rock_look/atlas.py`, `surface.py` | style | The rock textures at the run's mip level in two atlases and what each kind of rock reads of them; the look laid on a band (albedo detail, the top layer's mask, the normal maps' light) |
 | `palette/painted/rock_look/reference.py`, `gpu.py` | style | The rock texel kernel: the numpy reference and its CUDA twin (`look_texels` in `render/gpu/cells.cu`), bit for bit |

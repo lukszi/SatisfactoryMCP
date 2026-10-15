@@ -39,6 +39,7 @@ from mapgen.palette.painted.rock_look.atlas import (
     KIND_DESERT,
     KIND_LAYER,
     KIND_SHELL,
+    KIND_TERRACE,
     KINDS,
     RockLook,
     mip_level,
@@ -119,14 +120,14 @@ def test_the_look_names_the_install_s_textures_and_the_material_spans():
     assert set(LOOK_TEXTURES) == {
         "cliff_albedo", "cliff_normal", "cliff_detail", "cells", "arch_albedo",
         "arch_normal", "desert_albedo", "desert_normal", "shell_albedo", "shell_normal",
-        "shell_detail", "barnacle_albedo", "barnacle_normal",
+        "shell_detail", "barnacle_albedo", "barnacle_normal", "terrace_albedo", "terrace_normal",
     }  # fmt: skip
     assert CLIFF_ALBEDO_TILE_M == 20.0 and math.isclose(ARCH_TILE_M, 8.93, abs_tol=0.01)
     assert math.isclose(DESERT_TILE_M, 17.15, abs_tol=0.01), "SM_DesertRock_05 at Tiling 6"
     assert math.isclose(SHELL_DETAIL_TILE_M, 1.40, abs_tol=0.01), "SmallShell as placed"
     assert math.isclose(BARNACLE_TILE_M, 1.65, abs_tol=0.01), "SM_Barnacle_01 as placed"
     look = _look()
-    assert look.tops == {SAND: 6} and look.rules[SAND].tile_m == 50.0
+    assert look.tops == {SAND: 7} and look.rules[SAND].tile_m == 50.0
     assert look.record["tiles_m"]["desert"] == round(DESERT_TILE_M, 3)
 
 
@@ -175,7 +176,7 @@ def test_the_cliff_layer_takes_only_the_detail_finer_than_its_1m_colour():
 
 def test_flat_normal_maps_leave_the_surface_s_normal_and_others_tilt_it():
     flat = _look(normals=(128, 128))
-    for kind in (KIND_CLIFF, KIND_ARCH, KIND_DESERT, KIND_SHELL, KIND_BARNACLE):
+    for kind in (KIND_CLIFF, KIND_ARCH, KIND_DESERT, KIND_SHELL, KIND_BARNACLE, KIND_TERRACE):
         px = _pixels(300, kind, seed=3)
         np.testing.assert_allclose(look_texels(flat, px).normal, px.normal, atol=0.02)
         tilted = look_texels(_look(), px).normal
