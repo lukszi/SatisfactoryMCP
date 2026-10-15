@@ -797,9 +797,9 @@ the texels of low boulders (22,902 in all) take the colour of the ground round t
 the forests and red in the Red Jungle, which a boulder colour cannot follow.
 
 The plain shells, all but the desert ones, drew their material's texture mean, #797573, where
-the bake reads #746956 over 213,660 texels ("The desert shells" above, ΔE 4.8):
-`calibration.meshes.shell` now holds that, by the bake rather than a paint-store rule (`mapgen
-calibrate` names the source for the key).
+the bake read #746956 over 213,660 texels ("The desert shells" above, ΔE 4.8), and
+`calibration.meshes.shell` held that for style version 37. That reading was the ground under
+the shells, not the shells: see "The plain shells" below.
 
 On unlit 100 m windows (8192 grid, 0.92 m), the same top cache drawn by the code before and
 after, over the bake texels each window holds:
@@ -811,6 +811,32 @@ after, over the bake texels each window holds:
 | Rocky Desert, desert boulders, (1150, -1950) | 208 | #c58a5d | #868570 | 10.4 | #bd8b62 | 1.4 |
 | Swamp, desert boulders, (1750, -950) | 56 | #cb9466 | #87856f | 12.0 | #bf8c61 | 3.0 |
 | Plain shells, (-422, -2138), 120 m | 1,045 | #6f6551 | #74706e | 4.7 | #706552 | 0.2 |
+
+### The plain shells (2026-10-15)
+
+Style 37 turned the shell plates of the northern lagoon islands, around (150, -1760), from
+grey to tan. They are 97 foliage `SmallShell` instances with their own `SmallShell_Inst`,
+and no rock, arch or boulder of the area changed colour. The tan was `meshes.shell`, #746956.
+
+**The game has them grey.** Two readings of the game, over the 13,841 texels of those shells:
+
+| Source | Shells read |
+| --- | --- |
+| The mesh HLOD bake (calibration.md section 31, "Rock from the cliff material") | #524f4f |
+| The landscape bake under them (`bake.rgb.u8.z`) | #6d6552 |
+| `SmallShell_Inst`'s albedo in the paint store (`mesh_materials`), linear 0.100, 0.094, 0.088 | #585553 |
+
+The mesh bake (89% of those texels) and the material agree on a neutral grey. The landscape
+bake under them reads the lagoon floor's tan, the colour of #746956. In the 120 m window at
+(-422, -2138) the mesh bake holds one rock and one grassy islet (19% of the window) and no
+shell, so the window's #6f6551 above is the landscape bake's lagoon floor. The texels
+"within 1.5 m of a shell top" were the ground under and around the flat plates, not the
+plates.
+
+So `meshes.shell` is gone again and the plain shells wear `mesh_colours.shell`, #585553, the
+material's own, as up to style 36. `mapgen calibrate` derives the key from the shell materials,
+as it does for an area's shells, if a palette sets it. The desert boulders' terracotta stands:
+their materials carry it (`Color Tint` 1.0, 0.40 to 0.46, 0.28 to 0.29).
 
 ### The Titan trees
 

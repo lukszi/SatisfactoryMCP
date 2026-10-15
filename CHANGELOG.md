@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Map renders: the Satellite map's plain shells are grey again, as the game draws them, not
+  tan. The tan, on the shell plates of the northern lagoon islands among others, was the
+  ground under the shells, read for their colour. The style's version goes up.
+
 ## [0.2.0] - 2026-10-14
 
 ### Upgrade notes

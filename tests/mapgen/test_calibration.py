@@ -232,12 +232,19 @@ def test_the_calibration_names_real_layers_and_the_style_was_bumped():
     cal = PAINTED_PALETTE["calibration"]
     assert set(cal["layers"]) <= set(LAYERS)
     assert "coral" in cal["meshes"] and "coral_seabed" not in cal["meshes"], "the water tints coral"
-    assert cal["meshes"]["shell"] == "#746956", "the plain shells' colour in the game's baked view"
     assert "shoulder" not in PAINTED_PALETTE, "the tone replaced it"
     assert versions.STYLES["satellite-painted"]["version"] >= 3
     from mapgen.terrain.render_meshes import CORAL_KINDS
 
     assert set(cal["coral_meshes"]) <= set(CORAL_KINDS)
+
+
+def test_the_plain_shells_keep_their_materials_grey():
+    """The game's mesh bake has the plain shells neutral grey; the tan #746956 was the
+    landscape bake under them (painted.md section 30, "The plain shells")."""
+    assert "shell" not in PAINTED_PALETTE["calibration"]["meshes"]
+    r, g, b = PAINTED_PALETTE["mesh_colours"]["shell"]
+    assert max(r, g, b) - min(r, g, b) <= 8, "a plain shell is grey, not tan"
 
 
 def test_every_area_entry_names_real_areas_and_scopes_each_material_once():

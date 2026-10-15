@@ -128,8 +128,12 @@ def test_a_key_no_rule_knows_is_answered_not_raised(scene):
     assert _rows(scene)["meshes.kelp"].error == "no rule for mesh 'kelp'"
 
 
-def test_the_shells_name_the_bake_they_were_set_from(scene):
-    assert "HLOD bake" in (_rows(scene)["meshes.shell"].error or "")
+def test_the_shells_derive_from_their_materials(scene):
+    shell = "/Game/Coral/SmallShell/Materials/SmallShell_Inst"
+    scene.meta["mesh_materials"] = {shell: {"linear": [0.1, 0.094, 0.088]}}
+    row = _rows(scene)["meshes.shell"]
+    assert (row.kind, row.assets) == ("material texture", [shell])
+    np.testing.assert_allclose(row.albedo, [0.1, 0.094, 0.088])
 
 
 def test_an_untargeted_layer_falls_back_to_its_paint_table(scene):
