@@ -14,7 +14,6 @@ import numpy as np
 
 from mapgen.colour import by_luminance, flat_light, linear_from_oklab, linear_to_srgb, oklab, tone
 from mapgen.lighting.hillshade import FLAT_SUN_DOT, SUN_ALTITUDE_DEG, SUN_AZIMUTH_DEG, sun_dot
-from mapgen.lighting.model import surface_direct
 from mapgen.lighting.sun import sun_vector
 from mapgen.palette.painted.calibration import exposure_gain, sampled_rgb
 from mapgen.palette.painted.optics import mix_underwater
@@ -41,8 +40,8 @@ from mapgen.palette.painted.trees import (
     titan_layers,
 )
 from mapgen.palette.styles import ramp_position
-from mapgen.palette.water.shore import add_foam, inland_cover, seabed_keeps, wet_band
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
+from mapgen.palette.water.shore import add_foam, inland_cover, wet_band
+from satisfactory_mcp.core.arrays import F32Grid
 
 __all__ = ["PaintedParts", "painted_colours", "painted_ndl", "painted_parts"]
 
@@ -173,26 +172,16 @@ def _toned(out: FloatGrid, palette: PaintedPalette) -> FloatGrid:
 
 
 def painted_ndl(
-    z_m: FloatGrid,
-    spacing_m: float,
-    unlit: bool,
-    meshes: tuple[FloatGrid | None, U8Grid | None, FloatGrid, BoolMask | None],
-    bumps: F32Grid | None = None,
+    z_m: FloatGrid, spacing_m: float, unlit: bool, bumps: F32Grid | None = None
 ) -> FloatGrid:
     """The painted style's sun term, ``n.L`` against the flat ``sin 45``: the north-west
     hillshade when lit, with the ground's detail normal ``bumps`` added to the slope where
-    there is one; flat when unlit. Unlit, a sea mesh only this style draws keeps the default
-    sun on its top: the light, captured under the seabed rule, has water there. ``meshes``
-    is ``(weight, kept class, water level, footprint on land)``.
+    there is one; flat when unlit, the sea meshes only this style draws too, which the light
+    captures (``render/ground/light_planes.py``).
     """
     if not unlit:
         return sun_dot(z_m, spacing_m) if bumps is None else _bumped_sun_dot(z_m, spacing_m, bumps)
-    flat = np.full(z_m.shape, FLAT_SUN_DOT, np.float32)
-    weight, kept, level, land = meshes
-    if weight is None or kept is None:
-        return flat
-    sea = np.where((kept > 0) & ~seabed_keeps(kept, z_m, level, land), weight, np.float32(0.0))
-    return flat * (1.0 + sea * (surface_direct(z_m, spacing_m) - 1.0))
+    return np.full(z_m.shape, FLAT_SUN_DOT, np.float32)
 
 
 def _bumped_sun_dot(z_m: FloatGrid, spacing_m: float, bumps: F32Grid) -> FloatGrid:

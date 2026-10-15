@@ -230,7 +230,7 @@ crowns and arches; the direct raster, built once per cache, at about 2.4 times i
 
 | Where | What |
 | --- | --- |
-| `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land. At the native level the normal carries the ground's detail where the run drew one (painted.md section 30, "The layers' own textures") |
+| `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land. At the native level the normal carries the ground's detail where the run drew one (painted.md section 30, "The layers' own textures"), and the rock look's normal maps ("Rock textures") |
 | `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | A grey atlas of 129 cells of 128 px, 8 a row in 17 rows, at half resolution, each in a 16 px border of its own edge texels (`hz_gutter`, so 1280 × 2720 px), `255 · sqrt(deg / 90)`: cells 0–31 the ground's horizons; 32–63 the trees' porous shade, folded at the sun path's elevation, always stored; 64–95 the ground's horizons received on the canopy top where a tree covers the cell (below, "A porous canopy"); 96–127 the arches' and overhangs' band shade, folded at the sun path's elevation, 0 in a block no span reaches (above, "Arches as spans", and below, "Bands off the sun's path"); cell 128 the trees' ambient occlusion, `255 · o` (below, "The trees in the light"). WebP q95 where a band or the trees' shade is folded into the tile or, on a coarser level, into any tile beneath it; WebP q90 elsewhere (below, "Horizon tiles at q95 where a band folds") |
 | `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), the `key` the bake was made under (below, "Kept light"), tile counts, timings |
 | `<layer>/unlit/` | The unlit colour, 1x only, lossless WebP (PNG before 2026-10-08; the server takes the suffix from the sidecar's `layout`). On the painted layer, the ground without its trees (section 36, "Trees apart") |
@@ -287,9 +287,9 @@ trees are renamed into place in that order (section 17, "Cutting in parallel").
 **One capture (2026-10-07).** The light does not depend on which layers a run draws, or in
 which order. It takes the surface the seabed rule draws: a band composes the seabed's heights
 and water for the light beside the painted layer's own, whether a layer that draws the seabed
-is in the pass or not (`render/ground/surface.py` `band_surfaces`), and the painted layer drawn unlit
-always keeps the default sun on the meshes only it draws (section 36, "Coral trees are no
-crowns"). The crown tops come from the paint store whenever there is one: the painted
+is in the pass or not (`render/ground/surface.py` `band_surfaces`), with the meshes only the
+painted layer stands in the sea over it (section 36, "Coral trees are no crowns"), and the
+rock look's tilt is laid from that surface too (painted.md section 30, "Rock textures"). The crown tops come from the paint store whenever there is one: the painted
 ground's plane when that layer is drawn, else the store's (`render/draw/light.py` `crown_tops`). A
 run without a paint store still bakes no crown cells. Before this date the surface was the
 first layer's as that layer drew it, and the crowns came with the painted layer only: `--layer
@@ -1160,8 +1160,7 @@ with the band that held it.
 sprite normal turned by its tree's yaw (`trees.crown_sun`), against flat ground: drawn lit, the
 style's north-west sun; drawn unlit, as in every run with the light, the light's default sun
 over its own flat ground. A crown drawn unlit so keeps the leaf-level relief the light cannot
-draw, as the meshes only the painted style draws keep the default sun (`band.painted_ndl`); an
-upright crown reads flat either way. The airbrushed dome that lit a crown before, its cover
+draw; an upright crown reads flat either way. The airbrushed dome that lit a crown before, its cover
 times its top blurred by 0.75 m and lit at 0.35 of its relief, is gone, and with it
 `dome_gain`. Since Satellite style 25 the crowns' form multiplies that sun term, under the
 same sun (below, "Crown form").
@@ -1477,14 +1476,23 @@ coral trees draw as their meshes, in the calibrated colours: the coral mesh colo
 by the mesh's own top, the seabed coral under water, and section 31's rule for a coral speck
 standing in the sea.
 
-**In a render with the light.** The lighting pyramid's surface is the seabed rule's (section
-27), whichever layer captures it (section 29, "One capture"). The rule leaves a render-only
-mesh standing in the water to the seabed, so the pyramid holds those pixels as water, with
-land weight 0, and leaves them unlit. The painted layer, drawn unlit, keeps the default sun's
-Lambert term of its own top on the meshes only it draws (`palette/painted/band.py`
-`painted_ndl`, with `lighting/model.py` `surface_direct`, the shader's direct term without
-shadows). The pyramid has those pixels as water, so the page leaves them as baked. Coral on
-dry land is in the surface and is lit live.
+**In a render with the light (2026-10-15).** The lighting pyramid's surface is the seabed
+rule's (section 27), whichever layer captures it (section 29, "One capture"), with the
+render-only meshes the painted rule stands in the sea laid over it: where the seabed rule
+leaves a mesh to the seabed (`shore.seabed_keeps`), the light takes the painted rule's heights
+and land weight (`render/ground/light_planes.py` `sea_meshes`). A coral speck the painted
+layer draws as water (section 31's speck rule, `surfaces.sunk_specks`) stays water, and a top
+under the water's surface is land by the share the water leaves seen. So the coral in the sea
+is lit by the live sun, casts shadows and takes them, as coral on dry land always was, and
+the painted layer draws it unlit, flat like the rest of its colour (`band.painted_ndl`).
+
+Until 2026-10-15 the pyramid held those pixels as water, with land weight 0, and the painted
+layer drawn unlit kept the default sun's Lambert term of the mesh's own top in its colour
+(`lighting/model.py` `surface_direct`): a live sun left the coral at noon, without a shadow.
+
+The pyramid is shared, so terrain and relief, which draw the sea there, now take the coral's
+light on that water too: the price of one capture for every style. It is the 375 to 6,228
+pixels a window measured below, on the Spire Coast's reefs.
 
 **Measured** on the render archive's windows, with the windows' render-only meshes from their
 base sweep: the luma of coral-tree pixels follows the north-west sun term of the true surface
@@ -1495,8 +1503,9 @@ follows its own surface at r 0.70 to 0.95 (375 to 6,228 pixels a window). The ca
 
 **Known limits.**
 
-- In a lit run the coral standing in the sea keeps the noon light whatever sun the page
-  picks, and takes no cast shadow.
+- Terrain and relief draw the sea where the painted layer stands coral in it, and since
+  2026-10-15 relight that water by the coral's light (above). Telling the styles apart there
+  would take a plane of the pyramid only the painted style reads.
 
 ### Trees apart (2026-10-08)
 

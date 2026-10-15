@@ -198,8 +198,8 @@ class CrownLayer(TypedDict):
 class PaintedScene(BandScene):
     """One band as the painted style draws it (``render.draw.painting``): the shared scene, then
     its crowns, sun term, rock and mesh weights, the arches' and boulders' lift over the
-    cliffs and the family of the arch or boulder on top, water optics, and the ground's detail
-    under the bake."""
+    cliffs and the family of the arch or boulder on top, water optics, the ground's detail
+    under the bake, and whether the light takes the rock look's normal maps."""
 
     crowns: LitCrowns | None
     titan_crowns: NotRequired[LitCrowns | None]
@@ -215,6 +215,7 @@ class PaintedScene(BandScene):
     grid: BandGrid
     unlit: NotRequired[bool]
     detail: NotRequired[GroundDetail | None]
+    look_lit: NotRequired[bool]
 
 
 class WetOptics(TypedDict):

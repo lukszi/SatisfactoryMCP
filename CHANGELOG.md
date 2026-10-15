@@ -24,6 +24,11 @@ All notable changes to this project are recorded here. The format follows
   in steps; and five river stretches, among them a desert canyon pool and a short river
   meeting a lake, were drawn as a straight-edged block of lake water over the river. Shade
   now runs on along the flow and changes only at waterfalls. The style's version goes up.
+- Map renders: with the live sun, the Satellite map's rock texture relief now turns with the
+  sun on maps of 8192 px and up; it stayed lit from noon's side whatever sun was picked. At
+  the default sun the map looks as before.
+- Map renders: with the live sun, coral and shells standing in the sea are lit by the sun
+  picked and cast and take shadows; they kept the noon light and cast none.
 
 ## [0.2.0] - 2026-10-14
 

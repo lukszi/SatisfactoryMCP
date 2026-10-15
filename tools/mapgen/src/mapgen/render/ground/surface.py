@@ -21,16 +21,18 @@ from numpy.typing import NDArray
 from mapgen.cache import DirectPlanes, MeshPlanes, TopPlanes
 from mapgen.lighting.borrow import BORROW_CLAMP, BORROW_GAIN
 from mapgen.lighting.spans.slabs import SlabPlanes
+from mapgen.palette.painted.rock_look.tilt import RockTilt
 from mapgen.palette.scene import WaterTerms
 from mapgen.palette.water.footprints.plane import piece_land
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import RiverWater
 from mapgen.palette.water.shore import MESH_FULL_LIFT_M, composite_meshes
-from mapgen.render.ground.detail import detail_bytes, drawn_share, piece_detail
+from mapgen.render.ground.detail import piece_detail
 from mapgen.render.ground.floating import FieldPiece, FloatSources, band_slabs, piece_slabs
 from mapgen.render.ground.holes import hole_rim
 from mapgen.render.ground.lift import blend_regimes, composite_top, rock_kept
-from mapgen.render.ground.void import DrawnVoid, drawn_void, land_weight
+from mapgen.render.ground.light_planes import LightPlanes, light_planes
+from mapgen.render.ground.void import DrawnVoid, drawn_void
 from mapgen.render.ground.water_sample import (
     WaterPlanes,
     band_water_terms,
@@ -133,8 +135,9 @@ class GroundSources:
 
     ``x_cm`` holds the window's pixel centres, ``y_cm`` the whole sheet's; a piece reads its
     columns of them and of the taps. ``lattice_edge`` is the direct regime's ground lattice
-    softened at its edge (``lift.lattice_edge``). The bands only read it, so any number of
-    threads may share it.
+    softened at its edge (``lift.lattice_edge``). ``rock_tilt`` is the rock look's normal maps,
+    which the light takes where it carries the detail (``rock_look/tilt.py``). The bands only
+    read it, so any number of threads may share it.
     """
 
     field: hf.Field
@@ -164,6 +167,7 @@ class GroundSources:
     art_step_cm: float
     prov_cols: I64Grid
     textures: DetailTextures | None = None
+    rock_tilt: RockTilt | None = None
 
 
 class Span(NamedTuple):
@@ -255,17 +259,6 @@ class SeamPlanes(NamedTuple):
     delta: F32Grid
 
 
-class LightPlanes(NamedTuple):
-    """What the light captures of the output: the heights under the seabed rule, the land
-    weight, what floats over them, None where nothing does, and the ground's detail normal
-    as bytes, None without detail textures."""
-
-    z_m: F32Grid
-    land: F32Grid
-    slabs: SlabPlanes | None = None
-    detail: I8Grid | None = None
-
-
 class PieceOwed(NamedTuple):
     """What a piece hands its band, over its output pixels: the planes the band measures,
     without the direct regime None, and the light's, without a capture None."""
@@ -299,9 +292,9 @@ def band_surfaces(
     Only the meshes depend on the rule: a seabed rule leaves the meshes in the water to the
     seabed (``shore.composite_meshes``). The rest is composed once, and the meshes and the
     water over them once per rule; without meshes both rules are one surface. With a capture,
-    the heights and land weight drawn under the seabed rule are owed to the light stage,
-    whatever rules the layers draw with. The arrays are read-only: every layer's painter
-    reads them.
+    the heights and land weight drawn under the seabed rule, with the meshes the painted rule
+    stands in the sea (``light_planes.py``), are owed to the light stage, whatever rules the
+    layers draw with. The arrays are read-only: every layer's painter reads them.
     """
     rows, cols, smooth, linear = grid.rows, grid.cols, grid.smooth, grid.linear
     z_dm, missing = sample_surface(sources.heights, smooth, linear, hf.NODATA)
@@ -333,7 +326,7 @@ def band_surfaces(
     detail = piece_detail(sources.textures, linear, grid.x_cm, y_cm)
     rules = set(seabeds)
     if sources.capture is not None:
-        rules.add(True)
+        rules |= {True, False}
     surfaces: dict[bool, BandSurface] = {}
     for seabed in rules:
         if sources.meshes is None and surfaces:
@@ -368,7 +361,7 @@ def band_surfaces(
     if sources.capture is not None:
         lit = surfaces[True]
         floating = piece_slabs(_float_sources(sources, grid, on_land), field, lit.z_m, level_m)
-        light = _light_planes(grid, lit, floating, sources.textures is not None)
+        light = light_planes(grid, (lit, surfaces[False]), floating, sources)
     return {seabed: surfaces[seabed] for seabed in seabeds}, PieceOwed(seam, light)
 
 
@@ -466,23 +459,6 @@ def _water_terms(
     if sources.rivers is not None:
         water = sources.rivers.over(water, z_m, linear, sources.spacing_m)
     return water
-
-
-def _light_planes(
-    grid: BandSampling, lit: BandSurface, slabs: SlabPlanes | None, textured: bool
-) -> LightPlanes:
-    """The piece's output pixels for the light stage: the heights, NaN where no data is drawn
-    (``lighting/spans/holes.py``), the land weight (``render/ground/void.py``), what floats
-    over them (``render/ground/floating.py``) and, ``textured``, the detail normal where the
-    ground is drawn rather than a rock or a mesh, cut to them already."""
-    kept = (grid.rows.kept, grid.cols.kept)
-    land = land_weight(lit.missing, lit.water["cover"], lit.void)
-    z_m = np.where(lit.missing, np.float32(np.nan), lit.z_m)
-    detail = None
-    if textured:
-        drawn = drawn_share(z_m.shape, lit.rock_seen, lit.top_weight, lit.mesh_weight)
-        detail = detail_bytes(lit.detail, drawn)[kept]
-    return LightPlanes(z_m[kept], land[kept], slabs, detail)
 
 
 def _direct_regime(

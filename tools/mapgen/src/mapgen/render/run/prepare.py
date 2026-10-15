@@ -30,8 +30,10 @@ from mapgen.gamedata.water.ocean import read_ocean_absorption
 from mapgen.gamedata.water.river_material import read_river_absorption
 from mapgen.palette.painted.albedo import load_paint_meta
 from mapgen.palette.painted.ground import PaintedGround
+from mapgen.palette.painted.rock_look.atlas import rock_look
+from mapgen.palette.painted.rock_look.tilt import RockTilt
 from mapgen.palette.relief import ReliefGround
-from mapgen.palette.styles import RELIEF_PALETTES, STYLE_DIGESTS
+from mapgen.palette.styles import PAINTED_PALETTE, RELIEF_PALETTES, STYLE_DIGESTS
 from mapgen.palette.water.footprints.plane import TexelPlanes, mesh_land
 from mapgen.palette.water.open_sea import OpenSea
 from mapgen.palette.water.rivers import water_sources
@@ -114,6 +116,8 @@ class Prepared:
     textures: DetailTextures | None = None
     #: The crown sprites, read where the painted layer is drawn or the light casts the trees.
     sprites: SpriteAtlas | None = None
+    #: The rock look's normal maps, where the light carries the detail normal.
+    rock_tilt: RockTilt | None = None
 
     @property
     def painted(self) -> PaintedGround | None:
@@ -163,6 +167,7 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
         _attach_river(paint, game, level.index, gathered)
     textures = _detail_textures(args, layers, spacing_m, paint)
     direct, top, raster_sources = _rasters(args, setup, lattice, level, grid, paint, gathered)
+    tilt = _rock_tilt(args, (setup, game, gathered), grid, paint, textures is not None)
     extras = _extras(args, setup, lattice, level, field, paint, gathered)
     water, sea, planes = drawn_water(
         field,
@@ -228,6 +233,7 @@ def prepare(args: argparse.Namespace, layers: tuple[str, ...], setup: Setup) -> 
         record,
         textures,
         sprites,
+        tilt if direct is not None else None,
     )
 
 
@@ -249,6 +255,38 @@ def _detail_textures(
     if paint is not None:
         paint.block["ground_detail"] = textures.provenance(seconds)
     return textures
+
+
+def _rock_tilt(
+    args: argparse.Namespace,
+    readers: tuple[Setup, GameInputs, _Gathered],
+    grid: RasterGrid,
+    paint: PaintInputs | None,
+    detail: bool,
+) -> RockTilt | None:
+    """The rock look's normal maps for a light that carries the ``detail`` normal, whatever
+    layers the run draws: the painted ground's look, else the install's (its normal maps need
+    no paint store), and the direct pass's family plane. None where the look did not read."""
+    if not (args.light and detail):
+        return None
+    setup, game, gathered = readers
+    strength = float(PAINTED_PALETTE["rock_look"]["shade"])
+    if paint is not None:
+        look = paint.ground.rock_look
+        strength = float(paint.ground.palette["rock_look"]["shade"])
+    else:
+        try:
+            look = rock_look(read_rock_textures(game.store, game.scripts, {}), grid.spacing_m)
+        except (KeyError, ValueError, StopIteration):
+            return None
+        gathered.inputs["rock_textures"] = {
+            "cl": game.build_cl,
+            "reader_version": READER_VERSIONS["rock_textures"],
+        }
+    if look is None:
+        return None
+    family = cached_family(setup.cache_root / DIRECT_CACHE_DIR_NAME, grid.stamp)
+    return RockTilt(look, family, strength)
 
 
 def _biome_and_paint(

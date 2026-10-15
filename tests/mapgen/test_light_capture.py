@@ -1,7 +1,8 @@
 """The light is one capture whatever layers a run draws, and in whatever order.
 
-Every layer hands the light the surface the seabed rule draws, and the trees cast from the
-crown sprites whether or not the painted layer is drawn. docs/spatial-and-map.md section 29.
+Every layer hands the light the surface the seabed rule draws, with the meshes the painted
+layer stands in the sea, and the trees cast from the crown sprites whether or not the painted
+layer is drawn. docs/spatial-and-map.md section 29.
 Synthetic fixtures: no install, no field on disk.
 """
 
@@ -22,6 +23,7 @@ from mapgen.palette.styles import RELIEF_PALETTES
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.render.draw import painting
 from mapgen.render.draw.light import crown_occluder, crown_tops
+from mapgen.render.ground import light_planes as ground_light
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.draw import draw_layers, render_layer
@@ -100,6 +102,7 @@ def test_every_layer_hands_the_light_the_same_surface(monkeypatch):
 
     def painter(scene, ground, sample, sample_rock):
         seen["z_m"], seen["ndl"] = scene["z_m"].copy(), scene["ndl"].copy()
+        seen["cover"] = scene["water"]["cover"].copy()
         return np.zeros(scene["z_m"].shape + (3,), np.float32)
 
     monkeypatch.setattr(painting, "painted_colours", painter)
@@ -112,11 +115,44 @@ def test_every_layer_hands_the_light_the_same_surface(monkeypatch):
         assert captured[layer].land.tobytes() == first.land.tobytes(), layer
 
     coral, rock = (slice(12, 28), slice(52, 68)), (slice(52, 58), slice(52, 58))
-    assert (seen["z_m"][coral] > first.z[coral] + 2.0).all(), "the painted layer draws the coral"
-    assert (first.land[coral] < 0.01).all(), "and the light has the sea there"
+    seabed = _draw_seabed(monkeypatch, scene)
+    assert (seen["z_m"][coral] > seabed[coral] + 2.0).all(), "the painted layer draws the coral"
+    assert first.z[coral].tobytes() == seen["z_m"][coral].tobytes(), "the light takes its top"
+    shallows = np.float32(1.0) - seen["cover"][coral]
+    assert np.allclose(first.land[coral], shallows), "as much of it as the water leaves seen"
     assert (first.land[rock] > 0.99).all(), "a rock out of the sea is land in it"
-    lit = seen["ndl"] != np.float32(np.sin(np.deg2rad(45.0)))
-    assert lit.any() and lit[10:30, 50:70].sum() == lit.sum(), "the coral keeps the default sun"
+    flat = np.float32(np.sin(np.deg2rad(45.0)))
+    assert (seen["ndl"] == flat).all(), "the light lights the coral, not the colour"
+
+
+def _draw_seabed(monkeypatch, scene) -> np.ndarray:
+    """The heights the seabed rule draws, without the painted rule's sea meshes."""
+    with monkeypatch.context() as patch:
+        patch.setattr(ground_light, "sea_meshes", lambda own: None)
+        return _draw(scene, "terrain").z
+
+
+def test_the_light_lights_coral_standing_out_of_the_sea_whatever_layers_are_drawn(monkeypatch):
+    def painter(scene, ground, sample, sample_rock):
+        return np.zeros(scene["z_m"].shape + (3,), np.float32)
+
+    monkeypatch.setattr(painting, "painted_colours", painter)
+    scene = _scene()
+    mesh_z, cls = scene.meshes.z_cm.copy(), scene.meshes.cls.copy()
+    reef = (slice(70, 86), slice(60, 80))
+    mesh_z[reef], cls[reef] = (OCEAN_LEVEL_M + 2.0) * 100.0, MESH_CORAL
+    scene.meshes = MeshPlanes(mesh_z, cls)
+    seabed = _draw_seabed(monkeypatch, scene)
+    captured = {layer: _draw(scene, layer) for layer in LAYERS}
+    first = captured["terrain"]
+    for layer in LAYERS[1:]:
+        assert captured[layer].z.tobytes() == first.z.tobytes(), layer
+        assert captured[layer].land.tobytes() == first.land.tobytes(), layer
+    core = (slice(72, 84), slice(62, 78))
+    assert (seabed[core] < -10.0).all(), "the seabed rule leaves the reef to the seabed"
+    assert np.allclose(first.z[core], OCEAN_LEVEL_M + 2.0, atol=0.01), "the light has its top"
+    assert (first.land[core] > 0.99).all(), "and lights it, as land, by the live sun"
+    assert (first.land[40:60, 40:50] < 0.01).all(), "the open sea around it stays unlit"
 
 
 def test_one_pass_draws_every_layer_as_alone_painted_over_its_own_meshes(monkeypatch):

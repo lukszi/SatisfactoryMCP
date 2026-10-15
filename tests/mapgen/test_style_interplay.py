@@ -6,9 +6,9 @@ Synthetic fixtures throughout. docs/spatial-and-map.md sections 28 to 31.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import numpy as np
-import pytest
 
 from mapgen.cache import (
     CACHE_SIDECAR_NAME,
@@ -31,7 +31,8 @@ from mapgen.palette.painted.band import painted_ndl
 from mapgen.palette.relief import FLAT_LIT, _shade
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
-from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
+from mapgen.render.ground.light_planes import sea_meshes
+from mapgen.terrain.render_meshes import MESH_CORAL
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from tests.support.map_scenes import relief_ground
 
@@ -79,22 +80,20 @@ def _bowl(n=81, sp=0.25, radius_px=30):
     return z, sp, inside.astype(np.float32), kept
 
 
-def test_painted_keeps_the_default_sun_on_a_mesh_only_it_draws_in_the_water():
+def test_painted_drawn_unlit_leaves_a_mesh_only_it_draws_in_the_water_to_the_light():
     z, sp, weight, kept = _bowl()
     sea = np.full(z.shape, OCEAN_LEVEL_M, np.float32)
     flat = np.float32(np.sin(np.radians(SUN_ALTITUDE_DEG)))
-    np.testing.assert_array_equal(
-        painted_ndl(z, sp, False, (weight, kept, sea, None)), sun_dot(z, sp)
-    )
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, (None, None, sea, None)), flat)
-    dry = np.full(z.shape, np.nan, np.float32)
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, kept, dry, None)), flat)
-    rock = np.where(kept > 0, MESH_ROCK, 0).astype(np.uint8)
-    np.testing.assert_array_equal(painted_ndl(z, sp, True, (weight, rock, sea, None)), flat)
-    got = painted_ndl(z, sp, True, (weight, kept, sea, None))
-    assert got[2, 2] == pytest.approx(flat), "the sea around it is the pyramid's"
-    north_east, south_west = got[28, 52], got[52, 28]
-    assert north_east > flat > south_west, "the noon sun in the south-west lights the far wall"
+    np.testing.assert_array_equal(painted_ndl(z, sp, False), sun_dot(z, sp))
+    np.testing.assert_array_equal(painted_ndl(z, sp, True), flat)
+    own = SimpleNamespace(
+        z_m=z, missing=np.zeros(z.shape, bool), void=None, mesh_weight=weight, mesh_class=kept,
+        level_m=sea, water={"cover": np.zeros(z.shape, np.float32),
+                            "depth_m": np.zeros(z.shape, np.float32)}, mesh_land=None,
+    )  # fmt: skip
+    found = sea_meshes(own)
+    assert found is not None and (found.where == (kept > 0)).all(), "the light lights it"
+    np.testing.assert_array_equal(found.land[weight > 0], 1.0)
 
 
 def _write_meshes(folder, stamp):
