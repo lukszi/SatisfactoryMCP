@@ -42,6 +42,7 @@ from ...params import (
 from ._plan_log import BUSY, head_stamper, needs_base, world_plan_log, write
 from ._requests import (
     RecalledRequest,
+    exports_for,
     factory_value,
     goal_for,
     plan_pin,
@@ -447,14 +448,14 @@ def plan_factory(
     objective: max_mw | max_item | min_raw | min_raw_power | min_machines | min_power;
     omitted, a rate is min_raw_power, else max_mw. Spare solids are sunk and listed.
 
-    ``exports`` is the whitelist of what may leave; the default is power only, which is
-    often infeasible for crude oil::
+    ``exports`` is the whitelist of what may leave; omitted, a goalless rate exports its
+    items and draws from the grid, anything else exports power only::
 
         exports=["MW"]                        power out, plant must be self-powered
         exports=["Plastic", "Rubber"]         items out, NO power export
         exports=["MW", "Plastic", "Rubber"]   both -- MW must be listed explicitly
 
-    The power token is **MW** (``mw``, ``power`` and ``Power`` work too). ``exports``
+    The power token is **MW** (``mw`` and ``power`` work too). ``exports``
     **replaces** the default rather than extending it, and exporting MW forbids drawing from
     the grid. A token matching no item is refused by name.
 
@@ -512,6 +513,7 @@ def plan_factory(
     ):
         plan = existing.key
 
+    exports = exports_for(objective, plan, exports, export_minimums)
     objective = goal_for(objective, plan, export_minimums)
     given = solve_args(
         objective=objective,
