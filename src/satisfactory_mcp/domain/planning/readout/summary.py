@@ -287,7 +287,7 @@ def names_for(g: GameData, args: PlanArgs) -> dict[str, str]:
             node = table.get(member[len("node:") :])
             if node is not None:
                 out[member] = g.item_name(node["resource"])
-    for member in [*args.exports, *args.export_minimums]:
+    for member in [*args.exports, *args.export_minimums, *args.supplied]:
         if member in g.items:
             out[member] = g.item_name(member)
     return out

@@ -643,6 +643,10 @@ Because of that, **ratio underclocking is free and automatic**, and solver-side 
 default: forcing whole machine-equivalents makes exact ratios unreachable and can turn a feasible plan
 infeasible, since every item balance is an equality.
 
+A count within 1e-5 above a whole number is solver residue, not one more machine:
+a plan fed exactly what it needs (§8.2i, §8.5o) came back as 1.000005 Constructors, which was
+read as 2 at 50%.
+
 **Sub-100% clock modes are a different question, and are priced not banned.** Offering `clocks=[0.5, 1.0]`
 lets the solver *spread* a fixed throughput over more machines purely to save power — measured at
 +1140 MW for +441 machines, i.e. 2.58 MW per extra machine. That is a real option, so each machine costs
@@ -1461,6 +1465,64 @@ the candidates list once per proposal, and each trace used to rebuild them: `liv
 over the 70 extractors took 1.6 s, and takes 37 ms now. `WorldState.feeds` keeps the maps
 with the game data they were built from, and a new state, which is what a new save gives,
 builds its own.
+
+### 8.5o A plan from a built factory
+
+`plan_from_factory` (MCP), `POST /api/factories/plan` and the factory page's **make a plan**
+button store a new plan that reproduces one named factory as it stands, so it can be edited,
+optimised or extended in the planner. `domain/planning/progress/as_built.py` does the work for
+all three. The plan is written as one `create` commit at v1, so `forget_plan`, or undoing the
+create, takes it back.
+
+**The mapping.** The factory's balance (`factory_query`'s nameplate rates at the saved clocks)
+becomes the request:
+
+| built | plan |
+|---|---|
+| recipes of running machines | `required` **and** `only_recipes`, by class id |
+| net surplus of an item | `exports` with an `export_minimums` floor at that rate, rounded down to 4 dp |
+| net deficit of an item | `supplied` at that rate, rounded up to 4 dp |
+| nodes its miners and oil pumps tap | `sources` as `node:` selectors; `none` when it taps none |
+| a node the planner cannot model (a fracking satellite) | that extractor's output is `supplied` |
+| Water Extractors | `water_extractors` = how many stand |
+| extractor clocks | `extractor_clocks` = the clocks in use, plus 100% |
+| generators | left out: the fuel they burn is not consumed, so it reads as an export where it is made; the plan draws from the grid (§8.1) |
+| — | `objective` `min_raw_power`, `payback_hours` 0, `overclock_last` off |
+| the label | `factory`, so the Track tab counts this factory as built |
+| its machines' bounding box | the siting, as "fit to built" makes it (16 m margin) |
+
+`only_recipes` is there beside `required` because `required` only removes the rivals of the
+item a recipe makes: an item that comes in `supplied` could otherwise be remade inside the plan
+from something cheaper by raw count. Removing `only_recipes` is how the plan is let look further.
+The payback horizon and overclock-last are pinned off so the first solve is the plain build
+whatever the shared settings say; setting them to "default" puts the plan back on those.
+Paused machines count for nothing, as they make nothing.
+
+**What the plan model cannot hold.** There is no per-row machine count or clock and no floor on
+one recipe's share, so the solve chooses those, and the plan says where it chose differently:
+each difference is a line in the plan's notes and in the reply. Lines are written per recipe
+(built machines and clocks against the plan's, compared in machine-equivalents, 1% tolerance),
+per resource for extractors (compared in items/min, and by building, since the planner taps a
+node with the best unlocked extractor), and for power (1 MW or 1%).
+
+Measured on the reference world:
+
+| factory | what differs |
+|---|---|
+| aluminium setup, coal powerplant, oil setup, tor factory, biofuel setup | nothing beyond rounding |
+| speedwire factory | power only: 169.4 MW built, 154.4 MW planned |
+| blackpowder factory, concrete setup, temporary iron line | a Mk.1 miner is a Mk.2 at half the clock, for the same rate |
+| tier 1&2 | the 250% Manufacturer on Modular Engine is 3 at 83.3% in the plan; 825.7 against 770.7 MW |
+| steel factory | built runs Steel Ingot (3 Foundries) beside Solid Steel Ingot (21); both are required, and least raw puts all of it on Solid Steel (24 at 96.9%), so 35 Smelters instead of 32 |
+| temporary oil setup | three 250% rows become 3, 3 and 8 machines below 100%; 4 oil pumps become 1 at 237.5% on the pure node; 786.6 against 531.0 MW |
+| christmas factory | does not solve: FICSMAS recipes are not among the unlocked part recipes |
+
+Overclocked rows are the common difference: a min-power solve never overclocks (§8.4), so a
+250% machine is always two or three slower ones in the plan.
+
+**Every call makes a new plan** — `<factory> as built`, then `(2)`, `(3)` — rather than
+reusing one: each is the factory as it stood when asked, and an earlier one may have been
+edited since, so overwriting it would lose that.
 
 ### 8.6 Diff vs save — what to actually change
 

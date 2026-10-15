@@ -1,6 +1,7 @@
 """Planning tools: stored plans, solves, layouts, staging against the save, and the page."""
 
 from .analysis import bom, compare_recipe_options, explain_byproducts, rank_unlocks
+from .from_factory import plan_from_factory
 from .layout import plan_layout
 from .page_context import ui_context
 from .siting import site_plan
@@ -17,6 +18,7 @@ __all__ = [
     "forget_plan",
     "list_plans",
     "plan_factory",
+    "plan_from_factory",
     "plan_layout",
     "plan_log",
     "rank_unlocks",
