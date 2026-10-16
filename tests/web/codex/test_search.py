@@ -29,6 +29,7 @@ def test_items_and_recipes_match_the_codex(client, game, state):
     assert starts == sorted(starts, reverse=True)
     for row in body["recipes"]:
         assert row["unlocked"] == (row["cls"] in state.available_recipe_ids)
+        assert row["icon"] == game.recipes[row["cls"]].main_product
 
 
 def test_only_unlocked_drops_locked_recipes_before_the_cut_and_the_count(client, game, state):

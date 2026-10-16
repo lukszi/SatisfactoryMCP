@@ -6474,13 +6474,16 @@ export interface components {
         /**
          * RecipeHit
          * @description ``unlocked`` is null when no save could be read; ``spoiler`` means locked. ``kind`` is
-         *     part, building or manual; ``machine`` names a part recipe's machine.
+         *     part, building or manual; ``machine`` names a part recipe's machine; ``icon`` is the main
+         *     product's class, the recipe's picture.
          */
         RecipeHit: {
             /** Cls */
             cls: string;
             /** Name */
             name: string;
+            /** Icon */
+            icon: string | null;
             /** Kind */
             kind: string;
             /** Machine */

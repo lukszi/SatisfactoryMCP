@@ -68,7 +68,7 @@ function serverHits(data: SearchResponse): Hit[] {
   });
   data.recipes.slice(0, PER_KIND).forEach(function (r) {
     const what = (r.kind === "part" && r.machine) || RECIPE_KIND[r.kind] || r.kind;
-    out.push({ kind: "recipes", name: r.name, ctx: what + (r.alternate ? " · alt" : ""), dash: itemsDash({ view: "all", rec: r.cls }), lead: icon(null, r.name) });
+    out.push({ kind: "recipes", name: r.name, ctx: what + (r.alternate ? " · alt" : ""), dash: itemsDash({ view: "all", rec: r.cls }), lead: icon(r.icon, r.name) });
   });
   return out;
 }

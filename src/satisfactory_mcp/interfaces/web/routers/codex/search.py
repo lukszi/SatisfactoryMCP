@@ -29,10 +29,12 @@ class ItemHit(TypedDict):
 
 class RecipeHit(TypedDict):
     """``unlocked`` is null when no save could be read; ``spoiler`` means locked. ``kind`` is
-    part, building or manual; ``machine`` names a part recipe's machine."""
+    part, building or manual; ``machine`` names a part recipe's machine; ``icon`` is the main
+    product's class, the recipe's picture."""
 
     cls: str
     name: str
+    icon: str | None
     kind: str
     machine: str | None
     alternate: bool
@@ -112,6 +114,7 @@ def search(
             {
                 "cls": hit.recipe.cls,
                 "name": hit.recipe.name,
+                "icon": hit.recipe.main_product,
                 "kind": hit.recipe.kind,
                 "machine": machine_name(game, hit.recipe),
                 "alternate": hit.recipe.is_alternate,
