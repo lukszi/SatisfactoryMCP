@@ -157,9 +157,10 @@ function junctionSquare(attachment: AttachmentRow, x_m: number, y_m: number, sha
 }
 
 export function drawBelts(data: BeltsResponse): void {
-  // Off by default, like `machines`: a world's routes are a smear at the whole-world view. Just
-  // over the concrete they run on, in the order a reader names the networks: belts, pipes, power.
-  const group = clearedLayer("belts", { on: false, colour: BELT_COLOUR, rank: [BAND.built, 10, "belts"] });
+  // On for a first-time viewer, like `machines`: what a factory is made of; a remembered tick
+  // still wins. Just over the concrete they run on, in the order a reader names the networks:
+  // belts, pipes, power.
+  const group = clearedLayer("belts", { on: true, colour: BELT_COLOUR, rank: [BAND.built, 10, "belts"] });
   const ppm = pixelsPerMetre();
   const runs: L.Polyline[] = [];
   data.belts.forEach(function (belt) {

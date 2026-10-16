@@ -130,8 +130,9 @@ function machineOutline(blocked: boolean, stopped: boolean, kindColour: string |
 
 export function drawMachines(data: MachinesResponse): void {
   MACHINE_KINDS.forEach(function (kind) {
+    // All three on for a first-time viewer; a remembered tick still wins (layers.ts).
     const group = clearedLayer(kind, {
-      on: kind !== "machines",
+      on: true,
       colour: KIND_COLOUR[kind],
       rank: [BAND.built, MACHINE_SLOT[kind], kind],
     });
@@ -356,8 +357,7 @@ function holdsAnything(s: StorageRow): boolean {
 }
 
 export function drawStorage(data: StorageResponse): void {
-  // Off at the whole-world zoom, like the machines and the routes: a world's boxes are a
-  // scatter of specks. Near the bottom of the built band, because the row is off by default
+  // Off at the whole-world zoom, like the pipes: a world's boxes are a scatter of specks. Near the bottom of the built band, because the row is off by default
   // and the bottom of the list is where a reader who wants it goes looking.
   const group = clearedLayer("storage", { on: false, colour: STORAGE_COLOUR, rank: [BAND.built, 70, "storage"] });
   lowestFirst(data.storage).forEach(function (s) {
