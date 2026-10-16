@@ -279,7 +279,13 @@ settled. `planner.ts` mounts either, and holds a redraw while a field there has 
   (a new version, from the plan's head); open on chat's solves (the solve card above the
   cards) and finds (the World query). A filter shows all, you or chat. Sticky beside the cards;
   under 1100 px and on phones it goes below them, cards one per row.
-- Chat's pins and asks cards sit under the plan cards until they are ported.
+- **Chat** (`chat-lists.ts`): chat's last solve sits above the cards as one row (what chat
+  asked for, its settings as chips, "not saved", then open its plan, new plan from it, ×).
+  Pins and asks follow the cards as lists, one line per row: the `pin:N` or `ask:N` chip and
+  the label or question, what it is about inline, one state chip (gone; waiting, seen,
+  answered), ◎ or → for a pin's place, the rest in ⋯ (rename in place, copy, ask chat,
+  delete). Phones keep the name and ⋯ on the first line and the chip under them. A plan's
+  own pages still use the old cards (`chat-card.ts`, `chat/asks-card.ts`).
 
 ## Progress
 

@@ -18,6 +18,35 @@
   display: none;
 }
 
+.pchat {
+  margin-bottom: var(--sp-4);
+}
+
+/* ---------- chat's solve, pins and asks: one line per row ---------- */
+.l-csolve .entry,
+.l-cpins .entry,
+.l-casks .entry {
+  --cols: minmax(0, 1fr) auto auto;
+}
+
+.l-csolve .id > .chips {
+  justify-content: flex-start;
+  margin-top: var(--sp-0);
+}
+
+.l-cpins .nl .chip,
+.l-casks .nl .chip {
+  flex: none;
+}
+
+.l-cpins .prename {
+  width: 100%;
+}
+
+.pextra > section > .btn {
+  margin-top: var(--sp-2);
+}
+
 .psplit {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
@@ -220,5 +249,9 @@
 
   .list.grid.l-plans {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .l-csolve .id > .chips {
+    flex-wrap: wrap;
   }
 }

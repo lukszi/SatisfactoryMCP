@@ -14,6 +14,11 @@ import { counted, OBJECTIVES, objectiveText } from "../../kit/words";
 
 /** A plan request in one line: goal, exports, sources, recipe lists and power settings. */
 export function describeArgs(args: Record<string, unknown>): string {
+  return describeParts(args).join(" · ");
+}
+
+/** The parts `describeArgs` joins, one per setting. */
+export function describeParts(args: Record<string, unknown>): string[] {
   const parts: string[] = [];
   const objective = args.objective as string | undefined;
   if (objective) parts.push("goal " + (OBJECTIVES[objective] || objective) + (args.target_item ? " of " + args.target_item : ""));
@@ -47,11 +52,11 @@ export function describeArgs(args: Record<string, unknown>): string {
   if (args.sloops) parts.push(counted(Number(args.sloops), "somersloop"));
   if (typeof args.payback_hours === "number") parts.push("payback " + hours(args.payback_hours));
   if (args.overclock_last === true) parts.push("overclock last");
-  return parts.join(" · ");
+  return parts;
 }
 
 /** A name for a plan made from chat's request: its first export at its rate, else chat's words. */
-function chatName(args: Record<string, unknown>, fallback: string): string {
+export function chatName(args: Record<string, unknown>, fallback: string): string {
   const mins = args.export_minimums as Record<string, number> | undefined;
   const items = mins ? Object.keys(mins) : [];
   if (items.length) return items[0] + " " + perMin(mins![items[0]!]!);
