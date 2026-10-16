@@ -126,7 +126,7 @@ def band_floors(surface: F64Grid, options: BandOptions, cell: float) -> list[flo
     step = max(options.step, float(capped.max()) / MAX_BINS)
     bins = np.where(covered, np.floor(capped / step), -1).astype(np.int64)
     used, weights = np.unique(bins[covered], return_counts=True)
-    values = used * step
+    values = (used * step).astype(np.float64)
     allowed = _allowed_runs(bins, used, step, cell, options)
     cuts = natural_breaks(values, weights.astype(np.float64), len(options.budgets) + 1, allowed)
     return [float(values[cut]) for cut in cuts]

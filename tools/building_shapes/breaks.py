@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from satisfactory_mcp.core.arrays import BoolMask, F64Grid
+from satisfactory_mcp.core.arrays import BoolMask, F64Grid, I64Grid
 
 __all__ = ["natural_breaks"]
 
@@ -17,7 +17,7 @@ class _Prefix:
         self.wv = np.concatenate([[0.0], np.cumsum(weights * values)])
         self.wvv = np.concatenate([[0.0], np.cumsum(weights * values * values)])
 
-    def spread(self, first: np.ndarray, last: int) -> np.ndarray:
+    def spread(self, first: I64Grid, last: int) -> F64Grid:
         """Weighted squared deviation of ``values[first:last]`` from its mean, per ``first``."""
         mass = self.w[last] - self.w[first]
         total = self.wv[last] - self.wv[first]
